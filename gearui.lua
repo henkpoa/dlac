@@ -278,19 +278,41 @@ local function flattenGear(src)
     return list, byId, byName;
 end
 
--- Owned gear (gear.lua): Equipped alternatives, Sets candidates, equipped-item lookups.
-local _owned, _ownedById, _ownedByName;
-local function buildOwned()
-    if _owned == nil then _owned, _ownedById, _ownedByName = flattenGear(gear); end
-    return _owned;
-end
-
 -- Full CatsEyeXI reference (catalog.lua) for the All Equipment tab + item lookups.
 -- Falls back to gear.lua if catalog failed to load, so the tab always works.
 local _allEquip, _allEquipById, _allEquipByName;
 local function buildAllEquip()
     if _allEquip == nil then _allEquip, _allEquipById, _allEquipByName = flattenGear(hasCatalog and catalog or gear); end
     return _allEquip;
+end
+
+-- Owned gear (gear.lua): Equipped alternatives, Sets candidates, equipped-item lookups.
+local _owned, _ownedById, _ownedByName;
+local function buildOwned()
+    if _owned == nil then
+        _owned, _ownedById, _ownedByName = flattenGear(gear);
+        -- Fill in stats from the catalog. A freshly-imported gear.lua usually has EMPTY Stats:
+        -- the scanner only emits a stat "live" when its name already exists somewhere in your
+        -- gear.lua, so a first-ever scan comments every stat out. The catalog is the
+        -- authoritative source, so merge it in per record -- catalog as the base, your own
+        -- gear.lua values overriding key-by-key (owned always wins; the catalog only fills gaps).
+        -- flattenGear shares one record across list + byId, so this reaches wornSetTotals too.
+        if hasCatalog then
+            buildAllEquip();   -- ensure the catalog id-index (_allEquipById) exists
+            for _, rec in ipairs(_owned) do
+                local c = rec.Id ~= nil and _allEquipById[rec.Id] or nil;
+                if c ~= nil and type(c.Stats) == 'table' and next(c.Stats) ~= nil then
+                    local merged = {};
+                    for k, v in pairs(c.Stats) do merged[k] = v; end
+                    if type(rec.Stats) == 'table' then
+                        for k, v in pairs(rec.Stats) do merged[k] = v; end
+                    end
+                    rec.Stats = merged;
+                end
+            end
+        end
+    end
+    return _owned;
 end
 
 -- Resolve an item to a record (for tooltips / worn-set stats): owned first, then
