@@ -5,7 +5,7 @@
 --
 --  Only ONE require is needed: dlac\utils. Requiring it pulls in the gear
 --  inventory (as utils.gear), every /dl command (scan, ui, best, weight, ...),
---  the GUI, and the framework include (gcinclude) -- all for you.
+--  and the GUI -- all for you. (dlac needs no gcinclude or other framework.)
 --
 --  Migrating an EXISTING profile? Nothing forces you to change it: the old style
 --  (require gear + utils yourself, keep local lastKnownLevel/SJLevel/SJ vars, and
@@ -37,9 +37,10 @@ sets = {
 };
 profile.Sets = sets;
 
-profile.OnLoad        = function() gcinclude.Initialize(); end
-profile.OnUnload      = function() gcinclude.Unload(); end
-profile.HandleCommand = function(args) gcinclude.HandleCommands(args); end
+-- dlac itself needs no OnLoad / OnUnload / HandleCommand. If you use a helper library
+-- such as gcinclude (optional, not part of dlac), wire it in here as usual, e.g.:
+--   profile.OnLoad        = function() gcinclude.Initialize(); end
+--   profile.HandleCommand = function(args) gcinclude.HandleCommands(args); end
 
 -- Your HandleDefault stays yours -- dlac only handles the rebuild. Call
 -- `sets = utils.rebuildSets(sets)` first (it fetches the player and tracks your
@@ -57,7 +58,7 @@ profile.HandleDefault = function()
 end
 
 -- Add the other handlers you need, same as any LuAshitacast profile:
--- profile.HandlePrecast     = function() ... gcinclude.CheckCancels(); end
+-- profile.HandlePrecast     = function() ... end
 -- profile.HandleMidcast     = function() ... end
 -- profile.HandleWeaponskill = function() ... end
 

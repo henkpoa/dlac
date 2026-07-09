@@ -889,13 +889,14 @@ local function migrateJobText(text)
     return out;
 end
 
--- A safe, dlac-wired starter profile for a job that has no <JOB>.lua yet. Empty Dynamic
--- sets on purpose: it equips nothing (so it cannot error on gear you do not own) until
--- you build sets in the GUI's Sets tab. MIGRATE_BOOT is prepended when written so LAC can
--- resolve require("dlac\\utils"). Inside [[...]] the backslashes are literal on purpose.
+-- A safe, dlac-wired starter profile for a job that has no dlac profile yet. Empty Dynamic
+-- sets on purpose: it equips nothing (so it cannot error on gear you do not own) until you
+-- build sets in the GUI's Sets tab. SELF-CONTAINED -- needs only the dlac library, no
+-- gcinclude or other framework. MIGRATE_BOOT is prepended when written so LAC can resolve
+-- require("dlac\\utils"). Inside [[...]] the backslashes are literal on purpose.
 local STARTER_PROFILE = [[
 local profile = {};
-local utils = require("dlac\\utils");   -- one require: pulls in gear, gcinclude, /dl commands and the GUI
+local utils = require("dlac\\utils");   -- one require: pulls in gear, the /dl commands and the GUI
 local gear  = utils.gear;
 
 -- Dynamic sets: each slot is a LIST; dlac equips the best one for your level. Empty for
@@ -910,10 +911,6 @@ sets = {
 };
 profile.Sets = sets;
 
-profile.OnLoad        = function() gcinclude.Initialize(); end
-profile.OnUnload      = function() gcinclude.Unload(); end
-profile.HandleCommand = function(args) gcinclude.HandleCommands(args); end
-
 profile.HandleDefault = function()
     sets = utils.rebuildSets(sets);   -- keeps sets in sync with your level / subjob
     local player = gData.GetPlayer();
@@ -924,17 +921,18 @@ profile.HandleDefault = function()
     end
 end
 
--- Add HandlePrecast / HandleMidcast / HandleWeaponskill as any LuAshitacast profile.
+-- Optional: add HandlePrecast / HandleMidcast / HandleWeaponskill, and OnLoad/HandleCommand
+-- if you use a helper library like gcinclude -- none of that is required by dlac.
 return profile;
 ]];
 
 -- Set up the current job's <JOB>.lua for dlac. Handles every case:
 --   'ok'      -> already set up (no-op, just report).
 --   'ffxilac' -> convert the existing profile in place (backup .flbak).
---   'nofile'  -> initialize from scratch: write a safe dlac starter profile.
---   'none'    -> an existing non-ffxi-lac profile; don't clobber it -- point at the template.
--- Either path first seeds <char>\dlac\ with per-character gear/gcinclude from an existing
--- ffxi-lac folder (never clobbered), which is also where the starter gets gcinclude.
+--   'nofile'  -> initialize from scratch: write a self-contained dlac starter profile.
+--   'none'    -> an existing non-dlac profile: back it up (.flbak), then drop in the starter.
+-- Also seeds <char>\dlac\ with a gear.lua (from an existing ffxi-lac folder, else the
+-- bundled empty template) so the profile loads and Scan/Commit have somewhere to read/write.
 local function migrateCurrentJob()
     local base = charBase();
     if base == nil then _augStatus = 'Setup: log in first (no character folder).'; return; end
@@ -945,13 +943,8 @@ local function migrateCurrentJob()
     if state == 'ok' then
         _augStatus = abbr .. '.lua is already set up for dlac.'; return;
     end
-    if state == 'none' then
-        _augStatus = abbr .. '.lua exists but is not an ffxi-lac profile -- copy the dlac '
-            .. 'PROFILE_TEMPLATE.lua as your starting point (it is already dlac-ready), then reload.';
-        return;
-    end
 
-    -- seed <char>\dlac\ with per-character gear/gcinclude from an existing ffxi-lac setup
+    -- seed <char>\dlac\ from an existing ffxi-lac setup, if present (never clobbered)
     pcall(function() os.execute('mkdir "' .. base .. 'dlac" 2>nul'); end);
     for _, f in ipairs({ 'gear.lua', 'gcinclude.lua', 'gcdisplay.lua' }) do
         if readFileText(base .. 'dlac\\' .. f) == nil then
@@ -959,17 +952,21 @@ local function migrateCurrentJob()
             if src ~= nil then writeFileText(base .. 'dlac\\' .. f, src); end
         end
     end
+    -- fresh users have no ffxi-lac to copy: seed an empty gear.lua from the bundled template
+    -- so the profile loads and Scan/Commit can populate it.
+    if readFileText(base .. 'dlac\\gear.lua') == nil then
+        local tmpl = readFileText(AshitaCore:GetInstallPath() .. 'addons\\dlac\\gear.lua');
+        if tmpl ~= nil then writeFileText(base .. 'dlac\\gear.lua', tmpl); end
+    end
 
-    if state == 'nofile' then
-        -- Fresh job, no profile yet: initialize from scratch. Needs gcinclude to load.
-        if readFileText(base .. 'dlac\\gcinclude.lua') == nil then
-            _augStatus = 'Setup: no dlac\\gcinclude.lua (and none in ffxi-lac to copy) -- set up '
-                .. 'LuaAshitacast/ffxi-lac for another job first, then Setup here.';
-            return;
-        end
-        if writeFileText(jf, MIGRATE_BOOT .. '\n' .. STARTER_PROFILE) then
+    if state == 'ffxilac' then
+        -- convert the existing ffxi-lac profile in place (keeps your sets).
+        local text = readFileText(jf);
+        if text == nil then _augStatus = 'Setup: could not read ' .. jf; return; end
+        writeFileText(jf .. '.flbak', text);   -- backup the original
+        if writeFileText(jf, migrateJobText(text)) then
             _setupState = nil;
-            _augStatus = string.format('Created a dlac starter %s.lua. Reload LuaAshitacast, then build sets in the Sets tab.', abbr);
+            _augStatus = string.format('Set up %s.lua for dlac (backup %s.lua.flbak). Reload LuaAshitacast to apply.', abbr, abbr);
             pcall(function() print('[dlac] ' .. _augStatus); end);
         else
             _augStatus = 'Setup: could not write ' .. jf;
@@ -977,13 +974,15 @@ local function migrateCurrentJob()
         return;
     end
 
-    -- state == 'ffxilac': convert the existing profile in place.
-    local text = readFileText(jf);
-    if text == nil then _augStatus = 'Setup: could not read ' .. jf; return; end
-    writeFileText(jf .. '.flbak', text);   -- backup the original
-    if writeFileText(jf, migrateJobText(text)) then
-        _setupState = nil;   -- force a re-check of setup state on the next frame
-        _augStatus = string.format('Set up %s.lua for dlac (backup %s.lua.flbak). Reload LuaAshitacast to apply.', abbr, abbr);
+    -- state == 'nofile' or 'none': write a fresh, self-contained dlac starter. If a profile
+    -- was already there ('none'), back it up first so nothing is lost.
+    local existing = readFileText(jf);
+    if existing ~= nil then writeFileText(jf .. '.flbak', existing); end
+    if writeFileText(jf, MIGRATE_BOOT .. '\n' .. STARTER_PROFILE) then
+        _setupState = nil;
+        local note = (existing ~= nil)
+            and string.format(' (your old %s.lua was backed up to %s.lua.flbak)', abbr, abbr) or '';
+        _augStatus = string.format('Initialized a dlac %s.lua%s. Reload LuaAshitacast, then Scan and build sets.', abbr, note);
         pcall(function() print('[dlac] ' .. _augStatus); end);
     else
         _augStatus = 'Setup: could not write ' .. jf;
