@@ -1,32 +1,9 @@
 local gear = require("dlac\\gear");
 
--- Gear auto-import reader (Piece #1). Loaded here so every profile gets the
--- `/dl scan` command. Guarded so a problem in it can never break profile load.
-local _giok, _gierr = pcall(require, "dlac\\gearimport");
-if not _giok then
-    print('[dlac] gearimport failed to load: ' .. tostring(_gierr));
-end
-
--- Gear browser UI (ImGui). Loaded here so every profile gets the `/dl ui`
--- command. Same guarded load so a UI problem can never break profile load.
-local _guiok, _guierr = pcall(require, "dlac\\gearui");
-if not _guiok then
-    print('[dlac] gearui failed to load: ' .. tostring(_guierr));
-end
-
--- Set optimizer: stat weights (/dl weight), best-set (/dl best), MP tools
--- (/dl mp, /dl maxmp). Guarded load, same as the others.
-local _goptok, _gopterr = pcall(require, "dlac\\gearoptim");
-if not _goptok then
-    print('[dlac] gearoptim failed to load: ' .. tostring(_gopterr));
-end
-
--- Dynamic-set editor: the gearui Sets tab commits/deletes sets back into <JOB>.lua
--- through this. Loaded here too so load errors surface early. Guarded.
-local _smok, _smerr = pcall(require, "dlac\\setmanager");
-if not _smok then
-    print('[dlac] setmanager failed to load: ' .. tostring(_smerr));
-end
+-- utils is the lean, profile-side rebuild engine (BuildDynamicSets + level scaling),
+-- required by your <JOB>.lua in HandleDefault. The GUI / import / optimizer / setmanager
+-- modules are loaded by the dlac ADDON (dlac.lua), NOT here -- so requiring utils from a
+-- profile never double-loads the GUI when the dlac addon is also running.
 
 -- (gcinclude is a LuaAshitacast-side config include, not part of dlac. Profiles that
 -- use it load it from their own LAC setup -- dlac neither bundles nor loads it.)

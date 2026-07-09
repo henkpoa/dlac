@@ -821,11 +821,83 @@ local function dumpAugs()
     end
 end
 
--- Reload / Scan / Stage / Commit / Augs, right-aligned on the header row (every tab).
+-- ---------------------------------------------------------------------------
+-- Profile migration: convert a LuaAshitacast <JOB>.lua from ffxi-lac to dlac.
+-- ---------------------------------------------------------------------------
+local JOB_ABBR = {
+    [1]='WAR',[2]='MNK',[3]='WHM',[4]='BLM',[5]='RDM',[6]='THF',[7]='PLD',[8]='DRK',
+    [9]='BST',[10]='BRD',[11]='RNG',[12]='SAM',[13]='NIN',[14]='DRG',[15]='SMN',[16]='BLU',
+    [17]='COR',[18]='PUP',[19]='DNC',[20]='SCH',[21]='GEO',[22]='RUN',
+};
+local function readFileText(p) local f=io.open(p,'r'); if f==nil then return nil; end local t=f:read('*a'); f:close(); return t; end
+local function writeFileText(p,t) local f=io.open(p,'w'); if f==nil then return false; end f:write(t); f:close(); return true; end
+
+-- <install>\config\addons\luashitacast\<Char>_<id>\  (or nil if not logged in).
+local function charBase()
+    local base = nil;
+    pcall(function()
+        local party = AshitaCore:GetMemoryManager():GetParty();
+        local name  = party:GetMemberName(0);
+        local id    = party:GetMemberServerId(0);
+        if name ~= nil and name ~= '' and id ~= nil then
+            base = string.format('%sconfig\\addons\\luashitacast\\%s_%u\\', AshitaCore:GetInstallPath(), name, id);
+        end
+    end);
+    return base;
+end
+
+-- Current main job's <JOB>.lua path + its abbr (or nil, nil).
+local function jobFile()
+    local base = charBase();
+    if base == nil then return nil, nil; end
+    local abbr = nil;
+    pcall(function() abbr = JOB_ABBR[AshitaCore:GetMemoryManager():GetPlayer():GetMainJob()]; end);
+    if abbr == nil then return nil, nil; end
+    return base .. abbr .. '.lua', abbr;
+end
+
+-- One-line bootstrap that puts the dlac addon library on the profile's package.path so
+-- require("dlac\\utils") resolves to the addon. [[...]] keeps the backslashes literal.
+local MIGRATE_BOOT = [[package.path = package.path .. ';' .. AshitaCore:GetInstallPath() .. 'addons\\?.lua';  -- dlac: use the dlac addon library]];
+
+-- Transform ffxi-lac profile text -> dlac: repoint requires/loadfile + add the addon lib
+-- to package.path (idempotent). Returns the new text.
+local function migrateJobText(text)
+    local out = (text:gsub('ffxi%-lac', 'dlac'));
+    if not out:find([[addons\\?.lua]], 1, true) then out = MIGRATE_BOOT .. '\n' .. out; end
+    return out;
+end
+
+-- Convert the current job's <JOB>.lua to dlac (backup .flbak) and seed <char>\dlac\ with
+-- per-character gear/gcinclude copied from the existing ffxi-lac folder (never clobbered).
+local function migrateCurrentJob()
+    local base = charBase();
+    if base == nil then _augStatus = 'Migrate: log in first (no character folder).'; return; end
+    local jf, abbr = jobFile();
+    if jf == nil then _augStatus = 'Migrate: unknown job.'; return; end
+    local text = readFileText(jf);
+    if text == nil then _augStatus = 'Migrate: no ' .. tostring(abbr) .. '.lua in your profile folder.'; return; end
+    pcall(function() os.execute('mkdir "' .. base .. 'dlac" 2>nul'); end);
+    for _, f in ipairs({ 'gear.lua', 'gcinclude.lua', 'gcdisplay.lua' }) do
+        if readFileText(base .. 'dlac\\' .. f) == nil then
+            local src = readFileText(base .. 'ffxi-lac\\' .. f);
+            if src ~= nil then writeFileText(base .. 'dlac\\' .. f, src); end
+        end
+    end
+    writeFileText(jf .. '.flbak', text);   -- backup the original
+    if writeFileText(jf, migrateJobText(text)) then
+        _augStatus = string.format('Migrated %s.lua to dlac (backup %s.lua.flbak). Reload LuaAshitacast to apply.', abbr, abbr);
+        pcall(function() print('[dlac] ' .. _augStatus); end);
+    else
+        _augStatus = 'Migrate: could not write ' .. jf;
+    end
+end
+
+-- Reload / Scan / Stage / Commit / Augs / ->dlac, right-aligned on the header row.
 local function renderHeaderButtons()
-    local W   = { 62, 52, 58, 64, 52 };   -- Reload, Scan, Stage, Commit, Augs
+    local W   = { 62, 52, 58, 64, 52, 56 };   -- Reload, Scan, Stage, Commit, Augs, ->dlac
     local gap = 4;
-    local total = W[1] + W[2] + W[3] + W[4] + W[5] + gap * 4;
+    local total = W[1] + W[2] + W[3] + W[4] + W[5] + W[6] + gap * 5;
     local x = imgui.GetWindowWidth() - total - 12;
     if x < 4 then x = 4; end
     imgui.SameLine(x);
@@ -839,6 +911,9 @@ local function renderHeaderButtons()
     imgui.SameLine(0, gap);
     if imgui.Button('Augs##hdr', { W[5], 22 }) then dumpAugs(); end
     if imgui.IsItemHovered() then imgui.SetTooltip('Dump all your augmented gear (name + id + decoded augments) to\naugdump.txt in your dlac folder -- share it to identify unknown augment ids.'); end
+    imgui.SameLine(0, gap);
+    if imgui.Button('->dlac##hdr', { W[6], 22 }) then migrateCurrentJob(); end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Convert your current job\'s LuaAshitacast profile from ffxi-lac to dlac:\nrepoints its requires + adds the dlac addon lib to package.path, and seeds\nyour <char>\\dlac\\ folder with gear/gcinclude. Backup: <JOB>.lua.flbak.\nReload LuaAshitacast afterward.'); end
 end
 
 -- ---------------------------------------------------------------------------

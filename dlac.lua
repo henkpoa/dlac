@@ -28,6 +28,28 @@ pcall(function()
     package.path = package.path .. ';' .. AshitaCore:GetInstallPath() .. 'addons\\?.lua';
 end);
 
+-- Load THIS character's gear from their LuaAshitacast config folder, so the GUI shows
+-- your real gear instead of the bundled empty template. Preloads package.loaded so every
+-- module's require("dlac\\gear") returns it. Falls back to the template if none found.
+pcall(function()
+    local party = AshitaCore:GetMemoryManager():GetParty();
+    local name  = party:GetMemberName(0);
+    local id    = party:GetMemberServerId(0);
+    if name == nil or name == '' or id == nil then return; end
+    local base = string.format('%sconfig\\addons\\luashitacast\\%s_%u\\', AshitaCore:GetInstallPath(), name, id);
+    for _, sub in ipairs({ 'dlac\\gear.lua', 'ffxi-lac\\gear.lua' }) do   -- dlac first, then a pre-migration profile
+        local chunk = loadfile(base .. sub);
+        if chunk ~= nil then
+            local ok, g = pcall(chunk);
+            if ok and type(g) == 'table' then
+                package.loaded['dlac\\gear'] = g;
+                print('[dlac] loaded your gear from ' .. sub);
+                break;
+            end
+        end
+    end
+end);
+
 -- Load the library. Each module registers its own /dl command(s); gearui also registers
 -- the GUI render hook. Guarded so one module failing can't take the addon down.
 for _, mod in ipairs({ 'gear', 'augments', 'gearoptim', 'gearimport', 'gearui' }) do
