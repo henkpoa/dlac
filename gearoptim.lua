@@ -343,6 +343,15 @@ end
 -- PART B -- stat weights, scorer, and best-set builder
 -- ===========================================================================
 
+-- Build-at-max-level toggle. When true, M.buildBestSet / M.buildMaxStatSet treat the
+-- character as level MAX_LEVEL for the item-Level ELIGIBILITY cap ONLY, so you can
+-- preview the best set you'll grow into. The JOB restriction is unchanged (jobAllowed
+-- still filters on your real main job), so gear your job can't wear stays excluded.
+-- Off by default; the gearui "Build as lv.75" checkbox (or any caller) drives it.
+local MAX_LEVEL = 75;
+M.MAX_LEVEL = MAX_LEVEL;
+M.buildAtMaxLevel = false;
+
 -- In-memory weight table: canonicalStat -> { perUnit = number, cap = number|nil }.
 M._weights = M._weights or {};
 
@@ -555,6 +564,9 @@ end
 function M.buildBestSet(opts)
     opts = opts or {};
     local job, level = jobLevelFromOpts(opts);
+    -- Level-75 preview: lift the item-Level cap only. Job is left untouched, so the
+    -- job-eligibility filter (jobAllowed) still excludes gear your job can't wear.
+    if M.buildAtMaxLevel == true then level = MAX_LEVEL; end
     local weights = opts.weights or M._weights;
     -- Only fill a slot when its best pick makes a POSITIVE weighted contribution.
     -- If nothing in a slot carries any weighted stat, every candidate scores 0 (or
@@ -574,6 +586,9 @@ end
 function M.buildMaxStatSet(statKey, opts)
     opts = opts or {};
     local job, level = jobLevelFromOpts(opts);
+    -- Level-75 preview: lift the item-Level cap only. Job is left untouched, so the
+    -- job-eligibility filter (jobAllowed) still excludes gear your job can't wear.
+    if M.buildAtMaxLevel == true then level = MAX_LEVEL; end
     statKey = canonStat(statKey);
     -- Only fill a slot with a piece that actually carries some of the stat; a slot
     -- whose best pick has 0 of it (nothing to maximize) is left empty, not padded.
