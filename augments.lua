@@ -296,6 +296,30 @@ function M.ownedAugments()
     return out;
 end
 
+-- { itemId -> { statKey -> delta } } for augmented copies in your bags -- the first augmented
+-- copy of each id, decoded to stat deltas (M.stats). Powers augment-aware set scoring so the
+-- weighing counts your private augments, not just base stats.
+function M.ownedAugStats()
+    local out = {};
+    pcall(function()
+        local inv = AshitaCore:GetMemoryManager():GetInventory();
+        if inv == nil then return; end
+        for _, cid in ipairs(SCAN_CONTAINERS) do
+            local max = inv:GetContainerCountMax(cid);
+            if max ~= nil and max > 0 then
+                for j = 1, max do
+                    local item = inv:GetContainerItem(cid, j);
+                    if item ~= nil and item.Id ~= nil and item.Id ~= 0 and item.Id ~= 65535 and out[item.Id] == nil then
+                        local s = M.stats(item.Extra);
+                        if next(s) ~= nil then out[item.Id] = s; end
+                    end
+                end
+            end
+        end
+    end);
+    return out;
+end
+
 -- <install>config\addons\luashitacast\<Name>_<Id>\dlac\augdump.txt, or nil.
 local function dumpPath()
     local p = nil;
