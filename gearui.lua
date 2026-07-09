@@ -1396,12 +1396,38 @@ end
 -- declared local (BLM/BLU/BRD/COR/...) or global (SCH-style) -- BuildDynamicSets
 -- mutates that table in place but leaves .Dynamic intact. Fall back to a global
 -- `sets` if gProfile isn't reachable; nil until a profile is loaded.
+-- Addon context has no gProfile. Read the current job's <JOB>.lua from disk and run it in
+-- a sandbox (LuaAshitacast globals stubbed to a permissive no-op) to recover its `sets`
+-- table -- its gear refs resolve against the same preloaded gear the GUI uses. Cached per
+-- file; cleared on job change and after a commit/delete.
+local _profileSets, _profileSetsKey = nil, nil;
+local function loadProfileSets()
+    local jf = jobFile();
+    if jf == nil then return nil; end
+    if _profileSetsKey == jf and _profileSets ~= nil then return _profileSets; end
+    local result = nil;
+    pcall(function()
+        local chunk = loadfile(jf);
+        if chunk == nil then return; end
+        local STUB; STUB = setmetatable({}, { __index = function() return STUB; end, __call = function() return STUB; end });
+        local env = setmetatable({}, {
+            __index    = function(_, k) local g = rawget(_G, k); if g ~= nil then return g; end return STUB; end,
+            __newindex = function(t, k, v) rawset(t, k, v); end,
+        });
+        if setfenv ~= nil then setfenv(chunk, env); end   -- LuaJIT (Ashita)
+        pcall(chunk);                                     -- runs the profile top level -> env.sets
+        if type(rawget(env, 'sets')) == 'table' then result = rawget(env, 'sets'); end
+    end);
+    _profileSets, _profileSetsKey = result, jf;
+    return result;
+end
+
 local function getSetsRoot()
     local prof = rawget(_G, 'gProfile');
     if type(prof) == 'table' and type(prof.Sets) == 'table' then return prof.Sets; end
     local s = rawget(_G, 'sets');
     if type(s) == 'table' then return s; end
-    return nil;
+    return loadProfileSets();   -- addon: parse the current job's <JOB>.lua on disk
 end
 
 -- The .Dynamic sub-table specifically (the only sets we build/commit).
@@ -1650,6 +1676,7 @@ local function commitCurrentSet(job)
     local ok, action, backup = nil, nil, nil;
     local pok = pcall(function() ok, action, backup = setmgr.commitSet(job, M.workingSetName, slots); end);
     if pok and ok == true then
+        _profileSets = nil;   -- re-read the job file so the Sets list reflects the change
         setStatus(string.format('%s "%s" for %s. Reload (top-right) to apply.  backup: %s',
             tostring(action), tostring(M.workingSetName), tostring(job), tostring(backup)), false);
     else
@@ -1664,6 +1691,7 @@ local function deleteCurrentSet(job)
     local ok, action, backup = nil, nil, nil;
     local pok = pcall(function() ok, action, backup = setmgr.deleteSet(job, M.workingSetName); end);
     if pok and ok == true then
+        _profileSets = nil;
         setStatus(string.format('deleted "%s" for %s. Reload to apply.  backup: %s',
             tostring(M.workingSetName), tostring(job), tostring(backup)), false);
         M.working = {}; M.workingSetName = nil; ui.setSelected = nil;
