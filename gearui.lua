@@ -889,20 +889,19 @@ local function migrateJobText(text)
     return out;
 end
 
--- A safe, dlac-wired starter profile for a job that has no dlac profile yet. Empty Dynamic
--- sets on purpose: it equips nothing (so it cannot error on gear you do not own) until you
--- build sets in the GUI's Sets tab. SELF-CONTAINED -- needs only the dlac library, no
--- gcinclude or other framework. MIGRATE_BOOT is prepended when written so LAC can resolve
--- require("dlac\\utils"). Inside [[...]] the backslashes are literal on purpose.
+-- Starter profile written when a job has no dlac profile yet. This mirrors LuaAshitacast's
+-- own `/lac newlua` skeleton (every Handle* stub + AllowAddSet, so `/lac addset` works) and
+-- adds the dlac wiring: the require, a Dynamic sets scaffold, and `utils.rebuildSets(sets)`
+-- in HandleDefault. rebuildSets only REBUILDS the sets, so the standard equip branching is
+-- kept too -- otherwise the profile would swap nothing. Build your Dynamic sets in the GUI.
+-- MIGRATE_BOOT is prepended when written so LAC can resolve require("dlac\\utils"). Inside
+-- [[...]] the backslashes are literal on purpose.
 local STARTER_PROFILE = [[
 local profile = {};
-local utils = require("dlac\\utils");   -- one require: pulls in gear, the /dl commands and the GUI
-local gear  = utils.gear;
-
--- Dynamic sets: each slot is a LIST; dlac equips the best one for your level. Empty for
--- now -- build them in the GUI (Sets tab), or copy static sets in with "Copy from set".
-sets = {
-    Dynamic = {
+local utils = require("dlac\\utils");   -- everything comes through this one require
+local gear  = utils.gear;               -- the shared gear inventory
+local sets = {
+    Dynamic = {                         -- dlac: build these in the GUI (Sets tab); best-per-level is auto-picked
         Idle       = {},
         Tp_Default = {},
         Resting    = {},
@@ -911,8 +910,21 @@ sets = {
 };
 profile.Sets = sets;
 
+profile.Packer = {
+};
+
+profile.OnLoad = function()
+    gSettings.AllowAddSet = true;
+end
+
+profile.OnUnload = function()
+end
+
+profile.HandleCommand = function(args)
+end
+
 profile.HandleDefault = function()
-    sets = utils.rebuildSets(sets);   -- keeps sets in sync with your level / subjob
+    sets = utils.rebuildSets(sets);
     local player = gData.GetPlayer();
     if     player.Status == 'Engaged' then gFunc.EquipSet(sets.Tp_Default);
     elseif player.Status == 'Resting' then gFunc.EquipSet(sets.Resting);
@@ -921,8 +933,27 @@ profile.HandleDefault = function()
     end
 end
 
--- Optional: add HandlePrecast / HandleMidcast / HandleWeaponskill, and OnLoad/HandleCommand
--- if you use a helper library like gcinclude -- none of that is required by dlac.
+profile.HandleAbility = function()
+end
+
+profile.HandleItem = function()
+end
+
+profile.HandlePrecast = function()
+end
+
+profile.HandleMidcast = function()
+end
+
+profile.HandlePreshot = function()
+end
+
+profile.HandleMidshot = function()
+end
+
+profile.HandleWeaponskill = function()
+end
+
 return profile;
 ]];
 
