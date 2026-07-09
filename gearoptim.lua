@@ -551,8 +551,18 @@ end
 -- folder this module lives in, next to gear.lua.
 function M.weightsPath()
     local install = safeCall(function() return AshitaCore:GetInstallPath(); end);
-    local name    = safeCall(function() return gState.PlayerName; end);
-    local id      = safeCall(function() return gState.PlayerId; end);
+    -- gState inside a profile, else the party manager (dlac addon context).
+    local name, id;
+    if gState ~= nil and gState.PlayerName ~= nil and gState.PlayerId ~= nil then
+        name, id = gState.PlayerName, gState.PlayerId;
+    else
+        pcall(function()
+            local party = AshitaCore:GetMemoryManager():GetParty();
+            name = party:GetMemberName(0);
+            id   = party:GetMemberServerId(0);
+            if name == '' then name = nil; end
+        end);
+    end
     if type(install) ~= 'string' or name == nil or id == nil then return nil; end
     return string.format('%sconfig\\addons\\luashitacast\\%s_%s\\dlac\\gearweights.lua',
         install, tostring(name), tostring(id));
