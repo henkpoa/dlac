@@ -1,7 +1,11 @@
 # Transient / per-character -- not shared.
 gear_staging.lua
-tools/api_cache/
 backups/
+
+# Local-only maintainer tools: the CatsEyeXI API scraper, the server mod-id map, and the
+# item-id list. Untracked so we don't publish how-to-scrape or the mod enum -- the built
+# catalog.lua (shipped) is what users need. Files stay on disk; this only stops tracking.
+tools/
 
 # Python bytecode (from running the tools locally)
 __pycache__/
