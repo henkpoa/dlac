@@ -992,7 +992,7 @@ end
 
 -- Reload LAC / Scan / Stage / Commit / Augs / Setup, right-aligned on the header row.
 local function renderHeaderButtons()
-    local W   = { 86, 52, 58, 64, 52, 56 };   -- Reload LAC, Scan, Stage, Commit, Augs, Setup
+    local W   = { 104, 52, 58, 64, 52, 56 };   -- Reload LAC, Scan, Stage, Commit, Augs, Setup
     local gap = 4;
     local total = W[1] + W[2] + W[3] + W[4] + W[5] + W[6] + gap * 5;
     local x = imgui.GetWindowWidth() - total - 12;
@@ -1004,11 +1004,14 @@ local function renderHeaderButtons()
     end
     if imgui.IsItemHovered() then imgui.SetTooltip('Reload LuaAshitacast. LAC caches your sets when the profile loads, so after you\ncommit/edit a set (or run Setup) you must reload LAC for the change to take effect.'); end
     imgui.SameLine(0, gap); if imgui.Button('Scan##hdr',   { W[2], 22 }) then callImport('scanAndReport'); refreshOwnedCounts(); end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Scan your equipment + bags (from the game\'s memory) and print what you own,\nflagging anything not yet in gear.lua. Read-only -- writes nothing. Also refreshes\nthe owned markers shown in these lists.'); end
     imgui.SameLine(0, gap); if imgui.Button('Stage##hdr',  { W[3], 22 }) then callImport('stage'); end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Scan, then write the items you own that AREN\'T in gear.lua yet to a staging file\n(gear_staging.lua) for review. Your gear.lua is left untouched -- check the staged\nentries first, then Commit them.'); end
     imgui.SameLine(0, gap); if imgui.Button('Commit##hdr', { W[4], 22 }) then callImport('commit'); end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Merge the staged new items (from Stage) into your gear.lua. Aborts and leaves\ngear.lua untouched if the staging file or the merged result would not parse.'); end
     imgui.SameLine(0, gap);
     if imgui.Button('Augs##hdr', { W[5], 22 }) then dumpAugs(); end
-    if imgui.IsItemHovered() then imgui.SetTooltip('Dump all your augmented gear (name + id + decoded augments) to\naugdump.txt in your dlac folder -- share it to identify unknown augment ids.'); end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Dump every augmented item you own (name, id, and decoded augment stats) to\naugdump.txt in your dlac folder -- handy for sharing or identifying unknown\naugment ids.'); end
     imgui.SameLine(0, gap);
     local needSetup = (jobSetupState() ~= 'ok');
     if needSetup and ImGuiCol_Button ~= nil then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
