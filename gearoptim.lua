@@ -67,6 +67,18 @@ for _, grp in ipairs(ALIAS_GROUPS) do
     for _, k in ipairs(grp) do CANON_GROUP[string.lower(k)] = grp; end
 end
 
+-- "Negative-good" (lower-is-better) stats: gear stores a beneficial effect as a
+-- NEGATIVE number -- e.g. "Damage Taken -15%" is stored as DT = -15, and taking
+-- LESS damage is better. M.score negates these so a POSITIVE weight rewards a
+-- negative (good) value and penalizes a positive (bad) one. Add a stat here (in
+-- gear.lua's canonical spelling) whenever a NEGATIVE value is the beneficial one.
+-- Future candidates once catalogued and stored that way: SongRecast (song recast
+-- time), CureCastTime (cure casting time), SpellInterruptionRateDown -- reductions
+-- not present in the gear yet.
+local NEGATIVE_GOOD_STATS = { "DT", "PDT", "MDT" };
+local NEGATIVE_GOOD = {};   -- lower(spelling) -> true (matched case-insensitively)
+for _, k in ipairs(NEGATIVE_GOOD_STATS) do NEGATIVE_GOOD[string.lower(k)] = true; end
+
 -- Build once: lower(stat) -> the exact spelling used in gear.lua. Lets a typed
 -- "accuracy" or "matk" normalize to the real "Accuracy" / "MATK" key, so weights
 -- and lookups are case-insensitive and match what the entries actually store.
@@ -365,6 +377,11 @@ end
 -- penalty stat still lowers the score; there is no lower bound. No weight cap
 -- means the stat is purely linear.
 --
+-- Exception: "negative-good" stats (see NEGATIVE_GOOD -- DT/PDT/MDT) have their
+-- value NEGATED before scoring, because gear stores their benefit as a negative
+-- (DT -15%). So a positive weight on DT rewards -DT and penalizes +DT, and the cap
+-- clamps the negated (goodness) value. Nothing else about stats is changed.
+--
 -- Note: the cap is applied PER ITEM here (that is all M.score can see). For genuine
 -- set-wide diminishing returns you would cap the running total in buildSet; that is
 -- left as a future pass -- greedy per-slot selection can't enforce a global cap
@@ -378,6 +395,11 @@ function M.score(itemStats, weights)
         if type(w) == 'table' and type(w.perUnit) == 'number' then
             local v = statValue(itemStats, stat);
             if v ~= 0 then
+                -- Negative-good stats (DT/PDT/MDT) store their benefit as a negative
+                -- number, so score the negation: -15 DT -> +15 goodness. Matched on the
+                -- same canonical/lowercased spelling statValue uses, so a weight typed
+                -- "dt" still hits. The cap below then clamps the goodness value.
+                if NEGATIVE_GOOD[string.lower(canonStat(stat))] then v = -v; end
                 local eff = v;
                 if type(w.cap) == 'number' and v > w.cap then eff = w.cap; end
                 total = total + w.perUnit * eff;
