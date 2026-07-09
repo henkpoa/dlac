@@ -1089,33 +1089,52 @@ local function migrateCurrentJob()
 end
 
 -- Reload LAC / Scan / Stage / Commit / Augs / Setup, right-aligned on the header row.
+local debugMode = false;   -- /dl debug on -- reveals the dev-only Scan/Stage/Commit/Augs buttons
+
+-- Header buttons, right-aligned. Reload LAC is always shown. Scan/Stage/Commit/Augs are
+-- dev-only now that auto-sync keeps gear.lua current, so they appear only in debug mode.
+-- Setup shows only while the current job still needs it (or in debug mode). The visible set
+-- is measured each frame so the row stays right-aligned no matter which buttons are present.
 local function renderHeaderButtons()
-    local W   = { 104, 52, 58, 64, 52, 56 };   -- Reload LAC, Scan, Stage, Commit, Augs, Setup
     local gap = 4;
-    local total = W[1] + W[2] + W[3] + W[4] + W[5] + W[6] + gap * 5;
+    local needSetup = (jobSetupState() ~= 'ok');
+    local btns = {
+        { l = 'Reload LAC', w = 104,
+          tip = 'Reload LuaAshitacast. LAC caches your sets when the profile loads, so after you\ncommit/edit a set (or run Setup) you must reload LAC for the change to take effect.',
+          fn = function() refreshOwnedCounts(); pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/addon reload luashitacast'); end); end },
+    };
+    if debugMode then
+        btns[#btns+1] = { l = 'Scan', w = 52,
+            tip = 'Scan your equipment + bags (from the game\'s memory) and print what you own,\nflagging anything not yet in gear.lua. Read-only -- writes nothing. Also refreshes\nthe owned markers shown in these lists.',
+            fn = function() callImport('scanAndReport'); refreshOwnedCounts(); end };
+        btns[#btns+1] = { l = 'Stage', w = 58,
+            tip = 'Scan, then write the items you own that AREN\'T in gear.lua yet to a staging file\n(gear_staging.lua) for review. Your gear.lua is left untouched -- check the staged\nentries first, then Commit them.',
+            fn = function() callImport('stage'); end };
+        btns[#btns+1] = { l = 'Commit', w = 64,
+            tip = 'Merge the staged new items (from Stage) into your gear.lua. Aborts and leaves\ngear.lua untouched if the staging file or the merged result would not parse.',
+            fn = function() callImport('commit'); refreshGear(); end };
+        btns[#btns+1] = { l = 'Augs', w = 52,
+            tip = 'Dump every augmented item you own (name, id, and decoded augment stats) to\naugdump.txt in your dlac folder -- handy for sharing or identifying unknown\naugment ids.',
+            fn = function() dumpAugs(); end };
+    end
+    if needSetup or debugMode then
+        btns[#btns+1] = { l = 'Setup', w = 56, red = needSetup,
+            tip = 'Set up this job\'s LuaAshitacast profile so dlac can drive it: points the\nprofile at the dlac library and seeds your character\'s dlac config folder.\nBacks up the original as <JOB>.lua.flbak. Reload LuaAshitacast afterward.',
+            fn = function() migrateCurrentJob(); end };
+    end
+
+    local total = 0;
+    for i, b in ipairs(btns) do total = total + b.w + (i > 1 and gap or 0); end
     local x = imgui.GetWindowWidth() - total - 12;
     if x < 4 then x = 4; end
-    imgui.SameLine(x);
-    if imgui.Button('Reload LAC##hdr', { W[1], 22 }) then
-        refreshOwnedCounts();
-        pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/addon reload luashitacast'); end);
+    for i, b in ipairs(btns) do
+        if i == 1 then imgui.SameLine(x); else imgui.SameLine(0, gap); end
+        local red = b.red and ImGuiCol_Button ~= nil;
+        if red then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
+        if imgui.Button(b.l .. '##hdr', { b.w, 22 }) then b.fn(); end
+        if red then imgui.PopStyleColor(1); end
+        if imgui.IsItemHovered() then imgui.SetTooltip(b.tip); end
     end
-    if imgui.IsItemHovered() then imgui.SetTooltip('Reload LuaAshitacast. LAC caches your sets when the profile loads, so after you\ncommit/edit a set (or run Setup) you must reload LAC for the change to take effect.'); end
-    imgui.SameLine(0, gap); if imgui.Button('Scan##hdr',   { W[2], 22 }) then callImport('scanAndReport'); refreshOwnedCounts(); end
-    if imgui.IsItemHovered() then imgui.SetTooltip('Scan your equipment + bags (from the game\'s memory) and print what you own,\nflagging anything not yet in gear.lua. Read-only -- writes nothing. Also refreshes\nthe owned markers shown in these lists.'); end
-    imgui.SameLine(0, gap); if imgui.Button('Stage##hdr',  { W[3], 22 }) then callImport('stage'); end
-    if imgui.IsItemHovered() then imgui.SetTooltip('Scan, then write the items you own that AREN\'T in gear.lua yet to a staging file\n(gear_staging.lua) for review. Your gear.lua is left untouched -- check the staged\nentries first, then Commit them.'); end
-    imgui.SameLine(0, gap); if imgui.Button('Commit##hdr', { W[4], 22 }) then callImport('commit'); refreshGear(); end
-    if imgui.IsItemHovered() then imgui.SetTooltip('Merge the staged new items (from Stage) into your gear.lua. Aborts and leaves\ngear.lua untouched if the staging file or the merged result would not parse.'); end
-    imgui.SameLine(0, gap);
-    if imgui.Button('Augs##hdr', { W[5], 22 }) then dumpAugs(); end
-    if imgui.IsItemHovered() then imgui.SetTooltip('Dump every augmented item you own (name, id, and decoded augment stats) to\naugdump.txt in your dlac folder -- handy for sharing or identifying unknown\naugment ids.'); end
-    imgui.SameLine(0, gap);
-    local needSetup = (jobSetupState() ~= 'ok');
-    if needSetup and ImGuiCol_Button ~= nil then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
-    if imgui.Button('Setup##hdr', { W[6], 22 }) then migrateCurrentJob(); end
-    if needSetup and ImGuiCol_Button ~= nil then imgui.PopStyleColor(1); end
-    if imgui.IsItemHovered() then imgui.SetTooltip('Set up this job\'s LuaAshitacast profile so dlac can drive it: points the\nprofile at the dlac library and seeds your character\'s dlac config folder.\nBacks up the original as <JOB>.lua.flbak. Reload LuaAshitacast afterward.'); end
 end
 
 -- ---------------------------------------------------------------------------
@@ -2314,7 +2333,7 @@ ashita.events.register('command', 'dlac-ui', function(e)
         table.insert(args, a);
     end
     local sub = args[1];
-    if sub ~= 'ui' and sub ~= 'sync' and sub ~= 'autosync' then return; end
+    if sub ~= 'ui' and sub ~= 'sync' and sub ~= 'autosync' and sub ~= 'debug' then return; end
     e.blocked = true;
 
     if sub == 'sync' then          -- manual one-shot: scan + import new gear now
@@ -2327,6 +2346,14 @@ ashita.events.register('command', 'dlac-ui', function(e)
         elseif args[2] == 'on'  then autoSyncEnabled = true; end
         print('[dlac] auto-sync ' .. (autoSyncEnabled and 'ON' or 'OFF')
             .. ' -- re-scans gear.lua on job change.  (/dl autosync on|off)');
+        return;
+    end
+    if sub == 'debug' then          -- reveal/hide the dev-only Scan/Stage/Commit/Augs buttons
+        if     args[2] == 'off' then debugMode = false;
+        elseif args[2] == 'on'  then debugMode = true;
+        else                          debugMode = not debugMode; end
+        print('[dlac] debug ' .. (debugMode and 'ON -- Scan/Stage/Commit/Augs buttons shown.'
+            or 'OFF -- header tidied; auto-sync keeps gear.lua current.  (/dl debug on)'));
         return;
     end
 
