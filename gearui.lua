@@ -685,6 +685,30 @@ function ownedCounts()   -- assigns the forward-declared upvalue (see haveInBags
 end
 local function refreshOwnedCounts() _ownedCounts = nil; _ownedAug = nil; invalidateCandidates(); end
 
+-- Re-read <char>\dlac\gear.lua and rebuild the owned view after a Commit, so the GUI
+-- reflects newly-imported gear WITHOUT an addon reload. Mutates the shared `gear` table in
+-- place (so every capture sees the new data) and drops the owned caches -- buildOwned then
+-- rebuilds, re-deriving stats from the catalog.
+local function refreshGear()
+    pcall(function()
+        local party = AshitaCore:GetMemoryManager():GetParty();
+        local name, id = party:GetMemberName(0), party:GetMemberServerId(0);
+        if name == nil or name == '' or id == nil then return; end
+        local path = string.format('%sconfig\\addons\\luashitacast\\%s_%u\\dlac\\gear.lua',
+            AshitaCore:GetInstallPath(), name, id);
+        local chunk = loadfile(path);
+        if chunk == nil then return; end
+        local ok, g = pcall(chunk);
+        if ok and type(g) == 'table' then
+            for k in pairs(gear) do gear[k] = nil; end   -- refresh the shared gear table in place
+            for k, v in pairs(g)  do gear[k] = v;   end
+            package.loaded['dlac\\gear'] = gear;
+            _owned, _ownedById, _ownedByName = nil, nil, nil;   -- force rebuild (re-enriched from catalog)
+            refreshOwnedCounts();
+        end
+    end);
+end
+
 -- Owned augments per item id (from the live bag scan), cached; refreshed on Reload/Scan.
 local function ownedAugMap()
     if _ownedAug ~= nil then return _ownedAug; end
@@ -1059,7 +1083,7 @@ local function renderHeaderButtons()
     if imgui.IsItemHovered() then imgui.SetTooltip('Scan your equipment + bags (from the game\'s memory) and print what you own,\nflagging anything not yet in gear.lua. Read-only -- writes nothing. Also refreshes\nthe owned markers shown in these lists.'); end
     imgui.SameLine(0, gap); if imgui.Button('Stage##hdr',  { W[3], 22 }) then callImport('stage'); end
     if imgui.IsItemHovered() then imgui.SetTooltip('Scan, then write the items you own that AREN\'T in gear.lua yet to a staging file\n(gear_staging.lua) for review. Your gear.lua is left untouched -- check the staged\nentries first, then Commit them.'); end
-    imgui.SameLine(0, gap); if imgui.Button('Commit##hdr', { W[4], 22 }) then callImport('commit'); end
+    imgui.SameLine(0, gap); if imgui.Button('Commit##hdr', { W[4], 22 }) then callImport('commit'); refreshGear(); end
     if imgui.IsItemHovered() then imgui.SetTooltip('Merge the staged new items (from Stage) into your gear.lua. Aborts and leaves\ngear.lua untouched if the staging file or the merged result would not parse.'); end
     imgui.SameLine(0, gap);
     if imgui.Button('Augs##hdr', { W[5], 22 }) then dumpAugs(); end
