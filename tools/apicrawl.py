@@ -42,8 +42,8 @@ CORE = {'DEF':'DEF','HP':'HP','MP':'MP','HPP':'HPP','MPP':'MPP','STR':'STR','DEX
 'MACC':'MagicAccuracy','MATT':'MagicAttackBonus','ENMITY':'Enmity','STORETP':'StoreTP','SUBTLE_BLOW':'SubtleBlow',
 'DOUBLE_ATTACK':'DoubleAttack','TRIPLE_ATTACK':'TripleAttack','CRITHITRATE':'CriticalHitRate','REFRESH':'Refresh','REGEN':'Regen',
 'FASTCAST':'FastCast','CURE_POTENCY':'CurePotency','CONSERVE_MP':'ConserveMP','COUNTER':'Counter','DUAL_WIELD':'DualWield',
-'MPHEAL':'HMP','HPHEAL':'HHP','MOVE_SPEED_GEAR_BONUS':'MovementSpeed'}
-SORD = ['DMG','Delay','DEF','HP','HPP','MP','MPP','STR','DEX','VIT','AGI','INT','MND','CHR','Accuracy','Attack','RangedAccuracy','RangedAttack','MagicAccuracy','MagicAttackBonus','Evasion','MagicEvasion','MagicDefenseBonus','Haste','StoreTP','Enmity','SubtleBlow','DoubleAttack','TripleAttack','CriticalHitRate','Refresh','Regen','FastCast','CurePotency','ConserveMP','Counter','DualWield','HMP','HHP','MovementSpeed']
+'MPHEAL':'HMP','HPHEAL':'HHP','MOVE_SPEED_GEAR_BONUS':'MovementSpeed','SPELLINTERRUPT':'SpellInterruptionRateDown'}
+SORD = ['DMG','Delay','DEF','HP','HPP','MP','MPP','STR','DEX','VIT','AGI','INT','MND','CHR','Accuracy','Attack','RangedAccuracy','RangedAttack','MagicAccuracy','MagicAttackBonus','Evasion','MagicEvasion','MagicDefenseBonus','Haste','StoreTP','Enmity','SubtleBlow','DoubleAttack','TripleAttack','CriticalHitRate','Refresh','Regen','FastCast','SpellInterruptionRateDown','CurePotency','ConserveMP','Counter','DualWield','HMP','HHP','MovementSpeed']
 SI = {k: i for i, k in enumerate(SORD)}
 JOB0 = ['WAR','MNK','WHM','BLM','RDM','THF','PLD','DRK','BST','BRD','RNG','SAM','NIN','DRG','SMN','BLU','COR','PUP','DNC','SCH','GEO','RUN']
 SLOT_BITS = [(0x1,'Main'),(0x2,'Sub'),(0x4,'Range'),(0x8,'Ammo'),(0x10,'Head'),(0x20,'Body'),(0x40,'Hands'),(0x80,'Legs'),(0x100,'Feet'),(0x200,'Neck'),(0x400,'Waist'),(0x800,'Ear'),(0x1000,'Ear'),(0x2000,'Ring'),(0x4000,'Ring'),(0x8000,'Back')]
