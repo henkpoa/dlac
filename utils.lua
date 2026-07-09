@@ -28,14 +28,8 @@ if not _smok then
     print('[dlac] setmanager failed to load: ' .. tostring(_smerr));
 end
 
--- Load the LAC framework include (gcinclude) as a global if the profile hasn't
--- already, so a migrated profile only needs `require("dlac\\utils")`. Guarded:
--- only when gFunc exists and gcinclude isn't already set (old profiles set it
--- themselves, so they are unaffected).
-if rawget(_G, 'gcinclude') == nil and rawget(_G, 'gFunc') ~= nil and gFunc.LoadFile ~= nil then
-    local _gcok, _gc = pcall(gFunc.LoadFile, 'dlac\\gcinclude.lua');
-    if _gcok and _gc ~= nil then _G.gcinclude = _gc; end
-end
+-- (gcinclude is a LuaAshitacast-side config include, not part of dlac. Profiles that
+-- use it load it from their own LAC setup -- dlac neither bundles nor loads it.)
 
 staticMainLevel = 0; -- This will override your in-game level for testing purposes
 staticSubLevel = 0; -- This will override your in-game sub job level for testing purposes

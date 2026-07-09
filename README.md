@@ -32,3 +32,7 @@ A companion for **LuAshitacast** (Final Fantasy XI on Ashita v4) that helps you
 ## Status
 
 Work in progress.
+
+## License
+
+MIT — see [LICENSE](LICENSE). dlac works alongside LuaAshitacast but does not bundle it.
