@@ -1223,7 +1223,6 @@ end
 -- Diablo-style Stats panel + shared Name/Level sort control (Phase 3).
 -- ---------------------------------------------------------------------------
 local STATS_W   = 250;   -- left stats panel width (name column + value column)
-local WEIGHTS_W = 352;   -- right weights panel width (fits per-stat Set/x buttons + scrollbar)
 
 -- Fixed grouped stat order. Every stat always renders (0 if absent); present-but-
 -- unlisted stats fall under "Other".
@@ -1935,7 +1934,7 @@ local function renderWeightsEditor()
         return;
     end
     imgui.TextColored(COL_DIM, 'pts/point up to cap (cap 0 = none):');
-    imgui.BeginChild('##ffxilac_weights', { -1, 168 }, true);
+    imgui.BeginChild('##ffxilac_weights', { -1, -1 }, true);   -- fill the (now windowed) space
 
     local ws = {};
     pcall(function() ws = optim.getWeights() or {}; end);
@@ -2027,7 +2026,6 @@ end
 
 -- Right-side panel: Dynamic toggle + Auto-build + the stat-weights editor.
 local function renderSetsWeightPanel(job, level)
-    imgui.TextColored(COL_HEADER, 'Stat weights');
     imgui.Checkbox('Dynamic', ui.setsDynamic);
     if imgui.IsItemHovered() then
         imgui.SetTooltip("When off, builds only ONE item per slot for the set (won't scale with level).");
@@ -2164,6 +2162,7 @@ local function renderSetsTab(job, level)
     if imgui.Button((ui.showStats and 'Stats v' or 'Stats >') .. '##setstats', { 72, 22 }) then ui.showStats = not ui.showStats; end
     imgui.SameLine();
     if imgui.Button((ui.showWeights and 'Weights v' or 'Weights >') .. '##setwtoggle', { 84, 22 }) then ui.showWeights = not ui.showWeights; end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Toggle the Stat Weights editor -- opens in its own resizable, movable window.'); end
 
     -- Migration helper: seed a Dynamic working set from a static (non-Dynamic) set.
     imgui.TextColored(COL_DIM, 'Copy from:'); imgui.SameLine(0, 4);
@@ -2189,32 +2188,41 @@ local function renderSetsTab(job, level)
     end
     imgui.Separator();
 
-    -- Split: [stats panel] | builder | [weights panel]. Totals live in the stats panel.
+    -- Split: [stats panel] | builder.  Stat weights are now their OWN resizable window
+    -- (renderWeightsWindow), toggled by the "Weights" button above, so they get real space.
     local availW = imgui.GetContentRegionAvail();
-    local statsUsed   = ui.showStats and (STATS_W + 8) or 0;
-    local weightsUsed = ui.showWeights and (WEIGHTS_W + 8) or 0;
+    local statsUsed = ui.showStats and (STATS_W + 8) or 0;
 
     if ui.showStats then
         renderStatsPanel(string.format('Set totals (w %g)', workingWeightedScore(level)), workingSetTotals(level));
         imgui.SameLine();
     end
 
-    local builderW = availW - statsUsed - weightsUsed;
+    local builderW = availW - statsUsed;
     if builderW < 190 then builderW = 190; end
     imgui.BeginChild('##ffxilac_setleft', { builderW, -1 }, false);
     renderSetBuilder(job, level);
     imgui.EndChild();
 
-    if ui.showWeights then
-        imgui.SameLine();
-        imgui.BeginChild('##ffxilac_setright', { WEIGHTS_W, -1 }, true);
-        renderSetsWeightPanel(job, level);
-        imgui.EndChild();
-    end
-
     -- Open + render the add-item popup at window level (vault pattern).
     if ui._openAddPopup then imgui.OpenPopup('##ffxilac_addpick'); ui._openAddPopup = false; end
     renderAddPopup(job, level);
+end
+
+-- Stat weights in their OWN resizable, movable window (was a cramped right-side panel).
+-- Shown while ui.showWeights is set (toggled by the Sets-tab "Weights" button); its own
+-- [X] clears the toggle. Rendered as a top-level window, so it must be OUTSIDE the main
+-- window's Begin/End (see drawWindow).
+local function renderWeightsWindow(job, level)
+    if not ui.showWeights then return; end
+    imgui.SetNextWindowSize({ 420, 520 }, ImGuiCond_FirstUseEver);
+    imgui.SetNextWindowSizeConstraints({ 300, 240 }, { 900, 1200 });
+    local open = { true };
+    if imgui.Begin('dlac Stat Weights###dlac_setweights', open, ImGuiWindowFlags_None) then
+        pcall(renderSetsWeightPanel, job, level);
+    end
+    imgui.End();
+    if open[1] == false then ui.showWeights = false; end
 end
 
 -- ---------------------------------------------------------------------------
@@ -2272,6 +2280,8 @@ local function drawWindow()
     end
     imgui.End();
 
+    renderWeightsWindow(job, level);   -- separate, resizable Stat-weights window (Sets "Weights" toggle)
+
     M.visible = (isOpen[1] == true);
 end
 
@@ -2305,9 +2315,42 @@ local function autoSyncOnJobChange()
     end
 end
 
+-- UI-flag persistence: debug + auto-sync survive reloads via <char>\dlac\uiflags.lua
+-- (a `return {...}` module, like gearweights.lua). Defaults stay debug=false / autosync=true;
+-- a /dl command updates the flag AND re-saves, and wins over the on-disk value -- once a
+-- command has run (or the file has loaded), loadUiFlags no longer clobbers the live value.
+local _flagsLoaded = false;
+local function uiFlagsPath()
+    local base = charBase();
+    return base and (base .. 'dlac\\uiflags.lua') or nil;
+end
+local function saveUiFlags()
+    local p = uiFlagsPath(); if p == nil then return; end   -- pre-login: can't persist yet
+    _flagsLoaded = true;                                    -- command is now authoritative
+    pcall(function()
+        writeFileText(p, string.format('return { debug = %s, autosync = %s }\n',
+            tostring(debugMode), tostring(autoSyncEnabled)));
+    end);
+end
+local function loadUiFlags()
+    if _flagsLoaded then return; end
+    local p = uiFlagsPath(); if p == nil then return; end   -- pre-login: retry next frame
+    _flagsLoaded = true;
+    pcall(function()
+        local chunk = loadfile(p);
+        if chunk == nil then return; end                    -- no file yet -> keep defaults
+        local ok, t = pcall(chunk);
+        if ok and type(t) == 'table' then
+            if type(t.debug)    == 'boolean' then debugMode       = t.debug;    end
+            if type(t.autosync) == 'boolean' then autoSyncEnabled = t.autosync; end
+        end
+    end);
+end
+
 ashita.events.register('d3d_present', 'dlac-gearui-render', function()
     frameCounter = frameCounter + 1;
     processCmdQueue();
+    pcall(loadUiFlags);
     pcall(autoSyncOnJobChange);
     if not M.visible or not hasImgui then return; end
     pcall(drawWindow);
@@ -2344,6 +2387,7 @@ ashita.events.register('command', 'dlac-ui', function(e)
     if sub == 'autosync' then       -- toggle the on-job-change auto-sync
         if     args[2] == 'off' then autoSyncEnabled = false;
         elseif args[2] == 'on'  then autoSyncEnabled = true; end
+        saveUiFlags();              -- persist; command wins over the on-disk value
         print('[dlac] auto-sync ' .. (autoSyncEnabled and 'ON' or 'OFF')
             .. ' -- re-scans gear.lua on job change.  (/dl autosync on|off)');
         return;
@@ -2352,6 +2396,7 @@ ashita.events.register('command', 'dlac-ui', function(e)
         if     args[2] == 'off' then debugMode = false;
         elseif args[2] == 'on'  then debugMode = true;
         else                          debugMode = not debugMode; end
+        saveUiFlags();              -- persist; command wins over the on-disk value
         print('[dlac] debug ' .. (debugMode and 'ON -- Scan/Stage/Commit/Augs buttons shown.'
             or 'OFF -- header tidied; auto-sync keeps gear.lua current.  (/dl debug on)'));
         return;
