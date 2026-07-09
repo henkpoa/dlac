@@ -14,6 +14,32 @@ A companion for **LuAshitacast** (Final Fantasy XI on Ashita v4) that helps you
 - **Augment-aware** — reads item augments straight from the client and folds them into
   your stats, so what you see matches what you're actually wearing.
 
+## Getting started
+
+dlac runs *alongside* LuaAshitacast — it drives the profiles LAC already loads, so you
+need a working LuaAshitacast install first (your
+`config\addons\luashitacast\<Char>_<id>\` folder with your job profiles). dlac can't do
+anything without it.
+
+1. **Install** — drop the `dlac` folder into `Ashita\addons\`, then load it with
+   `/addon load dlac` (add that line to your Ashita boot script to load it every time).
+2. **Open the GUI** — `/dl ui`.
+3. **Set up the job you're on.** If the current job isn't wired for dlac yet, a red banner
+   and a red **Setup** button (top-right) say so. Click **Setup** — it handles every case:
+   - an existing **ffxi-lac** profile is converted to dlac in place (your original is
+     backed up as `<JOB>.lua.flbak`);
+   - a job with **no profile yet** gets a fresh dlac starter profile (empty sets you fill
+     in from the GUI);
+   - an existing **custom** (non-ffxi-lac) profile is left untouched — copy
+     [`PROFILE_TEMPLATE.lua`](PROFILE_TEMPLATE.lua) as your starting point instead.
+4. **Reload LAC** — click **Reload LAC**. LAC caches your sets when it loads, so a Setup
+   (or any set edit) only takes effect after a reload. That job is now driven by dlac.
+5. **Import your gear** — **Scan → Stage → Commit** reads the gear you own out of the game
+   into your `gear.lua`, so the builder shows exactly what you have.
+
+Repeat steps 3–4 for each job you want on dlac. Your gear and profiles stay in your
+LuaAshitacast config folder; the addon folder only holds the framework and item catalog.
+
 ## Commands
 
 `/dl` (or `/dlac`):
