@@ -5,7 +5,7 @@
     gear.lua database, the catalog.lua CatsEyeXI reference, the gearimport
     (/dl scan|stage|commit) pipeline, and the gearoptim stat-weight optimizer.
 
-    Header (shown on every tab): job/level + owned count + Reload/Scan/Stage/Commit.
+    Header (shown on every tab): job/level + owned count + Reload LAC/Scan/Stage/Commit/Setup.
     Tabs:
       * Equipped     -- equipmon-style 16-slot grid of what you're wearing (hover a
                         tile for an FFXI-style tooltip), the summed stats of the worn
@@ -889,15 +889,69 @@ local function migrateJobText(text)
     return out;
 end
 
--- Convert the current job's <JOB>.lua to dlac (backup .flbak) and seed <char>\dlac\ with
--- per-character gear/gcinclude copied from the existing ffxi-lac folder (never clobbered).
+-- A safe, dlac-wired starter profile for a job that has no <JOB>.lua yet. Empty Dynamic
+-- sets on purpose: it equips nothing (so it cannot error on gear you do not own) until
+-- you build sets in the GUI's Sets tab. MIGRATE_BOOT is prepended when written so LAC can
+-- resolve require("dlac\\utils"). Inside [[...]] the backslashes are literal on purpose.
+local STARTER_PROFILE = [[
+local profile = {};
+local utils = require("dlac\\utils");   -- one require: pulls in gear, gcinclude, /dl commands and the GUI
+local gear  = utils.gear;
+
+-- Dynamic sets: each slot is a LIST; dlac equips the best one for your level. Empty for
+-- now -- build them in the GUI (Sets tab), or copy static sets in with "Copy from set".
+sets = {
+    Dynamic = {
+        Idle       = {},
+        Tp_Default = {},
+        Resting    = {},
+        Movement   = {},
+    },
+};
+profile.Sets = sets;
+
+profile.OnLoad        = function() gcinclude.Initialize(); end
+profile.OnUnload      = function() gcinclude.Unload(); end
+profile.HandleCommand = function(args) gcinclude.HandleCommands(args); end
+
+profile.HandleDefault = function()
+    sets = utils.rebuildSets(sets);   -- keeps sets in sync with your level / subjob
+    local player = gData.GetPlayer();
+    if     player.Status == 'Engaged' then gFunc.EquipSet(sets.Tp_Default);
+    elseif player.Status == 'Resting' then gFunc.EquipSet(sets.Resting);
+    elseif player.IsMoving == true    then gFunc.EquipSet(sets.Movement);
+    else                                    gFunc.EquipSet(sets.Idle);
+    end
+end
+
+-- Add HandlePrecast / HandleMidcast / HandleWeaponskill as any LuAshitacast profile.
+return profile;
+]];
+
+-- Set up the current job's <JOB>.lua for dlac. Handles every case:
+--   'ok'      -> already set up (no-op, just report).
+--   'ffxilac' -> convert the existing profile in place (backup .flbak).
+--   'nofile'  -> initialize from scratch: write a safe dlac starter profile.
+--   'none'    -> an existing non-ffxi-lac profile; don't clobber it -- point at the template.
+-- Either path first seeds <char>\dlac\ with per-character gear/gcinclude from an existing
+-- ffxi-lac folder (never clobbered), which is also where the starter gets gcinclude.
 local function migrateCurrentJob()
     local base = charBase();
-    if base == nil then _augStatus = 'Migrate: log in first (no character folder).'; return; end
+    if base == nil then _augStatus = 'Setup: log in first (no character folder).'; return; end
     local jf, abbr = jobFile();
-    if jf == nil then _augStatus = 'Migrate: unknown job.'; return; end
-    local text = readFileText(jf);
-    if text == nil then _augStatus = 'Migrate: no ' .. tostring(abbr) .. '.lua in your profile folder.'; return; end
+    if jf == nil then _augStatus = 'Setup: unknown job.'; return; end
+    local state = jobSetupState();
+
+    if state == 'ok' then
+        _augStatus = abbr .. '.lua is already set up for dlac.'; return;
+    end
+    if state == 'none' then
+        _augStatus = abbr .. '.lua exists but is not an ffxi-lac profile -- copy the dlac '
+            .. 'PROFILE_TEMPLATE.lua as your starting point (it is already dlac-ready), then reload.';
+        return;
+    end
+
+    -- seed <char>\dlac\ with per-character gear/gcinclude from an existing ffxi-lac setup
     pcall(function() os.execute('mkdir "' .. base .. 'dlac" 2>nul'); end);
     for _, f in ipairs({ 'gear.lua', 'gcinclude.lua', 'gcdisplay.lua' }) do
         if readFileText(base .. 'dlac\\' .. f) == nil then
@@ -905,28 +959,50 @@ local function migrateCurrentJob()
             if src ~= nil then writeFileText(base .. 'dlac\\' .. f, src); end
         end
     end
+
+    if state == 'nofile' then
+        -- Fresh job, no profile yet: initialize from scratch. Needs gcinclude to load.
+        if readFileText(base .. 'dlac\\gcinclude.lua') == nil then
+            _augStatus = 'Setup: no dlac\\gcinclude.lua (and none in ffxi-lac to copy) -- set up '
+                .. 'LuaAshitacast/ffxi-lac for another job first, then Setup here.';
+            return;
+        end
+        if writeFileText(jf, MIGRATE_BOOT .. '\n' .. STARTER_PROFILE) then
+            _setupState = nil;
+            _augStatus = string.format('Created a dlac starter %s.lua. Reload LuaAshitacast, then build sets in the Sets tab.', abbr);
+            pcall(function() print('[dlac] ' .. _augStatus); end);
+        else
+            _augStatus = 'Setup: could not write ' .. jf;
+        end
+        return;
+    end
+
+    -- state == 'ffxilac': convert the existing profile in place.
+    local text = readFileText(jf);
+    if text == nil then _augStatus = 'Setup: could not read ' .. jf; return; end
     writeFileText(jf .. '.flbak', text);   -- backup the original
     if writeFileText(jf, migrateJobText(text)) then
         _setupState = nil;   -- force a re-check of setup state on the next frame
         _augStatus = string.format('Set up %s.lua for dlac (backup %s.lua.flbak). Reload LuaAshitacast to apply.', abbr, abbr);
         pcall(function() print('[dlac] ' .. _augStatus); end);
     else
-        _augStatus = 'Migrate: could not write ' .. jf;
+        _augStatus = 'Setup: could not write ' .. jf;
     end
 end
 
--- Reload / Scan / Stage / Commit / Augs / ->dlac, right-aligned on the header row.
+-- Reload LAC / Scan / Stage / Commit / Augs / Setup, right-aligned on the header row.
 local function renderHeaderButtons()
-    local W   = { 62, 52, 58, 64, 52, 56 };   -- Reload, Scan, Stage, Commit, Augs, ->dlac
+    local W   = { 86, 52, 58, 64, 52, 56 };   -- Reload LAC, Scan, Stage, Commit, Augs, Setup
     local gap = 4;
     local total = W[1] + W[2] + W[3] + W[4] + W[5] + W[6] + gap * 5;
     local x = imgui.GetWindowWidth() - total - 12;
     if x < 4 then x = 4; end
     imgui.SameLine(x);
-    if imgui.Button('Reload##hdr', { W[1], 22 }) then
+    if imgui.Button('Reload LAC##hdr', { W[1], 22 }) then
         refreshOwnedCounts();
         pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/addon reload luashitacast'); end);
     end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Reload LuaAshitacast. LAC caches your sets when the profile loads, so after you\ncommit/edit a set (or run Setup) you must reload LAC for the change to take effect.'); end
     imgui.SameLine(0, gap); if imgui.Button('Scan##hdr',   { W[2], 22 }) then callImport('scanAndReport'); refreshOwnedCounts(); end
     imgui.SameLine(0, gap); if imgui.Button('Stage##hdr',  { W[3], 22 }) then callImport('stage'); end
     imgui.SameLine(0, gap); if imgui.Button('Commit##hdr', { W[4], 22 }) then callImport('commit'); end
