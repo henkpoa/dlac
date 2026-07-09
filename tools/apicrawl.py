@@ -149,7 +149,8 @@ for f in os.listdir(CACHE):
 
 def render(key, iid, rec, ind):
     p = ' ' * ind; q = ' ' * (ind + 4); r = ' ' * (ind + 8)
-    L = ['%s%s = {' % (p, key), '%sName = "%s",' % (q, esc(rec['name'])), '%sLevel = %d,' % (q, int(rec['level'])),
+    ktok = key if re.match(r'^[A-Za-z_]\w*$', key) else '["%s"]' % key   # quote keys that aren't valid Lua identifiers (e.g. digit-leading)
+    L = ['%s%s = {' % (p, ktok), '%sName = "%s",' % (q, esc(rec['name'])), '%sLevel = %d,' % (q, int(rec['level'])),
          '%sId = %d,' % (q, iid), '%sJobs = %s,' % (q, rec['jobs'])]
     slot, cat = rec['slot'], rec['cat']
     if slot == 'Main' and cat: L.append('%sOneHanded = %s,' % (q, 'true' if cat in ONE else 'false')); L.append('%sType = "%s",' % (q, cat))
