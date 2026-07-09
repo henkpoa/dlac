@@ -35,11 +35,24 @@ local function writeFile(p, t)
     f:write(t); f:close(); return true;
 end
 
+-- LuaAshitacast's gState inside a profile, else the party manager (dlac addon context).
+-- Returns the character's config dir, or nil if not logged in.
 local function profileDir()
-    return string.format('%sconfig\\addons\\luashitacast\\%s_%u\\',
-        AshitaCore:GetInstallPath(), gState.PlayerName, gState.PlayerId);
+    local name, id;
+    if gState ~= nil and gState.PlayerName ~= nil and gState.PlayerId ~= nil then
+        name, id = gState.PlayerName, gState.PlayerId;
+    else
+        pcall(function()
+            local party = AshitaCore:GetMemoryManager():GetParty();
+            name = party:GetMemberName(0);
+            id   = party:GetMemberServerId(0);
+            if name == '' then name = nil; end
+        end);
+    end
+    if name == nil or id == nil then return nil; end
+    return string.format('%sconfig\\addons\\luashitacast\\%s_%u\\', AshitaCore:GetInstallPath(), name, id);
 end
-M.jobPath = function(job) return profileDir() .. job .. '.lua'; end
+M.jobPath = function(job) local d = profileDir(); return d and (d .. job .. '.lua') or nil; end
 
 ----------------------------------------------------------------------
 -- pure text helpers (offline-testable; no globals)
@@ -201,6 +214,7 @@ M._backupWithRotation = backupWithRotation;
 ----------------------------------------------------------------------
 M.commitSet = function(job, setName, slots)
     local path = M.jobPath(job);
+    if path == nil then return false, 'not logged in (no profile path)'; end
     local text = readFile(path);
     if not text then return false, 'could not read ' .. path; end
     local newText, action = M.spliceSet(text, setName, slots);
@@ -215,6 +229,7 @@ end
 
 M.deleteSet = function(job, setName)
     local path = M.jobPath(job);
+    if path == nil then return false, 'not logged in (no profile path)'; end
     local text = readFile(path);
     if not text then return false, 'could not read ' .. path; end
     local newText, action = M.deleteSetText(text, setName);
