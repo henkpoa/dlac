@@ -50,6 +50,30 @@ pcall(function()
     end
 end);
 
+-- Make the dlac library resolvable from your LuaAshitacast <JOB>.lua profiles WITHOUT a
+-- fragile per-profile bootstrap line. LAC adds the profile folder to its own package.path,
+-- so a copy of utils.lua (+ gear.lua) in <char>\dlac\ makes require("dlac\\utils") resolve
+-- there -- the exact first path LAC searches. utils.lua is refreshed every load (tracks the
+-- addon); gear.lua is seeded only when absent, so your scanned inventory is never overwritten.
+pcall(function()
+    local party = AshitaCore:GetMemoryManager():GetParty();
+    local name  = party:GetMemberName(0);
+    local id    = party:GetMemberServerId(0);
+    if name == nil or name == '' or id == nil then return; end
+    local addonDir = AshitaCore:GetInstallPath() .. 'addons\\dlac\\';
+    local dstDir   = string.format('%sconfig\\addons\\luashitacast\\%s_%u\\dlac\\', AshitaCore:GetInstallPath(), name, id);
+    if ashita and ashita.fs and ashita.fs.create_directory then ashita.fs.create_directory(dstDir); end
+    local function slurp(p) local f = io.open(p, 'rb'); if f == nil then return nil; end local d = f:read('*a'); f:close(); return d; end
+    local function spit(p, d) local f = io.open(p, 'wb'); if f == nil then return; end f:write(d); f:close(); end
+    local u = slurp(addonDir .. 'utils.lua');            -- library: always refresh from the addon
+    if u ~= nil then spit(dstDir .. 'utils.lua', u); end
+    if slurp(dstDir .. 'gear.lua') == nil then           -- your data: seed the empty template only if absent
+        local g = slurp(addonDir .. 'gear.lua');
+        if g ~= nil then spit(dstDir .. 'gear.lua', g); end
+    end
+    if u ~= nil then print('[dlac] profile library ready (utils.lua seeded for LAC profiles).'); end
+end);
+
 -- LuaAshitacast supplies gData inside a profile; a standalone addon doesn't. Provide a
 -- minimal gData shim from AshitaCore so the shared modules (gearui/utils/gearoptim) that
 -- read player job/level work unchanged as an addon -- without this, everything reads as
