@@ -1400,26 +1400,31 @@ end
 -- a sandbox (LuaAshitacast globals stubbed to a permissive no-op) to recover its `sets`
 -- table -- its gear refs resolve against the same preloaded gear the GUI uses. Cached per
 -- file; cleared on job change and after a commit/delete.
-local _profileSets, _profileSetsKey = nil, nil;
+local _profileSets, _profileSetsKey, _setsDiag = nil, nil, nil;
 local function loadProfileSets()
     local jf = jobFile();
-    if jf == nil then return nil; end
+    if jf == nil then _setsDiag = 'no job file (logged in? job known?)'; return nil; end
     if _profileSetsKey == jf and _profileSets ~= nil then return _profileSets; end
-    local result = nil;
-    pcall(function()
-        local chunk = loadfile(jf);
-        if chunk == nil then return; end
-        local STUB; STUB = setmetatable({}, { __index = function() return STUB; end, __call = function() return STUB; end });
-        local env = setmetatable({}, {
-            __index    = function(_, k) local g = rawget(_G, k); if g ~= nil then return g; end return STUB; end,
-            __newindex = function(t, k, v) rawset(t, k, v); end,
-        });
-        if setfenv ~= nil then setfenv(chunk, env); end   -- LuaJIT (Ashita)
-        pcall(chunk);                                     -- runs the profile top level -> env.sets
-        if type(rawget(env, 'sets')) == 'table' then result = rawget(env, 'sets'); end
-    end);
-    _profileSets, _profileSetsKey = result, jf;
-    return result;
+    _profileSetsKey = jf;
+    local chunk = loadfile(jf);
+    if chunk == nil then _setsDiag = 'could not open ' .. jf; _profileSets = nil; return nil; end
+    local STUB; STUB = setmetatable({}, { __index = function() return STUB; end, __call = function() return STUB; end });
+    local env = setmetatable({}, {
+        __index    = function(_, k) local g = rawget(_G, k); if g ~= nil then return g; end return STUB; end,
+        __newindex = function(t, k, v) rawset(t, k, v); end,
+    });
+    if setfenv ~= nil then setfenv(chunk, env); end   -- LuaJIT (Ashita)
+    local ok, e = pcall(chunk);                       -- runs the profile top level -> env.sets
+    local s = rawget(env, 'sets');
+    if type(s) == 'table' then
+        _profileSets = s;
+        if type(s.Dynamic) == 'table' then _setsDiag = nil;
+        else _setsDiag = 'ran ' .. jf .. ' but it has no sets.Dynamic' .. (ok and '' or (' (error: ' .. tostring(e) .. ')')); end
+    else
+        _profileSets = nil;
+        _setsDiag = 'ran ' .. jf .. ' but got no sets table' .. (ok and '' or (' -- error: ' .. tostring(e)));
+    end
+    return _profileSets;
 end
 
 local function getSetsRoot()
@@ -1899,7 +1904,10 @@ local function renderSetsTab(job, level)
     imgui.PushItemWidth(150);
     if imgui.BeginCombo('##ffxilac_setpick', M.workingSetName or '(select)') then
         local names = dynamicSetNames();
-        if #names == 0 then imgui.TextColored(COL_DIM, '(no sets.Dynamic -- reload the profile?)'); end
+        if #names == 0 then
+            imgui.TextColored(COL_DIM, '(no sets.Dynamic -- reload the profile?)');
+            if _setsDiag ~= nil and _setsDiag ~= '' then imgui.TextColored(COL_ERR, esc(_setsDiag)); end
+        end
         for _, nm in ipairs(names) do
             if imgui.Selectable(nm, M.workingSetName == nm) then
                 if M.workingSetName ~= nm then loadSet(nm); end

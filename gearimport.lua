@@ -645,12 +645,29 @@ local function indentLines(text, pad)
     return pad .. text:gsub('\n', '\n' .. pad);
 end
 
+-- Player name + server id: LuaAshitacast's gState when loaded inside a profile, else the
+-- party manager (dlac addon context, where gState doesn't exist). Returns name, id | nil.
+local function pNameId()
+    if gState ~= nil and gState.PlayerName ~= nil and gState.PlayerId ~= nil then
+        return gState.PlayerName, gState.PlayerId;
+    end
+    local name, id;
+    pcall(function()
+        local party = AshitaCore:GetMemoryManager():GetParty();
+        name = party:GetMemberName(0);
+        id   = party:GetMemberServerId(0);
+        if name == '' then name = nil; end
+    end);
+    return name, id;
+end
+
 -- Absolute path to the staging file, alongside your profile (NOT in dlac).
 -- Built the same way LuAshitacast builds paths to save sets.
 local function stagingPath()
-    if gState == nil or gState.PlayerName == nil or gState.PlayerId == nil then return nil; end
+    local name, id = pNameId();
+    if name == nil or id == nil then return nil; end
     return string.format('%sconfig\\addons\\luashitacast\\%s_%u\\dlac\\gear_staging.lua',
-        AshitaCore:GetInstallPath(), gState.PlayerName, gState.PlayerId);
+        AshitaCore:GetInstallPath(), name, id);
 end
 M.stagingPath = stagingPath;
 
@@ -858,9 +875,10 @@ function M.spliceStaging(gearText, stagingText)
 end
 
 local function gearPath()
-    if gState == nil or gState.PlayerName == nil or gState.PlayerId == nil then return nil; end
+    local name, id = pNameId();
+    if name == nil or id == nil then return nil; end
     return string.format('%sconfig\\addons\\luashitacast\\%s_%u\\dlac\\gear.lua',
-        AshitaCore:GetInstallPath(), gState.PlayerName, gState.PlayerId);
+        AshitaCore:GetInstallPath(), name, id);
 end
 
 local function readFile(p) local f = io.open(p, 'r'); if f == nil then return nil; end local t = f:read('*a'); f:close(); return t; end
@@ -888,7 +906,8 @@ function M.commit()
     if not parses(newText) then print('[dlac] commit ABORTED: spliced result would not parse. gear.lua untouched.'); return; end
 
     -- backup
-    local dir = string.format('%sconfig\\addons\\luashitacast\\%s_%u\\backups\\', AshitaCore:GetInstallPath(), gState.PlayerName, gState.PlayerId);
+    local _pn, _pi = pNameId();
+    local dir = string.format('%sconfig\\addons\\luashitacast\\%s_%u\\backups\\', AshitaCore:GetInstallPath(), _pn, _pi);
     if ashita and ashita.fs and ashita.fs.create_directory then ashita.fs.create_directory(dir); end
     local backupPath = dir .. 'gear_' .. os.date('%Y%m%d_%H%M%S') .. '.lua';
     if not writeFile(backupPath, gearText) then print('[dlac] commit ABORTED: could not write backup. gear.lua untouched.'); return; end
@@ -1045,7 +1064,8 @@ end
 -- be a table), restore on any failure. Returns backupPath, or nil + error.
 local function safeReplaceGear(gpath, newText, origText)
     if not parses(newText) then return nil, 'result would not parse'; end
-    local dir = string.format('%sconfig\\addons\\luashitacast\\%s_%u\\backups\\', AshitaCore:GetInstallPath(), gState.PlayerName, gState.PlayerId);
+    local _pn, _pi = pNameId();
+    local dir = string.format('%sconfig\\addons\\luashitacast\\%s_%u\\backups\\', AshitaCore:GetInstallPath(), _pn, _pi);
     if ashita and ashita.fs and ashita.fs.create_directory then ashita.fs.create_directory(dir); end
     local backupPath = dir .. 'gear_' .. os.date('%Y%m%d_%H%M%S') .. '.lua';
     if not writeFile(backupPath, origText) then return nil, 'could not write backup'; end
