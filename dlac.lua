@@ -50,6 +50,37 @@ pcall(function()
     end
 end);
 
+-- LuaAshitacast supplies gData inside a profile; a standalone addon doesn't. Provide a
+-- minimal gData shim from AshitaCore so the shared modules (gearui/utils/gearoptim) that
+-- read player job/level work unchanged as an addon -- without this, everything reads as
+-- "level 0" and no gear is usable. Only defined when the real gData is absent.
+if rawget(_G, 'gData') == nil then
+    local JOB = { [1]='WAR',[2]='MNK',[3]='WHM',[4]='BLM',[5]='RDM',[6]='THF',[7]='PLD',[8]='DRK',
+                  [9]='BST',[10]='BRD',[11]='RNG',[12]='SAM',[13]='NIN',[14]='DRG',[15]='SMN',[16]='BLU',
+                  [17]='COR',[18]='PUP',[19]='DNC',[20]='SCH',[21]='GEO',[22]='RUN' };
+    _G.gData = {
+        GetPlayer = function()
+            local t = { MainJob='?', MainJobSync=0, SubJob=nil, SubJobSync=0, Status=0, IsMoving=false };
+            pcall(function()
+                local p = AshitaCore:GetMemoryManager():GetPlayer();
+                if p == nil then return; end
+                t.MainJob      = JOB[p:GetMainJob()] or '?';
+                t.MainJobSync  = p:GetMainJobLevel() or 0;
+                t.SubJob       = JOB[p:GetSubJob()];
+                t.SubJobSync   = p:GetSubJobLevel() or 0;
+                t.MainJobLevel = t.MainJobSync;
+                t.SubJobLevel  = t.SubJobSync;
+            end);
+            return t;
+        end,
+        GetWeather             = function() return 0; end,   -- best-effort (optimizer day/weather bonus)
+        GetDay                 = function() return 0; end,
+        GetElementalOpposition = function() return nil; end,
+        GetAugment             = function() return nil; end,
+    };
+    print('[dlac] gData shim active (addon mode -- player job/level from AshitaCore).');
+end
+
 -- Load the library. Each module registers its own /dl command(s); gearui also registers
 -- the GUI render hook. Guarded so one module failing can't take the addon down.
 for _, mod in ipairs({ 'gear', 'augments', 'gearoptim', 'gearimport', 'gearui' }) do
