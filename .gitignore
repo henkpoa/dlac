@@ -2,3 +2,7 @@
 gear_staging.lua
 tools/api_cache/
 backups/
+
+# Python bytecode (from running the tools locally)
+__pycache__/
+*.pyc
