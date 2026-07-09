@@ -1,0 +1,4 @@
+# Transient / per-character -- not shared.
+gear_staging.lua
+tools/api_cache/
+backups/
