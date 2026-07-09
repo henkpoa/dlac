@@ -1414,15 +1414,18 @@ local function loadProfileSets()
         __newindex = function(t, k, v) rawset(t, k, v); end,
     });
     if setfenv ~= nil then setfenv(chunk, env); end   -- LuaJIT (Ashita)
-    local ok, e = pcall(chunk);                       -- runs the profile top level -> env.sets
-    local s = rawget(env, 'sets');
+    local ok, ret = pcall(chunk);                     -- profiles end with `return profile`
+    -- Prefer the returned profile.Sets (works whether the profile used `local sets` or a
+    -- global one); fall back to a global `sets` assigned into the sandbox env.
+    local s = nil;
+    if ok and type(ret) == 'table' and type(ret.Sets) == 'table' then s = ret.Sets;
+    elseif type(rawget(env, 'sets')) == 'table' then s = rawget(env, 'sets'); end
     if type(s) == 'table' then
         _profileSets = s;
-        if type(s.Dynamic) == 'table' then _setsDiag = nil;
-        else _setsDiag = 'ran ' .. jf .. ' but it has no sets.Dynamic' .. (ok and '' or (' (error: ' .. tostring(e) .. ')')); end
+        _setsDiag = (type(s.Dynamic) == 'table') and nil or ('ran ' .. jf .. ' but it has no sets.Dynamic');
     else
         _profileSets = nil;
-        _setsDiag = 'ran ' .. jf .. ' but got no sets table' .. (ok and '' or (' -- error: ' .. tostring(e)));
+        _setsDiag = 'ran ' .. jf .. ' but found no sets' .. (ok and '' or (' -- error: ' .. tostring(ret)));
     end
     return _profileSets;
 end
