@@ -77,9 +77,11 @@ local ui = {
     newSetName  = { '' },
     lockSet     = { false },
     setsDynamic = { true },   -- Auto-build "Dynamic" (level-scaling list) mode, default ON
+    buildMax    = { false },  -- optimizer "build as lv.75" toggle (mirrors optim.buildAtMaxLevel)
+    ignoreWeapons = { true }, -- Auto-build: skip Main/Sub/Range so weapon swaps don't reset TP (default ON)
     showWeights = false,      -- right-side weights panel toggle
     addStat     = { '' },
-    addPer      = { 0.0 },
+    addPer      = { 0 },
     addCap      = { 0 },
     _wbuf       = {},         -- per-stat input buffers for the weights editor
     setsStatus    = '',
@@ -564,6 +566,38 @@ local function scoreOf(stats)
     return 0;
 end
 
+-- Per-id owned augment stat deltas { id -> {stat->delta} }, cached (reset with the owned
+-- caches). Lets set scoring weigh BASE + your private augments, matching the worn panel.
+local _ownedAugStats = nil;
+local function ownedAugStatsMap()
+    if _ownedAugStats ~= nil then return _ownedAugStats; end
+    local m = {};
+    if hasAug then pcall(function() m = aug.ownedAugStats() or {}; end); end
+    _ownedAugStats = m;
+    return _ownedAugStats;
+end
+
+-- Weighted score of an ITEM: base Stats PLUS the augment deltas on the copy you own (by Id),
+-- so augmented gear is weighed correctly. Use this (not scoreOf) when scoring a gear record.
+local function scoreOfItem(rec)
+    if rec == nil then return 0; end
+    local base = rec.Stats;
+    local a = (rec.Id ~= nil) and ownedAugStatsMap()[rec.Id] or nil;
+    if a == nil then return scoreOf(base); end
+    local combined = {};
+    if type(base) == 'table' then for k, v in pairs(base) do combined[k] = v; end end
+    for k, v in pairs(a) do combined[k] = (combined[k] or 0) + v; end
+    return scoreOf(combined);
+end
+
+-- Effective item-Level cap for SET BUILDING (Auto-build + the manual + Add picker): the
+-- "Build as lv.75" toggle (optim.buildAtMaxLevel) lifts the cap to 75 so you can assemble
+-- over-level sets; the job restriction is unaffected. The Equipped tab keeps the real level.
+local function setBuildLevel(level)
+    if hasOptim and optim.buildAtMaxLevel == true then return optim.MAX_LEVEL or 75; end
+    return level;
+end
+
 local function candidatesForSlot(gearSlotKey, job, level)
     local key = tostring(job) .. '|' .. tostring(level);
     if candCache.key ~= key then candCache.key = key; candCache.data = {}; end
@@ -579,7 +613,7 @@ local function candidatesForSlot(gearSlotKey, job, level)
     local useScore = weightsActive();
     table.sort(out, function(a, b)
         if useScore then
-            local sa, sb = scoreOf(a.Stats), scoreOf(b.Stats);
+            local sa, sb = scoreOfItem(a), scoreOfItem(b);
             if sa ~= sb then return sa > sb; end
         end
         if (a.Level or 0) ~= (b.Level or 0) then return (a.Level or 0) > (b.Level or 0); end
@@ -701,7 +735,7 @@ function ownedCounts()   -- assigns the forward-declared upvalue (see haveInBags
     _ownedCounts = counts;
     return counts;
 end
-local function refreshOwnedCounts() _ownedCounts = nil; _ownedAug = nil; invalidateCandidates(); end
+local function refreshOwnedCounts() _ownedCounts = nil; _ownedAug = nil; _ownedAugStats = nil; invalidateCandidates(); end
 
 -- Re-read <char>\dlac\gear.lua and rebuild the owned view after a Commit, so the GUI
 -- reflects newly-imported gear WITHOUT an addon reload. Mutates the shared `gear` table in
@@ -1234,6 +1268,16 @@ local STAT_GROUPS = {
     { name = 'Defense',    stats = { 'DEF', 'Evasion', 'MagicEvasion' } },
 };
 
+-- Flat, de-duplicated stat list for the weights "add" searchable dropdown (kept in group
+-- order). Typing still accepts any custom name; this is just the suggestion set.
+local WEIGHT_CHOICES = {};
+do
+    local seen = {};
+    local function add(s) if not seen[s] then seen[s] = true; WEIGHT_CHOICES[#WEIGHT_CHOICES + 1] = s; end end
+    for _, g in ipairs(STAT_GROUPS) do for _, s in ipairs(g.stats) do add(s); end end
+    for _, s in ipairs({ 'DMG', 'Counter', 'MovementSpeed', 'PDT', 'DT' }) do add(s); end
+end
+
 -- Data spelling -> canonical listed name, so gear.lua's MATK/MACC land in the right
 -- row rather than "Other".
 local STAT_ALIAS = {
@@ -1695,11 +1739,18 @@ local function staticSetNames()
     return names;
 end
 
+-- Sets-tab "unsaved changes" flag: set true whenever the working set is modified (Auto-build,
+-- add/remove/reorder an item, or a copy-from-static seed); cleared when it's committed,
+-- (re)loaded from the saved list, deleted, or a fresh New set is started. Drives the red
+-- Commit button in renderSetsTab.
+local _setDirty = false;
+
 -- Load a dynamic set into the working model (by our 16 slot labels).
 local function loadSet(setName)
     M.working = {};
     M.workingSetName = setName;
     ui.setSelected = nil;
+    _setDirty = false;              -- freshly (re)loaded from the saved list -> no unsaved changes
     pcall(function()
         local dyn = getDynamicSets();
         if type(dyn) ~= 'table' then return; end
@@ -1758,7 +1809,7 @@ local function workingWeightedScore(mainLevel)
     local total = 0;
     for _, sl in ipairs(EQUIP_SLOTS) do
         local pick = bestByLevel(M.working[sl.label], mainLevel);
-        if pick ~= nil and pick.rec ~= nil then total = total + scoreOf(pick.rec.Stats); end
+        if pick ~= nil and pick.rec ~= nil then total = total + scoreOfItem(pick.rec); end
     end
     return total;
 end
@@ -1790,14 +1841,25 @@ end
 -- asc). OFF = the single best scorer usable now.
 local function autoBuild(job, level)
     local dyn = (ui.setsDynamic[1] == true);
+    -- "Build as lv.75" must actually reach Auto-build: when the optimizer flag is set, pick
+    -- candidates as if at MAX_LEVEL (item level cap lifted; the JOB restriction inside
+    -- candidatesForSlot still applies). Otherwise use the character's real level.
+    local useLevel = setBuildLevel(level);   -- "Build as lv.75" lifts the item-level cap
     local oc = ownedCounts();
     local built = {};
     for _, sl in ipairs(EQUIP_SLOTS) do
-        local cands = candidatesForSlot(sl.gear, job, level);   -- already job+level filtered
+        -- Skip weapon slots when asked, so Auto-build never swaps Main/Sub/Range and resets TP.
+        -- Preserve whatever the working set already holds there (M.working = built below would
+        -- otherwise wipe it).
+        if ui.ignoreWeapons[1] == true and (sl.gear == 'Main' or sl.gear == 'Sub' or sl.gear == 'Range') then
+            if M.working[sl.label] ~= nil then built[sl.label] = M.working[sl.label]; end
+            goto continue;
+        end
+        local cands = candidatesForSlot(sl.gear, job, useLevel);   -- already job+level filtered
         -- Sub: keep only picks legal with the Main we already built (Main precedes Sub).
         if sl.gear == 'Sub' then
-            local mp = bestByLevel(built['Main'], level);
-            cands = subFilter(cands, mp and mp.rec or nil, job, level);
+            local mp = bestByLevel(built['Main'], useLevel);
+            cands = subFilter(cands, mp and mp.rec or nil, job, useLevel);
         end
         -- Paired slot (Ring2<-Ring1, Ear2<-Ear1): drop single-copy Ids the pair already uses.
         local other = PAIR_OF[sl.label];
@@ -1819,25 +1881,31 @@ local function autoBuild(job, level)
                 for _, r in ipairs(cands) do byLevel[#byLevel + 1] = r; end
                 table.sort(byLevel, function(a, b)
                     if (a.Level or 0) ~= (b.Level or 0) then return (a.Level or 0) < (b.Level or 0); end
-                    return scoreOf(a.Stats) > scoreOf(b.Stats);
+                    return scoreOfItem(a) > scoreOfItem(b);
                 end);
-                local kept, bestScore = {}, -math.huge;
+                -- Seed at 0 (not -inf): keep an item only when it actually scores > 0 on the
+                -- weighted stats, so a 0-value item is never kept just for being the lowest level.
+                local kept, bestScore = {}, 0;
                 for _, r in ipairs(byLevel) do
-                    local sc = scoreOf(r.Stats);
+                    local sc = scoreOfItem(r);
                     if sc > bestScore then kept[#kept + 1] = { rec = r }; bestScore = sc; end
                 end
                 if #kept > 0 then built[sl.label] = kept; end
             else
-                local best, bestSc = nil, -math.huge;
+                -- Seed at 0 (not -inf): pick a single item only when it scores > 0; if nothing
+                -- in the slot carries a weighted stat, leave the slot empty.
+                local best, bestSc = nil, 0;
                 for _, r in ipairs(cands) do
-                    local sc = scoreOf(r.Stats);
+                    local sc = scoreOfItem(r);
                     if sc > bestSc then bestSc = sc; best = r; end
                 end
                 if best ~= nil then built[sl.label] = { { rec = best } }; end
             end
         end
+        ::continue::
     end
     M.working = built;
+    _setDirty = true;   -- Auto-build modified the working set -> unsaved changes
 end
 
 -- "Lock" a committed set via LAC (takes effect once the file is committed + reloaded).
@@ -1888,6 +1956,7 @@ local function copyFromStaticSet(srcName)
         end
     end);
     M.workingSetName = target;
+    _setDirty = true;   -- seeded/copied a set -> unsaved changes to commit
     if n > 0 then
         setStatus(string.format('Seeded "%s" from static set "%s" (%d slots). Edit, then Commit to write it into sets.Dynamic.', target, srcName, n), false);
     else
@@ -1904,6 +1973,7 @@ local function commitCurrentSet(job)
     local ok, action, backup = nil, nil, nil;
     local pok = pcall(function() ok, action, backup = setmgr.commitSet(job, M.workingSetName, slots); end);
     if pok and ok == true then
+        _setDirty = false;    -- committed -> the working set now matches what's saved
         _profileSets = nil;   -- re-read the job file so the Sets list reflects the change
         setStatus(string.format('%s "%s" for %s. Reload (top-right) to apply.  backup: %s',
             tostring(action), tostring(M.workingSetName), tostring(job), tostring(backup)), false);
@@ -1922,7 +1992,7 @@ local function deleteCurrentSet(job)
         _profileSets = nil;
         setStatus(string.format('deleted "%s" for %s. Reload to apply.  backup: %s',
             tostring(M.workingSetName), tostring(job), tostring(backup)), false);
-        M.working = {}; M.workingSetName = nil; ui.setSelected = nil;
+        M.working = {}; M.workingSetName = nil; ui.setSelected = nil; _setDirty = false;
     else
         setStatus('Delete failed: ' .. tostring(action), true);
     end
@@ -1936,28 +2006,37 @@ local function renderWeightsEditor()
     imgui.TextColored(COL_DIM, 'pts/point up to cap (cap 0 = none):');
     imgui.BeginChild('##ffxilac_weights', { -1, -1 }, true);   -- fill the (now windowed) space
 
+    -- Adaptive name column: the stat name gets all the width the window can spare (the
+    -- pts/cap/Set/x controls need ~236px), so widening the window shows long names in full.
+    local availW  = imgui.GetContentRegionAvail();
+    local nameCol = availW - 236; if nameCol < 44 then nameCol = 44; end
+    local nchars  = math.max(6, math.floor(nameCol / 7));
+
     local ws = {};
     pcall(function() ws = optim.getWeights() or {}; end);
     for _, stat in ipairs(sortedKeys(ws)) do
         local w = ws[stat];
         local b = ui._wbuf[stat];
         if b == nil then
-            b = { per = { (type(w) == 'table' and w.perUnit) or 0 }, cap = { (type(w) == 'table' and w.cap) or 0 } };
+            local pv = (type(w) == 'table' and w.perUnit) or 0;
+            b = { per = { math.floor(pv + 0.5) }, cap = { (type(w) == 'table' and w.cap) or 0 } };
             ui._wbuf[stat] = b;
         end
-        imgui.TextColored(COL_USABLE, truncate(stat, 11));
-        imgui.SameLine(88); imgui.TextColored(COL_DIM, 'pts'); imgui.SameLine(0, 2);
-        imgui.PushItemWidth(44); imgui.DragFloat('##per_' .. stat, b.per, 0.5, -9999, 9999, '%.1f'); imgui.PopItemWidth();
-        imgui.SameLine(0, 4); imgui.TextColored(COL_DIM, 'cap'); imgui.SameLine(0, 2);
-        imgui.PushItemWidth(40); imgui.InputInt('##cap_' .. stat, b.cap, 0); imgui.PopItemWidth();
-        imgui.SameLine(0, 4);
-        if imgui.Button('Set##w_' .. stat, { 32, 0 }) then
+        imgui.TextColored(COL_USABLE, truncate(stat, nchars));
+        if #stat > nchars and imgui.IsItemHovered() then imgui.SetTooltip(stat); end
+        imgui.SameLine(nameCol);
+        imgui.TextColored(COL_DIM, 'pts'); imgui.SameLine(0, 2);
+        imgui.PushItemWidth(52); imgui.InputInt('##per_' .. stat, b.per, 0); imgui.PopItemWidth();
+        imgui.SameLine(0, 6); imgui.TextColored(COL_DIM, 'cap'); imgui.SameLine(0, 2);
+        imgui.PushItemWidth(46); imgui.InputInt('##cap_' .. stat, b.cap, 0); imgui.PopItemWidth();
+        imgui.SameLine(0, 6);
+        if imgui.Button('Set##w_' .. stat, { 36, 0 }) then
             pcall(optim.setWeight, stat, b.per[1], (b.cap[1] and b.cap[1] > 0) and b.cap[1] or nil);
             pcall(optim.saveWeights);
             invalidateCandidates();
         end
         imgui.SameLine(0, 3);
-        if imgui.Button('x##wx_' .. stat, { 18, 0 }) then
+        if imgui.Button('x##wx_' .. stat, { 20, 0 }) then
             pcall(optim.clearWeight, stat);
             pcall(optim.saveWeights);
             ui._wbuf[stat] = nil;
@@ -1966,14 +2045,33 @@ local function renderWeightsEditor()
     end
 
     imgui.Separator();
+
+    -- Add row: searchable stat dropdown -- type in the box to filter suggestions, click one
+    -- (or keep your own text), then set pts/cap and Add.
     imgui.TextColored(COL_DIM, 'add'); imgui.SameLine(0, 4);
-    imgui.PushItemWidth(66); imgui.InputText('##addstat', ui.addStat, 24); imgui.PopItemWidth();
-    imgui.SameLine(0, 4); imgui.TextColored(COL_DIM, 'pts'); imgui.SameLine(0, 2);
-    imgui.PushItemWidth(44); imgui.DragFloat('##addper', ui.addPer, 0.5, -9999, 9999, '%.1f'); imgui.PopItemWidth();
-    imgui.SameLine(0, 4); imgui.TextColored(COL_DIM, 'cap'); imgui.SameLine(0, 2);
-    imgui.PushItemWidth(40); imgui.InputInt('##addcap', ui.addCap, 0); imgui.PopItemWidth();
-    imgui.SameLine(0, 4);
-    if imgui.Button('Add##addw', { 32, 0 }) then
+    imgui.PushItemWidth(160);
+    if imgui.BeginCombo('##addstat', (ui.addStat[1] ~= '' and ui.addStat[1]) or '(type to search)') then
+        if imgui.IsWindowAppearing ~= nil and imgui.IsWindowAppearing()
+           and imgui.SetKeyboardFocusHere ~= nil then imgui.SetKeyboardFocusHere(0); end
+        imgui.PushItemWidth(-1); imgui.InputText('##addfilter', ui.addStat, 32); imgui.PopItemWidth();
+        imgui.Separator();
+        local q, shown = string.lower(ui.addStat[1] or ''), 0;
+        for _, name in ipairs(WEIGHT_CHOICES) do
+            if q == '' or string.find(string.lower(name), q, 1, true) ~= nil then
+                shown = shown + 1;
+                if imgui.Selectable(name, false) then ui.addStat[1] = name; imgui.CloseCurrentPopup(); end
+            end
+        end
+        if shown == 0 then imgui.TextColored(COL_DIM, '(no match -- Add will use your typed text)'); end
+        imgui.EndCombo();
+    end
+    imgui.PopItemWidth();
+    imgui.SameLine(0, 6); imgui.TextColored(COL_DIM, 'pts'); imgui.SameLine(0, 2);
+    imgui.PushItemWidth(52); imgui.InputInt('##addper', ui.addPer, 0); imgui.PopItemWidth();
+    imgui.SameLine(0, 6); imgui.TextColored(COL_DIM, 'cap'); imgui.SameLine(0, 2);
+    imgui.PushItemWidth(46); imgui.InputInt('##addcap', ui.addCap, 0); imgui.PopItemWidth();
+    imgui.SameLine(0, 6);
+    if imgui.Button('Add##addw', { 40, 0 }) then
         local name = ui.addStat[1];
         if name ~= nil and name ~= '' then
             pcall(optim.setWeight, name, ui.addPer[1], (ui.addCap[1] and ui.addCap[1] > 0) and ui.addCap[1] or nil);
@@ -1998,10 +2096,11 @@ local function renderAddPopup(job, level)
         local list = M.working[ui.setSelected] or {};
         local inList = {};
         for _, it in ipairs(list) do if it.rec and it.rec.Name then inList[it.rec.Name] = true; end end
-        local cands = candidatesForSlot(gearKey, job, level);
+        local useLevel = setBuildLevel(level);   -- "Build as lv.75" lifts the cap for + Add too
+        local cands = candidatesForSlot(gearKey, job, useLevel);
         if gearKey == 'Sub' then
-            local mp = bestByLevel(M.working['Main'], level);
-            cands = subFilter(cands, mp and mp.rec or nil, job, level);
+            local mp = bestByLevel(M.working['Main'], useLevel);
+            cands = subFilter(cands, mp and mp.rec or nil, job, useLevel);
         end
         local blocked = pairedBlockedIds(ui.setSelected, true);
         cands = sortForDisplay(cands);
@@ -2013,6 +2112,7 @@ local function renderAddPopup(job, level)
                 if renderPickRow(rec, i, 'addpick') then
                     list[#list + 1] = { rec = rec };
                     M.working[ui.setSelected] = list;
+                    _setDirty = true;   -- added an item to the slot -> unsaved changes
                     imgui.CloseCurrentPopup();
                 end
                 if imgui.IsItemHovered() then renderItemTooltip(rec); end
@@ -2029,6 +2129,10 @@ local function renderSetsWeightPanel(job, level)
     imgui.Checkbox('Dynamic', ui.setsDynamic);
     if imgui.IsItemHovered() then
         imgui.SetTooltip("When off, builds only ONE item per slot for the set (won't scale with level).");
+    end
+    imgui.Checkbox('Skip weapons (Main/Sub/Range)', ui.ignoreWeapons);
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Leaves Main/Sub/Range untouched when Auto-building, so weapon swaps don\'t reset your TP.');
     end
     if imgui.Button('Auto-build##setauto', { -1, 24 }) then autoBuild(job, level); end
     imgui.Separator();
@@ -2112,6 +2216,7 @@ local function renderSetBuilder(job, level)
                 list[di], list[di + 1] = list[di + 1], list[di];
             end
             if #list == 0 then M.working[ui.setSelected] = nil; else M.working[ui.setSelected] = list; end
+            _setDirty = true;   -- removed/reordered an item -> unsaved changes
         end
     end
 end
@@ -2145,10 +2250,18 @@ local function renderSetsTab(job, level)
         local nm = ui.newSetName[1];
         if nm ~= nil and nm ~= '' then
             M.workingSetName = nm; M.working = {}; ui.setSelected = nil; ui.newSetName[1] = '';
+            _setDirty = false;   -- brand-new empty set -> nothing unsaved yet
             setStatus('New empty set "' .. nm .. '" -- add items, then Commit.', false);
         end
     end
-    imgui.SameLine(); if imgui.Button('Commit##setcommit', { 62, 22 }) then commitCurrentSet(job); end
+    imgui.SameLine();
+    -- Light the Commit button red while the working set has unsaved changes (same pattern as the
+    -- header 'Setup' button). Guarded on ImGuiCol_Button so a missing constant can't error.
+    local _cdirty = _setDirty and ImGuiCol_Button ~= nil;
+    if _cdirty then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
+    if imgui.Button('Commit##setcommit', { 62, 22 }) then commitCurrentSet(job); end
+    if _cdirty then imgui.PopStyleColor(1); end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Saves your current set into sets.Dynamic in your job file (writes <JOB>.lua). Reload LAC afterward.'); end
     imgui.SameLine(); if imgui.Button('Delete##setdel', { 58, 22 }) then deleteCurrentSet(job); end
 
     imgui.SameLine();
@@ -2163,6 +2276,17 @@ local function renderSetsTab(job, level)
     imgui.SameLine();
     if imgui.Button((ui.showWeights and 'Weights v' or 'Weights >') .. '##setwtoggle', { 84, 22 }) then ui.showWeights = not ui.showWeights; end
     if imgui.IsItemHovered() then imgui.SetTooltip('Toggle the Stat Weights editor -- opens in its own resizable, movable window.'); end
+
+    -- Build-level override (general set management): lifts the item level cap for BOTH
+    -- Auto-build and the manual + Add picker, so you can assemble over-level sets.
+    if hasOptim then
+        ui.buildMax[1] = (optim.buildAtMaxLevel == true);
+        imgui.Checkbox('Build as lv.75 (ignore level cap)', ui.buildMax);
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Ignore the item level cap when building sets OR using + Add -- pick gear as if you\nwere level 75, so you can assemble over-level sets. Your JOB restriction still applies.');
+        end
+        optim.buildAtMaxLevel = (ui.buildMax[1] == true);
+    end
 
     -- Migration helper: seed a Dynamic working set from a static (non-Dynamic) set.
     imgui.TextColored(COL_DIM, 'Copy from:'); imgui.SameLine(0, 4);
@@ -2215,8 +2339,8 @@ end
 -- window's Begin/End (see drawWindow).
 local function renderWeightsWindow(job, level)
     if not ui.showWeights then return; end
-    imgui.SetNextWindowSize({ 420, 520 }, ImGuiCond_FirstUseEver);
-    imgui.SetNextWindowSizeConstraints({ 300, 240 }, { 900, 1200 });
+    imgui.SetNextWindowSize({ 480, 520 }, ImGuiCond_FirstUseEver);
+    imgui.SetNextWindowSizeConstraints({ 320, 240 }, { 1000, 1200 });
     local open = { true };
     if imgui.Begin('dlac Stat Weights###dlac_setweights', open, ImGuiWindowFlags_None) then
         pcall(renderSetsWeightPanel, job, level);
