@@ -845,10 +845,11 @@ end
 local function callImport(fn)
     local ok, mod = pcall(require, "dlac\\gearimport");
     if ok and mod ~= nil and type(mod[fn]) == 'function' then
-        pcall(mod[fn]);
-    else
-        print('[dlac] gear UI: gearimport.' .. tostring(fn) .. ' is unavailable.');
+        local ok2, ret = pcall(mod[fn]);
+        return ok2 and ret or nil;
     end
+    print('[dlac] gear UI: gearimport.' .. tostring(fn) .. ' is unavailable.');
+    return nil;
 end
 
 -- Augment dump: write all augmented gear to augdump.txt (share to identify unknown ids).
@@ -2239,9 +2240,35 @@ end
 -- lock sequence completes), then draw while visible. Wrapped so a transient imgui
 -- error can never take down the d3d_present hook.
 -- ---------------------------------------------------------------------------
+-- Keep gear.lua current automatically. A job change reloads the LAC profile ("loading a
+-- lua"), so we re-scan shortly after; also fires on login (nil -> job). Add-only + a silent
+-- no-op when nothing is new, so it is cheap and never spams. Toggle with /dl autosync off.
+local autoSyncEnabled = true;
+local _syncedJob, _syncDueFrame = nil, nil;
+local function doSync()
+    local added = callImport('sync');
+    added = (type(added) == 'number') and added or 0;
+    if added > 0 then refreshGear(); end
+    return added;
+end
+local function autoSyncOnJobChange()
+    if not autoSyncEnabled then return; end
+    local j = nil;
+    pcall(function() j = AshitaCore:GetMemoryManager():GetPlayer():GetMainJob(); end);
+    if j ~= nil and j ~= 0 and j ~= _syncedJob then
+        _syncedJob    = j;
+        _syncDueFrame = frameCounter + 120;   -- ~2s after the change, so inventory has loaded
+    end
+    if _syncDueFrame ~= nil and frameCounter >= _syncDueFrame then
+        _syncDueFrame = nil;
+        doSync();
+    end
+end
+
 ashita.events.register('d3d_present', 'dlac-gearui-render', function()
     frameCounter = frameCounter + 1;
     processCmdQueue();
+    pcall(autoSyncOnJobChange);
     if not M.visible or not hasImgui then return; end
     pcall(drawWindow);
 end);
@@ -2265,9 +2292,24 @@ ashita.events.register('command', 'dlac-ui', function(e)
     for a in string.gmatch(string.sub(raw, start), '[^%s]+') do
         table.insert(args, a);
     end
-    if args[1] ~= 'ui' then return; end
-
+    local sub = args[1];
+    if sub ~= 'ui' and sub ~= 'sync' and sub ~= 'autosync' then return; end
     e.blocked = true;
+
+    if sub == 'sync' then          -- manual one-shot: scan + import new gear now
+        local n = doSync();
+        print(string.format('[dlac] sync: %s', (n > 0) and ('added ' .. n .. ' new item(s) to gear.lua.') or 'nothing new.'));
+        return;
+    end
+    if sub == 'autosync' then       -- toggle the on-job-change auto-sync
+        if     args[2] == 'off' then autoSyncEnabled = false;
+        elseif args[2] == 'on'  then autoSyncEnabled = true; end
+        print('[dlac] auto-sync ' .. (autoSyncEnabled and 'ON' or 'OFF')
+            .. ' -- re-scans gear.lua on job change.  (/dl autosync on|off)');
+        return;
+    end
+
+    -- sub == 'ui'
     local mode = args[2];
     if mode == 'on' or mode == 'show' then
         M.visible = true;

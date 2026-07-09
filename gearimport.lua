@@ -1185,6 +1185,26 @@ function M.dedupe()
     print('[dlac] backup: ' .. backupPath .. '  --  run /dl r to load.');
 end
 
+-- Auto-sync: scan bags and, ONLY if there's new gear, stage + commit it into gear.lua.
+-- Returns the number of new items found (0 = nothing new -> no stage/commit, no output, no
+-- writes). ADD-ONLY: the scan only sees Inventory + Wardrobes (not Mog storage), so it grows
+-- your gear library and never drops stored gear. Safe to call often -- commit is parse-
+-- validated + backed up, and this is silent whenever there's nothing to add.
+function M.sync()
+    local added = 0;
+    pcall(function()
+        local items = M.scan();
+        if type(items) ~= 'table' then return; end
+        local newCount = 0;
+        for _, it in ipairs(items) do if not it.Known then newCount = newCount + 1; end end
+        if newCount == 0 then return; end     -- nothing new -> silent no-op
+        M.stage();
+        M.commit();
+        added = newCount;
+    end);
+    return added;
+end
+
 -- ---------------------------------------------------------------------------
 -- Command hook:  /dl scan | preview | stage | commit | fix | dedupe | autostat
 -- Self-contained and additive -- it does not touch utils.lua's own handler, and
