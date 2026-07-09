@@ -504,7 +504,13 @@ end
 -- WEAPON CAVEAT: Main/Sub/Range are scored and picked independently, so dual-wield /
 -- grip / shield pairing rules (which BuildDynamicSets enforces) are NOT applied here.
 -- This is a pure stat maximizer -- vet a suggested weapon pair before wearing it.
-local function buildSet(scoreFn, job, level)
+-- acceptScore(score) -> bool gates whether a slot's best pick is worth wearing at
+-- all. A slot whose top candidate fails the gate (e.g. carries none of the weighted
+-- stats, so it scores 0) is left UNFILLED rather than padded with a junk piece --
+-- represented exactly like a slot with no eligible gear: absent from slots/order/
+-- perSlot. Nil gate = accept everything (old behavior).
+local function buildSet(scoreFn, job, level, acceptScore)
+    if type(acceptScore) ~= 'function' then acceptScore = function() return true; end end
     local out = { slots = {}, order = {}, perSlot = {}, total = 0, job = job, level = level };
 
     local function place(label, pick)
@@ -522,10 +528,10 @@ local function buildSet(scoreFn, job, level)
         local ranked = rankSlot(slotKey, scoreFn, job, level);
         if #ranked > 0 then
             if DUAL_SLOTS[slotKey] then
-                place(slotKey .. '1', ranked[1]);
-                if #ranked > 1 then place(slotKey .. '2', ranked[2]); end
+                if acceptScore(ranked[1].score) then place(slotKey .. '1', ranked[1]); end
+                if #ranked > 1 and acceptScore(ranked[2].score) then place(slotKey .. '2', ranked[2]); end
             else
-                place(slotKey, ranked[1]);
+                if acceptScore(ranked[1].score) then place(slotKey, ranked[1]); end
             end
         end
     end
@@ -550,7 +556,13 @@ function M.buildBestSet(opts)
     opts = opts or {};
     local job, level = jobLevelFromOpts(opts);
     local weights = opts.weights or M._weights;
-    local set = buildSet(function(stats) return M.score(stats, weights); end, job, level);
+    -- Only fill a slot when its best pick makes a POSITIVE weighted contribution.
+    -- If nothing in a slot carries any weighted stat, every candidate scores 0 (or
+    -- worse, if it only has penalty stats), so the slot is left empty rather than
+    -- padded with an irrelevant piece. DT/PDT/MDT already score POSITIVE for a
+    -- beneficial (negative) value inside M.score, so useful mitigation still passes.
+    local set = buildSet(function(stats) return M.score(stats, weights); end, job, level,
+        function(score) return score > 0; end);
     set.mode = 'weights';
     return set;
 end
@@ -563,7 +575,12 @@ function M.buildMaxStatSet(statKey, opts)
     opts = opts or {};
     local job, level = jobLevelFromOpts(opts);
     statKey = canonStat(statKey);
-    local set = buildSet(function(stats) return statValue(stats, statKey); end, job, level);
+    -- Only fill a slot with a piece that actually carries some of the stat; a slot
+    -- whose best pick has 0 of it (nothing to maximize) is left empty, not padded.
+    -- Uses a NON-ZERO gate (not > 0) so this maximizer keeps the raw-stat semantics
+    -- untouched -- a stat stored as a negative value still counts as "has some".
+    local set = buildSet(function(stats) return statValue(stats, statKey); end, job, level,
+        function(score) return score ~= 0; end);
     set.mode = 'stat:' .. tostring(statKey);
     set.stat = statKey;
     return set;
