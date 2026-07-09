@@ -856,6 +856,27 @@ local function jobFile()
     return base .. abbr .. '.lua', abbr;
 end
 
+-- Is the current job's <JOB>.lua already wired for dlac?
+--   'ok'      -> requires the dlac library (set up)
+--   'ffxilac' -> still an ffxi-lac profile (needs conversion)
+--   'none'    -> neither (fresh/custom profile -- needs initializing)
+--   'nofile' / 'nojob' -> no profile file / no job.
+-- Cached per file; cleared after a Setup run (see below).
+local _setupState, _setupStateJob = nil, nil;
+local function jobSetupState()
+    local jf = jobFile();
+    if jf == nil then return 'nojob'; end
+    if _setupStateJob == jf and _setupState ~= nil then return _setupState; end
+    local st;
+    local text = readFileText(jf);
+    if text == nil then st = 'nofile';
+    elseif text:find([[dlac\\utils]], 1, true) then st = 'ok';
+    elseif text:find('ffxi-lac', 1, true) then st = 'ffxilac';
+    else st = 'none'; end
+    _setupState, _setupStateJob = st, jf;
+    return st;
+end
+
 -- One-line bootstrap that puts the dlac addon library on the profile's package.path so
 -- require("dlac\\utils") resolves to the addon. [[...]] keeps the backslashes literal.
 local MIGRATE_BOOT = [[package.path = package.path .. ';' .. AshitaCore:GetInstallPath() .. 'addons\\?.lua';  -- dlac: use the dlac addon library]];
@@ -886,7 +907,8 @@ local function migrateCurrentJob()
     end
     writeFileText(jf .. '.flbak', text);   -- backup the original
     if writeFileText(jf, migrateJobText(text)) then
-        _augStatus = string.format('Migrated %s.lua to dlac (backup %s.lua.flbak). Reload LuaAshitacast to apply.', abbr, abbr);
+        _setupState = nil;   -- force a re-check of setup state on the next frame
+        _augStatus = string.format('Set up %s.lua for dlac (backup %s.lua.flbak). Reload LuaAshitacast to apply.', abbr, abbr);
         pcall(function() print('[dlac] ' .. _augStatus); end);
     else
         _augStatus = 'Migrate: could not write ' .. jf;
@@ -912,8 +934,11 @@ local function renderHeaderButtons()
     if imgui.Button('Augs##hdr', { W[5], 22 }) then dumpAugs(); end
     if imgui.IsItemHovered() then imgui.SetTooltip('Dump all your augmented gear (name + id + decoded augments) to\naugdump.txt in your dlac folder -- share it to identify unknown augment ids.'); end
     imgui.SameLine(0, gap);
-    if imgui.Button('->dlac##hdr', { W[6], 22 }) then migrateCurrentJob(); end
-    if imgui.IsItemHovered() then imgui.SetTooltip('Convert your current job\'s LuaAshitacast profile from ffxi-lac to dlac:\nrepoints its requires + adds the dlac addon lib to package.path, and seeds\nyour <char>\\dlac\\ folder with gear/gcinclude. Backup: <JOB>.lua.flbak.\nReload LuaAshitacast afterward.'); end
+    local needSetup = (jobSetupState() ~= 'ok');
+    if needSetup and ImGuiCol_Button ~= nil then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
+    if imgui.Button('Setup##hdr', { W[6], 22 }) then migrateCurrentJob(); end
+    if needSetup and ImGuiCol_Button ~= nil then imgui.PopStyleColor(1); end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Set up this job\'s LuaAshitacast profile so dlac can drive it: points the\nprofile at the dlac library and seeds your character\'s dlac config folder.\nBacks up the original as <JOB>.lua.flbak. Reload LuaAshitacast afterward.'); end
 end
 
 -- ---------------------------------------------------------------------------
@@ -2023,6 +2048,13 @@ local function drawWindow()
         renderHeaderButtons();
         if _augStatus ~= nil and _augStatus ~= '' then
             imgui.TextColored(COL_SCORE, esc(_augStatus));
+        end
+        do  -- prominent warning when the current job isn't wired for dlac yet
+            local _st = jobSetupState();
+            if _st == 'ffxilac' or _st == 'none' then
+                local _, _ab = jobFile();
+                imgui.TextColored(COL_ERR, string.format('  [!]  %s.lua is NOT set up for dlac -- click the red "Setup" button (top-right) to initialize it.', tostring(_ab or '?')));
+            end
         end
         imgui.Separator();
 
