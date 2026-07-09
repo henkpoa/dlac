@@ -580,25 +580,10 @@ local function renderEntry(rec)
         end
     end
 
-    local hints, body = parseStatHints(rec.Description, rec.IsWeapon);
-    add('    Stats = {');
-    if rec.IsWeapon then
-        add(string.format('        DMG = %d,', rec.Damage or 0));
-        add(string.format('        Delay = %d,', rec.Delay or 0));
-    end
-    for _, h in ipairs(hints) do
-        if h.recognized and M.AutoApproveKnownStats then
-            add(string.format('        %s = %s,', h.key, tostring(h.value)));        -- live: you already use this stat
-        else
-            add(string.format('        -- %s = %s,', h.key, tostring(h.value)));     -- commented: verify then uncomment
-        end
-    end
-    if body ~= nil and body ~= '' then
-        add('        -- raw: ' .. body);
-    elseif #hints == 0 and not rec.IsWeapon then
-        add('        -- (enrich from bg-wiki)');
-    end
-    add('    },');
+    -- No Stats block on purpose (Phase 2): item stats -- including weapon DMG/Delay -- come
+    -- from the global catalog (catalog.lua) by Id, which carries them for every item. gear.lua
+    -- stays a thin ownership record; the GUI and optimizer derive stats at load (buildOwned
+    -- merges the catalog in), so nothing is re-parsed per user.
     add('}');
 
     return { path = path, key = key, lua = table.concat(L, '\n') };
@@ -1206,7 +1191,7 @@ function M.sync()
 end
 
 -- ---------------------------------------------------------------------------
--- Command hook:  /dl scan | preview | stage | commit | fix | dedupe | autostat
+-- Command hook:  /dl scan | preview | stage | commit | fix | dedupe
 -- Self-contained and additive -- it does not touch utils.lua's own handler, and
 -- only acts on its own subcommands, leaving everything else alone.
 -- ---------------------------------------------------------------------------
@@ -1227,21 +1212,9 @@ ashita.events.register('command', 'dlac-import', function(e)
     end
 
     local sub = args[1];
-    if sub ~= 'scan' and sub ~= 'preview' and sub ~= 'autostat' and sub ~= 'stage' and sub ~= 'commit' and sub ~= 'fix' and sub ~= 'dedupe' then return; end   -- leave others to utils.lua
+    if sub ~= 'scan' and sub ~= 'preview' and sub ~= 'stage' and sub ~= 'commit' and sub ~= 'fix' and sub ~= 'dedupe' then return; end   -- leave others to utils.lua
 
     e.blocked = true;
-    if sub == 'autostat' then
-        if args[2] == 'off' then
-            M.AutoApproveKnownStats = false;
-            print('[dlac] autostat OFF -- all parsed stats stay commented.');
-        elseif args[2] == 'on' then
-            M.AutoApproveKnownStats = true;
-            print('[dlac] autostat ON -- stats you already use come out live.');
-        else
-            print('[dlac] autostat is ' .. (M.AutoApproveKnownStats and 'ON' or 'OFF') .. '  (use: /dl autostat on|off)');
-        end
-        return;
-    end
     if sub == 'preview' then
         M.preview();
         return;

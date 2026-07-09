@@ -286,34 +286,52 @@ local function buildAllEquip()
     return _allEquip;
 end
 
--- Owned gear (gear.lua): Equipped alternatives, Sets candidates, equipped-item lookups.
-local _owned, _ownedById, _ownedByName;
-local function buildOwned()
-    if _owned == nil then
-        _owned, _ownedById, _ownedByName = flattenGear(gear);
-        -- Fill in stats from the catalog. A freshly-imported gear.lua usually has EMPTY Stats:
-        -- the scanner only emits a stat "live" when its name already exists somewhere in your
-        -- gear.lua, so a first-ever scan comments every stat out. The catalog is the
-        -- authoritative source, so merge it in per record -- catalog as the base, your own
-        -- gear.lua values overriding key-by-key (owned always wins; the catalog only fills gaps).
-        -- flattenGear shares one record across list + byId, so this reaches wornSetTotals too.
-        if hasCatalog then
-            buildAllEquip();   -- ensure the catalog id-index (_allEquipById) exists
-            for _, rec in ipairs(_owned) do
-                local c = rec.Id ~= nil and _allEquipById[rec.Id] or nil;
-                if c ~= nil and type(c.Stats) == 'table' and next(c.Stats) ~= nil then
-                    local merged = {};
-                    for k, v in pairs(c.Stats) do merged[k] = v; end
-                    if type(rec.Stats) == 'table' then
-                        for k, v in pairs(rec.Stats) do merged[k] = v; end
+-- Fill the RAW gear table with catalog stats, in place, once. A Phase-2 gear.lua carries no
+-- Stats (owned is a thin ownership record); the catalog has stats for every item by Id. We
+-- mutate the shared `gear` table so BOTH the GUI (flattenGear copies e.Stats) and the
+-- optimizer (gearoptim reads the same table) see stats. catalog is the base; a stat already
+-- on the entry wins (owned overrides, catalog only fills gaps).
+local _gearEnriched = false;
+local function enrichGearFromCatalog()
+    if _gearEnriched or not hasCatalog then return; end
+    buildAllEquip();   -- ensure the catalog id-index (_allEquipById) exists
+    local function walk(container)
+        for _, v in pairs(container) do
+            if type(v) == 'table' then
+                if v.Id ~= nil and v.Name ~= nil then                       -- an item entry
+                    local c = _allEquipById[v.Id];
+                    if c ~= nil and type(c.Stats) == 'table' and next(c.Stats) ~= nil then
+                        if type(v.Stats) ~= 'table' or next(v.Stats) == nil then
+                            v.Stats = c.Stats;
+                        else
+                            local m = {};
+                            for k, x in pairs(c.Stats) do m[k] = x; end
+                            for k, x in pairs(v.Stats) do m[k] = x; end
+                            v.Stats = m;
+                        end
                     end
-                    rec.Stats = merged;
+                else                                                        -- a slot/category table
+                    walk(v);
                 end
             end
         end
     end
+    for _, sv in pairs(gear) do   -- includes NameToObject, so gearoptim's name-keyed reads see stats too
+        if type(sv) == 'table' then walk(sv); end
+    end
+    _gearEnriched = true;
+end
+
+-- Owned gear (gear.lua): Equipped alternatives, Sets candidates, equipped-item lookups.
+local _owned, _ownedById, _ownedByName;
+local function buildOwned()
+    if _owned == nil then
+        enrichGearFromCatalog();   -- raw gear gets catalog stats before we flatten / score
+        _owned, _ownedById, _ownedByName = flattenGear(gear);
+    end
     return _owned;
 end
+pcall(enrichGearFromCatalog);   -- eager: gearui loads last, so raw gear is stat-ready before any use
 
 -- Resolve an item to a record (for tooltips / worn-set stats): owned first, then
 -- the full catalog. Id is authoritative; name is the fallback.
@@ -703,8 +721,11 @@ local function refreshGear()
             for k in pairs(gear) do gear[k] = nil; end   -- refresh the shared gear table in place
             for k, v in pairs(g)  do gear[k] = v;   end
             package.loaded['dlac\\gear'] = gear;
-            _owned, _ownedById, _ownedByName = nil, nil, nil;   -- force rebuild (re-enriched from catalog)
+            _gearEnriched = false;             -- new (statless) entries -> re-enrich raw gear
+            enrichGearFromCatalog();
+            _owned, _ownedById, _ownedByName = nil, nil, nil;   -- force rebuild off the enriched gear
             refreshOwnedCounts();
+            pcall(function() if hasOptim and type(optim.invalidate) == 'function' then optim.invalidate(); end end);
         end
     end);
 end

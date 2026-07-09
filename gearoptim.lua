@@ -92,6 +92,10 @@ local function statSpellings()
     return _statSpelling;
 end
 
+-- Reset caches derived from gear.lua's stats. gearui calls this after re-enriching the raw
+-- gear table from the catalog (e.g. on Commit), so newly-owned stat names resolve.
+function M.invalidate() _statSpelling = nil; end
+
 -- Normalize a user/stored stat name to gear.lua's spelling (case-insensitive). An
 -- unknown stat is returned unchanged, so you can still weight something rare.
 local function canonStat(key)
