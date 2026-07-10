@@ -51,8 +51,8 @@ Named switches that triggers can match. Two kinds:
 
 - **Toggles** (e.g. `DT`) — on/off; overlay your damage-taken set over whatever else
   won. Highest priority: manual intent always wins.
-- **Cycles** (e.g. `Weapon`: Caster → SoloKC → DualKC) — an ordered value list, exactly
-  one active; rules match a value with `mode = Weapon:SoloKC`. This replaces the classic
+- **Cycles** (e.g. `Weapon`: Melee → Ranged → Caster) — an ordered value list, exactly
+  one active; rules match a value with `mode = Weapon:Melee`. This replaces the classic
   hand-written "variant table + HandleCommand arithmetic" pattern entirely.
 
 Flip them from the Triggers tab buttons (cycles show their current value), by chat/macro

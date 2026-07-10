@@ -484,7 +484,7 @@ local function renderModePopup()
                 modeUI.valInput[1] = '';
             end
         end
-        if imgui.IsItemHovered() then imgui.SetTooltip('Type one value (e.g. Caster) and click + value. Repeat for each.'); end
+        if imgui.IsItemHovered() then imgui.SetTooltip('Type one value (e.g. Melee) and click + value. Repeat for each\n(Ranged, Caster, ...).'); end
     else
         imgui.TextColored(COL_DIM, 'Overlay set (optional)'); imgui.SameLine(0, 8);
         imgui.PushItemWidth(150);
@@ -761,7 +761,7 @@ function M.render(job, level)
     -- Modes strip. Two kinds:
     --   toggles -- any mode referenced by a rule: green ON / grey off button.
     --   cycles  -- defined in trig.data.Modes with a values list: the button shows the
-    --              CURRENT value (e.g. "Weapon: SoloKC") and clicking advances it.
+    --              CURRENT value (e.g. "Weapon: Melee") and clicking advances it.
     local defs = trig.data.Modes or {};
     local modes, mseen = {}, {};
     for nm in pairs(defs) do
@@ -771,7 +771,7 @@ function M.render(job, level)
         for _, r in ipairs(trig.data[hh] or {}) do
             local m = r.when and r.when.mode;
             if type(m) == 'string' then
-                m = m:match('^([^:]+)') or m;                  -- 'Weapon:SoloKC' -> 'Weapon'
+                m = m:match('^([^:]+)') or m;                  -- 'Weapon:Melee' -> 'Weapon'
                 if not mseen[string.lower(m)] then
                     mseen[string.lower(m)] = true; modes[#modes + 1] = m;
                 end

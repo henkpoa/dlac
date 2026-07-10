@@ -149,7 +149,7 @@ local MATCHERS = {
     mode            = function(v, ctx)
         local s = tostring(v);
         local p = string.find(s, ':', 1, true);
-        if p ~= nil then                               -- 'Weapon:SoloKC' -> cycle mode holds that value
+        if p ~= nil then                               -- 'Weapon:Melee' -> cycle mode holds that value
             local cur = M.modes[string.lower(string.sub(s, 1, p - 1))];
             return type(cur) == 'string' and ci(cur, string.sub(s, p + 1));
         end
@@ -314,7 +314,7 @@ local function ensureLoaded()
     local rules, warns = normalize(t);
     _trig.rules, _trig.err = rules, nil;
     -- Modes section: cycle-mode definitions + optional keybinds.
-    --   Modes = { Weapon = { values = { 'Caster', 'SoloKC' }, bind = '^F3' },
+    --   Modes = { Weapon = { values = { 'Melee', 'Ranged', 'Caster' }, bind = '^F3' },
     --             DT = { bind = 'F9' } }          (array shorthand = values)
     _trig.modeDefs = {};
     local md = t.Modes or t.modes;

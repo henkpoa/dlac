@@ -35,7 +35,7 @@ A `dlac:`-prefixed marker string occupying a set's slot in place of an item; the
 _Avoid_: slot function (Henrik's coinage for the idea — canonicalized to this term)
 
 **Mode**:
-A named, player-controlled switch that Triggers can match — how manual intent enters the otherwise-automatic dispatch. Either a *toggle* (on/off, e.g. `DT`) or a *cycle* (an ordered value list with exactly one value active, e.g. `Weapon`: Caster→SoloKC; matched as `Weapon:SoloKC`).
+A named, player-controlled switch that Triggers can match — how manual intent enters the otherwise-automatic dispatch. Either a *toggle* (on/off, e.g. `DT`) or a *cycle* (an ordered value list with exactly one value active, e.g. `Weapon`: Melee→Ranged→Caster; matched as `Weapon:Melee`).
 _Avoid_: stance, variant table
 
 **Overlay**:
