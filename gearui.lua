@@ -695,33 +695,37 @@ end
 
 local function lacSlot(label) return string.lower(tostring(label or '')); end
 
+-- The native game /equip command does NOT use lac's ear1/ear2/ring1/ring2 names --
+-- retail slots are lear/rear/lring/rring. Translate when talking to the game.
+local NATIVE_SLOT = { ear1 = 'lear', ear2 = 'rear', ring1 = 'lring', ring2 = 'rring' };
+
 -- Equip an item into a slot. Three modes:
 --   freeEquip -- LAC is globally disabled (Free-equip mode); send the *native* game
 --                /equip command so it bypasses LAC entirely and sticks (LAC won't
 --                re-override while disabled). This is the "equip outside LAC" path.
---   lock      -- /lac disable the slot ONCE (tracked, so repeat clicks don't re-disable
---                and spam "<slot> disabled"), then native /equip so LAC leaves it put.
+--   lock      -- lock the slot ENGINE-SIDE (/dl lock: the dispatch engine strips it
+--                from every set it equips -- this is what actually holds, and it's
+--                what the mirror displays), plus /lac disable as belt-and-suspenders
+--                against any legacy hand-written EquipSet calls in the profile, then
+--                native /equip. alreadyLocked (from the engine's mirror, so it resets
+--                correctly when LAC reloads) skips the re-lock spam.
 --   default   -- /lac equip temp-swap (LAC may re-override on the next action).
--- Per-slot lock state: slots we've already /lac disabled (cleared on enable -- see below).
-local _disabledSlots = {};
-local function equipToSlot(slotLabel, itemName, lock, freeEquip)
+local function equipToSlot(slotLabel, itemName, lock, freeEquip, alreadyLocked)
     if slotLabel == nil or itemName == nil then return; end
-    local slot = lacSlot(slotLabel);
-    local nm   = tostring(itemName);
+    local slot   = lacSlot(slotLabel);
+    local native = NATIVE_SLOT[slot] or slot;
+    local nm     = tostring(itemName);
     if freeEquip then
         pcall(function()
-            AshitaCore:GetChatManager():QueueCommand(1, string.format('/equip %s "%s"', slot, nm));
+            AshitaCore:GetChatManager():QueueCommand(1, string.format('/equip %s "%s"', native, nm));
         end);
     elseif lock then
-        -- Lock this one slot: /lac disable it (only the FIRST time -- tracked in
-        -- _disabledSlots so repeat clicks don't re-send /lac disable), then native /equip
-        -- so LAC leaves just this slot put. Uncheck "Lock when equipped" to re-enable it.
-        if _disabledSlots[slot] then
-            enqueueCmd(2, string.format('/equip %s "%s"', slot, nm));          -- already locked; just equip
+        if alreadyLocked then
+            enqueueCmd(2, string.format('/equip %s "%s"', native, nm));        -- locked; just equip
         else
-            enqueueCmd(2,  string.format('/lac disable %s', slot));            -- disable once...
-            enqueueCmd(26, string.format('/equip %s "%s"', slot, nm));         -- ...then equip after it settles
-            _disabledSlots[slot] = true;
+            enqueueCmd(2,  string.format('/dl lock %s on', slot));             -- engine lock (the real hold)
+            enqueueCmd(4,  string.format('/lac disable %s', slot));            -- belt for legacy profile code
+            enqueueCmd(26, string.format('/equip %s "%s"', native, nm));       -- then equip after it settles
         end
     else
         pcall(function()
@@ -966,6 +970,28 @@ local function charBase()
         end
     end);
     return base;
+end
+
+-- Engine-owned slot locks, read from the modestate mirror (__locks). The ENGINE is
+-- the source of truth -- its session resets on LAC reload, so this view (unlike the
+-- old addon-side _disabledSlots table, which outlived LAC reloads and made "Lock when
+-- equipped" silently skip re-locking) can never go stale. Throttled to ~1 read/second.
+local _lockMirror = { at = -1, locks = {} };
+local function engineLocks()
+    local now = os.time();
+    if now == _lockMirror.at then return _lockMirror.locks; end
+    _lockMirror.at = now;
+    local locks = {};
+    pcall(function()
+        local base = charBase();
+        if base == nil then return; end
+        local chunk = loadfile(base .. 'dlac\\modestate.lua');
+        if chunk == nil then return; end
+        local ok, t = pcall(chunk);
+        if ok and type(t) == 'table' and type(t.__locks) == 'table' then locks = t.__locks; end
+    end);
+    _lockMirror.locks = locks;
+    return locks;
 end
 
 -- Current main job's <JOB>.lua path + its abbr (or nil, nil).
@@ -1493,7 +1519,9 @@ local function renderEquippedTab(job, level)
     if ui._freePrev ~= nil and ui._freePrev ~= ui.freeEquip[1] then
         local cmd = (ui.freeEquip[1] == true) and '/lac disable' or '/lac enable';
         pcall(function() AshitaCore:GetChatManager():QueueCommand(1, cmd); end);
-        _disabledSlots = {};   -- a global enable/disable resets per-slot lock tracking
+        if ui.freeEquip[1] == false then               -- leaving free-equip clears engine locks too
+            pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl lock all off'); end);
+        end
     end
     ui._freePrev = ui.freeEquip[1];
     if ui.freeEquip[1] == true then
@@ -1531,7 +1559,15 @@ local function renderEquippedTab(job, level)
         for _, s in ipairs(EQUIP_SLOTS) do if s.label == ui.eqSelected then slDef = s; break; end end
         local eqId = slDef and getEquippedId(slDef.equip) or nil;
 
+        local slotLocked = (engineLocks()[lacSlot(ui.eqSelected)] == true);
         imgui.TextColored(COL_HEADER, ui.eqSelected .. ' slot');
+        if slotLocked then
+            imgui.SameLine(0, 8);
+            imgui.TextColored(COL_ERR, '[LOCKED]');
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('The dlac engine will not equip into this slot (locked).\nUncheck "Lock when equipped" to release it, or /dl lock ' .. lacSlot(ui.eqSelected) .. ' off.');
+            end
+        end
         if eqId ~= nil then
             renderIcon(eqId, 24);
             imgui.TextColored(COL_USABLE, esc(displayName(eqId) or ('#' .. tostring(eqId))));
@@ -1563,12 +1599,15 @@ local function renderEquippedTab(job, level)
         local prevLock = ui._lockPrev;
         imgui.Checkbox('Lock when equipped', ui.lockEquipped);
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('While on, clicking an alternative /lac disables just this slot and equips it\nvia the game\'s native /equip, so LAC leaves it put. Uncheck to /lac enable it.');
+            imgui.SetTooltip('While on, clicking an alternative LOCKS this slot (the dlac engine stops\nequipping into it, /lac disable covers legacy profile code) and equips it via\nthe game\'s native /equip -- so it stays put. Uncheck to release the slot.');
         end
         if prevLock == true and ui.lockEquipped[1] == false then
             local s = ui.eqSelected and lacSlot(ui.eqSelected) or 'all';
-            pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/lac enable ' .. s); end);
-            if s == 'all' then _disabledSlots = {}; else _disabledSlots[s] = nil; end   -- re-enabled; forget it
+            pcall(function()
+                AshitaCore:GetChatManager():QueueCommand(1, '/dl lock ' .. s .. ' off');
+                AshitaCore:GetChatManager():QueueCommand(1, '/lac enable ' .. s);
+            end);
+            _lockMirror.at = -1;   -- re-read the engine mirror promptly
         end
         ui._lockPrev = ui.lockEquipped[1];
 
@@ -1582,7 +1621,8 @@ local function renderEquippedTab(job, level)
         else
             for i, rec in ipairs(alts) do
                 if renderAltRow(rec, i, job, level) then
-                    equipToSlot(ui.eqSelected, rec.Name, ui.lockEquipped[1] == true, ui.freeEquip[1] == true);
+                    equipToSlot(ui.eqSelected, rec.Name, ui.lockEquipped[1] == true, ui.freeEquip[1] == true, slotLocked);
+                    _lockMirror.at = -1;   -- lock state may just have changed
                 end
             end
         end

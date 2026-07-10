@@ -32,14 +32,25 @@ local M = {};
 -- LAC-state copy stamps its version into the modestate mirror; the GUI compares
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code (the seeded file only re-requires when LuaAshitacast itself reloads).
-M.VERSION = 2;
+M.VERSION = 3;
 
 -- ---------------------------------------------------------------------------
 -- State
 -- ---------------------------------------------------------------------------
 M.modes = {};   -- session-only mode state: lower(name) -> true (toggle) or 'Value' (cycle).
                 -- Reset on load by design (cycle modes re-default to their first value).
+M.locks = {};   -- session-only SLOT LOCKS: lower(lac slot name) -> true. A locked slot is
+                -- stripped from every set/inline payload the engine equips, so nothing
+                -- dispatch-driven can overwrite a manual equip. /dl lock drives it; the
+                -- Equipped tab's "Lock when equipped" sends that command. Mirrored to
+                -- modestate.lua (__locks) for GUI display; reset on LAC reload like modes.
 local saveModeState;   -- defined in the mode section below; used by the trigger loader
+
+-- The 16 lac slot names (also the /dl lock vocabulary; 'all' fans out to every one).
+local LAC_SLOTS = { 'main', 'sub', 'range', 'ammo', 'head', 'neck', 'ear1', 'ear2',
+                    'body', 'hands', 'ring1', 'ring2', 'back', 'waist', 'legs', 'feet' };
+local LAC_SLOT_OK = {};
+for _, s in ipairs(LAC_SLOTS) do LAC_SLOT_OK[s] = true; end
 
 local EVENTS = { 'Default', 'Precast', 'Midcast', 'Ability', 'Item', 'Weaponskill', 'Preshot', 'Midshot' };
 local EVENT_CANON = {};
@@ -490,17 +501,28 @@ local function resolveVirtual(marker, ctx)
     return nil, 'unknown marker';
 end
 
--- Equip a set table, resolving virtual entries. Sets without markers pass through
--- untouched (zero copies); with markers, a shallow copy carries the resolutions.
--- BuildDynamicSets encodes the slot's regular best-by-level pick as a fallback
--- ('dlac:AutoStaff|Maple Wand'): an unresolvable virtual equips the fallback -- so
--- being under-leveled for every iridescence weapon / obi never blocks the slot --
--- and only with no fallback at all is the slot dropped (LAC leaves what's worn).
--- Returns a trace note ('' when nothing was virtual).
+-- Equip a set table, resolving virtual entries and honouring SLOT LOCKS. Sets that
+-- need neither pass through untouched (zero copies); otherwise a shallow copy carries
+-- the changes. BuildDynamicSets encodes the slot's regular best-by-level pick as a
+-- fallback ('dlac:AutoStaff|Maple Wand'): an unresolvable virtual equips the fallback
+-- -- so being under-leveled for every iridescence weapon / obi never blocks the slot
+-- -- and only with no fallback at all is the slot dropped (LAC leaves what's worn).
+-- LOCKED slots (/dl lock, the Equipped tab's "Lock when equipped") are stripped
+-- outright: the engine never sends gear into them, so a manual equip stays put.
+-- Returns a trace note ('' when nothing was virtual/locked).
 local function equipResolved(s, ctx)
     local out, notes = nil, nil;
+    local anyLocks = (next(M.locks) ~= nil);
     for slot, v in pairs(s) do
-        if type(v) == 'string' and string.lower(string.sub(v, 1, 5)) == 'dlac:' then
+        if anyLocks and M.locks[string.lower(tostring(slot))] == true then
+            if out == nil then
+                out = {};
+                for k2, v2 in pairs(s) do out[k2] = v2; end
+            end
+            out[slot] = nil;                           -- locked: the engine leaves it alone
+            notes = notes or {};
+            notes[#notes + 1] = string.format('%s=LOCKED (kept as worn)', tostring(slot));
+        elseif type(v) == 'string' and string.lower(string.sub(v, 1, 5)) == 'dlac:' then
             if out == nil then
                 out = {};
                 for k2, v2 in pairs(s) do out[k2] = v2; end
@@ -527,6 +549,23 @@ local function equipResolved(s, ctx)
         note = '  [' .. table.concat(notes, ', ') .. ']';
     end
     return note, (out or s);   -- the table actually equipped (for slot attribution)
+end
+
+-- Flip a slot lock. slot: one of LAC_SLOTS or 'all'; state nil = toggle. Returns the
+-- new state (for 'all': the state applied), or nil for an unknown slot name.
+function M.setLock(slot, state)
+    slot = string.lower(tostring(slot or ''));
+    if slot == 'all' then
+        if state == nil then state = (next(M.locks) == nil); end   -- toggle: all on if none on
+        for _, s in ipairs(LAC_SLOTS) do M.locks[s] = (state == true) or nil; end
+        saveModeState();
+        return state == true;
+    end
+    if not LAC_SLOT_OK[slot] then return nil; end
+    if state == nil then state = not (M.locks[slot] == true); end
+    M.locks[slot] = (state == true) or nil;
+    saveModeState();
+    return M.locks[slot] == true;
 end
 
 -- Force a re-read on the next dispatch (the GUI pings /dl triggers reload on commit).
@@ -626,7 +665,10 @@ function M.dispatch(event)
         -- signature changes (Default dispatches per frame -- keep the GC quiet).
         local sig = {};
         for _, r in ipairs(hits) do sig[#sig + 1] = r.ord; end
-        sig = event .. ':' .. table.concat(sig, ',');
+        local lk = {};
+        for s in pairs(M.locks) do lk[#lk + 1] = s; end   -- lock changes must retrace too
+        table.sort(lk);
+        sig = event .. ':' .. table.concat(sig, ',') .. '|' .. table.concat(lk, ',');
         local old = _trace[event];
         local retrace = (old == nil) or (old.sig ~= sig) or (event ~= 'Default');
         local lines = retrace and {} or old.lines;
@@ -785,6 +827,10 @@ saveModeState = function()
         local dir = charDir();
         if dir == nil then return; end
         local parts = { string.format('["__version"] = %d,', M.VERSION) };   -- engine handshake
+        local lk = {};
+        for s in pairs(M.locks) do lk[#lk + 1] = string.format('[%q] = true,', s); end
+        table.sort(lk);
+        parts[#parts + 1] = '["__locks"] = { ' .. table.concat(lk, ' ') .. ' },';   -- slot locks
         for m, v in pairs(M.modes) do
             if v == true then parts[#parts + 1] = string.format('[%q] = true,', m);
             elseif type(v) == 'string' then parts[#parts + 1] = string.format('[%q] = %q,', m, v); end
@@ -895,8 +941,32 @@ if inLac() then
         local args = {};
         for a in string.gmatch(string.sub(e.command, start), '%S+') do args[#args + 1] = a; end
         local sub = args[1] and string.lower(args[1]) or nil;
-        if sub ~= 'mode' and sub ~= 'why' and sub ~= 'triggers' and sub ~= 'env' then return; end
+        if sub ~= 'mode' and sub ~= 'why' and sub ~= 'triggers' and sub ~= 'env' and sub ~= 'lock' then return; end
         e.blocked = true;
+
+        if sub == 'lock' then   -- slot locks: the engine stops equipping into them
+            local slot = args[2] and string.lower(args[2]) or nil;
+            if slot == nil then
+                local out = {};
+                for s in pairs(M.locks) do out[#out + 1] = s; end
+                table.sort(out);
+                print('[dlac] locked slots: ' .. ((#out > 0) and table.concat(out, ', ') or '(none)')
+                    .. '   (/dl lock <slot|all> [on|off|toggle])');
+                return;
+            end
+            local a3 = args[3] and string.lower(args[3]) or nil;
+            local state = nil;                       -- default: toggle
+            if a3 == 'on' then state = true; elseif a3 == 'off' then state = false; end
+            local res = M.setLock(slot, state);
+            if res == nil then
+                print('[dlac] unknown slot: ' .. slot .. '  (main/sub/range/ammo/head/neck/ear1/ear2/body/hands/ring1/ring2/back/waist/legs/feet or all)');
+            else
+                print(string.format('[dlac] lock %s %s -- the engine %s equip into %s',
+                    slot, res and 'ON' or 'OFF', res and 'will NOT' or 'may again',
+                    (slot == 'all') and 'any slot' or ('the ' .. slot .. ' slot')));
+            end
+            return;
+        end
 
         if sub == 'env' then   -- day/weather as the engine sees it (the obi's decision input)
             local env = nil;

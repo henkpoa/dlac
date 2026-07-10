@@ -82,6 +82,7 @@ re-detected automatically on login/job change.
 |---|---|
 | `/dl ui` | Open/close the GUI |
 | `/dl mode <name> [on\|off\|toggle]` | Flip a mode (no name: list active modes) |
+| `/dl lock <slot\|all> [on\|off\|toggle]` | Lock a slot: the engine stops equipping into it (no arg: list locks) |
 | `/dl why` | Explain the last dispatch per handler — what matched, what equipped |
 | `/dl env` | Day/weather as dlac sees it + per-element obi math |
 | `/dl triggers reload\|init\|path` | Force re-read / seed / locate the trigger file |
