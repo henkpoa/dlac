@@ -732,14 +732,16 @@ function M.serializeStaging(items)
 end
 
 -- Scan, generate, write the staging file, and load-check it.
-function M.stage(containers)
+-- quiet: suppress the informational narration (the AUTO-sync path uses this --
+-- it is release behavior, not a debugging pipeline). Errors always print.
+function M.stage(containers, quiet)
     local items = M.scan(containers);
     local newItems = {};
     for _, it in ipairs(items) do
         if not it.Known then table.insert(newItems, it); end
     end
     if #newItems == 0 then
-        print('[dlac] stage: nothing new -- everything scanned is already in gear.lua.');
+        if not quiet then print('[dlac] stage: nothing new -- everything scanned is already in gear.lua.'); end
         return;
     end
 
@@ -771,12 +773,16 @@ function M.stage(containers)
     end
 
     local staged = #newItems - #skipped;
-    print(string.format('[dlac] staged %d new item(s) -> gear_staging.lua  [load-check: %s]', staged, status));
-    for _, s in ipairs(skipped) do
-        print(string.format('  ! skipped %s: %s', tostring(s.name), tostring(s.reason)));
+    if not quiet or status ~= 'OK' then   -- a failed load-check must surface even on auto-sync
+        print(string.format('[dlac] staged %d new item(s) -> gear_staging.lua  [load-check: %s]', staged, status));
     end
-    if status == 'OK' then
-        print('[dlac] review gear_staging.lua by your profile, then (soon) /dl commit will merge it.');
+    if not quiet then
+        for _, s in ipairs(skipped) do
+            print(string.format('  ! skipped %s: %s', tostring(s.name), tostring(s.reason)));
+        end
+        if status == 'OK' then
+            print('[dlac] review gear_staging.lua by your profile, then (soon) /dl commit will merge it.');
+        end
     end
 end
 
@@ -892,13 +898,16 @@ local function readFile(p) local f = io.open(p, 'r'); if f == nil then return ni
 local function writeFile(p, t) local f = io.open(p, 'w'); if f == nil then return false; end f:write(t); f:close(); return true; end
 local function parses(text) local c = (loadstring or load)(text); return c ~= nil; end
 
-function M.commit()
+-- quiet: only the success narration is suppressed (auto-sync); every abort/failure
+-- prints regardless -- a user must never lose data silently.
+function M.commit(quiet)
     local gpath, spath = gearPath(), stagingPath();
     if gpath == nil then print('[dlac] commit: profile path unavailable (are you logged in?).'); return; end
 
     local stagingText = readFile(spath);
     if stagingText == nil or stagingText:match('^%s*$') or stagingText:match('^%s*return%s*{%s*}%s*$') then
-        print('[dlac] commit: staging is empty -- run /dl stage first.'); return;
+        if not quiet then print('[dlac] commit: staging is empty -- run /dl stage first.'); end
+        return;
     end
     if not parses(stagingText) then print('[dlac] commit: staging file does not parse; aborting.'); return; end
 
@@ -947,9 +956,11 @@ function M.commit()
 
     writeFile(spath, 'return {}\n');   -- clear staging so it can't commit twice
 
-    local extra = (#report.created > 0) and (' (new sections: ' .. table.concat(report.created, ', ') .. ')') or '';
-    print(string.format('[dlac] committed %d entr%s into gear.lua%s.', report.inserted, (report.inserted == 1 and 'y' or 'ies'), extra));
-    print('[dlac] backup: ' .. backupPath .. '  --  run /dl r to load.');
+    if not quiet then
+        local extra = (#report.created > 0) and (' (new sections: ' .. table.concat(report.created, ', ') .. ')') or '';
+        print(string.format('[dlac] committed %d entr%s into gear.lua%s.', report.inserted, (report.inserted == 1 and 'y' or 'ies'), extra));
+        print('[dlac] backup: ' .. backupPath .. '  --  run /dl r to load.');
+    end
 end
 
 -- ---------------------------------------------------------------------------
@@ -1293,8 +1304,8 @@ function M.sync()
         local newCount = 0;
         for _, it in ipairs(items) do if not it.Known then newCount = newCount + 1; end end
         if newCount == 0 then return; end     -- nothing new -> silent no-op
-        M.stage();
-        M.commit();
+        M.stage(nil, true);                   -- quiet: auto-sync is release behavior,
+        M.commit(true);                       -- not the manual debugging pipeline
         added = newCount;
     end);
     return added;

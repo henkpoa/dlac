@@ -2720,7 +2720,10 @@ local function autoSyncOnJobChange()
     end
     if _syncDueFrame ~= nil and frameCounter >= _syncDueFrame then
         _syncDueFrame = nil;
-        doSync();
+        local added = doSync();
+        if added > 0 then   -- one friendly line; the import pipeline itself runs quiet now
+            pcall(function() print(string.format('[dlac] gear library: +%d new item(s).', added)); end);
+        end
     end
 end
 
