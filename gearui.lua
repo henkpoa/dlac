@@ -922,8 +922,30 @@ local function renderItemTooltip(rec)
         local jt = jobsText(rec.Jobs);
         if jt == 'All' then jt = 'All Jobs'; end
         imgui.TextColored(COL_JOBS, string.format('Lv.%s %s', tostring(rec.Level or 0), jt));
-        if isStored(rec) then
-            imgui.TextColored(COL_ERR, 'IN STORAGE -- move to Inventory/Wardrobe to equip');
+        -- WHERE the item lives (every owned copy): red when only in storage, dim when
+        -- equippable -- so "which wardrobe is it in" never needs a bag hunt.
+        if rec.Id ~= nil then
+            ownedCounts();                             -- ensure the split cache is populated
+            local w = _ownedCounts and _ownedCounts.where and _ownedCounts.where[rec.Id] or nil;
+            if w ~= nil then
+                local locs = '';
+                pcall(function()
+                    local okm, mod = pcall(require, "dlac\\gearimport");
+                    if not okm or type(mod.containerName) ~= 'function' then return; end
+                    local parts = {};
+                    for cid, n in pairs(w) do
+                        parts[#parts + 1] = mod.containerName(cid) .. ((n > 1) and (' x' .. n) or '');
+                    end
+                    table.sort(parts);
+                    locs = table.concat(parts, ', ');
+                end);
+                if isStored(rec) then
+                    imgui.TextColored(COL_ERR, 'IN STORAGE: ' .. esc((locs ~= '') and locs or '?')
+                        .. '  (move to Inventory/Wardrobe to equip)');
+                elseif locs ~= '' then
+                    imgui.TextColored(COL_DIM, 'Held: ' .. esc(locs));
+                end
+            end
         end
         if rec.Id ~= nil then                          -- private augments on your owned copy
             local al = ownedAugMap()[rec.Id];

@@ -351,12 +351,23 @@ function M.ownedCounts()
     return M.ownedSplit().avail;
 end
 
--- One pass over EVERY container -> { total = {id->n}, avail = {id->n} }.
+-- Human names for the container ids (tooltips: WHERE an item actually lives).
+local CONTAINER_NAMES = {
+    [0] = 'Inventory',  [1] = 'Mog Safe',    [2] = 'Storage',     [3] = 'Temporary',
+    [4] = 'Mog Locker', [5] = 'Mog Satchel', [6] = 'Mog Sack',    [7] = 'Mog Case',
+    [8] = 'Wardrobe',   [9] = 'Mog Safe 2',  [10] = 'Wardrobe 2', [11] = 'Wardrobe 3',
+    [12] = 'Wardrobe 4', [13] = 'Wardrobe 5', [14] = 'Wardrobe 6', [15] = 'Wardrobe 7',
+    [16] = 'Wardrobe 8',
+};
+function M.containerName(cid) return CONTAINER_NAMES[cid] or ('container ' .. tostring(cid)); end
+
+-- One pass over EVERY container -> { total = {id->n}, avail = {id->n}, where = {id->{cid->n}} }.
 --   total: owned anywhere (Safe/Storage/Locker/Satchel/... included) -- visibility.
 --   avail: Inventory + Wardrobes only -- equippability (pairing rules, automations,
 --          and the red "in storage" name colour when owned but 0 available).
+--   where: per-container counts, so tooltips can say WHICH bag holds the item.
 function M.ownedSplit()
-    local split = { total = {}, avail = {} };
+    local split = { total = {}, avail = {}, where = {} };
     local inv = AshitaCore:GetMemoryManager():GetInventory();
     if inv == nil then return split; end
     for _, cid in ipairs(M.ALL_CONTAINERS) do
@@ -371,6 +382,9 @@ function M.ownedSplit()
                     if AVAIL_SET[cid] then
                         split.avail[entry.Id] = (split.avail[entry.Id] or 0) + n;
                     end
+                    local w = split.where[entry.Id];
+                    if w == nil then w = {}; split.where[entry.Id] = w; end
+                    w[cid] = (w[cid] or 0) + n;
                 end
             end
         end
