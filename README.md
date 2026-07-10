@@ -87,6 +87,7 @@ re-detected automatically on login/job change.
 | `/dl env` | Day/weather as dlac sees it + per-element obi math |
 | `/dl triggers reload\|init\|path` | Force re-read / seed / locate the trigger file |
 | `/dl sync` | Import new gear from bags now (also runs automatically) |
+| `/dl prune` (then `/dl prune commit`) | Remove gear.lua entries for items you no longer own anywhere — dry-run first; checks every container incl. storage |
 | `/dl weight` / `best` | Stat-weight helpers for set auto-building |
 | `/dl set level main <n>` | Preview as another level |
 

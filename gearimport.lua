@@ -44,6 +44,14 @@ end
 -- so we don't document it here.
 M.SCAN_CONTAINERS = { 0, 8, 10, 11, 12, 13, 14, 15, 16 };
 
+-- EVERY container that can hold your property -- the ownership truth for /dl prune:
+-- Inventory(0), Safe(1)/Safe2(9), Storage(2), Temporary(3), Locker(4), Satchel(5),
+-- Sack(6), Case(7), and the 8 Wardrobes. Deliberately broader than SCAN_CONTAINERS:
+-- gear parked in deep storage is still OWNED and must never be pruned. (Gear stored
+-- OUTSIDE the container system -- e.g. with the Porter Moogle -- is invisible here;
+-- the prune dry-run warns about that.)
+M.ALL_CONTAINERS = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
+
 -- item.Slots is a bitmask -> map it to the gear.lua top-level slot key. Rings
 -- and earrings report a *combined* either-hand / either-ear mask, which is why
 -- the 0x1800 / 0x6000 entries exist alongside the single bits.
@@ -1170,6 +1178,94 @@ function M.dedupe()
     print('[dlac] backup: ' .. backupPath .. '  --  run /dl r to load.');
 end
 
+-- ---------------------------------------------------------------------------
+-- Prune (`/dl prune`): remove gear.lua entries for items you no longer own
+-- ANYWHERE. Ownership is checked against ALL_CONTAINERS (deep storage included),
+-- so only genuinely-gone gear -- old hand-added entries like a Mandau you never
+-- had, or things long since sold -- gets removed. Dry-run by default;
+-- `/dl prune commit` applies with the usual rails (backup + sandbox validation +
+-- atomic write via safeReplaceGear).
+-- ---------------------------------------------------------------------------
+
+-- Pure prune: gear.lua text + owned items -> newText, report, total. Matching
+-- mirrors computeFixes, inverted: an entry is KEPT when its Id matches an owned
+-- item's Id, or its Name / table key matches an owned item's Name / FullName /
+-- generated key (case-insensitive) -- so id-less hand-written entries survive as
+-- long as the item exists in a bag. Removed entries vanish whole (their
+-- startLine..endLine, like computeDedupe); every kept line is byte-identical.
+function M.computePrune(gearText, ownedItems)
+    local lines = toLines(gearText);
+    local entries = parseGearEntries(lines);
+
+    local ownedIds, ownedNames, ownedKeys = {}, {}, {};
+    for _, it in ipairs(ownedItems) do
+        if it.Id ~= nil then ownedIds[it.Id] = true; end
+        if it.Name ~= nil then ownedNames[string.lower(it.Name)] = true; end
+        if it.FullName ~= nil then ownedNames[string.lower(it.FullName)] = true; end
+        local k = makeKey(it.FullName or it.Name);
+        if k ~= nil then ownedKeys[string.lower(k)] = true; end
+    end
+
+    local removeLines, report, total = {}, {}, 0;
+    for _, e in ipairs(entries) do
+        local owned = false;
+        if e.Id ~= nil and ownedIds[e.Id] then owned = true; end
+        if not owned and e.Name ~= nil and ownedNames[string.lower(e.Name)] then owned = true; end
+        if not owned and ownedKeys[string.lower(e.key)] then owned = true; end
+        if not owned then
+            for ln = e.startLine, e.endLine do removeLines[ln] = true; end
+            total = total + 1;
+            report[#report + 1] = { parent = e.parent, key = e.key, name = e.Name, id = e.Id };
+        end
+    end
+
+    local out = {};
+    for idx = 1, #lines do if not removeLines[idx] then out[#out + 1] = lines[idx]; end end
+    return table.concat(out, '\n') .. '\n', report, total;
+end
+
+function M.prune(apply)
+    local gpath = gearPath();
+    if gpath == nil then print('[dlac] prune: profile path unavailable (are you logged in?).'); return; end
+    local gearText = readFile(gpath);
+    if gearText == nil then print('[dlac] prune: cannot read gear.lua.'); return; end
+
+    local owned = M.scan(M.ALL_CONTAINERS);
+    if type(owned) ~= 'table' or #owned == 0 then
+        -- An empty scan means the game isn't readable right now (zoning / char
+        -- select), NOT that you own nothing -- pruning on it would erase the file.
+        print('[dlac] prune ABORTED: the bag scan found nothing (zoning? not logged in?). gear.lua untouched.');
+        return;
+    end
+
+    local newText, report, total = M.computePrune(gearText, owned);
+    if total == 0 then
+        print(string.format('[dlac] prune: all entries match gear you own (checked %d items across every container).', #owned));
+        return;
+    end
+
+    print(string.format('[dlac] prune: %d entr%s match NOTHING in any container (equipped gear and deep storage were checked):',
+        total, (total == 1 and 'y' or 'ies')));
+    for _, r in ipairs(report) do
+        print(string.format('  %s.%s  "%s"%s', tostring(r.parent), tostring(r.key), tostring(r.name),
+            (r.id ~= nil) and ('  Id:' .. tostring(r.id)) or ''));
+    end
+    print('[dlac] note: gear stored OUTSIDE containers (e.g. Porter Moogle / delivery box) looks unowned here.');
+
+    if not apply then
+        print('[dlac] dry run -- nothing written. Run  /dl prune commit  to remove them (a backup is kept).');
+        return;
+    end
+
+    local backupPath, err = safeReplaceGear(gpath, newText, gearText);
+    if backupPath == nil then
+        print('[dlac] prune ABORTED: ' .. tostring(err) .. '. gear.lua untouched.');
+        return;
+    end
+    print(string.format('[dlac] pruned %d entr%s from gear.lua.', total, (total == 1 and 'y' or 'ies')));
+    print('[dlac] backup: ' .. backupPath .. '  --  run /dl r to load.');
+end
+
 -- Auto-sync: scan bags and, ONLY if there's new gear, stage + commit it into gear.lua.
 -- Returns the number of new items found (0 = nothing new -> no stage/commit, no output, no
 -- writes). ADD-ONLY: the scan only sees Inventory + Wardrobes (not Mog storage), so it grows
@@ -1191,7 +1287,7 @@ function M.sync()
 end
 
 -- ---------------------------------------------------------------------------
--- Command hook:  /dl scan | preview | stage | commit | fix | dedupe
+-- Command hook:  /dl scan | preview | stage | commit | fix | dedupe | prune
 -- Self-contained and additive -- it does not touch utils.lua's own handler, and
 -- only acts on its own subcommands, leaving everything else alone.
 -- ---------------------------------------------------------------------------
@@ -1212,7 +1308,7 @@ ashita.events.register('command', 'dlac-import', function(e)
     end
 
     local sub = args[1];
-    if sub ~= 'scan' and sub ~= 'preview' and sub ~= 'stage' and sub ~= 'commit' and sub ~= 'fix' and sub ~= 'dedupe' then return; end   -- leave others to utils.lua
+    if sub ~= 'scan' and sub ~= 'preview' and sub ~= 'stage' and sub ~= 'commit' and sub ~= 'fix' and sub ~= 'dedupe' and sub ~= 'prune' then return; end   -- leave others to utils.lua
 
     e.blocked = true;
     if sub == 'preview' then
@@ -1233,6 +1329,10 @@ ashita.events.register('command', 'dlac-import', function(e)
     end
     if sub == 'dedupe' then
         M.dedupe();
+        return;
+    end
+    if sub == 'prune' then
+        M.prune(args[2] == 'commit');
         return;
     end
     if args[2] == 'equipped' then
