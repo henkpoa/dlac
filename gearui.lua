@@ -373,6 +373,14 @@ local function truncate(s, n)
     return s:sub(1, n - 2) .. '..';
 end
 
+-- TextColored that wraps at the window edge instead of clipping off-screen.
+-- For standalone status/instruction lines only -- not for text in SameLine rows.
+local function textWrapped(col, s)
+    imgui.PushTextWrapPos(0.0);
+    imgui.TextColored(col, s);
+    imgui.PopTextWrapPos();
+end
+
 local function sortedKeys(t)
     local ks = {};
     for k in pairs(t) do ks[#ks + 1] = k; end
@@ -1624,7 +1632,7 @@ local function renderEquippedTab(job, level)
     imgui.Separator();
 
     if ui.eqSelected == nil then
-        imgui.TextColored(COL_DIM, 'Select a slot above to see the alternatives you can equip there.');
+        textWrapped(COL_DIM, 'Select a slot above to see the alternatives you can equip there.');
     else
         -- Selected slot header + equipped item.
         local gearKey = GEAR_OF[ui.eqSelected] or ui.eqSelected;
@@ -2420,7 +2428,7 @@ end
 -- Left builder: 16 slot tiles + the expanded ordered list for the selected slot.
 local function renderSetBuilder(job, level)
     if M.workingSetName == nil then
-        imgui.TextColored(COL_DIM, 'Pick a set above, or type a name and click New, then Auto-build or + Add items.');
+        textWrapped(COL_DIM, 'Pick a set above, or type a name and click New, then Auto-build or + Add items.');
         return;
     end
 
@@ -2443,7 +2451,7 @@ local function renderSetBuilder(job, level)
 
     imgui.Separator();
     if ui.setSelected == nil then
-        imgui.TextColored(COL_DIM, 'Select a slot above to edit its ordered list. Yellow = current best-by-level pick.');
+        textWrapped(COL_DIM, 'Select a slot above to edit its ordered list. Yellow = current best-by-level pick.');
         return;
     end
 
@@ -2502,7 +2510,7 @@ end
 
 local function renderSetsTab(job, level)
     if not hasSetmgr then
-        imgui.TextColored(COL_ERR, 'setmanager unavailable -- commit/delete disabled (view/build still works).');
+        textWrapped(COL_ERR, 'setmanager unavailable -- commit/delete disabled (view/build still works).');
     end
 
     -- Controls row: set picker + New + Commit + Delete + Lock + Weights toggle.
@@ -2588,9 +2596,7 @@ local function renderSetsTab(job, level)
     imgui.SameLine(0, 6); imgui.TextColored(COL_DIM, 'seed a Dynamic set from a static one (migration)');
 
     if ui.setsStatus ~= nil and ui.setsStatus ~= '' then
-        imgui.PushTextWrapPos(0.0);
-        imgui.TextColored(ui.setsStatusErr and COL_ERR or COL_SCORE, esc(ui.setsStatus));
-        imgui.PopTextWrapPos();
+        textWrapped(ui.setsStatusErr and COL_ERR or COL_SCORE, esc(ui.setsStatus));
     end
     imgui.Separator();
 
@@ -2657,16 +2663,16 @@ local function drawWindow()
         end
         renderHeaderButtons();
         if _augStatus ~= nil and _augStatus ~= '' then
-            imgui.TextColored(COL_SCORE, esc(_augStatus));
+            textWrapped(COL_SCORE, esc(_augStatus));
         end
         do  -- prominent warning when the current job isn't wired for dlac yet
             local _st = jobSetupState();
             if _st == 'ffxilac' or _st == 'none' then
                 local _, _ab = jobFile();
-                imgui.TextColored(COL_ERR, string.format('  [!]  %s.lua is NOT set up for dlac -- click the red "Setup" button (top-right). Your existing logic is kept; dlac is added at the end.', tostring(_ab or '?')));
+                textWrapped(COL_ERR, string.format('  [!]  %s.lua is NOT set up for dlac -- click the red "Setup" button (top-right). Your existing logic is kept; dlac is added at the end.', tostring(_ab or '?')));
             elseif _st == 'shims' then
                 local _, _ab = jobFile();
-                imgui.TextColored(COL_ERR, string.format('  [!]  %s.lua is missing trigger shims -- click the red "Setup" button (top-right) to add them (your logic is kept).', tostring(_ab or '?')));
+                textWrapped(COL_ERR, string.format('  [!]  %s.lua is missing trigger shims -- click the red "Setup" button (top-right) to add them (your logic is kept).', tostring(_ab or '?')));
             end
         end
         imgui.Separator();
