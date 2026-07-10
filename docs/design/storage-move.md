@@ -1,6 +1,7 @@
 # Storage move — right-click "Move To →" (research + design)
 
-Status: research complete, design proposed, **not implemented**.
+Status: research complete (incl. nomad-moogle follow-up, section F), design proposed,
+**not implemented**.
 Date: 2026-07-10.
 Scope: right-click an item in the gear GUI → "Move To →" submenu → pick a destination
 container → dlac sends the native item-move packet. Allowed only where the game itself
@@ -24,6 +25,15 @@ hop-through-Inventory is required**. Invalid moves are silently dropped server-s
 (console warning only, no kick, no rubber-band, no item risk). The client can detect
 "in Mog House" reliably (proven memory flag used by luashitacast on this very client,
 plus a packet-derived cross-check) and detect Provenance by zone id 222.
+
+Nomad-moogle follow-up (section F): access is **(a) zone-wide, not
+interaction-scoped**. Every native Nomad Moogle zone carries `MISC_MOGMENU` in
+`zone_settings.misc`; the 0x029 validator checks only that zone flag (plus own-MH),
+never any interaction/menu state. Talking to the moogle merely makes the server send
+s2c **0x02E `GP_SERV_COMMAND_OPENMOGMENU`** (header-only) telling the client to open
+its local mog menu — detectable, but irrelevant to what the server accepts. The mog
+menu session is *not* a server event: the earlier PacketGuard concern does **not**
+apply to it (re-verified in F.4 — only real scripted events/cutscenes block 0x029).
 
 ---
 
@@ -368,9 +378,14 @@ update at send time. Therefore:
    in-memory rollback on failure (`0x029_item_move.cpp:227-246`).
 2. **PacketGuard** (`src/map/packet_guard.cpp`, enabled by default —
    `settings/default/map.lua:34`): 0x029 is not rate-limited, but it is **not** on
-   the cutscene allow-list — a move sent while the player is in an event/cutscene
-   (`SUBSTATE_IN_CS`, e.g. inside an NPC menu) is dropped with a "player substate"
-   warning. Gate on player status ≠ event (entity status 4) before sending.
+   the cutscene allow-list — a move sent while the player is in a *scripted
+   event/cutscene* (`SUBSTATE_IN_CS`) is dropped with a "player substate" warning.
+   Precisely scoped in F.4: this substate is set **only** when a Lua `startEvent`
+   fires (`charentity.cpp:3163`); ordinary NPC dialog via `showText`/`sendMenu` —
+   including the entire nomad-moogle mog-menu session — leaves the character in
+   `SUBSTATE_NONE`, where every packet is allowed (`packet_guard.cpp:49-52`).
+   Gate on own entity status ≠ 4 (`ANIMATION_EVENT`, `baseentity.h:66`) before
+   sending.
 3. **Stale slot index = moving the wrong item.** The real hazard is client-side: if
    the UI snapshot is old (item sorted/consumed/moved), `ItemIndex1` may now hold a
    different item. Mitigation (hard rule): re-read `GetContainerItem(from, slot)`
@@ -388,6 +403,166 @@ update at send time. Therefore:
    was similarly conservative.
 7. **Sort/other addons racing:** the native sort (0x03A) or another addon touching
    inventory mid-move is covered by mitigation 3 + single-in-flight + verify.
+
+---
+
+## F. Nomad Moogles (interaction-scoped access?)
+
+Question (Henrik): Nomad Moogles grant storage access via an NPC menu — can we detect
+that interaction, and does the server key 0x029 permission on it? Proposed gate:
+`MogZoneFlag OR own-MH, plus a nomad-moogle-interaction check where applicable`.
+
+### F.1 Verdict: (a) zone-wide flag — the interaction is cosmetic to the server
+
+Two competing models were tested against the source:
+(a) nomad zones carry `MISC_MOGMENU` zone-wide and the moogle chat is irrelevant to
+the server, vs (b) an interaction-scoped state the 0x029 validator honors.
+
+**(a) is the truth.** Evidence:
+
+1. Every zone with a native `Nomad_Moogle` NPC script has `MISC_MOGMENU (0x0020)` set
+   in `sql/zone_settings.sql` (fork, branch `base`):
+
+   | Zone (id) | `misc` | & 0x0020 |
+   |---|---|---|
+   | Tavnazian Safehold (26) | 22120 = 0x5668 | yes |
+   | Rabao (247) | 22120 = 0x5668 | yes |
+   | Selbina (248) | 21544 = 0x5428 | yes |
+   | Mhaura (249) | 21544 = 0x5428 | yes |
+   | Kazham (250) | 22056 = 0x5628 | yes |
+   | Norg (252) | 22120 = 0x5668 | yes |
+   | Nashmau (53) | 17960 = 0x4628 | yes |
+   | Mog Garden (280) | 4128 = 0x1020 | yes |
+
+   (Al Zahbi 5784/0x1698 and Whitegate 22024/0x5608 do *not* carry it — those have
+   real residential Mog Houses instead; their special-casing lives in
+   `hasMogLockerAccess`, B.1. Provenance 4096/0x1000: not set, B.5.)
+
+2. The 0x029 validator was re-read end-to-end
+   (`src/map/packets/c2s/0x029_item_move.cpp:47-162`): its only inputs are
+   `PChar->loc.zone->CanUseMisc(MISC_MOGMENU)`, `PChar->m_moghouseID`,
+   `charutils::hasMogLockerAccess`, `mhflag & 0x20`, container sizes, and the
+   recycle-bin setting. **There is no event, menu, interaction, or NPC-proximity
+   state anywhere in it.** Its own comment (line 69) says so: "Retail allows
+   injecting into Safe from anywhere in a zone with a Nomad Moogle."
+
+3. What the moogle interaction actually does: every native Nomad Moogle script is
+   two lines, e.g. `scripts/zones/Selbina/npcs/Nomad_Moogle.lua`:
+
+   ```lua
+   entity.onTrigger = function(player, npc)
+       player:showText(npc, ID.text.NOMAD_MOOGLE_DIALOG)
+       player:sendMenu(xi.menuType.MOOGLE)   -- MOOGLE = 1, scripts/enum/menu_type.lua
+   end
+   ```
+
+   `sendMenu(1)` (`src/map/lua/lua_baseentity.cpp:2495`) pushes s2c
+   **0x02E `GP_SERV_COMMAND_OPENMOGMENU`** — a **header-only 4-byte packet**
+   (`src/map/packets/s2c/0x02e_openmogmenu.h`: "inform the client to open the mog
+   house menu"; id confirmed in `src/map/enums/packet_s2c.h:58`). The same packet is
+   pushed by the in-MH moogle path (`scripts/globals/moghouse.lua:378`). After that,
+   the entire mog menu (and any moves the player makes in it) is the client's native
+   UI sending ordinary 0x029s. **No server-side state changes, and no "menu closed"
+   packet exists** — closing is client-local.
+
+Consequence for Henrik's proposed gate: the "nomad-moogle-interaction check" adds no
+server alignment — the server accepts 0x029 from anywhere in a `MISC_MOGMENU` zone
+whether or not the moogle was ever spoken to (that is also native retail behavior:
+the flag's purpose, per `0x00a_login.cpp:212`, is to enable the client's Mog Menu
+zone-wide). `MogZoneFlag` (C.3) already covers native nomad zones exactly. The
+CatsEyeXI Provenance moogle remains a live-server unknown → probe protocol in F.5.
+
+### F.2 Client-visible signal: s2c 0x02E
+
+- **Id/layout**: incoming 0x02E, 4 bytes total (header only: `id:9|size:7`, sync).
+  No payload, no fields.
+- **When sent**: the instant a script calls `sendMenu(MOOGLE)` — i.e. on triggering
+  a Nomad Moogle (or the MH moogle). Not sent on menu close; not re-sent while the
+  menu is open.
+- **Use**: an *edge* signal ("a moogle menu just opened"), usable for UX or for the
+  probe below — but it cannot serve as a stateful "menu is open" gate (no close
+  event), and per F.1 it is not needed for permission gating.
+
+### F.3 Identifying the interaction target (if ever wanted)
+
+The trigger is client→server 0x01A `GP_CLI_COMMAND_ACTION`
+(`src/map/packets/c2s/0x01a_action.h:128-131`): `UniqueNo` u32 @0x04, `ActIndex` u16
+@0x08, `ActionID` u16 @0x0A, with `ActionID = Talk = 0x00` (enum at line 54). An
+Ashita addon watching `packet_out` for 0x01A/Talk can resolve the NPC name via
+`AshitaCore:GetMemoryManager():GetEntity():GetName(ActIndex)` (`Ashita.h:730`).
+Pairing "outgoing Talk at entity named *Moogle/Nomad Moogle*" with "incoming 0x02E
+within ~1 s" identifies a moogle mog-menu session start unambiguously.
+
+### F.4 PacketGuard re-verified: the moogle menu is NOT an event
+
+The earlier E.2 claim ("dropped during cutscenes/NPC menus") was too broad. Precise
+mechanics:
+
+- `SUBSTATE_IN_CS` is set in exactly one place:
+  `CCharEntity::tryStartNextEvent()` (`src/map/entities/charentity.cpp:3163`), which
+  runs only when a Lua script starts a real **event/cutscene** (`startEvent`); it
+  also sets `animation = ANIMATION_EVENT` (= 4, `baseentity.h:66`) and sends
+  0x032/0x033/0x034 event packets. It is cleared by `endCurrentEvent()`
+  (`charentity.cpp:3102`), `skipEvent()` (`:3211`), and s2c 0x052 `EVENTUCOFF`
+  (`0x052_eventucoff.cpp:36`).
+- A Nomad Moogle trigger starts **no event**: `onTrigger` only calls
+  `showText` + `sendMenu` (F.1), and the 0x01A handler then releases the client
+  (`0x01a_action.cpp:149`, `EVENTUCOFF` Standard). The character stays in
+  `SUBSTATE_NONE`, where PacketGuard's allow-list permits everything
+  (`packet_guard.cpp:49-52`) and 0x029 is not rate-limited.
+- This matches retail reality: the client sends 0x029 freely while the native mog
+  menu is open — no PacketGuard exception exists because none is needed.
+
+**The nomad path is therefore not design-breaking.** The only real constraint stands
+unchanged: never send 0x029 while a scripted event/cutscene is active (own entity
+status == 4).
+
+### F.5 Provenance live probe protocol (run once before implementation)
+
+The custom Provenance moogle is not in the public repo, so its mechanism (plain
+`sendMenu` vs custom event) and the live zone's `misc` value must be observed
+in-game. Protocol — no packets injected, observation only:
+
+**Watch list** (a packet-log addon, or a temporary dlac debug hook on
+`packet_in`/`packet_out`):
+
+| Dir | Id | What to record |
+|---|---|---|
+| in | 0x00A | byte 0x80 (`LoginState`), byte 0xAF (`MogZoneFlag`) on zoning into Provenance |
+| in | 0x02E | arrival = native mog menu opened (`sendMenu(MOOGLE)` path) |
+| in | 0x032/0x033/0x034 | arrival = scripted event path instead |
+| in | 0x052 | client release after trigger |
+| out | 0x01A | `ActIndex`/`ActionID` of the moogle trigger |
+| in | 0x020 / 0x01D / 0x01E | move confirmations during step 4 |
+
+**Steps:**
+
+1. Zone into Provenance → record `MogZoneFlag` (byte 0xAF). Repo predicts **0**.
+2. Trigger the hub moogle → record which of 0x02E vs 0x032/0x034 arrives, and
+   whether the native mog menu UI opens with storage options (and which bags it
+   lists).
+3. If a menu opened: natively move a junk item Inventory → Mog Safe. Record
+   success (item moves; two 0x020 + 0x01D observed) vs nothing happening
+   (server-side silent reject).
+4. If offered, attempt Inventory → **Storage** natively. Expected: not offered, or
+   silently rejected (validator requires own-MH for Storage regardless of zone).
+5. Repeat step 3 for Locker if a contract is active.
+
+**Interpretation:**
+
+- `MogZoneFlag == 1` → live Provenance already has `MISC_MOGMENU`; the
+  "MISC_MOGMENU zone" column of the B.4 matrix applies there and dlac's C.3 gate
+  picks it up with zero code changes.
+- `MogZoneFlag == 0` and native Safe move fails / isn't offered → repo matches
+  live; Provenance allows only Inventory/Satchel/Sack/Case/Wardrobes (B.5) unless
+  the server team adds the flag.
+- `MogZoneFlag == 0` **but** a native Safe move succeeds → live server diverges
+  from every public branch (custom validator or pre-rework handler). Stop and
+  re-research before implementing; do not widen any gate on this evidence alone.
+- Storage moving natively in Provenance in any variant → model falsified; halt.
+
+Nothing from this probe gets hardcoded: the runtime gate reads `MogZoneFlag` per
+zone-in, so a later server-side change to Provenance is absorbed automatically.
 
 ---
 
@@ -428,6 +603,22 @@ update at send time. Therefore:
 - **INV-7 — Never trust "server will reject".** Server-side validation (B) is the
   safety net, not the mechanism. Every rule above is enforced client-side first; a
   packet that we know would fail is never sent.
+
+### Henrik's nomad-moogle formulation, resolved
+
+Henrik proposed: gate = `MogZoneFlag OR own-MH`, **plus** a nomad-moogle-interaction
+check where applicable. Finding F.1 settles the second clause: storage permission is
+**(a) zone-wide** — the 0x029 validator has no interaction state, and natively the
+Mog Menu is available zone-wide wherever `MogZoneFlag` is set (that is the flag's
+purpose). So the interaction check would be *stricter than the native game*, gains no
+server alignment, and rests on a fragile signal (0x02E has no close counterpart —
+"menu currently open" is unknowable). **Recommendation: drop it.** The gate stays
+INV-1/INV-3 as written — `own-MH OR (zone == 222 with the per-container matrix)`,
+with Safe/Safe2/Locker keyed to the live `MogZoneFlag`, which already *is* the
+server's own nomad-moogle predicate. If Henrik still wants the moogle-chat UX
+("storage bags only appear after kupo"), F.2/F.3 give the detection recipe: arm on
+0x02E, disarm on zone change — cosmetic only, layered on top of (never instead of)
+the invariants.
 
 ### Move engine sketch
 
@@ -482,9 +673,11 @@ addon changes. Side effects to review: the flag also enables the client's native
 2. **Live Provenance customization.** Henrik reports custom hub NPCs (Crystal
    Warriors) that are absent from the public repo — live DB/scripts evidently
    diverge. The public repo's `misc=4096` (no MOGMENU) is therefore *probably* but
-   not *certainly* the live value. `MogZoneFlag` in the 0x00A packet resolves this
-   at runtime; a one-off manual check (zone into Provenance, inspect byte 0xAF) is
-   worth doing before implementation.
+   not *certainly* the live value, and the custom hub moogle's mechanism
+   (`sendMenu(MOOGLE)` vs a custom event) is unknown. **Resolved into an
+   executable plan:** run the F.5 probe protocol once before implementation; the
+   runtime gate reads `MogZoneFlag` per zone-in either way, so nothing is
+   hardcoded on the outcome.
 3. **Safe 2 unlock visibility.** The server gates Safe 2 on `mhflag & 0x20` (MH 2F),
    which the client cannot read directly. Unverified whether
    `GetContainerCountMax(9)` is 0 until 2F is unlocked. Mitigation: offer Safe 2
