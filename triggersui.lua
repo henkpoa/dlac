@@ -199,11 +199,13 @@ local function trigModeState()
     if now == trig._modeStateAt then return trig._modeState; end
     trig._modeStateAt = now;
     local st = {};
+    trig._modeStateExists = false;
     pcall(function()
         local base = deps.charBase();
         if base == nil then return; end
         local chunk = loadfile(base .. 'dlac\\modestate.lua');
         if chunk == nil then return; end
+        trig._modeStateExists = true;
         local ok, t = pcall(chunk);
         if ok and type(t) == 'table' then st = t; end
     end);
@@ -790,6 +792,22 @@ function M.render(job, level)
             imgui.SetTooltip('Writes the classic status rules (Engaged/Resting/Movement/Idle) as a starting point.');
         end
         return;
+    end
+
+    -- Engine staleness banner: the LAC-state engine stamps its VERSION into the
+    -- modestate mirror. When it lags the addon's copy, every confusing symptom
+    -- ("unknown handler section", dead keybinds, missing features) traces here --
+    -- say it loudly instead of letting the user chase ghosts.
+    if hasDispatch and type(dsp.VERSION) == 'number' then
+        local mv = trigModeState()['__version'];
+        if type(mv) == 'number' and mv < dsp.VERSION then
+            imgui.TextColored(COL_ERR, string.format(
+                '[!] LuaAshitacast is running an OUTDATED dlac engine (v%d; the addon has v%d) -- click "Reload LAC" (top-right).',
+                mv, dsp.VERSION));
+        elseif mv == nil and trig._modeStateExists == true then
+            imgui.TextColored(COL_ERR,
+                '[!] LuaAshitacast is running an OUTDATED dlac engine -- click "Reload LAC" (top-right).');
+        end
     end
 
     -- Controls row: Commit (red when dirty) / Revert / Explain + status.

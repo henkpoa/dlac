@@ -28,6 +28,12 @@
 
 local M = {};
 
+-- Engine version handshake: bump on EVERY behavioral change to this file. The
+-- LAC-state copy stamps its version into the modestate mirror; the GUI compares
+-- against the addon-state copy and shows "Reload LAC" when LAC is running stale
+-- code (the seeded file only re-requires when LuaAshitacast itself reloads).
+M.VERSION = 2;
+
 -- ---------------------------------------------------------------------------
 -- State
 -- ---------------------------------------------------------------------------
@@ -778,7 +784,7 @@ saveModeState = function()
     pcall(function()
         local dir = charDir();
         if dir == nil then return; end
-        local parts = {};
+        local parts = { string.format('["__version"] = %d,', M.VERSION) };   -- engine handshake
         for m, v in pairs(M.modes) do
             if v == true then parts[#parts + 1] = string.format('[%q] = true,', m);
             elseif type(v) == 'string' then parts[#parts + 1] = string.format('[%q] = %q,', m, v); end
@@ -909,22 +915,46 @@ if inLac() then
         end
 
         if sub == 'mode' then
-            local name = args[2];
-            if name == nil then
+            if args[2] == nil then
                 local act = M.activeModes();
                 print('[dlac] active modes: ' .. ((#act > 0) and table.concat(act, ', ') or '(none)')
                     .. '   (/dl mode <name> [on|off|toggle])');
                 return;
             end
-            local a3 = args[3];
+            ensureLoaded();                          -- cycle definitions live in the trigger file
+            -- Mode names may contain SPACES ("WHM Weapons"). Resolve by longest
+            -- arg-join that names a KNOWN mode (definition or live flag); whatever
+            -- follows is the state. Unknown names: a trailing on/off/toggle splits
+            -- off, otherwise the whole tail is the (new toggle's) name.
+            local function knownMode(nm)
+                local lnm = string.lower(nm);
+                return (_trig.modeDefs ~= nil and _trig.modeDefs[lnm] ~= nil) or (M.modes[lnm] ~= nil);
+            end
+            local name, stateStr = nil, nil;
+            for cut = #args, 2, -1 do
+                local cand = table.concat(args, ' ', 2, cut);
+                if knownMode(cand) then
+                    name = cand;
+                    if cut < #args then stateStr = table.concat(args, ' ', cut + 1); end
+                    break;
+                end
+            end
+            if name == nil then
+                local last = string.lower(args[#args]);
+                if #args > 2 and (last == 'on' or last == 'off' or last == 'toggle') then
+                    name, stateStr = table.concat(args, ' ', 2, #args - 1), last;
+                else
+                    name = table.concat(args, ' ', 2);
+                end
+            end
             local state = nil;                       -- default: toggle / cycle to next
-            if a3 ~= nil then
-                local l3 = string.lower(a3);
+            if stateStr ~= nil then
+                local l3 = string.lower(stateStr);
                 if l3 == 'on' then state = true;
                 elseif l3 == 'off' then state = false;
-                else state = a3; end                 -- cycle mode: jump straight to this value
+                elseif l3 == 'toggle' then state = nil;
+                else state = stateStr; end           -- cycle mode: jump straight to this value
             end
-            ensureLoaded();                          -- cycle definitions live in the trigger file
             local ln = string.lower(name);
             local before = M.modes[ln];
             local res = M.setMode(name, state);
