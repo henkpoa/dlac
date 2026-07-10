@@ -338,7 +338,14 @@ local function ensureAutoLoaded()
     local chunk = (loadstring or load)(raw, '@autogear.lua');
     if chunk ~= nil then
         local ok, t = pcall(chunk);
-        if ok and type(t) == 'table' then _auto.data = t; end
+        if ok and type(t) == 'table' then
+            _auto.data = t;
+            -- Old boolean-format manifest: we can't know the universal weapon's name, so
+            -- staff swapping stays suppressed. Tell the player how to fix it (once per change).
+            if t.universal == nil and t.iridescence == true then
+                print('[dlac] autogear.lua is an old format (staff swapping is OFF) -- open the GUI: Triggers tab > Automations > "Rescan owned gear".');
+            end
+        end
     end
     return _auto.data;
 end

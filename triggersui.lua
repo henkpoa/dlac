@@ -315,14 +315,8 @@ local function autoCommit()
     end
 end
 
--- Write the manifest if it doesn't exist yet (a per-set flag needs gear data to act on).
-local function ensureManifest()
-    local p = autoPath();
-    if p == nil then return; end
-    local f = io.open(p, 'r');
-    if f ~= nil then f:close(); return; end
-    autoCommit();
-end
+-- (Flag saves regenerate the manifest via autoCommit every time -- rescanning is 16
+-- name lookups, and it guarantees the manifest format/tier data is never stale.)
 
 -- The Automations section (rendered under the handler sections): the manifest data +
 -- rescan. The ON/OFF switches live per set (Sets tab -> Auto staff / Auto obi).
@@ -398,7 +392,7 @@ local function saveSetOptions(setName)
         end
     end);
     if not writeFileText(path, text) then setOptUI.status, setOptUI.err = 'could not write ' .. path, true; return; end
-    ensureManifest();                                    -- flags need staff/obi data to act on
+    autoCommit();                                        -- regenerate the gear manifest (never stale)
     pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl triggers reload'); end);
     if not trig.dirty then trigLoad(true); end           -- keep the Triggers tab in sync (never clobber edits)
     setOptUI.status, setOptUI.err = 'saved -- live', false;
