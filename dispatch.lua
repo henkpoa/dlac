@@ -212,8 +212,10 @@ local function normalize(t)
     for k, v in pairs(t) do
         local ev = EVENT_CANON[string.lower(tostring(k))];
         if ev == nil then
-            warns[#warns + 1] = string.format('unknown handler section %q (expected %s)',
-                tostring(k), table.concat(EVENTS, '/'));
+            if string.lower(tostring(k)) ~= 'setoptions' then   -- SetOptions is a sibling section, not a handler
+                warns[#warns + 1] = string.format('unknown handler section %q (expected %s or SetOptions)',
+                    tostring(k), table.concat(EVENTS, '/'));
+            end
         elseif type(v) == 'table' then
             local list = out[ev] or {};
             for i, r in ipairs(v) do
@@ -270,7 +272,7 @@ local function ensureLoaded()
     local path = triggersPath();
     if path == nil then return _trig.rules; end
     if path ~= _trig.path then   -- job change / first resolve -> drop the cache
-        _trig.path, _trig.raw, _trig.rules, _trig.err = path, nil, nil, nil;
+        _trig.path, _trig.raw, _trig.rules, _trig.err, _trig.setOpts = path, nil, nil, nil, nil;
     end
 
     local raw = readFile(path);
@@ -296,6 +298,16 @@ local function ensureLoaded()
 
     local rules, warns = normalize(t);
     _trig.rules, _trig.err = rules, nil;
+    -- Per-set automation flags (Sets tab): SetOptions = { <SetName> = { staff=, obi= } }.
+    _trig.setOpts = {};
+    local so = t.SetOptions or t.setOptions;
+    if type(so) == 'table' then
+        for nm, o in pairs(so) do
+            if type(nm) == 'string' and type(o) == 'table' then
+                _trig.setOpts[nm] = { staff = (o.staff == true), obi = (o.obi == true) };
+            end
+        end
+    end
     for _, w in ipairs(warns) do print('[dlac] triggers: ' .. w); end
     local n = 0;
     for _, list in pairs(rules) do n = n + #list; end
@@ -331,20 +343,34 @@ local function ensureAutoLoaded()
     return _auto.data;
 end
 
--- Append the synthetic band-60 hits for a Midcast dispatch. Staff before obi (fixed
+-- Append the synthetic band-60 hits for a Midcast dispatch. ACTIVATION IS PER SET:
+-- the trigger file's `SetOptions = { <SetName> = { staff=, obi= } }` flags a set, and
+-- the automation fires only when a matched trigger is equipping a flagged set this
+-- cast (the flags of every matched set union together). Staff before obi (fixed
 -- ords), both flowing through the same overlay/trace pipeline as ordinary rules.
 local function automationHits(ctx, hits)
+    local so = _trig.setOpts;
+    if so == nil or next(so) == nil or #hits == 0 then return; end
+    local wantStaff, wantObi = false, false;
+    for _, r in ipairs(hits) do
+        local o = (r.set ~= nil) and so[r.set] or nil;
+        if o ~= nil then
+            if o.staff == true then wantStaff = true; end
+            if o.obi   == true then wantObi   = true; end
+        end
+    end
+    if not wantStaff and not wantObi then return; end
     local a = ensureAutoLoaded();
-    if a == nil or type(a.options) ~= 'table' then return; end
+    if a == nil then return; end                      -- no gear manifest -> nothing to equip
     local el = ctx.action and ctx.action.Element;
     if type(el) ~= 'string' or ci(el, 'Non-Elemental') then return; end
-    if a.options.staff == true and a.iridescence ~= true and type(a.staff) == 'table' then
+    if wantStaff and a.iridescence ~= true and type(a.staff) == 'table' then
         local nm = a.staff[el];
         if type(nm) == 'string' then
             hits[#hits + 1] = { prio = 60, ord = 100001, label = 'auto-staff', equip = { Main = nm } };
         end
     end
-    if a.options.obi == true and type(a.obi) == 'table' then
+    if wantObi and type(a.obi) == 'table' then
         local nm = a.obi[el];
         if type(nm) == 'string' and netDayWeather(ctx) > 0 then
             hits[#hits + 1] = { prio = 60, ord = 100002, label = 'auto-obi', equip = { Waist = nm } };
@@ -543,6 +569,25 @@ function M.serializeTriggers(data)
                 local prio = (tonumber(r.priority) ~= nil) and (', priority = ' .. tostring(r.priority)) or '';
                 L[#L + 1] = string.format('        { when = { %s }, %s%s },',
                     table.concat(conds, ', '), action, prio);
+            end
+            L[#L + 1] = '    },';
+        end
+    end
+    -- Per-set automation flags (a sibling of the handler sections; [%q] keys survive
+    -- set names with spaces). Entries with both flags off are omitted entirely.
+    local so = (type(data) == 'table') and (data.SetOptions or data.setOptions) or nil;
+    if type(so) == 'table' then
+        local names = {};
+        for nm, o in pairs(so) do
+            if type(o) == 'table' and (o.staff == true or o.obi == true) then names[#names + 1] = tostring(nm); end
+        end
+        table.sort(names);
+        if #names > 0 then
+            L[#L + 1] = '    SetOptions = {';
+            for _, nm in ipairs(names) do
+                local o = so[nm];
+                L[#L + 1] = string.format('        [%q] = { staff = %s, obi = %s },',
+                    nm, tostring(o.staff == true), tostring(o.obi == true));
             end
             L[#L + 1] = '    },';
         end

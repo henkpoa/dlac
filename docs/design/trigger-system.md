@@ -78,10 +78,15 @@ Named flags, session-only (reset on load). Toggled from the Triggers tab or `/dl
 
 ## Automations (ADR 0004)
 
-Engine-generated Triggers at band 60, from owned gear, toggled by options:
-- **Auto staff**: Midcast, spell element E → equip owned elemental staff (HQ preferred) in Main,
-  *unless* the pending Main has Iridescence (catalog stat; requires modifier_map crawl extension).
-- **Auto obi**: Midcast, spell element E, net day/weather > 0, obi owned → equip in Waist.
+Engine-generated Triggers at band 60, from owned gear. **Activation is per set, two independent
+flags**: `SetOptions = { <SetName> = { staff=, obi= } }` in the trigger file, edited from the
+Sets tab ("Auto staff" / "Auto obi" checkboxes on the selected set); fires only when a Midcast
+trigger equips a flagged set. Gear data comes from a GUI-derived manifest
+(`<char>\dlac\autogear.lua`: best owned staff/obi per element, Iridescence flag — the engine
+never loads the catalog):
+- **Auto staff**: spell element E → equip owned elemental staff (HQ preferred) in Main.
+  Suppressed entirely while an Iridescence weapon is owned (v1 ownership rule).
+- **Auto obi**: spell element E, net day/weather > 0, obi owned → equip in Waist.
   Independent of Iridescence.
 
 ## Debugging

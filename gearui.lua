@@ -1813,6 +1813,28 @@ local function staticSetNames()
     return names;
 end
 
+-- ---------------------------------------------------------------------------
+-- Tab: Triggers -- lives in its OWN module (dlac\\triggersui.lua). LuaJIT caps a
+-- chunk at 200 LOCAL VARIABLES and gearui's main chunk is close to that cap --
+-- add new tabs/features as modules, not as more top-level locals in this file.
+-- gearui hands the module its profile/file helpers once, then renders it. Declared
+-- HERE (before renderSetsTab) so the Sets tab can call trigui.renderSetOptions.
+-- ---------------------------------------------------------------------------
+local trigui;
+do
+    local ok, m = pcall(require, "dlac\\triggersui");
+    if ok and type(m) == 'table' then
+        trigui = m;
+        pcall(trigui.init, {
+            charBase = charBase, jobFile = jobFile, seedTriggersFile = seedTriggersFile,
+            dynamicSetNames = dynamicSetNames, staticSetNames = staticSetNames,
+            lookupByName = lookupByName, ownedCounts = ownedCounts,   -- automations manifest (owned staves/obis)
+        });
+    else
+        pcall(function() print('[dlac] triggersui failed to load: ' .. tostring(m)); end);
+    end
+end
+
 -- Sets-tab "unsaved changes" flag: set true whenever the working set is modified (Auto-build,
 -- add/remove/reorder an item, or a copy-from-static seed); cleared when it's committed,
 -- (re)loaded from the saved list, deleted, or a fresh New set is started. Drives the red
@@ -2372,6 +2394,12 @@ local function renderSetsTab(job, level)
         optim.buildAtMaxLevel = (ui.buildMax[1] == true);
     end
 
+    -- Per-set automation flags (auto staff / auto obi): stored in the trigger file's
+    -- SetOptions and applied when a Midcast trigger equips THIS set (ADR 0004).
+    if trigui ~= nil and M.workingSetName ~= nil and M.workingSetName ~= '' then
+        pcall(trigui.renderSetOptions, M.workingSetName);
+    end
+
     -- Migration helper: seed a Dynamic working set from a static (non-Dynamic) set.
     imgui.TextColored(COL_DIM, 'Copy from:'); imgui.SameLine(0, 4);
     imgui.PushItemWidth(150);
@@ -2415,27 +2443,6 @@ local function renderSetsTab(job, level)
     -- Open + render the add-item popup at window level (vault pattern).
     if ui._openAddPopup then imgui.OpenPopup('##ffxilac_addpick'); ui._openAddPopup = false; end
     renderAddPopup(job, level);
-end
-
--- ---------------------------------------------------------------------------
--- Tab: Triggers -- lives in its OWN module (dlac\\triggersui.lua). LuaJIT caps a
--- chunk at 200 LOCAL VARIABLES and gearui's main chunk is close to that cap --
--- add new tabs/features as modules, not as more top-level locals in this file.
--- gearui hands the module its profile/file helpers once, then renders it.
--- ---------------------------------------------------------------------------
-local trigui;
-do
-    local ok, m = pcall(require, "dlac\\triggersui");
-    if ok and type(m) == 'table' then
-        trigui = m;
-        pcall(trigui.init, {
-            charBase = charBase, jobFile = jobFile, seedTriggersFile = seedTriggersFile,
-            dynamicSetNames = dynamicSetNames, staticSetNames = staticSetNames,
-            lookupByName = lookupByName, ownedCounts = ownedCounts,   -- automations manifest (owned staves/obis)
-        });
-    else
-        pcall(function() print('[dlac] triggersui failed to load: ' .. tostring(m)); end);
-    end
 end
 
 -- Stat weights in their OWN resizable, movable window (was a cramped right-side panel).

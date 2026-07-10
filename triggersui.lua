@@ -221,7 +221,7 @@ local OBI = {
 };
 local IRIDESCENT = { 'Chatoyant Staff', 'Foreshadow +1', 'Claustrum' };
 
-local auto = { opts = { staff = { false }, obi = { false } }, data = nil, loadedFor = nil, status = '' };
+local auto = { data = nil, loadedFor = nil, status = '' };
 
 local function autoPath()
     local base = deps and deps.charBase and deps.charBase() or nil;
@@ -233,16 +233,13 @@ local function autoLoad()
     if p == nil then return; end
     if auto.loadedFor == p and auto.data ~= nil then return; end
     auto.loadedFor = p;
-    auto.data = { options = { staff = false, obi = false } };
+    auto.data = {};
     pcall(function()
         local chunk = loadfile(p);
         if chunk == nil then return; end
         local ok, t = pcall(chunk);
         if ok and type(t) == 'table' then auto.data = t; end
     end);
-    local o = (type(auto.data.options) == 'table') and auto.data.options or {};
-    auto.opts.staff[1] = (o.staff == true);
-    auto.opts.obi[1]   = (o.obi == true);
 end
 
 -- Is this exact item name in the player's bags? (catalog/owned lookup -> Id -> count)
@@ -256,6 +253,8 @@ local function ownedRec(name)
 end
 
 -- Re-derive the manifest from bags (HQ staff preferred), write it, hot-reload the engine.
+-- The manifest carries GEAR DATA only; whether an automation fires is a per-set flag
+-- (SetOptions in the trigger file, edited from the Sets tab via M.renderSetOptions).
 local function autoCommit()
     local p = autoPath();
     if p == nil then auto.status = 'not logged in.'; return; end
@@ -272,10 +271,9 @@ local function autoCommit()
     end
     local L = {
         '-- dlac automation manifest -- written by the GUI (Triggers tab > Automations).',
-        '-- options = your toggles; staff/obi = best owned per element. Engine hot-reloads.',
+        '-- Best owned staff/obi per element + Iridescence flag. Engine hot-reloads this;',
+        '-- WHETHER it fires is per set: SetOptions in triggers\\<JOB>.lua (Sets tab).',
         'return {',
-        string.format('    options = { staff = %s, obi = %s },',
-            tostring(auto.opts.staff[1] == true), tostring(auto.opts.obi[1] == true)),
         string.format('    iridescence = %s,%s', tostring(irid ~= nil),
             (irid ~= nil) and ('   -- ' .. irid) or ''),
         '    staff = {',
@@ -301,24 +299,27 @@ local function autoCommit()
     end
 end
 
--- The Automations section (rendered under the handler sections).
+-- Write the manifest if it doesn't exist yet (a per-set flag needs gear data to act on).
+local function ensureManifest()
+    local p = autoPath();
+    if p == nil then return; end
+    local f = io.open(p, 'r');
+    if f ~= nil then f:close(); return; end
+    autoCommit();
+end
+
+-- The Automations section (rendered under the handler sections): the manifest data +
+-- rescan. The ON/OFF switches live per set (Sets tab -> Auto staff / Auto obi).
 local function renderAutomations()
     if not imgui.CollapsingHeader('Automations###trgsec_auto') then return; end
     autoLoad();
-    local changed = false;
-    if imgui.Checkbox('Auto elemental staff (Midcast)##trgautostaff', auto.opts.staff) then changed = true; end
+    imgui.PushTextWrapPos(0.0);
+    imgui.TextColored(COL_DIM, 'Auto staff / auto obi are PER-SET settings: Sets tab -> pick a set -> tick "Auto staff" and/or "Auto obi". When a Midcast trigger equips a flagged set, the engine overlays your best owned elemental staff (Main; skipped while you own an Iridescence weapon) and/or the matching obi when the day/weather bonus is positive (Waist), at priority 60.');
+    imgui.PopTextWrapPos();
+    if imgui.Button('Rescan owned gear##trgautorescan', { 0, 20 }) then autoCommit(); end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Equips your best owned elemental staff (HQ preferred) in Main for the spell\'s element.\nAuto-disabled while you own an Iridescence weapon (Chatoyant Staff / Foreshadow +1) --\nthat covers every element at once. Priority 60: beats name-specific sets, loses to Modes.');
+        imgui.SetTooltip('Re-detect owned staves / obis / Iridescence weapons from your bags and save the manifest.');
     end
-    if imgui.Checkbox('Auto obi on day/weather bonus (Midcast)##trgautoobi', auto.opts.obi) then changed = true; end
-    if imgui.IsItemHovered() then
-        imgui.SetTooltip('Equips the matching elemental obi in Waist when the net day+weather bonus for the\nspell\'s element is positive ("the moment it\'s positive, it\'s better"). Independent of\nIridescence and of the staff toggle.');
-    end
-    if imgui.Button('Rescan owned gear##trgautorescan', { 0, 20 }) then changed = true; end
-    if imgui.IsItemHovered() then
-        imgui.SetTooltip('Re-detect owned staves / obis / Iridescence weapons from your bags and save.');
-    end
-    if changed then autoCommit(); end
     if auto.status ~= '' then
         imgui.PushTextWrapPos(0.0);
         imgui.TextColored(COL_SCORE, esc(auto.status));
@@ -327,7 +328,81 @@ local function renderAutomations()
     local d = auto.data or {};
     local function nkeys(t) local n = 0; if type(t) == 'table' then for _ in pairs(t) do n = n + 1; end end return n; end
     imgui.TextColored(COL_DIM, string.format('detected: %d staves, %d obis%s',
-        nkeys(d.staff), nkeys(d.obi), (d.iridescence == true) and ', Iridescence owned' or ''));
+        nkeys(d.staff), nkeys(d.obi), (d.iridescence == true) and ', Iridescence owned (staff swap off)' or ''));
+end
+
+-- ---------------------------------------------------------------------------
+-- Per-set automation flags -- rendered INSIDE the Sets tab (gearui calls
+-- M.renderSetOptions(setName)). Stored in the trigger file's SetOptions section;
+-- saved instantly on toggle (read-modify-write of the ON-DISK rules, so unsaved
+-- Triggers-tab edits are neither committed nor lost) and hot-reloaded.
+-- ---------------------------------------------------------------------------
+local setOptUI = { name = nil, staff = { false }, obi = { false }, status = '', err = false };
+
+local function loadSetOptions(setName)
+    if setOptUI.name == setName then return; end
+    setOptUI.name, setOptUI.status, setOptUI.err = setName, '', false;
+    setOptUI.staff[1], setOptUI.obi[1] = false, false;
+    local path = trigFilePath();
+    if path == nil or not hasDispatch then return; end
+    local raw = dsp.readTriggersRaw(path);
+    local so = (type(raw) == 'table') and (raw.SetOptions or raw.setOptions) or nil;
+    local o = (type(so) == 'table') and so[setName] or nil;
+    if type(o) == 'table' then
+        setOptUI.staff[1] = (o.staff == true);
+        setOptUI.obi[1]   = (o.obi == true);
+    end
+end
+
+local function saveSetOptions(setName)
+    local path = trigFilePath();
+    if path == nil or not hasDispatch then setOptUI.status, setOptUI.err = 'no trigger file path', true; return; end
+    local raw = dsp.readTriggersRaw(path);
+    if type(raw) ~= 'table' then raw = {}; end
+    local so = raw.SetOptions;
+    if type(so) ~= 'table' then so = {}; end
+    raw.SetOptions, raw.setOptions = so, nil;
+    if setOptUI.staff[1] == true or setOptUI.obi[1] == true then
+        so[setName] = { staff = (setOptUI.staff[1] == true), obi = (setOptUI.obi[1] == true) };
+    else
+        so[setName] = nil;                              -- both off -> drop the entry
+    end
+    local text;
+    local ok = pcall(function() text = dsp.serializeTriggers(raw); end);
+    if not ok or type(text) ~= 'string' then setOptUI.status, setOptUI.err = 'serialize failed', true; return; end
+    pcall(function()
+        if ashita and ashita.fs and ashita.fs.create_directory then
+            ashita.fs.create_directory(deps.charBase() .. 'dlac\\triggers\\');
+        end
+    end);
+    if not writeFileText(path, text) then setOptUI.status, setOptUI.err = 'could not write ' .. path, true; return; end
+    ensureManifest();                                    -- flags need staff/obi data to act on
+    pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl triggers reload'); end);
+    if not trig.dirty then trigLoad(true); end           -- keep the Triggers tab in sync (never clobber edits)
+    setOptUI.status, setOptUI.err = 'saved -- live', false;
+end
+
+-- Two checkboxes for the Sets tab. Safe no-op without imgui/deps/a set name.
+function M.renderSetOptions(setName)
+    if not hasImgui or deps == nil or setName == nil or setName == '' then return; end
+    loadSetOptions(setName);
+    imgui.TextColored(COL_DIM, 'Automation:');
+    imgui.SameLine(0, 6);
+    local changed = false;
+    if imgui.Checkbox('Auto staff##setopt_staff', setOptUI.staff) then changed = true; end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('When a Midcast trigger equips this set, also equip your best owned elemental\nstaff for the spell\'s element (HQ preferred; skipped while you own an\nIridescence weapon). Saved instantly -- live, no reload.');
+    end
+    imgui.SameLine(0, 12);
+    if imgui.Checkbox('Auto obi##setopt_obi', setOptUI.obi) then changed = true; end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('When a Midcast trigger equips this set AND the day/weather bonus for the\nspell\'s element is positive, also equip the matching obi. Saved instantly.');
+    end
+    if changed then saveSetOptions(setName); end
+    if setOptUI.status ~= '' then
+        imgui.SameLine(0, 10);
+        imgui.TextColored(setOptUI.err and COL_ERR or COL_SCORE, esc(setOptUI.status));
+    end
 end
 
 -- One rule row: [x] condition -> set-dropdown  prio [n] [auto]. Returns 'remove' on delete.
