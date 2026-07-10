@@ -80,14 +80,15 @@ Named flags, session-only (reset on load). Toggled from the Triggers tab or `/dl
 
 Engine-generated Triggers at band 60, from owned gear. **Activation is per set, two independent
 flags**: `SetOptions = { <SetName> = { staff=, obi= } }` in the trigger file, edited from the
-Sets tab ("Auto staff" / "Auto obi" checkboxes on the selected set); fires only when a Midcast
-trigger equips a flagged set. Gear data comes from a GUI-derived manifest
-(`<char>\dlac\autogear.lua`: best owned staff/obi per element, Iridescence flag — the engine
-never loads the catalog):
-- **Auto staff**: spell element E → equip owned elemental staff (HQ preferred) in Main.
-  Suppressed entirely while an Iridescence weapon is owned (v1 ownership rule).
-- **Auto obi**: spell element E, net day/weather > 0, obi owned → equip in Waist.
-  Independent of Iridescence.
+Sets tab ("Auto staff" / "Auto obi" checkboxes on the selected set); fires on ANY handler whose
+matched triggers equip a flagged set. Gear data comes from a GUI-derived manifest
+(`<char>\dlac\autogear.lua`: best owned staff/obi per element, the Iridescence weapon name —
+the engine never loads the catalog):
+- **Auto staff**: an owned Iridescence weapon (Chatoyant Staff / Foreshadow +1) IS the staff —
+  equips for every element and for elementless actions (e.g. Ability triggers). Otherwise the
+  best owned per-element staff (HQ preferred), which needs the action's element.
+- **Auto obi**: action element E, net day/weather > 0, obi owned → equip in Waist.
+  Always element-gated, independent of Iridescence.
 
 ## Debugging
 

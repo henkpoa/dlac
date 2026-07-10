@@ -2395,7 +2395,7 @@ local function renderSetsTab(job, level)
     end
 
     -- Per-set automation flags (auto staff / auto obi): stored in the trigger file's
-    -- SetOptions and applied when a Midcast trigger equips THIS set (ADR 0004).
+    -- SetOptions and applied when ANY trigger equips THIS set (ADR 0004).
     if trigui ~= nil and M.workingSetName ~= nil and M.workingSetName ~= '' then
         pcall(trigui.renderSetOptions, M.workingSetName);
     end

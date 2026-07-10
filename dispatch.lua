@@ -343,11 +343,15 @@ local function ensureAutoLoaded()
     return _auto.data;
 end
 
--- Append the synthetic band-60 hits for a Midcast dispatch. ACTIVATION IS PER SET:
--- the trigger file's `SetOptions = { <SetName> = { staff=, obi= } }` flags a set, and
--- the automation fires only when a matched trigger is equipping a flagged set this
--- cast (the flags of every matched set union together). Staff before obi (fixed
--- ords), both flowing through the same overlay/trace pipeline as ordinary rules.
+-- Append the synthetic band-60 hits. ACTIVATION IS PER SET: the trigger file's
+-- `SetOptions = { <SetName> = { staff=, obi= } }` flags a set, and the automation
+-- fires on ANY handler whose matched triggers equip a flagged set (flags of every
+-- matched set union together). An owned Iridescence weapon (Chatoyant Staff /
+-- Foreshadow +1) IS the auto staff -- it covers every element, so it equips even for
+-- elementless actions (e.g. an Ability trigger); otherwise the per-element staff is
+-- used and needs a spell element. The obi always needs an element + a positive
+-- day/weather sign. Staff before obi (fixed ords), both flowing through the same
+-- overlay/trace pipeline as ordinary rules.
 local function automationHits(ctx, hits)
     local so = _trig.setOpts;
     if so == nil or next(so) == nil or #hits == 0 then return; end
@@ -363,14 +367,19 @@ local function automationHits(ctx, hits)
     local a = ensureAutoLoaded();
     if a == nil then return; end                      -- no gear manifest -> nothing to equip
     local el = ctx.action and ctx.action.Element;
-    if type(el) ~= 'string' or ci(el, 'Non-Elemental') then return; end
-    if wantStaff and a.iridescence ~= true and type(a.staff) == 'table' then
-        local nm = a.staff[el];
+    if type(el) ~= 'string' or ci(el, 'Non-Elemental') then el = nil; end
+    if wantStaff then
+        local nm = nil;
+        if type(a.iridescence) == 'string' then
+            nm = a.iridescence;                        -- universal staff: every element, none required
+        elseif a.iridescence ~= true and el ~= nil and type(a.staff) == 'table' then
+            nm = a.staff[el];                          -- per-element pick (legacy `true` = suppress)
+        end
         if type(nm) == 'string' then
             hits[#hits + 1] = { prio = 60, ord = 100001, label = 'auto-staff', equip = { Main = nm } };
         end
     end
-    if wantObi and type(a.obi) == 'table' then
+    if wantObi and el ~= nil and type(a.obi) == 'table' then
         local nm = a.obi[el];
         if type(nm) == 'string' and netDayWeather(ctx) > 0 then
             hits[#hits + 1] = { prio = 60, ord = 100002, label = 'auto-obi', equip = { Waist = nm } };
@@ -449,18 +458,15 @@ function M.dispatch(event)
         event = EVENT_CANON[string.lower(tostring(event))] or event;
         local rules = ensureLoaded();
         local list = rules and rules[event] or nil;
-        -- Midcast always proceeds: automations can fire with zero trigger rules.
-        local isMid = (event == 'Midcast');
-        if (list == nil or #list == 0) and not isMid then return; end
+        if list == nil or #list == 0 then return; end
 
         local ctx = buildCtx(event);
         local hits = {};
-        if list ~= nil then
-            for _, r in ipairs(list) do
-                if matches(r, ctx) then hits[#hits + 1] = r; end
-            end
+        for _, r in ipairs(list) do
+            if matches(r, ctx) then hits[#hits + 1] = r; end
         end
-        if isMid then automationHits(ctx, hits); end
+        -- Automations ride on the matched sets' flags, whatever the handler was.
+        automationHits(ctx, hits);
 
         if #hits == 0 then
             if event ~= 'Default' then   -- Default runs every frame; only action events trace a miss

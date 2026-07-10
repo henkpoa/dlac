@@ -271,11 +271,11 @@ local function autoCommit()
     end
     local L = {
         '-- dlac automation manifest -- written by the GUI (Triggers tab > Automations).',
-        '-- Best owned staff/obi per element + Iridescence flag. Engine hot-reloads this;',
-        '-- WHETHER it fires is per set: SetOptions in triggers\\<JOB>.lua (Sets tab).',
+        '-- Best owned staff/obi per element + the Iridescence weapon (used as the',
+        '-- universal staff when owned). Engine hot-reloads this; WHETHER it fires is',
+        '-- per set: SetOptions in triggers\\<JOB>.lua (Sets tab).',
         'return {',
-        string.format('    iridescence = %s,%s', tostring(irid ~= nil),
-            (irid ~= nil) and ('   -- ' .. irid) or ''),
+        string.format('    iridescence = %s,', (irid ~= nil) and string.format('%q', irid) or 'false'),
         '    staff = {',
     };
     for _, el in ipairs(ELEMENTS8) do
@@ -293,7 +293,7 @@ local function autoCommit()
         auto.data = nil; autoLoad();   -- re-read what we just wrote
         pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl triggers reload'); end);
         auto.status = string.format('staves %d/8, obis %d/8%s -- saved, live now.', nStaff, nObi,
-            (irid ~= nil) and (', Iridescence: ' .. irid .. ' (staff swap off)') or '');
+            (irid ~= nil) and (', Iridescence: ' .. irid .. ' (used as universal staff)') or '');
     else
         auto.status = 'could not write ' .. p;
     end
@@ -314,7 +314,7 @@ local function renderAutomations()
     if not imgui.CollapsingHeader('Automations###trgsec_auto') then return; end
     autoLoad();
     imgui.PushTextWrapPos(0.0);
-    imgui.TextColored(COL_DIM, 'Auto staff / auto obi are PER-SET settings: Sets tab -> pick a set -> tick "Auto staff" and/or "Auto obi". When a Midcast trigger equips a flagged set, the engine overlays your best owned elemental staff (Main; skipped while you own an Iridescence weapon) and/or the matching obi when the day/weather bonus is positive (Waist), at priority 60.');
+    imgui.TextColored(COL_DIM, 'Auto staff / auto obi are PER-SET settings: Sets tab -> pick a set -> tick "Auto staff" and/or "Auto obi". When ANY trigger equips a flagged set, the engine overlays the staff in Main -- your Iridescence weapon (Chatoyant Staff / Foreshadow +1) when you own one, else the best per-element staff for the spell -- and/or the matching obi in Waist when the day/weather bonus is positive. Priority 60: beats name-specific sets, loses to Modes.');
     imgui.PopTextWrapPos();
     if imgui.Button('Rescan owned gear##trgautorescan', { 0, 20 }) then autoCommit(); end
     if imgui.IsItemHovered() then
@@ -327,8 +327,11 @@ local function renderAutomations()
     end
     local d = auto.data or {};
     local function nkeys(t) local n = 0; if type(t) == 'table' then for _ in pairs(t) do n = n + 1; end end return n; end
+    local iridTxt = '';
+    if type(d.iridescence) == 'string' then iridTxt = ', Iridescence: ' .. d.iridescence .. ' (universal staff)';
+    elseif d.iridescence == true then iridTxt = ', Iridescence owned'; end
     imgui.TextColored(COL_DIM, string.format('detected: %d staves, %d obis%s',
-        nkeys(d.staff), nkeys(d.obi), (d.iridescence == true) and ', Iridescence owned (staff swap off)' or ''));
+        nkeys(d.staff), nkeys(d.obi), iridTxt));
 end
 
 -- ---------------------------------------------------------------------------
@@ -391,12 +394,12 @@ function M.renderSetOptions(setName)
     local changed = false;
     if imgui.Checkbox('Auto staff##setopt_staff', setOptUI.staff) then changed = true; end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('When a Midcast trigger equips this set, also equip your best owned elemental\nstaff for the spell\'s element (HQ preferred; skipped while you own an\nIridescence weapon). Saved instantly -- live, no reload.');
+        imgui.SetTooltip('When any trigger equips this set, also equip the staff in Main: your Iridescence\nweapon (Chatoyant Staff / Foreshadow +1 -- covers every element) when you own one,\nelse the best per-element staff (HQ preferred; needs a spell element).\nSaved instantly -- live, no reload.');
     end
     imgui.SameLine(0, 12);
     if imgui.Checkbox('Auto obi##setopt_obi', setOptUI.obi) then changed = true; end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('When a Midcast trigger equips this set AND the day/weather bonus for the\nspell\'s element is positive, also equip the matching obi. Saved instantly.');
+        imgui.SetTooltip('When any trigger equips this set AND the day/weather bonus for the spell\'s\nelement is positive, also equip the matching obi in Waist. Saved instantly.');
     end
     if changed then saveSetOptions(setName); end
     if setOptUI.status ~= '' then
