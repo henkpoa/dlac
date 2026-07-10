@@ -1793,9 +1793,9 @@ local function resolveSetItem(elem)
     end
     if type(elem) ~= 'table' then return nil; end
 
-    local ref, minL, maxL = elem, nil, nil;
+    local ref, minL, maxL, modeC = elem, nil, nil, nil;
     if elem.gear ~= nil and elem.Name == nil then
-        ref = elem.gear; minL = elem.minLevel; maxL = elem.maxLevel;
+        ref = elem.gear; minL = elem.minLevel; maxL = elem.maxLevel; modeC = elem.mode;
     end
     if type(ref) ~= 'table' then return nil; end
 
@@ -1806,7 +1806,7 @@ local function resolveSetItem(elem)
         rec = { Name = ref.Name, Level = ref.Level or 0, Id = ref.Id, Jobs = ref.Jobs, Stats = ref.Stats };
     end
     if rec == nil then return nil; end
-    return { rec = rec, minLevel = minL, maxLevel = maxL };
+    return { rec = rec, minLevel = minL, maxLevel = maxL, mode = modeC };
 end
 
 -- The profile's raw `sets` table lives in its OWN module (dlac\\profilesets.lua) --
@@ -1872,9 +1872,21 @@ end
 
 -- The item LAC would wear from a slot's list at mainLevel (highest Level <= mainLevel,
 -- honouring per-item min/maxLevel). Mirrors utils.BuildDynamicSets.
+
+-- Preview-side mode check for mode-gated entries: triggersui judges the condition
+-- against the LAC-state modestate mirror. Without triggersui, gated entries
+-- preview as inactive -- the conservative default.
+local entryModeOk = function(mode) return false; end
+if trigui ~= nil and type(trigui.entryModeActive) == 'function' then
+    entryModeOk = function(mode)
+        local ok, r = pcall(trigui.entryModeActive, mode);
+        return ok and r == true;
+    end
+end
+
 local function bestByLevel(list, mainLevel)
     if type(list) ~= 'table' then return nil; end
-    local best, bestLevel = nil, -1;
+    local best, bestLevel, bestRank = nil, -1, -1;
     local ml = mainLevel or 0;
     for _, it in ipairs(list) do                       -- a virtual entry takes the slot outright
         if it.rec ~= nil and it.rec.Virtual == true then return it; end
@@ -1884,8 +1896,14 @@ local function bestByLevel(list, mainLevel)
         if rec ~= nil and type(rec.Level) == 'number' then
             local minL = it.minLevel or 0;
             local maxL = it.maxLevel or 999;
-            if rec.Level <= ml and ml >= minL and ml <= maxL and rec.Level > bestLevel then
-                best = it; bestLevel = rec.Level;
+            -- rank: active mode-gated entries (1) beat unconditional ones (0);
+            -- inactive mode-gated entries are excluded (nil). Mirrors the engine.
+            local rank = nil;
+            if it.mode == nil then rank = 0;
+            elseif entryModeOk(it.mode) then rank = 1; end
+            if rank ~= nil and rec.Level <= ml and ml >= minL and ml <= maxL
+               and (rank > bestRank or (rank == bestRank and rec.Level > bestLevel)) then
+                best = it; bestLevel = rec.Level; bestRank = rank;
             end
         end
     end
@@ -1931,6 +1949,7 @@ local function buildCommitSlots()
                     local entry = { path = path };
                     if it.minLevel ~= nil then entry.minLevel = it.minLevel; end
                     if it.maxLevel ~= nil then entry.maxLevel = it.maxLevel; end
+                    if it.mode ~= nil then entry.mode = it.mode; end
                     items[#items + 1] = entry;
                 end
             end
@@ -2283,6 +2302,47 @@ local function renderSetsWeightPanel(job, level)
     renderWeightsEditor();
 end
 
+-- Per-entry rules popup (the '~' button on a slot-list row): min/max level bounds
+-- and a mode gate. Edits write straight into the working entry (Commit serializes
+-- them as the { gear = ..., minLevel/maxLevel/mode } wrapper form).
+local function renderEntryEditPopup()
+    if not imgui.BeginPopup('##dlac_entryedit') then return; end
+    local it = ui._editIt;
+    if it == nil or it.rec == nil then imgui.EndPopup(); return; end
+    imgui.TextColored(COL_HEADER, fmt.esc(it.rec.Name or '?'));
+    imgui.Separator();
+    imgui.TextColored(COL_DIM, 'Use only between these main-job levels (0 = no bound):');
+    imgui.PushItemWidth(90);
+    if imgui.InputInt('min##eemin', ui._editMin) then
+        local v = math.max(0, math.floor(ui._editMin[1] or 0)); ui._editMin[1] = v;
+        it.minLevel = (v > 0) and v or nil; _setDirty = true;
+    end
+    imgui.SameLine(0, 10);
+    if imgui.InputInt('max##eemax', ui._editMax) then
+        local v = math.max(0, math.floor(ui._editMax[1] or 0)); ui._editMax[1] = v;
+        it.maxLevel = (v > 0) and v or nil; _setDirty = true;
+    end
+    imgui.PopItemWidth();
+    imgui.Separator();
+    fmt.textWrapped(COL_DIM, 'Mode gate: the entry is used only while this mode is active -- and then it beats the unconditional entries in this list. One set can adapt per mode instead of switching sets.');
+    imgui.PushItemWidth(220);
+    if imgui.BeginCombo('##eemode', it.mode or '(always)') then
+        if imgui.Selectable('(always)', it.mode == nil) then it.mode = nil; _setDirty = true; end
+        local opts = {};
+        if trigui ~= nil and type(trigui.modeConditions) == 'function' then
+            local ok, r = pcall(trigui.modeConditions);
+            if ok and type(r) == 'table' then opts = r; end
+        end
+        for _, c in ipairs(opts) do
+            if imgui.Selectable(c, it.mode == c) then it.mode = c; _setDirty = true; end
+        end
+        if #opts == 0 then imgui.TextColored(COL_DIM, '(no modes yet -- define them on the Triggers tab)'); end
+        imgui.EndCombo();
+    end
+    imgui.PopItemWidth();
+    imgui.EndPopup();
+end
+
 -- Left builder: 16 slot tiles + the expanded ordered list for the selected slot.
 local function renderSetBuilder(job, level)
     if M.workingSetName == nil then
@@ -2339,13 +2399,29 @@ local function renderSetBuilder(job, level)
             if ss ~= '' then imgui.SameLine(0, 8); imgui.TextColored(COL_STATS, fmt.esc(ss)); end
             if it.minLevel ~= nil then imgui.SameLine(0, 8); imgui.TextColored(COL_DIM, 'min' .. tostring(it.minLevel)); end
             if it.maxLevel ~= nil then imgui.SameLine(0, 8); imgui.TextColored(COL_DIM, 'max' .. tostring(it.maxLevel)); end
+            if it.mode ~= nil then
+                imgui.SameLine(0, 8);
+                imgui.TextColored(entryModeOk(it.mode) and COL_JOBS or COL_DIM, '@' .. fmt.esc(it.mode));
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('Mode-gated: used only while this mode is active\n(and then it beats the unconditional entries).\nGreen = active right now.');
+                end
+            end
             imgui.SameLine(0, 12);
+            if imgui.SmallButton('~##ed_' .. di) then
+                ui._editIt = it;
+                ui._editMin = { it.minLevel or 0 };
+                ui._editMax = { it.maxLevel or 0 };
+                imgui.OpenPopup('##dlac_entryedit');
+            end
+            if imgui.IsItemHovered() then imgui.SetTooltip('Edit min/max level and mode gating for this entry.'); end
+            imgui.SameLine(0, 2);
             if imgui.SmallButton('^##up_' .. di)   then action = { kind = 'up',     it = it }; end
             imgui.SameLine(0, 2);
             if imgui.SmallButton('v##down_' .. di) then action = { kind = 'down',   it = it }; end
             imgui.SameLine(0, 2);
             if imgui.SmallButton('x##rm_' .. di)   then action = { kind = 'remove', it = it }; end
         end
+        renderEntryEditPopup();
     end
     imgui.EndChild();
 

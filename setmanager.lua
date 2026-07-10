@@ -76,6 +76,7 @@ local function renderItem(it)
     local parts = { 'gear = ' .. it.path };
     if it.minLevel ~= nil then parts[#parts + 1] = 'minLevel = ' .. tostring(it.minLevel); end
     if it.maxLevel ~= nil then parts[#parts + 1] = 'maxLevel = ' .. tostring(it.maxLevel); end
+    if it.mode ~= nil then parts[#parts + 1] = string.format('mode = %q', tostring(it.mode)); end
     return string.rep(' ', 16) .. '{' .. table.concat(parts, ', ') .. '},';
 end
 

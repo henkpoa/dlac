@@ -230,6 +230,48 @@ local function trigModeState()
     return st;
 end
 
+-- Is a set-entry mode condition ('Name' / 'Name:Value') active RIGHT NOW, judged
+-- against the LAC-state mirror (display truth in the addon state)? Used by the
+-- Sets tab preview so mode-gated slot entries light up with the live mode.
+function M.entryModeActive(cond)
+    if not hasDispatch or type(dsp.modeActive) ~= 'function' then return false; end
+    local ok, r = pcall(dsp.modeActive, cond, trigModeState());
+    return ok and r == true;
+end
+
+-- Known mode conditions for pickers: every cycle value as 'Name:Value', plus each
+-- toggle name seen in the Modes section or referenced by any rule's mode condition.
+function M.modeConditions()
+    local seen, out = {}, {};
+    local function add(s)
+        if type(s) == 'string' and s ~= '' and not seen[string.lower(s)] then
+            seen[string.lower(s)] = true; out[#out + 1] = s;
+        end
+    end
+    local data = select(1, M.currentModel());
+    if type(data) ~= 'table' then return out; end
+    if type(data.Modes) == 'table' then
+        for nm, def in pairs(data.Modes) do
+            if type(def.values) == 'table' and #def.values > 0 then
+                for _, v in ipairs(def.values) do add(nm .. ':' .. v); end
+            else
+                add(nm);
+            end
+        end
+    end
+    for ev, list in pairs(data) do
+        if ev ~= 'Modes' and type(list) == 'table' then
+            for _, r in ipairs(list) do
+                if type(r) == 'table' and type(r.when) == 'table' and r.when.mode ~= nil then
+                    add(tostring(r.when.mode));
+                end
+            end
+        end
+    end
+    table.sort(out, function(a, b) return string.lower(a) < string.lower(b); end);
+    return out;
+end
+
 local function trigPrettyKey(k)
     if hasDispatch and type(dsp.PRETTY_KEY) == 'table' and dsp.PRETTY_KEY[k] ~= nil then return dsp.PRETTY_KEY[k]; end
     return k;

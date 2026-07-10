@@ -32,7 +32,7 @@ local M = {};
 -- LAC-state copy stamps its version into the modestate mirror; the GUI compares
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code (the seeded file only re-requires when LuaAshitacast itself reloads).
-M.VERSION = 4;
+M.VERSION = 5;
 
 -- Colored [dlac] chat output (chatfmt); plain print when unavailable. The shadowed
 -- `print` re-heads "[dlac] ..."-prefixed lines with the colored header.
@@ -167,19 +167,27 @@ local function nameContains(ctx, word)
     return string.find(string.lower(nm), string.lower(word), 1, true) ~= nil;
 end
 
+-- Public mode-condition check, shared by the trigger matcher AND set-entry gating
+-- (utils.BuildDynamicSets: per-item `mode = '...'` wrappers). 'Weapon:Melee' -> the
+-- cycle mode holds that value; a bare name -> toggle ON (or any cycle value).
+-- `modes` defaults to the live session state; the GUI passes the modestate.lua
+-- mirror instead (it lives in a different Lua state).
+function M.modeActive(cond, modes)
+    modes = modes or M.modes;
+    local s = tostring(cond);
+    local p = string.find(s, ':', 1, true);
+    if p ~= nil then
+        local cur = modes[string.lower(string.sub(s, 1, p - 1))];
+        return type(cur) == 'string' and ci(cur, string.sub(s, p + 1));
+    end
+    return modes[string.lower(s)] ~= nil;
+end
+
 local MATCHERS = {
     any             = function() return true; end,
     status          = function(v, ctx) return ctx.player ~= nil and ci(ctx.player.Status, v); end,
     moving          = function(v, ctx) return ctx.player ~= nil and ((ctx.player.IsMoving == true) == (v == true)); end,
-    mode            = function(v, ctx)
-        local s = tostring(v);
-        local p = string.find(s, ':', 1, true);
-        if p ~= nil then                               -- 'Weapon:Melee' -> cycle mode holds that value
-            local cur = M.modes[string.lower(string.sub(s, 1, p - 1))];
-            return type(cur) == 'string' and ci(cur, string.sub(s, p + 1));
-        end
-        return M.modes[string.lower(s)] ~= nil;        -- toggle ON (or any cycle value)
-    end,
+    mode            = function(v) return M.modeActive(v); end,
     name            = function(v, ctx) return ctx.action ~= nil and ci(ctx.action.Name, v); end,
     contains        = function(v, ctx) return nameContains(ctx, v); end,   -- substring: 'Madrigal' hits Blade+Sword
     family          = function(v, ctx) return nameContains(ctx, v); end,   -- legacy alias of contains

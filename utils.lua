@@ -241,8 +241,13 @@ function M.BuildDynamicSets(sets)
             local bestGear = nil;
             local slotVirtual = nil;
 
-            -- Find the highest-level eligible piece for the slot
-            for _, gearVar in pairs(slotTable) do
+            -- Evaluate one list entry; maybe promote it to the slot's pick. wantMode
+            -- selects the pass: true = only entries whose `mode` condition is ACTIVE
+            -- right now; false = only unconditional entries. An active mode-gated
+            -- entry therefore OUTRANKS every unconditional one (specific beats
+            -- generic, same philosophy as trigger specificity); an INACTIVE one is
+            -- excluded outright.
+            local function evalEntry(gearVar, wantMode)
                 -- Virtual slot entry ('dlac:AutoStaff' / 'dlac:AutoObi'): the dispatch
                 -- engine resolves it at equip time (ADR 0004). Remember it, but KEEP
                 -- evaluating the slot's real items -- the normal best-by-level pick
@@ -250,42 +255,54 @@ function M.BuildDynamicSets(sets)
                 -- iridescence weapon / obi is above your current level).
                 if type(gearVar) == "string" and string.lower(string.sub(gearVar, 1, 5)) == "dlac:" then
                     slotVirtual = gearVar;
-                    goto continue;
+                    return;
                 end
 
                 local maxLevel = 75; -- If you have passed the max level for the slot, set high so it won't be limiting if it's not specified.
                 local minLevel = 0;
                 local gearVarObject = gearVar;
 
-                -- The point of this is to be able to set own parameters with a table on a gear.
-                -- Now you can individualize gear stats (augments) and may set new attributes if needed, or overwrite.
+                -- Wrapper form { gear = <ref>, minLevel/maxLevel/mode, ... }: build a
+                -- COPY of the gear object with the wrapper's fields applied on top --
+                -- individualize augments, override attributes, gate on level or mode.
                 -- e.g. {gear = gear.Main.Sword.Excalibur, maxLevel = 50}
-
-                if gearVarObject.gear ~= nil then
-                    tempGearVar = gearVarObject.gear;
-                    -- gearVar.gear = nil; -- Remove gear property to avoid confusion, also avoid looping over it.
-
-                    -- Here we loop over all the table properties and overwrite or add properties to tempGearVar as needed.
-                    for gearProp, gearValue in pairs(gearVarObject) do
-                        tempGearVar[gearProp] = gearValue;
+                -- (The old in-place merge mutated the SHARED gear.lua record, so one
+                -- item wrapped differently in two sets leaked fields between them.)
+                if type(gearVarObject) == "table" and gearVarObject.gear ~= nil and gearVarObject.Name == nil then
+                    local ref = gearVarObject.gear;
+                    if type(ref) == "string" then ref = gear.NameToObject[ref]; end
+                    local merged = {};
+                    if type(ref) == "table" then
+                        for k, v in pairs(ref) do merged[k] = v; end
                     end
-
-                    -- Once this is done, we have our own newly built gear object we will interract with as normally.
-                    gearVarObject = tempGearVar;
+                    for k, v in pairs(gearVarObject) do
+                        if k ~= "gear" then merged[k] = v; end
+                    end
+                    gearVarObject = merged;
                 end
 
+                local gearObject;
                 if type(gearVarObject) == "string" then
                     if gear.NameToObject[gearVarObject] ~= nil then
-                        gearObject = gear.NameToObject[gearVarObject]
+                        gearObject = gear.NameToObject[gearVarObject];
                     else
-                        print ("Unable to find " .. tostring(gearVarObject) .. " in gear table.")
+                        print ("Unable to find " .. tostring(gearVarObject) .. " in gear table.");
+                        return;
                     end
                 else
-                    gearObject = gearVarObject
+                    gearObject = gearVarObject;
                 end
 
+                -- Mode-gated entry vs the current pass (see evalEntry doc above).
+                if gearObject.mode ~= nil then
+                    if not wantMode then return; end
+                    local dsp = M.dispatchModule;
+                    if dsp == nil or type(dsp.modeActive) ~= 'function'
+                       or dsp.modeActive(gearObject.mode) ~= true then return; end
+                elseif wantMode then
+                    return;
+                end
 
-                
                 if gearObject.maxLevel ~= nil then
                     maxLevel = gearObject.maxLevel;
                 end
@@ -295,31 +312,29 @@ function M.BuildDynamicSets(sets)
                 end
 
                 -- Seems like when loading in, it can't parse items properly at times, so this check will avoid errors.
-                -- Maybe there's a bug correlated to this, so will have to troubleshoot further to see what creates this.
                 if gearObject.Level == nil then
-                    goto continue;
+                    return;
                 end
 
                 -- if gear level is over Main job level, ignore.
                 if gearObject.Level > mjLevel then
-                    goto continue;
+                    return;
                 end
 
                 -- if gear level is under current selected slot's max level, ignore.
                 if gearObject.Level < maxSlotLevel and minLevel < maxSlotLevel then
-                    goto continue;
+                    return;
                 end
                 -- if Main Job level is over the slot's defined max level, ignore.
                 if mjLevel > maxLevel then
-                    goto continue;
+                    return;
                 end
 
                 -- if Main Job level is under the slot's defined min level, ignore.
                 if mjLevel < minLevel then
-                    goto continue;
+                    return;
                 end
 
-                    
                 if slotName == "Sub" then
                     -- Sub-slot pairing (shared rule, equip-time): DW decides whether a
                     -- 1H off-hand is legal; the list's shield/grip is the fallback.
@@ -330,18 +345,24 @@ function M.BuildDynamicSets(sets)
                     -- All other slots (Main, Head, Body, etc.)
                     bestGear = gearObject
                 end
-                
+
                 -- If we found a valid piece, update the best gear for this set
                 if bestGear ~= nil then
                     maxSlotLevel = bestGear.Level;
                     currentSet[slotName] = bestGear.Name;
-                    
+
                     -- Store reference to the main hand item for sub slot logic
                     if slotName == "Main" then
                         currentMain = gearObject;
                     end
                 end
-                ::continue::
+            end
+
+            -- Pass 1: mode-gated entries whose mode is active. Pass 2 (only when
+            -- pass 1 picked nothing): the unconditional entries -- the fallback rank.
+            for _, gearVar in pairs(slotTable) do evalEntry(gearVar, true); end
+            if currentSet[slotName] == nil then
+                for _, gearVar in pairs(slotTable) do evalEntry(gearVar, false); end
             end
 
             -- Compose the virtual with its fallback: 'dlac:AutoStaff|<bestName>'. The

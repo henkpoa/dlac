@@ -23,6 +23,11 @@ local function ashitaWithDW(hasDW)
 end
 
 AshitaCore = nil;
+-- The REAL dispatch engine, loaded headlessly BEFORE utils so utils captures it as
+-- M.dispatchModule: BuildDynamicSets consults dispatch.modeActive for mode-gated
+-- set entries (section G drives dispatch.M.modes directly).
+local dispatchM = dofile('dispatch.lua');
+package.loaded['dlac\\dispatch'] = dispatchM;
 local utils = dofile('utils.lua');
 
 -- ---------------------------------------------------------------------------
@@ -248,6 +253,62 @@ check('F3 repair creates the commented-out handler', fRep.created[1], 'Ability')
 check('F4 repair emits no warnings', #fRep.warnings, 0);
 check('F5 repaired text parses', (loadstring or load)(fText) ~= nil, true);
 check('F6 repaired profile is healthy', setmgr.analyzeShims(fText).healthy, true);
+
+-- ---------------------------------------------------------------------------
+-- G. mode-gated set entries -- an entry with `mode = '...'` participates only
+--    while that mode is active, and then OUTRANKS unconditional entries; the
+--    wrapper merge must never mutate the shared gear record.
+-- ---------------------------------------------------------------------------
+check('G1 modeActive cycle hit',    dispatchM.modeActive('Weapon:Melee', { weapon = 'Melee' }), true);
+check('G2 modeActive cycle miss',   dispatchM.modeActive('Weapon:Melee', { weapon = 'Ranged' }), false);
+check('G3 modeActive toggle on',    dispatchM.modeActive('DT', { dt = true }), true);
+check('G4 modeActive toggle off',   dispatchM.modeActive('DT', {}), false);
+check('G5 modeActive bare cycle',   dispatchM.modeActive('Weapon', { weapon = 'Ranged' }), true);
+
+TEST_PLAYER = { MainJob = 'WHM', SubJob = 'NIN', MainJobSync = 75, SubJobSync = 37 };
+AshitaCore = ashitaWithDW(false);
+
+local plainBody = { Name = 'PlainBody', Level = 50, Type = 'Body' };
+local modeBody  = { Name = 'ModeBody',  Level = 40, Type = 'Body' };   -- lower level on purpose
+local lateBody  = { Name = 'LateBody',  Level = 10, Type = 'Body' };
+local function gatedSets()
+    return { Dynamic = { TP = {
+        Body = { plainBody, { gear = modeBody, mode = 'Weapon:Melee' } },
+    } } };
+end
+
+dispatchM.modes = {};
+local gOff = utils.BuildDynamicSets(gatedSets());
+check('G6 mode off: unconditional wins', gOff.TP and gOff.TP.Body, 'PlainBody');
+
+dispatchM.modes = { weapon = 'Melee' };
+local gOn = utils.BuildDynamicSets(gatedSets());
+check('G7 mode on: gated entry beats higher-level unconditional', gOn.TP and gOn.TP.Body, 'ModeBody');
+
+dispatchM.modes = { weapon = 'Ranged' };
+local gOther = utils.BuildDynamicSets(gatedSets());
+check('G8 other cycle value: gated entry excluded', gOther.TP and gOther.TP.Body, 'PlainBody');
+
+dispatchM.modes = { dt = true };
+local gTog = utils.BuildDynamicSets({ Dynamic = { TP = {
+    Body = { plainBody, { gear = modeBody, mode = 'DT' } },
+} } });
+check('G9 toggle mode gates too', gTog.TP and gTog.TP.Body, 'ModeBody');
+dispatchM.modes = {};
+
+check('G10 wrapper merge does not mutate the shared record', modeBody.mode, nil);
+
+-- min/maxLevel bounds through the same wrapper (the ffxi-lac semantics)
+TEST_PLAYER = { MainJob = 'WHM', SubJob = 'NIN', MainJobSync = 50, SubJobSync = 25 };
+local gMin = utils.BuildDynamicSets({ Dynamic = { TP = {
+    Body = { { gear = lateBody, minLevel = 60 }, { gear = plainBody, maxLevel = 55 } },
+} } });
+check('G11 minLevel bound excludes below', gMin.TP and gMin.TP.Body, 'PlainBody');
+TEST_PLAYER = { MainJob = 'WHM', SubJob = 'NIN', MainJobSync = 60, SubJobSync = 30 };
+local gMax = utils.BuildDynamicSets({ Dynamic = { TP = {
+    Body = { { gear = lateBody, minLevel = 60 }, { gear = plainBody, maxLevel = 55 } },
+} } });
+check('G12 past maxLevel: banded item takes over', gMax.TP and gMax.TP.Body, 'LateBody');
 
 -- ---------------------------------------------------------------------------
 -- verdict

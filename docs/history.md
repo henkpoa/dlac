@@ -163,6 +163,18 @@ gear.lua (the commit pipeline aborts), and regeneration would lose deep-storage 
 prune is the tool. Brigandine's survival was a genuine ownership match, not a bug — use
 `/dl prune why` before assuming.
 
+**Late additions (same day):** CTRL+K GUI keybind; partyfinder-matched window theme
+(uistyle.lua); branch hygiene restored (modularization + theme + gearcheck promoted to
+main; feature/storage-move = exactly gearmove again); **mode-gated set entries** — a
+slot-list entry can carry `mode = 'Weapon:Melee'` (wrapper form, like
+minLevel/maxLevel, now GUI-editable via the `~` button): active-mode entries OUTRANK
+unconditional ones, inactive ones are excluded, so ONE set adapts per mode instead of
+mode-switched set pairs. Same matcher as trigger `mode` conditions
+(`dispatch.modeActive`, VERSION 5); the GUI previews against the modestate mirror. Also
+fixed: the engine's wrapper merge mutated the SHARED gear.lua record (an item wrapped
+differently in two sets leaked fields between them) — it now merges onto a copy.
+Tests G1-G12 (the suite now loads the real dispatch.lua headlessly).
+
 ## Standing loose ends (as of 2026-07-10, end of day)
 
 - **feature/storage-move**: local-only, awaiting GM verdict. Before any merge: strip the
