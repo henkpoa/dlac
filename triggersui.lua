@@ -350,6 +350,14 @@ end
 -- (Flag saves regenerate the manifest via autoCommit every time -- rescanning is 16
 -- name lookups, and it guarantees the manifest format/tier data is never stale.)
 
+-- Exported for gearui's auto-sync hook: regenerate the manifest on login / job change
+-- (same cadence as the gear.lua auto-sync), so the Rescan button is a manual override,
+-- not a required step. Safe no-op before init / login.
+function M.rescanAutogear()
+    if deps == nil then return; end
+    pcall(autoCommit);
+end
+
 -- The Automations section (rendered under the handler sections): the manifest data +
 -- rescan. The ON/OFF switches live per set (Sets tab -> Auto staff / Auto obi).
 local function renderAutomations()

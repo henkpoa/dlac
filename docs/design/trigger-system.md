@@ -85,7 +85,10 @@ flattens it WITH the slot's normal best-by-level pick as fallback (`dlac:AutoSta
 the engine resolves at equip time, level-gated (manifest entries record item levels — an
 under-leveled Chatoyant is not a candidate), equips the fallback when unresolvable, and drops
 the slot only when there's no fallback. Gear data comes from a GUI-derived manifest
-(`<char>\dlac\autogear.lua` — the engine never loads the catalog; Automations = view + Rescan):
+(`<char>\dlac\autogear.lua` — the engine never loads the catalog), regenerated automatically
+on login / job change alongside the gear.lua auto-sync (the Automations Rescan button is a
+manual override). Obis: the eight elemental ones are preferred for their element, with the
+universal Hachirin-no-obi as the owned fallback:
 - **dlac:AutoStaff**: tiered Iridescence pick per cast — elemental staves carry it for their own
   element only (NQ +1 / HQ +2), universal weapons for all elements (Iridal Staff +1, Chatoyant
   Staff / Foreshadow +1 = +2). Higher tier wins; ties go to the universal, which also covers

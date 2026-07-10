@@ -2574,10 +2574,24 @@ end
 -- no-op when nothing is new, so it is cheap and never spams. Toggle with /dl autosync off.
 local autoSyncEnabled = true;
 local _syncedJob, _syncDueFrame = nil, nil;
+
+-- Regenerate the automations manifest (autogear.lua) from bags -- the same cadence as
+-- the gear.lua auto-sync, so staves/obis/Iridescence detection never needs a manual
+-- Rescan. Builds the name indexes first: the UI may never have been opened.
+local function autoRescanManifest()
+    pcall(function()
+        if trigui == nil or type(trigui.rescanAutogear) ~= 'function' then return; end
+        buildOwned();
+        buildAllEquip();
+        trigui.rescanAutogear();
+    end);
+end
+
 local function doSync()
     local added = callImport('sync');
     added = (type(added) == 'number') and added or 0;
     if added > 0 then refreshGear(); end
+    autoRescanManifest();   -- new gear may change the best staff/obi picks
     return added;
 end
 local function autoSyncOnJobChange()
