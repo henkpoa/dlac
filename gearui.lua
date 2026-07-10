@@ -1273,14 +1273,40 @@ local function qtyTag(rec)
     return '';
 end
 
--- Clickable alternative row (Equipped tab): icon + name/Lv/stats Selectable, with a
--- hover tooltip. Returns true when clicked.
-local function renderAltRow(rec, ordinal, job, level)
+-- Static name-column width for a record list: the longest name decides (capped),
+-- so rows align. Shared by the Equipped alternatives and the All Equipment tree.
+local function nameWidthOf(list)
+    local w = 120;
+    for _, rec in ipairs(list) do
+        local ok, tw = pcall(imgui.CalcTextSize, tostring(rec.Name or '?'));
+        if not ok or type(tw) ~= 'number' then tw = #tostring(rec.Name or '?') * 7; end
+        if tw + 14 > w then w = tw + 14; end
+    end
+    return math.min(w, 260);
+end
+
+-- Clickable alternative row (Equipped tab) in STATIC COLUMNS: an invisible full-row
+-- Selectable is the click target; name / Lv / stats / qty draw over it at fixed X.
+-- Returns true when clicked.
+local function renderAltRow(rec, ordinal, job, level, nameW)
     renderIcon(rec.Id, 18);
-    local label = string.format('%s   Lv%d   %s%s##altsel_%d',
-        truncate(rec.Name or '?', 26), rec.Level or 0, statSummary(rec, level), qtyTag(rec), ordinal);
-    local clicked = imgui.Selectable(label, false);
+    local clicked = imgui.Selectable('##altsel_' .. ordinal, false);
     if imgui.IsItemHovered() then renderItemTooltip(rec); end
+    local nameCol = 26;                                -- just after the icon
+    imgui.SameLine(nameCol);
+    imgui.TextColored(COL_USABLE, esc(rec.Name or '?'));
+    imgui.SameLine(nameCol + (nameW or 200));
+    imgui.TextColored(COL_LEVEL, string.format('Lv%2d', rec.Level or 0));
+    local ss = statSummary(rec, level);
+    if ss ~= '' then
+        imgui.SameLine(nameCol + (nameW or 200) + 46);
+        imgui.TextColored(COL_STATS, esc(ss));
+    end
+    local q = qtyTag(rec);
+    if q ~= '' then
+        imgui.SameLine(0, 8);
+        imgui.TextColored(COL_DIM, q);
+    end
     return clicked;
 end
 
@@ -1621,8 +1647,9 @@ local function renderEquippedTab(job, level)
                 imgui.TextColored(COL_DIM, 'No eligible gear for this slot at your job/level.');
             end
         else
+            local nW = nameWidthOf(alts);
             for i, rec in ipairs(alts) do
-                if renderAltRow(rec, i, job, level) then
+                if renderAltRow(rec, i, job, level, nW) then
                     equipToSlot(ui.eqSelected, rec.Name, ui.lockEquipped[1] == true, ui.freeEquip[1] == true, slotLocked);
                     _lockMirror.at = -1;   -- lock state may just have changed
                 end
@@ -1714,17 +1741,6 @@ local function renderAllEquipTab(job, level)
             if searching then imgui.SetNextItemOpen(true);
             elseif forceClose then imgui.SetNextItemOpen(false); end
             if imgui.CollapsingHeader(string.format('%s (%d)###aeqh_%s', slot, cnt, slot)) then
-                -- static name-column width per group: longest visible name decides
-                -- (the same convention as the Triggers tab's aligned columns).
-                local function nameWidthOf(list)
-                    local w = 120;
-                    for _, rec in ipairs(list) do
-                        local ok, tw = pcall(imgui.CalcTextSize, tostring(rec.Name or '?'));
-                        if not ok or type(tw) ~= 'number' then tw = #tostring(rec.Name or '?') * 7; end
-                        if tw + 14 > w then w = tw + 14; end
-                    end
-                    return math.min(w, 260);
-                end
                 if slot == 'Main' or slot == 'Range' then
                     local seen = {};
                     local function renderCat(cat)
