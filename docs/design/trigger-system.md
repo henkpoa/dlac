@@ -9,6 +9,10 @@ Replace the last hand-written Lua in a LuaAshitacast profile — the Handle* log
 edited in the dlac GUI, so a player who can't (or won't) code gets full gear automation:
 status sets, ability/item/spell sets, modes, and staff/obi automation.
 
+**Product rule: nothing dlac ships may FORCE a player to open or edit a Lua file.** Every
+capability gets a GUI path (Setup wires profiles, the Triggers tab edits rules, buttons toggle
+modes). The Lua files remain hand-editable for power users — they are storage, not interface.
+
 ## Architecture (ADR 0002)
 
 Two Lua states. The dlac addon (GUI) writes *data*; the seeded library (`dlac\utils` required by

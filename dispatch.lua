@@ -36,6 +36,8 @@ M.modes = {};   -- session-only mode flags: lower(name) -> true. Reset on load b
 local EVENTS = { 'Default', 'Precast', 'Midcast', 'Ability', 'Item', 'Weaponskill', 'Preshot', 'Midshot' };
 local EVENT_CANON = {};
 for _, e in ipairs(EVENTS) do EVENT_CANON[string.lower(e)] = e; end
+M.EVENTS = EVENTS;
+function M.canonEvent(e) return EVENT_CANON[string.lower(tostring(e))]; end
 
 local _trig  = { path = nil, raw = nil, rules = nil, lastCheck = -1, err = nil };
 local _trace = {};   -- event -> { time, action, sig, lines = {...} }
@@ -177,6 +179,29 @@ local TIER = {
     name = 50,
     mode = 100,
 };
+
+-- Display-case spelling per (lowercased) condition key -- what the serializer writes
+-- and the GUI shows. Matching is case-insensitive either way.
+local PRETTY_KEY = {
+    any = 'any', status = 'status', moving = 'moving', mode = 'mode',
+    skill = 'skill', magictype = 'magicType', abilitytype = 'abilityType',
+    element = 'element', songtype = 'songType', family = 'family', name = 'name',
+    dayweatherbonus = 'dayWeatherBonus',
+};
+M.PRETTY_KEY = PRETTY_KEY;
+
+-- The default priority a rule with this `when` would get (specificity, ADR 0003).
+-- Exposed so the GUI can show the effective number next to an "auto" priority.
+function M.defaultPriority(when)
+    local p = 10;
+    if type(when) == 'table' then
+        for k in pairs(when) do
+            local t = TIER[string.lower(tostring(k))];
+            if t ~= nil and t > p then p = t; end
+        end
+    end
+    return p;
+end
 
 -- ---------------------------------------------------------------------------
 -- Trigger file: load, validate, normalize. Kept rules carry lowercased condition
@@ -402,13 +427,100 @@ end
 function M.getTrace() return _trace; end
 
 -- ---------------------------------------------------------------------------
--- Mode state (session-only, by design -- no persistence).
+-- Trigger file read/write for the GUI (the format lives HERE, next to the parser).
+-- The GUI edits a plain rule table and serializeTriggers turns it back into the
+-- canonical file text; readTriggersRaw hands the GUI the current file's table.
 -- ---------------------------------------------------------------------------
+
+-- Raw (un-normalized) rule table from a trigger file path: table | nil, err.
+function M.readTriggersRaw(path)
+    if path == nil then return nil, 'no path'; end
+    local raw = readFile(path);
+    if raw == nil then return nil, 'no file'; end
+    local chunk, cerr = (loadstring or load)(raw, '@' .. path);
+    if chunk == nil then return nil, 'does not parse: ' .. tostring(cerr); end
+    local ok, t = pcall(chunk);
+    if not ok or type(t) ~= 'table' then
+        return nil, 'did not return a table' .. (ok and '' or (': ' .. tostring(t)));
+    end
+    return t;
+end
+
+local function luaValue(v)
+    if type(v) == 'string' then return string.format('%q', v); end
+    return tostring(v);
+end
+
+-- data = { [Handler] = { { when = {k=v}, set='X' | equip={Slot='Item'}, priority=n? }, ... } }
+-- Handlers emit in canonical order; conditions in sorted display-case spelling.
+-- Deterministic output -> clean diffs; comments are NOT preserved (GUI-owned file).
+function M.serializeTriggers(data)
+    local L = {
+        '-- dlac triggers -- written by the dlac GUI (Triggers tab); safe to hand-edit,',
+        '-- but the GUI rewrites this file on Commit (comments are not preserved).',
+        '-- Hot-reloaded: changes apply on the next action, no /lac reload needed.',
+        '-- Format & conditions: docs/design/trigger-system.md in the dlac addon.',
+        'return {',
+    };
+    for _, ev in ipairs(EVENTS) do
+        local list = (type(data) == 'table') and data[ev] or nil;
+        if type(list) == 'table' and #list > 0 then
+            L[#L + 1] = '    ' .. ev .. ' = {';
+            for _, r in ipairs(list) do
+                local conds = {};
+                for k, v in pairs(r.when or {}) do
+                    local lk = string.lower(tostring(k));
+                    conds[#conds + 1] = (PRETTY_KEY[lk] or tostring(k)) .. ' = ' .. luaValue(v);
+                end
+                table.sort(conds);
+                local action;
+                if r.set ~= nil then
+                    action = 'set = ' .. luaValue(tostring(r.set));
+                else
+                    local slots = {};
+                    for slot, item in pairs(r.equip or {}) do
+                        slots[#slots + 1] = tostring(slot) .. ' = ' .. luaValue(tostring(item));
+                    end
+                    table.sort(slots);
+                    action = 'equip = { ' .. table.concat(slots, ', ') .. ' }';
+                end
+                local prio = (tonumber(r.priority) ~= nil) and (', priority = ' .. tostring(r.priority)) or '';
+                L[#L + 1] = string.format('        { when = { %s }, %s%s },',
+                    table.concat(conds, ', '), action, prio);
+            end
+            L[#L + 1] = '    },';
+        end
+    end
+    L[#L + 1] = '};';
+    L[#L + 1] = '';
+    return table.concat(L, '\n');
+end
+
+-- ---------------------------------------------------------------------------
+-- Mode state (session-only, by design -- no persistence). The LAC state OWNS the
+-- flags; a small modestate.lua mirror is written on every change so the GUI (a
+-- different Lua state) can DISPLAY them. It is never read back on load -- modes
+-- always start a session off.
+-- ---------------------------------------------------------------------------
+local function saveModeState()
+    pcall(function()
+        local dir = charDir();
+        if dir == nil then return; end
+        local parts = {};
+        for m in pairs(M.modes) do parts[#parts + 1] = string.format('[%q] = true,', m); end
+        table.sort(parts);
+        writeFile(dir .. 'modestate.lua',
+            '-- dlac mode mirror (display only; the LAC state owns the flags)\nreturn { '
+            .. table.concat(parts, ' ') .. ' }\n');
+    end);
+end
+
 function M.setMode(name, state)
     if type(name) ~= 'string' or name == '' then return false; end
     local ln = string.lower(name);
     if state == nil then state = not (M.modes[ln] == true); end   -- toggle
     M.modes[ln] = (state == true) or nil;
+    saveModeState();
     return M.modes[ln] == true;
 end
 
@@ -472,6 +584,8 @@ local function argStart(raw)
 end
 
 if inLac() then
+    pcall(saveModeState);   -- fresh session: mirror the (empty) mode state for the GUI
+
     ashita.events.register('command', 'dlac-dispatch', function(e)
         local start = argStart(string.lower(e.command));
         if start == nil then return; end

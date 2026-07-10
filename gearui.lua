@@ -42,13 +42,18 @@ local _cok, catalog = pcall(require, "dlac\\catalog");
 local _sok, setmgr = pcall(require, "dlac\\setmanager");
 -- Augment reader: decode private augments from item Extra bytes (worn-stat totals).
 local _augok, aug  = pcall(require, "dlac\\augments");
+-- Trigger engine (dispatch.lua): trigger-file reader/serializer + condition metadata
+-- for the Triggers tab. The addon-state copy is inert (no gFunc) -- only its pure
+-- helpers are used here; equipping/mode state lives in the LAC-state copy.
+local _dpok, dsp   = pcall(require, "dlac\\dispatch");
 
-local hasImgui   = _iok and imgui ~= nil;
-local hasD3D     = _fok and _dok and ffi ~= nil and d3d ~= nil;
-local hasOptim   = _ook and type(optim) == 'table';
-local hasCatalog = _cok and type(catalog) == 'table';
-local hasSetmgr  = _sok and type(setmgr) == 'table';
-local hasAug     = _augok and type(aug) == 'table';
+local hasImgui    = _iok and imgui ~= nil;
+local hasD3D      = _fok and _dok and ffi ~= nil and d3d ~= nil;
+local hasOptim    = _ook and type(optim) == 'table';
+local hasCatalog  = _cok and type(catalog) == 'table';
+local hasSetmgr   = _sok and type(setmgr) == 'table';
+local hasAug      = _augok and type(aug) == 'table';
+local hasDispatch = _dpok and type(dsp) == 'table';
 
 local M = {};
 M.visible        = false;    -- window visibility flag, toggled by /dl ui
@@ -959,9 +964,10 @@ local function jobFile()
 end
 
 -- Is the current job's <JOB>.lua already wired for dlac?
---   'ok'      -> requires the dlac library (set up)
+--   'ok'      -> requires the dlac library AND every handler ends in utils.dispatch (healthy)
+--   'shims'   -> requires the library but one or more handlers lack the dispatch shim
 --   'ffxilac' -> still an ffxi-lac profile (needs conversion)
---   'none'    -> neither (fresh/custom profile -- needs initializing)
+--   'none'    -> a custom/other profile (needs in-place conversion -- logic is KEPT)
 --   'nofile' / 'nojob' -> no profile file / no job.
 -- Cached per file; cleared after a Setup run (see below).
 local _setupState, _setupStateJob = nil, nil;
@@ -972,7 +978,13 @@ local function jobSetupState()
     local st;
     local text = readFileText(jf);
     if text == nil then st = 'nofile';
-    elseif text:find([[dlac\\utils]], 1, true) then st = 'ok';
+    elseif text:find([[dlac\\utils]], 1, true) then
+        st = 'ok';
+        -- per-handler shim health: every Handle* must exist and END with its dispatch call
+        if hasSetmgr and type(setmgr.analyzeShims) == 'function' then
+            local aok, a = pcall(setmgr.analyzeShims, text);
+            if aok and type(a) == 'table' and a.healthy ~= true then st = 'shims'; end
+        end
     elseif text:find('ffxi-lac', 1, true) then st = 'ffxilac';
     else st = 'none'; end
     _setupState, _setupStateJob = st, jf;
@@ -1063,14 +1075,19 @@ local function seedTriggersFile(base, abbr)
     return writeFileText(path, dsp.starterTriggersText);
 end
 
--- Set up the current job's <JOB>.lua for dlac. Handles every case:
---   'ok'      -> already set up (still seeds a missing trigger file, then reports).
---   'ffxilac' -> convert the existing profile in place (backup .flbak).
---   'nofile'  -> initialize from scratch: write a self-contained dlac starter profile.
---   'none'    -> an existing non-dlac profile: back it up (.flbak), then drop in the starter.
+-- Set up the current job's <JOB>.lua for dlac. Convert-IN-PLACE policy: an existing
+-- profile's own logic is NEVER removed or replaced -- Setup only adds the dlac require,
+-- appends `utils.dispatch('<H>')` at the END of each existing handler (their code runs
+-- first; dlac overlays last), and creates the handlers they don't have. Idempotent:
+-- clicking Setup on a healthy profile changes nothing.
+--   'ok'      -> healthy (still seeds a missing trigger file, then reports).
+--   'shims'   -> dlac profile missing shims -> repair (setmanager.repairShims).
+--   'ffxilac' -> repoint requires at dlac (backup .flbak), then repair shims.
+--   'none'    -> custom profile: backup .flbak, add bootstrap+require, repair shims.
+--   'nofile'  -> initialize from scratch: write the self-contained dlac starter.
 -- Also seeds <char>\dlac\ with a gear.lua (from an existing ffxi-lac folder, else the
--- bundled empty template) so the profile loads and Scan/Commit have somewhere to read/write,
--- and a starter triggers\<JOB>.lua so the dispatch shims have data to act on (ADR 0002).
+-- bundled empty template) and a starter triggers\<JOB>.lua so the dispatch shims have
+-- data to act on (ADR 0002).
 local function migrateCurrentJob()
     local base = charBase();
     if base == nil then _augStatus = 'Setup: log in first (no character folder).'; return; end
@@ -1102,14 +1119,11 @@ local function migrateCurrentJob()
     -- and the starter trigger file, so the profile's dispatch shims equip out of the box.
     seedTriggersFile(base, abbr);
 
-    if state == 'ffxilac' then
-        -- convert the existing ffxi-lac profile in place (keeps your sets).
-        local text = readFileText(jf);
-        if text == nil then _augStatus = 'Setup: could not read ' .. jf; return; end
-        writeFileText(jf .. '.flbak', text);   -- backup the original
-        if writeFileText(jf, migrateJobText(text)) then
+    if state == 'nofile' then
+        -- nothing to convert: write a fresh, self-contained dlac starter.
+        if writeFileText(jf, MIGRATE_BOOT .. '\n' .. STARTER_PROFILE) then
             _setupState = nil;
-            _augStatus = string.format('Set up %s.lua for dlac (backup %s.lua.flbak). Reload LuaAshitacast to apply.', abbr, abbr);
+            _augStatus = string.format('Initialized a dlac %s.lua. Reload LuaAshitacast, then build sets and triggers in the GUI.', abbr);
             pcall(function() print('[dlac] ' .. _augStatus); end);
         else
             _augStatus = 'Setup: could not write ' .. jf;
@@ -1117,19 +1131,44 @@ local function migrateCurrentJob()
         return;
     end
 
-    -- state == 'nofile' or 'none': write a fresh, self-contained dlac starter. If a profile
-    -- was already there ('none'), back it up first so nothing is lost.
-    local existing = readFileText(jf);
-    if existing ~= nil then writeFileText(jf .. '.flbak', existing); end
-    if writeFileText(jf, MIGRATE_BOOT .. '\n' .. STARTER_PROFILE) then
-        _setupState = nil;
-        local note = (existing ~= nil)
-            and string.format(' (your old %s.lua was backed up to %s.lua.flbak)', abbr, abbr) or '';
-        _augStatus = string.format('Initialized a dlac %s.lua%s. Reload LuaAshitacast, then Scan and build sets.', abbr, note);
-        pcall(function() print('[dlac] ' .. _augStatus); end);
-    else
-        _augStatus = 'Setup: could not write ' .. jf;
+    -- Existing profile ('ffxilac' | 'none' | 'shims'): convert in place.
+    if state == 'ffxilac' or state == 'none' then
+        local text = readFileText(jf);
+        if text == nil then _augStatus = 'Setup: could not read ' .. jf; return; end
+        writeFileText(jf .. '.flbak', text);   -- one-time backup of the pre-dlac original
+        if state == 'ffxilac' then
+            text = migrateJobText(text);       -- repoint ffxi-lac requires (adds the bootstrap)
+        elseif not text:find([[addons\\?.lua]], 1, true) then
+            text = MIGRATE_BOOT .. '\n' .. text;   -- make require("dlac\\...") resolvable
+        end
+        if not writeFileText(jf, text) then _augStatus = 'Setup: could not write ' .. jf; return; end
     end
+
+    -- Append the dispatch shims (creates missing handlers; adds the require if absent).
+    -- setmanager parse-checks and keeps its own rotated backup; aborts untouched on failure.
+    local okr, report, bpath = false, 'setmanager unavailable', nil;
+    if hasSetmgr and type(setmgr.repairShims) == 'function' then
+        local pok = pcall(function() okr, report, bpath = setmgr.repairShims(abbr); end);
+        if not pok then okr, report = false, 'internal error'; end
+    end
+    _setupState = nil;
+    if okr ~= true then
+        _augStatus = string.format('Setup: shim wiring failed (%s). Your original is safe (%s.lua.flbak / backups).',
+            tostring(report), abbr);
+        return;
+    end
+    local parts = {};
+    if type(report) == 'table' then
+        if report.requireAdded         then parts[#parts + 1] = 'require added'; end
+        if #(report.created or {}) > 0 then parts[#parts + 1] = 'created ' .. table.concat(report.created, '/'); end
+        if #(report.appended or {}) > 0 then parts[#parts + 1] = 'shimmed ' .. table.concat(report.appended, '/'); end
+        if #(report.moved or {}) > 0   then parts[#parts + 1] = 'moved ' .. table.concat(report.moved, '/'); end
+        for _, w in ipairs(report.warnings or {}) do pcall(function() print('[dlac] setup: ' .. w); end); end
+    end
+    _augStatus = string.format(
+        'Set up %s.lua in place (%s). Your own handler logic was kept -- dlac dispatch runs last. Reload LuaAshitacast to apply.',
+        abbr, (#parts > 0) and table.concat(parts, ', ') or 'no changes needed');
+    pcall(function() print('[dlac] ' .. _augStatus); end);
 end
 
 -- Reload LAC / Scan / Stage / Commit / Augs / Setup, right-aligned on the header row.
@@ -2383,6 +2422,442 @@ local function renderSetsTab(job, level)
     renderAddPopup(job, level);
 end
 
+-- ---------------------------------------------------------------------------
+-- Tab: Triggers -- edit the per-job trigger rules (the dispatch engine's data)
+-- entirely in the GUI (design doc "Triggers tab"). Nothing here requires touching
+-- a Lua file: rules are added/edited/removed in-tab, modes get toggle buttons, and
+-- Commit rewrites <char>\dlac\triggers\<JOB>.lua via dispatch.serializeTriggers and
+-- pings the LAC-state engine (/dl triggers reload) -- live immediately, no reload.
+-- ---------------------------------------------------------------------------
+
+local TRIG_HANDLERS = { 'Default', 'Precast', 'Midcast', 'Ability', 'Item', 'Weaponskill', 'Preshot', 'Midshot' };
+
+-- Condition metadata for the add-rule builder: per handler, the choosable condition
+-- types and their value widgets. kind: 'list' = fixed dropdown, 'text' = free text,
+-- 'flag' = boolean true. Vocabulary mirrors dispatch.lua's MATCHERS (v1).
+local SPELL_CONDS = {
+    { key = 'skill',     kind = 'list', items = { 'Divine Magic', 'Healing Magic', 'Enhancing Magic', 'Enfeebling Magic', 'Elemental Magic', 'Dark Magic', 'Summoning', 'Ninjutsu', 'Singing', 'Blue Magic', 'Geomancy' } },
+    { key = 'magicType', kind = 'list', items = { 'White Magic', 'Black Magic', 'Bard Song', 'Ninjutsu', 'Summoning', 'Blue Magic' } },
+    { key = 'element',   kind = 'list', items = { 'Fire', 'Ice', 'Wind', 'Earth', 'Thunder', 'Water', 'Light', 'Dark', 'Non-Elemental' } },
+    { key = 'songType',  kind = 'list', items = { 'Buff', 'Debuff' } },
+    { key = 'family',    kind = 'text', hint = 'name fragment: "Minuet" matches every tier' },
+    { key = 'name',      kind = 'text', hint = 'exact spell name, e.g. Slow II' },
+    { key = 'dayWeatherBonus', kind = 'flag' },
+    { key = 'any',       kind = 'flag' },
+};
+local COND_DEFS = {
+    Default = {
+        { key = 'status', kind = 'list', items = { 'Engaged', 'Resting', 'Idle' } },
+        { key = 'moving', kind = 'flag' },
+        { key = 'mode',   kind = 'text', hint = 'mode name, e.g. DT' },
+    },
+    Precast = SPELL_CONDS,
+    Midcast = SPELL_CONDS,
+    Ability = {
+        { key = 'abilityType', kind = 'list', items = { 'Blood Pact: Rage', 'Blood Pact: Ward', 'Corsair Roll', 'Quick Draw', 'Ready', 'Rune Enchantment' } },
+        { key = 'family', kind = 'text', hint = 'name fragment' },
+        { key = 'name',   kind = 'text', hint = 'exact ability name, e.g. Repair' },
+        { key = 'any',    kind = 'flag' },
+    },
+    Item = {
+        { key = 'name',   kind = 'text', hint = 'exact item name, e.g. Holy Water' },
+        { key = 'family', kind = 'text', hint = 'name fragment' },
+    },
+    Weaponskill = {
+        { key = 'name', kind = 'text', hint = 'exact weaponskill name' },
+        { key = 'any',  kind = 'flag' },
+    },
+    Preshot = { { key = 'any', kind = 'flag' } },
+    Midshot = { { key = 'any', kind = 'flag' } },
+};
+
+local trig = {
+    data = nil, job = nil, err = nil, dirty = false,
+    status = '', statusErr = false,
+    addFor = nil, addConds = {}, _addDef = 1, _addValSel = nil,
+    addValText = { '' }, addSet = nil, addPrio = { 0 }, _openAdd = false,
+    modeName = { '' }, modeSet = nil,
+    _prioBuf = {},
+    _modeState = {}, _modeStateFrame = -999,
+};
+
+local function trigFilePath()
+    local base = charBase();
+    local _, abbr = jobFile();
+    if base == nil or abbr == nil then return nil, nil; end
+    return base .. 'dlac\\triggers\\' .. abbr .. '.lua', abbr;
+end
+
+-- Load the trigger file into the edit model. Canonical handler keys; condition keys
+-- are stored lowercased internally (serializeTriggers restores the display spelling).
+local function trigLoad(force)
+    local path, abbr = trigFilePath();
+    if path == nil then trig.data, trig.job, trig.err = nil, nil, 'not logged in / unknown job'; return; end
+    if not force and trig.job == abbr and trig.data ~= nil then return; end
+    trig.job, trig.data, trig.err, trig.dirty, trig._prioBuf = abbr, nil, nil, false, {};
+    if not hasDispatch then trig.err = 'dispatch module unavailable'; return; end
+    local raw, err = dsp.readTriggersRaw(path);
+    if raw == nil then trig.err = err; return; end
+    local data = {};
+    for k, v in pairs(raw) do
+        local ev = (type(dsp.canonEvent) == 'function') and dsp.canonEvent(k) or nil;
+        if ev ~= nil and type(v) == 'table' then
+            local list = data[ev] or {};
+            for _, r in ipairs(v) do
+                if type(r) == 'table' and type(r.when) == 'table'
+                   and (r.set ~= nil or type(r.equip) == 'table') then
+                    local when = {};
+                    for ck, cv in pairs(r.when) do when[string.lower(tostring(ck))] = cv; end
+                    list[#list + 1] = {
+                        when = when,
+                        set = (r.set ~= nil) and tostring(r.set) or nil,
+                        equip = (type(r.equip) == 'table') and r.equip or nil,
+                        priority = tonumber(r.priority),
+                    };
+                end
+            end
+            data[ev] = list;
+        end
+    end
+    trig.data = data;
+end
+
+local function trigSetStatus(msg, isErr) trig.status = msg or ''; trig.statusErr = (isErr == true); end
+
+-- Serialize + write the trigger file, then ping the LAC-state engine to hot-reload.
+local function trigCommit()
+    local path, abbr = trigFilePath();
+    if path == nil or trig.data == nil or not hasDispatch then trigSetStatus('Nothing to commit.', true); return; end
+    local text;
+    local ok = pcall(function() text = dsp.serializeTriggers(trig.data); end);
+    if not ok or type(text) ~= 'string' then trigSetStatus('Serialize failed.', true); return; end
+    pcall(function()
+        if ashita and ashita.fs and ashita.fs.create_directory then
+            ashita.fs.create_directory(charBase() .. 'dlac\\triggers\\');
+        end
+    end);
+    if not writeFileText(path, text) then trigSetStatus('Could not write ' .. path, true); return; end
+    trig.dirty = false;
+    pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl triggers reload'); end);
+    trigSetStatus('Committed -- live now (hot-reloaded; no /lac reload needed).', false);
+end
+
+-- Mode display state: the LAC-state engine mirrors its session flags to
+-- <char>\dlac\modestate.lua on every change; we re-read it at most ~1x/second.
+local function trigModeState()
+    if frameCounter - trig._modeStateFrame < 60 then return trig._modeState; end
+    trig._modeStateFrame = frameCounter;
+    local st = {};
+    pcall(function()
+        local base = charBase();
+        if base == nil then return; end
+        local chunk = loadfile(base .. 'dlac\\modestate.lua');
+        if chunk == nil then return; end
+        local ok, t = pcall(chunk);
+        if ok and type(t) == 'table' then st = t; end
+    end);
+    trig._modeState = st;
+    return st;
+end
+
+local function trigPrettyKey(k)
+    if hasDispatch and type(dsp.PRETTY_KEY) == 'table' and dsp.PRETTY_KEY[k] ~= nil then return dsp.PRETTY_KEY[k]; end
+    return k;
+end
+
+local function condSummary(when)
+    local parts = {};
+    for k, v in pairs(when or {}) do
+        if v == true then parts[#parts + 1] = trigPrettyKey(k);
+        else parts[#parts + 1] = trigPrettyKey(k) .. '=' .. tostring(v); end
+    end
+    table.sort(parts);
+    return (#parts > 0) and table.concat(parts, ' + ') or 'any';
+end
+
+-- Every set name in the profile (Dynamic + static), for the target-set dropdowns.
+local function allSetNames()
+    local names = dynamicSetNames();
+    local seen = {};
+    for _, n in ipairs(names) do seen[n] = true; end
+    for _, n in ipairs(staticSetNames()) do
+        if not seen[n] then names[#names + 1] = n; seen[n] = true; end
+    end
+    table.sort(names);
+    return names;
+end
+
+-- One rule row: [x] condition -> set-dropdown  prio [n] [auto]. Returns 'remove' on delete.
+local function renderTrigRuleRow(h, i, r, setNames)
+    local id = h .. '_' .. tostring(i);
+    local act = nil;
+    if imgui.SmallButton('x##trgdel' .. id) then act = 'remove'; end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Remove this rule.'); end
+    imgui.SameLine(0, 8);
+    imgui.TextColored(COL_USABLE, esc(condSummary(r.when)));
+    imgui.SameLine(0, 8); imgui.TextColored(COL_DIM, '->'); imgui.SameLine(0, 8);
+    if r.equip ~= nil then
+        local parts = {};
+        for slot, item in pairs(r.equip) do parts[#parts + 1] = tostring(slot) .. '=' .. tostring(item); end
+        table.sort(parts);
+        imgui.TextColored(COL_SCORE, esc('{ ' .. table.concat(parts, ', ') .. ' }'));
+    else
+        imgui.PushItemWidth(150);
+        if imgui.BeginCombo('##trgset' .. id, r.set or '(pick set)') then
+            for _, nm in ipairs(setNames) do
+                if imgui.Selectable(nm .. '##trgso' .. id, r.set == nm) then
+                    if r.set ~= nm then r.set = nm; trig.dirty = true; end
+                end
+            end
+            imgui.EndCombo();
+        end
+        imgui.PopItemWidth();
+    end
+    imgui.SameLine(0, 10);
+    imgui.TextColored(COL_DIM, 'prio'); imgui.SameLine(0, 3);
+    local eff = r.priority
+        or ((hasDispatch and type(dsp.defaultPriority) == 'function') and dsp.defaultPriority(r.when) or 10);
+    local b = trig._prioBuf[id];
+    if b == nil or b.was ~= eff then b = { v = { eff }, was = eff }; trig._prioBuf[id] = b; end
+    imgui.PushItemWidth(52);
+    if imgui.InputInt('##trgprio' .. id, b.v, 0) then
+        local nv = tonumber(b.v[1]);
+        if nv ~= nil and nv ~= eff then r.priority = nv; b.was = nv; trig.dirty = true; end
+    end
+    imgui.PopItemWidth();
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Priority: every matching rule applies, lowest first -- higher overlays lower.\nAuto-set from specificity; type a number to override.');
+    end
+    if r.priority ~= nil then
+        imgui.SameLine(0, 3);
+        if imgui.SmallButton('auto##trgau' .. id) then r.priority = nil; trig._prioBuf[id] = nil; trig.dirty = true; end
+        if imgui.IsItemHovered() then imgui.SetTooltip('Back to the automatic (specificity) priority.'); end
+    end
+    return act;
+end
+
+-- Add-rule popup: build conditions (type + value, [+ condition] to AND more), pick the
+-- target set, optional priority, Add.
+local function renderTrigAddPopup()
+    if not imgui.BeginPopup('##dlac_trigadd') then return; end
+    local h = trig.addFor;
+    if h == nil then imgui.EndPopup(); return; end
+    imgui.TextColored(COL_HEADER, 'New ' .. h .. ' rule');
+    imgui.Separator();
+
+    for ci, c in ipairs(trig.addConds) do
+        local txt = trigPrettyKey(string.lower(c.key)) .. ((c.value == true) and '' or (' = ' .. tostring(c.value)));
+        imgui.TextColored(COL_USABLE, esc(txt));
+        imgui.SameLine(0, 6);
+        if imgui.SmallButton('x##trgcx' .. ci) then table.remove(trig.addConds, ci); end
+    end
+
+    local defs = COND_DEFS[h] or {};
+    if trig._addDef > #defs then trig._addDef = 1; end
+    local cur = defs[trig._addDef];
+    imgui.PushItemWidth(130);
+    if imgui.BeginCombo('##trgcondtype', (cur and trigPrettyKey(string.lower(cur.key))) or '?') then
+        for di, d in ipairs(defs) do
+            if imgui.Selectable(trigPrettyKey(string.lower(d.key)) .. '##trgct' .. di, trig._addDef == di) then
+                trig._addDef = di; trig.addValText[1] = ''; trig._addValSel = nil;
+            end
+        end
+        imgui.EndCombo();
+    end
+    imgui.PopItemWidth();
+    cur = defs[trig._addDef];
+    if cur ~= nil then
+        imgui.SameLine(0, 6);
+        if cur.kind == 'list' then
+            imgui.PushItemWidth(170);
+            if imgui.BeginCombo('##trgcondval', trig._addValSel or '(pick)') then
+                for vi, it in ipairs(cur.items) do
+                    if imgui.Selectable(it .. '##trgcv' .. vi, trig._addValSel == it) then trig._addValSel = it; end
+                end
+                imgui.EndCombo();
+            end
+            imgui.PopItemWidth();
+        elseif cur.kind == 'text' then
+            imgui.PushItemWidth(170);
+            imgui.InputText('##trgcondtext', trig.addValText, 48);
+            imgui.PopItemWidth();
+            if cur.hint ~= nil and imgui.IsItemHovered() then imgui.SetTooltip(cur.hint); end
+        else
+            imgui.TextColored(COL_DIM, '(flag)');
+        end
+        imgui.SameLine(0, 6);
+        if imgui.Button('+ condition##trgac', { 92, 0 }) then
+            local val;
+            if cur.kind == 'list' then val = trig._addValSel;
+            elseif cur.kind == 'text' then val = (trig.addValText[1] ~= '') and trig.addValText[1] or nil;
+            else val = true; end
+            if val ~= nil then
+                local replaced = false;
+                for _, c in ipairs(trig.addConds) do
+                    if c.key == cur.key then c.value = val; replaced = true; break; end
+                end
+                if not replaced then trig.addConds[#trig.addConds + 1] = { key = cur.key, value = val }; end
+                trig.addValText[1] = ''; trig._addValSel = nil;
+            end
+        end
+        if imgui.IsItemHovered() then imgui.SetTooltip('Conditions in one rule must ALL hold (AND).\nMake separate rules to overlay (e.g. Enfeebling, then +White, then Slow).'); end
+    end
+
+    imgui.Separator();
+    imgui.TextColored(COL_DIM, 'equip set:'); imgui.SameLine(0, 4);
+    imgui.PushItemWidth(150);
+    if imgui.BeginCombo('##trgaddset', trig.addSet or '(pick set)') then
+        for _, nm in ipairs(allSetNames()) do
+            if imgui.Selectable(nm .. '##trgaso', trig.addSet == nm) then trig.addSet = nm; end
+        end
+        imgui.EndCombo();
+    end
+    imgui.PopItemWidth();
+    imgui.SameLine(0, 8); imgui.TextColored(COL_DIM, 'prio (0 = auto)'); imgui.SameLine(0, 3);
+    imgui.PushItemWidth(52); imgui.InputInt('##trgaddprio', trig.addPrio, 0); imgui.PopItemWidth();
+    imgui.SameLine(0, 8);
+    local can = (#trig.addConds > 0) and (trig.addSet ~= nil);
+    if imgui.Button('Add rule##trgaddgo', { 80, 0 }) and can then
+        local when = {};
+        for _, c in ipairs(trig.addConds) do when[string.lower(c.key)] = c.value; end
+        local rule = { when = when, set = trig.addSet };
+        if (tonumber(trig.addPrio[1]) or 0) > 0 then rule.priority = trig.addPrio[1]; end
+        trig.data[h] = trig.data[h] or {};
+        table.insert(trig.data[h], rule);
+        trig.dirty = true;
+        trig.addConds = {}; trig.addSet = nil; trig.addPrio[1] = 0;
+        imgui.CloseCurrentPopup();
+    end
+    if not can then imgui.TextColored(COL_DIM, 'Add at least one condition and pick a set.'); end
+    imgui.EndPopup();
+end
+
+local function renderTriggersTab(job, level)
+    if not hasDispatch then
+        imgui.TextColored(COL_ERR, 'dispatch module unavailable -- the Triggers tab is disabled.');
+        return;
+    end
+    local path, abbr = trigFilePath();
+    if path == nil then
+        imgui.TextColored(COL_DIM, 'Log in (with a known job) to edit triggers.');
+        return;
+    end
+    trigLoad(false);
+
+    if trig.data == nil then
+        imgui.TextColored(COL_DIM, 'No trigger file for ' .. tostring(abbr) .. ' yet.');
+        if trig.err ~= nil and trig.err ~= 'no file' then imgui.TextColored(COL_ERR, esc(tostring(trig.err))); end
+        if imgui.Button('Create starter triggers##trginit', { 210, 24 }) then
+            seedTriggersFile(charBase(), abbr);
+            trigLoad(true);
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Writes the classic status rules (Engaged/Resting/Movement/Idle) as a starting point.');
+        end
+        return;
+    end
+
+    -- Controls row: Commit (red when dirty) / Revert / Explain + status.
+    local dirty = trig.dirty and ImGuiCol_Button ~= nil;
+    if dirty then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
+    if imgui.Button('Commit##trgcommit', { 70, 22 }) then trigCommit(); end
+    if dirty then imgui.PopStyleColor(1); end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Writes triggers\\' .. tostring(abbr) .. '.lua and hot-reloads the engine -- live immediately, no /lac reload.');
+    end
+    imgui.SameLine(0, 6);
+    if imgui.Button('Revert##trgrevert', { 62, 22 }) then trigLoad(true); trigSetStatus('Reverted to the on-disk rules.', false); end
+    imgui.SameLine(0, 6);
+    if imgui.Button('Explain last action##trgwhy', { 132, 22 }) then
+        pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl why'); end);
+    end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Prints which triggers fired for the last actions to the chat log (/dl why).'); end
+    if trig.status ~= '' then
+        imgui.SameLine(0, 10);
+        imgui.TextColored(trig.statusErr and COL_ERR or COL_SCORE, esc(trig.status));
+    end
+
+    -- Modes strip: every mode referenced by a Default rule gets a live toggle button.
+    local modes, mseen = {}, {};
+    for _, r in ipairs(trig.data.Default or {}) do
+        local m = r.when and r.when.mode;
+        if type(m) == 'string' and not mseen[string.lower(m)] then
+            mseen[string.lower(m)] = true; modes[#modes + 1] = m;
+        end
+    end
+    table.sort(modes);
+    imgui.TextColored(COL_DIM, 'Modes:');
+    local mstate = trigModeState();
+    if #modes == 0 then imgui.SameLine(0, 6); imgui.TextColored(COL_DIM, '(none yet)'); end
+    for _, m in ipairs(modes) do
+        imgui.SameLine(0, 6);
+        local on = (mstate[string.lower(m)] == true);
+        local styled = (ImGuiCol_Button ~= nil);
+        if styled then
+            imgui.PushStyleColor(ImGuiCol_Button, on and { 0.15, 0.55, 0.20, 1.0 } or { 0.35, 0.35, 0.40, 1.0 });
+        end
+        if imgui.Button(string.format('%s: %s##trgmode_%s', m, on and 'ON' or 'off', m), { 0, 22 }) then
+            pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl mode ' .. m .. ' toggle'); end);
+            trig._modeStateFrame = -999;   -- pick up the new state promptly
+        end
+        if styled then imgui.PopStyleColor(1); end
+        if imgui.IsItemHovered() then imgui.SetTooltip('Toggle this mode (also macro-able: /dl mode ' .. m .. ').'); end
+    end
+    imgui.SameLine(0, 14);
+    imgui.PushItemWidth(80); imgui.InputText('##trgnewmode', trig.modeName, 24); imgui.PopItemWidth();
+    imgui.SameLine(0, 3);
+    imgui.PushItemWidth(130);
+    if imgui.BeginCombo('##trgnewmodeset', trig.modeSet or '(set)') then
+        for _, nm in ipairs(allSetNames()) do
+            if imgui.Selectable(nm .. '##trgnms', trig.modeSet == nm) then trig.modeSet = nm; end
+        end
+        imgui.EndCombo();
+    end
+    imgui.PopItemWidth();
+    imgui.SameLine(0, 3);
+    if imgui.Button('+ Mode##trgaddmode', { 58, 22 }) then
+        local nm = trig.modeName[1];
+        if nm ~= nil and nm ~= '' and trig.modeSet ~= nil then
+            trig.data.Default = trig.data.Default or {};
+            table.insert(trig.data.Default, { when = { mode = nm }, set = trig.modeSet });
+            trig.dirty = true; trig.modeName[1] = ''; trig.modeSet = nil;
+        end
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Name a mode and pick the set it overlays (priority 100 -- beats everything).\nExample: DT -> your damage-taken set. Commit to make it live.');
+    end
+    imgui.Separator();
+
+    -- Handler sections: one collapsible list of rules per Handle* event.
+    imgui.BeginChild('##trgsections', { -1, -1 }, false);
+    local setNames = allSetNames();
+    for _, h in ipairs(TRIG_HANDLERS) do
+        local list = trig.data[h] or {};
+        if imgui.CollapsingHeader(string.format('%s (%d)###trgsec_%s', h, #list, h)) then
+            local removeAt = nil;
+            for i, r in ipairs(list) do
+                if renderTrigRuleRow(h, i, r, setNames) == 'remove' then removeAt = i; end
+            end
+            if removeAt ~= nil then
+                table.remove(list, removeAt);
+                trig.data[h] = list;
+                trig.dirty = true;
+                trig._prioBuf = {};   -- row ids shifted; rebuild the priority buffers
+            end
+            if imgui.Button('+ Add rule##trgadd_' .. h, { 90, 20 }) then
+                trig.addFor = h; trig.addConds = {}; trig._addDef = 1;
+                trig.addValText[1] = ''; trig._addValSel = nil; trig.addSet = nil; trig.addPrio[1] = 0;
+                trig._openAdd = true;
+            end
+            imgui.Spacing();
+        end
+    end
+    imgui.EndChild();
+
+    if trig._openAdd then imgui.OpenPopup('##dlac_trigadd'); trig._openAdd = false; end
+    renderTrigAddPopup();
+end
+
 -- Stat weights in their OWN resizable, movable window (was a cramped right-side panel).
 -- Shown while ui.showWeights is set (toggled by the Sets-tab "Weights" button); its own
 -- [X] clears the toggle. Rendered as a top-level window, so it must be OUTSIDE the main
@@ -2431,7 +2906,10 @@ local function drawWindow()
             local _st = jobSetupState();
             if _st == 'ffxilac' or _st == 'none' then
                 local _, _ab = jobFile();
-                imgui.TextColored(COL_ERR, string.format('  [!]  %s.lua is NOT set up for dlac -- click the red "Setup" button (top-right) to initialize it.', tostring(_ab or '?')));
+                imgui.TextColored(COL_ERR, string.format('  [!]  %s.lua is NOT set up for dlac -- click the red "Setup" button (top-right). Your existing logic is kept; dlac is added at the end.', tostring(_ab or '?')));
+            elseif _st == 'shims' then
+                local _, _ab = jobFile();
+                imgui.TextColored(COL_ERR, string.format('  [!]  %s.lua is missing trigger shims -- click the red "Setup" button (top-right) to add them (your logic is kept).', tostring(_ab or '?')));
             end
         end
         imgui.Separator();
@@ -2447,6 +2925,10 @@ local function drawWindow()
             end
             if imgui.BeginTabItem('Sets') then
                 pcall(renderSetsTab, job, level);
+                imgui.EndTabItem();
+            end
+            if imgui.BeginTabItem('Triggers') then
+                pcall(renderTriggersTab, job, level);
                 imgui.EndTabItem();
             end
             imgui.EndTabBar();
