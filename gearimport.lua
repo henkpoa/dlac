@@ -215,10 +215,10 @@ local function collectExistingKeys()
     return keys;
 end
 
--- Scan the given containers (default: inventory + wardrobes) and return a list
--- of unique enriched records. Multiple copies of one item collapse to a single
--- record with an incremented .Count (this is how we'll later flag dual-wieldable
--- weapons for the personal file).
+-- Scan the given containers (default: ALL_CONTAINERS -- every bag, safe, locker,
+-- satchel, sack, case and wardrobe) and return a list of unique enriched records.
+-- Multiple copies of one item collapse to a single record with an incremented
+-- .Count (this is how we'll later flag dual-wieldable weapons for the personal file).
 function M.scan(containers)
     containers = containers or M.ALL_CONTAINERS;   -- gear.lua documents everything you OWN,
                                                    -- wherever it lives; availability is display state
@@ -1373,7 +1373,8 @@ function M.prune(apply)
         print(string.format('  %s.%s  "%s"%s', tostring(r.parent), tostring(r.key), tostring(r.name),
             (r.id ~= nil) and ('  Id:' .. tostring(r.id)) or ''));
     end
-    print('[dlac] note: gear stored OUTSIDE containers (e.g. Porter Moogle / delivery box) looks unowned here.');
+    print('[dlac] every container was checked (bags, safes, storage, locker, satchel, sack, case, wardrobes).');
+    print('[dlac] only gear stored OUTSIDE the container system (Porter Moogle slips / delivery box) is invisible -- check the list for those before committing.');
 
     if not apply then
         print('[dlac] dry run -- nothing written. Run  /dl prune commit  to remove them (a backup is kept).');
@@ -1444,9 +1445,10 @@ end
 
 -- Auto-sync: scan bags and, ONLY if there's new gear, stage + commit it into gear.lua.
 -- Returns the number of new items found (0 = nothing new -> no stage/commit, no output, no
--- writes). ADD-ONLY: the scan only sees Inventory + Wardrobes (not Mog storage), so it grows
--- your gear library and never drops stored gear. Safe to call often -- commit is parse-
--- validated + backed up, and this is silent whenever there's nothing to add.
+-- writes). ADD-ONLY: the scan covers every container (deep storage included) but entries
+-- are only ever added, never removed -- removal stays /dl prune's job, on explicit command.
+-- Safe to call often -- commit is parse-validated + backed up, and this is silent whenever
+-- there's nothing to add.
 function M.sync()
     local added = 0;
     pcall(function()
