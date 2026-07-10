@@ -28,6 +28,11 @@
 local gear = require("dlac\\gear");
 local bit  = require('bit');
 
+-- Colored [dlac] chat output (chatfmt): the shadowed `print` re-heads
+-- "[dlac] ..."-prefixed lines with the colored header; plain when unavailable.
+local _cfmtok, _cfmt = pcall(require, 'dlac\\chatfmt');
+local print = (_cfmtok and type(_cfmt) == 'table' and type(_cfmt.print) == 'function') and _cfmt.print or print;
+
 -- Shared libs live in Ashita\addons\libs and are require-able from a profile the
 -- same way gearimport requires 'encoding'. Guard each so a missing lib degrades
 -- gracefully (no window / no icons) instead of erroring.

@@ -42,8 +42,7 @@ pcall(function()
         if chunk ~= nil then
             local ok, g = pcall(chunk);
             if ok and type(g) == 'table' then
-                package.loaded['dlac\\gear'] = g;
-                print('[dlac] loaded your gear from ' .. sub);
+                package.loaded['dlac\\gear'] = g;   -- routine: no chat line (see the banner)
                 break;
             end
         end
@@ -65,19 +64,15 @@ pcall(function()
     if ashita and ashita.fs and ashita.fs.create_directory then ashita.fs.create_directory(dstDir); end
     local function slurp(p) local f = io.open(p, 'rb'); if f == nil then return nil; end local d = f:read('*a'); f:close(); return d; end
     local function spit(p, d) local f = io.open(p, 'wb'); if f == nil then return; end f:write(d); f:close(); end
-    local u = nil;
-    for _, f in ipairs({ 'utils.lua', 'dispatch.lua' }) do   -- library: always refresh from the addon
+    for _, f in ipairs({ 'utils.lua', 'dispatch.lua', 'chatfmt.lua' }) do   -- library: always refresh from the addon
         local d = slurp(addonDir .. f);
-        if d ~= nil then
-            spit(dstDir .. f, d);
-            if f == 'utils.lua' then u = d; end
-        end
+        if d ~= nil then spit(dstDir .. f, d); end
     end
     if slurp(dstDir .. 'gear.lua') == nil then           -- your data: seed the empty template only if absent
         local g = slurp(addonDir .. 'gear.lua');
         if g ~= nil then spit(dstDir .. 'gear.lua', g); end
     end
-    if u ~= nil then print('[dlac] profile library ready (utils.lua + dispatch.lua seeded for LAC profiles).'); end
+    -- routine seeding: no chat line (see the banner)
 end);
 
 -- LuaAshitacast supplies gData inside a profile; a standalone addon doesn't. Provide a
@@ -108,14 +103,23 @@ if rawget(_G, 'gData') == nil then
         GetElementalOpposition = function() return nil; end,
         GetAugment             = function() return nil; end,
     };
-    print('[dlac] gData shim active (addon mode -- player job/level from AshitaCore).');
+    -- routine (always the case in addon mode): no chat line
 end
 
 -- Load the library. Each module registers its own /dl command(s); gearui also registers
 -- the GUI render hook. Guarded so one module failing can't take the addon down.
+local _cfok, _cfmt = pcall(require, 'dlac\\chatfmt');
+_cfok = _cfok and type(_cfmt) == 'table';
 for _, mod in ipairs({ 'gear', 'augments', 'gearoptim', 'gearimport', 'gearui' }) do
     local ok, err = pcall(require, 'dlac\\' .. mod);
-    if not ok then print(string.format('[dlac] failed to load %s: %s', mod, tostring(err))); end
+    if not ok then
+        local m = string.format('failed to load %s: %s', mod, tostring(err));
+        if _cfok then _cfmt.err(m); else print('[dlac] ' .. m); end
+    end
 end
 
-print('[dlac] loaded. Open the gear / set builder with  /dl ui   (also /dlac ui).');
+if _cfok then
+    _cfmt.msg('loaded -- ' .. _cfmt.hl('/dl ui') .. ' opens the gear / set builder.');
+else
+    print('[dlac] loaded. Open the gear / set builder with  /dl ui   (also /dlac ui).');
+end

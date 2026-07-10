@@ -13,6 +13,11 @@ staticSubLevel = 0; -- This will override your in-game sub job level for testing
 
 local M = {}
 
+-- Colored [dlac] chat output (chatfmt): the shadowed `print` re-heads
+-- "[dlac] ..."-prefixed lines with the colored header; plain when unavailable.
+local _cfmtok, _cfmt = pcall(require, 'dlac\\chatfmt');
+local print = (_cfmtok and type(_cfmt) == 'table' and type(_cfmt.print) == 'function') and _cfmt.print or print;
+
 -- Re-export the gear inventory so a migrated profile needs only one require:
 --   local utils = require("dlac\\utils"); local gear = utils.gear;
 M.gear = gear;

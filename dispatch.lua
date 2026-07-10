@@ -32,7 +32,15 @@ local M = {};
 -- LAC-state copy stamps its version into the modestate mirror; the GUI compares
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code (the seeded file only re-requires when LuaAshitacast itself reloads).
-M.VERSION = 3;
+M.VERSION = 4;
+
+-- Colored [dlac] chat output (chatfmt); plain print when unavailable. The shadowed
+-- `print` re-heads "[dlac] ..."-prefixed lines with the colored header.
+local _cfok, _cfmt = pcall(require, 'dlac\\chatfmt');
+_cfok = _cfok and type(_cfmt) == 'table';
+local print = (_cfok and type(_cfmt.print) == 'function') and _cfmt.print or print;
+local function printwarn(s) if _cfok then _cfmt.warn(s); else print('[dlac] ' .. s); end end
+local function printerr(s)  if _cfok then _cfmt.err(s);  else print('[dlac] ' .. s); end end
 
 -- ---------------------------------------------------------------------------
 -- State
@@ -318,13 +326,13 @@ local function ensureLoaded()
     local chunk, cerr = (loadstring or load)(raw, '@' .. path);
     if chunk == nil then
         _trig.err = 'trigger file does not parse: ' .. tostring(cerr);
-        print('[dlac] ' .. _trig.err .. '  (keeping the previous rules)');
+        printerr(_trig.err .. '  (keeping the previous rules)');
         return _trig.rules;
     end
     local ok, t = pcall(chunk);
     if not ok or type(t) ~= 'table' then
         _trig.err = 'trigger file did not return a table' .. (ok and '' or (': ' .. tostring(t)));
-        print('[dlac] ' .. _trig.err .. '  (keeping the previous rules)');
+        printerr(_trig.err .. '  (keeping the previous rules)');
         return _trig.rules;
     end
 
@@ -371,10 +379,10 @@ local function ensureLoaded()
         end
     end
     pcall(saveModeState);
-    for _, w in ipairs(warns) do print('[dlac] triggers: ' .. w); end
-    local n = 0;
-    for _, list in pairs(rules) do n = n + #list; end
-    print(string.format('[dlac] triggers loaded: %d rule(s) from %s', n, path));
+    for _, w in ipairs(warns) do printwarn('triggers: ' .. w); end
+    -- Successful loads are SILENT on purpose: this runs on every profile load /
+    -- zone / GUI edit, and the per-load "triggers loaded: N rule(s)" line was
+    -- pure chat noise. Errors and warnings above still speak up.
     return _trig.rules;
 end
 
@@ -406,7 +414,7 @@ local function ensureAutoLoaded()
             -- Old boolean-format manifest: we can't know the universal weapon's name, so
             -- staff swapping stays suppressed. Tell the player how to fix it (once per change).
             if t.universal == nil and t.iridescence == true then
-                print('[dlac] autogear.lua is an old format (staff swapping is OFF) -- open the GUI: Triggers tab > Automations > "Rescan owned gear".');
+                printwarn('autogear.lua is an old format (staff swapping is OFF) -- open the GUI: Triggers tab > Automations > "Rescan owned gear".');
             end
         end
     end
@@ -1058,7 +1066,8 @@ if inLac() then
         local a2 = args[2] and string.lower(args[2]) or nil;
         if a2 == 'reload' then
             M.reloadTriggers();
-            print('[dlac] triggers: will re-read on the next action.');
+            -- silent: the GUI queues this after trigger edits; the re-read is
+            -- automatic on the next action either way (errors still print).
         elseif a2 == 'init' then
             local ok, msg = M.initTriggers();
             print('[dlac] triggers init: ' .. tostring(msg));

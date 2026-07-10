@@ -45,6 +45,11 @@ local gear = require("dlac\\gear");
 local _lsok, lscale = pcall(require, "dlac\\levelstats");
 local hasLScale = _lsok and type(lscale) == 'table';
 
+-- Colored [dlac] chat output (chatfmt): the shadowed `print` re-heads
+-- "[dlac] ..."-prefixed lines with the colored header; plain when unavailable.
+local _cfmtok, _cfmt = pcall(require, 'dlac\\chatfmt');
+local print = (_cfmtok and type(_cfmt) == 'table' and type(_cfmt.print) == 'function') and _cfmt.print or print;
+
 local M = {};
 
 -- ===========================================================================

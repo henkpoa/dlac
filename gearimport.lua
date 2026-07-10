@@ -24,6 +24,11 @@ local gear = require("dlac\\gear");
 
 local M = {};
 
+-- Colored [dlac] chat output (chatfmt): the shadowed `print` re-heads
+-- "[dlac] ..."-prefixed lines with the colored header; plain when unavailable.
+local _cfmtok, _cfmt = pcall(require, 'dlac\\chatfmt');
+local print = (_cfmtok and type(_cfmt) == 'table' and type(_cfmt.print) == 'function') and _cfmt.print or print;
+
 -- ---------------------------------------------------------------------------
 -- Item names in the resource are ShiftJIS. LuAshitacast converts them with the
 -- encoding lib; we do the same, and fall back to the raw bytes if the lib isn't
