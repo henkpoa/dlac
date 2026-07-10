@@ -114,6 +114,18 @@ M.list = {
     { key = 'WaterMACC',   label = 'Water MACC',   section = 'Magic', aliases = { 'WaterMagicAccuracy' } },
     { key = 'LightMACC',   label = 'Light MACC',   section = 'Magic', aliases = { 'LightMagicAccuracy' } },
     { key = 'DarkMACC',    label = 'Dark MACC',    section = 'Magic', aliases = { 'DarkMagicAccuracy' } },
+    -- CatsEyeXI staff affinity: Iridescence = every element at once (tiered +1/+2/+3);
+    -- a per-element Staff Bonus is that one element's affinity. Read by the auto-staff
+    -- automation; crawled from the API (mods 566, 347-354).
+    { key = 'Iridescence',       label = 'Iridescence',   section = 'Magic' },
+    { key = 'FireStaffBonus',    label = 'Fire Staff',    section = 'Magic' },
+    { key = 'IceStaffBonus',     label = 'Ice Staff',     section = 'Magic' },
+    { key = 'WindStaffBonus',    label = 'Wind Staff',    section = 'Magic' },
+    { key = 'EarthStaffBonus',   label = 'Earth Staff',   section = 'Magic' },
+    { key = 'ThunderStaffBonus', label = 'Thunder Staff', section = 'Magic' },
+    { key = 'WaterStaffBonus',   label = 'Water Staff',   section = 'Magic' },
+    { key = 'LightStaffBonus',   label = 'Light Staff',   section = 'Magic' },
+    { key = 'DarkStaffBonus',    label = 'Dark Staff',    section = 'Magic' },
     { key = 'DrainAspirPotency', label = 'Drain/Aspir', section = 'Magic', percent = true },   -- DRK
     { key = 'SongCastTime',      label = 'Song Cast',   section = 'Magic', percent = true, lowerBetter = true },   -- BRD; low = faster
     { key = 'CureCastTime',      label = 'Cure Cast',   section = 'Magic', percent = true, lowerBetter = true },   -- WHM
@@ -210,6 +222,17 @@ M.list = {
     { key = 'BloodPactDelay',   label = 'BP Delay',   section = 'Misc', lowerBetter = true },   -- SMN
     { key = 'PerpetuationCost', label = 'Perp. Cost', section = 'Misc', lowerBetter = true },   -- SMN
     { key = 'BloodPactDamage',  label = 'BP Dmg',     section = 'Misc', percent = true },   -- SMN
+    -- SMN per-element avatar perpetuation affinity (Fire Affinity Perp +N on items).
+    { key = 'FireAffinityPerp',    label = 'Fire Aff.',    section = 'Misc' },
+    { key = 'IceAffinityPerp',     label = 'Ice Aff.',     section = 'Misc' },
+    { key = 'WindAffinityPerp',    label = 'Wind Aff.',    section = 'Misc' },
+    { key = 'EarthAffinityPerp',   label = 'Earth Aff.',   section = 'Misc' },
+    { key = 'ThunderAffinityPerp', label = 'Thunder Aff.', section = 'Misc' },
+    { key = 'WaterAffinityPerp',   label = 'Water Aff.',   section = 'Misc' },
+    { key = 'LightAffinityPerp',   label = 'Light Aff.',   section = 'Misc' },
+    { key = 'DarkAffinityPerp',    label = 'Dark Aff.',    section = 'Misc' },
+    { key = 'CharmChance',   label = 'Charm Chance', section = 'Misc' },   -- BST
+    { key = 'CharmDuration', label = 'Charm Dur.',   section = 'Misc' },   -- BST
     -- Killers (flat): +acc/att vs a monster family.
     { key = 'VerminKiller',   label = 'Vermin K.',   section = 'Misc' },
     { key = 'BirdKiller',     label = 'Bird K.',     section = 'Misc' },
