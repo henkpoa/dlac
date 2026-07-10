@@ -303,11 +303,62 @@ local function ensureLoaded()
     return _trig.rules;
 end
 
+-- ---------------------------------------------------------------------------
+-- Automations (ADR 0004): auto elemental staff / auto obi, priority band 60.
+-- The GUI derives a per-character manifest (<char>\dlac\autogear.lua) from your
+-- bags -- option toggles + the best owned staff/obi per element + whether you own
+-- an Iridescence weapon -- and this engine hot-reloads it like the trigger file.
+-- v1 Iridescence rule: OWNING one disables staff swapping entirely (it lives in
+-- your sets already); obis are independent and stay governed by day/weather.
+-- ---------------------------------------------------------------------------
+local _auto = { raw = nil, data = nil, lastCheck = -1 };
+
+local function ensureAutoLoaded()
+    local now = os.time();
+    if now == _auto.lastCheck then return _auto.data; end
+    _auto.lastCheck = now;
+    local dir = charDir();
+    if dir == nil then return _auto.data; end
+    local raw = readFile(dir .. 'autogear.lua');
+    if raw == nil then _auto.raw, _auto.data = nil, nil; return nil; end   -- no manifest -> off
+    if raw == _auto.raw then return _auto.data; end
+    _auto.raw = raw;
+    local chunk = (loadstring or load)(raw, '@autogear.lua');
+    if chunk ~= nil then
+        local ok, t = pcall(chunk);
+        if ok and type(t) == 'table' then _auto.data = t; end
+    end
+    return _auto.data;
+end
+
+-- Append the synthetic band-60 hits for a Midcast dispatch. Staff before obi (fixed
+-- ords), both flowing through the same overlay/trace pipeline as ordinary rules.
+local function automationHits(ctx, hits)
+    local a = ensureAutoLoaded();
+    if a == nil or type(a.options) ~= 'table' then return; end
+    local el = ctx.action and ctx.action.Element;
+    if type(el) ~= 'string' or ci(el, 'Non-Elemental') then return; end
+    if a.options.staff == true and a.iridescence ~= true and type(a.staff) == 'table' then
+        local nm = a.staff[el];
+        if type(nm) == 'string' then
+            hits[#hits + 1] = { prio = 60, ord = 100001, label = 'auto-staff', equip = { Main = nm } };
+        end
+    end
+    if a.options.obi == true and type(a.obi) == 'table' then
+        local nm = a.obi[el];
+        if type(nm) == 'string' and netDayWeather(ctx) > 0 then
+            hits[#hits + 1] = { prio = 60, ord = 100002, label = 'auto-obi', equip = { Waist = nm } };
+        end
+    end
+end
+
 -- Force a re-read on the next dispatch (the GUI pings /dl triggers reload on commit).
--- Clears only the content cache -- the current rules stay live as the fallback, so a
--- forced reload of a broken file degrades exactly like an organic one (keep + report).
+-- Clears only the content caches (triggers + autogear) -- current rules stay live as
+-- the fallback, so a forced reload of a broken file degrades exactly like an organic
+-- one (keep + report).
 function M.reloadTriggers()
     _trig.raw, _trig.lastCheck = nil, -1;
+    _auto.raw, _auto.lastCheck = nil, -1;
 end
 
 -- ---------------------------------------------------------------------------
@@ -372,13 +423,18 @@ function M.dispatch(event)
         event = EVENT_CANON[string.lower(tostring(event))] or event;
         local rules = ensureLoaded();
         local list = rules and rules[event] or nil;
-        if list == nil or #list == 0 then return; end
+        -- Midcast always proceeds: automations can fire with zero trigger rules.
+        local isMid = (event == 'Midcast');
+        if (list == nil or #list == 0) and not isMid then return; end
 
         local ctx = buildCtx(event);
         local hits = {};
-        for _, r in ipairs(list) do
-            if matches(r, ctx) then hits[#hits + 1] = r; end
+        if list ~= nil then
+            for _, r in ipairs(list) do
+                if matches(r, ctx) then hits[#hits + 1] = r; end
+            end
         end
+        if isMid then automationHits(ctx, hits); end
 
         if #hits == 0 then
             if event ~= 'Default' then   -- Default runs every frame; only action events trace a miss

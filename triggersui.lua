@@ -23,7 +23,7 @@ local hasImgui    = _iok and imgui ~= nil;
 local hasDispatch = _dpok and type(dsp) == 'table';
 
 -- Injected by gearui (M.init): charBase, jobFile, seedTriggersFile,
--- dynamicSetNames, staticSetNames.
+-- dynamicSetNames, staticSetNames, lookupByName, ownedCounts.
 local deps = nil;
 function M.init(d) deps = d; end
 
@@ -199,6 +199,137 @@ local function allSetNames()
     return names;
 end
 
+-- ---------------------------------------------------------------------------
+-- Automations (ADR 0004): auto elemental staff / auto obi. The GUI owns DERIVING
+-- the manifest -- from the player's bags via deps.ownedCounts + deps.lookupByName --
+-- and writes <char>\dlac\autogear.lua; the LAC-state engine hot-reloads it and
+-- synthesizes band-60 rules at Midcast. Name lists are era/CatsEyeXI staples; the
+-- Iridescence list is a fallback until the catalog carries the stat (issue #5).
+-- ---------------------------------------------------------------------------
+local ELEMENTS8 = { 'Fire', 'Ice', 'Wind', 'Earth', 'Thunder', 'Water', 'Light', 'Dark' };
+local STAFF_NQ = {
+    Fire = 'Fire Staff',   Ice = 'Ice Staff',     Wind = 'Wind Staff',   Earth = 'Earth Staff',
+    Thunder = 'Thunder Staff', Water = 'Water Staff', Light = 'Light Staff', Dark = 'Dark Staff',
+};
+local STAFF_HQ = {
+    Fire = "Vulcan's Staff",  Ice = "Aquilo's Staff",   Wind = "Auster's Staff",  Earth = "Terra's Staff",
+    Thunder = "Jupiter's Staff", Water = "Neptune's Staff", Light = "Apollo's Staff", Dark = "Pluto's Staff",
+};
+local OBI = {
+    Fire = 'Karin Obi', Ice = 'Hyorin Obi', Wind = 'Furin Obi', Earth = 'Dorin Obi',
+    Thunder = 'Rairin Obi', Water = 'Suirin Obi', Light = 'Korin Obi', Dark = 'Anrin Obi',
+};
+local IRIDESCENT = { 'Chatoyant Staff', 'Foreshadow +1', 'Claustrum' };
+
+local auto = { opts = { staff = { false }, obi = { false } }, data = nil, loadedFor = nil, status = '' };
+
+local function autoPath()
+    local base = deps and deps.charBase and deps.charBase() or nil;
+    return base and (base .. 'dlac\\autogear.lua') or nil;
+end
+
+local function autoLoad()
+    local p = autoPath();
+    if p == nil then return; end
+    if auto.loadedFor == p and auto.data ~= nil then return; end
+    auto.loadedFor = p;
+    auto.data = { options = { staff = false, obi = false } };
+    pcall(function()
+        local chunk = loadfile(p);
+        if chunk == nil then return; end
+        local ok, t = pcall(chunk);
+        if ok and type(t) == 'table' then auto.data = t; end
+    end);
+    local o = (type(auto.data.options) == 'table') and auto.data.options or {};
+    auto.opts.staff[1] = (o.staff == true);
+    auto.opts.obi[1]   = (o.obi == true);
+end
+
+-- Is this exact item name in the player's bags? (catalog/owned lookup -> Id -> count)
+local function ownedRec(name)
+    if deps.lookupByName == nil then return nil; end
+    local rec = deps.lookupByName(name);
+    if rec == nil or rec.Id == nil then return nil; end
+    local oc = (deps.ownedCounts ~= nil) and deps.ownedCounts() or nil;
+    if type(oc) == 'table' and (oc[rec.Id] or 0) >= 1 then return rec; end
+    return nil;
+end
+
+-- Re-derive the manifest from bags (HQ staff preferred), write it, hot-reload the engine.
+local function autoCommit()
+    local p = autoPath();
+    if p == nil then auto.status = 'not logged in.'; return; end
+    local staff, obi, nStaff, nObi = {}, {}, 0, 0;
+    for _, el in ipairs(ELEMENTS8) do
+        local pick = ownedRec(STAFF_HQ[el]) or ownedRec(STAFF_NQ[el]);
+        if pick ~= nil then staff[el] = pick.Name; nStaff = nStaff + 1; end
+        local ob = ownedRec(OBI[el]);
+        if ob ~= nil then obi[el] = ob.Name; nObi = nObi + 1; end
+    end
+    local irid = nil;
+    for _, nm in ipairs(IRIDESCENT) do
+        if ownedRec(nm) ~= nil then irid = nm; break; end
+    end
+    local L = {
+        '-- dlac automation manifest -- written by the GUI (Triggers tab > Automations).',
+        '-- options = your toggles; staff/obi = best owned per element. Engine hot-reloads.',
+        'return {',
+        string.format('    options = { staff = %s, obi = %s },',
+            tostring(auto.opts.staff[1] == true), tostring(auto.opts.obi[1] == true)),
+        string.format('    iridescence = %s,%s', tostring(irid ~= nil),
+            (irid ~= nil) and ('   -- ' .. irid) or ''),
+        '    staff = {',
+    };
+    for _, el in ipairs(ELEMENTS8) do
+        if staff[el] ~= nil then L[#L + 1] = string.format('        %s = %q,', el, staff[el]); end
+    end
+    L[#L + 1] = '    },';
+    L[#L + 1] = '    obi = {';
+    for _, el in ipairs(ELEMENTS8) do
+        if obi[el] ~= nil then L[#L + 1] = string.format('        %s = %q,', el, obi[el]); end
+    end
+    L[#L + 1] = '    },';
+    L[#L + 1] = '};';
+    L[#L + 1] = '';
+    if writeFileText(p, table.concat(L, '\n')) then
+        auto.data = nil; autoLoad();   -- re-read what we just wrote
+        pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl triggers reload'); end);
+        auto.status = string.format('staves %d/8, obis %d/8%s -- saved, live now.', nStaff, nObi,
+            (irid ~= nil) and (', Iridescence: ' .. irid .. ' (staff swap off)') or '');
+    else
+        auto.status = 'could not write ' .. p;
+    end
+end
+
+-- The Automations section (rendered under the handler sections).
+local function renderAutomations()
+    if not imgui.CollapsingHeader('Automations###trgsec_auto') then return; end
+    autoLoad();
+    local changed = false;
+    if imgui.Checkbox('Auto elemental staff (Midcast)##trgautostaff', auto.opts.staff) then changed = true; end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Equips your best owned elemental staff (HQ preferred) in Main for the spell\'s element.\nAuto-disabled while you own an Iridescence weapon (Chatoyant Staff / Foreshadow +1) --\nthat covers every element at once. Priority 60: beats name-specific sets, loses to Modes.');
+    end
+    if imgui.Checkbox('Auto obi on day/weather bonus (Midcast)##trgautoobi', auto.opts.obi) then changed = true; end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Equips the matching elemental obi in Waist when the net day+weather bonus for the\nspell\'s element is positive ("the moment it\'s positive, it\'s better"). Independent of\nIridescence and of the staff toggle.');
+    end
+    if imgui.Button('Rescan owned gear##trgautorescan', { 0, 20 }) then changed = true; end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Re-detect owned staves / obis / Iridescence weapons from your bags and save.');
+    end
+    if changed then autoCommit(); end
+    if auto.status ~= '' then
+        imgui.PushTextWrapPos(0.0);
+        imgui.TextColored(COL_SCORE, esc(auto.status));
+        imgui.PopTextWrapPos();
+    end
+    local d = auto.data or {};
+    local function nkeys(t) local n = 0; if type(t) == 'table' then for _ in pairs(t) do n = n + 1; end end return n; end
+    imgui.TextColored(COL_DIM, string.format('detected: %d staves, %d obis%s',
+        nkeys(d.staff), nkeys(d.obi), (d.iridescence == true) and ', Iridescence owned' or ''));
+end
+
 -- One rule row: [x] condition -> set-dropdown  prio [n] [auto]. Returns 'remove' on delete.
 local function renderTrigRuleRow(h, i, r, setNames)
     local id = h .. '_' .. tostring(i);
@@ -298,7 +429,7 @@ local function renderTrigAddPopup()
             imgui.TextColored(COL_DIM, '(flag)');
         end
         imgui.SameLine(0, 6);
-        if imgui.Button('+ condition##trgac', { 92, 0 }) then
+        if imgui.Button('+ condition##trgac', { 0, 0 }) then
             local val;
             if cur.kind == 'list' then val = trig._addValSel;
             elseif cur.kind == 'text' then val = (trig.addValText[1] ~= '') and trig.addValText[1] or nil;
@@ -329,7 +460,7 @@ local function renderTrigAddPopup()
     imgui.PushItemWidth(52); imgui.InputInt('##trgaddprio', trig.addPrio, 0); imgui.PopItemWidth();
     imgui.SameLine(0, 8);
     local can = (#trig.addConds > 0) and (trig.addSet ~= nil);
-    if imgui.Button('Add rule##trgaddgo', { 80, 0 }) and can then
+    if imgui.Button('Add rule##trgaddgo', { 0, 0 }) and can then
         local when = {};
         for _, c in ipairs(trig.addConds) do when[string.lower(c.key)] = c.value; end
         local rule = { when = when, set = trig.addSet };
@@ -364,7 +495,7 @@ function M.render(job, level)
     if trig.data == nil then
         imgui.TextColored(COL_DIM, 'No trigger file for ' .. tostring(abbr) .. ' yet.');
         if trig.err ~= nil and trig.err ~= 'no file' then imgui.TextColored(COL_ERR, esc(tostring(trig.err))); end
-        if imgui.Button('Create starter triggers##trginit', { 210, 24 }) then
+        if imgui.Button('Create starter triggers##trginit', { 0, 24 }) then
             deps.seedTriggersFile(deps.charBase(), abbr);
             trigLoad(true);
         end
@@ -377,15 +508,15 @@ function M.render(job, level)
     -- Controls row: Commit (red when dirty) / Revert / Explain + status.
     local dirty = trig.dirty and ImGuiCol_Button ~= nil;
     if dirty then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
-    if imgui.Button('Commit##trgcommit', { 70, 22 }) then trigCommit(); end
+    if imgui.Button('Commit##trgcommit', { 0, 22 }) then trigCommit(); end
     if dirty then imgui.PopStyleColor(1); end
     if imgui.IsItemHovered() then
         imgui.SetTooltip('Writes triggers\\' .. tostring(abbr) .. '.lua and hot-reloads the engine -- live immediately, no /lac reload.');
     end
     imgui.SameLine(0, 6);
-    if imgui.Button('Revert##trgrevert', { 62, 22 }) then trigLoad(true); trigSetStatus('Reverted to the on-disk rules.', false); end
+    if imgui.Button('Revert##trgrevert', { 0, 22 }) then trigLoad(true); trigSetStatus('Reverted to the on-disk rules.', false); end
     imgui.SameLine(0, 6);
-    if imgui.Button('Explain last action##trgwhy', { 132, 22 }) then
+    if imgui.Button('Explain last action##trgwhy', { 0, 22 }) then
         pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl why'); end);
     end
     if imgui.IsItemHovered() then imgui.SetTooltip('Prints which triggers fired for the last actions to the chat log (/dl why).'); end
@@ -432,7 +563,7 @@ function M.render(job, level)
     end
     imgui.PopItemWidth();
     imgui.SameLine(0, 3);
-    if imgui.Button('+ Mode##trgaddmode', { 58, 22 }) then
+    if imgui.Button('+ Mode##trgaddmode', { 0, 22 }) then
         local nm = trig.modeName[1];
         if nm ~= nil and nm ~= '' and trig.modeSet ~= nil then
             trig.data.Default = trig.data.Default or {};
@@ -461,7 +592,7 @@ function M.render(job, level)
                 trig.dirty = true;
                 trig._prioBuf = {};   -- row ids shifted; rebuild the priority buffers
             end
-            if imgui.Button('+ Add rule##trgadd_' .. h, { 90, 20 }) then
+            if imgui.Button('+ Add rule##trgadd_' .. h, { 0, 20 }) then
                 trig.addFor = h; trig.addConds = {}; trig._addDef = 1;
                 trig.addValText[1] = ''; trig._addValSel = nil; trig.addSet = nil; trig.addPrio[1] = 0;
                 trig._openAdd = true;
@@ -469,6 +600,7 @@ function M.render(job, level)
             imgui.Spacing();
         end
     end
+    pcall(renderAutomations);   -- Automations section (auto staff / obi, ADR 0004)
     imgui.EndChild();
 
     if trig._openAdd then imgui.OpenPopup('##dlac_trigadd'); trig._openAdd = false; end

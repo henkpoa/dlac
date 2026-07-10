@@ -3,8 +3,10 @@
 "Auto elemental staff" and "auto obi" are dlac-shipped behaviors toggled by an option — the engine synthesizes their Triggers at dispatch time from *owned gear*; nothing is written into the user's trigger file. They run in their own priority band (60): above exact-name Triggers (50), so automation overrides a dedicated per-spell set as requested, but below Modes (100), so manual intent always wins. Keeping them as ordinary Triggers in the overlay pipeline (rather than a special code path) means `/dl why` explains them like anything else.
 
 Rules:
-- **Staff** (Midcast, spell has element E): skip when the Main about to be worn carries Iridescence; else equip the owned elemental staff for E (HQ preferred) into Main.
+- **Staff** (Midcast, spell has element E): equip the owned elemental staff for E (HQ preferred) into Main. Iridescence suppression, v1: *owning* an Iridescence weapon disables staff swapping entirely — you keep it in your sets, so per-element staves gain nothing ("you don't need to use elemental staves anymore"). A per-cast pending-Main check was considered and deferred: the engine can't see LAC's pending equip state cheaply, and ownership answers the practical question.
 - **Obi** (Midcast, spell has element E): equip E's obi into Waist when the net day+weather bonus for E is positive ("the moment it's positive, it's better"). Independent of Iridescence — obis stay relevant after staff swapping retires.
+
+Implementation split (two Lua states): the **GUI derives** a per-character manifest — `<char>\dlac\autogear.lua` with the toggles, the best owned staff/obi per element, and the Iridescence flag (from bags + catalog names) — and the **engine reads** it, hot-reloaded like the trigger file. The engine never loads the 5 MB catalog.
 
 Two supporting decisions:
 - **Inline equip payloads**: a Trigger's action is either a set name or an inline slot map (`equip = { Waist = 'Karin Obi' }`). Automations require this (no auto-generating 16 one-slot sets), and users get it too.
