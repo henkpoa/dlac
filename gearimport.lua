@@ -576,6 +576,14 @@ local function parseStatHints(desc, isWeapon)
 end
 M.parseStatHints = parseStatHints;
 
+-- 'Grip' for grips/straps, else 'Shield' -- a Sub-only item is one or the other,
+-- and every grip/strap is named "* Grip" / "* Strap". Mirrors utils.classifySub.
+local function subTypeFromName(name)
+    local n = string.lower(tostring(name or ''));
+    if n:find('grip', 1, true) ~= nil or n:find('strap', 1, true) ~= nil then return 'Grip'; end
+    return 'Shield';
+end
+
 -- Render one record as Lua source for a gear.lua entry. Returns
 -- { path = {"Main","Sword"} or {"Head"}, key = "WaxSword_1", lua = "<text>" }.
 local function renderEntry(rec)
@@ -614,6 +622,10 @@ local function renderEntry(rec)
         if slot == 'Main' and rec.IsWeapon then   -- OneHanded only matters for main/sub pairing
             add(string.format('    OneHanded = %s,', tostring(rec.OneHanded == true)));
         end
+    elseif slot == 'Sub' then
+        -- The pairing rule needs grip-vs-shield; stamp the unambiguous label
+        -- (the catalog calls both "Sub").
+        add(string.format('    Type = %q,', subTypeFromName(rec.Name)));
     end
 
     -- No Stats block on purpose (Phase 2): item stats -- including weapon DMG/Delay -- come
@@ -987,17 +999,34 @@ end
 
 -- Parse gear.lua text into a flat list of entries with line positions and the
 -- parsed Name/Level/Id (+ the line each lives on, for surgical edits).
+
+-- Header/closer matchers tolerant of a trailing "-- comment". Hand-annotated
+-- legacy entries (`MtlMufflers = { -- Mtl. Mufflers/Mythril Mufflers`) must be
+-- visible here, or prune/fix/dedupe silently skip them. Anything else after
+-- the brace (e.g. an inline table) still disqualifies the line.
+local function restOk(rest) return rest:match('^%s*$') ~= nil or rest:match('^%s*%-%-') ~= nil; end
+local function hdrAt(line, nsp)
+    local key, rest = line:match('^' .. string.rep(' ', nsp) .. '([%w_]+) = {(.*)$');
+    if key ~= nil and restOk(rest) then return key; end
+    return nil;
+end
+local function closeAt(line, nsp)
+    local rest = line:match('^' .. string.rep(' ', nsp) .. '},(.*)$');
+    return rest ~= nil and restOk(rest);
+end
+
 local function parseGearEntries(lines)
     local entries = {};
     local function scanEntry(startIdx, indent)
-        local closePat = (indent == 8) and '^        },%s*$' or '^            },%s*$';
         local e = { startLine = startIdx, indent = indent };
         local j = startIdx + 1;
-        while j <= #lines and not lines[j]:match(closePat) do
+        while j <= #lines and not closeAt(lines[j], indent) do
             local L = lines[j];
             if e.Name == nil then local v = L:match('^%s+Name = "([^"]*)"'); if v then e.Name = v; e.NameLine = j; end end
             if e.Level == nil then local v = L:match('^%s+Level = (%-?%d+)'); if v then e.Level = tonumber(v); e.LevelLine = j; end end
             if e.Id == nil then local v = L:match('^%s+Id = (%d+)'); if v then e.Id = tonumber(v); e.IdLine = j; end end
+            if e.Type == nil then local v = L:match('^%s+Type = "([^"]*)"'); if v then e.Type = v; e.TypeLine = j; end end
+            if e.OneHanded == nil then local v = L:match('^%s+OneHanded = (%a+)'); if v then e.OneHanded = (v == 'true'); e.OneHandedLine = j; end end
             j = j + 1;
         end
         e.endLine = j;
@@ -1006,11 +1035,11 @@ local function parseGearEntries(lines)
     local curSlot, curCat, i = nil, nil, 1;
     while i <= #lines do
         local line = lines[i];
-        local s4  = line:match('^    ([%w_]+) = {%s*$');
-        local sc  = line:match('^    },%s*$');
-        local h8  = line:match('^        ([%w_]+) = {%s*$');
-        local c8  = line:match('^        },%s*$');
-        local h12 = line:match('^            ([%w_]+) = {%s*$');
+        local s4  = hdrAt(line, 4);
+        local sc  = closeAt(line, 4);
+        local h8  = hdrAt(line, 8);
+        local c8  = closeAt(line, 8);
+        local h12 = hdrAt(line, 12);
         if s4 then curSlot = s4; curCat = nil; i = i + 1;
         elseif sc then curSlot = nil; curCat = nil; i = i + 1;
         elseif h8 and curSlot and WEAPON_SLOTS[curSlot] then curCat = h8; i = i + 1;
@@ -1026,7 +1055,8 @@ local function parseGearEntries(lines)
 end
 
 -- Pure reconcile: gear.lua text + owned items -> corrected text + report.
-function M.computeFixes(gearText, ownedItems)
+-- metaById (optional): Id -> catalog record, for the pairing-metadata backfill.
+function M.computeFixes(gearText, ownedItems, metaById)
     local lines = toLines(gearText);
     local entries = parseGearEntries(lines);
 
@@ -1084,6 +1114,38 @@ function M.computeFixes(gearText, ownedItems)
         end
     end
 
+    -- Pairing-metadata backfill. The equip-time engine reads RAW gear.lua (no GUI
+    -- catalog enrichment), so the Sub pairing rule needs Type / OneHanded stamped
+    -- into the file: weapons get their catalog Type + OneHanded; Sub items get the
+    -- unambiguous legacy label (Shield / Grip -- the catalog calls both "Sub").
+    if metaById ~= nil then
+        for _, e in ipairs(entries) do
+            local c = (e.Id ~= nil) and metaById[e.Id] or nil;
+            if c ~= nil then
+                local anchor = e.IdLine or e.LevelLine or e.NameLine or e.startLine;
+                local pad = string.rep(' ', e.indent + 4);
+                local function ins(line, note)
+                    insertAfter[anchor] = insertAfter[anchor] or {};
+                    insertAfter[anchor][#insertAfter[anchor] + 1] = pad .. line;
+                    report.fixed[#report.fixed + 1] = string.format('%s: %s', e.key, note);
+                end
+                local isMain  = e.parent ~= nil and e.parent:find('Main.', 1, true) == 1;
+                local isRange = e.parent ~= nil and e.parent:find('Range.', 1, true) == 1;
+                if (isMain or isRange) and e.Type == nil and c.Type ~= nil then
+                    ins(string.format('Type = %q,', c.Type), string.format('+Type %q', c.Type));
+                end
+                if isMain and e.OneHanded == nil and c.OneHanded ~= nil then
+                    ins('OneHanded = ' .. tostring(c.OneHanded == true) .. ',',
+                        '+OneHanded ' .. tostring(c.OneHanded == true));
+                end
+                if e.parent == 'Sub' and e.Type == nil then
+                    local t = subTypeFromName(e.Name);
+                    ins(string.format('Type = %q,', t), string.format('+Type %q', t));
+                end
+            end
+        end
+    end
+
     local out = {};
     for idx = 1, #lines do
         out[#out+1] = replace[idx] or lines[idx];
@@ -1126,7 +1188,23 @@ function M.fix()
         owned[#owned+1] = { Name = it.Name, FullName = it.FullName, Level = it.Level, Id = it.Id };
     end
 
-    local newText, report = M.computeFixes(gearText, owned);
+    -- Catalog metadata (Type / OneHanded) by Id for the pairing backfill.
+    -- Guarded: without the catalog, fix behaves exactly as before.
+    local metaById = {};
+    pcall(function()
+        local cat = require('dlac\\catalog');
+        local function walk(t)
+            for k, v in pairs(t) do
+                if type(v) == 'table' then
+                    if v.Id ~= nil and v.Name ~= nil then metaById[v.Id] = v;
+                    elseif k ~= 'NameToObject' then walk(v); end
+                end
+            end
+        end
+        walk(cat);
+    end);
+
+    local newText, report = M.computeFixes(gearText, owned, metaById);
 
     if #report.duplicates > 0 then
         print('[dlac] duplicate entries (review by hand -- not auto-changed):');
@@ -1148,7 +1226,13 @@ function M.fix()
         return;
     end
     print(string.format('[dlac] fixed %d field(s):', #report.fixed));
-    for _, f in ipairs(report.fixed) do print('  ' .. f); end
+    for i, f in ipairs(report.fixed) do
+        if i > 25 then
+            print(string.format('  ... and %d more (diff against the backup to see all).', #report.fixed - 25));
+            break;
+        end
+        print('  ' .. f);
+    end
     print('[dlac] backup: ' .. backupPath .. '  --  run /dl r to load.');
 end
 
@@ -1305,6 +1389,59 @@ function M.prune(apply)
     print('[dlac] backup: ' .. backupPath .. '  --  run /dl r to load.');
 end
 
+-- `/dl prune why <name>`: explain why prune keeps (or would remove) an entry.
+-- Finds gear.lua entries whose key or Name contains <name>, then re-runs the
+-- ownership test one container at a time, so every keep is attributed to a real
+-- item in a real bag. Matching MUST mirror computePrune: Id, then Name vs the
+-- item's short/log name, then table key vs the item's generated key.
+function M.pruneWhy(query)
+    query = tostring(query or ''):gsub('^%s+', ''):gsub('%s+$', '');
+    if query == '' then print('[dlac] usage: /dl prune why <item name or key>'); return; end
+    local gpath = gearPath();
+    if gpath == nil then print('[dlac] prune why: profile path unavailable (are you logged in?).'); return; end
+    local gearText = readFile(gpath);
+    if gearText == nil then print('[dlac] prune why: cannot read gear.lua.'); return; end
+
+    local q = string.lower(query);
+    local targets = {};
+    for _, e in ipairs(parseGearEntries(toLines(gearText))) do
+        if string.find(string.lower(e.key), q, 1, true)
+           or (e.Name ~= nil and string.find(string.lower(e.Name), q, 1, true)) then
+            targets[#targets + 1] = e;
+        end
+    end
+    if #targets == 0 then
+        print(string.format('[dlac] prune why: no gear.lua entry matches "%s" (checked keys and Names).', query));
+        return;
+    end
+
+    local function lc(s) return (s ~= nil) and string.lower(s) or nil; end
+    for _, e in ipairs(targets) do
+        print(string.format('[dlac] %s.%s  "%s"%s:', tostring(e.parent), tostring(e.key), tostring(e.Name),
+            (e.Id ~= nil) and ('  Id:' .. tostring(e.Id)) or ''));
+        local kept = false;
+        for _, cid in ipairs(M.ALL_CONTAINERS) do
+            for _, it in ipairs(M.scan({ cid })) do
+                local m = nil;
+                if e.Id ~= nil and it.Id == e.Id then m = 'Id ' .. tostring(e.Id);
+                elseif e.Name ~= nil and (lc(it.Name) == lc(e.Name) or lc(it.FullName) == lc(e.Name)) then m = 'Name';
+                else
+                    local k = makeKey(it.FullName or it.Name);
+                    if k ~= nil and string.lower(k) == string.lower(e.key) then m = 'key'; end
+                end
+                if m ~= nil then
+                    kept = true;
+                    print(string.format('  KEPT by "%s" (Id %s) in %s  --  matched on %s',
+                        tostring(it.Name), tostring(it.Id), M.containerName(cid), m));
+                end
+            end
+        end
+        if not kept then
+            print('  matches NOTHING you own -- /dl prune will remove this entry.');
+        end
+    end
+end
+
 -- Auto-sync: scan bags and, ONLY if there's new gear, stage + commit it into gear.lua.
 -- Returns the number of new items found (0 = nothing new -> no stage/commit, no output, no
 -- writes). ADD-ONLY: the scan only sees Inventory + Wardrobes (not Mog storage), so it grows
@@ -1371,7 +1508,11 @@ ashita.events.register('command', 'dlac-import', function(e)
         return;
     end
     if sub == 'prune' then
-        M.prune(args[2] == 'commit');
+        if args[2] == 'why' then
+            M.pruneWhy(table.concat(args, ' ', 3));
+        else
+            M.prune(args[2] == 'commit');
+        end
         return;
     end
     if args[2] == 'equipped' then

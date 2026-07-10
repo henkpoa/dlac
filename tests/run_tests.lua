@@ -105,6 +105,45 @@ local sNo = utils.BuildDynamicSets(freshSets());
 check('C3 no DW: shield fallback', sNo.TP and sNo.TP.Sub,  'GenbusShield');
 
 -- ---------------------------------------------------------------------------
+-- D. gearimport parser -- prune/fix/dedupe must see entries whose header line
+--    carries a trailing "-- comment" (hand-annotated legacy entries). Field-
+--    verified: 25 such entries in a real gear.lua were invisible to /dl prune.
+-- ---------------------------------------------------------------------------
+local gearimport = dofile('gearimport.lua');
+local fixtureGear = table.concat({
+    'gear = {',
+    '    Main = {',
+    '        Sword = { -- category comment',
+    '            CleanSword = {',
+    '                Name = "Clean Sword",',
+    '            },',
+    '            NotedSword = { -- legacy note',
+    '                Name = "Noted Sword",',
+    '            },',
+    '        },',
+    '    },',
+    '    Body = {',
+    '        CleanBody = {',
+    '            Name = "Clean Body",',
+    '            Jobs = {"WAR", "THF"},',
+    '        },',
+    '        NotedBody = { -- Mtl. style/annotated',
+    '            Name = "Noted Body",',
+    '        }, -- trailing close comment',
+    '    },',
+    '};',
+}, '\n');
+-- empty owned list -> every entry the parser SEES must be reported for removal
+local _, dRep, dTotal = gearimport.computePrune(fixtureGear, {});
+check('D1 all 4 entries visible to prune', dTotal, 4);
+local dSeen = {};
+for _, r in ipairs(dRep) do dSeen[tostring(r.parent) .. '.' .. tostring(r.key)] = true; end
+check('D2 comment-header weapon entry seen', dSeen['Main.Sword.NotedSword'], true);
+check('D3 comment-header flat entry seen',   dSeen['Body.NotedBody'], true);
+check('D4 owned name still kept', select(3, gearimport.computePrune(fixtureGear,
+    { { Name = 'Noted Body' }, { Name = 'Clean Sword' }, { Name = 'Noted Sword' }, { Name = 'Clean Body' } })), 0);
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then
