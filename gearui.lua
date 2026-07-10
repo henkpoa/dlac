@@ -377,8 +377,8 @@ end
 -- Small display / eligibility helpers. The display formatters (esc/truncate/
 -- textWrapped/sortedKeys/jobsText/statSummary/fullStatList/qtyTag/nameWidthOf)
 -- live in dlac\\gearfmt.lua (the 200-local cap again); the eligibility helpers
--- stay here. gearfmt's live deps (effStats, ownedCounts) are injected further
--- down, once ownedCounts has its definition.
+-- stay here. gearfmt's live deps (effStats, owned.counts) are injected further
+-- down, next to the owned-cache refresh helper.
 -- ---------------------------------------------------------------------------
 local fmt = require("dlac\\gearfmt");
 
@@ -521,28 +521,14 @@ end
 local candCache = { key = nil, data = {} };
 local function invalidateCandidates() candCache.key = nil; end
 
--- Live owned quantities (defined further below; needs gearimport). Forward-declared
--- so candidate lists can filter to gear that is actually in your bags -- gear.lua is a
--- curated DB and can list items you no longer own (e.g. a base "Garrison Sallet" when
--- you only have the +1). Safe fallback: if the live scan returns nothing (inventory
--- manager unavailable / char select), don't hide anything.
-local ownedCounts, ownedTotals;   -- avail (Inventory+Wardrobes) / total (owned ANYWHERE)
-local function haveInBags(rec)
-    if rec == nil or rec.Id == nil then return true; end
-    local oc = ownedTotals and ownedTotals() or nil;   -- owned anywhere counts as owned;
-    if type(oc) ~= 'table' or next(oc) == nil then return true; end   -- availability is colour
-    return (oc[rec.Id] or 0) >= 1;
-end
-
--- Owned somewhere but with NO copy in Inventory/Wardrobes: LAC can't equip it until
--- it moves. Rows render these names red; the tooltip says where things stand.
-local function isStored(rec)
-    if rec == nil or rec.Id == nil then return false; end
-    local tot = ownedTotals and ownedTotals() or nil;
-    if type(tot) ~= 'table' or (tot[rec.Id] or 0) < 1 then return false; end
-    local av = ownedCounts and ownedCounts() or nil;
-    return type(av) == 'table' and (av[rec.Id] or 0) == 0;
-end
+-- Live owned quantities -- own module now (dlac\\ownedcache.lua, the 200-local cap
+-- again): owned.counts (avail: Inventory+Wardrobes) / owned.totals (owned ANYWHERE)
+-- / owned.whereOf / owned.haveInBags / owned.isStored, over gearimport.ownedSplit().
+-- Candidate lists filter to gear that is actually in your bags -- gear.lua is a
+-- curated DB and can list items you no longer own (e.g. a base "Garrison Sallet"
+-- when you only have the +1). Safe fallback: if the live scan returns nothing
+-- (inventory manager unavailable / char select), nothing is hidden.
+local owned = require("dlac\\ownedcache");
 
 local function weightsActive()
     if not hasOptim or optim.getWeights == nil then return false; end
@@ -601,7 +587,7 @@ local function candidatesForSlot(gearSlotKey, job, level)
 
     local out = {};
     for _, rec in ipairs(buildOwned()) do
-        if rec.Slot == gearSlotKey and isUsable(rec, job, level) and haveInBags(rec) then
+        if rec.Slot == gearSlotKey and isUsable(rec, job, level) and owned.haveInBags(rec) then
             out[#out + 1] = rec;
         end
     end
@@ -717,34 +703,16 @@ end
 -- Owned quantities, sub-job info, and Sub-slot / paired-slot rules (Phase 3).
 -- ---------------------------------------------------------------------------
 
--- gearimport.ownedSplit() -> { avail = {id->n}, total = {id->n} } in ONE bag pass.
--- Cached; refreshed on Scan / Reload and on a ~4s heartbeat (so container moves --
--- Safe -> Wardrobe and back -- change availability live).
-local _ownedCounts = nil;   -- the cached split table
-local _ownedAug    = nil;   -- cached { itemId -> {augment-desc, ...} } for owned gear
-function ownedCounts()   -- AVAIL map (equip-correct: pairing, DW, automations)
-    if _ownedCounts ~= nil then return _ownedCounts.avail; end
-    local split = { avail = {}, total = {} };
-    pcall(function()
-        local ok, mod = pcall(require, "dlac\\gearimport");
-        if ok and mod ~= nil and type(mod.ownedSplit) == 'function' then
-            local s = mod.ownedSplit();
-            if type(s) == 'table' and type(s.avail) == 'table' then split = s; end
-        end
-    end);
-    _ownedCounts = split;
-    return _ownedCounts.avail;
-end
-function ownedTotals()   -- owned-ANYWHERE map (visibility)
-    ownedCounts();
-    return _ownedCounts.total;
-end
-local function refreshOwnedCounts() _ownedCounts = nil; _ownedAug = nil; _ownedAugStats = nil; invalidateCandidates(); end
+-- The owned-split cache itself lives in dlac\\ownedcache.lua (see the require up
+-- with the candidate helpers); refreshed on Scan / Reload here and on the ~4s
+-- d3d_present heartbeat (so container moves -- Safe -> Wardrobe and back --
+-- change availability live).
+local _ownedAug = nil;   -- cached { itemId -> {augment-desc, ...} } for owned gear
+local function refreshOwnedCounts() owned.resetCache(); _ownedAug = nil; _ownedAugStats = nil; invalidateCandidates(); end
 
--- gearfmt's live deps: effStats is defined up top, but ownedCounts is a forward-
--- declared local that only just got its function -- configuring any earlier would
--- capture nil (this file's classic lexical-scoping trap).
-fmt.configure({ effStats = effStats, ownedCounts = ownedCounts });
+-- gearfmt's live deps (effStats is defined up top, owned.counts is the live
+-- owned-quantity map from the availability module).
+fmt.configure({ effStats = effStats, ownedCounts = owned.counts });
 
 -- Re-read <char>\dlac\gear.lua and rebuild the owned view after a Commit, so the GUI
 -- reflects newly-imported gear WITHOUT an addon reload. Mutates the shared `gear` table in
@@ -839,7 +807,7 @@ end
 local function subFilter(cands, mainRec, job, level, building)
     if mainRec == nil then return {}; end
     local sj, slv = getSubInfo();
-    local oc = ownedCounts();
+    local oc = owned.counts();
     local out = {};
     for _, r in ipairs(cands) do
         if subCandidateOk(r, mainRec, job, level, sj, slv, oc, building) then out[#out + 1] = r; end
@@ -856,7 +824,7 @@ local function pairedBlockedIds(slotLabel, fromSets)
     local blocked = {};
     local other = PAIR_OF[slotLabel];
     if other == nil then return blocked; end
-    local oc = ownedCounts();
+    local oc = owned.counts();
     if fromSets then
         local list = M.working[other];
         if type(list) == 'table' then
@@ -902,8 +870,7 @@ local function renderItemTooltip(rec)
         -- WHERE the item lives (every owned copy): red when only in storage, dim when
         -- equippable -- so "which wardrobe is it in" never needs a bag hunt.
         if rec.Id ~= nil then
-            ownedCounts();                             -- ensure the split cache is populated
-            local w = _ownedCounts and _ownedCounts.where and _ownedCounts.where[rec.Id] or nil;
+            local w = owned.whereOf(rec.Id);           -- populates the split cache too
             if w ~= nil then
                 local locs = '';
                 pcall(function()
@@ -916,7 +883,7 @@ local function renderItemTooltip(rec)
                     table.sort(parts);
                     locs = table.concat(parts, ', ');
                 end);
-                if isStored(rec) then
+                if owned.isStored(rec) then
                     imgui.TextColored(COL_ERR, 'IN STORAGE: ' .. fmt.esc((locs ~= '') and locs or '?')
                         .. '  (move to Inventory/Wardrobe to equip)');
                 elseif locs ~= '' then
@@ -1301,7 +1268,7 @@ local function renderAltRow(rec, ordinal, job, level, nameW)
     if imgui.IsItemHovered() then renderItemTooltip(rec); end
     local nameCol = 26;                                -- just after the icon
     imgui.SameLine(nameCol);
-    imgui.TextColored(isStored(rec) and COL_ERR or COL_USABLE, fmt.esc(rec.Name or '?'));
+    imgui.TextColored(owned.isStored(rec) and COL_ERR or COL_USABLE, fmt.esc(rec.Name or '?'));
     imgui.SameLine(nameCol + (nameW or 200));
     imgui.TextColored(COL_LEVEL, string.format('Lv%2d', rec.Level or 0));
     local ss = fmt.statSummary(rec, level);
@@ -1322,7 +1289,7 @@ local function renderPickRow(rec, ordinal, idPrefix, level)
     renderIcon(rec.Id, 18);
     local label = string.format('%s  Lv%d  %s%s##%s_%d',
         fmt.truncate(rec.Name or '?', 24), rec.Level or 0, fmt.statSummary(rec, level), fmt.qtyTag(rec), idPrefix, ordinal);
-    local stored = isStored(rec) and ImGuiCol_Text ~= nil;
+    local stored = owned.isStored(rec) and ImGuiCol_Text ~= nil;
     if stored then imgui.PushStyleColor(ImGuiCol_Text, COL_ERR); end
     local clicked = imgui.Selectable(label, false);
     if stored then imgui.PopStyleColor(1); end
@@ -1338,7 +1305,7 @@ local function renderBrowseRow(rec, ordinal, job, level, nameW)
     imgui.BeginChild('##aeqrow_' .. tostring(rec.Id or ('n' .. ordinal)), { -1, 22 }, false);
     renderIcon(rec.Id, 18);
     local usable = isUsable(rec, job, level);
-    local nameColr = isStored(rec) and COL_ERR or (usable and COL_USABLE or COL_LOCKED);
+    local nameColr = owned.isStored(rec) and COL_ERR or (usable and COL_USABLE or COL_LOCKED);
     imgui.TextColored(nameColr, fmt.esc(rec.Name or '?'));
     local nameCol = 26 + (nameW or 200);               -- icon (18+6 pad) + name column
     imgui.SameLine(nameCol);
@@ -1710,7 +1677,7 @@ local function renderAllEquipTab(job, level)
         local keep = true;
         if ui.slot ~= nil and rec.Slot ~= ui.slot then keep = false; end
         if keep and usableOnly and not isUsable(rec, job, level) then keep = false; end
-        if keep and not showAll and not haveInBags(rec) then keep = false; end   -- owned view = actually in your bags
+        if keep and not showAll and not owned.haveInBags(rec) then keep = false; end   -- owned view = actually in your bags
         if keep and searching and string.find(string.lower(rec.Name or ''), needle, 1, true) == nil then keep = false; end
         if keep then
             shown = shown + 1;
@@ -1862,7 +1829,7 @@ do
         pcall(trigui.init, {
             charBase = charBase, jobFile = jobFile, seedTriggersFile = seedTriggersFile,
             dynamicSetNames = profsets.dynamicSetNames, staticSetNames = profsets.staticSetNames,
-            lookupByName = lookupByName, ownedCounts = ownedCounts,   -- automations manifest (owned staves/obis)
+            lookupByName = lookupByName, ownedCounts = owned.counts,  -- automations manifest (owned staves/obis)
             setsRoot = profsets.getSetsRoot,                          -- gearcheck: set contents for the audit
         });
     else
@@ -1980,7 +1947,7 @@ local function autoBuild(job, level)
     -- candidates as if at MAX_LEVEL (item level cap lifted; the JOB restriction inside
     -- candidatesForSlot still applies). Otherwise use the character's real level.
     local useLevel = setBuildLevel(level);   -- "Build as lv.75" lifts the item-level cap
-    local oc = ownedCounts();
+    local oc = owned.counts();
     local built = {};
     for _, sl in ipairs(EQUIP_SLOTS) do
         -- Skip weapon slots when asked, so Auto-build never swaps Main/Sub/Range and resets TP.
@@ -2362,7 +2329,7 @@ local function renderSetBuilder(job, level)
             local rec = it.rec;
             renderIcon(rec and rec.Id or nil, 18);
             imgui.TextColored((rec ~= nil and rec == pickRec) and COL_SCORE
-                or (isStored(rec) and COL_ERR or COL_USABLE),
+                or (owned.isStored(rec) and COL_ERR or COL_USABLE),
                 fmt.esc((rec and rec.Name) or '?') .. fmt.qtyTag(rec));
             if rec ~= nil and imgui.IsItemHovered() then renderItemTooltip(rec); end
             imgui.SameLine(0, 8); imgui.TextColored(COL_LEVEL, 'Lv' .. tostring(rec and rec.Level or 0));
@@ -2679,7 +2646,7 @@ end
 
 ashita.events.register('d3d_present', 'dlac-gearui-render', function()
     cmdq.tick();   -- advance the frame clock, flush due commands
-    if (cmdq.frame() % 240) == 0 then _ownedCounts = nil; end   -- availability heartbeat (~4s):
+    if (cmdq.frame() % 240) == 0 then owned.resetCache(); end   -- availability heartbeat (~4s):
                                                                 -- container moves recolour live
     pcall(loadUiFlags);
     pcall(autoSyncOnJobChange);
