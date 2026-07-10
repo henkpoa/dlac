@@ -84,9 +84,10 @@ Sets tab ("Auto staff" / "Auto obi" checkboxes on the selected set); fires on AN
 matched triggers equip a flagged set. Gear data comes from a GUI-derived manifest
 (`<char>\dlac\autogear.lua`: best owned staff/obi per element, the Iridescence weapon name —
 the engine never loads the catalog):
-- **Auto staff**: an owned Iridescence weapon (Chatoyant Staff / Foreshadow +1) IS the staff —
-  equips for every element and for elementless actions (e.g. Ability triggers). Otherwise the
-  best owned per-element staff (HQ preferred), which needs the action's element.
+- **Auto staff**: tiered Iridescence pick per cast — elemental staves carry it for their own
+  element only (NQ +1 / HQ +2), universal weapons for all elements (Iridal Staff +1, Chatoyant
+  Staff / Foreshadow +1 = +2). Higher tier wins; ties go to the universal, which also covers
+  elementless actions (e.g. Ability triggers).
 - **Auto obi**: action element E, net day/weather > 0, obi owned → equip in Waist.
   Always element-gated, independent of Iridescence.
 

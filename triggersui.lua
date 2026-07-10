@@ -219,7 +219,16 @@ local OBI = {
     Fire = 'Karin Obi', Ice = 'Hyorin Obi', Wind = 'Furin Obi', Earth = 'Dorin Obi',
     Thunder = 'Rairin Obi', Water = 'Suirin Obi', Light = 'Korin Obi', Dark = 'Anrin Obi',
 };
-local IRIDESCENT = { 'Chatoyant Staff', 'Foreshadow +1', 'Claustrum' };
+-- Universal Iridescence weapons (all elements) -> their tier. CatsEyeXI tiers:
+-- elemental staves carry Iridescence for THEIR element only (NQ +1 / HQ +2);
+-- these carry it for every element. Fallback list until the catalog carries the
+-- Iridescence stat (issue #5); ordered check picks the highest owned tier.
+local UNIVERSAL = {
+    { name = 'Chatoyant Staff', tier = 2 },
+    { name = 'Foreshadow +1',   tier = 2 },
+    { name = 'Claustrum',       tier = 2 },
+    { name = 'Iridal Staff',    tier = 1 },
+};
 
 local auto = { data = nil, loadedFor = nil, status = '' };
 
@@ -258,28 +267,35 @@ end
 local function autoCommit()
     local p = autoPath();
     if p == nil then auto.status = 'not logged in.'; return; end
+    -- Per-element pick: HQ staff (Iridescence +2 for its element) over NQ (+1).
     local staff, obi, nStaff, nObi = {}, {}, 0, 0;
     for _, el in ipairs(ELEMENTS8) do
-        local pick = ownedRec(STAFF_HQ[el]) or ownedRec(STAFF_NQ[el]);
-        if pick ~= nil then staff[el] = pick.Name; nStaff = nStaff + 1; end
+        local hq, nq = ownedRec(STAFF_HQ[el]), ownedRec(STAFF_NQ[el]);
+        if hq ~= nil then staff[el] = { name = hq.Name, tier = 2 }; nStaff = nStaff + 1;
+        elseif nq ~= nil then staff[el] = { name = nq.Name, tier = 1 }; nStaff = nStaff + 1; end
         local ob = ownedRec(OBI[el]);
         if ob ~= nil then obi[el] = ob.Name; nObi = nObi + 1; end
     end
-    local irid = nil;
-    for _, nm in ipairs(IRIDESCENT) do
-        if ownedRec(nm) ~= nil then irid = nm; break; end
+    -- Best owned universal (highest tier first -- the list is ordered).
+    local uni = nil;
+    for _, u in ipairs(UNIVERSAL) do
+        if ownedRec(u.name) ~= nil then uni = u; break; end
     end
     local L = {
         '-- dlac automation manifest -- written by the GUI (Triggers tab > Automations).',
-        '-- Best owned staff/obi per element + the Iridescence weapon (used as the',
-        '-- universal staff when owned). Engine hot-reloads this; WHETHER it fires is',
-        '-- per set: SetOptions in triggers\\<JOB>.lua (Sets tab).',
+        '-- Tiered Iridescence: per-element staves (NQ +1 / HQ +2, own element only) and',
+        '-- the best universal weapon (all elements). The engine picks the higher tier',
+        '-- per cast; ties go to the universal. WHETHER it fires is per set: SetOptions',
+        '-- in triggers\\<JOB>.lua (Sets tab).',
         'return {',
-        string.format('    iridescence = %s,', (irid ~= nil) and string.format('%q', irid) or 'false'),
+        (uni ~= nil)
+            and string.format('    universal = { name = %q, tier = %d },', uni.name, uni.tier)
+            or  '    universal = false,',
         '    staff = {',
     };
     for _, el in ipairs(ELEMENTS8) do
-        if staff[el] ~= nil then L[#L + 1] = string.format('        %s = %q,', el, staff[el]); end
+        local s = staff[el];
+        if s ~= nil then L[#L + 1] = string.format('        %s = { name = %q, tier = %d },', el, s.name, s.tier); end
     end
     L[#L + 1] = '    },';
     L[#L + 1] = '    obi = {';
@@ -293,7 +309,7 @@ local function autoCommit()
         auto.data = nil; autoLoad();   -- re-read what we just wrote
         pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl triggers reload'); end);
         auto.status = string.format('staves %d/8, obis %d/8%s -- saved, live now.', nStaff, nObi,
-            (irid ~= nil) and (', Iridescence: ' .. irid .. ' (used as universal staff)') or '');
+            (uni ~= nil) and string.format(', universal: %s (Iridescence +%d)', uni.name, uni.tier) or '');
     else
         auto.status = 'could not write ' .. p;
     end
@@ -314,7 +330,7 @@ local function renderAutomations()
     if not imgui.CollapsingHeader('Automations###trgsec_auto') then return; end
     autoLoad();
     imgui.PushTextWrapPos(0.0);
-    imgui.TextColored(COL_DIM, 'Auto staff / auto obi are PER-SET settings: Sets tab -> pick a set -> tick "Auto staff" and/or "Auto obi". When ANY trigger equips a flagged set, the engine overlays the staff in Main -- your Iridescence weapon (Chatoyant Staff / Foreshadow +1) when you own one, else the best per-element staff for the spell -- and/or the matching obi in Waist when the day/weather bonus is positive. Priority 60: beats name-specific sets, loses to Modes.');
+    imgui.TextColored(COL_DIM, 'Auto staff / auto obi are PER-SET settings: Sets tab -> pick a set -> tick "Auto staff" and/or "Auto obi". When ANY trigger equips a flagged set, the engine overlays the best Iridescence staff in Main (highest tier per cast: HQ elemental +2 / NQ +1 for the spell\'s element vs your universal weapon; ties go to the universal, which also covers elementless actions) and/or the matching obi in Waist when the day/weather bonus is positive. Priority 60: beats name-specific sets, loses to Modes.');
     imgui.PopTextWrapPos();
     if imgui.Button('Rescan owned gear##trgautorescan', { 0, 20 }) then autoCommit(); end
     if imgui.IsItemHovered() then
@@ -327,11 +343,14 @@ local function renderAutomations()
     end
     local d = auto.data or {};
     local function nkeys(t) local n = 0; if type(t) == 'table' then for _ in pairs(t) do n = n + 1; end end return n; end
-    local iridTxt = '';
-    if type(d.iridescence) == 'string' then iridTxt = ', Iridescence: ' .. d.iridescence .. ' (universal staff)';
-    elseif d.iridescence == true then iridTxt = ', Iridescence owned'; end
+    local uniTxt = '';
+    if type(d.universal) == 'table' and type(d.universal.name) == 'string' then
+        uniTxt = string.format(', universal: %s (Iridescence +%d)', d.universal.name, tonumber(d.universal.tier) or 1);
+    elseif type(d.iridescence) == 'string' then
+        uniTxt = ', universal: ' .. d.iridescence .. ' (old manifest -- Rescan to pick up tiers)';
+    end
     imgui.TextColored(COL_DIM, string.format('detected: %d staves, %d obis%s',
-        nkeys(d.staff), nkeys(d.obi), iridTxt));
+        nkeys(d.staff), nkeys(d.obi), uniTxt));
 end
 
 -- ---------------------------------------------------------------------------
@@ -394,7 +413,7 @@ function M.renderSetOptions(setName)
     local changed = false;
     if imgui.Checkbox('Auto staff##setopt_staff', setOptUI.staff) then changed = true; end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('When any trigger equips this set, also equip the staff in Main: your Iridescence\nweapon (Chatoyant Staff / Foreshadow +1 -- covers every element) when you own one,\nelse the best per-element staff (HQ preferred; needs a spell element).\nSaved instantly -- live, no reload.');
+        imgui.SetTooltip('When any trigger equips this set, also equip the best Iridescence staff in Main:\nhighest tier wins per cast -- HQ elemental staff +2 / NQ +1 (own element only) vs a\nuniversal weapon (Chatoyant/Foreshadow +1 = +2 all elements, Iridal Staff = +1); ties\ngo to the universal, and it also covers elementless actions (abilities).\nSaved instantly -- live, no reload.');
     end
     imgui.SameLine(0, 12);
     if imgui.Checkbox('Auto obi##setopt_obi', setOptUI.obi) then changed = true; end

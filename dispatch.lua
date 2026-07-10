@@ -346,12 +346,9 @@ end
 -- Append the synthetic band-60 hits. ACTIVATION IS PER SET: the trigger file's
 -- `SetOptions = { <SetName> = { staff=, obi= } }` flags a set, and the automation
 -- fires on ANY handler whose matched triggers equip a flagged set (flags of every
--- matched set union together). An owned Iridescence weapon (Chatoyant Staff /
--- Foreshadow +1) IS the auto staff -- it covers every element, so it equips even for
--- elementless actions (e.g. an Ability trigger); otherwise the per-element staff is
--- used and needs a spell element. The obi always needs an element + a positive
--- day/weather sign. Staff before obi (fixed ords), both flowing through the same
--- overlay/trace pipeline as ordinary rules.
+-- matched set union together). Staff choice is TIERED (see inside); the obi always
+-- needs an element + a positive day/weather sign. Staff before obi (fixed ords),
+-- both flowing through the same overlay/trace pipeline as ordinary rules.
 local function automationHits(ctx, hits)
     local so = _trig.setOpts;
     if so == nil or next(so) == nil or #hits == 0 then return; end
@@ -369,12 +366,29 @@ local function automationHits(ctx, hits)
     local el = ctx.action and ctx.action.Element;
     if type(el) ~= 'string' or ci(el, 'Non-Elemental') then el = nil; end
     if wantStaff then
-        local nm = nil;
-        if type(a.iridescence) == 'string' then
-            nm = a.iridescence;                        -- universal staff: every element, none required
-        elseif a.iridescence ~= true and el ~= nil and type(a.staff) == 'table' then
-            nm = a.staff[el];                          -- per-element pick (legacy `true` = suppress)
+        -- Tiered Iridescence (CatsEyeXI): per-element staves carry it for their own
+        -- element only (NQ +1 / HQ +2); universal weapons for every element (Iridal +1,
+        -- Chatoyant / Foreshadow +1 = +2). Pick the HIGHER tier this cast; ties go to
+        -- the universal (no swapping across elements, and it needs no element at all).
+        local uniName, uniTier = nil, 0;
+        if type(a.universal) == 'table' and type(a.universal.name) == 'string' then
+            uniName, uniTier = a.universal.name, tonumber(a.universal.tier) or 1;
+        elseif type(a.iridescence) == 'string' then    -- legacy manifest: name, assume +2
+            uniName, uniTier = a.iridescence, 2;
         end
+        local elName, elTier = nil, 0;
+        if el ~= nil and type(a.staff) == 'table' then
+            local s = a.staff[el];
+            if type(s) == 'table' and type(s.name) == 'string' then
+                elName, elTier = s.name, tonumber(s.tier) or 1;
+            elseif type(s) == 'string' then            -- legacy manifest: best-owned name
+                elName, elTier = s, 2;
+            end
+        end
+        if a.iridescence == true then uniName, elName = nil, nil; end   -- legacy suppress
+        local nm = nil;
+        if uniName ~= nil and uniTier >= elTier then nm = uniName;
+        elseif elName ~= nil then nm = elName; end
         if type(nm) == 'string' then
             hits[#hits + 1] = { prio = 60, ord = 100001, label = 'auto-staff', equip = { Main = nm } };
         end

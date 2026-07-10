@@ -43,3 +43,7 @@ How narrowly a Trigger's condition matches (Any → skill/status → class/eleme
 
 **Commit**:
 Writing GUI state to disk (a set into `<JOB>.lua`, staged items into `gear.lua`, triggers into the trigger file).
+
+**Iridescence**:
+CatsEyeXI's tiered staff-affinity stat (+1/+2). Elemental staves carry it for their own element only (NQ +1, HQ +2); universal weapons (Iridal Staff +1; Chatoyant Staff, Foreshadow +1 at +2) carry it for every element.
+_Avoid_: staff bonus (that's the related per-element potency mod)
