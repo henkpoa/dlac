@@ -665,28 +665,12 @@ local function wornSetTotals()
 end
 
 -- ---------------------------------------------------------------------------
--- Frame-delayed command queue (for the "Lock when equipped" enable/equip/disable
--- sequence). Processed every frame in d3d_present so it never blocks.
+-- Frame-delayed command queue + frame clock (for the "Lock when equipped"
+-- enable/equip/disable sequence) -- own module now (dlac\\cmdqueue.lua, the
+-- 200-local cap again). cmdq.tick() runs every d3d_present so it never blocks;
+-- cmdq.frame() is the shared frame clock the per-frame logic below reads.
 -- ---------------------------------------------------------------------------
-local frameCounter = 0;
-local cmdQueue = {};
-
-local function enqueueCmd(delayFrames, cmd)
-    cmdQueue[#cmdQueue + 1] = { at = frameCounter + math.max(0, delayFrames), cmd = cmd };
-end
-
-local function processCmdQueue()
-    if #cmdQueue == 0 then return; end
-    local remaining = {};
-    for _, c in ipairs(cmdQueue) do
-        if frameCounter >= c.at then
-            pcall(function() AshitaCore:GetChatManager():QueueCommand(1, c.cmd); end);
-        else
-            remaining[#remaining + 1] = c;
-        end
-    end
-    cmdQueue = remaining;
-end
+local cmdq = require("dlac\\cmdqueue");
 
 local function lacSlot(label) return string.lower(tostring(label or '')); end
 
@@ -716,11 +700,11 @@ local function equipToSlot(slotLabel, itemName, lock, freeEquip, alreadyLocked)
         end);
     elseif lock then
         if alreadyLocked then
-            enqueueCmd(2, string.format('/equip %s "%s"', native, nm));        -- locked; just equip
+            cmdq.enqueue(2, string.format('/equip %s "%s"', native, nm));        -- locked; just equip
         else
-            enqueueCmd(2,  string.format('/dl lock %s on', slot));             -- engine lock (the real hold)
-            enqueueCmd(4,  string.format('/lac disable %s', slot));            -- belt for legacy profile code
-            enqueueCmd(26, string.format('/equip %s "%s"', native, nm));       -- then equip after it settles
+            cmdq.enqueue(2,  string.format('/dl lock %s on', slot));             -- engine lock (the real hold)
+            cmdq.enqueue(4,  string.format('/lac disable %s', slot));            -- belt for legacy profile code
+            cmdq.enqueue(26, string.format('/equip %s "%s"', native, nm));       -- then equip after it settles
         end
     else
         pcall(function()
@@ -2064,8 +2048,8 @@ end
 -- "Lock" a committed set via LAC (takes effect once the file is committed + reloaded).
 local function applySetLock(setName, lock)
     if lock then
-        enqueueCmd(2, '/lac enable');
-        if setName ~= nil and setName ~= '' then enqueueCmd(26, '/lac set ' .. setName); end
+        cmdq.enqueue(2, '/lac enable');
+        if setName ~= nil and setName ~= '' then cmdq.enqueue(26, '/lac set ' .. setName); end
     else
         pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/lac enable'); end);
     end
@@ -2650,9 +2634,9 @@ local function autoSyncOnJobChange()
     pcall(function() j = AshitaCore:GetMemoryManager():GetPlayer():GetMainJob(); end);
     if j ~= nil and j ~= 0 and j ~= _syncedJob then
         _syncedJob    = j;
-        _syncDueFrame = frameCounter + 120;   -- ~2s after the change, so inventory has loaded
+        _syncDueFrame = cmdq.frame() + 120;   -- ~2s after the change, so inventory has loaded
     end
-    if _syncDueFrame ~= nil and frameCounter >= _syncDueFrame then
+    if _syncDueFrame ~= nil and cmdq.frame() >= _syncDueFrame then
         _syncDueFrame = nil;
         local added = doSync();
         if added > 0 then   -- one friendly line; the import pipeline itself runs quiet now
@@ -2694,9 +2678,8 @@ local function loadUiFlags()
 end
 
 ashita.events.register('d3d_present', 'dlac-gearui-render', function()
-    frameCounter = frameCounter + 1;
-    processCmdQueue();
-    if (frameCounter % 240) == 0 then _ownedCounts = nil; end   -- availability heartbeat (~4s):
+    cmdq.tick();   -- advance the frame clock, flush due commands
+    if (cmdq.frame() % 240) == 0 then _ownedCounts = nil; end   -- availability heartbeat (~4s):
                                                                 -- container moves recolour live
     pcall(loadUiFlags);
     pcall(autoSyncOnJobChange);
