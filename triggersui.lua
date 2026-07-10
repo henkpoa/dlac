@@ -86,6 +86,7 @@ local trig = {
     status = '', statusErr = false,
     addFor = nil, addConds = {}, _addDef = 1, _addValSel = nil,
     addValText = { '' }, addSet = nil, addPrio = { 0 }, _openAdd = false,
+    editIdx = nil, _editEquip = nil,   -- rule-builder edit mode (replace in place)
     modeName = { '' }, modeSet = nil,
     _prioBuf = {},
     _modeState = {}, _modeStateAt = -1,
@@ -365,12 +366,16 @@ local function renderAutomations()
         nkeys(d.staff), nkeys(d.obi), uniTxt));
 end
 
--- One rule row: [x] condition -> set-dropdown  prio [n] [auto]. Returns 'remove' on delete.
+-- One rule row: [x][edit] condition -> set-dropdown  prio [n] [auto].
+-- Returns 'remove' / 'edit' / nil.
 local function renderTrigRuleRow(h, i, r, setNames)
     local id = h .. '_' .. tostring(i);
     local act = nil;
     if imgui.SmallButton('x##trgdel' .. id) then act = 'remove'; end
     if imgui.IsItemHovered() then imgui.SetTooltip('Remove this rule.'); end
+    imgui.SameLine(0, 4);
+    if imgui.SmallButton('edit##trgedit' .. id) then act = 'edit'; end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Edit this rule\'s conditions / set / priority in the rule builder.'); end
     imgui.SameLine(0, 8);
     imgui.TextColored(COL_USABLE, esc(condSummary(r.when)));
     imgui.SameLine(0, 8); imgui.TextColored(COL_DIM, '->'); imgui.SameLine(0, 8);
@@ -420,7 +425,8 @@ local function renderTrigAddPopup()
     if not imgui.BeginPopup('##dlac_trigadd') then return; end
     local h = trig.addFor;
     if h == nil then imgui.EndPopup(); return; end
-    imgui.TextColored(COL_HEADER, 'New ' .. h .. ' rule');
+    local editing = (trig.editIdx ~= nil);
+    imgui.TextColored(COL_HEADER, (editing and 'Edit ' or 'New ') .. h .. ' rule');
     imgui.Separator();
 
     for ci, c in ipairs(trig.addConds) do
@@ -491,19 +497,31 @@ local function renderTrigAddPopup()
         imgui.EndCombo();
     end
     imgui.PopItemWidth();
+    if editing and trig.addSet == nil and trig._editEquip ~= nil then
+        imgui.SameLine(0, 6);
+        imgui.TextColored(COL_DIM, '(keeps its inline equip)');
+    end
     imgui.SameLine(0, 8); imgui.TextColored(COL_DIM, 'prio (0 = auto)'); imgui.SameLine(0, 3);
     imgui.PushItemWidth(52); imgui.InputInt('##trgaddprio', trig.addPrio, 0); imgui.PopItemWidth();
     imgui.SameLine(0, 8);
-    local can = (#trig.addConds > 0) and (trig.addSet ~= nil);
-    if imgui.Button('Add rule##trgaddgo', { 0, 0 }) and can then
+    local can = (#trig.addConds > 0) and (trig.addSet ~= nil or trig._editEquip ~= nil);
+    if imgui.Button((editing and 'Save rule' or 'Add rule') .. '###trgaddgo', { 0, 0 }) and can then
         local when = {};
         for _, c in ipairs(trig.addConds) do when[string.lower(c.key)] = c.value; end
-        local rule = { when = when, set = trig.addSet };
+        local rule = { when = when };
+        if trig.addSet ~= nil then rule.set = trig.addSet;
+        else rule.equip = trig._editEquip; end         -- editing an inline-equip rule: keep its payload
         if (tonumber(trig.addPrio[1]) or 0) > 0 then rule.priority = trig.addPrio[1]; end
         trig.data[h] = trig.data[h] or {};
-        table.insert(trig.data[h], rule);
+        if editing and trig.data[h][trig.editIdx] ~= nil then
+            trig.data[h][trig.editIdx] = rule;         -- replace in place (keeps file order / tie-breaks)
+        else
+            table.insert(trig.data[h], rule);
+        end
         trig.dirty = true;
         trig.addConds = {}; trig.addSet = nil; trig.addPrio[1] = 0;
+        trig.editIdx, trig._editEquip = nil, nil;
+        trig._prioBuf = {};                            -- rule objects changed; rebuild priority buffers
         imgui.CloseCurrentPopup();
     end
     if not can then imgui.TextColored(COL_DIM, 'Add at least one condition and pick a set.'); end
@@ -617,9 +635,11 @@ function M.render(job, level)
     for _, h in ipairs(TRIG_HANDLERS) do
         local list = trig.data[h] or {};
         if imgui.CollapsingHeader(string.format('%s (%d)###trgsec_%s', h, #list, h)) then
-            local removeAt = nil;
+            local removeAt, editAt = nil, nil;
             for i, r in ipairs(list) do
-                if renderTrigRuleRow(h, i, r, setNames) == 'remove' then removeAt = i; end
+                local act = renderTrigRuleRow(h, i, r, setNames);
+                if act == 'remove' then removeAt = i;
+                elseif act == 'edit' then editAt = i; end
             end
             if removeAt ~= nil then
                 table.remove(list, removeAt);
@@ -627,9 +647,24 @@ function M.render(job, level)
                 trig.dirty = true;
                 trig._prioBuf = {};   -- row ids shifted; rebuild the priority buffers
             end
+            if editAt ~= nil then
+                -- Pre-load the rule builder with this rule and open it in edit mode.
+                local r = list[editAt];
+                trig.addFor, trig.editIdx, trig._editEquip = h, editAt, r.equip;
+                trig.addConds = {};
+                for k, v in pairs(r.when or {}) do
+                    trig.addConds[#trig.addConds + 1] = { key = k, value = v };
+                end
+                table.sort(trig.addConds, function(a, b) return tostring(a.key) < tostring(b.key); end);
+                trig.addSet = r.set;
+                trig.addPrio[1] = r.priority or 0;
+                trig._addDef = 1; trig.addValText[1] = ''; trig._addValSel = nil;
+                trig._openAdd = true;
+            end
             if imgui.Button('+ Add rule##trgadd_' .. h, { 0, 20 }) then
                 trig.addFor = h; trig.addConds = {}; trig._addDef = 1;
                 trig.addValText[1] = ''; trig._addValSel = nil; trig.addSet = nil; trig.addPrio[1] = 0;
+                trig.editIdx, trig._editEquip = nil, nil;   -- fresh add, not an edit
                 trig._openAdd = true;
             end
             imgui.Spacing();
