@@ -49,6 +49,8 @@ local _sok, setmgr = pcall(require, "dlac\\setmanager");
 local _augok, aug  = pcall(require, "dlac\\augments");
 -- Level-scaling stats (Rajas/Tamas/Sattva etc.): effective stats per level.
 local _lsok, lscale = pcall(require, "dlac\\levelstats");
+-- Window theme (partyfinder-matched palette), pushed around the whole draw.
+local _stok, style = pcall(require, "dlac\\uistyle");
 
 local hasImgui    = _iok and imgui ~= nil;
 local hasD3D      = _fok and _dok and ffi ~= nil and d3d ~= nil;
@@ -2651,7 +2653,11 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
     pcall(loadUiFlags);
     pcall(autoSyncOnJobChange);
     if not M.visible or not hasImgui then return; end
+    -- Theme push/pop brackets the pcall so an imgui error mid-draw can never
+    -- leak the style stack (that would corrupt every OTHER addon's UI too).
+    local themed = _stok and type(style) == 'table' and style.push();
     pcall(drawWindow);
+    if themed then style.pop(); end
 end);
 
 -- ---------------------------------------------------------------------------
