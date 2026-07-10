@@ -27,8 +27,12 @@ A data rule connecting a game condition to gear: *when* (matcher on the current 
 _Avoid_: binding, hook, rule
 
 **Automation**:
-A dlac-shipped behavior (auto elemental staff, auto obi) implemented as engine-generated Triggers in their own priority band, enabled by an option — never written into the user's trigger file.
-_Avoid_: smart swap, feature flag
+A dlac-shipped behavior (auto elemental staff, auto obi) expressed as a **virtual slot entry** inside a set (`dlac:AutoStaff` in Main, `dlac:AutoObi` in Waist) and resolved by the engine at equip time from owned gear.
+_Avoid_: smart swap, feature flag, SetOptions (retired)
+
+**Virtual slot entry**:
+A `dlac:`-prefixed marker string occupying a set's slot in place of an item; the dispatch engine substitutes the concrete item per cast, or drops the slot when unresolvable.
+_Avoid_: slot function (Henrik's coinage for the idea — canonicalized to this term)
 
 **Mode**:
 A named, player-toggled flag (e.g. `DT`) that Triggers can match on — how manual intent enters the otherwise-automatic dispatch.

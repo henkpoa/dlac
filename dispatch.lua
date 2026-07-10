@@ -272,7 +272,7 @@ local function ensureLoaded()
     local path = triggersPath();
     if path == nil then return _trig.rules; end
     if path ~= _trig.path then   -- job change / first resolve -> drop the cache
-        _trig.path, _trig.raw, _trig.rules, _trig.err, _trig.setOpts = path, nil, nil, nil, nil;
+        _trig.path, _trig.raw, _trig.rules, _trig.err = path, nil, nil, nil;
     end
 
     local raw = readFile(path);
@@ -298,16 +298,6 @@ local function ensureLoaded()
 
     local rules, warns = normalize(t);
     _trig.rules, _trig.err = rules, nil;
-    -- Per-set automation flags (Sets tab): SetOptions = { <SetName> = { staff=, obi= } }.
-    _trig.setOpts = {};
-    local so = t.SetOptions or t.setOptions;
-    if type(so) == 'table' then
-        for nm, o in pairs(so) do
-            if type(nm) == 'string' and type(o) == 'table' then
-                _trig.setOpts[nm] = { staff = (o.staff == true), obi = (o.obi == true) };
-            end
-        end
-    end
     for _, w in ipairs(warns) do print('[dlac] triggers: ' .. w); end
     local n = 0;
     for _, list in pairs(rules) do n = n + #list; end
@@ -350,62 +340,83 @@ local function ensureAutoLoaded()
     return _auto.data;
 end
 
--- Append the synthetic band-60 hits. ACTIVATION IS PER SET: the trigger file's
--- `SetOptions = { <SetName> = { staff=, obi= } }` flags a set, and the automation
--- fires on ANY handler whose matched triggers equip a flagged set (flags of every
--- matched set union together). Staff choice is TIERED (see inside); the obi always
--- needs an element + a positive day/weather sign. Staff before obi (fixed ords),
--- both flowing through the same overlay/trace pipeline as ordinary rules.
-local function automationHits(ctx, hits)
-    local so = _trig.setOpts;
-    if so == nil or next(so) == nil or #hits == 0 then return; end
-    local wantStaff, wantObi = false, false;
-    for _, r in ipairs(hits) do
-        local o = (r.set ~= nil) and so[r.set] or nil;
-        if o ~= nil then
-            if o.staff == true then wantStaff = true; end
-            if o.obi   == true then wantObi   = true; end
+-- Virtual slot entries ("slot functions", ADR 0004 4th revision): a set slot may
+-- hold a marker string instead of an item -- 'dlac:AutoStaff' (Main) equips the best
+-- Iridescence staff for this cast, 'dlac:AutoObi' (Waist) the matching elemental obi
+-- on a positive day/weather sign. Resolved HERE at equip time from the autogear
+-- manifest; an unresolvable marker DROPS its slot, so LAC leaves what you're wearing.
+
+-- Best staff by tiered Iridescence (CatsEyeXI): per-element staves carry it for their
+-- own element only (NQ +1 / HQ +2); universal weapons for every element (Iridal +1,
+-- Chatoyant / Foreshadow +1 = +2). Higher tier wins; ties go to the universal (no
+-- cross-element swapping, and it needs no element at all).
+local function resolveStaff(a, el)
+    if a.iridescence == true then return nil; end   -- legacy boolean manifest: suppress (Rescan regenerates)
+    local uniName, uniTier = nil, 0;
+    if type(a.universal) == 'table' and type(a.universal.name) == 'string' then
+        uniName, uniTier = a.universal.name, tonumber(a.universal.tier) or 1;
+    elseif type(a.iridescence) == 'string' then        -- legacy manifest: name, assume +2
+        uniName, uniTier = a.iridescence, 2;
+    end
+    local elName, elTier = nil, 0;
+    if el ~= nil and type(a.staff) == 'table' then
+        local s = a.staff[el];
+        if type(s) == 'table' and type(s.name) == 'string' then
+            elName, elTier = s.name, tonumber(s.tier) or 1;
+        elseif type(s) == 'string' then                -- legacy manifest: best-owned name
+            elName, elTier = s, 2;
         end
     end
-    if not wantStaff and not wantObi then return; end
+    if uniName ~= nil and uniTier >= elTier then return uniName; end
+    return elName;
+end
+
+-- Marker -> item name for this cast, or nil + reason (for /dl why).
+local function resolveVirtual(marker, ctx)
     local a = ensureAutoLoaded();
-    if a == nil then return; end                      -- no gear manifest -> nothing to equip
+    if a == nil then return nil, 'no autogear manifest (Automations > Rescan owned gear)'; end
     local el = ctx.action and ctx.action.Element;
     if type(el) ~= 'string' or ci(el, 'Non-Elemental') then el = nil; end
-    if wantStaff then
-        -- Tiered Iridescence (CatsEyeXI): per-element staves carry it for their own
-        -- element only (NQ +1 / HQ +2); universal weapons for every element (Iridal +1,
-        -- Chatoyant / Foreshadow +1 = +2). Pick the HIGHER tier this cast; ties go to
-        -- the universal (no swapping across elements, and it needs no element at all).
-        local uniName, uniTier = nil, 0;
-        if type(a.universal) == 'table' and type(a.universal.name) == 'string' then
-            uniName, uniTier = a.universal.name, tonumber(a.universal.tier) or 1;
-        elseif type(a.iridescence) == 'string' then    -- legacy manifest: name, assume +2
-            uniName, uniTier = a.iridescence, 2;
+    local mk = string.lower(tostring(marker));
+    if mk == 'dlac:autostaff' then
+        local nm = resolveStaff(a, el);
+        if nm == nil then
+            return nil, (el == nil) and 'elementless action, no universal staff owned'
+                                     or ('no staff owned for ' .. el);
         end
-        local elName, elTier = nil, 0;
-        if el ~= nil and type(a.staff) == 'table' then
-            local s = a.staff[el];
-            if type(s) == 'table' and type(s.name) == 'string' then
-                elName, elTier = s.name, tonumber(s.tier) or 1;
-            elseif type(s) == 'string' then            -- legacy manifest: best-owned name
-                elName, elTier = s, 2;
+        return nm;
+    end
+    if mk == 'dlac:autoobi' then
+        if el == nil then return nil, 'no element'; end
+        local nm = (type(a.obi) == 'table') and a.obi[el] or nil;
+        if type(nm) ~= 'string' then return nil, 'no ' .. el .. ' obi owned'; end
+        if netDayWeather(ctx) <= 0 then return nil, 'day/weather not positive'; end
+        return nm;
+    end
+    return nil, 'unknown marker';
+end
+
+-- Equip a set table, resolving virtual entries. Sets without markers pass through
+-- untouched (zero copies); with markers, a shallow copy carries the resolutions and
+-- unresolved slots are dropped. Returns a trace note ('' when nothing was virtual).
+local function equipResolved(s, ctx)
+    local out, notes = nil, nil;
+    for slot, v in pairs(s) do
+        if type(v) == 'string' and string.lower(string.sub(v, 1, 5)) == 'dlac:' then
+            if out == nil then
+                out = {};
+                for k2, v2 in pairs(s) do out[k2] = v2; end
             end
-        end
-        if a.iridescence == true then uniName, elName = nil, nil; end   -- legacy suppress
-        local nm = nil;
-        if uniName ~= nil and uniTier >= elTier then nm = uniName;
-        elseif elName ~= nil then nm = elName; end
-        if type(nm) == 'string' then
-            hits[#hits + 1] = { prio = 60, ord = 100001, label = 'auto-staff', equip = { Main = nm } };
+            local nm, why = resolveVirtual(v, ctx);
+            out[slot] = nm;                            -- nil drops the slot
+            notes = notes or {};
+            notes[#notes + 1] = string.format('%s=%s', tostring(v), nm or ('skipped (' .. tostring(why) .. ')'));
         end
     end
-    if wantObi and el ~= nil and type(a.obi) == 'table' then
-        local nm = a.obi[el];
-        if type(nm) == 'string' and netDayWeather(ctx) > 0 then
-            hits[#hits + 1] = { prio = 60, ord = 100002, label = 'auto-obi', equip = { Waist = nm } };
-        end
-    end
+    pcall(function() gFunc.EquipSet(out or s); end);
+    if notes == nil then return ''; end
+    table.sort(notes);
+    return '  [' .. table.concat(notes, ', ') .. ']';
 end
 
 -- Force a re-read on the next dispatch (the GUI pings /dl triggers reload on commit).
@@ -454,15 +465,14 @@ local function actionLabel(ctx)
     return '?';
 end
 
-local function equipSetByName(name)
+local function equipSetByName(name, ctx)
     local s;
     pcall(function()
         local prof = rawget(_G, 'gProfile');
         if type(prof) == 'table' and type(prof.Sets) == 'table' then s = prof.Sets[name]; end
     end);
-    if type(s) ~= 'table' then return false; end   -- unknown set: skip quietly (traced), no per-frame LAC error spam
-    pcall(function() gFunc.EquipSet(s); end);
-    return true;
+    if type(s) ~= 'table' then return false, ''; end   -- unknown set: skip quietly (traced), no per-frame LAC error spam
+    return true, equipResolved(s, ctx);
 end
 
 local function inlineSummary(equip)
@@ -486,8 +496,6 @@ function M.dispatch(event)
         for _, r in ipairs(list) do
             if matches(r, ctx) then hits[#hits + 1] = r; end
         end
-        -- Automations ride on the matched sets' flags, whatever the handler was.
-        automationHits(ctx, hits);
 
         if #hits == 0 then
             if event ~= 'Default' then   -- Default runs every frame; only action events trace a miss
@@ -514,16 +522,16 @@ function M.dispatch(event)
 
         for _, r in ipairs(hits) do
             if r.set ~= nil then
-                local found = equipSetByName(r.set);
+                local found, note = equipSetByName(r.set, ctx);
                 if retrace then
-                    lines[#lines + 1] = string.format('%s  ->  set %s  (prio %d)%s',
-                        r.label, r.set, r.prio, found and '' or '  [NOT FOUND in profile Sets]');
+                    lines[#lines + 1] = string.format('%s  ->  set %s  (prio %d)%s%s',
+                        r.label, r.set, r.prio, found and '' or '  [NOT FOUND in profile Sets]', note or '');
                 end
             elseif r.equip ~= nil then
-                pcall(function() gFunc.EquipSet(r.equip); end);
+                local note = equipResolved(r.equip, ctx);
                 if retrace then
-                    lines[#lines + 1] = string.format('%s  ->  equip { %s }  (prio %d)',
-                        r.label, inlineSummary(r.equip), r.prio);
+                    lines[#lines + 1] = string.format('%s  ->  equip { %s }  (prio %d)%s',
+                        r.label, inlineSummary(r.equip), r.prio, note or '');
                 end
             end
         end
@@ -596,25 +604,6 @@ function M.serializeTriggers(data)
                 local prio = (tonumber(r.priority) ~= nil) and (', priority = ' .. tostring(r.priority)) or '';
                 L[#L + 1] = string.format('        { when = { %s }, %s%s },',
                     table.concat(conds, ', '), action, prio);
-            end
-            L[#L + 1] = '    },';
-        end
-    end
-    -- Per-set automation flags (a sibling of the handler sections; [%q] keys survive
-    -- set names with spaces). Entries with both flags off are omitted entirely.
-    local so = (type(data) == 'table') and (data.SetOptions or data.setOptions) or nil;
-    if type(so) == 'table' then
-        local names = {};
-        for nm, o in pairs(so) do
-            if type(o) == 'table' and (o.staff == true or o.obi == true) then names[#names + 1] = tostring(nm); end
-        end
-        table.sort(names);
-        if #names > 0 then
-            L[#L + 1] = '    SetOptions = {';
-            for _, nm in ipairs(names) do
-                local o = so[nm];
-                L[#L + 1] = string.format('        [%q] = { staff = %s, obi = %s },',
-                    nm, tostring(o.staff == true), tostring(o.obi == true));
             end
             L[#L + 1] = '    },';
         end

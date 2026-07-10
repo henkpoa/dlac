@@ -1691,8 +1691,12 @@ end
 
 -- gear.lua path for an owned record: gear.<Slot>[.<Category>].<Key>. nil if the
 -- record didn't come from gear.lua (no Key) -> such an item can't be committed.
+-- Virtual entries (dlac:AutoStaff / dlac:AutoObi) commit as quoted string literals --
+-- BuildDynamicSets passes them through and the engine resolves them at equip time.
 local function recordPath(rec)
-    if rec == nil or rec.Key == nil or rec.Slot == nil then return nil; end
+    if rec == nil then return nil; end
+    if rec.Virtual == true and type(rec.Name) == 'string' then return string.format('%q', rec.Name); end
+    if rec.Key == nil or rec.Slot == nil then return nil; end
     local p = 'gear.' .. rec.Slot;
     if rec.Category ~= nil then p = p .. '.' .. rec.Category; end
     return p .. '.' .. rec.Key;
@@ -1704,6 +1708,9 @@ end
 -- its .Name, so we don't mistake it for a wrapper (and we ignore its stale min/max).
 local function resolveSetItem(elem)
     if type(elem) == 'string' then
+        if string.lower(string.sub(elem, 1, 5)) == 'dlac:' then   -- virtual slot entry
+            return { rec = { Name = elem, Level = 0, Virtual = true } };
+        end
         local rec = _ownedByName and _ownedByName[string.lower(elem)] or nil;
         if rec == nil and type(gear) == 'table' and gear.NameToObject then
             local g = gear.NameToObject[elem];
@@ -1872,6 +1879,9 @@ local function bestByLevel(list, mainLevel)
     if type(list) ~= 'table' then return nil; end
     local best, bestLevel = nil, -1;
     local ml = mainLevel or 0;
+    for _, it in ipairs(list) do                       -- a virtual entry takes the slot outright
+        if it.rec ~= nil and it.rec.Virtual == true then return it; end
+    end
     for _, it in ipairs(list) do
         local rec = it.rec;
         if rec ~= nil and type(rec.Level) == 'number' then
@@ -2212,6 +2222,31 @@ local function renderAddPopup(job, level)
         cands = sortForDisplay(cands);
         imgui.BeginChild('##ffxilac_addlist', { 380, 320 }, false);
         local any = false;
+        -- Virtual entries ("slot functions", ADR 0004): resolved by the engine at equip
+        -- time from your owned gear. Offered per slot, pinned above the item list.
+        local vlist = nil;
+        if ui.setSelected == 'Main' then
+            vlist = { { name = 'dlac:AutoStaff', tip = 'Equips your best Iridescence staff for the cast:\nHQ elemental +2 / NQ +1 (own element) vs a universal weapon\n(Chatoyant/Foreshadow +1 = +2 all elements, Iridal = +1); ties go\nto the universal, which also covers elementless actions.' } };
+        elseif ui.setSelected == 'Waist' then
+            vlist = { { name = 'dlac:AutoObi', tip = 'Equips the matching elemental obi when the net day/weather\nbonus for the spell\'s element is positive.' } };
+        end
+        if vlist ~= nil then
+            for vi, vd in ipairs(vlist) do
+                if not inList[vd.name] then
+                    any = true;
+                    imgui.TextColored(COL_SCORE, '*');
+                    imgui.SameLine(0, 6);
+                    if imgui.Selectable(vd.name .. '   (auto -- resolved at equip time)##vadd' .. vi, false) then
+                        list[#list + 1] = { rec = { Name = vd.name, Level = 0, Virtual = true } };
+                        M.working[ui.setSelected] = list;
+                        _setDirty = true;
+                        imgui.CloseCurrentPopup();
+                    end
+                    if imgui.IsItemHovered() then imgui.SetTooltip(vd.tip); end
+                end
+            end
+            imgui.Separator();
+        end
         for i, rec in ipairs(cands) do
             if not inList[rec.Name] and not (rec.Id and blocked[rec.Id]) then
                 any = true;
@@ -2394,11 +2429,8 @@ local function renderSetsTab(job, level)
         optim.buildAtMaxLevel = (ui.buildMax[1] == true);
     end
 
-    -- Per-set automation flags (auto staff / auto obi): stored in the trigger file's
-    -- SetOptions and applied when ANY trigger equips THIS set (ADR 0004).
-    if trigui ~= nil and M.workingSetName ~= nil and M.workingSetName ~= '' then
-        pcall(trigui.renderSetOptions, M.workingSetName);
-    end
+    -- Automation is a SLOT entry now (ADR 0004, 4th revision): + Add on the Main slot
+    -- offers dlac:AutoStaff, on Waist dlac:AutoObi -- no per-set flags anymore.
 
     -- Migration helper: seed a Dynamic working set from a static (non-Dynamic) set.
     imgui.TextColored(COL_DIM, 'Copy from:'); imgui.SameLine(0, 4);

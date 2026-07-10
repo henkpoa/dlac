@@ -78,17 +78,17 @@ Named flags, session-only (reset on load). Toggled from the Triggers tab or `/dl
 
 ## Automations (ADR 0004)
 
-Engine-generated Triggers at band 60, from owned gear. **Activation is per set, two independent
-flags**: `SetOptions = { <SetName> = { staff=, obi= } }` in the trigger file, edited from the
-Sets tab ("Auto staff" / "Auto obi" checkboxes on the selected set); fires on ANY handler whose
-matched triggers equip a flagged set. Gear data comes from a GUI-derived manifest
-(`<char>\dlac\autogear.lua`: best owned staff/obi per element, the Iridescence weapon name —
-the engine never loads the catalog):
-- **Auto staff**: tiered Iridescence pick per cast — elemental staves carry it for their own
+**Virtual slot entries** ("slot functions", ADR 0004 4th revision): a set slot holds a marker
+instead of an item — `dlac:AutoStaff` (Main), `dlac:AutoObi` (Waist) — added via the Sets tab's
+`+ Add` picker, committed into `sets.Dynamic` like any entry, passed through `BuildDynamicSets`,
+and resolved by the engine at equip time. Unresolvable → the slot is dropped (LAC leaves what's
+worn). Gear data comes from a GUI-derived manifest (`<char>\dlac\autogear.lua` — the engine
+never loads the catalog; Automations section = manifest view + Rescan):
+- **dlac:AutoStaff**: tiered Iridescence pick per cast — elemental staves carry it for their own
   element only (NQ +1 / HQ +2), universal weapons for all elements (Iridal Staff +1, Chatoyant
   Staff / Foreshadow +1 = +2). Higher tier wins; ties go to the universal, which also covers
   elementless actions (e.g. Ability triggers).
-- **Auto obi**: action element E, net day/weather > 0, obi owned → equip in Waist.
+- **dlac:AutoObi**: action element E, net day/weather > 0, obi owned → equip in Waist.
   Always element-gated, independent of Iridescence.
 
 ## Debugging

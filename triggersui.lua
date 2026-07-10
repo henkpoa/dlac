@@ -100,10 +100,11 @@ local function trigFilePath()
 end
 
 -- Build the Triggers-tab edit model from a raw trigger-file table: canonical handler
--- keys, lowercased condition keys, and SetOptions CARRIED THROUGH. Commit serializes
--- the WHOLE model back to the file, so anything not carried here gets silently wiped
--- on the next Commit -- that bug shipped once (it ate the Sets tab's Auto staff/obi
--- flags); this function is exported so the offline tests pin the round-trip.
+-- keys, lowercased condition keys. Commit serializes the WHOLE model back to the
+-- file, so any section not carried here gets silently wiped on the next Commit --
+-- that bug shipped once; keep this exported so the offline tests pin the round-trip.
+-- (Legacy SetOptions sections are dropped deliberately: automation is a virtual SLOT
+-- entry now -- dlac:AutoStaff / dlac:AutoObi inside the set, ADR 0004 4th revision.)
 function M.fileToModel(raw)
     local data = {};
     if type(raw) ~= 'table' then return data; end
@@ -126,16 +127,6 @@ function M.fileToModel(raw)
             end
             data[ev] = list;
         end
-    end
-    local so = raw.SetOptions or raw.setOptions;
-    if type(so) == 'table' then
-        local copy = {};
-        for nm, o in pairs(so) do
-            if type(nm) == 'string' and type(o) == 'table' then
-                copy[nm] = { staff = (o.staff == true), obi = (o.obi == true) };
-            end
-        end
-        data.SetOptions = copy;
     end
     return data;
 end
@@ -168,7 +159,6 @@ local function trigCommit()
     end);
     if not writeFileText(path, text) then trigSetStatus('Could not write ' .. path, true); return; end
     trig.dirty = false;
-    trig._optsCacheBust = true;   -- the Sets tab's flag display re-reads the file
     pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl triggers reload'); end);
     trigSetStatus('Committed -- live now (hot-reloaded; no /lac reload needed).', false);
 end
@@ -282,8 +272,8 @@ local function ownedRec(name)
 end
 
 -- Re-derive the manifest from bags (HQ staff preferred), write it, hot-reload the engine.
--- The manifest carries GEAR DATA only; whether an automation fires is a per-set flag
--- (SetOptions in the trigger file, edited from the Sets tab via M.renderSetOptions).
+-- The manifest carries GEAR DATA only; whether an automation fires is decided by the
+-- SET: a dlac:AutoStaff / dlac:AutoObi virtual entry in its Main / Waist slot (Sets tab).
 local function autoCommit()
     local p = autoPath();
     if p == nil then auto.status = 'not logged in.'; return; end
@@ -305,8 +295,8 @@ local function autoCommit()
         '-- dlac automation manifest -- written by the GUI (Triggers tab > Automations).',
         '-- Tiered Iridescence: per-element staves (NQ +1 / HQ +2, own element only) and',
         '-- the best universal weapon (all elements). The engine picks the higher tier',
-        '-- per cast; ties go to the universal. WHETHER it fires is per set: SetOptions',
-        '-- in triggers\\<JOB>.lua (Sets tab).',
+        '-- per cast; ties go to the universal. WHETHER it fires is decided by the set:',
+        '-- a dlac:AutoStaff / dlac:AutoObi entry in its Main / Waist slot (Sets tab).',
         'return {',
         (uni ~= nil)
             and string.format('    universal = { name = %q, tier = %d },', uni.name, uni.tier)
@@ -344,7 +334,7 @@ local function renderAutomations()
     if not imgui.CollapsingHeader('Automations###trgsec_auto') then return; end
     autoLoad();
     imgui.PushTextWrapPos(0.0);
-    imgui.TextColored(COL_DIM, 'Auto staff / auto obi are PER-SET settings: Sets tab -> pick a set -> tick "Auto staff" and/or "Auto obi". When ANY trigger equips a flagged set, the engine overlays the best Iridescence staff in Main (highest tier per cast: HQ elemental +2 / NQ +1 for the spell\'s element vs your universal weapon; ties go to the universal, which also covers elementless actions) and/or the matching obi in Waist when the day/weather bonus is positive. Priority 60: beats name-specific sets, loses to Modes.');
+    imgui.TextColored(COL_DIM, 'Auto staff / auto obi are SLOT entries inside a set: Sets tab -> pick the set -> Main slot -> + Add -> "dlac:AutoStaff" (or Waist -> "dlac:AutoObi"). Whenever a trigger equips that set, the engine resolves the entry: best Iridescence staff for the cast (highest tier: HQ elemental +2 / NQ +1 vs your universal weapon; ties go to the universal, which also covers elementless actions), and the obi only when the day/weather bonus is positive. Unresolvable -> the slot is left untouched.');
     imgui.PopTextWrapPos();
     if imgui.Button('Rescan owned gear##trgautorescan', { 0, 20 }) then autoCommit(); end
     if imgui.IsItemHovered() then
@@ -365,93 +355,6 @@ local function renderAutomations()
     end
     imgui.TextColored(COL_DIM, string.format('detected: %d staves, %d obis%s',
         nkeys(d.staff), nkeys(d.obi), uniTxt));
-end
-
--- ---------------------------------------------------------------------------
--- Per-set automation flags -- rendered INSIDE the Sets tab (gearui calls
--- M.renderSetOptions(setName)). Stored in the trigger file's SetOptions section;
--- saved instantly on toggle (read-modify-write of the ON-DISK rules, so unsaved
--- Triggers-tab edits are neither committed nor lost) and hot-reloaded.
--- ---------------------------------------------------------------------------
-local setOptUI = { name = nil, staff = { false }, obi = { false }, status = '', err = false };
-
-local function loadSetOptions(setName)
-    if setOptUI.name == setName and not trig._optsCacheBust then return; end
-    trig._optsCacheBust = nil;
-    setOptUI.name, setOptUI.status, setOptUI.err = setName, '', false;
-    setOptUI.staff[1], setOptUI.obi[1] = false, false;
-    local path = trigFilePath();
-    if path == nil or not hasDispatch then return; end
-    local raw = dsp.readTriggersRaw(path);
-    local so = (type(raw) == 'table') and (raw.SetOptions or raw.setOptions) or nil;
-    local o = (type(so) == 'table') and so[setName] or nil;
-    if type(o) == 'table' then
-        setOptUI.staff[1] = (o.staff == true);
-        setOptUI.obi[1]   = (o.obi == true);
-    end
-end
-
-local function saveSetOptions(setName)
-    local path = trigFilePath();
-    if path == nil or not hasDispatch then setOptUI.status, setOptUI.err = 'no trigger file path', true; return; end
-    local raw = dsp.readTriggersRaw(path);
-    if type(raw) ~= 'table' then raw = {}; end
-    local so = raw.SetOptions;
-    if type(so) ~= 'table' then so = {}; end
-    raw.SetOptions, raw.setOptions = so, nil;
-    if setOptUI.staff[1] == true or setOptUI.obi[1] == true then
-        so[setName] = { staff = (setOptUI.staff[1] == true), obi = (setOptUI.obi[1] == true) };
-    else
-        so[setName] = nil;                              -- both off -> drop the entry
-    end
-    local text;
-    local ok = pcall(function() text = dsp.serializeTriggers(raw); end);
-    if not ok or type(text) ~= 'string' then setOptUI.status, setOptUI.err = 'serialize failed', true; return; end
-    pcall(function()
-        if ashita and ashita.fs and ashita.fs.create_directory then
-            ashita.fs.create_directory(deps.charBase() .. 'dlac\\triggers\\');
-        end
-    end);
-    if not writeFileText(path, text) then setOptUI.status, setOptUI.err = 'could not write ' .. path, true; return; end
-    autoCommit();                                        -- regenerate the gear manifest (never stale)
-    pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl triggers reload'); end);
-    if not trig.dirty then
-        trigLoad(true);                                  -- keep the Triggers tab in sync (never clobber edits)
-    elseif trig.data ~= nil then
-        -- dirty edit model: sync ONLY the SetOptions into it so a later Commit
-        -- round-trips the flag we just saved instead of wiping it.
-        local copy = {};
-        for nm, o in pairs(so) do
-            if type(nm) == 'string' and type(o) == 'table' then
-                copy[nm] = { staff = (o.staff == true), obi = (o.obi == true) };
-            end
-        end
-        trig.data.SetOptions = copy;
-    end
-    setOptUI.status, setOptUI.err = 'saved -- live', false;
-end
-
--- Two checkboxes for the Sets tab. Safe no-op without imgui/deps/a set name.
-function M.renderSetOptions(setName)
-    if not hasImgui or deps == nil or setName == nil or setName == '' then return; end
-    loadSetOptions(setName);
-    imgui.TextColored(COL_DIM, 'Automation:');
-    imgui.SameLine(0, 6);
-    local changed = false;
-    if imgui.Checkbox('Auto staff##setopt_staff', setOptUI.staff) then changed = true; end
-    if imgui.IsItemHovered() then
-        imgui.SetTooltip('When any trigger equips this set, also equip the best Iridescence staff in Main:\nhighest tier wins per cast -- HQ elemental staff +2 / NQ +1 (own element only) vs a\nuniversal weapon (Chatoyant/Foreshadow +1 = +2 all elements, Iridal Staff = +1); ties\ngo to the universal, and it also covers elementless actions (abilities).\nSaved instantly -- live, no reload.');
-    end
-    imgui.SameLine(0, 12);
-    if imgui.Checkbox('Auto obi##setopt_obi', setOptUI.obi) then changed = true; end
-    if imgui.IsItemHovered() then
-        imgui.SetTooltip('When any trigger equips this set AND the day/weather bonus for the spell\'s\nelement is positive, also equip the matching obi in Waist. Saved instantly.');
-    end
-    if changed then saveSetOptions(setName); end
-    if setOptUI.status ~= '' then
-        imgui.SameLine(0, 10);
-        imgui.TextColored(setOptUI.err and COL_ERR or COL_SCORE, esc(setOptUI.status));
-    end
 end
 
 -- One rule row: [x] condition -> set-dropdown  prio [n] [auto]. Returns 'remove' on delete.

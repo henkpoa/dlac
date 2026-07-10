@@ -164,6 +164,14 @@ function M.BuildDynamicSets(sets)
 
             -- Find the highest-level eligible piece for the slot
             for _, gearVar in pairs(slotTable) do
+                -- Virtual slot entry ('dlac:AutoStaff' / 'dlac:AutoObi'): the dispatch
+                -- engine resolves it at equip time (ADR 0004). It takes the slot outright
+                -- -- no gear lookup, no level pick -- so it must be the slot's only entry.
+                if type(gearVar) == "string" and string.lower(string.sub(gearVar, 1, 5)) == "dlac:" then
+                    currentSet[slotName] = gearVar;
+                    break;
+                end
+
                 local maxLevel = 75; -- If you have passed the max level for the slot, set high so it won't be limiting if it's not specified.
                 local minLevel = 0;
                 local gearVarObject = gearVar;
