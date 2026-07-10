@@ -31,7 +31,9 @@ local M = {};
 -- ---------------------------------------------------------------------------
 -- State
 -- ---------------------------------------------------------------------------
-M.modes = {};   -- session-only mode flags: lower(name) -> true. Reset on load by design.
+M.modes = {};   -- session-only mode state: lower(name) -> true (toggle) or 'Value' (cycle).
+                -- Reset on load by design (cycle modes re-default to their first value).
+local saveModeState;   -- defined in the mode section below; used by the trigger loader
 
 local EVENTS = { 'Default', 'Precast', 'Midcast', 'Ability', 'Item', 'Weaponskill', 'Preshot', 'Midshot' };
 local EVENT_CANON = {};
@@ -144,7 +146,15 @@ local MATCHERS = {
     any             = function() return true; end,
     status          = function(v, ctx) return ctx.player ~= nil and ci(ctx.player.Status, v); end,
     moving          = function(v, ctx) return ctx.player ~= nil and ((ctx.player.IsMoving == true) == (v == true)); end,
-    mode            = function(v, ctx) return M.modes[string.lower(tostring(v))] == true; end,
+    mode            = function(v, ctx)
+        local s = tostring(v);
+        local p = string.find(s, ':', 1, true);
+        if p ~= nil then                               -- 'Weapon:SoloKC' -> cycle mode holds that value
+            local cur = M.modes[string.lower(string.sub(s, 1, p - 1))];
+            return type(cur) == 'string' and ci(cur, string.sub(s, p + 1));
+        end
+        return M.modes[string.lower(s)] ~= nil;        -- toggle ON (or any cycle value)
+    end,
     name            = function(v, ctx) return ctx.action ~= nil and ci(ctx.action.Name, v); end,
     contains        = function(v, ctx) return nameContains(ctx, v); end,   -- substring: 'Madrigal' hits Blade+Sword
     family          = function(v, ctx) return nameContains(ctx, v); end,   -- legacy alias of contains
@@ -216,8 +226,9 @@ local function normalize(t)
     for k, v in pairs(t) do
         local ev = EVENT_CANON[string.lower(tostring(k))];
         if ev == nil then
-            if string.lower(tostring(k)) ~= 'setoptions' then   -- SetOptions is a sibling section, not a handler
-                warns[#warns + 1] = string.format('unknown handler section %q (expected %s or SetOptions)',
+            local lk = string.lower(tostring(k));
+            if lk ~= 'setoptions' and lk ~= 'modes' then   -- sibling sections, not handlers
+                warns[#warns + 1] = string.format('unknown handler section %q (expected %s or Modes)',
                     tostring(k), table.concat(EVENTS, '/'));
             end
         elseif type(v) == 'table' then
@@ -302,6 +313,47 @@ local function ensureLoaded()
 
     local rules, warns = normalize(t);
     _trig.rules, _trig.err = rules, nil;
+    -- Modes section: cycle-mode definitions + optional keybinds.
+    --   Modes = { Weapon = { values = { 'Caster', 'SoloKC' }, bind = '^F3' },
+    --             DT = { bind = 'F9' } }          (array shorthand = values)
+    _trig.modeDefs = {};
+    local md = t.Modes or t.modes;
+    if type(md) == 'table' then
+        for nm, def in pairs(md) do
+            if type(nm) == 'string' and type(def) == 'table' then
+                local values = nil;
+                local src = (type(def.values) == 'table') and def.values or def;
+                for _, v in ipairs(src) do
+                    if type(v) == 'string' then values = values or {}; values[#values + 1] = v; end
+                end
+                _trig.modeDefs[string.lower(nm)] = {
+                    name = nm, values = values,
+                    bind = (type(def.bind) == 'string') and def.bind or nil,
+                };
+            end
+        end
+    end
+    -- A cycle mode ALWAYS has a value: default to its first on load / new definition.
+    for ln, def in pairs(_trig.modeDefs) do
+        if def.values ~= nil then
+            local cur = M.modes[ln];
+            local valid = false;
+            if type(cur) == 'string' then
+                for _, v in ipairs(def.values) do
+                    if ci(v, cur) then valid = true; break; end
+                end
+            end
+            if not valid then M.modes[ln] = def.values[1]; end
+        end
+        -- GUI-managed keybind: applied here so profiles need no OnLoad bind code.
+        if def.bind ~= nil then
+            pcall(function()
+                AshitaCore:GetChatManager():QueueCommand(-1,
+                    string.format('/bind %s /dl mode %s', def.bind, def.name));
+            end);
+        end
+    end
+    pcall(saveModeState);
     for _, w in ipairs(warns) do print('[dlac] triggers: ' .. w); end
     local n = 0;
     for _, list in pairs(rules) do n = n + #list; end
@@ -657,6 +709,34 @@ function M.serializeTriggers(data)
             L[#L + 1] = '    },';
         end
     end
+    -- Modes section (cycle definitions + keybinds) -- carried through serialization so
+    -- a Commit never wipes it (sibling of the handler sections, like the rules).
+    local md = (type(data) == 'table') and (data.Modes or data.modes) or nil;
+    if type(md) == 'table' then
+        local names = {};
+        for nm, def in pairs(md) do
+            if type(nm) == 'string' and type(def) == 'table' then names[#names + 1] = nm; end
+        end
+        table.sort(names);
+        if #names > 0 then
+            L[#L + 1] = '    Modes = {';
+            for _, nm in ipairs(names) do
+                local def = md[nm];
+                local bits = {};
+                local src = (type(def.values) == 'table') and def.values or def;
+                local vals = {};
+                for _, v in ipairs(src) do
+                    if type(v) == 'string' then vals[#vals + 1] = string.format('%q', v); end
+                end
+                if #vals > 0 then bits[#bits + 1] = 'values = { ' .. table.concat(vals, ', ') .. ' }'; end
+                if type(def.bind) == 'string' then bits[#bits + 1] = string.format('bind = %q', def.bind); end
+                if #bits > 0 then
+                    L[#L + 1] = string.format('        [%q] = { %s },', nm, table.concat(bits, ', '));
+                end
+            end
+            L[#L + 1] = '    },';
+        end
+    end
     L[#L + 1] = '};';
     L[#L + 1] = '';
     return table.concat(L, '\n');
@@ -668,12 +748,15 @@ end
 -- different Lua state) can DISPLAY them. It is never read back on load -- modes
 -- always start a session off.
 -- ---------------------------------------------------------------------------
-local function saveModeState()
+saveModeState = function()
     pcall(function()
         local dir = charDir();
         if dir == nil then return; end
         local parts = {};
-        for m in pairs(M.modes) do parts[#parts + 1] = string.format('[%q] = true,', m); end
+        for m, v in pairs(M.modes) do
+            if v == true then parts[#parts + 1] = string.format('[%q] = true,', m);
+            elseif type(v) == 'string' then parts[#parts + 1] = string.format('[%q] = %q,', m, v); end
+        end
         table.sort(parts);
         writeFile(dir .. 'modestate.lua',
             '-- dlac mode mirror (display only; the LAC state owns the flags)\nreturn { '
@@ -681,9 +764,29 @@ local function saveModeState()
     end);
 end
 
+-- Toggle modes flip true/off. CYCLE modes (defined in the trigger file's Modes section)
+-- always hold one of their values: no arg -> advance to the next value (wrapping);
+-- a string arg -> jump straight to that value (case-insensitive). Returns the new state.
 function M.setMode(name, state)
     if type(name) ~= 'string' or name == '' then return false; end
     local ln = string.lower(name);
+    local def = _trig.modeDefs and _trig.modeDefs[ln] or nil;
+    if def ~= nil and def.values ~= nil then
+        local cur, curIdx = M.modes[ln], 0;
+        for i, v in ipairs(def.values) do
+            if type(cur) == 'string' and ci(v, cur) then curIdx = i; break; end
+        end
+        if type(state) == 'string' then                -- jump to a named value
+            for _, v in ipairs(def.values) do
+                if ci(v, state) then M.modes[ln] = v; saveModeState(); return v; end
+            end
+            return M.modes[ln];                        -- unknown value: unchanged
+        end
+        local nxt = def.values[(curIdx % #def.values) + 1];
+        M.modes[ln] = nxt;
+        saveModeState();
+        return nxt;
+    end
     if state == nil then state = not (M.modes[ln] == true); end   -- toggle
     M.modes[ln] = (state == true) or nil;
     saveModeState();
@@ -692,7 +795,9 @@ end
 
 function M.activeModes()
     local out = {};
-    for m in pairs(M.modes) do out[#out + 1] = m; end
+    for m, v in pairs(M.modes) do
+        out[#out + 1] = (v == true) and m or (m .. '=' .. tostring(v));
+    end
     table.sort(out);
     return out;
 end
@@ -785,11 +890,20 @@ if inLac() then
                     .. '   (/dl mode <name> [on|off|toggle])');
                 return;
             end
-            local a3 = args[3] and string.lower(args[3]) or nil;
-            local state = nil;                       -- default: toggle
-            if a3 == 'on' then state = true; elseif a3 == 'off' then state = false; end
-            local on = M.setMode(name, state);
-            print(string.format('[dlac] mode %s %s', string.lower(name), on and 'ON' or 'OFF'));
+            local a3 = args[3];
+            local state = nil;                       -- default: toggle / cycle to next
+            if a3 ~= nil then
+                local l3 = string.lower(a3);
+                if l3 == 'on' then state = true;
+                elseif l3 == 'off' then state = false;
+                else state = a3; end                 -- cycle mode: jump straight to this value
+            end
+            local res = M.setMode(name, state);
+            if type(res) == 'string' then
+                print(string.format('[dlac] mode %s -> %s', string.lower(name), res));
+            else
+                print(string.format('[dlac] mode %s %s', string.lower(name), res and 'ON' or 'OFF'));
+            end
             return;
         end
 
