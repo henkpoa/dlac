@@ -99,19 +99,16 @@ local function trigFilePath()
     return base .. 'dlac\\triggers\\' .. abbr .. '.lua', abbr;
 end
 
--- Load the trigger file into the edit model. Canonical handler keys; condition keys
--- are stored lowercased internally (serializeTriggers restores the display spelling).
-local function trigLoad(force)
-    local path, abbr = trigFilePath();
-    if path == nil then trig.data, trig.job, trig.err = nil, nil, 'not logged in / unknown job'; return; end
-    if not force and trig.job == abbr and trig.data ~= nil then return; end
-    trig.job, trig.data, trig.err, trig.dirty, trig._prioBuf = abbr, nil, nil, false, {};
-    if not hasDispatch then trig.err = 'dispatch module unavailable'; return; end
-    local raw, err = dsp.readTriggersRaw(path);
-    if raw == nil then trig.err = err; return; end
+-- Build the Triggers-tab edit model from a raw trigger-file table: canonical handler
+-- keys, lowercased condition keys, and SetOptions CARRIED THROUGH. Commit serializes
+-- the WHOLE model back to the file, so anything not carried here gets silently wiped
+-- on the next Commit -- that bug shipped once (it ate the Sets tab's Auto staff/obi
+-- flags); this function is exported so the offline tests pin the round-trip.
+function M.fileToModel(raw)
     local data = {};
+    if type(raw) ~= 'table' then return data; end
     for k, v in pairs(raw) do
-        local ev = (type(dsp.canonEvent) == 'function') and dsp.canonEvent(k) or nil;
+        local ev = (hasDispatch and type(dsp.canonEvent) == 'function') and dsp.canonEvent(k) or nil;
         if ev ~= nil and type(v) == 'table' then
             local list = data[ev] or {};
             for _, r in ipairs(v) do
@@ -130,7 +127,29 @@ local function trigLoad(force)
             data[ev] = list;
         end
     end
-    trig.data = data;
+    local so = raw.SetOptions or raw.setOptions;
+    if type(so) == 'table' then
+        local copy = {};
+        for nm, o in pairs(so) do
+            if type(nm) == 'string' and type(o) == 'table' then
+                copy[nm] = { staff = (o.staff == true), obi = (o.obi == true) };
+            end
+        end
+        data.SetOptions = copy;
+    end
+    return data;
+end
+
+-- Load the trigger file into the edit model (see M.fileToModel).
+local function trigLoad(force)
+    local path, abbr = trigFilePath();
+    if path == nil then trig.data, trig.job, trig.err = nil, nil, 'not logged in / unknown job'; return; end
+    if not force and trig.job == abbr and trig.data ~= nil then return; end
+    trig.job, trig.data, trig.err, trig.dirty, trig._prioBuf = abbr, nil, nil, false, {};
+    if not hasDispatch then trig.err = 'dispatch module unavailable'; return; end
+    local raw, err = dsp.readTriggersRaw(path);
+    if raw == nil then trig.err = err; return; end
+    trig.data = M.fileToModel(raw);
 end
 
 local function trigSetStatus(msg, isErr) trig.status = msg or ''; trig.statusErr = (isErr == true); end
@@ -149,6 +168,7 @@ local function trigCommit()
     end);
     if not writeFileText(path, text) then trigSetStatus('Could not write ' .. path, true); return; end
     trig.dirty = false;
+    trig._optsCacheBust = true;   -- the Sets tab's flag display re-reads the file
     pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl triggers reload'); end);
     trigSetStatus('Committed -- live now (hot-reloaded; no /lac reload needed).', false);
 end
@@ -356,7 +376,8 @@ end
 local setOptUI = { name = nil, staff = { false }, obi = { false }, status = '', err = false };
 
 local function loadSetOptions(setName)
-    if setOptUI.name == setName then return; end
+    if setOptUI.name == setName and not trig._optsCacheBust then return; end
+    trig._optsCacheBust = nil;
     setOptUI.name, setOptUI.status, setOptUI.err = setName, '', false;
     setOptUI.staff[1], setOptUI.obi[1] = false, false;
     local path = trigFilePath();
@@ -394,7 +415,19 @@ local function saveSetOptions(setName)
     if not writeFileText(path, text) then setOptUI.status, setOptUI.err = 'could not write ' .. path, true; return; end
     autoCommit();                                        -- regenerate the gear manifest (never stale)
     pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl triggers reload'); end);
-    if not trig.dirty then trigLoad(true); end           -- keep the Triggers tab in sync (never clobber edits)
+    if not trig.dirty then
+        trigLoad(true);                                  -- keep the Triggers tab in sync (never clobber edits)
+    elseif trig.data ~= nil then
+        -- dirty edit model: sync ONLY the SetOptions into it so a later Commit
+        -- round-trips the flag we just saved instead of wiping it.
+        local copy = {};
+        for nm, o in pairs(so) do
+            if type(nm) == 'string' and type(o) == 'table' then
+                copy[nm] = { staff = (o.staff == true), obi = (o.obi == true) };
+            end
+        end
+        trig.data.SetOptions = copy;
+    end
     setOptUI.status, setOptUI.err = 'saved -- live', false;
 end
 
