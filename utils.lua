@@ -160,16 +160,18 @@ function M.BuildDynamicSets(sets)
         for slotName, slotTable in pairs(setTable) do
             local maxSlotLevel = 0;
             local bestGear = nil;
-            
+            local slotVirtual = nil;
 
             -- Find the highest-level eligible piece for the slot
             for _, gearVar in pairs(slotTable) do
                 -- Virtual slot entry ('dlac:AutoStaff' / 'dlac:AutoObi'): the dispatch
-                -- engine resolves it at equip time (ADR 0004). It takes the slot outright
-                -- -- no gear lookup, no level pick -- so it must be the slot's only entry.
+                -- engine resolves it at equip time (ADR 0004). Remember it, but KEEP
+                -- evaluating the slot's real items -- the normal best-by-level pick
+                -- becomes the FALLBACK when the virtual can't resolve (e.g. every
+                -- iridescence weapon / obi is above your current level).
                 if type(gearVar) == "string" and string.lower(string.sub(gearVar, 1, 5)) == "dlac:" then
-                    currentSet[slotName] = gearVar;
-                    break;
+                    slotVirtual = gearVar;
+                    goto continue;
                 end
 
                 local maxLevel = 75; -- If you have passed the max level for the slot, set high so it won't be limiting if it's not specified.
@@ -278,6 +280,17 @@ function M.BuildDynamicSets(sets)
                     end
                 end
                 ::continue::
+            end
+
+            -- Compose the virtual with its fallback: 'dlac:AutoStaff|<bestName>'. The
+            -- engine tries the virtual first and equips the fallback when it can't
+            -- resolve; with no fallback the slot is left untouched at resolve time.
+            if slotVirtual ~= nil then
+                if currentSet[slotName] ~= nil then
+                    currentSet[slotName] = slotVirtual .. '|' .. currentSet[slotName];
+                else
+                    currentSet[slotName] = slotVirtual;
+                end
             end
         end
 

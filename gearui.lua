@@ -2226,9 +2226,9 @@ local function renderAddPopup(job, level)
         -- time from your owned gear. Offered per slot, pinned above the item list.
         local vlist = nil;
         if ui.setSelected == 'Main' then
-            vlist = { { name = 'dlac:AutoStaff', tip = 'Equips your best Iridescence staff for the cast:\nHQ elemental +2 / NQ +1 (own element) vs a universal weapon\n(Chatoyant/Foreshadow +1 = +2 all elements, Iridal = +1); ties go\nto the universal, which also covers elementless actions.' } };
+            vlist = { { name = 'dlac:AutoStaff', tip = 'Equips your best USABLE Iridescence staff for the cast (level-checked):\nHQ elemental +2 / NQ +1 (own element) vs a universal weapon\n(Chatoyant/Foreshadow +1 = +2 all elements, Iridal = +1); ties go to the\nuniversal, which also covers elementless actions. When nothing usable\nexists (e.g. under-leveled), the OTHER items in this slot\'s list are\nthe fallback -- best-by-level as usual.' } };
         elseif ui.setSelected == 'Waist' then
-            vlist = { { name = 'dlac:AutoObi', tip = 'Equips the matching elemental obi when the net day/weather\nbonus for the spell\'s element is positive.' } };
+            vlist = { { name = 'dlac:AutoObi', tip = 'Equips the matching elemental obi when the net day/weather bonus for\nthe spell\'s element is positive (level-checked). Other items in this\nslot\'s list are the fallback.' } };
         end
         if vlist ~= nil then
             for vi, vd in ipairs(vlist) do

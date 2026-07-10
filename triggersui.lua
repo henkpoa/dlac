@@ -50,7 +50,7 @@ local SPELL_CONDS = {
     { key = 'magicType', kind = 'list', items = { 'White Magic', 'Black Magic', 'Bard Song', 'Ninjutsu', 'Summoning', 'Blue Magic' } },
     { key = 'element',   kind = 'list', items = { 'Fire', 'Ice', 'Wind', 'Earth', 'Thunder', 'Water', 'Light', 'Dark', 'Non-Elemental' } },
     { key = 'songType',  kind = 'list', items = { 'Buff', 'Debuff' } },
-    { key = 'family',    kind = 'text', hint = 'name fragment: "Minuet" matches every tier' },
+    { key = 'contains',  kind = 'text', hint = 'name contains this text: "Madrigal" matches Blade + Sword\nMadrigal; "Stone" matches every Stone tier. Stack it with skill\nvia [+ condition] for AND logic (e.g. skill=Elemental + contains=Stone).' },
     { key = 'name',      kind = 'text', hint = 'exact spell name, e.g. Slow II' },
     { key = 'dayWeatherBonus', kind = 'flag' },
     { key = 'any',       kind = 'flag' },
@@ -65,13 +65,13 @@ local COND_DEFS = {
     Midcast = SPELL_CONDS,
     Ability = {
         { key = 'abilityType', kind = 'list', items = { 'Blood Pact: Rage', 'Blood Pact: Ward', 'Corsair Roll', 'Quick Draw', 'Ready', 'Rune Enchantment' } },
-        { key = 'family', kind = 'text', hint = 'name fragment' },
-        { key = 'name',   kind = 'text', hint = 'exact ability name, e.g. Repair' },
-        { key = 'any',    kind = 'flag' },
+        { key = 'contains', kind = 'text', hint = 'name contains this text' },
+        { key = 'name',     kind = 'text', hint = 'exact ability name, e.g. Repair' },
+        { key = 'any',      kind = 'flag' },
     },
     Item = {
-        { key = 'name',   kind = 'text', hint = 'exact item name, e.g. Holy Water' },
-        { key = 'family', kind = 'text', hint = 'name fragment' },
+        { key = 'name',     kind = 'text', hint = 'exact item name, e.g. Holy Water' },
+        { key = 'contains', kind = 'text', hint = 'name contains this text' },
     },
     Weaponskill = {
         { key = 'name', kind = 'text', hint = 'exact weaponskill name' },
@@ -278,18 +278,21 @@ local function autoCommit()
     local p = autoPath();
     if p == nil then auto.status = 'not logged in.'; return; end
     -- Per-element pick: HQ staff (Iridescence +2 for its element) over NQ (+1).
+    -- Every entry records its item LEVEL so the engine can skip gear the character
+    -- is under-leveled for (and fall back to the slot's regular pick).
     local staff, obi, nStaff, nObi = {}, {}, 0, 0;
     for _, el in ipairs(ELEMENTS8) do
         local hq, nq = ownedRec(STAFF_HQ[el]), ownedRec(STAFF_NQ[el]);
-        if hq ~= nil then staff[el] = { name = hq.Name, tier = 2 }; nStaff = nStaff + 1;
-        elseif nq ~= nil then staff[el] = { name = nq.Name, tier = 1 }; nStaff = nStaff + 1; end
+        if hq ~= nil then staff[el] = { name = hq.Name, tier = 2, level = hq.Level or 0 }; nStaff = nStaff + 1;
+        elseif nq ~= nil then staff[el] = { name = nq.Name, tier = 1, level = nq.Level or 0 }; nStaff = nStaff + 1; end
         local ob = ownedRec(OBI[el]);
-        if ob ~= nil then obi[el] = ob.Name; nObi = nObi + 1; end
+        if ob ~= nil then obi[el] = { name = ob.Name, level = ob.Level or 0 }; nObi = nObi + 1; end
     end
     -- Best owned universal (highest tier first -- the list is ordered).
-    local uni = nil;
+    local uni, uniLevel = nil, 0;
     for _, u in ipairs(UNIVERSAL) do
-        if ownedRec(u.name) ~= nil then uni = u; break; end
+        local rec = ownedRec(u.name);
+        if rec ~= nil then uni = u; uniLevel = rec.Level or 0; break; end
     end
     local L = {
         '-- dlac automation manifest -- written by the GUI (Triggers tab > Automations).',
@@ -299,18 +302,23 @@ local function autoCommit()
         '-- a dlac:AutoStaff / dlac:AutoObi entry in its Main / Waist slot (Sets tab).',
         'return {',
         (uni ~= nil)
-            and string.format('    universal = { name = %q, tier = %d },', uni.name, uni.tier)
+            and string.format('    universal = { name = %q, tier = %d, level = %d },', uni.name, uni.tier, uniLevel)
             or  '    universal = false,',
         '    staff = {',
     };
     for _, el in ipairs(ELEMENTS8) do
         local s = staff[el];
-        if s ~= nil then L[#L + 1] = string.format('        %s = { name = %q, tier = %d },', el, s.name, s.tier); end
+        if s ~= nil then
+            L[#L + 1] = string.format('        %s = { name = %q, tier = %d, level = %d },', el, s.name, s.tier, s.level);
+        end
     end
     L[#L + 1] = '    },';
     L[#L + 1] = '    obi = {';
     for _, el in ipairs(ELEMENTS8) do
-        if obi[el] ~= nil then L[#L + 1] = string.format('        %s = %q,', el, obi[el]); end
+        local o = obi[el];
+        if o ~= nil then
+            L[#L + 1] = string.format('        %s = { name = %q, level = %d },', el, o.name, o.level);
+        end
     end
     L[#L + 1] = '    },';
     L[#L + 1] = '};';

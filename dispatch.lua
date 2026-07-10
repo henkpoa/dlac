@@ -143,7 +143,8 @@ local MATCHERS = {
     moving          = function(v, ctx) return ctx.player ~= nil and ((ctx.player.IsMoving == true) == (v == true)); end,
     mode            = function(v, ctx) return M.modes[string.lower(tostring(v))] == true; end,
     name            = function(v, ctx) return ctx.action ~= nil and ci(ctx.action.Name, v); end,
-    family          = function(v, ctx) return nameContains(ctx, v); end,
+    contains        = function(v, ctx) return nameContains(ctx, v); end,   -- substring: 'Madrigal' hits Blade+Sword
+    family          = function(v, ctx) return nameContains(ctx, v); end,   -- legacy alias of contains
     skill           = function(v, ctx) return ctx.action ~= nil and ci(ctx.action.Skill, v); end,
     magictype       = function(v, ctx) return ctx.action ~= nil and ci(ctx.action.Type, v); end,
     abilitytype     = function(v, ctx) return ctx.action ~= nil and ci(ctx.action.Type, v); end,
@@ -175,7 +176,7 @@ local TIER = {
     status = 20, skill = 20, abilitytype = 20,
     moving = 25,
     magictype = 30, element = 30, songtype = 30, dayweatherbonus = 30,
-    family = 40,
+    contains = 40, family = 40,
     name = 50,
     mode = 100,
 };
@@ -185,8 +186,8 @@ local TIER = {
 local PRETTY_KEY = {
     any = 'any', status = 'status', moving = 'moving', mode = 'mode',
     skill = 'skill', magictype = 'magicType', abilitytype = 'abilityType',
-    element = 'element', songtype = 'songType', family = 'family', name = 'name',
-    dayweatherbonus = 'dayWeatherBonus',
+    element = 'element', songtype = 'songType', contains = 'contains',
+    family = 'family', name = 'name', dayweatherbonus = 'dayWeatherBonus',
 };
 M.PRETTY_KEY = PRETTY_KEY;
 
@@ -346,14 +347,32 @@ end
 -- on a positive day/weather sign. Resolved HERE at equip time from the autogear
 -- manifest; an unresolvable marker DROPS its slot, so LAC leaves what you're wearing.
 
+-- The character's current effective level (honours the /dl set level main override).
+-- Unknown -> 75, so a missing player read never blocks resolution.
+local function playerLevel(ctx)
+    local sl = rawget(_G, 'staticMainLevel');
+    if type(sl) == 'number' and sl > 0 then return sl; end
+    local lv = ctx.player and ctx.player.MainJobSync;
+    if type(lv) == 'number' and lv > 0 then return lv; end
+    return 75;
+end
+
+-- A manifest entry is usable when its recorded level fits the character. Entries
+-- without a level (legacy manifests) count as usable -- Rescan adds levels.
+local function usableAt(entryLevel, lvl)
+    return entryLevel == nil or (tonumber(entryLevel) or 0) <= lvl;
+end
+
 -- Best staff by tiered Iridescence (CatsEyeXI): per-element staves carry it for their
 -- own element only (NQ +1 / HQ +2); universal weapons for every element (Iridal +1,
 -- Chatoyant / Foreshadow +1 = +2). Higher tier wins; ties go to the universal (no
--- cross-element swapping, and it needs no element at all).
-local function resolveStaff(a, el)
+-- cross-element swapping, and it needs no element at all). LEVEL-GATED: anything
+-- above the character's current level is not a candidate at all.
+local function resolveStaff(a, el, lvl)
     if a.iridescence == true then return nil; end   -- legacy boolean manifest: suppress (Rescan regenerates)
     local uniName, uniTier = nil, 0;
-    if type(a.universal) == 'table' and type(a.universal.name) == 'string' then
+    if type(a.universal) == 'table' and type(a.universal.name) == 'string'
+       and usableAt(a.universal.level, lvl) then
         uniName, uniTier = a.universal.name, tonumber(a.universal.tier) or 1;
     elseif type(a.iridescence) == 'string' then        -- legacy manifest: name, assume +2
         uniName, uniTier = a.iridescence, 2;
@@ -361,7 +380,7 @@ local function resolveStaff(a, el)
     local elName, elTier = nil, 0;
     if el ~= nil and type(a.staff) == 'table' then
         local s = a.staff[el];
-        if type(s) == 'table' and type(s.name) == 'string' then
+        if type(s) == 'table' and type(s.name) == 'string' and usableAt(s.level, lvl) then
             elName, elTier = s.name, tonumber(s.tier) or 1;
         elseif type(s) == 'string' then                -- legacy manifest: best-owned name
             elName, elTier = s, 2;
@@ -377,19 +396,24 @@ local function resolveVirtual(marker, ctx)
     if a == nil then return nil, 'no autogear manifest (Automations > Rescan owned gear)'; end
     local el = ctx.action and ctx.action.Element;
     if type(el) ~= 'string' or ci(el, 'Non-Elemental') then el = nil; end
+    local lvl = playerLevel(ctx);
     local mk = string.lower(tostring(marker));
     if mk == 'dlac:autostaff' then
-        local nm = resolveStaff(a, el);
+        local nm = resolveStaff(a, el, lvl);
         if nm == nil then
-            return nil, (el == nil) and 'elementless action, no universal staff owned'
-                                     or ('no staff owned for ' .. el);
+            return nil, (el == nil) and 'no usable universal staff (elementless action)'
+                                     or ('no usable staff for ' .. el .. ' at Lv' .. lvl);
         end
         return nm;
     end
     if mk == 'dlac:autoobi' then
         if el == nil then return nil, 'no element'; end
-        local nm = (type(a.obi) == 'table') and a.obi[el] or nil;
-        if type(nm) ~= 'string' then return nil, 'no ' .. el .. ' obi owned'; end
+        local o = (type(a.obi) == 'table') and a.obi[el] or nil;
+        local nm, olvl = nil, nil;
+        if type(o) == 'table' and type(o.name) == 'string' then nm, olvl = o.name, o.level;
+        elseif type(o) == 'string' then nm = o; end     -- legacy manifest: name only
+        if nm == nil then return nil, 'no ' .. el .. ' obi owned'; end
+        if not usableAt(olvl, lvl) then return nil, nm .. ' is above Lv' .. lvl; end
         if netDayWeather(ctx) <= 0 then return nil, 'day/weather not positive'; end
         return nm;
     end
@@ -397,8 +421,12 @@ local function resolveVirtual(marker, ctx)
 end
 
 -- Equip a set table, resolving virtual entries. Sets without markers pass through
--- untouched (zero copies); with markers, a shallow copy carries the resolutions and
--- unresolved slots are dropped. Returns a trace note ('' when nothing was virtual).
+-- untouched (zero copies); with markers, a shallow copy carries the resolutions.
+-- BuildDynamicSets encodes the slot's regular best-by-level pick as a fallback
+-- ('dlac:AutoStaff|Maple Wand'): an unresolvable virtual equips the fallback -- so
+-- being under-leveled for every iridescence weapon / obi never blocks the slot --
+-- and only with no fallback at all is the slot dropped (LAC leaves what's worn).
+-- Returns a trace note ('' when nothing was virtual).
 local function equipResolved(s, ctx)
     local out, notes = nil, nil;
     for slot, v in pairs(s) do
@@ -407,10 +435,19 @@ local function equipResolved(s, ctx)
                 out = {};
                 for k2, v2 in pairs(s) do out[k2] = v2; end
             end
-            local nm, why = resolveVirtual(v, ctx);
-            out[slot] = nm;                            -- nil drops the slot
+            local marker, fallback = v, nil;
+            local p = string.find(v, '|', 1, true);
+            if p ~= nil then marker, fallback = string.sub(v, 1, p - 1), string.sub(v, p + 1); end
+            local nm, why = resolveVirtual(marker, ctx);
+            out[slot] = nm or fallback;                -- nil fallback drops the slot
             notes = notes or {};
-            notes[#notes + 1] = string.format('%s=%s', tostring(v), nm or ('skipped (' .. tostring(why) .. ')'));
+            if nm ~= nil then
+                notes[#notes + 1] = string.format('%s=%s', marker, nm);
+            elseif fallback ~= nil then
+                notes[#notes + 1] = string.format('%s=fallback %s (%s)', marker, fallback, tostring(why));
+            else
+                notes[#notes + 1] = string.format('%s=skipped (%s)', marker, tostring(why));
+            end
         end
     end
     pcall(function() gFunc.EquipSet(out or s); end);

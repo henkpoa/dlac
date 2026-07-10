@@ -55,9 +55,9 @@ at dispatch time:
 | Handler | Conditions |
 |---|---|
 | Default | `status` (Engaged/Resting/Idle), `moving`, `mode` (user-defined name) |
-| Precast / Midcast | `any`, `skill` (Enfeebling Magic, Singing, ...), `magicType` (White/Black Magic, Bard Song, ...), `element` (Fire..Dark), `songType` (Buff/Debuff — small static list of debuff families), `family` (name-group: "Minuet" matches all tiers), `name`, `dayWeatherBonus` (net day+weather sign for the spell's element) |
-| Ability | `any`, `abilityType` (Blood Pact: Rage/Ward, Corsair Roll, Quick Draw, Ready, Rune Enchantment), `family`, `name` |
-| Item | `name`, `family` |
+| Precast / Midcast | `any`, `skill` (Enfeebling Magic, Singing, ...), `magicType` (White/Black Magic, Bard Song, ...), `element` (Fire..Dark), `songType` (Buff/Debuff — small static list of debuff families), `contains` (substring: "Madrigal" matches Blade+Sword, "Stone" every tier; legacy alias `family`), `name`, `dayWeatherBonus` (net day+weather sign for the spell's element) |
+| Ability | `any`, `abilityType` (Blood Pact: Rage/Ward, Corsair Roll, Quick Draw, Ready, Rune Enchantment), `contains`, `name` |
+| Item | `name`, `contains` |
 | Weaponskill | `any`, `name` |
 | Preshot / Midshot | `any` |
 
@@ -79,11 +79,13 @@ Named flags, session-only (reset on load). Toggled from the Triggers tab or `/dl
 ## Automations (ADR 0004)
 
 **Virtual slot entries** ("slot functions", ADR 0004 4th revision): a set slot holds a marker
-instead of an item — `dlac:AutoStaff` (Main), `dlac:AutoObi` (Waist) — added via the Sets tab's
-`+ Add` picker, committed into `sets.Dynamic` like any entry, passed through `BuildDynamicSets`,
-and resolved by the engine at equip time. Unresolvable → the slot is dropped (LAC leaves what's
-worn). Gear data comes from a GUI-derived manifest (`<char>\dlac\autogear.lua` — the engine
-never loads the catalog; Automations section = manifest view + Rescan):
+alongside its regular items — `dlac:AutoStaff` (Main), `dlac:AutoObi` (Waist) — added via the
+Sets tab's `+ Add` picker and committed into `sets.Dynamic` like any entry. `BuildDynamicSets`
+flattens it WITH the slot's normal best-by-level pick as fallback (`dlac:AutoStaff|Maple Wand`);
+the engine resolves at equip time, level-gated (manifest entries record item levels — an
+under-leveled Chatoyant is not a candidate), equips the fallback when unresolvable, and drops
+the slot only when there's no fallback. Gear data comes from a GUI-derived manifest
+(`<char>\dlac\autogear.lua` — the engine never loads the catalog; Automations = view + Rescan):
 - **dlac:AutoStaff**: tiered Iridescence pick per cast — elemental staves carry it for their own
   element only (NQ +1 / HQ +2), universal weapons for all elements (Iridal Staff +1, Chatoyant
   Staff / Foreshadow +1 = +2). Higher tier wins; ties go to the universal, which also covers
