@@ -25,7 +25,17 @@ local hasDispatch = _dpok and type(dsp) == 'table';
 -- Injected by gearui (M.init): charBase, jobFile, seedTriggersFile,
 -- dynamicSetNames, staticSetNames, lookupByName, ownedCounts.
 local deps = nil;
-function M.init(d) deps = d; end
+function M.init(d)
+    deps = d;
+    -- Wire the trigger-gear audit (gearcheck): it needs set contents, the gear
+    -- library lookup, and our trigger model. Guarded: a missing module only
+    -- loses the warnings feature.
+    pcall(function()
+        local gc = require("dlac\\gearcheck");
+        gc.configure({ setsRoot = d.setsRoot, lookupByName = d.lookupByName,
+                       model = M.currentModel });
+    end);
+end
 
 -- Colors (match gearui's palette).
 local COL_HEADER = { 0.60, 0.75, 1.00, 1.00 };
@@ -173,6 +183,13 @@ local function trigLoad(force)
 end
 
 local function trigSetStatus(msg, isErr) trig.status = msg or ''; trig.statusErr = (isErr == true); end
+
+-- Current trigger model + job, loading on demand (for gearcheck and other consumers).
+function M.currentModel()
+    pcall(trigLoad, false);
+    if type(trig) ~= 'table' then return nil, nil; end
+    return trig.data, trig.job;
+end
 
 -- Serialize + write the trigger file, then ping the LAC-state engine to hot-reload.
 local function trigCommit()
@@ -386,6 +403,10 @@ end
 function M.rescanAutogear()
     if deps == nil then return; end
     pcall(autoCommit);
+    -- Same cadence as the manifest rescan (login / job change): warn about
+    -- trigger-referenced gear that is parked in storage. Signature-deduped in
+    -- gearcheck, so an unchanged situation stays silent.
+    pcall(function() require("dlac\\gearcheck").chatWarn(false); end);
 end
 
 -- The Automations section (rendered under the handler sections): the manifest data +
@@ -418,6 +439,39 @@ local function renderAutomations()
     end
     imgui.TextColored(COL_DIM, string.format('detected: %d staves, %d obis%s',
         nkeys(d.staff), nkeys(d.obi), uniTxt));
+end
+
+-- ---------------------------------------------------------------------------
+-- Gear warnings section: trigger-referenced sets whose pieces are not in an
+-- equippable bag right now (gearcheck audit; cached ~2s -- ownedSplit walks
+-- every container).
+-- ---------------------------------------------------------------------------
+local function renderGearWarnings()
+    local gc = nil;
+    pcall(function() gc = require("dlac\\gearcheck"); end);
+    if type(gc) ~= 'table' or type(gc.auditCached) ~= 'function' then return; end
+    local warns = {};
+    pcall(function() warns = gc.auditCached(2) or {}; end);
+    local n = #warns;
+    local flags = (n > 0 and ImGuiTreeNodeFlags_DefaultOpen ~= nil) and ImGuiTreeNodeFlags_DefaultOpen or 0;
+    if not imgui.CollapsingHeader(string.format('Gear warnings (%d)###trgsec_warn', n), flags) then return; end
+    if imgui.Button('Re-check now##trgwarnrefresh', { 0, 20 }) then
+        pcall(gc.invalidate);
+        pcall(gc.chatWarn, true);
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Re-audit every trigger-referenced set against your bags and print the result to chat.');
+    end
+    if n == 0 then
+        imgui.TextColored(COL_DIM, 'Everything your triggers reference is equippable. (checked against your bags)');
+        return;
+    end
+    imgui.PushTextWrapPos(0.0);
+    for _, w in ipairs(warns) do
+        local col = (w.kind == 'stored' or w.kind == 'missing') and COL_ERR or { 0.95, 0.80, 0.35, 1.0 };
+        imgui.TextColored(col, '[!] ' .. esc(gc.describe(w)));
+    end
+    imgui.PopTextWrapPos();
 end
 
 -- ---------------------------------------------------------------------------
@@ -991,6 +1045,7 @@ function M.render(job, level)
         end
     end
     pcall(renderAutomations);   -- Automations section (auto staff / obi, ADR 0004)
+    pcall(renderGearWarnings);  -- trigger-referenced gear parked in storage / missing
     imgui.EndChild();
 
     if trig._openAdd then imgui.OpenPopup('##dlac_trigadd'); trig._openAdd = false; end

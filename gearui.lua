@@ -2052,6 +2052,7 @@ do
             charBase = charBase, jobFile = jobFile, seedTriggersFile = seedTriggersFile,
             dynamicSetNames = dynamicSetNames, staticSetNames = staticSetNames,
             lookupByName = lookupByName, ownedCounts = ownedCounts,   -- automations manifest (owned staves/obis)
+            setsRoot = getSetsRoot,                                   -- gearcheck: set contents for the audit
         });
     else
         pcall(function() print('[dlac] triggersui failed to load: ' .. tostring(m)); end);
