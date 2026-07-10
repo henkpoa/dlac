@@ -215,6 +215,10 @@ M.list = {
 
     -- ---- Misc ----
     { key = 'MovementSpeed', label = 'Move Spd', section = 'Misc', percent = true },
+    { key = 'SynthSkillGain',   label = 'Synth Skill+', section = 'Misc', percent = true,
+      aliases = { 'SynthesisSkillGainRate', 'SynthesisSkillUpRate' } },   -- crafting gear (Midras's set)
+    { key = 'SynthSuccessRate', label = 'Synth Success', section = 'Misc', percent = true,
+      aliases = { 'SynthesisSuccessRate' } },
     { key = 'Delay',         label = 'Delay',    section = 'Misc', lowerBetter = true },  -- weapon delay; rarely weighted
     { key = 'TreasureHunter', label = 'TH',      section = 'Misc' },   -- THF
     { key = 'Steal',          label = 'Steal',   section = 'Misc' },   -- THF
