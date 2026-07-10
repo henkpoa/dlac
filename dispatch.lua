@@ -515,9 +515,12 @@ local function equipResolved(s, ctx)
         end
     end
     pcall(function() gFunc.EquipSet(out or s); end);
-    if notes == nil then return ''; end
-    table.sort(notes);
-    return '  [' .. table.concat(notes, ', ') .. ']';
+    local note = '';
+    if notes ~= nil then
+        table.sort(notes);
+        note = '  [' .. table.concat(notes, ', ') .. ']';
+    end
+    return note, (out or s);   -- the table actually equipped (for slot attribution)
 end
 
 -- Force a re-read on the next dispatch (the GUI pings /dl triggers reload on commit).
@@ -572,8 +575,9 @@ local function equipSetByName(name, ctx)
         local prof = rawget(_G, 'gProfile');
         if type(prof) == 'table' and type(prof.Sets) == 'table' then s = prof.Sets[name]; end
     end);
-    if type(s) ~= 'table' then return false, ''; end   -- unknown set: skip quietly (traced), no per-frame LAC error spam
-    return true, equipResolved(s, ctx);
+    if type(s) ~= 'table' then return false, '', nil; end   -- unknown set: skip quietly (traced), no per-frame LAC error spam
+    local note, tbl = equipResolved(s, ctx);
+    return true, note, tbl;
 end
 
 local function inlineSummary(equip)
@@ -621,19 +625,41 @@ function M.dispatch(event)
         local retrace = (old == nil) or (old.sig ~= sig) or (event ~= 'Default');
         local lines = retrace and {} or old.lines;
 
+        -- Apply in order, attributing each SLOT to its final writer -- with partial
+        -- sets (weapon-only, DT-only, ...) this is what proves the overlay: every
+        -- slot lists the rule that actually owns it this dispatch.
+        local slotSrc = retrace and {} or nil;
         for _, r in ipairs(hits) do
             if r.set ~= nil then
-                local found, note = equipSetByName(r.set, ctx);
+                local found, note, tbl = equipSetByName(r.set, ctx);
                 if retrace then
                     lines[#lines + 1] = string.format('%s  ->  set %s  (prio %d)%s%s',
                         r.label, r.set, r.prio, found and '' or '  [NOT FOUND in profile Sets]', note or '');
+                    if type(tbl) == 'table' then
+                        for slot in pairs(tbl) do
+                            if string.sub(tostring(slot), 1, 2) ~= '__' then slotSrc[slot] = r.set; end
+                        end
+                    end
                 end
             elseif r.equip ~= nil then
-                local note = equipResolved(r.equip, ctx);
+                local note, tbl = equipResolved(r.equip, ctx);
                 if retrace then
                     lines[#lines + 1] = string.format('%s  ->  equip { %s }  (prio %d)%s',
                         r.label, inlineSummary(r.equip), r.prio, note or '');
+                    if type(tbl) == 'table' then
+                        for slot in pairs(tbl) do
+                            if string.sub(tostring(slot), 1, 2) ~= '__' then slotSrc[slot] = r.label; end
+                        end
+                    end
                 end
+            end
+        end
+        if retrace and #hits > 1 then                    -- who won each slot (overlap visibility)
+            local parts = {};
+            for slot, src in pairs(slotSrc) do parts[#parts + 1] = tostring(slot) .. '<-' .. tostring(src); end
+            if #parts > 0 then
+                table.sort(parts);
+                lines[#lines + 1] = 'slots: ' .. table.concat(parts, ', ');
             end
         end
 
