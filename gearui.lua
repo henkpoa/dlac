@@ -2418,20 +2418,22 @@ local function renderSetsTab(job, level)
 end
 
 -- ---------------------------------------------------------------------------
--- Tab: Triggers -- lives in its OWN module (dlac\triggersui.lua). LuaJIT caps a
+-- Tab: Triggers -- lives in its OWN module (dlac\\triggersui.lua). LuaJIT caps a
 -- chunk at 200 LOCAL VARIABLES and gearui's main chunk is close to that cap --
 -- add new tabs/features as modules, not as more top-level locals in this file.
 -- gearui hands the module its profile/file helpers once, then renders it.
 -- ---------------------------------------------------------------------------
 local trigui;
 do
-    local ok, m = pcall(require, "dlac\triggersui");
+    local ok, m = pcall(require, "dlac\\triggersui");
     if ok and type(m) == 'table' then
         trigui = m;
         pcall(trigui.init, {
             charBase = charBase, jobFile = jobFile, seedTriggersFile = seedTriggersFile,
             dynamicSetNames = dynamicSetNames, staticSetNames = staticSetNames,
         });
+    else
+        pcall(function() print('[dlac] triggersui failed to load: ' .. tostring(m)); end);
     end
 end
 
