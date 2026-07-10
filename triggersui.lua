@@ -689,7 +689,18 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
     local id = h .. '_' .. tostring(i);
     local act = nil;
     local lines = condLines(r.when);
-    local boxH = math.max(#lines * 19, 50) + 12;
+    -- The box takes exactly the height its TALLER column needs: conditions on the
+    -- left; on the right the target (an inline equip payload gets one line per
+    -- slot) plus the controls row. Nothing is clipped to a cap anymore.
+    local parts = nil;
+    if r.equip ~= nil then
+        parts = {};
+        for slot, item in pairs(r.equip) do parts[#parts + 1] = tostring(slot) .. ' = ' .. tostring(item); end
+        table.sort(parts);
+    end
+    local leftH  = #lines * 19;
+    local rightH = ((parts ~= nil) and (#parts * 19) or 24) + 28;   -- target + controls row
+    local boxH = math.max(leftH, rightH, 50) + 12;
     imgui.BeginChild('##trgbox' .. id, { -1, boxH }, true);
 
     imgui.BeginGroup();                                -- left column: the methods
@@ -700,14 +711,15 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
 
     imgui.SameLine(colX);
     imgui.BeginGroup();                                -- right column: target + controls
-    imgui.TextColored(COL_DIM, '->');
-    imgui.SameLine(0, 6);
-    if r.equip ~= nil then
-        local parts = {};
-        for slot, item in pairs(r.equip) do parts[#parts + 1] = tostring(slot) .. '=' .. tostring(item); end
-        table.sort(parts);
-        imgui.TextColored(COL_SCORE, esc('{ ' .. table.concat(parts, ', ') .. ' }'));
+    if parts ~= nil then
+        for pi, p in ipairs(parts) do                  -- one slot per line
+            imgui.TextColored(COL_DIM, (pi == 1) and '->' or '  ');
+            imgui.SameLine(0, 6);
+            imgui.TextColored(COL_SCORE, esc(p));
+        end
     else
+        imgui.TextColored(COL_DIM, '->');
+        imgui.SameLine(0, 6);
         imgui.PushItemWidth(170);
         if imgui.BeginCombo('##trgset' .. id, r.set or '(pick set)') then
             for _, nm in ipairs(setNames) do
