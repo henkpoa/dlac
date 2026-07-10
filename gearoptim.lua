@@ -40,6 +40,10 @@
 ]]--
 
 local gear = require("dlac\\gear");
+-- Level-scaling stats (Rajas/Tamas/Sattva etc.): rank slots on the EFFECTIVE stats
+-- for the build level, not the catalog's flat base. Guarded: absent module = no-op.
+local _lsok, lscale = pcall(require, "dlac\\levelstats");
+local hasLScale = _lsok and type(lscale) == 'table';
 
 local M = {};
 
@@ -493,7 +497,11 @@ local function rankSlot(slotKey, scoreFn, job, level)
     local ranked = {};
     forEachInSlot(slotKey, function(entry)
         if isEligible(entry, job, level) then
-            ranked[#ranked + 1] = { entry = entry, score = scoreFn(entry.Stats) };
+            local st = entry.Stats;
+            if hasLScale and entry.Id ~= nil and lscale.has(entry.Id) then
+                st = lscale.apply(entry.Id, level, st);   -- effective stats at the build level
+            end
+            ranked[#ranked + 1] = { entry = entry, score = scoreFn(st) };
         end
     end);
     table.sort(ranked, function(a, b)

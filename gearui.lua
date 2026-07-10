@@ -42,6 +42,8 @@ local _cok, catalog = pcall(require, "dlac\\catalog");
 local _sok, setmgr = pcall(require, "dlac\\setmanager");
 -- Augment reader: decode private augments from item Extra bytes (worn-stat totals).
 local _augok, aug  = pcall(require, "dlac\\augments");
+-- Level-scaling stats (Rajas/Tamas/Sattva etc.): effective stats per level.
+local _lsok, lscale = pcall(require, "dlac\\levelstats");
 
 local hasImgui    = _iok and imgui ~= nil;
 local hasD3D      = _fok and _dok and ffi ~= nil and d3d ~= nil;
@@ -49,6 +51,15 @@ local hasOptim    = _ook and type(optim) == 'table';
 local hasCatalog  = _cok and type(catalog) == 'table';
 local hasSetmgr   = _sok and type(setmgr) == 'table';
 local hasAug      = _augok and type(aug) == 'table';
+local hasLScale   = _lsok and type(lscale) == 'table';
+
+-- Effective stats of a record at a level (level-scaled items resolve their latents;
+-- everything else passes through untouched). nil level = the live player level.
+local function effStats(rec, level)
+    if rec == nil then return nil; end
+    if level == nil or not hasLScale or rec.Id == nil or not lscale.has(rec.Id) then return rec.Stats; end
+    return lscale.apply(rec.Id, level, rec.Stats);
+end
 
 local M = {};
 M.visible        = false;    -- window visibility flag, toggled by /dl ui
@@ -406,10 +417,12 @@ local STAT_PRIORITY = {
     'INT', 'MND', 'CHR', 'Evasion', 'Enmity', 'StoreTP',
 };
 
--- Compact (<=4 token) stat line for rows. Memoized on the record.
-local function statSummary(rec)
-    if rec._statStr ~= nil then return rec._statStr; end
-    local stats, out = rec.Stats, '';
+-- Compact (<=4 token) stat line for rows. Memoized on the record (per level, so
+-- level-scaled items re-render when the character's level changes).
+local function statSummary(rec, level)
+    local lvlKey = level or -1;
+    if rec._statStr ~= nil and rec._statLvl == lvlKey then return rec._statStr; end
+    local stats, out = effStats(rec, level), '';
     if type(stats) == 'table' then
         local parts, used = {}, {};
         for _, k in ipairs(STAT_PRIORITY) do
@@ -429,7 +442,7 @@ local function statSummary(rec)
         end
         out = table.concat(parts, ' ');
     end
-    rec._statStr = out;
+    rec._statStr, rec._statLvl = out, lvlKey;
     return out;
 end
 
@@ -579,9 +592,10 @@ end
 
 -- Weighted score of an ITEM: base Stats PLUS the augment deltas on the copy you own (by Id),
 -- so augmented gear is weighed correctly. Use this (not scoreOf) when scoring a gear record.
-local function scoreOfItem(rec)
+local function scoreOfItem(rec, level)
     if rec == nil then return 0; end
-    local base = rec.Stats;
+    if level == nil then local _, l = getPlayerInfo(); level = l; end
+    local base = effStats(rec, level);
     local a = (rec.Id ~= nil) and ownedAugStatsMap()[rec.Id] or nil;
     if a == nil then return scoreOf(base); end
     local combined = {};
@@ -613,7 +627,7 @@ local function candidatesForSlot(gearSlotKey, job, level)
     local useScore = weightsActive();
     table.sort(out, function(a, b)
         if useScore then
-            local sa, sb = scoreOfItem(a), scoreOfItem(b);
+            local sa, sb = scoreOfItem(a, level), scoreOfItem(b, level);
             if sa ~= sb then return sa > sb; end
         end
         if (a.Level or 0) ~= (b.Level or 0) then return (a.Level or 0) > (b.Level or 0); end
@@ -629,12 +643,14 @@ end
 -- ---------------------------------------------------------------------------
 local function wornSetTotals()
     local totals = {};
+    local _, _wlvl = getPlayerInfo();
     for _, sl in ipairs(EQUIP_SLOTS) do
         local id  = getEquippedId(sl.equip);
         local rec = lookupById(id);
         if rec == nil and id ~= nil then rec = lookupByName(displayName(id)); end
-        if rec ~= nil and type(rec.Stats) == 'table' then
-            for k, v in pairs(rec.Stats) do
+        local _st = effStats(rec, _wlvl);
+        if _st ~= nil and type(_st) == 'table' then
+            for k, v in pairs(_st) do
                 if type(v) == 'number' and k ~= 'DMG' and k ~= 'Delay' then
                     totals[k] = (totals[k] or 0) + v;
                 end
@@ -874,7 +890,11 @@ local function renderItemTooltip(rec)
         imgui.TextColored(COL_HEADER, esc(rec.Name or '?'));
         local typeStr = rec.Type or rec.Category or rec.Slot;
         if typeStr ~= nil then imgui.TextColored(COL_DIM, '(' .. esc(tostring(typeStr)) .. ')'); end
-        local stats = rec.Stats;
+        local _, _lvl = getPlayerInfo();
+        local stats = effStats(rec, _lvl);
+        if hasLScale and rec.Id ~= nil and lscale.has(rec.Id) then
+            imgui.TextColored(COL_DIM, string.format('(scales with level -- shown for Lv%d)', _lvl or 0));
+        end
         if type(stats) == 'table' and type(stats.DMG) == 'number' and type(stats.Delay) == 'number' then
             imgui.TextColored(COL_DMG, string.format('DMG:%s Delay:%s', tostring(stats.DMG), tostring(stats.Delay)));
         end
@@ -1232,17 +1252,17 @@ end
 local function renderAltRow(rec, ordinal, job, level)
     renderIcon(rec.Id, 18);
     local label = string.format('%s   Lv%d   %s%s##altsel_%d',
-        truncate(rec.Name or '?', 26), rec.Level or 0, statSummary(rec), qtyTag(rec), ordinal);
+        truncate(rec.Name or '?', 26), rec.Level or 0, statSummary(rec, level), qtyTag(rec), ordinal);
     local clicked = imgui.Selectable(label, false);
     if imgui.IsItemHovered() then renderItemTooltip(rec); end
     return clicked;
 end
 
 -- Clickable candidate row (Sets tab). Returns true when clicked.
-local function renderPickRow(rec, ordinal, idPrefix)
+local function renderPickRow(rec, ordinal, idPrefix, level)
     renderIcon(rec.Id, 18);
     local label = string.format('%s  Lv%d  %s%s##%s_%d',
-        truncate(rec.Name or '?', 24), rec.Level or 0, statSummary(rec), qtyTag(rec), idPrefix, ordinal);
+        truncate(rec.Name or '?', 24), rec.Level or 0, statSummary(rec, level), qtyTag(rec), idPrefix, ordinal);
     return imgui.Selectable(label, false);
 end
 
@@ -1257,7 +1277,7 @@ local function renderBrowseRow(rec, ordinal, job, level)
     imgui.TextColored(usable and COL_USABLE or COL_LOCKED, esc(rec.Name or '?'));
     imgui.SameLine(0, 10);
     imgui.TextColored(COL_LEVEL, 'Lv' .. tostring(rec.Level or 0));
-    local ss = statSummary(rec);
+    local ss = statSummary(rec, level);
     if ss ~= '' then
         imgui.SameLine(0, 8);
         imgui.TextColored(COL_STATS, esc(ss));
@@ -1518,7 +1538,7 @@ local function renderEquippedTab(job, level)
             local rec = lookupById(eqId);
             if rec ~= nil then
                 imgui.SameLine(0, 8); imgui.TextColored(COL_LEVEL, 'Lv' .. tostring(rec.Level or 0));
-                local ss = statSummary(rec);
+                local ss = statSummary(rec, level);
                 if ss ~= '' then imgui.TextColored(COL_STATS, esc(ss)); end
             end
             if hasAug and slDef ~= nil then           -- private augments on the worn piece
@@ -1900,8 +1920,9 @@ local function workingSetTotals(mainLevel)
     local totals = {};
     for _, sl in ipairs(EQUIP_SLOTS) do
         local pick = bestByLevel(M.working[sl.label], mainLevel);
-        if pick ~= nil and pick.rec ~= nil and type(pick.rec.Stats) == 'table' then
-            for k, v in pairs(pick.rec.Stats) do
+        local _st = (pick ~= nil) and effStats(pick.rec, mainLevel) or nil;
+        if type(_st) == 'table' then
+            for k, v in pairs(_st) do
                 if type(v) == 'number' and k ~= 'DMG' and k ~= 'Delay' then
                     totals[k] = (totals[k] or 0) + v;
                 end
@@ -1915,7 +1936,7 @@ local function workingWeightedScore(mainLevel)
     local total = 0;
     for _, sl in ipairs(EQUIP_SLOTS) do
         local pick = bestByLevel(M.working[sl.label], mainLevel);
-        if pick ~= nil and pick.rec ~= nil then total = total + scoreOfItem(pick.rec); end
+        if pick ~= nil and pick.rec ~= nil then total = total + scoreOfItem(pick.rec, mainLevel); end
     end
     return total;
 end
@@ -1987,13 +2008,13 @@ local function autoBuild(job, level)
                 for _, r in ipairs(cands) do byLevel[#byLevel + 1] = r; end
                 table.sort(byLevel, function(a, b)
                     if (a.Level or 0) ~= (b.Level or 0) then return (a.Level or 0) < (b.Level or 0); end
-                    return scoreOfItem(a) > scoreOfItem(b);
+                    return scoreOfItem(a, useLevel) > scoreOfItem(b, useLevel);
                 end);
                 -- Seed at 0 (not -inf): keep an item only when it actually scores > 0 on the
                 -- weighted stats, so a 0-value item is never kept just for being the lowest level.
                 local kept, bestScore = {}, 0;
                 for _, r in ipairs(byLevel) do
-                    local sc = scoreOfItem(r);
+                    local sc = scoreOfItem(r, useLevel);
                     if sc > bestScore then kept[#kept + 1] = { rec = r }; bestScore = sc; end
                 end
                 if #kept > 0 then built[sl.label] = kept; end
@@ -2002,7 +2023,7 @@ local function autoBuild(job, level)
                 -- in the slot carries a weighted stat, leave the slot empty.
                 local best, bestSc = nil, 0;
                 for _, r in ipairs(cands) do
-                    local sc = scoreOfItem(r);
+                    local sc = scoreOfItem(r, useLevel);
                     if sc > bestSc then bestSc = sc; best = r; end
                 end
                 if best ~= nil then built[sl.label] = { { rec = best } }; end
@@ -2250,7 +2271,7 @@ local function renderAddPopup(job, level)
         for i, rec in ipairs(cands) do
             if not inList[rec.Name] and not (rec.Id and blocked[rec.Id]) then
                 any = true;
-                if renderPickRow(rec, i, 'addpick') then
+                if renderPickRow(rec, i, 'addpick', useLevel) then
                     list[#list + 1] = { rec = rec };
                     M.working[ui.setSelected] = list;
                     _setDirty = true;   -- added an item to the slot -> unsaved changes
@@ -2331,7 +2352,7 @@ local function renderSetBuilder(job, level)
                 esc((rec and rec.Name) or '?') .. qtyTag(rec));
             if rec ~= nil and imgui.IsItemHovered() then renderItemTooltip(rec); end
             imgui.SameLine(0, 8); imgui.TextColored(COL_LEVEL, 'Lv' .. tostring(rec and rec.Level or 0));
-            local ss = rec and statSummary(rec) or '';
+            local ss = rec and statSummary(rec, level) or '';
             if ss ~= '' then imgui.SameLine(0, 8); imgui.TextColored(COL_STATS, esc(ss)); end
             if it.minLevel ~= nil then imgui.SameLine(0, 8); imgui.TextColored(COL_DIM, 'min' .. tostring(it.minLevel)); end
             if it.maxLevel ~= nil then imgui.SameLine(0, 8); imgui.TextColored(COL_DIM, 'max' .. tostring(it.maxLevel)); end
