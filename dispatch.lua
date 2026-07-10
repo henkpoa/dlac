@@ -1,0 +1,531 @@
+--[[
+    dlac/dispatch.lua — the trigger dispatch engine.
+    Design: docs/design/trigger-system.md  (ADR 0002 data-driven dispatch,
+    ADR 0003 overlay semantics, ADR 0004 automations land here in M2).
+
+    Runs inside LuaAshitacast's Lua state: profiles call utils.dispatch('<Handler>')
+    as the LAST line of each Handle* function, and this module reads the per-job
+    trigger data file, matches the live action/player against each rule's `when`,
+    and EquipSets every match in ascending priority (later overlays earlier per slot).
+
+    Trigger file:  <char>\dlac\triggers\<JOB>.lua   (a `return {...}` module)
+        <Handler> = { { when = { <conditions> }, set = 'SetName' | equip = { Waist = 'Karin Obi' },
+                        priority = <optional> }, ... }
+    Hot-reloaded: the file is re-checked at most once per second (content compare),
+    so a GUI commit or hand edit applies on the next action — no /lac reload.
+
+    The dlac ADDON's Lua state also requires this module (through utils); there it is
+    inert — no gFunc means no command handler, no mode state, and dispatch() no-ops.
+
+    Commands (LAC state only; prefix /dl or /dlac):
+        /dl mode <name> [on|off|toggle]   flip a mode flag (session-only; no args lists)
+        /dl why                            trace of the last dispatch per handler
+        /dl triggers reload|init|path      force re-read / seed a starter file / show path
+
+    Every gData / gFunc / io read is pcall-guarded: a broken trigger file or a nil
+    manager can never take down a cast or profile loading (it just no-ops + reports).
+]]--
+
+local M = {};
+
+-- ---------------------------------------------------------------------------
+-- State
+-- ---------------------------------------------------------------------------
+M.modes = {};   -- session-only mode flags: lower(name) -> true. Reset on load by design.
+
+local EVENTS = { 'Default', 'Precast', 'Midcast', 'Ability', 'Item', 'Weaponskill', 'Preshot', 'Midshot' };
+local EVENT_CANON = {};
+for _, e in ipairs(EVENTS) do EVENT_CANON[string.lower(e)] = e; end
+
+local _trig  = { path = nil, raw = nil, rules = nil, lastCheck = -1, err = nil };
+local _trace = {};   -- event -> { time, action, sig, lines = {...} }
+
+-- Only the copy of this module living in LuaAshitacast's state may equip, own mode
+-- state, or answer commands. The dlac addon state has no gFunc, so it stays inert.
+local function inLac() return rawget(_G, 'gFunc') ~= nil; end
+
+-- ---------------------------------------------------------------------------
+-- Small helpers
+-- ---------------------------------------------------------------------------
+local function ci(a, b)   -- case-insensitive string equality (nil-safe)
+    return type(a) == 'string' and type(b) == 'string' and string.lower(a) == string.lower(b);
+end
+
+local function readFile(p)
+    local f = io.open(p, 'r'); if f == nil then return nil; end
+    local t = f:read('*a'); f:close(); return t;
+end
+local function writeFile(p, t)
+    local f = io.open(p, 'w'); if f == nil then return false; end
+    f:write(t); f:close(); return true;
+end
+
+-- <char>\dlac\ config dir: LuaAshitacast's gState when inside a profile, else the
+-- party manager (same pattern as setmanager/gearoptim). nil if not logged in.
+local function charDir()
+    local name, id;
+    if gState ~= nil and gState.PlayerName ~= nil and gState.PlayerId ~= nil then
+        name, id = gState.PlayerName, gState.PlayerId;
+    else
+        pcall(function()
+            local party = AshitaCore:GetMemoryManager():GetParty();
+            name = party:GetMemberName(0);
+            id   = party:GetMemberServerId(0);
+            if name == '' then name = nil; end
+        end);
+    end
+    if name == nil or id == nil then return nil; end
+    return string.format('%sconfig\\addons\\luashitacast\\%s_%u\\dlac\\', AshitaCore:GetInstallPath(), name, id);
+end
+
+-- triggers\<JOB>.lua for the CURRENT main job (trigger files are per-job: they
+-- reference set names, and set names live in <JOB>.lua). nil pre-login.
+local function triggersPath()
+    local dir = charDir();
+    if dir == nil then return nil; end
+    local job;
+    pcall(function() job = gData.GetPlayer().MainJob; end);
+    if type(job) ~= 'string' or job == '' or job == '?' then return nil; end
+    return dir .. 'triggers\\' .. job .. '.lua';
+end
+M.triggersPath = triggersPath;
+
+-- ---------------------------------------------------------------------------
+-- Matchers (v1 condition vocabulary — design doc table). Keyed by lowercased
+-- condition name; each takes (value, ctx) and must return true to pass. All the
+-- conditions in one `when` AND together; separate Triggers overlay (ADR 0003).
+-- ---------------------------------------------------------------------------
+
+-- Day/weather opposition: the element that BEATS yours penalizes your spell on its
+-- day / in its weather (Fire<Water<Thunder<Earth<Wind<Ice<Fire; Light<->Dark).
+-- LAC has no gData.GetElementalOpposition, so we carry the wheel ourselves.
+local OPPOSED = {
+    fire = 'Water', ice = 'Fire', wind = 'Ice', earth = 'Wind',
+    thunder = 'Earth', water = 'Thunder', light = 'Dark', dark = 'Light',
+};
+
+-- Net day+weather sign for the current spell's element: +1 per matching day/weather,
+-- -1 per opposing one. Cached on ctx (computed at most once per dispatch).
+local function netDayWeather(ctx)
+    if ctx.dw ~= nil then return ctx.dw; end
+    local n = 0;
+    local el = ctx.action and ctx.action.Element;
+    if type(el) == 'string' then
+        local opp = OPPOSED[string.lower(el)];
+        pcall(function()
+            local env = gData.GetEnvironment();
+            if env == nil then return; end
+            if ci(env.DayElement, el)      then n = n + 1;
+            elseif ci(env.DayElement, opp) then n = n - 1; end
+            if ci(env.WeatherElement, el)      then n = n + 1;
+            elseif ci(env.WeatherElement, opp) then n = n - 1; end
+        end);
+    end
+    ctx.dw = n;
+    return n;
+end
+
+-- Debuff song families (Bard Song + one of these words in the name = Debuff;
+-- any other Bard Song = Buff). Extend as CatsEyeXI adds custom songs.
+local DEBUFF_SONGS = { 'requiem', 'lullaby', 'elegy', 'finale', 'threnody', 'virelai', 'nocturne' };
+
+local function nameContains(ctx, word)
+    local nm = ctx.action and ctx.action.Name;
+    if type(nm) ~= 'string' or type(word) ~= 'string' then return false; end
+    return string.find(string.lower(nm), string.lower(word), 1, true) ~= nil;
+end
+
+local MATCHERS = {
+    any             = function() return true; end,
+    status          = function(v, ctx) return ctx.player ~= nil and ci(ctx.player.Status, v); end,
+    moving          = function(v, ctx) return ctx.player ~= nil and ((ctx.player.IsMoving == true) == (v == true)); end,
+    mode            = function(v, ctx) return M.modes[string.lower(tostring(v))] == true; end,
+    name            = function(v, ctx) return ctx.action ~= nil and ci(ctx.action.Name, v); end,
+    family          = function(v, ctx) return nameContains(ctx, v); end,
+    skill           = function(v, ctx) return ctx.action ~= nil and ci(ctx.action.Skill, v); end,
+    magictype       = function(v, ctx) return ctx.action ~= nil and ci(ctx.action.Type, v); end,
+    abilitytype     = function(v, ctx) return ctx.action ~= nil and ci(ctx.action.Type, v); end,
+    element         = function(v, ctx) return ctx.action ~= nil and ci(ctx.action.Element, v); end,
+    dayweatherbonus = function(v, ctx)
+        if v == true  then return netDayWeather(ctx) > 0;  end
+        if v == false then return netDayWeather(ctx) <= 0; end
+        return netDayWeather(ctx) >= (tonumber(v) or 1);
+    end,
+    songtype        = function(v, ctx)
+        if ctx.action == nil or not ci(ctx.action.Type, 'Bard Song') then return false; end
+        local debuff = false;
+        for _, w in ipairs(DEBUFF_SONGS) do
+            if nameContains(ctx, w) then debuff = true; break; end
+        end
+        if ci(v, 'Debuff') then return debuff; end
+        if ci(v, 'Buff')   then return not debuff; end
+        return false;
+    end,
+};
+
+-- Specificity tier per condition -> the DEFAULT priority when a rule sets none
+-- (ADR 0003). A rule's default is the MAX tier among its conditions ("the most
+-- specific field governs"): skill+name defaults like a name rule. `moving` sits
+-- above the statuses so Movement overlays Idle when both match (idle + moving).
+-- Band 60 is reserved for Automations (M2, ADR 0004).
+local TIER = {
+    any = 10,
+    status = 20, skill = 20, abilitytype = 20,
+    moving = 25,
+    magictype = 30, element = 30, songtype = 30, dayweatherbonus = 30,
+    family = 40,
+    name = 50,
+    mode = 100,
+};
+
+-- ---------------------------------------------------------------------------
+-- Trigger file: load, validate, normalize. Kept rules carry lowercased condition
+-- keys, a resolved priority, their file order (tie-break), and a display label.
+-- ---------------------------------------------------------------------------
+local function normalize(t)
+    local out, warns = {}, {};
+    for k, v in pairs(t) do
+        local ev = EVENT_CANON[string.lower(tostring(k))];
+        if ev == nil then
+            warns[#warns + 1] = string.format('unknown handler section %q (expected %s)',
+                tostring(k), table.concat(EVENTS, '/'));
+        elseif type(v) == 'table' then
+            local list = out[ev] or {};
+            for i, r in ipairs(v) do
+                if type(r) ~= 'table' or type(r.when) ~= 'table'
+                   or (r.set == nil and type(r.equip) ~= 'table') then
+                    warns[#warns + 1] = string.format('%s rule %d: malformed (needs when = {...} plus set= or equip=)', ev, i);
+                else
+                    local when, parts, dead = {}, {}, false;
+                    for ck, cv in pairs(r.when) do
+                        local lk = string.lower(tostring(ck));
+                        if TIER[lk] == nil then
+                            warns[#warns + 1] = string.format('%s rule %d: unknown condition %q — rule dropped', ev, i, tostring(ck));
+                            dead = true;
+                            break;
+                        end
+                        when[lk] = cv;
+                        parts[#parts + 1] = lk .. '=' .. tostring(cv);
+                    end
+                    if not dead then
+                        local prio = tonumber(r.priority);
+                        if prio == nil then
+                            prio = 10;
+                            for lk in pairs(when) do
+                                if TIER[lk] > prio then prio = TIER[lk]; end
+                            end
+                        end
+                        table.sort(parts);
+                        list[#list + 1] = {
+                            when  = when,
+                            set   = (r.set ~= nil) and tostring(r.set) or nil,
+                            equip = (type(r.equip) == 'table') and r.equip or nil,
+                            prio  = prio,
+                            ord   = #list + 1,
+                            label = (#parts > 0) and table.concat(parts, '+') or 'any',
+                        };
+                    end
+                end
+            end
+            out[ev] = list;
+        end
+    end
+    return out, warns;
+end
+
+-- Load (or re-load) the current job's trigger file. Throttled to one content check
+-- per second; between checks the cached rules are used, so per-frame dispatch never
+-- touches the disk. On a parse/run error the PREVIOUS good rules are kept and the
+-- error is printed once (per content change) + surfaced in /dl why.
+local function ensureLoaded()
+    local now = os.time();
+    if _trig.rules ~= nil and now == _trig.lastCheck then return _trig.rules; end
+    _trig.lastCheck = now;
+
+    local path = triggersPath();
+    if path == nil then return _trig.rules; end
+    if path ~= _trig.path then   -- job change / first resolve -> drop the cache
+        _trig.path, _trig.raw, _trig.rules, _trig.err = path, nil, nil, nil;
+    end
+
+    local raw = readFile(path);
+    if raw == nil then           -- no trigger file (yet) -> nothing to dispatch
+        _trig.raw, _trig.rules, _trig.err = nil, nil, nil;
+        return nil;
+    end
+    if raw == _trig.raw then return _trig.rules; end
+    _trig.raw = raw;
+
+    local chunk, cerr = (loadstring or load)(raw, '@' .. path);
+    if chunk == nil then
+        _trig.err = 'trigger file does not parse: ' .. tostring(cerr);
+        print('[dlac] ' .. _trig.err .. '  (keeping the previous rules)');
+        return _trig.rules;
+    end
+    local ok, t = pcall(chunk);
+    if not ok or type(t) ~= 'table' then
+        _trig.err = 'trigger file did not return a table' .. (ok and '' or (': ' .. tostring(t)));
+        print('[dlac] ' .. _trig.err .. '  (keeping the previous rules)');
+        return _trig.rules;
+    end
+
+    local rules, warns = normalize(t);
+    _trig.rules, _trig.err = rules, nil;
+    for _, w in ipairs(warns) do print('[dlac] triggers: ' .. w); end
+    local n = 0;
+    for _, list in pairs(rules) do n = n + #list; end
+    print(string.format('[dlac] triggers loaded: %d rule(s) from %s', n, path));
+    return _trig.rules;
+end
+
+-- Force a re-read on the next dispatch (the GUI pings /dl triggers reload on commit).
+-- Clears only the content cache -- the current rules stay live as the fallback, so a
+-- forced reload of a broken file degrades exactly like an organic one (keep + report).
+function M.reloadTriggers()
+    _trig.raw, _trig.lastCheck = nil, -1;
+end
+
+-- ---------------------------------------------------------------------------
+-- Dispatch
+-- ---------------------------------------------------------------------------
+local function buildCtx(event)
+    local ctx = { event = event };
+    pcall(function() ctx.player = gData.GetPlayer(); end);
+    if event ~= 'Default' then
+        pcall(function() ctx.action = gData.GetAction(); end);
+    end
+    return ctx;
+end
+
+local function matches(rule, ctx)
+    for lk, cv in pairs(rule.when) do
+        local f = MATCHERS[lk];
+        if f == nil or not f(cv, ctx) then return false; end
+    end
+    return true;
+end
+
+-- One-line description of the acted-on thing, for /dl why.
+local function actionLabel(ctx)
+    local a = ctx.action;
+    if a ~= nil then
+        local bits = {};
+        for _, k in ipairs({ 'Skill', 'Type', 'Element' }) do
+            if type(a[k]) == 'string' then bits[#bits + 1] = a[k]; end
+        end
+        local tail = (#bits > 0) and (' [' .. table.concat(bits, '/') .. ']') or '';
+        return string.format('%q%s', tostring(a.Name), tail);
+    end
+    if ctx.player ~= nil then
+        return string.format('status=%s moving=%s', tostring(ctx.player.Status), tostring(ctx.player.IsMoving));
+    end
+    return '?';
+end
+
+local function equipSetByName(name)
+    local s;
+    pcall(function()
+        local prof = rawget(_G, 'gProfile');
+        if type(prof) == 'table' and type(prof.Sets) == 'table' then s = prof.Sets[name]; end
+    end);
+    if type(s) ~= 'table' then return false; end   -- unknown set: skip quietly (traced), no per-frame LAC error spam
+    pcall(function() gFunc.EquipSet(s); end);
+    return true;
+end
+
+local function inlineSummary(equip)
+    local parts = {};
+    for slot, item in pairs(equip) do parts[#parts + 1] = tostring(slot) .. '=' .. tostring(item); end
+    table.sort(parts);
+    return table.concat(parts, ', ');
+end
+
+-- The engine entry point. Never throws; a failure inside just skips this dispatch.
+function M.dispatch(event)
+    if not inLac() then return; end
+    pcall(function()
+        event = EVENT_CANON[string.lower(tostring(event))] or event;
+        local rules = ensureLoaded();
+        local list = rules and rules[event] or nil;
+        if list == nil or #list == 0 then return; end
+
+        local ctx = buildCtx(event);
+        local hits = {};
+        for _, r in ipairs(list) do
+            if matches(r, ctx) then hits[#hits + 1] = r; end
+        end
+
+        if #hits == 0 then
+            if event ~= 'Default' then   -- Default runs every frame; only action events trace a miss
+                _trace[event] = { time = os.date('%H:%M:%S'), action = actionLabel(ctx),
+                                  sig = '', lines = { '(no trigger matched)' } };
+            end
+            return;
+        end
+
+        -- Overlay: ascending priority, file order on ties (ADR 0003).
+        table.sort(hits, function(a, b)
+            if a.prio ~= b.prio then return a.prio < b.prio; end
+            return a.ord < b.ord;
+        end);
+
+        -- Equip every hit. Trace strings are rebuilt only when the matched-rule
+        -- signature changes (Default dispatches per frame -- keep the GC quiet).
+        local sig = {};
+        for _, r in ipairs(hits) do sig[#sig + 1] = r.ord; end
+        sig = event .. ':' .. table.concat(sig, ',');
+        local old = _trace[event];
+        local retrace = (old == nil) or (old.sig ~= sig) or (event ~= 'Default');
+        local lines = retrace and {} or old.lines;
+
+        for _, r in ipairs(hits) do
+            if r.set ~= nil then
+                local found = equipSetByName(r.set);
+                if retrace then
+                    lines[#lines + 1] = string.format('%s  ->  set %s  (prio %d)%s',
+                        r.label, r.set, r.prio, found and '' or '  [NOT FOUND in profile Sets]');
+                end
+            elseif r.equip ~= nil then
+                pcall(function() gFunc.EquipSet(r.equip); end);
+                if retrace then
+                    lines[#lines + 1] = string.format('%s  ->  equip { %s }  (prio %d)',
+                        r.label, inlineSummary(r.equip), r.prio);
+                end
+            end
+        end
+
+        _trace[event] = { time = os.date('%H:%M:%S'), action = actionLabel(ctx), sig = sig, lines = lines };
+    end);
+end
+
+-- Trace access for /dl why and (later) the GUI "Explain last action" view.
+function M.getTrace() return _trace; end
+
+-- ---------------------------------------------------------------------------
+-- Mode state (session-only, by design -- no persistence).
+-- ---------------------------------------------------------------------------
+function M.setMode(name, state)
+    if type(name) ~= 'string' or name == '' then return false; end
+    local ln = string.lower(name);
+    if state == nil then state = not (M.modes[ln] == true); end   -- toggle
+    M.modes[ln] = (state == true) or nil;
+    return M.modes[ln] == true;
+end
+
+function M.activeModes()
+    local out = {};
+    for m in pairs(M.modes) do out[#out + 1] = m; end
+    table.sort(out);
+    return out;
+end
+
+-- ---------------------------------------------------------------------------
+-- Starter trigger file (also written by the GUI Setup button via M.starterTriggersText).
+-- Mirrors the classic HandleDefault branching so a fresh profile behaves out of the box.
+-- ---------------------------------------------------------------------------
+M.starterTriggersText = [[
+-- dlac triggers -- written by dlac (Setup / the Triggers tab); safe to hand-edit.
+-- Hot-reloaded: edits apply on the next action. No /lac reload needed.
+--
+-- Shape:  <Handler> = { { when = { <conditions> }, set = 'SetName', priority = n }, ... }
+--         action is  set = 'Name'  (a set in your <JOB>.lua)  or  equip = { Waist = 'Karin Obi' }.
+-- Handlers:   Default, Precast, Midcast, Ability, Item, Weaponskill, Preshot, Midshot
+-- Conditions: status/moving/mode | any/skill/magicType/element/songType/family/name/dayWeatherBonus
+--             | abilityType.  All conditions in one `when` must hold; every matching rule
+--             applies, lowest priority first (later overlays earlier per slot).
+-- Priority defaults by specificity: any 10 < status/skill 20 < class/element 30 < family 40
+--             < exact name 50 < mode 100.  See docs/design/trigger-system.md in the dlac addon.
+return {
+    Default = {
+        { when = { status = 'Engaged' }, set = 'Tp_Default' },
+        { when = { status = 'Resting' }, set = 'Resting' },
+        { when = { moving = true },      set = 'Movement' },
+        { when = { status = 'Idle' },    set = 'Idle' },
+    },
+};
+]];
+
+-- Write the starter file for the current job if none exists. Returns ok, message.
+function M.initTriggers()
+    local dir = charDir();
+    local path = triggersPath();
+    if dir == nil or path == nil then return false, 'not logged in (no character/job).'; end
+    if readFile(path) ~= nil then return false, 'already exists: ' .. path; end
+    pcall(function()
+        if ashita and ashita.fs and ashita.fs.create_directory then
+            ashita.fs.create_directory(dir .. 'triggers\\');
+        end
+    end);
+    if not writeFile(path, M.starterTriggersText) then return false, 'could not write ' .. path; end
+    M.reloadTriggers();
+    return true, 'wrote starter triggers: ' .. path;
+end
+
+-- ---------------------------------------------------------------------------
+-- Commands: /dl mode | why | triggers   (registered in the LAC state only, where
+-- the mode flags and traces live; the addon state's copy stays silent).
+-- ---------------------------------------------------------------------------
+local function argStart(raw)
+    if raw == '/dlac' or string.sub(raw, 1, 6) == '/dlac ' then return 7; end
+    if raw == '/dl'   or string.sub(raw, 1, 4) == '/dl '   then return 5; end
+    return nil;
+end
+
+if inLac() then
+    ashita.events.register('command', 'dlac-dispatch', function(e)
+        local start = argStart(string.lower(e.command));
+        if start == nil then return; end
+        local args = {};
+        for a in string.gmatch(string.sub(e.command, start), '%S+') do args[#args + 1] = a; end
+        local sub = args[1] and string.lower(args[1]) or nil;
+        if sub ~= 'mode' and sub ~= 'why' and sub ~= 'triggers' then return; end
+        e.blocked = true;
+
+        if sub == 'mode' then
+            local name = args[2];
+            if name == nil then
+                local act = M.activeModes();
+                print('[dlac] active modes: ' .. ((#act > 0) and table.concat(act, ', ') or '(none)')
+                    .. '   (/dl mode <name> [on|off|toggle])');
+                return;
+            end
+            local a3 = args[3] and string.lower(args[3]) or nil;
+            local state = nil;                       -- default: toggle
+            if a3 == 'on' then state = true; elseif a3 == 'off' then state = false; end
+            local on = M.setMode(name, state);
+            print(string.format('[dlac] mode %s %s', string.lower(name), on and 'ON' or 'OFF'));
+            return;
+        end
+
+        if sub == 'why' then
+            local any = false;
+            for _, ev in ipairs(EVENTS) do
+                local tr = _trace[ev];
+                if tr ~= nil then
+                    any = true;
+                    print(string.format('[dlac] %s  (%s)  %s', ev, tr.time, tr.action or ''));
+                    for _, l in ipairs(tr.lines) do print('    ' .. l); end
+                end
+            end
+            if _trig.err ~= nil then print('[dlac] trigger file error: ' .. _trig.err); end
+            if not any then print('[dlac] why: nothing dispatched yet (do something, then ask again).'); end
+            return;
+        end
+
+        -- sub == 'triggers'
+        local a2 = args[2] and string.lower(args[2]) or nil;
+        if a2 == 'reload' then
+            M.reloadTriggers();
+            print('[dlac] triggers: will re-read on the next action.');
+        elseif a2 == 'init' then
+            local ok, msg = M.initTriggers();
+            print('[dlac] triggers init: ' .. tostring(msg));
+        else
+            print('[dlac] triggers file: ' .. tostring(triggersPath())
+                .. ((_trig.err ~= nil) and ('   [error: ' .. _trig.err .. ']') or ''));
+            print('[dlac] usage: /dl triggers reload | init | path');
+        end
+    end);
+end
+
+return M;

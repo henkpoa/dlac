@@ -17,6 +17,18 @@ local M = {}
 --   local utils = require("dlac\\utils"); local gear = utils.gear;
 M.gear = gear;
 
+-- The trigger dispatch engine (docs/design/trigger-system.md). Profiles call
+-- utils.dispatch('<Handler>') as the LAST line of each Handle* function; the engine
+-- reads <char>\dlac\triggers\<JOB>.lua and equips every matching rule. Guarded so a
+-- missing/broken dispatch.lua degrades to a no-op and can never break profile loading.
+local _dok, _dispatch = pcall(require, "dlac\\dispatch");
+if _dok and type(_dispatch) == 'table' and type(_dispatch.dispatch) == 'function' then
+    M.dispatchModule = _dispatch;   -- direct access (modes, traces) for advanced use
+    M.dispatch = function(event) pcall(_dispatch.dispatch, event); end
+else
+    M.dispatch = function() end;
+end
+
 
 -- Remove all your gear, each key value pair represent what your base MP is without gear with that SJ.
 -- Oneiros Grip unfortunately only activates based off of your base MP, which differ depending on SJ.

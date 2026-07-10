@@ -992,10 +992,12 @@ local function migrateJobText(text)
 end
 
 -- Starter profile written when a job has no dlac profile yet. This mirrors LuaAshitacast's
--- own `/lac newlua` skeleton (every Handle* stub + AllowAddSet, so `/lac addset` works) and
--- adds the dlac wiring: the require, a Dynamic sets scaffold, and `utils.rebuildSets(sets)`
--- in HandleDefault. rebuildSets only REBUILDS the sets, so the standard equip branching is
--- kept too -- otherwise the profile would swap nothing. Build your Dynamic sets in the GUI.
+-- own `/lac newlua` skeleton (OnLoad/AllowAddSet kept, so `/lac addset` works) and adds the
+-- dlac wiring: the require, a Dynamic sets scaffold, `utils.rebuildSets(sets)` plus a
+-- `utils.dispatch('<Handler>')` shim in every handler (ADR 0002). ALL equip logic is data
+-- in <char>\dlac\triggers\<JOB>.lua -- Setup seeds it with the classic status rules
+-- (Engaged/Resting/Movement/Idle) so a fresh profile behaves out of the box. Build sets in
+-- the GUI (Sets tab); wire behavior in the Triggers tab (or edit the trigger file directly).
 -- MIGRATE_BOOT is prepended when written so LAC can resolve require("dlac\\utils"). Inside
 -- [[...]] the backslashes are literal on purpose.
 local STARTER_PROFILE = [[
@@ -1025,47 +1027,50 @@ end
 profile.HandleCommand = function(args)
 end
 
+-- All equip logic is data: utils.dispatch reads <char>\dlac\triggers\<JOB>.lua
+-- (hot-reloaded -- edit triggers in the dlac GUI or the file; no /lac reload needed).
 profile.HandleDefault = function()
     sets = utils.rebuildSets(sets);
-    local player = gData.GetPlayer();
-    if     player.Status == 'Engaged' then gFunc.EquipSet(sets.Tp_Default);
-    elseif player.Status == 'Resting' then gFunc.EquipSet(sets.Resting);
-    elseif player.IsMoving == true    then gFunc.EquipSet(sets.Movement);
-    else                                    gFunc.EquipSet(sets.Idle);
-    end
+    utils.dispatch('Default');
 end
 
-profile.HandleAbility = function()
-end
-
-profile.HandleItem = function()
-end
-
-profile.HandlePrecast = function()
-end
-
-profile.HandleMidcast = function()
-end
-
-profile.HandlePreshot = function()
-end
-
-profile.HandleMidshot = function()
-end
-
-profile.HandleWeaponskill = function()
-end
+profile.HandleAbility     = function() utils.dispatch('Ability');     end
+profile.HandleItem        = function() utils.dispatch('Item');        end
+profile.HandlePrecast     = function() utils.dispatch('Precast');     end
+profile.HandleMidcast     = function() utils.dispatch('Midcast');     end
+profile.HandlePreshot     = function() utils.dispatch('Preshot');     end
+profile.HandleMidshot     = function() utils.dispatch('Midshot');     end
+profile.HandleWeaponskill = function() utils.dispatch('Weaponskill'); end
 
 return profile;
 ]];
 
+-- Seed <char>\dlac\triggers\<JOB>.lua with the classic status rules (never clobbers an
+-- existing file). The starter text lives in dispatch.lua (single source of truth); the
+-- addon-state copy of dispatch is inert but its exports are still readable. Returns true
+-- when a file was written.
+local function seedTriggersFile(base, abbr)
+    if base == nil or abbr == nil then return false; end
+    local path = base .. 'dlac\\triggers\\' .. abbr .. '.lua';
+    if readFileText(path) ~= nil then return false; end   -- user data: never overwrite
+    local ok, dsp = pcall(require, "dlac\\dispatch");
+    if not ok or type(dsp) ~= 'table' or type(dsp.starterTriggersText) ~= 'string' then return false; end
+    pcall(function()
+        if ashita and ashita.fs and ashita.fs.create_directory then
+            ashita.fs.create_directory(base .. 'dlac\\triggers\\');
+        end
+    end);
+    return writeFileText(path, dsp.starterTriggersText);
+end
+
 -- Set up the current job's <JOB>.lua for dlac. Handles every case:
---   'ok'      -> already set up (no-op, just report).
+--   'ok'      -> already set up (still seeds a missing trigger file, then reports).
 --   'ffxilac' -> convert the existing profile in place (backup .flbak).
 --   'nofile'  -> initialize from scratch: write a self-contained dlac starter profile.
 --   'none'    -> an existing non-dlac profile: back it up (.flbak), then drop in the starter.
 -- Also seeds <char>\dlac\ with a gear.lua (from an existing ffxi-lac folder, else the
--- bundled empty template) so the profile loads and Scan/Commit have somewhere to read/write.
+-- bundled empty template) so the profile loads and Scan/Commit have somewhere to read/write,
+-- and a starter triggers\<JOB>.lua so the dispatch shims have data to act on (ADR 0002).
 local function migrateCurrentJob()
     local base = charBase();
     if base == nil then _augStatus = 'Setup: log in first (no character folder).'; return; end
@@ -1074,7 +1079,10 @@ local function migrateCurrentJob()
     local state = jobSetupState();
 
     if state == 'ok' then
-        _augStatus = abbr .. '.lua is already set up for dlac.'; return;
+        local seeded = seedTriggersFile(base, abbr);
+        _augStatus = abbr .. '.lua is already set up for dlac.'
+            .. (seeded and ('  Seeded starter triggers\\' .. abbr .. '.lua.') or '');
+        return;
     end
 
     -- seed <char>\dlac\ from an existing ffxi-lac setup, if present (never clobbered)
@@ -1091,6 +1099,8 @@ local function migrateCurrentJob()
         local tmpl = readFileText(AshitaCore:GetInstallPath() .. 'addons\\dlac\\gear.lua');
         if tmpl ~= nil then writeFileText(base .. 'dlac\\gear.lua', tmpl); end
     end
+    -- and the starter trigger file, so the profile's dispatch shims equip out of the box.
+    seedTriggersFile(base, abbr);
 
     if state == 'ffxilac' then
         -- convert the existing ffxi-lac profile in place (keeps your sets).

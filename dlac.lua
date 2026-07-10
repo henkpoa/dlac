@@ -65,13 +65,19 @@ pcall(function()
     if ashita and ashita.fs and ashita.fs.create_directory then ashita.fs.create_directory(dstDir); end
     local function slurp(p) local f = io.open(p, 'rb'); if f == nil then return nil; end local d = f:read('*a'); f:close(); return d; end
     local function spit(p, d) local f = io.open(p, 'wb'); if f == nil then return; end f:write(d); f:close(); end
-    local u = slurp(addonDir .. 'utils.lua');            -- library: always refresh from the addon
-    if u ~= nil then spit(dstDir .. 'utils.lua', u); end
+    local u = nil;
+    for _, f in ipairs({ 'utils.lua', 'dispatch.lua' }) do   -- library: always refresh from the addon
+        local d = slurp(addonDir .. f);
+        if d ~= nil then
+            spit(dstDir .. f, d);
+            if f == 'utils.lua' then u = d; end
+        end
+    end
     if slurp(dstDir .. 'gear.lua') == nil then           -- your data: seed the empty template only if absent
         local g = slurp(addonDir .. 'gear.lua');
         if g ~= nil then spit(dstDir .. 'gear.lua', g); end
     end
-    if u ~= nil then print('[dlac] profile library ready (utils.lua seeded for LAC profiles).'); end
+    if u ~= nil then print('[dlac] profile library ready (utils.lua + dispatch.lua seeded for LAC profiles).'); end
 end);
 
 -- LuaAshitacast supplies gData inside a profile; a standalone addon doesn't. Provide a
