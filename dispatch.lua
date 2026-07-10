@@ -32,7 +32,7 @@ local M = {};
 -- LAC-state copy stamps its version into the modestate mirror; the GUI compares
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code (the seeded file only re-requires when LuaAshitacast itself reloads).
-M.VERSION = 5;
+M.VERSION = 6;
 
 -- Colored [dlac] chat output (chatfmt); plain print when unavailable. The shadowed
 -- `print` re-heads "[dlac] ..."-prefixed lines with the colored header.
@@ -170,10 +170,18 @@ end
 -- Public mode-condition check, shared by the trigger matcher AND set-entry gating
 -- (utils.BuildDynamicSets: per-item `mode = '...'` wrappers). 'Weapon:Melee' -> the
 -- cycle mode holds that value; a bare name -> toggle ON (or any cycle value).
+-- A LIST of conditions is OR: active while ANY entry matches (two values of one
+-- cycle can never be active together, so OR is the only coherent list reading).
 -- `modes` defaults to the live session state; the GUI passes the modestate.lua
 -- mirror instead (it lives in a different Lua state).
 function M.modeActive(cond, modes)
     modes = modes or M.modes;
+    if type(cond) == 'table' then
+        for _, c in ipairs(cond) do
+            if M.modeActive(c, modes) then return true; end
+        end
+        return false;
+    end
     local s = tostring(cond);
     local p = string.find(s, ':', 1, true);
     if p ~= nil then

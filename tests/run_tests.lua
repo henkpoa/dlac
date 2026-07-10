@@ -298,6 +298,29 @@ dispatchM.modes = {};
 
 check('G10 wrapper merge does not mutate the shared record', modeBody.mode, nil);
 
+-- mode LISTS are OR: active while ANY entry matches
+check('G13 list: second entry matches', dispatchM.modeActive({ 'Weapon:Melee', 'DT' }, { dt = true }), true);
+check('G14 list: cycle value matches',  dispatchM.modeActive({ 'Weapon:Melee', 'Weapon:Ranged' }, { weapon = 'Ranged' }), true);
+check('G15 list: none match',           dispatchM.modeActive({ 'Weapon:Melee', 'DT' }, {}), false);
+
+dispatchM.modes = { weapon = 'Ranged' };
+local gList = utils.BuildDynamicSets({ Dynamic = { TP = {
+    Body = { plainBody, { gear = modeBody, mode = { 'Weapon:Melee', 'Weapon:Ranged' } } },
+} } });
+check('G16 engine honours mode lists', gList.TP and gList.TP.Body, 'ModeBody');
+dispatchM.modes = {};
+check('G17 list wrapper does not mutate the shared record', modeBody.mode, nil);
+
+-- serializer writes both gate forms
+local serLines = table.concat(setmgr.renderSetLines('T', {
+    { name = 'Body', items = {
+        { path = 'gear.Body.A', mode = 'DT' },
+        { path = 'gear.Body.B', mode = { 'Weapon:Melee', 'Weapon:Ranged' } },
+    } },
+}), '\n');
+check('G18 serializes single gate',  serLines:find('mode = "DT"', 1, true) ~= nil, true);
+check('G19 serializes gate list',    serLines:find('mode = { "Weapon:Melee", "Weapon:Ranged" }', 1, true) ~= nil, true);
+
 -- min/maxLevel bounds through the same wrapper (the ffxi-lac semantics)
 TEST_PLAYER = { MainJob = 'WHM', SubJob = 'NIN', MainJobSync = 50, SubJobSync = 25 };
 local gMin = utils.BuildDynamicSets({ Dynamic = { TP = {

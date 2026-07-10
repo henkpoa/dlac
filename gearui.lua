@@ -1906,6 +1906,12 @@ if trigui ~= nil and type(trigui.entryModeActive) == 'function' then
     end
 end
 
+-- An entry's mode gate is a string or a LIST (OR). Display form: 'A | B'.
+local function modeTagText(m)
+    if type(m) == 'table' then return table.concat(m, ' | '); end
+    return tostring(m);
+end
+
 local function bestByLevel(list, mainLevel)
     if type(list) ~= 'table' then return nil; end
     local best, bestLevel, bestRank = nil, -1, -1;
@@ -2346,22 +2352,54 @@ local function renderEntryEditPopup()
     end
     imgui.PopItemWidth();
     imgui.Separator();
-    fmt.textWrapped(COL_DIM, 'Mode gate: the entry is used only while this mode is active -- and then it beats the unconditional entries in this list. One set can adapt per mode instead of switching sets.');
+    fmt.textWrapped(COL_DIM, 'Mode gates: the entry is used while ANY of these modes is active -- and then it beats the unconditional entries in this list. One set can adapt per mode instead of switching sets.');
+
+    -- Current gates as a removable list (string or table on the entry).
+    local modes = {};
+    if type(it.mode) == 'table' then
+        for _, m in ipairs(it.mode) do modes[#modes + 1] = tostring(m); end
+    elseif it.mode ~= nil then
+        modes[1] = tostring(it.mode);
+    end
+    local changed, removeAt = false, nil;
+    for mi, m in ipairs(modes) do
+        imgui.TextColored(entryModeOk(m) and COL_JOBS or COL_USABLE, '@' .. fmt.esc(m));
+        if imgui.IsItemHovered() then imgui.SetTooltip('Green = active right now.'); end
+        imgui.SameLine(0, 8);
+        if imgui.SmallButton('x##eemrm_' .. mi) then removeAt = mi; end
+    end
+    if removeAt ~= nil then table.remove(modes, removeAt); changed = true; end
+    if #modes == 0 then imgui.TextColored(COL_DIM, '(always -- no mode gate)'); end
+
     imgui.PushItemWidth(220);
-    if imgui.BeginCombo('##eemode', it.mode or '(always)') then
-        if imgui.Selectable('(always)', it.mode == nil) then it.mode = nil; _setDirty = true; end
+    if imgui.BeginCombo('##eemodeadd', '+ add mode gate') then
         local opts = {};
         if trigui ~= nil and type(trigui.modeConditions) == 'function' then
             local ok, r = pcall(trigui.modeConditions);
             if ok and type(r) == 'table' then opts = r; end
         end
+        local shown = 0;
         for _, c in ipairs(opts) do
-            if imgui.Selectable(c, it.mode == c) then it.mode = c; _setDirty = true; end
+            local dup = false;
+            for _, m in ipairs(modes) do
+                if string.lower(m) == string.lower(c) then dup = true; break; end
+            end
+            if not dup then
+                shown = shown + 1;
+                if imgui.Selectable(c, false) then modes[#modes + 1] = c; changed = true; end
+            end
         end
-        if #opts == 0 then imgui.TextColored(COL_DIM, '(no modes yet -- define them on the Triggers tab)'); end
+        if shown == 0 then imgui.TextColored(COL_DIM, (#opts == 0) and '(no modes yet -- define them on the Triggers tab)' or '(all defined modes already added)'); end
         imgui.EndCombo();
     end
     imgui.PopItemWidth();
+
+    if changed then
+        if #modes == 0 then it.mode = nil;
+        elseif #modes == 1 then it.mode = modes[1];      -- single gate stays a plain string
+        else it.mode = modes; end
+        _setDirty = true;
+    end
     imgui.EndPopup();
 end
 
@@ -2439,9 +2477,9 @@ local function renderSetBuilder(job, level)
             if it.maxLevel ~= nil then imgui.SameLine(0, 8); imgui.TextColored(COL_DIM, 'max' .. tostring(it.maxLevel)); end
             if it.mode ~= nil then
                 imgui.SameLine(0, 8);
-                imgui.TextColored(entryModeOk(it.mode) and COL_JOBS or COL_DIM, '@' .. fmt.esc(it.mode));
+                imgui.TextColored(entryModeOk(it.mode) and COL_JOBS or COL_DIM, '@' .. fmt.esc(modeTagText(it.mode)));
                 if imgui.IsItemHovered() then
-                    imgui.SetTooltip('Mode-gated: used only while this mode is active\n(and then it beats the unconditional entries).\nGreen = active right now.');
+                    imgui.SetTooltip('Mode-gated: used while ANY of these modes is active\n(and then it beats the unconditional entries).\nGreen = active right now.');
                 end
             end
             imgui.SameLine(imgui.GetWindowWidth() - 58);   -- buttons at the right edge
