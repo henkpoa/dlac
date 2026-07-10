@@ -118,8 +118,17 @@ for _, mod in ipairs({ 'gear', 'augments', 'gearoptim', 'gearimport', 'gearui' }
     end
 end
 
+-- GUI keybind: CTRL+K toggles the window (same mechanism as the modes' GUI-managed
+-- binds). Bound on load, released on unload so no bind outlives the addon.
+pcall(function()
+    AshitaCore:GetChatManager():QueueCommand(-1, '/bind ^k /dl ui');
+end);
+ashita.events.register('unload', 'dlac-unbind', function()
+    pcall(function() AshitaCore:GetChatManager():QueueCommand(-1, '/unbind ^k'); end);
+end);
+
 if _cfok then
-    _cfmt.msg('loaded -- ' .. _cfmt.hl('/dl ui') .. ' opens the gear / set builder.');
+    _cfmt.msg('loaded -- ' .. _cfmt.hl('CTRL+K') .. ' (or ' .. _cfmt.hl('/dl ui') .. ') opens the gear / set builder.');
 else
-    print('[dlac] loaded. Open the gear / set builder with  /dl ui   (also /dlac ui).');
+    print('[dlac] loaded. Open the gear / set builder with CTRL+K  or  /dl ui   (also /dlac ui).');
 end

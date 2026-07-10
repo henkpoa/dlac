@@ -14,7 +14,7 @@ You need a working LuaAshitacast install (it's part of the CatsEyeXI client).
 
 1. **Install** — drop the `dlac` folder into `Ashita\addons\`, then
    `/addon load dlac` (add that line to your Ashita boot script to load it every time).
-2. **Open the GUI** — `/dl ui`.
+2. **Open the GUI** — **CTRL+K** (or `/dl ui`).
 3. Click the red **Setup** button (top-right). Works on *any* profile:
    - your existing profile — whether ffxi-lac, hand-written, or anything else — is
      **converted in place**: your own handler logic is kept untouched, dlac's dispatch
@@ -80,7 +80,7 @@ re-detected automatically on login/job change.
 
 | Command | Does |
 |---|---|
-| `/dl ui` | Open/close the GUI |
+| `/dl ui` | Open/close the GUI (also bound to **CTRL+K**) |
 | `/dl mode <name> [on\|off\|toggle]` | Flip a mode (no name: list active modes) |
 | `/dl lock <slot\|all> [on\|off\|toggle]` | Lock a slot: the engine stops equipping into it (no arg: list locks) |
 | `/dl why` | Explain the last dispatch per handler — what matched, what equipped |
