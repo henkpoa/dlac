@@ -690,6 +690,17 @@ end
 -- ugly full-height slider inside every box).
 local BOX_FLAGS = ImGuiWindowFlags_NoScrollbar or 0;
 
+-- Real per-line height (font + item spacing) -- hardcoded estimates clipped the
+-- last line of taller boxes (a 4-value cycle lost its 4th value).
+local function lineH()
+    local lh = 21;
+    pcall(function()
+        local v = imgui.GetTextLineHeightWithSpacing();
+        if type(v) == 'number' and v > 0 then lh = v; end
+    end);
+    return lh;
+end
+
 local function renderTrigRuleBox(h, i, r, setNames, colX)
     local id = h .. '_' .. tostring(i);
     local act = nil;
@@ -703,9 +714,10 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
         for slot, item in pairs(r.equip) do parts[#parts + 1] = tostring(slot) .. ' = ' .. tostring(item); end
         table.sort(parts);
     end
-    local leftH  = #lines * 19;
-    local rightH = ((parts ~= nil) and (#parts * 19) or 26) + 30;   -- target + controls row
-    local boxH = math.max(leftH, rightH, 56) + 14;
+    local lh = lineH();
+    local leftH  = #lines * lh;
+    local rightH = ((parts ~= nil) and (#parts * lh) or 26) + 30;   -- target + controls row
+    local boxH = math.max(leftH, rightH, 56) + 18;
     imgui.BeginChild('##trgbox' .. id, { -1, boxH }, true, BOX_FLAGS);
 
     imgui.BeginGroup();                                -- left column: the methods
@@ -774,9 +786,10 @@ end
 -- on the left (current value highlighted), live button + bind + edit on the right.
 local function renderModeBox(m, def, cur, colX)
     local isCycle = (def ~= nil and def.values ~= nil);
-    local leftH  = 19 + (isCycle and #def.values * 19 or 0);
+    local lh = lineH();
+    local leftH  = (1 + (isCycle and #def.values or 0)) * lh;   -- name line + one per value
     local rightH = 26 + 24;                            -- action button + bind/edit row
-    local boxH = math.max(leftH, rightH, 56) + 14;
+    local boxH = math.max(leftH, rightH, 56) + 18;
     imgui.BeginChild('##trgmbox' .. m, { -1, boxH }, true, BOX_FLAGS);
 
     imgui.BeginGroup();                                -- left: identity + cycle values
