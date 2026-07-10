@@ -2387,16 +2387,32 @@ local function renderSetBuilder(job, level)
     if #list == 0 then
         imgui.TextColored(COL_DIM, 'Empty -- click + Add (usable owned items) or Auto-build.');
     else
+        -- Static columns like the All Equipment browse rows: the name column is
+        -- sized from the longest name so Lv / stats align down the list. Buttons
+        -- are pinned to the row's right edge. No up/down reordering -- list order
+        -- doesn't matter (best-by-level + rules decide the pick).
+        local recs = {};
+        for _, e in ipairs(disp) do recs[#recs + 1] = e.rec or {}; end
+        local nW = fmt.nameWidthOf(recs);
+        local openEdit = false;
         for di, it in ipairs(disp) do
             local rec = it.rec;
+            local bg = (di % 2 == 0) and { 1, 1, 1, 0.03 } or { 1, 1, 1, 0.07 };
+            imgui.PushStyleColor(ImGuiCol_ChildBg, bg);
+            imgui.BeginChild('##setrow_' .. tostring(rec and rec.Id or ('n' .. di)) .. '_' .. di, { -1, 24 }, false);
             renderIcon(rec and rec.Id or nil, 18);
             imgui.TextColored((rec ~= nil and rec == pickRec) and COL_SCORE
                 or (owned.isStored(rec) and COL_ERR or COL_USABLE),
                 fmt.esc((rec and rec.Name) or '?') .. fmt.qtyTag(rec));
             if rec ~= nil and imgui.IsItemHovered() then renderItemTooltip(rec); end
-            imgui.SameLine(0, 8); imgui.TextColored(COL_LEVEL, 'Lv' .. tostring(rec and rec.Level or 0));
+            local nameCol = 26 + nW;                   -- icon (18+6 pad) + name column
+            imgui.SameLine(nameCol);
+            imgui.TextColored(COL_LEVEL, string.format('Lv%2d', rec and rec.Level or 0));
             local ss = rec and fmt.statSummary(rec, level) or '';
-            if ss ~= '' then imgui.SameLine(0, 8); imgui.TextColored(COL_STATS, fmt.esc(ss)); end
+            if ss ~= '' then
+                imgui.SameLine(nameCol + 46);          -- fixed Lv column
+                imgui.TextColored(COL_STATS, fmt.esc(ss));
+            end
             if it.minLevel ~= nil then imgui.SameLine(0, 8); imgui.TextColored(COL_DIM, 'min' .. tostring(it.minLevel)); end
             if it.maxLevel ~= nil then imgui.SameLine(0, 8); imgui.TextColored(COL_DIM, 'max' .. tostring(it.maxLevel)); end
             if it.mode ~= nil then
@@ -2406,21 +2422,25 @@ local function renderSetBuilder(job, level)
                     imgui.SetTooltip('Mode-gated: used only while this mode is active\n(and then it beats the unconditional entries).\nGreen = active right now.');
                 end
             end
-            imgui.SameLine(0, 12);
-            if imgui.SmallButton('~##ed_' .. di) then
+            imgui.SameLine(imgui.GetWindowWidth() - 58);   -- buttons at the right edge
+            if imgui.Button('B##ed_' .. di, { 24, 20 }) then
                 ui._editIt = it;
                 ui._editMin = { it.minLevel or 0 };
                 ui._editMax = { it.maxLevel or 0 };
-                imgui.OpenPopup('##dlac_entryedit');
+                openEdit = true;
             end
-            if imgui.IsItemHovered() then imgui.SetTooltip('Edit min/max level and mode gating for this entry.'); end
-            imgui.SameLine(0, 2);
-            if imgui.SmallButton('^##up_' .. di)   then action = { kind = 'up',     it = it }; end
-            imgui.SameLine(0, 2);
-            if imgui.SmallButton('v##down_' .. di) then action = { kind = 'down',   it = it }; end
-            imgui.SameLine(0, 2);
-            if imgui.SmallButton('x##rm_' .. di)   then action = { kind = 'remove', it = it }; end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Behaviour rules for this piece:\nlimit it to a level range, or gate it on a mode --\na gated entry is used only while its mode is active.');
+            end
+            imgui.SameLine(0, 4);
+            if imgui.Button('x##rm_' .. di, { 24, 20 }) then action = { kind = 'remove', it = it }; end
+            if imgui.IsItemHovered() then imgui.SetTooltip('Remove from this list.'); end
+            imgui.EndChild();
+            imgui.PopStyleColor(1);
         end
+        -- The popup must open in THIS window's scope, not inside a row child --
+        -- OpenPopup/BeginPopup resolve ids per window, so the button only sets a flag.
+        if openEdit then imgui.OpenPopup('##dlac_entryedit'); end
         renderEntryEditPopup();
     end
     imgui.EndChild();
@@ -2431,13 +2451,9 @@ local function renderSetBuilder(job, level)
         if di ~= nil then
             if action.kind == 'remove' then
                 table.remove(list, di);
-            elseif action.kind == 'up' and di > 1 then
-                list[di], list[di - 1] = list[di - 1], list[di];
-            elseif action.kind == 'down' and di < #list then
-                list[di], list[di + 1] = list[di + 1], list[di];
             end
             if #list == 0 then M.working[ui.setSelected] = nil; else M.working[ui.setSelected] = list; end
-            _setDirty = true;   -- removed/reordered an item -> unsaved changes
+            _setDirty = true;   -- removed an item -> unsaved changes
         end
     end
 end
