@@ -655,6 +655,63 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
     return act;
 end
 
+-- One mode box (Modes section): name/kind + cycle values on the left (current value
+-- highlighted), live button + bind + edit on the right. Same language as rule boxes.
+local function renderModeBox(m, def, cur, colX)
+    local isCycle = (def ~= nil and def.values ~= nil);
+    local nLines = 1 + (isCycle and #def.values or 0);
+    local boxH = math.max(nLines * 19, 50) + 12;
+    imgui.BeginChild('##trgmbox' .. m, { -1, boxH }, true);
+
+    imgui.BeginGroup();                                -- left: identity + cycle values
+    imgui.TextColored(COND_COLORS.mode, esc(m));
+    imgui.SameLine(0, 10);
+    imgui.TextColored(COL_DIM, isCycle and 'cycle' or 'toggle');
+    if isCycle then
+        for i, v in ipairs(def.values) do
+            local active = ((type(cur) == 'string') and (string.lower(cur) == string.lower(v)))
+                           or (cur == nil and i == 1);          -- engine defaults to the first
+            imgui.TextColored(active and COL_SCORE or COL_DIM,
+                string.format('  %d. %s%s', i, esc(v), active and '   <' or ''));
+        end
+    end
+    imgui.EndGroup();
+
+    imgui.SameLine(colX);
+    imgui.BeginGroup();                                -- right: live button + bind + edit
+    local styled = (ImGuiCol_Button ~= nil);
+    if isCycle then
+        local shown = (type(cur) == 'string') and cur or (def.values[1] or '?');
+        if styled then imgui.PushStyleColor(ImGuiCol_Button, { 0.20, 0.42, 0.58, 1.0 }); end
+        if imgui.Button(string.format('%s: %s##trgmode_%s', m, shown, m), { 0, 22 }) then
+            pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl mode ' .. m); end);
+            trig._modeStateAt = -1;
+        end
+        if styled then imgui.PopStyleColor(1); end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Advance the cycle (also: /dl mode ' .. m .. ', or the keybind).\nMatch a value in rules with the condition  mode = ' .. m .. ':<value>');
+        end
+    else
+        local on = (cur ~= nil);
+        if styled then
+            imgui.PushStyleColor(ImGuiCol_Button, on and { 0.15, 0.55, 0.20, 1.0 } or { 0.35, 0.35, 0.40, 1.0 });
+        end
+        if imgui.Button(string.format('%s: %s##trgmode_%s', m, on and 'ON' or 'off', m), { 0, 22 }) then
+            pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl mode ' .. m .. ' toggle'); end);
+            trig._modeStateAt = -1;
+        end
+        if styled then imgui.PopStyleColor(1); end
+        if imgui.IsItemHovered() then imgui.SetTooltip('Toggle (also macro-able: /dl mode ' .. m .. ').'); end
+    end
+    imgui.TextColored(COL_DIM, (def ~= nil and def.bind ~= nil) and ('bind: ' .. def.bind) or 'bind: (none)');
+    imgui.SameLine(0, 12);
+    if imgui.SmallButton('edit##trgmedit_' .. m) then openModeEditor(m, def); end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Edit this mode (values / keybind / delete).'); end
+    imgui.EndGroup();
+
+    imgui.EndChild();
+end
+
 -- Add-rule popup: build conditions (type + value, [+ condition] to AND more), pick the
 -- target set, optional priority, Add.
 local function renderTrigAddPopup()
@@ -830,10 +887,10 @@ function M.render(job, level)
         imgui.TextColored(trig.statusErr and COL_ERR or COL_SCORE, esc(trig.status));
     end
 
-    -- Modes strip. Two kinds:
-    --   toggles -- any mode referenced by a rule: green ON / grey off button.
-    --   cycles  -- defined in trig.data.Modes with a values list: the button shows the
-    --              CURRENT value (e.g. "Weapon: Melee") and clicking advances it.
+    -- Handler sections: one collapsible list of rules per Handle* event, with Modes
+    -- as a first-class collapsible section on top (same box language as the rules).
+    imgui.BeginChild('##trgsections', { -1, -1 }, false);
+
     local defs = trig.data.Modes or {};
     local modes, mseen = {}, {};
     for nm in pairs(defs) do
@@ -851,63 +908,39 @@ function M.render(job, level)
         end
     end
     table.sort(modes);
-    imgui.TextColored(COL_DIM, 'Modes:');
-    local mstate = trigModeState();
-    if #modes == 0 then imgui.SameLine(0, 6); imgui.TextColored(COL_DIM, '(none yet)'); end
-    for _, m in ipairs(modes) do
-        imgui.SameLine(0, 6);
-        local def = defs[m];
-        local cur = mstate[string.lower(m)];
-        local styled = (ImGuiCol_Button ~= nil);
-        if def ~= nil and def.values ~= nil then               -- cycle mode
-            local shown = (type(cur) == 'string') and cur or (def.values[1] or '?');
-            if styled then imgui.PushStyleColor(ImGuiCol_Button, { 0.20, 0.42, 0.58, 1.0 }); end
-            if imgui.Button(string.format('%s: %s##trgmode_%s', m, shown, m), { 0, 22 }) then
-                pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl mode ' .. m); end);
-                trig._modeStateAt = -1;
+    if imgui.CollapsingHeader(string.format('Modes (%d)###trgsec_modes', #modes), ImGuiTreeNodeFlags_DefaultOpen) then
+        local mstate = trigModeState();
+        -- aligned controls column, computed like the rule sections (longest left line)
+        local mcolX = 200;
+        for _, m in ipairs(modes) do
+            local w = textW(m) + 84;
+            if w > mcolX then mcolX = w; end
+            local def = defs[m];
+            if def ~= nil and def.values ~= nil then
+                for _, v in ipairs(def.values) do
+                    local w2 = textW('  9. ' .. v .. '   <') + 40;
+                    if w2 > mcolX then mcolX = w2; end
+                end
             end
-            if styled then imgui.PopStyleColor(1); end
-            if imgui.IsItemHovered() then
-                imgui.SetTooltip('Cycle: ' .. table.concat(def.values, ' -> ')
-                    .. ((def.bind ~= nil) and ('\nBound to ' .. def.bind) or '')
-                    .. '\nMatch a value in rules with the condition  mode = ' .. m .. ':<value>');
-            end
-            imgui.SameLine(0, 2);
-            if imgui.SmallButton('e##trgmedit_' .. m) then openModeEditor(m, def); end
-            if imgui.IsItemHovered() then imgui.SetTooltip('Edit this mode (values / keybind / delete).'); end
-        else                                                   -- toggle mode
-            local on = (cur ~= nil);
-            if styled then
-                imgui.PushStyleColor(ImGuiCol_Button, on and { 0.15, 0.55, 0.20, 1.0 } or { 0.35, 0.35, 0.40, 1.0 });
-            end
-            if imgui.Button(string.format('%s: %s##trgmode_%s', m, on and 'ON' or 'off', m), { 0, 22 }) then
-                pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl mode ' .. m .. ' toggle'); end);
-                trig._modeStateAt = -1;
-            end
-            if styled then imgui.PopStyleColor(1); end
-            if imgui.IsItemHovered() then
-                imgui.SetTooltip('Toggle this mode (also macro-able: /dl mode ' .. m .. ').'
-                    .. ((def ~= nil and def.bind ~= nil) and ('\nBound to ' .. def.bind) or ''));
-            end
-            imgui.SameLine(0, 2);
-            if imgui.SmallButton('e##trgmedit_' .. m) then openModeEditor(m, def); end
-            if imgui.IsItemHovered() then imgui.SetTooltip('Edit this mode (keybind / delete definition).'); end
         end
+        local mavail = imgui.GetContentRegionAvail();
+        if type(mavail) == 'number' and mcolX > mavail * 0.55 then mcolX = mavail * 0.55; end
+        if #modes == 0 then
+            imgui.TextColored(COL_DIM, 'No modes yet -- create an ON/OFF toggle (DT) or a cycle list (weapon sets).');
+        end
+        for _, m in ipairs(modes) do
+            renderModeBox(m, defs[m], mstate[string.lower(m)], mcolX);
+        end
+        if imgui.Button('+ Mode...##trgaddmode', { 0, 28 }) then
+            modeUI.name[1] = ''; modeUI.kind = 'toggle'; modeUI.values = {};
+            modeUI.valInput[1] = ''; modeUI.bind[1] = ''; modeUI.set = nil; modeUI.editing = nil;
+            trig._openModePopup = true;
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Create a mode: a simple ON/OFF toggle, or a cycle list (weapon sets etc.).');
+        end
+        imgui.Spacing();
     end
-    -- One clearly-labelled entry point; the details live in the mode builder popup.
-    imgui.SameLine(0, 14);
-    if imgui.Button('+ Mode...##trgaddmode', { 0, 22 }) then
-        modeUI.name[1] = ''; modeUI.kind = 'toggle'; modeUI.values = {};
-        modeUI.valInput[1] = ''; modeUI.bind[1] = ''; modeUI.set = nil; modeUI.editing = nil;
-        trig._openModePopup = true;
-    end
-    if imgui.IsItemHovered() then
-        imgui.SetTooltip('Create a mode: a simple ON/OFF toggle, or a cycle list (weapon sets etc.).\nClick the small "e" next to an existing mode to edit or delete it.');
-    end
-    imgui.Separator();
-
-    -- Handler sections: one collapsible list of rules per Handle* event.
-    imgui.BeginChild('##trgsections', { -1, -1 }, false);
     local setNames = allSetNames();
     for _, h in ipairs(TRIG_HANDLERS) do
         local list = trig.data[h] or {};
