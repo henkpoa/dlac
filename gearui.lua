@@ -1335,7 +1335,11 @@ local function renderHeaderButtons()
     local btns = {
         { l = 'Reload LAC', w = 104,
           tip = 'Reload LuaAshitacast. LAC caches your sets when the profile loads, so after you\ncommit/edit a set (or run Setup) you must reload LAC for the change to take effect.',
-          fn = function() refreshOwnedCounts(); pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/addon reload luashitacast'); end); end },
+          fn = function()
+              _augStatus = nil;   -- "Reload LuaAshitacast to apply" is fulfilled by this click
+              refreshOwnedCounts();
+              pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/addon reload luashitacast'); end);
+          end },
     };
     if debugMode then
         btns[#btns+1] = { l = 'Scan', w = 52,
