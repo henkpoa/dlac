@@ -639,9 +639,7 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
     end
     imgui.PopItemWidth();
     if imgui.IsItemHovered() then
-        imgui.SetTooltip(string.format('Priority: higher overlays lower; every matching rule applies.
-Automatic from specificity = %d. Type another number to override;
-type %d again to go back to automatic.', defP, defP));
+        imgui.SetTooltip(string.format('Priority: higher overlays lower; every matching rule applies.\nAutomatic from specificity = %d. Type another number to override;\ntype %d again to go back to automatic.', defP, defP));
     end
     imgui.SameLine(0, 10);
     if imgui.SmallButton('edit##trgedit' .. id) then act = 'edit'; end
