@@ -453,8 +453,8 @@ end
 
 -- The Automations section (rendered under the handler sections): the manifest data +
 -- rescan. The ON/OFF switches live per set (Sets tab -> Auto staff / Auto obi).
-local function renderAutomations()
-    if not imgui.CollapsingHeader('Automations###trgsec_auto') then return; end
+local function renderAutomations(noHeader)
+    if noHeader ~= true and not imgui.CollapsingHeader('Automations###trgsec_auto') then return; end
     autoLoad();
     imgui.PushTextWrapPos(0.0);
     imgui.TextColored(COL_DIM, 'Auto staff / auto obi are SLOT entries inside a set: Sets tab -> pick the set -> Main slot -> + Add -> "dlac:AutoStaff" (or Waist -> "dlac:AutoObi"). Whenever a trigger equips that set, the engine resolves the entry: best Iridescence staff for the cast (highest tier: HQ elemental +2 / NQ +1 vs your universal weapon; ties go to the universal, which also covers elementless actions), and the obi only when the day/weather bonus is positive. Unresolvable -> the slot is left untouched.');
@@ -488,15 +488,17 @@ end
 -- equippable bag right now (gearcheck audit; cached ~2s -- ownedSplit walks
 -- every container).
 -- ---------------------------------------------------------------------------
-local function renderGearWarnings()
+local function renderGearWarnings(noHeader)
     local gc = nil;
     pcall(function() gc = require("dlac\\gearcheck"); end);
     if type(gc) ~= 'table' or type(gc.auditCached) ~= 'function' then return; end
     local warns = {};
     pcall(function() warns = gc.auditCached(2) or {}; end);
     local n = #warns;
-    local flags = (n > 0 and ImGuiTreeNodeFlags_DefaultOpen ~= nil) and ImGuiTreeNodeFlags_DefaultOpen or 0;
-    if not imgui.CollapsingHeader(string.format('Gear warnings (%d)###trgsec_warn', n), flags) then return; end
+    if noHeader ~= true then
+        local flags = (n > 0 and ImGuiTreeNodeFlags_DefaultOpen ~= nil) and ImGuiTreeNodeFlags_DefaultOpen or 0;
+        if not imgui.CollapsingHeader(string.format('Gear warnings (%d)###trgsec_warn', n), flags) then return; end
+    end
     if imgui.Button('Re-check now##trgwarnrefresh', { 0, 20 }) then
         pcall(gc.invalidate);
         pcall(gc.chatWarn, true);
@@ -753,59 +755,79 @@ end
 
 -- One mode box (Modes section): name/kind + cycle values on the left (current value
 -- highlighted), live button + bind + edit on the right. Same language as rule boxes.
-local function renderModeBox(m, def, cur, colX)
-    local isCycle = (def ~= nil and def.values ~= nil);
-    local nLines = 1 + (isCycle and #def.values or 0);
-    local boxH = math.max(nLines * 19, 50) + 12;
-    imgui.BeginChild('##trgmbox' .. m, { -1, boxH }, true);
-
-    imgui.BeginGroup();                                -- left: identity + cycle values
-    imgui.TextColored(COND_COLORS.mode, esc(m));
-    imgui.SameLine(0, 10);
-    imgui.TextColored(COL_DIM, isCycle and 'cycle' or 'toggle');
-    if isCycle then
-        for i, v in ipairs(def.values) do
-            local active = ((type(cur) == 'string') and (string.lower(cur) == string.lower(v)))
-                           or (cur == nil and i == 1);          -- engine defaults to the first
-            imgui.TextColored(active and COL_SCORE or COL_DIM,
-                string.format('  %d. %s%s', i, esc(v), active and '   <' or ''));
-        end
-    end
-    imgui.EndGroup();
-
-    imgui.SameLine(colX);
-    imgui.BeginGroup();                                -- right: live button + bind + edit
+-- Minimal mode chips (gear-grid style): a clickable box per mode plus an 'e' edit
+-- button, flowing left-to-right and wrapping to use the full width. Toggles show
+-- 'Name: ON/off' (green when on); cycles show 'Name: Value' with the keybind.
+local function renderModeChip(m, def, cur, isCycle, label, bw)
     local styled = (ImGuiCol_Button ~= nil);
-    if isCycle then
-        local shown = (type(cur) == 'string') and cur or (def.values[1] or '?');
-        if styled then imgui.PushStyleColor(ImGuiCol_Button, { 0.20, 0.42, 0.58, 1.0 }); end
-        if imgui.Button(string.format('%s: %s##trgmode_%s', m, shown, m), { 0, 22 }) then
-            pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl mode ' .. m); end);
-            trig._modeStateAt = -1;
-        end
-        if styled then imgui.PopStyleColor(1); end
-        if imgui.IsItemHovered() then
-            imgui.SetTooltip('Advance the cycle (also: /dl mode ' .. m .. ', or the keybind).\nMatch a value in rules with the condition  mode = ' .. m .. ':<value>');
-        end
-    else
-        local on = (cur ~= nil);
-        if styled then
-            imgui.PushStyleColor(ImGuiCol_Button, on and { 0.15, 0.55, 0.20, 1.0 } or { 0.35, 0.35, 0.40, 1.0 });
-        end
-        if imgui.Button(string.format('%s: %s##trgmode_%s', m, on and 'ON' or 'off', m), { 0, 22 }) then
-            pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl mode ' .. m .. ' toggle'); end);
-            trig._modeStateAt = -1;
-        end
-        if styled then imgui.PopStyleColor(1); end
-        if imgui.IsItemHovered() then imgui.SetTooltip('Toggle (also macro-able: /dl mode ' .. m .. ').'); end
+    if styled then
+        if isCycle then imgui.PushStyleColor(ImGuiCol_Button, { 0.20, 0.42, 0.58, 1.0 });
+        elseif cur ~= nil then imgui.PushStyleColor(ImGuiCol_Button, { 0.15, 0.55, 0.20, 1.0 });
+        else imgui.PushStyleColor(ImGuiCol_Button, { 0.22, 0.22, 0.27, 1.0 }); end
     end
-    imgui.TextColored(COL_DIM, (def ~= nil and def.bind ~= nil) and ('bind: ' .. def.bind) or 'bind: (none)');
-    imgui.SameLine(0, 12);
-    if imgui.SmallButton('edit##trgmedit_' .. m) then openModeEditor(m, def); end
+    if imgui.Button(label .. '##trgmode_' .. m, { bw, 26 }) then
+        pcall(function()
+            AshitaCore:GetChatManager():QueueCommand(1, '/dl mode ' .. m .. (isCycle and '' or ' toggle'));
+        end);
+        trig._modeStateAt = -1;
+    end
+    if styled then imgui.PopStyleColor(1); end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip(isCycle
+            and ('Advance the cycle (also: /dl mode ' .. m .. ', or the keybind).\nRules match a value with  mode = ' .. m .. ':<value>')
+            or  ('Toggle on/off (also macro-able: /dl mode ' .. m .. ').'));
+    end
+    imgui.SameLine(0, 2);
+    if imgui.SmallButton('e##trgmedit_' .. m) then openModeEditor(m, def); end
     if imgui.IsItemHovered() then imgui.SetTooltip('Edit this mode (values / keybind / delete).'); end
-    imgui.EndGroup();
+end
 
-    imgui.EndChild();
+local function renderModesSection(defs, modes)
+    local mstate = trigModeState();
+    local toggles, cycles = {}, {};
+    for _, m in ipairs(modes) do
+        local def = defs[m];
+        if def ~= nil and def.values ~= nil then cycles[#cycles + 1] = m; else toggles[#toggles + 1] = m; end
+    end
+
+    -- Chips flow and wrap by measured width, so wide windows fit several per row.
+    local function flow(names, isCycle)
+        local avail = imgui.GetContentRegionAvail();
+        if type(avail) ~= 'number' or avail < 200 then avail = 600; end
+        local x = 0;
+        for _, m in ipairs(names) do
+            local def = defs[m];
+            local cur = mstate[string.lower(m)];
+            local label;
+            if isCycle then
+                local shown = (type(cur) == 'string') and cur or ((def and def.values and def.values[1]) or '?');
+                label = string.format('%s: %s', m, shown);
+                if def ~= nil and def.bind ~= nil then label = label .. '   ' .. def.bind; end
+            else
+                label = string.format('%s: %s', m, (cur ~= nil) and 'ON' or 'off');
+            end
+            local bw = math.max((textW(label) or 80) + 24, 96);
+            local footprint = bw + 26;                 -- chip + the 'e' button
+            if x > 0 and (x + footprint + 8) <= avail then imgui.SameLine(0, 8); else x = 0; end
+            renderModeChip(m, def, cur, isCycle, label, bw);
+            x = x + footprint + 8;
+        end
+    end
+
+    imgui.TextColored(COL_DIM, 'Toggles -- on/off switches; rules match them with  mode = Name');
+    if #toggles == 0 then imgui.TextColored(COL_DIM, '  (none)'); else flow(toggles, false); end
+    imgui.Spacing(); imgui.Separator(); imgui.Spacing();
+    imgui.TextColored(COL_DIM, 'Cycles -- one active value from a list; rules match with  mode = Name:Value');
+    if #cycles == 0 then imgui.TextColored(COL_DIM, '  (none)'); else flow(cycles, true); end
+    imgui.Spacing();
+    if imgui.Button('+ Mode...##trgaddmode', { 0, 26 }) then
+        modeUI.name[1] = ''; modeUI.kind = 'toggle'; modeUI.values = {};
+        modeUI.valInput[1] = ''; modeUI.bind[1] = ''; modeUI.set = nil; modeUI.editing = nil;
+        trig._openModePopup = true;
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Create a mode: a simple ON/OFF toggle, or a cycle list (weapon sets etc.).');
+    end
 end
 
 -- Add-rule popup: build conditions (type + value, [+ condition] to AND more), pick the
@@ -983,10 +1005,7 @@ function M.render(job, level)
         imgui.TextColored(trig.statusErr and COL_ERR or COL_SCORE, esc(trig.status));
     end
 
-    -- Handler sections: one collapsible list of rules per Handle* event, with Modes
-    -- as a first-class collapsible section on top (same box language as the rules).
-    imgui.BeginChild('##trgsections', { -1, -1 }, false);
-
+    -- Section inventory (counts drive the nav labels).
     local defs = trig.data.Modes or {};
     local modes, mseen = {}, {};
     for nm in pairs(defs) do
@@ -1004,90 +1023,86 @@ function M.render(job, level)
         end
     end
     table.sort(modes);
-    if imgui.CollapsingHeader(string.format('Modes (%d)###trgsec_modes', #modes), ImGuiTreeNodeFlags_DefaultOpen) then
-        local mstate = trigModeState();
-        -- aligned controls column, computed like the rule sections (longest left line)
-        local mcolX = 200;
-        for _, m in ipairs(modes) do
-            local w = textW(m) + 84;
-            if w > mcolX then mcolX = w; end
-            local def = defs[m];
-            if def ~= nil and def.values ~= nil then
-                for _, v in ipairs(def.values) do
-                    local w2 = textW('  9. ' .. v .. '   <') + 40;
-                    if w2 > mcolX then mcolX = w2; end
-                end
-            end
+    local warnCount = 0;
+    pcall(function()
+        local gc = require("dlac\\gearcheck");
+        if type(gc) == 'table' and type(gc.auditCached) == 'function' then
+            warnCount = #(gc.auditCached(2) or {});
         end
-        local mavail = imgui.GetContentRegionAvail();
-        if type(mavail) == 'number' and mcolX > mavail * 0.55 then mcolX = mavail * 0.55; end
-        if #modes == 0 then
-            imgui.TextColored(COL_DIM, 'No modes yet -- create an ON/OFF toggle (DT) or a cycle list (weapon sets).');
-        end
-        for _, m in ipairs(modes) do
-            renderModeBox(m, defs[m], mstate[string.lower(m)], mcolX);
-        end
-        if imgui.Button('+ Mode...##trgaddmode', { 0, 28 }) then
-            modeUI.name[1] = ''; modeUI.kind = 'toggle'; modeUI.values = {};
-            modeUI.valInput[1] = ''; modeUI.bind[1] = ''; modeUI.set = nil; modeUI.editing = nil;
-            trig._openModePopup = true;
-        end
-        if imgui.IsItemHovered() then
-            imgui.SetTooltip('Create a mode: a simple ON/OFF toggle, or a cycle list (weapon sets etc.).');
-        end
-        imgui.Spacing();
+    end);
+
+    -- ONE section at a time: a slim nav column picks what fills the big main
+    -- area -- no stacked collapsibles, no permanently-scrolling sidebar.
+    trig.section = trig.section or 'Modes';
+    imgui.BeginChild('##trgnav', { 148, -1 }, false);
+    local function navItem(id, label)
+        if imgui.Selectable(label .. '###trgnav_' .. id, trig.section == id) then trig.section = id; end
     end
-    local setNames = allSetNames();
+    navItem('Modes', string.format('Modes (%d)', #modes));
     for _, h in ipairs(TRIG_HANDLERS) do
+        navItem(h, string.format('%s (%d)', h, #(trig.data[h] or {})));
+    end
+    navItem('Automations', 'Automations');
+    navItem('Warnings', string.format('Warnings (%d)', warnCount));
+    imgui.EndChild();
+    imgui.SameLine(0, 10);
+
+    imgui.BeginChild('##trgmain', { -1, -1 }, false);
+    if trig.section == 'Modes' then
+        renderModesSection(defs, modes);
+    elseif trig.section == 'Automations' then
+        pcall(renderAutomations, true);
+    elseif trig.section == 'Warnings' then
+        pcall(renderGearWarnings, true);
+    else
+        local h = trig.section;
         local list = trig.data[h] or {};
-        if imgui.CollapsingHeader(string.format('%s (%d)###trgsec_%s', h, #list, h)) then
-            -- aligned controls column for THIS section: longest condition line wins
-            local colX = 190;
-            for _, r in ipairs(list) do
-                for _, ln in ipairs(condLines(r.when)) do
-                    local w = textW(ln.text) + 28;
-                    if w > colX then colX = w; end
-                end
+        local setNames = allSetNames();
+        imgui.TextColored(COL_HEADER, h .. ' rules');
+        imgui.Spacing();
+        -- aligned controls column for THIS section: longest condition line wins
+        local colX = 190;
+        for _, r in ipairs(list) do
+            for _, ln in ipairs(condLines(r.when)) do
+                local w = textW(ln.text) + 28;
+                if w > colX then colX = w; end
             end
-            local availW = imgui.GetContentRegionAvail();
-            if type(availW) == 'number' and colX > availW * 0.55 then colX = availW * 0.55; end
-            local removeAt, editAt = nil, nil;
-            for i, r in ipairs(list) do
-                local act = renderTrigRuleBox(h, i, r, setNames, colX);
-                if act == 'remove' then removeAt = i;
-                elseif act == 'edit' then editAt = i; end
+        end
+        local availW = imgui.GetContentRegionAvail();
+        if type(availW) == 'number' and colX > availW * 0.55 then colX = availW * 0.55; end
+        local removeAt, editAt = nil, nil;
+        for i, r in ipairs(list) do
+            local act = renderTrigRuleBox(h, i, r, setNames, colX);
+            if act == 'remove' then removeAt = i;
+            elseif act == 'edit' then editAt = i; end
+        end
+        if removeAt ~= nil then
+            table.remove(list, removeAt);
+            trig.data[h] = list;
+            trig.dirty = true;
+            trig._prioBuf = {};   -- row ids shifted; rebuild the priority buffers
+        end
+        if editAt ~= nil then
+            -- Pre-load the rule builder with this rule and open it in edit mode.
+            local r = list[editAt];
+            trig.addFor, trig.editIdx, trig._editEquip = h, editAt, r.equip;
+            trig.addConds = {};
+            for k, v in pairs(r.when or {}) do
+                trig.addConds[#trig.addConds + 1] = { key = k, value = v };
             end
-            if removeAt ~= nil then
-                table.remove(list, removeAt);
-                trig.data[h] = list;
-                trig.dirty = true;
-                trig._prioBuf = {};   -- row ids shifted; rebuild the priority buffers
-            end
-            if editAt ~= nil then
-                -- Pre-load the rule builder with this rule and open it in edit mode.
-                local r = list[editAt];
-                trig.addFor, trig.editIdx, trig._editEquip = h, editAt, r.equip;
-                trig.addConds = {};
-                for k, v in pairs(r.when or {}) do
-                    trig.addConds[#trig.addConds + 1] = { key = k, value = v };
-                end
-                table.sort(trig.addConds, function(a, b) return tostring(a.key) < tostring(b.key); end);
-                trig.addSet = r.set;
-                trig.addPrio[1] = r.priority or 0;
-                trig._addDef = 1; trig.addValText[1] = ''; trig._addValSel = nil;
-                trig._openAdd = true;
-            end
-            if imgui.Button('+ Add rule##trgadd_' .. h, { 0, 28 }) then
-                trig.addFor = h; trig.addConds = {}; trig._addDef = 1;
-                trig.addValText[1] = ''; trig._addValSel = nil; trig.addSet = nil; trig.addPrio[1] = 0;
-                trig.editIdx, trig._editEquip = nil, nil;   -- fresh add, not an edit
-                trig._openAdd = true;
-            end
-            imgui.Spacing();
+            table.sort(trig.addConds, function(a, b) return tostring(a.key) < tostring(b.key); end);
+            trig.addSet = r.set;
+            trig.addPrio[1] = r.priority or 0;
+            trig._addDef = 1; trig.addValText[1] = ''; trig._addValSel = nil;
+            trig._openAdd = true;
+        end
+        if imgui.Button('+ Add rule##trgadd_' .. h, { 0, 28 }) then
+            trig.addFor = h; trig.addConds = {}; trig._addDef = 1;
+            trig.addValText[1] = ''; trig._addValSel = nil; trig.addSet = nil; trig.addPrio[1] = 0;
+            trig.editIdx, trig._editEquip = nil, nil;   -- fresh add, not an edit
+            trig._openAdd = true;
         end
     end
-    pcall(renderAutomations);   -- Automations section (auto staff / obi, ADR 0004)
-    pcall(renderGearWarnings);  -- trigger-referenced gear parked in storage / missing
     imgui.EndChild();
 
     if trig._openAdd then imgui.OpenPopup('##dlac_trigadd'); trig._openAdd = false; end
