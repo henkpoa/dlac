@@ -556,12 +556,22 @@ local function invalidateCandidates() candCache.key = nil; end
 -- curated DB and can list items you no longer own (e.g. a base "Garrison Sallet" when
 -- you only have the +1). Safe fallback: if the live scan returns nothing (inventory
 -- manager unavailable / char select), don't hide anything.
-local ownedCounts;
+local ownedCounts, ownedTotals;   -- avail (Inventory+Wardrobes) / total (owned ANYWHERE)
 local function haveInBags(rec)
     if rec == nil or rec.Id == nil then return true; end
-    local oc = ownedCounts and ownedCounts() or nil;
-    if type(oc) ~= 'table' or next(oc) == nil then return true; end
+    local oc = ownedTotals and ownedTotals() or nil;   -- owned anywhere counts as owned;
+    if type(oc) ~= 'table' or next(oc) == nil then return true; end   -- availability is colour
     return (oc[rec.Id] or 0) >= 1;
+end
+
+-- Owned somewhere but with NO copy in Inventory/Wardrobes: LAC can't equip it until
+-- it moves. Rows render these names red; the tooltip says where things stand.
+local function isStored(rec)
+    if rec == nil or rec.Id == nil then return false; end
+    local tot = ownedTotals and ownedTotals() or nil;
+    if type(tot) ~= 'table' or (tot[rec.Id] or 0) < 1 then return false; end
+    local av = ownedCounts and ownedCounts() or nil;
+    return type(av) == 'table' and (av[rec.Id] or 0) == 0;
 end
 
 local function weightsActive()
@@ -738,22 +748,27 @@ end
 -- Owned quantities, sub-job info, and Sub-slot / paired-slot rules (Phase 3).
 -- ---------------------------------------------------------------------------
 
--- gearimport.ownedCounts() -> { [Id]=count } across all bags incl. equipped.
--- Cached; refreshed on Scan / Reload.
-local _ownedCounts = nil;
+-- gearimport.ownedSplit() -> { avail = {id->n}, total = {id->n} } in ONE bag pass.
+-- Cached; refreshed on Scan / Reload and on a ~4s heartbeat (so container moves --
+-- Safe -> Wardrobe and back -- change availability live).
+local _ownedCounts = nil;   -- the cached split table
 local _ownedAug    = nil;   -- cached { itemId -> {augment-desc, ...} } for owned gear
-function ownedCounts()   -- assigns the forward-declared upvalue (see haveInBags)
-    if _ownedCounts ~= nil then return _ownedCounts; end
-    local counts = {};
+function ownedCounts()   -- AVAIL map (equip-correct: pairing, DW, automations)
+    if _ownedCounts ~= nil then return _ownedCounts.avail; end
+    local split = { avail = {}, total = {} };
     pcall(function()
         local ok, mod = pcall(require, "dlac\\gearimport");
-        if ok and mod ~= nil and type(mod.ownedCounts) == 'function' then
-            local c = mod.ownedCounts();
-            if type(c) == 'table' then counts = c; end
+        if ok and mod ~= nil and type(mod.ownedSplit) == 'function' then
+            local s = mod.ownedSplit();
+            if type(s) == 'table' and type(s.avail) == 'table' then split = s; end
         end
     end);
-    _ownedCounts = counts;
-    return counts;
+    _ownedCounts = split;
+    return _ownedCounts.avail;
+end
+function ownedTotals()   -- owned-ANYWHERE map (visibility)
+    ownedCounts();
+    return _ownedCounts.total;
 end
 local function refreshOwnedCounts() _ownedCounts = nil; _ownedAug = nil; _ownedAugStats = nil; invalidateCandidates(); end
 
@@ -907,6 +922,9 @@ local function renderItemTooltip(rec)
         local jt = jobsText(rec.Jobs);
         if jt == 'All' then jt = 'All Jobs'; end
         imgui.TextColored(COL_JOBS, string.format('Lv.%s %s', tostring(rec.Level or 0), jt));
+        if isStored(rec) then
+            imgui.TextColored(COL_ERR, 'IN STORAGE -- move to Inventory/Wardrobe to equip');
+        end
         if rec.Id ~= nil then                          -- private augments on your owned copy
             local al = ownedAugMap()[rec.Id];
             if al ~= nil and #al > 0 then
@@ -1294,7 +1312,7 @@ local function renderAltRow(rec, ordinal, job, level, nameW)
     if imgui.IsItemHovered() then renderItemTooltip(rec); end
     local nameCol = 26;                                -- just after the icon
     imgui.SameLine(nameCol);
-    imgui.TextColored(COL_USABLE, esc(rec.Name or '?'));
+    imgui.TextColored(isStored(rec) and COL_ERR or COL_USABLE, esc(rec.Name or '?'));
     imgui.SameLine(nameCol + (nameW or 200));
     imgui.TextColored(COL_LEVEL, string.format('Lv%2d', rec.Level or 0));
     local ss = statSummary(rec, level);
@@ -1315,7 +1333,11 @@ local function renderPickRow(rec, ordinal, idPrefix, level)
     renderIcon(rec.Id, 18);
     local label = string.format('%s  Lv%d  %s%s##%s_%d',
         truncate(rec.Name or '?', 24), rec.Level or 0, statSummary(rec, level), qtyTag(rec), idPrefix, ordinal);
-    return imgui.Selectable(label, false);
+    local stored = isStored(rec) and ImGuiCol_Text ~= nil;
+    if stored then imgui.PushStyleColor(ImGuiCol_Text, COL_ERR); end
+    local clicked = imgui.Selectable(label, false);
+    if stored then imgui.PopStyleColor(1); end
+    return clicked;
 end
 
 -- Browse row (All Equipment tree): icon + Name + Level + stats in STATIC COLUMNS --
@@ -1327,7 +1349,8 @@ local function renderBrowseRow(rec, ordinal, job, level, nameW)
     imgui.BeginChild('##aeqrow_' .. tostring(rec.Id or ('n' .. ordinal)), { -1, 22 }, false);
     renderIcon(rec.Id, 18);
     local usable = isUsable(rec, job, level);
-    imgui.TextColored(usable and COL_USABLE or COL_LOCKED, esc(rec.Name or '?'));
+    local nameColr = isStored(rec) and COL_ERR or (usable and COL_USABLE or COL_LOCKED);
+    imgui.TextColored(nameColr, esc(rec.Name or '?'));
     local nameCol = 26 + (nameW or 200);               -- icon (18+6 pad) + name column
     imgui.SameLine(nameCol);
     imgui.TextColored(COL_LEVEL, string.format('Lv%2d', rec.Level or 0));
@@ -1714,9 +1737,9 @@ local function renderAllEquipTab(job, level)
         end
     end
 
-    imgui.TextColored(COL_DIM, string.format('Showing %d of %d  |  source: %s',
+    imgui.TextColored(COL_DIM, string.format('Showing %d of %d  |  source: %s  |  red = in storage (not equippable)',
         shown, #items, showAll and (hasCatalog and 'full catalog (catalog.lua)' or 'gear.lua (no catalog)')
-                              or 'gear you own (in your bags)'));
+                              or 'gear you own (anywhere)'));
     if not showAll then
         imgui.SameLine(0, 8);
         imgui.TextColored(COL_DIM, '-- tick "Show all" (top) to browse the full catalog.');
@@ -2419,7 +2442,8 @@ local function renderSetBuilder(job, level)
         for di, it in ipairs(disp) do
             local rec = it.rec;
             renderIcon(rec and rec.Id or nil, 18);
-            imgui.TextColored((rec ~= nil and rec == pickRec) and COL_SCORE or COL_USABLE,
+            imgui.TextColored((rec ~= nil and rec == pickRec) and COL_SCORE
+                or (isStored(rec) and COL_ERR or COL_USABLE),
                 esc((rec and rec.Name) or '?') .. qtyTag(rec));
             if rec ~= nil and imgui.IsItemHovered() then renderItemTooltip(rec); end
             imgui.SameLine(0, 8); imgui.TextColored(COL_LEVEL, 'Lv' .. tostring(rec and rec.Level or 0));
@@ -2735,6 +2759,8 @@ end
 ashita.events.register('d3d_present', 'dlac-gearui-render', function()
     frameCounter = frameCounter + 1;
     processCmdQueue();
+    if (frameCounter % 240) == 0 then _ownedCounts = nil; end   -- availability heartbeat (~4s):
+                                                                -- container moves recolour live
     pcall(loadUiFlags);
     pcall(autoSyncOnJobChange);
     if not M.visible or not hasImgui then return; end

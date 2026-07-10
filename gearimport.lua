@@ -39,10 +39,12 @@ local function decodeName(raw)
     return raw;
 end
 
--- Equip-eligible containers: Inventory (0) + the 8 Wardrobes (8, 10-16).
--- Gear sitting in Safe/Storage/Locker/Satchel can't be equipped by LuAshitacast,
--- so we don't document it here.
+-- Equip-eligible containers: Inventory (0) + the 8 Wardrobes (8, 10-16). This is the
+-- AVAILABILITY set -- gear in Safe/Storage/Locker/Satchel is owned but can't be
+-- equipped until moved here (the GUI shows such gear with a red name).
 M.SCAN_CONTAINERS = { 0, 8, 10, 11, 12, 13, 14, 15, 16 };
+local AVAIL_SET = {};
+for _, cid in ipairs(M.SCAN_CONTAINERS) do AVAIL_SET[cid] = true; end
 
 -- EVERY container that can hold your property -- the ownership truth for /dl prune:
 -- Inventory(0), Safe(1)/Safe2(9), Storage(2), Temporary(3), Locker(4), Satchel(5),
@@ -218,7 +220,8 @@ end
 -- record with an incremented .Count (this is how we'll later flag dual-wieldable
 -- weapons for the personal file).
 function M.scan(containers)
-    containers = containers or M.SCAN_CONTAINERS;
+    containers = containers or M.ALL_CONTAINERS;   -- gear.lua documents everything you OWN,
+                                                   -- wherever it lives; availability is display state
     local inv = AshitaCore:GetMemoryManager():GetInventory();
     if inv == nil then
         print('[dlac] scan: inventory manager unavailable.');
@@ -345,10 +348,18 @@ end
 -- Sets/Auto-build logic avoid assigning more copies of an item than you own -- e.g. a
 -- single Star Ring cannot fill both Ring1 and Ring2.
 function M.ownedCounts()
-    local counts = {};
+    return M.ownedSplit().avail;
+end
+
+-- One pass over EVERY container -> { total = {id->n}, avail = {id->n} }.
+--   total: owned anywhere (Safe/Storage/Locker/Satchel/... included) -- visibility.
+--   avail: Inventory + Wardrobes only -- equippability (pairing rules, automations,
+--          and the red "in storage" name colour when owned but 0 available).
+function M.ownedSplit()
+    local split = { total = {}, avail = {} };
     local inv = AshitaCore:GetMemoryManager():GetInventory();
-    if inv == nil then return counts; end
-    for _, cid in ipairs(M.SCAN_CONTAINERS) do
+    if inv == nil then return split; end
+    for _, cid in ipairs(M.ALL_CONTAINERS) do
         local maxCount = inv:GetContainerCountMax(cid);
         if maxCount ~= nil and maxCount > 0 then
             for idx = 0, maxCount, 1 do
@@ -356,12 +367,15 @@ function M.ownedCounts()
                 if entry ~= nil and entry.Id ~= nil and entry.Id ~= 0 and entry.Id ~= 65535 then
                     local n = entry.Count;
                     if n == nil or n < 1 then n = 1; end
-                    counts[entry.Id] = (counts[entry.Id] or 0) + n;
+                    split.total[entry.Id] = (split.total[entry.Id] or 0) + n;
+                    if AVAIL_SET[cid] then
+                        split.avail[entry.Id] = (split.avail[entry.Id] or 0) + n;
+                    end
                 end
             end
         end
     end
-    return counts;
+    return split;
 end
 
 function M.scanAndReport(containers)
