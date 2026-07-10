@@ -411,12 +411,21 @@ local function resolveVirtual(marker, ctx)
     end
     if mk == 'dlac:autoobi' then
         if el == nil then return nil, 'no element'; end
-        local o = (type(a.obi) == 'table') and a.obi[el] or nil;
+        -- Elemental obi for this element first; else the universal obi (Hachirin-no-obi
+        -- -- on CatsEyeXI the only obi). Both level-gated; the day/weather gate is
+        -- evaluated per cast for the SPELL's element either way.
         local nm, olvl = nil, nil;
+        local o = (type(a.obi) == 'table') and a.obi[el] or nil;
         if type(o) == 'table' and type(o.name) == 'string' then nm, olvl = o.name, o.level;
         elseif type(o) == 'string' then nm = o; end     -- legacy manifest: name only
-        if nm == nil then return nil, 'no ' .. el .. ' obi owned'; end
-        if not usableAt(olvl, lvl) then return nil, nm .. ' is above Lv' .. lvl; end
+        if nm ~= nil and not usableAt(olvl, lvl) then nm, olvl = nil, nil; end
+        if nm == nil then
+            local u = a.obiUniversal;
+            if type(u) == 'table' and type(u.name) == 'string' and usableAt(u.level, lvl) then
+                nm = u.name;
+            end
+        end
+        if nm == nil then return nil, 'no usable obi for ' .. el .. ' at Lv' .. lvl; end
         if netDayWeather(ctx) <= 0 then return nil, 'day/weather not positive'; end
         return nm;
     end

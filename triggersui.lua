@@ -230,6 +230,9 @@ local OBI = {
     Fire = 'Karin Obi', Ice = 'Hyorin Obi', Wind = 'Furin Obi', Earth = 'Dorin Obi',
     Thunder = 'Rairin Obi', Water = 'Suirin Obi', Light = 'Korin Obi', Dark = 'Anrin Obi',
 };
+-- Universal obi (all elements). On CatsEyeXI the eight elemental obis don't exist --
+-- Hachirin-no-obi is THE obi; the day/weather gate still applies per cast.
+local OBI_UNIVERSAL = { 'Hachirin-no-obi' };
 -- Universal Iridescence weapons (all elements) -> their tier. CatsEyeXI tiers:
 -- elemental staves carry Iridescence for THEIR element only (NQ +1 / HQ +2);
 -- these carry it for every element. Fallback list until the catalog carries the
@@ -295,6 +298,12 @@ local function autoCommit()
         local rec = ownedRec(u.name);
         if rec ~= nil then uni = u; uniLevel = rec.Level or 0; break; end
     end
+    -- Universal obi (Hachirin-no-obi): covers every element.
+    local obiUni, obiUniLevel = nil, 0;
+    for _, nm in ipairs(OBI_UNIVERSAL) do
+        local rec = ownedRec(nm);
+        if rec ~= nil then obiUni, obiUniLevel = rec.Name, rec.Level or 0; break; end
+    end
     local L = {
         '-- dlac automation manifest -- written by the GUI (Triggers tab > Automations).',
         '-- Tiered Iridescence: per-element staves (NQ +1 / HQ +2, own element only) and',
@@ -305,6 +314,9 @@ local function autoCommit()
         (uni ~= nil)
             and string.format('    universal = { name = %q, tier = %d, level = %d },', uni.name, uni.tier, uniLevel)
             or  '    universal = false,',
+        (obiUni ~= nil)
+            and string.format('    obiUniversal = { name = %q, level = %d },', obiUni, obiUniLevel)
+            or  '    obiUniversal = false,',
         '    staff = {',
     };
     for _, el in ipairs(ELEMENTS8) do
@@ -327,8 +339,9 @@ local function autoCommit()
     if writeFileText(p, table.concat(L, '\n')) then
         auto.data = nil; autoLoad();   -- re-read what we just wrote
         pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl triggers reload'); end);
-        auto.status = string.format('staves %d/8, obis %d/8%s -- saved, live now.', nStaff, nObi,
-            (uni ~= nil) and string.format(', universal: %s (Iridescence +%d)', uni.name, uni.tier) or '');
+        auto.status = string.format('staves %d/8, obis %d/8%s%s -- saved, live now.', nStaff, nObi,
+            (uni ~= nil) and string.format(', universal: %s (Iridescence +%d)', uni.name, uni.tier) or '',
+            (obiUni ~= nil) and (', obi: ' .. obiUni .. ' (all elements)') or '');
     else
         auto.status = 'could not write ' .. p;
     end
@@ -361,6 +374,9 @@ local function renderAutomations()
         uniTxt = string.format(', universal: %s (Iridescence +%d)', d.universal.name, tonumber(d.universal.tier) or 1);
     elseif type(d.iridescence) == 'string' then
         uniTxt = ', universal: ' .. d.iridescence .. ' (old manifest -- Rescan to pick up tiers)';
+    end
+    if type(d.obiUniversal) == 'table' and type(d.obiUniversal.name) == 'string' then
+        uniTxt = uniTxt .. ', obi: ' .. d.obiUniversal.name .. ' (all elements)';
     end
     imgui.TextColored(COL_DIM, string.format('detected: %d staves, %d obis%s',
         nkeys(d.staff), nkeys(d.obi), uniTxt));
