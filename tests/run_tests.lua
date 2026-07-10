@@ -46,6 +46,12 @@ local grip     = { Name = 'PoleGrip',      Level = 71, OneHanded = false, Type =
 local gsword2H = { Name = 'Ragnarok',      Level = 73, OneHanded = false, Type = 'Great Sword' };
 local twinKris = { Name = 'Kris',          Level = 71, OneHanded = true,  Type = 'Dagger', InBothHands = true };
 
+-- catalog-vocabulary records (imported gear: shields AND grips say Type="Sub";
+-- weapons carry a skill name + OneHanded)
+local catShield = { Name = 'Jennet Shield', Level = 38, Type = 'Sub' };
+local catGrip   = { Name = 'Ariesian Grip', Level = 60, Type = 'Sub' };
+local catAxe1H  = { Name = 'Kriegsbeil',    Level = 70, Type = 'Axe', OneHanded = true };
+
 -- ---------------------------------------------------------------------------
 -- A. subSlotAllowed -- the shared Sub-slot pairing rule
 --    builder (building=true): 1H off-hand allowed WITHOUT the DW trait;
@@ -67,6 +73,12 @@ if type(utils.subSlotAllowed) == 'function' then
     check('A10 same name: single copy',    f(dagger1H, dagger1H, { building = true, copies = 1 }), false);
     check('A11 no main -> no sub',         f(sword1H, nil,      { dw = true,  building = true  }), false);
     check('A12 2H sub weapon never',       f(gsword2H, dagger1H, { dw = true, building = true  }), false);
+    -- catalog vocabulary (imported gear.lua / catalog-enriched records)
+    check('A13 catalog shield on 1H main', f(catShield, catAxe1H, {                             }), true);
+    check('A14 catalog grip on 1H main',   f(catGrip,   catAxe1H, { dw = true, building = true  }), false);
+    check('A15 catalog grip on 2H main',   f(catGrip,   gsword2H, {                             }), true);
+    check('A16 catalog 1H weapon builds',  f(catAxe1H,  dagger1H, { building = true             }), true);
+    check('A17 classifySub exported',      type(utils.classifySub), 'function');
 end
 
 -- ---------------------------------------------------------------------------
@@ -103,6 +115,17 @@ check('C2 DW on: weapon offhand',  sDW.TP and sDW.TP.Sub,  'Joyeuse');
 AshitaCore = ashitaWithDW(false);
 local sNo = utils.BuildDynamicSets(freshSets());
 check('C3 no DW: shield fallback', sNo.TP and sNo.TP.Sub,  'GenbusShield');
+
+-- catalog-vocabulary records resolve the same way (Type="Sub" shield fallback)
+local function catSets()
+    return { Dynamic = { WS = { Main = { catAxe1H }, Sub = { catShield, sword1H } } } };
+end
+AshitaCore = ashitaWithDW(false);
+local sCat = utils.BuildDynamicSets(catSets());
+check('C4 no DW: catalog shield fallback', sCat.WS and sCat.WS.Sub, 'Jennet Shield');
+AshitaCore = ashitaWithDW(true);
+sCat = utils.BuildDynamicSets(catSets());
+check('C5 DW on: weapon beats catalog shield', sCat.WS and sCat.WS.Sub, 'Joyeuse');
 
 -- ---------------------------------------------------------------------------
 -- D. gearimport parser -- prune/fix/dedupe must see entries whose header line
@@ -142,6 +165,50 @@ check('D2 comment-header weapon entry seen', dSeen['Main.Sword.NotedSword'], tru
 check('D3 comment-header flat entry seen',   dSeen['Body.NotedBody'], true);
 check('D4 owned name still kept', select(3, gearimport.computePrune(fixtureGear,
     { { Name = 'Noted Body' }, { Name = 'Clean Sword' }, { Name = 'Noted Sword' }, { Name = 'Clean Body' } })), 0);
+
+-- ---------------------------------------------------------------------------
+-- E. computeFixes metadata backfill -- the equip-time engine reads RAW gear.lua,
+--    so /dl fix stamps Type / OneHanded from the catalog (weapons) and the
+--    Shield/Grip label (Sub items). Must be idempotent.
+-- ---------------------------------------------------------------------------
+local eGear = table.concat({
+    'gear = {',
+    '    Main = {',
+    '        Axe = {',
+    '            Kriegsbeil = {',
+    '                Name = "Kriegsbeil",',
+    '                Level = 70,',
+    '                Id = 17939,',
+    '            },',
+    '        },',
+    '    },',
+    '    Sub = {',
+    '        JennetShield = {',
+    '            Name = "Jennet Shield",',
+    '            Level = 38,',
+    '            Id = 12405,',
+    '        },',
+    '        AriesianGrip = {',
+    '            Name = "Ariesian Grip",',
+    '            Level = 60,',
+    '            Id = 19042,',
+    '        },',
+    '    },',
+    '};',
+}, '\n');
+local eMeta = {
+    [17939] = { Type = 'Axe', OneHanded = true },
+    [12405] = { Type = 'Sub' },
+    [19042] = { Type = 'Sub' },
+};
+local eText, eRep = gearimport.computeFixes(eGear, {}, eMeta);
+check('E1 weapon Type stamped',      eText:find('Type = "Axe"',     1, true) ~= nil, true);
+check('E2 weapon OneHanded stamped', eText:find('OneHanded = true', 1, true) ~= nil, true);
+check('E3 shield labeled Shield',    eText:find('Type = "Shield"',  1, true) ~= nil, true);
+check('E4 grip labeled by name',     eText:find('Type = "Grip"',    1, true) ~= nil, true);
+check('E5 result still parses',      (loadstring or load)(eText) ~= nil, true);
+local _, eRep2 = gearimport.computeFixes(eText, {}, eMeta);
+check('E6 idempotent second pass',   #eRep2.fixed, 0);
 
 -- ---------------------------------------------------------------------------
 -- verdict

@@ -165,6 +165,20 @@ function M.isDualWieldAvailable(mj, mjLevel, sj, sjLevel)
     return false;
 end
 
+-- Grip vs shield for a Sub-only record. Hand-authored gear.lua says Type="Grip" /
+-- "Shield"; the catalog labels BOTH just Type="Sub", so those classify by name --
+-- every grip/strap is named "* Grip" / "* Strap". nil = not a Sub-only item.
+function M.classifySub(rec)
+    local t = rec.Type;
+    if t == 'Grip' or t == 'Shield' then return t; end
+    if t == 'Sub' then
+        local n = string.lower(tostring(rec.Name or ''));
+        if n:find('grip', 1, true) ~= nil or n:find('strap', 1, true) ~= nil then return 'Grip'; end
+        return 'Shield';
+    end
+    return nil;
+end
+
 -- Sub-slot pairing rule, shared by the rebuild engine and the GUI set builder.
 --   2H main -> Grip only.  1H main -> Shield always; a 1H weapon when ctx.dw (the
 --   Dual Wield trait is up) OR ctx.building (composing a set -- a plan, not an
@@ -174,12 +188,14 @@ end
 function M.subSlotAllowed(subRec, mainRec, ctx)
     if type(subRec) ~= 'table' or type(mainRec) ~= 'table' then return false; end
     ctx = ctx or {};
+    local kind = M.classifySub(subRec);
     if mainRec.OneHanded == false then
-        return subRec.Type == 'Grip';
+        return kind == 'Grip';
     end
     if mainRec.OneHanded ~= true then return false; end
-    if subRec.Type == 'Shield' then return true; end
-    if subRec.OneHanded ~= true or subRec.Type == 'Grip' then return false; end
+    if kind == 'Shield' then return true; end
+    if kind ~= nil then return false; end                 -- a grip on a 1H main
+    if subRec.OneHanded ~= true then return false; end    -- 2H / metadata-less: no off-hand
     if ctx.dw ~= true and ctx.building ~= true then return false; end
     if subRec.Name == mainRec.Name then
         if subRec.InBothHands == true then return true; end

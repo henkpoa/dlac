@@ -313,14 +313,20 @@ local function enrichGearFromCatalog()
             if type(v) == 'table' then
                 if v.Id ~= nil and v.Name ~= nil then                       -- an item entry
                     local c = _allEquipById[v.Id];
-                    if c ~= nil and type(c.Stats) == 'table' and next(c.Stats) ~= nil then
-                        if type(v.Stats) ~= 'table' or next(v.Stats) == nil then
-                            v.Stats = c.Stats;
-                        else
-                            local m = {};
-                            for k, x in pairs(c.Stats) do m[k] = x; end
-                            for k, x in pairs(v.Stats) do m[k] = x; end
-                            v.Stats = m;
+                    if c ~= nil then
+                        -- Pairing metadata (Sub-slot rule): older imported gear.lua
+                        -- entries carry no Type / OneHanded -- take the catalog's.
+                        if v.Type == nil then v.Type = c.Type; end
+                        if v.OneHanded == nil then v.OneHanded = c.OneHanded; end
+                        if type(c.Stats) == 'table' and next(c.Stats) ~= nil then
+                            if type(v.Stats) ~= 'table' or next(v.Stats) == nil then
+                                v.Stats = c.Stats;
+                            else
+                                local m = {};
+                                for k, x in pairs(c.Stats) do m[k] = x; end
+                                for k, x in pairs(v.Stats) do m[k] = x; end
+                                v.Stats = m;
+                            end
                         end
                     end
                 else                                                        -- a slot/category table
@@ -692,6 +698,19 @@ local function candidatesForSlot(gearSlotKey, job, level)
     return out;
 end
 
+-- Sub-slot candidate pool: the native Sub records (shields / grips) PLUS the 1H
+-- records that live under Main -- off-hand weapons are Main-slot items in
+-- gear.lua, so a plain candidatesForSlot('Sub') can never offer them.
+-- subFilter applies the pairing rule on top.
+local function subCandidatePool(job, level)
+    local pool = {};
+    for _, r in ipairs(candidatesForSlot('Sub', job, level)) do pool[#pool + 1] = r; end
+    for _, r in ipairs(candidatesForSlot('Main', job, level)) do
+        if r.OneHanded == true then pool[#pool + 1] = r; end
+    end
+    return pool;
+end
+
 -- ---------------------------------------------------------------------------
 -- Worn-set stat totals (our data only): sum the Stats of the 16 equipped items.
 -- ---------------------------------------------------------------------------
@@ -883,11 +902,20 @@ local function subCandidateOk(subRec, mainRec, mainJob, mainLevel, subJob, subLe
         end);
         if pok and type(r) == 'boolean' then return r; end
     end
-    -- fallback mirror of utils.subSlotAllowed
-    if mainRec.OneHanded == false then return subRec.Type == 'Grip'; end
+    -- fallback mirror of utils.subSlotAllowed (incl. classifySub: the catalog
+    -- labels shields AND grips Type="Sub"; grips/straps are all named that way)
+    local kind = subRec.Type;
+    if kind == 'Sub' then
+        local n = string.lower(tostring(subRec.Name or ''));
+        kind = (n:find('grip', 1, true) ~= nil or n:find('strap', 1, true) ~= nil) and 'Grip' or 'Shield';
+    elseif kind ~= 'Grip' and kind ~= 'Shield' then
+        kind = nil;   -- a weapon type ('Sword', 'Axe', ...) or no metadata
+    end
+    if mainRec.OneHanded == false then return kind == 'Grip'; end
     if mainRec.OneHanded ~= true then return false; end
-    if subRec.Type == 'Shield' then return true; end
-    if subRec.OneHanded ~= true or subRec.Type == 'Grip' then return false; end
+    if kind == 'Shield' then return true; end
+    if kind ~= nil then return false; end
+    if subRec.OneHanded ~= true then return false; end
     if dw ~= true and building ~= true then return false; end
     if subRec.Name == mainRec.Name then
         if subRec.InBothHands == true then return true; end
@@ -1693,9 +1721,10 @@ local function renderEquippedTab(job, level)
             imgui.TextColored(COL_DIM, '(nothing equipped in this slot)');
         end
 
-        -- Candidates (Sub filtered by the equipped Main), then display-sorted.
+        -- Candidates (Sub: shields/grips + 1H weapons, filtered by the equipped
+        -- Main -- equip-now, so the DW gate applies), then display-sorted.
         local mainRec = lookupById(getEquippedId(0x00));
-        local alts = candidatesForSlot(gearKey, job, level);
+        local alts = (gearKey == 'Sub') and subCandidatePool(job, level) or candidatesForSlot(gearKey, job, level);
         if gearKey == 'Sub' then alts = subFilter(alts, mainRec, job, level); end
         alts = sortForDisplay(alts);
 
@@ -2133,10 +2162,12 @@ local function autoBuild(job, level)
             goto continue;
         end
         local cands = candidatesForSlot(sl.gear, job, useLevel);   -- already job+level filtered
-        -- Sub: keep only picks legal with the Main we already built (Main precedes Sub).
+        -- Sub: full pool (shields/grips + 1H weapons), then keep only picks legal
+        -- with the Main we already built (Main precedes Sub). Equip-correct: the
+        -- auto-build answers "best usable now", so the DW gate applies.
         if sl.gear == 'Sub' then
             local mp = bestByLevel(built['Main'], useLevel);
-            cands = subFilter(cands, mp and mp.rec or nil, job, useLevel);
+            cands = subFilter(subCandidatePool(job, useLevel), mp and mp.rec or nil, job, useLevel);
         end
         -- Paired slot (Ring2<-Ring1, Ear2<-Ear1): drop single-copy Ids the pair already uses.
         local other = PAIR_OF[sl.label];
@@ -2387,9 +2418,10 @@ local function renderAddPopup(job, level)
         local cands = candidatesForSlot(gearKey, job, useLevel);
         if gearKey == 'Sub' then
             local mp = bestByLevel(M.working['Main'], useLevel);
-            -- building=true: sets are plans -- a 1H off-hand is addable without the
-            -- DW trait; BuildDynamicSets decides at equip time (shield = fallback).
-            cands = subFilter(cands, mp and mp.rec or nil, job, useLevel, true);
+            -- Full pool (shields/grips + 1H weapons) with building=true: sets are
+            -- plans -- a 1H off-hand is addable without the DW trait;
+            -- BuildDynamicSets decides at equip time (shield = fallback).
+            cands = subFilter(subCandidatePool(job, useLevel), mp and mp.rec or nil, job, useLevel, true);
         end
         local blocked = pairedBlockedIds(ui.setSelected, true);
         cands = sortForDisplay(cands);
