@@ -248,6 +248,11 @@ not in the public repo (live-DB customization; see Open questions).
   client design below auto-adapts either way via `MogZoneFlag` (C.3).
 - What works in Provenance today: Inventory ↔ Satchel/Sack/Case/Wardrobes 1-8.
 
+**Superseded by the live probe (F.6):** the live DB *does* carry `MISC_MOGMENU` in
+Provenance (`MogZoneFlag == 1` observed on zone-in; native Safe ↔ Inventory moves
+succeeded there). The repo analysis above stays as the public-branch baseline;
+the runtime gate reads the live flag and needs no special-casing.
+
 ---
 
 ## C. "Am I allowed right now?" — client-side detection
@@ -297,8 +302,9 @@ packet.MogZoneFlag = PChar->loc.zone->CanUseMisc(MISC_MOGMENU); // flag allows M
 This is **the exact predicate the 0x029 validator uses** for Safe/Safe2/Locker access.
 Reading it from the zone-in packet means dlac mirrors the *live* server configuration:
 if CatsEyeXI ever adds `MISC_MOGMENU` to Provenance, Safe/Safe2/Locker light up
-automatically without a dlac change — and Storage still never does. Today this byte is
-0 in Provenance. Until a 0x00A has been observed after addon load, treat it as 0
+automatically without a dlac change — and Storage still never does. The public repo
+predicts 0 for Provenance, but the live probe (F.6) observed **1** — the live DB
+already has the flag. Until a 0x00A has been observed after addon load, treat it as 0
 (conservative).
 
 ### C.4 Zone id for Provenance
@@ -564,6 +570,37 @@ in-game. Protocol — no packets injected, observation only:
 Nothing from this probe gets hardcoded: the runtime gate reads `MogZoneFlag` per
 zone-in, so a later server-side change to Provenance is absorbed automatically.
 
+### F.6 Probe RESULTS (2026-07-10, live server, observation-only `dlacprobe` addon)
+
+Henrik ran the F.5 protocol in Provenance. Every prediction that mattered was
+testable, and one diverged — in the permissive direction:
+
+1. **`MogZoneFlag == 1` in live Provenance** (0x00A on zone-in; `LoginState == 2`,
+   i.e. not-MH, as expected). The live DB already carries `MISC_MOGMENU` — it
+   diverges from *all* public branches (`misc = 4096`, B.5). The "suggested
+   server-side ask" below is therefore already in effect. First branch of the F.5
+   interpretation matrix applies: the `MISC_MOGMENU` column of B.4 governs live
+   Provenance and the C.3 gate needs zero code changes.
+2. **The hub moogle is a real NPC named "Nomad Moogle"** using the plain
+   `sendMenu(MOOGLE)` path: outgoing 0x01A Talk answered within ~130 ms by s2c
+   0x02E + 0x052 EVENTUCOFF, and **no** 0x032/0x033/0x034 event packets — F.4's
+   "the moogle menu is not an event" conclusion confirmed on the live server.
+3. **Storage was NOT offered** in the moogle menu (Safe, Safe 2, Locker, Satchel,
+   Sack, Case, and all Wardrobes were). INV-2's model holds live.
+4. **Two native moves executed in Provenance, Mog Safe[5] → Inventory and back**
+   (Shk. Chest Key, id 1032). Outgoing 0x029 matched A.1 byte-for-byte (native
+   client sent `toSlot 0x52`), and each move was confirmed in ~150 ms by exactly
+   the D.2 success signature: 0x020 source-cleared + 0x020 destination + 0x01D.
+5. Log detail worth keeping: at 0x00A processing time the memory zone id still
+   read the *previous* zone — on zone-in, trust the packet, not memory (as C.2
+   anticipated). Also observed: ~900 item-update packets flood a zone-in,
+   validating the probe's watch-window suppression and INV-5's insistence on
+   correlating confirmations to a specific in-flight move.
+
+Bottom line: **Safe/Safe 2/Locker moves are live-legal at the Provenance hub
+today**; Storage remains MH-only exactly as required; the packet layout, the
+confirmation signature, and the gate signal are all field-verified.
+
 ---
 
 ## Proposed design
@@ -584,7 +621,8 @@ zone-in, so a later server-side change to Provenance is absorbed automatically.
     Wardrobes when `GetContainerCountMax(id) > 0`.
   - 1 Safe, 9 Safe 2, 4 Locker: legal iff `inMogHouse()` OR `MogZoneFlag == 1`
     observed in the current zone's 0x00A (C.3). Unobserved ⇒ 0 ⇒ not offered.
-    (Today in Provenance: not offered.)
+    (Live probe F.6: Provenance broadcasts `MogZoneFlag == 1`, so these ARE
+    offered there.)
   - 2 Storage: INV-2. 3 Temporary and 17 Recycle Bin: never offered.
   - Both source and destination must pass; wardrobe destinations only for
     equipment/weapons (always true for dlac's gear UI — assert anyway).
@@ -650,6 +688,10 @@ server may have rejected it") and re-scan.
 
 ### Suggested server-side ask (optional, for Henrik → CatsEyeXI)
 
+**Already in effect on the live server** — the F.6 probe observed
+`MogZoneFlag == 1` in Provenance, so the live DB already includes `MISC_MOGMENU`
+(this section predates the probe; kept for context). Original suggestion:
+
 One-line change: `zone_settings.misc` for zone 222 from 4096 to **4128** (adds
 `MISC_MOGMENU 0x0020`). Effect: Safe/Safe 2/Locker become movable at the Provenance
 moogle *by the server's own retail-accurate rules*, Storage remains Mog-House-only
@@ -669,15 +711,16 @@ addon changes. Side effects to review: the flag also enables the client's native
    validation at all** (and read quantity as u8). If production were that old, the
    server would honor e.g. Storage-in-Provenance — which is exactly why INV-7
    exists: dlac's gates never depend on server rejection. `MogZoneFlag` (C.3) also
-   reads whatever the *live* server actually has configured.
-2. **Live Provenance customization.** Henrik reports custom hub NPCs (Crystal
-   Warriors) that are absent from the public repo — live DB/scripts evidently
-   diverge. The public repo's `misc=4096` (no MOGMENU) is therefore *probably* but
-   not *certainly* the live value, and the custom hub moogle's mechanism
-   (`sendMenu(MOOGLE)` vs a custom event) is unknown. **Resolved into an
-   executable plan:** run the F.5 probe protocol once before implementation; the
-   runtime gate reads `MogZoneFlag` per zone-in either way, so nothing is
-   hardcoded on the outcome.
+   reads whatever the *live* server actually has configured. *Partly reassured by
+   F.6:* the live server broadcasts `MogZoneFlag` (modern 0x00A builder) and
+   produced the modern D.2 confirmation signature — consistent with the validated
+   handler lineage. INV-7 stands regardless.
+2. ~~**Live Provenance customization.**~~ **RESOLVED by the F.6 probe:** live
+   Provenance has `MISC_MOGMENU` (`MogZoneFlag == 1`, diverging from the public
+   repo's `misc=4096`); the hub moogle is a plain `sendMenu(MOOGLE)` NPC (0x02E +
+   0x052, no event packets); Safe ↔ Inventory moves succeed there natively;
+   Storage is not offered. The runtime gate reads `MogZoneFlag` per zone-in, so
+   nothing is hardcoded on this either way.
 3. **Safe 2 unlock visibility.** The server gates Safe 2 on `mhflag & 0x20` (MH 2F),
    which the client cannot read directly. Unverified whether
    `GetContainerCountMax(9)` is 0 until 2F is unlocked. Mitigation: offer Safe 2
