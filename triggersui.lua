@@ -91,9 +91,15 @@ local trig = {
     addFor = nil, addConds = {}, _addDef = 1, _addValSel = nil,
     addValText = { '' }, addSet = nil, addPrio = { 0 }, _openAdd = false,
     editIdx = nil, _editEquip = nil,   -- rule-builder edit mode (replace in place)
-    modeName = { '' }, modeSet = nil, modeValues = { '' }, modeBind = { '' },
+    _openModePopup = false,
     _prioBuf = {},
     _modeState = {}, _modeStateAt = -1,
+};
+
+-- Mode builder popup state (create or edit one mode: toggle / cycle, values, bind).
+local modeUI = {
+    name = { '' }, kind = 'toggle', values = {}, valInput = { '' },
+    bind = { '' }, set = nil, editing = nil,
 };
 
 local function trigFilePath()
@@ -412,6 +418,134 @@ local function renderAutomations()
         nkeys(d.staff), nkeys(d.obi), uniTxt));
 end
 
+-- ---------------------------------------------------------------------------
+-- Mode builder popup: create/edit one mode with labelled fields -- toggle vs
+-- cycle chosen explicitly, cycle values added ONE AT A TIME into a visible,
+-- removable ordered list (no comma strings).
+-- ---------------------------------------------------------------------------
+local function openModeEditor(m, def)
+    modeUI.editing = m;
+    modeUI.name[1] = m;
+    modeUI.bind[1] = (def ~= nil and def.bind ~= nil) and def.bind or '';
+    modeUI.set = nil;
+    modeUI.valInput[1] = '';
+    modeUI.values = {};
+    if def ~= nil and def.values ~= nil then
+        modeUI.kind = 'cycle';
+        for _, v in ipairs(def.values) do modeUI.values[#modeUI.values + 1] = v; end
+    else
+        modeUI.kind = 'toggle';
+    end
+    trig._openModePopup = true;
+end
+
+local function renderModePopup()
+    if not imgui.BeginPopup('##dlac_modeadd') then return; end
+    local editing = (modeUI.editing ~= nil);
+    imgui.TextColored(COL_HEADER, editing and ('Edit mode: ' .. modeUI.editing) or 'New mode');
+    imgui.Separator();
+
+    if not editing then
+        imgui.TextColored(COL_DIM, 'Name'); imgui.SameLine(0, 8);
+        imgui.PushItemWidth(140); imgui.InputText('##modenm', modeUI.name, 24); imgui.PopItemWidth();
+        if imgui.IsItemHovered() then imgui.SetTooltip('e.g. DT, TH, Weapon, IdleSet'); end
+
+        -- kind chooser: two buttons, the active one highlighted (works on every binding).
+        imgui.TextColored(COL_DIM, 'Kind'); imgui.SameLine(0, 8);
+        local styled = (ImGuiCol_Button ~= nil);
+        local function kindBtn(label, kind)
+            if styled then
+                local on = (modeUI.kind == kind);
+                imgui.PushStyleColor(ImGuiCol_Button, on and { 0.20, 0.42, 0.58, 1.0 } or { 0.30, 0.30, 0.34, 1.0 });
+            end
+            if imgui.Button(label, { 0, 0 }) then modeUI.kind = kind; end
+            if styled then imgui.PopStyleColor(1); end
+        end
+        kindBtn('Toggle (on / off)##modekt', 'toggle');
+        imgui.SameLine(0, 6);
+        kindBtn('Cycle (list of values)##modekc', 'cycle');
+    end
+
+    if modeUI.kind == 'cycle' then
+        imgui.TextColored(COL_DIM, 'Values -- the button cycles them in this order:');
+        local removeAt = nil;
+        for i, v in ipairs(modeUI.values) do
+            imgui.TextColored(COL_USABLE, string.format('   %d.  %s', i, esc(v)));
+            imgui.SameLine(0, 10);
+            if imgui.SmallButton('x##modevx' .. i) then removeAt = i; end
+        end
+        if removeAt ~= nil then table.remove(modeUI.values, removeAt); end
+        imgui.PushItemWidth(140); imgui.InputText('##modevin', modeUI.valInput, 32); imgui.PopItemWidth();
+        imgui.SameLine(0, 4);
+        if imgui.Button('+ value##modevadd', { 0, 0 }) then
+            local v = modeUI.valInput[1];
+            if v ~= nil and v ~= '' then
+                modeUI.values[#modeUI.values + 1] = v;
+                modeUI.valInput[1] = '';
+            end
+        end
+        if imgui.IsItemHovered() then imgui.SetTooltip('Type one value (e.g. Caster) and click + value. Repeat for each.'); end
+    else
+        imgui.TextColored(COL_DIM, 'Overlay set (optional)'); imgui.SameLine(0, 8);
+        imgui.PushItemWidth(150);
+        if imgui.BeginCombo('##modeset', modeUI.set or '(none)') then
+            if imgui.Selectable('(none)##modesetnone', modeUI.set == nil) then modeUI.set = nil; end
+            for _, nm in ipairs(allSetNames()) do
+                if imgui.Selectable(nm .. '##modeso', modeUI.set == nm) then modeUI.set = nm; end
+            end
+            imgui.EndCombo();
+        end
+        imgui.PopItemWidth();
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Creates the rule "mode = <name> -> this set" (priority 100) for you --\nthe classic DT-style overlay. Leave (none) to wire rules yourself.');
+        end
+    end
+
+    imgui.TextColored(COL_DIM, 'Keybind (optional)'); imgui.SameLine(0, 8);
+    imgui.PushItemWidth(70); imgui.InputText('##modebind', modeUI.bind, 16); imgui.PopItemWidth();
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('e.g. F9, ^F3 (Ctrl+F3), !F3 (Alt+F3). Applied automatically at\nprofile load -- no OnLoad code needed.');
+    end
+    imgui.Separator();
+
+    local nm = editing and modeUI.editing or modeUI.name[1];
+    local can = (nm ~= nil and nm ~= '') and (modeUI.kind == 'toggle' or #modeUI.values >= 2);
+    if imgui.Button((editing and 'Save mode' or 'Create mode') .. '###modego', { 0, 0 }) and can then
+        local bind = (modeUI.bind[1] ~= nil and modeUI.bind[1] ~= '') and modeUI.bind[1] or nil;
+        trig.data.Modes = trig.data.Modes or {};
+        if modeUI.kind == 'cycle' then
+            trig.data.Modes[nm] = { values = modeUI.values, bind = bind };
+            trigSetStatus(string.format('Cycle mode "%s": wire values with the rule condition  mode = %s:<value>,  then Commit.', nm, nm), false);
+        else
+            if bind ~= nil then trig.data.Modes[nm] = { bind = bind };
+            else trig.data.Modes[nm] = nil; end        -- toggle without a bind needs no definition
+            if not editing and modeUI.set ~= nil then
+                trig.data.Default = trig.data.Default or {};
+                table.insert(trig.data.Default, { when = { mode = nm }, set = modeUI.set });
+            end
+        end
+        trig.dirty = true;
+        modeUI.editing = nil;
+        imgui.CloseCurrentPopup();
+    end
+    if not can then
+        imgui.TextColored(COL_DIM, (modeUI.kind == 'cycle')
+            and 'Needs a name and at least two values.' or 'Needs a name.');
+    end
+    if editing then
+        imgui.SameLine(0, 12);
+        if imgui.Button('Delete mode###modedel', { 0, 0 }) then
+            if trig.data.Modes ~= nil then trig.data.Modes[modeUI.editing] = nil; end
+            trig.dirty = true;
+            trigSetStatus('Mode definition removed. Rules referencing it remain -- remove them separately if unused.', false);
+            modeUI.editing = nil;
+            imgui.CloseCurrentPopup();
+        end
+        if imgui.IsItemHovered() then imgui.SetTooltip('Removes the definition (values/keybind). Rules that reference the mode stay.'); end
+    end
+    imgui.EndPopup();
+end
+
 -- One rule row: [x][edit] condition -> set-dropdown  prio [n] [auto].
 -- Returns 'remove' / 'edit' / nil.
 local function renderTrigRuleRow(h, i, r, setNames)
@@ -666,6 +800,9 @@ function M.render(job, level)
                     .. ((def.bind ~= nil) and ('\nBound to ' .. def.bind) or '')
                     .. '\nMatch a value in rules with the condition  mode = ' .. m .. ':<value>');
             end
+            imgui.SameLine(0, 2);
+            if imgui.SmallButton('e##trgmedit_' .. m) then openModeEditor(m, def); end
+            if imgui.IsItemHovered() then imgui.SetTooltip('Edit this mode (values / keybind / delete).'); end
         else                                                   -- toggle mode
             local on = (cur ~= nil);
             if styled then
@@ -680,63 +817,20 @@ function M.render(job, level)
                 imgui.SetTooltip('Toggle this mode (also macro-able: /dl mode ' .. m .. ').'
                     .. ((def ~= nil and def.bind ~= nil) and ('\nBound to ' .. def.bind) or ''));
             end
+            imgui.SameLine(0, 2);
+            if imgui.SmallButton('e##trgmedit_' .. m) then openModeEditor(m, def); end
+            if imgui.IsItemHovered() then imgui.SetTooltip('Edit this mode (keybind / delete definition).'); end
         end
     end
-    -- New-mode row: name [+ values -> cycle] [+ bind] [+ set -> quick toggle rule].
+    -- One clearly-labelled entry point; the details live in the mode builder popup.
     imgui.SameLine(0, 14);
-    imgui.PushItemWidth(72); imgui.InputText('##trgnewmode', trig.modeName, 24); imgui.PopItemWidth();
-    if imgui.IsItemHovered() then imgui.SetTooltip('Mode name, e.g. DT or Weapon.'); end
-    imgui.SameLine(0, 3);
-    imgui.PushItemWidth(150); imgui.InputText('##trgmodevals', trig.modeValues, 128); imgui.PopItemWidth();
-    if imgui.IsItemHovered() then
-        imgui.SetTooltip('OPTIONAL values -> makes it a CYCLE mode. Comma-separated, e.g.\nCaster, SoloKC, DualKC. The button then cycles them; match one in a\nrule with  mode = Weapon:SoloKC.');
-    end
-    imgui.SameLine(0, 3);
-    imgui.PushItemWidth(48); imgui.InputText('##trgmodebind', trig.modeBind, 16); imgui.PopItemWidth();
-    if imgui.IsItemHovered() then
-        imgui.SetTooltip('OPTIONAL keybind, e.g. F9 or ^F3 (Ctrl+F3) or !F3 (Alt+F3).\nApplied automatically when the profile loads -- no OnLoad code.');
-    end
-    imgui.SameLine(0, 3);
-    imgui.PushItemWidth(120);
-    if imgui.BeginCombo('##trgnewmodeset', trig.modeSet or '(set)') then
-        for _, nm in ipairs(allSetNames()) do
-            if imgui.Selectable(nm .. '##trgnms', trig.modeSet == nm) then trig.modeSet = nm; end
-        end
-        imgui.EndCombo();
-    end
-    imgui.PopItemWidth();
-    if imgui.IsItemHovered() then imgui.SetTooltip('For a TOGGLE mode: the set it overlays (creates the rule for you).\nCycle modes skip this -- add per-value rules in the sections below.'); end
-    imgui.SameLine(0, 3);
-    if imgui.Button('+ Mode##trgaddmode', { 0, 22 }) then
-        local nm = trig.modeName[1];
-        if nm ~= nil and nm ~= '' then
-            local vals = {};
-            for piece in string.gmatch(trig.modeValues[1] or '', '[^,]+') do
-                local v = piece:gsub('^%s+', ''):gsub('%s+$', '');
-                if v ~= '' then vals[#vals + 1] = v; end
-            end
-            local bind = (trig.modeBind[1] ~= nil and trig.modeBind[1] ~= '') and trig.modeBind[1] or nil;
-            if #vals > 0 or bind ~= nil then
-                trig.data.Modes = trig.data.Modes or {};
-                local e = trig.data.Modes[nm] or {};
-                if #vals > 0 then e.values = vals; end
-                if bind ~= nil then e.bind = bind; end
-                trig.data.Modes[nm] = e;
-                trig.dirty = true;
-            end
-            if #vals == 0 and trig.modeSet ~= nil then         -- classic toggle + its overlay rule
-                trig.data.Default = trig.data.Default or {};
-                table.insert(trig.data.Default, { when = { mode = nm }, set = trig.modeSet });
-                trig.dirty = true;
-            end
-            if #vals > 0 then
-                trigSetStatus(string.format('Cycle mode "%s" defined (%d values). Add rules with condition  mode = %s:<value>,  then Commit.', nm, #vals, nm), false);
-            end
-            trig.modeName[1] = ''; trig.modeValues[1] = ''; trig.modeBind[1] = ''; trig.modeSet = nil;
-        end
+    if imgui.Button('+ Mode...##trgaddmode', { 0, 22 }) then
+        modeUI.name[1] = ''; modeUI.kind = 'toggle'; modeUI.values = {};
+        modeUI.valInput[1] = ''; modeUI.bind[1] = ''; modeUI.set = nil; modeUI.editing = nil;
+        trig._openModePopup = true;
     end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Name only + set = toggle mode with its overlay rule (priority 100).\nName + values = cycle mode (like weapon-set lists). Bind is optional for both.\nCommit to make it live.');
+        imgui.SetTooltip('Create a mode: a simple ON/OFF toggle, or a cycle list (weapon sets etc.).\nClick the small "e" next to an existing mode to edit or delete it.');
     end
     imgui.Separator();
 
@@ -786,6 +880,8 @@ function M.render(job, level)
 
     if trig._openAdd then imgui.OpenPopup('##dlac_trigadd'); trig._openAdd = false; end
     renderTrigAddPopup();
+    if trig._openModePopup then imgui.OpenPopup('##dlac_modeadd'); trig._openModePopup = false; end
+    renderModePopup();
 end
 
 return M;
