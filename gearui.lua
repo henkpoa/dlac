@@ -374,36 +374,13 @@ local function lookupByName(name)
 end
 
 -- ---------------------------------------------------------------------------
--- Small display / eligibility helpers.
+-- Small display / eligibility helpers. The display formatters (esc/truncate/
+-- textWrapped/sortedKeys/jobsText/statSummary/fullStatList/qtyTag/nameWidthOf)
+-- live in dlac\\gearfmt.lua (the 200-local cap again); the eligibility helpers
+-- stay here. gearfmt's live deps (effStats, ownedCounts) are injected further
+-- down, once ownedCounts has its definition.
 -- ---------------------------------------------------------------------------
-local function esc(s) return (tostring(s):gsub('%%', '%%%%')); end
-
-local function truncate(s, n)
-    s = tostring(s or '');
-    if #s <= n then return s; end
-    return s:sub(1, n - 2) .. '..';
-end
-
--- TextColored that wraps at the window edge instead of clipping off-screen.
--- For standalone status/instruction lines only -- not for text in SameLine rows.
-local function textWrapped(col, s)
-    imgui.PushTextWrapPos(0.0);
-    imgui.TextColored(col, s);
-    imgui.PopTextWrapPos();
-end
-
-local function sortedKeys(t)
-    local ks = {};
-    for k in pairs(t) do ks[#ks + 1] = k; end
-    table.sort(ks);
-    return ks;
-end
-
-local function jobsText(jobs)
-    if jobs == nil then return 'All'; end
-    if type(jobs) ~= 'table' or #jobs == 0 then return 'All'; end
-    return table.concat(jobs, '/');
-end
+local fmt = require("dlac\\gearfmt");
 
 -- Eligibility (the single source of truth for every candidate / alternatives /
 -- "usable now" list): Jobs contains the current MAIN or SUPPORT job -- or Jobs is
@@ -455,66 +432,6 @@ end
 local function isUsable(rec, playerJob, playerLevel)
     if (rec.Level or 0) > (playerLevel or 0) then return false; end
     return jobCanEquip(rec.Jobs, playerJob, (getSubInfo()));
-end
-
-local function fmtStat(k, v)
-    if type(v) == 'boolean' then return k; end
-    if type(v) == 'number' then return k .. ((v >= 0) and '+' or '') .. tostring(v); end
-    return k .. ':' .. tostring(v);
-end
-
--- Priority order for compact summaries / totals; anything else comes after, alpha.
-local STAT_PRIORITY = {
-    'DMG', 'Delay', 'DEF', 'HP', 'MP', 'Accuracy', 'Attack', 'Haste',
-    'MATK', 'MagicAttack', 'RangedAccuracy', 'STR', 'DEX', 'VIT', 'AGI',
-    'INT', 'MND', 'CHR', 'Evasion', 'Enmity', 'StoreTP',
-};
-
--- Compact (<=4 token) stat line for rows. Memoized on the record (per level, so
--- level-scaled items re-render when the character's level changes).
-local function statSummary(rec, level)
-    local lvlKey = level or -1;
-    if rec._statStr ~= nil and rec._statLvl == lvlKey then return rec._statStr; end
-    local stats, out = effStats(rec, level), '';
-    if type(stats) == 'table' then
-        local parts, used = {}, {};
-        for _, k in ipairs(STAT_PRIORITY) do
-            local v = stats[k];
-            if v ~= nil and type(v) ~= 'table' then
-                parts[#parts + 1] = fmtStat(k, v); used[k] = true;
-                if #parts >= 4 then break; end
-            end
-        end
-        if #parts < 4 then
-            for k, v in pairs(stats) do
-                if not used[k] and type(k) == 'string' and type(v) ~= 'table' then
-                    parts[#parts + 1] = fmtStat(k, v);
-                    if #parts >= 4 then break; end
-                end
-            end
-        end
-        out = table.concat(parts, ' ');
-    end
-    rec._statStr, rec._statLvl = out, lvlKey;
-    return out;
-end
-
--- Full stat line for the tooltip (all stats, priority first, DMG/Delay & Pet omitted).
-local function fullStatList(stats)
-    if type(stats) ~= 'table' then return ''; end
-    local parts, used = {}, {};
-    for _, k in ipairs(STAT_PRIORITY) do
-        local v = stats[k];
-        if v ~= nil and type(v) ~= 'table' and k ~= 'DMG' and k ~= 'Delay' then
-            parts[#parts + 1] = fmtStat(k, v); used[k] = true;
-        end
-    end
-    for k, v in pairs(stats) do
-        if type(k) == 'string' and not used[k] and type(v) ~= 'table' and k ~= 'DMG' and k ~= 'Delay' then
-            parts[#parts + 1] = fmtStat(k, v);
-        end
-    end
-    return table.concat(parts, ' ');
 end
 
 -- ---------------------------------------------------------------------------
@@ -840,6 +757,11 @@ function ownedTotals()   -- owned-ANYWHERE map (visibility)
 end
 local function refreshOwnedCounts() _ownedCounts = nil; _ownedAug = nil; _ownedAugStats = nil; invalidateCandidates(); end
 
+-- gearfmt's live deps: effStats is defined up top, but ownedCounts is a forward-
+-- declared local that only just got its function -- configuring any earlier would
+-- capture nil (this file's classic lexical-scoping trap).
+fmt.configure({ effStats = effStats, ownedCounts = ownedCounts });
+
 -- Re-read <char>\dlac\gear.lua and rebuild the owned view after a Commit, so the GUI
 -- reflects newly-imported gear WITHOUT an addon reload. Mutates the shared `gear` table in
 -- place (so every capture sees the new data) and drops the owned caches -- buildOwned then
@@ -977,9 +899,9 @@ end
 local function renderItemTooltip(rec)
     imgui.BeginTooltip();
     pcall(function()
-        imgui.TextColored(COL_HEADER, esc(rec.Name or '?'));
+        imgui.TextColored(COL_HEADER, fmt.esc(rec.Name or '?'));
         local typeStr = rec.Type or rec.Category or rec.Slot;
-        if typeStr ~= nil then imgui.TextColored(COL_DIM, '(' .. esc(tostring(typeStr)) .. ')'); end
+        if typeStr ~= nil then imgui.TextColored(COL_DIM, '(' .. fmt.esc(tostring(typeStr)) .. ')'); end
         local _, _lvl = getPlayerInfo();
         local stats = effStats(rec, _lvl);
         if hasLScale and rec.Id ~= nil and lscale.has(rec.Id) then
@@ -988,9 +910,9 @@ local function renderItemTooltip(rec)
         if type(stats) == 'table' and type(stats.DMG) == 'number' and type(stats.Delay) == 'number' then
             imgui.TextColored(COL_DMG, string.format('DMG:%s Delay:%s', tostring(stats.DMG), tostring(stats.Delay)));
         end
-        local sl = fullStatList(stats);
-        if sl ~= '' then imgui.TextColored(COL_STATS, esc(sl)); end
-        local jt = jobsText(rec.Jobs);
+        local sl = fmt.fullStatList(stats);
+        if sl ~= '' then imgui.TextColored(COL_STATS, fmt.esc(sl)); end
+        local jt = fmt.jobsText(rec.Jobs);
         if jt == 'All' then jt = 'All Jobs'; end
         imgui.TextColored(COL_JOBS, string.format('Lv.%s %s', tostring(rec.Level or 0), jt));
         -- WHERE the item lives (every owned copy): red when only in storage, dim when
@@ -1011,10 +933,10 @@ local function renderItemTooltip(rec)
                     locs = table.concat(parts, ', ');
                 end);
                 if isStored(rec) then
-                    imgui.TextColored(COL_ERR, 'IN STORAGE: ' .. esc((locs ~= '') and locs or '?')
+                    imgui.TextColored(COL_ERR, 'IN STORAGE: ' .. fmt.esc((locs ~= '') and locs or '?')
                         .. '  (move to Inventory/Wardrobe to equip)');
                 elseif locs ~= '' then
-                    imgui.TextColored(COL_DIM, 'Held: ' .. esc(locs));
+                    imgui.TextColored(COL_DIM, 'Held: ' .. fmt.esc(locs));
                 end
             end
         end
@@ -1022,7 +944,7 @@ local function renderItemTooltip(rec)
             local al = ownedAugMap()[rec.Id];
             if al ~= nil and #al > 0 then
                 local more = (#al > 1) and string.format('   (+%d more copies)', #al - 1) or '';
-                imgui.TextColored(COL_SCORE, 'Aug: ' .. esc(al[1]) .. more);
+                imgui.TextColored(COL_SCORE, 'Aug: ' .. fmt.esc(al[1]) .. more);
             end
         end
     end);
@@ -1384,25 +1306,7 @@ end
 -- Row renderers.
 -- ---------------------------------------------------------------------------
 
--- "xN" owned tag (only when we own two or more -- the interesting case for DW /
--- paired slots). Empty otherwise. Contains no '%'.
-local function qtyTag(rec)
-    local c = (rec and rec.Id) and ownedCounts()[rec.Id] or nil;
-    if c ~= nil and c >= 2 then return '  x' .. tostring(c); end
-    return '';
-end
-
--- Static name-column width for a record list: the longest name decides (capped),
--- so rows align. Shared by the Equipped alternatives and the All Equipment tree.
-local function nameWidthOf(list)
-    local w = 120;
-    for _, rec in ipairs(list) do
-        local ok, tw = pcall(imgui.CalcTextSize, tostring(rec.Name or '?'));
-        if not ok or type(tw) ~= 'number' then tw = #tostring(rec.Name or '?') * 7; end
-        if tw + 14 > w then w = tw + 14; end
-    end
-    return math.min(w, 260);
-end
+-- (qtyTag / nameWidthOf moved to dlac\\gearfmt.lua with the other formatters.)
 
 -- Clickable alternative row (Equipped tab) in STATIC COLUMNS: an invisible full-row
 -- Selectable is the click target; name / Lv / stats / qty draw over it at fixed X.
@@ -1413,15 +1317,15 @@ local function renderAltRow(rec, ordinal, job, level, nameW)
     if imgui.IsItemHovered() then renderItemTooltip(rec); end
     local nameCol = 26;                                -- just after the icon
     imgui.SameLine(nameCol);
-    imgui.TextColored(isStored(rec) and COL_ERR or COL_USABLE, esc(rec.Name or '?'));
+    imgui.TextColored(isStored(rec) and COL_ERR or COL_USABLE, fmt.esc(rec.Name or '?'));
     imgui.SameLine(nameCol + (nameW or 200));
     imgui.TextColored(COL_LEVEL, string.format('Lv%2d', rec.Level or 0));
-    local ss = statSummary(rec, level);
+    local ss = fmt.statSummary(rec, level);
     if ss ~= '' then
         imgui.SameLine(nameCol + (nameW or 200) + 46);
-        imgui.TextColored(COL_STATS, esc(ss));
+        imgui.TextColored(COL_STATS, fmt.esc(ss));
     end
-    local q = qtyTag(rec);
+    local q = fmt.qtyTag(rec);
     if q ~= '' then
         imgui.SameLine(0, 8);
         imgui.TextColored(COL_DIM, q);
@@ -1433,7 +1337,7 @@ end
 local function renderPickRow(rec, ordinal, idPrefix, level)
     renderIcon(rec.Id, 18);
     local label = string.format('%s  Lv%d  %s%s##%s_%d',
-        truncate(rec.Name or '?', 24), rec.Level or 0, statSummary(rec, level), qtyTag(rec), idPrefix, ordinal);
+        fmt.truncate(rec.Name or '?', 24), rec.Level or 0, fmt.statSummary(rec, level), fmt.qtyTag(rec), idPrefix, ordinal);
     local stored = isStored(rec) and ImGuiCol_Text ~= nil;
     if stored then imgui.PushStyleColor(ImGuiCol_Text, COL_ERR); end
     local clicked = imgui.Selectable(label, false);
@@ -1451,14 +1355,14 @@ local function renderBrowseRow(rec, ordinal, job, level, nameW)
     renderIcon(rec.Id, 18);
     local usable = isUsable(rec, job, level);
     local nameColr = isStored(rec) and COL_ERR or (usable and COL_USABLE or COL_LOCKED);
-    imgui.TextColored(nameColr, esc(rec.Name or '?'));
+    imgui.TextColored(nameColr, fmt.esc(rec.Name or '?'));
     local nameCol = 26 + (nameW or 200);               -- icon (18+6 pad) + name column
     imgui.SameLine(nameCol);
     imgui.TextColored(COL_LEVEL, string.format('Lv%2d', rec.Level or 0));
-    local ss = statSummary(rec, level);
+    local ss = fmt.statSummary(rec, level);
     if ss ~= '' then
         imgui.SameLine(nameCol + 46);                  -- fixed Lv column
-        imgui.TextColored(COL_STATS, esc(ss));
+        imgui.TextColored(COL_STATS, fmt.esc(ss));
     end
     if rec.Id ~= nil then                              -- augments on your owned copy
         local al = ownedAugMap()[rec.Id];
@@ -1466,7 +1370,7 @@ local function renderBrowseRow(rec, ordinal, job, level, nameW)
             local txt = al[1];
             if #al > 1 then txt = txt .. string.format(' (+%d)', #al - 1); end
             imgui.SameLine(0, 10);
-            imgui.TextColored(COL_SCORE, 'Aug: ' .. esc(txt));
+            imgui.TextColored(COL_SCORE, 'Aug: ' .. fmt.esc(txt));
         end
     end
     imgui.EndChild();
@@ -1695,7 +1599,7 @@ local function renderEquippedTab(job, level)
         function(sl) return getEquippedId(sl.equip); end,
         function(sl)
             local id = getEquippedId(sl.equip);
-            return truncate(id and (displayName(id) or ('#' .. tostring(id))) or '(empty)', 18);
+            return fmt.truncate(id and (displayName(id) or ('#' .. tostring(id))) or '(empty)', 18);
         end,
         function(labelKey) ui.eqSelected = labelKey; end,
         function(sl) return lookupById(getEquippedId(sl.equip)); end);
@@ -1703,7 +1607,7 @@ local function renderEquippedTab(job, level)
     imgui.Separator();
 
     if ui.eqSelected == nil then
-        textWrapped(COL_DIM, 'Select a slot above to see the alternatives you can equip there.');
+        fmt.textWrapped(COL_DIM, 'Select a slot above to see the alternatives you can equip there.');
     else
         -- Selected slot header + equipped item.
         local gearKey = GEAR_OF[ui.eqSelected] or ui.eqSelected;
@@ -1722,17 +1626,17 @@ local function renderEquippedTab(job, level)
         end
         if eqId ~= nil then
             renderIcon(eqId, 24);
-            imgui.TextColored(COL_USABLE, esc(displayName(eqId) or ('#' .. tostring(eqId))));
+            imgui.TextColored(COL_USABLE, fmt.esc(displayName(eqId) or ('#' .. tostring(eqId))));
             local rec = lookupById(eqId);
             if rec ~= nil then
                 imgui.SameLine(0, 8); imgui.TextColored(COL_LEVEL, 'Lv' .. tostring(rec.Level or 0));
-                local ss = statSummary(rec, level);
-                if ss ~= '' then imgui.TextColored(COL_STATS, esc(ss)); end
+                local ss = fmt.statSummary(rec, level);
+                if ss ~= '' then imgui.TextColored(COL_STATS, fmt.esc(ss)); end
             end
             if hasAug and slDef ~= nil then           -- private augments on the worn piece
                 local extra = aug.slotExtra(slDef.equip);
                 local ad = extra and aug.describe(extra) or '';
-                if ad ~= '' then imgui.TextColored(COL_SCORE, 'Aug: ' .. esc(ad)); end
+                if ad ~= '' then imgui.TextColored(COL_SCORE, 'Aug: ' .. fmt.esc(ad)); end
             end
         else
             imgui.TextColored(COL_DIM, '(nothing equipped in this slot)');
@@ -1772,7 +1676,7 @@ local function renderEquippedTab(job, level)
                 imgui.TextColored(COL_DIM, 'No eligible gear for this slot at your job/level.');
             end
         else
-            local nW = nameWidthOf(alts);
+            local nW = fmt.nameWidthOf(alts);
             for i, rec in ipairs(alts) do
                 if renderAltRow(rec, i, job, level, nW) then
                     equipToSlot(ui.eqSelected, rec.Name, ui.lockEquipped[1] == true, ui.freeEquip[1] == true, slotLocked);
@@ -1875,7 +1779,7 @@ local function renderAllEquipTab(job, level)
                         if searching then imgui.SetNextItemOpen(true);
                         elseif forceClose then imgui.SetNextItemOpen(false); end
                         if imgui.TreeNode(string.format('%s (%d)###aeqc_%s_%s', cat, #list, slot, cat)) then
-                            local nW = nameWidthOf(list);
+                            local nW = fmt.nameWidthOf(list);
                             for i, rec in ipairs(list) do renderBrowseRow(rec, i, job, level, nW); end
                             imgui.TreePop();
                         end
@@ -1886,7 +1790,7 @@ local function renderAllEquipTab(job, level)
                     table.sort(extra);
                     for _, cat in ipairs(extra) do renderCat(cat); end
                 else
-                    local nW = nameWidthOf(data);
+                    local nW = fmt.nameWidthOf(data);
                     for i, rec in ipairs(data) do renderBrowseRow(rec, i, job, level, nW); end
                 end
             end
@@ -2263,7 +2167,7 @@ local function renderWeightsEditor()
 
     local ws = {};
     pcall(function() ws = optim.getWeights() or {}; end);
-    for _, stat in ipairs(sortedKeys(ws)) do
+    for _, stat in ipairs(fmt.sortedKeys(ws)) do
         local w = ws[stat];
         local b = ui._wbuf[stat];
         if b == nil then
@@ -2271,7 +2175,7 @@ local function renderWeightsEditor()
             b = { per = { math.floor(pv + 0.5) }, cap = { (type(w) == 'table' and w.cap) or 0 } };
             ui._wbuf[stat] = b;
         end
-        imgui.TextColored(COL_USABLE, truncate(stat, nchars));
+        imgui.TextColored(COL_USABLE, fmt.truncate(stat, nchars));
         if #stat > nchars and imgui.IsItemHovered() then imgui.SetTooltip(stat); end
         imgui.SameLine(nameCol);
         imgui.TextColored(COL_DIM, 'pts'); imgui.SameLine(0, 2);
@@ -2429,7 +2333,7 @@ end
 -- Left builder: 16 slot tiles + the expanded ordered list for the selected slot.
 local function renderSetBuilder(job, level)
     if M.workingSetName == nil then
-        textWrapped(COL_DIM, 'Pick a set above, or type a name and click New, then Auto-build or + Add items.');
+        fmt.textWrapped(COL_DIM, 'Pick a set above, or type a name and click New, then Auto-build or + Add items.');
         return;
     end
 
@@ -2442,7 +2346,7 @@ local function renderSetBuilder(job, level)
             local list = M.working[sl.label];
             local pick = bestByLevel(list, level);
             local nm = (pick and pick.rec and pick.rec.Name) or '(empty)';
-            return string.format('%s (%d)', truncate(nm, 12), (list and #list) or 0);
+            return string.format('%s (%d)', fmt.truncate(nm, 12), (list and #list) or 0);
         end,
         function(labelKey) ui.setSelected = labelKey; end,
         function(sl)
@@ -2452,7 +2356,7 @@ local function renderSetBuilder(job, level)
 
     imgui.Separator();
     if ui.setSelected == nil then
-        textWrapped(COL_DIM, 'Select a slot above to edit its ordered list. Yellow = current best-by-level pick.');
+        fmt.textWrapped(COL_DIM, 'Select a slot above to edit its ordered list. Yellow = current best-by-level pick.');
         return;
     end
 
@@ -2475,11 +2379,11 @@ local function renderSetBuilder(job, level)
             renderIcon(rec and rec.Id or nil, 18);
             imgui.TextColored((rec ~= nil and rec == pickRec) and COL_SCORE
                 or (isStored(rec) and COL_ERR or COL_USABLE),
-                esc((rec and rec.Name) or '?') .. qtyTag(rec));
+                fmt.esc((rec and rec.Name) or '?') .. fmt.qtyTag(rec));
             if rec ~= nil and imgui.IsItemHovered() then renderItemTooltip(rec); end
             imgui.SameLine(0, 8); imgui.TextColored(COL_LEVEL, 'Lv' .. tostring(rec and rec.Level or 0));
-            local ss = rec and statSummary(rec, level) or '';
-            if ss ~= '' then imgui.SameLine(0, 8); imgui.TextColored(COL_STATS, esc(ss)); end
+            local ss = rec and fmt.statSummary(rec, level) or '';
+            if ss ~= '' then imgui.SameLine(0, 8); imgui.TextColored(COL_STATS, fmt.esc(ss)); end
             if it.minLevel ~= nil then imgui.SameLine(0, 8); imgui.TextColored(COL_DIM, 'min' .. tostring(it.minLevel)); end
             if it.maxLevel ~= nil then imgui.SameLine(0, 8); imgui.TextColored(COL_DIM, 'max' .. tostring(it.maxLevel)); end
             imgui.SameLine(0, 12);
@@ -2511,7 +2415,7 @@ end
 
 local function renderSetsTab(job, level)
     if not hasSetmgr then
-        textWrapped(COL_ERR, 'setmanager unavailable -- commit/delete disabled (view/build still works).');
+        fmt.textWrapped(COL_ERR, 'setmanager unavailable -- commit/delete disabled (view/build still works).');
     end
 
     -- Controls row: set picker + New + Commit + Delete + Lock + Weights toggle.
@@ -2522,7 +2426,7 @@ local function renderSetsTab(job, level)
         if #names == 0 then
             imgui.TextColored(COL_DIM, '(no sets.Dynamic -- reload the profile?)');
             local _sd = profsets.diag();
-            if _sd ~= nil and _sd ~= '' then imgui.TextColored(COL_ERR, esc(_sd)); end
+            if _sd ~= nil and _sd ~= '' then imgui.TextColored(COL_ERR, fmt.esc(_sd)); end
         end
         for _, nm in ipairs(names) do
             if imgui.Selectable(nm, M.workingSetName == nm) then
@@ -2598,7 +2502,7 @@ local function renderSetsTab(job, level)
     imgui.SameLine(0, 6); imgui.TextColored(COL_DIM, 'seed a Dynamic set from a static one (migration)');
 
     if ui.setsStatus ~= nil and ui.setsStatus ~= '' then
-        textWrapped(ui.setsStatusErr and COL_ERR or COL_SCORE, esc(ui.setsStatus));
+        fmt.textWrapped(ui.setsStatusErr and COL_ERR or COL_SCORE, fmt.esc(ui.setsStatus));
     end
     imgui.Separator();
 
@@ -2665,16 +2569,16 @@ local function drawWindow()
         end
         renderHeaderButtons();
         if _augStatus ~= nil and _augStatus ~= '' then
-            textWrapped(COL_SCORE, esc(_augStatus));
+            fmt.textWrapped(COL_SCORE, fmt.esc(_augStatus));
         end
         do  -- prominent warning when the current job isn't wired for dlac yet
             local _st = jobSetupState();
             if _st == 'ffxilac' or _st == 'none' then
                 local _, _ab = jobFile();
-                textWrapped(COL_ERR, string.format('  [!]  %s.lua is NOT set up for dlac -- click the red "Setup" button (top-right). Your existing logic is kept; dlac is added at the end.', tostring(_ab or '?')));
+                fmt.textWrapped(COL_ERR, string.format('  [!]  %s.lua is NOT set up for dlac -- click the red "Setup" button (top-right). Your existing logic is kept; dlac is added at the end.', tostring(_ab or '?')));
             elseif _st == 'shims' then
                 local _, _ab = jobFile();
-                textWrapped(COL_ERR, string.format('  [!]  %s.lua is missing trigger shims -- click the red "Setup" button (top-right) to add them (your logic is kept).', tostring(_ab or '?')));
+                fmt.textWrapped(COL_ERR, string.format('  [!]  %s.lua is missing trigger shims -- click the red "Setup" button (top-right) to add them (your logic is kept).', tostring(_ab or '?')));
             end
         end
         imgui.Separator();
