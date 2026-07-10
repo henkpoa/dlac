@@ -257,7 +257,19 @@ the runtime gate reads the live flag and needs no special-casing.
 
 ## C. "Am I allowed right now?" — client-side detection
 
-### C.1 In Mog House (primary: proven memory flag)
+### C.1 In Mog House (memory flag — FIELD-FALSIFIED on CatsEyeXI, do not gate on it)
+
+> **FIELD RESULT (2026-07-10): this flag reads TRUE outside Mog Houses on
+> CatsEyeXI** — observed in Lower Jeuno and an outdoor zone. Likely cause:
+> CatsEyeXI's game modes — **ACE (Accelerated CatsEye) characters can `!mog`
+> to open the Mog House anywhere in cities**, and the MH state this toggles
+> appears to be what the flag mirrors. Whatever the exact mechanism, on this
+> server the bit does NOT mean "physically inside your own Mog House."
+> dlac gates on **C.2's `LoginState == 1`** instead: it only changes on a
+> genuine zone-in, so `!mog` cannot open the gate. **Policy requirement
+> (server-team approval): moves strictly in-MH or Provenance — ACE
+> conveniences must never widen the addon's gate.** The memory read below is
+> retained only as a `/dlmv` diagnostic. Original (pre-falsification) notes:
 
 Ashita v4 has **no SDK "in mog house" API** (`IPlayer::GetResidence()` at
 `Ashita.h:1135` is the residence *nation area* id, not a live flag). The working
@@ -313,13 +325,15 @@ already has the flag. Until a 0x00A has been observed after addon load, treat it
 (`Ashita.h:1076`) — Provenance is **zone 222** (`sql/zone_settings.sql:266`;
 `scripts/zones/Provenance/IDs.lua` indexes `zones[xi.zone.PROVENANCE]`).
 
-### C.5 Bottom line for requirement 1
+### C.5 Bottom line for requirement 1 (revised after C.1 falsification)
 
-There is a reliable, positive "movement permitted" signal set: the in-MH memory flag
-(0x100), the 0x00A `LoginState==1` cross-check, and the 0x00A `MogZoneFlag` for
-nomad-menu zones. The hard gate is: **in-MH, OR (zone == 222 AND container is in the
-Provenance-legal set)**. If none of these signals affirmatively hold, dlac never
-sends a move. No probing, no exceptions.
+The reliable, positive "movement permitted" signals are: **0x00A `LoginState == 1`**
+(own-MH, server truth, immune to `!mog` since it requires a real zone-in) and the
+zone id for Provenance (222). The hard gate is: **`LoginState == 1`, OR zone == 222
+(with its container matrix)**. Fail closed: until a 0x00A has been observed after
+addon load, in-MH is false (reload inside your MH ⇒ re-zone once). The memory flag
+(C.1) and `MogZoneFlag` (C.3) are diagnostics/automation inputs, not the gate.
+If no signal affirmatively holds, dlac never sends a move. No probing, no exceptions.
 
 ---
 
