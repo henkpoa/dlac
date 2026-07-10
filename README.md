@@ -1,44 +1,70 @@
 # dlac — dynamic LuaAshitacast
 
-A companion for **LuAshitacast** (Final Fantasy XI on Ashita v4) that helps you
-**build gear sets** and **view your live stats, with level scaling**.
+A GUI companion for **LuAshitacast** (Final Fantasy XI on Ashita v4, built for
+**CatsEyeXI**) that removes the Lua editing from gear automation: build sets, wire
+them to game events, toggle combat modes, and let situational gear resolve itself —
+all from a window in game.
 
-## What it does
+**Nothing dlac does requires you to open or edit a Lua file.** The files stay
+hand-editable for power users, but they are storage, not the interface.
 
-- **Set builder GUI** (`/dl ui`) — browse your gear, build and edit sets, and commit
-  them into your job profiles.
-- **Level-scaling sets** — each slot is a list of candidates; dlac equips the best one
-  for your current level, so a single set scales as you level up.
-- **Live stats panel** — your worn-set totals (base **plus item augments**), with
-  per-slot detail and hover tooltips.
-- **Augment-aware** — reads item augments straight from the client and folds them into
-  your stats, so what you see matches what you're actually wearing.
+## Setup — two clicks per job
 
-## Getting started
+You need a working LuaAshitacast install (it's part of the CatsEyeXI client).
 
-dlac runs *alongside* LuaAshitacast — it drives the profiles LAC already loads, so you
-need a working LuaAshitacast install first (your
-`config\addons\luashitacast\<Char>_<id>\` folder with your job profiles). dlac can't do
-anything without it.
-
-1. **Install** — drop the `dlac` folder into `Ashita\addons\`, then load it with
+1. **Install** — drop the `dlac` folder into `Ashita\addons\`, then
    `/addon load dlac` (add that line to your Ashita boot script to load it every time).
 2. **Open the GUI** — `/dl ui`.
-3. **Set up the job you're on.** If the current job isn't wired for dlac yet, a red banner
-   and a red **Setup** button (top-right) say so. Click **Setup** — it handles every case:
-   - an existing **ffxi-lac** profile is converted to dlac in place (your original is
-     backed up as `<JOB>.lua.flbak`);
-   - a job with **no profile yet** gets a fresh dlac starter profile (empty sets you fill
-     in from the GUI);
-   - an existing **custom** (non-ffxi-lac) profile is left untouched — copy
-     [`PROFILE_TEMPLATE.lua`](PROFILE_TEMPLATE.lua) as your starting point instead.
-4. **Reload LAC** — click **Reload LAC**. LAC caches your sets when it loads, so a Setup
-   (or any set edit) only takes effect after a reload. That job is now driven by dlac.
-5. **Import your gear** — **Scan → Stage → Commit** reads the gear you own out of the game
-   into your `gear.lua`, so the builder shows exactly what you have.
+3. Click the red **Setup** button (top-right). Works on *any* profile:
+   - your existing profile — whether ffxi-lac, hand-written, or anything else — is
+     **converted in place**: your own handler logic is kept untouched, dlac's dispatch
+     is appended at the end of each handler, and the original is backed up
+     (`<JOB>.lua.flbak`);
+   - a job with no profile gets a fresh starter;
+   - starter trigger rules (Engaged/Resting/Movement/Idle) and your gear database are
+     seeded automatically.
+4. Click **Reload LAC**.
 
-Repeat steps 3–4 for each job you want on dlac. Your gear and profiles stay in your
-LuaAshitacast config folder; the addon folder only holds the framework and item catalog.
+That's it. Your gear imports itself (bags are auto-scanned on login and job change),
+and from here on everything is GUI work. Repeat for each job.
+
+## What you get
+
+| Tab | Does |
+|---|---|
+| **Equipped** | Live 16-slot view, worn stat totals (augment-aware), per-slot alternatives, slot locking |
+| **All Equipment** | Browse everything you own — or the full CatsEyeXI catalog — with search and stats |
+| **Sets** | Build sets by hand or **Auto-build** from stat weights; level-scaling candidate lists per slot; live score |
+| **Triggers** | Wire sets to the game: statuses, spells (by skill / type / element / `contains` / exact name), abilities, items, weaponskills — plus player-defined **Modes** with live toggle buttons |
+
+### Triggers, in short
+
+A trigger is *condition(s) → set*. All matching triggers apply, most specific last, so
+partial sets **overlay**: your general Enfeebling set equips, then White-Enfeebling
+over it, then your dedicated Slow set on top. Conditions stack with AND
+(`skill = Elemental Magic` + `contains = Stone` = every Stone tier). Trigger edits are
+**live on the next action** — no reload. `/dl why` explains exactly what fired and why.
+
+### Modes
+
+Named switches (e.g. `DT`) that triggers can match — overlay your damage-taken set
+over whatever else won. Toggle from the Triggers tab or `/dl mode DT` (macro-able).
+Highest priority: manual intent always wins.
+
+### Automations (auto staff / auto obi)
+
+Put the virtual entry **`dlac:AutoStaff`** in a set's Main slot (or **`dlac:AutoObi`**
+in Waist) via the normal **+ Add** picker. At cast time dlac equips:
+
+- **Staff** — your best *usable* Iridescence option for that cast: HQ/NQ elemental
+  staff vs a universal weapon (Chatoyant Staff, Foreshadow +1, Iridal Staff), highest
+  tier wins, ties go to the universal.
+- **Obi** — the matching elemental obi (or the universal Hachirin-no-obi) only when
+  the day/weather bonus for the spell's element is net positive.
+
+Everything is level-checked, and the other items in the same slot list act as the
+fallback — being under-leveled never blocks the slot. Owned staves/obis are
+re-detected automatically on login/job change.
 
 ## Commands
 
@@ -46,18 +72,28 @@ LuaAshitacast config folder; the addon folder only holds the framework and item 
 
 | Command | Does |
 |---|---|
-| `/dl ui` | Open/close the gear + set builder window |
-| `/dl scan` / `stage` / `commit` | Read your owned gear from the game into `gear.lua` |
-| `/dl weight` / `best` | Stat-weight helpers for set building |
-| `/dl recalc` / `r` | Rebuild sets / reload |
+| `/dl ui` | Open/close the GUI |
+| `/dl mode <name> [on\|off\|toggle]` | Flip a mode (no name: list active modes) |
+| `/dl why` | Explain the last dispatch per handler — what matched, what equipped |
+| `/dl env` | Day/weather as dlac sees it + per-element obi math |
+| `/dl triggers reload\|init\|path` | Force re-read / seed / locate the trigger file |
+| `/dl sync` | Import new gear from bags now (also runs automatically) |
+| `/dl weight` / `best` | Stat-weight helpers for set auto-building |
+| `/dl set level main <n>` | Preview as another level |
 
-## Requirements
+## Safety
 
-- Ashita v4 with **LuAshitacast**.
+- Setup never deletes your code — dispatch calls are *appended*; originals are backed
+  up (`.flbak` plus rotated backups in `backups\`).
+- Every file write is parse-checked first and aborts untouched on failure.
+- A broken hand-edit to the trigger file keeps the last good rules and reports.
 
-## Status
+## For developers
 
-Work in progress.
+Design docs live in the repo: [CONTEXT.md](CONTEXT.md) (glossary),
+[docs/adr/](docs/adr/) (decision records), and
+[docs/design/trigger-system.md](docs/design/trigger-system.md) (the trigger engine
+spec). dlac is CatsEyeXI-only by design (ADR 0001).
 
 ## License
 
