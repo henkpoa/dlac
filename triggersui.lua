@@ -467,7 +467,7 @@ local function renderModePopup()
     end
 
     if modeUI.kind == 'cycle' then
-        imgui.TextColored(COL_DIM, 'Values -- the button cycles them in this order:');
+        imgui.TextColored(COL_DIM, 'Values -- cycles in this order; the FIRST is active at login:');
         local removeAt = nil;
         for i, v in ipairs(modeUI.values) do
             imgui.TextColored(COL_USABLE, string.format('   %d.  %s', i, esc(v)));

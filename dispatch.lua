@@ -898,12 +898,18 @@ if inLac() then
                 elseif l3 == 'off' then state = false;
                 else state = a3; end                 -- cycle mode: jump straight to this value
             end
+            ensureLoaded();                          -- cycle definitions live in the trigger file
+            local ln = string.lower(name);
+            local before = M.modes[ln];
             local res = M.setMode(name, state);
-            if type(res) == 'string' then
-                print(string.format('[dlac] mode %s -> %s', string.lower(name), res));
-            else
-                print(string.format('[dlac] mode %s %s', string.lower(name), res and 'ON' or 'OFF'));
+            local function disp(v)
+                if v == true then return 'ON'; end
+                if v == nil or v == false then return 'off'; end
+                return tostring(v);
             end
+            local def = _trig.modeDefs and _trig.modeDefs[ln] or nil;
+            local shown = (def ~= nil and def.name) or name;
+            print(string.format('[dlac] %s: %s -> %s', shown, disp(before), disp(res)));
             return;
         end
 
