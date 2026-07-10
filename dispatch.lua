@@ -106,25 +106,28 @@ local OPPOSED = {
     thunder = 'Earth', water = 'Thunder', light = 'Dark', dark = 'Light',
 };
 
--- Net day+weather sign for the current spell's element: +1 per matching day/weather,
--- -1 per opposing one. Cached on ctx (computed at most once per dispatch).
+-- Net day+weather sign for one element: +1 per matching day/weather, -1 per opposing
+-- one. Also powers the /dl env diagnostic.
+local function netForElement(el)
+    local n = 0;
+    if type(el) ~= 'string' then return n; end
+    local opp = OPPOSED[string.lower(el)];
+    pcall(function()
+        local env = gData.GetEnvironment();
+        if env == nil then return; end
+        if ci(env.DayElement, el)      then n = n + 1;
+        elseif ci(env.DayElement, opp) then n = n - 1; end
+        if ci(env.WeatherElement, el)      then n = n + 1;
+        elseif ci(env.WeatherElement, opp) then n = n - 1; end
+    end);
+    return n;
+end
+
+-- The current action's net sign, cached on ctx (computed at most once per dispatch).
 local function netDayWeather(ctx)
     if ctx.dw ~= nil then return ctx.dw; end
-    local n = 0;
-    local el = ctx.action and ctx.action.Element;
-    if type(el) == 'string' then
-        local opp = OPPOSED[string.lower(el)];
-        pcall(function()
-            local env = gData.GetEnvironment();
-            if env == nil then return; end
-            if ci(env.DayElement, el)      then n = n + 1;
-            elseif ci(env.DayElement, opp) then n = n - 1; end
-            if ci(env.WeatherElement, el)      then n = n + 1;
-            elseif ci(env.WeatherElement, opp) then n = n - 1; end
-        end);
-    end
-    ctx.dw = n;
-    return n;
+    ctx.dw = netForElement(ctx.action and ctx.action.Element);
+    return ctx.dw;
 end
 
 -- Debuff song families (Bard Song + one of these words in the name = Debuff;
@@ -746,8 +749,24 @@ if inLac() then
         local args = {};
         for a in string.gmatch(string.sub(e.command, start), '%S+') do args[#args + 1] = a; end
         local sub = args[1] and string.lower(args[1]) or nil;
-        if sub ~= 'mode' and sub ~= 'why' and sub ~= 'triggers' then return; end
+        if sub ~= 'mode' and sub ~= 'why' and sub ~= 'triggers' and sub ~= 'env' then return; end
         e.blocked = true;
+
+        if sub == 'env' then   -- day/weather as the engine sees it (the obi's decision input)
+            local env = nil;
+            pcall(function() env = gData.GetEnvironment(); end);
+            if env == nil then print('[dlac] env unavailable (not logged in?).'); return; end
+            print(string.format('[dlac] day: %s (element %s)   weather: %s (element %s)',
+                tostring(env.Day), tostring(env.DayElement), tostring(env.Weather), tostring(env.WeatherElement)));
+            local parts = {};
+            for _, el in ipairs({ 'Fire', 'Ice', 'Wind', 'Earth', 'Thunder', 'Water', 'Light', 'Dark' }) do
+                local n = netForElement(el);
+                if n ~= 0 then parts[#parts + 1] = string.format('%s %+d', el, n); end
+            end
+            print('[dlac] net signs: ' .. ((#parts > 0) and table.concat(parts, ', ') or '(all neutral)')
+                .. '   -- dlac:AutoObi equips only when its spell\'s element is positive');
+            return;
+        end
 
         if sub == 'mode' then
             local name = args[2];
