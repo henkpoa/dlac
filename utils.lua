@@ -124,10 +124,37 @@ function M.rebuildSets(sets)
 end
 
 function M.isDualWieldAvailable(mj, mjLevel, sj, sjLevel)
-    local THFDWLevel = 20; 
-    local NINDWLevel = 10; 
-    local DNCDWLevel = 20; 
-    
+    -- Plan A: ask the game whether the character HAS the Dual Wield trait right now.
+    -- The CatsEyeXI server computes each character's trait list from its own
+    -- sql/traits.sql (main job + sub job, and BLU via blue-magic trait sets) and
+    -- ships that bitmask to the client in packet 0x0AC (GP_SERV_COMMAND_COMMAND_DATA
+    -- copies m_TraitList into CommandDataTbl.Traits alongside WeaponSkills /
+    -- JobAbilities / PetAbilities). Ashita's Player:HasAbility() indexes that same
+    -- command table, where job traits start at id 1536 (0x600) and Dual Wield is
+    -- id 1554 = 1536 + trait_id 18 (server repo: documentation/player_abilities.txt
+    -- "1554  Dual Wield  Job Trait"; sql/traits.sql keeps every Dual Wield tier on
+    -- trait_id 18, so one bit covers all tiers). Trusting this bit means CatsEyeXI's
+    -- custom job balance can never desync us -- e.g. their THF gets Dual Wield at
+    -- level 83 (Abyssea-tagged), so the old hardcoded THF>=20 row below over-promised
+    -- on this server.
+    local ok, hasDW = pcall(function()
+        local p = AshitaCore:GetMemoryManager():GetPlayer();
+        if p == nil then return nil; end
+        local job = p:GetMainJob();
+        if type(job) ~= 'number' or job < 1 or job > 22 then
+            return nil; -- char select / zoning: player block not populated yet
+        end
+        return p:HasAbility(1554) == true; -- 1554 = Dual Wield trait (any tier)
+    end);
+    if ok and type(hasDW) == 'boolean' then
+        return hasDW;
+    end
+
+    -- Fallback (memory unavailable or player not ready): legacy job/level table.
+    local THFDWLevel = 20;
+    local NINDWLevel = 10;
+    local DNCDWLevel = 20;
+
     if (mj == "THF" and mjLevel >= THFDWLevel) or (sj == "THF" and sjLevel >= THFDWLevel) then
         return true;
     elseif (mj == "NIN" and mjLevel >= NINDWLevel) or (sj == "NIN" and sjLevel >= NINDWLevel) then
