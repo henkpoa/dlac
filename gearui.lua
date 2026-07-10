@@ -1331,23 +1331,45 @@ local function renderBrowseRow(rec, ordinal, job, level, nameW)
     if imgui.IsItemHovered() then renderItemTooltip(rec); end
 end
 
--- A 2-column grid of slot tiles (icon + "Slot: text"). Optional hoverRec(sl) drives
--- a hover tooltip for the tile's item.
+-- The classic 4x4 equipment grid (Main/Sub/Range/Ammo // Head/Neck/Ear1/Ear2 //
+-- Body/Hands/Ring1/Ring2 // Back/Waist/Legs/Feet -- EQUIP_SLOTS is already in
+-- this order), icon-only boxes like the game's own equip window. Each box is a
+-- BUTTON that selects the slot for editing; the item's full info stays on hover.
+-- Empty slots show the slot's short name; the selected slot gets a gold box.
+-- getText(sl) feeds only the hover line now (the boxes carry no inline text).
+local SLOT_BOX = 40;                  -- outer box; the icon fills it minus the frame pad
 local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, getText, onClick, hoverRec)
     imgui.BeginChild('##' .. idPrefix .. '_grid', { -1, gridHeight }, false);
-    local availW = imgui.GetContentRegionAvail();
-    local colW = math.max(120, (availW - 72) / 2);
+    local boxBg = { 0.10, 0.10, 0.13, 1.0 };
+    local boxSel = { 0.42, 0.36, 0.16, 1.0 };          -- gold: the slot being edited
     for i, sl in ipairs(EQUIP_SLOTS) do
-        renderIcon(getItemId(sl), 22);
-        local label = string.format('%-5s %s##%s_%s', sl.short, getText(sl), idPrefix, sl.label);
-        if imgui.Selectable(label, selectedLabel == sl.label, ImGuiSelectableFlags_None, { colW, 24 }) then
-            onClick(sl.label);
+        local selected = (selectedLabel == sl.label);
+        local clicked = false;
+        imgui.PushID(idPrefix .. '_' .. sl.label);
+        local id = getItemId(sl);
+        local handle = nil;
+        if id ~= nil and id ~= 0 and loadItemTexture(id) then handle = texHandles[id]; end
+        if handle ~= nil then
+            clicked = imgui.ImageButton(handle, { SLOT_BOX - 8, SLOT_BOX - 8 }, { 0, 0 }, { 1, 1 }, 4,
+                selected and boxSel or boxBg, { 1, 1, 1, 1 });
+        else
+            imgui.PushStyleColor(ImGuiCol_Button, selected and boxSel or boxBg);
+            imgui.PushStyleColor(ImGuiCol_Text, COL_LOCKED);
+            clicked = imgui.Button(sl.short, { SLOT_BOX, SLOT_BOX });
+            imgui.PopStyleColor(2);
         end
-        if hoverRec ~= nil and imgui.IsItemHovered() then
-            local r = hoverRec(sl);
-            if r ~= nil then renderItemTooltip(r); end
+        if clicked then onClick(sl.label); end
+        if imgui.IsItemHovered() then
+            local r = (hoverRec ~= nil) and hoverRec(sl) or nil;
+            if r ~= nil then
+                renderItemTooltip(r);
+            else
+                local extra = (getText ~= nil) and tostring(getText(sl) or '') or '';
+                imgui.SetTooltip(sl.label .. ((extra ~= '') and ('  ' .. extra) or '') .. '\nClick to edit this slot.');
+            end
         end
-        if i % 2 == 1 then imgui.SameLine(); end
+        imgui.PopID();
+        if i % 4 ~= 0 then imgui.SameLine(0, 4); end
     end
     imgui.EndChild();
 end
@@ -1548,7 +1570,7 @@ local function renderEquippedTab(job, level)
 
     imgui.BeginChild('##ffxilac_eqmain', { availW - leftUsed, -1 }, false);
 
-    renderSlotGrid('eq', 236, ui.eqSelected,
+    renderSlotGrid('eq', 182, ui.eqSelected,
         function(sl) return getEquippedId(sl.equip); end,
         function(sl)
             local id = getEquippedId(sl.equip);
@@ -2350,7 +2372,7 @@ local function renderSetBuilder(job, level)
         return;
     end
 
-    renderSlotGrid('set', 236, ui.setSelected,
+    renderSlotGrid('set', 182, ui.setSelected,
         function(sl)
             local pick = bestByLevel(M.working[sl.label], level);
             return pick and pick.rec and pick.rec.Id or nil;
