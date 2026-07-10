@@ -949,9 +949,11 @@ generator gains a wiki-override layer:
   Scarlet Delirium (DRK 75), Bounty Shot (RNG 55), Futae (NIN 75),
   Fly High (DRG 75), Mana Cede (SMN 75), Unbridled Learning (BLU 75),
   Divine Waltz II (DNC 60), Feather Step (DNC 65), Presto (DNC 75),
-  Immanence (SCH 75), Perpetuance (SCH 75), One for All (RUN 75),
-  Bolster (GEO 1 — present in SQL but dropped by the generator, likely the
-  trailing `-- check animation` comment on its INSERT row).
+  Immanence (SCH 75), Perpetuance (SCH 75), One for All (RUN 75).
+- ~~Generator bug~~ (fixed, commit `bc91206`): rows with a trailing SQL
+  comment were silently dropped. Recovered: Bolster (GEO 1), Blood Pact
+  Ward (SMN 1), Maintenance (PUP 30), Naturalist's Roll (COR 67),
+  Random Needles (BST 25).
 - `spells.lua` wrong level: **Flash RUN 45** (wiki: 38).
 - `spells.lua` missing entirely: Enlight (WHM 75, now WHM-only),
   Arise (WHM 75, 150 MP / 10 s cast), Baramnesra (WHM 65),
