@@ -165,6 +165,29 @@ function M.isDualWieldAvailable(mj, mjLevel, sj, sjLevel)
     return false;
 end
 
+-- Sub-slot pairing rule, shared by the rebuild engine and the GUI set builder.
+--   2H main -> Grip only.  1H main -> Shield always; a 1H weapon when ctx.dw (the
+--   Dual Wield trait is up) OR ctx.building (composing a set -- a plan, not an
+--   equip: the builder admits the weapon and BuildDynamicSets makes the equip-time
+--   call, falling back to the list's shield). A same-name off-hand needs a provable
+--   second copy: InBothHands on the record, or ctx.copies >= 2 (owned count).
+function M.subSlotAllowed(subRec, mainRec, ctx)
+    if type(subRec) ~= 'table' or type(mainRec) ~= 'table' then return false; end
+    ctx = ctx or {};
+    if mainRec.OneHanded == false then
+        return subRec.Type == 'Grip';
+    end
+    if mainRec.OneHanded ~= true then return false; end
+    if subRec.Type == 'Shield' then return true; end
+    if subRec.OneHanded ~= true or subRec.Type == 'Grip' then return false; end
+    if ctx.dw ~= true and ctx.building ~= true then return false; end
+    if subRec.Name == mainRec.Name then
+        if subRec.InBothHands == true then return true; end
+        return (tonumber(ctx.copies) or 0) >= 2;
+    end
+    return true;
+end
+
 function M.BuildDynamicSets(sets)
     local player = gData.GetPlayer();
     
@@ -183,8 +206,16 @@ function M.BuildDynamicSets(sets)
         local currentSet = {};
         local currentMain = nil; -- Nil for proper checks
         
-        -- Iterate over each gear slot within the set
-        for slotName, slotTable in pairs(setTable) do
+        -- Iterate over each gear slot within the set. Main MUST resolve before Sub
+        -- (the pairing rule reads currentMain), and pairs() order is undefined -- so
+        -- walk Main first, then the rest.
+        local slotNames = {};
+        if setTable.Main ~= nil then slotNames[#slotNames + 1] = 'Main'; end
+        for slotName in pairs(setTable) do
+            if slotName ~= 'Main' then slotNames[#slotNames + 1] = slotName; end
+        end
+        for _, slotName in ipairs(slotNames) do
+            local slotTable = setTable[slotName];
             local maxSlotLevel = 0;
             local bestGear = nil;
             local slotVirtual = nil;
@@ -269,28 +300,11 @@ function M.BuildDynamicSets(sets)
 
                     
                 if slotName == "Sub" then
-                    -- Sub-slot Logic
-                    if currentMain == nil or currentMain == '' then
-                        -- Skip if Main weapon is not yet processed (or empty main hand slot)
-                        goto continue_sub_slot
-                    elseif currentMain.OneHanded == false and gearObject.Type == "Grip" then
-                        -- 2H weapon + Grip is acceptable
+                    -- Sub-slot pairing (shared rule, equip-time): DW decides whether a
+                    -- 1H off-hand is legal; the list's shield/grip is the fallback.
+                    if M.subSlotAllowed(gearObject, currentMain, { dw = isDW }) then
                         bestGear = gearObject
-                    elseif currentMain.OneHanded == true and gearObject.Type == "Shield" then
-                        -- 1H weapon + Shield is acceptable
-                        bestGear = gearObject
-                    elseif currentMain.OneHanded == true and gearObject.OneHanded == true and isDW == true then
-                        -- 1H weapon + 1H weapon (DW is active)
-                        
-                        -- Checks for same weapon name (using correct casing for property lookup)
-                        if currentMain.Name == gearObject.Name and gearObject.InBothHands == true then
-                            bestGear = gearObject
-                        elseif currentMain.Name ~= gearObject.Name then
-                            bestGear = gearObject
-                        end
                     end
-                    
-                    ::continue_sub_slot:: -- Renamed the label for clarity
                 else
                     -- All other slots (Main, Head, Body, etc.)
                     bestGear = gearObject
@@ -417,6 +431,23 @@ ashita.events.register('command', 'dlac', function (e)
                 end
             end
         end
+    elseif sub_command == "dw" then
+        -- Field probe for the Dual Wield trait bit (docs/reference/catseyexi-jobs.md):
+        -- shows the raw HasAbility(1554) answer next to what the engine concludes.
+        local bit = 'n/a';
+        pcall(function()
+            local p = AshitaCore:GetMemoryManager():GetPlayer();
+            if p ~= nil then bit = tostring(p:HasAbility(1554)); end
+        end);
+        local mj, sj, mlv, slv = '?', '?', 0, 0;
+        pcall(function()
+            local p = gData.GetPlayer();
+            mj = p.MainJob or '?'; sj = p.SubJob or '?';
+            mlv, slv = M.determineLevels();
+        end);
+        print(string.format('[dlac] DW probe: HasAbility(1554)=%s  %s%s/%s%s  -> isDualWieldAvailable=%s',
+            bit, tostring(mj), tostring(mlv), tostring(sj), tostring(slv),
+            tostring(M.isDualWieldAvailable(mj, mlv, sj, slv))));
     elseif sub_command == "recalc" then
         sets = M.BuildDynamicSets(sets);
     elseif sub_command == "test" then

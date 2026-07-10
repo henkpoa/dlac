@@ -932,6 +932,10 @@ references are to this repo.
 - The legacy fallback table in `utils.lua` (THF 20 / NIN 10 / DNC 20) happens to
   match the wiki for THF and the (Abyssea-tagged but active) DNC rows; it is
   acceptable only as a fallback when the player block isn't populated.
+- **Field probe:** `/dl dw` prints the raw `HasAbility(1554)` bit next to the
+  main/sub job+level and what `isDualWieldAvailable` concludes. The negative case
+  (THF ≤75 without the bit) is field-confirmed; run the probe on a DW job (e.g.
+  /NIN) to confirm the positive case whenever detection is in doubt.
 
 ## Picker DB "usable at level" filter (`spells.lua` / `abilities.lua` — planned filter)
 Both files are **generated from the public server SQL** (`tools/gen_pickerdb.py`),

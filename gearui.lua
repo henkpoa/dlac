@@ -395,21 +395,55 @@ local function jobsText(jobs)
 end
 
 -- Eligibility (the single source of truth for every candidate / alternatives /
--- "usable now" list): Jobs contains the current main job -- or Jobs is {"All"} /
--- unrestricted -- AND Level <= the current main-job level.
-local function jobCanEquip(jobs, playerJob)
+-- "usable now" list): Jobs contains the current MAIN or SUPPORT job -- or Jobs is
+-- {"All"} / unrestricted -- AND Level <= the current main-job level.
+local JOB_ABBR = {
+    [1]='WAR',[2]='MNK',[3]='WHM',[4]='BLM',[5]='RDM',[6]='THF',[7]='PLD',[8]='DRK',
+    [9]='BST',[10]='BRD',[11]='RNG',[12]='SAM',[13]='NIN',[14]='DRG',[15]='SMN',[16]='BLU',
+    [17]='COR',[18]='PUP',[19]='DNC',[20]='SCH',[21]='GEO',[22]='RUN',
+};
+
+-- Sub job abbreviation + effective level (honours the staticSubLevel override).
+-- gData when available (LAC context); Ashita player memory as the fallback.
+local function getSubInfo()
+    local sj, slv = nil, 0;
+    pcall(function()
+        if gData ~= nil and gData.GetPlayer ~= nil then
+            local p = gData.GetPlayer();
+            if p ~= nil then
+                sj  = p.SubJob;
+                slv = p.SubJobSync or 0;
+            end
+        end
+        if sj == nil then
+            local mp = AshitaCore:GetMemoryManager():GetPlayer();
+            local id = mp and mp:GetSubJob() or 0;
+            if id > 0 then
+                sj  = JOB_ABBR[id];
+                slv = mp:GetSubJobLevel() or 0;
+            end
+        end
+        if type(staticSubLevel) == 'number' and staticSubLevel > 0 then slv = staticSubLevel; end
+    end);
+    return sj, slv;
+end
+
+-- FFXI equip legality: wearable when the MAIN **or** the SUPPORT job appears in the
+-- item's job list (the level gate stays on the main level, as in game).
+local function jobCanEquip(jobs, playerJob, subJob)
     if jobs == nil then return true; end                       -- no restriction
     if type(jobs) ~= 'table' or #jobs == 0 then return true; end
     for _, j in ipairs(jobs) do
         if j == 'All' then return true; end
         if playerJob ~= nil and playerJob ~= '' and j == playerJob then return true; end
+        if subJob ~= nil and subJob ~= '' and j == subJob then return true; end
     end
     return false;
 end
 
 local function isUsable(rec, playerJob, playerLevel)
     if (rec.Level or 0) > (playerLevel or 0) then return false; end
-    return jobCanEquip(rec.Jobs, playerJob);
+    return jobCanEquip(rec.Jobs, playerJob, (getSubInfo()));
 end
 
 local function fmtStat(k, v)
@@ -631,7 +665,9 @@ local function setBuildLevel(level)
 end
 
 local function candidatesForSlot(gearSlotKey, job, level)
-    local key = tostring(job) .. '|' .. tostring(level);
+    -- Sub job is part of the key: it widens what's wieldable (jobCanEquip).
+    local sj = getSubInfo();
+    local key = tostring(job) .. '|' .. tostring(sj) .. '|' .. tostring(level);
     if candCache.key ~= key then candCache.key = key; candCache.data = {}; end
     if candCache.data[gearSlotKey] ~= nil then return candCache.data[gearSlotKey]; end
 
@@ -816,20 +852,6 @@ local function ownedAugMap()
     return _ownedAug;
 end
 
--- Sub job abbreviation + effective level (honours the staticSubLevel override).
-local function getSubInfo()
-    local sj, slv = nil, 0;
-    pcall(function()
-        if gData == nil or gData.GetPlayer == nil then return; end
-        local p = gData.GetPlayer();
-        if p == nil then return; end
-        sj = p.SubJob;
-        if type(staticSubLevel) == 'number' and staticSubLevel > 0 then slv = staticSubLevel;
-        else slv = p.SubJobSync or 0; end
-    end);
-    return sj, slv;
-end
-
 -- Dual-wield availability. Prefer utils.isDualWieldAvailable (required lazily to
 -- avoid a load-time circular require); else mirror it (THF>=20 / NIN>=10 / DNC>=20).
 local function isDualWieldAvailable(mj, mjLevel, sj, sjLevel)
@@ -844,36 +866,44 @@ local function isDualWieldAvailable(mj, mjLevel, sj, sjLevel)
     return false;
 end
 
--- Is a Sub-slot record valid given the current Main record? Mirrors
--- utils.BuildDynamicSets: 2H main -> Grip only; 1H main -> Shield, or a 1H weapon
--- when dual-wield is up (same-name needs two copies via InBothHands or ownedCount>=2).
-local function subCandidateOk(subRec, mainRec, mainJob, mainLevel, subJob, subLevel, oc)
+-- Is a Sub-slot record valid given the current Main record? The rule lives in
+-- utils.subSlotAllowed (shared with BuildDynamicSets); mirrored below as the
+-- fallback, like isDualWieldAvailable. `building` = composing a set -- a plan, not
+-- an equip -- so a 1H off-hand passes WITHOUT the Dual Wield trait; the engine
+-- makes the equip-time call and the list's shield is the fallback. Equip-now
+-- paths (the Equipped tab's alternatives) leave `building` unset.
+local function subCandidateOk(subRec, mainRec, mainJob, mainLevel, subJob, subLevel, oc, building)
     if mainRec == nil then return false; end          -- no Main -> no Sub
-    local st = subRec.Type;
-    if mainRec.OneHanded == false then
-        return st == 'Grip';
-    elseif mainRec.OneHanded == true then
-        if st == 'Shield' then return true; end
-        if subRec.OneHanded == true and isDualWieldAvailable(mainJob, mainLevel, subJob, subLevel) then
-            if subRec.Name == mainRec.Name then
-                if subRec.InBothHands == true then return true; end
-                return (((oc and subRec.Id) and oc[subRec.Id]) or 0) >= 2;
-            end
-            return true;   -- a different 1H weapon
-        end
-        return false;
+    local dw = isDualWieldAvailable(mainJob, mainLevel, subJob, subLevel);
+    local copies = (((oc and subRec.Id) and oc[subRec.Id]) or 0);
+    local ok, utils = pcall(require, "dlac\\utils");
+    if ok and type(utils) == 'table' and type(utils.subSlotAllowed) == 'function' then
+        local r; local pok = pcall(function()
+            r = utils.subSlotAllowed(subRec, mainRec, { dw = dw, building = building, copies = copies });
+        end);
+        if pok and type(r) == 'boolean' then return r; end
     end
-    return false;
+    -- fallback mirror of utils.subSlotAllowed
+    if mainRec.OneHanded == false then return subRec.Type == 'Grip'; end
+    if mainRec.OneHanded ~= true then return false; end
+    if subRec.Type == 'Shield' then return true; end
+    if subRec.OneHanded ~= true or subRec.Type == 'Grip' then return false; end
+    if dw ~= true and building ~= true then return false; end
+    if subRec.Name == mainRec.Name then
+        if subRec.InBothHands == true then return true; end
+        return copies >= 2;
+    end
+    return true;
 end
 
 -- Filter a Sub candidate list against the current Main record.
-local function subFilter(cands, mainRec, job, level)
+local function subFilter(cands, mainRec, job, level, building)
     if mainRec == nil then return {}; end
     local sj, slv = getSubInfo();
     local oc = ownedCounts();
     local out = {};
     for _, r in ipairs(cands) do
-        if subCandidateOk(r, mainRec, job, level, sj, slv, oc) then out[#out + 1] = r; end
+        if subCandidateOk(r, mainRec, job, level, sj, slv, oc, building) then out[#out + 1] = r; end
     end
     return out;
 end
@@ -997,12 +1027,8 @@ end
 
 -- ---------------------------------------------------------------------------
 -- Profile migration: convert a LuaAshitacast <JOB>.lua from ffxi-lac to dlac.
+-- (JOB_ABBR is defined up with the usability helpers.)
 -- ---------------------------------------------------------------------------
-local JOB_ABBR = {
-    [1]='WAR',[2]='MNK',[3]='WHM',[4]='BLM',[5]='RDM',[6]='THF',[7]='PLD',[8]='DRK',
-    [9]='BST',[10]='BRD',[11]='RNG',[12]='SAM',[13]='NIN',[14]='DRG',[15]='SMN',[16]='BLU',
-    [17]='COR',[18]='PUP',[19]='DNC',[20]='SCH',[21]='GEO',[22]='RUN',
-};
 local function readFileText(p) local f=io.open(p,'r'); if f==nil then return nil; end local t=f:read('*a'); f:close(); return t; end
 local function writeFileText(p,t) local f=io.open(p,'w'); if f==nil then return false; end f:write(t); f:close(); return true; end
 
@@ -2361,7 +2387,9 @@ local function renderAddPopup(job, level)
         local cands = candidatesForSlot(gearKey, job, useLevel);
         if gearKey == 'Sub' then
             local mp = bestByLevel(M.working['Main'], useLevel);
-            cands = subFilter(cands, mp and mp.rec or nil, job, useLevel);
+            -- building=true: sets are plans -- a 1H off-hand is addable without the
+            -- DW trait; BuildDynamicSets decides at equip time (shield = fallback).
+            cands = subFilter(cands, mp and mp.rec or nil, job, useLevel, true);
         end
         local blocked = pairedBlockedIds(ui.setSelected, true);
         cands = sortForDisplay(cands);
