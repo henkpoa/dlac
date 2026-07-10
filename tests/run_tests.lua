@@ -211,6 +211,45 @@ local _, eRep2 = gearimport.computeFixes(eText, {}, eMeta);
 check('E6 idempotent second pass',   #eRep2.fixed, 0);
 
 -- ---------------------------------------------------------------------------
+-- F. setmanager shim analysis -- COMMENTED-OUT handlers ("-- profile.HandleX =
+--    function()") are dead code: they must read as 'missing' (Setup creates
+--    them), not 'unparsable' (Setup gave up with "no changes needed" while the
+--    banner stayed red). Field case: Mindie's BLU.lua / COR.lua.
+-- ---------------------------------------------------------------------------
+local setmgr = dofile('setmanager.lua');
+local fProfile = table.concat({
+    'local profile = {};',
+    'local utils = require("dlac\\\\utils");',
+    '',
+    '-- profile.HandleAbility = function()',
+    '--     local ability = gData.GetAction();',
+    '--     if ability.Name == \'Release\' then return end',
+    '-- end',
+    '',
+    'profile.HandleDefault = function()',
+    '    sets = utils.rebuildSets(sets);',
+    '    utils.dispatch(\'Default\');',
+    'end',
+    '',
+    'profile.HandleItem        = function() utils.dispatch(\'Item\');        end',
+    'profile.HandlePrecast     = function() utils.dispatch(\'Precast\');     end',
+    'profile.HandleMidcast     = function() utils.dispatch(\'Midcast\');     end',
+    'profile.HandlePreshot     = function() utils.dispatch(\'Preshot\');     end',
+    'profile.HandleMidshot     = function() utils.dispatch(\'Midshot\');     end',
+    'profile.HandleWeaponskill = function() utils.dispatch(\'Weaponskill\'); end',
+    '',
+    'return profile;',
+}, '\n');
+local fA = setmgr.analyzeShims(fProfile);
+check('F1 commented handler is missing, not unparsable', fA.handlers.Ability, 'missing');
+check('F2 live handlers still ok', fA.handlers.Item, 'ok');
+local fText, fRep = setmgr.repairShimsText(fProfile);
+check('F3 repair creates the commented-out handler', fRep.created[1], 'Ability');
+check('F4 repair emits no warnings', #fRep.warnings, 0);
+check('F5 repaired text parses', (loadstring or load)(fText) ~= nil, true);
+check('F6 repaired profile is healthy', setmgr.analyzeShims(fText).healthy, true);
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then

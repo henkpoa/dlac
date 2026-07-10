@@ -1300,13 +1300,21 @@ local function migrateCurrentJob()
             tostring(report), abbr);
         return;
     end
-    local parts = {};
+    local parts, warns = {}, {};
     if type(report) == 'table' then
         if report.requireAdded         then parts[#parts + 1] = 'require added'; end
         if #(report.created or {}) > 0 then parts[#parts + 1] = 'created ' .. table.concat(report.created, '/'); end
         if #(report.appended or {}) > 0 then parts[#parts + 1] = 'shimmed ' .. table.concat(report.appended, '/'); end
         if #(report.moved or {}) > 0   then parts[#parts + 1] = 'moved ' .. table.concat(report.moved, '/'); end
-        for _, w in ipairs(report.warnings or {}) do pcall(function() print('[dlac] setup: ' .. w); end); end
+        warns = report.warnings or {};
+        for _, w in ipairs(warns) do pcall(function() print('[dlac] setup: ' .. w); end); end
+    end
+    if #parts == 0 and #warns > 0 then
+        -- Nothing auto-fixable: saying "no changes needed" while the shim banner
+        -- stays red reads as a contradiction -- surface the blockers instead.
+        _augStatus = string.format('Setup could not auto-fix %s.lua: %s', abbr, table.concat(warns, '; '));
+        pcall(function() print('[dlac] ' .. _augStatus); end);
+        return;
     end
     _augStatus = string.format(
         'Set up %s.lua in place (%s). Your own handler logic was kept -- dlac dispatch runs last. Reload LuaAshitacast to apply.',

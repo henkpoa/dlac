@@ -244,15 +244,30 @@ local function findFunctionEnd(text, i)
     return nil;
 end
 
+-- Find pat, skipping matches that sit inside a line comment. A commented-out
+-- definition ("-- profile.HandleX = function()") is dead code: matching it made
+-- findFunctionEnd start inside the comment and walk to EOF -> 'unparsable',
+-- which blocked Setup on profiles with old handlers commented out.
+local function findUncommented(text, pat, init)
+    local s, e = text:find(pat, init);
+    while s ~= nil do
+        local ls = s;
+        while ls > 1 and text:sub(ls - 1, ls - 1) ~= '\n' do ls = ls - 1; end
+        if text:sub(ls, s - 1):find('%-%-') == nil then return s, e; end
+        s, e = text:find(pat, e + 1);
+    end
+    return nil;
+end
+
 -- Locate a handler definition. Handles both styles:
 --   <p>.Handle<h> = function (...)      and      function <p>.Handle<h>(...)
 -- Returns defStart, bodyStart (byte after the parameter list's ')'), or nil.
 local function findHandler(text, pVar, h)
     local pat = '%f[%w_]' .. pVar .. '%.Handle' .. h .. '%s*=%s*function%s*%(';
-    local s, e = text:find(pat);
+    local s, e = findUncommented(text, pat);
     if s == nil then
         pat = 'function%s+' .. pVar .. '%.Handle' .. h .. '%s*%(';
-        s, e = text:find(pat);
+        s, e = findUncommented(text, pat);
     end
     if s == nil then return nil; end
     local pe = text:find(')', e - 1, true);
