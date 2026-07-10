@@ -146,6 +146,12 @@ chasing "still prints" ghosts (stale LAC memory state, not code).
 only ever been observed false; if NIN main shows shield-paired, suspect a HasAbility
 id-cap and reprioritize the fallback).
 
+**Correction (07-11, field-falsified):** this session's "main OR support job wields
+it" rule in gearui's `jobCanEquip` was wrong on CatsEyeXI — RDM74/WHM37 cannot wear
+Hlr. Bliaut +1 (WHM Lv74); another job's gear stays unwearable even with that job
+subbed. Wearability is MAIN job only (as gearoptim's `jobAllowed` always had it).
+The sub job still legitimately feeds Dual Wield detection for off-hand pairing.
+
 ## Session "GM feedback & prune" (c89bcd85 — this one)
 
 **Theme:** polish while a GM evaluates the addon for approval; then this documentation

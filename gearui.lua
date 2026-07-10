@@ -418,22 +418,24 @@ local function getSubInfo()
     return sj, slv;
 end
 
--- FFXI equip legality: wearable when the MAIN **or** the SUPPORT job appears in the
--- item's job list (the level gate stays on the main level, as in game).
-local function jobCanEquip(jobs, playerJob, subJob)
+-- Equip legality: the MAIN job must appear in the item's job list. The support
+-- job does NOT widen it -- field-verified on CatsEyeXI (RDM/WHM cannot wear
+-- Hlr. Bliaut +1): another job's gear stays unwearable even with that job subbed.
+-- (Matches gearoptim.jobAllowed; an earlier assumption-based "main OR sub" rule
+-- here was wrong.)
+local function jobCanEquip(jobs, playerJob)
     if jobs == nil then return true; end                       -- no restriction
     if type(jobs) ~= 'table' or #jobs == 0 then return true; end
     for _, j in ipairs(jobs) do
         if j == 'All' then return true; end
         if playerJob ~= nil and playerJob ~= '' and j == playerJob then return true; end
-        if subJob ~= nil and subJob ~= '' and j == subJob then return true; end
     end
     return false;
 end
 
 local function isUsable(rec, playerJob, playerLevel)
     if (rec.Level or 0) > (playerLevel or 0) then return false; end
-    return jobCanEquip(rec.Jobs, playerJob, (getSubInfo()));
+    return jobCanEquip(rec.Jobs, playerJob);
 end
 
 -- ---------------------------------------------------------------------------
@@ -581,9 +583,7 @@ local function setBuildLevel(level)
 end
 
 local function candidatesForSlot(gearSlotKey, job, level)
-    -- Sub job is part of the key: it widens what's wieldable (jobCanEquip).
-    local sj = getSubInfo();
-    local key = tostring(job) .. '|' .. tostring(sj) .. '|' .. tostring(level);
+    local key = tostring(job) .. '|' .. tostring(level);   -- sub job does not affect wearability
     if candCache.key ~= key then candCache.key = key; candCache.data = {}; end
     if candCache.data[gearSlotKey] ~= nil then return candCache.data[gearSlotKey]; end
 
