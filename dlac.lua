@@ -17,7 +17,7 @@
 ]]--
 
 addon.name    = 'dlac';
-addon.author  = 'henkpoa';
+addon.author  = 'Mindie';
 addon.version = '0.1';
 addon.desc    = 'Build gear sets and view live stats with level scaling (for LuaAshitacast).';
 
