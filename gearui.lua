@@ -1292,20 +1292,22 @@ local function renderPickRow(rec, ordinal, idPrefix, level)
     return imgui.Selectable(label, false);
 end
 
--- Browse row (All Equipment tree): icon + Name + Level + stats, alternating bg,
--- whole-row hover tooltip. No job-list text (it's in the tooltip).
-local function renderBrowseRow(rec, ordinal, job, level)
+-- Browse row (All Equipment tree): icon + Name + Level + stats in STATIC COLUMNS --
+-- nameW is computed per group from the longest name so every row in a section
+-- aligns. Alternating bg, whole-row hover tooltip; job list lives in the tooltip.
+local function renderBrowseRow(rec, ordinal, job, level, nameW)
     local bg = (ordinal % 2 == 0) and { 1, 1, 1, 0.03 } or { 1, 1, 1, 0.07 };
     imgui.PushStyleColor(ImGuiCol_ChildBg, bg);
     imgui.BeginChild('##aeqrow_' .. tostring(rec.Id or ('n' .. ordinal)), { -1, 22 }, false);
     renderIcon(rec.Id, 18);
     local usable = isUsable(rec, job, level);
     imgui.TextColored(usable and COL_USABLE or COL_LOCKED, esc(rec.Name or '?'));
-    imgui.SameLine(0, 10);
-    imgui.TextColored(COL_LEVEL, 'Lv' .. tostring(rec.Level or 0));
+    local nameCol = 26 + (nameW or 200);               -- icon (18+6 pad) + name column
+    imgui.SameLine(nameCol);
+    imgui.TextColored(COL_LEVEL, string.format('Lv%2d', rec.Level or 0));
     local ss = statSummary(rec, level);
     if ss ~= '' then
-        imgui.SameLine(0, 8);
+        imgui.SameLine(nameCol + 46);                  -- fixed Lv column
         imgui.TextColored(COL_STATS, esc(ss));
     end
     if rec.Id ~= nil then                              -- augments on your owned copy
@@ -1712,6 +1714,17 @@ local function renderAllEquipTab(job, level)
             if searching then imgui.SetNextItemOpen(true);
             elseif forceClose then imgui.SetNextItemOpen(false); end
             if imgui.CollapsingHeader(string.format('%s (%d)###aeqh_%s', slot, cnt, slot)) then
+                -- static name-column width per group: longest visible name decides
+                -- (the same convention as the Triggers tab's aligned columns).
+                local function nameWidthOf(list)
+                    local w = 120;
+                    for _, rec in ipairs(list) do
+                        local ok, tw = pcall(imgui.CalcTextSize, tostring(rec.Name or '?'));
+                        if not ok or type(tw) ~= 'number' then tw = #tostring(rec.Name or '?') * 7; end
+                        if tw + 14 > w then w = tw + 14; end
+                    end
+                    return math.min(w, 260);
+                end
                 if slot == 'Main' or slot == 'Range' then
                     local seen = {};
                     local function renderCat(cat)
@@ -1721,7 +1734,8 @@ local function renderAllEquipTab(job, level)
                         if searching then imgui.SetNextItemOpen(true);
                         elseif forceClose then imgui.SetNextItemOpen(false); end
                         if imgui.TreeNode(string.format('%s (%d)###aeqc_%s_%s', cat, #list, slot, cat)) then
-                            for i, rec in ipairs(list) do renderBrowseRow(rec, i, job, level); end
+                            local nW = nameWidthOf(list);
+                            for i, rec in ipairs(list) do renderBrowseRow(rec, i, job, level, nW); end
                             imgui.TreePop();
                         end
                     end
@@ -1731,7 +1745,8 @@ local function renderAllEquipTab(job, level)
                     table.sort(extra);
                     for _, cat in ipairs(extra) do renderCat(cat); end
                 else
-                    for i, rec in ipairs(data) do renderBrowseRow(rec, i, job, level); end
+                    local nW = nameWidthOf(data);
+                    for i, rec in ipairs(data) do renderBrowseRow(rec, i, job, level, nW); end
                 end
             end
         end
