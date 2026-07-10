@@ -1321,18 +1321,6 @@ local function renderAltRow(rec, ordinal, job, level, nameW)
     return clicked;
 end
 
--- Clickable candidate row (Sets tab). Returns true when clicked.
-local function renderPickRow(rec, ordinal, idPrefix, level)
-    renderIcon(rec.Id, 18);
-    local label = string.format('%s  Lv%d  %s%s##%s_%d',
-        fmt.truncate(rec.Name or '?', 24), rec.Level or 0, fmt.statSummary(rec, level), fmt.qtyTag(rec), idPrefix, ordinal);
-    local stored = owned.isStored(rec) and ImGuiCol_Text ~= nil;
-    if stored then imgui.PushStyleColor(ImGuiCol_Text, COL_ERR); end
-    local clicked = imgui.Selectable(label, false);
-    if stored then imgui.PopStyleColor(1); end
-    return clicked;
-end
-
 -- Browse row (All Equipment tree): icon + Name + Level + stats in STATIC COLUMNS --
 -- nameW is computed per group from the longest name so every row in a section
 -- aligns. Alternating bg, whole-row hover tooltip; job list lives in the tooltip.
@@ -2283,6 +2271,30 @@ local function renderWeightsEditor()
 end
 
 -- Add-item popup: usable owned items for the selected slot not already in its list.
+-- One row of the + Add list: browse-row treatment -- alternating bg, reserved
+-- name column, Lv / stats columns, red = stored. Returns true when clicked.
+local function renderAddRow(rec, ordinal, level, nameW)
+    local bg = (ordinal % 2 == 0) and { 1, 1, 1, 0.03 } or { 1, 1, 1, 0.07 };
+    imgui.PushStyleColor(ImGuiCol_ChildBg, bg);
+    imgui.BeginChild('##addrow_' .. tostring(rec.Id or ordinal) .. '_' .. ordinal, { -1, 22 }, false);
+    renderIcon(rec.Id, 18);
+    local clicked = imgui.Selectable('##addsel_' .. ordinal, false);
+    if imgui.IsItemHovered() then renderItemTooltip(rec); end
+    local nameCol = 26;
+    imgui.SameLine(nameCol);
+    imgui.TextColored(owned.isStored(rec) and COL_ERR or COL_USABLE, fmt.esc(rec.Name or '?') .. fmt.qtyTag(rec));
+    imgui.SameLine(nameCol + (nameW or 200));
+    imgui.TextColored(COL_LEVEL, string.format('Lv%2d', rec.Level or 0));
+    local ss = fmt.statSummary(rec, level);
+    if ss ~= '' then
+        imgui.SameLine(nameCol + (nameW or 200) + 46);
+        imgui.TextColored(COL_STATS, fmt.esc(ss));
+    end
+    imgui.EndChild();
+    imgui.PopStyleColor(1);
+    return clicked;
+end
+
 local function renderAddPopup(job, level)
     if not imgui.BeginPopup('##ffxilac_addpick') then return; end
     if ui.setSelected == nil then
@@ -2290,6 +2302,18 @@ local function renderAddPopup(job, level)
     else
         imgui.TextColored(COL_HEADER, 'Add usable item to ' .. ui.setSelected .. ':');
         imgui.SameLine(0, 10); renderSortCombo('add');
+        -- Filter row: name search + hide gear parked in unavailable containers.
+        ui.addSearch = ui.addSearch or { '' };
+        ui.addAvail  = ui.addAvail  or { false };
+        imgui.TextColored(COL_DIM, 'Search:'); imgui.SameLine(0, 4);
+        imgui.PushItemWidth(240);
+        imgui.InputText('##addsearch', ui.addSearch, 48);
+        imgui.PopItemWidth();
+        imgui.SameLine(0, 14);
+        imgui.Checkbox('Available only', ui.addAvail);
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Hide gear parked in a container you cannot equip from\n(the red names -- Safe, Storage, Locker, Satchel...).');
+        end
         local gearKey = GEAR_OF[ui.setSelected] or ui.setSelected;
         local list = M.working[ui.setSelected] or {};
         local inList = {};
@@ -2306,7 +2330,18 @@ local function renderAddPopup(job, level)
         end
         local blocked = pairedBlockedIds(ui.setSelected, true);
         cands = sortForDisplay(cands);
-        imgui.BeginChild('##ffxilac_addlist', { 380, 320 }, false);
+        -- Apply the popup filters up front so the name column sizes to what shows.
+        local q = string.lower(ui.addSearch[1] or '');
+        local shown = {};
+        for _, rec in ipairs(cands) do
+            if not inList[rec.Name] and not (rec.Id and blocked[rec.Id])
+               and (q == '' or string.find(string.lower(tostring(rec.Name or '')), q, 1, true) ~= nil)
+               and (ui.addAvail[1] ~= true or not owned.isStored(rec)) then
+                shown[#shown + 1] = rec;
+            end
+        end
+        local nW = fmt.nameWidthOf(shown);
+        imgui.BeginChild('##ffxilac_addlist', { 620, 460 }, false);
         local any = false;
         -- Virtual entries ("slot functions", ADR 0004): resolved by the engine at equip
         -- time from your owned gear. Offered per slot, pinned above the item list.
@@ -2318,7 +2353,8 @@ local function renderAddPopup(job, level)
         end
         if vlist ~= nil then
             for vi, vd in ipairs(vlist) do
-                if not inList[vd.name] then
+                if not inList[vd.name]
+                   and (q == '' or string.find(string.lower(vd.name), q, 1, true) ~= nil) then
                     any = true;
                     imgui.TextColored(COL_SCORE, '*');
                     imgui.SameLine(0, 6);
@@ -2333,19 +2369,20 @@ local function renderAddPopup(job, level)
             end
             imgui.Separator();
         end
-        for i, rec in ipairs(cands) do
-            if not inList[rec.Name] and not (rec.Id and blocked[rec.Id]) then
-                any = true;
-                if renderPickRow(rec, i, 'addpick', useLevel) then
-                    list[#list + 1] = { rec = rec };
-                    M.working[ui.setSelected] = list;
-                    _setDirty = true;   -- added an item to the slot -> unsaved changes
-                    imgui.CloseCurrentPopup();
-                end
-                if imgui.IsItemHovered() then renderItemTooltip(rec); end
+        for i, rec in ipairs(shown) do
+            any = true;
+            if renderAddRow(rec, i, useLevel, nW) then
+                list[#list + 1] = { rec = rec };
+                M.working[ui.setSelected] = list;
+                _setDirty = true;   -- added an item to the slot -> unsaved changes
+                imgui.CloseCurrentPopup();
             end
         end
-        if not any then imgui.TextColored(COL_DIM, 'No addable items (check Main for Sub, or you own only one).'); end
+        if not any then
+            imgui.TextColored(COL_DIM, (q ~= '' or ui.addAvail[1] == true)
+                and 'Nothing matches the search / filter.'
+                or 'No addable items (check Main for Sub, or you own only one).');
+        end
         imgui.EndChild();
     end
     imgui.EndPopup();
@@ -2471,7 +2508,7 @@ local function renderSetBuilder(job, level)
 
     local list = M.working[ui.setSelected] or {};
     imgui.TextColored(COL_HEADER, string.format('%s list (%d):', ui.setSelected, #list));
-    imgui.SameLine(); if imgui.Button('+ Add##setadd', { 60, 0 }) then ui._openAddPopup = true; end
+    imgui.SameLine(); if imgui.Button('+ Add##setadd', { 60, 0 }) then ui._openAddPopup = true; ui.addSearch = { '' }; end
     imgui.SameLine(0, 8); renderSortCombo('setlist');
 
     local pick = bestByLevel(list, level);
@@ -2483,32 +2520,25 @@ local function renderSetBuilder(job, level)
     if #list == 0 then
         imgui.TextColored(COL_DIM, 'Empty -- click + Add (usable owned items) or Auto-build.');
     else
-        -- Static columns like the All Equipment browse rows: the name column is
-        -- sized from the longest name so Lv / stats align down the list. Buttons
-        -- are pinned to the row's right edge. No up/down reordering -- list order
-        -- doesn't matter (best-by-level + rules decide the pick).
-        local recs = {};
-        for _, e in ipairs(disp) do recs[#recs + 1] = e.rec or {}; end
-        local nW = fmt.nameWidthOf(recs);
+        -- One BLOCK per item (alternating bg per block, never inside one): line 1 =
+        -- name + Lv + rule tags with the buttons pinned right; line 2 = the stats.
+        -- No up/down reordering -- list order doesn't matter (best-by-level + rules
+        -- decide the pick).
         local openEdit = false;
         for di, it in ipairs(disp) do
             local rec = it.rec;
+            local ss = rec and fmt.statSummary(rec, level) or '';
             local bg = (di % 2 == 0) and { 1, 1, 1, 0.03 } or { 1, 1, 1, 0.07 };
             imgui.PushStyleColor(ImGuiCol_ChildBg, bg);
-            imgui.BeginChild('##setrow_' .. tostring(rec and rec.Id or ('n' .. di)) .. '_' .. di, { -1, 24 }, false);
+            imgui.BeginChild('##setrow_' .. tostring(rec and rec.Id or ('n' .. di)) .. '_' .. di,
+                { -1, (ss ~= '') and 42 or 26 }, false);
             renderIcon(rec and rec.Id or nil, 18);
             imgui.TextColored((rec ~= nil and rec == pickRec) and COL_SCORE
                 or (owned.isStored(rec) and COL_ERR or COL_USABLE),
                 fmt.esc((rec and rec.Name) or '?') .. fmt.qtyTag(rec));
             if rec ~= nil and imgui.IsItemHovered() then renderItemTooltip(rec); end
-            local nameCol = 26 + nW;                   -- icon (18+6 pad) + name column
-            imgui.SameLine(nameCol);
+            imgui.SameLine(0, 10);
             imgui.TextColored(COL_LEVEL, string.format('Lv%2d', rec and rec.Level or 0));
-            local ss = rec and fmt.statSummary(rec, level) or '';
-            if ss ~= '' then
-                imgui.SameLine(nameCol + 46);          -- fixed Lv column
-                imgui.TextColored(COL_STATS, fmt.esc(ss));
-            end
             if it.minLevel ~= nil then imgui.SameLine(0, 8); imgui.TextColored(COL_DIM, 'min' .. tostring(it.minLevel)); end
             if it.maxLevel ~= nil then imgui.SameLine(0, 8); imgui.TextColored(COL_DIM, 'max' .. tostring(it.maxLevel)); end
             if it.mode ~= nil then
@@ -2531,6 +2561,10 @@ local function renderSetBuilder(job, level)
             imgui.SameLine(0, 4);
             if imgui.Button('x##rm_' .. di, { 24, 20 }) then action = { kind = 'remove', it = it }; end
             if imgui.IsItemHovered() then imgui.SetTooltip('Remove from this list.'); end
+            if ss ~= '' then                           -- line 2: stats, under the name
+                imgui.SetCursorPosX(26);
+                imgui.TextColored(COL_STATS, fmt.esc(ss));
+            end
             imgui.EndChild();
             imgui.PopStyleColor(1);
         end
