@@ -47,9 +47,17 @@ over it, then your dedicated Slow set on top. Conditions stack with AND
 
 ### Modes
 
-Named switches (e.g. `DT`) that triggers can match — overlay your damage-taken set
-over whatever else won. Toggle from the Triggers tab or `/dl mode DT` (macro-able).
-Highest priority: manual intent always wins.
+Named switches that triggers can match. Two kinds:
+
+- **Toggles** (e.g. `DT`) — on/off; overlay your damage-taken set over whatever else
+  won. Highest priority: manual intent always wins.
+- **Cycles** (e.g. `Weapon`: Caster → SoloKC → DualKC) — an ordered value list, exactly
+  one active; rules match a value with `mode = Weapon:SoloKC`. This replaces the classic
+  hand-written "variant table + HandleCommand arithmetic" pattern entirely.
+
+Flip them from the Triggers tab buttons (cycles show their current value), by chat/macro
+(`/dl mode dt`, `/dl mode weapon`, `/dl mode weapon caster`), or give a mode an optional
+**keybind** in the GUI — applied automatically at profile load, no OnLoad code.
 
 ### Automations (auto staff / auto obi)
 
