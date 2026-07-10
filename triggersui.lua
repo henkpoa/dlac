@@ -685,6 +685,11 @@ local function textW(s)
 end
 
 -- One rule box. colX = the section's aligned controls column. Returns 'remove'/'edit'/nil.
+-- Bordered content boxes must never grow their own scrollbar: we size them to
+-- their content and suppress the bar (a 1px estimate miss otherwise shows an
+-- ugly full-height slider inside every box).
+local BOX_FLAGS = ImGuiWindowFlags_NoScrollbar or 0;
+
 local function renderTrigRuleBox(h, i, r, setNames, colX)
     local id = h .. '_' .. tostring(i);
     local act = nil;
@@ -699,9 +704,9 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
         table.sort(parts);
     end
     local leftH  = #lines * 19;
-    local rightH = ((parts ~= nil) and (#parts * 19) or 24) + 28;   -- target + controls row
-    local boxH = math.max(leftH, rightH, 50) + 12;
-    imgui.BeginChild('##trgbox' .. id, { -1, boxH }, true);
+    local rightH = ((parts ~= nil) and (#parts * 19) or 26) + 30;   -- target + controls row
+    local boxH = math.max(leftH, rightH, 56) + 14;
+    imgui.BeginChild('##trgbox' .. id, { -1, boxH }, true, BOX_FLAGS);
 
     imgui.BeginGroup();                                -- left column: the methods
     for _, ln in ipairs(lines) do
@@ -765,33 +770,62 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
     return act;
 end
 
--- One mode box (Modes section): name/kind + cycle values on the left (current value
--- highlighted), live button + bind + edit on the right. Same language as rule boxes.
--- Minimal mode chips (gear-grid style): a clickable box per mode plus an 'e' edit
--- button, flowing left-to-right and wrapping to use the full width. Toggles show
--- 'Name: ON/off' (green when on); cycles show 'Name: Value' with the keybind.
-local function renderModeChip(m, def, cur, isCycle, label, bw)
+-- One mode box (rule-box language, content-fit height): identity + cycle values
+-- on the left (current value highlighted), live button + bind + edit on the right.
+local function renderModeBox(m, def, cur, colX)
+    local isCycle = (def ~= nil and def.values ~= nil);
+    local leftH  = 19 + (isCycle and #def.values * 19 or 0);
+    local rightH = 26 + 24;                            -- action button + bind/edit row
+    local boxH = math.max(leftH, rightH, 56) + 14;
+    imgui.BeginChild('##trgmbox' .. m, { -1, boxH }, true, BOX_FLAGS);
+
+    imgui.BeginGroup();                                -- left: identity + cycle values
+    imgui.TextColored(COND_COLORS.mode, esc(m));
+    imgui.SameLine(0, 10);
+    imgui.TextColored(COL_DIM, isCycle and 'cycle' or 'toggle');
+    if isCycle then
+        for i, v in ipairs(def.values) do
+            local active = ((type(cur) == 'string') and (string.lower(cur) == string.lower(v)))
+                           or (cur == nil and i == 1);          -- engine defaults to the first
+            imgui.TextColored(active and COL_SCORE or COL_DIM,
+                string.format('  %d. %s%s', i, esc(v), active and '   <' or ''));
+        end
+    end
+    imgui.EndGroup();
+
+    imgui.SameLine(colX);
+    imgui.BeginGroup();                                -- right: live button + bind + edit
     local styled = (ImGuiCol_Button ~= nil);
-    if styled then
-        if isCycle then imgui.PushStyleColor(ImGuiCol_Button, { 0.20, 0.42, 0.58, 1.0 });
-        elseif cur ~= nil then imgui.PushStyleColor(ImGuiCol_Button, { 0.15, 0.55, 0.20, 1.0 });
-        else imgui.PushStyleColor(ImGuiCol_Button, { 0.22, 0.22, 0.27, 1.0 }); end
+    if isCycle then
+        local shown = (type(cur) == 'string') and cur or (def.values[1] or '?');
+        if styled then imgui.PushStyleColor(ImGuiCol_Button, { 0.20, 0.42, 0.58, 1.0 }); end
+        if imgui.Button(string.format('%s: %s##trgmode_%s', m, shown, m), { 0, 24 }) then
+            pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl mode ' .. m); end);
+            trig._modeStateAt = -1;
+        end
+        if styled then imgui.PopStyleColor(1); end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Advance the cycle (also: /dl mode ' .. m .. ', or the keybind).\nRules match a value with  mode = ' .. m .. ':<value>');
+        end
+    else
+        local on = (cur ~= nil);
+        if styled then
+            imgui.PushStyleColor(ImGuiCol_Button, on and { 0.15, 0.55, 0.20, 1.0 } or { 0.22, 0.22, 0.27, 1.0 });
+        end
+        if imgui.Button(string.format('%s: %s##trgmode_%s', m, on and 'ON' or 'off', m), { 0, 24 }) then
+            pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl mode ' .. m .. ' toggle'); end);
+            trig._modeStateAt = -1;
+        end
+        if styled then imgui.PopStyleColor(1); end
+        if imgui.IsItemHovered() then imgui.SetTooltip('Toggle on/off (also macro-able: /dl mode ' .. m .. ').'); end
     end
-    if imgui.Button(label .. '##trgmode_' .. m, { bw, 26 }) then
-        pcall(function()
-            AshitaCore:GetChatManager():QueueCommand(1, '/dl mode ' .. m .. (isCycle and '' or ' toggle'));
-        end);
-        trig._modeStateAt = -1;
-    end
-    if styled then imgui.PopStyleColor(1); end
-    if imgui.IsItemHovered() then
-        imgui.SetTooltip(isCycle
-            and ('Advance the cycle (also: /dl mode ' .. m .. ', or the keybind).\nRules match a value with  mode = ' .. m .. ':<value>')
-            or  ('Toggle on/off (also macro-able: /dl mode ' .. m .. ').'));
-    end
-    imgui.SameLine(0, 2);
-    if imgui.SmallButton('e##trgmedit_' .. m) then openModeEditor(m, def); end
+    imgui.TextColored(COL_DIM, (def ~= nil and def.bind ~= nil) and ('bind: ' .. def.bind) or 'bind: (none)');
+    imgui.SameLine(0, 12);
+    if imgui.SmallButton('edit##trgmedit_' .. m) then openModeEditor(m, def); end
     if imgui.IsItemHovered() then imgui.SetTooltip('Edit this mode (values / keybind / delete).'); end
+    imgui.EndGroup();
+
+    imgui.EndChild();
 end
 
 local function renderModesSection(defs, modes)
@@ -802,35 +836,35 @@ local function renderModesSection(defs, modes)
         if def ~= nil and def.values ~= nil then cycles[#cycles + 1] = m; else toggles[#toggles + 1] = m; end
     end
 
-    -- Chips flow and wrap by measured width, so wide windows fit several per row.
-    local function flow(names, isCycle)
-        local avail = imgui.GetContentRegionAvail();
-        if type(avail) ~= 'number' or avail < 200 then avail = 600; end
-        local x = 0;
-        for _, m in ipairs(names) do
-            local def = defs[m];
-            local cur = mstate[string.lower(m)];
-            local label;
-            if isCycle then
-                local shown = (type(cur) == 'string') and cur or ((def and def.values and def.values[1]) or '?');
-                label = string.format('%s: %s', m, shown);
-                if def ~= nil and def.bind ~= nil then label = label .. '   ' .. def.bind; end
-            else
-                label = string.format('%s: %s', m, (cur ~= nil) and 'ON' or 'off');
+    -- aligned controls column shared by both groups (longest left line wins)
+    local colX = 200;
+    for _, m in ipairs(modes) do
+        local w = textW(m) + 84;
+        if w > colX then colX = w; end
+        local def = defs[m];
+        if def ~= nil and def.values ~= nil then
+            for _, v in ipairs(def.values) do
+                local w2 = textW('  9. ' .. v .. '   <') + 40;
+                if w2 > colX then colX = w2; end
             end
-            local bw = math.max((textW(label) or 80) + 24, 96);
-            local footprint = bw + 26;                 -- chip + the 'e' button
-            if x > 0 and (x + footprint + 8) <= avail then imgui.SameLine(0, 8); else x = 0; end
-            renderModeChip(m, def, cur, isCycle, label, bw);
-            x = x + footprint + 8;
         end
     end
+    local avail = imgui.GetContentRegionAvail();
+    if type(avail) == 'number' and colX > avail * 0.55 then colX = avail * 0.55; end
 
-    imgui.TextColored(COL_DIM, 'Toggles -- on/off switches; rules match them with  mode = Name');
-    if #toggles == 0 then imgui.TextColored(COL_DIM, '  (none)'); else flow(toggles, false); end
-    imgui.Spacing(); imgui.Separator(); imgui.Spacing();
-    imgui.TextColored(COL_DIM, 'Cycles -- one active value from a list; rules match with  mode = Name:Value');
-    if #cycles == 0 then imgui.TextColored(COL_DIM, '  (none)'); else flow(cycles, true); end
+    imgui.TextColored(COL_HEADER, 'Toggles');
+    imgui.SameLine(0, 10);
+    imgui.TextColored(COL_DIM, 'on/off switches; rules match them with  mode = Name');
+    if #toggles == 0 then imgui.TextColored(COL_DIM, '(none)'); end
+    for _, m in ipairs(toggles) do renderModeBox(m, defs[m], mstate[string.lower(m)], colX); end
+
+    imgui.Spacing();
+    imgui.TextColored(COL_HEADER, 'Cycles');
+    imgui.SameLine(0, 10);
+    imgui.TextColored(COL_DIM, 'one active value from a list; rules match with  mode = Name:Value');
+    if #cycles == 0 then imgui.TextColored(COL_DIM, '(none)'); end
+    for _, m in ipairs(cycles) do renderModeBox(m, defs[m], mstate[string.lower(m)], colX); end
+
     imgui.Spacing();
     if imgui.Button('+ Mode...##trgaddmode', { 0, 26 }) then
         modeUI.name[1] = ''; modeUI.kind = 'toggle'; modeUI.values = {};
