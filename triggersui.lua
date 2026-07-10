@@ -546,26 +546,69 @@ local function renderModePopup()
     imgui.EndPopup();
 end
 
--- One rule row: [x][edit] condition -> set-dropdown  prio [n] [auto].
--- Returns 'remove' / 'edit' / nil.
-local function renderTrigRuleRow(h, i, r, setNames)
+-- ---------------------------------------------------------------------------
+-- Rule boxes. Each Trigger renders in its OWN bordered box: conditions on the
+-- left, ONE PER LINE, coloured by condition type ("method"); controls in a fixed
+-- right-hand column whose X is computed per section from the longest condition
+-- line, so every box in a section aligns.
+-- ---------------------------------------------------------------------------
+
+-- Distinct colour per condition type, so a rule's methods read at a glance.
+local COND_COLORS = {
+    status = { 0.55, 0.75, 1.00, 1.0 },  moving = { 0.55, 0.75, 1.00, 1.0 },
+    mode = { 0.80, 0.60, 1.00, 1.0 },
+    skill = { 0.55, 0.85, 0.55, 1.0 },
+    magictype = { 0.45, 0.80, 0.75, 1.0 }, abilitytype = { 0.45, 0.80, 0.75, 1.0 },
+    element = { 0.95, 0.70, 0.45, 1.0 },  songtype = { 0.80, 0.85, 0.50, 1.0 },
+    dayweatherbonus = { 0.60, 0.90, 0.90, 1.0 },
+    contains = { 0.95, 0.85, 0.45, 1.0 }, family = { 0.95, 0.85, 0.45, 1.0 },
+    name = { 1.00, 0.95, 0.75, 1.0 },
+    any = { 0.60, 0.60, 0.65, 1.0 },
+};
+
+-- A rule's conditions as display lines (sorted, one per line; 'any' when empty).
+local function condLines(when)
+    local out = {};
+    for k, v in pairs(when or {}) do
+        local txt = (v == true) and trigPrettyKey(k) or (trigPrettyKey(k) .. ' = ' .. tostring(v));
+        out[#out + 1] = { key = k, text = txt };
+    end
+    table.sort(out, function(a, b) return a.key < b.key; end);
+    if #out == 0 then out[1] = { key = 'any', text = 'any' }; end
+    return out;
+end
+
+local function textW(s)
+    local ok, w = pcall(imgui.CalcTextSize, s);
+    if ok and type(w) == 'number' then return w; end
+    return #tostring(s) * 7;
+end
+
+-- One rule box. colX = the section's aligned controls column. Returns 'remove'/'edit'/nil.
+local function renderTrigRuleBox(h, i, r, setNames, colX)
     local id = h .. '_' .. tostring(i);
     local act = nil;
-    if imgui.SmallButton('x##trgdel' .. id) then act = 'remove'; end
-    if imgui.IsItemHovered() then imgui.SetTooltip('Remove this rule.'); end
-    imgui.SameLine(0, 4);
-    if imgui.SmallButton('edit##trgedit' .. id) then act = 'edit'; end
-    if imgui.IsItemHovered() then imgui.SetTooltip('Edit this rule\'s conditions / set / priority in the rule builder.'); end
-    imgui.SameLine(0, 8);
-    imgui.TextColored(COL_USABLE, esc(condSummary(r.when)));
-    imgui.SameLine(0, 8); imgui.TextColored(COL_DIM, '->'); imgui.SameLine(0, 8);
+    local lines = condLines(r.when);
+    local boxH = math.max(#lines * 19, 50) + 12;
+    imgui.BeginChild('##trgbox' .. id, { -1, boxH }, true);
+
+    imgui.BeginGroup();                                -- left column: the methods
+    for _, ln in ipairs(lines) do
+        imgui.TextColored(COND_COLORS[ln.key] or COL_USABLE, esc(ln.text));
+    end
+    imgui.EndGroup();
+
+    imgui.SameLine(colX);
+    imgui.BeginGroup();                                -- right column: target + controls
+    imgui.TextColored(COL_DIM, '->');
+    imgui.SameLine(0, 6);
     if r.equip ~= nil then
         local parts = {};
         for slot, item in pairs(r.equip) do parts[#parts + 1] = tostring(slot) .. '=' .. tostring(item); end
         table.sort(parts);
         imgui.TextColored(COL_SCORE, esc('{ ' .. table.concat(parts, ', ') .. ' }'));
     else
-        imgui.PushItemWidth(150);
+        imgui.PushItemWidth(170);
         if imgui.BeginCombo('##trgset' .. id, r.set or '(pick set)') then
             for _, nm in ipairs(setNames) do
                 if imgui.Selectable(nm .. '##trgso' .. id, r.set == nm) then
@@ -576,26 +619,39 @@ local function renderTrigRuleRow(h, i, r, setNames)
         end
         imgui.PopItemWidth();
     end
-    imgui.SameLine(0, 10);
-    imgui.TextColored(COL_DIM, 'prio'); imgui.SameLine(0, 3);
-    local eff = r.priority
-        or ((hasDispatch and type(dsp.defaultPriority) == 'function') and dsp.defaultPriority(r.when) or 10);
+
+    -- controls row: prio (dim = automatic, gold = custom) + edit + remove.
+    local defP = (hasDispatch and type(dsp.defaultPriority) == 'function') and dsp.defaultPriority(r.when) or 10;
+    local isAuto = (r.priority == nil);
+    local eff = r.priority or defP;
+    imgui.TextColored(isAuto and COL_DIM or COL_SCORE, isAuto and 'prio (auto)' or 'prio');
+    imgui.SameLine(0, 4);
     local b = trig._prioBuf[id];
     if b == nil or b.was ~= eff then b = { v = { eff }, was = eff }; trig._prioBuf[id] = b; end
     imgui.PushItemWidth(52);
     if imgui.InputInt('##trgprio' .. id, b.v, 0) then
         local nv = tonumber(b.v[1]);
-        if nv ~= nil and nv ~= eff then r.priority = nv; b.was = nv; trig.dirty = true; end
+        if nv ~= nil and nv ~= eff then
+            r.priority = (nv ~= defP) and nv or nil;   -- typing the automatic value returns to auto
+            b.was = nv;
+            trig.dirty = true;
+        end
     end
     imgui.PopItemWidth();
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Priority: every matching rule applies, lowest first -- higher overlays lower.\nAuto-set from specificity; type a number to override.');
+        imgui.SetTooltip(string.format('Priority: higher overlays lower; every matching rule applies.
+Automatic from specificity = %d. Type another number to override;
+type %d again to go back to automatic.', defP, defP));
     end
-    if r.priority ~= nil then
-        imgui.SameLine(0, 3);
-        if imgui.SmallButton('auto##trgau' .. id) then r.priority = nil; trig._prioBuf[id] = nil; trig.dirty = true; end
-        if imgui.IsItemHovered() then imgui.SetTooltip('Back to the automatic (specificity) priority.'); end
-    end
+    imgui.SameLine(0, 10);
+    if imgui.SmallButton('edit##trgedit' .. id) then act = 'edit'; end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Edit this rule in the rule builder.'); end
+    imgui.SameLine(0, 4);
+    if imgui.SmallButton('x##trgdel' .. id) then act = 'remove'; end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Remove this rule.'); end
+    imgui.EndGroup();
+
+    imgui.EndChild();
     return act;
 end
 
@@ -840,9 +896,19 @@ function M.render(job, level)
     for _, h in ipairs(TRIG_HANDLERS) do
         local list = trig.data[h] or {};
         if imgui.CollapsingHeader(string.format('%s (%d)###trgsec_%s', h, #list, h)) then
+            -- aligned controls column for THIS section: longest condition line wins
+            local colX = 190;
+            for _, r in ipairs(list) do
+                for _, ln in ipairs(condLines(r.when)) do
+                    local w = textW(ln.text) + 28;
+                    if w > colX then colX = w; end
+                end
+            end
+            local availW = imgui.GetContentRegionAvail();
+            if type(availW) == 'number' and colX > availW * 0.55 then colX = availW * 0.55; end
             local removeAt, editAt = nil, nil;
             for i, r in ipairs(list) do
-                local act = renderTrigRuleRow(h, i, r, setNames);
+                local act = renderTrigRuleBox(h, i, r, setNames, colX);
                 if act == 'remove' then removeAt = i;
                 elseif act == 'edit' then editAt = i; end
             end
@@ -866,7 +932,7 @@ function M.render(job, level)
                 trig._addDef = 1; trig.addValText[1] = ''; trig._addValSel = nil;
                 trig._openAdd = true;
             end
-            if imgui.Button('+ Add rule##trgadd_' .. h, { 0, 20 }) then
+            if imgui.Button('+ Add rule##trgadd_' .. h, { 0, 28 }) then
                 trig.addFor = h; trig.addConds = {}; trig._addDef = 1;
                 trig.addValText[1] = ''; trig._addValSel = nil; trig.addSet = nil; trig.addPrio[1] = 0;
                 trig.editIdx, trig._editEquip = nil, nil;   -- fresh add, not an edit
