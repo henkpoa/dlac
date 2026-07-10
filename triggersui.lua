@@ -53,6 +53,7 @@ local SPELL_CONDS = {
     { key = 'contains',  kind = 'text', hint = 'name contains this text: "Madrigal" matches Blade + Sword\nMadrigal; "Stone" matches every Stone tier. Stack it with skill\nvia [+ condition] for AND logic (e.g. skill=Elemental + contains=Stone).' },
     { key = 'name',      kind = 'text', hint = 'exact spell name, e.g. Slow II' },
     { key = 'dayWeatherBonus', kind = 'flag' },
+    { key = 'mode',      kind = 'text', hint = 'a player-toggled mode must be ON (e.g. DT) -- stack with other\nconditions to make a rule mode-dependent' },
     { key = 'any',       kind = 'flag' },
 };
 local COND_DEFS = {
@@ -67,18 +68,21 @@ local COND_DEFS = {
         { key = 'abilityType', kind = 'list', items = { 'Blood Pact: Rage', 'Blood Pact: Ward', 'Corsair Roll', 'Quick Draw', 'Ready', 'Rune Enchantment' } },
         { key = 'contains', kind = 'text', hint = 'name contains this text' },
         { key = 'name',     kind = 'text', hint = 'exact ability name, e.g. Repair' },
+        { key = 'mode',     kind = 'text', hint = 'a player-toggled mode must be ON' },
         { key = 'any',      kind = 'flag' },
     },
     Item = {
         { key = 'name',     kind = 'text', hint = 'exact item name, e.g. Holy Water' },
         { key = 'contains', kind = 'text', hint = 'name contains this text' },
+        { key = 'mode',     kind = 'text', hint = 'a player-toggled mode must be ON' },
     },
     Weaponskill = {
         { key = 'name', kind = 'text', hint = 'exact weaponskill name' },
+        { key = 'mode', kind = 'text', hint = 'a player-toggled mode must be ON' },
         { key = 'any',  kind = 'flag' },
     },
-    Preshot = { { key = 'any', kind = 'flag' } },
-    Midshot = { { key = 'any', kind = 'flag' } },
+    Preshot = { { key = 'any', kind = 'flag' }, { key = 'mode', kind = 'text', hint = 'a player-toggled mode must be ON' } },
+    Midshot = { { key = 'any', kind = 'flag' }, { key = 'mode', kind = 'text', hint = 'a player-toggled mode must be ON' } },
 };
 
 local trig = {
