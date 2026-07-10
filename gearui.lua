@@ -1952,89 +1952,12 @@ local function resolveSetItem(elem)
     return { rec = rec, minLevel = minL, maxLevel = maxL };
 end
 
--- The profile's raw `sets` table. LuAshitacast exposes the loaded profile as the
--- gProfile global, and gProfile.Sets IS the profile's `sets` table whether it was
--- declared local (BLM/BLU/BRD/COR/...) or global (SCH-style) -- BuildDynamicSets
--- mutates that table in place but leaves .Dynamic intact. Fall back to a global
--- `sets` if gProfile isn't reachable; nil until a profile is loaded.
--- Addon context has no gProfile. Read the current job's <JOB>.lua from disk and run it in
--- a sandbox (LuaAshitacast globals stubbed to a permissive no-op) to recover its `sets`
--- table -- its gear refs resolve against the same preloaded gear the GUI uses. Cached per
--- file; cleared on job change and after a commit/delete.
-local _profileSets, _profileSetsKey, _setsDiag = nil, nil, nil;
-local function loadProfileSets()
-    local jf = jobFile();
-    if jf == nil then _setsDiag = 'no job file (logged in? job known?)'; return nil; end
-    if _profileSetsKey == jf and _profileSets ~= nil then return _profileSets; end
-    _profileSetsKey = jf;
-    local chunk = loadfile(jf);
-    if chunk == nil then _setsDiag = 'could not open ' .. jf; _profileSets = nil; return nil; end
-    local STUB; STUB = setmetatable({}, { __index = function() return STUB; end, __call = function() return STUB; end });
-    local env = setmetatable({}, {
-        __index    = function(_, k) local g = rawget(_G, k); if g ~= nil then return g; end return STUB; end,
-        __newindex = function(t, k, v) rawset(t, k, v); end,
-    });
-    if setfenv ~= nil then setfenv(chunk, env); end   -- LuaJIT (Ashita)
-    local ok, ret = pcall(chunk);                     -- profiles end with `return profile`
-    -- Prefer the returned profile.Sets (works whether the profile used `local sets` or a
-    -- global one); fall back to a global `sets` assigned into the sandbox env.
-    local s = nil;
-    if ok and type(ret) == 'table' and type(ret.Sets) == 'table' then s = ret.Sets;
-    elseif type(rawget(env, 'sets')) == 'table' then s = rawget(env, 'sets'); end
-    if type(s) == 'table' then
-        _profileSets = s;
-        _setsDiag = (type(s.Dynamic) == 'table') and nil or ('ran ' .. jf .. ' but it has no sets.Dynamic');
-    else
-        _profileSets = nil;
-        _setsDiag = 'ran ' .. jf .. ' but found no sets' .. (ok and '' or (' -- error: ' .. tostring(ret)));
-    end
-    return _profileSets;
-end
-
-local function getSetsRoot()
-    local prof = rawget(_G, 'gProfile');
-    if type(prof) == 'table' and type(prof.Sets) == 'table' then return prof.Sets; end
-    local s = rawget(_G, 'sets');
-    if type(s) == 'table' then return s; end
-    return loadProfileSets();   -- addon: parse the current job's <JOB>.lua on disk
-end
-
--- The .Dynamic sub-table specifically (the only sets we build/commit).
-local function getDynamicSets()
-    local S = getSetsRoot();
-    if type(S) == 'table' and type(S.Dynamic) == 'table' then return S.Dynamic; end
-    return nil;
-end
-
--- Names of the dynamic sets (the only sets we edit). Guarded: nil until profile load.
-local function dynamicSetNames()
-    local names = {};
-    pcall(function()
-        local dyn = getDynamicSets();
-        if type(dyn) ~= 'table' then return; end
-        for k, v in pairs(dyn) do
-            if type(v) == 'table' then names[#names + 1] = tostring(k); end
-        end
-    end);
-    table.sort(names);
-    return names;
-end
-
--- Names of the profile's NON-Dynamic sibling sets (static / flattened sets like
--- Idle, Precast, Cure, ...). These are the migration sources the "Copy from" helper
--- can seed a Dynamic set from. Excludes 'Dynamic' itself. Guarded: nil until load.
-local function staticSetNames()
-    local names = {};
-    pcall(function()
-        local S = getSetsRoot();
-        if type(S) ~= 'table' then return; end
-        for k, v in pairs(S) do
-            if k ~= 'Dynamic' and type(v) == 'table' then names[#names + 1] = tostring(k); end
-        end
-    end);
-    table.sort(names);
-    return names;
-end
+-- The profile's raw `sets` table lives in its OWN module (dlac\\profilesets.lua) --
+-- gearui's main chunk is at LuaJIT's 200-local cap, so cohesive clusters get their
+-- own module (same pattern as triggersui). It reads gProfile.Sets / a global `sets`,
+-- falling back to sandbox-running the job file on disk; jobFile is injected once.
+local profsets = require("dlac\\profilesets");
+profsets.configure({ jobFile = jobFile });
 
 -- ---------------------------------------------------------------------------
 -- Tab: Triggers -- lives in its OWN module (dlac\\triggersui.lua). LuaJIT caps a
@@ -2050,9 +1973,9 @@ do
         trigui = m;
         pcall(trigui.init, {
             charBase = charBase, jobFile = jobFile, seedTriggersFile = seedTriggersFile,
-            dynamicSetNames = dynamicSetNames, staticSetNames = staticSetNames,
+            dynamicSetNames = profsets.dynamicSetNames, staticSetNames = profsets.staticSetNames,
             lookupByName = lookupByName, ownedCounts = ownedCounts,   -- automations manifest (owned staves/obis)
-            setsRoot = getSetsRoot,                                   -- gearcheck: set contents for the audit
+            setsRoot = profsets.getSetsRoot,                          -- gearcheck: set contents for the audit
         });
     else
         pcall(function() print('[dlac] triggersui failed to load: ' .. tostring(m)); end);
@@ -2072,7 +1995,7 @@ local function loadSet(setName)
     ui.setSelected = nil;
     _setDirty = false;              -- freshly (re)loaded from the saved list -> no unsaved changes
     pcall(function()
-        local dyn = getDynamicSets();
+        local dyn = profsets.getDynamicSets();
         if type(dyn) ~= 'table' then return; end
         local setT = dyn[setName];
         if type(setT) ~= 'table' then return; end
@@ -2263,7 +2186,7 @@ local function copyFromStaticSet(srcName)
     ui.newSetName[1] = '';
     local n = 0;
     pcall(function()
-        local S = getSetsRoot();
+        local S = profsets.getSetsRoot();
         if type(S) ~= 'table' then return; end
         local setT = S[srcName];
         if type(setT) ~= 'table' then return; end
@@ -2299,8 +2222,8 @@ local function commitCurrentSet(job)
     local ok, action, backup = nil, nil, nil;
     local pok = pcall(function() ok, action, backup = setmgr.commitSet(job, M.workingSetName, slots); end);
     if pok and ok == true then
-        _setDirty = false;    -- committed -> the working set now matches what's saved
-        _profileSets = nil;   -- re-read the job file so the Sets list reflects the change
+        _setDirty = false;         -- committed -> the working set now matches what's saved
+        profsets.invalidate();     -- re-read the job file so the Sets list reflects the change
         setStatus(string.format('%s "%s" for %s. Reload (top-right) to apply.  backup: %s',
             tostring(action), tostring(M.workingSetName), tostring(job), tostring(backup)), false);
     else
@@ -2315,7 +2238,7 @@ local function deleteCurrentSet(job)
     local ok, action, backup = nil, nil, nil;
     local pok = pcall(function() ok, action, backup = setmgr.deleteSet(job, M.workingSetName); end);
     if pok and ok == true then
-        _profileSets = nil;
+        profsets.invalidate();
         setStatus(string.format('deleted "%s" for %s. Reload to apply.  backup: %s',
             tostring(M.workingSetName), tostring(job), tostring(backup)), false);
         M.working = {}; M.workingSetName = nil; ui.setSelected = nil; _setDirty = false;
@@ -2595,10 +2518,11 @@ local function renderSetsTab(job, level)
     imgui.TextColored(COL_DIM, 'Set:'); imgui.SameLine(0, 4);
     imgui.PushItemWidth(150);
     if imgui.BeginCombo('##ffxilac_setpick', M.workingSetName or '(select)') then
-        local names = dynamicSetNames();
+        local names = profsets.dynamicSetNames();
         if #names == 0 then
             imgui.TextColored(COL_DIM, '(no sets.Dynamic -- reload the profile?)');
-            if _setsDiag ~= nil and _setsDiag ~= '' then imgui.TextColored(COL_ERR, esc(_setsDiag)); end
+            local _sd = profsets.diag();
+            if _sd ~= nil and _sd ~= '' then imgui.TextColored(COL_ERR, esc(_sd)); end
         end
         for _, nm in ipairs(names) do
             if imgui.Selectable(nm, M.workingSetName == nm) then
@@ -2660,7 +2584,7 @@ local function renderSetsTab(job, level)
     imgui.TextColored(COL_DIM, 'Copy from:'); imgui.SameLine(0, 4);
     imgui.PushItemWidth(150);
     if imgui.BeginCombo('##ffxilac_copyfrom', '(static set)') then
-        local statics = staticSetNames();
+        local statics = profsets.staticSetNames();
         if #statics == 0 then imgui.TextColored(COL_DIM, '(none -- no static sets on this profile)'); end
         for _, nm in ipairs(statics) do
             if imgui.Selectable(nm, false) then copyFromStaticSet(nm); end
