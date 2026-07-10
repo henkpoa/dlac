@@ -1260,6 +1260,11 @@ local STATS_W   = 250;   -- left stats panel width (name column + value column)
 
 -- Fixed grouped stat order. Every stat always renders (0 if absent); present-but-
 -- unlisted stats fall under "Other".
+-- statdefs: the central stat registry (label / section / aliases). Used by the weights
+-- picker (so aliases are searchable) and, over time, the other stat tables below. Guarded.
+local _sdok, statdefs = pcall(require, "dlac\\statdefs");
+local hasStatdefs = _sdok and type(statdefs) == 'table' and type(statdefs.list) == 'table';
+
 local STAT_GROUPS = {
     { name = 'Attributes', stats = { 'STR', 'DEX', 'VIT', 'AGI', 'INT', 'MND', 'CHR' } },
     { name = 'HP/MP',      stats = { 'HP', 'MP', 'HPP', 'MPP', 'Refresh', 'Regen', 'HMP', 'ConserveMP' } },
@@ -1276,6 +1281,31 @@ do
     local function add(s) if not seen[s] then seen[s] = true; WEIGHT_CHOICES[#WEIGHT_CHOICES + 1] = s; end end
     for _, g in ipairs(STAT_GROUPS) do for _, s in ipairs(g.stats) do add(s); end end
     for _, s in ipairs({ 'DMG', 'Counter', 'MovementSpeed', 'PDT', 'DT' }) do add(s); end
+end
+
+-- Suggestion list for the weights "add stat" picker. Sourced from statdefs when available, so
+-- the search matches key/label/aliases (type "MATK" or "MagicAttackBonus" -> find MAB) and
+-- picking inserts the CANONICAL key; falls back to WEIGHT_CHOICES. Each entry:
+--   { key = <canonical key to insert>, label = <display>, terms = {<lowercased key/label/aliases>} }
+local _weightSuggest = nil;
+local function weightSuggestions()
+    if _weightSuggest ~= nil then return _weightSuggest; end
+    local out = {};
+    if hasStatdefs then
+        for _, e in ipairs(statdefs.list) do
+            local lbl = e.label or e.key;
+            local terms = { string.lower(e.key) };
+            if string.lower(lbl) ~= terms[1] then terms[#terms + 1] = string.lower(lbl); end
+            if e.aliases ~= nil then for _, a in ipairs(e.aliases) do terms[#terms + 1] = string.lower(a); end end
+            out[#out + 1] = { key = e.key, label = lbl, terms = terms };
+        end
+    else
+        for _, name in ipairs(WEIGHT_CHOICES) do
+            out[#out + 1] = { key = name, label = name, terms = { string.lower(name) } };
+        end
+    end
+    _weightSuggest = out;
+    return out;
 end
 
 -- Data spelling -> canonical listed name, so gear.lua's MATK/MACC land in the right
@@ -2056,10 +2086,20 @@ local function renderWeightsEditor()
         imgui.PushItemWidth(-1); imgui.InputText('##addfilter', ui.addStat, 32); imgui.PopItemWidth();
         imgui.Separator();
         local q, shown = string.lower(ui.addStat[1] or ''), 0;
-        for _, name in ipairs(WEIGHT_CHOICES) do
-            if q == '' or string.find(string.lower(name), q, 1, true) ~= nil then
+        for _, sug in ipairs(weightSuggestions()) do
+            local match = (q == '');
+            if not match then
+                for _, t in ipairs(sug.terms) do
+                    if string.find(t, q, 1, true) ~= nil then match = true; break; end
+                end
+            end
+            if match then
                 shown = shown + 1;
-                if imgui.Selectable(name, false) then ui.addStat[1] = name; imgui.CloseCurrentPopup(); end
+                local disp = (sug.label ~= sug.key) and (sug.label .. '  (' .. sug.key .. ')') or sug.key;
+                if imgui.Selectable(disp .. '##sug_' .. sug.key, false) then
+                    ui.addStat[1] = sug.key;             -- insert the canonical key (not the alias/label)
+                    imgui.CloseCurrentPopup();
+                end
             end
         end
         if shown == 0 then imgui.TextColored(COL_DIM, '(no match -- Add will use your typed text)'); end
