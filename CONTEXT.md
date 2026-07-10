@@ -51,3 +51,14 @@ Writing GUI state to disk (a set into `<JOB>.lua`, staged items into `gear.lua`,
 **Iridescence**:
 CatsEyeXI's tiered staff-affinity stat (+1/+2). Elemental staves carry it for their own element only (NQ +1, HQ +2); universal weapons (Iridal Staff +1; Chatoyant Staff, Foreshadow +1 at +2) carry it for every element.
 _Avoid_: staff bonus (that's the related per-element potency mod)
+
+**Owned vs Available**:
+Two distinct facts about an item. *Owned* = present in any of the 17 containers (`ALL_CONTAINERS` — the truth `gear.lua` and `/dl prune` use). *Available* = in an equip-eligible bag right now (Inventory + the 8 Wardrobes, `SCAN_CONTAINERS`) — what the engine and the GUI's red-name marking use. Gear can be owned and unavailable (parked in storage).
+_Avoid_: "has it" without saying which of the two you mean
+
+**Plan vs Equip**:
+A set is a *plan*: it may contain anything the character can ever wield (a 1H weapon in Sub with no Dual Wield). Legality is decided by the engine at *equip* time (`subSlotAllowed`: DW up → weapon; otherwise the list's shield/grip). GUI surfaces that equip immediately gate; builders never do.
+_Avoid_: validating sets against current traits/state
+
+**Engine handshake**:
+`dispatch.M.VERSION`, mirrored through `modestate.lua`, lets the GUI detect that LuaAshitacast is still running a stale seeded engine and show the red "Reload LAC" banner. Bump it whenever seeded-file behavior changes.

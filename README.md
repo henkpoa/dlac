@@ -100,10 +100,13 @@ re-detected automatically on login/job change.
 
 ## For developers
 
-Design docs live in the repo: [CONTEXT.md](CONTEXT.md) (glossary),
-[docs/adr/](docs/adr/) (decision records), and
+**Start at [docs/HANDOFF.md](docs/HANDOFF.md)** — environment, hard rules, and current
+state, with a reading order. Then: [CONTEXT.md](CONTEXT.md) (glossary),
+[docs/architecture.md](docs/architecture.md) (module map & data flow),
+[docs/adr/](docs/adr/) (decision records),
 [docs/design/trigger-system.md](docs/design/trigger-system.md) (the trigger engine
-spec). dlac is CatsEyeXI-only by design (ADR 0001).
+spec), and [docs/history.md](docs/history.md) (session journal — including the
+dead-ends worth not retrying). dlac is CatsEyeXI-only by design (ADR 0001).
 
 ## License
 
