@@ -817,6 +817,41 @@ local function subFilter(cands, mainRec, job, level, building)
     return out;
 end
 
+-- Planning surface (the set builder's + Add popup): the Main pick varies per
+-- mode/level (a mode-gated staff row vs 1H rows), so a Sub candidate is offered
+-- when it pairs with ANY entry in the Main working list -- the staff variant
+-- wants grips, the 1H variants want weapons/shields. BuildDynamicSets enforces
+-- the real pairing per cast. dlac:AutoStaff counts as a 2H main (grips).
+local function subFilterAnyMain(cands, mainList, job, level)
+    local mains = {};
+    if type(mainList) == 'table' then
+        for _, it in ipairs(mainList) do
+            if it.rec ~= nil then
+                if it.rec.Virtual == true then
+                    if string.lower(tostring(it.rec.Name or '')):find('autostaff', 1, true) ~= nil then
+                        mains[#mains + 1] = { Name = it.rec.Name, OneHanded = false };
+                    end
+                else
+                    mains[#mains + 1] = it.rec;
+                end
+            end
+        end
+    end
+    if #mains == 0 then return {}; end                 -- no Main plans -> no Sub
+    local sj, slv = getSubInfo();
+    local oc = owned.counts();
+    local out = {};
+    for _, r in ipairs(cands) do
+        for _, m in ipairs(mains) do
+            if subCandidateOk(r, m, job, level, sj, slv, oc, true) then
+                out[#out + 1] = r;
+                break;
+            end
+        end
+    end
+    return out;
+end
+
 -- Paired slots that fight over the same physical copies.
 local PAIR_OF = { Ring1 = 'Ring2', Ring2 = 'Ring1', Ear1 = 'Ear2', Ear2 = 'Ear1' };
 
@@ -2262,11 +2297,12 @@ local function renderAddPopup(job, level)
         local useLevel = setBuildLevel(level);   -- "Build as lv.75" lifts the cap for + Add too
         local cands = candidatesForSlot(gearKey, job, useLevel);
         if gearKey == 'Sub' then
-            local mp = bestByLevel(M.working['Main'], useLevel);
-            -- Full pool (shields/grips + 1H weapons) with building=true: sets are
-            -- plans -- a 1H off-hand is addable without the DW trait;
+            -- Full pool (shields/grips + 1H weapons), paired against EVERY Main
+            -- plan -- not just the current pick: that pick is mode/level-dependent,
+            -- and a mode-gated staff pick would wrongly hide all 1H weapons. Sets
+            -- are plans: a 1H off-hand is addable without the DW trait;
             -- BuildDynamicSets decides at equip time (shield = fallback).
-            cands = subFilter(subCandidatePool(job, useLevel), mp and mp.rec or nil, job, useLevel, true);
+            cands = subFilterAnyMain(subCandidatePool(job, useLevel), M.working['Main'], job, useLevel);
         end
         local blocked = pairedBlockedIds(ui.setSelected, true);
         cands = sortForDisplay(cands);

@@ -32,7 +32,7 @@ local M = {};
 -- LAC-state copy stamps its version into the modestate mirror; the GUI compares
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code (the seeded file only re-requires when LuaAshitacast itself reloads).
-M.VERSION = 6;
+M.VERSION = 7;
 
 -- Colored [dlac] chat output (chatfmt); plain print when unavailable. The shadowed
 -- `print` re-heads "[dlac] ..."-prefixed lines with the colored header.
@@ -47,6 +47,8 @@ local function printerr(s)  if _cfok then _cfmt.err(s);  else print('[dlac] ' ..
 -- ---------------------------------------------------------------------------
 M.modes = {};   -- session-only mode state: lower(name) -> true (toggle) or 'Value' (cycle).
                 -- Reset on load by design (cycle modes re-default to their first value).
+M.modesRev = 0; -- bumped on every mode change: utils.rebuildSets re-flattens the
+                -- Dynamic sets when it moves (mode-gated entries pick differently).
 M.locks = {};   -- session-only SLOT LOCKS: lower(lac slot name) -> true. A locked slot is
                 -- stripped from every set/inline payload the engine equips, so nothing
                 -- dispatch-driven can overwrite a manual equip. /dl lock drives it; the
@@ -847,6 +849,8 @@ end
 -- always start a session off.
 -- ---------------------------------------------------------------------------
 saveModeState = function()
+    M.modesRev = (M.modesRev or 0) + 1;   -- BEFORE the guarded write: the rebuild
+                                          -- signal must fire even if the mirror can't
     pcall(function()
         local dir = charDir();
         if dir == nil then return; end
@@ -1052,6 +1056,20 @@ if inLac() then
             local ln = string.lower(name);
             local before = M.modes[ln];
             local res = M.setMode(name, state);
+            if res ~= before then
+                -- Make the flip visible NOW instead of at the next game event:
+                -- re-flatten the Dynamic sets (mode-gated entries pick differently)
+                -- and re-run the Default dispatch so the equip follows the mode.
+                pcall(function()
+                    local u = package.loaded['dlac\\utils'];
+                    local prof = rawget(_G, 'gProfile');
+                    if u ~= nil and type(u.rebuildSets) == 'function'
+                       and prof ~= nil and type(prof.Sets) == 'table' then
+                        u.rebuildSets(prof.Sets);
+                    end
+                end);
+                pcall(function() M.dispatch('Default'); end);
+            end
             local function disp(v)
                 if v == true then return 'ON'; end
                 if v == nil or v == false then return 'off'; end

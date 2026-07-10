@@ -311,6 +311,22 @@ check('G16 engine honours mode lists', gList.TP and gList.TP.Body, 'ModeBody');
 dispatchM.modes = {};
 check('G17 list wrapper does not mutate the shared record', modeBody.mode, nil);
 
+-- rebuildSets must re-flatten on a MODE change (not only level/sub-job) --
+-- the field bug: rotating a cycle left the flattened sets stale forever.
+TEST_PLAYER = { MainJob = 'RDM', SubJob = 'WHM', MainJobSync = 75, SubJobSync = 37 };
+dispatchM.modes = {};
+local sets20 = { Dynamic = { TP = {
+    Body = { plainBody, { gear = modeBody, mode = 'DT' } },
+} } };
+sets20 = utils.rebuildSets(sets20);
+check('G20 initial flatten picks unconditional', sets20.TP and sets20.TP.Body, 'PlainBody');
+dispatchM.setMode('DT', true);              -- bumps modesRev via saveModeState
+sets20 = utils.rebuildSets(sets20);         -- same level/SJ: old code skipped this
+check('G21 mode flip re-flattens via modesRev', sets20.TP and sets20.TP.Body, 'ModeBody');
+dispatchM.setMode('DT', false);
+sets20 = utils.rebuildSets(sets20);
+check('G22 flip back re-flattens again', sets20.TP and sets20.TP.Body, 'PlainBody');
+
 -- serializer writes both gate forms
 local serLines = table.concat(setmgr.renderSetLines('T', {
     { name = 'Body', items = {

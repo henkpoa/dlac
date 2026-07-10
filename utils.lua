@@ -117,10 +117,18 @@ local _lastLevel, _lastSJLevel, _lastSJ = 0, 0, nil;
 
 -- Call `sets = utils.rebuildSets(sets)` at the top of HandleDefault. Fetches the
 -- player and manages rebuild state internally; returns the (possibly rebuilt) sets.
+local _lastModesRev = nil;
 function M.rebuildSets(sets)
     local player = gData.GetPlayer();
     if player == nil then return sets; end
     local shouldRebuild, newLevel, newSJLevel, newSJ = M.checkRebuildNeeded(player, _lastLevel, _lastSJLevel, _lastSJ);
+    -- Mode flips must re-flatten too: mode-gated entries pick differently, and
+    -- level/sub-job alone would leave the flattened sets stale forever.
+    local mrev = (M.dispatchModule ~= nil) and M.dispatchModule.modesRev or nil;
+    if mrev ~= nil and mrev ~= _lastModesRev then
+        shouldRebuild = true;
+        _lastModesRev = mrev;
+    end
     if shouldRebuild then
         sets = M.BuildDynamicSets(sets);
         _lastLevel, _lastSJLevel, _lastSJ = newLevel, newSJLevel, newSJ;
