@@ -1302,7 +1302,13 @@ end
 local function renderAltRow(rec, ordinal, job, level, nameW)
     renderIcon(rec.Id, 18);
     local clicked = imgui.Selectable('##altsel_' .. ordinal, false);
-    if imgui.IsItemHovered() then renderItemTooltip(rec); end
+    if imgui.IsItemHovered() then
+        -- Feed the compare panel (drawn above the list; it reads last frame's
+        -- hover) instead of a tooltip -- the card shows the same info without
+        -- covering the list.
+        ui._cmpHover = rec;
+        ui._cmpFrame = cmdq.frame();
+    end
     local nameCol = 26;                                -- just after the icon
     imgui.SameLine(nameCol);
     imgui.TextColored(owned.isStored(rec) and COL_ERR or COL_USABLE, fmt.esc(rec.Name or '?'));
@@ -1361,8 +1367,8 @@ end
 -- Empty slots show the slot's short name; the selected slot gets a gold box.
 -- getText(sl) feeds only the hover line now (the boxes carry no inline text).
 local SLOT_BOX = 40;                  -- outer box; the icon fills it minus the frame pad
-local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, getText, onClick, hoverRec)
-    imgui.BeginChild('##' .. idPrefix .. '_grid', { -1, gridHeight }, false);
+local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, getText, onClick, hoverRec, gridW)
+    imgui.BeginChild('##' .. idPrefix .. '_grid', { gridW or -1, gridHeight }, false);
     local boxBg = { 0.10, 0.10, 0.13, 1.0 };
     local boxSel = { 0.42, 0.36, 0.16, 1.0 };          -- gold: the slot being edited
     for i, sl in ipairs(EQUIP_SLOTS) do
@@ -1554,6 +1560,112 @@ local function sortItemsForDisplay(items)
 end
 
 -- ---------------------------------------------------------------------------
+-- Compare panel (Equipped tab): BG-wiki-style item cards + stat wins/losses.
+-- ---------------------------------------------------------------------------
+local function calcTextW(s)
+    local ok, w = pcall(imgui.CalcTextSize, tostring(s or ''));
+    if ok and type(w) == 'number' then return w; end
+    return #tostring(s or '') * 7;
+end
+
+-- One item card: icon + name / [Slot] tag / stats (wrapped) / augments / Lv+jobs.
+local function renderItemCard(rec, level, w, tag)
+    local lh = 21;
+    pcall(function()
+        local v = imgui.GetTextLineHeightWithSpacing();
+        if type(v) == 'number' and v > 0 then lh = v; end
+    end);
+    local ss = fmt.statSummary(rec, level);
+    local statLines = (ss ~= '') and math.max(1, math.ceil(calcTextW(ss) / (w - 18))) or 0;
+    local aug = nil;
+    if rec.Id ~= nil then
+        local al = ownedAugMap()[rec.Id];
+        if al ~= nil and #al > 0 then
+            aug = al[1] .. ((#al > 1) and string.format(' (+%d)', #al - 1) or '');
+        end
+    end
+    local lines = 3 + statLines + ((aug ~= nil) and 1 or 0);   -- name, slot tag, stats..., aug, Lv+jobs
+    local boxH = lines * lh + 14;
+    imgui.BeginChild('##card_' .. tostring(tag or '') .. '_' .. tostring(rec.Id or rec.Name or '?'),
+        { w, boxH }, true, ImGuiWindowFlags_NoScrollbar or 0);
+    renderIcon(rec.Id, 18);
+    imgui.TextColored(owned.isStored(rec) and COL_ERR or COL_USABLE, fmt.esc(rec.Name or '?'));
+    imgui.TextColored(COL_DIM, '[' .. tostring(ui.eqSelected or rec.Slot or '?') .. ']'
+        .. ((tag ~= nil) and ('  ' .. tag) or ''));
+    if ss ~= '' then fmt.textWrapped(COL_STATS, fmt.esc(ss)); end
+    if aug ~= nil then imgui.TextColored(COL_SCORE, 'Aug: ' .. fmt.esc(aug)); end
+    local jt = fmt.jobsText(rec.Jobs);
+    if jt == 'All' then jt = 'All Jobs'; end
+    imgui.TextColored(COL_JOBS, string.format('Lv.%d  %s', rec.Level or 0, jt));
+    imgui.EndChild();
+end
+
+-- Stat wins/losses of `cand` vs `eq` at `level`: green = improvement, red = loss
+-- (lowerBetter stats from statdefs flip the coloring). Flows and wraps by width.
+local function renderStatDelta(eq, cand, level)
+    local a = effStats(eq, level) or {};
+    local b = effStats(cand, level) or {};
+    local keys, seen = {}, {};
+    for k in pairs(a) do if not seen[k] then seen[k] = true; keys[#keys + 1] = k; end end
+    for k in pairs(b) do if not seen[k] then seen[k] = true; keys[#keys + 1] = k; end end
+    table.sort(keys);
+    local avail = imgui.GetContentRegionAvail();
+    if type(avail) ~= 'number' or avail < 120 then avail = 400; end
+    local any, x = false, 0;
+    for _, k in ipairs(keys) do
+        local d = (tonumber(b[k]) or 0) - (tonumber(a[k]) or 0);
+        if d ~= 0 then
+            local lower = false;
+            if hasStatdefs and type(statdefs.get) == 'function' then
+                local e = statdefs.get(k);
+                lower = (e ~= nil and e.lowerBetter == true);
+            end
+            local good = (d > 0) ~= lower;
+            local txt = string.format('%+d %s', d, k);
+            local tw = calcTextW(txt) + 14;
+            if any and x > 0 and (x + tw) <= avail then imgui.SameLine(0, 14); else x = 0; end
+            imgui.TextColored(good and { 0.45, 0.90, 0.45, 1.0 } or { 0.95, 0.45, 0.40, 1.0 }, txt);
+            x = x + tw;
+            any = true;
+        end
+    end
+    if not any then imgui.TextColored(COL_DIM, 'No stat changes.'); end
+end
+
+-- Right of the slot grid: the equipped item's card; hovering an alternative below
+-- puts its card beside it, with the stat delta underneath -- compare before you
+-- switch. The hover is captured by the list (drawn later), so we read last frame's.
+local function renderComparePanel(level)
+    imgui.BeginGroup();
+    local hov = ui._cmpHover;
+    if hov ~= nil and (cmdq.frame() - (ui._cmpFrame or 0)) > 2 then
+        hov = nil; ui._cmpHover = nil;                 -- hover ended
+    end
+    if ui.eqSelected == nil then
+        imgui.TextColored(COL_DIM, 'Select a slot to inspect and compare gear.');
+    else
+        local slDef;
+        for _, s in ipairs(EQUIP_SLOTS) do if s.label == ui.eqSelected then slDef = s; break; end end
+        local eqRec = slDef and lookupById(getEquippedId(slDef.equip)) or nil;
+        local cardW = 280;
+        if eqRec ~= nil then
+            renderItemCard(eqRec, level, cardW, 'equipped');
+        else
+            imgui.TextColored(COL_DIM, '(nothing equipped in ' .. ui.eqSelected .. ')');
+        end
+        if hov ~= nil and hov ~= eqRec then
+            if eqRec ~= nil then imgui.SameLine(0, 12); end
+            renderItemCard(hov, level, cardW, 'hovering');
+            imgui.Spacing();
+            renderStatDelta(eqRec, hov, level);
+        elseif eqRec ~= nil then
+            imgui.TextColored(COL_DIM, 'Hover an alternative below to compare.');
+        end
+    end
+    imgui.EndGroup();
+end
+
+-- ---------------------------------------------------------------------------
 -- Tab: Equipped
 -- ---------------------------------------------------------------------------
 local function renderEquippedTab(job, level)
@@ -1600,7 +1712,10 @@ local function renderEquippedTab(job, level)
             return fmt.truncate(id and (displayName(id) or ('#' .. tostring(id))) or '(empty)', 18);
         end,
         function(labelKey) ui.eqSelected = labelKey; end,
-        function(sl) return lookupById(getEquippedId(sl.equip)); end);
+        function(sl) return lookupById(getEquippedId(sl.equip)); end,
+        190);                                          -- fixed width: the compare panel sits beside
+    imgui.SameLine(0, 14);
+    renderComparePanel(level);
 
     imgui.Separator();
 
