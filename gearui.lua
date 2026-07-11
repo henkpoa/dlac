@@ -3027,21 +3027,41 @@ local function drawWindow()
         imgui.Separator();
 
         if imgui.BeginTabBar('##ffxilac_tabs', ImGuiTabBarFlags_None) then
+            -- A tab renderer that errors mid-frame leaves the imgui stack torn for
+            -- the rest of the frame -- which presents as "buttons do nothing" with
+            -- no trace. Surface every tab error LOUDLY: one chat line per distinct
+            -- error and a sticky red banner in the tab (clears on a clean frame).
+            local function tabGuard(name, fn, a, b)
+                if ui._tabErr ~= nil and ui._tabErr[name] ~= nil then
+                    fmt.textWrapped(COL_ERR, '[!] ' .. name .. ' tab error: ' .. fmt.esc(ui._tabErr[name]));
+                end
+                local ok, err = pcall(fn, a, b);
+                ui._tabErr = ui._tabErr or {};
+                if ok then
+                    ui._tabErr[name] = nil;
+                else
+                    err = tostring(err);
+                    if err ~= ui._tabErr[name] then
+                        ui._tabErr[name] = err;
+                        pcall(function() print('[dlac] ' .. name .. ' tab error: ' .. err); end);
+                    end
+                end
+            end
             if imgui.BeginTabItem('Equipped') then
-                pcall(renderEquippedTab, job, level);
+                tabGuard('Equipped', renderEquippedTab, job, level);
                 imgui.EndTabItem();
             end
             if imgui.BeginTabItem('All Equipment') then
-                pcall(renderAllEquipTab, job, level);
+                tabGuard('All Equipment', renderAllEquipTab, job, level);
                 imgui.EndTabItem();
             end
             if imgui.BeginTabItem('Sets') then
-                pcall(renderSetsTab, job, level);
+                tabGuard('Sets', renderSetsTab, job, level);
                 imgui.EndTabItem();
             end
             if imgui.BeginTabItem('Triggers') then
                 if trigui ~= nil then
-                    pcall(trigui.render, job, level);
+                    tabGuard('Triggers', trigui.render, job, level);
                 else
                     imgui.TextColored(COL_ERR, 'triggersui module unavailable.');
                 end

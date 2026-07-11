@@ -590,7 +590,10 @@ local function renderModePopup()
         imgui.PushItemWidth(150);
         if imgui.BeginCombo('##modeset', modeUI.set or '(none)') then
             if imgui.Selectable('(none)##modesetnone', modeUI.set == nil) then modeUI.set = nil; end
-            for _, nm in ipairs(allSetNames()) do
+            -- guarded: an error between BeginCombo/EndCombo (profilesets can throw
+            -- pre-login) would tear the frame and kill every click in the popup
+            local ok, names = pcall(allSetNames);
+            for _, nm in ipairs((ok and names) or {}) do
                 if imgui.Selectable(nm .. '##modeso', modeUI.set == nm) then modeUI.set = nm; end
             end
             imgui.EndCombo();
