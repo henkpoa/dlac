@@ -1731,7 +1731,7 @@ local function renderEquippedTab(job, level)
             local id = getEquippedId(sl.equip);
             return fmt.truncate(id and (displayName(id) or ('#' .. tostring(id))) or '(empty)', 18);
         end,
-        function(labelKey) ui.eqSelected = labelKey; end,
+        function(labelKey) ui.eqSelected = labelKey; ui.altSearch = { '' }; end,
         function(sl) return lookupById(getEquippedId(sl.equip)); end,
         190);                                          -- fixed width: the compare panel sits beside
     imgui.SameLine(0, 14);
@@ -1787,15 +1787,29 @@ local function renderEquippedTab(job, level)
         end
 
         -- Candidates (Sub: shields/grips + 1H weapons, filtered by the equipped
-        -- Main -- equip-now, so the DW gate applies), then display-sorted.
+        -- Main -- equip-now, so the DW gate applies), then searched + display-sorted.
         local mainRec = lookupById(getEquippedId(0x00));
         local alts = (gearKey == 'Sub') and subCandidatePool(job, level) or candidatesForSlot(gearKey, job, level);
         if gearKey == 'Sub' then alts = subFilter(alts, mainRec, job, level); end
+        ui.altSearch = ui.altSearch or { '' };
+        local altQ = string.lower(ui.altSearch[1] or '');
+        if altQ ~= '' then
+            local f = {};
+            for _, r in ipairs(alts) do
+                if string.find(string.lower(tostring(r.Name or '')), altQ, 1, true) ~= nil then f[#f + 1] = r; end
+            end
+            alts = f;
+        end
         alts = sortForDisplay(alts);
 
         imgui.Spacing();
         imgui.TextColored(COL_HEADER, string.format('Alternatives (%d):', #alts));
         imgui.SameLine(0, 10); renderSortCombo('eq');
+        imgui.SameLine(0, 12);
+        imgui.TextColored(COL_DIM, 'Search:'); imgui.SameLine(0, 4);
+        imgui.PushItemWidth(170);
+        imgui.InputText('##eqaltsearch', ui.altSearch, 48);
+        imgui.PopItemWidth();
         imgui.SameLine(0, 12);
         local prevLock = ui._lockPrev;
         imgui.Checkbox('Lock when equipped', ui.lockEquipped);
@@ -1814,7 +1828,9 @@ local function renderEquippedTab(job, level)
 
         imgui.BeginChild('##ffxilac_eqalts', { -1, -1 }, false);
         if #alts == 0 then
-            if gearKey == 'Sub' and mainRec == nil then
+            if altQ ~= '' then
+                imgui.TextColored(COL_DIM, 'Nothing matches the search.');
+            elseif gearKey == 'Sub' and mainRec == nil then
                 imgui.TextColored(COL_DIM, 'No Main equipped -- equip a weapon first.');
             else
                 imgui.TextColored(COL_DIM, 'No eligible gear for this slot at your job/level.');
