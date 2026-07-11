@@ -2861,7 +2861,10 @@ local function renderSetBuilder(job, level)
             imgui.BeginChild('##setrow_' .. tostring(rec and rec.Id or ('n' .. di)) .. '_' .. di,
                 { -1, (ss ~= '') and 42 or 26 }, false);
             renderIcon(rec and rec.Id or nil, 18);
-            imgui.TextColored((rec ~= nil and rec == pickRec) and COL_SCORE
+            -- Picked-row highlight compares the WRAPPER (it == pick), not the record:
+            -- one item may appear as several rows with different level ranges, and
+            -- only the row the engine would actually use should light up.
+            imgui.TextColored((pick ~= nil and it == pick) and COL_SCORE
                 or (owned.isStored(rec) and COL_ERR or COL_USABLE),
                 fmt.esc((rec and rec.Name) or '?') .. fmt.qtyTag(rec));
             if rec ~= nil and imgui.IsItemHovered() then renderItemTooltip(rec); end
@@ -2876,7 +2879,7 @@ local function renderSetBuilder(job, level)
                     imgui.SetTooltip('Mode-gated: used while ANY of these modes is active\n(and then it beats the unconditional entries).\nGreen = active right now.');
                 end
             end
-            imgui.SameLine(imgui.GetWindowWidth() - 58);   -- buttons at the right edge
+            imgui.SameLine(imgui.GetWindowWidth() - 86);   -- buttons at the right edge
             if imgui.Button('B##ed_' .. di, { 24, 20 }) then
                 ui._editIt = it;
                 ui._editMin = { it.minLevel or 0 };
@@ -2884,7 +2887,12 @@ local function renderSetBuilder(job, level)
                 openEdit = true;
             end
             if imgui.IsItemHovered() then
-                imgui.SetTooltip('Behaviour rules for this piece:\nlimit it to a level range, or gate it on a mode --\na gated entry is used only while its mode is active.');
+                imgui.SetTooltip('Behaviour rules for this piece:\nlimit it to a level range, or gate it on a mode --\na gated entry is used only while its mode is active.\nNeed the same item in two ranges? Duplicate the row (D)\nand give each row its own range.');
+            end
+            imgui.SameLine(0, 4);
+            if imgui.Button('D##dup_' .. di, { 24, 20 }) then action = { kind = 'dup', it = it }; end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Duplicate this row: same item, its own Behaviour rules.\nUse it to run one item in several level ranges, e.g.\nRajas Ring min30 max54 on one row, min75 on the other.');
             end
             imgui.SameLine(0, 4);
             if imgui.Button('x##rm_' .. di, { 24, 20 }) then action = { kind = 'remove', it = it }; end
@@ -2909,9 +2917,14 @@ local function renderSetBuilder(job, level)
         if di ~= nil then
             if action.kind == 'remove' then
                 table.remove(list, di);
+            elseif action.kind == 'dup' then
+                -- Fresh rules on the clone: the point of a second row is a DIFFERENT
+                -- range/mode, so start blank and let Behaviour set it. Same rec
+                -- reference is fine -- rows never mutate their record.
+                table.insert(list, di + 1, { rec = action.it.rec });
             end
             if #list == 0 then M.working[ui.setSelected] = nil; else M.working[ui.setSelected] = list; end
-            _setDirty = true;   -- removed an item -> unsaved changes
+            _setDirty = true;   -- list changed -> unsaved changes
         end
     end
 end
