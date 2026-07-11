@@ -3166,6 +3166,10 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
     pcall(loadUiFlags);
     if ui._flagsDirty then ui._flagsDirty = nil; pcall(saveUiFlags); end
     pcall(autoSyncOnJobChange);
+    if ui.showMetrics == true and hasImgui then       -- /dl metrics: overlay hunter
+        pcall(function() imgui.ShowMetricsWindow(ui.metricsOpen); end);
+        if ui.metricsOpen ~= nil and ui.metricsOpen[1] == false then ui.showMetrics = false; end
+    end
     if not M.visible or not hasImgui then return; end
     -- Theme push/pop brackets the pcall so an imgui error mid-draw can never
     -- leak the style stack (that would corrupt every OTHER addon's UI too).
@@ -3194,8 +3198,17 @@ ashita.events.register('command', 'dlac-ui', function(e)
         table.insert(args, a);
     end
     local sub = args[1];
-    if sub ~= 'ui' and sub ~= 'sync' and sub ~= 'autosync' and sub ~= 'debug' then return; end
+    if sub ~= 'ui' and sub ~= 'sync' and sub ~= 'autosync' and sub ~= 'debug' and sub ~= 'metrics' then return; end
     e.blocked = true;
+
+    if sub == 'metrics' then        -- imgui metrics window: names the window under the
+                                    -- mouse ("Internal state" section) -- the tool for
+                                    -- hunting invisible click-eating overlays
+        ui.showMetrics = not (ui.showMetrics == true);
+        ui.metricsOpen = { true };
+        print('[dlac] imgui metrics ' .. (ui.showMetrics and 'ON -- hover the dead spot and read "HoveredWindow" under Internal state.' or 'OFF.'));
+        return;
+    end
 
     if sub == 'sync' then          -- manual one-shot: scan + import new gear now
         local n = doSync();

@@ -1114,14 +1114,9 @@ function M.render(job, level)
     trig.section = trig.section or 'Modes';
     imgui.BeginChild('##trgnav', { 148, -1 }, false);
     local function navItem(id, label)
-        -- PushID + explicit height: sidesteps any '###'-suffix or zero-size quirk
-        -- in this binding. The chat echo is diagnostic: if clicking an item prints
-        -- nothing, the CLICK never arrived (something is eating input there); if it
-        -- prints but the section doesn't change, the bug is in the section render.
         imgui.PushID('trgnav_' .. id);
         if imgui.Selectable(label, trig.section == id, ImGuiSelectableFlags_None, { 0, 19 }) then
             trig.section = id;
-            pcall(function() print('[dlac] triggers section: ' .. id); end);
         end
         imgui.PopID();
     end
