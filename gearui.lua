@@ -662,9 +662,10 @@ local cmdq = require("dlac\\cmdqueue");
 
 local function lacSlot(label) return string.lower(tostring(label or '')); end
 
--- The native game /equip command does NOT use lac's ear1/ear2/ring1/ring2 names --
--- retail slots are lear/rear/lring/rring. Translate when talking to the game.
-local NATIVE_SLOT = { ear1 = 'lear', ear2 = 'rear', ring1 = 'lring', ring2 = 'rring' };
+-- The game's native /equip uses the SAME slot names as LAC: ear1/ear2/ring1/
+-- ring2 (field-verified 2026-07-11 -- /equip lring etc. simply fails; that
+-- lear/rear/lring/rring vocabulary is Windower-tool naming, not the client's).
+-- No translation table: one slot name everywhere.
 
 -- Equip an item into a slot. Three modes:
 --   freeEquip -- LAC is globally disabled (Free-equip mode); send the *native* game
@@ -679,20 +680,19 @@ local NATIVE_SLOT = { ear1 = 'lear', ear2 = 'rear', ring1 = 'lring', ring2 = 'rr
 --   default   -- /lac equip temp-swap (LAC may re-override on the next action).
 local function equipToSlot(slotLabel, itemName, lock, freeEquip, alreadyLocked)
     if slotLabel == nil or itemName == nil then return; end
-    local slot   = lacSlot(slotLabel);
-    local native = NATIVE_SLOT[slot] or slot;
-    local nm     = tostring(itemName);
+    local slot = lacSlot(slotLabel);
+    local nm   = tostring(itemName);
     if freeEquip then
         pcall(function()
-            AshitaCore:GetChatManager():QueueCommand(1, string.format('/equip %s "%s"', native, nm));
+            AshitaCore:GetChatManager():QueueCommand(1, string.format('/equip %s "%s"', slot, nm));
         end);
     elseif lock then
         if alreadyLocked then
-            cmdq.enqueue(2, string.format('/equip %s "%s"', native, nm));        -- locked; just equip
+            cmdq.enqueue(2, string.format('/equip %s "%s"', slot, nm));          -- locked; just equip
         else
             cmdq.enqueue(2,  string.format('/dl lock %s on', slot));             -- engine lock (the real hold)
             cmdq.enqueue(4,  string.format('/lac disable %s', slot));            -- belt for legacy profile code
-            cmdq.enqueue(26, string.format('/equip %s "%s"', native, nm));       -- then equip after it settles
+            cmdq.enqueue(26, string.format('/equip %s "%s"', slot, nm));         -- then equip after it settles
         end
     else
         pcall(function()
