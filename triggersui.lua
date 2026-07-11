@@ -335,6 +335,11 @@ local UNIVERSAL = {
     { name = 'Iridal Staff',    tier = 1 },
 };
 
+-- Manifest schema version: bump when autoCommit writes NEW fields. An on-disk
+-- manifest with an older fmtver self-heals (renderAutomations triggers a rescan)
+-- so a dlac update never needs a manual "Rescan owned gear" click.
+local AUTO_FMT = 1;
+
 local auto = { data = nil, loadedFor = nil, status = '' };
 
 local function autoPath()
@@ -443,6 +448,8 @@ local function autoCommit()
         '-- per cast; ties go to the universal. WHETHER it fires is decided by the set:',
         '-- a dlac:AutoStaff / dlac:AutoObi entry in its Main / Waist slot (Sets tab).',
         'return {',
+        string.format('    fmtver = %d,', AUTO_FMT),   -- manifest schema: outdated -> auto-rescan
+        string.format('    written = %q,', os.date('%Y-%m-%d %H:%M:%S')),
         (uni ~= nil)
             and string.format('    universal = { name = %q, tier = %d, level = %d },', uni.name, uni.tier, uniLevel)
             or  '    universal = false,',
@@ -575,6 +582,12 @@ local MP_EXEMPT = { main = true, sub = true, range = true };
 local function renderAutomations(noHeader)
     if noHeader ~= true and not imgui.CollapsingHeader('Automations###trgsec_auto') then return; end
     autoLoad();
+    -- Self-heal: an outdated-schema manifest (older dlac wrote it) regenerates
+    -- itself the moment this section renders -- no manual rescan after updates.
+    if auto.data ~= nil and auto.data.fmtver ~= AUTO_FMT and not auto._healed then
+        auto._healed = true;
+        pcall(autoCommit);
+    end
 
     if auto.view ~= nil then                            -- DETAIL views
         if imgui.Button('< Automations##autoback', { 0, 22 }) then auto.view = nil; end
@@ -638,7 +651,7 @@ local function renderAutomations(noHeader)
             imgui.Spacing();
             imgui.TextColored((total > 0) and GREEN_OWNED or COL_ERR,
                 string.format('Best case: +%d Max MP', total));
-            imgui.TextColored(COL_DIM, 'Rescan after new gear so the batteries update (also runs on login/job change).');
+            imgui.TextColored(COL_DIM, 'Battery data maintains itself (login, job change, any inventory change).');
         end
         return;
     end
@@ -647,9 +660,13 @@ local function renderAutomations(noHeader)
     imgui.PushTextWrapPos(0.0);
     imgui.TextColored(COL_DIM, 'Slot automations live INSIDE a set (add the dlac: entry to the slot via + Add); set automations apply across every set via their mode. Click an automation for details.');
     imgui.PopTextWrapPos();
-    if imgui.Button('Rescan owned gear##trgautorescan', { 0, 20 }) then autoCommit(); end
+    local written = (type(auto.data) == 'table' and type(auto.data.written) == 'string') and auto.data.written or nil;
+    imgui.TextColored(COL_DIM, 'Gear data maintains itself (login, job change, any inventory change'
+        .. (written ~= nil and (') -- last scan: ' .. written) or ')'));
+    imgui.SameLine(0, 10);
+    if imgui.SmallButton('rescan now##trgautorescan') then autoCommit(); end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Re-detect owned staves / obis / Iridescence weapons / MP batteries from your bags and save the manifest.');
+        imgui.SetTooltip('Normally never needed -- the scan runs automatically. This is a\ntroubleshooting shove: re-detect staves / obis / MP batteries right now.');
     end
     if auto.status ~= '' then
         imgui.PushTextWrapPos(0.0);

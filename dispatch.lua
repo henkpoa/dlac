@@ -625,6 +625,11 @@ local function equipResolved(s, ctx)
                 mpMap = a.mp;
                 if type(a.mpBest) == 'table' then mpBest = a.mpBest; end
             end
+        elseif not M._mpWarned then
+            -- The mode is ON but the engine has no battery data: say so ONCE
+            -- instead of silently doing nothing (the classic dead-mode symptom).
+            M._mpWarned = true;
+            print('[dlac] maxmp is ON but the gear manifest has no MP data yet -- open Triggers > Automations (it self-heals) or relog, then act again.');
         end
     end
     for slot, v in pairs(s) do

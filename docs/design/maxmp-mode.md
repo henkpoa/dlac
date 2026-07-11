@@ -39,9 +39,12 @@ trigger rules), which the existing machinery already handles. This mirrors the
   automation keeps its two slots). Both decisions annotate `/dl why`:
   `body=MP-EQUIP Bunzi's Robe (+21 MP)` / `body=MP-HOLD Bunzi's Robe (+21 MP unspent)`.
 - Data: the autogear manifest's `mp` (lower(name) → flat MP, every owned piece)
-  and `mpBest` (slot → best battery) maps — written by the Automations rescan,
-  auto-regenerated on login/job change; the engine never loads the catalog
-  (ADR 0004). The pure rule is `dispatch.mpHoldNeeded` (tests I1–I7).
+  and `mpBest` (slot → best battery, filtered by the central `canWear` +
+  `haveInBags`) maps. The manifest is fully self-maintaining: it regenerates on
+  login, job change and any inventory change, and an outdated schema (`fmtver`)
+  self-heals when the Automations section renders — no manual rescan, ever.
+  The engine never loads the catalog (ADR 0004). Pure rule:
+  `dispatch.mpHoldNeeded` (tests I1–I7).
 - Caveat: MP-EQUIP only touches slots the active sets address (the dispatch
   walks the applied set's slots); a slot no set ever writes keeps whatever is
   worn. In practice trigger sets cover the wardrobe.
