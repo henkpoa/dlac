@@ -32,7 +32,10 @@ trigger rules), which the existing machinery already handles. This mirrors the
   wearable at the LIVE level. Ear/ring ladders are disjoint (alternating), so
   one physical item can never fill both slots; genuine duplicates (two Astral
   Rings) are listed twice via owned counts. MP value counts `ConvertHPtoMP`
-  (Astral Ring = 25). Full-pool gating is what makes equipping worthwhile:
+  (Astral Ring = 25) and is LEVEL-EFFECTIVE via the central
+  `levelstats.effective` resolver (Tamas Ring: 15 on paper, 29 at Lv74) — a
+  snapshot at scan-time level, kept fresh by the constant auto-rescans.
+  Full-pool gating is what makes equipping worthwhile:
   batteries only pay when recovery (refresh, resting, sublimation) can land
   into the larger pool. A battery in a slot no set writes stays worn when the
   mode turns off — nothing else ever touches that slot, and no MP is wasted by

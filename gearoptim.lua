@@ -508,8 +508,8 @@ local function rankSlot(slotKey, scoreFn, job, level)
     forEachInSlot(slotKey, function(entry)
         if isEligible(entry, job, level) then
             local st = entry.Stats;
-            if hasLScale and entry.Id ~= nil and lscale.has(entry.Id) then
-                st = lscale.apply(entry.Id, level, st);   -- effective stats at the build level
+            if hasLScale and type(lscale.effective) == 'function' then
+                st = lscale.effective(entry, level);      -- THE central stats-at-level resolver
             end
             ranked[#ranked + 1] = { entry = entry, score = scoreFn(st), stats = st };
         end

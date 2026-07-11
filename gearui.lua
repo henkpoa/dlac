@@ -60,12 +60,12 @@ local hasSetmgr   = _sok and type(setmgr) == 'table';
 local hasAug      = _augok and type(aug) == 'table';
 local hasLScale   = _lsok and type(lscale) == 'table';
 
--- Effective stats of a record at a level (level-scaled items resolve their latents;
--- everything else passes through untouched). nil level = the live player level.
+-- Effective stats of a record at a level -- delegates to THE central resolver
+-- (levelstats.effective) so every section values scaling items identically.
 local function effStats(rec, level)
     if rec == nil then return nil; end
-    if level == nil or not hasLScale or rec.Id == nil or not lscale.has(rec.Id) then return rec.Stats; end
-    return lscale.apply(rec.Id, level, rec.Stats);
+    if not hasLScale or type(lscale.effective) ~= 'function' then return rec.Stats; end
+    return lscale.effective(rec, level);
 end
 
 local M = {};

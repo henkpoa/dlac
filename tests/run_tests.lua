@@ -463,6 +463,24 @@ check('K6 legacy entry too high',  dispatchM.mpPick({ name = 'X', mp = 1, level 
 check('K7 nil-safe',               dispatchM.mpPick(nil, 74), nil);
 
 -- ---------------------------------------------------------------------------
+-- L. THE central stats-at-level resolver (levelstats.effective), against the
+--    REAL generated scaling data: Tamas Ring is MP 15 on paper, 29 at Lv74,
+--    30 fully scaled (Lv75). Every section -- gearui display/scoring, gearoptim
+--    ranking, the automation manifests -- resolves item stats through this one
+--    function, so no section values a scaling item at its base stats.
+-- ---------------------------------------------------------------------------
+package.loaded['dlac\\levelscaling'] = dofile('levelscaling.lua');
+local lstats = dofile('levelstats.lua');
+local tamas = { Name = 'Tamas Ring', Id = 15545, Level = 30,
+                Stats = { MP = 15, INT = 2, MND = 2, Enmity = -3 } };
+check('L1 Tamas MP at Lv74',       lstats.effective(tamas, 74).MP, 29);
+check('L2 Tamas MP fully scaled',  lstats.effective(tamas, 75).MP, 30);
+check('L3 base table never mutated', tamas.Stats.MP, 15);
+check('L4 non-scaling passthrough', lstats.effective({ Id = 13548, Stats = { ConvertHPtoMP = 25 } }, 74).ConvertHPtoMP, 25);
+check('L5 nil level = base stats', lstats.effective(tamas, nil).MP, 15);
+check('L6 nil-safe',               lstats.effective(nil, 74), nil);
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then

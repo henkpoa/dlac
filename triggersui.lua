@@ -19,8 +19,16 @@ local M = {};
 
 local _iok, imgui = pcall(require, 'imgui');
 local _dpok, dsp  = pcall(require, "dlac\\dispatch");
+local _lsok, lscale = pcall(require, "dlac\\levelstats");
 local hasImgui    = _iok and imgui ~= nil;
 local hasDispatch = _dpok and type(dsp) == 'table';
+local hasLScale   = _lsok and type(lscale) == 'table';
+
+local function mainLevel()
+    local lv = nil;
+    pcall(function() lv = AshitaCore:GetMemoryManager():GetPlayer():GetMainJobLevel(); end);
+    return (type(lv) == 'number' and lv > 0) and lv or 99;
+end
 
 -- Injected by gearui (M.init): charBase, jobFile, seedTriggersFile,
 -- dynamicSetNames, staticSetNames, lookupByName, ownedCounts.
@@ -338,7 +346,7 @@ local UNIVERSAL = {
 -- Manifest schema version: bump when autoCommit writes NEW fields. An on-disk
 -- manifest with an older fmtver self-heals (renderAutomations triggers a rescan)
 -- so a dlac update never needs a manual "Rescan owned gear" click.
-local AUTO_FMT = 2;   -- 2: mpBest entries became ladders (lists); MP counts Convert
+local AUTO_FMT = 3;   -- 2: mpBest ladders + Convert counted; 3: MP values level-effective (Tamas)
 
 local auto = { data = nil, loadedFor = nil, status = '' };
 
@@ -411,9 +419,15 @@ local function autoCommit()
         -- memory via deps.playerJob (nil job would pass only Jobs={'All'} gear).
         local job = (type(deps.playerJob) == 'function') and deps.playerJob() or nil;
         local counts = (type(deps.ownedCounts) == 'function') and deps.ownedCounts() or nil;
+        local lvl = mainLevel();
         local bySlot = {};   -- gear-slot key -> candidates { name, mp, level }
         for _, rec in ipairs(deps.ownedList() or {}) do
-            local st = (type(rec.Stats) == 'table') and rec.Stats or nil;
+            -- LEVEL-EFFECTIVE stats via THE central resolver (levelstats.effective):
+            -- Tamas Ring is MP 15 on paper but 29 at Lv74. Values are a snapshot at
+            -- scan-time level; the constant auto-rescans keep them fresh.
+            local st = (hasLScale and type(lscale.effective) == 'function')
+                and lscale.effective(rec, lvl) or rec.Stats;
+            if type(st) ~= 'table' then st = nil; end
             -- Convert counts: 25 HP -> MP is +25 max MP for this mode's purposes.
             local v = (st ~= nil) and ((tonumber(st.MP) or 0) + (tonumber(st.ConvertHPtoMP) or 0)) or 0;
             if v > 0 and rec.Name ~= nil then
@@ -614,12 +628,6 @@ local function mpPickAt(cands, level)
         if type(c) == 'table' and (tonumber(c.level) or 0) <= level then return c; end
     end
     return nil;
-end
-
-local function mainLevel()
-    local lv = nil;
-    pcall(function() lv = AshitaCore:GetMemoryManager():GetPlayer():GetMainJobLevel(); end);
-    return (type(lv) == 'number' and lv > 0) and lv or 99;
 end
 
 local function renderAutomations(noHeader)
