@@ -73,8 +73,11 @@ Specificity defaults: Any 10 · skill/status 20 · class/element 30 · family 40
 
 ## Modes
 
-Named flags, session-only (reset on load). Toggled from the Triggers tab or `/dl mode <name>
-[on|off|toggle]` (macro-able; the command is handled in the LAC state where mode state lives).
+Named flags, dlac-owned. Toggled from the Triggers tab or `/dl mode <name> [on|off|toggle]`
+(macro-able). The engine mirrors every change to `modestate.lua` and reads it back on load,
+so flags survive a Reload LAC exactly like a dlac reload — one lifetime rule. Guardrails:
+restore is same-job only (`__job` stamp) and recent-only (1 h — a mid-session reload heals,
+last Tuesday's DT-mode stays dead), and `maxmp` drops itself the moment the main job changes.
 
 ## Automations (ADR 0004)
 

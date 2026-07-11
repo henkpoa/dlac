@@ -32,7 +32,7 @@ local M = {};
 -- LAC-state copy stamps its version into the modestate mirror; the GUI compares
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code (the seeded file only re-requires when LuaAshitacast itself reloads).
-M.VERSION = 14;
+M.VERSION = 15;
 
 -- Colored [dlac] chat output (chatfmt); plain print when unavailable. The shadowed
 -- `print` re-heads "[dlac] ..."-prefixed lines with the colored header.
@@ -45,8 +45,11 @@ local function printerr(s)  if _cfok then _cfmt.err(s);  else print('[dlac] ' ..
 -- ---------------------------------------------------------------------------
 -- State
 -- ---------------------------------------------------------------------------
-M.modes = {};   -- session-only mode state: lower(name) -> true (toggle) or 'Value' (cycle).
-                -- Reset on load by design (cycle modes re-default to their first value).
+M.modes = {};   -- mode state: lower(name) -> true (toggle) or 'Value' (cycle).
+                -- DLAC-OWNED: written to modestate.lua on every change and read BACK
+                -- when the engine loads, so flags survive a Reload LAC exactly like
+                -- they survive a dlac reload -- ONE lifetime rule instead of two
+                -- Lua-state lifetimes. maxmp drops itself on a job change (tick).
 M.modesRev = 0; -- bumped on every mode change: utils.rebuildSets re-flattens the
                 -- Dynamic sets when it moves (mode-gated entries pick differently).
 M.locks = {};   -- session-only SLOT LOCKS: lower(lac slot name) -> true. A locked slot is
@@ -636,13 +639,14 @@ local _mpCd = {};   -- slot -> os.time() before which a released battery must no
                     -- (breaks the equip/release churn at the exact spent boundary)
 
 -- ---------------------------------------------------------------------------
--- Equipment-screen guard. Swap packets sent while the equipment menu is open
--- are rejected by the game and can desync the client's item view (the classic
--- ghost-gear bug; GearSwap pauses swaps on that screen too). While it is up
--- the dispatch RESOLVES normally but sends nothing; Default runs per frame, so
--- gear catches up the instant the screen closes. Menu name comes from the
--- standard FFXiMain menu pattern (tCrossBar/HXUI lineage); when the pattern
--- isn't found the guard never blocks. Verify live with /dl env (open menu).
+-- Open-menu name (diagnostic, shown by /dl env). Standard FFXiMain menu
+-- pattern, tCrossBar/HXUI lineage. NOTE: a v14 build PAUSED swaps while the
+-- equipment screen was open, on the retail ghost-gear lore -- field-FALSIFIED
+-- on CatsEyeXI (/lac equip works fine with the window up; the menu lock is
+-- client-side and injected packets bypass it). The real "stops working in the
+-- equipment window" cause was dispatch starvation: LAC only parses
+-- HandleDefault while OUTGOING packets flow -- fixed by the engine tick (see
+-- the d3d_present registration in the command section).
 -- ---------------------------------------------------------------------------
 local pGameMenu = nil;
 pcall(function()
@@ -663,11 +667,6 @@ local function menuName()
         if type(s) == 'string' then nm = (string.gsub(s, '\x00', '')); end
     end);
     return nm;
-end
-
--- The equipment screen (and its sub-screens) is the one place swaps must pause.
-local function equipsBlocked()
-    return string.find(string.lower(menuName()), 'equ', 1, true) ~= nil;
 end
 
 local function equipResolved(s, ctx)
@@ -785,10 +784,6 @@ local function equipResolved(s, ctx)
                 end
             end
         end
-    end
-    -- Equipment screen open: resolve (traces stay truthful) but send nothing.
-    if equipsBlocked() then
-        return '  [equipment screen open -- swaps paused]', (out or s);
     end
     pcall(function() gFunc.EquipSet(out or s); end);
     local note = '';
@@ -1076,10 +1071,11 @@ function M.serializeTriggers(data)
 end
 
 -- ---------------------------------------------------------------------------
--- Mode state (session-only, by design -- no persistence). The LAC state OWNS the
--- flags; a small modestate.lua mirror is written on every change so the GUI (a
--- different Lua state) can DISPLAY them. It is never read back on load -- modes
--- always start a session off.
+-- Mode state, DLAC-OWNED. modestate.lua is written on every change (the GUI --
+-- a different Lua state -- reads it for display) and read BACK by
+-- loadModeState when the engine loads, so a Reload LAC no longer silently
+-- wipes flags a dlac reload would have kept. Slot locks stay session-only
+-- (mirrored for display, never restored -- a lock is a "right now" decision).
 -- ---------------------------------------------------------------------------
 saveModeState = function()
     M.modesRev = (M.modesRev or 0) + 1;   -- BEFORE the guarded write: the rebuild
@@ -1088,6 +1084,11 @@ saveModeState = function()
         local dir = charDir();
         if dir == nil then return; end
         local parts = { string.format('["__version"] = %d,', M.VERSION) };   -- engine handshake
+        pcall(function()   -- which job these flags belong to: another job never inherits them
+            parts[#parts + 1] = string.format('["__job"] = %d,',
+                AshitaCore:GetMemoryManager():GetPlayer():GetMainJob() or 0);
+        end);
+        parts[#parts + 1] = string.format('["__at"] = %d,', os.time());   -- freshness (restore window)
         local lk = {};
         for s in pairs(M.locks) do lk[#lk + 1] = string.format('[%q] = true,', s); end
         table.sort(lk);
@@ -1098,8 +1099,32 @@ saveModeState = function()
         end
         table.sort(parts);
         writeFile(dir .. 'modestate.lua',
-            '-- dlac mode mirror (display only; the LAC state owns the flags)\nreturn { '
+            '-- dlac mode state (dlac-owned; read back on engine load, GUI reads for display)\nreturn { '
             .. table.concat(parts, ' ') .. ' }\n');
+    end);
+end
+
+local function loadModeState()
+    pcall(function()
+        local dir = charDir();
+        if dir == nil then return; end
+        local chunk = loadfile(dir .. 'modestate.lua');
+        if chunk == nil then return; end
+        local ok, t = pcall(chunk);
+        if not ok or type(t) ~= 'table' then return; end
+        -- Flags are restored only for the job that set them (the __job stamp) and
+        -- only when RECENT (an hour) -- healing a mid-session Reload LAC without
+        -- resurrecting last Tuesday's DT-mode at login. Anything else starts clean.
+        local jid = nil;
+        pcall(function() jid = AshitaCore:GetMemoryManager():GetPlayer():GetMainJob(); end);
+        if type(t.__job) ~= 'number' or jid == nil or jid == 0 or t.__job ~= jid then return; end
+        if type(t.__at) ~= 'number' or os.time() - t.__at > 3600 then return; end
+        for k, v in pairs(t) do
+            local ks = tostring(k);
+            if string.sub(ks, 1, 2) ~= '__' and (v == true or type(v) == 'string') then
+                M.modes[string.lower(ks)] = v;   -- cycle values re-validate on trigger load
+            end
+        end
     end);
 end
 
@@ -1194,7 +1219,37 @@ local function argStart(raw)
 end
 
 if inLac() then
-    pcall(saveModeState);   -- fresh session: mirror the (empty) mode state for the GUI
+    loadModeState();        -- dlac-owned flags: restore (same job only) BEFORE the first mirror
+    pcall(saveModeState);   -- then mirror whatever we start with for the GUI
+
+    -- LAC only parses HandleDefault while OUTGOING packets flow (packethandlers.lua
+    -- drives it from HandleOutgoingPacket) -- stand still with a menu open and the
+    -- dispatches starve, which read as "maxmp stops the moment the equipment window
+    -- opens" (the window itself blocks nothing: field-verified, /lac equip works
+    -- with it up). Drive the SAME flow on a throttled frame tick so Default
+    -- dispatching is packet-independent. The tick also watches the main job: a job
+    -- change drops maxmp immediately, before it can battery the new job's gear.
+    local _tickAt, _tickJob = 0, nil;
+    ashita.events.register('d3d_present', 'dlac-dispatch-tick', function()
+        pcall(function()
+            if os.clock() < _tickAt then return; end
+            _tickAt = os.clock() + 0.4;
+            local j = nil;
+            pcall(function() j = AshitaCore:GetMemoryManager():GetPlayer():GetMainJob(); end);
+            if j ~= nil and j ~= 0 then
+                if _tickJob ~= nil and j ~= _tickJob and M.modes['maxmp'] ~= nil then
+                    M.modes['maxmp'] = nil;
+                    saveModeState();
+                    print('[dlac] maxmp: off (job changed).');
+                end
+                _tickJob = j;
+            end
+            local st = rawget(_G, 'gState');
+            if rawget(_G, 'gProfile') == nil or st == nil then return; end
+            if st.PlayerAction ~= nil or type(st.HandleEquipEvent) ~= 'function' then return; end
+            st.HandleEquipEvent('HandleDefault', 'auto');
+        end);
+    end);
 
     ashita.events.register('command', 'dlac-dispatch', function(e)
         local start = argStart(string.lower(e.command));
@@ -1243,8 +1298,7 @@ if inLac() then
             print('[dlac] net signs: ' .. ((#parts > 0) and table.concat(parts, ', ') or '(all neutral)')
                 .. '   -- dlac:AutoObi equips only when its spell\'s element is positive');
             local mn = menuName();
-            print('[dlac] open menu: ' .. ((mn ~= '') and ('"' .. mn .. '"') or '(none)')
-                .. (equipsBlocked() and '   -- equipment screen: swaps PAUSED until it closes' or ''));
+            print('[dlac] open menu: ' .. ((mn ~= '') and ('"' .. mn .. '"') or '(none)'));
             return;
         end
 
