@@ -964,7 +964,10 @@ local function renderTrigAddPopup()
     imgui.TextColored(COL_DIM, 'equip set:'); imgui.SameLine(0, 4);
     imgui.PushItemWidth(150);
     if imgui.BeginCombo('##trgaddset', trig.addSet or '(pick set)') then
-        for _, nm in ipairs(allSetNames()) do
+        -- guarded like the mode popup's combo: an error between BeginCombo/EndCombo
+        -- tears the frame and kills every click in the popup
+        local ok, names = pcall(allSetNames);
+        for _, nm in ipairs((ok and names) or {}) do
             if imgui.Selectable(nm .. '##trgaso', trig.addSet == nm) then trig.addSet = nm; end
         end
         imgui.EndCombo();
@@ -1098,7 +1101,16 @@ function M.render(job, level)
     trig.section = trig.section or 'Modes';
     imgui.BeginChild('##trgnav', { 148, -1 }, false);
     local function navItem(id, label)
-        if imgui.Selectable(label .. '###trgnav_' .. id, trig.section == id) then trig.section = id; end
+        -- PushID + explicit height: sidesteps any '###'-suffix or zero-size quirk
+        -- in this binding. The chat echo is diagnostic: if clicking an item prints
+        -- nothing, the CLICK never arrived (something is eating input there); if it
+        -- prints but the section doesn't change, the bug is in the section render.
+        imgui.PushID('trgnav_' .. id);
+        if imgui.Selectable(label, trig.section == id, ImGuiSelectableFlags_None, { 0, 19 }) then
+            trig.section = id;
+            pcall(function() print('[dlac] triggers section: ' .. id); end);
+        end
+        imgui.PopID();
     end
     navItem('Modes', string.format('Modes (%d)', #modes));
     for _, h in ipairs(TRIG_HANDLERS) do
