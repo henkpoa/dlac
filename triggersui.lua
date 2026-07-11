@@ -750,6 +750,19 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
             imgui.EndCombo();
         end
         imgui.PopItemWidth();
+        -- the rule targets a set this profile doesn't define: the dispatch would
+        -- match and then equip NOTHING -- say so where the rule lives
+        if r.set ~= nil then
+            local known = false;
+            for _, nm in ipairs(setNames) do if nm == r.set then known = true; break; end end
+            if not known then
+                imgui.SameLine(0, 6);
+                imgui.TextColored(COL_ERR, '[missing]');
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('No set with this name exists in the profile -- the trigger will\nmatch but equip nothing. Create the set in the Sets tab and Commit.');
+                end
+            end
+        end
     end
 
     -- controls row: prio (dim = automatic, gold = custom) + edit + remove.

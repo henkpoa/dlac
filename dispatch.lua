@@ -32,7 +32,7 @@ local M = {};
 -- LAC-state copy stamps its version into the modestate mirror; the GUI compares
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code (the seeded file only re-requires when LuaAshitacast itself reloads).
-M.VERSION = 7;
+M.VERSION = 8;
 
 -- Colored [dlac] chat output (chatfmt); plain print when unavailable. The shadowed
 -- `print` re-heads "[dlac] ..."-prefixed lines with the colored header.
@@ -640,13 +640,24 @@ local function actionLabel(ctx)
     return '?';
 end
 
+local _unknownSetWarned = {};   -- once per set name per session: matched-but-missing is LOUD
 local function equipSetByName(name, ctx)
     local s;
     pcall(function()
         local prof = rawget(_G, 'gProfile');
         if type(prof) == 'table' and type(prof.Sets) == 'table' then s = prof.Sets[name]; end
     end);
-    if type(s) ~= 'table' then return false, '', nil; end   -- unknown set: skip quietly (traced), no per-frame LAC error spam
+    if type(s) ~= 'table' then
+        -- A trigger MATCHED but its target set is absent from this job's profile
+        -- (field case: a Midshot rule pointing at a set never committed on WAR --
+        -- the silent skip cost an hour of ghost-hunting). Warn once per name;
+        -- the per-frame skip itself stays quiet (traced in /dl why).
+        if not _unknownSetWarned[tostring(name)] then
+            _unknownSetWarned[tostring(name)] = true;
+            print(string.format('[dlac] trigger matched, but set "%s" does not exist in this profile -- create it in the Sets tab and Commit, then Reload LAC.', tostring(name)));
+        end
+        return false, '', nil;
+    end
     local note, tbl = equipResolved(s, ctx);
     return true, note, tbl;
 end
