@@ -51,6 +51,8 @@ local _augok, aug  = pcall(require, "dlac\\augments");
 local _lsok, lscale = pcall(require, "dlac\\levelstats");
 -- Window theme (partyfinder-matched palette), pushed around the whole draw.
 local _stok, style = pcall(require, "dlac\\uistyle");
+-- Per-job macro book/set (header "Macro" button; applied on login/job change).
+local _mbok, macrob = pcall(require, "dlac\\macrobook");
 
 local hasImgui    = _iok and imgui ~= nil;
 local hasD3D      = _fok and _dok and ffi ~= nil and d3d ~= nil;
@@ -59,6 +61,7 @@ local hasCatalog  = _cok and type(catalog) == 'table';
 local hasSetmgr   = _sok and type(setmgr) == 'table';
 local hasAug      = _augok and type(aug) == 'table';
 local hasLScale   = _lsok and type(lscale) == 'table';
+local hasMacrob   = _mbok and type(macrob) == 'table';
 
 -- Effective stats of a record at a level -- delegates to THE central resolver
 -- (levelstats.effective) so every section values scaling items identically.
@@ -1249,7 +1252,13 @@ local debugMode = false;   -- /dl debug on -- reveals the dev-only Scan/Stage/Co
 local function renderHeaderButtons()
     local gap = 4;
     local needSetup = (jobSetupState() ~= 'ok');
-    local btns = {
+    local btns = {};
+    if hasMacrob then
+        btns[#btns+1] = { l = macrob.label(), w = 92,
+          tip = 'Macro book & set for the CURRENT job -- saved per job and applied\nautomatically on login and every job change (replaces the /macro lines\npeople put in profile OnLoad). Jobs you don\'t manage are never touched.',
+          fn = function() macrob.open(); end };
+    end
+    btns[#btns+1] =
         { l = 'Reload LAC', w = 104,
           tip = 'Reload LuaAshitacast. LAC caches your sets when the profile loads, so after you\ncommit/edit a set (or run Setup) you must reload LAC for the change to take effect.',
           fn = function()
@@ -1257,8 +1266,7 @@ local function renderHeaderButtons()
               ui.setsStatus = '';    -- ...and so is the Sets tab's 'replaced "<set>" for <JOB>' line
               refreshOwnedCounts();
               pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/addon reload luashitacast'); end);
-          end },
-    };
+          end };
     if debugMode then
         btns[#btns+1] = { l = 'Scan', w = 52,
             tip = 'Scan your equipment + bags (from the game\'s memory) and print what you own,\nflagging anything not yet in gear.lua. Read-only -- writes nothing. Also refreshes\nthe owned markers shown in these lists.',
@@ -1291,6 +1299,7 @@ local function renderHeaderButtons()
         if red then imgui.PopStyleColor(1); end
         if imgui.IsItemHovered() then imgui.SetTooltip(b.tip); end
     end
+    if hasMacrob then pcall(macrob.renderPopup); end
 end
 
 -- ---------------------------------------------------------------------------
@@ -3240,6 +3249,7 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
     pcall(loadUiFlags);
     if ui._flagsDirty then ui._flagsDirty = nil; pcall(saveUiFlags); end
     pcall(autoSyncOnJobChange);
+    if hasMacrob then pcall(macrob.pump); end   -- per-job macro book/set (login + job change)
     if ui.showMetrics == true and hasImgui then       -- /dl metrics: overlay hunter
         pcall(function() imgui.ShowMetricsWindow(ui.metricsOpen); end);
         if ui.metricsOpen ~= nil and ui.metricsOpen[1] == false then ui.showMetrics = false; end
