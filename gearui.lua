@@ -2260,25 +2260,46 @@ local function autoBuild(job, level)
                 end
             end
         end
-        -- Paired slot (Ring2<-Ring1, Ear2<-Ear1) single-copy guard for the
-        -- NON-joint path (the joint pass enforces this via its conflict rule).
-        if jointPick == nil and cands ~= nil then
+        -- Paired slot (Ring2<-Ring1, Ear2<-Ear1): a single-copy item anywhere in
+        -- the pair's FINAL list must not appear anywhere in THIS slot's list. The
+        -- level flatten walks each chain independently, so only DISJOINT chains
+        -- can never resolve both slots to the same piece -- the joint conflict
+        -- only separates the TOPS, and with "Build as lv.75" both chains fell
+        -- back onto the same ring at the real level. Matched by Id AND name
+        -- (legacy duplicate entries).
+        if cands ~= nil then
             local other = PAIR_OF[sl.label];
             if other ~= nil and built[other] ~= nil then
-                local blk = {};
+                local blkId, blkName = {}, {};
                 for _, it in ipairs(built[other]) do
-                    local id = it.rec and it.rec.Id;
-                    if id and (oc[id] or 0) < 2 then blk[id] = true; end
+                    local r = it.rec;
+                    if r ~= nil and (r.Id == nil or (oc[r.Id] or 0) < 2) then
+                        if r.Id ~= nil then blkId[r.Id] = true; end
+                        blkName[string.lower(tostring(r.Name or '?'))] = true;
+                    end
                 end
-                if next(blk) then
+                if next(blkId) ~= nil or next(blkName) ~= nil then
                     local f = {};
-                    for _, r in ipairs(cands) do if not (r.Id and blk[r.Id]) then f[#f + 1] = r; end end
+                    for _, r in ipairs(cands) do
+                        if not (r.Id and blkId[r.Id])
+                           and not blkName[string.lower(tostring(r.Name or '?'))] then
+                            f[#f + 1] = r;
+                        end
+                    end
                     cands = f;
                 end
             end
         end
         if cands ~= nil and #cands > 0 then
             local jp = (jointPick ~= nil) and jointPick[sl.label] or nil;
+            -- The pair's chain may have claimed the joint pick (it sat as one of
+            -- the pair's fallback rungs): the filtered pool is authoritative, so
+            -- the pick yields and this slot keeps its own untrimmed ladder.
+            if jp ~= nil then
+                local inPool = false;
+                for _, r in ipairs(cands) do if r == jp then inPool = true; break; end end
+                if not inPool then jp = nil; end
+            end
             if dyn then
                 local byLevel = {};
                 for _, r in ipairs(cands) do byLevel[#byLevel + 1] = r; end
