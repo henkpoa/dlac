@@ -91,6 +91,7 @@ re-detected automatically on login/job change.
 | `/dl weight` / `best` | Stat-weight helpers for set auto-building |
 | `/dl set level main <n>` | Preview as another level |
 | `/dl p` / `/dl w` | Panic escape: lock Ring2, equip the Provenance/Warp Ring, wait out its equip delay, use it (`off` cancels) |
+| `/dl t <where>` | Teleport earring: lock Ear2, equip the matching earring (norg, jeuno, sandy, bastok...), wait, use it — no arg lists destinations |
 
 ## Safety
 
