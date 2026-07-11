@@ -721,7 +721,14 @@ function M.buildBestSet(opts)
         end
     end
     local res = M.optimizePicks(pools, weights, {
-        conflict = function(a, b) return a == b; end,  -- one entry can't fill both paired slots
+        -- One physical item can't fill both paired slots: same record, same Id,
+        -- or same NAME (legacy gear.lua duplicates). This builder reads gear.lua
+        -- with no live bag counts, so it conservatively assumes one copy of
+        -- everything -- genuinely-owned doubles are Auto-build's department.
+        conflict = function(a, b)
+            return a == b or (a.Id ~= nil and a.Id == b.Id)
+                or string.lower(tostring(a.Name or '?')) == string.lower(tostring(b.Name or '??'));
+        end,
     });
     local out = { slots = {}, order = {}, perSlot = {}, total = res.total,
                   job = job, level = level, mode = 'weights' };

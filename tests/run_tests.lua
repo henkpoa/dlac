@@ -389,6 +389,22 @@ if h4.picks.Ring1 ~= nil then filled = filled + 1; end
 if h4.picks.Ring2 ~= nil then filled = filled + 1; end
 check('H6 one copy fills only one paired slot', filled, 1);
 
+-- same-NAME duplicates (legacy gear.lua double entries) are ONE physical item:
+-- the name-aware conflict must keep them out of both paired slots (the field
+-- bug: two Jalzahn's Rings suggested from one owned ring)
+local dupA = { stats = { Accuracy = 6 }, ref = { Name = "Jalzahn's Ring", Id = 901 } };
+local dupB = { stats = { Accuracy = 6 }, ref = { Name = "Jalzahn's Ring" } };        -- legacy: no Id
+local h4b = optim.optimizePicks({ Ring1 = { dupA }, Ring2 = { dupB } },
+    { Accuracy = { perUnit = 3 } },
+    { conflict = function(a, b)
+        return a == b or (a.Id ~= nil and a.Id == b.Id)
+            or string.lower(tostring(a.Name or '?')) == string.lower(tostring(b.Name or '??'));
+    end });
+local dupFilled = 0;
+if h4b.picks.Ring1 ~= nil then dupFilled = dupFilled + 1; end
+if h4b.picks.Ring2 ~= nil then dupFilled = dupFilled + 1; end
+check('H6b same-name duplicate fills only one slot', dupFilled, 1);
+
 -- baseStats background: an already-chosen set consumes the cap
 local h5 = optim.optimizePicks({ Head = { hasteHat } }, W, { baseStats = { { Haste = 5 } } });
 check('H7 background consumes the cap', h5.picks.Head, nil);

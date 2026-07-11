@@ -2214,9 +2214,17 @@ local function autoBuild(job, level)
             if #arr > 0 then op[label] = arr; end
         end
         local ok, res = pcall(optim.optimizePicks, op, nil, {
+            -- Two picks are the SAME physical item when they are the same record,
+            -- share an Id, or share a NAME (legacy gear.lua duplicates -- /dl dedupe
+            -- fodder -- must not double a ring you own once). Coexisting then needs
+            -- two owned copies; unknown Id counts as one copy (conservative).
             conflict = function(a, b)
-                if a == b then return true; end
-                return a.Id ~= nil and a.Id == b.Id and (oc[a.Id] or 0) < 2;
+                if a == b or (a.Id ~= nil and a.Id == b.Id)
+                   or string.lower(tostring(a.Name or '?')) == string.lower(tostring(b.Name or '??')) then
+                    local copies = (a.Id ~= nil) and (oc[a.Id] or 0) or 1;
+                    return copies < 2;
+                end
+                return false;
             end,
         });
         if ok and type(res) == 'table' and type(res.picks) == 'table' then
