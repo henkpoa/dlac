@@ -2915,9 +2915,13 @@ local function renderSetsTab(job, level)
         ui.buildMax[1] = (optim.buildAtMaxLevel == true);
         imgui.Checkbox('Build as lv.75 (ignore level cap)', ui.buildMax);
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('Ignore the item level cap when building sets OR using + Add -- pick gear as if you\nwere level 75, so you can assemble over-level sets. Your JOB restriction still applies.');
+            imgui.SetTooltip('Ignore the item level cap when building sets OR using + Add -- pick gear as if you\nwere level 75, so you can assemble over-level sets. Your JOB restriction still applies.\nRemembered across reloads (uiflags.lua).');
         end
-        optim.buildAtMaxLevel = (ui.buildMax[1] == true);
+        if (ui.buildMax[1] == true) ~= (optim.buildAtMaxLevel == true) then
+            optim.buildAtMaxLevel = (ui.buildMax[1] == true);
+            ui._flagsDirty = true;              -- persist via the render hook (saveUiFlags
+                                                -- is defined below this function)
+        end
     end
 
     -- Automation is a SLOT entry now (ADR 0004, 4th revision): + Add on the Main slot
@@ -3100,10 +3104,11 @@ local function autoSyncOnJobChange()
     end
 end
 
--- UI-flag persistence: debug + auto-sync survive reloads via <char>\dlac\uiflags.lua
--- (a `return {...}` module, like gearweights.lua). Defaults stay debug=false / autosync=true;
--- a /dl command updates the flag AND re-saves, and wins over the on-disk value -- once a
--- command has run (or the file has loaded), loadUiFlags no longer clobbers the live value.
+-- UI-flag persistence: debug + auto-sync + "Build as lv.75" survive reloads via
+-- <char>\dlac\uiflags.lua (a `return {...}` module, like gearweights.lua). Defaults
+-- stay debug=false / autosync=true / buildmax=false; a /dl command or checkbox
+-- updates the flag AND re-saves, and wins over the on-disk value -- once a
+-- command has run (or the file has loaded), loadUiFlags no longer clobbers it.
 local _flagsLoaded = false;
 local function uiFlagsPath()
     local base = charBase();
@@ -3113,8 +3118,9 @@ local function saveUiFlags()
     local p = uiFlagsPath(); if p == nil then return; end   -- pre-login: can't persist yet
     _flagsLoaded = true;                                    -- command is now authoritative
     pcall(function()
-        writeFileText(p, string.format('return { debug = %s, autosync = %s }\n',
-            tostring(debugMode), tostring(autoSyncEnabled)));
+        local bm = hasOptim and (optim.buildAtMaxLevel == true) or false;
+        writeFileText(p, string.format('return { debug = %s, autosync = %s, buildmax = %s }\n',
+            tostring(debugMode), tostring(autoSyncEnabled), tostring(bm)));
     end);
 end
 local function loadUiFlags()
@@ -3128,6 +3134,7 @@ local function loadUiFlags()
         if ok and type(t) == 'table' then
             if type(t.debug)    == 'boolean' then debugMode       = t.debug;    end
             if type(t.autosync) == 'boolean' then autoSyncEnabled = t.autosync; end
+            if type(t.buildmax) == 'boolean' and hasOptim then optim.buildAtMaxLevel = t.buildmax; end
         end
     end);
 end
@@ -3137,6 +3144,7 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
     if (cmdq.frame() % 240) == 0 then owned.resetCache(); end   -- availability heartbeat (~4s):
                                                                 -- container moves recolour live
     pcall(loadUiFlags);
+    if ui._flagsDirty then ui._flagsDirty = nil; pcall(saveUiFlags); end
     pcall(autoSyncOnJobChange);
     if not M.visible or not hasImgui then return; end
     -- Theme push/pop brackets the pcall so an imgui error mid-draw can never
