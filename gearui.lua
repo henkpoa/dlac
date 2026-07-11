@@ -1568,21 +1568,14 @@ local function calcTextW(s)
     return #tostring(s or '') * 7;
 end
 
--- One item card: icon + name / [Slot] tag / stats / augments / Lv+jobs. EVERY
--- variable line wraps inside the card, and the height budgets for the wrapped
--- line count (conservatively: word-wrap breaks earlier than character math says,
--- so the estimate uses 90% of the inner width) -- nothing may clip.
+-- One item card: icon + name / [Slot] tag / stats / augments / Lv+jobs. STATIC,
+-- generous height (matches the slot grid) so hovering different items never
+-- moves the layout -- overly long content clips inside the card instead. The
+-- jobs line wraps only at '/' boundaries (imgui would break mid job name:
+-- 'WAR/MNK/DR' + 'G/WHM').
+local CARD_H = 182;
 local function renderItemCard(rec, level, w, tag)
-    local lh = 21;
-    pcall(function()
-        local v = imgui.GetTextLineHeightWithSpacing();
-        if type(v) == 'number' and v > 0 then lh = v; end
-    end);
-    local innerW = (w - 18) * 0.90;
-    local function wrapLines(s)
-        if s == nil or s == '' then return 0; end
-        return math.max(1, math.ceil(calcTextW(s) / innerW));
-    end
+    local innerW = w - 18;
     local ss = fmt.statSummary(rec, level);
     local aug = nil;
     if rec.Id ~= nil then
@@ -1593,19 +1586,30 @@ local function renderItemCard(rec, level, w, tag)
     end
     local jt = fmt.jobsText(rec.Jobs);
     if jt == 'All' then jt = 'All Jobs'; end
-    local jobsLn = string.format('Lv.%d  %s', rec.Level or 0, jt);
-    local nameLn = tostring(rec.Name or '?');
-    local lines = 1 + wrapLines(nameLn) + wrapLines(ss) + wrapLines(aug) + wrapLines(jobsLn);
-    local boxH = lines * lh + 14;
     imgui.BeginChild('##card_' .. tostring(tag or '') .. '_' .. tostring(rec.Id or rec.Name or '?'),
-        { w, boxH }, true, ImGuiWindowFlags_NoScrollbar or 0);
+        { w, CARD_H }, true, ImGuiWindowFlags_NoScrollbar or 0);
     renderIcon(rec.Id, 18);
-    fmt.textWrapped(owned.isStored(rec) and COL_ERR or COL_USABLE, fmt.esc(nameLn));
+    fmt.textWrapped(owned.isStored(rec) and COL_ERR or COL_USABLE, fmt.esc(tostring(rec.Name or '?')));
     imgui.TextColored(COL_DIM, '[' .. tostring(ui.eqSelected or rec.Slot or '?') .. ']'
         .. ((tag ~= nil) and ('  ' .. tag) or ''));
     if ss ~= '' then fmt.textWrapped(COL_STATS, fmt.esc(ss)); end
     if aug ~= nil then fmt.textWrapped(COL_SCORE, fmt.esc(aug)); end
-    fmt.textWrapped(COL_JOBS, fmt.esc(jobsLn));
+    -- 'Lv.73  WHM/BLM/' -- continuation lines break at job boundaries only.
+    do
+        local cur = string.format('Lv.%d  ', rec.Level or 0);
+        local toks = {};
+        for tok in string.gmatch(tostring(jt), '[^/]+') do toks[#toks + 1] = tok; end
+        for ti, tok in ipairs(toks) do
+            local piece = tok .. ((ti < #toks) and '/' or '');
+            if cur ~= '' and calcTextW(cur .. piece) > innerW then
+                imgui.TextColored(COL_JOBS, fmt.esc(cur));
+                cur = piece;
+            else
+                cur = cur .. piece;
+            end
+        end
+        if cur ~= '' then imgui.TextColored(COL_JOBS, fmt.esc(cur)); end
+    end
     imgui.EndChild();
 end
 
@@ -1661,9 +1665,9 @@ local function renderComparePanel(level)
         local avail = imgui.GetContentRegionAvail();
         if type(avail) ~= 'number' or avail < 200 then avail = 620; end
         local cardW = math.floor((avail - 16) / 2);
-        local twoCol = (cardW >= 230);
+        local twoCol = (cardW >= 260);
         if not twoCol then cardW = math.floor(avail - 4); end
-        cardW = math.min(math.max(cardW, 200), 400);
+        cardW = math.min(math.max(cardW, 280), 360);   -- generous, near-static band
         if eqRec ~= nil then
             renderItemCard(eqRec, level, cardW, 'equipped');
         else
