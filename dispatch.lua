@@ -32,7 +32,7 @@ local M = {};
 -- LAC-state copy stamps its version into the modestate mirror; the GUI compares
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code (the seeded file only re-requires when LuaAshitacast itself reloads).
-M.VERSION = 13;
+M.VERSION = 14;
 
 -- Colored [dlac] chat output (chatfmt); plain print when unavailable. The shadowed
 -- `print` re-heads "[dlac] ..."-prefixed lines with the colored header.
@@ -635,6 +635,41 @@ end
 local _mpCd = {};   -- slot -> os.time() before which a released battery must not re-equip
                     -- (breaks the equip/release churn at the exact spent boundary)
 
+-- ---------------------------------------------------------------------------
+-- Equipment-screen guard. Swap packets sent while the equipment menu is open
+-- are rejected by the game and can desync the client's item view (the classic
+-- ghost-gear bug; GearSwap pauses swaps on that screen too). While it is up
+-- the dispatch RESOLVES normally but sends nothing; Default runs per frame, so
+-- gear catches up the instant the screen closes. Menu name comes from the
+-- standard FFXiMain menu pattern (tCrossBar/HXUI lineage); when the pattern
+-- isn't found the guard never blocks. Verify live with /dl env (open menu).
+-- ---------------------------------------------------------------------------
+local pGameMenu = nil;
+pcall(function()
+    pGameMenu = ashita.memory.find('FFXiMain.dll', 0, '8B480C85C974??8B510885D274??3B05', 16, 0);
+end);
+
+local function menuName()
+    local nm = '';
+    pcall(function()
+        if pGameMenu == nil or pGameMenu == 0 then return; end
+        local sub = ashita.memory.read_uint32(pGameMenu);
+        if sub == nil or sub == 0 then return; end
+        local val = ashita.memory.read_uint32(sub);
+        if val == nil or val == 0 then return; end
+        local hdr = ashita.memory.read_uint32(val + 4);
+        if hdr == nil or hdr == 0 then return; end
+        local s = ashita.memory.read_string(hdr + 0x46, 16);
+        if type(s) == 'string' then nm = (string.gsub(s, '\x00', '')); end
+    end);
+    return nm;
+end
+
+-- The equipment screen (and its sub-screens) is the one place swaps must pause.
+local function equipsBlocked()
+    return string.find(string.lower(menuName()), 'equ', 1, true) ~= nil;
+end
+
 local function equipResolved(s, ctx)
     local out, notes = nil, nil;
     local anyLocks = (next(M.locks) ~= nil);
@@ -750,6 +785,10 @@ local function equipResolved(s, ctx)
                 end
             end
         end
+    end
+    -- Equipment screen open: resolve (traces stay truthful) but send nothing.
+    if equipsBlocked() then
+        return '  [equipment screen open -- swaps paused]', (out or s);
     end
     pcall(function() gFunc.EquipSet(out or s); end);
     local note = '';
@@ -1203,6 +1242,9 @@ if inLac() then
             end
             print('[dlac] net signs: ' .. ((#parts > 0) and table.concat(parts, ', ') or '(all neutral)')
                 .. '   -- dlac:AutoObi equips only when its spell\'s element is positive');
+            local mn = menuName();
+            print('[dlac] open menu: ' .. ((mn ~= '') and ('"' .. mn .. '"') or '(none)')
+                .. (equipsBlocked() and '   -- equipment screen: swaps PAUSED until it closes' or ''));
             return;
         end
 
