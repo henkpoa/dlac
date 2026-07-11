@@ -3183,7 +3183,7 @@ local function autoSyncOnJobChange()
     if _syncDueFrame ~= nil and cmdq.frame() >= _syncDueFrame then
         _syncDueFrame = nil;
         local added = doSync();
-        if added > 0 then   -- one friendly line; the import pipeline itself runs quiet now
+        if added > 0 and debugMode then   -- routine indexing runs silent; /dl debug on shows it
             pcall(function() print(string.format('[dlac] gear library: +%d new item(s).', added)); end);
         end
     end
@@ -3192,7 +3192,7 @@ local function autoSyncOnJobChange()
     if _invSyncAt ~= nil and os.clock() >= _invSyncAt then
         _invSyncAt = nil;
         local added = doSync();
-        if added > 0 then
+        if added > 0 and debugMode then   -- same rule: dev-only chatter
             pcall(function() print(string.format('[dlac] gear library: +%d new item(s).', added)); end);
         end
     end
@@ -3233,6 +3233,15 @@ local function loadUiFlags()
     if _flagsLoaded then return; end
     local p = uiFlagsPath(); if p == nil then return; end   -- pre-login: retry next frame
     _flagsLoaded = true;
+    -- First frame the character is known -- also the moment to swap the REAL gear.lua in.
+    -- The addon usually loads at Ashita boot, BEFORE login, so dlac.lua's load-time preload
+    -- found no character and every require("dlac\\gear") resolved to the bundled EMPTY
+    -- template. Left alone, the first auto-sync would compare the wardrobe against that
+    -- template, call everything "new", and commit hundreds of duplicate entries into
+    -- gear.lua. refreshGear() re-reads <char>\dlac\gear.lua into the shared table (in
+    -- place, so every capture sees it) BEFORE any sync can run -- this pcall(loadUiFlags)
+    -- precedes pcall(autoSyncOnJobChange) in the d3d_present handler below.
+    refreshGear();
     pcall(function()
         local chunk = loadfile(p);
         if chunk == nil then return; end                    -- no file yet -> keep defaults
