@@ -418,22 +418,24 @@ local function getSubInfo()
     return sj, slv;
 end
 
--- Equip legality: the MAIN job must appear in the item's job list. The support
--- job does NOT widen it -- field-verified on CatsEyeXI (RDM/WHM cannot wear
--- Hlr. Bliaut +1): another job's gear stays unwearable even with that job subbed.
--- (Matches gearoptim.jobAllowed; an earlier assumption-based "main OR sub" rule
--- here was wrong.)
+-- Equip legality now lives in ONE place: dispatch.jobCanEquip / dispatch.canWear
+-- (main job only, level gated on main level -- field-verified on CatsEyeXI:
+-- RDM/WHM cannot wear Hlr. Bliaut +1). These wrappers delegate; the inline
+-- fallback keeps the GUI usable if dispatch ever fails to load.
+local _dspok, _dsp = pcall(require, "dlac\\dispatch");
+local hasDsp = _dspok and type(_dsp) == 'table' and type(_dsp.jobCanEquip) == 'function';
+
 local function jobCanEquip(jobs, playerJob)
-    if jobs == nil then return true; end                       -- no restriction
-    if type(jobs) ~= 'table' or #jobs == 0 then return true; end
+    if hasDsp then return _dsp.jobCanEquip(jobs, playerJob); end
+    if jobs == nil or type(jobs) ~= 'table' or #jobs == 0 then return true; end
     for _, j in ipairs(jobs) do
-        if j == 'All' then return true; end
-        if playerJob ~= nil and playerJob ~= '' and j == playerJob then return true; end
+        if j == 'All' or (playerJob ~= nil and playerJob ~= '' and j == playerJob) then return true; end
     end
     return false;
 end
 
 local function isUsable(rec, playerJob, playerLevel)
+    if hasDsp then return _dsp.canWear(rec, playerJob, playerLevel); end
     if (rec.Level or 0) > (playerLevel or 0) then return false; end
     return jobCanEquip(rec.Jobs, playerJob);
 end
@@ -2078,6 +2080,7 @@ do
             dynamicSetNames = profsets.dynamicSetNames, staticSetNames = profsets.staticSetNames,
             lookupByName = lookupByName, ownedCounts = owned.counts,  -- automations manifest (owned staves/obis)
             ownedList = buildOwned,                                   -- max-MP manifest (piece MP values)
+            haveInBags = owned.haveInBags,                            -- max-MP batteries must be equippable NOW
             renderIcon = renderIcon,                                  -- automation detail views (item icons)
             setsRoot = profsets.getSetsRoot,                          -- gearcheck: set contents for the audit
         });

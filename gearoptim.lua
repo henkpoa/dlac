@@ -449,10 +449,15 @@ end
 -- Jobs list is absent (unrestricted, gear.lua's convention for most armor), contains
 -- "All", or names your job. Entries without a numeric Level are skipped -- same
 -- caution BuildDynamicSets takes, so we never recommend something un-vettable.
+-- Delegates to THE central rule (dispatch.jobCanEquip); inline fallback kept.
+local _dspok, _dsp = pcall(require, "dlac\\dispatch");
 local function jobAllowed(entry, job)
+    if job == nil or job == '' then return true; end     -- unknown job -> don't filter
+    if _dspok and type(_dsp) == 'table' and type(_dsp.jobCanEquip) == 'function' then
+        return _dsp.jobCanEquip(entry.Jobs, job);
+    end
     local jobs = entry.Jobs;
     if type(jobs) ~= 'table' then return true; end
-    if job == nil or job == '' then return true; end     -- unknown job -> don't filter
     for _, j in ipairs(jobs) do
         if j == 'All' or j == job then return true; end
     end

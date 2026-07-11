@@ -32,7 +32,7 @@ local M = {};
 -- LAC-state copy stamps its version into the modestate mirror; the GUI compares
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code (the seeded file only re-requires when LuaAshitacast itself reloads).
-M.VERSION = 11;
+M.VERSION = 12;
 
 -- Colored [dlac] chat output (chatfmt); plain print when unavailable. The shadowed
 -- `print` re-heads "[dlac] ..."-prefixed lines with the colored header.
@@ -548,6 +548,28 @@ end
 -- ride the autogear manifest (the engine never loads the catalog); the worn
 -- item is read from equipment memory. Design: docs/design/maxmp-mode.md.
 -- ---------------------------------------------------------------------------
+-- ---------------------------------------------------------------------------
+-- THE central equip-eligibility check. Wearability is MAIN job only (field-
+-- verified on CatsEyeXI: RDM/WHM cannot wear Hlr. Bliaut +1 -- ADR/history) and
+-- the level gate is the main level. Every consumer -- gearui pickers, gearoptim,
+-- the automation manifests -- delegates here; utils re-exports it for profiles.
+-- ---------------------------------------------------------------------------
+function M.jobCanEquip(jobs, job)
+    if jobs == nil then return true; end               -- no restriction
+    if type(jobs) ~= 'table' or #jobs == 0 then return true; end
+    for _, j in ipairs(jobs) do
+        if j == 'All' then return true; end
+        if job ~= nil and job ~= '' and j == job then return true; end
+    end
+    return false;
+end
+
+function M.canWear(rec, job, level)
+    if type(rec) ~= 'table' then return false; end
+    if (tonumber(rec.Level) or 0) > (tonumber(level) or 0) then return false; end
+    return M.jobCanEquip(rec.Jobs, job);
+end
+
 local MP_HOLD_EXEMPT = { main = true, sub = true, range = true };
 local SLOT_EQUIP_ID = { main = 0, sub = 1, range = 2, ammo = 3, head = 4, body = 5,
                         hands = 6, legs = 7, feet = 8, neck = 9, waist = 10,

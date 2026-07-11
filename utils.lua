@@ -30,6 +30,10 @@ local _dok, _dispatch = pcall(require, "dlac\\dispatch");
 if _dok and type(_dispatch) == 'table' and type(_dispatch.dispatch) == 'function' then
     M.dispatchModule = _dispatch;   -- direct access (modes, traces) for advanced use
     M.dispatch = function(event) pcall(_dispatch.dispatch, event); end
+    -- THE central equip-eligibility check lives in dispatch (loadable from both
+    -- Lua states); re-exported here so profiles and addon modules share ONE rule.
+    M.jobCanEquip = _dispatch.jobCanEquip;
+    M.canWear     = _dispatch.canWear;
 else
     M.dispatch = function() end;
 end

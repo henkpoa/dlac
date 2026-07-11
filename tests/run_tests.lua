@@ -433,6 +433,19 @@ check('I6 equal MP: never hold',      dispatchM.mpHoldNeeded(30, 30, 1000, 1000)
 check('I7 nil-safe',                  dispatchM.mpHoldNeeded(nil, nil, nil, nil), false);
 
 -- ---------------------------------------------------------------------------
+-- J. THE central equip-eligibility rule (dispatch.jobCanEquip / canWear):
+--    main job only (sub NEVER widens -- field-verified), level gated on main.
+--    gearui, gearoptim and the automation manifests all delegate here.
+-- ---------------------------------------------------------------------------
+check('J1 no restriction wears',   dispatchM.jobCanEquip(nil, 'RDM'), true);
+check('J2 All wears',              dispatchM.jobCanEquip({ 'All' }, 'RDM'), true);
+check('J3 main job listed wears',  dispatchM.jobCanEquip({ 'WHM', 'RDM' }, 'RDM'), true);
+check('J4 other job never wears',  dispatchM.jobCanEquip({ 'WHM' }, 'RDM'), false);
+check('J5 canWear level gate',     dispatchM.canWear({ Jobs = { 'RDM' }, Level = 74 }, 'RDM', 73), false);
+check('J6 canWear at level',       dispatchM.canWear({ Jobs = { 'RDM' }, Level = 74 }, 'RDM', 74), true);
+check('J7 canWear wrong job',      dispatchM.canWear({ Jobs = { 'WHM' }, Level = 10 }, 'RDM', 75), false);
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then

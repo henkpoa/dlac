@@ -402,14 +402,22 @@ local function autoCommit()
     local mp, mpBest = {}, {};
     pcall(function()
         if type(deps.ownedList) ~= 'function' then return; end
+        local job = nil;
+        pcall(function() job = gData.GetPlayer().MainJob; end);
         local bySlot = {};   -- gear-slot key -> candidates { name, mp, level }
         for _, rec in ipairs(deps.ownedList() or {}) do
             local v = (type(rec.Stats) == 'table') and rec.Stats.MP or nil;
             if type(v) == 'number' and v > 0 and rec.Name ~= nil then
                 local k = string.lower(rec.Name);
-                if (mp[k] or 0) < v then mp[k] = v; end
+                if (mp[k] or 0) < v then mp[k] = v; end   -- hold map: unfiltered (worn = legal)
+                -- Battery CANDIDATES use the central eligibility check (main job
+                -- only; the manifest regenerates on job change) and must be in an
+                -- equippable bag -- a job-illegal or stored pick would make the
+                -- engine's /equip fail SILENTLY and the whole mode look dead.
                 local sl = tostring(rec.Slot or '');
-                if sl ~= '' and sl ~= 'Main' and sl ~= 'Sub' and sl ~= 'Range' then
+                if sl ~= '' and sl ~= 'Main' and sl ~= 'Sub' and sl ~= 'Range'
+                   and (not hasDispatch or type(dsp.canWear) ~= 'function' or dsp.canWear(rec, job, 99))
+                   and (type(deps.haveInBags) ~= 'function' or deps.haveInBags(rec)) then
                     bySlot[sl] = bySlot[sl] or {};
                     table.insert(bySlot[sl], { name = rec.Name, mp = v, level = rec.Level or 0 });
                 end
