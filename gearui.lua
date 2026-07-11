@@ -1731,7 +1731,18 @@ local function renderEquippedTab(job, level)
         function(sl) return lookupById(getEquippedId(sl.equip)); end,
         190);                                          -- fixed width: the compare panel sits beside
     imgui.SameLine(0, 14);
+    -- FIXED-height panel: hover must never resize the layout, or the list below
+    -- shifts under the cursor and the hover jitters between two rows. Card area
+    -- (grid height) + three dedicated rows for the compare text.
+    local _plh = 21;
+    pcall(function()
+        local v = imgui.GetTextLineHeightWithSpacing();
+        if type(v) == 'number' and v > 0 then _plh = v; end
+    end);
+    imgui.BeginChild('##eqcmppanel', { -1, 182 + math.floor(_plh * 3) + 12 }, false,
+        ImGuiWindowFlags_NoScrollbar or 0);
     renderComparePanel(level);
+    imgui.EndChild();
 
     imgui.Separator();
 
