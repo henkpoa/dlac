@@ -1415,9 +1415,9 @@ local STATS_W   = 250;   -- left stats panel width (name column + value column)
 local _sdok, statdefs = pcall(require, "dlac\\statdefs");
 local hasStatdefs = _sdok and type(statdefs) == 'table' and type(statdefs.list) == 'table';
 
--- Item-search matching shared by the pickers: a query hits on the NAME or on the
--- item's STATS ('hmp' finds every piece carrying HMP). searchCanon resolves the
--- query through statdefs once so aliases work too ('matk' also finds MAB gear).
+-- Item-search matching shared by the pickers: comma-separated terms, ALL required
+-- ('hmp, refresh' = pieces carrying both). Each term hits on the NAME or on the
+-- item's STATS; statdefs resolves aliases per term ('matk' also finds MAB gear).
 local function searchCanon(q)
     if q == '' or not hasStatdefs or type(statdefs.get) ~= 'function' then return nil; end
     local ok, e = pcall(statdefs.get, q);
@@ -1427,12 +1427,25 @@ local function searchCanon(q)
     end
     return nil;
 end
-local function itemSearchMatch(rec, q, qc, level)
-    if q == '' then return true; end
-    if string.find(string.lower(tostring(rec.Name or '')), q, 1, true) ~= nil then return true; end
+local function parseSearch(q)
+    local terms = {};
+    for t in string.gmatch(q or '', '[^,]+') do
+        t = t:match('^%s*(.-)%s*$');
+        if t ~= '' then terms[#terms + 1] = { q = t, qc = searchCanon(t) }; end
+    end
+    return terms;
+end
+local function itemSearchMatch(rec, terms, level)
+    if #terms == 0 then return true; end
+    local name = string.lower(tostring(rec.Name or ''));
     local ss = string.lower(fmt.statSummary(rec, level) or '');
-    if string.find(ss, q, 1, true) ~= nil then return true; end
-    return qc ~= nil and string.find(ss, qc, 1, true) ~= nil;
+    for _, t in ipairs(terms) do
+        local hit = string.find(name, t.q, 1, true) ~= nil
+            or string.find(ss, t.q, 1, true) ~= nil
+            or (t.qc ~= nil and string.find(ss, t.qc, 1, true) ~= nil);
+        if not hit then return false; end
+    end
+    return true;
 end
 
 local STAT_GROUPS = {
@@ -1814,10 +1827,10 @@ local function renderEquippedTab(job, level)
         ui.altSearch = ui.altSearch or { '' };
         local altQ = string.lower(ui.altSearch[1] or '');
         if altQ ~= '' then
-            local altQC = searchCanon(altQ);
+            local altTerms = parseSearch(altQ);
             local f = {};
             for _, r in ipairs(alts) do
-                if itemSearchMatch(r, altQ, altQC, level) then f[#f + 1] = r; end
+                if itemSearchMatch(r, altTerms, level) then f[#f + 1] = r; end
             end
             alts = f;
         end
@@ -1832,7 +1845,7 @@ local function renderEquippedTab(job, level)
         imgui.InputText('##eqaltsearch', ui.altSearch, 48);
         imgui.PopItemWidth();
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('Matches item names AND stats -- try HMP, Refresh, FastCast\n(stat aliases work too: matk finds MAB gear).');
+            imgui.SetTooltip('Matches item names AND stats -- try HMP, Refresh, FastCast\n(aliases work: matk finds MAB gear). Comma = AND:\n"hmp, refresh" shows only pieces carrying BOTH.');
         end
         imgui.SameLine(0, 12);
         local prevLock = ui._lockPrev;
@@ -2598,7 +2611,7 @@ local function renderAddPopup(job, level)
         imgui.InputText('##addsearch', ui.addSearch, 48);
         imgui.PopItemWidth();
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('Matches item names AND stats -- try HMP, Refresh, FastCast\n(stat aliases work too: matk finds MAB gear).');
+            imgui.SetTooltip('Matches item names AND stats -- try HMP, Refresh, FastCast\n(aliases work: matk finds MAB gear). Comma = AND:\n"hmp, refresh" shows only pieces carrying BOTH.');
         end
         imgui.SameLine(0, 14);
         imgui.Checkbox('Available only', ui.addAvail);
@@ -2623,11 +2636,11 @@ local function renderAddPopup(job, level)
         cands = sortForDisplay(cands);
         -- Apply the popup filters up front so the name column sizes to what shows.
         local q = string.lower(ui.addSearch[1] or '');
-        local qc = searchCanon(q);
+        local qTerms = parseSearch(q);
         local shown = {};
         for _, rec in ipairs(cands) do
             if not inList[rec.Name] and not (rec.Id and blocked[rec.Id])
-               and itemSearchMatch(rec, q, qc, useLevel)
+               and itemSearchMatch(rec, qTerms, useLevel)
                and (ui.addAvail[1] ~= true or not owned.isStored(rec)) then
                 shown[#shown + 1] = rec;
             end
