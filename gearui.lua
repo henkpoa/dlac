@@ -1415,6 +1415,26 @@ local STATS_W   = 250;   -- left stats panel width (name column + value column)
 local _sdok, statdefs = pcall(require, "dlac\\statdefs");
 local hasStatdefs = _sdok and type(statdefs) == 'table' and type(statdefs.list) == 'table';
 
+-- Item-search matching shared by the pickers: a query hits on the NAME or on the
+-- item's STATS ('hmp' finds every piece carrying HMP). searchCanon resolves the
+-- query through statdefs once so aliases work too ('matk' also finds MAB gear).
+local function searchCanon(q)
+    if q == '' or not hasStatdefs or type(statdefs.get) ~= 'function' then return nil; end
+    local ok, e = pcall(statdefs.get, q);
+    if ok and type(e) == 'table' and type(e.key) == 'string' then
+        local c = string.lower(e.key);
+        if c ~= q then return c; end
+    end
+    return nil;
+end
+local function itemSearchMatch(rec, q, qc, level)
+    if q == '' then return true; end
+    if string.find(string.lower(tostring(rec.Name or '')), q, 1, true) ~= nil then return true; end
+    local ss = string.lower(fmt.statSummary(rec, level) or '');
+    if string.find(ss, q, 1, true) ~= nil then return true; end
+    return qc ~= nil and string.find(ss, qc, 1, true) ~= nil;
+end
+
 local STAT_GROUPS = {
     { name = 'Attributes', stats = { 'STR', 'DEX', 'VIT', 'AGI', 'INT', 'MND', 'CHR' } },
     { name = 'HP/MP',      stats = { 'HP', 'MP', 'HPP', 'MPP', 'Refresh', 'Regen', 'HMP', 'ConserveMP' } },
@@ -1794,9 +1814,10 @@ local function renderEquippedTab(job, level)
         ui.altSearch = ui.altSearch or { '' };
         local altQ = string.lower(ui.altSearch[1] or '');
         if altQ ~= '' then
+            local altQC = searchCanon(altQ);
             local f = {};
             for _, r in ipairs(alts) do
-                if string.find(string.lower(tostring(r.Name or '')), altQ, 1, true) ~= nil then f[#f + 1] = r; end
+                if itemSearchMatch(r, altQ, altQC, level) then f[#f + 1] = r; end
             end
             alts = f;
         end
@@ -1810,6 +1831,9 @@ local function renderEquippedTab(job, level)
         imgui.PushItemWidth(170);
         imgui.InputText('##eqaltsearch', ui.altSearch, 48);
         imgui.PopItemWidth();
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Matches item names AND stats -- try HMP, Refresh, FastCast\n(stat aliases work too: matk finds MAB gear).');
+        end
         imgui.SameLine(0, 12);
         local prevLock = ui._lockPrev;
         imgui.Checkbox('Lock when equipped', ui.lockEquipped);
@@ -2573,6 +2597,9 @@ local function renderAddPopup(job, level)
         imgui.PushItemWidth(240);
         imgui.InputText('##addsearch', ui.addSearch, 48);
         imgui.PopItemWidth();
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Matches item names AND stats -- try HMP, Refresh, FastCast\n(stat aliases work too: matk finds MAB gear).');
+        end
         imgui.SameLine(0, 14);
         imgui.Checkbox('Available only', ui.addAvail);
         if imgui.IsItemHovered() then
@@ -2596,10 +2623,11 @@ local function renderAddPopup(job, level)
         cands = sortForDisplay(cands);
         -- Apply the popup filters up front so the name column sizes to what shows.
         local q = string.lower(ui.addSearch[1] or '');
+        local qc = searchCanon(q);
         local shown = {};
         for _, rec in ipairs(cands) do
             if not inList[rec.Name] and not (rec.Id and blocked[rec.Id])
-               and (q == '' or string.find(string.lower(tostring(rec.Name or '')), q, 1, true) ~= nil)
+               and itemSearchMatch(rec, q, qc, useLevel)
                and (ui.addAvail[1] ~= true or not owned.isStored(rec)) then
                 shown[#shown + 1] = rec;
             end
