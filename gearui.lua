@@ -3087,6 +3087,7 @@ end
 -- no-op when nothing is new, so it is cheap and never spams. Toggle with /dl autosync off.
 local autoSyncEnabled = true;
 local _syncedJob, _syncDueFrame = nil, nil;
+local _invSyncAt = nil;   -- debounced: ~5s after the LAST inventory-changing packet
 
 -- Regenerate the automations manifest (autogear.lua) from bags -- the same cadence as
 -- the gear.lua auto-sync, so staves/obis/Iridescence detection never needs a manual
@@ -3122,7 +3123,28 @@ local function autoSyncOnJobChange()
             pcall(function() print(string.format('[dlac] gear library: +%d new item(s).', added)); end);
         end
     end
+    -- Zero-step indexing: a new item schedules the same quiet sync itself (see
+    -- the packet hook below) -- no command, no job change needed.
+    if _invSyncAt ~= nil and os.clock() >= _invSyncAt then
+        _invSyncAt = nil;
+        local added = doSync();
+        if added > 0 then
+            pcall(function() print(string.format('[dlac] gear library: +%d new item(s).', added)); end);
+        end
+    end
 end
+
+-- Any inventory-changing packet (loot, buy, trade, move -- 0x020 item update /
+-- 0x01D inventory finish) schedules the sync ~5s after the LAST one. The debounce
+-- rides out zone-in floods (~900 item packets) and combat swap chatter: while
+-- packets keep arriving the deadline keeps sliding, so the scan runs once, in the
+-- first quiet moment. Add-only and silent when nothing is new; /dl autosync off
+-- disables this path along with the job-change one.
+ashita.events.register('packet_in', 'dlac-gearui-invdirty', function(e)
+    if (e.id == 0x020 or e.id == 0x01D) and autoSyncEnabled then
+        _invSyncAt = os.clock() + 5;
+    end
+end);
 
 -- UI-flag persistence: debug + auto-sync + "Build as lv.75" survive reloads via
 -- <char>\dlac\uiflags.lua (a `return {...}` module, like gearweights.lua). Defaults
@@ -3220,7 +3242,7 @@ ashita.events.register('command', 'dlac-ui', function(e)
         elseif args[2] == 'on'  then autoSyncEnabled = true; end
         saveUiFlags();              -- persist; command wins over the on-disk value
         print('[dlac] auto-sync ' .. (autoSyncEnabled and 'ON' or 'OFF')
-            .. ' -- re-scans gear.lua on job change.  (/dl autosync on|off)');
+            .. ' -- indexes new gear on pickup, login and job change.  (/dl autosync on|off)');
         return;
     end
     if sub == 'debug' then          -- reveal/hide the dev-only Scan/Stage/Commit/Augs buttons
@@ -3256,6 +3278,7 @@ end);
 ashita.events.register('unload', 'dlac-gearui-unload', function()
     pcall(function() ashita.events.unregister('d3d_present', 'dlac-gearui-render'); end);
     pcall(function() ashita.events.unregister('command', 'dlac-ui'); end);
+    pcall(function() ashita.events.unregister('packet_in', 'dlac-gearui-invdirty'); end);
     pcall(releaseTextures);
 end);
 
