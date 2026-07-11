@@ -19,35 +19,40 @@ Everything else — *which* MP gear to put on and *when* — is data (sets and
 trigger rules), which the existing machinery already handles. This mirrors the
 "builder is a plan, the engine decides" split (ADR 0006).
 
-## Stage 1 — the hold (BUILT, engine VERSION 9)
+## Stage 1 — equip + hold (BUILT, engine VERSION 10)
 
-- `dispatch.mpHoldNeeded(wornMP, targetMP, curMP, maxMP)` — the pure rule
-  (tests I1–I7). Weapons exempt (`MP_HOLD_EXEMPT`), `dlac:` virtual markers
-  exempt (the staff/obi automation keeps priority in its two slots).
-- Active while the **`maxmp` toggle mode** is ON (`/dl mode maxmp`, or a
-  Triggers-tab chip once the mode exists). Every dispatch then checks each
-  slot: worn item read from equipment memory, MP values from the **autogear
-  manifest's new `mp` map** (lower(name) → flat MP for every owned piece;
-  written by the Automations rescan, auto-regenerated on login/job change —
-  the engine never loads the catalog, ADR 0004).
-- Held slots are stripped from the applied set with a `/dl why` note:
-  `head=MP-HOLD Wise Cap +1 (+45 MP unspent)`.
+`/dl mode maxmp` is the whole interface — no set-building required:
 
-### How to use it today
+- **MP-EQUIP**: whenever the pool is FULL (`curMP >= maxMP`), each dispatch
+  wears the slot's best owned battery instead of the set piece (per-slot picks
+  from the manifest's `mpBest` map, level-checked; ear/ring carry the top two).
+  Full-pool gating is what makes equipping worthwhile: batteries only pay when
+  recovery (refresh, resting, sublimation) can land into the larger pool.
+- **MP-HOLD**: the battery then stays until its surplus over the incoming piece
+  is spent — `hold while curMP >= maxMP − (wornMP − incomingMP)`. The boundary
+  is `>=` on purpose: a battery equipped at a full pool sits exactly on it, and
+  a `>` rule would drop it before any recovery landed (field case: 960/960,
+  Cleric's Bliaut +29 → Bunzi's Robe +50). Release requires spending strictly
+  past the surplus; a released slot has a 15 s re-equip cooldown so the
+  full/spent boundary can't churn gear per action.
+- Weapons exempt (`MP_HOLD_EXEMPT`), `dlac:` virtual markers exempt (staff/obi
+  automation keeps its two slots). Both decisions annotate `/dl why`:
+  `body=MP-EQUIP Bunzi's Robe (+21 MP)` / `body=MP-HOLD Bunzi's Robe (+21 MP unspent)`.
+- Data: the autogear manifest's `mp` (lower(name) → flat MP, every owned piece)
+  and `mpBest` (slot → best battery) maps — written by the Automations rescan,
+  auto-regenerated on login/job change; the engine never loads the catalog
+  (ADR 0004). The pure rule is `dispatch.mpHoldNeeded` (tests I1–I7).
+- Caveat: MP-EQUIP only touches slots the active sets address (the dispatch
+  walks the applied set's slots); a slot no set ever writes keeps whatever is
+  worn. In practice trigger sets cover the wardrobe.
 
-1. Sets tab: Auto-build a set named e.g. `MaxMP` with an `MP` weight
-   (weapons skipped) — or hand-build it. Commit, Reload LAC.
-2. Triggers tab: add rules that equip `MaxMP` when you want the pool filled —
-   e.g. `Default: status = Resting AND mode = maxmp -> MaxMP` (stack the mode
-   condition so the rule only lives while the mode is on).
-3. `/dl mode maxmp` — from then on, MP batteries stay on exactly until spent,
-   released slot by slot as you cast.
-4. Sublimation top-off works with a plain rule TODAY:
-   `Ability: name = Sublimation, mode = maxmp -> MaxMP` — HandleAbility fires
-   before the JA lands, so the MP grant arrives into the enlarged pool, and the
-   hold releases the pieces as it is spent. (It also fires on the initial
-   charge activation, which is harmless: nothing grants MP, the hold releases
-   immediately on the next dispatch.)
+### Optional extras
+
+- Sublimation top-off as plain trigger data:
+  `Ability: name = Sublimation, mode = maxmp -> <any MP-ish set>` — HandleAbility
+  fires before the JA lands, so the grant arrives into the enlarged pool. With
+  MP-EQUIP this is usually unnecessary (a full pool already wears batteries),
+  but it forces the swap when the pool is NOT full at pop time.
 
 ## Stage 2 — resting escalation (NOT BUILT)
 

@@ -32,7 +32,7 @@ local M = {};
 -- LAC-state copy stamps its version into the modestate mirror; the GUI compares
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code (the seeded file only re-requires when LuaAshitacast itself reloads).
-M.VERSION = 9;
+M.VERSION = 10;
 
 -- Colored [dlac] chat output (chatfmt); plain print when unavailable. The shadowed
 -- `print` re-heads "[dlac] ..."-prefixed lines with the colored header.
@@ -550,12 +550,15 @@ local SLOT_EQUIP_ID = { main = 0, sub = 1, range = 2, ammo = 3, head = 4, body =
                         hands = 6, legs = 7, feet = 8, neck = 9, waist = 10,
                         ear1 = 11, ear2 = 12, ring1 = 13, ring2 = 14, back = 15 };
 
--- The pure rule (headless-tested): hold while current MP exceeds what the pool
--- would hold with the incoming piece worn instead.
+-- The pure rule (headless-tested): hold while current MP is AT OR ABOVE what the
+-- pool would hold with the incoming piece worn instead. The boundary is >= on
+-- purpose: a battery equipped at a FULL pool sits exactly on it (cur == newMax -
+-- delta), and releasing there would drop the piece before any recovery landed.
+-- Release requires spending strictly past the surplus.
 function M.mpHoldNeeded(wornMP, targetMP, curMP, maxMP)
     local delta = (wornMP or 0) - (targetMP or 0);
     if delta <= 0 then return false; end
-    return (curMP or 0) > (maxMP or 0) - delta;
+    return (curMP or 0) >= (maxMP or 0) - delta;
 end
 
 local function wornItemName(slotKey)
@@ -581,16 +584,22 @@ local function playerMP()
     return tonumber(cur), tonumber(max);
 end
 
+local _mpCd = {};   -- slot -> os.time() before which a released battery must not re-equip
+                    -- (breaks the equip/release churn at the exact spent boundary)
+
 local function equipResolved(s, ctx)
     local out, notes = nil, nil;
     local anyLocks = (next(M.locks) ~= nil);
-    -- Max-MP hold context (only while the mode is on and the manifest carries MP data).
-    local mpMap, curMP, maxMP = nil, nil, nil;
+    -- Max-MP context (only while the mode is on and the manifest carries MP data).
+    local mpMap, mpBest, curMP, maxMP = nil, nil, nil, nil;
     if M.modes['maxmp'] ~= nil then
         local a = ensureAutoLoaded();
         if a ~= nil and type(a.mp) == 'table' then
             curMP, maxMP = playerMP();
-            if curMP ~= nil and maxMP ~= nil then mpMap = a.mp; end
+            if curMP ~= nil and maxMP ~= nil then
+                mpMap = a.mp;
+                if type(a.mpBest) == 'table' then mpBest = a.mpBest; end
+            end
         end
     end
     for slot, v in pairs(s) do
@@ -622,19 +631,42 @@ local function equipResolved(s, ctx)
             end
         elseif mpMap ~= nil and type(v) == 'string'
                and not MP_HOLD_EXEMPT[string.lower(tostring(slot))] then
+            local lslot = string.lower(tostring(slot));
             local worn = wornItemName(slot);
-            if worn ~= nil and string.lower(worn) ~= string.lower(v) then
-                local wornMP = mpMap[string.lower(worn)] or 0;
-                local tgtMP  = mpMap[string.lower(v)] or 0;
-                if M.mpHoldNeeded(wornMP, tgtMP, curMP, maxMP) then
+            local wornMP = (worn ~= nil) and (mpMap[string.lower(worn)] or 0) or 0;
+            local tgtMP  = mpMap[string.lower(v)] or 0;
+            if worn ~= nil and string.lower(worn) ~= string.lower(v)
+               and M.mpHoldNeeded(wornMP, tgtMP, curMP, maxMP) then
+                if out == nil then
+                    out = {};
+                    for k2, v2 in pairs(s) do out[k2] = v2; end
+                end
+                out[slot] = nil;                       -- keep the MP battery until it's spent
+                notes = notes or {};
+                notes[#notes + 1] = string.format('%s=MP-HOLD %s (+%d MP unspent)',
+                    tostring(slot), worn, wornMP - tgtMP);
+            else
+                if worn ~= nil and wornMP > tgtMP and string.lower(worn) ~= string.lower(v) then
+                    _mpCd[lslot] = os.time() + 15;     -- battery released: no instant re-equip
+                end
+                -- Upgrade: a full pool means recovery would be capped -- wear the
+                -- slot's best battery instead of the set piece so refresh/resting/
+                -- sublimation land into the larger pool. The hold above then owns it.
+                local c = (mpBest ~= nil) and mpBest[lslot] or nil;
+                if c ~= nil and type(c.name) == 'string'
+                   and (worn == nil or string.lower(c.name) ~= string.lower(worn))
+                   and (c.mp or 0) > math.max(wornMP, tgtMP)
+                   and curMP >= maxMP
+                   and (c.level or 0) <= playerLevel(ctx)
+                   and os.time() >= (_mpCd[lslot] or 0) then
                     if out == nil then
                         out = {};
                         for k2, v2 in pairs(s) do out[k2] = v2; end
                     end
-                    out[slot] = nil;                   -- keep the MP battery until it's spent
+                    out[slot] = c.name;
                     notes = notes or {};
-                    notes[#notes + 1] = string.format('%s=MP-HOLD %s (+%d MP unspent)',
-                        tostring(slot), worn, wornMP - tgtMP);
+                    notes[#notes + 1] = string.format('%s=MP-EQUIP %s (+%d MP)',
+                        tostring(slot), c.name, (c.mp or 0) - math.max(wornMP, tgtMP));
                 end
             end
         end

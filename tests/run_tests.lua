@@ -423,7 +423,10 @@ check('H8 DT capped as goodness', h6.total, 10 * 10);
 -- ---------------------------------------------------------------------------
 check('I1 full pool holds',           dispatchM.mpHoldNeeded(50, 5, 1000, 1000), true);
 check('I2 one MP unspent still holds', dispatchM.mpHoldNeeded(50, 5, 956, 1000), true);
-check('I3 exactly spent releases',    dispatchM.mpHoldNeeded(50, 5, 955, 1000), false);
+-- >= boundary on purpose: a battery equipped at a FULL pool sits exactly here
+-- (cur == newMax - delta); releasing would drop it before any recovery landed
+check('I3 exact boundary still holds', dispatchM.mpHoldNeeded(50, 5, 955, 1000), true);
+check('I3b spent past the surplus releases', dispatchM.mpHoldNeeded(50, 5, 954, 1000), false);
 check('I4 well spent releases',       dispatchM.mpHoldNeeded(50, 5, 700, 1000), false);
 check('I5 incoming has more MP: never hold', dispatchM.mpHoldNeeded(5, 50, 1000, 1000), false);
 check('I6 equal MP: never hold',      dispatchM.mpHoldNeeded(30, 30, 1000, 1000), false);

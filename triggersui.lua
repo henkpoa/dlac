@@ -393,17 +393,36 @@ local function autoCommit()
         local rec = ownedRec(nm);
         if rec ~= nil then obiUni, obiUniLevel = rec.Name, rec.Level or 0; break; end
     end
-    -- Max-MP mode data: every owned piece carrying flat MP, lower(name) -> total.
-    -- The engine holds a worn piece until its MP surplus over the incoming piece
-    -- is spent; it can't read the catalog, so the values ride this manifest.
-    local mp = {};
+    -- Max-MP mode data: every owned piece carrying flat MP, lower(name) -> total,
+    -- PLUS the best battery per equip slot (ear/ring get the top two) so the
+    -- engine can EQUIP them, not just hold them. The engine can't read the
+    -- catalog, so both ride this manifest.
+    local mp, mpBest = {}, {};
     pcall(function()
         if type(deps.ownedList) ~= 'function' then return; end
+        local bySlot = {};   -- gear-slot key -> candidates { name, mp, level }
         for _, rec in ipairs(deps.ownedList() or {}) do
             local v = (type(rec.Stats) == 'table') and rec.Stats.MP or nil;
             if type(v) == 'number' and v > 0 and rec.Name ~= nil then
                 local k = string.lower(rec.Name);
                 if (mp[k] or 0) < v then mp[k] = v; end
+                local sl = tostring(rec.Slot or '');
+                if sl ~= '' and sl ~= 'Main' and sl ~= 'Sub' and sl ~= 'Range' then
+                    bySlot[sl] = bySlot[sl] or {};
+                    table.insert(bySlot[sl], { name = rec.Name, mp = v, level = rec.Level or 0 });
+                end
+            end
+        end
+        for sl, list in pairs(bySlot) do
+            table.sort(list, function(a, b)
+                if a.mp ~= b.mp then return a.mp > b.mp; end
+                return a.name < b.name;
+            end);
+            if sl == 'Ear' or sl == 'Ring' then
+                if list[1] ~= nil then mpBest[string.lower(sl) .. '1'] = list[1]; end
+                if list[2] ~= nil then mpBest[string.lower(sl) .. '2'] = list[2]; end
+            else
+                mpBest[string.lower(sl)] = list[1];
             end
         end
     end);
@@ -443,6 +462,15 @@ local function autoCommit()
     table.sort(mpKeys);
     for _, k in ipairs(mpKeys) do
         L[#L + 1] = string.format('        [%q] = %d,', k, mp[k]);
+    end
+    L[#L + 1] = '    },';
+    L[#L + 1] = '    mpBest = {';
+    local mbKeys = {};
+    for k in pairs(mpBest) do mbKeys[#mbKeys + 1] = k; end
+    table.sort(mbKeys);
+    for _, k in ipairs(mbKeys) do
+        local c = mpBest[k];
+        L[#L + 1] = string.format('        %s = { name = %q, mp = %d, level = %d },', k, c.name, c.mp, c.level);
     end
     L[#L + 1] = '    },';
     L[#L + 1] = '};';
