@@ -2081,6 +2081,11 @@ do
             lookupByName = lookupByName, ownedCounts = owned.counts,  -- automations manifest (owned staves/obis)
             ownedList = buildOwned,                                   -- max-MP manifest (piece MP values)
             haveInBags = owned.haveInBags,                            -- max-MP batteries must be equippable NOW
+            playerJob = function()                                    -- battery job-eligibility (no gData in this state)
+                local abbr = nil;
+                pcall(function() abbr = JOB_ABBR[AshitaCore:GetMemoryManager():GetPlayer():GetMainJob()]; end);
+                return abbr;
+            end,
             renderIcon = renderIcon,                                  -- automation detail views (item icons)
             setsRoot = profsets.getSetsRoot,                          -- gearcheck: set contents for the audit
         });

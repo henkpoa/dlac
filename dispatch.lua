@@ -32,7 +32,7 @@ local M = {};
 -- LAC-state copy stamps its version into the modestate mirror; the GUI compares
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code (the seeded file only re-requires when LuaAshitacast itself reloads).
-M.VERSION = 12;
+M.VERSION = 13;
 
 -- Colored [dlac] chat output (chatfmt); plain print when unavailable. The shadowed
 -- `print` re-heads "[dlac] ..."-prefixed lines with the colored header.
@@ -586,6 +586,29 @@ function M.mpHoldNeeded(wornMP, targetMP, curMP, maxMP)
     return (curMP or 0) >= (maxMP or 0) - delta;
 end
 
+-- Pick the battery to wear from a manifest ladder (sorted best-first). Rungs
+-- exist because rung 1 may be gear the character has yet to grow into -- the
+-- pick is the best rung wearable at the CURRENT level. A legacy single-entry
+-- manifest counts as a one-rung ladder.
+function M.mpPick(cands, level)
+    if type(cands) ~= 'table' then return nil; end
+    if cands.name ~= nil then cands = { cands }; end   -- legacy fmtver-1 shape
+    for _, c in ipairs(cands) do
+        if type(c) == 'table' and type(c.name) == 'string'
+           and (tonumber(c.level) or 0) <= (tonumber(level) or 0) then
+            return c;
+        end
+    end
+    return nil;
+end
+
+-- Non-weapon slots MP-EQUIP may write even when the dispatched set doesn't
+-- address them (lowercase key -> canonical LAC set key).
+local MP_SLOT_CANON = { ammo = 'Ammo', head = 'Head', neck = 'Neck', ear1 = 'Ear1',
+                        ear2 = 'Ear2', body = 'Body', hands = 'Hands', ring1 = 'Ring1',
+                        ring2 = 'Ring2', back = 'Back', waist = 'Waist', legs = 'Legs',
+                        feet = 'Feet' };
+
 local function wornItemName(slotKey)
     local nm = nil;
     pcall(function()
@@ -682,12 +705,11 @@ local function equipResolved(s, ctx)
                 -- Upgrade: a full pool means recovery would be capped -- wear the
                 -- slot's best battery instead of the set piece so refresh/resting/
                 -- sublimation land into the larger pool. The hold above then owns it.
-                local c = (mpBest ~= nil) and mpBest[lslot] or nil;
-                if c ~= nil and type(c.name) == 'string'
+                local c = (mpBest ~= nil) and M.mpPick(mpBest[lslot], playerLevel(ctx)) or nil;
+                if c ~= nil
                    and (worn == nil or string.lower(c.name) ~= string.lower(worn))
                    and (c.mp or 0) > math.max(wornMP, tgtMP)
                    and curMP >= maxMP
-                   and (c.level or 0) <= playerLevel(ctx)
                    and os.time() >= (_mpCd[lslot] or 0) then
                     if out == nil then
                         out = {};
@@ -697,6 +719,34 @@ local function equipResolved(s, ctx)
                     notes = notes or {};
                     notes[#notes + 1] = string.format('%s=MP-EQUIP %s (+%d MP)',
                         tostring(slot), c.name, (c.mp or 0) - math.max(wornMP, tgtMP));
+                end
+            end
+        end
+    end
+    -- MP-EQUIP covers slots the set does NOT address too: an unwritten ring or
+    -- neck slot is exactly where a battery is freest to sit. Full pool only,
+    -- locked and weapon slots never. (Nothing else ever writes such a slot, so
+    -- the battery simply stays worn until you or a set replace it -- there is
+    -- no MP to waste by leaving it on.)
+    if mpBest ~= nil and curMP ~= nil and maxMP ~= nil and curMP >= maxMP then
+        local covered = {};
+        for slot in pairs(s) do covered[string.lower(tostring(slot))] = true; end
+        for lslot, canon in pairs(MP_SLOT_CANON) do
+            if mpBest[lslot] ~= nil and not covered[lslot] and M.locks[lslot] ~= true then
+                local c = M.mpPick(mpBest[lslot], playerLevel(ctx));
+                local worn = wornItemName(lslot);
+                local wornMP = (worn ~= nil) and (mpMap[string.lower(worn)] or 0) or 0;
+                if c ~= nil and (worn == nil or string.lower(c.name) ~= string.lower(worn))
+                   and (c.mp or 0) > wornMP
+                   and os.time() >= (_mpCd[lslot] or 0) then
+                    if out == nil then
+                        out = {};
+                        for k2, v2 in pairs(s) do out[k2] = v2; end
+                    end
+                    out[canon] = c.name;
+                    notes = notes or {};
+                    notes[#notes + 1] = string.format('%s=MP-EQUIP %s (+%d MP)',
+                        lslot, c.name, (c.mp or 0) - wornMP);
                 end
             end
         end

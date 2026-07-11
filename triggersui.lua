@@ -338,7 +338,7 @@ local UNIVERSAL = {
 -- Manifest schema version: bump when autoCommit writes NEW fields. An on-disk
 -- manifest with an older fmtver self-heals (renderAutomations triggers a rescan)
 -- so a dlac update never needs a manual "Rescan owned gear" click.
-local AUTO_FMT = 1;
+local AUTO_FMT = 2;   -- 2: mpBest entries became ladders (lists); MP counts Convert
 
 local auto = { data = nil, loadedFor = nil, status = '' };
 
@@ -407,37 +407,59 @@ local function autoCommit()
     local mp, mpBest = {}, {};
     pcall(function()
         if type(deps.ownedList) ~= 'function' then return; end
-        local job = nil;
-        pcall(function() job = gData.GetPlayer().MainJob; end);
+        -- gData does NOT exist in the addon state -- the job comes from Ashita
+        -- memory via deps.playerJob (nil job would pass only Jobs={'All'} gear).
+        local job = (type(deps.playerJob) == 'function') and deps.playerJob() or nil;
+        local counts = (type(deps.ownedCounts) == 'function') and deps.ownedCounts() or nil;
         local bySlot = {};   -- gear-slot key -> candidates { name, mp, level }
         for _, rec in ipairs(deps.ownedList() or {}) do
-            local v = (type(rec.Stats) == 'table') and rec.Stats.MP or nil;
-            if type(v) == 'number' and v > 0 and rec.Name ~= nil then
+            local st = (type(rec.Stats) == 'table') and rec.Stats or nil;
+            -- Convert counts: 25 HP -> MP is +25 max MP for this mode's purposes.
+            local v = (st ~= nil) and ((tonumber(st.MP) or 0) + (tonumber(st.ConvertHPtoMP) or 0)) or 0;
+            if v > 0 and rec.Name ~= nil then
                 local k = string.lower(rec.Name);
                 if (mp[k] or 0) < v then mp[k] = v; end   -- hold map: unfiltered (worn = legal)
                 -- Battery CANDIDATES use the central eligibility check (main job
                 -- only; the manifest regenerates on job change) and must be in an
                 -- equippable bag -- a job-illegal or stored pick would make the
                 -- engine's /equip fail SILENTLY and the whole mode look dead.
+                -- Job checked at level 99: the ladder may carry gear to grow into;
+                -- the ENGINE picks the best rung wearable at the live level.
                 local sl = tostring(rec.Slot or '');
                 if sl ~= '' and sl ~= 'Main' and sl ~= 'Sub' and sl ~= 'Range'
                    and (not hasDispatch or type(dsp.canWear) ~= 'function' or dsp.canWear(rec, job, 99))
                    and (type(deps.haveInBags) ~= 'function' or deps.haveInBags(rec)) then
                     bySlot[sl] = bySlot[sl] or {};
-                    table.insert(bySlot[sl], { name = rec.Name, mp = v, level = rec.Level or 0 });
+                    local c = { name = rec.Name, mp = v, level = rec.Level or 0 };
+                    table.insert(bySlot[sl], c);
+                    -- A genuine duplicate (two Astral Rings) may fill BOTH paired slots.
+                    if (sl == 'Ear' or sl == 'Ring') and type(counts) == 'table'
+                       and rec.Id ~= nil and (counts[rec.Id] or 0) >= 2 then
+                        table.insert(bySlot[sl], c);
+                    end
                 end
             end
         end
+        -- Ladders, best first. Ear/Ring alternate into two DISJOINT ladders so
+        -- one physical item can never be picked for both slots.
+        local LADDER = 4;
         for sl, list in pairs(bySlot) do
             table.sort(list, function(a, b)
                 if a.mp ~= b.mp then return a.mp > b.mp; end
                 return a.name < b.name;
             end);
             if sl == 'Ear' or sl == 'Ring' then
-                if list[1] ~= nil then mpBest[string.lower(sl) .. '1'] = list[1]; end
-                if list[2] ~= nil then mpBest[string.lower(sl) .. '2'] = list[2]; end
+                local l1, l2 = {}, {};
+                for i, c in ipairs(list) do
+                    local t = (i % 2 == 1) and l1 or l2;
+                    if #t < LADDER then t[#t + 1] = c; end
+                end
+                if #l1 > 0 then mpBest[string.lower(sl) .. '1'] = l1; end
+                if #l2 > 0 then mpBest[string.lower(sl) .. '2'] = l2; end
             else
-                mpBest[string.lower(sl)] = list[1];
+                local l = {};
+                for i = 1, math.min(#list, LADDER) do l[i] = list[i]; end
+                mpBest[string.lower(sl)] = l;
             end
         end
     end);
@@ -486,8 +508,11 @@ local function autoCommit()
     for k in pairs(mpBest) do mbKeys[#mbKeys + 1] = k; end
     table.sort(mbKeys);
     for _, k in ipairs(mbKeys) do
-        local c = mpBest[k];
-        L[#L + 1] = string.format('        %s = { name = %q, mp = %d, level = %d },', k, c.name, c.mp, c.level);
+        local rungs = {};
+        for _, c in ipairs(mpBest[k]) do
+            rungs[#rungs + 1] = string.format('{ name = %q, mp = %d, level = %d }', c.name, c.mp, c.level);
+        end
+        L[#L + 1] = string.format('        %s = { %s },', k, table.concat(rungs, ', '));
     end
     L[#L + 1] = '    },';
     L[#L + 1] = '};';
@@ -579,6 +604,24 @@ local MP_GRID = { 'main', 'sub', 'range', 'ammo', 'head', 'neck', 'ear1', 'ear2'
                   'body', 'hands', 'ring1', 'ring2', 'back', 'waist', 'legs', 'feet' };
 local MP_EXEMPT = { main = true, sub = true, range = true };
 
+-- Resolve a manifest battery ladder to the best rung wearable at `level`
+-- (mirrors the engine's dispatch.mpPick; a legacy fmtver-1 single entry
+-- counts as a one-rung ladder).
+local function mpPickAt(cands, level)
+    if type(cands) ~= 'table' then return nil; end
+    if cands.name ~= nil then cands = { cands }; end
+    for _, c in ipairs(cands) do
+        if type(c) == 'table' and (tonumber(c.level) or 0) <= level then return c; end
+    end
+    return nil;
+end
+
+local function mainLevel()
+    local lv = nil;
+    pcall(function() lv = AshitaCore:GetMemoryManager():GetPlayer():GetMainJobLevel(); end);
+    return (type(lv) == 'number' and lv > 0) and lv or 99;
+end
+
 local function renderAutomations(noHeader)
     if noHeader ~= true and not imgui.CollapsingHeader('Automations###trgsec_auto') then return; end
     autoLoad();
@@ -627,9 +670,10 @@ local function renderAutomations(noHeader)
             imgui.SameLine(0, 10); imgui.TextColored(COL_DIM, 'set automation -- /dl mode maxmp; wears batteries at a full pool, releases as spent');
             imgui.Spacing();
             local mb = (type(auto.data) == 'table' and type(auto.data.mpBest) == 'table') and auto.data.mpBest or {};
+            local lvl = mainLevel();
             local total = 0;
             for i, sl in ipairs(MP_GRID) do
-                local c = mb[sl];
+                local c = mpPickAt(mb[sl], lvl);
                 imgui.BeginChild('##mpb_' .. sl, { 40, 40 }, true, ImGuiWindowFlags_NoScrollbar or 0);
                 if c ~= nil and type(deps.renderIcon) == 'function' then
                     local rec = (deps.lookupByName ~= nil) and deps.lookupByName(c.name) or nil;
@@ -677,7 +721,11 @@ local function renderAutomations(noHeader)
 
     local mpTotal = 0;
     if type(auto.data) == 'table' and type(auto.data.mpBest) == 'table' then
-        for _, c in pairs(auto.data.mpBest) do mpTotal = mpTotal + (tonumber(c.mp) or 0); end
+        local lvl = mainLevel();
+        for _, cands in pairs(auto.data.mpBest) do
+            local c = mpPickAt(cands, lvl);
+            if c ~= nil then mpTotal = mpTotal + (tonumber(c.mp) or 0); end
+        end
     end
     local rows = {
         { key = 'iridescence', name = 'AutoIridescence', kind = 'slot automation (Main)',

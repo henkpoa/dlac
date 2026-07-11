@@ -446,6 +446,23 @@ check('J6 canWear at level',       dispatchM.canWear({ Jobs = { 'RDM' }, Level =
 check('J7 canWear wrong job',      dispatchM.canWear({ Jobs = { 'WHM' }, Level = 10 }, 'RDM', 75), false);
 
 -- ---------------------------------------------------------------------------
+-- K. max-MP battery pick (dispatch.mpPick): the manifest carries a LADDER per
+--    slot (best first, may include gear to grow into); the engine wears the
+--    best rung wearable at the LIVE level. Field case: Bunzi's Robe (99) in
+--    rung 1 must not block a level-74 RDM from the level-59 rung below it.
+-- ---------------------------------------------------------------------------
+local ladder = { { name = 'Bunzi\'s Robe', mp = 50, level = 99 },
+                 { name = 'Vermillion Cloak', mp = 30, level = 59 },
+                 { name = 'Baron\'s Saio', mp = 10, level = 20 } };
+check('K1 top rung at level',      dispatchM.mpPick(ladder, 99).name, 'Bunzi\'s Robe');
+check('K2 fallback below level',   dispatchM.mpPick(ladder, 74).name, 'Vermillion Cloak');
+check('K3 deep fallback',          dispatchM.mpPick(ladder, 30).name, 'Baron\'s Saio');
+check('K4 nothing wearable',       dispatchM.mpPick(ladder, 10), nil);
+check('K5 legacy single entry',    dispatchM.mpPick({ name = 'Astral Ring', mp = 25, level = 10 }, 74).name, 'Astral Ring');
+check('K6 legacy entry too high',  dispatchM.mpPick({ name = 'X', mp = 1, level = 99 }, 74), nil);
+check('K7 nil-safe',               dispatchM.mpPick(nil, 74), nil);
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then

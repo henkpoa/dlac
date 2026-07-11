@@ -24,10 +24,19 @@ trigger rules), which the existing machinery already handles. This mirrors the
 `/dl mode maxmp` is the whole interface — no set-building required:
 
 - **MP-EQUIP**: whenever the pool is FULL (`curMP >= maxMP`), each dispatch
-  wears the slot's best owned battery instead of the set piece (per-slot picks
-  from the manifest's `mpBest` map, level-checked; ear/ring carry the top two).
-  Full-pool gating is what makes equipping worthwhile: batteries only pay when
-  recovery (refresh, resting, sublimation) can land into the larger pool.
+  wears each slot's best owned battery — for slots the set addresses (instead
+  of the set piece) AND for slots no set writes at all (a bare ring slot is
+  where a battery is freest to sit). The manifest's `mpBest` carries a LADDER
+  of up to 4 candidates per slot (`dispatch.mpPick`, tests K1–K7): rung 1 may
+  be gear to grow into (Bunzi's Robe at 99), and the engine wears the best rung
+  wearable at the LIVE level. Ear/ring ladders are disjoint (alternating), so
+  one physical item can never fill both slots; genuine duplicates (two Astral
+  Rings) are listed twice via owned counts. MP value counts `ConvertHPtoMP`
+  (Astral Ring = 25). Full-pool gating is what makes equipping worthwhile:
+  batteries only pay when recovery (refresh, resting, sublimation) can land
+  into the larger pool. A battery in a slot no set writes stays worn when the
+  mode turns off — nothing else ever touches that slot, and no MP is wasted by
+  leaving it on.
 - **MP-HOLD**: the battery then stays until its surplus over the incoming piece
   is spent — `hold while curMP >= maxMP − (wornMP − incomingMP)`. The boundary
   is `>=` on purpose: a battery equipped at a full pool sits exactly on it, and
@@ -45,9 +54,10 @@ trigger rules), which the existing machinery already handles. This mirrors the
   self-heals when the Automations section renders — no manual rescan, ever.
   The engine never loads the catalog (ADR 0004). Pure rule:
   `dispatch.mpHoldNeeded` (tests I1–I7).
-- Caveat: MP-EQUIP only touches slots the active sets address (the dispatch
-  walks the applied set's slots); a slot no set ever writes keeps whatever is
-  worn. In practice trigger sets cover the wardrobe.
+- The GUI derives the manifest in the ADDON state, where LAC's `gData` does
+  not exist — the job for eligibility comes from Ashita memory
+  (`deps.playerJob`). A nil job would silently keep only `Jobs={'All'}` gear
+  (the field symptom: a grid of nothing but Star/Chaplain's/Astral rings).
 
 ### Optional extras
 
@@ -80,7 +90,8 @@ pieces as the pool refills, so recovery is never capped early:
 - Buff-aware Sublimation: gate the rule on the *completed* charge (buff id) so
   the top-off only fires on the release, not the activation. Needs a `buff`
   trigger condition — useful far beyond this feature.
-- Percent MP gear (`MPP`) and convert gear in the manifest values.
+- Percent MP gear (`MPP`) in the manifest values (flat `ConvertHPtoMP` is
+  already counted as of fmtver 2).
 - Waist: `dlac:AutoObi` vs an MP belt — today the obi automation wins its slot;
   revisit if a real conflict shows up in play.
 
