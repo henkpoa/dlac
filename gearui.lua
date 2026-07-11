@@ -2167,37 +2167,94 @@ local function autoBuild(job, level)
     local useLevel = setBuildLevel(level);   -- "Build as lv.75" lifts the item-level cap
     local oc = owned.counts();
     local built = {};
-    for _, sl in ipairs(EQUIP_SLOTS) do
+
+    local function skipWeapons(sl)
         -- Skip weapon slots when asked, so Auto-build never swaps Main/Sub/Range and resets TP.
-        -- Preserve whatever the working set already holds there (M.working = built below would
-        -- otherwise wipe it).
-        if ui.ignoreWeapons[1] == true and (sl.gear == 'Main' or sl.gear == 'Sub' or sl.gear == 'Range') then
+        return ui.ignoreWeapons[1] == true and (sl.gear == 'Main' or sl.gear == 'Sub' or sl.gear == 'Range');
+    end
+
+    -- Stage 1: candidate pools per label. Sub is resolved later (its pool needs
+    -- the built Main for the pairing rule).
+    local pools = {};
+    for _, sl in ipairs(EQUIP_SLOTS) do
+        if not skipWeapons(sl) and sl.gear ~= 'Sub' then
+            pools[sl.label] = candidatesForSlot(sl.gear, job, useLevel);   -- job+level filtered
+        end
+    end
+
+    -- Stage 2: JOINT pick per label. The optimizer maximizes the SET total with
+    -- the weight caps applied to the summed stats (gearoptim.optimizePicks), so
+    -- cap budget goes to the pieces that bring the most alongside it, and a slot
+    -- whose candidates only duplicate already-capped stats stays empty. Paired
+    -- slots may reuse an Id only when you own two copies.
+    local jointPick = nil;
+    if hasOptim and type(optim.optimizePicks) == 'function' and weightsActive() then
+        local op = {};
+        for label, cands in pairs(pools) do
+            local arr = {};
+            for _, r in ipairs(cands) do
+                arr[#arr + 1] = { stats = effStats(r, useLevel) or {}, ref = r };
+            end
+            if #arr > 0 then op[label] = arr; end
+        end
+        local ok, res = pcall(optim.optimizePicks, op, nil, {
+            conflict = function(a, b)
+                if a == b then return true; end
+                return a.Id ~= nil and a.Id == b.Id and (oc[a.Id] or 0) < 2;
+            end,
+        });
+        if ok and type(res) == 'table' and type(res.picks) == 'table' then
+            jointPick = {};
+            for label, ci in pairs(res.picks) do jointPick[label] = op[label][ci].ref; end
+        end
+    end
+
+    -- Stage 3: build each slot's list in EQUIP_SLOTS order (Main before Sub).
+    for _, sl in ipairs(EQUIP_SLOTS) do
+        if skipWeapons(sl) then
+            -- Preserve whatever the working set already holds there (M.working = built
+            -- below would otherwise wipe it).
             if M.working[sl.label] ~= nil then built[sl.label] = M.working[sl.label]; end
             goto continue;
         end
-        local cands = candidatesForSlot(sl.gear, job, useLevel);   -- already job+level filtered
+        local cands = pools[sl.label];
         -- Sub: full pool (shields/grips + 1H weapons), then keep only picks legal
         -- with the Main we already built (Main precedes Sub). Equip-correct: the
         -- auto-build answers "best usable now", so the DW gate applies.
         if sl.gear == 'Sub' then
             local mp = bestByLevel(built['Main'], useLevel);
             cands = subFilter(subCandidatePool(job, useLevel), mp and mp.rec or nil, job, useLevel);
-        end
-        -- Paired slot (Ring2<-Ring1, Ear2<-Ear1): drop single-copy Ids the pair already uses.
-        local other = PAIR_OF[sl.label];
-        if other ~= nil and built[other] ~= nil then
-            local blk = {};
-            for _, it in ipairs(built[other]) do
-                local id = it.rec and it.rec.Id;
-                if id and (oc[id] or 0) < 2 then blk[id] = true; end
-            end
-            if next(blk) then
-                local f = {};
-                for _, r in ipairs(cands) do if not (r.Id and blk[r.Id]) then f[#f + 1] = r; end end
-                cands = f;
+            -- Joint marginal pick for Sub: everything already chosen is the fixed
+            -- background, so a Sub that only re-adds capped stats stays home.
+            if jointPick ~= nil and #cands > 0 then
+                local arr, bg = {}, {};
+                for _, r in ipairs(cands) do arr[#arr + 1] = { stats = effStats(r, useLevel) or {}, ref = r }; end
+                for _, rec in pairs(jointPick) do bg[#bg + 1] = effStats(rec, useLevel) or {}; end
+                local ok, res = pcall(optim.optimizePicks, { Sub = arr }, nil, { baseStats = bg });
+                if ok and type(res) == 'table' and type(res.picks) == 'table' then
+                    jointPick.Sub = (res.picks.Sub ~= nil) and arr[res.picks.Sub].ref or nil;
+                end
             end
         end
-        if #cands > 0 then
+        -- Paired slot (Ring2<-Ring1, Ear2<-Ear1) single-copy guard for the
+        -- NON-joint path (the joint pass enforces this via its conflict rule).
+        if jointPick == nil and cands ~= nil then
+            local other = PAIR_OF[sl.label];
+            if other ~= nil and built[other] ~= nil then
+                local blk = {};
+                for _, it in ipairs(built[other]) do
+                    local id = it.rec and it.rec.Id;
+                    if id and (oc[id] or 0) < 2 then blk[id] = true; end
+                end
+                if next(blk) then
+                    local f = {};
+                    for _, r in ipairs(cands) do if not (r.Id and blk[r.Id]) then f[#f + 1] = r; end end
+                    cands = f;
+                end
+            end
+        end
+        if cands ~= nil and #cands > 0 then
+            local jp = (jointPick ~= nil) and jointPick[sl.label] or nil;
             if dyn then
                 local byLevel = {};
                 for _, r in ipairs(cands) do byLevel[#byLevel + 1] = r; end
@@ -2212,16 +2269,32 @@ local function autoBuild(job, level)
                     local sc = scoreOfItem(r, useLevel);
                     if sc > bestScore then kept[#kept + 1] = { rec = r }; bestScore = sc; end
                 end
+                -- The JOINT pick caps the ladder: rungs at/above its level give way
+                -- (they would win the level flatten and undo the set-level choice);
+                -- lower rungs stay as leveling fallbacks. A joint EMPTY leaves the
+                -- ladder alone -- it still earns its keep below the build level.
+                if jp ~= nil then
+                    local trimmed = {};
+                    for _, it in ipairs(kept) do
+                        if (it.rec.Level or 0) < (jp.Level or 0) and it.rec ~= jp then trimmed[#trimmed + 1] = it; end
+                    end
+                    trimmed[#trimmed + 1] = { rec = jp };
+                    kept = trimmed;
+                end
                 if #kept > 0 then built[sl.label] = kept; end
             else
-                -- Seed at 0 (not -inf): pick a single item only when it scores > 0; if nothing
-                -- in the slot carries a weighted stat, leave the slot empty.
-                local best, bestSc = nil, 0;
-                for _, r in ipairs(cands) do
-                    local sc = scoreOfItem(r, useLevel);
-                    if sc > bestSc then bestSc = sc; best = r; end
+                if jointPick ~= nil then
+                    -- Set-level choice: fill only what the joint optimizer chose.
+                    if jp ~= nil then built[sl.label] = { { rec = jp } }; end
+                else
+                    -- No weights active: per-item greedy (score > 0 to fill).
+                    local best, bestSc = nil, 0;
+                    for _, r in ipairs(cands) do
+                        local sc = scoreOfItem(r, useLevel);
+                        if sc > bestSc then bestSc = sc; best = r; end
+                    end
+                    if best ~= nil then built[sl.label] = { { rec = best } }; end
                 end
-                if best ~= nil then built[sl.label] = { { rec = best } }; end
             end
         end
         ::continue::

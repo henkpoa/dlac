@@ -506,7 +506,7 @@ local function rankSlot(slotKey, scoreFn, job, level)
             if hasLScale and entry.Id ~= nil and lscale.has(entry.Id) then
                 st = lscale.apply(entry.Id, level, st);   -- effective stats at the build level
             end
-            ranked[#ranked + 1] = { entry = entry, score = scoreFn(st) };
+            ranked[#ranked + 1] = { entry = entry, score = scoreFn(st), stats = st };
         end
     end);
     table.sort(ranked, function(a, b)
@@ -560,6 +560,119 @@ local function buildSet(scoreFn, job, level, acceptScore)
     return out;
 end
 
+-- ---------------------------------------------------------------------------
+-- Set-level optimization under caps -- the "future pass" M.score's comment
+-- promised. Greedy per-slot picking overspends capped stats: a slot whose item
+-- brings ONLY a capped stat (Haste+5 head) can hold cap budget that another
+-- slot would fill alongside more (Haste+5 + SwordSkill + Acc feet). This is a
+-- multiple-choice knapsack; we solve it with hill-climbing on the SET total:
+-- start empty, then repeatedly re-visit each slot with everything else fixed
+-- and keep whichever candidate -- or EMPTY -- maximizes the total with caps
+-- applied to the summed stats. Ties prefer EMPTY (never churn another set's
+-- piece needlessly); swapping items requires strict improvement. Converges in
+-- a few passes for 16 slots.
+--
+-- M.optimizePicks(pools, weights, opts) -> { picks = {label->index|nil}, total }
+--   pools: { label -> { { stats = <stats table>, ref = <opaque> }, ... } }
+--   opts.baseStats: array of stats tables counted as a fixed background
+--     (e.g. the already-chosen pieces when optimizing one slot alone).
+--   opts.conflict(refA, refB): true when two picks cannot coexist (paired
+--     Ear/Ring slots sharing one physical copy).
+-- ---------------------------------------------------------------------------
+function M.optimizePicks(pools, weights, opts)
+    opts = opts or {};
+    weights = weights or M._weights;
+    local wl = {};                                     -- weight list, negation pre-resolved
+    for stat, w in pairs(weights or {}) do
+        if type(w) == 'table' and type(w.perUnit) == 'number' then
+            wl[#wl + 1] = {
+                stat    = stat,
+                perUnit = w.perUnit,
+                cap     = (type(w.cap) == 'number' and w.cap > 0) and w.cap or nil,
+                neg     = NEGATIVE_GOOD[string.lower(canonStat(stat))] == true,
+            };
+        end
+    end
+    local labels = {};
+    for label in pairs(pools) do labels[#labels + 1] = label; end
+    table.sort(labels);                                -- deterministic climb order
+    if #wl == 0 or #labels == 0 then return { picks = {}, total = 0 }; end
+
+    -- Per-candidate value vector over wl, computed ONCE (the climb then only
+    -- does sums), plus the fixed background from opts.baseStats.
+    local vecs = {};
+    for _, label in ipairs(labels) do
+        local vv = {};
+        for ci, cand in ipairs(pools[label]) do
+            local vec = {};
+            for wi, w in ipairs(wl) do
+                local v = statValue(cand.stats, w.stat);
+                if w.neg then v = -v; end
+                vec[wi] = v;
+            end
+            vv[ci] = vec;
+        end
+        vecs[label] = vv;
+    end
+    local base = {};
+    for wi = 1, #wl do base[wi] = 0; end
+    if type(opts.baseStats) == 'table' then
+        for _, st in ipairs(opts.baseStats) do
+            for wi, w in ipairs(wl) do
+                local v = statValue(st, w.stat);
+                if w.neg then v = -v; end
+                base[wi] = base[wi] + v;
+            end
+        end
+    end
+
+    local picks = {};                                  -- label -> candidate index (nil = empty)
+    local function totalScore()
+        local t = 0;
+        for wi, w in ipairs(wl) do
+            local sum = base[wi];
+            for _, label in ipairs(labels) do
+                local ci = picks[label];
+                if ci ~= nil then sum = sum + vecs[label][ci][wi]; end
+            end
+            if w.cap ~= nil and sum > w.cap then sum = w.cap; end
+            t = t + w.perUnit * sum;
+        end
+        return t;
+    end
+    local function conflicts(label, ci)
+        if type(opts.conflict) ~= 'function' then return false; end
+        local ref = pools[label][ci].ref;
+        for _, other in ipairs(labels) do
+            if other ~= label and picks[other] ~= nil then
+                if opts.conflict(ref, pools[other][picks[other]].ref) == true then return true; end
+            end
+        end
+        return false;
+    end
+
+    local EPS = 1e-6;
+    for _ = 1, 8 do
+        local improved = false;
+        for _, label in ipairs(labels) do
+            local saved = picks[label];
+            picks[label] = nil;
+            local bestIdx, bestSc = nil, totalScore();  -- EMPTY is the tie-winning baseline
+            for ci = 1, #pools[label] do
+                if not conflicts(label, ci) then
+                    picks[label] = ci;
+                    local sc = totalScore();
+                    if sc > bestSc + EPS then bestSc = sc; bestIdx = ci; end
+                end
+            end
+            picks[label] = bestIdx;
+            if bestIdx ~= saved then improved = true; end
+        end
+        if not improved then break; end
+    end
+    return { picks = picks, total = totalScore() };
+end
+
 -- Resolve job/level from opts, falling back to the live player.
 local function jobLevelFromOpts(opts)
     local job, level = opts.job, opts.level;
@@ -581,15 +694,50 @@ function M.buildBestSet(opts)
     -- job-eligibility filter (jobAllowed) still excludes gear your job can't wear.
     if M.buildAtMaxLevel == true then level = MAX_LEVEL; end
     local weights = opts.weights or M._weights;
-    -- Only fill a slot when its best pick makes a POSITIVE weighted contribution.
-    -- If nothing in a slot carries any weighted stat, every candidate scores 0 (or
-    -- worse, if it only has penalty stats), so the slot is left empty rather than
-    -- padded with an irrelevant piece. DT/PDT/MDT already score POSITIVE for a
-    -- beneficial (negative) value inside M.score, so useful mitigation still passes.
-    local set = buildSet(function(stats) return M.score(stats, weights); end, job, level,
-        function(score) return score > 0; end);
-    set.mode = 'weights';
-    return set;
+    -- Rank each slot's candidates, then optimize the SET as a whole under the
+    -- weight caps (M.optimizePicks): a slot is filled only when it improves the
+    -- capped set total, so cap budget goes to the pieces that bring the most
+    -- alongside it, and redundant single-stat pieces stay home. Ear/Ring share a
+    -- pool with a distinct-entry conflict rule.
+    local pools = {};
+    local function poolFor(slotKey)
+        local ranked = rankSlot(slotKey, function(stats) return M.score(stats, weights); end, job, level);
+        local p = {};
+        for i, r in ipairs(ranked) do
+            if i > 20 then break; end                  -- top 20 per slot is plenty
+            p[#p + 1] = { stats = r.stats, ref = r.entry, score = r.score };
+        end
+        if #p == 0 then return nil; end
+        return p;
+    end
+    for _, s in ipairs(NESTED_SLOTS) do pools[s] = poolFor(s); end
+    for _, s in ipairs(FLAT_SLOTS) do
+        if DUAL_SLOTS[s] then
+            local p = poolFor(s);
+            pools[s .. '1'] = p;
+            pools[s .. '2'] = p;
+        else
+            pools[s] = poolFor(s);
+        end
+    end
+    local res = M.optimizePicks(pools, weights, {
+        conflict = function(a, b) return a == b; end,  -- one entry can't fill both paired slots
+    });
+    local out = { slots = {}, order = {}, perSlot = {}, total = res.total,
+                  job = job, level = level, mode = 'weights' };
+    local ORDER = { 'Main', 'Sub', 'Range', 'Ammo', 'Head', 'Neck', 'Ear1', 'Ear2',
+                    'Body', 'Hands', 'Ring1', 'Ring2', 'Back', 'Waist', 'Legs', 'Feet' };
+    for _, label in ipairs(ORDER) do
+        local pool = pools[label];
+        local ci = (pool ~= nil) and res.picks[label] or nil;
+        if ci ~= nil then
+            local c = pool[ci];
+            out.slots[label] = c.ref.Name;
+            out.order[#out.order + 1] = label;
+            out.perSlot[label] = { item = c.ref.Name, score = c.score, level = c.ref.Level };
+        end
+    end
+    return out;
 end
 
 -- ---------------------------------------------------------------------------

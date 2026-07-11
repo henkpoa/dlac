@@ -350,6 +350,57 @@ local gMax = utils.BuildDynamicSets({ Dynamic = { TP = {
 check('G12 past maxLevel: banded item takes over', gMax.TP and gMax.TP.Body, 'LateBody');
 
 -- ---------------------------------------------------------------------------
+-- H. set-level optimization under caps (gearoptim.optimizePicks) -- greedy
+--    per-slot picking overspends capped stats; the optimizer must give cap
+--    budget to the piece that brings the most ALONGSIDE it, prefer EMPTY on
+--    ties, and respect paired-slot conflicts.
+-- ---------------------------------------------------------------------------
+local optim = dofile('gearoptim.lua');
+local W = {
+    Haste      = { perUnit = 100, cap = 5 },
+    SwordSkill = { perUnit = 2 },
+    Accuracy   = { perUnit = 3 },
+};
+-- Henrik's field case: a haste-only head wins per-item, but the feet already
+-- cap haste AND bring skill/acc -- the head must yield to the accuracy hat.
+local hasteHat  = { stats = { Haste = 5 },                                ref = 'HasteHat'  };
+local statHat   = { stats = { Accuracy = 5 },                             ref = 'StatHat'   };
+local greatFeet = { stats = { Haste = 5, SwordSkill = 7, Accuracy = 5 },  ref = 'GreatFeet' };
+local weakFeet  = { stats = { Accuracy = 2 },                             ref = 'WeakFeet'  };
+local h1 = optim.optimizePicks({ Head = { hasteHat, statHat }, Feet = { greatFeet, weakFeet } }, W);
+check('H1 feet take the cap with company', h1.picks.Feet ~= nil and 'GreatFeet',
+      h1.picks.Feet ~= nil and ({ greatFeet, weakFeet })[h1.picks.Feet].ref);
+check('H2 head yields the cap to real value', h1.picks.Head ~= nil and ({ hasteHat, statHat })[h1.picks.Head].ref, 'StatHat');
+check('H3 capped set total', h1.total, 100 * 5 + 2 * 7 + 3 * (5 + 5));
+
+-- empty preferred: a slot with only unweighted (or cap-redundant) gear stays home
+local junk = { stats = { VIT = 9 }, ref = 'Junk' };
+local h2 = optim.optimizePicks({ Head = { junk }, Feet = { greatFeet } }, W);
+check('H4 unweighted slot stays empty', h2.picks.Head, nil);
+local h3 = optim.optimizePicks({ Head = { hasteHat }, Feet = { greatFeet } }, W);
+check('H5 cap-redundant slot stays empty', h3.picks.Head, nil);
+
+-- paired-slot conflict: one physical copy cannot fill both rings
+local ring = { stats = { Accuracy = 5 }, ref = 'OnlyRing' };
+local h4 = optim.optimizePicks({ Ring1 = { ring }, Ring2 = { ring } }, W,
+    { conflict = function(a, b) return a == b; end });
+local filled = 0;
+if h4.picks.Ring1 ~= nil then filled = filled + 1; end
+if h4.picks.Ring2 ~= nil then filled = filled + 1; end
+check('H6 one copy fills only one paired slot', filled, 1);
+
+-- baseStats background: an already-chosen set consumes the cap
+local h5 = optim.optimizePicks({ Head = { hasteHat } }, W, { baseStats = { { Haste = 5 } } });
+check('H7 background consumes the cap', h5.picks.Head, nil);
+
+-- negative-good stats still score as goodness under caps
+local WD = { DT = { perUnit = 10, cap = 10 } };
+local dtA = { stats = { DT = -8 }, ref = 'A' };
+local dtB = { stats = { DT = -8 }, ref = 'B' };
+local h6 = optim.optimizePicks({ Body = { dtA }, Legs = { dtB } }, WD);
+check('H8 DT capped as goodness', h6.total, 10 * 10);
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then
