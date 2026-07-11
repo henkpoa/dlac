@@ -2077,6 +2077,7 @@ do
             charBase = charBase, jobFile = jobFile, seedTriggersFile = seedTriggersFile,
             dynamicSetNames = profsets.dynamicSetNames, staticSetNames = profsets.staticSetNames,
             lookupByName = lookupByName, ownedCounts = owned.counts,  -- automations manifest (owned staves/obis)
+            ownedList = buildOwned,                                   -- max-MP manifest (piece MP values)
             setsRoot = profsets.getSetsRoot,                          -- gearcheck: set contents for the audit
         });
     else

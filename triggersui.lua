@@ -393,6 +393,20 @@ local function autoCommit()
         local rec = ownedRec(nm);
         if rec ~= nil then obiUni, obiUniLevel = rec.Name, rec.Level or 0; break; end
     end
+    -- Max-MP mode data: every owned piece carrying flat MP, lower(name) -> total.
+    -- The engine holds a worn piece until its MP surplus over the incoming piece
+    -- is spent; it can't read the catalog, so the values ride this manifest.
+    local mp = {};
+    pcall(function()
+        if type(deps.ownedList) ~= 'function' then return; end
+        for _, rec in ipairs(deps.ownedList() or {}) do
+            local v = (type(rec.Stats) == 'table') and rec.Stats.MP or nil;
+            if type(v) == 'number' and v > 0 and rec.Name ~= nil then
+                local k = string.lower(rec.Name);
+                if (mp[k] or 0) < v then mp[k] = v; end
+            end
+        end
+    end);
     local L = {
         '-- dlac automation manifest -- written by the GUI (Triggers tab > Automations).',
         '-- Tiered Iridescence: per-element staves (NQ +1 / HQ +2, own element only) and',
@@ -421,6 +435,14 @@ local function autoCommit()
         if o ~= nil then
             L[#L + 1] = string.format('        %s = { name = %q, level = %d },', el, o.name, o.level);
         end
+    end
+    L[#L + 1] = '    },';
+    L[#L + 1] = '    mp = {';
+    local mpKeys = {};
+    for k in pairs(mp) do mpKeys[#mpKeys + 1] = k; end
+    table.sort(mpKeys);
+    for _, k in ipairs(mpKeys) do
+        L[#L + 1] = string.format('        [%q] = %d,', k, mp[k]);
     end
     L[#L + 1] = '    },';
     L[#L + 1] = '};';

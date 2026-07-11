@@ -32,7 +32,7 @@ local M = {};
 -- LAC-state copy stamps its version into the modestate mirror; the GUI compares
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code (the seeded file only re-requires when LuaAshitacast itself reloads).
-M.VERSION = 8;
+M.VERSION = 9;
 
 -- Colored [dlac] chat output (chatfmt); plain print when unavailable. The shadowed
 -- `print` re-heads "[dlac] ..."-prefixed lines with the colored header.
@@ -536,9 +536,63 @@ end
 -- LOCKED slots (/dl lock, the Equipped tab's "Lock when equipped") are stripped
 -- outright: the engine never sends gear into them, so a manual equip stays put.
 -- Returns a trace note ('' when nothing was virtual/locked).
+-- ---------------------------------------------------------------------------
+-- Max-MP hold (mode 'maxmp'): keep a worn piece while swapping it out would
+-- WASTE unspent MP. Generic and slot-local: however the MP gear got on (resting
+-- set, trigger, manual equip), it stays until the player has spent the surplus
+-- its MP grants over the incoming piece; then the slot releases naturally.
+-- Weapons are exempt (Main/Sub/Range swaps are TP-sensitive). Piece MP values
+-- ride the autogear manifest (the engine never loads the catalog); the worn
+-- item is read from equipment memory. Design: docs/design/maxmp-mode.md.
+-- ---------------------------------------------------------------------------
+local MP_HOLD_EXEMPT = { main = true, sub = true, range = true };
+local SLOT_EQUIP_ID = { main = 0, sub = 1, range = 2, ammo = 3, head = 4, body = 5,
+                        hands = 6, legs = 7, feet = 8, neck = 9, waist = 10,
+                        ear1 = 11, ear2 = 12, ring1 = 13, ring2 = 14, back = 15 };
+
+-- The pure rule (headless-tested): hold while current MP exceeds what the pool
+-- would hold with the incoming piece worn instead.
+function M.mpHoldNeeded(wornMP, targetMP, curMP, maxMP)
+    local delta = (wornMP or 0) - (targetMP or 0);
+    if delta <= 0 then return false; end
+    return (curMP or 0) > (maxMP or 0) - delta;
+end
+
+local function wornItemName(slotKey)
+    local nm = nil;
+    pcall(function()
+        local id = SLOT_EQUIP_ID[string.lower(tostring(slotKey))];
+        if id == nil then return; end
+        local inv = AshitaCore:GetMemoryManager():GetInventory();
+        local eitem = inv:GetEquippedItem(id);
+        if eitem == nil or eitem.Index == 0 then return; end
+        local item = inv:GetContainerItem(math.floor(eitem.Index / 256) % 256, eitem.Index % 256);
+        if item == nil or item.Id == nil or item.Id == 0 then return; end
+        local res = AshitaCore:GetResourceManager():GetItemById(item.Id);
+        if res ~= nil and res.Name ~= nil then nm = res.Name[1]; end
+    end);
+    return nm;
+end
+
+local function playerMP()
+    local cur, max = nil, nil;
+    pcall(function() cur = gData.GetPlayer().MP; end);
+    pcall(function() max = AshitaCore:GetMemoryManager():GetPlayer():GetMPMax(); end);
+    return tonumber(cur), tonumber(max);
+end
+
 local function equipResolved(s, ctx)
     local out, notes = nil, nil;
     local anyLocks = (next(M.locks) ~= nil);
+    -- Max-MP hold context (only while the mode is on and the manifest carries MP data).
+    local mpMap, curMP, maxMP = nil, nil, nil;
+    if M.modes['maxmp'] ~= nil then
+        local a = ensureAutoLoaded();
+        if a ~= nil and type(a.mp) == 'table' then
+            curMP, maxMP = playerMP();
+            if curMP ~= nil and maxMP ~= nil then mpMap = a.mp; end
+        end
+    end
     for slot, v in pairs(s) do
         if anyLocks and M.locks[string.lower(tostring(slot))] == true then
             if out == nil then
@@ -565,6 +619,23 @@ local function equipResolved(s, ctx)
                 notes[#notes + 1] = string.format('%s=fallback %s (%s)', marker, fallback, tostring(why));
             else
                 notes[#notes + 1] = string.format('%s=skipped (%s)', marker, tostring(why));
+            end
+        elseif mpMap ~= nil and type(v) == 'string'
+               and not MP_HOLD_EXEMPT[string.lower(tostring(slot))] then
+            local worn = wornItemName(slot);
+            if worn ~= nil and string.lower(worn) ~= string.lower(v) then
+                local wornMP = mpMap[string.lower(worn)] or 0;
+                local tgtMP  = mpMap[string.lower(v)] or 0;
+                if M.mpHoldNeeded(wornMP, tgtMP, curMP, maxMP) then
+                    if out == nil then
+                        out = {};
+                        for k2, v2 in pairs(s) do out[k2] = v2; end
+                    end
+                    out[slot] = nil;                   -- keep the MP battery until it's spent
+                    notes = notes or {};
+                    notes[#notes + 1] = string.format('%s=MP-HOLD %s (+%d MP unspent)',
+                        tostring(slot), worn, wornMP - tgtMP);
+                end
             end
         end
     end
