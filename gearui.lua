@@ -2466,14 +2466,17 @@ local function commitCurrentSet(job)
     if M.workingSetName == nil or M.workingSetName == '' then setStatus('No set selected (pick one, or type a name + New).', true); return; end
     if job == nil or job == '' then setStatus('Unknown job (are you logged in?).', true); return; end
     local slots = buildCommitSlots();
-    if #slots == 0 then setStatus('Nothing to commit -- the set is empty.', true); return; end
+    -- An EMPTY set commits on purpose: it's a valid placeholder -- a trigger can
+    -- point at it today and gear can come later; dispatching it changes nothing
+    -- and leaves worn gear alone (maxmp batteries still cover its slots).
+    local emptyNote = (#slots == 0) and '  (EMPTY set: dispatching it changes no gear)' or '';
     local ok, action, backup = nil, nil, nil;
     local pok = pcall(function() ok, action, backup = setmgr.commitSet(job, M.workingSetName, slots); end);
     if pok and ok == true then
         _setDirty = false;         -- committed -> the working set now matches what's saved
         profsets.invalidate();     -- re-read the job file so the Sets list reflects the change
-        setStatus(string.format('%s "%s" for %s. Reload (top-right) to apply.  backup: %s',
-            tostring(action), tostring(M.workingSetName), tostring(job), tostring(backup)), false);
+        setStatus(string.format('%s "%s" for %s. Reload (top-right) to apply.  backup: %s%s',
+            tostring(action), tostring(M.workingSetName), tostring(job), tostring(backup), emptyNote), false);
     else
         setStatus('Commit failed: ' .. tostring(action), true);
     end
