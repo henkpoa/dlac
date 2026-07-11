@@ -1251,7 +1251,8 @@ local function renderHeaderButtons()
         { l = 'Reload LAC', w = 104,
           tip = 'Reload LuaAshitacast. LAC caches your sets when the profile loads, so after you\ncommit/edit a set (or run Setup) you must reload LAC for the change to take effect.',
           fn = function()
-              _augStatus = nil;   -- "Reload LuaAshitacast to apply" is fulfilled by this click
+              _augStatus = nil;      -- "Reload LuaAshitacast to apply" is fulfilled by this click
+              ui.setsStatus = '';    -- ...and so is the Sets tab's 'replaced "<set>" for <JOB>' line
               refreshOwnedCounts();
               pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/addon reload luashitacast'); end);
           end },
