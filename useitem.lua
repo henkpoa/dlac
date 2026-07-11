@@ -10,15 +10,23 @@
                            no argument lists every destination.
         /dl p|w|t off      cancel the pending use and release the slot.
 
+    Readiness is read from the GAME, not guessed: an enchanted item's Extra data
+    carries its last-use timestamp (offset 5) and -- for Flags == 5 equipment --
+    the equip timestamp (offset 9), both against the client's UTC clock (the same
+    state that turns the item blue in the menu). We poll the equipped slot and
+    fire the moment the game says usable. The configured wait only remains as the
+    FALLBACK when the clock or the item can't be read (then we fire blind on the
+    timer, exactly the old behavior). Decode layout is tCrossBar's, via XIUI's
+    itemrecast.lua -- both field-proven on this client.
+
     Runs in the ADDON state: native /equip + /item bypass LuaAshitacast; the
     engine lock (/dl lock <slot>) stops dlac dispatch from swapping the piece back
     out mid-countdown, and /lac disable <slot> covers hand-written profile code.
-    Waits carry a safety margin over the in-game equip delay -- firing /item too
-    early wastes the attempt, firing late costs nothing but nerves.
 ]]--
 
 local _cfok, _cfmt = pcall(require, 'dlac\\chatfmt');
 local print = (_cfok and type(_cfmt) == 'table' and type(_cfmt.print) == 'function') and _cfmt.print or print;
+local _stok, struct = pcall(require, 'struct');
 
 local M = {};
 
@@ -42,7 +50,9 @@ local TELEPORTS = {
     { name = 'Republic Earring',   dest = 'Bastok',     aliases = { 'bastok', 'republic' } },
 };
 
-local state = nil;   -- { name, slot, useAt, stage = 'wait'|'used', releaseAt }
+local SLOT_ID = { ring2 = 0x0E, ear2 = 0x0C };   -- native equip-slot indexes
+
+local state = nil;   -- { name, slot, useAt, stage, releaseAt, nextPoll, measured }
 
 local function queue(cmd)
     pcall(function() AshitaCore:GetChatManager():QueueCommand(1, cmd); end);
@@ -53,6 +63,62 @@ local function release(slot)
     queue('/lac enable ' .. slot);
 end
 
+-- ---------------------------------------------------------------------------
+-- Game-clock readiness (tCrossBar / XIUI itemrecast decode).
+-- ---------------------------------------------------------------------------
+local VANA_OFFSET = 0x3C307D70;
+local _timePtr = nil;
+local function gameNow()
+    if _timePtr == nil then
+        pcall(function()
+            local p = ashita.memory.find('FFXiMain.dll', 0,
+                '8B0D????????8B410C8B49108D04808D04808D04808D04C1C3', 0x02, 0);
+            if p == 0 then return; end
+            local ptr = ashita.memory.read_uint32(p);
+            if ptr == 0 then return; end
+            ptr = ashita.memory.read_uint32(ptr);
+            if ptr ~= 0 then _timePtr = ptr; end
+        end);
+        if _timePtr == nil then return 0; end
+    end
+    local t = 0;
+    pcall(function() t = ashita.memory.read_uint32(_timePtr + 0x0C) or 0; end);
+    return t;
+end
+
+-- Remaining seconds until the item equipped in def.slot is usable.
+-- Returns: seconds (0 = usable NOW), or nil when unreadable (slot empty / wrong
+-- item still swapping in / clock unavailable) -- the caller falls back to the timer.
+local function readiness(def)
+    if not _stok then return nil; end
+    local rem = nil;
+    pcall(function()
+        local inv = AshitaCore:GetMemoryManager():GetInventory();
+        local eitem = inv:GetEquippedItem(SLOT_ID[def.slot]);
+        if eitem == nil or eitem.Index == 0 then return; end
+        local cont = math.floor(eitem.Index / 256) % 256;
+        local slotInCont = eitem.Index % 256;
+        local item = inv:GetContainerItem(cont, slotInCont);
+        if item == nil or item.Id == nil or item.Id == 0 then return; end
+        local res = AshitaCore:GetResourceManager():GetItemById(item.Id);
+        local nm = res ~= nil and res.Name ~= nil and res.Name[1] or nil;
+        if nm == nil or string.lower(nm) ~= string.lower(def.name) then return; end
+        local now = gameNow();
+        if now == 0 then return; end
+        local r = 0;
+        if type(item.Extra) == 'string' and #item.Extra >= 12 then
+            local useT = struct.unpack('I', item.Extra, 5) or 0;
+            if useT > 0 then r = math.max(r, (useT + VANA_OFFSET) - now); end
+            if item.Flags == 5 then                    -- enchanted equipment: equip delay
+                local eqT = struct.unpack('I', item.Extra, 9) or 0;
+                if eqT > 0 then r = math.max(r, (eqT + VANA_OFFSET) - now); end
+            end
+        end
+        rem = r;
+    end);
+    return rem;
+end
+
 local function start(def, verb, cancelHint)
     if state ~= nil and state.slot ~= def.slot then
         release(state.slot);                           -- switching item type: free the old slot
@@ -60,8 +126,13 @@ local function start(def, verb, cancelHint)
     queue('/dl lock ' .. def.slot .. ' on');
     queue('/lac disable ' .. def.slot);
     queue('/equip ' .. def.slot .. ' "' .. def.name .. '"');
-    state = { name = def.name, slot = def.slot, useAt = os.clock() + def.wait, stage = 'wait' };
-    print(string.format('[dlac] %s equipped in %s -- %s in %d seconds  (%s cancels)',
+    state = {
+        name = def.name, slot = def.slot, stage = 'wait', verb = verb,
+        useAt = os.clock() + def.wait,                 -- fallback timer only
+        nextPoll = os.clock() + 1.0,                   -- give /equip a moment to land
+        measured = false,
+    };
+    print(string.format('[dlac] %s equipped in %s -- %s when the game says ready (~%ds)  (%s cancels)',
         def.name, def.slot, verb, def.wait, cancelHint));
 end
 
@@ -102,14 +173,40 @@ local function listTeleports(items)
     return table.concat(parts, ', ');
 end
 
+local function fire()
+    queue('/item "' .. state.name .. '" <me>');
+    print('[dlac] using ' .. state.name .. ' NOW.');
+    state.stage = 'used';
+    state.releaseAt = os.clock() + 3;                  -- give the use a moment, then unlock
+end
+
 ashita.events.register('d3d_present', 'dlac-useitem-tick', function()
     if state == nil then return; end
     local now = os.clock();
-    if state.stage == 'wait' and now >= state.useAt then
-        queue('/item "' .. state.name .. '" <me>');
-        print('[dlac] using ' .. state.name .. ' NOW.');
-        state.stage = 'used';
-        state.releaseAt = now + 3;                     -- give the use a moment, then unlock
+    if state.stage == 'wait' then
+        if now >= (state.nextPoll or 0) then
+            state.nextPoll = now + 0.25;
+            local rem = readiness(state);
+            if rem ~= nil then
+                if not state.measured then
+                    state.measured = true;
+                    -- the game clock is now authoritative; announce if it disagrees
+                    -- with the estimate by more than a couple of seconds
+                    local est = state.useAt - now;
+                    if math.abs(rem - est) > 2 then
+                        print(string.format('[dlac] %s ready in %ds (game clock).', state.name, math.ceil(rem)));
+                    end
+                end
+                if rem <= 0 then fire(); return; end
+                state.useAt = math.max(state.useAt, now + rem);   -- keep the fallback honest
+            end
+        end
+        -- Fallback: fire on the timer when the polls go dark (readiness never
+        -- readable, or the item vanished mid-wait). useAt is pushed to the
+        -- measured remaining on every good poll, so this can't fire early.
+        if state.stage == 'wait' and now >= state.useAt then
+            fire();
+        end
     elseif state.stage == 'used' and now >= state.releaseAt then
         local slot = state.slot;
         state = nil;
