@@ -327,9 +327,11 @@ local OBI_UNIVERSAL = { 'Hachirin-no-obi' };
 -- these carry it for every element. Fallback list until the catalog carries the
 -- Iridescence stat (issue #5); ordered check picks the highest owned tier.
 local UNIVERSAL = {
-    { name = 'Chatoyant Staff', tier = 2 },
+    -- ordered check picks the FIRST owned: the specific +2 weapons are preferred,
+    -- Chatoyant is the +2 fallback, Iridal the +1 tier.
     { name = 'Foreshadow +1',   tier = 2 },
     { name = 'Claustrum',       tier = 2 },
+    { name = 'Chatoyant Staff', tier = 2 },
     { name = 'Iridal Staff',    tier = 1 },
 };
 
@@ -503,34 +505,175 @@ end
 
 -- The Automations section (rendered under the handler sections): the manifest data +
 -- rescan. The ON/OFF switches live per set (Sets tab -> Auto staff / Auto obi).
+-- ---------------------------------------------------------------------------
+-- Automations section, two levels: the LIST (name + KIND + a status that lights
+-- up brighter the better the automation is covered; red = nothing applicable)
+-- and a DETAIL box per automation (click a row; '< Automations' returns).
+-- ---------------------------------------------------------------------------
+local GREEN_OWNED = { 0.45, 0.90, 0.45, 1.0 };
+
+-- status ramp, dim -> bright with coverage; 0 = red
+local function levelColor(level, maxLevel)
+    if level <= 0 then return { 1.00, 0.40, 0.35, 1.0 }; end
+    local t = level / maxLevel;
+    if t >= 0.999 then return { 0.35, 1.00, 0.45, 1.0 }; end
+    if t >= 0.74  then return { 0.60, 0.90, 0.45, 1.0 }; end
+    if t >= 0.49  then return { 0.85, 0.80, 0.35, 1.0 }; end
+    return { 0.75, 0.62, 0.30, 1.0 };
+end
+
+local function owns(name) return ownedRec(name) ~= nil; end
+
+-- Coverage: Iridescence 1 = any NQ elemental, 2 = any HQ elemental,
+-- 3 = Iridal (+1 universal), 4 = any +2 universal. Obi: 1 elemental, 2 universal.
+local function iridescenceLevel()
+    local lv = 0;
+    for _, el in ipairs(ELEMENTS8) do
+        if owns(STAFF_NQ[el]) then lv = math.max(lv, 1); end
+        if owns(STAFF_HQ[el]) then lv = math.max(lv, 2); end
+    end
+    for _, u in ipairs(UNIVERSAL) do
+        if owns(u.name) then lv = math.max(lv, ((u.tier or 1) >= 2) and 4 or 3); end
+    end
+    return lv;
+end
+local function obiLevel()
+    local lv = 0;
+    for _, el in ipairs(ELEMENTS8) do if owns(OBI[el]) then lv = 1; break; end end
+    for _, nm in ipairs(OBI_UNIVERSAL) do if owns(nm) then lv = 2; break; end end
+    return lv;
+end
+local IRID_TXT = { [0] = 'nothing applicable', 'NQ staves', 'HQ staves', 'Iridal (+1)', 'universal +2' };
+local OBI_TXT  = { [0] = 'nothing applicable', 'elemental obis', 'universal obi' };
+
+-- One item row in a detail column: icon + name, green when owned, dim when not.
+local function autoItemLine(name)
+    local rec = (deps.lookupByName ~= nil) and deps.lookupByName(name) or nil;
+    if type(deps.renderIcon) == 'function' then deps.renderIcon(rec and rec.Id or nil, 18); end
+    imgui.TextColored(owns(name) and GREEN_OWNED or COL_DIM, esc(name));
+end
+
+local function autoColumn(title, names)
+    imgui.BeginGroup();
+    imgui.TextColored(COL_HEADER, title);
+    for _, nm in ipairs(names) do autoItemLine(nm); end
+    imgui.EndGroup();
+end
+
+local MP_GRID = { 'main', 'sub', 'range', 'ammo', 'head', 'neck', 'ear1', 'ear2',
+                  'body', 'hands', 'ring1', 'ring2', 'back', 'waist', 'legs', 'feet' };
+local MP_EXEMPT = { main = true, sub = true, range = true };
+
 local function renderAutomations(noHeader)
     if noHeader ~= true and not imgui.CollapsingHeader('Automations###trgsec_auto') then return; end
     autoLoad();
+
+    if auto.view ~= nil then                            -- DETAIL views
+        if imgui.Button('< Automations##autoback', { 0, 22 }) then auto.view = nil; end
+        imgui.Spacing();
+        local availW = imgui.GetContentRegionAvail();
+        if type(availW) ~= 'number' or availW < 400 then availW = 800; end
+
+        if auto.view == 'iridescence' then
+            imgui.TextColored(COL_HEADER, 'AutoIridescence');
+            imgui.SameLine(0, 10); imgui.TextColored(COL_DIM, 'slot automation -- dlac:AutoIridescence in a set\'s Main slot');
+            imgui.Spacing();
+            local nq, hq, ir1, ir2 = {}, {}, {}, {};
+            for _, el in ipairs(ELEMENTS8) do nq[#nq + 1] = STAFF_NQ[el]; hq[#hq + 1] = STAFF_HQ[el]; end
+            for _, u in ipairs(UNIVERSAL) do
+                if (u.tier or 1) >= 2 then ir2[#ir2 + 1] = u.name; else ir1[#ir1 + 1] = u.name; end
+            end
+            local colW = math.max(185, math.floor(availW / 4));
+            autoColumn('Elemental NQ', nq);        imgui.SameLine(colW);
+            autoColumn('Elemental HQ', hq);        imgui.SameLine(colW * 2);
+            autoColumn('Iridescence +1', ir1);     imgui.SameLine(colW * 3);
+            autoColumn('Iridescence +2', ir2);
+            imgui.Spacing();
+            imgui.TextColored(COL_DIM, 'Specific +2 weapons are preferred; Chatoyant is the +2 fallback. Green = owned.');
+        elseif auto.view == 'obi' then
+            imgui.TextColored(COL_HEADER, 'ElementalObi');
+            imgui.SameLine(0, 10); imgui.TextColored(COL_DIM, 'slot automation -- dlac:ElementalObi in a set\'s Waist slot');
+            imgui.Spacing();
+            local elos = {};
+            for _, el in ipairs(ELEMENTS8) do elos[#elos + 1] = OBI[el]; end
+            local colW = math.max(200, math.floor(availW / 2));
+            autoColumn('Elemental Obis', elos);    imgui.SameLine(colW);
+            autoColumn('Universal Obi', OBI_UNIVERSAL);
+            imgui.Spacing();
+            imgui.TextColored(COL_DIM, 'Fires only when the day/weather bonus is positive. Green = owned.');
+        elseif auto.view == 'maxmp' then
+            imgui.TextColored(COL_HEADER, 'MaxMP');
+            imgui.SameLine(0, 10); imgui.TextColored(COL_DIM, 'set automation -- /dl mode maxmp; wears batteries at a full pool, releases as spent');
+            imgui.Spacing();
+            local mb = (type(auto.data) == 'table' and type(auto.data.mpBest) == 'table') and auto.data.mpBest or {};
+            local total = 0;
+            for i, sl in ipairs(MP_GRID) do
+                local c = mb[sl];
+                imgui.BeginChild('##mpb_' .. sl, { 40, 40 }, true, ImGuiWindowFlags_NoScrollbar or 0);
+                if c ~= nil and type(deps.renderIcon) == 'function' then
+                    local rec = (deps.lookupByName ~= nil) and deps.lookupByName(c.name) or nil;
+                    deps.renderIcon(rec and rec.Id or nil, 30);
+                end
+                imgui.EndChild();
+                if imgui.IsItemHovered() then
+                    if MP_EXEMPT[sl] then
+                        imgui.SetTooltip(sl .. ': weapons are exempt (TP preservation).');
+                    elseif c ~= nil then
+                        imgui.SetTooltip(string.format('%s: %s  (MP +%d)', sl, c.name, c.mp or 0));
+                    else
+                        imgui.SetTooltip(sl .. ': no MP gear owned for this slot.');
+                    end
+                end
+                if c ~= nil then total = total + (c.mp or 0); end
+                if i % 4 ~= 0 then imgui.SameLine(0, 4); end
+            end
+            imgui.Spacing();
+            imgui.TextColored((total > 0) and GREEN_OWNED or COL_ERR,
+                string.format('Best case: +%d Max MP', total));
+            imgui.TextColored(COL_DIM, 'Rescan after new gear so the batteries update (also runs on login/job change).');
+        end
+        return;
+    end
+
+    -- LIST view
     imgui.PushTextWrapPos(0.0);
-    imgui.TextColored(COL_DIM, 'Auto staff / auto obi are SLOT entries inside a set: Sets tab -> pick the set -> Main slot -> + Add -> "dlac:AutoStaff" (or Waist -> "dlac:AutoObi"). Whenever a trigger equips that set, the engine resolves the entry: best Iridescence staff for the cast (highest tier: HQ elemental +2 / NQ +1 vs your universal weapon; ties go to the universal, which also covers elementless actions), and the obi only when the day/weather bonus is positive. Unresolvable -> the slot is left untouched.');
+    imgui.TextColored(COL_DIM, 'Slot automations live INSIDE a set (add the dlac: entry to the slot via + Add); set automations apply across every set via their mode. Click an automation for details.');
     imgui.PopTextWrapPos();
     if imgui.Button('Rescan owned gear##trgautorescan', { 0, 20 }) then autoCommit(); end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Re-detect owned staves / obis / Iridescence weapons from your bags and save the manifest.');
+        imgui.SetTooltip('Re-detect owned staves / obis / Iridescence weapons / MP batteries from your bags and save the manifest.');
     end
     if auto.status ~= '' then
         imgui.PushTextWrapPos(0.0);
         imgui.TextColored(COL_SCORE, esc(auto.status));
         imgui.PopTextWrapPos();
     end
-    local d = auto.data or {};
-    local function nkeys(t) local n = 0; if type(t) == 'table' then for _ in pairs(t) do n = n + 1; end end return n; end
-    local uniTxt = '';
-    if type(d.universal) == 'table' and type(d.universal.name) == 'string' then
-        uniTxt = string.format(', universal: %s (Iridescence +%d)', d.universal.name, tonumber(d.universal.tier) or 1);
-    elseif type(d.iridescence) == 'string' then
-        uniTxt = ', universal: ' .. d.iridescence .. ' (old manifest -- Rescan to pick up tiers)';
+    imgui.Spacing();
+
+    local mpTotal = 0;
+    if type(auto.data) == 'table' and type(auto.data.mpBest) == 'table' then
+        for _, c in pairs(auto.data.mpBest) do mpTotal = mpTotal + (tonumber(c.mp) or 0); end
     end
-    if type(d.obiUniversal) == 'table' and type(d.obiUniversal.name) == 'string' then
-        uniTxt = uniTxt .. ', obi: ' .. d.obiUniversal.name .. ' (all elements)';
+    local rows = {
+        { key = 'iridescence', name = 'AutoIridescence', kind = 'slot automation (Main)',
+          level = iridescenceLevel(), max = 4, txt = nil },
+        { key = 'obi',         name = 'ElementalObi',    kind = 'slot automation (Waist)',
+          level = obiLevel(),         max = 2, txt = nil },
+        { key = 'maxmp',       name = 'MaxMP',           kind = 'set automation (/dl mode maxmp)',
+          level = (mpTotal > 0) and 1 or 0, max = 1,
+          txt = (mpTotal > 0) and string.format('+%d Max MP', mpTotal) or 'nothing applicable' },
+    };
+    rows[1].txt = IRID_TXT[rows[1].level];
+    rows[2].txt = OBI_TXT[rows[2].level];
+    for _, r in ipairs(rows) do
+        local col = levelColor(r.level, r.max);
+        imgui.PushID('autorow_' .. r.key);
+        if imgui.Selectable('##sel', false, ImGuiSelectableFlags_None, { 0, 20 }) then auto.view = r.key; end
+        imgui.SameLine(8);  imgui.TextColored(col, r.name);
+        imgui.SameLine(190); imgui.TextColored(COL_DIM, r.kind);
+        imgui.SameLine(470); imgui.TextColored(col, r.txt or '');
+        imgui.PopID();
     end
-    imgui.TextColored(COL_DIM, string.format('detected: %d staves, %d obis%s',
-        nkeys(d.staff), nkeys(d.obi), uniTxt));
 end
 
 -- ---------------------------------------------------------------------------

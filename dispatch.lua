@@ -32,7 +32,7 @@ local M = {};
 -- LAC-state copy stamps its version into the modestate mirror; the GUI compares
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code (the seeded file only re-requires when LuaAshitacast itself reloads).
-M.VERSION = 10;
+M.VERSION = 11;
 
 -- Colored [dlac] chat output (chatfmt); plain print when unavailable. The shadowed
 -- `print` re-heads "[dlac] ..."-prefixed lines with the colored header.
@@ -496,6 +496,9 @@ local function resolveVirtual(marker, ctx)
     if type(el) ~= 'string' or ci(el, 'Non-Elemental') then el = nil; end
     local lvl = playerLevel(ctx);
     local mk = string.lower(tostring(marker));
+    -- canonical new names + the original spellings (existing sets keep working)
+    if mk == 'dlac:autoiridescence' then mk = 'dlac:autostaff'; end
+    if mk == 'dlac:elementalobi'    then mk = 'dlac:autoobi';   end
     if mk == 'dlac:autostaff' then
         local nm = resolveStaff(a, el, lvl);
         if nm == nil then

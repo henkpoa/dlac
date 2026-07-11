@@ -17,7 +17,8 @@
     fire the moment the game says usable. The configured wait only remains as the
     FALLBACK when the clock or the item can't be read (then we fire blind on the
     timer, exactly the old behavior). Decode layout is tCrossBar's, via XIUI's
-    itemrecast.lua -- both field-proven on this client.
+    itemrecast.lua -- both field-proven on this client. SE quirk (field-verified):
+    the displayed 0 is still a live second, so we hold fire ~1.2s past it.
 
     Runs in the ADDON state: native /equip + /item bypass LuaAshitacast; the
     engine lock (/dl lock <slot>) stops dlac dispatch from swapping the piece back
@@ -31,13 +32,13 @@ local _stok, struct = pcall(require, 'struct');
 local M = {};
 
 local RINGS = {
-    p = { name = 'Provenance Ring', slot = 'ring2', wait = 18 },   -- 15s equip delay + margin
-    w = { name = 'Warp Ring',       slot = 'ring2', wait = 10 },   --  8s equip delay + margin
+    p = { name = 'Provenance Ring', slot = 'ring2', wait = 20 },   -- 15s equip delay + margin
+    w = { name = 'Warp Ring',       slot = 'ring2', wait = 12 },   --  8s equip delay + margin
 };
 
 -- Teleport earrings (CatsEyeXI): 30s equip delay + margin, all worn in Ear2.
 -- aliases are matched exact -> prefix -> substring; keep them lowercase.
-local TELE_WAIT = 32;
+local TELE_WAIT = 34;
 local TELEPORTS = {
     { name = 'Nashmau Earring',    dest = 'Nashmau',    aliases = { 'nashmau' } },
     { name = 'Norg Earring',       dest = 'Norg',       aliases = { 'norg' } },
@@ -52,7 +53,7 @@ local TELEPORTS = {
 
 local SLOT_ID = { ring2 = 0x0E, ear2 = 0x0C };   -- native equip-slot indexes
 
-local state = nil;   -- { name, slot, useAt, stage, releaseAt, nextPoll, measured }
+local state = nil;   -- { name, slot, useAt, stage, releaseAt, nextPoll, measured, zeroAt }
 
 local function queue(cmd)
     pcall(function() AshitaCore:GetChatManager():QueueCommand(1, cmd); end);
@@ -197,7 +198,16 @@ ashita.events.register('d3d_present', 'dlac-useitem-tick', function()
                         print(string.format('[dlac] %s ready in %ds (game clock).', state.name, math.ceil(rem)));
                     end
                 end
-                if rem <= 0 then fire(); return; end
+                if rem <= 0 then
+                    -- SE quirk (field-verified): the displayed 0 is still a live
+                    -- second -- the item only becomes usable ~1s after remaining
+                    -- hits 0. Hold fire until 1.2s past the first measured 0.
+                    if state.zeroAt == nil then state.zeroAt = now; end
+                    state.useAt = math.max(state.useAt, state.zeroAt + 1.2);   -- keep the fallback honest too
+                    if now >= state.zeroAt + 1.2 then fire(); end
+                    return;
+                end
+                state.zeroAt = nil;                               -- bounced back above 0 (re-equip reset)
                 state.useAt = math.max(state.useAt, now + rem);   -- keep the fallback honest
             end
         end

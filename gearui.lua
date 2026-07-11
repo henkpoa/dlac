@@ -2078,6 +2078,7 @@ do
             dynamicSetNames = profsets.dynamicSetNames, staticSetNames = profsets.staticSetNames,
             lookupByName = lookupByName, ownedCounts = owned.counts,  -- automations manifest (owned staves/obis)
             ownedList = buildOwned,                                   -- max-MP manifest (piece MP values)
+            renderIcon = renderIcon,                                  -- automation detail views (item icons)
             setsRoot = profsets.getSetsRoot,                          -- gearcheck: set contents for the audit
         });
     else
@@ -2654,9 +2655,9 @@ local function renderAddPopup(job, level)
         -- time from your owned gear. Offered per slot, pinned above the item list.
         local vlist = nil;
         if ui.setSelected == 'Main' then
-            vlist = { { name = 'dlac:AutoStaff', tip = 'Equips your best USABLE Iridescence staff for the cast (level-checked):\nHQ elemental +2 / NQ +1 (own element) vs a universal weapon\n(Chatoyant/Foreshadow +1 = +2 all elements, Iridal = +1); ties go to the\nuniversal, which also covers elementless actions. When nothing usable\nexists (e.g. under-leveled), the OTHER items in this slot\'s list are\nthe fallback -- best-by-level as usual.' } };
+            vlist = { { name = 'dlac:AutoIridescence', tip = 'Equips your best USABLE Iridescence staff for the cast (level-checked):\nHQ elemental +2 / NQ +1 (own element) vs a universal weapon\n(Foreshadow +1/Chatoyant = +2 all elements, Iridal = +1); ties go to the\nuniversal, which also covers elementless actions. When nothing usable\nexists (e.g. under-leveled), the OTHER items in this slot\'s list are\nthe fallback -- best-by-level as usual.\n(Sets written as dlac:AutoStaff keep working.)' } };
         elseif ui.setSelected == 'Waist' then
-            vlist = { { name = 'dlac:AutoObi', tip = 'Equips the matching elemental obi when the net day/weather bonus for\nthe spell\'s element is positive (level-checked). Other items in this\nslot\'s list are the fallback.' } };
+            vlist = { { name = 'dlac:ElementalObi', tip = 'Equips the matching elemental obi when the net day/weather bonus for\nthe spell\'s element is positive (level-checked). Other items in this\nslot\'s list are the fallback.\n(Sets written as dlac:AutoObi keep working.)' } };
         end
         if vlist ~= nil then
             for vi, vd in ipairs(vlist) do
