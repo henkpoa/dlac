@@ -49,6 +49,12 @@
   }
   figure.shot img { max-width: 100%; border-radius: 4px; }
   figure.shot figcaption { color: var(--dim); font-style: italic; font-size: 0.9rem; margin-top: 8px; }
+  .annobox { position: relative; display: inline-block; max-width: 100%; }
+  .annobox img { display: block; }
+  .annobox .hl {
+    position: absolute; pointer-events: none; border-radius: 4px;
+    border: 2px solid #ff5252; box-shadow: 0 0 8px rgba(255, 82, 82, 0.55);
+  }
   ol li, ul li { margin: 6px 0; }
   .mode  { color: var(--purple); }
   .green { color: var(--green); }
@@ -236,6 +242,27 @@ login.</figcaption></figure>
 mechanics — one rule in the Default trigger at priority 100, applied last, overlaying only
 the slots the set fills.</figcaption></figure>
 
+<p>And here is what a mode-gated set looks like from the inside — one <code>Weapon</code>
+set whose Main slot holds all three answers at once:</p>
+<figure class="shot">
+<div class="annobox"><img src="img/sets-mode-gates.png" alt="A set with mode-gated entries">
+  <span class="hl" style="left:17.0%; top:55.4%; width:16.5%; height:3.4%;"></span>
+  <span class="hl" style="left:21.6%; top:61.9%; width:14.5%; height:3.4%;"></span>
+  <span class="hl" style="left:24.8%; top:68.4%; width:12.5%; height:3.4%;"></span>
+  <span class="hl" style="left:90.4%; top:61.7%; width:3.4%;  height:3.8%;"></span>
+  <span class="hl" style="left:42.4%; top:46.6%; width:12.6%; height:3.6%;"></span>
+</div>
+<figcaption>Each row carries a <span class="mode">@Weapon:…</span> gate (highlighted):
+Divinity for <span class="mode">Strong+KC</span>, Kraken Club +1 for
+<span class="mode">SoloKC</span>, the AutoIridescence marker for
+<span class="mode">Caster</span>. The gates are set per row via the highlighted
+<b>B</b> button — the open behaviour box shows Kraken Club's own
+<span class="mode">@Weapon:SoloKC</span> gate (also highlighted), plus optional level
+bounds. The cycle currently holds <span class="mode">Caster</span>, so the
+AutoIridescence row is the live one (shown green): Main wears the auto-picked staff —
+with a grip in Sub — and Kraken Club stays home until you cycle to
+<span class="mode">SoloKC</span>.</figcaption></figure>
+
 <h2 id="automations">6. Automations — gear that picks itself</h2>
 <p>Some gear decisions are pure bookkeeping — the right elemental staff per spell, the
 right obi per day. Automations do those for you. They are <b>virtual slot entries</b>: in
@@ -280,21 +307,43 @@ login, job change, and any inventory change. Buy a new staff and it's a candidat
 you've closed the shop window.</div>
 
 <h2 id="extras">7. Small conveniences</h2>
-<p>Two header buttons round things out:</p>
-<ul>
-  <li><b>Teleports</b> (the ring icon) — every enchanted travel item in one dropdown:
-      Warp Ring, Provenance Ring, and the teleport earrings by destination. Click one and
-      dlac equips it, waits out the enchant delay on the game's own clock, and uses it.
-      Lit = ready, an amber countdown = still recharging (clicking is fine — it fires the
-      moment it's ready), <span class="red">red</span> = stored where you can't equip it,
-      dim = not owned.</li>
-  <li><b>Macro</b> — your macro book and set per job, applied automatically on login and
-      every job change. No more <code>/macro book</code> lines in profiles.</li>
-</ul>
-<figure class="shot"><img src="img/teleports.png" alt="The Teleports dropdown">
-<figcaption>The Teleports dropdown: destination, item and live state per row — here
-everything is ready except Mhaura (recharging, amber countdown) and the Republic Earring
-(not owned).</figcaption></figure>
+
+<h3>Teleports — one click from anywhere to anywhere</h3>
+<p>The ring-icon button in the header opens every enchanted travel item you could own in
+one dropdown: Warp Ring, Provenance Ring, and the teleport earrings by destination. Click
+a row and dlac does the whole dance for you: locks the slot, equips the item, watches the
+game's own clock while the enchant delay counts down, and uses it the instant the game
+says ready — you keep fighting, crafting, or running in the meantime.</p>
+<p>Each row shows its live state: <span class="green">lit</span> = in an equippable bag
+and ready; an amber countdown = out of charges (clicking is still fine — it equips now
+and fires the moment the recharge ends); <span class="red">red</span> = owned but stored
+where the game can't equip from; dim = not owned.</p>
+<figure class="shot"><img src="img/tp-menu.png" alt="The Teleports dropdown">
+<figcaption>The Teleports dropdown — destination, item, live state. At the bottom: the
+<b>Floating button</b> pin.</figcaption></figure>
+
+<p><b>The floating button.</b> Tick <i>Floating button</i> at the bottom of the menu and
+a small ring icon pins itself to your screen — outside the main window, always there,
+draggable by its edge (position is remembered). Clicking it opens the same menu, so
+travel never needs the main window at all. The floating menu carries the same checkbox,
+so unpinning is one untick from either place.</p>
+<figure class="shot"><img src="img/tp-floating.png" alt="The floating Teleports button">
+<figcaption>The same menu, opened from the floating button (the small ring icon below
+it lives on your screen permanently — until you untick the pin).</figcaption></figure>
+
+<p><b>Aborting.</b> While a teleport is counting down, the button you started it from —
+header or floating — turns into a red <b>stop</b> sign. One click cancels the whole flow
+(the slot unlocks, nothing fires); the ring icon returns by itself the moment the
+teleport either fires or is cancelled. The hover tooltip always names exactly what would
+be aborted.</p>
+<figure class="shot"><img src="img/tp-abort.png" alt="The abort state">
+<figcaption>A Warp Ring use in flight: the floating button is now the abort — one click
+sends <code>/dl w off</code> and everything unwinds.</figcaption></figure>
+
+<h3>Macro books</h3>
+<p>The <b>Macro</b> header button stores your macro book and set per job, applied
+automatically on login and every job change. No more <code>/macro book</code> lines in
+profiles.</p>
 
 <h2 id="debug">8. When something looks wrong</h2>
 <ul>
