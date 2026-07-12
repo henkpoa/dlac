@@ -934,7 +934,31 @@ local CRAFT_UI = {
     txt = { [0] = 'nothing applicable', 'craft-specific gear', 'Artisans (NQ)', 'Artisans +1', 'Kupo Shield' },
     selected = 'Alchemy',
     _cache = {},   -- per-craft item lists (full-catalog walk: build on demand, never per frame)
+    _tex = {},     -- craft glyph textures (assets/craft/<Craft>.png), false = load failed
 };
+
+-- Set-8 craft glyphs (Henrik's pick 2026-07-13: FFXIV class icons, Miner
+-- standing in for Bonecraft; PNGs ship in assets/craft/). Loaded once via
+-- D3DX (statustimers' pattern); nil -> the caller falls back to item icons.
+function CRAFT_UI.texture(cr)
+    local t = CRAFT_UI._tex[cr];
+    if t ~= nil then return (t ~= false) and t or nil; end
+    CRAFT_UI._tex[cr] = false;                           -- one attempt per craft
+    pcall(function()
+        local ffi = require('ffi');
+        local d3d8lib = require('d3d8');
+        pcall(ffi.cdef,
+            'HRESULT __stdcall D3DXCreateTextureFromFileA(IDirect3DDevice8* pDevice, const char* pSrcFile, IDirect3DTexture8** ppTexture);');
+        local dev = d3d8lib.get_device();
+        local path = string.format('%saddons\\dlac\\assets\\craft\\%s.png', AshitaCore:GetInstallPath(), cr);
+        local ptr = ffi.new('IDirect3DTexture8*[1]');
+        if ffi.C.D3DXCreateTextureFromFileA(dev, path, ptr) == 0 then   -- S_OK
+            CRAFT_UI._tex[cr] = d3d8lib.gc_safe_release(ffi.cast('IDirect3DTexture8*', ptr[0]));
+        end
+    end);
+    local t2 = CRAFT_UI._tex[cr];
+    return (t2 ~= false) and t2 or nil;
+end
 
 function CRAFT_UI.level()
     local lv = 0;
@@ -1022,7 +1046,25 @@ local function renderAutomations(noHeader)
             };
             local goalLbl = 'HQ';
             for _, gd in ipairs(GOALS) do if gd[1] == goalV then goalLbl = gd[2]; end end
-            imgui.SameLine(math.max(300, imgui.GetWindowWidth() - 330));
+            -- Auto-craft toggle: CENTER of the row, whole button green when
+            -- ON / red when OFF (Henrik).
+            local winW = imgui.GetWindowWidth();
+            imgui.SameLine(math.max(180, math.floor(winW / 2) - 59));
+            local aOn = cwok and (cw.autoEquip == true);
+            local tinted = (ImGuiCol_Button ~= nil);
+            if tinted then
+                imgui.PushStyleColor(ImGuiCol_Button, aOn and { 0.16, 0.62, 0.24, 1.0 } or { 0.72, 0.18, 0.18, 1.0 });
+                imgui.PushStyleColor(ImGuiCol_ButtonHovered, aOn and { 0.20, 0.72, 0.30, 1.0 } or { 0.82, 0.26, 0.26, 1.0 });
+            end
+            if imgui.Button((aOn and 'Auto-craft: ON' or 'Auto-craft: OFF') .. '##craftauto', { 118, 22 }) and cwok then
+                cw.autoEquip = not aOn;
+            end
+            if tinted then imgui.PopStyleColor(2); end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('When ON, a detected synth equips your craft gear automatically\n(committed Craft_<Skill> set if present, else the gear ladders).\nSession-only; also /dl craft auto on|off.');
+            end
+            -- Crafting-mode picker stays on the right edge.
+            imgui.SameLine(math.max(320, winW - 220));
             imgui.TextColored(COL_DIM, 'Crafting mode:');
             imgui.SameLine(0, 4);
             imgui.PushItemWidth(92);
@@ -1036,17 +1078,6 @@ local function renderAutomations(noHeader)
                 imgui.EndCombo();
             end
             imgui.PopItemWidth();
-            imgui.SameLine(0, 10);
-            local aOn = cwok and (cw.autoEquip == true);
-            local tinted = aOn and ImGuiCol_Button ~= nil;
-            if tinted then imgui.PushStyleColor(ImGuiCol_Button, { 0.20, 0.55, 0.25, 1.0 }); end
-            if imgui.Button((aOn and 'Auto-craft: ON' or 'Auto-craft: OFF') .. '##craftauto', { 118, 22 }) and cwok then
-                cw.autoEquip = not aOn;
-            end
-            if tinted then imgui.PopStyleColor(1); end
-            if imgui.IsItemHovered() then
-                imgui.SetTooltip('When ON, a detected synth equips your craft gear automatically\n(committed Craft_<Skill> set if present, else the gear ladders).\nSession-only; also /dl craft auto on|off.');
-            end
         end
         imgui.Spacing();
         local availW = imgui.GetContentRegionAvail();
@@ -1099,7 +1130,7 @@ local function renderAutomations(noHeader)
             imgui.TextColored(COL_HEADER, 'Rings');
             autoItemLine('Artisans Ring');
             autoItemLine('Artisans Ring +1');
-            imgui.TextColored(COL_DIM, '- - - - -   (anti-HQ / "NQ only")');
+            imgui.TextColored(COL_DIM, '- - - - - - - -');
             for _, cr in ipairs(CRAFT_UI.order) do autoItemLine(CRAFT_UI.nqring[cr]); end
             imgui.EndGroup();
             imgui.SameLine(colW * 2);
@@ -1116,9 +1147,19 @@ local function renderAutomations(noHeader)
             for i, cr in ipairs(CRAFT_UI.order) do
                 local sel = (CRAFT_UI.selected == cr);
                 imgui.PushStyleColor(ImGuiCol_ChildBg, sel and { 0.42, 0.36, 0.16, 1.0 } or { 0.10, 0.10, 0.13, 1.0 });
-                imgui.BeginChild('##craftsel_' .. cr, { 26, 26 }, true, ImGuiWindowFlags_NoScrollbar or 0);
-                local rec = (deps.lookupByName ~= nil) and deps.lookupByName(CRAFT_UI.torque[cr]) or nil;
-                if type(deps.renderIcon) == 'function' then deps.renderIcon(rec and rec.Id or nil, 18); end
+                imgui.BeginChild('##craftsel_' .. cr, { 28, 28 }, true, ImGuiWindowFlags_NoScrollbar or 0);
+                local tex = CRAFT_UI.texture(cr);
+                local drew = false;
+                if tex ~= nil then
+                    drew = pcall(function()
+                        local ffi = require('ffi');
+                        imgui.Image(tonumber(ffi.cast('uint32_t', tex)), { 22, 22 });
+                    end);
+                end
+                if not drew and type(deps.renderIcon) == 'function' then   -- glyph missing: item icon
+                    local rec = (deps.lookupByName ~= nil) and deps.lookupByName(CRAFT_UI.torque[cr]) or nil;
+                    deps.renderIcon(rec and rec.Id or nil, 20);
+                end
                 imgui.EndChild();
                 imgui.PopStyleColor(1);
                 if imgui.IsItemClicked() then CRAFT_UI.selected = cr; end
