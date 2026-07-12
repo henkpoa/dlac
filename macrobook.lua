@@ -119,6 +119,41 @@ function M.pump()
     end
 end
 
+-- ---------------------------------------------------------------------------
+-- Macro book NAMES, read from the game's own title files: USER/<serverid hex>/
+-- mcr.ttl (books 1-20) and mcr_2.ttl (21-40). Format (field-decoded): a
+-- 24-byte header, then twenty 16-byte null-padded titles. The CatsEyeXI
+-- bundle keeps the game at <Ashita>\..\Game\FINAL FANTASY XI\ -- when that
+-- (or the files) is absent, the picker just shows numbers.
+-- ---------------------------------------------------------------------------
+local _namesAt, _names = 0, nil;
+local function bookNames()
+    if _names ~= nil and os.clock() < _namesAt then return _names; end
+    _namesAt = os.clock() + 30;
+    _names = {};
+    pcall(function()
+        local id = AshitaCore:GetMemoryManager():GetParty():GetMemberServerId(0);
+        if id == nil or id == 0 then return; end
+        local userDir = string.format('%s..\\Game\\FINAL FANTASY XI\\USER\\%x\\',
+            AshitaCore:GetInstallPath(), id);
+        for page, fname in ipairs({ 'mcr.ttl', 'mcr_2.ttl' }) do
+            local f = io.open(userDir .. fname, 'rb');
+            if f ~= nil then
+                local raw = f:read('*a');
+                f:close();
+                for i = 0, 19 do
+                    local rec = raw:sub(0x19 + i * 16, 0x18 + (i + 1) * 16);
+                    if rec ~= nil then
+                        local nm = rec:gsub('%z.*$', ''):gsub('[^\32-\126]', '?');
+                        if nm ~= '' then _names[(page - 1) * 20 + i + 1] = nm; end
+                    end
+                end
+            end
+        end
+    end);
+    return _names;
+end
+
 -- Header-button label: 'Macro 5-1' when managed for the current job, 'Macro --'
 -- when not (or before login).
 function M.label()
@@ -132,19 +167,28 @@ end
 
 function M.open() _openReq = true; end
 
--- A [-] n [+] stepper row; returns the (possibly changed) value.
-local function stepper(label, v, min, max)
-    imgui.Text(label); imgui.SameLine(56);
-    if imgui.SmallButton('-##mb' .. label) then v = v - 1; end
-    imgui.SameLine(0, 6); imgui.Text(string.format('%2d', v)); imgui.SameLine(0, 6);
-    if imgui.SmallButton('+##mb' .. label) then v = v + 1; end
-    if v < min then v = min; end
-    if v > max then v = max; end
-    return v;
-end
-
 -- Popup body. OpenPopup/BeginPopup resolve ids per window, so the caller's
 -- button only sets a flag (M.open) and this runs in the window scope each frame.
+-- Books 1-40 as TWO click rows of 20 (the game's two pages side by side), sets
+-- 1-10 as one row -- a click saves AND applies on the spot, no steppers, no
+-- waiting for a profile load. Book names ride the buttons' tooltips.
+local GOLD = { 0.42, 0.36, 0.16, 1.0 };
+local function pickGrid(prefix, count, perRow, current, names)
+    local picked = nil;
+    for n = 1, count do
+        local on = (n == current);
+        if on then imgui.PushStyleColor(ImGuiCol_Button, GOLD); end
+        if imgui.Button(tostring(n) .. '##' .. prefix .. n, { 26, 20 }) then picked = n; end
+        if on then imgui.PopStyleColor(1); end
+        if imgui.IsItemHovered() then
+            local nm = (names ~= nil) and names[n] or nil;
+            imgui.SetTooltip((nm ~= nil) and string.format('%d: %s', n, nm) or tostring(n));
+        end
+        if n % perRow ~= 0 and n < count then imgui.SameLine(0, 3); end
+    end
+    return picked;
+end
+
 function M.renderPopup()
     if not hasImgui then return; end
     if _openReq then _openReq = false; imgui.OpenPopup('##dlac_macrobook'); end
@@ -167,15 +211,24 @@ function M.renderPopup()
         imgui.EndPopup();
         return;
     end
+    local names = bookNames();
+    local curBook, curSet = tonumber(e.book) or 1, tonumber(e.set) or 1;
     imgui.Text(string.format('Macro palette for %s', job));
-    imgui.TextColored(COL_DIM, 'Saved per job; applied on login and job change.');
+    imgui.SameLine(0, 10);
+    local curName = names[curBook];
+    imgui.TextColored(COL_DIM, string.format('book %d%s -- set %d   (applied NOW and on every login / job change)',
+        curBook, (curName ~= nil) and (' "' .. curName .. '"') or '', curSet));
     imgui.Spacing();
-    local b = stepper('Book', tonumber(e.book) or 1, 1, 20);
-    local s = stepper('Set',  tonumber(e.set)  or 1, 1, 10);
-    if b ~= e.book or s ~= e.set then
-        e.book, e.set = b, s;
+    imgui.TextColored(COL_DIM, 'Book  (hover for its name):');
+    local pb = pickGrid('mbk', 40, 20, curBook, names);
+    imgui.Spacing();
+    imgui.TextColored(COL_DIM, 'Set:');
+    local ps = pickGrid('mst', 10, 10, curSet, nil);
+    if pb ~= nil or ps ~= nil then
+        e.book = pb or curBook;
+        e.set  = ps or curSet;
         save();
-        apply(job);   -- flip the palette live so the change is visible immediately
+        apply(job);   -- on the spot -- never wait for a profile load
     end
     imgui.Spacing();
     if imgui.SmallButton('Stop managing##mboff') then

@@ -1393,7 +1393,7 @@ local function renderHeaderButtons()
     local needSetup = (jobSetupState() ~= 'ok');
     local btns = {};
     if macrob ~= nil then
-        btns[#btns+1] = { l = macrob.label(), w = 92,
+        btns[#btns+1] = { l = macrob.label(), w = 108,   -- 'Macro 20-10' must not clip
           tip = 'Macro book & set for the CURRENT job -- saved per job and applied\nautomatically on login and every job change (replaces the /macro lines\npeople put in profile OnLoad). Jobs you don\'t manage are never touched.',
           fn = function() macrob.open(); end };
     end
