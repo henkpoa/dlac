@@ -69,6 +69,54 @@ function M.lookup(crystal, ings)
 end
 
 -- ---------------------------------------------------------------------------
+-- Tier / binding-craft calc (Henrik): HQ tiers break when your skill exceeds
+-- the recipe cap by >11 / >31 / >51. With SUBCRAFTS the craft with the
+-- SMALLEST margin limits the tier -- gear should boost THAT craft ("enough
+-- clothcraft but not bonecraft -> wear bonecraft gear"). Recomputed per synth.
+-- ---------------------------------------------------------------------------
+
+-- Ashita craftskills_t order (plugins/sdk/ffxi/player.h): GetCraftSkill(sid).
+local CRAFT_SID = { Woodworking = 1, Smithing = 2, Goldsmithing = 3, Clothcraft = 4,
+                    Leathercraft = 5, Bonecraft = 6, Alchemy = 7, Cooking = 8 };
+
+function M.playerCraftSkill(craft)
+    local v = nil;
+    pcall(function()
+        local sid = CRAFT_SID[craft];
+        if sid == nil then return; end
+        v = AshitaCore:GetMemoryManager():GetPlayer():GetCraftSkill(sid):GetSkill();
+    end);
+    return v;
+end
+
+-- HQ tier for a skill margin over the recipe cap (0 = none, 3 = best odds).
+function M.tierOf(margin)
+    if margin == nil then return nil; end
+    if margin > 51 then return 3; end
+    if margin > 31 then return 2; end
+    if margin > 11 then return 1; end
+    return 0;
+end
+
+-- skills = the recipe's full requirement map (crafts.lua `skills`, present on
+-- subcraft recipes). getSkill injectable for tests. Returns the binding craft
+-- name + its margin, or nil when skills are absent/unreadable.
+function M.bindingCraft(skills, getSkill)
+    getSkill = getSkill or M.playerCraftSkill;
+    local best, bestMargin = nil, nil;
+    for craft, req in pairs(skills or {}) do
+        local have = getSkill(craft);
+        if have ~= nil then
+            local margin = have - (tonumber(req) or 0);
+            if bestMargin == nil or margin < bestMargin then
+                best, bestMargin = craft, margin;
+            end
+        end
+    end
+    return best, bestMargin;
+end
+
+-- ---------------------------------------------------------------------------
 -- session state + Ashita glue
 -- ---------------------------------------------------------------------------
 
@@ -179,22 +227,36 @@ function M.onSynth(crystal, ings, clock)
     local skill = rec and rec.skill or 'unknown';
     M.counts[skill] = (M.counts[skill] or 0) + 1;
     local prev = M.current;
+    -- Gear should boost the BINDING craft: on subcraft recipes the smallest
+    -- player-skill margin limits the HQ tier (recomputed every synth).
+    local binding, margin = nil, nil;
+    if rec ~= nil and type(rec.skills) == 'table' then
+        binding, margin = M.bindingCraft(rec.skills);
+    end
+    local target = binding or skill;
     M.current = {
         skill = skill, lv = rec and rec.lv or nil,
         desynth = rec and rec.desynth or nil,
+        binding = binding, margin = margin, target = target,
         key = M.key(crystal, ings), at = clock or os.clock(),
     };
     if rec ~= nil then
-        if prev == nil or prev.skill ~= skill then     -- announce/equip on craft change only
-            say(string.format('synth detected: %s (recipe lv %d%s).',
-                skill, rec.lv or 0, rec.desynth and ', desynth' or ''));
-            -- Publish the active craft as the dlac-owned 'craft' cycle value. The
+        local prevTarget = prev and (prev.target or prev.skill) or nil;
+        if prevTarget ~= target then               -- announce/equip on TARGET change only
+            local note = '';
+            if binding ~= nil and binding ~= skill then
+                note = string.format(' -- binding subcraft: %s (margin %+d, tier %d)',
+                    binding, margin or 0, M.tierOf(margin) or 0);
+            end
+            say(string.format('synth detected: %s (recipe lv %d%s)%s.',
+                skill, rec.lv or 0, rec.desynth and ', desynth' or '', note));
+            -- Publish the TARGET craft as the dlac-owned 'craft' cycle value. The
             -- chat-command bus reaches BOTH Lua states, so the engine's
             -- dlac:AutoCraft virtuals resolve for this craft in trigger sets too.
             pcall(function()
-                AshitaCore:GetChatManager():QueueCommand(1, '/dl mode craft ' .. tostring(skill));
+                AshitaCore:GetChatManager():QueueCommand(1, '/dl mode craft ' .. tostring(target));
             end);
-            if M.autoEquip then pcall(function() M.equipCraftSet(skill); end); end
+            if M.autoEquip then pcall(function() M.equipCraftSet(target); end); end
         end
     elseif not _saidUnknown[M.current.key] then        -- each unknown once, with the key
         _saidUnknown[M.current.key] = true;

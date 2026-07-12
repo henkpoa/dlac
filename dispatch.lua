@@ -546,9 +546,12 @@ local function resolveVirtual(marker, ctx, slot)
         -- the next ordinary trigger event redresses you (no flashing).
         local craftV = ctx.craftOverride or M.modes['craft'];
         if type(craftV) ~= 'string' then return nil, 'craft mode off (/dl mode craft <Skill>)'; end
-        local goal = 'hq';
+        local goal = 'hq';                             -- goals: hq (default) / nq / skillup
         local g = ctx.goalOverride or M.modes['craftgoal'];
-        if type(g) == 'string' and string.lower(g) == 'nq' then goal = 'nq'; end
+        if type(g) == 'string' then
+            local lg = string.lower(g);
+            if lg == 'nq' or lg == 'skillup' then goal = lg; end
+        end
         local slotKey = string.lower(tostring(slot or ''));
         local bySlot = (type(a.craft) == 'table') and a.craft[slotKey] or nil;
         local perCraft = nil;

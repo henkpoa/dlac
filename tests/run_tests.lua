@@ -751,7 +751,27 @@ check('V7 craftOverride resolves without the mode',
     dispatchM._resolveVirtual('dlac:AutoCraft', { player = { MainJobSync = 75 }, craftOverride = 'Alchemy' }, 'Neck'), 'Alchemists Torque');
 check('V8 slot without craft gear -> unresolved',
     dispatchM._resolveVirtual('dlac:AutoCraft', { player = { MainJobSync = 75 }, craftOverride = 'Alchemy' }, 'Body'), nil);
+-- third goal: skillup ladders resolve like the others (strictly per-goal)
+dispatchM._autoOverride.craft.neck.Alchemy.skillup = { { name = 'Shapers Shawl', score = 250, level = 1 } };
+check('V9 skillup goal picks skillup ladder',
+    dispatchM._resolveVirtual('dlac:AutoCraft', { player = { MainJobSync = 75 }, craftOverride = 'Alchemy', goalOverride = 'skillup' }, 'Neck'), 'Shapers Shawl');
 dispatchM._autoOverride = nil;
+
+-- ---------------------------------------------------------------------------
+-- W. craftwatch tier / binding-craft calc: HQ tiers break at margins >11/31/51;
+--    on subcraft recipes the SMALLEST margin binds (Henrik: enough clothcraft
+--    but not bonecraft -> boost bonecraft).
+-- ---------------------------------------------------------------------------
+check('W1 tier 0 at margin 11',  craftwatch.tierOf(11), 0);
+check('W2 tier 1 above 11',      craftwatch.tierOf(12), 1);
+check('W3 tier 2 above 31',      craftwatch.tierOf(32), 2);
+check('W4 tier 3 above 51',      craftwatch.tierOf(52), 3);
+check('W5 nil margin -> nil',    craftwatch.tierOf(nil), nil);
+local fakeSkill = function(cr) return ({ Clothcraft = 80, Bonecraft = 40 })[cr]; end
+local bCr, bMg = craftwatch.bindingCraft({ Clothcraft = 60, Bonecraft = 35 }, fakeSkill);
+check('W6 binding = smallest margin craft', bCr, 'Bonecraft');
+check('W7 binding margin', bMg, 5);
+check('W8 no skills -> nil', (craftwatch.bindingCraft(nil, fakeSkill)), nil);
 
 -- ---------------------------------------------------------------------------
 -- verdict

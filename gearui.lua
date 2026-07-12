@@ -2346,6 +2346,7 @@ do
                 return _modeSetRefs(n, s);
             end,
             renderIcon = renderIcon,                                  -- automation detail views (item icons)
+            itemTooltip = renderItemTooltip,                          -- hover cards on automation gear lines
             setsRoot = profsets.getSetsRoot,                          -- gearcheck: set contents for the audit
         });
     else

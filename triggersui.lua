@@ -661,6 +661,7 @@ local function autoCommit()
                and (type(deps.haveInBags) ~= 'function' or deps.haveInBags(rec)) then
                 local succ  = tonumber(st.SynthSuccessRate) or 0;
                 local hqr   = tonumber(st.SynthHQRate) or 0;
+                local gain  = tonumber(st.SynthSkillGain) or 0;
                 local mat   = tonumber(st.SynthMaterialLoss) or 0;
                 local consv = tonumber(st.ConserveIngredient) or 0;
                 local dup = (sl == 'Ear' or sl == 'Ring') and type(counts) == 'table'
@@ -668,12 +669,15 @@ local function autoCommit()
                 for _, cr in ipairs(CRAFTS) do
                     local skill = tonumber(st[cr .. 'Skill']) or 0;
                     local anti  = tonumber(st['AntiHQ' .. cr]) or 0;
-                    -- hq: skill raises quality tiers, HQ+ is the point; an
-                    -- anti-HQ piece would BLOCK the goal outright.
-                    local hqScore = (anti > 0) and 0 or (hqr * 10 + skill * 3 + succ);
+                    -- hq (Henrik): "prioritize Skill gear to break tiers" --
+                    -- craft skill first, HQ+ second; anti-HQ BLOCKS the goal.
+                    local hqScore = (anti > 0) and 0 or (skill * 10 + hqr * 5 + succ);
                     -- nq: the HQ block is the point; skill/success still help.
                     local nqScore = anti * 100 + skill * 3 + succ * 2 + mat + consv;
-                    for goal, score in pairs({ hq = hqScore, nq = nqScore }) do
+                    -- skillup: "skill up items over skill+" -- SynthSkillGain
+                    -- gear first, raw craft skill second.
+                    local suScore = gain * 10 + skill * 2 + succ;
+                    for goal, score in pairs({ hq = hqScore, nq = nqScore, skillup = suScore }) do
                         if score > 0 then
                             bySlot[sl] = bySlot[sl] or {};
                             bySlot[sl][cr] = bySlot[sl][cr] or {};
@@ -785,7 +789,7 @@ local function autoCommit()
         table.sort(crs);
         for _, cr in ipairs(crs) do
             local parts = {};
-            for _, goal in ipairs({ 'hq', 'nq' }) do
+            for _, goal in ipairs({ 'hq', 'nq', 'skillup' }) do
                 local lad = craftBest[k][cr][goal];
                 if lad ~= nil then
                     local rungs = {};
@@ -890,6 +894,10 @@ local function autoItemLine(name)
         return;
     end
     imgui.TextColored(owned and GREEN_OWNED or COL_DIM, esc(name));
+    -- The standard item card on hover, like every other gear surface.
+    if rec ~= nil and imgui.IsItemHovered() and type(deps.itemTooltip) == 'function' then
+        pcall(deps.itemTooltip, rec);
+    end
 end
 
 local function autoColumn(title, names)
@@ -906,9 +914,10 @@ end
 local CRAFT_UI = {
     order   = { 'Woodworking', 'Smithing', 'Goldsmithing', 'Clothcraft',
                 'Leathercraft', 'Bonecraft', 'Alchemy', 'Cooking' },
-    short   = { Woodworking = 'Wood', Smithing = 'Smith', Goldsmithing = 'Gold',
-                Clothcraft = 'Cloth', Leathercraft = 'Leather', Bonecraft = 'Bone',
-                Alchemy = 'Alch', Cooking = 'Cook' },
+    guild   = { Woodworking = 'Carpenters Guild', Smithing = 'Blacksmiths Guild',
+                Goldsmithing = 'Goldsmiths Guild', Clothcraft = 'Weavers Guild',
+                Leathercraft = 'Tanners Guild', Bonecraft = 'Boneworkers Guild',
+                Alchemy = 'Alchemists Guild', Cooking = 'Culinarians Guild' },
     torque  = { Woodworking = 'Carvers Torque', Smithing = 'Smithys Torque',
                 Goldsmithing = 'Goldsm. Torque', Clothcraft = 'Weavers Torque',
                 Leathercraft = 'Tanners Torque', Bonecraft = 'Bone. Torque',
@@ -948,7 +957,8 @@ function CRAFT_UI.items(cr)
         if type(deps.allEquipList) ~= 'function' then return; end
         for _, rec in ipairs(deps.allEquipList() or {}) do
             local st = rec.Stats;
-            if type(st) == 'table' and rec.Name ~= nil then
+            -- the craft's own torque already sits in the matrix above -- skip it
+            if type(st) == 'table' and rec.Name ~= nil and rec.Name ~= CRAFT_UI.torque[cr] then
                 local v = tonumber(st[cr .. 'Skill']) or 0;
                 if v > 0 then
                     local nAll = 0;
@@ -996,6 +1006,48 @@ local function renderAutomations(noHeader)
 
     if auto.view ~= nil then                            -- DETAIL views
         if imgui.Button('< Automations##autoback', { 0, 22 }) then auto.view = nil; end
+        if auto.view == 'craft' then
+            -- Header controls (Henrik: right side, same row as the back button):
+            -- crafting-mode picker + the auto-craft toggle.
+            local cwok, cw = pcall(require, 'dlac\\craftwatch');
+            cwok = cwok and type(cw) == 'table';
+            local dok, dsp2 = pcall(require, 'dlac\\dispatch');
+            local goalV = (dok and type(dsp2) == 'table' and type(dsp2.modes) == 'table')
+                and dsp2.modes['craftgoal'] or nil;
+            goalV = (type(goalV) == 'string') and string.lower(goalV) or 'hq';
+            local GOALS = {
+                { 'hq', 'HQ', 'Prioritizes craft-skill gear to break HQ tiers (then HQ+ rate).' },
+                { 'nq', 'NQ', 'Wears the anti-HQ guild rings to guarantee NQ when possible\n(materials you do NOT want HQ\'d).' },
+                { 'skillup', 'Skill-Up', 'Prioritizes Synth Skill+ (skill-up rate) items over raw craft skill.' },
+            };
+            local goalLbl = 'HQ';
+            for _, gd in ipairs(GOALS) do if gd[1] == goalV then goalLbl = gd[2]; end end
+            imgui.SameLine(math.max(300, imgui.GetWindowWidth() - 330));
+            imgui.TextColored(COL_DIM, 'Crafting mode:');
+            imgui.SameLine(0, 4);
+            imgui.PushItemWidth(92);
+            if imgui.BeginCombo('##craftgoalsel', goalLbl) then
+                for _, gd in ipairs(GOALS) do
+                    if imgui.Selectable(gd[2], goalV == gd[1]) then
+                        pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl mode craftgoal ' .. gd[1]); end);
+                    end
+                    if imgui.IsItemHovered() then imgui.SetTooltip(gd[3]); end
+                end
+                imgui.EndCombo();
+            end
+            imgui.PopItemWidth();
+            imgui.SameLine(0, 10);
+            local aOn = cwok and (cw.autoEquip == true);
+            local tinted = aOn and ImGuiCol_Button ~= nil;
+            if tinted then imgui.PushStyleColor(ImGuiCol_Button, { 0.20, 0.55, 0.25, 1.0 }); end
+            if imgui.Button((aOn and 'Auto-craft: ON' or 'Auto-craft: OFF') .. '##craftauto', { 118, 22 }) and cwok then
+                cw.autoEquip = not aOn;
+            end
+            if tinted then imgui.PopStyleColor(1); end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('When ON, a detected synth equips your craft gear automatically\n(committed Craft_<Skill> set if present, else the gear ladders).\nSession-only; also /dl craft auto on|off.');
+            end
+        end
         imgui.Spacing();
         local availW = imgui.GetContentRegionAvail();
         if type(availW) ~= 'number' or availW < 400 then availW = 800; end
@@ -1037,15 +1089,17 @@ local function renderAutomations(noHeader)
             local colW = math.max(240, math.floor(availW / 3));
             imgui.BeginGroup();
             imgui.TextColored(COL_HEADER, 'Torques');
-            autoItemLine('Artisans Torque'); imgui.SameLine(0, 14); autoItemLine('Artisans Torque +1');
+            autoItemLine('Artisans Torque');
+            autoItemLine('Artisans Torque +1');
             imgui.TextColored(COL_DIM, '- - - - - - - -');
             for _, cr in ipairs(CRAFT_UI.order) do autoItemLine(CRAFT_UI.torque[cr]); end
             imgui.EndGroup();
             imgui.SameLine(colW);
             imgui.BeginGroup();
             imgui.TextColored(COL_HEADER, 'Rings');
-            autoItemLine('Artisans Ring'); imgui.SameLine(0, 14); autoItemLine('Artisans Ring +1');
-            imgui.TextColored(COL_DIM, '- - - - - - - -   (anti-HQ / "NQ only")');
+            autoItemLine('Artisans Ring');
+            autoItemLine('Artisans Ring +1');
+            imgui.TextColored(COL_DIM, '- - - - -   (anti-HQ / "NQ only")');
             for _, cr in ipairs(CRAFT_UI.order) do autoItemLine(CRAFT_UI.nqring[cr]); end
             imgui.EndGroup();
             imgui.SameLine(colW * 2);
@@ -1053,17 +1107,23 @@ local function renderAutomations(noHeader)
             imgui.Spacing();
             imgui.Separator();
             imgui.Spacing();
-            -- Craft selector, one row left-to-right (item icons stand in for the
-            -- game's synth-skill glyphs, which the item-icon API can't reach).
+            -- Craft selector: icons only, one row left-to-right (gold box =
+            -- selected, the slot-grid pattern). Item icons stand in for the
+            -- synth-skill glyphs until PNG assets land; the tooltip names the
+            -- craft and guild for anyone unsure.
             imgui.TextColored(COL_HEADER, 'Craft-specific gear:');
             imgui.SameLine(0, 10);
             for i, cr in ipairs(CRAFT_UI.order) do
+                local sel = (CRAFT_UI.selected == cr);
+                imgui.PushStyleColor(ImGuiCol_ChildBg, sel and { 0.42, 0.36, 0.16, 1.0 } or { 0.10, 0.10, 0.13, 1.0 });
+                imgui.BeginChild('##craftsel_' .. cr, { 26, 26 }, true, ImGuiWindowFlags_NoScrollbar or 0);
                 local rec = (deps.lookupByName ~= nil) and deps.lookupByName(CRAFT_UI.torque[cr]) or nil;
-                if type(deps.renderIcon) == 'function' then deps.renderIcon(rec and rec.Id or nil, 16); end
-                local lbl = (CRAFT_UI.selected == cr) and ('[' .. CRAFT_UI.short[cr] .. ']') or CRAFT_UI.short[cr];
-                if imgui.SmallButton(lbl .. '##craftsel' .. i) then CRAFT_UI.selected = cr; end
-                if imgui.IsItemHovered() then imgui.SetTooltip(cr); end
-                if i < #CRAFT_UI.order then imgui.SameLine(0, 6); end
+                if type(deps.renderIcon) == 'function' then deps.renderIcon(rec and rec.Id or nil, 18); end
+                imgui.EndChild();
+                imgui.PopStyleColor(1);
+                if imgui.IsItemClicked() then CRAFT_UI.selected = cr; end
+                if imgui.IsItemHovered() then imgui.SetTooltip(cr .. '  (' .. CRAFT_UI.guild[cr] .. ')'); end
+                if i < #CRAFT_UI.order then imgui.SameLine(0, 4); end
             end
             imgui.Spacing();
             local selCr = CRAFT_UI.selected;
