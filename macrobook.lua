@@ -226,15 +226,21 @@ function M.renderPopup()
     end
     local names = bookNames();
     local curBook, curSet = tonumber(e.book) or 1, tonumber(e.set) or 1;
+    -- SHORT stacked header -- one long title line was what stretched the popup
+    -- to quadruple the columns' width (field report).
     imgui.Text(string.format('Macro palette for %s', job));
-    imgui.SameLine(0, 10);
     local curName = names[curBook];
-    imgui.TextColored(COL_DIM, string.format('book %d%s -- set %d   (applied NOW and on every login / job change)',
+    imgui.TextColored(COL_DIM, string.format('book %d%s  --  set %d',
         curBook, (curName ~= nil) and (' "' .. curName .. '"') or '', curSet));
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Applied immediately on click, and again on every login / job change.');
+    end
     imgui.Spacing();
-    -- the game-list look: tight rows
+    -- the game-list look: tight rows; nudged right so the columns sit centered
+    -- over the (slightly wider) set row below
     local styled = (ImGuiStyleVar_ItemSpacing ~= nil);
     if styled then imgui.PushStyleVar(ImGuiStyleVar_ItemSpacing, { 3, 2 }); end
+    pcall(function() imgui.SetCursorPosX(imgui.GetCursorPosX() + 16); end);
     local p1 = bookColumn(1, 20, curBook, names);
     imgui.SameLine(0, 6);
     local p2 = bookColumn(21, 40, curBook, names);
