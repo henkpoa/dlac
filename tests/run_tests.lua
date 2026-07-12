@@ -668,6 +668,24 @@ check('T20 repeat synth: no re-equip', #craftCmds, 0);
 craftwatch.autoEquip = false;
 
 -- ---------------------------------------------------------------------------
+-- U. Set-entry name resolution -- case-insensitive fallback + quiet-once warn.
+--    Field case (SMN "test" commit): static-migrated sets say "Solid wand" but
+--    gear.lua's client name is "Solid Wand"; every rebuild flooded chat with
+--    per-occurrence "Unable to find" lines and the entries flattened to nothing.
+-- ---------------------------------------------------------------------------
+TEST_PLAYER = { MainJob = 'SMN', SubJob = 'WHM', MainJobSync = 75, SubJobSync = 37 };
+package.loaded['dlac\\gear'].NameToObject['Solid Wand'] =
+    { Name = 'Solid Wand', Level = 20, Type = 'Club', OneHanded = true };
+utils._resetNameIndex();
+AshitaCore = ashitaWithDW(false);
+local sCase = utils.BuildDynamicSets({ Dynamic = { Idle = { Main = { 'solid wand' } } } });
+check('U1 case-insensitive name resolves', sCase.Idle and sCase.Idle.Main, 'Solid Wand');
+local sWrap = utils.BuildDynamicSets({ Dynamic = { Idle = { Main = { { gear = 'SOLID WAND', minLevel = 10 } } } } });
+check('U2 wrapper ref resolves case-blind', sWrap.Idle and sWrap.Idle.Main, 'Solid Wand');
+local sMiss = utils.BuildDynamicSets({ Dynamic = { Idle = { Main = { 'No Such Item' } } } });
+check('U3 missing name flattens empty, no error', sMiss.Idle and sMiss.Idle.Main, nil);
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then

@@ -243,6 +243,35 @@ function M.subSlotAllowed(subRec, mainRec, ctx)
     return true;
 end
 
+-- Resolve a set-entry NAME to its gear.lua record. Exact match first, then
+-- case-insensitive: hand-written / static-migrated sets say "Solid wand" while
+-- the client names in gear.lua read "Solid Wand" -- a rebuild must not fail on
+-- caps. The lowercase index is built lazily once per Lua state (gear.lua is
+-- static until a LAC reload rebuilds this state anyway; tests use _resetNameIndex).
+local _lcIndex = nil;
+local function resolveGearName(name)
+    local hit = gear.NameToObject[name];
+    if hit ~= nil then return hit; end
+    if _lcIndex == nil then
+        _lcIndex = {};
+        for k, v in pairs(gear.NameToObject) do
+            if type(k) == 'string' then _lcIndex[string.lower(k)] = v; end
+        end
+    end
+    return _lcIndex[string.lower(name)];
+end
+function M._resetNameIndex() _lcIndex = nil; end
+
+-- One warning per unique missing name per state: a commit hot-swap rebuilds
+-- EVERY dynamic set, and per-occurrence prints flooded the chat log (field
+-- case: 30+ lines from three migrated SMN sets).
+local _warnedMissing = {};
+local function warnMissingGear(name)
+    if _warnedMissing[name] then return; end
+    _warnedMissing[name] = true;
+    print('[dlac] set entry "' .. tostring(name) .. '" is not in the gear table -- typo, or not yet indexed (/dl sync).');
+end
+
 function M.BuildDynamicSets(sets)
     local player = gData.GetPlayer();
     
@@ -320,7 +349,7 @@ function M.BuildDynamicSets(sets)
                 -- item wrapped differently in two sets leaked fields between them.)
                 if type(gearVarObject) == "table" and gearVarObject.gear ~= nil and gearVarObject.Name == nil then
                     local ref = gearVarObject.gear;
-                    if type(ref) == "string" then ref = gear.NameToObject[ref]; end
+                    if type(ref) == "string" then ref = resolveGearName(ref); end
                     local merged = {};
                     if type(ref) == "table" then
                         for k, v in pairs(ref) do merged[k] = v; end
@@ -333,10 +362,9 @@ function M.BuildDynamicSets(sets)
 
                 local gearObject;
                 if type(gearVarObject) == "string" then
-                    if gear.NameToObject[gearVarObject] ~= nil then
-                        gearObject = gear.NameToObject[gearVarObject];
-                    else
-                        print ("Unable to find " .. tostring(gearVarObject) .. " in gear table.");
+                    gearObject = resolveGearName(gearVarObject);
+                    if gearObject == nil then
+                        warnMissingGear(gearVarObject);
                         return;
                     end
                 else
