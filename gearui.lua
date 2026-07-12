@@ -2870,8 +2870,24 @@ local function renderSetBuilder(job, level)
             if rec ~= nil and imgui.IsItemHovered() then renderItemTooltip(rec); end
             imgui.SameLine(0, 10);
             imgui.TextColored(COL_LEVEL, string.format('Lv%2d', rec and rec.Level or 0));
-            if it.minLevel ~= nil then imgui.SameLine(0, 8); imgui.TextColored(COL_DIM, 'min' .. tostring(it.minLevel)); end
-            if it.maxLevel ~= nil then imgui.SameLine(0, 8); imgui.TextColored(COL_DIM, 'max' .. tostring(it.maxLevel)); end
+            -- Level-range badge: the whole plan must be readable at a glance when one
+            -- item spans several rows ([Lv 30-54] ... [Lv 75+]). Green = the rule
+            -- matches your current level, dim = this row is dormant right now.
+            if it.minLevel ~= nil or it.maxLevel ~= nil then
+                imgui.SameLine(0, 8);
+                local rng = (it.minLevel ~= nil and it.maxLevel ~= nil)
+                        and (tostring(it.minLevel) .. '-' .. tostring(it.maxLevel))
+                    or (it.minLevel ~= nil) and (tostring(it.minLevel) .. '+')
+                    or ('-' .. tostring(it.maxLevel));
+                local inRange = (it.minLevel == nil or level >= it.minLevel)
+                            and (it.maxLevel == nil or level <= it.maxLevel);
+                imgui.TextColored(inRange and COL_JOBS or COL_DIM, '[Lv ' .. rng .. ']');
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip(inRange
+                        and 'Behaviour level rule -- matches your current level, so this row is in play.'
+                        or  'Behaviour level rule -- outside your current level; this row is dormant until then.');
+                end
+            end
             if it.mode ~= nil then
                 imgui.SameLine(0, 8);
                 imgui.TextColored(entryModeOk(it.mode) and COL_JOBS or COL_DIM, '@' .. fmt.esc(modeTagText(it.mode)));
