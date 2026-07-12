@@ -1399,8 +1399,28 @@ local function renderHeaderButtons()
     end
     if useit ~= nil then
         btns[#btns+1] = { w = 26,
-          tip = 'Teleports: Warp Ring / Provenance Ring / teleport earrings -- click one to\nequip it and use it the moment the game says ready (the /dl w, p, t\ncommands, clickable). Lit = ready, amber = recharging, red = stored, dim = not owned.',
-          render = function()   -- FFXI-themed: the Warp Ring icon IS the button
+          render = function()   -- FFXI-themed: the Warp Ring icon IS the button --
+              -- and while a use is IN FLIGHT it becomes the STOP button: one click
+              -- aborts via the same '/dl w|p|t off' the chat hint names.
+              local pend = nil;
+              pcall(function() pend = (type(useit.pending) == 'function') and useit.pending() or nil; end);
+              if pend ~= nil then
+                  local clicked = imgui.Button('##hdrtpstop', { 26, 22 });
+                  pcall(function()
+                      local x, y = imgui.GetItemRectMin();
+                      if type(x) == 'table' then y = (x[2] or x.y); x = (x[1] or x.x); end
+                      local dl = imgui.GetWindowDrawList();
+                      dl:AddCircleFilled({ x + 13, y + 11 }, 8, imgui.GetColorU32({ 0.85, 0.20, 0.20, 1.0 }), 12);
+                      dl:AddRectFilled({ x + 9, y + 9 }, { x + 17, y + 13 }, imgui.GetColorU32({ 1, 1, 1, 0.95 }));
+                  end);
+                  if imgui.IsItemHovered() then
+                      imgui.SetTooltip(string.format('ABORT %s  (%s)', tostring(pend.name), tostring(pend.cancel)));
+                  end
+                  if clicked and pend.cancel ~= nil then
+                      pcall(function() AshitaCore:GetChatManager():QueueCommand(1, pend.cancel); end);
+                  end
+                  return;
+              end
               local clicked = false;
               local rec = lookupByName('Warp Ring');
               local id = rec and rec.Id or nil;
@@ -1409,6 +1429,9 @@ local function renderHeaderButtons()
                   pcall(function() clicked = imgui.ImageButton(texHandles[id], { 16, 16 }); end);
               else
                   clicked = imgui.Button('Tele##hdrtp', { 26, 22 });   -- no texture: text fallback
+              end
+              if imgui.IsItemHovered() then
+                  imgui.SetTooltip('Teleports: Warp Ring / Provenance Ring / teleport earrings -- click one to\nequip it and use it the moment the game says ready (the /dl w, p, t\ncommands, clickable). Lit = ready, amber = recharging, red = stored, dim = not owned.');
               end
               if clicked then ui._tpOpen = true; end
           end };
@@ -1464,7 +1487,7 @@ local function renderHeaderButtons()
             b.fn();
         end
         if red then imgui.PopStyleColor(1); end
-        if imgui.IsItemHovered() then imgui.SetTooltip(b.tip); end
+        if b.tip ~= nil and imgui.IsItemHovered() then imgui.SetTooltip(b.tip); end
     end
     if macrob ~= nil then pcall(macrob.renderPopup); end
     if useit ~= nil then
@@ -3631,18 +3654,39 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
             ui._tpOpenT = ui._tpOpenT or { true };
             ui._tpOpenT[1] = true;
             if imgui.Begin('##dlac_tpfloat', ui._tpOpenT, fl) then
+                local pend = nil;
+                pcall(function() pend = (type(useit.pending) == 'function') and useit.pending() or nil; end);
                 local clicked = false;
-                local rec = lookupByName('Warp Ring');
-                local id = rec and rec.Id or nil;
-                if id ~= nil and loadItemTexture(id) ~= false and texHandles[id] ~= nil then
-                    pcall(function() clicked = imgui.ImageButton(texHandles[id], { 20, 20 }); end);
+                if pend ~= nil then
+                    -- a use is in flight: the button IS the abort now
+                    clicked = imgui.Button('##tpflstop', { 26, 26 });
+                    pcall(function()
+                        local x, y = imgui.GetItemRectMin();
+                        if type(x) == 'table' then y = (x[2] or x.y); x = (x[1] or x.x); end
+                        local dl = imgui.GetWindowDrawList();
+                        dl:AddCircleFilled({ x + 13, y + 13 }, 10, imgui.GetColorU32({ 0.85, 0.20, 0.20, 1.0 }), 12);
+                        dl:AddRectFilled({ x + 8, y + 11 }, { x + 18, y + 15 }, imgui.GetColorU32({ 1, 1, 1, 0.95 }));
+                    end);
+                    if imgui.IsItemHovered() then
+                        imgui.SetTooltip(string.format('ABORT %s  (%s)', tostring(pend.name), tostring(pend.cancel)));
+                    end
+                    if clicked and pend.cancel ~= nil then
+                        pcall(function() AshitaCore:GetChatManager():QueueCommand(1, pend.cancel); end);
+                        clicked = false;
+                    end
                 else
-                    clicked = imgui.Button('Tele##tpfl', { 36, 26 });
+                    local rec = lookupByName('Warp Ring');
+                    local id = rec and rec.Id or nil;
+                    if id ~= nil and loadItemTexture(id) ~= false and texHandles[id] ~= nil then
+                        pcall(function() clicked = imgui.ImageButton(texHandles[id], { 20, 20 }); end);
+                    else
+                        clicked = imgui.Button('Tele##tpfl', { 36, 26 });
+                    end
+                    if imgui.IsItemHovered() then
+                        imgui.SetTooltip('Teleports  --  drag the edge to move; unpin from the menu.');
+                    end
                 end
                 if clicked then imgui.OpenPopup('##dlac_teleports'); end
-                if imgui.IsItemHovered() then
-                    imgui.SetTooltip('Teleports  --  drag the edge to move; unpin from the menu.');
-                end
                 pcall(renderTeleportsPopup);
                 -- remember where it was dragged; save once the drag settles
                 local px, py = imgui.GetWindowPos();

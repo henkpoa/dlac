@@ -129,6 +129,7 @@ local function start(def, verb, cancelHint)
     queue('/equip ' .. def.slot .. ' "' .. def.name .. '"');
     state = {
         name = def.name, slot = def.slot, stage = 'wait', verb = verb,
+        cancel = cancelHint,                           -- the exact abort command (GUI stop button)
         useAt = os.clock() + def.wait,                 -- fallback timer only
         nextPoll = os.clock() + 1.0,                   -- give /equip a moment to land
         measured = false,
@@ -250,6 +251,14 @@ local BAG_NAMES = { [0] = 'Inventory', [1] = 'Mog Safe', [2] = 'Storage', [3] = 
                     [8] = 'Wardrobe', [9] = 'Mog Safe 2', [10] = 'Wardrobe 2', [11] = 'Wardrobe 3',
                     [12] = 'Wardrobe 4', [13] = 'Wardrobe 5', [14] = 'Wardrobe 6',
                     [15] = 'Wardrobe 7', [16] = 'Wardrobe 8' };
+
+-- The in-flight use, for the GUI: nil when idle, else { name, cancel, stage } --
+-- the Teleports buttons turn into an ABORT control while this is set (clicking
+-- queues .cancel, i.e. '/dl w|p|t off').
+function M.pending()
+    if state == nil then return nil; end
+    return { name = state.name, cancel = state.cancel, stage = state.stage };
+end
 
 local _menuAt, _menuRows = 0, nil;
 function M.menu()
