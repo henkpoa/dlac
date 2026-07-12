@@ -32,7 +32,7 @@ local M = {};
 -- LAC-state copy stamps its version into the modestate mirror; the GUI compares
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code (the seeded file only re-requires when LuaAshitacast itself reloads).
-M.VERSION = 21;   -- 21: '/dl sets reload' hot-swaps committed sets (no LAC reload)
+M.VERSION = 22;   -- 22: hot-swap sandbox survives profile path-building (concat on stubs)
 
 -- Colored [dlac] chat output (chatfmt); plain print when unavailable. The shadowed
 -- `print` re-heads "[dlac] ..."-prefixed lines with the colored header.
@@ -1256,9 +1256,20 @@ local function readJobSets()
     if abbr == nil or abbr == '' then return nil, 'job unknown'; end
     local chunk = loadfile(base .. abbr .. '.lua');
     if chunk == nil then return nil, 'could not open ' .. abbr .. '.lua'; end
-    local STUB; STUB = setmetatable({}, { __index = function() return STUB; end, __call = function() return STUB; end });
+    -- The stub also survives STRING-BUILDING: migrated profiles start with
+    -- package.path = package.path .. AshitaCore:GetInstallPath() .. '...' --
+    -- with AshitaCore stubbed that line must degrade to '', not error (field
+    -- case: 'attempt to concatenate a table value' at WHM.lua:1). `package`
+    -- is blocked too, so the sandboxed run can't append junk to the REAL path.
+    local STUB; STUB = setmetatable({}, {
+        __index = function() return STUB; end,
+        __call = function() return STUB; end,
+        __concat = function() return ''; end,
+        __tostring = function() return ''; end,
+    });
     local BLOCK = { gFunc = true, gState = true, gEquip = true, gSetDisplay = true, gProfile = true,
-                    gSettings = true, AshitaCore = true, ashita = true, print = true, coroutine = true };
+                    gSettings = true, AshitaCore = true, ashita = true, print = true, coroutine = true,
+                    package = true };
     local env = setmetatable({}, {
         __index = function(_, k)
             if BLOCK[k] then return STUB; end
