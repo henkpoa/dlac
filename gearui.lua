@@ -3374,6 +3374,39 @@ local function renderSetsTab(job, level)
         imgui.SetTooltip('Seed a Dynamic set from an old static set (e.g. Idle).\nType a name in New first to rename the target; otherwise it keeps the source name.\nEdit the lists, then Commit to write it into sets.Dynamic.');
     end
     imgui.SameLine(0, 6); imgui.TextColored(COL_DIM, 'seed a Dynamic set from a static one (migration)');
+    -- Faulty legacy statics (items you no longer own, pre-dlac experiments) can
+    -- go: pick, then confirm on the red button. Backed up like every profile
+    -- write; the live LAC table keeps it until the next Reload LAC.
+    imgui.SameLine(0, 16); imgui.TextColored(COL_DIM, 'Delete static:'); imgui.SameLine(0, 4);
+    imgui.PushItemWidth(150);
+    if imgui.BeginCombo('##ffxilac_delstatic', ui._delStatic or '(static set)') then
+        for _, nm in ipairs(profsets.staticSetNames()) do
+            if imgui.Selectable(nm .. '##dstat_' .. nm, ui._delStatic == nm) then ui._delStatic = nm; end
+        end
+        imgui.EndCombo();
+    end
+    imgui.PopItemWidth();
+    if ui._delStatic ~= nil then
+        imgui.SameLine(0, 4);
+        local red = (ImGuiCol_Button ~= nil);
+        if red then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
+        if imgui.Button('DELETE##dstatgo', { 0, 22 }) then
+            local ok, action, backup = nil, nil, nil;
+            pcall(function() ok, action, backup = setmgr.deleteStaticSet(job, ui._delStatic); end);
+            if ok == true then
+                profsets.invalidate();
+                setStatus(string.format('deleted static "%s" -- Reload LAC to apply.  backup: %s',
+                    tostring(ui._delStatic), tostring(backup)), false);
+            else
+                setStatus('delete static failed: ' .. tostring(action), true);
+            end
+            ui._delStatic = nil;
+        end
+        if red then imgui.PopStyleColor(1); end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Deletes this static set block from <JOB>.lua (backed up first).\nTrigger rules still pointing at it will show [missing].');
+        end
+    end
 
     if ui.setsStatus ~= nil and ui.setsStatus ~= '' then
         fmt.textWrapped(ui.setsStatusErr and COL_ERR or COL_SCORE, fmt.esc(ui.setsStatus));

@@ -686,6 +686,38 @@ local sMiss = utils.BuildDynamicSets({ Dynamic = { Idle = { Main = { 'No Such It
 check('U3 missing name flattens empty, no error', sMiss.Idle and sMiss.Idle.Main, nil);
 
 -- ---------------------------------------------------------------------------
+-- T. deleteStaticSetText: removes a direct child of the sets ROOT (a legacy
+--    static set), never the Dynamic block, never nested lookalikes.
+-- ---------------------------------------------------------------------------
+local setmgrT = dofile('setmanager.lua');
+local statFix = table.concat({
+    'local sets = {',
+    '    Dynamic = {',
+    '        TP = {',
+    '            Main = { "A" },',
+    '        },',
+    '    },',
+    '    Idle = {',
+    '        Body = "X",',
+    '        Sub = { "Y" },',
+    '    },',
+    '    Precast = { Head = "Z" },',
+    '};',
+    'profile = { Sets = sets };',
+    'return profile;',
+}, '\n');
+local tOut, tAct = setmgrT.deleteStaticSetText(statFix, 'Idle');
+check('T1 static deleted',        tAct, 'deleted static');
+check('T2 block gone',            tOut ~= nil and tOut:find('Idle = {', 1, true), nil);
+check('T3 Dynamic intact',        tOut ~= nil and tOut:find('TP = {', 1, true) ~= nil, true);
+check('T4 sibling intact',        tOut ~= nil and tOut:find('Precast = {', 1, true) ~= nil, true);
+check('T5 result parses',         tOut ~= nil and (loadstring or load)(tOut) ~= nil, true);
+local _, tErr = setmgrT.deleteStaticSetText(statFix, 'Dynamic');
+check('T6 Dynamic refused',       tErr, 'refusing to delete the Dynamic block');
+local _, tErr2 = setmgrT.deleteStaticSetText(statFix, 'Sub');
+check('T7 nested name never matches', tErr2 ~= nil and tErr2:find('no static set named', 1, true) ~= nil, true);
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then

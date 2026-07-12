@@ -517,4 +517,61 @@ M.deleteSet = function(job, setName)
     return true, action, bpath;
 end
 
+-- Delete a STATIC set: a direct child of the sets ROOT table (the one holding
+-- Dynamic) -- Idle/Precast blocks migrated from ffxi-lac, pre-dlac experiments.
+-- The root is found structurally: the innermost `= {` whose braces CONTAIN the
+-- Dynamic block; its children are walked brace-aware (each child's whole body
+-- is skipped), so a slot table or gear ref inside another set can never
+-- false-match. Returns newText, 'deleted static' | nil, errmsg.
+M.deleteStaticSetText = function(fileText, setName)
+    if setName == 'Dynamic' then return nil, 'refusing to delete the Dynamic block'; end
+    local ds, de = fileText:find('Dynamic%s*=%s*{');
+    if not ds then return nil, 'could not locate sets.Dynamic block'; end
+    local dynClose = matchBrace(fileText, de);
+    if not dynClose then return nil, 'sets.Dynamic block is not closed'; end
+    local rootOpen, rootClose = nil, nil;
+    local searchFrom = 1;
+    while true do
+        local s, e = fileText:find('=%s*{', searchFrom);
+        if s == nil or e >= ds then break; end
+        local close = matchBrace(fileText, e);
+        if close ~= nil and close > dynClose then rootOpen, rootClose = e, close; end
+        searchFrom = e + 1;
+    end
+    if rootOpen == nil then return nil, 'could not locate the sets root table'; end
+    local lines, nl = splitLines(fileText);
+    local i = rootOpen + 1;
+    while i < rootClose do
+        local s, e, name = fileText:find('([%w_]+)%s*=%s*{', i);
+        if s == nil or s > rootClose then break; end
+        local close = matchBrace(fileText, e);
+        if close == nil then return nil, 'unclosed block near ' .. tostring(name); end
+        if name == setName then
+            local fromLine = byteToLine(fileText, s);
+            local toLine = byteToLine(fileText, close);
+            local out = {};
+            for li = 1, fromLine - 1 do out[#out + 1] = lines[li]; end
+            for li = toLine + 1, #lines do out[#out + 1] = lines[li]; end
+            return table.concat(out, nl), 'deleted static';
+        end
+        i = close + 1;
+    end
+    return nil, string.format('no static set named %q at the sets root', tostring(setName));
+end
+
+M.deleteStaticSet = function(job, setName)
+    local path = M.jobPath(job);
+    if path == nil then return false, 'not logged in (no profile path)'; end
+    local text = readFile(path);
+    if not text then return false, 'could not read ' .. path; end
+    local newText, action = M.deleteStaticSetText(text, setName);
+    if not newText then return false, action; end
+    local chunk, cerr = loadstring(newText, '@' .. path);
+    if not chunk then return false, 'delete would not parse: ' .. tostring(cerr) .. ' (file untouched)'; end
+    local bpath, berr = backupWithRotation(text, job, 20, 'static');
+    if not bpath then return false, berr; end
+    if not writeFile(path, newText) then return false, 'write failed (backup: ' .. bpath .. ')'; end
+    return true, action, bpath;
+end
+
 return M;
