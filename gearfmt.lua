@@ -119,6 +119,19 @@ local function qtyTag(rec)
     return '';
 end
 
+-- "Aug: <first> (+N)" tag for the augments on YOUR owned copy (by id) -- render
+-- it in the gold COL_SCORE so augmented copies stand out wherever gear is being
+-- chosen or viewed. Empty string when the copy is unaugmented (or dep missing).
+local function augTag(rec)
+    local f = (deps ~= nil) and deps.ownedAugs or nil;
+    if f == nil or rec == nil or rec.Id == nil then return ''; end
+    local al = f()[rec.Id];
+    if type(al) ~= 'table' or #al == 0 then return ''; end
+    local txt = tostring(al[1]);
+    if #al > 1 then txt = txt .. string.format(' (+%d)', #al - 1); end
+    return 'Aug: ' .. txt;
+end
+
 -- Static name-column width for a record list: the longest name decides (capped),
 -- so rows align. Shared by the Equipped alternatives and the All Equipment tree.
 local function nameWidthOf(list)
@@ -139,6 +152,7 @@ M.jobsText     = jobsText;
 M.statSummary  = statSummary;
 M.fullStatList = fullStatList;
 M.qtyTag       = qtyTag;
+M.augTag       = augTag;
 M.nameWidthOf  = nameWidthOf;
 
 return M;

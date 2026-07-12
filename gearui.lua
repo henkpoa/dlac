@@ -717,10 +717,6 @@ end
 local _ownedAug = nil;   -- cached { itemId -> {augment-desc, ...} } for owned gear
 local function refreshOwnedCounts() owned.resetCache(); _ownedAug = nil; _ownedAugStats = nil; invalidateCandidates(); end
 
--- gearfmt's live deps (effStats is defined up top, owned.counts is the live
--- owned-quantity map from the availability module).
-fmt.configure({ effStats = effStats, ownedCounts = owned.counts });
-
 -- Re-read <char>\dlac\gear.lua and rebuild the owned view after a Commit, so the GUI
 -- reflects newly-imported gear WITHOUT an addon reload. Mutates the shared `gear` table in
 -- place (so every capture sees the new data) and drops the owned caches -- buildOwned then
@@ -756,6 +752,13 @@ local function ownedAugMap()
     _ownedAug = m;
     return _ownedAug;
 end
+
+-- gearfmt's live deps (effStats is defined up top, owned.counts is the live
+-- owned-quantity map, ownedAugs feeds the gold "Aug:" row tags). Configured HERE,
+-- below ownedAugMap's declaration -- a forward reference would capture a nil
+-- global, not the local (hard rule 8).
+fmt.configure({ effStats = effStats, ownedCounts = owned.counts,
+                ownedAugs = function() return ownedAugMap(); end });
 
 -- Dual-wield availability. Prefer utils.isDualWieldAvailable (required lazily to
 -- avoid a load-time circular require); else mirror it (THF>=20 / NIN>=10 / DNC>=20).
@@ -1336,6 +1339,11 @@ local function renderAltRow(rec, ordinal, job, level, nameW)
         imgui.SameLine(0, 8);
         imgui.TextColored(COL_DIM, q);
     end
+    local at = fmt.augTag(rec);                        -- your copy's augments, gold
+    if at ~= '' then
+        imgui.SameLine(0, 10);
+        imgui.TextColored(COL_SCORE, fmt.esc(at));
+    end
     return clicked;
 end
 
@@ -1358,14 +1366,10 @@ local function renderBrowseRow(rec, ordinal, job, level, nameW)
         imgui.SameLine(nameCol + 46);                  -- fixed Lv column
         imgui.TextColored(COL_STATS, fmt.esc(ss));
     end
-    if rec.Id ~= nil then                              -- augments on your owned copy
-        local al = ownedAugMap()[rec.Id];
-        if al ~= nil and #al > 0 then
-            local txt = al[1];
-            if #al > 1 then txt = txt .. string.format(' (+%d)', #al - 1); end
-            imgui.SameLine(0, 10);
-            imgui.TextColored(COL_SCORE, 'Aug: ' .. fmt.esc(txt));
-        end
+    local at = fmt.augTag(rec);                        -- augments on your owned copy
+    if at ~= '' then
+        imgui.SameLine(0, 10);
+        imgui.TextColored(COL_SCORE, fmt.esc(at));
     end
     imgui.EndChild();
     imgui.PopStyleColor(1);
@@ -2614,6 +2618,11 @@ local function renderAddRow(rec, ordinal, level, nameW)
         imgui.SameLine(nameCol + (nameW or 200) + 46);
         imgui.TextColored(COL_STATS, fmt.esc(ss));
     end
+    local at = fmt.augTag(rec);                        -- your copy's augments, gold
+    if at ~= '' then
+        imgui.SameLine(0, 10);
+        imgui.TextColored(COL_SCORE, fmt.esc(at));
+    end
     imgui.EndChild();
     imgui.PopStyleColor(1);
     return clicked;
@@ -2856,10 +2865,11 @@ local function renderSetBuilder(job, level)
         for di, it in ipairs(disp) do
             local rec = it.rec;
             local ss = rec and fmt.statSummary(rec, level) or '';
+            local at = fmt.augTag(rec);                -- your copy's augments (line 2, gold)
             local bg = (di % 2 == 0) and { 1, 1, 1, 0.03 } or { 1, 1, 1, 0.07 };
             imgui.PushStyleColor(ImGuiCol_ChildBg, bg);
             imgui.BeginChild('##setrow_' .. tostring(rec and rec.Id or ('n' .. di)) .. '_' .. di,
-                { -1, (ss ~= '') and 42 or 26 }, false);
+                { -1, (ss ~= '' or at ~= '') and 42 or 26 }, false);
             renderIcon(rec and rec.Id or nil, 18);
             -- Picked-row highlight compares the WRAPPER (it == pick), not the record:
             -- one item may appear as several rows with different level ranges, and
@@ -2913,9 +2923,13 @@ local function renderSetBuilder(job, level)
             imgui.SameLine(0, 4);
             if imgui.Button('x##rm_' .. di, { 24, 20 }) then action = { kind = 'remove', it = it }; end
             if imgui.IsItemHovered() then imgui.SetTooltip('Remove from this list.'); end
-            if ss ~= '' then                           -- line 2: stats, under the name
+            if ss ~= '' or at ~= '' then               -- line 2: stats + your augments
                 imgui.SetCursorPosX(26);
-                imgui.TextColored(COL_STATS, fmt.esc(ss));
+                if ss ~= '' then
+                    imgui.TextColored(COL_STATS, fmt.esc(ss));
+                    if at ~= '' then imgui.SameLine(0, 10); end
+                end
+                if at ~= '' then imgui.TextColored(COL_SCORE, fmt.esc(at)); end
             end
             imgui.EndChild();
             imgui.PopStyleColor(1);
