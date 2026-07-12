@@ -594,6 +594,40 @@ check('S2 section serializes', stext:find('PetAction = {', 1, true) ~= nil, true
 check('S3 rule serializes', stext:find([[contains = "Predator"]], 1, true) ~= nil, true);
 
 -- ---------------------------------------------------------------------------
+-- T. craftwatch -- synth detection core (packet 0x096 decode + recipe lookup).
+--    Layout per XiPackets GP_CLI_COMMAND_COMBINE_ASK: Crystal u16 @0x06,
+--    Items u8 @0x09, ItemNo[8] u16 @0x0A.
+-- ---------------------------------------------------------------------------
+package.loaded['dlac\\crafts'] = {
+    ['4096:1165,1165'] = { skill = 'Alchemy', lv = 60 },
+    ['4096:640,650']   = { skill = 'Smithing', lv = 10, desynth = true },
+};
+local craftwatch = dofile('craftwatch.lua');
+
+check('T1 key sorts ingredients', craftwatch.key(4096, { 650, 640 }), '4096:640,650');
+
+-- synthetic 0x096: header(4) + HashNo + pad + crystal 4096 LE + idx + count 2
+-- + ItemNo[8] (1165, 1165, zeroes) + TableNo[8]
+local function u16le(v) return string.char(v % 256, math.floor(v / 256)); end
+local pkt = string.char(0x96, 0x11, 0, 0)          -- header (id/size/sync -- unused by decode)
+    .. string.char(0, 0)                            -- HashNo, padding
+    .. u16le(4096) .. string.char(5)                -- Crystal, CrystalIdx
+    .. string.char(2)                               -- Items = 2
+    .. u16le(1165) .. u16le(1165) .. string.rep('\0', 12)  -- ItemNo[8]
+    .. string.rep('\0', 8);                         -- TableNo[8]
+local tcr, tings = craftwatch.decode(pkt);
+check('T2 decode crystal', tcr, 4096);
+check('T3 decode ingredient count', tings ~= nil and #tings or 0, 2);
+check('T4 decode ingredient id', tings ~= nil and tings[1] or 0, 1165);
+check('T5 lookup finds recipe', (craftwatch.lookup(4096, { 1165, 1165 }) or {}).skill, 'Alchemy');
+check('T6 onSynth resolves craft', craftwatch.onSynth(4096, { 1165, 1165 }, 1).skill, 'Alchemy');
+check('T7 onSynth desynth flag', craftwatch.onSynth(4096, { 650, 640 }, 2).desynth, true);
+check('T8 unknown recipe fails soft', craftwatch.onSynth(4096, { 9999 }, 3).skill, 'unknown');
+check('T9 malformed packet -> nil', craftwatch.decode('short'), nil);
+check('T10 zero-ingredient packet -> nil',
+    craftwatch.decode(string.char(0x96, 0x11, 0, 0, 0, 0) .. u16le(4096) .. string.char(5, 0) .. string.rep('\0', 24)), nil);
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then
