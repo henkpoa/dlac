@@ -927,10 +927,15 @@ local CRAFT_UI = {
                 Goldsmithing = 'Goldsmiths Ring', Clothcraft = 'Tailors Ring',
                 Leathercraft = 'Tanners Ring', Bonecraft = 'Bonecrafters Ring',
                 Alchemy = 'Alchemists Ring', Cooking = 'Chefs Ring' },
-    ki      = { Woodworking = { 1988, 'Way of the Carpenter' }, Smithing = { 1996, 'Way of the Blacksmith' },
-                Goldsmithing = { 2003, 'Way of the Goldsmith' }, Clothcraft = { 2012, 'Way of the Weaver' },
-                Leathercraft = { 2019, 'Way of the Tanner' }, Bonecraft = { 2027, 'Way of the Boneworker' },
-                Alchemy = { 2039, 'Way of the Alchemist' }, Cooking = { 2044, 'Way of the Culinarian' } },
+    -- Key item NAMES only: the id is resolved at runtime against the CLIENT's
+    -- own key-item strings (reverse GetString lookup, the points-addon idiom).
+    -- Hardcoded enum ids field-failed: the public repo's modern enum numbers
+    -- don't match this server's older LSB lineage.
+    ki      = { Woodworking = 'Way of the Carpenter', Smithing = 'Way of the Blacksmith',
+                Goldsmithing = 'Way of the Goldsmith', Clothcraft = 'Way of the Weaver',
+                Leathercraft = 'Way of the Tanner', Bonecraft = 'Way of the Boneworker',
+                Alchemy = 'Way of the Alchemist', Cooking = 'Way of the Culinarian' },
+    _kiId   = {},   -- resolved name -> id cache (false = not found in this client)
     universals = { 'Kupo Shield', 'Bonze Cape', 'Shapers Shawl', 'Midrass Helm +1' },
     txt = { [0] = 'nothing applicable', 'craft-specific gear', 'Artisans (NQ)', 'Artisans +1', 'Kupo Shield' },
     selected = 'Alchemy',
@@ -1178,11 +1183,26 @@ local function renderAutomations(noHeader)
             end
             imgui.Spacing();
             local selCr = CRAFT_UI.selected;
-            local ki = CRAFT_UI.ki[selCr];
+            local kiName = CRAFT_UI.ki[selCr];
+            local kiId = CRAFT_UI._kiId[kiName];
+            if kiId == nil then                              -- resolve once per name, client-authoritative
+                kiId = false;
+                pcall(function()
+                    local id = AshitaCore:GetResourceManager():GetString('keyitems.names', kiName, 2);
+                    if type(id) == 'number' and id >= 0 then kiId = id; end
+                end);
+                CRAFT_UI._kiId[kiName] = kiId;
+            end
             local hasKI = false;
-            pcall(function() hasKI = AshitaCore:GetMemoryManager():GetPlayer():HasKeyItem(ki[1]) == true; end);
-            imgui.TextColored(hasKI and GREEN_OWNED or COL_ERR,
-                (hasKI and 'Key item: ' or 'Key item MISSING: ') .. ki[2]);
+            if kiId ~= false then
+                pcall(function() hasKI = AshitaCore:GetMemoryManager():GetPlayer():HasKeyItem(kiId) == true; end);
+            end
+            if kiId == false then
+                imgui.TextColored(COL_DIM, 'Key item: ' .. kiName .. ' (unknown to this client)');
+            else
+                imgui.TextColored(hasKI and GREEN_OWNED or COL_ERR,
+                    (hasKI and 'Key item: ' or 'Key item MISSING: ') .. kiName);
+            end
             if imgui.IsItemHovered() then
                 imgui.SetTooltip('Guild-point key item -- the ' .. selCr .. ' 100 reward path (trade at Nudara, Bastok Markets).');
             end
