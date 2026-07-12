@@ -282,13 +282,30 @@ function M.BuildDynamicSets(sets)
             -- generic, same philosophy as trigger specificity); an INACTIVE one is
             -- excluded outright.
             local function evalEntry(gearVar, wantMode)
-                -- Virtual slot entry ('dlac:AutoStaff' / 'dlac:AutoObi'): the dispatch
-                -- engine resolves it at equip time (ADR 0004). Remember it, but KEEP
-                -- evaluating the slot's real items -- the normal best-by-level pick
-                -- becomes the FALLBACK when the virtual can't resolve (e.g. every
-                -- iridescence weapon / obi is above your current level).
-                if type(gearVar) == "string" and string.lower(string.sub(gearVar, 1, 5)) == "dlac:" then
-                    slotVirtual = gearVar;
+                -- Virtual slot entry ('dlac:AutoStaff' / 'dlac:AutoObi'), bare OR
+                -- wrapped -- the Sets tab commits a GATED virtual in wrapper form
+                -- ({ gear = 'dlac:AutoIridescence', mode = 'Weapon:Caster' }). The
+                -- dispatch engine resolves it at equip time (ADR 0004). A wrapped
+                -- virtual honours its mode gate like any entry (field case: only
+                -- bare strings were recognised, so WHM's Caster-gated marker
+                -- flattened to NOTHING). Remember it, but KEEP evaluating the
+                -- slot's real items -- the normal best-by-level pick becomes the
+                -- FALLBACK when the virtual can't resolve (e.g. every iridescence
+                -- weapon / obi is above your current level).
+                local virt, vmode = nil, nil;
+                if type(gearVar) == "string" then
+                    virt = gearVar;
+                elseif type(gearVar) == "table" and type(gearVar.gear) == "string" then
+                    virt, vmode = gearVar.gear, gearVar.mode;
+                end
+                if virt ~= nil and string.lower(string.sub(virt, 1, 5)) == "dlac:" then
+                    if vmode ~= nil then
+                        if not wantMode then return; end   -- gated: the mode pass only
+                        local dsp = M.dispatchModule;
+                        if dsp == nil or type(dsp.modeActive) ~= 'function'
+                           or dsp.modeActive(vmode) ~= true then return; end
+                    end
+                    slotVirtual = virt;
                     return;
                 end
 

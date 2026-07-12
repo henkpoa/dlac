@@ -504,6 +504,30 @@ check('M4 off still clears',             dispatchM.setMode('WHM Weapons', false)
 check('M5 cleared for conditions',       dispatchM.modeActive('WHM Weapons:DivinitySolo'), false);
 
 -- ---------------------------------------------------------------------------
+-- N. mode-gated VIRTUAL slot entries. The Sets tab commits a gated virtual in
+--    wrapper form ({ gear = 'dlac:AutoIridescence', mode = 'Weapon:Caster' });
+--    only bare-string virtuals were recognised, so the gated marker flattened
+--    to NOTHING (field case: WHM's Caster weapon cycle equipped no staff).
+-- ---------------------------------------------------------------------------
+AshitaCore = ashitaWithDW(true);
+TEST_PLAYER = { MainJob = 'WHM', SubJob = 'NIN', MainJobSync = 75, SubJobSync = 37 };
+local function weaponSets()
+    return { Dynamic = { Weapon = { Main = {
+        { gear = 'dlac:AutoIridescence', mode = 'Weapon:Caster' },
+        { gear = dagger1H, mode = 'Weapon:SoloKC' },
+    } } } };
+end
+dispatchM.setMode('Weapon', 'Caster');            -- def-less value jump (section M)
+local sV = utils.BuildDynamicSets(weaponSets());
+check('N1 active gated virtual flattens', sV.Weapon and sV.Weapon.Main, 'dlac:AutoIridescence');
+dispatchM.setMode('Weapon', 'SoloKC');
+sV = utils.BuildDynamicSets(weaponSets());
+check('N2 other value: the gated item wins', sV.Weapon and sV.Weapon.Main, 'Kris');
+dispatchM.setMode('Weapon', false);
+sV = utils.BuildDynamicSets(weaponSets());
+check('N3 no value at all: slot left alone', sV.Weapon and sV.Weapon.Main, nil);
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then
