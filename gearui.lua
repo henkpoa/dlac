@@ -1369,6 +1369,18 @@ local function renderTeleportsPopup()
             imgui.TextColored(COL_USABLE, 'ready');
         end
     end
+    -- Footer: pin/unpin the PF-style floating button. The same menu renders from
+    -- the floating button itself, so it is removable from EITHER place.
+    imgui.Separator();
+    ui._tpFloatBox = ui._tpFloatBox or { false };
+    ui._tpFloatBox[1] = (ui._tpFloat == true);
+    if imgui.Checkbox('Floating button##tpfloat', ui._tpFloatBox) then
+        ui._tpFloat = (ui._tpFloatBox[1] == true);
+        ui._flagsDirty = true;
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Pin a small always-on-screen Teleports button (PartyFinder-style).\nDrag its edge to move it. Untick -- here or in the floating menu\nitself -- to remove it. Remembered across sessions.');
+    end
     imgui.EndPopup();
 end
 
@@ -3557,8 +3569,13 @@ local function saveUiFlags()
     _flagsLoaded = true;                                    -- command is now authoritative
     pcall(function()
         local bm = hasOptim and (optim.buildAtMaxLevel == true) or false;
-        writeFileText(p, string.format('return { debug = %s, autosync = %s, buildmax = %s }\n',
-            tostring(debugMode), tostring(autoSyncEnabled), tostring(bm)));
+        local tpx, tpy = 0, 0;
+        if type(ui._tpPos) == 'table' then
+            tpx, tpy = tonumber(ui._tpPos[1]) or 0, tonumber(ui._tpPos[2]) or 0;
+        end
+        writeFileText(p, string.format('return { debug = %s, autosync = %s, buildmax = %s, tpfloat = %s, tpx = %d, tpy = %d }\n',
+            tostring(debugMode), tostring(autoSyncEnabled), tostring(bm),
+            tostring(ui._tpFloat == true), tpx, tpy));
     end);
 end
 local function loadUiFlags()
@@ -3582,6 +3599,10 @@ local function loadUiFlags()
             if type(t.debug)    == 'boolean' then debugMode       = t.debug;    end
             if type(t.autosync) == 'boolean' then autoSyncEnabled = t.autosync; end
             if type(t.buildmax) == 'boolean' and hasOptim then optim.buildAtMaxLevel = t.buildmax; end
+            if type(t.tpfloat)  == 'boolean' then ui._tpFloat     = t.tpfloat;  end
+            if type(t.tpx) == 'number' and type(t.tpy) == 'number' and (t.tpx ~= 0 or t.tpy ~= 0) then
+                ui._tpPos = { t.tpx, t.tpy };
+            end
         end
     end);
 end
@@ -3597,6 +3618,49 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
     if ui.showMetrics == true and hasImgui then       -- /dl metrics: overlay hunter
         pcall(function() imgui.ShowMetricsWindow(ui.metricsOpen); end);
         if ui.metricsOpen ~= nil and ui.metricsOpen[1] == false then ui.showMetrics = false; end
+    end
+    -- PF-style floating Teleports button: lives on screen INDEPENDENT of the main
+    -- window (pinned/unpinned from the Teleports menu footer; position remembered).
+    if ui._tpFloat == true and useit ~= nil and hasImgui then
+        pcall(function()
+            if ui._tpPos ~= nil then
+                imgui.SetNextWindowPos({ ui._tpPos[1], ui._tpPos[2] }, ImGuiCond_Once or 0);
+            end
+            local fl = (ImGuiWindowFlags_NoTitleBar or 0) + (ImGuiWindowFlags_AlwaysAutoResize or 0)
+                     + (ImGuiWindowFlags_NoScrollbar or 0) + (ImGuiWindowFlags_NoCollapse or 0);
+            ui._tpOpenT = ui._tpOpenT or { true };
+            ui._tpOpenT[1] = true;
+            if imgui.Begin('##dlac_tpfloat', ui._tpOpenT, fl) then
+                local clicked = false;
+                local rec = lookupByName('Warp Ring');
+                local id = rec and rec.Id or nil;
+                if id ~= nil and loadItemTexture(id) ~= false and texHandles[id] ~= nil then
+                    pcall(function() clicked = imgui.ImageButton(texHandles[id], { 20, 20 }); end);
+                else
+                    clicked = imgui.Button('Tele##tpfl', { 36, 26 });
+                end
+                if clicked then imgui.OpenPopup('##dlac_teleports'); end
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('Teleports  --  drag the edge to move; unpin from the menu.');
+                end
+                pcall(renderTeleportsPopup);
+                -- remember where it was dragged; save once the drag settles
+                local px, py = imgui.GetWindowPos();
+                if type(px) == 'table' then py = (px[2] or px.y); px = (px[1] or px.x); end
+                if type(px) == 'number' and type(py) == 'number' then
+                    px, py = math.floor(px), math.floor(py);
+                    if ui._tpPos == nil or ui._tpPos[1] ~= px or ui._tpPos[2] ~= py then
+                        ui._tpPos = { px, py };
+                        ui._tpMovedAt = os.clock() + 1;
+                    end
+                end
+            end
+            imgui.End();
+            if ui._tpMovedAt ~= nil and os.clock() >= ui._tpMovedAt then
+                ui._tpMovedAt = nil;
+                ui._flagsDirty = true;
+            end
+        end);
     end
     if not M.visible or not hasImgui then return; end
     -- Theme push/pop brackets the pcall so an imgui error mid-draw can never
