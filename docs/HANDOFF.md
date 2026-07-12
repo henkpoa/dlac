@@ -86,6 +86,10 @@ handshake).
    prune bug).
 6. **Never gate set *building* on current game state** — sets are plans; the engine
    decides at equip time (ADR 0006). Immediate-equip UI (Alternatives list) may gate.
+   **Sub-slot corollary (reverted 3×, never again — ADR 0006 addendum):** while
+   building, the Sub picker ALWAYS offers every shield/grip/one-hander — never narrow
+   it by the DW trait, the planned/equipped Main (2H included), or an empty Main plan.
+   The `A* HARD RULE` tests fail on any re-gating; do not "fix" them.
 7. **All file writes follow the safety pattern:** backup (rotated, in `<char>\backups\`)
    → write temp → parse/sandbox-validate → atomic swap → abort untouched on any
    failure. Loud on failure, quiet on routine success.

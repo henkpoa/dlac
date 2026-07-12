@@ -22,3 +22,34 @@ Consequences:
   state, so GUI-side catalog enrichment is not enough — `/dl fix` backfills the fields
   and new imports stamp them at generation time.
 - Test suite sections A–C lock the rule (`building=true` vs equip-time contexts).
+
+## Addendum (2026-07-12): building is MAIN-INDEPENDENT — hard rule, 3× reverted
+
+This decision regressed **three times**: each time, some part of the builder was
+"helpfully" re-gated on live state (the DW trait, or the *shape of the planned Main* —
+a 2H Main narrowed the Sub picker to grips; an empty Main plan emptied it entirely).
+Henrik, verbatim: *"Yes, I know, I have /SAM. Yes, I know, it has chosen a 2h-weapon.
+I don't care, I want freedom to build sets so I can set correct triggers for when I do
+dual wield. I don't want that to lock me down. […] always show available one-handers."*
+
+The rule, stated so it cannot be mis-shrunk: **while building (`ctx.building == true`),
+the Sub-slot offer never adapts to ANYTHING live — not the DW trait, not the planned or
+equipped Main, not the sub job.** Every owned, job/level-usable Sub-capable item is
+offered: shields, grips, AND one-handed weapons, always. The only building-time
+exclusions are physical impossibilities: a 2H weapon cannot sit in Sub, and a same-name
+off-hand needs a provable second copy (`InBothHands` or `copies >= 2` — item identity,
+not game state). Sets feed *triggers*; a set planned for "when I dual wield" must be
+composable while you are not dual wielding. Wrong-pairing safety is the ENGINE's job,
+per cast, with the list's shield/grip as fallback — exactly this ADR's title.
+
+Enforcement (all three must survive any refactor):
+- `utils.subSlotAllowed` — the `ctx.building` branch runs FIRST, before any
+  Main-shape logic, with the hard-rule comment block on it.
+- `gearui.subCandidateOk` (fallback mirror) + `subFilterAnyMain` (an empty Main plan
+  offers everything — Sub-only sets are legitimate).
+- Tests: the `A* HARD RULE` checks in `tests/run_tests.lua` are written to FAIL on any
+  re-gating. If one of those checks is in your way, you are the fourth reversal — stop.
+
+Equip-*now* surfaces (Equipped tab Alternatives) remain live-gated by design, and
+Auto-build remains equip-correct ("best usable now") — still an open decision, but its
+output never constrains what the picker offers.

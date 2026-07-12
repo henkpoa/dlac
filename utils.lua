@@ -197,15 +197,37 @@ function M.classifySub(rec)
 end
 
 -- Sub-slot pairing rule, shared by the rebuild engine and the GUI set builder.
---   2H main -> Grip only.  1H main -> Shield always; a 1H weapon when ctx.dw (the
---   Dual Wield trait is up) OR ctx.building (composing a set -- a plan, not an
---   equip: the builder admits the weapon and BuildDynamicSets makes the equip-time
---   call, falling back to the list's shield). A same-name off-hand needs a provable
---   second copy: InBothHands on the record, or ctx.copies >= 2 (owned count).
+--
+-- >>> HARD RULE (Henrik, 2026-07-12 -- reverted THREE times before this; do not
+-- >>> "fix" it back. See docs/adr/0006 addendum + HANDOFF hard rule 6.)
+-- ctx.building == true means COMPOSING A SET -- a plan, not an equip. While
+-- building, the Sub list must NEVER adapt to the Main pick, the Dual Wield
+-- trait, or any other live game state: every Sub-capable item (shield, grip,
+-- ONE-HANDED weapon) is offered, always -- even with a 2H main planned, even
+-- with NO Main planned, even without DW. Sets feed TRIGGERS (e.g. a dual-wield
+-- set for when DW is up); gating the builder on today's main/DW makes exactly
+-- those sets impossible to compose. The only building-time exclusions are
+-- physical impossibilities: a 2H weapon never fits the Sub slot, and a
+-- same-name off-hand needs a provable second copy (InBothHands or
+-- ctx.copies >= 2 -- that's item identity, not game state).
+--
+-- Equip-time (ctx.building falsy) keeps the strict pairing: 2H main -> Grip
+-- only; 1H main -> Shield always, a 1H weapon only while ctx.dw (the engine
+-- makes this call per cast; the list's shield is the fallback).
 function M.subSlotAllowed(subRec, mainRec, ctx)
-    if type(subRec) ~= 'table' or type(mainRec) ~= 'table' then return false; end
+    if type(subRec) ~= 'table' then return false; end
     ctx = ctx or {};
     local kind = M.classifySub(subRec);
+    if ctx.building == true then
+        if kind ~= nil then return true; end               -- shield / grip: always offered
+        if subRec.OneHanded ~= true then return false; end -- 2H or metadata-less: never an off-hand
+        if type(mainRec) == 'table' and subRec.Name == mainRec.Name then
+            if subRec.InBothHands == true then return true; end
+            return (tonumber(ctx.copies) or 0) >= 2;
+        end
+        return true;                                        -- 1H weapon: ALWAYS offered
+    end
+    if type(mainRec) ~= 'table' then return false; end
     if mainRec.OneHanded == false then
         return kind == 'Grip';
     end
@@ -213,7 +235,7 @@ function M.subSlotAllowed(subRec, mainRec, ctx)
     if kind == 'Shield' then return true; end
     if kind ~= nil then return false; end                 -- a grip on a 1H main
     if subRec.OneHanded ~= true then return false; end    -- 2H / metadata-less: no off-hand
-    if ctx.dw ~= true and ctx.building ~= true then return false; end
+    if ctx.dw ~= true then return false; end
     if subRec.Name == mainRec.Name then
         if subRec.InBothHands == true then return true; end
         return (tonumber(ctx.copies) or 0) >= 2;

@@ -776,12 +776,15 @@ end
 
 -- Is a Sub-slot record valid given the current Main record? The rule lives in
 -- utils.subSlotAllowed (shared with BuildDynamicSets); mirrored below as the
--- fallback, like isDualWieldAvailable. `building` = composing a set -- a plan, not
--- an equip -- so a 1H off-hand passes WITHOUT the Dual Wield trait; the engine
--- makes the equip-time call and the list's shield is the fallback. Equip-now
--- paths (the Equipped tab's alternatives) leave `building` unset.
+-- fallback, like isDualWieldAvailable.
+--
+-- HARD RULE (see utils.subSlotAllowed -- reverted three times, never again):
+-- `building` = composing a set (a plan, not an equip) -> the Sub offer NEVER
+-- adapts to the Main pick or the Dual Wield trait; every shield/grip/1H weapon
+-- passes (same-name still needs a real second copy). Equip-now paths (the
+-- Equipped tab's alternatives) leave `building` unset and stay strictly gated.
 local function subCandidateOk(subRec, mainRec, mainJob, mainLevel, subJob, subLevel, oc, building)
-    if mainRec == nil then return false; end          -- no Main -> no Sub
+    if mainRec == nil and building ~= true then return false; end   -- equip-now needs a Main
     local dw = isDualWieldAvailable(mainJob, mainLevel, subJob, subLevel);
     local copies = (((oc and subRec.Id) and oc[subRec.Id]) or 0);
     local ok, utils = pcall(require, "dlac\\utils");
@@ -800,12 +803,21 @@ local function subCandidateOk(subRec, mainRec, mainJob, mainLevel, subJob, subLe
     elseif kind ~= 'Grip' and kind ~= 'Shield' then
         kind = nil;   -- a weapon type ('Sword', 'Axe', ...) or no metadata
     end
+    if building == true then                          -- mirror of the utils HARD RULE branch
+        if kind ~= nil then return true; end
+        if subRec.OneHanded ~= true then return false; end
+        if mainRec ~= nil and subRec.Name == mainRec.Name then
+            if subRec.InBothHands == true then return true; end
+            return copies >= 2;
+        end
+        return true;
+    end
     if mainRec.OneHanded == false then return kind == 'Grip'; end
     if mainRec.OneHanded ~= true then return false; end
     if kind == 'Shield' then return true; end
     if kind ~= nil then return false; end
     if subRec.OneHanded ~= true then return false; end
-    if dw ~= true and building ~= true then return false; end
+    if dw ~= true then return false; end
     if subRec.Name == mainRec.Name then
         if subRec.InBothHands == true then return true; end
         return copies >= 2;
@@ -825,11 +837,13 @@ local function subFilter(cands, mainRec, job, level, building)
     return out;
 end
 
--- Planning surface (the set builder's + Add popup): the Main pick varies per
--- mode/level (a mode-gated staff row vs 1H rows), so a Sub candidate is offered
--- when it pairs with ANY entry in the Main working list -- the staff variant
--- wants grips, the 1H variants want weapons/shields. BuildDynamicSets enforces
--- the real pairing per cast. dlac:AutoStaff counts as a 2H main (grips).
+-- Planning surface (the set builder's + Add popup). HARD RULE (see
+-- utils.subSlotAllowed): while BUILDING, every Sub-capable item is offered --
+-- shields, grips, and one-handers alike -- regardless of the Main plans, the
+-- current Dual Wield state, or anything else live. BuildDynamicSets enforces
+-- the real pairing per cast; the builder never pre-empts it. The only Main
+-- interaction left is the same-name second-copy rule (checked against each
+-- Main plan; an empty Main list checks against none and offers everything).
 local function subFilterAnyMain(cands, mainList, job, level)
     local mains = {};
     if type(mainList) == 'table' then
@@ -845,15 +859,20 @@ local function subFilterAnyMain(cands, mainList, job, level)
             end
         end
     end
-    if #mains == 0 then return {}; end                 -- no Main plans -> no Sub
     local sj, slv = getSubInfo();
     local oc = owned.counts();
     local out = {};
     for _, r in ipairs(cands) do
-        for _, m in ipairs(mains) do
-            if subCandidateOk(r, m, job, level, sj, slv, oc, true) then
-                out[#out + 1] = r;
-                break;
+        if #mains == 0 then
+            -- No Main planned yet: the Sub list must NOT be empty because of
+            -- the Main column (Sub-only sets are legitimate plans).
+            if subCandidateOk(r, nil, job, level, sj, slv, oc, true) then out[#out + 1] = r; end
+        else
+            for _, m in ipairs(mains) do
+                if subCandidateOk(r, m, job, level, sj, slv, oc, true) then
+                    out[#out + 1] = r;
+                    break;
+                end
             end
         end
     end

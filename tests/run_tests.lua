@@ -59,31 +59,42 @@ local catAxe1H  = { Name = 'Kriegsbeil',    Level = 70, Type = 'Axe', OneHanded 
 
 -- ---------------------------------------------------------------------------
 -- A. subSlotAllowed -- the shared Sub-slot pairing rule
---    builder (building=true): 1H off-hand allowed WITHOUT the DW trait;
---    equip-time (building absent): DW decides.
+--
+--    HARD RULE (Henrik, 2026-07-12; reverted THREE times before this -- if one
+--    of these checks is in your way, you are about to revert it a fourth time.
+--    STOP and read docs/adr/0006-builder-plans-engine-decides.md, addendum):
+--    building=true (composing a set) offers EVERY Sub-capable item -- shield,
+--    grip, one-hander -- regardless of Main pick, DW trait, or any live state.
+--    Only physical impossibility excludes: 2H in Sub; same-name without a
+--    provable second copy. Equip-time (building absent): DW/pairing decides.
 -- ---------------------------------------------------------------------------
 check('A0 subSlotAllowed exported', type(utils.subSlotAllowed), 'function');
 if type(utils.subSlotAllowed) == 'function' then
     local f = utils.subSlotAllowed;
-    -- the reported bug: building a set must allow a 1H weapon in Sub with no DW
-    check('A1 build: 1H+1H, no DW',        f(sword1H, dagger1H, { building = true              }), true);
-    check('A2 equip: 1H+1H, no DW',        f(sword1H, dagger1H, {                              }), false);
-    check('A3 equip: 1H+1H, DW',           f(sword1H, dagger1H, { dw = true                    }), true);
-    check('A4 2H main: grip ok',           f(grip,    gsword2H, { dw = true,  building = true  }), true);
-    check('A5 2H main: 1H weapon never',   f(sword1H, gsword2H, { dw = true,  building = true  }), false);
-    check('A6 1H main: shield always',     f(shield,  dagger1H, {                              }), true);
-    check('A7 1H main: grip never',        f(grip,    dagger1H, { dw = true,  building = true  }), false);
-    check('A8 same name: InBothHands',     f(twinKris, twinKris, { building = true             }), true);
-    check('A9 same name: two copies',      f(dagger1H, dagger1H, { building = true, copies = 2 }), true);
-    check('A10 same name: single copy',    f(dagger1H, dagger1H, { building = true, copies = 1 }), false);
-    check('A11 no main -> no sub',         f(sword1H, nil,      { dw = true,  building = true  }), false);
-    check('A12 2H sub weapon never',       f(gsword2H, dagger1H, { dw = true, building = true  }), false);
-    -- catalog vocabulary (imported gear.lua / catalog-enriched records)
-    check('A13 catalog shield on 1H main', f(catShield, catAxe1H, {                             }), true);
-    check('A14 catalog grip on 1H main',   f(catGrip,   catAxe1H, { dw = true, building = true  }), false);
-    check('A15 catalog grip on 2H main',   f(catGrip,   gsword2H, {                             }), true);
-    check('A16 catalog 1H weapon builds',  f(catAxe1H,  dagger1H, { building = true             }), true);
-    check('A17 classifySub exported',      type(utils.classifySub), 'function');
+    -- HARD RULE regression guards -- building never adapts to Main/DW:
+    check('A1 HARD RULE build: 1H+1H, no DW -> offered',      f(sword1H, dagger1H, { building = true             }), true);
+    check('A5 HARD RULE build: 1H even with 2H main planned', f(sword1H, gsword2H, { dw = true, building = true  }), true);
+    check('A7 HARD RULE build: grip even with 1H main',       f(grip,    dagger1H, { dw = true, building = true  }), true);
+    check('A11 HARD RULE build: no Main planned -> still offered', f(sword1H, nil,  { dw = true, building = true  }), true);
+    check('A14 HARD RULE build: catalog grip, 1H main',       f(catGrip, catAxe1H, { dw = true, building = true  }), true);
+    check('A16 HARD RULE build: catalog 1H weapon',           f(catAxe1H, dagger1H, { building = true            }), true);
+    -- building-time exclusions are PHYSICAL only:
+    check('A12 build: 2H sub weapon never',  f(gsword2H, dagger1H, { dw = true, building = true }), false);
+    check('A8 same name: InBothHands',       f(twinKris, twinKris, { building = true            }), true);
+    check('A9 same name: two copies',        f(dagger1H, dagger1H, { building = true, copies = 2 }), true);
+    check('A10 same name: single copy',      f(dagger1H, dagger1H, { building = true, copies = 1 }), false);
+    -- equip-time (building absent) stays strictly gated -- the ENGINE's call:
+    check('A2 equip: 1H+1H, no DW',          f(sword1H, dagger1H, {           }), false);
+    check('A3 equip: 1H+1H, DW',             f(sword1H, dagger1H, { dw = true }), true);
+    check('A4 equip: 2H main, grip ok',      f(grip,    gsword2H, { dw = true }), true);
+    check('A5b equip: 2H main, 1H never',    f(sword1H, gsword2H, { dw = true }), false);
+    check('A6 equip: 1H main, shield always', f(shield, dagger1H, {           }), true);
+    check('A7b equip: 1H main, grip never',  f(grip,    dagger1H, { dw = true }), false);
+    check('A11b equip: no main -> no sub',   f(sword1H, nil,      { dw = true }), false);
+    check('A13 equip: catalog shield, 1H main', f(catShield, catAxe1H, {      }), true);
+    check('A14b equip: catalog grip, 1H main',  f(catGrip, catAxe1H, { dw = true }), false);
+    check('A15 equip: catalog grip, 2H main',   f(catGrip, gsword2H, {        }), true);
+    check('A17 classifySub exported',        type(utils.classifySub), 'function');
 end
 
 -- ---------------------------------------------------------------------------
