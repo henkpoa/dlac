@@ -3675,15 +3675,34 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
                         clicked = false;
                     end
                 else
-                    local rec = lookupByName('Warp Ring');
-                    local id = rec and rec.Id or nil;
-                    if id ~= nil and loadItemTexture(id) ~= false and texHandles[id] ~= nil then
-                        pcall(function() clicked = imgui.ImageButton(texHandles[id], { 20, 20 }); end);
-                    else
-                        clicked = imgui.Button('Tele##tpfl', { 36, 26 });
-                    end
+                    -- A drawn, STATE-AWARE glyph -- the Warp Ring ITEM icon is
+                    -- red-brown art and read as dlac's alarm color (field report:
+                    -- "always red even though everything is ready"). Portal ring:
+                    -- green = something is ready to fire, amber = everything owned
+                    -- is recharging, grey = nothing usable from here.
+                    local best = 'none';
+                    pcall(function()
+                        for _, r in ipairs(useit.menu() or {}) do
+                            if r.owned and r.avail then
+                                if (r.rem or 0) <= 0 then best = 'ready'; break; end
+                                best = 'charging';
+                            end
+                        end
+                    end);
+                    clicked = imgui.Button('##tpfl', { 26, 26 });
+                    pcall(function()
+                        local x, y = imgui.GetItemRectMin();
+                        if type(x) == 'table' then y = (x[2] or x.y); x = (x[1] or x.x); end
+                        local col = { 0.55, 0.58, 0.62, 1.0 };
+                        if best == 'ready' then col = { 0.45, 0.85, 0.55, 1.0 };
+                        elseif best == 'charging' then col = { 1.00, 0.72, 0.25, 1.0 }; end
+                        local u = imgui.GetColorU32(col);
+                        local dl = imgui.GetWindowDrawList();
+                        dl:AddCircle({ x + 13, y + 13 }, 9, u, 16, 2);      -- the portal ring
+                        dl:AddCircleFilled({ x + 13, y + 13 }, 3, u, 8);    -- the traveller
+                    end);
                     if imgui.IsItemHovered() then
-                        imgui.SetTooltip('Teleports  --  drag the edge to move; unpin from the menu.');
+                        imgui.SetTooltip('Teleports -- green: something is ready, amber: recharging, grey: nothing\nusable. Drag the edge to move; unpin from the menu.');
                     end
                 end
                 if clicked then imgui.OpenPopup('##dlac_teleports'); end
