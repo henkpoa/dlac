@@ -32,7 +32,7 @@ local M = {};
 -- LAC-state copy stamps its version into the modestate mirror; the GUI compares
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code (the seeded file only re-requires when LuaAshitacast itself reloads).
-M.VERSION = 23;   -- 23: a live level RANGE owns its window (utils rides the reload pair)
+M.VERSION = 24;   -- 24: the dispatch tick never fires while zoning (legacy-profile crash)
 
 -- Colored [dlac] chat output (chatfmt); plain print when unavailable. The shadowed
 -- `print` re-heads "[dlac] ..."-prefixed lines with the colored header.
@@ -1329,6 +1329,26 @@ if inLac() then
             local st = rawget(_G, 'gState');
             if rawget(_G, 'gProfile') == nil or st == nil then return; end
             if st.PlayerAction ~= nil or type(st.HandleEquipEvent) ~= 'function' then return; end
+            -- NEVER drive HandleDefault while ZONING: LAC's own flow pauses with
+            -- the packet stream, but this tick doesn't -- and a legacy profile
+            -- that equips unconditionally then dies inside LAC's equip.lua
+            -- ("attempt to index local 'equippedItem'": GetEquippedItem is nil
+            -- mid-zone; field case: BRD with hand-written HandleDefault).
+            local zoning = false;
+            pcall(function()
+                local pl = AshitaCore:GetMemoryManager():GetPlayer();
+                if pl ~= nil and pl.GetIsZoning ~= nil then
+                    local z = pl:GetIsZoning();
+                    if z == true or (type(z) == 'number' and z ~= 0) then zoning = true; end
+                end
+            end);
+            if not zoning then
+                -- belt + braces: probe the EXACT read that crashes equip.lua
+                local probe = nil;
+                pcall(function() probe = AshitaCore:GetMemoryManager():GetInventory():GetEquippedItem(0); end);
+                if probe == nil then zoning = true; end
+            end
+            if zoning then return; end
             st.HandleEquipEvent('HandleDefault', 'auto');
         end);
     end);
