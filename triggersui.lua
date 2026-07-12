@@ -146,9 +146,20 @@ function M.fileToModel(raw)
                    and (r.set ~= nil or type(r.equip) == 'table') then
                     local when = {};
                     for ck, cv in pairs(r.when) do when[string.lower(tostring(ck))] = cv; end
+                    -- set: 'Name' or an ORDERED list (multi-set rule); the model
+                    -- mirrors the file (string when single, array when several).
+                    local sv = nil;
+                    if type(r.set) == 'table' then
+                        for _, sn in ipairs(r.set) do
+                            if type(sn) == 'string' and sn ~= '' then sv = sv or {}; sv[#sv + 1] = sn; end
+                        end
+                        if sv ~= nil and #sv == 1 then sv = sv[1]; end
+                    elseif r.set ~= nil then
+                        sv = tostring(r.set);
+                    end
                     list[#list + 1] = {
                         when = when,
-                        set = (r.set ~= nil) and tostring(r.set) or nil,
+                        set = sv,
                         equip = (type(r.equip) == 'table') and r.equip or nil,
                         priority = tonumber(r.priority),
                     };
@@ -256,7 +267,8 @@ local function modeCondRefs(name, strip)
                     if hit then
                         out.rules[#out.rules + 1] = string.format('%s:  mode %s  ->  %s',
                             sec, modeCondText(mc),
-                            (r.set ~= nil) and ('set ' .. tostring(r.set)) or 'equip { ... }');
+                            (r.set ~= nil) and ('set ' .. ((type(r.set) == 'table') and table.concat(r.set, ' + ') or tostring(r.set)))
+                            or 'equip { ... }');
                         if strip then
                             if #kept == 0 then
                                 table.remove(list, i);
@@ -888,7 +900,8 @@ end
 local function findOverlayRule(name)
     local lnm = string.lower(tostring(name or ''));
     for i, r in ipairs((trig.data and trig.data.Default) or {}) do
-        if type(r) == 'table' and type(r.when) == 'table' and r.set ~= nil then
+        -- STRING set only: a multi-set rule is not the editor-owned overlay shape
+        if type(r) == 'table' and type(r.when) == 'table' and type(r.set) == 'string' then
             local mc, extra = nil, false;
             for k, v in pairs(r.when) do
                 if string.lower(tostring(k)) == 'mode' then mc = v; else extra = true; end
@@ -1188,30 +1201,64 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
             imgui.TextColored(COL_SCORE, esc(p));
         end
     else
-        imgui.TextColored(COL_DIM, '->');
+        -- Target sets, IN ORDER: one rule may wear several, later overlaying
+        -- earlier per slot (field case: cast Madrigal -> the WindSkill base set,
+        -- then the Madrigal overlay). ^ / v reorder; x removes; the combo adds.
+        local slist = (type(r.set) == 'table') and r.set or ((r.set ~= nil) and { r.set } or {});
+        local function writeBack()
+            if #slist == 0 then r.set = nil;
+            elseif #slist == 1 then r.set = slist[1];
+            else r.set = slist; end
+            trig.dirty = true;
+        end
+        local moveUp, moveDown, dropAt = nil, nil, nil;
+        for si, sn in ipairs(slist) do
+            imgui.TextColored(COL_DIM, (si == 1) and '->' or ' +');
+            imgui.SameLine(0, 6);
+            imgui.TextColored(COL_SCORE, esc(sn));
+            local known = false;
+            for _, nm in ipairs(setNames) do if nm == sn then known = true; break; end end
+            if not known then
+                -- the rule targets a set this profile doesn't define: the dispatch
+                -- would match and then equip NOTHING -- say so where the rule lives
+                imgui.SameLine(0, 6);
+                imgui.TextColored(COL_ERR, '[missing]');
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('No set with this name exists in the profile -- the trigger will\nmatch but this entry equips nothing. Create it in the Sets tab.');
+                end
+            end
+            if #slist > 1 then
+                imgui.SameLine(0, 10);
+                if imgui.SmallButton('^##trgsu' .. id .. '_' .. si) and si > 1 then moveUp = si; end
+                imgui.SameLine(0, 2);
+                if imgui.SmallButton('v##trgsd' .. id .. '_' .. si) and si < #slist then moveDown = si; end
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('Order matters: LATER sets overlay earlier ones per slot.');
+                end
+            end
+            imgui.SameLine(0, 4);
+            if imgui.SmallButton('x##trgsx' .. id .. '_' .. si) then dropAt = si; end
+        end
+        if moveUp ~= nil then slist[moveUp], slist[moveUp - 1] = slist[moveUp - 1], slist[moveUp]; writeBack(); end
+        if moveDown ~= nil then slist[moveDown], slist[moveDown + 1] = slist[moveDown + 1], slist[moveDown]; writeBack(); end
+        if dropAt ~= nil then table.remove(slist, dropAt); writeBack(); end
+        imgui.TextColored(COL_DIM, (#slist == 0) and '->' or '  ');
         imgui.SameLine(0, 6);
         imgui.PushItemWidth(170);
-        if imgui.BeginCombo('##trgset' .. id, r.set or '(pick set)') then
+        if imgui.BeginCombo('##trgset' .. id, (#slist == 0) and '(pick set)' or '+ overlay set') then
             for _, nm in ipairs(setNames) do
-                if imgui.Selectable(nm .. '##trgso' .. id, r.set == nm) then
-                    if r.set ~= nm then r.set = nm; trig.dirty = true; end
+                local already = false;
+                for _, sn in ipairs(slist) do if sn == nm then already = true; break; end end
+                if not already and imgui.Selectable(nm .. '##trgso' .. id, false) then
+                    slist[#slist + 1] = nm;
+                    writeBack();
                 end
             end
             imgui.EndCombo();
         end
         imgui.PopItemWidth();
-        -- the rule targets a set this profile doesn't define: the dispatch would
-        -- match and then equip NOTHING -- say so where the rule lives
-        if r.set ~= nil then
-            local known = false;
-            for _, nm in ipairs(setNames) do if nm == r.set then known = true; break; end end
-            if not known then
-                imgui.SameLine(0, 6);
-                imgui.TextColored(COL_ERR, '[missing]');
-                if imgui.IsItemHovered() then
-                    imgui.SetTooltip('No set with this name exists in the profile -- the trigger will\nmatch but equip nothing. Create the set in the Sets tab and Commit.');
-                end
-            end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('One rule can wear SEVERAL sets: they apply in order, later overlaying\nearlier per slot (cast Madrigal -> WindSkill base, Madrigal on top).');
         end
     end
 
@@ -1624,7 +1671,7 @@ function M.render(job, level)
                 trig.addConds[#trig.addConds + 1] = { key = k, value = v };
             end
             table.sort(trig.addConds, function(a, b) return tostring(a.key) < tostring(b.key); end);
-            trig.addSet = r.set;
+            trig.addSet = (type(r.set) == 'table') and r.set[1] or r.set;   -- builder edits ONE set; extras stay on the rule
             trig.addPrio[1] = r.priority or 0;
             trig._addDef = 1; trig.addValText[1] = ''; trig._addValSel = nil;
             trig._openAdd = true;

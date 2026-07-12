@@ -128,9 +128,15 @@ function M.audit()
             for i, r in ipairs(rules) do
                 if type(r) == 'table' then
                     if r.set ~= nil then
-                        local u = used[r.set] or {};
-                        u[h] = true;
-                        used[r.set] = u;
+                        -- string or ORDERED LIST (multi-set rule): audit every name
+                        local snames = (type(r.set) == 'table') and r.set or { r.set };
+                        for _, sn in ipairs(snames) do
+                            if type(sn) == 'string' then
+                                local u = used[sn] or {};
+                                u[h] = true;
+                                used[sn] = u;
+                            end
+                        end
                     end
                     if type(r.equip) == 'table' then
                         inline[#inline + 1] = { handler = h, idx = i, equip = r.equip };

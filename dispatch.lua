@@ -32,7 +32,7 @@ local M = {};
 -- LAC-state copy stamps its version into the modestate mirror; the GUI compares
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code (the seeded file only re-requires when LuaAshitacast itself reloads).
-M.VERSION = 24;   -- 24: the dispatch tick never fires while zoning (legacy-profile crash)
+M.VERSION = 25;   -- 25: one rule may wear several sets in order (set = { 'Base', 'Overlay' })
 
 -- Colored [dlac] chat output (chatfmt); plain print when unavailable. The shadowed
 -- `print` re-heads "[dlac] ..."-prefixed lines with the colored header.
@@ -305,9 +305,22 @@ local function normalize(t)
                             end
                         end
                         table.sort(parts);
+                        -- set = 'Name' or an ORDERED list { 'Base', 'Overlay' } --
+                        -- normalized to a `sets` array either way.
+                        local sets = nil;
+                        if type(r.set) == 'table' then
+                            for _, sn in ipairs(r.set) do
+                                if type(sn) == 'string' and sn ~= '' then
+                                    sets = sets or {};
+                                    sets[#sets + 1] = sn;
+                                end
+                            end
+                        elseif r.set ~= nil then
+                            sets = { tostring(r.set) };
+                        end
                         list[#list + 1] = {
                             when  = when,
-                            set   = (r.set ~= nil) and tostring(r.set) or nil,
+                            sets  = sets,
                             equip = (type(r.equip) == 'table') and r.equip or nil,
                             prio  = prio,
                             ord   = #list + 1,
@@ -944,14 +957,20 @@ function M.dispatch(event)
         -- slot lists the rule that actually owns it this dispatch.
         local slotSrc = retrace and {} or nil;
         for _, r in ipairs(hits) do
-            if r.set ~= nil then
-                local found, note, tbl = equipSetByName(r.set, ctx);
-                if retrace then
-                    lines[#lines + 1] = string.format('%s  ->  set %s  (prio %d)%s%s',
-                        r.label, r.set, r.prio, found and '' or '  [NOT FOUND in profile Sets]', note or '');
-                    if type(tbl) == 'table' then
-                        for slot in pairs(tbl) do
-                            if string.sub(tostring(slot), 1, 2) ~= '__' then slotSrc[slot] = r.set; end
+            if r.sets ~= nil then
+                -- A rule may wear SEVERAL sets: applied IN ORDER, later overlaying
+                -- earlier per slot -- the same law as between rules ("cast Madrigal
+                -- -> the WindSkill base, then the Madrigal overlay on top").
+                for si, sn in ipairs(r.sets) do
+                    local found, note, tbl = equipSetByName(sn, ctx);
+                    if retrace then
+                        lines[#lines + 1] = string.format('%s  ->  set %s%s  (prio %d)%s%s',
+                            r.label, sn, (#r.sets > 1) and string.format(' [%d/%d]', si, #r.sets) or '',
+                            r.prio, found and '' or '  [NOT FOUND in profile Sets]', note or '');
+                        if type(tbl) == 'table' then
+                            for slot in pairs(tbl) do
+                                if string.sub(tostring(slot), 1, 2) ~= '__' then slotSrc[slot] = sn; end
+                            end
                         end
                     end
                 end
@@ -1032,7 +1051,11 @@ function M.serializeTriggers(data)
                 end
                 table.sort(conds);
                 local action;
-                if r.set ~= nil then
+                if type(r.set) == 'table' then          -- ordered multi-set rule
+                    local q = {};
+                    for _, sn in ipairs(r.set) do q[#q + 1] = luaValue(tostring(sn)); end
+                    action = 'set = { ' .. table.concat(q, ', ') .. ' }';
+                elseif r.set ~= nil then
                     action = 'set = ' .. luaValue(tostring(r.set));
                 else
                     local slots = {};

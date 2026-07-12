@@ -567,6 +567,22 @@ sQ = utils.BuildDynamicSets(rangedSets());
 check('Q3 below the window: nothing forced', sQ.QT and sQ.QT.Body, nil);
 
 -- ---------------------------------------------------------------------------
+-- R. multi-set trigger rules round-trip: set = { 'Base', 'Overlay' } must
+--    serialize as the ordered list (a wiped second set = a silently dead
+--    overlay); a single set stays in the plain string form.
+-- ---------------------------------------------------------------------------
+local rtext = dispatchM.serializeTriggers({
+    Midcast = {
+        { when = { name = 'Madrigal' }, set = { 'WindSkill', 'Madrigal' } },
+        { when = { skill = 'Singing' }, set = 'SongPotency' },
+    },
+});
+check('R1 ordered list serialized',
+    rtext:find([[set = { "WindSkill", "Madrigal" }]], 1, true) ~= nil, true);
+check('R2 single set stays plain',
+    rtext:find([[set = "SongPotency"]], 1, true) ~= nil, true);
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then
