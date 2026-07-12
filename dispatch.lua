@@ -32,7 +32,7 @@ local M = {};
 -- LAC-state copy stamps its version into the modestate mirror; the GUI compares
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code (the seeded file only re-requires when LuaAshitacast itself reloads).
-M.VERSION = 17;
+M.VERSION = 18;
 
 -- Colored [dlac] chat output (chatfmt); plain print when unavailable. The shadowed
 -- `print` re-heads "[dlac] ..."-prefixed lines with the colored header.
@@ -72,6 +72,7 @@ M.EVENTS = EVENTS;
 function M.canonEvent(e) return EVENT_CANON[string.lower(tostring(e))]; end
 
 local _trig  = { path = nil, raw = nil, rules = nil, lastCheck = -1, err = nil };
+local _boundKeys = {};   -- bind key -> queued /bind command (mode keybinds queue ONCE per session)
 local _trace = {};   -- event -> { time, action, sig, lines = {...} }
 
 -- Only the copy of this module living in LuaAshitacast's state may equip, own mode
@@ -392,11 +393,17 @@ local function ensureLoaded()
             if not valid then M.modes[ln] = def.values[1]; end
         end
         -- GUI-managed keybind: applied here so profiles need no OnLoad bind code.
+        -- ONCE per key+command per session: this loader re-parses on every
+        -- '/dl triggers reload' -- which the automations rescan pings after every
+        -- inventory sync -- and unconditional re-binding here spammed /bind
+        -- continuously (field report). A key re-queues only when its command
+        -- CHANGES (another job's mode claiming the same key still rebinds).
         if def.bind ~= nil then
-            pcall(function()
-                AshitaCore:GetChatManager():QueueCommand(-1,
-                    string.format('/bind %s /dl mode %s', def.bind, def.name));
-            end);
+            local bindCmd = string.format('/bind %s /dl mode %s', def.bind, def.name);
+            if _boundKeys[def.bind] ~= bindCmd then
+                _boundKeys[def.bind] = bindCmd;
+                pcall(function() AshitaCore:GetChatManager():QueueCommand(-1, bindCmd); end);
+            end
         end
     end
     -- NO stale-value purge here (v16 had one; field-FALSIFIED on WHM): mode
