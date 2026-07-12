@@ -2717,7 +2717,10 @@ local function commitCurrentSet(job)
     if pok and ok == true then
         _setDirty = false;         -- committed -> the working set now matches what's saved
         profsets.invalidate();     -- re-read the job file so the Sets list reflects the change
-        setStatus(string.format('%s "%s" for %s. Reload (top-right) to apply.  backup: %s%s',
+        -- Hot-swap the running engine's copy: gProfile.Sets is a live table in the
+        -- LAC state, so no LAC reload -- the engine confirms (or refuses) in chat.
+        pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl sets reload'); end);
+        setStatus(string.format('%s "%s" for %s -- live now (hot-swapped; Reload LAC only if chat says the swap failed).  backup: %s%s',
             tostring(action), tostring(M.workingSetName), tostring(job), tostring(backup), emptyNote), false);
     else
         setStatus('Commit failed: ' .. tostring(action), true);
@@ -2732,7 +2735,8 @@ local function deleteCurrentSet(job)
     local pok = pcall(function() ok, action, backup = setmgr.deleteSet(job, M.workingSetName); end);
     if pok and ok == true then
         profsets.invalidate();
-        setStatus(string.format('deleted "%s" for %s. Reload to apply.  backup: %s',
+        pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl sets reload'); end);
+        setStatus(string.format('deleted "%s" for %s -- live now (hot-swapped).  backup: %s',
             tostring(M.workingSetName), tostring(job), tostring(backup)), false);
         M.working = {}; M.workingSetName = nil; ui.setSelected = nil; _setDirty = false;
     else

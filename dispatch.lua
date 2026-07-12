@@ -32,7 +32,7 @@ local M = {};
 -- LAC-state copy stamps its version into the modestate mirror; the GUI compares
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code (the seeded file only re-requires when LuaAshitacast itself reloads).
-M.VERSION = 20;   -- 20: marker Main pairs as a 2H staff (utils rides the reload pair)
+M.VERSION = 21;   -- 21: '/dl sets reload' hot-swaps committed sets (no LAC reload)
 
 -- Colored [dlac] chat output (chatfmt); plain print when unavailable. The shadowed
 -- `print` re-heads "[dlac] ..."-prefixed lines with the colored header.
@@ -1237,9 +1237,51 @@ function M.initTriggers()
     return true, 'wrote starter triggers: ' .. path;
 end
 
+-- Re-read the current job's <JOB>.lua SANDBOXED and return its `sets` table --
+-- the '/dl sets reload' hot-swap's reader. The sandbox is profilesets.lua's
+-- field-proven trick, hardened for THIS Lua state: here the real gFunc/gState/
+-- AshitaCore exist, so they (and other side-effect globals) are explicitly
+-- stubbed -- re-running the profile must not equip, bind, queue or print.
+-- Gear refs resolve through the real require, so the fresh entries point into
+-- the same gear tables the old ones did.
+local function readJobSets()
+    local dir = charDir();
+    if dir == nil then return nil, 'not logged in'; end
+    local base = string.sub(dir, 1, #dir - 5);   -- strip the trailing 'dlac\'
+    local abbr = nil;
+    pcall(function()
+        local j = AshitaCore:GetMemoryManager():GetPlayer():GetMainJob();
+        if j ~= nil and j ~= 0 then abbr = AshitaCore:GetResourceManager():GetString('jobs.names_abbr', j); end
+    end);
+    if abbr == nil or abbr == '' then return nil, 'job unknown'; end
+    local chunk = loadfile(base .. abbr .. '.lua');
+    if chunk == nil then return nil, 'could not open ' .. abbr .. '.lua'; end
+    local STUB; STUB = setmetatable({}, { __index = function() return STUB; end, __call = function() return STUB; end });
+    local BLOCK = { gFunc = true, gState = true, gEquip = true, gSetDisplay = true, gProfile = true,
+                    gSettings = true, AshitaCore = true, ashita = true, print = true, coroutine = true };
+    local env = setmetatable({}, {
+        __index = function(_, k)
+            if BLOCK[k] then return STUB; end
+            local g = rawget(_G, k);
+            if g ~= nil then return g; end
+            return STUB;
+        end,
+        __newindex = function(t, k, v) rawset(t, k, v); end,
+    });
+    if setfenv ~= nil then setfenv(chunk, env); end
+    local ok, ret = pcall(chunk);
+    local s = nil;
+    if ok and type(ret) == 'table' and type(ret.Sets) == 'table' then s = ret.Sets;
+    elseif type(rawget(env, 'sets')) == 'table' then s = rawget(env, 'sets'); end
+    if type(s) ~= 'table' then
+        return nil, 'no sets table' .. (ok and '' or (': ' .. tostring(ret)));
+    end
+    return s, nil;
+end
+
 -- ---------------------------------------------------------------------------
--- Commands: /dl mode | why | triggers   (registered in the LAC state only, where
--- the mode flags and traces live; the addon state's copy stays silent).
+-- Commands: /dl mode | why | triggers | sets reload   (registered in the LAC
+-- state only, where the mode flags and traces live; the addon copy is silent).
 -- ---------------------------------------------------------------------------
 local function argStart(raw)
     if raw == '/dlac' or string.sub(raw, 1, 6) == '/dlac ' then return 7; end
@@ -1286,8 +1328,47 @@ if inLac() then
         local args = {};
         for a in string.gmatch(string.sub(e.command, start), '%S+') do args[#args + 1] = a; end
         local sub = args[1] and string.lower(args[1]) or nil;
-        if sub ~= 'mode' and sub ~= 'why' and sub ~= 'triggers' and sub ~= 'env' and sub ~= 'lock' then return; end
+        if sub ~= 'mode' and sub ~= 'why' and sub ~= 'triggers' and sub ~= 'env' and sub ~= 'lock' and sub ~= 'sets' then return; end
         e.blocked = true;
+
+        if sub == 'sets' then
+            if string.lower(tostring(args[2] or '')) ~= 'reload' then
+                print('[dlac] usage: /dl sets reload   (hot-swap the committed sets, no LAC reload)');
+                return;
+            end
+            -- Hot-swap the PLAN without a LAC reload. gProfile.Sets is just a live
+            -- table in THIS Lua state -- "Reload LAC" was only ever about the FILE
+            -- changing under it (field insight: ffxi-lac loops that mutated set
+            -- objects took effect immediately). A set Commit rewrote <JOB>.lua;
+            -- re-read it here and replace .Dynamic in place, then re-flatten.
+            local prof = rawget(_G, 'gProfile');
+            if type(prof) ~= 'table' or type(prof.Sets) ~= 'table' then
+                print('[dlac] sets reload: no profile loaded.');
+                return;
+            end
+            local fresh, ferr = readJobSets();
+            if fresh == nil or type(fresh.Dynamic) ~= 'table' then
+                print('[dlac] sets hot-swap failed (' .. tostring(ferr) .. ') -- click Reload LAC instead.');
+                return;
+            end
+            -- flattened outputs of dynamic sets that no longer exist must die too
+            if type(prof.Sets.Dynamic) == 'table' then
+                for name in pairs(prof.Sets.Dynamic) do
+                    if fresh.Dynamic[name] == nil then prof.Sets[name] = nil; end
+                end
+            end
+            prof.Sets.Dynamic = fresh.Dynamic;
+            M.modesRev = (M.modesRev or 0) + 1;   -- the rebuild signal utils watches
+            pcall(function()
+                local u = package.loaded['dlac\\utils'];
+                if u ~= nil and type(u.rebuildSets) == 'function' then u.rebuildSets(prof.Sets); end
+            end);
+            pcall(function() M.dispatch('Default'); end);
+            local n = 0;
+            for _ in pairs(fresh.Dynamic) do n = n + 1; end
+            print(string.format('[dlac] sets hot-swapped (%d dynamic set(s)) -- live now, no LAC reload needed.', n));
+            return;
+        end
 
         if sub == 'lock' then   -- slot locks: the engine stops equipping into them
             local slot = args[2] and string.lower(args[2]) or nil;
