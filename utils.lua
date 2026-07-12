@@ -425,6 +425,18 @@ function M.BuildDynamicSets(sets)
                 else
                     currentSet[slotName] = slotVirtual;
                 end
+                -- A Main STAFF MARKER always resolves to a two-handed staff, so the
+                -- Sub pairing must treat it as one -- otherwise currentMain stays
+                -- nil and 'no main -> no sub' vetoes the grip that belongs with it
+                -- (field case: a Weapon:Caster grip sat unequipped under
+                -- dlac:AutoIridescence).
+                if slotName == 'Main' then
+                    local lv = string.lower(slotVirtual);
+                    if string.sub(lv, 1, 14) == 'dlac:autostaff'
+                       or string.sub(lv, 1, 21) == 'dlac:autoiridescence' then
+                        currentMain = { Name = slotVirtual, Type = 'Staff', OneHanded = false, Level = 0 };
+                    end
+                end
             end
         end
 

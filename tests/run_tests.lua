@@ -528,6 +528,23 @@ sV = utils.BuildDynamicSets(weaponSets());
 check('N3 no value at all: slot left alone', sV.Weapon and sV.Weapon.Main, nil);
 
 -- ---------------------------------------------------------------------------
+-- P. a Main STAFF MARKER pairs like a two-handed staff: the grip that belongs
+--    with it is a legal Sub (field case: Weapon:Caster grip sat unequipped
+--    under dlac:AutoIridescence because currentMain stayed nil).
+-- ---------------------------------------------------------------------------
+TEST_PLAYER = { MainJob = 'WHM', SubJob = 'NIN', MainJobSync = 75, SubJobSync = 37 };
+AshitaCore = ashitaWithDW(false);
+dispatchM.setMode('Weapon', 'Caster');
+local vg = { Dynamic = { WV = {
+    Main = { { gear = 'dlac:AutoIridescence', mode = 'Weapon:Caster' } },
+    Sub  = { { gear = grip, mode = 'Weapon:Caster' } },
+} } };
+local sVG = utils.BuildDynamicSets(vg);
+check('P1 marker main flattens',          sVG.WV and sVG.WV.Main, 'dlac:AutoIridescence');
+check('P2 grip legal under the marker',   sVG.WV and sVG.WV.Sub, 'PoleGrip');
+dispatchM.setMode('Weapon', false);
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then

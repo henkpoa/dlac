@@ -229,9 +229,34 @@ local function loadItemTexture(itemId)
     return texCache[itemId];
 end
 
+-- The 8-element wheel: the icon for VIRTUAL slot entries (dlac:AutoIridescence /
+-- dlac:AutoObi) -- one dot per element (classic hues) around a bright core,
+-- painted with the window draw list (no texture to load). x may be an Ashita
+-- vec2 table OR a plain number (both getter styles normalized here). ONE local
+-- on purpose: this chunk lives at the LuaJIT 200-local cap.
+local function drawElementWheel(size, x, y)
+    pcall(function()
+        if type(x) == 'table' then x, y = (x[1] or x.x), (x[2] or x.y); end
+        local dl = imgui.GetWindowDrawList();
+        local COLS = { { 0.95, 0.25, 0.15 }, { 0.55, 0.85, 1.00 },   -- Fire, Ice
+                       { 0.35, 0.90, 0.40 }, { 0.85, 0.65, 0.25 },   -- Wind, Earth
+                       { 0.80, 0.40, 1.00 }, { 0.25, 0.45, 1.00 },   -- Thunder, Water
+                       { 1.00, 1.00, 0.85 }, { 0.45, 0.25, 0.60 } }; -- Light, Dark
+        local c = size / 2;
+        dl:AddCircleFilled({ x + c, y + c }, size * 0.16, imgui.GetColorU32({ 1.0, 1.0, 0.92, 0.95 }), 12);
+        local orbit, dot = size * 0.34, math.max(1.5, size * 0.11);
+        for i, col in ipairs(COLS) do
+            local a = (i - 1) * (math.pi / 4) - math.pi / 2;
+            dl:AddCircleFilled({ x + c + math.cos(a) * orbit, y + c + math.sin(a) * orbit },
+                dot, imgui.GetColorU32({ col[1], col[2], col[3], 1.0 }), 10);
+        end
+    end);
+end
+
 -- Draw an item icon (or a blank placeholder), then SameLine so the caller can put
--- the item's text right after it.
-local function renderIcon(itemId, size)
+-- the item's text right after it. Pass the record too when the entry may be a
+-- VIRTUAL one (no Id) -- it gets the element wheel instead of a blank.
+local function renderIcon(itemId, size, rec)
     local drew = false;
     if itemId ~= nil and itemId ~= 0 then
         local tex = loadItemTexture(itemId);
@@ -240,6 +265,13 @@ local function renderIcon(itemId, size)
             pcall(function() imgui.Image(handle, { size, size }); end);
             drew = true;
         end
+    end
+    if not drew and rec ~= nil and rec.Virtual == true then
+        drew = pcall(function()
+            local x, y = imgui.GetCursorScreenPos();
+            imgui.Dummy({ size, size });
+            drawElementWheel(size, x, y);
+        end);
     end
     if not drew then
         pcall(function() imgui.Dummy({ size, size }); end);
@@ -1514,10 +1546,19 @@ local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, ge
             clicked = imgui.ImageButton(handle, { SLOT_BOX - 8, SLOT_BOX - 8 }, { 0, 0 }, { 1, 1 }, 4,
                 selected and boxSel or boxBg, { 1, 1, 1, 1 });
         else
+            local vrec = (hoverRec ~= nil) and hoverRec(sl) or nil;
+            local isVirt = (vrec ~= nil and vrec.Virtual == true);
             imgui.PushStyleColor(ImGuiCol_Button, selected and boxSel or boxBg);
             imgui.PushStyleColor(ImGuiCol_Text, COL_LOCKED);
-            clicked = imgui.Button(sl.short, { SLOT_BOX, SLOT_BOX });
+            clicked = imgui.Button(isVirt and ('##vbox' .. sl.label) or sl.short, { SLOT_BOX, SLOT_BOX });
             imgui.PopStyleColor(2);
+            if isVirt then   -- the element wheel over the button (virtuals have no texture)
+                pcall(function()
+                    local x, y = imgui.GetItemRectMin();
+                    if type(x) == 'table' then y = (x[2] or x.y); x = (x[1] or x.x); end
+                    drawElementWheel(28, x + (SLOT_BOX - 28) / 2, y + (SLOT_BOX - 28) / 2);
+                end);
+            end
         end
         if clicked then onClick(sl.label); end
         if imgui.IsItemHovered() then
@@ -2173,6 +2214,18 @@ local function resolveSetItem(elem)
     if elem.gear ~= nil and elem.Name == nil then
         ref = elem.gear; minL = elem.minLevel; maxL = elem.maxLevel; modeC = elem.mode;
     end
+    -- Wrapper around a STRING gear ref: a gated VIRTUAL entry, exactly how the
+    -- Sets tab commits one ({ gear = "dlac:AutoIridescence", mode = "..." }).
+    -- Field case: the row VANISHED from the GUI after a reload -- and a commit
+    -- from that view would then drop it from the file.
+    if type(ref) == 'string' then
+        if string.lower(string.sub(ref, 1, 5)) == 'dlac:' then
+            return { rec = { Name = ref, Level = 0, Virtual = true },
+                     minLevel = minL, maxLevel = maxL, mode = modeC };
+        end
+        local rec = _ownedByName and _ownedByName[string.lower(ref)] or nil;
+        return rec and { rec = rec, minLevel = minL, maxLevel = maxL, mode = modeC } or nil;
+    end
     if type(ref) ~= 'table' then return nil; end
 
     local rec = nil;
@@ -2790,7 +2843,7 @@ local function renderAddRow(rec, ordinal, level, nameW)
     local bg = (ordinal % 2 == 0) and { 1, 1, 1, 0.03 } or { 1, 1, 1, 0.07 };
     imgui.PushStyleColor(ImGuiCol_ChildBg, bg);
     imgui.BeginChild('##addrow_' .. tostring(rec.Id or ordinal) .. '_' .. ordinal, { -1, 22 }, false);
-    renderIcon(rec.Id, 18);
+    renderIcon(rec.Id, 18, rec);   -- virtuals (dlac:*) get the element wheel
     local clicked = imgui.Selectable('##addsel_' .. ordinal, false);
     if imgui.IsItemHovered() then renderItemTooltip(rec); end
     local nameCol = 26;
@@ -3065,7 +3118,7 @@ local function renderSetBuilder(job, level)
             imgui.PushStyleColor(ImGuiCol_ChildBg, bg);
             imgui.BeginChild('##setrow_' .. tostring(rec and rec.Id or ('n' .. di)) .. '_' .. di,
                 { -1, (ss ~= '' or at ~= '') and 42 or 26 }, false);
-            renderIcon(rec and rec.Id or nil, 18);
+            renderIcon(rec and rec.Id or nil, 18, rec);   -- virtuals get the element wheel
             -- Picked-row highlight compares the WRAPPER (it == pick), not the record:
             -- one item may appear as several rows with different level ranges, and
             -- only the row the engine would actually use should light up.

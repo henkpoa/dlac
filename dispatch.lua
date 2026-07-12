@@ -32,7 +32,7 @@ local M = {};
 -- LAC-state copy stamps its version into the modestate mirror; the GUI compares
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code (the seeded file only re-requires when LuaAshitacast itself reloads).
-M.VERSION = 19;   -- 19: utils gated-virtual fix rides the same reload pair
+M.VERSION = 20;   -- 20: marker Main pairs as a 2H staff (utils rides the reload pair)
 
 -- Colored [dlac] chat output (chatfmt); plain print when unavailable. The shadowed
 -- `print` re-heads "[dlac] ..."-prefixed lines with the colored header.
