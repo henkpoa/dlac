@@ -1323,7 +1323,7 @@ local function renderTeleportsPopup()
         imgui.TextColored(col, fmt.esc(r.label));
         imgui.SameLine(150);
         imgui.TextColored(COL_DIM, fmt.esc(r.name));
-        imgui.SameLine(295);
+        imgui.SameLine(340);   -- clear of the longest names (Federation/Republic Earring) + breathing room
         if not r.owned then
             imgui.TextColored(COL_DIM, 'not owned');
         elseif not r.avail then
@@ -1354,9 +1354,20 @@ local function renderHeaderButtons()
           fn = function() macrob.open(); end };
     end
     if useit ~= nil then
-        btns[#btns+1] = { l = 'Teleports', w = 82,
-          tip = 'Warp Ring / Provenance Ring / teleport earrings -- click one to equip it\nand use it the moment the game says ready (the /dl w, p, t commands,\nclickable). Lit = ready, amber time = recharging, red = stored, dim = not owned.',
-          fn = function() ui._tpOpen = true; end };
+        btns[#btns+1] = { w = 26,
+          tip = 'Teleports: Warp Ring / Provenance Ring / teleport earrings -- click one to\nequip it and use it the moment the game says ready (the /dl w, p, t\ncommands, clickable). Lit = ready, amber = recharging, red = stored, dim = not owned.',
+          render = function()   -- FFXI-themed: the Warp Ring icon IS the button
+              local clicked = false;
+              local rec = lookupByName('Warp Ring');
+              local id = rec and rec.Id or nil;
+              if id ~= nil and loadItemTexture(id) ~= false and texHandles[id] ~= nil then
+                  -- 16px icon + ImageButton frame padding lands at the 22px row height
+                  pcall(function() clicked = imgui.ImageButton(texHandles[id], { 16, 16 }); end);
+              else
+                  clicked = imgui.Button('Tele##hdrtp', { 26, 22 });   -- no texture: text fallback
+              end
+              if clicked then ui._tpOpen = true; end
+          end };
     end
     btns[#btns+1] =
         { l = 'Reload LAC', w = 104,
@@ -1395,7 +1406,11 @@ local function renderHeaderButtons()
         if i == 1 then imgui.SameLine(x); else imgui.SameLine(0, gap); end
         local red = b.red and ImGuiCol_Button ~= nil;
         if red then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
-        if imgui.Button(b.l .. '##hdr', { b.w, 22 }) then b.fn(); end
+        if b.render ~= nil then
+            b.render();                                -- self-drawn (icon buttons)
+        elseif imgui.Button(b.l .. '##hdr', { b.w, 22 }) then
+            b.fn();
+        end
         if red then imgui.PopStyleColor(1); end
         if imgui.IsItemHovered() then imgui.SetTooltip(b.tip); end
     end
