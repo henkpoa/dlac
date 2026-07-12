@@ -914,10 +914,11 @@ end
 local CRAFT_UI = {
     order   = { 'Woodworking', 'Smithing', 'Goldsmithing', 'Clothcraft',
                 'Leathercraft', 'Bonecraft', 'Alchemy', 'Cooking' },
-    guild   = { Woodworking = 'Carpenters Guild', Smithing = 'Blacksmiths Guild',
-                Goldsmithing = 'Goldsmiths Guild', Clothcraft = 'Weavers Guild',
-                Leathercraft = 'Tanners Guild', Bonecraft = 'Boneworkers Guild',
-                Alchemy = 'Alchemists Guild', Cooking = 'Culinarians Guild' },
+    -- Not acquirable on CatsEyeXI (yet) -- hidden from the craft-specific
+    -- lists; delete an entry here the day the server makes one obtainable.
+    unobtainable = { ['Joiners Ecu'] = true, ['Smythes Ecu'] = true, ['Toreutic Ecu'] = true,
+                     ['Plaiters Ecu'] = true, ['Bevelers Ecu'] = true, ['Ossifiers Ecu'] = true,
+                     ['Brewers Ecu'] = true, ['Chefs Ecu'] = true },
     torque  = { Woodworking = 'Carvers Torque', Smithing = 'Smithys Torque',
                 Goldsmithing = 'Goldsm. Torque', Clothcraft = 'Weavers Torque',
                 Leathercraft = 'Tanners Torque', Bonecraft = 'Bone. Torque',
@@ -981,8 +982,10 @@ function CRAFT_UI.items(cr)
         if type(deps.allEquipList) ~= 'function' then return; end
         for _, rec in ipairs(deps.allEquipList() or {}) do
             local st = rec.Stats;
-            -- the craft's own torque already sits in the matrix above -- skip it
-            if type(st) == 'table' and rec.Name ~= nil and rec.Name ~= CRAFT_UI.torque[cr] then
+            -- skip the craft's own torque (already in the matrix) and gear the
+            -- server doesn't make obtainable
+            if type(st) == 'table' and rec.Name ~= nil and rec.Name ~= CRAFT_UI.torque[cr]
+               and not CRAFT_UI.unobtainable[rec.Name] then
                 local v = tonumber(st[cr .. 'Skill']) or 0;
                 if v > 0 then
                     local nAll = 0;
@@ -1049,14 +1052,14 @@ local function renderAutomations(noHeader)
             -- Auto-craft toggle: CENTER of the row, whole button green when
             -- ON / red when OFF (Henrik).
             local winW = imgui.GetWindowWidth();
-            imgui.SameLine(math.max(180, math.floor(winW / 2) - 59));
+            imgui.SameLine(math.max(180, math.floor(winW / 2) - 88));
             local aOn = cwok and (cw.autoEquip == true);
             local tinted = (ImGuiCol_Button ~= nil);
             if tinted then
                 imgui.PushStyleColor(ImGuiCol_Button, aOn and { 0.16, 0.62, 0.24, 1.0 } or { 0.72, 0.18, 0.18, 1.0 });
                 imgui.PushStyleColor(ImGuiCol_ButtonHovered, aOn and { 0.20, 0.72, 0.30, 1.0 } or { 0.82, 0.26, 0.26, 1.0 });
             end
-            if imgui.Button((aOn and 'Auto-craft: ON' or 'Auto-craft: OFF') .. '##craftauto', { 118, 22 }) and cwok then
+            if imgui.Button((aOn and 'Auto-craft: ON' or 'Auto-craft: OFF') .. '##craftauto', { 177, 22 }) and cwok then
                 cw.autoEquip = not aOn;
             end
             if tinted then imgui.PopStyleColor(2); end
@@ -1170,7 +1173,7 @@ local function renderAutomations(noHeader)
                     deps.renderIcon(rec and rec.Id or nil, 32);
                 end
                 if imgui.IsItemClicked() then CRAFT_UI.selected = cr; end
-                if imgui.IsItemHovered() then imgui.SetTooltip(cr .. '  (' .. CRAFT_UI.guild[cr] .. ')'); end
+                if imgui.IsItemHovered() then imgui.SetTooltip(cr); end
                 if i < #CRAFT_UI.order then imgui.SameLine(0, 14); end
             end
             imgui.Spacing();
