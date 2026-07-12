@@ -1249,7 +1249,9 @@ M.starterTriggersText = [[
 --
 -- Shape:  <Handler> = { { when = { <conditions> }, set = 'SetName', priority = n }, ... }
 --         action is  set = 'Name'  (a set in your <JOB>.lua)  or  equip = { Waist = 'Karin Obi' }.
--- Handlers:   Default, Precast, Midcast, Ability, Item, Weaponskill, Preshot, Midshot
+-- Handlers:   Default, Precast, Midcast, Ability, Item, Weaponskill, Preshot, Midshot,
+--             PetAction (fires when YOUR PET starts an action -- Blood Pact / Ready move /
+--             pet spell; your gear holds until it completes. dlac provides this event itself).
 -- Conditions: status/moving/mode | any/skill/magicType/element/songType/family/name/dayWeatherBonus
 --             | abilityType.  All conditions in one `when` must hold; every matching rule
 --             applies, lowest priority first (later overlays earlier per slot).
