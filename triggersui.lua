@@ -819,6 +819,12 @@ local function renderAutomations(noHeader)
     };
     rows[1].txt = IRID_TXT[rows[1].level];
     rows[2].txt = OBI_TXT[rows[2].level];
+    -- Column headers, same fixed offsets as the rows.
+    imgui.Dummy({ 0, 0 });
+    imgui.SameLine(8);   imgui.TextColored(COL_HEADER, 'Name');
+    imgui.SameLine(190); imgui.TextColored(COL_HEADER, 'Kind');
+    imgui.SameLine(470); imgui.TextColored(COL_HEADER, 'Status');
+    imgui.Separator();
     for _, r in ipairs(rows) do
         local col = levelColor(r.level, r.max);
         imgui.PushID('autorow_' .. r.key);
@@ -831,18 +837,9 @@ local function renderAutomations(noHeader)
         imgui.SameLine(470); imgui.TextColored(col, r.txt or '');
         imgui.PopID();
     end
-    imgui.Spacing();
-    if imgui.SmallButton('rescan now##trgautorescan') then autoCommit(); end
-    if imgui.IsItemHovered() then
-        local written = (type(auto.data) == 'table' and type(auto.data.written) == 'string') and auto.data.written or nil;
-        imgui.SetTooltip('Normally never needed -- the scan runs itself on login, job change and\nany inventory change. This is a troubleshooting shove.'
-            .. (written ~= nil and ('\nLast scan: ' .. written) or ''));
-    end
-    if auto.status ~= '' then
-        imgui.PushTextWrapPos(0.0);
-        imgui.TextColored(COL_SCORE, esc(auto.status));
-        imgui.PopTextWrapPos();
-    end
+    -- No rescan button, no status line: the scan runs itself (login, job
+    -- change, any inventory change, schema self-heal) and each row already
+    -- reports its own state -- extra chrome earned nothing (field request).
 end
 
 -- ---------------------------------------------------------------------------
