@@ -212,6 +212,17 @@ M.list = {
     { key = 'BlueMagicSkill',       label = 'Blue Mag',   section = 'Skill' },
     { key = 'GeomancySkill',        label = 'Geomancy',   section = 'Skill' },
     { key = 'HandbellSkill',        label = 'Handbell',   section = 'Skill' },
+    -- Crafting skills (mods 128-135): universal gear (Kupo Shield +3, Artisans
+    -- Torque +2) carries all EIGHT individually -- there is no single
+    -- "all crafts" server mod; the guild gear carries just its own.
+    { key = 'WoodworkingSkill',   label = 'Woodworking',  section = 'Skill' },
+    { key = 'SmithingSkill',      label = 'Smithing',     section = 'Skill' },
+    { key = 'GoldsmithingSkill',  label = 'Goldsmithing', section = 'Skill' },
+    { key = 'ClothcraftSkill',    label = 'Clothcraft',   section = 'Skill' },
+    { key = 'LeathercraftSkill',  label = 'Leathercraft', section = 'Skill' },
+    { key = 'BonecraftSkill',     label = 'Bonecraft',    section = 'Skill' },
+    { key = 'AlchemySkill',       label = 'Alchemy',      section = 'Skill' },
+    { key = 'CookingSkill',       label = 'Cooking',      section = 'Skill' },
 
     -- ---- Misc ----
     { key = 'MovementSpeed', label = 'Move Spd', section = 'Misc', percent = true },
@@ -219,6 +230,19 @@ M.list = {
       aliases = { 'SynthesisSkillGainRate', 'SynthesisSkillUpRate' } },   -- crafting gear (Midras's set)
     { key = 'SynthSuccessRate', label = 'Synth Success', section = 'Misc', percent = true,
       aliases = { 'SynthesisSuccessRate' } },
+    { key = 'SynthHQRate',       label = 'Synth HQ+', section = 'Misc', percent = true },  -- Craftmasters Ring line
+    -- Positive = LESS material lost on a break (Craftkeepers Ring, Artisans Torque).
+    { key = 'SynthMaterialLoss', label = 'Synth Mat. Loss-', section = 'Misc', percent = true },
+    -- Guild anti-HQ gear: suppresses HQ for the named craft ("NQ only" goal --
+    -- e.g. skilling up on bridge recipes without wasting HQ materials).
+    { key = 'AntiHQWoodworking', label = 'Anti-HQ Wood.',    section = 'Misc' },
+    { key = 'AntiHQSmithing',    label = 'Anti-HQ Smith',    section = 'Misc' },
+    { key = 'AntiHQGoldsmithing', label = 'Anti-HQ Gold',    section = 'Misc' },
+    { key = 'AntiHQClothcraft',  label = 'Anti-HQ Cloth',    section = 'Misc' },
+    { key = 'AntiHQLeathercraft', label = 'Anti-HQ Leather', section = 'Misc' },
+    { key = 'AntiHQBonecraft',   label = 'Anti-HQ Bone',     section = 'Misc' },
+    { key = 'AntiHQAlchemy',     label = 'Anti-HQ Alch.',    section = 'Misc' },
+    { key = 'AntiHQCooking',     label = 'Anti-HQ Cook',     section = 'Misc' },
     { key = 'Delay',         label = 'Delay',    section = 'Misc', lowerBetter = true },  -- weapon delay; rarely weighted
     { key = 'TreasureHunter', label = 'TH',      section = 'Misc' },   -- THF
     { key = 'Steal',          label = 'Steal',   section = 'Misc' },   -- THF
