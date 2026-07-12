@@ -412,7 +412,10 @@ local function setPickCombo(comboId, label, exclude, includeNone)
                 imgui.CloseCurrentPopup();
             end
         end
-        -- guarded: an error mid-popup tears the frame and kills every click
+        -- guarded: an error mid-popup tears the frame and kills every click.
+        -- NOTE the id: everything after '##' IS the imgui id, so it must carry
+        -- the NAME -- a shared '_o' suffix gave every row the same id and only
+        -- the first one took clicks (field case: 'only Ballad works').
         local ok, names = pcall(allSetNames);
         local shown = 0;
         for _, nm in ipairs((ok and names) or {}) do
@@ -421,7 +424,7 @@ local function setPickCombo(comboId, label, exclude, includeNone)
                 for _, x in ipairs(exclude) do if x == nm then hide = true; break; end end
             end
             if not hide and (q == '' or string.find(string.lower(nm), q, 1, true) ~= nil) then
-                if imgui.Selectable(nm .. '##' .. comboId .. '_o', false) then
+                if imgui.Selectable(nm .. '##' .. comboId .. '_o_' .. nm, false) then
                     picked = nm;
                     imgui.CloseCurrentPopup();
                 end
