@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dlac — a beginner's guide</title>
+<style>
+  :root {
+    --bg: #14151a; --panel: #1c1e26; --panel2: #22242e;
+    --text: #d8dae2; --dim: #9a9dab; --line: #33364a;
+    --gold: #d8b45a; --green: #7fd88f; --red: #e07a7a; --blue: #7fb2e0; --purple: #b490e0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0 0 80px 0;
+    background: var(--bg); color: var(--text);
+    font: 16px/1.65 "Segoe UI", system-ui, sans-serif;
+  }
+  main { max-width: 880px; margin: 0 auto; padding: 0 24px; }
+  h1 { color: var(--gold); font-size: 2rem; margin: 40px 0 4px; }
+  h2 {
+    color: var(--gold); font-size: 1.4rem; margin: 48px 0 12px;
+    border-bottom: 1px solid var(--line); padding-bottom: 6px;
+  }
+  h3 { color: var(--blue); font-size: 1.1rem; margin: 28px 0 8px; }
+  p  { margin: 10px 0; }
+  .sub { color: var(--dim); margin-top: 0; }
+  code, kbd {
+    background: var(--panel2); border: 1px solid var(--line); border-radius: 4px;
+    padding: 1px 6px; font: 0.9em Consolas, monospace; color: #e8e0c8;
+  }
+  kbd { color: var(--green); }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; }
+  th, td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: var(--panel2); color: var(--gold); }
+  td:first-child { white-space: nowrap; }
+  .box {
+    background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--gold);
+    border-radius: 6px; padding: 12px 16px; margin: 16px 0;
+  }
+  .box.tip  { border-left-color: var(--green); }
+  .box.warn { border-left-color: var(--red); }
+  .box b:first-child { color: var(--gold); }
+  .box.tip  b:first-child { color: var(--green); }
+  .box.warn b:first-child { color: var(--red); }
+  figure.shot {
+    margin: 18px 0; padding: 14px; text-align: center;
+    background: var(--panel); border: 2px dashed var(--line); border-radius: 6px;
+    color: var(--dim); font-style: italic;
+  }
+  figure.shot img { max-width: 100%; border-radius: 4px; }
+  ol li, ul li { margin: 6px 0; }
+  .mode  { color: var(--purple); }
+  .green { color: var(--green); }
+  .red   { color: var(--red); }
+  .steps li { margin: 10px 0; }
+  nav.toc {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    padding: 14px 20px; margin: 24px 0;
+  }
+  nav.toc a { color: var(--blue); text-decoration: none; }
+  nav.toc a:hover { text-decoration: underline; }
+  nav.toc li { margin: 3px 0; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>dlac — gear automation without the Lua</h1>
+<p class="sub">A beginner's guide. You need to know nothing about LuaAshitacast, and you will never edit a file.</p>
+
+<nav class="toc">
+  <b>Contents</b>
+  <ol>
+    <li><a href="#what">What dlac is (and what LuaAshitacast is)</a></li>
+    <li><a href="#setup">First-time setup</a></li>
+    <li><a href="#sets">Sets — your gear plans</a></li>
+    <li><a href="#triggers">Triggers — when sets get worn</a></li>
+    <li><a href="#modes">Modes — one set, several behaviours</a></li>
+    <li><a href="#automations">Automations — AutoIridescence &amp; ElementalObi</a></li>
+    <li><a href="#debug">When something looks wrong</a></li>
+  </ol>
+</nav>
+
+<h2 id="what">1. What dlac is (and what LuaAshitacast is)</h2>
+<p><b>LuaAshitacast</b> ("LAC") is the addon that actually swaps your gear. It watches what
+you do in game — casting, engaging, resting — and equips gear <i>sets</i> at the right
+moments. Classically you configure it by writing Lua code in a profile file per job.</p>
+<p><b>dlac</b> replaces the code-writing with a window. You build sets by clicking items,
+wire them to game events with simple rules, and flip combat modes with keybinds — and dlac
+writes the files for you. The files stay readable and hand-editable if you ever want to
+look, but they are storage, not the interface.</p>
+
+<h2 id="setup">2. First-time setup</h2>
+<ol class="steps">
+  <li>Drop the <code>dlac</code> folder into <code>Ashita\addons\</code> and run
+      <code>/addon load dlac</code> (add it to your boot script to load it every time).</li>
+  <li>Press <kbd>CTRL+K</kbd> (or type <code>/dl ui</code>) — the window opens.</li>
+  <li>Click the red <b>Setup</b> button, top-right. It converts your current job's profile
+      in place (your own logic is kept and backed up), or writes a fresh starter if the job
+      has none — including the four classic trigger rules you'll read about below.</li>
+  <li>Click <b>Reload LAC</b>. Done — repeat Setup once per job.</li>
+</ol>
+<div class="box tip"><b>Your gear indexes itself.</b> dlac scans your bags on login, on job
+change, and whenever your inventory changes. There is no "import" step — new drops just
+show up in the lists.</div>
+<div class="box"><b>The one habit to learn:</b> after you change <i>sets</i>, click
+<b>Reload LAC</b> (top-right) — LAC caches sets when a profile loads. The window nags you
+with a red banner whenever a reload is actually needed. Trigger and mode edits are live
+immediately, no reload.</div>
+
+<figure class="shot">screenshot: the main window after setup — Equipped tab with the 4×4 grid</figure>
+
+<h2 id="sets">3. Sets — your gear plans</h2>
+<p>A <b>set</b> is a plan: for each equipment slot, a list of items you'd like there. It's a
+list (not a single item) because dlac picks the best entry <i>for your current level</i> —
+you can put the Lv30 ring and the Lv54 upgrade in the same slot, and the set follows you as
+you level. A set doesn't have to fill every slot: slots a set doesn't mention are left
+exactly as they are (partial sets are how overlays work — more under Triggers).</p>
+
+<h3>Adding a set</h3>
+<ol class="steps">
+  <li>Open the <b>Sets</b> tab.</li>
+  <li>Type a name (say <code>Idle</code>) and click <b>New</b>.</li>
+  <li>Click a slot in the 4×4 grid, then <b>+ Add</b> — a searchable picker of gear you own
+      and can equip appears. Click items to add them to the slot's list.</li>
+  <li>Or skip the clicking: set stat <b>weights</b> in the right-hand panel (say Haste 5,
+      Accuracy 3) and press <b>Auto-build</b> — dlac fills every slot with your
+      best-scoring owned gear, as a level-scaling plan.</li>
+  <li>Click <b>Commit</b> (it turns red when you have unsaved changes), then
+      <b>Reload LAC</b>.</li>
+</ol>
+<figure class="shot">screenshot: Sets tab — a set loaded, one slot selected, the + Add picker open</figure>
+<div class="box tip"><b>Per-item rules.</b> Every row in a slot's list can carry its own
+rules via the <b>B</b> (behaviour) button: a level range (<code>min 30 / max 54</code>) and
+a <span class="mode">mode gate</span> (see Modes below). That's how one set stays correct
+from level 10 to 75.</div>
+
+<h2 id="triggers">4. Triggers — when sets get worn</h2>
+<p>A <b>trigger rule</b> says: <i>when this happens, wear that set</i>. Rules live in the
+<b>Triggers</b> tab, grouped by the game event that fires them. Several rules can match at
+once — they apply lowest priority first, and later ones overlay earlier ones <i>per slot</i>,
+so a small "partial" set (just a Waist item, say) can ride on top of a full one.</p>
+
+<table>
+  <tr><th>Event</th><th>When it fires</th><th>Typical sets, and why</th></tr>
+  <tr><td><b>Default</b></td>
+      <td>Continuously, whenever you're not mid-action. This is your "standing around"
+          state — it re-fires on status changes and keeps your baseline gear current.</td>
+      <td><code>Idle</code> (regen/refresh/DEF — what you wait in),
+          <code>Tp_Default</code> when <i>Engaged</i> (acc/haste/DPS — what you melee in),
+          <code>Resting</code> (healing MP gear while kneeling),
+          <code>Movement</code> (movement speed while moving).</td></tr>
+  <tr><td><b>Precast</b></td>
+      <td>The instant you START casting a spell — before cast time is calculated.</td>
+      <td><code>FastCast</code> gear: it shortens the cast. Potency gear does nothing here;
+          speed is everything.</td></tr>
+  <tr><td><b>Midcast</b></td>
+      <td>While the spell is in the air — before it LANDS.</td>
+      <td>Potency: <code>CurePotency</code> for Healing Magic, magic attack / skill sets for
+          nukes and enfeebles. The gear worn at landing decides the result.</td></tr>
+  <tr><td><b>Ability</b></td>
+      <td>When you use a job ability.</td>
+      <td>Ability-specific boosts (e.g. a Waltz set for potency).</td></tr>
+  <tr><td><b>Weaponskill</b></td>
+      <td>When you use a weapon skill.</td>
+      <td>WS sets: attack/STR for physical, the right stats per WS — often one set per
+          favourite WS (rules can match by exact name).</td></tr>
+  <tr><td><b>Preshot / Midshot</b></td>
+      <td>Ranged attack: as the shot starts / while it flies.</td>
+      <td><code>Preshot</code> = snapshot (faster shot), <code>Midshot</code> = ranged
+          accuracy/attack (a better hit).</td></tr>
+  <tr><td><b>Item</b></td>
+      <td>When you use an item.</td>
+      <td>Item-boosting oddities; most jobs need nothing here.</td></tr>
+</table>
+
+<p>The rhythm of a spell, then: <b>Precast</b> (speed) → <b>Midcast</b> (potency) →
+back to <b>Default</b> (idle/TP). That's the whole trick classic "gear swap" addons do,
+and the starter rules Setup writes give you the Default row of it for free.</p>
+
+<figure class="shot">screenshot: Triggers tab — the Default section with the four starter rules</figure>
+
+<h3>Adding a rule</h3>
+<p>In the Triggers tab, each event section has an <b>+ Add rule</b> flow: pick the
+condition (status, spell skill, element, exact name, ...), pick the target set, done.
+Rule edits are <b>live on Commit</b> — no LAC reload needed. Conditions in one rule must
+all hold; the priority defaults sensibly (a rule matching an exact spell name outranks a
+generic "any Healing Magic" rule, so both can coexist).</p>
+
+<h2 id="modes">5. Modes — one set, several behaviours</h2>
+<p>Modes are named switches <i>you</i> flip; sets and rules can react to them. They come in
+two kinds:</p>
+<ul>
+  <li><b>Toggle</b> — on or off. <code>/dl mode DT</code> flips it. Classic use: a damage-
+      taken overlay you switch on when things get scary.</li>
+  <li><b>Cycle</b> — a list of values, always holding exactly one.
+      <code>/dl mode Weapon</code> steps to the next value
+      (<span class="mode">Caster → Melee → Caster…</span>); the <b>first value is active at
+      login</b>. Create them in Triggers → Modes, with an optional <b>keybind</b> that dlac
+      binds for you (e.g. <kbd>CTRL+F4</kbd>) — no macro needed.</li>
+</ul>
+<p>Two ways to let modes change your gear:</p>
+<ol>
+  <li><b>Mode rules</b> — a trigger rule with a mode condition:
+      <i>mode <code>DT</code> → set <code>DT</code></i>. Mode rules run at the highest
+      priority, so they overlay everything else. Good for toggles.</li>
+  <li><b>Mode-gated set entries</b> — inside ONE set, give different rows a
+      <span class="mode">mode gate</span> (the <b>B</b> button): the Main slot of your
+      weapon set can hold <i>Kraken Club when <code>Weapon:SoloKC</code></i>,
+      <i>Divinity when <code>Weapon:Strong+KC</code></i>, <i>the auto-staff when
+      <code>Weapon:Caster</code></i>. One set, and the cycle decides which row is live.
+      An entry can even list several values (any of them activates it).</li>
+</ol>
+<div class="box tip"><b>Modes follow you.</b> Mode values survive reloads and are shared
+across your session — define the cycle on the job where you flip it, and sets on any job
+can gate on its values. Flipping a mode re-dresses you immediately; you don't have to act
+first.</div>
+
+<figure class="shot">screenshot: Triggers → Modes — one toggle and one cycle with a keybind; a set row showing an @mode gate</figure>
+
+<h2 id="automations">6. Automations — gear that picks itself</h2>
+<p>Some gear decisions are pure bookkeeping — the right elemental staff per spell, the
+right obi per day. Automations do those for you. They are <b>virtual slot entries</b>: in
+the + Add picker you'll find pseudo-items that you place in a set slot like any other item.
+Their icon is the 8-colour element wheel.</p>
+
+<h3>AutoIridescence (elemental staves) — Main slot</h3>
+<p>Add <code>dlac:AutoIridescence</code> to a set's <b>Main</b> slot (your caster/idle
+set, or gated behind <span class="mode">Weapon:Caster</span>). On every cast, dlac equips
+the best staff you own for that spell's element:</p>
+<ul>
+  <li>Elemental staves boost their own element — NQ (+1 Iridescence) or HQ (+2);</li>
+  <li>universal weapons (Iridal, Chatoyant, and the specific +2 pieces) cover
+      <i>every</i> element; the higher tier wins, ties go to the universal;</li>
+  <li>only gear <b>your current job can equip</b> and your level allows is considered —
+      the picks are recalculated automatically per job.</li>
+</ul>
+<p>Grips pair correctly under it: the slot counts as a two-handed staff, so your Sub-slot
+grip stays legal. The Triggers → Automations page shows exactly which staves you own
+(<span class="green">green</span>), which you own but this job can't wear
+(<span class="red">red</span>), and which you're missing (dim).</p>
+
+<h3>ElementalObi — Waist slot</h3>
+<p>Add <code>dlac:ElementalObi</code> to a set's <b>Waist</b> slot. When you cast, dlac
+checks the day and weather: <b>only when the bonus for your spell's element is positive</b>
+does the matching obi (or the universal Hachirin-no-Obi) swap in — otherwise your set's
+regular waist piece stays put, so you never wear an obi that does nothing.</p>
+
+<figure class="shot">screenshot: Automations page — AutoIridescence detail with the four columns; the element-wheel icon in a set's Main slot</figure>
+
+<div class="box"><b>No upkeep.</b> The automation data maintains itself — it rescans on
+login, job change, and any inventory change. Buy a new staff and it's a candidate before
+you've closed the shop window.</div>
+
+<h2 id="debug">7. When something looks wrong</h2>
+<ul>
+  <li><b>Red banner in the window?</b> Do what it says — usually <b>Reload LAC</b>. It
+      appears when the running engine is older than the addon (after an update).</li>
+  <li><code>/dl why</code> — the single most useful command: it prints the last thing each
+      event did — which rules matched, which set won each slot, what the automations
+      resolved to, and why something was skipped.</li>
+  <li><b>A set didn't change anything?</b> Check you Committed it <i>and</i> reloaded LAC
+      (sets need the reload; triggers and modes don't).</li>
+  <li><b>An item never equips?</b> If it's <span class="red">red</span> in the lists, it's
+      in a container the game can't equip from (Mog Safe, Storage…) — move it to your
+      Inventory or a Wardrobe.</li>
+</ul>
+
+</main>
+</body>
+</html>

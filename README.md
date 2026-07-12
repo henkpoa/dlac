@@ -8,6 +8,10 @@ all from a window in game.
 **Nothing dlac does requires you to open or edit a Lua file.** The files stay
 hand-editable for power users, but they are storage, not the interface.
 
+**New to LuaAshitacast or gear automation entirely?** Open
+[docs/guide.html](docs/guide.html) in a browser — a from-zero walkthrough of sets,
+triggers, modes, and the automations.
+
 ## Setup â€” two clicks per job
 
 You need a working LuaAshitacast install (it's part of the CatsEyeXI client).
