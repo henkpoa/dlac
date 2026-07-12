@@ -1401,6 +1401,14 @@ local function renderHeaderButtons()
               if clicked then ui._tpOpen = true; end
           end };
     end
+    do   -- MAIN-level override for testing/preparing: previews AND the engine follow it
+        local _, lvNow = getPlayerInfo();
+        local ovr = rawget(_G, 'staticMainLevel');
+        local on = (type(ovr) == 'number' and ovr > 0);
+        btns[#btns+1] = { l = 'Lv ' .. tostring(lvNow) .. (on and '*' or ''), w = 56,
+          tip = 'Preview / test at another MAIN level: the pickers, set previews and the\nlive set flattening all follow it (the engine via /dl set level main).\n* = override active -- gear picks are NOT for your real level right now.',
+          fn = function() ui._lvlOpen = true; end };
+    end
     btns[#btns+1] =
         { l = 'Reload LAC', w = 104,
           tip = 'Reload LuaAshitacast. LAC caches your sets when the profile loads, so after you\ncommit/edit a set (or run Setup) you must reload LAC for the change to take effect.',
@@ -1450,6 +1458,33 @@ local function renderHeaderButtons()
     if useit ~= nil then
         if ui._tpOpen then imgui.OpenPopup('##dlac_teleports'); ui._tpOpen = nil; end
         pcall(renderTeleportsPopup);
+    end
+    if ui._lvlOpen then imgui.OpenPopup('##dlac_lvlovr'); ui._lvlOpen = nil; end
+    if imgui.BeginPopup('##dlac_lvlovr') then
+        local ovr = rawget(_G, 'staticMainLevel');
+        local on = (type(ovr) == 'number' and ovr > 0);
+        local live = 0;
+        pcall(function() live = gData.GetPlayer().MainJobSync or 0; end);
+        local cur = on and ovr or live;
+        imgui.TextColored(COL_HEADER, 'Main level override');
+        imgui.TextColored(COL_DIM, string.format('live: %d%s', live, on and ('   testing as: ' .. ovr) or '   (no override)'));
+        -- sets the ADDON-state global (previews follow instantly) AND queues the
+        -- utils command so the LAC-state engine re-flattens at the same level
+        local function setLvl(n)
+            local v = (n ~= nil) and math.max(1, math.min(75, n)) or 0;
+            rawset(_G, 'staticMainLevel', v);
+            pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl set level main ' .. v); end);
+        end
+        if imgui.SmallButton('-5##lvm5') then setLvl(cur - 5); end
+        imgui.SameLine(0, 4);
+        if imgui.SmallButton('-1##lvm1') then setLvl(cur - 1); end
+        imgui.SameLine(0, 10); imgui.TextColored(COL_USABLE, string.format('%2d', cur)); imgui.SameLine(0, 10);
+        if imgui.SmallButton('+1##lvp1') then setLvl(cur + 1); end
+        imgui.SameLine(0, 4);
+        if imgui.SmallButton('+5##lvp5') then setLvl(cur + 5); end
+        imgui.SameLine(0, 14);
+        if imgui.SmallButton('back to live##lv0') then setLvl(nil); end
+        imgui.EndPopup();
     end
 end
 
@@ -2345,11 +2380,13 @@ local function bestByLevel(list, mainLevel)
         if rec ~= nil and type(rec.Level) == 'number' then
             local minL = it.minLevel or 0;
             local maxL = it.maxLevel or 999;
-            -- rank: active mode-gated entries (1) beat unconditional ones (0);
-            -- inactive mode-gated entries are excluded (nil). Mirrors the engine.
+            -- rank mirrors the engine: active mode-gated entries beat everything;
+            -- then a RANGED entry live at this level beats unbounded ones (a range
+            -- owns its window); then plain best-by-level. Inactive gates excluded.
             local rank = nil;
-            if it.mode == nil then rank = 0;
-            elseif entryModeOk(it.mode) then rank = 1; end
+            local ranged = (it.minLevel ~= nil or it.maxLevel ~= nil) and 1 or 0;
+            if it.mode == nil then rank = ranged;
+            elseif entryModeOk(it.mode) then rank = 2 + ranged; end
             if rank ~= nil and rec.Level <= ml and ml >= minL and ml <= maxL
                and (rank > bestRank or (rank == bestRank and rec.Level > bestLevel)) then
                 best = it; bestLevel = rec.Level; bestRank = rank;

@@ -545,6 +545,28 @@ check('P2 grip legal under the marker',   sVG.WV and sVG.WV.Sub, 'PoleGrip');
 dispatchM.setMode('Weapon', false);
 
 -- ---------------------------------------------------------------------------
+-- Q. an explicitly RANGED entry owns its window: Garrison Tunica +1 ranged
+--    20-51 must beat the higher-level unbounded Druid's Robe at 50 -- and hand
+--    the slot back once the window closes.
+-- ---------------------------------------------------------------------------
+AshitaCore = ashitaWithDW(true);
+local function rangedSets()
+    return { Dynamic = { QT = { Body = {
+        { Name = 'DruidsRobe', Level = 48 },
+        { gear = { Name = 'GarrisonTunica', Level = 20 }, minLevel = 20, maxLevel = 51 },
+    } } } };
+end
+TEST_PLAYER = { MainJob = 'WHM', SubJob = 'NIN', MainJobSync = 50, SubJobSync = 25 };
+local sQ = utils.BuildDynamicSets(rangedSets());
+check('Q1 live range beats a higher unbounded item', sQ.QT and sQ.QT.Body, 'GarrisonTunica');
+TEST_PLAYER = { MainJob = 'WHM', SubJob = 'NIN', MainJobSync = 52, SubJobSync = 25 };
+sQ = utils.BuildDynamicSets(rangedSets());
+check('Q2 window closed: the unbounded item resumes', sQ.QT and sQ.QT.Body, 'DruidsRobe');
+TEST_PLAYER = { MainJob = 'WHM', SubJob = 'NIN', MainJobSync = 19, SubJobSync = 25 };
+sQ = utils.BuildDynamicSets(rangedSets());
+check('Q3 below the window: nothing forced', sQ.QT and sQ.QT.Body, nil);
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then

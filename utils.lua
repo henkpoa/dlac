@@ -271,8 +271,7 @@ function M.BuildDynamicSets(sets)
         end
         for _, slotName in ipairs(slotNames) do
             local slotTable = setTable[slotName];
-            local maxSlotLevel = 0;
-            local bestGear = nil;
+            local slotRank, slotLevel = -1, -1;   -- winning entry's tier + item level
             local slotVirtual = nil;
 
             -- Evaluate one list entry; maybe promote it to the slot's pick. wantMode
@@ -372,10 +371,6 @@ function M.BuildDynamicSets(sets)
                     return;
                 end
 
-                -- if gear level is under current selected slot's max level, ignore.
-                if gearObject.Level < maxSlotLevel and minLevel < maxSlotLevel then
-                    return;
-                end
                 -- if Main Job level is over the slot's defined max level, ignore.
                 if mjLevel > maxLevel then
                     return;
@@ -386,26 +381,29 @@ function M.BuildDynamicSets(sets)
                     return;
                 end
 
+                -- RANKING. An entry with an explicit level RANGE that is live right
+                -- now OUTRANKS every unbounded entry: a range is an instruction
+                -- ("wear THIS from 20 to 51"), not a hint -- the old item-level
+                -- comparison let any higher-level unbounded piece steal the window
+                -- (field case: Garrison Tunica +1 ranged 20-51 lost to Druid's Robe
+                -- at 50). Within the same tier the highest item level wins; on an
+                -- exact tie the EARLIER list entry keeps the slot.
+                local rank = (gearObject.minLevel ~= nil or gearObject.maxLevel ~= nil) and 1 or 0;
+                if rank < slotRank then return; end
+                if rank == slotRank and gearObject.Level <= slotLevel then return; end
+
                 if slotName == "Sub" then
                     -- Sub-slot pairing (shared rule, equip-time): DW decides whether a
                     -- 1H off-hand is legal; the list's shield/grip is the fallback.
-                    if M.subSlotAllowed(gearObject, currentMain, { dw = isDW }) then
-                        bestGear = gearObject
+                    if not M.subSlotAllowed(gearObject, currentMain, { dw = isDW }) then
+                        return;
                     end
-                else
-                    -- All other slots (Main, Head, Body, etc.)
-                    bestGear = gearObject
                 end
-
-                -- If we found a valid piece, update the best gear for this set
-                if bestGear ~= nil then
-                    maxSlotLevel = bestGear.Level;
-                    currentSet[slotName] = bestGear.Name;
-
-                    -- Store reference to the main hand item for sub slot logic
-                    if slotName == "Main" then
-                        currentMain = gearObject;
-                    end
+                slotRank, slotLevel = rank, gearObject.Level;
+                currentSet[slotName] = gearObject.Name;
+                -- Store reference to the main hand item for sub slot logic
+                if slotName == "Main" then
+                    currentMain = gearObject;
                 end
             end
 
