@@ -58,7 +58,7 @@ local function writeFileText(p, t)
     f:write(t); f:close(); return true;
 end
 
-local TRIG_HANDLERS = { 'Default', 'Precast', 'Midcast', 'Ability', 'Item', 'Weaponskill', 'Preshot', 'Midshot' };
+local TRIG_HANDLERS = { 'Default', 'Precast', 'Midcast', 'Ability', 'Item', 'Weaponskill', 'Preshot', 'Midshot', 'PetAction' };
 
 -- Condition metadata for the add-rule builder: per handler, the choosable condition
 -- types and their value widgets. kind: 'list' = fixed dropdown, 'text' = free text,
@@ -101,6 +101,16 @@ local COND_DEFS = {
     },
     Preshot = { { key = 'any', kind = 'flag' }, { key = 'mode', kind = 'text', hint = 'a player-toggled mode must be ON' } },
     Midshot = { { key = 'any', kind = 'flag' }, { key = 'mode', kind = 'text', hint = 'a player-toggled mode must be ON' } },
+    -- Fires when YOUR PET starts an action (Blood Pact, Ready move, pet spell) --
+    -- dlac synthesizes it (this LAC build never calls a pet handler); Default
+    -- holds until the action completes, so Pet: stat gear stays on through it.
+    PetAction = {
+        { key = 'contains', kind = 'text', hint = 'pet action name contains this text, e.g. "Predator" for\nPredator Claws' },
+        { key = 'name',     kind = 'text', hint = 'exact pet action name, e.g. Volt Strike' },
+        { key = 'element',  kind = 'list', items = { 'Fire', 'Ice', 'Wind', 'Earth', 'Thunder', 'Water', 'Light', 'Dark', 'Non-Elemental' } },
+        { key = 'mode',     kind = 'text', hint = 'a player-toggled mode must be ON' },
+        { key = 'any',      kind = 'flag' },
+    },
 };
 
 local trig = {

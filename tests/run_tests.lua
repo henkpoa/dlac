@@ -583,6 +583,17 @@ check('R2 single set stays plain',
     rtext:find([[set = "SongPotency"]], 1, true) ~= nil, true);
 
 -- ---------------------------------------------------------------------------
+-- S. PetAction is a first-class trigger section (dlac-synthesized event: this
+--    LAC build tracks the pet's action but never calls a profile handler).
+-- ---------------------------------------------------------------------------
+check('S1 event canon', dispatchM.canonEvent('petaction'), 'PetAction');
+local stext = dispatchM.serializeTriggers({
+    PetAction = { { when = { contains = 'Predator' }, set = 'PetWS' } },
+});
+check('S2 section serializes', stext:find('PetAction = {', 1, true) ~= nil, true);
+check('S3 rule serializes', stext:find([[contains = "Predator"]], 1, true) ~= nil, true);
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then

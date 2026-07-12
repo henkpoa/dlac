@@ -32,7 +32,7 @@ local M = {};
 -- LAC-state copy stamps its version into the modestate mirror; the GUI compares
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code (the seeded file only re-requires when LuaAshitacast itself reloads).
-M.VERSION = 25;   -- 25: one rule may wear several sets in order (set = { 'Base', 'Overlay' })
+M.VERSION = 26;   -- 26: PetAction event (dlac-synthesized; Default holds while the pet acts)
 
 -- Colored [dlac] chat output (chatfmt); plain print when unavailable. The shadowed
 -- `print` re-heads "[dlac] ..."-prefixed lines with the colored header.
@@ -65,7 +65,11 @@ local LAC_SLOTS = { 'main', 'sub', 'range', 'ammo', 'head', 'neck', 'ear1', 'ear
 local LAC_SLOT_OK = {};
 for _, s in ipairs(LAC_SLOTS) do LAC_SLOT_OK[s] = true; end
 
-local EVENTS = { 'Default', 'Precast', 'Midcast', 'Ability', 'Item', 'Weaponskill', 'Preshot', 'Midshot' };
+-- PetAction is DLAC-SYNTHESIZED: this LAC build tracks the pet's action
+-- (gState.PetAction / gData.GetPetAction) but never calls a profile handler
+-- for it (the upstream tutorial documents one; the shipped build predates it).
+-- The engine tick dispatches it once per pet-action start instead.
+local EVENTS = { 'Default', 'Precast', 'Midcast', 'Ability', 'Item', 'Weaponskill', 'Preshot', 'Midshot', 'PetAction' };
 local EVENT_CANON = {};
 for _, e in ipairs(EVENTS) do EVENT_CANON[string.lower(e)] = e; end
 M.EVENTS = EVENTS;
@@ -851,7 +855,11 @@ end
 local function buildCtx(event)
     local ctx = { event = event };
     pcall(function() ctx.player = gData.GetPlayer(); end);
-    if event ~= 'Default' then
+    if event == 'PetAction' then
+        -- the PET's action (Blood Pact / Ready move / pet spell) -- same shape
+        -- as GetAction (Name/Skill/Element/Type), so the matchers just work
+        pcall(function() ctx.action = gData.GetPetAction(); end);
+    elseif event ~= 'Default' then
         pcall(function() ctx.action = gData.GetAction(); end);
     end
     return ctx;
@@ -916,6 +924,19 @@ function M.dispatch(event)
     if not inLac() then return; end
     pcall(function()
         event = EVENT_CANON[string.lower(tostring(event))] or event;
+        -- While the PET's action is in flight, HOLD Default: the pet gear a
+        -- PetAction rule equipped must survive until the action completes
+        -- (upstream parity -- LAC clears gState.PetAction on the completion
+        -- packet; the Completion timestamp is the backstop). Petless: no effect.
+        if event == 'Default' then
+            local held = false;
+            pcall(function()
+                local st = rawget(_G, 'gState');
+                local pa = (st ~= nil) and st.PetAction or nil;
+                if pa ~= nil and (pa.Completion == nil or os.clock() < pa.Completion) then held = true; end
+            end);
+            if held then return; end
+        end
         local rules = ensureLoaded();
         local list = rules and rules[event] or nil;
         if list == nil or #list == 0 then return; end
@@ -1334,7 +1355,7 @@ if inLac() then
     -- with it up). Drive the SAME flow on a throttled frame tick so Default
     -- dispatching is packet-independent. The tick also watches the main job: a job
     -- change drops maxmp immediately, before it can battery the new job's gear.
-    local _tickAt, _tickJob = 0, nil;
+    local _tickAt, _tickJob, _tickPet = 0, nil, nil;
     ashita.events.register('d3d_present', 'dlac-dispatch-tick', function()
         pcall(function()
             if os.clock() < _tickAt then return; end
@@ -1372,6 +1393,19 @@ if inLac() then
                 if probe == nil then zoning = true; end
             end
             if zoning then return; end
+            -- PET actions: synthesized here (see EVENTS) -- dispatch ONCE per
+            -- action start; the Default hold in M.dispatch keeps the pet gear
+            -- on until the action completes.
+            local pa = st.PetAction;
+            if pa ~= nil then
+                local key = tostring(pa.Id or '?') .. '@' .. tostring(pa.Completion or 0);
+                if key ~= _tickPet then
+                    _tickPet = key;
+                    pcall(function() M.dispatch('PetAction'); end);
+                end
+            else
+                _tickPet = nil;
+            end
             st.HandleEquipEvent('HandleDefault', 'auto');
         end);
     end);
