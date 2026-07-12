@@ -32,7 +32,7 @@ local M = {};
 -- LAC-state copy stamps its version into the modestate mirror; the GUI compares
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code (the seeded file only re-requires when LuaAshitacast itself reloads).
-M.VERSION = 26;   -- 26: PetAction event (dlac-synthesized; Default holds while the pet acts)
+M.VERSION = 27;   -- 27: PetAction equips actually flush (ClearBuffer/ProcessBuffer bracket)
 
 -- Colored [dlac] chat output (chatfmt); plain print when unavailable. The shadowed
 -- `print` re-heads "[dlac] ..."-prefixed lines with the colored header.
@@ -1404,7 +1404,25 @@ if inLac() then
                 local key = tostring(pa.Id or '?') .. '@' .. tostring(pa.Completion or 0);
                 if key ~= _tickPet then
                     _tickPet = key;
-                    pcall(function() M.dispatch('PetAction'); end);
+                    -- gFunc.EquipSet only LANDS when LAC brackets the call with
+                    -- ClearBuffer/ProcessBuffer -- it does that around its own
+                    -- handler invocations, so the tick must bracket its own
+                    -- dispatch the same way or the equips sit in the buffer and
+                    -- evaporate (field case: /dl why showed the PetAction match,
+                    -- nothing swapped).
+                    pcall(function()
+                        local eq = rawget(_G, 'gEquip');
+                        if eq ~= nil and type(eq.ClearBuffer) == 'function' and type(eq.ProcessBuffer) == 'function' then
+                            eq.ClearBuffer();
+                            local cc = st.CurrentCall;
+                            st.CurrentCall = 'PetAction';   -- LAC's debug prints name the caller
+                            pcall(function() M.dispatch('PetAction'); end);
+                            st.CurrentCall = cc or 'N/A';
+                            eq.ProcessBuffer('auto');
+                        else
+                            M.dispatch('PetAction');
+                        end
+                    end);
                 end
             else
                 _tickPet = nil;
