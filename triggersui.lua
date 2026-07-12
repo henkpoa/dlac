@@ -387,42 +387,50 @@ local function allSetNames()
     return names;
 end
 
--- A SEARCHABLE set-name combo (profiles collect many sets): a filter box sits
--- at the top of the open list, focused on open, cleared per combo. Returns the
+-- A SEARCHABLE set-name picker (profiles collect many sets): a button opening
+-- a plain popup with a filter box + the names -- the field-proven '+ Add'
+-- pattern, NOT an InputText inside BeginCombo (this imgui build mishandled
+-- that, killing clicks: field case 'can't add an overlay set'). Returns the
 -- clicked name (nil otherwise). exclude = names to hide (already picked);
 -- includeNone adds a '(none)' row that returns the string '(none)'.
-local _setPickQ, _setPickOpen = { '' }, nil;
+local _setPickQ = { '' };
 local function setPickCombo(comboId, label, exclude, includeNone)
-    if not imgui.BeginCombo(comboId, label) then
-        if _setPickOpen == comboId then _setPickOpen = nil; end
-        return nil;
-    end
-    if _setPickOpen ~= comboId then
-        _setPickOpen = comboId;
-        _setPickQ[1] = '';
-        pcall(function() imgui.SetKeyboardFocusHere(); end);
-    end
     local picked = nil;
-    imgui.PushItemWidth(-1);
-    imgui.InputText('##' .. comboId .. '_q', _setPickQ, 48);
-    imgui.PopItemWidth();
-    local q = string.lower(_setPickQ[1] or '');
-    if includeNone and (q == '' or string.find('(none)', q, 1, true) ~= nil) then
-        if imgui.Selectable('(none)##' .. comboId .. '_none', false) then picked = '(none)'; end
+    if imgui.Button(label .. '###' .. comboId .. '_btn', { 170, 0 }) then
+        _setPickQ[1] = '';
+        imgui.OpenPopup(comboId .. '_pop');
     end
-    -- guarded like every set combo: an error between BeginCombo/EndCombo tears
-    -- the frame and kills every click in the popup
-    local ok, names = pcall(allSetNames);
-    for _, nm in ipairs((ok and names) or {}) do
-        local hide = false;
-        if exclude ~= nil then
-            for _, x in ipairs(exclude) do if x == nm then hide = true; break; end end
+    if imgui.BeginPopup(comboId .. '_pop') then
+        imgui.PushItemWidth(190);
+        imgui.InputText('##' .. comboId .. '_q', _setPickQ, 48);
+        imgui.PopItemWidth();
+        if imgui.IsItemHovered() then imgui.SetTooltip('Type to filter the sets.'); end
+        local q = string.lower(_setPickQ[1] or '');
+        if includeNone and (q == '' or string.find('(none)', q, 1, true) ~= nil) then
+            if imgui.Selectable('(none)##' .. comboId .. '_none', false) then
+                picked = '(none)';
+                imgui.CloseCurrentPopup();
+            end
         end
-        if not hide and (q == '' or string.find(string.lower(nm), q, 1, true) ~= nil) then
-            if imgui.Selectable(nm .. '##' .. comboId .. '_o', false) then picked = nm; end
+        -- guarded: an error mid-popup tears the frame and kills every click
+        local ok, names = pcall(allSetNames);
+        local shown = 0;
+        for _, nm in ipairs((ok and names) or {}) do
+            local hide = false;
+            if exclude ~= nil then
+                for _, x in ipairs(exclude) do if x == nm then hide = true; break; end end
+            end
+            if not hide and (q == '' or string.find(string.lower(nm), q, 1, true) ~= nil) then
+                if imgui.Selectable(nm .. '##' .. comboId .. '_o', false) then
+                    picked = nm;
+                    imgui.CloseCurrentPopup();
+                end
+                shown = shown + 1;
+            end
         end
+        if shown == 0 then imgui.TextColored(COL_DIM, '(no match)'); end
+        imgui.EndPopup();
     end
-    imgui.EndCombo();
     return picked;
 end
 
