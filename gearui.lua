@@ -543,7 +543,13 @@ local function weightsActive()
     if not hasOptim or optim.getWeights == nil then return false; end
     local ok, ws = pcall(optim.getWeights);
     if not ok or type(ws) ~= 'table' then return false; end
-    for _ in pairs(ws) do return true; end
+    -- A weight ZEROED in the editor leaves its entry behind ({ perUnit = 0 });
+    -- an all-zero table must count as "no weights" -- otherwise the optimizer
+    -- runs, everything scores 0, and Auto-build silently builds nothing
+    -- (field case: a dead-looking Auto-build button).
+    for _, w in pairs(ws) do
+        if (tonumber(type(w) == 'table' and w.perUnit or w) or 0) ~= 0 then return true; end
+    end
     return false;
 end
 
@@ -2490,6 +2496,11 @@ local function autoBuild(job, level)
     end
     M.working = built;
     _setDirty = true;   -- Auto-build modified the working set -> unsaved changes
+    -- Report counts to the caller (the button formats the status line -- setStatus
+    -- is defined further down, out of this function's scope).
+    local nSlots, nRows = 0, 0;
+    for _, list in pairs(built) do nSlots = nSlots + 1; nRows = nRows + #list; end
+    return nSlots, nRows;
 end
 
 -- "Lock" a committed set via LAC (takes effect once the file is committed + reloaded).
@@ -2818,7 +2829,17 @@ local function renderSetsWeightPanel(job, level)
     if imgui.IsItemHovered() then
         imgui.SetTooltip('Leaves Main/Sub/Range untouched when Auto-building, so weapon swaps don\'t reset your TP.');
     end
-    if imgui.Button('Auto-build##setauto', { -1, 24 }) then autoBuild(job, level); end
+    if imgui.Button('Auto-build##setauto', { -1, 24 }) then
+        local nSlots, nRows = autoBuild(job, level);
+        -- ALWAYS say what happened: a silent empty result reads as a dead button.
+        if (nSlots or 0) > 0 then
+            setStatus(string.format('Auto-built %d slot(s), %d row(s) -- Commit to save.', nSlots, nRows), false);
+        elseif not weightsActive() then
+            setStatus('Auto-build chose nothing: no stat weights are set (zeroed weights don\'t count). Weight some stats below, then build again.', true);
+        else
+            setStatus('Auto-build chose nothing: no owned, equippable item scored above 0 with the current weights.', true);
+        end
+    end
     imgui.Separator();
     renderWeightsEditor();
 end
