@@ -387,6 +387,45 @@ local function allSetNames()
     return names;
 end
 
+-- A SEARCHABLE set-name combo (profiles collect many sets): a filter box sits
+-- at the top of the open list, focused on open, cleared per combo. Returns the
+-- clicked name (nil otherwise). exclude = names to hide (already picked);
+-- includeNone adds a '(none)' row that returns the string '(none)'.
+local _setPickQ, _setPickOpen = { '' }, nil;
+local function setPickCombo(comboId, label, exclude, includeNone)
+    if not imgui.BeginCombo(comboId, label) then
+        if _setPickOpen == comboId then _setPickOpen = nil; end
+        return nil;
+    end
+    if _setPickOpen ~= comboId then
+        _setPickOpen = comboId;
+        _setPickQ[1] = '';
+        pcall(function() imgui.SetKeyboardFocusHere(); end);
+    end
+    local picked = nil;
+    imgui.PushItemWidth(-1);
+    imgui.InputText('##' .. comboId .. '_q', _setPickQ, 48);
+    imgui.PopItemWidth();
+    local q = string.lower(_setPickQ[1] or '');
+    if includeNone and (q == '' or string.find('(none)', q, 1, true) ~= nil) then
+        if imgui.Selectable('(none)##' .. comboId .. '_none', false) then picked = '(none)'; end
+    end
+    -- guarded like every set combo: an error between BeginCombo/EndCombo tears
+    -- the frame and kills every click in the popup
+    local ok, names = pcall(allSetNames);
+    for _, nm in ipairs((ok and names) or {}) do
+        local hide = false;
+        if exclude ~= nil then
+            for _, x in ipairs(exclude) do if x == nm then hide = true; break; end end
+        end
+        if not hide and (q == '' or string.find(string.lower(nm), q, 1, true) ~= nil) then
+            if imgui.Selectable(nm .. '##' .. comboId .. '_o', false) then picked = nm; end
+        end
+    end
+    imgui.EndCombo();
+    return picked;
+end
+
 -- ---------------------------------------------------------------------------
 -- Automations (ADR 0004): auto elemental staff / auto obi. The GUI owns DERIVING
 -- the manifest -- from the player's bags via deps.ownedCounts + deps.lookupByName --
@@ -984,16 +1023,9 @@ local function renderModePopup()
     else
         imgui.TextColored(COL_DIM, 'Overlay set (optional)'); imgui.SameLine(0, 8);
         imgui.PushItemWidth(150);
-        if imgui.BeginCombo('##modeset', modeUI.set or '(none)') then
-            if imgui.Selectable('(none)##modesetnone', modeUI.set == nil) then modeUI.set = nil; end
-            -- guarded: an error between BeginCombo/EndCombo (profilesets can throw
-            -- pre-login) would tear the frame and kill every click in the popup
-            local ok, names = pcall(allSetNames);
-            for _, nm in ipairs((ok and names) or {}) do
-                if imgui.Selectable(nm .. '##modeso', modeUI.set == nm) then modeUI.set = nm; end
-            end
-            imgui.EndCombo();
-        end
+        local ovrPick = setPickCombo('##modeset', modeUI.set or '(none)', nil, true);
+        if ovrPick == '(none)' then modeUI.set = nil;
+        elseif ovrPick ~= nil then modeUI.set = ovrPick; end
         imgui.PopItemWidth();
         if imgui.IsItemHovered() then
             imgui.SetTooltip('Wires the classic overlay for you: a rule  mode = <name>  ->  this set\nin the DEFAULT trigger at priority 100 -- while the mode is ON it applies\nLAST, overlaying only the slots the set fills. Other events (Precast,\nMidcast, WS...) are untouched. Pick (none) to remove the rule again.');
@@ -1253,16 +1285,10 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
         imgui.TextColored(COL_DIM, (#slist == 0) and '->' or '  ');
         imgui.SameLine(0, 6);
         imgui.PushItemWidth(170);
-        if imgui.BeginCombo('##trgset' .. id, (#slist == 0) and '(pick set)' or '+ overlay set') then
-            for _, nm in ipairs(setNames) do
-                local already = false;
-                for _, sn in ipairs(slist) do if sn == nm then already = true; break; end end
-                if not already and imgui.Selectable(nm .. '##trgso' .. id, false) then
-                    slist[#slist + 1] = nm;
-                    writeBack();
-                end
-            end
-            imgui.EndCombo();
+        local addPick = setPickCombo('##trgset' .. id, (#slist == 0) and '(pick set)' or '+ overlay set', slist);
+        if addPick ~= nil then
+            slist[#slist + 1] = addPick;
+            writeBack();
         end
         imgui.PopItemWidth();
         if imgui.IsItemHovered() then
@@ -1481,15 +1507,8 @@ local function renderTrigAddPopup()
     imgui.Separator();
     imgui.TextColored(COL_DIM, 'equip set:'); imgui.SameLine(0, 4);
     imgui.PushItemWidth(150);
-    if imgui.BeginCombo('##trgaddset', trig.addSet or '(pick set)') then
-        -- guarded like the mode popup's combo: an error between BeginCombo/EndCombo
-        -- tears the frame and kills every click in the popup
-        local ok, names = pcall(allSetNames);
-        for _, nm in ipairs((ok and names) or {}) do
-            if imgui.Selectable(nm .. '##trgaso', trig.addSet == nm) then trig.addSet = nm; end
-        end
-        imgui.EndCombo();
-    end
+    local addSetPick = setPickCombo('##trgaddset', trig.addSet or '(pick set)');
+    if addSetPick ~= nil then trig.addSet = addSetPick; end
     imgui.PopItemWidth();
     if editing and trig.addSet == nil and trig._editEquip ~= nil then
         imgui.SameLine(0, 6);
