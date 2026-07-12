@@ -560,9 +560,11 @@ local function resolveVirtual(marker, ctx, slot)
                 end
             end
         end
-        local chain = (type(perCraft) == 'table') and (perCraft[goal] or perCraft.hq) or nil;
+        -- Strictly per-goal: hq gear under an nq goal (or vice versa) would
+        -- FIGHT the goal, so a missing ladder is unresolved, not substituted.
+        local chain = (type(perCraft) == 'table') and perCraft[goal] or nil;
         if type(chain) ~= 'table' then
-            return nil, string.format('no %s craft gear for %s', slotKey, tostring(craftV));
+            return nil, string.format('no %s craft gear for %s (%s)', slotKey, tostring(craftV), goal);
         end
         for _, r in ipairs(chain) do                     -- ladder is best-first
             if type(r) == 'table' and type(r.name) == 'string' and usableAt(r.level, lvl) then

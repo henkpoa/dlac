@@ -488,7 +488,7 @@ local UNIVERSAL = {
 -- Manifest schema version: bump when autoCommit writes NEW fields. An on-disk
 -- manifest with an older fmtver self-heals (renderAutomations triggers a rescan)
 -- so a dlac update never needs a manual "Rescan owned gear" click.
-local AUTO_FMT = 4;   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked
+local AUTO_FMT = 5;   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked; 5: craft ladders
 
 local auto = { data = nil, loadedFor = nil, status = '' };
 
@@ -635,6 +635,92 @@ local function autoCommit()
             end
         end
     end);
+    -- Craft automation data (docs/design/craft-automation.md): per SLOT, per
+    -- CRAFT, per GOAL ('hq'/'nq'), a best-first ladder of owned+wearable gear.
+    -- Craft-specific and universal pieces compete in ONE ladder ("the Torques
+    -- in a row, then the universal"): an Artisans Torque scores for every
+    -- craft, a Smiths Ring only for Smithing's nq ladder. Data-driven from
+    -- catalog stats -- a catalog update + rescan picks up new server gear.
+    -- Goals per Henrik: hq = raise HQ (AntiHQ gear DISQUALIFIES); nq = block
+    -- HQ on purpose (crafting materials you don't want HQ'd).
+    local craftBest = {};
+    pcall(function()
+        if type(deps.ownedList) ~= 'function' then return; end
+        local CRAFTS = { 'Woodworking', 'Smithing', 'Goldsmithing', 'Clothcraft',
+                         'Leathercraft', 'Bonecraft', 'Alchemy', 'Cooking' };
+        local counts = (type(deps.ownedCounts) == 'function') and deps.ownedCounts() or nil;
+        local lvl = mainLevel();
+        local CLADDER = 3;
+        local bySlot = {};   -- slotKey -> craft -> goal -> { {name, score, level}, ... }
+        for _, rec in ipairs(deps.ownedList() or {}) do
+            local st = (hasLScale and type(lscale.effective) == 'function')
+                and lscale.effective(rec, lvl) or rec.Stats;
+            local sl = tostring(rec.Slot or '');
+            if type(st) == 'table' and rec.Name ~= nil and sl ~= ''
+               and (not hasDispatch or type(dsp.canWear) ~= 'function' or dsp.canWear(rec, job, 99))
+               and (type(deps.haveInBags) ~= 'function' or deps.haveInBags(rec)) then
+                local succ  = tonumber(st.SynthSuccessRate) or 0;
+                local hqr   = tonumber(st.SynthHQRate) or 0;
+                local mat   = tonumber(st.SynthMaterialLoss) or 0;
+                local consv = tonumber(st.ConserveIngredient) or 0;
+                local dup = (sl == 'Ear' or sl == 'Ring') and type(counts) == 'table'
+                            and rec.Id ~= nil and (counts[rec.Id] or 0) >= 2;
+                for _, cr in ipairs(CRAFTS) do
+                    local skill = tonumber(st[cr .. 'Skill']) or 0;
+                    local anti  = tonumber(st['AntiHQ' .. cr]) or 0;
+                    -- hq: skill raises quality tiers, HQ+ is the point; an
+                    -- anti-HQ piece would BLOCK the goal outright.
+                    local hqScore = (anti > 0) and 0 or (hqr * 10 + skill * 3 + succ);
+                    -- nq: the HQ block is the point; skill/success still help.
+                    local nqScore = anti * 100 + skill * 3 + succ * 2 + mat + consv;
+                    for goal, score in pairs({ hq = hqScore, nq = nqScore }) do
+                        if score > 0 then
+                            bySlot[sl] = bySlot[sl] or {};
+                            bySlot[sl][cr] = bySlot[sl][cr] or {};
+                            local lad = bySlot[sl][cr][goal] or {};
+                            bySlot[sl][cr][goal] = lad;
+                            local c = { name = rec.Name, score = score, level = rec.Level or 0 };
+                            lad[#lad + 1] = c;
+                            if dup then lad[#lad + 1] = c; end   -- two copies may fill both paired slots
+                        end
+                    end
+                end
+            end
+        end
+        for sl, crafts in pairs(bySlot) do
+            for cr, goals in pairs(crafts) do
+                for goal, lad in pairs(goals) do
+                    table.sort(lad, function(a, b)
+                        if a.score ~= b.score then return a.score > b.score; end
+                        return a.name < b.name;
+                    end);
+                    -- Ear/Ring split into DISJOINT ladders (mpBest pattern).
+                    if sl == 'Ear' or sl == 'Ring' then
+                        local l1, l2 = {}, {};
+                        for i, c in ipairs(lad) do
+                            local t = (i % 2 == 1) and l1 or l2;
+                            if #t < CLADDER then t[#t + 1] = c; end
+                        end
+                        for suffix, l in pairs({ ['1'] = l1, ['2'] = l2 }) do
+                            if #l > 0 then
+                                local key = string.lower(sl) .. suffix;
+                                craftBest[key] = craftBest[key] or {};
+                                craftBest[key][cr] = craftBest[key][cr] or {};
+                                craftBest[key][cr][goal] = l;
+                            end
+                        end
+                    else
+                        local l = {};
+                        for i = 1, math.min(#lad, CLADDER) do l[i] = lad[i]; end
+                        local key = string.lower(sl);
+                        craftBest[key] = craftBest[key] or {};
+                        craftBest[key][cr] = craftBest[key][cr] or {};
+                        craftBest[key][cr][goal] = l;
+                    end
+                end
+            end
+        end
+    end);
     local L = {
         '-- dlac automation manifest -- written by the GUI (Triggers tab > Automations).',
         '-- Tiered Iridescence: per-element staves (NQ +1 / HQ +2, own element only) and',
@@ -685,6 +771,34 @@ local function autoCommit()
             rungs[#rungs + 1] = string.format('{ name = %q, mp = %d, level = %d }', c.name, c.mp, c.level);
         end
         L[#L + 1] = string.format('        %s = { %s },', k, table.concat(rungs, ', '));
+    end
+    L[#L + 1] = '    },';
+    -- craft ladders: slotKey -> craft -> goal ('hq'/'nq') -> best-first rungs
+    L[#L + 1] = '    craft = {';
+    local cbKeys = {};
+    for k in pairs(craftBest) do cbKeys[#cbKeys + 1] = k; end
+    table.sort(cbKeys);
+    for _, k in ipairs(cbKeys) do
+        L[#L + 1] = string.format('        %s = {', k);
+        local crs = {};
+        for cr in pairs(craftBest[k]) do crs[#crs + 1] = cr; end
+        table.sort(crs);
+        for _, cr in ipairs(crs) do
+            local parts = {};
+            for _, goal in ipairs({ 'hq', 'nq' }) do
+                local lad = craftBest[k][cr][goal];
+                if lad ~= nil then
+                    local rungs = {};
+                    for _, c in ipairs(lad) do
+                        rungs[#rungs + 1] = string.format('{ name = %q, score = %d, level = %d }',
+                            c.name, c.score, c.level);
+                    end
+                    parts[#parts + 1] = string.format('%s = { %s }', goal, table.concat(rungs, ', '));
+                end
+            end
+            L[#L + 1] = string.format('            %s = { %s },', cr, table.concat(parts, ', '));
+        end
+        L[#L + 1] = '        },';
     end
     L[#L + 1] = '    },';
     L[#L + 1] = '};';

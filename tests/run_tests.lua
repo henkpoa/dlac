@@ -718,6 +718,42 @@ local _, tErr2 = setmgrT.deleteStaticSetText(statFix, 'Sub');
 check('T7 nested name never matches', tErr2 ~= nil and tErr2:find('no static set named', 1, true) ~= nil, true);
 
 -- ---------------------------------------------------------------------------
+-- V. dlac:AutoCraft resolution (craft automation, docs/design/craft-automation.md)
+--    Per-slot manifest ladders, active craft from the 'craft' mode (or
+--    ctx.craftOverride), goal from 'craftgoal' (hq default, STRICT per-goal --
+--    no cross-goal substitution), level-gated best-first rungs.
+-- ---------------------------------------------------------------------------
+dispatchM._autoOverride = { craft = {
+    neck = { Alchemy = {
+        hq = { { name = 'Alchemists Torque', score = 30, level = 50 },
+               { name = 'Artisans Torque',   score = 8,  level = 1 } },
+        nq = { { name = 'Artisans Torque',   score = 8,  level = 1 } },
+    } },
+    ring1 = { Alchemy = {
+        nq = { { name = 'Artisans Ring', score = 100, level = 45 } },
+    } },
+} };
+local vctx = { player = { MainJobSync = 75 } };
+dispatchM.modes['craft'] = 'Alchemy';
+dispatchM.modes['craftgoal'] = nil;
+check('V1 hq default: best rung',   dispatchM._resolveVirtual('dlac:AutoCraft', vctx, 'Neck'), 'Alchemists Torque');
+dispatchM.modes['craftgoal'] = 'nq';
+check('V2 nq goal picks nq ladder', dispatchM._resolveVirtual('dlac:AutoCraft', vctx, 'Neck'), 'Artisans Torque');
+check('V3 nq ring1 ladder',         dispatchM._resolveVirtual('dlac:AutoCraft', vctx, 'Ring1'), 'Artisans Ring');
+check('V4 STRICT per-goal: hq-only slot unresolved under nq',
+    dispatchM._resolveVirtual('dlac:AutoCraft', { player = { MainJobSync = 75 }, goalOverride = 'nq', craftOverride = 'Alchemy' }, 'Feet'), nil);
+dispatchM.modes['craftgoal'] = nil;
+check('V5 level gate falls down the ladder',
+    dispatchM._resolveVirtual('dlac:AutoCraft', { player = { MainJobSync = 40 } }, 'Neck'), 'Artisans Torque');
+dispatchM.modes['craft'] = nil;
+check('V6 mode off -> unresolved',  dispatchM._resolveVirtual('dlac:AutoCraft', vctx, 'Neck'), nil);
+check('V7 craftOverride resolves without the mode',
+    dispatchM._resolveVirtual('dlac:AutoCraft', { player = { MainJobSync = 75 }, craftOverride = 'Alchemy' }, 'Neck'), 'Alchemists Torque');
+check('V8 slot without craft gear -> unresolved',
+    dispatchM._resolveVirtual('dlac:AutoCraft', { player = { MainJobSync = 75 }, craftOverride = 'Alchemy' }, 'Body'), nil);
+dispatchM._autoOverride = nil;
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then

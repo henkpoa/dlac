@@ -125,25 +125,50 @@ local function findCraftSet(skill)
     return nil;
 end
 
--- Equip the craft set for a skill; returns pieces queued (0 = nothing found).
+-- Manifest-driven picks: resolve dlac:AutoCraft per slot through the shared
+-- dispatch resolver (addon-state instance reads the same autogear.lua). The
+-- craft is passed as ctx.craftOverride -- the command-bus mode write hasn't
+-- landed in this frame yet. Returns { [slotLabel] = itemName }.
+function M.manifestPicks(skill)
+    local ok, dsp = pcall(require, 'dlac\\dispatch');
+    if not ok or type(dsp) ~= 'table' or type(dsp._resolveVirtual) ~= 'function' then return nil; end
+    local picks = nil;
+    for _, slot in ipairs(SLOT_LABELS) do
+        local nm = nil;
+        pcall(function() nm = dsp._resolveVirtual('dlac:AutoCraft', { craftOverride = skill }, slot); end);
+        if nm ~= nil then picks = picks or {}; picks[slot] = nm; end
+    end
+    return picks;
+end
+
+-- Equip craft gear for a skill; returns pieces queued (0 = nothing found).
+-- A committed Craft_<Skill> / Craft set wins (explicit intent); otherwise the
+-- autogear manifest's craft ladders decide (zero-setup path). Per Henrik:
+-- gear STAYS ON afterwards -- the next ordinary trigger event redresses you.
 function M.equipCraftSet(skill)
     local setName, contents = findCraftSet(skill);
-    if setName == nil then
-        say(string.format('craft auto: no committed set "Craft_%s" (or "Craft") on this job -- build one in the Sets tab.', tostring(skill)));
-        return 0;
+    local picks, n = {}, 0;
+    if setName ~= nil then
+        for _, slot in ipairs(SLOT_LABELS) do
+            picks[slot] = entryName(contents[slot]);
+        end
+    else
+        picks = M.manifestPicks(skill) or {};
+        setName = 'craft gear (auto)';
     end
     local ok, cmdq = pcall(require, 'dlac\\cmdqueue');
     if not ok or type(cmdq) ~= 'table' or type(cmdq.enqueue) ~= 'function' then return 0; end
-    local n = 0;
     for _, slot in ipairs(SLOT_LABELS) do
-        local item = entryName(contents[slot]);
-        if item ~= nil then
-            cmdq.enqueue(4 * n, string.format('/lac equip %s "%s"', slot, item));
+        if picks[slot] ~= nil then
+            cmdq.enqueue(4 * n, string.format('/lac equip %s "%s"', slot, picks[slot]));
             n = n + 1;
         end
     end
     if n > 0 then
         say(string.format('craft auto: equipping %s (%d pieces) -- counts from the NEXT synth.', setName, n));
+    else
+        say(string.format('craft auto: nothing to equip for %s -- commit a Craft_%s set or Rescan owned gear (Triggers > Automations).',
+            tostring(skill), tostring(skill)));
     end
     return n;
 end
@@ -163,6 +188,12 @@ function M.onSynth(crystal, ings, clock)
         if prev == nil or prev.skill ~= skill then     -- announce/equip on craft change only
             say(string.format('synth detected: %s (recipe lv %d%s).',
                 skill, rec.lv or 0, rec.desynth and ', desynth' or ''));
+            -- Publish the active craft as the dlac-owned 'craft' cycle value. The
+            -- chat-command bus reaches BOTH Lua states, so the engine's
+            -- dlac:AutoCraft virtuals resolve for this craft in trigger sets too.
+            pcall(function()
+                AshitaCore:GetChatManager():QueueCommand(1, '/dl mode craft ' .. tostring(skill));
+            end);
             if M.autoEquip then pcall(function() M.equipCraftSet(skill); end); end
         end
     elseif not _saidUnknown[M.current.key] then        -- each unknown once, with the key
