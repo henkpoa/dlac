@@ -81,6 +81,73 @@ local function say(s) if _cfok and _cfmt.msg then _cfmt.msg(s); else print('[dla
 
 local _saidUnknown = {};   -- key -> true (report each unknown recipe once)
 
+-- ---------------------------------------------------------------------------
+-- Piece 2: auto-equip. OFF by default, session-scoped (/dl craft auto on).
+-- On a detected craft CHANGE, equips the committed set 'Craft_<Skill>'
+-- (fallback: 'Craft') from the current job's profile -- one staggered
+-- /lac equip per slot via the shared cmdqueue (gearui ticks it per frame).
+-- Set building stays in the Sets tab, where the weights UI can already score
+-- SynthSkillGain / SynthSuccessRate. TIMING (see header): the swap lands
+-- during the animation, so gear counts from the NEXT synth on.
+-- ---------------------------------------------------------------------------
+M.autoEquip = false;
+
+local SLOT_LABELS = { 'Main', 'Sub', 'Range', 'Ammo', 'Head', 'Neck', 'Ear1', 'Ear2',
+                      'Body', 'Hands', 'Ring1', 'Ring2', 'Back', 'Waist', 'Legs', 'Feet' };
+
+-- Set entry -> equippable item name. Wrapper/rule forms carry the ref in .gear;
+-- 'dlac:' virtuals are engine-resolved and have no direct equip form -> skip.
+local function entryName(v)
+    if type(v) == 'string' then
+        if v:sub(1, 5) == 'dlac:' then return nil; end
+        return v;
+    end
+    if type(v) == 'table' then
+        if type(v.Name) == 'string' then return v.Name; end
+        if type(v.gear) == 'string' then return v.gear; end
+        if type(v.gear) == 'table' and type(v.gear.Name) == 'string' then return v.gear.Name; end
+    end
+    return nil;
+end
+M._entryName = entryName;   -- test seam
+
+local function findCraftSet(skill)
+    local ok, profsets = pcall(require, 'dlac\\profilesets');
+    if not ok or type(profsets) ~= 'table' or type(profsets.getSetsRoot) ~= 'function' then return nil; end
+    local root = nil;
+    pcall(function() root = profsets.getSetsRoot(); end);
+    if type(root) ~= 'table' then return nil; end
+    local dyn = (type(root.Dynamic) == 'table') and root.Dynamic or {};
+    for _, nm in ipairs({ 'Craft_' .. tostring(skill), 'Craft' }) do
+        local s = dyn[nm] or root[nm];
+        if type(s) == 'table' then return nm, s; end
+    end
+    return nil;
+end
+
+-- Equip the craft set for a skill; returns pieces queued (0 = nothing found).
+function M.equipCraftSet(skill)
+    local setName, contents = findCraftSet(skill);
+    if setName == nil then
+        say(string.format('craft auto: no committed set "Craft_%s" (or "Craft") on this job -- build one in the Sets tab.', tostring(skill)));
+        return 0;
+    end
+    local ok, cmdq = pcall(require, 'dlac\\cmdqueue');
+    if not ok or type(cmdq) ~= 'table' or type(cmdq.enqueue) ~= 'function' then return 0; end
+    local n = 0;
+    for _, slot in ipairs(SLOT_LABELS) do
+        local item = entryName(contents[slot]);
+        if item ~= nil then
+            cmdq.enqueue(4 * n, string.format('/lac equip %s "%s"', slot, item));
+            n = n + 1;
+        end
+    end
+    if n > 0 then
+        say(string.format('craft auto: equipping %s (%d pieces) -- counts from the NEXT synth.', setName, n));
+    end
+    return n;
+end
+
 -- Process one detected synth; returns the record (also used by tests).
 function M.onSynth(crystal, ings, clock)
     local rec = M.lookup(crystal, ings);
@@ -93,9 +160,10 @@ function M.onSynth(crystal, ings, clock)
         key = M.key(crystal, ings), at = clock or os.clock(),
     };
     if rec ~= nil then
-        if prev == nil or prev.skill ~= skill then     -- announce on craft change only
-            say(string.format('synth detected: %s (recipe lv %d%s) -- craft sets will hook here.',
+        if prev == nil or prev.skill ~= skill then     -- announce/equip on craft change only
+            say(string.format('synth detected: %s (recipe lv %d%s).',
                 skill, rec.lv or 0, rec.desynth and ', desynth' or ''));
+            if M.autoEquip then pcall(function() M.equipCraftSet(skill); end); end
         end
     elseif not _saidUnknown[M.current.key] then        -- each unknown once, with the key
         _saidUnknown[M.current.key] = true;
@@ -114,20 +182,39 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
         end);
     end);
 
-    -- /dl craft -- session status (what detection has seen so far).
+    -- /dl craft [auto on|off | equip] -- status / automation control.
     ashita.events.register('command', 'dlac-craftwatch-cmd', function(e)
         pcall(function()
             local raw = string.lower(e.command or '');
-            local a = raw:match('^/dl%s+(%S+)') or raw:match('^/dlac%s+(%S+)');
+            local a, b, c = raw:match('^/dl%s+(%S+)%s*(%S*)%s*(%S*)');
+            if a == nil then a, b, c = raw:match('^/dlac%s+(%S+)%s*(%S*)%s*(%S*)'); end
             if a ~= 'craft' then return; end
             e.blocked = true;
-            if M.current == nil then
-                say('craft watch: no synth seen yet this session. Start a synth and check again.');
+            if b == 'auto' then
+                if     c == 'on'  then M.autoEquip = true;
+                elseif c == 'off' then M.autoEquip = false; end
+                say('craft auto-equip ' .. (M.autoEquip and 'ON' or 'OFF')
+                    .. ' -- equips your committed Craft_<Skill> (or Craft) set when a synth of a new craft is detected.'
+                    .. '  (/dl craft auto on|off; session-only for now)');
                 return;
             end
-            say(string.format('craft watch: last synth = %s%s (%.0fs ago).',
+            if b == 'equip' then
+                local skill = M.current and M.current.skill or nil;
+                if skill == nil or skill == 'unknown' then
+                    say('craft equip: no known craft detected yet this session -- synth once, then retry.');
+                else
+                    M.equipCraftSet(skill);
+                end
+                return;
+            end
+            if M.current == nil then
+                say('craft watch: no synth seen yet this session. Start a synth and check again.'
+                    .. (M.autoEquip and '' or '  (auto-equip is OFF: /dl craft auto on)'));
+                return;
+            end
+            say(string.format('craft watch: last synth = %s%s (%.0fs ago); auto-equip %s.',
                 M.current.skill, M.current.lv and (' lv ' .. M.current.lv) or '',
-                os.clock() - (M.current.at or 0)));
+                os.clock() - (M.current.at or 0), M.autoEquip and 'ON' or 'OFF'));
             local parts = {};
             for sk, n in pairs(M.counts) do parts[#parts + 1] = string.format('%s x%d', sk, n); end
             table.sort(parts);

@@ -602,6 +602,25 @@ package.loaded['dlac\\crafts'] = {
     ['4096:1165,1165'] = { skill = 'Alchemy', lv = 60 },
     ['4096:640,650']   = { skill = 'Smithing', lv = 10, desynth = true },
 };
+-- auto-equip deps, stubbed: a profile with a Craft_Alchemy set + a recording cmdqueue
+local craftCmds = {};
+package.loaded['dlac\\cmdqueue'] = {
+    enqueue = function(delay, cmd) craftCmds[#craftCmds + 1] = cmd; end,
+    frame = function() return 0; end, tick = function() end,
+};
+package.loaded['dlac\\profilesets'] = {
+    getSetsRoot = function()
+        return { Dynamic = {
+            Craft_Alchemy = {
+                Main  = 'Chemists Kukri',                       -- plain string
+                Head  = { Name = 'Midrass Helm +1' },            -- record form
+                Body  = { gear = 'Alchemists Smock', minLevel = 40 },  -- wrapper form
+                Range = 'dlac:AutoStaff|Fallback',               -- virtual: must be skipped
+            },
+            Craft = { Neck = 'Artisans Torque' },                -- universal fallback set
+        } };
+    end,
+};
 local craftwatch = dofile('craftwatch.lua');
 
 check('T1 key sorts ingredients', craftwatch.key(4096, { 650, 640 }), '4096:640,650');
@@ -626,6 +645,27 @@ check('T8 unknown recipe fails soft', craftwatch.onSynth(4096, { 9999 }, 3).skil
 check('T9 malformed packet -> nil', craftwatch.decode('short'), nil);
 check('T10 zero-ingredient packet -> nil',
     craftwatch.decode(string.char(0x96, 0x11, 0, 0, 0, 0) .. u16le(4096) .. string.char(5, 0) .. string.rep('\0', 24)), nil);
+
+-- auto-equip: set entry resolution + the queued /lac commands
+check('T11 entry: plain string',    craftwatch._entryName('Chemists Kukri'), 'Chemists Kukri');
+check('T12 entry: virtual skipped', craftwatch._entryName('dlac:AutoStaff|Fallback'), nil);
+check('T13 entry: record form',     craftwatch._entryName({ Name = 'X' }), 'X');
+check('T14 entry: wrapper form',    craftwatch._entryName({ gear = 'Y', minLevel = 40 }), 'Y');
+craftCmds = {};
+check('T15 equip queues pieces',    craftwatch.equipCraftSet('Alchemy'), 3);
+check('T16 equip command shape',    craftCmds[1], '/lac equip Main "Chemists Kukri"');
+craftCmds = {};
+check('T17 fallback to Craft set',  craftwatch.equipCraftSet('Bonecraft'), 1);
+check('T18 fallback command',       craftCmds[1], '/lac equip Neck "Artisans Torque"');
+-- onSynth + auto: equips on craft CHANGE only (repeat synths stay quiet)
+craftwatch.autoEquip = true;
+craftCmds = {};
+craftwatch.onSynth(4096, { 1165, 1165 }, 10);   -- Smithing -> Alchemy change (T7 left Smithing)
+check('T19 auto-equip on change',   #craftCmds, 3);
+craftCmds = {};
+craftwatch.onSynth(4096, { 1165, 1165 }, 11);   -- repeat: same craft
+check('T20 repeat synth: no re-equip', #craftCmds, 0);
+craftwatch.autoEquip = false;
 
 -- ---------------------------------------------------------------------------
 -- verdict
