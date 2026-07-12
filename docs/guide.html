@@ -44,11 +44,11 @@
   .box.tip  b:first-child { color: var(--green); }
   .box.warn b:first-child { color: var(--red); }
   figure.shot {
-    margin: 18px 0; padding: 14px; text-align: center;
-    background: var(--panel); border: 2px dashed var(--line); border-radius: 6px;
-    color: var(--dim); font-style: italic;
+    margin: 18px 0; padding: 10px; text-align: center;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
   }
   figure.shot img { max-width: 100%; border-radius: 4px; }
+  figure.shot figcaption { color: var(--dim); font-style: italic; font-size: 0.9rem; margin-top: 8px; }
   ol li, ul li { margin: 6px 0; }
   .mode  { color: var(--purple); }
   .green { color: var(--green); }
@@ -78,6 +78,7 @@
     <li><a href="#triggers">Triggers — when sets get worn</a></li>
     <li><a href="#modes">Modes — one set, several behaviours</a></li>
     <li><a href="#automations">Automations — AutoIridescence &amp; ElementalObi</a></li>
+    <li><a href="#extras">Small conveniences — Teleports &amp; macro books</a></li>
     <li><a href="#debug">When something looks wrong</a></li>
   </ol>
 </nav>
@@ -109,7 +110,10 @@ show up in the lists.</div>
 with a red banner whenever a reload is actually needed. Trigger and mode edits are live
 immediately, no reload.</div>
 
-<figure class="shot">screenshot: the main window after setup — Equipped tab with the 4×4 grid</figure>
+<figure class="shot"><img src="img/equipped-compare.png" alt="The Equipped tab">
+<figcaption>The Equipped tab: your worn gear as a 4×4 grid. Click a slot to see every
+alternative you own; hovering one shows a side-by-side compare with the stat wins and
+losses (here: Tamas Ring vs Astral Ring).</figcaption></figure>
 
 <h2 id="sets">3. Sets — your gear plans</h2>
 <p>A <b>set</b> is a plan: for each equipment slot, a list of items you'd like there. It's a
@@ -130,7 +134,10 @@ exactly as they are (partial sets are how overlays work — more under Triggers)
   <li>Click <b>Commit</b> (it turns red when you have unsaved changes), then
       <b>Reload LAC</b>.</li>
 </ol>
-<figure class="shot">screenshot: Sets tab — a set loaded, one slot selected, the + Add picker open</figure>
+<figure class="shot"><img src="img/sets-add.png" alt="The Sets tab with the + Add picker open">
+<figcaption>The Sets tab: the <code>Idle</code> set loaded, the Head slot selected (its
+plan holds three hats for different levels), and the + Add picker open on the right —
+searchable, with "Available only" filtering to gear you can equip right now.</figcaption></figure>
 <div class="box tip"><b>Per-item rules.</b> Every row in a slot's list can carry its own
 rules via the <b>B</b> (behaviour) button: a level range (<code>min 30 / max 54</code>) and
 a <span class="mode">mode gate</span> (see Modes below). That's how one set stays correct
@@ -179,7 +186,10 @@ so a small "partial" set (just a Waist item, say) can ride on top of a full one.
 back to <b>Default</b> (idle/TP). That's the whole trick classic "gear swap" addons do,
 and the starter rules Setup writes give you the Default row of it for free.</p>
 
-<figure class="shot">screenshot: Triggers tab — the Default section with the four starter rules</figure>
+<figure class="shot"><img src="img/triggers-default.png" alt="The Triggers tab, Default section">
+<figcaption>The Triggers tab, Default section: the four starter rules plus one extra —
+<i>status = Idle → Weapon</i> — layered on top (both Idle rules fire; the later one
+overlays the slots its set fills).</figcaption></figure>
 
 <h3>Adding a rule</h3>
 <p>In the Triggers tab, each event section has an <b>+ Add rule</b> flow: pick the
@@ -217,7 +227,14 @@ across your session — define the cycle on the job where you flip it, and sets 
 can gate on its values. Flipping a mode re-dresses you immediately; you don't have to act
 first.</div>
 
-<figure class="shot">screenshot: Triggers → Modes — one toggle and one cycle with a keybind; a set row showing an @mode gate</figure>
+<figure class="shot"><img src="img/modes-cycles.png" alt="The Modes section with two cycles">
+<figcaption>Triggers → Modes: two cycles (<code>Idle</code> and <code>Weapon</code>), each
+with a keybind. The editor lists the values in cycle order — the first is active at
+login.</figcaption></figure>
+<figure class="shot"><img src="img/modes-toggle-overlay.png" alt="A DT toggle with an overlay set">
+<figcaption>A <code>DT</code> toggle wired to an overlay set: the tooltip explains the
+mechanics — one rule in the Default trigger at priority 100, applied last, overlaying only
+the slots the set fills.</figcaption></figure>
 
 <h2 id="automations">6. Automations — gear that picks itself</h2>
 <p>Some gear decisions are pure bookkeeping — the right elemental staff per spell, the
@@ -247,13 +264,39 @@ checks the day and weather: <b>only when the bonus for your spell's element is p
 does the matching obi (or the universal Hachirin-no-Obi) swap in — otherwise your set's
 regular waist piece stays put, so you never wear an obi that does nothing.</p>
 
-<figure class="shot">screenshot: Automations page — AutoIridescence detail with the four columns; the element-wheel icon in a set's Main slot</figure>
+<figure class="shot"><img src="img/automations-list.png" alt="The Automations list">
+<figcaption>Triggers → Automations: the status column tells you at a glance what each
+automation can do on this job (brighter = better coverage).</figcaption></figure>
+<figure class="shot"><img src="img/automation-iridescence.png" alt="AutoIridescence detail">
+<figcaption>The AutoIridescence detail: <span class="green">green</span> = owned and
+equippable (Terra's Staff, Chatoyant), <span class="red">red</span> = owned but this job
+can't wear it (Foreshadow +1 on WHM — the automation skips it), dim = not owned.</figcaption></figure>
+<figure class="shot"><img src="img/automation-obi.png" alt="ElementalObi detail">
+<figcaption>The ElementalObi detail: one universal obi covers every element; it only swaps
+in when the day/weather bonus is positive.</figcaption></figure>
 
 <div class="box"><b>No upkeep.</b> The automation data maintains itself — it rescans on
 login, job change, and any inventory change. Buy a new staff and it's a candidate before
 you've closed the shop window.</div>
 
-<h2 id="debug">7. When something looks wrong</h2>
+<h2 id="extras">7. Small conveniences</h2>
+<p>Two header buttons round things out:</p>
+<ul>
+  <li><b>Teleports</b> (the ring icon) — every enchanted travel item in one dropdown:
+      Warp Ring, Provenance Ring, and the teleport earrings by destination. Click one and
+      dlac equips it, waits out the enchant delay on the game's own clock, and uses it.
+      Lit = ready, an amber countdown = still recharging (clicking is fine — it fires the
+      moment it's ready), <span class="red">red</span> = stored where you can't equip it,
+      dim = not owned.</li>
+  <li><b>Macro</b> — your macro book and set per job, applied automatically on login and
+      every job change. No more <code>/macro book</code> lines in profiles.</li>
+</ul>
+<figure class="shot"><img src="img/teleports.png" alt="The Teleports dropdown">
+<figcaption>The Teleports dropdown: destination, item and live state per row — here
+everything is ready except Mhaura (recharging, amber countdown) and the Republic Earring
+(not owned).</figcaption></figure>
+
+<h2 id="debug">8. When something looks wrong</h2>
 <ul>
   <li><b>Red banner in the window?</b> Do what it says — usually <b>Reload LAC</b>. It
       appears when the running engine is older than the addon (after an update).</li>
