@@ -313,6 +313,25 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
                         say(string.format('  %s: NOT in client strings', nm));
                     end
                 end
+                -- What does the client think you OWN? An empty list = the
+                -- memory read itself is dead on this client; owned ids at
+                -- unexpected numbers = old-server id drift (match the names
+                -- against your real key items to derive the mapping).
+                say('ki probe -- everything HasKeyItem reports as OWNED:');
+                local owned = 0;
+                for id = 0, 8191 do
+                    local has = false;
+                    pcall(function() has = plr:HasKeyItem(id) == true; end);
+                    if has then
+                        owned = owned + 1;
+                        if owned <= 40 then
+                            local nm = nil;
+                            pcall(function() nm = res:GetString('keyitems.names', id); end);
+                            say(string.format('  id=%d "%s"', id, tostring(nm or '?')));
+                        end
+                    end
+                end
+                say(string.format('  owned total: %d%s', owned, (owned > 40) and ' (first 40 shown)' or ''));
                 local frag = (c ~= nil and c ~= '') and c or 'way of';
                 say(string.format('ki probe -- scanning client strings for "%s":', frag));
                 local found = 0;
