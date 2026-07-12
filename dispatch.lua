@@ -32,7 +32,8 @@ local M = {};
 -- LAC-state copy stamps its version into the modestate mirror; the GUI compares
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code (the seeded file only re-requires when LuaAshitacast itself reloads).
-M.VERSION = 29;   -- 29: the pet hold covers LEGACY profiles (HandleEquipEvent wrapped)
+M.VERSION = 30;   -- 30: AutoCraft goal reads manifest craftGoal (single silent variable, no mode)
+                  -- 29: the pet hold covers LEGACY profiles (HandleEquipEvent wrapped)
 
 -- Colored [dlac] chat output (chatfmt); plain print when unavailable. The shadowed
 -- `print` re-heads "[dlac] ..."-prefixed lines with the colored header.
@@ -547,7 +548,11 @@ local function resolveVirtual(marker, ctx, slot)
         local craftV = ctx.craftOverride or M.modes['craft'];
         if type(craftV) ~= 'string' then return nil, 'craft mode off (/dl mode craft <Skill>)'; end
         local goal = 'hq';                             -- goals: hq (default) / nq / skillup
-        local g = ctx.goalOverride or M.modes['craftgoal'];
+        -- ONE goal variable (Henrik): the manifest's craftGoal field, written
+        -- silently by the GUI picker and hot-reloaded here -- the mode system
+        -- is no longer consulted (its narration spammed chat and desynced
+        -- between the two Lua states).
+        local g = ctx.goalOverride or a.craftGoal;
         if type(g) == 'string' then
             local lg = string.lower(g);
             if lg == 'nq' or lg == 'skillup' then goal = lg; end

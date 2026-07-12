@@ -291,6 +291,46 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
                     .. '  (/dl craft auto on|off; session-only for now)');
                 return;
             end
+            if b == 'ki' then
+                -- Key-item diagnostic (field tool): what does THIS client call
+                -- the guild KIs, what ids do they map to, and what does
+                -- HasKeyItem say? Paste the output to fix the panel for real.
+                local res, plr = nil, nil;
+                pcall(function() res = AshitaCore:GetResourceManager(); end);
+                pcall(function() plr = AshitaCore:GetMemoryManager():GetPlayer(); end);
+                if res == nil or plr == nil then say('ki probe: resources/player unavailable.'); return; end
+                say('ki probe -- exact reverse lookups:');
+                for _, nm in ipairs({ 'Way of the Carpenter', 'Way of the Blacksmith', 'Way of the Goldsmith',
+                                      'Way of the Weaver', 'Way of the Tanner', 'Way of the Boneworker',
+                                      'Way of the Alchemist', 'Way of the Culinarian' }) do
+                    local id = nil;
+                    pcall(function() id = res:GetString('keyitems.names', nm, 2); end);
+                    if type(id) == 'number' and id >= 0 then
+                        local has = false;
+                        pcall(function() has = plr:HasKeyItem(id) == true; end);
+                        say(string.format('  %s: id=%d has=%s', nm, id, tostring(has)));
+                    else
+                        say(string.format('  %s: NOT in client strings', nm));
+                    end
+                end
+                local frag = (c ~= nil and c ~= '') and c or 'way of';
+                say(string.format('ki probe -- scanning client strings for "%s":', frag));
+                local found = 0;
+                for id = 0, 8191 do
+                    local nm = nil;
+                    pcall(function() nm = res:GetString('keyitems.names', id); end);
+                    if type(nm) == 'string' and nm ~= '' and string.find(string.lower(nm), string.lower(frag), 1, true) then
+                        found = found + 1;
+                        if found <= 25 then
+                            local has = false;
+                            pcall(function() has = plr:HasKeyItem(id) == true; end);
+                            say(string.format('  id=%d "%s" has=%s', id, nm, tostring(has)));
+                        end
+                    end
+                end
+                say(string.format('ki probe done: %d matches%s.', found, (found > 25) and ' (first 25 shown)' or ''));
+                return;
+            end
             if b == 'equip' then
                 local skill = M.current and M.current.skill or nil;
                 if skill == nil or skill == 'unknown' then

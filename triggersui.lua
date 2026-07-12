@@ -725,6 +725,11 @@ local function autoCommit()
             end
         end
     end);
+    -- The crafting GOAL is a single manifest field (Henrik: ONE variable, one
+    -- of hq/nq/skillup selected, no mode-system chatter). The engine hot-
+    -- reloads this file, so a combo click propagates silently within ~1s.
+    local goal = CRAFT_UI.goal or (type(auto.data) == 'table' and auto.data.craftGoal) or 'hq';
+    if goal ~= 'nq' and goal ~= 'skillup' then goal = 'hq'; end
     local L = {
         '-- dlac automation manifest -- written by the GUI (Triggers tab > Automations).',
         '-- Tiered Iridescence: per-element staves (NQ +1 / HQ +2, own element only) and',
@@ -734,6 +739,7 @@ local function autoCommit()
         'return {',
         string.format('    fmtver = %d,', AUTO_FMT),   -- manifest schema: outdated -> auto-rescan
         string.format('    written = %q,', os.date('%Y-%m-%d %H:%M:%S')),
+        string.format('    craftGoal = %q,', goal),    -- hq | nq | skillup (AutoCraft goal)
         (uni ~= nil)
             and string.format('    universal = { name = %q, tier = %d, level = %d },', uni.name, uni.tier, uniLevel)
             or  '    universal = false,',
@@ -1043,17 +1049,19 @@ local function renderAutomations(noHeader)
             -- crafting-mode picker + the auto-craft toggle.
             local cwok, cw = pcall(require, 'dlac\\craftwatch');
             cwok = cwok and type(cw) == 'table';
-            local dok, dsp2 = pcall(require, 'dlac\\dispatch');
-            local goalV = (dok and type(dsp2) == 'table' and type(dsp2.modes) == 'table')
-                and dsp2.modes['craftgoal'] or nil;
-            goalV = (type(goalV) == 'string') and string.lower(goalV) or 'hq';
+            -- ONE goal variable (manifest craftGoal): adopt the saved value on
+            -- first render, no mode-system round-trip, no chat.
+            if CRAFT_UI.goal == nil then
+                local saved = (type(auto.data) == 'table') and auto.data.craftGoal or nil;
+                CRAFT_UI.goal = (saved == 'nq' or saved == 'skillup') and saved or 'hq';
+            end
             local GOALS = {
                 { 'hq', 'HQ', 'Prioritizes craft-skill gear to break HQ tiers (then HQ+ rate).' },
                 { 'nq', 'NQ', 'Wears the anti-HQ guild rings to guarantee NQ when possible\n(materials you do NOT want HQ\'d).' },
                 { 'skillup', 'Skill-Up', 'Prioritizes Synth Skill+ (skill-up rate) items over raw craft skill.' },
             };
             local goalLbl = 'HQ';
-            for _, gd in ipairs(GOALS) do if gd[1] == goalV then goalLbl = gd[2]; end end
+            for _, gd in ipairs(GOALS) do if gd[1] == CRAFT_UI.goal then goalLbl = gd[2]; end end
             -- Auto-craft toggle: CENTER of the row, whole button green when
             -- ON / red when OFF (Henrik).
             local winW = imgui.GetWindowWidth();
@@ -1072,14 +1080,17 @@ local function renderAutomations(noHeader)
                 imgui.SetTooltip('When ON, a detected synth equips your craft gear automatically\n(committed Craft_<Skill> set if present, else the gear ladders).\nSession-only; also /dl craft auto on|off.');
             end
             -- Crafting-mode picker stays on the right edge.
-            imgui.SameLine(math.max(320, winW - 220));
+            imgui.SameLine(math.max(320, winW - 234));
             imgui.TextColored(COL_DIM, 'Crafting mode:');
             imgui.SameLine(0, 4);
-            imgui.PushItemWidth(92);
+            imgui.PushItemWidth(106);   -- wide enough that 'Skill-Up' clears the combo arrow
             if imgui.BeginCombo('##craftgoalsel', goalLbl) then
                 for _, gd in ipairs(GOALS) do
-                    if imgui.Selectable(gd[2], goalV == gd[1]) then
-                        pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl mode craftgoal ' .. gd[1]); end);
+                    if imgui.Selectable(gd[2], CRAFT_UI.goal == gd[1]) then
+                        if CRAFT_UI.goal ~= gd[1] then
+                            CRAFT_UI.goal = gd[1];
+                            pcall(autoCommit);   -- silent: rewrites the manifest, the engine hot-reloads it
+                        end
                     end
                     if imgui.IsItemHovered() then imgui.SetTooltip(gd[3]); end
                 end

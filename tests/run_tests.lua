@@ -735,14 +735,14 @@ dispatchM._autoOverride = { craft = {
 } };
 local vctx = { player = { MainJobSync = 75 } };
 dispatchM.modes['craft'] = 'Alchemy';
-dispatchM.modes['craftgoal'] = nil;
 check('V1 hq default: best rung',   dispatchM._resolveVirtual('dlac:AutoCraft', vctx, 'Neck'), 'Alchemists Torque');
-dispatchM.modes['craftgoal'] = 'nq';
+-- the goal is the manifest's ONE craftGoal field (no mode-system round-trip)
+dispatchM._autoOverride.craftGoal = 'nq';
 check('V2 nq goal picks nq ladder', dispatchM._resolveVirtual('dlac:AutoCraft', vctx, 'Neck'), 'Artisans Torque');
 check('V3 nq ring1 ladder',         dispatchM._resolveVirtual('dlac:AutoCraft', vctx, 'Ring1'), 'Artisans Ring');
 check('V4 STRICT per-goal: hq-only slot unresolved under nq',
     dispatchM._resolveVirtual('dlac:AutoCraft', { player = { MainJobSync = 75 }, goalOverride = 'nq', craftOverride = 'Alchemy' }, 'Feet'), nil);
-dispatchM.modes['craftgoal'] = nil;
+dispatchM._autoOverride.craftGoal = nil;
 check('V5 level gate falls down the ladder',
     dispatchM._resolveVirtual('dlac:AutoCraft', { player = { MainJobSync = 40 } }, 'Neck'), 'Artisans Torque');
 dispatchM.modes['craft'] = nil;
