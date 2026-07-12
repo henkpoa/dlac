@@ -32,7 +32,7 @@ local M = {};
 -- LAC-state copy stamps its version into the modestate mirror; the GUI compares
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code (the seeded file only re-requires when LuaAshitacast itself reloads).
-M.VERSION = 15;
+M.VERSION = 16;
 
 -- Colored [dlac] chat output (chatfmt); plain print when unavailable. The shadowed
 -- `print` re-heads "[dlac] ..."-prefixed lines with the colored header.
@@ -398,6 +398,13 @@ local function ensureLoaded()
                     string.format('/bind %s /dl mode %s', def.bind, def.name));
             end);
         end
+    end
+    -- A cycle VALUE whose definition vanished (mode deleted in the GUI, or the
+    -- job changed to a trigger file without it) is stale state, not a user flag:
+    -- purge it, so a deleted mode actually dies instead of haunting the mirror.
+    -- Toggle flags carry no definition and are left alone.
+    for m, v in pairs(M.modes) do
+        if type(v) == 'string' and _trig.modeDefs[m] == nil then M.modes[m] = nil; end
     end
     pcall(saveModeState);
     for _, w in ipairs(warns) do printwarn('triggers: ' .. w); end

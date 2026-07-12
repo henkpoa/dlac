@@ -2103,6 +2103,8 @@ profsets.configure({ jobFile = jobFile });
 -- HERE (before renderSetsTab) so the Sets tab can call trigui.renderSetOptions.
 -- ---------------------------------------------------------------------------
 local trigui;
+local _modeSetRefs;   -- assigned after modeSetRefs (defined with the Sets machinery below);
+                      -- the trigui deps closure above it must not capture a global
 do
     local ok, m = pcall(require, "dlac\\triggersui");
     if ok and type(m) == 'table' then
@@ -2117,6 +2119,10 @@ do
                 local abbr = nil;
                 pcall(function() abbr = JOB_ABBR[AshitaCore:GetMemoryManager():GetPlayer():GetMainJob()]; end);
                 return abbr;
+            end,
+            modeSetRefs = function(n, s)                              -- mode delete: set-entry references (scan / strip)
+                if _modeSetRefs == nil then return { refs = {}, touched = {} }; end
+                return _modeSetRefs(n, s);
             end,
             renderIcon = renderIcon,                                  -- automation detail views (item icons)
             setsRoot = profsets.getSetsRoot,                          -- gearcheck: set contents for the audit
@@ -2251,6 +2257,64 @@ local function buildCommitSlots()
     end
     return slots;
 end
+
+-- A deleted mode's SET references (triggersui's delete-with-references window).
+-- Scans every dynamic set for entries gated on the mode ('X' or 'X:Value', alone
+-- or in a mode list). strip=true rewrites the touched sets through the normal
+-- commit path: an entry gated ONLY on this mode is deleted (it existed for it);
+-- a list gate just loses the dead name. The Sets-tab working state is borrowed
+-- for the scan and restored, so an in-progress edit survives.
+local function modeSetRefs(modeName, strip)
+    local out = { refs = {}, touched = {} };
+    local target = string.lower(tostring(modeName or ''));
+    if target == '' then return out; end
+    local function matches(m)
+        local s = string.lower(tostring(m));
+        return s == target or string.sub(s, 1, #target + 1) == (target .. ':');
+    end
+    local _, job = jobFile();
+    local keepW, keepN, keepSel, keepDirty = M.working, M.workingSetName, ui.setSelected, _setDirty;
+    pcall(function()
+        for _, setName in ipairs(profsets.dynamicSetNames()) do
+            loadSet(setName);
+            local changed = false;
+            for lbl, list in pairs(M.working) do
+                for i = #list, 1, -1 do
+                    local it = list[i];
+                    if it.mode ~= nil then
+                        local gates = (type(it.mode) == 'table') and it.mode or { it.mode };
+                        local kept, hit = {}, false;
+                        for _, m in ipairs(gates) do
+                            if matches(m) then hit = true; else kept[#kept + 1] = m; end
+                        end
+                        if hit then
+                            out.refs[#out.refs + 1] = {
+                                set = setName, slot = lbl,
+                                item = (it.rec ~= nil and it.rec.Name) or '?',
+                                gone = (#kept == 0),
+                            };
+                            if strip then
+                                if #kept == 0 then table.remove(list, i);
+                                else it.mode = (#kept == 1) and kept[1] or kept; end
+                                changed = true;
+                            end
+                        end
+                    end
+                end
+            end
+            if strip and changed and job ~= nil and hasSetmgr then
+                local ok = nil;
+                pcall(function() ok = setmgr.commitSet(job, setName, buildCommitSlots()); end);
+                if ok == true then out.touched[#out.touched + 1] = setName; end
+            end
+        end
+    end);
+    if strip and #out.touched > 0 then profsets.invalidate(); end
+    M.working, M.workingSetName, ui.setSelected, _setDirty = keepW, keepN, keepSel, keepDirty;
+    table.sort(out.touched);
+    return out;
+end
+_modeSetRefs = modeSetRefs;
 
 -- Auto-build the working set from stat weights. Dynamic ON = a level-scaling list per
 -- slot (keep an item only if it out-scores every kept lower-Level item; order Level

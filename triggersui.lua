@@ -217,6 +217,74 @@ local function trigCommit()
     trigSetStatus('Committed -- live now (hot-reloaded; no /lac reload needed).', false);
 end
 
+-- ---------------------------------------------------------------------------
+-- Mode deletion. Field lesson (T1_Inc_Wpn on WAR): removing just the DEFINITION
+-- leaves the mode alive -- rules and set-entry gates still reference it, and the
+-- engine's live flag keeps it in the modestate mirror. Deleting now (a) finds
+-- every reference first and offers a one-click cleanup, (b) commits immediately,
+-- and (c) clears the live flag ('/dl mode X off' + the engine's stale-cycle
+-- purge on trigger reload).
+-- ---------------------------------------------------------------------------
+local function modeCondText(mc)
+    if type(mc) == 'table' then return table.concat(mc, ' | '); end
+    return tostring(mc);
+end
+
+-- Rule references to mode `name` ('X' or 'X:Value', alone or in a list).
+-- strip=true edits trig.data in place: a rule gated ONLY on this mode is
+-- removed (the mode was load-bearing); a list gate just loses the dead name.
+local function modeCondRefs(name, strip)
+    local out = { rules = {}, removedRules = 0, editedRules = 0 };
+    local target = string.lower(tostring(name or ''));
+    if target == '' or trig.data == nil then return out; end
+    local function matches(m)
+        local s = string.lower(tostring(m));
+        return s == target or string.sub(s, 1, #target + 1) == (target .. ':');
+    end
+    for _, sec in ipairs(TRIG_HANDLERS) do
+        local list = trig.data[sec];
+        if type(list) == 'table' then
+            for i = #list, 1, -1 do
+                local r = list[i];
+                local mc = (type(r) == 'table' and type(r.when) == 'table') and r.when.mode or nil;
+                if mc ~= nil then
+                    local gates = (type(mc) == 'table') and mc or { mc };
+                    local kept, hit = {}, false;
+                    for _, m in ipairs(gates) do
+                        if matches(m) then hit = true; else kept[#kept + 1] = m; end
+                    end
+                    if hit then
+                        out.rules[#out.rules + 1] = string.format('%s:  mode %s  ->  %s',
+                            sec, modeCondText(mc),
+                            (r.set ~= nil) and ('set ' .. tostring(r.set)) or 'equip { ... }');
+                        if strip then
+                            if #kept == 0 then
+                                table.remove(list, i);
+                                out.removedRules = out.removedRules + 1;
+                            else
+                                r.when.mode = (#kept == 1) and kept[1] or kept;
+                                out.editedRules = out.editedRules + 1;
+                            end
+                            trig.dirty = true;
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return out;
+end
+
+-- Remove the definition, write the file NOW, and kill the live flag. The commit's
+-- '/dl triggers reload' makes the engine purge a stale cycle value; the queued
+-- 'off' (processed after the reload) clears a live toggle flag.
+local function deleteModeNow(name)
+    if trig.data ~= nil and trig.data.Modes ~= nil then trig.data.Modes[name] = nil; end
+    trig.dirty = true;
+    trigCommit();
+    pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl mode ' .. name .. ' off'); end);
+end
+
 -- Mode display state: the LAC-state engine mirrors its session flags to
 -- <char>\dlac\modestate.lua on every change; re-read at most once per second.
 local function trigModeState()
@@ -912,15 +980,74 @@ local function renderModePopup()
     if editing then
         imgui.SameLine(0, 12);
         if imgui.Button('Delete mode###modedel', { 0, 0 }) then
-            if trig.data.Modes ~= nil then trig.data.Modes[modeUI.editing] = nil; end
-            trig.dirty = true;
-            trigSetStatus('Mode definition removed. Rules referencing it remain -- remove them separately if unused.', false);
+            local nmDel = modeUI.editing;
+            local rr = modeCondRefs(nmDel, false);
+            local sr = (deps ~= nil and type(deps.modeSetRefs) == 'function')
+                and deps.modeSetRefs(nmDel, false) or { refs = {} };
+            if #rr.rules == 0 and #(sr.refs or {}) == 0 then
+                deleteModeNow(nmDel);
+                trigSetStatus(string.format('Deleted mode "%s" (nothing referenced it) -- live now.', nmDel), false);
+            else
+                -- references exist: open the movable reference window instead
+                modeUI.del = { name = nmDel, rules = rr.rules, sets = sr.refs or {} };
+            end
             modeUI.editing = nil;
             imgui.CloseCurrentPopup();
         end
-        if imgui.IsItemHovered() then imgui.SetTooltip('Removes the definition (values/keybind). Rules that reference the mode stay.'); end
+        if imgui.IsItemHovered() then imgui.SetTooltip('Deletes the mode. If rules or set entries still reference it, a small\nwindow lists every reference first -- with a one-click "delete all".'); end
     end
     imgui.EndPopup();
+end
+
+-- The movable reference window a Delete-with-references opens. Small on purpose;
+-- drag it aside and work through the list, or take the one-click cleanup:
+-- rules gated ONLY on this mode are removed, list gates lose the dead name;
+-- set entries gated only on it are deleted, list gates keep their other modes.
+local function renderModeDeleteWindow()
+    if modeUI.del == nil then return; end
+    local d = modeUI.del;
+    local open = { true };
+    if imgui.Begin('Delete mode: ' .. d.name .. '###dlacmodedel', open, ImGuiWindowFlags_AlwaysAutoResize or 0) then
+        imgui.TextColored(COL_ERR, string.format('"%s" is still referenced:', d.name));
+        if #d.rules > 0 then
+            imgui.TextColored(COL_HEADER, string.format('Trigger rules (%d)', #d.rules));
+            for _, s in ipairs(d.rules) do imgui.TextColored(COL_DIM, '  ' .. esc(s)); end
+        end
+        if #d.sets > 0 then
+            imgui.TextColored(COL_HEADER, string.format('Set entries (%d)', #d.sets));
+            for _, r in ipairs(d.sets) do
+                imgui.TextColored(COL_DIM, string.format('  %s / %s / %s%s',
+                    esc(tostring(r.set)), esc(tostring(r.slot)), esc(tostring(r.item)),
+                    r.gone and '' or '  (list gate: keeps its other modes)'));
+            end
+        end
+        imgui.Spacing();
+        if imgui.Button('Delete mode + ALL references##modedelall', { 0, 22 }) then
+            local rr = modeCondRefs(d.name, true);
+            local sr = (deps ~= nil and type(deps.modeSetRefs) == 'function')
+                and deps.modeSetRefs(d.name, true) or { touched = {} };
+            deleteModeNow(d.name);
+            local touched = sr.touched or {};
+            trigSetStatus(string.format('Deleted "%s": %d rule(s) removed, %d trimmed; sets rewritten: %s%s',
+                d.name, rr.removedRules, rr.editedRules,
+                (#touched > 0) and table.concat(touched, ', ') or '(none)',
+                (#touched > 0) and '  -- Reload LAC to apply the set changes.' or ''), false);
+            modeUI.del = nil;
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Rules gated only on this mode are removed; a mode-list rule just loses the name.\nSet entries gated only on it are deleted; list gates keep their other modes.\nTrigger changes are live immediately; set changes need Reload LAC.');
+        end
+        imgui.SameLine(0, 8);
+        if imgui.Button('Delete mode only##modedelonly', { 0, 22 }) then
+            deleteModeNow(d.name);
+            trigSetStatus(string.format('Deleted mode "%s" -- its references remain as listed.', d.name), false);
+            modeUI.del = nil;
+        end
+        imgui.SameLine(0, 8);
+        if imgui.Button('Cancel##modedelcancel', { 0, 22 }) then modeUI.del = nil; end
+    end
+    imgui.End();
+    if not open[1] then modeUI.del = nil; end
 end
 
 -- ---------------------------------------------------------------------------
@@ -1307,6 +1434,7 @@ function M.render(job, level)
         return;
     end
     trigLoad(false);
+    renderModeDeleteWindow();   -- its own movable window; independent of any section state
 
     if trig.data == nil then
         imgui.TextColored(COL_DIM, 'No trigger file for ' .. tostring(abbr) .. ' yet.');
