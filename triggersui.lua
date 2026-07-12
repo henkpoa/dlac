@@ -805,25 +805,9 @@ local function renderAutomations(noHeader)
         return;
     end
 
-    -- LIST view
-    imgui.PushTextWrapPos(0.0);
-    imgui.TextColored(COL_DIM, 'Slot automations live INSIDE a set (add the dlac: entry to the slot via + Add); set automations apply across every set via their mode. Click an automation for details.');
-    imgui.PopTextWrapPos();
-    local written = (type(auto.data) == 'table' and type(auto.data.written) == 'string') and auto.data.written or nil;
-    imgui.TextColored(COL_DIM, 'Gear data maintains itself (login, job change, any inventory change'
-        .. (written ~= nil and (') -- last scan: ' .. written) or ')'));
-    imgui.SameLine(0, 10);
-    if imgui.SmallButton('rescan now##trgautorescan') then autoCommit(); end
-    if imgui.IsItemHovered() then
-        imgui.SetTooltip('Normally never needed -- the scan runs automatically. This is a\ntroubleshooting shove: re-detect staves / obis / MP batteries right now.');
-    end
-    if auto.status ~= '' then
-        imgui.PushTextWrapPos(0.0);
-        imgui.TextColored(COL_SCORE, esc(auto.status));
-        imgui.PopTextWrapPos();
-    end
-    imgui.Spacing();
-
+    -- LIST view: the automation table FIRST, no explanations above it (field
+    -- request) -- how-it-works lives in the tooltips and detail views. The
+    -- rescan shove + status sit small under the table.
     local mpTotal = 0;
     if type(auto.data) == 'table' and type(auto.data.mpBest) == 'table' then
         local lvl = mainLevel();
@@ -847,10 +831,25 @@ local function renderAutomations(noHeader)
         local col = levelColor(r.level, r.max);
         imgui.PushID('autorow_' .. r.key);
         if imgui.Selectable('##sel', false, ImGuiSelectableFlags_None, { 0, 20 }) then auto.view = r.key; end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Click for details. Slot automations go INSIDE a set (add the dlac: entry\nto the slot via + Add); set automations apply everywhere via their mode.');
+        end
         imgui.SameLine(8);  imgui.TextColored(col, r.name);
         imgui.SameLine(190); imgui.TextColored(COL_DIM, r.kind);
         imgui.SameLine(470); imgui.TextColored(col, r.txt or '');
         imgui.PopID();
+    end
+    imgui.Spacing();
+    if imgui.SmallButton('rescan now##trgautorescan') then autoCommit(); end
+    if imgui.IsItemHovered() then
+        local written = (type(auto.data) == 'table' and type(auto.data.written) == 'string') and auto.data.written or nil;
+        imgui.SetTooltip('Normally never needed -- the scan runs itself on login, job change and\nany inventory change. This is a troubleshooting shove.'
+            .. (written ~= nil and ('\nLast scan: ' .. written) or ''));
+    end
+    if auto.status ~= '' then
+        imgui.PushTextWrapPos(0.0);
+        imgui.TextColored(COL_SCORE, esc(auto.status));
+        imgui.PopTextWrapPos();
     end
 end
 
