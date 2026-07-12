@@ -414,7 +414,7 @@ local UNIVERSAL = {
 -- Manifest schema version: bump when autoCommit writes NEW fields. An on-disk
 -- manifest with an older fmtver self-heals (renderAutomations triggers a rescan)
 -- so a dlac update never needs a manual "Rescan owned gear" click.
-local AUTO_FMT = 3;   -- 2: mpBest ladders + Convert counted; 3: MP values level-effective (Tamas)
+local AUTO_FMT = 4;   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked
 
 local auto = { data = nil, loadedFor = nil, status = '' };
 
@@ -447,6 +447,22 @@ local function ownedRec(name)
     return nil;
 end
 
+-- Owned AND equippable by the CURRENT job -- THE automation rule (field case:
+-- Foreshadow +1 sat in WHM's manifest as the universal; WHM can't wear it and
+-- AutoIridescence looked dead). The manifest is per-job, so every staff/obi
+-- pick passes the central eligibility check; item LEVEL is still checked live
+-- by the engine at resolve time.
+local function curJob()
+    return (type(deps.playerJob) == 'function') and deps.playerJob() or nil;
+end
+local function usableRec(name, job)
+    local rec = ownedRec(name);
+    if rec == nil then return nil; end
+    if hasDispatch and type(dsp.canWear) == 'function'
+       and not dsp.canWear(rec, job, 99) then return nil; end
+    return rec;
+end
+
 -- Re-derive the manifest from bags (HQ staff preferred), write it, hot-reload the engine.
 -- The manifest carries GEAR DATA only; whether an automation fires is decided by the
 -- SET: a dlac:AutoStaff / dlac:AutoObi virtual entry in its Main / Waist slot (Sets tab).
@@ -456,24 +472,27 @@ local function autoCommit()
     -- Per-element pick: HQ staff (Iridescence +2 for its element) over NQ (+1).
     -- Every entry records its item LEVEL so the engine can skip gear the character
     -- is under-leveled for (and fall back to the slot's regular pick).
+    -- Job-aware picks: gData does NOT exist in the addon state -- the job comes
+    -- from Ashita memory via deps.playerJob.
+    local job = curJob();
     local staff, obi, nStaff, nObi = {}, {}, 0, 0;
     for _, el in ipairs(ELEMENTS8) do
-        local hq, nq = ownedRec(STAFF_HQ[el]), ownedRec(STAFF_NQ[el]);
+        local hq, nq = usableRec(STAFF_HQ[el], job), usableRec(STAFF_NQ[el], job);
         if hq ~= nil then staff[el] = { name = hq.Name, tier = 2, level = hq.Level or 0 }; nStaff = nStaff + 1;
         elseif nq ~= nil then staff[el] = { name = nq.Name, tier = 1, level = nq.Level or 0 }; nStaff = nStaff + 1; end
-        local ob = ownedRec(OBI[el]);
+        local ob = usableRec(OBI[el], job);
         if ob ~= nil then obi[el] = { name = ob.Name, level = ob.Level or 0 }; nObi = nObi + 1; end
     end
-    -- Best owned universal (highest tier first -- the list is ordered).
+    -- Best usable universal (highest tier first -- the list is ordered).
     local uni, uniLevel = nil, 0;
     for _, u in ipairs(UNIVERSAL) do
-        local rec = ownedRec(u.name);
+        local rec = usableRec(u.name, job);
         if rec ~= nil then uni = u; uniLevel = rec.Level or 0; break; end
     end
     -- Universal obi (Hachirin-no-obi): covers every element.
     local obiUni, obiUniLevel = nil, 0;
     for _, nm in ipairs(OBI_UNIVERSAL) do
-        local rec = ownedRec(nm);
+        local rec = usableRec(nm, job);
         if rec ~= nil then obiUni, obiUniLevel = rec.Name, rec.Level or 0; break; end
     end
     -- Max-MP mode data: every owned piece carrying flat MP, lower(name) -> total,
@@ -483,9 +502,6 @@ local function autoCommit()
     local mp, mpBest = {}, {};
     pcall(function()
         if type(deps.ownedList) ~= 'function' then return; end
-        -- gData does NOT exist in the addon state -- the job comes from Ashita
-        -- memory via deps.playerJob (nil job would pass only Jobs={'All'} gear).
-        local job = (type(deps.playerJob) == 'function') and deps.playerJob() or nil;
         local counts = (type(deps.ownedCounts) == 'function') and deps.ownedCounts() or nil;
         local lvl = mainLevel();
         local bySlot = {};   -- gear-slot key -> candidates { name, mp, level }
@@ -645,34 +661,47 @@ local function levelColor(level, maxLevel)
 end
 
 local function owns(name) return ownedRec(name) ~= nil; end
+local function usable(name) return usableRec(name, curJob()) ~= nil; end
 
 -- Coverage: Iridescence 1 = any NQ elemental, 2 = any HQ elemental,
 -- 3 = Iridal (+1 universal), 4 = any +2 universal. Obi: 1 elemental, 2 universal.
+-- Job-aware (usable, not merely owned): the status light answers "what can THIS
+-- job's automation actually do" -- an owned Foreshadow +1 must not light WHM up.
 local function iridescenceLevel()
     local lv = 0;
     for _, el in ipairs(ELEMENTS8) do
-        if owns(STAFF_NQ[el]) then lv = math.max(lv, 1); end
-        if owns(STAFF_HQ[el]) then lv = math.max(lv, 2); end
+        if usable(STAFF_NQ[el]) then lv = math.max(lv, 1); end
+        if usable(STAFF_HQ[el]) then lv = math.max(lv, 2); end
     end
     for _, u in ipairs(UNIVERSAL) do
-        if owns(u.name) then lv = math.max(lv, ((u.tier or 1) >= 2) and 4 or 3); end
+        if usable(u.name) then lv = math.max(lv, ((u.tier or 1) >= 2) and 4 or 3); end
     end
     return lv;
 end
 local function obiLevel()
     local lv = 0;
-    for _, el in ipairs(ELEMENTS8) do if owns(OBI[el]) then lv = 1; break; end end
-    for _, nm in ipairs(OBI_UNIVERSAL) do if owns(nm) then lv = 2; break; end end
+    for _, el in ipairs(ELEMENTS8) do if usable(OBI[el]) then lv = 1; break; end end
+    for _, nm in ipairs(OBI_UNIVERSAL) do if usable(nm) then lv = 2; break; end end
     return lv;
 end
 local IRID_TXT = { [0] = 'nothing applicable', 'NQ staves', 'HQ staves', 'Iridal (+1)', 'universal +2' };
 local OBI_TXT  = { [0] = 'nothing applicable', 'elemental obis', 'universal obi' };
 
--- One item row in a detail column: icon + name, green when owned, dim when not.
+-- One item row in a detail column: green = owned and equippable by this job,
+-- red = owned but this JOB can't wear it (the automation skips it), dim = not owned.
 local function autoItemLine(name)
     local rec = (deps.lookupByName ~= nil) and deps.lookupByName(name) or nil;
     if type(deps.renderIcon) == 'function' then deps.renderIcon(rec and rec.Id or nil, 18); end
-    imgui.TextColored(owns(name) and GREEN_OWNED or COL_DIM, esc(name));
+    local owned = owns(name);
+    if owned and not usable(name) then
+        imgui.TextColored(COL_ERR, esc(name));
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip(string.format('Owned -- but %s cannot equip it, so the automation skips it on this job.',
+                tostring(curJob() or 'this job')));
+        end
+        return;
+    end
+    imgui.TextColored(owned and GREEN_OWNED or COL_DIM, esc(name));
 end
 
 local function autoColumn(title, names)
