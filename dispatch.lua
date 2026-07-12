@@ -32,7 +32,7 @@ local M = {};
 -- LAC-state copy stamps its version into the modestate mirror; the GUI compares
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code (the seeded file only re-requires when LuaAshitacast itself reloads).
-M.VERSION = 27;   -- 27: PetAction equips actually flush (ClearBuffer/ProcessBuffer bracket)
+M.VERSION = 29;   -- 29: the pet hold covers LEGACY profiles (HandleEquipEvent wrapped)
 
 -- Colored [dlac] chat output (chatfmt); plain print when unavailable. The shadowed
 -- `print` re-heads "[dlac] ..."-prefixed lines with the colored header.
@@ -448,6 +448,7 @@ end
 local _auto = { raw = nil, data = nil, lastCheck = -1 };
 
 local function ensureAutoLoaded()
+    if M._autoOverride ~= nil then return M._autoOverride; end   -- headless test seam
     local now = os.time();
     if now == _auto.lastCheck then return _auto.data; end
     _auto.lastCheck = now;
@@ -522,7 +523,9 @@ local function resolveStaff(a, el, lvl)
 end
 
 -- Marker -> item name for this cast, or nil + reason (for /dl why).
-local function resolveVirtual(marker, ctx)
+-- `slot` (the set's slot key, e.g. 'Neck'/'Ring1') is needed by per-slot
+-- markers (dlac:AutoCraft); staff/obi ignore it (Main/Waist by convention).
+local function resolveVirtual(marker, ctx, slot)
     local a = ensureAutoLoaded();
     if a == nil then return nil, 'no autogear manifest (Automations > Rescan owned gear)'; end
     local el = ctx.action and ctx.action.Element;
@@ -532,6 +535,42 @@ local function resolveVirtual(marker, ctx)
     -- canonical new names + the original spellings (existing sets keep working)
     if mk == 'dlac:autoiridescence' then mk = 'dlac:autostaff'; end
     if mk == 'dlac:elementalobi'    then mk = 'dlac:autoobi';   end
+    if mk == 'dlac:autocraft' then
+        -- Craft automation (docs/design/craft-automation.md): the manifest's
+        -- craft section holds per-slot ladders per craft and goal. The ACTIVE
+        -- craft is the dlac-owned 'craft' cycle value -- published by
+        -- craftwatch on synth detection (or manually: /dl mode craft Alchemy);
+        -- ctx.craftOverride lets the addon-side equip path resolve before the
+        -- command-bus mode write lands. Goal: 'craftgoal' mode, 'nq' or 'hq'
+        -- (default hq). Per Henrik: gear STAYS ON when the mode clears --
+        -- the next ordinary trigger event redresses you (no flashing).
+        local craftV = ctx.craftOverride or M.modes['craft'];
+        if type(craftV) ~= 'string' then return nil, 'craft mode off (/dl mode craft <Skill>)'; end
+        local goal = 'hq';
+        local g = ctx.goalOverride or M.modes['craftgoal'];
+        if type(g) == 'string' and string.lower(g) == 'nq' then goal = 'nq'; end
+        local slotKey = string.lower(tostring(slot or ''));
+        local bySlot = (type(a.craft) == 'table') and a.craft[slotKey] or nil;
+        local perCraft = nil;
+        if type(bySlot) == 'table' then
+            perCraft = bySlot[craftV];
+            if perCraft == nil then                      -- tolerate caps drift in the mode value
+                for k, v in pairs(bySlot) do
+                    if ci(tostring(k), tostring(craftV)) then perCraft = v; break; end
+                end
+            end
+        end
+        local chain = (type(perCraft) == 'table') and (perCraft[goal] or perCraft.hq) or nil;
+        if type(chain) ~= 'table' then
+            return nil, string.format('no %s craft gear for %s', slotKey, tostring(craftV));
+        end
+        for _, r in ipairs(chain) do                     -- ladder is best-first
+            if type(r) == 'table' and type(r.name) == 'string' and usableAt(r.level, lvl) then
+                return r.name;
+            end
+        end
+        return nil, string.format('no usable %s rung at Lv%d', slotKey, lvl);
+    end
     if mk == 'dlac:autostaff' then
         local nm = resolveStaff(a, el, lvl);
         if nm == nil then
@@ -562,6 +601,7 @@ local function resolveVirtual(marker, ctx)
     end
     return nil, 'unknown marker';
 end
+M._resolveVirtual = resolveVirtual;   -- addon-side craft equip + headless tests
 
 -- Equip a set table, resolving virtual entries and honouring SLOT LOCKS. Sets that
 -- need neither pass through untouched (zero copies); otherwise a shallow copy carries
@@ -736,7 +776,7 @@ local function equipResolved(s, ctx)
             local marker, fallback = v, nil;
             local p = string.find(v, '|', 1, true);
             if p ~= nil then marker, fallback = string.sub(v, 1, p - 1), string.sub(v, p + 1); end
-            local nm, why = resolveVirtual(marker, ctx);
+            local nm, why = resolveVirtual(marker, ctx, slot);
             out[slot] = nm or fallback;                -- nil fallback drops the slot
             notes = notes or {};
             if nm ~= nil then
@@ -1358,6 +1398,27 @@ if inLac() then
     -- with it up). Drive the SAME flow on a throttled frame tick so Default
     -- dispatching is packet-independent. The tick also watches the main job: a job
     -- change drops maxmp immediately, before it can battery the new job's gear.
+    -- Upstream parity for LEGACY profiles too: while the pet's action is in
+    -- flight, HandleDefault must not run AT ALL -- a hand-written profile
+    -- equips sets.Idle unconditionally and stomps the PetAction gear (field
+    -- case: Yinyang Robe in Idle.Body erased the pact piece the moment it was
+    -- worn). The engine-side hold only covers dlac dispatches, so LAC's own
+    -- entry point is wrapped ONCE; the tick's calls flow through it as well.
+    pcall(function()
+        local st = rawget(_G, 'gState');
+        if st ~= nil and type(st.HandleEquipEvent) == 'function' and st._dlacPetHold ~= true then
+            local orig = st.HandleEquipEvent;
+            st.HandleEquipEvent = function(ev, style)
+                if ev == 'HandleDefault' then
+                    local pa = st.PetAction;
+                    if pa ~= nil and (pa.Completion == nil or os.clock() < pa.Completion) then return; end
+                end
+                return orig(ev, style);
+            end;
+            st._dlacPetHold = true;
+        end
+    end);
+
     local _tickAt, _tickJob, _tickPet = 0, nil, nil;
     ashita.events.register('d3d_present', 'dlac-dispatch-tick', function()
         pcall(function()

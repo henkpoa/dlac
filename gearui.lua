@@ -2805,6 +2805,22 @@ local function deleteCurrentSet(job)
     if job == nil or job == '' then setStatus('Unknown job (are you logged in?).', true); return; end
     local ok, action, backup = nil, nil, nil;
     local pok = pcall(function() ok, action, backup = setmgr.deleteSet(job, M.workingSetName); end);
+    if pok and ok ~= true then
+        -- Copy-from seeds a STATIC set into the panel under its own name; Delete
+        -- then looks in sets.Dynamic and misses (field confusion). Point at the
+        -- right tool instead of a bare failure.
+        local isStatic = false;
+        pcall(function()
+            for _, nm in ipairs(profsets.staticSetNames()) do
+                if nm == M.workingSetName then isStatic = true; break; end
+            end
+        end);
+        if isStatic then
+            setStatus(string.format('"%s" is a STATIC set (Delete removes Dynamic ones). Use the "Delete static" picker next to Copy from.',
+                tostring(M.workingSetName)), true);
+            return;
+        end
+    end
     if pok and ok == true then
         profsets.invalidate();
         pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl sets reload'); end);
@@ -2996,12 +3012,15 @@ local function renderAddPopup(job, level)
         local any = false;
         -- Virtual entries ("slot functions", ADR 0004): resolved by the engine at equip
         -- time from your owned gear. Offered per slot, pinned above the item list.
-        local vlist = nil;
+        local vlist = {};
         if ui.setSelected == 'Main' then
-            vlist = { { name = 'dlac:AutoIridescence', tip = 'Equips your best USABLE Iridescence staff for the cast (level-checked):\nHQ elemental +2 / NQ +1 (own element) vs a universal weapon\n(Foreshadow +1/Chatoyant = +2 all elements, Iridal = +1); ties go to the\nuniversal, which also covers elementless actions. When nothing usable\nexists (e.g. under-leveled), the OTHER items in this slot\'s list are\nthe fallback -- best-by-level as usual.\n(Sets written as dlac:AutoStaff keep working.)' } };
+            vlist[#vlist + 1] = { name = 'dlac:AutoIridescence', tip = 'Equips your best USABLE Iridescence staff for the cast (level-checked):\nHQ elemental +2 / NQ +1 (own element) vs a universal weapon\n(Foreshadow +1/Chatoyant = +2 all elements, Iridal = +1); ties go to the\nuniversal, which also covers elementless actions. When nothing usable\nexists (e.g. under-leveled), the OTHER items in this slot\'s list are\nthe fallback -- best-by-level as usual.\n(Sets written as dlac:AutoStaff keep working.)' };
         elseif ui.setSelected == 'Waist' then
-            vlist = { { name = 'dlac:ElementalObi', tip = 'Equips the matching elemental obi when the net day/weather bonus for\nthe spell\'s element is positive (level-checked). Other items in this\nslot\'s list are the fallback.\n(Sets written as dlac:AutoObi keep working.)' } };
+            vlist[#vlist + 1] = { name = 'dlac:ElementalObi', tip = 'Equips the matching elemental obi when the net day/weather bonus for\nthe spell\'s element is positive (level-checked). Other items in this\nslot\'s list are the fallback.\n(Sets written as dlac:AutoObi keep working.)' };
         end
+        -- Craft automation: offered on EVERY slot -- data-driven, the engine only
+        -- resolves it where the manifest has craft gear for this slot.
+        vlist[#vlist + 1] = { name = 'dlac:AutoCraft', tip = 'Equips your best craft gear for THIS slot while a craft is active\n(/dl mode craft <Skill> -- set automatically when a synth is detected).\nGoal via /dl mode craftgoal hq|nq: hq raises quality; nq blocks HQ\n(guild anti-HQ gear) for materials you don\'t want HQ\'d. Level-checked;\nother items in this slot\'s list are the fallback. Gear stays on when\nthe craft mode clears -- your next action redresses you.' };
         if vlist ~= nil then
             for vi, vd in ipairs(vlist) do
                 if not inList[vd.name]
