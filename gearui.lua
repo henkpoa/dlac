@@ -51,8 +51,18 @@ local _augok, aug  = pcall(require, "dlac\\augments");
 local _lsok, lscale = pcall(require, "dlac\\levelstats");
 -- Window theme (partyfinder-matched palette), pushed around the whole draw.
 local _stok, style = pcall(require, "dlac\\uistyle");
--- Per-job macro book/set (header "Macro" button; applied on login/job change).
-local _mbok, macrob = pcall(require, "dlac\\macrobook");
+-- Per-job macro book/set (header "Macro" button; applied on login/job change)
+-- and enchanted travel items (header "Teleports" dropdown; same module the
+-- /dl w|p|t commands live in -- require returns the already-loaded instance).
+-- ONE local each, nil when unavailable: the 200-local chunk cap is this close.
+local macrob = (function()
+    local ok, m = pcall(require, "dlac\\macrobook");
+    return (ok and type(m) == 'table') and m or nil;
+end)();
+local useit = (function()
+    local ok, m = pcall(require, "dlac\\useitem");
+    return (ok and type(m) == 'table' and type(m.menu) == 'function') and m or nil;
+end)();
 
 local hasImgui    = _iok and imgui ~= nil;
 local hasD3D      = _fok and _dok and ffi ~= nil and d3d ~= nil;
@@ -61,8 +71,6 @@ local hasCatalog  = _cok and type(catalog) == 'table';
 local hasSetmgr   = _sok and type(setmgr) == 'table';
 local hasAug      = _augok and type(aug) == 'table';
 local hasLScale   = _lsok and type(lscale) == 'table';
-local hasMacrob   = _mbok and type(macrob) == 'table';
-
 -- Effective stats of a record at a level -- delegates to THE central resolver
 -- (levelstats.effective) so every section values scaling items identically.
 local function effStats(rec, level)
@@ -1273,6 +1281,65 @@ end
 -- Reload LAC / Scan / Stage / Commit / Augs / Setup, right-aligned on the header row.
 local debugMode = false;   -- /dl debug on -- reveals the dev-only Scan/Stage/Commit/Augs buttons
 
+-- The "Teleports" header dropdown: useitem's enchanted-travel items, clickable.
+-- Fixed columns (destination / item / state) so the rows line up; colors follow
+-- the house rules -- lit = equippable now, red = owned but stored, dim = not
+-- owned -- plus an amber countdown while the enchant recharges (out of charges).
+local function renderTeleportsPopup()
+    if not imgui.BeginPopup('##dlac_teleports') then return; end
+    imgui.TextColored(COL_HEADER, 'Teleports');
+    imgui.SameLine(0, 10);
+    imgui.TextColored(COL_DIM, 'click: equip + use when the game says ready');
+    imgui.Separator();
+    local rows = {};
+    pcall(function() rows = useit.menu() or {}; end);
+    for i, r in ipairs(rows) do
+        local id = r.id;
+        if id == nil then                              -- not owned: the catalog still knows the icon
+            local rec = lookupByName(r.name);
+            id = rec and rec.Id or nil;
+        end
+        renderIcon(id, 18);
+        local clickable = (r.owned and r.avail);
+        if imgui.Selectable('##tprow' .. i, false) and clickable then
+            pcall(function() AshitaCore:GetChatManager():QueueCommand(1, r.cmd); end);
+            imgui.CloseCurrentPopup();
+        end
+        if imgui.IsItemHovered() then
+            if not r.owned then
+                imgui.SetTooltip(r.name .. ' -- not owned.');
+            elseif not r.avail then
+                imgui.SetTooltip(string.format('%s is in %s -- move it to Inventory/Wardrobe to use it.', r.name, tostring(r.where)));
+            elseif r.rem > 0 then
+                imgui.SetTooltip(string.format('%s: recharging -- clicking now equips it and fires the moment it\'s ready  (%s).', r.name, r.cmd));
+            else
+                imgui.SetTooltip(string.format('%s: ready  (%s).', r.name, r.cmd));
+            end
+        end
+        local col = COL_DIM;                           -- not owned
+        if r.owned and r.avail then col = COL_USABLE;  -- lit
+        elseif r.owned then col = COL_ERR; end         -- stored: red, as usual
+        imgui.SameLine(30);
+        imgui.TextColored(col, fmt.esc(r.label));
+        imgui.SameLine(150);
+        imgui.TextColored(COL_DIM, fmt.esc(r.name));
+        imgui.SameLine(295);
+        if not r.owned then
+            imgui.TextColored(COL_DIM, 'not owned');
+        elseif not r.avail then
+            imgui.TextColored(COL_ERR, fmt.esc(tostring(r.where)));
+        elseif r.rem > 0 then
+            local t = math.floor(r.rem);
+            imgui.TextColored({ 1.0, 0.72, 0.25, 1.0 }, (t >= 3600)
+                and string.format('%d:%02d:%02d', math.floor(t / 3600), math.floor(t / 60) % 60, t % 60)
+                or  string.format('%d:%02d', math.floor(t / 60), t % 60));
+        else
+            imgui.TextColored(COL_USABLE, 'ready');
+        end
+    end
+    imgui.EndPopup();
+end
+
 -- Header buttons, right-aligned. Reload LAC is always shown. Scan/Stage/Commit/Augs are
 -- dev-only now that auto-sync keeps gear.lua current, so they appear only in debug mode.
 -- Setup shows only while the current job still needs it (or in debug mode). The visible set
@@ -1281,10 +1348,15 @@ local function renderHeaderButtons()
     local gap = 4;
     local needSetup = (jobSetupState() ~= 'ok');
     local btns = {};
-    if hasMacrob then
+    if macrob ~= nil then
         btns[#btns+1] = { l = macrob.label(), w = 92,
           tip = 'Macro book & set for the CURRENT job -- saved per job and applied\nautomatically on login and every job change (replaces the /macro lines\npeople put in profile OnLoad). Jobs you don\'t manage are never touched.',
           fn = function() macrob.open(); end };
+    end
+    if useit ~= nil then
+        btns[#btns+1] = { l = 'Teleports', w = 82,
+          tip = 'Warp Ring / Provenance Ring / teleport earrings -- click one to equip it\nand use it the moment the game says ready (the /dl w, p, t commands,\nclickable). Lit = ready, amber time = recharging, red = stored, dim = not owned.',
+          fn = function() ui._tpOpen = true; end };
     end
     btns[#btns+1] =
         { l = 'Reload LAC', w = 104,
@@ -1327,7 +1399,11 @@ local function renderHeaderButtons()
         if red then imgui.PopStyleColor(1); end
         if imgui.IsItemHovered() then imgui.SetTooltip(b.tip); end
     end
-    if hasMacrob then pcall(macrob.renderPopup); end
+    if macrob ~= nil then pcall(macrob.renderPopup); end
+    if useit ~= nil then
+        if ui._tpOpen then imgui.OpenPopup('##dlac_teleports'); ui._tpOpen = nil; end
+        pcall(renderTeleportsPopup);
+    end
 end
 
 -- ---------------------------------------------------------------------------
@@ -3408,7 +3484,7 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
     pcall(loadUiFlags);
     if ui._flagsDirty then ui._flagsDirty = nil; pcall(saveUiFlags); end
     pcall(autoSyncOnJobChange);
-    if hasMacrob then pcall(macrob.pump); end   -- per-job macro book/set (login + job change)
+    if macrob ~= nil then pcall(macrob.pump); end   -- per-job macro book/set (login + job change)
     if ui.showMetrics == true and hasImgui then       -- /dl metrics: overlay hunter
         pcall(function() imgui.ShowMetricsWindow(ui.metricsOpen); end);
         if ui.metricsOpen ~= nil and ui.metricsOpen[1] == false then ui.showMetrics = false; end

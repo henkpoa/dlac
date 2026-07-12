@@ -224,6 +224,84 @@ ashita.events.register('d3d_present', 'dlac-useitem-tick', function()
     end
 end);
 
+-- ---------------------------------------------------------------------------
+-- Menu data for the GUI (gearui's "Teleports" header dropdown): the same items
+-- the commands drive, with live bag state. One container scan per second (the
+-- popup reads this every frame). Row: { name, label, cmd, id, owned, avail,
+-- where, rem } -- rem is the RECHARGE remaining (seconds) read from the item's
+-- Extra use-timestamp, i.e. "out of charges" while > 0.
+-- ---------------------------------------------------------------------------
+local MENU = {
+    { name = 'Warp Ring',       label = 'Warp',        cmd = '/dl w' },
+    { name = 'Provenance Ring', label = 'Provenance',  cmd = '/dl p' },
+};
+for _, t in ipairs(TELEPORTS) do
+    MENU[#MENU + 1] = { name = t.name, label = t.dest, cmd = '/dl t ' .. t.aliases[1] };
+end
+local WANTED = {};
+for _, m in ipairs(MENU) do WANTED[string.lower(m.name)] = true; end
+
+-- Containers the game lets you EQUIP from (inventory + wardrobes); anything
+-- else is owned-but-stored -- the menu paints it red, as everywhere in dlac.
+local EQUIP_BAGS = { [0] = true, [8] = true, [10] = true, [11] = true, [12] = true,
+                     [13] = true, [14] = true, [15] = true, [16] = true };
+local BAG_NAMES = { [0] = 'Inventory', [1] = 'Mog Safe', [2] = 'Storage', [3] = 'Temporary',
+                    [4] = 'Mog Locker', [5] = 'Satchel', [6] = 'Sack', [7] = 'Case',
+                    [8] = 'Wardrobe', [9] = 'Mog Safe 2', [10] = 'Wardrobe 2', [11] = 'Wardrobe 3',
+                    [12] = 'Wardrobe 4', [13] = 'Wardrobe 5', [14] = 'Wardrobe 6',
+                    [15] = 'Wardrobe 7', [16] = 'Wardrobe 8' };
+
+local _menuAt, _menuRows = 0, nil;
+function M.menu()
+    if _menuRows ~= nil and os.clock() < _menuAt then return _menuRows; end
+    _menuAt = os.clock() + 1.0;
+    local found = {};   -- lower(name) -> best instance { id, bag, avail, rem }
+    pcall(function()
+        local inv = AshitaCore:GetMemoryManager():GetInventory();
+        local res = AshitaCore:GetResourceManager();
+        local now = gameNow();
+        for bag = 0, 16 do
+            local max = inv:GetContainerCountMax(bag) or 0;
+            for i = 1, max do
+                local item = inv:GetContainerItem(bag, i);
+                if item ~= nil and item.Id ~= nil and item.Id > 0 and (item.Count or 0) > 0 then
+                    local r = res:GetItemById(item.Id);
+                    local nm = (r ~= nil and r.Name ~= nil) and r.Name[1] or nil;
+                    local key = (nm ~= nil) and string.lower(nm) or nil;
+                    if key ~= nil and WANTED[key] then
+                        local rem = 0;
+                        if _stok and type(item.Extra) == 'string' and #item.Extra >= 8 and now ~= 0 then
+                            local useT = struct.unpack('I', item.Extra, 5) or 0;
+                            if useT > 0 then rem = math.max(0, (useT + VANA_OFFSET) - now); end
+                        end
+                        local avail = (EQUIP_BAGS[bag] == true);
+                        local cur = found[key];
+                        -- prefer an available copy; among equals, the readiest one
+                        if cur == nil or (avail and not cur.avail)
+                           or (avail == cur.avail and rem < cur.rem) then
+                            found[key] = { id = item.Id, bag = bag, avail = avail, rem = rem };
+                        end
+                    end
+                end
+            end
+        end
+    end);
+    local rows = {};
+    for _, m in ipairs(MENU) do
+        local f = found[string.lower(m.name)];
+        rows[#rows + 1] = {
+            name = m.name, label = m.label, cmd = m.cmd,
+            id = f and f.id or nil,
+            owned = (f ~= nil),
+            avail = (f ~= nil) and f.avail or false,
+            where = f and (BAG_NAMES[f.bag] or ('bag ' .. tostring(f.bag))) or nil,
+            rem = f and f.rem or 0,
+        };
+    end
+    _menuRows = rows;
+    return rows;
+end
+
 local function argStart(raw)
     if raw == '/dlac' or string.sub(raw, 1, 6) == '/dlac ' then return 7; end
     if raw == '/dl'   or string.sub(raw, 1, 4)  == '/dl '   then return 5; end
