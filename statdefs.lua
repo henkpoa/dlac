@@ -231,10 +231,14 @@ M.list = {
     { key = 'SynthSuccessRate', label = 'Synth Success', section = 'Misc', percent = true,
       aliases = { 'SynthesisSuccessRate' } },
     { key = 'SynthHQRate',       label = 'Synth HQ+', section = 'Misc', percent = true },  -- Craftmasters Ring line
-    -- Positive = LESS material lost on a break (Craftkeepers Ring, Artisans Torque).
+    -- Positive = LESS material lost on a break. In-game text (Artisans Torque +1):
+    -- "Decreases likelihood of Synthesis Material loss +5%".
     { key = 'SynthMaterialLoss', label = 'Synth Mat. Loss-', section = 'Misc', percent = true },
-    -- Guild anti-HQ gear: suppresses HQ for the named craft ("NQ only" goal --
-    -- e.g. skilling up on bridge recipes without wasting HQ materials).
+    -- CatsEyeXI custom (modid 2016): "Conserve Ingredient N%" (Artisans Torque +1).
+    { key = 'ConserveIngredient', label = 'Conserve Ingr.', section = 'Misc', percent = true },
+    -- Guild anti-HQ gear: in-game text reads "Cannot Synthesize high quality
+    -- items" (a hard HQ block, not a rate cut) -- the "NQ only" goal, e.g.
+    -- skilling up on bridge recipes without wasting HQ materials.
     { key = 'AntiHQWoodworking', label = 'Anti-HQ Wood.',    section = 'Misc' },
     { key = 'AntiHQSmithing',    label = 'Anti-HQ Smith',    section = 'Misc' },
     { key = 'AntiHQGoldsmithing', label = 'Anti-HQ Gold',    section = 'Misc' },

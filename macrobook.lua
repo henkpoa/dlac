@@ -226,12 +226,13 @@ function M.renderPopup()
     end
     local names = bookNames();
     local curBook, curSet = tonumber(e.book) or 1, tonumber(e.set) or 1;
-    -- SHORT stacked header -- one long title line was what stretched the popup
-    -- to quadruple the columns' width (field report).
-    imgui.Text(string.format('Macro palette for %s', job));
+    -- SHORTEST header that still works: 'Macros' + one dim info line (field-
+    -- trimmed twice; a long title is what stretches an auto-sized popup).
+    imgui.Text('Macros');
     local curName = names[curBook];
-    imgui.TextColored(COL_DIM, string.format('book %d%s  --  set %d',
-        curBook, (curName ~= nil) and (' "' .. curName .. '"') or '', curSet));
+    imgui.SameLine(0, 10);
+    imgui.TextColored(COL_DIM, string.format('%s: %d%s - %d',
+        job, curBook, (curName ~= nil) and (' "' .. curName .. '"') or '', curSet));
     if imgui.IsItemHovered() then
         imgui.SetTooltip('Applied immediately on click, and again on every login / job change.');
     end
