@@ -931,7 +931,7 @@ local CRAFT_UI = {
                 Goldsmithing = { 2003, 'Way of the Goldsmith' }, Clothcraft = { 2012, 'Way of the Weaver' },
                 Leathercraft = { 2019, 'Way of the Tanner' }, Bonecraft = { 2027, 'Way of the Boneworker' },
                 Alchemy = { 2039, 'Way of the Alchemist' }, Cooking = { 2044, 'Way of the Culinarian' } },
-    universals = { 'Kupo Shield', 'Bonze Cape', 'Shapers Shawl' },
+    universals = { 'Kupo Shield', 'Bonze Cape', 'Shapers Shawl', 'Midrass Helm +1' },
     txt = { [0] = 'nothing applicable', 'craft-specific gear', 'Artisans (NQ)', 'Artisans +1', 'Kupo Shield' },
     selected = 'Alchemy',
     _cache = {},   -- per-craft item lists (full-catalog walk: build on demand, never per frame)

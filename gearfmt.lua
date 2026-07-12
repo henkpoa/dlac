@@ -62,12 +62,43 @@ local STAT_PRIORITY = {
     'INT', 'MND', 'CHR', 'Evasion', 'Enmity', 'StoreTP',
 };
 
+-- Collapse the 8-way crafting families into ONE display token when uniform
+-- (Henrik: "All Skills +2 instead of listing each skill one by one"). Display
+-- only -- scoring and the engine still see the real per-craft keys.
+local CRAFT8 = { 'Woodworking', 'Smithing', 'Goldsmithing', 'Clothcraft',
+                 'Leathercraft', 'Bonecraft', 'Alchemy', 'Cooking' };
+local function collapseCraftFamilies(stats)
+    if type(stats) ~= 'table' then return stats; end
+    local function uniform(suffixFmt)
+        local val = nil;
+        for _, c in ipairs(CRAFT8) do
+            local v = stats[string.format(suffixFmt, c)];
+            if type(v) ~= 'number' then return nil; end
+            if val == nil then val = v; elseif v ~= val then return nil; end
+        end
+        return val;
+    end
+    local skillAll = uniform('%sSkill');
+    local antiAll  = uniform('AntiHQ%s');
+    if skillAll == nil and antiAll == nil then return stats; end
+    local out = {};
+    for k, v in pairs(stats) do out[k] = v; end
+    for _, c in ipairs(CRAFT8) do
+        if skillAll ~= nil then out[c .. 'Skill'] = nil; end
+        if antiAll ~= nil then out['AntiHQ' .. c] = nil; end
+    end
+    if skillAll ~= nil then out['All Craft Skills'] = skillAll; end
+    if antiAll ~= nil then out['All Anti-HQ'] = antiAll; end
+    return out;
+end
+
 -- Compact (<=4 token) stat line for rows. Memoized on the record (per level, so
 -- level-scaled items re-render when the character's level changes).
 local function statSummary(rec, level)
     local lvlKey = level or -1;
     if rec._statStr ~= nil and rec._statLvl == lvlKey then return rec._statStr; end
     local stats = (deps ~= nil and deps.effStats ~= nil) and deps.effStats(rec, level) or nil;
+    stats = collapseCraftFamilies(stats);
     local out = '';
     if type(stats) == 'table' then
         local parts, used = {}, {};
@@ -95,6 +126,7 @@ end
 -- Full stat line for the tooltip (all stats, priority first, DMG/Delay & Pet omitted).
 local function fullStatList(stats)
     if type(stats) ~= 'table' then return ''; end
+    stats = collapseCraftFamilies(stats);
     local parts, used = {}, {};
     for _, k in ipairs(STAT_PRIORITY) do
         local v = stats[k];
