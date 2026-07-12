@@ -808,22 +808,14 @@ local function renderAutomations(noHeader)
     -- LIST view: the automation table FIRST, no explanations above it (field
     -- request) -- how-it-works lives in the tooltips and detail views. The
     -- rescan shove + status sit small under the table.
-    local mpTotal = 0;
-    if type(auto.data) == 'table' and type(auto.data.mpBest) == 'table' then
-        local lvl = mainLevel();
-        for _, cands in pairs(auto.data.mpBest) do
-            local c = mpPickAt(cands, lvl);
-            if c ~= nil then mpTotal = mpTotal + (tonumber(c.mp) or 0); end
-        end
-    end
+    -- MaxMP is deliberately NOT listed: still unofficial, pending more field
+    -- troubleshooting (/dl mode maxmp keeps working; its detail view and the
+    -- manifest mp data stay intact -- re-add the row here when it graduates).
     local rows = {
         { key = 'iridescence', name = 'AutoIridescence', kind = 'slot automation (Main)',
           level = iridescenceLevel(), max = 4, txt = nil },
         { key = 'obi',         name = 'ElementalObi',    kind = 'slot automation (Waist)',
           level = obiLevel(),         max = 2, txt = nil },
-        { key = 'maxmp',       name = 'MaxMP',           kind = 'set automation (/dl mode maxmp)',
-          level = (mpTotal > 0) and 1 or 0, max = 1,
-          txt = (mpTotal > 0) and string.format('+%d Max MP', mpTotal) or 'nothing applicable' },
     };
     rows[1].txt = IRID_TXT[rows[1].level];
     rows[2].txt = OBI_TXT[rows[2].level];
