@@ -1146,25 +1146,32 @@ local function renderAutomations(noHeader)
             imgui.SameLine(0, 10);
             for i, cr in ipairs(CRAFT_UI.order) do
                 local sel = (CRAFT_UI.selected == cr);
-                imgui.PushStyleColor(ImGuiCol_ChildBg, sel and { 0.42, 0.36, 0.16, 1.0 } or { 0.10, 0.10, 0.13, 1.0 });
-                imgui.BeginChild('##craftsel_' .. cr, { 28, 28 }, true, ImGuiWindowFlags_NoScrollbar or 0);
                 local tex = CRAFT_UI.texture(cr);
                 local drew = false;
                 if tex ~= nil then
-                    drew = pcall(function()
+                    -- Plain image, no box, no border (Henrik): selected = full
+                    -- brightness, the rest dimmed. Tint-less retry keeps older
+                    -- imgui bindings working.
+                    local okT = pcall(function()
                         local ffi = require('ffi');
-                        imgui.Image(tonumber(ffi.cast('uint32_t', tex)), { 22, 22 });
+                        imgui.Image(tonumber(ffi.cast('uint32_t', tex)), { 32, 32 },
+                            { 0, 0 }, { 1, 1 }, sel and { 1, 1, 1, 1 } or { 1, 1, 1, 0.45 });
                     end);
+                    if not okT then
+                        okT = pcall(function()
+                            local ffi = require('ffi');
+                            imgui.Image(tonumber(ffi.cast('uint32_t', tex)), { 32, 32 });
+                        end);
+                    end
+                    drew = okT;
                 end
                 if not drew and type(deps.renderIcon) == 'function' then   -- glyph missing: item icon
                     local rec = (deps.lookupByName ~= nil) and deps.lookupByName(CRAFT_UI.torque[cr]) or nil;
-                    deps.renderIcon(rec and rec.Id or nil, 20);
+                    deps.renderIcon(rec and rec.Id or nil, 32);
                 end
-                imgui.EndChild();
-                imgui.PopStyleColor(1);
                 if imgui.IsItemClicked() then CRAFT_UI.selected = cr; end
                 if imgui.IsItemHovered() then imgui.SetTooltip(cr .. '  (' .. CRAFT_UI.guild[cr] .. ')'); end
-                if i < #CRAFT_UI.order then imgui.SameLine(0, 4); end
+                if i < #CRAFT_UI.order then imgui.SameLine(0, 14); end
             end
             imgui.Spacing();
             local selCr = CRAFT_UI.selected;
