@@ -899,6 +899,75 @@ local function autoColumn(title, names)
     imgui.EndGroup();
 end
 
+-- AutoCraft panel (docs/design/craft-automation.md; layout per Henrik).
+-- Names are catalog short names (the API stores them apostrophe-less); KI ids
+-- from the server's own enum (scripts/enum/key_item.lua on the public repo).
+-- ONE table on purpose: triggersui rides the LuaJIT 200-local chunk cap.
+local CRAFT_UI = {
+    order   = { 'Woodworking', 'Smithing', 'Goldsmithing', 'Clothcraft',
+                'Leathercraft', 'Bonecraft', 'Alchemy', 'Cooking' },
+    short   = { Woodworking = 'Wood', Smithing = 'Smith', Goldsmithing = 'Gold',
+                Clothcraft = 'Cloth', Leathercraft = 'Leather', Bonecraft = 'Bone',
+                Alchemy = 'Alch', Cooking = 'Cook' },
+    torque  = { Woodworking = 'Carvers Torque', Smithing = 'Smithys Torque',
+                Goldsmithing = 'Goldsm. Torque', Clothcraft = 'Weavers Torque',
+                Leathercraft = 'Tanners Torque', Bonecraft = 'Bone. Torque',
+                Alchemy = 'Alchemst. Torque', Cooking = 'Culin. Torque' },
+    nqring  = { Woodworking = 'Carpenters Ring', Smithing = 'Smiths Ring',
+                Goldsmithing = 'Goldsmiths Ring', Clothcraft = 'Tailors Ring',
+                Leathercraft = 'Tanners Ring', Bonecraft = 'Bonecrafters Ring',
+                Alchemy = 'Alchemists Ring', Cooking = 'Chefs Ring' },
+    ki      = { Woodworking = { 1988, 'Way of the Carpenter' }, Smithing = { 1996, 'Way of the Blacksmith' },
+                Goldsmithing = { 2003, 'Way of the Goldsmith' }, Clothcraft = { 2012, 'Way of the Weaver' },
+                Leathercraft = { 2019, 'Way of the Tanner' }, Bonecraft = { 2027, 'Way of the Boneworker' },
+                Alchemy = { 2039, 'Way of the Alchemist' }, Cooking = { 2044, 'Way of the Culinarian' } },
+    universals = { 'Kupo Shield', 'Bonze Cape', 'Shapers Shawl' },
+    txt = { [0] = 'nothing applicable', 'craft-specific gear', 'Artisans (NQ)', 'Artisans +1', 'Kupo Shield' },
+    selected = 'Alchemy',
+    _cache = {},   -- per-craft item lists (full-catalog walk: build on demand, never per frame)
+};
+
+function CRAFT_UI.level()
+    local lv = 0;
+    for _, cr in ipairs(CRAFT_UI.order) do
+        if owns(CRAFT_UI.torque[cr]) or owns(CRAFT_UI.nqring[cr]) then lv = 1; break; end
+    end
+    if owns('Artisans Torque') or owns('Artisans Ring') then lv = math.max(lv, 2); end
+    if owns('Artisans Torque +1') or owns('Artisans Ring +1') then lv = math.max(lv, 3); end
+    if owns('Kupo Shield') then lv = 4; end
+    return lv;
+end
+
+-- Craft-specific skill+ items for one craft, from the FULL catalog (owned or
+-- not -- deps.allEquipList): any item carrying <craft>Skill, excluding the
+-- all-8 universals (they live in the matrix above).
+function CRAFT_UI.items(cr)
+    if CRAFT_UI._cache[cr] ~= nil then return CRAFT_UI._cache[cr]; end
+    local out = {};
+    pcall(function()
+        if type(deps.allEquipList) ~= 'function' then return; end
+        for _, rec in ipairs(deps.allEquipList() or {}) do
+            local st = rec.Stats;
+            if type(st) == 'table' and rec.Name ~= nil then
+                local v = tonumber(st[cr .. 'Skill']) or 0;
+                if v > 0 then
+                    local nAll = 0;
+                    for _, c2 in ipairs(CRAFT_UI.order) do
+                        if (tonumber(st[c2 .. 'Skill']) or 0) > 0 then nAll = nAll + 1; end
+                    end
+                    if nAll < 8 then out[#out + 1] = { name = rec.Name, skill = v }; end
+                end
+            end
+        end
+        table.sort(out, function(a, b)
+            if a.skill ~= b.skill then return a.skill > b.skill; end
+            return a.name < b.name;
+        end);
+    end);
+    CRAFT_UI._cache[cr] = out;
+    return out;
+end
+
 local MP_GRID = { 'main', 'sub', 'range', 'ammo', 'head', 'neck', 'ear1', 'ear2',
                   'body', 'hands', 'ring1', 'ring2', 'back', 'waist', 'legs', 'feet' };
 local MP_EXEMPT = { main = true, sub = true, range = true };
@@ -958,6 +1027,67 @@ local function renderAutomations(noHeader)
             autoColumn('Universal Obi', OBI_UNIVERSAL);
             imgui.Spacing();
             imgui.TextColored(COL_DIM, 'Fires only when the day/weather bonus is positive. Green = owned.');
+        elseif auto.view == 'craft' then
+            imgui.TextColored(COL_HEADER, 'AutoCraft');
+            imgui.SameLine(0, 10);
+            imgui.TextColored(COL_DIM, 'slot automation -- dlac:AutoCraft in ANY slot; /dl mode craft <skill>, /dl mode craftgoal hq|nq');
+            imgui.Spacing();
+            -- Ownership matrix (Henrik's layout): NQ|HQ pair, rule, craft-
+            -- specific column -- for torques and rings; universals third.
+            local colW = math.max(240, math.floor(availW / 3));
+            imgui.BeginGroup();
+            imgui.TextColored(COL_HEADER, 'Torques');
+            autoItemLine('Artisans Torque'); imgui.SameLine(0, 14); autoItemLine('Artisans Torque +1');
+            imgui.TextColored(COL_DIM, '- - - - - - - -');
+            for _, cr in ipairs(CRAFT_UI.order) do autoItemLine(CRAFT_UI.torque[cr]); end
+            imgui.EndGroup();
+            imgui.SameLine(colW);
+            imgui.BeginGroup();
+            imgui.TextColored(COL_HEADER, 'Rings');
+            autoItemLine('Artisans Ring'); imgui.SameLine(0, 14); autoItemLine('Artisans Ring +1');
+            imgui.TextColored(COL_DIM, '- - - - - - - -   (anti-HQ / "NQ only")');
+            for _, cr in ipairs(CRAFT_UI.order) do autoItemLine(CRAFT_UI.nqring[cr]); end
+            imgui.EndGroup();
+            imgui.SameLine(colW * 2);
+            autoColumn('Universals', CRAFT_UI.universals);
+            imgui.Spacing();
+            imgui.Separator();
+            imgui.Spacing();
+            -- Craft selector, one row left-to-right (item icons stand in for the
+            -- game's synth-skill glyphs, which the item-icon API can't reach).
+            imgui.TextColored(COL_HEADER, 'Craft-specific gear:');
+            imgui.SameLine(0, 10);
+            for i, cr in ipairs(CRAFT_UI.order) do
+                local rec = (deps.lookupByName ~= nil) and deps.lookupByName(CRAFT_UI.torque[cr]) or nil;
+                if type(deps.renderIcon) == 'function' then deps.renderIcon(rec and rec.Id or nil, 16); end
+                local lbl = (CRAFT_UI.selected == cr) and ('[' .. CRAFT_UI.short[cr] .. ']') or CRAFT_UI.short[cr];
+                if imgui.SmallButton(lbl .. '##craftsel' .. i) then CRAFT_UI.selected = cr; end
+                if imgui.IsItemHovered() then imgui.SetTooltip(cr); end
+                if i < #CRAFT_UI.order then imgui.SameLine(0, 6); end
+            end
+            imgui.Spacing();
+            local selCr = CRAFT_UI.selected;
+            local ki = CRAFT_UI.ki[selCr];
+            local hasKI = false;
+            pcall(function() hasKI = AshitaCore:GetMemoryManager():GetPlayer():HasKeyItem(ki[1]) == true; end);
+            imgui.TextColored(hasKI and GREEN_OWNED or COL_ERR,
+                (hasKI and 'Key item: ' or 'Key item MISSING: ') .. ki[2]);
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Guild-point key item -- the ' .. selCr .. ' 100 reward path (trade at Nudara, Bastok Markets).');
+            end
+            imgui.Spacing();
+            local its = CRAFT_UI.items(selCr);
+            if #its == 0 then
+                imgui.TextColored(COL_DIM, 'No ' .. selCr .. '-specific skill+ items in the catalog.');
+            else
+                for _, it in ipairs(its) do
+                    autoItemLine(it.name);
+                    imgui.SameLine(0, 8);
+                    imgui.TextColored(COL_DIM, string.format('(%s +%d)', selCr, it.skill));
+                end
+            end
+            imgui.Spacing();
+            imgui.TextColored(COL_DIM, 'Green = owned; red = owned but this job can\'t wear it; dim = not owned.');
         elseif auto.view == 'maxmp' then
             imgui.TextColored(COL_HEADER, 'MaxMP');
             imgui.SameLine(0, 10); imgui.TextColored(COL_DIM, 'set automation -- /dl mode maxmp; wears batteries at a full pool, releases as spent');
@@ -1004,9 +1134,12 @@ local function renderAutomations(noHeader)
           level = iridescenceLevel(), max = 4, txt = nil },
         { key = 'obi',         name = 'ElementalObi',    kind = 'slot automation (Waist)',
           level = obiLevel(),         max = 2, txt = nil },
+        { key = 'craft',       name = 'AutoCraft',       kind = 'slot automation (any slot)',
+          level = CRAFT_UI.level(),   max = 4, txt = nil },
     };
     rows[1].txt = IRID_TXT[rows[1].level];
     rows[2].txt = OBI_TXT[rows[2].level];
+    rows[3].txt = CRAFT_UI.txt[rows[3].level];
     -- Column headers, same fixed offsets as the rows.
     imgui.Dummy({ 0, 0 });
     imgui.SameLine(8);   imgui.TextColored(COL_HEADER, 'Name');

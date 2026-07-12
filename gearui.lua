@@ -2334,6 +2334,7 @@ do
             dynamicSetNames = profsets.dynamicSetNames, staticSetNames = profsets.staticSetNames,
             lookupByName = lookupByName, ownedCounts = owned.counts,  -- automations manifest (owned staves/obis)
             ownedList = buildOwned,                                   -- max-MP manifest (piece MP values)
+            allEquipList = buildAllEquip,                             -- AutoCraft panel: full catalog (owned OR not)
             haveInBags = owned.haveInBags,                            -- max-MP batteries must be equippable NOW
             playerJob = function()                                    -- battery job-eligibility (no gData in this state)
                 local abbr = nil;
