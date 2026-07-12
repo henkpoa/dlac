@@ -169,23 +169,36 @@ function M.open() _openReq = true; end
 
 -- Popup body. OpenPopup/BeginPopup resolve ids per window, so the caller's
 -- button only sets a flag (M.open) and this runs in the window scope each frame.
--- Books 1-40 as TWO click rows of 20 (the game's two pages side by side), sets
--- 1-10 as one row -- a click saves AND applies on the spot, no steppers, no
--- waiting for a profile load. Book names ride the buttons' tooltips.
+-- Books render like the GAME's own macro-book list (field request): names
+-- visible immediately, fixed-width rows stacked top-to-bottom, TWO columns of
+-- 20 (the two in-game pages). Sets 1-10 stay one number row. A click saves AND
+-- applies on the spot -- never waits for a profile load.
 local GOLD = { 0.42, 0.36, 0.16, 1.0 };
-local function pickGrid(prefix, count, perRow, current, names)
+local function pickGrid(prefix, count, perRow, current)
     local picked = nil;
     for n = 1, count do
         local on = (n == current);
         if on then imgui.PushStyleColor(ImGuiCol_Button, GOLD); end
         if imgui.Button(tostring(n) .. '##' .. prefix .. n, { 26, 20 }) then picked = n; end
         if on then imgui.PopStyleColor(1); end
-        if imgui.IsItemHovered() then
-            local nm = (names ~= nil) and names[n] or nil;
-            imgui.SetTooltip((nm ~= nil) and string.format('%d: %s', n, nm) or tostring(n));
-        end
         if n % perRow ~= 0 and n < count then imgui.SameLine(0, 3); end
     end
+    return picked;
+end
+
+-- One column of 20 book-name rows (the game-list look: tight, fixed width).
+local function bookColumn(from, to, current, names)
+    local picked = nil;
+    imgui.BeginGroup();
+    for n = from, to do
+        local on = (n == current);
+        if on then imgui.PushStyleColor(ImGuiCol_Button, GOLD); end
+        local nm = names[n] or ('Book ' .. n);
+        if imgui.Button(nm .. '##mbk' .. n, { 124, 19 }) then picked = n; end
+        if on then imgui.PopStyleColor(1); end
+        if imgui.IsItemHovered() then imgui.SetTooltip(string.format('book %d: %s', n, nm)); end
+    end
+    imgui.EndGroup();
     return picked;
 end
 
@@ -219,11 +232,17 @@ function M.renderPopup()
     imgui.TextColored(COL_DIM, string.format('book %d%s -- set %d   (applied NOW and on every login / job change)',
         curBook, (curName ~= nil) and (' "' .. curName .. '"') or '', curSet));
     imgui.Spacing();
-    imgui.TextColored(COL_DIM, 'Book  (hover for its name):');
-    local pb = pickGrid('mbk', 40, 20, curBook, names);
+    -- the game-list look: tight rows
+    local styled = (ImGuiStyleVar_ItemSpacing ~= nil);
+    if styled then imgui.PushStyleVar(ImGuiStyleVar_ItemSpacing, { 3, 2 }); end
+    local p1 = bookColumn(1, 20, curBook, names);
+    imgui.SameLine(0, 6);
+    local p2 = bookColumn(21, 40, curBook, names);
+    if styled then imgui.PopStyleVar(1); end
+    local pb = p1 or p2;
     imgui.Spacing();
     imgui.TextColored(COL_DIM, 'Set:');
-    local ps = pickGrid('mst', 10, 10, curSet, nil);
+    local ps = pickGrid('mst', 10, 10, curSet);
     if pb ~= nil or ps ~= nil then
         e.book = pb or curBook;
         e.set  = ps or curSet;
