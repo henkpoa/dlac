@@ -894,6 +894,25 @@ end
 -- cycle chosen explicitly, cycle values added ONE AT A TIME into a visible,
 -- removable ordered list (no comma strings).
 -- ---------------------------------------------------------------------------
+-- The one Default rule a toggle's "Overlay set" owns: when = { mode = <name> }
+-- and NOTHING else. Multi-condition hand-made rules never match this shape, so
+-- the editor can sync its rule without touching theirs.
+local function findOverlayRule(name)
+    local lnm = string.lower(tostring(name or ''));
+    for i, r in ipairs((trig.data and trig.data.Default) or {}) do
+        if type(r) == 'table' and type(r.when) == 'table' and r.set ~= nil then
+            local mc, extra = nil, false;
+            for k, v in pairs(r.when) do
+                if string.lower(tostring(k)) == 'mode' then mc = v; else extra = true; end
+            end
+            if not extra and type(mc) == 'string' and string.lower(mc) == lnm then
+                return i, r;
+            end
+        end
+    end
+    return nil, nil;
+end
+
 local function openModeEditor(m, def)
     modeUI.editing = m;
     modeUI.name[1] = m;
@@ -906,6 +925,11 @@ local function openModeEditor(m, def)
         for _, v in ipairs(def.values) do modeUI.values[#modeUI.values + 1] = v; end
     else
         modeUI.kind = 'toggle';
+        -- Prefill the overlay from the toggle's existing rule, so editing shows
+        -- (and can change/clear) what is actually wired -- picking a set while
+        -- EDITING used to be silently ignored (field report).
+        local _, r = findOverlayRule(m);
+        if r ~= nil then modeUI.set = r.set; end
     end
     trig._openModePopup = true;
 end
@@ -971,7 +995,7 @@ local function renderModePopup()
         end
         imgui.PopItemWidth();
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('Creates the rule "mode = <name> -> this set" (priority 100) for you --\nthe classic DT-style overlay. Leave (none) to wire rules yourself.');
+            imgui.SetTooltip('Wires the classic overlay for you: a rule  mode = <name>  ->  this set\nin the DEFAULT trigger at priority 100 -- while the mode is ON it applies\nLAST, overlaying only the slots the set fills. Other events (Precast,\nMidcast, WS...) are untouched. Pick (none) to remove the rule again.');
         end
     end
 
@@ -993,8 +1017,16 @@ local function renderModePopup()
         else
             if bind ~= nil then trig.data.Modes[nm] = { bind = bind };
             else trig.data.Modes[nm] = nil; end        -- toggle without a bind needs no definition
-            if not editing and modeUI.set ~= nil then
-                trig.data.Default = trig.data.Default or {};
+            -- Overlay-set sync, on CREATE and EDIT alike: own the exact-shape
+            -- rule (see findOverlayRule) -- picking a set writes/updates it,
+            -- (none) removes it. Editing used to ignore the pick entirely.
+            trig.data.Default = trig.data.Default or {};
+            local ri, orule = findOverlayRule(nm);
+            if modeUI.set == nil then
+                if ri ~= nil then table.remove(trig.data.Default, ri); end
+            elseif orule ~= nil then
+                orule.set = modeUI.set;
+            else
                 table.insert(trig.data.Default, { when = { mode = nm }, set = modeUI.set });
             end
         end
