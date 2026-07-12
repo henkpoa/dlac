@@ -101,9 +101,11 @@ local COND_DEFS = {
     },
     Preshot = { { key = 'any', kind = 'flag' }, { key = 'mode', kind = 'text', hint = 'a player-toggled mode must be ON' } },
     Midshot = { { key = 'any', kind = 'flag' }, { key = 'mode', kind = 'text', hint = 'a player-toggled mode must be ON' } },
-    -- Fires when YOUR PET starts an action (Blood Pact, Ready move, pet spell) --
-    -- dlac synthesizes it (this LAC build never calls a pet handler); Default
-    -- holds until the action completes, so Pet: stat gear stays on through it.
+    -- Fires when YOUR PET starts an action (Blood Pact, Ready move, pet spell).
+    -- NO LAC version calls a pet handler -- the upstream tutorial's
+    -- HandlePetAction is a call-it-yourself pattern; dlac's engine tick does
+    -- the calling, centrally. Default holds until the action completes, so
+    -- Pet: stat gear stays on through it.
     PetAction = {
         { key = 'contains', kind = 'text', hint = 'pet action name contains this text, e.g. "Predator" for\nPredator Claws' },
         { key = 'name',     kind = 'text', hint = 'exact pet action name, e.g. Volt Strike' },

@@ -65,10 +65,11 @@ local LAC_SLOTS = { 'main', 'sub', 'range', 'ammo', 'head', 'neck', 'ear1', 'ear
 local LAC_SLOT_OK = {};
 for _, s in ipairs(LAC_SLOTS) do LAC_SLOT_OK[s] = true; end
 
--- PetAction is DLAC-SYNTHESIZED: this LAC build tracks the pet's action
--- (gState.PetAction / gData.GetPetAction) but never calls a profile handler
--- for it (the upstream tutorial documents one; the shipped build predates it).
--- The engine tick dispatches it once per pet-action start instead.
+-- PetAction is DLAC-SYNTHESIZED. No LuaAshitacast version calls a pet handler:
+-- the upstream tutorial's HandlePetAction is a DIY pattern ("this function will
+-- not be called by LuaAshitacast, you'll have to call it yourself" -- profiles
+-- were meant to poll gData.GetPetAction from HandleDefault). The engine tick IS
+-- that pattern, centralized: it dispatches once per pet-action start.
 local EVENTS = { 'Default', 'Precast', 'Midcast', 'Ability', 'Item', 'Weaponskill', 'Preshot', 'Midshot', 'PetAction' };
 local EVENT_CANON = {};
 for _, e in ipairs(EVENTS) do EVENT_CANON[string.lower(e)] = e; end
