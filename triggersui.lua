@@ -1182,7 +1182,15 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
     end
     local lh = lineH();
     local leftH  = #lines * lh;
-    local rightH = ((parts ~= nil) and (#parts * lh) or 26) + 30;   -- target + controls row
+    local rightH;
+    if parts ~= nil then
+        rightH = #parts * lh + 30;                     -- inline equip: one line per slot + controls
+    else
+        -- one line per TARGET SET (multi-set rules stack them, with reorder
+        -- buttons riding each line) + the '+ overlay set' picker + controls row
+        local nsets = (type(r.set) == 'table') and #r.set or ((r.set ~= nil) and 1 or 0);
+        rightH = nsets * 22 + 26 + 30;
+    end
     local boxH = math.max(leftH, rightH, 56) + 18;
     imgui.BeginChild('##trgbox' .. id, { -1, boxH }, true, BOX_FLAGS);
 
