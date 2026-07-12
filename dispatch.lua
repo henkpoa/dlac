@@ -32,7 +32,7 @@ local M = {};
 -- LAC-state copy stamps its version into the modestate mirror; the GUI compares
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code (the seeded file only re-requires when LuaAshitacast itself reloads).
-M.VERSION = 16;
+M.VERSION = 17;
 
 -- Colored [dlac] chat output (chatfmt); plain print when unavailable. The shadowed
 -- `print` re-heads "[dlac] ..."-prefixed lines with the colored header.
@@ -399,13 +399,11 @@ local function ensureLoaded()
             end);
         end
     end
-    -- A cycle VALUE whose definition vanished (mode deleted in the GUI, or the
-    -- job changed to a trigger file without it) is stale state, not a user flag:
-    -- purge it, so a deleted mode actually dies instead of haunting the mirror.
-    -- Toggle flags carry no definition and are left alone.
-    for m, v in pairs(M.modes) do
-        if type(v) == 'string' and _trig.modeDefs[m] == nil then M.modes[m] = nil; end
-    end
+    -- NO stale-value purge here (v16 had one; field-FALSIFIED on WHM): mode
+    -- DEFINITIONS are per-job trigger data but their VALUES are session-global
+    -- by design -- "WHM Weapons" is defined in BRD's file and gates WHM's sets,
+    -- so a job change must not clear it. A DELETED mode still dies: the GUI's
+    -- delete flow queues '/dl mode <name> off' after its commit.
     pcall(saveModeState);
     for _, w in ipairs(warns) do printwarn('triggers: ' .. w); end
     -- Successful loads are SILENT on purpose: this runs on every profile load /
@@ -1157,6 +1155,23 @@ function M.setMode(name, state)
         M.modes[ln] = nxt;
         saveModeState();
         return nxt;
+    end
+    -- No LOCAL definition below here (definitions are per-job trigger data;
+    -- VALUES are session-global). An explicit value jump works from any job --
+    -- the command layer already peeled off on/off/toggle, so a string is
+    -- always an intended cycle value: trust it.
+    if type(state) == 'string' then
+        M.modes[ln] = state;
+        saveModeState();
+        return state;
+    end
+    -- And a bare flip must not toggle-corrupt a cycle VALUE defined elsewhere
+    -- into a boolean (field case: ^F6 "WHM Weapons" -- defined in BRD's
+    -- triggers -- pressed on WHM would kill every WHM set gated on it).
+    if state == nil and type(M.modes[ln]) == 'string' then
+        print(string.format('[dlac] mode "%s" holds cycle value "%s" but THIS job\'s triggers don\'t define the cycle -- jump directly (/dl mode %s <value>), define it here (Triggers > Modes), or /dl mode %s off.',
+            name, M.modes[ln], name, name));
+        return M.modes[ln];
     end
     if state == nil then state = not (M.modes[ln] == true); end   -- toggle
     M.modes[ln] = (state == true) or nil;

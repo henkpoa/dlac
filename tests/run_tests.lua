@@ -492,6 +492,18 @@ check('L5 nil level = base stats', lstats.effective(tamas, nil).MP, 15);
 check('L6 nil-safe',               lstats.effective(nil, 74), nil);
 
 -- ---------------------------------------------------------------------------
+-- M. cross-job cycle values. Mode DEFINITIONS are per-job trigger data; VALUES
+--    are session-global (field case: "WHM Weapons" is defined in BRD's file and
+--    gates WHM's sets). With no local definition: an explicit value jump works,
+--    a bare flip must NOT toggle-corrupt the string into a boolean, off clears.
+-- ---------------------------------------------------------------------------
+check('M1 value jump without local def', dispatchM.setMode('WHM Weapons', 'DivinitySolo'), 'DivinitySolo');
+check('M2 bare flip keeps the value',    dispatchM.setMode('WHM Weapons'), 'DivinitySolo');
+check('M3 gated condition still true',   dispatchM.modeActive('WHM Weapons:DivinitySolo'), true);
+check('M4 off still clears',             dispatchM.setMode('WHM Weapons', false), false);
+check('M5 cleared for conditions',       dispatchM.modeActive('WHM Weapons:DivinitySolo'), false);
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then
