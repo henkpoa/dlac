@@ -3975,18 +3975,22 @@ local function drawWindow()
                 if imgui.Button(isDelete and 'Cancel##pm_back' or 'Back##pm_back', { 90, 24 }) then ui._pmForm, ui._pmChk = nil, nil; end
             else
                 -- ------- TREE VIEW: character > profile > job files -------
-                do   -- centered PROFILES title, Refresh pinned to the right edge
-                    local w = imgui.GetWindowWidth();
+                do   -- centered PROFILES title, Refresh pinned right. Laid out
+                     -- against a FIXED width: deriving it from GetWindowWidth in
+                     -- an auto-sized popup feeds back on itself (content reaches
+                     -- last frame's width, padding is added, the window crawls to
+                     -- full-screen -- field screenshot 2026-07-13).
+                    local W = 640;   -- matches the tree child below: the layout authority
                     local tw = 62;
                     pcall(function() local cw = imgui.CalcTextSize('PROFILES'); if type(cw) == 'number' then tw = cw; end end);
-                    pcall(function() imgui.SetCursorPosX(math.max(0, (w - tw) / 2)); end);
+                    pcall(function() imgui.SetCursorPosX(math.max(0, (W - tw) / 2)); end);
                     imgui.TextColored(COL_HEADER, 'PROFILES');
-                    imgui.SameLine(math.max(0, w - 68));
+                    imgui.SameLine(math.max(0, W - 64));
                     if imgui.SmallButton('Refresh##pm_r') then ui._profMenuBuild = true; end
                 end
                 imgui.Separator();
                 if m.err ~= nil then fmt.textWrapped(COL_ERR, m.err); end
-                imgui.BeginChild('##pm_body', { 560, 340 }, false);
+                imgui.BeginChild('##pm_body', { 640, 340 }, false);
                 for _, c in ipairs(m.chars) do
                     local fl = (c.isCurrent and ImGuiTreeNodeFlags_DefaultOpen ~= nil) and ImGuiTreeNodeFlags_DefaultOpen or 0;
                     if imgui.CollapsingHeader((c.disp or c.name) .. (c.isCurrent and '   (this character)' or '') .. '###pm_c_' .. c.name, fl) then
