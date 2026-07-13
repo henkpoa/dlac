@@ -559,6 +559,15 @@ INJECTED marker, into probe_log.txt); fire `/lastsynth` after arming. Server-
 side proof of the window size: the synth is fully SERVER-TIMED --
 `ai/states/synth_state.cpp` counts down `m_synthFinishTime{16s}` (minus
 SYNTH_SPEED mods) and calls `sendSynthDone` itself; the client's c2s `0x059`
-effect-end is **explicitly ignored** ("handled in synth state"). So the combine
-answer lands at once and the result/item/status packets ~16s in, no client
-participation needed; silence after the 0x096 = server reject.
+effect-end is **explicitly ignored** ("handled in synth state").
+**FIELD-VERIFIED same evening (211-packet dump, Sapara replay):** the injected
+0x096 (Fire Crystal slot 12; ings 650/650/744 from slots 13/13/14 -- the
+per-slot stack budget drawing twice from one stack, as designed) was ACCEPTED
+in ~130ms (0x01E crystal decrement + 0x01F reserves + 0x037 + 0x030
+COMBINE_INF animation), ran the full ~17s server timer, and delivered --
+**an HQ: Sapara +1 (16801) into Inventory slot 18** (recipe row 20011: NQ
+16551 / HQ 16801). Corrections to the pre-field expectations: the 0x06F
+COMBINE_ANS arrives WITH the result at the end, not at accept time (accept is
+the animation burst), and Ashita does NOT set e.injected for
+PacketManager:AddOutgoingPacket traffic -- find the replay by id, not by the
+INJECTED tag. Silence after the 0x096 = server reject.
