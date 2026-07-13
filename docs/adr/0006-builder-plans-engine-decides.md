@@ -37,8 +37,10 @@ the Sub-slot offer never adapts to ANYTHING live — not the DW trait, not the p
 equipped Main, not the sub job.** Every owned, job/level-usable Sub-capable item is
 offered: shields, grips, AND one-handed weapons, always. The only building-time
 exclusions are physical impossibilities: a 2H weapon cannot sit in Sub, and a same-name
-off-hand needs a provable second copy (`InBothHands` or `copies >= 2` — item identity,
-not game state). Sets feed *triggers*; a set planned for "when I dual wield" must be
+off-hand needs a provable second copy (a copy count >= 2, from the record's scanned
+`Count` or the caller's live `ctx.copies` — item identity, not game state; the legacy
+`InBothHands` flag was removed 2026-07-13). Sets feed *triggers*; a set planned for
+"when I dual wield" must be
 composable while you are not dual wielding. Wrong-pairing safety is the ENGINE's job,
 per cast, with the list's shield/grip as fallback — exactly this ADR's title.
 

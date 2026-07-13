@@ -50,7 +50,7 @@ local dagger1H = { Name = 'Kris',          Level = 71, OneHanded = true,  Type =
 local shield   = { Name = 'GenbusShield',  Level = 70, OneHanded = false, Type = 'Shield' };
 local grip     = { Name = 'PoleGrip',      Level = 71, OneHanded = false, Type = 'Grip'   };
 local gsword2H = { Name = 'Ragnarok',      Level = 73, OneHanded = false, Type = 'Great Sword' };
-local twinKris = { Name = 'Kris',          Level = 71, OneHanded = true,  Type = 'Dagger', InBothHands = true };
+local twinKris = { Name = 'Kris',          Level = 71, OneHanded = true,  Type = 'Dagger', Count = 2 };
 
 -- catalog-vocabulary records (imported gear: shields AND grips say Type="Sub";
 -- weapons carry a skill name + OneHanded)
@@ -81,7 +81,8 @@ if type(utils.subSlotAllowed) == 'function' then
     check('A16 HARD RULE build: catalog 1H weapon',           f(catAxe1H, dagger1H, { building = true            }), true);
     -- building-time exclusions are PHYSICAL only:
     check('A12 build: 2H sub weapon never',  f(gsword2H, dagger1H, { dw = true, building = true }), false);
-    check('A8 same name: InBothHands',       f(twinKris, twinKris, { building = true            }), true);
+    check('A8 same name: file Count >= 2',   f(twinKris, twinKris, { building = true            }), true);
+    check('A8b equip: file Count enables same-name DW', f(twinKris, twinKris, { dw = true       }), true);
     check('A9 same name: two copies',        f(dagger1H, dagger1H, { building = true, copies = 2 }), true);
     check('A10 same name: single copy',      f(dagger1H, dagger1H, { building = true, copies = 1 }), false);
     -- equip-time (building absent) stays strictly gated -- the ENGINE's call:

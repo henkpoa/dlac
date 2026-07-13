@@ -208,8 +208,8 @@ end
 -- set for when DW is up); gating the builder on today's main/DW makes exactly
 -- those sets impossible to compose. The only building-time exclusions are
 -- physical impossibilities: a 2H weapon never fits the Sub slot, and a
--- same-name off-hand needs a provable second copy (InBothHands or
--- ctx.copies >= 2 -- that's item identity, not game state).
+-- same-name off-hand needs a provable second copy (a copy count >= 2 --
+-- that's item identity, not game state).
 --
 -- Equip-time (ctx.building falsy) keeps the strict pairing: 2H main -> Grip
 -- only; 1H main -> Shield always, a 1H weapon only while ctx.dw (the engine
@@ -217,13 +217,21 @@ end
 function M.subSlotAllowed(subRec, mainRec, ctx)
     if type(subRec) ~= 'table' then return false; end
     ctx = ctx or {};
+    -- Same-name second copy: best of ctx.copies (live bag count -- the GUI
+    -- passes ownedcache) and the record's scanned Count (the gear.lua fact,
+    -- and the ONLY source in the LAC state, which has no bag scanner).
+    -- Replaces the legacy InBothHands flag (removed 2026-07-13).
+    local function twoCopies()
+        local n = tonumber(ctx.copies) or 0;
+        local fc = tonumber(subRec.Count) or 0;
+        return ((fc > n) and fc or n) >= 2;
+    end
     local kind = M.classifySub(subRec);
     if ctx.building == true then
         if kind ~= nil then return true; end               -- shield / grip: always offered
         if subRec.OneHanded ~= true then return false; end -- 2H or metadata-less: never an off-hand
         if type(mainRec) == 'table' and subRec.Name == mainRec.Name then
-            if subRec.InBothHands == true then return true; end
-            return (tonumber(ctx.copies) or 0) >= 2;
+            return twoCopies();
         end
         return true;                                        -- 1H weapon: ALWAYS offered
     end
@@ -237,8 +245,7 @@ function M.subSlotAllowed(subRec, mainRec, ctx)
     if subRec.OneHanded ~= true then return false; end    -- 2H / metadata-less: no off-hand
     if ctx.dw ~= true then return false; end
     if subRec.Name == mainRec.Name then
-        if subRec.InBothHands == true then return true; end
-        return (tonumber(ctx.copies) or 0) >= 2;
+        return twoCopies();
     end
     return true;
 end

@@ -223,7 +223,8 @@ end
 -- Scan the given containers (default: ALL_CONTAINERS -- every bag, safe, locker,
 -- satchel, sack, case and wardrobe) and return a list of unique enriched records.
 -- Multiple copies of one item collapse to a single record with an incremented
--- .Count (this is how we'll later flag dual-wieldable weapons for the personal file).
+-- .Count (renderEntry emits Count >= 2 on Main weapons -- the same-weapon
+-- dual-wield fact that replaced the legacy InBothHands flag).
 function M.scan(containers)
     containers = containers or M.ALL_CONTAINERS;   -- gear.lua documents everything you OWN,
                                                    -- wherever it lives; availability is display state
@@ -626,6 +627,13 @@ local function renderEntry(rec)
         add(string.format('    Type = %q,', rec.Category));
         if slot == 'Main' and rec.IsWeapon then   -- OneHanded only matters for main/sub pairing
             add(string.format('    OneHanded = %s,', tostring(rec.OneHanded == true)));
+            -- Count >= 2 is the same-weapon dual-wield fact (subSlotAllowed's
+            -- same-name check; the LAC state has no bag scanner, so the file
+            -- carries it). Replaces the legacy InBothHands flag. A single copy
+            -- is the default assumption -- not emitted, gear.lua stays thin.
+            if (tonumber(rec.Count) or 0) >= 2 then
+                add(string.format('    Count = %d,', rec.Count));
+            end
         end
     elseif slot == 'Sub' then
         -- The pairing rule needs grip-vs-shield; stamp the unambiguous label
