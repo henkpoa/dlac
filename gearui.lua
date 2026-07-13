@@ -1661,7 +1661,7 @@ local function renderHeaderButtons()
         if p == nil then imgui.CloseCurrentPopup(); imgui.EndPopup(); return; end
         imgui.TextColored(COL_HEADER, tostring(p.title));
         imgui.Separator();
-        imgui.BeginChild('##dlac_setupplanbody', { 430, math.min(400, 24 + #p.lines * 20) }, false);
+        imgui.BeginChild('##dlac_setupplanbody', { 810, math.min(400, 24 + #p.lines * 20) }, false);
         for _, ln in ipairs(p.lines) do
             local col = (ln.c == 'dim' and COL_DIM) or (ln.c == 'head' and COL_SCORE)
                      or (ln.c == 'err' and COL_ERR) or COL_USABLE;
