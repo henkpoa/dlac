@@ -1,49 +1,53 @@
 -- ============================================================================
---  dlac profile template -- the clean / minimal way.
---  Copy this to <JOB>.lua (e.g. WAR.lua) next to your other profiles -- or just
---  click the GUI's Setup button, which writes this (plus a starter trigger file)
---  for you.
+--  dlac profile template -- the clean / minimal way (the "shim").
+--  This is what the GUI's Setup button writes for a fresh job, and what
+--  /dl profile migrate rewrites an old file into (after backing it up to
+--  backups\pre-profiles\). You should never need to copy it by hand.
 --
---  Only ONE require is needed: dlac\utils. Requiring it pulls in the gear
---  inventory (as utils.gear), the trigger dispatch engine, every /dl command
---  (scan, ui, best, weight, mode, why, ...), and the GUI -- all for you.
+--  There is NO data and NO equip logic in this file, and dlac never edits it:
+--    sets     live in  <char>\dlac\profiles\<active>\sets\<JOB>.lua      (Sets tab)
+--    triggers live in  <char>\dlac\profiles\<active>\triggers\<JOB>.lua  (Triggers tab)
+--    the active profile is picked in <char>\dlac\profile.lua (/dl profile use <name>)
 --
---  There is NO equip logic in this file. Each handler ends with
---  utils.dispatch('<Handler>'), and the engine reads your per-job trigger data
---  from  <char>\dlac\triggers\<JOB>.lua  (edited in the GUI's Triggers tab, or
---  by hand -- it hot-reloads, so no /lac reload after a trigger edit).
---  See docs/design/trigger-system.md for the rule shape and conditions.
+--  How the auto-load composes: LuaAshitacast keeps loading <JOB>.lua on every
+--  job change -- the engine then installs "active profile + current job" over
+--  it (no /lac reload; see dispatch.lua's profile auto-install). The profile
+--  picks the FOLDER, the job picks the FILE inside it.
 --
---  Migrating an EXISTING profile? Nothing forces you to change it: keep your
---  hand-written handler code and just add the utils.dispatch(...) call as the
---  LAST line of each handler -- dispatch runs last, so trigger-driven gear
---  overlays whatever your own code equipped (per-slot, later wins).
+--  Migrating an EXISTING hand-written profile? Nothing forces you to change it:
+--  keep your handler code and just add utils.dispatch('<Handler>') as the LAST
+--  line of each handler -- dispatch runs last, so trigger-driven gear overlays
+--  whatever your own code equipped (per-slot, later wins). Your file is never
+--  written by dlac; profile sets arrive on top at load time.
 -- ============================================================================
 
+-- dlac profile shim (v1) -- managed by dlac. Do not keep data here.
 local profile = {};
 local utils = require("dlac\\utils");   -- everything comes through this one require
 local gear  = utils.gear;               -- the shared gear inventory
-
--- Dynamic sets: each slot is a LIST -- dlac equips the best one for your level.
--- Build these in the GUI (Sets tab); Triggers decide WHEN each set is worn.
-sets = {
-    Dynamic = {
-        Idle       = {},
-        Tp_Default = {},
-        Resting    = {},
-        Movement   = {},
-    },
-
-    -- Normal (static) sets are still fine here -- the GUI's Sets tab can even copy
-    -- one of these into a Dynamic set to give you a head start when migrating.
-    -- Precast = { Head = "Warlock's Chapeau" },
+local sets = {
+    Dynamic = {},                       -- filled by the engine from the active dlac profile
 };
 profile.Sets = sets;
 
--- All equip logic is data: utils.dispatch reads <char>\dlac\triggers\<JOB>.lua.
+profile.Packer = {
+};
+
+profile.OnLoad = function()
+    gSettings.AllowAddSet = true;
+end
+
+profile.OnUnload = function()
+end
+
+profile.HandleCommand = function(args)
+end
+
+-- All equip logic is data: utils.dispatch reads the active profile's trigger file
+-- (hot-reloaded -- edit triggers in the dlac GUI or the file; no /lac reload needed).
 profile.HandleDefault = function()
-    sets = utils.rebuildSets(sets);     -- level-scaling rebuild (as before)
-    utils.dispatch('Default');          -- status/mode triggers (Engaged, DT, ...)
+    sets = utils.rebuildSets(sets);
+    utils.dispatch('Default');
 end
 
 profile.HandleAbility     = function() utils.dispatch('Ability');     end

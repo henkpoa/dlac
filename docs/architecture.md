@@ -208,12 +208,17 @@ never a hot swap.
   auto-sync (`M.sync`, add-only). `refreshGear` re-reads it in place so the GUI updates
   without an addon reload. Ownership = ALL_CONTAINERS; availability (= can equip right
   now) = Inventory + Wardrobes; stored-only gear renders red (ADR 0005).
-- **`<JOB>.lua` profile sets** (per-char) — `sets.Dynamic.<Name>` ordered candidate
-  lists, written by setmanager. At cast time `rebuildSets` → `BuildDynamicSets` flattens
-  each Dynamic set to the best level-eligible piece per slot; the engine equips the
-  flattened set. **Set changes need Reload LAC** (LAC caches sets at profile load);
-  trigger changes do not.
-- **Trigger files** `<char>\dlac\triggers\<JOB>.lua` — written by the Triggers tab via
+- **Profile sets files** (per-char) — `sets.Dynamic.<Name>` ordered candidate lists in
+  `dlac\profiles\<active>\sets\<JOB>.lua` (same `sets = { Dynamic = {...} }` shape the
+  job files used, so setmanager's scanners splice them unchanged), written by
+  setmanager; legacy fallback: the block inside `<JOB>.lua` for unmigrated characters.
+  At cast time `rebuildSets` → `BuildDynamicSets` flattens each Dynamic set to the best
+  level-eligible piece per slot; the engine equips the flattened set. Set changes
+  hot-swap (`/dl sets reload`, pinged by Commit); the engine also auto-installs the
+  active profile's sets into every fresh `gProfile` (LAC load / job change / `/dl
+  profile use`) — see profiles.lua and docs/design/profiles.md.
+- **Trigger files** `dlac\profiles\<active>\triggers\<JOB>.lua` (legacy fallback
+  `dlac\triggers\<JOB>.lua`) — written by the Triggers tab via
   `dispatch.serializeTriggers`; hot-reloaded on content change. A broken hand-edit keeps
   the last good rules and reports.
 - **Auto-sync chain** (addon state, on login/job change): `gearimport.sync` →
@@ -272,17 +277,21 @@ Per-character, under `<install>\config\addons\luashitacast\<Char>_<ServerId>\`
 
 | File | Owner | Purpose |
 |---|---|---|
-| `dlac\utils.lua`, `dlac\dispatch.lua`, `dlac\chatfmt.lua` | dlac.lua (refreshed every load) | profile-side runtime |
+| `dlac\utils.lua`, `dlac\dispatch.lua`, `dlac\chatfmt.lua`, `dlac\profiles.lua` | dlac.lua (refreshed every load) | profile-side runtime |
 | `dlac\gear.lua` | seeded once, then auto-sync/commit | owned gear |
 | `dlac\gear_staging.lua` | gearimport | transient import staging |
-| `dlac\triggers\<JOB>.lua` | triggersui/dispatch | trigger rules |
+| `dlac\profile.lua` | profiles (`/dl profile use`) | active-profile pointer |
+| `dlac\profiles\<Name>\sets\<JOB>.lua` | setmanager (Sets tab) | committed dynamic sets |
+| `dlac\profiles\<Name>\triggers\<JOB>.lua` | triggersui/dispatch | trigger rules |
+| `dlac\triggers\<JOB>.lua` | (legacy, read-only fallback) | pre-profile trigger rules |
 | `dlac\autogear.lua` | triggersui | automations manifest |
 | `dlac\modestate.lua` | dispatch | mode/lock/VERSION mirror |
 | `dlac\uiflags.lua` | gearui | debug/autosync flags |
 | `dlac\gearweights.lua` | gearoptim | stat weights |
 | `dlac\augdump.txt` | augments | shareable augment dump |
-| `<JOB>.lua` (+ `.flbak`) | setmanager/Setup | the LAC profile |
+| `<JOB>.lua` (+ `.flbak`) | Setup / `/dl profile migrate` (shim only) | the LAC profile (post-migration: a managed shim, never written again) |
 | `backups\` | setmanager/gearimport | rotated backups |
+| `backups\pre-profiles\` | profiles.migrate (written ONCE, never overwritten) | pre-migration originals; "Copy from static" reads statics from here forever |
 
 The old pre-dlac profile code lives at `<char>\ffxi-lac\` (reference only — the origin of
 the "builder is a plan" pairing semantics).

@@ -1197,6 +1197,16 @@ local function seedTriggersFile(base, abbr)
     if base == nil or abbr == nil then return false; end
     local path = base .. 'dlac\\triggers\\' .. abbr .. '.lua';
     if readFileText(path) ~= nil then return false; end   -- user data: never overwrite
+    -- Profile storage live? Seed INTO the active profile instead (and never
+    -- clobber a file already there) -- same target the engine resolves.
+    pcall(function()
+        local prof = require('dlac\\profiles');
+        if type(prof) == 'table' and prof.storageExists() then
+            local pp = prof.triggersPath(abbr);
+            if pp ~= nil then prof.ensureStorage(); path = pp; end
+        end
+    end);
+    if readFileText(path) ~= nil then return false; end
     local ok, dsp = pcall(require, "dlac\\dispatch");
     if not ok or type(dsp) ~= 'table' or type(dsp.starterTriggersText) ~= 'string' then return false; end
     pcall(function()
@@ -1252,8 +1262,20 @@ local function migrateCurrentJob()
     seedTriggersFile(base, abbr);
 
     if state == 'nofile' then
-        -- nothing to convert: write a fresh, self-contained dlac starter.
-        if writeFileText(jf, MIGRATE_BOOT .. '\n' .. STARTER_PROFILE) then
+        -- Nothing to convert: NEW players go profile-native from minute one --
+        -- the job file is the managed shim, storage is created, and every set/
+        -- trigger they ever build lands under dlac\profiles\. They never own a
+        -- legacy-style file at all. Falls back to the embedded starter only if
+        -- profiles.lua is somehow unavailable.
+        local starter = MIGRATE_BOOT .. '\n' .. STARTER_PROFILE;
+        pcall(function()
+            local prof = require('dlac\\profiles');
+            if type(prof) == 'table' and type(prof.shimFileText) == 'function' then
+                starter = prof.shimFileText();
+                prof.ensureStorage();
+            end
+        end);
+        if writeFileText(jf, starter) then
             _setupState = nil;
             _augStatus = string.format('Initialized a dlac %s.lua. Reload LuaAshitacast, then build sets and triggers in the GUI.', abbr);
             pcall(function() print('[dlac] ' .. _augStatus); end);
@@ -3403,7 +3425,18 @@ local function renderSetsTab(job, level)
     -- Automation is a SLOT entry now (ADR 0004, 4th revision): + Add on the Main slot
     -- offers dlac:AutoStaff, on Waist dlac:AutoObi -- no per-set flags anymore.
 
+    -- Profile storage layer: name the active profile so it's never a mystery
+    -- where a Commit lands (function-scoped require: gearui is at the LuaJIT
+    -- 200-local cap, so no new upvalue).
+    pcall(function()
+        local prof = require('dlac\\profiles');
+        if type(prof) == 'table' and prof.storageExists() then
+            imgui.TextColored(COL_DIM, 'Profile: ' .. prof.activeName() .. '   (switch/clone: /dl profile)');
+        end
+    end);
+
     -- Migration helper: seed a Dynamic working set from a static (non-Dynamic) set.
+    -- Statics come from the live job file AND backups\pre-profiles\ (profilesets).
     imgui.TextColored(COL_DIM, 'Copy from:'); imgui.SameLine(0, 4);
     imgui.PushItemWidth(150);
     if imgui.BeginCombo('##ffxilac_copyfrom', '(static set)') then

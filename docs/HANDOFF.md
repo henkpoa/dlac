@@ -15,6 +15,8 @@ maintainer IMO, I am just the one with the creative vision."*
 3. [architecture.md](architecture.md) — module map, two-Lua-state design, data flow,
    `/dl` command surface, per-char file layout.
 4. [design/trigger-system.md](design/trigger-system.md) — the trigger engine spec.
+   [design/profiles.md](design/profiles.md) — the profile storage layer (where sets
+   and triggers live since v33, the one read/write compatibility rule, migration).
 5. [adr/](adr/) — decision records; **0002** (data-driven dispatch) and **0003**
    (overlay) explain most "why is it like this" questions.
 6. [history.md](history.md) — session journal: what was tried, what was abandoned, and

@@ -8,7 +8,8 @@
     trigger data file, matches the live action/player against each rule's `when`,
     and EquipSets every match in ascending priority (later overlays earlier per slot).
 
-    Trigger file:  <char>\dlac\triggers\<JOB>.lua   (a `return {...}` module)
+    Trigger file:  <char>\dlac\profiles\<active>\triggers\<JOB>.lua, falling back
+    to the legacy <char>\dlac\triggers\<JOB>.lua   (a `return {...}` module)
         <Handler> = { { when = { <conditions> }, set = 'SetName' | equip = { Waist = 'Karin Obi' },
                         priority = <optional> }, ... }
     Hot-reloaded: the file is re-checked at most once per second (content compare),
@@ -21,6 +22,8 @@
         /dl mode <name> [on|off|toggle]   flip a mode flag (session-only; no args lists)
         /dl why                            trace of the last dispatch per handler
         /dl triggers reload|init|path      force re-read / seed a starter file / show path
+        /dl sets reload                    hot-swap the committed sets (no LAC reload)
+        /dl profile [use|new|clone|migrate]  the profile storage layer (profiles.lua)
 
     Every gData / gFunc / io read is pcall-guarded: a broken trigger file or a nil
     manager can never take down a cast or profile loading (it just no-ops + reports).
@@ -38,7 +41,8 @@ local M = rawget(_G, '__dlacEngineRoot') or {};
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 32;   -- 32: engine self-swap (dispatch.lua hot-reloads like the trigger file)
+M.VERSION = 33;   -- 33: profile storage layer (dlac\profiles\<name>\; auto-install on load/job change; /dl profile)
+                  -- 32: engine self-swap (dispatch.lua hot-reloads like the trigger file)
                   -- 31: craft-gear OVERLAY on Default (engine equips craft gear; craftstate.lua)
                   -- 30: AutoCraft goal reads manifest craftGoal (single silent variable, no mode)
 
@@ -49,6 +53,11 @@ _cfok = _cfok and type(_cfmt) == 'table';
 local print = (_cfok and type(_cfmt.print) == 'function') and _cfmt.print or print;
 local function printwarn(s) if _cfok then _cfmt.warn(s); else print('[dlac] ' .. s); end end
 local function printerr(s)  if _cfok then _cfmt.err(s);  else print('[dlac] ' .. s); end end
+
+-- The profile storage layer (profiles.lua, seeded next to this file). Guarded:
+-- a stale char folder without it degrades to the legacy layout everywhere.
+local _pok, _prof = pcall(require, 'dlac\\profiles');
+_pok = _pok and type(_prof) == 'table';
 
 -- ---------------------------------------------------------------------------
 -- State
@@ -126,15 +135,26 @@ local function charDir()
     return string.format('%sconfig\\addons\\luashitacast\\%s_%u\\dlac\\', AshitaCore:GetInstallPath(), name, id);
 end
 
--- triggers\<JOB>.lua for the CURRENT main job (trigger files are per-job: they
--- reference set names, and set names live in <JOB>.lua). nil pre-login.
+-- The CURRENT main job's trigger file, profile-aware. Reads fall back per file:
+-- the active profile's triggers\<JOB>.lua when it exists, else the legacy
+-- dlac\triggers\<JOB>.lua; when NEITHER exists yet, the path where writes should
+-- land (profile storage once it exists, legacy before). nil pre-login.
 local function triggersPath()
     local dir = charDir();
     if dir == nil then return nil; end
     local job;
     pcall(function() job = gData.GetPlayer().MainJob; end);
     if type(job) ~= 'string' or job == '' or job == '?' then return nil; end
-    return dir .. 'triggers\\' .. job .. '.lua';
+    local lp = dir .. 'triggers\\' .. job .. '.lua';
+    if _pok then
+        local pp = _prof.triggersPath(job);
+        if pp ~= nil then
+            if readFile(pp) ~= nil then return pp; end
+            if readFile(lp) ~= nil then return lp; end
+            return _prof.storageExists() and pp or lp;
+        end
+    end
+    return lp;
 end
 M.triggersPath = triggersPath;
 
@@ -1413,6 +1433,7 @@ function M.initTriggers()
             ashita.fs.create_directory(dir .. 'triggers\\');
         end
     end);
+    if _pok and _prof.storageExists() then pcall(function() _prof.ensureStorage(); end); end
     if not writeFile(path, M.starterTriggersText) then return false, 'could not write ' .. path; end
     M.reloadTriggers();
     return true, 'wrote starter triggers: ' .. path;
@@ -1469,6 +1490,64 @@ local function readJobSets()
         return nil, 'no sets table' .. (ok and '' or (': ' .. tostring(ret)));
     end
     return s, nil;
+end
+
+-- The sets source, profile-first: the active profile's sets\<JOB>.lua when it
+-- exists, else the legacy job-file sandbox read above. Third return names the
+-- source ('profile' / nil) for chat lines.
+local function readSetsSource()
+    if _pok then
+        local job = nil;
+        pcall(function() job = gData.GetPlayer().MainJob; end);
+        if type(job) == 'string' and job ~= '' and job ~= '?' and _prof.hasSetsFile(job) then
+            local dyn, derr = _prof.readSetsFile(job);
+            if dyn == nil then return nil, derr; end
+            return { Dynamic = dyn }, nil, 'profile';
+        end
+    end
+    return readJobSets();
+end
+
+-- Install a fresh Sets table into the live gProfile -- the '/dl sets reload'
+-- hot-swap core, shared with the profile auto-install and '/dl profile use':
+-- kill flattened outputs of dynamic sets that no longer exist, swap .Dynamic in
+-- place (gProfile.Sets is a live table in THIS state -- no LAC reload needed),
+-- re-flatten, re-dispatch Default. Returns true, setCount | false, why.
+local function installSets(fresh)
+    local prof = rawget(_G, 'gProfile');
+    if type(prof) ~= 'table' or type(prof.Sets) ~= 'table' then return false, 'no profile loaded'; end
+    if type(prof.Sets.Dynamic) == 'table' then
+        for name in pairs(prof.Sets.Dynamic) do
+            if fresh.Dynamic[name] == nil then prof.Sets[name] = nil; end
+        end
+    end
+    prof.Sets.Dynamic = fresh.Dynamic;
+    M.modesRev = (M.modesRev or 0) + 1;   -- the rebuild signal utils watches
+    pcall(function()
+        local u = package.loaded['dlac\\utils'];
+        if u ~= nil and type(u.rebuildSets) == 'function' then u.rebuildSets(prof.Sets); end
+    end);
+    pcall(function() M.dispatch('Default'); end);
+    local n = 0;
+    for _ in pairs(fresh.Dynamic) do n = n + 1; end
+    return true, n;
+end
+
+-- Loud courtesy check before an install replaces file-authored sets: any name in
+-- the incoming Dynamic that the loaded profile ALSO defines as a plain (static)
+-- set gets silently shadowed by the flatten -- say so once per profile load.
+local function warnShadowedStatics(fresh)
+    local prof = rawget(_G, 'gProfile');
+    if type(prof) ~= 'table' or type(prof.Sets) ~= 'table' then return; end
+    local dynNow = (type(prof.Sets.Dynamic) == 'table') and prof.Sets.Dynamic or {};
+    local hit = {};
+    for name in pairs(fresh.Dynamic) do
+        if prof.Sets[name] ~= nil and dynNow[name] == nil then hit[#hit + 1] = tostring(name); end
+    end
+    if #hit == 0 then return; end
+    table.sort(hit);
+    printwarn('profile dynamic set(s) shadow static set(s) of the same name in your job file: '
+        .. table.concat(hit, ', ') .. ' -- the profile version wins; rename one to keep both.');
 end
 
 -- ---------------------------------------------------------------------------
@@ -1573,6 +1652,7 @@ if inLac() then
     -- on the FIRST load there is nothing to unregister).
     pcall(function() ashita.events.unregister('d3d_present', 'dlac-dispatch-tick'); end);
     local _tickAt, _tickJob, _tickPet = 0, nil, nil;
+    local _instProf, _instAct = nil, nil;   -- last gProfile identity + profile name we installed for
     ashita.events.register('d3d_present', 'dlac-dispatch-tick', function()
         pcall(function()
             if os.clock() < _tickAt then return; end
@@ -1611,6 +1691,36 @@ if inLac() then
                 if probe == nil then zoning = true; end
             end
             if zoning then return; end
+            -- PROFILE AUTO-INSTALL: a fresh gProfile (LAC load / job change --
+            -- LAC builds a new profile table each load) or an active-pointer
+            -- flip means the live .Dynamic is not the active profile's data.
+            -- Install only when profile storage HAS a sets file for this job:
+            -- unmigrated characters keep LAC's file-loaded sets, exactly as
+            -- before. This is how "LAC picks the job file, dlac picks the
+            -- profile" composes: the job resolves the file INSIDE the profile.
+            local gprof = rawget(_G, 'gProfile');
+            local act = _pok and _prof.activeName() or nil;
+            if gprof ~= _instProf or act ~= _instAct then
+                local job = nil;
+                pcall(function() job = gData.GetPlayer().MainJob; end);
+                if type(job) == 'string' and job ~= '' and job ~= '?' then
+                    if _pok and _prof.hasSetsFile(job) then
+                        local dyn, derr = _prof.readSetsFile(job);
+                        if type(dyn) == 'table' then
+                            local fresh = { Dynamic = dyn };
+                            warnShadowedStatics(fresh);
+                            local okI, n = installSets(fresh);
+                            if okI then
+                                print(string.format('[dlac] profile "%s": %d dynamic set(s) installed for %s.',
+                                    tostring(act), n, job));
+                            end
+                        else
+                            printerr('profile sets not installed: ' .. tostring(derr));
+                        end
+                    end
+                    _instProf, _instAct = gprof, act;   -- resolved (legacy jobs too: probe once per load)
+                end
+            end
             -- PET actions: synthesized here (see EVENTS) -- dispatch ONCE per
             -- action start; the Default hold in M.dispatch keeps the pet gear
             -- on until the action completes.
@@ -1653,7 +1763,7 @@ if inLac() then
         local args = {};
         for a in string.gmatch(string.sub(e.command, start), '%S+') do args[#args + 1] = a; end
         local sub = args[1] and string.lower(args[1]) or nil;
-        if sub ~= 'mode' and sub ~= 'why' and sub ~= 'triggers' and sub ~= 'env' and sub ~= 'lock' and sub ~= 'sets' then return; end
+        if sub ~= 'mode' and sub ~= 'why' and sub ~= 'triggers' and sub ~= 'env' and sub ~= 'lock' and sub ~= 'sets' and sub ~= 'profile' then return; end
         e.blocked = true;
 
         if sub == 'sets' then
@@ -1664,34 +1774,96 @@ if inLac() then
             -- Hot-swap the PLAN without a LAC reload. gProfile.Sets is just a live
             -- table in THIS Lua state -- "Reload LAC" was only ever about the FILE
             -- changing under it (field insight: ffxi-lac loops that mutated set
-            -- objects took effect immediately). A set Commit rewrote <JOB>.lua;
-            -- re-read it here and replace .Dynamic in place, then re-flatten.
-            local prof = rawget(_G, 'gProfile');
-            if type(prof) ~= 'table' or type(prof.Sets) ~= 'table' then
-                print('[dlac] sets reload: no profile loaded.');
-                return;
-            end
-            local fresh, ferr = readJobSets();
+            -- objects took effect immediately). A Commit rewrites the profile sets
+            -- file (or, legacy, <JOB>.lua); re-read and install (installSets).
+            local fresh, ferr, src = readSetsSource();
             if fresh == nil or type(fresh.Dynamic) ~= 'table' then
                 print('[dlac] sets hot-swap failed (' .. tostring(ferr) .. ') -- click Reload LAC instead.');
                 return;
             end
-            -- flattened outputs of dynamic sets that no longer exist must die too
-            if type(prof.Sets.Dynamic) == 'table' then
-                for name in pairs(prof.Sets.Dynamic) do
-                    if fresh.Dynamic[name] == nil then prof.Sets[name] = nil; end
-                end
+            local okI, n = installSets(fresh);
+            if okI ~= true then print('[dlac] sets reload: ' .. tostring(n)); return; end
+            _instProf, _instAct = rawget(_G, 'gProfile'), (_pok and _prof.activeName() or nil);
+            print(string.format('[dlac] sets hot-swapped (%d dynamic set(s)%s) -- live now, no LAC reload needed.',
+                n, (src == 'profile' and _pok) and (' from profile "' .. _prof.activeName() .. '"') or ''));
+            return;
+        end
+
+        if sub == 'profile' then   -- the profile storage layer (profiles.lua)
+            if not _pok then
+                print('[dlac] profile: profiles.lua is missing from <char>\\dlac\\ -- reload the dlac addon to reseed it.');
+                return;
             end
-            prof.Sets.Dynamic = fresh.Dynamic;
-            M.modesRev = (M.modesRev or 0) + 1;   -- the rebuild signal utils watches
-            pcall(function()
-                local u = package.loaded['dlac\\utils'];
-                if u ~= nil and type(u.rebuildSets) == 'function' then u.rebuildSets(prof.Sets); end
-            end);
-            pcall(function() M.dispatch('Default'); end);
-            local n = 0;
-            for _ in pairs(fresh.Dynamic) do n = n + 1; end
-            print(string.format('[dlac] sets hot-swapped (%d dynamic set(s)) -- live now, no LAC reload needed.', n));
+            local a2 = args[2] and string.lower(args[2]) or nil;
+            local job = nil;
+            pcall(function() job = gData.GetPlayer().MainJob; end);
+            if type(job) ~= 'string' or job == '' or job == '?' then job = nil; end
+
+            if a2 == nil or a2 == 'status' or a2 == 'list' then
+                local act = _prof.activeName();
+                print('[dlac] active profile: ' .. act
+                    .. (_prof.storageExists() and '' or '   (no profile storage yet -- legacy layout; see /dl profile migrate)'));
+                if job ~= nil then
+                    print(string.format('[dlac]   %s sets:     %s', job,
+                        _prof.hasSetsFile(job) and tostring(_prof.setsPath(job)) or ('legacy (' .. job .. '.lua sets.Dynamic)')));
+                    print(string.format('[dlac]   %s triggers: %s', job, tostring(triggersPath())));
+                end
+                local names = _prof.listProfiles();
+                if names ~= nil and #names > 0 then print('[dlac]   profiles on disk: ' .. table.concat(names, ', ')); end
+                print('[dlac] usage: /dl profile use <name> | new <name> | clone <newname> | migrate [go]');
+                return;
+            end
+
+            if a2 == 'use' and args[3] ~= nil then
+                local nm = _prof.sanitizeName(args[3]);
+                if nm == nil then print('[dlac] profile use: bad name (letters/digits/_/- only).'); return; end
+                local okA, aerr = _prof.setActive(nm);
+                if not okA then print('[dlac] profile use: ' .. tostring(aerr)); return; end
+                _prof.ensureStorage(nm);
+                M.reloadTriggers();   -- trigger path changed -> re-read now, not in 1s
+                local fresh = select(1, readSetsSource());
+                if fresh ~= nil and type(fresh.Dynamic) == 'table' then
+                    warnShadowedStatics(fresh);
+                    local okI, n = installSets(fresh);
+                    if okI == true then
+                        print(string.format('[dlac] profile "%s" active -- %d dynamic set(s) installed, triggers reloaded. No LAC reload needed.', nm, n));
+                    else
+                        print(string.format('[dlac] profile "%s" active -- sets install: %s', nm, tostring(n)));
+                    end
+                else
+                    print(string.format('[dlac] profile "%s" active -- no sets for this job yet (build them in the Sets tab).', nm));
+                end
+                _instProf, _instAct = rawget(_G, 'gProfile'), _prof.activeName();
+                return;
+            end
+
+            if a2 == 'new' and args[3] ~= nil then
+                local nm = _prof.sanitizeName(args[3]);
+                if nm == nil then print('[dlac] profile new: bad name (letters/digits/_/- only).'); return; end
+                _prof.ensureStorage(nm);
+                print(string.format('[dlac] profile "%s" created (empty). Activate it with: /dl profile use %s', nm, nm));
+                return;
+            end
+
+            if a2 == 'clone' and args[3] ~= nil then
+                local src = _prof.activeName();
+                local n, cerr = _prof.cloneProfile(src, args[3]);
+                if n == nil then print('[dlac] profile clone: ' .. tostring(cerr)); return; end
+                print(string.format('[dlac] cloned "%s" -> "%s" (%d file(s)). Activate with: /dl profile use %s', src, args[3], n, tostring(args[3])));
+                return;
+            end
+
+            if a2 == 'migrate' then
+                local go = args[3] ~= nil and string.lower(args[3]) == 'go';
+                local done = _prof.migrate(go, print);
+                if go and done ~= nil and done > 0 then
+                    print('[dlac] reloading LuaAshitacast so the clean shim takes over...');
+                    pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/addon reload luashitacast'); end);
+                end
+                return;
+            end
+
+            print('[dlac] usage: /dl profile [status] | use <name> | new <name> | clone <newname> | migrate [go]');
             return;
         end
 

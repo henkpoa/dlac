@@ -7,6 +7,7 @@
 -- ---------------------------------------------------------------------------
 package.loaded['dlac\\gear'] = { NameToObject = {} };   -- utils requires dlac\gear at load
 ashita = { events = { register = function() end } };    -- utils registers /dl at load
+package.loaded['dlac\\profiles'] = dofile('profiles.lua');   -- dispatch/setmanager require it (guarded)
 
 local TEST_PLAYER = nil;                                -- set per test
 gData = { GetPlayer = function() return TEST_PLAYER; end };
@@ -858,6 +859,128 @@ local fh = io.open('dispatch.lua', 'r');
 local rawSrc = fh:read('*a'); fh:close();
 check('X5 swapper version-parse finds the assignment',
     tonumber(string.match(rawSrc, 'M%.VERSION%s*=%s*(%d+)')), dispatchM.VERSION);
+
+-- ---------------------------------------------------------------------------
+-- Y. profile storage layer (profiles.lua, v33): the pure text machinery, and
+--    headless safety (every fs/Ashita touch is call-time + guarded, so nil
+--    answers -- never errors -- before login). The extract -> frame -> extract
+--    round trip IS the migration's "your dynamic sets survive byte-for-byte"
+--    guarantee; the splice checks pin that setmanager's scanners keep working
+--    on the profile sets file unchanged.
+-- ---------------------------------------------------------------------------
+local profilesM = package.loaded['dlac\\profiles'];
+
+check('Y1 loads headlessly', type(profilesM), 'table');
+check('Y2 sanitize: ok name', profilesM.sanitizeName('My_Profile-2'), 'My_Profile-2');
+check('Y3 sanitize: rejects spaces', profilesM.sanitizeName('two words'), nil);
+check('Y4 sanitize: rejects path tricks', profilesM.sanitizeName('..\\evil'), nil);
+check('Y5 headless: setsPath is nil pre-login', profilesM.setsPath('WAR'), nil);
+check('Y6 headless: readSetsFile refuses politely', (select(2, profilesM.readSetsFile('WAR'))), 'not logged in');
+check('Y7 headless: cloneProfile refuses politely', (select(2, profilesM.cloneProfile('A', 'B'))), 'not logged in');
+
+-- a realistic job file: nested braces, a brace inside a comment, a brace inside
+-- a string, mode/minLevel wrappers, virtual slot entries, static siblings.
+local JOBFILE = [[
+local profile = {};
+local utils = require("dlac\utils");
+local gear  = utils.gear;
+local sets = {
+    Dynamic = {
+        Idle = {
+            Head = {
+                gear.Head.PoetsCirclet,
+                { gear = gear.Head.WlkChapeau, minLevel = 60 },  -- gated { brace in comment
+            },
+            Body = { 'dlac:AutoStaff', gear.Body.Doublet_1 },
+        },
+        Tp_Default = {
+            Main = { { gear = gear.Main.Club.MapleWand_1, mode = "Weapon:Melee}" } },
+        },
+    },
+    Idle = { Head = "Poet's Circlet" },
+    Precast = { Body = 'Doublet' },
+};
+profile.Sets = sets;
+profile.HandleDefault = function() sets = utils.rebuildSets(sets); utils.dispatch('Default'); end
+return profile;
+]];
+
+local dynText, dynErr = profilesM.extractDynamicText(JOBFILE);
+check('Y8 extract finds the block', dynErr, nil);
+check('Y9 extract starts at the keyword', dynText ~= nil and dynText:sub(1, 7), 'Dynamic');
+check('Y10 extract keeps every set', dynText ~= nil and dynText:find('Tp_Default', 1, true) ~= nil, true);
+check('Y11 extract stops at the block (statics excluded)', dynText ~= nil and dynText:find('Precast', 1, true), nil);
+check('Y12 extract is verbatim (a substring of the source)', dynText ~= nil and JOBFILE:find(dynText, 1, true) ~= nil, true);
+check('Y13 no block -> nil + why', (select(2, profilesM.extractDynamicText('local x = 1;'))), 'no sets.Dynamic block');
+
+-- frame it into a profile sets file, run it, and extract it back out.
+local function loadWithEnv(text, env)
+    if setfenv ~= nil then
+        local c = (loadstring or load)(text);
+        if c == nil then return nil; end
+        setfenv(c, env);
+        return c;
+    end
+    return load(text, 'framed', 't', env);
+end
+local STUBG; STUBG = setmetatable({}, { __index = function() return STUBG; end });
+
+local framed = profilesM.frameSetsText(dynText);
+check('Y14 framed file parses', (loadstring or load)(framed) ~= nil, true);
+check('Y15 frame -> extract round trip is byte-identical', profilesM.extractDynamicText(framed), dynText);
+local fchunk = loadWithEnv(framed, setmetatable({ gear = STUBG }, { __index = _G }));
+local fok, fsets = pcall(fchunk);
+check('Y16 framed file runs', fok, true);
+check('Y17 framed Dynamic has both sets', fok and type(fsets) == 'table' and type(fsets.Dynamic) == 'table'
+    and fsets.Dynamic.Idle ~= nil and fsets.Dynamic.Tp_Default ~= nil, true);
+
+local emptyFramed = profilesM.frameSetsText(nil);
+local echunk = loadWithEnv(emptyFramed, setmetatable({ gear = STUBG }, { __index = _G }));
+local eok, esets = pcall(echunk);
+check('Y18 empty frame runs with an empty Dynamic', eok and type(esets) == 'table'
+    and type(esets.Dynamic) == 'table' and next(esets.Dynamic) == nil, true);
+
+-- setmanager's scanners work on the framed file UNCHANGED (commit/delete land
+-- in profile storage now -- this is the compatibility that makes that free).
+local spliced, saction = setmgrT.spliceSet(framed, 'Resting', {
+    { name = 'Head', items = { { path = 'gear.Head.PoetsCirclet' } } },
+});
+check('Y19 splice into framed file', saction, 'inserted');
+check('Y20 spliced framed file still parses', (loadstring or load)(spliced or '') ~= nil, true);
+local deleted, daction = setmgrT.deleteSetText(spliced, 'Idle');
+check('Y21 delete from framed file', daction, 'deleted');
+local dchunk = loadWithEnv(deleted, setmetatable({ gear = STUBG }, { __index = _G }));
+local dok, dsets = pcall(dchunk);
+check('Y22 delete removed only the target set', dok and dsets.Dynamic.Idle == nil
+    and dsets.Dynamic.Tp_Default ~= nil and dsets.Dynamic.Resting ~= nil, true);
+
+-- the clean shim
+check('Y23 shim parses', (loadstring or load)(profilesM.shimFileText()) ~= nil, true);
+check('Y24 shim recognized', profilesM.isCleanShim(profilesM.shimFileText()), true);
+check('Y25 a real profile is NOT a shim', profilesM.isCleanShim(JOBFILE), false);
+
+-- the migration planner (pure): shims and backed-up jobs are never touched,
+-- Dynamic blocks travel verbatim, an existing profile sets file is never
+-- overwritten by an import.
+local plan = profilesM.planMigration({
+    { job = 'WAR', text = JOBFILE, hasBackup = false, hasProfileSets = false, hasLegacyTrig = true,  hasProfileTrig = false },
+    { job = 'WHM', text = profilesM.shimFileText(), hasBackup = false, hasProfileSets = false, hasLegacyTrig = false, hasProfileTrig = false },
+    { job = 'BLM', text = JOBFILE, hasBackup = true,  hasProfileSets = false, hasLegacyTrig = false, hasProfileTrig = false },
+    { job = 'RDM', text = 'local x = 1; return x;', hasBackup = false, hasProfileSets = false, hasLegacyTrig = false, hasProfileTrig = false },
+    { job = 'THF', text = JOBFILE, hasBackup = false, hasProfileSets = true,  hasLegacyTrig = false, hasProfileTrig = false },
+});
+check('Y26 plan: real profile migrates', plan[1].action, 'migrate');
+check('Y27 plan: Dynamic block travels verbatim', plan[1].dynText, dynText);
+check('Y28 plan: clean shim skipped', plan[2].action, 'skip');
+check('Y29 plan: existing backup means hands off', plan[3].action, 'skip');
+check('Y30 plan: no Dynamic block -> empty store, still migrates', plan[4].action == 'migrate' and plan[4].dynText == nil, true);
+check('Y31 plan: existing profile sets file is never re-imported over', plan[5].action == 'migrate' and plan[5].dynText == nil, true);
+
+-- headless migrate: refuses politely, touches nothing, never errors.
+local said = {};
+local mdone, mskip, mfail = profilesM.migrate(false, function(s) said[#said + 1] = s; end);
+check('Y32 headless migrate is a safe no-op', mdone == 0 and mskip == 0 and mfail == 0, true);
+check('Y33 headless migrate says why', #said > 0 and said[1]:find('log in first', 1, true) ~= nil, true);
 
 -- ---------------------------------------------------------------------------
 -- verdict

@@ -453,3 +453,38 @@ seed within ~2s and swaps itself.
   `feature/storage-move` (game loads whatever is checked out; both carry everything —
   only /dlmv differs). Commit on the CURRENT branch, sync the other via worktree,
   never push feature/storage-move.
+
+## Session "profile storage layer" (07-13, engine v33)
+
+**Theme:** Henrik's brother suggested a layer of PROFILES — named bundles of sets.
+One design conversation later it became the storage move that also answers
+import/export and "new players never touch legacy files".
+
+**Landed:** `profiles.lua` (new, seeded to `<char>\dlac\` like utils/dispatch) —
+active pointer `dlac\profile.lua`, storage `dlac\profiles\<Name>\{sets,triggers}\<JOB>.lua`;
+engine v33 auto-installs "active profile + current job" into every fresh `gProfile`
+(LAC load / job change / `/dl profile use` — the factored `/dl sets reload` core), so
+LAC's own job auto-load composes with profiles for free: the profile picks the folder,
+the job picks the file. Commits/deletes now land in profile storage (first commit
+imports the job file's Dynamic block verbatim); `/dl profile use|new|clone|migrate`;
+migration = backup-first (byte-verified, never overwritten, refuses re-runs) →
+verbatim Dynamic move → trigger move → clean-shim rewrite, dry-run by default, every
+step printed. "Copy from static" reads `backups\pre-profiles\` forever. Tests Y1–Y33
+(extract→frame→extract byte-identical roundtrip; setmanager scanners unchanged on the
+framed file; planner skip rules; headless safety). Docs: `docs/design/profiles.md`.
+
+**Key decisions:** one compatibility rule everywhere (reads fall back per file to
+legacy; writes always land in profile storage); collision semantics stay FULL REPLACE
+(merge rejected — nothing to merge against after the first flatten; sparse sets should
+seed via Copy-from-static) with a once-per-load `warnShadowedStatics`; profile names
+one word `[%w_-]`; migration always lands in `Default`; the first backup is sacred
+(existing backup = file skipped). Veterans: dlac stops writing their `<JOB>.lua`
+entirely — the overlay contract (their code first, dispatch last per slot) unchanged.
+
+**Loose ends:** GUI has no profile switcher yet (chat commands + a "Profile: X" line
+in the Sets tab — deliberate, gearui is at the 200-local cap); "Delete static" on a
+backup-sourced static reports not-found (harmless; statics live in the backup after
+migration); `ashita.fs.get_dir(root, '.*', true)` as a DIRECTORY lister is unverified
+in the field — `listProfiles` degrades to nil (status still names the active profile).
+Field test pending on Mindie: `/dl profile migrate` (dry run first), confirm dynamic
+sets survive + statics copyable from backup.

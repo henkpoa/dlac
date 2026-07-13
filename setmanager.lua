@@ -486,12 +486,54 @@ end
 
 ----------------------------------------------------------------------
 -- in-game commit / delete (backup -> splice -> syntax-check -> write)
+--
+-- Since the profile storage layer (profiles.lua), commits land in the ACTIVE
+-- profile's sets\<JOB>.lua -- <JOB>.lua itself is never written again. The
+-- profile file keeps the exact `sets = { Dynamic = {...} }` shape, so the
+-- splice/delete scanners above work on it unchanged. The FIRST commit for a
+-- job creates the file by importing the job file's whole Dynamic block
+-- verbatim: sets never split across two sources.
 ----------------------------------------------------------------------
+local _pok, _prof = pcall(require, 'dlac\\profiles');
+_pok = _pok and type(_prof) == 'table';
+
+-- Resolve where a commit edits sets for `job`: the profile sets file (created
+-- and seeded on first use), else -- only when profiles.lua is unavailable --
+-- the legacy <JOB>.lua. Returns path, text, note|nil  or  nil, errmsg.
+local function commitTarget(job)
+    local jpath = M.jobPath(job);
+    if jpath == nil then return nil, 'not logged in (no profile path)'; end
+    if _pok then
+        local ppath = _prof.setsPath(job);
+        if ppath ~= nil then
+            local ptext = readFile(ppath);
+            if ptext ~= nil then return ppath, ptext, nil; end
+            local jtext = readFile(jpath);
+            local dyn = jtext ~= nil and _prof.extractDynamicText(jtext) or nil;
+            local framed = _prof.frameSetsText(dyn);
+            if loadstring(framed) == nil then
+                -- a mangled Dynamic block must not poison the new store: start
+                -- empty instead (the block stays untouched in <JOB>.lua).
+                framed = _prof.frameSetsText(nil);
+                dyn = nil;
+            end
+            _prof.ensureStorage();
+            if not writeFile(ppath, framed) then return nil, 'could not create ' .. ppath; end
+            local note = string.format('  NOTE: sets now live in dlac\\profiles\\%s\\sets\\%s.lua (%s)%s',
+                _prof.activeName(), job,
+                dyn ~= nil and 'existing Dynamic block imported' or 'started empty',
+                '; ' .. job .. '.lua is no longer written -- /dl profile migrate cleans it up fully');
+            return ppath, framed, note;
+        end
+    end
+    local text = readFile(jpath);
+    if text == nil then return nil, 'could not read ' .. jpath; end
+    return jpath, text, nil;
+end
+
 M.commitSet = function(job, setName, slots)
-    local path = M.jobPath(job);
-    if path == nil then return false, 'not logged in (no profile path)'; end
-    local text = readFile(path);
-    if not text then return false, 'could not read ' .. path; end
+    local path, text, note = commitTarget(job);
+    if path == nil then return false, text; end
     local newText, action = M.spliceSet(text, setName, slots);
     if not newText then return false, action; end
     local chunk, cerr = loadstring(newText, '@' .. path);
@@ -499,13 +541,19 @@ M.commitSet = function(job, setName, slots)
     local bpath, berr = backupWithRotation(text, job, 20);
     if not bpath then return false, berr; end
     if not writeFile(path, newText) then return false, 'write failed (backup: ' .. bpath .. ')'; end
-    return true, action, bpath;
+    return true, action .. (note or ''), bpath;
 end
 
 M.deleteSet = function(job, setName)
-    local path = M.jobPath(job);
-    if path == nil then return false, 'not logged in (no profile path)'; end
-    local text = readFile(path);
+    -- Delete edits whichever file currently HOLDS the sets (profile-first read
+    -- rule); it never creates the profile store by itself.
+    local path = _pok and _prof.setsPath(job) or nil;
+    local text = path ~= nil and readFile(path) or nil;
+    if text == nil then
+        path = M.jobPath(job);
+        if path == nil then return false, 'not logged in (no profile path)'; end
+        text = readFile(path);
+    end
     if not text then return false, 'could not read ' .. path; end
     local newText, action = M.deleteSetText(text, setName);
     if not newText then return false, action; end

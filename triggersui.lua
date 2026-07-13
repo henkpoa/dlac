@@ -57,6 +57,11 @@ local function writeFileText(p, t)
     local f = io.open(p, 'w'); if f == nil then return false; end
     f:write(t); f:close(); return true;
 end
+local function readFileText(p)
+    if p == nil then return nil; end
+    local f = io.open(p, 'r'); if f == nil then return nil; end
+    local t = f:read('*a'); f:close(); return t;
+end
 
 local TRIG_HANDLERS = { 'Default', 'Precast', 'Midcast', 'Ability', 'Item', 'Weaponskill', 'Preshot', 'Midshot', 'PetAction' };
 
@@ -132,12 +137,26 @@ local modeUI = {
     bind = { '' }, set = nil, editing = nil,
 };
 
+-- Profile-aware, and it MUST agree with the engine's triggersPath() rule
+-- (dispatch.lua) or the GUI would edit one file while the engine reads another:
+-- the active profile's file when it exists, else the legacy one, else wherever
+-- writes should land (profile storage once it exists, legacy before).
 local function trigFilePath()
     local base = deps and deps.charBase and deps.charBase() or nil;
     local abbr = nil;
     if deps and deps.jobFile then local _; _, abbr = deps.jobFile(); end
     if base == nil or abbr == nil then return nil, nil; end
-    return base .. 'dlac\\triggers\\' .. abbr .. '.lua', abbr;
+    local lp = base .. 'dlac\\triggers\\' .. abbr .. '.lua';
+    local pok, prof = pcall(require, 'dlac\\profiles');
+    if pok and type(prof) == 'table' then
+        local pp = prof.triggersPath(abbr);
+        if pp ~= nil then
+            if readFileText(pp) ~= nil then return pp, abbr; end
+            if readFileText(lp) ~= nil then return lp, abbr; end
+            return (prof.storageExists() and pp or lp), abbr;
+        end
+    end
+    return lp, abbr;
 end
 
 -- Build the Triggers-tab edit model from a raw trigger-file table: canonical handler
@@ -233,6 +252,10 @@ local function trigCommit()
         if ashita and ashita.fs and ashita.fs.create_directory then
             ashita.fs.create_directory(deps.charBase() .. 'dlac\\triggers\\');
         end
+    end);
+    pcall(function()   -- the commit target may be profile storage: ensure its dirs too
+        local pok, prof = pcall(require, 'dlac\\profiles');
+        if pok and type(prof) == 'table' and prof.storageExists() then prof.ensureStorage(); end
     end);
     if not writeFileText(path, text) then trigSetStatus('Could not write ' .. path, true); return; end
     trig.dirty = false;

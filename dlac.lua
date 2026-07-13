@@ -67,7 +67,7 @@ local function seedCharFolder()
         if ashita and ashita.fs and ashita.fs.create_directory then ashita.fs.create_directory(dstDir); end
         local function slurp(p) local f = io.open(p, 'rb'); if f == nil then return nil; end local d = f:read('*a'); f:close(); return d; end
         local function spit(p, d) local f = io.open(p, 'wb'); if f == nil then return; end f:write(d); f:close(); end
-        for _, f in ipairs({ 'utils.lua', 'dispatch.lua', 'chatfmt.lua' }) do   -- library: always refresh from the addon
+        for _, f in ipairs({ 'utils.lua', 'dispatch.lua', 'chatfmt.lua', 'profiles.lua' }) do   -- library: always refresh from the addon
             local d = slurp(addonDir .. f);
             if d ~= nil then spit(dstDir .. f, d); end
         end
