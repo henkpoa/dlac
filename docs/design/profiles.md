@@ -116,3 +116,18 @@ into THIS character under a new name (deterministic 22-job probe, never
 overwrites, refuses a name that already has files). Snapshot builds on
 open/Refresh only; directory listing = `ashita.fs.get_dir` with a
 `dir /b /ad` popen fallback (`profiles.listDirs`).
+
+### Menu actions (final v1 shape)
+
+Header: centered `PROFILES`, Refresh pinned right. Profile rows: `use` /
+`[active]`, `clone` (form: destination character + profile name), `rename`
+(own char; repoints the active pointer), `delete` (never offered on the live
+one). Job rows: `clone`, `rename` (sets+triggers move together; renaming away
+from a job abbr = dormant backup slot, renaming back revives it), `delete`.
+Every destructive form states exactly what happens behind a red DELETE
+PERMANENTLY button, and deletion always writes verified safety copies first
+(`backups\deleted-profiles\<prof>-<stamp>\`, `backups\deleted-jobs\`) -- the
+"never delete backups" house rule applies to the deleter itself. Actions that
+touch the CURRENT character's ACTIVE profile ping `/dl sets reload` +
+`/dl triggers reload` so the engine follows instantly (the two-rename
+swap-from-backup workflow needs no manual reload).

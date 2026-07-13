@@ -3799,6 +3799,7 @@ local function drawWindow()
                 if f.kind == 'cloneProfile' then title = string.format('Clone profile "%s" from %s', f.srcProf, f.srcDisp);
                 elseif f.kind == 'cloneJob' then title = string.format('Clone %s from %s\'s "%s"', f.job, f.srcDisp, f.srcProf);
                 elseif f.kind == 'renameJob' then title = string.format('Rename %s in %s\'s "%s"', f.job, f.srcDisp, f.srcProf);
+                elseif f.kind == 'deleteJob' then title = string.format('Delete %s from %s\'s "%s"', f.job, f.srcDisp, f.srcProf);
                 elseif f.kind == 'deleteProfile' then title = string.format('Delete profile "%s" from %s', f.srcProf, f.srcDisp);
                 else title = string.format('Rename profile "%s"', f.srcProf); end
                 imgui.TextColored(COL_HEADER, title);
@@ -3856,6 +3857,7 @@ local function drawWindow()
                             end
                             return;
                         end
+                        if f.kind == 'deleteJob' then return; end   -- no inputs; the warning + red button gate it
                         local pn = prof.sanitizeName(f.prof[1]);
                         if pn == nil then chk.blocked, chk.why = true, 'Invalid name: one word, letters/digits/_/- only.'; return; end
                         if f.kind == 'cloneProfile' then
@@ -3886,6 +3888,13 @@ local function drawWindow()
                 end
                 local chk = ui._pmChk;
                 if chk.note ~= nil then fmt.textWrapped(COL_DIM, chk.note); end
+                if f.kind == 'deleteJob' and not chk.blocked then
+                    fmt.textWrapped(COL_ERR, string.format(
+                        'THIS DELETES %s FROM "%s" ON %s -- its sets and its triggers, together.',
+                        f.job, f.srcProf, f.srcDisp));
+                    fmt.textWrapped(COL_DIM,
+                        'Verified safety copies land in that character\'s backups\\deleted-jobs\\ first. Hand-delete those if you truly want it gone.');
+                end
                 if f.kind == 'deleteProfile' and not chk.blocked then
                     -- The warning IS the feature: say exactly what dies, before the button.
                     local names, cnt = {}, 0;
@@ -3900,7 +3909,8 @@ local function drawWindow()
                         'One safety net remains: the files are first copied to that character\'s backups\\deleted-profiles\\ (verified before anything is removed). Delete that folder by hand if you truly want it gone.');
                 end
                 imgui.Separator();
-                local goLabel = (f.kind == 'deleteProfile') and 'DELETE PERMANENTLY' or 'Commit';
+                local isDelete = (f.kind == 'deleteProfile' or f.kind == 'deleteJob');
+                local goLabel = isDelete and 'DELETE PERMANENTLY' or 'Commit';
                 if chk.blocked then
                     fmt.textWrapped(COL_ERR, chk.why or 'blocked');
                     local grey = ImGuiCol_Button ~= nil;
@@ -3909,7 +3919,7 @@ local function drawWindow()
                     if grey then imgui.PopStyleColor(1); end
                     if imgui.IsItemHovered() then imgui.SetTooltip('Fix the problem above first -- the button is disabled.'); end
                 else
-                    local red = (f.kind == 'deleteProfile') and ImGuiCol_Button ~= nil;
+                    local red = isDelete and ImGuiCol_Button ~= nil;
                     if red then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
                     local go = imgui.Button(goLabel .. '##pm_go', { 170, 24 });
                     if red then imgui.PopStyleColor(1); end
@@ -3931,6 +3941,11 @@ local function drawWindow()
                                 ui._profMenuMsg = (n ~= nil)
                                     and string.format('Renamed %s -> %s in "%s" (%d file(s)).', f.job, prof.sanitizeName(f.name[1]), f.srcProf, n)
                                     or ('Rename failed: ' .. tostring(err));
+                            elseif f.kind == 'deleteJob' then
+                                local n, info = prof.deleteJobAt(f.srcChar, f.srcProf, f.job);
+                                ui._profMenuMsg = (n ~= nil)
+                                    and string.format('Deleted %s from "%s" (%d file(s) removed). Safety copy in backups\\deleted-jobs\\.', f.job, f.srcProf, n)
+                                    or ('Delete failed: ' .. tostring(info));
                             elseif f.kind == 'deleteProfile' then
                                 local n, info = prof.deleteProfileAt(f.srcChar, f.srcProf);
                                 ui._profMenuMsg = (n ~= nil)
@@ -3946,7 +3961,7 @@ local function drawWindow()
                             -- engine follow right now (sets + trigger hot-reload).
                             local tc, tp = nil, nil;
                             if f.kind == 'cloneJob' then tc, tp = dstC.name, prof.sanitizeName(f.prof[1]);
-                            elseif f.kind == 'renameJob' then tc, tp = f.srcChar, f.srcProf; end
+                            elseif f.kind == 'renameJob' or f.kind == 'deleteJob' then tc, tp = f.srcChar, f.srcProf; end
                             if tc ~= nil and tc == prof.currentCharFolder() and tp == prof.activeName() then
                                 AshitaCore:GetChatManager():QueueCommand(1, '/dl sets reload');
                                 AshitaCore:GetChatManager():QueueCommand(1, '/dl triggers reload');
@@ -3957,14 +3972,18 @@ local function drawWindow()
                     end
                 end
                 imgui.SameLine(0, 8);
-                if imgui.Button((f.kind == 'deleteProfile') and 'Cancel##pm_back' or 'Back##pm_back', { 90, 24 }) then ui._pmForm, ui._pmChk = nil, nil; end
+                if imgui.Button(isDelete and 'Cancel##pm_back' or 'Back##pm_back', { 90, 24 }) then ui._pmForm, ui._pmChk = nil, nil; end
             else
                 -- ------- TREE VIEW: character > profile > job files -------
-                imgui.TextColored(COL_HEADER, 'dlac profiles');
-                imgui.SameLine(0, 12);
-                imgui.TextColored(COL_DIM, 'character  >  profile  >  jobs');
-                imgui.SameLine(0, 12);
-                if imgui.SmallButton('Refresh##pm_r') then ui._profMenuBuild = true; end
+                do   -- centered PROFILES title, Refresh pinned to the right edge
+                    local w = imgui.GetWindowWidth();
+                    local tw = 62;
+                    pcall(function() local cw = imgui.CalcTextSize('PROFILES'); if type(cw) == 'number' then tw = cw; end end);
+                    pcall(function() imgui.SetCursorPosX(math.max(0, (w - tw) / 2)); end);
+                    imgui.TextColored(COL_HEADER, 'PROFILES');
+                    imgui.SameLine(math.max(0, w - 68));
+                    if imgui.SmallButton('Refresh##pm_r') then ui._profMenuBuild = true; end
+                end
                 imgui.Separator();
                 if m.err ~= nil then fmt.textWrapped(COL_ERR, m.err); end
                 imgui.BeginChild('##pm_body', { 560, 340 }, false);
@@ -4022,6 +4041,12 @@ local function drawWindow()
                                     if imgui.SmallButton('rename##pm_jr_' .. c.name .. '_' .. p.name .. '_' .. jf2.name) then
                                         ui._pmForm = { kind = 'renameJob', srcChar = c.name, srcDisp = c.disp or c.name,
                                                        srcProf = p.name, job = jf2.name, name = { jf2.name } };
+                                        ui._pmChk = nil;
+                                    end
+                                    imgui.SameLine(0, 6);
+                                    if imgui.SmallButton('delete##pm_jd_' .. c.name .. '_' .. p.name .. '_' .. jf2.name) then
+                                        ui._pmForm = { kind = 'deleteJob', srcChar = c.name, srcDisp = c.disp or c.name,
+                                                       srcProf = p.name, job = jf2.name };
                                         ui._pmChk = nil;
                                     end
                                     imgui.SameLine(0, 10);

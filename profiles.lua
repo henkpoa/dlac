@@ -549,6 +549,37 @@ function M.deleteProfileAt(charFolder, profName)
     return removed, bdir;
 end
 
+-- Delete ONE job entry (sets + triggers together) from any character's
+-- profile. Same house rule as profile deletion: flat, verified safety copies
+-- land in that character's backups\deleted-jobs\ BEFORE anything is removed.
+-- removedCount, backupDir | nil, why.
+function M.deleteJobAt(charFolder, profName, name)
+    if charFolder == nil or profName == nil or name == nil then return nil, 'bad args'; end
+    local root = M.lacRoot();
+    local dir = M.profileDirAt(charFolder, profName);
+    if root == nil or dir == nil then return nil, 'bad profile'; end
+    local bdir = root .. charFolder .. '\\backups\\deleted-jobs\\';
+    ensureDir(root .. charFolder .. '\\backups\\');
+    ensureDir(bdir);
+    local stamp = os.date('%Y%m%d_%H%M%S');
+    local removed, failed = 0, 0;
+    for _, kind in ipairs({ 'sets', 'triggers' }) do
+        local sp = dir .. kind .. '\\' .. name .. '.lua';
+        local t = readFile(sp);
+        if t ~= nil then
+            local bp = bdir .. profName .. '-' .. name .. '-' .. stamp .. '-' .. kind .. '.lua';
+            if writeFile(bp, t) and readFile(bp) == t and os.remove(sp) then
+                removed = removed + 1;
+            else
+                failed = failed + 1;
+            end
+        end
+    end
+    if failed > 0 then return nil, string.format('%d file(s) could not be verified+removed', failed); end
+    if removed == 0 then return nil, 'nothing to delete (no files for ' .. tostring(name) .. ')'; end
+    return removed, bdir;
+end
+
 -- Import another character's profile into THIS character under dstName.
 -- Refuses to pour into a profile that already has files (no silent merges).
 -- Returns copiedCount, nil | nil, why.

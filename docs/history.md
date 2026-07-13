@@ -509,3 +509,12 @@ Setup ordering fix (storage before trigger seed) and Setup-button visibility on
 storage-less dlac-wired chars. Field flow validated by Henrik on a stashed-clean
 char: fresh run, veteran-migration run (BLU from pre-profiles backup) -- both
 passed.
+
+**Menu completion (same evening):** job-row rename/delete + profile delete
+landed; deletes are red-button confirmed and ALWAYS write verified safety
+copies first (backups\deleted-profiles\, backups\deleted-jobs\). get_dir's
+REAL semantics field-verified via Henrik's screenshot: mask is a REGEX
+('.*%.lua' matches nothing -- setmanager's backup rotation had silently never
+pruned) and arg 3 = RECURSIVE (files+dirs, relative paths). All listings now
+mask '.*', non-recursive, Lua-filtered. Cross-char clone field-confirmed
+working by Henrik.
