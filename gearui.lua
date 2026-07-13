@@ -4009,7 +4009,7 @@ local function drawWindow()
                      -- an auto-sized popup feeds back on itself (content reaches
                      -- last frame's width, padding is added, the window crawls to
                      -- full-screen -- field screenshot 2026-07-13).
-                    local W = 640;   -- matches the tree child below: the layout authority
+                    local W = 800;   -- matches the tree child below: the layout authority
                     local tw = 62;
                     pcall(function() local cw = imgui.CalcTextSize('PROFILES'); if type(cw) == 'number' then tw = cw; end end);
                     pcall(function() imgui.SetCursorPosX(math.max(0, (W - tw) / 2)); end);
@@ -4019,7 +4019,7 @@ local function drawWindow()
                 end
                 imgui.Separator();
                 if m.err ~= nil then fmt.textWrapped(COL_ERR, m.err); end
-                imgui.BeginChild('##pm_body', { 640, 340 }, false);
+                imgui.BeginChild('##pm_body', { 800, 340 }, false);
                 for _, c in ipairs(m.chars) do
                     local fl = (c.isCurrent and ImGuiTreeNodeFlags_DefaultOpen ~= nil) and ImGuiTreeNodeFlags_DefaultOpen or 0;
                     local cOpen = imgui.CollapsingHeader((c.disp or c.name) .. (c.isCurrent and '   (this character)' or '') .. '###pm_c_' .. c.name, fl);
@@ -4031,8 +4031,8 @@ local function drawWindow()
                     local canOverlap = type(imgui.SetItemAllowOverlap) == 'function';
                     if canOverlap then
                         pcall(imgui.SetItemAllowOverlap);
-                        imgui.SameLine(640 - 156);   -- right-aligned on the character row
-                        if imgui.SmallButton('Create Empty Profile##pm_np_' .. c.name) then
+                        imgui.SameLine(800 - 34);   -- right-aligned on the character row
+                        if imgui.SmallButton('+##pm_np_' .. c.name) then
                             ui._pmForm = { kind = 'newProfile', srcChar = c.name, srcDisp = c.disp or c.name, name = { '' } };
                             ui._pmChk = nil;
                         end
