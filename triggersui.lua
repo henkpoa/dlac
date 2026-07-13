@@ -1062,8 +1062,8 @@ local function renderAutomations(noHeader)
             };
             local goalLbl = 'HQ';
             for _, gd in ipairs(GOALS) do if gd[1] == CRAFT_UI.goal then goalLbl = gd[2]; end end
-            -- Auto-craft toggle: CENTER of the row, whole button green when
-            -- ON / red when OFF (Henrik).
+            -- Auto Craft Set toggle: CENTER of the row, whole button green
+            -- when ON / red when OFF (Henrik).
             local winW = imgui.GetWindowWidth();
             imgui.SameLine(math.max(180, math.floor(winW / 2) - 88));
             local aOn = cwok and (cw.autoEquip == true);
@@ -1072,12 +1072,12 @@ local function renderAutomations(noHeader)
                 imgui.PushStyleColor(ImGuiCol_Button, aOn and { 0.16, 0.62, 0.24, 1.0 } or { 0.72, 0.18, 0.18, 1.0 });
                 imgui.PushStyleColor(ImGuiCol_ButtonHovered, aOn and { 0.20, 0.72, 0.30, 1.0 } or { 0.82, 0.26, 0.26, 1.0 });
             end
-            if imgui.Button((aOn and 'Auto-craft: ON' or 'Auto-craft: OFF') .. '##craftauto', { 177, 22 }) and cwok then
+            if imgui.Button((aOn and 'Auto Craft Set: ON' or 'Auto Craft Set: OFF') .. '##craftauto', { 177, 22 }) and cwok then
                 cw.autoEquip = not aOn;
             end
             if tinted then imgui.PopStyleColor(2); end
             if imgui.IsItemHovered() then
-                imgui.SetTooltip('When ON, a detected synth equips your craft gear automatically\n(committed Craft_<Skill> set if present, else the gear ladders).\nSession-only; also /dl craft auto on|off.');
+                imgui.SetTooltip('When ON, dlac EQUIPS your best craft pieces when it sees you start a synth\n(committed Craft_<Skill> set if present, else the gear ladders).\nIt never synthesizes anything for you. Session-only; also /dl craft auto on|off.');
             end
             -- Crafting-mode picker stays on the right edge.
             imgui.SameLine(math.max(320, winW - 234));
@@ -1130,9 +1130,9 @@ local function renderAutomations(noHeader)
             imgui.Spacing();
             imgui.TextColored(COL_DIM, 'Fires only when the day/weather bonus is positive. Green = owned.');
         elseif auto.view == 'craft' then
-            imgui.TextColored(COL_HEADER, 'AutoCraft');
+            imgui.TextColored(COL_HEADER, 'Auto Craft Set');
             imgui.SameLine(0, 10);
-            imgui.TextColored(COL_DIM, 'slot automation -- dlac:AutoCraft in ANY slot; /dl mode craft <skill>, /dl mode craftgoal hq|nq');
+            imgui.TextColored(COL_DIM, 'set automation -- picks your best PIECES for the craft being worked; it never crafts for you.');
             imgui.Spacing();
             -- Ownership matrix (Henrik's layout): NQ|HQ pair, rule, craft-
             -- specific column -- for torques and rings; universals third.
@@ -1282,7 +1282,7 @@ local function renderAutomations(noHeader)
           level = iridescenceLevel(), max = 4, txt = nil },
         { key = 'obi',         name = 'ElementalObi',    kind = 'slot automation (Waist)',
           level = obiLevel(),         max = 2, txt = nil },
-        { key = 'craft',       name = 'AutoCraft',       kind = 'slot automation (any slot)',
+        { key = 'craft',       name = 'Auto Craft Set',  kind = 'set automation (on/off)',
           level = CRAFT_UI.level(),   max = 4, txt = nil },
     };
     rows[1].txt = IRID_TXT[rows[1].level];

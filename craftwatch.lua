@@ -311,9 +311,9 @@ function M.equipCraftSet(skill)
         end
     end
     if n > 0 then
-        say(string.format('craft auto: equipping %s (%d pieces) -- counts from the NEXT synth.', setName, n));
+        say(string.format('auto craft set: equipping %s (%d pieces) -- counts from the NEXT synth.', setName, n));
     else
-        say(string.format('craft auto: nothing to equip for %s -- commit a Craft_%s set or Rescan owned gear (Triggers > Automations).',
+        say(string.format('auto craft set: nothing to equip for %s -- commit a Craft_%s set or Rescan owned gear (Triggers > Automations).',
             tostring(skill), tostring(skill)));
     end
     return n;
@@ -389,8 +389,8 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
             if b == 'auto' then
                 if     c == 'on'  then M.autoEquip = true;
                 elseif c == 'off' then M.autoEquip = false; end
-                say('craft auto-equip ' .. (M.autoEquip and 'ON' or 'OFF')
-                    .. ' -- equips your committed Craft_<Skill> (or Craft) set when a synth of a new craft is detected.'
+                say('auto craft set ' .. (M.autoEquip and 'ON' or 'OFF')
+                    .. ' -- EQUIPS your best craft pieces when a synth of a new craft is detected; it never crafts for you.'
                     .. '  (/dl craft auto on|off; session-only for now)');
                 return;
             end
@@ -438,10 +438,10 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
             end
             if M.current == nil then
                 say('craft watch: no synth seen yet this session. Start a synth and check again.'
-                    .. (M.autoEquip and '' or '  (auto-equip is OFF: /dl craft auto on)'));
+                    .. (M.autoEquip and '' or '  (auto craft set is OFF: /dl craft auto on)'));
                 return;
             end
-            say(string.format('craft watch: last synth = %s%s (%.0fs ago); auto-equip %s.',
+            say(string.format('craft watch: last synth = %s%s (%.0fs ago); auto craft set %s.',
                 M.current.skill, M.current.lv and (' lv ' .. M.current.lv) or '',
                 os.clock() - (M.current.at or 0), M.autoEquip and 'ON' or 'OFF'));
             local parts = {};
