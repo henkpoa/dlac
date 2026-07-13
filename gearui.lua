@@ -1258,6 +1258,14 @@ local function migrateCurrentJob()
         local tmpl = readFileText(AshitaCore:GetInstallPath() .. 'addons\\dlac\\gear.lua');
         if tmpl ~= nil then writeFileText(base .. 'dlac\\gear.lua', tmpl); end
     end
+    -- Fresh job: create profile storage BEFORE the trigger seed, so the starter
+    -- triggers land INSIDE the profile (field case: run 1 of the fresh-start
+    -- test seeded them into the legacy dlac\triggers\ because storage did not
+    -- exist yet at this point -- reads fall back so it worked, but a brand-new
+    -- player should own zero legacy-layout files).
+    if state == 'nofile' then
+        pcall(function() local p = require('dlac\\profiles'); if type(p) == 'table' then p.ensureStorage(); end end);
+    end
     -- and the starter trigger file, so the profile's dispatch shims equip out of the box.
     seedTriggersFile(base, abbr);
 
