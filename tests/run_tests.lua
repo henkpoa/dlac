@@ -673,6 +673,16 @@ check('T20b goal stored', craftwatch.getGoal(), 'nq');
 craftCmds = {};
 craftwatch.onSynth(4096, { 1165, 1165 }, 20);   -- detection: NO equip
 check('T20c detection does not equip', #craftCmds, 0);
+-- on/off switch: OFF suppresses equips; ON re-applies the active craft
+craftwatch.enabled = false;
+craftCmds = {};
+craftwatch.setGoal('hq');                        -- OFF: no equip
+check('T20d goal change while OFF: no equip', #craftCmds, 0);
+craftCmds = {};
+craftwatch.setEnabled(true);                     -- ON: equips the active craft
+check('T20e enable equips active craft', #craftCmds, 3);
+check('T20f enabled stored', craftwatch.isEnabled(), true);
+craftwatch.setEnabled(false);
 craftwatch.goal = 'hq';
 
 -- 0x055 key item tracker (the SDK HasKeyItem memory read is dead on this

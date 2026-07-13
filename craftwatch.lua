@@ -300,6 +300,17 @@ function M.equipCraftSet(skill, baseDelay)
         end
     else
         picks = M.manifestPicks(skill) or {};
+        -- The manifest's craft ladders are written by the Automations panel /
+        -- the login-time rescan. If they're not there yet (bar used before the
+        -- Triggers tab was opened), regenerate ONCE and retry -- so the very
+        -- first click works without "open this tab first".
+        if next(picks) == nil then
+            pcall(function()
+                local tg = require('dlac\\triggersui');
+                if type(tg.rescanAutogear) == 'function' then tg.rescanAutogear(); end
+            end);
+            picks = M.manifestPicks(skill) or {};
+        end
         setName = 'craft gear (auto)';
     end
     local ok, cmdq = pcall(require, 'dlac\\cmdqueue');
@@ -328,6 +339,7 @@ end
 -- ---------------------------------------------------------------------------
 M.goal = 'hq';            -- hq | nq | skillup
 M.activeCraft = nil;      -- the craft you last selected
+M.enabled = false;        -- the on/off slider: equipping happens only when ON
 local _stateLoaded = false;
 
 local function craftStatePath()
@@ -339,8 +351,8 @@ local function saveCraftState()
         local p = craftStatePath();
         if p == nil then return; end
         local f = io.open(p, 'wb'); if f == nil then return; end
-        f:write(string.format('return { craft = %q, goal = %q }\n',
-            tostring(M.activeCraft or ''), tostring(M.goal or 'hq')));
+        f:write(string.format('return { craft = %q, goal = %q, enabled = %s }\n',
+            tostring(M.activeCraft or ''), tostring(M.goal or 'hq'), tostring(M.enabled == true)));
         f:close();
     end);
 end
@@ -358,29 +370,48 @@ function M.loadCraftState()
                 M.goal = t.goal;
             end
             if type(t.craft) == 'string' and t.craft ~= '' then M.activeCraft = t.craft; end
+            if t.enabled == true then M.enabled = true; end
         end
     end);
 end
 
 function M.getGoal() M.loadCraftState(); return M.goal or 'hq'; end
 function M.getCraft() M.loadCraftState(); return M.activeCraft; end
+function M.isEnabled() M.loadCraftState(); return M.enabled == true; end
 
--- Pick a craft: remember it and EQUIP its gear now (the whole feature).
+-- Equip the active craft's gear IF the switch is on and a craft is chosen.
+local function applyIfActive()
+    if M.enabled and M.activeCraft ~= nil then
+        pcall(function() M.equipCraftSet(M.activeCraft); end);
+    end
+end
+
+-- The on/off slider (bar + panel). ON with a craft selected equips at once.
+function M.setEnabled(on)
+    M.loadCraftState();
+    M.enabled = (on == true);
+    saveCraftState();
+    applyIfActive();
+end
+
+-- Pick a craft. Choosing a craft IS activating -- turn the switch on and equip
+-- (Henrik: "activate manually, then decide with a click what synth we use").
 function M.selectCraft(craft)
     if type(craft) ~= 'string' or craft == '' then return; end
     M.loadCraftState();
     M.activeCraft = craft;
+    M.enabled = true;
     saveCraftState();
     pcall(function() M.equipCraftSet(craft); end);
 end
 
--- Change the goal: save it, and re-equip the active craft so the change shows.
+-- Change the goal: save it, re-equip the active craft (when on) so it shows.
 function M.setGoal(goal)
     if goal ~= 'hq' and goal ~= 'nq' and goal ~= 'skillup' then return; end
     M.loadCraftState();
     M.goal = goal;
     saveCraftState();
-    if M.activeCraft ~= nil then pcall(function() M.equipCraftSet(M.activeCraft); end); end
+    applyIfActive();
 end
 
 -- Process one detected synth; returns the record (also used by tests).

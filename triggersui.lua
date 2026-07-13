@@ -1060,41 +1060,28 @@ local function renderAutomations(noHeader)
                 { 'nq', 'NQ', 'Wears the anti-HQ guild rings to guarantee NQ when possible\n(materials you do NOT want HQ\'d).' },
                 { 'skillup', 'Skill-Up', 'Prioritizes Synth Skill+ (skill-up rate) items over raw craft skill.' },
             };
-            local curGoal = (cwok and type(cw.getGoal) == 'function') and cw.getGoal() or CRAFT_UI.goal;
-            local goalLbl = 'HQ';
-            for _, gd in ipairs(GOALS) do if gd[1] == curGoal then goalLbl = gd[2]; end end
-            -- "Show craft bar": the floating manual controls (center of the row).
+            -- On/off switch + "Show craft bar" on the right (the goal now lives
+            -- ONLY on the craft bar -- removed here per Henrik). The craft
+            -- glyphs below equip on click.
             local winW = imgui.GetWindowWidth();
-            imgui.SameLine(math.max(180, math.floor(winW / 2) - 70));
-            local barOn = cwok and (cw.barVisible == true);
-            local tinted = (ImGuiCol_Button ~= nil);
-            if tinted then
-                imgui.PushStyleColor(ImGuiCol_Button, barOn and { 0.16, 0.55, 0.24, 1.0 } or { 0.28, 0.30, 0.36, 1.0 });
+            local on = cwok and type(cw.isEnabled) == 'function' and cw.isEnabled();
+            imgui.SameLine(math.max(200, winW - 250));
+            imgui.TextColored(COL_DIM, 'Auto craft set:');
+            imgui.SameLine(0, 6);
+            local cbok, craftbar = pcall(require, 'dlac\\craftbar');
+            if cbok and type(craftbar) == 'table' and type(craftbar.onOffSwitch) == 'function' then
+                if craftbar.onOffSwitch(on, 'panel') and cwok then cw.setEnabled(not on); end
+            else
+                if imgui.Button((on and 'ON' or 'OFF') .. '##craftpanelonoff', { 46, 22 }) and cwok then cw.setEnabled(not on); end
             end
-            if imgui.Button((barOn and 'Craft bar: shown' or 'Show craft bar') .. '##craftbartoggle', { 150, 22 }) and cwok then
+            imgui.SameLine(0, 10);
+            local barOn = cwok and (cw.barVisible == true);
+            if imgui.Button((barOn and 'Hide bar' or 'Show bar') .. '##craftbartoggle', { 78, 22 }) and cwok then
                 cw.barVisible = not barOn;
             end
-            if tinted then imgui.PopStyleColor(1); end
             if imgui.IsItemHovered() then
-                imgui.SetTooltip('Toggle the floating craft bar: click a craft to equip its gear\nBEFORE you synth, pick the goal. Same controls as below.\nAlso /dl craft bar.');
+                imgui.SetTooltip('The floating craft bar: on/off, the craft glyphs, and the goal.\nAlso /dl craft bar.');
             end
-            -- Goal picker on the right edge -> craftwatch (single source of truth).
-            imgui.SameLine(math.max(320, winW - 234));
-            imgui.TextColored(COL_DIM, 'Goal:');
-            imgui.SameLine(0, 4);
-            imgui.PushItemWidth(106);   -- wide enough that 'Skill-Up' clears the combo arrow
-            if imgui.BeginCombo('##craftgoalsel', goalLbl) then
-                for _, gd in ipairs(GOALS) do
-                    if imgui.Selectable(gd[2], curGoal == gd[1]) then
-                        if cwok and type(cw.setGoal) == 'function' then cw.setGoal(gd[1]); end
-                        CRAFT_UI.goal = gd[1];
-                        pcall(autoCommit);   -- keep the manifest craftGoal in step for the engine/trigger path
-                    end
-                    if imgui.IsItemHovered() then imgui.SetTooltip(gd[3]); end
-                end
-                imgui.EndCombo();
-            end
-            imgui.PopItemWidth();
         end
         imgui.Spacing();
         local availW = imgui.GetContentRegionAvail();
