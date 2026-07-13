@@ -4008,13 +4008,27 @@ local function drawWindow()
                 for _, c in ipairs(m.chars) do
                     local fl = (c.isCurrent and ImGuiTreeNodeFlags_DefaultOpen ~= nil) and ImGuiTreeNodeFlags_DefaultOpen or 0;
                     local cOpen = imgui.CollapsingHeader((c.disp or c.name) .. (c.isCurrent and '   (this character)' or '') .. '###pm_c_' .. c.name, fl);
-                    imgui.SameLine(640 - 92);   -- right-aligned on the character row
-                    if imgui.SmallButton('+ profile##pm_np_' .. c.name) then
-                        ui._pmForm = { kind = 'newProfile', srcChar = c.name, srcDisp = c.disp or c.name, name = { '' } };
-                        ui._pmChk = nil;
+                    -- CollapsingHeader is a FULL-ROW hit target (unlike TreeNode, whose
+                    -- hit box is just the label): a button overlaid on the row never
+                    -- receives the click unless the header allows overlap (field case:
+                    -- "+ profile" was dead). Feature-detect; without the API the button
+                    -- moves inside the expanded section instead of silently not working.
+                    local canOverlap = type(imgui.SetItemAllowOverlap) == 'function';
+                    if canOverlap then
+                        pcall(imgui.SetItemAllowOverlap);
+                        imgui.SameLine(640 - 156);   -- right-aligned on the character row
+                        if imgui.SmallButton('Create Empty Profile##pm_np_' .. c.name) then
+                            ui._pmForm = { kind = 'newProfile', srcChar = c.name, srcDisp = c.disp or c.name, name = { '' } };
+                            ui._pmChk = nil;
+                        end
                     end
-                    if imgui.IsItemHovered() then imgui.SetTooltip('Create an empty profile on ' .. (c.disp or c.name) .. ' (name it in the next step).'); end
                     if cOpen then
+                        if not canOverlap then
+                            if imgui.SmallButton('Create Empty Profile##pm_np2_' .. c.name) then
+                                ui._pmForm = { kind = 'newProfile', srcChar = c.name, srcDisp = c.disp or c.name, name = { '' } };
+                                ui._pmChk = nil;
+                            end
+                        end
                         if #c.profiles == 0 then imgui.TextColored(COL_DIM, '     (no dlac profiles)'); end
                         for _, p in ipairs(c.profiles) do
                             local open = imgui.TreeNode(p.name .. '###pm_p_' .. c.name .. '_' .. p.name);
