@@ -36,12 +36,21 @@
 -- no re-require. On a normal require the global is absent: ordinary fresh table.
 local M = rawget(_G, '__dlacEngineRoot') or {};
 
+-- LAC-LOAD generation stamp: `or` keeps it across engine SELF-swaps (same module
+-- table, same Lua state) but a Reload LAC builds a fresh state -> fresh stamp.
+-- Mirrored into modestate.lua, it is exactly the "has LAC actually been
+-- reloaded?" signal the GUI's red Reload-LAC button watches -- including
+-- reloads the user runs by command. (os.clock() disambiguates two loads
+-- inside the same os.time() second.)
+M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
+
 -- Engine version handshake: bump on EVERY behavioral change to this file. The
 -- LAC-state copy stamps its version into the modestate mirror; the GUI compares
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 33;   -- 33: profile storage layer (dlac\profiles\<name>\; auto-install on load/job change; /dl profile)
+M.VERSION = 34;   -- 34: modestate __loadstamp -- the GUI's red Reload-LAC button watches it clear
+                  -- 33: profile storage layer (dlac\profiles\<name>\; auto-install on load/job change; /dl profile)
                   -- 32: engine self-swap (dispatch.lua hot-reloads like the trigger file)
                   -- 31: craft-gear OVERLAY on Default (engine equips craft gear; craftstate.lua)
                   -- 30: AutoCraft goal reads manifest craftGoal (single silent variable, no mode)
@@ -1300,6 +1309,7 @@ saveModeState = function()
                 AshitaCore:GetMemoryManager():GetPlayer():GetMainJob() or 0);
         end);
         parts[#parts + 1] = string.format('["__at"] = %d,', os.time());   -- freshness (restore window)
+        parts[#parts + 1] = string.format('["__loadstamp"] = %q,', tostring(M._loadStamp));   -- LAC-load generation
         local lk = {};
         for s in pairs(M.locks) do lk[#lk + 1] = string.format('[%q] = true,', s); end
         table.sort(lk);

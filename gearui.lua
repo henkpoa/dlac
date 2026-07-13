@@ -1278,6 +1278,7 @@ local function migrateCurrentJob()
         if writeFileText(jf, starter) then
             _setupState = nil;
             _augStatus = string.format('Initialized a dlac %s.lua. Reload LuaAshitacast, then build sets and triggers in the GUI.', abbr);
+            ui._lacReloadNeed, ui._lacReloadStamp0 = true, ui._lacStamp;   -- red until the reload lands
             pcall(function() print('[dlac] ' .. _augStatus); end);
         else
             _augStatus = 'Setup: could not write ' .. jf;
@@ -1330,6 +1331,7 @@ local function migrateCurrentJob()
     _augStatus = string.format(
         'Set up %s.lua in place (%s). Your own handler logic was kept -- dlac dispatch runs last. Reload LuaAshitacast to apply.',
         abbr, (#parts > 0) and table.concat(parts, ', ') or 'no changes needed');
+    if #parts > 0 then ui._lacReloadNeed, ui._lacReloadStamp0 = true, ui._lacStamp; end   -- red until the reload lands
     pcall(function() print('[dlac] ' .. _augStatus); end);
 end
 
@@ -1414,6 +1416,38 @@ end
 local function renderHeaderButtons()
     local gap = 4;
     local needSetup = (jobSetupState() ~= 'ok');
+
+    -- Reload-LAC watcher: the engine stamps a LAC-load generation into
+    -- modestate.lua (__loadstamp -- constant across mode changes and engine
+    -- self-swaps, new on every real LAC load). When something marked a reload
+    -- as needed (ui._lacReloadNeed + the stamp it saw), the Reload LAC button
+    -- turns red until the stamp MOVES -- however the reload happens, button or
+    -- a command the user types. Throttled to ~1 read/second.
+    local function lacLoadStamp()
+        local now = os.time();
+        if ui._lacStampAt == now then return ui._lacStamp; end
+        ui._lacStampAt = now;
+        local v = nil;
+        pcall(function()
+            local base = charBase();
+            if base == nil then return; end
+            local chunk = loadfile(base .. 'dlac\\modestate.lua');
+            if chunk == nil then return; end
+            local ok, t = pcall(chunk);
+            if ok and type(t) == 'table' and type(t.__loadstamp) == 'string' then v = t.__loadstamp; end
+        end);
+        ui._lacStamp = v;
+        return v;
+    end
+    local _lacSt = lacLoadStamp();   -- keep the cache warm (marks capture it)
+    if ui._lacReloadNeed == true and _lacSt ~= nil and _lacSt ~= ui._lacReloadStamp0 then
+        ui._lacReloadNeed, ui._lacReloadStamp0 = nil, nil;
+        if type(_augStatus) == 'string' and _augStatus:find('Reload', 1, true) ~= nil then
+            _augStatus = 'LuaAshitacast reloaded -- you are live. Build sets in the Sets tab; triggers in the Triggers tab.';
+        end
+        pcall(function() print('[dlac] LuaAshitacast reload detected -- changes are live.'); end);
+    end
+
     local btns = {};
     if macrob ~= nil then
         btns[#btns+1] = { w = 26,   -- small book icon (matches the warp button size)
@@ -1491,8 +1525,8 @@ local function renderHeaderButtons()
           fn = function() ui._lvlOpen = true; end };
     end
     btns[#btns+1] =
-        { l = 'Reload LAC', w = 104,
-          tip = 'Reload LuaAshitacast. LAC caches your sets when the profile loads, so after you\ncommit/edit a set (or run Setup) you must reload LAC for the change to take effect.',
+        { l = 'Reload LAC', w = 104, red = (ui._lacReloadNeed == true),
+          tip = 'Reload LuaAshitacast. LAC caches your sets when the profile loads, so after you\ncommit/edit a set (or run Setup) you must reload LAC for the change to take effect.\n\nRED = a change is waiting for a reload. It clears by itself once the reload\nlands -- this button or a command you type, either works.',
           fn = function()
               _augStatus = nil;      -- "Reload LuaAshitacast to apply" is fulfilled by this click
               ui.setsStatus = '';    -- ...and so is the Sets tab's 'replaced "<set>" for <JOB>' line
@@ -1683,6 +1717,7 @@ local function renderHeaderButtons()
                     _setupState = nil;   -- drop the jobSetupState cache
                     if done ~= nil and done > 0 then
                         _augStatus = string.format('Migrated %d job file(s) -- originals in backups\\pre-profiles\\ (details in chat). Reloading LuaAshitacast...', done);
+                        ui._lacReloadNeed, ui._lacReloadStamp0 = true, ui._lacStamp;   -- red until the auto-reload lands
                         AshitaCore:GetChatManager():QueueCommand(1, '/addon reload luashitacast');
                     else
                         _augStatus = 'Migration: nothing to do (details in chat).';
