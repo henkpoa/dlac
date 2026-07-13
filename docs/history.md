@@ -278,6 +278,105 @@ panel), and fixed several load-bearing bugs. All landed on **`main`** and pushed
 **Test suite: 189 checks, all green.** Sections T (craftwatch), V (AutoCraft overlay
 resolution), W (tier/binding calc) added this arc.
 
+## Session "field-hardening marathon" (c89bcd85 continued, 2026-07-11 → 07-13, on `main`)
+
+**Theme:** Henrik live-tested everything on WHM/BRD/SMN and every report became a
+same-hour fix with a pinned regression test. Engine VERSION 12 → 29. Ran **in parallel**
+with the crafting session above — two Claude sessions committing to the same checkout
+and to `main` simultaneously (expect branch flips, swept working-tree edits, and version
+numbers claimed under you; always re-read files after any git operation).
+
+**Max-MP grew up, then stepped back into the shadows (v13, fmtver 2-4).** Four field
+bugs in one report: the manifest derivation read `gData` (which DOES NOT EXIST in the
+addon state — job was always nil, only All-jobs gear passed); single level-99-checked
+picks had no fallback (Bunzi's Robe blocked the whole body slot at RDM74) → per-slot
+LADDERS picked at live level (`dispatch.mpPick`, K-tests); MP-EQUIP only touched slots
+the dispatched set wrote → coverage pass for unaddressed slots; Convert and level-scaled
+MP now count (Tamas Ring 15→29@74, via THE central `levelstats.effective` resolver —
+gearui/gearoptim/triggersui all delegate; L-tests). Verdict: picks now believed right,
+but MaxMP is **unlisted from the Automations table** (unofficial pending more
+troubleshooting; `/dl mode maxmp` + manifest data + detail view all still work).
+
+**The engine tick (v15) — the biggest architectural change.** LAC only parses
+HandleDefault while OUTGOING packets flow; standing still in a menu starved dispatches
+(first misread as an equip-menu block — **field-falsified**: `/lac equip` works with the
+window open; v14's pause was removed). A throttled d3d tick in the LAC state now drives
+`gState.HandleEquipEvent('HandleDefault','auto')` every 0.4s — menus open, standing
+still, whatever. It also: drops maxmp on job change, skips while ZONING (v24 — the tick
+otherwise crashed legacy profiles in LAC's equip.lua mid-zone), and synthesizes
+PetAction (below).
+
+**Modes are dlac-owned now (v15-v17).** modestate.lua is written on change AND read back
+on engine load (same-job + 1-hour freshness guards — a mid-session Reload LAC heals,
+last Tuesday's DT-mode stays dead). The v16 "stale cycle value purge" was
+**field-falsified on WHM**: mode DEFINITIONS are per-job trigger data but VALUES are
+session-global by design ("WHM Weapons" defined in BRD's file gates WHM's sets) — purge
+removed (v17), setMode hardened (cross-job value jumps work; bare flips can't
+toggle-corrupt a foreign cycle value; M-tests). Mode keybinds queue ONCE per session
+(v18 — the automations rescan pings '/dl triggers reload' constantly and re-parsing
+re-queued /bind forever). Mode DELETE is reference-aware (v16): a movable window lists
+every rule and set-entry reference with one-click cleanup; delete commits immediately
+and clears the live flag.
+
+**Virtual markers hardened (v19, v20).** The Sets tab commits a GATED virtual as
+`{gear="dlac:AutoIridescence", mode="Weapon:Caster"}` — BOTH utils' flatten (v19,
+N-tests) and gearui's resolveSetItem (v20) only recognized bare strings; the wrapper
+form vanished/flattened to nothing. A Main staff marker now pairs as a 2H staff so
+grips stay legal in Sub (P-tests), gets an 8-element wheel icon (drawn, no texture),
+and the automations derivation is JOB-CHECKED like everything else (Foreshadow +1 is
+BLM/DRK — it sat in WHM's manifest looking dead; fmtver 4, red rows for
+owned-but-wrong-job in the detail views).
+
+**Reload LAC is nearly extinct (v21-v22).** Henrik's insight: gProfile.Sets is a live
+Lua table — the reload was only ever about the FILE changing under it. '/dl sets reload'
+re-reads <JOB>.lua SANDBOXED (profilesets' extractor hardened for the LAC state: gFunc/
+AshitaCore/package/print/coroutine stubbed, stub __concat survives the boot line's
+path-building) and swaps .Dynamic in place + re-flattens. The GUI pings it on every set
+Commit/Delete. Reload LAC remains for: engine updates (version banner) and failed swaps.
+
+**Level ranges own their windows (v23).** Garrison Tunica +1 ranged 20-51 lost to an
+unbounded Lv48 robe at 50 — ranged-and-live entries now form a tier above unbounded ones
+(engine + GUI preview mirror, Q-tests). A header `Lv <n>` button overrides the main
+level for testing/preparing (addon global + '/dl set level main' for the engine; `*`
+while active).
+
+**Trigger rules: multi-set + searchable (v25).** One rule may wear an ORDERED list of
+sets (`set = { 'WindSkill', 'Madrigal' }` — the Madrigal case), applied later-overlays-
+earlier per slot; rule boxes grew reorder arrows and per-name [missing] checks
+(R-tests). All set pickers are searchable — built as button+popup (InputText inside
+BeginCombo kills clicks on this imgui build) — and every list row's imgui id must carry
+the NAME (a shared '##..._o' suffix made only the first row clickable).
+
+**PetAction — pets work now (v26, v27, v29).** NO LuaAshitacast version calls a pet
+handler (the upstream tutorial's HandlePetAction says "you'll have to call it yourself"
+— it's a DIY pattern); dlac's tick IS that pattern: dispatches 'PetAction' once per
+pet-action start (ctx from gData.GetPetAction — Name/Skill/Element shape, matchers just
+work; S-tests). Two field bugs: equips must be BRACKETED (gFunc.EquipSet only writes
+LAC's buffer; the tick wraps ClearBuffer→dispatch→ProcessBuffer, v27) and the
+Default-hold must cover LEGACY profiles (gState.HandleEquipEvent wrapped once: while
+the pet acts, HandleDefault is skipped entirely — a hand-written SMN profile stomped
+the pact gear every tick, v29). **Field-verified end to end: Shining Ruby equips,
+holds, releases.**
+
+**Files & data:** login dup-burst root-caused (pre-login addon load left the EMPTY gear
+template as the sync baseline → +620 duplicates spliced into gear.lua; fixed + restored
+from the same-second backup; sync prints debug-gated). BRD.lua stripped to pure dlac
+(sets + shims only; backup `BRD.lua.pre-strip`). STATIC set deletion shipped
+(structural root-walk, T-tests; picker next to Copy from; the main Delete explains
+statics). Static sets on SMN cleaned by Henrik.
+
+**GUI conveniences:** per-job macro books (header button; picker = the game's own list
+look, 2 columns × 20 named rows — names decoded from USER/<id-hex>/mcr.ttl+mcr_2.ttl,
+24-byte header + twenty 16-byte titles; applies on click AND login/job change).
+Teleports header dropdown + PF-style floating pinned button (themed — unthemed windows
+let the game world tint icons "red") that becomes the ABORT stop-sign while a use is in
+flight. Automations list: headers, table-first, no chrome. `docs/guide.html`: an
+illustrated from-zero user guide (9 screenshots, annotated mode-gates figure).
+
+**Falsified this session (do not re-learn the hard way):** equipment-window equip
+blocking (client-side only, packets pass); the tutorial's HandlePetAction "handler";
+v16's cycle-value purge; the Warp-Ring-icon-is-red-state illusion.
+
 ## Standing loose ends (as of 2026-07-10, end of day)
 
 - **feature/storage-move**: local-only, awaiting GM verdict. Before any merge: strip the
@@ -308,3 +407,17 @@ resolution), W (tier/binding calc) added this arc.
   login + a debounced fetch when the AutoCraft panel opens (the `requestGuildPoints`
   call was removed from `triggersui.lua`'s panel and can be restored). Offsets are
   locked by tests T27–T33; `0x113` handler + persistence already live.
+
+### Loose ends added 07-13 (field-hardening arc)
+
+- **MaxMP relisting**: the Automations row is removed on purpose (picks believed correct
+  now — job/bag/ladder/scaling all fixed); re-add one `rows` entry in triggersui when
+  Henrik declares it official.
+- **WS bailout gap**: stripping legacy profiles (BRD done, backup `.pre-strip`) lost
+  gcinclude's CheckWsBailout (cancel WS at bad TP/range). No dlac equivalent yet;
+  offered as a feature, unclaimed. SMN/others still run legacy handlers — strip per
+  job only on request.
+- **Two sessions, one checkout**: the git checkout flip-flops between `main` and
+  `feature/storage-move` (game loads whatever is checked out; both carry everything —
+  only /dlmv differs). Commit on the CURRENT branch, sync the other via worktree,
+  never push feature/storage-move.
