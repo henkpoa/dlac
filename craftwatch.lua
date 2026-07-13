@@ -328,15 +328,20 @@ function M.getGoal() M.loadCraftState(); return M.goal or 'hq'; end
 function M.getCraft() M.loadCraftState(); return M.activeCraft; end
 function M.isEnabled() M.loadCraftState(); return M.enabled == true; end
 
--- Ensure the manifest's craft ladders are current (regenerate once per session:
--- a bar used before the Triggers tab / an older-format manifest would lack the
--- newest fillers). The engine reads whatever autogear.lua holds.
+-- Ensure the manifest's craft ladders are current. Regenerate when the on-disk
+-- schema is older than this build (a fmtver-5 manifest lacks the fmtver-6
+-- head/back skill-up fillers -- exactly why Bonze Cape / Midras's Helm didn't
+-- equip). Checked on every select/enable (autoLoad is cached, so it's cheap);
+-- the engine then reads the fresh autogear.lua.
 local function ensureManifestFresh()
-    if M._craftRescanned then return; end
-    M._craftRescanned = true;
     pcall(function()
         local tg = require('dlac\\triggersui');
-        if type(tg.rescanAutogear) == 'function' then tg.rescanAutogear(); end
+        if type(tg.rescanAutogear) ~= 'function' then return; end
+        local stale = (type(tg.manifestStale) ~= 'function') or tg.manifestStale();
+        if stale or not M._craftRescanned then
+            M._craftRescanned = true;
+            tg.rescanAutogear();
+        end
     end);
 end
 

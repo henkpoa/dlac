@@ -229,6 +229,7 @@ local function loadItemTexture(itemId)
     return texCache[itemId];
 end
 
+
 -- The 8-element wheel: the icon for VIRTUAL slot entries (dlac:AutoIridescence /
 -- dlac:AutoObi) -- one dot per element (classic hues) around a bright core,
 -- painted with the window draw list (no texture to load). x may be an Ashita
@@ -1393,9 +1394,32 @@ local function renderHeaderButtons()
     local needSetup = (jobSetupState() ~= 'ok');
     local btns = {};
     if macrob ~= nil then
-        btns[#btns+1] = { l = macrob.label(), w = 108,   -- 'Macro 20-10' must not clip
-          tip = 'Macro book & set for the CURRENT job -- saved per job and applied\nautomatically on login and every job change (replaces the /macro lines\npeople put in profile OnLoad). Jobs you don\'t manage are never touched.',
-          fn = function() macrob.open(); end };
+        btns[#btns+1] = { w = 26,   -- small book icon (matches the warp button size)
+          render = function()
+              local h = nil; pcall(function() h = require('dlac\\filetex').handle('macrobook'); end);
+              local clicked = false;
+              if h ~= nil then pcall(function() clicked = imgui.ImageButton(h, { 16, 16 }); end);
+              else clicked = imgui.Button(macrob.label() .. '##hdrmb', { 26, 22 }); end
+              if imgui.IsItemHovered() then
+                  imgui.SetTooltip(macrob.label() .. '\n\nMacro book & set for the CURRENT job -- saved per job and applied\nautomatically on login and every job change (replaces the /macro lines\npeople put in profile OnLoad). Jobs you don\'t manage are never touched.');
+              end
+              if clicked then macrob.open(); end
+          end };
+    end
+    do   -- craft bar toggle (small helmet icon, warp-button size)
+        btns[#btns+1] = { w = 26,
+          render = function()
+              local h = nil; pcall(function() h = require('dlac\\filetex').handle('craftbar'); end);
+              local clicked = false;
+              if h ~= nil then pcall(function() clicked = imgui.ImageButton(h, { 16, 16 }); end);
+              else clicked = imgui.Button('Cft##hdrcb', { 26, 22 }); end
+              if imgui.IsItemHovered() then
+                  imgui.SetTooltip('Craft bar -- pick a craft + goal and switch it on to wear that craft\'s\ngear (skill / HQ / NQ). Toggle this floating bar; also /dl craft bar.');
+              end
+              if clicked then
+                  pcall(function() local cw = require('dlac\\craftwatch'); cw.barVisible = not (cw.barVisible == true); end);
+              end
+          end };
     end
     if useit ~= nil then
         btns[#btns+1] = { w = 26,

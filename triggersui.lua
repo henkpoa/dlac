@@ -849,6 +849,15 @@ function M.rescanAutogear()
     pcall(function() require("dlac\\gearcheck").chatWarn(false); end);
 end
 
+-- Is the on-disk manifest an older schema than this build writes? (craftwatch
+-- uses this to force a regen before the engine reads stale craft ladders --
+-- e.g. a fmtver-5 manifest lacks the fmtver-6 head/back skill-up fillers.)
+function M.manifestStale()
+    autoLoad();
+    return (type(auto.data) ~= 'table') or (auto.data.fmtver ~= AUTO_FMT);
+end
+M.currentFmt = function() return AUTO_FMT; end
+
 -- The Automations section (rendered under the handler sections): the manifest data +
 -- rescan. The ON/OFF switches live per set (Sets tab -> Auto staff / Auto obi).
 -- ---------------------------------------------------------------------------
@@ -1156,15 +1165,13 @@ local function renderAutomations(noHeader)
             -- selected, the slot-grid pattern). Item icons stand in for the
             -- synth-skill glyphs until PNG assets land; the tooltip names the
             -- craft and guild for anyone unsure.
-            -- Click a craft = SELECT it for viewing AND equip its gear now
-            -- (same action as the floating bar). The equipped craft (from
-            -- craftwatch) shows full brightness.
-            local cwact = nil;
-            pcall(function() cwact = require('dlac\\craftwatch').getCraft(); end);
-            imgui.TextColored(COL_HEADER, 'Click a craft to equip its gear:');
+            -- Panel icons are ONLY a section switch (Henrik): clicking one just
+            -- changes which craft's items are shown below. It does NOT set the
+            -- active/goal craft -- that is the craft BAR's job.
+            imgui.TextColored(COL_HEADER, 'Show items for craft:');
             imgui.SameLine(0, 10);
             for i, cr in ipairs(CRAFT_UI.order) do
-                local sel = (CRAFT_UI.selected == cr) or (cwact == cr);
+                local sel = (CRAFT_UI.selected == cr);
                 local tex = CRAFT_UI.texture(cr);
                 local drew = false;
                 if tex ~= nil then
@@ -1185,11 +1192,8 @@ local function renderAutomations(noHeader)
                     local rec = (deps.lookupByName ~= nil) and deps.lookupByName(CRAFT_UI.torque[cr]) or nil;
                     deps.renderIcon(rec and rec.Id or nil, 32);
                 end
-                if imgui.IsItemClicked() then
-                    CRAFT_UI.selected = cr;
-                    pcall(function() require('dlac\\craftwatch').selectCraft(cr); end);   -- equips now
-                end
-                if imgui.IsItemHovered() then imgui.SetTooltip(cr .. '  -- click to equip this craft\'s gear'); end
+                if imgui.IsItemClicked() then CRAFT_UI.selected = cr; end   -- view only
+                if imgui.IsItemHovered() then imgui.SetTooltip(cr .. '  -- show this craft\'s items (set the active craft on the craft bar)'); end
                 if i < #CRAFT_UI.order then imgui.SameLine(0, 14); end
             end
             imgui.Spacing();
