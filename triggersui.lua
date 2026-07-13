@@ -1209,7 +1209,7 @@ local function renderAutomations(noHeader)
             local hasKI, kiSynced = false, false;
             pcall(function()
                 local cw2 = require('dlac\\craftwatch');
-                kiSynced = (cw2.kiBlocksSeen or 0) > 0;
+                kiSynced = (type(cw2.kiReady) == 'function') and cw2.kiReady() or ((cw2.kiBlocksSeen or 0) > 0);
                 if kiId ~= false then hasKI = cw2.hasKeyItem(kiId) == true; end
             end);
             if kiId == false then

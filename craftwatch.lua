@@ -77,10 +77,67 @@ end
 --   u32 header | u8 avail[0x40] | u8 examined[0x40] | u8 blockOffset | pad.
 -- ---------------------------------------------------------------------------
 M.keyItems = {};        -- ki id -> true
-M.kiBlocksSeen = 0;     -- 0 = no 0x055 yet this session (zone once)
+M.kiBlocksSeen = 0;     -- 0 = no 0x055 yet this session
+M.kiPersisted = 0;      -- entries restored from the per-char mirror at startup
+
+-- Persistence (<char>\dlac\keyitems.lua): key items are permanent unlocks
+-- (Henrik), so the last-known table is restored at startup -- the panel works
+-- without a fresh zone-in -- and every 0x055 resync corrects and re-saves it.
+local _kiLoaded, _kiLoadAt = false, -10;
+local function kiCharDir()
+    local dir = nil;
+    pcall(function()
+        local party = AshitaCore:GetMemoryManager():GetParty();
+        local name, id = party:GetMemberName(0), party:GetMemberServerId(0);
+        if name == nil or name == '' or id == nil then return; end
+        dir = string.format('%sconfig\\addons\\luashitacast\\%s_%u\\dlac\\',
+            AshitaCore:GetInstallPath(), name, id);
+    end);
+    return dir;
+end
+
+local function kiLoad()
+    if _kiLoaded then return; end
+    local now = os.clock();
+    if now - _kiLoadAt < 5 then return; end   -- pre-login: char unknown, retry gently
+    _kiLoadAt = now;
+    pcall(function()
+        local dir = kiCharDir();
+        if dir == nil then return; end
+        _kiLoaded = true;                     -- one real attempt; packets take over after
+        local chunk = loadfile(dir .. 'keyitems.lua');
+        if chunk == nil then return; end
+        local ok, t = pcall(chunk);
+        if ok and type(t) == 'table' and M.kiBlocksSeen == 0 then
+            local n = 0;
+            for id, v in pairs(t) do
+                if v == true and type(id) == 'number' then M.keyItems[id] = true; n = n + 1; end
+            end
+            M.kiPersisted = n;
+        end
+    end);
+end
+
+local function kiSave()
+    pcall(function()
+        local dir = kiCharDir();
+        if dir == nil then return; end
+        local ids = {};
+        for id in pairs(M.keyItems) do ids[#ids + 1] = id; end
+        table.sort(ids);
+        local parts = {};
+        for _, id in ipairs(ids) do parts[#parts + 1] = string.format('[%d]=true,', id); end
+        local f = io.open(dir .. 'keyitems.lua', 'wb');
+        if f == nil then return; end
+        f:write('-- dlac key-item mirror (0x055-tracked; permanent unlocks persist across reloads)\nreturn {'
+            .. table.concat(parts, '') .. '}\n');
+        f:close();
+    end);
+end
 
 function M.onKeyItemPacket(data)
     if type(data) ~= 'string' or #data < 0x85 then return; end
+    kiLoad();                                 -- adopt the mirror before the first live block
     local base = (string.byte(data, 0x84 + 1) or 0) * 512;
     for x = 0, 0x3F do
         local b = string.byte(data, 0x04 + x + 1) or 0;
@@ -94,10 +151,19 @@ function M.onKeyItemPacket(data)
         end
     end
     M.kiBlocksSeen = M.kiBlocksSeen + 1;
+    kiSave();
 end
 
 function M.hasKeyItem(id)
+    kiLoad();
     return M.keyItems[id] == true;
+end
+
+-- Ownership data available? Live packets beat the mirror; the mirror beats
+-- nothing (the panel shows 'zone once' only when BOTH are absent).
+function M.kiReady()
+    kiLoad();
+    return M.kiBlocksSeen > 0 or (M.kiPersisted or 0) > 0;
 end
 
 -- ---------------------------------------------------------------------------
