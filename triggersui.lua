@@ -952,15 +952,19 @@ local CRAFT_UI = {
                 Goldsmithing = 'Goldsmiths Ring', Clothcraft = 'Tailors Ring',
                 Leathercraft = 'Tanners Ring', Bonecraft = 'Bonecrafters Ring',
                 Alchemy = 'Alchemists Ring', Cooking = 'Chefs Ring' },
-    -- Key item NAMES only: the id is resolved at runtime against the CLIENT's
-    -- own key-item strings (reverse GetString lookup, the points-addon idiom).
-    -- Hardcoded enum ids field-failed: the public repo's modern enum numbers
-    -- don't match this server's older LSB lineage.
-    ki      = { Woodworking = 'Way of the Carpenter', Smithing = 'Way of the Blacksmith',
-                Goldsmithing = 'Way of the Goldsmith', Clothcraft = 'Way of the Weaver',
-                Leathercraft = 'Way of the Tanner', Bonecraft = 'Way of the Boneworker',
-                Alchemy = 'Way of the Alchemist', Cooking = 'Way of the Culinarian' },
-    _kiId   = {},   -- resolved name -> id cache (false = not found in this client)
+    -- Guild-point key items per craft (ids from the server's own key_item enum;
+    -- ownership read from craftwatch's 0x055 tracker). Desynth (purification/
+    -- ensorcellment), recipe-support skills, and the Way-of-the reward path.
+    guildKI = {
+        Woodworking  = { {1985,'Wood Ensorcellment'},{1986,'Lumberjack'},{1987,'Boltmaker'},{1988,'Way of the Carpenter'} },
+        Smithing     = { {1992,'Metal Purification'},{1993,'Metal Ensorcellment'},{1994,'Chainwork'},{1995,'Sheeting'},{1996,'Way of the Blacksmith'} },
+        Goldsmithing = { {2000,'Gold Purification'},{2001,'Gold Ensorcellment'},{2002,'Clockmaking'},{2003,'Way of the Goldsmith'} },
+        Clothcraft   = { {2008,'Cloth Purification'},{2009,'Cloth Ensorcellment'},{2010,'Spinning'},{2011,'Fletching'},{2012,'Way of the Weaver'} },
+        Leathercraft = { {2016,'Leather Purification'},{2017,'Leather Ensorcellment'},{2018,'Tanning'},{2019,'Way of the Tanner'} },
+        Bonecraft    = { {2024,'Bone Purification'},{2025,'Bone Ensorcellment'},{2026,'Filing'},{2027,'Way of the Boneworker'} },
+        Alchemy      = { {2032,'Anima Synthesis'},{2033,'Alchemic Purification'},{2034,'Alchemic Ensorcellment'},{2035,'Trituration'},{2036,'Concoction'},{2037,'Iatrochemistry'},{2038,'Miasmal Counteragent Recipe'},{2039,'Way of the Alchemist'} },
+        Cooking      = { {2040,'Raw Fish Handling'},{2041,'Noodle Kneading'},{2042,'Patissier'},{2043,'Stewpot Mastery'},{2044,'Way of the Culinarian'} },
+    },
     universals = { 'Kupo Shield', 'Bonze Cape', 'Shapers Shawl', 'Midrass Helm +1' },
     txt = { [0] = 'nothing applicable', 'craft-specific gear', 'Artisans (NQ)', 'Artisans +1', 'Kupo Shield' },
     selected = 'Alchemy',
@@ -1198,34 +1202,23 @@ local function renderAutomations(noHeader)
             end
             imgui.Spacing();
             local selCr = CRAFT_UI.selected;
-            local kiName = CRAFT_UI.ki[selCr];
-            local kiId = CRAFT_UI._kiId[kiName];
-            if kiId == nil then                              -- resolve once per name, client-authoritative
-                kiId = false;
-                pcall(function()
-                    local id = AshitaCore:GetResourceManager():GetString('keyitems.names', kiName, 2);
-                    if type(id) == 'number' and id >= 0 then kiId = id; end
-                end);
-                CRAFT_UI._kiId[kiName] = kiId;
-            end
-            -- Ownership from craftwatch's 0x055 tracker (the SDK HasKeyItem
-            -- memory read is dead on this client -- see craftwatch.lua).
-            local hasKI, kiSynced = false, false;
+            -- Guild key items for this craft (ownership from the 0x055 tracker).
+            local cw2, kiSynced = nil, false;
             pcall(function()
-                local cw2 = require('dlac\\craftwatch');
-                kiSynced = (type(cw2.kiReady) == 'function') and cw2.kiReady() or ((cw2.kiBlocksSeen or 0) > 0);
-                if kiId ~= false then hasKI = cw2.hasKeyItem(kiId) == true; end
+                cw2 = require('dlac\\craftwatch');
+                kiSynced = (type(cw2.kiReady) == 'function') and cw2.kiReady() or ((cw2 and cw2.kiBlocksSeen or 0) > 0);
             end);
-            if kiId == false then
-                imgui.TextColored(COL_DIM, 'Key item: ' .. kiName .. ' (unknown to this client)');
-            elseif not kiSynced then
-                imgui.TextColored(COL_DIM, 'Key item: ' .. kiName .. ' -- zone once to sync key items.');
-            else
-                imgui.TextColored(hasKI and GREEN_OWNED or COL_ERR,
-                    (hasKI and 'Key item: ' or 'Key item MISSING: ') .. kiName);
-            end
-            if imgui.IsItemHovered() then
-                imgui.SetTooltip('Guild-point key item -- the ' .. selCr .. ' 100 reward path (trade at Nudara, Bastok Markets).');
+            imgui.TextColored(COL_HEADER, 'Guild key items:');
+            if not kiSynced then imgui.SameLine(0, 6); imgui.TextColored(COL_DIM, '(zone once to sync)'); end
+            local kil = CRAFT_UI.guildKI[selCr] or {};
+            for i, ki in ipairs(kil) do
+                local has = false;
+                if cw2 ~= nil then pcall(function() has = cw2.hasKeyItem(ki[1]) == true; end); end
+                local col = (not kiSynced) and COL_DIM or (has and GREEN_OWNED or COL_ERR);
+                local mark = (not kiSynced) and '?' or (has and '+' or 'x');
+                imgui.TextColored(col, '[' .. mark .. '] ' .. ki[2]);
+                -- two per row to stay compact
+                if i % 2 == 1 and i < #kil then imgui.SameLine(230); end
             end
             imgui.Spacing();
             local its = CRAFT_UI.items(selCr);
