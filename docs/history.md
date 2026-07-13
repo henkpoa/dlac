@@ -181,6 +181,103 @@ fixed: the engine's wrapper merge mutated the SHARED gear.lua record (an item wr
 differently in two sets leaked fields between them) — it now merges onto a copy.
 Tests G1-G12 (the suite now loads the real dispatch.lua headlessly).
 
+## Session "crafting system + catalog pipeline" (2026-07-11 → 07-13, on `main`)
+
+**Theme:** a long multi-day arc — hardened the catalog/data pipeline, shipped the whole
+crafting-gear system (detection → manual craft bar → engine overlay → guild-points/key-item
+panel), and fixed several load-bearing bugs. All landed on **`main`** and pushed to GitHub
+(`henkpoa/dlac`). `feature/storage-move` stays local, untouched.
+
+### Catalog & data pipeline
+- **Distribution model, ruled by Henrik (memory: catalog-distribution-model):** the addon
+  MUST NEVER fetch from the API at runtime. Only Henrik scrapes (`tools/apicrawl.py`), ships
+  `catalog.lua` in the addon update; the ONLY live-parsed data is augments. Client-side
+  fetching was rejected a 2nd time — do not re-propose.
+- `apicrawl.py` gained `--gaps` (fetch ids in every char's `<char>\dlac\gear.lua` the cache
+  lacks/has as 404 — the fix for "new item shows no stats") and `--refresh N` (re-fetch cache
+  older than N days). `equipment_ids.txt` is a STATIC retail-era dump; CatsEyeXI customs
+  (e.g. Hieratic Ring 23994, and the 39xxx block) aren't in it → `--gaps` or a GM
+  `SELECT itemid FROM item_equipment` dump, or a full `--range` sweep. **Item ids are u16
+  (cap 65535)**; 28671 = end of retail equipment DAT block; customs live in unused holes
+  (23994) and past the end (39xxx).
+- **Reproducibility bug fixed:** DT-family mods are mixed-scale (percent×100 vs literal) —
+  the builder now applies the `|v|>=100` rule (same as SkillchainDamage) so a rebuild
+  reproduces `catalog.lua` byte-for-byte. Per-item desc-vs-DB drift fixups live in
+  `MOD_STRIP`/`MOD_ADD` (Neph. Grip 22198 has phantom craft mods; Hocho/Debahocho lack
+  their Cooking mod) — KEEP IN SYNC across apicrawl.py + apiscan.py. Report drift to GMs.
+
+### Crafting stat family
+- Mapped (Henrik-approved names): 8 craft skills (`WoodworkingSkill`…`CookingSkill`),
+  `SynthHQRate`, `SynthMaterialLoss`, `AntiHQ<craft>` (×8), `ConserveIngredient`
+  (CatsEyeXI custom **modid 2016**). `AntiHQ` = a hard "Cannot Synthesize HQ" block.
+  Universal pieces carry all 8 per-craft mods individually (there is NO single "all
+  crafts" mod). gearfmt collapses uniform 8-way families to "All Craft Skills+2" /
+  "All Anti-HQ+1" for display only.
+
+### Craft gear system (the big one)
+- **Detection** (`craftwatch.lua`): c2s `0x096` (synth confirm) → crystal+ingredient
+  multiset → `crafts.lua` (9,470 recipes, `tools/gen_craftdb.py` from the server's
+  `synth_recipes.sql`) → craft skill. **Binding-craft/tier calc:** subcraft recipes carry
+  a `skills` map; the craft with the smallest player-skill margin limits the HQ tier
+  (breaks at >11/>31/>51). Detection is now **INFO ONLY**.
+- **DEAD END — auto-equip by detection:** `0x096` is the FIRST packet the synth flow emits
+  (crystal use + ingredient placement are client-local), so nothing can dress you for the
+  synth that triggered it. Do not revive detection-driven equipping.
+- **MANUAL model (Henrik's design):** the floating **craft bar** (`craftbar.lua`, toggle
+  `/dl craft bar` or the header helmet icon) + the Automations→AutoCraft panel let you pick
+  a craft + goal (**hq / nq / skillup**) and flip an on/off switch. craftwatch WRITES
+  `<char>\dlac\craftstate.lua` (`{craft, goal, enabled}`); state persists (enabled is
+  session-only, starts OFF).
+- **THE architecture — engine OVERLAY (dispatch v31):** don't fight the engine, BE it.
+  `dispatch.craftOverlay` reads `craftstate.lua` and, on every Default dispatch, overlays
+  the resolved craft gear (`dlac:AutoCraft` per slot from the manifest craft ladders) LAST
+  = top priority, even with no trigger match. So the engine WEARS the craft gear; nothing
+  reverts it; switch off → overlay gone → normal Default returns.
+  - Why not commands/locks: `/lac disable` blocks `/lac equip` on that slot; `/dl lock` is
+    set in the ADDON state and its command is `e.blocked` before reaching the LAC state that
+    does the revert. Both dead ends — the overlay is the answer.
+- **Manifest craft ladders** (`triggersui.lua` autoCommit, `AUTO_FMT` now 6): per slot →
+  craft → goal, best-first. Skill-up items (Midras's Helm, Bonze Cape, Shapers Shawl) fill
+  hq/nq slots as LOW-priority fillers (`floor(gain*0.3)`, always < a skill=1 item's 10) so
+  a real craft-skill item (Chef's Hat for HQ head) still wins.
+- **THE bug that hid #2 for many rounds (hard rule 8):** `autoCommit` read `CRAFT_UI.goal`,
+  but `CRAFT_UI` is a `local` declared LATER in the file → nil global → `.goal` threw →
+  `rescanAutogear`'s pcall swallowed it → the manifest never regenerated past `fmtver 5`
+  (whose head/back only had the skillup goal). Forward-reference to a later local = silent
+  nil global. Fixed; watch for this class.
+
+### Key items & guild data
+- **SDK `HasKeyItem` is DEAD on this client** (returns empty bitfield; field-verified,
+  "owned total 0"). craftwatch keeps its OWN key-item table from **s2c `0x055`** (FindAll's
+  pattern: `u32 header | avail[0x40] | examined[0x40] | blockOffset`; id = block*512 + bit),
+  persisted per char (`keyitems.lua`) so it survives reloads without a zone. KI names
+  resolve via the client's own strings; the guild-KI panel lists desynth + recipe skills +
+  Way-of-the per craft (ids from the server `key_item` enum), ownership from the tracker.
+- **Guild points per craft:** s2c **`0x113`** (currencies_1), 8 int32 LE at absolute
+  offsets `0x24..0x40` ('Weaving' = Clothcraft), persisted (`guildpoints.lua`). Fetched by
+  sending header-only c2s **`0x10F`** ourselves (server `validate()` ungated — exactly what
+  opening the currency menu does). **MANUAL ONLY** right now (`/dl craft gp`) pending
+  Henrik's turn-in verification — see Standing loose ends. Offsets locked by tests T27–T33.
+
+### UI / misc
+- Sets: **duplicate-row button (D)** — one item across several level ranges (Rajas 30-54,
+  Lava's 55-74, Rajas 75+); prominent `[Lv 30-54]` badges (green = live now).
+- **Sub-slot HARD RULE (reverted 3×, ADR 0006 addendum, memory: sub-slot-building-never-gated):**
+  while BUILDING, the Sub picker ALWAYS offers every shield/grip/one-hander — never gate on
+  DW / Main shape / empty Main. The `A* HARD RULE` tests fail on any re-gating.
+- Set-entry names resolve **case-insensitively**; a missing name warns ONCE (not per rebuild).
+- Augment stats now show (gold `Aug:` tag) in Sets rows, the +Add picker, and Alternatives.
+- Header: Macro button → small book icon; new craft-bar helmet toggle. `filetex.lua` loads
+  `assets/*.png` (MUST retain the texture object — storing only the numeric handle GC'd the
+  texture and hard-crashed the game on ImageButton).
+- Craft glyphs: FFXIV Set-8 class icons in `assets/craft/` (Miner = Bonecraft). Panel craft
+  icons are a VIEW-ONLY section switch (centered, no label); the craft BAR sets the active
+  craft. Artisans Torque/Ring owned ⇒ the guild torques/rings show green (synergy implies
+  you owned them all).
+
+**Test suite: 189 checks, all green.** Sections T (craftwatch), V (AutoCraft overlay
+resolution), W (tier/binding calc) added this arc.
+
 ## Standing loose ends (as of 2026-07-10, end of day)
 
 - **feature/storage-move**: local-only, awaiting GM verdict. Before any merge: strip the

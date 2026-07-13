@@ -114,10 +114,22 @@ handshake).
 - A GM is currently evaluating the addon for server approval — polish requests from
   that channel (like the word-wrap fix) take priority.
 
-## Current state (as of 2026-07-10 end of day)
+## Current state (as of 2026-07-13 end of day)
 
-- **main**: healthy; test suite green. NOTE: main was ~9 commits ahead of
-  `origin/main` at write time — check/ask before assuming GitHub is current.
+- **main**: healthy; **189 tests green**; pushed to `origin/main` (henkpoa/dlac) —
+  current as of this session. The whole **crafting-gear system** landed here (see
+  history.md "crafting system + catalog pipeline"): read that section before touching
+  craftwatch/craftbar/dispatch-overlay/triggersui-craft code.
+  - **Craft gear model (know this before editing):** MANUAL — you pick craft + goal +
+    on/off in the craft bar (`craftbar.lua`) or Automations panel; craftwatch WRITES
+    `<char>\dlac\craftstate.lua`; the **dispatch engine OVERLAYS** the craft gear on
+    Default at top priority (v31, `dispatch.craftOverlay`). Do NOT re-add
+    command/lock/`/lac disable` equipping (all dead ends), and do NOT revive
+    detection-driven auto-equip (`0x096` is the first synth packet — too late).
+  - New this arc: `craftwatch.lua`, `craftbar.lua`, `crafts.lua`, `filetex.lua`,
+    `assets/craft/*.png`, `assets/{macrobook,craftbar}.png`, `tools/gen_craftdb.py`.
+  - **Verify-then-automate:** guild-points self-request (c2s `0x10F`) is MANUAL only
+    (`/dl craft gp`) pending a turn-in check — see Standing loose ends.
 - **feature/storage-move**: gearmove v8 + gearcheck + the gearui modularization
   commits. Local-only pending GM verdict; strip TEMP probes (`/dlmv`, RMB debug,
   branch-print) before any merge. The Storage-into-Provenance packet experiment is
