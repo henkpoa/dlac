@@ -735,10 +735,16 @@ local function autoCommit()
             end
         end
     end);
-    -- The crafting GOAL is a single manifest field (Henrik: ONE variable, one
-    -- of hq/nq/skillup selected, no mode-system chatter). The engine hot-
-    -- reloads this file, so a combo click propagates silently within ~1s.
-    local goal = CRAFT_UI.goal or (type(auto.data) == 'table' and auto.data.craftGoal) or 'hq';
+    -- The crafting GOAL persisted for the trigger-set path (the manual overlay
+    -- reads craftstate.lua instead). Read it from craftwatch -- NOT from
+    -- CRAFT_UI, which is declared LATER in this file: referencing it here made
+    -- CRAFT_UI a nil global and threw, aborting autoCommit so the manifest
+    -- never regenerated (hard rule 8 -- the fmtver-5 / no-filler bug).
+    local goal = 'hq';
+    pcall(function()
+        local cw = require('dlac\\craftwatch');
+        if type(cw.getGoal) == 'function' then goal = cw.getGoal(); end
+    end);
     if goal ~= 'nq' and goal ~= 'skillup' then goal = 'hq'; end
     local L = {
         '-- dlac automation manifest -- written by the GUI (Triggers tab > Automations).',
@@ -1217,8 +1223,8 @@ local function renderAutomations(noHeader)
                 local col = (not kiSynced) and COL_DIM or (has and GREEN_OWNED or COL_ERR);
                 local mark = (not kiSynced) and '?' or (has and '+' or 'x');
                 imgui.TextColored(col, '[' .. mark .. '] ' .. ki[2]);
-                -- two per row to stay compact
-                if i % 2 == 1 and i < #kil then imgui.SameLine(230); end
+                -- two per row; +30% column width so longer names never overlap
+                if i % 2 == 1 and i < #kil then imgui.SameLine(300); end
             end
             imgui.Spacing();
             local its = CRAFT_UI.items(selCr);
