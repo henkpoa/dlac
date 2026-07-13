@@ -103,6 +103,46 @@ local seenLevels = {};
 local CHECK_MSG = { [0xAA] = 1, [0xAB] = 1, [0xAC] = 1, [0xAD] = 1, [0xAE] = 1,
                     [0xAF] = 1, [0xB0] = 1, [0xB1] = 1, [0xB2] = 1 };
 
+-- learned EVA bounds from the /check brackets. The server compares RAW
+-- mainhand ACC vs RAW EVA (no level correction): High Eva <=> EVA-30 > ACC,
+-- Low Eva <=> EVA+10 <= ACC. The public-repo formula underestimates some
+-- live mobs (field 2026-07-14: Wajaom Tiger Lv69 -- model 269, bracket
+-- proved >=287; private tuning we cannot read), so every check reply narrows
+-- [lo,hi] per (zone, mob, level) and the report clamps the model into the
+-- learned bounds. Session-scoped. The learn runs BEFORE the pending report
+-- fires, so even a first-ever engage prints bracket-corrected numbers.
+local learned = {};   -- 'zone/squashedname@lvl' -> { lo, hi }
+local HIGH_EVA = { [0xAA] = 1, [0xAB] = 1, [0xAC] = 1 };
+local LOW_EVA  = { [0xB0] = 1, [0xB1] = 1, [0xB2] = 1 };
+
+local function learnKey(zone, name, lvl)
+    return tostring(zone) .. '/' .. squash(name) .. '@' .. tostring(lvl);
+end
+
+local function learnEva(zone, tgt, lvl, msg)
+    if M.myAcc == nil or lvl == nil or lvl <= 0 then return; end
+    local name = '';
+    pcall(function() name = AshitaCore:GetMemoryManager():GetEntity():GetName(tgt) or ''; end);
+    if name == '' then return; end
+    local k = learnKey(zone, name, lvl);
+    local lo, hi = 0, 9999;
+    if HIGH_EVA[msg] ~= nil then
+        lo = M.myAcc + 31;
+    elseif LOW_EVA[msg] ~= nil then
+        hi = M.myAcc - 10;
+    else                                                          -- neutral eva bracket
+        lo, hi = M.myAcc - 9, M.myAcc + 30;
+    end
+    local b = learned[k] or { lo = 0, hi = 9999 };
+    b.lo = math.max(b.lo, lo);
+    b.hi = math.min(b.hi, hi);
+    if b.lo > b.hi then                                           -- contradicts older bounds
+        b.lo, b.hi = lo, hi;                                      -- (regear/repop): trust newest
+    end
+    learned[k] = b;
+    dbg(('bracket: %s EVA in [%d..%d]'):format(k, b.lo, b.hi));
+end
+
 -- /checkparam reply burst (server enums/msg_basic.h): PRIMARY 712 carries the
 -- player's CURRENT mainhand ACC (gear+food+buffs) as p1. The rest are muted
 -- alongside it when our auto-checkparam fired them.
@@ -146,6 +186,17 @@ local function report(actIndex, why, full)
         evHi = evLo;
         exact = '*';                                              -- * = level observed live
     end
+    local braNote = '';
+    if exact ~= '' then                                           -- clamp into bracket-learned bounds
+        local b = learned[learnKey(zone, name, lo)];
+        if b ~= nil then
+            local e2 = math.max(b.lo, math.min(b.hi, evLo));
+            if e2 ~= evLo then
+                braNote = (' [bracket-corrected, model %d]'):format(evLo);
+                evLo, evHi = e2, e2;
+            end
+        end
+    end
     local is2h = mainhandIs2H();
     local add = is2h and 40 or 48;                                -- to 95% / 99%
     local needLo, needHi = evLo + add, evHi + add;
@@ -183,9 +234,9 @@ local function report(actIndex, why, full)
             you = you .. (' ~%.0f%% hit'):format(hit);
         end
     end
-    say(('acc%s: %s Lv%s%s (%s%s)  EVA %s  ->  ACC %s to cap (%s %d%%)%s%s'):format(
+    say(('acc%s: %s Lv%s%s (%s%s)  EVA %s%s  ->  ACC %s to cap (%s %d%%)%s%s'):format(
         why or '', name, band(lo, hi), exact, desc, nm == 1 and ', NM' or '',
-        band(evLo, evHi), band(needLo, needHi), is2h and '2H' or '1H/H2H', cap, corr, you));
+        band(evLo, evHi), braNote, band(needLo, needHi), is2h and '2H' or '1H/H2H', cap, corr, you));
 end
 
 -- ---------------------------------------------------------------------------
@@ -251,8 +302,13 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
                 tgt, msg, p2, p1,
                 (tgt == muteIdx and os.clock() < muteUntil) and ' [mute]' or '',
                 (pending ~= nil and pending.idx == tgt) and ' [pending hit]' or ''));
-            if CHECK_MSG[msg] ~= nil and hi == 0 and p1 > 0 and p1 < 200 then
-                seenLevels[tgt] = p1;
+            if CHECK_MSG[msg] ~= nil then
+                if hi == 0 and p1 > 0 and p1 < 200 then
+                    seenLevels[tgt] = p1;
+                end
+                local zone = -1;
+                pcall(function() zone = AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0); end);
+                learnEva(zone, tgt, seenLevels[tgt], msg);        -- narrows EVA bounds BEFORE the report fires
             end
             if tgt == muteIdx and os.clock() < muteUntil then
                 e.blocked = true;                                 -- our auto-check: keep chat clean
