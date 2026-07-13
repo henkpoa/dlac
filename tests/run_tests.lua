@@ -761,6 +761,17 @@ check('T40 two copies serve both roles', c6 == 2 and t6[1] == 2, true);
 local curT = craftwatch.onSynth(4096, { 1165, 1165 }, 40);
 check('T41 current keeps crystal', curT.crystal, 4096);
 check('T42 current keeps ings order', curT.ings[1] == 1165 and #curT.ings == 2, true);
+-- Replay feedback: 0x06F combine answer, result id u16 @0x08 (bytes from the
+-- field dump that produced Sapara +1 = 16801). Only a PENDING replay resolves.
+local ansPkt = string.char(0x6F, 0x1C, 0x5D, 0x52, 0x00, 0x00, 0x01, 0x00, 0xA1, 0x41, 0x00, 0x00)
+    .. string.rep('\0', 44);
+check('T43 answer ignored when idle', craftwatch.onCombineAnswer(ansPkt), nil);
+craftwatch._pending = { at = 41, name = 'Sapara' };
+check('T44 answer resolves result id', craftwatch.onCombineAnswer(ansPkt), 16801);
+check('T45 pending cleared', craftwatch._pending, nil);
+craftwatch._pending = { at = 41, name = 'Sapara' };
+local brokePkt = string.char(0x6F, 0x1C, 0x5D, 0x52, 0x00, 0x00, 0x01, 0x00, 0xFF, 0x73, 0x00, 0x00);
+check('T46 break (29695) -> 0', craftwatch.onCombineAnswer(brokePkt), 0);
 
 -- ---------------------------------------------------------------------------
 -- U. Set-entry name resolution -- case-insensitive fallback + quiet-once warn.

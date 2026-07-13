@@ -194,7 +194,10 @@ function M.render()
                     imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, string.format('  (%s%s%s)',
                         ls.skill, ls.lv and (' ' .. ls.lv) or '', ls.desynth and ', desynth' or ''));
                 end
-                if (ls.readyIn or 0) > 0 then
+                if ls.resultIn ~= nil then      -- replay in flight: the visible "it IS happening"
+                    imgui.SameLine(0, 8);
+                    imgui.TextColored({ 0.45, 0.80, 0.45, 1 }, string.format('-- synthesizing (~%ds)', math.ceil(ls.resultIn)));
+                elseif (ls.readyIn or 0) > 0 then
                     imgui.SameLine(0, 8);
                     imgui.TextColored({ 0.55, 0.55, 0.58, 1 }, string.format('-- ready in %ds', math.ceil(ls.readyIn)));
                 end

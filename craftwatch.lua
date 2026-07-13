@@ -554,6 +554,8 @@ end
 -- session. name comes from the recipe's NQ result id (crafts.lua 'r', name
 -- resolved from the client's own resources); nil name = unknown recipe
 -- (replay still works -- the server, not the db, judges the synth).
+-- resultIn: seconds until the in-flight replay's result should land (~17s
+-- arc, field-verified), nil when nothing is in flight.
 function M.lastSynth()
     local cur = M.current;
     if cur == nil or M._lastRaw == nil or cur.crystal == nil then return nil; end
@@ -562,7 +564,33 @@ function M.lastSynth()
         name = (rec ~= nil and rec.r ~= nil) and itemName(rec.r) or nil,
         skill = cur.skill, lv = cur.lv, desynth = cur.desynth,
         readyIn = math.max(0, SYNTH_COOLDOWN - (os.clock() - (cur.at or 0))),
+        resultIn = (M._pending ~= nil) and math.max(0, 17 - (os.clock() - M._pending.at)) or nil,
     };
+end
+
+-- Replay feedback. A menu-less synth may show NO animation, and the server
+-- REJECTS silently (validate() just drops: moving / wrong status / already
+-- crafting) -- so after a replay dlac watches for the answer itself. s2c
+-- 0x06F GP_SERV_COMMAND_COMBINE_ANS arrives ~17s in WITH the result item id
+-- (u16 @0x08; field-verified 2026-07-13, Sapara +1 dump). Armed ONLY by
+-- repeatLastSynth -- menu synths have their own UI and stay quiet. No 0x06F
+-- within 25s = the server dropped the request.
+M._pending = nil;   -- { at, name } while a replay is in flight
+
+function M.onCombineAnswer(data)
+    local P = M._pending;
+    if P == nil then return nil; end
+    M._pending = nil;
+    local id = nil;
+    if type(data) == 'string' and #data >= 0x0A then
+        id = (data:byte(0x09) or 0) + (data:byte(0x0A) or 0) * 256;
+    end
+    if id == nil or id == 0 or id == 29695 then   -- 29695 = the server's "no item"
+        say('last synth: finished -- BROKE (no item).');
+        return 0;
+    end
+    say('last synth: complete -- ' .. itemName(id) .. '!');
+    return id;
 end
 
 -- Re-send the last synth: same bytes (HashNo, crystal, ItemNo order), fresh
@@ -614,7 +642,26 @@ function M.repeatLastSynth()
     -- M.current.at, so the cooldown gate re-arms automatically.
     if ok then
         local info = M.lastSynth();
-        say('last synth: repeating ' .. ((info and info.name) or 'the last recipe') .. '.');
+        local nm = (info and info.name) or 'the last recipe';
+        M._pending = { at = os.clock(), name = nm };
+        -- Watchdog: a silent server (validate() reject) must still resolve.
+        pcall(function() ashita.events.unregister('d3d_present', 'dlac-craftwatch-pending'); end);
+        pcall(function()
+            ashita.events.register('d3d_present', 'dlac-craftwatch-pending', function()
+                local P = M._pending;
+                if P == nil then
+                    pcall(function() ashita.events.unregister('d3d_present', 'dlac-craftwatch-pending'); end);
+                    return;
+                end
+                if os.clock() - P.at > 25 then
+                    M._pending = nil;
+                    say('last synth: NO answer from the server after 25s -- it dropped the request');
+                    say('  silently (moving? sitting? mid-craft?). Stand still and try again;');
+                    say('  to capture it: /addon load dlacprobe, /probe synth, then /lastsynth.');
+                end
+            end);
+        end);
+        say('last synth: repeating ' .. nm .. ' -- server-timed, result lands in ~17s.');
     end
     return ok;
 end
@@ -637,7 +684,8 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
 
     ashita.events.register('packet_in', 'dlac-craftwatch-in', function(e)
         if e.id == 0x055 then pcall(function() M.onKeyItemPacket(e.data); end);
-        elseif e.id == 0x113 then pcall(function() M.onCurrencyPacket(e.data); end); end   -- guild points
+        elseif e.id == 0x113 then pcall(function() M.onCurrencyPacket(e.data); end);      -- guild points
+        elseif e.id == 0x06F then pcall(function() M.onCombineAnswer(e.data); end); end   -- replay result
     end);
 
     -- One-shot guild-points fetch on login (turn-in VERIFIED 2026-07-13, see
