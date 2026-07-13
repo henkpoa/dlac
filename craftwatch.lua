@@ -619,8 +619,83 @@ function M.repeatLastSynth()
     return ok;
 end
 
+-- ---------------------------------------------------------------------------
+-- /lastsynth dump -- packet capture around a replay (field tool). The synth
+-- is fully SERVER-TIMED (ai/states/synth_state.cpp: m_synthFinishTime 16s
+-- default minus SYNTH_SPEED mods, then sendSynthDone; the client's c2s 0x059
+-- effect-end is explicitly ignored) -- everything arrives unprompted: the
+-- combine answer at once, then the result/item/status packets ~16s in. The
+-- 22s window covers the arc; every packet BOTH ways is hex-dumped to
+-- <char>\dlac\lastsynth_dump.txt (overwritten per run) for pasting back.
+-- ---------------------------------------------------------------------------
+local DUMP_SECS, DUMP_MAX = 22, 600;
+M._dump = nil;   -- { t0, n, lines } while capturing
+
+local function dumpRecord(dir, id, data, injected)
+    local D = M._dump;
+    if D == nil or type(data) ~= 'string' or D.n >= DUMP_MAX then return; end
+    D.n = D.n + 1;
+    local L = D.lines;
+    L[#L + 1] = string.format('[%7.3fs %s 0x%03X len %d%s]',
+        os.clock() - D.t0, dir, id, #data, injected and ' INJECTED' or '');
+    for off = 0, #data - 1, 16 do
+        local hx, tx = {}, {};
+        for i = off + 1, math.min(off + 16, #data) do
+            local byte = data:byte(i);
+            hx[#hx + 1] = string.format('%02X', byte);
+            tx[#tx + 1] = (byte >= 32 and byte < 127) and string.char(byte) or '.';
+        end
+        L[#L + 1] = string.format('  %04X  %-47s  %s', off, table.concat(hx, ' '), table.concat(tx, ''));
+    end
+end
+
+function M.finishDump(cancelNote)
+    local D = M._dump;
+    if D == nil then return; end
+    M._dump = nil;
+    pcall(function() ashita.events.unregister('d3d_present', 'dlac-craftwatch-dump'); end);
+    if cancelNote ~= nil then say('lastsynth dump: ' .. cancelNote); return; end
+    local dir = kiCharDir();
+    local p = dir and (dir .. 'lastsynth_dump.txt') or nil;
+    local wrote = false;
+    if p ~= nil then
+        wrote = pcall(function()
+            local f = assert(io.open(p, 'wb'));
+            f:write(table.concat(D.lines, '\n') .. '\n');
+            f:close();
+        end);
+    end
+    if wrote then
+        say(string.format('lastsynth dump: %d packets -> %s', D.n, p));
+    else
+        say('lastsynth dump: write FAILED (' .. tostring(p) .. ').');
+    end
+end
+
+function M.startDump()
+    local info = M.lastSynth();
+    M._dump = {
+        t0 = os.clock(), n = 0,
+        lines = {
+            '-- /lastsynth dump ' .. os.date('%Y-%m-%d %H:%M:%S'),
+            '-- replaying: ' .. ((info and info.name) or 'unknown recipe')
+                .. '  (expected: combine answer at once, result ~16s in -- server-timed)',
+            '',
+        },
+    };
+    -- Close on the WALL CLOCK, not packet arrival -- a silent server (the
+    -- interesting failure case) must still produce a finished dump.
+    pcall(function() ashita.events.unregister('d3d_present', 'dlac-craftwatch-dump'); end);
+    ashita.events.register('d3d_present', 'dlac-craftwatch-dump', function()
+        local D = M._dump;
+        if D ~= nil and (os.clock() - D.t0) >= DUMP_SECS then M.finishDump(); end
+    end);
+    say(string.format('lastsynth dump: capturing all packets for %ds...', DUMP_SECS));
+end
+
 if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'function' then
     ashita.events.register('packet_out', 'dlac-craftwatch-out', function(e)
+        if M._dump ~= nil then pcall(function() dumpRecord('OUT', e.id, e.data, e.injected == true); end); end
         if e.id ~= 0x096 then return; end
         pcall(function()
             local crystal, ings = M.decode(e.data);
@@ -632,6 +707,7 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
     end);
 
     ashita.events.register('packet_in', 'dlac-craftwatch-in', function(e)
+        if M._dump ~= nil then pcall(function() dumpRecord('IN ', e.id, e.data, e.injected == true); end); end
         if e.id == 0x055 then pcall(function() M.onKeyItemPacket(e.data); end);
         elseif e.id == 0x113 then pcall(function() M.onCurrencyPacket(e.data); end); end   -- guild points
     end);
@@ -662,6 +738,20 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
     ashita.events.register('command', 'dlac-craftwatch-cmd', function(e)
         pcall(function()
             local raw = string.lower(e.command or '');
+            -- /lastsynth [dump] -- macro-friendly replay of the last captured
+            -- synth (same as the craft bar button). 'dump' also captures every
+            -- packet both ways for DUMP_SECS -- the field tool for verifying
+            -- what the server sends back to an injected 0x096.
+            if raw == '/lastsynth' or raw:match('^/lastsynth%s') ~= nil then
+                e.blocked = true;
+                local lsArg = raw:match('^/lastsynth%s+(%S+)') or '';
+                if lsArg == 'dump' then M.startDump(); end
+                local sent = M.repeatLastSynth();
+                if not sent and M._dump ~= nil then
+                    M.finishDump('nothing was sent (see above) -- capture cancelled.');
+                end
+                return;
+            end
             local a, b, c = raw:match('^/dl%s+(%S+)%s*(%S*)%s*(%S*)');
             if a == nil then a, b, c = raw:match('^/dlac%s+(%S+)%s*(%S*)%s*(%S*)'); end
             if a ~= 'craft' then return; end

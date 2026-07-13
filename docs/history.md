@@ -548,3 +548,16 @@ while cooling, tooltip names the recipe + countdown), and a `Last synth:
 <result> (craft lv) -- ready in Ns` status line under the goals.
 
 **Test suite: 274 checks green** (T34-T42 added).
+
+**Follow-up (same day): `/lastsynth [dump]`.** Bare `/lastsynth` = the button as a
+macro-able command. `dump` arms a 22s capture of EVERY packet both ways (hex +
+direction + relative time + INJECTED marker) to `<char>\dlac\lastsynth_dump.txt`
+(overwritten per run) around the replay -- the field tool for verifying what the
+server sends back. Server-side proof of the window size: the synth is fully
+SERVER-TIMED -- `ai/states/synth_state.cpp` counts down `m_synthFinishTime{16s}`
+(minus SYNTH_SPEED mods) and calls `sendSynthDone` itself; the client's c2s
+`0x059` effect-end is **explicitly ignored** ("handled in synth state"). So the
+combine answer lands at once and the result/item/status packets ~16s in, no
+client participation needed. Capture closes on the WALL CLOCK (d3d_present tick,
+self-unregistering) so a silent server still yields a finished dump; a refused
+replay (cooldown/restock) cancels the capture with a note.

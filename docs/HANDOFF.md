@@ -135,6 +135,8 @@ handshake).
     legal, 15s server cooldown mirrored client-side; one click = one synth). The
     detection-driven auto-equip ban above is unchanged -- this is a manual button.
     crafts.lua rows now carry `r = <result item id>` for the "Last synth:" label.
+    Also `/lastsynth` (macro-able) and `/lastsynth dump` (22s all-packet hex capture
+    to `<char>\dlac\lastsynth_dump.txt` -- synths are server-timed, result ~16s in).
   - **Verify-then-automate — DONE (2026-07-13):** guild-points self-request (c2s
     `0x10F`) turn-in-verified; now auto-fires once on login + on AutoCraft panel
     open (debounced). `/dl craft gp` remains the manual check.
