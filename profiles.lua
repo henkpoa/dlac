@@ -164,23 +164,140 @@ function M.storageExists()
     return readFile(M.pointerPath()) ~= nil;
 end
 
--- Best-effort list of profile folder names (ashita.fs.get_dir; nil when the fs
--- API is unavailable -- callers should fall back to naming the active profile).
-function M.listProfiles()
-    local root = M.profilesRoot();
-    if root == nil then return nil; end
-    local names = nil;
+-- Best-effort subdirectory listing: ashita.fs.get_dir first (its directory
+-- mode is unverified in the field), then a shell `dir /b /ad` fallback (same
+-- precedent as the os.execute mkdir gearui already uses). nil when both fail.
+local function listDirs(path)
+    if path == nil then return nil; end
+    local out = nil;
     pcall(function()
         if not (ashita and ashita.fs and ashita.fs.get_dir) then return; end
-        local ok, dirs = pcall(ashita.fs.get_dir, root, '.*', true);
+        local ok, dirs = pcall(ashita.fs.get_dir, path, '.*', true);
         if not ok or type(dirs) ~= 'table' then return; end
-        names = {};
+        out = {};
         for _, d in ipairs(dirs) do
-            if type(d) == 'string' and d ~= '.' and d ~= '..' then names[#names + 1] = d; end
+            if type(d) == 'string' and d ~= '.' and d ~= '..' then out[#out + 1] = d; end
         end
-        table.sort(names);
     end);
-    return names;
+    if out == nil then
+        pcall(function()
+            local p = io.popen('dir /b /ad "' .. path .. '" 2>nul');
+            if p == nil then return; end
+            local acc = {};
+            for line in p:lines() do
+                line = line:gsub('%s+$', '');
+                if line ~= '' then acc[#acc + 1] = line; end
+            end
+            p:close();
+            out = acc;
+        end);
+    end
+    if out ~= nil then table.sort(out); end
+    return out;
+end
+
+-- Best-effort list of THIS character's profile folder names (nil when no
+-- listing API works -- callers should fall back to naming the active profile).
+function M.listProfiles()
+    return listDirs(M.profilesRoot());
+end
+
+-- ---------------------------------------------------------------------------
+-- cross-character browsing + import (the Profiles menu)
+--
+-- Every character on the install has its own <Name>_<ServerId> folder under
+-- config\addons\luashitacast\ -- that folder IS the account/character axis.
+-- A dlac profile is just files, so import = copy a profile's per-job files
+-- from another character's storage into this character's, under a new name.
+-- ---------------------------------------------------------------------------
+
+function M.lacRoot()
+    local ok, p = pcall(function()
+        return AshitaCore:GetInstallPath() .. 'config\\addons\\luashitacast\\';
+    end);
+    return ok and p or nil;
+end
+
+-- Character folders (<Name>_<Id>), current one first, rest alphabetical.
+function M.listCharFolders()
+    local root = M.lacRoot();
+    local dirs = listDirs(root);
+    if dirs == nil then return nil; end
+    local cur = nil;
+    pcall(function() local b = charBase(); if b ~= nil then cur = b:match('([^\\]+)\\$'); end end);
+    local out = {};
+    for _, d in ipairs(dirs) do
+        if d:match('^.+_%d+$') then
+            if d == cur then table.insert(out, 1, d); else out[#out + 1] = d; end
+        end
+    end
+    return out, cur;
+end
+
+function M.profileDirAt(charFolder, name)
+    local root = M.lacRoot();
+    if root == nil or charFolder == nil or name == nil then return nil; end
+    return root .. charFolder .. '\\dlac\\profiles\\' .. name .. '\\';
+end
+
+function M.listProfilesAt(charFolder)
+    local root = M.lacRoot();
+    if root == nil or charFolder == nil then return nil; end
+    return listDirs(root .. charFolder .. '\\dlac\\profiles\\');
+end
+
+-- Which jobs a profile carries (deterministic 22-job probe, no listing API):
+-- array of { job, sets = bool, trig = bool }, only jobs with at least one file.
+function M.profileJobsAt(charFolder, name)
+    local dir = M.profileDirAt(charFolder, name);
+    if dir == nil then return {}; end
+    local out = {};
+    for _, job in ipairs(M.JOBS) do
+        local s = readFile(dir .. 'sets\\' .. job .. '.lua') ~= nil;
+        local t = readFile(dir .. 'triggers\\' .. job .. '.lua') ~= nil;
+        if s or t then out[#out + 1] = { job = job, sets = s, trig = t }; end
+    end
+    return out;
+end
+
+-- Copy every per-job file from one profile dir to another. Never overwrites.
+local function copyJobFiles(srcDir, dstDir)
+    if srcDir == nil or dstDir == nil then return 0; end
+    local copied = 0;
+    for _, job in ipairs(M.JOBS) do
+        for _, kind in ipairs({ 'sets', 'triggers' }) do
+            local t = readFile(srcDir .. kind .. '\\' .. job .. '.lua');
+            local dp = dstDir .. kind .. '\\' .. job .. '.lua';
+            if t ~= nil and readFile(dp) == nil then
+                if writeFile(dp, t) then copied = copied + 1; end
+            end
+        end
+    end
+    return copied;
+end
+
+-- Does this character's profile <name> already hold any files? (44-file probe.)
+local function profileHasFiles(name)
+    for _, job in ipairs(M.JOBS) do
+        if M.hasSetsFile(job, name) or M.hasTriggersFile(job, name) then return true; end
+    end
+    return false;
+end
+
+-- Import another character's profile into THIS character under dstName.
+-- Refuses to pour into a profile that already has files (no silent merges).
+-- Returns copiedCount, nil | nil, why.
+function M.importProfile(srcCharFolder, srcName, dstName)
+    dstName = M.sanitizeName(dstName);
+    if dstName == nil then return nil, 'bad target name (letters/digits/_/- only)'; end
+    if charBase() == nil then return nil, 'not logged in'; end
+    local srcDir = M.profileDirAt(srcCharFolder, srcName);
+    if srcDir == nil then return nil, 'bad source'; end
+    if profileHasFiles(dstName) then return nil, 'profile "' .. dstName .. '" already has files here -- pick another name'; end
+    if not M.ensureStorage(dstName) then return nil, 'could not create storage'; end
+    local n = copyJobFiles(srcDir, M.profileDir(dstName));
+    if n == 0 then return nil, 'nothing copied (source profile empty or unreadable)'; end
+    return n, nil;
 end
 
 -- Copy every per-job sets/triggers file from one profile to another (the

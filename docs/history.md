@@ -498,3 +498,14 @@ backup-first migration as /dl profile migrate go, then auto-reloads LAC. Henrik'
 char data (47 items) is stashed at
 `config\addons\luashitacast\Mindie_29909\_stash-pre-freshtest-2026-07-13\` (with a
 README-RESTORE.txt) so he can walk the first-time flow himself; restore = move it back.
+
+**Follow-up (profiles menu):** top-left `Profiles` button -- install-wide
+character > profile > jobs browser (snapshot on open, not per-frame; get_dir +
+popen-fallback listing); use/clone on own rows, cross-character `import` copies
+a profile's per-job files into the current character under a new name
+(`profiles.importProfile`, never merges into an existing one). Reload-LAC
+red-until-reloaded detection landed the same day (v34 __loadstamp), plus fresh-
+Setup ordering fix (storage before trigger seed) and Setup-button visibility on
+storage-less dlac-wired chars. Field flow validated by Henrik on a stashed-clean
+char: fresh run, veteran-migration run (BLU from pre-profiles backup) -- both
+passed.

@@ -976,6 +976,12 @@ check('Y29 plan: existing backup means hands off', plan[3].action, 'skip');
 check('Y30 plan: no Dynamic block -> empty store, still migrates', plan[4].action == 'migrate' and plan[4].dynText == nil, true);
 check('Y31 plan: existing profile sets file is never re-imported over', plan[5].action == 'migrate' and plan[5].dynText == nil, true);
 
+-- cross-character browsing/import: headless-safe (no AshitaCore -> nil answers).
+check('Y34 headless: importProfile refuses politely', (select(2, profilesM.importProfile('Other_1', 'Default', 'New'))), 'not logged in');
+check('Y35 headless: importProfile still validates the name first', (select(2, profilesM.importProfile('Other_1', 'Default', 'bad name'))), 'bad target name (letters/digits/_/- only)');
+check('Y36 headless: listCharFolders is nil, never an error', (profilesM.listCharFolders()), nil);
+check('Y37 headless: profileJobsAt empty, never an error', #profilesM.profileJobsAt('Other_1', 'Default'), 0);
+
 -- headless migrate: refuses politely, touches nothing, never errors.
 local said = {};
 local mdone, mskip, mfail = profilesM.migrate(false, function(s) said[#said + 1] = s; end);

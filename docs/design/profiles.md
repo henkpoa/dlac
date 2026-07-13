@@ -103,3 +103,16 @@ not character-specific); `/dl profile use` makes a hand-dropped folder live.
   they ever diverge, the GUI edits one file while the engine reads another.
 * Tests Y1–Y33 in `tests\run_tests.lua`; everything fs-touching is call-time +
   pcall so the module loads headless.
+
+## The Profiles menu (browser + cross-character import)
+
+Top-left `Profiles` button in the GUI: a snapshot tree of **character >
+profile > jobs** across the whole install (every `<Name>_<ServerId>` folder
+under `config\addons\luashitacast\` -- that folder IS the account/character
+axis; there is no separate account level on disk). Current character sorts
+first and defaults open; rows show `[active]` / `use` / `clone` on your own
+profiles and `import` on other characters' -- import copies the per-job files
+into THIS character under a new name (deterministic 22-job probe, never
+overwrites, refuses a name that already has files). Snapshot builds on
+open/Refresh only; directory listing = `ashita.fs.get_dir` with a
+`dir /b /ad` popen fallback (`profiles.listDirs`).

@@ -3728,7 +3728,15 @@ local function drawWindow()
 
     local isOpen = { M.visible };
     if imgui.Begin('dlac Gear###ffxi_lac_gearui', isOpen, ImGuiWindowFlags_None) then
-        -- Header line: job/level + owned count + "Show all" toggle, then right-aligned buttons.
+        -- Header line: Profiles menu (top-left), job/level + owned count + "Show
+        -- all" toggle, then right-aligned buttons.
+        if imgui.SmallButton('Profiles##dlac_pm_btn') then
+            ui._profMenuBuild = true;   -- snapshot is (re)built on open, never per frame
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Every dlac profile on this install -- character > profile > jobs.\nSwitch or clone your own; import another character\'s profile into this one.');
+        end
+        imgui.SameLine(0, 10);
         imgui.TextColored(COL_HEADER, jobHeader());
         imgui.SameLine();
         imgui.TextColored(COL_DIM, string.format('|  %d owned%s', #owned, hasOptim and '' or '  |  optimizer OFF'));
@@ -3750,6 +3758,104 @@ local function drawWindow()
                 local _, _ab = jobFile();
                 fmt.textWrapped(COL_ERR, string.format('  [!]  %s.lua is missing trigger shims -- click the red "Setup" button (top-right) to add them (your logic is kept).', tostring(_ab or '?')));
             end
+        end
+
+        -- Profiles menu popup: character > profile > jobs across the whole
+        -- install, snapshotted on open/Refresh (a per-frame probe would be 44
+        -- io.opens per profile). Function-scoped requires: 200-local cap.
+        if ui._profMenuBuild then
+            ui._profMenuBuild = nil;
+            local m = { chars = {} };
+            pcall(function()
+                local prof = require('dlac\\profiles');
+                if type(prof) ~= 'table' then m.err = 'profiles.lua unavailable'; return; end
+                m.active = prof.activeName();
+                local chars, cur = prof.listCharFolders();
+                if chars == nil then m.err = 'No directory listing available on this system -- use /dl profile from chat instead.'; return; end
+                for _, c in ipairs(chars) do
+                    local e = { name = c, isCurrent = (c == cur), profiles = {} };
+                    for _, pn in ipairs(prof.listProfilesAt(c) or {}) do
+                        local js = {};
+                        for _, j in ipairs(prof.profileJobsAt(c, pn)) do js[#js + 1] = j.job; end
+                        e.profiles[#e.profiles + 1] = { name = pn, n = #js, jobsStr = table.concat(js, ', ') };
+                    end
+                    m.chars[#m.chars + 1] = e;
+                end
+            end);
+            ui._profMenu = m;
+            imgui.OpenPopup('##dlac_profmenu');
+        end
+        if imgui.BeginPopup('##dlac_profmenu') then
+            local m = ui._profMenu or { chars = {} };
+            ui._profNewName = ui._profNewName or { '' };
+            imgui.TextColored(COL_HEADER, 'dlac profiles');
+            imgui.SameLine(0, 12);
+            imgui.TextColored(COL_DIM, 'character  >  profile  >  jobs');
+            imgui.SameLine(0, 12);
+            if imgui.SmallButton('Refresh##pm_r') then ui._profMenuBuild = true; end
+            imgui.Separator();
+            if m.err ~= nil then fmt.textWrapped(COL_ERR, m.err); end
+            imgui.BeginChild('##pm_body', { 620, 320 }, false);
+            for _, c in ipairs(m.chars) do
+                local fl = (c.isCurrent and ImGuiTreeNodeFlags_DefaultOpen ~= nil) and ImGuiTreeNodeFlags_DefaultOpen or 0;
+                if imgui.CollapsingHeader(c.name .. (c.isCurrent and '   (this character)' or '') .. '###pm_c_' .. c.name, fl) then
+                    if #c.profiles == 0 then imgui.TextColored(COL_DIM, '     (no dlac profiles)'); end
+                    for _, p in ipairs(c.profiles) do
+                        imgui.Text('  ');
+                        imgui.SameLine(0, 0);
+                        if c.isCurrent then
+                            if p.name == m.active then
+                                imgui.TextColored(COL_SCORE, '[active]');
+                            else
+                                if imgui.SmallButton('use##pm_u_' .. p.name) then
+                                    pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl profile use ' .. p.name); end);
+                                    ui._profMenuMsg = 'Switching to "' .. p.name .. '" -- the engine confirms in chat (hot; no LAC reload).';
+                                    m.active = p.name;   -- optimistic; Refresh re-reads the pointer
+                                end
+                            end
+                            imgui.SameLine(0, 8);
+                            if imgui.SmallButton('clone##pm_cl_' .. p.name) then
+                                pcall(function()
+                                    local prof = require('dlac\\profiles');
+                                    local dst = ui._profNewName[1];
+                                    if dst == nil or dst == '' then dst = p.name .. '-copy'; end
+                                    local n, err = prof.cloneProfile(p.name, dst);
+                                    ui._profMenuMsg = (n ~= nil)
+                                        and string.format('Cloned "%s" -> "%s" (%d file(s)).', p.name, dst, n)
+                                        or ('Clone failed: ' .. tostring(err));
+                                    if n ~= nil then ui._profMenuBuild = true; end
+                                end);
+                            end
+                        else
+                            if imgui.SmallButton('import##pm_i_' .. c.name .. '_' .. p.name) then
+                                pcall(function()
+                                    local prof = require('dlac\\profiles');
+                                    local dst = ui._profNewName[1];
+                                    if dst == nil or dst == '' then dst = (c.name:match('^(.-)_%d+$') or c.name) .. '-' .. p.name; end
+                                    local n, err = prof.importProfile(c.name, p.name, dst);
+                                    ui._profMenuMsg = (n ~= nil)
+                                        and string.format('Imported %s\'s "%s" as "%s" (%d file(s)) -- click use on it to go live.', c.name, p.name, dst, n)
+                                        or ('Import failed: ' .. tostring(err));
+                                    if n ~= nil then ui._profMenuBuild = true; end
+                                end);
+                            end
+                        end
+                        imgui.SameLine(0, 10);
+                        imgui.TextColored(COL_USABLE, p.name);
+                        imgui.SameLine(0, 10);
+                        imgui.TextColored(COL_DIM, (p.n > 0) and string.format('%d job(s):  %s', p.n, p.jobsStr) or '(empty)');
+                    end
+                end
+            end
+            imgui.EndChild();
+            imgui.Separator();
+            imgui.TextColored(COL_DIM, 'Name for clone / import (blank = auto):');
+            imgui.SameLine(0, 6);
+            imgui.PushItemWidth(180);
+            imgui.InputText('##pm_name', ui._profNewName, 48);
+            imgui.PopItemWidth();
+            if ui._profMenuMsg ~= nil then fmt.textWrapped(COL_SCORE, ui._profMenuMsg); end
+            imgui.EndPopup();
         end
         imgui.Separator();
 
