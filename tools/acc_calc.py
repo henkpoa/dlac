@@ -302,9 +302,10 @@ def load(refresh=False):
     if not db.subjob_zones or not db.corrected_zones:
         db.warns.append("DRIFT: zone list parse came up empty")
 
-    # level-correction sign for the PC-vs-higher-mob branch, detected from source
-    # (as of 2026-07-13 it is 'acc - dlvl * 4' => a +4/level BONUS despite the
-    # 'Accuracy Penalty' comment; dlvl = attacker - target < 0)
+    # level-correction sign for the PC-vs-higher-mob branch, detected from source.
+    # 'acc - dlvl * 4' (dlvl = attacker - target < 0) => +4 ACC/level fighting up.
+    # That IS the CatsEyeXI standard (Henrik ruling 2026-07-14; the code comment
+    # saying "Penalty" is stale). Detection is kept as a drift ALARM only.
     lua = src["scripts/globals/combat/physical_hit_rate.lua"]
     m = re.search(r"attacker:isPC\(\) and attacker:getMainLvl\(\) < target:getMainLvl\(\).*?acc = acc ([+-]) dlvl \* 4", lua, re.S)
     db.pc_corr_sign = m.group(1) if m else None
@@ -355,8 +356,9 @@ def correction(db, zone_id, player_lvl, mob_lvl):
         return 0, "no correction (not below mob level)" if player_lvl else "give --player-level for correction"
     d = mob_lvl - player_lvl
     if db.pc_corr_sign == "-":
-        return 4 * d, "+%d ACC *bonus* as published (sign quirk; retail intent would be -%d)" % (4 * d, 4 * d)
-    return -4 * d, "-%d ACC penalty (source now uses '+ dlvl'; quirk fixed)" % (4 * d)
+        # CatsEyeXI standard (Henrik ruling 2026-07-14): fighting up GRANTS 4 ACC/level.
+        return 4 * d, "+%d ACC from level correction (you are %d below the mob)" % (4 * d, d)
+    return -4 * d, "-%d ACC penalty -- UPSTREAM SIGN FLIPPED vs the 2026-07-14 ruling; re-verify tools!" % (4 * d)
 
 
 def acc_report(db, g, level, player_lvl, acc):

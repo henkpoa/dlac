@@ -14,10 +14,12 @@ Caps (physical_hit_rate.lua): 99% for 1H mainhand / H2H -> ACC = EVA + 48;
 95% for 2H -> ACC = EVA + 40. The mainhand is sniffed from the equipped
 weapon's skill type so the right cap is chosen automatically.
 
-Level correction (accdata.corrected zones): AS PUBLISHED the server gives a
-PC +4 ACC per level the mob is ABOVE you (a bonus -- the "Accuracy Penalty"
-comment and the code disagree; see memory/mob-eva-pipeline.md). Unverified in
-the field, so both readings are printed until a hit/miss tally settles it.
+Level correction (accdata.corrected zones): a PC fighting a mob ABOVE their
+level gets +4 ACC per level of difference. That is what the shipped server
+code does, and it is CANON here (Henrik ruling 2026-07-14) -- the code's
+"Accuracy Penalty" comment is stale, not a bug awaiting a fix. The printed
+ACC target folds the correction in. If tools/acc_calc.py ever warns that the
+upstream sign flipped, revisit report() below.
 
 Observation only: reads the engage request (c2s 0x01A action 0x02) the client
 already sends; injects nothing, blocks nothing.
@@ -84,19 +86,20 @@ local function report(actIndex, why)
     local lo, hi, evLo, evHi, nm, desc = e[1], e[2], e[3], e[4], e[5], e[6];
     local is2h = mainhandIs2H();
     local add = is2h and 40 or 48;                                -- to 95% / 99%
-    say(('acc%s: %s Lv%s (%s%s)  EVA %s  ->  ACC %s to cap (%s %d%%)'):format(
-        why or '', name, band(lo, hi), desc, nm == 1 and ', NM' or '',
-        band(evLo, evHi), band(evLo + add, evHi + add), is2h and '2H' or '1H/H2H', is2h and 95 or 99));
+    local needLo, needHi = evLo + add, evHi + add;
+    local corr = '';
     if DATA.corrected ~= nil and DATA.corrected[zone] == true then
         local pl = 0;
         pcall(function() pl = AshitaCore:GetMemoryManager():GetPlayer():GetMainJobLevel() or 0; end);
         if pl > 0 and pl < hi then
-            local dLo = math.max(0, lo - pl) * 4;                 -- correction size at each range end
-            local dHi = math.max(0, hi - pl) * 4;
-            say(('  corrected zone, you Lv%d: as published ACC %s | if quirk gets fixed %s'):format(
-                pl, band(evLo + add - dLo, evHi + add - dHi), band(evLo + add + dLo, evHi + add + dHi)));
+            needLo = needLo - math.max(0, lo - pl) * 4;           -- +4 ACC per level the mob is
+            needHi = needHi - math.max(0, hi - pl) * 4;           -- above you (see header: canon)
+            corr = (' [lvl-corr, you Lv%d]'):format(pl);
         end
     end
+    say(('acc%s: %s Lv%s (%s%s)  EVA %s  ->  ACC %s to cap (%s %d%%)%s'):format(
+        why or '', name, band(lo, hi), desc, nm == 1 and ', NM' or '',
+        band(evLo, evHi), band(needLo, needHi), is2h and '2H' or '1H/H2H', is2h and 95 or 99, corr));
 end
 
 -- ---------------------------------------------------------------------------
