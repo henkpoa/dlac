@@ -509,7 +509,11 @@ end
 -- past the menu, not automation; the server's 15s gate is mirrored here so a
 -- click during cooldown never even sends.
 -- ---------------------------------------------------------------------------
-local SYNTH_COOLDOWN = 15;   -- seconds, server-enforced (m_LastSynthTime + 15s)
+-- Client gate between replays. The server's hard cooldown is 15s from synth
+-- START (m_LastSynthTime), but the synth STATE runs ~17s -- and validate()'s
+-- isNotCrafting DROPS a second ask SILENTLY in that 15-17s gap (field case:
+-- "repeating Sapara -- nothing happens"). 22 = the full arc + margin (Henrik).
+local SYNTH_COOLDOWN = 22;
 
 -- Pure (headless-tested): pick inventory slots for a crystal + ingredient
 -- list. invRead(idx) -> itemId, count; slots are claimed with per-slot
@@ -604,8 +608,8 @@ function M.repeatLastSynth()
     end
     local left = SYNTH_COOLDOWN - (os.clock() - (cur.at or 0));
     if left > 0 then
-        say(string.format('last synth: the server allows one synth per %ds -- ready in %ds.',
-            SYNTH_COOLDOWN, math.ceil(left)));
+        say(string.format('last synth: the previous synth is still running/settling -- ready in %ds.',
+            math.ceil(left)));
         return false;
     end
     local crystal, ings = M.decode(raw);
@@ -615,7 +619,7 @@ function M.repeatLastSynth()
     end
     local inv = nil;
     pcall(function() inv = AshitaCore:GetMemoryManager():GetInventory(); end);
-    if inv == nil then return false; end
+    if inv == nil then say('last synth: inventory unavailable -- try again in a moment.'); return false; end
     local maxIdx = 80;
     pcall(function() maxIdx = inv:GetContainerCountMax(0) or 80; end);
     local function invRead(i)
@@ -638,6 +642,7 @@ function M.repeatLastSynth()
     local ok = pcall(function()
         AshitaCore:GetPacketManager():AddOutgoingPacket(0x096, b);
     end);
+    if not ok then say('last synth: packet injection FAILED -- /addon reload dlac and report this.'); end
     -- Our own packet_out handler sees the injected copy and refreshes
     -- M.current.at, so the cooldown gate re-arms automatically.
     if ok then

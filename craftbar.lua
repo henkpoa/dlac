@@ -3,8 +3,8 @@
 
     A small always-available window: an on/off switch, the eight craft glyphs
     (click to select + equip that craft's gear), the goal (HQ / NQ /
-    Skill-Up), a Last Synth button (replays the last detected synth --
-    craftwatch.repeatLastSynth, one click one synth), and a status line naming
+    Skill-Up), a Last Synth button (just types /lastsynth -- one code path,
+    craftwatch's command; one click one synth), and a status line naming
     what that replay would make. This is the MANUAL model Henrik settled on --
     you set your gear BEFORE synthing, when equipment changes are legal
     (auto-detection can't, since 0x096 is the first synth packet). The same
@@ -166,19 +166,21 @@ function M.render()
             if not ready and ImGuiCol_Button ~= nil then
                 imgui.PushStyleColor(ImGuiCol_Button, { 0.24, 0.26, 0.30, 1 });   -- dim: not ready
             end
-            if imgui.Button('Last Synth##cblast', { lastW, 20 }) and type(cw.repeatLastSynth) == 'function' then
-                cw.repeatLastSynth();   -- refusals (cooldown / no synth / restock) explain in chat
+            -- The button just TYPES /lastsynth (Henrik: one code path -- the
+            -- command; the bar only reads state). Refusals explain in chat.
+            if imgui.Button('Last Synth##cblast', { lastW, 20 }) then
+                pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/lastsynth'); end);
             end
             if not ready and ImGuiCol_Button ~= nil then imgui.PopStyleColor(1); end
             if imgui.IsItemHovered() then
                 if ls == nil then
-                    imgui.SetTooltip('Repeat your most recent synthesis (same crystal + ingredients,\nfresh inventory slots). Nothing seen yet -- synth once via the menu first.');
+                    imgui.SetTooltip('Repeat your most recent synthesis (same crystal + ingredients,\nfresh inventory slots). Nothing seen yet -- synth once via the menu first.\nAlso a command: /lastsynth (macro it).');
                 elseif not ready then
-                    imgui.SetTooltip(string.format('Repeat: %s\nThe server allows one synth per 15s -- ready in %ds.',
+                    imgui.SetTooltip(string.format('Repeat: %s\nPrevious synth still running/settling (~22s arc) -- ready in %ds.',
                         ls.name or 'last recipe', math.ceil(ls.readyIn)));
                 else
                     imgui.SetTooltip('Repeat: ' .. (ls.name or 'last recipe')
-                        .. '\nSends the same crystal + ingredients again (fresh slots looked up now).');
+                        .. '\nSends the same crystal + ingredients again (fresh slots looked up now).\nAlso a command: /lastsynth (macro it).');
                 end
             end
             -- Status line: WHAT the Last Synth button would make (Henrik: so
