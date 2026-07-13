@@ -657,18 +657,23 @@ check('T16 equip command shape',    craftCmds[1], '/lac equip Main "Chemists Kuk
 craftCmds = {};
 check('T17 fallback to Craft set',  craftwatch.equipCraftSet('Bonecraft'), 1);
 check('T18 fallback command',       craftCmds[1], '/lac equip Neck "Artisans Torque"');
--- onSynth + auto: equips on craft CHANGE only (repeat synths stay quiet)
+-- onSynth + auto: the equip DEFERS to the synth result (the client blocks
+-- equipment changes during the synthesis animation), fires once per craft.
 craftwatch.autoEquip = true;
 craftCmds = {};
 craftwatch.onSynth(4096, { 1165, 1165 }, 10);   -- Smithing -> Alchemy change (T7 left Smithing)
-check('T19 auto-equip on change',   #craftCmds, 3);
+check('T19a detection defers (no mid-animation equip)', #craftCmds, 0);
+craftwatch.onSynthResult();                      -- 0x06F: animation over
+check('T19b result-time equip', #craftCmds, 3);
 craftCmds = {};
 craftwatch.onSynth(4096, { 1165, 1165 }, 11);   -- repeat: same craft
+craftwatch.onSynthResult();
 check('T20 repeat synth: no re-equip', #craftCmds, 0);
 -- field case: auto toggled ON only AFTER synthing -- must dress immediately
 craftwatch.setAuto(false);
 craftCmds = {};
 craftwatch.onSynth(4096, { 1165, 1165 }, 12);
+craftwatch.onSynthResult();
 check('T20b auto off: no equip', #craftCmds, 0);
 craftwatch.setAuto(true);
 check('T20c toggle-on dresses for the current craft', #craftCmds, 3);

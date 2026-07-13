@@ -292,7 +292,8 @@ end
 -- A committed Craft_<Skill> / Craft set wins (explicit intent); otherwise the
 -- autogear manifest's craft ladders decide (zero-setup path). Per Henrik:
 -- gear STAYS ON afterwards -- the next ordinary trigger event redresses you.
-function M.equipCraftSet(skill)
+-- baseDelay (frames) postpones the whole sequence (the synth-result path).
+function M.equipCraftSet(skill, baseDelay)
     local setName, contents = findCraftSet(skill);
     local picks, n = {}, 0;
     if setName ~= nil then
@@ -307,7 +308,7 @@ function M.equipCraftSet(skill)
     if not ok or type(cmdq) ~= 'table' or type(cmdq.enqueue) ~= 'function' then return 0; end
     for _, slot in ipairs(SLOT_LABELS) do
         if picks[slot] ~= nil then
-            cmdq.enqueue(4 * n, string.format('/lac equip %s "%s"', slot, picks[slot]));
+            cmdq.enqueue((baseDelay or 0) + 4 * n, string.format('/lac equip %s "%s"', slot, picks[slot]));
             n = n + 1;
         end
     end
@@ -318,6 +319,18 @@ function M.equipCraftSet(skill)
             tostring(skill), tostring(skill)));
     end
     return n;
+end
+
+-- The synth result arrived (s2c 0x06F): the animation is ending, equipment
+-- changes are legal again -- dress for the pending craft, with a small extra
+-- delay so the animation tail can't eat the first piece.
+M._pendingEquip = nil;
+function M.onSynthResult()
+    if M._pendingEquip == nil then return; end
+    local target = M._pendingEquip;
+    M._pendingEquip = nil;
+    M._equippedTarget = target;
+    pcall(function() M.equipCraftSet(target, 45); end);   -- ~0.75s past the result
 end
 
 -- Toggle entry point (GUI button + /dl craft auto): turning ON with a craft
@@ -375,9 +388,11 @@ function M.onSynth(crystal, ings, clock)
         -- Equip tracks its OWN last-dressed target, NOT the announce gate:
         -- toggling auto ON after synthing a craft must still dress on the next
         -- synth of that same craft (field case: GUI button, then nothing equipped).
+        -- DEFERRED to the synth RESULT: the client blocks equipment changes
+        -- during the synthesis animation (field case 2: 'equipping 3 pieces'
+        -- printed, nothing happened -- the /lac equips fired mid-animation).
         if M.autoEquip and M._equippedTarget ~= target then
-            M._equippedTarget = target;
-            pcall(function() M.equipCraftSet(target); end);
+            M._pendingEquip = target;
         end
     elseif not _saidUnknown[M.current.key] then        -- each unknown once, with the key
         _saidUnknown[M.current.key] = true;
@@ -397,8 +412,11 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
     end);
 
     ashita.events.register('packet_in', 'dlac-craftwatch-in', function(e)
-        if e.id ~= 0x055 then return; end
-        pcall(function() M.onKeyItemPacket(e.data); end);
+        if e.id == 0x055 then
+            pcall(function() M.onKeyItemPacket(e.data); end);
+        elseif e.id == 0x06F then                  -- synth result: safe to dress now
+            pcall(function() M.onSynthResult(); end);
+        end
     end);
 
     -- /dl craft [auto on|off | equip] -- status / automation control.
