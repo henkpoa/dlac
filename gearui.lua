@@ -1424,6 +1424,16 @@ end
 local function renderHeaderButtons()
     local gap = 4;
     local needSetup = (jobSetupState() ~= 'ok');
+    if not needSetup then
+        -- dlac-wired but NO profile storage yet: migration is pending, and that
+        -- is a setup need too (the popup shows the migrate plan). Once storage
+        -- exists the nag ends -- a veteran who keeps a hand-written job file
+        -- alongside storage is a supported choice, not a warning state.
+        pcall(function()
+            local p = require('dlac\\profiles');
+            if type(p) == 'table' and not p.storageExists() then needSetup = true; end
+        end);
+    end
 
     -- Reload-LAC watcher: the engine stamps a LAC-load generation into
     -- modestate.lua (__loadstamp -- constant across mode changes and engine
