@@ -838,6 +838,28 @@ check('W7 binding margin', bMg, 5);
 check('W8 no skills -> nil', (craftwatch.bindingCraft(nil, fakeSkill)), nil);
 
 -- ---------------------------------------------------------------------------
+-- X. engine self-swap handshake (dispatch.lua hot-reload, v32). Re-executing
+--    dispatch.lua with _G.__dlacEngineRoot set must populate THAT table --
+--    identity preserved, so utils' captured reference and the profiles' shims
+--    run the new code with no re-require -- and the swapper's version-parse
+--    must find the real assignment (a reformat of the M.VERSION line would
+--    kill the swap SILENTLY otherwise).
+-- ---------------------------------------------------------------------------
+local root = { VERSION = -1, dispatch = 'stale sentinel', leftover = 'kept' };
+_G.__dlacEngineRoot = root;
+local swapped = dofile('dispatch.lua');
+_G.__dlacEngineRoot = nil;
+check('X1 swap populates the handed-over root table', rawequal(swapped, root), true);
+check('X2 stale fields are overwritten with live code', type(root.dispatch), 'function');
+check('X3 version claimed on the root', root.VERSION, dispatchM.VERSION);
+local fresh = dofile('dispatch.lua');
+check('X4 normal load (no handshake) stays a fresh table', rawequal(fresh, root), false);
+local fh = io.open('dispatch.lua', 'r');
+local rawSrc = fh:read('*a'); fh:close();
+check('X5 swapper version-parse finds the assignment',
+    tonumber(string.match(rawSrc, 'M%.VERSION%s*=%s*(%d+)')), dispatchM.VERSION);
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then

@@ -26,15 +26,21 @@
     manager can never take down a cast or profile loading (it just no-ops + reports).
 ]]--
 
-local M = {};
+-- HOT-SWAP HANDSHAKE: when the engine self-swap (see the LAC tick near the end
+-- of this file) re-executes this file, it hands over the CANONICAL module table
+-- -- the one require() gave utils and the profiles -- through _G.__dlacEngineRoot.
+-- Populating that same table means every held reference runs the new code with
+-- no re-require. On a normal require the global is absent: ordinary fresh table.
+local M = rawget(_G, '__dlacEngineRoot') or {};
 
 -- Engine version handshake: bump on EVERY behavioral change to this file. The
 -- LAC-state copy stamps its version into the modestate mirror; the GUI compares
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
--- code (the seeded file only re-requires when LuaAshitacast itself reloads).
-M.VERSION = 31;   -- 31: craft-gear OVERLAY on Default (engine equips craft gear; craftstate.lua)
+-- code. From v32 the engine self-swaps when the seeded file's version moves, so
+-- the banner should only persist when a swap FAILED (or pre-v32 code is live).
+M.VERSION = 32;   -- 32: engine self-swap (dispatch.lua hot-reloads like the trigger file)
+                  -- 31: craft-gear OVERLAY on Default (engine equips craft gear; craftstate.lua)
                   -- 30: AutoCraft goal reads manifest craftGoal (single silent variable, no mode)
-                  -- 29: the pet hold covers LEGACY profiles (HandleEquipEvent wrapped)
 
 -- Colored [dlac] chat output (chatfmt); plain print when unavailable. The shadowed
 -- `print` re-heads "[dlac] ..."-prefixed lines with the colored header.
@@ -1507,11 +1513,71 @@ if inLac() then
         end
     end);
 
+    -- ENGINE SELF-SWAP: hot-reload this file the way the trigger data reloads.
+    -- The addon's seeder refreshes <char>\dlac\dispatch.lua on every dlac
+    -- (re)load, but LAC's require cache keeps running the OLD code until a full
+    -- Reload LAC -- the one reload the version banner still asks for. Instead:
+    -- every ~2s the tick parses the seeded file's version assignment; when it
+    -- differs from the running version, the file is re-executed INTO THIS SAME
+    -- MODULE TABLE (the __dlacEngineRoot handshake at the top of the file), so
+    -- utils' captured reference and the profiles' shims run the new code with
+    -- no re-require. The re-run re-registers both event handlers (unregister-
+    -- first makes the replace deterministic), skips the pet-hold wrap
+    -- (_dlacPetHold guard), and re-runs loadModeState + saveModeState -- a swap
+    -- inherits Reload-LAC semantics exactly: modes survive via the modestate
+    -- mirror (whose re-stamp also clears the GUI banner), slot locks reset.
+    -- Failure degrades to today's behavior: a syntax error is caught by
+    -- loadstring BEFORE anything executes; a runtime error mid-execution rolls
+    -- the version stamp back to the old one (the mixed state IS old-with-holes;
+    -- the banner must stay up) and the broken CONTENT is remembered on the
+    -- SHARED table (M._swapFailedRaw -- a half-swapped generation may already
+    -- be running the new tick), so a broken build is tried once per edit, not
+    -- every 2 seconds, and a same-version fix still gets its retry.
+    local _swapAt = 0;
+    local function trySelfSwap()
+        if os.clock() < _swapAt then return; end
+        _swapAt = os.clock() + 2.0;
+        local dir = charDir();
+        if dir == nil then return; end
+        local path = dir .. 'dispatch.lua';
+        local raw = readFile(path);
+        if raw == nil or raw == M._swapFailedRaw then return; end
+        local v = tonumber(string.match(raw, 'M%.VERSION%s*=%s*(%d+)'));
+        if v == nil or v == M.VERSION then return; end
+        local chunk, cerr = (loadstring or load)(raw, '@' .. path);
+        if chunk == nil then
+            M._swapFailedRaw = raw;
+            printerr(string.format('engine hot-swap: v%d does not parse (%s) -- staying on v%d.',
+                v, tostring(cerr), M.VERSION));
+            return;
+        end
+        local old = M.VERSION;
+        rawset(_G, '__dlacEngineRoot', M);
+        local ok, err = pcall(chunk);
+        rawset(_G, '__dlacEngineRoot', nil);
+        if not ok then
+            M._swapFailedRaw = raw;
+            M.VERSION = old;        -- the partial run may have claimed v already
+            pcall(saveModeState);   -- ...and stamped it: re-stamp old, keep the banner honest
+            printerr(string.format('engine hot-swap v%d -> v%d FAILED mid-load (%s) -- click Reload LAC.',
+                old, v, tostring(err)));
+            return;
+        end
+        M._swapFailedRaw = nil;
+        print(string.format('[dlac] engine hot-swapped v%d -> v%d -- no Reload LAC needed (modes kept, slot locks reset).',
+            old, v));
+    end
+
+    -- A self-swap re-runs these registrations; unregister-first makes the
+    -- replace deterministic whatever Ashita's same-alias behavior is (pcall:
+    -- on the FIRST load there is nothing to unregister).
+    pcall(function() ashita.events.unregister('d3d_present', 'dlac-dispatch-tick'); end);
     local _tickAt, _tickJob, _tickPet = 0, nil, nil;
     ashita.events.register('d3d_present', 'dlac-dispatch-tick', function()
         pcall(function()
             if os.clock() < _tickAt then return; end
             _tickAt = os.clock() + 0.4;
+            trySelfSwap();   -- engine hot-reload check (own ~2s gate inside)
             local j = nil;
             pcall(function() j = AshitaCore:GetMemoryManager():GetPlayer():GetMainJob(); end);
             if j ~= nil and j ~= 0 then
@@ -1580,6 +1646,7 @@ if inLac() then
         end);
     end);
 
+    pcall(function() ashita.events.unregister('command', 'dlac-dispatch'); end);
     ashita.events.register('command', 'dlac-dispatch', function(e)
         local start = argStart(string.lower(e.command));
         if start == nil then return; end

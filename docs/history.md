@@ -377,6 +377,32 @@ illustrated from-zero user guide (9 screenshots, annotated mode-gates figure).
 blocking (client-side only, packets pass); the tutorial's HandlePetAction "handler";
 v16's cycle-value purge; the Warp-Ring-icon-is-red-state illusion.
 
+## Session "engine self-swap" (2026-07-13, on `main`)
+
+**Reload LAC is now extinct for engine updates too (v32).** The last remaining reload
+was the engine's own require-cache staleness: the seeder refreshes
+`<char>\dlac\dispatch.lua` on every addon load, but LAC's `require` kept running the old
+code until Reload LAC (the version banner's whole reason). Now the engine tick parses
+the seeded file's `M.VERSION = <n>` every ~2s; when it differs from the running version,
+the file is re-executed INTO THE SAME MODULE TABLE via the `_G.__dlacEngineRoot`
+handshake at the top of dispatch.lua — utils' captured reference and the profile shims
+run the new code with no re-require. Why this was nearly free: mode state already
+survives via the modestate mirror (loadModeState on init), the pet-hold wrap is
+guarded (`_dlacPetHold`) and captures no engine state, and utils calls
+`_dispatch.dispatch` through the table at call time. The re-run re-registers both
+event handlers (unregister-first, pcall'd — deterministic whatever Ashita's same-alias
+behavior); swap semantics = Reload LAC semantics (modes kept, slot locks reset,
+modestate re-stamped so the banner clears). Failures degrade to today: syntax errors
+are caught by loadstring before execution; a mid-execution error rolls `M.VERSION`
+back, re-stamps modestate (banner stays honest), and remembers the broken CONTENT
+(`M._swapFailedRaw`) so a same-version fix still retries but a broken build isn't
+re-tried every 2s. X-tests cover the handshake identity and the version-parse (a
+reformat of the VERSION line would kill the swap silently). **One manual Reload LAC
+is still needed to get v32 itself live** (v31 has no swapper); after that, engine
+updates land within ~2s of an addon reload. The banner stays as the fallback detector.
+Dev loop is now: edit → reload dlac addon → watch for "[dlac] engine hot-swapped".
+NOT yet covered: utils.lua staleness (rarer; same trick applies if it earns it).
+
 ## Standing loose ends (as of 2026-07-10, end of day)
 
 - **feature/storage-move**: local-only, awaiting GM verdict. Before any merge: strip the
