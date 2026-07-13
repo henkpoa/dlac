@@ -235,6 +235,7 @@ local _saidUnknown = {};   -- key -> true (report each unknown recipe once)
 -- while equipment changes are legal; the gear then counts for every synth.
 -- ---------------------------------------------------------------------------
 M.barVisible = false;      -- floating craft bar (craftbar.lua) shown?
+M._craftLocked = {};       -- lower slot -> true: craft-locked (engine skips it)
 
 local SLOT_LABELS = { 'Main', 'Sub', 'Range', 'Ammo', 'Head', 'Neck', 'Ear1', 'Ear2',
                       'Body', 'Hands', 'Ring1', 'Ring2', 'Back', 'Waist', 'Legs', 'Feet' };
@@ -315,19 +316,59 @@ function M.equipCraftSet(skill, baseDelay)
     end
     local ok, cmdq = pcall(require, 'dlac\\cmdqueue');
     if not ok or type(cmdq) ~= 'table' or type(cmdq.enqueue) ~= 'function' then return 0; end
+    -- Craft gear must SURVIVE the engine. dlac's dispatch re-equips your
+    -- Default/Idle set every frame tick, so a bare /lac equip is stomped within
+    -- a frame (same class as maxmp/petaction). So we LOCK each craft slot (the
+    -- engine skips locked slots) + /lac disable it (belt for legacy profiles),
+    -- then equip natively. Slots no longer used get released.
+    local want = {};                       -- lower slot -> item, this equip
     for _, slot in ipairs(SLOT_LABELS) do
-        if picks[slot] ~= nil then
-            cmdq.enqueue((baseDelay or 0) + 4 * n, string.format('/lac equip %s "%s"', slot, picks[slot]));
+        if picks[slot] ~= nil then want[string.lower(slot)] = picks[slot]; end
+    end
+    -- Release craft-locks for slots we no longer use.
+    for lslot in pairs(M._craftLocked) do
+        if want[lslot] == nil then
+            cmdq.enqueue(0, '/dl lock ' .. lslot .. ' off');
+            M._craftLocked[lslot] = nil;
+        end
+    end
+    -- Equip in SLOT_LABELS order (deterministic): lock, disable, equip per slot.
+    for _, slot in ipairs(SLOT_LABELS) do
+        local lslot = string.lower(slot);
+        local item = want[lslot];
+        if item ~= nil then
+            cmdq.enqueue((baseDelay or 0) + 4 * n, '/dl lock ' .. lslot .. ' on');
+            cmdq.enqueue((baseDelay or 0) + 4 * n + 1, '/lac disable ' .. lslot);
+            cmdq.enqueue((baseDelay or 0) + 4 * n + 2, string.format('/equip %s "%s"', lslot, item));
+            M._craftLocked[lslot] = true;
             n = n + 1;
         end
     end
     if n > 0 then
-        say(string.format('craft gear: equipped %s for %s (%s goal).', setName, tostring(skill), M.goal or 'hq'));
+        say(string.format('craft gear: equipped %s for %s (%s goal) -- %d slot(s) locked so the engine keeps them on.',
+            setName, tostring(skill), M.goal or 'hq', n));
     else
         say(string.format('craft gear: nothing to equip for %s -- commit a Craft_%s set or Rescan owned gear (Triggers > Automations).',
             tostring(skill), tostring(skill)));
     end
     return n;
+end
+
+-- Release every craft-locked slot and let the engine dress you normally again
+-- (called when the switch goes OFF).
+function M.releaseCraftLocks()
+    local ok, cmdq = pcall(require, 'dlac\\cmdqueue');
+    if not ok or type(cmdq) ~= 'table' then return; end
+    local any = false;
+    for lslot in pairs(M._craftLocked) do
+        cmdq.enqueue(0, '/dl lock ' .. lslot .. ' off');
+        M._craftLocked[lslot] = nil;
+        any = true;
+    end
+    if any then
+        cmdq.enqueue(2, '/lac enable');
+        say('craft gear: released -- the engine dresses you normally again.');
+    end
 end
 
 -- ---------------------------------------------------------------------------
@@ -386,12 +427,14 @@ local function applyIfActive()
     end
 end
 
--- The on/off slider (bar + panel). ON with a craft selected equips at once.
+-- The on/off slider (bar + panel). ON with a craft selected equips at once;
+-- OFF releases the craft-locked slots so the engine dresses you normally.
 function M.setEnabled(on)
     M.loadCraftState();
     M.enabled = (on == true);
     saveCraftState();
-    applyIfActive();
+    if M.enabled then applyIfActive();
+    else pcall(M.releaseCraftLocks); end
 end
 
 -- Pick a craft. Choosing a craft IS activating -- turn the switch on and equip

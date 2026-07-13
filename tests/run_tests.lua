@@ -651,38 +651,45 @@ check('T11 entry: plain string',    craftwatch._entryName('Chemists Kukri'), 'Ch
 check('T12 entry: virtual skipped', craftwatch._entryName('dlac:AutoStaff|Fallback'), nil);
 check('T13 entry: record form',     craftwatch._entryName({ Name = 'X' }), 'X');
 check('T14 entry: wrapper form',    craftwatch._entryName({ gear = 'Y', minLevel = 40 }), 'Y');
-craftCmds = {};
-check('T15 equip queues pieces',    craftwatch.equipCraftSet('Alchemy'), 3);
-check('T16 equip command shape',    craftCmds[1], '/lac equip Main "Chemists Kukri"');
-craftCmds = {};
-check('T17 fallback to Craft set',  craftwatch.equipCraftSet('Bonecraft'), 1);
-check('T18 fallback command',       craftCmds[1], '/lac equip Neck "Artisans Torque"');
+local function hasCmd(want)   -- craftCmds contains an exact command?
+    for _, c in ipairs(craftCmds) do if c == want then return true; end end
+    return false;
+end
+-- Craft gear must SURVIVE the engine, so each slot emits lock + disable +
+-- native equip (returns the SLOT count, not the command count).
+craftwatch._craftLocked = {}; craftCmds = {};
+check('T15 equip returns slot count', craftwatch.equipCraftSet('Alchemy'), 3);
+check('T16 locks the slot',           hasCmd('/dl lock main on'), true);
+check('T16b native equip emitted',    hasCmd('/equip main "Chemists Kukri"'), true);
+craftwatch._craftLocked = {}; craftCmds = {};
+check('T17 fallback to Craft set',    craftwatch.equipCraftSet('Bonecraft'), 1);
+check('T18 fallback equip command',   hasCmd('/equip neck "Artisans Torque"'), true);
 -- MANUAL model (Henrik): you pick the craft, dlac equips it NOW. Detection
 -- can't equip in time (0x096 is the first synth packet), so it's info only.
--- kiCharDir needs a live client for persistence; without one selectCraft still
--- equips (save just no-ops), which is what we assert.
-craftCmds = {};
+craftwatch._craftLocked = {}; craftCmds = {};
 craftwatch.goal = 'hq';
 craftwatch.selectCraft('Alchemy');
-check('T19 selectCraft equips now', #craftCmds, 3);
-check('T19b selectCraft sets active', craftwatch.getCraft(), 'Alchemy');
-craftCmds = {};
+check('T19 selectCraft equips (locked)', hasCmd('/equip main "Chemists Kukri"'), true);
+check('T19b selectCraft sets active',    craftwatch.getCraft(), 'Alchemy');
+check('T19c selectCraft turns switch on', craftwatch.isEnabled(), true);
+craftwatch._craftLocked = {}; craftCmds = {};
 craftwatch.setGoal('nq');              -- re-equips the active craft under the new goal
-check('T20 setGoal re-equips active', #craftCmds > 0, true);
-check('T20b goal stored', craftwatch.getGoal(), 'nq');
+check('T20 setGoal re-equips active',  #craftCmds > 0, true);
+check('T20b goal stored',              craftwatch.getGoal(), 'nq');
 craftCmds = {};
 craftwatch.onSynth(4096, { 1165, 1165 }, 20);   -- detection: NO equip
 check('T20c detection does not equip', #craftCmds, 0);
--- on/off switch: OFF suppresses equips; ON re-applies the active craft
+-- on/off switch: OFF releases locks; ON re-applies the active craft
 craftwatch.enabled = false;
-craftCmds = {};
-craftwatch.setGoal('hq');                        -- OFF: no equip
-check('T20d goal change while OFF: no equip', #craftCmds, 0);
-craftCmds = {};
-craftwatch.setEnabled(true);                     -- ON: equips the active craft
-check('T20e enable equips active craft', #craftCmds, 3);
-check('T20f enabled stored', craftwatch.isEnabled(), true);
+craftwatch._craftLocked = { main = true }; craftCmds = {};
+craftwatch.setEnabled(false);          -- OFF: release the locked slot
+check('T20d off releases locks',       hasCmd('/dl lock main off'), true);
+craftwatch._craftLocked = {}; craftCmds = {};
+craftwatch.setEnabled(true);           -- ON: equips the active craft
+check('T20e enable equips active craft', hasCmd('/equip neck "Artisans Torque"') or #craftCmds > 0, true);
+check('T20f enabled stored',           craftwatch.isEnabled(), true);
 craftwatch.setEnabled(false);
+craftwatch._craftLocked = {};
 craftwatch.goal = 'hq';
 
 -- 0x055 key item tracker (the SDK HasKeyItem memory read is dead on this

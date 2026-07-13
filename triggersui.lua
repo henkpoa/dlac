@@ -1065,7 +1065,7 @@ local function renderAutomations(noHeader)
             -- glyphs below equip on click.
             local winW = imgui.GetWindowWidth();
             local on = cwok and type(cw.isEnabled) == 'function' and cw.isEnabled();
-            imgui.SameLine(math.max(200, winW - 250));
+            imgui.SameLine(math.max(180, math.floor(winW / 2) - 118));   -- centered (no right-edge clip)
             imgui.TextColored(COL_DIM, 'Auto craft set:');
             imgui.SameLine(0, 6);
             local cbok, craftbar = pcall(require, 'dlac\\craftbar');
