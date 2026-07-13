@@ -144,7 +144,15 @@ function M.render()
                 local w = imgui.CalcTextSize('Goal:');
                 if type(w) == 'number' then goalW = w; end
             end);
-            centerNext(availW, goalW + 6 + 62 + 4 + 62 + 4 + 86 + 12 + 86);
+            -- Last Synth is MEASURED, not hardcoded: 86 (the Skill-Up width)
+            -- clipped the trailing 'h' (Henrik). Text + padding, never narrower
+            -- than the goal buttons' look.
+            local lastW = 100;
+            pcall(function()
+                local w = imgui.CalcTextSize('Last Synth');
+                if type(w) == 'number' then lastW = math.max(96, math.floor(w) + 18); end
+            end);
+            centerNext(availW, goalW + 6 + 62 + 4 + 62 + 4 + 86 + 12 + lastW);
             local goal = cw.getGoal();
             imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, 'Goal:'); imgui.SameLine(0, 6);
             for i, gd in ipairs(GOALS) do
@@ -158,7 +166,7 @@ function M.render()
             if not ready and ImGuiCol_Button ~= nil then
                 imgui.PushStyleColor(ImGuiCol_Button, { 0.24, 0.26, 0.30, 1 });   -- dim: not ready
             end
-            if imgui.Button('Last Synth##cblast', { 86, 20 }) and type(cw.repeatLastSynth) == 'function' then
+            if imgui.Button('Last Synth##cblast', { lastW, 20 }) and type(cw.repeatLastSynth) == 'function' then
                 cw.repeatLastSynth();   -- refusals (cooldown / no synth / restock) explain in chat
             end
             if not ready and ImGuiCol_Button ~= nil then imgui.PopStyleColor(1); end
