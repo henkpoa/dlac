@@ -15,6 +15,7 @@ Usage:
     python acc_calc.py dhalmel                               # list all matches
     python acc_calc.py "bull dhalmel" --acc 57               # expected hit rate at that ACC
     python acc_calc.py --dump mobs.json [--zone buburimu]    # spec deliverable: mobs.json
+    python acc_calc.py --families families.csv               # EVA table: every family x jobs, Lv 1-99
     python acc_calc.py ... --refresh                         # force re-download of sources
 
 Not modeled: per-spawn script mods (onMobSpawn setMod), private-module HVNMs
@@ -321,24 +322,28 @@ def load(refresh=False):
 # ---------------------------------------------------------------------------
 # The actual computation
 # ---------------------------------------------------------------------------
+def eva_core(db, level, mjob, sjob, fam_agi, subjob_zone, flat=0, is_nm=False):
+    rank = eva_rank_from_jobs(mjob, sjob, db.eva_skill_ranks)
+    base = get_base_def_eva(level, rank) + flat
+    fagi = get_base_to_rank(fam_agi, level)
+    magi = get_base_to_rank(db.job_agi_grade.get(mjob, 0), level)
+    sagi_full = get_base_to_rank(db.job_agi_grade.get(sjob, 0), level)
+    if subjob_zone and level < 50:
+        sagi = get_sub_job_stats(db.job_agi_grade.get(sjob, 0), level, sagi_full)
+    else:
+        sagi = sagi_full // 2
+    agi = int((fagi + magi + sagi) * (db.nm_mult if is_nm else db.mob_mult))
+    return dict(eva=base + agi // 2, base=base, agi=agi, rank="ABCDE"[rank - 1],
+                fagi=fagi, magi=magi, sagi=sagi, is_nm=is_nm, subjob_zone=subjob_zone)
+
+
 def mob_eva(db, level, pool_id, zone_id):
     p = db.pools[pool_id]
     fam = db.families.get(p["family"], {"name": "?", "agi": 0})  # familyid 0 = event/placeholder
-    rank = eva_rank_from_jobs(p["mjob"], p["sjob"], db.eva_skill_ranks)
-    base = get_base_def_eva(level, rank) + db.pool_eva_mod.get(pool_id, 0)
-
-    fagi = get_base_to_rank(fam["agi"], level)
-    magi = get_base_to_rank(db.job_agi_grade.get(p["mjob"], 0), level)
-    sagi_full = get_base_to_rank(db.job_agi_grade.get(p["sjob"], 0), level)
-    in_subjob_zone = norm_zone(db.zones.get(zone_id, "")) in db.subjob_zones
-    if in_subjob_zone and level < 50:
-        sagi = get_sub_job_stats(db.job_agi_grade.get(p["sjob"], 0), level, sagi_full)
-    else:
-        sagi = sagi_full // 2
-    is_nm = bool(p["mobtype"] & 0x02)  # MOBTYPE_NOTORIOUS
-    agi = int((fagi + magi + sagi) * (db.nm_mult if is_nm else db.mob_mult))
-    return dict(eva=base + agi // 2, base=base, agi=agi, rank="ABCDE"[rank - 1],
-                fagi=fagi, magi=magi, sagi=sagi, is_nm=is_nm, subjob_zone=in_subjob_zone)
+    return eva_core(db, level, p["mjob"], p["sjob"], fam["agi"],
+                    subjob_zone=norm_zone(db.zones.get(zone_id, "")) in db.subjob_zones,
+                    flat=db.pool_eva_mod.get(pool_id, 0),
+                    is_nm=bool(p["mobtype"] & 0x02))  # MOBTYPE_NOTORIOUS
 
 
 def correction(db, zone_id, player_lvl, mob_lvl):
@@ -397,6 +402,31 @@ def dump(db, path, zone_filter):
     print("wrote %d mobs -> %s" % (len(out), path))
 
 
+def dump_families(db, path):
+    """One row per (family, mJob/sJob) combo that actually occurs in mob_pools,
+    with EVA at every level 1-99. Computed with the plain sub-job halving
+    (non-original-zone rule); mobs in original/RoZ outdoor zones can differ by
+    ~+-2 EVA below Lv50 -- use the per-mob query for exact numbers. ACC to cap:
+    +48 for 1H/H2H (99%), +40 for 2H/offhand/ranged (95%). Flat pool EVA mods
+    and NM multipliers are per-mob, not per-family, so they are not in here."""
+    import csv
+    combos = {}
+    for p in db.pools.values():
+        if p["family"] in db.families:
+            combos[(p["family"], p["mjob"], p["sjob"])] = combos.get((p["family"], p["mjob"], p["sjob"]), 0) + 1
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["family", "agi_rank", "mjob", "sjob", "eva_rank", "pools"]
+                   + ["L%d" % l for l in range(1, 100)])
+        for (fid, mj, sj), n in sorted(combos.items(),
+                                       key=lambda kv: (db.families[kv[0][0]]["name"], kv[0][1], kv[0][2])):
+            fam = db.families[fid]
+            evas = [eva_core(db, lvl, mj, sj, fam["agi"], subjob_zone=False) for lvl in range(1, 100)]
+            w.writerow([fam["name"], "ABCDEFG"[fam["agi"] - 1] if 1 <= fam["agi"] <= 7 else fam["agi"],
+                        JOBS[mj], JOBS[sj], evas[0]["rank"], n] + [e["eva"] for e in evas])
+    print("wrote %d family/job rows x Lv1-99 -> %s" % (len(combos), path))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("mob", nargs="?", help="mob name (substring, case/space-insensitive)")
@@ -405,6 +435,7 @@ def main():
     ap.add_argument("--player-level", type=int, help="your level, for zone level correction")
     ap.add_argument("--acc", type=int, help="your current ACC: show expected hit rate")
     ap.add_argument("--dump", metavar="PATH", help="write mobs.json (optionally with --zone)")
+    ap.add_argument("--families", metavar="PATH", help="write family x jobs EVA table Lv1-99 (csv)")
     ap.add_argument("--refresh", action="store_true", help="re-download server sources")
     a = ap.parse_args()
 
@@ -415,8 +446,11 @@ def main():
     if a.dump:
         dump(db, a.dump, a.zone.lower() if a.zone else None)
         return
+    if a.families:
+        dump_families(db, a.families)
+        return
     if not a.mob:
-        ap.error("give a mob name or --dump")
+        ap.error("give a mob name, --dump, or --families")
 
     q = norm_mob(a.mob)
     hits = [g for g in db.groups if q in norm_mob(g["name"])
