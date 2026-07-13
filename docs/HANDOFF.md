@@ -130,6 +130,11 @@ handshake).
     detection-driven auto-equip (`0x096` is the first synth packet — too late).
   - New this arc: `craftwatch.lua`, `craftbar.lua`, `crafts.lua`, `filetex.lua`,
     `assets/craft/*.png`, `assets/{macrobook,craftbar}.png`, `tools/gen_craftdb.py`.
+  - **Last Synth (07-13):** the craft bar replays the last captured 0x096 with
+    freshly resolved inventory slots (`craftwatch.repeatLastSynth`; server-verified
+    legal, 15s server cooldown mirrored client-side; one click = one synth). The
+    detection-driven auto-equip ban above is unchanged -- this is a manual button.
+    crafts.lua rows now carry `r = <result item id>` for the "Last synth:" label.
   - **Verify-then-automate — DONE (2026-07-13):** guild-points self-request (c2s
     `0x10F`) turn-in-verified; now auto-fires once on login + on AutoCraft panel
     open (debounced). `/dl craft gp` remains the manual check.

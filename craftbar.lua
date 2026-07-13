@@ -2,11 +2,14 @@
     dlac/craftbar.lua -- floating craft control bar.
 
     A small always-available window: an on/off switch, the eight craft glyphs
-    (click to select + equip that craft's gear), and the goal (HQ / NQ /
-    Skill-Up). This is the MANUAL model Henrik settled on -- you set your gear
-    BEFORE synthing, when equipment changes are legal (auto-detection can't,
-    since 0x096 is the first synth packet). The same controls live in the
-    Automations panel; both drive the single craftwatch state.
+    (click to select + equip that craft's gear), the goal (HQ / NQ /
+    Skill-Up), a Last Synth button (replays the last detected synth --
+    craftwatch.repeatLastSynth, one click one synth), and a status line naming
+    what that replay would make. This is the MANUAL model Henrik settled on --
+    you set your gear BEFORE synthing, when equipment changes are legal
+    (auto-detection can't, since 0x096 is the first synth packet). The same
+    craft/goal controls live in the Automations panel; both drive the single
+    craftwatch state.
 
     Toggle the window: /dl craft bar  (or the button in the Automations panel).
 ]]--
@@ -103,6 +106,16 @@ function M.onOffSwitch(on, id)
 end
 
 local isOpen = { true };
+local BAR_MIN_W = 430;   -- min CONTENT width (Henrik: wider bar, centered rows;
+                         -- fits the goal row + Last Synth with air to spare)
+
+-- Center the next row of known width within the bar: Dummy + SameLine(indent)
+-- (the triggersui craft-glyph pattern).
+local function centerNext(availW, rowW)
+    local indent = math.max(0, math.floor((availW - rowW) / 2));
+    if indent > 0 then imgui.Dummy({ 0, 0 }); imgui.SameLine(indent); end
+end
+
 function M.render()
     if not cw.barVisible then return; end
     local pushed = _uok and uistyle.push();
@@ -110,16 +123,28 @@ function M.render()
         imgui.SetNextWindowSize({ 0, 0 }, ImGuiCond_Always or 0);
         isOpen[1] = true;
         if imgui.Begin('dlac Craft##dlac_craftbar', isOpen, ImGuiWindowFlags_AlwaysAutoResize or 0) then
+            local availW = imgui.GetContentRegionAvail();
+            if type(availW) ~= 'number' or availW < BAR_MIN_W then availW = BAR_MIN_W; end
             local sel = cw.getCraft();
             local on = cw.isEnabled();
+            -- Row 1, centered: the 8 craft glyphs + the on/off switch.
+            centerNext(availW, 8 * 30 + 7 * 6 + 6 + 46);
             for i, cr in ipairs(ORDER) do
                 if M.craftButton(cr, sel == cr, 30) then cw.selectCraft(cr); end
                 imgui.SameLine(0, 6);
             end
-            -- On/off switch to the RIGHT of the icons.
-            imgui.SameLine(0, 6);
             if M.onOffSwitch(on, 'bar') then cw.setEnabled(not on); end
             imgui.Separator();
+            -- Row 2, centered: goal toggles + the Last Synth action (an
+            -- ACTION, not a goal -- extra gap + no green-active state).
+            local ls = (type(cw.lastSynth) == 'function') and cw.lastSynth() or nil;
+            local ready = (ls ~= nil) and ((ls.readyIn or 0) <= 0);
+            local goalW = 34;
+            pcall(function()
+                local w = imgui.CalcTextSize('Goal:');
+                if type(w) == 'number' then goalW = w; end
+            end);
+            centerNext(availW, goalW + 6 + 62 + 4 + 62 + 4 + 86 + 12 + 86);
             local goal = cw.getGoal();
             imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, 'Goal:'); imgui.SameLine(0, 6);
             for i, gd in ipairs(GOALS) do
@@ -129,6 +154,44 @@ function M.render()
                 if gon then imgui.PopStyleColor(1); end
                 if i < #GOALS then imgui.SameLine(0, 4); end
             end
+            imgui.SameLine(0, 12);
+            if not ready and ImGuiCol_Button ~= nil then
+                imgui.PushStyleColor(ImGuiCol_Button, { 0.24, 0.26, 0.30, 1 });   -- dim: not ready
+            end
+            if imgui.Button('Last Synth##cblast', { 86, 20 }) and type(cw.repeatLastSynth) == 'function' then
+                cw.repeatLastSynth();   -- refusals (cooldown / no synth / restock) explain in chat
+            end
+            if not ready and ImGuiCol_Button ~= nil then imgui.PopStyleColor(1); end
+            if imgui.IsItemHovered() then
+                if ls == nil then
+                    imgui.SetTooltip('Repeat your most recent synthesis (same crystal + ingredients,\nfresh inventory slots). Nothing seen yet -- synth once via the menu first.');
+                elseif not ready then
+                    imgui.SetTooltip(string.format('Repeat: %s\nThe server allows one synth per 15s -- ready in %ds.',
+                        ls.name or 'last recipe', math.ceil(ls.readyIn)));
+                else
+                    imgui.SetTooltip('Repeat: ' .. (ls.name or 'last recipe')
+                        .. '\nSends the same crystal + ingredients again (fresh slots looked up now).');
+                end
+            end
+            -- Status line: WHAT the Last Synth button would make (Henrik: so
+            -- you know what it will do before clicking).
+            imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, 'Last synth:');
+            imgui.SameLine(0, 6);
+            if ls == nil then
+                imgui.TextColored({ 0.50, 0.50, 0.50, 1 }, '(none this session)');
+            else
+                imgui.TextColored({ 0.95, 0.85, 0.45, 1 }, ls.name or 'unknown recipe');
+                if ls.skill ~= nil and ls.skill ~= 'unknown' then
+                    imgui.SameLine(0, 0);
+                    imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, string.format('  (%s%s%s)',
+                        ls.skill, ls.lv and (' ' .. ls.lv) or '', ls.desynth and ', desynth' or ''));
+                end
+                if (ls.readyIn or 0) > 0 then
+                    imgui.SameLine(0, 8);
+                    imgui.TextColored({ 0.55, 0.55, 0.58, 1 }, string.format('-- ready in %ds', math.ceil(ls.readyIn)));
+                end
+            end
+            imgui.Dummy({ BAR_MIN_W, 1 });   -- enforces the min width under AlwaysAutoResize
         end
         imgui.End();
         if isOpen[1] == false then cw.barVisible = false; end

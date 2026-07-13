@@ -519,3 +519,32 @@ REAL semantics field-verified via Henrik's screenshot: mask is a REGEX
 pruned) and arg 3 = RECURSIVE (files+dirs, relative paths). All listings now
 mask '.*', non-recursive, Lua-filtered. Cross-char clone field-confirmed
 working by Henrik.
+
+## Session "GP auto-fetch + craft bar Last Synth" (07-13, on `main`)
+
+**Guild points automated** (loose end closed above): login one-shot + forced
+fetch on every Auto Craft Set entry, after Henrik's turn-in verification.
+
+**Last Synth (craft bar):** Henrik asked for a repeat button -- gated on
+proving a synth can actually be SENT. Proven against the server source
+(CatsAndBoats/catseyexi `stable`, `packets/c2s/0x096_combine_ask.cpp` +
+`synthutils.cpp`): `validate()` checks crystal id / 1-8 items / idle status,
+`process()` checks a **15s cooldown from synth START** (`m_LastSynthTime`, set
+in `startSynth`), no pending trade, and per-slot `TableNo` item+quantity in
+LOC_INVENTORY (same slot repeated = stack draw). No client menu state anywhere
+-- so REPLAYING the last captured 0x096 with freshly resolved slots is a legal
+synth. Implementation (craftwatch): raw 0x096 kept (`M._lastRaw`), `M.current`
+gains `crystal`/`ings`; pure `resolveSlots` (per-slot budgets; crystal claim
+reserves its copy -- crystal-as-ingredient safe; T34-T42) + `repeatLastSynth`
+(client-side 15s mirror, restock refusals name the missing item, sync zeroed,
+CrystalIdx/TableNo patched, one packet per click -- NOT automation) +
+`lastSynth()` info for UIs. The injected packet re-enters our own packet_out
+handler, so the cooldown re-arms itself. **crafts.lua fmt change:** rows now
+carry `r = <NQ result item id>` (gen_craftdb.py; names resolved at runtime via
+GetItemById -- no strings shipped; 9470 keys). **Craft bar:** min content
+width 430 (bottom Dummy under AlwaysAutoResize), glyph+switch and goal rows
+CENTERED (`centerNext`), `Last Synth` button (86px, right of Skill-Up, dim
+while cooling, tooltip names the recipe + countdown), and a `Last synth:
+<result> (craft lv) -- ready in Ns` status line under the goals.
+
+**Test suite: 274 checks green** (T34-T42 added).

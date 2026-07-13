@@ -21,6 +21,10 @@
     counts from the NEXT synth on, not this one. First-synth coverage will need
     a pre-flip (craft mode) or synthesis-menu detection (future probe).
 
+    LAST SYNTH (craft bar): the last detected 0x096 can be REPLAYED on click --
+    same bytes, fresh inventory slots (see the replay section for the server-
+    side proof of why that is a legal synth). One click, one synth.
+
     Pure data core (key/decode/lookup) is headless-testable; Ashita glue below.
 ]]--
 
@@ -480,6 +484,7 @@ function M.onSynth(crystal, ings, clock)
         desynth = rec and rec.desynth or nil,
         binding = binding, margin = margin, target = target,
         key = M.key(crystal, ings), at = clock or os.clock(),
+        crystal = crystal, ings = ings,   -- Last Synth replay + display
     };
     -- Detection is INFO only (it can't equip in time -- 0x096 is the first
     -- packet): it updates M.current so the craft bar highlights the live
@@ -491,12 +496,138 @@ function M.onSynth(crystal, ings, clock)
     return M.current;
 end
 
+-- ---------------------------------------------------------------------------
+-- Last Synth replay (craft bar button). The server rolls a synth entirely
+-- server-side from c2s 0x096 -- verified against the CatsEyeXI handler
+-- (packets/c2s/0x096_combine_ask.cpp, branch stable, 2026-07-13): validate()
+-- checks crystal id / item count / idle status only; process() checks a 15s
+-- cooldown from synth START (synthutils startSynth sets m_LastSynthTime), no
+-- pending trade, and that each TableNo slot in LOC_INVENTORY holds the claimed
+-- item id with enough quantity (same slot repeated = stack draw). No client
+-- menu state involved, so REPLAYING the last 0x096 with freshly resolved slot
+-- indexes is a legal synth. ONE packet per click -- the button is a shortcut
+-- past the menu, not automation; the server's 15s gate is mirrored here so a
+-- click during cooldown never even sends.
+-- ---------------------------------------------------------------------------
+local SYNTH_COOLDOWN = 15;   -- seconds, server-enforced (m_LastSynthTime + 15s)
+
+-- Pure (headless-tested): pick inventory slots for a crystal + ingredient
+-- list. invRead(idx) -> itemId, count; slots are claimed with per-slot
+-- budgets, so 3x of one stack = the same slot three times (exactly how the
+-- client fills TableNo) and split stacks fall through to the next slot.
+-- Returns crystalIdx, tableNos -- or nil, missingItemId.
+function M.resolveSlots(crystal, ings, invRead, maxIdx)
+    local used = {};
+    local function claim(id)
+        for i = 1, maxIdx do
+            local iid, cnt = invRead(i);
+            if iid == id and ((cnt or 0) - (used[i] or 0)) >= 1 then
+                used[i] = (used[i] or 0) + 1;
+                return i;
+            end
+        end
+        return nil;
+    end
+    local cidx = claim(crystal);
+    if cidx == nil then return nil, crystal; end
+    local tbl = {};
+    for k = 1, #ings do
+        tbl[k] = claim(ings[k]);
+        if tbl[k] == nil then return nil, ings[k]; end
+    end
+    return cidx, tbl;
+end
+
+local _nameCache = {};
+local function itemName(id)
+    if _nameCache[id] ~= nil then return _nameCache[id]; end
+    local nm = nil;
+    pcall(function()
+        local r = AshitaCore:GetResourceManager():GetItemById(id);
+        nm = (r ~= nil and r.Name ~= nil) and r.Name[1] or nil;
+    end);
+    _nameCache[id] = nm or ('item #' .. tostring(id));
+    return _nameCache[id];
+end
+
+-- What the Last Synth button would repeat -- nil before any synth this
+-- session. name comes from the recipe's NQ result id (crafts.lua 'r', name
+-- resolved from the client's own resources); nil name = unknown recipe
+-- (replay still works -- the server, not the db, judges the synth).
+function M.lastSynth()
+    local cur = M.current;
+    if cur == nil or M._lastRaw == nil or cur.crystal == nil then return nil; end
+    local rec = _db[cur.key];
+    return {
+        name = (rec ~= nil and rec.r ~= nil) and itemName(rec.r) or nil,
+        skill = cur.skill, lv = cur.lv, desynth = cur.desynth,
+        readyIn = math.max(0, SYNTH_COOLDOWN - (os.clock() - (cur.at or 0))),
+    };
+end
+
+-- Re-send the last synth: same bytes (HashNo, crystal, ItemNo order), fresh
+-- CrystalIdx/TableNo resolved from the CURRENT inventory (the originals were
+-- consumed), sync zeroed for Ashita to fill. Chat explains every refusal.
+function M.repeatLastSynth()
+    local cur, raw = M.current, M._lastRaw;
+    if cur == nil or raw == nil then
+        say('last synth: nothing seen this session -- do one synth via the menu first.');
+        return false;
+    end
+    local left = SYNTH_COOLDOWN - (os.clock() - (cur.at or 0));
+    if left > 0 then
+        say(string.format('last synth: the server allows one synth per %ds -- ready in %ds.',
+            SYNTH_COOLDOWN, math.ceil(left)));
+        return false;
+    end
+    local crystal, ings = M.decode(raw);
+    if crystal == nil or (raw:byte(0x09 + 1) or 0) ~= #ings then
+        say('last synth: stored packet looks off -- synth once via the menu to re-arm.');
+        return false;
+    end
+    local inv = nil;
+    pcall(function() inv = AshitaCore:GetMemoryManager():GetInventory(); end);
+    if inv == nil then return false; end
+    local maxIdx = 80;
+    pcall(function() maxIdx = inv:GetContainerCountMax(0) or 80; end);
+    local function invRead(i)
+        local id, cnt = nil, 0;
+        pcall(function()
+            local it = inv:GetContainerItem(0, i);
+            if it ~= nil then id, cnt = it.Id, it.Count; end
+        end);
+        return id, cnt;
+    end
+    local cidx, tbl = M.resolveSlots(crystal, ings, invRead, maxIdx);
+    if cidx == nil then
+        say('last synth: out of ' .. itemName(tbl) .. ' -- restock and try again.');
+        return false;
+    end
+    local b = { raw:byte(1, #raw) };
+    b[3], b[4] = 0, 0;                                   -- sync: Ashita fills it
+    b[0x08 + 1] = cidx;                                  -- CrystalIdx
+    for k = 1, #ings do b[0x1A + k] = tbl[k]; end        -- TableNo[k]
+    local ok = pcall(function()
+        AshitaCore:GetPacketManager():AddOutgoingPacket(0x096, b);
+    end);
+    -- Our own packet_out handler sees the injected copy and refreshes
+    -- M.current.at, so the cooldown gate re-arms automatically.
+    if ok then
+        local info = M.lastSynth();
+        say('last synth: repeating ' .. ((info and info.name) or 'the last recipe') .. '.');
+    end
+    return ok;
+end
+
 if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'function' then
     ashita.events.register('packet_out', 'dlac-craftwatch-out', function(e)
         if e.id ~= 0x096 then return; end
         pcall(function()
             local crystal, ings = M.decode(e.data);
-            if crystal ~= nil then M.onSynth(crystal, ings); end
+            if crystal ~= nil then
+                M._lastRaw = e.data;   -- Last Synth replays these exact bytes
+                M.onSynth(crystal, ings);
+            end
         end);
     end);
 
