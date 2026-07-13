@@ -164,22 +164,35 @@ function M.storageExists()
     return readFile(M.pointerPath()) ~= nil;
 end
 
--- Best-effort subdirectory listing: ashita.fs.get_dir first (its directory
--- mode is unverified in the field), then a shell `dir /b /ad` fallback (same
--- precedent as the os.execute mkdir gearui already uses). nil when both fail.
-local function listDirs(path)
+-- ashita.fs.get_dir FIELD SEMANTICS (screenshot-verified 2026-07-13): the mask
+-- is a REGEX, not a Lua pattern -- '.*%.lua' matches NOTHING (the '%' is
+-- literal), which is why profile file lists came back empty; and the third
+-- argument means RECURSIVE -- true returns relative paths of files AND
+-- directories ('Default\sets\BLU.lua'), which is how the whole subtree got
+-- listed as "profiles". So: always mask '.*', never recurse, filter Lua-side.
+local function rawList(path)
     if path == nil then return nil; end
     local out = nil;
     pcall(function()
         if not (ashita and ashita.fs and ashita.fs.get_dir) then return; end
-        local ok, dirs = pcall(ashita.fs.get_dir, path, '.*', true);
-        if not ok or type(dirs) ~= 'table' then return; end
-        out = {};
-        for _, d in ipairs(dirs) do
-            if type(d) == 'string' and d ~= '.' and d ~= '..' then out[#out + 1] = d; end
-        end
+        local ok, t = pcall(ashita.fs.get_dir, path, '.*', false);
+        if ok and type(t) == 'table' then out = t; end
     end);
-    if out == nil then
+    return out;
+end
+
+-- Best-effort name listing (files and dirs MIXED -- get_dir does not say
+-- which; callers filter by shape). Shell `dir /b /ad` fallback is dirs-only.
+local function listDirs(path)
+    if path == nil then return nil; end
+    local out = rawList(path);
+    if out ~= nil then
+        local acc = {};
+        for _, d in ipairs(out) do
+            if type(d) == 'string' and d ~= '.' and d ~= '..' then acc[#acc + 1] = d; end
+        end
+        out = acc;
+    else
         pcall(function()
             local p = io.popen('dir /b /ad "' .. path .. '" 2>nul');
             if p == nil then return; end
@@ -202,18 +215,18 @@ end
 local function listLuaFiles(path)
     if path == nil then return nil; end
     local out = nil;
-    pcall(function()
-        if not (ashita and ashita.fs and ashita.fs.get_dir) then return; end
-        local ok, files = pcall(ashita.fs.get_dir, path, '.*%.lua', false);
-        if not ok or type(files) ~= 'table' then return; end
-        out = {};
-        for _, f in ipairs(files) do
-            if type(f) == 'string' then
-                local b = f:match('^(.+)%.lua$');
-                if b ~= nil then out[#out + 1] = b; end
+    do
+        local raw = rawList(path);   -- mask must be '.*' (regex); filter here
+        if raw ~= nil then
+            out = {};
+            for _, f in ipairs(raw) do
+                if type(f) == 'string' then
+                    local b = f:match('^(.+)%.lua$');
+                    if b ~= nil then out[#out + 1] = b; end
+                end
             end
         end
-    end);
+    end
     if out == nil then
         pcall(function()
             local p = io.popen('dir /b "' .. path .. '*.lua" 2>nul');
@@ -282,7 +295,15 @@ end
 function M.listProfilesAt(charFolder)
     local root = M.lacRoot();
     if root == nil or charFolder == nil then return nil; end
-    return listDirs(root .. charFolder .. '\\dlac\\profiles\\');
+    local names = listDirs(root .. charFolder .. '\\dlac\\profiles\\');
+    if names == nil then return nil; end
+    -- get_dir mixes files into the listing: only sanitize-clean names can be
+    -- profile FOLDERS (a stray file has a dot; sanitize rejects it).
+    local out = {};
+    for _, n in ipairs(names) do
+        if M.sanitizeName(n) ~= nil then out[#out + 1] = n; end
+    end
+    return out;
 end
 
 -- Which jobs a profile carries (deterministic 22-job probe, no listing API):

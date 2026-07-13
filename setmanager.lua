@@ -450,11 +450,14 @@ local function backupWithRotation(srcText, job, maxN, tag)
     local path = dir .. prefix .. os.date('%Y%m%d_%H%M%S') .. '.lua';
     if not writeFile(path, srcText) then return nil, 'could not write backup'; end
     if ashita and ashita.fs and ashita.fs.get_dir then
-        local ok, files = pcall(ashita.fs.get_dir, dir, '.*%.lua', false);
+        -- get_dir's mask is a REGEX, not a Lua pattern (field-verified in the
+        -- profiles menu, 2026-07-13): '.*%.lua' matched NOTHING, so rotation
+        -- silently never pruned. List everything, filter here.
+        local ok, files = pcall(ashita.fs.get_dir, dir, '.*', false);
         if ok and type(files) == 'table' then
             local mine = {};
             for _, f in ipairs(files) do
-                if type(f) == 'string' and f:sub(1, #prefix) == prefix then mine[#mine + 1] = f; end
+                if type(f) == 'string' and f:sub(1, #prefix) == prefix and f:match('%.lua$') ~= nil then mine[#mine + 1] = f; end
             end
             table.sort(mine);                       -- timestamped -> chronological
             while #mine > maxN do
