@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 34;   -- 34: modestate __loadstamp -- the GUI's red Reload-LAC button watches it clear
+M.VERSION = 35;   -- 35: matched-but-missing set no longer chat-warns (Triggers tab shows it in red)
+                  -- 34: modestate __loadstamp -- the GUI's red Reload-LAC button watches it clear
                   -- 33: profile storage layer (dlac\profiles\<name>\; auto-install on load/job change; /dl profile)
                   -- 32: engine self-swap (dispatch.lua hot-reloads like the trigger file)
                   -- 31: craft-gear OVERLAY on Default (engine equips craft gear; craftstate.lua)
@@ -979,7 +980,6 @@ local function actionLabel(ctx)
     return '?';
 end
 
-local _unknownSetWarned = {};   -- once per set name per session: matched-but-missing is LOUD
 local function equipSetByName(name, ctx)
     local s;
     pcall(function()
@@ -989,12 +989,10 @@ local function equipSetByName(name, ctx)
     if type(s) ~= 'table' then
         -- A trigger MATCHED but its target set is absent from this job's profile
         -- (field case: a Midshot rule pointing at a set never committed on WAR --
-        -- the silent skip cost an hour of ghost-hunting). Warn once per name;
-        -- the per-frame skip itself stays quiet (traced in /dl why).
-        if not _unknownSetWarned[tostring(name)] then
-            _unknownSetWarned[tostring(name)] = true;
-            print(string.format('[dlac] trigger matched, but set "%s" does not exist in this profile -- create it in the Sets tab and Commit, then Reload LAC.', tostring(name)));
-        end
+        -- the silent skip cost an hour of ghost-hunting). NO chat warn (Henrik:
+        -- inform by printing as little as possible) -- the visibility lives in
+        -- the Triggers tab now: a red banner + per-row [missing] markers against
+        -- profilesets.liveSetNames. The skip itself stays traced in /dl why.
         return false, '', nil;
     end
     local note, tbl = equipResolved(s, ctx);

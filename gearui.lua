@@ -308,7 +308,7 @@ local function flattenGear(src)
             Slot = slot, Category = category, Type = e.Type, Stats = e.Stats,
             Key = key,                     -- gear.lua table key, for building a commit path
             OneHanded = e.OneHanded,       -- weapon 1H vs 2H (Sub-slot pairing rules)
-            InBothHands = e.InBothHands,   -- owns two copies for same-weapon dual-wield
+            Count = e.Count,   -- scanned copy count (>= 2 = same-weapon dual-wield)
         };
         list[#list + 1] = rec;
         if rec.Id ~= nil then byId[rec.Id] = rec; end
@@ -854,8 +854,7 @@ local function subCandidateOk(subRec, mainRec, mainJob, mainLevel, subJob, subLe
         if kind ~= nil then return true; end
         if subRec.OneHanded ~= true then return false; end
         if mainRec ~= nil and subRec.Name == mainRec.Name then
-            if subRec.InBothHands == true then return true; end
-            return copies >= 2;
+            return copies >= 2 or (tonumber(subRec.Count) or 0) >= 2;
         end
         return true;
     end
@@ -866,8 +865,7 @@ local function subCandidateOk(subRec, mainRec, mainJob, mainLevel, subJob, subLe
     if subRec.OneHanded ~= true then return false; end
     if dw ~= true then return false; end
     if subRec.Name == mainRec.Name then
-        if subRec.InBothHands == true then return true; end
-        return copies >= 2;
+        return copies >= 2 or (tonumber(subRec.Count) or 0) >= 2;
     end
     return true;
 end
@@ -2563,6 +2561,7 @@ do
         pcall(trigui.init, {
             charBase = charBase, jobFile = jobFile, seedTriggersFile = seedTriggersFile,
             dynamicSetNames = profsets.dynamicSetNames, staticSetNames = profsets.staticSetNames,
+            liveSetNames = profsets.liveSetNames,   -- Dynamic + LIVE-file statics (no backup): trigger-target authority
             lookupByName = lookupByName, ownedCounts = owned.counts,  -- automations manifest (owned staves/obis)
             ownedList = buildOwned,                                   -- max-MP manifest (piece MP values)
             allEquipList = buildAllEquip,                             -- AutoCraft panel: full catalog (owned OR not)

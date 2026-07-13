@@ -410,8 +410,15 @@ local function condSummary(when)
     return (#parts > 0) and table.concat(parts, ' + ') or 'any';
 end
 
--- Every set name in the profile (Dynamic + static), for the target-set dropdowns.
+-- Every set name a trigger may TARGET: the LIVE profile's names (Dynamic +
+-- the job file's own statics). Backup-only statics are excluded on purpose --
+-- they exist for "Copy from" in the Sets tab, but the engine's gProfile never
+-- holds them, so targeting one equips nothing (and marks [missing] here).
 local function allSetNames()
+    if deps.liveSetNames ~= nil then
+        local ok, live = pcall(deps.liveSetNames);
+        if ok and type(live) == 'table' then return live; end
+    end
     local names = deps.dynamicSetNames();
     local seen = {};
     for _, n in ipairs(names) do seen[n] = true; end
@@ -2061,6 +2068,30 @@ function M.render(job, level)
         elseif mv == nil and trig._modeStateExists == true then
             imgui.TextColored(COL_ERR,
                 '[!] LuaAshitacast is running an OUTDATED dlac engine -- click "Reload LAC" (top-right).');
+        end
+    end
+
+    -- Missing-set banner: rules that would MATCH and then equip NOTHING. The
+    -- engine no longer chat-warns about these (inform by printing as little as
+    -- possible) -- this red line + the per-row [missing] markers ARE the signal.
+    do
+        local have = {};
+        for _, n in ipairs(allSetNames()) do have[n] = true; end
+        local miss, seen = {}, {};
+        for _, ev in ipairs(TRIG_HANDLERS) do
+            for _, r in ipairs(trig.data[ev] or {}) do
+                local slist = (type(r.set) == 'table') and r.set or ((r.set ~= nil) and { r.set } or {});
+                for _, sn in ipairs(slist) do
+                    sn = tostring(sn);
+                    if not have[sn] and not seen[sn] then seen[sn] = true; miss[#miss + 1] = sn; end
+                end
+            end
+        end
+        if #miss > 0 then
+            table.sort(miss);
+            imgui.TextColored(COL_ERR, string.format(
+                '[!] %d trigger target set(s) missing from this profile: %s -- those rules equip NOTHING (red [missing] below). Create them in the Sets tab.',
+                #miss, esc(table.concat(miss, ', '))));
         end
     end
 

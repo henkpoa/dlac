@@ -76,6 +76,7 @@ end
 --                  names the live file no longer has (post-migration statics).
 -- Cached per (job file, active profile); invalidate() drops it after a commit.
 local _cache, _cacheKey, _setsDiag = nil, nil, nil;
+local _liveNames = nil;   -- set names that exist in the LIVE profile (see liveSetNames)
 local function loadRoot()
     local jf, abbr = nil, nil;
     if deps ~= nil and deps.jobFile ~= nil then jf, abbr = deps.jobFile(); end
@@ -129,8 +130,34 @@ local function loadRoot()
     if root.Dynamic == nil and _setsDiag == nil then
         _setsDiag = 'ran ' .. jf .. ' but it has no sets.Dynamic';
     end
+    -- LIVE set names = Dynamic + the job file's OWN statics. Deliberately NOT
+    -- the backup statics merged into root: those exist for "Copy from" only --
+    -- the engine's gProfile never holds them, so a trigger targeting one would
+    -- match and equip NOTHING. This is the Triggers tab's missing-set authority.
+    local live = {};
+    if type(root.Dynamic) == 'table' then
+        for k in pairs(root.Dynamic) do live[tostring(k)] = true; end
+    end
+    if type(jsets) == 'table' then
+        for k, v in pairs(jsets) do
+            if k ~= 'Dynamic' and type(v) == 'table' then live[tostring(k)] = true; end
+        end
+    end
+    _liveNames = live;
     _cache = root;
     return _cache;
+end
+
+-- Sorted array of the LIVE profile's set names (see the note in loadRoot).
+local function liveSetNames()
+    local names = {};
+    pcall(function()
+        loadRoot();   -- refresh the cache (and _liveNames) if the key moved
+        if type(_liveNames) ~= 'table' then return; end
+        for k in pairs(_liveNames) do names[#names + 1] = k; end
+    end);
+    table.sort(names);
+    return names;
 end
 
 local function getSetsRoot()
@@ -184,11 +211,12 @@ end
 function M.diag() return _setsDiag; end
 
 -- Drop the cached sets so the next read re-parses the files (post commit/delete).
-function M.invalidate() _cache = nil; _cacheKey = nil; end
+function M.invalidate() _cache = nil; _cacheKey = nil; _liveNames = nil; end
 
 M.getSetsRoot     = getSetsRoot;
 M.getDynamicSets  = getDynamicSets;
 M.dynamicSetNames = dynamicSetNames;
 M.staticSetNames  = staticSetNames;
+M.liveSetNames    = liveSetNames;
 
 return M;
