@@ -3798,11 +3798,13 @@ local function drawWindow()
                 local title;
                 if f.kind == 'cloneProfile' then title = string.format('Clone profile "%s" from %s', f.srcProf, f.srcDisp);
                 elseif f.kind == 'cloneJob' then title = string.format('Clone %s from %s\'s "%s"', f.job, f.srcDisp, f.srcProf);
+                elseif f.kind == 'renameJob' then title = string.format('Rename %s in %s\'s "%s"', f.job, f.srcDisp, f.srcProf);
+                elseif f.kind == 'deleteProfile' then title = string.format('Delete profile "%s" from %s', f.srcProf, f.srcDisp);
                 else title = string.format('Rename profile "%s"', f.srcProf); end
                 imgui.TextColored(COL_HEADER, title);
                 imgui.Separator();
 
-                if f.kind ~= 'rename' then
+                if f.kind == 'cloneProfile' or f.kind == 'cloneJob' then
                     imgui.TextColored(COL_DIM, 'To character:'); imgui.SameLine(0, 8);
                     local dstC = m.chars[f.dstIdx] or m.chars[1];
                     imgui.PushItemWidth(180);
@@ -3814,12 +3816,14 @@ local function drawWindow()
                     end
                     imgui.PopItemWidth();
                 end
-                imgui.TextColored(COL_DIM, (f.kind == 'rename') and 'New name:' or 'To profile:'); imgui.SameLine(0, 8);
-                imgui.PushItemWidth(180);
-                imgui.InputText('##pm_fprof', f.prof, 48);
-                imgui.PopItemWidth();
-                if f.kind == 'cloneJob' then
-                    imgui.TextColored(COL_DIM, 'As name:'); imgui.SameLine(0, 8);
+                if f.prof ~= nil and f.kind ~= 'deleteProfile' and f.kind ~= 'renameJob' then
+                    imgui.TextColored(COL_DIM, (f.kind == 'rename') and 'New name:' or 'To profile:'); imgui.SameLine(0, 8);
+                    imgui.PushItemWidth(180);
+                    imgui.InputText('##pm_fprof', f.prof, 48);
+                    imgui.PopItemWidth();
+                end
+                if f.kind == 'cloneJob' or f.kind == 'renameJob' then
+                    imgui.TextColored(COL_DIM, (f.kind == 'renameJob') and 'New name:' or 'As name:'); imgui.SameLine(0, 8);
                     imgui.PushItemWidth(180);
                     imgui.InputText('##pm_fname', f.name, 48);
                     imgui.PopItemWidth();
@@ -3828,11 +3832,30 @@ local function drawWindow()
                 -- Collision / validity check -- recomputed only when an input
                 -- changes (a per-frame disk probe would spawn popen consoles).
                 local dstC = m.chars[f.dstIdx] or m.chars[1];
-                local key = f.kind .. '|' .. (dstC and dstC.name or '?') .. '|' .. tostring(f.prof[1]) .. '|' .. tostring(f.name and f.name[1]);
+                local key = f.kind .. '|' .. (dstC and dstC.name or '?') .. '|' .. tostring(f.prof and f.prof[1]) .. '|' .. tostring(f.name and f.name[1]);
                 if ui._pmChk == nil or ui._pmChk.key ~= key then
                     local chk = { key = key, blocked = false, why = nil, note = nil };
                     pcall(function()
                         local prof = require('dlac\\profiles');
+                        if f.kind == 'renameJob' then
+                            local nm = prof.sanitizeName(f.name[1]);
+                            if nm == nil then chk.blocked, chk.why = true, 'Invalid name: one word, letters/digits/_/- only.';
+                            elseif nm == f.job then chk.blocked, chk.why = true, 'Same name -- nothing to rename.';
+                            elseif prof.jobNameTakenAt(f.srcChar, f.srcProf, nm) then
+                                chk.blocked, chk.why = true, string.format('NAME COLLISION: "%s" already has a %s -- change the name to continue.', f.srcProf, nm);
+                            elseif m.jobsSet ~= nil and m.jobsSet[f.job] == true and m.jobsSet[nm] ~= true then
+                                chk.note = f.job .. ' becomes DORMANT as "' .. nm .. '" -- the engine stops loading it. Rename it back to a job name to revive it.';
+                            elseif m.jobsSet ~= nil and m.jobsSet[nm] == true and m.jobsSet[f.job] ~= true then
+                                chk.note = '"' .. f.job .. '" goes LIVE as ' .. nm .. ' immediately.';
+                            end
+                            return;
+                        end
+                        if f.kind == 'deleteProfile' then
+                            if f.srcChar == prof.currentCharFolder() and f.srcProf == prof.activeName() then
+                                chk.blocked, chk.why = true, 'This is your ACTIVE profile -- switch to another one first (/dl profile use <name>).';
+                            end
+                            return;
+                        end
                         local pn = prof.sanitizeName(f.prof[1]);
                         if pn == nil then chk.blocked, chk.why = true, 'Invalid name: one word, letters/digits/_/- only.'; return; end
                         if f.kind == 'cloneProfile' then
@@ -3863,39 +3886,78 @@ local function drawWindow()
                 end
                 local chk = ui._pmChk;
                 if chk.note ~= nil then fmt.textWrapped(COL_DIM, chk.note); end
+                if f.kind == 'deleteProfile' and not chk.blocked then
+                    -- The warning IS the feature: say exactly what dies, before the button.
+                    local names, cnt = {}, 0;
+                    for _, e in ipairs(f.files or {}) do
+                        names[#names + 1] = e.name;
+                        cnt = cnt + (e.sets and 1 or 0) + (e.trig and 1 or 0);
+                    end
+                    fmt.textWrapped(COL_ERR, string.format(
+                        'THIS DELETES THE WHOLE PROFILE "%s" ON %s -- every set and trigger in it: %s (%d file(s)). It disappears from the menu and the engine.',
+                        f.srcProf, f.srcDisp, (#names > 0) and table.concat(names, ', ') or '(empty)', cnt));
+                    fmt.textWrapped(COL_DIM,
+                        'One safety net remains: the files are first copied to that character\'s backups\\deleted-profiles\\ (verified before anything is removed). Delete that folder by hand if you truly want it gone.');
+                end
                 imgui.Separator();
+                local goLabel = (f.kind == 'deleteProfile') and 'DELETE PERMANENTLY' or 'Commit';
                 if chk.blocked then
                     fmt.textWrapped(COL_ERR, chk.why or 'blocked');
                     local grey = ImGuiCol_Button ~= nil;
                     if grey then imgui.PushStyleColor(ImGuiCol_Button, { 0.35, 0.35, 0.35, 1.0 }); end
-                    imgui.Button('Commit##pm_go0', { 150, 24 });   -- inert until the collision is fixed
+                    imgui.Button(goLabel .. '##pm_go0', { 170, 24 });   -- inert until the problem is fixed
                     if grey then imgui.PopStyleColor(1); end
-                    if imgui.IsItemHovered() then imgui.SetTooltip('Fix the problem above first -- Commit is disabled.'); end
-                elseif imgui.Button('Commit##pm_go', { 150, 24 }) then
-                    pcall(function()
-                        local prof = require('dlac\\profiles');
-                        if f.kind == 'cloneProfile' then
-                            local n, err = prof.cloneProfileTo(f.srcChar, f.srcProf, dstC.name, f.prof[1]);
-                            ui._profMenuMsg = (n ~= nil)
-                                and string.format('Cloned "%s" -> %s / "%s" (%d file(s)).', f.srcProf, dstC.disp or dstC.name, prof.sanitizeName(f.prof[1]), n)
-                                or ('Clone failed: ' .. tostring(err));
-                        elseif f.kind == 'cloneJob' then
-                            local n, err = prof.copyJobTo(f.srcChar, f.srcProf, f.job, dstC.name, f.prof[1], f.name[1]);
-                            ui._profMenuMsg = (n ~= nil)
-                                and string.format('Cloned %s -> %s / "%s" as %s (%d file(s)).', f.job, dstC.disp or dstC.name, prof.sanitizeName(f.prof[1]), prof.sanitizeName(f.name[1]), n)
-                                or ('Clone failed: ' .. tostring(err));
-                        else
-                            local ok2, err = prof.renameProfile(f.srcProf, f.prof[1]);
-                            ui._profMenuMsg = (ok2 ~= nil)
-                                and string.format('Renamed "%s" -> "%s".', f.srcProf, prof.sanitizeName(f.prof[1]))
-                                or ('Rename failed: ' .. tostring(err));
-                        end
-                    end);
-                    ui._pmForm, ui._pmChk = nil, nil;
-                    ui._profMenuBuild = true;   -- rebuild the tree with the result
+                    if imgui.IsItemHovered() then imgui.SetTooltip('Fix the problem above first -- the button is disabled.'); end
+                else
+                    local red = (f.kind == 'deleteProfile') and ImGuiCol_Button ~= nil;
+                    if red then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
+                    local go = imgui.Button(goLabel .. '##pm_go', { 170, 24 });
+                    if red then imgui.PopStyleColor(1); end
+                    if go then
+                        pcall(function()
+                            local prof = require('dlac\\profiles');
+                            if f.kind == 'cloneProfile' then
+                                local n, err = prof.cloneProfileTo(f.srcChar, f.srcProf, dstC.name, f.prof[1]);
+                                ui._profMenuMsg = (n ~= nil)
+                                    and string.format('Cloned "%s" -> %s / "%s" (%d file(s)).', f.srcProf, dstC.disp or dstC.name, prof.sanitizeName(f.prof[1]), n)
+                                    or ('Clone failed: ' .. tostring(err));
+                            elseif f.kind == 'cloneJob' then
+                                local n, err = prof.copyJobTo(f.srcChar, f.srcProf, f.job, dstC.name, f.prof[1], f.name[1]);
+                                ui._profMenuMsg = (n ~= nil)
+                                    and string.format('Cloned %s -> %s / "%s" as %s (%d file(s)).', f.job, dstC.disp or dstC.name, prof.sanitizeName(f.prof[1]), prof.sanitizeName(f.name[1]), n)
+                                    or ('Clone failed: ' .. tostring(err));
+                            elseif f.kind == 'renameJob' then
+                                local n, err = prof.renameJobAt(f.srcChar, f.srcProf, f.job, f.name[1]);
+                                ui._profMenuMsg = (n ~= nil)
+                                    and string.format('Renamed %s -> %s in "%s" (%d file(s)).', f.job, prof.sanitizeName(f.name[1]), f.srcProf, n)
+                                    or ('Rename failed: ' .. tostring(err));
+                            elseif f.kind == 'deleteProfile' then
+                                local n, info = prof.deleteProfileAt(f.srcChar, f.srcProf);
+                                ui._profMenuMsg = (n ~= nil)
+                                    and string.format('Deleted profile "%s" (%d file(s) removed). Safety copy: %s', f.srcProf, n, tostring(info))
+                                    or ('Delete failed: ' .. tostring(info));
+                            else
+                                local ok2, err = prof.renameProfile(f.srcProf, f.prof[1]);
+                                ui._profMenuMsg = (ok2 ~= nil)
+                                    and string.format('Renamed "%s" -> "%s".', f.srcProf, prof.sanitizeName(f.prof[1]))
+                                    or ('Rename failed: ' .. tostring(err));
+                            end
+                            -- touched the CURRENT character's ACTIVE profile? make the
+                            -- engine follow right now (sets + trigger hot-reload).
+                            local tc, tp = nil, nil;
+                            if f.kind == 'cloneJob' then tc, tp = dstC.name, prof.sanitizeName(f.prof[1]);
+                            elseif f.kind == 'renameJob' then tc, tp = f.srcChar, f.srcProf; end
+                            if tc ~= nil and tc == prof.currentCharFolder() and tp == prof.activeName() then
+                                AshitaCore:GetChatManager():QueueCommand(1, '/dl sets reload');
+                                AshitaCore:GetChatManager():QueueCommand(1, '/dl triggers reload');
+                            end
+                        end);
+                        ui._pmForm, ui._pmChk = nil, nil;
+                        ui._profMenuBuild = true;   -- rebuild the tree with the result
+                    end
                 end
                 imgui.SameLine(0, 8);
-                if imgui.Button('Back##pm_back', { 90, 24 }) then ui._pmForm, ui._pmChk = nil, nil; end
+                if imgui.Button((f.kind == 'deleteProfile') and 'Cancel##pm_back' or 'Back##pm_back', { 90, 24 }) then ui._pmForm, ui._pmChk = nil, nil; end
             else
                 -- ------- TREE VIEW: character > profile > job files -------
                 imgui.TextColored(COL_HEADER, 'dlac profiles');
@@ -3937,6 +3999,14 @@ local function drawWindow()
                                     ui._pmChk = nil;
                                 end
                             end
+                            if not (c.isCurrent and p.name == m.active) then   -- never offer deleting the live one
+                                imgui.SameLine(0, 8);
+                                if imgui.SmallButton('delete##pm_del_' .. c.name .. '_' .. p.name) then
+                                    ui._pmForm = { kind = 'deleteProfile', srcChar = c.name, srcDisp = c.disp or c.name,
+                                                   srcProf = p.name, files = p.files };
+                                    ui._pmChk = nil;
+                                end
+                            end
                             if open then
                                 if #p.files == 0 then imgui.TextColored(COL_DIM, '     (empty)'); end
                                 for _, jf2 in ipairs(p.files) do
@@ -3946,6 +4016,12 @@ local function drawWindow()
                                         ui._pmForm = { kind = 'cloneJob', srcChar = c.name, srcDisp = c.disp or c.name,
                                                        srcProf = p.name, job = jf2.name, dstIdx = 1,
                                                        prof = { p.name }, name = { jf2.name } };
+                                        ui._pmChk = nil;
+                                    end
+                                    imgui.SameLine(0, 6);
+                                    if imgui.SmallButton('rename##pm_jr_' .. c.name .. '_' .. p.name .. '_' .. jf2.name) then
+                                        ui._pmForm = { kind = 'renameJob', srcChar = c.name, srcDisp = c.disp or c.name,
+                                                       srcProf = p.name, job = jf2.name, name = { jf2.name } };
                                         ui._pmChk = nil;
                                     end
                                     imgui.SameLine(0, 10);

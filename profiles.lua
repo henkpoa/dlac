@@ -474,6 +474,81 @@ function M.renameProfile(oldName, newName)
     return true, nil;
 end
 
+-- Rename one job entry (sets + triggers together) inside any character's
+-- profile. Renaming AWAY from a job abbr makes it dormant (a backup slot);
+-- renaming a dormant copy TO a job abbr revives it. renamedCount | nil, why.
+function M.renameJobAt(charFolder, profName, oldName, newName)
+    newName = M.sanitizeName(newName);
+    if newName == nil then return nil, 'bad name (letters/digits/_/- only)'; end
+    if oldName == newName then return nil, 'same name'; end
+    if M.jobNameTakenAt(charFolder, profName, newName) then
+        return nil, 'name collision: "' .. newName .. '" already exists in that profile';
+    end
+    local dir = M.profileDirAt(charFolder, profName);
+    if dir == nil then return nil, 'bad profile'; end
+    local n = 0;
+    for _, kind in ipairs({ 'sets', 'triggers' }) do
+        local sp = dir .. kind .. '\\' .. oldName .. '.lua';
+        if readFile(sp) ~= nil then
+            if os.rename(sp, dir .. kind .. '\\' .. newName .. '.lua') then n = n + 1; end
+        end
+    end
+    if n == 0 then return nil, 'nothing renamed (no files for ' .. tostring(oldName) .. ')'; end
+    return n, nil;
+end
+
+-- Delete a whole profile -- but "never delete backups" is the house rule, so
+-- every file is FIRST copied (and read back verified) into that character's
+-- backups\deleted-profiles\<prof>-<stamp>\; only verified files are removed.
+-- The current character's ACTIVE profile is refused outright. Empty dirs are
+-- swept best-effort (rmdir refuses non-empty, so unknown files keep the
+-- profile visible instead of being destroyed). deletedCount, backupDir | nil, why.
+function M.deleteProfileAt(charFolder, profName)
+    if charFolder == nil or profName == nil then return nil, 'bad args'; end
+    if charFolder == M.currentCharFolder() and profName == M.activeName() then
+        return nil, 'that is the ACTIVE profile -- switch first (/dl profile use <other>)';
+    end
+    local root = M.lacRoot();
+    local dir = M.profileDirAt(charFolder, profName);
+    if root == nil or dir == nil then return nil, 'bad profile'; end
+    local files = M.listProfileFilesAt(charFolder, profName);
+    if #files == 0 then
+        -- nothing inside: just sweep the (empty) folders
+        pcall(os.execute, 'rmdir "' .. dir .. 'sets" 2>nul');
+        pcall(os.execute, 'rmdir "' .. dir .. 'triggers" 2>nul');
+        pcall(os.execute, 'rmdir "' .. dir:sub(1, -2) .. '" 2>nul');
+        return 0, '(profile was empty -- no safety copy needed)';
+    end
+    local bdir = root .. charFolder .. '\\backups\\deleted-profiles\\' .. profName .. '-' .. os.date('%Y%m%d_%H%M%S') .. '\\';
+    ensureDir(root .. charFolder .. '\\backups\\');
+    ensureDir(root .. charFolder .. '\\backups\\deleted-profiles\\');
+    ensureDir(bdir);
+    ensureDir(bdir .. 'sets\\');
+    ensureDir(bdir .. 'triggers\\');
+    local removed, failed = 0, 0;
+    for _, e in ipairs(files) do
+        for _, kind in ipairs({ 'sets', 'triggers' }) do
+            if (kind == 'sets' and e.sets) or (kind == 'triggers' and e.trig) then
+                local sp = dir .. kind .. '\\' .. e.name .. '.lua';
+                local bp = bdir .. kind .. '\\' .. e.name .. '.lua';
+                local t = readFile(sp);
+                if t ~= nil and writeFile(bp, t) and readFile(bp) == t and os.remove(sp) then
+                    removed = removed + 1;
+                else
+                    failed = failed + 1;
+                end
+            end
+        end
+    end
+    pcall(os.execute, 'rmdir "' .. dir .. 'sets" 2>nul');
+    pcall(os.execute, 'rmdir "' .. dir .. 'triggers" 2>nul');
+    pcall(os.execute, 'rmdir "' .. dir:sub(1, -2) .. '" 2>nul');
+    if failed > 0 then
+        return nil, string.format('%d file(s) could not be verified+removed -- the rest are safe in %s', failed, bdir);
+    end
+    return removed, bdir;
+end
+
 -- Import another character's profile into THIS character under dstName.
 -- Refuses to pour into a profile that already has files (no silent merges).
 -- Returns copiedCount, nil | nil, why.
