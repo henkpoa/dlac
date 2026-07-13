@@ -1204,12 +1204,18 @@ local function renderAutomations(noHeader)
                 end);
                 CRAFT_UI._kiId[kiName] = kiId;
             end
-            local hasKI = false;
-            if kiId ~= false then
-                pcall(function() hasKI = AshitaCore:GetMemoryManager():GetPlayer():HasKeyItem(kiId) == true; end);
-            end
+            -- Ownership from craftwatch's 0x055 tracker (the SDK HasKeyItem
+            -- memory read is dead on this client -- see craftwatch.lua).
+            local hasKI, kiSynced = false, false;
+            pcall(function()
+                local cw2 = require('dlac\\craftwatch');
+                kiSynced = (cw2.kiBlocksSeen or 0) > 0;
+                if kiId ~= false then hasKI = cw2.hasKeyItem(kiId) == true; end
+            end);
             if kiId == false then
                 imgui.TextColored(COL_DIM, 'Key item: ' .. kiName .. ' (unknown to this client)');
+            elseif not kiSynced then
+                imgui.TextColored(COL_DIM, 'Key item: ' .. kiName .. ' -- zone once to sync key items.');
             else
                 imgui.TextColored(hasKI and GREEN_OWNED or COL_ERR,
                     (hasKI and 'Key item: ' or 'Key item MISSING: ') .. kiName);

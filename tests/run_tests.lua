@@ -667,6 +667,31 @@ craftwatch.onSynth(4096, { 1165, 1165 }, 11);   -- repeat: same craft
 check('T20 repeat synth: no re-equip', #craftCmds, 0);
 craftwatch.autoEquip = false;
 
+-- 0x055 key item tracker (the SDK HasKeyItem memory read is dead on this
+-- client -- craftwatch keeps its own bitfield from the packet stream).
+-- Layout: u32 header | avail[0x40] | examined[0x40] | blockOffset | pad x3.
+local function kiPacket(block, setBits)   -- setBits = { id, ... } within the block
+    local avail = {};
+    for i = 1, 0x40 do avail[i] = 0; end
+    for _, id in ipairs(setBits) do
+        local rel = id - block * 512;
+        local x, y = math.floor(rel / 8), rel % 8;
+        avail[x + 1] = avail[x + 1] + 2 ^ y;
+    end
+    local bytes = {};
+    for i = 1, 0x40 do bytes[i] = string.char(avail[i]); end
+    return string.char(0x55, 0x24, 0, 0) .. table.concat(bytes)
+        .. string.rep('\0', 0x40) .. string.char(block) .. string.rep('\0', 3);
+end
+craftwatch.onKeyItemPacket(kiPacket(3, { 1988, 2044 }));   -- Carpenter + Culinarian
+check('T21 ki bit -> owned',           craftwatch.hasKeyItem(2044), true);
+check('T22 second ki bit -> owned',    craftwatch.hasKeyItem(1988), true);
+check('T23 unset ki -> not owned',     craftwatch.hasKeyItem(2000), false);
+check('T24 blocks counted',            craftwatch.kiBlocksSeen, 1);
+craftwatch.onKeyItemPacket(kiPacket(3, { 1988 }));         -- resync without Culinarian
+check('T25 cleared bit -> revoked',    craftwatch.hasKeyItem(2044), false);
+check('T26 other block untouched',     craftwatch.hasKeyItem(1988), true);
+
 -- ---------------------------------------------------------------------------
 -- U. Set-entry name resolution -- case-insensitive fallback + quiet-once warn.
 --    Field case (SMN "test" commit): static-migrated sets say "Solid wand" but

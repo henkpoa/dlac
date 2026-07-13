@@ -69,6 +69,38 @@ function M.lookup(crystal, ings)
 end
 
 -- ---------------------------------------------------------------------------
+-- Key items, tracked from s2c packet 0x055 (the FindAll pattern): the SDK's
+-- HasKeyItem memory read is DEAD on this client (probe 2026-07-13: owned
+-- total 0 with key items verifiably owned). The server re-sends the full
+-- bitfield in 512-KI blocks on login/zone-in, so this table is complete
+-- after the first zone. Layout (ThornyFFXI/FindAll pk_KeyItemUpdate):
+--   u32 header | u8 avail[0x40] | u8 examined[0x40] | u8 blockOffset | pad.
+-- ---------------------------------------------------------------------------
+M.keyItems = {};        -- ki id -> true
+M.kiBlocksSeen = 0;     -- 0 = no 0x055 yet this session (zone once)
+
+function M.onKeyItemPacket(data)
+    if type(data) ~= 'string' or #data < 0x85 then return; end
+    local base = (string.byte(data, 0x84 + 1) or 0) * 512;
+    for x = 0, 0x3F do
+        local b = string.byte(data, 0x04 + x + 1) or 0;
+        for y = 0, 7 do
+            local id = base + x * 8 + y;
+            if math.floor(b / 2 ^ y) % 2 == 1 then
+                M.keyItems[id] = true;
+            else
+                M.keyItems[id] = nil;
+            end
+        end
+    end
+    M.kiBlocksSeen = M.kiBlocksSeen + 1;
+end
+
+function M.hasKeyItem(id)
+    return M.keyItems[id] == true;
+end
+
+-- ---------------------------------------------------------------------------
 -- Tier / binding-craft calc (Henrik): HQ tiers break when your skill exceeds
 -- the recipe cap by >11 / >31 / >51. With SUBCRAFTS the craft with the
 -- SMALLEST margin limits the tier -- gear should boost THAT craft ("enough
@@ -275,6 +307,11 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
         end);
     end);
 
+    ashita.events.register('packet_in', 'dlac-craftwatch-in', function(e)
+        if e.id ~= 0x055 then return; end
+        pcall(function() M.onKeyItemPacket(e.data); end);
+    end);
+
     -- /dl craft [auto on|off | equip] -- status / automation control.
     ashita.events.register('command', 'dlac-craftwatch-cmd', function(e)
         pcall(function()
@@ -295,59 +332,33 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
                 -- Key-item diagnostic (field tool): what does THIS client call
                 -- the guild KIs, what ids do they map to, and what does
                 -- HasKeyItem say? Paste the output to fix the panel for real.
-                local res, plr = nil, nil;
+                local res = nil;
                 pcall(function() res = AshitaCore:GetResourceManager(); end);
-                pcall(function() plr = AshitaCore:GetMemoryManager():GetPlayer(); end);
-                if res == nil or plr == nil then say('ki probe: resources/player unavailable.'); return; end
-                say('ki probe -- exact reverse lookups:');
+                if res == nil then say('ki probe: resources unavailable.'); return; end
+                say(string.format('ki probe -- 0x055 blocks seen this session: %d%s',
+                    M.kiBlocksSeen, (M.kiBlocksSeen == 0) and '  (ZONE ONCE to sync)' or ''));
+                say('ki probe -- exact reverse lookups (packet-tracked ownership):');
                 for _, nm in ipairs({ 'Way of the Carpenter', 'Way of the Blacksmith', 'Way of the Goldsmith',
                                       'Way of the Weaver', 'Way of the Tanner', 'Way of the Boneworker',
                                       'Way of the Alchemist', 'Way of the Culinarian' }) do
                     local id = nil;
                     pcall(function() id = res:GetString('keyitems.names', nm, 2); end);
                     if type(id) == 'number' and id >= 0 then
-                        local has = false;
-                        pcall(function() has = plr:HasKeyItem(id) == true; end);
-                        say(string.format('  %s: id=%d has=%s', nm, id, tostring(has)));
+                        say(string.format('  %s: id=%d has=%s', nm, id, tostring(M.hasKeyItem(id))));
                     else
                         say(string.format('  %s: NOT in client strings', nm));
                     end
                 end
-                -- What does the client think you OWN? An empty list = the
-                -- memory read itself is dead on this client; owned ids at
-                -- unexpected numbers = old-server id drift (match the names
-                -- against your real key items to derive the mapping).
-                say('ki probe -- everything HasKeyItem reports as OWNED:');
-                local owned = 0;
-                for id = 0, 8191 do
-                    local has = false;
-                    pcall(function() has = plr:HasKeyItem(id) == true; end);
-                    if has then
-                        owned = owned + 1;
-                        if owned <= 40 then
-                            local nm = nil;
-                            pcall(function() nm = res:GetString('keyitems.names', id); end);
-                            say(string.format('  id=%d "%s"', id, tostring(nm or '?')));
-                        end
-                    end
-                end
-                say(string.format('  owned total: %d%s', owned, (owned > 40) and ' (first 40 shown)' or ''));
-                local frag = (c ~= nil and c ~= '') and c or 'way of';
-                say(string.format('ki probe -- scanning client strings for "%s":', frag));
-                local found = 0;
-                for id = 0, 8191 do
+                say('ki probe -- everything the 0x055 tracker reports as OWNED:');
+                local ids = {};
+                for id in pairs(M.keyItems) do ids[#ids + 1] = id; end
+                table.sort(ids);
+                for i = 1, math.min(#ids, 40) do
                     local nm = nil;
-                    pcall(function() nm = res:GetString('keyitems.names', id); end);
-                    if type(nm) == 'string' and nm ~= '' and string.find(string.lower(nm), string.lower(frag), 1, true) then
-                        found = found + 1;
-                        if found <= 25 then
-                            local has = false;
-                            pcall(function() has = plr:HasKeyItem(id) == true; end);
-                            say(string.format('  id=%d "%s" has=%s', id, nm, tostring(has)));
-                        end
-                    end
+                    pcall(function() nm = res:GetString('keyitems.names', ids[i]); end);
+                    say(string.format('  id=%d "%s"', ids[i], tostring(nm or '?')));
                 end
-                say(string.format('ki probe done: %d matches%s.', found, (found > 25) and ' (first 25 shown)' or ''));
+                say(string.format('  owned total: %d%s', #ids, (#ids > 40) and ' (first 40 shown)' or ''));
                 return;
             end
             if b == 'equip' then
