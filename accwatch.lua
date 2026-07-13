@@ -17,6 +17,11 @@ reply itself, widescan only backfills NMs):
    reply, which is cached and swallowed (e.blocked) so chat stays clean --
    the level arrives without the user noticing. Manual /check outside that
    window still prints normally. Injection precedent: craftwatch 0x10F.
+ - AUTO-CHECKPARAM: the same engage also fires 0x0DD Kind 2 at YOURSELF,
+   first (server replies in order, so the ACC lands before the report).
+   CHECKPARAM_PRIMARY (msg 712) p1 = your current mainhand ACC with gear/
+   food/buffs. The reply burst is swallowed the same way. The report then
+   ends with the verdict: "you N: CAPPED (+x)" or "you N: +x more".
  - PASSIVE: any /check reply (0x029 p1) or widescan reply (0x0F4) caches
    idx -> level for the zone regardless (wiped on zone-in).
 A live level collapses the range to one exact number, marked *. NMs answer
@@ -91,6 +96,22 @@ local seenLevels = {};
 local CHECK_MSG = { [0xAA] = 1, [0xAB] = 1, [0xAC] = 1, [0xAD] = 1, [0xAE] = 1,
                     [0xAF] = 1, [0xB0] = 1, [0xB1] = 1, [0xB2] = 1 };
 
+-- /checkparam reply burst (server enums/msg_basic.h): PRIMARY 712 carries the
+-- player's CURRENT mainhand ACC (gear+food+buffs) as p1. The rest are muted
+-- alongside it when our auto-checkparam fired them.
+M.myAcc = nil;
+local CHECKPARAM_MSG = { [712] = 1, [713] = 1, [714] = 1, [715] = 1, [731] = 1, [733] = 1 };
+
+local function myIndex()
+    local idx, sid = 0, 0;
+    pcall(function()
+        local pt = AshitaCore:GetMemoryManager():GetParty();
+        idx = pt:GetMemberTargetIndex(0) or 0;
+        sid = pt:GetMemberServerId(0) or 0;
+    end);
+    return idx, sid;
+end
+
 local function report(actIndex, why)
     if not _dok then
         say('acc: accdata.lua missing/bad -- regenerate: python tools\\acc_calc.py --luadata accdata.lua');
@@ -131,9 +152,26 @@ local function report(actIndex, why)
             corr = (' [lvl-corr, you Lv%d]'):format(pl);
         end
     end
-    say(('acc%s: %s Lv%s%s (%s%s)  EVA %s  ->  ACC %s to cap (%s %d%%)%s'):format(
+    local cap = is2h and 95 or 99;
+    local you = '';
+    if M.myAcc ~= nil then                                        -- fresh from auto-checkparam
+        -- correction can invert the band (higher mob level -> lower need)
+        local nLo, nHi = math.min(needLo, needHi), math.max(needLo, needHi);
+        if M.myAcc >= nHi then
+            you = ('  |  you %d: CAPPED (+%d)'):format(M.myAcc, M.myAcc - nHi);
+        elseif M.myAcc < nLo then
+            you = ('  |  you %d: +%s more'):format(M.myAcc, band(nLo - M.myAcc, nHi - M.myAcc));
+        else
+            you = ('  |  you %d: caps part of the Lv range'):format(M.myAcc);
+        end
+        if exact ~= '' then                                       -- exact level -> exact hit rate
+            local hit = math.max(20, math.min(cap, cap - (nLo - M.myAcc) / 2));
+            you = you .. (' ~%.0f%% hit'):format(hit);
+        end
+    end
+    say(('acc%s: %s Lv%s%s (%s%s)  EVA %s  ->  ACC %s to cap (%s %d%%)%s%s'):format(
         why or '', name, band(lo, hi), exact, desc, nm == 1 and ', NM' or '',
-        band(evLo, evHi), band(needLo, needHi), is2h and '2H' or '1H/H2H', is2h and 95 or 99, corr));
+        band(evLo, evHi), band(needLo, needHi), is2h and '2H' or '1H/H2H', cap, corr, you));
 end
 
 -- ---------------------------------------------------------------------------
@@ -144,6 +182,8 @@ local lastAt = 0;
 local pending = nil;      -- { idx, at }: engage waiting for its auto-check reply
 local muteIdx = -1;       -- swallow check replies for this idx until muteUntil
 local muteUntil = 0;      -- (only replies OUR auto-check caused; manual /check prints)
+local muteSelfIdx = -1;   -- same idea for our auto-checkparam's reply burst
+local muteSelfUntil = 0;
 
 if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'function' then
     -- level learning: /check reply 0x029 (p1 = exact level, non-NM only --
@@ -171,6 +211,19 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
             local p2  = d:byte(0x10 + 1);
             local tgt = d:byte(0x16 + 1) + d:byte(0x17 + 1) * 256;
             local msg = d:byte(0x18 + 1) + d:byte(0x19 + 1) * 256;
+            if CHECKPARAM_MSG[msg] ~= nil then                    -- /checkparam reply burst
+                if tgt == muteSelfIdx and os.clock() < muteSelfUntil then
+                    e.blocked = true;                             -- ours: keep chat clean
+                end
+                if msg == 712 and hi == 0 and p1 > 0 and p1 < 4096 then
+                    local midx = myIndex();
+                    if tgt == midx then                           -- self, not a pet checkparam
+                        M.myAcc = p1;
+                        dbg(('checkparam: your mainhand ACC = %d'):format(p1));
+                    end
+                end
+                return;
+            end
             local isCheck = (CHECK_MSG[msg] ~= nil and p2 >= 0x40 and p2 <= 0x47)
                          or msg == 0xF9;                          -- 0xF9 = impossible to gauge (NM)
             if not isCheck then
@@ -215,10 +268,26 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
             -- 16 bytes -- UniqueNo u32 @0x04, ActIndex u32 @0x08, Kind u8
             -- @0x0C (0 = Check, enum-validated) + 3 pad. A 12-byte packet is
             -- dropped by the validator without a reply (the v1 bug).
-            dbg(('engage idx=0x%03X sid=%d -> auto-check'):format(idx, sid));
+            dbg(('engage idx=0x%03X sid=%d -> auto-checkparam + auto-check'):format(idx, sid));
             pending = { idx = idx, at = os.clock() };
             muteIdx = idx;
             muteUntil = os.clock() + 1.0;
+            -- /checkparam (self) FIRST: the server answers in order, so the
+            -- fresh ACC (CHECKPARAM_PRIMARY p1) lands before the mob check
+            -- reply triggers the report. Same 0x0DD struct, Kind 2, self ids.
+            local midx, msid = myIndex();
+            if msid > 0 then
+                muteSelfIdx = midx;
+                muteSelfUntil = os.clock() + 1.0;
+                pcall(function()
+                    AshitaCore:GetPacketManager():AddOutgoingPacket(0x0DD, {
+                        0xDD, 0x08, 0x00, 0x00,
+                        msid % 256, math.floor(msid / 256) % 256,
+                        math.floor(msid / 65536) % 256, math.floor(msid / 16777216) % 256,
+                        midx % 256, math.floor(midx / 256) % 256, 0x00, 0x00,
+                        0x02, 0x00, 0x00, 0x00 });
+                end);
+            end
             local ok, err = pcall(function()
                 AshitaCore:GetPacketManager():AddOutgoingPacket(0x0DD, {
                     0xDD, 0x08, 0x00, 0x00,
