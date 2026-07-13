@@ -4491,10 +4491,11 @@ ashita.events.register('command', 'dlac-ui', function(e)
         M.visible = not M.visible;
     end
 
+    -- No routine chat line on toggle (inform by printing as little as
+    -- possible) -- the window appearing/disappearing IS the feedback. Only
+    -- the can't-show failure case still speaks.
     if M.visible and not hasImgui then
         print('[dlac] gear UI: imgui is unavailable in this context; nothing to show.');
-    else
-        print('[dlac] gear UI ' .. (M.visible and 'shown' or 'hidden') .. '.');
     end
 end);
 

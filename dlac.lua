@@ -148,8 +148,5 @@ ashita.events.register('unload', 'dlac-unbind', function()
     pcall(function() AshitaCore:GetChatManager():QueueCommand(-1, '/unbind ^k'); end);
 end);
 
-if _cfok then
-    _cfmt.msg('loaded -- ' .. _cfmt.hl('CTRL+K') .. ' (or ' .. _cfmt.hl('/dl ui') .. ') opens the gear / set builder.');
-else
-    print('[dlac] loaded. Open the gear / set builder with CTRL+K  or  /dl ui   (also /dlac ui).');
-end
+-- No load banner (inform by printing as little as possible): Ashita itself
+-- reports the addon load, and the /bind above already echoes the CTRL+K bind.
