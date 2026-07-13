@@ -976,6 +976,20 @@ check('Y29 plan: existing backup means hands off', plan[3].action, 'skip');
 check('Y30 plan: no Dynamic block -> empty store, still migrates', plan[4].action == 'migrate' and plan[4].dynText == nil, true);
 check('Y31 plan: existing profile sets file is never re-imported over', plan[5].action == 'migrate' and plan[5].dynText == nil, true);
 
+-- missing-gear-safe sets loading (profile sharing): a reader who doesn't own
+-- referenced items gets ladder HOLES (nil), a missing weapon CATEGORY resolves
+-- through an empty table instead of erroring the whole file away, and items
+-- the reader DOES own come back as the REAL records (identity-shared).
+do
+    local myGear = { Main = { Sword = { Joyeuse = { Name = 'Joyeuse' } } }, Sub = {}, Head = { Cap = { Name = 'Cap' } } };
+    local g = profilesM._wrapGear(myGear);
+    check('Y38 owned item is the REAL record', rawequal(g.Head.Cap, myGear.Head.Cap), true);
+    check('Y39 unowned item -> nil ladder hole', g.Head.Crown, nil);
+    check('Y40 missing weapon CATEGORY does not error', (pcall(function() return g.Main.Club.MapleWand_1; end)) and (g.Main.Club.MapleWand_1 == nil), true);
+    check('Y41 flat Sub: missing item is nil, not a table', g.Sub.Pelte, nil);
+    check('Y42 owned nested item is the REAL record', rawequal(g.Main.Sword.Joyeuse, myGear.Main.Sword.Joyeuse), true);
+end
+
 -- cross-character browsing/import: headless-safe (no AshitaCore -> nil answers).
 check('Y34 headless: importProfile refuses politely', (select(2, profilesM.importProfile('Other_1', 'Default', 'New'))), 'not logged in');
 check('Y35 headless: importProfile still validates the name first', (select(2, profilesM.importProfile('Other_1', 'Default', 'bad name'))), 'bad target name (letters/digits/_/- only)');

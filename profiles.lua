@@ -636,17 +636,49 @@ function M.frameSetsText(dynText)
     return SETS_HEADER .. 'local sets = {\n    ' .. dynText .. ',\n};\nreturn sets;\n';
 end
 
+-- Missing-gear-safe view of the gear inventory for LOADING a sets file. A
+-- shared/imported profile references items the reader may not own: a missing
+-- ITEM must resolve to nil (a ladder hole -- BuildDynamicSets iterates with
+-- pairs, so the next rung the reader DOES own is picked), and a missing
+-- weapon CATEGORY (gear.Main.Club on a char who never scanned a club) must
+-- NOT error the whole chunk away. Present tables pass through REAL, so
+-- resolved entries stay identity-shared with gear.lua / NameToObject.
+local EMPTYCAT = setmetatable({}, { __newindex = function() end });   -- reads nil, writes ignored
+local function wrapGearForRead(gearT)
+    local catProxy = setmetatable({}, {
+        __index = function(t, slot)   -- per-slot proxies, built once
+            local real = gearT[slot];
+            if type(real) ~= 'table' then return EMPTYCAT; end
+            local p = setmetatable({}, {
+                __index = function(_, k)
+                    local v = real[k];
+                    if v ~= nil then return v; end
+                    -- Only Main/Range nest by weapon category (gear.Main.Club.X);
+                    -- everything else (Sub included) stores items flat, where a
+                    -- missing key must be a nil LADDER HOLE, not a table.
+                    return (slot == 'Main' or slot == 'Range') and EMPTYCAT or nil;
+                end,
+            });
+            rawset(t, slot, p);
+            return p;
+        end,
+    });
+    return catProxy;
+end
+M._wrapGear = wrapGearForRead;   -- exported for the offline tests
+
 -- Load the profile sets file and return its Dynamic table (name -> set), or
--- nil + why. `gear` is provided from THIS state's gear inventory, so entries
--- point into the same tables everything else uses (LAC state: <char>\dlac\
--- copy; addon state: the preloaded char gear; tests: the stub).
+-- nil + why. `gear` is provided from THIS state's gear inventory (wrapped
+-- missing-safe, see above), so entries point into the same tables everything
+-- else uses (LAC state: <char>\dlac\ copy; addon state: the preloaded char
+-- gear; tests: the stub).
 function M.readSetsFile(job, name)
     local p = M.setsPath(job, name);
     if p == nil then return nil, 'not logged in'; end
     local chunk = loadfile(p);
     if chunk == nil then return nil, 'no profile sets file'; end
     local gok, gearT = pcall(require, 'dlac\\gear');
-    local env = setmetatable({ gear = (gok and type(gearT) == 'table') and gearT or {} },
+    local env = setmetatable({ gear = wrapGearForRead((gok and type(gearT) == 'table') and gearT or {}) },
                              { __index = function(_, k) return rawget(_G, k); end });
     if setfenv ~= nil then setfenv(chunk, env); end
     local ok, ret = pcall(chunk);
