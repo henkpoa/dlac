@@ -390,6 +390,31 @@ local function ensureStorageAt(charFolder, name)
     return true;
 end
 
+-- Does a profile NAME already exist under a character -- as a folder (even an
+-- empty one) or as files? The create/clone collision authority.
+function M.profileNameExistsAt(charFolder, name)
+    local existing = M.listProfilesAt(charFolder);
+    if existing ~= nil then
+        for _, n in ipairs(existing) do
+            if n == name then return true; end
+        end
+    end
+    return M.profileHasFilesAt(charFolder, name);
+end
+
+-- Create an EMPTY profile under any character. Refuses existing names.
+-- true, nil | nil, why.
+function M.createProfileAt(charFolder, name)
+    name = M.sanitizeName(name);
+    if name == nil then return nil, 'bad name (letters/digits/_/- only)'; end
+    if charFolder == nil then return nil, 'bad character'; end
+    if M.profileNameExistsAt(charFolder, name) then
+        return nil, 'name collision: "' .. name .. '" already exists there';
+    end
+    if not ensureStorageAt(charFolder, name) then return nil, 'could not create storage'; end
+    return true, nil;
+end
+
 -- Clone a whole profile to any character (including this one, under a new
 -- name). Refuses a destination that already has files. copiedCount | nil, why.
 function M.cloneProfileTo(srcCharFolder, srcName, dstCharFolder, dstName)

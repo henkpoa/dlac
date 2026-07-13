@@ -3800,6 +3800,7 @@ local function drawWindow()
                 elseif f.kind == 'cloneJob' then title = string.format('Clone %s from %s\'s "%s"', f.job, f.srcDisp, f.srcProf);
                 elseif f.kind == 'renameJob' then title = string.format('Rename %s in %s\'s "%s"', f.job, f.srcDisp, f.srcProf);
                 elseif f.kind == 'deleteJob' then title = string.format('Delete %s from %s\'s "%s"', f.job, f.srcDisp, f.srcProf);
+                elseif f.kind == 'newProfile' then title = string.format('New empty profile on %s', f.srcDisp);
                 elseif f.kind == 'deleteProfile' then title = string.format('Delete profile "%s" from %s', f.srcProf, f.srcDisp);
                 else title = string.format('Rename profile "%s"', f.srcProf); end
                 imgui.TextColored(COL_HEADER, title);
@@ -3823,8 +3824,8 @@ local function drawWindow()
                     imgui.InputText('##pm_fprof', f.prof, 48);
                     imgui.PopItemWidth();
                 end
-                if f.kind == 'cloneJob' or f.kind == 'renameJob' then
-                    imgui.TextColored(COL_DIM, (f.kind == 'renameJob') and 'New name:' or 'As name:'); imgui.SameLine(0, 8);
+                if f.kind == 'cloneJob' or f.kind == 'renameJob' or f.kind == 'newProfile' then
+                    imgui.TextColored(COL_DIM, (f.kind == 'renameJob') and 'New name:' or (f.kind == 'newProfile') and 'Name:' or 'As name:'); imgui.SameLine(0, 8);
                     imgui.PushItemWidth(180);
                     imgui.InputText('##pm_fname', f.name, 48);
                     imgui.PopItemWidth();
@@ -3858,6 +3859,14 @@ local function drawWindow()
                             return;
                         end
                         if f.kind == 'deleteJob' then return; end   -- no inputs; the warning + red button gate it
+                        if f.kind == 'newProfile' then
+                            local nm = prof.sanitizeName(f.name[1]);
+                            if nm == nil then chk.blocked, chk.why = true, 'Invalid name: one word, letters/digits/_/- only.';
+                            elseif prof.profileNameExistsAt(f.srcChar, nm) then
+                                chk.blocked, chk.why = true, string.format('NAME COLLISION: %s already has a profile "%s" -- change the name to continue.', f.srcDisp, nm);
+                            end
+                            return;
+                        end
                         local pn = prof.sanitizeName(f.prof[1]);
                         if pn == nil then chk.blocked, chk.why = true, 'Invalid name: one word, letters/digits/_/- only.'; return; end
                         if f.kind == 'cloneProfile' then
@@ -3941,6 +3950,11 @@ local function drawWindow()
                                 ui._profMenuMsg = (n ~= nil)
                                     and string.format('Renamed %s -> %s in "%s" (%d file(s)).', f.job, prof.sanitizeName(f.name[1]), f.srcProf, n)
                                     or ('Rename failed: ' .. tostring(err));
+                            elseif f.kind == 'newProfile' then
+                                local ok2, err = prof.createProfileAt(f.srcChar, f.name[1]);
+                                ui._profMenuMsg = (ok2 ~= nil)
+                                    and string.format('Created empty profile "%s" on %s -- build sets in the Sets tab, or clone jobs into it.', prof.sanitizeName(f.name[1]), f.srcDisp)
+                                    or ('Create failed: ' .. tostring(err));
                             elseif f.kind == 'deleteJob' then
                                 local n, info = prof.deleteJobAt(f.srcChar, f.srcProf, f.job);
                                 ui._profMenuMsg = (n ~= nil)
@@ -3993,7 +4007,14 @@ local function drawWindow()
                 imgui.BeginChild('##pm_body', { 640, 340 }, false);
                 for _, c in ipairs(m.chars) do
                     local fl = (c.isCurrent and ImGuiTreeNodeFlags_DefaultOpen ~= nil) and ImGuiTreeNodeFlags_DefaultOpen or 0;
-                    if imgui.CollapsingHeader((c.disp or c.name) .. (c.isCurrent and '   (this character)' or '') .. '###pm_c_' .. c.name, fl) then
+                    local cOpen = imgui.CollapsingHeader((c.disp or c.name) .. (c.isCurrent and '   (this character)' or '') .. '###pm_c_' .. c.name, fl);
+                    imgui.SameLine(640 - 92);   -- right-aligned on the character row
+                    if imgui.SmallButton('+ profile##pm_np_' .. c.name) then
+                        ui._pmForm = { kind = 'newProfile', srcChar = c.name, srcDisp = c.disp or c.name, name = { '' } };
+                        ui._pmChk = nil;
+                    end
+                    if imgui.IsItemHovered() then imgui.SetTooltip('Create an empty profile on ' .. (c.disp or c.name) .. ' (name it in the next step).'); end
+                    if cOpen then
                         if #c.profiles == 0 then imgui.TextColored(COL_DIM, '     (no dlac profiles)'); end
                         for _, p in ipairs(c.profiles) do
                             local open = imgui.TreeNode(p.name .. '###pm_p_' .. c.name .. '_' .. p.name);
