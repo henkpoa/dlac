@@ -334,14 +334,21 @@ function M.isEnabled() M.loadCraftState(); return M.enabled == true; end
 -- equip). Checked on every select/enable (autoLoad is cached, so it's cheap);
 -- the engine then reads the fresh autogear.lua.
 local function ensureManifestFresh()
+    local first = not M._craftRescanned;
+    M._craftRescanned = true;
     pcall(function()
         local tg = require('dlac\\triggersui');
         if type(tg.rescanAutogear) ~= 'function' then return; end
-        local stale = (type(tg.manifestStale) ~= 'function') or tg.manifestStale();
-        if stale or not M._craftRescanned then
-            M._craftRescanned = true;
-            tg.rescanAutogear();
+        -- ALWAYS regenerate on the first call this session (guarantees the
+        -- current AUTO_FMT ladders even if manifestStale errors); after that,
+        -- only when the on-disk schema is behind.
+        local stale = first;
+        if not first then
+            pcall(function()
+                if type(tg.manifestStale) == 'function' then stale = tg.manifestStale(); end
+            end);
         end
+        if stale then tg.rescanAutogear(); end
     end);
 end
 
