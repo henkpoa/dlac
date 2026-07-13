@@ -3773,7 +3773,10 @@ local function drawWindow()
                 local chars, cur = prof.listCharFolders();
                 if chars == nil then m.err = 'No directory listing available on this system -- use /dl profile from chat instead.'; return; end
                 for _, c in ipairs(chars) do
-                    local e = { name = c, isCurrent = (c == cur), profiles = {} };
+                    -- Display the bare character name: names cannot collide on
+                    -- the server, so the _<ServerId> suffix is noise (the full
+                    -- folder name stays in .name -- paths need it).
+                    local e = { name = c, disp = c:match('^(.-)_%d+$') or c, isCurrent = (c == cur), profiles = {} };
                     for _, pn in ipairs(prof.listProfilesAt(c) or {}) do
                         local js = {};
                         for _, j in ipairs(prof.profileJobsAt(c, pn)) do js[#js + 1] = j.job; end
@@ -3798,7 +3801,7 @@ local function drawWindow()
             imgui.BeginChild('##pm_body', { 620, 320 }, false);
             for _, c in ipairs(m.chars) do
                 local fl = (c.isCurrent and ImGuiTreeNodeFlags_DefaultOpen ~= nil) and ImGuiTreeNodeFlags_DefaultOpen or 0;
-                if imgui.CollapsingHeader(c.name .. (c.isCurrent and '   (this character)' or '') .. '###pm_c_' .. c.name, fl) then
+                if imgui.CollapsingHeader((c.disp or c.name) .. (c.isCurrent and '   (this character)' or '') .. '###pm_c_' .. c.name, fl) then
                     if #c.profiles == 0 then imgui.TextColored(COL_DIM, '     (no dlac profiles)'); end
                     for _, p in ipairs(c.profiles) do
                         imgui.Text('  ');
@@ -3834,7 +3837,7 @@ local function drawWindow()
                                     if dst == nil or dst == '' then dst = (c.name:match('^(.-)_%d+$') or c.name) .. '-' .. p.name; end
                                     local n, err = prof.importProfile(c.name, p.name, dst);
                                     ui._profMenuMsg = (n ~= nil)
-                                        and string.format('Imported %s\'s "%s" as "%s" (%d file(s)) -- click use on it to go live.', c.name, p.name, dst, n)
+                                        and string.format('Imported %s\'s "%s" as "%s" (%d file(s)) -- click use on it to go live.', c.disp or c.name, p.name, dst, n)
                                         or ('Import failed: ' .. tostring(err));
                                     if n ~= nil then ui._profMenuBuild = true; end
                                 end);
