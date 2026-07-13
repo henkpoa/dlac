@@ -488,7 +488,7 @@ local UNIVERSAL = {
 -- Manifest schema version: bump when autoCommit writes NEW fields. An on-disk
 -- manifest with an older fmtver self-heals (renderAutomations triggers a rescan)
 -- so a dlac update never needs a manual "Rescan owned gear" click.
-local AUTO_FMT = 5;   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked; 5: craft ladders
+local AUTO_FMT = 6;   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked; 5: craft ladders; 6: skill-up fillers in hq/nq
 
 local auto = { data = nil, loadedFor = nil, status = '' };
 
@@ -666,14 +666,24 @@ local function autoCommit()
                 local consv = tonumber(st.ConserveIngredient) or 0;
                 local dup = (sl == 'Ear' or sl == 'Ring') and type(counts) == 'table'
                             and rec.Id ~= nil and (counts[rec.Id] or 0) >= 2;
+                -- Skill-up items (Midras's Helm, Bonze Cape, Shapers Shawl) have
+                -- no per-craft mod, so they'd only ever fill the SKILL-UP goal.
+                -- Henrik wants them worn under HQ/NQ TOO -- but only as FILLERS:
+                -- a real craft-skill item (Chef's Hat for HQ) must still win its
+                -- slot. gain*0.3 (floored) keeps every skill-up item below the
+                -- weakest craft-skill contribution (skill=1 -> 10), so it fills
+                -- otherwise-empty slots and never beats real skill/HQ/anti gear.
+                local gainFill = math.floor(gain * 0.3);
                 for _, cr in ipairs(CRAFTS) do
                     local skill = tonumber(st[cr .. 'Skill']) or 0;
                     local anti  = tonumber(st['AntiHQ' .. cr]) or 0;
                     -- hq (Henrik): "prioritize Skill gear to break tiers" --
-                    -- craft skill first, HQ+ second; anti-HQ BLOCKS the goal.
-                    local hqScore = (anti > 0) and 0 or (skill * 10 + hqr * 5 + succ);
-                    -- nq: the HQ block is the point; skill/success still help.
-                    local nqScore = anti * 100 + skill * 3 + succ * 2 + mat + consv;
+                    -- craft skill first, HQ+ second; anti-HQ BLOCKS the goal;
+                    -- skill-up items fill empty slots (gainFill, always < skill).
+                    local hqScore = (anti > 0) and 0 or (skill * 10 + hqr * 5 + succ + gainFill);
+                    -- nq: the HQ block is the point; skill/success still help;
+                    -- skill-up items fill empty slots (they don't affect HQ odds).
+                    local nqScore = anti * 100 + skill * 3 + succ * 2 + mat + consv + gainFill;
                     -- skillup: "skill up items over skill+" -- SynthSkillGain
                     -- gear first, raw craft skill second.
                     local suScore = gain * 10 + skill * 2 + succ;
