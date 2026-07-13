@@ -263,8 +263,10 @@ end
 -- Exp rings ride the same menu, marked xp: the GUI draws them in their own
 -- section under the teleports, and menu() drops the UNOWNED ones entirely
 -- (Henrik: you can't have them all -- listing eight "not owned" rows is noise).
+-- label = the short name only (Henrik: no percentages in the first column;
+-- the bonus still shows in the /dl xp chat line).
 for _, x in ipairs(EXPRINGS) do
-    MENU[#MENU + 1] = { name = x.name, label = x.dest .. '  ' .. x.bonus,
+    MENU[#MENU + 1] = { name = x.name, label = x.dest,
                         cmd = '/dl xp ' .. x.aliases[1], xp = true };
 end
 local WANTED = {};
