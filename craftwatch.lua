@@ -307,7 +307,6 @@ local _cfok, _cfmt = pcall(require, 'dlac\\chatfmt');
 _cfok = _cfok and type(_cfmt) == 'table';
 local function say(s) if _cfok and _cfmt.msg then _cfmt.msg(s); else print('[dlac] ' .. s); end end
 
-local _saidUnknown = {};   -- key -> true (report each unknown recipe once)
 
 -- ---------------------------------------------------------------------------
 -- Craft-gear equip. MANUAL (Henrik): you pick the craft (bar / panel / command)
@@ -441,12 +440,8 @@ function M.setEnabled(on)
     M.enabled = (on == true);
     if M.enabled then ensureManifestFresh(); end
     saveCraftState();
-    if M.enabled and M.activeCraft ~= nil then
-        say(string.format('craft gear: %s (%s) -- the engine now wears it; turn off to restore normal gear.',
-            M.activeCraft, M.goal or 'hq'));
-    elseif not M.enabled then
-        say('craft gear: off -- normal gear restored.');
-    end
+    -- No chat line either way (removed 2026-07-13, Henrik: too chatty) -- the
+    -- craft bar's switch state IS the announcement.
 end
 
 -- Pick the GOAL craft. Craft buttons ONLY set which craft is active (Henrik);
@@ -472,7 +467,6 @@ function M.onSynth(crystal, ings, clock)
     local rec = M.lookup(crystal, ings);
     local skill = rec and rec.skill or 'unknown';
     M.counts[skill] = (M.counts[skill] or 0) + 1;
-    local prev = M.current;
     -- Gear should boost the BINDING craft: on subcraft recipes the smallest
     -- player-skill margin limits the HQ tier (recomputed every synth).
     local binding, margin = nil, nil;
@@ -486,30 +480,13 @@ function M.onSynth(crystal, ings, clock)
         binding = binding, margin = margin, target = target,
         key = M.key(crystal, ings), at = clock or os.clock(),
     };
-    if rec ~= nil then
-        local prevTarget = prev and (prev.target or prev.skill) or nil;
-        if prevTarget ~= target then               -- announce once per craft change
-            local note = '';
-            if binding ~= nil and binding ~= skill then
-                note = string.format(' -- binding subcraft: %s (margin %+d, tier %d)',
-                    binding, margin or 0, M.tierOf(margin) or 0);
-            end
-            say(string.format('synth detected: %s (recipe lv %d%s)%s.',
-                skill, rec.lv or 0, rec.desynth and ', desynth' or '', note));
-            -- Detection is now INFO only (it can't equip in time -- 0x096 is
-            -- the first packet). It just highlights the current craft on the
-            -- bar; equipping is your manual pick (selectCraft). If the binding
-            -- subcraft differs from what you selected, nudge you to switch.
-            if M.activeCraft ~= nil and target ~= M.activeCraft and target ~= 'unknown' then
-                say(string.format('  (you have %s gear on; this recipe is bound by %s -- click %s on the craft bar to switch)',
-                    M.activeCraft, target, target));
-            end
-        end
-    elseif not _saidUnknown[M.current.key] then        -- each unknown once, with the key
-        _saidUnknown[M.current.key] = true;
-        say(string.format('synth detected, recipe UNKNOWN (key %s) -- likely a CatsEyeXI custom; '
-            .. 'tell the maintainer so crafts.lua can learn it.', M.current.key));
-    end
+    -- Detection is INFO only (it can't equip in time -- 0x096 is the first
+    -- packet): it updates M.current so the craft bar highlights the live
+    -- craft/binding; equipping stays the manual pick (selectCraft). All the
+    -- chat prints -- synth detected, the binding-subcraft nudge, the
+    -- unknown-recipe report -- removed 2026-07-13 (Henrik: too chatty, for
+    -- now). Unknown recipes still land in M.current.key ('crystal:kc') if a
+    -- custom needs chasing later.
     return M.current;
 end
 
