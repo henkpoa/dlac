@@ -235,7 +235,6 @@ local _saidUnknown = {};   -- key -> true (report each unknown recipe once)
 -- while equipment changes are legal; the gear then counts for every synth.
 -- ---------------------------------------------------------------------------
 M.barVisible = false;      -- floating craft bar (craftbar.lua) shown?
-M._craftLocked = {};       -- lower slot -> true: craft-locked (engine skips it)
 M._craftRescanned = false; -- regenerated the manifest once this session?
 
 local SLOT_LABELS = { 'Main', 'Sub', 'Range', 'Ammo', 'Head', 'Neck', 'Ear1', 'Ear2',
@@ -257,144 +256,33 @@ local function entryName(v)
 end
 M._entryName = entryName;   -- test seam
 
-local function findCraftSet(skill)
-    local ok, profsets = pcall(require, 'dlac\\profilesets');
-    if not ok or type(profsets) ~= 'table' or type(profsets.getSetsRoot) ~= 'function' then return nil; end
-    local root = nil;
-    pcall(function() root = profsets.getSetsRoot(); end);
-    if type(root) ~= 'table' then return nil; end
-    local dyn = (type(root.Dynamic) == 'table') and root.Dynamic or {};
-    for _, nm in ipairs({ 'Craft_' .. tostring(skill), 'Craft' }) do
-        local s = dyn[nm] or root[nm];
-        if type(s) == 'table' then return nm, s; end
-    end
-    return nil;
-end
-
--- Manifest-driven picks: resolve dlac:AutoCraft per slot through the shared
--- dispatch resolver (addon-state instance reads the same autogear.lua). The
--- craft is passed as ctx.craftOverride -- the command-bus mode write hasn't
--- landed in this frame yet. Returns { [slotLabel] = itemName }.
-function M.manifestPicks(skill)
+-- Preview the resolved craft picks (diagnostics / tests) -- the ACTUAL equip is
+-- done by the engine overlay (dispatch.craftOverlay reading craftstate.lua).
+-- Returns { [slotLabel] = itemName } for a craft + the current goal.
+function M.manifestPreview(skill)
     local ok, dsp = pcall(require, 'dlac\\dispatch');
-    if not ok or type(dsp) ~= 'table' or type(dsp._resolveVirtual) ~= 'function' then return nil; end
-    local picks = nil;
+    if not ok or type(dsp) ~= 'table' or type(dsp._resolveVirtual) ~= 'function' then return {}; end
+    local picks = {};
     for _, slot in ipairs(SLOT_LABELS) do
         local nm = nil;
         pcall(function() nm = dsp._resolveVirtual('dlac:AutoCraft',
             { craftOverride = skill, goalOverride = M.goal }, slot); end);
-        if nm ~= nil then picks = picks or {}; picks[slot] = nm; end
+        if nm ~= nil then picks[slot] = nm; end
     end
     return picks;
 end
 
--- Equip craft gear for a skill; returns pieces queued (0 = nothing found).
--- A committed Craft_<Skill> / Craft set wins (explicit intent); otherwise the
--- autogear manifest's craft ladders decide (zero-setup path). Per Henrik:
--- gear STAYS ON afterwards -- the next ordinary trigger event redresses you.
--- baseDelay (frames) postpones the whole sequence (the synth-result path).
-function M.equipCraftSet(skill, baseDelay)
-    local setName, contents = findCraftSet(skill);
-    local picks, n = {}, 0;
-    if setName ~= nil then
-        for _, slot in ipairs(SLOT_LABELS) do
-            picks[slot] = entryName(contents[slot]);
-        end
-    else
-        -- Regenerate the manifest ONCE per session before the first manifest
-        -- equip: the ladders are written by the Automations panel / login
-        -- rescan, so a bar used before either -- or an older-format manifest
-        -- (missing the newest fillers) -- would equip too little. One rescan
-        -- guarantees the current AUTO_FMT ladders (head/back skill-up fillers).
-        if not M._craftRescanned then
-            M._craftRescanned = true;
-            pcall(function()
-                local tg = require('dlac\\triggersui');
-                if type(tg.rescanAutogear) == 'function' then tg.rescanAutogear(); end
-            end);
-        end
-        picks = M.manifestPicks(skill) or {};
-        if next(picks) == nil then                 -- still nothing: one more rescan + retry
-            pcall(function()
-                local tg = require('dlac\\triggersui');
-                if type(tg.rescanAutogear) == 'function' then tg.rescanAutogear(); end
-            end);
-            picks = M.manifestPicks(skill) or {};
-        end
-        setName = 'craft gear (auto)';
-    end
-    local ok, cmdq = pcall(require, 'dlac\\cmdqueue');
-    if not ok or type(cmdq) ~= 'table' or type(cmdq.enqueue) ~= 'function' then return 0; end
-    -- Craft gear must SURVIVE the engine, which re-equips your Idle/Default set.
-    -- The revert lives in the LAC Lua state (luashitacast's HandleDefault /
-    -- EquipSet). A /dl lock is set in the ADDON state and its command is
-    -- e.blocked before it reaches the LAC state, so it never stops that revert.
-    -- The reliable cross-state tool is LAC's OWN /lac disable <slot> -- handled
-    -- by luashitacast directly -- which makes EquipSet skip the slot. We disable
-    -- the slot, then /lac equip the craft piece (works with the equipment window
-    -- open, unlike native /equip). /dl lock rides along as a belt for the
-    -- dispatch-overlay path. Slots no longer used get released.
-    local want = {};                       -- lower slot -> { label, item }
-    for _, slot in ipairs(SLOT_LABELS) do
-        if picks[slot] ~= nil then want[string.lower(slot)] = { slot, picks[slot] }; end
-    end
-    for lslot in pairs(M._craftLocked) do
-        if want[lslot] == nil then          -- release slots we no longer use
-            cmdq.enqueue(0, '/lac enable ' .. lslot);
-            cmdq.enqueue(0, '/dl lock ' .. lslot .. ' off');
-            M._craftLocked[lslot] = nil;
-        end
-    end
-    -- disable (LAC skips it) + lock (belt) + /lac equip, in SLOT_LABELS order.
-    for _, slot in ipairs(SLOT_LABELS) do
-        local lslot = string.lower(slot);
-        local w = want[lslot];
-        if w ~= nil then
-            cmdq.enqueue((baseDelay or 0) + 6 * n,     '/lac disable ' .. lslot);
-            cmdq.enqueue((baseDelay or 0) + 6 * n + 1, '/dl lock ' .. lslot .. ' on');
-            cmdq.enqueue((baseDelay or 0) + 6 * n + 2, string.format('/lac equip %s "%s"', w[1], w[2]));
-            M._craftLocked[lslot] = true;
-            n = n + 1;
-        end
-    end
-    if n > 0 then
-        say(string.format('craft gear: equipped %s for %s (%s goal) -- %d slot(s) locked so the engine keeps them on.',
-            setName, tostring(skill), M.goal or 'hq', n));
-    else
-        say(string.format('craft gear: nothing to equip for %s -- commit a Craft_%s set or Rescan owned gear (Triggers > Automations).',
-            tostring(skill), tostring(skill)));
-    end
-    return n;
-end
-
--- Release every craft-disabled slot and let LAC dress you normally again
--- (called when the switch goes OFF).
-function M.releaseCraftLocks()
-    local ok, cmdq = pcall(require, 'dlac\\cmdqueue');
-    if not ok or type(cmdq) ~= 'table' then return; end
-    local any = false;
-    for lslot in pairs(M._craftLocked) do
-        cmdq.enqueue(0, '/lac enable ' .. lslot);
-        cmdq.enqueue(0, '/dl lock ' .. lslot .. ' off');
-        M._craftLocked[lslot] = nil;
-        any = true;
-    end
-    if any then
-        cmdq.enqueue(2, '/lac enable');   -- global belt: re-enable everything
-        say('craft gear: released -- LAC dresses you normally again.');
-    end
-end
-
 -- ---------------------------------------------------------------------------
--- MANUAL craft control (Henrik's design, after auto-detection proved a dead end:
--- 0x096 is the first synth packet, so nothing can dress you in time). You pick
--- the craft + goal -- from the floating bar (craftbar.lua) or the Automations
--- panel -- and dlac equips THEN, before you synth, while equipment changes are
--- legal. State persists per character (<char>\dlac\craftstate.lua).
+-- MANUAL craft control (Henrik's design). You pick craft + goal + on/off from
+-- the floating bar or the Automations panel; craftwatch just WRITES the state
+-- to <char>\dlac\craftstate.lua, and the dispatch ENGINE overlays that craft
+-- gear on Default (dispatch.craftOverlay). So the engine WEARS the craft gear
+-- -- nothing reverts it -- and turning the switch off removes the overlay so
+-- normal gear returns. No commands, no locks, no fighting the engine.
 -- ---------------------------------------------------------------------------
 M.goal = 'hq';            -- hq | nq | skillup
-M.activeCraft = nil;      -- the craft you last selected
-M.enabled = false;        -- the on/off slider: equipping happens only when ON
+M.activeCraft = nil;      -- the craft you selected
+M.enabled = false;        -- the on/off switch; session-only, starts OFF
 local _stateLoaded = false;
 
 local function craftStatePath()
@@ -411,6 +299,8 @@ local function saveCraftState()
         f:close();
     end);
 end
+M._saveCraftState = saveCraftState;   -- test seam
+
 function M.loadCraftState()
     if _stateLoaded then return; end
     local dir = kiCharDir();
@@ -418,60 +308,69 @@ function M.loadCraftState()
     _stateLoaded = true;
     pcall(function()
         local chunk = loadfile(dir .. 'craftstate.lua');
-        if chunk == nil then return; end
-        local ok, t = pcall(chunk);
-        if ok and type(t) == 'table' then
-            if type(t.goal) == 'string' and (t.goal == 'nq' or t.goal == 'skillup' or t.goal == 'hq') then
-                M.goal = t.goal;
+        if chunk ~= nil then
+            local ok, t = pcall(chunk);
+            if ok and type(t) == 'table' then
+                if type(t.goal) == 'string' and (t.goal == 'nq' or t.goal == 'skillup' or t.goal == 'hq') then
+                    M.goal = t.goal;
+                end
+                if type(t.craft) == 'string' and t.craft ~= '' then M.activeCraft = t.craft; end
+                -- `enabled` is NOT restored: the switch starts OFF each session
+                -- (no craft gear glued on at login). craft+goal DO persist.
             end
-            if type(t.craft) == 'string' and t.craft ~= '' then M.activeCraft = t.craft; end
-            -- NOTE: `enabled` is deliberately NOT restored. The switch is
-            -- session-only and starts OFF: a persisted ON showed the slider
-            -- green while nothing was actually equipped/locked (the apply only
-            -- runs on toggle), so the visual lied. You turn it on each session.
         end
     end);
+    M.enabled = false;
+    saveCraftState();                     -- sync the file to enabled=false for the engine
 end
 
 function M.getGoal() M.loadCraftState(); return M.goal or 'hq'; end
 function M.getCraft() M.loadCraftState(); return M.activeCraft; end
 function M.isEnabled() M.loadCraftState(); return M.enabled == true; end
 
--- Equip the active craft's gear IF the switch is on and a craft is chosen.
-local function applyIfActive()
-    if M.enabled and M.activeCraft ~= nil then
-        pcall(function() M.equipCraftSet(M.activeCraft); end);
-    end
+-- Ensure the manifest's craft ladders are current (regenerate once per session:
+-- a bar used before the Triggers tab / an older-format manifest would lack the
+-- newest fillers). The engine reads whatever autogear.lua holds.
+local function ensureManifestFresh()
+    if M._craftRescanned then return; end
+    M._craftRescanned = true;
+    pcall(function()
+        local tg = require('dlac\\triggersui');
+        if type(tg.rescanAutogear) == 'function' then tg.rescanAutogear(); end
+    end);
 end
 
--- The on/off slider (bar + panel). ON with a craft selected equips at once;
--- OFF releases the craft-locked slots so the engine dresses you normally.
+-- The on/off switch (bar + panel). Writing enabled -> the engine picks it up
+-- within a dispatch (~0.4s tick) and overlays / stops overlaying the craft gear.
 function M.setEnabled(on)
     M.loadCraftState();
     M.enabled = (on == true);
+    if M.enabled then ensureManifestFresh(); end
     saveCraftState();
-    if M.enabled then applyIfActive();
-    else pcall(M.releaseCraftLocks); end
+    if M.enabled and M.activeCraft ~= nil then
+        say(string.format('craft gear: %s (%s) -- the engine now wears it; turn off to restore normal gear.',
+            M.activeCraft, M.goal or 'hq'));
+    elseif not M.enabled then
+        say('craft gear: off -- normal gear restored.');
+    end
 end
 
--- Pick the GOAL craft. Craft buttons ONLY set which craft is active (Henrik) --
--- they do NOT flip the switch. Equipping happens only while the switch is ON;
--- the on/off slider is the sole activator.
+-- Pick the GOAL craft. Craft buttons ONLY set which craft is active (Henrik);
+-- they do NOT flip the switch. The engine equips it only while the switch is on.
 function M.selectCraft(craft)
     if type(craft) ~= 'string' or craft == '' then return; end
     M.loadCraftState();
     M.activeCraft = craft;
+    ensureManifestFresh();
     saveCraftState();
-    applyIfActive();                       -- equips ONLY if the switch is on
 end
 
--- Change the goal: save it, re-equip the active craft (when on) so it shows.
+-- Change the goal (persists; the engine re-resolves on its next dispatch).
 function M.setGoal(goal)
     if goal ~= 'hq' and goal ~= 'nq' and goal ~= 'skillup' then return; end
     M.loadCraftState();
     M.goal = goal;
     saveCraftState();
-    applyIfActive();
 end
 
 -- Process one detected synth; returns the record (also used by tests).
@@ -595,19 +494,23 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
                 say(string.format('  owned total: %d%s', #ids, (#ids > 40) and ' (first 40 shown)' or ''));
                 return;
             end
-            if b == 'equip' then
-                local skill = M.getCraft() or (M.current and M.current.skill) or nil;
-                if skill == nil or skill == 'unknown' then
-                    say('craft equip: pick a craft first (/dl craft <name>, the craft bar, or the Automations panel).');
-                else
-                    M.equipCraftSet(skill);
+            if b == 'show' then                        -- what would the engine equip?
+                local skill = M.getCraft();
+                if skill == nil then say('craft show: pick a craft first (/dl craft <name>).'); return; end
+                local picks = M.manifestPreview(skill);
+                say(string.format('craft show: %s (%s goal) -> engine overlay:', skill, M.getGoal()));
+                local any = false;
+                for _, slot in ipairs(SLOT_LABELS) do
+                    if picks[slot] ~= nil then any = true; say(string.format('  %-6s %s', slot, picks[slot])); end
                 end
+                if not any then say('  (nothing -- Rescan owned gear in Triggers > Automations)'); end
                 return;
             end
             -- bare /dl craft: status.
-            say(string.format('craft: selected = %s, goal = %s.',
-                M.getCraft() or '(none -- /dl craft <name>)', M.getGoal()));
-            say('  pick a craft on the bar (/dl craft bar) or Automations panel -- it equips that craft\'s gear BEFORE you synth.');
+            say(string.format('craft: selected = %s, goal = %s, switch = %s.',
+                M.getCraft() or '(none -- /dl craft <name>)', M.getGoal(), M.isEnabled() and 'ON' or 'off'));
+            say('  pick a craft + goal on the bar (/dl craft bar) or Automations panel, then flip the switch ON --');
+            say('  the engine wears that craft\'s gear until you turn it off. /dl craft show lists the pieces.');
             if M.current ~= nil then
                 say(string.format('  last synth seen: %s%s.', M.current.skill,
                     M.current.lv and (' lv ' .. M.current.lv) or ''));

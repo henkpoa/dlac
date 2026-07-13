@@ -32,7 +32,8 @@ local M = {};
 -- LAC-state copy stamps its version into the modestate mirror; the GUI compares
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code (the seeded file only re-requires when LuaAshitacast itself reloads).
-M.VERSION = 30;   -- 30: AutoCraft goal reads manifest craftGoal (single silent variable, no mode)
+M.VERSION = 31;   -- 31: craft-gear OVERLAY on Default (engine equips craft gear; craftstate.lua)
+                  -- 30: AutoCraft goal reads manifest craftGoal (single silent variable, no mode)
                   -- 29: the pet hold covers LEGACY profiles (HandleEquipEvent wrapped)
 
 -- Colored [dlac] chat output (chatfmt); plain print when unavailable. The shadowed
@@ -973,6 +974,57 @@ local function inlineSummary(equip)
 end
 
 -- The engine entry point. Never throws; a failure inside just skips this dispatch.
+-- ---------------------------------------------------------------------------
+-- Craft-gear overlay (Henrik's design: don't fight the engine, BE the engine).
+-- craftwatch (addon state) writes <char>\dlac\craftstate.lua {craft,goal,enabled};
+-- when enabled, the engine overlays the resolved craft gear on TOP of whatever
+-- Default equipped -- so the craft pieces are simply what the engine wears, and
+-- nothing reverts them. Disable -> no overlay -> normal Default returns.
+-- ---------------------------------------------------------------------------
+local _craft = { raw = nil, data = nil, lastCheck = -1 };
+local function ensureCraftState()
+    local now = os.time();
+    if now == _craft.lastCheck then return _craft.data; end
+    _craft.lastCheck = now;
+    local dir = charDir();
+    if dir == nil then return _craft.data; end
+    local raw = readFile(dir .. 'craftstate.lua');
+    if raw == nil then _craft.raw, _craft.data = nil, nil; return nil; end
+    if raw == _craft.raw then return _craft.data; end
+    _craft.raw = raw;
+    local chunk = (loadstring or load)(raw, '@craftstate.lua');
+    if chunk ~= nil then
+        local ok, t = pcall(chunk);
+        if ok and type(t) == 'table' then _craft.data = t; else _craft.data = nil; end
+    end
+    return _craft.data;
+end
+
+-- Proper-case slot keys for gFunc.EquipSet (resolveVirtual lowercases for the
+-- manifest lookup). Ammo excluded: crafting never wants an ammo swap.
+local CRAFT_OVERLAY_SLOTS = { 'Main', 'Sub', 'Range', 'Head', 'Neck', 'Ear1', 'Ear2',
+                             'Body', 'Hands', 'Ring1', 'Ring2', 'Back', 'Waist', 'Legs', 'Feet' };
+
+-- The craft equip table for a given craft-state, or nil when off. Split out so
+-- tests can pass an explicit state instead of the on-disk file.
+local function craftOverlayFor(cs, ctx)
+    if type(cs) ~= 'table' or cs.enabled ~= true
+       or type(cs.craft) ~= 'string' or cs.craft == '' then return nil; end
+    local goal = (cs.goal == 'nq' or cs.goal == 'skillup') and cs.goal or 'hq';
+    local equip = nil;
+    for _, slot in ipairs(CRAFT_OVERLAY_SLOTS) do
+        local nm = resolveVirtual('dlac:AutoCraft', { craftOverride = cs.craft, goalOverride = goal }, slot);
+        if type(nm) == 'string' then equip = equip or {}; equip[slot] = nm; end
+    end
+    return equip;
+end
+M._craftOverlayFor = craftOverlayFor;   -- test seam
+
+-- The craft equip table for right now (reads the on-disk state), or nil when off.
+local function craftOverlay(ctx)
+    return craftOverlayFor(ensureCraftState(), ctx);
+end
+
 function M.dispatch(event)
     if not inLac() then return; end
     pcall(function()
@@ -1000,7 +1052,11 @@ function M.dispatch(event)
             if matches(r, ctx) then hits[#hits + 1] = r; end
         end
 
-        if #hits == 0 then
+        -- Craft overlay applies on Default even with NO trigger match (so a plain
+        -- profile still gets craft gear), and always LAST (top priority) below.
+        local cEquip = (event == 'Default') and craftOverlay(ctx) or nil;
+
+        if #hits == 0 and cEquip == nil then
             if event ~= 'Default' then   -- Default runs every frame; only action events trace a miss
                 _trace[event] = { time = os.date('%H:%M:%S'), action = actionLabel(ctx),
                                   sig = '', lines = { '(no trigger matched)' } };
@@ -1021,7 +1077,14 @@ function M.dispatch(event)
         local lk = {};
         for s in pairs(M.locks) do lk[#lk + 1] = s; end   -- lock changes must retrace too
         table.sort(lk);
-        sig = event .. ':' .. table.concat(sig, ',') .. '|' .. table.concat(lk, ',');
+        local cSig = '';                                  -- craft overlay changes must retrace too
+        if cEquip ~= nil then
+            local ck = {};
+            for slot, item in pairs(cEquip) do ck[#ck + 1] = slot .. '=' .. item; end
+            table.sort(ck);
+            cSig = table.concat(ck, ',');
+        end
+        sig = event .. ':' .. table.concat(sig, ',') .. '|' .. table.concat(lk, ',') .. '|' .. cSig;
         local old = _trace[event];
         local retrace = (old == nil) or (old.sig ~= sig) or (event ~= 'Default');
         local lines = retrace and {} or old.lines;
@@ -1061,6 +1124,19 @@ function M.dispatch(event)
                 end
             end
         end
+        -- Craft overlay LAST: it owns every craft slot this dispatch, on top of
+        -- whatever Default resolved (the whole point -- the engine wears the
+        -- craft gear, so nothing reverts it).
+        if cEquip ~= nil then
+            equipResolved(cEquip, ctx);
+            if retrace then
+                local ks = {};
+                for slot in pairs(cEquip) do ks[#ks + 1] = tostring(slot); end
+                table.sort(ks);
+                lines[#lines + 1] = 'craft gear (overlay)  ->  ' .. table.concat(ks, ', ');
+            end
+        end
+
         if retrace and #hits > 1 then                    -- who won each slot (overlap visibility)
             local parts = {};
             for slot, src in pairs(slotSrc) do parts[#parts + 1] = tostring(slot) .. '<-' .. tostring(src); end

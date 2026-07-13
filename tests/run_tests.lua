@@ -651,49 +651,37 @@ check('T11 entry: plain string',    craftwatch._entryName('Chemists Kukri'), 'Ch
 check('T12 entry: virtual skipped', craftwatch._entryName('dlac:AutoStaff|Fallback'), nil);
 check('T13 entry: record form',     craftwatch._entryName({ Name = 'X' }), 'X');
 check('T14 entry: wrapper form',    craftwatch._entryName({ gear = 'Y', minLevel = 40 }), 'Y');
-local function hasCmd(want)   -- craftCmds contains an exact command?
-    for _, c in ipairs(craftCmds) do if c == want then return true; end end
-    return false;
-end
--- Craft gear must SURVIVE the engine: each slot emits /lac disable (LAC skips
--- it) + /dl lock (belt) + /lac equip. Returns the SLOT count, not command count.
-craftwatch.enabled = true;   -- equipCraftSet is called directly here (bypasses the gate)
-craftwatch._craftLocked = {}; craftCmds = {};
-check('T15 equip returns slot count', craftwatch.equipCraftSet('Alchemy'), 3);
-check('T16 disables the slot (LAC skip)', hasCmd('/lac disable main'), true);
-check('T16b lac equip emitted',       hasCmd('/lac equip Main "Chemists Kukri"'), true);
-craftwatch._craftLocked = {}; craftCmds = {};
-check('T17 fallback to Craft set',    craftwatch.equipCraftSet('Bonecraft'), 1);
-check('T18 fallback equip command',   hasCmd('/lac equip Neck "Artisans Torque"'), true);
--- Craft buttons ONLY set the active craft; the SWITCH activates equipping.
-craftwatch._craftLocked = {}; craftCmds = {};
-craftwatch.enabled = false;            -- switch OFF
+-- MANUAL model (Henrik): craftwatch just holds state (craft/goal/switch);
+-- the ENGINE overlays the gear (dispatch.craftOverlay). No commands here.
+-- saveCraftState no-ops without a live client, so we assert state only.
 craftwatch.goal = 'hq';
 craftwatch.selectCraft('Alchemy');
-check('T19 select while OFF: no equip', #craftCmds, 0);
-check('T19b select sets active',        craftwatch.getCraft(), 'Alchemy');
-check('T19c select does NOT enable',    craftwatch.isEnabled(), false);
-craftwatch._craftLocked = {}; craftCmds = {};
-craftwatch.setEnabled(true);           -- the switch is the activator
-check('T19d switch ON equips active',   hasCmd('/lac equip Main "Chemists Kukri"'), true);
-craftwatch._craftLocked = {}; craftCmds = {};
-craftwatch.setGoal('nq');              -- re-equips the active craft under the new goal
-check('T20 setGoal re-equips active',  #craftCmds > 0, true);
-check('T20b goal stored',              craftwatch.getGoal(), 'nq');
-craftCmds = {};
-craftwatch.onSynth(4096, { 1165, 1165 }, 20);   -- detection: NO equip
-check('T20c detection does not equip', #craftCmds, 0);
--- OFF releases: /lac enable + /dl lock off
-craftwatch._craftLocked = { main = true }; craftCmds = {};
+check('T15 selectCraft sets active',  craftwatch.getCraft(), 'Alchemy');
+check('T16 select does NOT enable',   craftwatch.isEnabled(), false);
+craftwatch.setEnabled(true);
+check('T17 switch turns on',          craftwatch.isEnabled(), true);
+craftwatch.setGoal('nq');
+check('T18 goal stored',              craftwatch.getGoal(), 'nq');
+craftwatch.onSynth(4096, { 1165, 1165 }, 20);   -- detection: info only, no state change
+check('T19 detection keeps active',   craftwatch.getCraft(), 'Alchemy');
 craftwatch.setEnabled(false);
-check('T20d off re-enables the slot',  hasCmd('/lac enable main'), true);
-craftwatch._craftLocked = {}; craftCmds = {};
-craftwatch.setEnabled(true);           -- ON: equips the active craft
-check('T20e enable equips active craft', #craftCmds > 0, true);
-check('T20f enabled stored',           craftwatch.isEnabled(), true);
-craftwatch.setEnabled(false);
-craftwatch._craftLocked = {};
+check('T20 switch off',               craftwatch.isEnabled(), false);
 craftwatch.goal = 'hq';
+
+-- Engine overlay: dispatch resolves the craft gear per slot from the manifest
+-- + goal (the same resolveVirtual path the addon preview uses).
+dispatchM._autoOverride = { craft = {
+    neck = { Alchemy = { hq = { { name = 'Artisan\'s Torque', score = 20, level = 1 } } } },
+    ring1 = { Alchemy = { hq = { { name = 'Craftmaster\'s Ring', score = 5, level = 1 } } } },
+} };
+local ov = dispatchM._craftOverlayFor({ craft = 'Alchemy', goal = 'hq', enabled = true }, { player = { MainJobSync = 75 } });
+check('T21 overlay resolves neck',    ov and ov.Neck, 'Artisan\'s Torque');
+check('T22 overlay resolves ring1',   ov and ov.Ring1, 'Craftmaster\'s Ring');
+local ovOff = dispatchM._craftOverlayFor({ craft = 'Alchemy', goal = 'hq', enabled = false }, { player = { MainJobSync = 75 } });
+check('T23 disabled -> no overlay',   ovOff, nil);
+local ovNoCraft = dispatchM._craftOverlayFor({ craft = '', goal = 'hq', enabled = true }, { player = { MainJobSync = 75 } });
+check('T24 no craft -> no overlay',   ovNoCraft, nil);
+dispatchM._autoOverride = nil;
 
 -- 0x055 key item tracker (the SDK HasKeyItem memory read is dead on this
 -- client -- craftwatch keeps its own bitfield from the packet stream).
