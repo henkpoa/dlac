@@ -402,6 +402,12 @@ is still needed to get v32 itself live** (v31 has no swapper); after that, engin
 updates land within ~2s of an addon reload. The banner stays as the fallback detector.
 Dev loop is now: edit → reload dlac addon → watch for "[dlac] engine hot-swapped".
 NOT yet covered: utils.lua staleness (rarer; same trick applies if it earns it).
+**Field-verified same day, both directions** (v32→v33→v32 by editing the SEEDED file
+while Henrik played; modestate re-stamped within seconds each time). Bonus find: the
+login BOOT RACE is real — at 13:15 LAC required the old v31 file ~seconds before the
+seeder wrote v32 (modestate stamped 31 against a v32 file on disk), which is exactly
+the strand the swapper now heals: from v32 on, a race-loser engine notices the fresh
+seed within ~2s and swaps itself.
 
 ## Standing loose ends (as of 2026-07-10, end of day)
 
