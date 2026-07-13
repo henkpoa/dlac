@@ -235,11 +235,13 @@ function M.gpReady() gpLoad(); return M.gpSeen or M.gpPersisted; end
 -- ungated, and it replies with s2c 0x113). VERIFIED 2026-07-13: a real GP
 -- turn-in reflected through this request (/dl craft gp matched the currency
 -- menu), so it now also fires automatically -- once on login (tick below)
--- and on the AutoCraft panel's open transition (triggersui). The 5s debounce
--- absorbs both; still never call this unconditionally from a render loop.
+-- and EVERY entry into the Auto Craft Set view (triggersui passes force=true:
+-- Henrik wants each visit fresh, so entry skips the 5s debounce; a 1s floor
+-- still kills flicker/double-click dupes). Unforced calls keep the 5s gap --
+-- still never call this unconditionally from a render loop.
 local _gpReqAt = -10;
-function M.requestGuildPoints()
-    if os.clock() - _gpReqAt < 5 then return; end
+function M.requestGuildPoints(force)
+    if os.clock() - _gpReqAt < (force and 1 or 5) then return; end
     _gpReqAt = os.clock();
     pcall(function()
         -- header id:9|size:7 -> id 0x10F, size 2 (4-byte packet) = 0x050F LE; sync filled by Ashita.

@@ -1265,16 +1265,17 @@ local function renderAutomations(noHeader)
                 cw2 = require('dlac\\craftwatch');
                 kiSynced = (type(cw2.kiReady) == 'function') and cw2.kiReady() or ((cw2 and cw2.kiBlocksSeen or 0) > 0);
             end);
-            -- Guild points for this craft (0x113-tracked). On the panel's
-            -- OPEN transition (section idle >1s), ask the server for a fresh
-            -- copy -- the c2s 0x10F self-request, turn-in VERIFIED 2026-07-13
-            -- -- so a GP hand-in shows here without zoning. While the panel
-            -- stays open the gap never exceeds a frame (no re-request), and
-            -- requestGuildPoints' own 5s debounce caps reopen-spam.
+            -- Guild points for this craft (0x113-tracked). EVERY entry into
+            -- this view (section idle >1s = you just came in) asks the server
+            -- for a fresh copy -- the c2s 0x10F self-request, turn-in VERIFIED
+            -- 2026-07-13 -- so a GP hand-in shows here without zoning. force
+            -- = skip the 5s debounce (Henrik: refresh on each visit); its 1s
+            -- floor still dedupes flicker. While the view stays open the gap
+            -- never exceeds a frame, so it can't re-request.
             local gp, gpReady = nil, false;
             if cw2 ~= nil then
                 if _gpSectionSeen == nil or (os.clock() - _gpSectionSeen) > 1.0 then
-                    pcall(function() cw2.requestGuildPoints(); end);
+                    pcall(function() cw2.requestGuildPoints(true); end);
                 end
                 _gpSectionSeen = os.clock();
                 pcall(function() gpReady = (type(cw2.gpReady) == 'function') and cw2.gpReady(); end);

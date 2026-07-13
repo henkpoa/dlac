@@ -258,8 +258,9 @@ panel), and fixed several load-bearing bugs. All landed on **`main`** and pushed
   sending header-only c2s **`0x10F`** ourselves (server `validate()` ungated — exactly what
   opening the currency menu does). **VERIFIED 2026-07-13** (a real turn-in reflected via
   `/dl craft gp`), so it now fires automatically: one-shot on login (craftwatch
-  `dlac-craftwatch-gp` tick) + on the AutoCraft panel's open transition (triggersui,
-  >1s render gap = just opened; the 5s debounce caps spam). Offsets locked by tests T27–T33.
+  `dlac-craftwatch-gp` tick) + on EVERY entry into the Auto Craft Set view (triggersui,
+  >1s render gap = just entered; `force=true` skips the 5s debounce — Henrik wants each
+  visit fresh — with a 1s anti-flicker floor). Offsets locked by tests T27–T33.
 
 ### UI / misc
 - Sets: **duplicate-row button (D)** — one item across several level ranges (Rajas 30-54,
@@ -434,10 +435,11 @@ seed within ~2s and swaps itself.
   Henrik turned in GP items and confirmed `/dl craft gp` (c2s `0x10F` self-request →
   s2c `0x113`) reflects the new total. Automation re-enabled exactly as planned:
   one-shot fetch on login (craftwatch `dlac-craftwatch-gp` d3d_present tick — waits
-  for main job ≠ 0 and not zoning, fires once, unregisters itself) + a fetch on the
-  AutoCraft panel's open transition (triggersui `_gpSectionSeen`, >1s render gap =
-  just opened; `requestGuildPoints`'s 5s debounce caps reopen-spam). `/dl craft gp`
-  stays as the manual verify tool. Offsets locked by tests T27–T33.
+  for main job ≠ 0 and not zoning, fires once, unregisters itself) + a fetch on EVERY
+  entry into the Auto Craft Set view (triggersui `_gpSectionSeen`, >1s render gap =
+  just entered; `requestGuildPoints(true)` forces past the 5s debounce per Henrik —
+  1s floor dedupes flicker). `/dl craft gp` stays as the manual verify tool. Offsets
+  locked by tests T27–T33.
 
 ### Loose ends added 07-13 (field-hardening arc)
 
