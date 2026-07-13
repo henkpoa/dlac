@@ -1229,13 +1229,13 @@ local function renderAutomations(noHeader)
                 cw2 = require('dlac\\craftwatch');
                 kiSynced = (type(cw2.kiReady) == 'function') and cw2.kiReady() or ((cw2 and cw2.kiBlocksSeen or 0) > 0);
             end);
-            -- Guild points for this craft (0x113-tracked). If we haven't seen
-            -- them yet, ask the server ourselves (debounced) so you don't have
-            -- to open the currency menu.
+            -- Guild points for this craft (0x113-tracked). DISPLAY ONLY -- no
+            -- auto-request (Henrik: verify the c2s 0x10F self-request works via
+            -- /dl craft gp + a real GP turn-in before letting it fire on its
+            -- own; see docs/HANDOFF.md loose ends).
             local gp, gpReady = nil, false;
             if cw2 ~= nil then
                 pcall(function() gpReady = (type(cw2.gpReady) == 'function') and cw2.gpReady(); end);
-                if not gpReady then pcall(function() cw2.requestGuildPoints(); end); end
                 pcall(function() gp = cw2.guildPointsFor(selCr); end);
             end
             imgui.TextColored(COL_HEADER, 'Guild Points: ');

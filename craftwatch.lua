@@ -232,8 +232,12 @@ function M.gpReady() gpLoad(); return M.gpSeen or M.gpPersisted; end
 
 -- Ask the server for the currency-1 data ourselves (header-only c2s 0x10F --
 -- exactly what opening the currency menu sends; the server's validate() is
--- ungated, and it replies with s2c 0x113). So guild points populate without
--- opening the menu. Debounced -- it is a read request, but no need to spam.
+-- ungated, and it replies with s2c 0x113). MANUAL ONLY for now (/dl craft gp):
+-- Henrik wants to verify the request->response actually updates after a real
+-- GP turn-in before this fires automatically. Do NOT call this from a render
+-- loop / auto-fetch until verified -- no needless request spam.
+-- TODO(verify): once a GP turn-in is confirmed to reflect via this request,
+-- re-enable a one-shot fetch on login and a debounced panel fetch.
 local _gpReqAt = -10;
 function M.requestGuildPoints()
     if os.clock() - _gpReqAt < 5 then return; end

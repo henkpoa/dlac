@@ -200,3 +200,14 @@ Tests G1-G12 (the suite now loads the real dispatch.lua headlessly).
 - **Auto-build permissiveness** (plan-style like the Add popup?) — open user decision.
 - **Augment decoder boundary** (stop at first 0x0000 word) — verify before changing.
 - dlacprobe addon dormant at `Ashita\addons\dlacprobe\` — reuse for packet questions.
+- **Guild-points self-request (VERIFY, then automate)**: craftwatch reads guild
+  points per craft from s2c `0x113` (currencies_1), and `craftwatch.requestGuildPoints()`
+  sends the header-only c2s `0x10F` to fetch them (server `validate()` is ungated;
+  it's exactly what opening the currency menu does). Currently MANUAL only, via
+  `/dl craft gp` — Henrik wants to confirm a real GP turn-in actually reflects
+  through this request before it fires on its own (no needless request spam).
+  **To close:** turn in a GP item, run `/dl craft gp`, confirm the number rises to
+  match the in-game currency menu. Once verified, re-enable a one-shot fetch on
+  login + a debounced fetch when the AutoCraft panel opens (the `requestGuildPoints`
+  call was removed from `triggersui.lua`'s panel and can be restored). Offsets are
+  locked by tests T27–T33; `0x113` handler + persistence already live.
