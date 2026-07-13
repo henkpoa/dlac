@@ -21,9 +21,10 @@
     counts from the NEXT synth on, not this one. First-synth coverage will need
     a pre-flip (craft mode) or synthesis-menu detection (future probe).
 
-    LAST SYNTH (craft bar): the last detected 0x096 can be REPLAYED on click --
-    same bytes, fresh inventory slots (see the replay section for the server-
-    side proof of why that is a legal synth). One click, one synth.
+    LAST SYNTH (craft bar): /lastsynth is the CLIENT'S OWN retail text command
+    (the client re-sends 0x096 itself); the button just types it. dlac only
+    OBSERVES 0x096 to label what it will repeat -- never intercepts the
+    command (Henrik's rule, learned 07-13).
 
     Pure data core (key/decode/lookup) is headless-testable; Ashita glue below.
 ]]--
@@ -497,51 +498,16 @@ function M.onSynth(crystal, ings, clock)
 end
 
 -- ---------------------------------------------------------------------------
--- Last Synth replay (craft bar button). The server rolls a synth entirely
--- server-side from c2s 0x096 -- verified against the CatsEyeXI handler
--- (packets/c2s/0x096_combine_ask.cpp, branch stable, 2026-07-13): validate()
--- checks crystal id / item count / idle status only; process() checks a 15s
--- cooldown from synth START (synthutils startSynth sets m_LastSynthTime), no
--- pending trade, and that each TableNo slot in LOC_INVENTORY holds the claimed
--- item id with enough quantity (same slot repeated = stack draw). No client
--- menu state involved, so REPLAYING the last 0x096 with freshly resolved slot
--- indexes is a legal synth. ONE packet per click -- the button is a shortcut
--- past the menu, not automation; the server's 15s gate is mirrored here so a
--- click during cooldown never even sends.
+-- Last Synth (craft bar). /lastsynth is a NATIVE FFXI text command (retail,
+-- SE dev1215 "Synthesis Additions and Adjustments"; subcommand: /lastsynth
+-- check) -- the CLIENT keeps the last recipe and re-sends 0x096 itself.
+-- HENRIK'S RULE (07-13, learned the hard way): dlac must NEVER intercept it.
+-- The craft bar button just TYPES /lastsynth; everything below is PASSIVE
+-- observation of 0x096 so the bar can label what the button will repeat --
+-- persisted per char so an addon reload doesn't blank the label.
+-- (The removed dlac-side replay-injection implementation lives in git
+-- history at c38c2ff if packet knowledge is ever needed again.)
 -- ---------------------------------------------------------------------------
--- Client gate between replays. The server's hard cooldown is 15s from synth
--- START (m_LastSynthTime), but the synth STATE runs ~17s -- and validate()'s
--- isNotCrafting DROPS a second ask SILENTLY in that 15-17s gap (field case:
--- "repeating Sapara -- nothing happens"). 22 = the full arc + margin (Henrik).
-local SYNTH_COOLDOWN = 22;
-
--- Pure (headless-tested): pick inventory slots for a crystal + ingredient
--- list. invRead(idx) -> itemId, count; slots are claimed with per-slot
--- budgets, so 3x of one stack = the same slot three times (exactly how the
--- client fills TableNo) and split stacks fall through to the next slot.
--- Returns crystalIdx, tableNos -- or nil, missingItemId.
-function M.resolveSlots(crystal, ings, invRead, maxIdx)
-    local used = {};
-    local function claim(id)
-        for i = 1, maxIdx do
-            local iid, cnt = invRead(i);
-            if iid == id and ((cnt or 0) - (used[i] or 0)) >= 1 then
-                used[i] = (used[i] or 0) + 1;
-                return i;
-            end
-        end
-        return nil;
-    end
-    local cidx = claim(crystal);
-    if cidx == nil then return nil, crystal; end
-    local tbl = {};
-    for k = 1, #ings do
-        tbl[k] = claim(ings[k]);
-        if tbl[k] == nil then return nil, ings[k]; end
-    end
-    return cidx, tbl;
-end
-
 local _nameCache = {};
 local function itemName(id)
     if _nameCache[id] ~= nil then return _nameCache[id]; end
@@ -554,12 +520,11 @@ local function itemName(id)
     return _nameCache[id];
 end
 
--- The last-seen synth PERSISTS per character (<char>\dlac\lastsynth.lua) --
--- Henrik: an addon reload must NOT forget what you last crafted ("nothing
--- synthed yet" after a reload is irrelevant and wrong). Raw 0x096 bytes,
--- hex-encoded, with a wall-clock stamp; on load the session cooldown clock
--- is rebuilt from the wall-clock gap, so a reload seconds after a synth
--- still honors the ~22s arc. Same mirror pattern as keyitems/guildpoints.
+-- The last-seen synth persists per character (<char>\dlac\lastsynth.lua) so
+-- the bar's label survives addon reloads. Raw 0x096 bytes, hex-encoded, with
+-- a wall-clock stamp. Same mirror pattern as keyitems/guildpoints. DISPLAY
+-- ONLY -- the native /lastsynth has its own memory; dlac's mirror never
+-- feeds a send.
 local function lsPath() local d = kiCharDir(); return d and (d .. 'lastsynth.lua') or nil; end
 
 local function lsSave()
@@ -586,139 +551,32 @@ local function lsLoad()
         local crystal, ings = M.decode(raw);
         if crystal == nil then return; end
         M._lastRaw = raw;
-        -- Rebuild the session view; the cooldown clock maps through the
-        -- wall-clock gap (reload right after a synth still waits it out).
-        local elapsed = math.max(0, os.time() - (tonumber(t.wallAt) or 0));
-        local cur = M.onSynth(crystal, ings, os.clock() - math.min(elapsed, SYNTH_COOLDOWN + 1));
+        local cur = M.onSynth(crystal, ings);
         -- onSynth counted a session synth; a mirror rebuild is not one.
         local sk = cur and cur.skill;
         if sk ~= nil and (M.counts[sk] or 0) > 0 then M.counts[sk] = M.counts[sk] - 1; end
     end);
 end
 
--- What the Last Synth button would repeat -- nil only when this character
--- has never synthed with dlac loaded (the mirror revives reloads). name
--- comes from the recipe's NQ result id (crafts.lua 'r', name resolved from
--- the client's own resources); nil name = unknown recipe (replay still
--- works -- the server, not the db, judges the synth). resultIn: seconds
--- until the in-flight replay's result should land (~17s arc), nil when
--- nothing is in flight.
+-- What the native /lastsynth would repeat -- for the craft bar label. nil
+-- only when this character has never synthed with dlac loaded (the mirror
+-- revives reloads). name comes from the recipe's NQ result id (crafts.lua
+-- 'r', resolved from the client's own resources); nil name = recipe not in
+-- the db (a CatsEyeXI custom) -- the native command works regardless.
 function M.lastSynth()
     lsLoad();
     local cur = M.current;
-    if cur == nil or M._lastRaw == nil or cur.crystal == nil then return nil; end
+    if cur == nil or cur.crystal == nil then return nil; end
     local rec = _db[cur.key];
     return {
         name = (rec ~= nil and rec.r ~= nil) and itemName(rec.r) or nil,
         skill = cur.skill, lv = cur.lv, desynth = cur.desynth,
-        readyIn = math.max(0, SYNTH_COOLDOWN - (os.clock() - (cur.at or 0))),
-        resultIn = (M._pending ~= nil) and math.max(0, 17 - (os.clock() - M._pending.at)) or nil,
     };
 end
 
--- Replay feedback. A menu-less synth may show NO animation, and the server
--- REJECTS silently (validate() just drops: moving / wrong status / already
--- crafting) -- so after a replay dlac watches for the answer itself. s2c
--- 0x06F GP_SERV_COMMAND_COMBINE_ANS arrives ~17s in WITH the result item id
--- (u16 @0x08; field-verified 2026-07-13, Sapara +1 dump). Armed ONLY by
--- repeatLastSynth -- menu synths have their own UI and stay quiet. No 0x06F
--- within 25s = the server dropped the request.
-M._pending = nil;   -- { at, name } while a replay is in flight
-
-function M.onCombineAnswer(data)
-    local P = M._pending;
-    if P == nil then return nil; end
-    M._pending = nil;
-    local id = nil;
-    if type(data) == 'string' and #data >= 0x0A then
-        id = (data:byte(0x09) or 0) + (data:byte(0x0A) or 0) * 256;
-    end
-    if id == nil or id == 0 or id == 29695 then   -- 29695 = the server's "no item"
-        say('last synth: finished -- BROKE (no item).');
-        return 0;
-    end
-    say('last synth: complete -- ' .. itemName(id) .. '!');
-    return id;
-end
-
--- Re-send the last synth: same bytes (HashNo, crystal, ItemNo order), fresh
--- CrystalIdx/TableNo resolved from the CURRENT inventory (the originals were
--- consumed), sync zeroed for Ashita to fill. Chat explains every refusal.
-function M.repeatLastSynth()
-    lsLoad();
-    local cur, raw = M.current, M._lastRaw;
-    if cur == nil or raw == nil then
-        say('last synth: no synth on record for this character yet -- do one via the menu first.');
-        return false;
-    end
-    local left = SYNTH_COOLDOWN - (os.clock() - (cur.at or 0));
-    if left > 0 then
-        say(string.format('last synth: the previous synth is still running/settling -- ready in %ds.',
-            math.ceil(left)));
-        return false;
-    end
-    local crystal, ings = M.decode(raw);
-    if crystal == nil or (raw:byte(0x09 + 1) or 0) ~= #ings then
-        say('last synth: stored packet looks off -- synth once via the menu to re-arm.');
-        return false;
-    end
-    local inv = nil;
-    pcall(function() inv = AshitaCore:GetMemoryManager():GetInventory(); end);
-    if inv == nil then say('last synth: inventory unavailable -- try again in a moment.'); return false; end
-    local maxIdx = 80;
-    pcall(function() maxIdx = inv:GetContainerCountMax(0) or 80; end);
-    local function invRead(i)
-        local id, cnt = nil, 0;
-        pcall(function()
-            local it = inv:GetContainerItem(0, i);
-            if it ~= nil then id, cnt = it.Id, it.Count; end
-        end);
-        return id, cnt;
-    end
-    local cidx, tbl = M.resolveSlots(crystal, ings, invRead, maxIdx);
-    if cidx == nil then
-        say('last synth: out of ' .. itemName(tbl) .. ' -- restock and try again.');
-        return false;
-    end
-    local b = { raw:byte(1, #raw) };
-    b[3], b[4] = 0, 0;                                   -- sync: Ashita fills it
-    b[0x08 + 1] = cidx;                                  -- CrystalIdx
-    for k = 1, #ings do b[0x1A + k] = tbl[k]; end        -- TableNo[k]
-    local ok = pcall(function()
-        AshitaCore:GetPacketManager():AddOutgoingPacket(0x096, b);
-    end);
-    if not ok then say('last synth: packet injection FAILED -- /addon reload dlac and report this.'); end
-    -- Our own packet_out handler sees the injected copy and refreshes
-    -- M.current.at, so the cooldown gate re-arms automatically.
-    if ok then
-        local info = M.lastSynth();
-        local nm = (info and info.name) or 'the last recipe';
-        M._pending = { at = os.clock(), name = nm };
-        -- Watchdog: a silent server (validate() reject) must still resolve.
-        pcall(function() ashita.events.unregister('d3d_present', 'dlac-craftwatch-pending'); end);
-        pcall(function()
-            ashita.events.register('d3d_present', 'dlac-craftwatch-pending', function()
-                local P = M._pending;
-                if P == nil then
-                    pcall(function() ashita.events.unregister('d3d_present', 'dlac-craftwatch-pending'); end);
-                    return;
-                end
-                if os.clock() - P.at > 25 then
-                    M._pending = nil;
-                    say('last synth: NO answer from the server after 25s -- it dropped the request');
-                    say('  silently (moving? sitting? mid-craft?). Stand still and try again;');
-                    say('  to capture it: /addon load dlacprobe, /probe synth, then /lastsynth.');
-                end
-            end);
-        end);
-        say('last synth: repeating ' .. nm .. ' -- server-timed, result lands in ~17s.');
-    end
-    return ok;
-end
-
 -- NOTE (Henrik, 07-13): probing/diagnostic capture tools live in the separate
--- dlacprobe addon, NEVER in dlac. To watch what the server answers to a
--- replay: /addon load dlacprobe, /probe synth, then /lastsynth.
+-- dlacprobe addon, NEVER in dlac. To watch a synth on the wire:
+-- /addon load dlacprobe, /probe synth, then /lastsynth.
 
 if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'function' then
     ashita.events.register('packet_out', 'dlac-craftwatch-out', function(e)
@@ -726,8 +584,8 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
         pcall(function()
             local crystal, ings = M.decode(e.data);
             if crystal ~= nil then
-                M._lastRaw = e.data;   -- Last Synth replays these exact bytes
-                lsSave();              -- ...and they survive addon reloads
+                M._lastRaw = e.data;   -- observation: labels the Last Synth button
+                lsSave();              -- ...and survives addon reloads
                 M.onSynth(crystal, ings);
             end
         end);
@@ -735,8 +593,7 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
 
     ashita.events.register('packet_in', 'dlac-craftwatch-in', function(e)
         if e.id == 0x055 then pcall(function() M.onKeyItemPacket(e.data); end);
-        elseif e.id == 0x113 then pcall(function() M.onCurrencyPacket(e.data); end);      -- guild points
-        elseif e.id == 0x06F then pcall(function() M.onCombineAnswer(e.data); end); end   -- replay result
+        elseif e.id == 0x113 then pcall(function() M.onCurrencyPacket(e.data); end); end   -- guild points
     end);
 
     -- One-shot guild-points fetch on login (turn-in VERIFIED 2026-07-13, see
@@ -765,14 +622,9 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
     ashita.events.register('command', 'dlac-craftwatch-cmd', function(e)
         pcall(function()
             local raw = string.lower(e.command or '');
-            -- /lastsynth -- macro-friendly replay of the last captured synth
-            -- (same as the craft bar button). Packet capture around it lives
-            -- in dlacprobe (/probe synth), not here.
-            if raw == '/lastsynth' or raw:match('^/lastsynth%s') ~= nil then
-                e.blocked = true;
-                M.repeatLastSynth();
-                return;
-            end
+            -- /lastsynth is the CLIENT'S OWN text command (retail-native) --
+            -- dlac must NEVER match or block it (Henrik, 07-13: intercepting
+            -- it broke the real thing). It is deliberately absent here.
             local a, b, c = raw:match('^/dl%s+(%S+)%s*(%S*)%s*(%S*)');
             if a == nil then a, b, c = raw:match('^/dlac%s+(%S+)%s*(%S*)%s*(%S*)'); end
             if a ~= 'craft' then return; end

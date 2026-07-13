@@ -733,45 +733,13 @@ check('T31 gp cooking',      craftwatch.guildPointsFor('Cooking'), 4325);
 check('T32 gp bonecraft zero', craftwatch.guildPointsFor('Bonecraft'), 0);
 check('T33 gpReady', craftwatch.gpReady(), true);
 
--- Last Synth slot resolution (pure): pick CURRENT inventory slots for the
--- replayed crystal + ingredients. Per-slot budgets: repeats draw down a
--- stack (same slot repeated, like the client fills TableNo) and split
--- stacks fall through to the next slot holding the item.
-local function fakeInv(slots)   -- { [idx] = { id, count } } -> invRead
-    return function(i) local s = slots[i]; if s then return s[1], s[2]; end return nil, 0; end;
-end
-local inv1 = fakeInv({ [3] = { 4096, 12 }, [7] = { 1165, 2 }, [9] = { 650, 1 } });
-local c1, t1 = craftwatch.resolveSlots(4096, { 1165, 1165 }, inv1, 80);
-check('T34 crystal slot found', c1, 3);
-check('T35 stack drawn twice from one slot', t1[1] == 7 and t1[2] == 7, true);
-local inv2 = fakeInv({ [3] = { 4096, 1 }, [5] = { 1165, 1 }, [8] = { 1165, 1 } });
-local c2, t2 = craftwatch.resolveSlots(4096, { 1165, 1165 }, inv2, 80);
-check('T36 split stack falls through', c2 == 3 and t2[1] == 5 and t2[2] == 8, true);
-local c3, m3 = craftwatch.resolveSlots(4096, { 1165, 1165 }, fakeInv({ [3] = { 4096, 1 }, [5] = { 1165, 1 } }), 80);
-check('T37 exhausted stack -> missing id', c3 == nil and m3, 1165);
-local c4, m4 = craftwatch.resolveSlots(4096, { 1165 }, fakeInv({ [5] = { 1165, 1 } }), 80);
-check('T38 missing crystal -> its id', c4 == nil and m4, 4096);
--- crystal and ingredient sharing an id (crystal-as-ingredient recipes) must
--- not double-spend one copy: the crystal claim reserves it.
-local c5, m5 = craftwatch.resolveSlots(4096, { 4096 }, fakeInv({ [2] = { 4096, 1 } }), 80);
-check('T39 crystal claim reserves the copy', c5 == nil and m5, 4096);
-local c6, t6 = craftwatch.resolveSlots(4096, { 4096 }, fakeInv({ [2] = { 4096, 2 } }), 80);
-check('T40 two copies serve both roles', c6 == 2 and t6[1] == 2, true);
--- onSynth must retain the replay ingredients (placement order).
+-- Last Synth observation: onSynth must retain crystal + ingredients (they
+-- label the craft bar's "Last synth:" line; /lastsynth itself is the GAME'S
+-- native command -- dlac never intercepts or re-sends, so no slot/packet
+-- machinery exists to test since c38c2ff's successor).
 local curT = craftwatch.onSynth(4096, { 1165, 1165 }, 40);
-check('T41 current keeps crystal', curT.crystal, 4096);
-check('T42 current keeps ings order', curT.ings[1] == 1165 and #curT.ings == 2, true);
--- Replay feedback: 0x06F combine answer, result id u16 @0x08 (bytes from the
--- field dump that produced Sapara +1 = 16801). Only a PENDING replay resolves.
-local ansPkt = string.char(0x6F, 0x1C, 0x5D, 0x52, 0x00, 0x00, 0x01, 0x00, 0xA1, 0x41, 0x00, 0x00)
-    .. string.rep('\0', 44);
-check('T43 answer ignored when idle', craftwatch.onCombineAnswer(ansPkt), nil);
-craftwatch._pending = { at = 41, name = 'Sapara' };
-check('T44 answer resolves result id', craftwatch.onCombineAnswer(ansPkt), 16801);
-check('T45 pending cleared', craftwatch._pending, nil);
-craftwatch._pending = { at = 41, name = 'Sapara' };
-local brokePkt = string.char(0x6F, 0x1C, 0x5D, 0x52, 0x00, 0x00, 0x01, 0x00, 0xFF, 0x73, 0x00, 0x00);
-check('T46 break (29695) -> 0', craftwatch.onCombineAnswer(brokePkt), 0);
+check('T34 current keeps crystal', curT.crystal, 4096);
+check('T35 current keeps ings order', curT.ings[1] == 1165 and #curT.ings == 2, true);
 
 -- ---------------------------------------------------------------------------
 -- U. Set-entry name resolution -- case-insensitive fallback + quiet-once warn.

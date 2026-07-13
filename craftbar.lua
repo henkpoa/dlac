@@ -3,9 +3,10 @@
 
     A small always-available window: an on/off switch, the eight craft glyphs
     (click to select + equip that craft's gear), the goal (HQ / NQ /
-    Skill-Up), a Last Synth button (just types /lastsynth -- one code path,
-    craftwatch's command; one click one synth), and a status line naming
-    what that replay would make. This is the MANUAL model Henrik settled on --
+    Skill-Up), a Last Synth button (types the GAME'S OWN /lastsynth -- the
+    retail-native repeat command; dlac never intercepts it), and a status
+    line naming what that repeat would make (craftwatch's 0x096 observation,
+    persisted per char). This is the MANUAL model Henrik settled on --
     you set your gear BEFORE synthing, when equipment changes are legal
     (auto-detection can't, since 0x096 is the first synth packet). The same
     craft/goal controls live in the Automations panel; both drive the single
@@ -138,7 +139,6 @@ function M.render()
             -- Row 2, centered: goal toggles + the Last Synth action (an
             -- ACTION, not a goal -- extra gap + no green-active state).
             local ls = (type(cw.lastSynth) == 'function') and cw.lastSynth() or nil;
-            local ready = (ls ~= nil) and ((ls.readyIn or 0) <= 0);
             local goalW = 34;
             pcall(function()
                 local w = imgui.CalcTextSize('Goal:');
@@ -163,25 +163,16 @@ function M.render()
                 if i < #GOALS then imgui.SameLine(0, 4); end
             end
             imgui.SameLine(0, 12);
-            if not ready and ImGuiCol_Button ~= nil then
-                imgui.PushStyleColor(ImGuiCol_Button, { 0.24, 0.26, 0.30, 1 });   -- dim: not ready
-            end
-            -- The button just TYPES /lastsynth (Henrik: one code path -- the
-            -- command; the bar only reads state). Refusals explain in chat.
+            -- The button just TYPES the game's own /lastsynth (retail-native
+            -- text command; Henrik: dlac must never intercept or wrap it --
+            -- the client does the repeat, its own messages included).
             if imgui.Button('Last Synth##cblast', { lastW, 20 }) then
                 pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/lastsynth'); end);
             end
-            if not ready and ImGuiCol_Button ~= nil then imgui.PopStyleColor(1); end
             if imgui.IsItemHovered() then
-                if ls == nil then
-                    imgui.SetTooltip('Repeat your most recent synthesis (same crystal + ingredients,\nfresh inventory slots). No synth on record yet -- do one via the menu first.\nAlso a command: /lastsynth (macro it).');
-                elseif not ready then
-                    imgui.SetTooltip(string.format('Repeat: %s\nPrevious synth still running/settling (~22s arc) -- ready in %ds.',
-                        ls.name or 'last recipe', math.ceil(ls.readyIn)));
-                else
-                    imgui.SetTooltip('Repeat: ' .. (ls.name or 'last recipe')
-                        .. '\nSends the same crystal + ingredients again (fresh slots looked up now).\nAlso a command: /lastsynth (macro it).');
-                end
+                imgui.SetTooltip('Issues the game\'s own /lastsynth -- repeats your most recent synthesis.'
+                    .. ((ls ~= nil and ls.name ~= nil) and ('\nLast seen: ' .. ls.name) or '')
+                    .. '\nAlso works typed or in a macro: /lastsynth (and /lastsynth check).');
             end
             -- Status line: WHAT the Last Synth button would make (Henrik: so
             -- you know what it will do before clicking).
@@ -195,13 +186,6 @@ function M.render()
                     imgui.SameLine(0, 0);
                     imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, string.format('  (%s%s%s)',
                         ls.skill, ls.lv and (' ' .. ls.lv) or '', ls.desynth and ', desynth' or ''));
-                end
-                if ls.resultIn ~= nil then      -- replay in flight: the visible "it IS happening"
-                    imgui.SameLine(0, 8);
-                    imgui.TextColored({ 0.45, 0.80, 0.45, 1 }, string.format('-- synthesizing (~%ds)', math.ceil(ls.resultIn)));
-                elseif (ls.readyIn or 0) > 0 then
-                    imgui.SameLine(0, 8);
-                    imgui.TextColored({ 0.55, 0.55, 0.58, 1 }, string.format('-- ready in %ds', math.ceil(ls.readyIn)));
                 end
             end
             imgui.Dummy({ BAR_MIN_W, 1 });   -- enforces the min width under AlwaysAutoResize

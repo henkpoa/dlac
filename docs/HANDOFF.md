@@ -130,14 +130,18 @@ handshake).
     detection-driven auto-equip (`0x096` is the first synth packet — too late).
   - New this arc: `craftwatch.lua`, `craftbar.lua`, `crafts.lua`, `filetex.lua`,
     `assets/craft/*.png`, `assets/{macrobook,craftbar}.png`, `tools/gen_craftdb.py`.
-  - **Last Synth (07-13):** the craft bar replays the last captured 0x096 with
-    freshly resolved inventory slots (`craftwatch.repeatLastSynth`; server-verified
-    legal, 15s server cooldown mirrored client-side; one click = one synth). The
-    detection-driven auto-equip ban above is unchanged -- this is a manual button.
-    crafts.lua rows now carry `r = <result item id>` for the "Last synth:" label.
-    Also `/lastsynth` (macro-able). **RULE (Henrik, 07-13): probing/diagnostic
-    tools never ship in dlac -- they go in the dlacprobe addon.** Packet capture
-    around a replay: `/probe synth` (dlacprobe), then `/lastsynth`.
+  - **Last Synth (07-13, final form): `/lastsynth` is the GAME'S OWN retail
+    text command** (client re-sends 0x096 itself; `/lastsynth check` shows the
+    recipe). **dlac must NEVER intercept it** -- an interception round broke it
+    (Henrik: "let /lastsynth be /lastsynth"). The craft bar button just types
+    the command; craftwatch passively observes 0x096 to label the "Last
+    synth:" line (persisted per char in `<char>\dlac\lastsynth.lua`).
+    crafts.lua rows carry `r = <result item id>` for that label. A full
+    dlac-side replay-injection implementation existed briefly and WORKS
+    (server handlers verified; see history) -- deleted as redundant, ref
+    c38c2ff if the packet knowledge is ever needed. **RULE (Henrik, 07-13):
+    probing/diagnostic tools never ship in dlac -- they go in the dlacprobe
+    addon** (`/probe synth` captures a synth on the wire).
   - **Verify-then-automate — DONE (2026-07-13):** guild-points self-request (c2s
     `0x10F`) turn-in-verified; now auto-fires once on login + on AutoCraft panel
     open (debounced). `/dl craft gp` remains the manual check.

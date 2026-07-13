@@ -571,3 +571,23 @@ COMBINE_ANS arrives WITH the result at the end, not at accept time (accept is
 the animation burst), and Ashita does NOT set e.injected for
 PacketManager:AddOutgoingPacket traffic -- find the replay by id, not by the
 INJECTED tag. Silence after the 0x096 = server reject.
+
+**CORRECTION + final form (same night): `/lastsynth` is RETAIL-NATIVE.** Henrik:
+"Lastsynth is built in somewhere, I've been using [it] for years" -- confirmed
+(SE dev1215 "Synthesis Additions and Adjustments"; `/lastsynth` repeats the last
+synthesis from the CLIENT's own memory, `/lastsynth check` shows it; Windower's
+AutoSynth is built around it). The addon-tree grep proved nothing: client
+built-ins are invisible to file search. Re-reading the field dump with this
+truth: the captured 0x096 had NO INJECTED marker while another addon's traffic
+did -- the client itself sent it. dlac's whole replay-injection build
+(resolveSlots, repeatLastSynth, 22s gate, 0x06F pending feedback, T34-T46) was
+re-implementing a native feature and then BREAKING it by intercepting the
+command ("nothing synthed yet" after reload, native handler never reached).
+All of it DELETED (ref c38c2ff for the packet knowledge -- the injection DID
+work when armed: server handlers verified + a field HQ). Final form: the button
+types `/lastsynth`; craftwatch passively observes 0x096 for the label
+(per-char mirror survives reloads); the command handler deliberately does NOT
+match `/lastsynth`. Suite 278 -> 267 (injection tests removed).
+**Lessons pinned:** (1) never intercept native text commands; (2) check retail
+text commands BEFORE inventing addon commands -- name collisions break the
+native; (3) absence from the addons tree is not absence.
