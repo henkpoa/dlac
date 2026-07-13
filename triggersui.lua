@@ -1190,10 +1190,11 @@ local function renderAutomations(noHeader)
             -- synth-skill glyphs until PNG assets land; the tooltip names the
             -- craft and guild for anyone unsure.
             -- Panel icons are ONLY a section switch (Henrik): clicking one just
-            -- changes which craft's items are shown below. It does NOT set the
-            -- active/goal craft -- that is the craft BAR's job.
-            imgui.TextColored(COL_HEADER, 'Show items for craft:');
-            imgui.SameLine(0, 10);
+            -- changes which craft's items are shown below. No label -- centered,
+            -- self-explanatory (8 icons * 32 + 7 gaps * 14 = 354 wide).
+            local rowW = 8 * 32 + 7 * 14;
+            local indent = math.max(0, math.floor((availW - rowW) / 2));
+            if indent > 0 then imgui.Dummy({ 0, 0 }); imgui.SameLine(indent); end
             for i, cr in ipairs(CRAFT_UI.order) do
                 local sel = (CRAFT_UI.selected == cr);
                 local tex = CRAFT_UI.texture(cr);
@@ -1228,6 +1229,20 @@ local function renderAutomations(noHeader)
                 cw2 = require('dlac\\craftwatch');
                 kiSynced = (type(cw2.kiReady) == 'function') and cw2.kiReady() or ((cw2 and cw2.kiBlocksSeen or 0) > 0);
             end);
+            -- Guild points for this craft (0x113-tracked).
+            local gp, gpReady = nil, false;
+            if cw2 ~= nil then
+                pcall(function() gpReady = (type(cw2.gpReady) == 'function') and cw2.gpReady(); end);
+                pcall(function() gp = cw2.guildPointsFor(selCr); end);
+            end
+            imgui.TextColored(COL_HEADER, 'Guild Points: ');
+            imgui.SameLine(0, 4);
+            if gpReady and gp ~= nil then
+                imgui.TextColored({ 0.95, 0.85, 0.45, 1.0 }, tostring(gp));
+            else
+                imgui.TextColored(COL_DIM, gpReady and '0' or '(open the currency menu / zone once)');
+            end
+            imgui.Spacing();
             imgui.TextColored(COL_HEADER, 'Guild key items:');
             if not kiSynced then imgui.SameLine(0, 6); imgui.TextColored(COL_DIM, '(zone once to sync)'); end
             local kil = CRAFT_UI.guildKI[selCr] or {};

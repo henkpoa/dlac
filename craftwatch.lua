@@ -167,6 +167,70 @@ function M.kiReady()
 end
 
 -- ---------------------------------------------------------------------------
+-- Guild points per craft, from s2c 0x113 (GP_SERV_COMMAND_CURRENCIES_1). The
+-- server keeps all eight (DB char_points.guild_*); the packet resends them on
+-- login/zone. Persisted per char so the panel shows them without a fresh zone.
+-- Absolute int32 LE offsets in e.data (4-byte header + PacketData; 'Weaving' is
+-- Clothcraft). Verify with /dl craft gp against the in-game currency menu.
+-- ---------------------------------------------------------------------------
+M.guildPoints = {};        -- craft display name -> points
+M.gpSeen = false;
+M.gpPersisted = false;
+local GP_OFFSET = { Woodworking = 0x24, Smithing = 0x28, Goldsmithing = 0x2C,
+                    Clothcraft = 0x30, Leathercraft = 0x34, Bonecraft = 0x38,
+                    Alchemy = 0x3C, Cooking = 0x40 };
+
+local function gpPath() local d = kiCharDir(); return d and (d .. 'guildpoints.lua') or nil; end
+local function gpSave()
+    pcall(function()
+        local p = gpPath(); if p == nil then return; end
+        local parts = {};
+        for craft, v in pairs(M.guildPoints) do parts[#parts + 1] = string.format('[%q]=%d,', craft, v); end
+        table.sort(parts);
+        local f = io.open(p, 'wb'); if f == nil then return; end
+        f:write('-- dlac guild-points mirror (0x113-tracked)\nreturn {' .. table.concat(parts, '') .. '}\n');
+        f:close();
+    end);
+end
+local _gpLoaded = false;
+local function gpLoad()
+    if _gpLoaded then return; end
+    local dir = kiCharDir(); if dir == nil then return; end
+    _gpLoaded = true;
+    pcall(function()
+        local chunk = loadfile(dir .. 'guildpoints.lua');
+        if chunk == nil then return; end
+        local ok, t = pcall(chunk);
+        if ok and type(t) == 'table' and not M.gpSeen then
+            for craft, v in pairs(t) do
+                if type(v) == 'number' then M.guildPoints[craft] = v; M.gpPersisted = true; end
+            end
+        end
+    end);
+end
+
+local function i32le(data, off)
+    local b0 = string.byte(data, off + 1) or 0;
+    local b1 = string.byte(data, off + 2) or 0;
+    local b2 = string.byte(data, off + 3) or 0;
+    local b3 = string.byte(data, off + 4) or 0;
+    return b0 + b1 * 256 + b2 * 65536 + b3 * 16777216;
+end
+
+function M.onCurrencyPacket(data)
+    if type(data) ~= 'string' or #data < 0x44 then return; end
+    gpLoad();
+    for craft, off in pairs(GP_OFFSET) do
+        M.guildPoints[craft] = i32le(data, off);
+    end
+    M.gpSeen = true;
+    gpSave();
+end
+
+function M.guildPointsFor(craft) gpLoad(); return M.guildPoints[craft]; end
+function M.gpReady() gpLoad(); return M.gpSeen or M.gpPersisted; end
+
+-- ---------------------------------------------------------------------------
 -- Tier / binding-craft calc (Henrik): HQ tiers break when your skill exceeds
 -- the recipe cap by >11 / >31 / >51. With SUBCRAFTS the craft with the
 -- SMALLEST margin limits the tier -- gear should boost THAT craft ("enough
@@ -441,7 +505,8 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
     end);
 
     ashita.events.register('packet_in', 'dlac-craftwatch-in', function(e)
-        if e.id == 0x055 then pcall(function() M.onKeyItemPacket(e.data); end); end
+        if e.id == 0x055 then pcall(function() M.onKeyItemPacket(e.data); end);
+        elseif e.id == 0x113 then pcall(function() M.onCurrencyPacket(e.data); end); end   -- guild points
     end);
 
     -- /dl craft [bar | <craft> | goal <hq|nq|skillup> | ki] -- manual controls.
@@ -504,6 +569,15 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
                     say(string.format('  id=%d "%s"', ids[i], tostring(nm or '?')));
                 end
                 say(string.format('  owned total: %d%s', #ids, (#ids > 40) and ' (first 40 shown)' or ''));
+                return;
+            end
+            if b == 'gp' then                          -- verify guild points vs the currency menu
+                if not M.gpReady() then say('guild points: not seen yet -- open the currency menu or zone once.'); return; end
+                say('guild points (verify against the in-game currency menu):');
+                for _, craft in ipairs({ 'Woodworking', 'Smithing', 'Goldsmithing', 'Clothcraft',
+                                         'Leathercraft', 'Bonecraft', 'Alchemy', 'Cooking' }) do
+                    say(string.format('  %-13s %s', craft, tostring(M.guildPointsFor(craft) or '?')));
+                end
                 return;
             end
             if b == 'show' then                        -- what would the engine equip?

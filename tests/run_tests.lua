@@ -708,6 +708,29 @@ craftwatch.onKeyItemPacket(kiPacket(3, { 1988 }));         -- resync without Cul
 check('T25 cleared bit -> revoked',    craftwatch.hasKeyItem(2044), false);
 check('T26 other block untouched',     craftwatch.hasKeyItem(1988), true);
 
+-- Guild points from s2c 0x113 -- verify the byte offsets against Henrik's
+-- in-game currency menu values. int32 LE at absolute e.data offsets.
+local function i32(v) return string.char(v % 256, math.floor(v/256)%256, math.floor(v/65536)%256, math.floor(v/16777216)%256); end
+-- header(4) + PacketData: pad to fishing@0x20, then the 8 craft int32s.
+local gpPkt = string.rep('\0', 0x20)   -- header + conquest/seals/... up to fishing
+    .. i32(1111)      -- 0x20 fishing (ignored)
+    .. i32(2555)      -- 0x24 woodworking
+    .. i32(6536)      -- 0x28 smithing
+    .. i32(10990)     -- 0x2C goldsmithing
+    .. i32(540)       -- 0x30 weaving/clothcraft
+    .. i32(23539)     -- 0x34 leathercraft
+    .. i32(0)         -- 0x38 bonecraft
+    .. i32(75200)     -- 0x3C alchemy
+    .. i32(4325);     -- 0x40 cooking
+craftwatch.onCurrencyPacket(gpPkt);
+check('T27 gp woodworking',  craftwatch.guildPointsFor('Woodworking'), 2555);
+check('T28 gp goldsmithing', craftwatch.guildPointsFor('Goldsmithing'), 10990);
+check('T29 gp clothcraft(weaving)', craftwatch.guildPointsFor('Clothcraft'), 540);
+check('T30 gp alchemy',      craftwatch.guildPointsFor('Alchemy'), 75200);
+check('T31 gp cooking',      craftwatch.guildPointsFor('Cooking'), 4325);
+check('T32 gp bonecraft zero', craftwatch.guildPointsFor('Bonecraft'), 0);
+check('T33 gpReady', craftwatch.gpReady(), true);
+
 -- ---------------------------------------------------------------------------
 -- U. Set-entry name resolution -- case-insensitive fallback + quiet-once warn.
 --    Field case (SMN "test" commit): static-migrated sets say "Solid wand" but
