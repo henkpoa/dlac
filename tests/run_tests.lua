@@ -990,6 +990,25 @@ do
     check('Y42 owned nested item is the REAL record', rawequal(g.Main.Sword.Joyeuse, myGear.Main.Sword.Joyeuse), true);
 end
 
+-- per-job export/import: the %q-encoded payload round trip must be byte-exact
+-- (quotes, newlines, long-bracket sequences and all), and damaged/foreign
+-- files must be rejected, never half-imported.
+do
+    local setsBlob = 'local sets = {\n    Dynamic = {\n        Idle = { Head = { gear.Head.X } },  -- "quoted" and ]==] tricky\n    },\n};\nreturn sets;\n';
+    local trigBlob = 'return {\n    Default = { { when = { status = "Engaged" }, set = \'Tp_Default\' } },\n};\n';
+    local ex = profilesM.buildExportText('BLU', 'Default', 'Mindie', setsBlob, trigBlob);
+    local meta, perr = profilesM.parseExportText(ex);
+    check('Y43 export parses back', perr, nil);
+    check('Y44 export meta survives', meta ~= nil and meta.job == 'BLU' and meta.profile == 'Default' and meta.from == 'Mindie', true);
+    check('Y45 sets payload is byte-exact', meta ~= nil and meta.sets, setsBlob);
+    check('Y46 triggers payload is byte-exact', meta ~= nil and meta.triggers, trigBlob);
+    check('Y47 sets-only export is valid', (profilesM.parseExportText(profilesM.buildExportText('WHM', 'P', 'X', setsBlob, nil))) ~= nil, true);
+    check('Y48 foreign lua file rejected', (select(2, profilesM.parseExportText('return { some = "table" };'))), 'not a dlac job export');
+    check('Y49 garbage rejected', (select(2, profilesM.parseExportText('this is not lua {'))), 'file does not parse');
+    check('Y50 headless: importJobFile refuses politely', (select(2, profilesM.importJobFile('somefile', 'Other_1', 'Default', 'BLU'))), 'not available');
+    check('Y51 headless: listExports is nil, never an error', profilesM.listExports(), nil);
+end
+
 -- cross-character browsing/import: headless-safe (no AshitaCore -> nil answers).
 check('Y34 headless: importProfile refuses politely', (select(2, profilesM.importProfile('Other_1', 'Default', 'New'))), 'not logged in');
 check('Y35 headless: importProfile still validates the name first', (select(2, profilesM.importProfile('Other_1', 'Default', 'bad name'))), 'bad target name (letters/digits/_/- only)');

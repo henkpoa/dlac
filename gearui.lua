@@ -3770,6 +3770,7 @@ local function drawWindow()
                 local prof = require('dlac\\profiles');
                 if type(prof) ~= 'table' then m.err = 'profiles.lua unavailable'; return; end
                 m.active = prof.activeName();
+                m.exports = prof.listExports() or {};
                 m.jobsSet = {};
                 for _, j in ipairs(prof.JOBS) do m.jobsSet[j] = true; end
                 local chars, cur = prof.listCharFolders();
@@ -3801,12 +3802,13 @@ local function drawWindow()
                 elseif f.kind == 'renameJob' then title = string.format('Rename %s in %s\'s "%s"', f.job, f.srcDisp, f.srcProf);
                 elseif f.kind == 'deleteJob' then title = string.format('Delete %s from %s\'s "%s"', f.job, f.srcDisp, f.srcProf);
                 elseif f.kind == 'newProfile' then title = string.format('New empty profile on %s', f.srcDisp);
+                elseif f.kind == 'importJob' then title = string.format('Import %s (shared by %s, from their "%s")', f.job, f.srcDisp, f.srcProf);
                 elseif f.kind == 'deleteProfile' then title = string.format('Delete profile "%s" from %s', f.srcProf, f.srcDisp);
                 else title = string.format('Rename profile "%s"', f.srcProf); end
                 imgui.TextColored(COL_HEADER, title);
                 imgui.Separator();
 
-                if f.kind == 'cloneProfile' or f.kind == 'cloneJob' then
+                if f.kind == 'cloneProfile' or f.kind == 'cloneJob' or f.kind == 'importJob' then
                     imgui.TextColored(COL_DIM, 'To character:'); imgui.SameLine(0, 8);
                     local dstC = m.chars[f.dstIdx] or m.chars[1];
                     imgui.PushItemWidth(180);
@@ -3824,7 +3826,7 @@ local function drawWindow()
                     imgui.InputText('##pm_fprof', f.prof, 48);
                     imgui.PopItemWidth();
                 end
-                if f.kind == 'cloneJob' or f.kind == 'renameJob' or f.kind == 'newProfile' then
+                if f.kind == 'cloneJob' or f.kind == 'renameJob' or f.kind == 'newProfile' or f.kind == 'importJob' then
                     imgui.TextColored(COL_DIM, (f.kind == 'renameJob') and 'New name:' or (f.kind == 'newProfile') and 'Name:' or 'As name:'); imgui.SameLine(0, 8);
                     imgui.PushItemWidth(180);
                     imgui.InputText('##pm_fname', f.name, 48);
@@ -3884,6 +3886,14 @@ local function drawWindow()
                                 chk.blocked, chk.why = true, string.format('NAME COLLISION: "%s" already has a %s -- change the name to continue.', pn, nm);
                             elseif m.jobsSet ~= nil and m.jobsSet[nm] ~= true then
                                 chk.note = '"' .. nm .. '" is not a job name: it is copied as a dormant archive (the engine only reads <JOB>.lua).';
+                            end
+                        elseif f.kind == 'importJob' then
+                            local nm = prof.sanitizeName(f.name[1]);
+                            if nm == nil then chk.blocked, chk.why = true, 'Invalid file name: one word, letters/digits/_/- only.'; return; end
+                            if prof.jobNameTakenAt(dstC.name, pn, nm) then
+                                chk.blocked, chk.why = true, string.format('NAME COLLISION: "%s" already has a %s -- change the name to continue.', pn, nm);
+                            elseif m.jobsSet ~= nil and m.jobsSet[nm] ~= true then
+                                chk.note = '"' .. nm .. '" is not a job name: it is imported as a dormant archive (the engine only reads <JOB>.lua).';
                             end
                         else   -- rename
                             if pn == f.srcProf then
@@ -3950,6 +3960,11 @@ local function drawWindow()
                                 ui._profMenuMsg = (n ~= nil)
                                     and string.format('Renamed %s -> %s in "%s" (%d file(s)).', f.job, prof.sanitizeName(f.name[1]), f.srcProf, n)
                                     or ('Rename failed: ' .. tostring(err));
+                            elseif f.kind == 'importJob' then
+                                local n, err = prof.importJobFile(f.file, dstC.name, f.prof[1], f.name[1]);
+                                ui._profMenuMsg = (n ~= nil)
+                                    and string.format('Imported %s -> %s / "%s" as %s (%d file(s)).', f.job, dstC.disp or dstC.name, prof.sanitizeName(f.prof[1]), prof.sanitizeName(f.name[1]), n)
+                                    or ('Import failed: ' .. tostring(err));
                             elseif f.kind == 'newProfile' then
                                 local ok2, err = prof.createProfileAt(f.srcChar, f.name[1]);
                                 ui._profMenuMsg = (ok2 ~= nil)
@@ -3974,7 +3989,7 @@ local function drawWindow()
                             -- touched the CURRENT character's ACTIVE profile? make the
                             -- engine follow right now (sets + trigger hot-reload).
                             local tc, tp = nil, nil;
-                            if f.kind == 'cloneJob' then tc, tp = dstC.name, prof.sanitizeName(f.prof[1]);
+                            if f.kind == 'cloneJob' or f.kind == 'importJob' then tc, tp = dstC.name, prof.sanitizeName(f.prof[1]);
                             elseif f.kind == 'renameJob' or f.kind == 'deleteJob' then tc, tp = f.srcChar, f.srcProf; end
                             if tc ~= nil and tc == prof.currentCharFolder() and tp == prof.activeName() then
                                 AshitaCore:GetChatManager():QueueCommand(1, '/dl sets reload');
@@ -4088,6 +4103,17 @@ local function drawWindow()
                                                        srcProf = p.name, job = jf2.name };
                                         ui._pmChk = nil;
                                     end
+                                    imgui.SameLine(0, 6);
+                                    if imgui.SmallButton('export##pm_je_' .. c.name .. '_' .. p.name .. '_' .. jf2.name) then
+                                        pcall(function()
+                                            local prof = require('dlac\\profiles');
+                                            local path, err = prof.exportJob(c.name, p.name, jf2.name);
+                                            ui._profMenuMsg = (path ~= nil)
+                                                and string.format('Exported %s -> %s   Send that file; your friend drops it into THEIR dlac-exports folder and imports it from this menu.', jf2.name, path)
+                                                or ('Export failed: ' .. tostring(err));
+                                            if path ~= nil then ui._profMenuBuild = true; end
+                                        end);
+                                    end
                                     imgui.SameLine(0, 10);
                                     local dormant = (m.jobsSet ~= nil and m.jobsSet[jf2.name] ~= true);
                                     imgui.TextColored(dormant and COL_DIM or COL_USABLE, jf2.name);
@@ -4099,6 +4125,28 @@ local function drawWindow()
                                 imgui.TreePop();
                             end
                         end
+                    end
+                end
+                -- Shared exports: per-job files in the install-wide dlac-exports\
+                -- folder -- your own exports AND anything a friend sent you.
+                if #(m.exports or {}) > 0 then
+                    imgui.Separator();
+                    imgui.TextColored(COL_HEADER, 'Shared exports');
+                    imgui.SameLine(0, 8);
+                    imgui.TextColored(COL_DIM, '(config\\addons\\luashitacast\\dlac-exports\\)');
+                    for _, ex in ipairs(m.exports) do
+                        imgui.Text('  ');
+                        imgui.SameLine(0, 0);
+                        if imgui.SmallButton('import##pm_ix_' .. ex.file) then
+                            ui._pmForm = { kind = 'importJob', srcDisp = tostring(ex.from), srcProf = tostring(ex.profile),
+                                           job = ex.job, file = ex.file, dstIdx = 1,
+                                           prof = { 'Default' }, name = { ex.job } };
+                            ui._pmChk = nil;
+                        end
+                        imgui.SameLine(0, 10);
+                        imgui.TextColored(COL_USABLE, tostring(ex.job));
+                        imgui.SameLine(0, 10);
+                        imgui.TextColored(COL_DIM, string.format('from %s / "%s"   %s.lua', tostring(ex.from), tostring(ex.profile), ex.file));
                     end
                 end
                 imgui.EndChild();

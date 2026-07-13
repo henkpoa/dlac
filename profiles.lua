@@ -605,6 +605,115 @@ function M.deleteJobAt(charFolder, profName, name)
     return removed, bdir;
 end
 
+-- ---------------------------------------------------------------------------
+-- per-job export / import (friend sharing)
+--
+-- One file = one job's dlac data (sets + triggers), verbatim, %q-encoded in a
+-- plain `return {...}` Lua file. Files live in the install-wide
+-- config\addons\luashitacast\dlac-exports\ -- send the file; the friend drops
+-- it into THEIR dlac-exports\ and imports it from the Profiles menu (choosing
+-- character / profile / name, collision-gated like everything else).
+-- ---------------------------------------------------------------------------
+
+function M.exportsDir()
+    local root = M.lacRoot();
+    return root and (root .. 'dlac-exports\\') or nil;
+end
+
+-- Pure text builders (offline-tested round trip).
+function M.buildExportText(job, profName, from, setsText, trigText)
+    local parts = {
+        '-- dlac job export -- ' .. tostring(job) .. ' from profile "' .. tostring(profName) .. '" (' .. tostring(from) .. ')',
+        '-- Import: drop this file into config\\addons\\luashitacast\\dlac-exports\\ and use the dlac Profiles menu.',
+        'return {',
+        '    dlac    = "job-export v1",',
+        string.format('    job     = %q,', tostring(job)),
+        string.format('    profile = %q,', tostring(profName)),
+        string.format('    from    = %q,', tostring(from)),
+    };
+    if setsText ~= nil then parts[#parts + 1] = string.format('    sets     = %q,', setsText); end
+    if trigText ~= nil then parts[#parts + 1] = string.format('    triggers = %q,', trigText); end
+    parts[#parts + 1] = '};';
+    return table.concat(parts, '\n') .. '\n';
+end
+
+function M.parseExportText(text)
+    if type(text) ~= 'string' then return nil, 'no text'; end
+    local chunk = (loadstring or load)(text);
+    if chunk == nil then return nil, 'file does not parse'; end
+    if setfenv ~= nil then setfenv(chunk, {}); end   -- data file: runs against nothing
+    local ok, t = pcall(chunk);
+    if not ok or type(t) ~= 'table' or t.dlac ~= 'job-export v1' or type(t.job) ~= 'string'
+       or (type(t.sets) ~= 'string' and type(t.triggers) ~= 'string') then
+        return nil, 'not a dlac job export';
+    end
+    return t, nil;
+end
+
+-- Write <exportsDir>\<Job>-<Profile>-<Char>-<stamp>.lua. path | nil, why.
+function M.exportJob(charFolder, profName, job)
+    local dir = M.profileDirAt(charFolder, profName);
+    local ed = M.exportsDir();
+    if dir == nil or ed == nil then return nil, 'not available (log in first?)'; end
+    local setsText = readFile(dir .. 'sets\\' .. job .. '.lua');
+    local trigText = readFile(dir .. 'triggers\\' .. job .. '.lua');
+    if setsText == nil and trigText == nil then return nil, 'nothing to export (no files for ' .. tostring(job) .. ')'; end
+    ensureDir(ed);
+    local short = charFolder:match('^(.-)_%d+$') or charFolder;
+    local path = ed .. string.format('%s-%s-%s-%s.lua', job, profName, short, os.date('%Y%m%d_%H%M%S'));
+    local text = M.buildExportText(job, profName, short, setsText, trigText);
+    if not writeFile(path, text) or readFile(path) ~= text then return nil, 'could not write ' .. path; end
+    return path, nil;
+end
+
+-- Valid export files in dlac-exports\: { file, job, profile, from, sets, trig }.
+function M.listExports()
+    local ed = M.exportsDir();
+    if ed == nil then return nil; end
+    local files = listLuaFiles(ed);
+    if files == nil then return nil; end
+    local out = {};
+    for _, b in ipairs(files) do
+        local meta = M.parseExportText(readFile(ed .. b .. '.lua'));
+        if meta ~= nil then
+            out[#out + 1] = { file = b, job = meta.job, profile = meta.profile, from = meta.from,
+                              sets = type(meta.sets) == 'string', trig = type(meta.triggers) == 'string' };
+        end
+    end
+    return out;
+end
+
+-- Import an export file into any character/profile under dstName. Payloads
+-- are parse-checked before anything is written; never overwrites. n | nil, why.
+function M.importJobFile(fileBase, dstCharFolder, dstProf, dstName)
+    dstName = M.sanitizeName(dstName);
+    if dstName == nil then return nil, 'bad name (letters/digits/_/- only)'; end
+    dstProf = M.sanitizeName(dstProf);
+    if dstProf == nil then return nil, 'bad profile name (letters/digits/_/- only)'; end
+    local ed = M.exportsDir();
+    if ed == nil then return nil, 'not available'; end
+    local meta, merr = M.parseExportText(readFile(ed .. fileBase .. '.lua'));
+    if meta == nil then return nil, merr; end
+    if M.jobNameTakenAt(dstCharFolder, dstProf, dstName) then
+        return nil, 'name collision: "' .. dstName .. '" already exists in that profile';
+    end
+    if type(meta.sets) == 'string' and (loadstring or load)(meta.sets) == nil then
+        return nil, 'export is damaged: sets payload does not parse';
+    end
+    if type(meta.triggers) == 'string' and (loadstring or load)(meta.triggers) == nil then
+        return nil, 'export is damaged: triggers payload does not parse';
+    end
+    if not ensureStorageAt(dstCharFolder, dstProf) then return nil, 'could not create storage'; end
+    local dstDir = M.profileDirAt(dstCharFolder, dstProf);
+    local n = 0;
+    if type(meta.sets) == 'string' and readFile(dstDir .. 'sets\\' .. dstName .. '.lua') == nil
+       and writeFile(dstDir .. 'sets\\' .. dstName .. '.lua', meta.sets) then n = n + 1; end
+    if type(meta.triggers) == 'string' and readFile(dstDir .. 'triggers\\' .. dstName .. '.lua') == nil
+       and writeFile(dstDir .. 'triggers\\' .. dstName .. '.lua', meta.triggers) then n = n + 1; end
+    if n == 0 then return nil, 'nothing imported'; end
+    return n, nil;
+end
+
 -- Import another character's profile into THIS character under dstName.
 -- Refuses to pour into a profile that already has files (no silent merges).
 -- Returns copiedCount, nil | nil, why.

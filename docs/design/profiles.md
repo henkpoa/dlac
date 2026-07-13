@@ -131,3 +131,16 @@ PERMANENTLY button, and deletion always writes verified safety copies first
 touch the CURRENT character's ACTIVE profile ping `/dl sets reload` +
 `/dl triggers reload` so the engine follows instantly (the two-rename
 swap-from-backup workflow needs no manual reload).
+
+### Per-job export / import (friend sharing)
+
+One file = one job's dlac data. `export` on a job row writes
+`config\addons\luashitacast\dlac-exports\<Job>-<Profile>-<Char>-<stamp>.lua`
+-- a plain `return {...}` with the sets/triggers file texts %q-embedded
+verbatim (round trip pinned byte-exact, tests Y43-Y51). Send the file; the
+friend drops it into THEIR dlac-exports\ and the menu's "Shared exports"
+section lists it with an `import` button -- destination character / profile /
+name form, collision-gated, payloads parse-checked before anything is
+written, never overwrites. Missing gear on the importer's side is already
+handled by the missing-gear-safe loader: ladders degrade to what they own and
+self-heal as they scan new gear.
