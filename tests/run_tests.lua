@@ -989,6 +989,46 @@ check('Y32 headless migrate is a safe no-op', mdone == 0 and mskip == 0 and mfai
 check('Y33 headless migrate says why', #said > 0 and said[1]:find('log in first', 1, true) ~= nil, true);
 
 -- ---------------------------------------------------------------------------
+-- Z. gear export (/dl export -> gearexport.json for external tools, e.g. the
+--    friend's damage simulator). The pure builders: JSON encoding (escaping,
+--    scalar arrays inline, sorted object keys, integer formatting) and the
+--    export walk (armor slots hold records DIRECTLY, weapon slots hold TYPE
+--    BUCKETS -- both shapes; catalog gap-fill with owned-override precedence;
+--    augments attached by id).
+-- ---------------------------------------------------------------------------
+local gx = dofile('gearexport.lua');
+check('Z1 json escapes quotes/backslash/newline', gx.jsonEncode('a"b\\c\n'), '"a\\"b\\\\c\\n"');
+check('Z2 scalar array stays inline', gx.jsonEncode({ 1, -5, 'x', true }), '[1, -5, "x", true]');
+check('Z3 object keys sorted', gx.jsonEncode({ b = 1, a = 2 }), '{\n  "a": 2,\n  "b": 1\n}');
+check('Z4 integers never get a decimal point', gx.jsonEncode(276.0), '276');
+
+local zGear = {
+    Main = { Axe = { K = { Name = 'Kriegsbeil', Id = 1, Level = 70, Jobs = { 'WAR' },
+                           Type = 'Axe', OneHanded = true, Stats = { DMG = 3, Delay = 276 } } } },
+    Head = { H = { Name = 'Brass Cap', Id = 2, Level = 11, Jobs = { 'WAR', 'MNK' } },
+             Z = { Name = 'Aketon', Id = 3, Level = 50, Jobs = { 'WAR' } } },
+    NameToObject = { Kriegsbeil = { Name = 'SHOULD NOT APPEAR', Id = 99 } },
+};
+local zCat  = { [1] = { Stats = { DMG = 99, ACC = 5 } }, [2] = { Stats = { DEF = 4 }, Type = 'Armor' } };
+local zAugs = { [1] = { 'STR+1, DEX+1' } };
+local zAugStats = { [1] = { STR = 1, DEX = 1 } };
+local zExp = gx.buildExport(zGear, zCat, zAugs, zAugStats, { character = 'Testy' });
+check('Z5 both category shapes walked', zExp.itemCount, 3);
+check('Z6 slot order: Main before Head', zExp.items[1].name, 'Kriegsbeil');
+check('Z7 within a slot: sorted by name', zExp.items[2].name, 'Aketon');
+check('Z8 owned stat overrides catalog', zExp.items[1].stats.DMG, 3);
+check('Z9 catalog fills the gaps (same record)', zExp.items[1].stats.ACC, 5);
+check('Z10 catalog stats for a bare record', zExp.items[3].stats.DEF, 4);
+check('Z11 catalog type backfill', zExp.items[3].type, 'Armor');
+check('Z12 augments attach by id', zExp.items[1].augments[1], 'STR+1, DEX+1');
+check('Z13 augment stat deltas attach by id', zExp.items[1].augmentStats.STR, 1);
+check('Z14 no augments -> key omitted', zExp.items[2].augments, nil);
+check('Z15 meta lands at the root', zExp.character, 'Testy');
+local zJson = gx.jsonEncode(zExp);
+check('Z16 full export encodes with the format marker',
+    string.find(zJson, '"format": "dlac-gear-export"', 1, true) ~= nil, true);
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then
