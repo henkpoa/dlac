@@ -1356,7 +1356,17 @@ local function renderTeleportsPopup()
     imgui.Separator();
     local rows = {};
     pcall(function() rows = useit.menu() or {}; end);
+    local xpHeaderDrawn = false;
     for i, r in ipairs(rows) do
+        -- Exp rings sit in their own section under the teleports (Henrik);
+        -- useitem.menu() already dropped the unowned ones.
+        if r.xp and not xpHeaderDrawn then
+            xpHeaderDrawn = true;
+            imgui.Separator();
+            imgui.TextColored(COL_HEADER, 'Exp rings');
+            imgui.SameLine(0, 10);
+            imgui.TextColored(COL_DIM, 'only the ones you own are listed');
+        end
         local id = r.id;
         if id == nil then                              -- not owned: the catalog still knows the icon
             local rec = lookupByName(r.name);
@@ -1527,7 +1537,7 @@ local function renderHeaderButtons()
                   clicked = imgui.Button('Tele##hdrtp', { 26, 22 });   -- no texture: text fallback
               end
               if imgui.IsItemHovered() then
-                  imgui.SetTooltip('Teleports: Warp Ring / Provenance Ring / teleport earrings -- click one to\nequip it and use it the moment the game says ready (the /dl w, p, t\ncommands, clickable). Lit = ready, amber = recharging, red = stored, dim = not owned.');
+                  imgui.SetTooltip('Teleports: Warp Ring / Provenance Ring / teleport earrings, plus your exp\nrings -- click one to equip it and use it the moment the game says ready\n(the /dl w, p, t, xp commands, clickable). Lit = ready, amber = recharging,\nred = stored, dim = not owned.');
               end
               if clicked then ui._tpOpen = true; end
           end };

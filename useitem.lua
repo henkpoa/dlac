@@ -8,7 +8,11 @@
                            <where> matches a destination or alias (norg, jeuno,
                            sandy, bastok...); an ambiguous query lists the options,
                            no argument lists every destination.
-        /dl p|w|t off      cancel the pending use and release the slot.
+        /dl xp <ring>      lock Ring2, equip the matching EXPERIENCE ring, use it
+                           (empress, emperor, resolution, chariot, kupofried,
+                           allied, caliber, echad). Same countdown machinery; the
+                           GUI menu lists only the ones you own.
+        /dl p|w|t|xp off   cancel the pending use and release the slot.
 
     Readiness is read from the GAME, not guessed: an enchanted item's Extra data
     carries its last-use timestamp (offset 5) and -- for Flags == 5 equipment --
@@ -49,6 +53,23 @@ local TELEPORTS = {
     { name = 'Kingdom Earring',    dest = "San d'Oria", aliases = { 'sandoria', 'sandy', 'sand', 'san', 'kingdom' } },
     { name = 'Federation Earring', dest = 'Windurst',   aliases = { 'windurst', 'windy', 'wind', 'federation' } },
     { name = 'Republic Earring',   dest = 'Bastok',     aliases = { 'bastok', 'republic' } },
+};
+
+-- Experience bands/rings (Henrik): equip Ring2, wait out the equip delay, use
+-- -- exactly the teleport machinery. `dest` doubles as the short label the
+-- list/menu shows; bonus rides along for the menu label. Only OWNED ones
+-- appear in the GUI menu (you can't have them all). Fallback wait = 10s equip
+-- delay + margin; the game-clock poll fires at the true moment as always.
+local XP_WAIT = 15;
+local EXPRINGS = {
+    { name = 'Empress Band',     dest = 'Empress',    bonus = '+50%',  aliases = { 'empress' } },
+    { name = 'Emperor Band',     dest = 'Emperor',    bonus = '+50%',  aliases = { 'emperor' } },
+    { name = 'Resolution Ring',  dest = 'Resolution', bonus = '+50%',  aliases = { 'resolution', 'reso' } },
+    { name = 'Chariot Band',     dest = 'Chariot',    bonus = '+75%',  aliases = { 'chariot' } },
+    { name = "Kupofried's Ring", dest = 'Kupofried',  bonus = '+100%', aliases = { 'kupofried', 'kupo' } },
+    { name = 'Allied Ring',      dest = 'Allied',     bonus = '+150%', aliases = { 'allied' } },
+    { name = 'Caliber Ring',     dest = 'Caliber',    bonus = '+150%', aliases = { 'caliber' } },
+    { name = 'Echad Ring',       dest = 'Echad',      bonus = '+150%', aliases = { 'echad' } },
 };
 
 local SLOT_ID = { ring2 = 0x0E, ear2 = 0x0C };   -- native equip-slot indexes
@@ -146,12 +167,12 @@ local function cancel()
     release(slot);
 end
 
--- Resolve a teleport query: exact alias, then alias/destination prefix, then
--- substring across alias/destination/item name. One hit = go; several = the
--- caller lists them; none = nil.
-local function findTeleports(q)
+-- Resolve a query against a list (teleports or exp rings): exact alias, then
+-- alias/destination prefix, then substring across alias/destination/item
+-- name. One hit = go; several = the caller lists them; none = nil.
+local function findTeleports(list, q)
     local exact, prefix, sub = {}, {}, {};
-    for _, t in ipairs(TELEPORTS) do
+    for _, t in ipairs(list) do
         local hitE, hitP, hitS = false, false, false;
         local hay = { string.lower(t.dest), string.lower(t.name) };
         for _, a in ipairs(t.aliases) do hay[#hay + 1] = a; end
@@ -239,6 +260,13 @@ local MENU = {
 for _, t in ipairs(TELEPORTS) do
     MENU[#MENU + 1] = { name = t.name, label = t.dest, cmd = '/dl t ' .. t.aliases[1] };
 end
+-- Exp rings ride the same menu, marked xp: the GUI draws them in their own
+-- section under the teleports, and menu() drops the UNOWNED ones entirely
+-- (Henrik: you can't have them all -- listing eight "not owned" rows is noise).
+for _, x in ipairs(EXPRINGS) do
+    MENU[#MENU + 1] = { name = x.name, label = x.dest .. '  ' .. x.bonus,
+                        cmd = '/dl xp ' .. x.aliases[1], xp = true };
+end
 local WANTED = {};
 for _, m in ipairs(MENU) do WANTED[string.lower(m.name)] = true; end
 
@@ -298,14 +326,16 @@ function M.menu()
     local rows = {};
     for _, m in ipairs(MENU) do
         local f = found[string.lower(m.name)];
-        rows[#rows + 1] = {
-            name = m.name, label = m.label, cmd = m.cmd,
-            id = f and f.id or nil,
-            owned = (f ~= nil),
-            avail = (f ~= nil) and f.avail or false,
-            where = f and (BAG_NAMES[f.bag] or ('bag ' .. tostring(f.bag))) or nil,
-            rem = f and f.rem or 0,
-        };
+        if f ~= nil or not m.xp then                   -- exp rings: owned only
+            rows[#rows + 1] = {
+                name = m.name, label = m.label, cmd = m.cmd, xp = m.xp,
+                id = f and f.id or nil,
+                owned = (f ~= nil),
+                avail = (f ~= nil) and f.avail or false,
+                where = f and (BAG_NAMES[f.bag] or ('bag ' .. tostring(f.bag))) or nil,
+                rem = f and f.rem or 0,
+            };
+        end
     end
     _menuRows = rows;
     return rows;
@@ -324,7 +354,7 @@ ashita.events.register('command', 'dlac-useitem', function(e)
     local args = {};
     for a in string.gmatch(string.sub(raw, s), '[^%s]+') do args[#args + 1] = a; end
     local sub = args[1];
-    if sub ~= 'p' and sub ~= 'w' and sub ~= 't' then return; end
+    if sub ~= 'p' and sub ~= 'w' and sub ~= 't' and sub ~= 'xp' then return; end
     e.blocked = true;
     if args[2] == 'off' or args[2] == 'cancel' or args[2] == 'stop' then cancel(); return; end
 
@@ -334,7 +364,7 @@ ashita.events.register('command', 'dlac-useitem', function(e)
             print('[dlac] teleports: ' .. listTeleports(TELEPORTS) .. '   (/dl t <where>)');
             return;
         end
-        local hits = findTeleports(q);
+        local hits = findTeleports(TELEPORTS, q);
         if #hits == 0 then
             print('[dlac] no teleport matches "' .. q .. '" -- options: ' .. listTeleports(TELEPORTS));
         elseif #hits > 1 then
@@ -343,6 +373,25 @@ ashita.events.register('command', 'dlac-useitem', function(e)
             local t = hits[1];
             start({ name = t.name, slot = 'ear2', wait = TELE_WAIT },
                 'teleporting to ' .. t.dest, '/dl t off');
+        end
+        return;
+    end
+
+    if sub == 'xp' then
+        local q = table.concat(args, ' ', 2);
+        if q == '' then
+            print('[dlac] exp rings: ' .. listTeleports(EXPRINGS) .. '   (/dl xp <ring>)');
+            return;
+        end
+        local hits = findTeleports(EXPRINGS, q);
+        if #hits == 0 then
+            print('[dlac] no exp ring matches "' .. q .. '" -- options: ' .. listTeleports(EXPRINGS));
+        elseif #hits > 1 then
+            print('[dlac] "' .. q .. '" is ambiguous -- did you mean: ' .. listTeleports(hits) .. '?');
+        else
+            local x = hits[1];
+            start({ name = x.name, slot = 'ring2', wait = XP_WAIT },
+                'popping the ' .. x.bonus .. ' exp bonus', '/dl xp off');
         end
         return;
     end

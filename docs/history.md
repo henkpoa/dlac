@@ -591,3 +591,17 @@ match `/lastsynth`. Suite 278 -> 267 (injection tests removed).
 **Lessons pinned:** (1) never intercept native text commands; (2) check retail
 text commands BEFORE inventing addon commands -- name collisions break the
 native; (3) absence from the addons tree is not absence.
+
+## Session "exp rings in the Teleports menu" (07-14, on `main`)
+
+Henrik: the eight experience bands/rings (Empress/Emperor/Resolution/Chariot/
+Kupofried's/Allied/Caliber/Echad) join the Teleports dropdown in their OWN
+section under the teleports -- and only the ones you OWN are listed (you can't
+have them all; eight "not owned" rows is noise -- useitem.menu() drops unowned
+`xp` rows, the popup draws the section header at the first xp row). Same
+machinery as the teleport items end-to-end: `/dl xp <ring>` (aliases:
+empress/emperor/resolution/chariot/kupofried/allied/caliber/echad) locks
+Ring2, equips, polls the game clock, fires when ready; recharge countdown in
+the menu (Echad's 120-min reuse renders h:mm:ss); `/dl xp off` cancels.
+Fallback wait 15s (10s equip delay + margin) -- the game-clock poll governs
+in practice, as with every enchanted item here.
