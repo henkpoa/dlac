@@ -660,16 +660,16 @@ end
 craftwatch._craftLocked = {}; craftCmds = {};
 check('T15 equip returns slot count', craftwatch.equipCraftSet('Alchemy'), 3);
 check('T16 locks the slot',           hasCmd('/dl lock main on'), true);
-check('T16b native equip emitted',    hasCmd('/equip main "Chemists Kukri"'), true);
+check('T16b lac equip emitted',       hasCmd('/lac equip Main "Chemists Kukri"'), true);
 craftwatch._craftLocked = {}; craftCmds = {};
 check('T17 fallback to Craft set',    craftwatch.equipCraftSet('Bonecraft'), 1);
-check('T18 fallback equip command',   hasCmd('/equip neck "Artisans Torque"'), true);
+check('T18 fallback equip command',   hasCmd('/lac equip Neck "Artisans Torque"'), true);
 -- MANUAL model (Henrik): you pick the craft, dlac equips it NOW. Detection
 -- can't equip in time (0x096 is the first synth packet), so it's info only.
 craftwatch._craftLocked = {}; craftCmds = {};
 craftwatch.goal = 'hq';
 craftwatch.selectCraft('Alchemy');
-check('T19 selectCraft equips (locked)', hasCmd('/equip main "Chemists Kukri"'), true);
+check('T19 selectCraft equips (locked)', hasCmd('/lac equip Main "Chemists Kukri"'), true);
 check('T19b selectCraft sets active',    craftwatch.getCraft(), 'Alchemy');
 check('T19c selectCraft turns switch on', craftwatch.isEnabled(), true);
 craftwatch._craftLocked = {}; craftCmds = {};
@@ -686,7 +686,7 @@ craftwatch.setEnabled(false);          -- OFF: release the locked slot
 check('T20d off releases locks',       hasCmd('/dl lock main off'), true);
 craftwatch._craftLocked = {}; craftCmds = {};
 craftwatch.setEnabled(true);           -- ON: equips the active craft
-check('T20e enable equips active craft', hasCmd('/equip neck "Artisans Torque"') or #craftCmds > 0, true);
+check('T20e enable equips active craft', #craftCmds > 0, true);
 check('T20f enabled stored',           craftwatch.isEnabled(), true);
 craftwatch.setEnabled(false);
 craftwatch._craftLocked = {};

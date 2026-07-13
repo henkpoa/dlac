@@ -236,6 +236,7 @@ local _saidUnknown = {};   -- key -> true (report each unknown recipe once)
 -- ---------------------------------------------------------------------------
 M.barVisible = false;      -- floating craft bar (craftbar.lua) shown?
 M._craftLocked = {};       -- lower slot -> true: craft-locked (engine skips it)
+M._craftRescanned = false; -- regenerated the manifest once this session?
 
 local SLOT_LABELS = { 'Main', 'Sub', 'Range', 'Ammo', 'Head', 'Neck', 'Ear1', 'Ear2',
                       'Body', 'Hands', 'Ring1', 'Ring2', 'Back', 'Waist', 'Legs', 'Feet' };
@@ -300,12 +301,20 @@ function M.equipCraftSet(skill, baseDelay)
             picks[slot] = entryName(contents[slot]);
         end
     else
+        -- Regenerate the manifest ONCE per session before the first manifest
+        -- equip: the ladders are written by the Automations panel / login
+        -- rescan, so a bar used before either -- or an older-format manifest
+        -- (missing the newest fillers) -- would equip too little. One rescan
+        -- guarantees the current AUTO_FMT ladders (head/back skill-up fillers).
+        if not M._craftRescanned then
+            M._craftRescanned = true;
+            pcall(function()
+                local tg = require('dlac\\triggersui');
+                if type(tg.rescanAutogear) == 'function' then tg.rescanAutogear(); end
+            end);
+        end
         picks = M.manifestPicks(skill) or {};
-        -- The manifest's craft ladders are written by the Automations panel /
-        -- the login-time rescan. If they're not there yet (bar used before the
-        -- Triggers tab was opened), regenerate ONCE and retry -- so the very
-        -- first click works without "open this tab first".
-        if next(picks) == nil then
+        if next(picks) == nil then                 -- still nothing: one more rescan + retry
             pcall(function()
                 local tg = require('dlac\\triggersui');
                 if type(tg.rescanAutogear) == 'function' then tg.rescanAutogear(); end
@@ -317,13 +326,14 @@ function M.equipCraftSet(skill, baseDelay)
     local ok, cmdq = pcall(require, 'dlac\\cmdqueue');
     if not ok or type(cmdq) ~= 'table' or type(cmdq.enqueue) ~= 'function' then return 0; end
     -- Craft gear must SURVIVE the engine. dlac's dispatch re-equips your
-    -- Default/Idle set every frame tick, so a bare /lac equip is stomped within
-    -- a frame (same class as maxmp/petaction). So we LOCK each craft slot (the
-    -- engine skips locked slots) + /lac disable it (belt for legacy profiles),
-    -- then equip natively. Slots no longer used get released.
-    local want = {};                       -- lower slot -> item, this equip
+    -- Default/Idle set every frame tick, so an equip alone is stomped within a
+    -- frame (same class as maxmp/petaction). So we LOCK each craft slot -- the
+    -- engine then skips it -- and equip with /lac equip, which (per dispatch's
+    -- v14 field note) works even with the EQUIPMENT WINDOW open, unlike the
+    -- native /equip. Slots no longer used get released.
+    local want = {};                       -- lower slot -> { label, item }
     for _, slot in ipairs(SLOT_LABELS) do
-        if picks[slot] ~= nil then want[string.lower(slot)] = picks[slot]; end
+        if picks[slot] ~= nil then want[string.lower(slot)] = { slot, picks[slot] }; end
     end
     -- Release craft-locks for slots we no longer use.
     for lslot in pairs(M._craftLocked) do
@@ -332,14 +342,13 @@ function M.equipCraftSet(skill, baseDelay)
             M._craftLocked[lslot] = nil;
         end
     end
-    -- Equip in SLOT_LABELS order (deterministic): lock, disable, equip per slot.
+    -- Lock (engine skips it) then /lac equip, in SLOT_LABELS order.
     for _, slot in ipairs(SLOT_LABELS) do
         local lslot = string.lower(slot);
-        local item = want[lslot];
-        if item ~= nil then
+        local w = want[lslot];
+        if w ~= nil then
             cmdq.enqueue((baseDelay or 0) + 4 * n, '/dl lock ' .. lslot .. ' on');
-            cmdq.enqueue((baseDelay or 0) + 4 * n + 1, '/lac disable ' .. lslot);
-            cmdq.enqueue((baseDelay or 0) + 4 * n + 2, string.format('/equip %s "%s"', lslot, item));
+            cmdq.enqueue((baseDelay or 0) + 4 * n + 1, string.format('/lac equip %s "%s"', w[1], w[2]));
             M._craftLocked[lslot] = true;
             n = n + 1;
         end
@@ -411,7 +420,10 @@ function M.loadCraftState()
                 M.goal = t.goal;
             end
             if type(t.craft) == 'string' and t.craft ~= '' then M.activeCraft = t.craft; end
-            if t.enabled == true then M.enabled = true; end
+            -- NOTE: `enabled` is deliberately NOT restored. The switch is
+            -- session-only and starts OFF: a persisted ON showed the slider
+            -- green while nothing was actually equipped/locked (the apply only
+            -- runs on toggle), so the visual lied. You turn it on each session.
         end
     end);
 end
