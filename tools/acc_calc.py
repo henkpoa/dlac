@@ -367,16 +367,17 @@ def mob_eva(db, level, pool_id, zone_id):
 
 
 def correction(db, zone_id, player_lvl, mob_lvl):
-    """Returns (acc offset applied by the server, note). Positive = helps you."""
-    if norm_zone(db.zones.get(zone_id, "")) not in db.corrected_zones:
-        return 0, "zone not level-corrected"
-    if player_lvl is None or player_lvl >= mob_lvl:
-        return 0, "no correction (not below mob level)" if player_lvl else "give --player-level for correction"
+    """Returns (acc offset, note). Henrik live ruling v2 (2026-07-14): -4 ACC
+    per level the mob is above you, in EVERY zone -- 75-era server, no Adoulin
+    zones; the repo's zone list and its '+4 bonus' sign are presumed wrong for
+    live (the private settings/main.lua likely disables the Adoulin gate).
+    Ground truth instrument: dlacprobe /probe tally."""
+    if player_lvl is None:
+        return 0, "give --player-level for level correction"
+    if player_lvl >= mob_lvl:
+        return 0, "no correction (not below mob level)"
     d = mob_lvl - player_lvl
-    if db.pc_corr_sign == "-":
-        # CatsEyeXI standard (Henrik ruling 2026-07-14): fighting up GRANTS 4 ACC/level.
-        return 4 * d, "+%d ACC from level correction (you are %d below the mob)" % (4 * d, d)
-    return -4 * d, "-%d ACC penalty -- UPSTREAM SIGN FLIPPED vs the 2026-07-14 ruling; re-verify tools!" % (4 * d)
+    return -4 * d, "-%d ACC level penalty (you are %d below; applies everywhere per live ruling)" % (4 * d, d)
 
 
 def acc_report(db, g, level, player_lvl, acc):

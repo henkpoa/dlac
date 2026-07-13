@@ -38,12 +38,12 @@ Caps (physical_hit_rate.lua): 99% for 1H mainhand / H2H -> ACC = EVA + 48;
 95% for 2H -> ACC = EVA + 40. The mainhand is sniffed from the equipped
 weapon's skill type so the right cap is chosen automatically.
 
-Level correction (accdata.corrected zones): a PC fighting a mob ABOVE their
-level gets +4 ACC per level of difference. That is what the shipped server
-code does, and it is CANON here (Henrik ruling 2026-07-14) -- the code's
-"Accuracy Penalty" comment is stale, not a bug awaiting a fix. The printed
-ACC target folds the correction in. If tools/acc_calc.py ever warns that the
-upstream sign flipped, revisit report() below.
+Level correction (Henrik ruling v2, 2026-07-14, from live play): fighting a
+mob ABOVE your level costs 4 ACC (= 2% hit) per level, EVERYWHERE -- this is
+a 75-era server with no Adoulin zones, so BOTH the zone list and the "+4
+bonus" sign in the published repo code are treated as wrong for live. The
+printed need folds the penalty in. Ground truth if this needs re-litigating:
+dlacprobe /probe tally (battle-log hit-rate counter).
 ]]
 
 local M = {};
@@ -201,14 +201,12 @@ local function report(actIndex, why, full)
     local add = is2h and 40 or 48;                                -- to 95% / 99%
     local needLo, needHi = evLo + add, evHi + add;
     local corr = '';
-    if DATA.corrected ~= nil and DATA.corrected[zone] == true then
-        local pl = 0;
-        pcall(function() pl = AshitaCore:GetMemoryManager():GetPlayer():GetMainJobLevel() or 0; end);
-        if pl > 0 and pl < hi then
-            needLo = needLo - math.max(0, lo - pl) * 4;           -- +4 ACC per level the mob is
-            needHi = needHi - math.max(0, hi - pl) * 4;           -- above you (see header: canon)
-            corr = (' [lvl-corr, you Lv%d]'):format(pl);
-        end
+    local pl = 0;                                                 -- ruling v2: penalty, everywhere
+    pcall(function() pl = AshitaCore:GetMemoryManager():GetPlayer():GetMainJobLevel() or 0; end);
+    if pl > 0 and pl < hi then
+        needLo = needLo + math.max(0, lo - pl) * 4;               -- -4 ACC per level the mob is
+        needHi = needHi + math.max(0, hi - pl) * 4;               -- above you (see header)
+        corr = (' [-4/lvl, you Lv%d]'):format(pl);
     end
     -- default (engage/switch) output: one signed number, Henrik's spec --
     -- 0 = capped exactly, -50 = 50 under cap, 50 = 50 over. Range mobs
