@@ -1073,7 +1073,8 @@ local function renderAutomations(noHeader)
                 imgui.PushStyleColor(ImGuiCol_ButtonHovered, aOn and { 0.20, 0.72, 0.30, 1.0 } or { 0.82, 0.26, 0.26, 1.0 });
             end
             if imgui.Button((aOn and 'Auto Craft Set: ON' or 'Auto Craft Set: OFF') .. '##craftauto', { 177, 22 }) and cwok then
-                cw.autoEquip = not aOn;
+                if type(cw.setAuto) == 'function' then cw.setAuto(not aOn);   -- ON = dress now if a craft is known
+                else cw.autoEquip = not aOn; end
             end
             if tinted then imgui.PopStyleColor(2); end
             if imgui.IsItemHovered() then

@@ -665,7 +665,14 @@ check('T19 auto-equip on change',   #craftCmds, 3);
 craftCmds = {};
 craftwatch.onSynth(4096, { 1165, 1165 }, 11);   -- repeat: same craft
 check('T20 repeat synth: no re-equip', #craftCmds, 0);
-craftwatch.autoEquip = false;
+-- field case: auto toggled ON only AFTER synthing -- must dress immediately
+craftwatch.setAuto(false);
+craftCmds = {};
+craftwatch.onSynth(4096, { 1165, 1165 }, 12);
+check('T20b auto off: no equip', #craftCmds, 0);
+craftwatch.setAuto(true);
+check('T20c toggle-on dresses for the current craft', #craftCmds, 3);
+craftwatch.setAuto(false);
 
 -- 0x055 key item tracker (the SDK HasKeyItem memory read is dead on this
 -- client -- craftwatch keeps its own bitfield from the packet stream).

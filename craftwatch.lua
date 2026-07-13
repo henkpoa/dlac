@@ -237,6 +237,7 @@ local _saidUnknown = {};   -- key -> true (report each unknown recipe once)
 -- during the animation, so gear counts from the NEXT synth on.
 -- ---------------------------------------------------------------------------
 M.autoEquip = false;
+M._equippedTarget = nil;   -- craft the auto-equip last dressed for
 
 local SLOT_LABELS = { 'Main', 'Sub', 'Range', 'Ammo', 'Head', 'Neck', 'Ear1', 'Ear2',
                       'Body', 'Hands', 'Ring1', 'Ring2', 'Back', 'Waist', 'Legs', 'Feet' };
@@ -319,6 +320,22 @@ function M.equipCraftSet(skill)
     return n;
 end
 
+-- Toggle entry point (GUI button + /dl craft auto): turning ON with a craft
+-- already detected dresses you IMMEDIATELY -- no need to re-synth first
+-- (field case: button flipped after synthing, next same-craft synth skipped).
+function M.setAuto(on)
+    M.autoEquip = (on == true);
+    if not M.autoEquip then
+        M._equippedTarget = nil;
+        return;
+    end
+    local target = M.current and (M.current.target or M.current.skill) or nil;
+    if target ~= nil and target ~= 'unknown' then
+        M._equippedTarget = target;
+        pcall(function() M.equipCraftSet(target); end);
+    end
+end
+
 -- Process one detected synth; returns the record (also used by tests).
 function M.onSynth(crystal, ings, clock)
     local rec = M.lookup(crystal, ings);
@@ -340,7 +357,7 @@ function M.onSynth(crystal, ings, clock)
     };
     if rec ~= nil then
         local prevTarget = prev and (prev.target or prev.skill) or nil;
-        if prevTarget ~= target then               -- announce/equip on TARGET change only
+        if prevTarget ~= target then               -- announce/publish on TARGET change only
             local note = '';
             if binding ~= nil and binding ~= skill then
                 note = string.format(' -- binding subcraft: %s (margin %+d, tier %d)',
@@ -354,7 +371,13 @@ function M.onSynth(crystal, ings, clock)
             pcall(function()
                 AshitaCore:GetChatManager():QueueCommand(1, '/dl mode craft ' .. tostring(target));
             end);
-            if M.autoEquip then pcall(function() M.equipCraftSet(target); end); end
+        end
+        -- Equip tracks its OWN last-dressed target, NOT the announce gate:
+        -- toggling auto ON after synthing a craft must still dress on the next
+        -- synth of that same craft (field case: GUI button, then nothing equipped).
+        if M.autoEquip and M._equippedTarget ~= target then
+            M._equippedTarget = target;
+            pcall(function() M.equipCraftSet(target); end);
         end
     elseif not _saidUnknown[M.current.key] then        -- each unknown once, with the key
         _saidUnknown[M.current.key] = true;
@@ -387,8 +410,8 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
             if a ~= 'craft' then return; end
             e.blocked = true;
             if b == 'auto' then
-                if     c == 'on'  then M.autoEquip = true;
-                elseif c == 'off' then M.autoEquip = false; end
+                if     c == 'on'  then M.setAuto(true);
+                elseif c == 'off' then M.setAuto(false); end
                 say('auto craft set ' .. (M.autoEquip and 'ON' or 'OFF')
                     .. ' -- EQUIPS your best craft pieces when a synth of a new craft is detected; it never crafts for you.'
                     .. '  (/dl craft auto on|off; session-only for now)');
