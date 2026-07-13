@@ -230,6 +230,20 @@ end
 function M.guildPointsFor(craft) gpLoad(); return M.guildPoints[craft]; end
 function M.gpReady() gpLoad(); return M.gpSeen or M.gpPersisted; end
 
+-- Ask the server for the currency-1 data ourselves (header-only c2s 0x10F --
+-- exactly what opening the currency menu sends; the server's validate() is
+-- ungated, and it replies with s2c 0x113). So guild points populate without
+-- opening the menu. Debounced -- it is a read request, but no need to spam.
+local _gpReqAt = -10;
+function M.requestGuildPoints()
+    if os.clock() - _gpReqAt < 5 then return; end
+    _gpReqAt = os.clock();
+    pcall(function()
+        -- header id:9|size:7 -> id 0x10F, size 2 (4-byte packet) = 0x050F LE; sync filled by Ashita.
+        AshitaCore:GetPacketManager():AddOutgoingPacket(0x10F, { 0x0F, 0x05, 0x00, 0x00 });
+    end);
+end
+
 -- ---------------------------------------------------------------------------
 -- Tier / binding-craft calc (Henrik): HQ tiers break when your skill exceeds
 -- the recipe cap by >11 / >31 / >51. With SUBCRAFTS the craft with the
@@ -572,7 +586,8 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
                 return;
             end
             if b == 'gp' then                          -- verify guild points vs the currency menu
-                if not M.gpReady() then say('guild points: not seen yet -- open the currency menu or zone once.'); return; end
+                M.requestGuildPoints();                 -- ask the server for a fresh copy
+                if not M.gpReady() then say('guild points: requested from the server -- run /dl craft gp again in a moment.'); return; end
                 say('guild points (verify against the in-game currency menu):');
                 for _, craft in ipairs({ 'Woodworking', 'Smithing', 'Goldsmithing', 'Clothcraft',
                                          'Leathercraft', 'Bonecraft', 'Alchemy', 'Cooking' }) do
