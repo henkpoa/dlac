@@ -3770,6 +3770,8 @@ local function drawWindow()
                 local prof = require('dlac\\profiles');
                 if type(prof) ~= 'table' then m.err = 'profiles.lua unavailable'; return; end
                 m.active = prof.activeName();
+                m.jobsSet = {};
+                for _, j in ipairs(prof.JOBS) do m.jobsSet[j] = true; end
                 local chars, cur = prof.listCharFolders();
                 if chars == nil then m.err = 'No directory listing available on this system -- use /dl profile from chat instead.'; return; end
                 for _, c in ipairs(chars) do
@@ -3778,86 +3780,193 @@ local function drawWindow()
                     -- folder name stays in .name -- paths need it).
                     local e = { name = c, disp = c:match('^(.-)_%d+$') or c, isCurrent = (c == cur), profiles = {} };
                     for _, pn in ipairs(prof.listProfilesAt(c) or {}) do
-                        local js = {};
-                        for _, j in ipairs(prof.profileJobsAt(c, pn)) do js[#js + 1] = j.job; end
-                        e.profiles[#e.profiles + 1] = { name = pn, n = #js, jobsStr = table.concat(js, ', ') };
+                        e.profiles[#e.profiles + 1] = { name = pn, files = prof.listProfileFilesAt(c, pn) };
                     end
                     m.chars[#m.chars + 1] = e;
                 end
             end);
             ui._profMenu = m;
+            ui._pmForm, ui._pmChk = nil, nil;   -- reopening always lands on the tree view
             imgui.OpenPopup('##dlac_profmenu');
         end
         if imgui.BeginPopup('##dlac_profmenu') then
             local m = ui._profMenu or { chars = {} };
-            ui._profNewName = ui._profNewName or { '' };
-            imgui.TextColored(COL_HEADER, 'dlac profiles');
-            imgui.SameLine(0, 12);
-            imgui.TextColored(COL_DIM, 'character  >  profile  >  jobs');
-            imgui.SameLine(0, 12);
-            if imgui.SmallButton('Refresh##pm_r') then ui._profMenuBuild = true; end
-            imgui.Separator();
-            if m.err ~= nil then fmt.textWrapped(COL_ERR, m.err); end
-            imgui.BeginChild('##pm_body', { 620, 320 }, false);
-            for _, c in ipairs(m.chars) do
-                local fl = (c.isCurrent and ImGuiTreeNodeFlags_DefaultOpen ~= nil) and ImGuiTreeNodeFlags_DefaultOpen or 0;
-                if imgui.CollapsingHeader((c.disp or c.name) .. (c.isCurrent and '   (this character)' or '') .. '###pm_c_' .. c.name, fl) then
-                    if #c.profiles == 0 then imgui.TextColored(COL_DIM, '     (no dlac profiles)'); end
-                    for _, p in ipairs(c.profiles) do
-                        imgui.Text('  ');
-                        imgui.SameLine(0, 0);
-                        if c.isCurrent then
-                            if p.name == m.active then
+            local f = ui._pmForm;
+
+            if f ~= nil then
+                -- ------- FORM VIEW: clone (profile/job) or rename, collision-gated -------
+                local title;
+                if f.kind == 'cloneProfile' then title = string.format('Clone profile "%s" from %s', f.srcProf, f.srcDisp);
+                elseif f.kind == 'cloneJob' then title = string.format('Clone %s from %s\'s "%s"', f.job, f.srcDisp, f.srcProf);
+                else title = string.format('Rename profile "%s"', f.srcProf); end
+                imgui.TextColored(COL_HEADER, title);
+                imgui.Separator();
+
+                if f.kind ~= 'rename' then
+                    imgui.TextColored(COL_DIM, 'To character:'); imgui.SameLine(0, 8);
+                    local dstC = m.chars[f.dstIdx] or m.chars[1];
+                    imgui.PushItemWidth(180);
+                    if imgui.BeginCombo('##pm_dstchar', dstC and (dstC.disp or dstC.name) or '?') then
+                        for i, cc in ipairs(m.chars) do
+                            if imgui.Selectable((cc.disp or cc.name) .. '##pm_dc_' .. i, i == f.dstIdx) then f.dstIdx = i; end
+                        end
+                        imgui.EndCombo();
+                    end
+                    imgui.PopItemWidth();
+                end
+                imgui.TextColored(COL_DIM, (f.kind == 'rename') and 'New name:' or 'To profile:'); imgui.SameLine(0, 8);
+                imgui.PushItemWidth(180);
+                imgui.InputText('##pm_fprof', f.prof, 48);
+                imgui.PopItemWidth();
+                if f.kind == 'cloneJob' then
+                    imgui.TextColored(COL_DIM, 'As name:'); imgui.SameLine(0, 8);
+                    imgui.PushItemWidth(180);
+                    imgui.InputText('##pm_fname', f.name, 48);
+                    imgui.PopItemWidth();
+                end
+
+                -- Collision / validity check -- recomputed only when an input
+                -- changes (a per-frame disk probe would spawn popen consoles).
+                local dstC = m.chars[f.dstIdx] or m.chars[1];
+                local key = f.kind .. '|' .. (dstC and dstC.name or '?') .. '|' .. tostring(f.prof[1]) .. '|' .. tostring(f.name and f.name[1]);
+                if ui._pmChk == nil or ui._pmChk.key ~= key then
+                    local chk = { key = key, blocked = false, why = nil, note = nil };
+                    pcall(function()
+                        local prof = require('dlac\\profiles');
+                        local pn = prof.sanitizeName(f.prof[1]);
+                        if pn == nil then chk.blocked, chk.why = true, 'Invalid name: one word, letters/digits/_/- only.'; return; end
+                        if f.kind == 'cloneProfile' then
+                            if dstC.name == f.srcChar and pn == f.srcProf then
+                                chk.blocked, chk.why = true, 'Source and destination are the same profile -- change the name.';
+                            elseif prof.profileHasFilesAt(dstC.name, pn) then
+                                chk.blocked, chk.why = true, string.format('NAME COLLISION: %s already has a profile "%s" -- change the name to continue.', dstC.disp or dstC.name, pn);
+                            end
+                        elseif f.kind == 'cloneJob' then
+                            local nm = prof.sanitizeName(f.name[1]);
+                            if nm == nil then chk.blocked, chk.why = true, 'Invalid file name: one word, letters/digits/_/- only.'; return; end
+                            if dstC.name == f.srcChar and pn == f.srcProf and nm == f.job then
+                                chk.blocked, chk.why = true, 'Source and destination are the same file -- change the name.';
+                            elseif prof.jobNameTakenAt(dstC.name, pn, nm) then
+                                chk.blocked, chk.why = true, string.format('NAME COLLISION: "%s" already has a %s -- change the name to continue.', pn, nm);
+                            elseif m.jobsSet ~= nil and m.jobsSet[nm] ~= true then
+                                chk.note = '"' .. nm .. '" is not a job name: it is copied as a dormant archive (the engine only reads <JOB>.lua).';
+                            end
+                        else   -- rename
+                            if pn == f.srcProf then
+                                chk.blocked, chk.why = true, 'Same name -- nothing to rename.';
+                            elseif prof.profileHasFilesAt(prof.currentCharFolder(), pn) then
+                                chk.blocked, chk.why = true, string.format('NAME COLLISION: you already have a profile "%s" -- change the name to continue.', pn);
+                            end
+                        end
+                    end);
+                    ui._pmChk = chk;
+                end
+                local chk = ui._pmChk;
+                if chk.note ~= nil then fmt.textWrapped(COL_DIM, chk.note); end
+                imgui.Separator();
+                if chk.blocked then
+                    fmt.textWrapped(COL_ERR, chk.why or 'blocked');
+                    local grey = ImGuiCol_Button ~= nil;
+                    if grey then imgui.PushStyleColor(ImGuiCol_Button, { 0.35, 0.35, 0.35, 1.0 }); end
+                    imgui.Button('Commit##pm_go0', { 150, 24 });   -- inert until the collision is fixed
+                    if grey then imgui.PopStyleColor(1); end
+                    if imgui.IsItemHovered() then imgui.SetTooltip('Fix the problem above first -- Commit is disabled.'); end
+                elseif imgui.Button('Commit##pm_go', { 150, 24 }) then
+                    pcall(function()
+                        local prof = require('dlac\\profiles');
+                        if f.kind == 'cloneProfile' then
+                            local n, err = prof.cloneProfileTo(f.srcChar, f.srcProf, dstC.name, f.prof[1]);
+                            ui._profMenuMsg = (n ~= nil)
+                                and string.format('Cloned "%s" -> %s / "%s" (%d file(s)).', f.srcProf, dstC.disp or dstC.name, prof.sanitizeName(f.prof[1]), n)
+                                or ('Clone failed: ' .. tostring(err));
+                        elseif f.kind == 'cloneJob' then
+                            local n, err = prof.copyJobTo(f.srcChar, f.srcProf, f.job, dstC.name, f.prof[1], f.name[1]);
+                            ui._profMenuMsg = (n ~= nil)
+                                and string.format('Cloned %s -> %s / "%s" as %s (%d file(s)).', f.job, dstC.disp or dstC.name, prof.sanitizeName(f.prof[1]), prof.sanitizeName(f.name[1]), n)
+                                or ('Clone failed: ' .. tostring(err));
+                        else
+                            local ok2, err = prof.renameProfile(f.srcProf, f.prof[1]);
+                            ui._profMenuMsg = (ok2 ~= nil)
+                                and string.format('Renamed "%s" -> "%s".', f.srcProf, prof.sanitizeName(f.prof[1]))
+                                or ('Rename failed: ' .. tostring(err));
+                        end
+                    end);
+                    ui._pmForm, ui._pmChk = nil, nil;
+                    ui._profMenuBuild = true;   -- rebuild the tree with the result
+                end
+                imgui.SameLine(0, 8);
+                if imgui.Button('Back##pm_back', { 90, 24 }) then ui._pmForm, ui._pmChk = nil, nil; end
+            else
+                -- ------- TREE VIEW: character > profile > job files -------
+                imgui.TextColored(COL_HEADER, 'dlac profiles');
+                imgui.SameLine(0, 12);
+                imgui.TextColored(COL_DIM, 'character  >  profile  >  jobs');
+                imgui.SameLine(0, 12);
+                if imgui.SmallButton('Refresh##pm_r') then ui._profMenuBuild = true; end
+                imgui.Separator();
+                if m.err ~= nil then fmt.textWrapped(COL_ERR, m.err); end
+                imgui.BeginChild('##pm_body', { 560, 340 }, false);
+                for _, c in ipairs(m.chars) do
+                    local fl = (c.isCurrent and ImGuiTreeNodeFlags_DefaultOpen ~= nil) and ImGuiTreeNodeFlags_DefaultOpen or 0;
+                    if imgui.CollapsingHeader((c.disp or c.name) .. (c.isCurrent and '   (this character)' or '') .. '###pm_c_' .. c.name, fl) then
+                        if #c.profiles == 0 then imgui.TextColored(COL_DIM, '     (no dlac profiles)'); end
+                        for _, p in ipairs(c.profiles) do
+                            local open = imgui.TreeNode(p.name .. '###pm_p_' .. c.name .. '_' .. p.name);
+                            imgui.SameLine(0, 10);
+                            if c.isCurrent and p.name == m.active then
                                 imgui.TextColored(COL_SCORE, '[active]');
-                            else
+                                imgui.SameLine(0, 8);
+                            elseif c.isCurrent then
                                 if imgui.SmallButton('use##pm_u_' .. p.name) then
                                     pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl profile use ' .. p.name); end);
                                     ui._profMenuMsg = 'Switching to "' .. p.name .. '" -- the engine confirms in chat (hot; no LAC reload).';
                                     m.active = p.name;   -- optimistic; Refresh re-reads the pointer
                                 end
+                                imgui.SameLine(0, 8);
                             end
-                            imgui.SameLine(0, 8);
-                            if imgui.SmallButton('clone##pm_cl_' .. p.name) then
-                                pcall(function()
-                                    local prof = require('dlac\\profiles');
-                                    local dst = ui._profNewName[1];
-                                    if dst == nil or dst == '' then dst = p.name .. '-copy'; end
-                                    local n, err = prof.cloneProfile(p.name, dst);
-                                    ui._profMenuMsg = (n ~= nil)
-                                        and string.format('Cloned "%s" -> "%s" (%d file(s)).', p.name, dst, n)
-                                        or ('Clone failed: ' .. tostring(err));
-                                    if n ~= nil then ui._profMenuBuild = true; end
-                                end);
+                            if imgui.SmallButton('clone##pm_cl_' .. c.name .. '_' .. p.name) then
+                                ui._pmForm = { kind = 'cloneProfile', srcChar = c.name, srcDisp = c.disp or c.name,
+                                               srcProf = p.name, dstIdx = 1, prof = { p.name } };
+                                ui._pmChk = nil;
                             end
-                        else
-                            if imgui.SmallButton('import##pm_i_' .. c.name .. '_' .. p.name) then
-                                pcall(function()
-                                    local prof = require('dlac\\profiles');
-                                    local dst = ui._profNewName[1];
-                                    if dst == nil or dst == '' then dst = (c.name:match('^(.-)_%d+$') or c.name) .. '-' .. p.name; end
-                                    local n, err = prof.importProfile(c.name, p.name, dst);
-                                    ui._profMenuMsg = (n ~= nil)
-                                        and string.format('Imported %s\'s "%s" as "%s" (%d file(s)) -- click use on it to go live.', c.disp or c.name, p.name, dst, n)
-                                        or ('Import failed: ' .. tostring(err));
-                                    if n ~= nil then ui._profMenuBuild = true; end
-                                end);
+                            if c.isCurrent then
+                                imgui.SameLine(0, 8);
+                                if imgui.SmallButton('rename##pm_rn_' .. p.name) then
+                                    ui._pmForm = { kind = 'rename', srcChar = c.name, srcDisp = c.disp or c.name,
+                                                   srcProf = p.name, prof = { p.name } };
+                                    ui._pmChk = nil;
+                                end
+                            end
+                            if open then
+                                if #p.files == 0 then imgui.TextColored(COL_DIM, '     (empty)'); end
+                                for _, jf2 in ipairs(p.files) do
+                                    imgui.Text('     ');
+                                    imgui.SameLine(0, 0);
+                                    if imgui.SmallButton('clone##pm_jc_' .. c.name .. '_' .. p.name .. '_' .. jf2.name) then
+                                        ui._pmForm = { kind = 'cloneJob', srcChar = c.name, srcDisp = c.disp or c.name,
+                                                       srcProf = p.name, job = jf2.name, dstIdx = 1,
+                                                       prof = { p.name }, name = { jf2.name } };
+                                        ui._pmChk = nil;
+                                    end
+                                    imgui.SameLine(0, 10);
+                                    local dormant = (m.jobsSet ~= nil and m.jobsSet[jf2.name] ~= true);
+                                    imgui.TextColored(dormant and COL_DIM or COL_USABLE, jf2.name);
+                                    if dormant then
+                                        imgui.SameLine(0, 8);
+                                        imgui.TextColored(COL_DIM, '(dormant -- not a job name)');
+                                    end
+                                end
+                                imgui.TreePop();
                             end
                         end
-                        imgui.SameLine(0, 10);
-                        imgui.TextColored(COL_USABLE, p.name);
-                        imgui.SameLine(0, 10);
-                        imgui.TextColored(COL_DIM, (p.n > 0) and string.format('%d job(s):  %s', p.n, p.jobsStr) or '(empty)');
                     end
                 end
+                imgui.EndChild();
+                if ui._profMenuMsg ~= nil then
+                    imgui.Separator();
+                    fmt.textWrapped(COL_SCORE, ui._profMenuMsg);
+                end
             end
-            imgui.EndChild();
-            imgui.Separator();
-            imgui.TextColored(COL_DIM, 'Name for clone / import (blank = auto):');
-            imgui.SameLine(0, 6);
-            imgui.PushItemWidth(180);
-            imgui.InputText('##pm_name', ui._profNewName, 48);
-            imgui.PopItemWidth();
-            if ui._profMenuMsg ~= nil then fmt.textWrapped(COL_SCORE, ui._profMenuMsg); end
             imgui.EndPopup();
         end
         imgui.Separator();

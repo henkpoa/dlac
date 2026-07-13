@@ -196,6 +196,40 @@ local function listDirs(path)
     return out;
 end
 
+-- Best-effort *.lua basenames in a directory (get_dir file mode is the
+-- field-proven setmanager pattern; `dir /b` popen fallback). nil when both
+-- APIs fail; {} when the directory is empty/missing.
+local function listLuaFiles(path)
+    if path == nil then return nil; end
+    local out = nil;
+    pcall(function()
+        if not (ashita and ashita.fs and ashita.fs.get_dir) then return; end
+        local ok, files = pcall(ashita.fs.get_dir, path, '.*%.lua', false);
+        if not ok or type(files) ~= 'table' then return; end
+        out = {};
+        for _, f in ipairs(files) do
+            if type(f) == 'string' then
+                local b = f:match('^(.+)%.lua$');
+                if b ~= nil then out[#out + 1] = b; end
+            end
+        end
+    end);
+    if out == nil then
+        pcall(function()
+            local p = io.popen('dir /b "' .. path .. '*.lua" 2>nul');
+            if p == nil then return; end
+            local acc = {};
+            for line in p:lines() do
+                local b = line:gsub('%s+$', ''):match('^(.+)%.lua$');
+                if b ~= nil then acc[#acc + 1] = b; end
+            end
+            p:close();
+            out = acc;
+        end);
+    end
+    return out;
+end
+
 -- Best-effort list of THIS character's profile folder names (nil when no
 -- listing API works -- callers should fall back to naming the active profile).
 function M.listProfiles()
@@ -227,11 +261,16 @@ function M.listCharFolders()
     pcall(function() local b = charBase(); if b ~= nil then cur = b:match('([^\\]+)\\$'); end end);
     local out = {};
     for _, d in ipairs(dirs) do
-        if d:match('^.+_%d+$') then
+        if d:match('^%a+_%d+$') then   -- STRICTLY <CharName>_<ServerId>; nothing else qualifies
             if d == cur then table.insert(out, 1, d); else out[#out + 1] = d; end
         end
     end
     return out, cur;
+end
+
+function M.currentCharFolder()
+    local b = charBase();
+    return b and b:match('([^\\]+)\\$') or nil;
 end
 
 function M.profileDirAt(charFolder, name)
@@ -282,6 +321,136 @@ local function profileHasFiles(name)
         if M.hasSetsFile(job, name) or M.hasTriggersFile(job, name) then return true; end
     end
     return false;
+end
+
+-- Every set/trigger file a profile holds, by ACTUAL listing (not the 22-job
+-- probe): includes dormant non-job-named files (e.g. a "BLU-old" archive), so
+-- the browser shows what is really there. Array of { name, sets, trig },
+-- known jobs first (JOBS order), the rest alphabetical.
+local JOB_ORDER = {};
+for i, j in ipairs(M.JOBS) do JOB_ORDER[j] = i; end
+function M.listProfileFilesAt(charFolder, name)
+    local dir = M.profileDirAt(charFolder, name);
+    if dir == nil then return {}; end
+    local map = {};
+    for _, b in ipairs(listLuaFiles(dir .. 'sets\\') or {}) do
+        map[b] = map[b] or { name = b }; map[b].sets = true;
+    end
+    for _, b in ipairs(listLuaFiles(dir .. 'triggers\\') or {}) do
+        map[b] = map[b] or { name = b }; map[b].trig = true;
+    end
+    local out = {};
+    for _, e in pairs(map) do out[#out + 1] = e; end
+    table.sort(out, function(a, b)
+        local ja, jb = JOB_ORDER[a.name], JOB_ORDER[b.name];
+        if ja ~= nil and jb ~= nil then return ja < jb; end
+        if ja ~= nil then return true; end
+        if jb ~= nil then return false; end
+        return a.name < b.name;
+    end);
+    return out;
+end
+
+function M.profileHasFilesAt(charFolder, name)
+    return #M.listProfileFilesAt(charFolder, name) > 0;
+end
+
+-- Storage skeleton on an ARBITRARY character (clone-to target). Does NOT touch
+-- their active pointer -- the profile goes live only when they `use` it.
+local function ensureStorageAt(charFolder, name)
+    local root = M.lacRoot();
+    if root == nil or charFolder == nil or name == nil then return false; end
+    local b = root .. charFolder .. '\\';
+    ensureDir(b .. 'dlac\\');
+    ensureDir(b .. 'dlac\\profiles\\');
+    ensureDir(b .. 'dlac\\profiles\\' .. name .. '\\');
+    ensureDir(b .. 'dlac\\profiles\\' .. name .. '\\sets\\');
+    ensureDir(b .. 'dlac\\profiles\\' .. name .. '\\triggers\\');
+    return true;
+end
+
+-- Clone a whole profile to any character (including this one, under a new
+-- name). Refuses a destination that already has files. copiedCount | nil, why.
+function M.cloneProfileTo(srcCharFolder, srcName, dstCharFolder, dstName)
+    dstName = M.sanitizeName(dstName);
+    if dstName == nil then return nil, 'bad target name (letters/digits/_/- only)'; end
+    local srcDir = M.profileDirAt(srcCharFolder, srcName);
+    local dstDir = M.profileDirAt(dstCharFolder, dstName);
+    if srcDir == nil or dstDir == nil then return nil, 'bad source/destination'; end
+    if srcCharFolder == dstCharFolder and srcName == dstName then return nil, 'source and destination are the same profile'; end
+    if M.profileHasFilesAt(dstCharFolder, dstName) then
+        return nil, 'name collision: "' .. dstName .. '" already has files on that character';
+    end
+    if not ensureStorageAt(dstCharFolder, dstName) then return nil, 'could not create storage'; end
+    local n = 0;
+    for _, e in ipairs(M.listProfileFilesAt(srcCharFolder, srcName)) do
+        for _, kind in ipairs({ 'sets', 'triggers' }) do
+            if (kind == 'sets' and e.sets) or (kind == 'triggers' and e.trig) then
+                local t = readFile(srcDir .. kind .. '\\' .. e.name .. '.lua');
+                local dp = dstDir .. kind .. '\\' .. e.name .. '.lua';
+                if t ~= nil and readFile(dp) == nil and writeFile(dp, t) then n = n + 1; end
+            end
+        end
+    end
+    if n == 0 then return nil, 'nothing copied (source profile empty or unreadable)'; end
+    return n, nil;
+end
+
+-- Is a per-job (or dormant) name taken inside a destination profile?
+function M.jobNameTakenAt(charFolder, profName, name)
+    local dir = M.profileDirAt(charFolder, profName);
+    if dir == nil or name == nil then return false; end
+    return readFile(dir .. 'sets\\' .. name .. '.lua') ~= nil
+        or readFile(dir .. 'triggers\\' .. name .. '.lua') ~= nil;
+end
+
+-- Clone ONE job's data (sets + triggers) into any character/profile under
+-- dstName. dstName must be a real job abbr to be LIVE there; any other
+-- sanitized name is copied as a dormant archive (the engine only reads
+-- <JOB>.lua). Refuses when dstName is taken. copiedCount | nil, why.
+function M.copyJobTo(srcCharFolder, srcProf, job, dstCharFolder, dstProf, dstName)
+    dstName = M.sanitizeName(dstName);
+    if dstName == nil then return nil, 'bad name (letters/digits/_/- only)'; end
+    dstProf = M.sanitizeName(dstProf);
+    if dstProf == nil then return nil, 'bad profile name (letters/digits/_/- only)'; end
+    local srcDir = M.profileDirAt(srcCharFolder, srcProf);
+    local dstDir = M.profileDirAt(dstCharFolder, dstProf);
+    if srcDir == nil or dstDir == nil then return nil, 'bad source/destination'; end
+    if srcCharFolder == dstCharFolder and srcProf == dstProf and job == dstName then
+        return nil, 'source and destination are the same file';
+    end
+    if M.jobNameTakenAt(dstCharFolder, dstProf, dstName) then
+        return nil, 'name collision: "' .. dstName .. '" already exists in that profile';
+    end
+    if not ensureStorageAt(dstCharFolder, dstProf) then return nil, 'could not create storage'; end
+    local n = 0;
+    for _, kind in ipairs({ 'sets', 'triggers' }) do
+        local t = readFile(srcDir .. kind .. '\\' .. job .. '.lua');
+        if t ~= nil then
+            local dp = dstDir .. kind .. '\\' .. dstName .. '.lua';
+            if readFile(dp) == nil and writeFile(dp, t) then n = n + 1; end
+        end
+    end
+    if n == 0 then return nil, 'nothing copied (no files for ' .. tostring(job) .. ')'; end
+    return n, nil;
+end
+
+-- Rename one of THIS character's profiles (folder rename; repoints the active
+-- pointer when the renamed profile is the active one). true | nil, why.
+function M.renameProfile(oldName, newName)
+    newName = M.sanitizeName(newName);
+    if newName == nil then return nil, 'bad name (letters/digits/_/- only)'; end
+    if oldName == newName then return nil, 'same name'; end
+    local root = M.profilesRoot();
+    if root == nil then return nil, 'not logged in'; end
+    local cur = M.currentCharFolder();
+    if M.profileHasFilesAt(cur, newName) then
+        return nil, 'name collision: "' .. newName .. '" already has files';
+    end
+    local ok, oerr = os.rename(root .. oldName, root .. newName);
+    if not ok then return nil, 'rename failed: ' .. tostring(oerr); end
+    if M.activeName() == oldName then M.setActive(newName); end
+    return true, nil;
 end
 
 -- Import another character's profile into THIS character under dstName.
