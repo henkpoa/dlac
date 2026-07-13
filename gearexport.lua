@@ -4,10 +4,11 @@
     (built for a friend's damage simulator; the schema is tool-agnostic).
 
     One JSON object: a meta header (character/job/time/notes) + a flat `items`
-    array. Per item: identity (name/id/slot/type/level/jobs), pairing facts
-    (oneHanded, inBothHands = a provable second copy), stats, and the owned
-    copies' augments (readable string per copy + decoded stat deltas of the
-    FIRST augmented copy -- that is all augments.lua tracks per id).
+    array. Per item: identity (name/id/slot/type/level/jobs), oneHanded, the
+    owned copy count (ownedcache totals -- the same bag scan set building
+    trusts; 0 = listed in gear.lua but not currently in your bags), stats, and
+    the owned copies' augments (readable string per copy + decoded stat deltas
+    of the FIRST augmented copy -- that is all augments.lua tracks per id).
 
     Stats come from the owned record with catalog gap-fill -- the same
     precedence as gearui's enrichGearFromCatalog (owned overrides, catalog
@@ -32,6 +33,8 @@ local hasCatalog, catalog = pcall(require, 'dlac\\catalog');
 hasCatalog = hasCatalog and type(catalog) == 'table';
 local haok, aug = pcall(require, 'dlac\\augments');
 haok = haok and type(aug) == 'table';
+local hook, ownedc = pcall(require, 'dlac\\ownedcache');
+hook = hook and type(ownedc) == 'table';
 
 -- The gear table's slot categories, in equipment order (also the export order).
 -- Ear/Ring each cover BOTH equipment slots; NameToObject is deliberately not
@@ -140,7 +143,7 @@ local function statsFor(rec, catRec)
     return m;
 end
 
-local function itemEntry(slot, rec, catRec, augs, augStats)
+local function itemEntry(slot, rec, catRec, augs, augStats, counts)
     local e = {
         name  = rec.Name,
         id    = rec.Id,
@@ -152,7 +155,7 @@ local function itemEntry(slot, rec, catRec, augs, augStats)
     local oh = rec.OneHanded;
     if oh == nil and catRec ~= nil then oh = catRec.OneHanded; end
     if oh ~= nil then e.oneHanded = oh; end
-    if rec.InBothHands ~= nil then e.inBothHands = rec.InBothHands; end
+    if counts ~= nil and rec.Id ~= nil then e.count = counts[rec.Id] or 0; end
     e.stats = statsFor(rec, catRec);
     if rec.Id ~= nil then
         local a = (augs ~= nil) and augs[rec.Id] or nil;
@@ -165,8 +168,10 @@ end
 
 -- The full export object: meta keys at the root + the items array. Slot
 -- categories hold records directly (armor) OR type buckets of records
--- (weapons) -- a record is anything with a string Name.
-function M.buildExport(gearTbl, catalogById, augs, augStats, meta)
+-- (weapons) -- a record is anything with a string Name. `counts` is the
+-- owned-anywhere map (id -> n) or nil when no live scan was possible --
+-- nil OMITS every count (unknown is not 0).
+function M.buildExport(gearTbl, catalogById, augs, augStats, counts, meta)
     local items = {};
     for _, slot in ipairs(M.SLOT_ORDER) do
         local cat = (type(gearTbl) == 'table') and gearTbl[slot] or nil;
@@ -177,7 +182,7 @@ function M.buildExport(gearTbl, catalogById, augs, augStats, meta)
                     if type(v) == 'table' then
                         if type(v.Name) == 'string' then
                             local catRec = (v.Id ~= nil) and catalogById[v.Id] or nil;
-                            slotItems[#slotItems + 1] = itemEntry(slot, v, catRec, augs, augStats);
+                            slotItems[#slotItems + 1] = itemEntry(slot, v, catRec, augs, augStats, counts);
                         else
                             collect(v);
                         end
@@ -202,7 +207,7 @@ function M.buildExport(gearTbl, catalogById, augs, augStats, meta)
         notes = {
             'stats are display units (DT = -5 means -5%); keys follow dlac statdefs vocabulary (PDT/MDT/DT/MDMG/MAB/MACC/...)',
             'slot Ear/Ring covers both equipment slots of that kind',
-            'inBothHands = true means a provable second copy is owned (dual-wieldable)',
+            'count = copies owned anywhere right now (2+ = dual-wieldable; 0 = listed but not currently in the bags); absent when no live bag scan was possible',
             'augments = readable summary per owned augmented copy; augmentStats = decoded stat deltas of the first augmented copy',
             'stats already include nothing from augments; add augmentStats on top when simulating the owned copy',
         },
@@ -239,6 +244,16 @@ function M.export()
         pcall(function() augs = aug.ownedAugments(); end);
         pcall(function() augStats = aug.ownedAugStats(); end);
     end
+    -- Owned-anywhere copy counts, fresh (the ~4s heartbeat cache may predate a
+    -- bag move; an export should reflect NOW). Empty scan = unknown -> omit.
+    local counts;
+    if hook then
+        pcall(function()
+            ownedc.resetCache();
+            local t = ownedc.totals();
+            if type(t) == 'table' and next(t) ~= nil then counts = t; end
+        end);
+    end
 
     local meta = { character = cname, server = 'CatsEyeXI',
                    exportedAt = os.date('!%Y-%m-%dT%H:%M:%SZ') };
@@ -248,7 +263,7 @@ function M.export()
         meta.subJob, meta.subJobLevel = p.SubJob, p.SubJobSync;
     end);
 
-    local exp = M.buildExport(gear, byId, augs, augStats, meta);
+    local exp = M.buildExport(gear, byId, augs, augStats, counts, meta);
     local path = dir .. 'gearexport.json';
     local f = io.open(path, 'w');
     if f == nil then return false, 'could not write ' .. path; end

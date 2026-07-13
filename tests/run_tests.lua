@@ -1045,7 +1045,8 @@ local zGear = {
 local zCat  = { [1] = { Stats = { DMG = 99, ACC = 5 } }, [2] = { Stats = { DEF = 4 }, Type = 'Armor' } };
 local zAugs = { [1] = { 'STR+1, DEX+1' } };
 local zAugStats = { [1] = { STR = 1, DEX = 1 } };
-local zExp = gx.buildExport(zGear, zCat, zAugs, zAugStats, { character = 'Testy' });
+local zCounts = { [1] = 2 };   -- owned-anywhere map: two Kriegsbeil, nothing else in bags
+local zExp = gx.buildExport(zGear, zCat, zAugs, zAugStats, zCounts, { character = 'Testy' });
 check('Z5 both category shapes walked', zExp.itemCount, 3);
 check('Z6 slot order: Main before Head', zExp.items[1].name, 'Kriegsbeil');
 check('Z7 within a slot: sorted by name', zExp.items[2].name, 'Aketon');
@@ -1057,8 +1058,12 @@ check('Z12 augments attach by id', zExp.items[1].augments[1], 'STR+1, DEX+1');
 check('Z13 augment stat deltas attach by id', zExp.items[1].augmentStats.STR, 1);
 check('Z14 no augments -> key omitted', zExp.items[2].augments, nil);
 check('Z15 meta lands at the root', zExp.character, 'Testy');
+check('Z16 copy count attaches by id', zExp.items[1].count, 2);
+check('Z17 scanned map, missing id -> count 0 (not owned now)', zExp.items[2].count, 0);
+local zExpNC = gx.buildExport(zGear, zCat, nil, nil, nil, {});
+check('Z18 no scan -> count omitted (unknown is not 0)', zExpNC.items[1].count, nil);
 local zJson = gx.jsonEncode(zExp);
-check('Z16 full export encodes with the format marker',
+check('Z19 full export encodes with the format marker',
     string.find(zJson, '"format": "dlac-gear-export"', 1, true) ~= nil, true);
 
 -- ---------------------------------------------------------------------------
