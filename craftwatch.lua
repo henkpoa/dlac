@@ -554,13 +554,57 @@ local function itemName(id)
     return _nameCache[id];
 end
 
--- What the Last Synth button would repeat -- nil before any synth this
--- session. name comes from the recipe's NQ result id (crafts.lua 'r', name
--- resolved from the client's own resources); nil name = unknown recipe
--- (replay still works -- the server, not the db, judges the synth).
--- resultIn: seconds until the in-flight replay's result should land (~17s
--- arc, field-verified), nil when nothing is in flight.
+-- The last-seen synth PERSISTS per character (<char>\dlac\lastsynth.lua) --
+-- Henrik: an addon reload must NOT forget what you last crafted ("nothing
+-- synthed yet" after a reload is irrelevant and wrong). Raw 0x096 bytes,
+-- hex-encoded, with a wall-clock stamp; on load the session cooldown clock
+-- is rebuilt from the wall-clock gap, so a reload seconds after a synth
+-- still honors the ~22s arc. Same mirror pattern as keyitems/guildpoints.
+local function lsPath() local d = kiCharDir(); return d and (d .. 'lastsynth.lua') or nil; end
+
+local function lsSave()
+    pcall(function()
+        local p = lsPath(); if p == nil or M._lastRaw == nil then return; end
+        local hex = (M._lastRaw:gsub('.', function(c) return string.format('%02X', c:byte()); end));
+        local f = io.open(p, 'wb'); if f == nil then return; end
+        f:write("-- dlac last-synth mirror (raw 0x096, hex)\nreturn { wallAt = "
+            .. os.time() .. ", raw = '" .. hex .. "' }\n");
+        f:close();
+    end);
+end
+
+local _lsLoaded = false;
+local function lsLoad()
+    if _lsLoaded or M._lastRaw ~= nil then return; end
+    local p = lsPath(); if p == nil then return; end
+    _lsLoaded = true;
+    pcall(function()
+        local chunk = loadfile(p); if chunk == nil then return; end
+        local ok, t = pcall(chunk);
+        if not ok or type(t) ~= 'table' or type(t.raw) ~= 'string' then return; end
+        local raw = (t.raw:gsub('%x%x', function(h) return string.char(tonumber(h, 16)); end));
+        local crystal, ings = M.decode(raw);
+        if crystal == nil then return; end
+        M._lastRaw = raw;
+        -- Rebuild the session view; the cooldown clock maps through the
+        -- wall-clock gap (reload right after a synth still waits it out).
+        local elapsed = math.max(0, os.time() - (tonumber(t.wallAt) or 0));
+        local cur = M.onSynth(crystal, ings, os.clock() - math.min(elapsed, SYNTH_COOLDOWN + 1));
+        -- onSynth counted a session synth; a mirror rebuild is not one.
+        local sk = cur and cur.skill;
+        if sk ~= nil and (M.counts[sk] or 0) > 0 then M.counts[sk] = M.counts[sk] - 1; end
+    end);
+end
+
+-- What the Last Synth button would repeat -- nil only when this character
+-- has never synthed with dlac loaded (the mirror revives reloads). name
+-- comes from the recipe's NQ result id (crafts.lua 'r', name resolved from
+-- the client's own resources); nil name = unknown recipe (replay still
+-- works -- the server, not the db, judges the synth). resultIn: seconds
+-- until the in-flight replay's result should land (~17s arc), nil when
+-- nothing is in flight.
 function M.lastSynth()
+    lsLoad();
     local cur = M.current;
     if cur == nil or M._lastRaw == nil or cur.crystal == nil then return nil; end
     local rec = _db[cur.key];
@@ -601,9 +645,10 @@ end
 -- CrystalIdx/TableNo resolved from the CURRENT inventory (the originals were
 -- consumed), sync zeroed for Ashita to fill. Chat explains every refusal.
 function M.repeatLastSynth()
+    lsLoad();
     local cur, raw = M.current, M._lastRaw;
     if cur == nil or raw == nil then
-        say('last synth: nothing seen this session -- do one synth via the menu first.');
+        say('last synth: no synth on record for this character yet -- do one via the menu first.');
         return false;
     end
     local left = SYNTH_COOLDOWN - (os.clock() - (cur.at or 0));
@@ -682,6 +727,7 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
             local crystal, ings = M.decode(e.data);
             if crystal ~= nil then
                 M._lastRaw = e.data;   -- Last Synth replays these exact bytes
+                lsSave();              -- ...and they survive addon reloads
                 M.onSynth(crystal, ings);
             end
         end);

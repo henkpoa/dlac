@@ -174,7 +174,7 @@ function M.render()
             if not ready and ImGuiCol_Button ~= nil then imgui.PopStyleColor(1); end
             if imgui.IsItemHovered() then
                 if ls == nil then
-                    imgui.SetTooltip('Repeat your most recent synthesis (same crystal + ingredients,\nfresh inventory slots). Nothing seen yet -- synth once via the menu first.\nAlso a command: /lastsynth (macro it).');
+                    imgui.SetTooltip('Repeat your most recent synthesis (same crystal + ingredients,\nfresh inventory slots). No synth on record yet -- do one via the menu first.\nAlso a command: /lastsynth (macro it).');
                 elseif not ready then
                     imgui.SetTooltip(string.format('Repeat: %s\nPrevious synth still running/settling (~22s arc) -- ready in %ds.',
                         ls.name or 'last recipe', math.ceil(ls.readyIn)));
@@ -188,7 +188,7 @@ function M.render()
             imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, 'Last synth:');
             imgui.SameLine(0, 6);
             if ls == nil then
-                imgui.TextColored({ 0.50, 0.50, 0.50, 1 }, '(none this session)');
+                imgui.TextColored({ 0.50, 0.50, 0.50, 1 }, '(none on record -- synth once via the menu)');
             else
                 imgui.TextColored({ 0.95, 0.85, 0.45, 1 }, ls.name or 'unknown recipe');
                 if ls.skill ~= nil and ls.skill ~= 'unknown' then
