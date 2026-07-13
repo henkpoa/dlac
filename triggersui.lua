@@ -1060,38 +1060,35 @@ local function renderAutomations(noHeader)
                 { 'nq', 'NQ', 'Wears the anti-HQ guild rings to guarantee NQ when possible\n(materials you do NOT want HQ\'d).' },
                 { 'skillup', 'Skill-Up', 'Prioritizes Synth Skill+ (skill-up rate) items over raw craft skill.' },
             };
+            local curGoal = (cwok and type(cw.getGoal) == 'function') and cw.getGoal() or CRAFT_UI.goal;
             local goalLbl = 'HQ';
-            for _, gd in ipairs(GOALS) do if gd[1] == CRAFT_UI.goal then goalLbl = gd[2]; end end
-            -- Auto Craft Set toggle: CENTER of the row, whole button green
-            -- when ON / red when OFF (Henrik).
+            for _, gd in ipairs(GOALS) do if gd[1] == curGoal then goalLbl = gd[2]; end end
+            -- "Show craft bar": the floating manual controls (center of the row).
             local winW = imgui.GetWindowWidth();
-            imgui.SameLine(math.max(180, math.floor(winW / 2) - 88));
-            local aOn = cwok and (cw.autoEquip == true);
+            imgui.SameLine(math.max(180, math.floor(winW / 2) - 70));
+            local barOn = cwok and (cw.barVisible == true);
             local tinted = (ImGuiCol_Button ~= nil);
             if tinted then
-                imgui.PushStyleColor(ImGuiCol_Button, aOn and { 0.16, 0.62, 0.24, 1.0 } or { 0.72, 0.18, 0.18, 1.0 });
-                imgui.PushStyleColor(ImGuiCol_ButtonHovered, aOn and { 0.20, 0.72, 0.30, 1.0 } or { 0.82, 0.26, 0.26, 1.0 });
+                imgui.PushStyleColor(ImGuiCol_Button, barOn and { 0.16, 0.55, 0.24, 1.0 } or { 0.28, 0.30, 0.36, 1.0 });
             end
-            if imgui.Button((aOn and 'Auto Craft Set: ON' or 'Auto Craft Set: OFF') .. '##craftauto', { 177, 22 }) and cwok then
-                if type(cw.setAuto) == 'function' then cw.setAuto(not aOn);   -- ON = dress now if a craft is known
-                else cw.autoEquip = not aOn; end
+            if imgui.Button((barOn and 'Craft bar: shown' or 'Show craft bar') .. '##craftbartoggle', { 150, 22 }) and cwok then
+                cw.barVisible = not barOn;
             end
-            if tinted then imgui.PopStyleColor(2); end
+            if tinted then imgui.PopStyleColor(1); end
             if imgui.IsItemHovered() then
-                imgui.SetTooltip('When ON, dlac EQUIPS your best craft pieces when it sees you start a synth\n(committed Craft_<Skill> set if present, else the gear ladders).\nIt never synthesizes anything for you. Session-only; also /dl craft auto on|off.');
+                imgui.SetTooltip('Toggle the floating craft bar: click a craft to equip its gear\nBEFORE you synth, pick the goal. Same controls as below.\nAlso /dl craft bar.');
             end
-            -- Crafting-mode picker stays on the right edge.
+            -- Goal picker on the right edge -> craftwatch (single source of truth).
             imgui.SameLine(math.max(320, winW - 234));
-            imgui.TextColored(COL_DIM, 'Crafting mode:');
+            imgui.TextColored(COL_DIM, 'Goal:');
             imgui.SameLine(0, 4);
             imgui.PushItemWidth(106);   -- wide enough that 'Skill-Up' clears the combo arrow
             if imgui.BeginCombo('##craftgoalsel', goalLbl) then
                 for _, gd in ipairs(GOALS) do
-                    if imgui.Selectable(gd[2], CRAFT_UI.goal == gd[1]) then
-                        if CRAFT_UI.goal ~= gd[1] then
-                            CRAFT_UI.goal = gd[1];
-                            pcall(autoCommit);   -- silent: rewrites the manifest, the engine hot-reloads it
-                        end
+                    if imgui.Selectable(gd[2], curGoal == gd[1]) then
+                        if cwok and type(cw.setGoal) == 'function' then cw.setGoal(gd[1]); end
+                        CRAFT_UI.goal = gd[1];
+                        pcall(autoCommit);   -- keep the manifest craftGoal in step for the engine/trigger path
                     end
                     if imgui.IsItemHovered() then imgui.SetTooltip(gd[3]); end
                 end
@@ -1133,7 +1130,7 @@ local function renderAutomations(noHeader)
         elseif auto.view == 'craft' then
             imgui.TextColored(COL_HEADER, 'Auto Craft Set');
             imgui.SameLine(0, 10);
-            imgui.TextColored(COL_DIM, 'set automation -- picks your best PIECES for the craft being worked; it never crafts for you.');
+            imgui.TextColored(COL_DIM, 'pick a craft + goal (here or the floating bar) -> equips your best PIECES for it. It never crafts for you.');
             imgui.Spacing();
             -- Ownership matrix (Henrik's layout): NQ|HQ pair, rule, craft-
             -- specific column -- for torques and rings; universals third.
@@ -1162,16 +1159,18 @@ local function renderAutomations(noHeader)
             -- selected, the slot-grid pattern). Item icons stand in for the
             -- synth-skill glyphs until PNG assets land; the tooltip names the
             -- craft and guild for anyone unsure.
-            imgui.TextColored(COL_HEADER, 'Craft-specific gear:');
+            -- Click a craft = SELECT it for viewing AND equip its gear now
+            -- (same action as the floating bar). The equipped craft (from
+            -- craftwatch) shows full brightness.
+            local cwact = nil;
+            pcall(function() cwact = require('dlac\\craftwatch').getCraft(); end);
+            imgui.TextColored(COL_HEADER, 'Click a craft to equip its gear:');
             imgui.SameLine(0, 10);
             for i, cr in ipairs(CRAFT_UI.order) do
-                local sel = (CRAFT_UI.selected == cr);
+                local sel = (CRAFT_UI.selected == cr) or (cwact == cr);
                 local tex = CRAFT_UI.texture(cr);
                 local drew = false;
                 if tex ~= nil then
-                    -- Plain image, no box, no border (Henrik): selected = full
-                    -- brightness, the rest dimmed. Tint-less retry keeps older
-                    -- imgui bindings working.
                     local okT = pcall(function()
                         local ffi = require('ffi');
                         imgui.Image(tonumber(ffi.cast('uint32_t', tex)), { 32, 32 },
@@ -1189,8 +1188,11 @@ local function renderAutomations(noHeader)
                     local rec = (deps.lookupByName ~= nil) and deps.lookupByName(CRAFT_UI.torque[cr]) or nil;
                     deps.renderIcon(rec and rec.Id or nil, 32);
                 end
-                if imgui.IsItemClicked() then CRAFT_UI.selected = cr; end
-                if imgui.IsItemHovered() then imgui.SetTooltip(cr); end
+                if imgui.IsItemClicked() then
+                    CRAFT_UI.selected = cr;
+                    pcall(function() require('dlac\\craftwatch').selectCraft(cr); end);   -- equips now
+                end
+                if imgui.IsItemHovered() then imgui.SetTooltip(cr .. '  -- click to equip this craft\'s gear'); end
                 if i < #CRAFT_UI.order then imgui.SameLine(0, 14); end
             end
             imgui.Spacing();
@@ -1283,7 +1285,7 @@ local function renderAutomations(noHeader)
           level = iridescenceLevel(), max = 4, txt = nil },
         { key = 'obi',         name = 'ElementalObi',    kind = 'slot automation (Waist)',
           level = obiLevel(),         max = 2, txt = nil },
-        { key = 'craft',       name = 'Auto Craft Set',  kind = 'set automation (on/off)',
+        { key = 'craft',       name = 'Auto Craft Set',  kind = 'craft-gear helper (manual pick)',
           level = CRAFT_UI.level(),   max = 4, txt = nil },
     };
     rows[1].txt = IRID_TXT[rows[1].level];

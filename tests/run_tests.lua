@@ -657,37 +657,23 @@ check('T16 equip command shape',    craftCmds[1], '/lac equip Main "Chemists Kuk
 craftCmds = {};
 check('T17 fallback to Craft set',  craftwatch.equipCraftSet('Bonecraft'), 1);
 check('T18 fallback command',       craftCmds[1], '/lac equip Neck "Artisans Torque"');
--- Auto craft set dresses when the synthesis WINDOW OPENS (before the confirm --
--- 0x096 is the first packet, so nothing can dress you for the synth it fired).
--- Stub dispatch.menuName so tick() can see a fake open/closed synth window.
-local fakeMenu = '';
-package.loaded['dlac\\dispatch'].menuName = function() return fakeMenu; end
-craftwatch.autoEquip = true;
-craftwatch._lastTarget = 'Alchemy';
-craftwatch._synthMenu = 'synthesis';   -- pretend already learned
-craftwatch._menuWas = '';
+-- MANUAL model (Henrik): you pick the craft, dlac equips it NOW. Detection
+-- can't equip in time (0x096 is the first synth packet), so it's info only.
+-- kiCharDir needs a live client for persistence; without one selectCraft still
+-- equips (save just no-ops), which is what we assert.
 craftCmds = {};
-craftwatch.tick();                     -- no window open yet
-check('T19a no window: no equip', #craftCmds, 0);
-fakeMenu = 'synthesis';                -- window OPENS
-craftwatch.tick();
-check('T19b window opens -> dress before confirm', #craftCmds, 3);
+craftwatch.goal = 'hq';
+craftwatch.selectCraft('Alchemy');
+check('T19 selectCraft equips now', #craftCmds, 3);
+check('T19b selectCraft sets active', craftwatch.getCraft(), 'Alchemy');
 craftCmds = {};
-craftwatch.tick();                     -- still open, same window: no re-dress
-check('T20 same window: no re-equip', #craftCmds, 0);
-fakeMenu = '';                         -- window closes
-craftwatch.tick();
-fakeMenu = 'synthesis';                -- reopens -> dress again
-craftwatch.tick();
-check('T20b reopened window dresses again', #craftCmds, 3);
--- learn-at-synth: menu name captured from menuName() at 0x096 time
-craftwatch._synthMenu = nil;
-fakeMenu = 'synth_custom';
-craftwatch.onSynth(4096, { 1165, 1165 }, 20);
-check('T20c synth learns the open menu name', craftwatch._synthMenu, 'synth_custom');
-fakeMenu = '';
-craftwatch.setAuto(false);
-package.loaded['dlac\\dispatch'].menuName = nil;
+craftwatch.setGoal('nq');              -- re-equips the active craft under the new goal
+check('T20 setGoal re-equips active', #craftCmds > 0, true);
+check('T20b goal stored', craftwatch.getGoal(), 'nq');
+craftCmds = {};
+craftwatch.onSynth(4096, { 1165, 1165 }, 20);   -- detection: NO equip
+check('T20c detection does not equip', #craftCmds, 0);
+craftwatch.goal = 'hq';
 
 -- 0x055 key item tracker (the SDK HasKeyItem memory read is dead on this
 -- client -- craftwatch keeps its own bitfield from the packet stream).

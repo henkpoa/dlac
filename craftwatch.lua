@@ -228,16 +228,13 @@ local function say(s) if _cfok and _cfmt.msg then _cfmt.msg(s); else print('[dla
 local _saidUnknown = {};   -- key -> true (report each unknown recipe once)
 
 -- ---------------------------------------------------------------------------
--- Piece 2: auto-equip. OFF by default, session-scoped (/dl craft auto on).
--- On a detected craft CHANGE, equips the committed set 'Craft_<Skill>'
--- (fallback: 'Craft') from the current job's profile -- one staggered
--- /lac equip per slot via the shared cmdqueue (gearui ticks it per frame).
--- Set building stays in the Sets tab, where the weights UI can already score
--- SynthSkillGain / SynthSuccessRate. TIMING (see header): the swap lands
--- during the animation, so gear counts from the NEXT synth on.
+-- Craft-gear equip. MANUAL (Henrik): you pick the craft (bar / panel / command)
+-- and dlac equips the committed set 'Craft_<Skill>' (fallback 'Craft'), else
+-- the autogear manifest's craft ladders for the current goal -- one staggered
+-- /lac equip per slot via the shared cmdqueue. You do this BEFORE synthing,
+-- while equipment changes are legal; the gear then counts for every synth.
 -- ---------------------------------------------------------------------------
-M.autoEquip = false;
-M._equippedTarget = nil;   -- craft the auto-equip last dressed for
+M.barVisible = false;      -- floating craft bar (craftbar.lua) shown?
 
 local SLOT_LABELS = { 'Main', 'Sub', 'Range', 'Ammo', 'Head', 'Neck', 'Ear1', 'Ear2',
                       'Body', 'Hands', 'Ring1', 'Ring2', 'Back', 'Waist', 'Legs', 'Feet' };
@@ -282,7 +279,8 @@ function M.manifestPicks(skill)
     local picks = nil;
     for _, slot in ipairs(SLOT_LABELS) do
         local nm = nil;
-        pcall(function() nm = dsp._resolveVirtual('dlac:AutoCraft', { craftOverride = skill }, slot); end);
+        pcall(function() nm = dsp._resolveVirtual('dlac:AutoCraft',
+            { craftOverride = skill, goalOverride = M.goal }, slot); end);
         if nm ~= nil then picks = picks or {}; picks[slot] = nm; end
     end
     return picks;
@@ -313,104 +311,76 @@ function M.equipCraftSet(skill, baseDelay)
         end
     end
     if n > 0 then
-        say(string.format('auto craft set: equipping %s (%d pieces) -- counts from the NEXT synth.', setName, n));
+        say(string.format('craft gear: equipped %s for %s (%s goal).', setName, tostring(skill), M.goal or 'hq'));
     else
-        say(string.format('auto craft set: nothing to equip for %s -- commit a Craft_%s set or Rescan owned gear (Triggers > Automations).',
+        say(string.format('craft gear: nothing to equip for %s -- commit a Craft_%s set or Rescan owned gear (Triggers > Automations).',
             tostring(skill), tostring(skill)));
     end
     return n;
 end
 
--- Synthesis-window detection: equip BEFORE the confirm (the only correct
--- moment -- 0x096 IS the first packet, so nothing can dress you for the synth
--- that fired it). The synth menu name is learned at synth time (self-
--- calibrating) and persisted per character; on a fresh session it also
--- matches the known-default so the very first window works.
-M._lastTarget = nil;      -- craft to dress for (last synth, or the mode picker)
-M._synthMenu = nil;       -- learned synthesis menu name
-M._menuWas = '';          -- previous frame's menu name (edge detect)
-M._dressedThisWindow = false;
-local DEFAULT_SYNTH_MENU = 'synthesis';   -- common FFXiMain name; the learned one wins
+-- ---------------------------------------------------------------------------
+-- MANUAL craft control (Henrik's design, after auto-detection proved a dead end:
+-- 0x096 is the first synth packet, so nothing can dress you in time). You pick
+-- the craft + goal -- from the floating bar (craftbar.lua) or the Automations
+-- panel -- and dlac equips THEN, before you synth, while equipment changes are
+-- legal. State persists per character (<char>\dlac\craftstate.lua).
+-- ---------------------------------------------------------------------------
+M.goal = 'hq';            -- hq | nq | skillup
+M.activeCraft = nil;      -- the craft you last selected
+local _stateLoaded = false;
 
-local function synthMenuPath()
+local function craftStatePath()
     local dir = kiCharDir();
-    return dir and (dir .. 'synthmenu.lua') or nil;
+    return dir and (dir .. 'craftstate.lua') or nil;
 end
-function M.saveSynthMenu()
+local function saveCraftState()
     pcall(function()
-        local p = synthMenuPath();
-        if p == nil or type(M._synthMenu) ~= 'string' then return; end
-        local f = io.open(p, 'wb'); if f == nil then return; end
-        f:write(string.format('return %q\n', M._synthMenu)); f:close();
-    end);
-end
-local function loadSynthMenu()
-    if M._synthMenu ~= nil then return; end
-    pcall(function()
-        local p = synthMenuPath();
+        local p = craftStatePath();
         if p == nil then return; end
-        local chunk = loadfile(p);
-        if chunk ~= nil then
-            local ok, v = pcall(chunk);
-            if ok and type(v) == 'string' and v ~= '' then M._synthMenu = v; end
+        local f = io.open(p, 'wb'); if f == nil then return; end
+        f:write(string.format('return { craft = %q, goal = %q }\n',
+            tostring(M.activeCraft or ''), tostring(M.goal or 'hq')));
+        f:close();
+    end);
+end
+function M.loadCraftState()
+    if _stateLoaded then return; end
+    local dir = kiCharDir();
+    if dir == nil then return; end        -- pre-login: retry next call
+    _stateLoaded = true;
+    pcall(function()
+        local chunk = loadfile(dir .. 'craftstate.lua');
+        if chunk == nil then return; end
+        local ok, t = pcall(chunk);
+        if ok and type(t) == 'table' then
+            if type(t.goal) == 'string' and (t.goal == 'nq' or t.goal == 'skillup' or t.goal == 'hq') then
+                M.goal = t.goal;
+            end
+            if type(t.craft) == 'string' and t.craft ~= '' then M.activeCraft = t.craft; end
         end
     end);
 end
 
--- Does this menu name look like the synthesis window? The learned name is
--- authoritative; before we've learned one, fall back to a case-insensitive
--- substring of the common default.
-local function isSynthMenu(nm)
-    if type(nm) ~= 'string' or nm == '' then return false; end
-    if M._synthMenu ~= nil then return nm == M._synthMenu; end
-    return string.find(string.lower(nm), DEFAULT_SYNTH_MENU, 1, true) ~= nil;
+function M.getGoal() M.loadCraftState(); return M.goal or 'hq'; end
+function M.getCraft() M.loadCraftState(); return M.activeCraft; end
+
+-- Pick a craft: remember it and EQUIP its gear now (the whole feature).
+function M.selectCraft(craft)
+    if type(craft) ~= 'string' or craft == '' then return; end
+    M.loadCraftState();
+    M.activeCraft = craft;
+    saveCraftState();
+    pcall(function() M.equipCraftSet(craft); end);
 end
 
--- Per-frame: fire once when the synthesis window OPENS (menu edge), dressing
--- for the active craft while equipment changes are still allowed.
-function M.tick()
-    if not M.autoEquip then M._menuWas = ''; return; end
-    local nm = '';
-    pcall(function()
-        local dsp = require('dlac\\dispatch');
-        if type(dsp.menuName) == 'function' then nm = dsp.menuName() or ''; end
-    end);
-    local nowSynth = isSynthMenu(nm);
-    local wasSynth = isSynthMenu(M._menuWas);
-    M._menuWas = nm;
-    if nowSynth and not wasSynth then                  -- window just opened
-        M._dressedThisWindow = false;
-        local target = M._lastTarget
-            or (M.current and (M.current.target or M.current.skill)) or nil;
-        if target ~= nil and target ~= 'unknown' then
-            M._dressedThisWindow = true;
-            pcall(function() M.equipCraftSet(target); end);
-        end
-    elseif not nowSynth then
-        M._dressedThisWindow = false;
-    end
-end
-
--- Toggle entry point (GUI button + /dl craft auto). Dressing happens when the
--- synth window opens (M.tick); turning ON while the window is already up
--- dresses immediately.
-function M.setAuto(on)
-    M.autoEquip = (on == true);
-    if not M.autoEquip then
-        M._equippedTarget = nil;
-        return;
-    end
-    loadSynthMenu();
-    -- If the synth window is open right now, dress at once.
-    local nm = '';
-    pcall(function()
-        local dsp = require('dlac\\dispatch');
-        if type(dsp.menuName) == 'function' then nm = dsp.menuName() or ''; end
-    end);
-    local target = M._lastTarget or (M.current and (M.current.target or M.current.skill)) or nil;
-    if isSynthMenu(nm) and target ~= nil and target ~= 'unknown' then
-        pcall(function() M.equipCraftSet(target); end);
-    end
+-- Change the goal: save it, and re-equip the active craft so the change shows.
+function M.setGoal(goal)
+    if goal ~= 'hq' and goal ~= 'nq' and goal ~= 'skillup' then return; end
+    M.loadCraftState();
+    M.goal = goal;
+    saveCraftState();
+    if M.activeCraft ~= nil then pcall(function() M.equipCraftSet(M.activeCraft); end); end
 end
 
 -- Process one detected synth; returns the record (also used by tests).
@@ -434,7 +404,7 @@ function M.onSynth(crystal, ings, clock)
     };
     if rec ~= nil then
         local prevTarget = prev and (prev.target or prev.skill) or nil;
-        if prevTarget ~= target then               -- announce/publish on TARGET change only
+        if prevTarget ~= target then               -- announce once per craft change
             local note = '';
             if binding ~= nil and binding ~= skill then
                 note = string.format(' -- binding subcraft: %s (margin %+d, tier %d)',
@@ -442,29 +412,15 @@ function M.onSynth(crystal, ings, clock)
             end
             say(string.format('synth detected: %s (recipe lv %d%s)%s.',
                 skill, rec.lv or 0, rec.desynth and ', desynth' or '', note));
-            -- Publish the TARGET craft as the dlac-owned 'craft' cycle value. The
-            -- chat-command bus reaches BOTH Lua states, so the engine's
-            -- dlac:AutoCraft virtuals resolve for this craft in trigger sets too.
-            pcall(function()
-                AshitaCore:GetChatManager():QueueCommand(1, '/dl mode craft ' .. tostring(target));
-            end);
-        end
-        -- Remember the craft for the NEXT synth-window open (that's when we can
-        -- dress -- BEFORE the confirm, while equipment changes are still legal).
-        -- Also learn the synthesis MENU NAME here: 0x096 is sent from inside the
-        -- open window, so whatever menu is up right now IS the synth menu. This
-        -- self-calibrates the window detector -- no hardcoded menu string.
-        M._lastTarget = target;
-        pcall(function()
-            local dsp = require('dlac\\dispatch');
-            if type(dsp.menuName) == 'function' then
-                local nm = dsp.menuName();
-                if type(nm) == 'string' and nm ~= '' and nm ~= M._synthMenu then
-                    M._synthMenu = nm;
-                    M.saveSynthMenu();
-                end
+            -- Detection is now INFO only (it can't equip in time -- 0x096 is
+            -- the first packet). It just highlights the current craft on the
+            -- bar; equipping is your manual pick (selectCraft). If the binding
+            -- subcraft differs from what you selected, nudge you to switch.
+            if M.activeCraft ~= nil and target ~= M.activeCraft and target ~= 'unknown' then
+                say(string.format('  (you have %s gear on; this recipe is bound by %s -- click %s on the craft bar to switch)',
+                    M.activeCraft, target, target));
             end
-        end);
+        end
     elseif not _saidUnknown[M.current.key] then        -- each unknown once, with the key
         _saidUnknown[M.current.key] = true;
         say(string.format('synth detected, recipe UNKNOWN (key %s) -- likely a CatsEyeXI custom; '
@@ -486,13 +442,7 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
         if e.id == 0x055 then pcall(function() M.onKeyItemPacket(e.data); end); end
     end);
 
-    -- Poll the open-menu name every frame: equip when the synthesis window
-    -- opens (BEFORE the confirm -- the only moment gear can count for the synth).
-    ashita.events.register('d3d_present', 'dlac-craftwatch-menu', function()
-        pcall(M.tick);
-    end);
-
-    -- /dl craft [auto on|off | equip] -- status / automation control.
+    -- /dl craft [bar | <craft> | goal <hq|nq|skillup> | ki] -- manual controls.
     ashita.events.register('command', 'dlac-craftwatch-cmd', function(e)
         pcall(function()
             local raw = string.lower(e.command or '');
@@ -500,12 +450,25 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
             if a == nil then a, b, c = raw:match('^/dlac%s+(%S+)%s*(%S*)%s*(%S*)'); end
             if a ~= 'craft' then return; end
             e.blocked = true;
-            if b == 'auto' then
-                if     c == 'on'  then M.setAuto(true);
-                elseif c == 'off' then M.setAuto(false); end
-                say('auto craft set ' .. (M.autoEquip and 'ON' or 'OFF')
-                    .. ' -- EQUIPS your best craft pieces when a synth of a new craft is detected; it never crafts for you.'
-                    .. '  (/dl craft auto on|off; session-only for now)');
+            local CRAFTS = { woodworking = 'Woodworking', smithing = 'Smithing',
+                goldsmithing = 'Goldsmithing', clothcraft = 'Clothcraft',
+                leathercraft = 'Leathercraft', bonecraft = 'Bonecraft',
+                alchemy = 'Alchemy', cooking = 'Cooking' };
+            if b == 'bar' then
+                M.barVisible = not M.barVisible;
+                say('craft bar ' .. (M.barVisible and 'shown' or 'hidden') .. '.');
+                return;
+            end
+            if b == 'goal' then
+                if c == 'hq' or c == 'nq' or c == 'skillup' then
+                    M.setGoal(c); say('craft goal: ' .. c .. (M.activeCraft and (' (re-equipped ' .. M.activeCraft .. ')') or ''));
+                else
+                    say('craft goal is ' .. M.getGoal() .. '  (/dl craft goal hq|nq|skillup)');
+                end
+                return;
+            end
+            if CRAFTS[b] ~= nil then
+                M.selectCraft(CRAFTS[b]);   -- equips immediately
                 return;
             end
             if b == 'ki' then
@@ -542,29 +505,26 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
                 return;
             end
             if b == 'equip' then
-                local skill = M.current and M.current.skill or nil;
+                local skill = M.getCraft() or (M.current and M.current.skill) or nil;
                 if skill == nil or skill == 'unknown' then
-                    say('craft equip: no known craft detected yet this session -- synth once, then retry.');
+                    say('craft equip: pick a craft first (/dl craft <name>, the craft bar, or the Automations panel).');
                 else
                     M.equipCraftSet(skill);
                 end
                 return;
             end
-            if M.current == nil then
-                say('craft watch: no synth seen yet this session. Start a synth and check again.'
-                    .. (M.autoEquip and '' or '  (auto craft set is OFF: /dl craft auto on)'));
-                return;
+            -- bare /dl craft: status.
+            say(string.format('craft: selected = %s, goal = %s.',
+                M.getCraft() or '(none -- /dl craft <name>)', M.getGoal()));
+            say('  pick a craft on the bar (/dl craft bar) or Automations panel -- it equips that craft\'s gear BEFORE you synth.');
+            if M.current ~= nil then
+                say(string.format('  last synth seen: %s%s.', M.current.skill,
+                    M.current.lv and (' lv ' .. M.current.lv) or ''));
             end
-            say(string.format('craft watch: last synth = %s%s (%.0fs ago); auto craft set %s.',
-                M.current.skill, M.current.lv and (' lv ' .. M.current.lv) or '',
-                os.clock() - (M.current.at or 0), M.autoEquip and 'ON' or 'OFF'));
-            say(string.format('  synth window: %s; dresses for %s when it opens.',
-                M._synthMenu and ('learned as "' .. M._synthMenu .. '"') or ('not learned yet (default "' .. DEFAULT_SYNTH_MENU .. '")'),
-                M._lastTarget or (M.current and (M.current.target or M.current.skill)) or '(no craft yet)'));
             local parts = {};
             for sk, n in pairs(M.counts) do parts[#parts + 1] = string.format('%s x%d', sk, n); end
             table.sort(parts);
-            say('  session: ' .. table.concat(parts, ', '));
+            if #parts > 0 then say('  session: ' .. table.concat(parts, ', ')); end
         end);
     end);
 end
