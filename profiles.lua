@@ -419,6 +419,13 @@ local function migrationFacts(name)
     return files;
 end
 
+-- The current plan against the real char folder, for DISPLAY (the GUI Setup
+-- popup renders it before asking for a Commit). nil, why when not logged in.
+function M.currentPlan(name)
+    if charBase() == nil then return nil, 'not logged in'; end
+    return M.planMigration(migrationFacts(name or 'Default'));
+end
+
 -- The migration itself. execute=false prints the full plan and touches NOTHING;
 -- execute=true does the work file by file, each step verified before the next
 -- (backup is read back and compared before the original is ever rewritten).

@@ -1515,8 +1515,93 @@ local function renderHeaderButtons()
     end
     if needSetup or debugMode then
         btns[#btns+1] = { l = 'Setup', w = 56, red = needSetup,
-            tip = 'Set up this job\'s LuaAshitacast profile so dlac can drive it: points the\nprofile at the dlac library and seeds your character\'s dlac config folder.\nBacks up the original as <JOB>.lua.flbak. Reload LuaAshitacast afterward.',
-            fn = function() migrateCurrentJob(); end };
+            tip = 'Set up this job for dlac. Clicking only shows a PLAN of what will happen,\nin plain words -- nothing is touched until you press Commit in the popup.',
+            fn = function()
+                -- Build the plan (plain-words, state-dependent); the popup below
+                -- renders it and Commit executes. All function-scoped: gearui's
+                -- main chunk is at the LuaJIT 200-local cap.
+                local base = charBase();
+                local jf, abbr = jobFile();
+                if base == nil or jf == nil then _augStatus = 'Setup: log in first (no character/job).'; return; end
+                local state = jobSetupState();
+                local prof = nil;
+                pcall(function() local p = require('dlac\\profiles'); if type(p) == 'table' then prof = p; end end);
+                local plan = { mode = 'convert', abbr = abbr, title = 'Set up ' .. abbr .. ' for dlac', lines = {} };
+                local L = plan.lines;
+                local function add(c, t) L[#L + 1] = { c = c, t = t }; end
+                if state == 'nofile' then
+                    plan.mode = 'fresh';
+                    plan.title = 'First-time setup -- ' .. abbr;
+                    add('txt', 'You have no ' .. abbr .. '.lua profile yet. Commit will:');
+                    add('txt', '1.  Write ' .. abbr .. '.lua as a small managed shim. LuaAshitacast auto-loads it on every');
+                    add('dim', '     job change; it holds NO data and you never need to open it.');
+                    add('txt', '2.  Create your profile storage: dlac\\profiles\\Default\\ -- ALL of your sets and');
+                    add('dim', '     triggers will live there (share or switch profiles later with /dl profile).');
+                    add('txt', '3.  Seed an empty gear inventory (dlac\\gear.lua) -- fill it afterwards with Scan.');
+                    add('txt', '4.  Seed starter triggers (Idle / Engaged / Resting / Movement) so gear swaps');
+                    add('dim', '     work out of the box.');
+                    add('txt', 'Nothing that already exists is overwritten.');
+                    add('head', 'After Commit: click Reload LAC, then Scan, then build sets in the Sets tab.');
+                elseif state == 'ok' then
+                    local isShim, hasStorage = false, false;
+                    if prof ~= nil then
+                        pcall(function() isShim = prof.isCleanShim(readFileText(jf) or ''); end);
+                        hasStorage = prof.storageExists();
+                    end
+                    if prof ~= nil and (not isShim or not hasStorage) then
+                        plan.mode = 'migrate';
+                        plan.title = 'Move ' .. abbr .. ' (and every other job) to profile storage';
+                        add('txt', 'Your jobs are already dlac-wired. Commit moves your dlac DATA into profile');
+                        add('txt', 'storage (dlac\\profiles\\Default\\) and rewrites each old <JOB>.lua as a clean');
+                        add('txt', 'managed shim. Per job file:');
+                        add('head', 'SAFETY: every original is copied to backups\\pre-profiles\\ FIRST and verified');
+                        add('head', 'byte-for-byte before anything is rewritten. An existing backup is never');
+                        add('head', 'overwritten (already-backed-up jobs are skipped).');
+                        add('txt', '- Your dynamic sets move over verbatim (byte-for-byte).');
+                        add('txt', '- Old static sets stay available: "Copy from" in the Sets tab reads the backup.');
+                        add('txt', '- Hand-written handler code does NOT stay in the live file (it lives on in the');
+                        add('dim', '   backup) -- equip behavior is trigger data now.');
+                        add('txt', '- LuaAshitacast reloads automatically afterwards.');
+                        add('head', 'The plan, job by job:');
+                        local mplan = nil;
+                        pcall(function() mplan = prof.currentPlan(); end);
+                        if type(mplan) == 'table' then
+                            for _, e in ipairs(mplan) do
+                                if e.action == 'skip' then
+                                    add('dim', e.job .. ':  skip -- ' .. tostring(e.reason));
+                                else
+                                    add('txt', e.job .. ':  migrate');
+                                    for _, n in ipairs(e.notes or {}) do add('dim', '      - ' .. n); end
+                                end
+                            end
+                        else
+                            add('err', '(could not read the per-job plan -- /dl profile migrate shows it in chat)');
+                        end
+                    else
+                        plan.mode = 'healthy';
+                        plan.title = abbr .. ' is fully set up';
+                        add('txt', 'The ' .. abbr .. '.lua shim, profile storage and trigger wiring are all in place.');
+                        add('txt', 'Commit only seeds a missing starter trigger file (it never overwrites one).');
+                    end
+                else
+                    plan.mode = 'convert';
+                    add('txt', 'Your existing ' .. abbr .. '.lua is kept and converted IN PLACE. Commit will:');
+                    if state == 'ffxilac' then
+                        add('txt', '1.  Repoint its ffxi-lac requires at the dlac library (original saved as ' .. abbr .. '.lua.flbak).');
+                    elseif state == 'none' then
+                        add('txt', '1.  Add the dlac library require (original saved as ' .. abbr .. '.lua.flbak).');
+                    else   -- 'shims'
+                        add('txt', '1.  Repair the missing dispatch hooks (idempotent -- a healthy file is untouched).');
+                    end
+                    add('txt', '2.  Append utils.dispatch(...) at the END of each handler; create missing handlers.');
+                    add('head', 'Your own code is NEVER removed or edited -- it always runs first; dlac\'s');
+                    add('head', 'trigger gear overlays last, slot by slot.');
+                    add('txt', '3.  Seed your dlac folder (gear.lua) and starter triggers if absent.');
+                    add('txt', 'After Commit: click Reload LAC.');
+                end
+                ui._setupPlan = plan;
+                ui._setupOpen = true;
+            end };
     end
 
     local total = 0;
@@ -1565,6 +1650,53 @@ local function renderHeaderButtons()
         if imgui.SmallButton('+5##lvp5') then setLvl(cur + 5); end
         imgui.SameLine(0, 14);
         if imgui.SmallButton('back to live##lv0') then setLvl(nil); end
+        imgui.EndPopup();
+    end
+
+    -- Setup plan popup: what WILL happen, in plain words; nothing runs until
+    -- Commit at the bottom. (BeginPopup, not Modal: clicking outside cancels.)
+    if ui._setupOpen then imgui.OpenPopup('##dlac_setupplan'); ui._setupOpen = nil; end
+    if imgui.BeginPopup('##dlac_setupplan') then
+        local p = ui._setupPlan;
+        if p == nil then imgui.CloseCurrentPopup(); imgui.EndPopup(); return; end
+        imgui.TextColored(COL_HEADER, tostring(p.title));
+        imgui.Separator();
+        imgui.BeginChild('##dlac_setupplanbody', { 620, math.min(360, 20 + #p.lines * 18) }, false);
+        for _, ln in ipairs(p.lines) do
+            local col = (ln.c == 'dim' and COL_DIM) or (ln.c == 'head' and COL_SCORE)
+                     or (ln.c == 'err' and COL_ERR) or COL_USABLE;
+            imgui.TextColored(col, ln.t);
+        end
+        imgui.EndChild();
+        imgui.Separator();
+        imgui.TextColored(COL_DIM, 'Nothing has been touched yet. Commit runs the steps above; Cancel closes.');
+        local label = (p.mode == 'healthy') and 'Commit (seed triggers)' or 'Commit';
+        if imgui.Button(label .. '##dlac_setupgo', { 170, 26 }) then
+            ui._setupPlan = nil;
+            imgui.CloseCurrentPopup();
+            if p.mode == 'migrate' then
+                -- The loud record goes to chat, exactly like /dl profile migrate go.
+                pcall(function()
+                    local prof = require('dlac\\profiles');
+                    local done = prof.migrate(true, function(s) pcall(print, s); end);
+                    pcall(function() require('dlac\\profilesets').invalidate(); end);
+                    _setupState = nil;   -- drop the jobSetupState cache
+                    if done ~= nil and done > 0 then
+                        _augStatus = string.format('Migrated %d job file(s) -- originals in backups\\pre-profiles\\ (details in chat). Reloading LuaAshitacast...', done);
+                        AshitaCore:GetChatManager():QueueCommand(1, '/addon reload luashitacast');
+                    else
+                        _augStatus = 'Migration: nothing to do (details in chat).';
+                    end
+                end);
+            else
+                migrateCurrentJob();
+            end
+        end
+        imgui.SameLine(0, 8);
+        if imgui.Button('Cancel##dlac_setupno', { 90, 26 }) then
+            ui._setupPlan = nil;
+            imgui.CloseCurrentPopup();
+        end
         imgui.EndPopup();
     end
 end

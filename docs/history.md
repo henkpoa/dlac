@@ -488,3 +488,13 @@ migration); `ashita.fs.get_dir(root, '.*', true)` as a DIRECTORY lister is unver
 in the field — `listProfiles` degrades to nil (status still names the active profile).
 Field test pending on Mindie: `/dl profile migrate` (dry run first), confirm dynamic
 sets survive + statics copyable from backup.
+
+**Follow-up same day (GUI setup):** the Setup button is now plan-first -- clicking it
+opens a popup that explains, in plain words per state (fresh / convert-in-place /
+migrate-to-profiles / healthy), exactly what will happen, and NOTHING runs until the
+Commit button at the bottom (Cancel/click-away aborts). The migrate mode renders the
+full per-job plan (profiles.currentPlan) inside the popup and runs the same
+backup-first migration as /dl profile migrate go, then auto-reloads LAC. Henrik's real
+char data (47 items) is stashed at
+`config\addons\luashitacast\Mindie_29909\_stash-pre-freshtest-2026-07-13\` (with a
+README-RESTORE.txt) so he can walk the first-time flow himself; restore = move it back.
