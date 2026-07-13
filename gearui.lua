@@ -1661,15 +1661,15 @@ local function renderHeaderButtons()
         if p == nil then imgui.CloseCurrentPopup(); imgui.EndPopup(); return; end
         imgui.TextColored(COL_HEADER, tostring(p.title));
         imgui.Separator();
-        imgui.BeginChild('##dlac_setupplanbody', { 620, math.min(360, 20 + #p.lines * 18) }, false);
+        imgui.BeginChild('##dlac_setupplanbody', { 430, math.min(400, 24 + #p.lines * 20) }, false);
         for _, ln in ipairs(p.lines) do
             local col = (ln.c == 'dim' and COL_DIM) or (ln.c == 'head' and COL_SCORE)
                      or (ln.c == 'err' and COL_ERR) or COL_USABLE;
-            imgui.TextColored(col, ln.t);
+            fmt.textWrapped(col, ln.t);   -- wrapped: the popup stays narrow, lines reflow
         end
         imgui.EndChild();
         imgui.Separator();
-        imgui.TextColored(COL_DIM, 'Nothing has been touched yet. Commit runs the steps above; Cancel closes.');
+        fmt.textWrapped(COL_DIM, 'Nothing has been touched yet. Commit runs the steps above; Cancel closes.');
         local label = (p.mode == 'healthy') and 'Commit (seed triggers)' or 'Commit';
         if imgui.Button(label .. '##dlac_setupgo', { 170, 26 }) then
             ui._setupPlan = nil;
