@@ -256,8 +256,10 @@ panel), and fixed several load-bearing bugs. All landed on **`main`** and pushed
 - **Guild points per craft:** s2c **`0x113`** (currencies_1), 8 int32 LE at absolute
   offsets `0x24..0x40` ('Weaving' = Clothcraft), persisted (`guildpoints.lua`). Fetched by
   sending header-only c2s **`0x10F`** ourselves (server `validate()` ungated — exactly what
-  opening the currency menu does). **MANUAL ONLY** right now (`/dl craft gp`) pending
-  Henrik's turn-in verification — see Standing loose ends. Offsets locked by tests T27–T33.
+  opening the currency menu does). **VERIFIED 2026-07-13** (a real turn-in reflected via
+  `/dl craft gp`), so it now fires automatically: one-shot on login (craftwatch
+  `dlac-craftwatch-gp` tick) + on the AutoCraft panel's open transition (triggersui,
+  >1s render gap = just opened; the 5s debounce caps spam). Offsets locked by tests T27–T33.
 
 ### UI / misc
 - Sets: **duplicate-row button (D)** — one item across several level ranges (Rajas 30-54,
@@ -428,17 +430,14 @@ seed within ~2s and swaps itself.
 - **Auto-build permissiveness** (plan-style like the Add popup?) — open user decision.
 - **Augment decoder boundary** (stop at first 0x0000 word) — verify before changing.
 - dlacprobe addon dormant at `Ashita\addons\dlacprobe\` — reuse for packet questions.
-- **Guild-points self-request (VERIFY, then automate)**: craftwatch reads guild
-  points per craft from s2c `0x113` (currencies_1), and `craftwatch.requestGuildPoints()`
-  sends the header-only c2s `0x10F` to fetch them (server `validate()` is ungated;
-  it's exactly what opening the currency menu does). Currently MANUAL only, via
-  `/dl craft gp` — Henrik wants to confirm a real GP turn-in actually reflects
-  through this request before it fires on its own (no needless request spam).
-  **To close:** turn in a GP item, run `/dl craft gp`, confirm the number rises to
-  match the in-game currency menu. Once verified, re-enable a one-shot fetch on
-  login + a debounced fetch when the AutoCraft panel opens (the `requestGuildPoints`
-  call was removed from `triggersui.lua`'s panel and can be restored). Offsets are
-  locked by tests T27–T33; `0x113` handler + persistence already live.
+- ~~**Guild-points self-request (VERIFY, then automate)**~~ **CLOSED 2026-07-13:**
+  Henrik turned in GP items and confirmed `/dl craft gp` (c2s `0x10F` self-request →
+  s2c `0x113`) reflects the new total. Automation re-enabled exactly as planned:
+  one-shot fetch on login (craftwatch `dlac-craftwatch-gp` d3d_present tick — waits
+  for main job ≠ 0 and not zoning, fires once, unregisters itself) + a fetch on the
+  AutoCraft panel's open transition (triggersui `_gpSectionSeen`, >1s render gap =
+  just opened; `requestGuildPoints`'s 5s debounce caps reopen-spam). `/dl craft gp`
+  stays as the manual verify tool. Offsets locked by tests T27–T33.
 
 ### Loose ends added 07-13 (field-hardening arc)
 

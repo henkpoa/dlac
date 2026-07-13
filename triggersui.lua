@@ -1099,6 +1099,12 @@ local function mpPickAt(cands, level)
     return nil;
 end
 
+-- Last frame the guild-points section rendered -- a gap >1s means the panel
+-- (or the AutoCraft section) just OPENED, which triggers one fresh GP fetch.
+-- Declared BEFORE renderAutomations on purpose (hard rule 8: a forward
+-- reference to a later local is a silent nil global).
+local _gpSectionSeen = nil;
+
 local function renderAutomations(noHeader)
     if noHeader ~= true and not imgui.CollapsingHeader('Automations###trgsec_auto') then return; end
     autoLoad();
@@ -1259,12 +1265,18 @@ local function renderAutomations(noHeader)
                 cw2 = require('dlac\\craftwatch');
                 kiSynced = (type(cw2.kiReady) == 'function') and cw2.kiReady() or ((cw2 and cw2.kiBlocksSeen or 0) > 0);
             end);
-            -- Guild points for this craft (0x113-tracked). DISPLAY ONLY -- no
-            -- auto-request (Henrik: verify the c2s 0x10F self-request works via
-            -- /dl craft gp + a real GP turn-in before letting it fire on its
-            -- own; see docs/HANDOFF.md loose ends).
+            -- Guild points for this craft (0x113-tracked). On the panel's
+            -- OPEN transition (section idle >1s), ask the server for a fresh
+            -- copy -- the c2s 0x10F self-request, turn-in VERIFIED 2026-07-13
+            -- -- so a GP hand-in shows here without zoning. While the panel
+            -- stays open the gap never exceeds a frame (no re-request), and
+            -- requestGuildPoints' own 5s debounce caps reopen-spam.
             local gp, gpReady = nil, false;
             if cw2 ~= nil then
+                if _gpSectionSeen == nil or (os.clock() - _gpSectionSeen) > 1.0 then
+                    pcall(function() cw2.requestGuildPoints(); end);
+                end
+                _gpSectionSeen = os.clock();
                 pcall(function() gpReady = (type(cw2.gpReady) == 'function') and cw2.gpReady(); end);
                 pcall(function() gp = cw2.guildPointsFor(selCr); end);
             end

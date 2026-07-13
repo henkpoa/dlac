@@ -232,12 +232,11 @@ function M.gpReady() gpLoad(); return M.gpSeen or M.gpPersisted; end
 
 -- Ask the server for the currency-1 data ourselves (header-only c2s 0x10F --
 -- exactly what opening the currency menu sends; the server's validate() is
--- ungated, and it replies with s2c 0x113). MANUAL ONLY for now (/dl craft gp):
--- Henrik wants to verify the request->response actually updates after a real
--- GP turn-in before this fires automatically. Do NOT call this from a render
--- loop / auto-fetch until verified -- no needless request spam.
--- TODO(verify): once a GP turn-in is confirmed to reflect via this request,
--- re-enable a one-shot fetch on login and a debounced panel fetch.
+-- ungated, and it replies with s2c 0x113). VERIFIED 2026-07-13: a real GP
+-- turn-in reflected through this request (/dl craft gp matched the currency
+-- menu), so it now also fires automatically -- once on login (tick below)
+-- and on the AutoCraft panel's open transition (triggersui). The 5s debounce
+-- absorbs both; still never call this unconditionally from a render loop.
 local _gpReqAt = -10;
 function M.requestGuildPoints()
     if os.clock() - _gpReqAt < 5 then return; end
@@ -502,6 +501,28 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
     ashita.events.register('packet_in', 'dlac-craftwatch-in', function(e)
         if e.id == 0x055 then pcall(function() M.onKeyItemPacket(e.data); end);
         elseif e.id == 0x113 then pcall(function() M.onCurrencyPacket(e.data); end); end   -- guild points
+    end);
+
+    -- One-shot guild-points fetch on login (turn-in VERIFIED 2026-07-13, see
+    -- requestGuildPoints): poll ~2s until the player is actually in-game --
+    -- main job set, not zoning -- request once, unregister. Covers fresh
+    -- logins AND /addon load mid-session; the persisted mirror carries the
+    -- display until the 0x113 reply lands. Self-unregister pattern: dlac.lua
+    -- 'dlac-seed-retry'.
+    local _gpTickAt = 0;
+    ashita.events.register('d3d_present', 'dlac-craftwatch-gp', function()
+        pcall(function()
+            if os.clock() < _gpTickAt then return; end
+            _gpTickAt = os.clock() + 2;
+            local pl = AshitaCore:GetMemoryManager():GetPlayer();
+            if pl == nil or (pl:GetMainJob() or 0) == 0 then return; end
+            if pl.GetIsZoning ~= nil then
+                local z = pl:GetIsZoning();
+                if z == true or (type(z) == 'number' and z ~= 0) then return; end
+            end
+            M.requestGuildPoints();
+            ashita.events.unregister('d3d_present', 'dlac-craftwatch-gp');
+        end);
     end);
 
     -- /dl craft [bar | <craft> | goal <hq|nq|skillup> | ki] -- manual controls.

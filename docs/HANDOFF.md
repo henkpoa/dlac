@@ -130,8 +130,9 @@ handshake).
     detection-driven auto-equip (`0x096` is the first synth packet — too late).
   - New this arc: `craftwatch.lua`, `craftbar.lua`, `crafts.lua`, `filetex.lua`,
     `assets/craft/*.png`, `assets/{macrobook,craftbar}.png`, `tools/gen_craftdb.py`.
-  - **Verify-then-automate:** guild-points self-request (c2s `0x10F`) is MANUAL only
-    (`/dl craft gp`) pending a turn-in check — see Standing loose ends.
+  - **Verify-then-automate — DONE (2026-07-13):** guild-points self-request (c2s
+    `0x10F`) turn-in-verified; now auto-fires once on login + on AutoCraft panel
+    open (debounced). `/dl craft gp` remains the manual check.
 - **feature/storage-move**: gearmove v8 + gearcheck + the gearui modularization
   commits. Local-only pending GM verdict; strip TEMP probes (`/dlmv`, RMB debug,
   branch-print) before any merge. The Storage-into-Provenance packet experiment is
