@@ -912,7 +912,10 @@ local OBI_TXT  = { [0] = 'nothing applicable', 'elemental obis', 'universal obi'
 
 -- One item row in a detail column: green = owned and equippable by this job,
 -- red = owned but this JOB can't wear it (the automation skips it), dim = not owned.
-local function autoItemLine(name)
+-- synergyNote (optional): mark this item green as SYNERGIZED-INTO-ARTISANS -- you
+-- must have owned every guild torque/ring to synth the Artisans piece, so owning
+-- Artisans implies you had them all (Henrik).
+local function autoItemLine(name, synergyNote)
     local rec = (deps.lookupByName ~= nil) and deps.lookupByName(name) or nil;
     if type(deps.renderIcon) == 'function' then deps.renderIcon(rec and rec.Id or nil, 18); end
     local owned = owns(name);
@@ -922,6 +925,11 @@ local function autoItemLine(name)
             imgui.SetTooltip(string.format('Owned -- but %s cannot equip it, so the automation skips it on this job.',
                 tostring(curJob() or 'this job')));
         end
+        return;
+    end
+    if not owned and synergyNote ~= nil then           -- implied-owned via Artisans synergy
+        imgui.TextColored(GREEN_OWNED, esc(name));
+        if imgui.IsItemHovered() then imgui.SetTooltip(synergyNote); end
         return;
     end
     imgui.TextColored(owned and GREEN_OWNED or COL_DIM, esc(name));
@@ -1151,12 +1159,18 @@ local function renderAutomations(noHeader)
             -- Ownership matrix (Henrik's layout): NQ|HQ pair, rule, craft-
             -- specific column -- for torques and rings; universals third.
             local colW = math.max(240, math.floor(availW / 3));
+            -- Owning an Artisans piece implies you owned every guild torque/ring
+            -- (they synergize into it), so mark the rest green (Henrik).
+            local haveArtT = owns('Artisans Torque') or owns('Artisans Torque +1');
+            local haveArtR = owns('Artisans Ring') or owns('Artisans Ring +1');
+            local synT = 'Green via synergy: you own an Artisans Torque, which requires\nevery guild torque -- so you had this one.';
+            local synR = 'Green via synergy: you own an Artisans Ring, which requires\nevery guild ring -- so you had this one.';
             imgui.BeginGroup();
             imgui.TextColored(COL_HEADER, 'Torques');
             autoItemLine('Artisans Torque');
             autoItemLine('Artisans Torque +1');
             imgui.TextColored(COL_DIM, '- - - - - - - -');
-            for _, cr in ipairs(CRAFT_UI.order) do autoItemLine(CRAFT_UI.torque[cr]); end
+            for _, cr in ipairs(CRAFT_UI.order) do autoItemLine(CRAFT_UI.torque[cr], haveArtT and synT or nil); end
             imgui.EndGroup();
             imgui.SameLine(colW);
             imgui.BeginGroup();
@@ -1164,7 +1178,7 @@ local function renderAutomations(noHeader)
             autoItemLine('Artisans Ring');
             autoItemLine('Artisans Ring +1');
             imgui.TextColored(COL_DIM, '- - - - - - - -');
-            for _, cr in ipairs(CRAFT_UI.order) do autoItemLine(CRAFT_UI.nqring[cr]); end
+            for _, cr in ipairs(CRAFT_UI.order) do autoItemLine(CRAFT_UI.nqring[cr], haveArtR and synR or nil); end
             imgui.EndGroup();
             imgui.SameLine(colW * 2);
             autoColumn('Universals', CRAFT_UI.universals);
