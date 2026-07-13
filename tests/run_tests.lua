@@ -657,27 +657,37 @@ check('T16 equip command shape',    craftCmds[1], '/lac equip Main "Chemists Kuk
 craftCmds = {};
 check('T17 fallback to Craft set',  craftwatch.equipCraftSet('Bonecraft'), 1);
 check('T18 fallback command',       craftCmds[1], '/lac equip Neck "Artisans Torque"');
--- onSynth + auto: the equip DEFERS to the synth result (the client blocks
--- equipment changes during the synthesis animation), fires once per craft.
+-- Auto craft set dresses when the synthesis WINDOW OPENS (before the confirm --
+-- 0x096 is the first packet, so nothing can dress you for the synth it fired).
+-- Stub dispatch.menuName so tick() can see a fake open/closed synth window.
+local fakeMenu = '';
+package.loaded['dlac\\dispatch'].menuName = function() return fakeMenu; end
 craftwatch.autoEquip = true;
+craftwatch._lastTarget = 'Alchemy';
+craftwatch._synthMenu = 'synthesis';   -- pretend already learned
+craftwatch._menuWas = '';
 craftCmds = {};
-craftwatch.onSynth(4096, { 1165, 1165 }, 10);   -- Smithing -> Alchemy change (T7 left Smithing)
-check('T19a detection defers (no mid-animation equip)', #craftCmds, 0);
-craftwatch.onSynthResult();                      -- 0x06F: animation over
-check('T19b result-time equip', #craftCmds, 3);
+craftwatch.tick();                     -- no window open yet
+check('T19a no window: no equip', #craftCmds, 0);
+fakeMenu = 'synthesis';                -- window OPENS
+craftwatch.tick();
+check('T19b window opens -> dress before confirm', #craftCmds, 3);
 craftCmds = {};
-craftwatch.onSynth(4096, { 1165, 1165 }, 11);   -- repeat: same craft
-craftwatch.onSynthResult();
-check('T20 repeat synth: no re-equip', #craftCmds, 0);
--- field case: auto toggled ON only AFTER synthing -- must dress immediately
+craftwatch.tick();                     -- still open, same window: no re-dress
+check('T20 same window: no re-equip', #craftCmds, 0);
+fakeMenu = '';                         -- window closes
+craftwatch.tick();
+fakeMenu = 'synthesis';                -- reopens -> dress again
+craftwatch.tick();
+check('T20b reopened window dresses again', #craftCmds, 3);
+-- learn-at-synth: menu name captured from menuName() at 0x096 time
+craftwatch._synthMenu = nil;
+fakeMenu = 'synth_custom';
+craftwatch.onSynth(4096, { 1165, 1165 }, 20);
+check('T20c synth learns the open menu name', craftwatch._synthMenu, 'synth_custom');
+fakeMenu = '';
 craftwatch.setAuto(false);
-craftCmds = {};
-craftwatch.onSynth(4096, { 1165, 1165 }, 12);
-craftwatch.onSynthResult();
-check('T20b auto off: no equip', #craftCmds, 0);
-craftwatch.setAuto(true);
-check('T20c toggle-on dresses for the current craft', #craftCmds, 3);
-craftwatch.setAuto(false);
+package.loaded['dlac\\dispatch'].menuName = nil;
 
 -- 0x055 key item tracker (the SDK HasKeyItem memory read is dead on this
 -- client -- craftwatch keeps its own bitfield from the packet stream).

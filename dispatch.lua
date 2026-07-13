@@ -748,6 +748,8 @@ local function menuName()
     end);
     return nm;
 end
+M.menuName = menuName;   -- craftwatch reads it to equip while the synth window is OPEN
+                         -- (before you confirm -- injected equips bypass the menu lock)
 
 local function equipResolved(s, ctx)
     local out, notes = nil, nil;
