@@ -325,30 +325,34 @@ function M.equipCraftSet(skill, baseDelay)
     end
     local ok, cmdq = pcall(require, 'dlac\\cmdqueue');
     if not ok or type(cmdq) ~= 'table' or type(cmdq.enqueue) ~= 'function' then return 0; end
-    -- Craft gear must SURVIVE the engine. dlac's dispatch re-equips your
-    -- Default/Idle set every frame tick, so an equip alone is stomped within a
-    -- frame (same class as maxmp/petaction). So we LOCK each craft slot -- the
-    -- engine then skips it -- and equip with /lac equip, which (per dispatch's
-    -- v14 field note) works even with the EQUIPMENT WINDOW open, unlike the
-    -- native /equip. Slots no longer used get released.
+    -- Craft gear must SURVIVE the engine, which re-equips your Idle/Default set.
+    -- The revert lives in the LAC Lua state (luashitacast's HandleDefault /
+    -- EquipSet). A /dl lock is set in the ADDON state and its command is
+    -- e.blocked before it reaches the LAC state, so it never stops that revert.
+    -- The reliable cross-state tool is LAC's OWN /lac disable <slot> -- handled
+    -- by luashitacast directly -- which makes EquipSet skip the slot. We disable
+    -- the slot, then /lac equip the craft piece (works with the equipment window
+    -- open, unlike native /equip). /dl lock rides along as a belt for the
+    -- dispatch-overlay path. Slots no longer used get released.
     local want = {};                       -- lower slot -> { label, item }
     for _, slot in ipairs(SLOT_LABELS) do
         if picks[slot] ~= nil then want[string.lower(slot)] = { slot, picks[slot] }; end
     end
-    -- Release craft-locks for slots we no longer use.
     for lslot in pairs(M._craftLocked) do
-        if want[lslot] == nil then
+        if want[lslot] == nil then          -- release slots we no longer use
+            cmdq.enqueue(0, '/lac enable ' .. lslot);
             cmdq.enqueue(0, '/dl lock ' .. lslot .. ' off');
             M._craftLocked[lslot] = nil;
         end
     end
-    -- Lock (engine skips it) then /lac equip, in SLOT_LABELS order.
+    -- disable (LAC skips it) + lock (belt) + /lac equip, in SLOT_LABELS order.
     for _, slot in ipairs(SLOT_LABELS) do
         local lslot = string.lower(slot);
         local w = want[lslot];
         if w ~= nil then
-            cmdq.enqueue((baseDelay or 0) + 4 * n, '/dl lock ' .. lslot .. ' on');
-            cmdq.enqueue((baseDelay or 0) + 4 * n + 1, string.format('/lac equip %s "%s"', w[1], w[2]));
+            cmdq.enqueue((baseDelay or 0) + 6 * n,     '/lac disable ' .. lslot);
+            cmdq.enqueue((baseDelay or 0) + 6 * n + 1, '/dl lock ' .. lslot .. ' on');
+            cmdq.enqueue((baseDelay or 0) + 6 * n + 2, string.format('/lac equip %s "%s"', w[1], w[2]));
             M._craftLocked[lslot] = true;
             n = n + 1;
         end
@@ -363,20 +367,21 @@ function M.equipCraftSet(skill, baseDelay)
     return n;
 end
 
--- Release every craft-locked slot and let the engine dress you normally again
+-- Release every craft-disabled slot and let LAC dress you normally again
 -- (called when the switch goes OFF).
 function M.releaseCraftLocks()
     local ok, cmdq = pcall(require, 'dlac\\cmdqueue');
     if not ok or type(cmdq) ~= 'table' then return; end
     local any = false;
     for lslot in pairs(M._craftLocked) do
+        cmdq.enqueue(0, '/lac enable ' .. lslot);
         cmdq.enqueue(0, '/dl lock ' .. lslot .. ' off');
         M._craftLocked[lslot] = nil;
         any = true;
     end
     if any then
-        cmdq.enqueue(2, '/lac enable');
-        say('craft gear: released -- the engine dresses you normally again.');
+        cmdq.enqueue(2, '/lac enable');   -- global belt: re-enable everything
+        say('craft gear: released -- LAC dresses you normally again.');
     end
 end
 
@@ -449,15 +454,15 @@ function M.setEnabled(on)
     else pcall(M.releaseCraftLocks); end
 end
 
--- Pick a craft. Choosing a craft IS activating -- turn the switch on and equip
--- (Henrik: "activate manually, then decide with a click what synth we use").
+-- Pick the GOAL craft. Craft buttons ONLY set which craft is active (Henrik) --
+-- they do NOT flip the switch. Equipping happens only while the switch is ON;
+-- the on/off slider is the sole activator.
 function M.selectCraft(craft)
     if type(craft) ~= 'string' or craft == '' then return; end
     M.loadCraftState();
     M.activeCraft = craft;
-    M.enabled = true;
     saveCraftState();
-    pcall(function() M.equipCraftSet(craft); end);
+    applyIfActive();                       -- equips ONLY if the switch is on
 end
 
 -- Change the goal: save it, re-equip the active craft (when on) so it shows.

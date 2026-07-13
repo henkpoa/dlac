@@ -655,23 +655,27 @@ local function hasCmd(want)   -- craftCmds contains an exact command?
     for _, c in ipairs(craftCmds) do if c == want then return true; end end
     return false;
 end
--- Craft gear must SURVIVE the engine, so each slot emits lock + disable +
--- native equip (returns the SLOT count, not the command count).
+-- Craft gear must SURVIVE the engine: each slot emits /lac disable (LAC skips
+-- it) + /dl lock (belt) + /lac equip. Returns the SLOT count, not command count.
+craftwatch.enabled = true;   -- equipCraftSet is called directly here (bypasses the gate)
 craftwatch._craftLocked = {}; craftCmds = {};
 check('T15 equip returns slot count', craftwatch.equipCraftSet('Alchemy'), 3);
-check('T16 locks the slot',           hasCmd('/dl lock main on'), true);
+check('T16 disables the slot (LAC skip)', hasCmd('/lac disable main'), true);
 check('T16b lac equip emitted',       hasCmd('/lac equip Main "Chemists Kukri"'), true);
 craftwatch._craftLocked = {}; craftCmds = {};
 check('T17 fallback to Craft set',    craftwatch.equipCraftSet('Bonecraft'), 1);
 check('T18 fallback equip command',   hasCmd('/lac equip Neck "Artisans Torque"'), true);
--- MANUAL model (Henrik): you pick the craft, dlac equips it NOW. Detection
--- can't equip in time (0x096 is the first synth packet), so it's info only.
+-- Craft buttons ONLY set the active craft; the SWITCH activates equipping.
 craftwatch._craftLocked = {}; craftCmds = {};
+craftwatch.enabled = false;            -- switch OFF
 craftwatch.goal = 'hq';
 craftwatch.selectCraft('Alchemy');
-check('T19 selectCraft equips (locked)', hasCmd('/lac equip Main "Chemists Kukri"'), true);
-check('T19b selectCraft sets active',    craftwatch.getCraft(), 'Alchemy');
-check('T19c selectCraft turns switch on', craftwatch.isEnabled(), true);
+check('T19 select while OFF: no equip', #craftCmds, 0);
+check('T19b select sets active',        craftwatch.getCraft(), 'Alchemy');
+check('T19c select does NOT enable',    craftwatch.isEnabled(), false);
+craftwatch._craftLocked = {}; craftCmds = {};
+craftwatch.setEnabled(true);           -- the switch is the activator
+check('T19d switch ON equips active',   hasCmd('/lac equip Main "Chemists Kukri"'), true);
 craftwatch._craftLocked = {}; craftCmds = {};
 craftwatch.setGoal('nq');              -- re-equips the active craft under the new goal
 check('T20 setGoal re-equips active',  #craftCmds > 0, true);
@@ -679,11 +683,10 @@ check('T20b goal stored',              craftwatch.getGoal(), 'nq');
 craftCmds = {};
 craftwatch.onSynth(4096, { 1165, 1165 }, 20);   -- detection: NO equip
 check('T20c detection does not equip', #craftCmds, 0);
--- on/off switch: OFF releases locks; ON re-applies the active craft
-craftwatch.enabled = false;
+-- OFF releases: /lac enable + /dl lock off
 craftwatch._craftLocked = { main = true }; craftCmds = {};
-craftwatch.setEnabled(false);          -- OFF: release the locked slot
-check('T20d off releases locks',       hasCmd('/dl lock main off'), true);
+craftwatch.setEnabled(false);
+check('T20d off re-enables the slot',  hasCmd('/lac enable main'), true);
 craftwatch._craftLocked = {}; craftCmds = {};
 craftwatch.setEnabled(true);           -- ON: equips the active craft
 check('T20e enable equips active craft', #craftCmds > 0, true);
