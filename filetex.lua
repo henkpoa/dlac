@@ -19,9 +19,12 @@ if has then
     end);
 end
 
-local cache, tried = {}, {};
+local cache, tried, keep = {}, {}, {};
 
 -- name -> assets/<name>.png handle (loaded once). nil on any failure.
+-- CRITICAL: retain the texture OBJECT in `keep` -- storing only the numeric
+-- handle lets Lua GC the object, D3D frees the texture, and imgui then draws a
+-- dangling pointer -> hard crash. (This was the header-icon crash.)
 function M.handle(name)
     if not has or dev == nil then return nil; end
     if tried[name] then return cache[name]; end
@@ -31,6 +34,7 @@ function M.handle(name)
         local ptr = ffi.new('IDirect3DTexture8*[1]');
         if ffi.C.D3DXCreateTextureFromFileA(dev, path, ptr) == 0 then   -- S_OK
             local tex = d3d.gc_safe_release(ffi.cast('IDirect3DTexture8*', ptr[0]));
+            keep[name] = tex;                                   -- prevent GC of the texture
             cache[name] = tonumber(ffi.cast('uint32_t', tex));
         end
     end);
