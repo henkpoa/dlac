@@ -819,3 +819,33 @@ AutoAcc = `git checkout feature/autoacc` + `/addon reload dlac` -- no Reload
 LAC needed for the flip: both branches carry IDENTICAL engine/flatten code
 (utils.lua byte-equal, dispatch.lua differs only by a main-side comment, same
 VERSION 36); only addon-state files (accwatch/accdata/GUI) differ.
+
+## Session "stat classification round 2 -- the 19-mod wiring sweep" (07-14, on `main`)
+
+Audit finding: catalog.lua itself had ZERO unclassified stats (every key resolved
+through statdefs, 197 distinct) -- the real backlog was upstream, in mods the
+crawler never mapped. Cross-referencing `tools/api_cache/ignored_mods.txt` against
+statdefs + stats_decisions.txt exposed 19 mods whose keys were ALREADY approved
+but never wired into apicrawl/apiscan CORE: elemental MAB 32-39 (explicitly
+DECIDED in stats_decisions.txt, only the MACC half got wired), QUAD_ATTACK,
+STATUSRES, CURE_POTENCY_II, SUBTLE_BLOW_II, ATTP, DOUBLE_SHOT_RATE, SHARPSHOT,
+DAKEN, BP_DAMAGE, BARRAGE_COUNT, CRITICAL_HIT_EVASION, ENF_MAG_POTENCY,
+ENF_MAG_DURATION. All wired (CORE block in BOTH apicrawl.py and apiscan.py --
+keep-in-sync rule), catalog rebuilt with --build-only: 216 distinct keys now,
+still zero unclassified, 293 tests green. Also fixed two augment-table keys that
+drifted from their approved canon (augments.lua: EarthMagicAcc -> EarthMACC,
+EnhancingDuration -> EnhancingMagicDuration) -- augment deltas are runtime-only,
+so no migration needed.
+
+The remaining 409 unmapped mods are now EXHAUSTIVELY bucketed in
+`tools/api_cache/stats_tiers2.txt` (regenerate: scratchpad script, or by hand):
+300 proposed adoptions with key/label/section/flags (incl. two NEW sections,
+"Ability" and "Pet"), 50 recommend-skip (proc metadata, race locks, relic
+aftermath machinery, mythic-specific Augments mods), 13 investigate (CatsEyeXI
+2000-series customs + the value-73 gathering RESULT mods), 46 unmapped
+relic-range ids (same class as the augment-table undefined gaps). **The ADOPT
+rows are frozen pending Henrik's row-by-row naming sign-off** -- statdefs labels
+are user-facing (his hard rule). Watch-outs recorded in the sheet: SONG_RECAST_
+DELAY stores positive=reduction (the statdefs pencil note guessing lowerBetter
+is wrong); DMGPHYS_II/DMGMAGIC_II are basis-point scaled with positive-penalty
+outliers (Aettir +500); the fTP/WS-gorget family naming is sensitive.
