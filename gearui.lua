@@ -28,6 +28,7 @@
 local gear = require("dlac\\gear");
 local bit  = require('bit');
 local host = require("dlac\\uihost");   -- UI module registry: tabs/windows/services
+local sf   = require("dlac\\syncflags");-- auto-sync + persisted flags (sf.flags.debug/.autosync)
 
 -- Guarded require: the module table, or nil when the lib is missing (or not a
 -- table). A missing lib degrades gracefully (no window / no icons) instead of
@@ -1003,7 +1004,6 @@ setup.configure({
 });
 
 -- Reload LAC / Scan / Stage / Commit / Augs / Setup, right-aligned on the header row.
-local debugMode = false;   -- /dl debug on -- reveals the dev-only Scan/Stage/Commit/Augs buttons
 
 -- The "Teleports" header dropdown: useitem's enchanted-travel items, clickable.
 -- Fixed columns (destination / item / charges / state) so the rows line up;
@@ -1247,7 +1247,7 @@ local function renderHeaderButtons()
               refreshOwnedCounts();
               pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/addon reload luashitacast'); end);
           end };
-    if debugMode then
+    if sf.flags.debug then
         btns[#btns+1] = { l = 'Scan', w = 52,
             tip = 'Scan your equipment + bags (from the game\'s memory) and print what you own,\nflagging anything not yet in gear.lua. Read-only -- writes nothing. Also refreshes\nthe owned markers shown in these lists.',
             fn = function() callImport('scanAndReport'); refreshOwnedCounts(); end };
@@ -1261,7 +1261,7 @@ local function renderHeaderButtons()
             tip = 'Dump every augmented item you own (name, id, and decoded augment stats) to\naugdump.txt in your dlac folder -- handy for sharing or identifying unknown\naugment ids.',
             fn = function() dumpAugs(); end };
     end
-    if needSetup or debugMode then
+    if needSetup or sf.flags.debug then
         btns[#btns+1] = { l = 'Setup', w = 56, red = needSetup,
             tip = 'Set up this job for dlac. Clicking only shows a PLAN of what will happen,\nin plain words -- nothing is touched until you press Commit in the popup.',
             fn = function()
@@ -2950,7 +2950,7 @@ local function renderSetsTab(job, level)
         end
         if (ui.buildMax[1] == true) ~= (optim.buildAtMaxLevel == true) then
             optim.buildAtMaxLevel = (ui.buildMax[1] == true);
-            ui._flagsDirty = true;              -- persist via the render hook (saveUiFlags
+            ui._flagsDirty = true;              -- persist via the render hook (sf.saveUiFlags
                                                 -- is defined below this function)
         end
     end
@@ -3589,130 +3589,41 @@ end
 -- lock sequence completes), then draw while visible. Wrapped so a transient imgui
 -- error can never take down the d3d_present hook.
 -- ---------------------------------------------------------------------------
--- Keep gear.lua current automatically. A job change reloads the LAC profile ("loading a
--- lua"), so we re-scan shortly after; also fires on login (nil -> job). Add-only + a silent
--- no-op when nothing is new, so it is cheap and never spams. Toggle with /dl autosync off.
-local autoSyncEnabled = true;
-local _syncedJob, _syncDueFrame = nil, nil;
-local _invSyncAt = nil;   -- debounced: ~5s after the LAST inventory-changing packet
-
--- Regenerate the automations manifest (autogear.lua) from bags -- the same cadence as
--- the gear.lua auto-sync, so staves/obis/Iridescence detection never needs a manual
--- Rescan. Builds the name indexes first: the UI may never have been opened.
-local function autoRescanManifest()
-    pcall(function()
+-- Gear auto-sync + UI-flag persistence: own module (dlac\syncflags.lua) -- the
+-- flag state lives there (sf.flags.debug / sf.flags.autosync); the Ashita event
+-- hooks stay HERE and call into it. Hook order is load-bearing: sf.loadUiFlags
+-- runs before sf.tick in the d3d_present handler below, so the real <char>
+-- gear.lua is swapped in before the first sync can run.
+sf.configure({
+    charBase = charBase, writeFileText = writeFileText,
+    callImport = callImport, refreshGear = refreshGear,
+    ui = ui,
+    -- Regenerate the automations manifest (autogear.lua) at the sync cadence, so
+    -- staves/obis/Iridescence detection never needs a manual Rescan. Builds the
+    -- name indexes first: the UI may never have been opened.
+    rescanAutogear = function()
         if trigui == nil or type(trigui.rescanAutogear) ~= 'function' then return; end
         buildOwned();
         buildAllEquip();
         trigui.rescanAutogear();
-    end);
-end
-
-local function doSync()
-    local added = callImport('sync');
-    added = (type(added) == 'number') and added or 0;
-    if added > 0 then refreshGear(); end
-    autoRescanManifest();   -- new gear may change the best staff/obi picks
-    return added;
-end
-local function autoSyncOnJobChange()
-    if not autoSyncEnabled then return; end
-    local j = nil;
-    pcall(function() j = AshitaCore:GetMemoryManager():GetPlayer():GetMainJob(); end);
-    if j ~= nil and j ~= 0 and j ~= _syncedJob then
-        _syncedJob    = j;
-        _syncDueFrame = cmdq.frame() + 120;   -- ~2s after the change, so inventory has loaded
-    end
-    if _syncDueFrame ~= nil and cmdq.frame() >= _syncDueFrame then
-        _syncDueFrame = nil;
-        local added = doSync();
-        if added > 0 and debugMode then   -- routine indexing runs silent; /dl debug on shows it
-            pcall(function() print(string.format('[dlac] gear library: +%d new item(s).', added)); end);
-        end
-    end
-    -- Zero-step indexing: a new item schedules the same quiet sync itself (see
-    -- the packet hook below) -- no command, no job change needed.
-    if _invSyncAt ~= nil and os.clock() >= _invSyncAt then
-        _invSyncAt = nil;
-        local added = doSync();
-        if added > 0 and debugMode then   -- same rule: dev-only chatter
-            pcall(function() print(string.format('[dlac] gear library: +%d new item(s).', added)); end);
-        end
-    end
-end
+    end,
+});
 
 -- Any inventory-changing packet (loot, buy, trade, move -- 0x020 item update /
--- 0x01D inventory finish) schedules the sync ~5s after the LAST one. The debounce
--- rides out zone-in floods (~900 item packets) and combat swap chatter: while
--- packets keep arriving the deadline keeps sliding, so the scan runs once, in the
--- first quiet moment. Add-only and silent when nothing is new; /dl autosync off
--- disables this path along with the job-change one.
+-- 0x01D inventory finish) schedules the debounced sync (see syncflags.lua).
 ashita.events.register('packet_in', 'dlac-gearui-invdirty', function(e)
-    if (e.id == 0x020 or e.id == 0x01D) and autoSyncEnabled then
-        _invSyncAt = os.clock() + 5;
+    if e.id == 0x020 or e.id == 0x01D then
+        sf.invDirty();
     end
 end);
-
--- UI-flag persistence: debug + auto-sync + "Build as lv.75" survive reloads via
--- <char>\dlac\uiflags.lua (a `return {...}` module, like gearweights.lua). Defaults
--- stay debug=false / autosync=true / buildmax=false; a /dl command or checkbox
--- updates the flag AND re-saves, and wins over the on-disk value -- once a
--- command has run (or the file has loaded), loadUiFlags no longer clobbers it.
-local _flagsLoaded = false;
-local function uiFlagsPath()
-    local base = charBase();
-    return base and (base .. 'dlac\\uiflags.lua') or nil;
-end
-local function saveUiFlags()
-    local p = uiFlagsPath(); if p == nil then return; end   -- pre-login: can't persist yet
-    _flagsLoaded = true;                                    -- command is now authoritative
-    pcall(function()
-        local bm = has.optim and (optim.buildAtMaxLevel == true) or false;
-        local tpx, tpy = 0, 0;
-        if type(ui._tpPos) == 'table' then
-            tpx, tpy = tonumber(ui._tpPos[1]) or 0, tonumber(ui._tpPos[2]) or 0;
-        end
-        writeFileText(p, string.format('return { debug = %s, autosync = %s, buildmax = %s, tpfloat = %s, tpx = %d, tpy = %d }\n',
-            tostring(debugMode), tostring(autoSyncEnabled), tostring(bm),
-            tostring(ui._tpFloat == true), tpx, tpy));
-    end);
-end
-local function loadUiFlags()
-    if _flagsLoaded then return; end
-    local p = uiFlagsPath(); if p == nil then return; end   -- pre-login: retry next frame
-    _flagsLoaded = true;
-    -- First frame the character is known -- also the moment to swap the REAL gear.lua in.
-    -- The addon usually loads at Ashita boot, BEFORE login, so dlac.lua's load-time preload
-    -- found no character and every require("dlac\\gear") resolved to the bundled EMPTY
-    -- template. Left alone, the first auto-sync would compare the wardrobe against that
-    -- template, call everything "new", and commit hundreds of duplicate entries into
-    -- gear.lua. refreshGear() re-reads <char>\dlac\gear.lua into the shared table (in
-    -- place, so every capture sees it) BEFORE any sync can run -- this pcall(loadUiFlags)
-    -- precedes pcall(autoSyncOnJobChange) in the d3d_present handler below.
-    refreshGear();
-    pcall(function()
-        local chunk = loadfile(p);
-        if chunk == nil then return; end                    -- no file yet -> keep defaults
-        local ok, t = pcall(chunk);
-        if ok and type(t) == 'table' then
-            if type(t.debug)    == 'boolean' then debugMode       = t.debug;    end
-            if type(t.autosync) == 'boolean' then autoSyncEnabled = t.autosync; end
-            if type(t.buildmax) == 'boolean' and has.optim then optim.buildAtMaxLevel = t.buildmax; end
-            if type(t.tpfloat)  == 'boolean' then ui._tpFloat     = t.tpfloat;  end
-            if type(t.tpx) == 'number' and type(t.tpy) == 'number' and (t.tpx ~= 0 or t.tpy ~= 0) then
-                ui._tpPos = { t.tpx, t.tpy };
-            end
-        end
-    end);
-end
 
 ashita.events.register('d3d_present', 'dlac-gearui-render', function()
     cmdq.tick();   -- advance the frame clock, flush due commands
     if (cmdq.frame() % 240) == 0 then owned.resetCache(); end   -- availability heartbeat (~4s):
                                                                 -- container moves recolour live
-    pcall(loadUiFlags);
-    if ui._flagsDirty then ui._flagsDirty = nil; pcall(saveUiFlags); end
-    pcall(autoSyncOnJobChange);
+    pcall(sf.loadUiFlags);
+    if ui._flagsDirty then ui._flagsDirty = nil; pcall(sf.saveUiFlags); end
+    pcall(sf.tick);
     if macrob ~= nil then pcall(macrob.pump); end   -- per-job macro book/set (login + job change)
     pcall(function() require('dlac\\lockstyle').pump(); end);   -- OnLoad lockstyle (login + job change)
     if ui.showMetrics == true and has.imgui then       -- /dl metrics: overlay hunter
@@ -3848,24 +3759,24 @@ ashita.events.register('command', 'dlac-ui', function(e)
     end
 
     if sub == 'sync' then          -- manual one-shot: scan + import new gear now
-        local n = doSync();
+        local n = sf.doSync();
         print(string.format('[dlac] sync: %s', (n > 0) and ('added ' .. n .. ' new item(s) to gear.lua.') or 'nothing new.'));
         return;
     end
     if sub == 'autosync' then       -- toggle the on-job-change auto-sync
-        if     args[2] == 'off' then autoSyncEnabled = false;
-        elseif args[2] == 'on'  then autoSyncEnabled = true; end
-        saveUiFlags();              -- persist; command wins over the on-disk value
-        print('[dlac] auto-sync ' .. (autoSyncEnabled and 'ON' or 'OFF')
+        if     args[2] == 'off' then sf.flags.autosync = false;
+        elseif args[2] == 'on'  then sf.flags.autosync = true; end
+        sf.saveUiFlags();              -- persist; command wins over the on-disk value
+        print('[dlac] auto-sync ' .. (sf.flags.autosync and 'ON' or 'OFF')
             .. ' -- indexes new gear on pickup, login and job change.  (/dl autosync on|off)');
         return;
     end
     if sub == 'debug' then          -- reveal/hide the dev-only Scan/Stage/Commit/Augs buttons
-        if     args[2] == 'off' then debugMode = false;
-        elseif args[2] == 'on'  then debugMode = true;
-        else                          debugMode = not debugMode; end
-        saveUiFlags();              -- persist; command wins over the on-disk value
-        print('[dlac] debug ' .. (debugMode and 'ON -- Scan/Stage/Commit/Augs buttons shown.'
+        if     args[2] == 'off' then sf.flags.debug = false;
+        elseif args[2] == 'on'  then sf.flags.debug = true;
+        else                          sf.flags.debug = not sf.flags.debug; end
+        sf.saveUiFlags();              -- persist; command wins over the on-disk value
+        print('[dlac] debug ' .. (sf.flags.debug and 'ON -- Scan/Stage/Commit/Augs buttons shown.'
             or 'OFF -- header tidied; auto-sync keeps gear.lua current.  (/dl debug on)'));
         return;
     end
