@@ -367,17 +367,20 @@ def mob_eva(db, level, pool_id, zone_id):
 
 
 def correction(db, zone_id, player_lvl, mob_lvl):
-    """Returns (acc offset, note). Henrik live ruling v2 (2026-07-14): -4 ACC
-    per level the mob is above you, in EVERY zone -- 75-era server, no Adoulin
-    zones; the repo's zone list and its '+4 bonus' sign are presumed wrong for
-    live (the private settings/main.lua likely disables the Adoulin gate).
-    Ground truth instrument: dlacprobe /probe tally."""
+    """Returns (acc offset, note). Henrik live ruling v3 (2026-07-14,
+    supersedes v2's penalty-only reading): SIGNED, 4 ACC per level of
+    difference, in EVERY zone -- -4/level with the mob above you, +4/level
+    with the mob below you. 75-era server, no Adoulin zones; the repo's zone
+    list and sign are presumed wrong for live. Ground truth instrument:
+    dlacprobe /probe tally."""
     if player_lvl is None:
         return 0, "give --player-level for level correction"
-    if player_lvl >= mob_lvl:
-        return 0, "no correction (not below mob level)"
-    d = mob_lvl - player_lvl
-    return -4 * d, "-%d ACC level penalty (you are %d below; applies everywhere per live ruling)" % (4 * d, d)
+    if player_lvl == mob_lvl:
+        return 0, "no correction (same level)"
+    d = player_lvl - mob_lvl
+    if d > 0:
+        return 4 * d, "+%d ACC level bonus (you are %d above; signed everywhere per live ruling v3)" % (4 * d, d)
+    return 4 * d, "%d ACC level penalty (you are %d below; signed everywhere per live ruling v3)" % (4 * d, -d)
 
 
 def acc_report(db, g, level, player_lvl, acc):

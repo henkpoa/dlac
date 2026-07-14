@@ -125,9 +125,10 @@ handshake).
   server's c2s header, not XiPackets**) and swallowing the replies. Read
   history.md "ACC calculator -> acc watch" before touching `accwatch.lua`,
   `accdata.lua` (generated: `python tools\acc_calc.py --luadata accdata.lua`), or
-  `tools/acc_calc.py`. Standing rulings: **level correction = −4 ACC/lvl fighting
-  up, EVERYWHERE (ruling v2, supersedes the "+4 bonus is canon" v1)**; model EVA
-  is a floor, the /check-bracket learner corrects it live. Research kit lives in
+  `tools/acc_calc.py`. Standing rulings: **level correction = SIGNED 4 ACC/lvl,
+  EVERYWHERE — −4 per level the mob is above you AND +4 per level it is below
+  (ruling v3, supersedes v2's penalty-only, which superseded v1's "+4 bonus")**;
+  model EVA is a floor, the /check-bracket learner corrects it live. Research kit lives in
   **dlacprobe v1.5** (not in git): `/probe scan [go N|dump]`, `/probe tally`.
   Cross-session memory: `memory/mob-eva-pipeline.md` mirrors all of this.
   - **Custom mobs (07-14):** dynamic spawns (idx 0x800+, e.g. the Wajaom

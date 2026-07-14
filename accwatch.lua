@@ -51,12 +51,15 @@ Caps (physical_hit_rate.lua): 99% for 1H mainhand / H2H -> ACC = EVA + 48;
 95% for 2H -> ACC = EVA + 40. The mainhand is sniffed from the equipped
 weapon's skill type so the right cap is chosen automatically.
 
-Level correction (Henrik ruling v2, 2026-07-14, from live play): fighting a
-mob ABOVE your level costs 4 ACC (= 2% hit) per level, EVERYWHERE -- this is
-a 75-era server with no Adoulin zones, so BOTH the zone list and the "+4
-bonus" sign in the published repo code are treated as wrong for live. The
-printed need folds the penalty in. Ground truth if this needs re-litigating:
-dlacprobe /probe tally (battle-log hit-rate counter).
+Level correction (Henrik ruling v3, 2026-07-14, live -- supersedes v2's
+penalty-only reading): SIGNED and EVERYWHERE, 4 ACC (= 2% hit) per level of
+difference -- a mob ABOVE your level costs 4 ACC per level, a mob BELOW
+grants 4 ACC per level ("just as I get -4 when I am underleveled"). 75-era
+server with no Adoulin zones; the published repo's zone list and sign are
+treated as wrong for live. The printed need folds the correction in (need
+can go far negative on grey mobs -- that is the point: AutoAcc releases
+everything). Ground truth if this needs re-litigating: dlacprobe
+/probe tally (battle-log hit-rate counter).
 
 AUTOACC FEED (2026-07-14): every report also writes <char>\dlac\accstate.lua
     return { seq = N, valid = bool, capGap = need - yourACC, at = os.time(), mob = '...' }
@@ -386,12 +389,14 @@ local function report(actIndex, why, full)
     local add = is2h and 40 or 48;                                -- to 95% / 99%
     local needLo, needHi = evLo + add, evHi + add;
     local corr = '';
-    local pl = 0;                                                 -- ruling v2: penalty, everywhere
+    local pl = 0;                                                 -- ruling v3: signed, everywhere
     pcall(function() pl = AshitaCore:GetMemoryManager():GetPlayer():GetMainJobLevel() or 0; end);
-    if pl > 0 and pl < hi then
-        needLo = needLo + math.max(0, lo - pl) * 4;               -- -4 ACC per level the mob is
-        needHi = needHi + math.max(0, hi - pl) * 4;               -- above you (see header)
-        corr = (' [-4/lvl, you Lv%d]'):format(pl);
+    if pl > 0 then
+        needLo = needLo + (lo - pl) * 4;                          -- +4 ACC needed per level the mob
+        needHi = needHi + (hi - pl) * 4;                          -- is above you, -4 per level below
+        if pl ~= hi then
+            corr = (' [lvl corr %+d ACC, you Lv%d]'):format((pl - hi) * 4, pl);
+        end
     end
     local cap = is2h and 95 or 99;
     -- AutoAcc feed: publish the printed AccCap number (worst-case end, level
@@ -407,7 +412,7 @@ local function report(actIndex, why, full)
         local acc = M.myAcc;
         local eHi = math.max(evLo, evHi);
         local lvlTerm = 0;
-        if pl > 0 and pl < hi then lvlTerm = (pl - hi) * 4; end
+        if pl > 0 then lvlTerm = (pl - hi) * 4; end               -- ruling v3: signed both ways
         local pct = math.max(20, math.min(cap, 75 + (acc + lvlTerm - eHi) / 2));
         say(('%s Lv%s%s - MobEVA %s - CurrentAcc: %d - AccCmp: %d - AccCmpLvl: %d - AccPct: %.0f%% - AccCap: %d'):format(
             name, band(lo, hi), exact, band(evLo, evHi), acc,

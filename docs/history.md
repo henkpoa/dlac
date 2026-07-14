@@ -763,3 +763,26 @@ print the labeled line with Lv* from the auto-check; if customs answer
 "impossible to gauge" instead, open widescan once and re-engage (whether
 dynamic entities appear on CatsEyeXI widescan is UNVERIFIED -- /dl acc debug
 traces the reply shape if neither works).
+
+## Session "level correction ruling v3 + the Reload-LAC lesson" (07-14, on `main`)
+
+Field report (Henrik, Toucan camp): the family-curve fallback WORKED
+(`Toucan Lv26* - MobEVA 90`) but (a) AutoAcc left the Peacock Charm on and
+(b) the numbers read low -- "I get +4 acc every level I am above a mob,
+just as I get -4 when I am underleveled."
+
+(a) was NOT a code bug: the /dl why line `-> set Tp_Default (prio 20)`
+carried NO `[AutoAcc=...]` note, and the v36 engine always notes a marker
+(worn or released) -- so the flattened set had no marker, i.e. LAC was
+still running the pre-AutoAcc utils.lua. The flatten lives in utils, which
+does NOT self-swap (the engine self-swap + red banner watch dispatch.lua
+ONLY -- hard rule 4's known blind spot). Fix: Commit, then Reload LAC.
+LESSON for diagnosis: "acc line works but sets don't react" = addon state
+vs LAC state -- accwatch/GUI live in the addon, flatten/engine in LAC.
+
+(b) is **ruling v3 (supersedes v2's penalty-only):** level correction is
+SIGNED 4 ACC per level, everywhere -- -4/lvl with the mob above you, +4/lvl
+with it below. accwatch folds it into need/AccCmpLvl/AccCap (Lv46 vs Lv26:
+AccCap -103 -> -183), acc_calc.py correction() mirrors it. Need can go far
+negative on greys -- intended: AutoAcc then releases everything. Tally
+verification of the exact +-4 slope remains the open ground-truth check.
