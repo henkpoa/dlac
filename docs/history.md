@@ -919,3 +919,13 @@ traced as `Main=... HELD` in /dl why, and stateless: overlay gone -> Main
 dispatches again, nothing to re-enable. utils exports resolveGearName for
 the record lookups (old LAC states degrade gracefully: guard just stays
 off until Reload LAC). Tests AF1-12.
+
+## Session "multi-add popup" (07-14)
+
+The Sets tab's + Add popup no longer closes on a pick (Henrik: "you may
+want to add more stuff"): both the item rows and the dlac:* virtual rows
+just add, the added entry drops out of the pick list next frame (inList)
+as the click feedback, and a dim header hint says the popup stays open
+(Esc / click outside closes). Works because every selectable there lives
+inside a child window, so ImGui's Selectable-closes-popup default never
+applied -- the explicit CloseCurrentPopup calls were the only closers.

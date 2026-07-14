@@ -3255,6 +3255,8 @@ local function renderAddPopup(job, level)
     else
         imgui.TextColored(COL_HEADER, 'Add usable item to ' .. ui.setSelected .. ':');
         imgui.SameLine(0, 10); renderSortCombo('add');
+        imgui.SameLine(0, 10);
+        imgui.TextColored(COL_DIM, 'stays open -- add several; Esc / click outside closes');
         -- Filter row: name search + hide gear parked in unavailable containers.
         ui.addSearch = ui.addSearch or { '' };
         ui.addAvail  = ui.addAvail  or { false };
@@ -3319,10 +3321,12 @@ local function renderAddPopup(job, level)
                     imgui.TextColored(COL_SCORE, '*');
                     imgui.SameLine(0, 6);
                     if imgui.Selectable(vd.name .. '   (auto -- resolved at equip time)##vadd' .. vi, false) then
+                        -- No CloseCurrentPopup (Henrik): the popup stays open so several
+                        -- pieces can be added in a row; the added entry drops out of the
+                        -- pick list next frame (inList), which is the click feedback.
                         list[#list + 1] = { rec = { Name = vd.name, Level = 0, Virtual = true } };
                         M.working[ui.setSelected] = list;
                         _setDirty = true;
-                        imgui.CloseCurrentPopup();
                     end
                     if imgui.IsItemHovered() then imgui.SetTooltip(vd.tip); end
                 end
@@ -3332,10 +3336,11 @@ local function renderAddPopup(job, level)
         for i, rec in ipairs(shown) do
             any = true;
             if renderAddRow(rec, i, useLevel, nW) then
+                -- No CloseCurrentPopup (Henrik): stay open for multi-add; the row
+                -- vanishes from the list next frame (now inList) as feedback.
                 list[#list + 1] = { rec = rec };
                 M.working[ui.setSelected] = list;
                 _setDirty = true;   -- added an item to the slot -> unsaved changes
-                imgui.CloseCurrentPopup();
             end
         end
         if not any then
