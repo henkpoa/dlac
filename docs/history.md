@@ -991,3 +991,12 @@ slot, 30 numbered boxes, applied through LAC's own packet builder. Pieces:
 - Header button (Henrik's golden-armor icon, assets/lockstyle.png) sits
   LEFT of the Macro book, filetex/ImageButton 16x16 like its neighbors; the
   window renders from the present hook independent of the main box.
+
+Field round 1 (same night): the confirm popup's side-by-side buttons
+clipped at the themed font -> stacked vertically at 260w; Save matches the
+name box height (h=0 = frame height); the static-import combo widened
+186 -> 216. Plus **Preview** (his ask): '/lac disable' + '/lac naked' +
+native /equip of the WORKING copy's wearable pieces (level/job-gated ones
+are skipped, never blocked from being picked); End preview = '/lac enable'
+and the engine redresses next dispatch. The pump ends a live preview if
+the window closes -- nobody stays stripped with LAC disabled.

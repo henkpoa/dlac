@@ -224,6 +224,55 @@ local function recOf(name)
 end
 
 -- ---------------------------------------------------------------------------
+-- Preview (Henrik): undress and wear ONLY the working lockstyle so you can see
+-- the look. All addon-side: '/lac disable' stops every engine redress (the
+-- dispatch tick drives HandleDefault per frame), '/lac naked' strips, native
+-- /equip dresses the pieces. Pieces the player can't WEAR right now (level/
+-- job) are skipped -- picking them for the lockstyle stays allowed; the show
+-- just isn't forced. End: '/lac enable', the next dispatch redresses.
+-- ---------------------------------------------------------------------------
+local _preview = false;
+local SLOT_EQ = { Main = 'main', Sub = 'sub', Range = 'range', Ammo = 'ammo', Head = 'head',
+                  Body = 'body', Hands = 'hands', Legs = 'legs', Feet = 'feet' };
+
+local function queueCmd(c)
+    pcall(function() AshitaCore:GetChatManager():QueueCommand(1, c); end);
+end
+
+local function playerLevel()
+    local lv = 0;
+    pcall(function() lv = AshitaCore:GetMemoryManager():GetPlayer():GetMainJobLevel() or 0; end);
+    return lv;
+end
+
+local function startPreview()
+    _preview = true;
+    queueCmd('/lac disable');
+    queueCmd('/lac naked');
+    local lv, job, skipped = playerLevel(), jobAbbr(), 0;
+    for slot, name in pairs(cur.set) do
+        if name ~= 'remove' and SLOT_EQ[slot] ~= nil then
+            local rec = recOf(name);
+            local need = (rec ~= nil) and (tonumber(rec.Level) or 0) or 0;
+            if rec ~= nil and (lv <= 0 or need <= lv) and jobOK(rec, job) then
+                queueCmd(string.format('/equip %s "%s"', SLOT_EQ[slot], name));
+            else
+                skipped = skipped + 1;
+            end
+        end
+    end
+    _status = 'previewing the working lockstyle'
+        .. ((skipped > 0) and string.format(' -- %d piece(s) skipped (level/job)', skipped) or '')
+        .. '. End preview to redress.';
+end
+
+local function endPreview()
+    _preview = false;
+    queueCmd('/lac enable');
+    _status = 'preview ended -- normal gear redresses on the next action.';
+end
+
+-- ---------------------------------------------------------------------------
 -- window
 -- ---------------------------------------------------------------------------
 local ui = { selSlot = nil, pick = { '' }, pendingBox = nil, openPick = false, openConfirm = false, openArr = { true } };
@@ -299,14 +348,14 @@ local function renderConfirm()
     if not imgui.BeginPopup('##dlac_lsconfirm') then return; end
     imgui.TextColored(COL_WARN, string.format('Box %d has UNSAVED changes.', data.active));
     imgui.TextColored(COL_DIM, 'Switching discards them and loads the other box.');
-    if imgui.Button('Discard changes & switch##lsdisc', { 190, 22 }) then
+    -- Stacked + wide (Henrik: the side-by-side pair clipped both labels).
+    if imgui.Button('Discard changes & switch##lsdisc', { 260, 22 }) then
         local n = ui.pendingBox;
         ui.pendingBox = nil;
         if n ~= nil then switchTo(n); end
         imgui.CloseCurrentPopup();
     end
-    imgui.SameLine(0, 8);
-    if imgui.Button('Keep editing##lskeep', { 100, 22 }) then
+    if imgui.Button('Keep editing##lskeep', { 260, 22 }) then
         ui.pendingBox = nil;
         imgui.CloseCurrentPopup();
     end
@@ -364,7 +413,7 @@ function M.render()
         imgui.PopItemWidth();
         if imgui.IsItemHovered() then imgui.SetTooltip('Name for this lockstyle -- saved with the box.'); end
         imgui.SameLine(0, 4);
-        if imgui.Button('Save##lssave', { 74, 20 }) then
+        if imgui.Button('Save##lssave', { 74, 0 }) then   -- height 0 = frame height, matches the input box
             local copy = {};
             for k, v in pairs(cur.set) do copy[k] = v; end
             data.slots[data.active] = { name = tostring(nameBuf[1] or ''), set = copy };
@@ -375,7 +424,7 @@ function M.render()
         if imgui.IsItemHovered() then imgui.SetTooltip('Save the working lockstyle into the MARKED (gold) box.'); end
         -- Import from static: many players keep old lockstyle sets as statics.
         local statics = (_pok and type(profsets.staticSetNames) == 'function') and profsets.staticSetNames() or {};
-        imgui.PushItemWidth(186);
+        imgui.PushItemWidth(216);   -- wide enough for the label at the themed font (field-clipped at 186)
         if imgui.BeginCombo('##lsimp', 'Import from static...') then
             if #statics == 0 then imgui.TextColored(COL_DIM, '(no static sets found)'); end
             for _, nm in ipairs(statics) do
@@ -417,11 +466,17 @@ function M.render()
                 (cur_ol ~= nil and cur_ol ~= data.active) and string.format('\nCurrently bound to box %d.', cur_ol) or ''));
         end
         imgui.SameLine(0, 10);
-        if imgui.Button('Apply##lsgo', { 60, 20 }) then
-            pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl ls apply'); end);
+        if imgui.Button('Apply##lsgo', { 60, 0 }) then
+            queueCmd('/dl ls apply');
         end
         if imgui.IsItemHovered() then
             imgui.SetTooltip('Lockstyle the MARKED box now (engine-side: /dl ls apply --\nneeds LuaAshitacast loaded). Unsaved edits are NOT applied: Save first.');
+        end
+        if imgui.Button((_preview and 'End preview' or 'Preview') .. '##lsprev', { 216, 0 }) then
+            if _preview then endPreview(); else startPreview(); end
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Undress and wear ONLY this lockstyle (the WORKING copy, unsaved\nedits included) so you can see the look. Pieces you can\'t wear yet\n(level/job) are skipped -- picking them is still fine. Click again to\nend: your normal gear redresses. Don\'t preview in combat.');
         end
         imgui.EndGroup();
 
@@ -468,6 +523,9 @@ end
 -- ---------------------------------------------------------------------------
 local appliedJob, pendingJob, dueAt = nil, nil, nil;
 function M.pump()
+    -- Never leave the player stripped + LAC-disabled: closing the window (or
+    -- the main box it renders under) while previewing ends the preview.
+    if _preview and not M.visible then endPreview(); end
     local job = jobAbbr();
     if job == nil then return; end
     load_();
