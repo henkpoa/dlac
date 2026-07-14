@@ -23,7 +23,7 @@
 local M = {};
 
 -- Section display order for the grouped stat / weight panels.
-M.SECTIONS = { 'Attributes', 'HP/MP', 'Offense', 'Magic', 'Defense', 'Skill', 'Misc' };
+M.SECTIONS = { 'Attributes', 'HP/MP', 'Offense', 'Magic', 'Defense', 'Skill', 'Ability', 'Pet', 'Misc' };
 
 -- ====================================================================================
 -- THE REGISTRY.  Edit here to add / adjust a stat.  Order within a section = display order.
@@ -50,6 +50,7 @@ M.list = {
     { key = 'HHP', label = 'Rest HP', section = 'HP/MP' },   -- HP recovered while healing
     { key = 'ConvertHPtoMP', label = 'HP->MP', section = 'HP/MP' },
     { key = 'ConvertMPtoHP', label = 'MP->HP', section = 'HP/MP' },
+    { key = 'SublimationBonus', label = 'Sublimation+', section = 'HP/MP' },   -- SCH; MP/tick added to Sublimation
 
     -- ---- Offense ----
     { key = 'Accuracy',        label = 'Acc',         section = 'Offense' },
@@ -86,6 +87,40 @@ M.list = {
     { key = 'Sharpshot',      label = 'Sharpshot',    section = 'Offense' },   -- RNG
     { key = 'Daken',          label = 'Daken',        section = 'Offense', percent = true },   -- NIN
     { key = 'Barrage',        label = 'Barrage',      section = 'Offense' },   -- RNG, +shots
+    -- 2026-07-14 adoption round.
+    { key = 'TripleAttackDamage', label = 'Triple Atk Dmg', section = 'Offense', percent = true },
+    { key = 'DoubleAttackDamage', label = 'Dbl.Atk Dmg', section = 'Offense', percent = true },
+    { key = 'CounterDamage', label = 'Counter Dmg', section = 'Offense', percent = true },
+    { key = 'EnspellDamage', label = 'Enspell Dmg', section = 'Offense' },   -- flat added enspell damage
+    { key = 'FencerTPBonus', label = 'Fencer TP', section = 'Offense' },   -- flat literal TP, like TPBonus
+    { key = 'FencerCritRate', label = 'Fencer Crit', section = 'Offense', percent = true },
+    { key = 'ConserveTP', label = 'Conserve TP', section = 'Offense', percent = true },
+    { key = 'WSNoTPDeplete', label = 'Occ. WS keeps TP', section = 'Offense', percent = true },
+    { key = 'TacticalParry', label = 'Parry TP', section = 'Offense' },   -- flat TP gained on parry
+    { key = 'TacticalGuard', label = 'Guard TP', section = 'Offense' },
+    { key = 'ShieldMasteryTP', label = 'Block TP', section = 'Offense' },
+    { key = 'BreathDamage', label = 'Breath Dmg', section = 'Offense', percent = true },   -- breath dmg DEALT (taken side is BDT)
+    { key = 'ExtraKickAttack', label = 'Extra Kick Chance', section = 'Offense', percent = true },
+    { key = 'DamageCapBonus', label = 'Dmg Cap+', section = 'Offense', percent = true },   -- pDIF cap+
+    { key = 'DelayPct', label = 'Delay %', section = 'Offense', percent = true, lowerBetter = true },   -- stored negative
+    { key = 'RangedDelayPct', label = 'R.Delay %', section = 'Offense', percent = true, lowerBetter = true },
+    { key = 'CritRateWeapon', label = 'Crit (this wpn)', section = 'Offense', percent = true },   -- applies to this weapon's swings only
+    -- Elemental gorget/belt fTP family (Fotia = all WS).
+    { key = 'AnyWSBonus', label = 'All WS fTP+', section = 'Offense', percent = true },
+    { key = 'DayWSBonus', label = 'Day WS fTP+', section = 'Offense', percent = true },   -- WS element matches day
+    { key = 'FireWSBonus', label = 'Fire WS+', section = 'Offense', percent = true },
+    { key = 'IceWSBonus', label = 'Ice WS+', section = 'Offense', percent = true },
+    { key = 'WindWSBonus', label = 'Wind WS+', section = 'Offense', percent = true },
+    { key = 'EarthWSBonus', label = 'Earth WS+', section = 'Offense', percent = true },
+    { key = 'ThunderWSBonus', label = 'Thunder WS+', section = 'Offense', percent = true },
+    { key = 'WaterWSBonus', label = 'Water WS+', section = 'Offense', percent = true },
+    { key = 'LightWSBonus', label = 'Light WS+', section = 'Offense', percent = true },
+    { key = 'DarkWSBonus', label = 'Dark WS+', section = 'Offense', percent = true },
+    { key = 'WSStrBonus', label = 'WS STR+%', section = 'Offense', percent = true },   -- adds stat% to that weapon's WS calc
+    { key = 'WSDexBonus', label = 'WS DEX+%', section = 'Offense', percent = true },
+    { key = 'WSAgiBonus', label = 'WS AGI+%', section = 'Offense', percent = true },
+    { key = 'WSIntBonus', label = 'WS INT+%', section = 'Offense', percent = true },
+    { key = 'WSChrBonus', label = 'WS CHR+%', section = 'Offense', percent = true },
 
     -- ---- Magic ----
     { key = 'MACC', label = 'M.Acc', section = 'Magic', aliases = { 'MagicAccuracy' } },
@@ -138,6 +173,47 @@ M.list = {
     { key = 'EnhancingMagicDuration', label = 'Enh.Dur.',     section = 'Magic' },
     { key = 'EnfeeblingMagicDuration', label = 'Enf.Dur.',    section = 'Magic' },
     { key = 'SongDurationBonus',      label = 'Song Dur.',    section = 'Magic' },   -- BRD
+    -- 2026-07-14 adoption round.
+    { key = 'OccultAcumen', label = 'Occ. Acumen', section = 'Magic' },   -- TP gained from elemental/dark magic
+    { key = 'ElementalMagicRecast', label = 'Elem. Recast', section = 'Magic', lowerBetter = true },   -- stored negative
+    { key = 'BlueMagicRecast', label = 'Blue Recast', section = 'Magic', lowerBetter = true },
+    { key = 'UncappedFastCast', label = 'Fast Cast (uncap)', section = 'Magic', percent = true },   -- fast cast that bypasses the FC cap
+    { key = 'QuickMagic', label = 'Quick Magic Chance', section = 'Magic', percent = true },   -- proc: instant cast
+    { key = 'ElementalCelerity', label = 'Elem. Cast Time-', section = 'Magic', percent = true },
+    { key = 'BlackMagicCast', label = 'Black Cast Time-', section = 'Magic', percent = true, lowerBetter = true },   -- stored negative
+    { key = 'WhiteMagicCast', label = 'White Cast Time-', section = 'Magic', percent = true, lowerBetter = true },
+    { key = 'DarkMagicCast', label = 'Dark Cast Time-', section = 'Magic', percent = true, lowerBetter = true },
+    { key = 'SummoningMagicCast', label = 'Summon Cast Time-', section = 'Magic' },   -- VERIFY: stores +1, likely seconds reduced (positive-good)
+    { key = 'SpiritCastReduction', label = 'Spirit Cast Time-', section = 'Magic', lowerBetter = true },   -- SMN spirit avatars
+    { key = 'GrimoireCastTime', label = 'Grimoire Cast Time-', section = 'Magic', percent = true, lowerBetter = true },   -- SCH; stored negative
+    { key = 'WhiteMagicCost', label = 'White MP Cost-', section = 'Magic', lowerBetter = true },   -- VERIFY: one item stores 300, scale unclear (/100?)
+    { key = 'NoSpellMPDepletion', label = 'Occ. 0 MP', section = 'Magic', percent = true },   -- proc: spell costs no MP
+    { key = 'CureToMP', label = 'Cure->MP', section = 'Magic', percent = true },   -- % of cure amount returned as MP
+    { key = 'CursnaBonus', label = 'Cursna+', section = 'Magic' },   -- Cursna success on others
+    { key = 'CursnaReceived', label = 'Cursna Rcvd', section = 'Magic' },
+    { key = 'DivineBenison', label = 'Divine Benison', section = 'Magic' },   -- WHM trait tiers (Yagrush)
+    { key = 'BarspellPotency', label = 'Barspell+', section = 'Magic' },   -- flat resistance added
+    { key = 'BarspellMDef', label = 'Barspell M.Def', section = 'Magic' },
+    { key = 'StoneskinPotency', label = 'Stoneskin+', section = 'Magic' },   -- flat HP added
+    { key = 'AquaveilCount', label = 'Aquaveil+', section = 'Magic' },   -- extra interrupts blocked
+    { key = 'UtsusemiShadows', label = 'Utsusemi+', section = 'Magic' },   -- +N shadows
+    { key = 'RegenPotency', label = 'Regen+', section = 'Magic' },   -- VERIFY: cast-Regen boost, flat HP/tick vs % unconfirmed
+    { key = 'RegenDuration', label = 'Regen Dur.', section = 'Magic' },   -- seconds added to cast Regen
+    { key = 'RefreshPotency', label = 'Refresh+', section = 'Magic' },   -- VERIFY: Estoqueur "Enhances Refresh" -- potency vs duration
+    { key = 'LightArtsEffect', label = 'Light Arts+', section = 'Magic' },
+    { key = 'DarkArtsEffect', label = 'Dark Arts+', section = 'Magic' },
+    { key = 'SpikesDamage', label = 'Spikes Dmg', section = 'Magic' },   -- flat
+    { key = 'SpikesDamageBonus', label = 'Spikes Dmg+', section = 'Magic', percent = true },
+    { key = 'NinjutsuDamage', label = 'Ninjutsu Dmg', section = 'Magic' },   -- flat
+    { key = 'DayNukeBonus', label = 'Day Nuke+', section = 'Magic', percent = true },   -- nuke element matches day
+    { key = 'DarkMagicDuration', label = 'Dark Dur.+', section = 'Magic', percent = true },
+    { key = 'DiaDot', label = 'Dia DoT+', section = 'Magic' },   -- dmg/tick added to Dia
+    { key = 'ElementalDebuffEffect', label = 'Elem. Debuff+', section = 'Magic' },   -- shock/rasp etc.
+    { key = 'SaboteurBonus', label = 'Saboteur+', section = 'Magic', percent = true },
+    { key = 'ShadowBindDuration', label = 'Shadowbind Dur.', section = 'Magic' },   -- seconds
+    { key = 'AbsorbPotency', label = 'Absorb+', section = 'Magic', percent = true },   -- DRK absorb spell amount
+    { key = 'MagicCritRateII', label = 'M.Crit II', section = 'Magic', percent = true },
+    { key = 'OccQuickenSpell', label = 'Occ. Quick Cast', section = 'Magic', percent = true },   -- augment id 351 only (no crawler mod)
 
     -- ---- Defense / mitigation ----
     { key = 'DEF',          label = 'DEF',     section = 'Defense' },
@@ -177,6 +253,36 @@ M.list = {
     { key = 'ResistBind',     label = 'Res.Bind',    section = 'Defense' },
     { key = 'ResistCurse',    label = 'Res.Curse',   section = 'Defense' },
     { key = 'EnemyCriticalHitRate', label = 'Enemy Crit', section = 'Defense', percent = true },   -- reduces enemy crit (positive-good)
+    -- 2026-07-14 adoption round (stats_tiers2.txt, row-by-row approved).
+    -- Labeling rulings: proc stats say "Chance" (never readable as a reduction); cast speed says "Cast Time-".
+    { key = 'EnmityLossReduction', label = 'Enmity Loss-', section = 'Defense', percent = true },   -- enmity lost when damaged, reduced
+    { key = 'ShieldBlockRate', label = 'Block Rate', section = 'Defense', percent = true },
+    { key = 'ShieldDefBonus', label = 'Shield DEF', section = 'Defense' },   -- flat DEF while blocking
+    { key = 'Inquartata', label = 'Inquartata', section = 'Defense', percent = true },   -- parry rate+
+    { key = 'GuardRate', label = 'Guard Rate', section = 'Defense', percent = true },
+    { key = 'PDTII', label = 'PDT II', section = 'Defense', percent = true, lowerBetter = true },   -- 2nd PDT pool (Burtgang); crawler scales /100 like DT
+    { key = 'MDTII', label = 'MDT II', section = 'Defense', percent = true, lowerBetter = true },   -- Aegis; positive values (Aettir) are penalties
+    { key = 'KnockbackReduction', label = 'Knockback-', section = 'Defense' },
+    { key = 'PhalanxReceived', label = 'Phalanx Rcvd', section = 'Defense' },   -- flat reduction added to Phalanx cast ON you
+    { key = 'PhysDamageToMP', label = 'Phys Dmg->MP', section = 'Defense', percent = true },   -- Ochain; % of phys dmg returned as MP
+    { key = 'DamageToMP', label = 'Dmg->MP', section = 'Defense', percent = true },   -- Flume Belt
+    { key = 'MagicDamageAbsorb', label = 'Absorb Magic Chance', section = 'Defense', percent = true },   -- proc: absorbs the dmg entirely
+    { key = 'PhysDamageAbsorb', label = 'Absorb Phys Chance', section = 'Defense', percent = true },
+    { key = 'AnnulPhysicalDamage', label = 'Annul Phys Chance', section = 'Defense', percent = true },   -- proc: COMPLETE negation, not a reduction
+    { key = 'AnnulMagicalDamage', label = 'Annul Magic Chance', section = 'Defense', percent = true },
+    { key = 'AnnulRangedDamage', label = 'Annul Ranged Chance', section = 'Defense', percent = true },
+    { key = 'AnnulFireDamage', label = 'Annul Fire Chance', section = 'Defense', percent = true },
+    { key = 'FireAbsorb', label = 'Absorb Fire Chance', section = 'Defense', percent = true },   -- sachet line
+    { key = 'IceAbsorb', label = 'Absorb Ice Chance', section = 'Defense', percent = true },
+    { key = 'WindAbsorb', label = 'Absorb Wind Chance', section = 'Defense', percent = true },
+    { key = 'EarthAbsorb', label = 'Absorb Earth Chance', section = 'Defense', percent = true },
+    { key = 'ThunderAbsorb', label = 'Absorb Thunder Chance', section = 'Defense', percent = true },   -- server mod LTNG_ABSORB
+    { key = 'WaterAbsorb', label = 'Absorb Water Chance', section = 'Defense', percent = true },
+    { key = 'LightAbsorb', label = 'Absorb Light Chance', section = 'Defense', percent = true },
+    { key = 'DarkAbsorb', label = 'Absorb Dark Chance', section = 'Defense', percent = true },
+    { key = 'WeatherDamageReduction', label = 'Weather Dmg-', section = 'Defense', percent = true },   -- elem dmg- in matching weather
+    { key = 'DayDamageReduction', label = 'Day Dmg-', section = 'Defense', percent = true },
+    { key = 'ProtShellReceived', label = 'Prot/Shell Rcvd', section = 'Defense' },
 
     -- ---- Skill (flat) ----
     { key = 'HandToHandSkill',      label = 'H2H',        section = 'Skill' },
@@ -223,6 +329,9 @@ M.list = {
     { key = 'BonecraftSkill',     label = 'Bonecraft',    section = 'Skill' },
     { key = 'AlchemySkill',       label = 'Alchemy',      section = 'Skill' },
     { key = 'CookingSkill',       label = 'Cooking',      section = 'Skill' },
+    { key = 'FishingSkill',       label = 'Fishing',      section = 'Skill' },   -- mod 127, sits with the crafts
+    { key = 'LightArtsSkill',     label = 'Light Arts',   section = 'Skill' },   -- SCH; skill while under Light Arts
+    { key = 'DarkArtsSkill',      label = 'Dark Arts',    section = 'Skill' },
 
     -- ---- Misc ----
     { key = 'MovementSpeed', label = 'Move Spd', section = 'Misc', percent = true },
@@ -281,20 +390,241 @@ M.list = {
     { key = 'HumanoidKiller', label = 'Humanoid K.', section = 'Misc' },
     { key = 'LuminianKiller', label = 'Luminian K.', section = 'Misc' },
     { key = 'LuminionKiller', label = 'Luminion K.', section = 'Misc' },
+    -- 2026-07-14 adoption round (Misc additions).
+    { key = 'BlueLearnChance', label = 'Blue Learn+', section = 'Misc', percent = true },
+    { key = 'Gilfinder', label = 'Gilfinder', section = 'Misc' },
+    { key = 'Stealth', label = 'Stealth', section = 'Misc' },
+    { key = 'CombatSkillupRate', label = 'Combat Skillup+', section = 'Misc', percent = true },
+    { key = 'MagicSkillupRate', label = 'Magic Skillup+', section = 'Misc', percent = true },
+    { key = 'EXPBonus', label = 'EXP+', section = 'Misc', percent = true },
+    { key = 'CapacityBonus', label = 'Capacity+', section = 'Misc', percent = true },
+    { key = 'SneakDuration', label = 'Sneak Dur.', section = 'Misc' },
+    { key = 'InvisibleDuration', label = 'Invisible Dur.', section = 'Misc' },
+    { key = 'ChocoboRidingTime', label = 'Chocobo Time', section = 'Misc' },   -- minutes
+    { key = 'DigRareAbility', label = 'Dig Rare+', section = 'Misc' },   -- chocobo digging
+    { key = 'DigBypassFatigue', label = 'Dig Fatigue-', section = 'Misc' },
+    { key = 'NinjaToolExpertise', label = 'Tool Expertise', section = 'Misc', percent = true },   -- chance to not consume a tool
+    { key = 'ClammingCapacity', label = 'Clamming Cap.', section = 'Misc' },
+    { key = 'ClammingIncidents', label = 'Clamming Safe', section = 'Misc' },
+    -- Per-craft synth success (the eight guild rings); generic rate is SynthSuccessRate above.
+    { key = 'SynthSuccessWoodworking', label = 'Wood Success', section = 'Misc', percent = true },
+    { key = 'SynthSuccessSmithing', label = 'Smith Success', section = 'Misc', percent = true },
+    { key = 'SynthSuccessGoldsmithing', label = 'Gold Success', section = 'Misc', percent = true },
+    { key = 'SynthSuccessClothcraft', label = 'Cloth Success', section = 'Misc', percent = true },
+    { key = 'SynthSuccessLeathercraft', label = 'Leather Success', section = 'Misc', percent = true },
+    { key = 'SynthSuccessBonecraft', label = 'Bone Success', section = 'Misc', percent = true },
+    { key = 'SynthSuccessAlchemy', label = 'Alch. Success', section = 'Misc', percent = true },
+    { key = 'SynthSuccessCooking', label = 'Cook Success', section = 'Misc', percent = true },
+    { key = 'BloodPactDelayII', label = 'BP Delay II', section = 'Misc', lowerBetter = true },   -- 2nd pool, sits with BloodPactDelay
+
+    -- ---- Ability (JA / trait / song enhancers; new section, approved 2026-07-14) ----
+    -- WAR
+    { key = 'BerserkDuration', label = 'Berserk Dur.', section = 'Ability' },   -- durations are seconds unless noted
+    { key = 'BerserkPotency', label = 'Berserk+', section = 'Ability', percent = true },
+    { key = 'AggressorDuration', label = 'Aggressor Dur.', section = 'Ability' },
+    { key = 'WarcryDuration', label = 'Warcry Dur.', section = 'Ability' },
+    { key = 'DefenderDuration', label = 'Defender Dur.', section = 'Ability' },
+    { key = 'Retaliation', label = 'Retaliation+', section = 'Ability' },
+    { key = 'BloodRageBonus', label = 'Blood Rage+', section = 'Ability' },
+    { key = 'RestraintBonus', label = 'Restraint+', section = 'Ability' },   -- VERIFY: values 50-120, likely the WS-dmg accumulation cap
+    { key = 'ImpetusBonus', label = 'Impetus+', section = 'Ability' },
+    { key = 'ConspiratorBonus', label = 'Conspirator+', section = 'Ability' },
+    -- MNK
+    { key = 'ChakraPotency', label = 'Chakra+', section = 'Ability', percent = true },   -- VIT multiplier bonus
+    { key = 'ChakraRemoval', label = 'Chakra Cures', section = 'Ability' },   -- VERIFY: values 1-6 may be a bitmask of removable ailments
+    { key = 'BoostEffect', label = 'Boost+', section = 'Ability' },
+    { key = 'DodgeEffect', label = 'Dodge+', section = 'Ability' },
+    { key = 'FocusEffect', label = 'Focus+', section = 'Ability' },
+    { key = 'CounterstanceEffect', label = 'Counterstance+', section = 'Ability' },
+    { key = 'PerfectCounterAttack', label = 'Perf.Counter Att', section = 'Ability' },
+    { key = 'FootworkAttack', label = 'Footwork Att', section = 'Ability' },
+    -- WHM
+    { key = 'DivineVeil', label = 'Divine Veil', section = 'Ability', percent = true },   -- trait: Divine Veil always active, -na spells work AoE (Henrik-confirmed)
+    { key = 'AfflatusSolaceBonus', label = 'Solace+', section = 'Ability' },
+    { key = 'AuspiceEffect', label = 'Auspice+', section = 'Ability' },
+    -- PLD
+    { key = 'ShieldBash', label = 'Shield Bash+', section = 'Ability' },   -- flat dmg
+    { key = 'WeaponBash', label = 'Weapon Bash+', section = 'Ability' },
+    { key = 'SentinelEffect', label = 'Sentinel+', section = 'Ability' },
+    { key = 'RampartDuration', label = 'Rampart Dur.', section = 'Ability' },
+    { key = 'HolyCircleDuration', label = 'H.Circle Dur.', section = 'Ability' },
+    { key = 'HolyCirclePotency', label = 'H.Circle+', section = 'Ability' },
+    { key = 'CoverToMP', label = 'Cover->MP', section = 'Ability' },
+    { key = 'CoverMagicRanged', label = 'Cover M/R', section = 'Ability' },   -- cover extends to magic/ranged
+    { key = 'CoverDuration', label = 'Cover Dur.', section = 'Ability' },
+    { key = 'ReprisalBlockBonus', label = 'Reprisal Block+', section = 'Ability' },
+    { key = 'ReprisalSpikesBonus', label = 'Reprisal Spikes+', section = 'Ability' },
+    { key = 'DivineEmblemBonus', label = 'Divine Emblem+', section = 'Ability' },
+    -- DRK
+    { key = 'ArcaneCircleDuration', label = 'A.Circle Dur.', section = 'Ability' },
+    { key = 'ArcaneCirclePotency', label = 'A.Circle+', section = 'Ability' },
+    { key = 'SouleaterEffect', label = 'Souleater+', section = 'Ability', percent = true },   -- extra HP% converted
+    { key = 'StalwartSoul', label = 'Stalwart Soul', section = 'Ability' },
+    { key = 'BloodWeaponBonus', label = 'Blood Weapon+', section = 'Ability' },
+    { key = 'DreadSpikesEffect', label = 'Dread Spikes+', section = 'Ability' },
+    -- BST
+    { key = 'RewardHPBonus', label = 'Reward HP', section = 'Ability' },
+    { key = 'RewardRecast', label = 'Reward Recast-', section = 'Ability' },   -- VERIFY: sign (positive stored = seconds reduced?)
+    { key = 'TameSuccess', label = 'Tame+', section = 'Ability' },
+    { key = 'SicReadyRecast', label = 'Sic/Ready Recast-', section = 'Ability' },
+    { key = 'SpurBonus', label = 'Spur+', section = 'Ability' },   -- pet att+
+    -- BRD songs
+    { key = 'AllSongsEffect', label = 'All Songs+', section = 'Ability' },   -- Gjallarhorn
+    { key = 'MaximumSongs', label = 'Max Songs+', section = 'Ability' },   -- Daurdabla
+    { key = 'SongRecast', label = 'Song Recast-', section = 'Ability' },   -- positive stored = seconds reduced; also augment id 337
+    { key = 'MarchEffect', label = 'March+', section = 'Ability' },
+    { key = 'MadrigalEffect', label = 'Madrigal+', section = 'Ability' },
+    { key = 'LullabyEffect', label = 'Lullaby+', section = 'Ability' },
+    { key = 'MinuetEffect', label = 'Minuet+', section = 'Ability' },
+    { key = 'PaeonEffect', label = 'Paeon+', section = 'Ability' },
+    { key = 'EtudeEffect', label = 'Etude+', section = 'Ability' },
+    { key = 'BalladEffect', label = 'Ballad+', section = 'Ability' },
+    { key = 'RequiemEffect', label = 'Requiem+', section = 'Ability' },
+    { key = 'ThrenodyEffect', label = 'Threnody+', section = 'Ability' },
+    { key = 'FinaleEffect', label = 'Finale+', section = 'Ability' },
+    { key = 'CarolEffect', label = 'Carol+', section = 'Ability' },
+    { key = 'ElegyEffect', label = 'Elegy+', section = 'Ability' },
+    { key = 'MazurkaEffect', label = 'Mazurka+', section = 'Ability' },
+    { key = 'HymnusEffect', label = 'Hymnus+', section = 'Ability' },
+    { key = 'VirelaiEffect', label = 'Virelai+', section = 'Ability' },
+    { key = 'MinneEffect', label = 'Minne+', section = 'Ability' },
+    { key = 'PreludeEffect', label = 'Prelude+', section = 'Ability' },
+    { key = 'ScherzoEffect', label = 'Scherzo+', section = 'Ability' },
+    { key = 'MamboEffect', label = 'Mambo+', section = 'Ability' },
+    -- RNG
+    { key = 'VelocitySnapshotBonus', label = 'Velocity Snapshot', section = 'Ability' },
+    { key = 'VelocityRAttBonus', label = 'Velocity R.Att', section = 'Ability' },
+    { key = 'BarrageAcc', label = 'Barrage Acc', section = 'Ability' },   -- flat acc during Barrage
+    { key = 'ScavengeEffect', label = 'Scavenge+', section = 'Ability' },
+    { key = 'CamouflageDuration', label = 'Camouflage Dur.', section = 'Ability' },
+    { key = 'BountyShotTH', label = 'Bounty Shot TH+', section = 'Ability' },
+    { key = 'TrueShotEffect', label = 'True Shot+', section = 'Ability' },
+    -- SAM
+    { key = 'MeditateDuration', label = 'Meditate Dur.', section = 'Ability' },
+    { key = 'ThirdEyeCounter', label = '3rd Eye Counter', section = 'Ability', percent = true },
+    { key = 'ThirdEyeRetention', label = '3rd Eye Ret.', section = 'Ability', percent = true },
+    { key = 'SengikoriBonus', label = 'Sengikori+', section = 'Ability' },
+    { key = 'WardingCircleDuration', label = 'W.Circle Dur.', section = 'Ability' },
+    { key = 'WardingCirclePotency', label = 'W.Circle+', section = 'Ability' },
+    -- NIN
+    { key = 'MijinReraise', label = 'Mijin Reraise', section = 'Ability' },   -- Nagi
+    { key = 'FutaeBonus', label = 'Futae+', section = 'Ability' },
+    -- DRG
+    { key = 'JumpAttack', label = 'Jump Att.', section = 'Ability' },
+    { key = 'JumpTP', label = 'Jump TP', section = 'Ability' },   -- flat literal TP
+    { key = 'JumpCrit', label = 'Jump Crit', section = 'Ability' },   -- jumps always crit (Ryunohige)
+    { key = 'HighJumpEnmity', label = 'H.Jump Enmity-', section = 'Ability' },
+    { key = 'JumpDoubleAttack', label = 'Jump Dbl.Atk', section = 'Ability' },
+    { key = 'JumpSpiritTP', label = 'Spirit Jump TP', section = 'Ability' },
+    { key = 'JumpSoulSpiritAttack', label = 'Soul/Spirit Jump Att', section = 'Ability' },
+    { key = 'SpiritLinkBonus', label = 'Spirit Link+', section = 'Ability' },
+    { key = 'AncientCircleDuration', label = 'An.Circle Dur.', section = 'Ability' },
+    { key = 'AncientCirclePotency', label = 'An.Circle+', section = 'Ability' },
+    -- SMN
+    { key = 'BloodBoon', label = 'Blood Boon', section = 'Ability', percent = true },   -- BP MP cost occ. reduced
+    { key = 'AvatarsFavorBonus', label = 'Avatar\'s Favor+', section = 'Ability' },
+    { key = 'ElementalSiphonBonus', label = 'Elem. Siphon+', section = 'Ability' },   -- flat MP
+    { key = 'ManaCedeBonus', label = 'Mana Cede+', section = 'Ability' },   -- flat MP
+    -- BLU
+    { key = 'BurstAffinityBonus', label = 'Burst Affinity+', section = 'Ability' },
+    { key = 'ChainAffinityBonus', label = 'Chain Affinity+', section = 'Ability' },
+    -- COR
+    { key = 'PhantomDuration', label = 'Roll Dur.', section = 'Ability' },
+    { key = 'PhantomRoll', label = 'Roll Potency', section = 'Ability' },
+    { key = 'RollRange', label = 'Roll Range', section = 'Ability' },   -- yalms
+    { key = 'RollAllies', label = 'Roll (allies)', section = 'Ability' },
+    { key = 'RandomDealBonus', label = 'Random Deal+', section = 'Ability' },
+    { key = 'CoursersRollBonus', label = 'Courser\'s Roll+', section = 'Ability' },   -- AF3 set; 100 = full enhancement flag
+    { key = 'CastersRollBonus', label = 'Caster\'s Roll+', section = 'Ability' },
+    { key = 'BlitzersRollBonus', label = 'Blitzer\'s Roll+', section = 'Ability' },
+    { key = 'AlliesRollBonus', label = 'Allies\' Roll+', section = 'Ability' },
+    { key = 'TacticiansRollBonus', label = 'Tactician\'s Roll+', section = 'Ability' },
+    { key = 'JobBonusChance', label = 'Job Bonus %', section = 'Ability', percent = true },   -- roll job bonus without the job
+    { key = 'QuickDrawMACC', label = 'Q.Draw M.Acc', section = 'Ability' },
+    { key = 'QuickDrawDamage', label = 'Q.Draw Dmg', section = 'Ability' },   -- flat
+    { key = 'QuickDrawDamagePct', label = 'Q.Draw Dmg %', section = 'Ability', percent = true },
+    -- PUP
+    { key = 'OverloadThreshold', label = 'Overload Thresh.', section = 'Ability' },
+    { key = 'SuppressOverload', label = 'Overload-', section = 'Ability' },   -- Kenkonken
+    { key = 'ManeuverBonus', label = 'Maneuver+', section = 'Ability' },
+    { key = 'RepairEffect', label = 'Repair+', section = 'Ability' },
+    { key = 'RepairPotency', label = 'Repair Pot.', section = 'Ability', percent = true },
+    -- DNC
+    { key = 'SambaDuration', label = 'Samba Dur.', section = 'Ability' },
+    { key = 'SambaPDuration', label = 'Samba Dur.%', section = 'Ability', percent = true },
+    { key = 'JigDuration', label = 'Jig Dur.', section = 'Ability', percent = true },
+    { key = 'WaltzDelay', label = 'Waltz Recast-', section = 'Ability', lowerBetter = true },   -- stored negative
+    { key = 'StepTPConsumed', label = 'Step TP-', section = 'Ability', lowerBetter = true },   -- stored negative
+    { key = 'StepFinish', label = 'Step Finish+', section = 'Ability' },   -- extra finishing moves
+    { key = 'VFlourishMACC', label = 'V.Flourish M.Acc', section = 'Ability' },
+    { key = 'ReverseFlourishEffect', label = 'Rev.Flourish+', section = 'Ability' },
+    { key = 'MaxFinishingMoves', label = 'Max Finish+', section = 'Ability' },
+    -- RUN
+    { key = 'PflugBonus', label = 'Pflug+', section = 'Ability' },
+    { key = 'ValianceVallationDuration', label = 'Valiance Dur.', section = 'Ability' },
+    { key = 'SwordplayBonus', label = 'Swordplay+', section = 'Ability' },
+    { key = 'GambitDuration', label = 'Gambit Dur.', section = 'Ability' },
+    { key = 'BattutaBonus', label = 'Battuta+', section = 'Ability' },
+    { key = 'LiementBonus', label = 'Liement+', section = 'Ability' },
+    { key = 'LiementArea', label = 'Liement AoE', section = 'Ability' },   -- Epeolatry
+    { key = 'VivaciousPulsePotency', label = 'V.Pulse+', section = 'Ability' },
+    { key = 'VivaciousPulseBonus', label = 'V.Pulse Aug.', section = 'Ability' },
+    { key = 'SwipeBonus', label = 'Swipe+', section = 'Ability' },   -- Swipe/Lunge (Aettir)
+    -- THF
+    { key = 'Despoil', label = 'Despoil+', section = 'Ability' },
+    { key = 'MugEffect', label = 'Mug+', section = 'Ability' },
+    { key = 'TrickAttackAGI', label = 'TA AGI+%', section = 'Ability', percent = true },   -- AGI% added to Trick Attack
+    { key = 'SneakAttackDEX', label = 'SA DEX+%', section = 'Ability', percent = true },
+    { key = 'HideDuration', label = 'Hide Dur.', section = 'Ability' },
+    { key = 'AccompliceBonus', label = 'Accomplice+', section = 'Ability' },   -- Accomplice/Collaborator
+    { key = 'FleeDuration', label = 'Flee Dur.', section = 'Ability' },
+    -- SCH
+    { key = 'AlacrityCelerityBonus', label = 'Alacrity/Celerity+', section = 'Ability' },
+    { key = 'RaptureAmount', label = 'Rapture+', section = 'Ability' },
+    { key = 'EbullienceAmount', label = 'Ebullience+', section = 'Ability' },
+    -- GEO
+    { key = 'GeomancyBonus', label = 'Geomancy+', section = 'Ability' },   -- indi/geo potency (Idris)
+    { key = 'IndiDuration', label = 'Indi Dur.', section = 'Ability' },
+    { key = 'CardinalChantBonus', label = 'Cardinal Chant+', section = 'Ability' },
+    { key = 'FullCircleBonus', label = 'Full Circle+', section = 'Ability' },
+    { key = 'LifeCycleEffect', label = 'Life Cycle+', section = 'Ability' },
+    -- BLM (relic)
+    { key = 'ElementalSealBonus', label = 'Elem. Seal+', section = 'Ability' },   -- Laevateinn
+
+    -- ---- Pet (new section, approved 2026-07-14) ----
+    { key = 'Pet_STR', label = 'Pet STR', section = 'Pet' },   -- augment id 1792; first of the Pet_ attribute family
+    { key = 'Pet_AttDef', label = 'Pet Att/DEF', section = 'Pet' },
+    { key = 'Pet_AccEva', label = 'Pet Acc/Eva', section = 'Pet' },
+    { key = 'Pet_TPBonus', label = 'Pet TP Bonus', section = 'Pet' },   -- literal TP
+    { key = 'AvatarLevel', label = 'Avatar Lv.+', section = 'Pet' },
+    { key = 'CarbuncleLevel', label = 'Carbuncle Lv.+', section = 'Pet' },
+    { key = 'CaitSithLevel', label = 'Cait Sith Lv.+', section = 'Pet' },
+    { key = 'PerpetuationCarbuncle', label = 'Carby Perp-', section = 'Pet' },   -- halves carbuncle perpetuation
+    { key = 'PerpetuationDay', label = 'Day Perp-', section = 'Pet' },
+    { key = 'PerpetuationWeather', label = 'Weather Perp-', section = 'Pet' },
+    { key = 'AutomatonLevel', label = 'Automaton Lv.+', section = 'Pet' },
+    { key = 'AutoMeleeSkill', label = 'Auto Melee', section = 'Pet' },   -- automaton skills
+    { key = 'AutoRangedSkill', label = 'Auto Ranged', section = 'Pet' },
+    { key = 'AutoMagicSkill', label = 'Auto Magic', section = 'Pet' },
+    { key = 'WyvernBreath', label = 'Wyvern Breath', section = 'Pet' },   -- healing-breath trigger HP threshold
+    { key = 'WyvernEffectiveBreath', label = 'Wyvern Breath+', section = 'Pet' },
+    { key = 'WyvernBreathMACC', label = 'Wyvern Breath M.Acc', section = 'Pet' },
+    { key = 'WyvernSubjobTraits', label = 'Wyvern Subjob', section = 'Pet' },
+    { key = 'WyvernLevel', label = 'Wyvern Lv.+', section = 'Pet' },
+    { key = 'JugLevelRange', label = 'Jug Lv.Range', section = 'Pet' },
+    { key = 'FamiliarBonus', label = 'Familiar+', section = 'Pet' },
+    { key = 'TandemStrikePower', label = 'Tandem Strike+', section = 'Pet' },
+    { key = 'TandemBlowPower', label = 'Tandem Blow+', section = 'Pet' },
 };
 
---[[ NOT YET IN THE CATALOG -- promote these to real entries above as the crawl maps them.
-     (Skills, the 8 elemental resists, the status resists, and the elemental MAB/MACC
-      family are all promoted above now; lightning uses the existing key
-      'ThunderResistance', matching gearimport.) What's left:
+--[[ ADOPTION STATE (2026-07-14 round complete -- 302 entries added, all row-by-row
+     approved by Henrik; see tools/api_cache/stats_tiers2.txt for the full disposition).
 
-       Casting (section 'Magic', %):  SongRecast (lowerBetter), OccQuickenSpell
-       Pet     (section 'Pet', flat): Pet_STR, Pet_DEF, Pet_Accuracy, Pet_Attack, ...
-                                      (add a 'Pet' section to M.SECTIONS when you do)
-
-     Remaining decisions live in tools/api_cache/stats_decisions.txt. Iridescence and
-     the per-element Staff Bonus / Affinity mods arrive with issue #5 (modifier_map
-     crawl extension).
+     Still UNMAPPED by choice: proc/latent machinery, race locks, relic aftermath ids,
+     mythic-specific "Augments" mods (the sheet's SKIP + relic-range buckets), and the
+     INVESTIGATE bucket (CatsEyeXI 2000-series customs, gathering RESULT mods) pending
+     identification. Entries marked VERIFY above ship with their proposed reading --
+     grep VERIFY before trusting their scale/sign in anything numeric.
 ]]--
 
 -- ====================================================================================

@@ -929,3 +929,34 @@ as the click feedback, and a dim header hint says the popup stays open
 (Esc / click outside closes). Works because every selectable there lives
 inside a child window, so ImGui's Selectable-closes-popup default never
 applied -- the explicit CloseCurrentPopup calls were the only closers.
+
+## Session "stat classification round 2 -- the 300-mod adoption" (07-14, on `main`)
+
+The full row-by-row sign-off ran in one sitting: Henrik reviewed every section
+top-to-bottom (Defense -> Offense -> Magic -> HP/MP+Skill -> Ability in 3 job
+batches -> Pet -> Misc) against a live artifact sheet with per-mod example gear.
+Wiring landed as one pass: **302 new statdefs entries** (300 crawler mods + the
+augment-only SongRecast-mate OccQuickenSpell and Pet_STR), two NEW statdefs
+sections **Ability** and **Pet**, 298 CORE pairs in apicrawl/apiscan (kept in
+sync), DMGPHYS_II/DMGMAGIC_II added to BASIS100 (PDTII/MDTII, mixed /100 scale).
+Catalog rebuilt from the existing cache (--build-only, zero network -- Henrik's
+"reuse the crawl" call, which is how the pipeline was designed): **516 distinct
+stat keys in catalog.lua** (was 216), 67,361 stat instances, still ZERO
+unclassified. ignored_mods.txt: 409 -> 109 (the deliberate skip/investigate/
+relic buckets). 320 tests green.
+
+Labeling rulings that came out of the review (memory: stat-naming-chance-rule):
+proc stats say **"Chance"** ("Annul Phys Chance" -- never readable as a partial
+reduction); cast speed says **"Cast Time-"** (legacy Song Cast/Cure Cast renamed
+to match). "Divine Veil" name confirmed by Henrik (trait: always-on Divine Veil,
+-na spells work AoE). Open VERIFY flags (grep statdefs for VERIFY): Restraint
+values, Chakra-Removal bitmask, RewardRecast sign, WhiteMagicCost scale (300),
+RegenPotency flat-vs-%, RefreshPotency potency-vs-duration, SummoningMagicCast
+seconds. INVESTIGATE bucket still parked: CatsEyeXI 2000-series customs + the
+value-73 HARVESTING/LOGGING/MINING mods. Full disposition:
+tools/api_cache/stats_tiers2.txt.
+
+Mid-session note: the checkout flipped to feature/autoacc under this session
+(parallel work); the Song/Cure Cast Time- rename was committed there (bb47d3e)
+per the parallel-session rule and cherry-picked back to main (e934b32) once the
+checkout returned.
