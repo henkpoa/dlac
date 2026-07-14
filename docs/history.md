@@ -1020,3 +1020,9 @@ Closing the window ends the preview (pump). Traced as 'lockstyle preview
 only (the number ate the width; tooltip keeps it), and a Del button
 (confirm popup) removes the marked box + its OnLoad bindings. Tests
 AG16-20 pin the plan (equip vs naked indexes).
+
+Round 3 (same night): Apply -> "Apply lockstyle"; a "Disable lockstyle"
+button sits top-right of the box-header row (the game's native
+/lockstyle off -- queued, never intercepted per [[lastsynth-native]]);
+and Preview queues /lockstyle off FIRST, every time -- a live lockstyle
+visual hides equipment changes, so an un-disabled preview shows nothing.

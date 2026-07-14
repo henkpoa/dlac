@@ -281,9 +281,12 @@ end
 M._touched = touched;   -- switchTo is defined above this section and publishes through here
 
 local function startPreview()
+    -- A live lockstyle VISUAL hides equipment changes -- the preview would be
+    -- invisible under it. Switch it off first, every time (Henrik, field).
+    queueCmd('/lockstyle off');
     _preview = true;
     writePreview();
-    _status = 'previewing -- the engine wears ONLY this lockstyle (updates live as you edit).';
+    _status = 'previewing -- lockstyle off, the engine wears ONLY this set (updates live as you edit).';
 end
 
 local function endPreview()
@@ -424,6 +427,22 @@ function M.render()
         imgui.SameLine(0, 8);
         imgui.TextColored(cur.dirty and COL_WARN or COL_DIM,
             cur.dirty and 'unsaved changes' or ((e ~= nil) and ('"' .. tostring(e.name or '') .. '"') or '(empty)'));
+        -- top-right on this row (Henrik): kill the lockstyle visual
+        pcall(function()
+            local bw = 132;
+            imgui.SameLine();
+            local avail = imgui.GetContentRegionAvail();
+            if type(avail) == 'number' and avail > bw then
+                imgui.SetCursorPosX(imgui.GetCursorPosX() + avail - bw);
+            end
+            if imgui.Button('Disable lockstyle##lsoff', { bw, 0 }) then
+                queueCmd('/lockstyle off');
+                _status = 'lockstyle disabled (/lockstyle off) -- your real gear shows again.';
+            end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('The game\'s /lockstyle off: the lockstyle VISUAL comes off and\nwhat you actually wear shows again.');
+            end
+        end);
         imgui.Separator();
 
         imgui.BeginGroup();   -- LEFT: the 4x4 + controls
@@ -515,7 +534,7 @@ function M.render()
                 (cur_ol ~= nil and cur_ol ~= data.active) and string.format('\nCurrently bound to box %d.', cur_ol) or ''));
         end
         imgui.SameLine(0, 10);
-        if imgui.Button('Apply##lsgo', { 60, 0 }) then
+        if imgui.Button('Apply lockstyle##lsgo', { 116, 0 }) then
             queueCmd('/dl ls apply');
         end
         if imgui.IsItemHovered() then
@@ -525,7 +544,7 @@ function M.render()
             if _preview then endPreview(); else startPreview(); end
         end
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('The ENGINE wears ONLY this lockstyle (the WORKING copy, live as you\nedit) -- every other slot is unequipped by the top-priority preview\noverlay. Pieces you can\'t wear yet are skipped by LAC itself, never\nforced. Click again (or close this window) to end -- your normal gear\nredresses on the next dispatch. Don\'t preview in combat.');
+            imgui.SetTooltip('The ENGINE wears ONLY this lockstyle (the WORKING copy, live as you\nedit) -- every other slot is unequipped by the top-priority preview\noverlay, and the lockstyle VISUAL is switched off first (it would hide\nthe preview). Pieces you can\'t wear yet are skipped by LAC itself,\nnever forced. Click again (or close this window) to end -- your normal\ngear redresses on the next dispatch. Don\'t preview in combat.');
         end
         imgui.EndGroup();
 
