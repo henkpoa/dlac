@@ -130,6 +130,14 @@ handshake).
   is a floor, the /check-bracket learner corrects it live. Research kit lives in
   **dlacprobe v1.5** (not in git): `/probe scan [go N|dump]`, `/probe tally`.
   Cross-session memory: `memory/mob-eva-pipeline.md` mirrors all of this.
+  - **Custom mobs (07-14):** dynamic spawns (idx 0x800+, e.g. the Wajaom
+    Toucans) exist in NO zone's static table — accdata now also ships 350
+    per-family EVA curves, and accwatch prices a missing mob from its FAMILY
+    (cross-zone name match automatic; `/dl acc family <name>` for unknown
+    names, per-char `accfamilies.lua`) at its LIVE level (auto-/check,
+    widescan). Widescan alone never helped — it only collapses ranges for
+    mobs already in the table. See history.md "custom mobs -> family EVA
+    curves".
   - **AutoAcc — the first Type automation (07-14, engine v36, AWAITING field
     verify):** pieces typed `autoType = 'AutoAcc'` in a set entry's Behaviour
     are released for the slot's normal pick while the acc watch says their ACC

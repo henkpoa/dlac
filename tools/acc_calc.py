@@ -480,6 +480,10 @@ def dump_luadata(db, path):
         f.write("-- Source: github.com/CatsAndBoats/catseyexi@base. Regenerate after server updates.\n")
         f.write("-- zones[zoneid][squashedname] = { minLv, maxLv, evaAtMin, evaAtMax, isNM, 'Family MJOB/SJOB' }\n")
         f.write("-- idx[zoneid][targetindex] = display name (static spawns; widescan replies carry no name)\n")
+        f.write("-- families[squashedfamily] = { EVA at Lv1..Lv99 } -- custom-mob fallback curve, used by\n")
+        f.write("--   accwatch when a mob is missing from its zone's table but its family is known (cross-\n")
+        f.write("--   zone name match or /dl acc family). Family's most common mJob/sJob across ALL pools;\n")
+        f.write("--   no pool mods, non-NM, sub-job-zone floor -- a floor the /check bracket corrects live.\n")
         f.write("return {\ncorrected = {\n")
         f.write("".join("[%d]=true," % z for z in corr) + "\n},\nzones = {\n")
         for zid in sorted(zones):
@@ -499,8 +503,40 @@ def dump_luadata(db, path):
                 f.write('[%d]="%s",' % (i, db.spawn_idx[zid][i].replace('"', "")))
                 ni += 1
             f.write("},\n")
+        # Custom-mob fallback curves: CatsEyeXI spawns customs (dynamic entities,
+        # idx 0x800+) that exist in NO zone's mob_groups -- but their POOL usually
+        # reuses a stock family (Wajaom "Toucan" = family Bird). One EVA-by-level
+        # curve per family lets accwatch price any custom once it knows family +
+        # live level. Most common (mJob,sJob) across ALL pools (customs may use
+        # pools that never spawn statically); deterministic tie-break for stable
+        # regeneration diffs.
+        combos = {}
+        for p in db.pools.values():
+            if p["family"] in db.families:
+                k = (p["family"], p["mjob"], p["sjob"])
+                combos[k] = combos.get(k, 0) + 1
+        best = {}
+        for (fid, mj, sj), cnt in combos.items():
+            cur = best.get(fid)
+            if cur is None or cnt > cur[0] or (cnt == cur[0] and (mj, sj) < (cur[1], cur[2])):
+                best[fid] = (cnt, mj, sj)
+        f.write("},\nfamilies = {\n")
+        emitted = set()
+        nf = 0
+        for fid in sorted(best, key=lambda i: (squash(db.families[i]["name"]), i)):
+            fam = db.families[fid]
+            key = squash(fam["name"])
+            if key in emitted:                 # squash collisions (Foo-Bar vs Foo_Bar): first wins
+                continue
+            emitted.add(key)
+            cnt, mj, sj = best[fid]
+            evs = ",".join(str(eva_core(db, lv, mj, sj, fam["agi"], subjob_zone=True)["eva"])
+                           for lv in range(1, 100))
+            f.write('["%s"]={%s}, -- %s %s/%s (%d pools)\n' % (key, evs, fam["name"], JOBS[mj], JOBS[sj], cnt))
+            nf += 1
         f.write("},\n};\n")
-    print("wrote %d mobs in %d zones (+%d spawn-idx names) -> %s" % (n, len(zones), ni, path))
+    print("wrote %d mobs in %d zones (+%d spawn-idx names, %d family curves) -> %s"
+          % (n, len(zones), ni, nf, path))
 
 
 def main():

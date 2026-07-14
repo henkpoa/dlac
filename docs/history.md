@@ -717,3 +717,49 @@ guards, serializer round-trip. Seams: `dispatch._accStateOverride`,
 release note in `/dl why`), then a harder mob (expect it back); confirm the
 accstate write survives real zone/engage timing; then tally-verify the
 underlying AccCap (still assumed). Reload LAC required (utils + dispatch v36).
+
+## Session "custom mobs -> family EVA curves" (07-14, on `main`)
+
+Field report (Henrik): custom Toucans in Wajaom Woodlands (ids
+0x1033806-0x103380F -> zone 51, idx 0x806-0x80F) get "not in the static
+table... the widescan layer will learn these" -- and widescan never helps.
+Diagnosis: BOTH halves of that message were wrong for customs. (1) They are
+dynamic spawns absent from the public repo's mob_groups, so the zone lookup
+can never hit; (2) the widescan layer only collapses LEVEL ranges for mobs
+already IN the table -- a level without an EVA entry reports nothing. The
+message over-promised; customs were simply unpriceable.
+
+The unlock: customs reuse stock POOLS. "Toucan" is a stock mob (pool 3980,
+family Bird, WAR/WAR) that spawns statically only in Bibiki Bay (zone 4,
+Lv38-40) -- the NAME identifies the family even when the zone/level don't.
+
+Fix, three layers:
+
+1. **accdata families curves** (acc_calc.py --luadata): one EVA-by-level
+   curve (Lv1-99) per family -- 350 curves, keyed by squashed family name.
+   Computed with the family's most common (mJob,sJob) across ALL pools
+   (customs may use pools that never spawn statically), no pool mods,
+   non-NM, sub-job-zone floor. Verified against shipped entries: exact at
+   >=50 (Tragopan 71/73 = 282/292), ~2 low under 50 (deliberate floor).
+   Regen is additive-only (existing mob table byte-identical).
+2. **accwatch fallback**: on a zone-table miss, resolve the family -- per-char
+   manual assignment (accfamilies.lua) wins, else the CROSS-ZONE NAME MATCH
+   (lazy index over all zones' descs: toucan -> bird, automatic) -- then
+   synthesize the entry from the curve at the LIVE level (the auto-/check
+   fired on engage answers before the report; widescan also feeds it). The
+   synthetic entry flows through the NORMAL report path, so the bracket
+   clamp corrects the curve immediately and accstate/AutoAcc work on
+   customs too. Family known but no level yet / no family known -> targeted
+   chat hints; accstate stays invalid (AutoAcc stands down).
+3. **/dl acc family <name>** (bare = show, clear = remove): assigns the
+   CURRENT TARGET's family for names the table has never seen; tolerant
+   resolver (squash, plural 'birds'->'bird', unique prefix); persisted per
+   char; reports immediately after assigning.
+
+The Toucans need NO assignment -- the name match finds Bird. Tests AD1-AD9
+(302 total green): curve bounds, resolver tolerance/ambiguity, cross-zone
+index. Field-verify: engage a Toucan with /dl acc on -- first engage should
+print the labeled line with Lv* from the auto-check; if customs answer
+"impossible to gauge" instead, open widescan once and re-engage (whether
+dynamic entities appear on CatsEyeXI widescan is UNVERIFIED -- /dl acc debug
+traces the reply shape if neither works).

@@ -9,6 +9,16 @@ at engage AND on every battle-target switch (auto-target). OFF by default:
     /dl acc now    same labeled line for the CURRENT target (no engage needed;
                    falls back to the prose detail line when your ACC is not
                    known yet -- engage once or /checkparam to prime it)
+    /dl acc family <name>  assign a mob FAMILY to the current target (saved
+                   per char in accfamilies.lua; bare = show, clear = remove).
+                   CUSTOM MOBS (dynamic spawns, idx 0x800+; the Wajaom
+                   Toucans) exist in NO zone's static table -- but accdata
+                   ships an EVA-by-level curve per family, so family + the
+                   LIVE level (auto-/check on engage, widescan) prices them
+                   anyway. A name that exists in ANY zone (Toucan -> Bird in
+                   Bibiki Bay) resolves its family automatically; the manual
+                   assignment is for names the table has never seen. The
+                   curve is a floor; the /check bracket corrects it live.
     /dl acc debug  trace engage/inject/reply/cache decisions to chat
 
 Triggers: c2s 0x01A action 0x02 (attack) and action 0x0F (change target --
@@ -210,6 +220,113 @@ local function writeAccState(gap, mob)
     end);
 end
 
+-- ---------------------------------------------------------------------------
+-- Custom-mob fallback (Henrik 2026-07-14, the Wajaom Toucans): CatsEyeXI
+-- spawns custom mobs (dynamic entities, idx 0x800+) that exist in NO zone's
+-- static table -- the zone lookup misses, and widescan cannot help because it
+-- only collapses level ranges for mobs already IN the table. But customs
+-- reuse stock pools/families ("Toucan" = family Bird), and accdata ships one
+-- EVA-by-level curve per family. So: resolve the FAMILY -- a per-char manual
+-- assignment (accfamilies.lua, /dl acc family) wins, else a cross-zone name
+-- match -- and price the mob from the curve at its LIVE level. The
+-- synthesized entry flows through the normal report path, so the bracket
+-- clamp, the accstate feed and AutoAcc all just work. Curves are a FLOOR
+-- (most common job combo, no pool mods, non-NM); /check brackets correct.
+-- ---------------------------------------------------------------------------
+local function familyEva(key, lvl)
+    if not _dok or type(DATA.families) ~= 'table' then return nil; end
+    local curve = DATA.families[key];
+    if type(curve) ~= 'table' then return nil; end
+    lvl = math.floor(tonumber(lvl) or 0);
+    if lvl < 1 or lvl > #curve then return nil; end
+    return curve[lvl];
+end
+M._familyEva = familyEva;                     -- headless tests
+
+-- Player input -> curve key: exact squash, then singular (drop one trailing
+-- 's': 'birds' -> 'bird'), then unique prefix. nil + a chat-ready why on miss.
+local function resolveFamilyKey(input)
+    if not _dok or type(DATA.families) ~= 'table' then
+        return nil, 'accdata has no family curves -- regenerate accdata.lua';
+    end
+    local q = squash(input);
+    if q == '' then return nil, 'give a family name, e.g. /dl acc family bird'; end
+    if DATA.families[q] ~= nil then return q; end
+    if string.sub(q, -1) == 's' and DATA.families[string.sub(q, 1, -2)] ~= nil then
+        return string.sub(q, 1, -2);
+    end
+    local hit, hits = nil, 0;
+    for k in pairs(DATA.families) do
+        if string.sub(k, 1, #q) == q then hit = k; hits = hits + 1; end
+    end
+    if hits == 1 then return hit; end
+    if hits > 1 then return nil, ('"%s" matches %d families -- be more specific'):format(tostring(input), hits); end
+    return nil, ('unknown family "%s"'):format(tostring(input));
+end
+M._resolveFamilyKey = resolveFamilyKey;       -- headless tests
+
+-- The family a squashed name maps to ANYWHERE in the static table (first word
+-- of the entry's 'Family MJOB/SJOB' desc). Lazy full-table index, built once.
+local _nameFam = nil;
+local function crossZoneFamily(sqName)
+    if not _dok then return nil; end
+    if _nameFam == nil then
+        _nameFam = {};
+        for _, zt in pairs(DATA.zones) do
+            for nm, e in pairs(zt) do
+                if _nameFam[nm] == nil and type(e[6]) == 'string' then
+                    local fam = string.match(e[6], '^(%S+)');
+                    if fam ~= nil then _nameFam[nm] = squash(fam); end
+                end
+            end
+        end
+    end
+    return _nameFam[sqName];
+end
+M._crossZoneFamily = crossZoneFamily;         -- headless tests
+
+-- Per-char manual assignments: '<zone>/<squashedname>' -> family key. Loaded
+-- lazily (charDlacDir needs a logged-in character); saved on every change.
+local _customFam = nil;
+local function customFams()
+    if _customFam ~= nil then return _customFam; end
+    local dir = charDlacDir();
+    if dir == nil then return {}; end          -- pre-login throwaway: retry next call
+    _customFam = {};
+    pcall(function()
+        local chunk = loadfile(dir .. 'accfamilies.lua');
+        if chunk ~= nil then
+            local ok, t = pcall(chunk);
+            if ok and type(t) == 'table' then
+                for k, v in pairs(t) do
+                    if type(k) == 'string' and type(v) == 'string' then _customFam[k] = v; end
+                end
+            end
+        end
+    end);
+    return _customFam;
+end
+
+local function saveCustomFams()
+    pcall(function()
+        local dir = charDlacDir();
+        if dir == nil or _customFam == nil then return; end
+        local keys = {};
+        for k in pairs(_customFam) do keys[#keys + 1] = k; end
+        table.sort(keys);
+        local f = io.open(dir .. 'accfamilies.lua', 'wb');
+        if f == nil then return; end
+        f:write('-- dlac acc watch: manual family assignments for custom mobs\n');
+        f:write('-- ("/dl acc family <name>" with the mob targeted). zone/squashedname -> family curve.\n');
+        f:write('return {\n');
+        for _, k in ipairs(keys) do
+            f:write(('[%q] = %q,\n'):format(k, _customFam[k]));
+        end
+        f:write('}\n');
+        f:close();
+    end);
+end
+
 local function report(actIndex, why, full)
     if not _dok then
         say('acc: accdata.lua missing/bad -- regenerate: python tools\\acc_calc.py --luadata accdata.lua');
@@ -224,11 +341,26 @@ local function report(actIndex, why, full)
     local z = DATA.zones[zone];
     local e = z ~= nil and z[squash(name)] or nil;
     if e == nil then
+        -- Custom-mob fallback: family (manual assignment wins, else cross-zone
+        -- name match) + live level -> synthesize the entry from the family curve.
+        local sq = squash(name);
+        local fam = customFams()[tostring(zone) .. '/' .. sq] or crossZoneFamily(sq);
         local seen = seenLevels[actIndex];
-        say(('acc%s: %s%s -- not in the static table for this zone (custom mob? the widescan layer will learn these)'):format(
-            why or '', name, seen ~= nil and (' Lv%d*'):format(seen) or ''));
-        writeAccState(nil, name);   -- MobEVA unknown -> AutoAcc stands down (pieces stay worn)
-        return;
+        local ev = (fam ~= nil and seen ~= nil) and familyEva(fam, seen) or nil;
+        if ev ~= nil then
+            e = { seen, seen, ev, ev, 0, fam .. ' (family curve)' };
+            dbg(('custom fallback: %s -> family %s, Lv%d -> EVA %d'):format(name, fam, seen, ev));
+        elseif fam ~= nil then
+            say(('acc%s: %s -- custom mob, family "%s" known, but no live level yet: engage it again once a /check has answered (engage auto-checks), or open widescan once.'):format(
+                why or '', name, fam));
+            writeAccState(nil, name);
+            return;
+        else
+            say(('acc%s: %s%s -- not in this zone\'s table and no family known (custom mob). Target it and assign one: /dl acc family <family>  (e.g. bird)'):format(
+                why or '', name, seen ~= nil and (' Lv%d*'):format(seen) or ''));
+            writeAccState(nil, name);   -- MobEVA unknown -> AutoAcc stands down (pieces stay worn)
+            return;
+        end
     end
     local lo, hi, evLo, evHi, nm, desc = e[1], e[2], e[3], e[4], e[5], e[6];
     local exact = '';
@@ -469,6 +601,54 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
             if b == 'debug' then
                 M.debug = not M.debug;
                 say('acc debug ' .. (M.debug and 'ON -- traces engage/inject/reply/cache' or 'OFF') .. '.');
+                return;
+            end
+            if b == 'family' then
+                -- Assign/show/clear the CURRENT TARGET's family (custom mobs).
+                local arg = raw:match('^/dl%s+acc%s+family%s*(.*)$')
+                         or raw:match('^/dlac%s+acc%s+family%s*(.*)$') or '';
+                arg = arg:match('^%s*(.-)%s*$') or '';
+                local idx = 0;
+                pcall(function() idx = AshitaCore:GetMemoryManager():GetTarget():GetTargetIndex(0); end);
+                if idx == nil or idx == 0 then say('acc family: target the mob first.'); return; end
+                local name = '';
+                pcall(function() name = AshitaCore:GetMemoryManager():GetEntity():GetName(idx) or ''; end);
+                if name == '' then say('acc family: cannot read the target\'s name.'); return; end
+                local zone = -1;
+                pcall(function() zone = AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0); end);
+                local fkey = tostring(zone) .. '/' .. squash(name);
+                local fams = customFams();
+                if arg == '' then
+                    local assigned = fams[fkey];
+                    local auto = crossZoneFamily(squash(name));
+                    if assigned ~= nil then
+                        say(('acc family: %s = %s (assigned; "/dl acc family clear" to remove).'):format(name, assigned));
+                    elseif auto ~= nil then
+                        say(('acc family: %s = %s (automatic name match -- no assignment needed).'):format(name, auto));
+                    else
+                        say(('acc family: %s is unknown -- assign one: /dl acc family <family>  (e.g. bird).'):format(name));
+                    end
+                    return;
+                end
+                if arg == 'clear' or arg == 'off' or arg == 'none' then
+                    if fams[fkey] ~= nil then
+                        fams[fkey] = nil;
+                        saveCustomFams();
+                        say(('acc family: cleared %s.'):format(name));
+                    else
+                        say(('acc family: %s has no manual assignment.'):format(name));
+                    end
+                    return;
+                end
+                local key, whyNot = resolveFamilyKey(arg);
+                if key == nil then
+                    say('acc family: ' .. tostring(whyNot) .. '.');
+                    return;
+                end
+                fams[fkey] = key;
+                saveCustomFams();
+                say(('acc family: %s = %s (saved).'):format(name, key));
+                report(idx, '(family set)');   -- instant feedback; explains itself if the level is still missing
                 return;
             end
             M.enabled = not M.enabled;

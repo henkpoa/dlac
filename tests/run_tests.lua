@@ -1214,6 +1214,37 @@ do
 end
 
 -- ---------------------------------------------------------------------------
+-- AD. custom-mob family fallback (accwatch) -- mobs missing from their zone's
+--     static table (CatsEyeXI customs, e.g. the Wajaom Toucans) are priced
+--     from accdata's per-family EVA curve at their live level. Under test:
+--     the curve lookup, the tolerant family-name resolver (/dl acc family),
+--     and the automatic cross-zone name match (Toucan exists in Bibiki Bay
+--     as family Bird -> the Wajaom copies inherit it with no assignment).
+-- ---------------------------------------------------------------------------
+do
+    local birdCurve = {};
+    for i = 1, 99 do birdCurve[i] = 200 + i; end
+    package.loaded['dlac\\accdata'] = {
+        zones = {
+            [4]  = { toucan = { 38, 40, 130, 137, 0, 'Bird WAR/WAR' } },
+            [51] = { wajaomtiger = { 67, 74, 260, 290, 0, 'Tiger WAR/WAR' } },
+        },
+        families = { bird = birdCurve, bee = { 10, 20, 30 }, beetle = { 11, 21, 31 } },
+    };
+    local accw = dofile('accwatch.lua');
+    check('AD1 curve lookup at level', accw._familyEva('bird', 75), 275);
+    check('AD2 level out of curve range -> nil', accw._familyEva('bird', 100), nil);
+    check('AD3 unknown curve key -> nil', accw._familyEva('tigers', 10), nil);
+    check('AD4 exact family resolves', accw._resolveFamilyKey('bird'), 'bird');
+    check('AD5 plural tolerated (birds -> bird)', accw._resolveFamilyKey('birds'), 'bird');
+    check('AD6 unique prefix resolves', accw._resolveFamilyKey('bir'), 'bird');
+    check('AD7 ambiguous prefix rejected', (accw._resolveFamilyKey('be')), nil);
+    check('AD8 cross-zone match: Toucan -> bird', accw._crossZoneFamily('toucan'), 'bird');
+    check('AD9 name in no zone -> nil', accw._crossZoneFamily('gigantoad'), nil);
+    package.loaded['dlac\\accdata'] = nil;
+end
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then
