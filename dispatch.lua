@@ -49,7 +49,7 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 36;   -- 36: AutoAcc type automation -- dlac:AutoAcc markers budget released pieces against accstate.lua
+M.VERSION = 37;   -- 37: craft Sub guard -- a Main pairing badly with the overlay's Sub is held (Kupo Shield vs scythe)
                   -- 35: matched-but-missing set no longer chat-warns (Triggers tab shows it in red)
                   -- 34: modestate __loadstamp -- the GUI's red Reload-LAC button watches it clear
                   -- 33: profile storage layer (dlac\profiles\<name>\; auto-install on load/job change; /dl profile)
@@ -1058,6 +1058,24 @@ local function equipResolved(s, ctx)
             end
         end
     end
+    -- Craft Sub guard: hold a Main that pairs badly with the craft overlay's Sub
+    -- (see craftMainGuard). Post-pass on the FINAL names so it also covers a Main
+    -- that a virtual (dlac:AutoStaff) or AutoAcc resolved above.
+    if ctx ~= nil and ctx.craftMainGuard ~= nil then
+        for slot, v in pairs(out or s) do
+            if string.lower(tostring(slot)) == 'main' and type(v) == 'string'
+               and ctx.craftMainGuard(v) then
+                if out == nil then
+                    out = {};
+                    for k2, v2 in pairs(s) do out[k2] = v2; end
+                end
+                out[slot] = nil;
+                notes = notes or {};
+                notes[#notes + 1] = string.format('Main=%s HELD (pairs badly with the craft Sub)', tostring(v));
+                break;
+            end
+        end
+    end
     pcall(function() gFunc.EquipSet(out or s); end);
     local note = '';
     if notes ~= nil then
@@ -1066,6 +1084,7 @@ local function equipResolved(s, ctx)
     end
     return note, (out or s);   -- the table actually equipped (for slot attribution)
 end
+M._equipResolved = equipResolved;   -- test seam (craft Sub guard post-pass)
 
 -- Flip a slot lock. slot: one of LAC_SLOTS or 'all'; state nil = toggle. Returns the
 -- new state (for 'all': the state applied), or nil for an unknown slot name.
@@ -1213,6 +1232,36 @@ local function craftOverlay(ctx)
     return craftOverlayFor(ensureCraftState(), ctx);
 end
 
+-- Craft Sub-vs-Main guard (Henrik, field case: the overlay's Kupo Shield vs a
+-- scythe in the Default set). When the overlay owns SUB but brings no MAIN, a
+-- set Main that cannot PAIR with that Sub (2H/H2H vs a shield -- utils'
+-- subSlotAllowed, the shared pairing rule, decides) must be HELD out of the
+-- dispatch: equipping it knocks the craft Sub off and the two slots then knock
+-- each other off on every pass. equipResolved applies the hold, so it is
+-- stateless -- the moment the overlay clears, Main dispatches normally again;
+-- nothing to re-enable, nothing to leak if a craft ends abnormally. (The
+-- '/lac disable main' route is a known dead end: it blocks /lac equip and
+-- somebody has to remember the re-enable.)
+-- Returns guard(mainName) -> true when that Main must be held, or nil when the
+-- overlay shape needs no guard / utils is not loaded in this state.
+local function craftMainGuard(cEquip)
+    if cEquip == nil or cEquip.Sub == nil or cEquip.Main ~= nil then return nil; end
+    local g = nil;
+    pcall(function()
+        local u = package.loaded['dlac\\utils'];   -- loaded first in the LAC state; no require (circular)
+        if type(u) ~= 'table' or u.resolveGearName == nil or u.subSlotAllowed == nil then return; end
+        local subRec = u.resolveGearName(cEquip.Sub);
+        if type(subRec) ~= 'table' then return; end
+        g = function(mainName)
+            local mrec = u.resolveGearName(mainName);
+            if type(mrec) ~= 'table' then return false; end   -- unknown name: leave it alone
+            return u.subSlotAllowed(subRec, mrec, {}) ~= true;
+        end
+    end);
+    return g;
+end
+M._craftMainGuard = craftMainGuard;   -- test seam
+
 function M.dispatch(event)
     if not inLac() then return; end
     pcall(function()
@@ -1243,6 +1292,7 @@ function M.dispatch(event)
         -- Craft overlay applies on Default even with NO trigger match (so a plain
         -- profile still gets craft gear), and always LAST (top priority) below.
         local cEquip = (event == 'Default') and craftOverlay(ctx) or nil;
+        ctx.craftMainGuard = (cEquip ~= nil) and craftMainGuard(cEquip) or nil;
 
         if #hits == 0 and cEquip == nil then
             if event ~= 'Default' then   -- Default runs every frame; only action events trace a miss

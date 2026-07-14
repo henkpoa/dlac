@@ -52,6 +52,19 @@ Torque's in a row then universal Torque, then do the same with the rest?"*
    and craftwatch's direct-equip path (v1, shipped) remains as the
    detection-time kick.
 
+## Sub-vs-Main guard (v37, field case)
+
+The overlay's Sub gear (Kupo Shield) and a base set's 2H/H2H Main (a scythe
+Default) knock each other off on every dispatch: the game can't hold both, so
+each pass re-equips one and removes the other. Engine rule since dispatch v37:
+while the overlay owns **Sub** and brings **no Main of its own**, any set Main
+that can't PAIR with that Sub (`utils.subSlotAllowed`, the shared pairing rule
+-- so 1H mains still equip fine next to a shield) is **held out of the
+dispatch** (`Main=... HELD` in /dl why). Stateless by design: the moment the
+overlay clears, Main dispatches normally again -- nothing to re-enable.
+(`/lac disable main` was considered and rejected: it also blocks `/lac equip`
+and leaks a disabled slot if a craft ends abnormally.)
+
 ## Open decisions (Henrik)
 
 - **D1 — restore behavior:** when the craft mode clears (zone, manual off,

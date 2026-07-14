@@ -901,3 +901,21 @@ weights editor LIVE-APPLIES -- the number in the box is the weight, no Set
 click (too easy to miss). Mid-typing values apply transiently and
 self-correct; the Add row keeps its button (a half-picked stat shouldn't
 spring into existence).
+
+## Session "craft Sub guard -- Kupo Shield vs the scythe" (07-14)
+
+Field report (Henrik): AutoCraft's Kupo Shield and a Default set's scythe
+knock each other off every dispatch (the game can't pair a shield with a
+2H/H2H main, so each pass re-equips one and removes the other). His sketch
+was a temporary `/lac disable main` + re-enable on craft off; the craft
+memory's dead-ends note rules that out (`/lac disable` blocks `/lac equip`
+too, and an abnormal craft end leaks a dead slot). Engine fix instead
+(dispatch v37): when the craft overlay owns SUB and brings no MAIN,
+equipResolved HOLDS any set Main that can't pair with that Sub --
+`utils.subSlotAllowed` (the shared pairing rule) decides, so 1H mains keep
+equipping next to the shield; unknown names are left alone. The hold is a
+post-pass on FINAL names (covers dlac:AutoStaff/AutoAcc-resolved mains),
+traced as `Main=... HELD` in /dl why, and stateless: overlay gone -> Main
+dispatches again, nothing to re-enable. utils exports resolveGearName for
+the record lookups (old LAC states degrade gracefully: guard just stays
+off until Reload LAC). Tests AF1-12.

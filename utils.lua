@@ -268,6 +268,8 @@ local function resolveGearName(name)
     return _lcIndex[string.lower(name)];
 end
 function M._resetNameIndex() _lcIndex = nil; end
+M.resolveGearName = resolveGearName;   -- the house name->record resolver (dispatch's
+                                       -- craft Sub guard pairs records through it)
 
 -- One warning per unique missing name per state: a commit hot-swap rebuilds
 -- EVERY dynamic set, and per-occurrence prints flooded the chat log (field

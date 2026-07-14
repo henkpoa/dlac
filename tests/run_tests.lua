@@ -1251,6 +1251,43 @@ check('AE15 score() follows the shared table back', optim.score({ Accuracy = 1 }
 optim.clearWeight('Accuracy');                              -- leave the shared table as found
 
 -- ---------------------------------------------------------------------------
+-- AF. craft Sub-vs-Main guard (dispatch.craftMainGuard + the equipResolved
+--     post-pass) -- while the craft overlay owns Sub with no Main of its own,
+--     a set Main that can't PAIR with that Sub (subSlotAllowed) is HELD out of
+--     the dispatch (field case: Kupo Shield vs a scythe knocking each other
+--     off every pass). Stateless: overlay gone -> Main dispatches again.
+-- ---------------------------------------------------------------------------
+package.loaded['dlac\\utils'] = utils;   -- the guard resolves pairing through utils
+local gearT = package.loaded['dlac\\gear'];
+gearT.NameToObject['Kupo Shield']  = { Name = 'Kupo Shield',  Type = 'Sub' };   -- catalog vocab: Sub + name -> Shield
+gearT.NameToObject['Death Scythe'] = { Name = 'Death Scythe', Type = 'Great Scythe', OneHanded = false };
+gearT.NameToObject['Parry Knife']  = { Name = 'Parry Knife',  Type = 'Dagger', OneHanded = true };
+gearT.NameToObject['Cat Baghnakhs'] = { Name = 'Cat Baghnakhs', Type = 'Hand-to-Hand' };   -- H2H: no OneHanded flag
+utils._resetNameIndex();
+
+local guard = dispatchM._craftMainGuard({ Sub = 'Kupo Shield', Hands = 'Weaver Gloves' });
+check('AF1 guard built when the overlay has Sub but no Main', guard ~= nil, true);
+check('AF2 a 2H Main is held', guard('Death Scythe'), true);
+check('AF3 a 1H Main pairs fine and passes', guard('Parry Knife'), false);
+check('AF4 an H2H Main is held', guard('Cat Baghnakhs'), true);
+check('AF5 an unknown Main name is left alone', guard('Mystery Club'), false);
+check('AF6 no guard when the overlay brings its own Main',
+    dispatchM._craftMainGuard({ Sub = 'Kupo Shield', Main = 'Parry Knife' }), nil);
+check('AF7 no guard when the overlay has no Sub',
+    dispatchM._craftMainGuard({ Hands = 'Weaver Gloves' }), nil);
+
+-- the equipResolved post-pass: the offending Main is dropped, everything else kept
+local afNote, afTbl = dispatchM._equipResolved({ Main = 'Death Scythe', Body = 'Weaver Apron' },
+    { craftMainGuard = guard });
+check('AF8 offending Main held out of the equip', afTbl.Main, nil);
+check('AF9 the rest of the set is untouched', afTbl.Body, 'Weaver Apron');
+check('AF10 the hold is traced for /dl why', string.find(afNote, 'HELD', 1, true) ~= nil, true);
+local _, afTbl2 = dispatchM._equipResolved({ Main = 'Parry Knife' }, { craftMainGuard = guard });
+check('AF11 a pairable Main equips normally', afTbl2.Main, 'Parry Knife');
+local _, afTbl3 = dispatchM._equipResolved({ Main = 'Death Scythe' }, {});
+check('AF12 no guard, no hold (craft off)', afTbl3.Main, 'Death Scythe');
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then
