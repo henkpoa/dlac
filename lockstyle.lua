@@ -429,7 +429,7 @@ function M.render()
             cur.dirty and 'unsaved changes' or ((e ~= nil) and ('"' .. tostring(e.name or '') .. '"') or '(empty)'));
         -- top-right on this row (Henrik): kill the lockstyle visual
         pcall(function()
-            local bw = 132;
+            local bw = 178;   -- 17 chars at the wide themed font (9.5px/char + padding)
             imgui.SameLine();
             local avail = imgui.GetContentRegionAvail();
             if type(avail) == 'number' and avail > bw then
@@ -533,8 +533,9 @@ function M.render()
                 tostring(job or '?'),
                 (cur_ol ~= nil and cur_ol ~= data.active) and string.format('\nCurrently bound to box %d.', cur_ol) or ''));
         end
-        imgui.SameLine(0, 10);
-        if imgui.Button('Apply lockstyle##lsgo', { 140, 0 }) then
+        -- own row (Henrik: beside the checkbox it widened the whole window);
+        -- full column width, same as Import/Preview
+        if imgui.Button('Apply lockstyle##lsgo', { 216, 0 }) then
             queueCmd('/dl ls apply');
         end
         if imgui.IsItemHovered() then
