@@ -139,8 +139,8 @@ handshake).
     widescan). Widescan alone never helped — it only collapses ranges for
     mobs already in the table. See history.md "custom mobs -> family EVA
     curves".
-  - **AutoAcc — the first Type automation (07-14, engine v36, AWAITING field
-    verify):** pieces typed `autoType = 'AutoAcc'` in a set entry's Behaviour
+  - **AutoAcc — the first Type automation (07-14, engine v36, FIELD-VERIFIED
+    07-14):** pieces typed `autoType = 'AutoAcc'` in a set entry's Behaviour
     are released for the slot's normal pick while the acc watch says their ACC
     is redundant. Chain: Behaviour popup (gearui, bakes `acc` on Commit) →
     flatten marker `dlac:AutoAcc:<prio>:<acc>:<Name>|<fallback>` (utils) →
