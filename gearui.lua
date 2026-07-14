@@ -3363,7 +3363,11 @@ local function renderEntryEditPopup()
     end
     imgui.PopItemWidth();
     imgui.Separator();
-    fmt.textWrapped(COL_DIM, 'Mode gates: the entry is used while ANY of these modes is active -- and then it beats the unconditional entries in this list. One set can adapt per mode instead of switching sets.');
+    -- Compact labels + hover tooltips (Henrik 07-14: "no need for so much blatant text")
+    imgui.TextColored(COL_DIM, 'Mode Gates:');
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('When enabled, this piece is equipped only while ANY of these\nmodes is active -- and then it beats the unconditional entries\nin this list. Define modes under Triggers > Modes.');
+    end
 
     -- Current gates as a removable list (string or table on the entry).
     local modes = {};
@@ -3419,7 +3423,10 @@ local function renderEntryEditPopup()
     -- offered on virtual rows (they are already automations).
     if it.rec == nil or it.rec.Virtual ~= true then
         imgui.Separator();
-        fmt.textWrapped(COL_DIM, 'Auto Type: give this piece to an equip automation. AutoAcc wears it for its Accuracy and swaps it out (next-best piece in) whenever the acc watch says that ACC is redundant against the mob you fight.');
+        imgui.TextColored(COL_DIM, 'Auto Type');
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Give this piece an automation type, e.g. AutoAcc: worn for its\nAccuracy, released (the slot\'s next-best equipped instead) while\nthe acc watch (/dl acc) reports that ACC redundant for the mob.');
+        end
         local isAcc = (it.autoType ~= nil and string.lower(tostring(it.autoType)) == 'autoacc');
         imgui.PushItemWidth(120);
         if imgui.BeginCombo('##eeautotype', isAcc and 'AutoAcc' or 'None') then
