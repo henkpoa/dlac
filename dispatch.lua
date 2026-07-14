@@ -802,6 +802,9 @@ M.menuName = menuName;   -- craftwatch reads it to equip while the synth window 
 -- mob -> the pieces come back on). Invalid/stale/missing state (unknown mob,
 -- watch off, no measurement yet) -> every AutoAcc piece stays worn: the set
 -- behaves exactly as if nothing were typed.
+-- NOTE (main): the WRITER (accwatch.lua + accdata.lua) ships on
+-- feature/autoacc pending GM approval -- on main nothing writes accstate.lua,
+-- so this machinery is dormant foundation: markers always resolve to "worn".
 -- ---------------------------------------------------------------------------
 local _accfile = { raw = nil, data = nil, lastCheck = -1 };
 local ACC_STALE_S = 900;   -- measurements older than 15 min are not acted on

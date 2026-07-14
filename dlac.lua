@@ -131,7 +131,7 @@ end
 -- the GUI render hook. Guarded so one module failing can't take the addon down.
 local _cfok, _cfmt = pcall(require, 'dlac\\chatfmt');
 _cfok = _cfok and type(_cfmt) == 'table';
-for _, mod in ipairs({ 'gear', 'augments', 'gearoptim', 'gearimport', 'gearexport', 'useitem', 'craftwatch', 'craftbar', 'accwatch', 'gearui' }) do
+for _, mod in ipairs({ 'gear', 'augments', 'gearoptim', 'gearimport', 'gearexport', 'useitem', 'craftwatch', 'craftbar', 'gearui' }) do
     local ok, err = pcall(require, 'dlac\\' .. mod);
     if not ok then
         local m = string.format('failed to load %s: %s', mod, tostring(err));

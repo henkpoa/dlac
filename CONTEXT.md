@@ -31,7 +31,7 @@ A dlac-shipped behavior (auto elemental staff, auto obi) expressed as a **virtua
 _Avoid_: smart swap, feature flag, SetOptions (retired)
 
 **Type automation**:
-An Automation assigned to a specific set PIECE through its Behaviour rules (`autoType` on the entry wrapper), as opposed to occupying a slot. First member: **AutoAcc** — the piece is worn for its Accuracy and *released* (the slot's normal pick worn instead) while the acc watch measures the player over the hit cap by at least the piece's baked ACC. Release order among several candidates is the player's **Removal Priority** (`removePrio`, higher releases first); two AutoAcc candidates on one slot → the higher-leveled item wins. Unknown mob / watch off / no measurement → the piece is worn as usual.
+An Automation assigned to a specific set PIECE through its Behaviour rules (`autoType` on the entry wrapper), as opposed to occupying a slot: the engine decides at equip time whether to wear the piece or the slot's normal pick, releasing candidates in the player's **Removal Priority** order (`removePrio`, higher releases first). Main ships the FOUNDATION only (the Auto Type combo offers None); the first member, **AutoAcc** — released while the acc watch measures the player over the hit cap by at least the piece's baked ACC — lives on `feature/autoacc` pending GM approval.
 _Avoid_: per-piece automation, gear tag
 
 **Virtual slot entry**:

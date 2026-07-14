@@ -3416,36 +3416,30 @@ local function renderEntryEditPopup()
         _setDirty = true;
     end
 
-    -- Auto Type (Type automations, Henrik 2026-07-14): hand the piece to a
-    -- dlac automation. AutoAcc = worn for its Accuracy; while the acc watch
-    -- (/dl acc) reports you over the hit cap by at least this piece's ACC, the
-    -- engine releases it and wears the slot's next-best piece instead. Not
+    -- Auto Type (Type automations): hand the piece to an equip automation that
+    -- decides at equip time whether to wear it or the slot's next-best pick.
+    -- FOUNDATION ONLY on main: no types ship here yet -- the first one
+    -- (AutoAcc) lives on feature/autoacc pending GM approval, so the combo
+    -- offers None. The plumbing (autoType/removePrio wrappers, flatten
+    -- markers, engine budget) stays, so branch and main share one set format
+    -- and a branch-committed type still displays and can be cleared. Not
     -- offered on virtual rows (they are already automations).
     if it.rec == nil or it.rec.Virtual ~= true then
         imgui.Separator();
         imgui.TextColored(COL_DIM, 'Auto Type');
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('Give this piece an automation type, e.g. AutoAcc: worn for its\nAccuracy, released (the slot\'s next-best equipped instead) while\nthe acc watch (/dl acc) reports that ACC redundant for the mob.');
+            imgui.SetTooltip('Give this piece an automation type: the engine then decides at\nequip time whether to wear it or the slot\'s next-best piece.\nNo types are available yet.');
         end
-        local isAcc = (it.autoType ~= nil and string.lower(tostring(it.autoType)) == 'autoacc');
+        local curType = (it.autoType ~= nil) and tostring(it.autoType) or 'None';
         imgui.PushItemWidth(120);
-        if imgui.BeginCombo('##eeautotype', isAcc and 'AutoAcc' or 'None') then
-            if imgui.Selectable('None', not isAcc) and it.autoType ~= nil then
+        if imgui.BeginCombo('##eeautotype', curType) then
+            if imgui.Selectable('None', it.autoType == nil) and it.autoType ~= nil then
                 it.autoType = nil; it.removePrio = nil; it.acc = nil;
-                _setDirty = true;
-            end
-            if imgui.Selectable('AutoAcc', isAcc) and not isAcc then
-                it.autoType = 'AutoAcc';
-                it.removePrio = it.removePrio or 1;
-                ui._editPrio = { it.removePrio };
                 _setDirty = true;
             end
             imgui.EndCombo();
         end
         imgui.PopItemWidth();
-        if imgui.IsItemHovered() then
-            imgui.SetTooltip('AutoAcc needs the acc watch ON (/dl acc). Unknown mobs (custom/HNM),\nwatch off, or no measurement yet -> the piece is worn as usual.\nTwo AutoAcc rows on one slot: the higher-leveled item wins the slot.\nThe piece\'s ACC value is baked in on Commit -- recommit after re-augmenting.');
-        end
         if it.autoType ~= nil then
             imgui.SameLine(0, 10);
             imgui.PushItemWidth(90);
@@ -3456,7 +3450,7 @@ local function renderEntryEditPopup()
             end
             imgui.PopItemWidth();
             if imgui.IsItemHovered() then
-                imgui.SetTooltip('Several AutoAcc pieces worn and you are over cap:\nHIGHER priority is released first, as far as the surplus covers.');
+                imgui.SetTooltip('When several typed pieces compete for release,\nHIGHER priority is released first.');
             end
         end
     end
@@ -3559,7 +3553,7 @@ local function renderSetBuilder(job, level)
                 imgui.SameLine(0, 8);
                 imgui.TextColored(COL_SCORE, string.format('[%s p%d]', fmt.esc(tostring(it.autoType)), it.removePrio or 1));
                 if imgui.IsItemHovered() then
-                    imgui.SetTooltip('Type automation: worn for its ACC; released (slot\'s next-best worn\ninstead) while the acc watch reports enough surplus over the hit cap.\np = Removal Priority -- higher is released first. Needs /dl acc ON.');
+                    imgui.SetTooltip('Type automation: the engine decides at equip time whether this piece\nor the slot\'s next-best is worn. p = Removal Priority (higher first).');
                 end
             end
             imgui.SameLine(imgui.GetWindowWidth() - 86);   -- buttons at the right edge

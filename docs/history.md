@@ -786,3 +786,36 @@ with it below. accwatch folds it into need/AccCmpLvl/AccCap (Lv46 vs Lv26:
 AccCap -103 -> -183), acc_calc.py correction() mirrors it. Need can go far
 negative on greys -- intended: AutoAcc then releases everything. Tally
 verification of the exact +-4 slope remains the open ground-truth check.
+
+## Session "the GM split: ACC system -> feature/autoacc" (07-14, branch + main)
+
+Henrik, right after field-verifying AutoAcc: LuaAshitacast is on the server's
+"special approved list" BECAUSE of automation -- gear swaps driven by a
+calculated acc cap may be more than the GMs allow. He has asked them for
+approval; until the verdict, main must not carry it (the storage-move
+precedent). His spec: keep the gear-auto-type FOUNDATION on main (GUI shows
+Auto Type with None only), move "the acc calculations, mob family lookups and
+everything" to a branch.
+
+**feature/autoacc** (branched at 348815c) = main's full state PLUS the
+Automations-panel row he asked for first: AutoAcc listed under Triggers ->
+Automations, Kind "Equip Type", status = acc watch ON/OFF, detail view with
+a /dl acc toggle (through the command bus ON PURPOSE -- the handler writes
+the accstate-invalid record on OFF; flipping aw.enabled directly would skip
+it). Everything ACC lives here: accwatch.lua, accdata.lua, tools/acc_calc.py,
+AutoAcc selectable in the Behaviour popup, tests AD1-9.
+
+**main** (stripped): accwatch/accdata/acc_calc deleted; 'accwatch' out of
+dlac.lua's module list; Behaviour popup offers None only (a branch-committed
+autoType still DISPLAYS and can be cleared -- one set format across branches);
+tooltips genericized (no AutoAcc/acc-watch text). The DORMANT foundation
+stays: wrapper fields + serializer/loader, flatten markers (utils), engine
+budget machinery (dispatch v36 -- nothing writes accstate.lua on main, so
+markers always resolve to "worn"), tests AC1-24 guarding it all.
+
+Working rule while the verdict is out: **commit ACC work on feature/autoacc
+only; do not merge or push the branch without Henrik's word.** Playing with
+AutoAcc = `git checkout feature/autoacc` + `/addon reload dlac` -- no Reload
+LAC needed for the flip: both branches carry IDENTICAL engine/flatten code
+(utils.lua byte-equal, dispatch.lua differs only by a main-side comment, same
+VERSION 36); only addon-state files (accwatch/accdata/GUI) differ.

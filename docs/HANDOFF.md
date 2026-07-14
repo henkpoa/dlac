@@ -118,37 +118,33 @@ handshake).
 
 ## Current state (as of 2026-07-15)
 
-- **NEW ARC — the ACC system (07-13→15, all on main, field-verified):** `/dl acc`
-  prints, on every engage AND auto-target switch, Henrik's labeled line
-  (`<Mob> Lv* - MobEVA - CurrentAcc - AccCmp - AccCmpLvl - AccPct - AccCap`) by
-  silently injecting /checkparam + /check (c2s 0x0DD, **16-byte struct — read the
-  server's c2s header, not XiPackets**) and swallowing the replies. Read
-  history.md "ACC calculator -> acc watch" before touching `accwatch.lua`,
-  `accdata.lua` (generated: `python tools\acc_calc.py --luadata accdata.lua`), or
-  `tools/acc_calc.py`. Standing rulings: **level correction = SIGNED 4 ACC/lvl,
-  EVERYWHERE — −4 per level the mob is above you AND +4 per level it is below
-  (ruling v3, supersedes v2's penalty-only, which superseded v1's "+4 bonus")**;
-  model EVA is a floor, the /check-bracket learner corrects it live. Research kit lives in
-  **dlacprobe v1.5** (not in git): `/probe scan [go N|dump]`, `/probe tally`.
-  Cross-session memory: `memory/mob-eva-pipeline.md` mirrors all of this.
-  - **Custom mobs (07-14):** dynamic spawns (idx 0x800+, e.g. the Wajaom
-    Toucans) exist in NO zone's static table — accdata now also ships 350
-    per-family EVA curves, and accwatch prices a missing mob from its FAMILY
-    (cross-zone name match automatic; `/dl acc family <name>` for unknown
-    names, per-char `accfamilies.lua`) at its LIVE level (auto-/check,
-    widescan). Widescan alone never helped — it only collapses ranges for
-    mobs already in the table. See history.md "custom mobs -> family EVA
-    curves".
-  - **AutoAcc — the first Type automation (07-14, engine v36, FIELD-VERIFIED
-    07-14):** pieces typed `autoType = 'AutoAcc'` in a set entry's Behaviour
-    are released for the slot's normal pick while the acc watch says their ACC
-    is redundant. Chain: Behaviour popup (gearui, bakes `acc` on Commit) →
-    flatten marker `dlac:AutoAcc:<prio>:<acc>:<Name>|<fallback>` (utils) →
-    `accstate.lua` per engage (accwatch) → budgeted release in the engine
-    (dispatch v36, per-seq frozen budget = `-capGap + sum(released)`). Read
-    history.md "AutoAcc -- the first Type automation" before touching the
-    budget logic — the feedback loop is deliberate, not flapping. Tests AC1–24.
-- **main**: healthy; **267 tests green** (was 189 at last handoff) —
+- **THE ACC SYSTEM LIVES ON `feature/autoacc` (07-14, Henrik's call, pending GM
+  approval — do not merge or push without his word):** LuaAshitacast is on the
+  server's special approved list *because* of automation; auto-swapping gear by
+  calculated ACC may be more than the GMs allow, so the whole arc was moved off
+  main the day it was finished (field-verified working). ON THE BRANCH:
+  `accwatch.lua` (the `/dl acc` engage watch, labeled line, auto-/check
+  injection — c2s 0x0DD, **16-byte struct, read the server's header not
+  XiPackets**), `accdata.lua` + `tools/acc_calc.py` (12k-mob EVA table + 350
+  per-family curves; custom mobs priced via cross-zone name match or
+  `/dl acc family`), the accstate feed, AutoAcc selectable in the GUI, the
+  Automations-panel row (Kind: Equip Type), and the accwatch tests (AD).
+  Standing rulings still apply there: **level correction = SIGNED 4 ACC/lvl
+  everywhere (ruling v3)**; model EVA is a floor, the /check bracket corrects
+  live. Research kit: **dlacprobe v1.5** (not in git). Read history.md
+  "ACC calculator -> acc watch" through "level correction ruling v3" before
+  touching any of it. Cross-session memory: `memory/mob-eva-pipeline.md`.
+  - **ON MAIN (the foundation, deliberately inert):** the Type-automation
+    plumbing stays so branch and main share one set format — `autoType`/
+    `removePrio`/`acc` wrapper fields (serializer + loader), the flatten's
+    `dlac:AutoAcc:<prio>:<acc>:<Name>|<fallback>` markers (utils), the engine's
+    budgeted-release machinery (dispatch v36) and tests AC1–24. The Behaviour
+    popup shows "Auto Type" but offers **None only**; nothing on main writes
+    `accstate.lua`, so any branch-committed markers resolve to "worn". The
+    feedback-loop design notes live in history.md "AutoAcc -- the first Type
+    automation" — read them before touching the dormant machinery.
+- **main**: healthy; **293 tests green** (was 267 at last handoff; 302 on
+  feature/autoacc — the 9 accwatch AD tests ride the branch) —
   current as of this session. The whole **crafting-gear system** landed here (see
   history.md "crafting system + catalog pipeline"): read that section before touching
   craftwatch/craftbar/dispatch-overlay/triggersui-craft code.
