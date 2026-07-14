@@ -28,54 +28,63 @@
 local gear = require("dlac\\gear");
 local bit  = require('bit');
 
+-- Guarded require: the module table, or nil when the lib is missing (or not a
+-- table). A missing lib degrades gracefully (no window / no icons) instead of
+-- erroring. ONE local per module, no pcall-ok temps: the 200-local chunk cap.
+local function try(name)
+    local ok, m = pcall(require, name);
+    return (ok and type(m) == 'table') and m or nil;
+end
+
 -- Colored [dlac] chat output (chatfmt): the shadowed `print` re-heads
 -- "[dlac] ..."-prefixed lines with the colored header; plain when unavailable.
-local _cfmtok, _cfmt = pcall(require, 'dlac\\chatfmt');
-local print = (_cfmtok and type(_cfmt) == 'table' and type(_cfmt.print) == 'function') and _cfmt.print or print;
+local print = (function()
+    local m = try('dlac\\chatfmt');
+    return (m ~= nil and type(m.print) == 'function') and m.print or print;
+end)();
 
 -- Shared libs live in Ashita\addons\libs and are require-able from a profile the
--- same way gearimport requires 'encoding'. Guard each so a missing lib degrades
--- gracefully (no window / no icons) instead of erroring.
-local _iok, imgui = pcall(require, 'imgui');
-local _fok, ffi   = pcall(require, 'ffi');
-local _dok, d3d   = pcall(require, 'd3d8');
-local _ook, optim = pcall(require, "dlac\\gearoptim");
+-- same way gearimport requires 'encoding'.
+local imgui = try('imgui');
+local ffi   = try('ffi');
+local d3d   = try('d3d8');
+local optim = try("dlac\\gearoptim");
 -- Full CatsEyeXI equipment reference (1306 items), same nested shape as gear.lua.
 -- Powers the "All Equipment" browse tab only; falls back to gear.lua if missing.
-local _cok, catalog = pcall(require, "dlac\\catalog");
+local catalog = try("dlac\\catalog");
 -- Dynamic-set writer (commit/delete a set into the <JOB>.lua file). Sets tab only.
-local _sok, setmgr = pcall(require, "dlac\\setmanager");
+local setmgr = try("dlac\\setmanager");
 -- Augment reader: decode private augments from item Extra bytes (worn-stat totals).
-local _augok, aug  = pcall(require, "dlac\\augments");
+local aug = try("dlac\\augments");
 -- Level-scaling stats (Rajas/Tamas/Sattva etc.): effective stats per level.
-local _lsok, lscale = pcall(require, "dlac\\levelstats");
+local lscale = try("dlac\\levelstats");
 -- Window theme (partyfinder-matched palette), pushed around the whole draw.
-local _stok, style = pcall(require, "dlac\\uistyle");
+local style = try("dlac\\uistyle");
 -- Per-job macro book/set (header "Macro" button; applied on login/job change)
 -- and enchanted travel items (header "Teleports" dropdown; same module the
 -- /dl w|p|t commands live in -- require returns the already-loaded instance).
--- ONE local each, nil when unavailable: the 200-local chunk cap is this close.
-local macrob = (function()
-    local ok, m = pcall(require, "dlac\\macrobook");
-    return (ok and type(m) == 'table') and m or nil;
-end)();
+local macrob = try("dlac\\macrobook");
 local useit = (function()
-    local ok, m = pcall(require, "dlac\\useitem");
-    return (ok and type(m) == 'table' and type(m.menu) == 'function') and m or nil;
+    local m = try("dlac\\useitem");
+    return (m ~= nil and type(m.menu) == 'function') and m or nil;
 end)();
 
-local hasImgui    = _iok and imgui ~= nil;
-local hasD3D      = _fok and _dok and ffi ~= nil and d3d ~= nil;
-local hasOptim    = _ook and type(optim) == 'table';
-local hasCatalog  = _cok and type(catalog) == 'table';
-local hasSetmgr   = _sok and type(setmgr) == 'table';
-local hasAug      = _augok and type(aug) == 'table';
-local hasLScale   = _lsok and type(lscale) == 'table';
+-- Capability flags in ONE table (each was its own local; the 200-cap again).
+-- has.dsp / has.statdefs are assigned where those modules load, further down.
+local has = {
+    imgui    = imgui ~= nil,
+    d3d      = ffi ~= nil and d3d ~= nil,
+    optim    = optim ~= nil,
+    catalog  = catalog ~= nil,
+    setmgr   = setmgr ~= nil,
+    aug      = aug ~= nil,
+    lscale   = lscale ~= nil,
+};
 -- Effective stats of a record at a level -- delegates to THE central resolver
 -- (levelstats.effective) so every section values scaling items identically.
 local function effStats(rec, level)
     if rec == nil then return nil; end
-    if not hasLScale or type(lscale.effective) ~= 'function' then return rec.Stats; end
+    if not has.lscale or type(lscale.effective) ~= 'function' then return rec.Stats; end
     return lscale.effective(rec, level);
 end
 
@@ -181,15 +190,15 @@ local COL_ERR    = { 1.00, 0.45, 0.40, 1.00 };
 -- (blank placeholder) when d3d8 / ffi could not be required.
 -- ---------------------------------------------------------------------------
 local C, d3d8dev;
-if hasD3D then
+if has.d3d then
     C = ffi.C;
     local okdev, dev = pcall(function() return d3d.get_device(); end);
     if okdev and dev ~= nil then
         d3d8dev = dev;
     else
-        hasD3D = false;
+        has.d3d = false;
     end
-    if hasD3D then
+    if has.d3d then
         pcall(function()
             ffi.cdef[[
                 HRESULT __stdcall D3DXCreateTextureFromFileInMemoryEx(IDirect3DDevice8* pDevice, const void* pSrcData, unsigned int SrcDataSize, unsigned int Width, unsigned int Height, unsigned int MipLevels, unsigned int Usage, int Format, int Pool, unsigned int Filter, unsigned int MipFilter, unsigned int ColorKey, void* pSrcInfo, void* pPalette, IDirect3DTexture8** ppTexture);
@@ -202,7 +211,7 @@ local texCache   = {};   -- itemId -> texture (or false once we know it has none
 local texHandles = {};   -- itemId -> uint32 handle for imgui.Image
 
 local function loadItemTexture(itemId)
-    if not hasD3D then return false; end
+    if not has.d3d then return false; end
     if texCache[itemId] ~= nil then return texCache[itemId]; end
     if itemId == nil or itemId == 0 then texCache[itemId] = false; return false; end
 
@@ -347,7 +356,7 @@ end
 -- Falls back to gear.lua if catalog failed to load, so the tab always works.
 local _allEquip, _allEquipById, _allEquipByName;
 local function buildAllEquip()
-    if _allEquip == nil then _allEquip, _allEquipById, _allEquipByName = flattenGear(hasCatalog and catalog or gear); end
+    if _allEquip == nil then _allEquip, _allEquipById, _allEquipByName = flattenGear(has.catalog and catalog or gear); end
     return _allEquip;
 end
 
@@ -358,7 +367,7 @@ end
 -- on the entry wins (owned overrides, catalog only fills gaps).
 local _gearEnriched = false;
 local function enrichGearFromCatalog()
-    if _gearEnriched or not hasCatalog then return; end
+    if _gearEnriched or not has.catalog then return; end
     buildAllEquip();   -- ensure the catalog id-index (_allEquipById) exists
     local function walk(container)
         for _, v in pairs(container) do
@@ -467,11 +476,11 @@ end
 -- (main job only, level gated on main level -- field-verified on CatsEyeXI:
 -- RDM/WHM cannot wear Hlr. Bliaut +1). These wrappers delegate; the inline
 -- fallback keeps the GUI usable if dispatch ever fails to load.
-local _dspok, _dsp = pcall(require, "dlac\\dispatch");
-local hasDsp = _dspok and type(_dsp) == 'table' and type(_dsp.jobCanEquip) == 'function';
+local _dsp = try("dlac\\dispatch");
+has.dsp = _dsp ~= nil and type(_dsp.jobCanEquip) == 'function';
 
 local function jobCanEquip(jobs, playerJob)
-    if hasDsp then return _dsp.jobCanEquip(jobs, playerJob); end
+    if has.dsp then return _dsp.jobCanEquip(jobs, playerJob); end
     if jobs == nil or type(jobs) ~= 'table' or #jobs == 0 then return true; end
     for _, j in ipairs(jobs) do
         if j == 'All' or (playerJob ~= nil and playerJob ~= '' and j == playerJob) then return true; end
@@ -480,7 +489,7 @@ local function jobCanEquip(jobs, playerJob)
 end
 
 local function isUsable(rec, playerJob, playerLevel)
-    if hasDsp then return _dsp.canWear(rec, playerJob, playerLevel); end
+    if has.dsp then return _dsp.canWear(rec, playerJob, playerLevel); end
     if (rec.Level or 0) > (playerLevel or 0) then return false; end
     return jobCanEquip(rec.Jobs, playerJob);
 end
@@ -582,7 +591,7 @@ local function invalidateCandidates() candCache.key = nil; end
 local owned = require("dlac\\ownedcache");
 
 local function weightsActive()
-    if not hasOptim or optim.getWeights == nil then return false; end
+    if not has.optim or optim.getWeights == nil then return false; end
     local ok, ws = pcall(optim.getWeights);
     if not ok or type(ws) ~= 'table' then return false; end
     -- A weight ZEROED in the editor leaves its entry behind ({ perUnit = 0 });
@@ -596,7 +605,7 @@ local function weightsActive()
 end
 
 local function scoreOf(stats)
-    if not hasOptim or optim.score == nil then return 0; end
+    if not has.optim or optim.score == nil then return 0; end
     local ok, sc = pcall(optim.score, stats or {});
     if ok and type(sc) == 'number' then return sc; end
     return 0;
@@ -608,7 +617,7 @@ local _ownedAugStats = nil;
 local function ownedAugStatsMap()
     if _ownedAugStats ~= nil then return _ownedAugStats; end
     local m = {};
-    if hasAug then pcall(function() m = aug.ownedAugStats() or {}; end); end
+    if has.aug then pcall(function() m = aug.ownedAugStats() or {}; end); end
     _ownedAugStats = m;
     return _ownedAugStats;
 end
@@ -631,7 +640,7 @@ end
 -- "Build as lv.75" toggle (optim.buildAtMaxLevel) lifts the cap to 75 so you can assemble
 -- over-level sets; the job restriction is unaffected. The Equipped tab keeps the real level.
 local function setBuildLevel(level)
-    if hasOptim and optim.buildAtMaxLevel == true then return optim.MAX_LEVEL or 75; end
+    if has.optim and optim.buildAtMaxLevel == true then return optim.MAX_LEVEL or 75; end
     return level;
 end
 
@@ -694,7 +703,7 @@ local function wornSetTotals()
         end
     end
     -- Fold in live augment deltas so worn totals reflect base + your private augments.
-    if hasAug then
+    if has.aug then
         local ok, augTotals = pcall(aug.wornStats);
         if ok and type(augTotals) == 'table' then
             for k, v in pairs(augTotals) do
@@ -787,7 +796,7 @@ local function refreshGear()
             enrichGearFromCatalog();
             _owned, _ownedById, _ownedByName = nil, nil, nil;   -- force rebuild off the enriched gear
             refreshOwnedCounts();
-            pcall(function() if hasOptim and type(optim.invalidate) == 'function' then optim.invalidate(); end end);
+            pcall(function() if has.optim and type(optim.invalidate) == 'function' then optim.invalidate(); end end);
         end
     end);
 end
@@ -796,7 +805,7 @@ end
 local function ownedAugMap()
     if _ownedAug ~= nil then return _ownedAug; end
     local m = {};
-    if hasAug then pcall(function() m = aug.ownedAugments() or {}; end); end
+    if has.aug then pcall(function() m = aug.ownedAugments() or {}; end); end
     _ownedAug = m;
     return _ownedAug;
 end
@@ -966,7 +975,7 @@ local function renderItemTooltip(rec)
         if typeStr ~= nil then imgui.TextColored(COL_DIM, '(' .. fmt.esc(tostring(typeStr)) .. ')'); end
         local _, _lvl = getPlayerInfo();
         local stats = effStats(rec, _lvl);
-        if hasLScale and rec.Id ~= nil and lscale.has(rec.Id) then
+        if has.lscale and rec.Id ~= nil and lscale.has(rec.Id) then
             imgui.TextColored(COL_DIM, string.format('(scales with level -- shown for Lv%d)', _lvl or 0));
         end
         if type(stats) == 'table' and type(stats.DMG) == 'number' and type(stats.Delay) == 'number' then
@@ -1028,7 +1037,7 @@ end
 -- Augment dump: write all augmented gear to augdump.txt (share to identify unknown ids).
 local _augStatus = nil;
 local function dumpAugs()
-    if not hasAug then _augStatus = 'Augment reader unavailable.'; return; end
+    if not has.aug then _augStatus = 'Augment reader unavailable.'; return; end
     local ok, path, count, unk = pcall(aug.dumpToFile);
     if ok and path ~= nil then
         _augStatus = string.format('Wrote %d augmented items to %s', count or 0, tostring(path));
@@ -1112,7 +1121,7 @@ local function jobSetupState()
     elseif text:find([[dlac\\utils]], 1, true) then
         st = 'ok';
         -- per-handler shim health: every Handle* must exist and END with its dispatch call
-        if hasSetmgr and type(setmgr.analyzeShims) == 'function' then
+        if has.setmgr and type(setmgr.analyzeShims) == 'function' then
             local aok, a = pcall(setmgr.analyzeShims, text);
             if aok and type(a) == 'table' and a.healthy ~= true then st = 'shims'; end
         end
@@ -1309,7 +1318,7 @@ local function migrateCurrentJob()
     -- Append the dispatch shims (creates missing handlers; adds the require if absent).
     -- setmanager parse-checks and keeps its own rotated backup; aborts untouched on failure.
     local okr, report, bpath = false, 'setmanager unavailable', nil;
-    if hasSetmgr and type(setmgr.repairShims) == 'function' then
+    if has.setmgr and type(setmgr.repairShims) == 'function' then
         local pok = pcall(function() okr, report, bpath = setmgr.repairShims(abbr); end);
         if not pok then okr, report = false, 'internal error'; end
     end
@@ -1933,14 +1942,14 @@ local STATS_W   = 250;   -- left stats panel width (name column + value column)
 -- unlisted stats fall under "Other".
 -- statdefs: the central stat registry (label / section / aliases). Used by the weights
 -- picker (so aliases are searchable) and, over time, the other stat tables below. Guarded.
-local _sdok, statdefs = pcall(require, "dlac\\statdefs");
-local hasStatdefs = _sdok and type(statdefs) == 'table' and type(statdefs.list) == 'table';
+local statdefs = try("dlac\\statdefs");
+has.statdefs = statdefs ~= nil and type(statdefs.list) == 'table';
 
 -- Item-search matching shared by the pickers: comma-separated terms, ALL required
 -- ('hmp, refresh' = pieces carrying both). Each term hits on the NAME or on the
 -- item's STATS; statdefs resolves aliases per term ('matk' also finds MAB gear).
 local function searchCanon(q)
-    if q == '' or not hasStatdefs or type(statdefs.get) ~= 'function' then return nil; end
+    if q == '' or not has.statdefs or type(statdefs.get) ~= 'function' then return nil; end
     local ok, e = pcall(statdefs.get, q);
     if ok and type(e) == 'table' and type(e.key) == 'string' then
         local c = string.lower(e.key);
@@ -1995,7 +2004,7 @@ local _weightSuggest = nil;
 local function weightSuggestions()
     if _weightSuggest ~= nil then return _weightSuggest; end
     local out = {};
-    if hasStatdefs then
+    if has.statdefs then
         for _, e in ipairs(statdefs.list) do
             local lbl = e.label or e.key;
             local terms = { string.lower(e.key) };
@@ -2183,7 +2192,7 @@ local function renderStatDelta(eq, cand, level)
         local d = (tonumber(b[k]) or 0) - (tonumber(a[k]) or 0);
         if d ~= 0 then
             local lower = false;
-            if hasStatdefs and type(statdefs.get) == 'function' then
+            if has.statdefs and type(statdefs.get) == 'function' then
                 local e = statdefs.get(k);
                 lower = (e ~= nil and e.lowerBetter == true);
             end
@@ -2273,7 +2282,7 @@ local function renderEquippedTab(job, level)
     local leftUsed = ui.showStats and (STATS_W + 8) or 0;
 
     if ui.showStats then
-        renderStatsPanel(hasAug and 'Worn totals (base+aug)' or 'Worn set totals', wornSetTotals());
+        renderStatsPanel(has.aug and 'Worn totals (base+aug)' or 'Worn set totals', wornSetTotals());
         imgui.SameLine();
     end
 
@@ -2331,7 +2340,7 @@ local function renderEquippedTab(job, level)
                 local ss = fmt.statSummary(rec, level);
                 if ss ~= '' then imgui.TextColored(COL_STATS, fmt.esc(ss)); end
             end
-            if hasAug and slDef ~= nil then           -- private augments on the worn piece
+            if has.aug and slDef ~= nil then           -- private augments on the worn piece
                 local extra = aug.slotExtra(slDef.equip);
                 local ad = extra and aug.describe(extra) or '';
                 if ad ~= '' then imgui.TextColored(COL_SCORE, 'Aug: ' .. fmt.esc(ad)); end
@@ -2462,7 +2471,7 @@ local function renderAllEquipTab(job, level)
     end
 
     imgui.TextColored(COL_DIM, string.format('Showing %d of %d  |  source: %s  |  red = in storage (not equippable)',
-        shown, #items, showAll and (hasCatalog and 'full catalog (catalog.lua)' or 'gear.lua (no catalog)')
+        shown, #items, showAll and (has.catalog and 'full catalog (catalog.lua)' or 'gear.lua (no catalog)')
                               or 'gear you own (anywhere)'));
     if not showAll then
         imgui.SameLine(0, 8);
@@ -2820,7 +2829,7 @@ local function modeSetRefs(modeName, strip)
                     end
                 end
             end
-            if strip and changed and job ~= nil and hasSetmgr then
+            if strip and changed and job ~= nil and has.setmgr then
                 local ok = nil;
                 pcall(function() ok = setmgr.commitSet(job, setName, buildCommitSlots()); end);
                 if ok == true then out.touched[#out.touched + 1] = setName; end
@@ -2866,7 +2875,7 @@ local function autoBuild(job, level)
     -- whose candidates only duplicate already-capped stats stays empty. Paired
     -- slots may reuse an Id only when you own two copies.
     local jointPick = nil;
-    if hasOptim and type(optim.optimizePicks) == 'function' and weightsActive() then
+    if has.optim and type(optim.optimizePicks) == 'function' and weightsActive() then
         local op = {};
         for label, cands in pairs(pools) do
             local arr = {};
@@ -3072,7 +3081,7 @@ local function copyFromStaticSet(srcName)
 end
 
 local function commitCurrentSet(job)
-    if not hasSetmgr then setStatus('setmanager unavailable.', true); return; end
+    if not has.setmgr then setStatus('setmanager unavailable.', true); return; end
     if M.workingSetName == nil or M.workingSetName == '' then setStatus('No set selected (pick one, or type a name + New).', true); return; end
     if job == nil or job == '' then setStatus('Unknown job (are you logged in?).', true); return; end
     local slots = buildCommitSlots();
@@ -3096,7 +3105,7 @@ local function commitCurrentSet(job)
 end
 
 local function deleteCurrentSet(job)
-    if not hasSetmgr then setStatus('setmanager unavailable.', true); return; end
+    if not has.setmgr then setStatus('setmanager unavailable.', true); return; end
     if M.workingSetName == nil or M.workingSetName == '' then setStatus('No set selected.', true); return; end
     if job == nil or job == '' then setStatus('Unknown job (are you logged in?).', true); return; end
     local ok, action, backup = nil, nil, nil;
@@ -3129,7 +3138,7 @@ local function deleteCurrentSet(job)
 end
 
 local function renderWeightsEditor()
-    if not hasOptim then
+    if not has.optim then
         imgui.TextColored(COL_DIM, 'Optimizer unavailable -- weights disabled.');
         return;
     end
@@ -3384,7 +3393,7 @@ local function renderSetsWeightPanel(job, level)
     -- selected set (this window can be open while another tab is up, so it binds
     -- too, not just the Sets tab). A swap stales the editor's number buffers and
     -- the weighted candidate order.
-    if hasOptim and optim.bindSetWeights ~= nil then
+    if has.optim and optim.bindSetWeights ~= nil then
         local okb, changed = pcall(optim.bindSetWeights, job, M.workingSetName);
         if okb and changed then ui._wbuf = {}; invalidateCandidates(); end
     end
@@ -3682,14 +3691,14 @@ local function renderSetBuilder(job, level)
 end
 
 local function renderSetsTab(job, level)
-    if not hasSetmgr then
+    if not has.setmgr then
         fmt.textWrapped(COL_ERR, 'setmanager unavailable -- commit/delete disabled (view/build still works).');
     end
 
     -- Per-set weight memory: one choke point covers the picker, New, Delete and
     -- job changes -- + Add scoring and the stats panel read the active weights
     -- even with the Weights window closed, so the binding can't wait for it.
-    if hasOptim and optim.bindSetWeights ~= nil then
+    if has.optim and optim.bindSetWeights ~= nil then
         local okb, changed = pcall(optim.bindSetWeights, job, M.workingSetName);
         if okb and changed then ui._wbuf = {}; invalidateCandidates(); end
     end
@@ -3748,7 +3757,7 @@ local function renderSetsTab(job, level)
 
     -- Build-level override (general set management): lifts the item level cap for BOTH
     -- Auto-build and the manual + Add picker, so you can assemble over-level sets.
-    if hasOptim then
+    if has.optim then
         ui.buildMax[1] = (optim.buildAtMaxLevel == true);
         imgui.Checkbox('Build as lv.75 (ignore level cap)', ui.buildMax);
         if imgui.IsItemHovered() then
@@ -3871,7 +3880,7 @@ end
 -- Window + tab bar.
 -- ---------------------------------------------------------------------------
 local function drawWindow()
-    if not M.visible or not hasImgui then return; end
+    if not M.visible or not has.imgui then return; end
 
     local owned = buildOwned();
     buildAllEquip();   -- populate catalog indexes for tooltips / worn-set totals
@@ -3893,7 +3902,7 @@ local function drawWindow()
         imgui.SameLine(0, 10);
         imgui.TextColored(COL_HEADER, jobHeader());
         imgui.SameLine();
-        imgui.TextColored(COL_DIM, string.format('|  %d owned%s', #owned, hasOptim and '' or '  |  optimizer OFF'));
+        imgui.TextColored(COL_DIM, string.format('|  %d owned%s', #owned, has.optim and '' or '  |  optimizer OFF'));
         imgui.SameLine(0, 12);
         imgui.Checkbox('Show all', ui.showAll);
         if imgui.IsItemHovered() then
@@ -4447,7 +4456,7 @@ local function saveUiFlags()
     local p = uiFlagsPath(); if p == nil then return; end   -- pre-login: can't persist yet
     _flagsLoaded = true;                                    -- command is now authoritative
     pcall(function()
-        local bm = hasOptim and (optim.buildAtMaxLevel == true) or false;
+        local bm = has.optim and (optim.buildAtMaxLevel == true) or false;
         local tpx, tpy = 0, 0;
         if type(ui._tpPos) == 'table' then
             tpx, tpy = tonumber(ui._tpPos[1]) or 0, tonumber(ui._tpPos[2]) or 0;
@@ -4477,7 +4486,7 @@ local function loadUiFlags()
         if ok and type(t) == 'table' then
             if type(t.debug)    == 'boolean' then debugMode       = t.debug;    end
             if type(t.autosync) == 'boolean' then autoSyncEnabled = t.autosync; end
-            if type(t.buildmax) == 'boolean' and hasOptim then optim.buildAtMaxLevel = t.buildmax; end
+            if type(t.buildmax) == 'boolean' and has.optim then optim.buildAtMaxLevel = t.buildmax; end
             if type(t.tpfloat)  == 'boolean' then ui._tpFloat     = t.tpfloat;  end
             if type(t.tpx) == 'number' and type(t.tpy) == 'number' and (t.tpx ~= 0 or t.tpy ~= 0) then
                 ui._tpPos = { t.tpx, t.tpy };
@@ -4495,7 +4504,7 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
     pcall(autoSyncOnJobChange);
     if macrob ~= nil then pcall(macrob.pump); end   -- per-job macro book/set (login + job change)
     pcall(function() require('dlac\\lockstyle').pump(); end);   -- OnLoad lockstyle (login + job change)
-    if ui.showMetrics == true and hasImgui then       -- /dl metrics: overlay hunter
+    if ui.showMetrics == true and has.imgui then       -- /dl metrics: overlay hunter
         pcall(function() imgui.ShowMetricsWindow(ui.metricsOpen); end);
         if ui.metricsOpen ~= nil and ui.metricsOpen[1] == false then ui.showMetrics = false; end
     end
@@ -4503,8 +4512,8 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
     -- window (pinned/unpinned from the Teleports menu footer; position remembered).
     -- THEMED like the main window -- unthemed, the semi-transparent defaults let
     -- the game world bleed through and recolor the icon.
-    if ui._tpFloat == true and useit ~= nil and hasImgui then
-        local tpThemed = _stok and type(style) == 'table' and style.push();
+    if ui._tpFloat == true and useit ~= nil and has.imgui then
+        local tpThemed = style ~= nil and style.push();
         pcall(function()
             if ui._tpPos ~= nil then
                 imgui.SetNextWindowPos({ ui._tpPos[1], ui._tpPos[2] }, ImGuiCond_Once or 0);
@@ -4577,19 +4586,19 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
     -- Lockstyle window: INDEPENDENT of the main box (the header armor button
     -- opens it; it stays up if the main window closes). Own theme bracket,
     -- function-scoped require -- no new chunk local (hard rule 1).
-    if hasImgui then
+    if has.imgui then
         local lsMod = nil;
         pcall(function() lsMod = require('dlac\\lockstyle'); end);
         if lsMod ~= nil and lsMod.visible == true then
-            local lsThemed = _stok and type(style) == 'table' and style.push();
+            local lsThemed = style ~= nil and style.push();
             pcall(lsMod.render);
             if lsThemed then style.pop(); end
         end
     end
-    if not M.visible or not hasImgui then return; end
+    if not M.visible or not has.imgui then return; end
     -- Theme push/pop brackets the pcall so an imgui error mid-draw can never
     -- leak the style stack (that would corrupt every OTHER addon's UI too).
-    local themed = _stok and type(style) == 'table' and style.push();
+    local themed = style ~= nil and style.push();
     pcall(drawWindow);
     if themed then style.pop(); end
 end);
@@ -4662,7 +4671,7 @@ ashita.events.register('command', 'dlac-ui', function(e)
     -- No routine chat line on toggle (inform by printing as little as
     -- possible) -- the window appearing/disappearing IS the feedback. Only
     -- the can't-show failure case still speaks.
-    if M.visible and not hasImgui then
+    if M.visible and not has.imgui then
         print('[dlac] gear UI: imgui is unavailable in this context; nothing to show.');
     end
 end);
