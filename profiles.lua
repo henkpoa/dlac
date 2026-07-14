@@ -134,7 +134,9 @@ function M.activeName()
     _act.at = now;
     local nm = 'Default';
     pcall(function()
-        local chunk = loadfile(M.pointerPath());
+        local p = M.pointerPath();
+        if p == nil then return; end   -- loadfile(nil) reads STDIN -- hangs headless runs
+        local chunk = loadfile(p);
         if chunk == nil then return; end
         local ok, t = pcall(chunk);
         if ok and type(t) == 'table' and M.sanitizeName(t.active) then nm = t.active; end
