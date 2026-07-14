@@ -1,0 +1,113 @@
+-- Headless smoke-load of the UI chunk: gearui + uihost + itemicons + equippedui
+-- (+ every module they pull in). Run from the dlac addon root:
+--     lua tests\smoke_ui.lua
+--
+-- This is a LOAD test, not a render test: it catches the two failure classes
+-- imgui-less CI can catch --
+--   1. the LuaJIT/Lua 200-local-per-chunk cap (a load-time crash no parser warns
+--      about; gearui used to sit at exactly 200/200), and
+--   2. load-order breakage in the uihost registry (services provided after a
+--      module captured them, tabs missing or out of order).
+-- Render paths still need an in-game check (imgui is nil here by design).
+
+-- ---------------------------------------------------------------------------
+-- environment stubs (the run_tests.lua pattern; must exist BEFORE any require)
+-- ---------------------------------------------------------------------------
+package.path = package.path .. ';..\\?.lua';            -- 'dlac\X' -> ..\dlac\X.lua
+
+ashita = { events = { register = function() end, unregister = function() end } };
+gData = { GetPlayer = function() return nil; end };
+AshitaCore = nil;                                        -- every load-time touch must be guarded
+
+-- LuaJIT 'bit' shim for plain Lua 5.3+ (gearui hard-requires it)
+package.loaded['bit'] = {
+    band   = function(a, b) return a & b; end,
+    bor    = function(a, b) return a | b; end,
+    bxor   = function(a, b) return a ~ b; end,
+    bnot   = function(a) return ~a; end,
+    lshift = function(a, n) return a << n; end,
+    rshift = function(a, n) return a >> n; end,
+    arshift= function(a, n) return a >> n; end,
+};
+
+local failures, count = {}, 0;
+local function check(name, got, want)
+    count = count + 1;
+    if got ~= want then
+        failures[#failures + 1] = string.format('%s: got %s, want %s', name, tostring(got), tostring(want));
+    end
+end
+
+-- ---------------------------------------------------------------------------
+-- 1. the whole UI chunk must LOAD headlessly
+-- ---------------------------------------------------------------------------
+local ok, gearui = pcall(require, 'dlac\\gearui');
+check('S1 gearui loads headless', ok, true);
+if not ok then
+    print('gearui load error: ' .. tostring(gearui));
+    print(string.format('FAIL -- %d of %d checks failed', #failures, count));
+    os.exit(1);
+end
+check('S2 gearui returns module table', type(gearui), 'table');
+
+-- ---------------------------------------------------------------------------
+-- 2. uihost registry: every tab present, in the canonical order
+-- ---------------------------------------------------------------------------
+local host = require('dlac\\uihost');
+check('S3 equipped module registered', host.get('equipped') ~= nil, true);
+check('S4 sets module registered',     host.get('sets') ~= nil, true);
+check('S5 triggers module registered', host.get('triggers') ~= nil, true);
+
+local labels = {};
+for _, name in ipairs({ 'equipped', 'sets', 'triggers' }) do
+    local m = host.get(name);
+    if m ~= nil and type(m.tabs) == 'table' then
+        for _, t in ipairs(m.tabs) do labels[#labels + 1] = t.label; end
+    end
+end
+check('S6 tab count', #labels, 4);
+check('S7 tab order 1', labels[1], 'Equipped');
+check('S8 tab order 2', labels[2], 'All Equipment');
+check('S9 tab order 3', labels[3], 'Sets');
+check('S10 tab order 4', labels[4], 'Triggers');
+
+-- every registered tab render must be callable
+for i, l in ipairs(labels) do
+    local found = false;
+    for _, name in ipairs({ 'equipped', 'sets', 'triggers' }) do
+        local m = host.get(name);
+        if m ~= nil then
+            for _, t in ipairs(m.tabs or {}) do
+                if t.label == l and type(t.render) == 'function' then found = true; end
+            end
+        end
+    end
+    check('S11.' .. i .. ' tab "' .. l .. '" render is a function', found, true);
+end
+
+-- ---------------------------------------------------------------------------
+-- 3. services contract: what equippedui (and future modules) capture at load
+-- ---------------------------------------------------------------------------
+local S = host.services;
+for _, k in ipairs({
+    'ui', 'COL', 'EQUIP_SLOTS', 'GEAR_OF', 'SLOT_ORDER', 'SLOT_TREE_ORDER', 'CAT_ORDER',
+    'effStats', 'isUsable', 'lookupById', 'lookupByName', 'displayName',
+    'buildOwned', 'buildAllEquip', 'ownedAugMap',
+    'candidatesForSlot', 'subCandidatePool', 'subFilter', 'sortForDisplay',
+    'parseSearch', 'itemSearchMatch',
+    'getEquippedId', 'equipToSlot', 'engineLocks', 'lacSlot', 'lockMirrorDirty',
+    'wornSetTotals', 'renderStatsPanel', 'renderSlotGrid', 'renderSortCombo',
+    'renderItemTooltip',
+}) do
+    check('S12 service ' .. k, S[k] ~= nil, true);
+end
+
+-- ---------------------------------------------------------------------------
+-- verdict
+-- ---------------------------------------------------------------------------
+if #failures > 0 then
+    for _, f in ipairs(failures) do print('FAIL ' .. f); end
+    print(string.format('FAIL -- %d of %d checks failed', #failures, count));
+    os.exit(1);
+end
+print(string.format('OK -- %d checks passed', count));
