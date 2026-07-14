@@ -47,8 +47,6 @@ end)();
 -- Shared libs live in Ashita\addons\libs and are require-able from a profile the
 -- same way gearimport requires 'encoding'.
 local imgui = try('imgui');
-local ffi   = try('ffi');
-local d3d   = try('d3d8');
 local optim = try("dlac\\gearoptim");
 -- Full CatsEyeXI equipment reference (1306 items), same nested shape as gear.lua.
 -- Powers the "All Equipment" browse tab only; falls back to gear.lua if missing.
@@ -74,7 +72,6 @@ end)();
 -- has.dsp / has.statdefs are assigned where those modules load, further down.
 local has = {
     imgui    = imgui ~= nil,
-    d3d      = ffi ~= nil and d3d ~= nil,
     optim    = optim ~= nil,
     catalog  = catalog ~= nil,
     setmgr   = setmgr ~= nil,
@@ -188,123 +185,11 @@ local COL = {   -- ONE table, not ten locals: the 200-local chunk cap
 };
 
 -- ---------------------------------------------------------------------------
--- Item-icon loader (trove/equipmon load_item_texture). One D3D texture per item
--- id from the resource's in-memory bitmap, cached, drawn with imgui.Image. A no-op
--- (blank placeholder) when d3d8 / ffi could not be required.
+-- Item icons: own module (dlac\itemicons.lua -- the trove/equipmon texture
+-- loader). icons.renderIcon / icons.handleOf / icons.drawElementWheel /
+-- icons.release; every entry point degrades to a no-op without d3d/imgui.
 -- ---------------------------------------------------------------------------
-local C, d3d8dev;
-if has.d3d then
-    C = ffi.C;
-    local okdev, dev = pcall(function() return d3d.get_device(); end);
-    if okdev and dev ~= nil then
-        d3d8dev = dev;
-    else
-        has.d3d = false;
-    end
-    if has.d3d then
-        pcall(function()
-            ffi.cdef[[
-                HRESULT __stdcall D3DXCreateTextureFromFileInMemoryEx(IDirect3DDevice8* pDevice, const void* pSrcData, unsigned int SrcDataSize, unsigned int Width, unsigned int Height, unsigned int MipLevels, unsigned int Usage, int Format, int Pool, unsigned int Filter, unsigned int MipFilter, unsigned int ColorKey, void* pSrcInfo, void* pPalette, IDirect3DTexture8** ppTexture);
-            ]];
-        end);
-    end
-end
-
-local texCache   = {};   -- itemId -> texture (or false once we know it has none)
-local texHandles = {};   -- itemId -> uint32 handle for imgui.Image
-
-local function loadItemTexture(itemId)
-    if not has.d3d then return false; end
-    if texCache[itemId] ~= nil then return texCache[itemId]; end
-    if itemId == nil or itemId == 0 then texCache[itemId] = false; return false; end
-
-    local item = AshitaCore:GetResourceManager():GetItemById(itemId);
-    if item == nil or item.ImageSize == nil or item.ImageSize == 0 then
-        texCache[itemId] = false;
-        return false;
-    end
-
-    pcall(function()
-        local ptr = ffi.new('IDirect3DTexture8*[1]');
-        if (C.D3DXCreateTextureFromFileInMemoryEx(
-                d3d8dev, item.Bitmap, item.ImageSize,
-                0xFFFFFFFF, 0xFFFFFFFF, 1, 0,
-                C.D3DFMT_A8R8G8B8, C.D3DPOOL_MANAGED,
-                C.D3DX_DEFAULT, C.D3DX_DEFAULT,
-                0xFF000000, nil, nil, ptr) == C.S_OK) then
-            local tex = d3d.gc_safe_release(ffi.cast('IDirect3DTexture8*', ptr[0]));
-            texCache[itemId]   = tex;
-            texHandles[itemId] = tonumber(ffi.cast('uint32_t', tex));
-        end
-    end);
-
-    if texCache[itemId] == nil then texCache[itemId] = false; end
-    return texCache[itemId];
-end
-
-
--- The 8-element wheel: the icon for VIRTUAL slot entries (dlac:AutoIridescence /
--- dlac:AutoObi) -- one dot per element (classic hues) around a bright core,
--- painted with the window draw list (no texture to load). x may be an Ashita
--- vec2 table OR a plain number (both getter styles normalized here). ONE local
--- on purpose: this chunk lives at the LuaJIT 200-local cap.
-local function drawElementWheel(size, x, y)
-    pcall(function()
-        if type(x) == 'table' then x, y = (x[1] or x.x), (x[2] or x.y); end
-        local dl = imgui.GetWindowDrawList();
-        local COLS = { { 0.95, 0.25, 0.15 }, { 0.55, 0.85, 1.00 },   -- Fire, Ice
-                       { 0.35, 0.90, 0.40 }, { 0.85, 0.65, 0.25 },   -- Wind, Earth
-                       { 0.80, 0.40, 1.00 }, { 0.25, 0.45, 1.00 },   -- Thunder, Water
-                       { 1.00, 1.00, 0.85 }, { 0.45, 0.25, 0.60 } }; -- Light, Dark
-        local c = size / 2;
-        dl:AddCircleFilled({ x + c, y + c }, size * 0.16, imgui.GetColorU32({ 1.0, 1.0, 0.92, 0.95 }), 12);
-        local orbit, dot = size * 0.34, math.max(1.5, size * 0.11);
-        for i, col in ipairs(COLS) do
-            local a = (i - 1) * (math.pi / 4) - math.pi / 2;
-            dl:AddCircleFilled({ x + c + math.cos(a) * orbit, y + c + math.sin(a) * orbit },
-                dot, imgui.GetColorU32({ col[1], col[2], col[3], 1.0 }), 10);
-        end
-    end);
-end
-
--- Draw an item icon (or a blank placeholder), then SameLine so the caller can put
--- the item's text right after it. Pass the record too when the entry may be a
--- VIRTUAL one (no Id) -- it gets the element wheel instead of a blank.
-local function renderIcon(itemId, size, rec)
-    local drew = false;
-    if itemId ~= nil and itemId ~= 0 then
-        local tex = loadItemTexture(itemId);
-        local handle = texHandles[itemId];
-        if tex and tex ~= false and handle ~= nil then
-            pcall(function() imgui.Image(handle, { size, size }); end);
-            drew = true;
-        end
-    end
-    if not drew and rec ~= nil and rec.Virtual == true then
-        drew = pcall(function()
-            local x, y = imgui.GetCursorScreenPos();
-            imgui.Dummy({ size, size });
-            drawElementWheel(size, x, y);
-        end);
-    end
-    if not drew then
-        pcall(function() imgui.Dummy({ size, size }); end);
-    end
-    imgui.SameLine(0, 6);
-end
-
-local function releaseTextures()
-    for _, tex in pairs(texCache) do
-        if tex and tex ~= false then
-            pcall(function()
-                ffi.gc(tex, nil);
-                tex:Release();
-            end);
-        end
-    end
-    texCache   = {};
-    texHandles = {};
-end
+local icons = require("dlac\\itemicons");
 
 -- ---------------------------------------------------------------------------
 -- Flatten any gear-shaped table (gear.lua OR catalog.lua -- identical structure)
@@ -1387,7 +1272,7 @@ local function renderTeleportsPopup()
             local rec = lookupByName(r.name);
             id = rec and rec.Id or nil;
         end
-        renderIcon(id, 18);
+        icons.renderIcon(id, 18);
         local clickable = (r.owned and r.avail);
         if imgui.Selectable('##tprow' .. i, false) and clickable then
             pcall(function() AshitaCore:GetChatManager():QueueCommand(1, r.cmd); end);
@@ -1569,9 +1454,10 @@ local function renderHeaderButtons()
               local clicked = false;
               local rec = lookupByName('Warp Ring');
               local id = rec and rec.Id or nil;
-              if id ~= nil and loadItemTexture(id) ~= false and texHandles[id] ~= nil then
+              local h = icons.handleOf(id);
+              if h ~= nil then
                   -- 16px icon + ImageButton frame padding lands at the 22px row height
-                  pcall(function() clicked = imgui.ImageButton(texHandles[id], { 16, 16 }); end);
+                  pcall(function() clicked = imgui.ImageButton(h, { 16, 16 }); end);
               else
                   clicked = imgui.Button('Tele##hdrtp', { 26, 22 });   -- no texture: text fallback
               end
@@ -1811,7 +1697,7 @@ end
 -- Selectable is the click target; name / Lv / stats / qty draw over it at fixed X.
 -- Returns true when clicked.
 local function renderAltRow(rec, ordinal, job, level, nameW)
-    renderIcon(rec.Id, 18);
+    icons.renderIcon(rec.Id, 18);
     local clicked = imgui.Selectable('##altsel_' .. ordinal, false);
     if imgui.IsItemHovered() then
         -- Feed the compare panel (drawn above the list; it reads last frame's
@@ -1850,7 +1736,7 @@ local function renderBrowseRow(rec, ordinal, job, level, nameW)
     local bg = (ordinal % 2 == 0) and { 1, 1, 1, 0.03 } or { 1, 1, 1, 0.07 };
     imgui.PushStyleColor(ImGuiCol_ChildBg, bg);
     imgui.BeginChild('##aeqrow_' .. tostring(rec.Id or ('n' .. ordinal)), { -1, 22 }, false);
-    renderIcon(rec.Id, 18);
+    icons.renderIcon(rec.Id, 18);
     local usable = isUsable(rec, job, level);
     local nameColr = owned.isStored(rec) and COL.ERR or (usable and COL.USABLE or COL.LOCKED);
     imgui.TextColored(nameColr, fmt.esc(rec.Name or '?'));
@@ -1888,8 +1774,7 @@ local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, ge
         local clicked = false;
         imgui.PushID(idPrefix .. '_' .. sl.label);
         local id = getItemId(sl);
-        local handle = nil;
-        if id ~= nil and id ~= 0 and loadItemTexture(id) then handle = texHandles[id]; end
+        local handle = icons.handleOf(id);
         if handle ~= nil then
             clicked = imgui.ImageButton(handle, { SLOT_BOX - 8, SLOT_BOX - 8 }, { 0, 0 }, { 1, 1 }, 4,
                 selected and boxSel or boxBg, { 1, 1, 1, 1 });
@@ -1904,7 +1789,7 @@ local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, ge
                 pcall(function()
                     local x, y = imgui.GetItemRectMin();
                     if type(x) == 'table' then y = (x[2] or x.y); x = (x[1] or x.x); end
-                    drawElementWheel(28, x + (SLOT_BOX - 28) / 2, y + (SLOT_BOX - 28) / 2);
+                    icons.drawElementWheel(28, x + (SLOT_BOX - 28) / 2, y + (SLOT_BOX - 28) / 2);
                 end);
             end
         end
@@ -1930,7 +1815,7 @@ end
 pcall(function()
     require('dlac\\lockstyle').wire{
         slotGrid = renderSlotGrid,
-        icon     = renderIcon,
+        icon     = icons.renderIcon,
         tooltip  = renderItemTooltip,
         catalog  = lookupByName,
     };
@@ -2154,7 +2039,7 @@ local function renderItemCard(rec, level, w, tag)
     if jt == 'All' then jt = 'All Jobs'; end
     imgui.BeginChild('##card_' .. tostring(tag or '') .. '_' .. tostring(rec.Id or rec.Name or '?'),
         { w, CARD_H }, true, ImGuiWindowFlags_NoScrollbar or 0);
-    renderIcon(rec.Id, 18);
+    icons.renderIcon(rec.Id, 18);
     fmt.textWrapped(owned.isStored(rec) and COL.ERR or COL.USABLE, fmt.esc(tostring(rec.Name or '?')));
     imgui.TextColored(COL.DIM, '[' .. tostring(ui.eqSelected or rec.Slot or '?') .. ']'
         .. ((tag ~= nil) and ('  ' .. tag) or ''));
@@ -2335,7 +2220,7 @@ local function renderEquippedTab(job, level)
             end
         end
         if eqId ~= nil then
-            renderIcon(eqId, 24);
+            icons.renderIcon(eqId, 24);
             imgui.TextColored(COL.USABLE, fmt.esc(displayName(eqId) or ('#' .. tostring(eqId))));
             local rec = lookupById(eqId);
             if rec ~= nil then
@@ -2640,7 +2525,7 @@ do
                 if _modeSetRefs == nil then return { refs = {}, touched = {} }; end
                 return _modeSetRefs(n, s);
             end,
-            renderIcon = renderIcon,                                  -- automation detail views (item icons)
+            renderIcon = icons.renderIcon,                            -- automation detail views (item icons)
             itemTooltip = renderItemTooltip,                          -- hover cards on automation gear lines
             setsRoot = profsets.getSetsRoot,                          -- gearcheck: set contents for the audit
         });
@@ -3262,7 +3147,7 @@ local function renderAddRow(rec, ordinal, level, nameW)
     local bg = (ordinal % 2 == 0) and { 1, 1, 1, 0.03 } or { 1, 1, 1, 0.07 };
     imgui.PushStyleColor(ImGuiCol_ChildBg, bg);
     imgui.BeginChild('##addrow_' .. tostring(rec.Id or ordinal) .. '_' .. ordinal, { -1, 22 }, false);
-    renderIcon(rec.Id, 18, rec);   -- virtuals (dlac:*) get the element wheel
+    icons.renderIcon(rec.Id, 18, rec);   -- virtuals (dlac:*) get the element wheel
     local clicked = imgui.Selectable('##addsel_' .. ordinal, false);
     if imgui.IsItemHovered() then renderItemTooltip(rec); end
     local nameCol = 26;
@@ -3596,7 +3481,7 @@ local function renderSetBuilder(job, level)
             imgui.PushStyleColor(ImGuiCol_ChildBg, bg);
             imgui.BeginChild('##setrow_' .. tostring(rec and rec.Id or ('n' .. di)) .. '_' .. di,
                 { -1, (ss ~= '' or at ~= '') and 42 or 26 }, false);
-            renderIcon(rec and rec.Id or nil, 18, rec);   -- virtuals get the element wheel
+            icons.renderIcon(rec and rec.Id or nil, 18, rec);   -- virtuals get the element wheel
             -- Picked-row highlight compares the WRAPPER (it == pick), not the record:
             -- one item may appear as several rows with different level ranges, and
             -- only the row the engine would actually use should light up.
@@ -4553,9 +4438,10 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
                     -- the game world bleed through the icon.
                     local rec = lookupByName('Warp Ring');
                     local id = rec and rec.Id or nil;
-                    if id ~= nil and loadItemTexture(id) ~= false and texHandles[id] ~= nil then
+                    local h = icons.handleOf(id);
+                    if h ~= nil then
                         pcall(function()
-                            clicked = imgui.ImageButton(texHandles[id], { 20, 20 },
+                            clicked = imgui.ImageButton(h, { 20, 20 },
                                 { 0, 0 }, { 1, 1 }, 3, { 0.10, 0.10, 0.13, 1.0 }, { 1, 1, 1, 1 });
                         end);
                     else
@@ -4686,7 +4572,7 @@ ashita.events.register('unload', 'dlac-gearui-unload', function()
     pcall(function() ashita.events.unregister('d3d_present', 'dlac-gearui-render'); end);
     pcall(function() ashita.events.unregister('command', 'dlac-ui'); end);
     pcall(function() ashita.events.unregister('packet_in', 'dlac-gearui-invdirty'); end);
-    pcall(releaseTextures);
+    pcall(icons.release);
 end);
 
 return M;
