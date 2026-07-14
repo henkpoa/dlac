@@ -30,6 +30,10 @@ _Avoid_: binding, hook, rule
 A dlac-shipped behavior (auto elemental staff, auto obi) expressed as a **virtual slot entry** inside a set (`dlac:AutoStaff` in Main, `dlac:AutoObi` in Waist) and resolved by the engine at equip time from owned gear.
 _Avoid_: smart swap, feature flag, SetOptions (retired)
 
+**Type automation**:
+An Automation assigned to a specific set PIECE through its Behaviour rules (`autoType` on the entry wrapper), as opposed to occupying a slot. First member: **AutoAcc** — the piece is worn for its Accuracy and *released* (the slot's normal pick worn instead) while the acc watch measures the player over the hit cap by at least the piece's baked ACC. Release order among several candidates is the player's **Removal Priority** (`removePrio`, higher releases first); two AutoAcc candidates on one slot → the higher-leveled item wins. Unknown mob / watch off / no measurement → the piece is worn as usual.
+_Avoid_: per-piece automation, gear tag
+
 **Virtual slot entry**:
 A `dlac:`-prefixed marker string occupying a set's slot in place of an item; the dispatch engine substitutes the concrete item per cast, or drops the slot when unresolvable.
 _Avoid_: slot function (Henrik's coinage for the idea — canonicalized to this term)

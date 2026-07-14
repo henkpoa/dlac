@@ -47,6 +47,17 @@ a 75-era server with no Adoulin zones, so BOTH the zone list and the "+4
 bonus" sign in the published repo code are treated as wrong for live. The
 printed need folds the penalty in. Ground truth if this needs re-litigating:
 dlacprobe /probe tally (battle-log hit-rate counter).
+
+AUTOACC FEED (2026-07-14): every report also writes <char>\dlac\accstate.lua
+    return { seq = N, valid = bool, capGap = need - yourACC, at = os.time(), mob = '...' }
+(capGap is the printed AccCap number: negative = over cap by that much). The
+dispatch ENGINE hot-reads it and uses the surplus to release AutoAcc-typed
+set pieces (dlac:AutoAcc markers -- see dispatch.lua "Type automations").
+valid=false whenever the number cannot be computed -- mob not in the table
+(custom/HNM), your ACC not yet measured, accdata missing -- and when the
+watch is toggled OFF: the engine then leaves AutoAcc pieces worn as normal
+gear. seq bumps per write so the engine re-freezes its removal budget once
+per measurement, not once per frame.
 ]]
 
 local M = {};
@@ -162,9 +173,47 @@ local function myIndex()
     return idx, sid;
 end
 
+-- ---------------------------------------------------------------------------
+-- AutoAcc feed: publish the cap gap to <char>\dlac\accstate.lua for the
+-- dispatch engine (two Lua states, files are the only bridge -- craftstate
+-- precedent). gap == nil means "could not compute" -> valid = false, which
+-- tells the engine to leave AutoAcc pieces worn (Henrik: unknown mobs are
+-- handled as per usual).
+-- ---------------------------------------------------------------------------
+local accSeq = 0;
+
+local function charDlacDir()
+    local name, id;
+    pcall(function()
+        local party = AshitaCore:GetMemoryManager():GetParty();
+        name = party:GetMemberName(0);
+        id   = party:GetMemberServerId(0);
+        if name == '' then name = nil; end
+    end);
+    if name == nil or id == nil then return nil; end
+    return string.format('%sconfig\\addons\\luashitacast\\%s_%u\\dlac\\',
+        AshitaCore:GetInstallPath(), name, id);
+end
+
+local function writeAccState(gap, mob)
+    pcall(function()
+        local dir = charDlacDir();
+        if dir == nil then return; end
+        accSeq = accSeq + 1;
+        local f = io.open(dir .. 'accstate.lua', 'wb');
+        if f == nil then return; end
+        f:write(string.format('return { seq = %d, valid = %s, capGap = %d, at = %d, mob = %q }\n',
+            accSeq, tostring(gap ~= nil), math.floor(tonumber(gap) or 0), os.time(), tostring(mob or '')));
+        f:close();
+        dbg(('accstate: %s%s'):format(gap ~= nil and ('capGap ' .. tostring(gap)) or 'INVALID',
+            (mob ~= nil and mob ~= '') and (' (' .. tostring(mob) .. ')') or ''));
+    end);
+end
+
 local function report(actIndex, why, full)
     if not _dok then
         say('acc: accdata.lua missing/bad -- regenerate: python tools\\acc_calc.py --luadata accdata.lua');
+        writeAccState(nil);
         return;
     end
     local name = '';
@@ -178,6 +227,7 @@ local function report(actIndex, why, full)
         local seen = seenLevels[actIndex];
         say(('acc%s: %s%s -- not in the static table for this zone (custom mob? the widescan layer will learn these)'):format(
             why or '', name, seen ~= nil and (' Lv%d*'):format(seen) or ''));
+        writeAccState(nil, name);   -- MobEVA unknown -> AutoAcc stands down (pieces stay worn)
         return;
     end
     local lo, hi, evLo, evHi, nm, desc = e[1], e[2], e[3], e[4], e[5], e[6];
@@ -212,6 +262,13 @@ local function report(actIndex, why, full)
         corr = (' [-4/lvl, you Lv%d]'):format(pl);
     end
     local cap = is2h and 95 or 99;
+    -- AutoAcc feed: publish the printed AccCap number (worst-case end, level
+    -- correction folded in). No measured ACC yet -> invalid, engine stands down.
+    if M.myAcc ~= nil then
+        writeAccState(math.max(needLo, needHi) - M.myAcc, name);
+    else
+        writeAccState(nil, name);
+    end
     -- default (engage/switch) output, Henrik's format 2026-07-15. Range mobs
     -- use the worst-case (highest level/EVA) end. Full line: /dl acc now.
     if full ~= true and M.myAcc ~= nil then
@@ -415,6 +472,7 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
                 return;
             end
             M.enabled = not M.enabled;
+            if not M.enabled then writeAccState(nil); end   -- watch off -> AutoAcc inert
             say('acc watch ' .. (M.enabled and
                 'ON -- each fight: Mob/EVA/CurrentAcc/AccCmp/AccCmpLvl/AccPct/AccCap; /dl acc now = detail.'
                 or 'OFF.'));

@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 35;   -- 35: matched-but-missing set no longer chat-warns (Triggers tab shows it in red)
+M.VERSION = 36;   -- 36: AutoAcc type automation -- dlac:AutoAcc markers budget released pieces against accstate.lua
+                  -- 35: matched-but-missing set no longer chat-warns (Triggers tab shows it in red)
                   -- 34: modestate __loadstamp -- the GUI's red Reload-LAC button watches it clear
                   -- 33: profile storage layer (dlac\profiles\<name>\; auto-install on load/job change; /dl profile)
                   -- 32: engine self-swap (dispatch.lua hot-reloads like the trigger file)
@@ -788,6 +789,136 @@ end
 M.menuName = menuName;   -- craftwatch reads it to equip while the synth window is OPEN
                          -- (before you confirm -- injected equips bypass the menu lock)
 
+-- ---------------------------------------------------------------------------
+-- Type automation: AutoAcc (Henrik 2026-07-14). Set entries typed AutoAcc
+-- flatten to 'dlac:AutoAcc:<prio>:<acc>:<Name>|<fallback>' (utils.BuildDynamicSets).
+-- accwatch (addon state) measures the cap gap per engage and publishes it to
+-- <char>\dlac\accstate.lua; THIS state hot-reads it and, while the player is
+-- OVER the hit cap, RELEASES AutoAcc pieces -- highest removal priority first,
+-- only while the piece's baked ACC fits inside the measured surplus -- wearing
+-- the slot's fallback (its normal best pick) instead. Feedback loop: the next
+-- engage measures ACC with the released pieces off, so the budget rebuilds as
+-- measured surplus + sum(released accs) and the decision self-corrects (harder
+-- mob -> the pieces come back on). Invalid/stale/missing state (unknown mob,
+-- watch off, no measurement yet) -> every AutoAcc piece stays worn: the set
+-- behaves exactly as if nothing were typed.
+-- ---------------------------------------------------------------------------
+local _accfile = { raw = nil, data = nil, lastCheck = -1 };
+local ACC_STALE_S = 900;   -- measurements older than 15 min are not acted on
+
+local function ensureAccState()
+    if M._accStateOverride ~= nil then return M._accStateOverride; end   -- headless test seam
+    local now = os.time();
+    if now == _accfile.lastCheck then return _accfile.data; end
+    _accfile.lastCheck = now;
+    local dir = charDir();
+    if dir == nil then return _accfile.data; end
+    local raw = readFile(dir .. 'accstate.lua');
+    if raw == nil then _accfile.raw, _accfile.data = nil, nil; return nil; end
+    if raw == _accfile.raw then return _accfile.data; end
+    _accfile.raw = raw;
+    local chunk = (loadstring or load)(raw, '@accstate.lua');
+    if chunk ~= nil then
+        local ok, t = pcall(chunk);
+        if ok and type(t) == 'table' then _accfile.data = t; else _accfile.data = nil; end
+    end
+    return _accfile.data;
+end
+
+-- 'dlac:AutoAcc:<prio>:<acc>:<Name>' -> prio, acc, name (nil unless it parses).
+-- The name is the LAST field on purpose: item names never need escaping then.
+local function parseAccMarker(mk)
+    if type(mk) ~= 'string' then return nil; end
+    if string.lower(string.sub(mk, 1, 13)) ~= 'dlac:autoacc:' then return nil; end
+    local prio, acc, name = string.match(string.sub(mk, 14), '^(%-?%d+):(%-?%d+):(.+)$');
+    if name == nil then return nil; end
+    return tonumber(prio), tonumber(acc), name;
+end
+M._parseAccMarker = parseAccMarker;   -- headless tests
+
+M._accRemoved = {};    -- lower(name) -> baked ACC of every piece currently RELEASED
+local _accSeq = nil;   -- last accstate.seq folded into the budget
+local _accBudget = 0;  -- the all-worn surplus, frozen once per measurement
+
+-- The pure removal rule (headless-tested): given one set's candidates and the
+-- frozen budget, release by DESCENDING removal priority while the baked ACC
+-- fits. A candidate with no fallback or no ACC is never released (nothing
+-- better to wear / nothing to gain). Ties break on higher acc, then slot name
+-- -- deterministic, so every dispatch of a fight agrees with the last one.
+function M._accDecide(cands, budget)
+    local order = {};
+    for i, c in ipairs(cands) do order[i] = c; end
+    table.sort(order, function(a, b)
+        if (a.prio or 0) ~= (b.prio or 0) then return (a.prio or 0) > (b.prio or 0); end
+        if (a.acc or 0) ~= (b.acc or 0) then return (a.acc or 0) > (b.acc or 0); end
+        return tostring(a.slot) < tostring(b.slot);
+    end);
+    local pick, released = {}, {};
+    local b = budget;
+    for _, c in ipairs(order) do
+        if c.fallback ~= nil and (c.acc or 0) > 0 and c.acc <= b then
+            pick[c.slot] = c.fallback;
+            released[string.lower(c.name)] = c.acc;
+            b = b - c.acc;
+        else
+            pick[c.slot] = c.name;
+        end
+    end
+    return pick, released;
+end
+
+-- Decisions for one set table: { [slot] = item name } covering every AutoAcc
+-- marker in it (the piece itself, or its fallback when released); nil when the
+-- set carries none. Locked slots are skipped (the lock branch strips them).
+local function accResolveSet(s)
+    local cands = nil;
+    for slot, v in pairs(s) do
+        if type(v) == 'string' and M.locks[string.lower(tostring(slot))] ~= true then
+            local marker, fallback = v, nil;
+            local p = string.find(v, '|', 1, true);
+            if p ~= nil then marker, fallback = string.sub(v, 1, p - 1), string.sub(v, p + 1); end
+            local prio, acc, name = parseAccMarker(marker);
+            if name ~= nil then
+                cands = cands or {};
+                cands[#cands + 1] = { slot = slot, prio = prio or 1, acc = acc or 0,
+                                      name = name, fallback = fallback };
+            end
+        end
+    end
+    if cands == nil then return nil; end
+    local st = ensureAccState();
+    local usable = type(st) == 'table' and st.valid == true
+               and type(st.capGap) == 'number'
+               and (tonumber(st.at) == nil or os.time() - st.at < ACC_STALE_S);
+    if not usable then
+        -- No trustworthy measurement -> AutoAcc stands down: wear every piece.
+        local pick = {};
+        for _, c in ipairs(cands) do
+            pick[c.slot] = c.name;
+            M._accRemoved[string.lower(c.name)] = nil;
+        end
+        return pick;
+    end
+    if st.seq ~= _accSeq then
+        -- Fresh measurement: rebuild the budget ONCE per seq. capGap was
+        -- measured with the currently-released pieces OFF, so the all-worn
+        -- surplus is the measured surplus plus everything already released.
+        _accSeq = st.seq;
+        local sum = 0;
+        for _, a in pairs(M._accRemoved) do sum = sum + a; end
+        _accBudget = -(tonumber(st.capGap) or 0) + sum;
+    end
+    local pick, released = M._accDecide(cands, _accBudget);
+    for _, c in ipairs(cands) do
+        M._accRemoved[string.lower(c.name)] = released[string.lower(c.name)];
+    end
+    return pick;
+end
+M._accResolveSet = accResolveSet;   -- headless tests
+function M._accReset()              -- headless tests: fresh-session state
+    M._accRemoved = {}; _accSeq = nil; _accBudget = 0;
+end
+
 local function equipResolved(s, ctx)
     local out, notes = nil, nil;
     local anyLocks = (next(M.locks) ~= nil);
@@ -808,6 +939,9 @@ local function equipResolved(s, ctx)
             print('[dlac] maxmp is ON but the gear manifest has no MP data yet -- open Triggers > Automations (it self-heals) or relog, then act again.');
         end
     end
+    -- AutoAcc (Type automation) decisions for this set; nil when it carries no
+    -- dlac:AutoAcc markers. Resolved before the generic virtual branch below.
+    local accPick = accResolveSet(s);
     for slot, v in pairs(s) do
         if anyLocks and M.locks[string.lower(tostring(slot))] == true then
             if out == nil then
@@ -817,6 +951,23 @@ local function equipResolved(s, ctx)
             out[slot] = nil;                           -- locked: the engine leaves it alone
             notes = notes or {};
             notes[#notes + 1] = string.format('%s=LOCKED (kept as worn)', tostring(slot));
+        elseif accPick ~= nil and accPick[slot] ~= nil then
+            if out == nil then
+                out = {};
+                for k2, v2 in pairs(s) do out[k2] = v2; end
+            end
+            out[slot] = accPick[slot];
+            notes = notes or {};
+            local mkOnly = v;
+            local pb = string.find(v, '|', 1, true);
+            if pb ~= nil then mkOnly = string.sub(v, 1, pb - 1); end
+            local _, cacc, cname = parseAccMarker(mkOnly);
+            if cname ~= nil and accPick[slot] ~= cname then
+                notes[#notes + 1] = string.format('AutoAcc=%s RELEASED (acc+%d redundant) -> %s',
+                    cname, cacc or 0, accPick[slot]);
+            else
+                notes[#notes + 1] = string.format('AutoAcc=%s', tostring(accPick[slot]));
+            end
         elseif type(v) == 'string' and string.lower(string.sub(v, 1, 5)) == 'dlac:' then
             if out == nil then
                 out = {};
@@ -937,6 +1088,7 @@ end
 function M.reloadTriggers()
     _trig.raw, _trig.lastCheck = nil, -1;
     _auto.raw, _auto.lastCheck = nil, -1;
+    _accfile.raw, _accfile.lastCheck = nil, -1;
 end
 
 -- ---------------------------------------------------------------------------

@@ -18,6 +18,8 @@
 --   }
 -- `path` is rendered verbatim (the GUI builds it from the item's slot/category/key;
 -- for Ring1/Ring2 -> gear.Ring.X, Ear1/Ear2 -> gear.Ear.X). min/maxLevel optional.
+-- Type automations ride the same wrapper: autoType = 'AutoAcc' plus its
+-- removePrio (release order) and acc (the piece's baked ACC for the engine).
 
 local M = {};
 
@@ -70,7 +72,7 @@ local function splitLines(text)
 end
 
 local function renderItem(it)
-    if it.minLevel == nil and it.maxLevel == nil and it.mode == nil then
+    if it.minLevel == nil and it.maxLevel == nil and it.mode == nil and it.autoType == nil then
         return string.rep(' ', 16) .. it.path .. ',';   -- no rules -> bare gear ref
     end
     local parts = { 'gear = ' .. it.path };
@@ -84,6 +86,11 @@ local function renderItem(it)
         else
             parts[#parts + 1] = string.format('mode = %q', tostring(it.mode));
         end
+    end
+    if it.autoType ~= nil then                           -- Type automation (AutoAcc)
+        parts[#parts + 1] = string.format('autoType = %q', tostring(it.autoType));
+        if it.removePrio ~= nil then parts[#parts + 1] = 'removePrio = ' .. tostring(it.removePrio); end
+        if it.acc ~= nil then parts[#parts + 1] = 'acc = ' .. tostring(it.acc); end
     end
     return string.rep(' ', 16) .. '{' .. table.concat(parts, ', ') .. '},';
 end

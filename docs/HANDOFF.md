@@ -130,6 +130,15 @@ handshake).
   is a floor, the /check-bracket learner corrects it live. Research kit lives in
   **dlacprobe v1.5** (not in git): `/probe scan [go N|dump]`, `/probe tally`.
   Cross-session memory: `memory/mob-eva-pipeline.md` mirrors all of this.
+  - **AutoAcc — the first Type automation (07-14, engine v36, AWAITING field
+    verify):** pieces typed `autoType = 'AutoAcc'` in a set entry's Behaviour
+    are released for the slot's normal pick while the acc watch says their ACC
+    is redundant. Chain: Behaviour popup (gearui, bakes `acc` on Commit) →
+    flatten marker `dlac:AutoAcc:<prio>:<acc>:<Name>|<fallback>` (utils) →
+    `accstate.lua` per engage (accwatch) → budgeted release in the engine
+    (dispatch v36, per-seq frozen budget = `-capGap + sum(released)`). Read
+    history.md "AutoAcc -- the first Type automation" before touching the
+    budget logic — the feedback loop is deliberate, not flapping. Tests AC1–24.
 - **main**: healthy; **267 tests green** (was 189 at last handoff) —
   current as of this session. The whole **crafting-gear system** landed here (see
   history.md "crafting system + catalog pipeline"): read that section before touching

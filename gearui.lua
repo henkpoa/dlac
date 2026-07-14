@@ -2520,8 +2520,10 @@ local function resolveSetItem(elem)
     if type(elem) ~= 'table' then return nil; end
 
     local ref, minL, maxL, modeC = elem, nil, nil, nil;
+    local autoT, remP, accV = nil, nil, nil;   -- Type automation fields (AutoAcc)
     if elem.gear ~= nil and elem.Name == nil then
         ref = elem.gear; minL = elem.minLevel; maxL = elem.maxLevel; modeC = elem.mode;
+        autoT = elem.autoType; remP = elem.removePrio; accV = elem.acc;
     end
     -- Wrapper around a STRING gear ref: a gated VIRTUAL entry, exactly how the
     -- Sets tab commits one ({ gear = "dlac:AutoIridescence", mode = "..." }).
@@ -2533,7 +2535,8 @@ local function resolveSetItem(elem)
                      minLevel = minL, maxLevel = maxL, mode = modeC };
         end
         local rec = _ownedByName and _ownedByName[string.lower(ref)] or nil;
-        return rec and { rec = rec, minLevel = minL, maxLevel = maxL, mode = modeC } or nil;
+        return rec and { rec = rec, minLevel = minL, maxLevel = maxL, mode = modeC,
+                         autoType = autoT, removePrio = remP, acc = accV } or nil;
     end
     if type(ref) ~= 'table' then return nil; end
 
@@ -2544,7 +2547,8 @@ local function resolveSetItem(elem)
         rec = { Name = ref.Name, Level = ref.Level or 0, Id = ref.Id, Jobs = ref.Jobs, Stats = ref.Stats };
     end
     if rec == nil then return nil; end
-    return { rec = rec, minLevel = minL, maxLevel = maxL, mode = modeC };
+    return { rec = rec, minLevel = minL, maxLevel = maxL, mode = modeC,
+             autoType = autoT, removePrio = remP, acc = accV };
 end
 
 -- The profile's raw `sets` table lives in its OWN module (dlac\\profilesets.lua) --
@@ -2713,6 +2717,17 @@ local function buildCommitSlots()
                     if it.minLevel ~= nil then entry.minLevel = it.minLevel; end
                     if it.maxLevel ~= nil then entry.maxLevel = it.maxLevel; end
                     if it.mode ~= nil then entry.mode = it.mode; end
+                    if it.autoType ~= nil then
+                        -- Type automation: bake the piece's ACC (base stats +
+                        -- your copy's augments) into the wrapper -- the seeded
+                        -- engine has no catalog to look it up at equip time.
+                        entry.autoType = it.autoType;
+                        entry.removePrio = it.removePrio or 1;
+                        local st = effStats(it.rec, nil);
+                        local ag = (it.rec ~= nil and it.rec.Id ~= nil) and ownedAugStatsMap()[it.rec.Id] or nil;
+                        entry.acc = math.floor(((type(st) == 'table' and tonumber(st.Accuracy)) or 0)
+                                             + ((type(ag) == 'table' and tonumber(ag.Accuracy)) or 0));
+                    end
                     items[#items + 1] = entry;
                 end
             end
@@ -3395,6 +3410,48 @@ local function renderEntryEditPopup()
         else it.mode = modes; end
         _setDirty = true;
     end
+
+    -- Auto Type (Type automations, Henrik 2026-07-14): hand the piece to a
+    -- dlac automation. AutoAcc = worn for its Accuracy; while the acc watch
+    -- (/dl acc) reports you over the hit cap by at least this piece's ACC, the
+    -- engine releases it and wears the slot's next-best piece instead. Not
+    -- offered on virtual rows (they are already automations).
+    if it.rec == nil or it.rec.Virtual ~= true then
+        imgui.Separator();
+        fmt.textWrapped(COL_DIM, 'Auto Type: give this piece to an equip automation. AutoAcc wears it for its Accuracy and swaps it out (next-best piece in) whenever the acc watch says that ACC is redundant against the mob you fight.');
+        local isAcc = (it.autoType ~= nil and string.lower(tostring(it.autoType)) == 'autoacc');
+        imgui.PushItemWidth(120);
+        if imgui.BeginCombo('##eeautotype', isAcc and 'AutoAcc' or 'None') then
+            if imgui.Selectable('None', not isAcc) and it.autoType ~= nil then
+                it.autoType = nil; it.removePrio = nil; it.acc = nil;
+                _setDirty = true;
+            end
+            if imgui.Selectable('AutoAcc', isAcc) and not isAcc then
+                it.autoType = 'AutoAcc';
+                it.removePrio = it.removePrio or 1;
+                ui._editPrio = { it.removePrio };
+                _setDirty = true;
+            end
+            imgui.EndCombo();
+        end
+        imgui.PopItemWidth();
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('AutoAcc needs the acc watch ON (/dl acc). Unknown mobs (custom/HNM),\nwatch off, or no measurement yet -> the piece is worn as usual.\nTwo AutoAcc rows on one slot: the higher-leveled item wins the slot.\nThe piece\'s ACC value is baked in on Commit -- recommit after re-augmenting.');
+        end
+        if it.autoType ~= nil then
+            imgui.SameLine(0, 10);
+            imgui.PushItemWidth(90);
+            if ui._editPrio == nil then ui._editPrio = { it.removePrio or 1 }; end
+            if imgui.InputInt('Removal Priority##eeprio', ui._editPrio) then
+                local v = math.floor(ui._editPrio[1] or 1); ui._editPrio[1] = v;
+                it.removePrio = v; _setDirty = true;
+            end
+            imgui.PopItemWidth();
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Several AutoAcc pieces worn and you are over cap:\nHIGHER priority is released first, as far as the surplus covers.');
+            end
+        end
+    end
     imgui.EndPopup();
 end
 
@@ -3490,11 +3547,19 @@ local function renderSetBuilder(job, level)
                     imgui.SetTooltip('Mode-gated: used while ANY of these modes is active\n(and then it beats the unconditional entries).\nGreen = active right now.');
                 end
             end
+            if it.autoType ~= nil then
+                imgui.SameLine(0, 8);
+                imgui.TextColored(COL_SCORE, string.format('[%s p%d]', fmt.esc(tostring(it.autoType)), it.removePrio or 1));
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('Type automation: worn for its ACC; released (slot\'s next-best worn\ninstead) while the acc watch reports enough surplus over the hit cap.\np = Removal Priority -- higher is released first. Needs /dl acc ON.');
+                end
+            end
             imgui.SameLine(imgui.GetWindowWidth() - 86);   -- buttons at the right edge
             if imgui.Button('B##ed_' .. di, { 24, 20 }) then
                 ui._editIt = it;
                 ui._editMin = { it.minLevel or 0 };
                 ui._editMax = { it.maxLevel or 0 };
+                ui._editPrio = { it.removePrio or 1 };
                 openEdit = true;
             end
             if imgui.IsItemHovered() then

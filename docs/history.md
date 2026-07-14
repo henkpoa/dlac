@@ -664,3 +664,56 @@ only level source -- consider a quiet widescan fallback on "impossible to
 gauge"); persist learned EVA bounds per char (currently session-only);
 regenerate accdata after server updates (`acc_calc.py --luadata accdata.lua`);
 next layer = feed AccCap into gear-set selection.
+
+## Session "AutoAcc -- the first Type automation" (07-14, on `main`, engine v36)
+
+Henrik's design, verbatim taxonomy: **Set automation** replaces a whole set;
+**Slot automation** occupies a slot and picks the best item (AutoStaff/Obi);
+**Type automation** (NEW) is assigned to a PIECE -- "in my sets, I will more
+or less always set my Peacock Charm as type AutoAcc, so when acc is capped,
+it will not equip that but the next best candidate." Built on the acc-watch
+arc's AccCap number, ASSUMED correct pending tally verification.
+
+How it works (four hops, two Lua states):
+
+1. **Behaviour popup** (gearui): "Auto Type" combo (None/AutoAcc) + "Removal
+   Priority" int (higher = released first). Commit bakes the wrapper into the
+   job file: `{ gear = ..., autoType = "AutoAcc", removePrio = N, acc = N }`
+   -- `acc` is the piece's Accuracy (base + YOUR copy's augment deltas) baked
+   at commit because the seeded engine state has no catalog. Recommit after
+   re-augmenting. Row badge `[AutoAcc pN]`.
+2. **Flatten** (utils.BuildDynamicSets): typed entries compete in their OWN
+   pool (same rank tiers); between two eligible candidates the HIGHER-LEVELED
+   item wins the slot (Henrik's rule). The untyped normal pick becomes the
+   fallback: `'dlac:AutoAcc:<prio>:<acc>:<Name>|<fallback>'` (name LAST in
+   the marker half so any item name parses). A slot automation (dlac:Auto*)
+   on the same slot wins outright; AutoAcc is then ignored there.
+3. **Measurement** (accwatch): every acc report also writes
+   `<char>\dlac\accstate.lua  { seq, valid, capGap = need - yourACC, at, mob }`.
+   valid=false when the number cannot be computed -- mob not in accdata
+   (custom/HNM), no /checkparam ACC yet -- and when `/dl acc` is toggled OFF.
+4. **Release** (dispatch v36, equipResolved pre-pass): while OVER cap,
+   release AutoAcc pieces by removePrio desc, but only while each piece's
+   baked acc fits the remaining surplus; released slot wears its fallback.
+   No fallback / acc<=0 / locked slot / invalid / stale (>15 min) -> the
+   piece just stays worn ("handle the equipment as per usual").
+
+**The feedback-loop subtlety (know this before "fixing" flapping):** capGap
+is measured with the CURRENTLY-RELEASED pieces off, so on each new seq the
+engine rebuilds its budget as `-capGap + sum(released accs)` -- the all-worn
+surplus -- then re-decides from scratch and freezes until the next seq. That
+makes the fight-to-fight loop self-correcting (fallback's own ACC, manual
+regear, harder mob -> pieces return) WITHOUT tracking absolute ACC anywhere,
+and per-seq freezing keeps every dispatch of one fight agreeing with itself.
+The budget deliberately values a release at the piece's FULL baked acc
+(ignoring the fallback's acc); the next measurement absorbs the difference.
+
+Tests AC1-AC24 (293 total green): flatten forms, marker parser, release
+math incl. the stability/re-add sequence, invalid/stale/no-fallback/zero-acc
+guards, serializer round-trip. Seams: `dispatch._accStateOverride`,
+`_accResolveSet`, `_accDecide`, `_parseAccMarker`, `_accReset`.
+
+**Field-verify next:** engage over cap with a typed charm (expect the
+release note in `/dl why`), then a harder mob (expect it back); confirm the
+accstate write survives real zone/engage timing; then tally-verify the
+underlying AccCap (still assumed). Reload LAC required (utils + dispatch v36).

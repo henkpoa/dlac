@@ -1076,6 +1076,144 @@ check('Z19 full export encodes with the format marker',
     string.find(zJson, '"format": "dlac-gear-export"', 1, true) ~= nil, true);
 
 -- ---------------------------------------------------------------------------
+-- AC. AutoAcc type automation -- entries typed autoType='AutoAcc' flatten to a
+--     budgeted marker 'dlac:AutoAcc:<prio>:<acc>:<Name>|<fallback>' (utils);
+--     the engine releases them against the cap surplus accwatch publishes to
+--     accstate.lua (dispatch._accResolveSet). Rules under test (Henrik
+--     2026-07-14): fallback = the slot's normal pick; two typed candidates ->
+--     the higher-leveled item wins; release order = removePrio desc, only as
+--     far as the surplus covers; invalid/stale/missing measurement -> pieces
+--     stay worn ("handle the equipment as per usual"); the budget folds
+--     already-released pieces back in, so a re-measure never flaps.
+-- ---------------------------------------------------------------------------
+do
+    TEST_PLAYER = { MainJob = 'WAR', SubJob = 'NIN', MainJobSync = 75, SubJobSync = 37 };
+    AshitaCore = ashitaWithDW(true);
+    local peacock = { Name = 'Peacock Charm',    Level = 33 };
+    local spike   = { Name = 'Spike Necklace',   Level = 20 };
+    local chiv    = { Name = 'Chivalrous Chain', Level = 60 };
+
+    -- flatten: typed entry -> marker half, the slot's normal pick -> fallback
+    local acSets = utils.BuildDynamicSets({ Dynamic = { TP = {
+        Neck = { spike, { gear = peacock, autoType = 'AutoAcc', removePrio = 3, acc = 10 } },
+    } } });
+    check('AC1 marker + fallback', acSets.TP and acSets.TP.Neck,
+        'dlac:AutoAcc:3:10:Peacock Charm|Spike Necklace');
+
+    local acTwo = utils.BuildDynamicSets({ Dynamic = { TP = {
+        Neck = { spike,
+                 { gear = peacock, autoType = 'AutoAcc', removePrio = 3, acc = 10 },
+                 { gear = chiv,    autoType = 'AutoAcc', removePrio = 5, acc = 8 } },
+    } } });
+    check('AC2 higher-leveled candidate wins the slot', acTwo.TP and acTwo.TP.Neck,
+        'dlac:AutoAcc:5:8:Chivalrous Chain|Spike Necklace');
+
+    local acBare = utils.BuildDynamicSets({ Dynamic = { TP = {
+        Neck = { { gear = peacock, autoType = 'AutoAcc', removePrio = 3, acc = 10 } },
+    } } });
+    check('AC3 no fallback -> bare marker', acBare.TP and acBare.TP.Neck,
+        'dlac:AutoAcc:3:10:Peacock Charm');
+
+    local acDef = utils.BuildDynamicSets({ Dynamic = { TP = {
+        Neck = { { gear = peacock, autoType = 'AutoAcc' } },
+    } } });
+    check('AC4 defaults: prio 1, acc 0', acDef.TP and acDef.TP.Neck,
+        'dlac:AutoAcc:1:0:Peacock Charm');
+
+    TEST_PLAYER = { MainJob = 'WAR', SubJob = 'NIN', MainJobSync = 20, SubJobSync = 10 };
+    local acOver = utils.BuildDynamicSets({ Dynamic = { TP = {
+        Neck = { spike, { gear = peacock, autoType = 'AutoAcc', removePrio = 3, acc = 10 } },
+    } } });
+    check('AC5 under-leveled candidate: plain fallback, no marker',
+        acOver.TP and acOver.TP.Neck, 'Spike Necklace');
+    TEST_PLAYER = { MainJob = 'WAR', SubJob = 'NIN', MainJobSync = 75, SubJobSync = 37 };
+
+    -- marker parser (name deliberately LAST so any item name survives)
+    local pr, ac, nm = dispatchM._parseAccMarker('dlac:AutoAcc:3:10:Peacock Charm');
+    check('AC6 marker parses prio', pr, 3);
+    check('AC7 marker parses acc', ac, 10);
+    check('AC8 marker parses name', nm, 'Peacock Charm');
+    check('AC9 other virtuals do not parse', dispatchM._parseAccMarker('dlac:AutoObi'), nil);
+
+    -- engine decisions, driven through the accstate test seam
+    local SNECK = { Neck = 'dlac:AutoAcc:3:10:Peacock Charm|Spike Necklace' };
+    dispatchM._accReset();
+    dispatchM._accStateOverride = nil;
+    local r = dispatchM._accResolveSet(SNECK);
+    check('AC10 no measurement -> piece worn', r and r.Neck, 'Peacock Charm');
+
+    dispatchM._accStateOverride = { seq = 1, valid = true, capGap = -10 };
+    r = dispatchM._accResolveSet(SNECK);
+    check('AC11 over cap by its acc -> released to fallback', r and r.Neck, 'Spike Necklace');
+
+    -- next engage measures with the charm OFF (capGap 0); the budget folds the
+    -- released 10 back in, so the decision holds instead of flapping
+    dispatchM._accStateOverride = { seq = 2, valid = true, capGap = 0 };
+    r = dispatchM._accResolveSet(SNECK);
+    check('AC12 stable across the re-measure', r and r.Neck, 'Spike Necklace');
+
+    dispatchM._accStateOverride = { seq = 3, valid = true, capGap = 4 };
+    r = dispatchM._accResolveSet(SNECK);
+    check('AC13 harder mob -> piece comes back', r and r.Neck, 'Peacock Charm');
+
+    dispatchM._accReset();
+    dispatchM._accStateOverride = { seq = 4, valid = true, capGap = -8 };
+    r = dispatchM._accResolveSet(SNECK);
+    check('AC14 surplus below the acc -> worn', r and r.Neck, 'Peacock Charm');
+
+    -- removal priority: HIGHER released first; the leftover budget is not
+    -- enough for the second candidate
+    local two = {
+        Neck  = 'dlac:AutoAcc:3:10:Peacock Charm|Spike Necklace',
+        Ring1 = 'dlac:AutoAcc:9:6:Woodsman Ring|Courage Ring',
+    };
+    dispatchM._accReset();
+    dispatchM._accStateOverride = { seq = 5, valid = true, capGap = -12 };
+    r = dispatchM._accResolveSet(two);
+    check('AC15 higher removePrio released first', r and r.Ring1, 'Courage Ring');
+    check('AC16 leftover budget too small -> worn', r and r.Neck, 'Peacock Charm');
+
+    -- generous surplus (measured with the ring already off) -> both released
+    dispatchM._accStateOverride = { seq = 6, valid = true, capGap = -20 };
+    r = dispatchM._accResolveSet(two);
+    check('AC17a both fit: neck released', r and r.Neck, 'Spike Necklace');
+    check('AC17b both fit: ring released', r and r.Ring1, 'Courage Ring');
+
+    -- unknown mob / no calc -> valid=false: worn as usual, release state wiped
+    dispatchM._accStateOverride = { seq = 7, valid = false, capGap = 0 };
+    r = dispatchM._accResolveSet(two);
+    check('AC18a invalid -> neck worn as usual', r and r.Neck, 'Peacock Charm');
+    check('AC18b invalid -> ring worn as usual', r and r.Ring1, 'Woodsman Ring');
+
+    dispatchM._accStateOverride = { seq = 8, valid = true, capGap = -20, at = os.time() - 3600 };
+    r = dispatchM._accResolveSet(SNECK);
+    check('AC19 stale measurement (>15 min) -> worn', r and r.Neck, 'Peacock Charm');
+
+    dispatchM._accReset();
+    dispatchM._accStateOverride = { seq = 9, valid = true, capGap = -50 };
+    r = dispatchM._accResolveSet({ Neck = 'dlac:AutoAcc:3:10:Peacock Charm' });
+    check('AC20 no fallback -> never released', r and r.Neck, 'Peacock Charm');
+
+    r = dispatchM._accResolveSet({ Neck = 'dlac:AutoAcc:3:0:Peacock Charm|Spike Necklace' });
+    check('AC21 zero acc -> never released', r and r.Neck, 'Peacock Charm');
+
+    check('AC22 set without markers -> nil (no decisions)',
+        dispatchM._accResolveSet({ Neck = 'Spike Necklace' }), nil);
+
+    -- serializer: the wrapper carries the type fields through a Commit
+    local acSer = table.concat(setmgr.renderSetLines('T', {
+        { name = 'Neck', items = {
+            { path = 'gear.Neck.PeacockCharm', autoType = 'AutoAcc', removePrio = 3, acc = 10 },
+        } },
+    }), '\n');
+    check('AC23 serializes autoType', acSer:find('autoType = "AutoAcc"', 1, true) ~= nil, true);
+    check('AC24 serializes removePrio + acc', acSer:find('removePrio = 3, acc = 10', 1, true) ~= nil, true);
+
+    dispatchM._accStateOverride = nil;
+    dispatchM._accReset();
+end
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then

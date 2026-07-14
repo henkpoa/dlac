@@ -309,6 +309,8 @@ function M.BuildDynamicSets(sets)
             local slotTable = setTable[slotName];
             local slotRank, slotLevel = -1, -1;   -- winning entry's tier + item level
             local slotVirtual = nil;
+            local slotAcc = nil;                  -- winning AutoAcc candidate { name, prio, acc }
+            local slotAccRank, slotAccLevel = -1, -1;
 
             -- Evaluate one list entry; maybe promote it to the slot's pick. wantMode
             -- selects the pass: true = only entries whose `mode` condition is ACTIVE
@@ -316,7 +318,11 @@ function M.BuildDynamicSets(sets)
             -- entry therefore OUTRANKS every unconditional one (specific beats
             -- generic, same philosophy as trigger specificity); an INACTIVE one is
             -- excluded outright.
-            local function evalEntry(gearVar, wantMode)
+            -- wantAuto splits the POOL: entries typed as a Type automation
+            -- (autoType = 'AutoAcc') compete only among themselves for the slot's
+            -- AutoAcc pick; everything else is the normal pick -- which becomes
+            -- the AutoAcc marker's fallback (worn while the piece is released).
+            local function evalEntry(gearVar, wantMode, wantAuto)
                 -- Virtual slot entry ('dlac:AutoStaff' / 'dlac:AutoObi'), bare OR
                 -- wrapped -- the Sets tab commits a GATED virtual in wrapper form
                 -- ({ gear = 'dlac:AutoIridescence', mode = 'Weapon:Caster' }). The
@@ -378,6 +384,12 @@ function M.BuildDynamicSets(sets)
                     gearObject = gearVarObject;
                 end
 
+                -- Typed entries belong to the auto pass only, untyped to the
+                -- normal pass only (see evalEntry doc above).
+                local isAuto = type(gearObject.autoType) == "string"
+                           and string.lower(gearObject.autoType) == "autoacc";
+                if isAuto ~= (wantAuto == true) then return; end
+
                 -- Mode-gated entry vs the current pass (see evalEntry doc above).
                 if gearObject.mode ~= nil then
                     if not wantMode then return; end
@@ -424,6 +436,22 @@ function M.BuildDynamicSets(sets)
                 -- at 50). Within the same tier the highest item level wins; on an
                 -- exact tie the EARLIER list entry keeps the slot.
                 local rank = (gearObject.minLevel ~= nil or gearObject.maxLevel ~= nil) and 1 or 0;
+                if wantAuto then
+                    -- AutoAcc candidates rank among themselves with the same tier
+                    -- rules; between two eligible candidates the HIGHER-LEVELED
+                    -- item wins the slot (Henrik's rule, 2026-07-14).
+                    if rank < slotAccRank then return; end
+                    if rank == slotAccRank and gearObject.Level <= slotAccLevel then return; end
+                    if slotName == "Sub"
+                       and not M.subSlotAllowed(gearObject, currentMain, { dw = isDW }) then
+                        return;
+                    end
+                    slotAccRank, slotAccLevel = rank, gearObject.Level;
+                    slotAcc = { name = gearObject.Name,
+                                prio = math.floor(tonumber(gearObject.removePrio) or 1),
+                                acc  = math.floor(tonumber(gearObject.acc) or 0) };
+                    return;
+                end
                 if rank < slotRank then return; end
                 if rank == slotRank and gearObject.Level <= slotLevel then return; end
 
@@ -444,9 +472,15 @@ function M.BuildDynamicSets(sets)
 
             -- Pass 1: mode-gated entries whose mode is active. Pass 2 (only when
             -- pass 1 picked nothing): the unconditional entries -- the fallback rank.
-            for _, gearVar in pairs(slotTable) do evalEntry(gearVar, true); end
+            for _, gearVar in pairs(slotTable) do evalEntry(gearVar, true, false); end
             if currentSet[slotName] == nil then
-                for _, gearVar in pairs(slotTable) do evalEntry(gearVar, false); end
+                for _, gearVar in pairs(slotTable) do evalEntry(gearVar, false, false); end
+            end
+            -- Same two passes for the AutoAcc pool: typed entries pick their own
+            -- winner; the normal pick above stays intact as the fallback.
+            for _, gearVar in pairs(slotTable) do evalEntry(gearVar, true, true); end
+            if slotAcc == nil then
+                for _, gearVar in pairs(slotTable) do evalEntry(gearVar, false, true); end
             end
 
             -- Compose the virtual with its fallback: 'dlac:AutoStaff|<bestName>'. The
@@ -469,6 +503,18 @@ function M.BuildDynamicSets(sets)
                        or string.sub(lv, 1, 21) == 'dlac:autoiridescence' then
                         currentMain = { Name = slotVirtual, Type = 'Staff', OneHanded = false, Level = 0 };
                     end
+                end
+            elseif slotAcc ~= nil then
+                -- Type automation (AutoAcc): compose the marker the engine budgets
+                -- with at equip time. Name goes LAST in the marker half so the
+                -- parser survives any item name; prio/acc are baked here because
+                -- the seeded engine state has no catalog to look them up in.
+                -- 'dlac:AutoAcc:<removePrio>:<acc>:<Name>|<fallback>'
+                local mk = string.format('dlac:AutoAcc:%d:%d:%s', slotAcc.prio, slotAcc.acc, slotAcc.name);
+                if currentSet[slotName] ~= nil then
+                    currentSet[slotName] = mk .. '|' .. currentSet[slotName];
+                else
+                    currentSet[slotName] = mk;
                 end
             end
         end
