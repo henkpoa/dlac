@@ -116,9 +116,21 @@ handshake).
 - A GM is currently evaluating the addon for server approval — polish requests from
   that channel (like the word-wrap fix) take priority.
 
-## Current state (as of 2026-07-13 end of day)
+## Current state (as of 2026-07-15)
 
-- **main**: healthy; **189 tests green**; pushed to `origin/main` (henkpoa/dlac) —
+- **NEW ARC — the ACC system (07-13→15, all on main, field-verified):** `/dl acc`
+  prints, on every engage AND auto-target switch, Henrik's labeled line
+  (`<Mob> Lv* - MobEVA - CurrentAcc - AccCmp - AccCmpLvl - AccPct - AccCap`) by
+  silently injecting /checkparam + /check (c2s 0x0DD, **16-byte struct — read the
+  server's c2s header, not XiPackets**) and swallowing the replies. Read
+  history.md "ACC calculator -> acc watch" before touching `accwatch.lua`,
+  `accdata.lua` (generated: `python tools\acc_calc.py --luadata accdata.lua`), or
+  `tools/acc_calc.py`. Standing rulings: **level correction = −4 ACC/lvl fighting
+  up, EVERYWHERE (ruling v2, supersedes the "+4 bonus is canon" v1)**; model EVA
+  is a floor, the /check-bracket learner corrects it live. Research kit lives in
+  **dlacprobe v1.5** (not in git): `/probe scan [go N|dump]`, `/probe tally`.
+  Cross-session memory: `memory/mob-eva-pipeline.md` mirrors all of this.
+- **main**: healthy; **267 tests green** (was 189 at last handoff) —
   current as of this session. The whole **crafting-gear system** landed here (see
   history.md "crafting system + catalog pipeline"): read that section before touching
   craftwatch/craftbar/dispatch-overlay/triggersui-craft code.

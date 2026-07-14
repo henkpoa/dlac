@@ -6,8 +6,9 @@ at engage AND on every battle-target switch (auto-target). OFF by default:
                    - AccCmpLvl: <(youLv-mobLv)*4> - AccPct: <expected hit%>
                    - AccCap: <ACC still needed to cap; negative = over cap>
                    (range mobs use the worst-case end; live level = exact *)
-    /dl acc now    FULL detail line for the current target (level, EVA, need,
-                   capped/+more verdict, hit%)
+    /dl acc now    same labeled line for the CURRENT target (no engage needed;
+                   falls back to the prose detail line when your ACC is not
+                   known yet -- engage once or /checkparam to prime it)
     /dl acc debug  trace engage/inject/reply/cache decisions to chat
 
 Triggers: c2s 0x01A action 0x02 (attack) and action 0x0F (change target --
@@ -405,7 +406,7 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
                 local idx = 0;
                 pcall(function() idx = AshitaCore:GetMemoryManager():GetTarget():GetTargetIndex(0); end);
                 if idx == nil or idx == 0 then say('acc: no target.'); return; end
-                report(idx, '(target)', true);
+                report(idx, '(target)');   -- same labeled line as engage (Henrik 07-15)
                 return;
             end
             if b == 'debug' then

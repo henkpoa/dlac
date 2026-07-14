@@ -605,3 +605,62 @@ Ring2, equips, polls the game clock, fires when ready; recharge countdown in
 the menu (Echad's 120-min reuse renders h:mm:ss); `/dl xp off` cancels.
 Fallback wait 15s (10s equip delay + margin) -- the game-clock poll governs
 in practice, as with every enchanted item here.
+
+## Session arc "ACC calculator -> acc watch" (07-13 evening -> 07-15, on `main`)
+
+Goal (Henrik): "how much ACC do I need on this mob?" -- automatically, per
+engagement. Built in layers, each field-tested by Henrik between commits:
+
+1. **Server-source math** (`tools/acc_calc.py`, 3b6abd6/a970306): parses the
+   public CatsEyeXI repo (mob tables, grades, skill ranks, zone lists, Mod
+   ids) into cached files; formulas transcribed f32-faithful with DRIFT
+   SENTINELS (warns if the source line vanishes). Query / `--dump mobs.json` /
+   `--families` CSV (Lv1-99 per family x job combo) / `--luadata`.
+2. **Shipped data** (`accdata.lua`, cb6806f/d111213, catalog model): 12,136
+   mobs x 237 zones -- spawn ranges, zone-exact EVA endpoints, NM flag, and a
+   79,939-entry spawn-idx->name map (mobid = 0x1000000 + zone*4096 + idx),
+   needed because **widescan replies carry NO name on CatsEyeXI** (field:
+   names only appeared <=~50y = entity memory; type byte 1=NPC/Lv0, 2=mob).
+3. **accwatch.lua** (cb6806f -> 6648d7e): `/dl acc` engage watch. Every
+   engage (0x01A action 0x02) AND battle-target switch (action 0x0F,
+   auto-target) silently injects TWO c2s 0x0DD requests -- /checkparam at
+   self (Kind 2, FIRST, msg 712 p1 = live mainhand ACC) then /check at the
+   mob (Kind 0, level via 0x029 p1). Replies cached + BLOCKED (mute windows;
+   manual checks still print). **0x0DD is 16 bytes: UniqueNo u32, ActIndex
+   u32, Kind u8 @0x0C enum-validated -- the XiPackets-style 12-byte guess is
+   dropped silently** (that was the "still seeing the old message" bug).
+   Output = Henrik's labeled one-liner (engage and `/dl acc now` alike):
+   `<Mob> Lv<L>* - MobEVA E - CurrentAcc A - AccCmp E-A - AccCmpLvl
+   (you-mob)*4 - AccPct hit% - AccCap need-A`. `/dl acc debug` traces.
+4. **Bracket learning** (3b0975f): the model UNDERESTIMATES some live mobs
+   (Wajaom Tiger 69: model 269, bracket proved >=287 -- private tuning).
+   Every check reply narrows [lo..hi] true-EVA bounds per (zone,mob,level)
+   from the eva bracket (RAW acc vs RAW eva: High>=ACC+31, neutral ACC-9..
+   ACC+30, Low<=ACC-10); report clamps model into bounds; newest-wins on
+   contradiction. Session-scoped.
+5. **Level correction, two rulings** (0eaae9d then 3922bff): repo code grants
+   +4 ACC/lvl fighting up, gated to a zone list. Ruling v1 (07-14, from the
+   code): bonus is canon. Ruling v2 (07-14, from LIVE PLAY -- supersedes):
+   retail semantics, **-4 ACC (-2% hit) per level above you, EVERYWHERE**
+   (75-era server; the zone-list gate only runs when
+   USE_ADOULIN_WEAPON_SKILL_CHANGES=true and live settings are private).
+6. **dlacprobe v1.2->v1.5** (research kit, NOT in git): `/probe scan` widescan
+   +/check decoder cross-checked vs accdata; `/probe scan go [secs]` injects
+   widescan requests (the menu is the only native trigger; checker addon
+   never polls -- its levels come from the /check reply, widescan only
+   backfills NMs); `/probe tally` battle-log hit/miss counter = ground truth.
+
+**Lessons pinned:** (1) for new-style c2s packets read the SERVER's header --
+XiPackets layouts can be stale (u16 vs u32 ActIndex); validation drops bad
+sizes without any reply. (2) The /check eva bracket is free ground truth --
+learn from it instead of chasing formula parity with private tuning. (3)
+Rulings derived from code-reading can be overturned by live play; record
+both and the instrument that decides (tally). (4) Same-named mobs span zones
+with different rules (Wajaom Tiger: Wajaom corrected, Bhaflau not).
+
+**Open threads (ACC arc):** tally-verify ruling v2 (~20 swings vs a +20ish
+mob: penalty/none/bonus predict ~20%/~50%/~95%); NM path (widescan is their
+only level source -- consider a quiet widescan fallback on "impossible to
+gauge"); persist learned EVA bounds per char (currently session-only);
+regenerate accdata after server updates (`acc_calc.py --luadata accdata.lua`);
+next layer = feed AccCap into gear-set selection.
