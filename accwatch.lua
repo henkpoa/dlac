@@ -1,9 +1,11 @@
 --[[
 accwatch.lua -- tells you where your ACC stands against the mob you fight,
 at engage AND on every battle-target switch (auto-target). OFF by default:
-    /dl acc        toggle. Each fight prints one number:  Acc Compare: N
-                   0 = capped exactly | -50 = 50 ACC under cap | 50 = 50 over
-                   (range mobs use the worst-case end; live level = exact)
+    /dl acc        toggle. Each fight prints one line (Henrik's format):
+                   <Mob> Lv<L> - MobEVA <E> - CurrentAcc: <A> - AccCmp: <E-A>
+                   - AccCmpLvl: <(youLv-mobLv)*4> - AccPct: <expected hit%>
+                   - AccCap: <ACC still needed to cap; negative = over cap>
+                   (range mobs use the worst-case end; live level = exact *)
     /dl acc now    FULL detail line for the current target (level, EVA, need,
                    capped/+more verdict, hit%)
     /dl acc debug  trace engage/inject/reply/cache decisions to chat
@@ -208,14 +210,20 @@ local function report(actIndex, why, full)
         needHi = needHi + math.max(0, hi - pl) * 4;               -- above you (see header)
         corr = (' [-4/lvl, you Lv%d]'):format(pl);
     end
-    -- default (engage/switch) output: one signed number, Henrik's spec --
-    -- 0 = capped exactly, -50 = 50 under cap, 50 = 50 over. Range mobs
-    -- compare against the worst-case (highest) need. Full line: /dl acc now.
+    local cap = is2h and 95 or 99;
+    -- default (engage/switch) output, Henrik's format 2026-07-15. Range mobs
+    -- use the worst-case (highest level/EVA) end. Full line: /dl acc now.
     if full ~= true and M.myAcc ~= nil then
-        say(('Acc Compare: %d'):format(M.myAcc - math.max(needLo, needHi)));
+        local acc = M.myAcc;
+        local eHi = math.max(evLo, evHi);
+        local lvlTerm = 0;
+        if pl > 0 and pl < hi then lvlTerm = (pl - hi) * 4; end
+        local pct = math.max(20, math.min(cap, 75 + (acc + lvlTerm - eHi) / 2));
+        say(('%s Lv%s%s - MobEVA %s - CurrentAcc: %d - AccCmp: %d - AccCmpLvl: %d - AccPct: %.0f%% - AccCap: %d'):format(
+            name, band(lo, hi), exact, band(evLo, evHi), acc,
+            eHi - acc, lvlTerm, pct, math.max(needLo, needHi) - acc));
         return;
     end
-    local cap = is2h and 95 or 99;
     local you = '';
     if M.myAcc ~= nil then                                        -- fresh from auto-checkparam
         -- correction can invert the band (higher mob level -> lower need)
@@ -407,7 +415,7 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
             end
             M.enabled = not M.enabled;
             say('acc watch ' .. (M.enabled and
-                'ON -- each fight prints Acc Compare (0 = capped, -N = under, N = over); /dl acc now = detail.'
+                'ON -- each fight: Mob/EVA/CurrentAcc/AccCmp/AccCmpLvl/AccPct/AccCap; /dl acc now = detail.'
                 or 'OFF.'));
         end);
     end);
