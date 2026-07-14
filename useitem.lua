@@ -74,6 +74,11 @@ local EXPRINGS = {
 
 local SLOT_ID = { ring2 = 0x0E, ear2 = 0x0C };   -- native equip-slot indexes
 
+-- Seconds to hold fire past the first measured remaining==0 (the SE quirk: the
+-- displayed 0 is still a live second). 1.2 still fired early at times in the
+-- field (Henrik, 07-14) -- 1.7 is that plus his requested half second.
+local ZERO_HOLD = 1.7;
+
 local state = nil;   -- { name, slot, useAt, stage, releaseAt, nextPoll, measured, zeroAt }
 
 local function queue(cmd)
@@ -223,10 +228,11 @@ ashita.events.register('d3d_present', 'dlac-useitem-tick', function()
                 if rem <= 0 then
                     -- SE quirk (field-verified): the displayed 0 is still a live
                     -- second -- the item only becomes usable ~1s after remaining
-                    -- hits 0. Hold fire until 1.2s past the first measured 0.
+                    -- hits 0. Hold fire until ZERO_HOLD past the first measured 0
+                    -- (1.2 fired early at times in the field -- Henrik, 07-14).
                     if state.zeroAt == nil then state.zeroAt = now; end
-                    state.useAt = math.max(state.useAt, state.zeroAt + 1.2);   -- keep the fallback honest too
-                    if now >= state.zeroAt + 1.2 then fire(); end
+                    state.useAt = math.max(state.useAt, state.zeroAt + ZERO_HOLD);   -- keep the fallback honest too
+                    if now >= state.zeroAt + ZERO_HOLD then fire(); end
                     return;
                 end
                 state.zeroAt = nil;                               -- bounced back above 0 (re-equip reset)
