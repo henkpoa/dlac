@@ -85,6 +85,11 @@ for i, l in ipairs(labels) do
     check('S11.' .. i .. ' tab "' .. l .. '" render is a function', found, true);
 end
 
+-- the sets module also carries the floating Stat-weights window
+local setsMod = host.get('sets');
+check('S13 weights window registered', setsMod ~= nil and type(setsMod.window) == 'table'
+    and type(setsMod.window.render) == 'function', true);
+
 -- ---------------------------------------------------------------------------
 -- 3. services contract: what equippedui (and future modules) capture at load
 -- ---------------------------------------------------------------------------
