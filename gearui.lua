@@ -1489,6 +1489,19 @@ local function renderHeaderButtons()
     end
 
     local btns = {};
+    do   -- lockstyle window toggle (Henrik's armor icon; left of the Macro book)
+        btns[#btns+1] = { w = 26,
+          render = function()
+              local h = nil; pcall(function() h = require('dlac\\filetex').handle('lockstyle'); end);
+              local clicked = false;
+              if h ~= nil then pcall(function() clicked = imgui.ImageButton(h, { 16, 16 }); end);
+              else clicked = imgui.Button('LS##hdrls', { 26, 22 }); end
+              if imgui.IsItemHovered() then
+                  imgui.SetTooltip('Lockstyle sets -- 30 saved looks, applied through LuaAshitacast.\nSave the marked box, import old static lockstyle sets, and\n"OnLoad Lockstyle" re-applies it on every login / job change.');
+              end
+              if clicked then pcall(function() require('dlac\\lockstyle').open(); end); end
+          end };
+    end
     if macrob ~= nil then
         btns[#btns+1] = { w = 26,   -- small book icon (matches the warp button size)
           render = function()
@@ -1898,6 +1911,18 @@ local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, ge
     end
     imgui.EndChild();
 end
+
+-- Lockstyle window (own module, hard rule 1): inject the helpers it renders
+-- with -- the 4x4 grid above, item icons/tooltips, and the catalog lookup.
+-- Function-scoped require: no new chunk local.
+pcall(function()
+    require('dlac\\lockstyle').wire{
+        slotGrid = renderSlotGrid,
+        icon     = renderIcon,
+        tooltip  = renderItemTooltip,
+        catalog  = lookupByName,
+    };
+end);
 
 -- ---------------------------------------------------------------------------
 -- Diablo-style Stats panel + shared Name/Level sort control (Phase 3).
@@ -4469,6 +4494,7 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
     if ui._flagsDirty then ui._flagsDirty = nil; pcall(saveUiFlags); end
     pcall(autoSyncOnJobChange);
     if macrob ~= nil then pcall(macrob.pump); end   -- per-job macro book/set (login + job change)
+    pcall(function() require('dlac\\lockstyle').pump(); end);   -- OnLoad lockstyle (login + job change)
     if ui.showMetrics == true and hasImgui then       -- /dl metrics: overlay hunter
         pcall(function() imgui.ShowMetricsWindow(ui.metricsOpen); end);
         if ui.metricsOpen ~= nil and ui.metricsOpen[1] == false then ui.showMetrics = false; end
@@ -4547,6 +4573,18 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
             end
         end);
         if tpThemed then style.pop(); end
+    end
+    -- Lockstyle window: INDEPENDENT of the main box (the header armor button
+    -- opens it; it stays up if the main window closes). Own theme bracket,
+    -- function-scoped require -- no new chunk local (hard rule 1).
+    if hasImgui then
+        local lsMod = nil;
+        pcall(function() lsMod = require('dlac\\lockstyle'); end);
+        if lsMod ~= nil and lsMod.visible == true then
+            local lsThemed = _stok and type(style) == 'table' and style.push();
+            pcall(lsMod.render);
+            if lsThemed then style.pop(); end
+        end
     end
     if not M.visible or not hasImgui then return; end
     -- Theme push/pop brackets the pcall so an imgui error mid-draw can never

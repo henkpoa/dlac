@@ -49,7 +49,7 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 37;   -- 37: craft Sub guard -- a Main pairing badly with the overlay's Sub is held (Kupo Shield vs scythe)
+M.VERSION = 38;   -- 38: lockstyle sets -- '/dl ls apply [box]' reads lockstyles.lua, gFunc.LockStyle applies (LAC state)
                   -- 35: matched-but-missing set no longer chat-warns (Triggers tab shows it in red)
                   -- 34: modestate __loadstamp -- the GUI's red Reload-LAC button watches it clear
                   -- 33: profile storage layer (dlac\profiles\<name>\; auto-install on load/job change; /dl profile)
@@ -1262,6 +1262,24 @@ local function craftMainGuard(cEquip)
 end
 M._craftMainGuard = craftMainGuard;   -- test seam
 
+-- Lockstyle box selection (pure -- headless-tested): parsed lockstyles.lua
+-- table + optional box number -> (slot->name table, box name, box index), or
+-- (nil, why). Explicit n wins; else the file's marked box (active); else 1.
+-- Only string values ride: gFunc.LockStyle itself filters non-visual slots
+-- and understands the literal 'remove' (lockstyle the slot EMPTY).
+function M._lockstyleFrom(t, n)
+    if type(t) ~= 'table' or type(t.slots) ~= 'table' then return nil, 'no lockstyle sets saved yet'; end
+    n = tonumber(n) or tonumber(t.active) or 1;
+    local e = t.slots[n];
+    if type(e) ~= 'table' or type(e.set) ~= 'table' then return nil, string.format('lockstyle box %d is empty', n); end
+    local out, any = {}, false;
+    for slot, v in pairs(e.set) do
+        if type(v) == 'string' and v ~= '' then out[slot] = v; any = true; end
+    end
+    if not any then return nil, string.format('lockstyle box %d has no items', n); end
+    return out, ((type(e.name) == 'string' and e.name ~= '') and e.name or ('box ' .. n)), n;
+end
+
 function M.dispatch(event)
     if not inLac() then return; end
     pcall(function()
@@ -1976,8 +1994,35 @@ if inLac() then
         local args = {};
         for a in string.gmatch(string.sub(e.command, start), '%S+') do args[#args + 1] = a; end
         local sub = args[1] and string.lower(args[1]) or nil;
-        if sub ~= 'mode' and sub ~= 'why' and sub ~= 'triggers' and sub ~= 'env' and sub ~= 'lock' and sub ~= 'sets' and sub ~= 'profile' then return; end
+        if sub ~= 'mode' and sub ~= 'why' and sub ~= 'triggers' and sub ~= 'env' and sub ~= 'lock' and sub ~= 'sets' and sub ~= 'profile' and sub ~= 'ls' then return; end
         e.blocked = true;
+
+        if sub == 'ls' then
+            -- Lockstyle sets (v38): the GUI (lockstyle.lua, addon state) edits
+            -- <char>\dlac\lockstyles.lua; THIS side only applies -- gFunc.LockStyle
+            -- is LAC's own packet builder and exists in the LAC state alone. The
+            -- same handler runs in the ADDON state too (gearui/triggersui require
+            -- dispatch there): no gFunc -> stay silent, exactly one printer.
+            local g = rawget(_G, 'gFunc');
+            if g == nil or type(g.LockStyle) ~= 'function' then return; end
+            if string.lower(tostring(args[2] or '')) ~= 'apply' then
+                print('[dlac] usage: /dl ls apply [box]   (GUI: the armor button in the dlac header)');
+                return;
+            end
+            local dir = charDir();
+            if dir == nil then print('[dlac] lockstyle: not logged in.'); return; end
+            local raw = readFile(dir .. 'lockstyles.lua');
+            if raw == nil then print('[dlac] lockstyle: no lockstyle sets saved yet (armor button in the dlac header).'); return; end
+            local t = nil;
+            local chunk = (loadstring or load)(raw, '@lockstyles.lua');
+            if chunk ~= nil then local okc, v = pcall(chunk); if okc then t = v; end end
+            local set, why, box = M._lockstyleFrom(t, tonumber(args[3]));
+            if set == nil then print('[dlac] lockstyle: ' .. tostring(why)); return; end
+            local okl, err = pcall(g.LockStyle, set);
+            if okl then print(string.format('[dlac] lockstyle "%s" (box %d) applied.', tostring(why), box));
+            else print('[dlac] lockstyle failed: ' .. tostring(err)); end
+            return;
+        end
 
         if sub == 'sets' then
             if string.lower(tostring(args[2] or '')) ~= 'reload' then

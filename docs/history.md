@@ -960,3 +960,34 @@ Mid-session note: the checkout flipped to feature/autoacc under this session
 (parallel work); the Song/Cure Cast Time- rename was committed there (bb47d3e)
 per the parallel-session rule and cherry-picked back to main (e934b32) once the
 checkout returned.
+
+## Session "lockstyle sets" (07-15)
+
+A NEW set type (Henrik's spec): lockstyle sets -- one item name per VISUAL
+slot, 30 numbered boxes, applied through LAC's own packet builder. Pieces:
+
+- **lockstyle.lua** (addon state, own module -- hard rule 1): the window is
+  the Equipped-tab 4x4 (gearui INJECTS renderSlotGrid/renderIcon/tooltip/
+  catalog via M.wire -- load order forbids requiring gearui) editing a
+  working copy; right of it, 30 boxes in 3 macro-menu columns. Box 1 is
+  marked until chosen otherwise; Save lands in the MARKED box under the
+  typed name; switching boxes with unsaved edits warns first (continue =
+  discard). "Import from static..." copies a static set's visual slots
+  (profilesets -- live job file + pre-profiles backups, where old lockstyle
+  statics live). Slot picker offers gear.lua items for the slot (job-
+  filtered) plus "(clear)" and "(hide -- LAC's 'remove' literal)". Non-
+  visual slots (neck/ears/rings/waist/back) are inert: packet 0x53 carries
+  equip slots 0-8 only. Storage: <char>\dlac\lockstyles.lua
+  { active, onload = {JOB=box}, slots } -- serializer is pure (AG10-15).
+- **Engine apply (dispatch v38):** '/dl ls apply [box]' in the dlac-dispatch
+  command handler -> read lockstyles.lua -> M._lockstyleFrom picks the box
+  (explicit n > active > 1; AG1-9) -> gFunc.LockStyle. The SAME handler runs
+  in the addon state (gearui/triggersui require dispatch there): the gFunc
+  guard keeps that side silent -- exactly one printer. Self-swap delivers
+  v38 live; no Reload LAC needed for the command.
+- **OnLoad Lockstyle:** binds CURRENT JOB -> MARKED BOX; macrobook's pump
+  pattern queues '/dl ls apply <box>' ~6s after login / ~3s after a job
+  change (post-zone grace; runs a beat after the macro book apply).
+- Header button (Henrik's golden-armor icon, assets/lockstyle.png) sits
+  LEFT of the Macro book, filetex/ImageButton 16x16 like its neighbors; the
+  window renders from the present hook independent of the main box.

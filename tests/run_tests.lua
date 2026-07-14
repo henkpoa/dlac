@@ -1288,6 +1288,43 @@ local _, afTbl3 = dispatchM._equipResolved({ Main = 'Death Scythe' }, {});
 check('AF12 no guard, no hold (craft off)', afTbl3.Main, 'Death Scythe');
 
 -- ---------------------------------------------------------------------------
+-- AG. lockstyle sets -- dispatch._lockstyleFrom picks the box and reduces it
+--     to what gFunc.LockStyle takes; lockstyle.lua's serializer round-trips.
+-- ---------------------------------------------------------------------------
+local lsT = {
+    active = 2,
+    onload = { DRK = 2 },
+    slots = {
+        [1] = { name = 'AF Glam', set = { Main = 'Kris', Head = 'Ducal Guard\'s Ribbon', Body = 'remove' } },
+        [2] = { name = '',        set = { Body = 'Weaver Apron' } },
+        [3] = { name = 'Broken',  set = { Head = 42, Body = '' } },   -- nothing usable
+    },
+};
+local g1, n1, b1 = dispatchM._lockstyleFrom(lsT, 1);
+check('AG1 explicit box wins', b1, 1);
+check('AG2 slot names ride', g1.Main, 'Kris');
+check('AG3 the remove literal rides too', g1.Body, 'remove');
+check('AG4 box name returned', n1, 'AF Glam');
+local g2, n2, b2 = dispatchM._lockstyleFrom(lsT, nil);
+check('AG5 no box arg -> the marked (active) box', b2, 2);
+check('AG6 unnamed box falls back to "box N"', n2, 'box 2');
+check('AG7 non-string and empty values are dropped', (dispatchM._lockstyleFrom(lsT, 3)), nil);
+check('AG8 empty box says so', select(2, dispatchM._lockstyleFrom(lsT, 9)), 'lockstyle box 9 is empty');
+check('AG9 no file/table says so', select(2, dispatchM._lockstyleFrom(nil)), 'no lockstyle sets saved yet');
+
+-- serializer round-trip (lockstyle.lua is addon-state UI but its serializer is pure)
+local lockstyleM = dofile('lockstyle.lua');
+local lsText = lockstyleM._serialize(lsT);
+local lsChunk = (loadstring or load)(lsText);
+check('AG10 serialized file parses', lsChunk ~= nil, true);
+local lsBack = lsChunk();
+check('AG11 active survives', lsBack.active, 2);
+check('AG12 onload survives', lsBack.onload.DRK, 2);
+check('AG13 set entries survive', lsBack.slots[1].set.Main, 'Kris');
+check('AG14 quoting survives an apostrophe', lsBack.slots[1].set.Head, 'Ducal Guard\'s Ribbon');
+check('AG15 round-trip feeds _lockstyleFrom', (dispatchM._lockstyleFrom(lsBack, 1)).Main, 'Kris');
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then
