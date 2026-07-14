@@ -362,12 +362,26 @@ M.MAX_LEVEL = MAX_LEVEL;
 M.buildAtMaxLevel = false;
 
 -- In-memory weight table: canonicalStat -> { perUnit = number, cap = number|nil }.
-M._weights = M._weights or {};
+-- M._weights is the ACTIVE table the editor/optimizer read. It aliases either the
+-- SHARED table (no set bound; legacy files load here) or one entry of the per-set
+-- memory, switched by M.bindSetWeights -- every set remembers its own weights.
+M._weights  = M._weights or {};
+M._shared   = M._shared or M._weights;   -- the no-set-bound table
+M._perSet   = M._perSet or {};           -- '<JOB>|<SetName>' -> weights table
+M._boundKey = nil;                       -- current binding, nil = shared
+local ensureWeightsLoaded;   -- forward: defined with the persistence block below, but
+                             -- every accessor must lazy-load -- the GUI reads through
+                             -- these long before any /dl command would run (the fix
+                             -- for "weights editor empty after every addon reload").
 
-function M.getWeights() return M._weights; end
+function M.getWeights()
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    return M._weights;
+end
 
 -- Set/replace one stat weight. perUnit is required; cap is optional (nil = no cap).
 function M.setWeight(stat, perUnit, cap)
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end   -- never edit-then-save over an unloaded file
     stat = canonStat(stat);
     if type(stat) ~= 'string' or stat == '' then return false, 'bad stat name'; end
     perUnit = tonumber(perUnit);
@@ -378,10 +392,42 @@ function M.setWeight(stat, perUnit, cap)
 end
 
 function M.clearWeight(stat)
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
     stat = canonStat(stat);
     if M._weights[stat] ~= nil then M._weights[stat] = nil; return true; end
     return false;
 end
+
+-- Per-set weight memory (Henrik): bind the ACTIVE weights to a set, so switching
+-- sets never drags the previous set's tuning along. A never-bound set SEEDS its
+-- copy from the shared table (continuity: existing weights don't vanish on the
+-- upgrade); after that the set owns its copy and edits stick to IT only. job or
+-- setName nil/'' (or the pre-login '?' job) binds back to the shared table.
+-- Returns true when the active table CHANGED (callers refresh buffers/caches).
+function M.bindSetWeights(job, setName)
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    local key = nil;
+    if type(job) == 'string' and job ~= '' and job ~= '?'
+       and type(setName) == 'string' and setName ~= '' then
+        key = job .. '|' .. setName;
+    end
+    if key == M._boundKey then return false; end
+    M._boundKey = key;
+    local t = M._shared;
+    if key ~= nil then
+        t = M._perSet[key];
+        if t == nil then
+            t = {};
+            for k, w in pairs(M._shared) do t[k] = { perUnit = w.perUnit, cap = w.cap }; end
+            M._perSet[key] = t;
+        end
+    end
+    M._weights = t;
+    return true;
+end
+
+-- The current binding key ('JOB|SetName'), or nil when the shared table is active.
+function M.weightsBoundTo() return M._boundKey; end
 
 -- ---------------------------------------------------------------------------
 -- M.score(itemStats [, weights]) -> number
@@ -406,7 +452,10 @@ end
 -- optimally, and the per-item clamp is a good, predictable proxy.
 -- ---------------------------------------------------------------------------
 function M.score(itemStats, weights)
-    weights = weights or M._weights;
+    if weights == nil then
+        if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+        weights = M._weights;
+    end
     if type(itemStats) ~= 'table' or type(weights) ~= 'table' then return 0; end
     local total = 0;
     for stat, w in pairs(weights) do
@@ -799,27 +848,45 @@ function M.weightsPath()
         install, tostring(name), tostring(id));
 end
 
--- Serialize M._weights and write it. Alphabetical order -> stable diffs.
+-- Serialize the shared + per-set weights and write it. Alphabetical order ->
+-- stable diffs. Format: return { shared = {...}, perSet = { ['JOB|Set'] = {...} } }
+-- (loadWeights still reads the old flat stat->weight files as `shared`).
 function M.saveWeights()
     local path = M.weightsPath();
     if path == nil then return false, 'profile path unavailable (not logged in?)'; end
 
+    local function rows(L, t, indent)
+        local keys = {};
+        for k in pairs(t) do keys[#keys + 1] = k; end
+        table.sort(keys);
+        for _, k in ipairs(keys) do
+            local w = t[k];
+            if type(w) == 'table' and type(w.perUnit) == 'number' then
+                local capStr = (type(w.cap) == 'number') and tostring(w.cap) or 'nil';
+                L[#L + 1] = string.format('%s[%q] = { perUnit = %s, cap = %s },', indent, k, tostring(w.perUnit), capStr);
+            end
+        end
+    end
     local L = {
         '-- dlac gear stat weights  (auto-written by gearoptim.lua)',
         '-- Each stat scores perUnit points per point of the stat, up to cap; beyond',
         '-- the cap it adds nothing. Edit here or via  /dl weight <Stat> <perUnit> <cap>.',
+        '-- shared = weights with no set selected; perSet["JOB|SetName"] = that set\'s own.',
         'return {',
+        '    shared = {',
     };
-    local keys = {};
-    for k in pairs(M._weights) do keys[#keys + 1] = k; end
-    table.sort(keys);
-    for _, k in ipairs(keys) do
-        local w = M._weights[k];
-        if type(w) == 'table' and type(w.perUnit) == 'number' then
-            local capStr = (type(w.cap) == 'number') and tostring(w.cap) or 'nil';
-            L[#L + 1] = string.format('    [%q] = { perUnit = %s, cap = %s },', k, tostring(w.perUnit), capStr);
-        end
+    rows(L, M._shared, '        ');
+    L[#L + 1] = '    },';
+    L[#L + 1] = '    perSet = {';
+    local skeys = {};
+    for k in pairs(M._perSet) do skeys[#skeys + 1] = k; end
+    table.sort(skeys);
+    for _, sk in ipairs(skeys) do
+        L[#L + 1] = string.format('        [%q] = {', sk);
+        rows(L, M._perSet[sk], '            ');
+        L[#L + 1] = '        },';
     end
+    L[#L + 1] = '    },';
     L[#L + 1] = '}';
     L[#L + 1] = '';
 
@@ -835,7 +902,8 @@ function M.saveWeights()
 end
 
 -- Load persisted weights, validating each row. Silently no-ops (returns false) if
--- the file is missing or malformed, leaving whatever is in memory.
+-- the file is missing or malformed, leaving whatever is in memory. Understands both
+-- the { shared, perSet } format and the old flat stat->weight files (-> shared).
 function M.loadWeights()
     local path = M.weightsPath();
     if path == nil then return false, 'profile path unavailable'; end
@@ -844,26 +912,49 @@ function M.loadWeights()
     local ok, result = pcall(chunk);
     if not ok or type(result) ~= 'table' then return false, 'weights file did not return a table'; end
 
-    local clean = {};
-    for k, w in pairs(result) do
-        if type(k) == 'string' and type(w) == 'table' and type(w.perUnit) == 'number' then
-            local cap = w.cap;
-            if type(cap) ~= 'number' then cap = nil; end
-            clean[canonStat(k)] = { perUnit = w.perUnit, cap = cap };
+    local function cleanTable(src)
+        local clean = {};
+        for k, w in pairs(src) do
+            if type(k) == 'string' and type(w) == 'table' and type(w.perUnit) == 'number' then
+                local cap = w.cap;
+                if type(cap) ~= 'number' then cap = nil; end
+                clean[canonStat(k)] = { perUnit = w.perUnit, cap = cap };
+            end
         end
+        return clean;
     end
-    M._weights = clean;
+    if type(result.shared) == 'table' or type(result.perSet) == 'table' then
+        M._shared = cleanTable(type(result.shared) == 'table' and result.shared or {});
+        M._perSet = {};
+        if type(result.perSet) == 'table' then
+            for k, t in pairs(result.perSet) do
+                if type(k) == 'string' and type(t) == 'table' then M._perSet[k] = cleanTable(t); end
+            end
+        end
+    else
+        M._shared = cleanTable(result);   -- legacy flat file
+        M._perSet = {};
+    end
+    -- Re-point the active table through whatever binding was live before the load.
+    local key = M._boundKey;
+    M._boundKey = nil;                    -- force bindSetWeights to re-alias
+    M._weights = M._shared;
+    if key ~= nil then
+        local j, s = string.match(key, '^([^|]+)|(.+)$');
+        M.bindSetWeights(j, s);
+    end
     return true, path;
 end
 
 -- Load persisted weights once per session, lazily. Pre-login the path won't resolve,
--- so we don't mark "loaded" and the next command retries. Never throws.
+-- so we don't mark "loaded" and the next call retries. Never throws. The flag is set
+-- BEFORE loading: loadWeights re-binds via bindSetWeights, which re-enters here.
 local _weightsLoaded = false;
-local function ensureWeightsLoaded()
+ensureWeightsLoaded = function()
     if _weightsLoaded then return; end
     if M.weightsPath() == nil then return; end   -- not logged in yet -> retry later
-    M.loadWeights();                              -- ok even if there's simply no file yet
     _weightsLoaded = true;
+    M.loadWeights();                              -- ok even if there's simply no file yet
 end
 
 -- ===========================================================================
@@ -921,10 +1012,11 @@ ashita.events.register('command', 'dlac-optim', function(e)
             local keys = {};
             for k in pairs(ws) do keys[#keys + 1] = k; end
             table.sort(keys);
+            local whose = (M._boundKey ~= nil) and (' for set ' .. M._boundKey) or ' (shared -- no set selected)';
             if #keys == 0 then
-                print('[dlac] no stat weights set. Use:  /dl weight <Stat> <perUnit> <cap>  (e.g. /dl weight Accuracy 20 60)');
+                print('[dlac] no stat weights set' .. whose .. '. Use:  /dl weight <Stat> <perUnit> <cap>  (e.g. /dl weight Accuracy 20 60)');
             else
-                print('[dlac] stat weights (perUnit points per point, up to cap):');
+                print('[dlac] stat weights' .. whose .. ' (perUnit points per point, up to cap):');
                 for _, k in ipairs(keys) do
                     local w = ws[k];
                     print(string.format('  %-22s perUnit %s  cap %s', k, tostring(w.perUnit),

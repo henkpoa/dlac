@@ -1219,6 +1219,38 @@ end
 --  feature/autoacc with accwatch.lua/accdata.lua, pending GM approval.)
 
 -- ---------------------------------------------------------------------------
+-- AE. per-set stat-weight memory (gearoptim.bindSetWeights) -- every set owns
+--     its weights; the first bind SEEDS from the shared table; switching sets
+--     never carries another set's edits along (Henrik's isolation rule).
+--     Headless: weightsPath() is nil, so persistence no-ops and this is all
+--     in-memory binding semantics.
+-- ---------------------------------------------------------------------------
+optim.setWeight('Accuracy', 20, 60);                        -- nothing bound: edits the shared table
+check('AE1 shared holds the edit', optim.getWeights()['Accuracy'].perUnit, 20);
+check('AE2 nothing bound yet', optim.weightsBoundTo(), nil);
+check('AE3 first bind reports a change', optim.bindSetWeights('DRK', 'Midshort'), true);
+check('AE4 first bind seeds from shared', optim.getWeights()['Accuracy'].perUnit, 20);
+optim.setWeight('STR', 5);                                  -- edits now belong to the BOUND set
+optim.setWeight('Accuracy', 99);
+check('AE5 rebind of the same key is a no-op', optim.bindSetWeights('DRK', 'Midshort'), false);
+optim.bindSetWeights('DRK', 'Tp_Default');
+check('AE6 second set seeds from SHARED, not the last-used set', optim.getWeights()['Accuracy'].perUnit, 20);
+check('AE7 second set did not inherit the STR edit', optim.getWeights()['STR'], nil);
+optim.bindSetWeights('DRK', 'Midshort');
+check('AE8 re-selecting a set gets its own edits back', optim.getWeights()['Accuracy'].perUnit, 99);
+check('AE9 ...including added stats', optim.getWeights()['STR'].perUnit, 5);
+check('AE10 unbinding returns the shared table', (optim.bindSetWeights(nil, nil) == true)
+    and optim.getWeights()['Accuracy'].perUnit, 20);
+check('AE11 shared never saw the set edits', optim.getWeights()['STR'], nil);
+check('AE12 pre-login job "?" never creates a binding', optim.bindSetWeights('?', 'AnySet'), false);
+check('AE13 ...and stays on shared', optim.weightsBoundTo(), nil);
+optim.bindSetWeights('DRK', 'Midshort');
+check('AE14 score() follows the binding', optim.score({ Accuracy = 1 }), 99);
+optim.bindSetWeights(nil, nil);
+check('AE15 score() follows the shared table back', optim.score({ Accuracy = 1 }), 20);
+optim.clearWeight('Accuracy');                              -- leave the shared table as found
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then

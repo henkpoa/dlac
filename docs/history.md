@@ -868,3 +868,30 @@ blocked forever. Every other loadfile site already nil-guards its path;
 activeName was the one outlier (guard added). Suite green again on
 both branches (302 on feature/autoacc, 293 on main -- the AD section is
 branch-only).
+## Session "stat weights: the lazy-load gap + per-set memory" (07-14)
+
+Bug (Henrik, DRK Midshort): weights set in an earlier session read back as
+"no stat weights are set". Root cause: gearoptim's ensureWeightsLoaded()
+ran only from the /dl weight|best|mp COMMAND paths and once at module load
+-- which is Ashita boot, pre-login, where weightsPath() is nil and the
+retry never happens. The GUI (weights editor, weightsActive, score) read
+M._weights directly and never triggered the load, so gearweights.lua sat
+on disk unread until some chat command happened to heal it. Fix: the
+accessors (getWeights/setWeight/clearWeight/score-with-nil-weights)
+lazy-load through a forward-declared ensureWeightsLoaded; the flag is set
+BEFORE loading because loadWeights now re-binds, which re-enters.
+
+Feature (his ask): **every set remembers its own weights.**
+gearoptim.bindSetWeights(job, setName) switches the ACTIVE table between
+the shared table (no set bound; legacy flat files load here) and
+perSet['JOB|SetName']; a set's FIRST bind seeds a copy from the shared
+table (continuity -- nothing vanishes on upgrade), after which edits stick
+to that set only -- switching sets never drags the last-used tuning along
+(isolation is the point; AE6/AE7 pin it). gearui binds at the top of
+renderSetsTab AND renderSetsWeightPanel (the Weights window can be open on
+another tab); a binding change clears ui._wbuf + invalidates candidates.
+The editor header names the owner ("weights for set \"Midshort\" (DRK)" /
+"shared weights"); /dl weight show says it too. gearweights.lua format is
+now { shared = {...}, perSet = {...} } -- written on every edit as before.
+Tests AE1-15. Also git-rm'd the stray addon-root gearweights.lua (initial-
+commit dev artifact; the real file lives in <char>\dlac\, nothing read it).

@@ -3108,6 +3108,19 @@ local function renderWeightsEditor()
         imgui.TextColored(COL_DIM, 'Optimizer unavailable -- weights disabled.');
         return;
     end
+    -- Say WHOSE weights these are: each set remembers its own (shared when none).
+    pcall(function()
+        local bk = (optim.weightsBoundTo ~= nil) and optim.weightsBoundTo() or nil;
+        if bk ~= nil then
+            local j, s = string.match(bk, '^([^|]+)|(.+)$');
+            imgui.TextColored(COL_HEADER, string.format('weights for set "%s" (%s)', s or bk, j or '?'));
+        else
+            imgui.TextColored(COL_HEADER, 'shared weights (no set selected)');
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Every set remembers its own stat weights. Selecting a set for the FIRST\ntime starts it from the shared table; edits after that stick to that set\nonly, and come back when you re-select it.');
+        end
+    end);
     imgui.TextColored(COL_DIM, 'pts/point up to cap (cap 0 = none):');
     imgui.BeginChild('##ffxilac_weights', { -1, -1 }, true);   -- fill the (now windowed) space
 
@@ -3331,6 +3344,14 @@ end
 
 -- Right-side panel: Dynamic toggle + Auto-build + the stat-weights editor.
 local function renderSetsWeightPanel(job, level)
+    -- Per-set weight memory: keep the optimizer's ACTIVE weights bound to the
+    -- selected set (this window can be open while another tab is up, so it binds
+    -- too, not just the Sets tab). A swap stales the editor's number buffers and
+    -- the weighted candidate order.
+    if hasOptim and optim.bindSetWeights ~= nil then
+        local okb, changed = pcall(optim.bindSetWeights, job, M.workingSetName);
+        if okb and changed then ui._wbuf = {}; invalidateCandidates(); end
+    end
     imgui.Checkbox('Dynamic', ui.setsDynamic);
     if imgui.IsItemHovered() then
         imgui.SetTooltip("When off, builds only ONE item per slot for the set (won't scale with level).");
@@ -3627,6 +3648,14 @@ end
 local function renderSetsTab(job, level)
     if not hasSetmgr then
         fmt.textWrapped(COL_ERR, 'setmanager unavailable -- commit/delete disabled (view/build still works).');
+    end
+
+    -- Per-set weight memory: one choke point covers the picker, New, Delete and
+    -- job changes -- + Add scoring and the stats panel read the active weights
+    -- even with the Weights window closed, so the binding can't wait for it.
+    if hasOptim and optim.bindSetWeights ~= nil then
+        local okb, changed = pcall(optim.bindSetWeights, job, M.workingSetName);
+        if okb and changed then ui._wbuf = {}; invalidateCandidates(); end
     end
 
     -- Controls row: set picker + New + Commit + Delete + Lock + Weights toggle.
