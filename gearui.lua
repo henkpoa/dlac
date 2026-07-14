@@ -27,6 +27,7 @@
 
 local gear = require("dlac\\gear");
 local bit  = require('bit');
+local host = require("dlac\\uihost");   -- UI module registry: tabs/windows/services
 
 -- Guarded require: the module table, or nil when the lib is missing (or not a
 -- table). A missing lib degrades gracefully (no window / no icons) instead of
@@ -3881,6 +3882,25 @@ end
 -- ---------------------------------------------------------------------------
 -- Window + tab bar.
 -- ---------------------------------------------------------------------------
+-- ---------------------------------------------------------------------------
+-- Tab registration (uihost): registration order = tab order. Every tab --
+-- including gearui's own -- goes through the registry, so future modules can
+-- contribute tabs/windows without touching this file (Trove's plugin model).
+-- ---------------------------------------------------------------------------
+host.register({ name = 'equipped', tabs = {
+    { label = 'Equipped',      render = renderEquippedTab },
+    { label = 'All Equipment', render = renderAllEquipTab },
+} });
+host.register({ name = 'sets', tabs = {
+    { label = 'Sets', render = renderSetsTab },
+} });
+host.register({ name = 'triggers', tabs = {
+    { label = 'Triggers', render = function(job, level)
+        if trigui ~= nil then trigui.render(job, level);
+        else imgui.TextColored(COL.ERR, 'triggersui module unavailable.'); end
+    end },
+} });
+
 local function drawWindow()
     if not M.visible or not has.imgui then return; end
 
@@ -4345,26 +4365,7 @@ local function drawWindow()
                     end
                 end
             end
-            if imgui.BeginTabItem('Equipped') then
-                tabGuard('Equipped', renderEquippedTab, job, level);
-                imgui.EndTabItem();
-            end
-            if imgui.BeginTabItem('All Equipment') then
-                tabGuard('All Equipment', renderAllEquipTab, job, level);
-                imgui.EndTabItem();
-            end
-            if imgui.BeginTabItem('Sets') then
-                tabGuard('Sets', renderSetsTab, job, level);
-                imgui.EndTabItem();
-            end
-            if imgui.BeginTabItem('Triggers') then
-                if trigui ~= nil then
-                    tabGuard('Triggers', trigui.render, job, level);
-                else
-                    imgui.TextColored(COL.ERR, 'triggersui module unavailable.');
-                end
-                imgui.EndTabItem();
-            end
+            host.renderTabs(tabGuard, job, level);
             imgui.EndTabBar();
         end
     end
