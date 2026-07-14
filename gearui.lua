@@ -3121,13 +3121,13 @@ local function renderWeightsEditor()
             imgui.SetTooltip('Every set remembers its own stat weights. Selecting a set for the FIRST\ntime starts it from the shared table; edits after that stick to that set\nonly, and come back when you re-select it.');
         end
     end);
-    imgui.TextColored(COL_DIM, 'pts/point up to cap (cap 0 = none):');
+    imgui.TextColored(COL_DIM, 'pts/point up to cap (cap 0 = none) -- applies as you type:');
     imgui.BeginChild('##ffxilac_weights', { -1, -1 }, true);   -- fill the (now windowed) space
 
     -- Adaptive name column: the stat name gets all the width the window can spare (the
-    -- pts/cap/Set/x controls need ~236px), so widening the window shows long names in full.
+    -- pts/cap/x controls need ~200px), so widening the window shows long names in full.
     local availW  = imgui.GetContentRegionAvail();
-    local nameCol = availW - 236; if nameCol < 44 then nameCol = 44; end
+    local nameCol = availW - 200; if nameCol < 44 then nameCol = 44; end
     local nchars  = math.max(6, math.floor(nameCol / 7));
 
     local ws = {};
@@ -3144,11 +3144,17 @@ local function renderWeightsEditor()
         if #stat > nchars and imgui.IsItemHovered() then imgui.SetTooltip(stat); end
         imgui.SameLine(nameCol);
         imgui.TextColored(COL_DIM, 'pts'); imgui.SameLine(0, 2);
-        imgui.PushItemWidth(52); imgui.InputInt('##per_' .. stat, b.per, 0); imgui.PopItemWidth();
+        imgui.PushItemWidth(52);
+        local chgPer = imgui.InputInt('##per_' .. stat, b.per, 0);
+        imgui.PopItemWidth();
         imgui.SameLine(0, 6); imgui.TextColored(COL_DIM, 'cap'); imgui.SameLine(0, 2);
-        imgui.PushItemWidth(46); imgui.InputInt('##cap_' .. stat, b.cap, 0); imgui.PopItemWidth();
-        imgui.SameLine(0, 6);
-        if imgui.Button('Set##w_' .. stat, { 36, 0 }) then
+        imgui.PushItemWidth(46);
+        local chgCap = imgui.InputInt('##cap_' .. stat, b.cap, 0);
+        imgui.PopItemWidth();
+        -- Live apply (Henrik): the number in the box IS the weight -- a "Set" click
+        -- was too easy to miss. Mid-typing values ("2" on the way to "20") apply
+        -- transiently and self-correct on the next keystroke.
+        if chgPer or chgCap then
             pcall(optim.setWeight, stat, b.per[1], (b.cap[1] and b.cap[1] > 0) and b.cap[1] or nil);
             pcall(optim.saveWeights);
             invalidateCandidates();

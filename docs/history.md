@@ -895,3 +895,9 @@ The editor header names the owner ("weights for set \"Midshort\" (DRK)" /
 now { shared = {...}, perSet = {...} } -- written on every edit as before.
 Tests AE1-15. Also git-rm'd the stray addon-root gearweights.lua (initial-
 commit dev artifact; the real file lives in <char>\dlac\, nothing read it).
+
+Field-verified same day (weights show on Midshort); follow-up ruling: the
+weights editor LIVE-APPLIES -- the number in the box is the weight, no Set
+click (too easy to miss). Mid-typing values apply transiently and
+self-correct; the Add row keeps its button (a half-picked stat shouldn't
+spring into existence).
