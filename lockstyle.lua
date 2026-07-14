@@ -534,7 +534,7 @@ function M.render()
                 (cur_ol ~= nil and cur_ol ~= data.active) and string.format('\nCurrently bound to box %d.', cur_ol) or ''));
         end
         imgui.SameLine(0, 10);
-        if imgui.Button('Apply lockstyle##lsgo', { 116, 0 }) then
+        if imgui.Button('Apply lockstyle##lsgo', { 140, 0 }) then
             queueCmd('/dl ls apply');
         end
         if imgui.IsItemHovered() then
