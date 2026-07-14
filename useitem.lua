@@ -250,8 +250,11 @@ end);
 -- Menu data for the GUI (gearui's "Teleports" header dropdown): the same items
 -- the commands drive, with live bag state. One container scan per second (the
 -- popup reads this every frame). Row: { name, label, cmd, id, owned, avail,
--- where, rem } -- rem is the RECHARGE remaining (seconds) read from the item's
--- Extra use-timestamp, i.e. "out of charges" while > 0.
+-- where, rem, charges, maxch } -- rem is the RECHARGE remaining (seconds) read
+-- from the item's Extra use-timestamp, i.e. "out of charges" while > 0.
+-- charges = enchantment charges left on the owned copy (Extra byte 2, same
+-- field-proven extdata layout as the timestamps); maxch = the cap from the
+-- item resource. charges is nil / maxch 0 when unowned or not charge-tracked.
 -- ---------------------------------------------------------------------------
 local MENU = {
     { name = 'Warp Ring',       label = 'Warp',        cmd = '/dl w' },
@@ -313,12 +316,21 @@ function M.menu()
                             local useT = struct.unpack('I', item.Extra, 5) or 0;
                             if useT > 0 then rem = math.max(0, (useT + VANA_OFFSET) - now); end
                         end
+                        -- Enchantment charges left ride Extra byte 2; the cap comes
+                        -- from the item resource. Own pcall: a missing binding must
+                        -- not abort the whole scan.
+                        local charges, maxch = nil, 0;
+                        pcall(function() maxch = r.MaxCharges or 0; end);
+                        if maxch > 0 and type(item.Extra) == 'string' and #item.Extra >= 2 then
+                            charges = string.byte(item.Extra, 2);
+                        end
                         local avail = (EQUIP_BAGS[bag] == true);
                         local cur = found[key];
                         -- prefer an available copy; among equals, the readiest one
                         if cur == nil or (avail and not cur.avail)
                            or (avail == cur.avail and rem < cur.rem) then
-                            found[key] = { id = item.Id, bag = bag, avail = avail, rem = rem };
+                            found[key] = { id = item.Id, bag = bag, avail = avail, rem = rem,
+                                           charges = charges, maxch = maxch };
                         end
                     end
                 end
@@ -336,6 +348,8 @@ function M.menu()
                 avail = (f ~= nil) and f.avail or false,
                 where = f and (BAG_NAMES[f.bag] or ('bag ' .. tostring(f.bag))) or nil,
                 rem = f and f.rem or 0,
+                charges = f and f.charges or nil,
+                maxch = f and f.maxch or 0,
             };
         end
     end

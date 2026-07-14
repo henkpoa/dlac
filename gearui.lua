@@ -1346,9 +1346,11 @@ end
 local debugMode = false;   -- /dl debug on -- reveals the dev-only Scan/Stage/Commit/Augs buttons
 
 -- The "Teleports" header dropdown: useitem's enchanted-travel items, clickable.
--- Fixed columns (destination / item / state) so the rows line up; colors follow
--- the house rules -- lit = equippable now, red = owned but stored, dim = not
--- owned -- plus an amber countdown while the enchant recharges (out of charges).
+-- Fixed columns (destination / item / charges / state) so the rows line up;
+-- colors follow the house rules -- lit = equippable now, red = owned but
+-- stored, dim = not owned -- plus an amber countdown while the enchant
+-- recharges (out of charges). charges = "2/7" for charge-tracked items
+-- (Henrik: know at a glance how much is left on the exp bands), red at 0.
 local function renderTeleportsPopup()
     if not imgui.BeginPopup('##dlac_teleports') then return; end
     imgui.TextColored(COL_HEADER, 'Teleports');
@@ -1379,15 +1381,18 @@ local function renderTeleportsPopup()
             pcall(function() AshitaCore:GetChatManager():QueueCommand(1, r.cmd); end);
             imgui.CloseCurrentPopup();
         end
+        -- ", 2/7 charges" tooltip suffix -- only for owned, charge-tracked items
+        local chinfo = (r.owned and (r.maxch or 0) > 0 and r.charges ~= nil)
+            and string.format(', %d/%d charges', r.charges, r.maxch) or '';
         if imgui.IsItemHovered() then
             if not r.owned then
                 imgui.SetTooltip(r.name .. ' -- not owned.');
             elseif not r.avail then
                 imgui.SetTooltip(string.format('%s is in %s -- move it to Inventory/Wardrobe to use it.', r.name, tostring(r.where)));
             elseif r.rem > 0 then
-                imgui.SetTooltip(string.format('%s: recharging -- clicking now equips it and fires the moment it\'s ready  (%s).', r.name, r.cmd));
+                imgui.SetTooltip(string.format('%s: recharging%s -- clicking now equips it and fires the moment it\'s ready  (%s).', r.name, chinfo, r.cmd));
             else
-                imgui.SetTooltip(string.format('%s: ready  (%s).', r.name, r.cmd));
+                imgui.SetTooltip(string.format('%s: ready%s  (%s).', r.name, chinfo, r.cmd));
             end
         end
         local col = COL_DIM;                           -- not owned
@@ -1397,7 +1402,15 @@ local function renderTeleportsPopup()
         imgui.TextColored(col, fmt.esc(r.label));
         imgui.SameLine(150);
         imgui.TextColored(COL_DIM, fmt.esc(r.name));
-        imgui.SameLine(340);   -- clear of the longest names (Federation/Republic Earring) + breathing room
+        if chinfo ~= '' then
+            -- charges column: red at 0 -- the reuse countdown alone can't say
+            -- "spent"; what 0 means (NPC recharge etc.) is the server's business,
+            -- so the number just shows red without claiming a remedy.
+            imgui.SameLine(340);   -- clear of the longest names (Federation/Republic Earring) + breathing room
+            imgui.TextColored((r.charges > 0) and COL_DIM or COL_ERR,
+                string.format('%d/%d', r.charges, r.maxch));
+        end
+        imgui.SameLine(400);   -- state column, past the widest charges text (e.g. "30/30")
         if not r.owned then
             imgui.TextColored(COL_DIM, 'not owned');
         elseif not r.avail then

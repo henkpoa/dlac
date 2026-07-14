@@ -849,3 +849,22 @@ are user-facing (his hard rule). Watch-outs recorded in the sheet: SONG_RECAST_
 DELAY stores positive=reduction (the statdefs pencil note guessing lowerBetter
 is wrong); DMGPHYS_II/DMGMAGIC_II are basis-point scaled with positive-penalty
 outliers (Aettir +500); the fTP/WS-gorget family naming is sensitive.
+
+## Session "tp-menu charges + the stdin hang" (07-14)
+
+Teleports/Exp-rings menu grew a **charges column** ("2/7", Henrik: know at
+a glance what's left on the exp bands): charges-remaining is Extra byte 2
+(same field-proven extdata layout as the offset-5/9 timestamps), the cap is
+`MaxCharges` off the item resource. Column sits between item name and
+state (state shifted 340 -> 400; the popup auto-sizes); red at 0, and the
+row tooltips carry ", n/m charges". Only owned, charge-tracked items show
+it -- earrings/rings whose resource says MaxCharges 0 stay blank.
+
+Found while verifying: the headless suite HUNG (zero CPU, no output).
+Line-tracer wrapper (scratchpad) pinned it to profiles.activeName() --
+`loadfile(M.pointerPath())` with pointerPath nil headlessly, and
+**loadfile(nil) reads STDIN** -- a piped stdin never EOFs, so the run
+blocked forever. Every other loadfile site already nil-guards its path;
+activeName was the one outlier (guard added). Suite green again on
+both branches (302 on feature/autoacc, 293 on main -- the AD section is
+branch-only).
