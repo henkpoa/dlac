@@ -100,7 +100,8 @@ local ui = {
     _freePrev    = nil,        -- edge-detect for the freeEquip toggle
     -- Shared (Equipped + Sets)
     showStats = false,        -- left "Diablo-style" stats panel toggle
-    sortMode  = 'Name',       -- gear-list sort: 'Name' | 'Level'
+    sortMode  = 'Level',      -- gear-list sort: 'Name' | 'Level' (Level default -- Henrik:
+                              -- slot lists read naturally as a level progression)
     -- Sets tab
     setSelected = nil,
     newSetName  = { '' },
