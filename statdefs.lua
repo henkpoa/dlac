@@ -127,8 +127,8 @@ M.list = {
     { key = 'LightStaffBonus',   label = 'Light Staff',   section = 'Magic' },
     { key = 'DarkStaffBonus',    label = 'Dark Staff',    section = 'Magic' },
     { key = 'DrainAspirPotency', label = 'Drain/Aspir', section = 'Magic', percent = true },   -- DRK
-    { key = 'SongCastTime',      label = 'Song Cast',   section = 'Magic', percent = true, lowerBetter = true },   -- BRD; low = faster
-    { key = 'CureCastTime',      label = 'Cure Cast',   section = 'Magic', percent = true, lowerBetter = true },   -- WHM
+    { key = 'SongCastTime',      label = 'Song Cast Time-', section = 'Magic', percent = true, lowerBetter = true },   -- BRD; low = faster
+    { key = 'CureCastTime',      label = 'Cure Cast Time-', section = 'Magic', percent = true, lowerBetter = true },   -- WHM
     { key = 'WaltzPotency',      label = 'Waltz Pot.',  section = 'Magic', percent = true },   -- DNC
     { key = 'CurePotencyReceived',    label = 'Cure Rcvd',    section = 'Magic', percent = true },
     { key = 'CurePotencyII',          label = 'Cure Pot. II', section = 'Magic', percent = true },
