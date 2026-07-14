@@ -1324,6 +1324,18 @@ check('AG13 set entries survive', lsBack.slots[1].set.Main, 'Kris');
 check('AG14 quoting survives an apostrophe', lsBack.slots[1].set.Head, 'Ducal Guard\'s Ribbon');
 check('AG15 round-trip feeds _lockstyleFrom', (dispatchM._lockstyleFrom(lsBack, 1)).Main, 'Kris');
 
+-- preview plan (v39): the engine wears ONLY the lockstyle while enabled
+local pv = dispatchM._lsPreviewPlan({ enabled = true, set = {
+    Main = 'Kris', Body = 'remove', Head = 'Ducal Guard\'s Ribbon', Neck = 'Spike Necklace', Hands = '' } });
+check('AG16 preview equips the visual picks', pv.equip.Main, 'Kris');
+check('AG17 remove/empty/non-visual values are not equipped',
+    pv.equip.Body == nil and pv.equip.Neck == nil and pv.equip.Hands == nil, true);
+local nk = {};
+for _, i in ipairs(pv.naked) do nk[i] = true; end
+check('AG18 uncovered slots strip (Sub, Body-via-remove, Back)', nk[2] == true and nk[6] == true and nk[16] == true, true);
+check('AG19 covered slots do NOT strip', nk[1] or nk[5], nil);
+check('AG20 disabled file -> no plan', dispatchM._lsPreviewPlan({ enabled = false, set = { Main = 'Kris' } }), nil);
+
 -- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------

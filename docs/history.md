@@ -1000,3 +1000,23 @@ native /equip of the WORKING copy's wearable pieces (level/job-gated ones
 are skipped, never blocked from being picked); End preview = '/lac enable'
 and the engine redresses next dispatch. The pump ends a live preview if
 the window closes -- nobody stays stripped with LAC disabled.
+
+## Session "lockstyle round 2 -- the engine-native preview" (07-15)
+
+Henrik's correction on the round-1 preview ('/lac disable' + manual /equip
+= "not what we usually do"): the preview must be a top-priority overlay
+INSIDE the engine, continuously fed by the working copy -- see
+[[engine-native-over-commands]], his own standing ruling. Round 2
+(dispatch v39): lockstyle.lua writes <char>\dlac\lspreview.lua on EVERY
+working-copy mutation (all edit paths funnel through touched()) plus a
+~10s heartbeat from the pump; the engine reads it craftstate-style, and
+while enabled the preview OWNS Default -- equipResolved wears the pieces
+(LAC's wearability checks skip under-level picks: allowed, never forced)
+and UnequipSlot strips every uncovered slot (it self-guards on "anything
+there?", so stripping settles after one pass). Heartbeats older than 30s
+are dropped: a dead addon can never leave the player stuck stripped.
+Closing the window ends the preview (pump). Traced as 'lockstyle preview
+(overlay) -> ONLY {...}' for /dl why. Also: box buttons show the NAME
+only (the number ate the width; tooltip keeps it), and a Del button
+(confirm popup) removes the marked box + its OnLoad bindings. Tests
+AG16-20 pin the plan (equip vs naked indexes).

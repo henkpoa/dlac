@@ -174,6 +174,9 @@ local function switchTo(n)
     loadBox();
     _status = string.format('box %d marked%s.', n,
         (data.slots[n] ~= nil) and (' -- "' .. tostring(data.slots[n].name or '') .. '" loaded') or ' (empty)');
+    -- a live preview follows the working copy -- forward-declared local, so the
+    -- publish rides an upvalue set later (touchedRef), not a direct call
+    if type(M._touched) == 'function' then M._touched(); end
 end
 
 -- ---------------------------------------------------------------------------
@@ -224,52 +227,69 @@ local function recOf(name)
 end
 
 -- ---------------------------------------------------------------------------
--- Preview (Henrik): undress and wear ONLY the working lockstyle so you can see
--- the look. All addon-side: '/lac disable' stops every engine redress (the
--- dispatch tick drives HandleDefault per frame), '/lac naked' strips, native
--- /equip dresses the pieces. Pieces the player can't WEAR right now (level/
--- job) are skipped -- picking them for the lockstyle stays allowed; the show
--- just isn't forced. End: '/lac enable', the next dispatch redresses.
+-- Preview (Henrik's design, round 2 -- ENGINE-native like everything else):
+-- no /lac disable, no manual /equip. We write the WORKING copy to
+-- <char>\dlac\lspreview.lua on every edit; the engine (dispatch v39) reads it
+-- like craftstate and, while enabled, OWNS the Default dispatch -- it wears
+-- only these pieces (LAC's own wearability checks skip what the player can't
+-- wear yet, so under-level picks are allowed but never forced) and unequips
+-- every other slot. The pump heartbeats the file (~10s) while previewing; the
+-- engine drops a heartbeat older than 30s, so a dead addon can't leave the
+-- player stuck stripped. Ending the preview writes enabled=false and the very
+-- next dispatch redresses normally.
 -- ---------------------------------------------------------------------------
 local _preview = false;
-local SLOT_EQ = { Main = 'main', Sub = 'sub', Range = 'range', Ammo = 'ammo', Head = 'head',
-                  Body = 'body', Hands = 'hands', Legs = 'legs', Feet = 'feet' };
+local _pvBeatAt = 0;
 
 local function queueCmd(c)
     pcall(function() AshitaCore:GetChatManager():QueueCommand(1, c); end);
 end
 
-local function playerLevel()
-    local lv = 0;
-    pcall(function() lv = AshitaCore:GetMemoryManager():GetPlayer():GetMainJobLevel() or 0; end);
-    return lv;
+local function writePreview()
+    local base = charBase(); if base == nil then return; end
+    local L = { '-- dlac lockstyle preview -- TRANSIENT (written by lockstyle.lua, read by the engine).', 'return {' };
+    if _preview and cur ~= nil then
+        L[#L + 1] = '    enabled = true,';
+        L[#L + 1] = string.format('    at = %d,', os.time());
+        L[#L + 1] = '    set = {';
+        local ks = {};
+        for k in pairs(cur.set) do ks[#ks + 1] = k; end
+        table.sort(ks);
+        for _, k in ipairs(ks) do
+            if type(cur.set[k]) == 'string' then
+                L[#L + 1] = string.format('        %s = %q,', k, cur.set[k]);
+            end
+        end
+        L[#L + 1] = '    },';
+    else
+        L[#L + 1] = '    enabled = false,';
+    end
+    L[#L + 1] = '};';
+    L[#L + 1] = '';
+    pcall(function()
+        local f = io.open(base .. 'dlac\\lspreview.lua', 'w');
+        if f ~= nil then f:write(table.concat(L, '\n')); f:close(); end
+    end);
+    _pvBeatAt = os.clock() + 10;
 end
+
+-- Every mutation of the working copy funnels through here: while a preview is
+-- live it re-publishes immediately, so the look on screen tracks every edit.
+local function touched()
+    if _preview then writePreview(); end
+end
+M._touched = touched;   -- switchTo is defined above this section and publishes through here
 
 local function startPreview()
     _preview = true;
-    queueCmd('/lac disable');
-    queueCmd('/lac naked');
-    local lv, job, skipped = playerLevel(), jobAbbr(), 0;
-    for slot, name in pairs(cur.set) do
-        if name ~= 'remove' and SLOT_EQ[slot] ~= nil then
-            local rec = recOf(name);
-            local need = (rec ~= nil) and (tonumber(rec.Level) or 0) or 0;
-            if rec ~= nil and (lv <= 0 or need <= lv) and jobOK(rec, job) then
-                queueCmd(string.format('/equip %s "%s"', SLOT_EQ[slot], name));
-            else
-                skipped = skipped + 1;
-            end
-        end
-    end
-    _status = 'previewing the working lockstyle'
-        .. ((skipped > 0) and string.format(' -- %d piece(s) skipped (level/job)', skipped) or '')
-        .. '. End preview to redress.';
+    writePreview();
+    _status = 'previewing -- the engine wears ONLY this lockstyle (updates live as you edit).';
 end
 
 local function endPreview()
     _preview = false;
-    queueCmd('/lac enable');
-    _status = 'preview ended -- normal gear redresses on the next action.';
+    writePreview();
+    _status = 'preview ended -- normal gear redresses.';
 end
 
 -- ---------------------------------------------------------------------------
@@ -282,11 +302,13 @@ local function boxColumn(from, to)
     imgui.BeginGroup();
     for n = from, to do
         local e = data.slots[n];
+        -- name only (Henrik: the number ate the width); the tooltip keeps the
+        -- box number, and the 10x3 layout implies it anyway
         local nm = (type(e) == 'table' and type(e.name) == 'string' and e.name ~= '') and e.name or '--';
-        if #nm > 12 then nm = string.sub(nm, 1, 11) .. '~'; end
+        if #nm > 15 then nm = string.sub(nm, 1, 14) .. '~'; end
         local on = (n == data.active);
         if on then imgui.PushStyleColor(ImGuiCol_Button, GOLD); end
-        if imgui.Button(string.format('%2d  %s##lsbox%d', n, nm, n), { BOX_W, 19 }) then clickedBox = n; end
+        if imgui.Button(nm .. '##lsbox' .. n, { BOX_W, 19 }) then clickedBox = n; end
         if on then imgui.PopStyleColor(1); end
         if imgui.IsItemHovered() then
             local job = jobAbbr();
@@ -314,11 +336,11 @@ local function renderPicker()
     imgui.Separator();
     imgui.BeginChild('##lspicklist', { 340, 300 }, false);
     if imgui.Selectable('(clear -- no lockstyle piece for this slot)##lsclear', false) then
-        cur.set[slot] = nil; cur.dirty = true;
+        cur.set[slot] = nil; cur.dirty = true; touched();
         imgui.CloseCurrentPopup();
     end
     if imgui.Selectable('(hide -- lockstyle the slot EMPTY)##lshide', false) then
-        cur.set[slot] = 'remove'; cur.dirty = true;
+        cur.set[slot] = 'remove'; cur.dirty = true; touched();
         imgui.CloseCurrentPopup();
     end
     if imgui.IsItemHovered() then
@@ -331,7 +353,7 @@ local function renderPicker()
     for i, rec in ipairs(items) do
         if W.icon ~= nil then pcall(W.icon, rec.Id, 18, rec); imgui.SameLine(0, 6); end
         if imgui.Selectable(string.format('%s   Lv%d##lsi%d', tostring(rec.Name), tonumber(rec.Level) or 0, i), false) then
-            cur.set[slot] = rec.Name; cur.dirty = true;
+            cur.set[slot] = rec.Name; cur.dirty = true; touched();
             imgui.CloseCurrentPopup();
         end
         if imgui.IsItemHovered() and W.tooltip ~= nil then pcall(W.tooltip, rec); end
@@ -340,6 +362,30 @@ local function renderPicker()
         imgui.TextColored(COL_DIM, (q ~= '') and 'No owned item matches.' or 'Nothing in gear.lua for this slot yet (/dl sync).');
     end
     imgui.EndChild();
+    imgui.EndPopup();
+end
+
+local function renderDelete()
+    if ui.openDelete then ui.openDelete = false; imgui.OpenPopup('##dlac_lsdelete'); end
+    if not imgui.BeginPopup('##dlac_lsdelete') then return; end
+    local e = data.slots[data.active];
+    imgui.TextColored(COL_WARN, string.format('Delete box %d ("%s")?', data.active,
+        tostring((type(e) == 'table') and (e.name or '') or '')));
+    imgui.TextColored(COL_DIM, 'The saved lockstyle and its OnLoad bindings are removed.');
+    if imgui.Button('Delete it##lsdelgo', { 260, 22 }) then
+        data.slots[data.active] = nil;
+        for j, b in pairs(data.onload or {}) do
+            if b == data.active then data.onload[j] = nil; end
+        end
+        save();
+        loadBox();
+        touched();
+        _status = string.format('box %d deleted.', data.active);
+        imgui.CloseCurrentPopup();
+    end
+    if imgui.Button('Keep it##lsdelno', { 260, 22 }) then
+        imgui.CloseCurrentPopup();
+    end
     imgui.EndPopup();
 end
 
@@ -413,7 +459,7 @@ function M.render()
         imgui.PopItemWidth();
         if imgui.IsItemHovered() then imgui.SetTooltip('Name for this lockstyle -- saved with the box.'); end
         imgui.SameLine(0, 4);
-        if imgui.Button('Save##lssave', { 74, 0 }) then   -- height 0 = frame height, matches the input box
+        if imgui.Button('Save##lssave', { 60, 0 }) then   -- height 0 = frame height, matches the input box
             local copy = {};
             for k, v in pairs(cur.set) do copy[k] = v; end
             data.slots[data.active] = { name = tostring(nameBuf[1] or ''), set = copy };
@@ -422,6 +468,9 @@ function M.render()
             _status = string.format('saved box %d as "%s".', data.active, tostring(nameBuf[1] or ''));
         end
         if imgui.IsItemHovered() then imgui.SetTooltip('Save the working lockstyle into the MARKED (gold) box.'); end
+        imgui.SameLine(0, 4);
+        if imgui.Button('Del##lsdel', { 44, 0 }) then ui.openDelete = true; end
+        if imgui.IsItemHovered() then imgui.SetTooltip('Delete the MARKED box\'s saved lockstyle (asks first).'); end
         -- Import from static: many players keep old lockstyle sets as statics.
         local statics = (_pok and type(profsets.staticSetNames) == 'function') and profsets.staticSetNames() or {};
         imgui.PushItemWidth(216);   -- wide enough for the label at the themed font (field-clipped at 186)
@@ -440,7 +489,7 @@ function M.render()
                                 elseif type(v) == 'table' and type(v.Name) == 'string' then cur.set[k] = v.Name; end
                             end
                         end
-                        cur.dirty = true;
+                        cur.dirty = true; touched();
                         _status = string.format('imported static "%s" -- Save to keep it in box %d.', nm, data.active);
                     end);
                 end
@@ -476,7 +525,7 @@ function M.render()
             if _preview then endPreview(); else startPreview(); end
         end
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('Undress and wear ONLY this lockstyle (the WORKING copy, unsaved\nedits included) so you can see the look. Pieces you can\'t wear yet\n(level/job) are skipped -- picking them is still fine. Click again to\nend: your normal gear redresses. Don\'t preview in combat.');
+            imgui.SetTooltip('The ENGINE wears ONLY this lockstyle (the WORKING copy, live as you\nedit) -- every other slot is unequipped by the top-priority preview\noverlay. Pieces you can\'t wear yet are skipped by LAC itself, never\nforced. Click again (or close this window) to end -- your normal gear\nredresses on the next dispatch. Don\'t preview in combat.');
         end
         imgui.EndGroup();
 
@@ -507,6 +556,7 @@ function M.render()
         end
         renderPicker();
         renderConfirm();
+        renderDelete();
     end
     imgui.End();
     if ui.openArr[1] == false then M.visible = false; end
@@ -523,9 +573,13 @@ end
 -- ---------------------------------------------------------------------------
 local appliedJob, pendingJob, dueAt = nil, nil, nil;
 function M.pump()
-    -- Never leave the player stripped + LAC-disabled: closing the window (or
-    -- the main box it renders under) while previewing ends the preview.
-    if _preview and not M.visible then endPreview(); end
+    -- Closing the window while previewing ends the preview (Henrik: always);
+    -- while it runs, heartbeat the preview file so the engine knows we're
+    -- alive (it drops heartbeats older than 30s -- addon-crash safety).
+    if _preview then
+        if not M.visible then endPreview();
+        elseif os.clock() >= _pvBeatAt then writePreview(); end
+    end
     local job = jobAbbr();
     if job == nil then return; end
     load_();
