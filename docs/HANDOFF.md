@@ -23,7 +23,10 @@ maintainer IMO, I am just the one with the creative vision."*
    it answered) are the two that bite hardest if ignored.
 6. [history.md](history.md) — session journal: what was tried, what was abandoned, and
    why. **Read the dead-ends lists before proposing anything.**
-7. Reference: [reference/catseyexi-jobs.md](reference/catseyexi-jobs.md) (server job
+7. [server-questions.md](server-questions.md) — suspected server-side bugs / undocumented
+   intent, each with the workaround dlac carries meanwhile. Nothing urgent; the point is
+   that the workarounds get **deleted** when an answer lands, not left to calcify.
+8. Reference: [reference/catseyexi-jobs.md](reference/catseyexi-jobs.md) (server job
    truth), [design/storage-move.md](design/storage-move.md) (packet-level research for
    the gearmove branch), [design/picker-database.md](design/picker-database.md).
 
