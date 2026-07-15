@@ -1260,3 +1260,38 @@ label; matched.
   `type(imgui.BeginMenu) == 'function'` at load: bound -> the cascade Henrik asked for;
   not bound -> the same choices as an in-place drill-down (gearmove's quantity-chooser
   pattern, proven). **Unverified live — first thing to check in-game.**
+
+### Field round 1 (07-15, same day): "It works!"
+
+Henrik confirmed the whole thing live -- floating window, right-click, cascading
+submenus, pinning. Two facts the codebase did not have before, both now in hard rule 2:
+
+- **`imgui.BeginMenu` cascades in this binding.** floatgear is the FIRST Lua caller of
+  BeginMenu in this entire Ashita install, so this was genuinely unknown; the probe +
+  drill-down fallback are now dead weight kept only as a guard.
+- **A submenu is drawn OUTSIDE the rect of the window that declares it.** Henrik: *"the
+  whole initial right click menu disappears when you keep moving the mouse to the next
+  gear piece, it just cancels the menus all together."* The pin list was wrapped in a
+  `BeginChild` for scrolling; moving the cursor from an item toward its submenu left the
+  child, ImGui judged the menu hierarchy had lost the cursor, and tore down the entire
+  popup. **Menu items may not live in a child window.** The child is gone; the popup is
+  bounded with `SetNextWindowSizeConstraints` instead (BeginPopup forces
+  AlwaysAutoResize on popups, so a constraint is the way to bound one -- clamped, it
+  grows its own scrollbar). Safe to call every frame: this binding is ImGui >= 1.77
+  (the header declares `ImGuiPopupFlags`) and BeginPopup's early-out consumes the
+  next-window data exactly as Begin would -- otherwise the constraint would leak onto
+  the next window opened anywhere in the frame, including another addon's.
+
+Also this round, on Henrik's screenshot (equipmon's look): window chrome off
+(`NoTitleBar|NoResize|NoScrollbar|NoCollapse|AlwaysAutoResize|NoBackground` +
+`WindowBorderSize = 0`), boxes bundled tight, and the "Right-click a slot to pin" hint
+and the pinned-count line removed -- a stray line of text under a chrome-less window
+puts the box straight back, so Unpin-all moved into the right-click menu.
+
+`renderSlotGrid` gained `opts.tight`: spacing between boxes AND the grid child's own
+WindowPadding both go to 0, so the 4x4 measures exactly 4*40 = 160 square and the window
+can auto-size to it. **WindowPadding has to be pushed BEFORE `BeginChild`** -- it is read
+when the child opens, and left at the default it insets the grid inside its own box and
+clips the last row. The window's WindowPadding is deliberately left alone: with no title
+bar an ImGui window moves when you drag any part of it that is not an item, and that thin
+rim is the only drag handle a grid of 16 buttons has.

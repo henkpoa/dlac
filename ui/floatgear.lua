@@ -23,6 +23,17 @@
     reports the click from inside its own BeginChild and this module opens the
     popup at WINDOW scope, because OpenPopup and BeginPopup must share a scope.
 
+    FIELD-CONFIRMED 07-15 (Henrik): right-click opens the menu AND imgui.BeginMenu
+    cascades in this binding -- the first Lua caller of BeginMenu in this install.
+    The drill-down fallback below is now dead weight kept only as a guard for a
+    binding change; hasMenu has never been false in the field.
+
+    Two hard-won imgui facts live in this file, both about the same rule -- a
+    SUBMENU is drawn outside the rect of the window that declares it:
+      * the pin list must NOT sit in a BeginChild, or moving the mouse toward a
+        submenu leaves the child and ImGui tears down the whole popup;
+      * so the popup is bounded with SetNextWindowSizeConstraints instead.
+
     Pins are the engine's, not this window's: pinwatch writes
     <char>\dlac\pinstate.lua and dispatch (v44) wears the pinned names at top
     priority every dispatch. This module only edits that table.
@@ -66,6 +77,10 @@ local hasMenu = (imgui ~= nil)
 
 local POPUP  = '##dlac_pinmenu';
 local CAP    = 200;       -- rows drawn per popup; the overflow is COUNTED, not hidden
+-- The tight 4x4 measures exactly 4 * SLOT_BOX(40) = 160 square: no spacing between
+-- the boxes and no padding inside the grid's child (see renderSlotGrid's `tight`).
+-- Pass it as BOTH the child's width and height -- a pixel short clips the last row.
+local GRID   = 160;
 local _openFor  = nil;    -- slot label whose menu should open next frame
 local _menuSlot = nil;    -- slot the open popup belongs to
 local _drillItem = nil;   -- fallback mode: item picked, now choosing scope
@@ -221,7 +236,14 @@ local function renderPinMenu(job, level)
 
     local q = string.lower(tostring(_search[1] or ''));
     local list = candidatesFor(slot, job, level);
-    imgui.BeginChild('##pinlist', { 260, 240 }, false);
+    -- NO BeginChild around this list, deliberately. A submenu is drawn OUTSIDE the
+    -- rect of the window it is declared in; inside a child, moving the mouse from
+    -- one item toward its submenu leaves the child, ImGui decides the menu
+    -- hierarchy lost the cursor, and it tears down the WHOLE popup -- Henrik:
+    -- "the whole initial right click menu disappears when you keep moving the
+    -- mouse to the next gear piece". The popup itself is size-constrained instead
+    -- (see the SetNextWindowSizeConstraints before BeginPopup), so a long list
+    -- still scrolls without a child window in the menu chain.
     local shown, matched = 0, 0;
     for _, rec in ipairs(list) do
         local nm = tostring(rec.Name or '?');
@@ -252,7 +274,16 @@ local function renderPinMenu(job, level)
         imgui.Separator();
         imgui.TextColored(COL.DIM, string.format('+%d more -- type to narrow.', matched - shown));
     end
-    imgui.EndChild();
+
+    -- Unpin-all lives here rather than under the grid: the window is chrome-less
+    -- now, and a stray line of text below it would put the box back.
+    if pins.count() > 0 then
+        imgui.Separator();
+        if imgui.Selectable(string.format('Remove all %d pins', pins.count())) then
+            pins.clearAll();
+            pcall(function() imgui.CloseCurrentPopup(); end);
+        end
+    end
 end
 
 -- --------------------------------------------------------------------------
@@ -276,11 +307,30 @@ function M.render()
     if type(ui._gfPos) == 'table' then
         imgui.SetNextWindowPos({ ui._gfPos[1], ui._gfPos[2] }, ImGuiCond_FirstUseEver or 0);
     end
-    imgui.SetNextWindowSize({ 212, 252 }, ImGuiCond_FirstUseEver or 0);
 
-    local open = { true };
-    if imgui.Begin('Equipment##dlac_float', open, ImGuiWindowFlags_NoScrollbar or 0) then
-        S.renderSlotGrid('float', 182, nil,
+    -- Chrome off (Henrik: "remove the actual box or hide the borders") -- no title
+    -- bar, no border, no background: just the 16 boxes, equipmon-style.
+    -- AlwaysAutoResize sizes the window to the tight grid, so there is no size to
+    -- remember and none to get wrong.
+    --
+    -- The window is still DRAGGABLE: an ImGui window with no title bar moves when
+    -- you drag any part of it that is not an item, and WindowPadding is left at the
+    -- theme default precisely to keep that thin rim around the grid. It is
+    -- invisible now (NoBackground), so it is the one thing worth knowing about
+    -- this window: grab the edge, not a slot.
+    local FL = (ImGuiWindowFlags_NoTitleBar or 0) + (ImGuiWindowFlags_NoResize or 0)
+             + (ImGuiWindowFlags_NoScrollbar or 0) + (ImGuiWindowFlags_NoCollapse or 0)
+             + (ImGuiWindowFlags_AlwaysAutoResize or 0) + (ImGuiWindowFlags_NoBackground or 0);
+    imgui.PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0);
+
+    -- No title bar means no close button, so this table is never written back --
+    -- but keep passing one (force-true each frame, the TP float's shape) rather
+    -- than nil: this binding is fed a table everywhere else. The Equipped tab's
+    -- checkbox is what closes the window.
+    ui._gfOpenT = ui._gfOpenT or { true };
+    ui._gfOpenT[1] = true;
+    if imgui.Begin('##dlac_float', ui._gfOpenT, FL) then
+        S.renderSlotGrid('float', GRID, nil,
             function(sl) return S.getEquippedId(sl.equip); end,
             function(sl)
                 local id = S.getEquippedId(sl.equip);
@@ -290,23 +340,15 @@ function M.render()
                 _openFor = labelKey;                    -- RMB is the ask, LMB is the
             end,                                        -- guarantee (gearmove's rule)
             function(sl) return S.lookupById(S.getEquippedId(sl.equip)); end,
-            190,
+            GRID,
             {
+                tight = true,
                 boxColorOf = function(sl)
                     if pins.isPinned(sl.label) then return PIN_BOX; end
                     return nil;
                 end,
                 onRightClick = function(labelKey) _openFor = labelKey; end,
             });
-
-        local n = pins.count();
-        if n > 0 then
-            imgui.TextColored(COL.SCORE, string.format('%d pinned', n));
-            imgui.SameLine(0, 8);
-            if imgui.SmallButton('Unpin all') then pins.clearAll(); end
-        else
-            imgui.TextColored(COL.DIM, 'Right-click a slot to pin.');
-        end
 
         -- Popup at WINDOW scope: the grid detected the click inside its child,
         -- but OpenPopup/BeginPopup have to share a scope, so both happen here.
@@ -316,6 +358,17 @@ function M.render()
             _openFor = nil;
             imgui.OpenPopup(POPUP);
         end
+        -- Constrain the POPUP instead of wrapping its list in a child window: a
+        -- child in the menu chain is what killed the cascade (see renderPinMenu).
+        -- BeginPopup forces AlwaysAutoResize on popups, so a constraint is the way
+        -- to bound one -- clamped, it grows a scrollbar by itself.
+        --
+        -- Safe to call unconditionally even on the frames the popup is shut: this
+        -- binding is ImGui >= 1.77 (the header declares ImGuiPopupFlags), and
+        -- BeginPopup's early-out consumes the next-window data exactly as Begin
+        -- would. Otherwise the constraint would leak onto the next window opened
+        -- anywhere in the frame -- including another addon's.
+        imgui.SetNextWindowSizeConstraints({ 250, 0 }, { 380, 460 });
         if imgui.BeginPopup(POPUP) then
             renderPinMenu(job, level);
             imgui.EndPopup();
@@ -338,13 +391,11 @@ function M.render()
         end);
     end
     imgui.End();
+    imgui.PopStyleVar(1);        -- unconditional: End() runs whatever Begin returned,
+                                 -- and a leaked style var corrupts every OTHER addon's
+                                 -- UI, not just ours
     if ui._gfMovedAt ~= nil and os.clock() >= ui._gfMovedAt then
         ui._gfMovedAt = nil;
-        ui._flagsDirty = true;
-    end
-
-    if open[1] == false then                            -- window's own X
-        ui._gearFloat = false;
         ui._flagsDirty = true;
     end
 end

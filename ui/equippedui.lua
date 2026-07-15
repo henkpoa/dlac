@@ -260,7 +260,7 @@ local function renderEquippedTab(job, level)
         ui._flagsDirty = true;                         -- remembered across sessions
     end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Opens the 4x4 equipment window (equipmon-style) that stays up while you play.\nHover a slot for the same details as here; RIGHT-CLICK a slot to PIN an item\ninto it -- the engine then wears that piece and nothing can take it off.\nPinned slots show a red frame. Pins clear when you reload.');
+        imgui.SetTooltip('Opens the 4x4 equipment window (equipmon-style) that stays up while you play.\nHover a slot for the same details as here; RIGHT-CLICK a slot to PIN an item\ninto it -- the engine then wears that piece and nothing can take it off.\nPinned slots show a red frame. Pins clear when you reload.\n\nThe window has no frame: drag it by the thin edge around the boxes.');
     end
 
     local availW = imgui.GetContentRegionAvail();

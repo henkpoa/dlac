@@ -185,8 +185,13 @@ handshake).
     was `BeginPopupContextItem`, not RMB delivery. `IsMouseClicked(1)` +
     `IsItemHovered()` → `OpenPopup`/`BeginPopup` is field-confirmed
     (`gearmove.lua:663` on feature/storage-move). Entry corrected 07-15.
-  - **Unverified live:** whether `imgui.BeginMenu` actually cascades in this
-    binding (probed at load; falls back to an in-place drill-down if absent).
+  - **`imgui.BeginMenu` CASCADES — field-confirmed 07-15** (Henrik: "the
+    cascading menu and pinning works"). floatgear is the first Lua caller of
+    BeginMenu in this install; its drill-down fallback is now dead weight kept
+    only as a guard. **But a submenu is drawn OUTSIDE the rect of the window that
+    declares it, so menu items must NOT live in a `BeginChild`** — moving the
+    mouse toward the submenu leaves the child and ImGui tears down the entire
+    popup. Bound the popup with `SetNextWindowSizeConstraints` instead.
 - **Reserved slots (RSlot) — dispatch v43.** Items that take a
   slot away while worn (Ryl.Ftm. Tunic = Body reserves Head; robes reserve Hands;
   boomerangs reserve Ammo) made dlac and the server fight forever over the reserved

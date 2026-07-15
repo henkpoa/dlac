@@ -1482,8 +1482,19 @@ local SLOT_BOX = 40;                  -- outer box; the icon fills it minus the 
 --   onRightClick(label) -> called on RMB over a slot. It only REPORTS: OpenPopup and
 --     BeginPopup have to share a window scope, and this grid lives inside its own
 --     BeginChild, so the caller raises a flag here and opens the popup at ITS level.
+--   tight -> boxes touch (equipmon's look): no spacing between them and no padding
+--     inside the child, so the grid measures EXACTLY 4*SLOT_BOX square and the
+--     caller can auto-size a chrome-less window to it.
 local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, getText, onClick, hoverRec, gridW, opts)
     opts = opts or {};
+    local gap = opts.tight and 0 or 4;
+    -- Both vars must be pushed BEFORE BeginChild: WindowPadding is read when the
+    -- child window opens, and it is what would otherwise inset the 4x4 inside its
+    -- own box and clip the last row.
+    if opts.tight then
+        imgui.PushStyleVar(ImGuiStyleVar_WindowPadding, { 0, 0 });
+        imgui.PushStyleVar(ImGuiStyleVar_ItemSpacing, { 0, 0 });
+    end
     imgui.BeginChild('##' .. idPrefix .. '_grid', { gridW or -1, gridHeight }, false);
     local boxBg = { 0.10, 0.10, 0.13, 1.0 };
     local boxSel = { 0.42, 0.36, 0.16, 1.0 };          -- gold: the slot being edited
@@ -1530,9 +1541,10 @@ local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, ge
             end
         end
         imgui.PopID();
-        if i % 4 ~= 0 then imgui.SameLine(0, 4); end
+        if i % 4 ~= 0 then imgui.SameLine(0, gap); end
     end
     imgui.EndChild();
+    if opts.tight then imgui.PopStyleVar(2); end
 end
 
 -- Lockstyle window (own module, hard rule 1): inject the helpers it renders
