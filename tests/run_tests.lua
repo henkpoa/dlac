@@ -1920,13 +1920,19 @@ end)();
     package.loaded['dlac\\gear'] = savedGear;
 
     -- The catalog as gearui hands it over: FLAT, .Slot-carrying, API spelling.
+    -- 'Gletis Crossbow' is the REAL shape of CatsEyeXI's junk (verified against
+    -- tools/api_cache): an unimplemented row the server reports as slot=32 Body
+    -- with MId=0 and jobs=0. 258 of those sit in the Body bucket -- they are why
+    -- browsing Body listed crossbows and boots. No Model => no look => not offered.
     ls.wire{
         allEquip = function()
             return {
-                { Name = 'Arhats Gi',  Id = 14000, Level = 60, Slot = 'Body' },   -- owned, other spelling
-                { Name = 'Plain Robe', Id = 14001, Level = 1,  Slot = 'Body' },   -- owned, same spelling
-                { Name = 'Royal Robe', Id = 14002, Level = 75, Slot = 'Body' },   -- NOT owned
-                { Name = 'Kris',       Id = 16000, Level = 60, Slot = 'Main' },   -- other slot
+                { Name = 'Arhats Gi',  Id = 14000, Level = 60, Slot = 'Body', Model = 59 },  -- owned, other spelling
+                { Name = 'Plain Robe', Id = 14001, Level = 1,  Slot = 'Body', Model = 1  },  -- owned, same spelling
+                { Name = 'Royal Robe', Id = 14002, Level = 75, Slot = 'Body', Model = 2  },  -- NOT owned
+                { Name = 'Kris',       Id = 16000, Level = 60, Slot = 'Main', Model = 7  },  -- other slot
+                { Name = 'Gletis Crossbow', Id = 14003, Level = 99, Slot = 'Body' },         -- server junk: no Model
+                { Name = 'Amini Bottillons +2', Id = 14004, Level = 99, Slot = 'Body', Model = 0 }, -- junk: Model 0
             };
         end,
         ownedById = function(id)
@@ -1952,6 +1958,23 @@ end)();
     check('AN8 search still narrows the catalog list', #ls._listFor('Body', 'royal', true), 1);
     check('AN9 all=true sorts highest level first (the browse cap keeps the good end)',
         all[1].Name, 'Royal Robe');
+
+    -- The junk rows (Henrik, 07-15). The server's item DB defaults unimplemented
+    -- items to slot=32/Body with MId=0, so the Body bucket collects crossbows and
+    -- boots. A LOOK picker must not offer something with no look.
+    check('AN9a server junk (no Model) is not offered -- the wrong-slot crossbow',
+        names(all)['Gletis Crossbow'], nil);
+    check('AN9b Model=0 is "no look" too, not a real model',
+        names(all)['Amini Bottillons +2'], nil);
+    check('AN9c the junk did not take the real body pieces with it', #all, 3);
+    check('AN9d hasLook: a real model passes',       ls._hasLook({ Model = 59 }), true);
+    check('AN9e hasLook: model 0 fails',             ls._hasLook({ Model = 0 }),  false);
+    check('AN9f hasLook: absent model fails',        ls._hasLook({}),             false);
+    -- HARD RULE: the look filter is for the CATALOG only. gear.lua carries no
+    -- Model of its own (gearui back-fills it later), so filtering the owned list
+    -- on it would empty the picker -- and AH6 pins "nothing is filtered out".
+    check('AN9g HARD RULE: the owned list is NOT look-filtered (its entries have no Model)',
+        #ls._listFor('Body', ''), 2);
     -- No gearui wire (load order: lockstyle loads first, and every W helper is
     -- optional-guarded) -- all=true must degrade to the owned list, never throw.
     -- Asserts the CONTRACT, not a count: the fixture here is the shared gear

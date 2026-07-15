@@ -215,7 +215,19 @@ handshake).
   you don't own" before touching it — especially the by-Id ownership rule (the apostrophe
   trap saves a name the engine can't resolve), the fail-OPEN gate, and `BROWSE_CAP`
   (Main is 3749 catalog rows).
-- **main**: healthy; **518 tests green + 115 smoke_ui** — current as of this session. Note `tests\run_tests.lua` has now hit the **200-local
+- **THE CATALOG'S `Slot` CANNOT BE TRUSTED — and it lies toward Body (07-15).**
+  CatsEyeXI's `item_equipment` carries unmarked rows for **unimplemented** items with
+  default values: `jobs=0`, `MId=0`, `slot=32` — and **32 decodes to Body**, so 258 of
+  the 259 stub rows landed in the Body bucket (`Gletis Crossbow`, `Mpacas Bow`, the
+  Amini/Boii +2/+3 tier). Found because the lockstyle picker offered crossbows for Body.
+  apicrawl.py now skips `jobs == 0` (Body 1743 → 1485; it prints the skip count) and no
+  longer publishes an empty jobs mask as `Jobs = {"All"}` — which is why the junk looked
+  legitimate for so long. **`jobs==0` is the marker, NOT `MId==0`**: the latter also
+  covers 814 real modelless items (all `Hexed` gear) whose stats the catalog must keep.
+  Validate any new API field against `tools/api_cache/<id>.json` for an item you KNOW is
+  unimplemented before trusting it. Runbook: `tools/README.md` "The junk rows";
+  provenance: architecture.md's catalog section; story: history.md round 2.
+- **main**: healthy; **525 tests green + 120 smoke_ui** — current as of this session. Note `tests\run_tests.lua` has now hit the **200-local
   cap** itself: new sections must be `(function() ... end)()`, not `do ... end` (a do
   block shares the chunk's budget; a function body gets its own 200). The whole **crafting-gear system** landed here (see
   history.md "crafting system + catalog pipeline"): read that section before touching

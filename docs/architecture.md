@@ -112,6 +112,20 @@ OneHanded, Type, Stats}`). Consumers flatten it into an Id index (`_allEquipById
 Rebuilt by `tools/apicrawl.py` (gitignored). The dispatch engine never loads it (ADR
 0004) — only the addon state does.
 
+**The source is not clean, and `Slot` is where it lies (2026-07-15).** CatsEyeXI's
+`item_equipment` table carries rows for **unimplemented** items, with no marker and
+default values: `jobs=0`, `MId=0`, and **`slot=32`, which decodes to Body**. 258 of the
+259 therefore land in the **Body** bucket — `Gletis Crossbow`, `Mpacas Bow`, `Pinaka`,
+the Amini/Boii `+2`/`+3` reforge tier — which is exactly why the lockstyle picker once
+offered crossbows and boots for Body. apicrawl now skips `jobs == 0` rows (Body: 1743 →
+1485), so a current catalog is clean; `smoke_ui` **S21** fails if a re-crawl puts them
+back. Two rules if you touch this: **`jobs==0` is the marker, not `MId==0`** (the latter
+also covers 814 *real* modelless items like all `Hexed` gear, whose stats the catalog
+must keep), and **an empty jobs mask is not "All"** — the decode used to publish these
+stubs as equippable by every job. Details: `tools/README.md` "The junk rows".
+Consumers must not assume a catalog `Slot` is the client's truth; the bag scan slots
+owned gear from the CLIENT resource (`gearimport.slotFromMask`), which is authoritative.
+
 ### gear/gearimport.lua — inventory reader + gear.lua writer
 Reads owned equippable gear from Ashita memory and turns it into gear.lua entries; owns
 the scan→stage→commit pipeline, plus fix/dedupe/prune maintenance and the silent

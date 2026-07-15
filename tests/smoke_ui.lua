@@ -200,6 +200,52 @@ check('S18 browse-all still filters by slot', (function()
     return true;
 end)(), true);
 
+-- Henrik's bug, pinned against the REAL shipped catalog (07-15): "you can see
+-- hand, leg, feet, head pieces even though you are choosing a body piece."
+--
+-- CatsEyeXI's item DB carries 259 UNIMPLEMENTED rows -- jobs=0, MId=0, and `slot`
+-- left at its default 32, which decodes to Body -- so 258 crossbows/bows/boots
+-- landed in the Body bucket. It is fixed in BOTH layers, and both are tested
+-- because they fail independently:
+--   * DATA (S21): apicrawl.py now skips stub rows, so catalog.lua ships clean.
+--     A re-crawl with an older apicrawl would silently put them back.
+--   * PICKER (S22/S23): the look filter refuses modelless rows regardless. This
+--     layer must hold even on a dirty catalog, and it also covers the 15 REAL
+--     body items that have no model (Hexed gear) -- those legitimately stay in
+--     the catalog for their stats but can never be styled.
+local allEquip = S.buildAllEquip();
+check('S21 DATA: the shipped catalog carries no unimplemented stub rows', (function()
+    for _, r in ipairs(allEquip) do
+        -- the stub signature: filed under Body, no model. A real modelless Body
+        -- item (Hexed gear) is fine -- the giveaways are these known names.
+        if r.Name == 'Gletis Crossbow' or r.Name == 'Mpacas Bow'
+           or r.Name == 'Amini Bottillons +2' or r.Name == 'Pinaka' then
+            return r.Name .. ' (' .. tostring(r.Slot) .. ') -- re-crawl with the current apicrawl.py';
+        end
+    end
+    return true;
+end)(), true);
+
+local bodyAll = lockstyle._listFor('Body', '', true);
+check('S22 PICKER: every offered Body piece has a look (no no-op picks)', (function()
+    for _, r in ipairs(bodyAll) do
+        local m = tonumber(r.Model);
+        if m == nil or m == 0 then return r.Name; end   -- name, so a failure says WHICH
+    end
+    return true;
+end)(), true);
+check('S23 PICKER: nothing the server mis-files under Body is offered', (function()
+    for _, r in ipairs(bodyAll) do
+        if r.Name == 'Gletis Crossbow' or r.Name == 'Amini Bottillons +2' then return r.Name; end
+    end
+    return true;
+end)(), true);
+check('S24 real body pieces survived the clean-up (Amini Caban has a genuine model)', (function()
+    for _, r in ipairs(bodyAll) do if r.Name == 'Amini Caban' then return true; end end
+    return false;
+end)(), true);
+check('S25 the Body bucket is still a real library, not gutted', #bodyAll > 1400, true);
+
 -- THE APOSTROPHE BRIDGE, end to end on real data: the catalog spells it
 -- "Arhats Gi" (the API drops apostrophes) and gear.lua spells it "Arhat's Gi".
 -- Ids agree -- 13795 -- so ownership must be decided by Id, and the picker must

@@ -1608,3 +1608,63 @@ the picker would simply never leave gear.lua and every catalog row would read "n
 S17/S19 drive the REAL gearui + REAL catalog and were verified to bite (nil the `allEquip`
 wire -> S17 "got false, want true"; nil `ownedById` -> S19 "got nil, want Arhat's Gi"), and
 AN27/AN28 were verified against the fail-closed gate ("got false, want true").
+
+### Round 2 (same session): "unowned gear slips through the slots"
+
+Henrik, on the browse-all picker: *"you can see hand, leg, feet, head pieces even though
+you are choosing a body piece."* The filter (`rec.Slot == slot`) was correct and its
+tests passed. **The catalog data was wrong**, and the picker was the first surface that
+ever looked at `Slot` closely enough to notice.
+
+His instruction — *"check under tools, apiscrape or w/e ... you can use that to fetch data
+and validate the source"* — is what settled it. `tools/api_cache/23363.json`, straight
+from the server:
+
+    "name": "Amini Bottillons +2",  "slot": 32,  "MId": 0,  "jobs": 0
+
+Bottillons are BOOTS. The server says Body. **CatsEyeXI's `item_equipment` carries rows
+for unimplemented items with default values, and the default `slot` is 32 — which decodes
+to Body.** 259 such rows; **258 land in Body** (the 1 other is Main). Their names give the
+game away: `Gletis Crossbow`, `Mpacas Bow`, `Pinaka`, `Earp`, `Loughnashade`, and the
+entire **Amini/Boii `+2`/`+3` reforge tier** — a tier this server has not implemented.
+All 190 distinct stub names are **orphans**: no proper row anywhere shares the name, so
+they are not duplicates of real items. The crawler copied the server faithfully, we listed
+it faithfully, and Body silently carried 258 foreign names.
+
+**A second bug fell out of reading apicrawl.py:**
+
+    jobs = '{"All"}' if (len(js) >= 22 or not js) else ...
+
+`not js` — an EMPTY jobs mask was published as **`Jobs = {"All"}`**. Every stub row was
+advertised as equippable by *every job*, the exact opposite of the truth. That is why the
+junk never looked suspicious in the catalog: it claimed to be All Jobs gear.
+
+Fixed in **both layers, because they fail independently**:
+
+- **DATA** — apicrawl skips `jobs == 0` and prints the count (`skipped 259 unimplemented
+  stub rows`); the `{"All"}` conflation is gone. Rebuild is surgical, verified by diffing
+  old vs new: **REMOVED 258, ADDED 0, and Body is the only slot that moved** (1743 → 1485);
+  all 258 removed were modelless. `tools/README.md` "The junk rows" is the runbook.
+- **PICKER** — `hasLook(rec)` refuses any catalog row with no model. A lockstyle shows a
+  MODEL; an item without one cannot be shown (lookpreview DROPS a modelless slot — the AI
+  tests — and the server would render it EMPTY), so offering it is offering a no-op. This
+  layer must hold on a dirty catalog too.
+
+**`jobs==0` is the marker; `MId==0` is NOT** — and the difference is load-bearing.
+`jobs==0` (259) is a strict subset of `MId==0` (1073). The other **814** are real,
+equippable, wanted items that merely have no model (all the `Hexed` gear). Dropping those
+from the catalog would strip their stats, and the catalog is where every owned item gets
+its stats by id. So: the crawl keeps them (data), the look picker refuses them (UI). The
+right filter differs by layer, which is exactly why the fix lives in both.
+
+Not applied to the owned list: gear.lua is slotted from the CLIENT's own resource
+(`gearimport.slotFromMask`), so it has no stub rows, and the AH HARD RULE says that list
+filters on the search box and nothing else (AH6 pins a fixture carrying no Model at all).
+The client resource stays the fallback answer if a wrong slot ever turns up on an item
+that has real jobs — none did: a name sweep of all 1470 surviving Body pieces found zero
+wrong-slot names.
+
+Tests: AN9a-AN9g + S21-S25 (525 + 120). S21 pins the DATA and S22/S23 the PICKER; both
+verified to bite — rebuilding the catalog with the stub skip disabled fails S21, and
+removing `hasLook` fails S22/S23 and drags 'Amini Bottillons +2' to the TOP of the Body
+list (AN9's failure text is the bug, reproduced).

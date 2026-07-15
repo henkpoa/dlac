@@ -274,6 +274,34 @@ local BROWSE_CAP = 200;   -- Main alone is 3749 catalog rows, and every rendered
                           -- loads an icon texture -- an uncapped list hitches on open.
                           -- Sorted highest-level-first, so the cap keeps the good end;
                           -- renderPicker says the count out loud and points at search.
+
+-- A lockstyle shows a MODEL, so an item without one has nothing to show:
+-- lookpreview DROPS a modelless slot (AI tests: "no model => dropped, not
+-- zeroed") and the server would render that slot EMPTY. Offering one in a LOOK
+-- picker is offering a no-op.
+--
+-- It also cleans the server's junk out of the catalog, which is what Henrik hit
+-- (07-15: "you can see hand, leg, feet, head pieces even though you are choosing
+-- a body piece"). catalog.lua is a raw scrape of CatsEyeXI's item DB, and that DB
+-- carries 259 UNIMPLEMENTED placeholder rows -- verified against tools/api_cache:
+-- jobs=0, MId=0, and `slot` DEFAULTED TO 32 (Body). 258 of the 259 land in Body,
+-- which is why browsing Body offered crossbows ('Gletis Crossbow'), bows
+-- ('Mpacas Bow') and the Amini boots/gloves/caps: the API itself reports
+-- slot=32 for every one of them, so the crawler filed them there and we listed
+-- them. Dropping modelless rows removes all 259 as a side effect (they are a
+-- strict subset), and Body goes 1743 -> 1470 real body pieces, verified with a
+-- name sweep: zero wrong-slot names survive.
+--
+-- NOT applied to the owned list, deliberately: gear.lua is what you actually
+-- HAVE (the bag scan slots it from the CLIENT's own resource, so no placeholder
+-- rows), and the AH HARD RULE says that list filters on the search box and
+-- NOTHING else -- AH6 pins a fixture whose entries carry no Model at all.
+local function hasLook(rec)
+    local m = tonumber(rec.Model);
+    return m ~= nil and m ~= 0;
+end
+M._hasLook = hasLook;   -- test seam
+
 local function listFor(slot, q, all)
     local out = {};
     local function take(t)
@@ -287,7 +315,7 @@ local function listFor(slot, q, all)
     if all and W.allEquip ~= nil then
         pcall(function()
             for _, rec in ipairs(W.allEquip()) do   -- flat, and already carries .Slot
-                if rec.Slot == slot and type(rec.Name) == 'string'
+                if rec.Slot == slot and type(rec.Name) == 'string' and hasLook(rec)
                    and (q == '' or string.find(string.lower(rec.Name), q, 1, true) ~= nil) then
                     out[#out + 1] = rec;
                 end
