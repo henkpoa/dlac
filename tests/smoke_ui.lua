@@ -13,7 +13,16 @@
 -- ---------------------------------------------------------------------------
 -- environment stubs (the run_tests.lua pattern; must exist BEFORE any require)
 -- ---------------------------------------------------------------------------
-package.path = package.path .. ';..\\?.lua';            -- 'dlac\X' -> ..\dlac\X.lua
+-- Resolve require('dlac\\X') to .\X.lua regardless of where the checkout lives
+-- (a plain '..\?.lua' path only works when the repo sits at Ashita\addons\dlac --
+-- it broke in a git-worktree verification run).
+table.insert(package.searchers or package.loaders, 1, function(name)
+    local rel = name:match('^dlac\\(.+)$');
+    if rel == nil then return nil; end
+    local chunk = loadfile(rel .. '.lua');
+    if chunk == nil then return nil; end
+    return chunk;
+end);
 
 ashita = { events = { register = function() end, unregister = function() end } };
 gData = { GetPlayer = function() return nil; end };
