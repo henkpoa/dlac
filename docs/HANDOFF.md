@@ -185,12 +185,7 @@ handshake).
   (`M.jobReady` + a job-keyed latch), **field-confirmed on both characters** (Hunklor
   SAM, Mindie WHM); the v46–49 `/dl instdiag` diagnostic is stripped again in v50.
   **Read ADR 0007 and hard rules 11–12 before touching anything that reads client state
-  at login.**
-  - **OPEN (Hunklor, not a bug):** his SAM needs the Sets tab's "Copy from static" to
-    recover `Tp_Default`/`Resting`/`Movement` from `backups\pre-profiles\SAM.lua`; his
-    originals also carried gcinclude wiring and a `Packer` belt that the shim does not
-    carry. Migration moves `Dynamic` only — his old profile had none (pure statics). Until
-    then his triggers correctly warn about missing sets; that is content, not the bug above.
+  at login.** Nothing open — the diagnostic is stripped and both suites are green.
 - **THE ACC SYSTEM LIVES ON `feature/autoacc` (07-14, Henrik's call, pending GM
   approval — do not merge or push without his word):** LuaAshitacast is on the
   server's special approved list *because* of automation; auto-swapping gear by
