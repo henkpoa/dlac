@@ -49,11 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 49;   -- 49: THE LOGIN BUG. At login GetMainJob() reads 0 (=None), which gData stringifies to "NON" -- not '' and not '?', so the auto-install took it for a real job, found no sets\NON.lua, installed nothing and LATCHED for the session: every trigger then matched and silently equipped nothing (v35 skips a missing set in silence). Fixed at both ends -- M.jobReady rejects a not-ready job, and the latch now records WHICH job it answered for, so a settling read re-fires the guard
-                  -- 48: the profile auto-install latch now remembers WHICH JOB it answered for. gData's MainJob is a memory read that settles late; LAC picks gProfile from the 0x0A packet's job, so at login the two disagree and the tick could resolve for the wrong job, latch on gProfile+profile-name alone, and never re-fire (field: Hunklor SAM/DNC, Dynamic=0, latched=YES, hasSetsFile('SAM')=true seconds later)
-                  -- 47: v46's /dl instdiag never fired -- the LAC command handler gates on a WHITELIST of subcommands before the branches, and instdiag was not in it, so it returned in silence. Whitelist first, branch second: adding a branch alone does nothing
-                  -- 46: TEMPORARY field diagnostic (/dl instdiag + tick counters) -- the login auto-install miss has survived two rounds of code reading; this reports what the tick SEES. Remove once answered (the bump is not vanity: the self-swap and the GUI's Reload-LAC banner both key off VERSION, so a changed file MUST move it or it silently never loads)
-                  -- 45: profile auto-install latched even when it could not TELL whether the job had a sets file -- at login that killed the install for the whole session (empty .Dynamic, every trigger silently equipping nothing); it now retries until the question is answerable
+M.VERSION = 50;   -- 50: the v46-49 /dl instdiag diagnostic is out (field-confirmed on both characters); the fix it found stays -- M.jobReady + the job-keyed latch. See ADR 0007
+                  -- 49: THE LOGIN BUG. At login GetMainJob() reads 0 (=None), which gData stringifies to "NON" -- not '' and not '?', so the auto-install took it for a real job, found no sets\NON.lua, installed nothing and LATCHED for the session: every trigger then matched and silently equipped nothing (v35 skips a missing set in silence). Fixed at both ends -- M.jobReady rejects a not-ready job, and the latch records WHICH job it answered for, so a settling read re-fires the guard
                   -- 44: PINNED slots -- pinstate.lua forces a named item into a slot at TOP priority (above the craft overlay), scoped to All or to named triggers; the engine WEARS the pin, so nothing removes it
                   -- 43: reserved slots (RSlot) resolved at equip time -- a Body that takes Head away (Ryl.Ftm. Tunic) drops the reserved slot instead of flapping with the server forever; worn pieces reserve too
 -- 42: lockstyle apply builds the 0x053 itself (server reads ItemNo+EquipKind only -- bags never scanned; all 9 slots sent, unnamed frozen to worn gear); preview = locally injected GRAP_LIST 0x051; the v39 equip-preview overlay (lspreview.lua reader) is gone from the engine
@@ -2327,46 +2324,14 @@ if inLac() then
     -- on the FIRST load there is nothing to unregister).
     pcall(function() ashita.events.unregister('d3d_present', 'dlac-dispatch-tick'); end);
     local _tickAt, _tickJob, _tickPet = 0, nil, nil;
+    -- The JOB is part of the identity -- see M.jobReady / ADR 0007. (v46-v49 carried
+    -- a /dl instdiag dump and tick counters here; it is what found the bug and it is
+    -- in git history -- cb2fbe2..40288e3 -- if this class of thing ever returns.)
     local _instProf, _instAct, _instJob = nil, nil, nil;   -- gProfile identity + profile name + JOB we resolved for
-    local _latchLog = {};                  -- TEMPORARY (see M._instDiag)
-    -- TEMPORARY (v45 field diagnostic, /dl instdiag): the auto-install failing
-    -- SILENTLY at login is the whole bug, and two rounds of reading the code did
-    -- not settle WHY. These two counters + the dump below report what the tick
-    -- actually sees instead. Rip out once the field answer is in.
-    M._tickN, M._tickReach = 0, 0;   -- ticks entered / ticks that reached the auto-install
-    M._instDiag = function()
-        local gp = rawget(_G, 'gProfile');
-        local job = nil;
-        pcall(function() job = gData.GetPlayer().MainJob; end);
-        local dynN, flatN = 0, 0;
-        if type(gp) == 'table' and type(gp.Sets) == 'table' then
-            if type(gp.Sets.Dynamic) == 'table' then for _ in pairs(gp.Sets.Dynamic) do dynN = dynN + 1; end end
-            for k in pairs(gp.Sets) do if k ~= 'Dynamic' then flatN = flatN + 1; end end
-        end
-        print(string.format('[dlac] instdiag: engine v%d  ticks=%d reached=%d', M.VERSION, M._tickN, M._tickReach));
-        print(string.format('[dlac] instdiag: _pok=%s  job=%s  gProfile=%s',
-            tostring(_pok), tostring(job), (gp ~= nil) and 'yes' or 'NIL'));
-        print(string.format('[dlac] instdiag: latched=%s (act=%s, job=%s%s)',
-            (gp ~= nil and gp == _instProf and job == _instJob) and 'YES -- guard will not re-fire' or 'no',
-            tostring(_instAct), tostring(_instJob),
-            (_instJob ~= nil and job ~= _instJob) and ' <-- LATCHED FOR A DIFFERENT JOB' or ''));
-        print(string.format('[dlac] instdiag: latches=%s',
-            (#_latchLog > 0) and table.concat(_latchLog, ' | ') or '(none)'));
-        if _pok then
-            print(string.format('[dlac] instdiag: charBase=%s', tostring(_prof.charBase())));
-            print(string.format('[dlac] instdiag: activeName=%s  setsPath=%s',
-                tostring(_prof.activeName()), tostring(job and _prof.setsPath(job))));
-            print(string.format('[dlac] instdiag: hasSetsFile=%s  storageExists=%s',
-                tostring(job and _prof.hasSetsFile(job)), tostring(_prof.storageExists())));
-        end
-        print(string.format('[dlac] instdiag: gProfile.Sets -> Dynamic=%d entries, flattened=%d sets%s',
-            dynN, flatN, (dynN > 0 and flatN == 0) and '  <-- INSTALLED BUT NEVER FLATTENED' or ''));
-    end
     ashita.events.register('d3d_present', 'dlac-dispatch-tick', function()
         pcall(function()
             if os.clock() < _tickAt then return; end
             _tickAt = os.clock() + 0.4;
-            M._tickN = M._tickN + 1;
             trySelfSwap();   -- engine hot-reload check (own ~2s gate inside)
             local j = nil;
             pcall(function() j = AshitaCore:GetMemoryManager():GetPlayer():GetMainJob(); end);
@@ -2408,7 +2373,6 @@ if inLac() then
             -- unmigrated characters keep LAC's file-loaded sets, exactly as
             -- before. This is how "LAC picks the job file, dlac picks the
             -- profile" composes: the job resolves the file INSIDE the profile.
-            M._tickReach = M._tickReach + 1;   -- TEMPORARY (see M._instDiag)
             local gprof = rawget(_G, 'gProfile');
             local act = _pok and _prof.activeName() or nil;
             -- The JOB is part of the identity, and leaving it out is the field bug
@@ -2457,14 +2421,7 @@ if inLac() then
                     end
                     -- Answered: latch (legacy jobs too -- probe once per load, not per
                     -- tick). Unanswerable: leave it, and the next tick (0.4s) retries.
-                    if answerable then
-                        _instProf, _instAct, _instJob = gprof, act, job;
-                        -- TEMPORARY (see M._instDiag): remember every latch, so the
-                        -- field can show WHICH job each one answered for instead of
-                        -- me inferring it from an empty .Dynamic.
-                        _latchLog[#_latchLog + 1] = string.format('tick %d: job=%s hasSets=%s',
-                            M._tickReach, tostring(job), tostring(_pok and _prof.hasSetsFile(job)));
-                    end
+                    if answerable then _instProf, _instAct, _instJob = gprof, act, job; end
                 end
             end
             -- PET actions: synthesized here (see EVENTS) -- dispatch ONCE per
@@ -2509,7 +2466,10 @@ if inLac() then
         local args = {};
         for a in string.gmatch(string.sub(e.command, start), '%S+') do args[#args + 1] = a; end
         local sub = args[1] and string.lower(args[1]) or nil;
-        if sub ~= 'mode' and sub ~= 'why' and sub ~= 'triggers' and sub ~= 'env' and sub ~= 'lock' and sub ~= 'sets' and sub ~= 'profile' and sub ~= 'ls' and sub ~= 'instdiag' then return; end
+        -- WHITELIST FIRST, branch second: a new subcommand needs adding HERE as well as
+        -- below, or it returns in silence and looks like the command does not exist
+        -- (v46's /dl instdiag, an hour lost to exactly this).
+        if sub ~= 'mode' and sub ~= 'why' and sub ~= 'triggers' and sub ~= 'env' and sub ~= 'lock' and sub ~= 'sets' and sub ~= 'profile' and sub ~= 'ls' then return; end
         e.blocked = true;
 
         if sub == 'ls' then
@@ -2744,12 +2704,6 @@ if inLac() then
                     slot, res and 'ON' or 'OFF', res and 'will NOT' or 'may again',
                     (slot == 'all') and 'any slot' or ('the ' .. slot .. ' slot')));
             end
-            return;
-        end
-
-        if sub == 'instdiag' then   -- TEMPORARY: why did the profile auto-install not fire?
-            if rawget(_G, 'gFunc') == nil then return; end   -- LAC state only (the 'ls' precedent below)
-            if type(M._instDiag) == 'function' then M._instDiag(); else print('[dlac] instdiag: not available (engine too old).'); end
             return;
         end
 

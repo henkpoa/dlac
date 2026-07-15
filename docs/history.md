@@ -1791,3 +1791,18 @@ must not overreach; Y55–Y56 pin the `setsPath == nil` retry signal).
   `Dynamic` block, so migration correctly wrote an empty one; the statics live on in
   `backups\pre-profiles\` for the Sets tab's "Copy from static". The shim does not carry
   hand-written logic — say so when someone migrates a rich profile.
+
+### Confirmed + closed (07-15, engine v50)
+
+Field-verified on **both** characters, each a fresh login touching nothing: Hunklor (SAM,
+`latches=tick 1: job=NON ... | tick 17: job=SAM ...`, `Dynamic=1 flattened=1`) and then
+Mindie (WHM) — Henrik: *"logged in on Mindie, worked."* Two characters, two profile
+shapes, two jobs; that is the fix confirmed on the exact path that used to fail.
+
+`/dl instdiag` and the tick counters are **stripped again in v50** — they were explicit
+scaffolding, and dev diagnostics belong in dlacprobe (they live in `cb2fbe2..40288e3` if
+this class ever returns). What stays is `M.jobReady` + the job-keyed latch, tests Z1–Z7,
+and two comments left exactly where the scaffolding taught something: the command
+handler's **whitelist-before-branch** note, and the `jobReady` header carrying the actual
+field line that proved it. The cost of the instrument was ~15 minutes; it should have been
+built after the FIRST theory died, not the second.

@@ -1,8 +1,10 @@
 # Resolve only when the game says ready; a latch must remember what it answered
 
 Status: ratified 2026-07-15 (engine v49), after a login bug that ate a whole session's
-gear and took three theories to find. Related: ADR 0006 (the engine decides at equip
-time). Field record: history.md, session *"NON is not a job"*.
+gear and took three theories to find. **Field-confirmed on two characters** (Hunklor SAM,
+Mindie WHM), each a fresh login touching nothing; the `/dl instdiag` scaffolding that
+proved it was stripped again in v50. Related: ADR 0006 (the engine decides at equip time).
+Field record: history.md, session *"NON is not a job"*.
 
 ## The rule
 

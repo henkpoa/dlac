@@ -60,12 +60,15 @@ handshake).
 - **In-game loop:** Henrik drives; you cannot run the game. Ship small, ask him to
   `/addon reload dlac` (+ **Reload LAC** when seeded files changed — always that order),
   read his chat output/screenshots. `/dl debug on` reveals dev buttons; `/dl why`,
-  `/dl env`, `/dl dw`, `/dlmv` (branch) are the diagnostic probes. **`/dl instdiag` is
-  TEMPORARY** (v46–v49: tick counters + the auto-install latch log) — it is what finally
-  cracked the "NON" bug after two theories died to static reading; strip it once Mindie
-  confirms v49. **When a timing bug survives one round of code-reading, stop reading and
-  make the engine print its own state** — and remember a new `/dl` subcommand needs adding
-  to the handler's WHITELIST, not just a branch (v46 printed nothing for exactly that).
+  `/dl env`, `/dl dw`, `/dlmv` (branch) are the diagnostic probes. **When a timing bug
+  survives one round of code-reading, stop reading and make the engine print its own
+  state** — the "NON" bug (v49) cost two wrong theories deduced from the source and fell
+  in one line to a temporary `/dl instdiag` dump. Build the throwaway probe earlier than
+  feels justified; it lives in `cb2fbe2..40288e3` if this class returns. Two gotchas it
+  hit, both since commented in place: a new `/dl` subcommand must be added to the command
+  handler's **WHITELIST**, not just given a branch (v46 printed nothing for exactly that,
+  and looked like the command did not exist); and a changed seeded file at an **unmoved
+  `M.VERSION`** never loads at all (hard rule 4).
 - **Git:** work on `main`; `feature/storage-move` is **local-only** (never push it)
   pending GM approval. Multi-line commit messages: write to a file and `git commit -F`
   (PowerShell 5.1 mangles embedded quotes in `-m`). Do not push without being asked.
@@ -173,24 +176,21 @@ handshake).
 
 ## Current state (as of 2026-07-15)
 
-- **JUST LANDED — engine v49, "NON is not a job" (`cb2fbe2`, pushed).** The login
+- **DONE — engine v50, "NON is not a job" (`cb2fbe2`; docs `40288e3`).** The login
   auto-install bug: `GetMainJob()` reads 0 at login, gData stringifies it to `"NON"`, the
   guard accepted it as a real job, found no `sets\NON.lua`, installed nothing and
   **latched for the session** — so every trigger matched and silently equipped nothing.
   Latent since the storage move (v33, 07-13); masked for two days because any job change
   or Reload LAC heals it, and dev habits do both constantly. Fixed at both ends
-  (`M.jobReady` + a job-keyed latch). **See ADR 0007 and hard rules 11–12 before touching
-  anything that reads client state at login.**
-  - **OPEN: Mindie is unverified.** v49 is field-confirmed on Hunklor only. Next fresh
-    login on Mindie/WHM, touching nothing, should print `20 dynamic set(s) installed for
-    WHM` and `/lac set Idle` should work. **Then strip `/dl instdiag`** (still in, marked
-    TEMPORARY: the command + `M._tickN`/`M._tickReach`/`_latchLog`) — it is a dev
-    diagnostic and those belong in dlacprobe, not dlac. It is in git history if this class
-    of bug returns.
+  (`M.jobReady` + a job-keyed latch), **field-confirmed on both characters** (Hunklor
+  SAM, Mindie WHM); the v46–49 `/dl instdiag` diagnostic is stripped again in v50.
+  **Read ADR 0007 and hard rules 11–12 before touching anything that reads client state
+  at login.**
   - **OPEN (Hunklor, not a bug):** his SAM needs the Sets tab's "Copy from static" to
     recover `Tp_Default`/`Resting`/`Movement` from `backups\pre-profiles\SAM.lua`; his
     originals also carried gcinclude wiring and a `Packer` belt that the shim does not
-    carry. Migration moves `Dynamic` only — his old profile had none (pure statics).
+    carry. Migration moves `Dynamic` only — his old profile had none (pure statics). Until
+    then his triggers correctly warn about missing sets; that is content, not the bug above.
 - **THE ACC SYSTEM LIVES ON `feature/autoacc` (07-14, Henrik's call, pending GM
   approval — do not merge or push without his word):** LuaAshitacast is on the
   server's special approved list *because* of automation; auto-swapping gear by
