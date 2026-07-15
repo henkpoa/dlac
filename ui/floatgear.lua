@@ -113,12 +113,36 @@ if ffi ~= nil then
     pcall(ffi.cdef, 'short __stdcall GetAsyncKeyState(int vKey);');
 end
 local VK_SHIFT = 0x10;
+
+-- The Ashita `key` (WNDPROC) event -- source 3. Kept alongside the user32 reads
+-- rather than instead of them: see shiftDown.
+local _keyShift = false;
+pcall(function()
+    local b = require('bit');
+    ashita.events.register('key', 'dlac_floatgear_key', function(e)
+        if e ~= nil and e.wparam == VK_SHIFT then
+            -- lparam bit 31 = transition state: 1 when the key is going UP
+            _keyShift = not (b.band(e.lparam, b.lshift(0x8000, 0x10)) == b.lshift(0x8000, 0x10));
+        end
+    end);
+end);
+
+-- FOUR sources, OR'd. That is not elegance, it is arithmetic: three separate
+-- single-source attempts have now failed in the field (imgui IO, the key event,
+-- user32-only), each one picked because some other addon here "proves" it, and
+-- each one wrong for THIS context. Every source is independently harmless and
+-- costs nothing per frame, so read them all and take any yes. When one is finally
+-- shown to work, this collapses to that one -- but not before.
 local function shiftDown()
-    if ffi == nil then return false; end
-    local ok, v = pcall(function() return ffi.C.GetAsyncKeyState(VK_SHIFT) < 0; end);
-    if ok and v == true then return true; end
-    local ok2, v2 = pcall(function() return ffi.C.GetKeyState(VK_SHIFT) < 0; end);
-    return ok2 and v2 == true;
+    if ffi ~= nil then
+        local ok, v = pcall(function() return ffi.C.GetAsyncKeyState(VK_SHIFT) < 0; end);
+        if ok and v == true then return true; end
+        local ok2, v2 = pcall(function() return ffi.C.GetKeyState(VK_SHIFT) < 0; end);
+        if ok2 and v2 == true then return true; end
+    end
+    if _keyShift == true then return true; end
+    local ok3, v3 = pcall(function() return imgui.GetIO().KeyShift; end);
+    return ok3 and v3 == true;
 end
 -- Test seam: the smoke suite overrides this. The OS call cannot run headless, so
 -- what the tests cover is the LATCH and the click suppression around it -- the
@@ -139,6 +163,12 @@ local scaleNow = M.scale;
 local _openFor  = nil;    -- slot label whose menu should open next frame
 local _menuSlot = nil;    -- slot the open popup belongs to
 local _dragging = false;  -- shift+drag latch: set on press, cleared on release
+-- Keyless move mode (right-click menu). Shift detection has now missed three
+-- times in the field, and every failure looked identical from your side: nothing
+-- happens. This needs no key at all -- while it is on, plain LMB drags the window
+-- and the slots stop taking clicks. If Shift ever proves reliable this stays
+-- anyway: it is the accessible route for anyone who cannot chord a drag.
+local _moveMode = false;
 local _drillItem = nil;   -- fallback mode: item picked, now choosing scope
 local _search = { '' };
 
@@ -260,6 +290,28 @@ local function renderPinMenu(job, level)
     imgui.TextColored(COL.HEADER, slot);
     imgui.Separator();
 
+    -- Keyless move mode, top of the menu: the window has no title bar to grab and
+    -- Shift has been unreliable here, so this is the route that cannot fail.
+    if _moveMode then
+        imgui.TextColored(COL.SCORE, 'MOVE MODE -- drag the boxes to move.');
+        if imgui.Selectable('Done moving') then
+            _moveMode = false;
+            _dragging = false;        -- the latch must not outlive the mode
+            pcall(function() imgui.CloseCurrentPopup(); end);
+        end
+        imgui.Separator();
+        return;                       -- nothing else is useful while moving
+    end
+    if imgui.Selectable('Move window') then
+        _moveMode = true;
+        pcall(function() imgui.CloseCurrentPopup(); end);
+        return;
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Drag the boxes to move the window; right-click for "Done moving".\nShift+drag does the same without the mode, when Shift is detected.');
+    end
+    imgui.Separator();
+
     -- Unpin first: it is the one row you want instantly when the frame is red.
     if pins.isPinned(slot) then
         local p = pins.pinOf(slot);
@@ -346,7 +398,8 @@ end
 -- The window.
 -- --------------------------------------------------------------------------
 
-local PIN_BOX = { 0.55, 0.13, 0.13, 1.0 };   -- red: this slot is pinned
+local PIN_BOX  = { 0.55, 0.13, 0.13, 1.0 };   -- red:  this slot is pinned
+local MOVE_BOX = { 0.62, 0.50, 0.16, 1.0 };   -- gold: Shift is down, drag to move
 
 -- Rendered INDEPENDENTLY of the main dlac box (gearui's d3d_present calls this
 -- directly, the lockstyle-window pattern) -- NOT via uihost's `window` contract.
@@ -378,7 +431,10 @@ function M.render()
     -- item claimed, and a 4x4 of ImageButtons leaves no such spot -- the old
     -- "drag it by the invisible rim" was the best that flag could do, and it was
     -- a bad answer. NoMove also stops the window sliding when you grab a slot.
-    local shift = M.shiftHeld();       -- through the seam, so the tests can drive it
+    -- "grab mode": Shift held, OR the keyless move mode from the right-click menu.
+    -- Everything downstream (gold boxes, the drag latch, click suppression) keys off
+    -- this one flag, so the two routes cannot drift apart.
+    local shift = M.shiftHeld() or _moveMode;   -- shiftHeld is a seam: tests drive it
     local FL = (ImGuiWindowFlags_NoTitleBar or 0) + (ImGuiWindowFlags_NoResize or 0)
              + (ImGuiWindowFlags_NoScrollbar or 0) + (ImGuiWindowFlags_NoCollapse or 0)
              + (ImGuiWindowFlags_AlwaysAutoResize or 0) + (ImGuiWindowFlags_NoBackground or 0)
@@ -417,11 +473,25 @@ function M.render()
             {
                 tight = true,
                 box   = box,
+                -- Shift held -> EVERY box goes gold: the window has no frame, so
+                -- this is its only way to say "grabbable now".
+                --
+                -- It is deliberately the same mechanism that paints a pinned slot
+                -- red -- ImageButton's bg_col, which is field-proven here. The
+                -- first attempt drew a rect with GetWindowDrawList():AddRect(...)
+                -- and 6 args, a signature nothing else in dlac uses (only the
+                -- 3-arg AddRectFilled is proven); inside its pcall, a wrong
+                -- signature just draws nothing, and a silent indicator is worse
+                -- than none -- it made a working key read look broken.
                 boxColorOf = function(sl)
+                    if shift or _dragging then return MOVE_BOX; end
                     if pins.isPinned(sl.label) then return PIN_BOX; end
                     return nil;
                 end,
-                onRightClick = function(labelKey) if not shift then _openFor = labelKey; end end,
+                -- RIGHT-click is never suppressed: the drag is a LEFT-button
+                -- gesture, and in move mode the menu is the only way back OUT of
+                -- move mode -- gating this too would strand you in it.
+                onRightClick = function(labelKey) _openFor = labelKey; end,
             });
 
         -- Shift+drag anywhere on the grid moves the window. Done by hand because
@@ -466,19 +536,6 @@ function M.render()
                     end
                 end);
             end
-        end
-
-        -- Shift held: outline the grid gold. A window with no frame has no other
-        -- way to say "grabbable now", and the drag is otherwise invisible until it
-        -- works. It also answers, in one glance, WHICH half is broken if it ever
-        -- misbehaves again: outline = the key read is fine, look at the drag.
-        if shift or _dragging then
-            pcall(function()
-                local x, y = imgui.GetWindowPos();
-                if type(x) == 'table' then y = (x[2] or x.y); x = (x[1] or x.x); end
-                imgui.GetWindowDrawList():AddRect({ x - 1, y - 1 }, { x + grid + 1, y + grid + 1 },
-                    imgui.GetColorU32({ 0.95, 0.80, 0.35, 0.90 }), 0, 0, 2);
-            end);
         end
 
         -- Popup at WINDOW scope: the grid detected the click inside its child,

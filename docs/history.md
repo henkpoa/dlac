@@ -1435,3 +1435,35 @@ glance: outline = the key read is fine, look at the drag.
 `M.shiftHeld` is a seam the smoke suite overrides: the OS call cannot run headless, so
 S55-S63 cover the LATCH and the click suppression (the logic that broke), not the key
 read. Honest about what it does not prove.
+
+### Field round 5: the indicator was lying, and a keyless route
+
+Henrik: *"there is an outline when I hover over an equipment, but it doesn't change when
+I hold in SHIFT"* -- i.e. the gold outline from round 4 NEVER DREW. That outline existed
+to tell us which half was broken, and instead it added a third unknown: it used
+`GetWindowDrawList():AddRect(min, max, col, rounding, flags, thickness)` -- **6 args, a
+signature nothing else in dlac uses** (only the 3-arg `AddRectFilled` is proven here).
+Inside its `pcall`, a wrong signature draws nothing and says nothing. **A silent
+indicator is worse than no indicator: it can make a WORKING key read look broken.** If
+you add instrumentation to settle a question, it must sit on a path already proven, or
+it is just another suspect.
+
+Rebuilt on the mechanism Henrik has WATCHED work: `boxColorOf` -> ImageButton's bg_col,
+the same thing that paints a pinned slot red. Shift held -> every box goes gold.
+
+Shift detection is now **four sources OR'd** (user32 GetAsyncKeyState, user32
+GetKeyState, the Ashita key event, imgui IO). Not elegance -- arithmetic. Three separate
+single-source attempts have failed in the field, each picked because some other addon
+here "proves" it, each wrong for this context. Every source is independently harmless
+and free per frame, so read them all and take any yes.
+
+And a **keyless MOVE MODE** (right-click -> "Move window"): plain LMB drags, slots stop
+taking clicks, boxes go gold, right-click -> "Done moving" leaves. Shift detection has
+missed three times and every failure looks identical from the player's side -- nothing
+happens. This route needs no key at all, so it cannot fail the same way; it also stays
+as the accessible option for anyone who cannot chord a drag.
+
+Traps handled in move mode: **right-click is never suppressed** (the drag is a LEFT
+gesture, and the menu is the only way OUT -- gating it would strand you), and the drag
+latch is cleared when the mode ends. Tests S66-S71 cover both, including the strand
+case; S70 caught the latch outliving the mode.

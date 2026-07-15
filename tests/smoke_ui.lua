@@ -332,6 +332,62 @@ check('S16 unknown item resolves to nil, no error', lockstyle._modelOf('No Such 
     IM.IsMouseDown    = function() return false; end
     pcall(fg.render);
 
+    -- KEYLESS MOVE MODE: drags with NO shift at all. This is the route that has to
+    -- work when key detection does not, so it gets its own coverage -- including
+    -- the trap it could easily introduce: right-click must stay live, or the menu
+    -- that turns move mode OFF is unreachable and you are stranded in it.
+    local rmb = nil;
+    local gridOpts = nil;
+    Sx.renderSlotGrid = function(_, _, _, _, _, onClick, _, _, opts)
+        gridOpts = opts;
+        if opts ~= nil and opts.onRightClick ~= nil then opts.onRightClick('Head'); end
+        if onClick ~= nil then onClick('Head'); end     -- a LEFT click on a slot
+    end
+    -- turn move mode on the way the menu does
+    popupOpen = true;
+    IM.Selectable = function(label) return label == 'Move window'; end
+    pcall(fg.render);
+    IM.Selectable = function() return false; end
+    popupOpen = false;
+
+    heldShift = false;                                  -- NO shift from here on
+    moved = nil; rmb = nil;
+    IM.IsMouseDown = function() return true; end
+    pcall(fg.render);
+    check('S66 move mode drags with no shift held', type(moved), 'table');
+    check('S67 move mode paints the boxes gold (the only "grabbable" cue there is)',
+        type(gridOpts) == 'table' and type(gridOpts.boxColorOf) == 'function'
+            and gridOpts.boxColorOf({ label = 'Head' }) ~= nil, true);
+    balanced('S68 move mode');
+
+    -- the strand test: right-click must still reach the menu while move mode is on
+    Sx.renderSlotGrid = function(_, _, _, _, _, onClick, _, _, opts)
+        if opts ~= nil and opts.onRightClick ~= nil then rmb = true; opts.onRightClick('Head'); end
+    end
+    rmb = nil;
+    pcall(fg.render);
+    check('S69 right-click stays live in move mode (or you cannot leave it)', rmb, true);
+
+    -- and leaving it via "Done moving" restores normal dragging behaviour.
+    -- Release first: you cannot click a menu item while still holding the button,
+    -- and a latch left set here would keep dragging (which the code now also
+    -- clears explicitly, belt and braces).
+    IM.IsMouseDown = function() return false; end
+    pcall(fg.render);
+    popupOpen = true;
+    IM.Selectable = function(label) return label == 'Done moving'; end
+    pcall(fg.render);
+    IM.Selectable = function() return false; end
+    popupOpen = false;
+    Sx.renderSlotGrid = function(_, _, _, _, _, onClick) if onClick then onClick('Head') end end
+    moved = nil;
+    IM.IsMouseDown = function() return true; end
+    pcall(fg.render);
+    check('S70 after "Done moving", a plain drag no longer moves the window', moved, nil);
+    balanced('S71 move mode off');
+    IM.IsMouseDown = function() return false; end
+    pcall(fg.render);
+
     -- window off: must draw nothing at all and touch no stack
     Sx.ui._gearFloat = false;
     pcall(fg.render);
