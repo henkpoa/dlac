@@ -18,7 +18,9 @@ maintainer IMO, I am just the one with the creative vision."*
    [design/profiles.md](design/profiles.md) — the profile storage layer (where sets
    and triggers live since v33, the one read/write compatibility rule, migration).
 5. [adr/](adr/) — decision records; **0002** (data-driven dispatch) and **0003**
-   (overlay) explain most "why is it like this" questions.
+   (overlay) explain most "why is it like this" questions. **0006** (the builder plans,
+   the engine decides) and **0007** (resolve only when ready; a latch must remember what
+   it answered) are the two that bite hardest if ignored.
 6. [history.md](history.md) — session journal: what was tried, what was abandoned, and
    why. **Read the dead-ends lists before proposing anything.**
 7. Reference: [reference/catseyexi-jobs.md](reference/catseyexi-jobs.md) (server job
@@ -55,7 +57,12 @@ handshake).
 - **In-game loop:** Henrik drives; you cannot run the game. Ship small, ask him to
   `/addon reload dlac` (+ **Reload LAC** when seeded files changed — always that order),
   read his chat output/screenshots. `/dl debug on` reveals dev buttons; `/dl why`,
-  `/dl env`, `/dl dw`, `/dlmv` (branch) are the diagnostic probes.
+  `/dl env`, `/dl dw`, `/dlmv` (branch) are the diagnostic probes. **`/dl instdiag` is
+  TEMPORARY** (v46–v49: tick counters + the auto-install latch log) — it is what finally
+  cracked the "NON" bug after two theories died to static reading; strip it once Mindie
+  confirms v49. **When a timing bug survives one round of code-reading, stop reading and
+  make the engine print its own state** — and remember a new `/dl` subcommand needs adding
+  to the handler's WHITELIST, not just a branch (v46 printed nothing for exactly that).
 - **Git:** work on `main`; `feature/storage-move` is **local-only** (never push it)
   pending GM approval. Multi-line commit messages: write to a file and `git commit -F`
   (PowerShell 5.1 mangles embedded quotes in `-m`). Do not push without being asked.
@@ -121,7 +128,25 @@ handshake).
    (the augment enum, `tools/`) must never be committed.
 10. **The GUI is the product.** Nothing may force a player to open a Lua file. Player
     code is never deleted or uncommented — migration is append-only.
-11. **The addon root is what LAC sees; folders are what only the addon sees.** Modules are
+11. **Not-ready client state can look like GOOD data, and a latch makes one bad read
+    permanent** (ADR 0007; cost: a whole session's gear, silently, plus two wrong
+    theories). At login the player block is unpopulated: `GetMainJob()` returns **0**
+    (None) and gData stringifies it to **`"NON"`** — neither `''` nor `'?'`, so a guard
+    listing *those* accepted it as a real job. Ask **`M.jobReady(id, name)`**; it gates on
+    the id, because 0 is the authoritative "not ready" (`readJobSets` always did this).
+    Corollaries: **never enumerate the bad values** — `"NON"` was the one nobody thought
+    of; **`gProfile` existing does not mean the job is known** (LAC takes it from the 0x0A
+    packet, gData reads memory — they disagree for ~6 s); and **a latch is a smell**. Every
+    other engine reader re-reads on a throttle and self-heals — the auto-install was the
+    sole non-retrying one, which is exactly why triggers came back at login and sets never
+    did. If you must latch, key it on *everything* you resolved against and never latch on
+    a question you couldn't answer (`setsPath(job) == nil` means "can't tell yet", NOT "no
+    sets file"). Tests Z1–Z7.
+12. **A total failure and a typo must not look identical.** v35 made a matched-but-missing
+    set red in the Triggers tab instead of a chat warn — right for one typo'd name, but it
+    also means the engine equipping *nothing at all* says nothing at all. That silence is
+    what let 11 survive for two days. When a whole subsystem no-ops, be loud.
+13. **The addon root is what LAC sees; folders are what only the addon sees.** Modules are
     folder-qualified (`require('dlac\\ui\\gearui')`), EXCEPT the five seeded engine files at
     root — `utils`, `dispatch`, `chatfmt`, `profiles`, `gear`. They are copied into
     `<char>\dlac\` and load in LAC's state too, so one require line must resolve under two
@@ -145,6 +170,24 @@ handshake).
 
 ## Current state (as of 2026-07-15)
 
+- **JUST LANDED — engine v49, "NON is not a job" (`cb2fbe2`, pushed).** The login
+  auto-install bug: `GetMainJob()` reads 0 at login, gData stringifies it to `"NON"`, the
+  guard accepted it as a real job, found no `sets\NON.lua`, installed nothing and
+  **latched for the session** — so every trigger matched and silently equipped nothing.
+  Latent since the storage move (v33, 07-13); masked for two days because any job change
+  or Reload LAC heals it, and dev habits do both constantly. Fixed at both ends
+  (`M.jobReady` + a job-keyed latch). **See ADR 0007 and hard rules 11–12 before touching
+  anything that reads client state at login.**
+  - **OPEN: Mindie is unverified.** v49 is field-confirmed on Hunklor only. Next fresh
+    login on Mindie/WHM, touching nothing, should print `20 dynamic set(s) installed for
+    WHM` and `/lac set Idle` should work. **Then strip `/dl instdiag`** (still in, marked
+    TEMPORARY: the command + `M._tickN`/`M._tickReach`/`_latchLog`) — it is a dev
+    diagnostic and those belong in dlacprobe, not dlac. It is in git history if this class
+    of bug returns.
+  - **OPEN (Hunklor, not a bug):** his SAM needs the Sets tab's "Copy from static" to
+    recover `Tp_Default`/`Resting`/`Movement` from `backups\pre-profiles\SAM.lua`; his
+    originals also carried gcinclude wiring and a `Packer` belt that the shim does not
+    carry. Migration moves `Dynamic` only — his old profile had none (pure statics).
 - **THE ACC SYSTEM LIVES ON `feature/autoacc` (07-14, Henrik's call, pending GM
   approval — do not merge or push without his word):** LuaAshitacast is on the
   server's special approved list *because* of automation; auto-swapping gear by

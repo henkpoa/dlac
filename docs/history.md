@@ -1668,3 +1668,126 @@ Tests: AN9a-AN9g + S21-S25 (525 + 120). S21 pins the DATA and S22/S23 the PICKER
 verified to bite — rebuilding the catalog with the stub skip disabled fails S21, and
 removing `hasLook` fails S22/S23 and drags 'Amini Bottillons +2' to the TOP of the Body
 list (AN9's failure text is the bug, reproduced).
+
+## Session "NON is not a job" — the login that silently ate your sets (07-15, engine v49)
+
+Henrik: *"Uuuh, I don't know exactly when, but either when we did the equipmon floating
+box, earlier or later, my triggers don't work? Did something implement itself too hard?"*
+
+Nothing did. The equipmon window was innocent, and the bug was **latent since the storage
+move (v33, 07-13 13:55)** — 108 commits and two days earlier. Decision of record:
+**ADR 0007**.
+
+### The bug
+
+At login the client's player block is not populated yet, so `GetMainJob()` returns **0**
+(= None). gData resolves the main job through the resource manager —
+`GetString('jobs.names_abbr', GetMainJob())` — and **0 stringifies to `"NON"`**. The
+profile auto-install guarded with:
+
+```lua
+if type(job) == 'string' and job ~= '' and job ~= '?' then   -- "NON" sails through
+```
+
+So it took `"NON"` for a real job, went looking for `sets\NON.lua`, found nothing
+(**nobody has one** — which is why it hit every migrated character identically), installed
+nothing, and **LATCHED**: the latch keyed on `gProfile` + profile name and never recorded
+*which job* it had answered for. ~6.4 s later (16 ticks) the read settles to the real job,
+but `gProfile` has not changed, so the guard never re-fires.
+
+Result: the whole session runs on the shim's empty `.Dynamic`. Every trigger matches and
+equips **nothing**, in silence — `equipSetByName` skips a missing set without a word since
+v35. `/lac set Idle` → *"Set not found: Idle"*.
+
+### Why it hid for two days
+
+Any **job change** or **Reload LAC** builds a fresh `gProfile` and installs correctly. Two
+days of reloading and flipping jobs while building features never left it in the one state
+that bites: **log in, play the same job, touch nothing**. Henrik only noticed once the
+feature work settled down and he actually just *played*. His own words: *"I've been testing
+and running around a lot and haven't really done much that would make me detect this issue."*
+
+The storage move is what made it possible. **Pre-v33 the job file CONTAINED the sets**, so
+LAC populated `gProfile.Sets.Dynamic` merely by loading it — no install, no tick, no race.
+After v33 the job file is a 1770-byte shim with `Dynamic = {}` and the engine must fill it.
+
+### Two wrong theories (both from reading code, not running it)
+
+1. **Royal Cloak / RSlot (v43).** Confirmed `RSlot = 16` on the Royal Cloak in the live
+   `gear.lua`, and it *is* in the WHM Idle Body ladder. Dead end: best-by-level picks
+   `Clr. Bliaut +1` (60) over it (59), and reservedDrops only ever drops ONE slot — never
+   "triggers don't work". Cost: an hour.
+2. **The latch fires on an unanswerable `hasSetsFile` (v45).** Right about *the latch being
+   the bug*, wrong about *why it latched*. Shipped v45 (`answerable = setsPath(job) ~= nil`)
+   and it did **not** fix it — `setsPath` is non-nil the moment `charBase()` resolves, which
+   is well before the job read settles. Kept anyway (it is a real second hole), but it was
+   not this.
+
+Both died to the same mistake: **reasoning about a timing bug from static reading.** The
+answer only arrived when the engine printed its own state.
+
+### What actually found it
+
+Henrik: *"Look, ask me to do whatever helps you, it's better than guessing."* — then
+`/dl instdiag` (temporary, v46–v48: tick counters + a latch log):
+
+```
+instdiag: engine v48  ticks=101 reached=100
+instdiag: latched=YES -- guard will not re-fire (act=Default, job=SAM)
+instdiag: latches=tick 1: job=NON hasSets=false | tick 17: job=SAM hasSets=true
+instdiag: gProfile.Sets -> Dynamic=1 entries, flattened=1 sets
+```
+
+`job=NON` in one line, after three rounds of theory. Tick 1 is the bug; tick 17 is the
+v48 job-keyed latch re-firing and installing.
+
+Two false starts on the instrument itself, both worth remembering:
+- **v46's `/dl instdiag` printed nothing.** The LAC command handler gates on a
+  **whitelist** of subcommands *before* the branches — adding a branch alone does nothing.
+  Whitelist first, branch second.
+- **The version must move or the instrument never loads.** `trySelfSwap` compares the
+  seeded file's `M.VERSION` to the running one; a changed file at the same version is
+  silently ignored. Same for the GUI's red Reload-LAC banner.
+
+### The fix (v49) — both ends
+
+- **`M.jobReady(jobId, jobName)`** rejects a not-ready job, gating on the **id** (0 is
+  authoritative; `readJobSets` twenty lines away already did exactly this). The `"NON"`
+  name check stays as belt-and-braces — id and string are two different reads.
+- **The latch records the job it answered for**, so a settling read re-fires the guard.
+  Defense in depth: `jobReady` stops the bogus resolve, the job-keyed latch stops any
+  future wrong-job resolve from being permanent.
+
+Tests 527 → 534 (Z1–Z7 pin `jobReady`, incl. **Z7: WAR (id 1) is a real job** — the fix
+must not overreach; Y55–Y56 pin the `setsPath == nil` retry signal).
+
+### Lessons
+
+- **A guard that enumerates the bad values misses the one nobody thought of.** `''` and
+  `'?'` were a blocklist; `"NON"` was a *valid string*. Gate on the signal the game uses
+  for "not ready", not on the shape of the value.
+- **The dangerous not-ready read is the one that returns a plausible value, not nil.**
+  `charBase()` returns nil pre-login and every caller retries — that one never bit.
+  `GetMainJob() == 0 → "NON"` returns *good-looking data*, and cost hours.
+- **The engine's only latch was its only non-retrying reader.** Everything else re-reads on
+  a throttle and self-heals. That asymmetry was the tell, visible from the first hour and
+  under-weighed: **triggers recovered at login and sets never did.**
+- **Silence compounds.** v35's "missing set is red in the tab, not a chat warn" is right for
+  a typo'd set name, but it also means *the entire engine equipping nothing* says nothing.
+  A total failure and a single typo should not look identical.
+- **`gProfile` existing does not mean the job is known.** LAC picks `gProfile` from the 0x0A
+  packet's job; gData's `MainJob` is a memory read. At login they disagree for ~6 s.
+
+### Field notes (not bugs)
+
+- **Hunklor is not a second data point for this** and cost a detour. He was un-migrated at
+  login, so the tick correctly installed nothing; Setup migrated him mid-session, and
+  `profiles.migrate` **does not install into the live `gProfile`** (it cannot — LAC is still
+  running the old in-memory profile until a Reload LAC). His "same issue" was a
+  half-migrated profile plus genuinely empty sets.
+- **Migration carries `Dynamic` only, and that is by design.** His SAM was a hand-written
+  legacy profile with *static* sets (`Idle`/`Tp`/`Ws_Default`/`Meditate`/`Transmog`), its own
+  `HandleDefault`, gcinclude wiring and a `Packer` belt. `extractDynamicText` found no
+  `Dynamic` block, so migration correctly wrote an empty one; the statics live on in
+  `backups\pre-profiles\` for the Sets tab's "Copy from static". The shim does not carry
+  hand-written logic — say so when someone migrates a rich profile.

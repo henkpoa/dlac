@@ -317,6 +317,15 @@ never a hot swap.
   hot-swap (`/dl sets reload`, pinged by Commit); the engine also auto-installs the
   active profile's sets into every fresh `gProfile` (LAC load / job change / `/dl
   profile use`) — see profiles.lua and docs/design/profiles.md.
+  **The auto-install is the engine's ONE latch, and it is load-bearing** (ADR 0007):
+  it resolves per `(gProfile, profileName, job)` and then stops, because re-reading the
+  sets file every 0.4 s tick would be absurd. That makes it the only reader that does not
+  self-heal — every other one (triggers, craft state, pin state, mode mirror) re-reads on
+  a throttle. So it must (a) refuse a not-ready job — `M.jobReady`, since `GetMainJob()`
+  reads 0 at login and gData stringifies that to the *real-looking* `"NON"`; and (b) never
+  latch on a question it could not answer (`setsPath(job) == nil` = "can't tell yet", not
+  "no sets file"). Getting this wrong cost a silent session-long no-op: `Dynamic` stayed
+  `{}` and every trigger equipped nothing. `/dl instdiag` (TEMPORARY) dumps its state.
 - **Trigger files** `dlac\profiles\<active>\triggers\<JOB>.lua` (legacy fallback
   `dlac\triggers\<JOB>.lua`) — written by the Triggers tab via
   `dispatch.serializeTriggers`; hot-reloaded on content change. A broken hand-edit keeps
