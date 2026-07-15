@@ -59,6 +59,16 @@ handshake).
 - **Git:** work on `main`; `feature/storage-move` is **local-only** (never push it)
   pending GM approval. Multi-line commit messages: write to a file and `git commit -F`
   (PowerShell 5.1 mangles embedded quotes in `-m`). Do not push without being asked.
+- **Merging a branch that predates the folder move: use `-X find-renames=20%`.** Branches
+  older than the layout commit still edit the flat root paths. Git's default 50% rename
+  threshold silently fails where main also grew the file a lot since the branch forked —
+  `statdefs.lua` (24.5 KB at the fork, 52.9 KB on main) lands as a
+  `CONFLICT (modify/delete)`, and resolving it naively leaves a **stale root
+  `statdefs.lua` that nothing requires** while the branch's real edit never reaches
+  `data/statdefs.lua` — a silent no-op, not a visible break. Verified: with
+  `-X find-renames=20%` the rename is detected, the edit lands, and the merge conflicts
+  *less* than it did pre-move. After any such merge: `ls *.lua` at root — anything there
+  besides the entry point, the engine five, and PROFILE_TEMPLATE is a mis-resolved rename.
 - **Parallel sessions are normal.** Henrik runs several Claude sessions plus his own
   edits on one checkout. Before any branch switch / stash / commit: `git status` and
   re-read files you're about to edit. Never switch branches while another session's
