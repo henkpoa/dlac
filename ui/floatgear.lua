@@ -444,10 +444,12 @@ function M.render()
             end
         end);
     end
+    -- NOTHING to pop here: both vars were already popped right after Begin (line
+    -- above the grid). An extra PopStyleVar underflows ImGui's style stack, which
+    -- is not a Lua error -- it is an EXCEPTION_ACCESS_VIOLATION in Present that
+    -- takes the whole client down. Shipped exactly that in e85cc43 by adding the
+    -- second push without removing this round's older pop. Count the pushes.
     imgui.End();
-    imgui.PopStyleVar(1);        -- unconditional: End() runs whatever Begin returned,
-                                 -- and a leaked style var corrupts every OTHER addon's
-                                 -- UI, not just ours
     if ui._gfMovedAt ~= nil and os.clock() >= ui._gfMovedAt then
         ui._gfMovedAt = nil;
         ui._flagsDirty = true;
