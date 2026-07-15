@@ -18,14 +18,14 @@
 
 local wui = {};
 
-local fmt = require("dlac\\gearfmt");
+local fmt = require("dlac\\gear\\gearfmt");
 local function try(name)
     local ok, m = pcall(require, name);
     return (ok and type(m) == 'table') and m or nil;
 end
 local imgui    = try('imgui');
-local optim    = try("dlac\\gearoptim");
-local statdefs = try("dlac\\statdefs");
+local optim    = try("dlac\\gear\\gearoptim");
+local statdefs = try("dlac\\data\\statdefs");
 local hasStatdefs = statdefs ~= nil and type(statdefs.list) == 'table';
 
 local D = nil;   -- deps from gearui; editor() no-ops until configured

@@ -22,7 +22,7 @@
 
 local pm = {};
 
-local fmt = require("dlac\\gearfmt");
+local fmt = require("dlac\\gear\\gearfmt");
 local imgui = (function()
     local ok, m = pcall(require, 'imgui');
     return (ok and type(m) == 'table') and m or nil;

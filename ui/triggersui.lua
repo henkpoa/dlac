@@ -19,7 +19,7 @@ local M = {};
 
 local _iok, imgui = pcall(require, 'imgui');
 local _dpok, dsp  = pcall(require, "dlac\\dispatch");
-local _lsok, lscale = pcall(require, "dlac\\levelstats");
+local _lsok, lscale = pcall(require, "dlac\\data\\levelstats");
 local hasImgui    = _iok and imgui ~= nil;
 local hasDispatch = _dpok and type(dsp) == 'table';
 local hasLScale   = _lsok and type(lscale) == 'table';
@@ -39,7 +39,7 @@ function M.init(d)
     -- library lookup, and our trigger model. Guarded: a missing module only
     -- loses the warnings feature.
     pcall(function()
-        local gc = require("dlac\\gearcheck");
+        local gc = require("dlac\\gear\\gearcheck");
         gc.configure({ setsRoot = d.setsRoot, lookupByName = d.lookupByName,
                        model = M.currentModel });
     end);
@@ -772,7 +772,7 @@ local function autoCommit()
     -- never regenerated (hard rule 8 -- the fmtver-5 / no-filler bug).
     local goal = 'hq';
     pcall(function()
-        local cw = require('dlac\\craftwatch');
+        local cw = require('dlac\\feature\\craftwatch');
         if type(cw.getGoal) == 'function' then goal = cw.getGoal(); end
     end);
     if goal ~= 'nq' and goal ~= 'skillup' then goal = 'hq'; end
@@ -882,7 +882,7 @@ function M.rescanAutogear()
     -- Same cadence as the manifest rescan (login / job change): warn about
     -- trigger-referenced gear that is parked in storage. Signature-deduped in
     -- gearcheck, so an unchanged situation stays silent.
-    pcall(function() require("dlac\\gearcheck").chatWarn(false); end);
+    pcall(function() require("dlac\\gear\\gearcheck").chatWarn(false); end);
 end
 
 -- Is the on-disk manifest an older schema than this build writes? (craftwatch
@@ -1120,7 +1120,7 @@ local function renderAutomations(noHeader)
         if auto.view == 'craft' then
             -- Header controls (Henrik: right side, same row as the back button):
             -- crafting-mode picker + the auto-craft toggle.
-            local cwok, cw = pcall(require, 'dlac\\craftwatch');
+            local cwok, cw = pcall(require, 'dlac\\feature\\craftwatch');
             cwok = cwok and type(cw) == 'table';
             -- ONE goal variable (manifest craftGoal): adopt the saved value on
             -- first render, no mode-system round-trip, no chat.
@@ -1141,7 +1141,7 @@ local function renderAutomations(noHeader)
             imgui.SameLine(math.max(180, math.floor(winW / 2) - 118));   -- centered (no right-edge clip)
             imgui.TextColored(COL_DIM, 'Auto craft set:');
             imgui.SameLine(0, 6);
-            local cbok, craftbar = pcall(require, 'dlac\\craftbar');
+            local cbok, craftbar = pcall(require, 'dlac\\ui\\craftbar');
             if cbok and type(craftbar) == 'table' and type(craftbar.onOffSwitch) == 'function' then
                 if craftbar.onOffSwitch(on, 'panel') and cwok then cw.setEnabled(not on); end
             else
@@ -1262,7 +1262,7 @@ local function renderAutomations(noHeader)
             -- Guild key items for this craft (ownership from the 0x055 tracker).
             local cw2, kiSynced = nil, false;
             pcall(function()
-                cw2 = require('dlac\\craftwatch');
+                cw2 = require('dlac\\feature\\craftwatch');
                 kiSynced = (type(cw2.kiReady) == 'function') and cw2.kiReady() or ((cw2 and cw2.kiBlocksSeen or 0) > 0);
             end);
             -- Guild points for this craft (0x113-tracked). EVERY entry into
@@ -1396,7 +1396,7 @@ end
 -- ---------------------------------------------------------------------------
 local function renderGearWarnings(noHeader)
     local gc = nil;
-    pcall(function() gc = require("dlac\\gearcheck"); end);
+    pcall(function() gc = require("dlac\\gear\\gearcheck"); end);
     if type(gc) ~= 'table' or type(gc.auditCached) ~= 'function' then return; end
     local warns = {};
     pcall(function() warns = gc.auditCached(2) or {}; end);
@@ -2148,7 +2148,7 @@ function M.render(job, level)
     table.sort(modes);
     local warnCount = 0;
     pcall(function()
-        local gc = require("dlac\\gearcheck");
+        local gc = require("dlac\\gear\\gearcheck");
         if type(gc) == 'table' and type(gc.auditCached) == 'function' then
             warnCount = #(gc.auditCached(2) or {});
         end

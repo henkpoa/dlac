@@ -13,6 +13,42 @@ profile folder*. The design rests on a deliberate two-Lua-state split (ADR 0002)
 
 ---
 
+## Repository layout
+
+**The rule: the addon root is what LuaAshitacast sees. Folders are what only the addon sees.**
+
+```
+dlac.lua                 Ashita entry point (Ashita requires <addon>/<addon>.lua — cannot move)
+utils.lua  dispatch.lua  chatfmt.lua  profiles.lua  gear.lua
+                         ^ the SEEDED ENGINE — dlac.lua copies these into <char>\dlac\, where
+                           they load a second time inside LAC's Lua state. Flat by necessity;
+                           see "Dual identity" below before touching their paths.
+PROFILE_TEMPLATE.lua     what Setup writes into a user's <JOB>.lua
+
+ui/        imgui modules: gearui, triggersui, equippedui, profilesmenu, setupui,
+           weightsui, craftbar, uistyle, uihost, itemicons, filetex
+data/      generated / static tables: catalog, crafts, spells, abilities, statdefs,
+           levelscaling, levelstats
+gear/      the gear pipeline: gearoptim, gearimport, gearexport, gearcheck, gearfmt,
+           setmanager, profilesets, ownedcache, syncflags
+feature/   self-contained features: lockstyle, macrobook, useitem, craftwatch, augments
+lib/       generic helpers: cmdqueue
+assets/    PNGs (loaded by absolute path via AshitaCore:GetInstallPath — not by module path)
+docs/  tests/  tools/
+```
+
+Module names carry the folder: `require('dlac\\ui\\gearui')` → `addons\dlac\ui\gearui.lua`,
+because the `package.path` shim substitutes the whole name into `addons\?.lua`.
+
+Two traps when moving files or grepping module names:
+
+1. **`dlac\X` is not always a module.** The same prefix names *per-character data files* under
+   `<char>\dlac\` — `dlac\triggers`, `dlac\modestate`, `dlac\lockstyles`, `dlac\macrobooks`,
+   `dlac\craftstate`, `dlac\gearweights`, `dlac\profiles\<name>\`. Those are user state and must
+   never be folder-qualified. Note the near-misses: the `lockstyle` **module** vs the
+   `lockstyles` **data file**; `macrobook` vs `macrobooks`; `crafts` vs `craftstate`.
+2. **The engine five cannot move.** See below.
+
 ## Module reference
 
 ### dlac.lua — addon entry point
@@ -23,11 +59,15 @@ character's real `gear.lua`, seeds the library into the per-char LAC folder, pro
 Key points: `package.path` shim (dlac.lua:27-29); per-char `gear.lua` preload into
 `package.loaded['dlac\\gear']` (34-50); library seed to `<char>\dlac\` (57-76); `gData`
 shim (job/level from AshitaCore) (82-107); module load loop (111-119).
-Requires `common` and `chatfmt`, then loads `gear, augments, gearoptim, gearimport,
-gearmove, gearui`; everything else (`utils`, `dispatch`, `setmanager`, `triggersui`,
-`profilesets`, `gearcheck`) loads transitively.
-**Writes** `<char>\dlac\{utils,dispatch,chatfmt}.lua` every load; seeds
-`<char>\dlac\gear.lua` only if absent.
+Requires `common` and `chatfmt`, then loads a folder-qualified list — `gear`,
+`feature\augments`, `gear\gearoptim`, `gear\gearimport`, `gear\gearexport`,
+`feature\useitem`, `feature\craftwatch`, `ui\craftbar`, `feature\lockstyle`, `ui\gearui`;
+everything else (`utils`, `dispatch`, `gear\setmanager`, `ui\triggersui`,
+`gear\profilesets`, `gear\gearcheck`) loads transitively. That list is built by string
+concat (`'dlac\\' .. mod`), so a grep for a literal `require('dlac\\gearexport')` finds
+nothing — the loop is the only loader for some modules.
+**Writes** `<char>\dlac\{utils,dispatch,chatfmt,profiles}.lua` every load (always flat —
+see Repository layout); seeds `<char>\dlac\gear.lua` only if absent.
 
 ### utils.lua — profile-side rebuild engine
 The single `require` a migrated profile needs. Re-exports the gear inventory and the
@@ -64,14 +104,14 @@ for items the character possesses; empty in the repo (the repo copy is only the 
 Builds a `NameToObject` reverse index. Stats are NOT stored here — they derive from the
 catalog by Id at load.
 
-### catalog.lua — CatsEyeXI equipment reference (~5.8 MB, generated)
+### data/catalog.lua — CatsEyeXI equipment reference (~5.8 MB, generated)
 The full crawled equipment reference — base-truth stats for every item. Same nested
 shape as gear.lua (`Slot -> [weapon Category] -> PascalCaseKey -> {Name, Level, Id, Jobs,
 OneHanded, Type, Stats}`). Consumers flatten it into an Id index (`_allEquipById`).
 Rebuilt by `tools/apicrawl.py` (gitignored). The dispatch engine never loads it (ADR
 0004) — only the addon state does.
 
-### gearimport.lua — inventory reader + gear.lua writer
+### gear/gearimport.lua — inventory reader + gear.lua writer
 Reads owned equippable gear from Ashita memory and turns it into gear.lua entries; owns
 the scan→stage→commit pipeline, plus fix/dedupe/prune maintenance and the silent
 auto-sync.
@@ -84,7 +124,7 @@ Writes `<char>\dlac\gear_staging.lua`, `<char>\dlac\gear.lua`, rotated backups i
 `<char>\backups\`. Every write is backup + parse-checked + sandbox-validated, aborting
 untouched on failure.
 
-### gearui.lua — main GUI (host client + Sets core)
+### ui/gearui.lua — main GUI (host client + Sets core)
 The main ImGui window shell (header buttons, Setup plan popup, tab bar) plus the Sets
 machinery (working set model, auto-build, candidate pools, scoring, slot grid, stats
 panel, item tooltips). Everything else moved out behind uihost (below). gearui still
@@ -95,7 +135,7 @@ Was pinned at EXACTLY 200/200 LuaJIT main-chunk locals (compiler-verified); now 
 with `tests\smoke_ui.lua` guarding the cap. New features MUST still be born as modules —
 register a tab/window via uihost instead of adding gearui locals.
 
-### uihost.lua — UI module registry (the Trove plugin model, v40)
+### ui/uihost.lua — UI module registry (the Trove plugin model, v40)
 `host.register({name, tabs = {{label, render}}, window = {render}, invalidate})` +
 `host.provide{}`/`host.services` (ONE live table gearui fills before requiring tab
 modules — modules may capture entries at load). Registration order = tab order
@@ -114,42 +154,42 @@ gearui), **profilesmenu.lua** (the Profiles popup tree + forms; state in the sha
 table). `tests\smoke_ui.lua` headless-loads the whole chunk: 200-cap breaches,
 registration order, services contract.
 
-### triggersui.lua — Triggers tab
+### ui/triggersui.lua — Triggers tab
 GUI editor for the dispatch engine's data: rules per handler, mode toggle buttons, and
 the Automations manifest builder. Split out of gearui for the 200-local cap. Commit
 rewrites the trigger file via `dispatch.serializeTriggers` and pings the engine to
 hot-reload. Writes `<char>\dlac\triggers\<JOB>.lua` and `<char>\dlac\autogear.lua`.
 
-### profilesets.lua — profile `sets` reader
+### gear/profilesets.lua — profile `sets` reader
 Reads the loaded profile's `sets` table for the Sets tab. In LAC state reads
 `gProfile.Sets`; in addon state parses the current `<JOB>.lua` in a permissive sandbox.
 
-### setmanager.lua — `<JOB>.lua` reader/writer
+### gear/setmanager.lua — `<JOB>.lua` reader/writer
 Splices dynamic sets into `<JOB>.lua` and analyzes/repairs the dispatch handler shims —
 the write side of both Sets-tab Commit and the Setup button. Pure-text core
 (`analyzeShims`, `repairShimsText` — comment-aware since 84de48a) with file wrappers
 (`repairShims`, `commitSet`, `deleteSet`). All edits are backup + parse-checked, abort
 untouched on failure. Writes rotated backups in `<char>\backups\`.
 
-### gearoptim.lua — stat-weight optimizer
+### gear/gearoptim.lua — stat-weight optimizer
 Two read-only tools: MP-spent→potency swap advice, and a stat-weight scorer/best-set
 builder (`M.score`, `M.buildBestSet`). Purely advisory — never equips. Reads/writes
 `<char>\dlac\gearweights.lua`.
 
-### gearmove.lua — storage move engine (EXPERIMENTAL, feature/storage-move only)
+### gear/gearmove.lua — storage move engine (EXPERIMENTAL, feature/storage-move only)
 "[mv]" button + popup to move items between containers via the 0x029 packet, gated to
 Mog House / Provenance via the 0x00A LoginState gate (see
 docs/design/storage-move.md — the memory MH flag is field-falsified on CatsEyeXI).
 Addon-state only; never seeded into LAC. Single-in-flight state machine with pre-send
 re-verify and 2s timeout (server rejects silently).
 
-### gearcheck.lua — trigger-gear availability audit
+### gear/gearcheck.lua — trigger-gear availability audit
 Warns when a trigger-referenced set uses gear that isn't in an equippable bag ("set
 Tp_Default uses Kraken Club in Main — it is in Mog Safe"). Fires on job change, after
 moves, `/dl gearcheck`, and renders a Triggers-tab warnings section. Deliberately
 self-contained so it can be cherry-picked to main independently of gearmove.
 
-### augments.lua — CatsEyeXI augment decoder
+### feature/augments.lua — CatsEyeXI augment decoder
 Decodes private augments from an item's `Extra` bytes (`id = word & 0x7FF; magnitude =
 (word>>11)+1`) into stat deltas and readable labels. `AUG_STATS` (summable) vs `AUG_NAME`
 (display); non-linear ids are deliberately display-only. Authority for id meanings:
@@ -157,18 +197,18 @@ CatsEyeXI's own `enum_augment_name` (private server repo — never commit it) > 
 `augments.sql` > wiki. Six ids (136, 163, 205, 214, 219, 256) are undefined no-op gaps —
 do not chase them. Writes `<char>\dlac\augdump.txt`.
 
-### statdefs.lua — stat metadata registry
+### data/statdefs.lua — stat metadata registry
 Single source of truth for stat presentation/weighting: key, label, section, percent,
 lowerBetter, aliases (~178 entries, 7 sections). Presentation only — **no server mod-ids**
 (those stay in gitignored `tools/`). `M.canon()` resolves aliases to canonical keys
 (PDT/MDT/DT/MDMG/MAB/MACC are canonical; descriptive forms are aliases).
 
-### levelscaling.lua / levelstats.lua — level-scaling data + resolver
+### data/levelscaling.lua / data/levelstats.lua — level-scaling data + resolver
 Generated map of item Id → additive threshold rows from the server's `item_latents`
 (31 items: Rajas/Tamas/Sattva etc.), and the resolver that applies them at display/
 scoring time. The dispatch engine never needs it — the game applies real latents.
 
-### spells.lua / abilities.lua — picker databases (generated)
+### data/spells.lua / data/abilities.lua — picker databases (generated)
 Per-job spell/ability acquisition-level tables from CatsEyeXI's public server SQL, for
 the Triggers-tab "usable now" browse lists (milestone M4). **Not yet required by any
 module** — wiring is open issue #12. Generated by `tools/gen_pickerdb.py`. Known: ~40
@@ -209,6 +249,16 @@ Two Lua states load the same files for different jobs:
   `package.path`, so the same `require("dlac\\X")` resolves to `addons/dlac/X.lua`.
   `inLac()` is false → `dispatch.dispatch()` no-ops. The addon preloads the character's
   real gear.lua and installs a `gData` shim so shared modules work standalone.
+
+**Why the engine five stay flat at the repo root** (`utils`, `dispatch`, `chatfmt`,
+`profiles`, `gear`): a single `require("dlac\\profiles")` line inside `dispatch.lua` has to
+resolve in *both* states — to `addons\dlac\profiles.lua` in the addon, and to
+`<char>\dlac\profiles.lua` under LAC. Same relative path, two roots. Folder-qualifying them
+in the repo would therefore force the seeded copies into a matching subfolder, and
+`require("dlac\\utils")` is **published API**: it is line 26 of PROFILE_TEMPLATE.lua and sits
+in every hand-written user profile. Moving it breaks those profiles for a purely cosmetic
+gain, in the one code path that runs on every job change. Everything the addon alone loads is
+free to live in a folder; these five are not.
 
 Cross-state coordination is **by files**: the LAC engine mirrors mode/lock state and its
 `VERSION` to `<char>\dlac\modestate.lua`; the GUI reads it and shows a red "Reload LAC"

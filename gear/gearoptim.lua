@@ -42,7 +42,7 @@
 local gear = require("dlac\\gear");
 -- Level-scaling stats (Rajas/Tamas/Sattva etc.): rank slots on the EFFECTIVE stats
 -- for the build level, not the catalog's flat base. Guarded: absent module = no-op.
-local _lsok, lscale = pcall(require, "dlac\\levelstats");
+local _lsok, lscale = pcall(require, "dlac\\data\\levelstats");
 local hasLScale = _lsok and type(lscale) == 'table';
 
 -- Colored [dlac] chat output (chatfmt): the shadowed `print` re-heads

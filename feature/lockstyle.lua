@@ -33,7 +33,7 @@ local M = {};
 local _iok, imgui = pcall(require, 'imgui');
 local hasImgui = _iok and imgui ~= nil;
 local _gok, gear = pcall(require, 'dlac\\gear');
-local _pok, profsets = pcall(require, 'dlac\\profilesets');
+local _pok, profsets = pcall(require, 'dlac\\gear\\profilesets');
 local _pfok, profiles = pcall(require, 'dlac\\profiles');
 _pfok = _pfok and type(profiles) == 'table';
 

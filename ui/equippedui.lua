@@ -12,19 +12,19 @@
     used (eqSelected, altSearch, freeEquip, lockEquipped, search, slot, ...).
 ]]--
 
-local host  = require("dlac\\uihost");
-local icons = require("dlac\\itemicons");
-local fmt   = require("dlac\\gearfmt");
-local cmdq  = require("dlac\\cmdqueue");
-local owned = require("dlac\\ownedcache");
+local host  = require("dlac\\ui\\uihost");
+local icons = require("dlac\\ui\\itemicons");
+local fmt   = require("dlac\\gear\\gearfmt");
+local cmdq  = require("dlac\\lib\\cmdqueue");
+local owned = require("dlac\\gear\\ownedcache");
 
 local function try(name)
     local ok, m = pcall(require, name);
     return (ok and type(m) == 'table') and m or nil;
 end
 local imgui    = try('imgui');
-local aug      = try("dlac\\augments");
-local statdefs = try("dlac\\statdefs");
+local aug      = try("dlac\\feature\\augments");
+local statdefs = try("dlac\\data\\statdefs");
 
 local S = host.services;
 -- Stable shared tables/constants, captured once (gearui provides before it

@@ -29,11 +29,11 @@ local function printerr(s) if _cfok then _cfmt.err(s); else print('[dlac] ' .. s
 
 local gok, gear = pcall(require, 'dlac\\gear');
 if not gok or type(gear) ~= 'table' then gear = {}; end
-local hasCatalog, catalog = pcall(require, 'dlac\\catalog');
+local hasCatalog, catalog = pcall(require, 'dlac\\data\\catalog');
 hasCatalog = hasCatalog and type(catalog) == 'table';
-local haok, aug = pcall(require, 'dlac\\augments');
+local haok, aug = pcall(require, 'dlac\\feature\\augments');
 haok = haok and type(aug) == 'table';
-local hook, ownedc = pcall(require, 'dlac\\ownedcache');
+local hook, ownedc = pcall(require, 'dlac\\gear\\ownedcache');
 hook = hook and type(ownedc) == 'table';
 
 -- The gear table's slot categories, in equipment order (also the export order).

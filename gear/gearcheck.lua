@@ -27,7 +27,7 @@ local EQUIPPABLE = { [0] = true, [8] = true, [10] = true, [11] = true, [12] = tr
                      [13] = true, [14] = true, [15] = true, [16] = true };
 
 local function ownedInfo()
-    local ok, gi = pcall(require, "dlac\\gearimport");
+    local ok, gi = pcall(require, "dlac\\gear\\gearimport");
     if not ok or type(gi) ~= 'table' or type(gi.ownedSplit) ~= 'function' then return nil, nil; end
     local ok2, split = pcall(gi.ownedSplit);
     if not ok2 or type(split) ~= 'table' then return nil, nil; end

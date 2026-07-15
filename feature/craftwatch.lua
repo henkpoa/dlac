@@ -64,7 +64,7 @@ function M.decode(data)
 end
 
 -- Recipe database (bundled; absence degrades to every synth reading 'unknown').
-local _dbok, _db = pcall(require, 'dlac\\crafts');
+local _dbok, _db = pcall(require, 'dlac\\data\\crafts');
 if not _dbok or type(_db) ~= 'table' then _db = {}; end
 function M.setDb(db) _db = db or {}; end            -- test seam
 
@@ -424,7 +424,7 @@ local function ensureManifestFresh()
     local first = not M._craftRescanned;
     M._craftRescanned = true;
     pcall(function()
-        local tg = require('dlac\\triggersui');
+        local tg = require('dlac\\ui\\triggersui');
         if type(tg.rescanAutogear) ~= 'function' then return; end
         -- ALWAYS regenerate on the first call this session (guarantees the
         -- current AUTO_FMT ladders even if manifestStale errors); after that,

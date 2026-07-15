@@ -27,10 +27,10 @@
 
 local gear = require("dlac\\gear");
 local bit  = require('bit');
-local host = require("dlac\\uihost");   -- UI module registry: tabs/windows/services
-local sf   = require("dlac\\syncflags");-- auto-sync + persisted flags (sf.flags.debug/.autosync)
-local wui  = require("dlac\\weightsui");-- stat-weights editor (Sets panel + floating window)
-local pmenu = require("dlac\\profilesmenu");   -- Profiles popup (tree + clone/rename/delete forms)
+local host = require("dlac\\ui\\uihost");   -- UI module registry: tabs/windows/services
+local sf   = require("dlac\\gear\\syncflags");-- auto-sync + persisted flags (sf.flags.debug/.autosync)
+local wui  = require("dlac\\ui\\weightsui");-- stat-weights editor (Sets panel + floating window)
+local pmenu = require("dlac\\ui\\profilesmenu");   -- Profiles popup (tree + clone/rename/delete forms)
 
 -- Guarded require: the module table, or nil when the lib is missing (or not a
 -- table). A missing lib degrades gracefully (no window / no icons) instead of
@@ -50,24 +50,24 @@ end)();
 -- Shared libs live in Ashita\addons\libs and are require-able from a profile the
 -- same way gearimport requires 'encoding'.
 local imgui = try('imgui');
-local optim = try("dlac\\gearoptim");
+local optim = try("dlac\\gear\\gearoptim");
 -- Full CatsEyeXI equipment reference (1306 items), same nested shape as gear.lua.
 -- Powers the "All Equipment" browse tab only; falls back to gear.lua if missing.
-local catalog = try("dlac\\catalog");
+local catalog = try("dlac\\data\\catalog");
 -- Dynamic-set writer (commit/delete a set into the <JOB>.lua file). Sets tab only.
-local setmgr = try("dlac\\setmanager");
+local setmgr = try("dlac\\gear\\setmanager");
 -- Augment reader: decode private augments from item Extra bytes (worn-stat totals).
-local aug = try("dlac\\augments");
+local aug = try("dlac\\feature\\augments");
 -- Level-scaling stats (Rajas/Tamas/Sattva etc.): effective stats per level.
-local lscale = try("dlac\\levelstats");
+local lscale = try("dlac\\data\\levelstats");
 -- Window theme (partyfinder-matched palette), pushed around the whole draw.
-local style = try("dlac\\uistyle");
+local style = try("dlac\\ui\\uistyle");
 -- Per-job macro book/set (header "Macro" button; applied on login/job change)
 -- and enchanted travel items (header "Teleports" dropdown; same module the
 -- /dl w|p|t commands live in -- require returns the already-loaded instance).
-local macrob = try("dlac\\macrobook");
+local macrob = try("dlac\\feature\\macrobook");
 local useit = (function()
-    local m = try("dlac\\useitem");
+    local m = try("dlac\\feature\\useitem");
     return (m ~= nil and type(m.menu) == 'function') and m or nil;
 end)();
 
@@ -193,7 +193,7 @@ pmenu.configure({ ui = ui, COL = COL });   -- Profiles popup state lives in the 
 -- loader). icons.renderIcon / icons.handleOf / icons.drawElementWheel /
 -- icons.release; every entry point degrades to a no-op without d3d/imgui.
 -- ---------------------------------------------------------------------------
-local icons = require("dlac\\itemicons");
+local icons = require("dlac\\ui\\itemicons");
 
 -- ---------------------------------------------------------------------------
 -- Flatten any gear-shaped table (gear.lua OR catalog.lua -- identical structure)
@@ -328,7 +328,7 @@ end
 -- stay here. gearfmt's live deps (effStats, owned.counts) are injected further
 -- down, next to the owned-cache refresh helper.
 -- ---------------------------------------------------------------------------
-local fmt = require("dlac\\gearfmt");
+local fmt = require("dlac\\gear\\gearfmt");
 
 -- Eligibility (the single source of truth for every candidate / alternatives /
 -- "usable now" list): Jobs contains the current MAIN or SUPPORT job -- or Jobs is
@@ -480,7 +480,7 @@ local function invalidateCandidates() candCache.key = nil; end
 -- curated DB and can list items you no longer own (e.g. a base "Garrison Sallet"
 -- when you only have the +1). Safe fallback: if the live scan returns nothing
 -- (inventory manager unavailable / char select), nothing is hidden.
-local owned = require("dlac\\ownedcache");
+local owned = require("dlac\\gear\\ownedcache");
 
 local function weightsActive()
     if not has.optim or optim.getWeights == nil then return false; end
@@ -612,7 +612,7 @@ end
 -- 200-local cap again). cmdq.tick() runs every d3d_present so it never blocks;
 -- cmdq.frame() is the shared frame clock the per-frame logic below reads.
 -- ---------------------------------------------------------------------------
-local cmdq = require("dlac\\cmdqueue");
+local cmdq = require("dlac\\lib\\cmdqueue");
 
 local function lacSlot(label) return string.lower(tostring(label or '')); end
 
@@ -885,7 +885,7 @@ local function renderItemTooltip(rec)
             if w ~= nil then
                 local locs = '';
                 pcall(function()
-                    local okm, mod = pcall(require, "dlac\\gearimport");
+                    local okm, mod = pcall(require, "dlac\\gear\\gearimport");
                     if not okm or type(mod.containerName) ~= 'function' then return; end
                     local parts = {};
                     for cid, n in pairs(w) do
@@ -917,7 +917,7 @@ end
 -- gearimport module (header Stage / Commit / Scan buttons).
 -- ---------------------------------------------------------------------------
 local function callImport(fn)
-    local ok, mod = pcall(require, "dlac\\gearimport");
+    local ok, mod = pcall(require, "dlac\\gear\\gearimport");
     if ok and mod ~= nil and type(mod[fn]) == 'function' then
         local ok2, ret = pcall(mod[fn]);
         return ok2 and ret or nil;
@@ -998,7 +998,7 @@ end
 -- Setup / migration machinery: own module (dlac\setupui.lua). It gets the
 -- file/profile helpers once (the profilesets.configure precedent); the Setup
 -- button + plan popup below still render here and call setup.*.
-local setup = require("dlac\\setupui");
+local setup = require("dlac\\ui\\setupui");
 setup.configure({
     charBase = charBase, jobFile = jobFile,
     readFileText = readFileText, writeFileText = writeFileText,
@@ -1155,20 +1155,20 @@ local function renderHeaderButtons()
     do   -- lockstyle window toggle (Henrik's armor icon; left of the Macro book)
         btns[#btns+1] = { w = 26,
           render = function()
-              local h = nil; pcall(function() h = require('dlac\\filetex').handle('lockstyle'); end);
+              local h = nil; pcall(function() h = require('dlac\\ui\\filetex').handle('lockstyle'); end);
               local clicked = false;
               if h ~= nil then pcall(function() clicked = imgui.ImageButton(h, { 16, 16 }); end);
               else clicked = imgui.Button('LS##hdrls', { 26, 22 }); end
               if imgui.IsItemHovered() then
                   imgui.SetTooltip('Lockstyle boxes -- 30 saved looks PER JOB, applied through LuaAshitacast.\nSave the marked box, import old static lockstyle sets, and\n"OnLoad Lockstyle" re-applies it on every login / job change.');
               end
-              if clicked then pcall(function() require('dlac\\lockstyle').open(); end); end
+              if clicked then pcall(function() require('dlac\\feature\\lockstyle').open(); end); end
           end };
     end
     if macrob ~= nil then
         btns[#btns+1] = { w = 26,   -- small book icon (matches the warp button size)
           render = function()
-              local h = nil; pcall(function() h = require('dlac\\filetex').handle('macrobook'); end);
+              local h = nil; pcall(function() h = require('dlac\\ui\\filetex').handle('macrobook'); end);
               local clicked = false;
               if h ~= nil then pcall(function() clicked = imgui.ImageButton(h, { 16, 16 }); end);
               else clicked = imgui.Button(macrob.label() .. '##hdrmb', { 26, 22 }); end
@@ -1181,7 +1181,7 @@ local function renderHeaderButtons()
     do   -- craft bar toggle (small helmet icon, warp-button size)
         btns[#btns+1] = { w = 26,
           render = function()
-              local h = nil; pcall(function() h = require('dlac\\filetex').handle('craftbar'); end);
+              local h = nil; pcall(function() h = require('dlac\\ui\\filetex').handle('craftbar'); end);
               local clicked = false;
               if h ~= nil then pcall(function() clicked = imgui.ImageButton(h, { 16, 16 }); end);
               else clicked = imgui.Button('Cft##hdrcb', { 26, 22 }); end
@@ -1189,7 +1189,7 @@ local function renderHeaderButtons()
                   imgui.SetTooltip('Craft bar -- pick a craft + goal and switch it on to wear that craft\'s\ngear (skill / HQ / NQ). Toggle this floating bar; also /dl craft bar.');
               end
               if clicked then
-                  pcall(function() local cw = require('dlac\\craftwatch'); cw.barVisible = not (cw.barVisible == true); end);
+                  pcall(function() local cw = require('dlac\\feature\\craftwatch'); cw.barVisible = not (cw.barVisible == true); end);
               end
           end };
     end
@@ -1430,7 +1430,7 @@ local function renderHeaderButtons()
                 pcall(function()
                     local prof = require('dlac\\profiles');
                     local done = prof.migrate(true, function(s) pcall(print, s); end);
-                    pcall(function() require('dlac\\profilesets').invalidate(); end);
+                    pcall(function() require('dlac\\gear\\profilesets').invalidate(); end);
                     _setupState = nil;   -- drop the jobSetupState cache
                     if done ~= nil and done > 0 then
                         _augStatus = string.format('Migrated %d job file(s) -- originals in backups\\pre-profiles\\ (details in chat). Reloading LuaAshitacast...', done);
@@ -1516,7 +1516,7 @@ end
 -- with -- the 4x4 grid above, item icons/tooltips, and the catalog lookup.
 -- Function-scoped require: no new chunk local.
 pcall(function()
-    require('dlac\\lockstyle').wire{
+    require('dlac\\feature\\lockstyle').wire{
         slotGrid = renderSlotGrid,
         icon     = icons.renderIcon,
         tooltip  = renderItemTooltip,
@@ -1533,7 +1533,7 @@ local STATS_W   = 250;   -- left stats panel width (name column + value column)
 -- unlisted stats fall under "Other".
 -- statdefs: the central stat registry (label / section / aliases). Used by the weights
 -- picker (so aliases are searchable) and, over time, the other stat tables below. Guarded.
-local statdefs = try("dlac\\statdefs");
+local statdefs = try("dlac\\data\\statdefs");
 has.statdefs = statdefs ~= nil and type(statdefs.list) == 'table';
 
 -- Item-search matching shared by the pickers: comma-separated terms, ALL required
@@ -1763,7 +1763,7 @@ end
 -- gearui's main chunk is at LuaJIT's 200-local cap, so cohesive clusters get their
 -- own module (same pattern as triggersui). It reads gProfile.Sets / a global `sets`,
 -- falling back to sandbox-running the job file on disk; jobFile is injected once.
-local profsets = require("dlac\\profilesets");
+local profsets = require("dlac\\gear\\profilesets");
 profsets.configure({ jobFile = jobFile });
 
 -- ---------------------------------------------------------------------------
@@ -1777,7 +1777,7 @@ local trigui;
 local _modeSetRefs;   -- assigned after modeSetRefs (defined with the Sets machinery below);
                       -- the trigui deps closure above it must not capture a global
 do
-    local ok, m = pcall(require, "dlac\\triggersui");
+    local ok, m = pcall(require, "dlac\\ui\\triggersui");
     if ok and type(m) == 'table' then
         trigui = m;
         pcall(trigui.init, {
@@ -2956,7 +2956,7 @@ host.provide({
     renderSortCombo = renderSortCombo, renderItemTooltip = renderItemTooltip,
 });
 do
-    local ok, err = pcall(require, "dlac\\equippedui");   -- self-registers its two tabs
+    local ok, err = pcall(require, "dlac\\ui\\equippedui");   -- self-registers its two tabs
     if not ok then
         pcall(function() print('[dlac] equippedui failed to load: ' .. tostring(err)); end);
     end
@@ -3100,7 +3100,7 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
     if ui._flagsDirty then ui._flagsDirty = nil; pcall(sf.saveUiFlags); end
     pcall(sf.tick);
     if macrob ~= nil then pcall(macrob.pump); end   -- per-job macro book/set (login + job change)
-    pcall(function() require('dlac\\lockstyle').pump(); end);   -- OnLoad lockstyle (login + job change)
+    pcall(function() require('dlac\\feature\\lockstyle').pump(); end);   -- OnLoad lockstyle (login + job change)
     if ui.showMetrics == true and has.imgui then       -- /dl metrics: overlay hunter
         pcall(function() imgui.ShowMetricsWindow(ui.metricsOpen); end);
         if ui.metricsOpen ~= nil and ui.metricsOpen[1] == false then ui.showMetrics = false; end
@@ -3186,7 +3186,7 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
     -- function-scoped require -- no new chunk local (hard rule 1).
     if has.imgui then
         local lsMod = nil;
-        pcall(function() lsMod = require('dlac\\lockstyle'); end);
+        pcall(function() lsMod = require('dlac\\feature\\lockstyle'); end);
         if lsMod ~= nil and lsMod.visible == true then
             local lsThemed = style ~= nil and style.push();
             pcall(lsMod.render);

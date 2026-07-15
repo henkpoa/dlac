@@ -107,6 +107,16 @@ handshake).
    (the augment enum, `tools/`) must never be committed.
 10. **The GUI is the product.** Nothing may force a player to open a Lua file. Player
     code is never deleted or uncommented — migration is append-only.
+11. **The addon root is what LAC sees; folders are what only the addon sees.** Modules are
+    folder-qualified (`require('dlac\\ui\\gearui')`), EXCEPT the five seeded engine files at
+    root — `utils`, `dispatch`, `chatfmt`, `profiles`, `gear`. They are copied into
+    `<char>\dlac\` and load in LAC's state too, so one require line must resolve under two
+    roots; and `require("dlac\\utils")` is published API in every user profile. Never
+    folder-qualify them. Corollary when grepping/moving: `dlac\X` is **not always a module**
+    — `dlac\triggers`, `dlac\modestate`, `dlac\lockstyles`, `dlac\macrobooks`,
+    `dlac\craftstate`, `dlac\gearweights`, `dlac\profiles\<name>\` are per-character DATA.
+    Watch the near-misses: module `lockstyle` vs data `lockstyles`; `macrobook` vs
+    `macrobooks`; `crafts` vs `craftstate`. See architecture.md "Repository layout".
 
 ## Working with Henrik
 

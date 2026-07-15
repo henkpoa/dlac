@@ -19,8 +19,8 @@ local M = {};
 
 local _iok, imgui = pcall(require, 'imgui');
 if not _iok then return M; end
-local cw = require('dlac\\craftwatch');
-local _uok, uistyle = pcall(require, 'dlac\\uistyle');
+local cw = require('dlac\\feature\\craftwatch');
+local _uok, uistyle = pcall(require, 'dlac\\ui\\uistyle');
 _uok = _uok and type(uistyle) == 'table';
 
 local ORDER = { 'Woodworking', 'Smithing', 'Goldsmithing', 'Clothcraft',

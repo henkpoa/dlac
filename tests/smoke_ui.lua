@@ -13,13 +13,14 @@
 -- ---------------------------------------------------------------------------
 -- environment stubs (the run_tests.lua pattern; must exist BEFORE any require)
 -- ---------------------------------------------------------------------------
--- Resolve require('dlac\\X') to .\X.lua regardless of where the checkout lives
+-- Resolve require('dlac\\ui\\X') to .\ui\X.lua regardless of where the checkout lives
 -- (a plain '..\?.lua' path only works when the repo sits at Ashita\addons\dlac --
--- it broke in a git-worktree verification run).
+-- it broke in a git-worktree verification run). The '\' -> '/' swap keeps the folder-
+-- qualified module names loadable off Windows too, where '\' is not a separator.
 table.insert(package.searchers or package.loaders, 1, function(name)
     local rel = name:match('^dlac\\(.+)$');
     if rel == nil then return nil; end
-    local chunk = loadfile(rel .. '.lua');
+    local chunk = loadfile((rel:gsub('\\', '/')) .. '.lua');
     if chunk == nil then return nil; end
     return chunk;
 end);
@@ -50,7 +51,7 @@ end
 -- ---------------------------------------------------------------------------
 -- 1. the whole UI chunk must LOAD headlessly
 -- ---------------------------------------------------------------------------
-local ok, gearui = pcall(require, 'dlac\\gearui');
+local ok, gearui = pcall(require, 'dlac\\ui\\gearui');
 check('S1 gearui loads headless', ok, true);
 if not ok then
     print('gearui load error: ' .. tostring(gearui));
@@ -62,7 +63,7 @@ check('S2 gearui returns module table', type(gearui), 'table');
 -- ---------------------------------------------------------------------------
 -- 2. uihost registry: every tab present, in the canonical order
 -- ---------------------------------------------------------------------------
-local host = require('dlac\\uihost');
+local host = require('dlac\\ui\\uihost');
 check('S3 equipped module registered', host.get('equipped') ~= nil, true);
 check('S4 sets module registered',     host.get('sets') ~= nil, true);
 check('S5 triggers module registered', host.get('triggers') ~= nil, true);

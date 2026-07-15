@@ -8,7 +8,14 @@
 
     The library modules still use the profile-style "dlac\\X" require prefix, so we add
     <install>/addons/?.lua to package.path -- that makes require("dlac\\X") resolve to
-    addons/dlac/X.lua here in the addon's Lua state.
+    addons/dlac/X.lua here in the addon's Lua state. X carries the folder, so
+    require("dlac\\ui\\gearui") lands on addons/dlac/ui/gearui.lua.
+
+    LAYOUT (docs/architecture.md "Repository layout"): the addon root is what LAC sees --
+    this entry point plus the five seeded engine files (utils, dispatch, chatfmt, profiles,
+    gear) that the seeder below copies into <char>\dlac\ and LAC loads in its own state.
+    Those five must stay flat: require("dlac\\utils") is published API in every user
+    profile. Everything only the addon loads lives in ui\ / data\ / gear\ / feature\ / lib\.
 
     WIP: the GUI still reads a little data from LuaAshitacast globals (gData = player
     job/level, gProfile.Sets = the Sets tab). Those are being decoupled to AshitaCore +
@@ -129,9 +136,14 @@ end
 
 -- Load the library. Each module registers its own /dl command(s); gearui also registers
 -- the GUI render hook. Guarded so one module failing can't take the addon down.
+-- Paths are folder-qualified (see the LAYOUT note at the top of this file): only the
+-- seeded engine sits flat at the addon root, everything else lives under ui\ / gear\ /
+-- feature\. Built by concat, so these names are invisible to a literal require() grep.
 local _cfok, _cfmt = pcall(require, 'dlac\\chatfmt');
 _cfok = _cfok and type(_cfmt) == 'table';
-for _, mod in ipairs({ 'gear', 'augments', 'gearoptim', 'gearimport', 'gearexport', 'useitem', 'craftwatch', 'craftbar', 'lockstyle', 'gearui' }) do
+for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\gearimport',
+                       'gear\\gearexport', 'feature\\useitem', 'feature\\craftwatch',
+                       'ui\\craftbar', 'feature\\lockstyle', 'ui\\gearui' }) do
     local ok, err = pcall(require, 'dlac\\' .. mod);
     if not ok then
         local m = string.format('failed to load %s: %s', mod, tostring(err));

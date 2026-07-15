@@ -22,12 +22,12 @@
 
 local sf = {};
 
-local cmdq = require("dlac\\cmdqueue");
+local cmdq = require("dlac\\lib\\cmdqueue");
 local function try(name)
     local ok, m = pcall(require, name);
     return (ok and type(m) == 'table') and m or nil;
 end
-local optim = try("dlac\\gearoptim");
+local optim = try("dlac\\gear\\gearoptim");
 local print = (function()
     local m = try('dlac\\chatfmt');
     return (m ~= nil and type(m.print) == 'function') and m.print or print;

@@ -18,7 +18,7 @@
 
 local M = {};
 
-local _ok, DATA = pcall(require, "dlac\\levelscaling");
+local _ok, DATA = pcall(require, "dlac\\data\\levelscaling");
 if not _ok or type(DATA) ~= 'table' then DATA = {}; end
 
 -- Does this item scale with level at all?

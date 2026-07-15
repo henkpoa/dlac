@@ -20,7 +20,7 @@ function M.counts()   -- AVAIL map (equip-correct: pairing, DW, automations)
     if _ownedCounts ~= nil then return _ownedCounts.avail; end
     local split = { avail = {}, total = {} };
     pcall(function()
-        local ok, mod = pcall(require, "dlac\\gearimport");
+        local ok, mod = pcall(require, "dlac\\gear\\gearimport");
         if ok and mod ~= nil and type(mod.ownedSplit) == 'function' then
             local s = mod.ownedSplit();
             if type(s) == 'table' and type(s.avail) == 'table' then split = s; end

@@ -19,7 +19,7 @@ local function try(name)
     local ok, m = pcall(require, name);
     return (ok and type(m) == 'table') and m or nil;
 end
-local setmgr = try("dlac\\setmanager");
+local setmgr = try("dlac\\gear\\setmanager");
 local print = (function()
     local m = try('dlac\\chatfmt');
     return (m ~= nil and type(m.print) == 'function') and m.print or print;

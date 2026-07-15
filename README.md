@@ -114,6 +114,22 @@ state, with a reading order. Then: [CONTEXT.md](CONTEXT.md) (glossary),
 spec), and [docs/history.md](docs/history.md) (session journal â€” including the
 dead-ends worth not retrying). dlac is CatsEyeXI-only by design (ADR 0001).
 
+**Repository layout** (full version: [docs/architecture.md](docs/architecture.md)):
+the addon root is what LuaAshitacast sees, folders are what only the addon sees.
+
+| Path | What lives there |
+| --- | --- |
+| root | `dlac.lua` (entry) + the seeded engine: `utils`, `dispatch`, `chatfmt`, `profiles`, `gear` |
+| `ui/` | imgui modules (`gearui`, `triggersui`, `uihost`, ...) |
+| `data/` | generated/static tables (`catalog`, `crafts`, `statdefs`, ...) |
+| `gear/` | the gear pipeline (`gearimport`, `gearoptim`, `setmanager`, ...) |
+| `feature/` | self-contained features (`lockstyle`, `craftwatch`, `useitem`, ...) |
+| `lib/` | generic helpers (`cmdqueue`) |
+
+The five engine files at root are copied into each character's `<char>\dlac\` folder and
+load a second time inside LuaAshitacast's Lua state, so they cannot move into a subfolder:
+`require("dlac\\utils")` is published API in every user profile.
+
 ## License
 
 MIT â€” see [LICENSE](LICENSE). dlac works alongside LuaAshitacast but does not bundle it.

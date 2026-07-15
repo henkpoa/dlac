@@ -150,7 +150,7 @@ check('C5 DW on: weapon beats catalog shield', sCat.WS and sCat.WS.Sub, 'Joyeuse
 --    carries a trailing "-- comment" (hand-annotated legacy entries). Field-
 --    verified: 25 such entries in a real gear.lua were invisible to /dl prune.
 -- ---------------------------------------------------------------------------
-local gearimport = dofile('gearimport.lua');
+local gearimport = dofile('gear/gearimport.lua');
 local fixtureGear = table.concat({
     'gear = {',
     '    Main = {',
@@ -234,7 +234,7 @@ check('E6 idempotent second pass',   #eRep2.fixed, 0);
 --    them), not 'unparsable' (Setup gave up with "no changes needed" while the
 --    banner stayed red). Field case: Mindie's BLU.lua / COR.lua.
 -- ---------------------------------------------------------------------------
-local setmgr = dofile('setmanager.lua');
+local setmgr = dofile('gear/setmanager.lua');
 local fProfile = table.concat({
     'local profile = {};',
     'local utils = require("dlac\\\\utils");',
@@ -368,7 +368,7 @@ check('G12 past maxLevel: banded item takes over', gMax.TP and gMax.TP.Body, 'La
 --    budget to the piece that brings the most ALONGSIDE it, prefer EMPTY on
 --    ties, and respect paired-slot conflicts.
 -- ---------------------------------------------------------------------------
-local optim = dofile('gearoptim.lua');
+local optim = dofile('gear/gearoptim.lua');
 local W = {
     Haste      = { perUnit = 100, cap = 5 },
     SwordSkill = { perUnit = 2 },
@@ -482,8 +482,8 @@ check('K7 nil-safe',               dispatchM.mpPick(nil, 74), nil);
 --    ranking, the automation manifests -- resolves item stats through this one
 --    function, so no section values a scaling item at its base stats.
 -- ---------------------------------------------------------------------------
-package.loaded['dlac\\levelscaling'] = dofile('levelscaling.lua');
-local lstats = dofile('levelstats.lua');
+package.loaded['dlac\\data\\levelscaling'] = dofile('data/levelscaling.lua');
+local lstats = dofile('data/levelstats.lua');
 local tamas = { Name = 'Tamas Ring', Id = 15545, Level = 30,
                 Stats = { MP = 15, INT = 2, MND = 2, Enmity = -3 } };
 check('L1 Tamas MP at Lv74',       lstats.effective(tamas, 74).MP, 29);
@@ -600,17 +600,17 @@ check('S3 rule serializes', stext:find([[contains = "Predator"]], 1, true) ~= ni
 --    Layout per XiPackets GP_CLI_COMMAND_COMBINE_ASK: Crystal u16 @0x06,
 --    Items u8 @0x09, ItemNo[8] u16 @0x0A.
 -- ---------------------------------------------------------------------------
-package.loaded['dlac\\crafts'] = {
+package.loaded['dlac\\data\\crafts'] = {
     ['4096:1165,1165'] = { skill = 'Alchemy', lv = 60 },
     ['4096:640,650']   = { skill = 'Smithing', lv = 10, desynth = true },
 };
 -- auto-equip deps, stubbed: a profile with a Craft_Alchemy set + a recording cmdqueue
 local craftCmds = {};
-package.loaded['dlac\\cmdqueue'] = {
+package.loaded['dlac\\lib\\cmdqueue'] = {
     enqueue = function(delay, cmd) craftCmds[#craftCmds + 1] = cmd; end,
     frame = function() return 0; end, tick = function() end,
 };
-package.loaded['dlac\\profilesets'] = {
+package.loaded['dlac\\gear\\profilesets'] = {
     getSetsRoot = function()
         return { Dynamic = {
             Craft_Alchemy = {
@@ -623,7 +623,7 @@ package.loaded['dlac\\profilesets'] = {
         } };
     end,
 };
-local craftwatch = dofile('craftwatch.lua');
+local craftwatch = dofile('feature/craftwatch.lua');
 
 check('T1 key sorts ingredients', craftwatch.key(4096, { 650, 640 }), '4096:640,650');
 
@@ -763,7 +763,7 @@ check('U3 missing name flattens empty, no error', sMiss.Idle and sMiss.Idle.Main
 -- T. deleteStaticSetText: removes a direct child of the sets ROOT (a legacy
 --    static set), never the Dynamic block, never nested lookalikes.
 -- ---------------------------------------------------------------------------
-local setmgrT = dofile('setmanager.lua');
+local setmgrT = dofile('gear/setmanager.lua');
 local statFix = table.concat({
     'local sets = {',
     '    Dynamic = {',
@@ -1055,7 +1055,7 @@ check('Y33 headless migrate says why', #said > 0 and said[1]:find('log in first'
 --    BUCKETS -- both shapes; catalog gap-fill with owned-override precedence;
 --    augments attached by id).
 -- ---------------------------------------------------------------------------
-local gx = dofile('gearexport.lua');
+local gx = dofile('gear/gearexport.lua');
 check('Z1 json escapes quotes/backslash/newline', gx.jsonEncode('a"b\\c\n'), '"a\\"b\\\\c\\n"');
 check('Z2 scalar array stays inline', gx.jsonEncode({ 1, -5, 'x', true }), '[1, -5, "x", true]');
 check('Z3 object keys sorted', gx.jsonEncode({ b = 1, a = 2 }), '{\n  "a": 2,\n  "b": 1\n}');
@@ -1330,7 +1330,7 @@ check('AG8 empty box says so', select(2, dispatchM._lockstyleFrom(lsT, 9)), 'loc
 check('AG9 no file/table says so', select(2, dispatchM._lockstyleFrom(nil)), 'no lockstyle sets saved yet');
 
 -- serializer round-trip (lockstyle.lua is addon-state UI but its serializer is pure)
-local lockstyleM = dofile('lockstyle.lua');
+local lockstyleM = dofile('feature/lockstyle.lua');
 local lsText = lockstyleM._serialize(lsT);
 local lsChunk = (loadstring or load)(lsText);
 check('AG10 serialized file parses', lsChunk ~= nil, true);

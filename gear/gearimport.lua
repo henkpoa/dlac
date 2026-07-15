@@ -1205,7 +1205,7 @@ function M.fix()
     -- Guarded: without the catalog, fix behaves exactly as before.
     local metaById = {};
     pcall(function()
-        local cat = require('dlac\\catalog');
+        local cat = require('dlac\\data\\catalog');
         local function walk(t)
             for k, v in pairs(t) do
                 if type(v) == 'table' then
