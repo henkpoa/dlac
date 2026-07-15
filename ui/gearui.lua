@@ -1476,7 +1476,14 @@ end
 -- Empty slots show the slot's short name; the selected slot gets a gold box.
 -- getText(sl) feeds only the hover line now (the boxes carry no inline text).
 local SLOT_BOX = 40;                  -- outer box; the icon fills it minus the frame pad
-local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, getText, onClick, hoverRec, gridW)
+-- opts (all optional, added for the floating gear window -- old callers pass nothing
+-- and keep the exact previous behavior):
+--   boxColorOf(sl) -> {r,g,b,a} to override the box color for that slot (pins go red)
+--   onRightClick(label) -> called on RMB over a slot. It only REPORTS: OpenPopup and
+--     BeginPopup have to share a window scope, and this grid lives inside its own
+--     BeginChild, so the caller raises a flag here and opens the popup at ITS level.
+local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, getText, onClick, hoverRec, gridW, opts)
+    opts = opts or {};
     imgui.BeginChild('##' .. idPrefix .. '_grid', { gridW or -1, gridHeight }, false);
     local boxBg = { 0.10, 0.10, 0.13, 1.0 };
     local boxSel = { 0.42, 0.36, 0.16, 1.0 };          -- gold: the slot being edited
@@ -1486,13 +1493,15 @@ local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, ge
         imgui.PushID(idPrefix .. '_' .. sl.label);
         local id = getItemId(sl);
         local handle = icons.handleOf(id);
+        local box = (opts.boxColorOf ~= nil) and opts.boxColorOf(sl) or nil;
+        if box == nil then box = selected and boxSel or boxBg; end
         if handle ~= nil then
             clicked = imgui.ImageButton(handle, { SLOT_BOX - 8, SLOT_BOX - 8 }, { 0, 0 }, { 1, 1 }, 4,
-                selected and boxSel or boxBg, { 1, 1, 1, 1 });
+                box, { 1, 1, 1, 1 });
         else
             local vrec = (hoverRec ~= nil) and hoverRec(sl) or nil;
             local isVirt = (vrec ~= nil and vrec.Virtual == true);
-            imgui.PushStyleColor(ImGuiCol_Button, selected and boxSel or boxBg);
+            imgui.PushStyleColor(ImGuiCol_Button, box);
             imgui.PushStyleColor(ImGuiCol_Text, COL.LOCKED);
             clicked = imgui.Button(isVirt and ('##vbox' .. sl.label) or sl.short, { SLOT_BOX, SLOT_BOX });
             imgui.PopStyleColor(2);
@@ -1506,6 +1515,12 @@ local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, ge
         end
         if clicked then onClick(sl.label); end
         if imgui.IsItemHovered() then
+            -- RMB: the gearmove pattern, field-confirmed in this client --
+            -- IsMouseClicked(1) + IsItemHovered, NOT BeginPopupContextItem (that
+            -- one is what failed twice and put right-click on the dead-end list).
+            if opts.onRightClick ~= nil and imgui.IsMouseClicked(1) then
+                opts.onRightClick(sl.label);
+            end
             local r = (hoverRec ~= nil) and hoverRec(sl) or nil;
             if r ~= nil then
                 renderItemTooltip(r);
@@ -2979,6 +2994,7 @@ host.provide({
     subFilter = subFilter, sortForDisplay = sortForDisplay,
     parseSearch = parseSearch, itemSearchMatch = itemSearchMatch,
     -- equip / lock plumbing
+    getPlayerInfo = getPlayerInfo,
     getEquippedId = getEquippedId, equipToSlot = equipToSlot,
     engineLocks = engineLocks, lacSlot = lacSlot,
     lockMirrorDirty = function() _lockMirror.at = -1; end,
@@ -2991,6 +3007,11 @@ do
     local ok, err = pcall(require, "dlac\\ui\\equippedui");   -- self-registers its two tabs
     if not ok then
         pcall(function() print('[dlac] equippedui failed to load: ' .. tostring(err)); end);
+    end
+    -- the floating equipment window + the pin menu (self-registers its window)
+    local fok, ferr = pcall(require, "dlac\\ui\\floatgear");
+    if not fok then
+        pcall(function() print('[dlac] floatgear failed to load: ' .. tostring(ferr)); end);
     end
 end
 host.register({ name = 'sets', tabs = {
@@ -3133,6 +3154,11 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
     pcall(sf.tick);
     if macrob ~= nil then pcall(macrob.pump); end   -- per-job macro book/set (login + job change)
     pcall(function() require('dlac\\feature\\lockstyle').pump(); end);   -- OnLoad lockstyle (login + job change)
+    -- Pins are session-only, and the clear has to reach DISK: the engine reads
+    -- pinstate.lua from LAC's own state on its own schedule, so a file left over
+    -- from last session would glue gear on at login. This must run whether or not
+    -- the floating window is open -- it is the only thing that clears it.
+    pcall(function() require('dlac\\feature\\pinwatch').loadPinState(); end);
     if ui.showMetrics == true and has.imgui then       -- /dl metrics: overlay hunter
         pcall(function() imgui.ShowMetricsWindow(ui.metricsOpen); end);
         if ui.metricsOpen ~= nil and ui.metricsOpen[1] == false then ui.showMetrics = false; end
@@ -3223,6 +3249,20 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
             local lsThemed = style ~= nil and style.push();
             pcall(lsMod.render);
             if lsThemed then style.pop(); end
+        end
+    end
+    -- Floating equipment window: INDEPENDENT of the main box, like the lockstyle
+    -- window above -- the whole point is that it stays up while you play, so it
+    -- CANNOT go through uihost's window contract (those render inside drawWindow,
+    -- which returns early when the main window is shut). Own theme bracket,
+    -- function-scoped require -- no new chunk local (hard rule 1).
+    if has.imgui and ui._gearFloat == true then
+        local fgMod = nil;
+        pcall(function() fgMod = require('dlac\\ui\\floatgear'); end);
+        if fgMod ~= nil then
+            local fgThemed = style ~= nil and style.push();
+            pcall(fgMod.render);
+            if fgThemed then style.pop(); end
         end
     end
     if not M.visible or not has.imgui then return; end

@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 43;   -- 43: reserved slots (RSlot) resolved at equip time -- a Body that takes Head away (Ryl.Ftm. Tunic) drops the reserved slot instead of flapping with the server forever; worn pieces reserve too
+M.VERSION = 44;   -- 44: PINNED slots -- pinstate.lua forces a named item into a slot at TOP priority (above the craft overlay), scoped to All or to named triggers; the engine WEARS the pin, so nothing removes it
+                  -- 43: reserved slots (RSlot) resolved at equip time -- a Body that takes Head away (Ryl.Ftm. Tunic) drops the reserved slot instead of flapping with the server forever; worn pieces reserve too
 -- 42: lockstyle apply builds the 0x053 itself (server reads ItemNo+EquipKind only -- bags never scanned; all 9 slots sent, unnamed frozen to worn gear); preview = locally injected GRAP_LIST 0x051; the v39 equip-preview overlay (lspreview.lua reader) is gone from the engine
                   -- 41: lockstyle boxes live in the JOB ENTRY (profiles\<Name>\lockstyles\<JOB>.lua; reads fall back v40 profile file, then global)
                   -- 35: matched-but-missing set no longer chat-warns (Triggers tab shows it in red)
@@ -314,6 +315,29 @@ end
 -- Trigger file: load, validate, normalize. Kept rules carry lowercased condition
 -- keys, a resolved priority, their file order (tie-break), and a display label.
 -- ---------------------------------------------------------------------------
+-- The display label for a rule's conditions ("name=slow ii", "skill=singing",
+-- "any"). ONE definition, used by normalize here AND by the GUI when it builds
+-- pin scope keys -- the two Lua states must spell a label identically or a
+-- scoped pin would never match. A condition value may be a LIST (when.mode can
+-- hold several modes), and tostring() on a table yields its ADDRESS: different
+-- in each state, and different again after every reload. Serialize lists by
+-- value instead, sorted, so the label is stable everywhere.
+local function condVal(v)
+    if type(v) ~= 'table' then return tostring(v); end
+    local parts = {};
+    for _, x in ipairs(v) do parts[#parts + 1] = tostring(x); end
+    table.sort(parts);
+    return table.concat(parts, ',');
+end
+function M.ruleLabel(when)
+    local parts = {};
+    for k, v in pairs(when or {}) do
+        parts[#parts + 1] = string.lower(tostring(k)) .. '=' .. condVal(v);
+    end
+    table.sort(parts);
+    return (#parts > 0) and table.concat(parts, '+') or 'any';
+end
+
 local function normalize(t)
     local out, warns = {}, {};
     for k, v in pairs(t) do
@@ -331,7 +355,7 @@ local function normalize(t)
                    or (r.set == nil and type(r.equip) ~= 'table') then
                     warns[#warns + 1] = string.format('%s rule %d: malformed (needs when = {...} plus set= or equip=)', ev, i);
                 else
-                    local when, parts, dead = {}, {}, false;
+                    local when, dead = {}, false;
                     for ck, cv in pairs(r.when) do
                         local lk = string.lower(tostring(ck));
                         if TIER[lk] == nil then
@@ -340,7 +364,6 @@ local function normalize(t)
                             break;
                         end
                         when[lk] = cv;
-                        parts[#parts + 1] = lk .. '=' .. tostring(cv);
                     end
                     if not dead then
                         local prio = tonumber(r.priority);
@@ -350,7 +373,6 @@ local function normalize(t)
                                 if TIER[lk] > prio then prio = TIER[lk]; end
                             end
                         end
-                        table.sort(parts);
                         -- set = 'Name' or an ORDERED list { 'Base', 'Overlay' } --
                         -- normalized to a `sets` array either way.
                         local sets = nil;
@@ -370,7 +392,7 @@ local function normalize(t)
                             equip = (type(r.equip) == 'table') and r.equip or nil,
                             prio  = prio,
                             ord   = #list + 1,
-                            label = (#parts > 0) and table.concat(parts, '+') or 'any',
+                            label = M.ruleLabel(when),
                         };
                     end
                 end
@@ -1016,6 +1038,14 @@ end
 local function equipResolved(s, ctx)
     local out, notes = nil, nil;
     local anyLocks = (next(M.locks) ~= nil);
+    -- Slots a PINNED item takes away (RSlot). reservedDrops cannot catch this on
+    -- its own: it judges ONE table at a time, and the pin lands in its own pass,
+    -- so the SET's pass never learns that the pin's Body is about to reserve the
+    -- Head it is happily equipping. Left alone that is the v43 flap all over
+    -- again -- set equips Head, pin equips the reserver, server strips Head,
+    -- forever. ctx.pinReserved is a stateless hold computed per dispatch from the
+    -- pin table; unpin and the slot dispatches normally on the very next pass.
+    local pinRes = (type(ctx) == 'table') and ctx.pinReserved or nil;
     -- Max-MP context (only while the mode is on and the manifest carries MP data).
     local mpMap, mpBest, curMP, maxMP = nil, nil, nil, nil;
     if M.modes['maxmp'] ~= nil then
@@ -1045,6 +1075,15 @@ local function equipResolved(s, ctx)
             out[slot] = nil;                           -- locked: the engine leaves it alone
             notes = notes or {};
             notes[#notes + 1] = string.format('%s=LOCKED (kept as worn)', tostring(slot));
+        elseif pinRes ~= nil and pinRes[string.lower(tostring(slot))] ~= nil then
+            if out == nil then
+                out = {};
+                for k2, v2 in pairs(s) do out[k2] = v2; end
+            end
+            out[slot] = nil;               -- a pinned piece takes this slot away
+            notes = notes or {};
+            notes[#notes + 1] = string.format('%s=RESERVED by pinned %s',
+                tostring(slot), tostring(pinRes[string.lower(tostring(slot))]));
         elseif accPick ~= nil and accPick[slot] ~= nil then
             if out == nil then
                 out = {};
@@ -1336,10 +1375,130 @@ local function craftOverlayFor(cs, ctx)
 end
 M._craftOverlayFor = craftOverlayFor;   -- test seam
 
--- The craft equip table for right now (reads the on-disk state), or nil when off.
-local function craftOverlay(ctx)
-    return craftOverlayFor(ensureCraftState(), ctx);
+-- (There was a craftOverlay(ctx) wrapper here that paired ensureCraftState with
+-- craftOverlayFor. M.dispatch now reads the state itself -- it has to decide
+-- whether there is anything to do BEFORE building the context -- so the wrapper
+-- would just be a second, hidden read of the same cache.)
+
+-- ---------------------------------------------------------------------------
+-- PINNED slots (v44) -- "equip item, lock slot so nothing removes it" (Henrik).
+-- Same shape as the craft overlay, and for the same reason: don't fight the
+-- engine, BE the engine. pinwatch (addon state) writes <char>\dlac\pinstate.lua
+--
+--     return { Ring1 = { item = "Rajas Ring", scope = "All" },
+--              Head  = { item = "Uk'uxkaj Cap", scope = { "Fast Cast" } } }
+--
+-- and the engine WEARS those names at top priority -- above the craft overlay,
+-- on EVERY event, not just Default (a pin that lost its slot mid-cast would not
+-- be a pin). Unpin -> no overlay -> the normal set returns on the next dispatch.
+--
+-- Deliberately NOT the /dl lock route: a lock only makes the engine ignore the
+-- slot, so anything else that strips the piece wins and the state leaks when a
+-- session ends abnormally. A pin is recomputed from the file every dispatch --
+-- nothing to restore, nothing to leak.
+--
+-- `scope` is "All" (every dispatch) or a list of trigger LABELS: the pin then
+-- applies only on a dispatch where one of those triggers actually matched.
+-- ---------------------------------------------------------------------------
+local _pin = { raw = nil, data = nil, lastCheck = -1 };
+local function ensurePinState()
+    local now = os.time();
+    if now == _pin.lastCheck then return _pin.data; end
+    _pin.lastCheck = now;
+    local dir = charDir();
+    if dir == nil then return _pin.data; end
+    local raw = readFile(dir .. 'pinstate.lua');
+    if raw == nil then _pin.raw, _pin.data = nil, nil; return nil; end
+    if raw == _pin.raw then return _pin.data; end
+    _pin.raw = raw;
+    local chunk = (loadstring or load)(raw, '@pinstate.lua');
+    if chunk == nil then
+        -- A torn/corrupt write must DROP the pins, not keep the last good ones.
+        -- _pin.raw is already the corrupt text, so the raw-compare above would
+        -- short-circuit every later call and the stale pins would stay glued on
+        -- with nothing able to clear them -- including pinwatch's clear-on-load.
+        _pin.data = nil;
+        return nil;
+    end
+    local ok, t = pcall(chunk);
+    if ok and type(t) == 'table' then _pin.data = t; else _pin.data = nil; end
+    return _pin.data;
 end
+
+-- Scope entries are "<Event>|<rule label>" -- the rule label ALONE is ambiguous
+-- ('any' is the label of every unconditional rule, so a Precast 'any' and a
+-- Midcast 'any' would be indistinguishable and one pin would silently cover
+-- both). M.pinScopeKey is the single place that spelling is defined; the GUI
+-- builds its menu entries with the same function, so the two states can never
+-- drift on the format.
+function M.pinScopeKey(event, label) return tostring(event) .. '|' .. tostring(label); end
+
+-- Does this pin's scope cover this dispatch? "All" (or a missing scope -- a
+-- hand-written file) covers everything; a list covers only the dispatches where
+-- one of the named triggers actually matched. An unknown key simply never
+-- matches: a pin scoped to a trigger you later edited or deleted goes QUIET
+-- rather than falling back to forcing gear on every dispatch.
+local function pinInScope(scope, hits, event)
+    if scope == nil or scope == 'All' then return true; end
+    if type(scope) ~= 'table' then return false; end
+    for _, want in ipairs(scope) do
+        for _, r in ipairs(hits or {}) do
+            if M.pinScopeKey(event, r.label) == want then return true; end
+        end
+    end
+    return false;
+end
+M._pinInScope = pinInScope;   -- test seam
+
+-- The pin equip table for a given pin-state, or nil when nothing is in scope.
+-- Split out so tests can pass an explicit state instead of the on-disk file.
+local function pinOverlayFor(ps, hits, event)
+    if type(ps) ~= 'table' then return nil; end
+    local equip = nil;
+    for slot, p in pairs(ps) do
+        -- Tolerate both shapes: { item = "X", scope = ... } and a bare "X".
+        local name  = (type(p) == 'table') and p.item or p;
+        local scope = (type(p) == 'table') and p.scope or 'All';
+        if type(name) == 'string' and name ~= '' and pinInScope(scope, hits, event) then
+            equip = equip or {};
+            equip[slot] = name;
+        end
+    end
+    return equip;
+end
+M._pinOverlayFor = pinOverlayFor;   -- test seam
+
+-- Slots the PINNED pieces take away while worn (their RSlot mask), as
+-- { [lowercase slot] = <the pinned item that reserves it> }, or nil.
+--
+-- Why this is not reservedDrops' job: that pass judges ONE table at a time, on
+-- its final names. The pin lands in its OWN equipResolved, so when the set's
+-- pass runs, nothing tells it that the pin's Ryl.Ftm. Tunic is about to reserve
+-- the Head it just equipped -- and the pin's own pass cannot drop a Head its
+-- table never named. The set would re-equip Head every frame and the server
+-- would strip it every frame: the v43 flap, reached through the overlay. So the
+-- reservation becomes a stateless HOLD instead (the ratified pattern), computed
+-- fresh each dispatch and gone the moment the pin is.
+--
+-- A pin never reserves ANOTHER pin's slot: you asked for both, so both land and
+-- the server arbitrates -- exactly as it would for a set naming an illegal pair.
+local function pinReservedSlots(pEquip)
+    if type(pEquip) ~= 'table' then return nil; end
+    local out = nil;
+    for _, name in pairs(pEquip) do
+        local mask = rslotOf(name);
+        if mask ~= nil then
+            for _, pair in ipairs(RSLOT_ORDER) do
+                if hasBit(mask, pair[1]) and pEquip[pair[2]] == nil then
+                    out = out or {};
+                    out[string.lower(pair[2])] = name;
+                end
+            end
+        end
+    end
+    return out;
+end
+M._pinReservedSlots = pinReservedSlots;   -- test seam
 
 -- Craft Sub-vs-Main guard (Henrik, field case: the overlay's Kupo Shield vs a
 -- scythe in the Default set). When the overlay owns SUB but brings no MAIN, a
@@ -1491,21 +1650,64 @@ function M.dispatch(event)
         end
         local rules = ensureLoaded();
         local list = rules and rules[event] or nil;
+        local hasRules = (list ~= nil and #list > 0);
 
-        if list == nil or #list == 0 then return; end
+        -- Bail only when there is genuinely NOTHING to do. This used to return on
+        -- the rule list alone -- which quietly made BOTH overlays dead on any
+        -- event the profile has no rules for, including the "a plain profile
+        -- still gets craft gear" case the craft overlay's own comment promised.
+        -- An "All" pin has to hold on a profile with no triggers at all, so the
+        -- overlays must be consulted HERE, ahead of the early return. Both reads
+        -- are the 1/sec-throttled cached ones, so this stays cheap on the Default
+        -- dispatch that runs every frame.
+        local pinState   = ensurePinState();
+        local hasPins    = (type(pinState) == 'table' and next(pinState) ~= nil);
+        local craftState = (event == 'Default') and ensureCraftState() or nil;
+        local craftOn    = (type(craftState) == 'table' and craftState.enabled == true
+                            and type(craftState.craft) == 'string' and craftState.craft ~= '');
+        if not hasRules and not hasPins and not craftOn then return; end
 
         local ctx = buildCtx(event);
         local hits = {};
-        for _, r in ipairs(list) do
-            if matches(r, ctx) then hits[#hits + 1] = r; end
+        if hasRules then
+            for _, r in ipairs(list) do
+                if matches(r, ctx) then hits[#hits + 1] = r; end
+            end
         end
 
-        -- Craft overlay applies on Default even with NO trigger match (so a plain
-        -- profile still gets craft gear), and always LAST (top priority) below.
-        local cEquip = (event == 'Default') and craftOverlay(ctx) or nil;
-        ctx.craftMainGuard = (cEquip ~= nil) and craftMainGuard(cEquip) or nil;
+        -- Craft overlay applies on Default even with NO trigger match, and always
+        -- LAST (top priority) below -- but under the pin.
+        local cEquip = craftOn and craftOverlayFor(craftState, ctx) or nil;
 
-        if #hits == 0 and cEquip == nil then
+        -- Pins apply on EVERY event (a pin that lost its slot mid-cast would not
+        -- be a pin). Scoped pins need `hits` to know whether their trigger fired,
+        -- so this reads it above.
+        local pEquip = pinOverlayFor(pinState, hits, event);
+
+        -- A pinned piece that takes a slot away has to stop everything BELOW it
+        -- from equipping into that slot (see pinReservedSlots -- otherwise the
+        -- set and the server flap over it forever).
+        ctx.pinReserved = pinReservedSlots(pEquip);
+
+        -- Pin beats craft (it is applied after it), so a craft Sub that cannot
+        -- pair with a PINNED Main has to go: left in, craft would re-equip it
+        -- every pass and the pinned Main would knock it straight off again --
+        -- the v37 flap seen from the other side.
+        if pEquip ~= nil and pEquip.Main ~= nil and cEquip ~= nil and cEquip.Sub ~= nil then
+            local pg = craftMainGuard({ Sub = cEquip.Sub });
+            if pg ~= nil and pg(pEquip.Main) then cEquip.Sub = nil; end
+        end
+
+        -- The Sub-vs-Main guard (v37). A PINNED Sub with no pinned Main must
+        -- survive everything BELOW it -- the set's Main and the craft overlay's
+        -- alike -- so the pin becomes the guard's source in that case; otherwise
+        -- the craft overlay keeps it exactly as before. Stateless either way:
+        -- unpin, and the held Main dispatches normally on the next pass.
+        local guardSrc = (pEquip ~= nil and pEquip.Sub ~= nil and pEquip.Main == nil)
+                         and pEquip or cEquip;
+        ctx.craftMainGuard = (guardSrc ~= nil) and craftMainGuard(guardSrc) or nil;
+
+        if #hits == 0 and cEquip == nil and pEquip == nil then
             if event ~= 'Default' then   -- Default runs every frame; only action events trace a miss
                 _trace[event] = { time = os.date('%H:%M:%S'), action = actionLabel(ctx),
                                   sig = '', lines = { '(no trigger matched)' } };
@@ -1533,7 +1735,15 @@ function M.dispatch(event)
             table.sort(ck);
             cSig = table.concat(ck, ',');
         end
-        sig = event .. ':' .. table.concat(sig, ',') .. '|' .. table.concat(lk, ',') .. '|' .. cSig;
+        local pSig = '';                                  -- pin changes must retrace too
+        if pEquip ~= nil then
+            local pk = {};
+            for slot, item in pairs(pEquip) do pk[#pk + 1] = slot .. '=' .. item; end
+            table.sort(pk);
+            pSig = table.concat(pk, ',');
+        end
+        sig = event .. ':' .. table.concat(sig, ',') .. '|' .. table.concat(lk, ',')
+              .. '|' .. cSig .. '|' .. pSig;
         local old = _trace[event];
         local retrace = (old == nil) or (old.sig ~= sig) or (event ~= 'Default');
         local lines = retrace and {} or old.lines;
@@ -1583,6 +1793,18 @@ function M.dispatch(event)
                 for slot in pairs(cEquip) do ks[#ks + 1] = tostring(slot); end
                 table.sort(ks);
                 lines[#lines + 1] = 'craft gear (overlay)  ->  ' .. table.concat(ks, ', ');
+            end
+        end
+        -- Pins LAST of all: above the craft overlay, above every trigger. This is
+        -- the whole mechanism -- last writer wins the slot, so a pinned piece is
+        -- simply what the engine wears and nothing can take it back off.
+        if pEquip ~= nil then
+            equipResolved(pEquip, ctx);
+            if retrace then
+                local ks = {};
+                for slot, item in pairs(pEquip) do ks[#ks + 1] = tostring(slot) .. '=' .. tostring(item); end
+                table.sort(ks);
+                lines[#lines + 1] = 'PINNED  ->  ' .. table.concat(ks, ', ');
             end
         end
 

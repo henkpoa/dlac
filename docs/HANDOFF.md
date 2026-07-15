@@ -84,9 +84,13 @@ handshake).
    headless-loads the whole UI chunk and DOES catch it (run it with run_tests.lua).
 2. **`imgui` is not a global** in addon modules — `require('imgui')` it. A nil-guard
    around a missing require silently disabled an entire feature's UI once (gearmove
-   v1–v4). Probe the Ashita binding before using an ImGui API (`BeginPopupContextItem`
-   needs an explicit id string here; right-click on item rows never worked — use
-   Trove-style left-click buttons).
+   v1–v4). Probe the Ashita binding before using an ImGui API — presence proves
+   nothing (`BeginPopupContextItem` is bound and does not work here; `BeginMenu` is
+   bound and nothing in the install calls it). **Right-click DOES work**, via
+   `IsMouseClicked(1)` + `IsItemHovered()` → `OpenPopup`/`BeginPopup`
+   (`gearmove.lua:663`, field-confirmed); it was `BeginPopupContextItem` that failed
+   twice, and this rule used to blame the gesture — record the API that failed, not
+   the gesture you gave up on.
 3. **Write Lua with the Write/Edit tools only.** Shell-heredoc/Python splicing has
    shipped two corruption bugs (`"dlac\triggersui"` → `\t` tab; a literal newline in a
    string). Keep code Lua-5.1/LuaJIT-compatible (tests run on 5.4 — write to the
@@ -166,7 +170,24 @@ handshake).
     `accstate.lua`, so any branch-committed markers resolve to "worn". The
     feedback-loop design notes live in history.md "AutoAcc -- the first Type
     automation" — read them before touching the dormant machinery.
-- **Reserved slots (RSlot) — dispatch v43, new this session.** Items that take a
+- **PINNED slots + the floating equipment window — dispatch v44, new this session
+  (07-15).** "Equip item, lock slot so nothing removes equipped item" (Henrik) —
+  built as an OVERLAY, not a lock: `pinwatch.lua` writes `<char>\dlac\pinstate.lua`,
+  the engine WEARS the pinned names as the LAST `equipResolved` of every dispatch
+  (above the craft overlay, every event). "Lock" keeps its old, near-opposite
+  meaning (`M.locks` = engine ignores the slot); the new thing is a **Pin**.
+  `ui/floatgear.lua` is the equipmon-style 4x4 window (uihost module; reuses
+  `S.renderSlotGrid`, so icons/tooltips can never drift from the Equipped tab).
+  Scope = `'All'` or `"<Event>|<rule label>"` keys via `M.pinScopeKey`. Read
+  history.md "floating equipment window + PINNED slots" before touching it —
+  especially the disk-clear trap and the Sub-vs-Main guard (both directions).
+  - **RIGHT-CLICK WORKS — the old dead-ends entry was wrong.** What failed twice
+    was `BeginPopupContextItem`, not RMB delivery. `IsMouseClicked(1)` +
+    `IsItemHovered()` → `OpenPopup`/`BeginPopup` is field-confirmed
+    (`gearmove.lua:663` on feature/storage-move). Entry corrected 07-15.
+  - **Unverified live:** whether `imgui.BeginMenu` actually cascades in this
+    binding (probed at load; falls back to an in-place drill-down if absent).
+- **Reserved slots (RSlot) — dispatch v43.** Items that take a
   slot away while worn (Ryl.Ftm. Tunic = Body reserves Head; robes reserve Hands;
   boomerangs reserve Ammo) made dlac and the server fight forever over the reserved
   slot. The fact is server data (`item_equipment.rslot`), now crawled into
@@ -176,8 +197,10 @@ handshake).
   touching it: build-time stripping (what ffxi-lac did, and what dlac had ported as
   dead code in utils.lua) is WRONG under overlay. Worn pieces reserve too. Tests: AK,
   E7–E11. history.md "Reserved slots" has the data scan + the two traps.
-- **main**: healthy; **426 tests green + 49 smoke_ui** (was 293 at last handoff) —
-  current as of this session. The whole **crafting-gear system** landed here (see
+- **main**: healthy; **490 tests green + 53 smoke_ui** (was 426/49 at last handoff) —
+  current as of this session. Note `tests\run_tests.lua` has now hit the **200-local
+  cap** itself: new sections must be `(function() ... end)()`, not `do ... end` (a do
+  block shares the chunk's budget; a function body gets its own 200). The whole **crafting-gear system** landed here (see
   history.md "crafting system + catalog pipeline"): read that section before touching
   craftwatch/craftbar/dispatch-overlay/triggersui-craft code.
   - **Craft gear model (know this before editing):** MANUAL — you pick craft + goal +

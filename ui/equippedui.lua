@@ -251,6 +251,18 @@ local function renderEquippedTab(job, level)
         imgui.TextColored(COL.ERR, 'LAC OFF -- gear will not auto-swap');
     end
 
+    -- The floating equipment window (floatgear owns the window; this is just its
+    -- switch, kept next to the other Equipped-tab toggles).
+    imgui.SameLine(0, 12);
+    local fl = { ui._gearFloat == true };
+    if imgui.Checkbox('Floating equipment', fl) then
+        ui._gearFloat = fl[1];
+        ui._flagsDirty = true;                         -- remembered across sessions
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Opens the 4x4 equipment window (equipmon-style) that stays up while you play.\nHover a slot for the same details as here; RIGHT-CLICK a slot to PIN an item\ninto it -- the engine then wears that piece and nothing can take it off.\nPinned slots show a red frame. Pins clear when you reload.');
+    end
+
     local availW = imgui.GetContentRegionAvail();
     local leftUsed = ui.showStats and (STATS_W + 8) or 0;
 

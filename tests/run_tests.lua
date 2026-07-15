@@ -1649,6 +1649,249 @@ do
 end
 
 -- ---------------------------------------------------------------------------
+-- AL. PINNED slots (dispatch v44) -- "equip item, lock slot so nothing removes
+--     equipped item" (Henrik). pinwatch writes pinstate.lua; the engine wears
+--     the named item at TOP priority (above the craft overlay) on EVERY event.
+--     scope = 'All' (every dispatch) or a list of "<Event>|<rule label>" keys.
+--
+--     NOTE: `(function() ... end)()`, not the `do ... end` the older sections
+--     use. THIS FILE hit the same LuaJIT/Lua 200-local-per-chunk cap gearui did
+--     -- it is one ~1800-line main chunk and a `do` block's locals share that
+--     chunk's budget, so wrapping in `do` does not buy a single register. A
+--     function body gets its OWN 200. Add new sections this way; it is also the
+--     cheapest fix if an older `do` section ever tips the cap over.
+-- ---------------------------------------------------------------------------
+;(function()
+    local PF = dispatchM._pinOverlayFor;
+
+    -- scope 'All': applies with no triggers matched at all (a bare profile still
+    -- has to honour a pin) and on every event, not just Default.
+    local pAll = { Ring1 = { item = 'Rajas Ring', scope = 'All' } };
+    check('AL1 All pin applies with zero hits',
+        (PF(pAll, {}, 'Default') or {}).Ring1, 'Rajas Ring');
+    check('AL2 All pin applies on a non-Default event',
+        (PF(pAll, {}, 'Midcast') or {}).Ring1, 'Rajas Ring');
+
+    -- no state / empty state -> nil (nil, not {}: dispatch tests `pEquip == nil`
+    -- to decide whether it may bail out of the whole dispatch)
+    check('AL3 no pin state -> nil overlay', PF(nil, {}, 'Default'), nil);
+    check('AL4 empty pin state -> nil overlay', PF({}, {}, 'Default'), nil);
+
+    -- scoped pins: only on a dispatch where THAT trigger matched
+    local key = dispatchM.pinScopeKey('Midcast', 'name=slow ii');
+    local pScoped = { Head = { item = 'Uk\'uxkaj Cap', scope = { key } } };
+    local hitSlow  = { { label = 'name=slow ii' } };
+    local hitOther = { { label = 'name=dia ii' } };
+    check('AL5 scoped pin applies when its trigger matched',
+        (PF(pScoped, hitSlow, 'Midcast') or {}).Head, 'Uk\'uxkaj Cap');
+    check('AL6 scoped pin is silent when another trigger matched',
+        PF(pScoped, hitOther, 'Midcast'), nil);
+    check('AL7 scoped pin is silent with no hits at all',
+        PF(pScoped, {}, 'Midcast'), nil);
+    -- the reason scope keys carry the EVENT: 'any' is the label of every
+    -- unconditional rule, so a Precast 'any' and a Midcast 'any' would be
+    -- indistinguishable and one pin would silently cover both.
+    check('AL8 scoped pin does not leak across events (same label, other event)',
+        PF(pScoped, hitSlow, 'Precast'), nil);
+
+    -- a pin scoped to a trigger that no longer exists goes QUIET rather than
+    -- falling back to forcing gear on every dispatch
+    local pGone = { Feet = { item = 'Herald\'s Gaiters', scope = { 'Midcast|name=deleted' } } };
+    check('AL9 pin on a deleted trigger goes quiet', PF(pGone, hitSlow, 'Midcast'), nil);
+
+    -- tolerated shapes: bare string, and a missing scope (hand-written file)
+    check('AL10 bare-string pin is treated as All',
+        (PF({ Back = 'Cape' }, {}, 'Default') or {}).Back, 'Cape');
+    check('AL11 pin with no scope is treated as All',
+        (PF({ Back = { item = 'Cape' } }, {}, 'Default') or {}).Back, 'Cape');
+    check('AL12 empty item name is ignored',
+        PF({ Back = { item = '', scope = 'All' } }, {}, 'Default'), nil);
+
+    -- several slots at once; mixed scopes resolve independently
+    local pMix = { Ring1 = { item = 'Rajas Ring', scope = 'All' },
+                   Head  = { item = 'Uk\'uxkaj Cap', scope = { key } } };
+    local mix = PF(pMix, hitSlow, 'Midcast') or {};
+    check('AL13 mixed scopes: All applies',    mix.Ring1, 'Rajas Ring');
+    check('AL14 mixed scopes: scoped applies', mix.Head, 'Uk\'uxkaj Cap');
+    local mix2 = PF(pMix, {}, 'Default') or {};
+    check('AL15 mixed scopes: All still applies out of scope', mix2.Ring1, 'Rajas Ring');
+    check('AL16 mixed scopes: scoped drops out of scope',      mix2.Head, nil);
+
+    -- pinScopeKey is the ONE spelling of a scope key: the GUI builds menu entries
+    -- with it and the engine matches with it, so the two states cannot drift.
+    check('AL17 pinScopeKey format', dispatchM.pinScopeKey('Midcast', 'name=slow ii'),
+        'Midcast|name=slow ii');
+
+    -- ruleLabel: shared by normalize (engine) and the pin menu (GUI). A condition
+    -- value may be a LIST (when.mode holds several modes) and tostring() on a
+    -- table yields an ADDRESS -- different in each Lua state and after every
+    -- reload -- so a scoped pin could never match. Serialize lists by value.
+    check('AL18 ruleLabel: no conditions -> any', dispatchM.ruleLabel({}), 'any');
+    check('AL19 ruleLabel: single condition', dispatchM.ruleLabel({ name = 'Slow II' }), 'name=Slow II');
+    check('AL20 ruleLabel: sorted + joined',
+        dispatchM.ruleLabel({ skill = 'Enfeebling Magic', name = 'Slow II' }),
+        'name=Slow II+skill=Enfeebling Magic');
+    check('AL21 ruleLabel: list value is serialized BY VALUE, not by address',
+        dispatchM.ruleLabel({ mode = { 'DT', 'Acc' } }), 'mode=Acc,DT');
+    check('AL22 ruleLabel: two equal lists in DIFFERENT tables label identically',
+        dispatchM.ruleLabel({ mode = { 'DT', 'Acc' } }) == dispatchM.ruleLabel({ mode = { 'Acc', 'DT' } }), true);
+    check('AL23 ruleLabel: keys lowercased like normalize',
+        dispatchM.ruleLabel({ Name = 'Slow II' }), 'name=Slow II');
+
+    -- Sub-vs-Main, the pin side. A pinned Sub with no pinned Main is top
+    -- priority and must survive the set's Main: without a guard the two knock
+    -- each other off on every pass (the v37 flap, the reason craftMainGuard
+    -- exists). The guard SOURCE is what dispatch picks; these check the shape
+    -- dispatch feeds it and the resulting hold.
+    local pinSubOnly = { Sub = 'Kupo Shield' };
+    local pg = dispatchM._craftMainGuard(pinSubOnly);
+    check('AL26 a pinned Sub with no pinned Main builds a guard', pg ~= nil, true);
+    check('AL27 the guard holds a 2H set Main against a pinned Sub', pg('Death Scythe'), true);
+    check('AL28 a 1H set Main pairs with a pinned Sub and passes', pg('Parry Knife'), false);
+    check('AL29 no guard when the pin brings its own Main',
+        dispatchM._craftMainGuard({ Sub = 'Kupo Shield', Main = 'Parry Knife' }), nil);
+    local _, alHeld = dispatchM._equipResolved({ Main = 'Death Scythe', Body = 'Weaver Apron' },
+        { craftMainGuard = pg });
+    check('AL30 the set Main is held so the pinned Sub survives', alHeld.Main, nil);
+    check('AL31 the rest of the set is untouched by the hold', alHeld.Body, 'Weaver Apron');
+
+    -- The other side: a PINNED Main beats the craft overlay's Sub. dispatch drops
+    -- the craft Sub when it cannot pair, or craft re-equips it every pass and the
+    -- pinned Main knocks it off again. (Same guard function, asked in reverse.)
+    local cg = dispatchM._craftMainGuard({ Sub = 'Kupo Shield' });
+    check('AL32 a pinned 2H Main conflicts with the craft Sub', cg('Death Scythe'), true);
+    check('AL33 a pinned 1H Main leaves the craft Sub alone', cg('Parry Knife'), false);
+
+    -- A pin goes through equipResolved like any other set, so it inherits the
+    -- reserved-slot pass: pinning a Body that reserves Head drops the Head.
+    local gT = require('dlac\\gear');
+    if type(gT) == 'table' and type(gT.NameToObject) == 'table'
+       and gT.NameToObject['Ryl.Ftm. Tunic'] ~= nil then
+        gT.NameToObject['Ryl.Ftm. Tunic'].RSlot = 0x0010;
+        local _, alTbl = dispatchM._equipResolved(
+            { Body = 'Ryl.Ftm. Tunic', Head = 'Silver Hairpin' }, {});
+        check('AL24 a pinned reserver still drops the reserved slot', alTbl.Head, nil);
+        check('AL25 the pinned reserver itself equips', alTbl.Body, 'Ryl.Ftm. Tunic');
+
+        -- THE FLAP, through the overlay. reservedDrops judges ONE table at a
+        -- time, and the pin lands in its OWN equipResolved -- so the SET's pass
+        -- never learns the pinned Tunic is about to reserve the Head it is
+        -- equipping, and the pin's pass cannot drop a Head its table never
+        -- names. Without the hold: set equips Head, pin equips Tunic, server
+        -- strips Head, forever ("it just flashes back and forth infinitely").
+        -- (Nested do: this file's main chunk has its own 200-local ceiling.)
+        do
+            local res = dispatchM._pinReservedSlots({ Body = 'Ryl.Ftm. Tunic' });
+            check('AL34 a pinned reserver reports its reserved slot',
+                (res or {}).head, 'Ryl.Ftm. Tunic');
+            check('AL35 it does not report slots it never reserves', (res or {}).legs, nil);
+            -- the hold applied to the SET's pass: Head must not be equipped at all
+            local nt, st = dispatchM._equipResolved(
+                { Head = 'Silver Hairpin', Body = 'Cotton Doublet' },
+                { pinReserved = res });
+            check('AL36 the set never equips a slot a PIN reserves', st.Head, nil);
+            check('AL37 the set keeps every other slot', st.Body, 'Cotton Doublet');
+            check('AL38 the hold is traced for /dl why',
+                string.find(nt or '', 'RESERVED by pinned', 1, true) ~= nil, true);
+        end
+        do
+            -- no pins -> no hold -> the slot dispatches normally (stateless:
+            -- unpin and Head comes straight back on the next pass)
+            check('AL39 no pins -> nothing reserved', dispatchM._pinReservedSlots(nil), nil);
+            local _, fr = dispatchM._equipResolved({ Head = 'Silver Hairpin' }, {});
+            check('AL40 unpinned, the same Head equips again', fr.Head, 'Silver Hairpin');
+            -- a pin never reserves ANOTHER pin's slot: you asked for both, both land
+            local r2 = dispatchM._pinReservedSlots({ Body = 'Ryl.Ftm. Tunic', Head = 'Silver Hairpin' });
+            check('AL41 a pin does not reserve a slot another pin owns', (r2 or {}).head, nil);
+        end
+    end
+end)();
+
+-- ---------------------------------------------------------------------------
+-- AM. pinwatch (addon state) -- the writer half of the pin contract. Serializes
+--     the table the engine's ensurePinState() loads back, so the two must agree
+--     on the format exactly.
+-- ---------------------------------------------------------------------------
+;(function()
+    -- dofile, not require: the harness has no addons/ on package.path (the
+    -- dispatch/utils pattern above). serialize is pure -- charDir is pcall-guarded
+    -- and just yields nil without AshitaCore, so nothing here touches disk.
+    local pw = dofile('feature\\pinwatch.lua');
+
+    local function roundTrip(pins)
+        local text = pw.serialize(pins);
+        local chunk = (loadstring or load)(text, '@pinstate.lua');
+        if chunk == nil then return nil, text; end
+        local ok, t = pcall(chunk);
+        return (ok and t or nil), text;
+    end
+
+    -- empty -> a valid, loadable file (NOT an empty string: the engine loadstrings it)
+    local e, eText = roundTrip({});
+    check('AM1 empty pin table serializes to a loadable chunk', type(e), 'table');
+    check('AM2 empty pin table has no entries', next(e or {}), nil);
+    check('AM3 empty file is the canonical spelling', eText, 'return { }\n');
+
+    -- All-scope round trip
+    local r = roundTrip({ Ring1 = { item = 'Rajas Ring', scope = 'All' } });
+    check('AM4 All pin round-trips: item', (r.Ring1 or {}).item, 'Rajas Ring');
+    check('AM5 All pin round-trips: scope', (r.Ring1 or {}).scope, 'All');
+
+    -- scoped round trip
+    local r2 = roundTrip({ Head = { item = 'Uk\'uxkaj Cap', scope = { 'Midcast|name=slow ii' } } });
+    check('AM6 scoped pin round-trips: item', (r2.Head or {}).item, 'Uk\'uxkaj Cap');
+    check('AM7 scoped pin round-trips: scope is a list',
+        type((r2.Head or {}).scope) == 'table' and (r2.Head or {}).scope[1], 'Midcast|name=slow ii');
+
+    -- the serialized file must be exactly what the ENGINE accepts
+    local eng = dispatchM._pinOverlayFor(r2, { { label = 'name=slow ii' } }, 'Midcast');
+    check('AM8 the engine reads pinwatch output', (eng or {}).Head, 'Uk\'uxkaj Cap');
+
+    -- names with quotes/backslashes must survive (%q) -- FFXI item names carry
+    -- apostrophes routinely (Uk'uxkaj Cap, Herald's Gaiters)
+    local r3 = roundTrip({ Feet = { item = 'Herald\'s Gaiters', scope = 'All' } });
+    check('AM9 apostrophes survive serialization', (r3.Feet or {}).item, 'Herald\'s Gaiters');
+
+    -- malformed entries are dropped, not written
+    local r4 = roundTrip({ Bad = { scope = 'All' }, Good = { item = 'X', scope = 'All' } });
+    check('AM10 entry with no item is dropped', r4.Bad, nil);
+    check('AM11 the valid entry beside it survives', (r4.Good or {}).item, 'X');
+
+    -- stable output: dispatch's reader content-compares the RAW TEXT before
+    -- re-parsing, so an unstable key order would defeat that cache every second
+    local a = pw.serialize({ Ring1 = { item = 'A', scope = 'All' }, Head = { item = 'B', scope = 'All' },
+                             Feet = { item = 'C', scope = 'All' }, Back = { item = 'D', scope = 'All' } });
+    local b = pw.serialize({ Back = { item = 'D', scope = 'All' }, Feet = { item = 'C', scope = 'All' },
+                             Head = { item = 'B', scope = 'All' }, Ring1 = { item = 'A', scope = 'All' } });
+    check('AM12 serialization is order-stable across pairs() luck', a, b);
+
+    -- Adversarial names. The engine loads this file with loadstring: anything %q
+    -- fails to escape is a syntax error there, and the pin silently never applies.
+    for i, nm in ipairs({ 'Herald\'s Gaiters', 'A "quoted" Ring', 'Back\\slash',
+                          'new\nline', 'tab\there', 'pct%20', 'brace}Cap',
+                          'Uk\'uxkaj Cap' }) do
+        local rt = roundTrip({ Head = { item = nm, scope = 'All' } });
+        check('AM13.' .. i .. ' adversarial name round-trips: ' .. string.format('%q', nm),
+            (rt or {}).Head and rt.Head.item, nm);
+    end
+    -- and the same through a scope key, which is also user-influenced text
+    local rtk = roundTrip({ Head = { item = 'X', scope = { 'Midcast|name=a"b\'c' } } });
+    check('AM14 adversarial scope key round-trips',
+        ((rtk or {}).Head or {}).scope[1], 'Midcast|name=a"b\'c');
+
+    -- Character switch. An Ashita addon survives a logout, so the session-only
+    -- clear must be keyed on the CHARACTER, not a one-shot boolean -- otherwise
+    -- the next character to log in keeps this table and never gets their own
+    -- pinstate.lua cleared, and last session's pins force gear on them at login.
+    -- (charDir is nil headlessly, so drive the guard through the seam directly.)
+    check('AM15 loadPinState is a no-op before login (no character dir yet)',
+        pcall(pw.loadPinState), true);
+    pw.pins = { Head = { item = 'CharA Cap', scope = 'All' } };
+    pw.loadPinState();          -- still pre-login: must NOT clear or write
+    check('AM16 pre-login load leaves the table alone', (pw.pins.Head or {}).item, 'CharA Cap');
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then

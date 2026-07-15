@@ -62,9 +62,14 @@ sf.saveUiFlags = function()
         if type(ui._tpPos) == 'table' then
             tpx, tpy = tonumber(ui._tpPos[1]) or 0, tonumber(ui._tpPos[2]) or 0;
         end
-        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, buildmax = %s, tpfloat = %s, tpx = %d, tpy = %d }\n',
+        local gfx, gfy = 0, 0;
+        if type(ui._gfPos) == 'table' then
+            gfx, gfy = tonumber(ui._gfPos[1]) or 0, tonumber(ui._gfPos[2]) or 0;
+        end
+        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, buildmax = %s, tpfloat = %s, tpx = %d, tpy = %d, gearfloat = %s, gfx = %d, gfy = %d }\n',
             tostring(sf.flags.debug), tostring(sf.flags.autosync), tostring(bm),
-            tostring(ui._tpFloat == true), tpx, tpy));
+            tostring(ui._tpFloat == true), tpx, tpy,
+            tostring(ui._gearFloat == true), gfx, gfy));
     end);
 end
 
@@ -93,6 +98,12 @@ sf.loadUiFlags = function()
             if type(t.tpfloat)  == 'boolean' then ui._tpFloat = t.tpfloat; end
             if type(t.tpx) == 'number' and type(t.tpy) == 'number' and (t.tpx ~= 0 or t.tpy ~= 0) then
                 ui._tpPos = { t.tpx, t.tpy };
+            end
+            -- The floating equipment window remembers open/closed + where it sat.
+            -- (The PINS it edits do not persist -- pinwatch clears them on load.)
+            if type(t.gearfloat) == 'boolean' then ui._gearFloat = t.gearfloat; end
+            if type(t.gfx) == 'number' and type(t.gfy) == 'number' and (t.gfx ~= 0 or t.gfy ~= 0) then
+                ui._gfPos = { t.gfx, t.gfy };
             end
         end
     end);

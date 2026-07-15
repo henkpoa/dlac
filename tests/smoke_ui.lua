@@ -100,6 +100,23 @@ local setsMod = host.get('sets');
 check('S13 weights window registered', setsMod ~= nil and type(setsMod.window) == 'table'
     and type(setsMod.window.render) == 'function', true);
 
+-- The floating equipment window (floatgear). gearui requires it inside a pcall
+-- that only PRINTS on failure, so without these checks a broken module would sail
+-- through the whole suite as a silent no-op window.
+--
+-- It is deliberately NOT a uihost `window`: those render inside drawWindow, which
+-- returns early when the main box is shut, and this window's whole purpose is to
+-- stay up while you play. It renders from gearui's d3d_present instead (the
+-- lockstyle pattern), so what must hold is that requiring it yields a render fn.
+local fgOk, fgMod = pcall(require, 'dlac\\ui\\floatgear');
+check('S14 floatgear loads headless', fgOk, true);
+check('S15 floatgear exposes render', fgOk and type(fgMod.render) == 'function', true);
+check('S16 floatgear registers NO uihost window (it must outlive the main box)',
+    host.get('floatgear'), nil);
+-- the submenu probe must resolve to a boolean at load, never nil/error: it decides
+-- cascade vs drill-down, and BeginMenu is unproven in this binding
+check('S17 floatgear probed the BeginMenu binding', type(fgMod.hasMenu), 'boolean');
+
 -- ---------------------------------------------------------------------------
 -- 3. services contract: what equippedui (and future modules) capture at load
 -- ---------------------------------------------------------------------------

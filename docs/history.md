@@ -104,8 +104,10 @@ Blade Madrigal is Thunder element; LAC only re-requires seeded files on ITS relo
 toggles AND per-set SetOptions (both fully built, then deleted — the SetOptions
 serializer also caused the flag-wipe bug: fileToModel must carry ALL sections);
 Iridescence-as-suppression (inverted — Chatoyant IS the auto staff);
-eight-era-elemental-obi assumption; right-click context menus in this ImGui binding
-(two failed rounds → Trove-style `[mv]` left-click button); LAC memory MH flag as a
+eight-era-elemental-obi assumption; **`BeginPopupContextItem`** in this ImGui binding
+(two failed rounds → Trove-style `[mv]` left-click button — but see the CORRECTION
+below: right-click ITSELF works, this entry used to say "right-click context menus"
+and was wrong); LAC memory MH flag as a
 gate; nomad-moogle interaction gating (access is zone-wide; 0x02E has no close event);
 inventory-hop move routing (direct is legal); `/lac disable` slot locks;
 catseyexi.com API for spells/abilities (items only); public repo SQL for job mechanics
@@ -1125,3 +1127,136 @@ Design points worth not re-deriving:
   (no `&` operator). `hasBit` is arithmetic; works in both.
 - Henrik owns 12 reserving items (4 Body->Head incl. both cloaks ffxi-lac knew
   about, 8 thrown/tathlum/shuriken). `/dl fix` stamps them.
+
+## Session "floating equipment window + PINNED slots" (07-15, dispatch v44)
+
+Henrik: *"You know the equipmon addon? Since we already have a feature for 4x4 equip
+viewing, can we do the same under Equipped... right click on any equipment, get a list
+of all available equipment to equip, choose it, and hard set so it overrides everything
+within the DLAC engine."* Then, on the word: *"that 'Lock' description sounds exactly
+what I want. Equip item, lock slot so nothing removes equipped item. But Pin may be a
+good word to describe that process."*
+
+### CORRECTION: right-click WORKS. The dead-ends list was wrong for 5 days.
+
+The 07-10 entry read "right-click context menus in this ImGui binding (two failed
+rounds)". That is **false and it nearly killed this feature** — the first design round
+here was built around avoiding right-click entirely. Henrik: *"check
+feature/storage-move, that one has right click working in the all equipment menu."* He
+was right. `gearmove.lua:663-669` on that branch:
+
+```lua
+-- Trigger 1: right-click (field-confirmed working in this client).
+if imgui.IsMouseClicked(1) then
+    local over = opts.window and imgui.IsWindowHovered() or imgui.IsItemHovered();
+    if over then imgui.OpenPopup(pid); end
+end
+```
+
+What actually failed twice was **`BeginPopupContextItem`** specifically — not RMB
+delivery. `IsMouseClicked(1)` + `IsItemHovered()` feeding the ordinary
+`OpenPopup`/`BeginPopup` pair is field-confirmed. The `[mv]` button survives on that
+branch only as "Trigger 2 (guaranteed)", and `moveButton`'s comment there still claims
+RMB is unreliable — stale, contradicted by the function right below it. Dead-ends
+entry corrected. **Lesson: record the API that failed, not the gesture you gave up on.**
+
+### The pin, and why it is not a lock
+
+Henrik's ask was literally "lock the slot" and dlac already has `/dl lock` — but that
+word is taken, and it means close to the OPPOSITE: `M.locks` makes the engine *ignore*
+a slot. A lock is passive (anything else that strips the piece wins) and it LEAKS —
+history: *"engine-owned slot locks (LAC forgets `/lac disable` on reload)"*. So the
+outcome he described is delivered by the craft-overlay pattern instead: the engine
+**wears** the pinned item at top priority every dispatch. Nothing can remove it,
+nothing to restore, nothing to leak. He named it **Pin**; "lock" keeps its old meaning.
+
+### Landed
+
+- **dispatch v44**: `ensurePinState` (clone of `ensureCraftState` — 1/sec throttle,
+  raw-text compare), `pinOverlayFor(ps, hits, event)`, applied as the LAST
+  `equipResolved` of the dispatch — above the craft overlay, on **every event** (a pin
+  that lost its slot mid-cast would not be a pin) and with zero trigger hits.
+- **Scope.** `scope = 'All'` or a list of `"<Event>|<rule label>"` keys
+  (`M.pinScopeKey`). Label alone is ambiguous — `any` is the label of EVERY
+  unconditional rule, so a Precast `any` and a Midcast `any` are indistinguishable and
+  one pin would silently cover both. An unknown key goes **quiet** rather than
+  falling back to "All" (a pin on a trigger you later edited must not start forcing
+  gear everywhere).
+- **`M.ruleLabel(when)` — new, and a real bug fix.** normalize built the label with
+  `tostring(cv)`, but `when.mode` can hold a LIST (triggersui.lua:312) and
+  `tostring(table)` is an ADDRESS: different in each Lua state, different after every
+  reload. Multi-mode rules had garbage labels in `/dl why` already; a scoped pin could
+  never have matched one. Now ONE definition, used by normalize AND by the pin menu,
+  serializing lists by value (sorted). Tests AL18-23.
+- **Sub-vs-Main, both directions** (the v37 flap is the worst bug class here): a pinned
+  Sub with no pinned Main becomes the `craftMainGuard` source, so it survives the set's
+  Main AND the craft overlay's; and a pinned Main drops a craft Sub it cannot pair with.
+  Tests AL26-33.
+- **`feature/pinwatch.lua`** (addon state): owns the table, writes `pinstate.lua`,
+  `serialize` is pure + **sorted** (dispatch content-compares the raw text before
+  re-parsing; unstable key order would defeat that cache every second).
+- **`ui/floatgear.lua`** (uihost module, hard rule 1 — gearui gained no locals): the
+  4x4 window via the shared `S.renderSlotGrid`, so icons and the full hover tooltip
+  can never drift from the Equipped tab's. Toggle + position persist via uiflags
+  (`gearfloat`/`gfx`/`gfy`, the `tpfloat` precedent). Pinned slot = **red box**.
+- `renderSlotGrid` grew two optional hooks: `opts.boxColorOf(sl)` and
+  `opts.onRightClick(label)`. The grid only REPORTS the RMB — it lives inside its own
+  `BeginChild` and OpenPopup/BeginPopup must share a window scope, so floatgear raises
+  a flag and opens the popup at its own level.
+- Tests: **AL** (pin overlay, scope, ruleLabel, guards, the RSlot flap) + **AM**
+  (pinwatch round-trip through the engine's own reader, adversarial names). 426 -> 490
+  green; smoke_ui 49 -> 53 (S14-17 prove floatgear actually loaded — gearui requires it
+  inside a pcall that only PRINTS on failure, so without those checks a broken module
+  would sail through as a silent no-op window).
+
+### Three bugs an adversarial review pass caught AFTER the tests were green
+
+Worth recording because all three were invisible to 471 passing checks:
+
+1. **The v43 flap, reached through the overlay.** `reservedDrops` judges ONE table at a
+   time, on its final names — but the pin lands in its OWN `equipResolved`. So the SET's
+   pass never learned that the pinned Ryl.Ftm. Tunic was about to reserve the Head it
+   was equipping, and the pin's pass couldn't drop a Head its table never named. Set
+   equips Head → pin equips Tunic → server strips Head → forever. Craft has the same
+   hole but its catalog is narrow; **a pin is any item you own — including the Tunic,
+   the exact item that motivated v43.** Fixed with `pinReservedSlots` + `ctx.pinReserved`,
+   a stateless hold in `equipResolved` (the ratified pattern) rather than widening
+   `reservedDrops`. Tests AL34-41.
+2. **Both overlays were dead whenever the event had no rules.** `if list == nil or
+   #list == 0 then return; end` fired BEFORE the overlays were consulted, so an "All"
+   pin did nothing on a profile with no triggers — and the craft overlay's own comment
+   ("a plain profile still gets craft gear") had been **false since v31**. M.dispatch now
+   decides whether there is anything to do from rules + pins + craft together, ahead of
+   the early return, using the already-throttled cached reads.
+3. **A corrupt pinstate.lua kept the LAST GOOD pins forever.** `_pin.raw = raw` is
+   assigned before the parse, so on a syntax error the raw-compare short-circuited every
+   later call and stale pins stayed glued on with nothing able to clear them — including
+   pinwatch's clear-on-load. `ensureCraftState` still has the identical shape (v31).
+
+Also from that pass: `fmt.esc` was being applied to Selectable/MenuItem labels — esc
+doubles `%` for imgui's FORMATTING calls (Text/TextColored) only, so escaping a
+non-format label renders a literal `%%`. Nothing else in dlac escapes a Selectable
+label; matched.
+
+### Traps found while building
+
+- **The clear must reach DISK, not just the table.** Pins are session-only (craftwatch's
+  rule: no gear glued on at login from last Tuesday). But the ENGINE reads pinstate.lua
+  from LAC's own state on its own schedule — clearing only the addon-side table would
+  leave a stale file dressing you at login with nothing aware of it. `loadPinState`
+  writes the empty file, and it is pumped from gearui's `d3d_present` **whether or not
+  the window is open** — it is the only thing that clears it.
+- **`tests\run_tests.lua` hit the 200-local cap too** (it is one ~1800-line main chunk;
+  482 checks got it there). A `do ... end` block does NOT help — its locals share the
+  enclosing chunk's budget. New sections are `(function() ... end)()`, which gets its
+  own 200; that is also the cheapest fix when an older `do` section tips it over.
+- `subFilter(cands, mainRec, job, level, building)` — the 2nd arg is the Main RECORD,
+  not the job. Gating the pin menu's Sub by the worn Main is correct and NOT a breach
+  of the Sub HARD RULE: that rule protects the BUILDER's Sub picker (sets are plans);
+  a pin equips immediately, like the Alternatives list, which gates too (ADR 0006).
+- `BeginMenu`/`EndMenu` are in the SDK and their symbols are in Addons.dll, but NOTHING
+  in the whole install calls them from Lua — and presence proves nothing
+  (`BeginPopupContextItem` is bound too, and broken). floatgear probes
+  `type(imgui.BeginMenu) == 'function'` at load: bound -> the cascade Henrik asked for;
+  not bound -> the same choices as an in-place drill-down (gearmove's quantity-chooser
+  pattern, proven). **Unverified live — first thing to check in-game.**

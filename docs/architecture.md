@@ -26,12 +26,13 @@ utils.lua  dispatch.lua  chatfmt.lua  profiles.lua  gear.lua
 PROFILE_TEMPLATE.lua     what Setup writes into a user's <JOB>.lua
 
 ui/        imgui modules: gearui, triggersui, equippedui, profilesmenu, setupui,
-           weightsui, craftbar, uistyle, uihost, itemicons, filetex
+           weightsui, craftbar, uistyle, uihost, itemicons, filetex, floatgear
 data/      generated / static tables: catalog, crafts, spells, abilities, statdefs,
            levelscaling, levelstats
 gear/      the gear pipeline: gearoptim, gearimport, gearexport, gearcheck, gearfmt,
            setmanager, profilesets, ownedcache, syncflags
-feature/   self-contained features: lockstyle, macrobook, useitem, craftwatch, augments
+feature/   self-contained features: lockstyle, macrobook, useitem, craftwatch, augments,
+           pinwatch
 lib/       generic helpers: cmdqueue
 assets/    PNGs (loaded by absolute path via AshitaCore:GetInstallPath — not by module path)
 docs/  tests/  tools/
@@ -151,8 +152,26 @@ persistence; owns `sf.flags.debug`/`sf.flags.autosync`; gearui's d3d_present cal
 `sf.loadUiFlags` BEFORE `sf.tick` — order is load-bearing, the real gear.lua must swap
 in before the first sync), **weightsui.lua** (stat-weights editor; scoring stays in
 gearui), **profilesmenu.lua** (the Profiles popup tree + forms; state in the shared ui
-table). `tests\smoke_ui.lua` headless-loads the whole chunk: 200-cap breaches,
-registration order, services contract.
+table), **floatgear.lua** (the floating 4x4 equipment window + the PIN menu — v44; a
+`window`-only module, no tab; reuses `S.renderSlotGrid` so its icons and hover tooltip
+are literally the Equipped tab's and cannot drift). `tests\smoke_ui.lua` headless-loads
+the whole chunk: 200-cap breaches, registration order, services contract.
+
+### Pins — floatgear.lua + feature/pinwatch.lua + dispatch v44
+"Equip item, lock slot so nothing removes equipped item" (Henrik), built as an OVERLAY
+rather than a lock — the same shape as the craft overlay, for the same reason (a lock
+is passive and leaks; an overlay is recomputed every dispatch). **`floatgear`** edits
+the table, **`pinwatch`** writes `<char>\dlac\pinstate.lua`, and the ENGINE wears the
+named items as the LAST `equipResolved` of every dispatch — above the craft overlay, on
+every event. Unpin → overlay gone → the normal set returns.
+
+`scope` is `'All'` or a list of `"<Event>|<rule label>"` keys, spelled by
+`dispatch.pinScopeKey` over `dispatch.ruleLabel` — ONE definition each, called from both
+Lua states, because a label the two states spell differently is a pin that never
+matches. Pins are session-only and the clear must reach DISK (`pinwatch.loadPinState`,
+pumped from gearui's d3d_present whether or not the window is open): the engine reads
+the file from LAC's state, so a stale file would dress you at login. "Lock" still means
+the old, near-opposite thing (`M.locks` = engine ignores the slot).
 
 ### ui/triggersui.lua — Triggers tab
 GUI editor for the dispatch engine's data: rules per handler, mode toggle buttons, and

@@ -97,3 +97,39 @@ Consequences:
   own bit; a few records repeat it and would otherwise read as "removes itself").
 - Tests: section AK (`reservedDrops` + the wiring through the manifest), E7–E11
   (the `/dl fix` backfill, idempotent).
+
+### Addendum 2 (2026-07-15, v44): "the FINAL resolved names" has a seam — overlays
+
+The pass above is correct *within one `equipResolved` call*, and that is the whole
+catch: it judges ONE table at a time. The craft overlay (v31) and pins (v44) each land
+in their **own** `equipResolved`, so neither the set's pass nor the overlay's pass can
+see the other:
+
+- the SET's pass judges the set's plan, and never learns that the overlay is about to
+  put a reserver in Body;
+- the OVERLAY's pass knows its reserver's mask, but the drop loop can only drop slots
+  its **own table names** — and the overlay's table does not name the Head it reserves.
+
+So the set equips Head every pass, the overlay equips the reserver, the server strips
+Head, and the flap this ADR exists to kill is back — reached the long way round. It
+went unnoticed for the craft overlay because craft gear is a narrow, known catalog; a
+**pin is any item you own**, including the Ryl.Ftm. Tunic that motivated v43 in the
+first place.
+
+Fixed the same way as the Sub/Main conflict rather than by widening `reservedDrops`:
+what a top-priority overlay reserves becomes a **stateless hold** (`pinReservedSlots` →
+`ctx.pinReserved`), computed per dispatch and consumed inside `equipResolved` next to
+the slot locks. Unpin and the slot dispatches normally on the very next pass — nothing
+to restore, nothing to leak (the ruling in `memory/engine-native-over-commands`).
+
+The general lesson for the next overlay: **"post-pass on the final names" only holds
+for names in the SAME table.** Anything applied as a separate, later `EquipSet` has to
+declare what it takes away from the passes below it.
+
+Not done: the craft overlay still has the un-held version of this hole. Checked against
+the whole catalog rather than assumed — **387 items carry an `RSlot`, 77 carry a craft
+stat, and the intersection is empty** — so no craft ladder can currently put a reserver
+on you, and the hole is unreachable. Left alone deliberately rather than fixed blind. If
+a craft rung ever gains a reserver (a re-crawl is the thing that would change this),
+`ctx.pinReserved` is the shape to reuse: build it from `cEquip` too and pass it the same
+way.

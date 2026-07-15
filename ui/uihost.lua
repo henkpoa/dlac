@@ -10,7 +10,16 @@
                 { label = 'Equipped', render = function(job, level) end },
             },
             window = { render = function(job, level) end },  -- optional floating
-                                                  -- window; module owns visibility
+                                                  -- window; module owns visibility.
+                                                  -- NOTE: renderWindows is called
+                                                  -- from INSIDE gearui's drawWindow,
+                                                  -- so a registered window only
+                                                  -- draws while the MAIN box is
+                                                  -- open. A window that must
+                                                  -- outlive it (lockstyle,
+                                                  -- floatgear) is rendered straight
+                                                  -- from gearui's d3d_present with
+                                                  -- its own theme bracket instead.
             invalidate = function() end,          -- gear/inventory/job changed:
                                                   -- drop derived caches
         });
