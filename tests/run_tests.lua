@@ -1053,6 +1053,35 @@ check('Y53 headless: legacy lockstyle tiers are nil pre-login',
       profilesM.profileLockstylesPath() == nil and profilesM.legacyLockstylesPath() == nil, true);
 check('Y54 headless: readLockstylesPath is nil, never an error', profilesM.readLockstylesPath('DRK'), nil);
 
+-- v45: the profile auto-install (LAC tick) must not LATCH before it can tell
+-- whether a job has a sets file, or a login-time miss is permanent for the whole
+-- session (field case 07-15: WHM logged in with an empty .Dynamic, every trigger
+-- silently equipping nothing). setsPath == nil pre-login IS that "can't tell yet"
+-- signal, and hasSetsFile MUST answer false rather than throw -- if either ever
+-- changes, the guard silently reverts to latching on an unanswered question.
+check('Y55 headless: setsPath is nil pre-login (the auto-install retry signal)',
+      profilesM.setsPath('WHM'), nil);
+check('Y56 headless: hasSetsFile is false pre-login, never an error',
+      profilesM.hasSetsFile('WHM'), false);
+
+-- v49: "NON" is not a job. THE login bug (field-caught 07-15, /dl instdiag showed
+-- `latches=tick 1: job=NON hasSets=false`): at login GetMainJob() reads 0 = None,
+-- which gData stringifies via jobs.names_abbr to "NON" -- neither '' nor '?', so a
+-- guard checking only those accepted it, found no sets\NON.lua, installed nothing
+-- and latched for the whole session. If jobReady ever accepts NON or a 0 id again,
+-- every migrated character silently plays with an empty .Dynamic.
+check('Z1 jobReady rejects job id 0 (None -- player block not ready at login)',
+      dispatchM.jobReady(0, 'NON'), false);
+check('Z2 jobReady rejects the "NON" STRING even if an id came through',
+      dispatchM.jobReady(1, 'NON'), false);
+check('Z3 jobReady rejects nil id', dispatchM.jobReady(nil, 'SAM'), false);
+check('Z4 jobReady rejects empty / unknown job names',
+      dispatchM.jobReady(12, '') == false and dispatchM.jobReady(12, '?') == false, true);
+check('Z5 jobReady rejects a nil name (gData not ready)', dispatchM.jobReady(12, nil), false);
+check('Z6 jobReady ACCEPTS a real settled job', dispatchM.jobReady(12, 'SAM'), true);
+check('Z7 jobReady accepts WAR (id 1) -- a real job, not the None sentinel',
+      dispatchM.jobReady(1, 'WAR'), true);
+
 -- job export carries the lockstyles payload (optional, still "job-export v1":
 -- readers that predate the field ignore it; any single payload is a valid file).
 do
