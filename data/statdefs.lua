@@ -347,11 +347,13 @@ M.list = {
     { key = 'ConserveIngredient', label = 'Conserve Ingr.', section = 'Misc', percent = true },
     -- CatsEyeXI custom (modid 2000): '"Surveyor"+N' -- cuts the chance of finding
     -- "nothing" in HELM (harvesting / excavation / logging / mining). A flat point
-    -- value, not a %. Held by the 4 HELM hats and the Plain set.
-    -- CAVEAT: the value shown is the server's, which is DOUBLE the Plain set's own
-    -- item text (Plain Hose +1: DB 4 vs text "Surveyor+2"); the hats agree at 1.
-    -- Unresolved which side is the bug -- the DB drives the actual roll, so we show it.
+    -- value, not a %. Held by the 4 HELM hats (+1) and the Plain set (+1 NQ / +2 HQ).
     { key = 'Surveyor', label = 'Surveyor', section = 'Misc' },
+    -- The item text's "Improves Mining, Logging and Harvesting results" line (modids
+    -- 513/514/515, plus CatsEyeXI's own 2006 for excavation). A FLAG, always 1: every
+    -- carrier stores the same constant 73, so there is nothing to compare. Which of the
+    -- four verbs a piece covers is not modelled -- read the item text for that.
+    { key = 'HELM', label = 'HELM', section = 'Misc' },
     -- Guild anti-HQ gear: in-game text reads "Cannot Synthesize high quality
     -- items" (a hard HQ block, not a rate cut) -- the "NQ only" goal, e.g.
     -- skilling up on bridge recipes without wasting HQ materials.
