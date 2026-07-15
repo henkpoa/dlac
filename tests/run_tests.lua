@@ -1018,6 +1018,12 @@ do
     check('Y51 headless: listExports is nil, never an error', profilesM.listExports(), nil);
 end
 
+-- lockstyle path resolution (v40, per-profile boxes): headless = pre-login,
+-- every path is nil and the read resolver answers nil instead of erroring.
+check('Y52 headless: lockstylesPath is nil pre-login', profilesM.lockstylesPath(), nil);
+check('Y53 headless: legacyLockstylesPath is nil pre-login', profilesM.legacyLockstylesPath(), nil);
+check('Y54 headless: readLockstylesPath is nil, never an error', profilesM.readLockstylesPath(), nil);
+
 -- cross-character browsing/import: headless-safe (no AshitaCore -> nil answers).
 check('Y34 headless: importProfile refuses politely', (select(2, profilesM.importProfile('Other_1', 'Default', 'New'))), 'not logged in');
 check('Y35 headless: importProfile still validates the name first', (select(2, profilesM.importProfile('Other_1', 'Default', 'bad name'))), 'bad target name (letters/digits/_/- only)');
