@@ -1467,3 +1467,35 @@ Traps handled in move mode: **right-click is never suppressed** (the drag is a L
 gesture, and the menu is the only way OUT -- gating it would strand you), and the drag
 latch is cleared when the mode ends. Tests S66-S71 cover both, including the strand
 case; S70 caught the latch outliving the mode.
+
+### Field round 6: found it -- the grid is a CHILD window
+
+Henrik: *"It lights up all the boxes when I press shift, even if I don't hover over, I
+don't even have to have the game active, so it's definitely detecting shift... still
+unable to move though!"* That single report killed three rounds of theory at once: shift
+was fine (user32 reads physical state, hence "don't even have to have the game active").
+**The drag was broken, and had been from round one.**
+
+**`renderSlotGrid` draws the 4x4 inside its own `BeginChild`.** So when the cursor is on
+a slot, ImGui's hovered window is that CHILD -- and `IsWindowHovered()` defaults to an
+EXACT window match (`if (ref_window != cur_window) return false`), comparing the child
+against the float window and returning **false, every frame**. The latch could never
+arm. `ImGuiHoveredFlags_ChildWindows` is the fix, and libs/imgui.lua:324 says so in as
+many words: *"IsWindowHovered() only: Return true if any children of the window is
+hovered"*. Neither flag I tried contains it -- `AllowWhenBlockedByActiveItem` (round 2)
+nor `RectOnly` (round 4, :332).
+
+**Why this cost five rounds, and it is not "shift was hard":** a false `overWin` and a
+false `shift` produce the IDENTICAL symptom -- nothing happens. I had two unknowns
+multiplied together and kept re-rolling one of them. The first round should have made
+the two states distinguishable instead of guessing; the gold boxes did that in ONE round
+and immediately said "shift is fine, look elsewhere". **When a gesture has N silent
+predicates, make them visible before changing any of them.**
+
+Second lesson, sharper: **`or 0` on a FLAG silently disables it.** Every enum here is
+`(ImGuiFoo or 0)` for headless safety -- and if `ImGuiHoveredFlags_ChildWindows` had
+been missing, `or 0` would have produced exactly the bug that just cost five rounds,
+with nothing to see. HOVER_FLAGS now falls back to the REAL bit values (1 and 32), which
+is both correct in game and assertable headless (S72/S73 -- white-box, because the test
+stubs renderSlotGrid so there is no child window to hover; verified by restoring the old
+flags: "asks about CHILD windows: got false").

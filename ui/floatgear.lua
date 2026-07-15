@@ -78,6 +78,28 @@ end
 local hasMenu = (imgui ~= nil)
     and (type(imgui.BeginMenu) == 'function') and (type(imgui.EndMenu) == 'function');
 
+-- THE hover flags for the drag, and the reason shift+drag was dead for five rounds.
+--
+-- renderSlotGrid draws the 4x4 inside its own BeginChild. So when the cursor is on
+-- a slot, ImGui's hovered window is that CHILD -- and IsWindowHovered() defaults to
+-- an EXACT window match (`if (ref_window != cur_window) return false`), comparing
+-- the child against this window and returning false. Every frame. The drag could
+-- never latch, which looked exactly like "shift is not detected" and sent three
+-- rounds chasing the keyboard.
+--
+-- ChildWindows is the fix, and libs/imgui.lua:324 says so in as many words:
+-- "IsWindowHovered() only: Return true if any children of the window is hovered".
+-- RectOnly does NOT contain it (:332), nor does AllowWhenBlockedByActiveItem --
+-- both of which I tried. AllowWhenOverlapped is deliberately NOT included: ImGui
+-- asserts it is unsupported for IsWindowHovered.
+--
+-- Fallbacks are the REAL bit values, not 0: `or 0` on a flag silently disables it,
+-- which is precisely the failure mode above -- and it makes the flags assertable
+-- headless, where the globals do not exist.
+local HOVER_FLAGS = (ImGuiHoveredFlags_ChildWindows or 1)                    -- bit 0
+                  + (ImGuiHoveredFlags_AllowWhenBlockedByActiveItem or 32);  -- bit 5
+M._HOVER_FLAGS = HOVER_FLAGS;   -- test seam
+
 local POPUP  = '##dlac_pinmenu';
 local CAP    = 200;       -- rows drawn per popup; the overflow is COUNTED, not hidden
 local BOX0   = 40;        -- renderSlotGrid's default box; scale 1.0 == the tab's size
@@ -508,14 +530,8 @@ function M.render()
         -- frame, so any frame we miss (or a Shift pressed just after the button
         -- went down) loses the gesture entirely. Down is forgiving and the latch
         -- makes it idempotent.
-        -- RectOnly, not AllowWhenBlockedByActiveItem alone: it is that flag PLUS
-        -- AllowWhenBlockedByPopup and AllowWhenOverlapped (libs/imgui.lua:332), so
-        -- the grid still counts as hovered with a button held, the pin popup up, or
-        -- another window overlapping. It is also the combo fancychat uses, i.e. the
-        -- one with field miles on it here.
         local LMB = ImGuiMouseButton_Left or 0;
-        local overWin = imgui.IsWindowHovered(ImGuiHoveredFlags_RectOnly
-                                              or ImGuiHoveredFlags_AllowWhenBlockedByActiveItem or 0);
+        local overWin = imgui.IsWindowHovered(HOVER_FLAGS);
         if not _dragging and shift and imgui.IsMouseDown(LMB) and overWin then
             _dragging = true;
             pcall(function() imgui.ResetMouseDragDelta(LMB); end);

@@ -287,11 +287,26 @@ check('S16 unknown item resolves to nil, no error', lockstyle._modelOf('No Such 
     fg.shiftHeld = function() return heldShift; end
     check('S55 floatgear exposes the shift seam', type(fg.shiftHeld), 'function');
 
+    -- THE bug that killed shift+drag for five rounds, guarded white-box because it
+    -- cannot be caught behaviourally here (the test stubs renderSlotGrid, so there
+    -- is no BeginChild and no child window to be hovered).
+    --
+    -- The real grid lives in a BeginChild, so ImGui's hovered window is the CHILD
+    -- and IsWindowHovered() defaults to an EXACT window match -> false forever.
+    -- ChildWindows is the only flag that fixes it (libs/imgui.lua:324). If someone
+    -- "simplifies" these flags, the drag dies silently and looks like a dead key.
+    local hoverFlags = nil;
     local moved = nil;
     IM.SetWindowPos = function(p) moved = p; end
-    IM.IsWindowHovered = function() return true; end
+    IM.IsWindowHovered = function(f) hoverFlags = f; return true; end
     IM.GetMouseDragDelta = function() return 5, 7; end
     popupOpen = false;
+
+    local CHILDWINDOWS, ALLOWACTIVE = 1, 32;   -- libs/imgui.lua bits 0 and 5
+    check('S72 the drag hover test asks about CHILD windows (the grid is a BeginChild)',
+        fg._HOVER_FLAGS % (CHILDWINDOWS * 2) >= CHILDWINDOWS, true);
+    check('S73 ...and allows a held button (you are dragging: an item IS active)',
+        math.floor(fg._HOVER_FLAGS / ALLOWACTIVE) % 2, 1);
 
     -- shift NOT held: a click must not move the window
     heldShift = false;
