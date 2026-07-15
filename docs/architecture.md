@@ -327,7 +327,7 @@ Registered across six handlers; each blocks only its own subcommands.
 | `/dl env` | dispatch | Day/weather + per-element obi math |
 | `/dl triggers reload\|init\|path` | dispatch | Trigger-file management |
 | `/dl scan` / `preview` / `stage` / `commit` | gearimport | Gear import pipeline |
-| `/dl fix` | gearimport | Backfill catalog metadata into gear.lua |
+| `/dl fix` | gearimport | Backfill catalog metadata (Type/OneHanded/**RSlot**) into gear.lua |
 | `/dl dedupe` | gearimport | Remove duplicate gear.lua entries |
 | `/dl prune [commit]` / `prune why <item>` | gearimport | Remove/explain unowned entries |
 | `/dl weight ...` / `best` / `mp` / `maxmp` | gearoptim | Stat-weight tools |

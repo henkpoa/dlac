@@ -166,8 +166,17 @@ handshake).
     `accstate.lua`, so any branch-committed markers resolve to "worn". The
     feedback-loop design notes live in history.md "AutoAcc -- the first Type
     automation" — read them before touching the dormant machinery.
-- **main**: healthy; **293 tests green** (was 267 at last handoff; 302 on
-  feature/autoacc — the 9 accwatch AD tests ride the branch) —
+- **Reserved slots (RSlot) — dispatch v43, new this session.** Items that take a
+  slot away while worn (Ryl.Ftm. Tunic = Body reserves Head; robes reserve Hands;
+  boomerangs reserve Ammo) made dlac and the server fight forever over the reserved
+  slot. The fact is server data (`item_equipment.rslot`), now crawled into
+  `catalog.lua` as `RSlot`, stamped into gear.lua by the scan, **backfilled by
+  `/dl fix`** (the engine has no catalog — unstamped = old behavior), and resolved by
+  `dispatch.reservedDrops` at equip time. Read the **ADR 0006 addendum** before
+  touching it: build-time stripping (what ffxi-lac did, and what dlac had ported as
+  dead code in utils.lua) is WRONG under overlay. Worn pieces reserve too. Tests: AK,
+  E7–E11. history.md "Reserved slots" has the data scan + the two traps.
+- **main**: healthy; **426 tests green + 49 smoke_ui** (was 293 at last handoff) —
   current as of this session. The whole **crafting-gear system** landed here (see
   history.md "crafting system + catalog pipeline"): read that section before touching
   craftwatch/craftbar/dispatch-overlay/triggersui-craft code.

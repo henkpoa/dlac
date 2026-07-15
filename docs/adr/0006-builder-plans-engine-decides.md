@@ -55,3 +55,45 @@ Enforcement (all three must survive any refactor):
 Equip-*now* surfaces (Equipped tab Alternatives) remain live-gated by design, and
 Auto-build remains equip-correct ("best usable now") — still an open decision, but its
 output never constrains what the picker offers.
+
+## Addendum (2026-07-15): reserved slots are the engine's call too
+
+Some items take a slot away while worn — the Ryl.Ftm. Tunic (Body) reserves Head,
+robes reserve Hands, a boomerang (Range) reserves Ammo, party suits reserve most of
+the body. It is the server's `item_equipment.rslot`, and it is the same shape of
+problem as the Main/Sub pair: **item identity, not game state.** Equipping into a
+reserved slot is not something the server half-tolerates — it strips the piece back,
+dlac re-equips it, and the two flap forever (Henrik's report: "it just flashes back
+and forth infinitely").
+
+ffxi-lac solved it at BUILD time (`BuildDynamicSets` stripped `currentSet.Head` when
+the body carried a `CannotEquipHeadgear` flag), and that code was ported into dlac's
+`utils.lua` verbatim. Both halves of it were wrong here, which is why the bug survived
+the port:
+
+- **Wrong altitude.** Sets overlay (ADR 0003). A Head this set owns is perfectly
+  legal under a higher-priority trigger that swaps the Body out — stripping it during
+  the build silently loses it. And the build cannot see the slots MP-EQUIP writes that
+  no set ever named, or what a virtual/AutoAcc marker resolves to.
+- **Wrong data.** `CannotEquipHeadgear` was never a dlac field, so the ported check
+  read nil every time — dead code. (In ffxi-lac itself it was hand-authored from
+  parsed description text and only ever true for 2 items; the parser mangled the flag
+  on the Ryl.Ftm. Tunic, so the exact reported item was broken there too.)
+
+The rule now lives once, in `dispatch.reservedDrops`, as a post-pass on the FINAL
+resolved names — the same place and shape as the craft Sub guard. The reserver wins
+and the reserved slot is dropped (= left as worn; the server clears it anyway).
+Worn pieces reserve as well as planned ones: a set that only writes Head still has to
+answer to the Tunic already on your back. Slots resolve in a fixed order so mutual
+reservations settle identically every pass instead of by `pairs()` luck.
+
+Consequences:
+- `RSlot` (the mask) rides in gear.lua per item, exactly like `Type`/`OneHanded`/
+  `Count`, because the LAC-state engine has no catalog: the scan stamps it and
+  **`/dl fix` backfills it** into files written before v43. Unstamped = invisible =
+  pre-v43 behavior, never a wrong drop.
+- The client resource has no such field — reservation is server data, so `catalog.lua`
+  is the only possible source (`apicrawl.py` carries `rslot`, masking out the item's
+  own bit; a few records repeat it and would otherwise read as "removes itself").
+- Tests: section AK (`reservedDrops` + the wiring through the manifest), E7–E11
+  (the `/dl fix` backfill, idempotent).

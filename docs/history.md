@@ -1064,3 +1064,64 @@ tab module; one d3d_present hook (gearui's) calls sf.loadUiFlags then
 sf.tick; modules capture ui/COL tables at load but they are stable
 references; profilesmenu.render() must run inside gearui's imgui.Begin
 (OpenPopup/BeginPopup share window scope).
+
+## Reserved slots -- the infinite equip flash (2026-07-15)
+
+Henrik: "items such as Royal Footmans Tunic, which reserves both body and
+head. When that collides with another head piece, it just flashes back and
+forth infinitely." He remembered ffxi-lac having logic for it -- check a
+"canwearheadpiece" boolean once the set was chosen, drop the head piece if
+false -- and asked why dlac didn't.
+
+dlac DID have it. `utils.lua` carried the ffxi-lac block verbatim, implicit
+global `bodyGearObject` and all. It was dead code: it keys off
+`CannotEquipHeadgear`, which nothing in dlac has ever written, so it read nil
+every pass. In ffxi-lac itself the flag was hand-authored from parsed item
+description text and true for exactly TWO items (Royal Cloak, White Cloak) --
+and the parser had mangled it on the Ryl.Ftm. Tunic ("Cannot Equip Headgear
+DEF:12" glued into one token, commented out), so the very item Henrik named
+was broken there too. The remembered fix never actually covered it.
+
+The real fact is server data: `item_equipment.rslot`, "the slots this item
+takes away while worn", and the API exposes it per item. It was sitting in
+tools/api_cache the whole time, thrown away by apicrawl's `slot_name()` (which
+reads `slot`, not `rslot`). 388 items carry one; the scan across the cache is
+worth keeping:
+
+    Ammo  -> Range   135   thrown/pet food (Pebble, Angon, broths, sachets)
+    Body  -> Hands    74   long-sleeved robes (Decennial Coat)
+    Legs  -> Feet     71   (Marine Boxers)
+    Body  -> Head     52   hooded cloaks -- incl. Ryl.Ftm. Tunic
+    Range -> Ammo     35   boomerangs / throwing (Rogetsurin)
+    Body  -> Legs     11   party suits
+    Body  -> Hands+Legs+Feet / Hands+Feet / Head+Hands   9   suits
+    Range -> Range     1   Flamedancer Glaive -- reserves ITSELF
+
+Two traps in that data. Arrows/bolts/bullets reserve NOTHING (404 ammo items
+clean) -- only *thrown* ammo blocks a ranged weapon, so RNG/COR sets are
+untouched; had the rule been "ammo conflicts with range" it would have broken
+every archer. And the self-referential record means the item's own slot bit
+MUST be masked out at crawl time or it reads as "removes itself".
+
+Fix: `RSlot` in catalog.lua (387 lines added to a byte-identical rebuild --
+`--build-only` off the cache, no network), stamped into gear.lua by the scan
+and backfilled by `/dl fix` (the LAC-state engine has no catalog -- same
+reason Type/OneHanded/Count live in the file), resolved by
+`dispatch.reservedDrops` as an equipResolved post-pass. See the ADR 0006
+addendum for WHY it is engine-time and not build-time (short version: sets
+overlay, so two individually legal sets can overlay into an illegal pair, and
+MP-EQUIP writes slots no set named).
+
+Design points worth not re-deriving:
+- **Worn pieces reserve too.** The common case isn't a set naming both slots;
+  it's a set that only writes Head while the Tunic is already on your back. A
+  slot the set DOES write is judged by the plan, not by what it replaces (a set
+  swapping the Tunic out keeps its Head).
+- **Fixed slot order, not pairs().** Boomerang reserves Ammo, a pebble in Ammo
+  reserves Range -- mutual. Bit order resolves it identically every pass, and
+  makes a dropped slot stop reserving (Body takes Legs -> the Legs piece must
+  not go on to take Feet).
+- **No `bit` library.** dispatch runs headless on 5.4 (no `bit`) and in LuaJIT
+  (no `&` operator). `hasBit` is arithmetic; works in both.
+- Henrik owns 12 reserving items (4 Body->Head incl. both cloaks ffxi-lac knew
+  about, 8 thrown/tathlum/shuriken). `/dl fix` stamps them.

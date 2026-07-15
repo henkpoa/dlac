@@ -228,6 +228,34 @@ check('E5 result still parses',      (loadstring or load)(eText) ~= nil, true);
 local _, eRep2 = gearimport.computeFixes(eText, {}, eMeta);
 check('E6 idempotent second pass',   #eRep2.fixed, 0);
 
+-- RSlot backfill: the reserved-slot fact reaches an EXISTING gear.lua only through
+-- /dl fix (the engine has no catalog to look it up in). Any slot, not just weapons.
+local e2Gear = table.concat({
+    'gear = {',
+    '    Body = {',
+    '        RylFtmTunic = {',
+    '            Name = "Ryl.Ftm. Tunic",',
+    '            Level = 10,',
+    '            Id = 13718,',
+    '        },',
+    '        CottonDoublet = {',
+    '            Name = "Cotton Doublet",',
+    '            Level = 9,',
+    '            Id = 12588,',
+    '        },',
+    '    },',
+    '};',
+}, '\n');
+local e2Meta = { [13718] = { Type = 'Body', RSlot = 16 }, [12588] = { Type = 'Body' } };
+local e2Text, e2Rep = gearimport.computeFixes(e2Gear, {}, e2Meta);
+check('E7 RSlot stamped on a reserving Body', e2Text:find('RSlot = 16', 1, true) ~= nil, true);
+check('E8 non-reserving items stay thin',     select(2, e2Text:gsub('RSlot', '')), 1);
+check('E9 result still parses',               (loadstring or load)(e2Text) ~= nil, true);
+local _, e2Rep2 = gearimport.computeFixes(e2Text, {}, e2Meta);
+check('E10 RSlot backfill is idempotent',     #e2Rep2.fixed, 0);
+check('E11 the backfill is reported',
+    e2Rep.fixed[1] ~= nil and e2Rep.fixed[1]:find('RSlot', 1, true) ~= nil, true);
+
 -- ---------------------------------------------------------------------------
 -- F. setmanager shim analysis -- COMMENTED-OUT handlers ("-- profile.HandleX =
 --    function()") are dead code: they must read as 'missing' (Setup creates
@@ -1533,6 +1561,91 @@ if type(dispatchM._lockstylePacket) == 'function' then
         gate({ Jobs = { 'All' }, Level = 99 }, { DRK = 75 }), false);
     check('AJ17 gate: unknown record passes (server decides)', gate(nil, {}), true);
     check('AJ18 gate: record without Jobs passes', gate({ Level = 99 }, {}), true);
+end
+
+-- ---------------------------------------------------------------------------
+-- AK. reserved slots (dispatch.reservedDrops) -- an item's RSlot mask is the
+--     server's item_equipment.rslot: the slots it TAKES AWAY while worn. The
+--     Ryl.Ftm. Tunic (Body) reserves Head; equipping a head piece anyway makes
+--     the server strip it and dlac re-equip it, forever. The reserver wins and
+--     the reserved slot is dropped -- the only stable state.
+-- ---------------------------------------------------------------------------
+do
+    local RS = { ['Ryl.Ftm. Tunic'] = 0x0010,     -- Body  -> Head
+                 ['Wikyo Cloak']    = 0x0010,     -- Body  -> Head
+                 ['Decennial Coat'] = 0x0040,     -- Body  -> Hands
+                 ['Moogle Suit']    = 0x01C0,     -- Body  -> Hands + Legs + Feet
+                 ['Marine Boxers']  = 0x0100,     -- Legs  -> Feet
+                 ['Boomerang']      = 0x0008,     -- Range -> Ammo
+                 ['Pet Food Alpha'] = 0x0004 };   -- Ammo  -> Range
+    local function look(n) return RS[n]; end
+    local function drops(set, worn) return dispatchM.reservedDrops(set, look, worn) or {}; end
+
+    -- the reported bug
+    local d = drops({ Body = 'Ryl.Ftm. Tunic', Head = 'Silver Hairpin', Legs = 'Cotton Brais' });
+    check('AK1 a reserved Head is dropped',        d.Head, 'Ryl.Ftm. Tunic');
+    check('AK2 the reserver itself is kept',       d.Body, nil);
+    check('AK3 unrelated slots are untouched',     d.Legs, nil);
+
+    check('AK4 no reserver -> nothing dropped',
+        dispatchM.reservedDrops({ Body = 'Cotton Doublet', Head = 'Silver Hairpin' }, look), nil);
+    check('AK5 reserver with the slot empty -> nothing dropped',
+        dispatchM.reservedDrops({ Body = 'Ryl.Ftm. Tunic' }, look), nil);
+    check('AK6 an unknown item reserves nothing',
+        dispatchM.reservedDrops({ Body = 'Mystery Robe', Head = 'Silver Hairpin' }, look), nil);
+
+    -- multi-bit masks
+    local m = drops({ Body = 'Moogle Suit', Hands = 'G1', Legs = 'G2', Feet = 'G3', Head = 'G4' });
+    check('AK7 every bit of the mask drops',  (m.Hands ~= nil and m.Legs ~= nil and m.Feet ~= nil), true);
+    check('AK8 a bit NOT in the mask stays',  m.Head, nil);
+
+    -- a dropped slot must not go on to reserve: Body takes Legs, so the Legs
+    -- piece is never worn and its own claim on Feet must not fire.
+    local c = drops({ Body = 'Moogle Suit', Legs = 'Marine Boxers', Feet = 'Leather Highboots' });
+    check('AK9 chained: Legs dropped by Body',        c.Legs, 'Moogle Suit');
+    check('AK10 chained: Feet dropped by Body, not by the dropped Legs', c.Feet, 'Moogle Suit');
+
+    -- mutual reservation resolves deterministically by slot order, not pairs() luck
+    local mut = drops({ Range = 'Boomerang', Ammo = 'Pet Food Alpha' });
+    check('AK11 mutual: Range wins',  mut.Range, nil);
+    check('AK12 mutual: Ammo dropped', mut.Ammo, 'Boomerang');
+    check('AK13 arrows are not ammo-reserved', drops({ Range = 'Power Bow', Ammo = 'Iron Arrow' }).Ammo, nil);
+
+    -- WORN pieces reserve too: the common case is a set that only writes Head
+    -- while the Tunic is already on your back.
+    local function wornTunic(slot) if slot == 'Body' then return 'Ryl.Ftm. Tunic'; end return nil; end
+    check('AK14 a worn reserver drops the planned Head',
+        drops({ Head = 'Silver Hairpin' }, wornTunic).Head, 'Ryl.Ftm. Tunic');
+    check('AK15 a set that REPLACES the reserver keeps its Head',
+        drops({ Head = 'Silver Hairpin', Body = 'Cotton Doublet' }, wornTunic).Head, nil);
+    check('AK16 worn slots are never themselves dropped',
+        drops({ Head = 'Silver Hairpin' }, wornTunic).Body, nil);
+    check('AK17 a throwing worn() is survivable',
+        dispatchM.reservedDrops({ Head = 'Silver Hairpin' }, look,
+            function() error('no equipment'); end), nil);
+
+    -- slot keys are matched case-insensitively; the dropped key keeps the set's case
+    local lc = drops({ body = 'Ryl.Ftm. Tunic', head = 'Silver Hairpin' });
+    check('AK18 lowercase set keys still resolve', lc.head, 'Ryl.Ftm. Tunic');
+
+    -- the equipResolved post-pass end-to-end. First with a manifest that has no
+    -- RSlot (every gear.lua written before v43): the engine must behave exactly as
+    -- it did, or an un-fixed file would start losing slots.
+    local gT = package.loaded['dlac\\gear'];
+    gT.NameToObject['Ryl.Ftm. Tunic'] = { Name = 'Ryl.Ftm. Tunic', Type = 'Body' };
+    gT.NameToObject['Silver Hairpin'] = { Name = 'Silver Hairpin', Type = 'Head' };
+    local _, akTbl = dispatchM._equipResolved({ Body = 'Ryl.Ftm. Tunic', Head = 'Silver Hairpin' }, {});
+    check('AK19 a manifest without RSlot leaves the engine unchanged', akTbl.Head, 'Silver Hairpin');
+
+    -- now stamp RSlot, as the scan / `/dl fix` does -> the engine drops the Head.
+    -- This is the wiring test: reservedDrops is pure, but rslotOf reads the real
+    -- manifest, and that read is what actually has to work in LAC's state.
+    gT.NameToObject['Ryl.Ftm. Tunic'].RSlot = 0x0010;
+    local akNote, akTbl2 = dispatchM._equipResolved({ Body = 'Ryl.Ftm. Tunic', Head = 'Silver Hairpin' }, {});
+    check('AK20 manifest RSlot -> reserved Head dropped', akTbl2.Head, nil);
+    check('AK21 the reserver still equips',               akTbl2.Body, 'Ryl.Ftm. Tunic');
+    check('AK22 the drop is traced for /dl why',
+        string.find(akNote, 'RESERVED', 1, true) ~= nil, true);
 end
 
 -- ---------------------------------------------------------------------------

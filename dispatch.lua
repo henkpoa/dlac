@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 42;   -- 42: lockstyle apply builds the 0x053 itself (server reads ItemNo+EquipKind only -- bags never scanned; all 9 slots sent, unnamed frozen to worn gear); preview = locally injected GRAP_LIST 0x051; the v39 equip-preview overlay (lspreview.lua reader) is gone from the engine
+M.VERSION = 43;   -- 43: reserved slots (RSlot) resolved at equip time -- a Body that takes Head away (Ryl.Ftm. Tunic) drops the reserved slot instead of flapping with the server forever; worn pieces reserve too
+-- 42: lockstyle apply builds the 0x053 itself (server reads ItemNo+EquipKind only -- bags never scanned; all 9 slots sent, unnamed frozen to worn gear); preview = locally injected GRAP_LIST 0x051; the v39 equip-preview overlay (lspreview.lua reader) is gone from the engine
                   -- 41: lockstyle boxes live in the JOB ENTRY (profiles\<Name>\lockstyles\<JOB>.lua; reads fall back v40 profile file, then global)
                   -- 35: matched-but-missing set no longer chat-warns (Triggers tab shows it in red)
                   -- 34: modestate __loadstamp -- the GUI's red Reload-LAC button watches it clear
@@ -923,6 +924,95 @@ function M._accReset()              -- headless tests: fresh-session state
     M._accRemoved = {}; _accSeq = nil; _accBudget = 0;
 end
 
+-- ---------------------------------------------------------------------------
+-- Reserved slots (RSlot). Some pieces take another slot away while worn: the
+-- Ryl.Ftm. Tunic is a Body that reserves Head; robes reserve Hands; a boomerang
+-- (Range) reserves Ammo; suits reserve most of the body. It is the server's
+-- item_equipment.rslot, carried per item in gear.lua (the engine's only item
+-- source -- it has no catalog) and stamped there by the scan / `/dl fix`.
+--
+-- Equipping into a reserved slot is not a partial failure the server tolerates:
+-- it strips the piece straight back, dlac sees the slot is wrong and re-equips,
+-- and the two flap forever. Dropping the reserved slot is the only stable state.
+--
+-- Bit order matches the client's slot order. Tested arithmetically (no `bit`
+-- library): dispatch also runs headless on 5.4, where `bit` does not exist and
+-- `&` would not parse under LuaJIT.
+local RSLOT_ORDER = {
+    { 0x0001, 'Main'  }, { 0x0002, 'Sub'   }, { 0x0004, 'Range' }, { 0x0008, 'Ammo'  },
+    { 0x0010, 'Head'  }, { 0x0020, 'Body'  }, { 0x0040, 'Hands' }, { 0x0080, 'Legs'  },
+    { 0x0100, 'Feet'  }, { 0x0200, 'Neck'  }, { 0x0400, 'Waist' }, { 0x0800, 'Ear1'  },
+    { 0x1000, 'Ear2'  }, { 0x2000, 'Ring1' }, { 0x4000, 'Ring2' }, { 0x8000, 'Back'  },
+};
+local function hasBit(mask, b) return math.floor(mask / b) % 2 == 1; end
+
+-- Which slots of a RESOLVED set are reserved out from under it.
+--   set    -- the resolved slot->name plan; ONLY these slots can be dropped
+--   lookup -- itemName -> RSlot mask or nil (injected; tests drive it directly)
+--   worn   -- SlotKey -> the name you are wearing there, or nil. Optional, and the
+--             reason this is not a pure set-vs-itself check: the Tunic already on
+--             your back reserves Head from a set that only writes Head. A slot the
+--             set DOES write is judged by the plan, not by what it replaces.
+-- Returns { [SlotKey] = reserverName } or nil when nothing is reserved.
+--
+-- The reserver wins and the reserved slot is dropped -- matching the server, which
+-- clears that slot anyway the moment the reserver goes on. Slots are walked in a
+-- fixed order, so mutual reservations (a boomerang reserves Ammo; a pebble in Ammo
+-- reserves Range) always resolve the same way instead of by pairs() luck, and a
+-- slot already dropped never reserves anything itself (Body takes Legs, so the Legs
+-- piece must not go on to take Feet).
+function M.reservedDrops(set, lookup, worn)
+    local keyOf = {};   -- lowercase slot -> the set's actual key, whatever its case
+    for slot, v in pairs(set) do
+        if type(v) == 'string' then keyOf[string.lower(tostring(slot))] = slot; end
+    end
+    local name = {};    -- what each slot will actually hold once this set lands
+    for _, e in ipairs(RSLOT_ORDER) do
+        local ls = string.lower(e[2]);
+        if keyOf[ls] ~= nil then
+            name[ls] = set[keyOf[ls]];
+        elseif worn ~= nil then
+            local ok, w = pcall(worn, e[2]);
+            if ok and type(w) == 'string' then name[ls] = w; end
+        end
+    end
+    local gone, dropped = {}, nil;
+    for _, e in ipairs(RSLOT_ORDER) do
+        local ls = string.lower(e[2]);
+        if name[ls] ~= nil and not gone[ls] then
+            local mask = tonumber(lookup(name[ls])) or 0;
+            if mask > 0 then
+                for _, r in ipairs(RSLOT_ORDER) do
+                    local rls = string.lower(r[2]);
+                    if rls ~= ls and keyOf[rls] ~= nil and not gone[rls] and hasBit(mask, r[1]) then
+                        gone[rls] = true;
+                        dropped = dropped or {};
+                        dropped[keyOf[rls]] = name[ls];
+                    end
+                end
+            end
+        end
+    end
+    return dropped;
+end
+
+-- RSlot by item name, from the gear manifest. Resolved lazily: in LAC's state the
+-- require finds the character's real gear.lua. Guarded -- a missing/old manifest
+-- means every lookup is nil, and the engine behaves exactly as it did before.
+local _gearMod = nil;
+local function rslotOf(name)
+    if _gearMod == nil then
+        _gearMod = false;
+        pcall(function() _gearMod = require('dlac\\gear') or false; end);
+    end
+    local m = nil;
+    pcall(function()
+        local rec = _gearMod and _gearMod.NameToObject and _gearMod.NameToObject[name] or nil;
+        if rec ~= nil then m = tonumber(rec.RSlot); end
+    end);
+    return m;
+end
+
 local function equipResolved(s, ctx)
     local out, notes = nil, nil;
     local anyLocks = (next(M.locks) ~= nil);
@@ -1075,6 +1165,24 @@ local function equipResolved(s, ctx)
                 notes[#notes + 1] = string.format('Main=%s HELD (pairs badly with the craft Sub)', tostring(v));
                 break;
             end
+        end
+    end
+    -- Reserved-slot pass (see RSLOT_ORDER). LAST, on the FINAL names: only here are
+    -- the overlay, the virtuals, AutoAcc and MP-EQUIP all resolved. It has to be
+    -- here rather than at build time -- two individually legal sets can overlay into
+    -- an illegal pair (a Body from one trigger, a Head from another), and MP-EQUIP
+    -- writes slots no set ever named. A set is a plan; conflicts are the engine's
+    -- call (ADR 0006).
+    local drops = M.reservedDrops(out or s, rslotOf, wornItemName);
+    if drops ~= nil then
+        for slot, by in pairs(drops) do
+            if out == nil then
+                out = {};
+                for k2, v2 in pairs(s) do out[k2] = v2; end
+            end
+            out[slot] = nil;
+            notes = notes or {};
+            notes[#notes + 1] = string.format('%s=RESERVED by %s (kept as worn)', tostring(slot), tostring(by));
         end
     end
     pcall(function() gFunc.EquipSet(out or s); end);

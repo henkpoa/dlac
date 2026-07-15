@@ -521,16 +521,14 @@ function M.BuildDynamicSets(sets)
             end
         end
 
-        -- After processing the whole set, check if body piece prevents headgear and remove headgear if necessary
-        if gear.NameToObject[currentSet.Body] ~= nil then
-            bodyGearObject = gear.NameToObject[currentSet.Body]
-            if bodyGearObject.CannotEquipHeadgear ~= nil and bodyGearObject.CannotEquipHeadgear == true then
-                if currentSet.Head ~= nil then
-                    -- print ("Removing headgear from " .. setName .. " because body piece cannot equip headgear.");
-                    currentSet.Head = nil;
-                end
-            end
-        end
+        -- (Reserved slots -- a Body that takes Head away, like the Ryl.Ftm. Tunic --
+        -- are resolved by the ENGINE at equip time, not here. The ffxi-lac original
+        -- stripped Head during the build, keyed off a hand-authored
+        -- CannotEquipHeadgear flag; both halves were wrong for dlac. Building is the
+        -- wrong altitude: sets overlay, so a Head this set owns is perfectly legal
+        -- under a higher-priority trigger that swaps the Body out -- stripping it
+        -- here would lose it. And the flag was never a dlac field, so the check was
+        -- dead code that always read nil. See dispatch.reservedDrops / ADR 0006.)
         sets[setName] = currentSet;
     end
     return sets;

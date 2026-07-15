@@ -88,6 +88,30 @@ local function slotFromMask(slots)
     return nil;
 end
 
+-- RSlot (reserved slots) by item id, from the catalog. The CLIENT resource has no
+-- such field -- reservation is server data (item_equipment.rslot), so it can only
+-- come from the API crawl. Built once, lazily, and guarded: without the catalog
+-- (headless tests) every lookup is nil and scanning behaves exactly as before.
+local _rslotById = nil;
+local function rslotFor(id)
+    if _rslotById == nil then
+        _rslotById = {};
+        pcall(function()
+            local function walk(t)
+                for k, v in pairs(t) do
+                    if type(v) == 'table' then
+                        if v.Id ~= nil and v.Name ~= nil then
+                            if v.RSlot ~= nil then _rslotById[v.Id] = v.RSlot; end
+                        elseif k ~= 'NameToObject' then walk(v); end
+                    end
+                end
+            end
+            walk(require('dlac\\data\\catalog'));
+        end);
+    end
+    return _rslotById[id];
+end
+
 -- Weapon skill id -> the category key used under gear.Main / gear.Range / gear.Ammo.
 -- (Instruments and a few exotic ranged types get refined in Piece #2.)
 local WEAPON_CATEGORY = {
@@ -163,6 +187,7 @@ local function resolveItem(entry)
         Slot     = slotFromMask(res.Slots),
         Jobs     = res.Jobs,
         Flags    = res.Flags,
+        RSlot    = rslotFor(entry.Id),   -- slots this piece takes away while worn
         Count    = 1,
     };
 
@@ -640,6 +665,13 @@ local function renderEntry(rec)
         -- (the catalog calls both "Sub").
         add(string.format('    Type = %q,', subTypeFromName(rec.Name)));
     end
+    -- Reserved slots (server rslot): the equip-time engine drops these from a
+    -- resolved set, and it reads RAW gear.lua with no catalog to consult -- so the
+    -- fact has to live in the file, like Type / OneHanded / Count. Only ~390 items
+    -- in the game reserve anything; everything else omits the field.
+    if (tonumber(rec.RSlot) or 0) ~= 0 then
+        add(string.format('    RSlot = %d,', rec.RSlot));
+    end
 
     -- No Stats block on purpose (Phase 2): item stats -- including weapon DMG/Delay -- come
     -- from the global catalog (catalog.lua) by Id, which carries them for every item. gear.lua
@@ -1040,6 +1072,7 @@ local function parseGearEntries(lines)
             if e.Id == nil then local v = L:match('^%s+Id = (%d+)'); if v then e.Id = tonumber(v); e.IdLine = j; end end
             if e.Type == nil then local v = L:match('^%s+Type = "([^"]*)"'); if v then e.Type = v; e.TypeLine = j; end end
             if e.OneHanded == nil then local v = L:match('^%s+OneHanded = (%a+)'); if v then e.OneHanded = (v == 'true'); e.OneHandedLine = j; end end
+            if e.RSlot == nil then local v = L:match('^%s+RSlot = (%d+)'); if v then e.RSlot = tonumber(v); e.RSlotLine = j; end end
             j = j + 1;
         end
         e.endLine = j;
@@ -1154,6 +1187,12 @@ function M.computeFixes(gearText, ownedItems, metaById)
                 if e.parent == 'Sub' and e.Type == nil then
                     local t = subTypeFromName(e.Name);
                     ins(string.format('Type = %q,', t), string.format('+Type %q', t));
+                end
+                -- Reserved slots -- any slot, not just the weapon pair. Every gear.lua
+                -- written before RSlot existed lacks it, and the engine cannot see the
+                -- catalog, so this backfill is what makes an old file conflict-aware.
+                if e.RSlot == nil and (tonumber(c.RSlot) or 0) ~= 0 then
+                    ins(string.format('RSlot = %d,', c.RSlot), string.format('+RSlot %d', c.RSlot));
                 end
             end
         end
