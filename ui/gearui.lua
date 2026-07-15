@@ -2355,9 +2355,12 @@ local function renderAddPopup(job, level)
         imgui.SameLine(0, 10); renderSortCombo('add');
         imgui.SameLine(0, 10);
         imgui.TextColored(COL.DIM, 'stays open -- add several; Esc / click outside closes');
-        -- Filter row: name search + hide gear parked in unavailable containers.
+        -- Filter row: name search + hide gear parked in unavailable containers
+        -- + hide the Teleports-menu utility items (ON by default -- Henrik: they
+        -- bloat the Ear/Ring lists without adding set value).
         ui.addSearch = ui.addSearch or { '' };
         ui.addAvail  = ui.addAvail  or { false };
+        ui.addHideTravel = ui.addHideTravel or { true };
         imgui.TextColored(COL.DIM, 'Search:'); imgui.SameLine(0, 4);
         imgui.PushItemWidth(240);
         imgui.InputText('##addsearch', ui.addSearch, 48);
@@ -2369,6 +2372,11 @@ local function renderAddPopup(job, level)
         imgui.Checkbox('Available only', ui.addAvail);
         if imgui.IsItemHovered() then
             imgui.SetTooltip('Hide gear parked in a container you cannot equip from\n(the red names -- Safe, Storage, Locker, Satchel...).');
+        end
+        imgui.SameLine(0, 14);
+        imgui.Checkbox('Hide teleport/exp items', ui.addHideTravel);
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Hide the Teleports-menu utility items (Warp / Provenance Ring, teleport\nearrings, exp rings) -- no combat stats, they only bloat the Ear/Ring\nlists. Untick to add one to a set deliberately.');
         end
         local gearKey = GEAR_OF[ui.setSelected] or ui.setSelected;
         local list = M.working[ui.setSelected] or {};
@@ -2389,12 +2397,19 @@ local function renderAddPopup(job, level)
         -- Apply the popup filters up front so the name column sizes to what shows.
         local q = string.lower(ui.addSearch[1] or '');
         local qTerms = parseSearch(q);
+        local travelSet = (ui.addHideTravel[1] == true and useit ~= nil
+            and type(useit.menuNames) == 'function') and useit.menuNames() or nil;
+        local travelHidden = 0;   -- so the empty-list message can blame the filter
         local shown = {};
         for _, rec in ipairs(cands) do
             if not inList[rec.Name] and not (rec.Id and blocked[rec.Id])
                and itemSearchMatch(rec, qTerms, useLevel)
                and (ui.addAvail[1] ~= true or not owned.isStored(rec)) then
-                shown[#shown + 1] = rec;
+                if travelSet ~= nil and rec.Name ~= nil and travelSet[string.lower(rec.Name)] then
+                    travelHidden = travelHidden + 1;
+                else
+                    shown[#shown + 1] = rec;
+                end
             end
         end
         local nW = fmt.nameWidthOf(shown);
@@ -2442,7 +2457,7 @@ local function renderAddPopup(job, level)
             end
         end
         if not any then
-            imgui.TextColored(COL.DIM, (q ~= '' or ui.addAvail[1] == true)
+            imgui.TextColored(COL.DIM, (q ~= '' or ui.addAvail[1] == true or travelHidden > 0)
                 and 'Nothing matches the search / filter.'
                 or 'No addable items (check Main for Sub, or you own only one).');
         end

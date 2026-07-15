@@ -281,6 +281,12 @@ end
 local WANTED = {};
 for _, m in ipairs(MENU) do WANTED[string.lower(m.name)] = true; end
 
+-- The Teleports-menu name-set for OTHER modules: { lower(name) -> true } over
+-- everything above (Warp/Provenance rings, teleport earrings, exp rings).
+-- gearui's + Add picker hides these from set building by default -- utility
+-- enchantments carry no combat stats and only bloat the Ear/Ring lists.
+function M.menuNames() return WANTED; end
+
 -- Containers the game lets you EQUIP from (inventory + wardrobes); anything
 -- else is owned-but-stored -- the menu paints it red, as everywhere in dlac.
 local EQUIP_BAGS = { [0] = true, [8] = true, [10] = true, [11] = true, [12] = true,
