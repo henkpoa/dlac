@@ -260,7 +260,24 @@ local function renderEquippedTab(job, level)
         ui._flagsDirty = true;                         -- remembered across sessions
     end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Opens the 4x4 equipment window (equipmon-style) that stays up while you play.\nHover a slot for the same details as here; RIGHT-CLICK a slot to PIN an item\ninto it -- the engine then wears that piece and nothing can take it off.\nPinned slots show a red frame. Pins clear when you reload.\n\nThe window has no frame: drag it by the thin edge around the boxes.');
+        imgui.SetTooltip('Opens the 4x4 equipment window (equipmon-style) that stays up while you play.\nHover a slot for the same details as here; RIGHT-CLICK a slot to PIN an item\ninto it -- the engine then wears that piece and nothing can take it off.\nPinned slots show a red frame. Pins clear when you reload.\n\nSHIFT+drag the window to move it.');
+    end
+    -- Size lives next to the switch, and only while the window is up: it is the
+    -- one setting you cannot discover from the window itself (it has no chrome).
+    if ui._gearFloat == true then
+        local fg = S.floatgear;
+        imgui.SameLine(0, 8);
+        imgui.PushItemWidth(84);
+        local sc = { (fg ~= nil) and fg.scale() or 1.0 };
+        if imgui.SliderFloat('##gfscale', sc, (fg ~= nil) and fg.SCALE_MIN or 0.5,
+                             (fg ~= nil) and fg.SCALE_MAX or 3.0, '%.2fx') then
+            ui._gfScale = sc[1];
+            ui._flagsDirty = true;
+        end
+        imgui.PopItemWidth();
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Size of the floating equipment window -- drag it, or double-click to type a number.');
+        end
     end
 
     local availW = imgui.GetContentRegionAvail();

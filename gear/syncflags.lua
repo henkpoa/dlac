@@ -66,10 +66,11 @@ sf.saveUiFlags = function()
         if type(ui._gfPos) == 'table' then
             gfx, gfy = tonumber(ui._gfPos[1]) or 0, tonumber(ui._gfPos[2]) or 0;
         end
-        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, buildmax = %s, tpfloat = %s, tpx = %d, tpy = %d, gearfloat = %s, gfx = %d, gfy = %d }\n',
+        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, buildmax = %s, tpfloat = %s, tpx = %d, tpy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f }\n',
             tostring(sf.flags.debug), tostring(sf.flags.autosync), tostring(bm),
             tostring(ui._tpFloat == true), tpx, tpy,
-            tostring(ui._gearFloat == true), gfx, gfy));
+            tostring(ui._gearFloat == true), gfx, gfy,
+            tonumber(ui._gfScale) or 1.0));
     end);
 end
 
@@ -105,6 +106,9 @@ sf.loadUiFlags = function()
             if type(t.gfx) == 'number' and type(t.gfy) == 'number' and (t.gfx ~= 0 or t.gfy ~= 0) then
                 ui._gfPos = { t.gfx, t.gfy };
             end
+            -- Stored raw; floatgear.scale() clamps on read, so a hand-edited 0 or
+            -- a negative here cannot collapse the window past rescuing.
+            if type(t.gfscale) == 'number' then ui._gfScale = t.gfscale; end
         end
     end);
 end

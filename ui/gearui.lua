@@ -1483,11 +1483,18 @@ local SLOT_BOX = 40;                  -- outer box; the icon fills it minus the 
 --     BeginPopup have to share a window scope, and this grid lives inside its own
 --     BeginChild, so the caller raises a flag here and opens the popup at ITS level.
 --   tight -> boxes touch (equipmon's look): no spacing between them and no padding
---     inside the child, so the grid measures EXACTLY 4*SLOT_BOX square and the
---     caller can auto-size a chrome-less window to it.
+--     inside the child, so the grid measures EXACTLY 4*box square and the caller
+--     can auto-size a chrome-less window to it.
+--   box -> outer box size in px (default SLOT_BOX). The icon and the frame pad
+--     scale WITH it, so the grid is one knob wide; at the default it reproduces
+--     the old 40/32/4 numbers exactly.
 local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, getText, onClick, hoverRec, gridW, opts)
     opts = opts or {};
     local gap = opts.tight and 0 or 4;
+    local BOX = math.floor(tonumber(opts.box) or SLOT_BOX);
+    if BOX < 12 then BOX = 12; end                 -- below this the icon vanishes
+    local PAD = math.max(1, math.floor(BOX * 0.1 + 0.5));   -- 4 at BOX=40
+    local IMG = BOX - PAD * 2;                              -- 32 at BOX=40
     -- Both vars must be pushed BEFORE BeginChild: WindowPadding is read when the
     -- child window opens, and it is what would otherwise inset the 4x4 inside its
     -- own box and clip the last row.
@@ -1507,20 +1514,21 @@ local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, ge
         local box = (opts.boxColorOf ~= nil) and opts.boxColorOf(sl) or nil;
         if box == nil then box = selected and boxSel or boxBg; end
         if handle ~= nil then
-            clicked = imgui.ImageButton(handle, { SLOT_BOX - 8, SLOT_BOX - 8 }, { 0, 0 }, { 1, 1 }, 4,
+            clicked = imgui.ImageButton(handle, { IMG, IMG }, { 0, 0 }, { 1, 1 }, PAD,
                 box, { 1, 1, 1, 1 });
         else
             local vrec = (hoverRec ~= nil) and hoverRec(sl) or nil;
             local isVirt = (vrec ~= nil and vrec.Virtual == true);
+            local wheel = math.floor(BOX * 0.7);          -- 28 at BOX=40
             imgui.PushStyleColor(ImGuiCol_Button, box);
             imgui.PushStyleColor(ImGuiCol_Text, COL.LOCKED);
-            clicked = imgui.Button(isVirt and ('##vbox' .. sl.label) or sl.short, { SLOT_BOX, SLOT_BOX });
+            clicked = imgui.Button(isVirt and ('##vbox' .. sl.label) or sl.short, { BOX, BOX });
             imgui.PopStyleColor(2);
             if isVirt then   -- the element wheel over the button (virtuals have no texture)
                 pcall(function()
                     local x, y = imgui.GetItemRectMin();
                     if type(x) == 'table' then y = (x[2] or x.y); x = (x[1] or x.x); end
-                    icons.drawElementWheel(28, x + (SLOT_BOX - 28) / 2, y + (SLOT_BOX - 28) / 2);
+                    icons.drawElementWheel(wheel, x + (BOX - wheel) / 2, y + (BOX - wheel) / 2);
                 end);
             end
         end

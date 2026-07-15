@@ -14,7 +14,10 @@
     What it is: the same 4x4 grid the Equipped tab draws (S.renderSlotGrid, so
     icons and the full hover tooltip come for free and can never drift from the
     tab's), in a window you can leave open while you play. Right-click a slot to
-    pin an item into it; a pinned slot's box turns RED.
+    pin an item into it; a pinned slot's box turns RED. SHIFT+drag moves it
+    (equipmon's gesture -- and the only one available: see the NoMove note in
+    M.render). The Equipped tab's slider scales it; the scale is one number,
+    `opts.box`, that renderSlotGrid derives the icon and frame pad from.
 
     Right-click: IsMouseClicked(1) + IsItemHovered feeding the ordinary
     OpenPopup/BeginPopup pair -- the pattern gearmove field-confirmed on
@@ -77,10 +80,27 @@ local hasMenu = (imgui ~= nil)
 
 local POPUP  = '##dlac_pinmenu';
 local CAP    = 200;       -- rows drawn per popup; the overflow is COUNTED, not hidden
--- The tight 4x4 measures exactly 4 * SLOT_BOX(40) = 160 square: no spacing between
--- the boxes and no padding inside the grid's child (see renderSlotGrid's `tight`).
--- Pass it as BOTH the child's width and height -- a pixel short clips the last row.
-local GRID   = 160;
+local BOX0   = 40;        -- renderSlotGrid's default box; scale 1.0 == the tab's size
+
+-- Shift is read from ImGui's own IO (fancychat does the same here, so the shape is
+-- proven) rather than from an Ashita `key` hook: no state to keep in sync, and it
+-- is already true on the frame the drag starts.
+local function shiftDown()
+    local ok, v = pcall(function() return imgui.GetIO().KeyShift; end);
+    return ok and v == true;
+end
+
+-- The window's scale, clamped HERE rather than at the slider: uiflags.lua is a
+-- plain Lua file a player can edit, and a 0 or a negative there would collapse the
+-- grid to nothing with no way back through the GUI.
+M.SCALE_MIN, M.SCALE_MAX = 0.5, 3.0;
+function M.scale()
+    local s = tonumber(ui._gfScale) or 1.0;
+    if s < M.SCALE_MIN then s = M.SCALE_MIN; end
+    if s > M.SCALE_MAX then s = M.SCALE_MAX; end
+    return s;
+end
+local scaleNow = M.scale;
 local _openFor  = nil;    -- slot label whose menu should open next frame
 local _menuSlot = nil;    -- slot the open popup belongs to
 local _drillItem = nil;   -- fallback mode: item picked, now choosing scope
@@ -304,8 +324,12 @@ function M.render()
                                 -- and drawWindow (which normally does this every
                                 -- frame) is not running when the main box is shut
 
+    -- Once, not FirstUseEver (the TP float's choice): FirstUseEver defers to
+    -- imgui.ini if ImGui remembered this window itself, and OUR uiflags copy is
+    -- the one the addon maintains. Applies on the session's first frame, then the
+    -- shift-drag below owns the position.
     if type(ui._gfPos) == 'table' then
-        imgui.SetNextWindowPos({ ui._gfPos[1], ui._gfPos[2] }, ImGuiCond_FirstUseEver or 0);
+        imgui.SetNextWindowPos({ ui._gfPos[1], ui._gfPos[2] }, ImGuiCond_Once or 0);
     end
 
     -- Chrome off (Henrik: "remove the actual box or hide the borders") -- no title
@@ -313,15 +337,21 @@ function M.render()
     -- AlwaysAutoResize sizes the window to the tight grid, so there is no size to
     -- remember and none to get wrong.
     --
-    -- The window is still DRAGGABLE: an ImGui window with no title bar moves when
-    -- you drag any part of it that is not an item, and WindowPadding is left at the
-    -- theme default precisely to keep that thin rim around the grid. It is
-    -- invisible now (NoBackground), so it is the one thing worth knowing about
-    -- this window: grab the edge, not a slot.
+    -- NoMove is ALWAYS on and the window is moved by hand under Shift instead
+    -- (equipmon's gesture). ImGui's own drag only moves a window from a spot no
+    -- item claimed, and a 4x4 of ImageButtons leaves no such spot -- the old
+    -- "drag it by the invisible rim" was the best that flag could do, and it was
+    -- a bad answer. NoMove also stops the window sliding when you grab a slot.
+    local shift = shiftDown();
     local FL = (ImGuiWindowFlags_NoTitleBar or 0) + (ImGuiWindowFlags_NoResize or 0)
              + (ImGuiWindowFlags_NoScrollbar or 0) + (ImGuiWindowFlags_NoCollapse or 0)
-             + (ImGuiWindowFlags_AlwaysAutoResize or 0) + (ImGuiWindowFlags_NoBackground or 0);
+             + (ImGuiWindowFlags_AlwaysAutoResize or 0) + (ImGuiWindowFlags_NoBackground or 0)
+             + (ImGuiWindowFlags_NoMove or 0);
+    -- Padding to 0 as well now that nothing needs a drag rim: the window is then
+    -- EXACTLY the grid. Popped straight after Begin -- both vars are consumed
+    -- there, and leaving them pushed would flatten the pin popup's own frame.
     imgui.PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0);
+    imgui.PushStyleVar(ImGuiStyleVar_WindowPadding, { 0, 0 });
 
     -- No title bar means no close button, so this table is never written back --
     -- but keep passing one (force-true each frame, the TP float's shape) rather
@@ -329,26 +359,50 @@ function M.render()
     -- checkbox is what closes the window.
     ui._gfOpenT = ui._gfOpenT or { true };
     ui._gfOpenT[1] = true;
-    if imgui.Begin('##dlac_float', ui._gfOpenT, FL) then
-        S.renderSlotGrid('float', GRID, nil,
+    local shown = imgui.Begin('##dlac_float', ui._gfOpenT, FL);
+    imgui.PopStyleVar(2);            -- WindowBorderSize + WindowPadding: consumed by
+                                     -- Begin; the pin popup below must not inherit them
+    if shown then
+        local box  = math.floor(BOX0 * scaleNow() + 0.5);
+        local grid = box * 4;        -- tight: no spacing, no child padding
+        S.renderSlotGrid('float', grid, nil,
             function(sl) return S.getEquippedId(sl.equip); end,
             function(sl)
                 local id = S.getEquippedId(sl.equip);
                 return fmt.truncate(id and (S.displayName(id) or ('#' .. tostring(id))) or '(empty)', 18);
             end,
-            function(labelKey)                          -- left-click also opens it:
-                _openFor = labelKey;                    -- RMB is the ask, LMB is the
-            end,                                        -- guarantee (gearmove's rule)
+            -- Left-click opens the menu too (RMB is the ask, LMB the guarantee) --
+            -- but never while Shift is held: that click is the start of a drag.
+            function(labelKey) if not shift then _openFor = labelKey; end end,
             function(sl) return S.lookupById(S.getEquippedId(sl.equip)); end,
-            GRID,
+            grid,
             {
                 tight = true,
+                box   = box,
                 boxColorOf = function(sl)
                     if pins.isPinned(sl.label) then return PIN_BOX; end
                     return nil;
                 end,
-                onRightClick = function(labelKey) _openFor = labelKey; end,
+                onRightClick = function(labelKey) if not shift then _openFor = labelKey; end end,
             });
+
+        -- Shift+drag anywhere on the grid moves the window. Done by hand because
+        -- the ImageButton under the cursor owns the click, so ImGui would never
+        -- move the window itself -- but the mouse-drag state is global, so it
+        -- reports the drag regardless of who is active.
+        if shift and imgui.IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem or 0)
+           and imgui.IsMouseDragging(ImGuiMouseButton_Left or 0) then
+            pcall(function()
+                local dx, dy = imgui.GetMouseDragDelta(ImGuiMouseButton_Left or 0);
+                if type(dx) == 'table' then dy = (dx[2] or dx.y); dx = (dx[1] or dx.x); end
+                if type(dx) == 'number' and type(dy) == 'number' and (dx ~= 0 or dy ~= 0) then
+                    local wx, wy = imgui.GetWindowPos();
+                    if type(wx) == 'table' then wy = (wx[2] or wx.y); wx = (wx[1] or wx.x); end
+                    imgui.SetWindowPos({ wx + dx, wy + dy });
+                    imgui.ResetMouseDragDelta(ImGuiMouseButton_Left or 0);
+                end
+            end);
+        end
 
         -- Popup at WINDOW scope: the grid detected the click inside its child,
         -- but OpenPopup/BeginPopup have to share a scope, so both happen here.
@@ -402,4 +456,11 @@ end
 
 M._triggerChoices = triggerChoices;   -- test seam
 M.hasMenu = hasMenu;
+
+-- Published so the Equipped tab's size slider can share this module's clamp
+-- instead of keeping a second copy of the range. gearui requires equippedui
+-- BEFORE floatgear, so the tab must read host.services.floatgear at CALL time
+-- (it does) rather than capture it at load.
+host.provide({ floatgear = M });
+
 return M;

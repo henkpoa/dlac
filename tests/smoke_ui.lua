@@ -114,8 +114,26 @@ check('S15 floatgear exposes render', fgOk and type(fgMod.render) == 'function',
 check('S16 floatgear registers NO uihost window (it must outlive the main box)',
     host.get('floatgear'), nil);
 -- the submenu probe must resolve to a boolean at load, never nil/error: it decides
--- cascade vs drill-down, and BeginMenu is unproven in this binding
+-- cascade vs drill-down (BeginMenu itself is field-confirmed working, 07-15)
 check('S17 floatgear probed the BeginMenu binding', type(fgMod.hasMenu), 'boolean');
+
+-- Scale clamp. uiflags.lua is a plain Lua file a player can hand-edit, and the
+-- loader stores gfscale RAW -- so scale() is the only thing standing between a
+-- typo'd 0 and a window with no way back through the GUI.
+check('S18 floatgear publishes itself for the size slider',
+    host.services.floatgear ~= nil, true);
+check('S19 default scale is 1.0 (matches the Equipped tab box size)', fgMod.scale(), 1.0);
+host.services.ui._gfScale = 0;
+check('S20 a zero scale clamps to the minimum', fgMod.scale(), fgMod.SCALE_MIN);
+host.services.ui._gfScale = -5;
+check('S21 a negative scale clamps to the minimum', fgMod.scale(), fgMod.SCALE_MIN);
+host.services.ui._gfScale = 99;
+check('S22 an absurd scale clamps to the maximum', fgMod.scale(), fgMod.SCALE_MAX);
+host.services.ui._gfScale = 'wat';
+check('S23 a non-number scale falls back to 1.0', fgMod.scale(), 1.0);
+host.services.ui._gfScale = 1.75;
+check('S24 an in-range scale passes through', fgMod.scale(), 1.75);
+host.services.ui._gfScale = nil;
 
 -- ---------------------------------------------------------------------------
 -- 3. services contract: what equippedui (and future modules) capture at load

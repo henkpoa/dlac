@@ -1295,3 +1295,36 @@ when the child opens, and left at the default it insets the grid inside its own 
 clips the last row. The window's WindowPadding is deliberately left alone: with no title
 bar an ImGui window moves when you drag any part of it that is not an item, and that thin
 rim is the only drag handle a grid of 16 buttons has.
+
+### Field round 2 (07-15): shift+drag and scaling -- "we're done"
+
+- **SHIFT+drag moves the window** (equipmon's gesture). `NoMove` is now ALWAYS on and
+  the move is done by hand: `IsWindowHovered(AllowWhenBlockedByActiveItem)` +
+  `IsMouseDragging(Left)` -> `GetMouseDragDelta` -> `SetWindowPos` ->
+  `ResetMouseDragDelta`. ImGui's own drag only moves a window from a spot no item
+  claimed, and a 4x4 of ImageButtons leaves no such spot -- round 1's "drag it by the
+  invisible rim" was the best that flag could do and it was a bad answer. **That flag
+  is load-bearing:** `IsWindowHovered()` without `AllowWhenBlockedByActiveItem` returns
+  FALSE whenever an item is active -- i.e. exactly while you are dragging -- so without
+  it the drag silently never fires. With NoMove on, WindowPadding could go to 0 too, so
+  the window is now EXACTLY the grid. Left-click and right-click are both suppressed
+  while Shift is held: that click is the start of a drag, not a pin.
+- **Scaling** via `renderSlotGrid`'s new `opts.box`: ONE number, with the icon
+  (`BOX - 2*PAD`) and the frame pad (`round(BOX*0.1)`) derived from it, so at the
+  default 40 it reproduces the old 40/32/4 exactly and every other caller is untouched.
+  The element wheel scales too (`BOX*0.7` = the old 28). Slider on the Equipped tab
+  beside the switch, shown only while the window is up -- it is the one setting you
+  cannot discover from a window that has no chrome. Persisted as `gfscale`.
+  **`floatgear.scale()` clamps on READ, not at the slider:** uiflags.lua is a plain Lua
+  file a player can edit, and a hand-typed 0 would collapse the grid with no way back
+  through the GUI. Tests S18-24.
+
+**Every ImGui enum this file needs is a Lua global from `Ashita\addons\libs\imgui.lua`**
+(which `require('imgui')` sets), NOT a DLL export -- grepping Addons.dll for
+`ImGuiMouseButton_Left` finds nothing and proves nothing. Verified before use, per hard
+rule 2: NoMove/NoBackground/AlwaysAutoResize/NoTitleBar/NoResize/NoScrollbar/NoCollapse,
+ImGuiHoveredFlags_AllowWhenBlockedByActiveItem, ImGuiMouseButton_Left (== 0),
+ImGuiStyleVar_WindowPadding/WindowBorderSize/ItemSpacing, ImGuiCond_Once. Headless they
+are nil, hence the `or 0` guards. Position restore uses `ImGuiCond_Once`, not
+`FirstUseEver`: FirstUseEver defers to imgui.ini if ImGui remembered the window itself,
+and the addon's uiflags copy is the authority (the TP float made the same call).
