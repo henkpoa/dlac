@@ -108,31 +108,32 @@ check('S13 weights window registered', setsMod ~= nil and type(setsMod.window) =
 -- returns early when the main box is shut, and this window's whole purpose is to
 -- stay up while you play. It renders from gearui's d3d_present instead (the
 -- lockstyle pattern), so what must hold is that requiring it yields a render fn.
+-- (S30+ -- the lockstyle section below already owns S14-S16)
 local fgOk, fgMod = pcall(require, 'dlac\\ui\\floatgear');
-check('S14 floatgear loads headless', fgOk, true);
-check('S15 floatgear exposes render', fgOk and type(fgMod.render) == 'function', true);
-check('S16 floatgear registers NO uihost window (it must outlive the main box)',
+check('S30 floatgear loads headless', fgOk, true);
+check('S31 floatgear exposes render', fgOk and type(fgMod.render) == 'function', true);
+check('S32 floatgear registers NO uihost window (it must outlive the main box)',
     host.get('floatgear'), nil);
 -- the submenu probe must resolve to a boolean at load, never nil/error: it decides
 -- cascade vs drill-down (BeginMenu itself is field-confirmed working, 07-15)
-check('S17 floatgear probed the BeginMenu binding', type(fgMod.hasMenu), 'boolean');
+check('S33 floatgear probed the BeginMenu binding', type(fgMod.hasMenu), 'boolean');
 
 -- Scale clamp. uiflags.lua is a plain Lua file a player can hand-edit, and the
 -- loader stores gfscale RAW -- so scale() is the only thing standing between a
 -- typo'd 0 and a window with no way back through the GUI.
-check('S18 floatgear publishes itself for the size slider',
+check('S34 floatgear publishes itself for the size slider',
     host.services.floatgear ~= nil, true);
-check('S19 default scale is 1.0 (matches the Equipped tab box size)', fgMod.scale(), 1.0);
+check('S35 default scale is 1.0 (matches the Equipped tab box size)', fgMod.scale(), 1.0);
 host.services.ui._gfScale = 0;
-check('S20 a zero scale clamps to the minimum', fgMod.scale(), fgMod.SCALE_MIN);
+check('S36 a zero scale clamps to the minimum', fgMod.scale(), fgMod.SCALE_MIN);
 host.services.ui._gfScale = -5;
-check('S21 a negative scale clamps to the minimum', fgMod.scale(), fgMod.SCALE_MIN);
+check('S37 a negative scale clamps to the minimum', fgMod.scale(), fgMod.SCALE_MIN);
 host.services.ui._gfScale = 99;
-check('S22 an absurd scale clamps to the maximum', fgMod.scale(), fgMod.SCALE_MAX);
+check('S38 an absurd scale clamps to the maximum', fgMod.scale(), fgMod.SCALE_MAX);
 host.services.ui._gfScale = 'wat';
-check('S23 a non-number scale falls back to 1.0', fgMod.scale(), 1.0);
+check('S39 a non-number scale falls back to 1.0', fgMod.scale(), 1.0);
 host.services.ui._gfScale = 1.75;
-check('S24 an in-range scale passes through', fgMod.scale(), 1.75);
+check('S40 an in-range scale passes through', fgMod.scale(), 1.75);
 host.services.ui._gfScale = nil;
 
 -- ---------------------------------------------------------------------------
@@ -167,6 +168,127 @@ package.loaded['dlac\\gear'].NameToObject['Acantha Shavers'] =
 check('S15 owned item resolves a model via the catalog by Id',
     lockstyle._modelOf('Acantha Shavers'), 509);
 check('S16 unknown item resolves to nil, no error', lockstyle._modelOf('No Such Thing'), nil);
+
+-- ---------------------------------------------------------------------------
+-- 6. IMGUI STACK BALANCE for the floating window (S50+) -- a RENDER test.
+--
+--    Why this exists: dlac shipped an EXCEPTION_ACCESS_VIOLATION in Present
+--    (e85cc43) from one PopStyleVar too many -- a push added without removing an
+--    older pop. A style-stack underflow is not a Lua error; it is native UB
+--    inside ImGui that no pcall catches and that takes the whole client down.
+--    550 green checks could not see it, because nothing here ever rendered.
+--
+--    So: stub imgui, re-require floatgear so it captures the stub, and drive
+--    M.render for real, counting pushes against pops. This does not prove the
+--    window LOOKS right -- only that it cannot corrupt ImGui's stacks, which is
+--    the failure that costs Henrik a crash instead of a bug report.
+-- ---------------------------------------------------------------------------
+;(function()
+    local depth = { var = 0, col = 0, win = 0, child = 0, popup = 0, menu = 0 };
+    local popupOpen = false;
+    local function nop() end
+    local IM = {};
+    for _, n in ipairs({ 'SetNextWindowPos', 'SetNextWindowSize', 'SetNextWindowSizeConstraints',
+        'Separator', 'Text', 'TextColored', 'TextWrapped', 'SameLine', 'Dummy', 'Image',
+        'PushItemWidth', 'PopItemWidth', 'OpenPopup', 'CloseCurrentPopup', 'SetTooltip',
+        'PushID', 'PopID', 'ResetMouseDragDelta', 'SetWindowPos', 'SetCursorScreenPos',
+        'Spacing', 'InputText', 'SetScrollHereY', 'PushTextWrapPos', 'PopTextWrapPos' }) do
+        IM[n] = nop;
+    end
+    IM.PushStyleVar   = function() depth.var = depth.var + 1; end
+    IM.PopStyleVar    = function(n) depth.var = depth.var - (tonumber(n) or 1); end
+    IM.PushStyleColor = function() depth.col = depth.col + 1; end
+    IM.PopStyleColor  = function(n) depth.col = depth.col - (tonumber(n) or 1); end
+    IM.Begin      = function() depth.win = depth.win + 1; return true; end
+    IM['End']     = function() depth.win = depth.win - 1; end
+    IM.BeginChild = function() depth.child = depth.child + 1; return true; end
+    IM.EndChild   = function() depth.child = depth.child - 1; end
+    IM.BeginPopup = function() if popupOpen then depth.popup = depth.popup + 1; end return popupOpen; end
+    IM.EndPopup   = function() depth.popup = depth.popup - 1; end
+    IM.BeginMenu  = function() return false; end          -- cascade shut: the common frame
+    IM.EndMenu    = function() depth.menu = depth.menu - 1; end
+    for _, n in ipairs({ 'Button', 'ImageButton', 'SmallButton', 'Selectable', 'MenuItem',
+        'Checkbox', 'SliderFloat', 'IsItemHovered', 'IsWindowHovered', 'IsMouseDragging',
+        'IsMouseClicked', 'IsItemClicked', 'IsItemActive' }) do
+        IM[n] = function() return false; end
+    end
+    IM.GetIO              = function() return { KeyShift = false }; end
+    IM.GetWindowPos       = function() return 10, 20; end
+    IM.GetCursorScreenPos = function() return 0, 0; end
+    IM.GetItemRectMin     = function() return 0, 0; end
+    IM.GetMouseDragDelta  = function() return 0, 0; end
+    IM.GetColorU32        = function() return 0; end
+    IM.CalcTextSize       = function() return 10, 10; end
+    IM.GetContentRegionAvail       = function() return 400, 400; end
+    IM.GetTextLineHeightWithSpacing = function() return 14; end
+    IM.GetWindowDrawList  = function()
+        return { AddCircleFilled = nop, AddRectFilled = nop, AddRect = nop, AddLine = nop };
+    end
+
+    package.loaded['imgui'] = IM;
+    package.loaded['dlac\\ui\\floatgear'] = nil;
+    local ok, fg = pcall(require, 'dlac\\ui\\floatgear');
+    check('S50 floatgear re-requires against a stub imgui', ok and type(fg.render), 'function');
+    if not ok then return; end
+
+    -- The real gearui services touch AshitaCore / d3d; swap in the few floatgear
+    -- reads for fakes. renderSlotGrid stays stubbed on purpose: gearui captured
+    -- the REAL (nil) imgui at its own load, so the genuine grid cannot run here --
+    -- what is under test is floatgear's OWN balance, which is where the bug was.
+    local Sx = host.services;
+    local keep = { Sx.getPlayerInfo, Sx.buildAllEquip, Sx.getEquippedId, Sx.lookupById,
+                   Sx.displayName, Sx.renderSlotGrid, Sx.candidatesForSlot };
+    Sx.getPlayerInfo     = function() return 'WHM', 75; end
+    Sx.buildAllEquip     = nop;
+    Sx.getEquippedId     = function() return nil; end
+    Sx.lookupById        = function() return nil; end
+    Sx.displayName       = function() return 'X'; end
+    Sx.candidatesForSlot = function() return {}; end
+    Sx.renderSlotGrid    = nop;
+    Sx.ui._gearFloat = true;
+
+    local function balanced(tag)
+        check(tag .. ': style VAR stack balanced',   depth.var, 0);
+        check(tag .. ': style COLOR stack balanced', depth.col, 0);
+        check(tag .. ': Begin/End balanced',         depth.win, 0);
+        check(tag .. ': BeginPopup/EndPopup balanced', depth.popup, 0);
+    end
+
+    -- the ordinary frame: window up, menu shut. THIS is the frame that crashed.
+    local rok, rerr = pcall(fg.render);
+    check('S51 render runs against the stub', rok, true);
+    if not rok then print('   render error: ' .. tostring(rerr)); end
+    balanced('S52 popup closed');
+
+    -- and the frame with the pin menu open (the popup + its own early returns)
+    popupOpen = true;
+    local rok2 = pcall(fg.render);
+    check('S53 render runs with the pin menu open', rok2, true);
+    balanced('S54 popup open');
+
+    -- a frame where Shift is held: the drag path, and both clicks suppressed
+    IM.GetIO = function() return { KeyShift = true }; end
+    IM.IsWindowHovered  = function() return true; end
+    IM.IsMouseDragging  = function() return true; end
+    IM.GetMouseDragDelta = function() return 5, 7; end
+    popupOpen = false;
+    local rok3 = pcall(fg.render);
+    check('S55 render runs while shift-dragging', rok3, true);
+    balanced('S56 shift-drag');
+
+    -- window off: must draw nothing at all and touch no stack
+    Sx.ui._gearFloat = false;
+    pcall(fg.render);
+    check('S57 a closed window opens no imgui window', depth.win, 0);
+    balanced('S58 window off');
+
+    for i, f in ipairs({ 'getPlayerInfo', 'buildAllEquip', 'getEquippedId', 'lookupById',
+                         'displayName', 'renderSlotGrid', 'candidatesForSlot' }) do
+        Sx[f] = keep[i];
+    end
+    package.loaded['imgui'] = nil;
+    package.loaded['dlac\\ui\\floatgear'] = nil;
+end)();
 
 -- ---------------------------------------------------------------------------
 -- verdict

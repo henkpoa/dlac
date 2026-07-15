@@ -1328,3 +1328,39 @@ ImGuiStyleVar_WindowPadding/WindowBorderSize/ItemSpacing, ImGuiCond_Once. Headle
 are nil, hence the `or 0` guards. Position restore uses `ImGuiCond_Once`, not
 `FirstUseEver`: FirstUseEver defers to imgui.ini if ImGui remembered the window itself,
 and the addon's uiflags copy is the authority (the TP float made the same call).
+
+### The crash (e85cc43 -> f546d71): one PopStyleVar too many
+
+Shipped an `EXCEPTION_ACCESS_VIOLATION` in Present -- dlac failed to load, and
+`/exec load default.txt` hard-crashed the client. Mine, and worth the write-up because
+of HOW it hid.
+
+The shift+drag round added a SECOND `PushStyleVar` (WindowPadding, so a chrome-less
+window could drop to zero padding) plus a `PopStyleVar(2)` right after `Begin` -- and
+left the PREVIOUS round's `PopStyleVar(1)` sitting after `End()`. Every frame the float
+window rendered popped one style var too many.
+
+**A style-stack underflow is not a Lua error.** It is native UB inside ImGui: no pcall
+catches it, gearui's tabGuard cannot contain it, and it surfaces as an access violation
+in Present that takes the whole client down. It only fires with the window enabled,
+which is why it read as a load/startup crash -- `gearfloat=true` persists in uiflags.lua,
+so it was on from the previous session's testing.
+
+**550 green checks could not see it, because nothing in the suite ever rendered.**
+smoke_ui says so in its own header: "a LOAD test, not a render test... imgui is nil here
+by design". That was a real hole -- the suite could catch a 200-local breach (a crash)
+but not a stack underflow (also a crash).
+
+Closed it: **smoke_ui section 6 (S50-S58)** stubs imgui, re-requires floatgear so it
+captures the stub, and drives `M.render` for real across four frames -- menu shut, menu
+open, shift-dragging, window off -- counting pushes against pops on the var / color /
+window / popup stacks. **Verified by re-introducing the exact bug: it fails with
+"got -1, want 0" and degrades by one per frame.** It does not prove the window LOOKS
+right; it proves it cannot corrupt ImGui's stacks, which is the difference between a bug
+report and a crash. renderSlotGrid stays stubbed in that test on purpose -- gearui
+captured the real (nil) imgui at its own load, so the genuine grid cannot run headless;
+floatgear's own balance is what broke and what is now guarded.
+
+Rule of thumb earned: **when you add a Push, count the Pops in the whole function, not
+the one you are looking at.** The two are 90 lines apart here by necessity (the vars are
+consumed by Begin and must be popped before the pin popup inherits them).
