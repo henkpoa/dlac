@@ -1160,7 +1160,7 @@ local function renderHeaderButtons()
               if h ~= nil then pcall(function() clicked = imgui.ImageButton(h, { 16, 16 }); end);
               else clicked = imgui.Button('LS##hdrls', { 26, 22 }); end
               if imgui.IsItemHovered() then
-                  imgui.SetTooltip('Lockstyle sets -- 30 saved looks, applied through LuaAshitacast.\nSave the marked box, import old static lockstyle sets, and\n"OnLoad Lockstyle" re-applies it on every login / job change.');
+                  imgui.SetTooltip('Lockstyle boxes -- 30 saved looks PER JOB, applied through LuaAshitacast.\nSave the marked box, import old static lockstyle sets, and\n"OnLoad Lockstyle" re-applies it on every login / job change.');
               end
               if clicked then pcall(function() require('dlac\\lockstyle').open(); end); end
           end };

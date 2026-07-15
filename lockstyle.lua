@@ -10,11 +10,12 @@
     where Save lands, box 1 is marked until you pick another. Switching boxes
     with unsaved changes warns first -- continuing DISCARDS the edits.
 
-    Storage: <char>\dlac\profiles\<Name>\lockstyles.lua -- the boxes are PER
-    PROFILE (v40) { active, onload = {JOB=box}, slots }. Reads fall back to
-    the pre-profile global dlac\lockstyles.lua; every save serializes ALL
-    boxes into the active profile's copy, so the global file migrates whole
-    on the first write. Switching profiles reloads the boxes live.
+    Storage: <char>\dlac\profiles\<Name>\lockstyles\<JOB>.lua -- the boxes
+    are PER JOB ENTRY (v41) { active, onload = {JOB=box}, slots }. Reads fall
+    back per file: the v40 per-profile lockstyles.lua, then the pre-profile
+    global dlac\lockstyles.lua; every save serializes ALL boxes into the job
+    entry's file, so older-tier boxes migrate whole on the first write.
+    Switching profiles OR jobs reloads the boxes live.
     Apply is ENGINE-side ('/dl ls apply [box]' -- dispatch.lua v38 builds the
     table and calls gFunc.LockStyle; only the LAC state has gFunc). "OnLoad
     Lockstyle" binds CURRENT JOB -> MARKED BOX: the pump below (macrobook's
@@ -88,18 +89,20 @@ local function legacyPath()
     return base and (base .. 'dlac\\lockstyles.lua') or nil;
 end
 
--- forward-declared: load_ nils it on a profile switch so ensure() rebuilds the
--- working copy from the new profile's boxes
-local dataProf = nil;   -- which profile `data` was loaded from (nil = pre-profiles fallback)
+-- which profile + job `data` was loaded for: a change in EITHER reloads the
+-- boxes (job changes switch the job entry; the profile menu switches profiles)
+local dataProf, dataJob = nil, nil;
 
 local function load_()
     local prof = _pfok and profiles.activeName() or nil;
-    if data ~= nil and prof == dataProf then return; end
-    if charBase() == nil then return; end            -- pre-login: retry next call
-    -- boxes are PER PROFILE: the active profile's file, falling back to the
-    -- pre-profile global one (profiles.lua is the shared path authority)
-    local p = (_pfok and profiles.readLockstylesPath() or nil) or legacyPath();
-    dataProf = prof;
+    local job = jobAbbr();
+    if data ~= nil and prof == dataProf and job == dataJob then return; end
+    if charBase() == nil or job == nil then return; end   -- pre-login: retry next call
+    -- boxes are PER JOB ENTRY: the active profile's lockstyles\<JOB>.lua,
+    -- falling back to the v40 per-profile file, then the pre-profile global
+    -- one (profiles.lua is the shared path authority)
+    local p = (_pfok and profiles.readLockstylesPath(job) or nil) or legacyPath();
+    dataProf, dataJob = prof, job;
     data = { active = 1, onload = {}, slots = {} };  -- box 1 marked until chosen otherwise
     M._curReset();                                   -- profile switch: working copy follows
     pcall(function()
@@ -154,15 +157,17 @@ function M._serialize(d)
     return table.concat(L, '\n');
 end
 
--- Writes ALWAYS land in profile storage (creating 'Default' on first use --
--- the house compat rule); the whole table is serialized, so boxes loaded off
--- the pre-profile global file carry into the profile on the first save.
+-- Writes ALWAYS land in the job entry (creating 'Default' storage on first
+-- use -- the house compat rule); the whole table is serialized, so boxes
+-- loaded off an older tier carry into the job entry on the first save.
+-- dataJob (not the live job) keys the file: data must never save into a
+-- different job's entry than it was loaded for.
 local function save()
     if data == nil then return; end
     local p = nil;
-    if _pfok then
+    if _pfok and dataJob ~= nil then
         pcall(function() profiles.ensureStorage(); end);
-        p = profiles.lockstylesPath();
+        p = profiles.lockstylesPath(dataJob);
     end
     p = p or legacyPath();
     if p == nil then return; end
@@ -453,7 +458,8 @@ function M.render()
     if imgui.Begin('dlac Lockstyle###dlac_lockstyle', ui.openArr, ImGuiWindowFlags_None or 0) then
         local job = jobAbbr();
         local e = data.slots[data.active];
-        imgui.TextColored(COL_HEADER, string.format('Lockstyle box %d', data.active));
+        -- the job in the title says WHOSE boxes these are (per job entry, v41)
+        imgui.TextColored(COL_HEADER, string.format('%s lockstyle box %d', tostring(job or '?'), data.active));
         imgui.SameLine(0, 8);
         imgui.TextColored(cur.dirty and COL_WARN or COL_DIM,
             cur.dirty and 'unsaved changes' or ((e ~= nil) and ('"' .. tostring(e.name or '') .. '"') or '(empty)'));

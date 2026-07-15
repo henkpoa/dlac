@@ -1018,11 +1018,22 @@ do
     check('Y51 headless: listExports is nil, never an error', profilesM.listExports(), nil);
 end
 
--- lockstyle path resolution (v40, per-profile boxes): headless = pre-login,
+-- lockstyle path resolution (v41, per-job-entry boxes): headless = pre-login,
 -- every path is nil and the read resolver answers nil instead of erroring.
-check('Y52 headless: lockstylesPath is nil pre-login', profilesM.lockstylesPath(), nil);
-check('Y53 headless: legacyLockstylesPath is nil pre-login', profilesM.legacyLockstylesPath(), nil);
-check('Y54 headless: readLockstylesPath is nil, never an error', profilesM.readLockstylesPath(), nil);
+check('Y52 headless: lockstylesPath is nil pre-login', profilesM.lockstylesPath('DRK'), nil);
+check('Y53 headless: legacy lockstyle tiers are nil pre-login',
+      profilesM.profileLockstylesPath() == nil and profilesM.legacyLockstylesPath() == nil, true);
+check('Y54 headless: readLockstylesPath is nil, never an error', profilesM.readLockstylesPath('DRK'), nil);
+
+-- job export carries the lockstyles payload (optional, still "job-export v1":
+-- readers that predate the field ignore it; any single payload is a valid file).
+do
+    local lsBlob = 'return { active = 1, onload = {}, slots = {} };';
+    local ex2 = profilesM.buildExportText('DRK', 'Default', 'Mindie', nil, nil, lsBlob);
+    local meta2, perr2 = profilesM.parseExportText(ex2);
+    check('Y55 lockstyles-only export is valid', perr2, nil);
+    check('Y56 lockstyles payload round-trips verbatim', meta2 ~= nil and meta2.lockstyles, lsBlob);
+end
 
 -- cross-character browsing/import: headless-safe (no AshitaCore -> nil answers).
 check('Y34 headless: importProfile refuses politely', (select(2, profilesM.importProfile('Other_1', 'Default', 'New'))), 'not logged in');

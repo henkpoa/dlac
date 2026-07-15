@@ -49,8 +49,24 @@ _Avoid_: merge, stack
 **Specificity**:
 How narrowly a Trigger's condition matches (Any → skill/status → class/element → family → exact name → Mode). Drives the *default* priority: more specific overlays less specific.
 
+**Profile**:
+A character's named bundle of dlac data (e.g. `Default`) — the unit the PROFILES menu switches, clones, and imports. Exactly one is active per character; changing jobs never changes the Profile.
+_Avoid_: character profile (redundant — a Profile is always per character), LAC profile
+
+**Job entry**:
+One job's slice inside a Profile: that job's sets, triggers, and lockstyle boxes. Job changes switch which job entry is live within the active Profile.
+_Avoid_: job profile (collides with both Profile and LuaAshitacast's own "profile")
+
+**Job shim**:
+The `<JOB>.lua` file LuaAshitacast loads on a job change — what LAC's own docs call a "profile". dlac manages it as a thin shim holding no data; the engine installs the active Profile's job entry over it.
+_Avoid_: calling it a profile in dlac-speak
+
+**Lockstyle box**:
+One of the 30 numbered save slots for a lockstyle look, stored on the job entry. The MARKED (gold) box is where Save lands; "OnLoad Lockstyle" re-applies a box at login/job change.
+_Avoid_: lockstyle set (a box holds one; the plural reads as gear sets)
+
 **Commit**:
-Writing GUI state to disk (a set into `<JOB>.lua`, staged items into `gear.lua`, triggers into the trigger file).
+Writing GUI state to disk (a set into the active Profile's job entry, staged items into `gear.lua`, triggers into the trigger file).
 
 **Iridescence**:
 CatsEyeXI's tiered staff-affinity stat (+1/+2). Elemental staves carry it for their own element only (NQ +1, HQ +2); universal weapons (Iridal Staff +1; Chatoyant Staff, Foreshadow +1 at +2) carry it for every element.

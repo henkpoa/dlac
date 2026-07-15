@@ -49,7 +49,7 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 40;   -- 40: lockstyle boxes live in the active profile (reads fall back to the pre-profile global file)
+M.VERSION = 41;   -- 41: lockstyle boxes live in the JOB ENTRY (profiles\<Name>\lockstyles\<JOB>.lua; reads fall back v40 profile file, then global)
                   -- 35: matched-but-missing set no longer chat-warns (Triggers tab shows it in red)
                   -- 34: modestate __loadstamp -- the GUI's red Reload-LAC button watches it clear
                   -- 33: profile storage layer (dlac\profiles\<name>\; auto-install on load/job change; /dl profile)
@@ -2092,9 +2092,13 @@ if inLac() then
             end
             local dir = charDir();
             if dir == nil then print('[dlac] lockstyle: not logged in.'); return; end
-            -- profile copy first, else the pre-profile global file -- the SAME
-            -- resolver the GUI uses (profiles.lua), so both states pick one file
-            local lsPath = (_pok and _prof.readLockstylesPath() or nil) or (dir .. 'lockstyles.lua');
+            -- boxes are per JOB ENTRY (v41): resolve the current job's file --
+            -- the SAME resolver the GUI uses (profiles.lua), so both states
+            -- pick one file (falls back v40 per-profile file, then global)
+            local job;
+            pcall(function() job = gData.GetPlayer().MainJob; end);
+            if type(job) ~= 'string' or job == '' or job == '?' then job = nil; end
+            local lsPath = (_pok and job ~= nil and _prof.readLockstylesPath(job) or nil) or (dir .. 'lockstyles.lua');
             local raw = readFile(lsPath);
             if raw == nil then print('[dlac] lockstyle: no lockstyle sets saved yet (armor button in the dlac header).'); return; end
             local t = nil;

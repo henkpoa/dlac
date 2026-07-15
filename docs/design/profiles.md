@@ -6,12 +6,14 @@ profiles with different sets", which also answers import/export and the
 
 ## The idea
 
-A **profile** is a named bundle of dlac-owned per-job data:
+A **profile** is a named bundle of dlac-owned per-job data; one job's slice of
+it (the files sharing one `<JOB>` name) is a **job entry**:
 
 ```
-<char>\dlac\profile.lua                        active-profile pointer (return { active = 'Default' })
-<char>\dlac\profiles\<Name>\sets\<JOB>.lua     committed Dynamic sets
-<char>\dlac\profiles\<Name>\triggers\<JOB>.lua trigger rules
+<char>\dlac\profile.lua                          active-profile pointer (return { active = 'Default' })
+<char>\dlac\profiles\<Name>\sets\<JOB>.lua       committed Dynamic sets
+<char>\dlac\profiles\<Name>\triggers\<JOB>.lua   trigger rules
+<char>\dlac\profiles\<Name>\lockstyles\<JOB>.lua lockstyle boxes (engine v41; falls back to the v40 per-profile lockstyles.lua, then the pre-profile dlac\lockstyles.lua)
 ```
 
 LuaAshitacast keeps auto-loading `<JOB>.lua` on every job change — we ride that,

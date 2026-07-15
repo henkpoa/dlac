@@ -184,7 +184,7 @@ pm.render = function()
             if chk.note ~= nil then fmt.textWrapped(COL.DIM, chk.note); end
             if f.kind == 'deleteJob' and not chk.blocked then
                 fmt.textWrapped(COL.ERR, string.format(
-                    'THIS DELETES %s FROM "%s" ON %s -- its sets and its triggers, together.',
+                    'THIS DELETES %s FROM "%s" ON %s -- its sets, triggers and lockstyle boxes, together.',
                     f.job, f.srcProf, f.srcDisp));
                 fmt.textWrapped(COL.DIM,
                     'Verified safety copies land in that character\'s backups\\deleted-jobs\\ first. Hand-delete those if you truly want it gone.');
@@ -194,10 +194,10 @@ pm.render = function()
                 local names, cnt = {}, 0;
                 for _, e in ipairs(f.files or {}) do
                     names[#names + 1] = e.name;
-                    cnt = cnt + (e.sets and 1 or 0) + (e.trig and 1 or 0);
+                    cnt = cnt + (e.sets and 1 or 0) + (e.trig and 1 or 0) + (e.ls and 1 or 0);
                 end
                 fmt.textWrapped(COL.ERR, string.format(
-                    'THIS DELETES THE WHOLE PROFILE "%s" ON %s -- every set and trigger in it: %s (%d file(s)). It disappears from the menu and the engine.',
+                    'THIS DELETES THE WHOLE PROFILE "%s" ON %s -- every set, trigger and lockstyle box in it: %s (%d file(s)). It disappears from the menu and the engine.',
                     f.srcProf, f.srcDisp, (#names > 0) and table.concat(names, ', ') or '(empty)', cnt));
                 fmt.textWrapped(COL.DIM,
                     'One safety net remains: the files are first copied to that character\'s backups\\deleted-profiles\\ (verified before anything is removed). Delete that folder by hand if you truly want it gone.');

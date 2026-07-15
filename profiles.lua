@@ -1,9 +1,11 @@
 --[[
     dlac/profiles.lua -- the profile storage layer.
 
-    A PROFILE is a named bundle of dlac-owned per-job data:
-        <char>\dlac\profiles\<Name>\sets\<JOB>.lua      committed Dynamic sets
-        <char>\dlac\profiles\<Name>\triggers\<JOB>.lua  trigger rules
+    A PROFILE is a named bundle of dlac-owned per-job data; one job's slice of
+    it (the files below sharing one <JOB> name) is a JOB ENTRY:
+        <char>\dlac\profiles\<Name>\sets\<JOB>.lua        committed Dynamic sets
+        <char>\dlac\profiles\<Name>\triggers\<JOB>.lua    trigger rules
+        <char>\dlac\profiles\<Name>\lockstyles\<JOB>.lua  lockstyle boxes (v41)
     The ACTIVE pointer lives in <char>\dlac\profile.lua (return { active = 'Name' }).
     LAC keeps auto-loading <JOB>.lua on a job change -- that file is (or becomes) a
     thin shim; the ENGINE resolves "active profile + current job" and installs the
@@ -26,6 +28,11 @@ local M = {};
 
 M.JOBS = { 'WAR','MNK','WHM','BLM','RDM','THF','PLD','DRK','BST','BRD','RNG',
            'SAM','NIN','DRG','SMN','BLU','COR','PUP','DNC','SCH','GEO','RUN' };
+
+-- The per-job file kinds a JOB ENTRY is made of (one folder per kind inside a
+-- profile). Everything that copies/clones/renames/deletes/exports job entries
+-- iterates THIS list, so a new kind rides the whole machinery at once.
+M.KINDS = { 'sets', 'triggers', 'lockstyles' };
 
 -- ---------------------------------------------------------------------------
 -- paths
@@ -68,9 +75,14 @@ end
 function M.legacyTriggersPath(job)
     local b = charBase(); return b and (b .. 'dlac\\triggers\\' .. job .. '.lua') or nil;
 end
--- Lockstyle boxes are PER PROFILE (v40): this is where writes land. Reads
+-- Lockstyle boxes are PER JOB ENTRY (v41): this is where writes land. Reads
 -- resolve through readLockstylesPath below.
-function M.lockstylesPath(name)
+function M.lockstylesPath(job, name)
+    local d = M.profileDir(name or M.activeName()); return d and (d .. 'lockstyles\\' .. job .. '.lua') or nil;
+end
+-- The two read-fallback tiers lockstyle boxes have lived in before:
+-- v40 kept ONE file per profile; before that, one global file per character.
+function M.profileLockstylesPath(name)
     local d = M.profileDir(name or M.activeName()); return d and (d .. 'lockstyles.lua') or nil;
 end
 function M.legacyLockstylesPath()
@@ -102,18 +114,21 @@ local function writeFile(p, t)
 end
 M._readFile = readFile;
 
--- The lockstyles file to LOAD: the active profile's copy when it exists, else
--- the pre-profile global dlac\lockstyles.lua (the feature shipped one day
--- before this move -- existing boxes keep appearing). nil when neither exists
--- or pre-login. The GUI and the engine ('/dl ls apply') both resolve through
--- here, so the two states can never disagree on which file is live. Writes
--- never come through here: they land on lockstylesPath(), and every save
--- serializes ALL boxes, so the global file migrates whole on the first write.
-function M.readLockstylesPath(name)
-    local pp = M.lockstylesPath(name);
-    if pp ~= nil and readFile(pp) ~= nil then return pp; end
+-- The lockstyles file to LOAD for one job entry: the job's own file when it
+-- exists, else the v40 per-profile file, else the pre-profile global
+-- dlac\lockstyles.lua (each tier shipped a day apart -- existing boxes keep
+-- appearing). nil when none exists or pre-login. The GUI and the engine
+-- ('/dl ls apply') both resolve through here, so the two states can never
+-- disagree on which file is live. Writes never come through here: they land
+-- on lockstylesPath(job), and every save serializes ALL boxes, so older-tier
+-- boxes migrate whole into the job entry on the first write.
+function M.readLockstylesPath(job, name)
+    local pj = M.lockstylesPath(job, name);
+    if readFile(pj) ~= nil then return pj; end
+    local pp = M.profileLockstylesPath(name);
+    if readFile(pp) ~= nil then return pp; end
     local lp = M.legacyLockstylesPath();
-    if lp ~= nil and readFile(lp) ~= nil then return lp; end
+    if readFile(lp) ~= nil then return lp; end
     return nil;
 end
 
@@ -131,8 +146,9 @@ function M.ensureStorage(name)
     ensureDir(b .. 'dlac\\');
     ensureDir(b .. 'dlac\\profiles\\');
     ensureDir(b .. 'dlac\\profiles\\' .. name .. '\\');
-    ensureDir(b .. 'dlac\\profiles\\' .. name .. '\\sets\\');
-    ensureDir(b .. 'dlac\\profiles\\' .. name .. '\\triggers\\');
+    for _, kind in ipairs(M.KINDS) do
+        ensureDir(b .. 'dlac\\profiles\\' .. name .. '\\' .. kind .. '\\');
+    end
     if readFile(M.pointerPath()) == nil then M.setActive(name); end
     return true;
 end
@@ -332,7 +348,8 @@ function M.listProfilesAt(charFolder)
 end
 
 -- Which jobs a profile carries (deterministic 22-job probe, no listing API):
--- array of { job, sets = bool, trig = bool }, only jobs with at least one file.
+-- array of { job, sets = bool, trig = bool, ls = bool }, only jobs with at
+-- least one file.
 function M.profileJobsAt(charFolder, name)
     local dir = M.profileDirAt(charFolder, name);
     if dir == nil then return {}; end
@@ -340,7 +357,8 @@ function M.profileJobsAt(charFolder, name)
     for _, job in ipairs(M.JOBS) do
         local s = readFile(dir .. 'sets\\' .. job .. '.lua') ~= nil;
         local t = readFile(dir .. 'triggers\\' .. job .. '.lua') ~= nil;
-        if s or t then out[#out + 1] = { job = job, sets = s, trig = t }; end
+        local l = readFile(dir .. 'lockstyles\\' .. job .. '.lua') ~= nil;
+        if s or t or l then out[#out + 1] = { job = job, sets = s, trig = t, ls = l }; end
     end
     return out;
 end
@@ -350,7 +368,7 @@ local function copyJobFiles(srcDir, dstDir)
     if srcDir == nil or dstDir == nil then return 0; end
     local copied = 0;
     for _, job in ipairs(M.JOBS) do
-        for _, kind in ipairs({ 'sets', 'triggers' }) do
+        for _, kind in ipairs(M.KINDS) do
             local t = readFile(srcDir .. kind .. '\\' .. job .. '.lua');
             local dp = dstDir .. kind .. '\\' .. job .. '.lua';
             if t ~= nil and readFile(dp) == nil then
@@ -361,17 +379,18 @@ local function copyJobFiles(srcDir, dstDir)
     return copied;
 end
 
--- Does this character's profile <name> already hold any files? (44-file probe.)
+-- Does this character's profile <name> already hold any files? (66-file probe.)
 local function profileHasFiles(name)
     for _, job in ipairs(M.JOBS) do
-        if M.hasSetsFile(job, name) or M.hasTriggersFile(job, name) then return true; end
+        if M.hasSetsFile(job, name) or M.hasTriggersFile(job, name)
+           or readFile(M.lockstylesPath(job, name)) ~= nil then return true; end
     end
     return false;
 end
 
--- Every set/trigger file a profile holds, by ACTUAL listing (not the 22-job
+-- Every per-job file a profile holds, by ACTUAL listing (not the 22-job
 -- probe): includes dormant non-job-named files (e.g. a "BLU-old" archive), so
--- the browser shows what is really there. Array of { name, sets, trig },
+-- the browser shows what is really there. Array of { name, sets, trig, ls },
 -- known jobs first (JOBS order), the rest alphabetical.
 local JOB_ORDER = {};
 for i, j in ipairs(M.JOBS) do JOB_ORDER[j] = i; end
@@ -384,6 +403,9 @@ function M.listProfileFilesAt(charFolder, name)
     end
     for _, b in ipairs(listLuaFiles(dir .. 'triggers\\') or {}) do
         map[b] = map[b] or { name = b }; map[b].trig = true;
+    end
+    for _, b in ipairs(listLuaFiles(dir .. 'lockstyles\\') or {}) do
+        map[b] = map[b] or { name = b }; map[b].ls = true;
     end
     local out = {};
     for _, e in pairs(map) do out[#out + 1] = e; end
@@ -401,6 +423,13 @@ function M.profileHasFilesAt(charFolder, name)
     return #M.listProfileFilesAt(charFolder, name) > 0;
 end
 
+-- Does a listProfileFilesAt entry carry this kind? One authority for the
+-- flag-name mapping (clone and delete both filter through it).
+local function entryHasKind(e, kind)
+    return (kind == 'sets' and e.sets) or (kind == 'triggers' and e.trig)
+        or (kind == 'lockstyles' and e.ls);
+end
+
 -- Storage skeleton on an ARBITRARY character (clone-to target). Does NOT touch
 -- their active pointer -- the profile goes live only when they `use` it.
 local function ensureStorageAt(charFolder, name)
@@ -410,8 +439,9 @@ local function ensureStorageAt(charFolder, name)
     ensureDir(b .. 'dlac\\');
     ensureDir(b .. 'dlac\\profiles\\');
     ensureDir(b .. 'dlac\\profiles\\' .. name .. '\\');
-    ensureDir(b .. 'dlac\\profiles\\' .. name .. '\\sets\\');
-    ensureDir(b .. 'dlac\\profiles\\' .. name .. '\\triggers\\');
+    for _, kind in ipairs(M.KINDS) do
+        ensureDir(b .. 'dlac\\profiles\\' .. name .. '\\' .. kind .. '\\');
+    end
     return true;
 end
 
@@ -455,8 +485,8 @@ function M.cloneProfileTo(srcCharFolder, srcName, dstCharFolder, dstName)
     if not ensureStorageAt(dstCharFolder, dstName) then return nil, 'could not create storage'; end
     local n = 0;
     for _, e in ipairs(M.listProfileFilesAt(srcCharFolder, srcName)) do
-        for _, kind in ipairs({ 'sets', 'triggers' }) do
-            if (kind == 'sets' and e.sets) or (kind == 'triggers' and e.trig) then
+        for _, kind in ipairs(M.KINDS) do
+            if entryHasKind(e, kind) then
                 local t = readFile(srcDir .. kind .. '\\' .. e.name .. '.lua');
                 local dp = dstDir .. kind .. '\\' .. e.name .. '.lua';
                 if t ~= nil and readFile(dp) == nil and writeFile(dp, t) then n = n + 1; end
@@ -471,8 +501,10 @@ end
 function M.jobNameTakenAt(charFolder, profName, name)
     local dir = M.profileDirAt(charFolder, profName);
     if dir == nil or name == nil then return false; end
-    return readFile(dir .. 'sets\\' .. name .. '.lua') ~= nil
-        or readFile(dir .. 'triggers\\' .. name .. '.lua') ~= nil;
+    for _, kind in ipairs(M.KINDS) do
+        if readFile(dir .. kind .. '\\' .. name .. '.lua') ~= nil then return true; end
+    end
+    return false;
 end
 
 -- Clone ONE job's data (sets + triggers) into any character/profile under
@@ -495,7 +527,7 @@ function M.copyJobTo(srcCharFolder, srcProf, job, dstCharFolder, dstProf, dstNam
     end
     if not ensureStorageAt(dstCharFolder, dstProf) then return nil, 'could not create storage'; end
     local n = 0;
-    for _, kind in ipairs({ 'sets', 'triggers' }) do
+    for _, kind in ipairs(M.KINDS) do
         local t = readFile(srcDir .. kind .. '\\' .. job .. '.lua');
         if t ~= nil then
             local dp = dstDir .. kind .. '\\' .. dstName .. '.lua';
@@ -537,7 +569,7 @@ function M.renameJobAt(charFolder, profName, oldName, newName)
     local dir = M.profileDirAt(charFolder, profName);
     if dir == nil then return nil, 'bad profile'; end
     local n = 0;
-    for _, kind in ipairs({ 'sets', 'triggers' }) do
+    for _, kind in ipairs(M.KINDS) do
         local sp = dir .. kind .. '\\' .. oldName .. '.lua';
         if readFile(sp) ~= nil then
             if os.rename(sp, dir .. kind .. '\\' .. newName .. '.lua') then n = n + 1; end
@@ -564,8 +596,9 @@ function M.deleteProfileAt(charFolder, profName)
     local files = M.listProfileFilesAt(charFolder, profName);
     if #files == 0 then
         -- nothing inside: just sweep the (empty) folders
-        pcall(os.execute, 'rmdir "' .. dir .. 'sets" 2>nul');
-        pcall(os.execute, 'rmdir "' .. dir .. 'triggers" 2>nul');
+        for _, kind in ipairs(M.KINDS) do
+            pcall(os.execute, 'rmdir "' .. dir .. kind .. '" 2>nul');
+        end
         pcall(os.execute, 'rmdir "' .. dir:sub(1, -2) .. '" 2>nul');
         return 0, '(profile was empty -- no safety copy needed)';
     end
@@ -573,12 +606,13 @@ function M.deleteProfileAt(charFolder, profName)
     ensureDir(root .. charFolder .. '\\backups\\');
     ensureDir(root .. charFolder .. '\\backups\\deleted-profiles\\');
     ensureDir(bdir);
-    ensureDir(bdir .. 'sets\\');
-    ensureDir(bdir .. 'triggers\\');
+    for _, kind in ipairs(M.KINDS) do
+        ensureDir(bdir .. kind .. '\\');
+    end
     local removed, failed = 0, 0;
     for _, e in ipairs(files) do
-        for _, kind in ipairs({ 'sets', 'triggers' }) do
-            if (kind == 'sets' and e.sets) or (kind == 'triggers' and e.trig) then
+        for _, kind in ipairs(M.KINDS) do
+            if entryHasKind(e, kind) then
                 local sp = dir .. kind .. '\\' .. e.name .. '.lua';
                 local bp = bdir .. kind .. '\\' .. e.name .. '.lua';
                 local t = readFile(sp);
@@ -590,8 +624,9 @@ function M.deleteProfileAt(charFolder, profName)
             end
         end
     end
-    pcall(os.execute, 'rmdir "' .. dir .. 'sets" 2>nul');
-    pcall(os.execute, 'rmdir "' .. dir .. 'triggers" 2>nul');
+    for _, kind in ipairs(M.KINDS) do
+        pcall(os.execute, 'rmdir "' .. dir .. kind .. '" 2>nul');
+    end
     pcall(os.execute, 'rmdir "' .. dir:sub(1, -2) .. '" 2>nul');
     if failed > 0 then
         return nil, string.format('%d file(s) could not be verified+removed -- the rest are safe in %s', failed, bdir);
@@ -613,7 +648,7 @@ function M.deleteJobAt(charFolder, profName, name)
     ensureDir(bdir);
     local stamp = os.date('%Y%m%d_%H%M%S');
     local removed, failed = 0, 0;
-    for _, kind in ipairs({ 'sets', 'triggers' }) do
+    for _, kind in ipairs(M.KINDS) do
         local sp = dir .. kind .. '\\' .. name .. '.lua';
         local t = readFile(sp);
         if t ~= nil then
@@ -645,8 +680,9 @@ function M.exportsDir()
     return root and (root .. 'dlac-exports\\') or nil;
 end
 
--- Pure text builders (offline-tested round trip).
-function M.buildExportText(job, profName, from, setsText, trigText)
+-- Pure text builders (offline-tested round trip). The lockstyles field is
+-- optional and still "job-export v1": readers that predate it ignore the key.
+function M.buildExportText(job, profName, from, setsText, trigText, lsText)
     local parts = {
         '-- dlac job export -- ' .. tostring(job) .. ' from profile "' .. tostring(profName) .. '" (' .. tostring(from) .. ')',
         '-- Import: drop this file into config\\addons\\luashitacast\\dlac-exports\\ and use the dlac Profiles menu.',
@@ -658,6 +694,7 @@ function M.buildExportText(job, profName, from, setsText, trigText)
     };
     if setsText ~= nil then parts[#parts + 1] = string.format('    sets     = %q,', setsText); end
     if trigText ~= nil then parts[#parts + 1] = string.format('    triggers = %q,', trigText); end
+    if lsText ~= nil then parts[#parts + 1] = string.format('    lockstyles = %q,', lsText); end
     parts[#parts + 1] = '};';
     return table.concat(parts, '\n') .. '\n';
 end
@@ -669,7 +706,7 @@ function M.parseExportText(text)
     if setfenv ~= nil then setfenv(chunk, {}); end   -- data file: runs against nothing
     local ok, t = pcall(chunk);
     if not ok or type(t) ~= 'table' or t.dlac ~= 'job-export v1' or type(t.job) ~= 'string'
-       or (type(t.sets) ~= 'string' and type(t.triggers) ~= 'string') then
+       or (type(t.sets) ~= 'string' and type(t.triggers) ~= 'string' and type(t.lockstyles) ~= 'string') then
         return nil, 'not a dlac job export';
     end
     return t, nil;
@@ -682,16 +719,17 @@ function M.exportJob(charFolder, profName, job)
     if dir == nil or ed == nil then return nil, 'not available (log in first?)'; end
     local setsText = readFile(dir .. 'sets\\' .. job .. '.lua');
     local trigText = readFile(dir .. 'triggers\\' .. job .. '.lua');
-    if setsText == nil and trigText == nil then return nil, 'nothing to export (no files for ' .. tostring(job) .. ')'; end
+    local lsText   = readFile(dir .. 'lockstyles\\' .. job .. '.lua');
+    if setsText == nil and trigText == nil and lsText == nil then return nil, 'nothing to export (no files for ' .. tostring(job) .. ')'; end
     ensureDir(ed);
     local short = charFolder:match('^(.-)_%d+$') or charFolder;
     local path = ed .. string.format('%s-%s-%s-%s.lua', job, profName, short, os.date('%Y%m%d_%H%M%S'));
-    local text = M.buildExportText(job, profName, short, setsText, trigText);
+    local text = M.buildExportText(job, profName, short, setsText, trigText, lsText);
     if not writeFile(path, text) or readFile(path) ~= text then return nil, 'could not write ' .. path; end
     return path, nil;
 end
 
--- Valid export files in dlac-exports\: { file, job, profile, from, sets, trig }.
+-- Valid export files in dlac-exports\: { file, job, profile, from, sets, trig, ls }.
 function M.listExports()
     local ed = M.exportsDir();
     if ed == nil then return nil; end
@@ -702,7 +740,8 @@ function M.listExports()
         local meta = M.parseExportText(readFile(ed .. b .. '.lua'));
         if meta ~= nil then
             out[#out + 1] = { file = b, job = meta.job, profile = meta.profile, from = meta.from,
-                              sets = type(meta.sets) == 'string', trig = type(meta.triggers) == 'string' };
+                              sets = type(meta.sets) == 'string', trig = type(meta.triggers) == 'string',
+                              ls = type(meta.lockstyles) == 'string' };
         end
     end
     return out;
@@ -728,6 +767,9 @@ function M.importJobFile(fileBase, dstCharFolder, dstProf, dstName)
     if type(meta.triggers) == 'string' and (loadstring or load)(meta.triggers) == nil then
         return nil, 'export is damaged: triggers payload does not parse';
     end
+    if type(meta.lockstyles) == 'string' and (loadstring or load)(meta.lockstyles) == nil then
+        return nil, 'export is damaged: lockstyles payload does not parse';
+    end
     if not ensureStorageAt(dstCharFolder, dstProf) then return nil, 'could not create storage'; end
     local dstDir = M.profileDirAt(dstCharFolder, dstProf);
     local n = 0;
@@ -735,6 +777,8 @@ function M.importJobFile(fileBase, dstCharFolder, dstProf, dstName)
        and writeFile(dstDir .. 'sets\\' .. dstName .. '.lua', meta.sets) then n = n + 1; end
     if type(meta.triggers) == 'string' and readFile(dstDir .. 'triggers\\' .. dstName .. '.lua') == nil
        and writeFile(dstDir .. 'triggers\\' .. dstName .. '.lua', meta.triggers) then n = n + 1; end
+    if type(meta.lockstyles) == 'string' and readFile(dstDir .. 'lockstyles\\' .. dstName .. '.lua') == nil
+       and writeFile(dstDir .. 'lockstyles\\' .. dstName .. '.lua', meta.lockstyles) then n = n + 1; end
     if n == 0 then return nil, 'nothing imported'; end
     return n, nil;
 end
@@ -764,7 +808,7 @@ function M.cloneProfile(src, dst)
     if not M.ensureStorage(dst) then return nil, 'not logged in'; end
     local copied = 0;
     for _, job in ipairs(M.JOBS) do
-        for _, kind in ipairs({ 'sets', 'triggers' }) do
+        for _, kind in ipairs(M.KINDS) do
             local sp = M.profileDir(src) .. kind .. '\\' .. job .. '.lua';
             local dp = M.profileDir(dst) .. kind .. '\\' .. job .. '.lua';
             local t = readFile(sp);
