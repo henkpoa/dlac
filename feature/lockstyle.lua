@@ -170,18 +170,38 @@ end
 -- loaded off an older tier carry into the job entry on the first save.
 -- dataJob (not the live job) keys the file: data must never save into a
 -- different job's entry than it was loaded for.
+-- What actually lands in a JOB ENTRY file: boxes and active whole, but onload
+-- filtered to THIS job's binding only. The v41 migration serialized the whole
+-- v40 onload map -- every job's bindings -- into each entry it saved. Those
+-- cross-job copies are never read for the file's own job, but they RESURFACE
+-- through the read fallback: a job with no entry yet falls back to a file
+-- whose onload still names it, and the OnLoad pump fires a stale box (field:
+-- DRG=1 from box-1 "test" leaked into every file). Each save scrubs its file.
+function M._entryData(d, job)
+    local out = { active = d.active, slots = d.slots, onload = {} };
+    if job ~= nil and type(d.onload) == 'table' and d.onload[job] ~= nil then
+        out.onload[job] = d.onload[job];
+    end
+    return out;
+end
+
 local function save()
     if data == nil then return; end
-    local p = nil;
+    local p, perJob = nil, false;
     if _pfok and dataJob ~= nil then
         pcall(function() profiles.ensureStorage(); end);
         p = profiles.lockstylesPath(dataJob);
+        perJob = (p ~= nil);
     end
     p = p or legacyPath();
     if p == nil then return; end
+    -- the LEGACY global file (no profiles module) keeps the whole onload map:
+    -- there, one file serves every job by design -- filtering would destroy
+    -- other jobs' real bindings.
+    local d = perJob and M._entryData(data, dataJob) or data;
     pcall(function()
         local f = io.open(p, 'w');
-        if f ~= nil then f:write(M._serialize(data)); f:close(); end
+        if f ~= nil then f:write(M._serialize(d)); f:close(); end
     end);
 end
 
@@ -353,11 +373,12 @@ local function endPreview()
     _status = 'preview ended -- your real gear shows again.';
 end
 
--- One-shot migration: the engine (dispatch) still reads lspreview.lua and, if a
--- stale file says enabled=true, would keep wearing the old equip preview until
--- its 30s heartbeat lapses. Retire the file once at load so the changeover is
--- immediate rather than merely eventual. Safe to delete once dispatch's
--- lsPreview path is gone.
+-- One-shot migration: dispatch's lspreview reader is gone (v42), but the LAC
+-- state keeps running whatever seeded dispatch.lua it loaded until the next
+-- /lac reload -- for that window an OLD engine still reads this file, and a
+-- stale enabled=true would keep it wearing the equip preview until the 30s
+-- heartbeat lapses. Retiring the file covers exactly that user. Delete this
+-- once no pre-v42 seeded copies plausibly remain in the wild.
 local _legacyRetired = false;
 local function retireLegacyPreview()
     if _legacyRetired then return; end

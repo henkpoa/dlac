@@ -49,7 +49,7 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 42;   -- 42: lockstyle apply builds the 0x053 itself (server reads ItemNo+EquipKind only -- bags never scanned; all 9 slots sent, unnamed frozen to worn gear); preview = locally injected GRAP_LIST 0x051
+M.VERSION = 42;   -- 42: lockstyle apply builds the 0x053 itself (server reads ItemNo+EquipKind only -- bags never scanned; all 9 slots sent, unnamed frozen to worn gear); preview = locally injected GRAP_LIST 0x051; the v39 equip-preview overlay (lspreview.lua reader) is gone from the engine
                   -- 41: lockstyle boxes live in the JOB ENTRY (profiles\<Name>\lockstyles\<JOB>.lua; reads fall back v40 profile file, then global)
                   -- 35: matched-but-missing set no longer chat-warns (Triggers tab shows it in red)
                   -- 34: modestate __loadstamp -- the GUI's red Reload-LAC button watches it clear
@@ -1263,27 +1263,11 @@ local function craftMainGuard(cEquip)
 end
 M._craftMainGuard = craftMainGuard;   -- test seam
 
--- Lockstyle PREVIEW plan (pure -- headless-tested): parsed lspreview.lua table
--- -> { equip = slot->name (visual slots, 'remove'/empty dropped), naked = the
--- equip-slot indexes (1..16) to unequip } or nil when not enabled. The preview
--- OWNS Default while enabled: wear ONLY the lockstyle pieces (Henrik's spec --
--- the engine's idle self must not wear anything else).
-local LS_IDX = { Main = 1, Sub = 2, Range = 3, Ammo = 4, Head = 5,
-                 Body = 6, Hands = 7, Legs = 8, Feet = 9 };
-function M._lsPreviewPlan(t)
-    if type(t) ~= 'table' or t.enabled ~= true or type(t.set) ~= 'table' then return nil; end
-    local equip, covered = {}, {};
-    for slot, v in pairs(t.set) do
-        local i = LS_IDX[slot];
-        if i ~= nil and type(v) == 'string' and v ~= '' and v ~= 'remove' then
-            equip[slot] = v;
-            covered[i] = true;
-        end
-    end
-    local naked = {};
-    for i = 1, 16 do if not covered[i] then naked[#naked + 1] = i; end end
-    return { equip = equip, naked = naked };
-end
+-- (v39's equip-based preview plan lived here until v42: the engine wore the
+-- working lockstyle via a Default overlay. Gone whole -- the preview paints
+-- the LOOK now (feature/lookpreview.lua) and never touches gear. lockstyle.lua
+-- still one-shot retires stale lspreview.lua files for anyone whose LAC state
+-- runs an older seeded copy of this file.)
 
 -- ---------------------------------------------------------------------------
 -- Lockstyle APPLY, engine-built (v42). gFunc.LockStyle scanned your bags to
@@ -1362,36 +1346,6 @@ function M._lockstylePacket(set, resolveId, equippedId)
     return pkt, { sent = sent, frozen = frozen, missing = missing };
 end
 
--- The live preview state: <char>\dlac\lspreview.lua, written by lockstyle.lua
--- (addon state) on every edit plus a ~10s heartbeat while previewing. One read
--- per second (craftstate pattern); a heartbeat older than 30s means the addon
--- died mid-preview -- the preview ends by itself, nobody stays undressed.
-local _lspv = { raw = nil, data = nil, lastCheck = -1 };
-local function lsPreview()
-    local now = os.time();
-    if now ~= _lspv.lastCheck then
-        _lspv.lastCheck = now;
-        local dir = charDir();
-        if dir ~= nil then
-            local raw = readFile(dir .. 'lspreview.lua');
-            if raw == nil then
-                _lspv.raw, _lspv.data = nil, nil;
-            elseif raw ~= _lspv.raw then
-                _lspv.raw, _lspv.data = raw, nil;
-                local chunk = (loadstring or load)(raw, '@lspreview.lua');
-                if chunk ~= nil then
-                    local ok, t = pcall(chunk);
-                    if ok and type(t) == 'table' then _lspv.data = t; end
-                end
-            end
-        end
-    end
-    local t = _lspv.data;
-    if type(t) ~= 'table' or t.enabled ~= true then return nil; end
-    if type(t.at) == 'number' and (now - t.at) > 30 then return nil; end
-    return M._lsPreviewPlan(t);
-end
-
 -- Lockstyle box selection (pure -- headless-tested): parsed lockstyles.lua
 -- table + optional box number -> (slot->name table, box name, box index), or
 -- (nil, why). Explicit n wins; else the file's marked box (active); else 1.
@@ -1429,33 +1383,6 @@ function M.dispatch(event)
         end
         local rules = ensureLoaded();
         local list = rules and rules[event] or nil;
-
-        -- Lockstyle preview (v39): while lspreview.lua says enabled, the preview
-        -- OWNS Default -- the working lockstyle equips (LAC's own wearability
-        -- checks skip what the player can't wear: the show is never forced) and
-        -- every uncovered slot is unequipped (UnequipSlot self-guards on "is
-        -- anything there", so this settles after one strip -- no packet churn).
-        -- Runs BEFORE the empty-rules return: a job with no triggers previews too.
-        if event == 'Default' then
-            local plan = lsPreview();
-            if plan ~= nil then
-                local pctx = buildCtx(event);
-                pcall(function()
-                    local eq = rawget(_G, 'gEquip');
-                    if eq ~= nil and type(eq.UnequipSlot) == 'function' then
-                        for _, i in ipairs(plan.naked) do eq.UnequipSlot(i); end
-                    end
-                end);
-                local pnote = equipResolved(plan.equip, pctx);
-                local sig = 'lspv:' .. inlineSummary(plan.equip);
-                local old = _trace[event];
-                if old == nil or old.sig ~= sig then
-                    _trace[event] = { time = os.date('%H:%M:%S'), action = actionLabel(pctx), sig = sig,
-                        lines = { 'lockstyle preview (overlay)  ->  ONLY { ' .. inlineSummary(plan.equip) .. ' }' .. (pnote or '') } };
-                end
-                return;
-            end
-        end
 
         if list == nil or #list == 0 then return; end
 

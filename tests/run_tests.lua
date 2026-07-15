@@ -1340,18 +1340,24 @@ check('AG12 onload survives', lsBack.onload.DRK, 2);
 check('AG13 set entries survive', lsBack.slots[1].set.Main, 'Kris');
 check('AG14 quoting survives an apostrophe', lsBack.slots[1].set.Head, 'Ducal Guard\'s Ribbon');
 check('AG15 round-trip feeds _lockstyleFrom', (dispatchM._lockstyleFrom(lsBack, 1)).Main, 'Kris');
+-- (AG16-AG20 tested the v39 equip-preview plan; removed with it in v42 --
+--  the preview paints the LOOK now, see the AI section.)
 
--- preview plan (v39): the engine wears ONLY the lockstyle while enabled
-local pv = dispatchM._lsPreviewPlan({ enabled = true, set = {
-    Main = 'Kris', Body = 'remove', Head = 'Ducal Guard\'s Ribbon', Neck = 'Spike Necklace', Hands = '' } });
-check('AG16 preview equips the visual picks', pv.equip.Main, 'Kris');
-check('AG17 remove/empty/non-visual values are not equipped',
-    pv.equip.Body == nil and pv.equip.Neck == nil and pv.equip.Hands == nil, true);
-local nk = {};
-for _, i in ipairs(pv.naked) do nk[i] = true; end
-check('AG18 uncovered slots strip (Sub, Body-via-remove, Back)', nk[2] == true and nk[6] == true and nk[16] == true, true);
-check('AG19 covered slots do NOT strip', nk[1] or nk[5], nil);
-check('AG20 disabled file -> no plan', dispatchM._lsPreviewPlan({ enabled = false, set = { Main = 'Kris' } }), nil);
+-- onload is PER JOB ENTRY on save (v42): the v41 migration serialized the whole
+-- v40 onload map into every job file it touched; those cross-job copies are
+-- never read for the file's own job, but they RESURFACE through the fallback
+-- tiers (a job with no entry falls back to a file whose onload names it --
+-- field: DRG=1 from box-1 "test" leaked into every file). Saves scrub it.
+check('AG16 _entryData exported', type(lockstyleM._entryData), 'function');
+if type(lockstyleM._entryData) == 'function' then
+    local ed = lockstyleM._entryData({ active = 3, slots = { [1] = { name = 'x', set = {} } },
+                                       onload = { DRK = 3, DRG = 1, WHM = 2 } }, 'DRK');
+    check('AG17 entry keeps its OWN onload binding', ed.onload.DRK, 3);
+    check('AG18 entry drops other jobs\' bindings', ed.onload.DRG == nil and ed.onload.WHM == nil, true);
+    check('AG19 boxes and active ride unchanged', ed.active == 3 and ed.slots[1].name == 'x', true);
+    local ed2 = lockstyleM._entryData({ active = 1, slots = {}, onload = { DRG = 1 } }, 'DRK');
+    check('AG20 no own binding -> empty onload', next(ed2.onload), nil);
+end
 
 -- ---------------------------------------------------------------------------
 -- AH. lockstyle picker: you can lockstyle to ANYTHING you own
