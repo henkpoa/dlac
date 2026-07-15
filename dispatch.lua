@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 41;   -- 41: lockstyle boxes live in the JOB ENTRY (profiles\<Name>\lockstyles\<JOB>.lua; reads fall back v40 profile file, then global)
+M.VERSION = 42;   -- 42: lockstyle apply builds the 0x053 itself (server reads ItemNo+EquipKind only -- bags never scanned; all 9 slots sent, unnamed frozen to worn gear); preview = locally injected GRAP_LIST 0x051
+                  -- 41: lockstyle boxes live in the JOB ENTRY (profiles\<Name>\lockstyles\<JOB>.lua; reads fall back v40 profile file, then global)
                   -- 35: matched-but-missing set no longer chat-warns (Triggers tab shows it in red)
                   -- 34: modestate __loadstamp -- the GUI's red Reload-LAC button watches it clear
                   -- 33: profile storage layer (dlac\profiles\<name>\; auto-install on load/job change; /dl profile)
@@ -1284,6 +1285,83 @@ function M._lsPreviewPlan(t)
     return { equip = equip, naked = naked };
 end
 
+-- ---------------------------------------------------------------------------
+-- Lockstyle APPLY, engine-built (v42). gFunc.LockStyle scanned your bags to
+-- fill container/index fields and silently no-op'd when its scan came up empty
+-- -- but the SERVER never reads those fields. Its handler (CatsEyeXI
+-- src/map/packets/c2s/0x053_lockstyle.cpp, read 2026-07-15) takes ItemNo +
+-- EquipKind per entry and validates only that the item exists in the item DB
+-- and fits the slot. Ownership and job are judged later, at style-resolution
+-- (charutils.cpp UpdateArmorStyle / hasValidStyle):
+--   * HasItem(char, id)          -- owned in ANY container, Mog Safe included
+--   * canEquipItemOnAnyJob(char) -- SOME job of yours, at its CURRENT level,
+--                                   could equip it; on failure the armor slot
+--                                   silently KEEPS ITS OLD STYLE
+--   * weapon slots additionally need the equipped weapon's category to match
+-- styleItems also PERSIST server-side per slot: a packet that omits a slot
+-- leaves whatever an earlier apply put there (cross-box bleed). So a box is
+-- only authoritative if we send all nine visual slots every time -- named ones
+-- by id, 'remove' as 0 (style 0 renders the slot EMPTY; that is the server's
+-- own semantics, matching the GUI's 'hide'), and unnamed ones frozen to the
+-- currently equipped item, so "no pick" means "look like what I actually wear"
+-- instead of naked or stale.
+-- ---------------------------------------------------------------------------
+local LS_KINDS = { { k = 0, s = 'Main' },  { k = 1, s = 'Sub' },  { k = 2, s = 'Range' },
+                   { k = 3, s = 'Ammo' },  { k = 4, s = 'Head' }, { k = 5, s = 'Body' },
+                   { k = 6, s = 'Hands' }, { k = 7, s = 'Legs' }, { k = 8, s = 'Feet' } };
+local LS_JOBS = { 'WAR', 'MNK', 'WHM', 'BLM', 'RDM', 'THF', 'PLD', 'DRK', 'BST', 'BRD', 'RNG',
+                  'SAM', 'NIN', 'DRG', 'SMN', 'BLU', 'COR', 'PUP', 'DNC', 'SCH', 'GEO', 'RUN' };
+M._LS_JOBS = LS_JOBS;
+
+-- Mirror of the server's canEquipItemOnAnyJob: true when ANY of the character's
+-- jobs (jobLevels: abbr -> level) meets the item's job+level requirement.
+-- Unknown records pass -- this only predicts; the server decides.
+function M._lsStyleGate(rec, jobLevels)
+    if type(rec) ~= 'table' then return true; end
+    local req = tonumber(rec.Level) or 0;
+    if type(rec.Jobs) ~= 'table' or #rec.Jobs == 0 then return true; end
+    for _, j in ipairs(rec.Jobs) do
+        if j == 'All' then
+            for _, l in pairs(jobLevels or {}) do
+                if (tonumber(l) or 0) >= req then return true; end
+            end
+            return false;
+        end
+        if (tonumber((jobLevels or {})[j]) or 0) >= req then return true; end
+    end
+    return false;
+end
+
+-- The 0x053 bytes (pure -- headless-tested). resolveId(name) -> item id or nil;
+-- equippedId(slot) -> the worn item's id (freeze-current for unnamed slots).
+-- Returns the packet plus what happened per slot.
+function M._lockstylePacket(set, resolveId, equippedId)
+    local pkt = {};
+    for i = 1, 136 do pkt[i] = 0; end
+    pkt[1] = 0x53; pkt[2] = 0x88;   -- header u16 = id | (size/2) << 9
+    pkt[5] = 9;                     -- Count: all visual slots, every time
+    pkt[6] = 3;                     -- Mode: Set
+    pkt[7] = 1;                     -- Flags (what the client sends)
+    local sent, frozen, missing = {}, {}, {};
+    for n, e in ipairs(LS_KINDS) do
+        local o = 0x08 + (n - 1) * 8;   -- lockstyleitem_t: ItemIndex, EquipKind,
+        pkt[o + 2] = e.k;               -- Category, pad, ItemNo u16 -- index and
+                                        -- category are ignored server-side
+        local nm = (type(set) == 'table') and set[e.s] or nil;
+        local id = 0;
+        if type(nm) == 'string' and nm ~= '' and nm ~= 'remove' then
+            id = tonumber(resolveId ~= nil and resolveId(nm) or nil) or 0;
+            if id > 0 then sent[e.s] = nm; else missing[#missing + 1] = nm; end
+        elseif nm == nil then
+            id = tonumber(equippedId ~= nil and equippedId(e.s) or nil) or 0;
+            if id > 0 then frozen[e.s] = id; end
+        end
+        pkt[o + 5] = id % 256;
+        pkt[o + 6] = math.floor(id / 256) % 256;
+    end
+    return pkt, { sent = sent, frozen = frozen, missing = missing };
+end
+
 -- The live preview state: <char>\dlac\lspreview.lua, written by lockstyle.lua
 -- (addon state) on every edit plus a ~10s heartbeat while previewing. One read
 -- per second (craftstate pattern); a heartbeat older than 30s means the addon
@@ -2078,14 +2156,15 @@ if inLac() then
         e.blocked = true;
 
         if sub == 'ls' then
-            -- Lockstyle sets (v38, per-profile since v40): the GUI (lockstyle.lua,
-            -- addon state) edits the active profile's lockstyles.lua; THIS side only
-            -- applies -- gFunc.LockStyle is LAC's own packet builder and exists in
-            -- the LAC state alone. The same handler runs in the ADDON state too
-            -- (gearui/triggersui require dispatch there): no gFunc -> stay silent,
-            -- exactly one printer.
+            -- Lockstyle sets (v38; per-profile v40; JOB ENTRY v41; engine-built
+            -- packet v42): the GUI (lockstyle.lua, addon state) edits the boxes;
+            -- THIS side applies by building the 0x053 itself (_lockstylePacket
+            -- above -- gFunc.LockStyle is gone, see the note there). gFunc
+            -- presence still gates the handler to the LAC state: the same
+            -- command fires in the ADDON state too (gearui/triggersui require
+            -- dispatch there); one state, one printer.
             local g = rawget(_G, 'gFunc');
-            if g == nil or type(g.LockStyle) ~= 'function' then return; end
+            if g == nil then return; end
             if string.lower(tostring(args[2] or '')) ~= 'apply' then
                 print('[dlac] usage: /dl ls apply [box]   (GUI: the armor button in the dlac header)');
                 return;
@@ -2106,9 +2185,83 @@ if inLac() then
             if chunk ~= nil then local okc, v = pcall(chunk); if okc then t = v; end end
             local set, why, box = M._lockstyleFrom(t, tonumber(args[3]));
             if set == nil then print('[dlac] lockstyle: ' .. tostring(why)); return; end
-            local okl, err = pcall(g.LockStyle, set);
-            if okl then print(string.format('[dlac] lockstyle "%s" (box %d) applied.', tostring(why), box));
-            else print('[dlac] lockstyle failed: ' .. tostring(err)); end
+            -- Build the 0x053 ourselves (v42). The LAC state's require resolves
+            -- dlac\gear to the char folder's REAL gear.lua -- names in the boxes
+            -- came from it, so NameToObject is the exact reverse map.
+            local gr = nil;
+            pcall(function() gr = require('dlac\\gear'); end);
+            local function resolveId(name)
+                local id = nil;
+                pcall(function()
+                    local rec = gr and gr.NameToObject and gr.NameToObject[name] or nil;
+                    if rec ~= nil then id = tonumber(rec.Id); end
+                end);
+                if id == nil then
+                    pcall(function()
+                        local r = AshitaCore:GetResourceManager():GetItemByName(name, 2)
+                               or AshitaCore:GetResourceManager():GetItemByName(name, 0);
+                        if r ~= nil then id = tonumber(r.Id); end
+                    end);
+                end
+                return id;
+            end
+            local function equippedId(slot)
+                local id = nil;
+                pcall(function()
+                    local eq = gData.GetEquipment();
+                    local it = eq ~= nil and eq[slot] or nil;
+                    if it ~= nil and it.Item ~= nil then id = tonumber(it.Item.Id); end
+                end);
+                return id;
+            end
+            local pkt, r = M._lockstylePacket(set, resolveId, equippedId);
+            -- Predict the server's SILENT job gate so "nothing changed" has a
+            -- name: a piece failing canEquipItemOnAnyJob leaves the OLD style
+            -- on that slot, with no message from the server at all.
+            local lv = {};
+            pcall(function()
+                local pl = AshitaCore:GetMemoryManager():GetPlayer();
+                for i, ab in ipairs(M._LS_JOBS) do lv[ab] = tonumber(pl:GetJobLevel(i)) or 0; end
+            end);
+            for slot, nm in pairs(r.sent) do
+                local rec = gr and gr.NameToObject and gr.NameToObject[nm] or nil;
+                if rec ~= nil and not M._lsStyleGate(rec, lv) then
+                    print(string.format('[dlac] lockstyle: %s will KEEP ITS OLD LOOK -- "%s" needs %s Lv%d,'
+                        .. ' and no job of yours is there yet (server: one of YOUR jobs must be able to wear it).',
+                        slot, nm, table.concat(type(rec.Jobs) == 'table' and rec.Jobs or { '?' }, '/'),
+                        tonumber(rec.Level) or 0));
+                end
+            end
+            -- Weapon styles only take over the same category (hasValidStyle);
+            -- warn when the style's type visibly disagrees with what is worn.
+            for _, ws in ipairs({ 'Main', 'Range' }) do
+                local nm = r.sent[ws];
+                if nm ~= nil then
+                    local st, et = nil, nil;
+                    pcall(function()
+                        local srec = gr and gr.NameToObject and gr.NameToObject[nm] or nil;
+                        st = srec ~= nil and srec.Type or nil;
+                        local eq = gData.GetEquipment();
+                        local en = eq ~= nil and eq[ws] ~= nil and eq[ws].Name or nil;
+                        local erec = en ~= nil and gr and gr.NameToObject and gr.NameToObject[en] or nil;
+                        et = erec ~= nil and erec.Type or nil;
+                    end);
+                    if st ~= nil and et ~= nil and st ~= et then
+                        print(string.format('[dlac] lockstyle: %s style "%s" (%s) will NOT show over your'
+                            .. ' equipped %s -- weapon styles need the same category (server rule).',
+                            ws, nm, tostring(st), tostring(et)));
+                    end
+                end
+            end
+            for _, nm in ipairs(r.missing) do
+                print(string.format('[dlac] lockstyle: "%s" did not resolve to an item id -- its slot will show EMPTY.', nm));
+            end
+            local oks = pcall(function() AshitaCore:GetPacketManager():AddOutgoingPacket(0x053, pkt); end);
+            if not oks then print('[dlac] lockstyle: packet send failed.'); return; end
+            local n = 0;
+            for _ in pairs(r.sent) do n = n + 1; end
+            print(string.format('[dlac] lockstyle "%s" (box %d) sent -- %d styled slot%s; unnamed slots hold your'
+                .. ' current gear\'s look.', tostring(why), box, n, n == 1 and '' or 's'));
             return;
         end
 

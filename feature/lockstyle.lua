@@ -17,10 +17,16 @@
     entry's file, so older-tier boxes migrate whole on the first write.
     Switching profiles OR jobs reloads the boxes live.
     Apply is ENGINE-side ('/dl ls apply [box]' -- dispatch.lua v38 builds the
-    table and calls gFunc.LockStyle; only the LAC state has gFunc). "OnLoad
+    table and calls gFunc.LockStyle; only the LAC state has gFunc). Apply reads
+    the SAVED file, never the working copy: unsaved edits do not apply. "OnLoad
     Lockstyle" binds CURRENT JOB -> MARKED BOX: the pump below (macrobook's
     login/job-change pattern) queues the apply ~6s after login / ~3s after a
     job change, when the game accepts lockstyle packets again.
+
+    Preview is CLIENT-side and equips NOTHING (v42): it writes the entity's
+    look_t (feature/lookpreview.lua). The old equip-based preview could not show
+    the off-job / under-level gear this server happily lockstyles to -- LAC
+    refuses to equip it, so those picks silently did nothing. See lookpreview.lua.
 
     Self-contained on purpose (gearui is at the 200-local chunk cap, hard
     rule 1). gearui INJECTS its helpers via M.wire{} -- the 4x4 grid renderer,
@@ -36,6 +42,8 @@ local _gok, gear = pcall(require, 'dlac\\gear');
 local _pok, profsets = pcall(require, 'dlac\\gear\\profilesets');
 local _pfok, profiles = pcall(require, 'dlac\\profiles');
 _pfok = _pfok and type(profiles) == 'table';
+local _lvok, look = pcall(require, 'dlac\\feature\\lookpreview');
+_lvok = _lvok and type(look) == 'table';
 
 M.visible = false;
 
@@ -217,20 +225,19 @@ end
 -- ---------------------------------------------------------------------------
 -- item picking: your gear.lua entries for one slot (Main/Range nest by skill)
 -- ---------------------------------------------------------------------------
-local function jobOK(rec, job)
-    if type(rec.Jobs) ~= 'table' or job == nil then return true; end
-    for _, j in ipairs(rec.Jobs) do
-        if j == 'All' or j == job then return true; end
-    end
-    return false;
-end
-
-local function listFor(slot, job, q)
+-- CatsEyeXI lets you lockstyle gear your CURRENT job can't equip (Henrik,
+-- field-verified; server source read 07-15: the real gate is one of YOUR jobs,
+-- at its current level, could wear it -- charutils canEquipItemOnAnyJob). The
+-- picker stays ownership-only regardless (Henrik's ruling): the source is
+-- gear.lua and nothing here filters by job or Level. Do not add a jobOK-style
+-- filter back; an off-job pick is ordinary here, and the engine's apply
+-- (dispatch v42) warns per piece when the server's gate would bite. The look
+-- PREVIEW renders anything either way -- it never asks the server.
+local function listFor(slot, q)
     local out = {};
     local function take(t)
         for _, rec in pairs(t) do
             if type(rec) == 'table' and type(rec.Name) == 'string'
-               and jobOK(rec, job)
                and (q == '' or string.find(string.lower(rec.Name), q, 1, true) ~= nil) then
                 out[#out + 1] = rec;
             end
@@ -252,6 +259,7 @@ local function listFor(slot, job, q)
     end);
     return out;
 end
+M._listFor = listFor;   -- test seam (HARD RULE guards in tests/run_tests.lua)
 
 local function recOf(name)
     if type(name) ~= 'string' or name == '' or name == 'remove' then return nil; end
@@ -262,72 +270,105 @@ local function recOf(name)
 end
 
 -- ---------------------------------------------------------------------------
--- Preview (Henrik's design, round 2 -- ENGINE-native like everything else):
--- no /lac disable, no manual /equip. We write the WORKING copy to
--- <char>\dlac\lspreview.lua on every edit; the engine (dispatch v39) reads it
--- like craftstate and, while enabled, OWNS the Default dispatch -- it wears
--- only these pieces (LAC's own wearability checks skip what the player can't
--- wear yet, so under-level picks are allowed but never forced) and unequips
--- every other slot. The pump heartbeats the file (~10s) while previewing; the
--- engine drops a heartbeat older than 30s, so a dead addon can't leave the
--- player stuck stripped. Ending the preview writes enabled=false and the very
--- next dispatch redresses normally.
+-- Preview (v42 -- LOOK, not gear). lookpreview.lua injects the client's own
+-- appearance packet (GRAP_LIST 0x051) locally with our model ids -- the exact
+-- channel the server uses when a lockstyle applies, minus the server. Nothing
+-- is equipped, nothing reaches the server, and it renders gear no job or level
+-- of yours could wear -- which is the point: the old equip-based preview asked
+-- LAC to physically wear the set, and LAC rightly refuses a MNK body on a DRK
+-- (field: Arhat's Gi on DRK did nothing; the previous body stayed on).
+--
+-- Gone with it: <char>\dlac\lspreview.lua, its 10s heartbeat and the engine's
+-- 30s kill -- all of which existed only because the old preview UNDRESSED you
+-- and a dead addon had to not strip you. The worst this one can do is look
+-- wrong until the next appearance update.
+--
+-- Model ids come from the catalog (data/catalog.lua ships a Model per item);
+-- modelOf below resolves them, by Id -- see the note there, names can't do it.
 -- ---------------------------------------------------------------------------
 local _preview = false;
-local _pvBeatAt = 0;
 
 local function queueCmd(c)
     pcall(function() AshitaCore:GetChatManager():QueueCommand(1, c); end);
 end
 
-local function writePreview()
-    local base = charBase(); if base == nil then return; end
-    local L = { '-- dlac lockstyle preview -- TRANSIENT (written by lockstyle.lua, read by the engine).', 'return {' };
-    if _preview and cur ~= nil then
-        L[#L + 1] = '    enabled = true,';
-        L[#L + 1] = string.format('    at = %d,', os.time());
-        L[#L + 1] = '    set = {';
-        local ks = {};
-        for k in pairs(cur.set) do ks[#ks + 1] = k; end
-        table.sort(ks);
-        for _, k in ipairs(ks) do
-            if type(cur.set[k]) == 'string' then
-                L[#L + 1] = string.format('        %s = %q,', k, cur.set[k]);
-            end
-        end
-        L[#L + 1] = '    },';
-    else
-        L[#L + 1] = '    enabled = false,';
+-- Item name -> appearance model id. nil = nothing to show (an accessory, or an
+-- item with no model) -- lookpreview DROPS those rather than blanking the slot.
+--
+-- Two-step on purpose. gear.lua is an ownership record and carries no Model of
+-- its own; gearui fills it in from the catalog BY ID, but only once its owned
+-- cache has been built, and this window can open before that. So fall back to
+-- the catalog by Id, which also sidesteps the name problem: the API drops
+-- apostrophes, so the catalog holds "Arhats Gi" where the client (and gear.lua)
+-- says "Arhat's Gi" -- a name lookup would miss it. Ids always agree.
+local function modelOf(name)
+    local rec = recOf(name);
+    if rec == nil then return nil; end
+    local m = tonumber(rec.Model);
+    if m ~= nil then return m; end
+    if W.catalogById ~= nil and rec.Id ~= nil then
+        local c = nil;
+        pcall(function() c = W.catalogById(rec.Id); end);
+        if type(c) == 'table' then return tonumber(c.Model); end
     end
-    L[#L + 1] = '};';
-    L[#L + 1] = '';
-    pcall(function()
-        local f = io.open(base .. 'dlac\\lspreview.lua', 'w');
-        if f ~= nil then f:write(table.concat(L, '\n')); f:close(); end
-    end);
-    _pvBeatAt = os.clock() + 10;
+    return nil;
 end
+M._modelOf = modelOf;   -- test seam: smoke_ui resolves a real catalog item through
+                        -- the FULL live chain (NameToObject -> catalogById ->
+                        -- flattenGear record) -- the field bug hid exactly there
 
 -- Every mutation of the working copy funnels through here: while a preview is
--- live it re-publishes immediately, so the look on screen tracks every edit.
+-- live it re-pushes immediately, so the look on screen tracks every edit.
 local function touched()
-    if _preview then writePreview(); end
+    if _preview and _lvok and cur ~= nil then look.update(cur.set, modelOf); end
 end
 M._touched = touched;   -- switchTo is defined above this section and publishes through here
 
 local function startPreview()
-    -- A live lockstyle VISUAL hides equipment changes -- the preview would be
-    -- invisible under it. Switch it off first, every time (Henrik, field).
-    queueCmd('/lockstyle off');
-    _preview = true;
-    writePreview();
-    _status = 'previewing -- lockstyle off, the engine wears ONLY this set (updates live as you edit).';
+    if not _lvok then _status = 'preview unavailable (lookpreview failed to load).'; return; end
+    -- No '/lockstyle off' here anymore. The equip-era preview needed it because
+    -- a live lockstyle VISUAL hid the engine's gear swaps; this preview IS a
+    -- visual, painted over whatever shows, and lookpreview intercepts incoming
+    -- appearance packets while active -- a live lockstyle cannot stomp it. The
+    -- off-command was also the start-up "flash" (the server redressed you).
+    local ok, n = look.start(cur ~= nil and cur.set or {}, modelOf);
+    if ok then
+        _preview = true;
+        if (n or 0) > 0 then
+            _status = string.format('previewing -- %d slot%s styled, your LOOK only, nothing is equipped (live as you edit).',
+                n, n == 1 and '' or 's');
+        else
+            -- 0 resolved slots repaints the current look verbatim -- on screen
+            -- that reads as "nothing happened", so say it out loud.
+            _status = 'previewing -- but NO piece here resolves to a model yet (empty set?); pick one and it shows live.';
+        end
+    else
+        _status = 'preview unavailable -- no player entity (not logged in yet?).';
+    end
 end
 
 local function endPreview()
     _preview = false;
-    writePreview();
-    _status = 'preview ended -- normal gear redresses.';
+    if _lvok then look.stop(); end
+    _status = 'preview ended -- your real gear shows again.';
+end
+
+-- One-shot migration: the engine (dispatch) still reads lspreview.lua and, if a
+-- stale file says enabled=true, would keep wearing the old equip preview until
+-- its 30s heartbeat lapses. Retire the file once at load so the changeover is
+-- immediate rather than merely eventual. Safe to delete once dispatch's
+-- lsPreview path is gone.
+local _legacyRetired = false;
+local function retireLegacyPreview()
+    if _legacyRetired then return; end
+    local base = charBase(); if base == nil then return; end   -- pre-login: retry next pump
+    _legacyRetired = true;
+    pcall(function()
+        local f = io.open(base .. 'dlac\\lspreview.lua', 'w');
+        if f == nil then return; end
+        f:write('-- dlac lockstyle preview -- RETIRED (v42 previews the look, not the gear).\nreturn {\n    enabled = false,\n};\n');
+        f:close();
+    end);
 end
 
 -- ---------------------------------------------------------------------------
@@ -385,9 +426,8 @@ local function renderPicker()
         imgui.SetTooltip("LAC's 'remove': the lockstyle shows NOTHING in this slot,\neven while something is equipped.");
     end
     imgui.Separator();
-    local job = jobAbbr();
     local q = string.lower(ui.pick[1] or '');
-    local items = listFor(slot, job, q);
+    local items = listFor(slot, q);
     for i, rec in ipairs(items) do
         if W.icon ~= nil then pcall(W.icon, rec.Id, 18, rec); imgui.SameLine(0, 6); end
         if imgui.Selectable(string.format('%s   Lv%d##lsi%d', tostring(rec.Name), tonumber(rec.Level) or 0, i), false) then
@@ -581,7 +621,7 @@ function M.render()
             if _preview then endPreview(); else startPreview(); end
         end
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('The ENGINE wears ONLY this lockstyle (the WORKING copy, live as you\nedit) -- every other slot is unequipped by the top-priority preview\noverlay, and the lockstyle VISUAL is switched off first (it would hide\nthe preview). Pieces you can\'t wear yet are skipped by LAC itself,\nnever forced. Click again (or close this window) to end -- your normal\ngear redresses on the next dispatch. Don\'t preview in combat.');
+            imgui.SetTooltip('Shows the WORKING copy on your character, live as you edit -- your LOOK\nonly. Nothing is equipped, nothing reaches the server, nobody else sees\nit, and it renders gear no job or level of yours could wear. Works with a\nlive lockstyle -- the preview paints over it and hands it back at the end.\nClick again (or close this window) to end; zoning ends it too. Safe in\ncombat.');
         end
         imgui.EndGroup();
 
@@ -629,12 +669,17 @@ end
 -- ---------------------------------------------------------------------------
 local appliedJob, pendingJob, dueAt = nil, nil, nil;
 function M.pump()
+    retireLegacyPreview();
     -- Closing the window while previewing ends the preview (Henrik: always);
-    -- while it runs, heartbeat the preview file so the engine knows we're
-    -- alive (it drops heartbeats older than 30s -- addon-crash safety).
+    -- zoning ends it inside lookpreview (the new zone's look is authoritative)
+    -- and we just sync the UI; while it runs, lookpreview re-asserts the look
+    -- if anything stomped it (compare-then-inject, once a second).
     if _preview then
-        if not M.visible then endPreview();
-        elseif os.clock() >= _pvBeatAt then writePreview(); end
+        if _lvok and not look.active() then
+            _preview = false;
+            _status = 'preview ended -- zoning redressed you.';
+        elseif not M.visible then endPreview();
+        elseif _lvok then look.pump(); end
     end
     local job = jobAbbr();
     if job == nil then return; end
@@ -654,6 +699,13 @@ function M.pump()
         end
     end
 end
+
+-- Unloading mid-preview is the one way to leave a mark: ActorLockFlag would stay
+-- set and freeze the model until a zone. End the preview first, always -- /addon
+-- reload dlac is routine while iterating on this very window.
+ashita.events.register('unload', 'dlac-lockstyle-unload', function()
+    if _preview then endPreview(); end
+end);
 
 -- '/dl ls' in the ADDON state: open the window; block so the game parser stays
 -- quiet. 'apply' is left for the LAC state's dispatch handler (it sees the

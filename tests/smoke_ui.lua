@@ -118,6 +118,22 @@ for _, k in ipairs({
 end
 
 -- ---------------------------------------------------------------------------
+-- 4. lockstyle look preview: model-id resolution through the FULL live chain
+--    (owned rec -> gearui catalogById -> flattenGear record -> catalog Model).
+--    This is not a unit test on purpose: the field bug that blanked the preview
+--    hid in flattenGear's record construction, which every unit-level test
+--    bypassed. Uses the REAL repo catalog gearui just loaded.
+-- ---------------------------------------------------------------------------
+local lockstyle = require('dlac\\feature\\lockstyle');
+check('S14 lockstyle _modelOf seam', type(lockstyle._modelOf), 'function');
+-- an "owned" record the way gear.lua carries it: Name + Id, NO Model of its own
+package.loaded['dlac\\gear'].NameToObject['Acantha Shavers'] =
+    { Name = 'Acantha Shavers', Id = 18761 };
+check('S15 owned item resolves a model via the catalog by Id',
+    lockstyle._modelOf('Acantha Shavers'), 509);
+check('S16 unknown item resolves to nil, no error', lockstyle._modelOf('No Such Thing'), nil);
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures > 0 then

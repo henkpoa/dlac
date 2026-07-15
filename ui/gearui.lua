@@ -211,6 +211,9 @@ local function flattenGear(src)
             Key = key,                     -- gear.lua table key, for building a commit path
             OneHanded = e.OneHanded,       -- weapon 1H vs 2H (Sub-slot pairing rules)
             Count = e.Count,   -- scanned copy count (>= 2 = same-weapon dual-wield)
+            Model = e.Model,   -- appearance model id (catalog) -- the lockstyle look
+                               -- preview resolves through THESE records (catalogById /
+                               -- enrichment), so dropping it here blanks the preview
         };
         list[#list + 1] = rec;
         if rec.Id ~= nil then byId[rec.Id] = rec; end
@@ -271,6 +274,11 @@ local function enrichGearFromCatalog()
                         -- entries carry no Type / OneHanded -- take the catalog's.
                         if v.Type == nil then v.Type = c.Type; end
                         if v.OneHanded == nil then v.OneHanded = c.OneHanded; end
+                        -- Appearance model id: gear.lua is an ownership record and never
+                        -- carries one; the catalog does, for every item that renders. The
+                        -- lockstyle look preview reads it off the owned entry. Absent stays
+                        -- absent -- nil means the slot has no model (neck/ear/ring/waist/back).
+                        if v.Model == nil then v.Model = c.Model; end
                         if type(c.Stats) == 'table' and next(c.Stats) ~= nil then
                             if type(v.Stats) ~= 'table' or next(v.Stats) == nil then
                                 v.Stats = c.Stats;
@@ -1521,6 +1529,15 @@ pcall(function()
         icon     = icons.renderIcon,
         tooltip  = renderItemTooltip,
         catalog  = lookupByName,
+        -- By ID, for the look preview's model lookup. Name can NOT do this job:
+        -- the API drops apostrophes, so the catalog says "Arhats Gi" where the
+        -- client says "Arhat's Gi". Ids always agree. Builds the index on demand,
+        -- so the preview never depends on the enrichment pass having run first.
+        catalogById = function(id)
+            if id == nil then return nil; end
+            buildAllEquip();
+            return _allEquipById and _allEquipById[id] or nil;
+        end,
     };
 end);
 

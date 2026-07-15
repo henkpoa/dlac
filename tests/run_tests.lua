@@ -1354,6 +1354,182 @@ check('AG19 covered slots do NOT strip', nk[1] or nk[5], nil);
 check('AG20 disabled file -> no plan', dispatchM._lsPreviewPlan({ enabled = false, set = { Main = 'Kris' } }), nil);
 
 -- ---------------------------------------------------------------------------
+-- AH. lockstyle picker: you can lockstyle to ANYTHING you own
+--
+--    HARD RULE (Henrik, 2026-07-15): the picker offers EVERY item you own for
+--    the slot -- wrong job AND under-level for your CURRENT job both included.
+--    (Server precision, source read 07-15: the style renders when one of YOUR
+--    jobs at its current level could wear the piece -- canEquipItemOnAnyJob;
+--    the AJ section below mirrors that gate and the engine warns at apply.)
+--    The PICKER still filters nothing: gear.lua (what you have) is already the
+--    source. Do not reintroduce a jobOK/Level check, and do not dim or flag
+--    off-job picks either: here an off-job lockstyle is ordinary, not an edge
+--    case, and marking it would imply it might fail. Compare the A-series above:
+--    the same "never gate the picker" ruling was reverted THREE times there.
+--    This is CatsEyeXI, not retail/LSB -- do not port a retail rule back in.
+-- ---------------------------------------------------------------------------
+local savedGear = package.loaded['dlac\\gear'];
+package.loaded['dlac\\gear'] = {
+    NameToObject = {},
+    Head = {
+        Onjob     = { Name = 'Onjob Cap',     Level = 1,  Jobs = { 'WHM' } },
+        Wrongjob  = { Name = 'Wrongjob Cap',  Level = 1,  Jobs = { 'BLM' } },
+        Highlevel = { Name = 'Highlevel Cap', Level = 99, Jobs = { 'WHM' } },
+        Wrongboth = { Name = 'Wrongboth Cap', Level = 99, Jobs = { 'BLM' } },
+        Anyjob    = { Name = 'Anyjob Cap',    Level = 1,  Jobs = { 'All' } },
+    },
+    Main = {   -- Main/Range nest one level deeper, by skill category
+        Sword = { Offsword = { Name = 'Offjob Sword', Level = 75, Jobs = { 'DRK' } } },
+    },
+};
+-- lockstyle captures gear as a load-time upvalue, so the fixture only has to be
+-- in place across the dofile; restoring right after keeps the other sections' gear
+-- table (section G's 'Solid Wand' etc.) untouched.
+local lockstyleM = dofile('feature/lockstyle.lua');
+package.loaded['dlac\\gear'] = savedGear;
+
+check('AH0 _listFor exported', type(lockstyleM._listFor), 'function');
+if type(lockstyleM._listFor) == 'function' then
+    local function offered(slot, q)
+        local set = {};
+        for _, rec in ipairs(lockstyleM._listFor(slot, q or '')) do set[rec.Name] = true; end
+        return set;
+    end
+    local head = offered('Head');
+    check('AH1 HARD RULE: wrong-job item offered',            head['Wrongjob Cap'],  true);
+    check('AH2 HARD RULE: under-level item offered',          head['Highlevel Cap'], true);
+    check('AH3 HARD RULE: wrong-job AND under-level offered', head['Wrongboth Cap'], true);
+    check('AH4 on-job item still offered',                    head['Onjob Cap'],     true);
+    check('AH5 All-jobs item still offered',                  head['Anyjob Cap'],    true);
+    check('AH6 HARD RULE: nothing is filtered out',           #lockstyleM._listFor('Head', ''), 5);
+    check('AH7 HARD RULE: wrong-job Main offered (nested by skill)',
+        offered('Main')['Offjob Sword'], true);
+    -- the ONLY thing that narrows the list is the search box:
+    check('AH8 search still narrows by name', #lockstyleM._listFor('Head', 'wrongjob'), 1);
+    check('AH9 unknown slot -> empty, no error', #lockstyleM._listFor('Nope', ''), 0);
+end
+
+-- ---------------------------------------------------------------------------
+-- AI. lockstyle LOOK preview: entity look_t plan (v42)
+--
+--    The preview writes the player's look_t instead of equipping, because this
+--    server lockstyles to anything you OWN (see AH) and LAC will never equip an
+--    off-job piece to show it. Bases are the SDK's (plugins/sdk/ffxi/entity.h:
+--    "Head Armor (Starts at 0x1000)" ... Ranged 0x8000); the stored value is
+--    base + model id, so base alone = nothing in the slot.
+-- ---------------------------------------------------------------------------
+local lookM = dofile('feature/lookpreview.lua');
+check('AI0 _plan exported', type(lookM._plan), 'function');
+if type(lookM._plan) == 'function' then
+    local MODELS = { ["Arhat's Gi"] = 13, ['Kris'] = 7, ['Warp Ring'] = 0, ['Buckler'] = 5, ['Shuriken'] = 9 };
+    local function modelOf(n) return MODELS[n]; end
+    local plan = lookM._plan;
+
+    -- the eight slots FFXI renders, each on its own base:
+    check('AI1 body -> 0x2000 + model', plan({ Body = "Arhat's Gi" }, modelOf).Body, 0x2000 + 13);
+    check('AI2 main -> 0x6000 + model', plan({ Main = 'Kris' }, modelOf).Main, 0x6000 + 7);
+    check('AI3 sub  -> 0x7000 + model', plan({ Sub = 'Buckler' }, modelOf).Sub, 0x7000 + 5);
+    -- dlac says Range, look_t says Ranged:
+    check('AI4 Range maps to the Ranged field', plan({ Range = 'Kris' }, modelOf).Ranged, 0x8000 + 7);
+    check('AI5 Range does NOT create a Range field', plan({ Range = 'Kris' }, modelOf).Range, nil);
+
+    -- HARD RULE (AH) in look form: an off-job piece plans exactly like any other.
+    -- The old preview could not render this; that is why this module exists.
+    check('AI6 off-job piece plans normally', plan({ Body = "Arhat's Gi" }, modelOf).Body, 0x2000 + 13);
+
+    -- 'remove' = LAC's "show nothing in this slot" -> the bare base:
+    check('AI7 remove -> bare base', plan({ Head = 'remove' }, modelOf).Head, 0x1000);
+
+    -- no model id -> DROPPED, never zeroed. An accessory (Model absent in the
+    -- catalog) must not blank a slot; Warp Ring is Model 0 and Ring has no field.
+    check('AI8 unknown name is dropped', plan({ Body = 'No Such Item' }, modelOf).Body, nil);
+    check('AI9 model 0 is dropped, not zeroed', plan({ Head = 'Warp Ring' }, modelOf).Head, nil);
+    check('AI10 non-look slot (Neck) ignored', plan({ Neck = 'Kris' }, modelOf).Neck, nil);
+
+    -- Ammo has no look_t field: a thrown weapon renders in Ranged, but only when
+    -- no real ranged weapon claims the slot.
+    check('AI11 Ammo fills Ranged when Range is empty', plan({ Ammo = 'Shuriken' }, modelOf).Ranged, 0x8000 + 9);
+    check('AI12 a real Range weapon beats Ammo',
+        plan({ Ammo = 'Shuriken', Range = 'Kris' }, modelOf).Ranged, 0x8000 + 7);
+
+    -- shape / robustness:
+    local full = plan({ Head = 'remove', Body = "Arhat's Gi", Main = 'Kris' }, modelOf);
+    local n = 0; for _ in pairs(full) do n = n + 1; end
+    check('AI13 plans only the named slots', n, 3);
+    local e1 = 0; for _ in pairs(plan({}, modelOf)) do e1 = e1 + 1; end
+    check('AI14 empty set -> empty plan', e1, 0);
+    local e2 = 0; for _ in pairs(plan(nil, modelOf)) do e2 = e2 + 1; end
+    check('AI15 nil set -> empty plan, no error', e2, 0);
+    local e3 = 0; for _ in pairs(plan({ Body = 'Kris' }, nil)) do e3 = e3 + 1; end
+    check('AI16 no resolver -> empty plan, no error', e3, 0);
+
+    -- v42 round 2: the preview INJECTS the client's own appearance packet
+    -- (GRAP_LIST 0x051) -- layout from the server source (0x051_grap_list.cpp):
+    -- GrapIDTbl[0] = face | race<<8, then head..ranged as base+model u16s.
+    check('AI17 _merged: plan wins over snapshot',
+        lookM._merged({ Head = 0x1005, Body = 0x2007 }, { Body = 0x2063 }).Body, 0x2063);
+    check('AI18 _merged: snapshot fills unplanned slots',
+        lookM._merged({ Head = 0x1005, Body = 0x2007 }, { Body = 0x2063 }).Head, 0x1005);
+    check('AI19 _merged: bare base where neither knows',
+        lookM._merged({ Head = 0x1005 }, { Body = 0x2063 }).Main, 0x6000);
+    local pk = lookM._packet51(7, 2, { Head = 0x1001, Body = 0x2002, Hands = 0x3003, Legs = 0x4004,
+                                       Feet = 0x5005, Main = 0x6006, Sub = 0x7007, Ranged = 0x8008 });
+    check('AI20 packet51: GRAP_LIST length (0x18)', #pk, 0x18);
+    check('AI21 packet51: header id|size', pk[1] == 0x51 and pk[2] == 0x18, true);
+    check('AI22 packet51: face and race bytes', pk[5] == 7 and pk[6] == 2, true);
+    check('AI23 packet51: Head u16 LE at 0x06', pk[7] == 0x01 and pk[8] == 0x10, true);
+    check('AI24 packet51: Ranged u16 LE at 0x14', pk[21] == 0x08 and pk[22] == 0x80, true);
+end
+
+-- ---------------------------------------------------------------------------
+-- AJ. lockstyle APPLY: the engine-built 0x053 (v42)
+--
+--    The server (CatsEyeXI src/map/packets/c2s/0x053_lockstyle.cpp, read
+--    2026-07-15) takes ItemNo + EquipKind per entry -- container/index are
+--    ignored, so no bag scan belongs in the client. styleItems persist per
+--    slot server-side, so a box is only authoritative if all 9 visual slots
+--    ride in every packet: named -> id, 'remove' -> 0 (renders EMPTY), unnamed
+--    -> the worn item's id (freeze-current). The style gate mirrors the
+--    server's canEquipItemOnAnyJob: one of YOUR jobs, at its CURRENT level.
+-- ---------------------------------------------------------------------------
+check('AJ0 _lockstylePacket exported', type(dispatchM._lockstylePacket), 'function');
+if type(dispatchM._lockstylePacket) == 'function' then
+    local RES = { ["Arhat's Gi"] = 13795, ['Kris'] = 16450 };
+    local eqf = function(slot) if slot == 'Main' then return 21639; end return nil; end
+    local pkt, r = dispatchM._lockstylePacket(
+        { Body = "Arhat's Gi", Head = 'remove', Legs = 'No Such' },
+        function(n) return RES[n]; end, eqf);
+    check('AJ1 wire length 0x88', #pkt, 136);
+    check('AJ2 header id|size', pkt[1] == 0x53 and pkt[2] == 0x88, true);
+    check('AJ3 Count: all 9 slots, always', pkt[5], 9);
+    check('AJ4 Mode: Set', pkt[6], 3);
+    check('AJ5 named piece: EquipKind + ItemNo LE',
+        pkt[50] == 5 and pkt[53] == 227 and pkt[54] == 53, true);   -- Body=kind5, 13795=0x35E3
+    check('AJ6 remove -> ItemNo 0 (slot renders EMPTY)',
+        pkt[42] == 4 and pkt[45] == 0 and pkt[46] == 0, true);      -- Head=kind4
+    check('AJ7 unnamed -> frozen to worn item',
+        pkt[10] == 0 and pkt[13] == 135 and pkt[14] == 84, true);   -- Main=kind0, 21639=0x5487
+    check('AJ8 frozen reported', r.frozen.Main, 21639);
+    check('AJ9 unnamed with nothing worn -> 0', pkt[18] == 1 and pkt[21] == 0 and pkt[22] == 0, true);   -- Sub
+    check('AJ10 unresolved name reported missing', r.missing[1], 'No Such');
+    check('AJ11 unresolved name -> ItemNo 0', pkt[66] == 7 and pkt[69] == 0 and pkt[70] == 0, true);     -- Legs
+    check('AJ12 sent reported', r.sent.Body, "Arhat's Gi");
+
+    -- the server's silent job gate, mirrored (charutils.cpp canEquipItemOnAnyJob)
+    local gate = dispatchM._lsStyleGate;
+    check('AJ13 gate: no job high enough -> old look persists',
+        gate({ Jobs = { 'MNK', 'SAM', 'NIN' }, Level = 64 }, { MNK = 52, SAM = 10, DRK = 75 }), false);
+    check('AJ14 gate: ANY job at level passes (not just the current one)',
+        gate({ Jobs = { 'MNK', 'SAM', 'NIN' }, Level = 64 }, { NIN = 64, DRK = 75 }), true);
+    check('AJ15 gate: All-jobs item needs any job at level',
+        gate({ Jobs = { 'All' }, Level = 50 }, { DRK = 75 }), true);
+    check('AJ16 gate: All-jobs item above every level fails',
+        gate({ Jobs = { 'All' }, Level = 99 }, { DRK = 75 }), false);
+    check('AJ17 gate: unknown record passes (server decides)', gate(nil, {}), true);
+    check('AJ18 gate: record without Jobs passes', gate({ Level = 99 }, {}), true);
+end
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then
