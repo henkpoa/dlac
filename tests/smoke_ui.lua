@@ -280,12 +280,12 @@ check('S16 unknown item resolves to nil, no error', lockstyle._modelOf('No Such 
     check('S53 render runs with the pin menu open', rok2, true);
     balanced('S54 popup open');
 
-    -- SHIFT+DRAG. Shift is a 'key' WNDPROC handler, not imgui IO (GetIO().KeyShift
-    -- is dead outside ImGui keyboard focus -- that is what shipped broken), so
-    -- drive the real handler. lparam bit 31 = transition state: 1 == key going UP.
-    local keyfn = (HANDLERS['key'] or {})['dlac_floatgear_key'];
-    check('S55 floatgear registered a key handler for shift', type(keyfn), 'function');
-    if type(keyfn) ~= 'function' then return; end
+    -- SHIFT+DRAG. The key read itself is a Win32 GetKeyState call and cannot run
+    -- headless, so drive it through fg.shiftHeld -- what these cover is the LATCH
+    -- and the click suppression, which is the logic that actually broke.
+    local heldShift = false;
+    fg.shiftHeld = function() return heldShift; end
+    check('S55 floatgear exposes the shift seam', type(fg.shiftHeld), 'function');
 
     local moved = nil;
     IM.SetWindowPos = function(p) moved = p; end
@@ -294,7 +294,7 @@ check('S16 unknown item resolves to nil, no error', lockstyle._modelOf('No Such 
     popupOpen = false;
 
     -- shift NOT held: a click must not move the window
-    keyfn({ wparam = 0x10, lparam = 0x80000000 });   -- shift UP
+    heldShift = false;
     IM.IsMouseClicked = function() return true; end
     IM.IsMouseDown    = function() return true; end
     moved = nil;
@@ -303,7 +303,7 @@ check('S16 unknown item resolves to nil, no error', lockstyle._modelOf('No Such 
     balanced('S57 no-shift click');
 
     -- shift held + press: the drag latches and the window follows the delta
-    keyfn({ wparam = 0x10, lparam = 0 });            -- shift DOWN
+    heldShift = true;
     moved = nil;
     local rok3 = pcall(fg.render);
     check('S58 render runs while shift-dragging', rok3, true);
@@ -313,7 +313,7 @@ check('S16 unknown item resolves to nil, no error', lockstyle._modelOf('No Such 
 
     -- the latch outlives Shift: equipmon needs it only to START, and the button
     -- fires on RELEASE, by which time the key may already be back up
-    keyfn({ wparam = 0x10, lparam = 0x80000000 });   -- shift released mid-drag
+    heldShift = false;                               -- released mid-drag
     IM.IsMouseClicked = function() return false; end
     moved = nil;
     pcall(fg.render);

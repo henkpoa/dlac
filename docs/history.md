@@ -1395,3 +1395,43 @@ drives the real key handler (the transition-bit expression is easy to get backwa
 asserts the window moves by the drag delta, that no-shift never drags, that the drag
 survives Shift coming back up, and that it stops on release. **Verified by restoring the
 GetIO version: fails with "shift+press moves the window: got false, want true".**
+
+### Field round 4: shift STILL dead -- ask the OS, not the framework
+
+Henrik: *"still doesn't work :( reloaded both dlac and lac."* Second miss on the same
+gesture. Both failed attempts share one root: they asked something that only knows about
+Shift **sometimes**.
+
+1. `imgui.GetIO().KeyShift` -- Ashita only feeds the keyboard into ImGui's IO when ImGui
+   wants it; standing in the world it does not. fancychat DOES call it -- inside its
+   chat-INPUT mode, where ImGui has focus.
+2. Ashita's **`key` WNDPROC event** (VK_SHIFT + the lparam transition bit) -- equipmon's
+   exact code, copied verbatim. Also never fired here.
+
+Now: **`GetAsyncKeyState` OR `GetKeyState` via ffi/user32** -- ask the OS. True whenever
+the key is physically down, regardless of focus, message queue, or which input path the
+client uses. `trove` uses GetKeyState for this ("Win32 key state for shift-to-move" --
+the same gesture); XIUI uses GetAsyncKeyState. They differ (thread message queue vs
+physical key) and after two misses this was not the place to bet on one, so both are
+read and OR'd.
+
+**The lesson, and it cost two rounds:** "another addon in this install does it" is the
+check hard rule 2 asks for, and it is NOT sufficient. Both failed attempts passed that
+check. fancychat's GetIO call is real -- in a context where ImGui owns the keyboard.
+equipmon's key hook is real -- and equipmon's shift-drag was never actually verified
+working HERE; that was assumed from reading its source. **Verify the API against the
+SITUATION, and prefer the layer with the fewest things that can be true "sometimes."**
+
+Hardened the rest of the path at the same time, since a third blind round was not
+affordable: the drag starts on `IsMouseDown` (not `IsMouseClicked` -- true for ONE frame,
+so any missed frame loses the gesture), and hover is tested with `ImGuiHoveredFlags_RectOnly`
+(= AllowWhenBlockedByActiveItem + AllowWhenBlockedByPopup + AllowWhenOverlapped -- and
+the combo fancychat has miles on) instead of the single flag.
+
+**Shift now outlines the grid gold.** A chrome-less window has no way to say "grabbable",
+so this is a real affordance -- and it makes the next failure self-diagnosing in one
+glance: outline = the key read is fine, look at the drag.
+
+`M.shiftHeld` is a seam the smoke suite overrides: the OS call cannot run headless, so
+S55-S63 cover the LATCH and the click suppression (the logic that broke), not the key
+read. Honest about what it does not prove.

@@ -52,7 +52,6 @@ local function try(name)
 end
 local imgui = try('imgui');
 local dsp   = try("dlac\\dispatch");
-local bit   = try('bit');       -- LuaJIT in game; shimmed in smoke_ui
 
 local M = {};
 
@@ -83,27 +82,48 @@ local POPUP  = '##dlac_pinmenu';
 local CAP    = 200;       -- rows drawn per popup; the overflow is COUNTED, not hidden
 local BOX0   = 40;        -- renderSlotGrid's default box; scale 1.0 == the tab's size
 
--- Shift comes from Ashita's `key` (WNDPROC) event, NOT imgui.GetIO().KeyShift.
+-- Shift: the Win32 key state, straight from user32. TWO earlier attempts failed in
+-- the field, and the reason is the same both times -- they asked something that
+-- only knows about shift SOMETIMES:
 --
--- GetIO().KeyShift was the first attempt and it is dead during normal play: Ashita
--- only feeds keyboard state to ImGui's IO when ImGui actually wants the keyboard,
--- so the flag reads false while you are just standing in the world and the drag
--- never fired. fancychat's use of it is real but lives inside its chat-input mode,
--- where ImGui HAS focus -- which is exactly the trap: the call is "proven" in this
--- install only for a context we are not in.
+--   1. imgui.GetIO().KeyShift -- dead during normal play. Ashita only feeds the
+--      keyboard into ImGui's IO when ImGui wants it; standing in the world it does
+--      not. (fancychat DOES use it -- inside its chat-INPUT mode, where ImGui has
+--      focus. Proven in this install, wrong for this context.)
+--   2. Ashita's `key` (WNDPROC) event, VK_SHIFT + the lparam transition bit --
+--      equipmon's exact code. Also never fired here.
 --
--- The WNDPROC hook is what equipmon uses for this same gesture, and equipmon's
--- shift+drag demonstrably works here. lparam bit 31 is the transition state: 1
--- when the key is going UP. Expression kept identical to equipmon's.
-local _shift = false;
-pcall(function()
-    ashita.events.register('key', 'dlac_floatgear_key', function(e)
-        if e.wparam == 0x10 then      -- VK_SHIFT
-            _shift = not (bit.band(e.lparam, bit.lshift(0x8000, 0x10)) == bit.lshift(0x8000, 0x10));
-        end
-    end);
-end);
-local function shiftDown() return _shift == true; end
+-- GetKeyState asks the OS, so it is true whenever the key is physically down, no
+-- matter who has focus or which input path the client is using. This is what trove
+-- uses -- its comment reads "Win32 key state for shift-to-move", the same gesture.
+-- The high bit means "down", hence < 0. cdef is pcall'd because another addon in
+-- this Lua state may have declared the same symbol already.
+-- BOTH user32 reads, OR'd. They differ in a way that matters here: GetKeyState is
+-- relative to the calling thread's message queue, GetAsyncKeyState is the physical
+-- key. trove uses the first, XIUI the second; after two field misses this is not
+-- the place to bet on one. The high bit means "down", hence < 0 on the short.
+local ffi = (function()
+    local ok, m = pcall(require, 'ffi');      -- ffi is not a plain table: guard on nil,
+    return (ok and m ~= nil) and m or nil;    -- the itemicons pattern, not try()
+end)();
+if ffi ~= nil then
+    -- pcall'd separately: another addon in this Lua state may have declared either
+    -- symbol already, and one failing must not take the other down with it.
+    pcall(ffi.cdef, 'short __stdcall GetKeyState(int nVirtKey);');
+    pcall(ffi.cdef, 'short __stdcall GetAsyncKeyState(int vKey);');
+end
+local VK_SHIFT = 0x10;
+local function shiftDown()
+    if ffi == nil then return false; end
+    local ok, v = pcall(function() return ffi.C.GetAsyncKeyState(VK_SHIFT) < 0; end);
+    if ok and v == true then return true; end
+    local ok2, v2 = pcall(function() return ffi.C.GetKeyState(VK_SHIFT) < 0; end);
+    return ok2 and v2 == true;
+end
+-- Test seam: the smoke suite overrides this. The OS call cannot run headless, so
+-- what the tests cover is the LATCH and the click suppression around it -- the
+-- logic that broke -- not the key read itself.
+M.shiftHeld = shiftDown;
 
 -- The window's scale, clamped HERE rather than at the slider: uiflags.lua is a
 -- plain Lua file a player can edit, and a 0 or a negative there would collapse the
@@ -358,7 +378,7 @@ function M.render()
     -- item claimed, and a 4x4 of ImageButtons leaves no such spot -- the old
     -- "drag it by the invisible rim" was the best that flag could do, and it was
     -- a bad answer. NoMove also stops the window sliding when you grab a slot.
-    local shift = shiftDown();
+    local shift = M.shiftHeld();       -- through the seam, so the tests can drive it
     local FL = (ImGuiWindowFlags_NoTitleBar or 0) + (ImGuiWindowFlags_NoResize or 0)
              + (ImGuiWindowFlags_NoScrollbar or 0) + (ImGuiWindowFlags_NoCollapse or 0)
              + (ImGuiWindowFlags_AlwaysAutoResize or 0) + (ImGuiWindowFlags_NoBackground or 0)
@@ -414,9 +434,19 @@ function M.render()
         -- drag the moment the cursor outran the window (or crossed the pin popup),
         -- and re-testing shift would drop it if you let the key go mid-drag --
         -- equipmon needs Shift only to START, and this matches.
+        -- Starts on IsMouseDown, not IsMouseClicked: Clicked is true for exactly one
+        -- frame, so any frame we miss (or a Shift pressed just after the button
+        -- went down) loses the gesture entirely. Down is forgiving and the latch
+        -- makes it idempotent.
+        -- RectOnly, not AllowWhenBlockedByActiveItem alone: it is that flag PLUS
+        -- AllowWhenBlockedByPopup and AllowWhenOverlapped (libs/imgui.lua:332), so
+        -- the grid still counts as hovered with a button held, the pin popup up, or
+        -- another window overlapping. It is also the combo fancychat uses, i.e. the
+        -- one with field miles on it here.
         local LMB = ImGuiMouseButton_Left or 0;
-        if not _dragging and shift and imgui.IsMouseClicked(LMB)
-           and imgui.IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem or 0) then
+        local overWin = imgui.IsWindowHovered(ImGuiHoveredFlags_RectOnly
+                                              or ImGuiHoveredFlags_AllowWhenBlockedByActiveItem or 0);
+        if not _dragging and shift and imgui.IsMouseDown(LMB) and overWin then
             _dragging = true;
             pcall(function() imgui.ResetMouseDragDelta(LMB); end);
         end
@@ -436,6 +466,19 @@ function M.render()
                     end
                 end);
             end
+        end
+
+        -- Shift held: outline the grid gold. A window with no frame has no other
+        -- way to say "grabbable now", and the drag is otherwise invisible until it
+        -- works. It also answers, in one glance, WHICH half is broken if it ever
+        -- misbehaves again: outline = the key read is fine, look at the drag.
+        if shift or _dragging then
+            pcall(function()
+                local x, y = imgui.GetWindowPos();
+                if type(x) == 'table' then y = (x[2] or x.y); x = (x[1] or x.x); end
+                imgui.GetWindowDrawList():AddRect({ x - 1, y - 1 }, { x + grid + 1, y + grid + 1 },
+                    imgui.GetColorU32({ 0.95, 0.80, 0.35, 0.90 }), 0, 0, 2);
+            end);
         end
 
         -- Popup at WINDOW scope: the grid detected the click inside its child,
