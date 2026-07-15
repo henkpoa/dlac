@@ -25,7 +25,21 @@ table.insert(package.searchers or package.loaders, 1, function(name)
     return chunk;
 end);
 
-ashita = { events = { register = function() end, unregister = function() end } };
+-- The event stub RECORDS handlers rather than dropping them: floatgear's shift
+-- tracking is a 'key' (WNDPROC) handler, and section 6 drives it directly -- the
+-- transition-bit test in there is easy to get backwards and worth exercising.
+local HANDLERS = {};
+ashita = {
+    events = {
+        register = function(evt, name, fn)
+            HANDLERS[evt] = HANDLERS[evt] or {};
+            HANDLERS[evt][name] = fn;
+        end,
+        unregister = function(evt, name)
+            if HANDLERS[evt] ~= nil then HANDLERS[evt][name] = nil; end
+        end,
+    },
+};
 gData = { GetPlayer = function() return nil; end };
 AshitaCore = nil;                                        -- every load-time touch must be guarded
 
@@ -209,7 +223,7 @@ check('S16 unknown item resolves to nil, no error', lockstyle._modelOf('No Such 
     IM.EndMenu    = function() depth.menu = depth.menu - 1; end
     for _, n in ipairs({ 'Button', 'ImageButton', 'SmallButton', 'Selectable', 'MenuItem',
         'Checkbox', 'SliderFloat', 'IsItemHovered', 'IsWindowHovered', 'IsMouseDragging',
-        'IsMouseClicked', 'IsItemClicked', 'IsItemActive' }) do
+        'IsMouseClicked', 'IsItemClicked', 'IsItemActive', 'IsMouseDown', 'IsMouseReleased' }) do
         IM[n] = function() return false; end
     end
     IM.GetIO              = function() return { KeyShift = false }; end
@@ -266,21 +280,63 @@ check('S16 unknown item resolves to nil, no error', lockstyle._modelOf('No Such 
     check('S53 render runs with the pin menu open', rok2, true);
     balanced('S54 popup open');
 
-    -- a frame where Shift is held: the drag path, and both clicks suppressed
-    IM.GetIO = function() return { KeyShift = true }; end
-    IM.IsWindowHovered  = function() return true; end
-    IM.IsMouseDragging  = function() return true; end
+    -- SHIFT+DRAG. Shift is a 'key' WNDPROC handler, not imgui IO (GetIO().KeyShift
+    -- is dead outside ImGui keyboard focus -- that is what shipped broken), so
+    -- drive the real handler. lparam bit 31 = transition state: 1 == key going UP.
+    local keyfn = (HANDLERS['key'] or {})['dlac_floatgear_key'];
+    check('S55 floatgear registered a key handler for shift', type(keyfn), 'function');
+    if type(keyfn) ~= 'function' then return; end
+
+    local moved = nil;
+    IM.SetWindowPos = function(p) moved = p; end
+    IM.IsWindowHovered = function() return true; end
     IM.GetMouseDragDelta = function() return 5, 7; end
     popupOpen = false;
+
+    -- shift NOT held: a click must not move the window
+    keyfn({ wparam = 0x10, lparam = 0x80000000 });   -- shift UP
+    IM.IsMouseClicked = function() return true; end
+    IM.IsMouseDown    = function() return true; end
+    moved = nil;
+    pcall(fg.render);
+    check('S56 no shift: a click does not drag the window', moved, nil);
+    balanced('S57 no-shift click');
+
+    -- shift held + press: the drag latches and the window follows the delta
+    keyfn({ wparam = 0x10, lparam = 0 });            -- shift DOWN
+    moved = nil;
     local rok3 = pcall(fg.render);
-    check('S55 render runs while shift-dragging', rok3, true);
-    balanced('S56 shift-drag');
+    check('S58 render runs while shift-dragging', rok3, true);
+    check('S59 shift+press moves the window by the drag delta',
+        type(moved) == 'table' and moved[1] == 15 and moved[2] == 27, true);  -- 10+5, 20+7
+    balanced('S60 shift-drag');
+
+    -- the latch outlives Shift: equipmon needs it only to START, and the button
+    -- fires on RELEASE, by which time the key may already be back up
+    keyfn({ wparam = 0x10, lparam = 0x80000000 });   -- shift released mid-drag
+    IM.IsMouseClicked = function() return false; end
+    moved = nil;
+    pcall(fg.render);
+    check('S61 the drag survives Shift coming back up', type(moved), 'table');
+
+    -- releasing the button ends it, and a later click no longer drags
+    IM.IsMouseDown = function() return false; end
+    pcall(fg.render);
+    moved = nil;
+    IM.IsMouseClicked = function() return true; end
+    IM.IsMouseDown    = function() return true; end
+    pcall(fg.render);
+    check('S62 after release, a plain click does not drag', moved, nil);
+    balanced('S63 drag ended');
+    IM.IsMouseClicked = function() return false; end
+    IM.IsMouseDown    = function() return false; end
+    pcall(fg.render);
 
     -- window off: must draw nothing at all and touch no stack
     Sx.ui._gearFloat = false;
     pcall(fg.render);
-    check('S57 a closed window opens no imgui window', depth.win, 0);
-    balanced('S58 window off');
+    check('S64 a closed window opens no imgui window', depth.win, 0);
+    balanced('S65 window off');
 
     for i, f in ipairs({ 'getPlayerInfo', 'buildAllEquip', 'getEquippedId', 'lookupById',
                          'displayName', 'renderSlotGrid', 'candidatesForSlot' }) do

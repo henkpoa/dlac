@@ -1364,3 +1364,34 @@ floatgear's own balance is what broke and what is now guarded.
 Rule of thumb earned: **when you add a Push, count the Pops in the whole function, not
 the one you are looking at.** The two are 90 lines apart here by necessity (the vars are
 consumed by Begin and must be popped before the pin popup inherits them).
+
+### Field round 3: shift+drag was dead on arrival -- imgui IO has no keyboard here
+
+Henrik: *"Shift Click still doesn't work though."* The gesture was never firing because
+**`imgui.GetIO().KeyShift` is false during normal play**: Ashita only feeds keyboard
+state into ImGui's IO when ImGui actually WANTS the keyboard, and standing in the world
+with a chrome-less window up, it does not. So `shift` was permanently false.
+
+**The trap worth remembering:** GetIO().KeyShift *is* used in this install -- fancychat
+calls it (bigmode.lua:196) -- and "another addon here does it" is the exact check hard
+rule 2 asks for. It was still the wrong call, because fancychat's use lives inside its
+chat-INPUT mode, where ImGui holds focus. A call can be proven in this binding and still
+be wrong for your context. **Verify the API against the SITUATION, not just the install.**
+
+Fixed by using what **equipmon** uses for this same gesture (and equipmon's shift+drag
+demonstrably works here): the Ashita **`key` WNDPROC event**, VK_SHIFT (0x10), with
+lparam bit 31 as the transition state (1 = going UP). Expression kept identical to
+equipmon's.
+
+The drag is also **latched** now: shift+press over the window starts it and it runs
+until the button comes up. Re-testing hover every frame dropped it the moment the cursor
+outran the window; re-testing shift dropped it if you let the key go mid-drag. equipmon
+needs Shift only to START, and this matches. `_dragging` also covers a real gap in the
+click suppression -- an ImageButton fires on RELEASE, by which time Shift may already be
+back up, and the pin menu would open at the end of every drag.
+
+Tests S55-S63: the smoke stub now RECORDS `ashita.events.register` handlers so the test
+drives the real key handler (the transition-bit expression is easy to get backwards) and
+asserts the window moves by the drag delta, that no-shift never drags, that the drag
+survives Shift coming back up, and that it stops on release. **Verified by restoring the
+GetIO version: fails with "shift+press moves the window: got false, want true".**

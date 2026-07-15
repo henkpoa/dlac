@@ -52,6 +52,7 @@ local function try(name)
 end
 local imgui = try('imgui');
 local dsp   = try("dlac\\dispatch");
+local bit   = try('bit');       -- LuaJIT in game; shimmed in smoke_ui
 
 local M = {};
 
@@ -82,13 +83,27 @@ local POPUP  = '##dlac_pinmenu';
 local CAP    = 200;       -- rows drawn per popup; the overflow is COUNTED, not hidden
 local BOX0   = 40;        -- renderSlotGrid's default box; scale 1.0 == the tab's size
 
--- Shift is read from ImGui's own IO (fancychat does the same here, so the shape is
--- proven) rather than from an Ashita `key` hook: no state to keep in sync, and it
--- is already true on the frame the drag starts.
-local function shiftDown()
-    local ok, v = pcall(function() return imgui.GetIO().KeyShift; end);
-    return ok and v == true;
-end
+-- Shift comes from Ashita's `key` (WNDPROC) event, NOT imgui.GetIO().KeyShift.
+--
+-- GetIO().KeyShift was the first attempt and it is dead during normal play: Ashita
+-- only feeds keyboard state to ImGui's IO when ImGui actually wants the keyboard,
+-- so the flag reads false while you are just standing in the world and the drag
+-- never fired. fancychat's use of it is real but lives inside its chat-input mode,
+-- where ImGui HAS focus -- which is exactly the trap: the call is "proven" in this
+-- install only for a context we are not in.
+--
+-- The WNDPROC hook is what equipmon uses for this same gesture, and equipmon's
+-- shift+drag demonstrably works here. lparam bit 31 is the transition state: 1
+-- when the key is going UP. Expression kept identical to equipmon's.
+local _shift = false;
+pcall(function()
+    ashita.events.register('key', 'dlac_floatgear_key', function(e)
+        if e.wparam == 0x10 then      -- VK_SHIFT
+            _shift = not (bit.band(e.lparam, bit.lshift(0x8000, 0x10)) == bit.lshift(0x8000, 0x10));
+        end
+    end);
+end);
+local function shiftDown() return _shift == true; end
 
 -- The window's scale, clamped HERE rather than at the slider: uiflags.lua is a
 -- plain Lua file a player can edit, and a 0 or a negative there would collapse the
@@ -103,6 +118,7 @@ end
 local scaleNow = M.scale;
 local _openFor  = nil;    -- slot label whose menu should open next frame
 local _menuSlot = nil;    -- slot the open popup belongs to
+local _dragging = false;  -- shift+drag latch: set on press, cleared on release
 local _drillItem = nil;   -- fallback mode: item picked, now choosing scope
 local _search = { '' };
 
@@ -372,8 +388,10 @@ function M.render()
                 return fmt.truncate(id and (S.displayName(id) or ('#' .. tostring(id))) or '(empty)', 18);
             end,
             -- Left-click opens the menu too (RMB is the ask, LMB the guarantee) --
-            -- but never while Shift is held: that click is the start of a drag.
-            function(labelKey) if not shift then _openFor = labelKey; end end,
+            -- but never while Shift is held or a drag is still latched: that click
+            -- is a drag, and the button fires on RELEASE, by which time Shift may
+            -- already be back up. `_dragging` is what covers that gap.
+            function(labelKey) if not (shift or _dragging) then _openFor = labelKey; end end,
             function(sl) return S.lookupById(S.getEquippedId(sl.equip)); end,
             grid,
             {
@@ -388,20 +406,36 @@ function M.render()
 
         -- Shift+drag anywhere on the grid moves the window. Done by hand because
         -- the ImageButton under the cursor owns the click, so ImGui would never
-        -- move the window itself -- but the mouse-drag state is global, so it
-        -- reports the drag regardless of who is active.
-        if shift and imgui.IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem or 0)
-           and imgui.IsMouseDragging(ImGuiMouseButton_Left or 0) then
-            pcall(function()
-                local dx, dy = imgui.GetMouseDragDelta(ImGuiMouseButton_Left or 0);
-                if type(dx) == 'table' then dy = (dx[2] or dx.y); dx = (dx[1] or dx.x); end
-                if type(dx) == 'number' and type(dy) == 'number' and (dx ~= 0 or dy ~= 0) then
-                    local wx, wy = imgui.GetWindowPos();
-                    if type(wx) == 'table' then wy = (wx[2] or wx.y); wx = (wx[1] or wx.x); end
-                    imgui.SetWindowPos({ wx + dx, wy + dy });
-                    imgui.ResetMouseDragDelta(ImGuiMouseButton_Left or 0);
-                end
-            end);
+        -- move the window itself -- but the mouse state is global, so it reports
+        -- the drag regardless of which item is active.
+        --
+        -- LATCHED: shift+press over the window starts it, and it then runs until
+        -- the button comes up. Testing hover every frame instead would drop the
+        -- drag the moment the cursor outran the window (or crossed the pin popup),
+        -- and re-testing shift would drop it if you let the key go mid-drag --
+        -- equipmon needs Shift only to START, and this matches.
+        local LMB = ImGuiMouseButton_Left or 0;
+        if not _dragging and shift and imgui.IsMouseClicked(LMB)
+           and imgui.IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem or 0) then
+            _dragging = true;
+            pcall(function() imgui.ResetMouseDragDelta(LMB); end);
+        end
+        if _dragging then
+            if not imgui.IsMouseDown(LMB) then
+                _dragging = false;
+                ui._gfMovedAt = os.clock() + 1;      -- persist once the drag settles
+            else
+                pcall(function()
+                    local dx, dy = imgui.GetMouseDragDelta(LMB);
+                    if type(dx) == 'table' then dy = (dx[2] or dx.y); dx = (dx[1] or dx.x); end
+                    if type(dx) == 'number' and type(dy) == 'number' and (dx ~= 0 or dy ~= 0) then
+                        local wx, wy = imgui.GetWindowPos();
+                        if type(wx) == 'table' then wy = (wx[2] or wx.y); wx = (wx[1] or wx.x); end
+                        imgui.SetWindowPos({ wx + dx, wy + dy });
+                        imgui.ResetMouseDragDelta(LMB);
+                    end
+                end);
+            end
         end
 
         -- Popup at WINDOW scope: the grid detected the click inside its child,
