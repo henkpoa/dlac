@@ -1026,3 +1026,41 @@ button sits top-right of the box-header row (the game's native
 /lockstyle off -- queued, never intercepted per [[lastsynth-native]]);
 and Preview queues /lockstyle off FIRST, every time -- a live lockstyle
 visual hides equipment changes, so an un-disabled preview shows nothing.
+
+## Session "the uihost split -- gearui off the 200-local ceiling" (07-15, feature/uihost)
+
+Henrik asked what eats the "200 gui entities": it is the LuaJIT
+200-local-per-chunk cap, and gearui.lua sat at EXACTLY 200/200
+(compiler-verified -- appending one local fails the luac parse with "too
+many local variables"). Investigated trove (sibling addon) as the model:
+thin host + plugin registry (utils/plugins.lua), plugins contribute
+tab/window/commands, host injects shared services, plugins own no
+authoritative data. Verdict: adopt the CONTRACT, not the auto-discovery
+(io.popen 'dir /b' spawns console windows -- static require list instead).
+
+Landed as 9 commits on feature/uihost (main untouched by request):
+mechanical wins first (try() require helper kills 12 pcall-ok temps;
+has{} flag table; COL{} palette table -- 200 -> 171), then uihost.lua
+(register{name,tabs,window,invalidate} + host.provide/services), then
+the extractions: itemicons (D3D texture cache), equippedui (both browse
+tabs; captures host.services at load -- provide-before-require is
+load-bearing), setupui (jobSetupState + migrateCurrentJob, configure{}
+deps), syncflags (auto-sync + uiflags; owns sf.flags.debug/.autosync;
+loadUiFlags-before-tick hook order preserved), weightsui (editor only --
+scoring stays with the Sets candidate machinery), profilesmenu (the
+~400-line Profiles popup out of drawWindow). gearui: 200 -> 134 locals,
+4680 -> ~3290 lines; every new module <= 27 locals.
+
+New regression net: tests\smoke_ui.lua (46 checks) headless-loads the
+whole UI chunk -- run_tests.lua NEVER loaded gearui, so the 200-cap and
+registration/load-order bugs had zero coverage before. It caught one
+real bug during the split (an imgui~=nil guard silently skipping tab
+registration headless). Weights window = first uihost WINDOW contract
+(host.renderWindows). Henrik verified in-game mid-branch: "everything
+seems to work so far".
+
+Key invariants for future modules: provide services BEFORE requiring a
+tab module; one d3d_present hook (gearui's) calls sf.loadUiFlags then
+sf.tick; modules capture ui/COL tables at load but they are stable
+references; profilesmenu.render() must run inside gearui's imgui.Begin
+(OpenPopup/BeginPopup share window scope).

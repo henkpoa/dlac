@@ -66,9 +66,12 @@ handshake).
 
 ## Hard rules (each one paid for in debugging time)
 
-1. **LuaJIT 200-local cap per chunk.** gearui.lua lives at the edge; every new gearui
-   feature is born as its own module (see profilesets/gearfmt/cmdqueue extractions).
-   Parsers don't catch this — it's a load-time crash.
+1. **LuaJIT 200-local cap per chunk.** gearui.lua sat at EXACTLY 200/200 until the
+   uihost split (v40: uihost/itemicons/equippedui/setupui/syncflags/weightsui/
+   profilesmenu — see architecture.md); now ~134 with headroom. Every new UI feature
+   still registers a tab/window via uihost instead of adding gearui locals. Parsers
+   don't catch a breach — it's a load-time crash; `lua tests\smoke_ui.lua`
+   headless-loads the whole UI chunk and DOES catch it (run it with run_tests.lua).
 2. **`imgui` is not a global** in addon modules — `require('imgui')` it. A nil-guard
    around a missing require silently disabled an entire feature's UI once (gearmove
    v1–v4). Probe the Ashita binding before using an ImGui API (`BeginPopupContextItem`

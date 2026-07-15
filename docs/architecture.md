@@ -84,18 +84,35 @@ Writes `<char>\dlac\gear_staging.lua`, `<char>\dlac\gear.lua`, rotated backups i
 `<char>\backups\`. Every write is backup + parse-checked + sandbox-validated, aborting
 untouched on failure.
 
-### gearui.lua — main GUI
-The tabbed ImGui window over gear.lua, catalog, the import pipeline, and the optimizer.
-Owns the render hook, header buttons (Reload LAC / dev buttons behind `/dl debug` /
-Setup), the Setup/migration writer (via setmanager), auto-sync on job change, UI-flag
-persistence, and hosts the Triggers tab (delegated to triggersui).
-Historically pinned at LuaJIT's 200-local cap — new features MUST be born as modules
-(profilesets.lua, gearfmt.lua, cmdqueue.lua are extractions; more may follow).
-Key points: `enrichGearFromCatalog`; `refreshGear` (re-read gear.lua in place after
-commit); Setup logic (`jobSetupState`, `repairShims` call); `drawWindow` (tabs Equipped /
-All Equipment / Sets / Triggers); auto-sync chain `autoSyncOnJobChange` → `doSync` →
-`refreshGear` → `autoRescanManifest` → `gearcheck.chatWarn`; uiflags persistence; render
-hook on `d3d_present`.
+### gearui.lua — main GUI (host client + Sets core)
+The main ImGui window shell (header buttons, Setup plan popup, tab bar) plus the Sets
+machinery (working set model, auto-build, candidate pools, scoring, slot grid, stats
+panel, item tooltips). Everything else moved out behind uihost (below). gearui still
+owns the three Ashita hooks (`d3d_present` / `packet_in` inv-dirty / `command`) and the
+shared `ui` view-state table, publishes the shared services via `host.provide{}`, and
+registers its own Sets tab + the weights window like any other module.
+Was pinned at EXACTLY 200/200 LuaJIT main-chunk locals (compiler-verified); now ~134
+with `tests\smoke_ui.lua` guarding the cap. New features MUST still be born as modules —
+register a tab/window via uihost instead of adding gearui locals.
+
+### uihost.lua — UI module registry (the Trove plugin model, v40)
+`host.register({name, tabs = {{label, render}}, window = {render}, invalidate})` +
+`host.provide{}`/`host.services` (ONE live table gearui fills before requiring tab
+modules — modules may capture entries at load). Registration order = tab order
+(Equipped, All Equipment, Sets, Triggers). Deliberately unlike trove/utils/plugins.lua:
+a STATIC require list (no `io.popen` discovery — popen spawns console windows), and
+renders run under the caller's guard (gearui's `tabGuard`). Extraction set that rode in
+with it: **itemicons.lua** (D3D texture cache: `renderIcon`/`handleOf`/`release`, no-op
+safe headless), **equippedui.lua** (Equipped + All Equipment tabs; captures
+host.services at load — provide-before-require is load-bearing), **setupui.lua**
+(`jobSetupState` + convert-in-place `migrateCurrentJob` + starter profile/trigger
+seeding; `setup.configure{}` deps), **syncflags.lua** (auto-sync loop + uiflags.lua
+persistence; owns `sf.flags.debug`/`sf.flags.autosync`; gearui's d3d_present calls
+`sf.loadUiFlags` BEFORE `sf.tick` — order is load-bearing, the real gear.lua must swap
+in before the first sync), **weightsui.lua** (stat-weights editor; scoring stays in
+gearui), **profilesmenu.lua** (the Profiles popup tree + forms; state in the shared ui
+table). `tests\smoke_ui.lua` headless-loads the whole chunk: 200-cap breaches,
+registration order, services contract.
 
 ### triggersui.lua — Triggers tab
 GUI editor for the dispatch engine's data: rules per handler, mode toggle buttons, and
