@@ -458,6 +458,52 @@ local h6 = optim.optimizePicks({ Body = { dtA }, Legs = { dtB } }, WD);
 check('H8 DT capped as goodness', h6.total, 10 * 10);
 
 -- ---------------------------------------------------------------------------
+-- H9-H14. Range/Ammo are picked TOGETHER, never greedily per slot.
+-- Field case (Henrik): Cinderstone / Morion Tathlum occupy the Ammo slot but can
+-- be fired by nothing. The server adds the ammo's delay to ranged delay for TP
+-- with no compatibility check (GetRangedWeaponDelay), so pairing one with a bow
+-- silently costs its full 999. Ammo with no corresponding Range weapon -- unfirable,
+-- Throwing (a Range weapon shadows it), or no owned weapon of its type -- must
+-- leave Range EMPTY. Catalog AmmoType is the discriminator; absent = unfirable.
+-- ---------------------------------------------------------------------------
+do   -- scoped: the main chunk is near Lua's 200-local ceiling
+local G = package.loaded['dlac\\gear'];
+local function ammoSet(rangeTbl, ammoTbl)
+    G.Range, G.Ammo = rangeTbl, ammoTbl;
+    return optim.buildMaxStatSet('Accuracy', { job = 'WAR', level = 99 });
+end
+local function it(name, acc, extra)
+    local e = { Name = name, Level = 1, Id = 0, Jobs = { 'All' }, Stats = { Accuracy = acc } };
+    for k, v in pairs(extra or {}) do e[k] = v; end
+    return e;
+end
+-- a bow that scores WELL and a stat stick that scores a little: greedy would take both
+local bow   = it('Test Bow',    10, { Type = 'Archery' });
+local arrow = it('Test Arrow',   1, { AmmoType = 'Archery' });
+local stick = it('Cinderstone',  4);                              -- no AmmoType = unfirable
+
+local r1 = ammoSet({ Archery = { bow } }, { stick = stick, arrow = arrow });
+check('H9 bow keeps its matching ammo',      r1.slots.Ammo, 'Test Arrow');
+check('H10 bow survives the pairing',        r1.slots.Range, 'Test Bow');
+
+-- stat stick outscores the whole bow+arrow pair (4+10=14 vs 20) -> Range must empty out
+local fatStick = it('Cinderstone', 20);
+local r2 = ammoSet({ Archery = { bow } }, { stick = fatStick });
+check('H11 unfirable ammo wins the pair',    r2.slots.Ammo, 'Cinderstone');
+check('H12 ... and Range stays EMPTY',       r2.slots.Range, nil);
+
+-- Throwing fires from the Ammo slot itself; any Range weapon shadows it
+local shuriken = it('Test Shuriken', 20, { AmmoType = 'Throwing' });
+local r3 = ammoSet({ Archery = { bow } }, { shuriken = shuriken });
+check('H13 Throwing ammo empties Range',     r3.slots.Range, nil);
+
+-- arrows whose bow is not owned: no corresponding Range weapon -> Range stays empty
+local r4 = ammoSet({ Marksmanship = { it('Test Gun', 3, { Type = 'Marksmanship' }) } }, { arrow = it('Test Arrow', 20, { AmmoType = 'Archery' }) });
+check('H14 ammo without its weapon empties Range', r4.slots.Range, nil);
+G.Range, G.Ammo = nil, nil;
+end
+
+-- ---------------------------------------------------------------------------
 -- I. max-MP hold rule (dispatch.mpHoldNeeded) -- keep a worn MP piece while
 --    swapping it out would waste unspent MP; release once it's spent.
 --    Field spec: +50 MP head vs +5 MP incoming -> release after 45 MP spent.

@@ -530,6 +530,16 @@ local NESTED_SLOTS = { "Main", "Range" };
 local FLAT_SLOTS   = { "Sub", "Ammo", "Head", "Neck", "Ear", "Body", "Hands", "Ring", "Back", "Waist", "Legs", "Feet" };
 local DUAL_SLOTS   = { Ear = true, Ring = true };
 
+-- Ammo a Range weapon FIRES, keyed by the catalog's AmmoType -- and the pair is legal
+-- only when the weapon's Type matches (arrows want a bow, not a gun). Everything else
+-- in the slot has NO corresponding Range weapon and so demands an EMPTY one:
+--   * Throwing (shuriken, pebble) fires from the Ammo slot itself, and the server
+--     reads Range FIRST -- m_Weapons[SLOT_RANGED] ? SLOT_RANGED : SLOT_AMMO -- so any
+--     Range weapon shadows it completely.
+--   * The unfirable stat sticks (Cinderstone, Morion Tathlum, Coiste Bodhar, pet food)
+--     carry no AmmoType at all: they only occupy the slot.
+local RANGE_FIRED = { Archery = true, Marksmanship = true, FishingRod = true };
+
 -- Call fn(entry) for every entry in a top-level slot, flattening the weapon-category
 -- layer for Main/Range so the caller sees a flat stream of candidate entries.
 local function forEachInSlot(slotKey, fn)
@@ -585,6 +595,48 @@ end
 -- stats, so it scores 0) is left UNFILLED rather than padded with a junk piece --
 -- represented exactly like a slot with no eligible gear: absent from slots/order/
 -- perSlot. Nil gate = accept everything (old behavior).
+-- Range + Ammo are decided TOGETHER, not greedily slot-by-slot. Picking each slot's own
+-- best pairs a stat-stick ammo with whatever Range weapon happened to score -- and the
+-- server then adds that ammo's delay to ranged delay for TP with NO compatibility check
+-- (CBattleEntity::GetRangedWeaponDelay), so a bow + Cinderstone silently costs the stat
+-- stick's full 999. Enumerate only LEGAL combinations and take the highest-scoring:
+--   (Range, matching ammo) | (Range, no ammo) | (empty Range, unpaired ammo)
+-- Ammo with no corresponding Range weapon -- unfirable, Throwing, or simply no owned
+-- weapon of its type -- always leaves Range EMPTY (Henrik's ruling).
+-- Returns { Range = pick|nil, Ammo = pick|nil }; both nil when nothing clears the gate.
+local function pickRangeAmmo(scoreFn, job, level, acceptScore)
+    local rangeR = rankSlot('Range', scoreFn, job, level);
+    local ammoR  = rankSlot('Ammo',  scoreFn, job, level);
+    local function ok(p) return p ~= nil and acceptScore(p.score); end
+
+    local firedBy = {};                                 -- AmmoType -> best accepted Range of that Type
+    for _, p in ipairs(rangeR) do
+        local t = p.entry.Type;
+        if t ~= nil and firedBy[t] == nil and ok(p) then firedBy[t] = p; end
+    end
+
+    local best = nil;
+    -- Ties keep the fuller set (matches the old greedy placement when nothing is
+    -- weighted); strict improvement is required to swap, so this stays deterministic.
+    local function consider(r, a)
+        local s = (r and r.score or 0) + (a and a.score or 0);
+        local n = (r and 1 or 0) + (a and 1 or 0);
+        if best == nil or s > best.score or (s == best.score and n > best.n) then
+            best = { score = s, n = n, Range = r, Ammo = a };
+        end
+    end
+
+    if ok(rangeR[1]) then consider(rangeR[1], nil); end   -- Range alone, Ammo not worth wearing
+    for _, a in ipairs(ammoR) do
+        if ok(a) then
+            local t = a.entry.AmmoType;
+            if t ~= nil and RANGE_FIRED[t] then consider(firedBy[t], a);   -- nil weapon -> Range empty
+            else consider(nil, a); end                                     -- unpaired -> Range MUST be empty
+        end
+    end
+    return best or {};
+end
+
 local function buildSet(scoreFn, job, level, acceptScore)
     if type(acceptScore) ~= 'function' then acceptScore = function() return true; end end
     local out = { slots = {}, order = {}, perSlot = {}, total = 0, job = job, level = level };
@@ -600,14 +652,20 @@ local function buildSet(scoreFn, job, level, acceptScore)
     for _, s in ipairs(NESTED_SLOTS) do slots[#slots + 1] = s; end
     for _, s in ipairs(FLAT_SLOTS) do slots[#slots + 1] = s; end
 
+    local ra;   -- the joint Range/Ammo decision, resolved once and read by both slots
     for _, slotKey in ipairs(slots) do
-        local ranked = rankSlot(slotKey, scoreFn, job, level);
-        if #ranked > 0 then
-            if DUAL_SLOTS[slotKey] then
-                if acceptScore(ranked[1].score) then place(slotKey .. '1', ranked[1]); end
-                if #ranked > 1 and acceptScore(ranked[2].score) then place(slotKey .. '2', ranked[2]); end
-            else
-                if acceptScore(ranked[1].score) then place(slotKey, ranked[1]); end
+        if slotKey == 'Range' or slotKey == 'Ammo' then
+            ra = ra or pickRangeAmmo(scoreFn, job, level, acceptScore);
+            if ra[slotKey] ~= nil then place(slotKey, ra[slotKey]); end
+        else
+            local ranked = rankSlot(slotKey, scoreFn, job, level);
+            if #ranked > 0 then
+                if DUAL_SLOTS[slotKey] then
+                    if acceptScore(ranked[1].score) then place(slotKey .. '1', ranked[1]); end
+                    if #ranked > 1 and acceptScore(ranked[2].score) then place(slotKey .. '2', ranked[2]); end
+                else
+                    if acceptScore(ranked[1].score) then place(slotKey, ranked[1]); end
+                end
             end
         end
     end

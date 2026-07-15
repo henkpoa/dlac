@@ -274,6 +274,11 @@ local function enrichGearFromCatalog()
                         -- entries carry no Type / OneHanded -- take the catalog's.
                         if v.Type == nil then v.Type = c.Type; end
                         if v.OneHanded == nil then v.OneHanded = c.OneHanded; end
+                        -- Pairing metadata (Range/Ammo rule): what a Range weapon can
+                        -- fire this ammo as. gear.lua is an ownership record and never
+                        -- carries one. Absent stays absent -- nil is meaningful here, it
+                        -- marks an unfirable stat stick that forces Range empty.
+                        if v.AmmoType == nil then v.AmmoType = c.AmmoType; end
                         -- Appearance model id: gear.lua is an ownership record and never
                         -- carries one; the catalog does, for every item that renders. The
                         -- lockstyle look preview reads it off the owned entry. Absent stays
