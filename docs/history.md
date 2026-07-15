@@ -1499,3 +1499,30 @@ with nothing to see. HOVER_FLAGS now falls back to the REAL bit values (1 and 32
 is both correct in game and assertable headless (S72/S73 -- white-box, because the test
 stubs renderSlotGrid so there is no child window to hover; verified by restoring the old
 flags: "asks about CHILD windows: got false").
+
+### Field round 7: shift+drag works -- and the cue stops being a christmas tree
+
+Henrik: *"reloaded, shift+drag works now!"* -- the `ChildWindows` flag was it.
+
+*"Can you remove so it doesn't light up like yellow christmas lights?"* Fair: Shift is
+held constantly in normal play (running, macros), and the cue lit all 16 boxes on the
+raw key state -- which is also why it fired with the game unfocused. It now shows only
+when Shift could ACTUALLY start a drag (cursor over the window), while a drag is live,
+or in move mode -- a state you can get stuck in and must be able to see. Not deleted:
+the window has no frame, so the boxes are its only way to say "grabbable", and it is the
+instrument that finally found the bug.
+
+`grab` is deliberately the SAME expression as the click suppression, so what you see is
+exactly when the slots stop taking clicks. A cue that disagreed with the behaviour would
+be worse than none.
+
+The hover read moved above the grid (the colours need it). Safe: ImGui resolves the
+hovered window in NewFrame from the PREVIOUS frame's rects, so this frame's child not
+being submitted yet does not matter.
+
+**Test-hygiene note worth more than the feature:** the new S74-S76 were first dropped in
+after S68, where they had to turn move mode off themselves -- which left S69 ("right
+click stays live IN MOVE MODE") passing while testing nothing. Moved to after S70/S71,
+where move mode is legitimately off. `cueWith` also returns a sentinel rather than nil
+when the grid stub never ran, so "lights nothing" cannot pass for free. Verified by
+restoring the christmas lights: S74 fails with "got table, want nil".

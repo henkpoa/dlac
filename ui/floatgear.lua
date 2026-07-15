@@ -453,9 +453,6 @@ function M.render()
     -- item claimed, and a 4x4 of ImageButtons leaves no such spot -- the old
     -- "drag it by the invisible rim" was the best that flag could do, and it was
     -- a bad answer. NoMove also stops the window sliding when you grab a slot.
-    -- "grab mode": Shift held, OR the keyless move mode from the right-click menu.
-    -- Everything downstream (gold boxes, the drag latch, click suppression) keys off
-    -- this one flag, so the two routes cannot drift apart.
     local shift = M.shiftHeld() or _moveMode;   -- shiftHeld is a seam: tests drive it
     local FL = (ImGuiWindowFlags_NoTitleBar or 0) + (ImGuiWindowFlags_NoResize or 0)
              + (ImGuiWindowFlags_NoScrollbar or 0) + (ImGuiWindowFlags_NoCollapse or 0)
@@ -477,6 +474,24 @@ function M.render()
     imgui.PopStyleVar(2);            -- WindowBorderSize + WindowPadding: consumed by
                                      -- Begin; the pin popup below must not inherit them
     if shown then
+        -- Hover is read HERE, before the grid, because the box colours below need
+        -- it. Safe: ImGui resolves the hovered window in NewFrame from the PREVIOUS
+        -- frame's rects, so it does not matter that this frame's child has not been
+        -- submitted yet.
+        local overWin = imgui.IsWindowHovered(HOVER_FLAGS);
+
+        -- The grab cue. Shift alone is NOT enough to light the grid: Shift is held
+        -- constantly in normal play (running, macros), and lighting all 16 boxes
+        -- every time was "yellow christmas lights" (Henrik). It shows only when
+        -- Shift could ACTUALLY start a drag -- i.e. the cursor is over the window --
+        -- or while a drag is live, or in move mode, which is a state you can get
+        -- stuck in and must be able to see.
+        --
+        -- Deliberately the SAME expression as the click suppression below: what you
+        -- see is exactly when the slots stop taking clicks. A cue that disagreed
+        -- with the behaviour would be worse than none.
+        local grab = _moveMode or _dragging or (shift and overWin);
+
         local box  = math.floor(BOX0 * scaleNow() + 0.5);
         local grid = box * 4;        -- tight: no spacing, no child padding
         S.renderSlotGrid('float', grid, nil,
@@ -486,27 +501,24 @@ function M.render()
                 return fmt.truncate(id and (S.displayName(id) or ('#' .. tostring(id))) or '(empty)', 18);
             end,
             -- Left-click opens the menu too (RMB is the ask, LMB the guarantee) --
-            -- but never while Shift is held or a drag is still latched: that click
-            -- is a drag, and the button fires on RELEASE, by which time Shift may
-            -- already be back up. `_dragging` is what covers that gap.
-            function(labelKey) if not (shift or _dragging) then _openFor = labelKey; end end,
+            -- but never while the grab cue is up: that click is a drag, and the
+            -- button fires on RELEASE, by which time Shift may already be back up.
+            -- `_dragging` inside `grab` is what covers that gap.
+            function(labelKey) if not grab then _openFor = labelKey; end end,
             function(sl) return S.lookupById(S.getEquippedId(sl.equip)); end,
             grid,
             {
                 tight = true,
                 box   = box,
-                -- Shift held -> EVERY box goes gold: the window has no frame, so
-                -- this is its only way to say "grabbable now".
-                --
-                -- It is deliberately the same mechanism that paints a pinned slot
-                -- red -- ImageButton's bg_col, which is field-proven here. The
-                -- first attempt drew a rect with GetWindowDrawList():AddRect(...)
-                -- and 6 args, a signature nothing else in dlac uses (only the
-                -- 3-arg AddRectFilled is proven); inside its pcall, a wrong
-                -- signature just draws nothing, and a silent indicator is worse
-                -- than none -- it made a working key read look broken.
+                -- Grab cue: the window has no frame, so the boxes are its only way
+                -- to say "grabbable now". Same mechanism that paints a pinned slot
+                -- red -- ImageButton's bg_col, field-proven here. (An earlier
+                -- attempt drew a rect via GetWindowDrawList():AddRect with 6 args,
+                -- a signature nothing else in dlac uses; inside its pcall it just
+                -- drew nothing, and a silent indicator is worse than none -- it
+                -- made a working key read look broken for three rounds.)
                 boxColorOf = function(sl)
-                    if shift or _dragging then return MOVE_BOX; end
+                    if grab then return MOVE_BOX; end
                     if pins.isPinned(sl.label) then return PIN_BOX; end
                     return nil;
                 end,
@@ -530,8 +542,7 @@ function M.render()
         -- frame, so any frame we miss (or a Shift pressed just after the button
         -- went down) loses the gesture entirely. Down is forgiving and the latch
         -- makes it idempotent.
-        local LMB = ImGuiMouseButton_Left or 0;
-        local overWin = imgui.IsWindowHovered(HOVER_FLAGS);
+        local LMB = ImGuiMouseButton_Left or 0;   -- overWin was read above the grid
         if not _dragging and shift and imgui.IsMouseDown(LMB) and overWin then
             _dragging = true;
             pcall(function() imgui.ResetMouseDragDelta(LMB); end);

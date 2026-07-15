@@ -375,6 +375,7 @@ check('S16 unknown item resolves to nil, no error', lockstyle._modelOf('No Such 
             and gridOpts.boxColorOf({ label = 'Head' }) ~= nil, true);
     balanced('S68 move mode');
 
+
     -- the strand test: right-click must still reach the menu while move mode is on
     Sx.renderSlotGrid = function(_, _, _, _, _, onClick, _, _, opts)
         if opts ~= nil and opts.onRightClick ~= nil then rmb = true; opts.onRightClick('Head'); end
@@ -402,6 +403,30 @@ check('S16 unknown item resolves to nil, no error', lockstyle._modelOf('No Such 
     balanced('S71 move mode off');
     IM.IsMouseDown = function() return false; end
     pcall(fg.render);
+
+    -- "yellow christmas lights" (Henrik): Shift is held constantly in normal play
+    -- (running, macros), so it must NOT light the grid on its own -- only when it
+    -- could ACTUALLY start a drag, i.e. the cursor is over the window.
+    --
+    -- Runs here, after S70/S71, precisely because move mode is off by then: dropped
+    -- in earlier it would have had to turn move mode off itself, and S69's "right
+    -- click stays live IN MOVE MODE" would then have passed while testing nothing.
+    Sx.renderSlotGrid = function(_, _, _, _, _, _, _, _, opts) gridOpts = opts; end
+    local function cueWith(shiftHeld, hovered)
+        gridOpts = nil;
+        heldShift = shiftHeld;
+        IM.IsWindowHovered = function() return hovered; end
+        pcall(fg.render);
+        if type(gridOpts) ~= 'table' or type(gridOpts.boxColorOf) ~= 'function' then
+            return 'NO-GRID';        -- distinct from nil: a stub that never ran would
+        end                          -- otherwise make S74/S75 pass for free
+        return gridOpts.boxColorOf({ label = 'Head' });
+    end
+    check('S74 shift away from the window lights NOTHING', cueWith(true, false), nil);
+    check('S75 no shift over the window lights nothing',    cueWith(false, true), nil);
+    check('S76 shift OVER the window shows the grab cue',   cueWith(true, true) ~= nil, true);
+    heldShift = false;
+    IM.IsWindowHovered = function(f) hoverFlags = f; return true; end
 
     -- window off: must draw nothing at all and touch no stack
     Sx.ui._gearFloat = false;
