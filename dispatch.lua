@@ -49,7 +49,7 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 39;   -- 39: lockstyle preview owns Default while lspreview.lua is enabled (wear ONLY the lockstyle)
+M.VERSION = 40;   -- 40: lockstyle boxes live in the active profile (reads fall back to the pre-profile global file)
                   -- 35: matched-but-missing set no longer chat-warns (Triggers tab shows it in red)
                   -- 34: modestate __loadstamp -- the GUI's red Reload-LAC button watches it clear
                   -- 33: profile storage layer (dlac\profiles\<name>\; auto-install on load/job change; /dl profile)
@@ -2078,11 +2078,12 @@ if inLac() then
         e.blocked = true;
 
         if sub == 'ls' then
-            -- Lockstyle sets (v38): the GUI (lockstyle.lua, addon state) edits
-            -- <char>\dlac\lockstyles.lua; THIS side only applies -- gFunc.LockStyle
-            -- is LAC's own packet builder and exists in the LAC state alone. The
-            -- same handler runs in the ADDON state too (gearui/triggersui require
-            -- dispatch there): no gFunc -> stay silent, exactly one printer.
+            -- Lockstyle sets (v38, per-profile since v40): the GUI (lockstyle.lua,
+            -- addon state) edits the active profile's lockstyles.lua; THIS side only
+            -- applies -- gFunc.LockStyle is LAC's own packet builder and exists in
+            -- the LAC state alone. The same handler runs in the ADDON state too
+            -- (gearui/triggersui require dispatch there): no gFunc -> stay silent,
+            -- exactly one printer.
             local g = rawget(_G, 'gFunc');
             if g == nil or type(g.LockStyle) ~= 'function' then return; end
             if string.lower(tostring(args[2] or '')) ~= 'apply' then
@@ -2091,7 +2092,10 @@ if inLac() then
             end
             local dir = charDir();
             if dir == nil then print('[dlac] lockstyle: not logged in.'); return; end
-            local raw = readFile(dir .. 'lockstyles.lua');
+            -- profile copy first, else the pre-profile global file -- the SAME
+            -- resolver the GUI uses (profiles.lua), so both states pick one file
+            local lsPath = (_pok and _prof.readLockstylesPath() or nil) or (dir .. 'lockstyles.lua');
+            local raw = readFile(lsPath);
             if raw == nil then print('[dlac] lockstyle: no lockstyle sets saved yet (armor button in the dlac header).'); return; end
             local t = nil;
             local chunk = (loadstring or load)(raw, '@lockstyles.lua');

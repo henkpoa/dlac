@@ -68,6 +68,14 @@ end
 function M.legacyTriggersPath(job)
     local b = charBase(); return b and (b .. 'dlac\\triggers\\' .. job .. '.lua') or nil;
 end
+-- Lockstyle boxes are PER PROFILE (v40): this is where writes land. Reads
+-- resolve through readLockstylesPath below.
+function M.lockstylesPath(name)
+    local d = M.profileDir(name or M.activeName()); return d and (d .. 'lockstyles.lua') or nil;
+end
+function M.legacyLockstylesPath()
+    local b = charBase(); return b and (b .. 'dlac\\lockstyles.lua') or nil;
+end
 function M.jobFilePath(job)
     local b = charBase(); return b and (b .. job .. '.lua') or nil;
 end
@@ -93,6 +101,21 @@ local function writeFile(p, t)
     f:write(t); f:close(); return true;
 end
 M._readFile = readFile;
+
+-- The lockstyles file to LOAD: the active profile's copy when it exists, else
+-- the pre-profile global dlac\lockstyles.lua (the feature shipped one day
+-- before this move -- existing boxes keep appearing). nil when neither exists
+-- or pre-login. The GUI and the engine ('/dl ls apply') both resolve through
+-- here, so the two states can never disagree on which file is live. Writes
+-- never come through here: they land on lockstylesPath(), and every save
+-- serializes ALL boxes, so the global file migrates whole on the first write.
+function M.readLockstylesPath(name)
+    local pp = M.lockstylesPath(name);
+    if pp ~= nil and readFile(pp) ~= nil then return pp; end
+    local lp = M.legacyLockstylesPath();
+    if lp ~= nil and readFile(lp) ~= nil then return lp; end
+    return nil;
+end
 
 local function ensureDir(p)
     pcall(function()

@@ -10,7 +10,11 @@
     where Save lands, box 1 is marked until you pick another. Switching boxes
     with unsaved changes warns first -- continuing DISCARDS the edits.
 
-    Storage: <char>\dlac\lockstyles.lua { active, onload = {JOB=box}, slots }.
+    Storage: <char>\dlac\profiles\<Name>\lockstyles.lua -- the boxes are PER
+    PROFILE (v40) { active, onload = {JOB=box}, slots }. Reads fall back to
+    the pre-profile global dlac\lockstyles.lua; every save serializes ALL
+    boxes into the active profile's copy, so the global file migrates whole
+    on the first write. Switching profiles reloads the boxes live.
     Apply is ENGINE-side ('/dl ls apply [box]' -- dispatch.lua v38 builds the
     table and calls gFunc.LockStyle; only the LAC state has gFunc). "OnLoad
     Lockstyle" binds CURRENT JOB -> MARKED BOX: the pump below (macrobook's
@@ -29,6 +33,8 @@ local _iok, imgui = pcall(require, 'imgui');
 local hasImgui = _iok and imgui ~= nil;
 local _gok, gear = pcall(require, 'dlac\\gear');
 local _pok, profsets = pcall(require, 'dlac\\profilesets');
+local _pfok, profiles = pcall(require, 'dlac\\profiles');
+_pfok = _pfok and type(profiles) == 'table';
 
 M.visible = false;
 
@@ -77,15 +83,25 @@ local function jobAbbr()
     return abbr;
 end
 
-local function path()
+local function legacyPath()
     local base = charBase();
     return base and (base .. 'dlac\\lockstyles.lua') or nil;
 end
 
+-- forward-declared: load_ nils it on a profile switch so ensure() rebuilds the
+-- working copy from the new profile's boxes
+local dataProf = nil;   -- which profile `data` was loaded from (nil = pre-profiles fallback)
+
 local function load_()
-    if data ~= nil then return; end
-    local p = path(); if p == nil then return; end   -- pre-login: retry next call
+    local prof = _pfok and profiles.activeName() or nil;
+    if data ~= nil and prof == dataProf then return; end
+    if charBase() == nil then return; end            -- pre-login: retry next call
+    -- boxes are PER PROFILE: the active profile's file, falling back to the
+    -- pre-profile global one (profiles.lua is the shared path authority)
+    local p = (_pfok and profiles.readLockstylesPath() or nil) or legacyPath();
+    dataProf = prof;
     data = { active = 1, onload = {}, slots = {} };  -- box 1 marked until chosen otherwise
+    M._curReset();                                   -- profile switch: working copy follows
     pcall(function()
         local chunk = loadfile(p);
         if chunk == nil then return; end
@@ -138,8 +154,18 @@ function M._serialize(d)
     return table.concat(L, '\n');
 end
 
+-- Writes ALWAYS land in profile storage (creating 'Default' on first use --
+-- the house compat rule); the whole table is serialized, so boxes loaded off
+-- the pre-profile global file carry into the profile on the first save.
 local function save()
-    local p = path(); if p == nil or data == nil then return; end
+    if data == nil then return; end
+    local p = nil;
+    if _pfok then
+        pcall(function() profiles.ensureStorage(); end);
+        p = profiles.lockstylesPath();
+    end
+    p = p or legacyPath();
+    if p == nil then return; end
     pcall(function()
         local f = io.open(p, 'w');
         if f ~= nil then f:write(M._serialize(data)); f:close(); end
@@ -152,6 +178,10 @@ end
 local cur = nil;            -- { set = {Slot=Name}, dirty = false }
 local nameBuf = { '' };
 local _status = nil;
+
+-- load_ is defined above this local: a profile switch drops the working copy
+-- through this hook (the M._touched pattern) and ensure() rebuilds it.
+function M._curReset() cur = nil; end
 
 local function loadBox()
     local e = data.slots[data.active];
