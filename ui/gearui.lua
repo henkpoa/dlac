@@ -917,6 +917,24 @@ local function renderItemTooltip(rec)
                 imgui.TextColored(COL.SCORE, 'Aug: ' .. fmt.esc(al[1]) .. more);
             end
         end
+        -- /dl view_ids: the two numbers, last so they never push the item's own
+        -- facts down. They are DIFFERENT numbers and the difference matters --
+        -- a lockstyle shows the MODEL id; the item id is what the packet names.
+        -- Model resolves like lockstyle's modelOf: the record's own field first,
+        -- then the catalog BY ID (an owned record only carries Model once the
+        -- enrichment pass has run). nil model = the item has no look slot.
+        if sf.flags.viewids then
+            local mid = tonumber(rec.Model);
+            if mid == nil and rec.Id ~= nil then
+                buildAllEquip();
+                local c = _allEquipById and _allEquipById[rec.Id] or nil;
+                if type(c) == 'table' then mid = tonumber(c.Model); end
+            end
+            imgui.Separator();
+            imgui.TextColored(COL.DIM, string.format('Item id: %s      Model id: %s',
+                (rec.Id ~= nil) and tostring(rec.Id) or '?',
+                (mid ~= nil and mid ~= 0) and tostring(mid) or 'none (no look)'));
+        end
     end);
     imgui.EndTooltip();
 end
@@ -1572,6 +1590,19 @@ pcall(function()
             if id == nil then return nil; end
             buildAllEquip();
             return _allEquipById and _allEquipById[id] or nil;
+        end,
+        -- "Show gear I don't own" in the picker: the flat catalog list. Already
+        -- carries .Slot (flattenGear), so lockstyle filters by slot without
+        -- re-walking the Main/Range category nesting.
+        allEquip = buildAllEquip,
+        -- Owned lookup BY ID, for the same apostrophe reason as catalogById: the
+        -- picker must decide "do you own this catalog row" and hand back YOUR
+        -- spelling of the name. Matching "Arhats Gi" (catalog) against gear.lua's
+        -- "Arhat's Gi" by name would call an owned item unowned.
+        ownedById = function(id)
+            if id == nil then return nil; end
+            buildOwned();
+            return _ownedById and _ownedById[id] or nil;
         end,
     };
 end);
@@ -3313,7 +3344,8 @@ ashita.events.register('command', 'dlac-ui', function(e)
         table.insert(args, a);
     end
     local sub = args[1];
-    if sub ~= 'ui' and sub ~= 'sync' and sub ~= 'autosync' and sub ~= 'debug' and sub ~= 'metrics' then return; end
+    if sub ~= 'ui' and sub ~= 'sync' and sub ~= 'autosync' and sub ~= 'debug'
+       and sub ~= 'metrics' and sub ~= 'view_ids' then return; end
     e.blocked = true;
 
     if sub == 'metrics' then        -- imgui metrics window: names the window under the
@@ -3336,6 +3368,16 @@ ashita.events.register('command', 'dlac-ui', function(e)
         sf.saveUiFlags();              -- persist; command wins over the on-disk value
         print('[dlac] auto-sync ' .. (sf.flags.autosync and 'ON' or 'OFF')
             .. ' -- indexes new gear on pickup, login and job change.  (/dl autosync on|off)');
+        return;
+    end
+    if sub == 'view_ids' then       -- append item id + model id to every equipment tooltip
+        if     args[2] == 'off' then sf.flags.viewids = false;
+        elseif args[2] == 'on'  then sf.flags.viewids = true;
+        else                         sf.flags.viewids = not sf.flags.viewids; end
+        sf.saveUiFlags();              -- persist; command wins over the on-disk value
+        print('[dlac] view_ids ' .. (sf.flags.viewids
+            and 'ON -- hover any equipment: the tooltip now ends with its item id and its model id (the model is what a lockstyle shows).'
+            or  'OFF -- ids hidden again.  (/dl view_ids on)'));
         return;
     end
     if sub == 'debug' then          -- reveal/hide the dev-only Scan/Stage/Commit/Augs buttons

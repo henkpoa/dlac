@@ -28,6 +28,15 @@
     the off-job / under-level gear this server happily lockstyles to -- LAC
     refuses to equip it, so those picks silently did nothing. See lookpreview.lua.
 
+    Because the preview never asks the server, it can show gear you do not OWN:
+    the picker's "Show gear I don't own" tick sources the full catalog instead of
+    gear.lua, so you can try a look on before hunting the pieces down. Save is
+    what enforces ownership, not the list -- an unowned piece is preview-only and
+    the Save button refuses while one is in the working copy (the server renders
+    a style only if HasItem; a style you lack silently leaves the slot's OLD look
+    in place). Apply needs no gate of its own: it reads the SAVED file, which
+    ownership-gated Save can never have written.
+
     Self-contained on purpose (gearui is at the 200-local chunk cap, hard
     rule 1). gearui INJECTS its helpers via M.wire{} -- the 4x4 grid renderer,
     item icons/tooltips and the catalog name lookup -- instead of us requiring
@@ -48,7 +57,9 @@ _lvok = _lvok and type(look) == 'table';
 M.visible = false;
 
 -- gearui-injected helpers: slotGrid (renderSlotGrid), icon (renderIcon),
--- tooltip (renderItemTooltip), catalog (lookupByName). All optional-guarded.
+-- tooltip (renderItemTooltip), catalog (lookupByName), catalogById + ownedById
+-- (by-Id lookups -- names can't do it, the API drops apostrophes), allEquip
+-- (the flat catalog list, for "Show gear I don't own"). All optional-guarded.
 local W = {};
 function M.wire(t) if type(t) == 'table' then for k, v in pairs(t) do W[k] = v; end end end
 
@@ -253,7 +264,17 @@ end
 -- filter back; an off-job pick is ordinary here, and the engine's apply
 -- (dispatch v42) warns per piece when the server's gate would bite. The look
 -- PREVIEW renders anything either way -- it never asks the server.
-local function listFor(slot, q)
+--
+-- `all` = the picker's "Show gear I don't own" tick: source the full catalog
+-- instead of gear.lua, so the preview can dress you in anything in the game.
+-- Ownership is still the ONLY thing that ever filters here -- `all` LIFTS that
+-- filter, it does not add a new one, and Save (not the list) is what enforces
+-- ownership. Default/2-arg calls are owned-only and unchanged.
+local BROWSE_CAP = 200;   -- Main alone is 3749 catalog rows, and every rendered row
+                          -- loads an icon texture -- an uncapped list hitches on open.
+                          -- Sorted highest-level-first, so the cap keeps the good end;
+                          -- renderPicker says the count out loud and points at search.
+local function listFor(slot, q, all)
     local out = {};
     local function take(t)
         for _, rec in pairs(t) do
@@ -263,15 +284,26 @@ local function listFor(slot, q)
             end
         end
     end
-    pcall(function()
-        local t = _gok and gear[slot] or nil;
-        if type(t) ~= 'table' then return; end
-        if slot == 'Main' or slot == 'Range' then
-            for _, byCat in pairs(t) do if type(byCat) == 'table' then take(byCat); end end
-        else
-            take(t);
-        end
-    end);
+    if all and W.allEquip ~= nil then
+        pcall(function()
+            for _, rec in ipairs(W.allEquip()) do   -- flat, and already carries .Slot
+                if rec.Slot == slot and type(rec.Name) == 'string'
+                   and (q == '' or string.find(string.lower(rec.Name), q, 1, true) ~= nil) then
+                    out[#out + 1] = rec;
+                end
+            end
+        end);
+    else
+        pcall(function()
+            local t = _gok and gear[slot] or nil;
+            if type(t) ~= 'table' then return; end
+            if slot == 'Main' or slot == 'Range' then
+                for _, byCat in pairs(t) do if type(byCat) == 'table' then take(byCat); end end
+            else
+                take(t);
+            end
+        end);
+    end
     table.sort(out, function(a, b)
         local la, lb = tonumber(a.Level) or 0, tonumber(b.Level) or 0;
         if la ~= lb then return la > lb; end
@@ -280,6 +312,49 @@ local function listFor(slot, q)
     return out;
 end
 M._listFor = listFor;   -- test seam (HARD RULE guards in tests/run_tests.lua)
+
+-- Do you own this? Id-keyed, never name-keyed (see the wire note in gearui:
+-- catalog "Arhats Gi" vs client "Arhat's Gi"). Returns YOUR record, so a pick
+-- off the catalog list can be stored under the name gear.lua and the engine
+-- actually know -- dispatch resolves a saved set by NAME at apply time.
+local function ownedRec(rec)
+    if type(rec) ~= 'table' or rec.Id == nil or W.ownedById == nil then return nil; end
+    local o = nil;
+    pcall(function() o = W.ownedById(rec.Id); end);
+    return o;
+end
+M._ownedRec = ownedRec;   -- test seam: the catalog-spelling -> your-spelling bridge
+
+-- The Save gate, over a name already in the working set. Deliberately gear.lua
+-- membership and NOT a live bag scan: gear.lua is add-only and a superset of
+-- what you hold, so this passes everything the owned picker would have offered
+-- (no existing set can newly fail) and blocks exactly the catalog-only picks.
+-- The server's HasItem is the real gate; this only stops us SAVING a style that
+-- provably could not render. 'remove'/cleared slots are not items.
+local function nameOwned(name)
+    if type(name) ~= 'string' or name == '' or name == 'remove' then return true; end
+    local n2o = nil;
+    pcall(function() n2o = _gok and gear.NameToObject or nil; end);
+    -- Fail OPEN when we cannot tell -- gear.lua absent, or still the bundled
+    -- empty template (dlac.lua preloads at Ashita boot, BEFORE login; the real
+    -- one swaps in on the first frame after). ownedcache's rule, for the same
+    -- reason: a lookup that failed must never take a feature away. The server
+    -- is the real gate; this only stops a save we can PROVE is pointless.
+    if type(n2o) ~= 'table' or next(n2o) == nil then return true; end
+    return n2o[name] ~= nil;
+end
+
+-- Slots in the working copy holding gear you don't own (sorted, for the warning).
+local function unownedSlots(set)
+    local out = {};
+    if type(set) ~= 'table' then return out; end
+    for sl, nm in pairs(set) do
+        if not nameOwned(nm) then out[#out + 1] = sl; end
+    end
+    table.sort(out);
+    return out;
+end
+M._nameOwned, M._unownedSlots = nameOwned, unownedSlots;   -- test seams
 
 local function recOf(name)
     if type(name) ~= 'string' or name == '' or name == 'remove' then return nil; end
@@ -395,7 +470,8 @@ end
 -- ---------------------------------------------------------------------------
 -- window
 -- ---------------------------------------------------------------------------
-local ui = { selSlot = nil, pick = { '' }, pendingBox = nil, openPick = false, openConfirm = false, openArr = { true } };
+local ui = { selSlot = nil, pick = { '' }, pendingBox = nil, openPick = false, openConfirm = false,
+             openArr = { true }, showAll = { false } };
 
 local function boxColumn(from, to)
     local clickedBox = nil;
@@ -433,6 +509,19 @@ local function renderPicker()
     imgui.PushItemWidth(150);
     imgui.InputText('##lssearch', ui.pick, 32);
     imgui.PopItemWidth();
+    -- The browse toggle lives HERE, not in the window's button column: this list
+    -- is the only thing it changes, and this is where you notice the piece you
+    -- want is missing. Sticky across opens (module ui state), deliberately NOT
+    -- persisted to disk -- it is a look-at-things mode, not a setting.
+    imgui.Checkbox("Show gear I don't own##lsall", ui.showAll);
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Off (default): your own gear (gear.lua) -- these can be saved and applied.\n'
+            .. 'On: every piece of equipment in the game.\n\n'
+            .. 'You can PREVIEW anything -- the preview is your look only and never asks\n'
+            .. 'the server. But a piece you do not own CANNOT be saved into a box: the\n'
+            .. 'server only renders a style you actually have, so it would silently do\n'
+            .. 'nothing. Orange = you do not own it.');
+    end
     imgui.Separator();
     imgui.BeginChild('##lspicklist', { 340, 300 }, false);
     if imgui.Selectable('(clear -- no lockstyle piece for this slot)##lsclear', false) then
@@ -448,17 +537,39 @@ local function renderPicker()
     end
     imgui.Separator();
     local q = string.lower(ui.pick[1] or '');
-    local items = listFor(slot, q);
-    for i, rec in ipairs(items) do
+    -- ANDed with the wire, so `all` means "this list IS the catalog" and not
+    -- merely "the box is ticked": listFor degrades to the owned list without
+    -- gearui, and rows must not then be painted as gear you don't own.
+    local all   = (ui.showAll[1] == true) and (W.allEquip ~= nil);
+    local items = listFor(slot, q, all);
+    local shown = #items;
+    if all and shown > BROWSE_CAP then shown = BROWSE_CAP; end
+    for i = 1, shown do
+        local rec = items[i];
+        -- In the catalog list, is this one YOURS? Ask by Id, and pick up your own
+        -- record while we're here: a catalog Name can be spelled differently
+        -- (apostrophes), and the saved set is resolved by name at apply time.
+        local mine = (not all) and rec or ownedRec(rec);
+        local own  = (mine ~= nil);
         if W.icon ~= nil then pcall(W.icon, rec.Id, 18, rec); imgui.SameLine(0, 6); end
-        if imgui.Selectable(string.format('%s   Lv%d##lsi%d', tostring(rec.Name), tonumber(rec.Level) or 0, i), false) then
-            cur.set[slot] = rec.Name; cur.dirty = true; touched();
+        if not own then imgui.PushStyleColor(ImGuiCol_Text, COL_WARN); end
+        if imgui.Selectable(string.format('%s   Lv%d%s##lsi%d', tostring(rec.Name),
+                tonumber(rec.Level) or 0, own and '' or '   (not owned -- preview only)', i), false) then
+            cur.set[slot] = own and mine.Name or rec.Name;   -- your spelling when it's yours
+            cur.dirty = true; touched();
             imgui.CloseCurrentPopup();
         end
+        if not own then imgui.PopStyleColor(1); end
         if imgui.IsItemHovered() and W.tooltip ~= nil then pcall(W.tooltip, rec); end
     end
     if #items == 0 then
-        imgui.TextColored(COL_DIM, (q ~= '') and 'No owned item matches.' or 'Nothing in gear.lua for this slot yet (/dl sync).');
+        imgui.TextColored(COL_DIM, (q ~= '')
+            and (all and 'Nothing in the game matches that.' or "No owned item matches -- tick \"Show gear I don't own\" to search everything.")
+            or  'Nothing in gear.lua for this slot yet (/dl sync).');
+    elseif shown < #items then
+        -- Never truncate quietly: say what was dropped and how to reach it.
+        imgui.TextColored(COL_WARN, string.format('... %d more -- showing the %d highest-level. Type above to narrow.',
+            #items - shown, shown));
     end
     imgui.EndChild();
     imgui.EndPopup();
@@ -570,23 +681,54 @@ function M.render()
         else
             imgui.TextColored(COL_DIM, 'grid unavailable (gearui not wired)');
         end
+        -- Gear you don't own is PREVIEW-ONLY: the server renders a style only if
+        -- you have the item, so saving one would silently show nothing (worse,
+        -- the slot keeps its OLD style -- the "why is my lockstyle stale" trap).
+        -- Refuse the save and say which slots, rather than disabling a dead
+        -- button: a button that explains itself beats one that just ignores you.
+        local bad = unownedSlots(cur.set);
         imgui.PushItemWidth(108);
         imgui.InputText('##lsname', nameBuf, 24);
         imgui.PopItemWidth();
         if imgui.IsItemHovered() then imgui.SetTooltip('Name for this lockstyle -- saved with the box.'); end
         imgui.SameLine(0, 4);
+        if #bad > 0 then imgui.PushStyleColor(ImGuiCol_Text, COL_DIM); end
         if imgui.Button('Save##lssave', { 60, 0 }) then   -- height 0 = frame height, matches the input box
-            local copy = {};
-            for k, v in pairs(cur.set) do copy[k] = v; end
-            data.slots[data.active] = { name = tostring(nameBuf[1] or ''), set = copy };
-            cur.dirty = false;
-            save();
-            _status = string.format('saved box %d as "%s".', data.active, tostring(nameBuf[1] or ''));
+            if #bad > 0 then
+                _status = string.format('cannot save -- you do not own: %s. Preview shows them; the server will not. '
+                    .. 'Replace %s with gear you own, or just keep previewing.',
+                    table.concat(bad, ', '), (#bad == 1) and 'it' or 'them');
+            else
+                local copy = {};
+                for k, v in pairs(cur.set) do copy[k] = v; end
+                data.slots[data.active] = { name = tostring(nameBuf[1] or ''), set = copy };
+                cur.dirty = false;
+                save();
+                _status = string.format('saved box %d as "%s".', data.active, tostring(nameBuf[1] or ''));
+            end
         end
-        if imgui.IsItemHovered() then imgui.SetTooltip('Save the working lockstyle into the MARKED (gold) box.'); end
+        if #bad > 0 then imgui.PopStyleColor(1); end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip((#bad > 0)
+                and ('Cannot save: you do not own ' .. table.concat(bad, ', ') .. '.\n\n'
+                     .. 'The server only renders a lockstyle piece you actually have, so this\n'
+                     .. 'box would silently do nothing. Preview it all you like -- that is your\n'
+                     .. 'look only and never asks the server.')
+                or  'Save the working lockstyle into the MARKED (gold) box.');
+        end
         imgui.SameLine(0, 4);
         if imgui.Button('Del##lsdel', { 44, 0 }) then ui.openDelete = true; end
         if imgui.IsItemHovered() then imgui.SetTooltip('Delete the MARKED box\'s saved lockstyle (asks first).'); end
+        -- A greyed Save is easy to miss, so say it in the column too. Kept SHORT
+        -- on purpose: this group is 216 wide and the 30 boxes sit beside it --
+        -- a long line here pushes them out of the window.
+        if #bad > 0 then
+            imgui.TextColored(COL_WARN, string.format('%d slot%s not owned', #bad, (#bad == 1) and '' or 's'));
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip(table.concat(bad, ', ') .. '\n\nPreview-only -- Save is off while these are in the set.\n'
+                    .. 'The server only renders lockstyle pieces you own.');
+            end
+        end
         -- Import from static: many players keep old lockstyle sets as statics.
         local statics = (_pok and type(profsets.staticSetNames) == 'function') and profsets.staticSetNames() or {};
         imgui.PushItemWidth(216);   -- wide enough for the label at the themed font (field-clipped at 186)

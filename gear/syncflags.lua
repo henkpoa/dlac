@@ -7,10 +7,11 @@
     * auto-sync -- keep gear.lua current: a quiet add-only scan ~2s after a job
       change (the LAC profile reload) and ~5s after the LAST inventory-changing
       packet (debounced, so zone-in floods run one scan). Toggle: /dl autosync.
-    * ui-flags -- debug / autosync / "Build as lv.75" / teleport-button state
-      survive reloads via <char>\dlac\uiflags.lua.
+    * ui-flags -- debug / autosync / view_ids / "Build as lv.75" / teleport-button
+      state survive reloads via <char>\dlac\uiflags.lua.
 
-    The module OWNS the flag state (sf.flags.debug / sf.flags.autosync);
+    The module OWNS the flag state (sf.flags.debug / sf.flags.autosync /
+    sf.flags.viewids);
     gearui's /dl handler and header buttons read/write those fields directly.
     gearui keeps the actual Ashita event hooks and calls sf.loadUiFlags /
     sf.tick / sf.invDirty from them -- hook ORDER is load-bearing (loadUiFlags
@@ -35,7 +36,10 @@ end)();
 
 -- Defaults stay debug=false / autosync=true; a /dl command or checkbox updates
 -- the field AND re-saves, and wins over the on-disk value.
-sf.flags = { debug = false, autosync = true };
+-- viewids (/dl view_ids): append the item id + appearance model id to every
+-- equipment hover tooltip -- the two numbers you need when reasoning about a
+-- lockstyle (the look is the MODEL id, not the item id).
+sf.flags = { debug = false, autosync = true, viewids = false };
 
 local D = nil;   -- deps from gearui; sync/persistence no-op until configured
 sf.configure = function(deps)
@@ -66,8 +70,8 @@ sf.saveUiFlags = function()
         if type(ui._gfPos) == 'table' then
             gfx, gfy = tonumber(ui._gfPos[1]) or 0, tonumber(ui._gfPos[2]) or 0;
         end
-        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, buildmax = %s, tpfloat = %s, tpx = %d, tpy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f }\n',
-            tostring(sf.flags.debug), tostring(sf.flags.autosync), tostring(bm),
+        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, viewids = %s, buildmax = %s, tpfloat = %s, tpx = %d, tpy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f }\n',
+            tostring(sf.flags.debug), tostring(sf.flags.autosync), tostring(sf.flags.viewids), tostring(bm),
             tostring(ui._tpFloat == true), tpx, tpy,
             tostring(ui._gearFloat == true), gfx, gfy,
             tonumber(ui._gfScale) or 1.0));
@@ -95,6 +99,7 @@ sf.loadUiFlags = function()
         if ok and type(t) == 'table' then
             if type(t.debug)    == 'boolean' then sf.flags.debug    = t.debug;    end
             if type(t.autosync) == 'boolean' then sf.flags.autosync = t.autosync; end
+            if type(t.viewids)  == 'boolean' then sf.flags.viewids  = t.viewids;  end
             if type(t.buildmax) == 'boolean' and optim ~= nil then optim.buildAtMaxLevel = t.buildmax; end
             if type(t.tpfloat)  == 'boolean' then ui._tpFloat = t.tpfloat; end
             if type(t.tpx) == 'number' and type(t.tpy) == 'number' and (t.tpx ~= 0 or t.tpy ~= 0) then

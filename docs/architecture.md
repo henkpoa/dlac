@@ -148,7 +148,7 @@ safe headless), **equippedui.lua** (Equipped + All Equipment tabs; captures
 host.services at load — provide-before-require is load-bearing), **setupui.lua**
 (`jobSetupState` + convert-in-place `migrateCurrentJob` + starter profile/trigger
 seeding; `setup.configure{}` deps), **syncflags.lua** (auto-sync loop + uiflags.lua
-persistence; owns `sf.flags.debug`/`sf.flags.autosync`; gearui's d3d_present calls
+persistence; owns `sf.flags.debug`/`sf.flags.autosync`/`sf.flags.viewids`; gearui's d3d_present calls
 `sf.loadUiFlags` BEFORE `sf.tick` — order is load-bearing, the real gear.lua must swap
 in before the first sync), **weightsui.lua** (stat-weights editor; scoring stays in
 gearui), **profilesmenu.lua** (the Profiles popup tree + forms; state in the shared ui
@@ -340,6 +340,7 @@ Registered across six handlers; each blocks only its own subcommands.
 | `/dl sync` | gearui | Import new gear now |
 | `/dl autosync [on\|off]` | gearui | Toggle on-job-change sync |
 | `/dl debug [on\|off]` | gearui | Reveal dev header buttons |
+| `/dl view_ids [on\|off]` | gearui | Add item id + model id to every equipment tooltip |
 | `/dl mode <name> [on\|off\|toggle\|<value>]` | dispatch | Flip a mode (no arg: list) |
 | `/dl lock <slot\|all> [on\|off\|toggle]` | dispatch | Engine-owned slot locks |
 | `/dl why` | dispatch | Last-dispatch trace, per-slot attribution |

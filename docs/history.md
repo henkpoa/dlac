@@ -1526,3 +1526,85 @@ click stays live IN MOVE MODE") passing while testing nothing. Moved to after S7
 where move mode is legitimately off. `cueWith` also returns a sentinel rather than nil
 when the grid stub never ran, so "lights nothing" cannot pass for free. Verified by
 restoring the christmas lights: S74 fails with "got table, want nil".
+
+## Session "view_ids + lockstyle previews gear you don't own" (07-15)
+
+Two small asks from Henrik: *"add a command `/dl view_ids` [to] view the item and
+model_ids (the one's used for lockstyle, I think that was a seperate ID) when hovering
+over equipment (all equipment hover)"*, and *"add a button in lockstyle to allow preview
+on gear you don't own, but make it unable to save if you don't clear the ownership
+check."*
+
+His hedge was right, and the numbers say why: **Arhat's Gi is item 13795, model 59.**
+The item id is what a packet names; the MODEL id is what a lockstyle shows (0x051 carries
+base+model — `0x2000+59` for Body). Rings/necks/ears/backs/waists have **no model at all**
+(`Model = nil` in the catalog — "no look slot", not "unknown"), so the tooltip says
+`none (no look)` rather than `0`.
+
+### view_ids
+
+One flag, one line, no new surface. `sf.flags.viewids` (syncflags, beside `debug`/
+`autosync`, persisted in `uiflags.lua`); `/dl view_ids [on|off]` is a toggle in gearui's
+existing `dlac-ui` handler, cloned from `/dl debug`. The whole feature is a block at the
+end of **`renderItemTooltip`** — which is *the* shared hover card, so "all equipment
+hover" came free: Equipped, All Equipment, Sets, floatgear and the lockstyle picker all
+render through it (that sharing is also why floatgear's tooltip can't drift). Model
+resolves the way lockstyle's `modelOf` does — the record's own field, then the catalog
+**by Id** — because an owned record only carries `Model` once the enrichment pass has run.
+
+### "Show gear I don't own"
+
+The preview injects your own 0x051 and never asks the server, so it can already render
+anything in the game — the only thing standing between it and unowned gear was the
+picker's source. So `listFor(slot, q, all)` grew a third arg: `all` sources gearui's flat
+catalog list (already `.Slot`-carrying) instead of gear.lua. **`all` LIFTS the ownership
+filter; it must never ADD one** — the AH HARD RULE (no job/level gate, ever) governs the
+catalog list too. A 2-arg call stays owned-only and byte-identical; AH1-AH9 never moved.
+
+**Save is the gate, not the list.** The server renders a style only if `HasItem` — a
+piece you lack silently leaves the slot's OLD look in place (the "why is my lockstyle
+stale" trap). So Save refuses while an unowned piece is in the working copy, and says
+which slots. **Apply needed no gate of its own**: it reads the SAVED file, which an
+ownership-gated Save can never have written. Note this is *not* the off-job case — an
+off-job pick is ordinary here and must never be dimmed ([[lockstyle-anything-you-own]]);
+ownership is a different axis, and it genuinely cannot work.
+
+Three things that were nearly bugs:
+
+- **The apostrophe trap, in a new place.** The API drops apostrophes, so the catalog row
+  is `Arhats Gi` where gear.lua says `Arhat's Gi`. A name-keyed ownership check calls an
+  item you own unowned; worse, storing the catalog spelling saves a name the engine
+  **cannot resolve at apply time** (dispatch resolves saved sets by NAME). So ownership
+  is decided **by Id** (`W.ownedById`, the `catalogById` precedent), and picking your own
+  item off the catalog list stores *your* spelling. AN24/AN25 pin the bridge: the same
+  pick is accepted with it and rejected without.
+- **The gate must fail OPEN.** First cut returned "unowned" whenever the lookup failed —
+  and pre-login `gear.lua` is the bundled EMPTY template (dlac.lua preloads at Ashita
+  boot; the real one swaps in on the first frame after login). That version bricked Save
+  entirely. Now an absent/empty table means "can't tell → don't block", which is
+  ownedcache's own rule ("a failed lookup must never take a feature away"). AN27/AN28.
+  Choosing gear.lua membership over a live bag scan is the same instinct: gear.lua is
+  add-only and a **superset** of what you hold, so nothing the owned picker would have
+  offered can newly fail to save.
+- **`Main` is 3749 catalog rows** (Body 1743, Head 1391; 14941 total) and every rendered
+  row loads an icon texture. The All Equipment tab gets away with the full catalog only
+  because its slot headers start COLLAPSED; the picker list renders immediately. Hence
+  `BROWSE_CAP = 200`, highest-level-first so the cap keeps the good end — and it is
+  announced ("... N more -- showing the 200 highest-level. Type above to narrow."), never
+  silent. Cap applies to the catalog list only; the owned list is untouched.
+
+The toggle sits in the picker popup rather than the window's button column: that list is
+the only thing it changes, and it is where you notice the piece you want is missing. It
+is sticky across opens but deliberately NOT persisted — it's a look-at-things mode, not a
+setting. `all` is ANDed with `W.allEquip ~= nil` so it means "this list IS the catalog"
+and unwired rows can't be painted as gear you don't own. Save is greyed + refuses with a
+reason rather than `BeginDisabled` — that API is used nowhere in this install and hard
+rule 2 says presence proves nothing.
+
+Tests: **AN1-AN28** (490 -> 518) + **S17-S20** (111 -> 115). The smoke checks matter more
+than the units here and for the S14-16 reason: gearui hands the two new wires over inside
+a `pcall` that prints nothing on failure, so a mis-referenced upvalue would not crash --
+the picker would simply never leave gear.lua and every catalog row would read "not owned".
+S17/S19 drive the REAL gearui + REAL catalog and were verified to bite (nil the `allEquip`
+wire -> S17 "got false, want true"; nil `ownedById` -> S19 "got nil, want Arhat's Gi"), and
+AN27/AN28 were verified against the fail-closed gate ("got false, want true").

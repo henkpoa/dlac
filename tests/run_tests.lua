@@ -1892,6 +1892,122 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- AN. lockstyle "Show gear I don't own" -- preview anything, save only what you
+--     own (Henrik, 2026-07-15).
+--
+--     The preview never asks the server (it injects your own 0x051), so it can
+--     render any item in the game. The SERVER renders a style only if you have
+--     the item -- so an unowned pick is preview-only and Save refuses it.
+--
+--     Two rules this section exists to hold down:
+--     1. `all` LIFTS the ownership filter -- it must never ADD one. The AH HARD
+--        RULE (no job/level gate, ever) applies to the catalog list too, and a
+--        2-arg call must stay owned-only and byte-identical to before.
+--     2. Ownership is decided BY ID, never by name. The API drops apostrophes,
+--        so the catalog says "Arhats Gi" where gear.lua says "Arhat's Gi" --
+--        a name compare would call an item you own unowned, and (worse) save a
+--        name the engine cannot resolve at apply time.
+-- ---------------------------------------------------------------------------
+(function()
+    local savedGear = package.loaded['dlac\\gear'];
+    package.loaded['dlac\\gear'] = {
+        NameToObject = { ["Arhat's Gi"] = { Name = "Arhat's Gi", Id = 14000, Level = 60 },
+                         ['Plain Robe']  = { Name = 'Plain Robe',  Id = 14001, Level = 1  } },
+        Body = { Arhat = { Name = "Arhat's Gi", Id = 14000, Level = 60 },
+                 Plain = { Name = 'Plain Robe',  Id = 14001, Level = 1  } },
+    };
+    local ls = dofile('feature/lockstyle.lua');
+    package.loaded['dlac\\gear'] = savedGear;
+
+    -- The catalog as gearui hands it over: FLAT, .Slot-carrying, API spelling.
+    ls.wire{
+        allEquip = function()
+            return {
+                { Name = 'Arhats Gi',  Id = 14000, Level = 60, Slot = 'Body' },   -- owned, other spelling
+                { Name = 'Plain Robe', Id = 14001, Level = 1,  Slot = 'Body' },   -- owned, same spelling
+                { Name = 'Royal Robe', Id = 14002, Level = 75, Slot = 'Body' },   -- NOT owned
+                { Name = 'Kris',       Id = 16000, Level = 60, Slot = 'Main' },   -- other slot
+            };
+        end,
+        ownedById = function(id)
+            local g = { [14000] = { Name = "Arhat's Gi" }, [14001] = { Name = 'Plain Robe' } };
+            return g[id];
+        end,
+    };
+
+    local function names(list) local s = {}; for _, r in ipairs(list) do s[r.Name] = true; end return s; end
+
+    -- 1. the default is untouched
+    check('AN1 owned-only by default (2-arg call)', #ls._listFor('Body', ''), 2);
+    check('AN2 owned-only never shows unowned gear', names(ls._listFor('Body', ''))['Royal Robe'], nil);
+
+    -- 2. all=true lifts ownership and NOTHING else
+    local all = ls._listFor('Body', '', true);
+    check('AN3 all=true adds the unowned item',   names(all)['Royal Robe'], true);
+    check('AN4 all=true keeps the owned ones',    names(all)['Plain Robe'], true);
+    check('AN5 all=true filters by slot',         names(all)['Kris'],       nil);
+    check('AN6 all=true is the whole slot',       #all, 3);
+    check('AN7 HARD RULE: all=true adds no job/level gate -- Lv75 on a Lv1 fixture is offered',
+        names(all)['Royal Robe'], true);
+    check('AN8 search still narrows the catalog list', #ls._listFor('Body', 'royal', true), 1);
+    check('AN9 all=true sorts highest level first (the browse cap keeps the good end)',
+        all[1].Name, 'Royal Robe');
+    -- No gearui wire (load order: lockstyle loads first, and every W helper is
+    -- optional-guarded) -- all=true must degrade to the owned list, never throw.
+    -- Asserts the CONTRACT, not a count: the fixture here is the shared gear
+    -- table other sections own, and its Body count is not this section's to pin.
+    check('AN10 all=true with no wire degrades to owned, no error',
+        (function()
+            local m = dofile('feature/lockstyle.lua');
+            local ok, r = pcall(m._listFor, 'Body', '', true);
+            return ok and type(r) == 'table';
+        end)(), true);
+
+    -- 3. the Save gate
+    check('AN11 owned name passes the gate',          ls._nameOwned("Arhat's Gi"), true);
+    check('AN12 unowned name fails the gate',         ls._nameOwned('Royal Robe'), false);
+    check('AN13 APOSTROPHE TRAP: the catalog spelling is NOT owned -- the picker must store YOUR name',
+        ls._nameOwned('Arhats Gi'), false);
+    check('AN14 "remove" is not an item -- never blocks a save', ls._nameOwned('remove'), true);
+    check('AN15 empty/cleared slot never blocks a save',         ls._nameOwned(''),       true);
+    check('AN16 nil never blocks a save',                        ls._nameOwned(nil),      true);
+
+    check('AN17 a fully-owned set saves', #ls._unownedSlots({ Body = "Arhat's Gi", Head = 'remove' }), 0);
+    local bad = ls._unownedSlots({ Body = 'Royal Robe', Head = 'Nonesuch Cap', Legs = 'Plain Robe' });
+    check('AN18 unowned slots are reported', #bad, 2);
+    check('AN19 unowned slots are sorted (stable warning text)', bad[1] .. ',' .. bad[2], 'Body,Head');
+    check('AN20 an empty set saves', #ls._unownedSlots({}), 0);
+    check('AN21 a nil set never errors',  #ls._unownedSlots(nil), 0);
+
+    -- 4. the two rules meet: picking the owned item off the CATALOG list must
+    --    store gear.lua's spelling, or the engine cannot resolve it at apply and
+    --    the gate would reject an item you actually own. This is the bridge.
+    local catRec = { Name = 'Arhats Gi', Id = 14000, Level = 60, Slot = 'Body' };   -- API spelling
+    check('AN22 ownedRec finds your copy of a catalog row, by Id',
+        (ls._ownedRec(catRec) or {}).Name, "Arhat's Gi");
+    check('AN23 ownedRec returns nil for gear you do not own',
+        ls._ownedRec({ Name = 'Royal Robe', Id = 14002 }), nil);
+    check('AN24 THE BRIDGE: the name the picker stores is the name the gate accepts',
+        ls._nameOwned((ls._ownedRec(catRec) or catRec).Name), true);
+    check('AN25 without the bridge the same pick would be rejected (why AN24 matters)',
+        ls._nameOwned(catRec.Name), false);
+    check('AN26 ownedRec tolerates a row with no Id', ls._ownedRec({ Name = 'x' }), nil);
+
+    -- 5. FAIL OPEN. The gate must never brick Save because a lookup failed --
+    --    pre-login gear.lua is the bundled EMPTY template (dlac.lua preloads at
+    --    Ashita boot, the real one swaps in on the first frame after login). A
+    --    fail-closed gate would call every item unowned and refuse every save.
+    local saved2 = package.loaded['dlac\\gear'];
+    package.loaded['dlac\\gear'] = { NameToObject = {} };       -- the empty template
+    local lsEmpty = dofile('feature/lockstyle.lua');
+    package.loaded['dlac\\gear'] = saved2;
+    check('AN27 FAIL OPEN: an empty gear table does not block a save',
+        lsEmpty._nameOwned('Anything At All'), true);
+    check('AN28 FAIL OPEN: nothing is reported unowned when we cannot tell',
+        #lsEmpty._unownedSlots({ Body = 'Anything At All' }), 0);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then

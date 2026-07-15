@@ -202,8 +202,20 @@ handshake).
   touching it: build-time stripping (what ffxi-lac did, and what dlac had ported as
   dead code in utils.lua) is WRONG under overlay. Worn pieces reserve too. Tests: AK,
   E7–E11. history.md "Reserved slots" has the data scan + the two traps.
-- **main**: healthy; **490 tests green + 53 smoke_ui** (was 426/49 at last handoff) —
-  current as of this session. Note `tests\run_tests.lua` has now hit the **200-local
+- **`/dl view_ids` + lockstyle "Show gear I don't own" — new this session (07-15).**
+  `/dl view_ids [on|off]` appends **item id + model id** to `renderItemTooltip`, which is
+  the ONE hover card every equipment surface shares (Equipped / All Equipment / Sets /
+  floatgear / the lockstyle picker) — so "all equipment hover" needed no new surface.
+  They are different numbers and the difference is the point: a lockstyle shows the
+  **model** id (Arhat's Gi = item 13795, model 59); accessories have no model at all.
+  Flag lives in syncflags beside `debug`/`autosync`. In lockstyle, the picker's **"Show
+  gear I don't own"** tick sources the full catalog, because the 0x051 preview never asks
+  the server and renders anything; **Save** is what enforces ownership (Apply needs no
+  gate — it reads the SAVED file). Read history.md "view_ids + lockstyle previews gear
+  you don't own" before touching it — especially the by-Id ownership rule (the apostrophe
+  trap saves a name the engine can't resolve), the fail-OPEN gate, and `BROWSE_CAP`
+  (Main is 3749 catalog rows).
+- **main**: healthy; **518 tests green + 115 smoke_ui** — current as of this session. Note `tests\run_tests.lua` has now hit the **200-local
   cap** itself: new sections must be `(function() ... end)()`, not `do ... end` (a do
   block shares the chunk's budget; a function body gets its own 200). The whole **crafting-gear system** landed here (see
   history.md "crafting system + catalog pipeline"): read that section before touching

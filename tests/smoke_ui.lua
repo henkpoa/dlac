@@ -184,6 +184,34 @@ check('S15 owned item resolves a model via the catalog by Id',
 check('S16 unknown item resolves to nil, no error', lockstyle._modelOf('No Such Thing'), nil);
 
 -- ---------------------------------------------------------------------------
+-- 5. lockstyle "Show gear I don't own" -- the two wires, through the REAL
+--    gearui + REAL catalog. Same reason as S14-16: gearui hands these over
+--    inside a pcall that prints NOTHING on failure, so a mis-referenced upvalue
+--    would not crash -- the picker would just quietly never leave gear.lua and
+--    every catalog row would read as "not owned". That is a silent no-op, which
+--    is exactly the class this file exists to catch.
+-- ---------------------------------------------------------------------------
+check('S17 allEquip is wired: browse-all leaves gear.lua behind',
+    #lockstyle._listFor('Body', '', true) > #lockstyle._listFor('Body', ''), true);
+check('S18 browse-all still filters by slot', (function()
+    for _, r in ipairs(lockstyle._listFor('Body', '', true)) do
+        if r.Slot ~= 'Body' then return false; end
+    end
+    return true;
+end)(), true);
+
+-- THE APOSTROPHE BRIDGE, end to end on real data: the catalog spells it
+-- "Arhats Gi" (the API drops apostrophes) and gear.lua spells it "Arhat's Gi".
+-- Ids agree -- 13795 -- so ownership must be decided by Id, and the picker must
+-- store YOUR spelling or the engine cannot resolve the saved set at apply time.
+package.loaded['dlac\\gear'].Body = package.loaded['dlac\\gear'].Body or {};
+package.loaded['dlac\\gear'].Body.Arhat = { Name = "Arhat's Gi", Id = 13795, Level = 60 };
+check('S19 ownedById is wired: a catalog row resolves to YOUR record, by Id',
+    (lockstyle._ownedRec({ Name = 'Arhats Gi', Id = 13795 }) or {}).Name, "Arhat's Gi");
+check('S20 gear you really do not own stays unowned',
+    lockstyle._ownedRec({ Name = 'Royal Cloak', Id = 13796 }), nil);
+
+-- ---------------------------------------------------------------------------
 -- 6. IMGUI STACK BALANCE for the floating window (S50+) -- a RENDER test.
 --
 --    Why this exists: dlac shipped an EXCEPTION_ACCESS_VIOLATION in Present
