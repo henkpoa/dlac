@@ -1806,3 +1806,50 @@ and two comments left exactly where the scaffolding taught something: the comman
 handler's **whitelist-before-branch** note, and the `jobReady` header carrying the actual
 field line that proved it. The cost of the instrument was ~15 minutes; it should have been
 built after the FIRST theory died, not the second.
+
+## Session "priority-preserving static import" (2026-07-16, issue #15)
+
+Redesigned the Sets tab's "Copy from static" (F1 of PRD #14). It used to **spawn a new
+Dynamic set named after the source** (source name, or a name typed in the New box);
+players couldn't tell their candidate order had survived the copy and rebuilt priorities
+by hand. Now it copies the chosen static set's slots **into the dynamic set the player
+already has selected**, keeping that set's name.
+
+### What landed
+
+- **Target is the selected set.** `copyFromStaticSet` refuses when `M.workingSetName` is
+  empty ("Select or create a set first, then copy into it") — the copy no longer invents
+  a set. The New-box-rename path is gone; the flow is now *pick/create a set, then copy*.
+- **Overwrite is confirmed.** A non-empty target opens a `BeginPopup` (not Modal, so
+  click-away aborts — same reasoning as the Setup-plan popup): "Replace '<Set>' (N filled
+  slots) with static '<Source>'?" Replace / Cancel / click-away. Nothing changes until
+  Replace. The one-shot `ui._copyConfirmOpen` drives `OpenPopup` while the data in
+  `ui._copyConfirm` persists for the popup's lifetime — calling `OpenPopup` every frame
+  would defeat the click-away close.
+- **Full-replace.** The target becomes the static's contents; slots the static doesn't
+  define are cleared (`M.working = result.working`). An all-unowned copy that resolves to
+  **nothing** is the one exception — it leaves the target untouched and says so loudly,
+  rather than silently wiping the player's work (hard rule 12).
+- **Order verbatim + best-first warning (ADR 0008).** Candidate order is carried as-is;
+  dlac still equips the highest-item-Level candidate, which diverges from LAC's
+  first-in-list only when a slot's order is **not** best-first (a lower-Level piece ranked
+  above a higher one). Those slots get a per-slot chat warning naming the slot; a
+  level-descending list imports silently.
+
+### Where the logic lives
+
+The pure transform is its own module, `gear/setimport.lua` —
+`importStaticSet(staticSet, slotLabels, resolve) -> { working, notBestFirst, slotCount }`
+— with the resolver **injected** (gearui passes `resolveSetItem`; the headless suite
+passes a stub over owned records), which is what keeps it Ashita-free and testable. The
+UI shell (refuse / confirm / warn) stays in gearui. Tests **AO0–AO23** pin the transform:
+plain single-element slots, a level-descending `_Priority` list (silent), a not-best-first
+list (named), equal-Level ties (not a divergence), unowned candidates dropped, an
+all-unowned slot absent, and a virtual entry (`dlac:AutoStaff`) skipped by the best-first
+check rather than read as a Level-0 candidate that would falsely flag the slot. The UI
+shell is covered by `smoke_ui`'s chunk load.
+
+No seeded-file behaviour changed (the copy is an addon-state Sets-tab edit; the engine
+still flattens by highest Level), so **no `dispatch.M.VERSION` bump**. Player-facing
+strings (the refuse message, the popup title/body, the warning) are **proposed for
+maintainer sign-off** in the PR, not finalized.

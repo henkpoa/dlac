@@ -21,8 +21,13 @@ silently.
 
 ## Consequences
 
-- The import is nearly free — the copy path (`gearui.copyFromStaticSet`) already carries
-  ordered lists through; the work is the redesigned target semantics + the divergence warning.
+- The import is nearly free — the copy path already carried ordered lists through; the work
+  was the redesigned target semantics + the divergence warning. Implemented (issue #15) as a
+  pure transform, `gear/setimport.lua` `importStaticSet`, that returns the working candidate
+  lists plus the `notBestFirst` slots; `gearui` does the full-replace into the selected set,
+  the overwrite confirmation, and the per-slot warning. Best-first = candidate item-Levels
+  non-increasing; equal Levels are a tie (no warning), and a virtual entry (`dlac:*`) is
+  skipped rather than read as a Level-0 candidate.
 - A non-level-descending `_Priority` set behaves differently than it did under LAC; the
   per-slot import warning is the required mitigation (hard rule 12: a silent behavior change
   is the failure mode, not the divergence itself).

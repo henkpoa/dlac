@@ -30,7 +30,7 @@ ui/        imgui modules: gearui, triggersui, equippedui, profilesmenu, setupui,
 data/      generated / static tables: catalog, crafts, spells, abilities, statdefs,
            levelscaling, levelstats
 gear/      the gear pipeline: gearoptim, gearimport, gearexport, gearcheck, gearfmt,
-           setmanager, profilesets, ownedcache, syncflags
+           setmanager, setimport, profilesets, ownedcache, syncflags
 feature/   self-contained features: lockstyle, macrobook, useitem, craftwatch, augments,
            pinwatch
 lib/       generic helpers: cmdqueue
@@ -203,6 +203,16 @@ the write side of both Sets-tab Commit and the Setup button. Pure-text core
 (`analyzeShims`, `repairShimsText` — comment-aware since 84de48a) with file wrappers
 (`repairShims`, `commitSet`, `deleteSet`). All edits are backup + parse-checked, abort
 untouched on failure. Writes rotated backups in `<char>\backups\`.
+
+### gear/setimport.lua — the "Copy from static" transform (pure)
+The addon-state, Ashita-free core of the Sets tab's "Copy from static" (issue #15, ADR
+0008). `importStaticSet(staticSet, slotLabels, resolve)` walks the source set in slot
+order and returns `{ working = slotLabel→ordered candidate list, notBestFirst = slots
+whose order is not highest-item-Level first, slotCount }`. The resolver (name→owned
+record) is **injected** — gearui passes its `resolveSetItem`, the headless suite a stub
+over owned records — so the transform is pure and testable (tests AO0–AO23). Candidate
+order is carried verbatim; gearui does the full-replace into the selected set, the
+overwrite confirmation, and the per-slot divergence warning. Never seeded into LAC.
 
 ### gear/gearoptim.lua — stat-weight optimizer
 Two read-only tools: MP-spent→potency swap advice, and a stat-weight scorer/best-set
