@@ -2333,7 +2333,7 @@ end
 -- overwrite, else copy straight in. The overwrite modal is rendered in renderSetsTab.
 local function copyFromStaticSet(srcName)
     if M.workingSetName == nil or M.workingSetName == '' then
-        setStatus('Select or create a set first, then copy into it (use the Set picker or the New button).', true);
+        setStatus('Create a set first (have a dlac set open), then copy the static set into it.', true);
         return;
     end
     -- Non-empty target -> confirm before anything changes (cancel / click-away aborts).
