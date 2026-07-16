@@ -8,8 +8,10 @@
     pins; gearui draws the dropdown and applies the predicate in the candidate loop.
 
     F2a wired the Main slot (the 12 weapon types). F2b (issue #17) grows the same seam to
-    Range (`Type`) and Ammo (`AmmoType`, absent = Trinket). `M.SLOTS` is the extension seam:
-    add a slot entry, nothing else changes -- gearui draws the same dropdown for any slot here.
+    Range (`Type`) and Ammo (`AmmoType`, absent = Trinket). F2c (issue #18) adds Sub:
+    Shield, Grip, and the one-hander weapon types present in the pool. `M.SLOTS` is the
+    extension seam: add a slot entry, nothing else changes -- gearui draws the same dropdown
+    for any slot here.
 
       presentBuckets(cands, slot) -> { { key, label }, ... }  (only the buckets actually
         present among the slot's candidates, in canonical order -- never an empty bucket)
@@ -59,9 +61,36 @@ local AMMO_LABEL = {
     Throwing      = 'Throwables',  [AMMO_TRINKET] = 'Trinkets',
 };
 
+-- Sub buckets (issue #18): Shield, Grip, then the one-hander weapon types. Shields and grips
+-- both carry catalog `Type = "Sub"` (grip-vs-shield falls out by name -- every grip/strap is
+-- named "* Grip" / "* Strap", exactly as utils.classifySub decides); a one-hander keeps its
+-- weapon `Type` (Dagger / Sword / ...). H2H and the 2H types are never Sub-capable, so they
+-- are not listed -- present-but-unknown buckets still trail alphabetically, never vanish.
+-- (Player-facing strings -- pending maintainer sign-off.)
+local SUB_ORDER = { 'Shield', 'Grip', 'Dagger', 'Sword', 'Axe', 'Katana', 'Club' };
+local SUB_LABEL = {
+    Shield = 'Shield', Grip   = 'Grip',   Dagger = 'Dagger',
+    Sword  = 'Sword',  Axe    = 'Axe',    Katana = 'Katana', Club = 'Club',
+};
+
+-- Bucket a Sub-slot record: mirror of utils.classifySub for shields/grips, but a one-hander
+-- keeps its weapon Type instead of classifying to nil. A view narrowing only -- this NEVER
+-- decides eligibility (that stays utils.subSlotAllowed's call at equip time; HARD RULE 6).
+local function subBucket(rec)
+    local t = rec.Type;
+    if t == 'Grip' or t == 'Shield' then return t; end
+    if t == 'Sub' then                                 -- catalog collapses shield + grip here
+        local n = string.lower(tostring(rec.Name or ''));
+        if n:find('grip', 1, true) ~= nil or n:find('strap', 1, true) ~= nil then return 'Grip'; end
+        return 'Shield';
+    end
+    return t;                                           -- a one-hander weapon type, or nil
+end
+
 -- Slot -> how a candidate record maps to a bucket key, the canonical bucket order, and the
 -- key -> label map. THE EXTENSION SEAM: add a slot entry here; the rest of the module (and
--- gearui's dropdown) is already slot-agnostic. F2a filled Main; F2b adds Range and Ammo.
+-- gearui's dropdown) is already slot-agnostic. F2a filled Main; F2b adds Range and Ammo;
+-- F2c adds Sub.
 M.SLOTS = {
     Main = {
         order  = MAIN_ORDER,
@@ -79,6 +108,11 @@ M.SLOTS = {
         -- AmmoType is the discriminator; absent = a Trinket (fired by nothing). Never nil,
         -- so every ammo-slot record buckets -- a stat stick can't fall through to "no bucket".
         bucket = function(rec) return rec.AmmoType or AMMO_TRINKET; end,
+    },
+    Sub = {
+        order  = SUB_ORDER,
+        label  = SUB_LABEL,
+        bucket = subBucket,   -- Shield / Grip (by name) / the one-hander's weapon Type
     },
 };
 

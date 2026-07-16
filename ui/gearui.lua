@@ -2494,8 +2494,10 @@ local function renderAddPopup(job, level)
         end
         -- Weapon-type filter (F2a/F2b, PRD #14): a multiselect narrowing the VISIBLE
         -- candidates by weapon type -- view-only, never eligibility (HARD RULE 6 /
-        -- ADR 0006). Shown only for slots weaponfilter knows (Main / Range / Ammo) and
-        -- only offers the types present in this slot's owned pool.
+        -- ADR 0006). Shown only for slots weaponfilter knows (Main / Range / Ammo / Sub)
+        -- and only offers the types present in this slot's owned pool. Sub's pool is the
+        -- full paired offer (subFilterAnyMain, above) -- the filter hides rows from it,
+        -- never re-gating what the picker offers (HARD RULE 6).
         local wf = require('dlac\\gear\\weaponfilter');   -- function-scoped: gearui is near the 200-local cap
         local wfBuckets = wf.presentBuckets(cands, gearKey);
         if #wfBuckets > 0 then
