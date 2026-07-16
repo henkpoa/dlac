@@ -887,29 +887,47 @@ itself — `docs\HANDOFF.md:287-291`); generated data loaded via the established
 
 ---
 
-## 13. Open decisions for Henrik
+## 13. Decisions — RESOLVED 2026-07-17
 
-Only genuinely-his calls; everything else above is engineering and proceeds without him.
+These six were flagged as the maintainer's calls; Henrik delegated all six to the
+maintainer-recommendation defaults ("Go with your recommendations", 2026-07-17). He retains
+in-game veto on anything user-visible — every one of these is cheap to reverse.
 
-1. **Condition label wording** (`CONDLABELS`): every user-visible condition name and panel
-   caption ("Fire weather", "TP ≥ …", "assumed", "known, not yet evaluated") — row-by-row
-   sign-off, the stat-naming precedent ("Chance", "Cast Time-").
-2. **Conditional-value presentation taste**: the proposal is dimmed `~` rows in hover and a
-   bracketed dim `[+12]` suffix in the totals panels with a set-attribution caption —
-   sign off or redirect the visual language.
-3. **P4 explicit "Assume" rows** in the per-set weights editor: ship them, or stay
-   derived-only forever? (The derived-only fallback is pre-approved in ADR-0012 either way;
-   this is a taste call about how much knob surface dlac grows.)
-4. **The optional `__env` engine mirror** (live weather/day in worn totals; the only
-   seeded-file touch, needs an `M.VERSION` bump): pull it forward right after P1, leave it
-   at P5, or drop it — display-only value, zero optimizer impact.
-5. **Greedy `/dl` single-stat builds stay set-blind** with an honest doc-string note —
-   accept, or schedule a later phase routing `buildMaxStatSet` through optimizePicks
-   (requires porting the Range/Ammo legality rule)?
-6. **The two-copies field test** (P3, now optional): the server source settles the rule
-   (two copies count twice, §7.2/Appendix C) and that default ships. A `/checkparam` with
-   two owned copies of one set piece is a cheap belt-and-braces confirmation — schedule it
-   whenever convenient, or skip it.
+1. **Condition label wording** (`CONDLABELS`): implementer drafts labels following the
+   stat-naming rules ("Chance" never readable as a reduction; "Cast Time-"); Henrik vetoes
+   in-game rather than pre-approving row-by-row. Starter table (v1/v2 core; remaining v2
+   labels drafted in the same style):
+
+   | Condition | Label |
+   |---|---|
+   | SET (active) | panel caption `Set: Lava's + Kusha's (2/2)`; hover `~ ACC +12 (set: with Kusha's Ring)` |
+   | WEATHER_ELEMENT(e) | `<Element> weather` ("Fire weather", "Dark weather") |
+   | TIME_OF_DAY(0/1/2) | "Daytime" / "Nighttime" / "Dusk-dawn" |
+   | Days-of-week | the day name ("Firesday", …) |
+   | HP_UNDER/OVER_PERCENT(p) | `HP <= p%` / `HP > p%` |
+   | TP_OVER/TP_UNDER(t) | `TP > t` / `TP < t` (display unit pinned by the P2 item-11312 field check) |
+   | DURING_WS | "during WS" |
+   | SUBJOB(j) | `/<JOB>` ("/NIN") |
+   | EQUIPPED_IN_SLOT(s) | `in <slot> slot` ("in sub slot") |
+   | PET_ID family | grouped: `with <family> pet` ("with a water avatar") |
+   | FOOD_ACTIVE family | grouped: `with <food>` |
+   | Markers | "assumed" (caption), "known, not yet evaluated", "waiting for game state" |
+
+2. **Conditional-value presentation**: ship as proposed — dimmed `~` rows in hover,
+   bracketed dim `[+12]` suffix in totals panels, set-attribution caption.
+3. **P4 explicit "Assume" rows**: SHIP them in P4 (derived defaults first within the phase,
+   explicit rows in the same phase). Rationale: "assume Fire weather" for a weather-nuking
+   set is inexpressible any other way, and the rows ride the existing per-set weights
+   editor — config on an existing surface, not the deleted toggle class (ADR-0012).
+4. **`__env` engine mirror**: stays at P5 (the doc's default). It is the only seeded-file
+   touch, display-only, zero optimizer impact — keep the M.VERSION risk isolated at the
+   end; pull forward only if live weather display is missed in practice after P2.
+5. **Greedy `/dl` single-stat builds stay set-blind**, with the honest doc-string note.
+   Routing `buildMaxStatSet` through optimizePicks (porting the Range/Ammo legality rule)
+   is deferred indefinitely; revisit only on real demand. Recorded in ADR-0011.
+6. **Two-copies field test**: skipped as a gate. The server source settles the rule (two
+   copies count twice, §7.2/Appendix C) and that default ships; the `/checkparam`
+   confirmation is parked as optional-whenever-convenient in the P3 acceptance note.
 
 ---
 
