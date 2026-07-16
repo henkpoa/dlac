@@ -22,6 +22,13 @@ local _dpok, dsp  = pcall(require, "dlac\\dispatch");
 local _lsok, lscale = pcall(require, "dlac\\data\\levelstats");
 local _gmok, gm   = pcall(require, "dlac\\gear\\groupsmodel");
 local _giok, gimp = pcall(require, "dlac\\gear\\groupimport");
+-- Searchable spell/ability browse-list for the Groups member picker (G3, issue #26):
+-- the pure list/search core + the two picker-DB data files it filters. Addon-state only
+-- (a UI module -- never seeded into LAC), so requiring the data here is fine; all guarded,
+-- a missing piece only loses the browse button (free-name entry still works).
+local _apok, ap   = pcall(require, "dlac\\gear\\actionpicker");
+local _spok, spellDB   = pcall(require, "dlac\\data\\spells");
+local _abok, abilityDB = pcall(require, "dlac\\data\\abilities");
 local hasImgui    = _iok and imgui ~= nil;
 local hasDispatch = _dpok and type(dsp) == 'table';
 local hasLScale   = _lsok and type(lscale) == 'table';
@@ -31,6 +38,8 @@ local hasGroupImport = _giok and type(gimp) == 'table';
 -- this install -- probe it (hard rule 2: presence proves nothing, but absence is certain), and
 -- degrade to a single-line box with a visible note rather than silently disabling the feature.
 local hasMultiline = hasImgui and type(imgui.InputTextMultiline) == 'function';
+local hasBrowse   = _apok and type(ap) == 'table'
+    and _spok and type(spellDB) == 'table' and _abok and type(abilityDB) == 'table';
 
 local function mainLevel()
     local lv = nil;
@@ -160,6 +169,12 @@ local groupUI = {
     -- overwrite confirmation. `plan` holds the parsed groups + the created/overwritten/skipped
     -- split between the Import click and the (Overwrite &) Import Groups click.
     importText = { '' }, plan = nil,
+    -- Browse-list picker (G3, issue #26): browseFor = the group the picker targets;
+    -- browseSearch = its search box; browseMarks = a set of MARKED entries
+    -- (lowercased name -> the proper-cased name to add); _list / _listJob cache the
+    -- built job list so the ~1000-row scan runs once per job, not per frame.
+    browseFor = nil, browseSearch = { '' }, browseMarks = {}, _openBrowse = false,
+    _list = nil, _listJob = nil,
 };
 
 -- Profile-aware, and it MUST agree with the engine's triggersPath() rule
@@ -2191,7 +2206,7 @@ local function renderGroupBox(nm, groups, colX)
     local members = groups[nm];
     local lh = lineH();
     local leftH  = (1 + math.max(#members, 1)) * lh;   -- name line + one per member (>=1 for the empty note)
-    local rightH = 26 + 24;
+    local rightH = hasBrowse and (26 + 24 + 24) or (26 + 24);   -- +1 row for the Browse... button
     local boxH = math.max(leftH, rightH, 56) + 18;
     imgui.BeginChild('##grpbox_' .. nm, { -1, boxH }, true, BOX_FLAGS);
 
@@ -2220,6 +2235,20 @@ local function renderGroupBox(nm, groups, colX)
         local ok, err = gm.addMember(groups, nm, buf[1]);
         if ok then buf[1] = ''; trig.dirty = true; groupSetStatus('', false);
         else groupSetStatus(err or 'Could not add member.', true); end
+    end
+    -- Searchable browse-list picker (G3, issue #26): opens the shared popup targeting
+    -- THIS group. Free typing above stays -- the picker only adds a faster path for the
+    -- job's known spells/abilities. Hidden when the browse core / data is unavailable.
+    if hasBrowse then
+        if imgui.Button('Browse...##grpbrowseopen_' .. nm, { 0, 0 }) then
+            groupUI.browseFor = nm;
+            groupUI.browseSearch[1] = '';
+            groupUI.browseMarks = {};
+            groupUI._openBrowse = true;
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip("Search this job's spells & abilities and mark several to add at once.\n(The list is not level-gated -- build ahead. Free typing above still works\nfor anything the data is missing.)");
+        end
     end
     if imgui.SmallButton('rename##grprn_' .. nm) then
         groupUI.renaming = nm; groupUI.renameBuf[1] = nm; groupUI._openRename = true;
@@ -2326,6 +2355,93 @@ local function renderGroupImport(groups)
     end
 end
 
+-- The shared spell/ability browse-list popup (G3, issue #26). ONE popup for the whole
+-- Groups section, retargeted per group via groupUI.browseFor. Search narrows a combined,
+-- job-filtered, UNGATED list; each row is a checkbox mark + a spell/ability marker + name.
+-- A CHECKBOX (not a Selectable) keeps the popup open across marks -- the field-proven
+-- multi-pick idiom (gearui's weapon-type filter), so this never depends on a
+-- DontClosePopups flag. "Add N marked" commits every mark through gm.addMember (which
+-- dedups case-insensitively), then closes so the section status + member list show the
+-- result. Free typing in the box above stays the fallback for anything the data misses.
+local function renderGroupBrowsePopup(job)
+    if not imgui.BeginPopup('##dlac_groupbrowse') then return; end
+    local nm = groupUI.browseFor;
+    local groups = trig.data and trig.data.Groups;
+    if nm == nil or type(groups) ~= 'table' or groups[nm] == nil then
+        imgui.TextColored(COL_DIM, 'This group no longer exists.');
+        imgui.EndPopup();
+        return;
+    end
+    imgui.TextColored(COL_HEADER, 'Add spells / abilities to:');
+    imgui.SameLine(0, 6);
+    imgui.TextColored(COND_COLORS.group, esc(nm));
+    imgui.SameLine(0, 12);
+    imgui.TextColored(COL_DIM, string.format('(%s -- not level-gated)', tostring(job or '?')));
+    imgui.Separator();
+
+    imgui.PushItemWidth(260);
+    imgui.InputText('##grpbrowsesearch', groupUI.browseSearch, 64);
+    imgui.PopItemWidth();
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Filter by name. Commas = AND: "stone, ii" shows names carrying both.');
+    end
+
+    local list  = groupUI._list or {};
+    local terms = ap.parseQuery(groupUI.browseSearch[1]);
+    local inGroup = {};
+    for _, m in ipairs(groups[nm]) do inGroup[string.lower(tostring(m))] = true; end
+
+    imgui.BeginChild('##grpbrowselist', { 380, 300 }, true);
+    local shown = 0;
+    for _, e in ipairs(list) do
+        if ap.matches(e, terms) then
+            shown = shown + 1;
+            local key   = string.lower(e.name);
+            local label = string.format('[%s] %s', (e.kind == 'ability') and 'A' or 'S', e.name);
+            if e.level and e.level > 0 then label = label .. '   Lv' .. tostring(e.level); end
+            if inGroup[key] then
+                imgui.TextColored(COL_DIM, '  ' .. esc(label) .. '   (in group)');
+            else
+                -- Mark keyed by NAME (an untyped group stores the bare name once, so the
+                -- rare spell+ability twin is one mark); widget ID by ROW so the twin's two
+                -- checkboxes never collide on the ImGui id stack.
+                local ref = { groupUI.browseMarks[key] ~= nil };
+                if imgui.Checkbox('##grpbmk_' .. shown, ref) then
+                    groupUI.browseMarks[key] = ref[1] and e.name or nil;
+                end
+                imgui.SameLine(0, 6);
+                imgui.TextColored((e.kind == 'ability') and COL_SCORE or COL_USABLE, esc(label));
+            end
+        end
+    end
+    if shown == 0 then
+        imgui.TextColored(COL_DIM, (#list == 0)
+            and 'No learnable spells or abilities for this job in the picker data.'
+            or 'Nothing matches the search.');
+    end
+    imgui.EndChild();
+
+    local n = 0; for _ in pairs(groupUI.browseMarks) do n = n + 1; end
+    local canAdd = n > 0;
+    if canAdd and ImGuiCol_Button ~= nil then imgui.PushStyleColor(ImGuiCol_Button, { 0.20, 0.45, 0.20, 1.0 }); end
+    if imgui.Button(string.format('Add %d marked##grpbadd', n), { 0, 24 }) and canAdd then
+        local added = 0;
+        for _, name in pairs(groupUI.browseMarks) do
+            if gm.addMember(groups, nm, name) then added = added + 1; end
+        end
+        groupUI.browseMarks = {};
+        if added > 0 then trig.dirty = true; end
+        groupSetStatus(string.format('Added %d spell/ability name(s) to "%s" -- Commit to save.', added, nm), false);
+        imgui.CloseCurrentPopup();
+    end
+    if canAdd and ImGuiCol_Button ~= nil then imgui.PopStyleColor(1); end
+    imgui.SameLine(0, 8);
+    if imgui.Button('Close##grpbclose', { 0, 24 }) then imgui.CloseCurrentPopup(); end
+    imgui.SameLine(0, 10);
+    imgui.TextColored(COL_DIM, string.format('%d marked', n));
+    imgui.EndPopup();
+end
+
 function M.renderGroups(job, level)
     if not hasImgui then return; end
     if deps == nil then
@@ -2413,6 +2529,17 @@ function M.renderGroups(job, level)
     renderGroupAddPopup();
     if groupUI._openRename then imgui.OpenPopup('##dlac_grouprename'); groupUI._openRename = false; end
     renderGroupRenamePopup();
+
+    -- Browse-list picker (G3, issue #26): cache the combined job list once per job (the
+    -- ~1000-row scan must not run per frame), then open/render the shared popup.
+    if hasBrowse then
+        if groupUI._listJob ~= job then
+            groupUI._list = ap.buildList(job, spellDB, abilityDB);
+            groupUI._listJob = job;
+        end
+        if groupUI._openBrowse then imgui.OpenPopup('##dlac_groupbrowse'); groupUI._openBrowse = false; end
+        renderGroupBrowsePopup(job);
+    end
 end
 
 function M.render(job, level)

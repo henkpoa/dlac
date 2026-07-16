@@ -2564,6 +2564,79 @@ Debuff  = T{'Filamented Hold', 'Cimicine Discharge', 'Demoralizing Roar' },
 end)();
 
 -- ---------------------------------------------------------------------------
+-- ACP. actionpicker (G3, issue #26, ADR 0009): the pure searchable spell/ability
+--      browse-list core -- the job-filtered list build + the search-match predicate
+--      the Groups tab's browse picker drives (and issue #12's `name` picker later).
+--      A combined, UNGATED list (build-ahead, HARD RULE 6); each entry says spell vs
+--      ability. Data injected (setimport precedent); search mirrors item search.
+-- ---------------------------------------------------------------------------
+(function()
+    local ap = dofile('gear/actionpicker.lua');   -- forward slash: also loads on Linux CI
+    check('ACP0 module loads', type(ap), 'table');
+    check('ACP1 buildList exported', type(ap.buildList), 'function');
+    check('ACP2 matches exported',   type(ap.matches),   'function');
+
+    -- Stub picker-DB rows: a BLU-usable spell + BLU-usable ability that collide on name
+    -- (untyped group would list both, each labelled), a high-level BLU spell (ungated), a
+    -- WHM-only spell (must NOT appear for BLU), and a shared spell (BLM + RDM).
+    local spells = {
+        { Name = 'Head Butt',  Jobs = { BLU = 46 }, Skill = 'Blue Magic' },   -- also an ability name
+        { Name = 'Actinic Burst', Jobs = { BLU = 74 } },                       -- Lv74 -> still listed
+        { Name = 'Cure',       Jobs = { WHM = 1, RDM = 3 } },                  -- no BLU
+        { Name = 'Stone',      Jobs = { BLM = 1, RDM = 4 } },
+        { Name = 'Stone II',   Jobs = { BLM = 26, RDM = 34 } },
+    };
+    local abilities = {
+        { Name = 'Head Butt',  Jobs = { BLU = 46 } },                          -- ability twin
+        { Name = 'Berserk',    Jobs = { WAR = 15 } },                          -- no BLU
+        { Name = 'Azure Lore', Jobs = { BLU = 1 }, MainOnly = true, SP = true },
+    };
+
+    -- sorted: Actinic Burst (spell), Azure Lore (ability), Head Butt (ability), Head Butt (spell)
+    local blu = ap.buildList('BLU', spells, abilities);
+    check('ACP3 BLU list size (2 spells + 2 abilities)', #blu, 4);
+    check('ACP4 sorted by name, case-insensitive [1]', blu[1].name, 'Actinic Burst');
+    check('ACP5 [2] is Azure Lore', blu[2].name, 'Azure Lore');
+    check('ACP6 name tie: ability sorts before spell [3]', blu[3].kind, 'ability');
+    check('ACP7 ...its spell twin follows [4]',            blu[4].kind, 'spell');
+    check('ACP8 both twins are "Head Butt"', blu[3].name == 'Head Butt' and blu[4].name == 'Head Butt', true);
+    check('ACP9 carries the acquisition level for display', (function()
+        for _, e in ipairs(blu) do if e.name == 'Actinic Burst' then return e.level; end end
+    end)(), 74);
+    check('ACP10 NOT level-gated: a Lv74 action is present at any player level', (function()
+        for _, e in ipairs(blu) do if e.name == 'Actinic Burst' then return true; end end
+        return false;
+    end)(), true);
+    check('ACP11 other jobs excluded (no Cure/Berserk for BLU)', (function()
+        for _, e in ipairs(blu) do if e.name == 'Cure' or e.name == 'Berserk' then return e.name; end end
+        return true;
+    end)(), true);
+
+    -- job matching is case-insensitive on the passed job; unknown / not-ready jobs -> {}
+    check('ACP12 job passed lower-case still matches', #ap.buildList('blu', spells, abilities), 4);
+    check('ACP13 unknown job -> empty', #ap.buildList('XYZ', spells, abilities), 0);
+    check('ACP14 not-ready "NON" -> empty', #ap.buildList('NON', spells, abilities), 0);
+    check('ACP15 nil job -> empty', #ap.buildList(nil, spells, abilities), 0);
+    check('ACP16 missing data -> empty, no error', #ap.buildList('BLU', nil, nil), 0);
+
+    -- a job with the shared spell picks it up under both callers
+    local blm = ap.buildList('BLM', spells, abilities);
+    check('ACP17 BLM sees its shared spells', #blm, 2);   -- Stone, Stone II
+
+    -- search-match predicate: comma-separated, ALL terms substring, case-insensitive.
+    local function q(s) return ap.parseQuery(s); end
+    check('ACP18 empty query matches everything', ap.matches(blu[1], q('')), true);
+    check('ACP19 single term narrows',    ap.matches({ name = 'Stone II' }, q('stone')), true);
+    check('ACP20 case-insensitive',       ap.matches({ name = 'Stone II' }, q('STONE')), true);
+    check('ACP21 non-match rejected',     ap.matches({ name = 'Stone' },    q('cure')),  false);
+    check('ACP22 comma = AND (both needed)', ap.matches({ name = 'Stone II' }, q('stone, ii')), true);
+    check('ACP23 comma AND: one term misses -> false', ap.matches({ name = 'Stone' }, q('stone, ii')), false);
+    check('ACP24 bare-string entry accepted', ap.matches('Head Butt', q('butt')), true);
+    check('ACP25 whitespace query = show all', ap.matches({ name = 'X' }, q('   ')), true);
+    check('ACP26 parseQuery drops empty terms', #q('stone,,  , ii'), 2);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- AP3. weaponfilter Sub -- the F2c buckets (issue #18, PRD #14)
 --
 --   Sub buckets: Shield + Grip (both carry catalog Type="Sub"; grip-vs-shield splits by

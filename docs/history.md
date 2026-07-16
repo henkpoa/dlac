@@ -1901,3 +1901,49 @@ is never seeded, the trigger-file `Groups` format is exactly G2's, and the engin
 unchanged — so **no `dispatch.M.VERSION` bump**. Player-facing strings (the control label,
 the preview/summary wording, the skip reasons) are **proposed for maintainer sign-off** in
 the PR, not finalized.
+
+## Session "searchable spell/ability browse-list" (2026-07-16, issue #26, G3)
+
+Upgraded the Groups tab's member entry from typed-only to a **searchable, job-filtered
+spell/ability browse-list with multi-mark** (PRD #21 stories 2/8/16/17/18; ADR 0009). The
+same browse capability open issue #12 wants for ordinary `name` triggers, so it is built
+once as a shared, coupling-free core.
+
+### What landed
+
+- **`gear/actionpicker.lua` — the pure core.** `buildList(job, spells, abilities)` returns
+  the job's learnable spells + abilities as ONE combined, case-insensitively sorted list of
+  `{ name, kind, level }` (kind = `'spell'`/`'ability'`), **ungated** — the level is display
+  only (build-ahead, HARD RULE 6 / ADR 0006). The picker-DB tables are **injected** (the
+  setimport resolver precedent) so it stays Ashita/imgui/file-IO-free. `parseQuery` +
+  `matches` are the comma-separated, ALL-terms-substring search predicate — the item-search
+  shape (gearui `parseSearch`/`itemSearchMatch`), minus the stat-alias canon (actions carry
+  no stats). Never seeded into LAC. Tests **ACP0–ACP26**.
+- **The Groups tab picker (triggersui).** Each group box gains a **Browse...** button that
+  opens ONE shared popup retargeted per group via `groupUI.browseFor`. Search narrows the
+  cached job list; each row is a **checkbox** mark (not a Selectable — the field-proven
+  idiom keeps the popup open across marks without a DontClosePopups flag, mirroring gearui's
+  weapon-type filter) + a `[S]`/`[A]` marker + name + dim `Lv`. **Add N marked** commits
+  every mark through `gm.addMember` (case-insensitive dedup), then closes so the section
+  status + member list show the result. Entries already in the group render dimmed with
+  `(in group)` and no checkbox. The list is cached per job (`_listJob`) so the ~1000-row
+  scan runs once per job, not per frame.
+- **Free-name entry stays.** The typed input + `+ member` is untouched — the picker is only
+  a faster path for the job's known actions; anything the data misses is still typeable.
+- **Untyped, so twins are one mark.** A rare spell+ability sharing a name (e.g. BLU
+  "Head Butt") lists as two rows, each labelled, but marking either sets the one
+  name-keyed mark (a Group stores the bare name once). Widget IDs are keyed by row, not
+  name, so the twin's two checkboxes never collide on the ImGui id stack.
+
+### Where the logic lives
+
+Pure transform + search: `gear/actionpicker.lua` (tests ACP*). UI shell (button, popup,
+mark state, cache): `ui/triggersui.lua` `renderGroupBrowsePopup` + `renderGroupBox`, covered
+by `smoke_ui`'s chunk load. Data: `data/spells.lua` / `data/abilities.lua` — issue #26 is
+their FIRST consumer (#12 is the next adopter of the same seam).
+
+No seeded-file behaviour changed (the group storage format is unchanged — still bare-name
+arrays via `gm.addMember`; the engine reads the same file), so **no `dispatch.M.VERSION`
+bump**. New player-facing strings (the Browse... button + tooltip, the popup title, the
+`[S]`/`[A]` markers, "Add N marked", the status line) are **proposed for maintainer
+sign-off** in the PR, not finalized.
