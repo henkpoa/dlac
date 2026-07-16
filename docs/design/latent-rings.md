@@ -4,6 +4,9 @@
 > "not scrapeable, must be hand-authored." **That was wrong** — the effects are *data* in the
 > public CatsAndBoats/catseyexi repo, so they're **generatable**, the same way the catalog and
 > level-scaling already are. This is the corrected plan.
+> **2026-07-17:** the research below stands; the *plan* section is superseded by
+> `docs/design/conditional-effects.md` (scope expanded to sets + latents + totals, and the
+> "optimizer out of scope" call is reversed — set bonuses now enter the weight objective).
 
 ## The ask (recap)
 
