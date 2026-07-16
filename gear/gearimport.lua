@@ -88,9 +88,24 @@ local function slotFromMask(slots)
     return nil;
 end
 
--- RSlot (reserved slots) by item id, from the catalog. The CLIENT resource has no
--- such field -- reservation is server data (item_equipment.rslot), so it can only
--- come from the API crawl. Built once, lazily, and guarded: without the catalog
+-- The Range slot bit in the server's reserved-slot mask (item_equipment.rslot).
+local RANGE_BIT = 0x0004;
+
+-- The effective reserved-slot mask for a catalog record: its own RSlot, OR -- for a stat-stick
+-- TRINKET (Ammo that fires nothing: Type='Ammo' with no AmmoType) -- the Range bit. The whole
+-- throwing-ammo class reserves Range server-side, and the crawl stamped most of it but left some
+-- stat sticks off (Cinderstone, Coiste Bodhar), so we complete the category HERE, the one place
+-- gear.lua's RSlot is decided, so both the fresh write and the /dl fix backfill agree. (ADR 0010.)
+local function effectiveRSlot(catRec)
+    if type(catRec) ~= 'table' then return nil; end
+    if catRec.RSlot ~= nil then return catRec.RSlot; end
+    if catRec.Type == 'Ammo' and catRec.AmmoType == nil then return RANGE_BIT; end
+    return nil;
+end
+
+-- RSlot (reserved slots) by item id, from the catalog. The CLIENT resource has no such field --
+-- reservation is server data (item_equipment.rslot), so it can only come from the API crawl (plus
+-- the trinket completion in effectiveRSlot). Built once, lazily, and guarded: without the catalog
 -- (headless tests) every lookup is nil and scanning behaves exactly as before.
 local _rslotById = nil;
 local function rslotFor(id)
@@ -101,7 +116,8 @@ local function rslotFor(id)
                 for k, v in pairs(t) do
                     if type(v) == 'table' then
                         if v.Id ~= nil and v.Name ~= nil then
-                            if v.RSlot ~= nil then _rslotById[v.Id] = v.RSlot; end
+                            local rs = effectiveRSlot(v);
+                            if rs ~= nil then _rslotById[v.Id] = rs; end
                         elseif k ~= 'NameToObject' then walk(v); end
                     end
                 end
@@ -682,6 +698,7 @@ local function renderEntry(rec)
     return { path = path, key = key, lua = table.concat(L, '\n') };
 end
 M.renderEntry = renderEntry;
+M.effectiveRSlot = effectiveRSlot;   -- exported for the trinket-RSlot tests
 
 -- Preview: scan, then print the generated entry for each NEW item. Read-only.
 function M.preview(containers)
@@ -1191,8 +1208,9 @@ function M.computeFixes(gearText, ownedItems, metaById)
                 -- Reserved slots -- any slot, not just the weapon pair. Every gear.lua
                 -- written before RSlot existed lacks it, and the engine cannot see the
                 -- catalog, so this backfill is what makes an old file conflict-aware.
-                if e.RSlot == nil and (tonumber(c.RSlot) or 0) ~= 0 then
-                    ins(string.format('RSlot = %d,', c.RSlot), string.format('+RSlot %d', c.RSlot));
+                local effRS = effectiveRSlot(c);
+                if e.RSlot == nil and (tonumber(effRS) or 0) ~= 0 then
+                    ins(string.format('RSlot = %d,', effRS), string.format('+RSlot %d', effRS));
                 end
             end
         end

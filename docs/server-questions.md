@@ -108,7 +108,10 @@ on a pair that cannot fire a shot.
 A skill check against the ranged weapon (or reusing the `getDamage() != 0` guard the
 sibling branch already has) would match.
 
-**What dlac does meanwhile:** the optimizer never proposes the pair — Range and Ammo are
-picked jointly, and ammo with no corresponding ranged weapon forces Range empty
-(`gear/gearoptim.lua`, tests H9–H14). This is a workaround, not a fix: a hand-built set
-can still hit it.
+**What dlac does meanwhile:** dlac never *wears* the pair, so the 999-delay can't bite through it.
+Two layers: the optimizer never proposes it (Range and Ammo are picked jointly; a stat stick forces
+Range empty — `gear/gearoptim.lua`, tests H9–H14), and the equip engine handles a hand-built pair —
+a stat stick reserves the Range slot server-side (`item_equipment.rslot`), so
+`dispatch.trinketRangeDrop` keeps the higher-Level of {trinket, ranged weapon} and drops the other,
+matching the server so nothing flaps (ADR 0010; tests TR*). The underlying question — whether adding
+ammo delay to ranged TP with no compatibility check is intended — is still **OPEN** for the team.
