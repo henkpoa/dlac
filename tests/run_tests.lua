@@ -2343,6 +2343,79 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- AP3. weaponfilter Sub -- the F2c buckets (issue #18, PRD #14)
+--
+--   Sub buckets: Shield + Grip (both carry catalog Type="Sub"; grip-vs-shield splits by
+--   name, "* Grip" / "* Strap") + the one-hander weapon types present in the pool (each
+--   keeps its own weapon Type: Dagger / Sword / ...). Canonical order is Shield, Grip,
+--   then the one-handers. VIEW-ONLY: the filter narrows what is shown, NEVER what the Sub
+--   picker offers -- the A* HARD RULE tests (below) still gate eligibility (HARD RULE 6).
+-- ---------------------------------------------------------------------------
+(function()
+    local wf = dofile('gear/weaponfilter.lua');
+
+    -- A shield + a grip (Type="Sub", split by name) + a strap grip + two one-handers, plus a
+    -- hand-authored Type="Shield" record (gear.lua writes the concrete type too). Unordered.
+    local sub = {
+        { Name = 'Test Sword',       Type = 'Sword',  OneHanded = true },   -- one-hander
+        { Name = 'Koenig Shield',    Type = 'Sub' },                        -- catalog shield
+        { Name = 'Tactician Grip',   Type = 'Sub' },                        -- name -> Grip
+        { Name = 'Pole Strap',       Type = 'Sub' },                        -- strap -> Grip
+        { Name = 'Test Dagger',      Type = 'Dagger', OneHanded = true },   -- one-hander
+        { Name = 'Kaman Buckler',    Type = 'Shield' },                     -- hand-authored
+    };
+    local sb = wf.presentBuckets(sub, 'Sub');
+    check('AP3-1 sub: four buckets present',   #sb, 4);
+    check('AP3-2 canonical order [1] Shield',  sb[1].key, 'Shield');
+    check('AP3-3 canonical order [2] Grip',    sb[2].key, 'Grip');
+    check('AP3-4 one-handers after Shield/Grip [3] Dagger', sb[3].key, 'Dagger');
+    check('AP3-5 canonical order [4] Sword',   sb[4].key, 'Sword');
+    check('AP3-6 Shield labelled',             sb[1].label, 'Shield');
+    check('AP3-7 Grip labelled',               sb[2].label, 'Grip');
+
+    -- bucketOf: shields (catalog + hand-authored), grips (both spellings), one-handers.
+    check('AP3-8 catalog shield -> Shield',    wf.bucketOf(sub[2], 'Sub'), 'Shield');
+    check('AP3-9 authored shield -> Shield',   wf.bucketOf(sub[6], 'Sub'), 'Shield');
+    check('AP3-10 "* Grip" -> Grip',           wf.bucketOf(sub[3], 'Sub'), 'Grip');
+    check('AP3-11 "* Strap" -> Grip',          wf.bucketOf(sub[4], 'Sub'), 'Grip');
+    check('AP3-12 one-hander keeps its Type',  wf.bucketOf(sub[1], 'Sub'), 'Sword');
+
+    -- Shield marked: shows both shields, hides grips and one-handers.
+    local onlyShield = { Shield = true };
+    check('AP3-13 Shield shows catalog shield',  wf.visible(sub[2], onlyShield, 'Sub'), true);
+    check('AP3-14 Shield shows authored shield', wf.visible(sub[6], onlyShield, 'Sub'), true);
+    check('AP3-15 Shield hides grip',            wf.visible(sub[3], onlyShield, 'Sub'), false);
+    check('AP3-16 Shield hides one-hander',      wf.visible(sub[1], onlyShield, 'Sub'), false);
+
+    -- Grip marked: both grip spellings show, shields / one-handers hide.
+    local onlyGrip = { Grip = true };
+    check('AP3-17 Grip shows "* Grip"',   wf.visible(sub[3], onlyGrip, 'Sub'), true);
+    check('AP3-18 Grip shows "* Strap"',  wf.visible(sub[4], onlyGrip, 'Sub'), true);
+    check('AP3-19 Grip hides shield',     wf.visible(sub[2], onlyGrip, 'Sub'), false);
+    check('AP3-20 Grip hides one-hander', wf.visible(sub[5], onlyGrip, 'Sub'), false);
+
+    -- One-hander types stay distinct: Dagger marked shows only the dagger.
+    local onlyDagger = { Dagger = true };
+    check('AP3-21 Dagger shows the dagger',  wf.visible(sub[5], onlyDagger, 'Sub'), true);
+    check('AP3-22 Dagger hides the sword',   wf.visible(sub[1], onlyDagger, 'Sub'), false);
+    check('AP3-23 Dagger hides a shield',    wf.visible(sub[2], onlyDagger, 'Sub'), false);
+
+    -- Multi-pick and All-default carry over.
+    local shieldOrDagger = { Shield = true, Dagger = true };
+    check('AP3-24 multi shows shield',    wf.visible(sub[2], shieldOrDagger, 'Sub'), true);
+    check('AP3-25 multi shows dagger',    wf.visible(sub[5], shieldOrDagger, 'Sub'), true);
+    check('AP3-26 multi hides sword',     wf.visible(sub[1], shieldOrDagger, 'Sub'), false);
+    check('AP3-27 All default shows grip', wf.visible(sub[3], {}, 'Sub'), true);
+    check('AP3-28 nil marks show one-hander', wf.visible(sub[1], nil, 'Sub'), true);
+
+    -- Present-only: a shields-only pool offers exactly one bucket.
+    check('AP3-29 shields-only pool -> one bucket',
+        #wf.presentBuckets({ { Name = 'Buckler', Type = 'Shield' } }, 'Sub'), 1);
+    -- Empty pool -> no buckets (never an empty dropdown).
+    check('AP3-30 empty sub pool -> no buckets', #wf.presentBuckets({}, 'Sub'), 0);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then
