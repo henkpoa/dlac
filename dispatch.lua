@@ -49,7 +49,7 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 51;   -- 51: Trigger Groups (G1) -- new `group` matcher (specificity tier 45) + Groups section load/serialize (ADR 0009). 50: the v46-49 /dl instdiag diagnostic is out (field-confirmed on both characters); the fix it found stays -- M.jobReady + the job-keyed latch. See ADR 0007
+M.VERSION = 52;   -- 52: trinket ammo coexists with ranged weapons -- an Ammo item no longer reserves the Range slot (Morion Tathlum's bogus catalog RSlot=Range), so a bow/xbow/gun + stat stick stay equipped together (ADR 0010). 51: Trigger Groups (G1) -- new `group` matcher (specificity tier 45) + Groups section load/serialize (ADR 0009). 50: the v46-49 /dl instdiag diagnostic is out (field-confirmed on both characters); the fix it found stays -- M.jobReady + the job-keyed latch. See ADR 0007
                   -- 49: THE LOGIN BUG. At login GetMainJob() reads 0 (=None), which gData stringifies to "NON" -- not '' and not '?', so the auto-install took it for a real job, found no sets\NON.lua, installed nothing and LATCHED for the session: every trigger then matched and silently equipped nothing (v35 skips a missing set in silence). Fixed at both ends -- M.jobReady rejects a not-ready job, and the latch records WHICH job it answered for, so a settling read re-fires the guard
                   -- 44: PINNED slots -- pinstate.lua forces a named item into a slot at TOP priority (above the craft overlay), scoped to All or to named triggers; the engine WEARS the pin, so nothing removes it
                   -- 43: reserved slots (RSlot) resolved at equip time -- a Body that takes Head away (Ryl.Ftm. Tunic) drops the reserved slot instead of flapping with the server forever; worn pieces reserve too
@@ -1051,10 +1051,13 @@ local function hasBit(mask, b) return math.floor(mask / b) % 2 == 1; end
 --
 -- The reserver wins and the reserved slot is dropped -- matching the server, which
 -- clears that slot anyway the moment the reserver goes on. Slots are walked in a
--- fixed order, so mutual reservations (a boomerang reserves Ammo; a pebble in Ammo
--- reserves Range) always resolve the same way instead of by pairs() luck, and a
--- slot already dropped never reserves anything itself (Body takes Legs, so the Legs
--- piece must not go on to take Feet).
+-- fixed order, so overlapping reservations (a 2H Main reserves Sub; a Body reserves
+-- Head) always resolve the same way instead of by pairs() luck, and a slot already
+-- dropped never reserves anything itself (Body takes Legs, so the Legs piece must
+-- not go on to take Feet). ONE reservation is refused below: an Ammo item never
+-- reserves Range. A stat stick (Morion Tathlum) carries a bogus RSlot=Range in the
+-- catalog, but a bow + stat stick legitimately coexist -- only a Throwing weapon
+-- (boomerang, RSlot=Ammo) reserves the ammo slot, never the reverse (Henrik, ADR 0010).
 function M.reservedDrops(set, lookup, worn)
     local keyOf = {};   -- lowercase slot -> the set's actual key, whatever its case
     for slot, v in pairs(set) do
@@ -1078,7 +1081,11 @@ function M.reservedDrops(set, lookup, worn)
             if mask > 0 then
                 for _, r in ipairs(RSLOT_ORDER) do
                     local rls = string.lower(r[2]);
-                    if rls ~= ls and keyOf[rls] ~= nil and not gone[rls] and hasBit(mask, r[1]) then
+                    -- An Ammo item never reserves Range: a stat stick's bogus
+                    -- RSlot=Range must not kick out a bow (they coexist in FFXI).
+                    local ammoReservesRange = (ls == 'ammo' and rls == 'range');
+                    if rls ~= ls and keyOf[rls] ~= nil and not gone[rls] and hasBit(mask, r[1])
+                       and not ammoReservesRange then
                         gone[rls] = true;
                         dropped = dropped or {};
                         dropped[keyOf[rls]] = name[ls];

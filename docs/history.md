@@ -1947,3 +1947,45 @@ arrays via `gm.addMember`; the engine reads the same file), so **no `dispatch.M.
 bump**. New player-facing strings (the Browse... button + tooltip, the popup title, the
 `[S]`/`[A]` markers, "Add N marked", the status line) are **proposed for maintainer
 sign-off** in the PR, not finalized.
+
+## Session "trinket ammo coexists with ranged weapons" (2026-07-16, ADR 0010, branch fix/trinket-ranged-coexist)
+
+A stat-stick ammo (Cinderstone, Morion Tathlum, Coiste Bodhar — an Ammo item with stats but
+no `AmmoType`) could not stay equipped next to a bow / crossbow / gun. Two independent
+mechanisms evicted one or the other, and they hit *different* items — which is why it looked
+intermittent.
+
+### What was actually happening
+
+- **Equip engine.** `dispatch.reservedDrops` reads each item's `RSlot` (the slots it takes away
+  while worn). **Morion Tathlum carries `RSlot = 4` (the Range bit)** in the catalog, so the
+  engine treated the stat stick as *reserving* Range and dropped the bow the instant the set
+  landed. Its identical siblings Cinderstone / Coiste Bodhar carry **no** RSlot — the
+  inconsistency is the tell that `RSlot = 4` on Morion is a **data artifact**, not a real rule
+  (in retail a bow + stat stick coexist). The server source isn't in the checkout to 100%
+  confirm, but the sibling inconsistency + retail behaviour make it a client-side artifact.
+- **Optimizer.** `gearoptim.pickRangeAmmo` picks Range + Ammo jointly and, because a trinket has
+  no `AmmoType`, **forced Range empty** whenever a trinket won the Ammo slot. That was the
+  deliberate `server-questions.md` #5 workaround (a bow + delay-999 stick computes ranged TP as
+  `bowDelay + 999` on a pair that can't fire).
+
+### The fix (ADR 0010) — coexistence everywhere
+
+- **Engine:** an Ammo-slot item **never reserves Range** (`reservedDrops` refuses the Ammo→Range
+  direction; a Throwing boomerang's real Range→Ammo reservation is untouched). Slot-based,
+  because the engine has no catalog and can't see `AmmoType`. `dispatch.M.VERSION` → **52**.
+- **Optimizer:** the stat-stick branch now pairs the trinket with the **best non-Throwing Range
+  weapon** instead of emptying Range. Throwing ammo still empties Range; fired ammo with no
+  owned weapon still empties Range; a Throwing *weapon* (boomerang, reserves Ammo) is never
+  paired with a stick.
+- **#5 reversed on purpose.** The server delay bug is unchanged, but it only costs TP if the pair
+  is actually **fired**, which a stat-stick (melee / idle) set never does — so the pair is now
+  allowed (Henrik's standing authority). `server-questions.md` #5 updated accordingly.
+
+### Tests
+
+`run_tests.lua` H9–H15 rewritten for the new contract (H12 "bow COEXISTS", H15 "stat stick will
+not share with a Throwing weapon") and AK13b ("an Ammo item does not reserve Range"). Suites
+green: 771 + 123, `luac -p` clean on `dispatch.lua` / `gear/gearoptim.lua` / `tests/run_tests.lua`.
+Morion's `RSlot = 4` is flagged for a crawler cleanup on Henrik's end (→ `0`), but the engine
+guard makes dlac correct regardless.

@@ -108,7 +108,9 @@ on a pair that cannot fire a shot.
 A skill check against the ranged weapon (or reusing the `getDamage() != 0` guard the
 sibling branch already has) would match.
 
-**What dlac does meanwhile:** the optimizer never proposes the pair — Range and Ammo are
-picked jointly, and ammo with no corresponding ranged weapon forces Range empty
-(`gear/gearoptim.lua`, tests H9–H14). This is a workaround, not a fix: a hand-built set
-can still hit it.
+**What dlac does meanwhile:** as of **ADR 0010** (2026-07-16) dlac deliberately **allows** the
+pair. A stat stick coexists with any non-Throwing ranged weapon in both the optimizer
+(`gear/gearoptim.lua`, tests H9–H15) and the equip engine (`dispatch.reservedDrops`, AK13b) —
+because the delay penalty only lands if the pair is actually **fired**, which a stat-stick
+(melee / idle) set never does. The server delay is unchanged; if the team adds the compatibility
+check this note still holds, and if not, the exposure is the player's to make.

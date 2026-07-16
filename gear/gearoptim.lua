@@ -531,13 +531,15 @@ local FLAT_SLOTS   = { "Sub", "Ammo", "Head", "Neck", "Ear", "Body", "Hands", "R
 local DUAL_SLOTS   = { Ear = true, Ring = true };
 
 -- Ammo a Range weapon FIRES, keyed by the catalog's AmmoType -- and the pair is legal
--- only when the weapon's Type matches (arrows want a bow, not a gun). Everything else
--- in the slot has NO corresponding Range weapon and so demands an EMPTY one:
---   * Throwing (shuriken, pebble) fires from the Ammo slot itself, and the server
+-- only when the weapon's Type matches (arrows want a bow, not a gun). The other two
+-- ammo kinds are handled differently:
+--   * Throwing ammo (shuriken, pebble) fires from the Ammo slot itself, and the server
 --     reads Range FIRST -- m_Weapons[SLOT_RANGED] ? SLOT_RANGED : SLOT_AMMO -- so any
---     Range weapon shadows it completely.
+--     Range weapon shadows it: Throwing ammo therefore demands an EMPTY Range.
 --   * The unfirable stat sticks (Cinderstone, Morion Tathlum, Coiste Bodhar, pet food)
---     carry no AmmoType at all: they only occupy the slot.
+--     carry no AmmoType at all -- they only occupy the slot, so they COEXIST with any
+--     non-Throwing Range weapon (a bow + stat stick is legal; ADR 0010). Only a
+--     Throwing WEAPON (boomerang) reserves the ammo slot and cannot share it.
 local RANGE_FIRED = { Archery = true, Marksmanship = true, FishingRod = true };
 
 -- Call fn(entry) for every entry in a top-level slot, flattening the weapon-category
@@ -595,14 +597,16 @@ end
 -- stats, so it scores 0) is left UNFILLED rather than padded with a junk piece --
 -- represented exactly like a slot with no eligible gear: absent from slots/order/
 -- perSlot. Nil gate = accept everything (old behavior).
--- Range + Ammo are decided TOGETHER, not greedily slot-by-slot. Picking each slot's own
--- best pairs a stat-stick ammo with whatever Range weapon happened to score -- and the
--- server then adds that ammo's delay to ranged delay for TP with NO compatibility check
--- (CBattleEntity::GetRangedWeaponDelay), so a bow + Cinderstone silently costs the stat
--- stick's full 999. Enumerate only LEGAL combinations and take the highest-scoring:
---   (Range, matching ammo) | (Range, no ammo) | (empty Range, unpaired ammo)
--- Ammo with no corresponding Range weapon -- unfirable, Throwing, or simply no owned
--- weapon of its type -- always leaves Range EMPTY (Henrik's ruling).
+-- Range + Ammo are decided TOGETHER, not greedily slot-by-slot, because the two slots
+-- constrain each other. Enumerate only LEGAL combinations and take the highest-scoring:
+--   (Range, its matching fired ammo) | (Range, no ammo) | (empty Range, Throwing ammo)
+--   | (non-Throwing Range, stat stick)     -- ADR 0010: a stat stick coexists with a bow
+-- A stat stick (no AmmoType) USED to force Range EMPTY, to dodge a server bug where
+-- GetRangedWeaponDelay adds the stick's delay (999) to ranged TP with no compatibility
+-- check -- but that only bites if you actually FIRE, which a stat-stick set never does,
+-- so a bow/xbow/gun + stat stick is now allowed to coexist (Henrik's ruling). Throwing
+-- ammo still empties Range (the server shadows it), and fired ammo with no owned weapon
+-- of its type still leaves Range empty.
 -- Returns { Range = pick|nil, Ammo = pick|nil }; both nil when nothing clears the gate.
 local function pickRangeAmmo(scoreFn, job, level, acceptScore)
     local rangeR = rankSlot('Range', scoreFn, job, level);
@@ -626,12 +630,25 @@ local function pickRangeAmmo(scoreFn, job, level, acceptScore)
         end
     end
 
+    -- The best Range weapon a stat stick can SHARE the ammo slot with: anything but a
+    -- Throwing weapon (a boomerang reserves Ammo outright and can't coexist with a
+    -- stick). rangeR is score-sorted, so the first accepted non-Throwing entry is best.
+    local sharing = nil;
+    for _, p in ipairs(rangeR) do
+        if ok(p) and p.entry.Type ~= 'Throwing' then sharing = p; break; end
+    end
+
     if ok(rangeR[1]) then consider(rangeR[1], nil); end   -- Range alone, Ammo not worth wearing
     for _, a in ipairs(ammoR) do
         if ok(a) then
             local t = a.entry.AmmoType;
-            if t ~= nil and RANGE_FIRED[t] then consider(firedBy[t], a);   -- nil weapon -> Range empty
-            else consider(nil, a); end                                     -- unpaired -> Range MUST be empty
+            if t ~= nil and RANGE_FIRED[t] then
+                consider(firedBy[t], a);        -- fired ammo pairs with its matching weapon
+            elseif t ~= nil then
+                consider(nil, a);               -- Throwing/other typed ammo: any Range weapon shadows it -> Range empty
+            else
+                consider(sharing, a);           -- stat stick (no AmmoType): coexists with the best non-Throwing Range (ADR 0010)
+            end
         end
     end
     return best or {};

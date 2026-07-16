@@ -458,13 +458,16 @@ local h6 = optim.optimizePicks({ Body = { dtA }, Legs = { dtB } }, WD);
 check('H8 DT capped as goodness', h6.total, 10 * 10);
 
 -- ---------------------------------------------------------------------------
--- H9-H14. Range/Ammo are picked TOGETHER, never greedily per slot.
--- Field case (Henrik): Cinderstone / Morion Tathlum occupy the Ammo slot but can
--- be fired by nothing. The server adds the ammo's delay to ranged delay for TP
--- with no compatibility check (GetRangedWeaponDelay), so pairing one with a bow
--- silently costs its full 999. Ammo with no corresponding Range weapon -- unfirable,
--- Throwing (a Range weapon shadows it), or no owned weapon of its type -- must
--- leave Range EMPTY. Catalog AmmoType is the discriminator; absent = unfirable.
+-- H9-H15. Range/Ammo are picked TOGETHER, never greedily per slot, because the
+-- two slots constrain each other (ADR 0010).
+--   * Fired ammo (Archery/Marksmanship/FishingRod AmmoType) pairs with its matching
+--     Range weapon; with no such weapon owned, Range stays EMPTY.
+--   * Throwing ammo (shuriken/pebble) fires from the Ammo slot itself -- any Range
+--     weapon shadows it on the server -- so it forces Range EMPTY.
+--   * A stat stick (no AmmoType: Cinderstone, Morion Tathlum) COEXISTS with any
+--     non-Throwing Range weapon. It used to force Range empty to dodge a server
+--     ranged-delay bug, but that only bites if you FIRE (which a stat-stick set
+--     never does), so a bow + stat stick is now kept together (Henrik).
 -- ---------------------------------------------------------------------------
 do   -- scoped: the main chunk is near Lua's 200-local ceiling
 local G = package.loaded['dlac\\gear'];
@@ -477,29 +480,36 @@ local function it(name, acc, extra)
     for k, v in pairs(extra or {}) do e[k] = v; end
     return e;
 end
--- a bow that scores WELL and a stat stick that scores a little: greedy would take both
-local bow   = it('Test Bow',    10, { Type = 'Archery' });
-local arrow = it('Test Arrow',   1, { AmmoType = 'Archery' });
-local stick = it('Cinderstone',  4);                              -- no AmmoType = unfirable
+local bow = it('Test Bow', 10, { Type = 'Archery' });
 
-local r1 = ammoSet({ Archery = { bow } }, { stick = stick, arrow = arrow });
-check('H9 bow keeps its matching ammo',      r1.slots.Ammo, 'Test Arrow');
-check('H10 bow survives the pairing',        r1.slots.Range, 'Test Bow');
+-- fired ammo that OUT-scores the stat stick keeps the bow paired with its arrow.
+local r1 = ammoSet({ Archery = { bow } },
+    { arrow = it('Test Arrow', 5, { AmmoType = 'Archery' }), stick = it('Cinderstone', 1) });
+check('H9 bow keeps its matching fired ammo', r1.slots.Ammo, 'Test Arrow');
+check('H10 bow survives the pairing',         r1.slots.Range, 'Test Bow');
 
--- stat stick outscores the whole bow+arrow pair (4+10=14 vs 20) -> Range must empty out
-local fatStick = it('Cinderstone', 20);
-local r2 = ammoSet({ Archery = { bow } }, { stick = fatStick });
-check('H11 unfirable ammo wins the pair',    r2.slots.Ammo, 'Cinderstone');
-check('H12 ... and Range stays EMPTY',       r2.slots.Range, nil);
+-- a stat stick that OUT-scores the fired pair wins the Ammo slot AND keeps the bow
+-- (ADR 0010): coexistence, not the old Range-empty.
+local r2 = ammoSet({ Archery = { bow } }, { stick = it('Cinderstone', 20) });
+check('H11 stat stick wins the Ammo slot',    r2.slots.Ammo, 'Cinderstone');
+check('H12 ... and the bow COEXISTS',         r2.slots.Range, 'Test Bow');
 
--- Throwing fires from the Ammo slot itself; any Range weapon shadows it
-local shuriken = it('Test Shuriken', 20, { AmmoType = 'Throwing' });
-local r3 = ammoSet({ Archery = { bow } }, { shuriken = shuriken });
-check('H13 Throwing ammo empties Range',     r3.slots.Range, nil);
+-- Throwing fires from the Ammo slot itself; any Range weapon shadows it -> Range empty
+local r3 = ammoSet({ Archery = { bow } }, { shuriken = it('Test Shuriken', 20, { AmmoType = 'Throwing' }) });
+check('H13 Throwing ammo empties Range',       r3.slots.Range, nil);
+check('H13b ... but still wins its own slot',  r3.slots.Ammo, 'Test Shuriken');
 
--- arrows whose bow is not owned: no corresponding Range weapon -> Range stays empty
-local r4 = ammoSet({ Marksmanship = { it('Test Gun', 3, { Type = 'Marksmanship' }) } }, { arrow = it('Test Arrow', 20, { AmmoType = 'Archery' }) });
-check('H14 ammo without its weapon empties Range', r4.slots.Range, nil);
+-- fired ammo whose weapon is not owned: no corresponding Range weapon -> Range empty
+local r4 = ammoSet({ Marksmanship = { it('Test Gun', 3, { Type = 'Marksmanship' }) } },
+    { arrow = it('Test Arrow', 20, { AmmoType = 'Archery' }) });
+check('H14 fired ammo without its weapon empties Range', r4.slots.Range, nil);
+
+-- a Throwing WEAPON (boomerang) reserves the ammo slot, so a stat stick cannot share
+-- with it: the higher-scoring stick wins the Ammo slot and Range stays empty.
+local r5 = ammoSet({ Throwing = { it('Test Boomerang', 10, { Type = 'Throwing' }) } },
+    { stick = it('Cinderstone', 20) });
+check('H15 stat stick will not share with a Throwing weapon', r5.slots.Range, nil);
+check('H15b ... and the stat stick still equips',             r5.slots.Ammo, 'Cinderstone');
 G.Range, G.Ammo = nil, nil;
 end
 
@@ -1680,11 +1690,16 @@ do
     check('AK9 chained: Legs dropped by Body',        c.Legs, 'Moogle Suit');
     check('AK10 chained: Feet dropped by Body, not by the dropped Legs', c.Feet, 'Moogle Suit');
 
-    -- mutual reservation resolves deterministically by slot order, not pairs() luck
+    -- a boomerang (Range->Ammo) still drops the ammo; the ammo item's own RSlot=Range
+    -- is now REFUSED (ADR 0010), so this resolves one-directionally, not as a race.
     local mut = drops({ Range = 'Boomerang', Ammo = 'Pet Food Alpha' });
-    check('AK11 mutual: Range wins',  mut.Range, nil);
-    check('AK12 mutual: Ammo dropped', mut.Ammo, 'Boomerang');
+    check('AK11 boomerang keeps Range',    mut.Range, nil);
+    check('AK12 boomerang drops the ammo', mut.Ammo, 'Boomerang');
     check('AK13 arrows are not ammo-reserved', drops({ Range = 'Power Bow', Ammo = 'Iron Arrow' }).Ammo, nil);
+    -- ADR 0010: an Ammo item NEVER reserves Range. A stat stick (Pet Food Alpha,
+    -- Morion Tathlum) carries a bogus RSlot=Range, but a bow + stat stick must coexist.
+    check('AK13b an Ammo item does not reserve Range (bow stays)',
+        drops({ Range = 'Power Bow', Ammo = 'Pet Food Alpha' }).Range, nil);
 
     -- WORN pieces reserve too: the common case is a set that only writes Head
     -- while the Tunic is already on your back.
