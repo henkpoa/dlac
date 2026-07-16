@@ -1976,3 +1976,35 @@ there is NO second client mechanism: the only cross-slot Range/Ammo logic is `re
 - `pickRangeAmmo` unchanged (the optimizer already avoids the pair). `dispatch.M.VERSION` -> 52.
 - Players **re-commit / `/dl fix`** once so the gap trinkets pick up the completed RSlot.
 - Tests TR0-TR10; 780 + 123 green.
+
+## Session "apply to both rings / earrings (ownership-aware dual slots)" (2026-07-16, Item 2, branch feature/apply-both-slots)
+
+"Apply a ring/earring weight to BOTH slots, but don't equip the same item twice" -- when doing
+weights on Ring1/Ring2 or Ear1/Ear2. The GUI Auto-build (`gearui.autoBuild`) already did this
+(its `optimizePicks` conflict allows a shared ring only when `owned >= 2`), but the optimizer
+builders (`buildBestSet`, `buildMaxStatSet`) were deliberately **ownership-blind** -- they never
+doubled, so `/dl best`, previews, and `syncflags` disagreed with Auto-build.
+
+### What landed
+
+- **`gear/gearoptim.lua` `M.pickDualSlot(ranked, ownedOf)` -- the pure rule.** The top scorer
+  fills BOTH slots when two copies are owned (2x the best beats best + next, since best >= next),
+  else the top plus the best DISTINCT next rung -- never the same singly-owned item twice (the
+  server rejects the second). Tests **DS0-DS8**.
+- **Owned counts are injected, not hard-wired.** `M.ownedOf(entry)` reads an injected
+  `M.ownedCounts` (tests / callers) first, else the live bag via `ownedcache`, else **1** --
+  "assume a single copy", so an unconfirmable item is never doubled. gearoptim stays bag-free by
+  default; the count source is guard-required.
+- **Both optimizer builders made consistent.** `buildSet` (→ `buildMaxStatSet`) uses
+  `pickDualSlot`; `buildBestSet`'s conflict closure now allows a shared paired item exactly when
+  `ownedOf >= 2` (mirroring gearui). An owned-2 ring fills both slots everywhere; an owned-1 ring
+  never doubles anywhere.
+- **No toggle.** Doubling an owned-2 ring is simply optimal and an owned-1 ring can't double, so
+  the behaviour is automatic and correct -- no per-set switch. (An explicit "force both" toggle is
+  an easy follow-up if wanted.)
+
+### What did NOT change
+
+`gearui.autoBuild`'s inline dual-slot logic is untouched (it already worked); this only makes the
+gearoptim builders agree with it and pins the rule with tests. No seeded-file behaviour changed --
+gearoptim is addon-state, advisory-only -- so **no `dispatch.M.VERSION` bump**.

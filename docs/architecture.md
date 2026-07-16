@@ -257,7 +257,10 @@ overwrite confirmation, and the per-slot divergence warning. Never seeded into L
 ### gear/gearoptim.lua — stat-weight optimizer
 Two read-only tools: MP-spent→potency swap advice, and a stat-weight scorer/best-set
 builder (`M.score`, `M.buildBestSet`). Purely advisory — never equips. Reads/writes
-`<char>\dlac\gearweights.lua`.
+`<char>\dlac\gearweights.lua`. Paired slots (Ring1/Ring2, Ear1/Ear2) are filled
+ownership-aware via `M.pickDualSlot` + `M.ownedOf` (Item 2): the best item goes in BOTH slots
+when two copies are owned (live bag via `ownedcache`, injectable through `M.ownedCounts`), else
+best + best-distinct — never the same singly-owned item twice.
 
 ### gear/gearmove.lua — storage move engine (EXPERIMENTAL, feature/storage-move only)
 "[mv]" button + popup to move items between containers via the 0x029 packet, gated to

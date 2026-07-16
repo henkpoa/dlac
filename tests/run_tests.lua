@@ -2747,6 +2747,48 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- DS. Dual-slot doubling (Item 2): a paired slot (Ring1/Ring2, Ear1/Ear2) uses the
+--     SAME best-weighted item in BOTH slots when two copies are owned, else best +
+--     best-distinct -- never the same singly-owned item twice (the server rejects the
+--     second). The pure rule is optim.pickDualSlot(ranked, ownedOf); the builders
+--     (buildSet / buildBestSet) read owned counts through optim.ownedOf (injectable
+--     via optim.ownedCounts). Absent an owned source, "assume one copy" -> no doubling.
+-- ---------------------------------------------------------------------------
+(function()
+    check('DS0 pickDualSlot exported', type(optim.pickDualSlot), 'function');
+    local rA    = { entry = { Name = 'Ring A', Id = 101 }, score = 10 };
+    local rB    = { entry = { Name = 'Ring B', Id = 102 }, score = 8 };
+    local rAdup = { entry = { Name = 'Ring A', Id = 101 }, score = 9 };   -- same item, 2nd row
+    local function own(counts) return function(e) return counts[e.Id] or 0; end; end
+
+    local p1, p2 = optim.pickDualSlot({ rA, rB }, own({ [101] = 2 }));
+    check('DS1 own two -> best in both slots',   (p1 == rA and p2 == rA), true);
+    p1, p2 = optim.pickDualSlot({ rA, rB }, own({ [101] = 1 }));
+    check('DS2 own one -> best + distinct',       (p1 == rA and p2 == rB), true);
+    p1, p2 = optim.pickDualSlot({ rA, rAdup, rB }, own({ [101] = 1 }));
+    check('DS3 skips a same-item dup for slot 2',  (p1 == rA and p2 == rB), true);
+    p1, p2 = optim.pickDualSlot({ rA }, own({ [101] = 1 }));
+    check('DS4 single item -> no second pick',     (p1 == rA and p2 == nil), true);
+    p1, p2 = optim.pickDualSlot({}, own({}));
+    check('DS5 empty list -> nothing',             (p1 == nil and p2 == nil), true);
+    p1, p2 = optim.pickDualSlot({ rA, rB }, nil);
+    check('DS6 no owned source -> no double',      (p1 == rA and p2 == rB), true);
+
+    -- integration through buildMaxStatSet (buildSet uses pickDualSlot + optim.ownedOf).
+    local G = package.loaded['dlac\\gear'];
+    local function ring(name, id, acc) return { Name = name, Level = 1, Id = id, Jobs = { 'All' }, Stats = { Accuracy = acc } }; end
+    G.Ring = { RingA = ring('Ring A', 201, 10), RingB = ring('Ring B', 202, 6) };
+    optim.ownedCounts = function() return { [201] = 2 }; end;       -- own two of the best ring
+    local s1 = optim.buildMaxStatSet('Accuracy', { job = 'WAR', level = 99 });
+    check('DS7 own two -> best ring in BOTH slots', (s1.slots.Ring1 == 'Ring A' and s1.slots.Ring2 == 'Ring A'), true);
+    optim.ownedCounts = function() return { [201] = 1 }; end;       -- own only one
+    local s2 = optim.buildMaxStatSet('Accuracy', { job = 'WAR', level = 99 });
+    check('DS8 own one -> two DISTINCT rings',      (s2.slots.Ring1 == 'Ring A' and s2.slots.Ring2 == 'Ring B'), true);
+    optim.ownedCounts = nil;
+    G.Ring = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then

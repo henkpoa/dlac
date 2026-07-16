@@ -44,6 +44,10 @@ local gear = require("dlac\\gear");
 -- for the build level, not the catalog's flat base. Guarded: absent module = no-op.
 local _lsok, lscale = pcall(require, "dlac\\data\\levelstats");
 local hasLScale = _lsok and type(lscale) == 'table';
+-- Owned-count source for dual-slot doubling (Ring1/Ring2, Ear1/Ear2): the live bag via
+-- ownedcache, so a paired slot may reuse the SAME best item only when two are owned. Guarded
+-- (headless / pre-login -> absent), and overridable via M.ownedCounts for tests / callers.
+local _ocok, ownedmod = pcall(require, "dlac\\gear\\ownedcache");
 
 -- Colored [dlac] chat output (chatfmt): the shadowed `print` re-heads
 -- "[dlac] ..."-prefixed lines with the colored header; plain when unavailable.
@@ -62,6 +66,23 @@ local function safeCall(fn)
     local ok, res = pcall(fn);
     if ok then return res; end
     return nil;
+end
+
+-- Owned copies of an item (by entry.Id). Injected `M.ownedCounts` (a function -> {id=n}) wins
+-- for tests / callers; else the live bag (ownedcache); else 1 -- "assume a single copy", so an
+-- unconfirmable item is never doubled into both paired slots. Only >= 2 ever doubles.
+M.ownedCounts = nil;
+function M.ownedOf(entry)
+    local id = (type(entry) == 'table') and entry.Id or nil;
+    if type(M.ownedCounts) == 'function' then
+        local c = safeCall(M.ownedCounts);
+        return (id ~= nil and type(c) == 'table' and c[id]) or 0;
+    end
+    if _ocok and type(ownedmod) == 'table' and type(ownedmod.counts) == 'function' then
+        local c = safeCall(ownedmod.counts);
+        return (id ~= nil and type(c) == 'table' and c[id]) or 0;
+    end
+    return 1;
 end
 
 -- gear.lua spells the same concept a few ways (MATK / Magic Atk. Bonus / MAB).
@@ -637,6 +658,29 @@ local function pickRangeAmmo(scoreFn, job, level, acceptScore)
     return best or {};
 end
 
+-- Pick the two items for a paired slot (Ring1/Ring2, Ear1/Ear2) from ONE ranked list,
+-- ownership-aware: the top scorer goes in BOTH slots when two copies are owned (2x the best
+-- beats best + next, since best >= next), else the top plus the best DISTINCT next rung --
+-- never the same singly-owned item in both slots (the server would reject the second). Returns
+-- (pick1, pick2) as ranked entries; pick2 is nil when no legal second pick exists.
+function M.pickDualSlot(ranked, ownedOf)
+    if type(ranked) ~= 'table' or ranked[1] == nil then return nil, nil; end
+    local first = ranked[1];
+    local fe = first.entry or first;
+    local function same(a, b)
+        if a == b then return true; end
+        if a.Id ~= nil and a.Id == b.Id then return true; end
+        return string.lower(tostring(a.Name or '?')) == string.lower(tostring(b.Name or '??'));
+    end
+    local twoOwned = (type(ownedOf) == 'function') and ((tonumber(ownedOf(fe)) or 0) >= 2) or false;
+    if twoOwned then return first, first; end
+    for i = 2, #ranked do
+        local e = ranked[i].entry or ranked[i];
+        if not same(fe, e) then return first, ranked[i]; end
+    end
+    return first, nil;
+end
+
 local function buildSet(scoreFn, job, level, acceptScore)
     if type(acceptScore) ~= 'function' then acceptScore = function() return true; end end
     local out = { slots = {}, order = {}, perSlot = {}, total = 0, job = job, level = level };
@@ -661,8 +705,11 @@ local function buildSet(scoreFn, job, level, acceptScore)
             local ranked = rankSlot(slotKey, scoreFn, job, level);
             if #ranked > 0 then
                 if DUAL_SLOTS[slotKey] then
-                    if acceptScore(ranked[1].score) then place(slotKey .. '1', ranked[1]); end
-                    if #ranked > 1 and acceptScore(ranked[2].score) then place(slotKey .. '2', ranked[2]); end
+                    -- Ownership-aware pair pick: the best in BOTH slots if two are owned, else
+                    -- best + best-distinct (never the same singly-owned item twice).
+                    local p1, p2 = M.pickDualSlot(ranked, M.ownedOf);
+                    if p1 ~= nil and acceptScore(p1.score) then place(slotKey .. '1', p1); end
+                    if p2 ~= nil and acceptScore(p2.score) then place(slotKey .. '2', p2); end
                 else
                     if acceptScore(ranked[1].score) then place(slotKey, ranked[1]); end
                 end
@@ -833,13 +880,16 @@ function M.buildBestSet(opts)
         end
     end
     local res = M.optimizePicks(pools, weights, {
-        -- One physical item can't fill both paired slots: same record, same Id,
-        -- or same NAME (legacy gear.lua duplicates). This builder reads gear.lua
-        -- with no live bag counts, so it conservatively assumes one copy of
-        -- everything -- genuinely-owned doubles are Auto-build's department.
+        -- One physical item can't fill both paired slots unless you own TWO: same record,
+        -- same Id, or same NAME (legacy gear.lua duplicates) conflicts ONLY when fewer than
+        -- two are owned (M.ownedOf -- live bag via ownedcache, 1 when unconfirmable). So an
+        -- owned-2 ring fills both slots; an owned-1 ring never doubles.
         conflict = function(a, b)
-            return a == b or (a.Id ~= nil and a.Id == b.Id)
-                or string.lower(tostring(a.Name or '?')) == string.lower(tostring(b.Name or '??'));
+            if a == b or (a.Id ~= nil and a.Id == b.Id)
+               or string.lower(tostring(a.Name or '?')) == string.lower(tostring(b.Name or '??')) then
+                return (tonumber(M.ownedOf(a)) or 0) < 2;
+            end
+            return false;
         end,
     });
     local out = { slots = {}, order = {}, perSlot = {}, total = res.total,
