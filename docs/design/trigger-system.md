@@ -55,8 +55,8 @@ at dispatch time:
 | Handler | Conditions |
 |---|---|
 | Default | `status` (Engaged/Resting/Idle), `moving`, `mode` (user-defined name) |
-| Precast / Midcast | `any`, `skill` (Enfeebling Magic, Singing, ...), `magicType` (White/Black Magic, Bard Song, ...), `element` (Fire..Dark), `songType` (Buff/Debuff — small static list of debuff families), `contains` (substring: "Madrigal" matches Blade+Sword, "Stone" every tier; legacy alias `family`), `name`, `dayWeatherBonus` (net day+weather sign for the spell's element) |
-| Ability | `any`, `abilityType` (Blood Pact: Rage/Ward, Corsair Roll, Quick Draw, Ready, Rune Enchantment), `contains`, `name` |
+| Precast / Midcast | `any`, `skill` (Enfeebling Magic, Singing, ...), `magicType` (White/Black Magic, Bard Song, ...), `element` (Fire..Dark), `songType` (Buff/Debuff — small static list of debuff families), `contains` (substring: "Madrigal" matches Blade+Sword, "Stone" every tier; legacy alias `family`), `group` (action name is in the named Groups list — single name or list-OR; ADR 0009), `name`, `dayWeatherBonus` (net day+weather sign for the spell's element) |
+| Ability | `any`, `abilityType` (Blood Pact: Rage/Ward, Corsair Roll, Quick Draw, Ready, Rune Enchantment), `contains`, `group`, `name` |
 | Item | `name`, `contains` |
 | Weaponskill | `any`, `name` |
 | Preshot / Midshot | `any` |
@@ -68,8 +68,14 @@ day/weather/moon beyond the obi rule, area, target type.
 
 Every matching Trigger applies: sort priority ascending, `EquipSet`/inline-equip each in order —
 later overlays earlier per slot. Full sets are replacements; partial sets are layers.
-Specificity defaults: Any 10 · skill/status 20 · class/element 30 · family 40 · exact name 50 ·
-**Automations 60** · Mode 100. Ties: file order.
+Specificity defaults: Any 10 · skill/status 20 · class/element 30 · family/contains 40 ·
+**group 45** · exact name 50 · **Automations 60** · Mode 100. Ties: file order. A `group`
+rule is a baseline a per-spell `name` rule overrides, and still beats `contains` / `skill`.
+
+Groups are stored in a `Groups` section of the trigger file, beside `Modes` — a named,
+untyped list of action names per Job entry (`Groups = { StrBlue = { 'Quad. Continuum', ... } }`).
+The section round-trips through the serializer like `Modes`. No GUI yet (G1 is engine-only);
+authored by hand or by a later slice.
 
 ## Modes
 

@@ -2343,6 +2343,58 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- TG. Trigger Groups (G1, ADR 0009): a named action-list matcher generalizing
+--     modes. M.groupMatch mirrors M.modeActive's one-of (list = OR) semantics;
+--     `group` is specificity tier 45 (below name 50, above contains 40); the
+--     Groups section load->serialize is byte-stable beside Modes.
+-- ---------------------------------------------------------------------------
+(function()
+    local groups = {
+        StrBlue = { 'Hysteric Barrage', 'Quad. Continuum' },
+        MndBlue = { 'Magic Hammer', 'Actinic Burst' },
+    };
+    -- membership
+    check('TG1 member of group',        dispatchM.groupMatch('StrBlue', 'Hysteric Barrage', groups), true);
+    check('TG2 non-member',             dispatchM.groupMatch('StrBlue', 'Magic Hammer', groups), false);
+    check('TG3 group name CI',          dispatchM.groupMatch('strblue', 'Quad. Continuum', groups), true);
+    check('TG4 member name CI',         dispatchM.groupMatch('StrBlue', 'hysteric barrage', groups), true);
+    check('TG5 unknown group',          dispatchM.groupMatch('NoSuchGroup', 'Hysteric Barrage', groups), false);
+    check('TG6 nil action name',        dispatchM.groupMatch('StrBlue', nil, groups), false);
+    -- list value = OR (one-of), exactly like mode lists
+    check('TG7 list: first group hits', dispatchM.groupMatch({ 'StrBlue', 'MndBlue' }, 'Hysteric Barrage', groups), true);
+    check('TG8 list: second group hits',dispatchM.groupMatch({ 'StrBlue', 'MndBlue' }, 'Actinic Burst', groups), true);
+    check('TG9 list: none match',       dispatchM.groupMatch({ 'StrBlue', 'MndBlue' }, 'Head Butt', groups), false);
+
+    -- specificity tier 45: group is a baseline a per-spell `name` overrides, and
+    -- it still beats contains / skill.
+    check('TG10 group default priority', dispatchM.defaultPriority({ group = 'StrBlue' }), 45);
+    check('TG11 name overrides group',   dispatchM.defaultPriority({ group = 'StrBlue', name = 'Quad. Continuum' }), 50);
+    check('TG12 group beats contains',   dispatchM.defaultPriority({ group = 'StrBlue' }) > dispatchM.defaultPriority({ contains = 'Continuum' }), true);
+    check('TG13 group beats skill',      dispatchM.defaultPriority({ group = 'StrBlue', skill = 'Blue Magic' }), 45);
+
+    -- Groups section load -> serialize is byte-stable alongside Modes, and does
+    -- not disturb the handler/mode sections.
+    local data = {
+        Midcast = {
+            { when = { group = 'StrBlue' }, set = 'StrBluGear' },
+            { when = { group = { 'StrBlue', 'MndBlue' } }, set = 'AnyBluGear' },
+        },
+        Modes  = { Weapon = { values = { 'Melee', 'Ranged' }, bind = '^F3' } },
+        Groups = groups,
+    };
+    local text = dispatchM.serializeTriggers(data);
+    check('TG14 group condition serialized', text:find('group = "StrBlue"', 1, true) ~= nil, true);
+    check('TG15 group list serialized',      text:find('group = { "StrBlue", "MndBlue" }', 1, true) ~= nil, true);
+    check('TG16 Groups section present',      text:find('Groups = {', 1, true) ~= nil, true);
+    check('TG17 members preserved in order',  text:find('%["StrBlue"%] = { "Hysteric Barrage", "Quad. Continuum" }') ~= nil, true);
+    check('TG18 Modes section still present', text:find('Modes = {', 1, true) ~= nil, true);
+    -- load back and re-serialize: identical bytes (round-trip stable)
+    local t2 = (loadstring or load)(text)();
+    check('TG19 reloads to a table', type(t2), 'table');
+    check('TG20 round-trip byte-stable', dispatchM.serializeTriggers(t2) == text, true);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- AP3. weaponfilter Sub -- the F2c buckets (issue #18, PRD #14)
 --
 --   Sub buckets: Shield + Grip (both carry catalog Type="Sub"; grip-vs-shield splits by
