@@ -57,8 +57,8 @@ at dispatch time:
 | Default | `status` (Engaged/Resting/Idle), `moving`, `mode` (user-defined name) |
 | Precast / Midcast | `any`, `skill` (Enfeebling Magic, Singing, ...), `magicType` (White/Black Magic, Bard Song, ...), `element` (Fire..Dark), `songType` (Buff/Debuff — small static list of debuff families), `contains` (substring: "Madrigal" matches Blade+Sword, "Stone" every tier; legacy alias `family`), `group` (action name is in the named Groups list — single name or list-OR; ADR 0009), `name`, `dayWeatherBonus` (net day+weather sign for the spell's element) |
 | Ability | `any`, `abilityType` (Blood Pact: Rage/Ward, Corsair Roll, Quick Draw, Ready, Rune Enchantment), `contains`, `group`, `name` |
-| Item | `name`, `contains` |
-| Weaponskill | `any`, `name` |
+| Item | `name`, `contains`, `group` |
+| Weaponskill | `any`, `name`, `group` |
 | Preshot / Midshot | `any` |
 
 v2 candidates (matcher is an open table; additive): MP%/TP/HP% thresholds, active buffs,
@@ -74,8 +74,13 @@ rule is a baseline a per-spell `name` rule overrides, and still beats `contains`
 
 Groups are stored in a `Groups` section of the trigger file, beside `Modes` — a named,
 untyped list of action names per Job entry (`Groups = { StrBlue = { 'Quad. Continuum', ... } }`).
-The section round-trips through the serializer like `Modes`. No GUI yet (G1 is engine-only);
-authored by hand or by a later slice.
+The section round-trips through the serializer like `Modes`. G1 is the engine (matcher +
+storage); **G2 (issue #25) adds the GUI** — a top-level **Groups tab** (create / rename / delete
+groups, add / remove typed members; `gear/groupsmodel.lua` is the pure CRUD core) and a `group`
+condition in the trigger editor whose value is a dropdown of the current job's groups. A rule
+pointing at a missing / renamed group is surfaced as `[missing group]` (parity with a missing
+set; hard rule 12), never a silent no-op. Free-name member typing for now; the searchable
+spell/ability browse-list picker is a later slice (issue #12).
 
 ## Modes
 
@@ -117,6 +122,15 @@ Browse lists (all spells/abilities, search, "usable now" incl. subjob) support *
 assign one set to N marked entries** in one action. Mode toggle buttons live in the Status &
 Modes section. Automations section holds the option checkboxes + the explain view.
 The browse lists degrade gracefully until the picker database exists (typed-name rules only).
+
+## GUI: Groups tab (G2, issue #25)
+
+Fifth tab (uihost registry, after Triggers). Edits the same trigger file's `Groups` section:
+create / rename / delete groups and add / remove members by **typing** action names (free-name).
+Modeled on the Modes builder — a per-group box (members listed with remove buttons, a typed-member
+input, rename / delete) and a `+ Group...` create popup. The pure CRUD + name/member validation
+core is `gear/groupsmodel.lua` (Ashita/imgui-free, headless-tested TGM*); the Groups tab and the
+Triggers tab share one `trig.data` / one Commit, so they never stomp each other's file writes.
 
 ## Picker database (GUI-only concern)
 

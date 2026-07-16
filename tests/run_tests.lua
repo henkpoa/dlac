@@ -2395,6 +2395,86 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- TGM. Trigger Groups model (G2, issue #25, ADR 0009): the pure GUI-side CRUD +
+--      name / member validation the Groups tab drives (groupsmodel.lua). Group
+--      names and member names compare case-insensitively (engine parity), an
+--      empty member list is legal, and fromRaw sanitizes the file's Groups section
+--      into the model so a Commit round-trips it (the SetOptions/Modes wipe lesson).
+-- ---------------------------------------------------------------------------
+(function()
+    local gmod = dofile('gear/groupsmodel.lua');
+    check('TGM0 module loads', type(gmod), 'table');
+
+    -- fromRaw: sanitize + carry-through (name -> string-member array).
+    local raw = { Groups = {
+        StrBlue = { 'Hysteric Barrage', 'Quad. Continuum' },
+        Empty   = {},                                  -- a group still being built (kept)
+        Junk    = 'not a table',                       -- dropped
+        [5]     = { 'x' },                             -- non-string name dropped
+        Mixed   = { 'Ok', '', 42, 'Two' },             -- blanks / non-strings dropped
+    } };
+    local g = gmod.fromRaw(raw);
+    check('TGM1 fromRaw StrBlue members',   #g.StrBlue, 2);
+    check('TGM2 fromRaw keeps empty group', type(g.Empty), 'table');
+    check('TGM3 fromRaw empty is empty',    #g.Empty, 0);
+    check('TGM4 fromRaw drops non-table',   g.Junk, nil);
+    check('TGM5 fromRaw drops bad members', #g.Mixed, 2);       -- 'Ok', 'Two'
+    check('TGM6 fromRaw member order kept', g.StrBlue[1], 'Hysteric Barrage');
+    check('TGM7 fromRaw lowercase key ok',  gmod.fromRaw({ groups = { A = { 'z' } } }).A ~= nil, true);
+    check('TGM8 fromRaw no section -> {}',  next(gmod.fromRaw({})), nil);
+    check('TGM9 fromRaw nil-safe',          type(gmod.fromRaw(nil)), 'table');
+
+    -- names: case-insensitively sorted.
+    local order = gmod.names({ beta = {}, Alpha = {}, gamma = {} });
+    check('TGM10 names sorted CI', table.concat(order, ','), 'Alpha,beta,gamma');
+
+    -- findName / hasGroup: case-insensitive, returns the STORED spelling.
+    local gg = { StrBlue = { 'a' } };
+    check('TGM11 findName CI',   gmod.findName(gg, 'strBLUE'), 'StrBlue');
+    check('TGM12 findName miss', gmod.findName(gg, 'nope'), nil);
+    check('TGM13 hasGroup CI',   gmod.hasGroup(gg, 'STRBLUE'), true);
+
+    -- validateName: blank / duplicate rejected; rename may keep its own name.
+    check('TGM14 validate blank',      (gmod.validateName({}, '   ')), false);
+    check('TGM15 validate dup CI',     (gmod.validateName({ Cures = {} }, 'cures')), false);
+    check('TGM16 validate ok',         (gmod.validateName({ Cures = {} }, 'Enfeebles')), true);
+    check('TGM17 validate rename self', (gmod.validateName({ Cures = {} }, 'CURES', 'Cures')), true);
+
+    -- add: creates an empty group; rejects a duplicate.
+    local c = {};
+    check('TGM18 add ok',        (gmod.add(c, ' STR Spells ')), true);
+    check('TGM19 add trims key', c['STR Spells'] ~= nil, true);
+    check('TGM20 add empty body', #c['STR Spells'], 0);
+    check('TGM21 add dup fails',  (gmod.add(c, 'str spells')), false);
+
+    -- addMember: trims, rejects blank + case-insensitive duplicate.
+    check('TGM22 addMember ok',       (gmod.addMember(c, 'STR Spells', ' Head Butt ')), true);
+    check('TGM23 addMember trimmed',  c['STR Spells'][1], 'Head Butt');
+    check('TGM24 addMember dup CI',   (gmod.addMember(c, 'STR Spells', 'head butt')), false);
+    check('TGM25 addMember blank',    (gmod.addMember(c, 'STR Spells', '  ')), false);
+    check('TGM26 addMember no group', (gmod.addMember(c, 'Nope', 'x')), false);
+
+    -- removeMember: case-insensitive; reports a miss.
+    check('TGM27 removeMember CI',    (gmod.removeMember(c, 'STR Spells', 'HEAD BUTT')), true);
+    check('TGM28 removeMember gone',  #c['STR Spells'], 0);
+    check('TGM29 removeMember miss',  (gmod.removeMember(c, 'STR Spells', 'x')), false);
+
+    -- rename: preserves members + order; rejects a collision.
+    local r2 = { Old = { 'm1', 'm2' }, Other = {} };
+    check('TGM30 rename ok',        (gmod.rename(r2, 'old', 'New')), true);
+    check('TGM31 rename moved',     r2.Old, nil);
+    check('TGM32 rename members',   #r2.New, 2);
+    check('TGM33 rename order kept', r2.New[1], 'm1');
+    check('TGM34 rename collision', (gmod.rename(r2, 'New', 'other')), false);
+    check('TGM35 rename missing',   (gmod.rename(r2, 'ghost', 'x')), false);
+
+    -- remove: deletes; reports a miss (a dangling reference is a Triggers-tab concern).
+    check('TGM36 remove CI',   (gmod.remove(r2, 'new')), true);
+    check('TGM37 remove gone', r2.New, nil);
+    check('TGM38 remove miss', (gmod.remove(r2, 'nope')), false);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- AP3. weaponfilter Sub -- the F2c buckets (issue #18, PRD #14)
 --
 --   Sub buckets: Shield + Grip (both carry catalog Type="Sub"; grip-vs-shield splits by

@@ -81,9 +81,13 @@ local host = require('dlac\\ui\\uihost');
 check('S3 equipped module registered', host.get('equipped') ~= nil, true);
 check('S4 sets module registered',     host.get('sets') ~= nil, true);
 check('S5 triggers module registered', host.get('triggers') ~= nil, true);
+-- Groups is a SECTION inside the Triggers tab (under Modes), not a standalone tab:
+-- no 'groups' host module, but triggersui exposes the section renderer.
+check('S5b groups is a Triggers section, not a tab',
+    host.get('groups') == nil and type(require('dlac\\ui\\triggersui').renderGroups) == 'function', true);
 
 local labels = {};
-for _, name in ipairs({ 'equipped', 'sets', 'triggers' }) do
+for _, name in ipairs({ 'equipped', 'sets', 'triggers', 'groups' }) do
     local m = host.get(name);
     if m ~= nil and type(m.tabs) == 'table' then
         for _, t in ipairs(m.tabs) do labels[#labels + 1] = t.label; end
@@ -98,7 +102,7 @@ check('S10 tab order 4', labels[4], 'Triggers');
 -- every registered tab render must be callable
 for i, l in ipairs(labels) do
     local found = false;
-    for _, name in ipairs({ 'equipped', 'sets', 'triggers' }) do
+    for _, name in ipairs({ 'equipped', 'sets', 'triggers', 'groups' }) do
         local m = host.get(name);
         if m ~= nil then
             for _, t in ipairs(m.tabs or {}) do

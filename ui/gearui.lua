@@ -3180,6 +3180,8 @@ host.register({ name = 'triggers', tabs = {
         else imgui.TextColored(COL.ERR, 'triggersui module unavailable.'); end
     end },
 } });
+-- Groups is NOT a standalone tab -- it's a section inside the Triggers tab (under
+-- Modes), rendered by triggersui.renderGroups against the same trigger model.
 
 local function drawWindow()
     if not M.visible or not has.imgui then return; end

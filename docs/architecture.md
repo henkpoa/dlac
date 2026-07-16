@@ -30,7 +30,8 @@ ui/        imgui modules: gearui, triggersui, equippedui, profilesmenu, setupui,
 data/      generated / static tables: catalog, crafts, spells, abilities, statdefs,
            levelscaling, levelstats
 gear/      the gear pipeline: gearoptim, gearimport, gearexport, gearcheck, gearfmt,
-           setmanager, setimport, profilesets, ownedcache, syncflags
+           setmanager, setimport, profilesets, ownedcache, syncflags, weaponfilter,
+           groupsmodel
 feature/   self-contained features: lockstyle, macrobook, useitem, craftwatch, augments,
            pinwatch
 lib/       generic helpers: cmdqueue
@@ -192,6 +193,19 @@ GUI editor for the dispatch engine's data: rules per handler, mode toggle button
 the Automations manifest builder. Split out of gearui for the 200-local cap. Commit
 rewrites the trigger file via `dispatch.serializeTriggers` and pings the engine to
 hot-reload. Writes `<char>\dlac\triggers\<JOB>.lua` and `<char>\dlac\autogear.lua`.
+Also owns the **Groups tab** (`M.renderGroups`, issue #25 / ADR 0009) — a separate
+top-level uihost tab (registered by gearui after Triggers) that edits the *same* file's
+`Groups` section, so both tabs share one `trig.data` / one Commit. The pure CRUD +
+name/member validation is `gear/groupsmodel.lua`; the `group` trigger condition's value is a
+dropdown of the job's groups, and a rule pointing at a missing group is surfaced (parity
+with a missing set).
+
+### gear/groupsmodel.lua — Trigger-Groups model core (pure)
+The Ashita/imgui/file-IO-free CRUD + name/member validation the Groups tab drives (issue
+#25, ADR 0009): `fromRaw` (sanitize the file's `Groups` section into the model), `names`,
+`findName`/`hasGroup`, `validateName`, `add`/`rename`/`remove`, `addMember`/`removeMember`.
+Group and member names compare case-insensitively (engine `M.groupMatch` parity); an empty
+member list is legal. Headless-tested (TGM*). Never seeded into LAC.
 
 ### gear/profilesets.lua — profile `sets` reader
 Reads the loaded profile's `sets` table for the Sets tab. In LAC state reads
