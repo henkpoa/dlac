@@ -184,4 +184,10 @@ function M.apply(existing, groups)
     return { created = created, updated = updated, members = members };
 end
 
+-- Exposed for the auto-import scanner (groupscan.lua): the flat-string-array heuristic and the
+-- sandboxed text->table evaluator, so the "is this a group?" rule and the safe eval live in
+-- exactly one place instead of being re-implemented by the scanner.
+M.membersOf = toMembers;
+M.evalTable = evalTable;
+
 return M;

@@ -1976,3 +1976,39 @@ there is NO second client mechanism: the only cross-slot Range/Ammo logic is `re
 - `pickRangeAmmo` unchanged (the optimizer already avoids the pair). `dispatch.M.VERSION` -> 52.
 - Players **re-commit / `/dl fix`** once so the gap trinkets pick up the completed RSlot.
 - Tests TR0-TR10; 780 + 123 green.
+
+## Session "Groups auto-import: scan my Lua file" (2026-07-16, Item 1, branch feature/groups-autoimport)
+
+The automatic counterpart to G4's paste-based "Import Lua Table(s)": a player who already keeps
+their spells grouped in their LuaAshitacast file shouldn't have to copy-paste. A new
+**"Auto-import from my Lua file"** control in the Groups section scans the character's job file and
+lists every group-shaped table as a tick-able candidate.
+
+### What landed
+
+- **`gear/groupscan.lua` — the pure scanner.** `scan(fileText) -> (candidates, notes)`. The
+  player's group tables are usually `local`s (invisible to a sandbox-run env), so this is a TEXT
+  scan: a `%b{}` walk pulls each top-level `[local] NAME = T?{...}` block (never descending, so a
+  gear set's inner `['Idle'] = {...}` is not a top-level hit), evaluates its body in `groupimport`'s
+  hardened sandbox, and classifies it — a flat string array → one candidate; a container of flat
+  arrays → one candidate per inner key (the `BlueSpells` case); a gear set / settings block →
+  skipped with a note. Comments are stripped first so a stray brace can't unbalance the walk;
+  candidates are deduped case-insensitively and sorted. Tests **GS0–GS9**.
+- **`groupimport` grew two exports** (`membersOf`, `evalTable`) so the flat-list heuristic and the
+  safe eval live in ONE place instead of being re-implemented by the scanner.
+- **Reads both files.** dlac's profile migration shims the live `<JOB>.lua`, so the real tables
+  survive in `backups\pre-profiles\<JOB>.lua` — the scan reads the live file AND the backup and
+  concatenates them.
+- **The UI (`triggersui.renderGroupAutoImport`).** A `Scan my Lua file` button → a tick-list of
+  candidates (name + member count), pre-ticked EXCEPT obvious config tables (`*Variant*`,
+  `*Settings*`, `*Table`) so `IdleVariantTable`-style false positives don't import unless chosen,
+  plus a dim "skipped N" note for the gear-set/settings blocks. Import reuses the SAME `classify` /
+  overwrite-confirm / `apply` (and `applyImportPlan`) as the paste flow.
+
+### Where it lives / what did NOT change
+
+`renderGroupAutoImport` is a `local` in `ui/triggersui.lua` (addon-state; smoke_ui guards the load).
+No seeded-file behaviour changed — `groupscan` is never seeded and the `Groups` storage format is
+G2's, read by the engine unchanged — so **no `dispatch.M.VERSION` bump**. New player-facing strings
+(the control label, `Scan my Lua file`, `Found N tables`, `Import N selected`, the skip notes) are
+**proposed for maintainer sign-off** in the PR, not finalized.
