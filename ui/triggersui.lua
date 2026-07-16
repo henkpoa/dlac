@@ -21,10 +21,16 @@ local _iok, imgui = pcall(require, 'imgui');
 local _dpok, dsp  = pcall(require, "dlac\\dispatch");
 local _lsok, lscale = pcall(require, "dlac\\data\\levelstats");
 local _gmok, gm   = pcall(require, "dlac\\gear\\groupsmodel");
+local _giok, gimp = pcall(require, "dlac\\gear\\groupimport");
 local hasImgui    = _iok and imgui ~= nil;
 local hasDispatch = _dpok and type(dsp) == 'table';
 local hasLScale   = _lsok and type(lscale) == 'table';
 local hasGroups   = _gmok and type(gm) == 'table';
+local hasGroupImport = _giok and type(gimp) == 'table';
+-- InputTextMultiline is the right widget for a paste box, but it is not used anywhere else in
+-- this install -- probe it (hard rule 2: presence proves nothing, but absence is certain), and
+-- degrade to a single-line box with a visible note rather than silently disabling the feature.
+local hasMultiline = hasImgui and type(imgui.InputTextMultiline) == 'function';
 
 local function mainLevel()
     local lv = nil;
@@ -150,6 +156,10 @@ local modeUI = {
 local groupUI = {
     newName = { '' }, memberInput = {}, renaming = nil, renameBuf = { '' },
     status = '', statusErr = false, _openAdd = false, _openRename = false,
+    -- Import Lua Table(s) (G4, issue #30): a collapsible paste box + a pending plan awaiting the
+    -- overwrite confirmation. `plan` holds the parsed groups + the created/overwritten/skipped
+    -- split between the Import click and the (Overwrite &) Import Groups click.
+    importText = { '' }, plan = nil,
 };
 
 -- Profile-aware, and it MUST agree with the engine's triggersPath() rule
@@ -2229,6 +2239,93 @@ local function renderGroupBox(nm, groups, colX)
     imgui.EndChild();
 end
 
+-- Write a parsed import plan into the live Groups map and report a summary. Marks the model dirty
+-- (Commit still writes the file); leaves the plan on screen as the "Imported" receipt.
+local function applyImportPlan(plan, groups)
+    local sum = gimp.apply(groups, plan.groups);
+    trig.dirty = true;
+    plan.pending = false;
+    local parts = {};
+    if sum.created > 0 then parts[#parts + 1] = sum.created .. ' created'; end
+    if sum.updated > 0 then parts[#parts + 1] = sum.updated .. ' overwritten'; end
+    parts[#parts + 1] = sum.members .. ' member' .. ((sum.members == 1) and '' or 's');
+    if #plan.errors > 0 then parts[#parts + 1] = #plan.errors .. ' skipped'; end
+    groupSetStatus('Imported: ' .. table.concat(parts, ', ') .. ' -- Commit to save.', false);
+end
+
+-- The "Import Lua Table(s)" control (G4, issue #30): a collapsible paste box that bulk-creates one
+-- group per top-level key of a pasted `Name = T{...}` table. Parsing is the sandboxed pure
+-- transform (groupimport.parse); collisions with an existing group require an explicit confirm
+-- before overwriting (parity with "Copy from static"); a pre-import summary shows created /
+-- overwritten / skipped. `groups` is the live trig.data.Groups map.
+local function renderGroupImport(groups)
+    if not hasGroupImport then return; end
+    imgui.Spacing();
+    if not imgui.CollapsingHeader('Import Lua Table(s)###grpimport') then return; end
+    imgui.TextColored(COL_DIM, 'Already keep your spells grouped in a Lua table? Paste it -- one group per name.');
+    imgui.TextColored(COL_DIM, "e.g.   STR_DEX = T{'Foot Kick', 'Wild Oats'},   VIT = {'Cannonball', 'Tail Slap'},");
+    imgui.TextColored(COL_DIM, 'The  T  is optional; plain  {...}  works too. A nested / non-list value skips just that name.');
+
+    if hasMultiline then
+        imgui.InputTextMultiline('##grpimptext', groupUI.importText, 8192, { -1, 120 });
+    else
+        imgui.TextColored(COL_SCORE, '(this build has no multiline box -- keep it on ONE line; names are comma-separated)');
+        imgui.PushItemWidth(-1);
+        imgui.InputText('##grpimptext', groupUI.importText, 8192);
+        imgui.PopItemWidth();
+    end
+
+    if imgui.Button('Import##grpimpgo', { 0, 24 }) then
+        local parsed, errs = gimp.parse(groupUI.importText[1]);
+        if parsed == nil then
+            groupUI.plan = nil;
+            groupSetStatus((errs and errs[1]) or 'Could not parse the pasted text.', true);
+        else
+            local created, overwritten = gimp.classify(parsed, groups);
+            groupUI.plan = { groups = parsed, errors = errs or {},
+                             created = created, overwritten = overwritten, pending = true };
+            -- No collisions -> import immediately (confirmation is only for overwrites).
+            if #overwritten == 0 then applyImportPlan(groupUI.plan, groups); end
+        end
+    end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Parse the pasted table and preview what would be created / overwritten.'); end
+    imgui.SameLine(0, 6);
+    if imgui.Button('Clear##grpimpclr', { 0, 24 }) then
+        groupUI.importText[1] = ''; groupUI.plan = nil; groupSetStatus('', false);
+    end
+
+    local plan = groupUI.plan;
+    if plan ~= nil then
+        imgui.Spacing();
+        imgui.TextColored(COL_HEADER, plan.pending and 'Preview' or 'Imported');
+        if #plan.created > 0 then
+            imgui.TextColored(COL_SCORE, string.format('  create %d: %s', #plan.created, esc(table.concat(plan.created, ', '))));
+        end
+        if #plan.overwritten > 0 then
+            imgui.TextColored(COL_ERR, string.format('  overwrite %d existing: %s', #plan.overwritten, esc(table.concat(plan.overwritten, ', '))));
+        end
+        if #plan.errors > 0 then
+            imgui.TextColored(COL_DIM, string.format('  skip %d:', #plan.errors));
+            for _, e in ipairs(plan.errors) do imgui.TextColored(COL_DIM, '     ' .. esc(e)); end
+        end
+        if #plan.created == 0 and #plan.overwritten == 0 then
+            imgui.TextColored(COL_DIM, '  (nothing to import)');
+        end
+        if plan.pending then
+            if ImGuiCol_Button ~= nil then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
+            if imgui.Button(string.format('Overwrite %d & import###grpimpconfirm', #plan.overwritten), { 0, 24 }) then
+                applyImportPlan(plan, groups);
+            end
+            if ImGuiCol_Button ~= nil then imgui.PopStyleColor(1); end
+            if imgui.IsItemHovered() then imgui.SetTooltip('Replaces the named existing group(s) with the pasted members. Commit still saves to disk.'); end
+            imgui.SameLine(0, 6);
+            if imgui.Button('Cancel##grpimpcancel', { 0, 24 }) then
+                groupUI.plan = nil; groupSetStatus('Import cancelled -- nothing changed.', false);
+            end
+        end
+    end
+end
+
 function M.renderGroups(job, level)
     if not hasImgui then return; end
     if deps == nil then
@@ -2308,6 +2405,9 @@ function M.renderGroups(job, level)
     if imgui.IsItemHovered() then
         imgui.SetTooltip('Create a named group, then add member action names by typing them.');
     end
+
+    -- Bulk fast-path: paste a whole Lua table of groups (issue #30).
+    renderGroupImport(groups);
 
     if groupUI._openAdd then imgui.OpenPopup('##dlac_groupadd'); groupUI._openAdd = false; end
     renderGroupAddPopup();

@@ -207,6 +207,18 @@ The Ashita/imgui/file-IO-free CRUD + name/member validation the Groups tab drive
 Group and member names compare case-insensitively (engine `M.groupMatch` parity); an empty
 member list is legal. Headless-tested (TGM*). Never seeded into LAC.
 
+### gear/groupimport.lua — the "Import Lua Table(s)" transform (pure)
+The addon-state, Ashita/ImGui/file-IO-free core of the Groups section's bulk import (issue
+#30, G4; ADR 0009): `parse(text)` sandbox-evaluates pasted `Name = T{...}` / `Name = {...}`
+assignments (bare lines OR a whole `{ ... }` table; `T` is identity; trailing commas
+tolerated) into `(groups name→members, errors[])` — flat-only, so a nested / non-string /
+named-field value skips THAT key with a reported reason while the rest import. The sandbox is
+the hardened `profilesets.sandboxSets` pattern (env = `T` and nothing else, `'t'`-mode load),
+so malformed or hostile input yields an error, never a crash or code execution. `classify`
+splits created vs collide (case-insensitive) and `apply` writes into the live `Groups` map,
+overwriting a collision under its existing stored spelling. triggersui draws the paste box +
+the overwrite confirmation + the summary. Headless-tested (TGI*). Never seeded into LAC.
+
 ### gear/profilesets.lua — profile `sets` reader
 Reads the loaded profile's `sets` table for the Sets tab. In LAC state reads
 `gProfile.Sets`; in addon state parses the current `<JOB>.lua` in a permissive sandbox.

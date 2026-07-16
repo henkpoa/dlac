@@ -85,6 +85,16 @@ check('S5 triggers module registered', host.get('triggers') ~= nil, true);
 -- no 'groups' host module, but triggersui exposes the section renderer.
 check('S5b groups is a Triggers section, not a tab',
     host.get('groups') == nil and type(require('dlac\\ui\\triggersui').renderGroups) == 'function', true);
+-- G4 (issue #30): the Import Lua Table(s) transform resolves under the addon require shim (the
+-- same path triggersui uses) and parses a pasted table headlessly.
+do
+    local giok, gi = pcall(require, 'dlac\\gear\\groupimport');
+    check('S5c groupimport resolves via require shim', giok and type(gi.parse), 'function');
+    if giok then
+        local g = gi.parse("STR_VIT = T{'Quad. Continuum', }");
+        check('S5d groupimport parses a pasted table', type(g) == 'table' and g.STR_VIT and g.STR_VIT[1], 'Quad. Continuum');
+    end
+end
 
 local labels = {};
 for _, name in ipairs({ 'equipped', 'sets', 'triggers', 'groups' }) do

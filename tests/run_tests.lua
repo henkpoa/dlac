@@ -2475,6 +2475,95 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- TGI. Group import model (G4, issue #30, ADR 0009): the pure "Import Lua Table(s)"
+--      transform (groupimport.lua). Parse pasted `Name = T{...}` assignments into a
+--      name->members map + a skip-reason list; T is identity; flat-only (a nested /
+--      non-string value skips THAT key while the rest import); malformed / hostile
+--      input yields an error, never a crash or code execution (sandboxed). classify
+--      splits created vs collide (CI), apply overwrites under the stored spelling.
+-- ---------------------------------------------------------------------------
+(function()
+    local gimp = dofile('gear/groupimport.lua');   -- forward slash: also loads on Linux CI
+    check('TGI0 module loads',       type(gimp),        'table');
+    check('TGI0b parse exported',    type(gimp.parse),  'function');
+    check('TGI0c classify exported', type(gimp.classify), 'function');
+    check('TGI0d apply exported',    type(gimp.apply),  'function');
+
+    -- 1. The issue's own example: bare lines, T{...} and plain {...} mixed, a trailing comma,
+    --    a single-element group. One Group per top-level key; members = the key's string array.
+    local paste = [[
+STR_DEX = T{'Foot Kick', 'Wild Oats', 'Queasyshroom', 'Battle Dance', 'Feather Storm' },
+STR_VIT = T{'Quad. Continuum', },
+VIT     = {'Cannonball', 'Tail Slap', 'Body Slam', 'Grand Slam' },
+Debuff  = T{'Filamented Hold', 'Cimicine Discharge', 'Demoralizing Roar' },
+]];
+    local g, errs = gimp.parse(paste);
+    check('TGI1 four groups created',    (function() local n=0; for _ in pairs(g) do n=n+1 end return n; end)(), 4);
+    check('TGI2 no skip errors',         #errs, 0);
+    check('TGI3 T{...} members',         #g.STR_DEX, 5);
+    check('TGI4 plain {...} members',    #g.VIT, 4);
+    check('TGI5 member order kept',      g.STR_DEX[1], 'Foot Kick');
+    -- The acceptance criterion, exactly: STR_VIT = T{'Quad. Continuum', } -> ["Quad. Continuum"].
+    check('TGI6 single-elem + trailing comma len', #g.STR_VIT, 1);
+    check('TGI7 single-elem value exact', g.STR_VIT[1], 'Quad. Continuum');
+
+    -- 2. The whole `{ Key = {...}, ... }` table form parses the same as bare lines.
+    local whole = gimp.parse("{ A = T{'x'}, B = {'y', 'z'} }");
+    check('TGI8 whole-table A',  #whole.A, 1);
+    check('TGI9 whole-table B',  #whole.B, 2);
+
+    -- 3. Flat-only: a nested table, a named-field value, and a non-string element each skip THAT
+    --    key with a reported reason -- the remaining keys still import (no all-or-nothing).
+    local mixed, merr = gimp.parse(
+        "Good = {'a','b'}, Nested = {'a', {'deep'}}, Nums = {'a', 42}, Mapish = {foo='bar'}");
+    check('TGI10 good key imported',   #mixed.Good, 2);
+    check('TGI11 nested key skipped',  mixed.Nested, nil);
+    check('TGI12 nonstring key skipped', mixed.Nums, nil);
+    check('TGI13 named-field skipped', mixed.Mapish, nil);
+    check('TGI14 three skip reasons',  #merr, 3);
+    check('TGI15 reason names the key', (merr[1]:find('Mapish', 1, true) ~= nil), true);  -- sorted -> Mapish first
+
+    -- 4. Malformed input -> an error message, groups nil, NOT a crash.
+    local bad, berr = gimp.parse("STR = T{ unterminated ");
+    check('TGI16 malformed -> nil groups', bad, nil);
+    check('TGI17 malformed -> one error',  #berr, 1);
+    check('TGI18 malformed error worded',  (berr[1]:find('parse', 1, true) ~= nil), true);
+
+    -- 5. Sandbox: a hostile paste referencing a blocked global (os) errors at eval -- os is nil in
+    --    the env, so it is never called. groups nil, reported, nothing executed.
+    local hostile, herr = gimp.parse("X = os.execute('echo pwned')");
+    check('TGI19 sandbox blocks os',       hostile, nil);
+    check('TGI20 sandbox reports, no run', (herr[1]:find('nil value', 1, true) ~= nil), true);
+
+    -- 6. Empty / blank input -> a single guiding message, not a crash.
+    check('TGI21 blank input -> nil',   gimp.parse('   '), nil);
+    check('TGI22 nil input -> nil',     gimp.parse(nil), nil);
+
+    -- 7. An empty group value is legal (a group you are still filling).
+    local em = gimp.parse("Filling = {}, Full = {'a'}");
+    check('TGI23 empty group kept',  type(em.Filling), 'table');
+    check('TGI24 empty group empty', #em.Filling, 0);
+
+    -- 8. classify: created vs collision (case-insensitive), each sorted.
+    local existing = { STR_DEX = { 'old' }, Keep = { 'k' } };
+    local imp = gimp.parse("str_dex = {'new1','new2'}, Fresh = {'z'}");
+    local created, overwritten = gimp.classify(imp, existing);
+    check('TGI25 created list',     table.concat(created, ','),     'Fresh');
+    check('TGI26 overwritten CI',   table.concat(overwritten, ','), 'str_dex');
+
+    -- 9. apply: overwrite replaces members under the EXISTING stored spelling; a new name is
+    --    created; the summary counts created / updated / total members.
+    local sum = gimp.apply(existing, imp);
+    check('TGI27 apply created count', sum.created, 1);
+    check('TGI28 apply updated count', sum.updated, 1);
+    check('TGI29 apply member total',  sum.members, 3);
+    check('TGI30 overwrite keeps stored key', existing.str_dex, nil);       -- not re-keyed
+    check('TGI31 overwrite replaced members', table.concat(existing.STR_DEX, ','), 'new1,new2');
+    check('TGI32 new group created',   existing.Fresh ~= nil, true);
+    check('TGI33 untouched group kept', existing.Keep[1], 'k');
+end)();
+
+-- ---------------------------------------------------------------------------
 -- AP3. weaponfilter Sub -- the F2c buckets (issue #18, PRD #14)
 --
 --   Sub buckets: Shield + Grip (both carry catalog Type="Sub"; grip-vs-shield splits by
