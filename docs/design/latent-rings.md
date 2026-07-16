@@ -1,135 +1,124 @@
-# Latent / conditional-effect rings — research & proposal (Item 3)
+# Conditional item effects — latents & set bonuses (research → plan)
 
-> Status: **RESEARCH** — no code written yet. This is the "what would it take?" the maintainer
-> asked for. Decisions at the end are his to make before any build.
+> Status: **RESEARCH, corrected.** An earlier version of this doc concluded these effects were
+> "not scrapeable, must be hand-authored." **That was wrong** — the effects are *data* in the
+> public CatsAndBoats/catseyexi repo, so they're **generatable**, the same way the catalog and
+> level-scaling already are. This is the corrected plan.
 
-## The ask
+## The ask (recap)
 
-Latent-effect rings — **Lava's Ring**, **Kusha's Ring**, and the elemental weather-ring family —
-grant extra stats only under a condition (a day/weather element, an HP threshold). The maintainer
-wants those conditional stats represented so the **stat page**, the **weights optimizer**, and the
-**hover tooltip** account for them, at least when the latent is active.
+Items whose effect only applies **under a condition** (weather / day / HP%) or **when a set is
+worn** (Lava's + Kusha's, Salvage sets) should feed the **stat page, weights, and hover** — right
+now dlac shows only their unconditional stats.
 
-## Finding 1 — latent stats are entirely unrepresented today
+## What we actually learned
 
-Every catalog item carries a single **flat** `Stats = { key = number }` map. There is no schema
-slot, no data, and no consumer path for "stats that apply only under a condition." A grep of
-`data/catalog.lua` for `Latent|Conditional|Condition|Active|When|Situational|Proc` returns
-**zero** matches, and `data/statdefs.lua:632-636` says so outright — proc/latent machinery is
-"UNMAPPED by choice."
+**It's two related mechanics, and each has ONE machine-readable home in the server repo:**
 
-What the rings carry now (all base-only; the conditional half is **missing entirely**):
+1. **Set bonuses → `scripts/globals/gear_sets.lua`** — one structured Lua table. Each set = a
+   piece-list + per-piece-count mod tiers, applied when `wornCount >= minEquipped`.
+2. **Conditional latents (weather/day/HP/TP/…) → `sql/item_latents.sql`** — SQL rows
+   `(itemId, modId, modValue, latentId, latentParam)`. **dlac already downloads this file**
+   (`tools/gen_levelscaling.py`) — it just only extracts the *level* latents (50/51/52) today.
 
-| Ring | Id | Stats present today | Latent modeled? |
+This LSB fork has **no `scripts/globals/items/` directory at all** — nothing is buried in opaque
+per-item scripts. It is *all* data files, so a generator can read it directly.
+
+### Lava's / Kusha's, specifically — it's a SET, not a latent (field-confirmed)
+
+Entry `[70]` of `gear_sets.lua`: a **2-piece set** of exactly Lava's Ring (15850) + Kusha's Ring
+(15851). Both worn → **Attack +6, Accuracy +12, Defense +6** (the DEF is undocumented even in the
+server's own comment). Plus each ring's static per-element Magic Evasion (already in the catalog).
+dlac shows the MEVA but **misses the set bonus** — the maintainer confirmed it live (`/checkparam`:
+de-equip one ring → lose ATT *and* ACC). So the "missing latent" was really a **missing set bonus**.
+
+### The condition vocabulary is handed to us
+
+`scripts/enum/latent.lua` defines ~65 conditions with their numeric ids — `WEATHER_ELEMENT`,
+`FIRESDAY`…`DARKSDAY`, `HP_UNDER_PERCENT`, `TP_OVER`, `DURING_WS`, `EQUIPPED_IN_SLOT`,
+`WEAPON_DRAWN`, … — which is exactly the `when` vocabulary our evaluator must speak. (Note: there is
+**no** `ITEMSET` latent condition — set bonuses are their own system, `gear_sets.lua`, not latents.)
+
+## The data model
+
+A conditional effect is **`{ effect = <mod deltas>, active = <predicate over game state> }`**, and a
+set bonus is the same shape with two wrinkles:
+
+- **`active`** for a set = "`N` pieces of set `S` are worn, `N >= minEquipped`."
+- **the effect can be TIERED by piece count.** Two real shapes seen in `gear_sets.lua`:
+  - **Flat** (Lava/Kusha `[70]`): one value, applied at `>= minEquipped`.
+  - **Tiered** (Iron Ram Haubert `[71]`): `{ FIRE_MEVA, 5, 10, 15, 30 }` = values at 2 / 3 / 4 / 5
+    pieces (`modData[wornCount - minEquipped + 2]`).
+
+Unified: an effect's **"level"** is a computed number (piece count for sets; `0/1` for a boolean
+condition), and a **tier table** maps that level → mod deltas. One evaluator covers both.
+
+## The build — three pieces
+
+1. **Generator (`tools/`, maintainer's scrape domain — ships its output with the addon like the
+   catalog):**
+   - Parse `gear_sets.lua` → `data/gearsets.lua`: `{ setId, pieceIds[], minEquipped, maxEquipped,
+     modTiers[] }`, resolving `xi.item.*` / `xi.mod.*` via the enums.
+   - Extend the latent generator to pull **all** of `item_latents.sql` (not just level), mapping
+     `latentId` via `scripts/enum/latent.lua` → `data/latentstats.lua`: `{ itemId, mod, value,
+     condition, param }`.
+2. **Runtime evaluator (addon):**
+   - **Sets:** count worn pieces of each set (from the worn/planned set), apply the matching tier.
+   - **Latents:** map each condition id → a live check against `gData` (weather/day/HP%/TP/
+     worn-slot/…), returning the active mod deltas.
+3. **Fold at the one resolver** (`effStats` / `levelstats.effective`): the **stat page and hover**
+   light up immediately; the **weights optimizer is explicitly OUT OF SCOPE for v1** — a set bonus
+   is a whole-combination property, not a per-slot stat, so per-slot scoring can't credit it (the
+   same cross-slot problem as ring-pairing). We'll note "optimizer ignores set bonuses" honestly.
+
+## Scope (from the generator spike)
+
+A parser was run over the real repo data (`gear_sets.lua` + `item_latents.sql`, resolving the
+enums). **It works end-to-end** — it already emits both files' data. What's actually there:
+
+**Set bonuses — `gear_sets.lua`: 126 sets** (39 flat, 87 piece-tiered). Both shapes parse cleanly:
+- `[70]` Lava/Kusha → `pieces = {15850, 15851}, min = 2, {ATT +6, ACC +12, DEF +6}` (your rings, exactly).
+- `[71]` Iron Ram (5-piece) → each element's MEVA `{5, 10, 15, 30}` at 2/3/4/5 pieces (the tiered shape).
+
+Generated entry shape (proof): `[70] = { pieces = {15850,15851}, min = 2, tiers = { [2] = {[23]=6,[25]=12,[1]=6} } }`.
+
+**Conditional latents — `item_latents.sql`: 1,963 rows across 854 distinct items.** The conditions
+that actually appear (top by row count):
+
+| condition | rows | condition | rows |
 |---|---|---|---|
-| Kusha's Ring | 15851 | Ice/Earth/Water/Dark Resist 5 | **No** |
-| Lava's Ring | 15850 | Fire/Wind/Thunder/Light Resist 5 | **No** |
-| Aqua / Breeze / Flame / Snow / Soil / Thunder Ring | 14630–14640 | DEF 3 + an attribute spread | **No** |
-| Shadow Ring | 14646 | ResistDeath 25, AnnulMagicalDamage 13 | **No** |
-| Sniper's Ring *(plain contrast)* | 13280 | DEF −10, Acc 5, R.Acc 5 | n/a (always-on) |
+| STATUS_EFFECT_ACTIVE | 280 | IN_DYNAMIS | 79 |
+| NATION_CONTROL | 184 | SUBJOB | 72 |
+| PET_ID | 149 | WEAPON_BROKEN | 71 |
+| FOOD_ACTIVE | 119 | TIME_OF_DAY | 70 |
+| JOB_LEVEL_ABOVE (level, already done) | 105 | HP_UNDER_PERCENT | 68 |
+| — | — | WEATHER_ELEMENT | 57 |
 
-Note the catalog strips apostrophes: `Lava's` → `Lavas`, `Kusha's` → `Kushas` — that's how they key.
+Real rows the generator resolved: `item 10975 → ATT +13 when WEATHER_ELEMENT(8)`;
+`11312 → STR +5 when TP_OVER(100)`; `11355 → ENMITY -1 when HP_UNDER_PERCENT(75)`.
 
-## Finding 2 — the data is missing **at the source**, so a manual side-table is required
+**Read of it:** the *data generation* is a solved problem — the parser already produces both files.
+The real cost is the **evaluator's condition coverage**: some conditions are trivial to check live
+(set piece-count, `HP_UNDER_PERCENT`, `WEATHER_ELEMENT`, `TIME_OF_DAY`, `TP_OVER`, `WEAPON_DRAWN`)
+and some are gnarly or niche (`STATUS_EFFECT_ACTIVE`, `NATION_CONTROL`, `PET_ID`, `IN_DYNAMIS`). So
+v1 should cover the high-value handful and mark the rest "known, not yet evaluated" — the data is
+already there whenever we light up another condition.
 
-The catalog is generated by the private `tools/apicrawl.py`; each item's source is
-`tools/api_cache/<id>.json` with a `"mods"` and a `"latents"` array. Decisive evidence:
+## Open calls for the maintainer
 
-- `15850.json` (Lava's Ring): base `"mods"` only, **`"latents": []`**.
-- `15851.json` (Kusha's Ring): base `"mods"` only, **`"latents": []`**.
-- `14630.json` (Flame Ring): base only, **`"latents": []`**.
+1. **v1 scope — sets, latents, or both?** → **Rec:** **sets first.** Smaller, self-contained, and
+   it covers exactly what you hit (Lava/Kusha + Salvage). Conditional latents (weather/day/HP) are a
+   clean phase 2 on the same fold.
+2. **Optimizer — confirm out-of-scope for v1** (stat page + hover only). → **Rec:** yes; revisit if
+   it proves worth the cross-slot complexity.
+3. **Active detection — auto vs. a toggle.** Worn-count is *always* knowable (we have the set), so
+   set bonuses need no toggle. Weather/day/HP latents read from `gData` — auto, with a graceful
+   fallback when a read fails. → **Rec:** auto for sets now; auto-with-fallback for latents in
+   phase 2.
 
-So the conditional bonus is **absent from the API**, not present-but-dropped — it lives in
-server-side item scripts the item API doesn't expose. **Conclusion: the values cannot be crawled;
-they must be hand-authored into a side-table** (or supplied from a private server-DB dump if one is
-ever available).
+## Key source anchors (branch `base`, raw = `raw.githubusercontent.com/CatsAndBoats/catseyexi/base/…`)
 
-For contrast, the crawler *can* capture **level** latents: `13680.json` (Variable Mantle) has a
-populated `"latents"` array (`latentId 51` = active at `level >= param`, `52` = `level < param`),
-which `tools/gen_levelscaling.py` turns into `data/levelscaling.lua`. That is the **only**
-conditional transform that exists today, and it is level-gated only — no weather/day/HP.
-
-## Finding 3 — the good news: one seam lights up all three consumers
-
-Every stat reader funnels through **one central resolver**: `effStats(rec, level)` →
-`levelstats.effective(rec, level)`.
-
-- **Weights optimizer** — `gearoptim.rankSlot` resolves each candidate through `lscale.effective`
-  before `scoreFn`; `M.score` / `statValue` read the result.
-- **Stat page / set totals** — `gearui.wornSetTotals` / `scoreOfItem` sum `effStats` across slots.
-- **Hover tooltip** — `gearui.renderItemTooltip` reads `effStats(rec, _lvl)`, already prints a
-  `(scales with level — shown for Lv%d)` note, and appends a separate `Aug: …` line.
-
-And the **augment system is the working blueprint** for exactly this shape — a *second* per-item
-stat block folded into score + totals + hover (`feature/augments.lua` `wornStats()` folded in at
-`scoreOfItem`, `wornSetTotals`, and the tooltip). A latent overlay can ride the identical seams.
-
-**So folding a latent overlay into `levelstats.effective` (gated on an "active" flag) makes the
-optimizer, the stat page, and the hover all account for it at once** — exactly how level scaling
-flows today.
-
-## Proposal (smallest viable seam)
-
-1. **Data — a new manual side-table `data/latentstats.lua`, keyed by Id.** Hand-authored (the API
-   can't supply it). Shape mirrors `levelscaling.lua` but with condition types, e.g.:
-
-   ```lua
-   -- one row = one conditional stat bonus; cond/param say WHEN it applies
-   return {
-     [15850] = { {stat='STR', add=5, cond='day',     param='Firesday'},
-                 {stat='STR', add=5, cond='weather', param='Fire'} },
-     -- ... Kusha's, the weather-ring family, HP-threshold rings ...
-   }
-   ```
-   Leave the catalog `Stats` untouched so base values stay crawler-owned.
-
-2. **An "latent active" signal.** Two options (not exclusive):
-   - **Manual toggle** — a single "count latent bonuses" switch, patterned on the existing
-     `optim.buildAtMaxLevel` global. Simplest, predictable, testable. *Recommended first.*
-   - **Auto-detect** — the runtime primitives already exist: `utils.ChecDayAndWeatherBonus`
-     reads `gData.GetWeather()` / `gData.GetDay()`; HP%/MP via `gData`. "Just works" but adds
-     per-frame reads and per-condition logic. *Good follow-up.*
-
-3. **Fold at the one resolver.** Compose the latent overlay inside `data/levelstats.lua`
-   `M.effective` (both `gearui.effStats` and gearoptim already route through it), gated on the
-   active flag. One change updates optimizer scoring, worn/set totals, and hover stats together.
-
-4. **Hover annotation.** Add a latent line in `renderItemTooltip`, mirroring the existing level
-   note and the `Aug:` line, e.g. `Latent: +5 STR under Firesday / Fire weather (ACTIVE)`.
-
-**The only genuinely new pieces are (a) the manual `latentstats` table and (b) the active flag.**
-Everything else is a fold into a resolver that three consumers already share.
-
-## Open decisions (maintainer's call)
-
-1. **Where do the latent VALUES come from?** The API has none — hand-authoring means sourcing each
-   ring's latent (in-game testing / BG wiki / a private server-script dump). **Which rings first?**
-   Suggest Lava's + Kusha's + the elemental weather-ring family as the pilot set.
-2. **Active detection: manual toggle, auto-detect, or both?** Recommendation: **manual toggle
-   first** (small, testable), auto-detect (weather/day/HP via `gData`) as a follow-up.
-3. **Weights interaction — should a latent stat weight the same as an always-on stat?** A latent
-   only applies under its condition, so counting it at full weight may over-rank a situational
-   ring. A "latent discount" (or only counting latents when the toggle is on) may be wanted.
-4. **Scope — just these rings, or a general latent framework?** Recommend starting narrow (the ring
-   families) with a schema general enough to extend to any Id later.
-
-## Watch-outs (carried from the research)
-
-- **Two resolver wrappers exist** (`gearui.effStats` and gearoptim's direct `lscale.effective`) —
-  put the overlay **inside `levelstats`** so neither wrapper diverges.
-- `wornSetTotals` / `scoreOfItem` add **augment** deltas *on top of* `effStats` — confirm latents
-  fold at the resolver level so they are neither double-counted nor missed by the augment path.
-- **New latent stat keys degrade to "Misc"** until added to `statdefs.lua` — so this never blocks a
-  re-crawl or breaks existing stats.
-
-## Key anchors
-
-- Rings (base-only): `data/catalog.lua` — Kushas 15851, Lavas 15850, weather family 14630–14640,
-  Shadow 14646; plain contrast Snipers 13280.
-- Missing at source: `tools/api_cache/{15850,15851,14630}.json` → `"latents": []`.
-- The one conditional transform today: `data/levelstats.lua` `M.effective`; generated data
-  `data/levelscaling.lua`; generator `tools/gen_levelscaling.py` (latentId 51/52 only).
-- Central resolver + consumers: `ui/gearui.lua` `effStats` (`~86`), `wornSetTotals`, `scoreOfItem`,
-  `renderItemTooltip`; `gear/gearoptim.lua` `rankSlot` (`~570`) / `M.score`.
-- The fold blueprint: `feature/augments.lua` `wornStats()` folded into score / totals / hover.
-- Stat metadata: `data/statdefs.lua` (`632-636` — latents explicitly UNMAPPED today).
+- `scripts/globals/gear_sets.lua` — all set bonuses (applier ~2498-2510). Lava/Kusha = `[70]`;
+  a tiered example = `[71]` Iron Ram Haubert.
+- `sql/item_latents.sql` — every conditional latent (already pulled by `tools/gen_levelscaling.py`).
+- `scripts/enum/{latent,mod,item}.lua` — the id → name resolution the generator needs.
