@@ -210,6 +210,8 @@ local function flattenGear(src)
             Slot = slot, Category = category, Type = e.Type, Stats = e.Stats,
             Key = key,                     -- gear.lua table key, for building a commit path
             OneHanded = e.OneHanded,       -- weapon 1H vs 2H (Sub-slot pairing rules)
+            AmmoType = e.AmmoType,         -- what a Range weapon fires this ammo AS (Ammo-slot
+                                           -- weapon-type filter, #17); absent = Trinket
             Count = e.Count,   -- scanned copy count (>= 2 = same-weapon dual-wield)
             Model = e.Model,   -- appearance model id (catalog) -- the lockstyle look
                                -- preview resolves through THESE records (catalogById /
@@ -2472,7 +2474,7 @@ local function renderAddPopup(job, level)
         ui.addSearch = ui.addSearch or { '' };
         ui.addAvail  = ui.addAvail  or { false };
         ui.addHideTravel = ui.addHideTravel or { true };
-        ui.addTypeFilter = ui.addTypeFilter or {};   -- weapon-type marks (F2a); {} = "All"
+        ui.addTypeFilter = ui.addTypeFilter or {};   -- weapon-type marks (F2a/F2b); {} = "All"
         imgui.TextColored(COL.DIM, 'Search:'); imgui.SameLine(0, 4);
         imgui.PushItemWidth(240);
         imgui.InputText('##addsearch', ui.addSearch, 48);
@@ -2490,10 +2492,10 @@ local function renderAddPopup(job, level)
         if imgui.IsItemHovered() then
             imgui.SetTooltip('Hide the Teleports-menu utility items (Warp / Provenance Ring, teleport\nearrings, exp rings) -- no combat stats, they only bloat the Ear/Ring\nlists. Untick to add one to a set deliberately.');
         end
-        -- Weapon-type filter (F2a, PRD #14): a multiselect narrowing the VISIBLE
+        -- Weapon-type filter (F2a/F2b, PRD #14): a multiselect narrowing the VISIBLE
         -- candidates by weapon type -- view-only, never eligibility (HARD RULE 6 /
-        -- ADR 0006). Shown only for slots weaponfilter knows (Main today; Sub/Range/
-        -- Ammo in F2b/F2c) and only offers the types present in this slot's owned pool.
+        -- ADR 0006). Shown only for slots weaponfilter knows (Main / Range / Ammo) and
+        -- only offers the types present in this slot's owned pool.
         local wf = require('dlac\\gear\\weaponfilter');   -- function-scoped: gearui is near the 200-local cap
         local wfBuckets = wf.presentBuckets(cands, gearKey);
         if #wfBuckets > 0 then
@@ -2780,7 +2782,7 @@ local function renderSetBuilder(job, level)
 
     local list = M.working[ui.setSelected] or {};
     imgui.TextColored(COL.HEADER, string.format('%s list (%d):', ui.setSelected, #list));
-    imgui.SameLine(); if imgui.Button('+ Add##setadd', { 60, 0 }) then ui._openAddPopup = true; ui.addSearch = { '' }; ui.addTypeFilter = {}; end   -- weapon-type filter resets to "All" each open (F2a)
+    imgui.SameLine(); if imgui.Button('+ Add##setadd', { 60, 0 }) then ui._openAddPopup = true; ui.addSearch = { '' }; ui.addTypeFilter = {}; end   -- weapon-type filter resets to "All" each open (F2a/F2b)
     imgui.SameLine(0, 8); renderSortCombo('setlist');
 
     local pick = bestByLevel(list, level);

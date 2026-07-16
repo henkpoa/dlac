@@ -7,8 +7,9 @@
     (HARD RULE 6 / ADR 0006). This module is the pure, ImGui-free core the headless suite
     pins; gearui draws the dropdown and applies the predicate in the candidate loop.
 
-    F2a wires the Main slot only (the 12 weapon types). `M.SLOTS` is the extension seam
-    F2b (Sub) and F2c (Range / Ammo) grow into -- add a slot entry, nothing else changes.
+    F2a wired the Main slot (the 12 weapon types). F2b (issue #17) grows the same seam to
+    Range (`Type`) and Ammo (`AmmoType`, absent = Trinket). `M.SLOTS` is the extension seam:
+    add a slot entry, nothing else changes -- gearui draws the same dropdown for any slot here.
 
       presentBuckets(cands, slot) -> { { key, label }, ... }  (only the buckets actually
         present among the slot's candidates, in canonical order -- never an empty bucket)
@@ -33,14 +34,51 @@ local MAIN_LABEL = {
     GreatKatana = 'Great Katana', Club    = 'Club',     Staff    = 'Staff',
 };
 
+-- Range buckets (issue #17): the catalog `Type` of a Range weapon -> player-facing label.
+-- Guns and crossbows share the Marksmanship skill and one bucket. Instruments (String /
+-- Wind / Handbell) and the Fishing Rod stand as their own buckets, offered only when owned.
+-- (Player-facing strings -- pending maintainer sign-off.)
+local RANGE_ORDER = { 'Archery', 'Marksmanship', 'Throwing', 'StringInstrument',
+                      'WindInstrument', 'Handbell', 'FishingRod' };
+local RANGE_LABEL = {
+    Archery          = 'Bows',            Marksmanship = 'Guns & Crossbows',
+    Throwing         = 'Throwing',        Handbell     = 'Handbell',
+    StringInstrument = 'String Instrument', WindInstrument = 'Wind Instrument',
+    FishingRod       = 'Fishing Rod',
+};
+
+-- Ammo buckets (issue #17): the catalog `AmmoType` -- what a Range weapon fires this ammo
+-- AS -> player-facing label. Bolts and bullets both fire as Marksmanship and fold into one
+-- bucket. An ammo-slot item with NO AmmoType (Cinderstone, Morion Tathlum) is fired by
+-- nothing; it is its own Trinket bucket, keyed by the AMMO_TRINKET sentinel so it can never
+-- collide with a real AmmoType. (Player-facing strings -- pending maintainer sign-off.)
+local AMMO_TRINKET = '__trinket';
+local AMMO_ORDER = { 'Archery', 'Marksmanship', 'Throwing', AMMO_TRINKET };
+local AMMO_LABEL = {
+    Archery       = 'Arrows',      Marksmanship = 'Bolts & Bullets',
+    Throwing      = 'Throwables',  [AMMO_TRINKET] = 'Trinkets',
+};
+
 -- Slot -> how a candidate record maps to a bucket key, the canonical bucket order, and the
--- key -> label map. THE EXTENSION SEAM: F2b/F2c add Sub / Range / Ammo entries here; the
--- rest of the module (and gearui's dropdown) is already slot-agnostic.
+-- key -> label map. THE EXTENSION SEAM: add a slot entry here; the rest of the module (and
+-- gearui's dropdown) is already slot-agnostic. F2a filled Main; F2b adds Range and Ammo.
 M.SLOTS = {
     Main = {
         order  = MAIN_ORDER,
         label  = MAIN_LABEL,
         bucket = function(rec) return rec.Type; end,   -- the weapon category
+    },
+    Range = {
+        order  = RANGE_ORDER,
+        label  = RANGE_LABEL,
+        bucket = function(rec) return rec.Type; end,   -- Archery / Marksmanship / Throwing / instrument / rod
+    },
+    Ammo = {
+        order  = AMMO_ORDER,
+        label  = AMMO_LABEL,
+        -- AmmoType is the discriminator; absent = a Trinket (fired by nothing). Never nil,
+        -- so every ammo-slot record buckets -- a stat stick can't fall through to "no bucket".
+        bucket = function(rec) return rec.AmmoType or AMMO_TRINKET; end,
     },
 };
 

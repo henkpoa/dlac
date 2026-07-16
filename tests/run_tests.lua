@@ -2266,6 +2266,82 @@ end)();
     check('AP20 bucketOf unknown slot -> nil', wf.bucketOf(cands[1], 'Head'), nil);
 end)();
 
+-- AP2. weaponfilter Range + Ammo -- the F2b buckets (issue #17, PRD #14)
+--
+--   Range buckets off the catalog `Type`: Bows (Archery), Guns & Crossbows (Marksmanship
+--   -- guns and crossbows folded together), Throwing, plus instruments / rod when owned.
+--   Ammo buckets off `AmmoType`: Arrows (Archery), Bolts & Bullets (Marksmanship -- bolts
+--   and bullets folded), Throwables (Throwing), and Trinkets (ammo with NO AmmoType, fired
+--   by nothing -- Cinderstone, Morion Tathlum). View-only, same as Main (HARD RULE 6).
+-- ---------------------------------------------------------------------------
+(function()
+    local wf = dofile('gear/weaponfilter.lua');
+
+    -- 1. Range: a bow + a crossbow + a gun + a harp + a fishing rod, unordered, with a gun
+    --    and a crossbow sharing the Marksmanship bucket (guns & crossbows folded together).
+    local range = {
+        { Name = 'Test Harp',      Type = 'StringInstrument' },
+        { Name = 'Test Bow',       Type = 'Archery' },
+        { Name = 'Test Crossbow',  Type = 'Marksmanship' },
+        { Name = 'Test Gun',       Type = 'Marksmanship' },   -- same bucket as the crossbow
+        { Name = 'Test Rod',       Type = 'FishingRod' },
+    };
+    local rb = wf.presentBuckets(range, 'Range');
+    check('AP2-1 range: four buckets (gun+xbow fold)', #rb, 4);
+    check('AP2-2 canonical order [1] Archery',   rb[1].key, 'Archery');
+    check('AP2-3 Archery labelled Bows',         rb[1].label, 'Bows');
+    check('AP2-4 canonical order [2] Marksmanship', rb[2].key, 'Marksmanship');
+    check('AP2-5 Marksmanship label folds both', rb[2].label, 'Guns & Crossbows');
+    check('AP2-6 instruments before the rod',    rb[3].key, 'StringInstrument');
+    check('AP2-7 fishing rod its own bucket',    rb[4].key, 'FishingRod');
+    -- Guns & Crossbows marked: shows both the gun and the crossbow, hides the bow.
+    local onlyMarks = { Marksmanship = true };
+    check('AP2-8 Marks shows crossbow',  wf.visible(range[3], onlyMarks, 'Range'), true);
+    check('AP2-9 Marks shows gun',       wf.visible(range[4], onlyMarks, 'Range'), true);
+    check('AP2-10 Marks hides bow',      wf.visible(range[2], onlyMarks, 'Range'), false);
+
+    -- 2. Ammo: arrows + bolts + bullets + a throwable + two trinkets (no AmmoType). Bolts
+    --    and bullets fold into one Marksmanship bucket; the trinkets are their own bucket
+    --    and must NOT land under arrows / bolts / throwables.
+    local ammo = {
+        { Name = 'Test Bolt',       AmmoType = 'Marksmanship' },
+        { Name = 'Test Arrow',      AmmoType = 'Archery' },
+        { Name = 'Test Bullet',     AmmoType = 'Marksmanship' },   -- folds with the bolt
+        { Name = 'Test Shuriken',   AmmoType = 'Throwing' },
+        { Name = 'Cinderstone' },                                   -- no AmmoType = Trinket
+        { Name = 'Morion Tathlum' },                                -- no AmmoType = Trinket
+    };
+    local ab = wf.presentBuckets(ammo, 'Ammo');
+    check('AP2-11 ammo: four buckets (bolt+bullet fold)', #ab, 4);
+    check('AP2-12 order [1] Arrows',          ab[1].label, 'Arrows');
+    check('AP2-13 order [2] Bolts & Bullets', ab[2].label, 'Bolts & Bullets');
+    check('AP2-14 order [3] Throwables',      ab[3].label, 'Throwables');
+    check('AP2-15 order [4] Trinkets',        ab[4].label, 'Trinkets');
+    -- The Trinket bucket key is the internal sentinel, never a real AmmoType.
+    local trinketKey = ab[4].key;
+    check('AP2-16 trinket bucketOf Cinderstone', wf.bucketOf(ammo[5], 'Ammo'), trinketKey);
+    check('AP2-17 trinket key is not an AmmoType', ammo[1].AmmoType == trinketKey, false);
+    -- Bolts & Bullets marked: shows bolt + bullet, hides arrows / throwables / trinkets.
+    local onlyBolts = { [ab[2].key] = true };
+    check('AP2-18 Marks shows bolt',    wf.visible(ammo[1], onlyBolts, 'Ammo'), true);
+    check('AP2-19 Marks shows bullet',  wf.visible(ammo[3], onlyBolts, 'Ammo'), true);
+    check('AP2-20 Marks hides arrow',   wf.visible(ammo[2], onlyBolts, 'Ammo'), false);
+    check('AP2-21 Marks hides trinket', wf.visible(ammo[5], onlyBolts, 'Ammo'), false);
+    -- Trinkets marked: the two sticks show, the fired ammo hides -- the AC's exclusion.
+    local onlyTrinket = { [trinketKey] = true };
+    check('AP2-22 Trinket shows Cinderstone',  wf.visible(ammo[5], onlyTrinket, 'Ammo'), true);
+    check('AP2-23 Trinket shows Morion',       wf.visible(ammo[6], onlyTrinket, 'Ammo'), true);
+    check('AP2-24 Trinket hides arrow',        wf.visible(ammo[2], onlyTrinket, 'Ammo'), false);
+    check('AP2-25 Trinket hides bolt',         wf.visible(ammo[1], onlyTrinket, 'Ammo'), false);
+    check('AP2-26 Trinket hides throwable',    wf.visible(ammo[4], onlyTrinket, 'Ammo'), false);
+
+    -- 3. Present-only + All default carry over to the new slots.
+    check('AP2-27 empty ammo pool -> no buckets', #wf.presentBuckets({}, 'Ammo'), 0);
+    check('AP2-28 All default shows a trinket',   wf.visible(ammo[5], {}, 'Ammo'), true);
+    check('AP2-29 arrows-only range pool -> one bucket',
+        #wf.presentBuckets({ { Name = 'Bow', Type = 'Archery' } }, 'Range'), 1);
+end)();
+
 -- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
