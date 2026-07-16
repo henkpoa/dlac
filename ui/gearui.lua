@@ -3180,6 +3180,14 @@ host.register({ name = 'triggers', tabs = {
         else imgui.TextColored(COL.ERR, 'triggersui module unavailable.'); end
     end },
 } });
+-- Groups tab (issue #25, ADR 0009): its own top-level tab, but the SAME module /
+-- trigger file as Triggers (groups are a `Groups` section beside the handler rules).
+host.register({ name = 'groups', tabs = {
+    { label = 'Groups', render = function(job, level)
+        if trigui ~= nil and type(trigui.renderGroups) == 'function' then trigui.renderGroups(job, level);
+        else imgui.TextColored(COL.ERR, 'triggersui module unavailable.'); end
+    end },
+} });
 
 local function drawWindow()
     if not M.visible or not has.imgui then return; end

@@ -20,9 +20,11 @@ local M = {};
 local _iok, imgui = pcall(require, 'imgui');
 local _dpok, dsp  = pcall(require, "dlac\\dispatch");
 local _lsok, lscale = pcall(require, "dlac\\data\\levelstats");
+local _gmok, gm   = pcall(require, "dlac\\gear\\groupsmodel");
 local hasImgui    = _iok and imgui ~= nil;
 local hasDispatch = _dpok and type(dsp) == 'table';
 local hasLScale   = _lsok and type(lscale) == 'table';
+local hasGroups   = _gmok and type(gm) == 'table';
 
 local function mainLevel()
     local lv = nil;
@@ -74,6 +76,7 @@ local SPELL_CONDS = {
     { key = 'element',   kind = 'list', items = { 'Fire', 'Ice', 'Wind', 'Earth', 'Thunder', 'Water', 'Light', 'Dark', 'Non-Elemental' } },
     { key = 'songType',  kind = 'list', items = { 'Buff', 'Debuff' } },
     { key = 'contains',  kind = 'text', hint = 'name contains this text: "Madrigal" matches Blade + Sword\nMadrigal; "Stone" matches every Stone tier. Stack it with skill\nvia [+ condition] for AND logic (e.g. skill=Elemental + contains=Stone).' },
+    { key = 'group',     kind = 'group', hint = 'match every action in a named group -- one rule gears many\nspells that share gear. Build groups in the Groups tab; a per-spell\nname rule still overrides the group.' },
     { key = 'name',      kind = 'text', hint = 'exact spell name, e.g. Slow II' },
     { key = 'dayWeatherBonus', kind = 'flag' },
     { key = 'mode',      kind = 'text', hint = 'a player-toggled mode must be ON (e.g. DT) -- stack with other\nconditions to make a rule mode-dependent' },
@@ -90,6 +93,7 @@ local COND_DEFS = {
     Ability = {
         { key = 'abilityType', kind = 'list', items = { 'Blood Pact: Rage', 'Blood Pact: Ward', 'Corsair Roll', 'Quick Draw', 'Ready', 'Rune Enchantment' } },
         { key = 'contains', kind = 'text', hint = 'name contains this text' },
+        { key = 'group',    kind = 'group', hint = 'match every ability in a named group (Groups tab)' },
         { key = 'name',     kind = 'text', hint = 'exact ability name, e.g. Repair' },
         { key = 'mode',     kind = 'text', hint = 'a player-toggled mode must be ON' },
         { key = 'any',      kind = 'flag' },
@@ -97,10 +101,12 @@ local COND_DEFS = {
     Item = {
         { key = 'name',     kind = 'text', hint = 'exact item name, e.g. Holy Water' },
         { key = 'contains', kind = 'text', hint = 'name contains this text' },
+        { key = 'group',    kind = 'group', hint = 'match every item in a named group (Groups tab)' },
         { key = 'mode',     kind = 'text', hint = 'a player-toggled mode must be ON' },
     },
     Weaponskill = {
         { key = 'name', kind = 'text', hint = 'exact weaponskill name' },
+        { key = 'group', kind = 'group', hint = 'match every weaponskill in a named group (Groups tab)' },
         { key = 'mode', kind = 'text', hint = 'a player-toggled mode must be ON' },
         { key = 'any',  kind = 'flag' },
     },
@@ -135,6 +141,15 @@ local trig = {
 local modeUI = {
     name = { '' }, kind = 'toggle', values = {}, valInput = { '' },
     bind = { '' }, set = nil, editing = nil,
+};
+
+-- Groups tab state (issue #25, ADR 0009). newName = the create-popup buffer;
+-- memberInput = a per-group typed-member buffer (keyed by group name); renaming =
+-- the group whose rename popup is open, with renameBuf its buffer. status/statusErr
+-- are the Groups tab's own status line (independent of the Triggers tab's).
+local groupUI = {
+    newName = { '' }, memberInput = {}, renaming = nil, renameBuf = { '' },
+    status = '', statusErr = false, _openAdd = false, _openRename = false,
 };
 
 -- Profile-aware, and it MUST agree with the engine's triggersPath() rule
@@ -216,6 +231,14 @@ function M.fileToModel(raw)
             end
         end
         if next(copy) ~= nil then data.Modes = copy; end
+    end
+    -- Groups section (ADR 0009): named action-name lists per Job entry, beside
+    -- Modes. Carried through so Commit round-trips it (same SetOptions/Modes wipe
+    -- lesson). The sanitize lives in groupsmodel so the carry-through is tested
+    -- headless (tests TGM*); guarded so a missing module only loses the feature.
+    if hasGroups then
+        local gr = gm.fromRaw(raw);
+        if next(gr) ~= nil then data.Groups = gr; end
     end
     return data;
 end
@@ -393,6 +416,31 @@ function M.modeConditions()
     end
     table.sort(out, function(a, b) return string.lower(a) < string.lower(b); end);
     return out;
+end
+
+-- The current job's defined group names (sorted) -- the `group` condition dropdown
+-- and the stale-reference check read this. Loads the model on demand.
+function M.groupNames()
+    local data = select(1, M.currentModel());
+    if type(data) ~= 'table' or type(data.Groups) ~= 'table' then return {}; end
+    if hasGroups then return gm.names(data.Groups); end
+    local out = {};
+    for nm in pairs(data.Groups) do if type(nm) == 'string' then out[#out + 1] = nm; end end
+    table.sort(out);
+    return out;
+end
+
+-- Is `name` a defined group in the current model (case-insensitive)? Drives the
+-- stale-reference surfacing (a rule pointing at a missing group is marked, never a
+-- silent no-op -- parity with a missing set; hard rule 12).
+local function groupDefined(name)
+    local data = select(1, M.currentModel());
+    if type(data) ~= 'table' or type(data.Groups) ~= 'table' then return false; end
+    if hasGroups then return gm.hasGroup(data.Groups, name); end
+    for nm in pairs(data.Groups) do
+        if type(nm) == 'string' and string.lower(nm) == string.lower(tostring(name)) then return true; end
+    end
+    return false;
 end
 
 local function trigPrettyKey(k)
@@ -1656,6 +1704,7 @@ local COND_COLORS = {
     element = { 0.95, 0.70, 0.45, 1.0 },  songtype = { 0.80, 0.85, 0.50, 1.0 },
     dayweatherbonus = { 0.60, 0.90, 0.90, 1.0 },
     contains = { 0.95, 0.85, 0.45, 1.0 }, family = { 0.95, 0.85, 0.45, 1.0 },
+    group = { 0.55, 0.80, 1.00, 1.0 },
     name = { 1.00, 0.95, 0.75, 1.0 },
     any = { 0.60, 0.60, 0.65, 1.0 },
 };
@@ -1725,6 +1774,22 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
     imgui.BeginGroup();                                -- left column: the methods
     for _, ln in ipairs(lines) do
         imgui.TextColored(COND_COLORS[ln.key] or COL_USABLE, esc(ln.text));
+        -- Stale group reference: a rule pointing at a missing / renamed group
+        -- matches nothing -- mark it in place (parity with a set's [missing];
+        -- hard rule 12, never a silent no-op).
+        if ln.key == 'group' then
+            local gv = r.when and r.when.group;
+            local refs = (type(gv) == 'table') and gv or ((gv ~= nil) and { gv } or {});
+            local miss = false;
+            for _, gnm in ipairs(refs) do if not groupDefined(gnm) then miss = true; break; end end
+            if miss then
+                imgui.SameLine(0, 6);
+                imgui.TextColored(COL_ERR, '[missing group]');
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('No group with this name exists for this job -- the rule matches\nnothing and equips nothing. Create it in the Groups tab (or fix the name).');
+                end
+            end
+        end
     end
     imgui.EndGroup();
 
@@ -1974,6 +2039,23 @@ local function renderTrigAddPopup()
                 imgui.EndCombo();
             end
             imgui.PopItemWidth();
+        elseif cur.kind == 'group' then
+            -- Value = a dropdown of the current job's defined groups (ADR 0009).
+            -- Picking one writes  when = { group = '<name>' }. Build groups in the
+            -- Groups tab; with none defined the combo says so instead of a dead pick.
+            local gnames = M.groupNames();
+            imgui.PushItemWidth(170);
+            if imgui.BeginCombo('##trgcondgrp', trig._addValSel or '(pick group)') then
+                if #gnames == 0 then imgui.TextColored(COL_DIM, '(no groups yet -- create one in the Groups tab)'); end
+                for vi, it in ipairs(gnames) do
+                    if imgui.Selectable(esc(it) .. '##trgcg' .. vi, trig._addValSel == it) then trig._addValSel = it; end
+                end
+                imgui.EndCombo();
+            end
+            imgui.PopItemWidth();
+            if #gnames == 0 and imgui.IsItemHovered() then
+                imgui.SetTooltip('No groups defined for this job yet. Open the Groups tab to create one.');
+            end
         elseif cur.kind == 'text' then
             imgui.PushItemWidth(170);
             imgui.InputText('##trgcondtext', trig.addValText, 48);
@@ -1985,7 +2067,7 @@ local function renderTrigAddPopup()
         imgui.SameLine(0, 6);
         if imgui.Button('+ condition##trgac', { 0, 0 }) then
             local val;
-            if cur.kind == 'list' then val = trig._addValSel;
+            if cur.kind == 'list' or cur.kind == 'group' then val = trig._addValSel;
             elseif cur.kind == 'text' then val = (trig.addValText[1] ~= '') and trig.addValText[1] or nil;
             else val = true; end
             if val ~= nil then
@@ -2035,6 +2117,203 @@ local function renderTrigAddPopup()
     end
     if not can then imgui.TextColored(COL_DIM, 'Add at least one condition and pick a set.'); end
     imgui.EndPopup();
+end
+
+-- ---------------------------------------------------------------------------
+-- Groups tab (issue #25, ADR 0009). A top-level tab (registered via uihost by
+-- gearui) that edits the shared trigger model's Groups section: create / rename /
+-- delete groups and add / remove typed members. Member entry is free-name typing
+-- (the searchable browse-list picker is a later slice -- issue #12); a group NAME
+-- is then referenced by a `group` trigger condition (Triggers tab). Commit writes
+-- the SAME file as the Triggers tab (dispatch.serializeTriggers carries Groups),
+-- so the two tabs share trig.data / trig.dirty and never stomp each other.
+-- ---------------------------------------------------------------------------
+local function groupSetStatus(msg, isErr) groupUI.status = msg or ''; groupUI.statusErr = (isErr == true); end
+
+local function renderGroupAddPopup()
+    if not imgui.BeginPopup('##dlac_groupadd') then return; end
+    imgui.TextColored(COL_HEADER, 'New group');
+    imgui.Separator();
+    imgui.TextColored(COL_DIM, 'Name'); imgui.SameLine(0, 8);
+    imgui.PushItemWidth(200); imgui.InputText('##grpnm', groupUI.newName, 48); imgui.PopItemWidth();
+    if imgui.IsItemHovered() then imgui.SetTooltip('e.g. "STR Spells", "Cures", "Enfeebles"'); end
+    imgui.Separator();
+    if imgui.Button('Create group###grpaddgo', { 0, 0 }) then
+        trig.data.Groups = trig.data.Groups or {};
+        local ok, err = gm.add(trig.data.Groups, groupUI.newName[1]);
+        if ok then
+            trig.dirty = true;
+            groupSetStatus('Group created -- add members by typing, then Commit.', false);
+            groupUI.newName[1] = '';
+            imgui.CloseCurrentPopup();
+        else
+            groupSetStatus(err or 'Invalid name.', true);
+        end
+    end
+    imgui.EndPopup();
+end
+
+local function renderGroupRenamePopup()
+    if not imgui.BeginPopup('##dlac_grouprename') then return; end
+    imgui.TextColored(COL_HEADER, 'Rename group: ' .. esc(tostring(groupUI.renaming)));
+    imgui.Separator();
+    imgui.PushItemWidth(200); imgui.InputText('##grprn', groupUI.renameBuf, 48); imgui.PopItemWidth();
+    imgui.Separator();
+    if imgui.Button('Rename###grprngo', { 0, 0 }) then
+        local ok, err = gm.rename(trig.data.Groups or {}, groupUI.renaming, groupUI.renameBuf[1]);
+        if ok then
+            trig.dirty = true;
+            groupSetStatus('Renamed -- Commit to save. A rule still on the OLD name now shows [missing group] (Triggers tab); repoint it.', false);
+            groupUI.renaming = nil;
+            imgui.CloseCurrentPopup();
+        else
+            groupSetStatus(err or 'Invalid name.', true);
+        end
+    end
+    imgui.SameLine(0, 8);
+    if imgui.Button('Cancel###grprncancel', { 0, 0 }) then groupUI.renaming = nil; imgui.CloseCurrentPopup(); end
+    imgui.EndPopup();
+end
+
+-- One group box (rule-box language): name + members on the left; typed-member
+-- input + rename / delete on the right.
+local function renderGroupBox(nm, groups, colX)
+    local members = groups[nm];
+    local lh = lineH();
+    local leftH  = (1 + math.max(#members, 1)) * lh;   -- name line + one per member (>=1 for the empty note)
+    local rightH = 26 + 24;
+    local boxH = math.max(leftH, rightH, 56) + 18;
+    imgui.BeginChild('##grpbox_' .. nm, { -1, boxH }, true, BOX_FLAGS);
+
+    imgui.BeginGroup();                                -- left: identity + members
+    imgui.TextColored(COND_COLORS.group, esc(nm));
+    imgui.SameLine(0, 10);
+    imgui.TextColored(COL_DIM, string.format('%d member%s', #members, (#members == 1) and '' or 's'));
+    local removeAt = nil;
+    for i, mbr in ipairs(members) do
+        imgui.TextColored(COL_USABLE, '   ' .. esc(mbr));
+        imgui.SameLine(0, 8);
+        if imgui.SmallButton('x##grpmx_' .. nm .. '_' .. i) then removeAt = i; end
+    end
+    if #members == 0 then imgui.TextColored(COL_DIM, '   (no members yet -- type an action name)'); end
+    imgui.EndGroup();
+
+    imgui.SameLine(colX);
+    imgui.BeginGroup();                                -- right: add member + rename/delete
+    local buf = groupUI.memberInput[nm];
+    if buf == nil then buf = { '' }; groupUI.memberInput[nm] = buf; end
+    imgui.PushItemWidth(160);
+    imgui.InputText('##grpmin_' .. nm, buf, 48);
+    imgui.PopItemWidth();
+    if imgui.IsItemHovered() then imgui.SetTooltip('Type an action name (spell / ability / weaponskill / item), then + member.'); end
+    imgui.SameLine(0, 4);
+    if imgui.Button('+ member##grpmadd_' .. nm, { 0, 0 }) then
+        local ok, err = gm.addMember(groups, nm, buf[1]);
+        if ok then buf[1] = ''; trig.dirty = true; groupSetStatus('', false);
+        else groupSetStatus(err or 'Could not add member.', true); end
+    end
+    if imgui.SmallButton('rename##grprn_' .. nm) then
+        groupUI.renaming = nm; groupUI.renameBuf[1] = nm; groupUI._openRename = true;
+    end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Rename this group (members are kept).'); end
+    imgui.SameLine(0, 6);
+    if imgui.SmallButton('delete##grpdel_' .. nm) then
+        gm.remove(groups, nm);
+        groupUI.memberInput[nm] = nil;
+        trig.dirty = true;
+        groupSetStatus(string.format('Deleted group "%s" -- Commit to save. Rules on it now show [missing group] (Triggers tab).', nm), false);
+    end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Delete this group. Any rule still referencing it is surfaced on the\nTriggers tab as [missing group] -- never a silent no-op.'); end
+    imgui.EndGroup();
+
+    if removeAt ~= nil then table.remove(members, removeAt); trig.dirty = true; end
+    imgui.EndChild();
+end
+
+function M.renderGroups(job, level)
+    if not hasImgui then return; end
+    if deps == nil then
+        imgui.TextColored(COL_ERR, 'Groups tab not initialized (gearui deps missing).');
+        return;
+    end
+    if not hasDispatch then
+        imgui.TextColored(COL_ERR, 'dispatch module unavailable -- the Groups tab is disabled.');
+        return;
+    end
+    if not hasGroups then
+        imgui.TextColored(COL_ERR, 'groupsmodel module unavailable -- the Groups tab is disabled.');
+        return;
+    end
+    local path, abbr = trigFilePath();
+    if path == nil then
+        imgui.TextColored(COL_DIM, 'Log in (with a known job) to edit groups.');
+        return;
+    end
+    trigLoad(false);
+    if trig.data == nil then
+        imgui.TextColored(COL_DIM, 'No trigger file for ' .. tostring(abbr) .. ' yet.');
+        imgui.TextColored(COL_DIM, 'Create starter triggers on the Triggers tab first -- groups live in the same file.');
+        return;
+    end
+    trig.data.Groups = trig.data.Groups or {};
+    local groups = trig.data.Groups;
+
+    imgui.TextColored(COL_HEADER, 'Groups');
+    imgui.SameLine(0, 10);
+    imgui.TextColored(COL_DIM, 'named action lists; a rule matches them with  group = Name  (Triggers tab)');
+
+    -- Commit / Revert row (the SAME file the Triggers tab writes).
+    local dirty = trig.dirty and ImGuiCol_Button ~= nil;
+    if dirty then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
+    if imgui.Button('Commit##grpcommit', { 0, 22 }) then trigCommit(); end
+    if dirty then imgui.PopStyleColor(1); end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Writes triggers\\' .. tostring(abbr) .. '.lua and hot-reloads the engine -- live immediately.');
+    end
+    imgui.SameLine(0, 6);
+    if imgui.Button('Revert##grprevert', { 0, 22 }) then trigLoad(true); groupSetStatus('Reverted to the on-disk groups.', false); end
+    local st  = (groupUI.status ~= '') and groupUI.status or trig.status;
+    local se  = (groupUI.status ~= '') and groupUI.statusErr or trig.statusErr;
+    if st ~= '' then
+        imgui.SameLine(0, 10);
+        imgui.TextColored(se and COL_ERR or COL_SCORE, esc(st));
+    end
+
+    imgui.Spacing();
+    imgui.TextColored(COL_DIM, 'One trigger can gear many spells that share stats: build a group here, then add a');
+    imgui.TextColored(COL_DIM, '"group" condition to a Precast / Midcast / Ability / Item / Weaponskill rule.');
+    imgui.Spacing();
+
+    local names = gm.names(groups);
+    if #names == 0 then imgui.TextColored(COL_DIM, '(no groups yet)'); end
+
+    -- aligned controls column shared by every box (longest left line wins)
+    local colX = 220;
+    for _, nm in ipairs(names) do
+        local w = textW(nm) + 70;
+        if w > colX then colX = w; end
+        for _, mbr in ipairs(groups[nm]) do
+            local w2 = textW('   ' .. mbr) + 46;
+            if w2 > colX then colX = w2; end
+        end
+    end
+    local avail = imgui.GetContentRegionAvail();
+    if type(avail) == 'number' and colX > avail * 0.55 then colX = avail * 0.55; end
+
+    for _, nm in ipairs(names) do renderGroupBox(nm, groups, colX); end
+
+    imgui.Spacing();
+    if imgui.Button('+ Group...##grpadd', { 0, 26 }) then
+        groupUI.newName[1] = ''; groupUI._openAdd = true;
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Create a named group, then add member action names by typing them.');
+    end
+
+    if groupUI._openAdd then imgui.OpenPopup('##dlac_groupadd'); groupUI._openAdd = false; end
+    renderGroupAddPopup();
+    if groupUI._openRename then imgui.OpenPopup('##dlac_grouprename'); groupUI._openRename = false; end
+    renderGroupRenamePopup();
 end
 
 function M.render(job, level)
@@ -2105,6 +2384,31 @@ function M.render(job, level)
             imgui.TextColored(COL_ERR, string.format(
                 '[!] %d trigger target set(s) missing from this profile: %s -- those rules equip NOTHING (red [missing] below). Create them in the Sets tab.',
                 #miss, esc(table.concat(miss, ', '))));
+        end
+    end
+
+    -- Missing-GROUP banner: rules whose `group` condition names a group this job
+    -- doesn't define (deleted / renamed / typo'd) -- they match nothing. Parity
+    -- with the missing-set banner above (ADR 0009; hard rule 12).
+    do
+        local gmiss, gseen = {}, {};
+        for _, ev in ipairs(TRIG_HANDLERS) do
+            for _, r in ipairs(trig.data[ev] or {}) do
+                local gv = r.when and r.when.group;
+                local refs = (type(gv) == 'table') and gv or ((gv ~= nil) and { gv } or {});
+                for _, gnm in ipairs(refs) do
+                    gnm = tostring(gnm);
+                    if not groupDefined(gnm) and not gseen[string.lower(gnm)] then
+                        gseen[string.lower(gnm)] = true; gmiss[#gmiss + 1] = gnm;
+                    end
+                end
+            end
+        end
+        if #gmiss > 0 then
+            table.sort(gmiss);
+            imgui.TextColored(COL_ERR, string.format(
+                '[!] %d trigger group reference(s) not defined for this job: %s -- those rules match NOTHING (red [missing group] below). Create them in the Groups tab.',
+                #gmiss, esc(table.concat(gmiss, ', '))));
         end
     end
 
