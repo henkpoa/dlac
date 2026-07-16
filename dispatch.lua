@@ -49,7 +49,7 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 50;   -- 50: the v46-49 /dl instdiag diagnostic is out (field-confirmed on both characters); the fix it found stays -- M.jobReady + the job-keyed latch. See ADR 0007
+M.VERSION = 51;   -- 51: Trigger Groups (G1) -- new `group` matcher (specificity tier 45) + Groups section load/serialize (ADR 0009). 50: the v46-49 /dl instdiag diagnostic is out (field-confirmed on both characters); the fix it found stays -- M.jobReady + the job-keyed latch. See ADR 0007
                   -- 49: THE LOGIN BUG. At login GetMainJob() reads 0 (=None), which gData stringifies to "NON" -- not '' and not '?', so the auto-install took it for a real job, found no sets\NON.lua, installed nothing and LATCHED for the session: every trigger then matched and silently equipped nothing (v35 skips a missing set in silence). Fixed at both ends -- M.jobReady rejects a not-ready job, and the latch records WHICH job it answered for, so a settling read re-fires the guard
                   -- 44: PINNED slots -- pinstate.lua forces a named item into a slot at TOP priority (above the craft overlay), scoped to All or to named triggers; the engine WEARS the pin, so nothing removes it
                   -- 43: reserved slots (RSlot) resolved at equip time -- a Body that takes Head away (Ryl.Ftm. Tunic) drops the reserved slot instead of flapping with the server forever; worn pieces reserve too
@@ -270,6 +270,32 @@ function M.modeActive(cond, modes)
     return modes[string.lower(s)] ~= nil;
 end
 
+-- Public group-condition check (ADR 0009), the group analogue of M.modeActive.
+-- A Group is a named, untyped list of action names stored per Job entry beside
+-- Modes; the condition fires when the current action's name is a member of the
+-- named group. `cond` may be a single group name or a LIST of names (OR) --
+-- exactly the one-of semantics `mode` has. Both group names and member names
+-- match case-insensitively. `groups` defaults to the loaded job's Groups
+-- (`_trig.groups`, raw `{ Name = { 'Action', ... } }`); tests pass one explicit.
+function M.groupMatch(cond, actionName, groups)
+    groups = groups or _trig.groups;
+    if type(cond) == 'table' then
+        for _, c in ipairs(cond) do
+            if M.groupMatch(c, actionName, groups) then return true; end
+        end
+        return false;
+    end
+    if type(groups) ~= 'table' or type(actionName) ~= 'string' then return false; end
+    for name, members in pairs(groups) do
+        if ci(name, cond) and type(members) == 'table' then
+            for _, m in ipairs(members) do
+                if ci(m, actionName) then return true; end
+            end
+        end
+    end
+    return false;
+end
+
 local MATCHERS = {
     any             = function() return true; end,
     status          = function(v, ctx) return ctx.player ~= nil and ci(ctx.player.Status, v); end,
@@ -278,6 +304,7 @@ local MATCHERS = {
     name            = function(v, ctx) return ctx.action ~= nil and ci(ctx.action.Name, v); end,
     contains        = function(v, ctx) return nameContains(ctx, v); end,   -- substring: 'Madrigal' hits Blade+Sword
     family          = function(v, ctx) return nameContains(ctx, v); end,   -- legacy alias of contains
+    group           = function(v, ctx) return ctx.action ~= nil and M.groupMatch(v, ctx.action.Name); end,
     skill           = function(v, ctx) return ctx.action ~= nil and ci(ctx.action.Skill, v); end,
     magictype       = function(v, ctx) return ctx.action ~= nil and ci(ctx.action.Type, v); end,
     abilitytype     = function(v, ctx) return ctx.action ~= nil and ci(ctx.action.Type, v); end,
@@ -310,6 +337,7 @@ local TIER = {
     moving = 25,
     magictype = 30, element = 30, songtype = 30, dayweatherbonus = 30,
     contains = 40, family = 40,
+    group = 45,   -- baseline for many spells that share gear; a per-spell `name` (50) overrides it, and it beats contains/skill (ADR 0009)
     name = 50,
     mode = 100,
 };
@@ -321,6 +349,7 @@ local PRETTY_KEY = {
     skill = 'skill', magictype = 'magicType', abilitytype = 'abilityType',
     element = 'element', songtype = 'songType', contains = 'contains',
     family = 'family', name = 'name', dayweatherbonus = 'dayWeatherBonus',
+    group = 'group',
 };
 M.PRETTY_KEY = PRETTY_KEY;
 
@@ -370,7 +399,7 @@ local function normalize(t)
         local ev = EVENT_CANON[string.lower(tostring(k))];
         if ev == nil then
             local lk = string.lower(tostring(k));
-            if lk ~= 'setoptions' and lk ~= 'modes' then   -- sibling sections, not handlers
+            if lk ~= 'setoptions' and lk ~= 'modes' and lk ~= 'groups' then   -- sibling sections, not handlers
                 warns[#warns + 1] = string.format('unknown handler section %q (expected %s or Modes)',
                     tostring(k), table.concat(EVENTS, '/'));
             end
@@ -484,6 +513,23 @@ local function ensureLoaded()
                     name = nm, values = values,
                     bind = (type(def.bind) == 'string') and def.bind or nil,
                 };
+            end
+        end
+    end
+    -- Groups section (ADR 0009): a named, untyped list of action names per Job
+    -- entry, beside Modes. Matched by the `group` condition. Stored raw
+    -- ({ Name = { 'Action', ... } }); M.groupMatch does the case-insensitive
+    -- membership test. Sanitized to string names -> string-member arrays.
+    _trig.groups = {};
+    local gr = t.Groups or t.groups;
+    if type(gr) == 'table' then
+        for nm, mem in pairs(gr) do
+            if type(nm) == 'string' and type(mem) == 'table' then
+                local members = {};
+                for _, a in ipairs(mem) do
+                    if type(a) == 'string' and a ~= '' then members[#members + 1] = a; end
+                end
+                _trig.groups[nm] = members;
             end
         end
     end
@@ -1875,6 +1921,16 @@ local function luaValue(v)
     return tostring(v);
 end
 
+-- A condition value may be a single scalar OR a LIST (OR): `mode` and `group`
+-- both accept `{ 'A', 'B' }`. Serialize a list as `{ "A", "B" }` (order kept),
+-- so list conditions round-trip instead of stringifying to a table address.
+local function condLiteral(v)
+    if type(v) ~= 'table' then return luaValue(v); end
+    local q = {};
+    for _, x in ipairs(v) do q[#q + 1] = luaValue(x); end
+    return '{ ' .. table.concat(q, ', ') .. ' }';
+end
+
 -- data = { [Handler] = { { when = {k=v}, set='X' | equip={Slot='Item'}, priority=n? }, ... } }
 -- Handlers emit in canonical order; conditions in sorted display-case spelling.
 -- Deterministic output -> clean diffs; comments are NOT preserved (GUI-owned file).
@@ -1894,7 +1950,7 @@ function M.serializeTriggers(data)
                 local conds = {};
                 for k, v in pairs(r.when or {}) do
                     local lk = string.lower(tostring(k));
-                    conds[#conds + 1] = (PRETTY_KEY[lk] or tostring(k)) .. ' = ' .. luaValue(v);
+                    conds[#conds + 1] = (PRETTY_KEY[lk] or tostring(k)) .. ' = ' .. condLiteral(v);
                 end
                 table.sort(conds);
                 local action;
@@ -1943,6 +1999,28 @@ function M.serializeTriggers(data)
                 if #bits > 0 then
                     L[#L + 1] = string.format('        [%q] = { %s },', nm, table.concat(bits, ', '));
                 end
+            end
+            L[#L + 1] = '    },';
+        end
+    end
+    -- Groups section (ADR 0009) -- carried through serialization so a Commit
+    -- never wipes it (sibling of the handler sections, like Modes). Group names
+    -- sorted for a stable diff; member order preserved as the player authored it.
+    local gr = (type(data) == 'table') and (data.Groups or data.groups) or nil;
+    if type(gr) == 'table' then
+        local names = {};
+        for nm, mem in pairs(gr) do
+            if type(nm) == 'string' and type(mem) == 'table' then names[#names + 1] = nm; end
+        end
+        table.sort(names);
+        if #names > 0 then
+            L[#L + 1] = '    Groups = {';
+            for _, nm in ipairs(names) do
+                local q = {};
+                for _, a in ipairs(gr[nm]) do
+                    if type(a) == 'string' then q[#q + 1] = string.format('%q', a); end
+                end
+                L[#L + 1] = string.format('        [%q] = { %s },', nm, table.concat(q, ', '));
             end
             L[#L + 1] = '    },';
         end
