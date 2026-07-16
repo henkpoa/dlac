@@ -122,3 +122,24 @@ already there whenever we light up another condition.
   a tiered example = `[71]` Iron Ram Haubert.
 - `sql/item_latents.sql` — every conditional latent (already pulled by `tools/gen_levelscaling.py`).
 - `scripts/enum/{latent,mod,item}.lua` — the id → name resolution the generator needs.
+
+## Resuming this in a future session
+
+The research is finished; what remains is a maintainer decision, then the build. To pick it up cold:
+
+- **Data sources** are the three files in the anchors above, in `CatsAndBoats/catseyexi` @ branch
+  `base`. Sparse-fetch them:
+  `git clone --depth 1 --filter=blob:none --sparse <repo>` then
+  `git sparse-checkout set --no-cone scripts/globals/gear_sets.lua sql/item_latents.sql scripts/enum/mod.lua scripts/enum/item.lua scripts/enum/latent.lua`.
+- **The spike** (a ~60-line throwaway Python parser) proved both files generate cleanly. Recreate
+  it: regex each enum to `id→name`; a line state-machine over `gear_sets.lua` collecting per `[id]`
+  its `xi.item.*` pieces / `minEquipped` / `{ xi.mod.*, v… }` mods; a 5-tuple regex
+  `(\d+),(\d+),(-?\d+),(\d+),(-?\d+)` over `item_latents.sql`. Verified output: set `[70]` =
+  `{15850,15851}, min 2, ATT+6/ACC+12/DEF+6`; 126 sets total; 1,963 latent rows / 854 items.
+- **The one open decision (maintainer's): v1 scope.** Recommended = **set bonuses first** — a
+  `tools/` generator → `data/gearsets.lua`, an addon worn-count evaluator, and the `effStats` fold
+  (fixes Lava/Kusha + Salvage; stat-page + hover only; optimizer explicitly out of scope). Then a
+  phase-2 for the trivial latent conditions (weather / HP% / TP / time-of-day). The data for every
+  condition is already generatable; the gating cost is per-condition evaluator coverage.
+- Once v1 scope is chosen, turn it into a PRD → issues and build. Nothing here is blocked on more
+  research — the unknowns (is it scrapeable? what shape? Lava/Kusha specifically?) are all answered.
