@@ -2106,6 +2106,102 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- AO. setimport.importStaticSet -- the pure "Copy from static" transform (#15/ADR 0008)
+--
+--   Full-replace: only slots the static DEFINES (and that resolve to >=1 candidate)
+--   appear in working; order carried verbatim; notBestFirst names slots whose candidate
+--   order is not highest-item-Level first. Resolver is injected (owned records -> entry).
+-- ---------------------------------------------------------------------------
+(function()
+    local simport = dofile('gear/setimport.lua');   -- forward slash: also loads on Linux CI
+    check('AO0 importStaticSet exported', type(simport.importStaticSet), 'function');
+
+    local SLOTS = { { label = 'Main' }, { label = 'Sub' }, { label = 'Head' },
+                    { label = 'Body' }, { label = 'Hands' }, { label = 'Waist' } };
+
+    -- Owned records (Name -> record), the only ones the resolver knows. A resolver over
+    -- these mirrors gearui.resolveSetItem: a name not owned -> nil (dropped candidate);
+    -- a dlac: string -> a virtual entry (Level 0, taken outright at equip).
+    local OWNED = {
+        ['warp cudgel']    = { Name = 'Warp Cudgel',    Level = 30 },
+        ['yagrush']        = { Name = 'Yagrush',        Level = 75 },
+        ['chatoyant staff']= { Name = 'Chatoyant Staff',Level = 70 },
+        ['austere hat']    = { Name = 'Austere Hat',    Level = 60 },
+        ['dalmatica']      = { Name = 'Dalmatica',      Level = 60 },
+        ['errant houppe.'] = { Name = 'Errant Houppe.', Level = 71 },
+    };
+    local function resolve(elem)
+        if type(elem) == 'string' then
+            if string.lower(string.sub(elem, 1, 5)) == 'dlac:' then
+                return { rec = { Name = elem, Level = 0, Virtual = true } };
+            end
+            local rec = OWNED[string.lower(elem)];
+            return rec and { rec = rec } or nil;
+        end
+        if type(elem) == 'table' and type(elem.Name) == 'string' then
+            local rec = OWNED[string.lower(elem.Name)];
+            return rec and { rec = rec } or nil;
+        end
+        return nil;
+    end
+
+    -- 1. A plain static set: one element per slot -> one-candidate working lists, no
+    --    warnings (a single candidate is trivially best-first).
+    local plain = { Main = 'Yagrush', Head = 'Austere Hat', Body = 'Dalmatica',
+                    NotASlot = 'ignored' };
+    local r1 = simport.importStaticSet(plain, SLOTS, resolve);
+    check('AO1 plain: slotCount', r1.slotCount, 3);
+    check('AO2 plain: Main list len', #r1.working.Main, 1);
+    check('AO3 plain: Main[1] name', r1.working.Main[1].rec.Name, 'Yagrush');
+    check('AO4 plain: undefined slot cleared (Sub absent)', r1.working.Sub, nil);
+    check('AO5 plain: no best-first warnings', #r1.notBestFirst, 0);
+
+    -- 2. A level-descending _Priority list imports silently and keeps its order.
+    local descending = { Main = { 'Yagrush', 'Chatoyant Staff', 'Warp Cudgel' } };
+    local r2 = simport.importStaticSet(descending, SLOTS, resolve);
+    check('AO6 descending: order verbatim [1]', r2.working.Main[1].rec.Name, 'Yagrush');
+    check('AO7 descending: order verbatim [3]', r2.working.Main[3].rec.Name, 'Warp Cudgel');
+    check('AO8 descending: no warning (best-first)', #r2.notBestFirst, 0);
+
+    -- 3. A not-best-first list (a lower-Level piece ranked above a higher one) is named.
+    local mixed = { Main = { 'Warp Cudgel', 'Yagrush' },   -- 30 then 75 -> NOT best-first
+                    Body = { 'Dalmatica', 'Errant Houppe.' } }; -- 60 then 71 -> NOT best-first
+    local r3 = simport.importStaticSet(mixed, SLOTS, resolve);
+    check('AO9 mixed: order still verbatim', r3.working.Main[1].rec.Name, 'Warp Cudgel');
+    check('AO10 mixed: two slots flagged', #r3.notBestFirst, 2);
+    local flagged = {}; for _, l in ipairs(r3.notBestFirst) do flagged[l] = true; end
+    check('AO11 mixed: Main flagged', flagged.Main, true);
+    check('AO12 mixed: Body flagged', flagged.Body, true);
+
+    -- 4. Equal Levels are a tie, not a divergence -> best-first, no warning.
+    local tie = { Main = { { Name = 'Austere Hat' }, { Name = 'Dalmatica' } } };  -- both 60
+    check('AO13 equal Levels are best-first', #(simport.importStaticSet(tie, SLOTS, resolve).notBestFirst), 0);
+
+    -- 5. Unowned candidates drop; a slot with NO owned candidate never appears (and so
+    --    is not counted) -- full-replace acts on what actually resolves.
+    local partial = { Main = { 'Yagrush', 'Unowned Club', 'Warp Cudgel' },  -- drop the middle
+                      Sub  = { 'Nothing Owned Here' } };                    -- 0 resolved -> absent
+    local r5 = simport.importStaticSet(partial, SLOTS, resolve);
+    check('AO14 partial: unowned dropped from list', #r5.working.Main, 2);
+    check('AO15 partial: order after drop [2]', r5.working.Main[2].rec.Name, 'Warp Cudgel');
+    check('AO16 partial: best-first is judged on the resolved remainder (75 then 30)', #r5.notBestFirst, 0);
+    check('AO17 partial: all-unowned slot absent', r5.working.Sub, nil);
+    check('AO18 partial: only the one resolvable slot counts', r5.slotCount, 1);
+
+    -- 6. A virtual entry (dlac:AutoStaff) is skipped by the best-first check, not read as
+    --    a Level-0 candidate that would falsely flag the slot.
+    local virt = { Main = { 'dlac:AutoStaff', 'Yagrush' } };
+    local r6 = simport.importStaticSet(virt, SLOTS, resolve);
+    check('AO19 virtual carried as candidate', #r6.working.Main, 2);
+    check('AO20 virtual does not trip best-first', #r6.notBestFirst, 0);
+
+    -- 7. Degenerate inputs never error.
+    check('AO21 nil static set -> 0 slots', simport.importStaticSet(nil, SLOTS, resolve).slotCount, 0);
+    check('AO22 nil resolver -> 0 slots', simport.importStaticSet(plain, SLOTS, nil).slotCount, 0);
+    check('AO23 isBestFirst on empty list', simport.isBestFirst({}), true);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then

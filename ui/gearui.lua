@@ -2287,45 +2287,66 @@ local function setStatus(msg, isErr)
     ui.setsStatusErr = (isErr == true);
 end
 
--- Migration helper: seed the working model from a static (non-Dynamic) set so an old
--- hand-authored set (e.g. sets.Idle) becomes an editable Dynamic set. Each slot in a
--- static set holds ONE element (gear ref / name string / '' for blank); a flattened
--- set may too. We also accept a genuine list ([1] present) so re-seeding from another
--- Dynamic set works. Naming: a name typed in the New box wins (then it's cleared),
--- else the source name -- so the user can rename the target before copying.
-local function copyFromStaticSet(srcName)
-    M.working = {};
-    ui.setSelected = nil;
-    local typed = ui.newSetName[1];
-    local target = (typed ~= nil and typed ~= '') and typed or srcName;
-    ui.newSetName[1] = '';
-    local n = 0;
+-- Copy a static (non-Dynamic) set's slots INTO the currently-selected dynamic set,
+-- keeping that set's name (issue #15 / ADR 0008). No longer spawns a set named after
+-- the source. FULL-REPLACE: the target becomes the static's contents; slots the static
+-- doesn't define are cleared. Candidate ORDER is carried verbatim, so a priority list
+-- keeps its order; dlac still equips the highest-item-Level candidate (ADR 0008), which
+-- diverges from LAC's first-in-list only for a not-best-first slot -- those are named in
+-- a per-slot chat warning. The pure transform (static set + resolver -> working lists +
+-- not-best-first slots) lives in dlac\gear\setimport so the headless suite can pin it.
+local function doCopyFromStatic(srcName)
+    local target = M.workingSetName;
+    local result = { working = {}, notBestFirst = {}, slotCount = 0 };
     pcall(function()
+        local simport = require('dlac\\gear\\setimport');   -- function-scoped: gearui is near the 200-local cap
         local S = profsets.getSetsRoot();
         if type(S) ~= 'table' then return; end
         local setT = S[srcName];
         if type(setT) ~= 'table' then return; end
-        for _, sl in ipairs(EQUIP_SLOTS) do
-            local slotVal = setT[sl.label];
-            if slotVal ~= nil then
-                -- List (Dynamic) vs single element (static): a gear.lua record has no [1].
-                local elems = (type(slotVal) == 'table' and slotVal[1] ~= nil) and slotVal or { slotVal };
-                local items = {};
-                for _, elem in ipairs(elems) do
-                    local it = resolveSetItem(elem);
-                    if it ~= nil then items[#items + 1] = it; end
-                end
-                if #items > 0 then M.working[sl.label] = items; n = n + 1; end
-            end
-        end
+        result = simport.importStaticSet(setT, EQUIP_SLOTS, resolveSetItem);
     end);
-    M.workingSetName = target;
-    _setDirty = true;   -- seeded/copied a set -> unsaved changes to commit
-    if n > 0 then
-        setStatus(string.format('Seeded "%s" from static set "%s" (%d slots). Edit, then Commit to write it into sets.Dynamic.', target, srcName, n), false);
+    if result.slotCount > 0 then
+        M.working = result.working;   -- FULL-REPLACE: undefined slots are gone
+        ui.setSelected = nil;
+        _setDirty = true;             -- copied into the set -> unsaved changes to commit
+        -- Per-slot warning for any slot NOT ordered best-first (highest item-Level
+        -- first) -- the one case dlac's highest-Level pick diverges from LAC's
+        -- first-in-list (ADR 0008). Loud, per hard rule 12: a silent behaviour change
+        -- is the failure mode, not the divergence itself.
+        for _, label in ipairs(result.notBestFirst) do
+            pcall(print, string.format('[dlac] Copy from static "%s": slot %s is not ordered best-first (highest item-Level first) -- dlac equips the highest-Level candidate, so its pick may differ from the first in your list. Reorder the slot if you meant strict priority.', srcName, label));
+        end
+        local warnNote = (#result.notBestFirst > 0)
+            and string.format('  %d slot(s) not best-first -- see chat.', #result.notBestFirst) or '';
+        setStatus(string.format('Copied static "%s" into "%s" (%d slots -- whole set replaced). Edit, then Commit.%s',
+            srcName, target, result.slotCount, warnNote), false);
     else
-        setStatus(string.format('Static set "%s" has no owned/known items to copy (blank or names not in gear.lua).', srcName), true);
+        -- Nothing resolved to owned/known gear: leave the target untouched rather than
+        -- silently wipe the player's work on a copy that produced nothing (hard rule 12).
+        setStatus(string.format('Static set "%s" has no owned/known items to copy (blank, or names not in gear.lua). "%s" left unchanged.',
+            srcName, target), true);
     end
+end
+
+-- Entry point from the "Copy from" combo: refuse without a target, confirm an
+-- overwrite, else copy straight in. The overwrite modal is rendered in renderSetsTab.
+local function copyFromStaticSet(srcName)
+    if M.workingSetName == nil or M.workingSetName == '' then
+        setStatus('Create a set first (have a dlac set open), then copy the static set into it.', true);
+        return;
+    end
+    -- Non-empty target -> confirm before anything changes (cancel / click-away aborts).
+    local filled = 0;
+    for _, list in pairs(M.working) do
+        if type(list) == 'table' and #list > 0 then filled = filled + 1; end
+    end
+    if filled > 0 then
+        ui._copyConfirm = { src = srcName, target = M.workingSetName, filled = filled };
+        ui._copyConfirmOpen = true;   -- one-shot OpenPopup (see renderSetsTab)
+        return;
+    end
+    doCopyFromStatic(srcName);
 end
 
 local function commitCurrentSet(job)
@@ -2947,9 +2968,9 @@ local function renderSetsTab(job, level)
     end
     imgui.PopItemWidth();
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Seed a Dynamic set from an old static set (e.g. Idle).\nType a name in New first to rename the target; otherwise it keeps the source name.\nEdit the lists, then Commit to write it into sets.Dynamic.');
+        imgui.SetTooltip('Copy an old static set (e.g. Idle) INTO the dynamic set you have selected --\nit keeps that set\'s name and replaces its slots. Pick or create a set first.\nCandidate order is preserved; a slot not ordered best-first is flagged in chat.\nEdit the lists, then Commit to write it into sets.Dynamic.');
     end
-    imgui.SameLine(0, 6); imgui.TextColored(COL.DIM, 'seed a Dynamic set from a static one (migration)');
+    imgui.SameLine(0, 6); imgui.TextColored(COL.DIM, 'copy a static set into the selected dynamic set (migration)');
     -- Faulty legacy statics (items you no longer own, pre-dlac experiments) can
     -- go: pick, then confirm on the red button. Backed up like every profile
     -- write; the live LAC table keeps it until the next Reload LAC.
@@ -3008,6 +3029,37 @@ local function renderSetsTab(job, level)
     -- Open + render the add-item popup at window level (vault pattern).
     if ui._openAddPopup then imgui.OpenPopup('##ffxilac_addpick'); ui._openAddPopup = false; end
     renderAddPopup(job, level);
+
+    -- "Copy from static" overwrite confirmation (issue #15). BeginPopup, not Modal:
+    -- clicking outside cancels, which IS the "click-away aborts" requirement.
+    -- ui._copyConfirmOpen is the one-shot OpenPopup flag; the data in ui._copyConfirm
+    -- persists while the popup lives and only drives an import on the Replace button.
+    if ui._copyConfirmOpen then imgui.OpenPopup('##dlac_copyconfirm'); ui._copyConfirmOpen = false; end
+    if imgui.BeginPopup('##dlac_copyconfirm') then
+        local c = ui._copyConfirm;
+        if c == nil then imgui.CloseCurrentPopup(); imgui.EndPopup(); return; end
+        imgui.TextColored(COL.HEADER, 'Replace set contents?');
+        imgui.Separator();
+        fmt.textWrapped(COL.USABLE, string.format('Replace "%s" (%d filled slot%s) with static "%s"?',
+            tostring(c.target), c.filled, (c.filled == 1) and '' or 's', tostring(c.src)));
+        fmt.textWrapped(COL.DIM, 'The whole set is replaced: slots the static set does not define are cleared. Nothing is committed until you press Commit.');
+        imgui.Separator();
+        local red = (ImGuiCol_Button ~= nil);
+        if red then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
+        if imgui.Button('Replace##copyconfirmgo', { 120, 24 }) then
+            local src = c.src;
+            ui._copyConfirm = nil;
+            imgui.CloseCurrentPopup();
+            doCopyFromStatic(src);
+        end
+        if red then imgui.PopStyleColor(1); end
+        imgui.SameLine(0, 8);
+        if imgui.Button('Cancel##copyconfirmno', { 90, 24 }) then
+            ui._copyConfirm = nil;
+            imgui.CloseCurrentPopup();
+        end
+        imgui.EndPopup();
+    end
 end
 
 -- Stat weights in their OWN resizable, movable window (was a cramped right-side panel).
