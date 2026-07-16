@@ -255,7 +255,7 @@ local function trigLoad(force)
     trig.data = M.fileToModel(raw);
 end
 
-local function trigSetStatus(msg, isErr) trig.status = msg or ''; trig.statusErr = (isErr == true); end
+local function trigSetStatus(msg, isErr) trig.status = msg or ''; trig.statusErr = (isErr == true); trig.statusAt = os.clock(); end
 
 -- Current trigger model + job, loading on demand (for gearcheck and other consumers).
 function M.currentModel()
@@ -2426,6 +2426,9 @@ function M.render(job, level)
         pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl why'); end);
     end
     if imgui.IsItemHovered() then imgui.SetTooltip('Prints which triggers fired for the last actions to the chat log (/dl why).'); end
+    -- Auto-expire after 5s so a lingering "Committed -- live now" never reads as a fresh
+    -- commit on the next click (otherwise you can't tell the new commit took).
+    if trig.status ~= '' and os.clock() - (trig.statusAt or 0) > 5 then trig.status = ''; end
     if trig.status ~= '' then
         imgui.SameLine(0, 10);
         imgui.TextColored(trig.statusErr and COL_ERR or COL_SCORE, esc(trig.status));
