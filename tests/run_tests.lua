@@ -1891,7 +1891,7 @@ end)();
     -- dofile, not require: the harness has no addons/ on package.path (the
     -- dispatch/utils pattern above). serialize is pure -- charDir is pcall-guarded
     -- and just yields nil without AshitaCore, so nothing here touches disk.
-    local pw = dofile('feature\\pinwatch.lua');
+    local pw = dofile('feature/pinwatch.lua');   -- forward slash: also loads on Linux CI
 
     local function roundTrip(pins)
         local text = pw.serialize(pins);

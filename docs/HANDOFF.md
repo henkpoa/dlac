@@ -87,6 +87,22 @@ handshake).
   re-read files you're about to edit. Never switch branches while another session's
   agent is committing.
 
+## Agent skills
+
+This repo is wired for the Matt-Pocock engineering skills and an event-driven GitHub
+agent; the per-repo setup lives in `docs/agents/`.
+
+- **Issue tracker** — GitHub issues on henkpoa/dlac (PRs are not a request surface).
+  Labeling an issue `ready-for-agent` dispatches a cloud Claude agent
+  (`.github/workflows/issue-agent.yml`) that implements it on a branch and opens a PR.
+  See `docs/agents/issue-tracker.md`.
+- **Triage labels** — the five canonical roles (`needs-triage` / `needs-info` /
+  `ready-for-agent` / `ready-for-human` / `wontfix`), plus `agent:max` to raise the
+  agent's budget on hard FFXI/engine issues. See `docs/agents/triage-labels.md`.
+- **Domain docs** — single-context: `CONTEXT.md` + `docs/adr/` at the root, with
+  HANDOFF / architecture / history as additional binding records. See
+  `docs/agents/domain.md`.
+
 ## Hard rules (each one paid for in debugging time)
 
 1. **LuaJIT 200-local cap per chunk.** gearui.lua sat at EXACTLY 200/200 until the

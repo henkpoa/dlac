@@ -1,0 +1,24 @@
+# Independent gate: run the headless Lua suite on every PR and on pushes to main,
+# so an agent's PR is verified before merge (a second check beside the agent's own).
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Lua 5.4
+        run: sudo apt-get update && sudo apt-get install -y lua5.4
+
+      - name: Headless test suite
+        run: lua5.4 tests/run_tests.lua
+
+      - name: UI smoke-load
+        run: lua5.4 tests/smoke_ui.lua

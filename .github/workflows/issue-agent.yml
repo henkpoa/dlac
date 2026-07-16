@@ -1,0 +1,76 @@
+# Event-driven issue agent: label an issue `ready-for-agent` and a cloud Claude
+# agent implements it on a branch and opens a pull request.
+#
+# Dispatch an already-labeled issue by toggling the label:
+#   gh issue edit <n> --remove-label ready-for-agent
+#   gh issue edit <n> --add-label ready-for-agent
+#
+# Auth: expects the CLAUDE_CODE_OAUTH_TOKEN secret.
+#   claude setup-token
+#   gh secret set CLAUDE_CODE_OAUTH_TOKEN -R henkpoa/dlac
+# The OAuth token bills runs against the Claude subscription (Max 20x), not
+# metered API credits.
+#
+# Model tiering: default = Opus 4.8. Add the `agent:max` label to the hardest
+# issues (deep FFXI / engine internals) to raise the turn budget. Packet-level
+# work is local-only in this project and must never be labeled ready-for-agent.
+
+name: Issue agent
+
+on:
+  issues:
+    types: [labeled]
+
+concurrency:
+  group: issue-agent-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  implement:
+    # PRD umbrella issues are planning artifacts: decomposed into slices via
+    # /to-issues, never implemented wholesale. And creating an issue WITH the
+    # label fires this event -- create issues unlabeled and toggle the label as
+    # the explicit dispatch.
+    if: github.event.label.name == 'ready-for-agent' && !startsWith(github.event.issue.title, 'PRD')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Lua 5.4 (headless test runner)
+        run: sudo apt-get update && sudo apt-get install -y lua5.4
+
+      # Default = Opus 4.8. The `agent:max` label raises the turn budget for the
+      # hardest FFXI/engine issues. (No reasoning-effort input exists on the
+      # action; model + turn budget are the levers.)
+      - name: Select model tier
+        id: tier
+        run: |
+          if ${{ contains(github.event.issue.labels.*.name, 'agent:max') }}; then
+            echo 'args=--model claude-opus-4-8 --max-turns 60 --allowedTools "Bash(git:*),Bash(gh:*),Bash(lua5.4:*),Bash(lua:*),Bash(luac5.4:*),Edit,Write,Read,Glob,Grep"' >> "$GITHUB_OUTPUT"
+          else
+            echo 'args=--model claude-opus-4-8 --max-turns 30 --allowedTools "Bash(git:*),Bash(gh:*),Bash(lua5.4:*),Bash(lua:*),Bash(luac5.4:*),Edit,Write,Read,Glob,Grep"' >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: ${{ steps.tier.outputs.args }}
+          prompt: |
+            Implement GitHub issue #${{ github.event.issue.number }} ("${{ github.event.issue.title }}") in this repository.
+
+            Ground rules (binding):
+            - Read the issue first: `gh issue view ${{ github.event.issue.number }}`. Its acceptance criteria and parent PRD define the scope -- nothing more.
+            - Before touching code, read docs/HANDOFF.md, CONTEXT.md, docs/architecture.md, docs/history.md (the dead-ends), and docs/adr/. They are the authoritative, binding design record; use the CONTEXT.md vocabulary.
+            - Tests must pass before you open the PR: `lua5.4 tests/run_tests.lua` and `lua5.4 tests/smoke_ui.lua`. Syntax-gate every touched Lua file with `luac5.4 -p <file>`. Keep code Lua 5.1 / LuaJIT-compatible (the suite runs on 5.4 -- write to the intersection).
+            - Work on a branch, never commit to main. NEVER touch or push the `feature/autoacc` or `feature/storage-move` branches -- they are local-only, pending GM approval.
+            - Player-visible strings (stat names, UI labels) need the maintainer's sign-off. Do NOT finalize new player-facing names -- propose them in the PR body for review.
+            - Respect the hard rules in docs/HANDOFF.md: the 200-local UI-chunk cap (register UI via uihost, do not add gearui locals); require('imgui') in modules; the file-write backup -> temp -> validate -> atomic-swap safety pattern; bump dispatch.M.VERSION if seeded-file behavior changes.
+            - Open a pull request whose body explains the change, lists which acceptance criteria are met, flags anything deferred, and includes "Closes #${{ github.event.issue.number }}".
