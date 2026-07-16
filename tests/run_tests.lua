@@ -2710,6 +2710,43 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- TR. Trinket vs ranged weapon (ADR 0010): a stat-stick ammo reserves the Range
+--     slot server-side, so the two can't coexist (the client would flap re-equipping
+--     the weapon the server keeps clearing). gearimport.effectiveRSlot completes the
+--     trinket category (Ammo + no AmmoType -> the Range bit) so the WHOLE class is
+--     marked in gear.lua; dispatch.trinketRangeDrop keeps the HIGHER-LEVEL of the two
+--     and drops the other -- deterministic, so it settles instead of flapping.
+-- ---------------------------------------------------------------------------
+(function()
+    -- trinket detection: Ammo with no AmmoType -> Range bit; fired ammo / explicit RSlot untouched
+    local gimp = dofile('gear/gearimport.lua');
+    check('TR0 effectiveRSlot exported', type(gimp.effectiveRSlot), 'function');
+    check('TR1 trinket (Ammo, no AmmoType) -> Range bit', gimp.effectiveRSlot({ Type = 'Ammo', Id = 1 }), 4);
+    check('TR2 fired ammo (has AmmoType) -> nil',          gimp.effectiveRSlot({ Type = 'Ammo', AmmoType = 'Archery' }), nil);
+    check('TR3 explicit RSlot kept',                       gimp.effectiveRSlot({ Type = 'Ammo', RSlot = 8 }), 8);
+    check('TR4 non-ammo -> nil',                           gimp.effectiveRSlot({ Type = 'Body' }), nil);
+
+    -- the level tiebreak (dispatchM.trinketRangeDrop). rslot: only the stat sticks reserve Range.
+    local rslot = function(n) return ({ Cinderstone = 4, Morion = 4 })[n]; end
+    local level = function(n) return ({ Cinderstone = 60, Morion = 25, ['Power Bow'] = 75, ['Toy Bow'] = 10, ['Iron Arrow'] = 1 })[n]; end
+    local function drop(set) return dispatchM.trinketRangeDrop(set, rslot, level); end
+
+    local k, w = drop({ Range = 'Power Bow', Ammo = 'Cinderstone' });   -- bow 75 > stick 60
+    check('TR5 bow higher -> drop the trinket',  k, 'Ammo');
+    check('TR5b ... keeping the bow',            w, 'Power Bow');
+    k, w = drop({ Range = 'Toy Bow', Ammo = 'Cinderstone' });           -- stick 60 > bow 10
+    check('TR6 trinket higher -> drop the weapon', k, 'Range');
+    check('TR6b ... keeping the trinket',          w, 'Cinderstone');
+    check('TR7 bow + real arrow -> no drop', (drop({ Range = 'Power Bow', Ammo = 'Iron Arrow' })), nil);
+    check('TR8 trinket alone -> no drop',    (drop({ Ammo = 'Cinderstone' })), nil);
+    check('TR9 bow alone -> no drop',        (drop({ Range = 'Power Bow' })), nil);
+    -- tie on level -> keep the trinket (drop Range), matching the server's own resolution
+    local level2 = function(n) return ({ Cinderstone = 75, ['Power Bow'] = 75 })[n]; end
+    check('TR10 tie -> keep the trinket, drop Range',
+        dispatchM.trinketRangeDrop({ Range = 'Power Bow', Ammo = 'Cinderstone' }, rslot, level2), 'Range');
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then

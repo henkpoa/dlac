@@ -49,7 +49,7 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 51;   -- 51: Trigger Groups (G1) -- new `group` matcher (specificity tier 45) + Groups section load/serialize (ADR 0009). 50: the v46-49 /dl instdiag diagnostic is out (field-confirmed on both characters); the fix it found stays -- M.jobReady + the job-keyed latch. See ADR 0007
+M.VERSION = 52;   -- 52: trinket vs ranged weapon (ADR 0010) -- a stat stick reserves the Range slot server-side, so the engine keeps the higher-Level of {trinket, ranged weapon} and drops the other (no flap); trinket RSlot completed in gearimport. 51: Trigger Groups (G1) -- new `group` matcher (specificity tier 45) + Groups section load/serialize (ADR 0009). 50: the v46-49 /dl instdiag diagnostic is out (field-confirmed on both characters); the fix it found stays -- M.jobReady + the job-keyed latch. See ADR 0007
                   -- 49: THE LOGIN BUG. At login GetMainJob() reads 0 (=None), which gData stringifies to "NON" -- not '' and not '?', so the auto-install took it for a real job, found no sets\NON.lua, installed nothing and LATCHED for the session: every trigger then matched and silently equipped nothing (v35 skips a missing set in silence). Fixed at both ends -- M.jobReady rejects a not-ready job, and the latch records WHICH job it answered for, so a settling read re-fires the guard
                   -- 44: PINNED slots -- pinstate.lua forces a named item into a slot at TOP priority (above the craft overlay), scoped to All or to named triggers; the engine WEARS the pin, so nothing removes it
                   -- 43: reserved slots (RSlot) resolved at equip time -- a Body that takes Head away (Ryl.Ftm. Tunic) drops the reserved slot instead of flapping with the server forever; worn pieces reserve too
@@ -1090,6 +1090,30 @@ function M.reservedDrops(set, lookup, worn)
     return dropped;
 end
 
+-- A stat-stick TRINKET (an Ammo item whose RSlot reserves the Range slot) and a ranged weapon
+-- cannot coexist -- the server clears one the moment both are worn, so keeping both flaps forever.
+-- Keep the HIGHER-LEVEL of the two and drop the other (Henrik): deterministic, so it settles.
+-- rslotFn(name) / levelFn(name) are injected (they read the gear manifest; tests drive them).
+-- Returns (droppedSlotKey, keptName) or nil when there is no trinket/ranged conflict in the set.
+function M.trinketRangeDrop(set, rslotFn, levelFn)
+    if type(set) ~= 'table' then return nil; end
+    local rangeKey, rangeName, ammoKey, ammoName;
+    for slot, v in pairs(set) do
+        if type(v) == 'string' then
+            local ls = string.lower(tostring(slot));
+            if ls == 'range' then rangeKey, rangeName = slot, v;
+            elseif ls == 'ammo' then ammoKey, ammoName = slot, v; end
+        end
+    end
+    if rangeName == nil or ammoName == nil then return nil; end
+    local mask = tonumber(rslotFn(ammoName)) or 0;
+    if not hasBit(mask, 0x0004) then return nil; end          -- the Ammo item does not reserve Range
+    local la = tonumber(levelFn(ammoName)) or 0;
+    local lr = tonumber(levelFn(rangeName)) or 0;
+    if lr > la then return ammoKey, rangeName; end            -- ranged weapon is higher -> drop the trinket
+    return rangeKey, ammoName;                                -- trinket is higher-or-equal -> drop the ranged weapon
+end
+
 -- RSlot by item name, from the gear manifest. Resolved lazily: in LAC's state the
 -- require finds the character's real gear.lua. Guarded -- a missing/old manifest
 -- means every lookup is nil, and the engine behaves exactly as it did before.
@@ -1105,6 +1129,21 @@ local function rslotOf(name)
         if rec ~= nil then m = tonumber(rec.RSlot); end
     end);
     return m;
+end
+
+-- Item Level by name, from the same gear manifest -- the tiebreak for the trinket/ranged
+-- conflict. Guarded like rslotOf; a missing manifest reads as nil (-> 0 at the call site).
+local function levelOf(name)
+    if _gearMod == nil then
+        _gearMod = false;
+        pcall(function() _gearMod = require('dlac\\gear') or false; end);
+    end
+    local lv = nil;
+    pcall(function()
+        local rec = _gearMod and _gearMod.NameToObject and _gearMod.NameToObject[name] or nil;
+        if rec ~= nil then lv = tonumber(rec.Level); end
+    end);
+    return lv;
 end
 
 local function equipResolved(s, ctx)
@@ -1277,6 +1316,19 @@ local function equipResolved(s, ctx)
                 break;
             end
         end
+    end
+    -- Trinket vs ranged weapon (ADR 0010): a stat stick reserves the Range slot server-side, so
+    -- the two can't coexist -- keep the higher-Level one and drop the other, BEFORE the reserved
+    -- pass, so the loser can't go on to reserve anything and the result never flaps.
+    local tdKey, tdWinner = M.trinketRangeDrop(out or s, rslotOf, levelOf);
+    if tdKey ~= nil then
+        if out == nil then
+            out = {};
+            for k2, v2 in pairs(s) do out[k2] = v2; end
+        end
+        out[tdKey] = nil;
+        notes = notes or {};
+        notes[#notes + 1] = string.format('%s=dropped (stat stick vs ranged weapon; kept %s)', tostring(tdKey), tostring(tdWinner));
     end
     -- Reserved-slot pass (see RSLOT_ORDER). LAST, on the FINAL names: only here are
     -- the overlay, the virtuals, AutoAcc and MP-EQUIP all resolved. It has to be

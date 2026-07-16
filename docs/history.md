@@ -1947,3 +1947,32 @@ arrays via `gm.addMember`; the engine reads the same file), so **no `dispatch.M.
 bump**. New player-facing strings (the Browse... button + tooltip, the popup title, the
 `[S]`/`[A]` markers, "Add N marked", the status line) are **proposed for maintainer
 sign-off** in the PR, not finalized.
+
+## Session "trinket vs ranged weapon -- the REAL fix (server-enforced)" (2026-07-16, ADR 0010, branch fix/trinket-ranged-conflict)
+
+The first attempt (PR #34, ADR 0010 v1) got this BACKWARDS and was closed. This is the corrected fix.
+
+### What's actually going on (field-confirmed: it FLAPS)
+
+A stat-stick trinket (Ammo, no `AmmoType`) and a bow/xbow/gun can't be worn together -- they flap
+back and forth. It's the SERVER: `RSlot=4` (reserve-Range) is `item_equipment.rslot` on the whole
+throwing-ammo class (135 catalog items -- Morion, all pet food, tathlums, pebbles), so the server
+strips the Range slot when such ammo is worn. `reservedDrops` was built to mirror exactly this
+("the only stable state"). The bug was that the mirror was INCOMPLETE: the crawl left `RSlot` off a
+few stat sticks (Cinderstone, Coiste Bodhar, Talon Tathlum), so those flapped. v1 misread the gaps
+as an "artifact" and tried to make them coexist -- which removed the mirror and made the WHOLE class
+flap (Henrik: "flapping back and forth, no difference with Morion"). An investigation agent confirmed
+there is NO second client mechanism: the only cross-slot Range/Ammo logic is `reservedDrops` +
+`pickRangeAmmo`, and the reservation is the server's.
+
+### The corrected fix (ADR 0010)
+
+- **`gearimport.effectiveRSlot`** completes the category: a trinket (`Type='Ammo'`, no `AmmoType`)
+  missing its `RSlot` gets the Range bit stamped -- in the ONE place gear.lua's RSlot is decided, so
+  the fresh write AND the `/dl fix` backfill agree. Cinderstone/Coiste now carry `RSlot=4`.
+- **`dispatch.trinketRangeDrop`** resolves by Henrik's rule -- keep the **higher-Level** of {trinket,
+  ranged weapon}, drop the other -- before the reserved pass, deterministically (no flap). Tie ->
+  keep the trinket (server default).
+- `pickRangeAmmo` unchanged (the optimizer already avoids the pair). `dispatch.M.VERSION` -> 52.
+- Players **re-commit / `/dl fix`** once so the gap trinkets pick up the completed RSlot.
+- Tests TR0-TR10; 780 + 123 green.
