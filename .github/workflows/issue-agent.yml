@@ -54,9 +54,9 @@ jobs:
         id: tier
         run: |
           if ${{ contains(github.event.issue.labels.*.name, 'agent:max') }}; then
-            echo 'args=--model claude-opus-4-8 --max-turns 60 --allowedTools "Bash(git:*),Bash(gh:*),Bash(lua5.4:*),Bash(lua:*),Bash(luac5.4:*),Edit,Write,Read,Glob,Grep"' >> "$GITHUB_OUTPUT"
+            echo 'args=--model claude-opus-4-8 --max-turns 300 --allowedTools "Bash(git:*),Bash(gh:*),Bash(lua5.4:*),Bash(lua:*),Bash(luac5.4:*),Edit,Write,Read,Glob,Grep"' >> "$GITHUB_OUTPUT"
           else
-            echo 'args=--model claude-opus-4-8 --max-turns 30 --allowedTools "Bash(git:*),Bash(gh:*),Bash(lua5.4:*),Bash(lua:*),Bash(luac5.4:*),Edit,Write,Read,Glob,Grep"' >> "$GITHUB_OUTPUT"
+            echo 'args=--model claude-opus-4-8 --max-turns 150 --allowedTools "Bash(git:*),Bash(gh:*),Bash(lua5.4:*),Bash(lua:*),Bash(luac5.4:*),Edit,Write,Read,Glob,Grep"' >> "$GITHUB_OUTPUT"
           fi
 
       - uses: anthropics/claude-code-action@v1
