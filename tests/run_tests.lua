@@ -2202,6 +2202,71 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- AP. weaponfilter -- the pure weapon-type picker filter (#16 F2a, PRD #14)
+--
+--   Two pure decisions the Add-item picker's weapon-type dropdown is a thin shell over:
+--   presentBuckets (which type buckets are actually present in a slot's candidates, in
+--   canonical order, no empty buckets) and visible (is a record shown under the marked
+--   type set -- {} / nil = "All"). VIEW-ONLY: never eligibility (HARD RULE 6 / ADR 0006).
+-- ---------------------------------------------------------------------------
+(function()
+    local wf = dofile('gear/weaponfilter.lua');   -- forward slash: also loads on Linux CI
+    check('AP0 presentBuckets exported', type(wf.presentBuckets), 'function');
+    check('AP1 visible exported',        type(wf.visible),        'function');
+
+    -- Candidate pool for a Warrior Main: axes + great axes + a sword, unordered by type,
+    -- with a duplicate type and a nil-Type oddball (a virtual entry has no Type).
+    local cands = {
+        { Name = 'Woodville Axe', Type = 'Axe' },
+        { Name = 'Colossal Axe',  Type = 'GreatAxe' },
+        { Name = 'Barbaroi Axe',  Type = 'Axe' },        -- duplicate bucket -> one option
+        { Name = 'Fransisca',     Type = 'GreatAxe' },
+        { Name = 'Firangi',       Type = 'Sword' },
+        { Name = 'dlac:AutoCraft', Virtual = true },      -- no Type -> no bucket
+    };
+
+    -- 1. presentBuckets: only owned types, canonical order (Sword before Axe before
+    --    GreatAxe), de-duplicated, no empty buckets, no bucket for the Type-less oddball.
+    local buckets = wf.presentBuckets(cands, 'Main');
+    check('AP2 three buckets present',        #buckets, 3);
+    check('AP3 canonical order [1] Sword',    buckets[1].key, 'Sword');
+    check('AP4 canonical order [2] Axe',      buckets[2].key, 'Axe');
+    check('AP5 canonical order [3] GreatAxe', buckets[3].key, 'GreatAxe');
+    check('AP6 player-facing label',          buckets[3].label, 'Great Axe');
+
+    -- 2. Empty pool / unknown slot -> no options (dropdown hidden), never an error.
+    check('AP7 empty pool -> no buckets',     #wf.presentBuckets({}, 'Main'), 0);
+    check('AP8 unfilterable slot -> no buckets', #wf.presentBuckets(cands, 'Head'), 0);
+    check('AP9 nil cands -> no buckets',      #wf.presentBuckets(nil, 'Main'), 0);
+
+    -- 3. visible: {} / nil = "All" -> everything shows.
+    check('AP10 empty marks = All (axe)',   wf.visible(cands[1], {}, 'Main'), true);
+    check('AP11 nil marks = All (sword)',   wf.visible(cands[5], nil, 'Main'), true);
+
+    -- 4. visible: a single marked type shows only that bucket.
+    local onlyAxe = { Axe = true };
+    check('AP12 marked Axe shows Axe',        wf.visible(cands[1], onlyAxe, 'Main'), true);
+    check('AP13 marked Axe hides GreatAxe',   wf.visible(cands[2], onlyAxe, 'Main'), false);
+    check('AP14 marked Axe hides Sword',      wf.visible(cands[5], onlyAxe, 'Main'), false);
+
+    -- 5. Multi-pick: Axe + GreatAxe shows both, still hides Sword.
+    local axes = { Axe = true, GreatAxe = true };
+    check('AP15 multi shows Axe',      wf.visible(cands[1], axes, 'Main'), true);
+    check('AP16 multi shows GreatAxe', wf.visible(cands[2], axes, 'Main'), true);
+    check('AP17 multi hides Sword',    wf.visible(cands[5], axes, 'Main'), false);
+
+    -- 6. A record with no bucket (virtual / Type-less) is hidden once ANY type is marked,
+    --    but shows under "All".
+    check('AP18 no-bucket hidden when narrowed', wf.visible(cands[6], onlyAxe, 'Main'), false);
+    check('AP19 no-bucket shown under All',       wf.visible(cands[6], {}, 'Main'), true);
+
+    -- 7. Unfilterable slot: a marked filter can't leak in (the predicate is All-open there
+    --    only via empty marks; a non-empty mark on an unknown slot hides everything, which
+    --    is moot because gearui never shows the dropdown for such a slot).
+    check('AP20 bucketOf unknown slot -> nil', wf.bucketOf(cands[1], 'Head'), nil);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then
