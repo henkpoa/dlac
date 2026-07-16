@@ -1853,3 +1853,51 @@ No seeded-file behaviour changed (the copy is an addon-state Sets-tab edit; the 
 still flattens by highest Level), so **no `dispatch.M.VERSION` bump**. Player-facing
 strings (the refuse message, the popup title/body, the warning) are **proposed for
 maintainer sign-off** in the PR, not finalized.
+
+## Session "import Lua tables to bulk-create groups" (2026-07-16, issue #30, G4)
+
+The fast path for a player who already keeps their spells grouped in a Lua table (by stat
+scaling, by role, ...): an **"Import Lua Table(s)"** control in the Groups section that
+parses pasted `Name = T{...}` assignments and bulk-creates **one Group per top-level key**,
+members = the key's string array. Builds on G1/G2's `groupsmodel` / `Groups` storage —
+same file, same Commit.
+
+### What landed
+
+- **The pure transform is its own module, `gear/groupimport.lua`** —
+  `parse(text) -> (groups | nil, errors[])`, plus `classify` (created vs collide, CI) and
+  `apply` (write into the live map, overwriting under the existing stored spelling). No
+  Ashita, no ImGui, no file I/O — the same shape as `setimport.lua`. Tests **TGI0–TGI33**
+  pin it: the issue's own paste (T{...} + plain {...} mixed, trailing comma), the
+  single-element `STR_VIT = T{'Quad. Continuum', }` -> `["Quad. Continuum"]` exactly, the
+  whole `{ Key = {...} }` form, flat-only rejection (nested / non-string / named-field skips
+  THAT key while the rest import), malformed input, a sandbox-blocked global, blank/nil
+  input, and empty groups.
+- **`T` is identity, sandboxed.** The text is evaluated in a minimal env — `T = function(t)
+  return t end` and **nothing else**, no metatable, so every other global (`os`, `io`,
+  `require`, ...) reads nil and a hostile paste errors at eval rather than running (the
+  hardened `profilesets.sandboxSets` pattern). Compiled with `load(code, name, 't', env)` /
+  `loadstring`+`setfenv` (5.4 tests, LuaJIT addon), **'t' mode = text only** so no bytecode
+  can be smuggled in. Two wrappings are tried (`return {...}` for bare lines, `return ...`
+  for a whole braced table); on a total failure the PRIMARY form's error is reported so an
+  "unterminated table" / "nil global" message isn't masked by the fallback's `<eof> expected`.
+- **Collisions are confirmed, never clobbered.** Import parses + classifies and shows a
+  **preview** (create N: names / overwrite N: names / skip N: reasons). With no collisions it
+  imports immediately; with collisions it waits for a red **"Overwrite N & import"** click
+  (parity with "Copy from static"). Overwrite replaces members **under the existing stored
+  spelling** (`str_dex` pasted over `STR_DEX` keeps `STR_DEX`). A skipped key always states
+  its reason — no silent drop (hard rule 12). Commit still writes the file.
+- **`InputTextMultiline` is probed, not assumed** (hard rule 2 — it is used nowhere else in
+  this install). Present -> the paste box; absent -> a single-line box with a visible note
+  (the parser is comma-separated, so one line still works) — a visible degrade, never a
+  silent disable.
+
+### Where it lives / what did NOT change
+
+`renderGroupImport` is a `local` in `ui/triggersui.lua` (addon-state, 92 top-level locals —
+well under the 200 cap; smoke_ui guards the load). State rides on the existing `groupUI`
+table (no new UI-chunk pressure). **No seeded-file behaviour changed** — `groupimport.lua`
+is never seeded, the trigger-file `Groups` format is exactly G2's, and the engine reads it
+unchanged — so **no `dispatch.M.VERSION` bump**. Player-facing strings (the control label,
+the preview/summary wording, the skip reasons) are **proposed for maintainer sign-off** in
+the PR, not finalized.
