@@ -2447,12 +2447,32 @@ local function renderAddPopup(job, level)
         imgui.SameLine(0, 10); renderSortCombo('add');
         imgui.SameLine(0, 10);
         imgui.TextColored(COL.DIM, 'stays open -- add several; Esc / click outside closes');
+        -- Candidate pool first (the weapon-type filter's buckets derive from it, so it
+        -- has to exist before the filter row renders). Sub takes the full paired pool.
+        local gearKey = GEAR_OF[ui.setSelected] or ui.setSelected;
+        local list = M.working[ui.setSelected] or {};
+        local inList = {};
+        for _, it in ipairs(list) do if it.rec and it.rec.Name then inList[it.rec.Name] = true; end end
+        local useLevel = setBuildLevel(level);   -- "Build as lv.75" lifts the cap for + Add too
+        local cands = candidatesForSlot(gearKey, job, useLevel);
+        if gearKey == 'Sub' then
+            -- Full pool (shields/grips + 1H weapons), paired against EVERY Main
+            -- plan -- not just the current pick: that pick is mode/level-dependent,
+            -- and a mode-gated staff pick would wrongly hide all 1H weapons. Sets
+            -- are plans: a 1H off-hand is addable without the DW trait;
+            -- BuildDynamicSets decides at equip time (shield = fallback).
+            cands = subFilterAnyMain(subCandidatePool(job, useLevel), M.working['Main'], job, useLevel);
+        end
+        local blocked = pairedBlockedIds(ui.setSelected, true);
+        cands = sortForDisplay(cands);
+
         -- Filter row: name search + hide gear parked in unavailable containers
         -- + hide the Teleports-menu utility items (ON by default -- Henrik: they
         -- bloat the Ear/Ring lists without adding set value).
         ui.addSearch = ui.addSearch or { '' };
         ui.addAvail  = ui.addAvail  or { false };
         ui.addHideTravel = ui.addHideTravel or { true };
+        ui.addTypeFilter = ui.addTypeFilter or {};   -- weapon-type marks (F2a); {} = "All"
         imgui.TextColored(COL.DIM, 'Search:'); imgui.SameLine(0, 4);
         imgui.PushItemWidth(240);
         imgui.InputText('##addsearch', ui.addSearch, 48);
@@ -2470,28 +2490,47 @@ local function renderAddPopup(job, level)
         if imgui.IsItemHovered() then
             imgui.SetTooltip('Hide the Teleports-menu utility items (Warp / Provenance Ring, teleport\nearrings, exp rings) -- no combat stats, they only bloat the Ear/Ring\nlists. Untick to add one to a set deliberately.');
         end
-        local gearKey = GEAR_OF[ui.setSelected] or ui.setSelected;
-        local list = M.working[ui.setSelected] or {};
-        local inList = {};
-        for _, it in ipairs(list) do if it.rec and it.rec.Name then inList[it.rec.Name] = true; end end
-        local useLevel = setBuildLevel(level);   -- "Build as lv.75" lifts the cap for + Add too
-        local cands = candidatesForSlot(gearKey, job, useLevel);
-        if gearKey == 'Sub' then
-            -- Full pool (shields/grips + 1H weapons), paired against EVERY Main
-            -- plan -- not just the current pick: that pick is mode/level-dependent,
-            -- and a mode-gated staff pick would wrongly hide all 1H weapons. Sets
-            -- are plans: a 1H off-hand is addable without the DW trait;
-            -- BuildDynamicSets decides at equip time (shield = fallback).
-            cands = subFilterAnyMain(subCandidatePool(job, useLevel), M.working['Main'], job, useLevel);
+        -- Weapon-type filter (F2a, PRD #14): a multiselect narrowing the VISIBLE
+        -- candidates by weapon type -- view-only, never eligibility (HARD RULE 6 /
+        -- ADR 0006). Shown only for slots weaponfilter knows (Main today; Sub/Range/
+        -- Ammo in F2b/F2c) and only offers the types present in this slot's owned pool.
+        local wf = require('dlac\\gear\\weaponfilter');   -- function-scoped: gearui is near the 200-local cap
+        local wfBuckets = wf.presentBuckets(cands, gearKey);
+        if #wfBuckets > 0 then
+            local nMarked = 0; for _ in pairs(ui.addTypeFilter) do nMarked = nMarked + 1; end
+            imgui.SameLine(0, 14);
+            imgui.TextColored(COL.DIM, 'Type:'); imgui.SameLine(0, 4);
+            imgui.PushItemWidth(150);
+            local preview = (nMarked == 0) and 'All'
+                or (nMarked == 1 and '1 type' or (nMarked .. ' types'));
+            if imgui.BeginCombo('##addtypefilter', preview) then
+                -- "All" clears every mark. Marking a specific type auto-deselects All
+                -- (nMarked > 0). Checkboxes (not Selectable) keep the dropdown open for
+                -- multi-pick without depending on a DontClosePopups flag.
+                local allRef = { nMarked == 0 };
+                if imgui.Checkbox('All##wf_all', allRef) then ui.addTypeFilter = {}; end
+                imgui.Separator();
+                for _, b in ipairs(wfBuckets) do
+                    local ref = { ui.addTypeFilter[b.key] == true };
+                    if imgui.Checkbox(b.label .. '##wf_' .. b.key, ref) then
+                        ui.addTypeFilter[b.key] = ref[1] and true or nil;
+                    end
+                end
+                imgui.EndCombo();
+            end
+            imgui.PopItemWidth();
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Show only the marked weapon types. "All" (default) shows everything;\nmark one or more types to narrow the list. Resets to "All" each open.\nView only -- what is eligible never changes.');
+            end
         end
-        local blocked = pairedBlockedIds(ui.setSelected, true);
-        cands = sortForDisplay(cands);
+
         -- Apply the popup filters up front so the name column sizes to what shows.
         local q = string.lower(ui.addSearch[1] or '');
         local qTerms = parseSearch(q);
         local travelSet = (ui.addHideTravel[1] == true and useit ~= nil
             and type(useit.menuNames) == 'function') and useit.menuNames() or nil;
         local travelHidden = 0;   -- so the empty-list message can blame the filter
+        local typeHidden = 0;     -- ditto, for the weapon-type filter
         local shown = {};
         for _, rec in ipairs(cands) do
             if not inList[rec.Name] and not (rec.Id and blocked[rec.Id])
@@ -2499,6 +2538,8 @@ local function renderAddPopup(job, level)
                and (ui.addAvail[1] ~= true or not owned.isStored(rec)) then
                 if travelSet ~= nil and rec.Name ~= nil and travelSet[string.lower(rec.Name)] then
                     travelHidden = travelHidden + 1;
+                elseif not wf.visible(rec, ui.addTypeFilter, gearKey) then
+                    typeHidden = typeHidden + 1;
                 else
                     shown[#shown + 1] = rec;
                 end
@@ -2549,7 +2590,7 @@ local function renderAddPopup(job, level)
             end
         end
         if not any then
-            imgui.TextColored(COL.DIM, (q ~= '' or ui.addAvail[1] == true or travelHidden > 0)
+            imgui.TextColored(COL.DIM, (q ~= '' or ui.addAvail[1] == true or travelHidden > 0 or typeHidden > 0)
                 and 'Nothing matches the search / filter.'
                 or 'No addable items (check Main for Sub, or you own only one).');
         end
@@ -2739,7 +2780,7 @@ local function renderSetBuilder(job, level)
 
     local list = M.working[ui.setSelected] or {};
     imgui.TextColored(COL.HEADER, string.format('%s list (%d):', ui.setSelected, #list));
-    imgui.SameLine(); if imgui.Button('+ Add##setadd', { 60, 0 }) then ui._openAddPopup = true; ui.addSearch = { '' }; end
+    imgui.SameLine(); if imgui.Button('+ Add##setadd', { 60, 0 }) then ui._openAddPopup = true; ui.addSearch = { '' }; ui.addTypeFilter = {}; end   -- weapon-type filter resets to "All" each open (F2a)
     imgui.SameLine(0, 8); renderSortCombo('setlist');
 
     local pick = bestByLevel(list, level);
