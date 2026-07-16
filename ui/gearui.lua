@@ -2560,9 +2560,11 @@ local function renderAddPopup(job, level)
         elseif ui.setSelected == 'Waist' then
             vlist[#vlist + 1] = { name = 'dlac:ElementalObi', tip = 'Equips the matching elemental obi when the net day/weather bonus for\nthe spell\'s element is positive (level-checked). Other items in this\nslot\'s list are the fallback.\n(Sets written as dlac:AutoObi keep working.)' };
         end
-        -- Craft automation: offered on EVERY slot -- data-driven, the engine only
-        -- resolves it where the manifest has craft gear for this slot.
-        vlist[#vlist + 1] = { name = 'dlac:AutoCraft', tip = 'Equips your best craft gear for THIS slot while a craft is active\n(/dl mode craft <Skill> -- set automatically when a synth is detected).\nGoal via /dl mode craftgoal hq|nq: hq raises quality; nq blocks HQ\n(guild anti-HQ gear) for materials you don\'t want HQ\'d. Level-checked;\nother items in this slot\'s list are the fallback. Gear stays on when\nthe craft mode clears -- your next action redresses you.' };
+        -- NOTE: dlac:AutoCraft is deliberately NOT offered here. Craft gear is a SET
+        -- automation -- the engine overlays the whole craft set (dispatch.craftOverlay)
+        -- when a craft is active -- not a per-slot pick. It is still configured under
+        -- Triggers > Automations, and the engine's per-slot resolveVirtual('dlac:AutoCraft')
+        -- (used by the overlay) and any set that still carries the marker keep working.
         if vlist ~= nil then
             for vi, vd in ipairs(vlist) do
                 if not inList[vd.name]
