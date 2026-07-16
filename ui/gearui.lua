@@ -2287,6 +2287,7 @@ end
 local function setStatus(msg, isErr)
     ui.setsStatus = msg or '';
     ui.setsStatusErr = (isErr == true);
+    ui.setsStatusAt = os.clock();   -- stamp for the 5s auto-expiry (see the render site)
 end
 
 -- Copy a static (non-Dynamic) set's slots INTO the currently-selected dynamic set,
@@ -3052,6 +3053,11 @@ local function renderSetsTab(job, level)
         end
     end
 
+    -- Auto-expire after 5s: a lingering "... live now" line would otherwise read as a fresh
+    -- commit the next time, hiding whether the new one actually took.
+    if ui.setsStatus ~= nil and ui.setsStatus ~= '' and os.clock() - (ui.setsStatusAt or 0) > 5 then
+        ui.setsStatus = '';
+    end
     if ui.setsStatus ~= nil and ui.setsStatus ~= '' then
         fmt.textWrapped(ui.setsStatusErr and COL.ERR or COL.SCORE, fmt.esc(ui.setsStatus));
     end
