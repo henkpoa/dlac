@@ -221,6 +221,20 @@ splits created vs collide (case-insensitive) and `apply` writes into the live `G
 overwriting a collision under its existing stored spelling. triggersui draws the paste box +
 the overwrite confirmation + the summary. Headless-tested (TGI*). Never seeded into LAC.
 
+### gear/groupscan.lua — auto-import: scan a Lua file for group tables (pure)
+The auto-import sibling of `groupimport` (Item 1): `scan(fileText) -> (candidates, notes)`
+text-scans a LuaAshitacast job file for top-level `[local] NAME = T?{...}` blocks and surfaces
+every group-shaped table as an import candidate, so a player who already keeps spells grouped in
+their file skips the copy-paste. A `%b{}` walk pulls each top-level block (never descending, so a
+gear set's inner `['Idle'] = {...}` is not a hit); each body is evaluated in `groupimport`'s
+sandbox (`evalTable`) and classified by its `membersOf` heuristic — a flat string array is one
+candidate (a directly-defined group, or a variant/config table), a container of flat arrays
+expands to one candidate per inner key (the `BlueSpells` case), and a gear set / settings block is
+skipped with a note. Candidates are deduped case-insensitively and sorted; comments are stripped
+first so a stray brace can't unbalance the scan. triggersui draws the `Scan → tick → Import` panel
+(config-looking names pre-unticked) and reuses `groupimport`'s classify / overwrite-confirm /
+apply. Headless-tested (GS*). Never seeded into LAC.
+
 ### gear/actionpicker.lua — searchable spell/ability browse-list core (pure)
 The Ashita/imgui/file-IO-free core behind the Groups tab's member browse-list (issue #26,
 G3; ADR 0009). `buildList(job, spells, abilities)` returns the job's LEARNABLE spells +

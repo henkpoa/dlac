@@ -22,6 +22,7 @@ local _dpok, dsp  = pcall(require, "dlac\\dispatch");
 local _lsok, lscale = pcall(require, "dlac\\data\\levelstats");
 local _gmok, gm   = pcall(require, "dlac\\gear\\groupsmodel");
 local _giok, gimp = pcall(require, "dlac\\gear\\groupimport");
+local _gsok, gscan = pcall(require, "dlac\\gear\\groupscan");   -- Item 1: auto-import from the Lua file
 -- Searchable spell/ability browse-list for the Groups member picker (G3, issue #26):
 -- the pure list/search core + the two picker-DB data files it filters. Addon-state only
 -- (a UI module -- never seeded into LAC), so requiring the data here is fine; all guarded,
@@ -34,6 +35,7 @@ local hasDispatch = _dpok and type(dsp) == 'table';
 local hasLScale   = _lsok and type(lscale) == 'table';
 local hasGroups   = _gmok and type(gm) == 'table';
 local hasGroupImport = _giok and type(gimp) == 'table';
+local hasGroupScan   = _gsok and type(gscan) == 'table';
 -- InputTextMultiline is the right widget for a paste box, but it is not used anywhere else in
 -- this install -- probe it (hard rule 2: presence proves nothing, but absence is certain), and
 -- degrade to a single-line box with a visible note rather than silently disabling the feature.
@@ -169,6 +171,9 @@ local groupUI = {
     -- overwrite confirmation. `plan` holds the parsed groups + the created/overwritten/skipped
     -- split between the Import click and the (Overwrite &) Import Groups click.
     importText = { '' }, plan = nil,
+    -- Auto-import (Item 1): the scanned candidates + their tick state (name -> bool) + notes for
+    -- the skipped tables + a pending plan awaiting the overwrite confirmation.
+    autoCands = nil, autoNotes = nil, autoMarks = {}, autoPlan = nil, autoScanned = false,
     -- Browse-list picker (G3, issue #26): browseFor = the group the picker targets;
     -- browseSearch = its search box; browseMarks = a set of MARKED entries
     -- (lowercased name -> the proper-cased name to add); _list / _listJob cache the
@@ -2355,6 +2360,111 @@ local function renderGroupImport(groups)
     end
 end
 
+-- Names that read like config/variant tables rather than spell groups -- pre-UNticked so the
+-- scan's false positives (IdleVariantTable, Settings) don't import unless the player opts in.
+local function looksLikeConfig(name)
+    local n = tostring(name);
+    return n:find('[Vv]ariant') ~= nil or n:find('[Ss]etting') ~= nil
+        or n:find('[Cc]onfig') ~= nil or n:find('[Oo]ption') ~= nil or n:find('Table$') ~= nil;
+end
+
+-- The "Auto-import from my Lua file" control (Item 1): scans the character's live LuaAshitacast
+-- <JOB>.lua (and its pre-profiles backup, since migration shims the live file) for group-shaped
+-- tables and lists them as tick-able candidates -- pre-ticked except obvious config tables. The
+-- scan is the pure groupscan.scan; import reuses the same classify / overwrite-confirm / apply as
+-- the paste flow. `groups` is the live trig.data.Groups map.
+local function renderGroupAutoImport(groups)
+    if not hasGroupScan then return; end
+    imgui.Spacing();
+    if not imgui.CollapsingHeader('Auto-import from my Lua file###grpautoimp') then return; end
+    imgui.TextColored(COL_DIM, 'Scan your LuaAshitacast job file for spell tables and import them as groups -- no copy-paste.');
+
+    if imgui.Button('Scan my Lua file##grpautoscan', { 0, 24 }) then
+        local text, srcs, abbr = '', 0, nil;
+        if deps and deps.jobFile then
+            local live; live, abbr = deps.jobFile();
+            local t1 = live and readFileText(live) or nil;
+            if t1 ~= nil then text = text .. '\n' .. t1; srcs = srcs + 1; end
+        end
+        if abbr ~= nil and deps and deps.charBase then
+            local t2 = readFileText(deps.charBase() .. 'backups\\pre-profiles\\' .. abbr .. '.lua');
+            if t2 ~= nil then text = text .. '\n' .. t2; srcs = srcs + 1; end
+        end
+        if srcs == 0 then
+            groupUI.autoCands, groupUI.autoNotes, groupUI.autoPlan = nil, nil, nil;
+            groupUI.autoScanned = true;
+            groupSetStatus('No Lua file found to scan (looked for your job file + its pre-profiles backup).', true);
+        else
+            local cands, notes = gscan.scan(text);
+            groupUI.autoCands, groupUI.autoNotes, groupUI.autoPlan = cands, notes, nil;
+            groupUI.autoMarks, groupUI.autoScanned = {}, true;
+            for _, c in ipairs(cands) do groupUI.autoMarks[c.name] = not looksLikeConfig(c.name); end
+        end
+    end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Read your live <JOB>.lua (and its pre-profiles backup) and list every group-shaped table found.'); end
+
+    local cands = groupUI.autoCands;
+    if cands ~= nil and #cands > 0 then
+        imgui.Spacing();
+        imgui.TextColored(COL_HEADER, string.format('Found %d table%s -- tick the ones to import:', #cands, (#cands == 1) and '' or 's'));
+        local nMarked = 0;
+        for i, c in ipairs(cands) do
+            local ref = { groupUI.autoMarks[c.name] == true };
+            if imgui.Checkbox('##grpauto_' .. i, ref) then groupUI.autoMarks[c.name] = ref[1]; end
+            local marked = groupUI.autoMarks[c.name] == true;
+            if marked then nMarked = nMarked + 1; end
+            imgui.SameLine(0, 6);
+            imgui.TextColored(marked and COL_USABLE or COL_DIM,
+                string.format('%s  (%d member%s)', esc(c.name), #c.members, (#c.members == 1) and '' or 's'));
+        end
+        if groupUI.autoNotes ~= nil and #groupUI.autoNotes > 0 then
+            imgui.Spacing();
+            imgui.TextColored(COL_DIM, string.format('skipped %d:', #groupUI.autoNotes));
+            for _, nt in ipairs(groupUI.autoNotes) do imgui.TextColored(COL_DIM, '   ' .. esc(nt)); end
+        end
+        imgui.Spacing();
+        if imgui.Button(string.format('Import %d selected##grpautogo', nMarked), { 0, 24 }) then
+            local picked = {};
+            for _, c in ipairs(cands) do
+                if groupUI.autoMarks[c.name] == true then picked[c.name] = c.members; end
+            end
+            if next(picked) == nil then
+                groupSetStatus('Nothing ticked -- select at least one table to import.', true);
+            else
+                local created, overwritten = gimp.classify(picked, groups);
+                groupUI.autoPlan = { groups = picked, errors = {}, created = created, overwritten = overwritten, pending = true };
+                if #overwritten == 0 then applyImportPlan(groupUI.autoPlan, groups); end
+            end
+        end
+    elseif groupUI.autoScanned and cands ~= nil then
+        imgui.TextColored(COL_DIM, '  (no group-shaped tables found in your Lua file)');
+    end
+
+    -- The overwrite-confirm preview, mirroring renderGroupImport.
+    local plan = groupUI.autoPlan;
+    if plan ~= nil then
+        imgui.Spacing();
+        imgui.TextColored(COL_HEADER, plan.pending and 'Preview' or 'Imported');
+        if #plan.created > 0 then
+            imgui.TextColored(COL_SCORE, string.format('  create %d: %s', #plan.created, esc(table.concat(plan.created, ', '))));
+        end
+        if #plan.overwritten > 0 then
+            imgui.TextColored(COL_ERR, string.format('  overwrite %d existing: %s', #plan.overwritten, esc(table.concat(plan.overwritten, ', '))));
+        end
+        if plan.pending then
+            if ImGuiCol_Button ~= nil then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
+            if imgui.Button(string.format('Overwrite %d & import###grpautoconfirm', #plan.overwritten), { 0, 24 }) then
+                applyImportPlan(plan, groups);
+            end
+            if ImGuiCol_Button ~= nil then imgui.PopStyleColor(1); end
+            imgui.SameLine(0, 6);
+            if imgui.Button('Cancel##grpautocancel', { 0, 24 }) then
+                groupUI.autoPlan = nil; groupSetStatus('Auto-import cancelled -- nothing changed.', false);
+            end
+        end
+    end
+end
+
 -- The shared spell/ability browse-list popup (G3, issue #26). ONE popup for the whole
 -- Groups section, retargeted per group via groupUI.browseFor. Search narrows a combined,
 -- job-filtered, UNGATED list; each row is a checkbox mark + a spell/ability marker + name.
@@ -2524,6 +2634,8 @@ function M.renderGroups(job, level)
 
     -- Bulk fast-path: paste a whole Lua table of groups (issue #30).
     renderGroupImport(groups);
+    -- Auto fast-path: scan the character's Lua file for group tables (Item 1).
+    renderGroupAutoImport(groups);
 
     if groupUI._openAdd then imgui.OpenPopup('##dlac_groupadd'); groupUI._openAdd = false; end
     renderGroupAddPopup();

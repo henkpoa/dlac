@@ -2747,6 +2747,74 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- GS. Groups auto-import scanner (Item 1): the pure `scan(fileText) -> candidates, notes`
+--     transform (groupscan.lua). Text-scans a LuaAshitacast file for top-level
+--     `[local] NAME = T?{...}` blocks and surfaces every group-shaped table (a flat string
+--     array, or a container of them) as an import candidate, skipping gear sets / settings.
+--     Reuses groupimport's sandbox eval + flat-list heuristic; hostile blocks error safely.
+-- ---------------------------------------------------------------------------
+package.loaded['dlac\\gear\\groupimport'] = dofile('gear/groupimport.lua');
+(function()
+    local gscan = dofile('gear/groupscan.lua');
+    check('GS0 module loads',  type(gscan),      'table');
+    check('GS0b scan exported', type(gscan.scan), 'function');
+
+    local sample = [[
+-- my BLU setup { this comment has an unbalanced brace
+local Settings = { TpVariant = 1, ATKCAP = false }
+local IdleVariantTable = { [1] = 'Refresh/Regen', [2] = 'Learn' }
+local BlueSpells = {
+    STR_DEX = T{'Foot Kick', 'Wild Oats', 'Queasyshroom'},
+    VIT     = {'Cannonball', 'Tail Slap'},
+    Debuff  = T{'Filamented Hold',},
+}
+local sets = {
+    ['Idle'] = { Ammo = 'Tiphia Sting', Head = 'Mirage Keffiyeh +1' },
+    ['TP']   = { Main = 'Maple Sugar', Sub = { Name = 'X', Augment = {'a'} } },
+}
+local Evil = { bad = os.execute('rm -rf /') }
+]];
+    local cands, notes = gscan.scan(sample);
+    local byName = {};
+    for _, c in ipairs(cands) do byName[c.name] = c.members; end
+
+    -- a container of flat lists expands to one candidate per inner key
+    check('GS1 BlueSpells expands to its inner groups',
+        (byName.STR_DEX ~= nil and byName.VIT ~= nil and byName.Debuff ~= nil), true);
+    check('GS1b STR_DEX member count',  byName.STR_DEX and #byName.STR_DEX, 3);
+    check('GS1c member order preserved', byName.STR_DEX and byName.STR_DEX[1], 'Foot Kick');
+    check('GS1d single-elem + trailing comma', byName.Debuff and #byName.Debuff, 1);
+    check('GS1e plain {...} parses too (no T)',  byName.VIT and #byName.VIT, 2);
+    -- the container name itself is NOT a candidate (only its group-shaped children are)
+    check('GS2 container name not a candidate', byName.BlueSpells, nil);
+    -- gear sets are skipped, not mistaken for groups
+    check('GS3 gear-set keys not candidates', (byName.Idle == nil and byName.TP == nil), true);
+    -- a flat variant/config table IS surfaced (the player deselects it in the preview)
+    check('GS4 flat variant table surfaced', byName.IdleVariantTable ~= nil, true);
+
+    -- hostile / unreadable blocks are skipped SAFELY (os is nil in the sandbox -> eval errors,
+    -- os.execute never runs) and named in the notes; gear sets are noted too.
+    local noteText = table.concat(notes, ' | ');
+    check('GS5 hostile os.execute block skipped safely', string.find(noteText, 'Evil', 1, true) ~= nil, true);
+    check('GS6 gear-set block noted',                    string.find(noteText, 'sets', 1, true) ~= nil, true);
+
+    -- the candidates feed groupimport.classify / apply verbatim (the reuse contract)
+    local gimp = package.loaded['dlac\\gear\\groupimport'];
+    local groupsMap = {};
+    for _, c in ipairs(cands) do groupsMap[c.name] = c.members; end
+    local _, overwritten = gimp.classify(groupsMap, { STR_DEX = { 'old' } });
+    check('GS7 classify sees the STR_DEX collision',
+        (function() for _, n in ipairs(overwritten) do if n == 'STR_DEX' then return true; end end return false; end)(), true);
+
+    -- duplicate names collapse to one candidate (first spelling wins)
+    local dup = gscan.scan("local A = T{'x'}\nlocal A = T{'y'}\n");
+    check('GS8 duplicate names dedup to one', #dup, 1);
+    -- nil / non-string input is safe
+    local c9 = gscan.scan(nil);
+    check('GS9 nil input -> no candidates', #c9, 0);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then
