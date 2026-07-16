@@ -42,12 +42,16 @@ _Avoid_: slot function (Henrik's coinage for the idea — canonicalized to this 
 A named, player-controlled switch that Triggers can match — how manual intent enters the otherwise-automatic dispatch. Either a *toggle* (on/off, e.g. `DT`) or a *cycle* (an ordered value list with exactly one value active, e.g. `Weapon`: Melee→Ranged→Caster; matched as `Weapon:Melee`).
 _Avoid_: stance, variant table
 
+**Group**:
+A named, player-authored list of action names (primarily blue-magic spells), stored per Job entry beside Modes; a Trigger matches `group = '<name>'` when the current action's name is in the list. Unlike a Mode (player *state*), a Group is tested against the *current action* — one Trigger can cover many spells that share gear (e.g. all STR-scaling blue magic) instead of one Trigger per spell.
+_Avoid_: tag, category, spell set (a set is gear)
+
 **Overlay**:
 The combining rule for matching Triggers: all of them apply, ascending priority, later winning per slot. A full-16-slot set acts as a replacement; a partial set layers onto whatever came before.
 _Avoid_: merge, stack
 
 **Specificity**:
-How narrowly a Trigger's condition matches (Any → skill/status → class/element → family → exact name → Mode). Drives the *default* priority: more specific overlays less specific.
+How narrowly a Trigger's condition matches (Any → skill/status → class/element → family → group → exact name → Mode). Drives the *default* priority: more specific overlays less specific.
 
 **Profile**:
 A character's named bundle of dlac data (e.g. `Default`) — the unit the PROFILES menu switches, clones, and imports. Exactly one is active per character; changing jobs never changes the Profile.
