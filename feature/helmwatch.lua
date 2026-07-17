@@ -300,13 +300,21 @@ function M.requestPoints(force)
     end);
 end
 
--- The points entry for a HELM category, by tolerant label match: exact label
--- first (any group), then label-contains (either direction). Returns
--- value, group, label -- or nil when the stream has no such entry (yet).
+-- The points entry for a HELM category. CONFIRMED live 2026-07-17 (Mindie):
+-- the server streams group "Ventures" with labels exactly Harvesting /
+-- Excavation / Logging / Mining (+ Fishing, EXP, Battle, Dynamis) -- so the
+-- Ventures-group exact match is the real path; the tolerant fallbacks stay
+-- for label drift. Returns value, group, label -- or nil when absent.
 function M.pointsFor(gather)
     vpLoad();
     local want = string.lower(tostring(gather or ''));
     if want == '' then return nil; end
+    local vg = M.points['Ventures'];
+    if type(vg) == 'table' then
+        for l, v in pairs(vg) do
+            if string.lower(l) == want then return v, 'Ventures', l; end
+        end
+    end
     for g, labels in pairs(M.points) do
         for l, v in pairs(labels) do
             if string.lower(l) == want then return v, g, l; end
@@ -371,18 +379,20 @@ local function ventLoad()
     end);
 end
 
--- Category for one server line, by keyword (nil = general). Pure; the
--- capture regexes replace this once the field data pins the real format.
-local KEYWORDS = { Harvesting = { 'harvest' }, Excavation = { 'excavat' },
-                   Logging = { 'logging', ' log ' }, Mining = { 'mining', ' mine ' } };
-function M.lineCategory(msg)
-    local lm = ' ' .. string.lower(tostring(msg or '')) .. ' ';
-    for _, g in ipairs(M.ORDER) do
-        for _, kw in ipairs(KEYWORDS[g]) do
-            if lm:find(kw, 1, true) then return g; end
-        end
-    end
-    return nil;
+-- One server venture line, structurally. Format PINNED by field capture
+-- 2026-07-17 (helmventures_capture.txt, Mindie):
+--     === Today's Goblin Ventures ===                      (banner, type 29)
+--     Mining: (Low) Ordelles Caves, (Mid) Garlaige Citadel [S], (High) Grauberg [S]
+-- Returns category + display lines { 'Low: ...', 'Mid: ...', 'High: ...' },
+-- or nil for anything else. Tier text is captured lazily so progress markup
+-- the wiki promises on active objectives ("denoted by the objective
+-- progress") rides along verbatim; a drifted format keeps the raw tail.
+function M.parseVentureLine(msg)
+    local cat, rest = tostring(msg or ''):match('^%s*(%a+):%s*(.+)$');
+    if cat == nil or VALID[cat] ~= true then return nil; end
+    local low, mid, high = rest:match('%(Low%)%s*(.-)%s*,%s*%(Mid%)%s*(.-)%s*,%s*%(High%)%s*(.-)%s*$');
+    if low == nil then return cat, { rest }; end
+    return cat, { 'Low:  ' .. low, 'Mid:  ' .. mid, 'High: ' .. high };
 end
 
 -- Sanitize a chat payload for storage: FFXI chat embeds control/autotranslate
@@ -420,23 +430,31 @@ function M.onChatLine(chatType, sender, msg)
             os.date('%Y-%m-%d %H:%M:%S'), tonumber(chatType) or -1, tostring(sender or ''), clean));
         f:close();
     end);
-    -- Bucket for display. NPC speech / player echo lines are noise the
-    -- keyword filter tolerates; the capture window is short and manual.
+    -- Structured store: a parsed category line REPLACES that category (one
+    -- reply is the day's whole truth); the banner is dropped; anything else
+    -- venture-ish lands in general once (field data for future formats).
+    -- Stray party/say chat inside the window parses as nothing and is only
+    -- kept in the raw capture file.
     ventLoad();
     local day = M.jstDay();
     if M.ventures == nil or (M.ventures.day or 0) ~= day then
         M.ventures = { day = day, cats = {}, general = {} };
     end
-    local g = M.lineCategory(clean);
+    if clean:find('=== Today', 1, true) ~= nil then return; end   -- banner
+    local g, lines = M.parseVentureLine(clean);
     if g ~= nil then
-        M.ventures.cats[g] = M.ventures.cats[g] or {};
-        local t = M.ventures.cats[g];
-        t[#t + 1] = clean;
-    elseif clean:lower():find('venture', 1, true) then
+        M.ventures.cats[g] = lines;
+        ventSave();
+        return;
+    end
+    if clean:lower():find('venture', 1, true) then
+        for _, ln in ipairs(M.ventures.general) do
+            if ln == clean then return; end                       -- dedupe re-runs
+        end
         local t = M.ventures.general;
         t[#t + 1] = clean;
+        ventSave();
     end
-    ventSave();
 end
 
 -- Panel accessor: lines for one category + the day-freshness flag.

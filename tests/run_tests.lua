@@ -3425,10 +3425,19 @@ end)();
     check('H16 absent category',    helmwatch.pointsFor('Excavation'), nil);
     check('H17 pointsReady',        helmwatch.pointsReady(), true);
 
-    -- chat-line bucketing + sanitizing (the pre-capture display path)
-    check('H18 mining line',   helmwatch.lineCategory('Mining: Zeruhn Mines (3/10)'), 'Mining');
-    check('H19 harvest line',  helmwatch.lineCategory('Harvest 10 stalks in Giddeus'), 'Harvesting');
-    check('H20 plain chatter', helmwatch.lineCategory('Hello there adventurer'), nil);
+    -- !ventures reply parse -- format PINNED by field capture 2026-07-17:
+    --   Mining: (Low) Ordelles Caves, (Mid) Garlaige Citadel [S], (High) Grauberg [S]
+    local vg, vl = helmwatch.parseVentureLine(
+        'Mining: (Low) Ordelles Caves, (Mid) Garlaige Citadel [S], (High) Grauberg [S]');
+    check('H18 venture line category',  vg, 'Mining');
+    check('H18b tier count',            vl ~= nil and #vl or 0, 3);
+    check('H18c low tier',              vl ~= nil and vl[1], 'Low:  Ordelles Caves');
+    check('H18d high tier keeps [S]',   vl ~= nil and vl[3], 'High: Grauberg [S]');
+    local dg, dl = helmwatch.parseVentureLine('Harvesting: something the server changed');
+    check('H19 drifted format keeps raw tail', dg, 'Harvesting');
+    check('H19b drifted tail content',  dl ~= nil and dl[1], 'something the server changed');
+    check('H20 party chatter -> nil',   helmwatch.parseVentureLine('do i go to M or go to J?'), nil);
+    check('H20b unknown category -> nil', helmwatch.parseVentureLine('Fishing: (Low) Port Windurst'), nil);
     check('H21 control bytes scrubbed', helmwatch.cleanLine('a\1\2b  c\127'), 'a b c');
     check('H22 jst day rollover', helmwatch.jstDay(15 * 3600) - helmwatch.jstDay(0), 1);
 

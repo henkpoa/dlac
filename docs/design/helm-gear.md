@@ -108,8 +108,11 @@ server-authoritative and already streams a Points list — Dynamis Venture Point
 group `Ventures`, label `Dynamis` (POINTS_ENTRY offsets: group@0x08 len19, label@0x1C
 len23, value@0x34 i32le; request = 64-byte packet, action byte 8 @0x04).
 
-**Hypothesis (needs one field test): the four HELM pools are in the same stream**, group
-`Ventures`, labels per category. Plan:
+**CONFIRMED live 2026-07-17 (Mindie's capture): the four HELM pools ARE in the stream** —
+group `Ventures`, labels exactly `Harvesting` / `Excavation` / `Logging` / `Mining`
+(alongside `Fishing`, `EXP`, `Battle`, `Dynamis`; other groups: CatsEyeXI, Crystal
+Warrior, Dailies, Summit). pointsFor does the Ventures-group exact match first,
+tolerant fallbacks kept for drift. Plan (as built):
 - helmwatch sends `GET_POINTS` (debounced, on panel entry + login, like the 0x10F GP
   request) and parses ALL `POINTS_ENTRY` responses into `<char>\dlac\venturepoints.lua`.
 - Debug command dumps every (group, label, value) seen → Henrik runs it once, we pin the
@@ -122,12 +125,16 @@ len23, value@0x34 i32le; request = 64-byte packet, action byte 8 @0x04).
 
 - Rotate at JST midnight, one objective per tier (Low/Mid/High) per category, auto-repeat,
   progress carries over days, partial credit with a threshold. Reward 35-50 VP + EXP.
-- The `!ventures` reply arrives as incoming `0x017` CHAT_STD (printToPlayer → type 6
-  MESSAGE_SYSTEM_1, but be tolerant on type). **Format strings are in the private module —
-  unknowable from source.** Plan: helmwatch has a capture mode that logs all 0x017 system
-  lines for ~5s after the player sends a `!ventures` command (we watch outgoing chat for
-  it); one Henrik capture → write the regex → passive parse forever after. Panel gets a
-  "Refresh" button that types `!ventures helm` for the user (user-visible, not sneaky).
+- The `!ventures` reply arrives as incoming `0x017` CHAT_STD. **Format PINNED by field
+  capture 2026-07-17** (banner type 29, category lines type 13, sender = the player):
+  ```
+  === Today's Goblin Ventures ===
+  Mining: (Low) Ordelles Caves, (Mid) Garlaige Citadel [S], (High) Grauberg [S]
+  ```
+  `parseVentureLine` parses category + three lazy tier captures (progress markup on
+  active objectives rides along verbatim; a drifted format keeps the raw tail). The raw
+  capture file stays as the debug channel. Panel button types `!ventures helm`
+  (user-visible, not sneaky) and opens the 6s capture window.
 - Parsed per-category objectives persist to `<char>\dlac\helmventures.lua` with the JST
   day-stamp; stale (past JST midnight) shows as "run !ventures helm to refresh".
 - NOTE: packet `0x1A3` (the `ventures` addon) is the daily venture **NM hunt** rotation —
@@ -152,15 +159,12 @@ NPC trade-complete packet, target id @0x04 area).
 
 ## 7. dlacprobe shopping list (Henrik field session)
 
-All diagnostics in dlacprobe, never dlac (hard rule):
-1. `!ventures` and `!ventures helm` once each → capture the 0x017 reply lines (format
-   strings → regexes).
-2. Open Alternix's shop/menu once → capture 0x017 type-12 `_CUSTOM_MENU` payload (VP
-   balance in menu text? fallback source).
-3. One HELM swing per category (a Mining and a Harvesting swing suffice if short on time)
-   → confirm outgoing trade packet id + offsets, and the 0x034 result eventnum.
-4. helmwatch's own points-dump after GET_POINTS → do HELM pools appear in the 0x1A4
-   Points stream, and under which group/label?
+All diagnostics in dlacprobe, never dlac (hard rule). Status 2026-07-17:
+1. ~~`!ventures helm` capture~~ **DONE** — format pinned (§5), structured parser live.
+2. ~~Alternix menu capture~~ **DROPPED** — unnecessary, VP confirmed in the 0x1A4 stream.
+3. One HELM swing per category → confirm outgoing trade 0x036 offsets + "* Point" NPC
+   names light up `Detected:` on the bar (and auto-switch the hat). **STILL PENDING.**
+4. ~~0x1A4 points dump~~ **DONE** — group `Ventures`, exact category labels (§4).
 
 ## 8. File map (implementation)
 

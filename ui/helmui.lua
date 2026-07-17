@@ -298,7 +298,14 @@ function M.render(deps, availW)
     -- field capture -- until then the keyword buckets carry the display).
     imgui.TextColored(COL_HEADER, 'Today\'s ' .. selected .. ' ventures:');
     imgui.SameLine(0, 8);
-    if imgui.Button('!ventures helm##helmvent', { 110, 18 }) then
+    -- MEASURED width (themed-font rule: ~9.5px/char clips fixed 110) + full
+    -- button height -- field report: the label was cropped both ways.
+    local vbW = 152;
+    pcall(function()
+        local w = imgui.CalcTextSize('!ventures helm');
+        if type(w) == 'number' then vbW = math.max(152, math.floor(w) + 18); end
+    end);
+    if imgui.Button('!ventures helm##helmvent', { vbW, 22 }) then
         pcall(function()
             hw.openCapture(6);
             AshitaCore:GetChatManager():QueueCommand(1, '!ventures helm');
