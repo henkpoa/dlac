@@ -25,7 +25,8 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '0.1';
+addon.version = '2026.07.17';   -- date of the last shipped change (Ashita prints it at
+                                -- load) -- bump alongside every commit that changes behavior
 addon.desc    = 'Build gear sets and view live stats with level scaling (for LuaAshitacast).';
 
 require('common');
