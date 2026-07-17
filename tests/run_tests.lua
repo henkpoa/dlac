@@ -1340,7 +1340,9 @@ end
 
 -- ---------------------------------------------------------------------------
 -- AE. per-set stat-weight memory (gearoptim.bindSetWeights) -- every set owns
---     its weights; the first bind SEEDS from the shared table; switching sets
+--     its weights; a never-bound set starts BLANK (Henrik 2026-07-17: seeding
+--     from the shared table made every new set inherit leftover weights --
+--     this superseded the original seed-from-shared rule); switching sets
 --     never carries another set's edits along (Henrik's isolation rule).
 --     Headless: weightsPath() is nil, so persistence no-ops and this is all
 --     in-memory binding semantics.
@@ -1349,12 +1351,12 @@ optim.setWeight('Accuracy', 20, 60);                        -- nothing bound: ed
 check('AE1 shared holds the edit', optim.getWeights()['Accuracy'].perUnit, 20);
 check('AE2 nothing bound yet', optim.weightsBoundTo(), nil);
 check('AE3 first bind reports a change', optim.bindSetWeights('DRK', 'Midshort'), true);
-check('AE4 first bind seeds from shared', optim.getWeights()['Accuracy'].perUnit, 20);
+check('AE4 first bind starts BLANK (no shared seeding)', optim.getWeights()['Accuracy'], nil);
 optim.setWeight('STR', 5);                                  -- edits now belong to the BOUND set
 optim.setWeight('Accuracy', 99);
 check('AE5 rebind of the same key is a no-op', optim.bindSetWeights('DRK', 'Midshort'), false);
 optim.bindSetWeights('DRK', 'Tp_Default');
-check('AE6 second set seeds from SHARED, not the last-used set', optim.getWeights()['Accuracy'].perUnit, 20);
+check('AE6 second set starts BLANK too (not shared, not the last-used set)', optim.getWeights()['Accuracy'], nil);
 check('AE7 second set did not inherit the STR edit', optim.getWeights()['STR'], nil);
 optim.bindSetWeights('DRK', 'Midshort');
 check('AE8 re-selecting a set gets its own edits back', optim.getWeights()['Accuracy'].perUnit, 99);
@@ -1488,6 +1490,111 @@ end)();
     optim.weightsPath = _wp;
     optim.deleteNamedWeights('Awesome Melee');               -- leave the store clean
     optim.bindSetWeights(nil, nil);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- AP. priority-list mode (the "simple" weights, 2026-07-17) -- an ORDERED
+--     stat list with optional caps. Scoring derives dominance weights (one
+--     point of a higher stat outranks everything below it combined), so the
+--     whole existing pipeline -- score, optimizePicks, Auto-build -- runs
+--     unchanged. Own per-set + named stores (never mixes with point
+--     templates); the MODE flips to whichever editor's data you mutate.
+-- ---------------------------------------------------------------------------
+(function()
+    -- mode + derivation basics on the SHARED binding
+    optim.bindSetWeights(nil, nil);
+    check('AP1 default mode is points', optim.weightsMode(), 'points');
+    check('AP2 prio list starts empty', #optim.getPrio(), 0);
+    check('AP3 add flips the mode', (optim.prioAdd('Accuracy', 10) == true) and optim.weightsMode(), 'priority');
+    optim.prioAdd('STR');
+    check('AP4 dup add refused', optim.prioAdd('Accuracy'), false);
+    check('AP5 getWeights is now the DERIVED table', optim.getWeights()['STR'].perUnit, 1);
+    check('AP6 higher rank dominates: 1 Accuracy beats 400 STR',
+        optim.score({ Accuracy = 1 }) > optim.score({ STR = 400 }), true);
+    check('AP7 the cap clamps per item', optim.score({ Accuracy = 50 }), optim.score({ Accuracy = 10 }));
+    check('AP8 a points edit flips the mode back', (optim.setWeight('VIT', 2) == true) and optim.weightsMode(), 'points');
+    check('AP9 ...and scoring follows', optim.score({ VIT = 1 }), 2);
+    optim.clearWeight('VIT');
+    optim.setWeightsMode('priority');
+    check('AP10 explicit mode set works', optim.weightsMode(), 'priority');
+
+    -- reorder + caps + remove
+    optim.prioMove(2, -1);                 -- STR above Accuracy now
+    check('AP11 move reorders', optim.getPrio()[1].stat, 'STR');
+    check('AP12 dominance follows the order', optim.score({ STR = 1 }) > optim.score({ Accuracy = 10 }), true);
+    optim.prioSetCap(1, 30);
+    check('AP13 cap edit lands', optim.getPrio()[1].cap, 30);
+    optim.prioSetCap(1, 0);
+    check('AP14 cap 0 clears it', optim.getPrio()[1].cap, nil);
+    check('AP15 remove drops the row', (optim.prioRemove(1) == true) and optim.getPrio()[1].stat, 'Accuracy');
+
+    -- per-set isolation + blank seeding (the same rules the weights follow)
+    optim.bindSetWeights('DRK', 'PrioSet');
+    check('AP16 new binding starts with a blank list', #optim.getPrio(), 0);
+    check('AP17 ...and points mode', optim.weightsMode(), 'points');
+    optim.prioAdd('Evasion');
+    optim.bindSetWeights(nil, nil);
+    check('AP18 shared list untouched by set edits', optim.getPrio()[1].stat, 'Accuracy');
+    check('AP19 shared keeps its own mode', optim.weightsMode(), 'priority');
+    optim.bindSetWeights('DRK', 'PrioSet');
+    check('AP20 re-selecting the set gets its list back', optim.getPrio()[1].stat, 'Evasion');
+    check('AP21 ...and its mode', optim.weightsMode(), 'priority');
+
+    -- named store ("Saved Lists") + copy + revert; separate from point saves
+    check('AP22 save named list trims + succeeds', (optim.savePrioNamed('  Heal Prio  ')), true);
+    check('AP23 named key listed', optim.prioNamedKeys()[1], 'Heal Prio');
+    check('AP24 prio saves never appear among point templates', #optim.namedKeys(), 0);
+    optim.bindSetWeights('DRK', 'PrioDst');
+    optim.prioAdd('MND');
+    check('AP25 copy from named replaces the list', (optim.copyPrioFromNamed('Heal Prio') == true)
+        and optim.getPrio()[1].stat, 'Evasion');
+    check('AP26 revert restores the pre-copy list', (optim.revertCopiedPrio() == true)
+        and optim.getPrio()[1].stat, 'MND');
+    check('AP27 unknown named refused', optim.copyPrioFromNamed('NoSuch'), false);
+    check('AP28 copy from a per-set list', (optim.copyPrioFrom('DRK|PrioSet') == true)
+        and optim.getPrio()[1].stat, 'Evasion');
+    check('AP29 self-copy refused', optim.copyPrioFrom('DRK|PrioDst'), false);
+
+    -- clear (snapshots like a copy, so revert works after a mis-click)
+    optim.bindSetWeights('DRK', 'PrioSet');
+    check('AP30 clear empties the list', (optim.prioClear() == true) and #optim.getPrio(), 0);
+    check('AP31 revert brings a cleared list back', (optim.revertCopiedPrio() == true)
+        and optim.getPrio()[1].stat, 'Evasion');
+
+    -- the joint optimizer follows priority mode (weights=nil resolves through it)
+    local res = optim.optimizePicks({
+        Head = {
+            { stats = { STR = 400 },   ref = 'strhat' },
+            { stats = { Evasion = 1 }, ref = 'evahat' },
+        },
+    }, nil, {});
+    check('AP32 optimizePicks obeys the priority order', res.picks.Head, 2);
+
+    -- persistence round-trip (all prio sections + modes)
+    local _wp = optim.weightsPath;
+    local _tmp = 'tests_tmp_gearweights3.lua';
+    optim.weightsPath = function() return _tmp; end
+    check('AP33 save writes the prio sections', optim.saveWeights(), true);
+    optim.prioClear();                      -- diverge memory from disk
+    optim.deletePrioNamed('Heal Prio');
+    optim.setWeightsMode('points');
+    check('AP34 load restores the per-set list', (optim.loadWeights() == true)
+        and optim.getPrio()[1].stat, 'Evasion');
+    check('AP35 ...the mode', optim.weightsMode(), 'priority');
+    check('AP36 ...and the named store', optim.peekPrio('named', 'Heal Prio')[1].stat, 'Evasion');
+    -- a pre-feature file (no prio sections) loads as all-points, empty lists
+    local f = io.open(_tmp, 'w');
+    f:write('return { shared = { ["Accuracy"] = { perUnit = 7 } }, perSet = {} }\n');
+    f:close();
+    check('AP37 legacy file: points mode', (optim.loadWeights() == true) and optim.weightsMode(), 'points');
+    check('AP38 legacy file: empty prio list', #optim.getPrio(), 0);
+    os.remove(_tmp);
+    optim.weightsPath = _wp;
+
+    -- leave the module as found: shared blank, points mode
+    optim.bindSetWeights(nil, nil);
+    optim.prioClear();
+    optim.setWeightsMode('points');
 end)();
 
 -- ---------------------------------------------------------------------------

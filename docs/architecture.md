@@ -165,8 +165,9 @@ host.services at load — provide-before-require is load-bearing), **setupui.lua
 seeding; `setup.configure{}` deps), **syncflags.lua** (auto-sync loop + uiflags.lua
 persistence; owns `sf.flags.debug`/`sf.flags.autosync`/`sf.flags.viewids`; gearui's d3d_present calls
 `sf.loadUiFlags` BEFORE `sf.tick` — order is load-bearing, the real gear.lua must swap
-in before the first sync), **weightsui.lua** (stat-weights editor; scoring stays in
-gearui), **profilesmenu.lua** (the Profiles popup tree + forms; state in the shared ui
+in before the first sync), **weightsui.lua** (stat-weights editor: Points + Priority
+tabs, sortable columns, clear buttons; scoring stays in gearui/gearoptim),
+**profilesmenu.lua** (the Profiles popup tree + forms; state in the shared ui
 table), **floatgear.lua** (the floating 4x4 equipment window + the PIN menu — v44; a
 `window`-only module, no tab; reuses `S.renderSlotGrid` so its icons and hover tooltip
 are literally the Equipped tab's and cannot drift). `tests\smoke_ui.lua` headless-loads
@@ -272,6 +273,20 @@ overwrite confirmation, and the per-slot divergence warning. Never seeded into L
 Two read-only tools: MP-spent→potency swap advice, and a stat-weight scorer/best-set
 builder (`M.score`, `M.buildBestSet`). Purely advisory — never equips. Reads/writes
 `<char>\dlac\gearweights.lua`.
+
+Weight tuning has TWO modes per binding (set or shared) since 2026-07-17: **points**
+(the classic per-stat `perUnit`/`cap` table) and **priority** (an ordered stat list,
+top matters most, optional caps — the "simple" mode). Priority scoring derives a
+points table with dominance weights (bottom-up: `perUnit = 1 + max total everything
+below could score`, uncapped stats assumed ≤500 across a set) so the whole existing
+pipeline — `score`, `optimizePicks`, `pairLadders`, Auto-build — runs unchanged
+behind `activeWeights()`. `getWeights()` returns the EFFECTIVE table; the points
+editor reads `getPointWeights()`. The mode flips to whichever editor's data you
+mutate; looking never switches it. Priority lists have their own per-set store and
+their own named store (`prioShared`/`prioPerSet`/`prioNamed`/`mode`/`modePerSet`
+sections in gearweights.lua) — a point template and a priority list never
+cross-load. New bindings start BLANK (weights, priority list); only the build-slot
+mask still seeds from shared (a blank mask would read as a dead Auto-build).
 
 ### gear/gearmove.lua — storage move engine (EXPERIMENTAL, feature/storage-move only)
 "[mv]" button + popup to move items between containers via the 0x029 packet, gated to

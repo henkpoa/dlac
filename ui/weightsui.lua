@@ -1,13 +1,22 @@
 --[[
     dlac/weightsui.lua
 
-    The stat-weights EDITOR (per-stat pts/cap rows, live-apply, searchable add
-    picker), extracted from gearui (the LuaJIT 200-local chunk cap). The Sets
-    tab embeds it via wui.editor(); the floating "dlac Stat Weights" window is
-    gearui's renderSetsWeightPanel in a shell (registered as a uihost window).
+    The stat-weights EDITOR, extracted from gearui (the LuaJIT 200-local chunk
+    cap). The Sets tab embeds it via wui.editor(); the floating "dlac Stat
+    Weights" window is gearui's renderSetsWeightPanel in a shell (registered as
+    a uihost window).
+
+    Two tabs since 2026-07-17 (Henrik's friends kept bouncing off the point
+    system): Points -- the classic per-stat pts/cap rows -- and Priority -- an
+    ORDERED stat list, top matters most, optional cap per stat, no numbers to
+    reason about. Each tab owns its data, its per-set memory and its named
+    store; whichever tab you EDIT becomes the set's build mode (looking never
+    switches it). Both carry a "clear" button beside "save as...".
 
     Scoring itself (weightsActive / scoreOf) stays in gearui -- the Sets
     candidate machinery calls it every frame; this module is only the UI.
+    Priority scoring is gearoptim's job too (dominance-derived weights behind
+    optim.getWeights); this file never computes a score.
 
     Deps arrive once via wui.configure{} (the profilesets.configure precedent):
         ui                    -- gearui's live view-state table (_wbuf, addStat, ...)
@@ -62,6 +71,19 @@ local function weightsTip(kind, key)
     return table.concat(lines, '\n');
 end
 
+-- Same, for a stored PRIORITY list: ordered lines, top first.
+local function prioTip(kind, key)
+    local t = nil;
+    pcall(function() t = optim.peekPrio(kind, key); end);
+    if type(t) ~= 'table' or #t == 0 then return '(empty list)'; end
+    local lines = {};
+    for i, e in ipairs(t) do
+        lines[#lines + 1] = string.format('%d. %s%s', i, tostring(e.stat),
+            (type(e.cap) == 'number') and ('  (cap ' .. tostring(e.cap) .. ')') or '');
+    end
+    return table.concat(lines, '\n');
+end
+
 -- Flat, de-duplicated stat list for the weights "add" searchable dropdown (kept in group
 -- order). Typing still accepts any custom name; this is just the suggestion set.
 local _choices = nil;
@@ -75,9 +97,10 @@ local function weightChoices()
     return _choices;
 end
 
--- Suggestion list for the weights "add stat" picker. Sourced from statdefs when available, so
--- the search matches key/label/aliases (type "MATK" or "MagicAttackBonus" -> find MAB) and
--- picking inserts the CANONICAL key; falls back to the grouped choices. Each entry:
+-- Suggestion list for the "add stat" pickers (both tabs). Sourced from statdefs when
+-- available, so the search matches key/label/aliases (type "MATK" or "MagicAttackBonus"
+-- -> find MAB) and picking inserts the CANONICAL key; falls back to the grouped choices.
+-- Each entry:
 --   { key = <canonical key to insert>, label = <display>, terms = {<lowercased key/label/aliases>} }
 local _weightSuggest = nil;
 local function weightSuggestions()
@@ -100,6 +123,42 @@ local function weightSuggestions()
     return out;
 end
 
+-- One searchable stat picker (shared by both tabs' add rows). buf is the {text}
+-- InputText buffer the chosen canonical key lands in; skip(lowerKey) -> true
+-- hides an entry (the priority tab hides stats already listed).
+local function statPickerCombo(id, buf, skip)
+    imgui.PushItemWidth(160);
+    if imgui.BeginCombo('##' .. id, (buf[1] ~= '' and buf[1]) or '(type to search)') then
+        if imgui.IsWindowAppearing ~= nil and imgui.IsWindowAppearing()
+           and imgui.SetKeyboardFocusHere ~= nil then imgui.SetKeyboardFocusHere(0); end
+        imgui.PushItemWidth(-1); imgui.InputText('##' .. id .. '_f', buf, 32); imgui.PopItemWidth();
+        imgui.Separator();
+        local q, shown = string.lower(buf[1] or ''), 0;
+        for _, sug in ipairs(weightSuggestions()) do
+            if skip == nil or not skip(string.lower(sug.key)) then
+                local match = (q == '');
+                if not match then
+                    for _, t in ipairs(sug.terms) do
+                        if string.find(t, q, 1, true) ~= nil then match = true; break; end
+                    end
+                end
+                if match then
+                    shown = shown + 1;
+                    local disp = (sug.label ~= sug.key) and (sug.label .. '  (' .. sug.key .. ')') or sug.key;
+                    if imgui.Selectable(disp .. '##' .. id .. '_s_' .. sug.key, false) then
+                        buf[1] = sug.key;            -- insert the canonical key (not the alias/label)
+                        imgui.CloseCurrentPopup();
+                    end
+                end
+            end
+        end
+        if shown == 0 then imgui.TextColored(D.COL.DIM, '(no match -- Add will use your typed text)'); end
+        imgui.EndCombo();
+    end
+    imgui.PopItemWidth();
+end
+
+-- ---------------------------------------------------------------------------
 -- The 4x4 build-slot grid (2026-07-17, replaces the Skip-weapons checkbox):
 -- text-only tiles in equipmon's visual order marking which slots Auto-build
 -- FILLS for the bound set (shared when none). Unmarked slots are left exactly
@@ -108,6 +167,7 @@ end
 -- gearweights.lua persistence as the weights -- no rebuilding marks between
 -- sets. Checkbox toggles need no candidate invalidation: the mask changes
 -- WHICH slots build, never how items score.
+-- ---------------------------------------------------------------------------
 wui.slotGrid = function()
     if D == nil or imgui == nil or optim == nil then return; end
     if type(D.EQUIP_SLOTS) ~= 'table' or type(optim.getSlotMask) ~= 'function' then return; end
@@ -129,29 +189,26 @@ wui.slotGrid = function()
     end
 end
 
--- The weights editor body (fills the surrounding child/window).
-wui.editor = function()
-    if D == nil or imgui == nil then return; end
+-- The set's build mode ('points' | 'priority'), read fresh each frame.
+local function modeNow()
+    local m = 'points';
+    pcall(function() m = optim.weightsMode() or 'points'; end);
+    return m;
+end
+
+-- ---------------------------------------------------------------------------
+-- POINTS tab (the classic editor): per-stat pts/cap rows, live-apply,
+-- copy from... / save as... / clear, sortable Stat/Points/Cap columns.
+-- ---------------------------------------------------------------------------
+local function renderPointsTab(boundKey)
     local ui, COL = D.ui, D.COL;
-    if optim == nil then
-        imgui.TextColored(COL.DIM, 'Optimizer unavailable -- weights disabled.');
-        return;
+
+    -- Mode banner: looking at this tab never switches the mode -- say so when
+    -- the OTHER tab is the one actually building this set.
+    if modeNow() == 'priority' then
+        fmt.textWrapped(COL.SCORE, '[!] This set builds from the Priority tab right now. Editing anything here switches it back to point weights.');
     end
-    -- Say WHOSE weights these are: each set remembers its own (shared when none).
-    local boundKey = nil;
-    pcall(function()
-        local bk = (optim.weightsBoundTo ~= nil) and optim.weightsBoundTo() or nil;
-        boundKey = bk;
-        if bk ~= nil then
-            local j, s = string.match(bk, '^([^|]+)|(.+)$');
-            imgui.TextColored(COL.HEADER, string.format('weights for set "%s" (%s)', s or bk, j or '?'));
-        else
-            imgui.TextColored(COL.HEADER, 'shared weights (no set selected)');
-        end
-        if imgui.IsItemHovered() then
-            imgui.SetTooltip('Every set remembers its own stat weights. Selecting a set for the FIRST\ntime starts it from the shared table; edits after that stick to that set\nonly, and come back when you re-select it.');
-        end
-    end);
+
     -- Copy another tuning (weights + build-slot marks) into THIS one -- a
     -- CASCADING menu (Henrik: the floatgear pattern, not one flat bloaty
     -- list): This set (revert) / Saved Sets > / (shared) / then one submenu
@@ -159,7 +216,6 @@ wui.editor = function()
     -- whose hover lists the assigned weights. Typing in the search box
     -- overrides the cascade with one flat filtered list.
     if type(optim.copyWeightsFrom) == 'function' and type(optim.perSetKeys) == 'function' then
-        imgui.SameLine(0, 10);
         if imgui.SmallButton('copy from...##wcopy') then
             wui._copyQ = { '' };
             wui._copyDrill = nil;
@@ -195,6 +251,20 @@ wui.editor = function()
                     end
                 end
                 imgui.EndPopup();
+            end
+        end
+        -- clear: empty this table (Henrik 07-17). Recoverable -- the clear takes
+        -- the same snapshot a copy does, so This set (revert) restores it.
+        if type(optim.clearAllWeights) == 'function' then
+            imgui.SameLine(0, 6);
+            if imgui.SmallButton('clear##wclearall') then
+                pcall(optim.clearAllWeights);
+                pcall(optim.saveWeights);
+                ui._wbuf = {};
+                D.invalidateCandidates();
+            end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Remove EVERY stat weight from this table (build-slot marks stay).\nMis-click? copy from... > This set (revert) brings it back.');
             end
         end
 
@@ -283,7 +353,7 @@ wui.editor = function()
                         applied(ok);
                     end
                     if imgui.IsItemHovered() then
-                        imgui.SetTooltip('Restore this table to how it was BEFORE its first copy\n(the snapshot lives until the addon reloads).');
+                        imgui.SetTooltip('Restore this table to how it was BEFORE its first copy or clear\n(the snapshot lives until the addon reloads).');
                     end
                 else
                     imgui.TextColored(COL.DIM, 'This set  (nothing copied yet)');
@@ -375,15 +445,66 @@ wui.editor = function()
     imgui.TextColored(COL.DIM, 'pts/point up to cap (cap 0 = none) -- applies as you type:');
     imgui.BeginChild('##ffxilac_weights', { -1, -1 }, true);   -- fill the (now windowed) space
 
-    -- Adaptive name column: the stat name gets all the width the window can spare (the
-    -- pts/cap/x controls need ~200px), so widening the window shows long names in full.
+    -- Adaptive name column: the stat name gets all the width the window can spare
+    -- (the pts/cap/x controls need ~140px since the column headers replaced the
+    -- inline labels), so widening the window shows long names in full.
     local availW  = imgui.GetContentRegionAvail();
-    local nameCol = availW - 200; if nameCol < 44 then nameCol = 44; end
+    local nameCol = availW - 140; if nameCol < 44 then nameCol = 44; end
     local nchars  = math.max(6, math.floor(nameCol / 7));
 
     local ws = {};
-    pcall(function() ws = optim.getWeights() or {}; end);
-    for _, stat in ipairs(fmt.sortedKeys(ws)) do
+    pcall(function() ws = (type(optim.getPointWeights) == 'function')
+        and optim.getPointWeights() or optim.getWeights() or {}; end);
+
+    -- Sortable column headers (Henrik 07-17): click Stat / Points / Cap to sort
+    -- the rows; click the active one again to flip. State survives in wui only
+    -- for the session -- the default (Stat, ascending) is the old alphabetical.
+    wui._sortCol = wui._sortCol or 'stat';
+    if wui._sortAsc == nil then wui._sortAsc = true; end
+    local function sortHeader(label, col, w, defAsc)
+        local active = (wui._sortCol == col);
+        local mark = active and (wui._sortAsc and '  ^' or '  v') or '';
+        if imgui.Selectable(label .. mark .. '##wsort_' .. col, false, 0, { w, 0 }) then
+            if active then wui._sortAsc = not wui._sortAsc;
+            else wui._sortCol = col; wui._sortAsc = defAsc; end
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Sort by ' .. label .. (active and ' (click to flip)' or ''));
+        end
+    end
+    sortHeader('Stat', 'stat', nameCol - 8, true);
+    imgui.SameLine(nameCol);
+    sortHeader('Points', 'pts', 52, false);   -- numbers default big-first
+    imgui.SameLine(nameCol + 58);
+    sortHeader('Cap', 'cap', 46, false);
+    imgui.Separator();
+
+    local keys = {};
+    for k in pairs(ws) do keys[#keys + 1] = k; end
+    local col, asc = wui._sortCol, wui._sortAsc;
+    table.sort(keys, function(a, b)
+        if col ~= 'stat' then
+            local va, vb;
+            if col == 'pts' then
+                va = (type(ws[a]) == 'table' and ws[a].perUnit) or 0;
+                vb = (type(ws[b]) == 'table' and ws[b].perUnit) or 0;
+            else
+                va = (type(ws[a]) == 'table' and ws[a].cap) or 0;
+                vb = (type(ws[b]) == 'table' and ws[b].cap) or 0;
+            end
+            if va ~= vb then
+                if asc then return va < vb; else return va > vb; end
+            end
+            return string.lower(a) < string.lower(b);   -- stable tie-break
+        end
+        local la, lb = string.lower(a), string.lower(b);
+        if la ~= lb then
+            if asc then return la < lb; else return la > lb; end
+        end
+        return a < b;
+    end);
+
+    for _, stat in ipairs(keys) do
         local w = ws[stat];
         local b = ui._wbuf[stat];
         if b == nil then
@@ -394,11 +515,10 @@ wui.editor = function()
         imgui.TextColored(COL.USABLE, fmt.truncate(stat, nchars));
         if #stat > nchars and imgui.IsItemHovered() then imgui.SetTooltip(stat); end
         imgui.SameLine(nameCol);
-        imgui.TextColored(COL.DIM, 'pts'); imgui.SameLine(0, 2);
         imgui.PushItemWidth(52);
         local chgPer = imgui.InputInt('##per_' .. stat, b.per, 0);
         imgui.PopItemWidth();
-        imgui.SameLine(0, 6); imgui.TextColored(COL.DIM, 'cap'); imgui.SameLine(0, 2);
+        imgui.SameLine(nameCol + 58);
         imgui.PushItemWidth(46);
         local chgCap = imgui.InputInt('##cap_' .. stat, b.cap, 0);
         imgui.PopItemWidth();
@@ -424,33 +544,7 @@ wui.editor = function()
     -- Add row: searchable stat dropdown -- type in the box to filter suggestions, click one
     -- (or keep your own text), then set pts/cap and Add.
     imgui.TextColored(COL.DIM, 'add'); imgui.SameLine(0, 4);
-    imgui.PushItemWidth(160);
-    if imgui.BeginCombo('##addstat', (ui.addStat[1] ~= '' and ui.addStat[1]) or '(type to search)') then
-        if imgui.IsWindowAppearing ~= nil and imgui.IsWindowAppearing()
-           and imgui.SetKeyboardFocusHere ~= nil then imgui.SetKeyboardFocusHere(0); end
-        imgui.PushItemWidth(-1); imgui.InputText('##addfilter', ui.addStat, 32); imgui.PopItemWidth();
-        imgui.Separator();
-        local q, shown = string.lower(ui.addStat[1] or ''), 0;
-        for _, sug in ipairs(weightSuggestions()) do
-            local match = (q == '');
-            if not match then
-                for _, t in ipairs(sug.terms) do
-                    if string.find(t, q, 1, true) ~= nil then match = true; break; end
-                end
-            end
-            if match then
-                shown = shown + 1;
-                local disp = (sug.label ~= sug.key) and (sug.label .. '  (' .. sug.key .. ')') or sug.key;
-                if imgui.Selectable(disp .. '##sug_' .. sug.key, false) then
-                    ui.addStat[1] = sug.key;             -- insert the canonical key (not the alias/label)
-                    imgui.CloseCurrentPopup();
-                end
-            end
-        end
-        if shown == 0 then imgui.TextColored(COL.DIM, '(no match -- Add will use your typed text)'); end
-        imgui.EndCombo();
-    end
-    imgui.PopItemWidth();
+    statPickerCombo('addstat', ui.addStat, nil);
     imgui.SameLine(0, 6); imgui.TextColored(COL.DIM, 'pts'); imgui.SameLine(0, 2);
     imgui.PushItemWidth(52); imgui.InputInt('##addper', ui.addPer, 0); imgui.PopItemWidth();
     imgui.SameLine(0, 6); imgui.TextColored(COL.DIM, 'cap'); imgui.SameLine(0, 2);
@@ -467,6 +561,272 @@ wui.editor = function()
     end
 
     imgui.EndChild();
+end
+
+-- ---------------------------------------------------------------------------
+-- PRIORITY tab (the simple mode): an ordered stat list, top matters most,
+-- optional cap per stat. Its own per-set memory, its own Saved Lists store
+-- (never mixes with point templates), same copy/save/clear/revert verbs.
+-- ---------------------------------------------------------------------------
+local function renderPrioTab(boundKey)
+    local ui, COL = D.ui, D.COL;
+
+    if modeNow() == 'points' then
+        fmt.textWrapped(COL.SCORE, '[!] This set builds from the Points tab right now. Editing anything here switches it to the priority list.');
+    end
+
+    -- Everything a prio edit must do besides the edit itself.
+    local function prioChanged()
+        wui._pbuf = {};
+        pcall(optim.saveWeights);
+        D.invalidateCandidates();
+    end
+
+    -- copy from...: flat menu -- prio sources stay few (This list revert /
+    -- Saved Lists / shared / per-set); the points tab's cascade would be
+    -- ceremony here.
+    if imgui.SmallButton('copy from...##pcopy') then
+        imgui.OpenPopup('##pcopy_pop');
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Replace this priority list with a copy of a saved or per-set one.\nLists only -- build-slot marks and point weights are never touched.');
+    end
+    imgui.SameLine(0, 6);
+    if imgui.SmallButton('save as...##psaveas') then
+        wui._pSaveName = { '' };
+        imgui.OpenPopup('##psaveas_pop');
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Save the current priority list under a proper name -- it lands in\ncopy from... > Saved Lists, reachable from every job and set.\nSame name = update in place. Separate from the Points tab\'s saves:\na point template and a priority list never cross-load.');
+    end
+    if imgui.BeginPopup('##psaveas_pop') then
+        if imgui.IsWindowAppearing ~= nil and imgui.IsWindowAppearing()
+           and imgui.SetKeyboardFocusHere ~= nil then imgui.SetKeyboardFocusHere(0); end
+        wui._pSaveName = wui._pSaveName or { '' };
+        imgui.PushItemWidth(180);
+        imgui.InputText('##psavename', wui._pSaveName, 48);
+        imgui.PopItemWidth();
+        imgui.SameLine(0, 6);
+        if imgui.Button('Save##psavego', { 50, 0 }) then
+            local oks = false;
+            pcall(function() oks = optim.savePrioNamed(wui._pSaveName[1]); end);
+            if oks then
+                pcall(optim.saveWeights);
+                imgui.CloseCurrentPopup();
+            end
+        end
+        imgui.EndPopup();
+    end
+    imgui.SameLine(0, 6);
+    if imgui.SmallButton('clear##pclear') then
+        pcall(optim.prioClear);
+        prioChanged();
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Empty this priority list.\nMis-click? copy from... > This list (revert) brings it back.');
+    end
+
+    imgui.SetNextWindowSizeConstraints({ 250, 0 }, { 380, 340 });
+    if imgui.BeginPopup('##pcopy_pop') then
+        local function appliedP(ok)
+            if ok then prioChanged(); end
+            imgui.CloseCurrentPopup();
+        end
+        local function pRow(id, label, colQ, kind, key, doCopy)
+            if imgui.Selectable(label .. '##pc_' .. id, false, 0, { colQ - 6, 0 }) then
+                local ok = false;
+                pcall(function() ok = doCopy(); end);
+                appliedP(ok);
+            end
+            imgui.SameLine(colQ);
+            imgui.TextColored(COL.DIM, '(?)');
+            if imgui.IsItemHovered() then imgui.SetTooltip(prioTip(kind, key)); end
+        end
+        local named, keys = {}, {};
+        pcall(function() named = optim.prioNamedKeys() or {}; end);
+        pcall(function() keys = optim.prioPerSetKeys() or {}; end);
+        local colQ = 110;
+        for _, l in ipairs(named) do local w = textW(l) + 18; if w > colQ then colQ = w; end end
+        for _, l in ipairs(keys)  do local w = textW(l) + 18; if w > colQ then colQ = w; end end
+
+        local canRevert = false;
+        pcall(function() canRevert = optim.prioUndoAvailable(); end);
+        if canRevert then
+            if imgui.Selectable('This list  (revert to before copying)##pcrevert') then
+                local ok = false;
+                pcall(function() ok = optim.revertCopiedPrio(); end);
+                appliedP(ok);
+            end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Restore this list to how it was BEFORE its first copy or clear\n(the snapshot lives until the addon reloads).');
+            end
+        else
+            imgui.TextColored(COL.DIM, 'This list  (nothing copied yet)');
+        end
+        imgui.Separator();
+        imgui.TextColored(COL.HEADER, 'Saved Lists');
+        if #named == 0 then
+            imgui.TextColored(COL.DIM, '(none yet -- "save as..." beside copy from)');
+        end
+        for _, n in ipairs(named) do
+            pRow('n_' .. n, n, colQ, 'named', n,
+                function() return optim.copyPrioFromNamed(n); end);
+        end
+        imgui.Separator();
+        if boundKey ~= nil then
+            pRow('sh', '(shared list)', colQ, 'shared', nil,
+                function() return optim.copyPrioFrom(nil); end);
+        end
+        local shownSets = 0;
+        for _, k in ipairs(keys) do
+            if k ~= boundKey then
+                shownSets = shownSets + 1;
+                pRow('k_' .. k, k, colQ, 'set', k,
+                    function() return optim.copyPrioFrom(k); end);
+            end
+        end
+        if shownSets == 0 and boundKey == nil then
+            imgui.TextColored(COL.DIM, '(no per-set lists stored yet)');
+        end
+        imgui.EndPopup();
+    end
+
+    imgui.TextColored(COL.DIM, 'top matters most; cap stops a stat once the set reaches it (0 = none):');
+    imgui.BeginChild('##dlac_prio', { -1, -1 }, true);
+
+    local availW  = imgui.GetContentRegionAvail();
+    local nameCol = availW - 160; if nameCol < 44 then nameCol = 44; end
+    local nchars  = math.max(6, math.floor(nameCol / 7));
+
+    local pl = {};
+    pcall(function() pl = optim.getPrio() or {}; end);
+    wui._pbuf = wui._pbuf or {};
+
+    -- Structural edits (move/remove) are gathered and applied AFTER the loop:
+    -- mutating the list mid-iteration would re-render moved rows this frame
+    -- with colliding ids.
+    local act = nil;
+    for i, e in ipairs(pl) do
+        imgui.TextColored(COL.DIM, string.format('%2d.', i));
+        imgui.SameLine(0, 4);
+        imgui.TextColored(COL.USABLE, fmt.truncate(e.stat, nchars - 3));
+        if #e.stat > (nchars - 3) and imgui.IsItemHovered() then imgui.SetTooltip(e.stat); end
+        imgui.SameLine(nameCol);
+        imgui.TextColored(COL.DIM, 'cap'); imgui.SameLine(0, 2);
+        local b = wui._pbuf[e.stat];
+        if b == nil then
+            b = { (type(e.cap) == 'number') and e.cap or 0 };
+            wui._pbuf[e.stat] = b;
+        end
+        imgui.PushItemWidth(46);
+        local chg = imgui.InputInt('##pcap_' .. e.stat, b, 0);
+        imgui.PopItemWidth();
+        if chg then
+            pcall(optim.prioSetCap, i, b[1]);
+            pcall(optim.saveWeights);
+            D.invalidateCandidates();
+        end
+        imgui.SameLine(0, 4);
+        if imgui.SmallButton('^##pup_' .. i) and i > 1 then act = { kind = 'move', i = i, d = -1 }; end
+        imgui.SameLine(0, 2);
+        if imgui.SmallButton('v##pdn_' .. i) and i < #pl then act = { kind = 'move', i = i, d = 1 }; end
+        imgui.SameLine(0, 4);
+        if imgui.Button('x##px_' .. i, { 20, 0 }) then act = { kind = 'remove', i = i }; end
+    end
+    if #pl == 0 then
+        imgui.TextColored(COL.DIM, '(empty -- add the stat that matters most first)');
+    end
+    if act ~= nil then
+        if act.kind == 'move' then pcall(optim.prioMove, act.i, act.d);
+        else pcall(optim.prioRemove, act.i); end
+        prioChanged();
+    end
+
+    imgui.Separator();
+
+    -- Add row: same searchable picker, minus stats already listed. No points --
+    -- the position in the list IS the weight.
+    local lower = {};
+    for _, e in ipairs(pl) do lower[string.lower(e.stat)] = true; end
+    wui._pAddStat = wui._pAddStat or { '' };
+    wui._pAddCap  = wui._pAddCap or { 0 };
+    imgui.TextColored(COL.DIM, 'add'); imgui.SameLine(0, 4);
+    statPickerCombo('paddstat', wui._pAddStat, function(lk) return lower[lk] == true; end);
+    imgui.SameLine(0, 6); imgui.TextColored(COL.DIM, 'cap'); imgui.SameLine(0, 2);
+    imgui.PushItemWidth(46); imgui.InputInt('##paddcap', wui._pAddCap, 0); imgui.PopItemWidth();
+    imgui.SameLine(0, 6);
+    if imgui.Button('Add##paddgo', { 40, 0 }) then
+        local name = wui._pAddStat[1];
+        if name ~= nil and name ~= '' then
+            local ok = false;
+            pcall(function() ok = optim.prioAdd(name, wui._pAddCap[1]); end);
+            if ok then
+                wui._pAddStat[1] = '';
+                wui._pAddCap[1] = 0;
+                prioChanged();
+            end
+        end
+    end
+
+    imgui.EndChild();
+end
+
+-- ---------------------------------------------------------------------------
+-- The weights editor body (fills the surrounding child/window).
+-- ---------------------------------------------------------------------------
+wui.editor = function()
+    if D == nil or imgui == nil then return; end
+    local ui, COL = D.ui, D.COL;
+    if optim == nil then
+        imgui.TextColored(COL.DIM, 'Optimizer unavailable -- weights disabled.');
+        return;
+    end
+    -- Say WHOSE weights these are: each set remembers its own (blank when new).
+    local boundKey = nil;
+    pcall(function()
+        local bk = (optim.weightsBoundTo ~= nil) and optim.weightsBoundTo() or nil;
+        boundKey = bk;
+        if bk ~= nil then
+            local j, s = string.match(bk, '^([^|]+)|(.+)$');
+            imgui.TextColored(COL.HEADER, string.format('weights for set "%s" (%s)', s or bk, j or '?'));
+        else
+            imgui.TextColored(COL.HEADER, 'shared weights (no set selected)');
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Every set remembers its own tuning -- point weights, priority list and\nbuild-slot marks. A new set starts BLANK; edits stick to that set only\nand come back when you re-select it.');
+        end
+    end);
+    -- Priority cap buffers go stale across binding switches (gearui owns the
+    -- ui._wbuf reset; the prio buffers live here, so the reset does too).
+    local bk = boundKey or '<shared>';
+    if wui._pbufFor ~= bk then
+        wui._pbufFor = bk;
+        wui._pbuf = {};
+    end
+
+    -- Points | Priority tabs (Henrik 07-17). Tab APIs are proven in this
+    -- install (gearui's main tab bar); the guard is for a stripped binding,
+    -- where we fall back to the points editor alone.
+    local hasTabs = type(imgui.BeginTabBar) == 'function'
+        and type(imgui.BeginTabItem) == 'function'
+        and type(imgui.EndTabItem) == 'function'
+        and type(imgui.EndTabBar) == 'function'
+        and type(optim.getPrio) == 'function';
+    if not hasTabs then
+        renderPointsTab(boundKey);
+        return;
+    end
+    if imgui.BeginTabBar('##dlac_wtabs', ImGuiTabBarFlags_None) then
+        if imgui.BeginTabItem('Points##wtab_points') then
+            renderPointsTab(boundKey);
+            imgui.EndTabItem();
+        end
+        if imgui.BeginTabItem('Priority##wtab_prio') then
+            renderPrioTab(boundKey);
+            imgui.EndTabItem();
+        end
+        imgui.EndTabBar();
+    end
 end
 
 return wui;

@@ -2121,3 +2121,33 @@ caller, no gear/weight reads.
 
 **Field confirmation (same day):** Henrik re-ran the WHM Cure Potency build -- both
 earrings now land, one per ear. Fix pushed to main.
+
+## Session "priority weights for the friends" (2026-07-17)
+
+**Context:** Henrik's friends are adopting dlac; feedback says the point-weight
+system doesn't click for many of them. They asked for a plain top-to-bottom
+priority list ("this stat first, then that one"), with caps still available.
+
+**Feature (gearoptim + weightsui):** the Stat Weights editor is now two tabs.
+**Points** is the classic editor, now with clickable Stat/Points/Cap column
+headers (click to sort, click again to flip). **Priority** is the simple mode:
+an ordered stat list — top matters most — with an optional cap per row, up/down
+reorder, and the same copy from.../save as... verbs against its OWN stores
+("Saved Lists" + per-set lists; a point template and a priority list never
+cross-load, per Henrik). Both tabs carry a **clear** button to the right of
+"save as..."; clear snapshots first, so copy from... > revert undoes a mis-click.
+
+**Implementation ruling:** priority scoring is dominance-DERIVED point weights
+(bottom-up, one point of a higher rank outranks everything below it combined;
+uncapped stats assumed ≤500 set-total), resolved behind `activeWeights()` — so
+score/optimizePicks/pairLadders/Auto-build run untouched. Which mode builds a
+set is per-binding state flipped by whichever editor's data you MUTATE — looking
+at a tab never switches it (a banner on the inactive tab says which one builds).
+
+**Bug fixed en route (Henrik):** new sets no longer seed their weights from the
+shared table — that seeding is why every new set arrived with a mystery "STR 5"
+(leftovers in his shared table). New bindings start BLANK for weights AND
+priority lists; only the build-slot mask still seeds from shared (a blank mask
+would read as a dead Auto-build button). Empty per-set tables are no longer
+persisted or offered as copy sources. AE4/AE6 rewritten to pin the new ruling;
+AP1–AP38 cover the priority mode (980 checks total).

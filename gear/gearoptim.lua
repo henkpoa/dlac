@@ -371,17 +371,46 @@ M._weights  = M._weights or {};
 M._shared   = M._shared or M._weights;   -- the no-set-bound table
 M._perSet   = M._perSet or {};           -- '<JOB>|<SetName>' -> weights table
 M._boundKey = nil;                       -- current binding, nil = shared
+
+-- Priority-list mode (2026-07-17, the "simple" weights): an ORDERED stat list --
+-- top matters most, each entry optionally capped -- for people the pts/cap point
+-- system doesn't click for. Same shared/per-set binding architecture as the
+-- weights; its OWN named store (a point template and a priority list never
+-- cross-load). Which of the two drives scoring is a per-binding MODE
+-- ('points' | 'priority'), flipped by whichever editor you touch.
+M._prioShared = M._prioShared or {};     -- ordered { stat = <canon>, cap = n|nil }
+M._prioPerSet = M._prioPerSet or {};     -- '<JOB>|<SetName>' -> list
+M._prio       = M._prio or M._prioShared;-- ACTIVE list (follows the binding)
+M._prioNamed  = M._prioNamed or {};      -- name -> list ("Saved Lists")
+M._prioUndo   = M._prioUndo or {};       -- bindingKey -> pre-first-copy snapshot
+M._modeShared = M._modeShared or 'points';
+M._modePerSet = M._modePerSet or {};     -- key -> 'priority' (absent = points)
+
 local ensureWeightsLoaded;   -- forward: defined with the persistence block below, but
                              -- every accessor must lazy-load -- the GUI reads through
                              -- these long before any /dl command would run (the fix
                              -- for "weights editor empty after every addon reload").
+local activeWeights;         -- forward: the mode-resolved scoring table (points table,
+                             -- or the dominance weights DERIVED from the priority list)
 
+-- The table scoring actually uses right now. The points editor must NOT read
+-- this (it would render derived numbers in priority mode) -- it reads
+-- M.getPointWeights instead.
 function M.getWeights()
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    return activeWeights();
+end
+
+-- The raw points table of the current binding, whatever the mode -- the points
+-- EDITOR's view.
+function M.getPointWeights()
     if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
     return M._weights;
 end
 
 -- Set/replace one stat weight. perUnit is required; cap is optional (nil = no cap).
+-- Editing a mode's data makes that mode ACTIVE for the binding (the invariant
+-- both editors and the /dl weight command lean on: you build where you type).
 function M.setWeight(stat, perUnit, cap)
     if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end   -- never edit-then-save over an unloaded file
     stat = canonStat(stat);
@@ -390,21 +419,30 @@ function M.setWeight(stat, perUnit, cap)
     if perUnit == nil then return false, 'perUnit must be a number'; end
     cap = tonumber(cap);   -- nil stays nil -> uncapped
     M._weights[stat] = { perUnit = perUnit, cap = cap };
+    M.setWeightsMode('points');
     return true;
 end
 
 function M.clearWeight(stat)
     if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
     stat = canonStat(stat);
-    if M._weights[stat] ~= nil then M._weights[stat] = nil; return true; end
+    if M._weights[stat] ~= nil then
+        M._weights[stat] = nil;
+        M.setWeightsMode('points');
+        return true;
+    end
     return false;
 end
 
 -- Per-set weight memory (Henrik): bind the ACTIVE weights to a set, so switching
--- sets never drags the previous set's tuning along. A never-bound set SEEDS its
--- copy from the shared table (continuity: existing weights don't vanish on the
--- upgrade); after that the set owns its copy and edits stick to IT only. job or
+-- sets never drags the previous set's tuning along. A never-bound set starts
+-- BLANK (Henrik 2026-07-17: seeding from the shared table made every new set
+-- inherit "weird shared weights" -- a leftover STR 5 in his profile); after
+-- the first bind the set owns its table and edits stick to IT only. job or
 -- setName nil/'' (or the pre-login '?' job) binds back to the shared table.
+-- The PRIORITY list (the simple top-to-bottom mode) rides the same binding,
+-- blank-seeded the same way. Only the build-slot MASK still seeds from shared:
+-- a blank mask would mean "fill nothing" and read as a dead Auto-build button.
 -- Returns true when the active table CHANGED (callers refresh buffers/caches).
 function M.bindSetWeights(job, setName)
     if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
@@ -420,11 +458,19 @@ function M.bindSetWeights(job, setName)
         t = M._perSet[key];
         if t == nil then
             t = {};
-            for k, w in pairs(M._shared) do t[k] = { perUnit = w.perUnit, cap = w.cap }; end
             M._perSet[key] = t;
         end
     end
     M._weights = t;
+    local pl = M._prioShared;
+    if key ~= nil then
+        pl = M._prioPerSet[key];
+        if pl == nil then
+            pl = {};
+            M._prioPerSet[key] = pl;
+        end
+    end
+    M._prio = pl;
     -- The build-slot mask rides the SAME binding (one binding, two payloads): a
     -- never-bound set seeds its mask from the shared one, then owns its copy.
     local sm = M._slotsShared;
@@ -486,10 +532,14 @@ function M.setSlotEnabled(label, on)
 end
 
 -- Stored per-set weight keys ('JOB|Set'), sorted -- the copy-from picker list.
+-- EMPTY tables are skipped: blank is the new-binding default (Henrik 07-17),
+-- so every set ever selected has one, and an empty source is nothing to copy.
 function M.perSetKeys()
     if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
     local keys = {};
-    for k in pairs(M._perSet) do keys[#keys + 1] = k; end
+    for k, t in pairs(M._perSet) do
+        if next(t) ~= nil then keys[#keys + 1] = k; end
+    end
     table.sort(keys);
     return keys;
 end
@@ -538,13 +588,17 @@ end
 -- src = 'JOB|Set', or nil for the shared table.
 function M.copyWeightsFrom(src)
     if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
-    return applyCopy((src == nil) and M._shared or M._perSet[src],
-                     (src == nil) and M._slotsShared or M._slotsPerSet[src]);
+    local ok, err = applyCopy((src == nil) and M._shared or M._perSet[src],
+                              (src == nil) and M._slotsShared or M._slotsPerSet[src]);
+    if ok then M.setWeightsMode('points'); end
+    return ok, err;
 end
 
 function M.copyWeightsFromNamed(name)
     if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
-    return applyCopy(M._named[name], M._namedSlots[name]);
+    local ok, err = applyCopy(M._named[name], M._namedSlots[name]);
+    if ok then M.setWeightsMode('points'); end
+    return ok, err;
 end
 
 -- Save the ACTIVE weights + slot mask under a proper name (overwrites an
@@ -598,6 +652,249 @@ function M.revertCopiedWeights()
     for k, w in pairs(u.w) do M._weights[k] = { perUnit = w.perUnit, cap = w.cap }; end
     for k in pairs(M._slots) do M._slots[k] = nil; end
     for k, v in pairs(u.s) do M._slots[k] = v; end
+    M.setWeightsMode('points');
+    return true;
+end
+
+-- The Clear button: empty the ACTIVE points table in place (identity survives
+-- the _shared/_perSet aliases), after the same pre-first-copy snapshot the copy
+-- path takes -- so copy from... > This set (revert) can bring a mis-click back.
+-- Build-slot marks are NOT touched: clearing your stat tuning shouldn't
+-- silently change which slots Auto-build fills.
+function M.clearAllWeights()
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    if M._copyUndo[undoKey()] == nil then
+        M._copyUndo[undoKey()] = { w = deepWeights(M._weights), s = deepMask(M._slots) };
+    end
+    for k in pairs(M._weights) do M._weights[k] = nil; end
+    M.setWeightsMode('points');
+    return true;
+end
+
+-- ===========================================================================
+-- Priority-list mode -- the "simple" weights (Henrik's friends, 2026-07-17).
+--
+-- An ORDERED stat list: the top stat matters most, each entry may carry a cap.
+-- Semantics are waterfall ("fill Accuracy to its cap first, then Attack, then
+-- STR"), implemented by DERIVING a points table with dominance weights: walking
+-- the list bottom-up, each stat's perUnit is 1 + (the maximum total score
+-- everything below it could ever contribute), so one point of a higher stat
+-- always outranks everything under it. A capped stat's ceiling is its cap; an
+-- uncapped one is assumed to top out at UNCAPPED_ASSUMED_TOTAL across a set.
+-- The derived table then rides the EXISTING pipeline untouched -- score,
+-- optimizePicks (set-level caps), pairLadders, Auto-build -- via
+-- activeWeights(), which every scoring default resolves through.
+--
+-- Which mode drives a binding is per-binding state ('points' | 'priority'),
+-- flipped by whichever editor's data you MUTATE -- looking at a tab never
+-- switches it. Priority lists have their OWN per-set store and their OWN named
+-- store ("Saved Lists"): a point template and a priority list never cross-load.
+-- ===========================================================================
+local UNCAPPED_ASSUMED_TOTAL = 500;   -- generous set-total bound for an uncapped stat
+
+local _prioCache, _prioCacheFor = nil, nil;   -- derived weights, keyed by list identity
+local function invalidatePrioCache() _prioCache = nil; end
+
+local function deriveFromPrio(list)
+    local out = {};
+    local below = 0;   -- max total score of every stat under the one being placed
+    for i = #list, 1, -1 do
+        local e = list[i];
+        if type(e) == 'table' and type(e.stat) == 'string' then
+            local per = 1 + below;
+            local cap = (type(e.cap) == 'number' and e.cap > 0) and e.cap or nil;
+            out[canonStat(e.stat)] = { perUnit = per, cap = cap };
+            below = below + per * (cap or UNCAPPED_ASSUMED_TOTAL);
+        end
+    end
+    return out;
+end
+M._deriveFromPrio = deriveFromPrio;   -- exposed for tests
+
+function M.weightsMode()
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    if M._boundKey == nil then return M._modeShared; end
+    return M._modePerSet[M._boundKey] or 'points';
+end
+
+function M.setWeightsMode(mode)
+    if mode ~= 'points' and mode ~= 'priority' then return false; end
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    if M._boundKey == nil then
+        M._modeShared = mode;
+    else
+        -- sparse: absent = points, so old sets never carry a mode row
+        M._modePerSet[M._boundKey] = (mode == 'priority') and mode or nil;
+    end
+    return true;
+end
+
+-- The mode-resolved scoring table (assigned to the forward local every scoring
+-- default reads). Binding switches invalidate the cache by identity; in-place
+-- list mutations call invalidatePrioCache explicitly.
+activeWeights = function()
+    if M.weightsMode() == 'priority' then
+        if _prioCache == nil or _prioCacheFor ~= M._prio then
+            _prioCache = deriveFromPrio(M._prio);
+            _prioCacheFor = M._prio;
+        end
+        return _prioCache;
+    end
+    return M._weights;
+end
+
+-- The ACTIVE priority list (the bound set's, else shared). Read-only to
+-- callers; edits go through the mutators so the cache and mode stay honest.
+function M.getPrio()
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    return M._prio;
+end
+
+local function deepPrio(list)
+    local c = {};
+    for i, e in ipairs(list) do c[i] = { stat = e.stat, cap = e.cap }; end
+    return c;
+end
+
+function M.prioAdd(stat, cap)
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    stat = canonStat(stat);
+    if type(stat) ~= 'string' or stat == '' then return false, 'bad stat name'; end
+    for _, e in ipairs(M._prio) do
+        if string.lower(e.stat) == string.lower(stat) then return false, 'already listed'; end
+    end
+    cap = tonumber(cap);
+    M._prio[#M._prio + 1] = { stat = stat, cap = (cap ~= nil and cap > 0) and cap or nil };
+    invalidatePrioCache();
+    M.setWeightsMode('priority');
+    return true;
+end
+
+function M.prioRemove(i)
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    if M._prio[i] == nil then return false; end
+    table.remove(M._prio, i);
+    invalidatePrioCache();
+    M.setWeightsMode('priority');
+    return true;
+end
+
+-- Swap entry i with entry i+delta (the editor's up/down arrows use +-1).
+function M.prioMove(i, delta)
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    local j = i + (tonumber(delta) or 0);
+    if M._prio[i] == nil or M._prio[j] == nil or i == j then return false; end
+    M._prio[i], M._prio[j] = M._prio[j], M._prio[i];
+    invalidatePrioCache();
+    M.setWeightsMode('priority');
+    return true;
+end
+
+function M.prioSetCap(i, cap)
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    local e = M._prio[i];
+    if e == nil then return false; end
+    cap = tonumber(cap);
+    e.cap = (cap ~= nil and cap > 0) and cap or nil;
+    invalidatePrioCache();
+    M.setWeightsMode('priority');
+    return true;
+end
+
+-- The priority tab's Clear button; snapshots first, like the points clear.
+function M.prioClear()
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    if M._prioUndo[undoKey()] == nil then
+        M._prioUndo[undoKey()] = deepPrio(M._prio);
+    end
+    for i = #M._prio, 1, -1 do M._prio[i] = nil; end
+    invalidatePrioCache();
+    M.setWeightsMode('priority');
+    return true;
+end
+
+-- Replace the ACTIVE list's contents (identity survives) with a copy of src;
+-- snapshot first so "This list (revert)" can undo the experiment.
+local function applyPrioCopy(src)
+    if src == nil then return false, 'no such priority list'; end
+    if src == M._prio then return false, 'that is already the active list'; end
+    if M._prioUndo[undoKey()] == nil then
+        M._prioUndo[undoKey()] = deepPrio(M._prio);
+    end
+    for i = #M._prio, 1, -1 do M._prio[i] = nil; end
+    for i, e in ipairs(src) do M._prio[i] = { stat = e.stat, cap = e.cap }; end
+    invalidatePrioCache();
+    M.setWeightsMode('priority');
+    return true;
+end
+
+-- src = 'JOB|Set', or nil for the shared list.
+function M.copyPrioFrom(src)
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    return applyPrioCopy((src == nil) and M._prioShared or M._prioPerSet[src]);
+end
+
+function M.copyPrioFromNamed(name)
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    return applyPrioCopy(M._prioNamed[name]);
+end
+
+function M.savePrioNamed(name)
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    name = string.gsub(string.gsub(tostring(name or ''), '^%s+', ''), '%s+$', '');
+    if name == '' then return false, 'name required'; end
+    M._prioNamed[name] = deepPrio(M._prio);
+    return true, name;
+end
+
+function M.deletePrioNamed(name)
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    if M._prioNamed[name] == nil then return false, 'no such list'; end
+    M._prioNamed[name] = nil;
+    return true;
+end
+
+function M.prioNamedKeys()
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    local keys = {};
+    for k in pairs(M._prioNamed) do keys[#keys + 1] = k; end
+    table.sort(keys);
+    return keys;
+end
+
+-- Stored per-set priority keys with a non-empty list, sorted (copy-from menu).
+function M.prioPerSetKeys()
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    local keys = {};
+    for k, t in pairs(M._prioPerSet) do
+        if #t > 0 then keys[#keys + 1] = k; end
+    end
+    table.sort(keys);
+    return keys;
+end
+
+-- Read-only peek at a stored list, for the menu's (?) tooltips.
+-- kind: 'shared' | 'set' (key = 'JOB|Set') | 'named' (key = list name).
+function M.peekPrio(kind, key)
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    if kind == 'shared' then return M._prioShared; end
+    if kind == 'set'    then return M._prioPerSet[key]; end
+    if kind == 'named'  then return M._prioNamed[key]; end
+    return nil;
+end
+
+function M.prioUndoAvailable()
+    return M._prioUndo[undoKey()] ~= nil;
+end
+
+function M.revertCopiedPrio()
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    local u = M._prioUndo[undoKey()];
+    if u == nil then return false, 'nothing to revert'; end
+    for i = #M._prio, 1, -1 do M._prio[i] = nil; end
+    for i, e in ipairs(u) do M._prio[i] = { stat = e.stat, cap = e.cap }; end
+    invalidatePrioCache();
+    M.setWeightsMode('priority');
     return true;
 end
 
@@ -626,7 +923,7 @@ end
 function M.score(itemStats, weights)
     if weights == nil then
         if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
-        weights = M._weights;
+        weights = activeWeights();   -- points table, or the priority-derived one
     end
     if type(itemStats) ~= 'table' or type(weights) ~= 'table' then return 0; end
     local total = 0;
@@ -865,7 +1162,7 @@ end
 -- ---------------------------------------------------------------------------
 function M.optimizePicks(pools, weights, opts)
     opts = opts or {};
-    weights = weights or M._weights;
+    weights = weights or activeWeights();
     local wl = {};                                     -- weight list, negation pre-resolved
     for stat, w in pairs(weights or {}) do
         if type(w) == 'table' and type(w.perUnit) == 'number' then
@@ -1091,7 +1388,7 @@ function M.buildBestSet(opts)
     -- Level-75 preview: lift the item-Level cap only. Job is left untouched, so the
     -- job-eligibility filter (jobAllowed) still excludes gear your job can't wear.
     if M.buildAtMaxLevel == true then level = MAX_LEVEL; end
-    local weights = opts.weights or M._weights;
+    local weights = opts.weights or activeWeights();
     -- Rank each slot's candidates, then optimize the SET as a whole under the
     -- weight caps (M.optimizePicks): a slot is filled only when it improves the
     -- capped set total, so cap budget goes to the pieces that bring the most
@@ -1193,7 +1490,9 @@ function M.weightsPath()
 end
 
 -- Serialize the shared + per-set weights and write it. Alphabetical order ->
--- stable diffs. Format: return { shared = {...}, perSet = { ['JOB|Set'] = {...} } }
+-- stable diffs. Format: return { shared = {...}, perSet = { ['JOB|Set'] = {...} },
+-- slotsShared/slotsPerSet, named/namedSlots, and the priority-mode sections
+-- (mode/modePerSet/prioShared/prioPerSet/prioNamed -- ordered arrays).
 -- (loadWeights still reads the old flat stat->weight files as `shared`).
 function M.saveWeights()
     local path = M.weightsPath();
@@ -1223,7 +1522,11 @@ function M.saveWeights()
     L[#L + 1] = '    },';
     L[#L + 1] = '    perSet = {';
     local skeys = {};
-    for k in pairs(M._perSet) do skeys[#skeys + 1] = k; end
+    -- Empty tables are skipped: blank is the new-binding default (07-17), so
+    -- rebinding recreates one -- persisting them would only bloat the file.
+    for k, t in pairs(M._perSet) do
+        if next(t) ~= nil then skeys[#skeys + 1] = k; end
+    end
     table.sort(skeys);
     for _, sk in ipairs(skeys) do
         L[#L + 1] = string.format('        [%q] = {', sk);
@@ -1270,6 +1573,52 @@ function M.saveWeights()
         end
     end
     L[#L + 1] = '    },';
+    -- Priority-list mode (its OWN store; point templates and priority lists
+    -- never cross-load). Lists are ORDERED arrays -- order IS the data. Empty
+    -- lists are skipped like empty per-set weight tables; a file from before
+    -- this feature has none of these sections and loads as all-points.
+    local function prioRows(t, indent)
+        for _, e in ipairs(t) do
+            L[#L + 1] = string.format('%s{ stat = %q%s },', indent, e.stat,
+                (type(e.cap) == 'number') and (', cap = ' .. tostring(e.cap)) or '');
+        end
+    end
+    L[#L + 1] = string.format('    mode = %q,', M._modeShared);
+    L[#L + 1] = '    modePerSet = {';
+    local mokeys = {};
+    for k, v in pairs(M._modePerSet) do
+        if v == 'priority' then mokeys[#mokeys + 1] = k; end
+    end
+    table.sort(mokeys);
+    for _, mk in ipairs(mokeys) do
+        L[#L + 1] = string.format('        [%q] = "priority",', mk);
+    end
+    L[#L + 1] = '    },';
+    L[#L + 1] = '    prioShared = {';
+    prioRows(M._prioShared, '        ');
+    L[#L + 1] = '    },';
+    L[#L + 1] = '    prioPerSet = {';
+    local pkeys = {};
+    for k, t in pairs(M._prioPerSet) do
+        if #t > 0 then pkeys[#pkeys + 1] = k; end
+    end
+    table.sort(pkeys);
+    for _, pk in ipairs(pkeys) do
+        L[#L + 1] = string.format('        [%q] = {', pk);
+        prioRows(M._prioPerSet[pk], '            ');
+        L[#L + 1] = '        },';
+    end
+    L[#L + 1] = '    },';
+    L[#L + 1] = '    prioNamed = {';
+    local pnkeys = {};
+    for k in pairs(M._prioNamed) do pnkeys[#pnkeys + 1] = k; end
+    table.sort(pnkeys);
+    for _, pk in ipairs(pnkeys) do
+        L[#L + 1] = string.format('        [%q] = {', pk);
+        prioRows(M._prioNamed[pk], '            ');
+        L[#L + 1] = '        },';
+    end
+    L[#L + 1] = '    },';
     L[#L + 1] = '}';
     L[#L + 1] = '';
 
@@ -1313,6 +1662,17 @@ function M.loadWeights()
         end
         return m;
     end
+    local function cleanPrioList(src)
+        local out = {};
+        for _, e in ipairs(src) do
+            if type(e) == 'table' and type(e.stat) == 'string' and e.stat ~= '' then
+                local cap = tonumber(e.cap);
+                out[#out + 1] = { stat = canonStat(e.stat),
+                                  cap = (cap ~= nil and cap > 0) and cap or nil };
+            end
+        end
+        return out;
+    end
     if type(result.shared) == 'table' or type(result.perSet) == 'table' then
         M._shared = cleanTable(type(result.shared) == 'table' and result.shared or {});
         M._perSet = {};
@@ -1344,18 +1704,43 @@ function M.loadWeights()
                 end
             end
         end
+        -- Priority-list sections: absent = pre-feature file (all-points, empty).
+        M._modeShared = (result.mode == 'priority') and 'priority' or 'points';
+        M._modePerSet = {};
+        if type(result.modePerSet) == 'table' then
+            for k, v in pairs(result.modePerSet) do
+                if type(k) == 'string' and v == 'priority' then M._modePerSet[k] = 'priority'; end
+            end
+        end
+        M._prioShared = (type(result.prioShared) == 'table')
+            and cleanPrioList(result.prioShared) or {};
+        M._prioPerSet = {};
+        if type(result.prioPerSet) == 'table' then
+            for k, t in pairs(result.prioPerSet) do
+                if type(k) == 'string' and type(t) == 'table' then M._prioPerSet[k] = cleanPrioList(t); end
+            end
+        end
+        M._prioNamed = {};
+        if type(result.prioNamed) == 'table' then
+            for k, t in pairs(result.prioNamed) do
+                if type(k) == 'string' and type(t) == 'table' then M._prioNamed[k] = cleanPrioList(t); end
+            end
+        end
     else
         M._shared = cleanTable(result);   -- legacy flat file
         M._perSet = {};
         M._slotsShared = M.defaultSlotMask();
         M._slotsPerSet = {};
         M._named, M._namedSlots = {}, {};
+        M._modeShared, M._modePerSet = 'points', {};
+        M._prioShared, M._prioPerSet, M._prioNamed = {}, {}, {};
     end
     -- Re-point the active tables through whatever binding was live before the load.
     local key = M._boundKey;
     M._boundKey = nil;                    -- force bindSetWeights to re-alias
     M._weights = M._shared;
     M._slots = M._slotsShared;
+    M._prio = M._prioShared;
     if key ~= nil then
         local j, s = string.match(key, '^([^|]+)|(.+)$');
         M.bindSetWeights(j, s);
@@ -1425,11 +1810,25 @@ ashita.events.register('command', 'dlac-optim', function(e)
 
         if a2 == nil or a2 == 'show' then
             ensureWeightsLoaded();
-            local ws = M.getWeights();
+            local whoseP = (M._boundKey ~= nil) and (' for set ' .. M._boundKey) or ' (shared -- no set selected)';
+            if M.weightsMode() == 'priority' then
+                local pl = M.getPrio();
+                if #pl == 0 then
+                    print('[dlac] priority mode with an empty list' .. whoseP .. '. Add stats on the Priority tab (dlac Stat Weights window).');
+                else
+                    print('[dlac] stat priorities' .. whoseP .. ' (top matters most):');
+                    for i, e in ipairs(pl) do
+                        print(string.format('  %2d. %-22s %s', i, e.stat,
+                            (e.cap ~= nil) and ('cap ' .. tostring(e.cap)) or 'no cap'));
+                    end
+                end
+                return;
+            end
+            local ws = M.getPointWeights();
             local keys = {};
             for k in pairs(ws) do keys[#keys + 1] = k; end
             table.sort(keys);
-            local whose = (M._boundKey ~= nil) and (' for set ' .. M._boundKey) or ' (shared -- no set selected)';
+            local whose = whoseP;
             if #keys == 0 then
                 print('[dlac] no stat weights set' .. whose .. '. Use:  /dl weight <Stat> <perUnit> <cap>  (e.g. /dl weight Accuracy 20 60)');
             else

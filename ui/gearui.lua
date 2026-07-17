@@ -2691,7 +2691,12 @@ local function renderSetsWeightPanel(job, level)
         if (nSlots or 0) > 0 then
             setStatus(string.format('Auto-built %d slot(s), %d row(s) -- Commit to save.', nSlots, nRows), false);
         elseif not weightsActive() then
-            setStatus('Auto-build chose nothing: no stat weights are set (zeroed weights don\'t count). Weight some stats below, then build again.', true);
+            if has.optim and type(optim.weightsMode) == 'function'
+               and select(2, pcall(optim.weightsMode)) == 'priority' then
+                setStatus('Auto-build chose nothing: the priority list is empty. Add stats on the Priority tab below, then build again.', true);
+            else
+                setStatus('Auto-build chose nothing: no stat weights are set (zeroed weights don\'t count). Weight some stats below, then build again.', true);
+            end
         else
             setStatus('Auto-build chose nothing: no owned, equippable item scored above 0 with the current weights.', true);
         end
@@ -3130,7 +3135,16 @@ local function renderSetsTab(job, level)
     local statsUsed = ui.showStats and (STATS_W + 8) or 0;
 
     if ui.showStats then
-        renderStatsPanel(string.format('Set totals (w %g)', workingWeightedScore(level)), workingSetTotals(level));
+        -- Priority mode scores with dominance-derived weights -- huge numbers
+        -- that mean nothing to a reader, so the header says the mode instead.
+        local wHdr = 'Set totals';
+        if has.optim and type(optim.weightsMode) == 'function'
+           and select(2, pcall(optim.weightsMode)) == 'priority' then
+            wHdr = 'Set totals (priority)';
+        else
+            wHdr = string.format('Set totals (w %g)', workingWeightedScore(level));
+        end
+        renderStatsPanel(wHdr, workingSetTotals(level));
         imgui.SameLine();
     end
 
