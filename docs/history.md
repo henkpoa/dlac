@@ -2483,3 +2483,22 @@ mini-game reads, no bite reactions — the server carries an anti-bot surface,
 `GetRecentFishers()`/`[Fish]LastCastTime`, and the bright line stays bright).
 Field tests pending: design doc §6 — `!ventures fishing` format pin, GP/VP
 sanity, first live overlay run, custom-gear stat text.
+
+**Field round 1 (same day, Henrik live):** the panel worked on contact — his
+screenshot shows Lu Shang's SAFE verdicts and Giant Donko isolation rows.
+Five fixes from the pass, plus one identification that closed a server
+question: **the bg-wiki CatsEyeXI Ventures page lists "Expert Angler:
+Fatigue Limit +10%, Golden Arrow Rate +1%" on Mariners Tunica/Boots — values
+matching mods 2004/2005 in the live DB exactly (10/20 base/+1, 1/2), so
+2004 = Fatigue Limit +%, 2005 = Golden Arrow Rate +%** (server-questions §4:
+two of the three unknowns answered; 2017 remains). Panel rulings: glow is
+MARINERS-ONLY (the real fishing end-game — Angler's/guild gear just green;
+Expert Angler tooltips on the carrying pieces); Lu Shang's +1 / Ebisu +1 /
+Halieutica / Brigands Eyepatch UNDISPLAYED (unmentioned in-game, look
+unobtainable — data stays, autoPick honours an owned one); owning Lu
+Shang's/Ebisu greens the whole standard rod ladder (the cascade); the buy
+suggestion only appears when no owned rod is SAFE (and never suggests the
++1s); [ISOLATED] column widened 90→128 (themed-font clipping, the
+button-width lesson again); the 10k-carp guild line hides once Lu Shang's is
+owned. itemLine also inherited helmui's note-beats-tooltip order en route —
+the cascade/Expert Angler notes were silently losing to the stat card.

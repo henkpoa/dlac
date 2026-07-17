@@ -310,9 +310,11 @@ function M.moonHint(mp)
     return 'moon-sensitive';
 end
 
--- Ladder score for the manifest fish block: VERIFIED Mod::FISH (catalog
--- Stats.FishingSkill) dominates; the unverified CatsEyeXI cx-mods are
--- tiebreakers only (ordering-safe whatever they turn out to mean).
+-- Ladder score for the manifest fish block: Mod::FISH (catalog
+-- Stats.FishingSkill -- adds to effective skill directly) dominates; the
+-- CatsEyeXI cx-mods -- identified 2026-07-18 as Expert Angler: cx4 = Fatigue
+-- Limit +%, cx5 = Golden Arrow Rate +% (bg-wiki CatsEyeXI Ventures page) --
+-- are quality-of-life, so they stay tiebreakers below real skill.
 function M.gearScore(fishStat, bonus)
     local s = (tonumber(fishStat) or 0) * 1000;
     if type(bonus) == 'table' then

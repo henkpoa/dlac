@@ -10,8 +10,9 @@
 --   pools[zone][area] = sorted fishid list; zones[zone]={n,dif}; areaNames[zone][area]=name
 --   mobs[zone] = { {n,a,b,ab,nm,lv} } (b=required bait id, 0 = any)
 --   gearBonus[itemid] = { n,sl, fish/pelican/albatross/penguin/skillgain/cx4/cx5 }
---     cx4/cx5 = CatsEyeXI custom mods 2004/2005 -- semantics UNVERIFIED,
---     ordering-only (server-questions.md #4).
+--     cx4/cx5 = CatsEyeXI custom mods 2004/2005 = Expert Angler: Fatigue
+--     Limit +% / Golden Arrow Rate +% (identified 2026-07-18, bg-wiki
+--     CatsEyeXI_Content/Ventures); ladder tiebreakers below real skill.
 return {
 fish = {
   [90] = { n = "Rusty Bucket", sk = 1, dif = 19, rank = 10, item = 1, mh = 1, rar = 900, hp = 1, mp = 1 },

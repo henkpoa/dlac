@@ -932,7 +932,7 @@ local function resolveVirtual(marker, ctx, slot)
     if mk == 'dlac:autofish' then
         -- Fishing automation (docs/design/fishing-gear.md): manifest `fish`
         -- block = per-slot best-first ladders (score = FishingSkill-major,
-        -- the unverified CatsEyeXI cx-mods as tiebreakers -- ordering-only).
+        -- the CatsEyeXI Expert Angler cx-mods as tiebreakers).
         -- No category, no hat map: fishing is one activity. Range/Ammo never
         -- resolve here -- rod and bait are target-specific state-file picks.
         local f = (type(a.fish) == 'table') and a.fish or nil;

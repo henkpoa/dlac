@@ -1128,8 +1128,8 @@ local function autoCommit()
     -- gear carrying the catalog's FishingSkill (Mod::FISH -- adds straight onto
     -- effective skill, server GetFishingSkill) or a fishdb gearBonus entry (the
     -- CatsEyeXI cx-mods the catalog drops; Brigands Eyepatch carries ONLY
-    -- those). Score = FishingSkill-major, cx tiebreak -- ordering-only, the
-    -- cx semantics are unverified (server-questions.md #4). Rings split into
+    -- those). Score = FishingSkill-major, cx tiebreak (cx = Expert Angler:
+    -- Fatigue Limit / Golden Arrow, identified 2026-07-18). Rings split into
     -- disjoint ladders like craft; Main carries fishing weapons (Halieutica);
     -- Range/Ammo are EXCLUDED -- rod and bait are fishstate picks, not ladders.
     local fishBest = {};

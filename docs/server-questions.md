@@ -66,22 +66,31 @@ DB, and does not invent an effect from description text.
 
 ---
 
-## 4. Unidentified CatsEyeXI custom mods — OPEN
+## 4. Unidentified CatsEyeXI custom mods — 2004/2005 ANSWERED, 2017 OPEN
 
 Customs live at 2000+ and aren't in LSB's `modifier.h`. Identified so far by matching
-in-game text: `2000` SURVEYOR, `2006` EXCAVATION_RESULT, `2016` CONSERVE_INGREDIENT.
+in-game / wiki text: `2000` SURVEYOR, `2006` EXCAVATION_RESULT, `2016`
+CONSERVE_INGREDIENT, and — closed 2026-07-18 via
+https://www.bg-wiki.com/ffxi/CatsEyeXI_Content/Ventures ("Expert Angler" on the
+Mariners fishing-VP gear, values matching the live DB exactly):
+
+- **`2004` = Fatigue Limit +%** (Mariners Tunica/Boots =10, their +1 =20 — wiki says
+  +10%; Ebisu =10, Ebisu +1 =15, Halieutica =50, Brigands Eyepatch =20)
+- **`2005` = Golden Arrow Rate +%** (Mariners =1, +1 =2 — wiki says +1%; Halieutica =5,
+  Eyepatch =2)
+
 Still unknown:
 
 | mod | carriers | note |
 |---|---|---|
-| 2004 | Ebisu Fishing Rod (=10), Ebisu F. Rod +1 (=15), Halieutica (=50), Mariners Boots/Tunica, Brigands Eyepatch | fishing; value scales, so it's a real stat |
-| 2005 | Halieutica (=5), Mariners Boots/Tunica, Brigands Eyepatch | fishing; travels with 2004 |
 | 2017 | Artisans Ring +1 (28566, =3) | its text is fully explained by SYNTH_SUCCESS_RATE + the ANTI_HQ set, so 2017 has no visible effect |
 
-**Question:** what are these three? A name each is enough — dlac derives the rest.
+**Question:** what is 2017? A name is enough — dlac derives the rest.
 
-**What dlac does meanwhile:** leaves them in `tools/api_cache/ignored_mods.txt`, so they
-are dropped from the catalog rather than guessed at.
+**What dlac does meanwhile:** 2004/2005 stay out of the catalog (crawl-time mapping is
+Henrik's call at the next apicrawl); the fishing panel shows them as "Expert Angler"
+tooltips from fishdb's `gearBonus`, and the fish ladders use them as tiebreakers.
+2017 stays in `tools/api_cache/ignored_mods.txt` — dropped, not guessed at.
 
 ---
 

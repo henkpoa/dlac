@@ -31,6 +31,16 @@ Halieutica =50/=5, Mariners Tunica/Boots, Brigands Eyepatch) and those custom it
 no public rows at all. We ship the public baseline, mark the customs "stats unverified",
 and let live captures correct us — never guess private semantics (server-questions.md §4).
 
+**Round-2 update (2026-07-18, Henrik's field pass):** mods **2004/2005 are
+IDENTIFIED** — the bg-wiki page https://www.bg-wiki.com/ffxi/CatsEyeXI_Content/Ventures
+lists "Expert Angler: Fatigue Limit +10%, Golden Arrow Rate +1%" on Mariners
+Tunica/Boots, matching the live DB values exactly (2004 = 10/20 base/+1, 2005 = 1/2).
+So **2004 = Fatigue Limit +%, 2005 = Golden Arrow Rate +%** (server-questions.md §4
+updated). Display policy from the same pass: only Mariners glows (the real fishing
+end-game); Halieutica, Brigands Eyepatch and the legendary-rod +1s are NOT displayed
+(unmentioned in-game / look unobtainable — data stays shipped, autoPick still honours
+an owned one); owning Lu Shang's or Ebisu greens the whole standard rod ladder.
+
 Mechanics the addon USES (file:line = fishingutils.cpp unless noted):
 
 - **What bites**: position → fishing area (point-in-poly/cylinder, :1287) → catch groups
@@ -115,7 +125,9 @@ column is the Plain column's sibling; VP prices field-verifiable (likely 3000/ha
 DEX/ATT + Fish+2 + cx4=50/cx5=5. **Ebisu carries cx4 only (10; +1 = 15)** and Brigands
 Eyepatch cx4=20/cx5=2 with NO Fish mod — those two are the only pieces invisible to the
 catalog's FishingSkill stat, which is exactly what the fishdb `gearBonus` supplement is
-for. cx semantics stay "unverified" (server-questions.md §4); ordering-only.
+for. cx = **Expert Angler** (2004 Fatigue Limit +%, 2005 Golden Arrow Rate +% — round-2
+identification above); ladder tiebreakers below real skill. Halieutica/Eyepatch/the +1
+rods ship in fishdb but are NOT displayed (round-2 ruling).
 
 Armor ladders are **stat-driven from the catalog** (`Stats.FishingSkill`, statdefs mod
 127) exactly like craft/HELM ladders — future gear lands automatically. The custom
@@ -152,12 +164,14 @@ Panel layout, top to bottom:
    bonus = worn Mod::FISH sum; cap/rank if Ashita exposes the rank bits, else skill
    alone) · `GP 1,250` (craftwatch, new Fishing=0x20 offset) · `VP 5,000` (helmwatch
    `pointsFor('Fishing')` — **already streaming today**, zero new packet work).
-2. **Gear matrix** — four columns, helm's exact rendering language (green owned /
-   "you're awesome" cascade within a slot / dim unowned / red owned-but-stored /
-   holy-light glow on top tier): `BASE GEAR · NEXT TIER · RODS · LEGENDARY`.
-   Rods green=owned only (no cascade — sizes serve different fish); glow on the
-   LEGENDARY column. Every cell = icon + name + tooltip (renderItemTooltip — view_ids
-   rides along free).
+2. **Gear matrix** — four columns, helm's rendering language (green owned /
+   "you're awesome" cascade within a slot / dim unowned): `BASE SET · ANGLER'S (+1) ·
+   GUILD (GP) · MARINERS (VP)`. **Holy-light glow: Mariners column ONLY** (Henrik
+   round 2 — the real fishing end-game; Expert Angler tooltips on Tunica/Boots) plus
+   the two legendary rods. Rods below: standard ladder greens by ownership OR by the
+   legendary cascade (owning Lu Shang's/Ebisu greens them all); LEGENDARY column =
+   Lu Shang's + Ebisu (the +1s undisplayed). Every cell = icon + name + tooltip
+   (renderItemTooltip — view_ids rides along free; explicit notes win over the card).
 3. **Target fish** — search box over fishdb (picker-style filtered list, the G3
    browse-list pattern). On selection:
    - fish facts line: required skill vs yours (skill-up window note: "+11 is the
@@ -277,8 +291,10 @@ the test fixtures.
 
 ## 7. Open questions (server-questions.md style)
 
-- Mods **2004/2005** semantics (§4 there) — displayed as "custom fishing bonus
-  (unverified)"; ladder ordering only. Halieutica's rod stats — verdict shows `?`.
+- ~~Mods **2004/2005** semantics~~ **ANSWERED round 2**: Expert Angler — 2004 Fatigue
+  Limit +%, 2005 Golden Arrow Rate +% (bg-wiki Ventures page; values match the DB).
+- Are Lu Shang's +1 / Ebisu +1 / Halieutica / Brigands Eyepatch obtainable at all?
+  Henrik believes not (they exist only in the live DB) — undisplayed until one shows up.
 - Does `!ventures fishing` exist as a sub-command (vs plain `!ventures`)? Field test 1.
 - Ashita rank bits for fishing cap: if `GetCraftSkill(0)` exposes rank like retail
   (cap = (rank+1)×10), status line shows skill/cap; else skill only.

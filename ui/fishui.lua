@@ -28,14 +28,19 @@ local HEAD_RING = { 25608, 39051 };                        -- Tlahtlamah, Angler
 local GUILD_GEAR = { 14195, 11337, 14400, 15554 };         -- Waders, Smock, Apron, Pelican Ring
 local MARINERS  = { { 26535, 26536 }, { 25986, 25987 },    -- Tunica, Gloves (base, +1)
                     { 25899, 25900 }, { 25966, 25967 } };  -- Hose, Boots
-local VP_EXTRA  = { 28443, 20945 };                        -- Brigands Eyepatch, Halieutica
-local LEGENDARY_RODS = { 17386, 19320, 17011, 19321 };     -- Lu Shang's, +1, Ebisu, +1
+-- NOT displayed (Henrik 2026-07-18): Halieutica 20945 + Brigands Eyepatch 28443
+-- (nothing in-game mentions them) and the legendary-rod +1s 19320/19321 (look
+-- unobtainable on CatsEyeXI). fishdb keeps their data and autoPick still
+-- honours one if it ever lands in a bag -- they are only invisible here.
+local LEGENDARY_RODS = { 17386, 17011 };                   -- Lu Shang's, Ebisu
+local LEG_ANY = { [17386] = true, [19320] = true, [17011] = true, [19321] = true };
 local SPECIAL_RODS = { [17012] = true, [17013] = true, [19319] = true };  -- Judge's, Basket, MMM
+local NO_SUGGEST = { [17012] = true, [17013] = true, [19319] = true,      -- specials...
+                     [19320] = true, [19321] = true };     -- ...and the undisplayed +1s
 
 local ADVANCED = {};   -- any of these owned = coverage level 3
 for _, id in ipairs(GUILD_GEAR) do ADVANCED[id] = true; end
 for _, pair in ipairs(MARINERS) do ADVANCED[pair[1]] = true; ADVANCED[pair[2]] = true; end
-for _, id in ipairs(VP_EXTRA) do ADVANCED[id] = true; end
 for _, id in ipairs(HEAD_RING) do ADVANCED[id] = true; end
 
 -- ---------------------------------------------------------------------------
@@ -98,7 +103,7 @@ function M.coverage(deps)
             if owned(oc, id) then lvl = 3; break; end
         end
     end
-    for _, id in ipairs(LEGENDARY_RODS) do
+    for id in pairs(LEG_ANY) do
         if owned(oc, id) then lvl = 4; break; end
     end
     return lvl;
@@ -180,27 +185,47 @@ local function itemLine(deps, id, state, note)
     elseif state == 'owned' or state == 'better' then col = GREEN_OWNED; end
     imgui.TextColored(col, esc(name));
     if imgui.IsItemHovered() then
-        local rec = (deps ~= nil and deps.lookupByName ~= nil) and deps.lookupByName(name) or nil;
-        if rec ~= nil and deps ~= nil and type(deps.itemTooltip) == 'function' then
-            pcall(deps.itemTooltip, rec);
-        elseif note ~= nil then
+        -- explicit note WINS (the helmui rule -- cascade/Expert Angler notes
+        -- must not lose to the generic stat card)
+        if note ~= nil then
             imgui.SetTooltip(note);
         else
-            imgui.SetTooltip(name);
+            local rec = (deps ~= nil and deps.lookupByName ~= nil) and deps.lookupByName(name) or nil;
+            if rec ~= nil and deps ~= nil and type(deps.itemTooltip) == 'function' then
+                pcall(deps.itemTooltip, rec);
+            else
+                imgui.SetTooltip(name);
+            end
         end
     end
 end
 
 -- Cell state for a (base, better) pair: base greens through its upgrade
--- ("you're awesome" cascade), the upgrade glows when owned.
+-- ("you're awesome" cascade). No glow here -- only Mariners glows (Henrik
+-- 2026-07-18: they are the real fishing end-game).
 local function pairStates(oc, baseId, upId)
     local b, u = owned(oc, baseId), upId ~= nil and owned(oc, upId);
     local bs = (b or u) and ((not b and 'better') or 'owned') or 'dim';
-    local us = u and 'glow' or 'dim';
+    local us = u and 'owned' or 'dim';
     return bs, us;
 end
 
 local BETTER_NOTE = 'Green via progression: you own a better piece for this slot --\nso this one is covered. You\'re awesome.';
+
+-- Expert Angler tooltip for the Mariners pieces that carry the custom mods
+-- (identified 2026-07-18 via bg-wiki CatsEyeXI_Content/Ventures: 2004 =
+-- Fatigue Limit +%, 2005 = Golden Arrow Rate +% -- values match the live DB).
+local function expertNote(id)
+    if not _fcok then return nil; end
+    local db = fcalc.db(); if db == nil then return nil; end
+    local g = (db.gearBonus or {})[id];
+    if g == nil or (g.cx4 == nil and g.cx5 == nil) then return nil; end
+    local parts = {};
+    if g.cx4 ~= nil then parts[#parts + 1] = string.format('Fatigue Limit +%d%%', g.cx4); end
+    if g.cx5 ~= nil then parts[#parts + 1] = string.format('Golden Arrow Rate +%d%%', g.cx5); end
+    return string.format('Expert Angler: %s\n(+ Fishing skill -- CatsEyeXI venture gear)',
+        table.concat(parts, ', '));
+end
 
 -- section state
 local sel = { q = { '' }, id = nil, showAllIso = false };
@@ -274,25 +299,24 @@ function M.render(deps, availW)
             end
             imgui.SameLine(colW);
             local hrId = HEAD_RING[i - 4];
-            if hrId ~= nil then itemLine(deps, hrId, owned(oc, hrId) and 'glow' or 'dim');
+            if hrId ~= nil then itemLine(deps, hrId, owned(oc, hrId) and 'owned' or 'dim');
             else imgui.Dummy({ 0, 1 }); end
         end
-        -- column 3: guild GP gear
+        -- column 3: guild GP gear (green when owned -- no glow, see Mariners)
         imgui.SameLine(colW * 2);
         local gId = GUILD_GEAR[i];
-        if gId ~= nil then itemLine(deps, gId, owned(oc, gId) and 'glow' or 'dim');
+        if gId ~= nil then itemLine(deps, gId, owned(oc, gId) and 'owned' or 'dim');
         else imgui.Dummy({ 0, 1 }); end
-        -- column 4: the Mariners VP set (+1 cascade), then Eyepatch/Halieutica
+        -- column 4: the Mariners VP set -- the ONLY armor that glows (Henrik:
+        -- the real fishing end-game). Best owned tier shown; Expert Angler
+        -- rides the tooltip on the pieces that carry it (Tunica/Boots).
         imgui.SameLine(colW * 3);
         local mPair = MARINERS[i];
         if mPair ~= nil then
-            local ms, m1 = pairStates(oc, mPair[1], mPair[2]);
-            if m1 == 'glow' then itemLine(deps, mPair[2], 'glow');
-            else itemLine(deps, mPair[1], ms); end
+            local showId = owned(oc, mPair[2]) and mPair[2] or mPair[1];
+            itemLine(deps, showId, owned(oc, showId) and 'glow' or 'dim', expertNote(showId));
         else
-            local vId = VP_EXTRA[i - 4];
-            if vId ~= nil then itemLine(deps, vId, owned(oc, vId) and 'glow' or 'dim');
-            else imgui.Dummy({ 0, 1 }); end
+            imgui.Dummy({ 0, 1 });
         end
     end
     imgui.Spacing();
@@ -311,26 +335,32 @@ function M.render(deps, availW)
         if (a.r.rating or 0) ~= (b.r.rating or 0) then return (a.r.rating or 0) < (b.r.rating or 0); end
         return nameOf(a.id) < nameOf(b.id);
     end);
+    -- Owning a legendary rod greens the whole standard ladder ("you're
+    -- awesome" cascade -- Henrik 2026-07-18: Lu Shang's/Ebisu covers them all).
+    local legOwned = false;
+    for id in pairs(LEG_ANY) do if owned(oc, id) then legOwned = true; break; end end
+    local function rodNote(e, better)
+        return string.format('%s -- size %s, durability %d%s%s', nameOf(e.id),
+            (e.r.sz or 0) == 1 and 'LARGE' or 'small', e.r.maxR or 0,
+            (e.r.brk or 0) ~= 0 and ', breakable' or '',
+            better and '\nGreen via progression: your legendary rod covers this one.' or '');
+    end
     local half = math.ceil(#standard / 2);
     for i = 1, half do
         local a = standard[i];
-        itemLine(deps, a.id, owned(oc, a.id) and 'owned' or 'dim',
-            string.format('%s -- size %s, durability %d%s', nameOf(a.id),
-                (a.r.sz or 0) == 1 and 'LARGE' or 'small', a.r.maxR or 0,
-                (a.r.brk or 0) ~= 0 and ', breakable' or ''));
+        local aSt = owned(oc, a.id) and 'owned' or (legOwned and 'better' or 'dim');
+        itemLine(deps, a.id, aSt, rodNote(a, aSt == 'better'));
         local b = standard[i + half];
         if b ~= nil then
             imgui.SameLine(colW);
-            itemLine(deps, b.id, owned(oc, b.id) and 'owned' or 'dim',
-                string.format('%s -- size %s, durability %d%s', nameOf(b.id),
-                    (b.r.sz or 0) == 1 and 'LARGE' or 'small', b.r.maxR or 0,
-                    (b.r.brk or 0) ~= 0 and ', breakable' or ''));
+            local bSt = owned(oc, b.id) and 'owned' or (legOwned and 'better' or 'dim');
+            itemLine(deps, b.id, bSt, rodNote(b, bSt == 'better'));
         end
         local lId = LEGENDARY_RODS[i];
         if lId ~= nil then
             imgui.SameLine(colW * 2);
             itemLine(deps, lId, owned(oc, lId) and 'glow' or 'dim',
-                (lId == 17011 or lId == 19321) and (nameOf(lId) .. ' -- NEVER breaks')
+                (lId == 17011) and (nameOf(lId) .. ' -- NEVER breaks')
                 or (nameOf(lId) .. ' -- breakable (quest-restorable)'));
         end
     end
@@ -420,8 +450,9 @@ function M.render(deps, availW)
         local ownedRods = {};
         for id in pairs(db.rods) do if owned(oc, id) then ownedRods[id] = true; end end
         local ranked = fcalc.rodsFor(f, eff, ownedRods);
-        local shownOwned, suggest = 0, nil;
+        local shownOwned, suggest, ownedSafe = 0, nil, false;
         for _, r in ipairs(ranked) do
+            if r.owned and r.v.ok then ownedSafe = true; end
             if r.owned and shownOwned < 3 then
                 shownOwned = shownOwned + 1;
                 local v = r.v;
@@ -437,10 +468,11 @@ function M.render(deps, availW)
                 imgui.SameLine(0, 8);
                 imgui.TextColored(col, esc(label));
             end
-            if suggest == nil and r.v.ok and not SPECIAL_RODS[r.id] then suggest = r; end
+            if suggest == nil and r.v.ok and not NO_SUGGEST[r.id] then suggest = r; end
         end
         if shownOwned == 0 then imgui.TextColored(COL_ERR, 'you own no fishing rod.'); end
-        if suggest ~= nil and not suggest.owned then
+        -- Only pitch a buy when you actually lack a safe rod for this fish.
+        if not ownedSafe and suggest ~= nil and not suggest.owned then
             imgui.TextColored(COL_DIM, esc(string.format('safest rod for this fish: %s (unowned)', nameOf(suggest.id))));
         end
 
@@ -462,7 +494,7 @@ function M.render(deps, availW)
                     end
                     imgui.SetTooltip('also bites here: ' .. table.concat(names, ', '));
                 end
-                imgui.SameLine(90);
+                imgui.SameLine(128);   -- themed font ~9.5px/char: '[ISOLATED]' needs the room
                 local place = row.zoneName .. (row.areaName ~= nil and (' -- ' .. row.areaName) or '');
                 imgui.TextColored(COL_TEXT, esc(place));
                 imgui.SameLine(math.floor(availW * 0.55));
@@ -602,7 +634,10 @@ function M.render(deps, availW)
         for _, it in ipairs(g.kis or {}) do
             imgui.TextColored(COL_TEXT, esc(string.format('%s -- %s GP (%s)', it.n, tostring(it.gp), it.rank)));
         end
-        imgui.TextColored(COL_DIM, "Lu Shang's: 10,000 carp to Gallijaux/Joulet (Port San d'Oria) -- Moat Carp pay 10g, Forest Carp 15g.");
+        -- The carp grind pitch is for people still ON the grind (Henrik).
+        if not (owned(oc, 17386) or owned(oc, 19320)) then
+            imgui.TextColored(COL_DIM, "Lu Shang's: 10,000 carp to Gallijaux/Joulet (Port San d'Oria) -- Moat Carp pay 10g, Forest Carp 15g.");
+        end
     end
 end
 
