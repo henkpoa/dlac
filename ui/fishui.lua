@@ -383,7 +383,11 @@ function M.render(deps, availW)
         imgui.SameLine(0, 12);
         imgui.TextColored(GREEN_GLOW, esc('target: ' .. tostring(tgtName)));
         imgui.SameLine(0, 10);
-        if imgui.Button('Clear##fishtgt') and _fwok then fw.setTarget(nil); end
+        if imgui.Button('Clear##fishtgt') and _fwok then
+            fw.setTarget(nil);
+            sel.id = nil;        -- the panel's view too, or the detail stays pinned
+            sel.q[1] = '';
+        end
     end
     -- the pill, right here where the eye already is
     if _fwok then
@@ -404,24 +408,26 @@ function M.render(deps, availW)
         end
     end
 
+    -- Typing = searching: the match list stays up EVERY frame while the box
+    -- holds text (the first cut only drew it on the frame the query CHANGED --
+    -- one-frame flicker, unpickable; Henrik's "can't search up new ones").
+    -- Picking a row clears the box and hands over to the detail view below.
     local q = tostring(sel.q[1] or '');
-    if sel.id == nil or (q ~= '' and q ~= sel._lastQ) then
-        sel._lastQ = q;
-        if q ~= '' then
-            local hits = fcalc.searchFish(q);
-            for i = 1, math.min(#hits, 8) do
-                local h = hits[i];
-                local f = h.fish;
-                if imgui.Selectable(string.format('%s  (skill %d%s)##fh%d', f.n, f.sk or 0,
-                        (f.leg or 0) ~= 0 and ', LEGENDARY' or '', h.id)) then
-                    sel.id = h.id;
-                    sel.showAllIso = false;
-                end
+    if q ~= '' then
+        local hits = fcalc.searchFish(q);
+        for i = 1, math.min(#hits, 8) do
+            local h = hits[i];
+            local f = h.fish;
+            if imgui.Selectable(string.format('%s  (skill %d%s)##fh%d', f.n, f.sk or 0,
+                    (f.leg or 0) ~= 0 and ', LEGENDARY' or '', h.id)) then
+                sel.id = h.id;
+                sel.showAllIso = false;
+                sel.q[1] = '';
             end
-            if #hits == 0 then imgui.TextColored(COL_DIM, 'no fish matches.'); end
-        elseif sel.id == nil and tgtId ~= nil then
-            sel.id = tgtId;   -- panel opens on the active target
         end
+        if #hits == 0 then imgui.TextColored(COL_DIM, 'no fish matches.'); end
+    elseif sel.id == nil and tgtId ~= nil then
+        sel.id = tgtId;   -- panel opens on the active target
     end
 
     local fid = sel.id;
