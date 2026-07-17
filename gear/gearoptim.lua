@@ -356,10 +356,12 @@ end
 -- character as level MAX_LEVEL for the item-Level ELIGIBILITY cap ONLY, so you can
 -- preview the best set you'll grow into. The JOB restriction is unchanged (jobAllowed
 -- still filters on your real main job), so gear your job can't wear stays excluded.
--- Off by default; the gearui "Build as lv.75" checkbox (or any caller) drives it.
+-- ON by default (maintainer ruling 2026-07-17: building sets should always ignore the
+-- level cap unless deliberately narrowed). Unchecking lasts for the session only --
+-- the flag is NOT persisted, so every reload starts back at on.
 local MAX_LEVEL = 75;
 M.MAX_LEVEL = MAX_LEVEL;
-M.buildAtMaxLevel = false;
+M.buildAtMaxLevel = true;
 
 -- In-memory weight table: canonicalStat -> { perUnit = number, cap = number|nil }.
 -- M._weights is the ACTIVE table the editor/optimizer read. It aliases either the

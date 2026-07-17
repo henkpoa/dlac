@@ -117,7 +117,7 @@ local ui = {
     newSetName  = { '' },
     lockSet     = { false },
     setsDynamic = { true },   -- Auto-build "Dynamic" (level-scaling list) mode, default ON
-    buildMax    = { false },  -- optimizer "build as lv.75" toggle (mirrors optim.buildAtMaxLevel)
+    buildMax    = { true },   -- optimizer "build as lv.75" toggle (mirrors optim.buildAtMaxLevel; default ON)
     ignoreWeapons = { true }, -- Auto-build: skip Main/Sub/Range so weapon swaps don't reset TP (default ON)
     showWeights = false,      -- right-side weights panel toggle
     addStat     = { '' },
@@ -2980,7 +2980,7 @@ local function renderSetsTab(job, level)
         ui.buildMax[1] = (optim.buildAtMaxLevel == true);
         imgui.Checkbox('Build as lv.75 (ignore level cap)', ui.buildMax);
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('Ignore the item level cap when building sets OR using + Add -- pick gear as if you\nwere level 75, so you can assemble over-level sets. Your JOB restriction still applies.\nRemembered across reloads (uiflags.lua).');
+            imgui.SetTooltip('Ignore the item level cap when building sets OR using + Add -- pick gear as if you\nwere level 75, so you can assemble over-level sets. Your JOB restriction still applies.\nOn by default; unchecking lasts until the next reload.');
         end
         if (ui.buildMax[1] == true) ~= (optim.buildAtMaxLevel == true) then
             optim.buildAtMaxLevel = (ui.buildMax[1] == true);
