@@ -485,6 +485,122 @@ function M.setSlotEnabled(label, on)
     return true;
 end
 
+-- Stored per-set weight keys ('JOB|Set'), sorted -- the copy-from picker list.
+function M.perSetKeys()
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    local keys = {};
+    for k in pairs(M._perSet) do keys[#keys + 1] = k; end
+    table.sort(keys);
+    return keys;
+end
+
+-- ---------------------------------------------------------------------------
+-- Copy sources (the weights editor's cascading "copy from" menu).
+-- NAMED weight profiles ("Saved Sets"): a tuning you liked, saved under a
+-- proper name, independent of any job or set -- stored beside shared/perSet in
+-- gearweights.lua (named/namedSlots sections). Plus a one-shot session
+-- snapshot per binding, taken before its FIRST copy, so "This set (revert)"
+-- can undo a copy experiment.
+-- ---------------------------------------------------------------------------
+M._named      = M._named or {};        -- name -> weights table
+M._namedSlots = M._namedSlots or {};   -- name -> slot mask
+M._copyUndo   = M._copyUndo or {};     -- bindingKey -> { w = ..., s = ... }
+
+local function undoKey() return M._boundKey or '<shared>'; end
+local function deepWeights(t)
+    local c = {};
+    for k, w in pairs(t) do c[k] = { perUnit = w.perUnit, cap = w.cap }; end
+    return c;
+end
+local function deepMask(t)
+    local c = {};
+    for k, v in pairs(t) do c[k] = v; end
+    return c;
+end
+
+-- Replace the ACTIVE tables' CONTENTS (they are aliases into _shared/_perSet,
+-- so identity must survive) with a copy of sw/sm; snapshot first for revert.
+local function applyCopy(sw, sm)
+    if sw == nil then return false, 'no such weights source'; end
+    if sw == M._weights then return false, 'that is already the active table'; end
+    if M._copyUndo[undoKey()] == nil then
+        M._copyUndo[undoKey()] = { w = deepWeights(M._weights), s = deepMask(M._slots) };
+    end
+    for k in pairs(M._weights) do M._weights[k] = nil; end
+    for k, w in pairs(sw) do M._weights[k] = { perUnit = w.perUnit, cap = w.cap }; end
+    if sm ~= nil and sm ~= M._slots then
+        for k in pairs(M._slots) do M._slots[k] = nil; end
+        for k, v in pairs(sm) do M._slots[k] = v; end
+    end
+    return true;
+end
+
+-- src = 'JOB|Set', or nil for the shared table.
+function M.copyWeightsFrom(src)
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    return applyCopy((src == nil) and M._shared or M._perSet[src],
+                     (src == nil) and M._slotsShared or M._slotsPerSet[src]);
+end
+
+function M.copyWeightsFromNamed(name)
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    return applyCopy(M._named[name], M._namedSlots[name]);
+end
+
+-- Save the ACTIVE weights + slot mask under a proper name (overwrites an
+-- existing profile of the same name -- that is the update path).
+function M.saveNamedWeights(name)
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    name = string.gsub(string.gsub(tostring(name or ''), '^%s+', ''), '%s+$', '');
+    if name == '' then return false, 'name required'; end
+    M._named[name] = deepWeights(M._weights);
+    M._namedSlots[name] = deepMask(M._slots);
+    return true, name;
+end
+
+function M.deleteNamedWeights(name)
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    if M._named[name] == nil then return false, 'no such profile'; end
+    M._named[name] = nil;
+    M._namedSlots[name] = nil;
+    return true;
+end
+
+function M.namedKeys()
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    local keys = {};
+    for k in pairs(M._named) do keys[#keys + 1] = k; end
+    table.sort(keys);
+    return keys;
+end
+
+-- Read-only peek at a stored source, for the menu's (?) tooltips.
+-- kind: 'shared' | 'set' (key = 'JOB|Set') | 'named' (key = profile name).
+function M.peekWeights(kind, key)
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    if kind == 'shared' then return M._shared; end
+    if kind == 'set'    then return M._perSet[key]; end
+    if kind == 'named'  then return M._named[key]; end
+    return nil;
+end
+
+function M.copyUndoAvailable()
+    return M._copyUndo[undoKey()] ~= nil;
+end
+
+-- Restore the binding to its pre-first-copy state (the snapshot survives, so
+-- revert stays available after further copies this session).
+function M.revertCopiedWeights()
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    local u = M._copyUndo[undoKey()];
+    if u == nil then return false, 'nothing to revert'; end
+    for k in pairs(M._weights) do M._weights[k] = nil; end
+    for k, w in pairs(u.w) do M._weights[k] = { perUnit = w.perUnit, cap = w.cap }; end
+    for k in pairs(M._slots) do M._slots[k] = nil; end
+    for k, v in pairs(u.s) do M._slots[k] = v; end
+    return true;
+end
+
 -- ---------------------------------------------------------------------------
 -- M.score(itemStats [, weights]) -> number
 -- Weighted score of one item's Stats using the piecewise-linear rule per stat:
@@ -1021,6 +1137,25 @@ function M.saveWeights()
         L[#L + 1] = string.format('        [%q] = %s,', mk, maskRow(M._slotsPerSet[mk]));
     end
     L[#L + 1] = '    },';
+    -- Named weight profiles ("Saved Sets" in the copy-from menu): the tunings
+    -- you saved on purpose, independent of any job or set.
+    L[#L + 1] = '    named = {';
+    local nkeys = {};
+    for k in pairs(M._named) do nkeys[#nkeys + 1] = k; end
+    table.sort(nkeys);
+    for _, nk in ipairs(nkeys) do
+        L[#L + 1] = string.format('        [%q] = {', nk);
+        rows(L, M._named[nk], '            ');
+        L[#L + 1] = '        },';
+    end
+    L[#L + 1] = '    },';
+    L[#L + 1] = '    namedSlots = {';
+    for _, nk in ipairs(nkeys) do
+        if M._namedSlots[nk] ~= nil then
+            L[#L + 1] = string.format('        [%q] = %s,', nk, maskRow(M._namedSlots[nk]));
+        end
+    end
+    L[#L + 1] = '    },';
     L[#L + 1] = '}';
     L[#L + 1] = '';
 
@@ -1081,11 +1216,26 @@ function M.loadWeights()
                 if type(k) == 'string' and type(t) == 'table' then M._slotsPerSet[k] = cleanMask(t); end
             end
         end
+        -- Named profiles: absent section = none saved yet (pre-feature file).
+        M._named, M._namedSlots = {}, {};
+        if type(result.named) == 'table' then
+            for k, t in pairs(result.named) do
+                if type(k) == 'string' and type(t) == 'table' then M._named[k] = cleanTable(t); end
+            end
+        end
+        if type(result.namedSlots) == 'table' then
+            for k, t in pairs(result.namedSlots) do
+                if type(k) == 'string' and type(t) == 'table' and M._named[k] ~= nil then
+                    M._namedSlots[k] = cleanMask(t);
+                end
+            end
+        end
     else
         M._shared = cleanTable(result);   -- legacy flat file
         M._perSet = {};
         M._slotsShared = M.defaultSlotMask();
         M._slotsPerSet = {};
+        M._named, M._namedSlots = {}, {};
     end
     -- Re-point the active tables through whatever binding was live before the load.
     local key = M._boundKey;

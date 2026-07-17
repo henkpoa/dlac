@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 54;   -- 54: Player conditions v2 (Henrik's morning revision) -- canonical keys playerHPBelow/Above, playerHPPercentBelow/Above, playerMPBelow/Above, playerMPPercentBelow/Above (raw AND percent variants; v53 hpBelow/... spellings stay as hidden percent aliases), plus whenAny OR groups: a rule matches when ALL `when` conditions hold OR ANY whenAny entry holds; an OR-only rule is not always-on. ruleLabel/defaultPriority take whenAny.
+M.VERSION = 55;   -- 55: Trigger-monitor feed -- a 5-entry ring of fired-rule lines (updated on every retrace: Default only when its matched-rule set changes, action events always). Each new line STREAMS to the addon state as a blocked '/dlacmonev' command (the /bind queue precedent -- the live channel two Lua states share) AND flushes coalesced to firedstate.lua (reload bootstrap + fallback). Display only; the engine never reads it back.
+                  -- 54: Player conditions v2 (Henrik's morning revision) -- canonical keys playerHPBelow/Above, playerHPPercentBelow/Above, playerMPBelow/Above, playerMPPercentBelow/Above (raw AND percent variants; v53 hpBelow/... spellings stay as hidden percent aliases), plus whenAny OR groups: a rule matches when ALL `when` conditions hold OR ANY whenAny entry holds; an OR-only rule is not always-on. ruleLabel/defaultPriority take whenAny.
                   -- 53: Player conditions v1 -- hpBelow/hpAbove, mpBelow/mpAbove, tpBelow/tpAbove (strict compares vs gData vitals) and buff/buffNot (active status effect by name or id; per-dispatch buff cache; unreadable state matches NEITHER polarity). Tier 95, just under mode.
                   -- 52: trinket vs ranged weapon (ADR 0010) -- a stat stick reserves the Range slot server-side, so the engine keeps the higher-Level of {trinket, ranged weapon} and drops the other (no flap); trinket RSlot completed in gearimport. 51: Trigger Groups (G1) -- new `group` matcher (specificity tier 45) + Groups section load/serialize (ADR 0009). 50: the v46-49 /dl instdiag diagnostic is out (field-confirmed on both characters); the fix it found stays -- M.jobReady + the job-keyed latch. See ADR 0007
                   -- 49: THE LOGIN BUG. At login GetMainJob() reads 0 (=None), which gData stringifies to "NON" -- not '' and not '?', so the auto-install took it for a real job, found no sets\NON.lua, installed nothing and LATCHED for the session: every trigger then matched and silently equipped nothing (v35 skips a missing set in silence). Fixed at both ends -- M.jobReady rejects a not-ready job, and the latch records WHICH job it answered for, so a settling read re-fires the guard
@@ -138,6 +139,13 @@ end
 local _trig  = { path = nil, raw = nil, rules = nil, lastCheck = -1, err = nil };
 local _boundKeys = {};   -- bind key -> queued /bind command (mode keybinds queue ONCE per session)
 local _trace = {};   -- event -> { time, action, sig, lines = {...} }
+-- Trigger-monitor feed (v55): the last 5 fired-rule lines, newest first. The
+-- ring updates on every CHANGE of what fired (retrace); the tick flushes it to
+-- firedstate.lua (GUI display only) at most once per pass, so Precast/Midcast
+-- bursts cost one write, not three.
+local _fired = {};
+local _firedDirty = false;
+local saveFiredState;   -- defined with the mode-state block below (needs charDir/writeFile)
 
 -- Only the copy of this module living in LuaAshitacast's state may equip, own mode
 -- state, or answer commands. The dlac addon state has no gFunc, so it stays inert.
@@ -2040,6 +2048,33 @@ function M.dispatch(event)
         local retrace = (old == nil) or (old.sig ~= sig) or (event ~= 'Default');
         local lines = retrace and {} or old.lines;
 
+        -- Trigger-monitor feed (v55): one ring entry per CHANGE of what fired
+        -- (retrace is exactly that signal -- Default only when its matched-rule
+        -- set moves, action events every time).
+        if retrace and #hits > 0 then
+            local mp = {};
+            for _, r in ipairs(hits) do
+                local dst;
+                if r.sets ~= nil then dst = table.concat(r.sets, '+');
+                elseif r.equip ~= nil then dst = 'inline equip';
+                else dst = '?'; end
+                mp[#mp + 1] = r.label .. ' -> ' .. dst;
+            end
+            table.insert(_fired, 1, os.date('%H:%M:%S') .. '  ' .. event .. '   ' .. table.concat(mp, '   ||   '));
+            while #_fired > 5 do table.remove(_fired); end
+            _firedDirty = true;
+            -- Event push: STREAM the new line to the addon state's monitor over
+            -- the command bus -- the one live channel two Lua states share (the
+            -- mode-keybind /bind precedent). Fires only on retrace, so a rule
+            -- matching again unchanged never re-sends. The firedstate.lua file
+            -- stays as the reload bootstrap + fallback.
+            pcall(function()
+                local line = string.gsub(_fired[1], '%c', ' ');
+                if #line > 180 then line = string.sub(line, 1, 180); end
+                AshitaCore:GetChatManager():QueueCommand(1, '/dlacmonev ' .. line);
+            end);
+        end
+
         -- Apply in order, attributing each SLOT to its final writer -- with partial
         -- sets (weapon-only, DT-only, ...) this is what proves the overlay: every
         -- slot lists the rule that actually owns it this dispatch.
@@ -2298,6 +2333,22 @@ saveModeState = function()
         writeFile(dir .. 'modestate.lua',
             '-- dlac mode state (dlac-owned; read back on engine load, GUI reads for display)\nreturn { '
             .. table.concat(parts, ' ') .. ' }\n');
+    end);
+end
+
+-- Trigger-monitor mirror (v55): display-only, never read back by the engine.
+-- Its own small file, NOT modestate -- fired lines change per action and must
+-- not bump modesRev (the GUI mode-button rebuild signal) or ride the restore
+-- path.
+saveFiredState = function()
+    pcall(function()
+        local dir = charDir();
+        if dir == nil then return; end
+        local q = {};
+        for _, s in ipairs(_fired) do q[#q + 1] = string.format('%q,', s); end
+        writeFile(dir .. 'firedstate.lua',
+            '-- dlac fired-trigger mirror (GUI display only)\nreturn { '
+            .. table.concat(q, ' ') .. ' }\n');
     end);
 end
 
@@ -2775,6 +2826,12 @@ if inLac() then
                 _tickPet = nil;
             end
             st.HandleEquipEvent('HandleDefault', 'auto');
+            -- Coalesced trigger-monitor flush: whatever fired since the last
+            -- pass lands in firedstate.lua as ONE write.
+            if _firedDirty and saveFiredState ~= nil then
+                _firedDirty = false;
+                saveFiredState();
+            end
         end);
     end);
 

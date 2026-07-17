@@ -1429,6 +1429,68 @@ optim.clearWeight('Accuracy');                              -- leave the shared 
 end)();
 
 -- ---------------------------------------------------------------------------
+-- AW. weights "copy from" (optim.copyWeightsFrom): copy another stored table's
+--     weights + build-slot mask into the ACTIVE binding. Source untouched;
+--     active-table identity preserved (they alias _shared/_perSet entries).
+-- ---------------------------------------------------------------------------
+(function()
+    optim.bindSetWeights('DRK', 'CopySrc');
+    optim.setWeight('Accuracy', 42, 60);
+    optim.setSlotEnabled('Main', true);
+    optim.bindSetWeights('DRK', 'CopyDst');
+    optim.setWeight('STR', 3);
+    check('AW1 dst starts with its own table',  optim.getWeights()['Accuracy'], nil);
+    check('AW2 copy succeeds',                  optim.copyWeightsFrom('DRK|CopySrc'), true);
+    check('AW3 weights copied',                 optim.getWeights()['Accuracy'].perUnit, 42);
+    check('AW4 cap rides along',                optim.getWeights()['Accuracy'].cap, 60);
+    check('AW5 dst extras cleared',             optim.getWeights()['STR'], nil);
+    check('AW6 slot mask copied',               optim.getSlotMask().Main, true);
+    optim.setWeight('Accuracy', 1);                          -- edit the COPY only
+    optim.bindSetWeights('DRK', 'CopySrc');
+    check('AW7 source untouched',               optim.getWeights()['Accuracy'].perUnit, 42);
+    check('AW8 self-copy refused',              optim.copyWeightsFrom('DRK|CopySrc'), false);
+    check('AW9 unknown source refused',         optim.copyWeightsFrom('DRK|NoSuch'), false);
+    optim.bindSetWeights(nil, nil);
+    optim.setWeight('Evasion', 9);
+    optim.bindSetWeights('DRK', 'CopyDst');
+    check('AW10 copy from the shared table',    optim.copyWeightsFrom(nil), true);
+    check('AW11 shared weights land',           optim.getWeights()['Evasion'].perUnit, 9);
+    optim.bindSetWeights(nil, nil);
+    optim.clearWeight('Evasion');                            -- leave shared as found
+end)();
+
+-- ---------------------------------------------------------------------------
+-- AWN. named weight profiles ("Saved Sets") + the copy-undo snapshot -- the
+--      cascading copy-from menu's backend: save a tuning under a proper name,
+--      copy it anywhere, revert a binding to its pre-first-copy state, and
+--      round-trip the named store through gearweights.lua.
+-- ---------------------------------------------------------------------------
+(function()
+    optim.bindSetWeights('DRK', 'CopySrc');
+    check('AWN1 save named trims + succeeds', (optim.saveNamedWeights('  Awesome Melee  ')), true);
+    check('AWN2 named key listed', optim.namedKeys()[1], 'Awesome Melee');
+    optim.bindSetWeights('DRK', 'CopyDst');
+    check('AWN3 copy from named', optim.copyWeightsFromNamed('Awesome Melee'), true);
+    check('AWN4 named weights land', optim.getWeights()['Accuracy'].perUnit, 42);
+    check('AWN5 named mask lands', optim.getSlotMask().Main, true);
+    check('AWN6 revert restores the PRE-FIRST-COPY table',
+        (optim.revertCopiedWeights() == true) and (optim.getWeights()['STR'] or {}).perUnit, 3);
+    check('AWN7 unknown named refused', optim.copyWeightsFromNamed('NoSuch'), false);
+    local _wp = optim.weightsPath;
+    local _tmp = 'tests_tmp_gearweights2.lua';
+    optim.weightsPath = function() return _tmp; end
+    optim.saveWeights();
+    optim.deleteNamedWeights('Awesome Melee');
+    check('AWN8 delete named', #optim.namedKeys(), 0);
+    check('AWN9 load restores named', (optim.loadWeights() == true) and optim.namedKeys()[1], 'Awesome Melee');
+    check('AWN10 ...with its weights', optim.peekWeights('named', 'Awesome Melee')['Accuracy'].perUnit, 42);
+    os.remove(_tmp);
+    optim.weightsPath = _wp;
+    optim.deleteNamedWeights('Awesome Melee');               -- leave the store clean
+    optim.bindSetWeights(nil, nil);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- AF. craft Sub-vs-Main guard (dispatch.craftMainGuard + the equipResolved
 --     post-pass) -- while the craft overlay owns Sub with no Main of its own,
 --     a set Main that can't PAIR with that Sub (subSlotAllowed) is HELD out of

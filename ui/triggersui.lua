@@ -260,6 +260,7 @@ local trig = {
     _openModePopup = false,
     _prioBuf = {},
     _modeState = {}, _modeStateAt = -1,
+    _fired = {}, _firedAt = -1,   -- the fired-trigger mirror cache (monitor window)
 };
 
 -- Mode builder popup state (create or edit one mode: toggle / cycle, values, bind).
@@ -526,6 +527,92 @@ local function trigModeState()
     end);
     trig._modeState = st;
     return st;
+end
+
+-- The monitor's LIVE event feed (engine v55): the engine queues
+-- '/dlacmonev <line>' on every CHANGE of what fired; this ADDON-state handler
+-- pushes it straight into the ring the frame it arrives -- streaming, not
+-- polling. A repeat of the same line never re-reacts (Henrik's dedupe rule;
+-- the engine's retrace gate already ensures unchanged rules don't re-send).
+if ashita ~= nil and ashita.events ~= nil then
+    pcall(function()
+        pcall(function() ashita.events.unregister('command', 'dlac-trigmon'); end);
+        ashita.events.register('command', 'dlac-trigmon', function(e)
+            local raw = e.command;
+            if type(raw) ~= 'string' or string.sub(raw, 1, 11) ~= '/dlacmonev ' then return; end
+            e.blocked = true;
+            local line = string.sub(raw, 12);
+            if line == '' or trig._fired[1] == line then return; end
+            table.insert(trig._fired, 1, line);
+            while #trig._fired > 5 do table.remove(trig._fired); end
+            trig._firedLive = true;   -- events own the ring now; file re-reads stop
+        end);
+    end);
+end
+
+-- The fired-trigger mirror (firedstate.lua): the RELOAD BOOTSTRAP + fallback --
+-- once the first live event lands, the ring is event-owned and the file is
+-- never re-read. Same 1/sec throttle discipline as trigModeState meanwhile.
+local function trigFiredState()
+    if trig._firedLive == true then return trig._fired; end
+    local now = os.time();
+    if now == trig._firedAt then return trig._fired; end
+    trig._firedAt = now;
+    local out = {};
+    pcall(function()
+        local base = deps.charBase();
+        if base == nil then return; end
+        local chunk = loadfile(base .. 'dlac\\firedstate.lua');
+        if chunk == nil then return; end
+        local ok, t = pcall(chunk);
+        if ok and type(t) == 'table' then
+            for _, s in ipairs(t) do
+                if type(s) == 'string' then out[#out + 1] = s; end
+            end
+        end
+    end);
+    trig._fired = out;
+    return out;
+end
+
+-- The floating Trigger Monitor (Henrik): active modes + the last 5 rules that
+-- fired, newest first, STREAMED over the command bus the moment they change --
+-- field-testing triggers without chasing /dl why while Precast/Midcast flash
+-- past. A titled window (imgui.ini remembers where you drag it); its [X]
+-- clears the toggle. Rendered from the present hook, so it survives closing
+-- the main dlac window (the lockstyle/floatgear rule).
+function M.renderMonitor(ui)
+    if not hasImgui or ui == nil or ui._tgMon ~= true then return; end
+    imgui.SetNextWindowSize({ 400, 190 }, ImGuiCond_FirstUseEver);
+    local open = { true };
+    if imgui.Begin('dlac Trigger Monitor##dlac_tgmon', open) then
+        local st = trigModeState();
+        local ms = {};
+        for k, v in pairs(st) do
+            if type(k) == 'string' and string.sub(k, 1, 2) ~= '__' then
+                ms[#ms + 1] = (v == true) and k or (k .. ':' .. tostring(v));
+            end
+        end
+        table.sort(ms);
+        imgui.TextColored(COL_HEADER, 'modes');
+        imgui.SameLine(0, 8);
+        if #ms > 0 then imgui.TextColored(COL_USABLE, esc(table.concat(ms, '   ')));
+        else imgui.TextColored(COL_DIM, '(none active)'); end
+        imgui.Separator();
+        local fired = trigFiredState();
+        if #fired == 0 then
+            imgui.TextColored(COL_DIM, 'nothing fired yet -- do something and watch.');
+        else
+            for i, s in ipairs(fired) do
+                imgui.TextColored((i == 1) and COL_USABLE or COL_DIM, esc(s));
+            end
+        end
+    end
+    imgui.End();
+    if not open[1] then
+        ui._tgMon = false;
+        ui._flagsDirty = true;
+    end
 end
 
 -- Is a set-entry mode condition ('Name' / 'Name:Value') active RIGHT NOW, judged
@@ -1889,6 +1976,48 @@ local function textW(s)
     return #tostring(s) * 7;
 end
 
+-- Width of the reserved [on now]/[off now] marker column (widest marker + gap).
+local function markW() return textW('[off now]') + 14; end
+
+-- Live readout for the v53 player-state gates: an ADDON-state ctx the ENGINE's
+-- own matchers run against (dsp._matchers -- the exact dispatch logic, never a
+-- re-implementation). 1s throttle; the buff matcher memoizes its buff set on
+-- the ctx, so buffs also read once per second. nil when unreadable
+-- (pre-login) -> no marker rather than a wrong one.
+local PSTATE_KEYS = {
+    playerhpbelow = true, playerhpabove = true,
+    playerhppercentbelow = true, playerhppercentabove = true,
+    playermpbelow = true, playermpabove = true,
+    playermppercentbelow = true, playermppercentabove = true,
+    tpbelow = true, tpabove = true, buff = true, buffnot = true,
+    -- v53 alias spellings (percent semantics) stay markable too
+    hpbelow = true, hpabove = true, mpbelow = true, mpabove = true,
+};
+local _psAt, _psCtx = -1, nil;
+local function pstateCtx()
+    if os.clock() < _psAt then return _psCtx; end
+    _psAt = os.clock() + 1.0;
+    _psCtx = nil;
+    pcall(function()
+        local party = AshitaCore:GetMemoryManager():GetParty();
+        local hpp = party:GetMemberHPPercent(0);
+        if hpp ~= nil then
+            _psCtx = { player = { HPP = hpp, MPP = party:GetMemberMPPercent(0),
+                                  HP = party:GetMemberHP(0), MP = party:GetMemberMP(0),
+                                  TP = party:GetMemberTP(0) } };
+        end
+    end);
+    return _psCtx;
+end
+local function pstateHolds(key, v)
+    local ctx = pstateCtx();
+    if ctx == nil or dsp == nil or type(dsp._matchers) ~= 'table'
+       or dsp._matchers[key] == nil then return nil; end
+    local ok, res = pcall(dsp._matchers[key], v, ctx);
+    if not ok then return nil; end
+    return res == true;
+end
+
 -- One rule box. colX = the section's aligned controls column. Returns 'remove'/'edit'/nil.
 -- Bordered content boxes must never grow their own scrollbar: we size them to
 -- their content and suppress the bar (a 1px estimate miss otherwise shows an
@@ -1915,7 +2044,7 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
     for _, e in ipairs(r.whenAny or {}) do
         for k, v in pairs(e) do
             local lk = string.lower(tostring(k));
-            orLines[#orLines + 1] = { key = lk,
+            orLines[#orLines + 1] = { key = lk, val = v,
                 text = '| ' .. trigPrettyKey(lk) .. ((v == true) and '' or (' = ' .. tostring(v))) };
         end
     end
@@ -1962,9 +2091,41 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
                 end
             end
         end
+        -- Player-state gate (v53): a live holds-right-now marker, so you can
+        -- dial a threshold and watch it flip without leaving the tab (the
+        -- [missing group] in-place-marker precedent). Display only -- the
+        -- engine re-evaluates for real at every dispatch.
+        if PSTATE_KEYS[ln.key] ~= nil then
+            local holds = pstateHolds(ln.key, r.when and r.when[ln.key]);
+            if holds ~= nil then
+                -- RESERVED column at the left edge of the controls column: the
+                -- markers sit straight under each other and can never clip
+                -- into the set/controls side (field case: Henrik's screenshot,
+                -- '[on now]' overlapping 'Default x').
+                imgui.SameLine(colX - markW());
+                imgui.TextColored(holds and COL_USABLE or COL_DIM,
+                    holds and '[on now]' or '[off now]');
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('Checked against your CURRENT vitals/buffs (refreshes every second)\nwith the engine\'s own matcher. The engine re-evaluates at every dispatch.');
+                end
+            end
+        end
     end
     for _, ln in ipairs(orLines) do
         imgui.TextColored(COND_COLORS[ln.key] or COL_USABLE, esc(ln.text));
+        -- The | leg gets the same live marker as the & leg: each OR condition
+        -- is a single engine-matcher call, so it lights independently.
+        if PSTATE_KEYS[ln.key] ~= nil then
+            local holds = pstateHolds(ln.key, ln.val);
+            if holds ~= nil then
+                imgui.SameLine(colX - markW());   -- the reserved marker column
+                imgui.TextColored(holds and COL_USABLE or COL_DIM,
+                    holds and '[on now]' or '[off now]');
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('Checked against your CURRENT vitals/buffs (refreshes every second)\nwith the engine\'s own matcher. The engine re-evaluates at every dispatch.');
+                end
+            end
+        end
     end
     imgui.EndGroup();
 
@@ -2991,6 +3152,20 @@ function M.render(job, level)
     trigLoad(false);
     renderModeDeleteWindow();   -- its own movable window; independent of any section state
 
+    -- Floating Trigger Monitor toggle (engine v55): live modes + the last 5
+    -- fired rules. Visibility persists via uiflags; the window itself
+    -- remembers where you dragged it (imgui.ini).
+    if deps.ui ~= nil then
+        local mb = { deps.ui._tgMon == true };
+        if imgui.Checkbox('Trigger monitor##tgmon', mb) then
+            deps.ui._tgMon = (mb[1] == true);
+            deps.ui._flagsDirty = true;
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('A small floating window: your active modes and the last 5 trigger\nrules that fired, newest first -- STREAMED live as they change.\nInvaluable when field-testing: Precast/Midcast land as history lines\nfaster than chat can scroll. Stays up when the main window closes.');
+        end
+    end
+
     if trig.data == nil then
         imgui.TextColored(COL_DIM, 'No trigger file for ' .. tostring(abbr) .. ' yet.');
         if trig.err ~= nil and trig.err ~= 'no file' then imgui.TextColored(COL_ERR, esc(tostring(trig.err))); end
@@ -3163,6 +3338,9 @@ function M.render(job, level)
         for _, r in ipairs(list) do
             for _, ln in ipairs(condLines(r.when)) do
                 local w = textW(ln.text) + 28;
+                -- player-state lines reserve the [on now]/[off now] column, so
+                -- the marker can never clip into the set/controls side
+                if PSTATE_KEYS[ln.key] ~= nil then w = w + markW(); end
                 if w > colX then colX = w; end
             end
             for _, e in ipairs(r.whenAny or {}) do
@@ -3170,6 +3348,7 @@ function M.render(job, level)
                     local lk = string.lower(tostring(k));
                     local w = textW('| ' .. trigPrettyKey(lk)
                         .. ((v == true) and '' or (' = ' .. tostring(v)))) + 28;
+                    if PSTATE_KEYS[lk] ~= nil then w = w + markW(); end
                     if w > colX then colX = w; end
                 end
             end

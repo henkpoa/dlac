@@ -72,8 +72,9 @@ sf.saveUiFlags = function()
         if type(ui._gfPos) == 'table' then
             gfx, gfy = tonumber(ui._gfPos[1]) or 0, tonumber(ui._gfPos[2]) or 0;
         end
-        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, viewids = %s, buildmax = %s, tpfloat = %s, tpx = %d, tpy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f }\n',
+        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, viewids = %s, buildmax = %s, tgmon = %s, tpfloat = %s, tpx = %d, tpy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f }\n',
             tostring(sf.flags.debug), tostring(sf.flags.autosync), tostring(sf.flags.viewids), tostring(bm),
+            tostring(ui._tgMon == true),
             tostring(ui._tpFloat == true), tpx, tpy,
             tostring(ui._gearFloat == true), gfx, gfy,
             tonumber(ui._gfScale) or 1.0));
@@ -106,6 +107,7 @@ sf.loadUiFlags = function()
             -- explicit untick and is honored (remembered across reloads).
             if type(t.buildmax) == 'boolean' and optim ~= nil then optim.buildAtMaxLevel = t.buildmax; end
             if type(t.tpfloat)  == 'boolean' then ui._tpFloat = t.tpfloat; end
+            if type(t.tgmon)    == 'boolean' then ui._tgMon   = t.tgmon;   end
             if type(t.tpx) == 'number' and type(t.tpy) == 'number' and (t.tpx ~= 0 or t.tpy ~= 0) then
                 ui._tpPos = { t.tpx, t.tpy };
             end
