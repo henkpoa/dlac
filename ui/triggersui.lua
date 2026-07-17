@@ -260,6 +260,7 @@ local trig = {
     _openModePopup = false,
     _prioBuf = {},
     _modeState = {}, _modeStateAt = -1,
+    _fired = {}, _firedAt = -1,   -- the fired-trigger mirror cache (monitor window)
 };
 
 -- Mode builder popup state (create or edit one mode: toggle / cycle, values, bind).
@@ -526,6 +527,67 @@ local function trigModeState()
     end);
     trig._modeState = st;
     return st;
+end
+
+-- The fired-trigger mirror (engine v55: firedstate.lua, last 5 lines, newest
+-- first). Same 1/sec throttle discipline as trigModeState.
+local function trigFiredState()
+    local now = os.time();
+    if now == trig._firedAt then return trig._fired; end
+    trig._firedAt = now;
+    local out = {};
+    pcall(function()
+        local base = deps.charBase();
+        if base == nil then return; end
+        local chunk = loadfile(base .. 'dlac\\firedstate.lua');
+        if chunk == nil then return; end
+        local ok, t = pcall(chunk);
+        if ok and type(t) == 'table' then
+            for _, s in ipairs(t) do
+                if type(s) == 'string' then out[#out + 1] = s; end
+            end
+        end
+    end);
+    trig._fired = out;
+    return out;
+end
+
+-- The floating Trigger Monitor (Henrik): active modes + the last 5 rules that
+-- fired, newest first, refreshed every second -- field-testing triggers
+-- without chasing /dl why while Precast/Midcast flash past. A titled window
+-- (imgui.ini remembers where you drag it); its [X] clears the toggle.
+function M.renderMonitor(ui)
+    if not hasImgui or ui == nil or ui._tgMon ~= true then return; end
+    imgui.SetNextWindowSize({ 400, 190 }, ImGuiCond_FirstUseEver);
+    local open = { true };
+    if imgui.Begin('dlac Trigger Monitor##dlac_tgmon', open) then
+        local st = trigModeState();
+        local ms = {};
+        for k, v in pairs(st) do
+            if type(k) == 'string' and string.sub(k, 1, 2) ~= '__' then
+                ms[#ms + 1] = (v == true) and k or (k .. ':' .. tostring(v));
+            end
+        end
+        table.sort(ms);
+        imgui.TextColored(COL_HEADER, 'modes');
+        imgui.SameLine(0, 8);
+        if #ms > 0 then imgui.TextColored(COL_USABLE, esc(table.concat(ms, '   ')));
+        else imgui.TextColored(COL_DIM, '(none active)'); end
+        imgui.Separator();
+        local fired = trigFiredState();
+        if #fired == 0 then
+            imgui.TextColored(COL_DIM, 'nothing fired yet -- do something and watch.');
+        else
+            for i, s in ipairs(fired) do
+                imgui.TextColored((i == 1) and COL_USABLE or COL_DIM, esc(s));
+            end
+        end
+    end
+    imgui.End();
+    if not open[1] then
+        ui._tgMon = false;
+        ui._flagsDirty = true;
+    end
 end
 
 -- Is a set-entry mode condition ('Name' / 'Name:Value') active RIGHT NOW, judged
@@ -3064,6 +3126,20 @@ function M.render(job, level)
     end
     trigLoad(false);
     renderModeDeleteWindow();   -- its own movable window; independent of any section state
+
+    -- Floating Trigger Monitor toggle (engine v55): live modes + the last 5
+    -- fired rules. Visibility persists via uiflags; the window itself
+    -- remembers where you dragged it (imgui.ini).
+    if deps.ui ~= nil then
+        local mb = { deps.ui._tgMon == true };
+        if imgui.Checkbox('Trigger monitor##tgmon', mb) then
+            deps.ui._tgMon = (mb[1] == true);
+            deps.ui._flagsDirty = true;
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('A small floating window: your active modes and the last 5 trigger\nrules that fired (newest first, refreshed every second). Invaluable\nwhen field-testing -- Precast/Midcast flash past faster than chat\ncan scroll.');
+        end
+    end
 
     if trig.data == nil then
         imgui.TextColored(COL_DIM, 'No trigger file for ' .. tostring(abbr) .. ' yet.');

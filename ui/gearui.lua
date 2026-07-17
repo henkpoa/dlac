@@ -1876,6 +1876,7 @@ do
     if ok and type(m) == 'table' then
         trigui = m;
         pcall(trigui.init, {
+            ui = ui,   -- the Trigger Monitor toggle rides gearui's persisted view-state
             charBase = charBase, jobFile = jobFile, seedTriggersFile = setup.seedTriggersFile,
             dynamicSetNames = profsets.dynamicSetNames, staticSetNames = profsets.staticSetNames,
             liveSetNames = profsets.liveSetNames,   -- Dynamic + LIVE-file statics (no backup): trigger-target authority
@@ -1896,6 +1897,11 @@ do
             itemTooltip = renderItemTooltip,                          -- hover cards on automation gear lines
             setsRoot = profsets.getSetsRoot,                          -- gearcheck: set contents for the audit
         });
+        -- The floating Trigger Monitor (engine v55 feed): its own top-level
+        -- window, rendered by host.renderWindows like the Stat-weights window.
+        host.register({ name = 'trigmon', window = {
+            render = function() pcall(trigui.renderMonitor, ui); end,
+        } });
     else
         pcall(function() print('[dlac] triggersui failed to load: ' .. tostring(m)); end);
     end
