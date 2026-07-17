@@ -140,30 +140,34 @@ tolerant fallbacks kept for drift. Plan (as built):
 - NOTE: packet `0x1A3` (the `ventures` addon) is the daily venture **NM hunt** rotation —
   a different system; not HELM. Don't confuse them.
 
-## 6. Category auto-detection — NOT a dead end
+## 6. Category auto-detection — FIELD-PINNED via the result event (2026-07-17)
 
-HELM is trade-to-NPC, and the point NPCs are literally named `Harvesting Point` /
-`Excavation Point` / `Logging Point` / `Mining Point` (zone scripts). Detection:
-outgoing trade-complete packet → target index → entity name from memory → category.
-Tool disambiguation not even needed (name says it all; pickaxe covers both Mining and
-Excavation anyway).
+The original guess (outgoing trade `0x036`, index @0x08) **never fired in the field**
+(Ghelsba logging session, no Detected line) and was replaced wholesale. The real path,
+pinned by one `/probe trade`-era capture (Ghelsba, Arrowwood Log swing):
 
-So the bar can **auto-switch category on every swing** (auto-equip the right hat for the
-NEXT swing — the current trade is already in flight, which is fine: gathering is a stream
-of swings at the same node type). Result events land as incoming `0x034` EVENTNUM
-(num[0]=item, 0=nothing; num[1]=broke; num[2]=inv full) with per-zone csids — usable later
-for a yield/session tracker, not needed for v1.
+**Incoming `0x034` EVENTNUM is the HELM result and carries everything:**
+```
+34 1A 8D 06 | 3F C1 08 01 | B0 02 00 00 ... | 3F 01 | 8C 00 | 64 00 | 08 00
+  header      NPC UniqueNo  num[0]=688(item)   idx=319  zone=140  csid    para
+```
+- `num[0]` u32 @0x08 = item found (688 = Arrowwood Log; 0 = nothing; num[1] = broke)
+- **ActIndex u16 @0x28 = the gathering Point NPC** (zone id @0x2A right beside it
+  confirmed the alignment) → entity name → `Harvesting/Excavation/Logging/Mining Point`
+  → category. No per-zone csid table; the NPC name does the semantics.
 
-Packet id/offsets for the outgoing trade need one dlacprobe confirmation (expected: the
-NPC trade-complete packet, target id @0x04 area).
+helmwatch.onEventNum handles it; with the switch ON the hat auto-follows from the next
+swing. num[0]/num[1] are decoded but unused for now — a session yield tracker is a
+natural later feature (items found, breaks, doubles per session).
 
 ## 7. dlacprobe shopping list (Henrik field session)
 
-All diagnostics in dlacprobe, never dlac (hard rule). Status 2026-07-17:
+All diagnostics in dlacprobe, never dlac (hard rule). Status 2026-07-17: **ALL CLOSED.**
 1. ~~`!ventures helm` capture~~ **DONE** — format pinned (§5), structured parser live.
 2. ~~Alternix menu capture~~ **DROPPED** — unnecessary, VP confirmed in the 0x1A4 stream.
-3. One HELM swing per category → confirm outgoing trade 0x036 offsets + "* Point" NPC
-   names light up `Detected:` on the bar (and auto-switch the hat). **STILL PENDING.**
+3. ~~Swing detection~~ **DONE** — 0x036 guess dead; the 0x034 result event is the real
+   path (§6), pinned from the Ghelsba capture, real bytes in the H-tests. dlacprobe
+   gained `/probe trade` (all-packet window + entity-index annotator) en route.
 4. ~~0x1A4 points dump~~ **DONE** — group `Ventures`, exact category labels (§4).
 
 ## 8. File map (implementation)

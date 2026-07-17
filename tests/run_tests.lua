@@ -3400,11 +3400,24 @@ end)();
     helmwatch.setEnabled(false);
     check('H6 switch off',                 helmwatch.isEnabled(), false);
 
-    -- category from NPC name (outgoing-trade 0x036 auto-detect)
+    -- category from NPC name + the 0x034 result-event detect. The event bytes
+    -- are the REAL Ghelsba Outpost capture (2026-07-17, Mindie's swing that
+    -- chopped an Arrowwood Log): ActIndex 319 @0x28, zone 140 @0x2A.
     check('H7 Mining Point -> Mining',     helmwatch.gatherFromNpcName('Mining Point'), 'Mining');
     check('H8 Harvesting Point',           helmwatch.gatherFromNpcName('Harvesting Point'), 'Harvesting');
     check('H9 unrelated npc -> nil',       helmwatch.gatherFromNpcName('Goblin Miner'), nil);
     check('H10 nil npc -> nil',            helmwatch.gatherFromNpcName(nil), nil);
+    local evt = string.char(0x34, 0x1A, 0x8D, 0x06, 0x3F, 0xC1, 0x08, 0x01, 0xB0, 0x02, 0, 0)
+        .. string.rep('\0', 28)
+        .. string.char(0x3F, 0x01, 0x8C, 0x00, 0x64, 0x00, 0x08, 0x00, 0x8C, 0x00, 0x00, 0x00);
+    check('H10b result-event npc index (real capture)', helmwatch.eventNpcIndex(evt), 319);
+    check('H10c short packet -> nil',      helmwatch.eventNpcIndex('short'), nil);
+    helmwatch.onEventNum(evt, function(i) return (i == 319) and 'Logging Point' or nil; end);
+    check('H10d detection from result event',
+        helmwatch.lastDetect ~= nil and helmwatch.lastDetect.gather or nil, 'Logging');
+    helmwatch.onEventNum(evt, function(i) return 'Fantoccini'; end);   -- ordinary NPC event
+    check('H10e non-Point event leaves detect alone',
+        helmwatch.lastDetect ~= nil and helmwatch.lastDetect.gather or nil, 'Logging');
 
     -- 0x1A4 POINTS_ENTRY wire format (trove protocol): group@0x08 (19b) |
     -- label@0x1C (23b) | i32 value@0x34; CLEAR/END_LIST commits the stream.

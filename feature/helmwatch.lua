@@ -466,9 +466,15 @@ function M.venturesFor(gather)
 end
 
 -- ---------------------------------------------------------------------------
--- Category auto-detection: outgoing trade-complete 0x036 carries the target
--- index @0x08; the point NPCs are named for their category. Pure resolver
--- split from the packet glue for tests.
+-- Category auto-detection -- via the RESULT event. FIELD-PINNED 2026-07-17
+-- (Ghelsba Outpost capture, dlacprobe): the HELM result arrives as incoming
+-- 0x034 EVENTNUM -- num[0] u32 @0x08 = item found (0 = nothing, num[1] =
+-- broke), ActIndex u16 @0x28 = the gathering Point NPC (the u16 zone id
+-- sitting next to it @0x2A confirmed the alignment), EventNum @0x2C = the
+-- zone's HELM csid. The Point NPCs are NAMED for their category, so entity-
+-- name resolution does the semantics -- no per-zone csid table. (The
+-- original guess -- outgoing trade 0x036, index @0x08 -- never fired in the
+-- field; replaced wholesale.)
 -- ---------------------------------------------------------------------------
 M.lastDetect = nil;   -- { gather, npc, at = os.clock() }
 
@@ -480,18 +486,28 @@ function M.gatherFromNpcName(name)
     return nil;
 end
 
-function M.onTradePacket(data)
-    if type(data) ~= 'string' or #data < 0x0A then return; end
-    local idx = u16(data, 0x08);
-    if idx == 0 then return; end
+-- The event source's entity index from a 0x034, or nil. Pure (tests feed the
+-- real Ghelsba bytes).
+function M.eventNpcIndex(data)
+    if type(data) ~= 'string' or #data < 0x2A then return nil; end
+    local idx = u16(data, 0x28);
+    if idx == 0 then return nil; end
+    return idx;
+end
+
+-- nameOf is a test seam; live, the entity table resolves the index.
+function M.onEventNum(data, nameOf)
+    local idx = M.eventNpcIndex(data);
+    if idx == nil then return; end
     local name = nil;
-    pcall(function() name = AshitaCore:GetMemoryManager():GetEntity():GetName(idx); end);
+    if nameOf ~= nil then name = nameOf(idx);
+    else pcall(function() name = AshitaCore:GetMemoryManager():GetEntity():GetName(idx); end); end
     local g = M.gatherFromNpcName(name);
     if g == nil then return; end
     M.lastDetect = { gather = g, npc = name, at = os.clock() };
-    -- Auto-switch: with the bar ON, the hat/category follows what you're
-    -- actually gathering (this swing is already in flight -- the swap dresses
-    -- you for the NEXT one, which is how a gathering session works anyway).
+    -- Auto-switch: with the switch ON, the hat/category follows what you are
+    -- actually gathering (this swing's result is already rolled -- the swap
+    -- dresses you for the NEXT one, which is how a session works anyway).
     if M.isEnabled() and M.activeGather ~= g then M.selectGather(g); end
 end
 
@@ -582,6 +598,8 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
             local consumed = false;
             pcall(function() consumed = M.on1A4(e.data); end);
             if consumed then e.blocked = true; end
+        elseif e.id == 0x034 then
+            pcall(function() M.onEventNum(e.data); end);   -- HELM result -> category
         elseif e.id == 0x017 and M.captureOpen() then
             pcall(function()
                 local chatType = u8(e.data, 0x04);
@@ -593,9 +611,7 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
     end);
 
     ashita.events.register('packet_out', 'dlac-helmwatch-out', function(e)
-        if e.id == 0x036 then
-            pcall(function() M.onTradePacket(e.data); end);
-        elseif e.id == 0x0B5 then
+        if e.id == 0x0B5 then
             -- Player speech: a "!ventures" line opens the 0x017 capture window
             -- (the server's reply is what we're really after).
             pcall(function()
