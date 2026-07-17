@@ -196,6 +196,13 @@ local function buffChoices()
     return _buffList;
 end
 
+-- Cascading submenus for the condition chooser: probe the binding, never
+-- assume (hard rule 2). floatgear field-proved BeginMenu/EndMenu in this
+-- install; when absent, the drill-down fallback uses only proven APIs
+-- (floatgear's own fallback shape).
+local hasMenu = (imgui ~= nil)
+    and (type(imgui.BeginMenu) == 'function') and (type(imgui.EndMenu) == 'function');
+
 -- Searchable status-effect picker: the setPickCombo shape (button -> plain
 -- popup with a filter box + rows -- NOT InputText-inside-BeginCombo, which
 -- this imgui build mishandles). Returns the clicked name, nil otherwise.
@@ -238,6 +245,7 @@ local trig = {
     data = nil, job = nil, err = nil, dirty = false,
     status = '', statusErr = false,
     addFor = nil, addConds = {}, _addDef = 1, _addValSel = nil, _addPlayer = 1,
+    _condDrill = false,   -- no-BeginMenu fallback: Player drill-down open?
     addValText = { '' }, addValNum = { 0 }, addSet = nil, addPrio = { 0 }, _openAdd = false,
     editIdx = nil, _editEquip = nil,   -- rule-builder edit mode (replace in place)
     _openModePopup = false,
@@ -2190,19 +2198,80 @@ local function renderTrigAddPopup()
     local defs = COND_DEFS[h] or {};
     if trig._addDef > #defs then trig._addDef = 1; end
     local cur = defs[trig._addDef];
-    -- 200px (was 130): room for the Player entries + long condition names in
-    -- EVERY handler (Henrik: "make the first box wider, we have space").
-    imgui.PushItemWidth(200);
-    if imgui.BeginCombo('##trgcondtype', (cur and (cur.label or trigPrettyKey(string.lower(cur.key)))) or '?') then
-        for di, d in ipairs(defs) do
-            local disp = d.label or trigPrettyKey(string.lower(d.key));
-            if imgui.Selectable(disp .. '##trgct' .. di, trig._addDef == di) then
-                trig._addDef = di; trig.addValText[1] = ''; trig._addValSel = nil; trig.addValNum[1] = 0;
+    -- ONE cascading condition chooser (Henrik: like the floating equipment
+    -- window's pin menu, not two boxes): a 200px button opens a popup menu;
+    -- the Player row CASCADES into the parameter list -- BeginMenu when the
+    -- binding has it (floatgear proved it), the drill-down fallback otherwise.
+    -- Picking a Player parameter lands the def AND the parameter in one click,
+    -- so the value widget follows the button directly. Menu labels are raw,
+    -- never esc'd (they are not format strings -- the floatgear rule).
+    local curLabel;
+    if cur ~= nil and cur.kind == 'player' then
+        local pp = PLAYER_PARAMS[trig._addPlayer] or PLAYER_PARAMS[1];
+        curLabel = pp.label or pp.key;
+    else
+        curLabel = (cur and (cur.label or trigPrettyKey(string.lower(cur.key)))) or '?';
+    end
+    if imgui.Button(curLabel .. '###trgcondbtn', { 200, 0 }) then
+        trig._condDrill = false;
+        imgui.OpenPopup('##trgcondmenu');
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Pick the condition type. Player cascades into the HP / MP / TP /\nbuff parameters.');
+    end
+    if imgui.BeginPopup('##trgcondmenu') then
+        local function pickDef(di)
+            trig._addDef = di; trig.addValText[1] = ''; trig._addValSel = nil; trig.addValNum[1] = 0;
+        end
+        if trig._condDrill and not hasMenu then
+            -- Drill-down fallback: the parameter list in place, with a way back.
+            imgui.TextColored(COL_HEADER, 'Player');
+            if imgui.Selectable('< back##trgcback') then
+                trig._condDrill = false;
+            else
+                imgui.Separator();
+                for pi, p in ipairs(PLAYER_PARAMS) do
+                    if imgui.Selectable((p.label or p.key) .. '##trgcpp' .. pi) then
+                        for di, d in ipairs(defs) do
+                            if d.kind == 'player' then pickDef(di); break; end
+                        end
+                        trig._addPlayer = pi;
+                        trig._condDrill = false;
+                        imgui.CloseCurrentPopup();
+                    end
+                    if p.hint ~= nil and imgui.IsItemHovered() then imgui.SetTooltip(p.hint); end
+                end
+            end
+        else
+            for di, d in ipairs(defs) do
+                if d.kind == 'player' then
+                    if hasMenu then
+                        if imgui.BeginMenu('Player##trgcplayer') then
+                            for pi, p in ipairs(PLAYER_PARAMS) do
+                                if imgui.MenuItem((p.label or p.key) .. '##trgcpp' .. pi) then
+                                    pickDef(di);
+                                    trig._addPlayer = pi;
+                                    pcall(function() imgui.CloseCurrentPopup(); end);
+                                end
+                                if p.hint ~= nil and imgui.IsItemHovered() then imgui.SetTooltip(p.hint); end
+                            end
+                            imgui.EndMenu();
+                        end
+                    else
+                        if imgui.Selectable('Player  >##trgcplayer') then trig._condDrill = true; end
+                    end
+                else
+                    local disp = d.label or trigPrettyKey(string.lower(d.key));
+                    if imgui.Selectable(disp .. '##trgct' .. di) then
+                        pickDef(di);
+                        imgui.CloseCurrentPopup();
+                    end
+                    if d.hint ~= nil and imgui.IsItemHovered() then imgui.SetTooltip(d.hint); end
+                end
             end
         end
-        imgui.EndCombo();
+        imgui.EndPopup();
     end
-    imgui.PopItemWidth();
     cur = defs[trig._addDef];
     if cur ~= nil then
         imgui.SameLine(0, 6);
@@ -2233,21 +2302,9 @@ local function renderTrigAddPopup()
                 imgui.SetTooltip('No groups defined for this job yet. Open the Groups section to create one.');
             end
         elseif cur.kind == 'player' then
-            -- The cascade: 'Player' in the first box opens this second combo of
-            -- parameters, then the picked parameter's own value widget.
+            -- Value widget ONLY: the parameter itself was picked in the
+            -- cascading condition menu (one box, not two -- Henrik's revision).
             local pp = PLAYER_PARAMS[trig._addPlayer] or PLAYER_PARAMS[1];
-            imgui.PushItemWidth(180);
-            if imgui.BeginCombo('##trgplayerparam', pp.label or pp.key) then
-                for pi, p in ipairs(PLAYER_PARAMS) do
-                    if imgui.Selectable((p.label or p.key) .. '##trgpp' .. pi, trig._addPlayer == pi) then
-                        trig._addPlayer = pi; trig._addValSel = nil; trig.addValNum[1] = 0;
-                    end
-                    if p.hint ~= nil and imgui.IsItemHovered() then imgui.SetTooltip(p.hint); end
-                end
-                imgui.EndCombo();
-            end
-            imgui.PopItemWidth();
-            imgui.SameLine(0, 6);
             if pp.kind == 'buff' then
                 local pick = buffPickCombo('##trgcondbuff', trig._addValSel or '(pick effect)');
                 if pick ~= nil then trig._addValSel = pick; end
