@@ -118,7 +118,6 @@ local ui = {
     lockSet     = { false },
     setsDynamic = { true },   -- Auto-build "Dynamic" (level-scaling list) mode, default ON
     buildMax    = { true },   -- optimizer "build as lv.75" toggle (mirrors optim.buildAtMaxLevel; default ON)
-    ignoreWeapons = { true }, -- Auto-build: skip Main/Sub/Range so weapon swaps don't reset TP (default ON)
     showWeights = false,      -- right-side weights panel toggle
     addStat     = { '' },
     addPer      = { 0 },
@@ -1677,6 +1676,7 @@ local STAT_GROUPS = {
 wui.configure({
     ui = ui, COL = COL, STAT_GROUPS = STAT_GROUPS,
     invalidateCandidates = invalidateCandidates,
+    EQUIP_SLOTS = EQUIP_SLOTS,   -- the 4x4 build-slot grid draws from the canonical order
 });
 
 -- Data spelling -> canonical listed name, so gear.lua's MATK/MACC land in the right
@@ -2110,16 +2110,29 @@ local function autoBuild(job, level)
     local oc = owned.counts();
     local built = {};
 
-    local function skipWeapons(sl)
-        -- Skip weapon slots when asked, so Auto-build never swaps Main/Sub/Range and resets TP.
-        return ui.ignoreWeapons[1] == true and (sl.gear == 'Main' or sl.gear == 'Sub' or sl.gear == 'Range');
+    -- Which slots to FILL: the per-set build-slot mask (the weights window's 4x4
+    -- grid). Unmarked slots are left exactly as the working set has them --
+    -- weapons default unmarked, so Auto-build never resets TP unless asked to.
+    -- Fallback (optimizer missing): the same weapons-off default, inline.
+    local mask = nil;
+    if has.optim and type(optim.getSlotMask) == 'function' then
+        local okm, m = pcall(optim.getSlotMask);
+        if okm and type(m) == 'table' then mask = m; end
+    end
+    if mask == nil then
+        mask = {};
+        for _, sl in ipairs(EQUIP_SLOTS) do
+            if sl.gear ~= 'Main' and sl.gear ~= 'Sub' and sl.gear ~= 'Range' then
+                mask[sl.label] = true;
+            end
+        end
     end
 
     -- Stage 1: candidate pools per label. Sub is resolved later (its pool needs
     -- the built Main for the pairing rule).
     local pools = {};
     for _, sl in ipairs(EQUIP_SLOTS) do
-        if not skipWeapons(sl) and sl.gear ~= 'Sub' then
+        if mask[sl.label] == true and sl.gear ~= 'Sub' then
             pools[sl.label] = candidatesForSlot(sl.gear, job, useLevel);   -- job+level filtered
         end
     end
@@ -2161,9 +2174,9 @@ local function autoBuild(job, level)
 
     -- Stage 3: build each slot's list in EQUIP_SLOTS order (Main before Sub).
     for _, sl in ipairs(EQUIP_SLOTS) do
-        if skipWeapons(sl) then
-            -- Preserve whatever the working set already holds there (M.working = built
-            -- below would otherwise wipe it).
+        if mask[sl.label] ~= true then
+            -- Unmarked slot: preserve whatever the working set already holds there
+            -- (M.working = built below would otherwise wipe it).
             if M.working[sl.label] ~= nil then built[sl.label] = M.working[sl.label]; end
             goto continue;
         end
@@ -2625,10 +2638,9 @@ local function renderSetsWeightPanel(job, level)
     if imgui.IsItemHovered() then
         imgui.SetTooltip("When off, builds only ONE item per slot for the set (won't scale with level).");
     end
-    imgui.Checkbox('Skip weapons (Main/Sub/Range)', ui.ignoreWeapons);
-    if imgui.IsItemHovered() then
-        imgui.SetTooltip('Leaves Main/Sub/Range untouched when Auto-building, so weapon swaps don\'t reset your TP.');
-    end
+    -- Build-slot grid (replaces the Skip-weapons checkbox): per-set marks for
+    -- which slots Auto-build fills; weapons just default unmarked.
+    pcall(wui.slotGrid);
     if imgui.Button('Auto-build##setauto', { -1, 24 }) then
         local nSlots, nRows = autoBuild(job, level);
         -- ALWAYS say what happened: a silent empty result reads as a dead button.

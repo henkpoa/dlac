@@ -425,11 +425,65 @@ function M.bindSetWeights(job, setName)
         end
     end
     M._weights = t;
+    -- The build-slot mask rides the SAME binding (one binding, two payloads): a
+    -- never-bound set seeds its mask from the shared one, then owns its copy.
+    local sm = M._slotsShared;
+    if key ~= nil then
+        sm = M._slotsPerSet[key];
+        if sm == nil then
+            sm = {};
+            for k, v in pairs(M._slotsShared) do sm[k] = v; end
+            M._slotsPerSet[key] = sm;
+        end
+    end
+    M._slots = sm;
     return true;
 end
 
 -- The current binding key ('JOB|SetName'), or nil when the shared table is active.
 function M.weightsBoundTo() return M._boundKey; end
+
+-- ---------------------------------------------------------------------------
+-- Build-slot mask (2026-07-17, replaces the "Skip weapons" checkbox): which
+-- slots Auto-build FILLS. Same shared/per-set architecture as the weights --
+-- M._slots is the ACTIVE mask, re-aliased by the same bindSetWeights call, so
+-- every set remembers its build scope the way it remembers its weights. A mask
+-- is { [label] = true } over the 16 optimizer labels; missing/false = leave
+-- that slot exactly as the working set has it. Default = everything EXCEPT
+-- Main/Sub/Range (weapon swaps reset TP -- the old checkbox's ON state); Ammo
+-- stays in (ammo trinkets are real picks, ADR 0010).
+-- ---------------------------------------------------------------------------
+local SLOT_LABELS = { 'Main', 'Sub', 'Range', 'Ammo', 'Head', 'Neck', 'Ear1', 'Ear2',
+                      'Body', 'Hands', 'Ring1', 'Ring2', 'Back', 'Waist', 'Legs', 'Feet' };
+local SLOT_OK = {};
+for _, l in ipairs(SLOT_LABELS) do SLOT_OK[l] = true; end
+local WEAPON_LABEL = { Main = true, Sub = true, Range = true };
+
+function M.defaultSlotMask()
+    local m = {};
+    for _, l in ipairs(SLOT_LABELS) do
+        if not WEAPON_LABEL[l] then m[l] = true; end
+    end
+    return m;
+end
+
+M._slotsShared = M._slotsShared or M.defaultSlotMask();
+M._slotsPerSet = M._slotsPerSet or {};        -- '<JOB>|<SetName>' -> mask
+M._slots       = M._slots or M._slotsShared;  -- ACTIVE mask (follows the binding)
+
+-- The ACTIVE mask (the bound set's, else shared). Callers treat it read-only;
+-- edits go through setSlotEnabled so persistence stays honest.
+function M.getSlotMask()
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    return M._slots;
+end
+
+function M.setSlotEnabled(label, on)
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    if SLOT_OK[label] ~= true then return false, 'unknown slot label'; end
+    M._slots[label] = (on == true) and true or nil;
+    return true;
+end
 
 -- ---------------------------------------------------------------------------
 -- M.score(itemStats [, weights]) -> number
@@ -947,6 +1001,26 @@ function M.saveWeights()
         L[#L + 1] = '        },';
     end
     L[#L + 1] = '    },';
+    -- Build-slot masks: arrays of ENABLED labels, sorted (stable diffs). A file
+    -- from before this feature has no slots sections and loads with the default
+    -- mask; a PRESENT empty array is a real "fill nothing" choice.
+    local function maskRow(t)
+        local on = {};
+        for l in pairs(t) do on[#on + 1] = l; end
+        table.sort(on);
+        local q = {};
+        for _, l in ipairs(on) do q[#q + 1] = string.format('%q', l); end
+        return '{ ' .. table.concat(q, ', ') .. ' }';
+    end
+    L[#L + 1] = '    slotsShared = ' .. maskRow(M._slotsShared) .. ',';
+    L[#L + 1] = '    slotsPerSet = {';
+    local mkeys = {};
+    for k in pairs(M._slotsPerSet) do mkeys[#mkeys + 1] = k; end
+    table.sort(mkeys);
+    for _, mk in ipairs(mkeys) do
+        L[#L + 1] = string.format('        [%q] = %s,', mk, maskRow(M._slotsPerSet[mk]));
+    end
+    L[#L + 1] = '    },';
     L[#L + 1] = '}';
     L[#L + 1] = '';
 
@@ -983,6 +1057,13 @@ function M.loadWeights()
         end
         return clean;
     end
+    local function cleanMask(src)
+        local m = {};
+        for _, l in ipairs(src) do
+            if type(l) == 'string' then m[l] = true; end   -- labels validated on use
+        end
+        return m;
+    end
     if type(result.shared) == 'table' or type(result.perSet) == 'table' then
         M._shared = cleanTable(type(result.shared) == 'table' and result.shared or {});
         M._perSet = {};
@@ -991,14 +1072,26 @@ function M.loadWeights()
                 if type(k) == 'string' and type(t) == 'table' then M._perSet[k] = cleanTable(t); end
             end
         end
+        -- Slot masks: absent section = default (pre-feature file); present = as saved.
+        M._slotsShared = (type(result.slotsShared) == 'table')
+            and cleanMask(result.slotsShared) or M.defaultSlotMask();
+        M._slotsPerSet = {};
+        if type(result.slotsPerSet) == 'table' then
+            for k, t in pairs(result.slotsPerSet) do
+                if type(k) == 'string' and type(t) == 'table' then M._slotsPerSet[k] = cleanMask(t); end
+            end
+        end
     else
         M._shared = cleanTable(result);   -- legacy flat file
         M._perSet = {};
+        M._slotsShared = M.defaultSlotMask();
+        M._slotsPerSet = {};
     end
-    -- Re-point the active table through whatever binding was live before the load.
+    -- Re-point the active tables through whatever binding was live before the load.
     local key = M._boundKey;
     M._boundKey = nil;                    -- force bindSetWeights to re-alias
     M._weights = M._shared;
+    M._slots = M._slotsShared;
     if key ~= nil then
         local j, s = string.match(key, '^([^|]+)|(.+)$');
         M.bindSetWeights(j, s);

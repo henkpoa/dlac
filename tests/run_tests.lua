@@ -1371,6 +1371,64 @@ check('AE15 score() follows the shared table back', optim.score({ Accuracy = 1 }
 optim.clearWeight('Accuracy');                              -- leave the shared table as found
 
 -- ---------------------------------------------------------------------------
+-- AS. per-set build-slot mask (the weights window's 4x4 grid): which slots
+--     Auto-build FILLS. Same shared/per-set binding + gearweights.lua
+--     persistence as the weights; weapons default unmarked (the old Skip-
+--     weapons ON state); a pre-feature file loads the default mask.
+-- ---------------------------------------------------------------------------
+(function()
+    optim.bindSetWeights(nil, nil);
+    local dm = optim.getSlotMask();
+    check('AS1 default: Main unmarked',  dm.Main,  nil);
+    check('AS2 default: Sub unmarked',   dm.Sub,   nil);
+    check('AS3 default: Range unmarked', dm.Range, nil);
+    check('AS4 default: Ammo MARKED (ammo trinkets are real picks)', dm.Ammo, true);
+    check('AS5 default: all 12 armor slots marked', (dm.Head and dm.Neck and dm.Ear1
+        and dm.Ear2 and dm.Body and dm.Hands and dm.Ring1 and dm.Ring2 and dm.Back
+        and dm.Waist and dm.Legs and dm.Feet) == true, true);
+    check('AS6 unknown label rejected', (optim.setSlotEnabled('Helmet', true)), false);
+    optim.setSlotEnabled('Main', true);                     -- shared edit
+    check('AS7 shared holds the mark', optim.getSlotMask().Main, true);
+    optim.bindSetWeights('DRK', 'GridSet');
+    check('AS8 first bind seeds the mask from shared', optim.getSlotMask().Main, true);
+    optim.setSlotEnabled('Main', false);
+    optim.setSlotEnabled('Head', false);
+    check('AS9 set edit sticks to the set', optim.getSlotMask().Head, nil);
+    optim.bindSetWeights(nil, nil);
+    check('AS10 shared never saw the set edits', optim.getSlotMask().Head, true);
+    check('AS11 ...and keeps its own Main mark', optim.getSlotMask().Main, true);
+    optim.bindSetWeights('DRK', 'GridSet');
+    check('AS12 re-selecting the set gets its marks back', optim.getSlotMask().Main, nil);
+    optim.bindSetWeights(nil, nil);
+
+    -- Round-trip through a real file (weightsPath overridden; headless it's nil).
+    local _wp = optim.weightsPath;
+    local _tmp = 'tests_tmp_gearweights.lua';
+    optim.weightsPath = function() return _tmp; end
+    optim.setWeight('Accuracy', 11);
+    check('AS13 save writes the masks', optim.saveWeights(), true);
+    optim.setSlotEnabled('Main', false);                    -- diverge memory from disk
+    optim.setSlotEnabled('Waist', false);
+    check('AS14 load restores the shared mask', (optim.loadWeights() == true)
+        and optim.getSlotMask().Main, true);
+    check('AS15 ...every saved mark', optim.getSlotMask().Waist, true);
+    optim.bindSetWeights('DRK', 'GridSet');
+    check('AS16 ...and the per-set mask', optim.getSlotMask().Head, nil);
+    optim.bindSetWeights(nil, nil);
+    -- Legacy file (no slots sections) -> default mask, weights intact.
+    local f = io.open(_tmp, 'w');
+    f:write('return { shared = { ["Accuracy"] = { perUnit = 7 } }, perSet = {} }\n');
+    f:close();
+    check('AS17 legacy file loads clean', optim.loadWeights(), true);
+    check('AS18 legacy: weights land', optim.getWeights()['Accuracy'].perUnit, 7);
+    check('AS19 legacy: mask falls back to the default', optim.getSlotMask().Main, nil);
+    check('AS20 legacy: ...armor still marked', optim.getSlotMask().Body, true);
+    os.remove(_tmp);
+    optim.weightsPath = _wp;
+    optim.clearWeight('Accuracy');                          -- leave shared as found
+end)();
+
+-- ---------------------------------------------------------------------------
 -- AF. craft Sub-vs-Main guard (dispatch.craftMainGuard + the equipResolved
 --     post-pass) -- while the craft overlay owns Sub with no Main of its own,
 --     a set Main that can't PAIR with that Sub (subSlotAllowed) is HELD out of

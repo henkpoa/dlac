@@ -71,6 +71,35 @@ local function weightSuggestions()
     return out;
 end
 
+-- The 4x4 build-slot grid (2026-07-17, replaces the Skip-weapons checkbox):
+-- text-only tiles in equipmon's visual order marking which slots Auto-build
+-- FILLS for the bound set (shared when none). Unmarked slots are left exactly
+-- as the working set has them. Weapons default unmarked (swapping Main/Sub/
+-- Range resets TP) but are one click away. Rides the same per-set binding and
+-- gearweights.lua persistence as the weights -- no rebuilding marks between
+-- sets. Checkbox toggles need no candidate invalidation: the mask changes
+-- WHICH slots build, never how items score.
+wui.slotGrid = function()
+    if D == nil or imgui == nil or optim == nil then return; end
+    if type(D.EQUIP_SLOTS) ~= 'table' or type(optim.getSlotMask) ~= 'function' then return; end
+    local COL = D.COL;
+    local mask = nil;
+    pcall(function() mask = optim.getSlotMask(); end);
+    if type(mask) ~= 'table' then return; end
+    imgui.TextColored(COL.DIM, 'build slots:');
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Mark the slots Auto-build fills; unmarked slots keep whatever the set\nalready holds. Each set remembers its own marks (with its weights).\nWeapons start unmarked so building never resets your TP -- tick them\nwhen you do want weapons picked.');
+    end
+    for i, sl in ipairs(D.EQUIP_SLOTS) do
+        local b = { mask[sl.label] == true };
+        if imgui.Checkbox(sl.short .. '##bslot_' .. sl.label, b) then
+            pcall(optim.setSlotEnabled, sl.label, b[1]);
+            pcall(optim.saveWeights);
+        end
+        if i % 4 ~= 0 then imgui.SameLine(math.floor((i % 4) * 74) + 1); end
+    end
+end
+
 -- The weights editor body (fills the surrounding child/window).
 wui.editor = function()
     if D == nil or imgui == nil then return; end
