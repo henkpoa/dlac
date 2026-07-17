@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 57;   -- 57: settle window 3s -> 1s (Henrik's ruling: 3 felt long). Semantics unchanged: the window is stability-since-LAST-change, every flip re-arms it, so staged transitions stay covered; 1s only outlasts the gap after the final flip. Raise M.SYNC_SETTLE_S first if a sync ever eats TP again.
+M.VERSION = 58;   -- 58: monitor stream is frame-paced -- fired lines buffer in _monQ and the tick's frame pass streams ONE '/dlacmonev' per frame. Two commands queued in the same frame cross the command bus in REVERSE order (field case: the monitor showed every cast's Precast ABOVE its Midcast -- the engine equipped in the right order all along, only the display lied). Ring, file mirror and monitor untouched.
+                  -- 57: settle window 3s -> 1s (Henrik's ruling: 3 felt long). Semantics unchanged: the window is stability-since-LAST-change, every flip re-arms it, so staged transitions stay covered; 1s only outlasts the gap after the final flip. Raise M.SYNC_SETTLE_S first if a sync ever eats TP again.
                   -- 56: Level-sync settle hold -- a MainJobSync jump on the SAME job (a level sync landing: Incursion boss pop, party re-sync) arms a ~3s hold: every dispatch keeps Main/Sub/Range as worn (ctx.syncHold, the pinReserved pattern; a Range-reserving stat-stick Ammo holds WITH the Range it reserves, or the server would strip the worn ranged weapon -- ADR 0010), and HandleDefault is gated whole for legacy profiles via M.defaultGateHold (pet hold + sync hold), consulted AT CALL TIME by a thin generational wrap shell (WRAP_GEN) so the gate itself hot-swaps live. Tracker parked on M (survives self-swap mid-hold). Job changes and first reads adopt instantly -- no hold. Pure rule: M.syncSettleStep (LS tests). Root cause of the field report "popping an Incursion boss sometimes zeroes saved TP": a mid-transition level reading resolving a different Main.
                   -- 55: Trigger-monitor feed -- a 5-entry ring of fired-rule lines (updated on every retrace: Default only when its matched-rule set changes, action events always). Each new line STREAMS to the addon state as a blocked '/dlacmonev' command (the /bind queue precedent -- the live channel two Lua states share) AND flushes coalesced to firedstate.lua (reload bootstrap + fallback). Display only; the engine never reads it back.
                   -- 54: Player conditions v2 (Henrik's morning revision) -- canonical keys playerHPBelow/Above, playerHPPercentBelow/Above, playerMPBelow/Above, playerMPPercentBelow/Above (raw AND percent variants; v53 hpBelow/... spellings stay as hidden percent aliases), plus whenAny OR groups: a rule matches when ALL `when` conditions hold OR ANY whenAny entry holds; an OR-only rule is not always-on. ruleLabel/defaultPriority take whenAny.
@@ -147,6 +148,7 @@ local _trace = {};   -- event -> { time, action, sig, lines = {...} }
 -- bursts cost one write, not three.
 local _fired = {};
 local _firedDirty = false;
+local _monQ = {};   -- fired lines awaiting the live stream -- drained ONE per frame (v58)
 local saveFiredState;   -- defined with the mode-state block below (needs charDir/writeFile)
 
 -- Only the copy of this module living in LuaAshitacast's state may equip, own mode
@@ -2183,12 +2185,15 @@ function M.dispatch(event)
             -- the command bus -- the one live channel two Lua states share (the
             -- mode-keybind /bind precedent). Fires only on retrace, so a rule
             -- matching again unchanged never re-sends. The firedstate.lua file
-            -- stays as the reload bootstrap + fallback.
-            pcall(function()
-                local line = string.gsub(_fired[1], '%c', ' ');
-                if #line > 180 then line = string.sub(line, 1, 180); end
-                AshitaCore:GetChatManager():QueueCommand(1, '/dlacmonev ' .. line);
-            end);
+            -- stays as the reload bootstrap + fallback. NOT QueueCommand'd here:
+            -- two commands queued in the SAME frame arrive at the addon in
+            -- REVERSE order (Henrik's field report -- every cast showed Precast
+            -- above Midcast, both stamped the same second), so lines land in
+            -- _monQ and the frame tick streams them one per frame -- the
+            -- cmdqueue.lua frame-spacing precedent, engine-side (v58).
+            local line = string.gsub(_fired[1], '%c', ' ');
+            if #line > 180 then line = string.sub(line, 1, 180); end
+            _monQ[#_monQ + 1] = line;
         end
 
         -- Apply in order, attributing each SLOT to its final writer -- with partial
@@ -2825,6 +2830,14 @@ if inLac() then
     local _instProf, _instAct, _instJob = nil, nil, nil;   -- gProfile identity + profile name + JOB we resolved for
     ashita.events.register('d3d_present', 'dlac-dispatch-tick', function()
         pcall(function()
+            -- Monitor stream drain: ONE line per frame, AHEAD of the 0.4s
+            -- throttle. Same-frame QueueCommand pairs cross the bus reversed
+            -- (v58); a frame apart they arrive in order, and a Precast/Midcast
+            -- burst still lands within ~2 frames.
+            if _monQ[1] ~= nil then
+                local line = table.remove(_monQ, 1);
+                pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dlacmonev ' .. line); end);
+            end
             if os.clock() < _tickAt then return; end
             _tickAt = os.clock() + 0.4;
             trySelfSwap();   -- engine hot-reload check (own ~2s gate inside)
