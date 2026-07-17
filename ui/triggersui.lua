@@ -1889,6 +1889,9 @@ local function textW(s)
     return #tostring(s) * 7;
 end
 
+-- Width of the reserved [on now]/[off now] marker column (widest marker + gap).
+local function markW() return textW('[off now]') + 14; end
+
 -- Live readout for the v53 player-state gates: an ADDON-state ctx the ENGINE's
 -- own matchers run against (dsp._matchers -- the exact dispatch logic, never a
 -- re-implementation). 1s throttle; the buff matcher memoizes its buff set on
@@ -2008,7 +2011,11 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
         if PSTATE_KEYS[ln.key] ~= nil then
             local holds = pstateHolds(ln.key, r.when and r.when[ln.key]);
             if holds ~= nil then
-                imgui.SameLine(0, 6);
+                -- RESERVED column at the left edge of the controls column: the
+                -- markers sit straight under each other and can never clip
+                -- into the set/controls side (field case: Henrik's screenshot,
+                -- '[on now]' overlapping 'Default x').
+                imgui.SameLine(colX - markW());
                 imgui.TextColored(holds and COL_USABLE or COL_DIM,
                     holds and '[on now]' or '[off now]');
                 if imgui.IsItemHovered() then
@@ -2024,7 +2031,7 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
         if PSTATE_KEYS[ln.key] ~= nil then
             local holds = pstateHolds(ln.key, ln.val);
             if holds ~= nil then
-                imgui.SameLine(0, 6);
+                imgui.SameLine(colX - markW());   -- the reserved marker column
                 imgui.TextColored(holds and COL_USABLE or COL_DIM,
                     holds and '[on now]' or '[off now]');
                 if imgui.IsItemHovered() then
@@ -3230,6 +3237,9 @@ function M.render(job, level)
         for _, r in ipairs(list) do
             for _, ln in ipairs(condLines(r.when)) do
                 local w = textW(ln.text) + 28;
+                -- player-state lines reserve the [on now]/[off now] column, so
+                -- the marker can never clip into the set/controls side
+                if PSTATE_KEYS[ln.key] ~= nil then w = w + markW(); end
                 if w > colX then colX = w; end
             end
             for _, e in ipairs(r.whenAny or {}) do
@@ -3237,6 +3247,7 @@ function M.render(job, level)
                     local lk = string.lower(tostring(k));
                     local w = textW('| ' .. trigPrettyKey(lk)
                         .. ((v == true) and '' or (' = ' .. tostring(v)))) + 28;
+                    if PSTATE_KEYS[lk] ~= nil then w = w + markW(); end
                     if w > colX then colX = w; end
                 end
             end
