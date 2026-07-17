@@ -3861,6 +3861,8 @@ end)();
                 min = 2, max = 2, tiers = { [2] = { STR = 3 } } },  -- alternates (any 2 of 9)
         [4] = { pieces = { 1001, 1301 }, min = 2, max = 2,          -- 1001 is in TWO sets
                 tiers = { [2] = { VIT = 2 } } },
+        [5] = { pieces = { 1401, 1402, 1403, 1404, 1405 }, min = 5, max = 5,   -- the min-5 JSE shape
+                tiers = { [5] = { Haste = 5 } } },
     } });
     local so = gfe.setsOf(1001);
     check('GE1 multi-set membership, sorted', so ~= nil and (#so .. ':' .. so[1] .. ',' .. so[2]), '2:1,4');
@@ -3918,6 +3920,26 @@ end)();
     -- itemStats stays the zero-copy levelstats passthrough
     local plain = { Name = 'Plain Ring', Level = 1, Stats = { MND = 2 } };
     check('GE17 itemStats zero-copy passthrough', gfe.itemStats(plain, { level = 75 }) == plain.Stats, true);
+
+    -- THE threshold rule (Henrik, 2026-07-18): below a set's minimum the bonus
+    -- does not exist AT ALL -- no halves, no per-piece fractions. A min-5 set at
+    -- four pieces grants nothing anywhere (display marks it inactive; totals and
+    -- the optimizer see zero).
+    check('GE19 min-5 set at 4 pieces: no tier at all', gfe.setTier(5, 4), nil);
+    local function jse(n)
+        local comp = {};
+        for i = 1, n do
+            comp['S' .. i] = { Id = 1400 + i, Name = 'JSE ' .. i, Level = 30, Stats = {} };
+        end
+        return gfe.comboStats(comp, { level = 75 });
+    end
+    local four, five = jse(4), jse(5);
+    local fourRow, fiveRow;
+    for _, sb in ipairs(four.setBonuses) do if sb.setId == 5 then fourRow = sb; end end
+    for _, sb in ipairs(five.setBonuses) do if sb.setId == 5 then fiveRow = sb; end end
+    check('GE20 four of five: zero bonus in totals, row inactive',
+        tostring(four.stats.Haste) .. '/' .. tostring(fourRow ~= nil and fourRow.active), 'nil/false');
+    check('GE21 all five: the full bonus, whole', five.stats.Haste .. '/' .. tostring(fiveRow.active), '5/true');
 
     -- the REAL shipped data end-to-end: worn Lava's + Kusha's (ids 15850/15851)
     local gfe2 = dofile('gear/geareffects.lua');
