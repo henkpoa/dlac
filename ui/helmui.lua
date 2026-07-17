@@ -236,8 +236,8 @@ function M.render(deps, availW)
     local autoOn = hwok and hw.isAutoHelm();
     imgui.TextColored(COL_TEXT, 'Auto HELM:');
     imgui.SameLine(0, 6);
-    local AUTO_ON  = 'Auto HELM is ON (remembered across sessions): a gathering swing detects the\nPoint and auto-equips that category\'s gear; normal idle gear returns after\nthe last swing. Click to turn off.';
-    local AUTO_OFF = 'Detects the gathering Point when you swing and auto-equips your HELM gear\nfor that category; your normal idle gear returns ~60s after the last swing.\nRemembered across sessions.';
+    local AUTO_ON  = 'Auto HELM is ON (remembered across sessions): a gathering swing detects the\nPoint and auto-equips that category\'s gear for every FOLLOWING swing; normal\nidle gear returns ~20s after the last swing. Click to turn off.';
+    local AUTO_OFF = 'Detects the gathering Point when you swing and auto-equips your HELM gear\nfor that category (counts from the NEXT swing on -- the server rolls a swing\nbefore the client can react); normal gear returns ~20s after the last swing.\nRemembered across sessions.';
     if pill ~= nil then
         if pill(autoOn, 'helmauto', AUTO_ON, AUTO_OFF) and hwok then hw.setAutoHelm(not autoOn); end
     else

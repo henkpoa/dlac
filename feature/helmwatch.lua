@@ -106,9 +106,17 @@ M.autoHelm = false;        -- "Auto HELM": detection-armed temporary overlay;
                            -- PERSISTED (Henrik: remember until turned off)
 M._autoUntil = 0;          -- os.time() the auto hold runs to; each swing's
                            -- 0x034 result refreshes it (0 = not holding)
-M.AUTO_HOLD_S = 60;        -- hold window after the LAST swing -- long enough
-                           -- to walk between points, short enough that normal
-                           -- idle gear returns soon after you stop
+M.AUTO_HOLD_S = 20;        -- hold tail after each swing's result. TIMING TRUTH
+                           -- (same law as craft's first synth): the server
+                           -- rolls a swing WHEN IT PROCESSES THE TRADE -- the
+                           -- 0x034 result is our first signal, so the swing
+                           -- that opens the hold is never dressed; the hold
+                           -- exists so every FOLLOWING swing is. 20s covers
+                           -- the swing cadence (menu + ~4s event, re-armed on
+                           -- every result) and snaps back to normal gear
+                           -- shortly after you stop (Henrik: don't linger).
+                           -- A pause longer than this = one undressed swing,
+                           -- whose own result re-opens the hold.
 M._enabledAt = 0;          -- os.time() of the last enable (state-file `at`)
 M._rescanned = false;      -- manifest freshness ensured once this session?
 local _stateLoaded = false;
