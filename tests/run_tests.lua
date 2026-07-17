@@ -1340,43 +1340,43 @@ end
 
 -- ---------------------------------------------------------------------------
 -- AE. per-set stat-weight memory (gearoptim.bindSetWeights) -- every set owns
---     its weights; a never-bound set starts BLANK (Henrik 2026-07-17: seeding
---     from the shared table made every new set inherit leftover weights --
---     this superseded the original seed-from-shared rule); switching sets
---     never carries another set's edits along (Henrik's isolation rule).
---     Headless: weightsPath() is nil, so persistence no-ops and this is all
---     in-memory binding semantics.
+--     its weights; a never-bound set starts BLANK; the SHARED (no-set) table
+--     is a DEAD CONCEPT (Henrik 2026-07-17: "we start blank, have weights per
+--     set and can save -- delete it"): unbound reads are empty, unbound edits
+--     are refused, nothing unbound persists. Switching sets never carries
+--     another set's edits along (Henrik's isolation rule). Headless:
+--     weightsPath() is nil, so persistence no-ops here.
 -- ---------------------------------------------------------------------------
-optim.setWeight('Accuracy', 20, 60);                        -- nothing bound: edits the shared table
-check('AE1 shared holds the edit', optim.getWeights()['Accuracy'].perUnit, 20);
+check('AE1 unbound edit refused (the shared table is gone)', optim.setWeight('Accuracy', 20, 60), false);
 check('AE2 nothing bound yet', optim.weightsBoundTo(), nil);
+check('AE2b unbound weights read empty', next(optim.getWeights()), nil);
 check('AE3 first bind reports a change', optim.bindSetWeights('DRK', 'Midshort'), true);
-check('AE4 first bind starts BLANK (no shared seeding)', optim.getWeights()['Accuracy'], nil);
-optim.setWeight('STR', 5);                                  -- edits now belong to the BOUND set
+check('AE4 first bind starts BLANK', optim.getWeights()['Accuracy'], nil);
+check('AE4b bound edits are accepted', optim.setWeight('STR', 5), true);
 optim.setWeight('Accuracy', 99);
 check('AE5 rebind of the same key is a no-op', optim.bindSetWeights('DRK', 'Midshort'), false);
 optim.bindSetWeights('DRK', 'Tp_Default');
-check('AE6 second set starts BLANK too (not shared, not the last-used set)', optim.getWeights()['Accuracy'], nil);
+check('AE6 second set starts BLANK too (not the last-used set)', optim.getWeights()['Accuracy'], nil);
 check('AE7 second set did not inherit the STR edit', optim.getWeights()['STR'], nil);
 optim.bindSetWeights('DRK', 'Midshort');
 check('AE8 re-selecting a set gets its own edits back', optim.getWeights()['Accuracy'].perUnit, 99);
 check('AE9 ...including added stats', optim.getWeights()['STR'].perUnit, 5);
-check('AE10 unbinding returns the shared table', (optim.bindSetWeights(nil, nil) == true)
-    and optim.getWeights()['Accuracy'].perUnit, 20);
-check('AE11 shared never saw the set edits', optim.getWeights()['STR'], nil);
+check('AE10 unbinding empties the active view', (optim.bindSetWeights(nil, nil) == true)
+    and next(optim.getWeights()), nil);
+check('AE11 ...and refuses edits again', optim.setWeight('VIT', 1), false);
 check('AE12 pre-login job "?" never creates a binding', optim.bindSetWeights('?', 'AnySet'), false);
-check('AE13 ...and stays on shared', optim.weightsBoundTo(), nil);
+check('AE13 ...and stays unbound', optim.weightsBoundTo(), nil);
 optim.bindSetWeights('DRK', 'Midshort');
 check('AE14 score() follows the binding', optim.score({ Accuracy = 1 }), 99);
 optim.bindSetWeights(nil, nil);
-check('AE15 score() follows the shared table back', optim.score({ Accuracy = 1 }), 20);
-optim.clearWeight('Accuracy');                              -- leave the shared table as found
+check('AE15 unbound score() is 0 (nothing is weighted)', optim.score({ Accuracy = 1 }), 0);
 
 -- ---------------------------------------------------------------------------
 -- AS. per-set build-slot mask (the weights window's 4x4 grid): which slots
---     Auto-build FILLS. Same shared/per-set binding + gearweights.lua
---     persistence as the weights; weapons default unmarked (the old Skip-
---     weapons ON state); a pre-feature file loads the default mask.
+--     Auto-build FILLS. Same per-set binding + gearweights.lua persistence as
+--     the weights; a never-bound set starts from the FIXED default (weapons
+--     unmarked -- the old Skip-weapons ON state); unbound the mask READS as
+--     that default and refuses edits (no shared mask anymore).
 -- ---------------------------------------------------------------------------
 (function()
     optim.bindSetWeights(nil, nil);
@@ -1389,45 +1389,51 @@ optim.clearWeight('Accuracy');                              -- leave the shared 
         and dm.Ear2 and dm.Body and dm.Hands and dm.Ring1 and dm.Ring2 and dm.Back
         and dm.Waist and dm.Legs and dm.Feet) == true, true);
     check('AS6 unknown label rejected', (optim.setSlotEnabled('Helmet', true)), false);
-    optim.setSlotEnabled('Main', true);                     -- shared edit
-    check('AS7 shared holds the mark', optim.getSlotMask().Main, true);
+    check('AS7 unbound mark edit refused (no shared mask)', optim.setSlotEnabled('Main', true), false);
     optim.bindSetWeights('DRK', 'GridSet');
-    check('AS8 first bind seeds the mask from shared', optim.getSlotMask().Main, true);
-    optim.setSlotEnabled('Main', false);
+    check('AS8 first bind starts from the DEFAULT mask', optim.getSlotMask().Main, nil);
+    optim.setSlotEnabled('Main', true);
     optim.setSlotEnabled('Head', false);
     check('AS9 set edit sticks to the set', optim.getSlotMask().Head, nil);
     optim.bindSetWeights(nil, nil);
-    check('AS10 shared never saw the set edits', optim.getSlotMask().Head, true);
-    check('AS11 ...and keeps its own Main mark', optim.getSlotMask().Main, true);
+    check('AS10 unbound view is back on the pristine default', optim.getSlotMask().Head, true);
+    check('AS11 ...Main included', optim.getSlotMask().Main, nil);
     optim.bindSetWeights('DRK', 'GridSet');
-    check('AS12 re-selecting the set gets its marks back', optim.getSlotMask().Main, nil);
-    optim.bindSetWeights(nil, nil);
+    check('AS12 re-selecting the set gets its marks back', optim.getSlotMask().Main, true);
 
     -- Round-trip through a real file (weightsPath overridden; headless it's nil).
     local _wp = optim.weightsPath;
     local _tmp = 'tests_tmp_gearweights.lua';
     optim.weightsPath = function() return _tmp; end
-    optim.setWeight('Accuracy', 11);
+    optim.setWeight('Accuracy', 11);                        -- a bound edit rides along
     check('AS13 save writes the masks', optim.saveWeights(), true);
     optim.setSlotEnabled('Main', false);                    -- diverge memory from disk
-    optim.setSlotEnabled('Waist', false);
-    check('AS14 load restores the shared mask', (optim.loadWeights() == true)
+    optim.setSlotEnabled('Head', true);
+    check('AS14 load restores the per-set mask', (optim.loadWeights() == true)
         and optim.getSlotMask().Main, true);
-    check('AS15 ...every saved mark', optim.getSlotMask().Waist, true);
-    optim.bindSetWeights('DRK', 'GridSet');
-    check('AS16 ...and the per-set mask', optim.getSlotMask().Head, nil);
-    optim.bindSetWeights(nil, nil);
-    -- Legacy file (no slots sections) -> default mask, weights intact.
+    check('AS15 ...every saved mark', optim.getSlotMask().Head, nil);
+    check('AS16 ...and the weights beside it', optim.getWeights()['Accuracy'].perUnit, 11);
+    -- Legacy FLAT file: it was ONLY the dead shared table -- loads clean,
+    -- contributes nothing.
     local f = io.open(_tmp, 'w');
-    f:write('return { shared = { ["Accuracy"] = { perUnit = 7 } }, perSet = {} }\n');
+    f:write('return { ["Accuracy"] = { perUnit = 7 } }\n');
     f:close();
-    check('AS17 legacy file loads clean', optim.loadWeights(), true);
-    check('AS18 legacy: weights land', optim.getWeights()['Accuracy'].perUnit, 7);
+    check('AS17 legacy flat file loads clean', optim.loadWeights(), true);
+    check('AS18 legacy: dead shared content is DROPPED', optim.getWeights()['Accuracy'], nil);
     check('AS19 legacy: mask falls back to the default', optim.getSlotMask().Main, nil);
     check('AS20 legacy: ...armor still marked', optim.getSlotMask().Body, true);
+    -- An old STRUCTURED file: its shared/slotsShared sections are ignored, the
+    -- per-set payload survives.
+    f = io.open(_tmp, 'w');
+    f:write('return { shared = { ["Evasion"] = { perUnit = 9 } }, slotsShared = { "Main" },'
+        .. ' perSet = { ["DRK|GridSet"] = { ["STR"] = { perUnit = 2 } } } }\n');
+    f:close();
+    check('AS21 old structured file loads clean', optim.loadWeights(), true);
+    check('AS22 ...its per-set weights survive', optim.getWeights()['STR'].perUnit, 2);
+    check('AS23 ...its shared section is dropped', optim.getWeights()['Evasion'], nil);
     os.remove(_tmp);
     optim.weightsPath = _wp;
-    optim.clearWeight('Accuracy');                          -- leave shared as found
+    optim.bindSetWeights(nil, nil);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -1452,13 +1458,9 @@ end)();
     check('AW7 source untouched',               optim.getWeights()['Accuracy'].perUnit, 42);
     check('AW8 self-copy refused',              optim.copyWeightsFrom('DRK|CopySrc'), false);
     check('AW9 unknown source refused',         optim.copyWeightsFrom('DRK|NoSuch'), false);
+    check('AW10 the dead shared source is refused', optim.copyWeightsFrom(nil), false);
     optim.bindSetWeights(nil, nil);
-    optim.setWeight('Evasion', 9);
-    optim.bindSetWeights('DRK', 'CopyDst');
-    check('AW10 copy from the shared table',    optim.copyWeightsFrom(nil), true);
-    check('AW11 shared weights land',           optim.getWeights()['Evasion'].perUnit, 9);
-    optim.bindSetWeights(nil, nil);
-    optim.clearWeight('Evasion');                            -- leave shared as found
+    check('AW11 unbound copy refused (nothing to copy into)', optim.copyWeightsFrom('DRK|CopySrc'), false);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -1501,10 +1503,15 @@ end)();
 --     templates); the MODE flips to whichever editor's data you mutate.
 -- ---------------------------------------------------------------------------
 (function()
-    -- mode + derivation basics on the SHARED binding
+    -- unbound: priority reads empty and refuses edits (no shared list)
     optim.bindSetWeights(nil, nil);
-    check('AP1 default mode is points', optim.weightsMode(), 'points');
-    check('AP2 prio list starts empty', #optim.getPrio(), 0);
+    check('AP1 unbound mode reads points', optim.weightsMode(), 'points');
+    check('AP2 unbound prio list reads empty', #optim.getPrio(), 0);
+    check('AP2b unbound prio edit refused', optim.prioAdd('Accuracy', 10), false);
+    check('AP2c unbound mode set refused', optim.setWeightsMode('priority'), false);
+
+    -- mode + derivation basics, on a bound set
+    optim.bindSetWeights('DRK', 'PrioMain');
     check('AP3 add flips the mode', (optim.prioAdd('Accuracy', 10) == true) and optim.weightsMode(), 'priority');
     optim.prioAdd('STR');
     check('AP4 dup add refused', optim.prioAdd('Accuracy'), false);
@@ -1533,9 +1540,9 @@ end)();
     check('AP16 new binding starts with a blank list', #optim.getPrio(), 0);
     check('AP17 ...and points mode', optim.weightsMode(), 'points');
     optim.prioAdd('Evasion');
-    optim.bindSetWeights(nil, nil);
-    check('AP18 shared list untouched by set edits', optim.getPrio()[1].stat, 'Accuracy');
-    check('AP19 shared keeps its own mode', optim.weightsMode(), 'priority');
+    optim.bindSetWeights('DRK', 'PrioMain');
+    check('AP18 first set\'s list untouched by the other\'s edits', optim.getPrio()[1].stat, 'Accuracy');
+    check('AP19 ...and keeps its own mode', optim.weightsMode(), 'priority');
     optim.bindSetWeights('DRK', 'PrioSet');
     check('AP20 re-selecting the set gets its list back', optim.getPrio()[1].stat, 'Evasion');
     check('AP21 ...and its mode', optim.weightsMode(), 'priority');
@@ -1582,19 +1589,16 @@ end)();
         and optim.getPrio()[1].stat, 'Evasion');
     check('AP35 ...the mode', optim.weightsMode(), 'priority');
     check('AP36 ...and the named store', optim.peekPrio('named', 'Heal Prio')[1].stat, 'Evasion');
-    -- a pre-feature file (no prio sections) loads as all-points, empty lists
+    -- a pre-priority file (no prio/mode sections) loads as all-points, empty lists
     local f = io.open(_tmp, 'w');
-    f:write('return { shared = { ["Accuracy"] = { perUnit = 7 } }, perSet = {} }\n');
+    f:write('return { perSet = { ["DRK|PrioSet"] = { ["MND"] = { perUnit = 4 } } } }\n');
     f:close();
-    check('AP37 legacy file: points mode', (optim.loadWeights() == true) and optim.weightsMode(), 'points');
-    check('AP38 legacy file: empty prio list', #optim.getPrio(), 0);
+    check('AP37 pre-priority file: points mode', (optim.loadWeights() == true) and optim.weightsMode(), 'points');
+    check('AP38 pre-priority file: empty prio list', #optim.getPrio(), 0);
     os.remove(_tmp);
     optim.weightsPath = _wp;
 
-    -- leave the module as found: shared blank, points mode
-    optim.bindSetWeights(nil, nil);
-    optim.prioClear();
-    optim.setWeightsMode('points');
+    optim.bindSetWeights(nil, nil);                          -- leave the module unbound
 end)();
 
 -- ---------------------------------------------------------------------------

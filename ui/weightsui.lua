@@ -341,7 +341,7 @@ local function renderPointsTab(boundKey)
 
             if q ~= '' then
                 -- Search overrides the cascade: one flat filtered list.
-                local labels = { '(shared weights)' };
+                local labels = {};
                 for _, n in ipairs(named) do labels[#labels + 1] = 'Saved: ' .. n; end
                 for _, k in ipairs(keys) do labels[#labels + 1] = k; end
                 local colQ = colQof(labels);
@@ -353,11 +353,6 @@ local function renderPointsTab(boundKey)
                             function() return optim.copyWeightsFromNamed(n); end,
                             function() return optim.deleteNamedWeights(n); end);
                     end
-                end
-                if boundKey ~= nil and string.find('(shared weights)', q, 1, true) ~= nil then
-                    shown = shown + 1;
-                    srcRow('sh', '(shared weights)', colQ, 'shared', nil,
-                        function() return optim.copyWeightsFrom(nil); end);
                 end
                 for _, k in ipairs(keys) do
                     if k ~= boundKey and string.find(string.lower(k), q, 1, true) ~= nil then
@@ -422,10 +417,6 @@ local function renderPointsTab(boundKey)
                         savedRows();
                         imgui.EndMenu();
                     end
-                    if boundKey ~= nil then
-                        srcRow('sh', '(shared weights)', colQof({ '(shared weights)' }), 'shared', nil,
-                            function() return optim.copyWeightsFrom(nil); end);
-                    end
                     imgui.Separator();
                     if #jobs == 0 then
                         imgui.TextColored(COL.DIM, '(no per-set weights stored yet)');
@@ -454,10 +445,6 @@ local function renderPointsTab(boundKey)
                         end
                     else
                         if imgui.Selectable('Saved Sets  >##wcsaved') then wui._copyDrill = 'saved'; end
-                        if boundKey ~= nil then
-                            srcRow('sh', '(shared weights)', colQof({ '(shared weights)' }), 'shared', nil,
-                                function() return optim.copyWeightsFrom(nil); end);
-                        end
                         imgui.Separator();
                         for _, j in ipairs(jobs) do
                             if imgui.Selectable(j .. '  >##wcjob' .. j) then wui._copyDrill = j; end
@@ -730,10 +717,6 @@ local function renderPrioTab(boundKey)
                 function() return optim.deletePrioNamed(n); end);
         end
         imgui.Separator();
-        if boundKey ~= nil then
-            pRow('sh', '(shared list)', colQ, 'shared', nil,
-                function() return optim.copyPrioFrom(nil); end);
-        end
         local shownSets = 0;
         for _, k in ipairs(keys) do
             if k ~= boundKey then
@@ -742,8 +725,8 @@ local function renderPrioTab(boundKey)
                     function() return optim.copyPrioFrom(k); end);
             end
         end
-        if shownSets == 0 and boundKey == nil then
-            imgui.TextColored(COL.DIM, '(no per-set lists stored yet)');
+        if shownSets == 0 then
+            imgui.TextColored(COL.DIM, '(no other set has a priority list yet)');
         end
         imgui.EndPopup();
     end
@@ -841,21 +824,23 @@ wui.editor = function()
         imgui.TextColored(COL.DIM, 'Optimizer unavailable -- weights disabled.');
         return;
     end
-    -- Say WHOSE weights these are: each set remembers its own (blank when new).
+    -- Weights are PER SET only (the shared/no-set table is a dead concept,
+    -- Henrik 07-17): without a binding there is nothing to edit. gearui gates
+    -- the whole panel already; this is the belt-and-braces for other callers.
     local boundKey = nil;
     pcall(function()
-        local bk = (optim.weightsBoundTo ~= nil) and optim.weightsBoundTo() or nil;
-        boundKey = bk;
-        if bk ~= nil then
-            local j, s = string.match(bk, '^([^|]+)|(.+)$');
-            imgui.TextColored(COL.HEADER, string.format('weights for set "%s" (%s)', s or bk, j or '?'));
-        else
-            imgui.TextColored(COL.HEADER, 'shared weights (no set selected)');
-        end
-        if imgui.IsItemHovered() then
-            imgui.SetTooltip('Every set remembers its own tuning -- point weights, priority list and\nbuild-slot marks. A new set starts BLANK; edits stick to that set only\nand come back when you re-select it.');
-        end
+        boundKey = (optim.weightsBoundTo ~= nil) and optim.weightsBoundTo() or nil;
     end);
+    if boundKey == nil then
+        fmt.textWrapped(COL.DIM, 'No set selected -- every set carries its own weights. Pick or create one on the Sets tab.');
+        return;
+    end
+    -- Say WHOSE weights these are: each set remembers its own (blank when new).
+    local j, s = string.match(boundKey, '^([^|]+)|(.+)$');
+    imgui.TextColored(COL.HEADER, string.format('weights for set "%s" (%s)', s or boundKey, j or '?'));
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Every set remembers its own tuning -- point weights, priority list and\nbuild-slot marks. A new set starts BLANK; edits stick to that set only\nand come back when you re-select it.');
+    end
     -- Priority cap buffers go stale across binding switches (gearui owns the
     -- ui._wbuf reset; the prio buffers live here, so the reset does too).
     local bk = boundKey or '<shared>';

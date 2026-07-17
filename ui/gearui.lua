@@ -2678,6 +2678,12 @@ local function renderSetsWeightPanel(job, level)
         local okb, changed = pcall(optim.bindSetWeights, job, M.workingSetName);
         if okb and changed then ui._wbuf = {}; invalidateCandidates(); end
     end
+    -- Weights are per set only (the shared/no-set table is gone, Henrik 07-17):
+    -- with nothing selected there is nothing to tune or build into.
+    if M.workingSetName == nil then
+        fmt.textWrapped(COL.DIM, 'No set selected -- every set carries its own weights, priority list and build-slot marks. Pick or create a set on the Sets tab.');
+        return;
+    end
     imgui.Checkbox('Dynamic', ui.setsDynamic);
     if imgui.IsItemHovered() then
         imgui.SetTooltip("When off, builds only ONE item per slot for the set (won't scale with level).");

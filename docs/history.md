@@ -2151,3 +2151,19 @@ priority lists; only the build-slot mask still seeds from shared (a blank mask
 would read as a dead Auto-build button). Empty per-set tables are no longer
 persisted or offered as copy sources. AE4/AE6 rewritten to pin the new ruling;
 AP1–AP38 cover the priority mode (980 checks total).
+
+**Round 3 (same day): the shared table is deleted.** Henrik asked what "shared
+weights" even were; on hearing it (the pre-per-set single table, kept as the
+no-set fallback / new-set seed / legacy-file landing spot) he ruled it a dead
+concept — "we start blank, have weights per set and can save. Delete it."
+Implementation: unbound, the actives alias read-only EMPTY sentinels; every
+mutator (weights, priority, masks, copies, saves, modes) refuses with 'no set
+selected'; the weights panel and `/dl weight` say "pick a set" instead of
+editing a phantom table; the "(shared weights)"/"(shared list)" copy rows are
+gone; build-slot masks seed from the fixed default. Persistence no longer
+writes `shared`/`slotsShared`/`prioShared`/`mode`, and the loader DROPS those
+sections from older files (pre-per-set flat files — which were only a shared
+table — load as nothing). Also folded in: an x with a red second-click confirm
+on every Saved Sets / Saved Lists row in the copy-from menus, so "save as..."
+templates can finally be deleted. AE/AS/AW/AP rewritten for the unbound
+semantics (987 checks).

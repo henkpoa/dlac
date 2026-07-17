@@ -367,23 +367,28 @@ M.buildAtMaxLevel = true;
 -- M._weights is the ACTIVE table the editor/optimizer read. It aliases either the
 -- SHARED table (no set bound; legacy files load here) or one entry of the per-set
 -- memory, switched by M.bindSetWeights -- every set remembers its own weights.
-M._weights  = M._weights or {};
-M._shared   = M._shared or M._weights;   -- the no-set-bound table
+-- The "shared" (no-set) table is DEAD (Henrik 2026-07-17, round 3: "we start
+-- blank, have weights per set and can save -- delete it, it's a dead concept").
+-- While no set is bound the actives alias read-only EMPTY sentinels: every
+-- reader sees "no weights", every mutator refuses with 'no set selected', and
+-- nothing unbound is ever persisted, offered as a copy source, or seeded from.
+-- Old files' shared sections (and pre-per-set flat files) are DROPPED on load.
+local UNBOUND_W    = {};                 -- weights sentinel -- must stay empty
+local UNBOUND_PRIO = {};                 -- priority-list sentinel
+M._weights  = M._weights or UNBOUND_W;   -- ACTIVE points table (follows the binding)
 M._perSet   = M._perSet or {};           -- '<JOB>|<SetName>' -> weights table
-M._boundKey = nil;                       -- current binding, nil = shared
+M._boundKey = nil;                       -- current binding, nil = none
 
 -- Priority-list mode (2026-07-17, the "simple" weights): an ORDERED stat list --
 -- top matters most, each entry optionally capped -- for people the pts/cap point
--- system doesn't click for. Same shared/per-set binding architecture as the
--- weights; its OWN named store (a point template and a priority list never
--- cross-load). Which of the two drives scoring is a per-binding MODE
--- ('points' | 'priority'), flipped by whichever editor you touch.
-M._prioShared = M._prioShared or {};     -- ordered { stat = <canon>, cap = n|nil }
-M._prioPerSet = M._prioPerSet or {};     -- '<JOB>|<SetName>' -> list
-M._prio       = M._prio or M._prioShared;-- ACTIVE list (follows the binding)
+-- system doesn't click for. Same per-set binding architecture as the weights;
+-- its OWN named store (a point template and a priority list never cross-load).
+-- Which of the two drives scoring is a per-binding MODE ('points' | 'priority'),
+-- flipped by whichever editor you touch.
+M._prioPerSet = M._prioPerSet or {};     -- '<JOB>|<SetName>' -> ordered { stat, cap }
+M._prio       = M._prio or UNBOUND_PRIO; -- ACTIVE list (follows the binding)
 M._prioNamed  = M._prioNamed or {};      -- name -> list ("Saved Lists")
 M._prioUndo   = M._prioUndo or {};       -- bindingKey -> pre-first-copy snapshot
-M._modeShared = M._modeShared or 'points';
 M._modePerSet = M._modePerSet or {};     -- key -> 'priority' (absent = points)
 
 local ensureWeightsLoaded;   -- forward: defined with the persistence block below, but
@@ -411,8 +416,10 @@ end
 -- Set/replace one stat weight. perUnit is required; cap is optional (nil = no cap).
 -- Editing a mode's data makes that mode ACTIVE for the binding (the invariant
 -- both editors and the /dl weight command lean on: you build where you type).
+-- Refused while no set is bound: there is no shared table anymore.
 function M.setWeight(stat, perUnit, cap)
     if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end   -- never edit-then-save over an unloaded file
+    if M._boundKey == nil then return false, 'no set selected'; end
     stat = canonStat(stat);
     if type(stat) ~= 'string' or stat == '' then return false, 'bad stat name'; end
     perUnit = tonumber(perUnit);
@@ -425,6 +432,7 @@ end
 
 function M.clearWeight(stat)
     if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    if M._boundKey == nil then return false, 'no set selected'; end
     stat = canonStat(stat);
     if M._weights[stat] ~= nil then
         M._weights[stat] = nil;
@@ -436,13 +444,12 @@ end
 
 -- Per-set weight memory (Henrik): bind the ACTIVE weights to a set, so switching
 -- sets never drags the previous set's tuning along. A never-bound set starts
--- BLANK (Henrik 2026-07-17: seeding from the shared table made every new set
--- inherit "weird shared weights" -- a leftover STR 5 in his profile); after
--- the first bind the set owns its table and edits stick to IT only. job or
--- setName nil/'' (or the pre-login '?' job) binds back to the shared table.
--- The PRIORITY list (the simple top-to-bottom mode) rides the same binding,
--- blank-seeded the same way. Only the build-slot MASK still seeds from shared:
--- a blank mask would mean "fill nothing" and read as a dead Auto-build button.
+-- BLANK (Henrik 2026-07-17: seeding made every new set inherit leftover
+-- weights); after the first bind the set owns its tables and edits stick to IT
+-- only. The PRIORITY list rides the same binding, blank too; the build-slot
+-- MASK starts from the fixed default (a blank mask would mean "fill nothing"
+-- and read as a dead Auto-build button). job or setName nil/'' (or the
+-- pre-login '?' job) UNBINDS: the actives alias the read-only empty sentinels.
 -- Returns true when the active table CHANGED (callers refresh buffers/caches).
 function M.bindSetWeights(job, setName)
     if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
@@ -453,40 +460,34 @@ function M.bindSetWeights(job, setName)
     end
     if key == M._boundKey then return false; end
     M._boundKey = key;
-    local t = M._shared;
-    if key ~= nil then
-        t = M._perSet[key];
-        if t == nil then
-            t = {};
-            M._perSet[key] = t;
-        end
+    if key == nil then
+        M._weights = UNBOUND_W;
+        M._prio    = UNBOUND_PRIO;
+        M._slots   = M._slotsUnbound;
+        return true;
+    end
+    local t = M._perSet[key];
+    if t == nil then
+        t = {};
+        M._perSet[key] = t;
     end
     M._weights = t;
-    local pl = M._prioShared;
-    if key ~= nil then
-        pl = M._prioPerSet[key];
-        if pl == nil then
-            pl = {};
-            M._prioPerSet[key] = pl;
-        end
+    local pl = M._prioPerSet[key];
+    if pl == nil then
+        pl = {};
+        M._prioPerSet[key] = pl;
     end
     M._prio = pl;
-    -- The build-slot mask rides the SAME binding (one binding, two payloads): a
-    -- never-bound set seeds its mask from the shared one, then owns its copy.
-    local sm = M._slotsShared;
-    if key ~= nil then
-        sm = M._slotsPerSet[key];
-        if sm == nil then
-            sm = {};
-            for k, v in pairs(M._slotsShared) do sm[k] = v; end
-            M._slotsPerSet[key] = sm;
-        end
+    local sm = M._slotsPerSet[key];
+    if sm == nil then
+        sm = M.defaultSlotMask();
+        M._slotsPerSet[key] = sm;
     end
     M._slots = sm;
     return true;
 end
 
--- The current binding key ('JOB|SetName'), or nil when the shared table is active.
+-- The current binding key ('JOB|SetName'), or nil when nothing is bound.
 function M.weightsBoundTo() return M._boundKey; end
 
 -- ---------------------------------------------------------------------------
@@ -513,12 +514,14 @@ function M.defaultSlotMask()
     return m;
 end
 
-M._slotsShared = M._slotsShared or M.defaultSlotMask();
-M._slotsPerSet = M._slotsPerSet or {};        -- '<JOB>|<SetName>' -> mask
-M._slots       = M._slots or M._slotsShared;  -- ACTIVE mask (follows the binding)
+M._slotsUnbound = M._slotsUnbound or M.defaultSlotMask();   -- read-only: shown while
+                                                            -- nothing is bound
+M._slotsPerSet  = M._slotsPerSet or {};       -- '<JOB>|<SetName>' -> mask
+M._slots        = M._slots or M._slotsUnbound;-- ACTIVE mask (follows the binding)
 
--- The ACTIVE mask (the bound set's, else shared). Callers treat it read-only;
--- edits go through setSlotEnabled so persistence stays honest.
+-- The ACTIVE mask (the bound set's; the fixed default while nothing is bound).
+-- Callers treat it read-only; edits go through setSlotEnabled so persistence
+-- stays honest.
 function M.getSlotMask()
     if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
     return M._slots;
@@ -526,6 +529,7 @@ end
 
 function M.setSlotEnabled(label, on)
     if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    if M._boundKey == nil then return false, 'no set selected'; end
     if SLOT_OK[label] ~= true then return false, 'unknown slot label'; end
     M._slots[label] = (on == true) and true or nil;
     return true;
@@ -547,7 +551,7 @@ end
 -- ---------------------------------------------------------------------------
 -- Copy sources (the weights editor's cascading "copy from" menu).
 -- NAMED weight profiles ("Saved Sets"): a tuning you liked, saved under a
--- proper name, independent of any job or set -- stored beside shared/perSet in
+-- proper name, independent of any job or set -- stored beside perSet in
 -- gearweights.lua (named/namedSlots sections). Plus a one-shot session
 -- snapshot per binding, taken before its FIRST copy, so "This set (revert)"
 -- can undo a copy experiment.
@@ -556,7 +560,7 @@ M._named      = M._named or {};        -- name -> weights table
 M._namedSlots = M._namedSlots or {};   -- name -> slot mask
 M._copyUndo   = M._copyUndo or {};     -- bindingKey -> { w = ..., s = ... }
 
-local function undoKey() return M._boundKey or '<shared>'; end
+local function undoKey() return M._boundKey or '<none>'; end
 local function deepWeights(t)
     local c = {};
     for k, w in pairs(t) do c[k] = { perUnit = w.perUnit, cap = w.cap }; end
@@ -568,9 +572,11 @@ local function deepMask(t)
     return c;
 end
 
--- Replace the ACTIVE tables' CONTENTS (they are aliases into _shared/_perSet,
+-- Replace the ACTIVE tables' CONTENTS (they are aliases into _perSet entries,
 -- so identity must survive) with a copy of sw/sm; snapshot first for revert.
+-- Refused unbound: there is nothing to copy INTO without a set.
 local function applyCopy(sw, sm)
+    if M._boundKey == nil then return false, 'no set selected'; end
     if sw == nil then return false, 'no such weights source'; end
     if sw == M._weights then return false, 'that is already the active table'; end
     if M._copyUndo[undoKey()] == nil then
@@ -585,11 +591,11 @@ local function applyCopy(sw, sm)
     return true;
 end
 
--- src = 'JOB|Set', or nil for the shared table.
+-- src = 'JOB|Set' (the shared source is gone with the shared table).
 function M.copyWeightsFrom(src)
     if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
-    local ok, err = applyCopy((src == nil) and M._shared or M._perSet[src],
-                              (src == nil) and M._slotsShared or M._slotsPerSet[src]);
+    if type(src) ~= 'string' then return false, 'no such weights source'; end
+    local ok, err = applyCopy(M._perSet[src], M._slotsPerSet[src]);
     if ok then M.setWeightsMode('points'); end
     return ok, err;
 end
@@ -605,6 +611,7 @@ end
 -- existing profile of the same name -- that is the update path).
 function M.saveNamedWeights(name)
     if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    if M._boundKey == nil then return false, 'no set selected'; end
     name = string.gsub(string.gsub(tostring(name or ''), '^%s+', ''), '%s+$', '');
     if name == '' then return false, 'name required'; end
     M._named[name] = deepWeights(M._weights);
@@ -629,10 +636,9 @@ function M.namedKeys()
 end
 
 -- Read-only peek at a stored source, for the menu's (?) tooltips.
--- kind: 'shared' | 'set' (key = 'JOB|Set') | 'named' (key = profile name).
+-- kind: 'set' (key = 'JOB|Set') | 'named' (key = profile name).
 function M.peekWeights(kind, key)
     if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
-    if kind == 'shared' then return M._shared; end
     if kind == 'set'    then return M._perSet[key]; end
     if kind == 'named'  then return M._named[key]; end
     return nil;
@@ -657,12 +663,13 @@ function M.revertCopiedWeights()
 end
 
 -- The Clear button: empty the ACTIVE points table in place (identity survives
--- the _shared/_perSet aliases), after the same pre-first-copy snapshot the copy
--- path takes -- so copy from... > This set (revert) can bring a mis-click back.
+-- the _perSet aliases), after the same pre-first-copy snapshot the copy path
+-- takes -- so copy from... > This set (revert) can bring a mis-click back.
 -- Build-slot marks are NOT touched: clearing your stat tuning shouldn't
 -- silently change which slots Auto-build fills.
 function M.clearAllWeights()
     if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    if M._boundKey == nil then return false, 'no set selected'; end
     if M._copyUndo[undoKey()] == nil then
         M._copyUndo[undoKey()] = { w = deepWeights(M._weights), s = deepMask(M._slots) };
     end
@@ -713,19 +720,16 @@ M._deriveFromPrio = deriveFromPrio;   -- exposed for tests
 
 function M.weightsMode()
     if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
-    if M._boundKey == nil then return M._modeShared; end
+    if M._boundKey == nil then return 'points'; end   -- unbound: nothing scores anyway
     return M._modePerSet[M._boundKey] or 'points';
 end
 
 function M.setWeightsMode(mode)
     if mode ~= 'points' and mode ~= 'priority' then return false; end
     if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
-    if M._boundKey == nil then
-        M._modeShared = mode;
-    else
-        -- sparse: absent = points, so old sets never carry a mode row
-        M._modePerSet[M._boundKey] = (mode == 'priority') and mode or nil;
-    end
+    if M._boundKey == nil then return false, 'no set selected'; end
+    -- sparse: absent = points, so old sets never carry a mode row
+    M._modePerSet[M._boundKey] = (mode == 'priority') and mode or nil;
     return true;
 end
 
@@ -758,6 +762,7 @@ end
 
 function M.prioAdd(stat, cap)
     if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    if M._boundKey == nil then return false, 'no set selected'; end
     stat = canonStat(stat);
     if type(stat) ~= 'string' or stat == '' then return false, 'bad stat name'; end
     for _, e in ipairs(M._prio) do
@@ -772,6 +777,7 @@ end
 
 function M.prioRemove(i)
     if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    if M._boundKey == nil then return false, 'no set selected'; end
     if M._prio[i] == nil then return false; end
     table.remove(M._prio, i);
     invalidatePrioCache();
@@ -782,6 +788,7 @@ end
 -- Swap entry i with entry i+delta (the editor's up/down arrows use +-1).
 function M.prioMove(i, delta)
     if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    if M._boundKey == nil then return false, 'no set selected'; end
     local j = i + (tonumber(delta) or 0);
     if M._prio[i] == nil or M._prio[j] == nil or i == j then return false; end
     M._prio[i], M._prio[j] = M._prio[j], M._prio[i];
@@ -792,6 +799,7 @@ end
 
 function M.prioSetCap(i, cap)
     if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    if M._boundKey == nil then return false, 'no set selected'; end
     local e = M._prio[i];
     if e == nil then return false; end
     cap = tonumber(cap);
@@ -804,6 +812,7 @@ end
 -- The priority tab's Clear button; snapshots first, like the points clear.
 function M.prioClear()
     if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    if M._boundKey == nil then return false, 'no set selected'; end
     if M._prioUndo[undoKey()] == nil then
         M._prioUndo[undoKey()] = deepPrio(M._prio);
     end
@@ -816,6 +825,7 @@ end
 -- Replace the ACTIVE list's contents (identity survives) with a copy of src;
 -- snapshot first so "This list (revert)" can undo the experiment.
 local function applyPrioCopy(src)
+    if M._boundKey == nil then return false, 'no set selected'; end
     if src == nil then return false, 'no such priority list'; end
     if src == M._prio then return false, 'that is already the active list'; end
     if M._prioUndo[undoKey()] == nil then
@@ -828,10 +838,11 @@ local function applyPrioCopy(src)
     return true;
 end
 
--- src = 'JOB|Set', or nil for the shared list.
+-- src = 'JOB|Set' (the shared source is gone with the shared table).
 function M.copyPrioFrom(src)
     if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
-    return applyPrioCopy((src == nil) and M._prioShared or M._prioPerSet[src]);
+    if type(src) ~= 'string' then return false, 'no such priority list'; end
+    return applyPrioCopy(M._prioPerSet[src]);
 end
 
 function M.copyPrioFromNamed(name)
@@ -841,6 +852,7 @@ end
 
 function M.savePrioNamed(name)
     if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    if M._boundKey == nil then return false, 'no set selected'; end
     name = string.gsub(string.gsub(tostring(name or ''), '^%s+', ''), '%s+$', '');
     if name == '' then return false, 'name required'; end
     M._prioNamed[name] = deepPrio(M._prio);
@@ -874,10 +886,9 @@ function M.prioPerSetKeys()
 end
 
 -- Read-only peek at a stored list, for the menu's (?) tooltips.
--- kind: 'shared' | 'set' (key = 'JOB|Set') | 'named' (key = list name).
+-- kind: 'set' (key = 'JOB|Set') | 'named' (key = list name).
 function M.peekPrio(kind, key)
     if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
-    if kind == 'shared' then return M._prioShared; end
     if kind == 'set'    then return M._prioPerSet[key]; end
     if kind == 'named'  then return M._prioNamed[key]; end
     return nil;
@@ -1489,11 +1500,11 @@ function M.weightsPath()
         install, tostring(name), tostring(id));
 end
 
--- Serialize the shared + per-set weights and write it. Alphabetical order ->
--- stable diffs. Format: return { shared = {...}, perSet = { ['JOB|Set'] = {...} },
--- slotsShared/slotsPerSet, named/namedSlots, and the priority-mode sections
--- (mode/modePerSet/prioShared/prioPerSet/prioNamed -- ordered arrays).
--- (loadWeights still reads the old flat stat->weight files as `shared`).
+-- Serialize the per-set weights and write it. Alphabetical order -> stable
+-- diffs. Format: return { perSet = { ['JOB|Set'] = {...} }, slotsPerSet,
+-- named/namedSlots, and the priority-mode sections (modePerSet/prioPerSet/
+-- prioNamed -- ordered arrays). The shared sections older files carried are
+-- gone (dead concept, Henrik 07-17); loadWeights DROPS them on sight.
 function M.saveWeights()
     local path = M.weightsPath();
     if path == nil then return false, 'profile path unavailable (not logged in?)'; end
@@ -1514,12 +1525,9 @@ function M.saveWeights()
         '-- dlac gear stat weights  (auto-written by gearoptim.lua)',
         '-- Each stat scores perUnit points per point of the stat, up to cap; beyond',
         '-- the cap it adds nothing. Edit here or via  /dl weight <Stat> <perUnit> <cap>.',
-        '-- shared = weights with no set selected; perSet["JOB|SetName"] = that set\'s own.',
+        '-- perSet["JOB|SetName"] = that set\'s own tuning (every set carries its own).',
         'return {',
-        '    shared = {',
     };
-    rows(L, M._shared, '        ');
-    L[#L + 1] = '    },';
     L[#L + 1] = '    perSet = {';
     local skeys = {};
     -- Empty tables are skipped: blank is the new-binding default (07-17), so
@@ -1545,7 +1553,6 @@ function M.saveWeights()
         for _, l in ipairs(on) do q[#q + 1] = string.format('%q', l); end
         return '{ ' .. table.concat(q, ', ') .. ' }';
     end
-    L[#L + 1] = '    slotsShared = ' .. maskRow(M._slotsShared) .. ',';
     L[#L + 1] = '    slotsPerSet = {';
     local mkeys = {};
     for k in pairs(M._slotsPerSet) do mkeys[#mkeys + 1] = k; end
@@ -1583,7 +1590,6 @@ function M.saveWeights()
                 (type(e.cap) == 'number') and (', cap = ' .. tostring(e.cap)) or '');
         end
     end
-    L[#L + 1] = string.format('    mode = %q,', M._modeShared);
     L[#L + 1] = '    modePerSet = {';
     local mokeys = {};
     for k, v in pairs(M._modePerSet) do
@@ -1593,9 +1599,6 @@ function M.saveWeights()
     for _, mk in ipairs(mokeys) do
         L[#L + 1] = string.format('        [%q] = "priority",', mk);
     end
-    L[#L + 1] = '    },';
-    L[#L + 1] = '    prioShared = {';
-    prioRows(M._prioShared, '        ');
     L[#L + 1] = '    },';
     L[#L + 1] = '    prioPerSet = {';
     local pkeys = {};
@@ -1634,8 +1637,10 @@ function M.saveWeights()
 end
 
 -- Load persisted weights, validating each row. Silently no-ops (returns false) if
--- the file is missing or malformed, leaving whatever is in memory. Understands both
--- the { shared, perSet } format and the old flat stat->weight files (-> shared).
+-- the file is missing or malformed, leaving whatever is in memory. Older files'
+-- shared sections (and pre-per-set flat files, which were ONLY a shared table)
+-- are DROPPED -- the shared concept is dead (Henrik 07-17); per-set tuning,
+-- masks, modes and both named stores load as saved.
 function M.loadWeights()
     local path = M.weightsPath();
     if path == nil then return false, 'profile path unavailable'; end
@@ -1674,16 +1679,15 @@ function M.loadWeights()
         return out;
     end
     if type(result.shared) == 'table' or type(result.perSet) == 'table' then
-        M._shared = cleanTable(type(result.shared) == 'table' and result.shared or {});
+        -- result.shared / result.slotsShared / result.prioShared / result.mode
+        -- are deliberately IGNORED here: the shared table is a dead concept.
         M._perSet = {};
         if type(result.perSet) == 'table' then
             for k, t in pairs(result.perSet) do
                 if type(k) == 'string' and type(t) == 'table' then M._perSet[k] = cleanTable(t); end
             end
         end
-        -- Slot masks: absent section = default (pre-feature file); present = as saved.
-        M._slotsShared = (type(result.slotsShared) == 'table')
-            and cleanMask(result.slotsShared) or M.defaultSlotMask();
+        -- Slot masks: absent = each set falls back to the default on bind.
         M._slotsPerSet = {};
         if type(result.slotsPerSet) == 'table' then
             for k, t in pairs(result.slotsPerSet) do
@@ -1705,15 +1709,12 @@ function M.loadWeights()
             end
         end
         -- Priority-list sections: absent = pre-feature file (all-points, empty).
-        M._modeShared = (result.mode == 'priority') and 'priority' or 'points';
         M._modePerSet = {};
         if type(result.modePerSet) == 'table' then
             for k, v in pairs(result.modePerSet) do
                 if type(k) == 'string' and v == 'priority' then M._modePerSet[k] = 'priority'; end
             end
         end
-        M._prioShared = (type(result.prioShared) == 'table')
-            and cleanPrioList(result.prioShared) or {};
         M._prioPerSet = {};
         if type(result.prioPerSet) == 'table' then
             for k, t in pairs(result.prioPerSet) do
@@ -1727,20 +1728,19 @@ function M.loadWeights()
             end
         end
     else
-        M._shared = cleanTable(result);   -- legacy flat file
+        -- Legacy FLAT file: it was nothing but the dead shared table -- drop it.
         M._perSet = {};
-        M._slotsShared = M.defaultSlotMask();
         M._slotsPerSet = {};
         M._named, M._namedSlots = {}, {};
-        M._modeShared, M._modePerSet = 'points', {};
-        M._prioShared, M._prioPerSet, M._prioNamed = {}, {}, {};
+        M._modePerSet = {};
+        M._prioPerSet, M._prioNamed = {}, {};
     end
     -- Re-point the active tables through whatever binding was live before the load.
     local key = M._boundKey;
     M._boundKey = nil;                    -- force bindSetWeights to re-alias
-    M._weights = M._shared;
-    M._slots = M._slotsShared;
-    M._prio = M._prioShared;
+    M._weights = UNBOUND_W;
+    M._slots = M._slotsUnbound;
+    M._prio = UNBOUND_PRIO;
     if key ~= nil then
         local j, s = string.match(key, '^([^|]+)|(.+)$');
         M.bindSetWeights(j, s);
@@ -1807,10 +1807,17 @@ ashita.events.register('command', 'dlac-optim', function(e)
     -- ---- /dl weight ... ----
     if sub == 'weight' then
         local a2 = args[2] and string.lower(args[2]) or nil;
+        ensureWeightsLoaded();
+
+        -- Every set carries its own tuning and there is no shared table anymore:
+        -- without a bound set there is nothing to show or edit.
+        if M._boundKey == nil then
+            print('[dlac] no set selected -- weights live per set now. Open the GUI (/dl ui), pick a set on the Sets tab, then use /dl weight.');
+            return;
+        end
 
         if a2 == nil or a2 == 'show' then
-            ensureWeightsLoaded();
-            local whoseP = (M._boundKey ~= nil) and (' for set ' .. M._boundKey) or ' (shared -- no set selected)';
+            local whoseP = ' for set ' .. M._boundKey;
             if M.weightsMode() == 'priority' then
                 local pl = M.getPrio();
                 if #pl == 0 then
@@ -1885,7 +1892,11 @@ ashita.events.register('command', 'dlac-optim', function(e)
             local n = 0;
             for _ in pairs(M.getWeights()) do n = n + 1; end
             if n == 0 then
-                print('[dlac] no weights set yet. Set some (/dl weight <Stat> <perUnit> <cap>) or max one stat (/dl best <stat>).');
+                if M._boundKey == nil then
+                    print('[dlac] no set selected -- pick a set on the Sets tab (/dl ui) to build with its weights, or max one stat (/dl best <stat>).');
+                else
+                    print('[dlac] no weights set yet. Set some (/dl weight <Stat> <perUnit> <cap>) or max one stat (/dl best <stat>).');
+                end
                 return;
             end
             printSet(M.buildBestSet(), 'weighted-best');

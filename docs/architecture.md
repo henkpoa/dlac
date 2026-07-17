@@ -274,7 +274,7 @@ Two read-only tools: MP-spent→potency swap advice, and a stat-weight scorer/be
 builder (`M.score`, `M.buildBestSet`). Purely advisory — never equips. Reads/writes
 `<char>\dlac\gearweights.lua`.
 
-Weight tuning has TWO modes per binding (set or shared) since 2026-07-17: **points**
+Weight tuning is PER SET only and has TWO modes per set since 2026-07-17: **points**
 (the classic per-stat `perUnit`/`cap` table) and **priority** (an ordered stat list,
 top matters most, optional caps — the "simple" mode). Priority scoring derives a
 points table with dominance weights (bottom-up: `perUnit = 1 + max total everything
@@ -283,10 +283,14 @@ pipeline — `score`, `optimizePicks`, `pairLadders`, Auto-build — runs unchan
 behind `activeWeights()`. `getWeights()` returns the EFFECTIVE table; the points
 editor reads `getPointWeights()`. The mode flips to whichever editor's data you
 mutate; looking never switches it. Priority lists have their own per-set store and
-their own named store (`prioShared`/`prioPerSet`/`prioNamed`/`mode`/`modePerSet`
-sections in gearweights.lua) — a point template and a priority list never
-cross-load. New bindings start BLANK (weights, priority list); only the build-slot
-mask still seeds from shared (a blank mask would read as a dead Auto-build).
+their own named store (`prioPerSet`/`prioNamed`/`modePerSet` sections in
+gearweights.lua) — a point template and a priority list never cross-load. New
+bindings start BLANK (weights, priority list) with the fixed default build-slot
+mask (weapons unmarked). The old SHARED (no-set) table is a **dead concept**
+(Henrik 07-17): unbound, the actives alias read-only empty sentinels — every reader
+sees "no weights", every mutator refuses with 'no set selected' — and older files'
+`shared`/`slotsShared`/`prioShared`/`mode` sections (plus pre-per-set flat files,
+which were only a shared table) are dropped on load.
 
 ### gear/gearmove.lua — storage move engine (EXPERIMENTAL, feature/storage-move only)
 "[mv]" button + popup to move items between containers via the 0x029 packet, gated to
