@@ -3553,6 +3553,7 @@ end)();
         distSq  = function(idx) local e = world.ents[idx]; return e and e.distSq or nil; end,
     };
     helmwatch.setAutoHelm(true);
+    helmwatch.setProxRange(6);   -- pin the original 6y/8y geometry for H51-H64
     world.ents[400] = { name = 'Mining Point', distSq = 25 };      -- 5y
     world.target = 400;
     check('H51 target in range anchors',      helmwatch.proximityStep(probe), true);
@@ -3585,6 +3586,25 @@ end)();
     helmwatch.setAutoHelm(false);
     world.target = 400; world.ents[400] = { name = 'Mining Point', distSq = 25 };
     check('H64 disarmed: never anchors',       helmwatch.proximityStep(probe), false);
+
+    -- Configurable detect range (Henrik: default 10 for macro-spam-at-range
+    -- and lag; panel setting clamped 3..20, keep-wearing leash = range+2).
+    check('H70 default range is 10',        helmwatch.PROX_DEFAULT, 10);
+    helmwatch.setProxRange(25);
+    check('H71 clamps high to 20',          helmwatch.proxEnter(), 20);
+    helmwatch.setProxRange(1);
+    check('H72 clamps low to 3',            helmwatch.proxEnter(), 3);
+    helmwatch.setProxRange(10);
+    helmwatch.setAutoHelm(true);
+    world.ents[500] = { name = 'Harvesting Point', distSq = 81 };  -- 9y: outside 6, inside 10
+    world.target = 500;
+    check('H73 wider range acquires at 9y', helmwatch.proximityStep(probe), true);
+    world.target = nil;
+    world.ents[500].distSq = 143;                                  -- just inside the 12y leash
+    check('H74 leash follows range (+2y)',  helmwatch.proximityStep(probe), true);
+    world.ents[500].distSq = 145;                                  -- just past it
+    check('H75 past the leash drops',       helmwatch.proximityStep(probe), false);
+    helmwatch.setAutoHelm(false);
 
     -- Combat gate (v61): "Default" is NOT "idle" -- HandleDefault runs every
     -- frame including combat, so the overlay itself must stand aside while

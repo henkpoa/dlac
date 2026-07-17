@@ -236,12 +236,25 @@ function M.render(deps, availW)
     local autoOn = hwok and hw.isAutoHelm();
     imgui.TextColored(COL_TEXT, 'Auto HELM:');
     imgui.SameLine(0, 6);
-    local AUTO_ON  = 'Auto HELM is ON (remembered across sessions): target a gathering Point within\n6 yalms (or just swing) and that category\'s gear equips itself; it stays on\nwhile you remain near the SAME point -- even though HELMing clears your\ntarget -- and your normal gear returns moments after you walk away.\nClick to turn off.';
-    local AUTO_OFF = 'Target a gathering Point within 6 yalms (or swing at one) and Auto HELM\nequips that category\'s gear; it stays on while you remain near that point\nand your normal gear returns moments after you leave. Remembered across\nsessions.';
+    local rangeY = (hwok and type(hw.proxEnter) == 'function') and hw.proxEnter() or 10;
+    local AUTO_ON  = string.format('Auto HELM is ON (remembered across sessions): target a gathering Point within\n%d yalms (or just swing) and that category\'s gear equips itself; it stays on\nwhile you remain near the SAME point -- even though HELMing clears your\ntarget -- and your normal gear returns moments after you walk away.\nClick to turn off.', rangeY);
+    local AUTO_OFF = string.format('Target a gathering Point within %d yalms (or swing at one) and Auto HELM\nequips that category\'s gear; it stays on while you remain near that point\nand your normal gear returns moments after you leave. Remembered across\nsessions.', rangeY);
     if pill ~= nil then
         if pill(autoOn, 'helmauto', AUTO_ON, AUTO_OFF) and hwok then hw.setAutoHelm(not autoOn); end
     else
         if imgui.Button((autoOn and 'ON' or 'OFF') .. '##helmautoonoff', { 46, 22 }) and hwok then hw.setAutoHelm(not autoOn); end
+    end
+    imgui.SameLine(0, 14);
+    imgui.TextColored(COL_TEXT, 'Range:');
+    imgui.SameLine(0, 4);
+    local rb = { rangeY };
+    imgui.PushItemWidth(64);
+    if imgui.InputInt('##helmproxrange', rb) and hwok and type(hw.setProxRange) == 'function' then
+        hw.setProxRange(rb[1]);
+    end
+    imgui.PopItemWidth();
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Auto HELM detect range in yalms (3-20, default 10): how close a targeted\ngathering Point must be to equip in advance. Raise it if lag or macro spam\nmakes your swings land from further out; the keep-wearing leash is +2y.\nRemembered per character.');
     end
     imgui.SameLine(0, 10);
     local barOn = hwok and (hw.barVisible == true);

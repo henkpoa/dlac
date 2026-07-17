@@ -130,9 +130,9 @@ local function saveState()
         local p = statePath();
         if p == nil then return; end
         local f = io.open(p, 'wb'); if f == nil then return; end
-        f:write(string.format('return { gather = %q, enabled = %s, at = %d, auto = %s, autoUntil = %d }\n',
+        f:write(string.format('return { gather = %q, enabled = %s, at = %d, auto = %s, autoUntil = %d, range = %d }\n',
             tostring(M.activeGather or ''), tostring(M.enabled == true), M._enabledAt or 0,
-            tostring(M.autoHelm == true), M._autoUntil or 0));
+            tostring(M.autoHelm == true), M._autoUntil or 0, M._proxRange or 0));
         f:close();
     end);
 end
@@ -155,6 +155,11 @@ function M.loadState()
                 -- remembered until turned off -- it only dresses you while you
                 -- are actually swinging, so restoring it is harmless).
                 M.autoHelm = (t.auto == true);
+                -- Detect-range override (0 / out-of-bounds = unset -> default,
+                -- so an old file tracks a future default change).
+                if type(t.range) == 'number' and t.range >= M.PROX_MIN and t.range <= M.PROX_MAX then
+                    M._proxRange = t.range;
+                end
             end
         end
     end);
@@ -534,9 +539,27 @@ end
 -- Ashita memory reads only (target index + entity Distance, which is
 -- SQUARED -- the distance addon's convention); no packets involved.
 -- ---------------------------------------------------------------------------
-M.PROX_ENTER = 6.0;    -- Henrik's 6 -- also the game's trade range
-M.PROX_LEAVE = 8.0;    -- keep the anchor a bit past enter range (hysteresis)
+M.PROX_DEFAULT = 10;   -- yalms (Henrik: was 6 = trade range; raised for macro
+                       -- spammers who swing from distance, and for lag)
+M.PROX_MIN, M.PROX_MAX = 3, 20;
+M._proxRange = nil;    -- user override, persisted per char (helmstate `range`);
+                       -- nil = PROX_DEFAULT. The keep-wearing leash is +2y.
 M._anchor = nil;       -- { idx, name, gather }
+
+function M.proxEnter()
+    M.loadState();
+    return M._proxRange or M.PROX_DEFAULT;
+end
+
+-- The panel's range setting (laggy players adapt here). Clamped 3..20.
+function M.setProxRange(n)
+    n = math.floor(tonumber(n) or 0);
+    if n < M.PROX_MIN then n = M.PROX_MIN; end
+    if n > M.PROX_MAX then n = M.PROX_MAX; end
+    M.loadState();
+    M._proxRange = n;
+    saveState();
+end
 
 -- One proximity pass. `probe` abstracts the memory reads for tests:
 --   { target=fn()->idx|nil, present=fn(idx)->bool, name=fn(idx)->string|nil,
@@ -545,13 +568,15 @@ M._anchor = nil;       -- { idx, name, gather }
 -- state writes -- roughly one per 2s, not one per frame).
 function M.proximityStep(probe)
     if not M.isAutoHelm() then M._anchor = nil; return false; end
+    local enter = M.proxEnter();
+    local leave = enter + 2;
     local a = M._anchor;
     if a ~= nil then
         local ok = probe.present(a.idx) == true;
         if ok then ok = (probe.name(a.idx) == a.name); end
         if ok then
             local d = probe.distSq(a.idx);
-            ok = type(d) == 'number' and d >= 0 and d <= M.PROX_LEAVE * M.PROX_LEAVE;
+            ok = type(d) == 'number' and d >= 0 and d <= leave * leave;
         end
         if not ok then M._anchor = nil; a = nil; end
     end
@@ -562,7 +587,7 @@ function M.proximityStep(probe)
             local g = M.gatherFromNpcName(nm);
             if g ~= nil then
                 local d = probe.distSq(ti);
-                if type(d) == 'number' and d >= 0 and d <= M.PROX_ENTER * M.PROX_ENTER then
+                if type(d) == 'number' and d >= 0 and d <= enter * enter then
                     M._anchor = { idx = ti, name = nm, gather = g };
                     a = M._anchor;
                 end

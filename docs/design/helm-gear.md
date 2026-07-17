@@ -97,12 +97,15 @@ Henrik's SVGs — DONE), order Harvesting/Excavation/Logging/Mining. Per selecte
   trade — the 0x034 result is the first client signal, so a result-driven hold can
   never dress its own swing; every FOLLOWING swing is (equip lands ~0.5s after the
   result, the next trade is seconds later).
-- **Proximity anchor (Henrik's first-swing fix):** TARGETING a "* Point" within
-  `PROX_ENTER` = 6y equips the gear BEFORE the first trade. The anchor then outlives
-  the target (HELMing clears it — the game's quirk): while the SAME entity is
-  rendered and within `PROX_LEAVE` = 8y (hysteresis), a ~4/s memory tick keeps the
-  hold refreshed (sparse state writes, ~1 per 2s); walk away or let the point
-  relocate and the 4s tail drops the gear. A swing's 0x034 also (re)seats the anchor
+- **Proximity anchor (Henrik's first-swing fix):** TARGETING a "* Point" within the
+  detect range equips the gear BEFORE the first trade. Detect range is a **panel
+  setting** (clamped 3–20y, persisted per char as helmstate `range`; 0/absent =
+  default): default 10y — was 6 (trade range), raised for macro spammers swinging
+  from distance and for lag headroom. The keep-wearing leash is always range+2y
+  (hysteresis). The anchor outlives the target (HELMing clears it — the game's
+  quirk): while the SAME entity is rendered and within the leash, a ~4/s memory
+  tick keeps the hold refreshed (sparse state writes, ~1 per 2s); walk away or let
+  the point relocate and the 4s tail drops the gear. A swing's 0x034 also (re)seats the anchor
   from its ActIndex, so the anchor self-heals mid-session without re-targeting.
   "Rendered" = RenderFlags0 bit 0x200 (the storage-move `nomadNearestSq` precedent,
   field-proven look-alike resistance) — a relocated Point lingering in the entity
