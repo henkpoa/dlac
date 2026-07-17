@@ -248,7 +248,10 @@ function M.render(deps, availW)
     imgui.TextColored(COL_TEXT, 'Range:');
     imgui.SameLine(0, 4);
     local rb = { rangeY };
-    imgui.PushItemWidth(64);
+    -- The +/- step buttons live INSIDE the item width (~56px of it), so 64
+    -- left the number a sliver (field report). 110 gives a two-digit value
+    -- real space in the themed font.
+    imgui.PushItemWidth(110);
     if imgui.InputInt('##helmproxrange', rb) and hwok and type(hw.setProxRange) == 'function' then
         hw.setProxRange(rb[1]);
     end
