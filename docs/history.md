@@ -2012,3 +2012,43 @@ No seeded-file behaviour changed — `groupscan` is never seeded and the `Groups
 G2's, read by the engine unchanged — so **no `dispatch.M.VERSION` bump**. New player-facing strings
 (the control label, `Scan my Lua file`, `Found N tables`, `Import N selected`, the skip notes) are
 **proposed for maintainer sign-off** in the PR, not finalized.
+
+## Session "conditional effects design + the night shift" (44212a0..dadd9a8, PR #45) — 2026-07-17
+
+**Theme:** Henrik expanded the latent/set-bonus scope (optimizer + totals now IN), delegated
+every open decision, and left the maintainer running overnight ("you are super, go by your
+recommendations").
+
+**Landed (day):** direct server-source re-verification of the conditional-effects research
+(sparse clone: the gear_sets applier + latent_effect_container.cpp, which the original
+research never opened) — found and FIXED the gen_levelscaling latent-id bug (52 is
+WEATHER_ELEMENT, 50 is the real under-level latent; shipped data carried 57 weather rows as
+bogus below-Lv entries and missed all 9 real ones — `44212a0`). Full design via judge-panel
+workflow + source amendments: `docs/design/conditional-effects.md` (`d16449a`; all six
+decisions resolved `d938f7c`). PRD #39 → issues #40–#44 (one per phase; #40 dispatched to
+the cloud agent, #42 pre-carries agent:max). Generators built — `tools/modmap.py` shared
+modId→stat bridge with the x100 scale traps, `gen_gearsets.py`, the latent router inside
+`gen_levelscaling.py` (all disk-only; tools/ is gitignored) — and `data/gearsets.lua` +
+`data/latentstats.lua` shipped (`4af3e5f`) so the cloud slices are pure addon work. Henrik
+live-confirmed the Lava/Kusha de-equip drops ATT + ACC + DEF (the flat-set field check).
+
+**Landed (night):** "Build as lv.75" defaults ON, deliberately session-only (`6577f68`).
+Instant Warp scroll tops the Teleports menu — `/dl iw`, usable-item path (no equip/lock/
+wait), stack count in the charges column; swept the parallel session's completed Chocobo
+Whistle changeset along (`9e1df2e`). Per-set 4x4 build-slot grid replaces "Skip weapons":
+the mask rides bindSetWeights (one binding, two payloads) and persists beside the weights
+as slotsShared/slotsPerSet; AS1–AS20 (`ad79e61`). Player trigger conditions: hpBelow/
+hpAbove, mpBelow/mpAbove (percent), tpBelow/tpAbove (raw TP), buff/buffNot (name or id) —
+engine VERSION 53 with a per-dispatch buff cache and PM1–PM21 (`88bb3ba`); editor UI with
+number thresholds + a searchable status-effect picker (`dadd9a8`). PR #45 (extras, for
+morning review): live `[on now]`/`[off now]` markers on player-gated rules — evaluated by
+the ENGINE's own matcher seam, never a re-implementation — and weights "copy from..."
+(weights + slot marks together; AW1–AW11).
+
+**Key decisions:** duplicate set pieces count TWICE (verified straight from the applier —
+the design draft's "unverified, default once" was flipped); set piece counting is
+level-sync-gated server-side and dlac mirrors it; 37 of 126 sets have ALTERNATE pieces
+spanning weapon slots (weapon slots feed the optimizer via baseComposition); unreadable
+player state matches NEITHER buff polarity (a failed read must never flap gear); the
+build-as-75 off-state deliberately does NOT persist; main pushed (9 commits) so the extras
+PR reviews cleanly and origin can't diverge under the incoming cloud-agent PRs.
