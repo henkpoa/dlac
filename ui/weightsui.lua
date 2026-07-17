@@ -220,6 +220,7 @@ local function renderPointsTab(boundKey)
         if imgui.SmallButton('copy from...##wcopy') then
             wui._copyQ = { '' };
             wui._copyDrill = nil;
+            wui._delArm = nil;
             imgui.OpenPopup('##wcopy_pop');
         end
         if imgui.IsItemHovered() then
@@ -283,7 +284,10 @@ local function renderPointsTab(boundKey)
             end
             -- One source row: fixed-width selectable + the (?) box in its own
             -- reserved column, straight under the others (static position).
-            local function srcRow(id, label, colQ, kind, key, doCopy)
+            -- doDelete (named rows only) adds an x with a red second-click
+            -- confirm -- named deletions have no revert snapshot, so a single
+            -- stray click must never be enough.
+            local function srcRow(id, label, colQ, kind, key, doCopy, doDelete)
                 if imgui.Selectable(label .. '##wc_' .. id, false, 0, { colQ - 6, 0 }) then
                     local ok = false;
                     pcall(function() ok = doCopy(); end);
@@ -292,6 +296,25 @@ local function renderPointsTab(boundKey)
                 imgui.SameLine(colQ);
                 imgui.TextColored(COL.DIM, '(?)');
                 if imgui.IsItemHovered() then imgui.SetTooltip(weightsTip(kind, key)); end
+                if doDelete ~= nil then
+                    imgui.SameLine(0, 8);
+                    local armKey = kind .. ':' .. tostring(key);
+                    if wui._delArm == armKey then
+                        local red = (ImGuiCol_Button ~= nil);
+                        if red then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
+                        if imgui.SmallButton('sure?##wcd_' .. id) then
+                            pcall(doDelete);
+                            pcall(optim.saveWeights);
+                            wui._delArm = nil;
+                        end
+                        if red then imgui.PopStyleColor(1); end
+                    else
+                        if imgui.SmallButton('x##wcd_' .. id) then wui._delArm = armKey; end
+                        if imgui.IsItemHovered() then
+                            imgui.SetTooltip('Delete this saved profile -- the second (red) click confirms.');
+                        end
+                    end
+                end
             end
             local function colQof(labels)
                 local w = 110;
@@ -327,7 +350,8 @@ local function renderPointsTab(boundKey)
                     if string.find(string.lower(n), q, 1, true) ~= nil then
                         shown = shown + 1;
                         srcRow('n_' .. n, 'Saved: ' .. n, colQ, 'named', n,
-                            function() return optim.copyWeightsFromNamed(n); end);
+                            function() return optim.copyWeightsFromNamed(n); end,
+                            function() return optim.deleteNamedWeights(n); end);
                     end
                 end
                 if boundKey ~= nil and string.find('(shared weights)', q, 1, true) ~= nil then
@@ -370,7 +394,8 @@ local function renderPointsTab(boundKey)
                     end
                     for _, n in ipairs(named) do
                         srcRow('n_' .. n, n, savedColQ, 'named', n,
-                            function() return optim.copyWeightsFromNamed(n); end);
+                            function() return optim.copyWeightsFromNamed(n); end,
+                            function() return optim.deleteNamedWeights(n); end);
                     end
                 end
                 -- 3. One submenu per job that has per-set weights stored.
@@ -597,6 +622,7 @@ local function renderPrioTab(boundKey)
     -- Saved Lists / shared / per-set); the points tab's cascade would be
     -- ceremony here.
     if imgui.SmallButton('copy from...##pcopy') then
+        wui._delArm = nil;
         imgui.OpenPopup('##pcopy_pop');
     end
     if imgui.IsItemHovered() then
@@ -643,7 +669,7 @@ local function renderPrioTab(boundKey)
             if ok then prioChanged(); end
             imgui.CloseCurrentPopup();
         end
-        local function pRow(id, label, colQ, kind, key, doCopy)
+        local function pRow(id, label, colQ, kind, key, doCopy, doDelete)
             if imgui.Selectable(label .. '##pc_' .. id, false, 0, { colQ - 6, 0 }) then
                 local ok = false;
                 pcall(function() ok = doCopy(); end);
@@ -652,6 +678,25 @@ local function renderPrioTab(boundKey)
             imgui.SameLine(colQ);
             imgui.TextColored(COL.DIM, '(?)');
             if imgui.IsItemHovered() then imgui.SetTooltip(prioTip(kind, key)); end
+            if doDelete ~= nil then
+                imgui.SameLine(0, 8);
+                local armKey = 'p:' .. kind .. ':' .. tostring(key);
+                if wui._delArm == armKey then
+                    local red = (ImGuiCol_Button ~= nil);
+                    if red then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
+                    if imgui.SmallButton('sure?##pcd_' .. id) then
+                        pcall(doDelete);
+                        pcall(optim.saveWeights);
+                        wui._delArm = nil;
+                    end
+                    if red then imgui.PopStyleColor(1); end
+                else
+                    if imgui.SmallButton('x##pcd_' .. id) then wui._delArm = armKey; end
+                    if imgui.IsItemHovered() then
+                        imgui.SetTooltip('Delete this saved list -- the second (red) click confirms.');
+                    end
+                end
+            end
         end
         local named, keys = {}, {};
         pcall(function() named = optim.prioNamedKeys() or {}; end);
@@ -681,7 +726,8 @@ local function renderPrioTab(boundKey)
         end
         for _, n in ipairs(named) do
             pRow('n_' .. n, n, colQ, 'named', n,
-                function() return optim.copyPrioFromNamed(n); end);
+                function() return optim.copyPrioFromNamed(n); end,
+                function() return optim.deletePrioNamed(n); end);
         end
         imgui.Separator();
         if boundKey ~= nil then
