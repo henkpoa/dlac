@@ -213,7 +213,16 @@ local function buffPickCombo(comboId, label)
         _buffPickQ[1] = '';
         imgui.OpenPopup(comboId .. '_pop');
     end
+    -- Bound height: unconstrained, ~600 effects auto-size the popup to the
+    -- whole window. The constraint grows a scrollbar by itself (floatgear's
+    -- rule -- never a child window in a popup chain), and is safe to call
+    -- even on shut frames in this binding (>= 1.77, see floatgear).
+    imgui.SetNextWindowSizeConstraints({ 210, 0 }, { 280, 240 });
     if imgui.BeginPopup(comboId .. '_pop') then
+        -- Cursor straight into the filter: start typing immediately
+        -- (the weights add-stat picker's pattern).
+        if imgui.IsWindowAppearing ~= nil and imgui.IsWindowAppearing()
+           and imgui.SetKeyboardFocusHere ~= nil then imgui.SetKeyboardFocusHere(0); end
         imgui.PushItemWidth(190);
         imgui.InputText('##' .. comboId .. '_q', _buffPickQ, 48);
         imgui.PopItemWidth();
