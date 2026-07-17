@@ -27,13 +27,13 @@ PROFILE_TEMPLATE.lua     what Setup writes into a user's <JOB>.lua
 
 ui/        imgui modules: gearui, triggersui, equippedui, profilesmenu, setupui,
            weightsui, craftbar, uistyle, uihost, itemicons, filetex, floatgear
-data/      generated / static tables: catalog, crafts, spells, abilities, statdefs,
-           levelscaling, levelstats
+data/      generated / static tables: catalog, crafts, fishdb, spells, abilities,
+           statdefs, levelscaling, levelstats
 gear/      the gear pipeline: gearoptim, gearimport, gearexport, gearcheck, gearfmt,
            setmanager, setimport, profilesets, ownedcache, syncflags, weaponfilter,
            groupsmodel, actionpicker
 feature/   self-contained features: lockstyle, macrobook, useitem, craftwatch, augments,
-           pinwatch
+           pinwatch, helmwatch, fishwatch, fishcalc (pure fishing math -- headless)
 lib/       generic helpers: cmdqueue
 assets/    PNGs (loaded by absolute path via AshitaCore:GetInstallPath — not by module path)
 docs/  tests/  tools/
@@ -63,7 +63,8 @@ Key points: `package.path` shim (dlac.lua:27-29); per-char `gear.lua` preload in
 shim (job/level from AshitaCore) (82-107); module load loop (111-119).
 Requires `common` and `chatfmt`, then loads a folder-qualified list — `gear`,
 `feature\augments`, `gear\gearoptim`, `gear\gearimport`, `gear\gearexport`,
-`feature\useitem`, `feature\craftwatch`, `ui\craftbar`, `feature\lockstyle`, `ui\gearui`;
+`feature\useitem`, `feature\craftwatch`, `ui\craftbar`, `feature\helmwatch`,
+`ui\helmbar`, `feature\fishwatch`, `ui\fishbar`, `feature\lockstyle`, `ui\gearui`;
 everything else (`utils`, `dispatch`, `gear\setmanager`, `ui\triggersui`,
 `gear\profilesets`, `gear\gearcheck`) loads transitively. That list is built by string
 concat (`'dlac\\' .. mod`), so a grep for a literal `require('dlac\\gearexport')` finds

@@ -826,7 +826,7 @@ check('T26 other block untouched',     craftwatch.hasKeyItem(1988), true);
 local function i32(v) return string.char(v % 256, math.floor(v/256)%256, math.floor(v/65536)%256, math.floor(v/16777216)%256); end
 -- header(4) + PacketData: pad to fishing@0x20, then the 8 craft int32s.
 local gpPkt = string.rep('\0', 0x20)   -- header + conquest/seals/... up to fishing
-    .. i32(1111)      -- 0x20 fishing (ignored)
+    .. i32(1111)      -- 0x20 fishing (parsed since the fishing system -- F-tests assert it)
     .. i32(2555)      -- 0x24 woodworking
     .. i32(6536)      -- 0x28 smithing
     .. i32(10990)     -- 0x2C goldsmithing

@@ -145,6 +145,7 @@ _cfok = _cfok and type(_cfmt) == 'table';
 for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\gearimport',
                        'gear\\gearexport', 'feature\\useitem', 'feature\\craftwatch',
                        'ui\\craftbar', 'feature\\helmwatch', 'ui\\helmbar',
+                       'feature\\fishwatch', 'ui\\fishbar',
                        'feature\\lockstyle', 'ui\\gearui' }) do
     local ok, err = pcall(require, 'dlac\\' .. mod);
     if not ok then

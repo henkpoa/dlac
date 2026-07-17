@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 63;   -- 63: Pet conditions v1 (research: docs/reference/pet-handling-other-luas.md) -- pet = true/false (a LIVING pet exists: gData.GetPet() is nil petless AND at pet HPP 0, so a dead pet reads as none), petStatus (the pet's own Idle/Engaged -- status + petStatus spells the player x pet 2x2, incl. the classic "master idle while the pet fights"), petName (identity -- avatar/spirit perpetuation gear; Henrik: essential for SMN). ctx.pet read once per dispatch beside ctx.player; petStatus/petName IMPLY existence (never match petless). Tiers: pet 22 / petStatus 23 sit between status (20) and moving (25) so a pet-refined rule outranks its base status rule with no hand priority and Movement still overlays; petName 50 = the exact-name (identity) tier.
+M.VERSION = 64;   -- 64: Fishing overlay (docs/design/fishing-gear.md) -- the craft/HELM systems' third sibling. fishstate.lua {enabled,at,target,rod,bait} read like helmstate (enabled = the manual "Set Fish Idle" pill, session-only addon-side); dlac:AutoFish resolves the manifest's fish ladders (armor + Main -- Halieutica is a Main-slot fishing weapon, craft precedent for weapon slots; a Main swap costs TP, accepted while idle-fishing); Range/Ammo come STRAIGHT from the state file (rod + bait are target-fish-specific picks fishwatch pre-resolves and keeps owned-valid on its bag heartbeat -- the engine wears names, never chooses). Same Default-only gate + Engaged/Dead stand-aside as HELM (v61 law); bait re-equip after a stack empties is free (the overlay re-asserts the name every dispatch, LAC pulls the next stack). Arbitration generalizes v59: craft/helm/fish -- newest `at` stamp wins whole, ties keep the older system (craft > helm > fish), pins still beat everything.
+                  -- 63: Pet conditions v1 (research: docs/reference/pet-handling-other-luas.md) -- pet = true/false (a LIVING pet exists: gData.GetPet() is nil petless AND at pet HPP 0, so a dead pet reads as none), petStatus (the pet's own Idle/Engaged -- status + petStatus spells the player x pet 2x2, incl. the classic "master idle while the pet fights"), petName (identity -- avatar/spirit perpetuation gear; Henrik: essential for SMN). ctx.pet read once per dispatch beside ctx.player; petStatus/petName IMPLY existence (never match petless). Tiers: pet 22 / petStatus 23 sit between status (20) and moving (25) so a pet-refined rule outranks its base status rule with no hand priority and Movement still overlays; petName 50 = the exact-name (identity) tier.
                   -- 62: virtual markers carry a LADDER LEVEL -- M.virtualMinLevel(marker) = the lowest level among the manifest items the marker can resolve to (AutoStaff/AutoIridescence: universal + per-element staves; AutoObi: obis; nil for craft/helm/acc and legacy name-only shapes). BuildDynamicSets skips a marker below that level so the flattened Main shows the item actually worn (Henrik's field case: a leveling WHM's set showed dlac:AutoIridescence "at Lv0" while wearing Pilgrim's Wand -- the marker now reads as a Lv51 rung, his Chatoyant Staff); the Sets tab displays the derived level and only shows the marker as the current pick once it's reachable. nil keeps the old always-adopt behavior everywhere.
                   -- 61: HELM overlay stands aside in combat -- field report: "Default" is NOT "idle" (HandleDefault runs every frame, engaged gear resolves inside it too), so the overlay was pinning over combat gear. helmOverlayFor now returns nil while ctx.player.Status is Engaged or Dead (the same Status string the trigger matchers read); 'Event' deliberately stays dressed -- the HELM animation itself reads as an event, and dropping there would churn every swing. Henrik: you HELM in dangerous places -- aggro means FIGHT.
                   -- 60: Auto HELM (helmstate auto/autoUntil) -- the helm overlay is active when the manual idle switch is ON, or when auto is armed AND a detection hold is running (helmwatch re-arms autoUntil on every 0x034 Point result; expiry is checked live per dispatch, so normal idle gear returns ~60s after the last swing with no file write needed). Same Default-only gate, same slots, same arbitration.
@@ -920,6 +921,26 @@ local function resolveVirtual(marker, ctx, slot)
         local chain = h[slotKey];
         if type(chain) ~= 'table' then
             return nil, string.format('no %s helm gear owned', slotKey);
+        end
+        for _, r in ipairs(chain) do                     -- ladder is best-first
+            if type(r) == 'table' and type(r.name) == 'string' and usableAt(r.level, lvl) then
+                return r.name;
+            end
+        end
+        return nil, string.format('no usable %s rung at Lv%d', slotKey, lvl);
+    end
+    if mk == 'dlac:autofish' then
+        -- Fishing automation (docs/design/fishing-gear.md): manifest `fish`
+        -- block = per-slot best-first ladders (score = FishingSkill-major,
+        -- the unverified CatsEyeXI cx-mods as tiebreakers -- ordering-only).
+        -- No category, no hat map: fishing is one activity. Range/Ammo never
+        -- resolve here -- rod and bait are target-specific state-file picks.
+        local f = (type(a.fish) == 'table') and a.fish or nil;
+        if f == nil then return nil, 'no fishing gear data (open the Automations tab -- it rescans itself)'; end
+        local slotKey = string.lower(tostring(slot or ''));
+        local chain = f[slotKey];
+        if type(chain) ~= 'table' then
+            return nil, string.format('no %s fishing gear owned', slotKey);
         end
         for _, r in ipairs(chain) do                     -- ladder is best-first
             if type(r) == 'table' and type(r.name) == 'string' and usableAt(r.level, lvl) then
@@ -1954,6 +1975,75 @@ local function helmOverlayFor(hs, ctx)
 end
 M._helmOverlayFor = helmOverlayFor;   -- test seam
 
+-- ---------------------------------------------------------------------------
+-- Fishing overlay (v64) -- the third sibling (docs/design/fishing-gear.md).
+-- fishwatch writes <char>\dlac\fishstate.lua { enabled, at, target, rod,
+-- bait }; when enabled, the engine overlays fishing gear on Default only,
+-- standing aside in combat exactly like HELM. Range (rod) and Ammo (bait)
+-- come straight from the state file -- they are TARGET-FISH-specific picks
+-- the addon resolves (server break math + ownership) and keeps current on
+-- its bag heartbeat; armor and Main ride the manifest fish ladders. Main is
+-- included on the craft precedent (Halieutica is a Main-slot fishing
+-- weapon); the ladder only ever holds fishing Mains, so everyone else
+-- never sees a weapon swap.
+-- ---------------------------------------------------------------------------
+local _fish = { raw = nil, data = nil, lastCheck = -1 };
+local function ensureFishState()
+    local now = os.time();
+    if now == _fish.lastCheck then return _fish.data; end
+    _fish.lastCheck = now;
+    local dir = charDir();
+    if dir == nil then return _fish.data; end
+    local raw = readFile(dir .. 'fishstate.lua');
+    if raw == nil then _fish.raw, _fish.data = nil, nil; return nil; end
+    if raw == _fish.raw then return _fish.data; end
+    _fish.raw = raw;
+    local chunk = (loadstring or load)(raw, '@fishstate.lua');
+    if chunk ~= nil then
+        local ok, t = pcall(chunk);
+        if ok and type(t) == 'table' then _fish.data = t; else _fish.data = nil; end
+    end
+    return _fish.data;
+end
+
+-- Ladder-resolved slots. Range/Ammo are handled separately from the state
+-- file; Sub is never touched (nothing fishing-related exists there).
+local FISH_LADDER_SLOTS = { 'Main', 'Head', 'Neck', 'Body', 'Hands',
+                            'Ring1', 'Ring2', 'Waist', 'Legs', 'Feet' };
+
+local function fishStateActive(fs)
+    return type(fs) == 'table' and fs.enabled == true;
+end
+M._fishStateActive = fishStateActive;   -- test seam
+
+local function fishOverlayFor(fs, ctx)
+    if not fishStateActive(fs) then return nil; end
+    -- Same idle law as HELM (v61): Default runs every frame, so Engaged or
+    -- Dead stand aside. The fishing animations themselves (56-62) never
+    -- reach LAC as a Status string, so no extra case is needed -- while the
+    -- rod is out the player reads as idle and the overlay stays dressed.
+    if type(ctx) == 'table' and type(ctx.player) == 'table' then
+        local st = tostring(ctx.player.Status or '');
+        if ci(st, 'Engaged') or ci(st, 'Dead') then return nil; end
+    end
+    local equip = nil;
+    if type(fs.rod) == 'string' and fs.rod ~= '' then
+        equip = equip or {}; equip.Range = fs.rod;
+    end
+    if type(fs.bait) == 'string' and fs.bait ~= '' then
+        equip = equip or {}; equip.Ammo = fs.bait;
+    end
+    -- ctx.player rides along so the ladder's level gate sees the REAL level
+    -- (the helm overlay's lesson -- Angler's Tunica is Lv15, Angler's Ring 75).
+    local inner = { player = (type(ctx) == 'table') and ctx.player or nil };
+    for _, slot in ipairs(FISH_LADDER_SLOTS) do
+        local nm = resolveVirtual('dlac:AutoFish', inner, slot);
+        if type(nm) == 'string' then equip = equip or {}; equip[slot] = nm; end
+    end
+    return equip;
+end
+M._fishOverlayFor = fishOverlayFor;   -- test seam
+
 -- (There was a craftOverlay(ctx) wrapper here that paired ensureCraftState with
 -- craftOverlayFor. M.dispatch now reads the state itself -- it has to decide
 -- whether there is anything to do BEFORE building the context -- so the wrapper
@@ -2246,15 +2336,23 @@ function M.dispatch(event)
                             and type(craftState.craft) == 'string' and craftState.craft ~= '');
         local helmState  = (event == 'Default') and ensureHelmState() or nil;
         local helmOn     = helmStateActive(helmState);
-        -- One crafting/gathering overlay at a time (they contest the same
-        -- slots). The watchers already exclude each other addon-side; if both
-        -- switches are somehow on, the NEWER enable (`at` stamp) wins whole --
-        -- stateless arbitration, no cross-module requires (v59).
-        if craftOn and helmOn then
-            if (tonumber(helmState.at) or 0) > (tonumber(craftState.at) or 0) then craftOn = false;
-            else helmOn = false; end
+        local fishState  = (event == 'Default') and ensureFishState() or nil;
+        local fishOn     = fishStateActive(fishState);
+        -- One crafting/gathering/fishing overlay at a time (they contest the
+        -- same slots). The watchers already exclude each other addon-side; if
+        -- several switches are somehow on, the NEWEST enable (`at` stamp)
+        -- wins whole -- stateless arbitration, no cross-module requires
+        -- (v59, generalized three-way in v64; ties keep the OLDER system,
+        -- craft > helm > fish, exactly the old pairwise tie rule).
+        if (craftOn and helmOn) or (craftOn and fishOn) or (helmOn and fishOn) then
+            local cAt = craftOn and (tonumber(craftState.at) or 0) or -1;
+            local hAt = helmOn and (tonumber(helmState.at) or 0) or -1;
+            local fAt = fishOn and (tonumber(fishState.at) or 0) or -1;
+            if cAt >= hAt and cAt >= fAt then helmOn, fishOn = false, false;
+            elseif hAt >= fAt then craftOn, fishOn = false, false;
+            else craftOn, helmOn = false, false; end
         end
-        if not hasRules and not hasPins and not craftOn and not helmOn then return; end
+        if not hasRules and not hasPins and not craftOn and not helmOn and not fishOn then return; end
 
         local ctx = buildCtx(event);
         -- Level-sync settle (v56): computed ONCE per dispatch and ridden by every
@@ -2272,8 +2370,10 @@ function M.dispatch(event)
         -- LAST (top priority) below -- but under the pin.
         local cEquip = craftOn and craftOverlayFor(craftState, ctx) or nil;
         -- HELM overlay: same law, same rank (arbitration above means at most
-        -- one of the two is on this dispatch).
+        -- one of the three is on this dispatch).
         local hEquip = helmOn and helmOverlayFor(helmState, ctx) or nil;
+        -- Fishing overlay: same law, same rank (v64).
+        local fEquip = fishOn and fishOverlayFor(fishState, ctx) or nil;
 
         -- Pins apply on EVERY event (a pin that lost its slot mid-cast would not
         -- be a pin). Scoped pins need `hits` to know whether their trigger fired,
@@ -2303,7 +2403,7 @@ function M.dispatch(event)
                          and pEquip or cEquip;
         ctx.craftMainGuard = (guardSrc ~= nil) and craftMainGuard(guardSrc) or nil;
 
-        if #hits == 0 and cEquip == nil and hEquip == nil and pEquip == nil then
+        if #hits == 0 and cEquip == nil and hEquip == nil and fEquip == nil and pEquip == nil then
             if event ~= 'Default' then   -- Default runs every frame; only action events trace a miss
                 _trace[event] = { time = os.date('%H:%M:%S'), action = actionLabel(ctx),
                                   sig = '', lines = { '(no trigger matched)' } };
@@ -2345,8 +2445,15 @@ function M.dispatch(event)
             table.sort(hk);
             hSig = table.concat(hk, ',');
         end
+        local fSig = '';                                  -- fishing overlay changes must retrace too
+        if fEquip ~= nil then
+            local fk = {};
+            for slot, item in pairs(fEquip) do fk[#fk + 1] = slot .. '=' .. item; end
+            table.sort(fk);
+            fSig = table.concat(fk, ',');
+        end
         sig = event .. ':' .. table.concat(sig, ',') .. '|' .. table.concat(lk, ',')
-              .. '|' .. cSig .. '|' .. pSig .. '|' .. hSig;
+              .. '|' .. cSig .. '|' .. pSig .. '|' .. hSig .. '|' .. fSig;
         local old = _trace[event];
         local retrace = (old == nil) or (old.sig ~= sig) or (event ~= 'Default');
         local lines = retrace and {} or old.lines;
@@ -2436,6 +2543,16 @@ function M.dispatch(event)
                 for slot in pairs(hEquip) do ks[#ks + 1] = tostring(slot); end
                 table.sort(ks);
                 lines[#lines + 1] = 'HELM gear (overlay)  ->  ' .. table.concat(ks, ', ');
+            end
+        end
+        -- Fishing overlay: same rank again (arbitration guarantees only one).
+        if fEquip ~= nil then
+            equipResolved(fEquip, ctx);
+            if retrace then
+                local ks = {};
+                for slot in pairs(fEquip) do ks[#ks + 1] = tostring(slot); end
+                table.sort(ks);
+                lines[#lines + 1] = 'fishing gear (overlay)  ->  ' .. table.concat(ks, ', ');
             end
         end
         -- Pins LAST of all: above the craft overlay, above every trigger. This is

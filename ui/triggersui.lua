@@ -826,7 +826,7 @@ local UNIVERSAL = {
 -- Manifest schema version: bump when autoCommit writes NEW fields. An on-disk
 -- manifest with an older fmtver self-heals (renderAutomations triggers a rescan)
 -- so a dlac update never needs a manual "Rescan owned gear" click.
-local AUTO_FMT = 7;   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked; 5: craft ladders; 6: skill-up fillers in hq/nq; 7: helm ladders + hat map
+local AUTO_FMT = 8;   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked; 5: craft ladders; 6: skill-up fillers in hq/nq; 7: helm ladders + hat map; 8: fish ladders
 
 local auto = { data = nil, loadedFor = nil, status = '' };
 
@@ -1124,6 +1124,64 @@ local function autoCommit()
             end
         end
     end);
+    -- Fishing ladders (docs/design/fishing-gear.md): per SLOT, best-first owned
+    -- gear carrying the catalog's FishingSkill (Mod::FISH -- adds straight onto
+    -- effective skill, server GetFishingSkill) or a fishdb gearBonus entry (the
+    -- CatsEyeXI cx-mods the catalog drops; Brigands Eyepatch carries ONLY
+    -- those). Score = FishingSkill-major, cx tiebreak -- ordering-only, the
+    -- cx semantics are unverified (server-questions.md #4). Rings split into
+    -- disjoint ladders like craft; Main carries fishing weapons (Halieutica);
+    -- Range/Ammo are EXCLUDED -- rod and bait are fishstate picks, not ladders.
+    local fishBest = {};
+    pcall(function()
+        if type(deps.ownedList) ~= 'function' then return; end
+        local fcalc = require('dlac\\feature\\fishcalc');
+        local lvl = mainLevel();
+        local FLADDER = 4;
+        local counts = (type(deps.ownedCounts) == 'function') and deps.ownedCounts() or nil;
+        local bySlot = {};
+        for _, rec in ipairs(deps.ownedList() or {}) do
+            local st = (hasLScale and type(lscale.effective) == 'function')
+                and lscale.effective(rec, lvl) or rec.Stats;
+            local sl = tostring(rec.Slot or '');
+            if type(st) == 'table' and rec.Name ~= nil and sl ~= ''
+               and sl ~= 'Range' and sl ~= 'Ammo'
+               and (not hasDispatch or type(dsp.canWear) ~= 'function' or dsp.canWear(rec, job, 99))
+               and (type(deps.haveInBags) ~= 'function' or deps.haveInBags(rec)) then
+                local fish = tonumber(st.FishingSkill) or 0;
+                local bonus = (type(fcalc.bonusFor) == 'function') and fcalc.bonusFor(rec.Id) or nil;
+                local score = fcalc.gearScore(fish, bonus);
+                if score > 0 then
+                    local dup = sl == 'Ring' and type(counts) == 'table'
+                                and rec.Id ~= nil and (counts[rec.Id] or 0) >= 2;
+                    bySlot[sl] = bySlot[sl] or {};
+                    local lad = bySlot[sl];
+                    local c = { name = rec.Name, score = score, level = rec.Level or 0, fish = fish };
+                    lad[#lad + 1] = c;
+                    if dup then lad[#lad + 1] = c; end   -- two copies may fill both rings
+                end
+            end
+        end
+        for sl, lad in pairs(bySlot) do
+            table.sort(lad, function(a, b)
+                if a.score ~= b.score then return a.score > b.score; end
+                return a.name < b.name;
+            end);
+            if sl == 'Ring' then
+                local l1, l2 = {}, {};
+                for i, c in ipairs(lad) do
+                    local t = (i % 2 == 1) and l1 or l2;
+                    if #t < FLADDER then t[#t + 1] = c; end
+                end
+                if #l1 > 0 then fishBest.ring1 = l1; end
+                if #l2 > 0 then fishBest.ring2 = l2; end
+            else
+                local l = {};
+                for i = 1, math.min(#lad, FLADDER) do l[i] = lad[i]; end
+                fishBest[string.lower(sl)] = l;
+            end
+        end
+    end);
     -- The crafting GOAL persisted for the trigger-set path (the manual overlay
     -- reads craftstate.lua instead). Read it from craftwatch -- NOT from
     -- CRAFT_UI, which is declared LATER in this file: referencing it here made
@@ -1236,6 +1294,21 @@ local function autoCommit()
         for _, c in ipairs(helmBest[k]) do
             rungs[#rungs + 1] = string.format('{ name = %q, score = %d, level = %d, helm = %d, surv = %d }',
                 c.name, c.score, c.level, c.helm, c.surv);
+        end
+        L[#L + 1] = string.format('        %s = { %s },', k, table.concat(rungs, ', '));
+    end
+    L[#L + 1] = '    },';
+    -- fish ladders: slotKey -> best-first rungs (engine: dlac:AutoFish;
+    -- Range/Ammo deliberately absent -- rod and bait live in fishstate.lua).
+    L[#L + 1] = '    fish = {';
+    local fbKeys = {};
+    for k in pairs(fishBest) do fbKeys[#fbKeys + 1] = k; end
+    table.sort(fbKeys);
+    for _, k in ipairs(fbKeys) do
+        local rungs = {};
+        for _, c in ipairs(fishBest[k]) do
+            rungs[#rungs + 1] = string.format('{ name = %q, score = %d, level = %d, fish = %d }',
+                c.name, c.score, c.level, c.fish);
         end
         L[#L + 1] = string.format('        %s = { %s },', k, table.concat(rungs, ', '));
     end
@@ -1707,6 +1780,14 @@ local function renderAutomations(noHeader)
             else
                 imgui.TextColored(COL_ERR, 'helmui failed to load.');
             end
+        elseif auto.view == 'fish' then
+            -- Same pattern: the whole panel lives in ui/fishui.lua.
+            local fok, fishui = pcall(require, 'dlac\\ui\\fishui');
+            if fok and type(fishui) == 'table' and type(fishui.render) == 'function' then
+                pcall(fishui.render, deps, availW);
+            else
+                imgui.TextColored(COL_ERR, 'fishui failed to load.');
+            end
         elseif auto.view == 'maxmp' then
             imgui.TextColored(COL_HEADER, 'MaxMP');
             imgui.SameLine(0, 10); imgui.TextColored(COL_DIM, 'set automation -- /dl mode maxmp; wears batteries at a full pool, releases as spent');
@@ -1757,6 +1838,8 @@ local function renderAutomations(noHeader)
           level = CRAFT_UI.level(),   max = 4, txt = nil },
         { key = 'helm',        name = 'Auto HELM Set',   kind = 'gathering-gear helper (idle only)',
           level = 0,                  max = 4, txt = nil },
+        { key = 'fish',        name = 'Auto Fish Set',   kind = 'fishing-gear helper (idle only)',
+          level = 0,                  max = 4, txt = nil },
     };
     rows[1].txt = IRID_TXT[rows[1].level];
     rows[2].txt = OBI_TXT[rows[2].level];
@@ -1766,6 +1849,12 @@ local function renderAutomations(noHeader)
         local helmui = require('dlac\\ui\\helmui');
         rows[4].max = helmui.maxLevel or 4;
         rows[4].level, rows[4].txt = helmui.status(deps);   -- label + HELM+/Surv+ totals
+    end);
+    -- Fishing coverage lives in fishui (same pattern).
+    pcall(function()
+        local fishui = require('dlac\\ui\\fishui');
+        rows[5].max = fishui.maxLevel or 4;
+        rows[5].level, rows[5].txt = fishui.status(deps);
     end);
     -- Column headers, same fixed offsets as the rows.
     -- Offsets widened 2026-07-17 (field report: the HELM row's Kind ran into

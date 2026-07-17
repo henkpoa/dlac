@@ -181,9 +181,12 @@ end
 M.guildPoints = {};        -- craft display name -> points
 M.gpSeen = false;
 M.gpPersisted = false;
-local GP_OFFSET = { Woodworking = 0x24, Smithing = 0x28, Goldsmithing = 0x2C,
-                    Clothcraft = 0x30, Leathercraft = 0x34, Bonecraft = 0x38,
-                    Alchemy = 0x3C, Cooking = 0x40 };
+local GP_OFFSET = { Fishing = 0x20, Woodworking = 0x24, Smithing = 0x28,
+                    Goldsmithing = 0x2C, Clothcraft = 0x30, Leathercraft = 0x34,
+                    Bonecraft = 0x38, Alchemy = 0x3C, Cooking = 0x40 };
+                    -- Fishing (guild id 0 server-side) parsed since the
+                    -- fishing gear system (v64) -- the craft panel keeps
+                    -- rendering its own 8; fishwatch reads this one.
 
 local function gpPath() local d = kiCharDir(); return d and (d .. 'guildpoints.lua') or nil; end
 local function gpSave()

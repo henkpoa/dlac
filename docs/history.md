@@ -2406,3 +2406,80 @@ Lava/Kusha end-to-end), HB1-HB11 (objective pin, seeded discovery, EMPTY-tie
 survival, conflict-vs-copies, eviction/monotone, cap sharing, effects-nil
 bit-identity, tiered marginal, baseComposition credit, set-blind greedy path,
 augmentation end-to-end through buildBestSet). 1161 + 125 green.
+
+## Session "fishing gear system" (2026-07-18, engine v64, docs/design/fishing-gear.md)
+
+**Feature: the third sibling** — Auto Fish Set beside Auto Craft Set and Auto HELM
+Set (Henrik: "I am NOT out to automate fishing, I just want to streamline the
+experience"). Research fanned out three ways before a line was written: the dlac
+HELM/craft map (the template), the CatsEyeXI server source on GitHub (mechanics),
+and the local catalog/api_cache (items).
+
+**What research settled:**
+- **Fishing on CatsEyeXI is stock-LSB C++** (`src/map/utils/fishingutils.cpp`,
+  3,242 lines, an older snapshot: chart quests stripped, chest catching commented
+  out) driven by public SQL — no hobbies/fishing dir, no Lua fishing scripts. The
+  catch pools (zone+area → group → fish, gated HARD by `fishing_bait_affinity`:
+  no row = that fish can never bite that bait) and the three reel-in fail rolls
+  (lose :719 / line snap :784 / rod break :828) are all public, formula-exact.
+  That makes **bait isolation** ("which bait+zone makes ONLY my fish bite")
+  and **rod safety verdicts** computable offline — the two flagship asks.
+- **The private overlay provably adds content on top**: custom mods 2004/2005
+  (carriers: Ebisu =10, Ebisu +1 =15, Halieutica =50/5, Mariners pieces,
+  Brigands Eyepatch; semantics NOT public — server-questions.md §4 stays open,
+  the addon uses them as ladder tiebreakers only). **Halieutica 20945 is a
+  Main-slot fishing weapon** (polearm-skill spear, Fish+2), not a rod. **The
+  Mariners set is fishing's VP tier** — its ids interleave HELM's Plain block
+  (25899/900, 25966/67, 25986/87, 26535/36 + Brigands Eyepatch 28443 as the
+  hat analog).
+- **Fishing VP was already streaming**: helmwatch's 0x1A4 parse stores every
+  group/label and the field capture had confirmed a `Fishing` label back on
+  07-17 — `pointsFor('Fishing')` worked before this session started. **Fishing
+  guild GP sits at 0x113 offset 0x20**, one map entry away from craftwatch's
+  GP_OFFSET (a run_tests fixture had it labeled "ignored" since the craft arc).
+- Skill is `GetCraftSkill(0)` — the index craftwatch's map deliberately
+  skipped. Effective skill = display skill + worn Mod::FISH; cap = (guild
+  rank+1)×10, rank-ups at Thubu Parohren (Port Windurst), Expert = 110. Lu
+  Shang's 10k-carp quest pair is active in public scripts; Ebisu acquisition is
+  private.
+
+**What shipped:** `tools/gen_fishdb.py` (fetches the nine fishing SQL tables,
+CREATE TABLE-driven parsing, scans api_cache for mods 127/2004/2005) →
+`data/fishdb.lua` (128 fish, 39 baits, 575 affinities, 20 rods, 95 zone pools,
+259 fishable mobs, guild tables, gearBonus supplement; ~70 KB).
+`feature/fishcalc.lua` — PURE math: the three fail formulas ported VERBATIM
+(including the uint8 wrap on tooBig's over-skill rebate and tooSmall's guarded
+subtraction — F11/F12 pin both), rod ranking, live isolation derivation,
+mob-bite risk, search. `feature/fishwatch.lua` — state owner (fishstate.lua:
+enabled session-only, target/rod/bait persist as CLIENT names), rod/bait
+auto-pick + ~2s bag heartbeat re-pick (bait runs dry → next owned bait + chat
+line), fishing-only !ventures 0x017 capture (format UNPINNED — raw mirror to
+fishventures_capture.txt), `/dl fish` commands. `ui/fishui.lua` — the panel:
+status line (skill/GP/VP), 4-column gear matrix (BASE / ANGLER'S / GUILD GP /
+MARINERS VP + Halieutica), rod columns (standard/legendary), target-fish search
+with ISOLATION-first spot×bait rows (mob ⚠, "items can always bite" footnote),
+rod verdicts from the real math, per-container bait census, ventures, guild
+corner; coverage/status sit ABOVE the imgui guard (headless-testable — helmui
+improvement). `ui/fishbar.lua` — pill + target + rod/bait item icons (zero new
+assets). Engine v64: `ensureFishState`/`fishOverlayFor` (Default-only,
+Engaged/Dead stand-aside; Range/Ammo straight from state, armor + Main via the
+manifest `fish` ladders — Main included on the CRAFT precedent because of
+Halieutica), `dlac:AutoFish` in resolveVirtual, **three-way at-stamp
+arbitration** (ties keep the older system: craft > helm > fish). triggersui:
+AUTO_FMT 7→8 (fish ladders: FishingSkill-major, cx tiebreak, disjoint rings),
+fifth Automations row + fishui delegation. craftwatch: GP_OFFSET gains
+`Fishing = 0x20`.
+
+**Tests:** F1-F69 (hand-derived server-math cases — the expectations carry a
+"re-derive from the C++ before editing" warning — fishdb integrity, pick rules
+incl. the Yew-over-Willow least-risk case, overlay resolution, GP 0x20) +
+smoke S130-134 (headless loads; fishui.status callable without imgui).
+1231 + 130 green. NOTE: the F-section itself rode into cd2381c via the
+parallel session's staging — harmless overlap, this commit brings the modules
+it exercises.
+
+**Deliberately NOT done:** any automation of fishing (no casting, no 0x115
+mini-game reads, no bite reactions — the server carries an anti-bot surface,
+`GetRecentFishers()`/`[Fish]LastCastTime`, and the bright line stays bright).
+Field tests pending: design doc §6 — `!ventures fishing` format pin, GP/VP
+sanity, first live overlay run, custom-gear stat text.

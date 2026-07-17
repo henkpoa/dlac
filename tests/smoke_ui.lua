@@ -532,6 +532,23 @@ check('S20 gear you really do not own stays unowned',
 end)();
 
 -- ---------------------------------------------------------------------------
+-- 7. Fishing modules load headless (imgui-less: fishui/fishbar return their
+--    pure stubs; fishui's coverage/status sit ABOVE the guard on purpose so
+--    the Automations row works even before any render).
+-- ---------------------------------------------------------------------------
+(function()
+    local ok1, fishui = pcall(require, 'dlac\\ui\\fishui');
+    check('S130 fishui loads headless', ok1 and type(fishui) == 'table', true);
+    check('S131 fishui.maxLevel', fishui and fishui.maxLevel, 4);
+    check('S132 fishui.status callable without deps',
+        ok1 and select(1, fishui.status(nil)), 0);
+    local ok2, fishbar = pcall(require, 'dlac\\ui\\fishbar');
+    check('S133 fishbar loads headless', ok2 and type(fishbar) == 'table', true);
+    local ok3, fw = pcall(require, 'dlac\\feature\\fishwatch');
+    check('S134 fishwatch loads under the ui tree', ok3 and type(fw) == 'table', true);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures > 0 then
