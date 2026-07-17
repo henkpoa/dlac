@@ -61,8 +61,9 @@ sf.saveUiFlags = function()
     _flagsLoaded = true;                                    -- command is now authoritative
     pcall(function()
         local ui = D.ui;
-        -- buildmax is deliberately NOT saved anymore: "Build as lv.75" defaults ON and
-        -- resets to on each reload (2026-07-17). Legacy uiflags keys are ignored on load.
+        -- "Build as lv.75": default ON; an UNTICK is remembered across reloads
+        -- (Henrik's 2026-07-17 morning revision of the session-only ruling).
+        local bm = optim ~= nil and (optim.buildAtMaxLevel == true) or false;
         local tpx, tpy = 0, 0;
         if type(ui._tpPos) == 'table' then
             tpx, tpy = tonumber(ui._tpPos[1]) or 0, tonumber(ui._tpPos[2]) or 0;
@@ -71,8 +72,8 @@ sf.saveUiFlags = function()
         if type(ui._gfPos) == 'table' then
             gfx, gfy = tonumber(ui._gfPos[1]) or 0, tonumber(ui._gfPos[2]) or 0;
         end
-        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, viewids = %s, tpfloat = %s, tpx = %d, tpy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f }\n',
-            tostring(sf.flags.debug), tostring(sf.flags.autosync), tostring(sf.flags.viewids),
+        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, viewids = %s, buildmax = %s, tpfloat = %s, tpx = %d, tpy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f }\n',
+            tostring(sf.flags.debug), tostring(sf.flags.autosync), tostring(sf.flags.viewids), tostring(bm),
             tostring(ui._tpFloat == true), tpx, tpy,
             tostring(ui._gearFloat == true), gfx, gfy,
             tonumber(ui._gfScale) or 1.0));
@@ -101,8 +102,9 @@ sf.loadUiFlags = function()
             if type(t.debug)    == 'boolean' then sf.flags.debug    = t.debug;    end
             if type(t.autosync) == 'boolean' then sf.flags.autosync = t.autosync; end
             if type(t.viewids)  == 'boolean' then sf.flags.viewids  = t.viewids;  end
-            -- t.buildmax (legacy key) is ignored: "Build as lv.75" is on by default and
-            -- deliberately session-only since 2026-07-17.
+            -- "Build as lv.75": absent key = the ON default; a saved false is an
+            -- explicit untick and is honored (remembered across reloads).
+            if type(t.buildmax) == 'boolean' and optim ~= nil then optim.buildAtMaxLevel = t.buildmax; end
             if type(t.tpfloat)  == 'boolean' then ui._tpFloat = t.tpfloat; end
             if type(t.tpx) == 'number' and type(t.tpy) == 'number' and (t.tpx ~= 0 or t.tpy ~= 0) then
                 ui._tpPos = { t.tpx, t.tpy };

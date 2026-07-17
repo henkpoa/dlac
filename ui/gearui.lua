@@ -2997,7 +2997,7 @@ local function renderSetsTab(job, level)
         ui.buildMax[1] = (optim.buildAtMaxLevel == true);
         imgui.Checkbox('Build as lv.75 (ignore level cap)', ui.buildMax);
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('Ignore the item level cap when building sets OR using + Add -- pick gear as if you\nwere level 75, so you can assemble over-level sets. Your JOB restriction still applies.\nOn by default; unchecking lasts until the next reload.');
+            imgui.SetTooltip('Ignore the item level cap when building sets OR using + Add -- pick gear as if you\nwere level 75, so you can assemble over-level sets. Your JOB restriction still applies.\nOn by default; unticking is remembered across reloads.');
         end
         if (ui.buildMax[1] == true) ~= (optim.buildAtMaxLevel == true) then
             optim.buildAtMaxLevel = (ui.buildMax[1] == true);

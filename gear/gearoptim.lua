@@ -356,9 +356,9 @@ end
 -- character as level MAX_LEVEL for the item-Level ELIGIBILITY cap ONLY, so you can
 -- preview the best set you'll grow into. The JOB restriction is unchanged (jobAllowed
 -- still filters on your real main job), so gear your job can't wear stays excluded.
--- ON by default (maintainer ruling 2026-07-17: building sets should always ignore the
--- level cap unless deliberately narrowed). Unchecking lasts for the session only --
--- the flag is NOT persisted, so every reload starts back at on.
+-- ON by default (Henrik 2026-07-17: building sets should always ignore the level
+-- cap unless deliberately narrowed). An UNTICK is remembered across reloads via
+-- uiflags.lua (absent key = this ON default).
 local MAX_LEVEL = 75;
 M.MAX_LEVEL = MAX_LEVEL;
 M.buildAtMaxLevel = true;
