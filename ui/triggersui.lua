@@ -1894,9 +1894,15 @@ end
 -- re-implementation). 1s throttle; the buff matcher memoizes its buff set on
 -- the ctx, so buffs also read once per second. nil when unreadable
 -- (pre-login) -> no marker rather than a wrong one.
-local PSTATE_KEYS = { hpbelow = true, hpabove = true, mpbelow = true,
-                      mpabove = true, tpbelow = true, tpabove = true,
-                      buff = true, buffnot = true };
+local PSTATE_KEYS = {
+    playerhpbelow = true, playerhpabove = true,
+    playerhppercentbelow = true, playerhppercentabove = true,
+    playermpbelow = true, playermpabove = true,
+    playermppercentbelow = true, playermppercentabove = true,
+    tpbelow = true, tpabove = true, buff = true, buffnot = true,
+    -- v53 alias spellings (percent semantics) stay markable too
+    hpbelow = true, hpabove = true, mpbelow = true, mpabove = true,
+};
 local _psAt, _psCtx = -1, nil;
 local function pstateCtx()
     if os.clock() < _psAt then return _psCtx; end
@@ -1907,6 +1913,7 @@ local function pstateCtx()
         local hpp = party:GetMemberHPPercent(0);
         if hpp ~= nil then
             _psCtx = { player = { HPP = hpp, MPP = party:GetMemberMPPercent(0),
+                                  HP = party:GetMemberHP(0), MP = party:GetMemberMP(0),
                                   TP = party:GetMemberTP(0) } };
         end
     end);
@@ -1947,7 +1954,7 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
     for _, e in ipairs(r.whenAny or {}) do
         for k, v in pairs(e) do
             local lk = string.lower(tostring(k));
-            orLines[#orLines + 1] = { key = lk,
+            orLines[#orLines + 1] = { key = lk, val = v,
                 text = '| ' .. trigPrettyKey(lk) .. ((v == true) and '' or (' = ' .. tostring(v))) };
         end
     end
@@ -2012,6 +2019,19 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
     end
     for _, ln in ipairs(orLines) do
         imgui.TextColored(COND_COLORS[ln.key] or COL_USABLE, esc(ln.text));
+        -- The | leg gets the same live marker as the & leg: each OR condition
+        -- is a single engine-matcher call, so it lights independently.
+        if PSTATE_KEYS[ln.key] ~= nil then
+            local holds = pstateHolds(ln.key, ln.val);
+            if holds ~= nil then
+                imgui.SameLine(0, 6);
+                imgui.TextColored(holds and COL_USABLE or COL_DIM,
+                    holds and '[on now]' or '[off now]');
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('Checked against your CURRENT vitals/buffs (refreshes every second)\nwith the engine\'s own matcher. The engine re-evaluates at every dispatch.');
+                end
+            end
+        end
     end
     imgui.EndGroup();
 
