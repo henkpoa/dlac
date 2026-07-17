@@ -33,6 +33,35 @@ wui.configure = function(deps)
     if type(deps) == 'table' then D = deps; end
 end
 
+-- Cascading submenus for the copy-from menu: probe the binding, never assume
+-- (hard rule 2; floatgear field-proved BeginMenu in this install; the
+-- drill-down fallback uses only proven APIs).
+local hasMenu = (imgui ~= nil)
+    and (type(imgui.BeginMenu) == 'function') and (type(imgui.EndMenu) == 'function');
+
+local function textW(s)
+    local ok, w = pcall(imgui.CalcTextSize, s);
+    if ok and type(w) == 'number' then return w; end
+    return #tostring(s) * 7;
+end
+
+-- The (?) tooltip body for one stored source: its assigned weights, sorted.
+local function weightsTip(kind, key)
+    local t = nil;
+    pcall(function() t = optim.peekWeights(kind, key); end);
+    if type(t) ~= 'table' or next(t) == nil then return '(no weights set)'; end
+    local keys = {};
+    for k in pairs(t) do keys[#keys + 1] = k; end
+    table.sort(keys);
+    local lines = {};
+    for _, k in ipairs(keys) do
+        local w = t[k];
+        lines[#lines + 1] = string.format('%s  %s%s', k, tostring(w.perUnit),
+            (type(w.cap) == 'number') and ('  (cap ' .. tostring(w.cap) .. ')') or '');
+    end
+    return table.concat(lines, '\n');
+end
+
 -- Flat, de-duplicated stat list for the weights "add" searchable dropdown (kept in group
 -- order). Typing still accepts any custom name; this is just the suggestion set.
 local _choices = nil;
@@ -123,45 +152,223 @@ wui.editor = function()
             imgui.SetTooltip('Every set remembers its own stat weights. Selecting a set for the FIRST\ntime starts it from the shared table; edits after that stick to that set\nonly, and come back when you re-select it.');
         end
     end);
-    -- Copy another set's tuning (weights + build-slot marks) into THIS one --
-    -- with everything per-set now, seeding a new set from a proven one is the
-    -- common move. Button + filter popup (the setPickCombo shape).
+    -- Copy another tuning (weights + build-slot marks) into THIS one -- a
+    -- CASCADING menu (Henrik: the floatgear pattern, not one flat bloaty
+    -- list): This set (revert) / Saved Sets > / (shared) / then one submenu
+    -- per job. Every source row carries a (?) in its own reserved column
+    -- whose hover lists the assigned weights. Typing in the search box
+    -- overrides the cascade with one flat filtered list.
     if type(optim.copyWeightsFrom) == 'function' and type(optim.perSetKeys) == 'function' then
         imgui.SameLine(0, 10);
         if imgui.SmallButton('copy from...##wcopy') then
             wui._copyQ = { '' };
+            wui._copyDrill = nil;
             imgui.OpenPopup('##wcopy_pop');
         end
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('Replace this table\'s weights AND build-slot marks with a copy of\nanother set\'s (or the shared table). The source is not touched.');
+            imgui.SetTooltip('Replace this table\'s weights AND build-slot marks with a copy:\nThis set (revert) / Saved Sets / any job\'s per-set weights.\nThe source is never touched.');
         end
+        -- save as...: name the CURRENT tuning; it lands under Saved Sets.
+        if type(optim.saveNamedWeights) == 'function' then
+            imgui.SameLine(0, 6);
+            if imgui.SmallButton('save as...##wsaveas') then
+                wui._saveName = { '' };
+                imgui.OpenPopup('##wsaveas_pop');
+            end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Found a tuning that works? Save the current weights + build-slot\nmarks under a proper name -- it lands in copy from... > Saved Sets,\nreachable from every job and set. Same name = update in place.');
+            end
+            if imgui.BeginPopup('##wsaveas_pop') then
+                if imgui.IsWindowAppearing ~= nil and imgui.IsWindowAppearing()
+                   and imgui.SetKeyboardFocusHere ~= nil then imgui.SetKeyboardFocusHere(0); end
+                wui._saveName = wui._saveName or { '' };
+                imgui.PushItemWidth(180);
+                imgui.InputText('##wsavename', wui._saveName, 48);
+                imgui.PopItemWidth();
+                imgui.SameLine(0, 6);
+                if imgui.Button('Save##wsavego', { 50, 0 }) then
+                    local oks = false;
+                    pcall(function() oks = optim.saveNamedWeights(wui._saveName[1]); end);
+                    if oks then
+                        pcall(optim.saveWeights);
+                        imgui.CloseCurrentPopup();
+                    end
+                end
+                imgui.EndPopup();
+            end
+        end
+
+        -- Bound height (floatgear's rule: constrain the popup, never a child
+        -- in a menu chain); safe to call unconditionally in this binding.
+        imgui.SetNextWindowSizeConstraints({ 250, 0 }, { 380, 340 });
         if imgui.BeginPopup('##wcopy_pop') then
+            local function applied(ok)
+                if ok then
+                    ui._wbuf = {};
+                    pcall(optim.saveWeights);
+                    D.invalidateCandidates();
+                end
+                imgui.CloseCurrentPopup();
+            end
+            -- One source row: fixed-width selectable + the (?) box in its own
+            -- reserved column, straight under the others (static position).
+            local function srcRow(id, label, colQ, kind, key, doCopy)
+                if imgui.Selectable(label .. '##wc_' .. id, false, 0, { colQ - 6, 0 }) then
+                    local ok = false;
+                    pcall(function() ok = doCopy(); end);
+                    applied(ok);
+                end
+                imgui.SameLine(colQ);
+                imgui.TextColored(COL.DIM, '(?)');
+                if imgui.IsItemHovered() then imgui.SetTooltip(weightsTip(kind, key)); end
+            end
+            local function colQof(labels)
+                local w = 110;
+                for _, l in ipairs(labels) do
+                    local lw = textW(l) + 18;
+                    if lw > w then w = lw; end
+                end
+                return w;
+            end
+            local named, keys = {}, {};
+            pcall(function() named = optim.namedKeys() or {}; end);
+            pcall(function() keys = optim.perSetKeys() or {}; end);
+
+            if imgui.IsWindowAppearing ~= nil and imgui.IsWindowAppearing()
+               and imgui.SetKeyboardFocusHere ~= nil then imgui.SetKeyboardFocusHere(0); end
             wui._copyQ = wui._copyQ or { '' };
-            imgui.PushItemWidth(190);
+            imgui.PushItemWidth(200);
             imgui.InputText('##wcopy_q', wui._copyQ, 48);
             imgui.PopItemWidth();
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Type to search every source flat (saved profiles + JOB|Set).');
+            end
             local q = string.lower(wui._copyQ[1] or '');
-            local function row(label, src)
-                if q ~= '' and string.find(string.lower(label), q, 1, true) == nil then return; end
-                if imgui.Selectable(label .. '##wcopy_o_' .. label, false) then
-                    local okc = false;
-                    pcall(function() okc = optim.copyWeightsFrom(src); end);
-                    if okc then
-                        ui._wbuf = {};
-                        pcall(optim.saveWeights);
-                        D.invalidateCandidates();
+
+            if q ~= '' then
+                -- Search overrides the cascade: one flat filtered list.
+                local labels = { '(shared weights)' };
+                for _, n in ipairs(named) do labels[#labels + 1] = 'Saved: ' .. n; end
+                for _, k in ipairs(keys) do labels[#labels + 1] = k; end
+                local colQ = colQof(labels);
+                local shown = 0;
+                for _, n in ipairs(named) do
+                    if string.find(string.lower(n), q, 1, true) ~= nil then
+                        shown = shown + 1;
+                        srcRow('n_' .. n, 'Saved: ' .. n, colQ, 'named', n,
+                            function() return optim.copyWeightsFromNamed(n); end);
                     end
-                    imgui.CloseCurrentPopup();
+                end
+                if boundKey ~= nil and string.find('(shared weights)', q, 1, true) ~= nil then
+                    shown = shown + 1;
+                    srcRow('sh', '(shared weights)', colQ, 'shared', nil,
+                        function() return optim.copyWeightsFrom(nil); end);
+                end
+                for _, k in ipairs(keys) do
+                    if k ~= boundKey and string.find(string.lower(k), q, 1, true) ~= nil then
+                        shown = shown + 1;
+                        srcRow('k_' .. k, k, colQ, 'set', k,
+                            function() return optim.copyWeightsFrom(k); end);
+                    end
+                end
+                if shown == 0 then imgui.TextColored(COL.DIM, '(no match)'); end
+            else
+                -- 1. This set (revert) -- ABSOLUTE TOP, no cascade, no (?).
+                local canRevert = false;
+                pcall(function() canRevert = optim.copyUndoAvailable(); end);
+                if canRevert then
+                    if imgui.Selectable('This set  (revert to before copying)##wcrevert') then
+                        local ok = false;
+                        pcall(function() ok = optim.revertCopiedWeights(); end);
+                        applied(ok);
+                    end
+                    if imgui.IsItemHovered() then
+                        imgui.SetTooltip('Restore this table to how it was BEFORE its first copy\n(the snapshot lives until the addon reloads).');
+                    end
+                else
+                    imgui.TextColored(COL.DIM, 'This set  (nothing copied yet)');
+                end
+                imgui.Separator();
+
+                -- 2. Saved Sets -> cascade of named profiles.
+                local savedColQ = colQof(named);
+                local function savedRows()
+                    if #named == 0 then
+                        imgui.TextColored(COL.DIM, '(none yet -- "save as..." beside copy from)');
+                        return;
+                    end
+                    for _, n in ipairs(named) do
+                        srcRow('n_' .. n, n, savedColQ, 'named', n,
+                            function() return optim.copyWeightsFromNamed(n); end);
+                    end
+                end
+                -- 3. One submenu per job that has per-set weights stored.
+                local jobs, jobSets = {}, {};
+                for _, k in ipairs(keys) do
+                    local j = string.match(k, '^([^|]+)|') or '?';
+                    if jobSets[j] == nil then jobSets[j] = {}; jobs[#jobs + 1] = j; end
+                    jobSets[j][#jobSets[j] + 1] = k;
+                end
+                local function jobRows(j)
+                    local colQ = colQof(jobSets[j]);
+                    for _, k in ipairs(jobSets[j]) do
+                        if k ~= boundKey then
+                            srcRow('k_' .. k, k, colQ, 'set', k,
+                                function() return optim.copyWeightsFrom(k); end);
+                        else
+                            imgui.TextColored(COL.DIM, k .. '  (this set)');
+                        end
+                    end
+                end
+
+                if hasMenu then
+                    if imgui.BeginMenu('Saved Sets##wcsaved') then
+                        savedRows();
+                        imgui.EndMenu();
+                    end
+                    if boundKey ~= nil then
+                        srcRow('sh', '(shared weights)', colQof({ '(shared weights)' }), 'shared', nil,
+                            function() return optim.copyWeightsFrom(nil); end);
+                    end
+                    imgui.Separator();
+                    if #jobs == 0 then
+                        imgui.TextColored(COL.DIM, '(no per-set weights stored yet)');
+                    end
+                    for _, j in ipairs(jobs) do
+                        if imgui.BeginMenu(j .. '##wcjob' .. j) then
+                            jobRows(j);
+                            imgui.EndMenu();
+                        end
+                    end
+                else
+                    -- Drill-down fallback (floatgear's shape: proven APIs only).
+                    if wui._copyDrill == 'saved' then
+                        if imgui.Selectable('< back##wcback') then
+                            wui._copyDrill = nil;
+                        else
+                            imgui.Separator();
+                            savedRows();
+                        end
+                    elseif type(wui._copyDrill) == 'string' and jobSets[wui._copyDrill] ~= nil then
+                        if imgui.Selectable('< back##wcback') then
+                            wui._copyDrill = nil;
+                        else
+                            imgui.Separator();
+                            jobRows(wui._copyDrill);
+                        end
+                    else
+                        if imgui.Selectable('Saved Sets  >##wcsaved') then wui._copyDrill = 'saved'; end
+                        if boundKey ~= nil then
+                            srcRow('sh', '(shared weights)', colQof({ '(shared weights)' }), 'shared', nil,
+                                function() return optim.copyWeightsFrom(nil); end);
+                        end
+                        imgui.Separator();
+                        for _, j in ipairs(jobs) do
+                            if imgui.Selectable(j .. '  >##wcjob' .. j) then wui._copyDrill = j; end
+                        end
+                    end
                 end
             end
-            if boundKey ~= nil then row('(shared weights)', nil); end
-            local keys = {};
-            pcall(function() keys = optim.perSetKeys() or {}; end);
-            local shown = (boundKey ~= nil) and 1 or 0;
-            for _, k in ipairs(keys) do
-                if k ~= boundKey then row(k, k); shown = shown + 1; end
-            end
-            if shown == 0 then imgui.TextColored(COL.DIM, '(no other stored weights yet)'); end
             imgui.EndPopup();
         end
     end
