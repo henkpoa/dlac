@@ -4,6 +4,9 @@
     Timed enchantment commands -- equip, wait out the equip delay, /item:
         /dl p              lock Ring2, equip the Provenance Ring, use it (panic escape).
         /dl w              same with the Warp Ring (shorter delay).
+        /dl iw             use an Instant Warp scroll from Inventory -- a USABLE
+                           item, not an enchantment: no equip, no lock, no wait.
+        /dl c              lock Neck, equip the Chocobo Whistle, call the chocobo.
         /dl t <where>      lock Ear2, equip the matching teleport earring, use it.
                            <where> matches a destination or alias (norg, jeuno,
                            sandy, bastok...); an ambiguous query lists the options,
@@ -12,7 +15,7 @@
                            (empress, emperor, resolution, chariot, kupofried,
                            allied, caliber, echad). Same countdown machinery; the
                            GUI menu lists only the ones you own.
-        /dl p|w|t|xp off   cancel the pending use and release the slot.
+        /dl p|w|c|t|xp off cancel the pending use and release the slot.
 
     Readiness is read from the GAME, not guessed: an enchanted item's Extra data
     carries its last-use timestamp (offset 5) and -- for Flags == 5 equipment --
@@ -35,9 +38,15 @@ local _stok, struct = pcall(require, 'struct');
 
 local M = {};
 
-local RINGS = {
-    p = { name = 'Provenance Ring', slot = 'ring2', wait = 20 },   -- 15s equip delay + margin
-    w = { name = 'Warp Ring',       slot = 'ring2', wait = 12 },   --  8s equip delay + margin
+-- One-word shortcuts: a single item each, no query to resolve.
+-- The Chocobo Whistle's equip delay is NOT field-measured yet -- 15 is a guess,
+-- and it only ever costs anything on the blind path (clock unreadable); the
+-- game-clock poll below fires at the true moment as it does for the rest.
+local ITEMS = {
+    p = { name = 'Provenance Ring',  slot = 'ring2', wait = 20 },  -- 15s equip delay + margin
+    w = { name = 'Warp Ring',        slot = 'ring2', wait = 12 },  --  8s equip delay + margin
+    c = { name = 'Chocobo Whistle',  slot = 'neck',  wait = 15,    -- delay unknown; clock rules
+          verb = 'calling your chocobo' },
 };
 
 -- Teleport earrings (CatsEyeXI): 30s equip delay + margin, all worn in Ear2.
@@ -72,7 +81,21 @@ local EXPRINGS = {
     { name = 'Echad Ring',       dest = 'Echad',      bonus = '+150%', aliases = { 'echad' } },
 };
 
-local SLOT_ID = { ring2 = 0x0E, ear2 = 0x0C };   -- native equip-slot indexes
+local SLOT_ID = { ring2 = 0x0E, ear2 = 0x0C, neck = 0x09 };   -- native equip-slot indexes
+
+-- Instant Warp scroll (item 4181, server `instant_warp`): a USABLE item, not an
+-- enchantment -- no equip, no slot lock, no delay. /item works from Inventory
+-- ONLY, which the menu's avail flag already expresses (scrolls can't sit in
+-- wardrobes, so avail=true is exactly "in Inventory"). The canonical name comes
+-- from the client resource so the bag scan and the /item command can never
+-- drift from what the game calls it; the literal is only the headless fallback.
+local SCROLL_ID = 4181;
+local SCROLL_NAME = 'Instant Warp';
+pcall(function()
+    local r = AshitaCore:GetResourceManager():GetItemById(SCROLL_ID);
+    local nm = (r ~= nil and r.Name ~= nil) and r.Name[1] or nil;
+    if type(nm) == 'string' and #nm > 0 then SCROLL_NAME = nm; end
+end);
 
 -- Seconds to hold fire past the first measured remaining==0 (the SE quirk: the
 -- displayed 0 is still a live second). 1.2 still fired early at times in the
@@ -262,29 +285,39 @@ end);
 -- field-proven extdata layout as the timestamps); maxch = the cap from the
 -- item resource. charges is nil / maxch 0 when unowned or not charge-tracked.
 -- ---------------------------------------------------------------------------
+-- ownedOnly rows are dropped from the menu entirely when you don't have one,
+-- instead of showing as a dim "not owned" row. Use it for items a character
+-- CANNOT obtain -- the Provenance Ring is CW/UCW-only, so an ACE or Wings
+-- character listing it forever is noise, not information (Henrik). Items
+-- everyone can eventually own stay listed while unowned: that row is the
+-- reminder they exist.
 local MENU = {
+    -- Instant Warp scroll rides on TOP (Henrik, 2026-07-17): the instant, free
+    -- option should be the first thing you see when you have one. Not ownedOnly
+    -- (anyone can stock scrolls -- the unowned row is the reminder they exist).
+    { name = SCROLL_NAME,       label = 'Instant Warp', cmd = '/dl iw' },
     { name = 'Warp Ring',       label = 'Warp',        cmd = '/dl w' },
-    { name = 'Provenance Ring', label = 'Provenance',  cmd = '/dl p' },
+    { name = 'Provenance Ring', label = 'Provenance',  cmd = '/dl p', ownedOnly = true },
+    { name = 'Chocobo Whistle', label = 'Chocobo',     cmd = '/dl c' },
 };
 for _, t in ipairs(TELEPORTS) do
     MENU[#MENU + 1] = { name = t.name, label = t.dest, cmd = '/dl t ' .. t.aliases[1] };
 end
 -- Exp rings ride the same menu, marked xp: the GUI draws them in their own
--- section under the teleports, and menu() drops the UNOWNED ones entirely
--- (Henrik: you can't have them all -- listing eight "not owned" rows is noise).
--- label = the short name only (Henrik: no percentages in the first column;
--- the bonus still shows in the /dl xp chat line).
+-- section under the teleports. All ownedOnly (Henrik: you can't have them all --
+-- listing eight "not owned" rows is noise). label = the short name only (Henrik:
+-- no percentages in the first column; the bonus still shows in the /dl xp line).
 for _, x in ipairs(EXPRINGS) do
     MENU[#MENU + 1] = { name = x.name, label = x.dest,
-                        cmd = '/dl xp ' .. x.aliases[1], xp = true };
+                        cmd = '/dl xp ' .. x.aliases[1], xp = true, ownedOnly = true };
 end
 local WANTED = {};
 for _, m in ipairs(MENU) do WANTED[string.lower(m.name)] = true; end
 
 -- The Teleports-menu name-set for OTHER modules: { lower(name) -> true } over
--- everything above (Warp/Provenance rings, teleport earrings, exp rings).
--- gearui's + Add picker hides these from set building by default -- utility
--- enchantments carry no combat stats and only bloat the Ear/Ring lists.
+-- everything above (Warp/Provenance rings, Chocobo Whistle, teleport earrings,
+-- exp rings). gearui's + Add picker hides these from set building by default --
+-- utility enchantments carry no combat stats and only bloat the slot lists.
 function M.menuNames() return WANTED; end
 
 -- Containers the game lets you EQUIP from (inventory + wardrobes); anything
@@ -342,7 +375,8 @@ function M.menu()
                         if cur == nil or (avail and not cur.avail)
                            or (avail == cur.avail and rem < cur.rem) then
                             found[key] = { id = item.Id, bag = bag, avail = avail, rem = rem,
-                                           charges = charges, maxch = maxch };
+                                           charges = charges, maxch = maxch,
+                                           count = item.Count or 0 };
                         end
                     end
                 end
@@ -352,7 +386,7 @@ function M.menu()
     local rows = {};
     for _, m in ipairs(MENU) do
         local f = found[string.lower(m.name)];
-        if f ~= nil or not m.xp then                   -- exp rings: owned only
+        if f ~= nil or not m.ownedOnly then            -- exp rings, Provenance: owned only
             rows[#rows + 1] = {
                 name = m.name, label = m.label, cmd = m.cmd, xp = m.xp,
                 id = f and f.id or nil,
@@ -362,6 +396,7 @@ function M.menu()
                 rem = f and f.rem or 0,
                 charges = f and f.charges or nil,
                 maxch = f and f.maxch or 0,
+                count = f and f.count or 0,    -- stack size (scrolls); 1 for equipment
             };
         end
     end
@@ -382,9 +417,38 @@ ashita.events.register('command', 'dlac-useitem', function(e)
     local args = {};
     for a in string.gmatch(string.sub(raw, s), '[^%s]+') do args[#args + 1] = a; end
     local sub = args[1];
-    if sub ~= 'p' and sub ~= 'w' and sub ~= 't' and sub ~= 'xp' then return; end
+    if ITEMS[sub] == nil and sub ~= 't' and sub ~= 'xp' and sub ~= 'iw' then return; end
     e.blocked = true;
     if args[2] == 'off' or args[2] == 'cancel' or args[2] == 'stop' then cancel(); return; end
+
+    if sub == 'iw' then
+        -- Usable scroll: nothing to equip, nothing to lock, nothing to wait out.
+        -- Verify it's in Inventory (the game can't /item from any other bag),
+        -- then use it on the spot.
+        local inInv, where = false, nil;
+        pcall(function()
+            local inv = AshitaCore:GetMemoryManager():GetInventory();
+            for bag = 0, 16 do
+                local max = inv:GetContainerCountMax(bag) or 0;
+                for i = 1, max do
+                    local item = inv:GetContainerItem(bag, i);
+                    if item ~= nil and item.Id == SCROLL_ID and (item.Count or 0) > 0 then
+                        if bag == 0 then inInv = true; return; end
+                        where = where or (BAG_NAMES[bag] or ('bag ' .. tostring(bag)));
+                    end
+                end
+            end
+        end);
+        if inInv then
+            queue('/item "' .. SCROLL_NAME .. '" <me>');
+            print('[dlac] using ' .. SCROLL_NAME .. ' -- warping home.');
+        elseif where ~= nil then
+            print('[dlac] your ' .. SCROLL_NAME .. ' is in ' .. where .. ' -- move it to Inventory to use it.');
+        else
+            print('[dlac] no ' .. SCROLL_NAME .. ' owned.');
+        end
+        return;
+    end
 
     if sub == 't' then
         local q = table.concat(args, ' ', 2);
@@ -424,7 +488,8 @@ ashita.events.register('command', 'dlac-useitem', function(e)
         return;
     end
 
-    start(RINGS[sub], 'using', '/dl ' .. sub .. ' off');
+    local it = ITEMS[sub];
+    start(it, it.verb or 'using', '/dl ' .. sub .. ' off');
 end);
 
 return M;

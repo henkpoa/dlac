@@ -1105,6 +1105,11 @@ local function renderTeleportsPopup()
             imgui.SameLine(340);   -- clear of the longest names (Federation/Republic Earring) + breathing room
             imgui.TextColored((r.charges > 0) and COL.DIM or COL.ERR,
                 string.format('%d/%d', r.charges, r.maxch));
+        elseif r.owned and (r.count or 0) > 1 then
+            -- stackables (Instant Warp scrolls): the stack size rides the same
+            -- column, so you know when you're down to your last one.
+            imgui.SameLine(340);
+            imgui.TextColored(COL.DIM, 'x' .. tostring(r.count));
         end
         imgui.SameLine(400);   -- state column, past the widest charges text (e.g. "30/30")
         if not r.owned then
@@ -1261,7 +1266,7 @@ local function renderHeaderButtons()
                   clicked = imgui.Button('Tele##hdrtp', { 26, 22 });   -- no texture: text fallback
               end
               if imgui.IsItemHovered() then
-                  imgui.SetTooltip('Teleports: Warp Ring / Provenance Ring / teleport earrings, plus your exp\nrings -- click one to equip it and use it the moment the game says ready\n(the /dl w, p, t, xp commands, clickable). Lit = ready, amber = recharging,\nred = stored, dim = not owned.');
+                  imgui.SetTooltip('Teleports: Instant Warp scrolls (used on the spot, no equip), Warp Ring /\nProvenance Ring / teleport earrings, plus your exp rings -- click one to\nequip it and use it the moment the game says ready (the /dl iw, w, p, t,\nxp commands, clickable). Lit = ready, amber = recharging, red = stored,\ndim = not owned.');
               end
               if clicked then ui._tpOpen = true; end
           end };
