@@ -3505,6 +3505,41 @@ end)();
     check('H35 break-proof at >= 5',        hbp, true);
     local lr = select(1, helmwatch.rating('Mining', 20));
     check('H36 level gating trims rating',  lr, 1);
+
+    -- Auto HELM (Henrik's split): the detection-armed temporary overlay.
+    -- Default off; a Point result while armed opens a hold; the engine wears
+    -- the gear only while the hold runs (idle switch stays independent).
+    check('H37 auto default off',           helmwatch.isAutoHelm(), false);
+    helmwatch.onEventNum(evt, function(i) return 'Logging Point'; end);
+    check('H38 unarmed swing -> no hold',   helmwatch.autoActive(), false);
+    helmwatch.setAutoHelm(true);
+    check('H39 auto arms',                  helmwatch.isAutoHelm(), true);
+    helmwatch.onEventNum(evt, function(i) return 'Logging Point'; end);
+    check('H40 armed swing opens the hold', helmwatch.autoActive(), true);
+    check('H41 armed swing sets category',  helmwatch.getGather(), 'Logging');
+    helmwatch.setAutoHelm(false);
+    check('H42 disarm ends the hold',       helmwatch.autoActive(), false);
+
+    -- Engine: helmStateActive is the single truth for both ways in.
+    local act = dispatchM._helmStateActive;
+    check('H43 idle switch active',    act({ gather = 'Mining', enabled = true }), true);
+    check('H44 auto + live hold',      act({ gather = 'Mining', enabled = false, auto = true, autoUntil = os.time() + 60 }), true);
+    check('H45 auto + expired hold',   act({ gather = 'Mining', enabled = false, auto = true, autoUntil = os.time() - 1 }), false);
+    check('H46 auto without hold',     act({ gather = 'Mining', enabled = false, auto = true }), false);
+    check('H47 hold without auto',     act({ gather = 'Mining', enabled = false, autoUntil = os.time() + 60 }), false);
+    check('H48 no category never active', act({ gather = '', enabled = true, auto = true, autoUntil = os.time() + 60 }), false);
+    dispatchM._autoOverride = { helm = {
+        body = { { name = 'Field Tunica', score = 1, level = 1, helm = 1, surv = 0 } },
+    } };
+    local aov = dispatchM._helmOverlayFor(
+        { gather = 'Mining', enabled = false, auto = true, autoUntil = os.time() + 60 },
+        { player = { MainJobSync = 75 } });
+    check('H49 hold resolves the overlay',  aov and aov.Body, 'Field Tunica');
+    local aoff = dispatchM._helmOverlayFor(
+        { gather = 'Mining', enabled = false, auto = true, autoUntil = os.time() - 1 },
+        { player = { MainJobSync = 75 } });
+    check('H50 expired hold -> no overlay', aoff, nil);
+    dispatchM._autoOverride = nil;
 end)();
 
 -- ---------------------------------------------------------------------------

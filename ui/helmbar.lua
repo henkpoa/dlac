@@ -50,10 +50,10 @@ local function gatherButton(g, selected, size)
 end
 
 -- The on/off pill is craftbar's (one implementation, two bars).
-local function onOffSwitch(on, id)
+local function onOffSwitch(on, id, tipOn, tipOff)
     local ok, cb = pcall(require, 'dlac\\ui\\craftbar');
     if ok and type(cb) == 'table' and type(cb.onOffSwitch) == 'function' then
-        return cb.onOffSwitch(on, id);
+        return cb.onOffSwitch(on, id, tipOn, tipOff);
     end
     if imgui.Button((on and 'ON' or 'OFF') .. '##hbonoff_' .. id, { 46, 22 }) then return true; end
     return false;
@@ -84,7 +84,10 @@ function M.render()
                 if gatherButton(g, sel == g, 30) then hw.selectGather(g); end
                 imgui.SameLine(0, 6);
             end
-            if onOffSwitch(on, 'helmbar') then hw.setEnabled(not on); end
+            if onOffSwitch(on, 'helmbar',
+                'HELM idle set is ON -- gathering gear stays on while idle. Click to turn off.',
+                'Set HELM Idle: wears your best gathering gear whenever idle, until turned off.\n(Auto HELM -- swing-detected auto-equip -- lives in the Automations panel or /dl helm auto.)')
+            then hw.setEnabled(not on); end
             imgui.Separator();
             -- Status line: points + rating + surveyor for the selected category.
             if sel == nil then
@@ -113,9 +116,15 @@ function M.render()
                     imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, string.format('Surveyor +%d', surv));
                 end
             end
-            -- Auto-detect breadcrumb: the trade watch names what you're
-            -- actually gathering; with the switch ON it already re-geared you.
-            if hw.lastDetect ~= nil and (os.clock() - (hw.lastDetect.at or 0)) < 120 then
+            -- Auto-detect breadcrumb + the Auto HELM hold state.
+            if hw.isAutoHelm() then
+                if hw.autoActive() then
+                    imgui.TextColored({ 0.45, 0.90, 0.45, 1 },
+                        string.format('AUTO: wearing %s gear', tostring(hw.getGather() or '?')));
+                else
+                    imgui.TextColored({ 0.55, 0.55, 0.55, 1 }, 'Auto HELM armed -- waiting for a swing');
+                end
+            elseif hw.lastDetect ~= nil and (os.clock() - (hw.lastDetect.at or 0)) < 120 then
                 imgui.TextColored({ 0.55, 0.55, 0.55, 1 },
                     string.format('Detected: %s', hw.lastDetect.gather));
             end

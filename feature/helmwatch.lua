@@ -101,7 +101,14 @@ M._zstr = zstr;   -- test seam
 -- ---------------------------------------------------------------------------
 M.barVisible = false;      -- floating HELM bar (helmbar.lua) shown?
 M.activeGather = nil;      -- 'Harvesting' | 'Excavation' | 'Logging' | 'Mining'
-M.enabled = false;         -- session-only; starts OFF
+M.enabled = false;         -- "Set HELM Idle": session-only; starts OFF
+M.autoHelm = false;        -- "Auto HELM": detection-armed temporary overlay;
+                           -- PERSISTED (Henrik: remember until turned off)
+M._autoUntil = 0;          -- os.time() the auto hold runs to; each swing's
+                           -- 0x034 result refreshes it (0 = not holding)
+M.AUTO_HOLD_S = 60;        -- hold window after the LAST swing -- long enough
+                           -- to walk between points, short enough that normal
+                           -- idle gear returns soon after you stop
 M._enabledAt = 0;          -- os.time() of the last enable (state-file `at`)
 M._rescanned = false;      -- manifest freshness ensured once this session?
 local _stateLoaded = false;
@@ -115,8 +122,9 @@ local function saveState()
         local p = statePath();
         if p == nil then return; end
         local f = io.open(p, 'wb'); if f == nil then return; end
-        f:write(string.format('return { gather = %q, enabled = %s, at = %d }\n',
-            tostring(M.activeGather or ''), tostring(M.enabled == true), M._enabledAt or 0));
+        f:write(string.format('return { gather = %q, enabled = %s, at = %d, auto = %s, autoUntil = %d }\n',
+            tostring(M.activeGather or ''), tostring(M.enabled == true), M._enabledAt or 0,
+            tostring(M.autoHelm == true), M._autoUntil or 0));
         f:close();
     end);
 end
@@ -133,17 +141,28 @@ function M.loadState()
             local ok, t = pcall(chunk);
             if ok and type(t) == 'table' then
                 if type(t.gather) == 'string' and VALID[t.gather] == true then M.activeGather = t.gather; end
-                -- `enabled` is NOT restored: the switch starts OFF each session
-                -- (no gathering gear glued on at login). The category DOES persist.
+                -- `enabled` (Set HELM Idle) is NOT restored: it starts OFF each
+                -- session (no gathering gear glued on at login). The category
+                -- AND the Auto HELM arming DO persist (Henrik: auto is
+                -- remembered until turned off -- it only dresses you while you
+                -- are actually swinging, so restoring it is harmless).
+                M.autoHelm = (t.auto == true);
             end
         end
     end);
     M.enabled = false;
-    saveState();                          -- sync the file to enabled=false for the engine
+    M._autoUntil = 0;                     -- holds never survive a login
+    saveState();                          -- sync the file for the engine
 end
 
 function M.getGather() M.loadState(); return M.activeGather; end
 function M.isEnabled() M.loadState(); return M.enabled == true; end
+function M.isAutoHelm() M.loadState(); return M.autoHelm == true; end
+-- Is the detection-armed hold currently dressing us?
+function M.autoActive()
+    M.loadState();
+    return M.autoHelm == true and os.time() < (M._autoUntil or 0);
+end
 
 -- Manifest freshness (craftwatch.ensureManifestFresh clone): the fmtver-7
 -- helm ladders must exist before the engine reads them.
@@ -180,6 +199,15 @@ function M.setEnabled(on)
                and type(cw.setEnabled) == 'function' then cw.setEnabled(false); end
         end);
     end
+    saveState();
+end
+
+-- "Auto HELM": arm/disarm the detection overlay. Persisted (unlike the idle
+-- switch); disarming also ends a running hold at once.
+function M.setAutoHelm(on)
+    M.loadState();
+    M.autoHelm = (on == true);
+    if M.autoHelm then ensureManifestFresh(); else M._autoUntil = 0; end
     saveState();
 end
 
@@ -505,10 +533,20 @@ function M.onEventNum(data, nameOf)
     local g = M.gatherFromNpcName(name);
     if g == nil then return; end
     M.lastDetect = { gather = g, npc = name, at = os.clock() };
-    -- Auto-switch: with the switch ON, the hat/category follows what you are
-    -- actually gathering (this swing's result is already rolled -- the swap
-    -- dresses you for the NEXT one, which is how a session works anyway).
-    if M.isEnabled() and M.activeGather ~= g then M.selectGather(g); end
+    -- Auto-switch: with either switch armed, the hat/category follows what
+    -- you are actually gathering (this swing's result is already rolled --
+    -- the swap dresses you for the NEXT one, which is how a session works).
+    local armed = M.isEnabled() or M.isAutoHelm();
+    if armed and M.activeGather ~= g then M.selectGather(g); end
+    -- Auto HELM: every Point result (re)arms the temporary hold -- the engine
+    -- wears the gear while the hold runs and your normal idle gear returns
+    -- AUTO_HOLD_S after the last swing. `at` bumps so a stale craft switch
+    -- loses the arbitration while you gather.
+    if M.isAutoHelm() then
+        M._autoUntil = os.time() + M.AUTO_HOLD_S;
+        M._enabledAt = os.time();
+        saveState();
+    end
 end
 
 -- ---------------------------------------------------------------------------
@@ -703,11 +741,20 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
                 say('capturing system chat for 8s -> helmventures_capture.txt (type !ventures now).');
                 return;
             end
+            if b == 'auto' then                        -- Auto HELM: detection-armed overlay
+                M.setAutoHelm(not M.isAutoHelm());
+                say('Auto HELM ' .. (M.isAutoHelm()
+                    and 'ON -- a gathering swing auto-equips that category\'s gear; normal idle gear returns after the last swing. Remembered across sessions.'
+                    or 'off.'));
+                return;
+            end
             -- bare /dl helm: status.
-            say(string.format('helm: category = %s, switch = %s.',
-                M.getGather() or '(none -- /dl helm mining etc)', M.isEnabled() and 'ON' or 'off'));
-            say('  pick a category + flip the switch on the HELM bar (/dl helm bar) -- the engine');
-            say('  wears your best gathering gear ON IDLE ONLY until you turn it off.');
+            say(string.format('helm: category = %s, idle set = %s, Auto HELM = %s%s.',
+                M.getGather() or '(none -- /dl helm mining etc)', M.isEnabled() and 'ON' or 'off',
+                M.isAutoHelm() and 'ON' or 'off',
+                M.autoActive() and ' (holding now)' or ''));
+            say('  Set HELM Idle wears the gear until turned off (starts off each session);');
+            say('  /dl helm auto arms detection: swings auto-equip, idle gear returns after.');
             if M.lastDetect ~= nil then
                 say(string.format('  last detected: %s (%s)', M.lastDetect.gather, M.lastDetect.npc or '?'));
             end

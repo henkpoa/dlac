@@ -77,8 +77,10 @@ end
 
 -- Pill on/off switch: green knob-right = active, red knob-left = inactive
 -- (Henrik). Draw-list pill; falls back to a colored button if the draw list
--- isn't available. Returns true when toggled this frame.
-function M.onOffSwitch(on, id)
+-- isn't available. Returns true when toggled this frame. tipOn/tipOff let
+-- other surfaces (the HELM panel/bar) reuse the pill without inheriting the
+-- craft tooltips.
+function M.onOffSwitch(on, id, tipOn, tipOff)
     local W, H = 46, 22;
     local toggled = false;
     local ok = pcall(function()
@@ -100,8 +102,8 @@ function M.onOffSwitch(on, id)
         if ImGuiCol_Button ~= nil then imgui.PopStyleColor(1); end
     end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip(on and 'Auto craft set is ON -- click to turn off.'
-                           or  'Auto craft set is OFF -- click to turn on (equips your selected craft).');
+        imgui.SetTooltip(on and (tipOn or 'Auto craft set is ON -- click to turn off.')
+                           or  (tipOff or 'Auto craft set is OFF -- click to turn on (equips your selected craft).'));
     end
     return toggled;
 end

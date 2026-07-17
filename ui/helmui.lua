@@ -216,15 +216,32 @@ function M.render(deps, availW)
     imgui.TextColored(COL_HEADER, 'Auto HELM Set');
     imgui.SameLine(0, 10);
     imgui.TextColored(COL_TEXT, 'pick a category (on the floating bar) -> wears your best gathering gear ON IDLE ONLY.');
-    -- Switch + bar toggle (the craft panel's header controls, panel-local).
+    -- The two switches (Henrik's split): "Set HELM Idle" = the manual pin,
+    -- session-only OFF at login; "Auto HELM" = detection-armed temporary
+    -- overlay, PERSISTED until turned off.
     local on = hwok and hw.isEnabled();
-    imgui.TextColored(COL_TEXT, 'Auto HELM set:');
+    imgui.TextColored(COL_TEXT, 'Set HELM Idle:');
     imgui.SameLine(0, 6);
     local cbok, craftbar = pcall(require, 'dlac\\ui\\craftbar');
-    if cbok and type(craftbar) == 'table' and type(craftbar.onOffSwitch) == 'function' then
-        if craftbar.onOffSwitch(on, 'helmpanel') and hwok then hw.setEnabled(not on); end
+    local pill = (cbok and type(craftbar) == 'table' and type(craftbar.onOffSwitch) == 'function')
+        and craftbar.onOffSwitch or nil;
+    local IDLE_ON  = 'HELM idle set is ON -- your gathering gear stays on while idle.\nStarts OFF each session; click to turn off.';
+    local IDLE_OFF = 'Wears your best gathering gear whenever you are idle, until turned off.\nStarts OFF each session.';
+    if pill ~= nil then
+        if pill(on, 'helmidle', IDLE_ON, IDLE_OFF) and hwok then hw.setEnabled(not on); end
     else
         if imgui.Button((on and 'ON' or 'OFF') .. '##helmpanelonoff', { 46, 22 }) and hwok then hw.setEnabled(not on); end
+    end
+    imgui.SameLine(0, 14);
+    local autoOn = hwok and hw.isAutoHelm();
+    imgui.TextColored(COL_TEXT, 'Auto HELM:');
+    imgui.SameLine(0, 6);
+    local AUTO_ON  = 'Auto HELM is ON (remembered across sessions): a gathering swing detects the\nPoint and auto-equips that category\'s gear; normal idle gear returns after\nthe last swing. Click to turn off.';
+    local AUTO_OFF = 'Detects the gathering Point when you swing and auto-equips your HELM gear\nfor that category; your normal idle gear returns ~60s after the last swing.\nRemembered across sessions.';
+    if pill ~= nil then
+        if pill(autoOn, 'helmauto', AUTO_ON, AUTO_OFF) and hwok then hw.setAutoHelm(not autoOn); end
+    else
+        if imgui.Button((autoOn and 'ON' or 'OFF') .. '##helmautoonoff', { 46, 22 }) and hwok then hw.setAutoHelm(not autoOn); end
     end
     imgui.SameLine(0, 10);
     local barOn = hwok and (hw.barVisible == true);
@@ -232,11 +249,15 @@ function M.render(deps, availW)
         hw.barVisible = not barOn;
     end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('The floating HELM bar: category glyphs, the switch, points and rating.\nAlso /dl helm bar.');
+        imgui.SetTooltip('The floating HELM bar: category glyphs, the switches, points and rating.\nAlso /dl helm bar.');
     end
     imgui.SameLine(0, 14);
     local activeG = hwok and hw.getGather() or nil;
     imgui.TextColored(COL_DIM, 'Active: ' .. tostring(activeG or '(none)'));
+    if hwok and hw.autoActive() then
+        imgui.SameLine(0, 8);
+        imgui.TextColored(GREEN_OWNED, '-- AUTO holding');
+    end
     imgui.Spacing();
 
     -- The four-column progression matrix.
