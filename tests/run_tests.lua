@@ -3585,6 +3585,24 @@ end)();
     helmwatch.setAutoHelm(false);
     world.target = 400; world.ents[400] = { name = 'Mining Point', distSq = 25 };
     check('H64 disarmed: never anchors',       helmwatch.proximityStep(probe), false);
+
+    -- Combat gate (v61): "Default" is NOT "idle" -- HandleDefault runs every
+    -- frame including combat, so the overlay itself must stand aside while
+    -- Engaged/Dead. 'Event' stays dressed (the swing animation is an event).
+    dispatchM._autoOverride = { helm = {
+        body = { { name = 'Field Tunica', score = 1, level = 1, helm = 1, surv = 0 } },
+    } };
+    local hsOn = { gather = 'Mining', enabled = true };
+    local function stCtx(st) return { player = { MainJobSync = 75, Status = st } }; end
+    check('H65 engaged -> overlay stands aside', dispatchM._helmOverlayFor(hsOn, stCtx('Engaged')), nil);
+    check('H66 dead -> stands aside', dispatchM._helmOverlayFor(hsOn, stCtx('Dead')), nil);
+    local hIdle = dispatchM._helmOverlayFor(hsOn, stCtx('Idle'));
+    check('H67 idle -> dressed',      hIdle and hIdle.Body, 'Field Tunica');
+    local hEvt = dispatchM._helmOverlayFor(hsOn, stCtx('Event'));
+    check('H68 event -> stays dressed (no per-swing churn)', hEvt and hEvt.Body, 'Field Tunica');
+    local hNoP = dispatchM._helmOverlayFor(hsOn, { player = nil });
+    check('H69 unreadable status -> dressed (idle assumption)', hNoP and hNoP.Body, 'Field Tunica');
+    dispatchM._autoOverride = nil;
 end)();
 
 -- ---------------------------------------------------------------------------

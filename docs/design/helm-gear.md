@@ -116,9 +116,14 @@ Henrik's SVGs — DONE), order Harvesting/Excavation/Logging/Mining. Per selecte
   category + ON writes `<char>\dlac\helmstate.lua` `{ gather = 'Mining', enabled = bool }`.
   `enabled` deliberately NOT restored across sessions (same rule as craftstate — no gear
   glued on at login).
-- Engine (dispatch v59): `ensureHelmState` + `helmOverlayFor`, **gated exactly like craft:
-  `event == 'Default'` only** — never Engaged/Precast/Midcast/anything. Applied after the
-  craft overlay, below pins.
+- Engine (dispatch v59): `ensureHelmState` + `helmOverlayFor`, gated to `event ==
+  'Default'` like craft — **but v61 field truth: "Default" is NOT "idle"** (HandleDefault
+  runs every frame, combat included), so the overlay ALSO stands aside while
+  `ctx.player.Status` is Engaged or Dead — aggro means FIGHT (Henrik: you HELM in
+  dangerous places). 'Event' stays dressed (the swing animation is an event — dropping
+  there would churn per swing). Applied after the craft overlay, below pins.
+  NOTE: the CRAFT overlay does NOT carry this status gate (crafting happens in safe
+  zones; unchanged behavior) — revisit only if Henrik asks.
 - **Mutual exclusivity**: enabling the HELM bar disables the craft bar and vice versa
   (written at the state files, not the engine — engine stays stateless).
 - **Overlay slots: armor + accessories only** (Head/Body/Hands/Legs/Feet/Neck/Waist).

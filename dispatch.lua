@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 60;   -- 60: Auto HELM (helmstate auto/autoUntil) -- the helm overlay is active when the manual idle switch is ON, or when auto is armed AND a detection hold is running (helmwatch re-arms autoUntil on every 0x034 Point result; expiry is checked live per dispatch, so normal idle gear returns ~60s after the last swing with no file write needed). Same Default-only gate, same slots, same arbitration.
+M.VERSION = 61;   -- 61: HELM overlay stands aside in combat -- field report: "Default" is NOT "idle" (HandleDefault runs every frame, engaged gear resolves inside it too), so the overlay was pinning over combat gear. helmOverlayFor now returns nil while ctx.player.Status is Engaged or Dead (the same Status string the trigger matchers read); 'Event' deliberately stays dressed -- the HELM animation itself reads as an event, and dropping there would churn every swing. Henrik: you HELM in dangerous places -- aggro means FIGHT.
+                  -- 60: Auto HELM (helmstate auto/autoUntil) -- the helm overlay is active when the manual idle switch is ON, or when auto is armed AND a detection hold is running (helmwatch re-arms autoUntil on every 0x034 Point result; expiry is checked live per dispatch, so normal idle gear returns ~60s after the last swing with no file write needed). Same Default-only gate, same slots, same arbitration.
                   -- 59: HELM overlay (docs/design/helm-gear.md) -- helmstate.lua {gather,enabled,at} read like craftstate; dlac:AutoHelm resolves the manifest's fmtver-7 helm ladders (armor+neck+waist ONLY -- never weapons: tools are inventory items and idle weapon swaps burn TP); overlay gated to Default exactly like craft (idle-only is the FEATURE here, Henrik's hard requirement). Craft-vs-helm arbitration: both switches on -> the newer `at` stamp wins whole (the watchers already exclude each other addon-side; this is the engine-native backstop -- no cross-module requires, no cycles).
                   -- 58: monitor stream is frame-paced -- fired lines buffer in _monQ and the tick's frame pass streams ONE '/dlacmonev' per frame. Two commands queued in the same frame cross the command bus in REVERSE order (field case: the monitor showed every cast's Precast ABOVE its Midcast -- the engine equipped in the right order all along, only the display lied). Ring, file mirror and monitor untouched.
                   -- 57: settle window 3s -> 1s (Henrik's ruling: 3 felt long). Semantics unchanged: the window is stability-since-LAST-change, every flip re-arms it, so staged transitions stay covered; 1s only outlasts the gap after the final flip. Raise M.SYNC_SETTLE_S first if a sync ever eats TP again.
@@ -1868,6 +1869,14 @@ M._helmStateActive = helmStateActive;   -- test seam
 -- tests can pass an explicit state instead of the on-disk file.
 local function helmOverlayFor(hs, ctx)
     if not helmStateActive(hs) then return nil; end
+    -- IDLE gear only (v61): "Default" is not "idle" -- HandleDefault runs
+    -- every frame, combat included, so the status has to gate here. Engaged
+    -- or Dead -> stand aside, combat gear wins. 'Event' stays dressed: the
+    -- HELM animation itself is an event, dropping there would churn per swing.
+    if type(ctx) == 'table' and type(ctx.player) == 'table' then
+        local st = tostring(ctx.player.Status or '');
+        if ci(st, 'Engaged') or ci(st, 'Dead') then return nil; end
+    end
     local equip = nil;
     -- ctx.player rides along so the ladder's level gate sees the REAL level
     -- (the craft overlay's inner ctx drops it and defaults to 75 -- harmless
