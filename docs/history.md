@@ -2221,3 +2221,21 @@ rating math (1023 checks).
 **Field tests pending (dlacprobe / live):** §7 of the design doc — the 0x1A4
 points dump, one `!ventures helm` capture, one Alternix menu, one swing per
 category to confirm 0x036 offsets.
+
+**Same-day field loop (Henrik testing live, five rounds):** first run confirmed the
+0x1A4 points stream (group `Ventures`, exact category labels) and pinned the
+`!ventures` reply format -> structured parser replaced keyword bucketing; button +
+Automations column widths fixed (themed font); status row gained HELM+/Surv+ totals.
+Swing test killed the outgoing-trade guess -- ONE captured 0x034 revealed the result
+event carries the Point's ActIndex @0x28 (plus item/broke in num[]) -> detection
+rebuilt on it, real bytes in the tests. Then the feature grew into its final shape:
+**Auto HELM** (v60) -- persisted detection-armed mode beside the session-only "Set
+HELM Idle" pill; hold tail 60->20->4s (Henrik's ruling); **proximity anchor** --
+target a Point within 6y = dressed BEFORE swing 1, anchor outlives the target (the
+game clears it on HELMing), rendered-check via RenderFlags0 bit 0x200 (the
+storage-move nomadNearestSq precedent Henrik remembered). Final lesson (v61):
+**"Default" is NOT "idle"** -- HandleDefault runs every frame, so the overlay was
+pinning over combat gear; it now stands aside while Engaged/Dead ('Event' stays
+dressed -- the swing animation would churn otherwise). Craft overlay deliberately
+not gated (safe-zone activity). 1065 + 123 checks green; all §7 field tests closed
+same-day.
