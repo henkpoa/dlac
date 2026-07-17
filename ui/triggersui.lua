@@ -1742,15 +1742,17 @@ local function renderAutomations(noHeader)
     -- HELM coverage lives in helmui (200-local cap: pcall-require, no upvalue).
     pcall(function()
         local helmui = require('dlac\\ui\\helmui');
-        rows[4].level = helmui.level(deps);
         rows[4].max = helmui.maxLevel or 4;
-        rows[4].txt = helmui.txt[rows[4].level];
+        rows[4].level, rows[4].txt = helmui.status(deps);   -- label + HELM+/Surv+ totals
     end);
     -- Column headers, same fixed offsets as the rows.
+    -- Offsets widened 2026-07-17 (field report: the HELM row's Kind ran into
+    -- Status): Name 190->215, Kind 470->580 (~30% more -- the themed font
+    -- runs ~9.5px/char and "gathering-gear helper (idle only)" is 33 chars).
     imgui.Dummy({ 0, 0 });
     imgui.SameLine(8);   imgui.TextColored(COL_HEADER, 'Name');
-    imgui.SameLine(190); imgui.TextColored(COL_HEADER, 'Kind');
-    imgui.SameLine(470); imgui.TextColored(COL_HEADER, 'Status');
+    imgui.SameLine(215); imgui.TextColored(COL_HEADER, 'Kind');
+    imgui.SameLine(580); imgui.TextColored(COL_HEADER, 'Status');
     imgui.Separator();
     for _, r in ipairs(rows) do
         local col = levelColor(r.level, r.max);
@@ -1760,8 +1762,8 @@ local function renderAutomations(noHeader)
             imgui.SetTooltip('Click for details. Slot automations go INSIDE a set (add the dlac: entry\nto the slot via + Add); set automations apply everywhere via their mode.');
         end
         imgui.SameLine(8);  imgui.TextColored(col, r.name);
-        imgui.SameLine(190); imgui.TextColored(COL_DIM, r.kind);
-        imgui.SameLine(470); imgui.TextColored(col, r.txt or '');
+        imgui.SameLine(215); imgui.TextColored(COL_DIM, r.kind);
+        imgui.SameLine(580); imgui.TextColored(col, r.txt or '');
         imgui.PopID();
     end
     -- No rescan button, no status line: the scan runs itself (login, job

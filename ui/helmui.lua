@@ -143,26 +143,66 @@ local BETTER_NOTE = 'Green via progression: you own a better piece for this slot
 M.txt = { [0] = 'nothing applicable', 'field gear started', 'break-proof (+5)',
           'Surveyor online', 'FULL KIT -- awesome' };
 
-function M.level(deps)
+-- level + the wearable-at-once totals (Henrik: show HELM+ / Surveyor+ next to
+-- the status). Per slot the BEST owned tier counts (catalog stats); hats
+-- contribute the best single Surveyor -- only one head fits.
+local function coverage(deps)
     local rating, anyPiece, anySurv = 0, false, false;
     local allTop = true;
+    local helmTot, survTot = 0, 0;
+    local function statsOf(name)
+        local rec = (deps ~= nil and deps.lookupByName ~= nil) and deps.lookupByName(name) or nil;
+        local st = (rec ~= nil and type(rec.Stats) == 'table') and rec.Stats or {};
+        return tonumber(st.HELM) or 0, tonumber(st.Surveyor) or 0;
+    end
     for _, row in ipairs(ROWS) do
         local f, p, p1 = owns(deps, row.field), owns(deps, row.plain), owns(deps, row.p1);
         if f or p or p1 then rating = rating + 1; anyPiece = true; end
         if p or p1 then anySurv = true; end
         if not p1 then allTop = false; end
+        local best = (p1 and row.p1) or (p and row.plain) or (f and row.field) or nil;
+        if best ~= nil then
+            local h, s = statsOf(best);
+            helmTot = helmTot + h; survTot = survTot + s;
+        end
     end
     for _, nm in ipairs(FIELD_EXTRA) do
-        if owns(deps, nm) then rating = rating + 1; anyPiece = true; end
+        if owns(deps, nm) then
+            rating = rating + 1; anyPiece = true;
+            local h, s = statsOf(nm);
+            helmTot = helmTot + h; survTot = survTot + s;
+        end
     end
+    local hatSurv = 0;
     for _, h in ipairs(HATS) do
-        if owns(deps, h.name) then anySurv = true; anyPiece = true; else allTop = false; end
+        if owns(deps, h.name) then
+            anySurv = true; anyPiece = true;
+            local _, s = statsOf(h.name);
+            if s > hatSurv then hatSurv = s; end
+        else
+            allTop = false;
+        end
     end
-    if allTop then return 4; end
-    if rating >= 5 and anySurv then return 3; end
-    if rating >= 5 then return 2; end
-    if anyPiece then return 1; end
-    return 0;
+    survTot = survTot + hatSurv;
+    local level = 0;
+    if allTop then level = 4;
+    elseif rating >= 5 and anySurv then level = 3;
+    elseif rating >= 5 then level = 2;
+    elseif anyPiece then level = 1; end
+    return level, helmTot, survTot;
+end
+
+function M.level(deps) return (select(1, coverage(deps))); end
+
+-- level + display text for the Automations list row: the coverage label with
+-- the wearable totals appended once anything is owned.
+function M.status(deps)
+    local level, helmTot, survTot = coverage(deps);
+    local txt = M.txt[level] or '';
+    if level > 0 and (helmTot > 0 or survTot > 0) then
+        txt = string.format('%s (HELM+%d, Surv+%d)', txt, helmTot, survTot);
+    end
+    return level, txt;
 end
 M.maxLevel = 4;
 
