@@ -302,11 +302,23 @@ local function hasLook(rec)
 end
 M._hasLook = hasLook;   -- test seam
 
+-- Sub lists the dual-wield offhands too (Henrik, 07-17): one-handers live
+-- under Main in BOTH sources (gear.lua nests them by skill category; the
+-- catalog files them Slot="Main"), so a plain slot match could never offer one
+-- and a dual-wield lockstyle was impossible to compose. Same regulation as the
+-- set builder's Sub pool (gearui subCandidatePool + the A-series HARD RULE):
+-- every shield, grip AND 1H weapon is offered, with no Dual Wield or pairing
+-- gate -- the player composes, the server decides what renders (and the engine
+-- apply already warns per piece). 2H/H2H stay out: OneHanded ~= true, never
+-- Sub-capable anywhere in dlac.
+local function is1H(rec) return rec.OneHanded == true; end
+
 local function listFor(slot, q, all)
     local out = {};
-    local function take(t)
+    local function take(t, pred)
         for _, rec in pairs(t) do
             if type(rec) == 'table' and type(rec.Name) == 'string'
+               and (pred == nil or pred(rec))
                and (q == '' or string.find(string.lower(rec.Name), q, 1, true) ~= nil) then
                 out[#out + 1] = rec;
             end
@@ -315,7 +327,8 @@ local function listFor(slot, q, all)
     if all and W.allEquip ~= nil then
         pcall(function()
             for _, rec in ipairs(W.allEquip()) do   -- flat, and already carries .Slot
-                if rec.Slot == slot and type(rec.Name) == 'string' and hasLook(rec)
+                if (rec.Slot == slot or (slot == 'Sub' and rec.Slot == 'Main' and is1H(rec)))
+                   and type(rec.Name) == 'string' and hasLook(rec)
                    and (q == '' or string.find(string.lower(rec.Name), q, 1, true) ~= nil) then
                     out[#out + 1] = rec;
                 end
@@ -324,11 +337,19 @@ local function listFor(slot, q, all)
     else
         pcall(function()
             local t = _gok and gear[slot] or nil;
-            if type(t) ~= 'table' then return; end
-            if slot == 'Main' or slot == 'Range' then
-                for _, byCat in pairs(t) do if type(byCat) == 'table' then take(byCat); end end
-            else
-                take(t);
+            if type(t) == 'table' then
+                if slot == 'Main' or slot == 'Range' then
+                    for _, byCat in pairs(t) do if type(byCat) == 'table' then take(byCat); end end
+                else
+                    take(t);
+                end
+            end
+            -- the dual-wield merge: gear.Sub above holds only shields/grips
+            if slot == 'Sub' then
+                local m = _gok and gear.Main or nil;
+                if type(m) == 'table' then
+                    for _, byCat in pairs(m) do if type(byCat) == 'table' then take(byCat, is1H); end end
+                end
             end
         end);
     end

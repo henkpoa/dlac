@@ -1756,7 +1756,11 @@ package.loaded['dlac\\gear'] = {
         Anyjob    = { Name = 'Anyjob Cap',    Level = 1,  Jobs = { 'All' } },
     },
     Main = {   -- Main/Range nest one level deeper, by skill category
-        Sword = { Offsword = { Name = 'Offjob Sword', Level = 75, Jobs = { 'DRK' } } },
+        Sword      = { Offsword = { Name = 'Offjob Sword', Level = 75, Jobs = { 'DRK' }, OneHanded = true } },
+        GreatSword = { Big      = { Name = 'Big Blade',    Level = 70, Jobs = { 'DRK' }, OneHanded = false } },
+    },
+    Sub = {
+        Targe = { Name = 'Test Targe', Level = 30, Jobs = { 'All' } },
     },
 };
 -- lockstyle captures gear as a load-time upvalue, so the fixture only has to be
@@ -1784,6 +1788,14 @@ if type(lockstyleM._listFor) == 'function' then
     -- the ONLY thing that narrows the list is the search box:
     check('AH8 search still narrows by name', #lockstyleM._listFor('Head', 'wrongjob'), 1);
     check('AH9 unknown slot -> empty, no error', #lockstyleM._listFor('Nope', ''), 0);
+    -- Sub lists dual-wield offhands (Henrik, 07-17): gear.Sub's shields/grips
+    -- PLUS the 1H records under Main -- the set builder's Sub-pool regulation,
+    -- no Dual Wield or pairing gate. 2H stays out (never Sub-capable).
+    local sub = offered('Sub');
+    check('AH10 native Sub item offered',                          sub['Test Targe'],   true);
+    check('AH11 DUAL WIELD: a 1H weapon under Main offered in Sub', sub['Offjob Sword'], true);
+    check('AH12 a 2H weapon is NOT offered in Sub',                sub['Big Blade'],    nil);
+    check('AH13 Main list itself is unchanged (no Sub bleed-back)', offered('Main')['Test Targe'], nil);
 end
 
 -- ---------------------------------------------------------------------------
@@ -2273,9 +2285,11 @@ end)();
                 { Name = 'Arhats Gi',  Id = 14000, Level = 60, Slot = 'Body', Model = 59 },  -- owned, other spelling
                 { Name = 'Plain Robe', Id = 14001, Level = 1,  Slot = 'Body', Model = 1  },  -- owned, same spelling
                 { Name = 'Royal Robe', Id = 14002, Level = 75, Slot = 'Body', Model = 2  },  -- NOT owned
-                { Name = 'Kris',       Id = 16000, Level = 60, Slot = 'Main', Model = 7  },  -- other slot
+                { Name = 'Kris',       Id = 16000, Level = 60, Slot = 'Main', Model = 7, OneHanded = true },  -- other slot; 1H
                 { Name = 'Gletis Crossbow', Id = 14003, Level = 99, Slot = 'Body' },         -- server junk: no Model
                 { Name = 'Amini Bottillons +2', Id = 14004, Level = 99, Slot = 'Body', Model = 0 }, -- junk: Model 0
+                { Name = 'Kite Shield', Id = 16001, Level = 10, Slot = 'Sub',  Model = 3 },  -- native Sub
+                { Name = 'Great Blade', Id = 16002, Level = 50, Slot = 'Main', Model = 8, OneHanded = false }, -- 2H
             };
         end,
         ownedById = function(id)
@@ -2318,6 +2332,13 @@ end)();
     -- on it would empty the picker -- and AH6 pins "nothing is filtered out".
     check('AN9g HARD RULE: the owned list is NOT look-filtered (its entries have no Model)',
         #ls._listFor('Body', ''), 2);
+    -- Dual wield rides the catalog list too (Henrik, 07-17): a Slot="Main" row
+    -- with OneHanded=true belongs in the Sub browse; a 2H one never does.
+    local subAll = ls._listFor('Sub', '', true);
+    check('AN9h catalog Sub browse carries the native Sub item', names(subAll)['Kite Shield'], true);
+    check('AN9i DUAL WIELD: a 1H Main-slot row is offered in Sub', names(subAll)['Kris'], true);
+    check('AN9j a 2H Main-slot row is NOT offered in Sub', names(subAll)['Great Blade'], nil);
+    check('AN9k the Sub browse is exactly those two', #subAll, 2);
     -- No gearui wire (load order: lockstyle loads first, and every W helper is
     -- optional-guarded) -- all=true must degrade to the owned list, never throw.
     -- Asserts the CONTRACT, not a count: the fixture here is the shared gear
