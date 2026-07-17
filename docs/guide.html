@@ -211,14 +211,20 @@ condition (status, spell skill, element, exact name, ...), pick the target set, 
 Rule edits are <b>live on Commit</b> — no LAC reload needed. Conditions in one rule must
 all hold; the priority defaults sensibly (a rule matching an exact spell name outranks a
 generic "any Healing Magic" rule, so both can coexist).</p>
-<p>Every event also takes <b>player-state conditions</b>: <code>hpBelow</code> /
-<code>hpAbove</code> and <code>mpBelow</code> / <code>mpAbove</code> (percent),
-<code>tpBelow</code> / <code>tpAbove</code> (raw TP — 1000 is one full shot), and
-<code>buff</code> / <code>buffNot</code> — a status effect that must (or must not) be on
-you, picked from a searchable list of every buff and debuff in the game. Stack them with
-any other condition: an emergency set below 50% HP, movement gear only while Flee is up,
-gear that swaps in while you're Asleep. These gates rank just under a mode toggle in
-priority, so they win over ordinary rules when both match.</p>
+<p>Every event also takes <b>player-state conditions</b> — pick <b>Player</b> in the
+condition box and a second list opens: raw and percent variants of HP and MP
+(<code>playerHPBelow</code>, <code>playerHPPercentBelow</code> — percent is 0–100 — and
+their Above twins, same for MP), <code>tpBelow</code> / <code>tpAbove</code> (raw TP —
+1000 is one full shot), and <b>Has(De)Buff</b> / <b>HasNot(De)Buff</b> — a status effect
+that must (or must not) be on you, picked from a searchable list of every buff and debuff
+in the game. Stack them with any other condition: an emergency set below 50% HP, movement
+gear only while Flee is up, gear that swaps in while you're Asleep. These gates rank just
+under a mode toggle in priority, so they win over ordinary rules when both match.</p>
+<p>Rules also take <b>AND / OR logic</b>: <b>+ &amp; condition</b> adds to the AND group
+(all must be true), <b>+ | condition</b> adds to the OR group (any one is enough). A rule
+matches when <i>all</i> its &amp; conditions hold <i>or any</i> of its | conditions does.
+The classic use: <code>| Has(De)Buff = Sleep</code>, <code>| Has(De)Buff = Lullaby</code>
+→ your WakeMeUp set (Toxin Earring says hello) — one rule, either sleep effect.</p>
 
 <h2 id="modes">5. Modes — one set, several behaviours</h2>
 <p>Modes are named switches <i>you</i> flip; sets and rules can react to them. They come in

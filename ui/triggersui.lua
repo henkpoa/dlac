@@ -143,18 +143,23 @@ local COND_DEFS = {
     },
 };
 
--- Player-state gates (engine v53): live vitals + status effects, usable in
--- EVERY handler, so they ride each handler's condition combo. kind 'number' =
--- an InputInt threshold; kind 'buff' = the searchable status-effect picker.
-local PLAYER_CONDS = {
-    { key = 'hpBelow', kind = 'number', hint = 'fires while HP percent is UNDER this (strict: 50 = below half)' },
-    { key = 'hpAbove', kind = 'number', hint = 'fires while HP percent is OVER this' },
-    { key = 'mpBelow', kind = 'number', hint = 'fires while MP percent is UNDER this' },
-    { key = 'mpAbove', kind = 'number', hint = 'fires while MP percent is OVER this' },
-    { key = 'tpBelow', kind = 'number', hint = 'fires while TP is UNDER this (raw TP: 1000 = one full shot)' },
-    { key = 'tpAbove', kind = 'number', hint = 'fires while TP is OVER this (raw TP: 1000 = one full shot)' },
-    { key = 'buff',    kind = 'buff',   hint = 'a status effect (buff OR debuff) must be ON you --\ngear up while Asleep, or only while Refresh is active' },
-    { key = 'buffNot', kind = 'buff',   hint = 'a status effect must NOT be on you' },
+-- Player-state gates (engine v54): ONE 'Player' entry per handler that
+-- CASCADES into a second parameter combo (Henrik's cascading-menu revision) --
+-- 12 parameters: raw + percent vitals variants, TP, and the buff pickers.
+-- kind 'number' = an InputInt threshold; kind 'buff' = the searchable picker.
+local PLAYER_PARAMS = {
+    { key = 'playerHPBelow',        kind = 'number', hint = 'raw HP under this' },
+    { key = 'playerHPAbove',        kind = 'number', hint = 'raw HP over this' },
+    { key = 'playerHPPercentBelow', kind = 'number', hint = 'HP percent under this (0-100)' },
+    { key = 'playerHPPercentAbove', kind = 'number', hint = 'HP percent over this (0-100)' },
+    { key = 'playerMPBelow',        kind = 'number', hint = 'raw MP under this' },
+    { key = 'playerMPAbove',        kind = 'number', hint = 'raw MP over this' },
+    { key = 'playerMPPercentBelow', kind = 'number', hint = 'MP percent under this (0-100)' },
+    { key = 'playerMPPercentAbove', kind = 'number', hint = 'MP percent over this (0-100)' },
+    { key = 'tpBelow',              kind = 'number', hint = 'raw TP under this (1000 = one full shot)' },
+    { key = 'tpAbove',              kind = 'number', hint = 'raw TP over this (1000 = one full shot)' },
+    { key = 'buff',    label = 'Has(De)Buff',    kind = 'buff', hint = 'a status effect (buff OR debuff) must be ON you --\ngear up while Asleep, or only while Refresh is active' },
+    { key = 'buffNot', label = 'HasNot(De)Buff', kind = 'buff', hint = 'a status effect must NOT be on you' },
 };
 do
     -- Precast/Midcast share one defs table (SPELL_CONDS) -- append ONCE per table.
@@ -162,7 +167,7 @@ do
     for _, defs in pairs(COND_DEFS) do
         if not seenDef[defs] then
             seenDef[defs] = true;
-            for _, c in ipairs(PLAYER_CONDS) do defs[#defs + 1] = c; end
+            defs[#defs + 1] = { key = 'player', kind = 'player', label = 'Player' };
         end
     end
 end
@@ -232,7 +237,7 @@ end
 local trig = {
     data = nil, job = nil, err = nil, dirty = false,
     status = '', statusErr = false,
-    addFor = nil, addConds = {}, _addDef = 1, _addValSel = nil,
+    addFor = nil, addConds = {}, _addDef = 1, _addValSel = nil, _addPlayer = 1,
     addValText = { '' }, addValNum = { 0 }, addSet = nil, addPrio = { 0 }, _openAdd = false,
     editIdx = nil, _editEquip = nil,   -- rule-builder edit mode (replace in place)
     _openModePopup = false,
@@ -308,6 +313,19 @@ function M.fileToModel(raw)
                    and (r.set ~= nil or type(r.equip) == 'table') then
                     local when = {};
                     for ck, cv in pairs(r.when) do when[string.lower(tostring(ck))] = cv; end
+                    -- v54 OR group: carried through the model or Commit WIPES it
+                    -- (the SetOptions/Modes lesson).
+                    local whenAny = nil;
+                    local rawAny = r.whenAny or r.whenany;
+                    if type(rawAny) == 'table' then
+                        for _, e in ipairs(rawAny) do
+                            if type(e) == 'table' then
+                                local ne = {};
+                                for ck, cv in pairs(e) do ne[string.lower(tostring(ck))] = cv; end
+                                if next(ne) ~= nil then whenAny = whenAny or {}; whenAny[#whenAny + 1] = ne; end
+                            end
+                        end
+                    end
                     -- set: 'Name' or an ORDERED list (multi-set rule); the model
                     -- mirrors the file (string when single, array when several).
                     local sv = nil;
@@ -321,6 +339,7 @@ function M.fileToModel(raw)
                     end
                     list[#list + 1] = {
                         when = when,
+                        whenAny = whenAny,
                         set = sv,
                         equip = (type(r.equip) == 'table') and r.equip or nil,
                         priority = tonumber(r.priority),
@@ -1823,7 +1842,12 @@ local COND_COLORS = {
     group = { 0.55, 0.80, 1.00, 1.0 },
     name = { 1.00, 0.95, 0.75, 1.0 },
     any = { 0.60, 0.60, 0.65, 1.0 },
-    -- Player-state gates (v53): vitals warm red / blue / gold, buffs violet.
+    -- Player-state gates (v54 + v53 aliases): vitals warm red / blue / gold,
+    -- buffs violet.
+    playerhpbelow = { 1.00, 0.60, 0.55, 1.0 }, playerhpabove = { 1.00, 0.60, 0.55, 1.0 },
+    playerhppercentbelow = { 1.00, 0.60, 0.55, 1.0 }, playerhppercentabove = { 1.00, 0.60, 0.55, 1.0 },
+    playermpbelow = { 0.55, 0.70, 1.00, 1.0 }, playermpabove = { 0.55, 0.70, 1.00, 1.0 },
+    playermppercentbelow = { 0.55, 0.70, 1.00, 1.0 }, playermppercentabove = { 0.55, 0.70, 1.00, 1.0 },
     hpbelow = { 1.00, 0.60, 0.55, 1.0 }, hpabove = { 1.00, 0.60, 0.55, 1.0 },
     mpbelow = { 0.55, 0.70, 1.00, 1.0 }, mpabove = { 0.55, 0.70, 1.00, 1.0 },
     tpbelow = { 0.95, 0.85, 0.50, 1.0 }, tpabove = { 0.95, 0.85, 0.50, 1.0 },
@@ -1869,6 +1893,15 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
     local id = h .. '_' .. tostring(i);
     local act = nil;
     local lines = condLines(r.when);
+    -- | leg (v54): one display line per OR condition, grouped under the & leg.
+    local orLines = {};
+    for _, e in ipairs(r.whenAny or {}) do
+        for k, v in pairs(e) do
+            local lk = string.lower(tostring(k));
+            orLines[#orLines + 1] = { key = lk,
+                text = '| ' .. trigPrettyKey(lk) .. ((v == true) and '' or (' = ' .. tostring(v))) };
+        end
+    end
     -- The box takes exactly the height its TALLER column needs: conditions on the
     -- left; on the right the target (an inline equip payload gets one line per
     -- slot) plus the controls row. Nothing is clipped to a cap anymore.
@@ -1879,7 +1912,7 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
         table.sort(parts);
     end
     local lh = lineH();
-    local leftH  = #lines * lh;
+    local leftH  = (#lines + #orLines) * lh;
     local rightH;
     if parts ~= nil then
         rightH = #parts * lh + 30;                     -- inline equip: one line per slot + controls
@@ -1893,8 +1926,9 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
     imgui.BeginChild('##trgbox' .. id, { -1, boxH }, true, BOX_FLAGS);
 
     imgui.BeginGroup();                                -- left column: the methods
+    local andPrefix = (#orLines > 0) and '& ' or '';   -- prefixes only when both legs exist
     for _, ln in ipairs(lines) do
-        imgui.TextColored(COND_COLORS[ln.key] or COL_USABLE, esc(ln.text));
+        imgui.TextColored(COND_COLORS[ln.key] or COL_USABLE, esc(andPrefix .. ln.text));
         -- Stale group reference: a rule pointing at a missing / renamed group
         -- matches nothing -- mark it in place (parity with a set's [missing];
         -- hard rule 12, never a silent no-op).
@@ -1911,6 +1945,9 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
                 end
             end
         end
+    end
+    for _, ln in ipairs(orLines) do
+        imgui.TextColored(COND_COLORS[ln.key] or COL_USABLE, esc(ln.text));
     end
     imgui.EndGroup();
 
@@ -2128,20 +2165,38 @@ local function renderTrigAddPopup()
     imgui.TextColored(COL_HEADER, (editing and 'Edit ' or 'New ') .. h .. ' rule');
     imgui.Separator();
 
+    -- Pending conditions, GROUPED: the & leg first, then the | leg (Henrik:
+    -- keep them visibly separate). Prefixes only appear once both legs exist.
+    local nOr = 0;
+    for _, c in ipairs(trig.addConds) do if c.any then nOr = nOr + 1; end end
     for ci, c in ipairs(trig.addConds) do
-        local txt = trigPrettyKey(string.lower(c.key)) .. ((c.value == true) and '' or (' = ' .. tostring(c.value)));
-        imgui.TextColored(COL_USABLE, esc(txt));
-        imgui.SameLine(0, 6);
-        if imgui.SmallButton('x##trgcx' .. ci) then table.remove(trig.addConds, ci); end
+        if not c.any then
+            local txt = ((nOr > 0) and '& ' or '')
+                .. trigPrettyKey(string.lower(c.key)) .. ((c.value == true) and '' or (' = ' .. tostring(c.value)));
+            imgui.TextColored(COL_USABLE, esc(txt));
+            imgui.SameLine(0, 6);
+            if imgui.SmallButton('x##trgcx' .. ci) then table.remove(trig.addConds, ci); end
+        end
+    end
+    for ci, c in ipairs(trig.addConds) do
+        if c.any then
+            local txt = '| ' .. trigPrettyKey(string.lower(c.key)) .. ((c.value == true) and '' or (' = ' .. tostring(c.value)));
+            imgui.TextColored({ 0.85, 0.65, 1.00, 1.0 }, esc(txt));
+            imgui.SameLine(0, 6);
+            if imgui.SmallButton('x##trgcx' .. ci) then table.remove(trig.addConds, ci); end
+        end
     end
 
     local defs = COND_DEFS[h] or {};
     if trig._addDef > #defs then trig._addDef = 1; end
     local cur = defs[trig._addDef];
-    imgui.PushItemWidth(130);
-    if imgui.BeginCombo('##trgcondtype', (cur and trigPrettyKey(string.lower(cur.key))) or '?') then
+    -- 200px (was 130): room for the Player entries + long condition names in
+    -- EVERY handler (Henrik: "make the first box wider, we have space").
+    imgui.PushItemWidth(200);
+    if imgui.BeginCombo('##trgcondtype', (cur and (cur.label or trigPrettyKey(string.lower(cur.key)))) or '?') then
         for di, d in ipairs(defs) do
-            if imgui.Selectable(trigPrettyKey(string.lower(d.key)) .. '##trgct' .. di, trig._addDef == di) then
+            local disp = d.label or trigPrettyKey(string.lower(d.key));
+            if imgui.Selectable(disp .. '##trgct' .. di, trig._addDef == di) then
                 trig._addDef = di; trig.addValText[1] = ''; trig._addValSel = nil; trig.addValNum[1] = 0;
             end
         end
@@ -2177,6 +2232,31 @@ local function renderTrigAddPopup()
             if #gnames == 0 and imgui.IsItemHovered() then
                 imgui.SetTooltip('No groups defined for this job yet. Open the Groups section to create one.');
             end
+        elseif cur.kind == 'player' then
+            -- The cascade: 'Player' in the first box opens this second combo of
+            -- parameters, then the picked parameter's own value widget.
+            local pp = PLAYER_PARAMS[trig._addPlayer] or PLAYER_PARAMS[1];
+            imgui.PushItemWidth(180);
+            if imgui.BeginCombo('##trgplayerparam', pp.label or pp.key) then
+                for pi, p in ipairs(PLAYER_PARAMS) do
+                    if imgui.Selectable((p.label or p.key) .. '##trgpp' .. pi, trig._addPlayer == pi) then
+                        trig._addPlayer = pi; trig._addValSel = nil; trig.addValNum[1] = 0;
+                    end
+                    if p.hint ~= nil and imgui.IsItemHovered() then imgui.SetTooltip(p.hint); end
+                end
+                imgui.EndCombo();
+            end
+            imgui.PopItemWidth();
+            imgui.SameLine(0, 6);
+            if pp.kind == 'buff' then
+                local pick = buffPickCombo('##trgcondbuff', trig._addValSel or '(pick effect)');
+                if pick ~= nil then trig._addValSel = pick; end
+            else
+                imgui.PushItemWidth(90);
+                imgui.InputInt('##trgcondnum', trig.addValNum, 0);
+                imgui.PopItemWidth();
+                if pp.hint ~= nil and imgui.IsItemHovered() then imgui.SetTooltip(pp.hint); end
+            end
         elseif cur.kind == 'number' then
             imgui.PushItemWidth(90);
             imgui.InputInt('##trgcondnum', trig.addValNum, 0);
@@ -2194,24 +2274,37 @@ local function renderTrigAddPopup()
         else
             imgui.TextColored(COL_DIM, '(flag)');
         end
-        imgui.SameLine(0, 6);
-        if imgui.Button('+ condition##trgac', { 0, 0 }) then
+        -- Capture the current widget's key + value; the Player cascade resolves
+        -- to the SELECTED parameter's key and widget kind.
+        local function addCond(isOr)
+            local ckey, ck = cur.key, cur.kind;
+            if ck == 'player' then
+                local pp = PLAYER_PARAMS[trig._addPlayer] or PLAYER_PARAMS[1];
+                ckey, ck = pp.key, pp.kind;
+            end
             local val;
-            if cur.kind == 'list' or cur.kind == 'group' or cur.kind == 'buff' then val = trig._addValSel;
-            elseif cur.kind == 'text' then val = (trig.addValText[1] ~= '') and trig.addValText[1] or nil;
-            elseif cur.kind == 'number' then
+            if ck == 'list' or ck == 'group' or ck == 'buff' then val = trig._addValSel;
+            elseif ck == 'text' then val = (trig.addValText[1] ~= '') and trig.addValText[1] or nil;
+            elseif ck == 'number' then
                 val = ((tonumber(trig.addValNum[1]) or 0) > 0) and trig.addValNum[1] or nil;
             else val = true; end
-            if val ~= nil then
-                local replaced = false;
+            if val == nil then return; end
+            if not isOr then
+                -- & leg: one value per key (the map shape) -- re-adding replaces.
                 for _, c in ipairs(trig.addConds) do
-                    if c.key == cur.key then c.value = val; replaced = true; break; end
+                    if c.key == ckey and not c.any then c.value = val; return; end
                 end
-                if not replaced then trig.addConds[#trig.addConds + 1] = { key = cur.key, value = val }; end
-                trig.addValText[1] = ''; trig._addValSel = nil;
             end
+            -- | leg: duplicates are THE POINT (buff = Sleep | buff = Lullaby).
+            trig.addConds[#trig.addConds + 1] = { key = ckey, value = val, any = isOr or nil };
+            trig.addValText[1] = ''; trig._addValSel = nil;
         end
-        if imgui.IsItemHovered() then imgui.SetTooltip('Conditions in one rule must ALL hold (AND).\nMake separate rules to overlay (e.g. Enfeebling, then +White, then Slow).'); end
+        imgui.SameLine(0, 6);
+        if imgui.Button('+ & condition##trgac', { 0, 0 }) then addCond(false); end
+        if imgui.IsItemHovered() then imgui.SetTooltip('AND condition, all AND conditions must be true to be a match.'); end
+        imgui.SameLine(0, 4);
+        if imgui.Button('+ | condition##trgoc', { 0, 0 }) then addCond(true); end
+        if imgui.IsItemHovered() then imgui.SetTooltip('OR condition, if ANY OR condition is true, it will be a match.'); end
     end
 
     imgui.Separator();
@@ -2229,9 +2322,17 @@ local function renderTrigAddPopup()
     imgui.SameLine(0, 8);
     local can = (#trig.addConds > 0) and (trig.addSet ~= nil or trig._editEquip ~= nil);
     if imgui.Button((editing and 'Save rule' or 'Add rule') .. '###trgaddgo', { 0, 0 }) and can then
-        local when = {};
-        for _, c in ipairs(trig.addConds) do when[string.lower(c.key)] = c.value; end
+        local when, whenAny = {}, nil;
+        for _, c in ipairs(trig.addConds) do
+            if c.any then
+                whenAny = whenAny or {};
+                whenAny[#whenAny + 1] = { [string.lower(c.key)] = c.value };
+            else
+                when[string.lower(c.key)] = c.value;
+            end
+        end
         local rule = { when = when };
+        if whenAny ~= nil then rule.whenAny = whenAny; end
         if trig.addSet ~= nil then rule.set = trig.addSet;
         else rule.equip = trig._editEquip; end         -- editing an inline-equip rule: keep its payload
         if (tonumber(trig.addPrio[1]) or 0) > 0 then rule.priority = trig.addPrio[1]; end
@@ -2948,6 +3049,14 @@ function M.render(job, level)
                 local w = textW(ln.text) + 28;
                 if w > colX then colX = w; end
             end
+            for _, e in ipairs(r.whenAny or {}) do
+                for k, v in pairs(e) do
+                    local lk = string.lower(tostring(k));
+                    local w = textW('| ' .. trigPrettyKey(lk)
+                        .. ((v == true) and '' or (' = ' .. tostring(v)))) + 28;
+                    if w > colX then colX = w; end
+                end
+            end
         end
         local availW = imgui.GetContentRegionAvail();
         if type(availW) == 'number' and colX > availW * 0.55 then colX = availW * 0.55; end
@@ -2972,14 +3081,24 @@ function M.render(job, level)
                 trig.addConds[#trig.addConds + 1] = { key = k, value = v };
             end
             table.sort(trig.addConds, function(a, b) return tostring(a.key) < tostring(b.key); end);
+            -- | leg: one builder row per OR entry. A hand-written multi-key
+            -- entry (AND-within-OR) flattens to its keys here; saving from the
+            -- builder rewrites them as single-key entries.
+            for _, e in ipairs(r.whenAny or {}) do
+                for k, v in pairs(e) do
+                    trig.addConds[#trig.addConds + 1] = { key = k, value = v, any = true };
+                end
+            end
             trig.addSet = (type(r.set) == 'table') and r.set[1] or r.set;   -- builder edits ONE set; extras stay on the rule
             trig.addPrio[1] = r.priority or 0;
             trig._addDef = 1; trig.addValText[1] = ''; trig._addValSel = nil;
+            trig._addPlayer = 1; trig.addValNum[1] = 0;
             trig._openAdd = true;
         end
         if imgui.Button('+ Add rule##trgadd_' .. h, { 0, 28 }) then
             trig.addFor = h; trig.addConds = {}; trig._addDef = 1;
             trig.addValText[1] = ''; trig._addValSel = nil; trig.addSet = nil; trig.addPrio[1] = 0;
+            trig._addPlayer = 1; trig.addValNum[1] = 0;
             trig.editIdx, trig._editEquip = nil, nil;   -- fresh add, not an edit
             trig._openAdd = true;
         end

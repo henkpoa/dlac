@@ -39,7 +39,7 @@ and from here on everything is GUI work. Repeat for each job.
 | **Equipped** | Live 16-slot view, worn stat totals (augment-aware), per-slot alternatives, slot locking |
 | **All Equipment** | Browse everything you own — or the full CatsEyeXI catalog — with search and stats |
 | **Sets** | Build sets by hand or **Auto-build** from stat weights; level-scaling candidate lists per slot; live score |
-| **Triggers** | Wire sets to the game: statuses, spells (by skill / type / element / `contains` / exact name), abilities, items, weaponskills, **player state** (HP/MP percent, TP, active buffs & debuffs) — plus player-defined **Modes** with live toggle buttons |
+| **Triggers** | Wire sets to the game: statuses, spells (by skill / type / element / `contains` / exact name), abilities, items, weaponskills, **player state** (HP/MP — raw or percent — TP, active buffs & debuffs) with **AND/OR condition groups** — plus player-defined **Modes** with live toggle buttons |
 
 ### Triggers, in short
 
