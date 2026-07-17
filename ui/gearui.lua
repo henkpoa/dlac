@@ -1897,11 +1897,6 @@ do
             itemTooltip = renderItemTooltip,                          -- hover cards on automation gear lines
             setsRoot = profsets.getSetsRoot,                          -- gearcheck: set contents for the audit
         });
-        -- The floating Trigger Monitor (engine v55 feed): its own top-level
-        -- window, rendered by host.renderWindows like the Stat-weights window.
-        host.register({ name = 'trigmon', window = {
-            render = function() pcall(trigui.renderMonitor, ui); end,
-        } });
     else
         pcall(function() print('[dlac] triggersui failed to load: ' .. tostring(m)); end);
     end
@@ -3424,6 +3419,14 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
             end
         end);
         if tpThemed then style.pop(); end
+    end
+    -- Floating Trigger Monitor: INDEPENDENT of the main box, like the lockstyle
+    -- and floating-equipment windows (Henrik: it must survive closing dlac's
+    -- main window). Own theme bracket.
+    if ui._tgMon == true and trigui ~= nil and has.imgui then
+        local tgThemed = style ~= nil and style.push();
+        pcall(trigui.renderMonitor, ui);
+        if tgThemed then style.pop(); end
     end
     -- Lockstyle window: INDEPENDENT of the main box (the header armor button
     -- opens it; it stays up if the main window closes). Own theme bracket,

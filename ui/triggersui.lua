@@ -529,9 +529,32 @@ local function trigModeState()
     return st;
 end
 
--- The fired-trigger mirror (engine v55: firedstate.lua, last 5 lines, newest
--- first). Same 1/sec throttle discipline as trigModeState.
+-- The monitor's LIVE event feed (engine v55): the engine queues
+-- '/dlacmonev <line>' on every CHANGE of what fired; this ADDON-state handler
+-- pushes it straight into the ring the frame it arrives -- streaming, not
+-- polling. A repeat of the same line never re-reacts (Henrik's dedupe rule;
+-- the engine's retrace gate already ensures unchanged rules don't re-send).
+if ashita ~= nil and ashita.events ~= nil then
+    pcall(function()
+        pcall(function() ashita.events.unregister('command', 'dlac-trigmon'); end);
+        ashita.events.register('command', 'dlac-trigmon', function(e)
+            local raw = e.command;
+            if type(raw) ~= 'string' or string.sub(raw, 1, 11) ~= '/dlacmonev ' then return; end
+            e.blocked = true;
+            local line = string.sub(raw, 12);
+            if line == '' or trig._fired[1] == line then return; end
+            table.insert(trig._fired, 1, line);
+            while #trig._fired > 5 do table.remove(trig._fired); end
+            trig._firedLive = true;   -- events own the ring now; file re-reads stop
+        end);
+    end);
+end
+
+-- The fired-trigger mirror (firedstate.lua): the RELOAD BOOTSTRAP + fallback --
+-- once the first live event lands, the ring is event-owned and the file is
+-- never re-read. Same 1/sec throttle discipline as trigModeState meanwhile.
 local function trigFiredState()
+    if trig._firedLive == true then return trig._fired; end
     local now = os.time();
     if now == trig._firedAt then return trig._fired; end
     trig._firedAt = now;
@@ -553,9 +576,11 @@ local function trigFiredState()
 end
 
 -- The floating Trigger Monitor (Henrik): active modes + the last 5 rules that
--- fired, newest first, refreshed every second -- field-testing triggers
--- without chasing /dl why while Precast/Midcast flash past. A titled window
--- (imgui.ini remembers where you drag it); its [X] clears the toggle.
+-- fired, newest first, STREAMED over the command bus the moment they change --
+-- field-testing triggers without chasing /dl why while Precast/Midcast flash
+-- past. A titled window (imgui.ini remembers where you drag it); its [X]
+-- clears the toggle. Rendered from the present hook, so it survives closing
+-- the main dlac window (the lockstyle/floatgear rule).
 function M.renderMonitor(ui)
     if not hasImgui or ui == nil or ui._tgMon ~= true then return; end
     imgui.SetNextWindowSize({ 400, 190 }, ImGuiCond_FirstUseEver);
@@ -3137,7 +3162,7 @@ function M.render(job, level)
             deps.ui._flagsDirty = true;
         end
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('A small floating window: your active modes and the last 5 trigger\nrules that fired (newest first, refreshed every second). Invaluable\nwhen field-testing -- Precast/Midcast flash past faster than chat\ncan scroll.');
+            imgui.SetTooltip('A small floating window: your active modes and the last 5 trigger\nrules that fired, newest first -- STREAMED live as they change.\nInvaluable when field-testing: Precast/Midcast land as history lines\nfaster than chat can scroll. Stays up when the main window closes.');
         end
     end
 
