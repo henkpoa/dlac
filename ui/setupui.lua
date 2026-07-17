@@ -1,7 +1,7 @@
 --[[
     dlac/setupui.lua
 
-    The Setup / migration machinery (convert-in-place writer, starter profile,
+    The Setup / migration machinery (clean-shim writer, starter profile,
     trigger-file seeding, per-job setup-state probe), extracted from gearui (the
     LuaJIT 200-local chunk cap). Pure logic -- the Setup BUTTON and its plan
     popup still render in gearui's header.
@@ -30,13 +30,25 @@ setup.configure = function(deps)
     if type(deps) == 'table' then D = deps; end
 end
 
--- Is the current job's <JOB>.lua already wired for dlac?
---   'ok'      -> requires the dlac library AND every handler ends in utils.dispatch (healthy)
---   'shims'   -> requires the library but one or more handlers lack the dispatch shim
---   'ffxilac' -> still an ffxi-lac profile (needs conversion)
---   'none'    -> a custom/other profile (needs in-place conversion -- logic is KEPT)
+-- THE SETUP STANDARD (Henrik, 2026-07-17): the only job file dlac ever leaves
+-- LIVE is the clean managed shim. An existing file -- ffxi-lac, hand-written
+-- LAC, or an old in-place conversion -- is always backed up (verified) into
+-- backups\pre-profiles\ and REPLACED by the shim; its old sets, _Priority
+-- lists and group tables stay importable from the backup ("Copy from" in the
+-- Sets tab, "Scan my Lua" in the Groups tab, lockstyle copy). Convert-in-place
+-- (append dispatch shims, keep the old handler logic running underneath) died
+-- here: two equip logics fighting in one file is unsupportable at install
+-- scale -- see the sync-lag case that ended it.
+
+-- Is the current job's <JOB>.lua on the dlac standard?
+--   'ok'      -> the clean managed shim, handlers healthy (the ONLY good state)
+--   'wired'   -> touches the dlac library but is NOT the clean shim (an old
+--                in-place conversion / hand-wired file / edited shim) -> re-shim
+--   'ffxilac' -> an ffxi-lac profile (migrate)
+--   'none'    -> a custom/other profile (migrate)
 --   'nofile' / 'nojob' -> no profile file / no job.
 -- Cached per file; cleared after a Setup run (see below).
+local SHIM_MARKER = '-- dlac profile shim';   -- profiles.SHIM_MARKER (kept in sync; stable forever)
 local _setupState, _setupStateJob = nil, nil;
 setup.jobSetupState = function()
     if D == nil then return 'nojob'; end
@@ -46,13 +58,15 @@ setup.jobSetupState = function()
     local st;
     local text = D.readFileText(jf);
     if text == nil then st = 'nofile';
-    elseif text:find([[dlac\\utils]], 1, true) then
+    elseif text:find(SHIM_MARKER, 1, true) then
         st = 'ok';
-        -- per-handler shim health: every Handle* must exist and END with its dispatch call
+        -- shim health: every Handle* must exist and END with its dispatch call.
+        -- A hand-edited shim that lost one is 'wired' -> Setup re-shims it.
         if setmgr ~= nil and type(setmgr.analyzeShims) == 'function' then
             local aok, a = pcall(setmgr.analyzeShims, text);
-            if aok and type(a) == 'table' and a.healthy ~= true then st = 'shims'; end
+            if aok and type(a) == 'table' and a.healthy ~= true then st = 'wired'; end
         end
+    elseif text:find([[dlac\\utils]], 1, true) then st = 'wired';
     elseif text:find('ffxi-lac', 1, true) then st = 'ffxilac';
     else st = 'none'; end
     _setupState, _setupStateJob = st, jf;
@@ -62,14 +76,6 @@ end
 -- One-line bootstrap that puts the dlac addon library on the profile's package.path so
 -- require("dlac\\utils") resolves to the addon. [[...]] keeps the backslashes literal.
 local MIGRATE_BOOT = [[package.path = package.path .. ';' .. AshitaCore:GetInstallPath() .. 'addons\\?.lua';  -- dlac: use the dlac addon library]];
-
--- Transform ffxi-lac profile text -> dlac: repoint requires/loadfile + add the addon lib
--- to package.path (idempotent). Returns the new text.
-setup.migrateJobText = function(text)
-    local out = (text:gsub('ffxi%-lac', 'dlac'));
-    if not out:find([[addons\\?.lua]], 1, true) then out = MIGRATE_BOOT .. '\n' .. out; end
-    return out;
-end
 
 -- Starter profile written when a job has no dlac profile yet. This mirrors LuaAshitacast's
 -- own `/lac newlua` skeleton (OnLoad/AllowAddSet kept, so `/lac addset` works) and adds the
@@ -154,19 +160,62 @@ setup.seedTriggersFile = function(base, abbr)
     return D.writeFileText(path, dsp.starterTriggersText);
 end
 
--- Set up the current job's <JOB>.lua for dlac. Convert-IN-PLACE policy: an existing
--- profile's own logic is NEVER removed or replaced -- Setup only adds the dlac require,
--- appends `utils.dispatch('<H>')` at the END of each existing handler (their code runs
--- first; dlac overlays last), and creates the handlers they don't have. Idempotent:
--- clicking Setup on a healthy profile changes nothing.
---   'ok'      -> healthy (still seeds a missing trigger file, then reports).
---   'shims'   -> dlac profile missing shims -> repair (setmanager.repairShims).
---   'ffxilac' -> repoint requires at dlac (backup .flbak), then repair shims.
---   'none'    -> custom profile: backup .flbak, add bootstrap+require, repair shims.
---   'nofile'  -> initialize from scratch: write the self-contained dlac starter.
--- Also seeds <char>\dlac\ with a gear.lua (from an existing ffxi-lac folder, else the
--- bundled empty template) and a starter triggers\<JOB>.lua so the dispatch shims have
--- data to act on (ADR 0002).
+-- Seed <char>\dlac\gear.lua (the gear inventory): copied from an existing
+-- ffxi-lac\gear.lua when there is one (a returning player keeps their scanned
+-- inventory), else the bundled empty template so the profile loads and
+-- Scan/Commit can populate it. Never clobbers an existing file.
+local function seedGearFile(base)
+    pcall(function() os.execute('mkdir "' .. base .. 'dlac" 2>nul'); end);
+    if D.readFileText(base .. 'dlac\\gear.lua') ~= nil then return; end
+    local src = D.readFileText(base .. 'ffxi-lac\\gear.lua');
+    if src == nil then src = D.readFileText(AshitaCore:GetInstallPath() .. 'addons\\dlac\\gear.lua'); end
+    if src ~= nil then D.writeFileText(base .. 'dlac\\gear.lua', src); end
+end
+
+-- The ONE migration path (the standard, see the header): every non-shim
+-- <JOB>.lua on the character is verified into backups\pre-profiles\ and
+-- rewritten as the clean shim (profiles.migrate -- Dynamic sets travel
+-- verbatim, legacy trigger files move into the profile, a re-migrated file
+-- never overwrites its first backup). Then every job gets its gear inventory
+-- and starter triggers seeded (never clobbering), profilesets drops its cache
+-- so "Copy from" sees the fresh backups, and LuaAshitacast reloads so the
+-- shims go live. One Commit ends with the whole character on the standard.
+setup.migrateToCleanProfiles = function()
+    if D == nil then return; end
+    local ui = D.ui;
+    local base = D.charBase();
+    if base == nil then D.status('Setup: log in first (no character folder).'); return; end
+    local prof = try('dlac\\profiles');
+    if prof == nil then D.status('Setup: profiles module unavailable.'); return; end
+    seedGearFile(base);
+    local done, _, failed = prof.migrate(true, function(s) pcall(print, s); end);
+    for _, job in ipairs(prof.JOBS or {}) do
+        if D.readFileText(base .. job .. '.lua') ~= nil then setup.seedTriggersFile(base, job); end
+    end
+    pcall(function() require('dlac\\gear\\profilesets').invalidate(); end);
+    _setupState = nil;
+    if (failed or 0) > 0 then
+        D.status(string.format('Setup: %d job file(s) FAILED to migrate -- details in chat; a failed job\'s original stays fully in charge. %d migrated.',
+            failed, done or 0));
+        return;
+    end
+    if (done or 0) > 0 then
+        local msg = string.format('Moved %d job file(s) to the clean dlac standard -- originals in backups\\pre-profiles\\ (details in chat). Old sets: Sets tab "Copy from". Old group tables: Triggers tab, Groups, "Scan my Lua". Reloading LuaAshitacast...', done);
+        D.status(msg);
+        pcall(function() print('[dlac] ' .. msg); end);
+        ui._lacReloadNeed, ui._lacReloadStamp0 = true, ui._lacStamp;   -- red until the auto-reload lands
+        pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/addon reload luashitacast'); end);
+    else
+        D.status('Setup: nothing to migrate -- every job file is already the clean shim.');
+    end
+end
+
+-- Set up the current job's <JOB>.lua for dlac.
+--   'ok'      -> healthy shim (still seeds a missing trigger file, then reports).
+--   'nofile'  -> initialize from scratch: write the clean shim, create storage.
+--   anything else -> the standard migration (migrateToCleanProfiles above).
+-- Also seeds <char>\dlac\gear.lua and a starter triggers\<JOB>.lua so the
+-- dispatch shims have data to act on (ADR 0002).
 setup.migrateCurrentJob = function()
     if D == nil then return; end
     local ui = D.ui;
@@ -182,107 +231,42 @@ setup.migrateCurrentJob = function()
             .. (seeded and ('  Seeded starter triggers\\' .. abbr .. '.lua.') or ''));
         return;
     end
+    if state ~= 'nofile' then
+        -- An existing file NEVER stays live, whatever is in it (the standard).
+        return setup.migrateToCleanProfiles();
+    end
 
-    -- seed <char>\dlac\ from an existing ffxi-lac setup, if present (never clobbered)
-    pcall(function() os.execute('mkdir "' .. base .. 'dlac" 2>nul'); end);
-    for _, f in ipairs({ 'gear.lua', 'gcinclude.lua', 'gcdisplay.lua' }) do
-        if D.readFileText(base .. 'dlac\\' .. f) == nil then
-            local src = D.readFileText(base .. 'ffxi-lac\\' .. f);
-            if src ~= nil then D.writeFileText(base .. 'dlac\\' .. f, src); end
-        end
-    end
-    -- fresh users have no ffxi-lac to copy: seed an empty gear.lua from the bundled template
-    -- so the profile loads and Scan/Commit can populate it.
-    if D.readFileText(base .. 'dlac\\gear.lua') == nil then
-        local tmpl = D.readFileText(AshitaCore:GetInstallPath() .. 'addons\\dlac\\gear.lua');
-        if tmpl ~= nil then D.writeFileText(base .. 'dlac\\gear.lua', tmpl); end
-    end
+    seedGearFile(base);
     -- Fresh job: create profile storage BEFORE the trigger seed, so the starter
     -- triggers land INSIDE the profile (field case: run 1 of the fresh-start
     -- test seeded them into the legacy dlac\triggers\ because storage did not
     -- exist yet at this point -- reads fall back so it worked, but a brand-new
     -- player should own zero legacy-layout files).
-    if state == 'nofile' then
-        pcall(function() local p = require('dlac\\profiles'); if type(p) == 'table' then p.ensureStorage(); end end);
-    end
+    pcall(function() local p = require('dlac\\profiles'); if type(p) == 'table' then p.ensureStorage(); end end);
     -- and the starter trigger file, so the profile's dispatch shims equip out of the box.
     setup.seedTriggersFile(base, abbr);
 
-    if state == 'nofile' then
-        -- Nothing to convert: NEW players go profile-native from minute one --
-        -- the job file is the managed shim, storage is created, and every set/
-        -- trigger they ever build lands under dlac\profiles\. They never own a
-        -- legacy-style file at all. Falls back to the embedded starter only if
-        -- profiles.lua is somehow unavailable.
-        local starter = MIGRATE_BOOT .. '\n' .. STARTER_PROFILE;
-        pcall(function()
-            local prof = require('dlac\\profiles');
-            if type(prof) == 'table' and type(prof.shimFileText) == 'function' then
-                starter = prof.shimFileText();
-                prof.ensureStorage();
-            end
-        end);
-        if D.writeFileText(jf, starter) then
-            _setupState = nil;
-            local msg = string.format('Initialized a dlac %s.lua. Reload LuaAshitacast, then build sets and triggers in the GUI.', abbr);
-            D.status(msg);
-            ui._lacReloadNeed, ui._lacReloadStamp0 = true, ui._lacStamp;   -- red until the reload lands
-            pcall(function() print('[dlac] ' .. msg); end);
-        else
-            D.status('Setup: could not write ' .. jf);
+    -- NEW players go profile-native from minute one -- the job file is the
+    -- managed shim, storage is created, and every set/trigger they ever build
+    -- lands under dlac\profiles\. They never own a legacy-style file at all.
+    -- Falls back to the embedded starter only if profiles.lua is unavailable.
+    local starter = MIGRATE_BOOT .. '\n' .. STARTER_PROFILE;
+    pcall(function()
+        local prof = require('dlac\\profiles');
+        if type(prof) == 'table' and type(prof.shimFileText) == 'function' then
+            starter = prof.shimFileText();
+            prof.ensureStorage();
         end
-        return;
-    end
-
-    -- Existing profile ('ffxilac' | 'none' | 'shims'): convert in place.
-    if state == 'ffxilac' or state == 'none' then
-        local text = D.readFileText(jf);
-        if text == nil then D.status('Setup: could not read ' .. jf); return; end
-        D.writeFileText(jf .. '.flbak', text);   -- one-time backup of the pre-dlac original
-        if state == 'ffxilac' then
-            text = setup.migrateJobText(text);   -- repoint ffxi-lac requires (adds the bootstrap)
-        elseif not text:find([[addons\\?.lua]], 1, true) then
-            text = MIGRATE_BOOT .. '\n' .. text;   -- make require("dlac\\...") resolvable
-        end
-        if not D.writeFileText(jf, text) then D.status('Setup: could not write ' .. jf); return; end
-    end
-
-    -- Append the dispatch shims (creates missing handlers; adds the require if absent).
-    -- setmanager parse-checks and keeps its own rotated backup; aborts untouched on failure.
-    local okr, report, bpath = false, 'setmanager unavailable', nil;
-    if setmgr ~= nil and type(setmgr.repairShims) == 'function' then
-        local pok = pcall(function() okr, report, bpath = setmgr.repairShims(abbr); end);
-        if not pok then okr, report = false, 'internal error'; end
-    end
-    _setupState = nil;
-    if okr ~= true then
-        D.status(string.format('Setup: shim wiring failed (%s). Your original is safe (%s.lua.flbak / backups).',
-            tostring(report), abbr));
-        return;
-    end
-    local parts, warns = {}, {};
-    if type(report) == 'table' then
-        if report.requireAdded         then parts[#parts + 1] = 'require added'; end
-        if #(report.created or {}) > 0 then parts[#parts + 1] = 'created ' .. table.concat(report.created, '/'); end
-        if #(report.appended or {}) > 0 then parts[#parts + 1] = 'shimmed ' .. table.concat(report.appended, '/'); end
-        if #(report.moved or {}) > 0   then parts[#parts + 1] = 'moved ' .. table.concat(report.moved, '/'); end
-        warns = report.warnings or {};
-        for _, w in ipairs(warns) do pcall(function() print('[dlac] setup: ' .. w); end); end
-    end
-    if #parts == 0 and #warns > 0 then
-        -- Nothing auto-fixable: saying "no changes needed" while the shim banner
-        -- stays red reads as a contradiction -- surface the blockers instead.
-        local msg = string.format('Setup could not auto-fix %s.lua: %s', abbr, table.concat(warns, '; '));
+    end);
+    if D.writeFileText(jf, starter) then
+        _setupState = nil;
+        local msg = string.format('Initialized a dlac %s.lua. Reload LuaAshitacast, then build sets and triggers in the GUI.', abbr);
         D.status(msg);
+        ui._lacReloadNeed, ui._lacReloadStamp0 = true, ui._lacStamp;   -- red until the reload lands
         pcall(function() print('[dlac] ' .. msg); end);
-        return;
+    else
+        D.status('Setup: could not write ' .. jf);
     end
-    local msg = string.format(
-        'Set up %s.lua in place (%s). Your own handler logic was kept -- dlac dispatch runs last. Reload LuaAshitacast to apply.',
-        abbr, (#parts > 0) and table.concat(parts, ', ') or 'no changes needed');
-    D.status(msg);
-    if #parts > 0 then ui._lacReloadNeed, ui._lacReloadStamp0 = true, ui._lacStamp; end   -- red until the reload lands
-    pcall(function() print('[dlac] ' .. msg); end);
 end
 
 return setup;

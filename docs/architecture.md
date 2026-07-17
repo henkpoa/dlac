@@ -161,8 +161,10 @@ renders run under the caller's guard (gearui's `tabGuard`). Extraction set that 
 with it: **itemicons.lua** (D3D texture cache: `renderIcon`/`handleOf`/`release`, no-op
 safe headless), **equippedui.lua** (Equipped + All Equipment tabs; captures
 host.services at load — provide-before-require is load-bearing), **setupui.lua**
-(`jobSetupState` + convert-in-place `migrateCurrentJob` + starter profile/trigger
-seeding; `setup.configure{}` deps), **syncflags.lua** (auto-sync loop + uiflags.lua
+(`jobSetupState` + `migrateCurrentJob`/`migrateToCleanProfiles` — THE SETUP
+STANDARD, 2026-07-17: an existing job file never stays live; it is verified into
+`backups\pre-profiles\` and replaced by the clean shim (convert-in-place is dead);
+starter profile/trigger seeding; `setup.configure{}` deps), **syncflags.lua** (auto-sync loop + uiflags.lua
 persistence; owns `sf.flags.debug`/`sf.flags.autosync`/`sf.flags.viewids`; gearui's d3d_present calls
 `sf.loadUiFlags` BEFORE `sf.tick` — order is load-bearing, the real gear.lua must swap
 in before the first sync), **weightsui.lua** (stat-weights editor: Points + Priority
@@ -267,11 +269,14 @@ Reads the loaded profile's `sets` table for the Sets tab. In LAC state reads
 `gProfile.Sets`; in addon state parses the current `<JOB>.lua` in a permissive sandbox.
 
 ### gear/setmanager.lua — `<JOB>.lua` reader/writer
-Splices dynamic sets into `<JOB>.lua` and analyzes/repairs the dispatch handler shims —
-the write side of both Sets-tab Commit and the Setup button. Pure-text core
-(`analyzeShims`, `repairShimsText` — comment-aware since 84de48a) with file wrappers
-(`repairShims`, `commitSet`, `deleteSet`). All edits are backup + parse-checked, abort
-untouched on failure. Writes rotated backups in `<char>\backups\`.
+Splices dynamic sets into `<JOB>.lua` and analyzes the dispatch handler shims —
+the write side of Sets-tab Commit, and `analyzeShims` powers `jobSetupState`'s
+shim-health check. Pure-text core (`analyzeShims`, `repairShimsText` — comment-aware
+since 84de48a) with file wrappers (`repairShims`, `commitSet`, `deleteSet`). Since the
+clean-shim SETUP STANDARD (2026-07-17) nothing in the product calls `repairShims` —
+the repair pair stays as the tested text engine behind any future manual wiring. All
+edits are backup + parse-checked, abort untouched on failure. Writes rotated backups
+in `<char>\backups\`.
 
 ### gear/setimport.lua — the "Copy from static" transform (pure)
 The addon-state, Ashita-free core of the Sets tab's "Copy from static" (issue #15, ADR
@@ -498,9 +503,9 @@ Per-character, under `<install>\config\addons\luashitacast\<Char>_<ServerId>\`
 | `dlac\uiflags.lua` | gearui | debug/autosync flags |
 | `dlac\gearweights.lua` | gearoptim | stat weights |
 | `dlac\augdump.txt` | augments | shareable augment dump |
-| `<JOB>.lua` (+ `.flbak`) | Setup / `/dl profile migrate` (shim only) | the LAC profile (post-migration: a managed shim, never written again) |
+| `<JOB>.lua` | Setup / `/dl profile migrate` (shim only) | the LAC profile — ALWAYS the clean managed shim after Setup (THE STANDARD: old logic never stays live); `.flbak` siblings are relics of the dead convert-in-place era |
 | `backups\` | setmanager/gearimport | rotated backups |
-| `backups\pre-profiles\` | profiles.migrate (written ONCE, never overwritten) | pre-migration originals; "Copy from static" reads statics from here forever |
+| `backups\pre-profiles\` | profiles.migrate (first backup written ONCE, never overwritten; re-migrations add stamped `<JOB>-<stamp>.lua` copies) | pre-migration originals; "Copy from static" + Groups "Scan my Lua" read from here forever |
 
 The old pre-dlac profile code lives at `<char>\ffxi-lac\` (reference only — the origin of
 the "builder is a plan" pairing semantics).

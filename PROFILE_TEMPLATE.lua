@@ -14,11 +14,15 @@
 --  it (no /lac reload; see dispatch.lua's profile auto-install). The profile
 --  picks the FOLDER, the job picks the FILE inside it.
 --
---  Migrating an EXISTING hand-written profile? Nothing forces you to change it:
---  keep your handler code and just add utils.dispatch('<Handler>') as the LAST
---  line of each handler -- dispatch runs last, so trigger-driven gear overlays
---  whatever your own code equipped (per-slot, later wins). Your file is never
---  written by dlac; profile sets arrive on top at load time.
+--  Migrating an EXISTING profile? Run Setup: THE STANDARD (2026-07-17) is that
+--  the live <JOB>.lua is ALWAYS this clean shim -- your old file is verified
+--  into backups\pre-profiles\ first and never stays live (two equip logics in
+--  one file fight over slots; the conflicts are unsupportable). Your old static
+--  sets, _Priority lists and group tables stay one click away: Sets tab "Copy
+--  from" and the Groups box's "Scan my Lua" read the backup forever. (Experts
+--  CAN still hand-wire utils.dispatch('<Handler>') as the last line of their
+--  own handlers -- the engine runs it, but the GUI flags the file as
+--  non-standard and Setup will offer to re-shim it.)
 -- ============================================================================
 
 -- dlac profile shim (v1) -- managed by dlac. Do not keep data here.

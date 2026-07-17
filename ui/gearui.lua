@@ -1314,7 +1314,7 @@ local function renderHeaderButtons()
                 local state = setup.jobSetupState();
                 local prof = nil;
                 pcall(function() local p = require('dlac\\profiles'); if type(p) == 'table' then prof = p; end end);
-                local plan = { mode = 'convert', abbr = abbr, title = 'Set up ' .. abbr .. ' for dlac', lines = {} };
+                local plan = { mode = 'migrate', abbr = abbr, title = 'Set up ' .. abbr .. ' for dlac', lines = {} };
                 local L = plan.lines;
                 local function add(c, t) L[#L + 1] = { c = c, t = t }; end
                 if state == 'nofile' then
@@ -1330,62 +1330,57 @@ local function renderHeaderButtons()
                     add('dim', '     work out of the box.');
                     add('txt', 'Nothing that already exists is overwritten.');
                     add('head', 'After Commit: click Reload LAC, then Scan, then build sets in the Sets tab.');
-                elseif state == 'ok' then
-                    local isShim, hasStorage = false, false;
-                    if prof ~= nil then
-                        pcall(function() isShim = prof.isCleanShim(readFileText(jf) or ''); end);
-                        hasStorage = prof.storageExists();
+                elseif state == 'ok' and prof ~= nil and prof.storageExists() then
+                    plan.mode = 'healthy';
+                    plan.title = abbr .. ' is fully set up';
+                    add('txt', 'The ' .. abbr .. '.lua shim, profile storage and trigger wiring are all in place.');
+                    add('txt', 'Commit only seeds a missing starter trigger file (it never overwrites one).');
+                else
+                    -- 'ffxilac' | 'none' | 'wired' | 'ok' without profile storage:
+                    -- ONE standard path. The live <JOB>.lua always ends up the clean
+                    -- managed shim; old logic never stays live (Henrik, 2026-07-17).
+                    plan.mode = 'migrate';
+                    plan.title = 'Move ' .. abbr .. ' (and every other job) to the clean dlac standard';
+                    if state == 'ffxilac' then
+                        add('txt', 'Your ' .. abbr .. '.lua is an ffxi-lac profile.');
+                    elseif state == 'none' then
+                        add('txt', 'Your ' .. abbr .. '.lua is a hand-written LuaAshitacast profile.');
+                    elseif state == 'wired' then
+                        add('txt', 'Your ' .. abbr .. '.lua mixes its own logic with dlac wiring (an old in-place');
+                        add('txt', 'conversion, a hand-wired file, or an edited shim).');
+                    else
+                        add('txt', 'Your jobs are dlac-wired but your data is not in profile storage yet.');
                     end
-                    if prof ~= nil and (not isShim or not hasStorage) then
-                        plan.mode = 'migrate';
-                        plan.title = 'Move ' .. abbr .. ' (and every other job) to profile storage';
-                        add('txt', 'Your jobs are already dlac-wired. Commit moves your dlac DATA into profile');
-                        add('txt', 'storage (dlac\\profiles\\Default\\) and rewrites each old <JOB>.lua as a clean');
-                        add('txt', 'managed shim. Per job file:');
-                        add('head', 'SAFETY: every original is copied to backups\\pre-profiles\\ FIRST and verified');
-                        add('head', 'byte-for-byte before anything is rewritten. An existing backup is never');
-                        add('head', 'overwritten (already-backed-up jobs are skipped).');
-                        add('txt', '- Your dynamic sets move over verbatim (byte-for-byte).');
-                        add('txt', '- Old static sets stay available: "Copy from" in the Sets tab reads the backup.');
-                        add('txt', '- Hand-written handler code does NOT stay in the live file (it lives on in the');
-                        add('dim', '   backup) -- equip behavior is trigger data now.');
-                        add('txt', '- LuaAshitacast reloads automatically afterwards.');
-                        add('head', 'The plan, job by job:');
-                        local mplan = nil;
-                        pcall(function() mplan = prof.currentPlan(); end);
-                        if type(mplan) == 'table' then
-                            for _, e in ipairs(mplan) do
-                                if e.action == 'skip' then
-                                    add('dim', e.job .. ':  skip -- ' .. tostring(e.reason));
-                                else
-                                    add('txt', e.job .. ':  migrate');
-                                    for _, n in ipairs(e.notes or {}) do add('dim', '      - ' .. n); end
-                                end
+                    add('head', 'THE STANDARD: the live <JOB>.lua is always a small managed dlac shim -- an old');
+                    add('head', 'file with its own equip logic NEVER stays live (two logics fighting over slots');
+                    add('head', 'is the mess dlac exists to end). Commit does, for EVERY job file (not just ' .. abbr .. '):');
+                    add('head', 'SAFETY: every original is copied to backups\\pre-profiles\\ FIRST and verified');
+                    add('head', 'byte-for-byte before anything is rewritten. A first backup is never overwritten');
+                    add('head', '(a re-migrated file is saved to a stamped copy beside it instead).');
+                    add('txt', '- Your dynamic sets move over verbatim (byte-for-byte).');
+                    add('txt', '- Old static sets stay importable: "Copy from" in the Sets tab reads the backup');
+                    add('dim', '   (_Priority lists keep their order, so their level scaling survives -- ADR 0008).');
+                    add('txt', '- Group tables in your old file stay importable: Triggers tab -> Groups ->');
+                    add('dim', '   "Scan my Lua" reads the backup too.');
+                    add('txt', '- Hand-written handler code does NOT stay in the live file (it lives on in the');
+                    add('dim', '   backup) -- equip behavior is trigger data now.');
+                    add('txt', '- Seeds your gear inventory (dlac\\gear.lua) and starter triggers when absent.');
+                    add('txt', '- LuaAshitacast reloads automatically afterwards.');
+                    add('head', 'The plan, job by job:');
+                    local mplan = nil;
+                    if prof ~= nil then pcall(function() mplan = prof.currentPlan(); end); end
+                    if type(mplan) == 'table' then
+                        for _, e in ipairs(mplan) do
+                            if e.action == 'skip' then
+                                add('dim', e.job .. ':  skip -- ' .. tostring(e.reason));
+                            else
+                                add('txt', e.job .. ':  migrate');
+                                for _, n in ipairs(e.notes or {}) do add('dim', '      - ' .. n); end
                             end
-                        else
-                            add('err', '(could not read the per-job plan -- /dl profile migrate shows it in chat)');
                         end
                     else
-                        plan.mode = 'healthy';
-                        plan.title = abbr .. ' is fully set up';
-                        add('txt', 'The ' .. abbr .. '.lua shim, profile storage and trigger wiring are all in place.');
-                        add('txt', 'Commit only seeds a missing starter trigger file (it never overwrites one).');
+                        add('err', '(could not read the per-job plan -- /dl profile migrate shows it in chat)');
                     end
-                else
-                    plan.mode = 'convert';
-                    add('txt', 'Your existing ' .. abbr .. '.lua is kept and converted IN PLACE. Commit will:');
-                    if state == 'ffxilac' then
-                        add('txt', '1.  Repoint its ffxi-lac requires at the dlac library (original saved as ' .. abbr .. '.lua.flbak).');
-                    elseif state == 'none' then
-                        add('txt', '1.  Add the dlac library require (original saved as ' .. abbr .. '.lua.flbak).');
-                    else   -- 'shims'
-                        add('txt', '1.  Repair the missing dispatch hooks (idempotent -- a healthy file is untouched).');
-                    end
-                    add('txt', '2.  Append utils.dispatch(...) at the END of each handler; create missing handlers.');
-                    add('head', 'Your own code is NEVER removed or edited -- it always runs first; dlac\'s');
-                    add('head', 'trigger gear overlays last, slot by slot.');
-                    add('txt', '3.  Seed your dlac folder (gear.lua) and starter triggers if absent.');
-                    add('txt', 'After Commit: click Reload LAC.');
                 end
                 ui._setupPlan = plan;
                 ui._setupOpen = true;
@@ -1463,20 +1458,9 @@ local function renderHeaderButtons()
             ui._setupPlan = nil;
             imgui.CloseCurrentPopup();
             if p.mode == 'migrate' then
-                -- The loud record goes to chat, exactly like /dl profile migrate go.
-                pcall(function()
-                    local prof = require('dlac\\profiles');
-                    local done = prof.migrate(true, function(s) pcall(print, s); end);
-                    pcall(function() require('dlac\\gear\\profilesets').invalidate(); end);
-                    _setupState = nil;   -- drop the jobSetupState cache
-                    if done ~= nil and done > 0 then
-                        _augStatus = string.format('Migrated %d job file(s) -- originals in backups\\pre-profiles\\ (details in chat). Reloading LuaAshitacast...', done);
-                        ui._lacReloadNeed, ui._lacReloadStamp0 = true, ui._lacStamp;   -- red until the auto-reload lands
-                        AshitaCore:GetChatManager():QueueCommand(1, '/addon reload luashitacast');
-                    else
-                        _augStatus = 'Migration: nothing to do (details in chat).';
-                    end
-                end);
+                -- The ONE standard path (setupui) -- loud record in chat, exactly
+                -- like /dl profile migrate go; status + reload flags via configure{}.
+                pcall(function() setup.migrateToCleanProfiles(); end);
             else
                 setup.migrateCurrentJob();
             end
@@ -3338,14 +3322,14 @@ local function drawWindow()
         if _augStatus ~= nil and _augStatus ~= '' then
             fmt.textWrapped(COL.SCORE, fmt.esc(_augStatus));
         end
-        do  -- prominent warning when the current job isn't wired for dlac yet
+        do  -- prominent warning when the current job isn't on the clean dlac standard yet
             local _st = setup.jobSetupState();
             if _st == 'ffxilac' or _st == 'none' then
                 local _, _ab = jobFile();
-                fmt.textWrapped(COL.ERR, string.format('  [!]  %s.lua is NOT set up for dlac -- click the red "Setup" button (top-right). Your existing logic is kept; dlac is added at the end.', tostring(_ab or '?')));
-            elseif _st == 'shims' then
+                fmt.textWrapped(COL.ERR, string.format('  [!]  %s.lua is NOT set up for dlac -- click the red "Setup" button (top-right). Your file is backed up and replaced by a clean dlac profile; your old sets and groups stay importable from the backup.', tostring(_ab or '?')));
+            elseif _st == 'wired' then
                 local _, _ab = jobFile();
-                fmt.textWrapped(COL.ERR, string.format('  [!]  %s.lua is missing trigger shims -- click the red "Setup" button (top-right) to add them (your logic is kept).', tostring(_ab or '?')));
+                fmt.textWrapped(COL.ERR, string.format('  [!]  %s.lua still runs its own logic alongside dlac (old-style conversion) -- click the red "Setup" button (top-right) to move to the clean profile standard. Your file is backed up first; nothing is lost.', tostring(_ab or '?')));
             end
         end
 

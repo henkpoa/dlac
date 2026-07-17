@@ -101,6 +101,13 @@ end
 function M.triggerBackupPath(job)
     local b = charBase(); return b and (b .. 'backups\\pre-profiles\\triggers\\' .. job .. '.lua') or nil;
 end
+-- Re-migration safety copies: when a once-migrated job file holds logic AGAIN
+-- (restored / hand-edited after the first migration), the live file is still
+-- re-shimmed -- the FIRST backup stays untouched (it is the statics truth the
+-- Sets tab imports from), and the current text lands in a stamped copy here.
+function M.reshimBackupPath(job)
+    local b = charBase(); return b and (b .. 'backups\\pre-profiles\\' .. job .. '-' .. os.date('%Y%m%d_%H%M%S') .. '.lua') or nil;
+end
 
 local function readFile(p)
     if p == nil then return nil; end
@@ -1015,19 +1022,29 @@ end
 
 -- Pure planner: given per-job facts, decide what would happen. files is a list of
 --   { job, text, hasBackup, hasProfileSets, hasLegacyTrig, hasProfileTrig }
--- Returns a list of { job, action = 'skip'|'migrate', reason, dynText|nil, notes = {...} }.
+-- Returns a list of { job, action = 'skip'|'migrate', reason, dynText|nil,
+-- reshim|nil, notes = {...} }.
+--
+-- THE SETUP STANDARD (Henrik, 2026-07-17): a job file that holds logic is NEVER
+-- left live -- the only file dlac ever leaves in charge is the clean shim. Old
+-- handler code running underneath dlac's dispatch was the old convert-in-place
+-- model, and it produced equip conflicts nobody can support at install scale.
+-- So the ONLY skip is "already a clean shim". A file that was migrated before
+-- and holds logic again (restored / hand-edited) is re-shimmed too: the FIRST
+-- backup is the pre-profiles truth and is never overwritten -- the current text
+-- goes to a stamped side copy instead (reshim = true).
 function M.planMigration(files)
     local plan = {};
     for _, f in ipairs(files) do
         local e = { job = f.job, notes = {} };
         if M.isCleanShim(f.text) then
             e.action, e.reason = 'skip', 'already a clean dlac shim';
-        elseif f.hasBackup then
-            -- The first backup is the pre-profiles TRUTH (statics live there for
-            -- Copy-from-static). Never overwrite it; never re-migrate over it.
-            e.action, e.reason = 'skip', 'backup already exists (migrated before?) -- not touching';
         else
             e.action = 'migrate';
+            if f.hasBackup then
+                e.reshim = true;
+                e.notes[#e.notes + 1] = 'first backup exists and stays UNTOUCHED -- the current file text is saved as a stamped copy next to it';
+            end
             local dyn, derr = M.extractDynamicText(f.text);
             if f.hasProfileSets then
                 e.notes[#e.notes + 1] = 'profile sets file already exists -- kept as-is (job file\'s Dynamic block NOT imported over it)';
@@ -1115,9 +1132,15 @@ function M.migrate(execute, say)
         else
             local okAll = true;
             -- 1) backup the original, read it back, compare. NOTHING is rewritten
-            --    until this byte-identical copy is proven on disk.
+            --    until this byte-identical copy is proven on disk. A re-migration
+            --    (reshim) never overwrites the first backup: the current text goes
+            --    to a stamped copy -- unless it IS the first backup, byte for byte,
+            --    in which case there is nothing new to save.
             local bp = M.backupPath(e.job);
-            if not writeFile(bp, f.text) or readFile(bp) ~= f.text then
+            if e.reshim then
+                bp = (readFile(bp) ~= f.text) and M.reshimBackupPath(e.job) or nil;
+            end
+            if bp ~= nil and (not writeFile(bp, f.text) or readFile(bp) ~= f.text) then
                 say(string.format('[dlac] %s: FAILED -- could not verify backup at %s; file untouched.', e.job, tostring(bp)));
                 okAll = false;
             end

@@ -19,15 +19,19 @@ You need a working LuaAshitacast install (it's part of the CatsEyeXI client).
 1. **Install** — drop the `dlac` folder into `Ashita\addons\`, then
    `/addon load dlac` (add that line to your Ashita boot script to load it every time).
 2. **Open the GUI** — **CTRL+K** (or `/dl ui`).
-3. Click the red **Setup** button (top-right). Works on *any* profile:
+3. Click the red **Setup** button (top-right). Works on *any* profile, and always
+   ends the same way — **your live `<JOB>.lua` becomes a small clean dlac shim**:
    - your existing profile — whether ffxi-lac, hand-written, or anything else — is
-     **converted in place**: your own handler logic is kept untouched, dlac's dispatch
-     is appended at the end of each handler, and the original is backed up
-     (`<JOB>.lua.flbak`);
-   - a job with no profile gets a fresh starter;
+     first copied to `backups\pre-profiles\` and **verified byte-for-byte**, then
+     replaced. Old logic never stays live: one equip engine, no conflicts;
+   - nothing is lost — your old **static sets** (including `_Priority` lists, order
+     kept) import via **"Copy from"** in the Sets tab, your old **group tables** via
+     **"Scan my Lua"** in the Triggers tab's Groups box, dynamic sets move over
+     automatically, verbatim;
+   - a job with no profile gets the same clean shim from scratch;
    - starter trigger rules (Engaged/Resting/Movement/Idle) and your gear database are
      seeded automatically.
-4. Click **Reload LAC**.
+4. LuaAshitacast reloads by itself (fresh jobs: click **Reload LAC**).
 
 That's it. Your gear imports itself (bags are auto-scanned on pickup, login and job change),
 and from here on everything is GUI work. Repeat for each job.
@@ -101,8 +105,10 @@ re-detected automatically on login/job change.
 
 ## Safety
 
-- Setup never deletes your code — dispatch calls are *appended*; originals are backed
-  up (`.flbak` plus rotated backups in `backups\`).
+- Setup never deletes your code — your original file is copied to
+  `backups\pre-profiles\` and verified byte-for-byte **before** anything is rewritten.
+  A first backup is never overwritten (re-runs save a time-stamped copy beside it),
+  and the Sets/Groups importers read your old sets and tables from it forever.
 - Every file write is parse-checked first and aborts untouched on failure.
 - A broken hand-edit to the trigger file keeps the last good rules and reports.
 

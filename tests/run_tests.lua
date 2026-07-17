@@ -1079,22 +1079,44 @@ check('Y23 shim parses', (loadstring or load)(profilesM.shimFileText()) ~= nil, 
 check('Y24 shim recognized', profilesM.isCleanShim(profilesM.shimFileText()), true);
 check('Y25 a real profile is NOT a shim', profilesM.isCleanShim(JOBFILE), false);
 
--- the migration planner (pure): shims and backed-up jobs are never touched,
--- Dynamic blocks travel verbatim, an existing profile sets file is never
--- overwritten by an import.
+-- the migration planner (pure): ONLY a clean shim is ever skipped (THE SETUP
+-- STANDARD, 2026-07-17 -- a file with logic in it never stays live), Dynamic
+-- blocks travel verbatim, an existing profile sets file is never overwritten
+-- by an import, and a first backup is never overwritten (reshim = stamped copy).
 local plan = profilesM.planMigration({
     { job = 'WAR', text = JOBFILE, hasBackup = false, hasProfileSets = false, hasLegacyTrig = true,  hasProfileTrig = false },
     { job = 'WHM', text = profilesM.shimFileText(), hasBackup = false, hasProfileSets = false, hasLegacyTrig = false, hasProfileTrig = false },
     { job = 'BLM', text = JOBFILE, hasBackup = true,  hasProfileSets = false, hasLegacyTrig = false, hasProfileTrig = false },
     { job = 'RDM', text = 'local x = 1; return x;', hasBackup = false, hasProfileSets = false, hasLegacyTrig = false, hasProfileTrig = false },
     { job = 'THF', text = JOBFILE, hasBackup = false, hasProfileSets = true,  hasLegacyTrig = false, hasProfileTrig = false },
+    { job = 'PLD', text = profilesM.shimFileText(), hasBackup = true, hasProfileSets = true, hasLegacyTrig = false, hasProfileTrig = false },
 });
 check('Y26 plan: real profile migrates', plan[1].action, 'migrate');
 check('Y27 plan: Dynamic block travels verbatim', plan[1].dynText, dynText);
 check('Y28 plan: clean shim skipped', plan[2].action, 'skip');
-check('Y29 plan: existing backup means hands off', plan[3].action, 'skip');
+check('Y29 STANDARD: backed-up file with logic in it is re-shimmed, not skipped',
+      plan[3].action == 'migrate' and plan[3].reshim == true, true);
 check('Y30 plan: no Dynamic block -> empty store, still migrates', plan[4].action == 'migrate' and plan[4].dynText == nil, true);
 check('Y31 plan: existing profile sets file is never re-imported over', plan[5].action == 'migrate' and plan[5].dynText == nil, true);
+check('Y31b plan: a shim with a backup is left alone (nothing to do)', plan[6].action, 'skip');
+-- SETUP HARD RULE: whatever the flag combination, a file whose text is NOT the
+-- clean shim always migrates -- no input may leave old logic live. (The skip
+-- for a clean shim is equally load-bearing: migration must be idempotent.)
+do
+    local inputs = {};
+    local texts = { JOBFILE, 'return {};', profilesM.shimFileText() };
+    for t = 1, #texts do for a = 0, 1 do for b = 0, 1 do for c = 0, 1 do for d = 0, 1 do
+        inputs[#inputs + 1] = { job = 'J' .. #inputs, text = texts[t],
+            hasBackup = a == 1, hasProfileSets = b == 1, hasLegacyTrig = c == 1, hasProfileTrig = d == 1 };
+    end end end end end
+    local p2 = profilesM.planMigration(inputs);
+    local rule = true;
+    for i, f in ipairs(inputs) do
+        local want = profilesM.isCleanShim(f.text) and 'skip' or 'migrate';
+        if p2[i].action ~= want then rule = false; end
+    end
+    check('Y31c SETUP HARD RULE: every non-shim file migrates; every clean shim skips (48 combos)', rule, true);
+end
 
 -- missing-gear-safe sets loading (profile sharing): a reader who doesn't own
 -- referenced items gets ladder HOLES (nil), a missing weapon CATEGORY resolves

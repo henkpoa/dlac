@@ -45,9 +45,12 @@ Per `<JOB>.lua` found (all 22 abbrs probed), in this order, each step verified
 before the next:
 
 1. **Backup first, loudly.** Original copied to `backups\pre-profiles\<JOB>.lua`
-   and read back byte-identical before anything else happens. An existing
-   backup means the file is SKIPPED entirely — the first backup is the
-   pre-profiles truth and is never overwritten.
+   and read back byte-identical before anything else happens. The first backup
+   is the pre-profiles truth and is never overwritten — a file that holds logic
+   again after an earlier migration (restored / hand-edited) is still
+   re-shimmed (THE SETUP STANDARD, 2026-07-17: only a clean shim is ever
+   skipped), with its current text saved to a stamped copy
+   (`<JOB>-<stamp>.lua`) beside the untouched first backup.
 2. **Dynamic block moves verbatim** (byte-for-byte textual extraction, tests
    Y8–Y15) into `profiles\Default\sets\<JOB>.lua`. An existing profile sets
    file is never imported over.
@@ -65,11 +68,15 @@ statics still one click away.
 
 ## Veterans (heavy hand-written LUAs)
 
-Nothing changes in their execution model: their handler code runs first,
-`utils.dispatch(...)` overlays last per slot. Profiles only change where dlac
-reads/writes ITS data — and remove the scariest thing dlac did to them
-(setmanager's text surgery on their hand-tuned file). Their file becomes
-read-only to us unless they opt into migration.
+**Superseded by THE SETUP STANDARD (2026-07-17):** Setup no longer offers the
+"your logic runs first, dispatch overlays last" model — a field case proved two
+equip logics in one file produce conflicts (equip-packet lag) that can't be
+supported at install scale. Setup always backs the file up (verified) and
+replaces it with the clean shim; the old sets, `_Priority` lists and group
+tables import from the backup. A veteran who insists can still hand-wire
+`utils.dispatch(...)` overlays into their own file — the engine happily runs
+that — but the GUI flags it (`wired` state, red Setup) and support is
+best-effort.
 
 One new hazard, guarded: a profile dynamic set whose name collides with a
 file-authored static gets silently shadowed by the flatten (full replace, NOT a

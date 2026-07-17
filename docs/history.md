@@ -2269,3 +2269,47 @@ Tests VL1–VL7 (min-level derivation incl. the `marker|fallback` composite
 form, flatten below/at the rung, legacy-manifest passthrough). 1078 + 125
 green. Note: utils.lua changed too — a **Reload LAC** is needed for the
 flatten half; the engine half self-swaps.
+
+## Session "THE SETUP STANDARD -- clean shim, always" (2026-07-17)
+
+Henrik's ruling, born from the friend-sync-lag case (the fix was an EMPTY job
+file): **Setup always ends with the live `<JOB>.lua` as the clean managed
+shim.** Convert-in-place -- append dispatch shims, keep the old handler logic
+running underneath -- is dead. With 300+ installs coming over hand-built LUAs,
+old logic left live means equip conflicts nobody can support; the maze of
+setup outcomes collapses to one path.
+
+What changed (most of the machinery already existed -- this makes it the ONLY
+door):
+
+- **profiles.planMigration**: the only skip is "already a clean shim". A
+  backed-up file that holds logic again (restored/hand-edited) re-migrates
+  with `reshim = true`: the FIRST backup (the statics truth "Copy from"
+  imports) is never overwritten -- the current text goes to a stamped
+  `backups\pre-profiles\<JOB>-<stamp>.lua` copy (skipped when byte-identical
+  to the first backup).
+- **setupui**: state `'shims'` died; `'wired'` = touches dlac but is NOT the
+  clean shim (old in-place conversions, hand-wired files, edited shims) and
+  routes -- like `'ffxilac'`/`'none'` -- into the new unified
+  `setup.migrateToCleanProfiles()`: seed `dlac\gear.lua` (ffxi-lac copy else
+  bundled template; gcinclude/gcdisplay seeding dropped -- nothing live
+  requires them now), `profiles.migrate` over EVERY job file, per-job starter
+  trigger seeding, profilesets invalidate, auto LAC reload. `'ok'` = shim +
+  healthy handlers only. The `.flbak` writer and `setup.migrateJobText` are
+  gone; `setmanager.repairShims*` stays (tested text engine, no product
+  caller). Fixed in passing: gearui's migrate-commit wrote a GLOBAL
+  `_setupState` instead of dropping setupui's cache.
+- **gearui**: one 'migrate' plan popup for every non-standard state, spelling
+  out the safety (verified first backup, stamped re-backup) and the import
+  paths (Sets "Copy from" incl. `_Priority` order/ADR 0008, Groups "Scan my
+  Lua", both reading the backup); commit calls `migrateToCleanProfiles()`.
+  Red banner rewritten: old text promised "your existing logic is kept".
+- **Tests**: Y29 flipped (backed-up + logic = re-shim, first backup
+  untouched), Y31b (shim + backup = skip), Y31c SETUP HARD RULE: all 48
+  text-x-flag combos -- every non-shim migrates, every shim skips. 1088 + 125
+  green.
+
+Docs: README setup/safety, architecture (setupui/setmanager/file table),
+design/profiles.md (migration order; "Veterans" section superseded by the
+standard -- hand-wiring is engine-supported but GUI-flagged, best-effort),
+PROFILE_TEMPLATE header.
