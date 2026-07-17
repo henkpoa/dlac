@@ -3048,6 +3048,150 @@ local Evil = { bad = os.execute('rm -rf /') }
 end)();
 
 -- ---------------------------------------------------------------------------
+-- LS. Level-sync settle hold (dispatch.syncSettleStep + the equipResolved
+--     ctx.syncHold branch, v56): a level jump on the SAME job arms a ~3s
+--     weapon hold -- an Incursion boss pop re-syncing the party must not swap
+--     Main mid-transition and zero saved TP. Job changes and first reads adopt
+--     instantly; not-ready readings (level 0, job '?'/'NON') never touch the
+--     tracker. While the hold is live, ONLY Main/Sub/Range are kept as worn --
+--     armor and Ammo (no TP cost) dispatch normally.
+-- ---------------------------------------------------------------------------
+(function()
+    check('LS0 pure rule exported',    type(dispatchM.syncSettleStep), 'function');
+    check('LS0b live consult exported', type(dispatchM.syncSettleHold), 'function');
+    local W = dispatchM.SYNC_SETTLE_S;
+    check('LS0c settle window is a positive number', type(W) == 'number' and W > 0, true);
+
+    local st = { job = nil, lv = nil, holdUntil = 0 };
+    check('LS1 first read adopts, no hold',   dispatchM.syncSettleStep(st, 'WAR', 75, 100.0), false);
+    check('LS2 stable level stays free',      dispatchM.syncSettleStep(st, 'WAR', 75, 101.0), false);
+    check('LS3 sync lands -> hold arms',      dispatchM.syncSettleStep(st, 'WAR', 60, 102.0), true);
+    check('LS4 still holding inside window',  dispatchM.syncSettleStep(st, 'WAR', 60, 102.0 + W - 0.1), true);
+    check('LS5 window passed -> released',    dispatchM.syncSettleStep(st, 'WAR', 60, 102.0 + W), false);
+    -- a staged transition (server re-syncs in steps) keeps extending the window
+    check('LS6 second sync re-arms',          dispatchM.syncSettleStep(st, 'WAR', 50, 110.0), true);
+    check('LS6b next stage extends',          dispatchM.syncSettleStep(st, 'WAR', 55, 111.0), true);
+    check('LS6c still live past the FIRST deadline', dispatchM.syncSettleStep(st, 'WAR', 55, 110.0 + W + 0.5), true);
+    -- job change: adopt instantly AND drop any live hold (new job must re-gear now)
+    dispatchM.syncSettleStep(st, 'WAR', 40, 120.0);   -- arm
+    check('LS7 job change adopts instantly',  dispatchM.syncSettleStep(st, 'NIN', 37, 120.5), false);
+    check('LS7b job change drops the hold',   st.holdUntil, 0);
+    -- not-ready readings leave the tracker (and a live hold) untouched
+    dispatchM.syncSettleStep(st, 'NIN', 30, 130.0);   -- arm
+    check('LS8 level 0 ignored (hold stays)',  dispatchM.syncSettleStep(st, nil,  0,  130.5), true);
+    check('LS8b NON job ignored (hold stays)', dispatchM.syncSettleStep(st, 'NON', 75, 130.6), true);
+    check('LS8c "?" job ignored (hold stays)', dispatchM.syncSettleStep(st, '?',  75, 130.7), true);
+    check('LS8d junk never adopted into the tracker', st.lv, 30);
+
+    -- equipResolved rides ctx.syncHold: weapons held as worn, the rest dispatches
+    local lsSet = { Main = 'Joyeuse', Sub = 'GenbusShield', Range = 'Power Bow',
+                    Ammo = 'Tiphia Sting', Body = 'Gaudy Harness' };
+    local lsNote, lsTbl = dispatchM._equipResolved(lsSet, { syncHold = true });
+    check('LS9 Main held',   lsTbl.Main,  nil);
+    check('LS10 Sub held',   lsTbl.Sub,   nil);
+    check('LS11 Range held', lsTbl.Range, nil);
+    check('LS12 Ammo NOT held (no TP cost)', lsTbl.Ammo, 'Tiphia Sting');
+    check('LS13 armor unaffected',           lsTbl.Body, 'Gaudy Harness');
+    check('LS14 the hold is traced for /dl why', string.find(lsNote, 'SYNC-HOLD', 1, true) ~= nil, true);
+    local _, lsTbl2 = dispatchM._equipResolved(lsSet, { syncHold = false });
+    check('LS15 no hold: weapons dispatch',  lsTbl2.Main, 'Joyeuse');
+    local _, lsTbl3 = dispatchM._equipResolved(lsSet, {});
+    check('LS16 absent flag: weapons dispatch (old ctx shape)', lsTbl3.Main, 'Joyeuse');
+
+    -- ROOT CAUSE pin: a level-driven VIRTUAL in a weapon slot must be held
+    -- UNRESOLVED -- resolving it at the transient level IS the field bug. This
+    -- kills the "refactor the hold into a post-pass on final names" mutant:
+    -- only the branch's position ABOVE the dlac: branch guarantees it.
+    local lsV = { Main = 'dlac:AutoStaff|Fallback Staff', Sub = 'dlac:AutoGrip|Fallback Grip' };
+    local lsVNote, lsVTbl = dispatchM._equipResolved(lsV, { syncHold = true });
+    check('LS17 virtual Main held unresolved',  lsVTbl.Main, nil);
+    check('LS17b virtual Sub held unresolved',  lsVTbl.Sub, nil);
+    check('LS18 the hold is what got traced',   string.find(lsVNote, 'SYNC-HOLD', 1, true) ~= nil, true);
+    check('LS18b no virtual resolution leaked', string.find(lsVNote, 'AutoStaff', 1, true), nil);
+    local _, lsVFree = dispatchM._equipResolved(lsV, {});
+    check('LS19 no hold: virtual resolves (fallback rides)', lsVFree.Main ~= nil, true);
+
+    -- Sync-hold companion rule (ADR 0010): with Range held, a stat-stick Ammo
+    -- whose RSlot reserves Range must hold too -- otherwise it lands and the
+    -- SERVER strips the worn ranged weapon mid-window. Fired ammo (no Range
+    -- bit, like LS12's recordless Tiphia Sting) keeps dispatching.
+    local gearLS = package.loaded['dlac\\gear'];
+    gearLS.NameToObject['Aureole'] = { Name = 'Aureole', RSlot = 0x0004 + 0x0008, Level = 70 };
+    local lsTrink = { Range = 'Power Bow', Ammo = 'Aureole', Body = 'Gaudy Harness' };
+    local lsTNote, lsTTbl = dispatchM._equipResolved(lsTrink, { syncHold = true });
+    check('LS20 Range held',                    lsTTbl.Range, nil);
+    check('LS20b Range-reserving Ammo held too', lsTTbl.Ammo, nil);
+    check('LS20c armor still dispatches',        lsTTbl.Body, 'Gaudy Harness');
+    check('LS20d companion hold traced',
+        string.find(lsTNote, 'reserves Range', 1, true) ~= nil, true);
+    -- no hold: ADR 0010 behavior unchanged (trinket vs ranged decided by Level)
+    local _, lsTFree = dispatchM._equipResolved(lsTrink, {});
+    check('LS21 no hold: trinket rule decides (higher Level wins)', lsTFree.Ammo, 'Aureole');
+    check('LS21b no hold: the lower-Level ranged weapon dropped',   lsTFree.Range, nil);
+    gearLS.NameToObject['Aureole'] = nil;
+
+    -- The LIVE consult: the gData glue (field names, tonumber, pcall) and the
+    -- shared tracker on M. Deterministic: arming and the truth test share one
+    -- os.clock() read inside each call; the job change zeroes holdUntil.
+    TEST_PLAYER = { MainJob = 'WAR', SubJob = 'NIN', MainJobSync = 75, SubJobSync = 37 };
+    dispatchM.syncSettleHold();                       -- first good read adopts silently
+    check('LS22 live: stable reading, no hold',   dispatchM.syncSettleHold(), false);
+    TEST_PLAYER.MainJobSync = 60;                     -- a level sync lands
+    check('LS23 live: sync jump arms the hold',   dispatchM.syncSettleHold(), true);
+    check('LS23b live: tracker parked on M (survives self-swap)',
+        type(dispatchM._syncSt) == 'table' and dispatchM._syncSt.lv, 60);
+    TEST_PLAYER.MainJob = 'NIN';                      -- job change adopts instantly
+    check('LS24 live: job change drops the hold', dispatchM.syncSettleHold(), false);
+    TEST_PLAYER = nil;                                -- not-ready read: tracker untouched
+    check('LS25 live: nil player never arms',     dispatchM.syncSettleHold(), false);
+
+    -- The Default gate (M.defaultGateHold): what the HandleEquipEvent wrap
+    -- consults AT CALL TIME. Pet hold first, then the sync settle hold.
+    TEST_PLAYER = { MainJob = 'BLM', SubJob = 'WHM', MainJobSync = 37, SubJobSync = 18 };
+    dispatchM.syncSettleHold();                       -- job differs from LS24's NIN: adopt, no hold
+    check('LS26 gate: idle -> not held',          dispatchM.defaultGateHold(), false);
+    _G.gState = { PetAction = { Completion = os.clock() + 5 } };
+    check('LS27 gate: pet action in flight -> held', dispatchM.defaultGateHold(), true);
+    _G.gState.PetAction = nil;
+    TEST_PLAYER.MainJobSync = 30;                     -- a sync lands (same job BLM)
+    check('LS28 gate: sync settling -> held',     dispatchM.defaultGateHold(), true);
+    TEST_PLAYER.MainJob = 'WAR';                      -- job change releases
+    check('LS29 gate: job change releases',       dispatchM.defaultGateHold(), false);
+    _G.gState = nil;
+
+    -- The wrap SHELL, driven for real: a fresh engine load with gFunc + a stub
+    -- gState installs the thin shell (WRAP_GEN); HandleDefault is gated while
+    -- the fresh module's tracker is armed, Precast always flows. Also pins the
+    -- generational re-install: a v55-shaped pre-wrap (_dlacPetHold=true, no
+    -- _dlacWrapGen) must be wrapped OVER, not skipped -- the hot-swap gap.
+    local reached = nil;
+    local stStub = {
+        HandleEquipEvent = function(ev, style) reached = ev; end,
+        _dlacPetHold = true,                          -- the v55 boolean is already set
+    };
+    _G.gFunc, _G.gState = {}, stStub;
+    TEST_PLAYER = { MainJob = 'WAR', SubJob = 'NIN', MainJobSync = 75, SubJobSync = 37 };
+    local freshM = dofile('dispatch.lua');
+    check('LS30 shell installed OVER a v55-shaped wrap', stStub.HandleEquipEvent ~= nil
+        and type(stStub._dlacWrapGen) == 'number', true);
+    stStub.HandleEquipEvent('HandleDefault');         -- first pass adopts the level
+    check('LS31 stable level: Default flows',     reached, 'HandleDefault');
+    reached = nil;
+    TEST_PLAYER.MainJobSync = 60;                     -- a sync lands
+    stStub.HandleEquipEvent('HandleDefault');
+    check('LS32 settling: Default gated',         reached, nil);
+    stStub.HandleEquipEvent('HandlePrecast');
+    check('LS33 settling: action events flow',    reached, 'HandlePrecast');
+    freshM.SYNC_SETTLE_S = 0;                         -- release without sleeping
+    reached = nil;
+    TEST_PLAYER.MainJobSync = 50;                     -- re-arm under a 0s window
+    stStub.HandleEquipEvent('HandleDefault');
+    check('LS34 window over: Default flows again', reached, 'HandleDefault');
+    _G.gFunc, _G.gState = nil, nil;
+    TEST_PLAYER = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then

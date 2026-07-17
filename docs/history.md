@@ -2052,3 +2052,34 @@ spanning weapon slots (weapon slots feed the optimizer via baseComposition); unr
 player state matches NEITHER buff polarity (a failed read must never flap gear); the
 build-as-75 off-state deliberately does NOT persist; main pushed (9 commits) so the extras
 PR reviews cleanly and origin can't diverge under the incoming cloud-agent PRs.
+
+## Session "level-sync settle hold" (after adaab2c, engine v56) — 2026-07-17
+
+**Theme:** Henrik's field report — "in Incursion you are already level synced, then you pop
+a boss, a new level sync is in place. That's when I lose TP" — diagnosed and fixed
+engine-native.
+
+**Root cause:** the engine trusts a just-changed MainJobSync reading immediately. A sync
+landing makes level-driven resolution (virtuals, ladders, `utils.rebuildSets` re-flattens)
+name a DIFFERENT Main at the transient level; one `gFunc.EquipSet` later the main weapon
+swaps and saved TP zeroes. "Sometimes" = whether a dispatch frame lands inside the
+transient window.
+
+**Landed (dispatch.lua v56):** the level-sync settle hold, the ratified stateless-hold
+pattern. Pure rule `M.syncSettleStep`: a level jump on the SAME job arms a ~3s hold
+(`M.SYNC_SETTLE_S`); job changes and first reads adopt instantly; not-ready readings
+(level 0, job '?'/'NON') never touch the tracker (parked on M — survives self-swap
+mid-hold). While holding: every dispatch keeps Main/Sub/Range as worn (`ctx.syncHold`, the
+pinReserved pattern — sits ABOVE the AutoAcc/virtual branches so markers hold UNRESOLVED),
+a Range-reserving stat-stick Ammo holds WITH the Range it reserves (else the server strips
+the worn ranged weapon — the ADR 0010 inversion the review caught), and HandleDefault is
+gated whole for legacy profiles via `M.defaultGateHold`, consulted AT CALL TIME by a thin
+generational wrap shell (`WRAP_GEN` + preserved `_dlacOrigHEE` original) so the gate
+hot-swaps live — the old `_dlacPetHold` boolean guard would have left a v55→v56 hot-swap
+without the gate until a full Reload LAC. Traced as `SYNC-HOLD` in /dl why. LS1–LS34
+headless tests (929 total), including a real drive of the wrap shell over a v55-shaped
+pre-wrap.
+
+**Process note:** adversarial review workflow (4 lenses, refutation verify) confirmed 4
+real defects in the first draft — trinket/Range inversion, the hot-swap wrap gap, the
+tracker reset on self-swap, and mutation-tested coverage holes — all fixed before commit.

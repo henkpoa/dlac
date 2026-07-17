@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 55;   -- 55: Trigger-monitor feed -- a 5-entry ring of fired-rule lines (updated on every retrace: Default only when its matched-rule set changes, action events always). Each new line STREAMS to the addon state as a blocked '/dlacmonev' command (the /bind queue precedent -- the live channel two Lua states share) AND flushes coalesced to firedstate.lua (reload bootstrap + fallback). Display only; the engine never reads it back.
+M.VERSION = 56;   -- 56: Level-sync settle hold -- a MainJobSync jump on the SAME job (a level sync landing: Incursion boss pop, party re-sync) arms a ~3s hold: every dispatch keeps Main/Sub/Range as worn (ctx.syncHold, the pinReserved pattern; a Range-reserving stat-stick Ammo holds WITH the Range it reserves, or the server would strip the worn ranged weapon -- ADR 0010), and HandleDefault is gated whole for legacy profiles via M.defaultGateHold (pet hold + sync hold), consulted AT CALL TIME by a thin generational wrap shell (WRAP_GEN) so the gate itself hot-swaps live. Tracker parked on M (survives self-swap mid-hold). Job changes and first reads adopt instantly -- no hold. Pure rule: M.syncSettleStep (LS tests). Root cause of the field report "popping an Incursion boss sometimes zeroes saved TP": a mid-transition level reading resolving a different Main.
+                  -- 55: Trigger-monitor feed -- a 5-entry ring of fired-rule lines (updated on every retrace: Default only when its matched-rule set changes, action events always). Each new line STREAMS to the addon state as a blocked '/dlacmonev' command (the /bind queue precedent -- the live channel two Lua states share) AND flushes coalesced to firedstate.lua (reload bootstrap + fallback). Display only; the engine never reads it back.
                   -- 54: Player conditions v2 (Henrik's morning revision) -- canonical keys playerHPBelow/Above, playerHPPercentBelow/Above, playerMPBelow/Above, playerMPPercentBelow/Above (raw AND percent variants; v53 hpBelow/... spellings stay as hidden percent aliases), plus whenAny OR groups: a rule matches when ALL `when` conditions hold OR ANY whenAny entry holds; an OR-only rule is not always-on. ruleLabel/defaultPriority take whenAny.
                   -- 53: Player conditions v1 -- hpBelow/hpAbove, mpBelow/mpAbove, tpBelow/tpAbove (strict compares vs gData vitals) and buff/buffNot (active status effect by name or id; per-dispatch buff cache; unreadable state matches NEITHER polarity). Tier 95, just under mode.
                   -- 52: trinket vs ranged weapon (ADR 0010) -- a stat stick reserves the Range slot server-side, so the engine keeps the higher-Level of {trinket, ranged weapon} and drops the other (no flap); trinket RSlot completed in gearimport. 51: Trigger Groups (G1) -- new `group` matcher (specificity tier 45) + Groups section load/serialize (ADR 0009). 50: the v46-49 /dl instdiag diagnostic is out (field-confirmed on both characters); the fix it found stays -- M.jobReady + the job-keyed latch. See ADR 0007
@@ -976,6 +977,79 @@ function M.mpPick(cands, level)
     return nil;
 end
 
+-- ---------------------------------------------------------------------------
+-- Level-sync settle hold (v56). When a level sync lands (Incursion boss pop,
+-- party re-sync), MainJobSync jumps -- and for the next frames the reading and
+-- the server's own gear re-staging are mid-flight. A dispatch that trusts the
+-- new number immediately can resolve a DIFFERENT weapon (level ladders,
+-- virtuals, rebuilt dynamic sets) and a Main swap zeroes saved TP (field
+-- report: popping an Incursion boss ate the TP held for it). The rule: a level
+-- reading that JUST changed is not trusted yet -- weapon slots hold as worn
+-- until it has been stable for SYNC_SETTLE_S. Stateless beyond one tracker
+-- (last job/level + a clock stamp), re-stepped on every consult. A JOB change
+-- adopts instantly (re-gearing a new job must not wait) and so does the first
+-- good read after load; not-ready readings (level 0, job '?'/'NON' -- the v49
+-- login shapes) never touch the tracker, so a flaky read can't arm or drop it.
+-- ---------------------------------------------------------------------------
+M.SYNC_SETTLE_S = 3.0;
+local WEAPON_SLOTS = { main = true, sub = true, range = true };
+-- Parked on the shared module table (the M._loadStamp pattern): an engine
+-- self-swap re-executes this file mid-session, and a fresh tracker would adopt
+-- a mid-transition level as "first read" -- dropping a live hold exactly when
+-- it matters. A real Reload LAC builds a fresh module table and starts clean.
+M._syncSt = M._syncSt or { job = nil, lv = nil, holdUntil = 0 };
+
+-- The pure rule (headless-tested): step the tracker with the current reading,
+-- answer whether the hold is active at `now`. Mutates and keeps `st`.
+function M.syncSettleStep(st, job, lv, now)
+    if type(lv) == 'number' and lv > 0
+       and type(job) == 'string' and job ~= '' and job ~= '?' and job ~= 'NON' then
+        if st.lv == nil or st.job ~= job then
+            st.job, st.lv, st.holdUntil = job, lv, 0;   -- first read / job change: adopt, no hold
+        elseif lv ~= st.lv then
+            st.lv = lv;                                  -- same job, level jumped: a sync landed
+            st.holdUntil = now + (tonumber(M.SYNC_SETTLE_S) or 3);
+        end
+    end
+    return now < (tonumber(st.holdUntil) or 0);
+end
+
+-- Live consult: reads the player itself, so ANY caller (the dispatch pass, the
+-- HandleDefault wrap) keeps the one tracker fresh. Never throws.
+function M.syncSettleHold()
+    local job, lv = nil, nil;
+    pcall(function()
+        local p = gData.GetPlayer();
+        if p ~= nil then job, lv = p.MainJob, tonumber(p.MainJobSync); end
+    end);
+    return M.syncSettleStep(M._syncSt, job, lv, os.clock());
+end
+
+-- The whole HandleDefault gate (pet hold + sync settle), as a function ON M so
+-- the installed HandleEquipEvent wrap consults it AT CALL TIME -- an engine
+-- self-swap refreshes this logic with NO wrap reinstall. Never throws.
+function M.defaultGateHold()
+    local held = false;
+    pcall(function()
+        -- While the PET's action is in flight, HOLD Default: a hand-written
+        -- profile equips sets.Idle unconditionally and would stomp the
+        -- PetAction gear (upstream parity; the Completion clock is the backstop).
+        local st = rawget(_G, 'gState');
+        local pa = (st ~= nil) and st.PetAction or nil;
+        if pa ~= nil and (pa.Completion == nil or os.clock() < pa.Completion) then
+            held = true;
+            return;
+        end
+        -- Level-sync settle (v56): while the level reading is fresh off a jump,
+        -- Default must not equip AT ALL -- a legacy profile's direct
+        -- gFunc.EquipSet (and a transient-level rebuildSets) would ride the
+        -- wrong level straight into a weapon swap (TP -> 0). Action events
+        -- keep flowing; the engine weapon-holds those via ctx.syncHold.
+        if M.syncSettleHold() then held = true; end
+    end);
+    return held;
+end
+
 -- Non-weapon slots MP-EQUIP may write even when the dispatched set doesn't
 -- address them (lowercase key -> canonical LAC set key).
 local MP_SLOT_CANON = { ammo = 'Ammo', head = 'Head', neck = 'Neck', ear1 = 'Ear1',
@@ -1343,6 +1417,17 @@ local function equipResolved(s, ctx)
             out[slot] = nil;                           -- locked: the engine leaves it alone
             notes = notes or {};
             notes[#notes + 1] = string.format('%s=LOCKED (kept as worn)', tostring(slot));
+        elseif ctx ~= nil and ctx.syncHold == true and WEAPON_SLOTS[string.lower(tostring(slot))] then
+            -- MUST sit above the AutoAcc and dlac: branches: a virtual marker in a
+            -- weapon slot has to be held UNRESOLVED (resolving it at the transient
+            -- level IS the bug this hold exists for -- LS tests pin the order).
+            if out == nil then
+                out = {};
+                for k2, v2 in pairs(s) do out[k2] = v2; end
+            end
+            out[slot] = nil;               -- level reading is settling: weapons stay as worn
+            notes = notes or {};
+            notes[#notes + 1] = string.format('%s=SYNC-HOLD (level just changed; kept as worn)', tostring(slot));
         elseif pinRes ~= nil and pinRes[string.lower(tostring(slot))] ~= nil then
             if out == nil then
                 out = {};
@@ -1470,6 +1555,27 @@ local function equipResolved(s, ctx)
                 out[slot] = nil;
                 notes = notes or {};
                 notes[#notes + 1] = string.format('Main=%s HELD (pairs badly with the craft Sub)', tostring(v));
+                break;
+            end
+        end
+    end
+    -- Sync-hold companion rule: with Range HELD out of the plan above, a
+    -- stat-stick Ammo (RSlot reserves Range, ADR 0010) must hold too --
+    -- trinketRangeDrop below judges only the plan, so the trinket would sail
+    -- through, land, and the SERVER would strip the worn ranged weapon: a
+    -- Range unequip during the very window the hold keeps weapons stable.
+    -- Fired ammo (arrows/bolts: no Range bit) keeps dispatching (LS12).
+    if ctx ~= nil and ctx.syncHold == true then
+        for slot, v in pairs(out or s) do
+            if string.lower(tostring(slot)) == 'ammo' and type(v) == 'string'
+               and hasBit(tonumber(rslotOf(v)) or 0, 0x0004) then
+                if out == nil then
+                    out = {};
+                    for k2, v2 in pairs(s) do out[k2] = v2; end
+                end
+                out[slot] = nil;
+                notes = notes or {};
+                notes[#notes + 1] = string.format('%s=SYNC-HOLD (%s reserves Range; kept as worn)', tostring(slot), tostring(v));
                 break;
             end
         end
@@ -1968,6 +2074,10 @@ function M.dispatch(event)
         if not hasRules and not hasPins and not craftOn then return; end
 
         local ctx = buildCtx(event);
+        -- Level-sync settle (v56): computed ONCE per dispatch and ridden by every
+        -- equipResolved below (rule hits, craft overlay, pin overlay) -- the
+        -- pinReserved pattern. While it holds, weapon slots stay as worn.
+        ctx.syncHold = M.syncSettleHold();
         local hits = {};
         if hasRules then
             for _, r in ipairs(list) do
@@ -2613,24 +2723,31 @@ if inLac() then
     -- with it up). Drive the SAME flow on a throttled frame tick so Default
     -- dispatching is packet-independent. The tick also watches the main job: a job
     -- change drops maxmp immediately, before it can battery the new job's gear.
-    -- Upstream parity for LEGACY profiles too: while the pet's action is in
-    -- flight, HandleDefault must not run AT ALL -- a hand-written profile
-    -- equips sets.Idle unconditionally and stomps the PetAction gear (field
-    -- case: Yinyang Robe in Idle.Body erased the pact piece the moment it was
-    -- worn). The engine-side hold only covers dlac dispatches, so LAC's own
-    -- entry point is wrapped ONCE; the tick's calls flow through it as well.
+    -- Upstream parity for LEGACY profiles too: HandleDefault must not run AT
+    -- ALL while the pet's action is in flight (field case: Yinyang Robe in
+    -- Idle.Body erased the pact piece the moment it was worn) or while a level
+    -- sync is settling (v56). The engine-side holds only cover dlac
+    -- dispatches, so LAC's own entry point is wrapped; the tick's calls flow
+    -- through it as well. The wrap is a THIN shell: the actual decision is
+    -- M.defaultGateHold, looked up at CALL time, so a self-swap refreshes the
+    -- gate logic with no reinstall. WRAP_GEN guards the shell's install: it
+    -- only bumps when the shell's own body changes shape (gen 2 = delegate to
+    -- defaultGateHold; gen "nil + _dlacPetHold" = the v55 pet-only closure).
+    -- A pre-gen wrap hid its original, so it BECOMES the preserved original
+    -- once -- its inner pet check is idempotent under the gate's, and wrap
+    -- depth stops at 2 because _dlacOrigHEE is reused by every later gen.
+    local WRAP_GEN = 2;
     pcall(function()
         local st = rawget(_G, 'gState');
-        if st ~= nil and type(st.HandleEquipEvent) == 'function' and st._dlacPetHold ~= true then
-            local orig = st.HandleEquipEvent;
+        if st ~= nil and type(st.HandleEquipEvent) == 'function' and st._dlacWrapGen ~= WRAP_GEN then
+            st._dlacOrigHEE = st._dlacOrigHEE or st.HandleEquipEvent;
+            local orig = st._dlacOrigHEE;
             st.HandleEquipEvent = function(ev, style)
-                if ev == 'HandleDefault' then
-                    local pa = st.PetAction;
-                    if pa ~= nil and (pa.Completion == nil or os.clock() < pa.Completion) then return; end
-                end
+                if ev == 'HandleDefault' and M.defaultGateHold() then return; end
                 return orig(ev, style);
             end;
-            st._dlacPetHold = true;
+            st._dlacWrapGen = WRAP_GEN;
+            st._dlacPetHold = true;   -- a pre-gen engine run must not wrap over us again
         end
     end);
 
@@ -2643,8 +2760,10 @@ if inLac() then
     -- MODULE TABLE (the __dlacEngineRoot handshake at the top of the file), so
     -- utils' captured reference and the profiles' shims run the new code with
     -- no re-require. The re-run re-registers both event handlers (unregister-
-    -- first makes the replace deterministic), skips the pet-hold wrap
-    -- (_dlacPetHold guard), and re-runs loadModeState + saveModeState -- a swap
+    -- first makes the replace deterministic), skips the Default-gate wrap
+    -- re-install when the shell shape is unchanged (_dlacWrapGen guard -- the
+    -- gate LOGIC lives on M.defaultGateHold and swaps live regardless), and
+    -- re-runs loadModeState + saveModeState -- a swap
     -- inherits Reload-LAC semantics exactly: modes survive via the modestate
     -- mirror (whose re-stamp also clears the GUI banner), slot locks reset.
     -- Failure degrades to today's behavior: a syntax error is caught by
