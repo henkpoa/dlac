@@ -152,11 +152,16 @@ setup.seedTriggersFile = function(base, abbr)
     if D.readFileText(path) ~= nil then return false; end
     local ok, dsp = pcall(require, "dlac\\dispatch");
     if not ok or type(dsp) ~= 'table' or type(dsp.starterTriggersText) ~= 'string' then return false; end
-    pcall(function()
-        if ashita and ashita.fs and ashita.fs.create_directory then
-            ashita.fs.create_directory(base .. 'dlac\\triggers\\');
-        end
-    end);
+    -- Create the legacy dir only when the seed actually lands there (profile
+    -- storage dirs come from ensureStorage) -- a fresh player owns zero
+    -- legacy-layout files AND zero legacy-layout dirs (sim finding, 2026-07-17).
+    if path == base .. 'dlac\\triggers\\' .. abbr .. '.lua' then
+        pcall(function()
+            if ashita and ashita.fs and ashita.fs.create_directory then
+                ashita.fs.create_directory(base .. 'dlac\\triggers\\');
+            end
+        end);
+    end
     return D.writeFileText(path, dsp.starterTriggersText);
 end
 
