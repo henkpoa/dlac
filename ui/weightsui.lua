@@ -125,9 +125,10 @@ end
 
 -- One searchable stat picker (shared by both tabs' add rows). buf is the {text}
 -- InputText buffer the chosen canonical key lands in; skip(lowerKey) -> true
--- hides an entry (the priority tab hides stats already listed).
-local function statPickerCombo(id, buf, skip)
-    imgui.PushItemWidth(160);
+-- hides an entry (the priority tab hides stats already listed); width overrides
+-- the default combo width (the points tab sizes it to its Stat column).
+local function statPickerCombo(id, buf, skip, width)
+    imgui.PushItemWidth(width or 160);
     if imgui.BeginCombo('##' .. id, (buf[1] ~= '' and buf[1]) or '(type to search)') then
         if imgui.IsWindowAppearing ~= nil and imgui.IsWindowAppearing()
            and imgui.SetKeyboardFocusHere ~= nil then imgui.SetKeyboardFocusHere(0); end
@@ -445,12 +446,20 @@ local function renderPointsTab(boundKey)
     imgui.TextColored(COL.DIM, 'pts/point up to cap (cap 0 = none) -- applies as you type:');
     imgui.BeginChild('##ffxilac_weights', { -1, -1 }, true);   -- fill the (now windowed) space
 
-    -- Adaptive name column: the stat name gets all the width the window can spare
-    -- (the pts/cap/x controls need ~140px since the column headers replaced the
-    -- inline labels), so widening the window shows long names in full.
-    local availW  = imgui.GetContentRegionAvail();
-    local nameCol = availW - 140; if nameCol < 44 then nameCol = 44; end
-    local nchars  = math.max(6, math.floor(nameCol / 7));
+    -- FIXED columns, header and rows on the same x/width (Henrik 07-17 round 2:
+    -- the themed font is wide, so guessed pixel widths clipped "Points" into
+    -- "Cap"). Widths are MEASURED from the widest state of each header (sort
+    -- marker shown) via CalcTextSize, the same lesson as the fixed-width
+    -- buttons; the Stat column takes whatever the window has left.
+    local availW = imgui.GetContentRegionAvail();
+    local ptsW   = math.max(56, textW('Points  v') + 10);
+    local capW   = math.max(46, textW('Cap  v') + 10);
+    local endW   = 46;                                -- widest of x (rows) / Add (add row)
+    local nameCol = availW - (ptsW + capW + endW + 18);
+    if nameCol < 44 then nameCol = 44; end
+    local capCol = nameCol + ptsW + 6;
+    local xCol   = capCol + capW + 6;
+    local nchars = math.max(6, math.floor(nameCol / 7));
 
     local ws = {};
     pcall(function() ws = (type(optim.getPointWeights) == 'function')
@@ -461,7 +470,8 @@ local function renderPointsTab(boundKey)
     -- for the session -- the default (Stat, ascending) is the old alphabetical.
     wui._sortCol = wui._sortCol or 'stat';
     if wui._sortAsc == nil then wui._sortAsc = true; end
-    local function sortHeader(label, col, w, defAsc)
+    local function sortHeader(label, col, x, w, defAsc)
+        if x > 0 then imgui.SameLine(x); end
         local active = (wui._sortCol == col);
         local mark = active and (wui._sortAsc and '  ^' or '  v') or '';
         if imgui.Selectable(label .. mark .. '##wsort_' .. col, false, 0, { w, 0 }) then
@@ -472,11 +482,9 @@ local function renderPointsTab(boundKey)
             imgui.SetTooltip('Sort by ' .. label .. (active and ' (click to flip)' or ''));
         end
     end
-    sortHeader('Stat', 'stat', nameCol - 8, true);
-    imgui.SameLine(nameCol);
-    sortHeader('Points', 'pts', 52, false);   -- numbers default big-first
-    imgui.SameLine(nameCol + 58);
-    sortHeader('Cap', 'cap', 46, false);
+    sortHeader('Stat', 'stat', 0, nameCol - 8, true);
+    sortHeader('Points', 'pts', nameCol, ptsW, false);   -- numbers default big-first
+    sortHeader('Cap', 'cap', capCol, capW, false);
     imgui.Separator();
 
     local keys = {};
@@ -515,11 +523,11 @@ local function renderPointsTab(boundKey)
         imgui.TextColored(COL.USABLE, fmt.truncate(stat, nchars));
         if #stat > nchars and imgui.IsItemHovered() then imgui.SetTooltip(stat); end
         imgui.SameLine(nameCol);
-        imgui.PushItemWidth(52);
+        imgui.PushItemWidth(ptsW - 6);
         local chgPer = imgui.InputInt('##per_' .. stat, b.per, 0);
         imgui.PopItemWidth();
-        imgui.SameLine(nameCol + 58);
-        imgui.PushItemWidth(46);
+        imgui.SameLine(capCol);
+        imgui.PushItemWidth(capW - 6);
         local chgCap = imgui.InputInt('##cap_' .. stat, b.cap, 0);
         imgui.PopItemWidth();
         -- Live apply (Henrik): the number in the box IS the weight -- a "Set" click
@@ -530,7 +538,7 @@ local function renderPointsTab(boundKey)
             pcall(optim.saveWeights);
             D.invalidateCandidates();
         end
-        imgui.SameLine(0, 3);
+        imgui.SameLine(xCol);
         if imgui.Button('x##wx_' .. stat, { 20, 0 }) then
             pcall(optim.clearWeight, stat);
             pcall(optim.saveWeights);
@@ -541,16 +549,19 @@ local function renderPointsTab(boundKey)
 
     imgui.Separator();
 
-    -- Add row: searchable stat dropdown -- type in the box to filter suggestions, click one
-    -- (or keep your own text), then set pts/cap and Add.
+    -- Add row: searchable stat dropdown -- type in the box to filter suggestions,
+    -- click one (or keep your own text), then Add. The inputs sit ON the Points/
+    -- Cap columns (no inline labels -- the headers name them).
     imgui.TextColored(COL.DIM, 'add'); imgui.SameLine(0, 4);
-    statPickerCombo('addstat', ui.addStat, nil);
-    imgui.SameLine(0, 6); imgui.TextColored(COL.DIM, 'pts'); imgui.SameLine(0, 2);
-    imgui.PushItemWidth(52); imgui.InputInt('##addper', ui.addPer, 0); imgui.PopItemWidth();
-    imgui.SameLine(0, 6); imgui.TextColored(COL.DIM, 'cap'); imgui.SameLine(0, 2);
-    imgui.PushItemWidth(46); imgui.InputInt('##addcap', ui.addCap, 0); imgui.PopItemWidth();
-    imgui.SameLine(0, 6);
-    if imgui.Button('Add##addw', { 40, 0 }) then
+    local comboW = nameCol - (textW('add') + 14);
+    if comboW < 80 then comboW = 80; end
+    statPickerCombo('addstat', ui.addStat, nil, comboW);
+    imgui.SameLine(nameCol);
+    imgui.PushItemWidth(ptsW - 6); imgui.InputInt('##addper', ui.addPer, 0); imgui.PopItemWidth();
+    imgui.SameLine(capCol);
+    imgui.PushItemWidth(capW - 6); imgui.InputInt('##addcap', ui.addCap, 0); imgui.PopItemWidth();
+    imgui.SameLine(xCol);
+    if imgui.Button('Add##addw', { endW, 0 }) then
         local name = ui.addStat[1];
         if name ~= nil and name ~= '' then
             pcall(optim.setWeight, name, ui.addPer[1], (ui.addCap[1] and ui.addCap[1] > 0) and ui.addCap[1] or nil);
@@ -694,8 +705,11 @@ local function renderPrioTab(boundKey)
     imgui.TextColored(COL.DIM, 'top matters most; cap stops a stat once the set reaches it (0 = none):');
     imgui.BeginChild('##dlac_prio', { -1, -1 }, true);
 
+    -- Reserve the right block from MEASURED widths (wide themed font): the
+    -- 'cap' label + input, the ^ / v small buttons, the x button, plus gaps.
     local availW  = imgui.GetContentRegionAvail();
-    local nameCol = availW - 160; if nameCol < 44 then nameCol = 44; end
+    local rightW  = textW('cap') + 46 + (textW('^') + 16) + (textW('v') + 16) + 20 + 26;
+    local nameCol = availW - rightW; if nameCol < 44 then nameCol = 44; end
     local nchars  = math.max(6, math.floor(nameCol / 7));
 
     local pl = {};
