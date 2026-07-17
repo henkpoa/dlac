@@ -2088,3 +2088,8 @@ tracker reset on self-swap, and mutation-tested coverage holes — all fixed bef
 Safe because the window is stability-since-last-change — every flip re-arms it — so 1s only
 has to outlast the quiet gap after the final flip. `M.SYNC_SETTLE_S` is the lever if a sync
 ever eats TP again.
+
+**Field confirmation (same day):** Henrik tested in Incursion — TP survived the boss pop.
+Henrik's framing, adopted: this was a LAC-layer reflex ("LAC is too fast, dlac gives it
+leeway"), not a dlac bug; plain-LAC users with level-dependent weapon rules remain exposed
+by design. Full write-up with code context: `docs/design/sync-settle-hold.md`.

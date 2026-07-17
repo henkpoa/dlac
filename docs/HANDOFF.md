@@ -28,7 +28,9 @@ maintainer IMO, I am just the one with the creative vision."*
    that the workarounds get **deleted** when an answer lands, not left to calcify.
 8. Reference: [reference/catseyexi-jobs.md](reference/catseyexi-jobs.md) (server job
    truth), [design/storage-move.md](design/storage-move.md) (packet-level research for
-   the gearmove branch), [design/picker-database.md](design/picker-database.md).
+   the gearmove branch), [design/picker-database.md](design/picker-database.md),
+   [design/sync-settle-hold.md](design/sync-settle-hold.md) (the level-sync TP fix,
+   v56/v57 — and the WRAP_GEN rule for anything that must survive an engine hot-swap).
 
 There is also a cross-session memory dir (Claude-specific) at
 `~\.claude\projects\C--catseyexi-catseyexi-client-Ashita-addons-dlac\memory\` — it
