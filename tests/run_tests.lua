@@ -621,6 +621,43 @@ check('P2 grip legal under the marker',   sVG.WV and sVG.WV.Sub, 'PoleGrip');
 dispatchM.setMode('Weapon', false);
 
 -- ---------------------------------------------------------------------------
+-- VL. a virtual marker is a ladder RUNG at the level of the lowest item it can
+--     resolve to (dispatch.virtualMinLevel; Henrik 2026-07-17: AutoIridescence
+--     counted as Lv0 on a leveling WHM and shadowed the Pilgrim's Wand actually
+--     worn -- with Chatoyant Staff as best owned it must read Lv51). Below that
+--     level the flatten SKIPS the marker and the real best-by-level item owns
+--     the slot; at/above it the marker|fallback composite returns. No manifest
+--     answer (legacy boolean shape, craft family) -> nil -> old always-adopt.
+-- ---------------------------------------------------------------------------
+do
+    dispatchM._autoOverride = {
+        universal = { name = 'Chatoyant Staff', tier = 2, level = 51 },
+        staff = { Fire = { name = 'Vulcans Staff', tier = 1, level = 51 } },
+        obi = { Fire = { name = 'Karin Obi', level = 71 } },
+    };
+    check('VL1 staff marker min level',   dispatchM.virtualMinLevel('dlac:AutoIridescence'), 51);
+    check('VL2 composite form tolerated', dispatchM.virtualMinLevel('dlac:AutoStaff|Pilgrims Wand'), 51);
+    check('VL3 obi marker min level',     dispatchM.virtualMinLevel('dlac:AutoObi'), 71);
+    check('VL4 craft marker: no answer',  dispatchM.virtualMinLevel('dlac:AutoCraft'), nil);
+
+    local wand = { Name = 'Pilgrims Wand', Level = 7, OneHanded = true, Type = 'Club' };
+    local function whmWeapon()
+        return { Dynamic = { W = { Main = { 'dlac:AutoIridescence', wand } } } };
+    end
+    TEST_PLAYER = { MainJob = 'WHM', SubJob = 'BLM', MainJobSync = 40, SubJobSync = 20 };
+    local sVL = utils.BuildDynamicSets(whmWeapon());
+    check('VL5 below the rung: real item owns the slot', sVL.W and sVL.W.Main, 'Pilgrims Wand');
+    TEST_PLAYER = { MainJob = 'WHM', SubJob = 'BLM', MainJobSync = 51, SubJobSync = 25 };
+    sVL = utils.BuildDynamicSets(whmWeapon());
+    check('VL6 at the rung: marker with fallback', sVL.W and sVL.W.Main, 'dlac:AutoIridescence|Pilgrims Wand');
+    dispatchM._autoOverride = { iridescence = true };   -- legacy boolean manifest: no level info
+    TEST_PLAYER = { MainJob = 'WHM', SubJob = 'BLM', MainJobSync = 40, SubJobSync = 20 };
+    sVL = utils.BuildDynamicSets(whmWeapon());
+    check('VL7 legacy manifest: old always-adopt behavior', sVL.W and sVL.W.Main, 'dlac:AutoIridescence|Pilgrims Wand');
+    dispatchM._autoOverride = nil;
+end
+
+-- ---------------------------------------------------------------------------
 -- Q. an explicitly RANGED entry owns its window: Garrison Tunica +1 ranged
 --    20-51 must beat the higher-level unbounded Druid's Robe at 50 -- and hand
 --    the slot back once the window closes.

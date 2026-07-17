@@ -348,6 +348,19 @@ function M.BuildDynamicSets(sets)
                         if dsp == nil or type(dsp.modeActive) ~= 'function'
                            or dsp.modeActive(vmode) ~= true then return; end
                     end
+                    -- A marker is a ladder RUNG at the level of the lowest item
+                    -- it can resolve to (dispatch.virtualMinLevel), not a Lv0
+                    -- wildcard: below that level it is SKIPPED, so the slot's
+                    -- real best-by-level pick owns the flattened set outright
+                    -- (Henrik's field case: a leveling WHM's set showed
+                    -- dlac:AutoIridescence while actually wearing Pilgrim's
+                    -- Wand -- the marker is a Lv51 rung, his Chatoyant Staff).
+                    -- nil (no manifest / legacy shapes) keeps always-adopt.
+                    local dsp = M.dispatchModule;
+                    if dsp ~= nil and type(dsp.virtualMinLevel) == 'function' then
+                        local vok, vlv = pcall(dsp.virtualMinLevel, virt);
+                        if vok and type(vlv) == 'number' and vlv > mjLevel then return; end
+                    end
                     slotVirtual = virt;
                     return;
                 end

@@ -2239,3 +2239,33 @@ pinning over combat gear; it now stands aside while Engaged/Dead ('Event' stays
 dressed -- the swing animation would churn otherwise). Craft overlay deliberately
 not gated (safe-zone activity). 1065 + 123 checks green; all §7 field tests closed
 same-day.
+
+## Session "virtual markers get a ladder level" (2026-07-17, engine v62)
+
+Henrik's field report on his leveling Mindie WHM: the Sets tab showed
+`dlac:AutoIridescence` as the Main pick "at level 0" while the character
+actually wears Pilgrim's Wand — the marker was a Lv0 wildcard that shadowed
+the real weapon ladder everywhere below the level of any owned iridescence
+staff. His ruling: **a marker's level is the level of the item it resolves
+to** (for him Chatoyant Staff, Lv51).
+
+Implemented as `M.virtualMinLevel(marker)` (dispatch, v62): the LOWEST level
+among the manifest items the marker can resolve to — AutoStaff/AutoIridescence
+scan `universal` + per-element `staff`, AutoObi scans `obi` + `obiUniversal`;
+craft/helm/acc families and legacy name-only shapes return nil ("no answer").
+Consumers, all nil-safe (nil keeps the old always-adopt behavior, so the rule
+can only ever REMOVE a marker that cannot resolve):
+
+- **BuildDynamicSets** skips a virtual whose min level is above the main level
+  — the flattened set then shows the real best-by-level item outright instead
+  of `marker|fallback` (the engine's equip-time fallback made this invisible
+  on the wire; the FLATTENED SET was what lied).
+- **gearui resolveSetItem** stamps the derived level on virtual records
+  (Lv51 in the ladder rows instead of 0), and **bestByLevel**'s
+  virtual-takes-the-slot short-circuit now honours it, so the "current pick"
+  highlight mirrors the new flatten exactly.
+
+Tests VL1–VL7 (min-level derivation incl. the `marker|fallback` composite
+form, flatten below/at the rung, legacy-manifest passthrough). 1078 + 125
+green. Note: utils.lua changed too — a **Reload LAC** is needed for the
+flatten half; the engine half self-swaps.

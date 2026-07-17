@@ -1804,6 +1804,19 @@ local function recordPath(rec)
     return p .. '.' .. rec.Key;
 end
 
+-- A virtual marker's ladder level: the lowest level it can resolve to, from
+-- the automations manifest (dispatch.virtualMinLevel -- AutoIridescence with
+-- Chatoyant Staff as best owned reads Lv51, not Lv0). 0 = unknown (no
+-- manifest / craft-helm-acc families): the old wildcard display, and
+-- bestByLevel's old take-the-slot-outright behavior.
+local function virtualLevel(name)
+    if _dsp ~= nil and type(_dsp.virtualMinLevel) == 'function' then
+        local ok, lv = pcall(_dsp.virtualMinLevel, name);
+        if ok and type(lv) == 'number' then return lv; end
+    end
+    return 0;
+end
+
 -- Resolve one sets.Dynamic list element (a gear ref, a { gear=ref, minLevel, maxLevel }
 -- wrapper, or a Name string) to a working entry. A genuine wrapper has .gear but no
 -- .Name -- a plain ref that BuildDynamicSets mutated to carry a stray .gear still has
@@ -1811,7 +1824,7 @@ end
 local function resolveSetItem(elem)
     if type(elem) == 'string' then
         if string.lower(string.sub(elem, 1, 5)) == 'dlac:' then   -- virtual slot entry
-            return { rec = { Name = elem, Level = 0, Virtual = true } };
+            return { rec = { Name = elem, Level = virtualLevel(elem), Virtual = true } };
         end
         local rec = _ownedByName and _ownedByName[string.lower(elem)] or nil;
         if rec == nil and type(gear) == 'table' and gear.NameToObject then
@@ -1834,7 +1847,7 @@ local function resolveSetItem(elem)
     -- from that view would then drop it from the file.
     if type(ref) == 'string' then
         if string.lower(string.sub(ref, 1, 5)) == 'dlac:' then
-            return { rec = { Name = ref, Level = 0, Virtual = true },
+            return { rec = { Name = ref, Level = virtualLevel(ref), Virtual = true },
                      minLevel = minL, maxLevel = maxL, mode = modeC };
         end
         local rec = _ownedByName and _ownedByName[string.lower(ref)] or nil;
@@ -1957,8 +1970,17 @@ local function bestByLevel(list, mainLevel)
     if type(list) ~= 'table' then return nil; end
     local best, bestLevel, bestRank = nil, -1, -1;
     local ml = mainLevel or 0;
-    for _, it in ipairs(list) do                       -- a virtual entry takes the slot outright
-        if it.rec ~= nil and it.rec.Virtual == true then return it; end
+    -- A virtual entry takes the slot outright -- once the character reaches its
+    -- ladder level (rec.Level = the lowest manifest item it resolves to, stamped
+    -- by resolveSetItem via virtualLevel; 0 = unknown = the old unconditional
+    -- take). Below that, the real items compete and the pick mirrors what
+    -- BuildDynamicSets now flattens (Henrik's field case: AutoIridescence at
+    -- "Lv0" shadowed the Pilgrim's Wand a leveling WHM actually wears).
+    for _, it in ipairs(list) do
+        if it.rec ~= nil and it.rec.Virtual == true
+           and (tonumber(it.rec.Level) or 0) <= ml then
+            return it;
+        end
     end
     for _, it in ipairs(list) do
         local rec = it.rec;

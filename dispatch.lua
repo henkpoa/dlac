@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 61;   -- 61: HELM overlay stands aside in combat -- field report: "Default" is NOT "idle" (HandleDefault runs every frame, engaged gear resolves inside it too), so the overlay was pinning over combat gear. helmOverlayFor now returns nil while ctx.player.Status is Engaged or Dead (the same Status string the trigger matchers read); 'Event' deliberately stays dressed -- the HELM animation itself reads as an event, and dropping there would churn every swing. Henrik: you HELM in dangerous places -- aggro means FIGHT.
+M.VERSION = 62;   -- 62: virtual markers carry a LADDER LEVEL -- M.virtualMinLevel(marker) = the lowest level among the manifest items the marker can resolve to (AutoStaff/AutoIridescence: universal + per-element staves; AutoObi: obis; nil for craft/helm/acc and legacy name-only shapes). BuildDynamicSets skips a marker below that level so the flattened Main shows the item actually worn (Henrik's field case: a leveling WHM's set showed dlac:AutoIridescence "at Lv0" while wearing Pilgrim's Wand -- the marker now reads as a Lv51 rung, his Chatoyant Staff); the Sets tab displays the derived level and only shows the marker as the current pick once it's reachable. nil keeps the old always-adopt behavior everywhere.
+                  -- 61: HELM overlay stands aside in combat -- field report: "Default" is NOT "idle" (HandleDefault runs every frame, engaged gear resolves inside it too), so the overlay was pinning over combat gear. helmOverlayFor now returns nil while ctx.player.Status is Engaged or Dead (the same Status string the trigger matchers read); 'Event' deliberately stays dressed -- the HELM animation itself reads as an event, and dropping there would churn every swing. Henrik: you HELM in dangerous places -- aggro means FIGHT.
                   -- 60: Auto HELM (helmstate auto/autoUntil) -- the helm overlay is active when the manual idle switch is ON, or when auto is armed AND a detection hold is running (helmwatch re-arms autoUntil on every 0x034 Point result; expiry is checked live per dispatch, so normal idle gear returns ~60s after the last swing with no file write needed). Same Default-only gate, same slots, same arbitration.
                   -- 59: HELM overlay (docs/design/helm-gear.md) -- helmstate.lua {gather,enabled,at} read like craftstate; dlac:AutoHelm resolves the manifest's fmtver-7 helm ladders (armor+neck+waist ONLY -- never weapons: tools are inventory items and idle weapon swaps burn TP); overlay gated to Default exactly like craft (idle-only is the FEATURE here, Henrik's hard requirement). Craft-vs-helm arbitration: both switches on -> the newer `at` stamp wins whole (the watchers already exclude each other addon-side; this is the engine-native backstop -- no cross-module requires, no cycles).
                   -- 58: monitor stream is frame-paced -- fired lines buffer in _monQ and the tick's frame pass streams ONE '/dlacmonev' per frame. Two commands queued in the same frame cross the command bus in REVERSE order (field case: the monitor showed every cast's Precast ABOVE its Midcast -- the engine equipped in the right order all along, only the display lied). Ring, file mirror and monitor untouched.
@@ -944,6 +945,46 @@ local function resolveVirtual(marker, ctx, slot)
     return nil, 'unknown marker';
 end
 M._resolveVirtual = resolveVirtual;   -- addon-side craft equip + headless tests
+
+-- The level a virtual marker becomes USABLE at: the lowest level among the
+-- manifest items it can resolve to. A marker is a ladder RUNG at this level,
+-- not a Lv0 wildcard (Henrik 2026-07-17: AutoIridescence with Chatoyant Staff
+-- as best owned = a Lv51 rung -- below 51 the set's real weapon owns the slot).
+-- BuildDynamicSets consults this to skip an unreachable marker at flatten time;
+-- the Sets tab shows it as the marker's level. Returns nil for "no answer" (no
+-- manifest, legacy name-only shapes, or the craft/helm/acc families whose
+-- ladders carry their own fallbacks) -- callers keep the old always-adopt
+-- behavior on nil, so this can only ever REMOVE a marker that cannot resolve.
+function M.virtualMinLevel(marker)
+    local a = ensureAutoLoaded();
+    if a == nil then return nil; end
+    local mk = string.lower(tostring(marker or ''));
+    local bar = string.find(mk, '|', 1, true);          -- tolerate 'marker|fallback'
+    if bar ~= nil then mk = string.sub(mk, 1, bar - 1); end
+    if mk == 'dlac:autoiridescence' then mk = 'dlac:autostaff'; end
+    if mk == 'dlac:elementalobi'    then mk = 'dlac:autoobi';   end
+    local best = nil;
+    local function consider(e)
+        if type(e) ~= 'table' or type(e.name) ~= 'string' then return; end
+        local lv = tonumber(e.level);
+        if lv ~= nil and (best == nil or lv < best) then best = lv; end
+    end
+    if mk == 'dlac:autostaff' then
+        consider(a.universal);
+        if type(a.staff) == 'table' then
+            for _, s in pairs(a.staff) do consider(s); end
+        end
+        return best;
+    end
+    if mk == 'dlac:autoobi' then
+        consider(a.obiUniversal);
+        if type(a.obi) == 'table' then
+            for _, o in pairs(a.obi) do consider(o); end
+        end
+        return best;
+    end
+    return nil;
+end
 
 -- Equip a set table, resolving virtual entries and honouring SLOT LOCKS. Sets that
 -- need neither pass through untouched (zero copies); otherwise a shallow copy carries
