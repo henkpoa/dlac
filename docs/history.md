@@ -2118,3 +2118,6 @@ non-dynamic modes). Also fixed en route: unmasked slots are preserved BEFORE the
 build loop, so a rebuilt Ear2 sees a hand-pinned Ear1 regardless of slot order.
 PL1–PL13 headless tests (942 total); pairLadders is pure — scores computed by the
 caller, no gear/weight reads.
+
+**Field confirmation (same day):** Henrik re-ran the WHM Cure Potency build -- both
+earrings now land, one per ear. Fix pushed to main.
