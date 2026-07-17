@@ -2453,6 +2453,51 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- PM. Player-state trigger conditions (v53): hpBelow/hpAbove, mpBelow/mpAbove,
+--     tpBelow/tpAbove (strict compares off ctx.player) and buff/buffNot (the
+--     per-dispatch buff set; tests inject ctx.buffs -- the seam the matchers
+--     read first). Unreadable state matches NEITHER polarity: a failed read
+--     must never flap gear on OR off.
+-- ---------------------------------------------------------------------------
+(function()
+    local mm = dispatchM._matchers;
+    local ctx = { player = { HPP = 40, MPP = 80, TP = 1200 } };
+    check('PM1 hpBelow fires under the line',   mm.hpbelow(50, ctx), true);
+    check('PM2 hpBelow strict at the line',     mm.hpbelow(40, ctx), false);
+    check('PM3 hpAbove quiet under the line',   mm.hpabove(50, ctx), false);
+    check('PM4 mpAbove fires over the line',    mm.mpabove(50, ctx), true);
+    check('PM5 mpBelow quiet over the line',    mm.mpbelow(50, ctx), false);
+    check('PM6 tpAbove fires at 1200 > 1000',   mm.tpabove(1000, ctx), true);
+    check('PM7 tpBelow quiet at 1200',          mm.tpbelow(1000, ctx), false);
+    check('PM8 string threshold coerces',       mm.hpbelow('50', ctx), true);
+    check('PM9 nil player never matches',       mm.hpbelow(50, {}), false);
+    check('PM10 junk threshold never matches',  mm.hpbelow('half', ctx), false);
+    local bctx = { buffs = { sleep = true, [2] = true, refresh = true } };
+    check('PM11 buff by name, case-insensitive', mm.buff('Sleep', bctx), true);
+    check('PM12 buff by id',                     mm.buff(2, bctx), true);
+    check('PM13 buff absent',                    mm.buff('Haste', bctx), false);
+    check('PM14 buffNot fires when absent',      mm.buffnot('Haste', bctx), true);
+    check('PM15 buffNot quiet when present',     mm.buffnot('Refresh', bctx), false);
+    -- Unknown state: kill the game read entirely -- both polarities stay quiet.
+    local savedAC = AshitaCore;
+    AshitaCore = nil;
+    local dead = {};
+    check('PM16 unreadable buffs: buff quiet',    mm.buff('Sleep', dead), false);
+    check('PM17 unreadable buffs: buffNot quiet', mm.buffnot('Sleep', dead), false);
+    AshitaCore = savedAC;
+    -- Tier + pretty-case + round-trip: the new keys are first-class vocabulary.
+    check('PM18 default priority just under mode',
+        dispatchM.defaultPriority({ hpbelow = 50, name = 'Cure IV' }), 95);
+    local text = dispatchM.serializeTriggers({
+        Default = { { when = { hpbelow = 50, buffnot = 'Refresh' }, set = 'LowHp' } },
+    });
+    check('PM19 pretty keys serialize', text:find('hpBelow = 50', 1, true) ~= nil, true);
+    check('PM20 buffNot serializes',    text:find('buffNot = "Refresh"', 1, true) ~= nil, true);
+    local t2 = (loadstring or load)(text)();
+    check('PM21 round-trip byte-stable', dispatchM.serializeTriggers(t2) == text, true);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- TGM. Trigger Groups model (G2, issue #25, ADR 0009): the pure GUI-side CRUD +
 --      name / member validation the Groups tab drives (groupsmodel.lua). Group
 --      names and member names compare case-insensitively (engine parity), an

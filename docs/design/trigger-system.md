@@ -60,9 +60,10 @@ at dispatch time:
 | Item | `name`, `contains`, `group` |
 | Weaponskill | `any`, `name`, `group` |
 | Preshot / Midshot | `any` |
+| **every handler** (v53) | Player-state gates: `hpBelow`/`hpAbove`, `mpBelow`/`mpAbove` (percent, strict compare), `tpBelow`/`tpAbove` (raw TP, 1000 = a full shot), `buff`/`buffNot` (active status effect by name — case-insensitive — or numeric id). Tier 95, just under `mode`. Buffs resolve through a per-dispatch cache of the client's own buff array; unreadable state matches NEITHER polarity, so a failed read never flaps gear. |
 
-v2 candidates (matcher is an open table; additive): MP%/TP/HP% thresholds, active buffs,
-day/weather/moon beyond the obi rule, area, target type.
+v2 candidates (matcher is an open table; additive): day/weather/moon beyond the obi rule,
+area, target type, subjob.
 
 ## Evaluation (ADR 0003)
 

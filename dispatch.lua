@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 52;   -- 52: trinket vs ranged weapon (ADR 0010) -- a stat stick reserves the Range slot server-side, so the engine keeps the higher-Level of {trinket, ranged weapon} and drops the other (no flap); trinket RSlot completed in gearimport. 51: Trigger Groups (G1) -- new `group` matcher (specificity tier 45) + Groups section load/serialize (ADR 0009). 50: the v46-49 /dl instdiag diagnostic is out (field-confirmed on both characters); the fix it found stays -- M.jobReady + the job-keyed latch. See ADR 0007
+M.VERSION = 53;   -- 53: Player conditions -- hpBelow/hpAbove, mpBelow/mpAbove, tpBelow/tpAbove (strict compares vs gData vitals) and buff/buffNot (active status effect by name or id; per-dispatch buff cache; unreadable state matches NEITHER polarity). Tier 95, just under mode.
+                  -- 52: trinket vs ranged weapon (ADR 0010) -- a stat stick reserves the Range slot server-side, so the engine keeps the higher-Level of {trinket, ranged weapon} and drops the other (no flap); trinket RSlot completed in gearimport. 51: Trigger Groups (G1) -- new `group` matcher (specificity tier 45) + Groups section load/serialize (ADR 0009). 50: the v46-49 /dl instdiag diagnostic is out (field-confirmed on both characters); the fix it found stays -- M.jobReady + the job-keyed latch. See ADR 0007
                   -- 49: THE LOGIN BUG. At login GetMainJob() reads 0 (=None), which gData stringifies to "NON" -- not '' and not '?', so the auto-install took it for a real job, found no sets\NON.lua, installed nothing and LATCHED for the session: every trigger then matched and silently equipped nothing (v35 skips a missing set in silence). Fixed at both ends -- M.jobReady rejects a not-ready job, and the latch records WHICH job it answered for, so a settling read re-fires the guard
                   -- 44: PINNED slots -- pinstate.lua forces a named item into a slot at TOP priority (above the craft overlay), scoped to All or to named triggers; the engine WEARS the pin, so nothing removes it
                   -- 43: reserved slots (RSlot) resolved at equip time -- a Body that takes Head away (Ryl.Ftm. Tunic) drops the reserved slot instead of flapping with the server forever; worn pieces reserve too
@@ -296,6 +297,55 @@ function M.groupMatch(cond, actionName, groups)
     return false;
 end
 
+-- ---------------------------------------------------------------------------
+-- Player-state gates (v53): live vitals + active status effects, so a trigger
+-- can say "this set only below 50% HP" or "only while Sleep is on me". Vitals
+-- come off ctx.player (gData.GetPlayer: HPP / MPP / TP); buffs come from a
+-- per-dispatch cache built from the client's own buff array + string table --
+-- ONE read per dispatch no matter how many rules gate on buffs. Strict
+-- compares; unreadable state never matches EITHER polarity (buff and buffNot
+-- both stay quiet on a failed read), so a bad read can't flap gear.
+-- ---------------------------------------------------------------------------
+local function playerNum(ctx, field)
+    if ctx.player == nil then return nil; end
+    return tonumber(ctx.player[field]);
+end
+
+-- The ACTIVE-BUFF set for this dispatch: { [lower(name)] = true, [id] = true }.
+-- Tests inject ctx.buffs directly; live it is built once and memoized on ctx.
+-- Returns nil when the read fails (pre-login, headless) = "unknown".
+local function activeBuffs(ctx)
+    if ctx.buffs ~= nil then return ctx.buffs; end
+    local set = nil;
+    pcall(function()
+        local buffs = AshitaCore:GetMemoryManager():GetPlayer():GetBuffs();
+        local resx  = AshitaCore:GetResourceManager();
+        local s = {};
+        for _, id in pairs(buffs) do
+            id = tonumber(id);
+            if id ~= nil and id > 0 and id < 1000 then
+                s[id] = true;
+                local nm = resx:GetString('buffs.names', id);
+                if type(nm) == 'string' then
+                    nm = string.gsub(nm, '%z+$', '');
+                    if #nm > 0 then s[string.lower(nm)] = true; end
+                end
+            end
+        end
+        set = s;
+    end);
+    ctx.buffs = set;   -- nil stays nil -> retried next dispatch
+    return set;
+end
+
+local function buffActive(ctx, v)
+    local set = activeBuffs(ctx);
+    if set == nil then return nil; end            -- unknown, deliberately not false
+    local id = tonumber(v);
+    if id ~= nil then return set[id] == true; end
+    return set[string.lower(tostring(v))] == true;
+end
+
 local MATCHERS = {
     any             = function() return true; end,
     status          = function(v, ctx) return ctx.player ~= nil and ci(ctx.player.Status, v); end,
@@ -324,7 +374,19 @@ local MATCHERS = {
         if ci(v, 'Buff')   then return not debuff; end
         return false;
     end,
+    -- Player-state gates (v53). Thresholds are STRICT compares: hpBelow = 50
+    -- fires while HP% < 50. buff/buffNot take a status-effect NAME (case-
+    -- insensitive; "Sleep", "Refresh") or a numeric buff id.
+    hpbelow = function(v, ctx) local n, t = tonumber(v), playerNum(ctx, 'HPP'); return n ~= nil and t ~= nil and t < n; end,
+    hpabove = function(v, ctx) local n, t = tonumber(v), playerNum(ctx, 'HPP'); return n ~= nil and t ~= nil and t > n; end,
+    mpbelow = function(v, ctx) local n, t = tonumber(v), playerNum(ctx, 'MPP'); return n ~= nil and t ~= nil and t < n; end,
+    mpabove = function(v, ctx) local n, t = tonumber(v), playerNum(ctx, 'MPP'); return n ~= nil and t ~= nil and t > n; end,
+    tpbelow = function(v, ctx) local n, t = tonumber(v), playerNum(ctx, 'TP');  return n ~= nil and t ~= nil and t < n; end,
+    tpabove = function(v, ctx) local n, t = tonumber(v), playerNum(ctx, 'TP');  return n ~= nil and t ~= nil and t > n; end,
+    buff    = function(v, ctx) return buffActive(ctx, v) == true; end,
+    buffnot = function(v, ctx) return buffActive(ctx, v) == false; end,
 };
+M._matchers = MATCHERS;   -- headless test seam (the _autoOverride idiom)
 
 -- Specificity tier per condition -> the DEFAULT priority when a rule sets none
 -- (ADR 0003). A rule's default is the MAX tier among its conditions ("the most
@@ -339,6 +401,10 @@ local TIER = {
     contains = 40, family = 40,
     group = 45,   -- baseline for many spells that share gear; a per-spell `name` (50) overrides it, and it beats contains/skill (ADR 0009)
     name = 50,
+    -- Player-state gates sit just under mode: "low HP" is nearly as deliberate
+    -- as a hand toggle, and a mode-gated rule still edges it when both match.
+    hpbelow = 95, hpabove = 95, mpbelow = 95, mpabove = 95,
+    tpbelow = 95, tpabove = 95, buff = 95, buffnot = 95,
     mode = 100,
 };
 
@@ -350,6 +416,9 @@ local PRETTY_KEY = {
     element = 'element', songtype = 'songType', contains = 'contains',
     family = 'family', name = 'name', dayweatherbonus = 'dayWeatherBonus',
     group = 'group',
+    hpbelow = 'hpBelow', hpabove = 'hpAbove', mpbelow = 'mpBelow',
+    mpabove = 'mpAbove', tpbelow = 'tpBelow', tpabove = 'tpAbove',
+    buff = 'buff', buffnot = 'buffNot',
 };
 M.PRETTY_KEY = PRETTY_KEY;
 
@@ -2210,10 +2279,12 @@ M.starterTriggersText = [[
 --             PetAction (fires when YOUR PET starts an action -- Blood Pact / Ready move /
 --             pet spell; your gear holds until it completes. dlac provides this event itself).
 -- Conditions: status/moving/mode | any/skill/magicType/element/songType/family/name/dayWeatherBonus
---             | abilityType.  All conditions in one `when` must hold; every matching rule
+--             | abilityType | player state: hpBelow/hpAbove/mpBelow/mpAbove (percent),
+--             tpBelow/tpAbove (raw TP), buff/buffNot (active status effect, name or id).
+--             All conditions in one `when` must hold; every matching rule
 --             applies, lowest priority first (later overlays earlier per slot).
 -- Priority defaults by specificity: any 10 < status/skill 20 < class/element 30 < family 40
---             < exact name 50 < mode 100.  See docs/design/trigger-system.md in the dlac addon.
+--             < exact name 50 < player state 95 < mode 100.  See docs/design/trigger-system.md.
 return {
     Default = {
         { when = { status = 'Engaged' }, set = 'Tp_Default' },
