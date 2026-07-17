@@ -143,11 +143,97 @@ local COND_DEFS = {
     },
 };
 
+-- Player-state gates (engine v53): live vitals + status effects, usable in
+-- EVERY handler, so they ride each handler's condition combo. kind 'number' =
+-- an InputInt threshold; kind 'buff' = the searchable status-effect picker.
+local PLAYER_CONDS = {
+    { key = 'hpBelow', kind = 'number', hint = 'fires while HP percent is UNDER this (strict: 50 = below half)' },
+    { key = 'hpAbove', kind = 'number', hint = 'fires while HP percent is OVER this' },
+    { key = 'mpBelow', kind = 'number', hint = 'fires while MP percent is UNDER this' },
+    { key = 'mpAbove', kind = 'number', hint = 'fires while MP percent is OVER this' },
+    { key = 'tpBelow', kind = 'number', hint = 'fires while TP is UNDER this (raw TP: 1000 = one full shot)' },
+    { key = 'tpAbove', kind = 'number', hint = 'fires while TP is OVER this (raw TP: 1000 = one full shot)' },
+    { key = 'buff',    kind = 'buff',   hint = 'a status effect (buff OR debuff) must be ON you --\ngear up while Asleep, or only while Refresh is active' },
+    { key = 'buffNot', kind = 'buff',   hint = 'a status effect must NOT be on you' },
+};
+do
+    -- Precast/Midcast share one defs table (SPELL_CONDS) -- append ONCE per table.
+    local seenDef = {};
+    for _, defs in pairs(COND_DEFS) do
+        if not seenDef[defs] then
+            seenDef[defs] = true;
+            for _, c in ipairs(PLAYER_CONDS) do defs[#defs + 1] = c; end
+        end
+    end
+end
+
+-- Every status-effect name in the client string table (buffs.names), for the
+-- buff/buffNot picker. Built once per session; ids 1..999, empties skipped.
+local _buffList = nil;
+local function buffChoices()
+    if _buffList ~= nil then return _buffList; end
+    _buffList = {};
+    pcall(function()
+        local resx = AshitaCore:GetResourceManager();
+        local seen = {};
+        for id = 1, 999 do
+            local nm = resx:GetString('buffs.names', id);
+            if type(nm) == 'string' then
+                nm = string.gsub(nm, '%z+$', '');
+                if #nm > 0 and not seen[string.lower(nm)] then
+                    seen[string.lower(nm)] = true;
+                    _buffList[#_buffList + 1] = nm;
+                end
+            end
+        end
+        table.sort(_buffList);
+    end);
+    return _buffList;
+end
+
+-- Searchable status-effect picker: the setPickCombo shape (button -> plain
+-- popup with a filter box + rows -- NOT InputText-inside-BeginCombo, which
+-- this imgui build mishandles). Returns the clicked name, nil otherwise.
+local _buffPickQ = { '' };
+local function buffPickCombo(comboId, label)
+    local picked = nil;
+    if imgui.Button(label .. '###' .. comboId .. '_btn', { 170, 0 }) then
+        _buffPickQ[1] = '';
+        imgui.OpenPopup(comboId .. '_pop');
+    end
+    if imgui.BeginPopup(comboId .. '_pop') then
+        imgui.PushItemWidth(190);
+        imgui.InputText('##' .. comboId .. '_q', _buffPickQ, 48);
+        imgui.PopItemWidth();
+        if imgui.IsItemHovered() then imgui.SetTooltip('Type to filter the status effects.'); end
+        local q = string.lower(_buffPickQ[1] or '');
+        local ok, names = pcall(buffChoices);
+        local shown = 0;
+        for _, nm in ipairs((ok and names) or {}) do
+            if q == '' or string.find(string.lower(nm), q, 1, true) ~= nil then
+                -- id carries the NAME (the '_o' shared-suffix click bug, see setPickCombo)
+                if imgui.Selectable(nm .. '##' .. comboId .. '_o_' .. nm, false) then
+                    picked = nm;
+                    imgui.CloseCurrentPopup();
+                end
+                shown = shown + 1;
+                if shown >= 200 and q == '' then
+                    imgui.TextColored(COL_DIM, '(type to narrow the list...)');
+                    break;
+                end
+            end
+        end
+        if shown == 0 then imgui.TextColored(COL_DIM, '(no match)'); end
+        imgui.EndPopup();
+    end
+    return picked;
+end
+
 local trig = {
     data = nil, job = nil, err = nil, dirty = false,
     status = '', statusErr = false,
     addFor = nil, addConds = {}, _addDef = 1, _addValSel = nil,
-    addValText = { '' }, addSet = nil, addPrio = { 0 }, _openAdd = false,
+    addValText = { '' }, addValNum = { 0 }, addSet = nil, addPrio = { 0 }, _openAdd = false,
     editIdx = nil, _editEquip = nil,   -- rule-builder edit mode (replace in place)
     _openModePopup = false,
     _prioBuf = {},
@@ -1737,6 +1823,11 @@ local COND_COLORS = {
     group = { 0.55, 0.80, 1.00, 1.0 },
     name = { 1.00, 0.95, 0.75, 1.0 },
     any = { 0.60, 0.60, 0.65, 1.0 },
+    -- Player-state gates (v53): vitals warm red / blue / gold, buffs violet.
+    hpbelow = { 1.00, 0.60, 0.55, 1.0 }, hpabove = { 1.00, 0.60, 0.55, 1.0 },
+    mpbelow = { 0.55, 0.70, 1.00, 1.0 }, mpabove = { 0.55, 0.70, 1.00, 1.0 },
+    tpbelow = { 0.95, 0.85, 0.50, 1.0 }, tpabove = { 0.95, 0.85, 0.50, 1.0 },
+    buff = { 0.85, 0.65, 1.00, 1.0 },    buffnot = { 0.85, 0.65, 1.00, 1.0 },
 };
 
 -- A rule's conditions as display lines (sorted, one per line; 'any' when empty).
@@ -2051,7 +2142,7 @@ local function renderTrigAddPopup()
     if imgui.BeginCombo('##trgcondtype', (cur and trigPrettyKey(string.lower(cur.key))) or '?') then
         for di, d in ipairs(defs) do
             if imgui.Selectable(trigPrettyKey(string.lower(d.key)) .. '##trgct' .. di, trig._addDef == di) then
-                trig._addDef = di; trig.addValText[1] = ''; trig._addValSel = nil;
+                trig._addDef = di; trig.addValText[1] = ''; trig._addValSel = nil; trig.addValNum[1] = 0;
             end
         end
         imgui.EndCombo();
@@ -2086,6 +2177,15 @@ local function renderTrigAddPopup()
             if #gnames == 0 and imgui.IsItemHovered() then
                 imgui.SetTooltip('No groups defined for this job yet. Open the Groups section to create one.');
             end
+        elseif cur.kind == 'number' then
+            imgui.PushItemWidth(90);
+            imgui.InputInt('##trgcondnum', trig.addValNum, 0);
+            imgui.PopItemWidth();
+            if cur.hint ~= nil and imgui.IsItemHovered() then imgui.SetTooltip(cur.hint); end
+        elseif cur.kind == 'buff' then
+            local pick = buffPickCombo('##trgcondbuff', trig._addValSel or '(pick effect)');
+            if pick ~= nil then trig._addValSel = pick; end
+            if cur.hint ~= nil and imgui.IsItemHovered() then imgui.SetTooltip(cur.hint); end
         elseif cur.kind == 'text' then
             imgui.PushItemWidth(170);
             imgui.InputText('##trgcondtext', trig.addValText, 48);
@@ -2097,8 +2197,10 @@ local function renderTrigAddPopup()
         imgui.SameLine(0, 6);
         if imgui.Button('+ condition##trgac', { 0, 0 }) then
             local val;
-            if cur.kind == 'list' or cur.kind == 'group' then val = trig._addValSel;
+            if cur.kind == 'list' or cur.kind == 'group' or cur.kind == 'buff' then val = trig._addValSel;
             elseif cur.kind == 'text' then val = (trig.addValText[1] ~= '') and trig.addValText[1] or nil;
+            elseif cur.kind == 'number' then
+                val = ((tonumber(trig.addValNum[1]) or 0) > 0) and trig.addValNum[1] or nil;
             else val = true; end
             if val ~= nil then
                 local replaced = false;
