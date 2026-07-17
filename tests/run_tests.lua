@@ -2498,6 +2498,74 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- PN. Player conditions v54: canonical raw + percent keys (playerHPBelow/...)
+--     and the whenAny OR group -- a rule matches when ALL `when` conditions
+--     hold OR ANY whenAny entry holds; an OR-only rule is NOT always-on.
+-- ---------------------------------------------------------------------------
+(function()
+    local mm = dispatchM._matchers;
+    local ctx = { player = { HP = 320, HPP = 40, MP = 90, MPP = 75, TP = 1200 } };
+    check('PN1 raw HP below',            mm.playerhpbelow(500, ctx), true);
+    check('PN2 raw HP not below',        mm.playerhpbelow(300, ctx), false);
+    check('PN3 percent HP below',        mm.playerhppercentbelow(50, ctx), true);
+    check('PN4 raw vs percent distinct', mm.playerhpabove(300, ctx) and not mm.playerhppercentabove(50, ctx), true);
+    check('PN5 raw MP above',            mm.playermpabove(50, ctx), true);
+    check('PN6 percent MP below quiet',  mm.playermppercentbelow(75, ctx), false);
+    check('PN7 v53 alias still percent', mm.hpbelow(50, ctx), true);
+
+    -- OR-group evaluation through the engine's own matches()
+    local mt = dispatchM._matches;
+    local bctx = { player = { HPP = 90 }, buffs = { sleep = true } };
+    local r1 = { when = { hpbelow = 50 },
+                 whenAny = { { buff = 'Lullaby' }, { buff = 'Sleep' } } };
+    check('PN8 AND misses, OR hits -> match', mt(r1, bctx), true);
+    local r2 = { when = { hpbelow = 95 },
+                 whenAny = { { buff = 'Lullaby' } } };
+    check('PN9 AND hits, OR misses -> match', mt(r2, bctx), true);
+    local r3 = { when = { hpbelow = 50 },
+                 whenAny = { { buff = 'Lullaby' } } };
+    check('PN10 both legs miss -> no match', mt(r3, bctx), false);
+    local r4 = { when = {}, whenAny = { { buff = 'Haste' } } };
+    check('PN11 OR-only rule is NOT always-on', mt(r4, bctx), false);
+    local r5 = { when = {}, whenAny = { { buff = 'Sleep' } } };
+    check('PN12 OR-only rule fires on its hit', mt(r5, bctx), true);
+    check('PN13 no whenAny keeps legacy any-shape', mt({ when = {} }, bctx), true);
+    local r6 = { when = {}, whenAny = { { buff = 'Sleep', hpbelow = 50 } } };
+    check('PN14 multi-key OR entry is AND within', mt(r6, bctx), false);
+
+    -- normalize: whenAny parsed, priority from OR keys, label carries the OR leg
+    local norm = dispatchM._normalize({
+        Default = { { when = { status = 'Engaged' },
+                      whenAny = { { buff = 'Sleep' }, { buff = 'Lullaby' } },
+                      set = 'WakeUp' } },
+    });
+    local nr = norm.Default[1];
+    check('PN15 whenAny normalized', #nr.whenAny, 2);
+    check('PN16 OR keys raise the default priority', nr.prio, 95);
+    check('PN17 label carries the OR leg',
+        nr.label, 'status=Engaged|buff=Lullaby|buff=Sleep');
+    local bad = select(2, dispatchM._normalize({
+        Default = { { when = { any = true }, whenAny = { { nosuchcond = 1 } }, set = 'X' } },
+    }));
+    check('PN18 unknown OR key drops the rule with a warn', #bad >= 1, true);
+    check('PN19 defaultPriority takes whenAny',
+        dispatchM.defaultPriority({ status = 'Engaged' }, { { buff = 'Sleep' } }), 95);
+
+    -- serializer: whenAny round-trip byte-stable, canonical pretty keys
+    local text = dispatchM.serializeTriggers({
+        Default = { { when = { playerhppercentbelow = 50 },
+                      whenAny = { { buff = 'Lullaby' }, { buff = 'Sleep' } },
+                      set = 'WakeUp' } },
+    });
+    check('PN20 canonical pretty key serializes',
+        text:find('playerHPPercentBelow = 50', 1, true) ~= nil, true);
+    check('PN21 whenAny serializes in author order',
+        text:find('whenAny = { { buff = "Lullaby" }, { buff = "Sleep" } }', 1, true) ~= nil, true);
+    local t2 = (loadstring or load)(text)();
+    check('PN22 OR round-trip byte-stable', dispatchM.serializeTriggers(t2) == text, true);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- TGM. Trigger Groups model (G2, issue #25, ADR 0009): the pure GUI-side CRUD +
 --      name / member validation the Groups tab drives (groupsmodel.lua). Group
 --      names and member names compare case-insensitively (engine parity), an

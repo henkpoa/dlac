@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 53;   -- 53: Player conditions -- hpBelow/hpAbove, mpBelow/mpAbove, tpBelow/tpAbove (strict compares vs gData vitals) and buff/buffNot (active status effect by name or id; per-dispatch buff cache; unreadable state matches NEITHER polarity). Tier 95, just under mode.
+M.VERSION = 54;   -- 54: Player conditions v2 (Henrik's morning revision) -- canonical keys playerHPBelow/Above, playerHPPercentBelow/Above, playerMPBelow/Above, playerMPPercentBelow/Above (raw AND percent variants; v53 hpBelow/... spellings stay as hidden percent aliases), plus whenAny OR groups: a rule matches when ALL `when` conditions hold OR ANY whenAny entry holds; an OR-only rule is not always-on. ruleLabel/defaultPriority take whenAny.
+                  -- 53: Player conditions v1 -- hpBelow/hpAbove, mpBelow/mpAbove, tpBelow/tpAbove (strict compares vs gData vitals) and buff/buffNot (active status effect by name or id; per-dispatch buff cache; unreadable state matches NEITHER polarity). Tier 95, just under mode.
                   -- 52: trinket vs ranged weapon (ADR 0010) -- a stat stick reserves the Range slot server-side, so the engine keeps the higher-Level of {trinket, ranged weapon} and drops the other (no flap); trinket RSlot completed in gearimport. 51: Trigger Groups (G1) -- new `group` matcher (specificity tier 45) + Groups section load/serialize (ADR 0009). 50: the v46-49 /dl instdiag diagnostic is out (field-confirmed on both characters); the fix it found stays -- M.jobReady + the job-keyed latch. See ADR 0007
                   -- 49: THE LOGIN BUG. At login GetMainJob() reads 0 (=None), which gData stringifies to "NON" -- not '' and not '?', so the auto-install took it for a real job, found no sets\NON.lua, installed nothing and LATCHED for the session: every trigger then matched and silently equipped nothing (v35 skips a missing set in silence). Fixed at both ends -- M.jobReady rejects a not-ready job, and the latch records WHICH job it answered for, so a settling read re-fires the guard
                   -- 44: PINNED slots -- pinstate.lua forces a named item into a slot at TOP priority (above the craft overlay), scoped to All or to named triggers; the engine WEARS the pin, so nothing removes it
@@ -346,6 +347,17 @@ local function buffActive(ctx, v)
     return set[string.lower(tostring(v))] == true;
 end
 
+-- Threshold matcher factory: one field off ctx.player, strict compare, junk
+-- or unreadable values never match.
+local function numGate(field, below)
+    return function(v, ctx)
+        local n, t = tonumber(v), playerNum(ctx, field);
+        if n == nil or t == nil then return false; end
+        if below then return t < n; end
+        return t > n;
+    end
+end
+
 local MATCHERS = {
     any             = function() return true; end,
     status          = function(v, ctx) return ctx.player ~= nil and ci(ctx.player.Status, v); end,
@@ -374,15 +386,24 @@ local MATCHERS = {
         if ci(v, 'Buff')   then return not debuff; end
         return false;
     end,
-    -- Player-state gates (v53). Thresholds are STRICT compares: hpBelow = 50
-    -- fires while HP% < 50. buff/buffNot take a status-effect NAME (case-
-    -- insensitive; "Sleep", "Refresh") or a numeric buff id.
-    hpbelow = function(v, ctx) local n, t = tonumber(v), playerNum(ctx, 'HPP'); return n ~= nil and t ~= nil and t < n; end,
-    hpabove = function(v, ctx) local n, t = tonumber(v), playerNum(ctx, 'HPP'); return n ~= nil and t ~= nil and t > n; end,
-    mpbelow = function(v, ctx) local n, t = tonumber(v), playerNum(ctx, 'MPP'); return n ~= nil and t ~= nil and t < n; end,
-    mpabove = function(v, ctx) local n, t = tonumber(v), playerNum(ctx, 'MPP'); return n ~= nil and t ~= nil and t > n; end,
-    tpbelow = function(v, ctx) local n, t = tonumber(v), playerNum(ctx, 'TP');  return n ~= nil and t ~= nil and t < n; end,
-    tpabove = function(v, ctx) local n, t = tonumber(v), playerNum(ctx, 'TP');  return n ~= nil and t ~= nil and t > n; end,
+    -- Player-state gates (v54 canonical spellings -- the GUI's cascading Player
+    -- menu). Thresholds are STRICT compares (Below = <, Above = >); Percent
+    -- variants read the 0-100 percent, plain variants the raw value. buff /
+    -- buffNot take a status-effect NAME (case-insensitive; "Sleep", "Refresh")
+    -- or a numeric buff id.
+    playerhpbelow        = numGate('HP',  true),
+    playerhpabove        = numGate('HP',  false),
+    playerhppercentbelow = numGate('HPP', true),
+    playerhppercentabove = numGate('HPP', false),
+    playermpbelow        = numGate('MP',  true),
+    playermpabove        = numGate('MP',  false),
+    playermppercentbelow = numGate('MPP', true),
+    playermppercentabove = numGate('MPP', false),
+    tpbelow = numGate('TP', true),
+    tpabove = numGate('TP', false),
+    -- v53 spellings (percent semantics): hidden aliases so day-one files load.
+    hpbelow = numGate('HPP', true),  hpabove = numGate('HPP', false),
+    mpbelow = numGate('MPP', true),  mpabove = numGate('MPP', false),
     buff    = function(v, ctx) return buffActive(ctx, v) == true; end,
     buffnot = function(v, ctx) return buffActive(ctx, v) == false; end,
 };
@@ -403,6 +424,9 @@ local TIER = {
     name = 50,
     -- Player-state gates sit just under mode: "low HP" is nearly as deliberate
     -- as a hand toggle, and a mode-gated rule still edges it when both match.
+    -- (hpbelow/... are the v53 alias spellings, kept loadable.)
+    playerhpbelow = 95, playerhpabove = 95, playerhppercentbelow = 95, playerhppercentabove = 95,
+    playermpbelow = 95, playermpabove = 95, playermppercentbelow = 95, playermppercentabove = 95,
     hpbelow = 95, hpabove = 95, mpbelow = 95, mpabove = 95,
     tpbelow = 95, tpabove = 95, buff = 95, buffnot = 95,
     mode = 100,
@@ -419,18 +443,26 @@ local PRETTY_KEY = {
     hpbelow = 'hpBelow', hpabove = 'hpAbove', mpbelow = 'mpBelow',
     mpabove = 'mpAbove', tpbelow = 'tpBelow', tpabove = 'tpAbove',
     buff = 'buff', buffnot = 'buffNot',
+    playerhpbelow = 'playerHPBelow', playerhpabove = 'playerHPAbove',
+    playerhppercentbelow = 'playerHPPercentBelow', playerhppercentabove = 'playerHPPercentAbove',
+    playermpbelow = 'playerMPBelow', playermpabove = 'playerMPAbove',
+    playermppercentbelow = 'playerMPPercentBelow', playermppercentabove = 'playerMPPercentAbove',
 };
 M.PRETTY_KEY = PRETTY_KEY;
 
 -- The default priority a rule with this `when` would get (specificity, ADR 0003).
 -- Exposed so the GUI can show the effective number next to an "auto" priority.
-function M.defaultPriority(when)
+function M.defaultPriority(when, whenAny)
     local p = 10;
-    if type(when) == 'table' then
-        for k in pairs(when) do
-            local t = TIER[string.lower(tostring(k))];
-            if t ~= nil and t > p then p = t; end
+    local function scan(t)
+        for k in pairs(t or {}) do
+            local tt = TIER[string.lower(tostring(k))];
+            if tt ~= nil and tt > p then p = tt; end
         end
+    end
+    if type(when) == 'table' then scan(when); end
+    for _, e in ipairs(whenAny or {}) do
+        if type(e) == 'table' then scan(e); end
     end
     return p;
 end
@@ -453,13 +485,26 @@ local function condVal(v)
     table.sort(parts);
     return table.concat(parts, ',');
 end
-function M.ruleLabel(when)
+function M.ruleLabel(when, whenAny)
     local parts = {};
     for k, v in pairs(when or {}) do
         parts[#parts + 1] = string.lower(tostring(k)) .. '=' .. condVal(v);
     end
     table.sort(parts);
-    return (#parts > 0) and table.concat(parts, '+') or 'any';
+    local base = (#parts > 0) and table.concat(parts, '+') or 'any';
+    -- v54 OR entries ride the label after '|' -- sorted, so both states spell
+    -- it identically; a rule WITHOUT whenAny labels exactly as before (pin
+    -- scope keys from older sessions keep matching).
+    local ors = {};
+    for _, e in ipairs(whenAny or {}) do
+        local ep = {};
+        for k, v in pairs(e) do ep[#ep + 1] = string.lower(tostring(k)) .. '=' .. condVal(v); end
+        table.sort(ep);
+        if #ep > 0 then ors[#ors + 1] = table.concat(ep, '+'); end
+    end
+    table.sort(ors);
+    if #ors > 0 then base = base .. '|' .. table.concat(ors, '|'); end
+    return base;
 end
 
 local function normalize(t)
@@ -489,12 +534,45 @@ local function normalize(t)
                         end
                         when[lk] = cv;
                     end
+                    -- v54 OR group: whenAny = { { cond = val, ... }, ... } -- ANY
+                    -- entry whose conditions ALL hold matches the rule, independent
+                    -- of the & leg. Unknown keys drop the rule, exactly like `when`
+                    -- (never a silent no-op).
+                    local whenAny = nil;
+                    local rawAny = r.whenAny or r.whenany;
+                    if not dead and type(rawAny) == 'table' then
+                        for ei, entry in ipairs(rawAny) do
+                            if type(entry) ~= 'table' then
+                                warns[#warns + 1] = string.format('%s rule %d: whenAny entry %d is not a table — rule dropped', ev, i, ei);
+                                dead = true; break;
+                            end
+                            local ne = {};
+                            for ck, cv in pairs(entry) do
+                                local lk = string.lower(tostring(ck));
+                                if TIER[lk] == nil then
+                                    warns[#warns + 1] = string.format('%s rule %d: unknown condition %q in whenAny — rule dropped', ev, i, tostring(ck));
+                                    dead = true; break;
+                                end
+                                ne[lk] = cv;
+                            end
+                            if dead then break; end
+                            if next(ne) ~= nil then
+                                whenAny = whenAny or {};
+                                whenAny[#whenAny + 1] = ne;
+                            end
+                        end
+                    end
                     if not dead then
                         local prio = tonumber(r.priority);
                         if prio == nil then
                             prio = 10;
                             for lk in pairs(when) do
                                 if TIER[lk] > prio then prio = TIER[lk]; end
+                            end
+                            for _, e in ipairs(whenAny or {}) do
+                                for lk in pairs(e) do
+                                    if TIER[lk] > prio then prio = TIER[lk]; end
+                                end
                             end
                         end
                         -- set = 'Name' or an ORDERED list { 'Base', 'Overlay' } --
@@ -511,12 +589,13 @@ local function normalize(t)
                             sets = { tostring(r.set) };
                         end
                         list[#list + 1] = {
-                            when  = when,
-                            sets  = sets,
-                            equip = (type(r.equip) == 'table') and r.equip or nil,
-                            prio  = prio,
-                            ord   = #list + 1,
-                            label = M.ruleLabel(when),
+                            when    = when,
+                            whenAny = whenAny,
+                            sets    = sets,
+                            equip   = (type(r.equip) == 'table') and r.equip or nil,
+                            prio    = prio,
+                            ord     = #list + 1,
+                            label   = M.ruleLabel(when, whenAny),
                         };
                     end
                 end
@@ -526,6 +605,7 @@ local function normalize(t)
     end
     return out, warns;
 end
+M._normalize = normalize;   -- headless test seam (the _matchers idiom)
 
 -- Load (or re-load) the current job's trigger file. Throttled to one content check
 -- per second; between checks the cached rules are used, so per-frame dispatch never
@@ -1471,12 +1551,31 @@ local function buildCtx(event)
 end
 
 local function matches(rule, ctx)
+    -- & leg: every `when` condition must hold. A rule with NO whenAny keeps
+    -- the original semantics exactly (empty when = match -- the 'any' shape).
+    local andOk, nAnd = true, 0;
     for lk, cv in pairs(rule.when) do
+        nAnd = nAnd + 1;
         local f = MATCHERS[lk];
-        if f == nil or not f(cv, ctx) then return false; end
+        if f == nil or not f(cv, ctx) then andOk = false; break; end
     end
-    return true;
+    local anyList = rule.whenAny;
+    if anyList == nil then return andOk; end
+    -- | leg (v54): ANY entry whose conditions all hold matches the rule,
+    -- independent of the & leg ("ALL of & OR ANY of |" -- Henrik's spec). An
+    -- OR-only rule (zero & conditions) is NOT always-on: only the | leg counts.
+    if nAnd > 0 and andOk then return true; end
+    for _, entry in ipairs(anyList) do
+        local ok = true;
+        for lk, cv in pairs(entry) do
+            local f = MATCHERS[lk];
+            if f == nil or not f(cv, ctx) then ok = false; break; end
+        end
+        if ok then return true; end
+    end
+    return false;
 end
+M._matches = matches;   -- headless test seam (the _matchers idiom)
 
 -- One-line description of the acted-on thing, for /dl why.
 local function actionLabel(ctx)
@@ -2074,6 +2173,22 @@ function M.serializeTriggers(data)
                     conds[#conds + 1] = (PRETTY_KEY[lk] or tostring(k)) .. ' = ' .. condLiteral(v);
                 end
                 table.sort(conds);
+                -- v54 OR group: entry order preserved as authored (a list, not a
+                -- map), each entry's own conditions sorted like `when`.
+                local anyStr = '';
+                if type(r.whenAny) == 'table' and #r.whenAny > 0 then
+                    local groups = {};
+                    for _, entry in ipairs(r.whenAny) do
+                        local ec = {};
+                        for k, v in pairs(entry) do
+                            local lk = string.lower(tostring(k));
+                            ec[#ec + 1] = (PRETTY_KEY[lk] or tostring(k)) .. ' = ' .. condLiteral(v);
+                        end
+                        table.sort(ec);
+                        groups[#groups + 1] = '{ ' .. table.concat(ec, ', ') .. ' }';
+                    end
+                    anyStr = ', whenAny = { ' .. table.concat(groups, ', ') .. ' }';
+                end
                 local action;
                 if type(r.set) == 'table' then          -- ordered multi-set rule
                     local q = {};
@@ -2090,8 +2205,8 @@ function M.serializeTriggers(data)
                     action = 'equip = { ' .. table.concat(slots, ', ') .. ' }';
                 end
                 local prio = (tonumber(r.priority) ~= nil) and (', priority = ' .. tostring(r.priority)) or '';
-                L[#L + 1] = string.format('        { when = { %s }, %s%s },',
-                    table.concat(conds, ', '), action, prio);
+                L[#L + 1] = string.format('        { when = { %s }%s, %s%s },',
+                    table.concat(conds, ', '), anyStr, action, prio);
             end
             L[#L + 1] = '    },';
         end
@@ -2279,10 +2394,13 @@ M.starterTriggersText = [[
 --             PetAction (fires when YOUR PET starts an action -- Blood Pact / Ready move /
 --             pet spell; your gear holds until it completes. dlac provides this event itself).
 -- Conditions: status/moving/mode | any/skill/magicType/element/songType/family/name/dayWeatherBonus
---             | abilityType | player state: hpBelow/hpAbove/mpBelow/mpAbove (percent),
---             tpBelow/tpAbove (raw TP), buff/buffNot (active status effect, name or id).
+--             | abilityType | player state: playerHPBelow/Above, playerHPPercentBelow/Above,
+--             playerMPBelow/Above, playerMPPercentBelow/Above, tpBelow/tpAbove (raw TP),
+--             buff/buffNot (active status effect, name or id).
 --             All conditions in one `when` must hold; every matching rule
 --             applies, lowest priority first (later overlays earlier per slot).
+-- OR groups:  whenAny = { { buff = "Sleep" }, { buff = "Lullaby" } } -- the rule matches
+--             when ALL `when` conditions hold OR ANY whenAny entry holds.
 -- Priority defaults by specificity: any 10 < status/skill 20 < class/element 30 < family 40
 --             < exact name 50 < player state 95 < mode 100.  See docs/design/trigger-system.md.
 return {

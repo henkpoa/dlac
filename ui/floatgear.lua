@@ -215,7 +215,9 @@ local function triggerChoices()
         if type(list) == 'table' then
             for _, r in ipairs(list) do
                 if type(r) == 'table' and type(r.when) == 'table' then
-                    local label = dsp.ruleLabel(r.when);
+                    -- whenAny (v54) is part of the label: both states must
+                    -- spell an OR rule's scope key identically.
+                    local label = dsp.ruleLabel(r.when, r.whenAny);
                     local parts = {};
                     for k, v in pairs(r.when) do
                         local pk = (type(dsp.PRETTY_KEY) == 'table' and dsp.PRETTY_KEY[k]) or k;

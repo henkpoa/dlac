@@ -60,7 +60,16 @@ at dispatch time:
 | Item | `name`, `contains`, `group` |
 | Weaponskill | `any`, `name`, `group` |
 | Preshot / Midshot | `any` |
-| **every handler** (v53) | Player-state gates: `hpBelow`/`hpAbove`, `mpBelow`/`mpAbove` (percent, strict compare), `tpBelow`/`tpAbove` (raw TP, 1000 = a full shot), `buff`/`buffNot` (active status effect by name — case-insensitive — or numeric id). Tier 95, just under `mode`. Buffs resolve through a per-dispatch cache of the client's own buff array; unreadable state matches NEITHER polarity, so a failed read never flaps gear. |
+| **every handler** (v54) | Player-state gates, raw AND percent variants: `playerHPBelow`/`playerHPAbove`, `playerHPPercentBelow`/`playerHPPercentAbove` (0–100), `playerMPBelow`/`playerMPAbove`, `playerMPPercentBelow`/`playerMPPercentAbove` (0–100), `tpBelow`/`tpAbove` (raw TP, 1000 = a full shot), `buff`/`buffNot` (active status effect by name — case-insensitive — or numeric id). Strict compares. Tier 95, just under `mode`. Buffs resolve through a per-dispatch cache of the client's own buff array; unreadable state matches NEITHER polarity, so a failed read never flaps gear. The v53 spellings (`hpBelow`… percent semantics) load as hidden aliases. |
+
+**OR groups (v54).** A rule may carry `whenAny = { { buff = "Sleep" }, { buff = "Lullaby" } }`
+beside `when`: the rule matches when ALL `when` conditions hold **or** ANY `whenAny` entry
+holds (an entry with several keys is AND within itself). An OR-only rule (empty `when`) is
+NOT always-on — only its `whenAny` leg counts. Unknown keys in either leg drop the rule
+with a chat warn. `ruleLabel` appends the OR leg after `|` (rules without `whenAny` label
+exactly as before, so existing pin scope keys keep matching); the default priority scans
+both legs. Field case: Toxin Earring poison-wakeup — `whenAny` of Sleep OR Lullaby → the
+WakeMeUp set.
 
 v2 candidates (matcher is an open table; additive): day/weather/moon beyond the obi rule,
 area, target type, subjob.
