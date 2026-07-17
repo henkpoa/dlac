@@ -2502,3 +2502,23 @@ suggestion only appears when no owned rod is SAFE (and never suggests the
 button-width lesson again); the 10k-carp guild line hides once Lu Shang's is
 owned. itemLine also inherited helmui's note-beats-tooltip order en route —
 the cascade/Expert Angler notes were silently losing to the stat card.
+
+### Field round 1 (same day): the Salvage label bug
+
+Henrik: Lava/Kusha good; Ares showed "gives Ares' Cuirass +4"?! Two findings:
+**(1) Data truth, not a bug:** base Salvage 75 sets (Ares/Skadi/Marduk/
+Morrigan/Usukane, sets 1/2/3/7/8) are min5/max5 -- all five pieces or nothing,
+one flat tier (DA/Crit/FastCast/MAB/Haste +5). The remembered 2/3/4/5-piece
+ladder belongs to the +1 (Salvage II) sets 77/78/80/81: 3/5/7/9. **(2) The
+label fallback was the bug:** "<first piece> +N-more" reads as an HQ item name
+("Ares' Cuirass +4"), and it fired because piece names drift per source --
+owned resolves "Ares's Cuirass" (game), unowned "Ares Mask" (catalog short
+names; the +1 sets even mix "Marduks Jubbah +1" with "Mdk. Dastanas +1"), so
+the all-pieces word-prefix never matched. setLabelOf rebuilt: majority
+first-word family via a drift-tolerant stem (lowercase, punctuation out,
+trailing s off), word-extension within the family ("Iron Ram set"), shared
+quality mark kept visible ("Ares +1 set" distinct from base "Ares set"),
+"+N" form deleted outright; fallback "N-piece set". setLabelOf exported as a
+uihost service; smoke S41-S44 pin Ares/Ares+1/Mdk.+1 against the REAL catalog
+plus a sweep: every one of the 126 labels is a pair or "... set", never an
+HQ-item shape. 1234 + 135 green.

@@ -177,7 +177,7 @@ for _, k in ipairs({
     'parseSearch', 'itemSearchMatch',
     'getEquippedId', 'equipToSlot', 'engineLocks', 'lacSlot', 'lockMirrorDirty',
     'wornSetTotals', 'renderStatsPanel', 'renderSlotGrid', 'renderSortCombo',
-    'renderItemTooltip',
+    'renderItemTooltip', 'setLabelOf',
 }) do
     check('S12 service ' .. k, S[k] ~= nil, true);
 end
@@ -236,6 +236,25 @@ check('S21 DATA: the shipped catalog carries no unimplemented stub rows', (funct
         if r.Name == 'Gletis Crossbow' or r.Name == 'Mpacas Bow'
            or r.Name == 'Amini Bottillons +2' or r.Name == 'Pinaka' then
             return r.Name .. ' (' .. tostring(r.Slot) .. ') -- re-crawl with the current apicrawl.py';
+        end
+    end
+    return true;
+end)(), true);
+
+-- Set display labels through the REAL catalog + shipped gearsets (the Salvage
+-- field bug, Henrik 07-18: "Ares' Cuirass +4" -- the old first-piece "+N"
+-- fallback read as an HQ item). Family labels must survive short-name /
+-- possessive drift, +1 families must stay distinct from base, and NO label may
+-- ever take the "<piece> +N" form again.
+check('S41 base Salvage family label', S.setLabelOf(3), 'Ares set');
+check('S42 +1 family keeps the quality mark', S.setLabelOf(81), 'Ares +1 set');
+check('S43 short-name family resolves by majority', S.setLabelOf(78), 'Mdk. +1 set');
+check('S44 every set label is a pair or a "... set" -- never an HQ-item shape', (function()
+    local gsD = require('dlac\\data\\gearsets');
+    for sid in pairs(gsD) do
+        local l = S.setLabelOf(sid);
+        if not (string.sub(l, -4) == ' set' or string.find(l, ' + ', 1, true) ~= nil) then
+            return sid .. ': ' .. l;   -- name the offender
         end
     end
     return true;

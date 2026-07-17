@@ -485,9 +485,14 @@ local function displayName(itemId)
 end
 
 -- Human label for a gear set (the data carries only ids): two-piece sets read
--- as the pair ("Lava's Ring + Kusha's Ring"), families collapse to the shared
--- name prefix ("Iron Ram set"), anything else falls back to the first piece
--- "+N". Cached once every piece name resolves.
+-- as the pair ("Lava's Ring + Kusha's Ring"); larger sets take their FAMILY
+-- word -- the most common first word across the piece names, matched through a
+-- stem that survives possessive/short-name drift ("Ares's" vs "Ares", "Skadi's"
+-- vs "Skadis"; "Marduks" vs "Mdk." resolves by majority) -- extended while the
+-- family shares further words ("Iron Ram set") and keeping a shared quality
+-- mark visible ("Ares +1 set" = Salvage II, distinct from base "Ares set").
+-- NEVER "<piece> +N": that reads as an HQ item name (the Salvage field bug --
+-- "Ares' Cuirass +4" -- Henrik, 2026-07-18). Cached once every name resolves.
 local setLabelCache = {};
 local function setLabelOf(setId)
     if setLabelCache[setId] ~= nil then return setLabelCache[setId]; end
@@ -503,21 +508,63 @@ local function setLabelOf(setId)
     if #names == 2 then
         lbl = names[1] .. ' + ' .. names[2];
     else
-        -- longest word prefix common to EVERY piece name
-        local pref = {};
-        for t in string.gmatch(names[1] or '', '%S+') do pref[#pref + 1] = t; end
-        for i = 2, #names do
-            local wn = {};
-            for t in string.gmatch(names[i], '%S+') do wn[#wn + 1] = t; end
-            local keep = 0;
-            for j = 1, math.min(#pref, #wn) do
-                if string.lower(pref[j]) == string.lower(wn[j]) then keep = j; else break; end
-            end
-            for j = #pref, keep + 1, -1 do pref[j] = nil; end
-            if #pref == 0 then break; end
+        local words = {};
+        for i, nm in ipairs(names) do
+            local w = {};
+            for t in string.gmatch(nm, '%S+') do w[#w + 1] = t; end
+            words[i] = w;
         end
-        if #pref > 0 then lbl = table.concat(pref, ' ') .. ' set';
-        else lbl = names[1] .. ' +' .. tostring(#names - 1); end
+        -- drift-tolerant stem: lowercase, punctuation out, trailing s off --
+        -- "Ares's"/"Ares" -> "are", "Skadi's"/"Skadis" -> "skadi"
+        local function stem(w)
+            w = string.gsub(string.lower(w or ''), '[^%w]', '');
+            return (string.gsub(w, 's+$', ''));
+        end
+        -- majority first-word family (ties -> earliest piece order)
+        local counts, order = {}, {};
+        for _, w in ipairs(words) do
+            local k = stem(w[1]);
+            if k ~= '' then
+                if counts[k] == nil then order[#order + 1] = k; end
+                counts[k] = (counts[k] or 0) + 1;
+            end
+        end
+        local famKey, famN = nil, 0;
+        for _, k in ipairs(order) do
+            if counts[k] > famN then famKey, famN = k, counts[k]; end
+        end
+        if famKey ~= nil then
+            local fam, raw = {}, nil;
+            for _, w in ipairs(words) do
+                if stem(w[1]) == famKey then
+                    fam[#fam + 1] = w;
+                    if raw == nil then raw = w[1]; end
+                end
+            end
+            -- extend while EVERY family member shares the next word
+            local parts, wi = { raw }, 2;
+            while true do
+                local nxt = fam[1][wi];
+                if nxt == nil or string.match(nxt, '^%+%d+$') ~= nil then break; end
+                local allSame = true;
+                for _, w in ipairs(fam) do
+                    if w[wi] == nil or stem(w[wi]) ~= stem(nxt) then allSame = false; break; end
+                end
+                if not allSame then break; end
+                parts[#parts + 1] = nxt;
+                wi = wi + 1;
+            end
+            -- a quality mark carried by EVERY family piece stays visible
+            local q = string.match(fam[1][#fam[1]] or '', '^%+%d+$');
+            if q ~= nil then
+                for _, w in ipairs(fam) do
+                    if w[#w] ~= q then q = nil; break; end
+                end
+            end
+            lbl = table.concat(parts, ' ') .. ((q ~= nil) and (' ' .. q) or '') .. ' set';
+        else
+            lbl = tostring(#names) .. '-piece set';
+        end
     end
     if resolved then setLabelCache[setId] = lbl; end   -- don't cache '#id' fallbacks
     return lbl;
@@ -3437,7 +3484,7 @@ host.provide({
     getEquippedId = getEquippedId, equipToSlot = equipToSlot,
     engineLocks = engineLocks, lacSlot = lacSlot,
     lockMirrorDirty = function() _lockMirror.at = -1; end,
-    wornSetTotals = wornSetTotals,
+    wornSetTotals = wornSetTotals, setLabelOf = setLabelOf,
     -- shared render helpers
     renderStatsPanel = renderStatsPanel, renderSlotGrid = renderSlotGrid,
     renderSortCombo = renderSortCombo, renderItemTooltip = renderItemTooltip,
