@@ -2313,3 +2313,20 @@ Docs: README setup/safety, architecture (setupui/setmanager/file table),
 design/profiles.md (migration order; "Veterans" section superseded by the
 standard -- hand-wiring is engine-supported but GUI-flagged, best-effort),
 PROFILE_TEMPLATE header.
+
+## Session addendum "fresh Setup seeds the four base sets" (2026-07-17)
+
+Henrik field-tested the fresh path (renamed his dlac data folder + WHM.lua
+away): Setup seeded starter triggers targeting Idle/Tp_Default/Resting/
+Movement but never created those sets -- the engine complained about missing
+trigger targets from the first action. Ruling: **seed the four base sets,
+EMPTY, wherever the starter triggers are seeded** -- rules and their targets
+always travel together.
+
+`profiles.starterDynText` (the scaffold; also used by migrations that find no
+Dynamic block, replacing the empty frame) + `setupui.seedSetsFile`
+(never-clobber, active profile's sets file; called from the fresh path, the
+migrateToCleanProfiles per-job loop, and the healthy-state re-seed). Tests
+Y25b/Y25c; sims 26/26 + 9/9; 1090 + 125 green. (599bfd4; the sim also caught
+and fixed the empty legacy dlac\triggers\ dir a fresh player used to get --
+3788e62.)
