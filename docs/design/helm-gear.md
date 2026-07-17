@@ -94,10 +94,19 @@ Henrik's SVGs — DONE), order Harvesting/Excavation/Logging/Mining. Per selecte
   (expiry checked live per dispatch). At 4s, re-trading briskly is what keeps the
   chain dressed — a slower pace rolls undressed swings between holds.
   **Timing truth (first-synth law):** the server rolls a swing when it processes the
-  trade — the 0x034 result is the first client signal, so the hold-opening swing is
-  never dressed; every FOLLOWING swing is (equip lands ~0.5s after the result, the
-  next trade is seconds later). Releasing on the result instead of a tail would
-  undress every swing — the tail IS the mechanism.
+  trade — the 0x034 result is the first client signal, so a result-driven hold can
+  never dress its own swing; every FOLLOWING swing is (equip lands ~0.5s after the
+  result, the next trade is seconds later).
+- **Proximity anchor (Henrik's first-swing fix):** TARGETING a "* Point" within
+  `PROX_ENTER` = 6y equips the gear BEFORE the first trade. The anchor then outlives
+  the target (HELMing clears it — the game's quirk): while the SAME entity is
+  rendered and within `PROX_LEAVE` = 8y (hysteresis), a ~4/s memory tick keeps the
+  hold refreshed (sparse state writes, ~1 per 2s); walk away or let the point
+  relocate and the 4s tail drops the gear. A swing's 0x034 also (re)seats the anchor
+  from its ActIndex, so the anchor self-heals mid-session without re-targeting.
+  "Rendered" = RenderFlags0 bit 0x200 (the storage-move `nomadNearestSq` precedent,
+  field-proven look-alike resistance) — a relocated Point lingering in the entity
+  array with a stale distance drops its render bit. Memory reads only; no packets.
   **PERSISTED across sessions** until turned off — restoring it is harmless because it
   only dresses you while you actually gather. Holds never survive a login.
   Engine truth: `helmStateActive` = `enabled` OR (`auto` AND `autoUntil` in the future);

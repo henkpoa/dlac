@@ -215,7 +215,7 @@ end
 function M.setAutoHelm(on)
     M.loadState();
     M.autoHelm = (on == true);
-    if M.autoHelm then ensureManifestFresh(); else M._autoUntil = 0; end
+    if M.autoHelm then ensureManifestFresh(); else M._autoUntil = 0; M._anchor = nil; end
     saveState();
 end
 
@@ -522,6 +522,64 @@ function M.gatherFromNpcName(name)
     return nil;
 end
 
+-- ---------------------------------------------------------------------------
+-- Proximity anchor (Henrik's first-swing fix): TARGETING a "* Point" within
+-- PROX_ENTER yalms equips the gear BEFORE the first trade -- the one moment
+-- the result event can never cover. The anchor then outlives the target
+-- (HELMing clears your target -- the game's quirk): as long as the SAME
+-- entity is present and within PROX_LEAVE (hysteresis: no boundary flap),
+-- the hold keeps refreshing; walk away or watch it despawn and the tail
+-- drops the gear. A swing result also (re)sets the anchor from its ActIndex,
+-- so mid-session the anchor is self-healing even if you never re-target.
+-- Ashita memory reads only (target index + entity Distance, which is
+-- SQUARED -- the distance addon's convention); no packets involved.
+-- ---------------------------------------------------------------------------
+M.PROX_ENTER = 6.0;    -- Henrik's 6 -- also the game's trade range
+M.PROX_LEAVE = 8.0;    -- keep the anchor a bit past enter range (hysteresis)
+M._anchor = nil;       -- { idx, name, gather }
+
+-- One proximity pass. `probe` abstracts the memory reads for tests:
+--   { target=fn()->idx|nil, present=fn(idx)->bool, name=fn(idx)->string|nil,
+--     distSq=fn(idx)->number|nil }
+-- Returns true while anchored (and keeps the engine hold alive, with sparse
+-- state writes -- roughly one per 2s, not one per frame).
+function M.proximityStep(probe)
+    if not M.isAutoHelm() then M._anchor = nil; return false; end
+    local a = M._anchor;
+    if a ~= nil then
+        local ok = probe.present(a.idx) == true;
+        if ok then ok = (probe.name(a.idx) == a.name); end
+        if ok then
+            local d = probe.distSq(a.idx);
+            ok = type(d) == 'number' and d >= 0 and d <= M.PROX_LEAVE * M.PROX_LEAVE;
+        end
+        if not ok then M._anchor = nil; a = nil; end
+    end
+    if a == nil then
+        local ti = probe.target();
+        if type(ti) == 'number' and ti > 0 and probe.present(ti) == true then
+            local nm = probe.name(ti);
+            local g = M.gatherFromNpcName(nm);
+            if g ~= nil then
+                local d = probe.distSq(ti);
+                if type(d) == 'number' and d >= 0 and d <= M.PROX_ENTER * M.PROX_ENTER then
+                    M._anchor = { idx = ti, name = nm, gather = g };
+                    a = M._anchor;
+                end
+            end
+        end
+    end
+    if a == nil then return false; end
+    if M.activeGather ~= a.gather then M.selectGather(a.gather); end
+    local now = os.time();
+    if (M._autoUntil or 0) < now + 2 then
+        M._autoUntil = now + M.AUTO_HOLD_S;
+        M._enabledAt = now;
+        saveState();
+    end
+    return true;
+end
+
 -- The event source's entity index from a 0x034, or nil. Pure (tests feed the
 -- real Ghelsba bytes).
 function M.eventNpcIndex(data)
@@ -551,6 +609,9 @@ function M.onEventNum(data, nameOf)
     -- AUTO_HOLD_S after the last swing. `at` bumps so a stale craft switch
     -- loses the arbitration while you gather.
     if M.isAutoHelm() then
+        -- Remember the entity we just HELM'd (target is gone by now -- the
+        -- game clears it): the proximity tick keeps the hold alive from here.
+        M._anchor = { idx = idx, name = name, gather = g };
         M._autoUntil = os.time() + M.AUTO_HOLD_S;
         M._enabledAt = os.time();
         saveState();
@@ -665,6 +726,51 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
                 if msg:lower():find('^!ventures') ~= nil then M.openCapture(6); end
             end);
         end
+    end);
+
+    -- Proximity tick (~4/s): target/anchor distance reads for Auto HELM.
+    -- Ashita memory only; the probe closure matches proximityStep's contract.
+    local _proxAt = 0;
+    ashita.events.register('d3d_present', 'dlac-helmwatch-prox', function()
+        pcall(function()
+            if os.clock() < _proxAt then return; end
+            _proxAt = os.clock() + 0.25;
+            if not M.isAutoHelm() then return; end
+            local mm = AshitaCore:GetMemoryManager();
+            M.proximityStep({
+                target = function()
+                    local i = nil;
+                    pcall(function() i = mm:GetTarget():GetTargetIndex(0); end);
+                    if i == 0 then i = nil; end
+                    return i;
+                end,
+                present = function(idx)
+                    -- RENDERED, not merely in memory: RenderFlags0 bit 0x200
+                    -- (the storage-move nomadNearestSq precedent, field-proven
+                    -- 2026-07) -- a relocated Point can linger in the entity
+                    -- array with a stale distance; the render bit drops.
+                    local p = false;
+                    pcall(function()
+                        local em = mm:GetEntity();
+                        if em:GetRawEntity(idx) == nil then return; end
+                        local rf = em:GetRenderFlags0(idx) or 0;
+                        if rf < 0 then rf = rf + 4294967296; end
+                        p = (math.floor(rf / 0x200) % 2) == 1;
+                    end);
+                    return p;
+                end,
+                name = function(idx)
+                    local n = nil;
+                    pcall(function() n = mm:GetEntity():GetName(idx); end);
+                    return n;
+                end,
+                distSq = function(idx)
+                    local d = nil;
+                    pcall(function() d = mm:GetEntity():GetDistance(idx); end);
+                    return d;
+                end,
+            });
+        end);
     end);
 
     -- One-shot points fetch on login (the craftwatch 0x10F tick pattern):

@@ -3540,6 +3540,51 @@ end)();
         { player = { MainJobSync = 75 } });
     check('H50 expired hold -> no overlay', aoff, nil);
     dispatchM._autoOverride = nil;
+
+    -- Proximity anchor (Henrik's first-swing fix): target a Point within 6y
+    -- -> gear on BEFORE the first trade; the anchor then outlives the target
+    -- (HELMing clears it) and drops on distance/despawn. Probe-driven: the
+    -- world state is a plain table the fake closures read.
+    local world = { target = nil, ents = {} };   -- ents[idx] = { name, distSq }
+    local probe = {
+        target  = function() return world.target; end,
+        present = function(idx) return world.ents[idx] ~= nil; end,
+        name    = function(idx) local e = world.ents[idx]; return e and e.name or nil; end,
+        distSq  = function(idx) local e = world.ents[idx]; return e and e.distSq or nil; end,
+    };
+    helmwatch.setAutoHelm(true);
+    world.ents[400] = { name = 'Mining Point', distSq = 25 };      -- 5y
+    world.target = 400;
+    check('H51 target in range anchors',      helmwatch.proximityStep(probe), true);
+    check('H52 anchor equips (hold live)',    helmwatch.autoActive(), true);
+    check('H53 anchor selects category',      helmwatch.getGather(), 'Mining');
+    world.target = nil;                                            -- HELMing cleared the target
+    check('H54 anchor outlives the target',   helmwatch.proximityStep(probe), true);
+    world.ents[400].distSq = 49;                                   -- 7y: inside leave hysteresis
+    check('H55 hysteresis keeps it to 8y',    helmwatch.proximityStep(probe), true);
+    world.ents[400].distSq = 100;                                  -- 10y: walked away
+    check('H56 out of range drops anchor',    helmwatch.proximityStep(probe), false);
+    world.ents[400].distSq = 25;                                   -- back in range, no target
+    check('H57 no re-anchor without target',  helmwatch.proximityStep(probe), false);
+    world.target = 400; world.ents[400] = nil;                     -- despawned mid-target
+    check('H58 despawned target never anchors', helmwatch.proximityStep(probe), false);
+    world.ents[401] = { name = 'Fantoccini', distSq = 4 };
+    world.target = 401;
+    check('H59 non-Point target ignored',     helmwatch.proximityStep(probe), false);
+    world.ents[402] = { name = 'Logging Point', distSq = 100 };    -- 10y: too far to acquire
+    world.target = 402;
+    check('H60 in-name but out-of-enter-range', helmwatch.proximityStep(probe), false);
+    -- a swing result re-seats the anchor even with no target at all
+    helmwatch.onEventNum(evt, function(i) return (i == 319) and 'Logging Point' or nil; end);
+    world.target = nil;
+    world.ents[319] = { name = 'Logging Point', distSq = 9 };
+    check('H61 swing result seeds the anchor', helmwatch.proximityStep(probe), true);
+    check('H62 seeded anchor swaps category',  helmwatch.getGather(), 'Logging');
+    world.ents[319] = nil;                                         -- point relocated
+    check('H63 despawn drops the anchor',      helmwatch.proximityStep(probe), false);
+    helmwatch.setAutoHelm(false);
+    world.target = 400; world.ents[400] = { name = 'Mining Point', distSq = 25 };
+    check('H64 disarmed: never anchors',       helmwatch.proximityStep(probe), false);
 end)();
 
 -- ---------------------------------------------------------------------------

@@ -122,7 +122,7 @@ function M.render()
                     imgui.TextColored({ 0.45, 0.90, 0.45, 1 },
                         string.format('AUTO: wearing %s gear', tostring(hw.getGather() or '?')));
                 else
-                    imgui.TextColored({ 0.55, 0.55, 0.55, 1 }, 'Auto HELM armed -- waiting for a swing');
+                    imgui.TextColored({ 0.55, 0.55, 0.55, 1 }, 'Auto HELM armed -- target a Point (6y) or swing');
                 end
             elseif hw.lastDetect ~= nil and (os.clock() - (hw.lastDetect.at or 0)) < 120 then
                 imgui.TextColored({ 0.55, 0.55, 0.55, 1 },
