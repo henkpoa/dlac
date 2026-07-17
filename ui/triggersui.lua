@@ -2182,6 +2182,57 @@ local function renderTrigAddPopup()
     imgui.TextColored(COL_HEADER, (editing and 'Edit ' or 'New ') .. h .. ' rule');
     imgui.Separator();
 
+    local defs = COND_DEFS[h] or {};
+
+    -- 'e' on a pending row: load the condition back into the pickers and lift
+    -- the row out, so a small tweak never means retype-from-scratch (Henrik).
+    -- Re-add with + & or + | -- moving a condition between legs is the same
+    -- motion. v53 alias spellings edit into their canonical percent params.
+    local PARAM_OF = nil;
+    local function editCond(ci)
+        local c = trig.addConds[ci];
+        if c == nil or type(c.value) == 'table' then return; end   -- list values: delete + re-add
+        local key = string.lower(tostring(c.key));
+        if PARAM_OF == nil then
+            PARAM_OF = {};
+            for pi, p in ipairs(PLAYER_PARAMS) do PARAM_OF[string.lower(p.key)] = pi; end
+            PARAM_OF.hpbelow = PARAM_OF.playerhppercentbelow;
+            PARAM_OF.hpabove = PARAM_OF.playerhppercentabove;
+            PARAM_OF.mpbelow = PARAM_OF.playermppercentbelow;
+            PARAM_OF.mpabove = PARAM_OF.playermppercentabove;
+        end
+        local defIdx, kind = nil, nil;
+        if PARAM_OF[key] ~= nil then
+            for di, d in ipairs(defs) do
+                if d.kind == 'player' then defIdx = di; break; end
+            end
+            if defIdx ~= nil then
+                trig._addPlayer = PARAM_OF[key];
+                kind = PLAYER_PARAMS[PARAM_OF[key]].kind;
+            end
+        else
+            for di, d in ipairs(defs) do
+                if string.lower(d.key) == key then defIdx = di; kind = d.kind; break; end
+            end
+        end
+        if defIdx == nil then return; end              -- exotic key: leave the row alone
+        trig._addDef = defIdx;
+        trig.addValText[1] = ''; trig._addValSel = nil; trig.addValNum[1] = 0;
+        if kind == 'number' then trig.addValNum[1] = tonumber(c.value) or 0;
+        elseif kind == 'text' then trig.addValText[1] = tostring(c.value);
+        elseif kind == 'list' or kind == 'group' or kind == 'buff' then trig._addValSel = c.value;
+        end
+        table.remove(trig.addConds, ci);
+    end
+    local function condRowButtons(ci)
+        if imgui.SmallButton('e##trgce' .. ci) then editCond(ci); end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Edit: loads this condition back into the pickers --\nadjust it, then re-add with + & or + |.');
+        end
+        imgui.SameLine(0, 4);
+        if imgui.SmallButton('x##trgcx' .. ci) then table.remove(trig.addConds, ci); end
+    end
+
     -- Pending conditions, GROUPED: the & leg first, then the | leg (Henrik:
     -- keep them visibly separate). Prefixes only appear once both legs exist.
     local nOr = 0;
@@ -2192,7 +2243,7 @@ local function renderTrigAddPopup()
                 .. trigPrettyKey(string.lower(c.key)) .. ((c.value == true) and '' or (' = ' .. tostring(c.value)));
             imgui.TextColored(COL_USABLE, esc(txt));
             imgui.SameLine(0, 6);
-            if imgui.SmallButton('x##trgcx' .. ci) then table.remove(trig.addConds, ci); end
+            condRowButtons(ci);
         end
     end
     for ci, c in ipairs(trig.addConds) do
@@ -2200,11 +2251,10 @@ local function renderTrigAddPopup()
             local txt = '| ' .. trigPrettyKey(string.lower(c.key)) .. ((c.value == true) and '' or (' = ' .. tostring(c.value)));
             imgui.TextColored({ 0.85, 0.65, 1.00, 1.0 }, esc(txt));
             imgui.SameLine(0, 6);
-            if imgui.SmallButton('x##trgcx' .. ci) then table.remove(trig.addConds, ci); end
+            condRowButtons(ci);
         end
     end
 
-    local defs = COND_DEFS[h] or {};
     if trig._addDef > #defs then trig._addDef = 1; end
     local cur = defs[trig._addDef];
     -- ONE cascading condition chooser (Henrik: like the floating equipment
