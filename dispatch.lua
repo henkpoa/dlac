@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 56;   -- 56: Level-sync settle hold -- a MainJobSync jump on the SAME job (a level sync landing: Incursion boss pop, party re-sync) arms a ~3s hold: every dispatch keeps Main/Sub/Range as worn (ctx.syncHold, the pinReserved pattern; a Range-reserving stat-stick Ammo holds WITH the Range it reserves, or the server would strip the worn ranged weapon -- ADR 0010), and HandleDefault is gated whole for legacy profiles via M.defaultGateHold (pet hold + sync hold), consulted AT CALL TIME by a thin generational wrap shell (WRAP_GEN) so the gate itself hot-swaps live. Tracker parked on M (survives self-swap mid-hold). Job changes and first reads adopt instantly -- no hold. Pure rule: M.syncSettleStep (LS tests). Root cause of the field report "popping an Incursion boss sometimes zeroes saved TP": a mid-transition level reading resolving a different Main.
+M.VERSION = 57;   -- 57: settle window 3s -> 1s (Henrik's ruling: 3 felt long). Semantics unchanged: the window is stability-since-LAST-change, every flip re-arms it, so staged transitions stay covered; 1s only outlasts the gap after the final flip. Raise M.SYNC_SETTLE_S first if a sync ever eats TP again.
+                  -- 56: Level-sync settle hold -- a MainJobSync jump on the SAME job (a level sync landing: Incursion boss pop, party re-sync) arms a ~3s hold: every dispatch keeps Main/Sub/Range as worn (ctx.syncHold, the pinReserved pattern; a Range-reserving stat-stick Ammo holds WITH the Range it reserves, or the server would strip the worn ranged weapon -- ADR 0010), and HandleDefault is gated whole for legacy profiles via M.defaultGateHold (pet hold + sync hold), consulted AT CALL TIME by a thin generational wrap shell (WRAP_GEN) so the gate itself hot-swaps live. Tracker parked on M (survives self-swap mid-hold). Job changes and first reads adopt instantly -- no hold. Pure rule: M.syncSettleStep (LS tests). Root cause of the field report "popping an Incursion boss sometimes zeroes saved TP": a mid-transition level reading resolving a different Main.
                   -- 55: Trigger-monitor feed -- a 5-entry ring of fired-rule lines (updated on every retrace: Default only when its matched-rule set changes, action events always). Each new line STREAMS to the addon state as a blocked '/dlacmonev' command (the /bind queue precedent -- the live channel two Lua states share) AND flushes coalesced to firedstate.lua (reload bootstrap + fallback). Display only; the engine never reads it back.
                   -- 54: Player conditions v2 (Henrik's morning revision) -- canonical keys playerHPBelow/Above, playerHPPercentBelow/Above, playerMPBelow/Above, playerMPPercentBelow/Above (raw AND percent variants; v53 hpBelow/... spellings stay as hidden percent aliases), plus whenAny OR groups: a rule matches when ALL `when` conditions hold OR ANY whenAny entry holds; an OR-only rule is not always-on. ruleLabel/defaultPriority take whenAny.
                   -- 53: Player conditions v1 -- hpBelow/hpAbove, mpBelow/mpAbove, tpBelow/tpAbove (strict compares vs gData vitals) and buff/buffNot (active status effect by name or id; per-dispatch buff cache; unreadable state matches NEITHER polarity). Tier 95, just under mode.
@@ -991,7 +992,12 @@ end
 -- good read after load; not-ready readings (level 0, job '?'/'NON' -- the v49
 -- login shapes) never touch the tracker, so a flaky read can't arm or drop it.
 -- ---------------------------------------------------------------------------
-M.SYNC_SETTLE_S = 3.0;
+-- 1.0s (Henrik, v57: 3 felt long). The window is stability-since-LAST-change --
+-- every level flip inside it re-arms, so a staged server transition stays
+-- covered however long it drags; 1s only has to outlast the gap AFTER the
+-- final flip, where resolution is already correct. First lever to pull if a
+-- sync ever eats TP again: raise this number.
+M.SYNC_SETTLE_S = 1.0;
 local WEAPON_SLOTS = { main = true, sub = true, range = true };
 -- Parked on the shared module table (the M._loadStamp pattern): an engine
 -- self-swap re-executes this file mid-session, and a fresh tracker would adopt
@@ -1008,7 +1014,7 @@ function M.syncSettleStep(st, job, lv, now)
             st.job, st.lv, st.holdUntil = job, lv, 0;   -- first read / job change: adopt, no hold
         elseif lv ~= st.lv then
             st.lv = lv;                                  -- same job, level jumped: a sync landed
-            st.holdUntil = now + (tonumber(M.SYNC_SETTLE_S) or 3);
+            st.holdUntil = now + (tonumber(M.SYNC_SETTLE_S) or 1);
         end
     end
     return now < (tonumber(st.holdUntil) or 0);

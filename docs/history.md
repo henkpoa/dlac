@@ -2083,3 +2083,8 @@ pre-wrap.
 **Process note:** adversarial review workflow (4 lenses, refutation verify) confirmed 4
 real defects in the first draft — trinket/Range inversion, the hot-swap wrap gap, the
 tracker reset on self-swap, and mutation-tested coverage holes — all fixed before commit.
+
+**Revision (same day, v57):** settle window 3s → 1s (Henrik: "3 sounds like a long time").
+Safe because the window is stability-since-last-change — every flip re-arms it — so 1s only
+has to outlast the quiet gap after the final flip. `M.SYNC_SETTLE_S` is the lever if a sync
+ever eats TP again.

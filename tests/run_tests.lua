@@ -3049,8 +3049,9 @@ end)();
 
 -- ---------------------------------------------------------------------------
 -- LS. Level-sync settle hold (dispatch.syncSettleStep + the equipResolved
---     ctx.syncHold branch, v56): a level jump on the SAME job arms a ~3s
---     weapon hold -- an Incursion boss pop re-syncing the party must not swap
+--     ctx.syncHold branch, v56): a level jump on the SAME job arms a short
+--     (SYNC_SETTLE_S) weapon hold -- an Incursion boss pop re-syncing the
+--     party must not swap
 --     Main mid-transition and zero saved TP. Job changes and first reads adopt
 --     instantly; not-ready readings (level 0, job '?'/'NON') never touch the
 --     tracker. While the hold is live, ONLY Main/Sub/Range are kept as worn --
