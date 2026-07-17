@@ -109,8 +109,10 @@ wui.editor = function()
         return;
     end
     -- Say WHOSE weights these are: each set remembers its own (shared when none).
+    local boundKey = nil;
     pcall(function()
         local bk = (optim.weightsBoundTo ~= nil) and optim.weightsBoundTo() or nil;
+        boundKey = bk;
         if bk ~= nil then
             local j, s = string.match(bk, '^([^|]+)|(.+)$');
             imgui.TextColored(COL.HEADER, string.format('weights for set "%s" (%s)', s or bk, j or '?'));
@@ -121,6 +123,48 @@ wui.editor = function()
             imgui.SetTooltip('Every set remembers its own stat weights. Selecting a set for the FIRST\ntime starts it from the shared table; edits after that stick to that set\nonly, and come back when you re-select it.');
         end
     end);
+    -- Copy another set's tuning (weights + build-slot marks) into THIS one --
+    -- with everything per-set now, seeding a new set from a proven one is the
+    -- common move. Button + filter popup (the setPickCombo shape).
+    if type(optim.copyWeightsFrom) == 'function' and type(optim.perSetKeys) == 'function' then
+        imgui.SameLine(0, 10);
+        if imgui.SmallButton('copy from...##wcopy') then
+            wui._copyQ = { '' };
+            imgui.OpenPopup('##wcopy_pop');
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Replace this table\'s weights AND build-slot marks with a copy of\nanother set\'s (or the shared table). The source is not touched.');
+        end
+        if imgui.BeginPopup('##wcopy_pop') then
+            wui._copyQ = wui._copyQ or { '' };
+            imgui.PushItemWidth(190);
+            imgui.InputText('##wcopy_q', wui._copyQ, 48);
+            imgui.PopItemWidth();
+            local q = string.lower(wui._copyQ[1] or '');
+            local function row(label, src)
+                if q ~= '' and string.find(string.lower(label), q, 1, true) == nil then return; end
+                if imgui.Selectable(label .. '##wcopy_o_' .. label, false) then
+                    local okc = false;
+                    pcall(function() okc = optim.copyWeightsFrom(src); end);
+                    if okc then
+                        ui._wbuf = {};
+                        pcall(optim.saveWeights);
+                        D.invalidateCandidates();
+                    end
+                    imgui.CloseCurrentPopup();
+                end
+            end
+            if boundKey ~= nil then row('(shared weights)', nil); end
+            local keys = {};
+            pcall(function() keys = optim.perSetKeys() or {}; end);
+            local shown = (boundKey ~= nil) and 1 or 0;
+            for _, k in ipairs(keys) do
+                if k ~= boundKey then row(k, k); shown = shown + 1; end
+            end
+            if shown == 0 then imgui.TextColored(COL.DIM, '(no other stored weights yet)'); end
+            imgui.EndPopup();
+        end
+    end
     imgui.TextColored(COL.DIM, 'pts/point up to cap (cap 0 = none) -- applies as you type:');
     imgui.BeginChild('##ffxilac_weights', { -1, -1 }, true);   -- fill the (now windowed) space
 

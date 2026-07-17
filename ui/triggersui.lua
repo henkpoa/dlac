@@ -1889,6 +1889,38 @@ local function textW(s)
     return #tostring(s) * 7;
 end
 
+-- Live readout for the v53 player-state gates: an ADDON-state ctx the ENGINE's
+-- own matchers run against (dsp._matchers -- the exact dispatch logic, never a
+-- re-implementation). 1s throttle; the buff matcher memoizes its buff set on
+-- the ctx, so buffs also read once per second. nil when unreadable
+-- (pre-login) -> no marker rather than a wrong one.
+local PSTATE_KEYS = { hpbelow = true, hpabove = true, mpbelow = true,
+                      mpabove = true, tpbelow = true, tpabove = true,
+                      buff = true, buffnot = true };
+local _psAt, _psCtx = -1, nil;
+local function pstateCtx()
+    if os.clock() < _psAt then return _psCtx; end
+    _psAt = os.clock() + 1.0;
+    _psCtx = nil;
+    pcall(function()
+        local party = AshitaCore:GetMemoryManager():GetParty();
+        local hpp = party:GetMemberHPPercent(0);
+        if hpp ~= nil then
+            _psCtx = { player = { HPP = hpp, MPP = party:GetMemberMPPercent(0),
+                                  TP = party:GetMemberTP(0) } };
+        end
+    end);
+    return _psCtx;
+end
+local function pstateHolds(key, v)
+    local ctx = pstateCtx();
+    if ctx == nil or dsp == nil or type(dsp._matchers) ~= 'table'
+       or dsp._matchers[key] == nil then return nil; end
+    local ok, res = pcall(dsp._matchers[key], v, ctx);
+    if not ok then return nil; end
+    return res == true;
+end
+
 -- One rule box. colX = the section's aligned controls column. Returns 'remove'/'edit'/nil.
 -- Bordered content boxes must never grow their own scrollbar: we size them to
 -- their content and suppress the bar (a 1px estimate miss otherwise shows an
@@ -1959,6 +1991,21 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
                 imgui.TextColored(COL_ERR, '[missing group]');
                 if imgui.IsItemHovered() then
                     imgui.SetTooltip('No group with this name exists for this job -- the rule matches\nnothing and equips nothing. Create it in the Groups section (or fix the name).');
+                end
+            end
+        end
+        -- Player-state gate (v53): a live holds-right-now marker, so you can
+        -- dial a threshold and watch it flip without leaving the tab (the
+        -- [missing group] in-place-marker precedent). Display only -- the
+        -- engine re-evaluates for real at every dispatch.
+        if PSTATE_KEYS[ln.key] ~= nil then
+            local holds = pstateHolds(ln.key, r.when and r.when[ln.key]);
+            if holds ~= nil then
+                imgui.SameLine(0, 6);
+                imgui.TextColored(holds and COL_USABLE or COL_DIM,
+                    holds and '[on now]' or '[off now]');
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('Checked against your CURRENT vitals/buffs (refreshes every second)\nwith the engine\'s own matcher. The engine re-evaluates at every dispatch.');
                 end
             end
         end

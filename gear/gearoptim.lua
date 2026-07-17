@@ -485,6 +485,35 @@ function M.setSlotEnabled(label, on)
     return true;
 end
 
+-- Stored per-set weight keys ('JOB|Set'), sorted -- the copy-from picker list.
+function M.perSetKeys()
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    local keys = {};
+    for k in pairs(M._perSet) do keys[#keys + 1] = k; end
+    table.sort(keys);
+    return keys;
+end
+
+-- Copy another stored table's weights + build-slot mask INTO the active
+-- binding (the weights editor's "copy from"). src = 'JOB|Set', or nil for the
+-- shared table. The active tables keep their IDENTITY (they are aliases into
+-- _shared/_perSet), so contents are replaced in place; the caller owns the
+-- save + buffer/cache refresh.
+function M.copyWeightsFrom(src)
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    local sw = (src == nil) and M._shared or M._perSet[src];
+    local sm = (src == nil) and M._slotsShared or M._slotsPerSet[src];
+    if sw == nil then return false, 'no weights stored for ' .. tostring(src); end
+    if sw == M._weights then return false, 'that is already the active table'; end
+    for k in pairs(M._weights) do M._weights[k] = nil; end
+    for k, w in pairs(sw) do M._weights[k] = { perUnit = w.perUnit, cap = w.cap }; end
+    if sm ~= nil and sm ~= M._slots then
+        for k in pairs(M._slots) do M._slots[k] = nil; end
+        for k, v in pairs(sm) do M._slots[k] = v; end
+    end
+    return true;
+end
+
 -- ---------------------------------------------------------------------------
 -- M.score(itemStats [, weights]) -> number
 -- Weighted score of one item's Stats using the piecewise-linear rule per stat:

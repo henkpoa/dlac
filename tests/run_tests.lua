@@ -1429,6 +1429,37 @@ optim.clearWeight('Accuracy');                              -- leave the shared 
 end)();
 
 -- ---------------------------------------------------------------------------
+-- AW. weights "copy from" (optim.copyWeightsFrom): copy another stored table's
+--     weights + build-slot mask into the ACTIVE binding. Source untouched;
+--     active-table identity preserved (they alias _shared/_perSet entries).
+-- ---------------------------------------------------------------------------
+(function()
+    optim.bindSetWeights('DRK', 'CopySrc');
+    optim.setWeight('Accuracy', 42, 60);
+    optim.setSlotEnabled('Main', true);
+    optim.bindSetWeights('DRK', 'CopyDst');
+    optim.setWeight('STR', 3);
+    check('AW1 dst starts with its own table',  optim.getWeights()['Accuracy'], nil);
+    check('AW2 copy succeeds',                  optim.copyWeightsFrom('DRK|CopySrc'), true);
+    check('AW3 weights copied',                 optim.getWeights()['Accuracy'].perUnit, 42);
+    check('AW4 cap rides along',                optim.getWeights()['Accuracy'].cap, 60);
+    check('AW5 dst extras cleared',             optim.getWeights()['STR'], nil);
+    check('AW6 slot mask copied',               optim.getSlotMask().Main, true);
+    optim.setWeight('Accuracy', 1);                          -- edit the COPY only
+    optim.bindSetWeights('DRK', 'CopySrc');
+    check('AW7 source untouched',               optim.getWeights()['Accuracy'].perUnit, 42);
+    check('AW8 self-copy refused',              optim.copyWeightsFrom('DRK|CopySrc'), false);
+    check('AW9 unknown source refused',         optim.copyWeightsFrom('DRK|NoSuch'), false);
+    optim.bindSetWeights(nil, nil);
+    optim.setWeight('Evasion', 9);
+    optim.bindSetWeights('DRK', 'CopyDst');
+    check('AW10 copy from the shared table',    optim.copyWeightsFrom(nil), true);
+    check('AW11 shared weights land',           optim.getWeights()['Evasion'].perUnit, 9);
+    optim.bindSetWeights(nil, nil);
+    optim.clearWeight('Evasion');                            -- leave shared as found
+end)();
+
+-- ---------------------------------------------------------------------------
 -- AF. craft Sub-vs-Main guard (dispatch.craftMainGuard + the equipResolved
 --     post-pass) -- while the craft overlay owns Sub with no Main of its own,
 --     a set Main that can't PAIR with that Sub (subSlotAllowed) is HELD out of
