@@ -3193,6 +3193,81 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- PL. paired-slot dynamic ladders (gearoptim.pairLadders) -- Ear/Ring pairs
+--     ladder as one running TOP-2 walk so BOTH physical slots fill. Field case
+--     (Henrik, 2026-07-17): under Cure Potency weights, Curates' Earring (30)
+--     and Roundel Earring (73) both laddered onto Ear1 and Ear2 stayed empty --
+--     the pair must wear both once both are owned. The scores here are the
+--     caller's weighted scores at the build level; pairLadders is pure.
+-- ---------------------------------------------------------------------------
+(function()
+    local optim = dofile('gear/gearoptim.lua');
+    local function names(chain)
+        local t = {};
+        for _, c in ipairs(chain) do t[#t + 1] = tostring(c.name); end
+        return table.concat(t, ',');
+    end
+
+    -- The field case: both earrings owned -> one per ear, not both on Ear1.
+    local curates = { ref = 'C', name = "Curates' Earring", id = 1, level = 30, score = 30, copies = 1 };
+    local roundel = { ref = 'R', name = 'Roundel Earring',  id = 2, level = 73, score = 50, copies = 1 };
+    local c1, c2 = optim.pairLadders({ curates, roundel });
+    check('PL1 field case: first ear keeps the early earring', names(c1), "Curates' Earring");
+    check('PL2 field case: second ear gets the late earring',  names(c2), 'Roundel Earring');
+
+    -- joint pins matching the chain tops (in either order -- the two physical
+    -- slots are interchangeable) claim the chains untouched
+    c1, c2 = optim.pairLadders({ curates, roundel }, { pins = { roundel, curates } });
+    check('PL3 top pins claim chains untouched (1)', names(c1), "Curates' Earring");
+    check('PL4 top pins claim chains untouched (2)', names(c2), 'Roundel Earring');
+
+    -- a strictly-improving upgrade run ALTERNATES between the chains: at every
+    -- level the two flattens together wear the best two owned pieces (the old
+    -- shape put all four on slot 1 and starved slot 2 completely)
+    local A = { ref = 'A', name = 'A', id = 11, level = 10, score = 5  };
+    local B = { ref = 'B', name = 'B', id = 12, level = 20, score = 10 };
+    local C = { ref = 'C', name = 'C', id = 13, level = 30, score = 12 };
+    local D = { ref = 'D', name = 'D', id = 14, level = 40, score = 20 };
+    c1, c2 = optim.pairLadders({ A, B, C, D });
+    check('PL5 running top-2: chain 1', names(c1), 'A,C');
+    check('PL6 running top-2: chain 2', names(c2), 'B,D');
+
+    -- same-level pieces fill both slots at once
+    local X = { ref = 'X', name = 'X', id = 51, level = 30, score = 20 };
+    local Y = { ref = 'Y', name = 'Y', id = 52, level = 30, score = 15 };
+    c1, c2 = optim.pairLadders({ Y, X });                     -- input order shuffled on purpose
+    check('PL7 same-level pair fills both slots', names(c1) .. '|' .. names(c2), 'X|Y');
+
+    -- a single copy never fills both slots ...
+    local solo = { ref = 'S', name = 'Solo Ring', id = 21, level = 30, score = 40 };
+    c1, c2 = optim.pairLadders({ solo });
+    check('PL8 one copy -> one chain only', names(c1) .. '|' .. names(c2), 'Solo Ring|');
+
+    -- ... but TWO owned copies do (Auto-build passes live owned counts)
+    local twin = { ref = 'T', name = 'Twin Ring', id = 22, level = 30, score = 40, copies = 2 };
+    c1, c2 = optim.pairLadders({ twin });
+    check('PL9 two copies -> both chains', names(c1) .. '|' .. names(c2), 'Twin Ring|Twin Ring');
+
+    -- same-NAME legacy duplicates are ONE physical item (optimizePicks' rule)
+    local dupA = { ref = 'd1', name = "Jalzahn's Ring", id = 31, level = 50, score = 40 };
+    local dupB = { ref = 'd2', name = "jalzahn's ring",           level = 50, score = 40 };
+    c1, c2 = optim.pairLadders({ dupA, dupB });
+    check('PL10 same-name duplicate fills one slot only', #c1 + #c2, 1);
+
+    -- zero scorers are never kept (the seed-at-0 rule: no junk padding)
+    c1, c2 = optim.pairLadders({ { ref = 'z', name = 'Junk', id = 41, level = 10, score = 0 } });
+    check('PL11 zero score never padded', #c1 + #c2, 0);
+
+    -- a leftover pin (not a chain top -- the cap optimizer preferred a lower
+    -- piece) trims its chain like the single-slot ladder cap, and a single-copy
+    -- pin is STRIPPED from the other chain -- leaving it would double-equip at
+    -- the levels where both chains flatten to it
+    c1, c2 = optim.pairLadders({ A, B, C, D }, { pins = { D, B } });
+    check('PL12 leftover pin trims its chain',                 names(c1), 'A,B');
+    check('PL13 single-copy pin stripped from the other chain', names(c2), 'D');
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then

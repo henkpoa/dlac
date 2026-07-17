@@ -2101,7 +2101,9 @@ _modeSetRefs = modeSetRefs;
 
 -- Auto-build the working set from stat weights. Dynamic ON = a level-scaling list per
 -- slot (keep an item only if it out-scores every kept lower-Level item; order Level
--- asc). OFF = the single best scorer usable now.
+-- asc). OFF = the single best scorer usable now. Paired slots (Ear/Ring) ladder as a
+-- PAIR in dynamic mode: one running top-2 walk (gearoptim.pairLadders) fills both
+-- physical slots with disjoint chains, so the second-best piece is worn, not benched.
 local function autoBuild(job, level)
     local dyn = (ui.setsDynamic[1] == true);
     -- "Build as lv.75" must actually reach Auto-build: when the optimizer flag is set, pick
@@ -2174,12 +2176,53 @@ local function autoBuild(job, level)
     end
 
     -- Stage 3: build each slot's list in EQUIP_SLOTS order (Main before Sub).
+    -- Unmarked slots are preserved FIRST (not in loop order), so a paired slot
+    -- being rebuilt sees its partner's kept list no matter which of the two
+    -- labels EQUIP_SLOTS visits first.
     for _, sl in ipairs(EQUIP_SLOTS) do
-        if mask[sl.label] ~= true then
-            -- Unmarked slot: preserve whatever the working set already holds there
-            -- (M.working = built below would otherwise wipe it).
-            if M.working[sl.label] ~= nil then built[sl.label] = M.working[sl.label]; end
-            goto continue;
+        if mask[sl.label] ~= true and M.working[sl.label] ~= nil then
+            built[sl.label] = M.working[sl.label];
+        end
+    end
+    local pairDone = {};   -- labels the pair-aware dynamic builder already filled
+    for _, sl in ipairs(EQUIP_SLOTS) do
+        if mask[sl.label] ~= true or pairDone[sl.label] == true then goto continue; end
+        -- Dynamic PAIRED slots with BOTH halves being rebuilt: one running top-2
+        -- walk (gearoptim.pairLadders) fills both chains. Building slot 1's full
+        -- ladder and then barring slot 2 from everything in it starved slot 2
+        -- whenever each upgrade beat the last (field case: Curates' + Roundel
+        -- earrings under Cure Potency weights both queued on Ear1, Ear2 empty).
+        local pairWith = PAIR_OF[sl.label];
+        if dyn and pairWith ~= nil and mask[pairWith] == true
+           and has.optim and type(optim.pairLadders) == 'function' then
+            local ds = {};
+            for _, r in ipairs(pools[sl.label] or {}) do
+                ds[#ds + 1] = { ref = r, score = scoreOfItem(r, useLevel), level = r.Level or 0,
+                                copies = (r.Id ~= nil) and (oc[r.Id] or 0) or 1,
+                                id = r.Id, name = r.Name };
+            end
+            local pins = {};
+            if jointPick ~= nil then
+                for _, lbl in ipairs({ sl.label, pairWith }) do
+                    local j = jointPick[lbl];
+                    if j ~= nil then
+                        for _, d in ipairs(ds) do
+                            if d.ref == j then pins[#pins + 1] = d; break; end
+                        end
+                    end
+                end
+            end
+            local okp, cA, cB = pcall(optim.pairLadders, ds, { pins = pins });
+            if okp and type(cA) == 'table' and type(cB) == 'table' then
+                local lA, lB = {}, {};
+                for _, d in ipairs(cA) do lA[#lA + 1] = { rec = d.ref }; end
+                for _, d in ipairs(cB) do lB[#lB + 1] = { rec = d.ref }; end
+                if #lA > 0 then built[sl.label] = lA; end
+                if #lB > 0 then built[pairWith] = lB; end
+                pairDone[sl.label] = true;
+                pairDone[pairWith] = true;
+                goto continue;
+            end
         end
         local cands = pools[sl.label];
         -- Sub: full pool (shields/grips + 1H weapons), then keep only picks legal
@@ -2200,13 +2243,13 @@ local function autoBuild(job, level)
                 end
             end
         end
-        -- Paired slot (Ring2<-Ring1, Ear2<-Ear1): a single-copy item anywhere in
-        -- the pair's FINAL list must not appear anywhere in THIS slot's list. The
-        -- level flatten walks each chain independently, so only DISJOINT chains
-        -- can never resolve both slots to the same piece -- the joint conflict
-        -- only separates the TOPS, and with "Build as lv.75" both chains fell
-        -- back onto the same ring at the real level. Matched by Id AND name
-        -- (legacy duplicate entries).
+        -- Paired slot whose partner is NOT being rebuilt alongside it (partner
+        -- unmasked, or non-dynamic mode): a single-copy item anywhere in the
+        -- partner's FINAL list must not appear anywhere in THIS slot's list --
+        -- the level flatten walks each chain independently, so only DISJOINT
+        -- chains can never resolve both slots to the same piece. Matched by Id
+        -- AND name (legacy duplicate entries). Both-halves-dynamic pairs never
+        -- reach this: pairLadders above builds them disjoint by construction.
         if cands ~= nil then
             local other = PAIR_OF[sl.label];
             if other ~= nil and built[other] ~= nil then

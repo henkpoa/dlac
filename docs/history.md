@@ -2093,3 +2093,28 @@ ever eats TP again.
 Henrik's framing, adopted: this was a LAC-layer reflex ("LAC is too fast, dlac gives it
 leeway"), not a dlac bug; plain-LAC users with level-dependent weapon rules remain exposed
 by design. Full write-up with code context: `docs/design/sync-settle-hold.md`.
+
+## Session "second ear starved by the weight ladder" (2026-07-17)
+
+**Field case (Henrik, WHM):** Cure Potency + Cure Potency II weighted 10/pt; owning
+Curates' Earring (Lv30) and Roundel Earring (Lv73) produced BOTH as Ear1 candidates
+(rungs at 30 and 73) and left Ear2 empty — the pair never wore both, so the Curates'
+potency was lost outright. Root cause in `autoBuild` (gearui): dynamic mode built
+slot 1's full ladder first (every score-improving item lands there), then barred
+slot 2 from everything in slot 1's list — correct for double-equip safety, but it
+starves slot 2 whenever each upgrade beats the last. Same defect for rings.
+
+**Fix:** paired slots (Ear1/Ear2, Ring1/Ring2) with both halves masked now ladder as
+a PAIR via `gearoptim.pairLadders` — one running TOP-2 walk over the level-sorted
+candidates; each upgrade lands in whichever chain holds the weaker top, so the two
+flattens together wear the best two distinct pieces at EVERY level, with disjoint
+chains by construction (no double-equip). Owned counts pass through: an Id owned 2+
+may fill both slots. The joint optimizer's picks arrive as `pins` — a pin already
+topping a chain claims it untouched (ears are interchangeable, matched as a set);
+a leftover pin trims an unclaimed chain like the single-slot ladder cap and is
+stripped from the other chain (single copy) to keep the pair disjoint. The old
+block-filter remains for pairs whose partner is NOT being rebuilt (unmasked half,
+non-dynamic modes). Also fixed en route: unmasked slots are preserved BEFORE the
+build loop, so a rebuilt Ear2 sees a hand-pinned Ear1 regardless of slot order.
+PL1–PL13 headless tests (942 total); pairLadders is pure — scores computed by the
+caller, no gear/weight reads.

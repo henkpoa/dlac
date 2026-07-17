@@ -957,6 +957,120 @@ function M.optimizePicks(pools, weights, opts)
     return { picks = picks, total = totalScore() };
 end
 
+-- ---------------------------------------------------------------------------
+-- M.pairLadders(cands, opts) -> chain1, chain2
+-- Dynamic-mode ladders for a PAIRED slot (Ear1/Ear2, Ring1/Ring2), built
+-- TOGETHER as the running top-2 of the level-sorted candidates. The old shape
+-- -- stack every upgrade into slot 1's ladder, then bar slot 2 from everything
+-- in it -- starved the second slot outright whenever each new piece beat the
+-- last (field case: Curates' + Roundel earrings under Cure Potency weights
+-- both laddered onto Ear1 and Ear2 stayed empty, so the pair never wore both).
+-- Here each upgrade lands in whichever chain currently holds the WEAKER top,
+-- so the two flattens together wear the best two distinct pieces owned at
+-- EVERY level, not just the build level.
+--
+--   cands: { { ref=<opaque>, score=n, level=n, copies=n, id=?, name=? }, ... }
+--     score  : weighted score at the build level -- computed by the CALLER;
+--              this function never reads gear tables or the weight state
+--     copies : owned count (default 1); 2+ lets one item occupy both slots
+--     id/name: physical-identity keys -- same id OR same (case-insensitive)
+--              name = same physical item, optimizePicks' legacy-duplicate rule
+--   opts.pins: 0-2 cands elements (matched by identity) -- the set-level
+--     optimizer's picks for the pair. A pin already topping a chain claims it
+--     untouched; a leftover pin trims an unclaimed chain the way the single-
+--     slot ladder cap does (rungs at/above its level give way, lower rungs
+--     stay as leveling fallbacks, the pin is appended), and a single-copy pin
+--     is stripped from the other chain so the pair stays disjoint at every
+--     level. No pins = the ladders stand as built.
+--
+-- Returns two arrays of cands elements, level-ascending with strictly rising
+-- scores, ready for independent best-by-level flattening. Deterministic, and
+-- seeded at score 0: a slot is never padded with a piece that scores nothing.
+-- ---------------------------------------------------------------------------
+function M.pairLadders(cands, opts)
+    opts = opts or {};
+    local function copiesOf(c) return tonumber(c.copies) or 1; end
+    local function samePhysical(a, b)
+        if a == b then return true; end
+        if a.id ~= nil and a.id == b.id then return true; end
+        return a.name ~= nil and b.name ~= nil
+           and string.lower(tostring(a.name)) == string.lower(tostring(b.name));
+    end
+
+    -- Instance expansion: an item owned twice may fill both slots of the pair.
+    local inst = {};
+    for _, c in ipairs(cands or {}) do
+        if type(c) == 'table' and type(c.score) == 'number' then
+            inst[#inst + 1] = c;
+            if copiesOf(c) >= 2 then inst[#inst + 1] = c; end
+        end
+    end
+    table.sort(inst, function(a, b)
+        local la, lb = a.level or 0, b.level or 0;
+        if la ~= lb then return la < lb; end
+        if a.score ~= b.score then return a.score > b.score; end
+        return tostring(a.name or a.ref) < tostring(b.name or b.ref);
+    end);
+
+    -- Running top-2. Ties send the upgrade to the FIRST chain (so a lone
+    -- candidate fills slot 1); a single-copy item never enters both chains.
+    local chains, tops = { {}, {} }, { 0, 0 };
+    for _, c in ipairs(inst) do
+        local w = (tops[1] <= tops[2]) and 1 or 2;
+        if c.score > tops[w] then
+            local dup = false;
+            if copiesOf(c) < 2 then
+                for _, o in ipairs(chains[3 - w]) do
+                    if samePhysical(o, c) then dup = true; break; end
+                end
+            end
+            if not dup then
+                chains[w][#chains[w] + 1] = c;
+                tops[w] = c.score;
+            end
+        end
+    end
+
+    -- Pin reconciliation (the joint optimizer's picks; ears are interchangeable,
+    -- so match pins to chains as a SET before disturbing anything).
+    local pins = opts.pins;
+    if type(pins) == 'table' and #pins > 0 then
+        local claimed, rest = {}, {};
+        for _, p in ipairs(pins) do
+            local hit = nil;
+            for ci = 1, 2 do
+                if claimed[ci] == nil and chains[ci][#chains[ci]] == p then hit = ci; break; end
+            end
+            if hit ~= nil then claimed[hit] = true; else rest[#rest + 1] = p; end
+        end
+        for _, p in ipairs(rest) do
+            for ci = 1, 2 do
+                if claimed[ci] == nil then
+                    claimed[ci] = true;
+                    local trimmed = {};
+                    for _, o in ipairs(chains[ci]) do
+                        if (o.level or 0) < (p.level or 0) and o ~= p then trimmed[#trimmed + 1] = o; end
+                    end
+                    trimmed[#trimmed + 1] = p;
+                    chains[ci] = trimmed;
+                    -- Disjointness sweep: the pin may have sat as a rung of the
+                    -- OTHER chain -- a single copy lingering there would double-
+                    -- equip at the levels where both flatten to it.
+                    if copiesOf(p) < 2 then
+                        local keep = {};
+                        for _, o in ipairs(chains[3 - ci]) do
+                            if not samePhysical(o, p) then keep[#keep + 1] = o; end
+                        end
+                        chains[3 - ci] = keep;
+                    end
+                    break;
+                end
+            end
+        end
+    end
+    return chains[1], chains[2];
+end
+
 -- Resolve job/level from opts, falling back to the live player.
 local function jobLevelFromOpts(opts)
     local job, level = opts.job, opts.level;
