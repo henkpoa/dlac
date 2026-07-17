@@ -273,6 +273,17 @@ function M.render(deps, availW)
     local vp = _fwok and fw.venturePoints() or nil;
     parts[#parts + 1] = 'VP ' .. (vp ~= nil and tostring(vp) or '?');
     imgui.TextColored(COL_GOLD, esc(table.concat(parts, '   |   ')));
+    -- the bar toggle is panel chrome, so it rides the status row (the target
+    -- row below carries Make target now and needs its width)
+    if _fwok then
+        imgui.SameLine(0, 16);
+        if imgui.Button(fw.barVisible and 'Hide bar##fishbar' or 'Fish bar##fishbar') then
+            fw.barVisible = not fw.barVisible;
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('The floating fishing bar (also: /dl fish bar).');
+        end
+    end
     imgui.Spacing();
 
     -- ---- gear matrix ------------------------------------------------------
@@ -379,32 +390,36 @@ function M.render(deps, availW)
     imgui.PopItemWidth();
     local tgtId, tgtName = nil, nil;
     if _fwok then tgtId, tgtName = fw.getTarget(); end
+    -- Make target lives ON this row (Henrik: burying it under the spot list
+    -- was confusing) -- shown while viewing a fish that isn't the target yet.
+    if _fwok and sel.id ~= nil and sel.id ~= tgtId and db.fish[sel.id] ~= nil then
+        imgui.SameLine(0, 8);
+        if imgui.Button('Make target##fishmk') then fw.setTarget(sel.id); end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Rod and bait auto-pick for this fish (best owned by the\nserver\'s own break math); the fish bar and overlay follow.');
+        end
+    end
     if tgtId ~= nil then
         imgui.SameLine(0, 12);
         imgui.TextColored(GREEN_GLOW, esc('target: ' .. tostring(tgtName)));
         imgui.SameLine(0, 10);
         if imgui.Button('Clear##fishtgt') and _fwok then
             fw.setTarget(nil);
-            sel.id = nil;        -- the panel's view too, or the detail stays pinned
+            sel.id = nil;             -- the panel's view too: a clean start
             sel.q[1] = '';
+            sel.showAllIso = false;   -- collapsed spot list next time as well
         end
     end
-    -- the pill, right here where the eye already is
+    -- the pill, right here where the eye already is (label shortened so the
+    -- row survives Make-target + target + Clear in the themed font)
     if _fwok then
         imgui.SameLine(0, 20);
         local on = fw.isEnabled();
-        if imgui.Button(on and 'Set Fish Idle: ON##fishpill' or 'Set Fish Idle: off##fishpill') then
+        if imgui.Button(on and 'Fish Idle: ON##fishpill' or 'Fish Idle: off##fishpill') then
             fw.setEnabled(not on);
         end
         if imgui.IsItemHovered() then
             imgui.SetTooltip('Wear the fishing kit while idle (engine overlay; combat gear\nreturns when you engage). Session-only -- always starts OFF.\nRod and bait follow the target fish.');
-        end
-        imgui.SameLine(0, 8);
-        if imgui.Button(fw.barVisible and 'Hide bar##fishbar' or 'Fish bar##fishbar') then
-            fw.barVisible = not fw.barVisible;
-        end
-        if imgui.IsItemHovered() then
-            imgui.SetTooltip('The floating fishing bar (also: /dl fish bar).');
         end
     end
 
@@ -451,6 +466,12 @@ function M.render(deps, availW)
             imgui.TextColored(GREEN_OWNED, string.format('skill-up window: +%d above you%s', d,
                 (d >= 9 and d <= 13) and ' -- the ~+11 sweet spot' or ''));
         end
+        if _fwok and tgtId == fid then
+            local _, rodN = fw.getRod();
+            local _, baitN = fw.getBait();
+            imgui.TextColored(GREEN_OWNED, esc(string.format('current target -- rod: %s, bait: %s',
+                tostring(rodN or 'none'), tostring(baitN or 'none'))));
+        end
 
         -- rod verdicts (server fail math)
         local ownedRods = {};
@@ -482,7 +503,10 @@ function M.render(deps, availW)
             imgui.TextColored(COL_DIM, esc(string.format('safest rod for this fish: %s (unowned)', nameOf(suggest.id))));
         end
 
-        -- where + bait (the flagship: ISOLATION first)
+        -- where + bait (the flagship: ISOLATION first). A breath of air first
+        -- (Henrik: separate the fish info from the spot list).
+        imgui.Spacing();
+        imgui.TextColored(COL_DIM, 'spots + baits -- best isolation first, click one to fish it:');
         local iso = fcalc.isolationFor(fid);
         if #iso == 0 then
             imgui.TextColored(COL_DIM, 'no known catch spot (quest/contest-gated?).');
@@ -530,17 +554,6 @@ function M.render(deps, availW)
                 end
             end
             imgui.TextColored(COL_DIM, 'Items can always bite (Smock/Apron reduce them); monsters only outside cities.');
-        end
-        if _fwok and tgtId ~= fid then
-            if imgui.Button('Make target##fishmk') then fw.setTarget(fid); end
-            if imgui.IsItemHovered() then
-                imgui.SetTooltip('Rod and bait auto-pick for this fish (best owned by the\nserver\'s own break math); the fish bar and overlay follow.');
-            end
-        elseif _fwok and tgtId == fid then
-            local _, rodN = fw.getRod();
-            local _, baitN = fw.getBait();
-            imgui.TextColored(GREEN_OWNED, esc(string.format('current target -- rod: %s, bait: %s',
-                tostring(rodN or 'none'), tostring(baitN or 'none'))));
         end
     end
     imgui.Spacing();
