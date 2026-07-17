@@ -846,6 +846,17 @@ function M.frameSetsText(dynText)
     return SETS_HEADER .. 'local sets = {\n    ' .. dynText .. ',\n};\nreturn sets;\n';
 end
 
+-- The four base sets the starter trigger rules target, EMPTY. Every sets file
+-- dlac seeds starts from this (fresh Setup, and a migration that found no
+-- Dynamic block) so a new job never complains about missing trigger targets
+-- before the player builds anything (Henrik, 2026-07-17).
+M.starterDynText = 'Dynamic = {\n'
+    .. '        Idle       = {},\n'
+    .. '        Tp_Default = {},\n'
+    .. '        Resting    = {},\n'
+    .. '        Movement   = {},\n'
+    .. '    }';
+
 -- Missing-gear-safe view of the gear inventory for LOADING a sets file. A
 -- shared/imported profile references items the reader may not own: a missing
 -- ITEM must resolve to nil (a ladder hole -- BuildDynamicSets iterates with
@@ -1052,7 +1063,7 @@ function M.planMigration(files)
                 e.dynText = dyn;
                 e.notes[#e.notes + 1] = 'dynamic sets move into the profile verbatim';
             else
-                e.notes[#e.notes + 1] = 'no dynamic sets to import (' .. tostring(derr) .. ') -- profile sets file starts empty';
+                e.notes[#e.notes + 1] = 'no dynamic sets to import (' .. tostring(derr) .. ') -- profile sets file starts with the four empty base sets';
             end
             if f.hasLegacyTrig and not f.hasProfileTrig then
                 e.notes[#e.notes + 1] = 'trigger file moves into the profile (original kept in backups\\pre-profiles\\triggers\\)';
@@ -1144,9 +1155,11 @@ function M.migrate(execute, say)
                 say(string.format('[dlac] %s: FAILED -- could not verify backup at %s; file untouched.', e.job, tostring(bp)));
                 okAll = false;
             end
-            -- 2) profile sets file (only when absent; verbatim Dynamic block).
+            -- 2) profile sets file (only when absent; verbatim Dynamic block --
+            --    or, when the old file had none, the four empty base sets the
+            --    starter triggers target, so nothing complains out of the box).
             if okAll and not f.hasProfileSets then
-                local framed = M.frameSetsText(e.dynText);
+                local framed = M.frameSetsText(e.dynText or M.starterDynText);
                 local lok = (loadstring or load)(framed);
                 if lok == nil then
                     say(string.format('[dlac] %s: FAILED -- framed sets file would not parse; file untouched (backup kept).', e.job));

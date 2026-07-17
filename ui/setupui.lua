@@ -165,6 +165,27 @@ setup.seedTriggersFile = function(base, abbr)
     return D.writeFileText(path, dsp.starterTriggersText);
 end
 
+-- Seed the active profile's sets\<JOB>.lua with the four base sets the starter
+-- trigger rules target (Idle / Tp_Default / Resting / Movement), EMPTY -- a
+-- fresh job equips nothing yet, but the engine never complains about missing
+-- trigger targets before the player builds anything (Henrik's field test,
+-- 2026-07-17). Never clobbers an existing sets file; travels with
+-- seedTriggersFile -- the starter rules and their targets arrive together.
+setup.seedSetsFile = function(base, abbr)
+    if D == nil or base == nil or abbr == nil then return false; end
+    local written = false;
+    pcall(function()
+        local prof = require('dlac\\profiles');
+        if type(prof) ~= 'table' or type(prof.frameSetsText) ~= 'function' then return; end
+        prof.ensureStorage();
+        local pp = prof.setsPath(abbr);
+        if pp == nil or D.readFileText(pp) ~= nil then return; end   -- user data: never overwrite
+        local framed = prof.frameSetsText(prof.starterDynText);
+        if (loadstring or load)(framed) ~= nil then written = D.writeFileText(pp, framed) == true; end
+    end);
+    return written;
+end
+
 -- Seed <char>\dlac\gear.lua (the gear inventory): copied from an existing
 -- ffxi-lac\gear.lua when there is one (a returning player keeps their scanned
 -- inventory), else the bundled empty template so the profile loads and
@@ -195,7 +216,10 @@ setup.migrateToCleanProfiles = function()
     seedGearFile(base);
     local done, _, failed = prof.migrate(true, function(s) pcall(print, s); end);
     for _, job in ipairs(prof.JOBS or {}) do
-        if D.readFileText(base .. job .. '.lua') ~= nil then setup.seedTriggersFile(base, job); end
+        if D.readFileText(base .. job .. '.lua') ~= nil then
+            setup.seedSetsFile(base, job);       -- no-op for migrated jobs (their sets file exists)
+            setup.seedTriggersFile(base, job);
+        end
     end
     pcall(function() require('dlac\\gear\\profilesets').invalidate(); end);
     _setupState = nil;
@@ -231,8 +255,11 @@ setup.migrateCurrentJob = function()
     local state = setup.jobSetupState();
 
     if state == 'ok' then
+        local seededSets = setup.seedSetsFile(base, abbr);
         local seeded = setup.seedTriggersFile(base, abbr);
+        if seededSets or seeded then pcall(function() require('dlac\\gear\\profilesets').invalidate(); end); end
         D.status(abbr .. '.lua is already set up for dlac.'
+            .. (seededSets and '  Seeded the four empty base sets.' or '')
             .. (seeded and ('  Seeded starter triggers\\' .. abbr .. '.lua.') or ''));
         return;
     end
@@ -248,8 +275,11 @@ setup.migrateCurrentJob = function()
     -- exist yet at this point -- reads fall back so it worked, but a brand-new
     -- player should own zero legacy-layout files).
     pcall(function() local p = require('dlac\\profiles'); if type(p) == 'table' then p.ensureStorage(); end end);
-    -- and the starter trigger file, so the profile's dispatch shims equip out of the box.
+    -- the four empty base sets + the starter trigger file that targets them, so
+    -- the profile's dispatch shims run out of the box without a single complaint.
+    setup.seedSetsFile(base, abbr);
     setup.seedTriggersFile(base, abbr);
+    pcall(function() require('dlac\\gear\\profilesets').invalidate(); end);
 
     -- NEW players go profile-native from minute one -- the job file is the
     -- managed shim, storage is created, and every set/trigger they ever build

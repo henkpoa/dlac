@@ -29,8 +29,9 @@ You need a working LuaAshitacast install (it's part of the CatsEyeXI client).
      **"Scan my Lua"** in the Triggers tab's Groups box, dynamic sets move over
      automatically, verbatim;
    - a job with no profile gets the same clean shim from scratch;
-   - starter trigger rules (Engaged/Resting/Movement/Idle) and your gear database are
-     seeded automatically.
+   - the four base sets (Idle / Tp_Default / Resting / Movement, empty), the starter
+     trigger rules that target them, and your gear database are seeded automatically —
+     nothing complains out of the box.
 4. LuaAshitacast reloads by itself (fresh jobs: click **Reload LAC**).
 
 That's it. Your gear imports itself (bags are auto-scanned on pickup, login and job change),

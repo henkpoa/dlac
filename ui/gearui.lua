@@ -1326,15 +1326,16 @@ local function renderHeaderButtons()
                     add('txt', '2.  Create your profile storage: dlac\\profiles\\Default\\ -- ALL of your sets and');
                     add('dim', '     triggers will live there (share or switch profiles later with /dl profile).');
                     add('txt', '3.  Seed an empty gear inventory (dlac\\gear.lua) -- fill it afterwards with Scan.');
-                    add('txt', '4.  Seed starter triggers (Idle / Engaged / Resting / Movement) so gear swaps');
-                    add('dim', '     work out of the box.');
+                    add('txt', '4.  Seed the four base sets (Idle / Tp_Default / Resting / Movement, empty) and');
+                    add('dim', '     the starter triggers that target them -- everything runs out of the box,');
+                    add('dim', '     nothing complains; fill the sets in the Sets tab.');
                     add('txt', 'Nothing that already exists is overwritten.');
                     add('head', 'After Commit: click Reload LAC, then Scan, then build sets in the Sets tab.');
                 elseif state == 'ok' and prof ~= nil and prof.storageExists() then
                     plan.mode = 'healthy';
                     plan.title = abbr .. ' is fully set up';
                     add('txt', 'The ' .. abbr .. '.lua shim, profile storage and trigger wiring are all in place.');
-                    add('txt', 'Commit only seeds a missing starter trigger file (it never overwrites one).');
+                    add('txt', 'Commit only seeds a missing starter sets / trigger file (never overwrites one).');
                 else
                     -- 'ffxilac' | 'none' | 'wired' | 'ok' without profile storage:
                     -- ONE standard path. The live <JOB>.lua always ends up the clean

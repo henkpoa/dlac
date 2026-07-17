@@ -1079,6 +1079,20 @@ check('Y23 shim parses', (loadstring or load)(profilesM.shimFileText()) ~= nil, 
 check('Y24 shim recognized', profilesM.isCleanShim(profilesM.shimFileText()), true);
 check('Y25 a real profile is NOT a shim', profilesM.isCleanShim(JOBFILE), false);
 
+-- the starter sets scaffold (fresh Setup + a migration that found no Dynamic
+-- block): frames, parses, and holds exactly the four EMPTY base sets the
+-- starter triggers target -- a new job never complains out of the box.
+do
+    local sframed = profilesM.frameSetsText(profilesM.starterDynText);
+    local schunk = loadWithEnv(sframed, setmetatable({ gear = STUBG }, { __index = _G }));
+    local sok2, ssets = pcall(schunk);
+    check('Y25b starter sets scaffold parses', sok2 and type(ssets) == 'table' and type(ssets.Dynamic) == 'table', true);
+    check('Y25c scaffold = the four base sets, empty', sok2
+        and type(ssets.Dynamic.Idle) == 'table' and next(ssets.Dynamic.Idle) == nil
+        and type(ssets.Dynamic.Tp_Default) == 'table' and type(ssets.Dynamic.Resting) == 'table'
+        and type(ssets.Dynamic.Movement) == 'table', true);
+end
+
 -- the migration planner (pure): ONLY a clean shim is ever skipped (THE SETUP
 -- STANDARD, 2026-07-17 -- a file with logic in it never stays live), Dynamic
 -- blocks travel verbatim, an existing profile sets file is never overwritten
