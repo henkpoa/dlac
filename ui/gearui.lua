@@ -60,6 +60,9 @@ local setmgr = try("dlac\\gear\\setmanager");
 local aug = try("dlac\\feature\\augments");
 -- Level-scaling stats (Rajas/Tamas/Sattva etc.): effective stats per level.
 local lscale = try("dlac\\data\\levelstats");
+-- Gear-set bonuses (conditional-effects P1/P3): membership, tier ladders, and
+-- THE whole-composition evaluator (comboStats) behind totals and hover.
+local gfx = try("dlac\\gear\\geareffects");
 -- Window theme (partyfinder-matched palette), pushed around the whole draw.
 local style = try("dlac\\ui\\uistyle");
 -- Per-job macro book/set (header "Macro" button; applied on login/job change)
@@ -80,6 +83,7 @@ local has = {
     setmgr   = setmgr ~= nil,
     aug      = aug ~= nil,
     lscale   = lscale ~= nil,
+    gfx      = gfx ~= nil and type(gfx.comboStats) == 'function',
 };
 -- Effective stats of a record at a level -- delegates to THE central resolver
 -- (levelstats.effective) so every section values scaling items identically.
@@ -480,6 +484,45 @@ local function displayName(itemId)
     return nm;
 end
 
+-- Human label for a gear set (the data carries only ids): two-piece sets read
+-- as the pair ("Lava's Ring + Kusha's Ring"), families collapse to the shared
+-- name prefix ("Iron Ram set"), anything else falls back to the first piece
+-- "+N". Cached once every piece name resolves.
+local setLabelCache = {};
+local function setLabelOf(setId)
+    if setLabelCache[setId] ~= nil then return setLabelCache[setId]; end
+    local e = (gfx ~= nil and type(gfx.setInfo) == 'function') and gfx.setInfo(setId) or nil;
+    if e == nil then return 'set #' .. tostring(setId); end
+    local names, resolved = {}, true;
+    for i, pid in ipairs(e.pieces) do
+        local nm = displayName(pid);
+        if nm == nil then nm = '#' .. tostring(pid); resolved = false; end
+        names[i] = nm;
+    end
+    local lbl;
+    if #names == 2 then
+        lbl = names[1] .. ' + ' .. names[2];
+    else
+        -- longest word prefix common to EVERY piece name
+        local pref = {};
+        for t in string.gmatch(names[1] or '', '%S+') do pref[#pref + 1] = t; end
+        for i = 2, #names do
+            local wn = {};
+            for t in string.gmatch(names[i], '%S+') do wn[#wn + 1] = t; end
+            local keep = 0;
+            for j = 1, math.min(#pref, #wn) do
+                if string.lower(pref[j]) == string.lower(wn[j]) then keep = j; else break; end
+            end
+            for j = #pref, keep + 1, -1 do pref[j] = nil; end
+            if #pref == 0 then break; end
+        end
+        if #pref > 0 then lbl = table.concat(pref, ' ') .. ' set';
+        else lbl = names[1] .. ' +' .. tostring(#names - 1); end
+    end
+    if resolved then setLabelCache[setId] = lbl; end   -- don't cache '#id' fallbacks
+    return lbl;
+end
+
 -- ---------------------------------------------------------------------------
 -- Candidate lists (eligible OWNED gear per slot), memoized per job/level.
 -- Re-sorted by weighted score when weights exist; invalidate on weight edits.
@@ -528,18 +571,29 @@ local function ownedAugStatsMap()
     return _ownedAugStats;
 end
 
--- Weighted score of an ITEM: base Stats PLUS the augment deltas on the copy you own (by Id),
--- so augmented gear is weighed correctly. Use this (not scoreOf) when scoring a gear record.
-local function scoreOfItem(rec, level)
-    if rec == nil then return 0; end
-    if level == nil then local _, l = getPlayerInfo(); level = l; end
+-- THE candidate-stats seam: effective stats at level PLUS the augment deltas on
+-- the copy you own (by Id). Every scoring consumer -- scoreOfItem, the joint
+-- Auto-build pools, the Sub marginal call -- reads candidates through this one
+-- helper, so augmented gear is weighed identically everywhere. Zero-copy when
+-- the item has no augments.
+local function candidateStats(rec, level)
+    if rec == nil then return nil; end
     local base = effStats(rec, level);
     local a = (rec.Id ~= nil) and ownedAugStatsMap()[rec.Id] or nil;
-    if a == nil then return scoreOf(base); end
+    if a == nil then return base; end
     local combined = {};
     if type(base) == 'table' then for k, v in pairs(base) do combined[k] = v; end end
     for k, v in pairs(a) do combined[k] = (combined[k] or 0) + v; end
-    return scoreOf(combined);
+    return combined;
+end
+
+-- Weighted score of an ITEM (per-item: gear-set bonuses deliberately do NOT
+-- enter here -- a single item has no combination; set credit lives in the
+-- optimizePicks paths and the composition-level workingWeightedScore).
+local function scoreOfItem(rec, level)
+    if rec == nil then return 0; end
+    if level == nil then local _, l = getPlayerInfo(); level = l; end
+    return scoreOf(candidateStats(rec, level));
 end
 
 -- Effective item-Level cap for SET BUILDING (Auto-build + the manual + Add picker): the
@@ -592,18 +646,40 @@ end
 -- ---------------------------------------------------------------------------
 -- Worn-set stat totals (our data only): sum the Stats of the 16 equipped items.
 -- ---------------------------------------------------------------------------
+-- Returns (totals, setBonuses): totals through geareffects.comboStats -- the
+-- whole worn COMPOSITION evaluated at once, so active gear-set bonuses land in
+-- the numbers (worn Lava's + Kusha's finally shows ATT+6/ACC+12/DEF+6) -- and
+-- setBonuses is the attribution list renderStatsPanel captions from (partial
+-- sets included, so "one more piece lights this up" is visible). Counting is
+-- per SLOT: two worn copies of one piece count twice (server-verified).
 local function wornSetTotals()
     local totals = {};
     local _, _wlvl = getPlayerInfo();
+    local comp = {};
     for _, sl in ipairs(EQUIP_SLOTS) do
         local id  = getEquippedId(sl.equip);
         local rec = lookupById(id);
         if rec == nil and id ~= nil then rec = lookupByName(displayName(id)); end
-        local _st = effStats(rec, _wlvl);
-        if _st ~= nil and type(_st) == 'table' then
-            for k, v in pairs(_st) do
-                if type(v) == 'number' and k ~= 'DMG' and k ~= 'Delay' then
-                    totals[k] = (totals[k] or 0) + v;
+        if rec ~= nil then comp[sl.label] = rec; end
+    end
+    local bonuses = nil;
+    if has.gfx then
+        local ok, res = pcall(gfx.comboStats, comp, { level = _wlvl });
+        if ok and type(res) == 'table' and type(res.stats) == 'table' then
+            for k, v in pairs(res.stats) do
+                if k ~= 'DMG' and k ~= 'Delay' then totals[k] = v; end
+            end
+            bonuses = res.setBonuses;
+        end
+    end
+    if bonuses == nil then   -- geareffects missing/failed: the pre-P1 per-item sum
+        for _, rec in pairs(comp) do
+            local _st = effStats(rec, _wlvl);
+            if type(_st) == 'table' then
+                for k, v in pairs(_st) do
+                    if type(v) == 'number' and k ~= 'DMG' and k ~= 'Delay' then
+                        totals[k] = (totals[k] or 0) + v;
+                    end
                 end
             end
         end
@@ -617,7 +693,7 @@ local function wornSetTotals()
             end
         end
     end
-    return totals;
+    return totals, bonuses;
 end
 
 -- ---------------------------------------------------------------------------
@@ -892,6 +968,48 @@ local function renderItemTooltip(rec)
         local jt = fmt.jobsText(rec.Jobs);
         if jt == 'All' then jt = 'All Jobs'; end
         imgui.TextColored(COL.JOBS, string.format('Lv.%s %s', tostring(rec.Level or 0), jt));
+        -- Gear-set membership: the bonus tier ladder + the partner pieces, so an
+        -- item's set potential reads off the item itself. * marks pieces you own
+        -- (anywhere). Multi-set items show one block per set.
+        if has.gfx and rec.Id ~= nil and type(gfx.setsOf) == 'function' then
+            local sids = gfx.setsOf(rec.Id);
+            if sids ~= nil then
+                local tot = owned.totals();
+                if type(tot) ~= 'table' then tot = {}; end
+                for _, sid in ipairs(sids) do
+                    local e = gfx.setInfo(sid);
+                    if e ~= nil then
+                        local ownedN = 0;
+                        for _, pid in ipairs(e.pieces) do
+                            if (tot[pid] or 0) > 0 then ownedN = ownedN + 1; end
+                        end
+                        imgui.Separator();
+                        imgui.TextColored(COL.SCORE, string.format('Set bonus -- %s (own %d of %d, active at %d):',
+                            setLabelOf(sid), ownedN, #e.pieces, e.min or 2));
+                        for c = (e.min or 2), (e.max or 2) do   -- the tier ladder, value AT each count
+                            local d = e.tiers[c];
+                            if d ~= nil then
+                                local line = fmt.fullStatList(d);
+                                if line ~= '' then
+                                    imgui.TextColored(COL.STATS, string.format('  %d pc: %s', c, fmt.esc(line)));
+                                end
+                            end
+                        end
+                        local parts = {};
+                        for _, pid in ipairs(e.pieces) do
+                            if pid ~= rec.Id then
+                                local nm = displayName(pid) or ('#' .. tostring(pid));
+                                parts[#parts + 1] = nm .. (((tot[pid] or 0) > 0) and '*' or '');
+                            end
+                        end
+                        for i = 1, #parts, 3 do   -- 3 partner names per line, tooltip-width friendly
+                            local chunk = table.concat(parts, ', ', i, math.min(i + 2, #parts));
+                            imgui.TextColored(COL.DIM, ((i == 1) and 'With: ' or '      ') .. fmt.esc(chunk));
+                        end
+                    end
+                end
+            end
+        end
         -- WHERE the item lives (every owned copy): red when only in storage, dim when
         -- equippable -- so "which wardrobe is it in" never needs a bag hunt.
         if rec.Id ~= nil then
@@ -1688,7 +1806,12 @@ end
 -- Grouped stat panel: collapsible sections (open by default, state persisted by
 -- imgui), each a two-column list (name | right-aligned value in a fixed value column),
 -- fixed order, 0 when absent, then "Other". Zeros are dimmed so real values pop.
-local function renderStatsPanel(title, totals)
+-- Optional setBonuses (comboStats' attribution list) captions the gear sets
+-- under the groups: active bonuses gold with their deltas (already inside the
+-- totals above -- the caption ATTRIBUTES them), partial sets dim with the count
+-- still needed. Callers pass it by forwarding wornSetTotals/workingSetTotals'
+-- second return value.
+local function renderStatsPanel(title, totals, setBonuses)
     imgui.BeginChild('##ffxilac_stats', { STATS_W, -1 }, true);
     imgui.TextColored(COL.HEADER, title);
     imgui.Separator();
@@ -1715,6 +1838,20 @@ local function renderStatsPanel(title, totals)
     table.sort(others);
     if #others > 0 then
         section('Other', others);
+    end
+    if type(setBonuses) == 'table' and #setBonuses > 0 then
+        imgui.Separator();
+        for _, sb in ipairs(setBonuses) do
+            if sb.active then
+                imgui.TextColored(COL.SCORE, string.format('Set: %s (%d/%d)',
+                    setLabelOf(sb.setId), math.min(sb.count, sb.max or sb.count), sb.max or sb.count));
+                local dl = (sb.deltas ~= nil) and fmt.fullStatList(sb.deltas) or '';
+                if dl ~= '' then imgui.TextColored(COL.STATS, '  ' .. fmt.esc(dl)); end
+            else
+                imgui.TextColored(COL.DIM, string.format('Set: %s (%d/%d -- bonus at %d)',
+                    setLabelOf(sb.setId), sb.count, sb.max or 0, sb.min or 2));
+            end
+        end
     end
     imgui.EndChild();
 end
@@ -1988,12 +2125,34 @@ local function bestByLevel(list, mainLevel)
     return best;
 end
 
--- Sum the Stats of the best-by-level pick per slot (our data only).
-local function workingSetTotals(mainLevel)
-    local totals = {};
+-- The PLANNED composition: best-by-level pick per slot (plan data only, nothing
+-- live). Shared by the Set-totals panel and the weighted score below.
+local function workingComposition(mainLevel)
+    local comp = {};
     for _, sl in ipairs(EQUIP_SLOTS) do
         local pick = bestByLevel(M.working[sl.label], mainLevel);
-        local _st = (pick ~= nil) and effStats(pick.rec, mainLevel) or nil;
+        if pick ~= nil and pick.rec ~= nil then comp[sl.label] = pick.rec; end
+    end
+    return comp;
+end
+
+-- Returns (totals, setBonuses) -- the planned composition through comboStats,
+-- so a planned Lava's + Kusha's pair shows its bonus in Set totals (the
+-- wornSetTotals twin; same caption plumbing via renderStatsPanel's third arg).
+local function workingSetTotals(mainLevel)
+    local totals = {};
+    local comp = workingComposition(mainLevel);
+    if has.gfx then
+        local ok, res = pcall(gfx.comboStats, comp, { level = mainLevel });
+        if ok and type(res) == 'table' and type(res.stats) == 'table' then
+            for k, v in pairs(res.stats) do
+                if k ~= 'DMG' and k ~= 'Delay' then totals[k] = v; end
+            end
+            return totals, res.setBonuses;
+        end
+    end
+    for _, rec in pairs(comp) do   -- fallback: the pre-P1 per-item sum
+        local _st = effStats(rec, mainLevel);
         if type(_st) == 'table' then
             for k, v in pairs(_st) do
                 if type(v) == 'number' and k ~= 'DMG' and k ~= 'Delay' then
@@ -2005,12 +2164,28 @@ local function workingSetTotals(mainLevel)
     return totals;
 end
 
+-- Weighted score of the working set: ONE whole-composition evaluation -- caps
+-- applied to the summed stats, active set bonuses included, augments folded --
+-- the same objective Auto-build's optimizer maximizes (design #6: one function,
+-- one number, zero drift). Falls back to the per-item sum without geareffects.
 local function workingWeightedScore(mainLevel)
-    local total = 0;
-    for _, sl in ipairs(EQUIP_SLOTS) do
-        local pick = bestByLevel(M.working[sl.label], mainLevel);
-        if pick ~= nil and pick.rec ~= nil then total = total + scoreOfItem(pick.rec, mainLevel); end
+    local comp = workingComposition(mainLevel);
+    if has.gfx then
+        local ok, res = pcall(gfx.comboStats, comp, { level = mainLevel });
+        if ok and type(res) == 'table' and type(res.stats) == 'table' then
+            local st = {};
+            for k, v in pairs(res.stats) do st[k] = v; end
+            for _, rec in pairs(comp) do
+                local a = (rec.Id ~= nil) and ownedAugStatsMap()[rec.Id] or nil;
+                if a ~= nil then
+                    for k, v in pairs(a) do st[k] = (st[k] or 0) + v; end
+                end
+            end
+            return scoreOf(st);
+        end
     end
+    local total = 0;
+    for _, rec in pairs(comp) do total = total + scoreOfItem(rec, mainLevel); end
     return total;
 end
 
@@ -2153,12 +2328,19 @@ local function autoBuild(job, level)
     -- whose candidates only duplicate already-capped stats stays empty. Paired
     -- slots may reuse an Id only when you own two copies.
     local jointPick = nil;
+    -- Gear-set crediting for the joint pick + the Sub marginal call (P3): the
+    -- optimizer counts set pieces across its assignment and folds active tier
+    -- bonuses into the capped objective, with seeded restarts so a pair whose
+    -- pieces are individually worthless still gets found.
+    local fx = has.gfx and { setsOf = gfx.setsOf, setTier = gfx.setTier } or nil;
     if has.optim and type(optim.optimizePicks) == 'function' and weightsActive() then
         local op = {};
         for label, cands in pairs(pools) do
             local arr = {};
             for _, r in ipairs(cands) do
-                arr[#arr + 1] = { stats = effStats(r, useLevel) or {}, ref = r };
+                -- candidateStats, not bare effStats: your copy's augments weigh
+                -- in here exactly as they do in scoreOfItem's per-item sorts.
+                arr[#arr + 1] = { stats = candidateStats(r, useLevel) or {}, ref = r };
             end
             if #arr > 0 then op[label] = arr; end
         end
@@ -2175,6 +2357,7 @@ local function autoBuild(job, level)
                 end
                 return false;
             end,
+            effects = fx,
         });
         if ok and type(res) == 'table' and type(res.picks) == 'table' then
             jointPick = {};
@@ -2239,12 +2422,19 @@ local function autoBuild(job, level)
             local mp = bestByLevel(built['Main'], useLevel);
             cands = subFilter(subCandidatePool(job, useLevel), mp and mp.rec or nil, job, useLevel);
             -- Joint marginal pick for Sub: everything already chosen is the fixed
-            -- background, so a Sub that only re-adds capped stats stays home.
+            -- background, so a Sub that only re-adds capped stats stays home --
+            -- while baseComposition pre-loads the chosen pieces' SET counts, so a
+            -- grip/shield that completes a set is credited its bonus (credit
+            -- added, the offered pool never narrowed -- the Sub HARD RULE).
             if jointPick ~= nil and #cands > 0 then
                 local arr, bg = {}, {};
-                for _, r in ipairs(cands) do arr[#arr + 1] = { stats = effStats(r, useLevel) or {}, ref = r }; end
-                for _, rec in pairs(jointPick) do bg[#bg + 1] = effStats(rec, useLevel) or {}; end
-                local ok, res = pcall(optim.optimizePicks, { Sub = arr }, nil, { baseStats = bg });
+                for _, r in ipairs(cands) do arr[#arr + 1] = { stats = candidateStats(r, useLevel) or {}, ref = r }; end
+                for _, rec in pairs(jointPick) do bg[#bg + 1] = candidateStats(rec, useLevel) or {}; end
+                local sfx = nil;
+                if fx ~= nil then
+                    sfx = { setsOf = fx.setsOf, setTier = fx.setTier, baseComposition = jointPick };
+                end
+                local ok, res = pcall(optim.optimizePicks, { Sub = arr }, nil, { baseStats = bg, effects = sfx });
                 if ok and type(res) == 'table' and type(res.picks) == 'table' then
                     jointPick.Sub = (res.picks.Sub ~= nil) and arr[res.picks.Sub].ref or nil;
                 end

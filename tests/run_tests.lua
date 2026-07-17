@@ -3785,6 +3785,499 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- GD. shipped conditional-effects data pins (data\gearsets.lua +
+--     data\latentstats.lua) -- regeneration guards, the smoke_ui S21 style.
+--     Shapes verified against the server source 2026-07-17 (design Appendix C).
+-- ---------------------------------------------------------------------------
+(function()
+    local gsD = dofile('data/gearsets.lua');
+    local nSets, nFlat, nTiered = 0, 0, 0;
+    local census = {};
+    local tierKeysOk, piecesOk = true, true;
+    for _, e in pairs(gsD) do
+        nSets = nSets + 1;
+        local tn = 0;
+        for c in pairs(e.tiers) do
+            tn = tn + 1;
+            if c < e.min or c > e.max then tierKeysOk = false; end
+        end
+        if tn == 1 then nFlat = nFlat + 1; else nTiered = nTiered + 1; end
+        census[e.min .. '/' .. e.max] = (census[e.min .. '/' .. e.max] or 0) + 1;
+        for _, pid in ipairs(e.pieces) do
+            if type(pid) ~= 'number' or pid <= 0 then piecesOk = false; end
+        end
+    end
+    check('GD1 126 gear sets ship', nSets, 126);
+    check('GD2 flat/tiered split', nFlat .. '/' .. nTiered, '39/87');
+    check('GD3 min/max shape census', (census['2/2'] or 0) .. ',' .. (census['2/4'] or 0) .. ','
+        .. (census['2/5'] or 0) .. ',' .. (census['5/5'] or 0), '20,1,86,19');
+    check('GD4 every tier key within [min,max]', tierKeysOk, true);
+    check('GD5 every piece id is a positive number', piecesOk, true);
+    local s70 = gsD[70];   -- Lava's + Kusha's, THE reference set
+    check('GD6 [70] pieces', s70 ~= nil and (s70.pieces[1] .. ',' .. s70.pieces[2]), '15850,15851');
+    check('GD7 [70] min/max', s70 ~= nil and (s70.min .. '/' .. s70.max), '2/2');
+    check('GD8 [70] tier values', s70 ~= nil and (s70.tiers[2].Attack .. ',' .. s70.tiers[2].Accuracy
+        .. ',' .. s70.tiers[2].DEF), '6,12,6');
+    local s43 = gsD[43];   -- Paramount: alternates -- MORE pieces than the cap
+    check('GD9 [43] alternate-piece shape (9 pieces, min2/max2)',
+        s43 ~= nil and (#s43.pieces .. '/' .. s43.min .. '/' .. s43.max), '9/2/2');
+
+    local lsD = dofile('data/latentstats.lua');
+    local rows, items, levelLeak = 0, 0, false;
+    for _, rr in pairs(lsD) do
+        items = items + 1;
+        for _, r in ipairs(rr) do
+            rows = rows + 1;
+            -- latent 50/51 rows belong to levelscaling.lua, NEVER here (the
+            -- routing boundary -- gen_levelscaling.py's old latent-52 bug class)
+            if r.cond == 'JOB_LEVEL_ABOVE' or r.cond == 'JOB_LEVEL_BELOW' then levelLeak = true; end
+        end
+    end
+    check('GD10 latentstats rows in range', rows >= 1700 and rows <= 1900, true);
+    check('GD11 latentstats items in range', items >= 750 and items <= 900, true);
+    check('GD12 zero level-latent rows leaked', levelLeak, false);
+    local spot = lsD[11312];
+    check('GD13 spot row 11312 (STR +5 while TP > 100)', spot ~= nil
+        and (spot[1].stat .. '/' .. spot[1].add .. '/' .. spot[1].cond .. '/' .. spot[1].param),
+        'STR/5/TP_OVER/100');
+end)();
+
+-- ---------------------------------------------------------------------------
+-- GE. geareffects -- the pure set-bonus evaluator (conditional-effects P1).
+--     Semantics pinned to the server applier: value-at-count replacement tiers,
+--     tiers[min(count,max)] with nil below min, per-SLOT counting (duplicates
+--     twice), and the level gate (a piece above ctx.level stops counting while
+--     its stats still sum).
+-- ---------------------------------------------------------------------------
+(function()
+    local gfe = dofile('gear/geareffects.lua');
+    gfe.configure({ gearsets = {
+        [1] = { pieces = { 1001, 1002 }, min = 2, max = 2,          -- the Lava/Kusha shape
+                tiers = { [2] = { Attack = 6, Accuracy = 12, DEF = 6 } } },
+        [2] = { pieces = { 1101, 1102, 1103, 1104, 1105 }, min = 2, max = 5,   -- Iron Ram shape
+                tiers = { [2] = { FireMagicEva = 5 }, [3] = { FireMagicEva = 10 },
+                          [4] = { FireMagicEva = 15 }, [5] = { FireMagicEva = 30 } } },
+        [3] = { pieces = { 1201, 1202, 1203, 1204, 1205, 1206, 1207, 1208, 1209 },
+                min = 2, max = 2, tiers = { [2] = { STR = 3 } } },  -- alternates (any 2 of 9)
+        [4] = { pieces = { 1001, 1301 }, min = 2, max = 2,          -- 1001 is in TWO sets
+                tiers = { [2] = { VIT = 2 } } },
+    } });
+    local so = gfe.setsOf(1001);
+    check('GE1 multi-set membership, sorted', so ~= nil and (#so .. ':' .. so[1] .. ',' .. so[2]), '2:1,4');
+    check('GE2 non-member items return nil (zero-alloc)', gfe.setsOf(9999), nil);
+    check('GE3 below min -> no tier', gfe.setTier(1, 1), nil);
+    check('GE4 tier at count', gfe.setTier(1, 2).Accuracy, 12);
+    check('GE5 count clamps at max', gfe.setTier(1, 5).Accuracy, 12);
+    check('GE6 tier value is the TOTAL at that count (replacement)', gfe.setTier(2, 3).FireMagicEva, 10);
+
+    local lava  = { Id = 1001, Name = 'Lava Ring',  Level = 30, Stats = { Accuracy = 5 } };
+    local kusha = { Id = 1002, Name = 'Kusha Ring', Level = 30, Stats = { Attack = 2 } };
+    local res = gfe.comboStats({ Ring1 = lava, Ring2 = kusha }, { level = 75 });
+    check('GE7 combo folds item stats + bonus (Accuracy)', res.stats.Accuracy, 17);
+    check('GE8 combo folds item stats + bonus (Attack)', res.stats.Attack, 8);
+    check('GE9 bonus-only stat appears', res.stats.DEF, 6);
+    local sb1, sb4;
+    for _, sb in ipairs(res.setBonuses) do
+        if sb.setId == 1 then sb1 = sb; end
+        if sb.setId == 4 then sb4 = sb; end
+    end
+    check('GE10 active bonus row (count/tier/active)',
+        sb1 ~= nil and (sb1.count .. '/' .. sb1.tier .. '/' .. tostring(sb1.active)), '2/2/true');
+    check('GE11 partial set listed inactive (the "one more piece" row)',
+        sb4 ~= nil and (sb4.count .. '/' .. tostring(sb4.active)), '1/false');
+
+    -- per-SLOT counting: the SAME record in both ring slots counts twice
+    local dup = gfe.comboStats({ Ring1 = lava, Ring2 = lava }, { level = 75 });
+    local dupRow;
+    for _, sb in ipairs(dup.setBonuses) do if sb.setId == 1 then dupRow = sb; end end
+    check('GE12 duplicates count per slot (server-verified)',
+        dupRow ~= nil and (dupRow.count .. '/' .. tostring(dupRow.active)), '2/true');
+
+    -- level gate: an over-level piece stops COUNTING; its stats still sum
+    local high = { Id = 1002, Name = 'Kusha Ring', Level = 70, Stats = { Attack = 2 } };
+    local sync = gfe.comboStats({ Ring1 = lava, Ring2 = high }, { level = 50 });
+    local syncRow;
+    for _, sb in ipairs(sync.setBonuses) do if sb.setId == 1 then syncRow = sb; end end
+    check('GE13 level-sync gate strips the count', syncRow ~= nil and syncRow.count, 1);
+    check('GE14 ...but never the item stats', sync.stats.Attack, 2);
+    local nilctx = gfe.comboStats({ Ring1 = lava, Ring2 = high }, nil);
+    local nilRow;
+    for _, sb in ipairs(nilctx.setBonuses) do if sb.setId == 1 then nilRow = sb; end end
+    check('GE15 nil ctx -> no gate', nilRow ~= nil and nilRow.count, 2);
+
+    -- alternates activate on ANY two pieces -- weapon+weapon included
+    local alt = gfe.comboStats({
+        Main = { Id = 1201, Name = 'Alt A', Level = 1, Stats = {} },
+        Sub  = { Id = 1205, Name = 'Alt B', Level = 1, Stats = {} },
+    }, { level = 75 });
+    local altRow;
+    for _, sb in ipairs(alt.setBonuses) do if sb.setId == 3 then altRow = sb; end end
+    check('GE16 alternates: any 2 of 9 activates', altRow ~= nil and tostring(altRow.active) .. '/'
+        .. tostring(alt.stats.STR), 'true/3');
+
+    -- itemStats stays the zero-copy levelstats passthrough
+    local plain = { Name = 'Plain Ring', Level = 1, Stats = { MND = 2 } };
+    check('GE17 itemStats zero-copy passthrough', gfe.itemStats(plain, { level = 75 }) == plain.Stats, true);
+
+    -- the REAL shipped data end-to-end: worn Lava's + Kusha's (ids 15850/15851)
+    local gfe2 = dofile('gear/geareffects.lua');
+    gfe2.configure({ gearsets = dofile('data/gearsets.lua') });
+    local worn = gfe2.comboStats({
+        Ring1 = { Id = 15850, Name = "Lava's Ring",  Level = 30, Stats = {} },
+        Ring2 = { Id = 15851, Name = "Kusha's Ring", Level = 30, Stats = {} },
+    }, { level = 75 });
+    check('GE18 shipped data: Lava+Kusha bonus', (worn.stats.Attack or 0) .. '/'
+        .. (worn.stats.Accuracy or 0) .. '/' .. (worn.stats.DEF or 0), '6/12/6');
+end)();
+
+-- ---------------------------------------------------------------------------
+-- HB. optimizePicks gear-set crediting (conditional-effects P3, ADR 0011):
+--     the bonus term inside the capped objective, incremental per-slot counts,
+--     and the set-seeded restarts that find pairs single-slot climbing cannot.
+-- ---------------------------------------------------------------------------
+(function()
+    -- synthetic effects seam (no geareffects needed: optimizePicks only sees fns)
+    local SETS = {
+        [1] = { pieces = { 101, 102 }, min = 2, max = 2, tiers = { [2] = { Accuracy = 12 } } },
+        [2] = { pieces = { 201, 202, 203, 204, 205 }, min = 2, max = 5,
+                tiers = { [2] = { Accuracy = 4 }, [3] = { Accuracy = 6 },
+                          [4] = { Accuracy = 6 }, [5] = { Accuracy = 30 } } },
+        [3] = { pieces = { 301, 302 }, min = 2, max = 2, tiers = { [2] = { Haste = 5 } } },
+    };
+    local BYITEM = {};
+    for sid, e in pairs(SETS) do
+        for _, pid in ipairs(e.pieces) do
+            BYITEM[pid] = BYITEM[pid] or {};
+            table.insert(BYITEM[pid], sid);
+        end
+    end
+    local fx = {
+        setsOf  = function(id) return BYITEM[id]; end,
+        setTier = function(sid, c)
+            local e = SETS[sid];
+            if e == nil or c < e.min then return nil; end
+            return e.tiers[math.min(c, e.max)];
+        end,
+    };
+    local W3 = { Accuracy = { perUnit = 3 } };
+    local function mk(id, name, stats) return { stats = stats, ref = { Id = id, Name = name } }; end
+
+    -- HB1: the numeric objective pin (H3-style): both set rings placed, bonus in
+    local p1, p2 = mk(101, 'SetRing A', { Accuracy = 2 }), mk(102, 'SetRing B', { Accuracy = 2 });
+    local hb1 = optim.optimizePicks({ Ring1 = { p1 }, Ring2 = { p2 } }, W3, { effects = fx });
+    check('HB1 bonus inside the objective', hb1.total, 3 * (2 + 2 + 12));
+
+    -- HB2: pair discovery -- each piece is a solo LOSS vs its rival; only a
+    -- seeded restart can enter the bonus
+    local z1, z2 = mk(101, 'SetRing A', { Accuracy = 0 }), mk(102, 'SetRing B', { Accuracy = 0 });
+    local rvA, rvB = mk(901, 'Rival A', { Accuracy = 5 }), mk(902, 'Rival B', { Accuracy = 5 });
+    local hb2 = optim.optimizePicks({ Ring1 = { rvA, z1 }, Ring2 = { rvB, z2 } }, W3,
+        { effects = fx, conflict = function(a, b) return a == b; end });
+    check('HB2 seeded restart finds the pair', hb2.total, 3 * 12);
+    check('HB2b ...both set pieces picked', tostring(hb2.picks.Ring1) .. ',' .. tostring(hb2.picks.Ring2), '2,2');
+
+    -- HB3: a bonus that exactly offsets stays EMPTY (strict improvement + the
+    -- EMPTY tie preference survive the bonus term); partner via baseComposition
+    local neg = mk(101, 'SetRing A', { Accuracy = -12 });
+    local hb3 = optim.optimizePicks({ Ring1 = { neg } }, W3,
+        { effects = { setsOf = fx.setsOf, setTier = fx.setTier,
+                      baseComposition = { { Id = 102, Name = 'SetRing B' } } } });
+    check('HB3 exact offset keeps EMPTY', hb3.picks.Ring1, nil);
+
+    -- HB4: one owned copy -- the conflict beats the set (count stays 1, no bonus)
+    local cA, cB = mk(101, 'SetRing A', { Accuracy = 2 }), mk(101, 'SetRing A', { Accuracy = 2 });
+    local oneCopy = function(a, b)
+        if a == b or (a.Id ~= nil and a.Id == b.Id) then return true; end
+        return false;
+    end
+    local hb4 = optim.optimizePicks({ Ring1 = { cA }, Ring2 = { cB } }, W3,
+        { effects = fx, conflict = oneCopy });
+    local filled4 = (hb4.picks.Ring1 and 1 or 0) + (hb4.picks.Ring2 and 1 or 0);
+    check('HB4 conflict beats set: one slot, no bonus', filled4 .. '/' .. hb4.total, '1/' .. (3 * 2));
+    -- HB4b: two owned copies -- per-slot counting credits the SAME item twice
+    local hb4b = optim.optimizePicks({ Ring1 = { cA }, Ring2 = { cB } }, W3,
+        { effects = fx, conflict = function() return false; end });
+    check('HB4b two copies activate the set', hb4b.total, 3 * (2 + 2 + 12));
+
+    -- HB5: seed eviction + monotone acceptance -- a dominated set dissolves back
+    local i1, i2 = mk(911, 'Indep A', { Accuracy = 10 }), mk(912, 'Indep B', { Accuracy = 10 });
+    local w1, w2 = mk(101, 'SetRing A', { Accuracy = 1 }), mk(102, 'SetRing B', { Accuracy = 1 });
+    local hb5 = optim.optimizePicks({ Ring1 = { i1, w1 }, Ring2 = { i2, w2 } }, W3,
+        { effects = { setsOf = fx.setsOf,
+                      setTier = function(sid, c) return (sid == 1 and c >= 2) and { Accuracy = 5 } or nil; end },
+          conflict = function(a, b) return a == b; end });
+    check('HB5 dominated seed dissolves to the baseline', hb5.total, 3 * 20);
+    check('HB5b independents kept', tostring(hb5.picks.Ring1) .. ',' .. tostring(hb5.picks.Ring2), '1,1');
+
+    -- HB6: cap sharing -- a bonus above the cap adds nothing, so a cap-redundant
+    -- set stays home (H5's analog through the bonus fold)
+    local WH = { Haste = { perUnit = 100, cap = 5 } };
+    local hHat = mk(920, 'Haste Hat', { Haste = 5 });
+    local s1, s2 = mk(301, 'SetPiece A', { Haste = 0 }), mk(302, 'SetPiece B', { Haste = 0 });
+    local hb6 = optim.optimizePicks({ Head = { hHat }, Ring1 = { s1 }, Ring2 = { s2 } }, WH, { effects = fx });
+    check('HB6 capped bonus stays home', tostring(hb6.picks.Ring1) .. '/' .. hb6.total, 'nil/500');
+
+    -- HB7: effects present but nothing set-carrying -> bit-identical totals
+    local W = { Haste = { perUnit = 100, cap = 5 }, SwordSkill = { perUnit = 2 }, Accuracy = { perUnit = 3 } };
+    local hasteHat  = { stats = { Haste = 5 },                               ref = 'HasteHat'  };
+    local statHat   = { stats = { Accuracy = 5 },                            ref = 'StatHat'   };
+    local greatFeet = { stats = { Haste = 5, SwordSkill = 7, Accuracy = 5 }, ref = 'GreatFeet' };
+    local weakFeet  = { stats = { Accuracy = 2 },                            ref = 'WeakFeet'  };
+    local hb7 = optim.optimizePicks({ Head = { hasteHat, statHat }, Feet = { greatFeet, weakFeet } }, W,
+        { effects = fx });
+    check('HB7 no set-carrying candidate: H3 total bit-identical', hb7.total, 100 * 5 + 2 * 7 + 3 * (5 + 5));
+
+    -- HB8: tiered marginal -- 3 pieces credit tiers[3], the 4th enters only when
+    -- its tier step pays (tiers[4]-tiers[3] = 0 here -> stays home)
+    local t1, t2, t3 = mk(201, 'Tier A', { Accuracy = 1 }), mk(202, 'Tier B', { Accuracy = 1 }),
+                       mk(203, 'Tier C', { Accuracy = 1 });
+    local t4 = mk(204, 'Tier D', { Accuracy = 0 });
+    local hb8 = optim.optimizePicks({ Ring1 = { t1 }, Ring2 = { t2 }, Neck = { t3 }, Head = { t4 } },
+        W3, { effects = fx });
+    check('HB8 three pieces credit tiers[3]', hb8.total, 3 * (3 + 6));
+    check('HB8b zero-step 4th piece stays home', hb8.picks.Head, nil);
+    -- ...and a PAYING tier step pulls the 4th piece in (private tier fn: step +14)
+    local fx4 = { setsOf = fx.setsOf, setTier = function(sid, c)
+        if sid ~= 2 or c < 2 then return nil; end
+        return ({ [2] = { Accuracy = 4 }, [3] = { Accuracy = 6 }, [4] = { Accuracy = 20 } })[math.min(c, 4)];
+    end };
+    local hb8c = optim.optimizePicks({ Ring1 = { t1 }, Ring2 = { t2 }, Neck = { t3 }, Head = { t4 } },
+        W3, { effects = fx4 });
+    check('HB8c paying tier step pulls the 4th piece', hb8c.picks.Head ~= nil and hb8c.total, 3 * (3 + 20));
+
+    -- HB9: baseComposition partner -- a lone worthless pool piece is credited
+    -- the bonus its already-chosen partner completes (the Sub marginal case)
+    local lone = mk(101, 'SetRing A', { Accuracy = 0 });
+    local hb9 = optim.optimizePicks({ Ring1 = { lone } }, W3,
+        { effects = { setsOf = fx.setsOf, setTier = fx.setTier,
+                      baseComposition = { { Id = 102, Name = 'SetRing B' } } } });
+    check('HB9 baseComposition partner credits the bonus',
+        tostring(hb9.picks.Ring1) .. '/' .. hb9.total, '1/' .. (3 * 12));
+end)();
+
+-- ---------------------------------------------------------------------------
+-- HB10+. buildBestSet through a geareffects-wired gearoptim instance: the
+--        append-only pool augmentation + seeding, end to end -- and the greedy
+--        Range/Ammo path staying set-blind (a bonus never legalizes a pairing).
+-- ---------------------------------------------------------------------------
+(function()
+    local savedGfx = package.loaded['dlac\\gear\\geareffects'];
+    local savedGear = package.loaded['dlac\\gear'];
+    local gfe = dofile('gear/geareffects.lua');
+    gfe.configure({ gearsets = {
+        [7] = { pieces = { 610, 611 }, min = 2, max = 2, tiers = { [2] = { Accuracy = 50 } } },
+        [8] = { pieces = { 601, 602 }, min = 2, max = 2, tiers = { [2] = { Accuracy = 99 } } },
+    } });
+    package.loaded['dlac\\gear\\geareffects'] = gfe;
+
+    -- 21 Head fillers rank ABOVE the set piece, pushing it past the top-20
+    -- prune: only the augmentation can put it in front of the optimizer.
+    local G2 = { NameToObject = {}, Head = {}, Neck = {} };
+    for i = 1, 21 do
+        G2.Head['Filler ' .. i] = { Name = 'Filler ' .. string.char(64 + i), Level = 1, Id = 700 + i,
+                                    Jobs = { 'All' }, Stats = { Accuracy = 4 + i } };
+    end
+    G2.Head['Set Sallet'] = { Name = 'Set Sallet', Level = 1, Id = 610, Jobs = { 'All' },
+                              Stats = { Accuracy = 0 } };
+    G2.Neck['Set Gorget'] = { Name = 'Set Gorget', Level = 1, Id = 611, Jobs = { 'All' },
+                              Stats = { Accuracy = 0 } };
+    package.loaded['dlac\\gear'] = G2;
+    local optB = dofile('gear/gearoptim.lua');
+    local hb11 = optB.buildBestSet({ job = 'WAR', level = 75, weights = { Accuracy = { perUnit = 3 } } });
+    check('HB11 augmented pool + seeding win the set pair',
+        tostring(hb11.slots.Head) .. '+' .. tostring(hb11.slots.Neck), 'Set Sallet+Set Gorget');
+    check('HB11b whole-set total is the bonus', hb11.total, 3 * 50);
+
+    -- HB10: the greedy single-stat path stays SET-BLIND (ADR 0011): an unfirable
+    -- stat stick still wins the Ammo slot and Range still empties, set data or not
+    local function it(name, acc, extra)
+        local e = { Name = name, Level = 1, Id = 0, Jobs = { 'All' }, Stats = { Accuracy = acc } };
+        for k, v in pairs(extra or {}) do e[k] = v; end
+        return e;
+    end
+    G2.Range = { Archery = { it('Test Bow', 10, { Type = 'Archery', Id = 601 }) } };
+    G2.Ammo  = { stick = it('Cinderstone', 20, { Id = 602 }) };
+    local r = optB.buildMaxStatSet('Accuracy', { job = 'WAR', level = 99 });
+    check('HB10 greedy path set-blind: unfirable ammo still wins', r.slots.Ammo, 'Cinderstone');
+    check('HB10b ...and Range stays EMPTY despite the set', r.slots.Range, nil);
+
+    package.loaded['dlac\\gear'] = savedGear;
+    package.loaded['dlac\\gear\\geareffects'] = savedGfx;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- FISHING: fishcalc verdict math (server formulas, hand-computed cases) +
+-- fishdb integrity + fishwatch state/pick rules + the engine's dlac:AutoFish
+-- overlay (v64) -- docs/design/fishing-gear.md. The fail-chance expectations
+-- below are derived BY HAND from fishingutils.cpp CalculateLoseChance :719 /
+-- CalculateSnapChance :784 / CalculateBreakChance :828 -- if a port edit
+-- moves one of these numbers, re-derive from the C++ before touching the test.
+-- ---------------------------------------------------------------------------
+(function()
+    package.loaded['dlac\\data\\fishdb'] = dofile('data/fishdb.lua');
+    local fcalc = dofile('feature/fishcalc.lua');
+    package.loaded['dlac\\feature\\fishcalc'] = fcalc;
+
+    -- pure verdict math on synthetic records (no db involved)
+    local marlin  = { sk = 61, rank = 23, sz = 1 };
+    local halcyon = { sz = 0, minR = 1, maxR = 18, brk = 1 };
+    local ebisuR  = { sz = 0, minR = 1, maxR = 30, leg = 1 };
+    local v = fcalc.verdictFor(marlin, halcyon, 50);
+    check('F1 big fish, small rod: lose=toobig 50', v.lose .. '/' .. tostring(v.loseWhy), '50/toobig');
+    check('F2 big fish, small rod: snap capped 55', v.snap, 55);
+    check('F3 big fish, small rod: break 9',        v.brk, 9);
+    v = fcalc.verdictFor(marlin, ebisuR, 50);
+    check('F4 same fish on Ebisu: lose=lowskill 3', v.lose .. '/' .. tostring(v.loseWhy), '3/lowskill');
+    check('F5 Ebisu: no snap',  v.snap, 0);
+    check('F6 Ebisu never breaks', v.brk, 0);
+    local legFish = { sk = 100, rank = 30, sz = 1, leg = 1 };
+    local luShang = { sz = 0, minR = 1, maxR = 28, brk = 1, leg = 1 };
+    v = fcalc.verdictFor(legFish, luShang, 100);
+    check('F7 legendary on legendary rod at skill: SAFE', v.ok, true);
+    v = fcalc.verdictFor(legFish, halcyon, 100);
+    check('F8 legendary on normal rod: lose toobig', tostring(v.loseWhy), 'toobig');
+    check('F9 legendary on normal rod: snap 55',     v.snap, 55);
+    check('F10 legendary on normal rod: break 19',   v.brk, 19);
+    -- the uint8-wrap quirk: over-skill "rebate" past zero wraps high -> 50
+    v = fcalc.verdictFor({ sk = 5, rank = 10, sz = 1 }, { sz = 0, minR = 1, maxR = 5, brk = 1 }, 100);
+    check('F11 toobig uint8 wrap clamps to 50', v.lose .. '/' .. tostring(v.loseWhy), '50/toobig');
+    -- tooSmall has the guarded subtraction (source :753) -> floors at zero
+    local largeRod = { sz = 1, minR = 8, maxR = 18, brk = 1 };
+    v = fcalc.verdictFor({ sk = 5, rank = 1, sz = 0 }, largeRod, 100);
+    check('F12 toosmall guarded to zero at high skill', v.lose, 0);
+    v = fcalc.verdictFor({ sk = 5, rank = 1, sz = 0 }, largeRod, 30);
+    check('F13 toosmall mid-skill', v.lose .. '/' .. tostring(v.loseWhy), '25/toosmall');
+    v = fcalc.verdictFor({ sk = 99, rank = 1, sz = 0 }, { sz = 0, minR = 1, maxR = 5, brk = 1 }, 1);
+    check('F14 lowskill capped at 55', v.lose .. '/' .. tostring(v.loseWhy), '55/lowskill');
+
+    -- fishdb integrity (the shipped data the panel trusts)
+    local db = fcalc.db();
+    check('F15 fishdb loads through fishcalc', db ~= nil, true);
+    local nFish = 0; for _ in pairs(db.fish) do nFish = nFish + 1; end
+    local nRods = 0; for _ in pairs(db.rods) do nRods = nRods + 1; end
+    local nBaits = 0; for _ in pairs(db.baits) do nBaits = nBaits + 1; end
+    check('F16 fish table populated (>=120)', nFish >= 120, true);
+    check('F17 all 20 public rods', nRods, 20);
+    check('F18 all 39 baits', nBaits, 39);
+    check('F19 Moat Carp', db.fish[4401] ~= nil and db.fish[4401].n, 'Moat Carp');
+    check('F20 Moat Carp hook level', db.fish[4401].sk, 11);
+    check('F21 Ebisu legendary + unbreakable', (db.rods[17011].leg or 0) == 1 and (db.rods[17011].brk or 0) == 0, true);
+    check('F22 Lu Shang breaks to 489', db.rods[17386].brokenId, 489);
+    check('F23 Little Worm hooks Moat Carp', db.aff[17396] ~= nil and db.aff[17396][4401] ~= nil, true);
+    check('F24 search finds the carp', (fcalc.searchFish('moat')[1] or {}).id, 4401);
+    check('F25 carp takes baits', #fcalc.baitsFor(4401) > 0, true);
+    local iso = fcalc.isolationFor(4291);   -- Sandfish: the generator-verified case
+    check('F26 sandfish has isolation rows', #iso > 0, true);
+    check('F27 cleanest row first', iso[1].clean, true);
+    check('F28 gearBonus: Ebisu cx4', (db.gearBonus[17011] or {}).cx4, 10);
+    check('F29 gearBonus: Halieutica is a Main', (db.gearBonus[20945] or {}).sl, 'Main');
+    check('F30 gearBonus: Eyepatch carries only cx', (db.gearBonus[28443] or {}).fish == nil
+        and (db.gearBonus[28443] or {}).cx4 == 20, true);
+    check('F31 guild rank 1 test fish is the carp', db.guild.rankFish[1], 4401);
+    check('F32 eleven guild ranks', #db.guild.ranks, 11);
+    -- a legendary fish exists and Ebisu beats a twig for it
+    local legId = nil;
+    for id, f in pairs(db.fish) do if (f.leg or 0) == 1 then legId = id; break; end end
+    check('F33 a legendary fish ships', legId ~= nil, true);
+    if legId ~= nil then
+        local best = fcalc.bestOwnedRod(db.fish[legId], 100, { [17391] = true, [17011] = true });
+        check('F34 legendary target -> Ebisu over Willow', best ~= nil and best.id, 17011);
+    end
+    check('F35 gearScore: verified Fish beats unverified cx', fcalc.gearScore(1, nil) > fcalc.gearScore(0, { cx4 = 50, cx5 = 5 }), true);
+
+    -- fishwatch: state rules + rod/bait auto-pick (headless seams)
+    local fw = dofile('feature/fishwatch.lua');
+    check('F36 pill starts off', fw.isEnabled(), false);
+    local lines = fw.parseVentureLine('Fishing: (Low) Selbina, (Mid) Qufim Island, (High) Sea of Shadows');
+    check('F37 fishing venture line: 3 tiers', lines ~= nil and #lines or 0, 3);
+    check('F37b low tier', lines ~= nil and lines[1], 'Low:  Selbina');
+    check('F38 helm categories are not ours', fw.parseVentureLine('Mining: (Low) Ordelles Caves, (Mid) X, (High) Y'), nil);
+    local drift = fw.parseVentureLine('Fishing: something new the server said');
+    check('F39 drifted format keeps raw tail', drift ~= nil and drift[1], 'something new the server said');
+    check('F40 chatter -> nil', fw.parseVentureLine('gone fishing brb'), nil);
+    check('F41 jst rollover', fw.jstDay(15 * 3600) - fw.jstDay(0), 1);
+    fw._clientName = function(id)
+        return ({ [17390] = 'Yew Fishing Rod', [17391] = 'Willow Fish. Rod',
+                  [17396] = 'Little Worm' })[id];
+    end
+    fw._ownedAvail = { [17391] = 1, [17390] = 1, [17396] = 99 };
+    fw.setTarget(4401);
+    local rid = select(1, fw.getRod());
+    check('F42 target set', select(2, fw.getTarget()), 'Moat Carp');
+    -- at skill 0 the Yew (durability 6) out-risks the Willow (5) on a rank-7
+    -- carp: snap 8 vs 17 -- the verdict sort must prefer it
+    check('F43 rod pick minimizes risk (Yew over Willow)', rid, 17390);
+    check('F44 rod stamped with the CLIENT name', select(2, fw.getRod()), 'Yew Fishing Rod');
+    check('F45 bait picked from owned affinity', select(1, fw.getBait()), 17396);
+    -- explicit bait choice survives re-picks while stocked
+    local carpBaits = fcalc.baitsFor(4401);
+    local altBait = nil;
+    for _, e in ipairs(carpBaits) do if e.id ~= 17396 then altBait = e.id; break; end end
+    if altBait ~= nil then
+        fw._ownedAvail[altBait] = 12;
+        fw.setTarget(4401, altBait);
+        check('F46 explicit bait honoured', select(1, fw.getBait()), altBait);
+        fw.autoPick(true);
+        check('F47 explicit bait survives autoPick(keep)', select(1, fw.getBait()), altBait);
+        fw._ownedAvail[altBait] = nil;
+    end
+    fw.setEnabled(true);
+    check('F48 pill on', fw.isEnabled(), true);
+    fw._ownedAvail = { [17390] = 1 };   -- bait stack gone, rod still here
+    fw.revalidate();
+    check('F49 exhausted bait cleared (nothing suitable left)', select(1, fw.getBait()), nil);
+    fw._ownedAvail = {};                -- rod gone too
+    fw.revalidate();
+    check('F50 vanished rod cleared', select(1, fw.getRod()), nil);
+    fw.setEnabled(false);
+
+    -- engine: fishStateActive + the dlac:AutoFish overlay
+    local act = dispatchM._fishStateActive;
+    check('F51 enabled state active', act({ enabled = true }), true);
+    check('F52 disabled state inactive', act({ enabled = false }), false);
+    check('F53 nil state inactive', act(nil), false);
+    dispatchM._autoOverride = { fish = {
+        main = { { name = 'Halieutica', score = 2105, level = 1, fish = 2 } },
+        body = { { name = 'Anglers Tunica', score = 1000, level = 15, fish = 1 },
+                 { name = 'Fsh. Tunica',    score = 1000, level = 1,  fish = 1 } },
+        ring1 = { { name = 'Anglers Ring', score = 2000, level = 75, fish = 2 } },
+    } };
+    local fs = { enabled = true, at = 1, rod = 'Willow Fish. Rod', bait = 'Little Worm' };
+    local fov = dispatchM._fishOverlayFor(fs, { player = { MainJobSync = 75, Status = 'Idle' } });
+    check('F54 rod worn from state', fov and fov.Range, 'Willow Fish. Rod');
+    check('F55 bait worn from state', fov and fov.Ammo, 'Little Worm');
+    check('F56 Main ladder (Halieutica)', fov and fov.Main, 'Halieutica');
+    check('F57 body best rung', fov and fov.Body, 'Anglers Tunica');
+    check('F58 ring ladder', fov and fov.Ring1, 'Anglers Ring');
+    local fovLow = dispatchM._fishOverlayFor(fs, { player = { MainJobSync = 10, Status = 'Idle' } });
+    check('F59 underlevel rung falls through', fovLow and fovLow.Body, 'Fsh. Tunica');
+    check('F60 underlevel ring -> slot empty', fovLow and fovLow.Ring1, nil);
+    check('F61 engaged -> stands aside', dispatchM._fishOverlayFor(fs, { player = { MainJobSync = 75, Status = 'Engaged' } }), nil);
+    check('F62 dead -> stands aside', dispatchM._fishOverlayFor(fs, { player = { MainJobSync = 75, Status = 'Dead' } }), nil);
+    local fovEvt = dispatchM._fishOverlayFor(fs, { player = { MainJobSync = 75, Status = 'Event' } });
+    check('F63 event stays dressed', fovEvt and fovEvt.Range, 'Willow Fish. Rod');
+    check('F64 disabled -> no overlay', dispatchM._fishOverlayFor({ enabled = false, rod = 'X' }, { player = { MainJobSync = 75 } }), nil);
+    local fsNoGear = { enabled = true };
+    local fovNoRod = dispatchM._fishOverlayFor(fsNoGear, { player = { MainJobSync = 75, Status = 'Idle' } });
+    check('F65 no rod picked -> Range untouched, ladders still dress',
+        (fovNoRod and fovNoRod.Range) == nil and (fovNoRod and fovNoRod.Body) ~= nil, true);
+    check('F66 resolveVirtual dlac:AutoFish body', dispatchM._resolveVirtual('dlac:AutoFish',
+        { player = { MainJobSync = 75 } }, 'Body'), 'Anglers Tunica');
+    check('F67 resolveVirtual unknown fish slot -> nil', dispatchM._resolveVirtual('dlac:AutoFish',
+        { player = { MainJobSync = 75 } }, 'Sub'), nil);
+    dispatchM._autoOverride = nil;
+
+    -- craftwatch: the fishing guild points offset (0x20) now parses
+    local cw2 = dofile('feature/craftwatch.lua');
+    local function fi32(v) return string.char(v % 256, math.floor(v/256)%256, math.floor(v/65536)%256, math.floor(v/16777216)%256); end
+    local pkt = string.rep('\0', 0x20) .. fi32(1111) .. fi32(2555) .. fi32(6536) .. fi32(10990)
+        .. fi32(540) .. fi32(23539) .. fi32(0) .. fi32(75200) .. fi32(4325);
+    cw2.onCurrencyPacket(pkt);
+    check('F68 fishing GP parsed at 0x20', cw2.guildPointsFor('Fishing'), 1111);
+    check('F69 craft offsets unmoved', cw2.guildPointsFor('Woodworking'), 2555);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then

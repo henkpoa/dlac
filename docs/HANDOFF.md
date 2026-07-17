@@ -192,8 +192,20 @@ agent; the per-repo setup lives in `docs/agents/`.
 - A GM is currently evaluating the addon for server approval — polish requests from
   that channel (like the word-wrap fix) take priority.
 
-## Current state (as of 2026-07-15)
+## Current state (as of 2026-07-18)
 
+- **GEAR-SET BONUSES ARE LIVE — display + optimizer (07-18, ADR 0011).**
+  `gear\geareffects.lua` is THE evaluator (`comboStats` = whole-composition truth;
+  `setsOf`/`setTier` the optimizer seam; counting per SLOT — duplicates twice,
+  server-verified — and level-gated). Worn/planned totals, the panel's set captions and
+  the tooltip tier ladder all derive from it; `optimizePicks` credits bonuses inside the
+  cap fold via `opts.effects` + set-seeded restarts; buildBestSet's prune appends
+  (never removes) set members. Rule candidates already enforced by tests, keep them
+  true: **set bonuses never enter per-item scores** (`scoreOfItem` stays combination-
+  blind — HB pins), **pool augmentation is append-only**, and the greedy
+  `buildMaxStatSet` path stays set-blind (HB10). Latents ship in
+  `data\latentstats.lua` but are DORMANT (P2/P4/P5 open — issues #41/#43/#44). Read
+  `docs/design/conditional-effects.md` + ADR 0011 before touching any of it.
 - **DONE — engine v50, "NON is not a job" (`cb2fbe2`; docs `40288e3`).** The login
   auto-install bug: `GetMainJob()` reads 0 at login, gData stringifies it to `"NON"`, the
   guard accepted it as a real job, found no `sets\NON.lua`, installed nothing and

@@ -2363,3 +2363,46 @@ colored green, live `[on now]` markers via an addon-side GetPet mirror
 `pet=Name(Status)`. Starter-file comment + trigger-system.md updated. Tests: PT1-22
 (matchers, tier ladder, 2x2 through _matches, serializer round-trip incl.
 `pet = false`, normalize). 1112 green.
+
+## Session "set bonuses land — display + optimizer" (2026-07-18)
+
+**Theme:** Henrik: "First and foremost, show sets stats on gear! Secondly, make
+them count in weight evaluations!" The conditional-effects groundwork (design
+doc approved, `data\gearsets.lua`/`data\latentstats.lua` shipped 4af3e5f) had
+never reached runtime -- issue #40's cloud dispatch produced no PR -- so P1
+(sets visible) and P3 (optimizer credits) shipped together in one local pass.
+Latents (P2/P4/P5, issues #41/#43/#44) remain open.
+
+**Landed:**
+- `gear\geareffects.lua` -- pure-core evaluator: `setsOf`/`setInfo`/`setTier`
+  (`tiers[min(count,max)]`, nil below min), `countPieces` (per SLOT, duplicates
+  twice -- server-verified; level-gated like the applier's sync rule), and
+  `comboStats(composition, ctx)` -- THE whole-composition truth behind every
+  number. Latent data loads dormant (`latentsOf`) for P2.
+- Display: worn + planned totals evaluate through comboStats (a worn
+  Lava's+Kusha's finally shows ATT+6/ACC+12/DEF+6); `renderStatsPanel` gains a
+  set-attribution caption block (active gold with deltas, partial sets dim with
+  "bonus at N" -- the one-more-piece hint); the item tooltip shows each set's
+  tier ladder + partner pieces with owned-marks (`With: Kusha's Ring*`). Set
+  display names are derived from piece names (pair -> "A + B", family -> common
+  word prefix + " set", else "first +N") -- labels are Henrik-vetoable in-game.
+- Optimizer (ADR 0011): `optimizePicks` `opts.effects` folds active tier deltas
+  INSIDE the per-weight cap fold over incrementally-maintained per-set counts;
+  converged-baseline set-seeded restarts (top-6 singles by projected value +
+  disjoint pairs, <=12 hard cap, least-loss placement, monotone acceptance)
+  fix the pair-discovery hole; buildBestSet's top-20 prune appends (never
+  removes) weight-relevant set members; the Sub marginal call passes the joint
+  pick as `baseComposition` (grip completing a set = credited, offer untouched);
+  the Sets panel's weighted number is now the same combo objective.
+- The `candidateStats` seam: joint pools + Sub marginal now weigh base+augment
+  stats like scoreOfItem always did (a pre-existing gap the design flagged).
+- Greedy `/dl` single-stat builds stay set-blind by decision (ADR 0011), pinned
+  by HB10.
+
+**Tests:** GD1-13 (shipped-data regeneration guards: 126 sets, 39/87 split,
+census 20/1/86/19, [70] exact, [43] alternates 9/2/2, latents 1848 rows/zero
+level-latent leakage), GE1-18 (evaluator semantics incl. the real-data
+Lava/Kusha end-to-end), HB1-HB11 (objective pin, seeded discovery, EMPTY-tie
+survival, conflict-vs-copies, eviction/monotone, cap sharing, effects-nil
+bit-identity, tiered marginal, baseComposition credit, set-blind greedy path,
+augmentation end-to-end through buildBestSet). 1161 + 125 green.

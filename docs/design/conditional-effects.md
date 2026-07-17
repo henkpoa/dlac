@@ -1,6 +1,16 @@
 # Conditional item effects — set bonuses + conditional latents, one evaluator
 
-> **Status: DESIGN, approved direction (2026-07-17).** Supersedes the *plan* section of
+> **Status: P1 + P3 SHIPPED for gear sets (2026-07-18).** `gear\geareffects.lua`
+> (evaluator), set bonuses in worn/planned totals + panel captions + the hover tier
+> ladder, and the optimizer crediting (`opts.effects`, seeded restarts, append-only
+> pool augmentation) are live — ADR 0011 records the optimizer decision, tests
+> GD/GE/HB1-HB11 pin it. Latent data ships and loads (dormant). **Still open:** P2
+> (latents in display — issue #41), P4 (latent scoring context — #43), P5 (broader
+> predicates + `__env` mirror — #44). The honesty captions the phasing planned were
+> skipped: P1 and P3 landed together, so there was never a sets-shown-but-not-weighted
+> window. Design text below is as approved 2026-07-17; line anchors predate the ship.
+
+> **Approved direction (2026-07-17).** Supersedes the *plan* section of
 > `docs/design/latent-rings.md` (the research there stands unchanged; its "optimizer out of
 > scope" call is **reversed** by maintainer direction). Henrik's ask: "we want the latent
 > effects to be properly documented, scalable, as well as sets. If possible, would be nice

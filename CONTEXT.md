@@ -86,3 +86,17 @@ _Avoid_: validating sets against current traits/state
 
 **Engine handshake**:
 `dispatch.M.VERSION`, mirrored through `modestate.lua`, lets the GUI detect that LuaAshitacast is still running a stale seeded engine and show the red "Reload LAC" banner. Bump it whenever seeded-file behavior changes.
+
+**Set bonus**:
+A server-applied stat package for wearing N+ pieces of a gear set (`data\gearsets.lua`, 126 sets). Tiers are value-AT-count replacements (`tiers[min(count, max)]`, nil below `min`), counting is per SLOT (two copies count twice) and level-gated. Evaluated by `gear\geareffects.lua`; the game applies the real thing at equip time — dlac only plans, displays and scores it.
+_Avoid_: treating tier values as cumulative increments; per-item "set piece" scores
+
+**Composition**:
+A concrete slotLabel→record assignment — the worn set, the planned working set, or the optimizer's current assignment. A plan-side object (sets are plans, ADR 0006); it never gates building.
+
+**True combination evaluator**:
+`geareffects.comboStats(composition, ctx)` — the single source of truth for "what stats does this whole composition have" (item stats at level + active set tiers). Worn/planned totals, panel set captions and the Sets panel's weighted score all derive from it; the optimizer's objective folds the same tier data inside its cap fold.
+_Avoid_: summing per-item scores and calling it a set total
+
+**Set-seeded restart**:
+An optimizePicks restart from the converged baseline with a feasible gear set's pieces force-placed (least-loss slot choice, hard 6/12 seed caps), kept only on strict improvement. Exists because single-slot hill climbing can never enter a bonus whose pieces are each a solo loss. ADR 0011.

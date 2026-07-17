@@ -44,6 +44,11 @@ local gear = require("dlac\\gear");
 -- for the build level, not the catalog's flat base. Guarded: absent module = no-op.
 local _lsok, lscale = pcall(require, "dlac\\data\\levelstats");
 local hasLScale = _lsok and type(lscale) == 'table';
+-- Gear-set bonus evaluator (docs/design/conditional-effects.md P3): buildBestSet
+-- wires its membership/tier lookups into optimizePicks via opts.effects.
+-- Guarded: absent module = set-blind builds, exactly the pre-P3 behavior.
+local _gfxok, gfx = pcall(require, "dlac\\gear\\geareffects");
+local hasGfx = _gfxok and type(gfx) == 'table' and type(gfx.setsOf) == 'function';
 
 -- Colored [dlac] chat output (chatfmt): the shadowed `print` re-heads
 -- "[dlac] ..."-prefixed lines with the colored header; plain when unavailable.
@@ -1170,6 +1175,12 @@ end
 --     (e.g. the already-chosen pieces when optimizing one slot alone).
 --   opts.conflict(refA, refB): true when two picks cannot coexist (paired
 --     Ear/Ring slots sharing one physical copy).
+--   opts.effects: gear-set bonus crediting (conditional-effects P3, ADR 0011):
+--     { setsOf(itemId) -> {setId,..}|nil, setTier(setId, count) -> deltas|nil,
+--       baseComposition = { rec, ... } -- already-chosen pieces whose set
+--       membership pre-loads the counts (they are counted, never searched) }.
+--     nil (or no set-carrying candidate) is structurally zero: no bonus term,
+--     no restarts -- the H1-H8 exact totals are bit-identical.
 -- ---------------------------------------------------------------------------
 function M.optimizePicks(pools, weights, opts)
     opts = opts or {};
@@ -1190,35 +1201,127 @@ function M.optimizePicks(pools, weights, opts)
     table.sort(labels);                                -- deterministic climb order
     if #wl == 0 or #labels == 0 then return { picks = {}, total = 0 }; end
 
+    -- Project a stats-shaped table onto wl. Shared by candidates, baseStats and
+    -- set-bonus tiers, so alias groups and negative-good handling are identical
+    -- everywhere (a DT set bonus scores as goodness like a DT stat does).
+    local function project(st)
+        local vec = {};
+        for wi, w in ipairs(wl) do
+            local v = statValue(st, w.stat);
+            if w.neg then v = -v; end
+            vec[wi] = v;
+        end
+        return vec;
+    end
+
     -- Per-candidate value vector over wl, computed ONCE (the climb then only
     -- does sums), plus the fixed background from opts.baseStats.
     local vecs = {};
     for _, label in ipairs(labels) do
         local vv = {};
-        for ci, cand in ipairs(pools[label]) do
-            local vec = {};
-            for wi, w in ipairs(wl) do
-                local v = statValue(cand.stats, w.stat);
-                if w.neg then v = -v; end
-                vec[wi] = v;
-            end
-            vv[ci] = vec;
-        end
+        for ci, cand in ipairs(pools[label]) do vv[ci] = project(cand.stats); end
         vecs[label] = vv;
     end
     local base = {};
     for wi = 1, #wl do base[wi] = 0; end
     if type(opts.baseStats) == 'table' then
         for _, st in ipairs(opts.baseStats) do
-            for wi, w in ipairs(wl) do
-                local v = statValue(st, w.stat);
-                if w.neg then v = -v; end
-                base[wi] = base[wi] + v;
-            end
+            local v = project(st);
+            for wi = 1, #wl do base[wi] = base[wi] + v[wi]; end
         end
     end
 
+    -- ---- gear-set bonuses: membership, counts, projected tiers --------------
+    local eff = opts.effects;
+    if type(eff) ~= 'table' or type(eff.setsOf) ~= 'function' or type(eff.setTier) ~= 'function' then
+        eff = nil;
+    end
+    local candSets = nil;   -- label -> ci -> {setId,...} (only set-carrying candidates)
+    local baseCnt  = {};    -- setId -> pieces already in baseComposition
+    local tierVec  = nil;   -- setId -> count -> projected vec (nil below the set's min)
+    local minOf    = {};    -- setId -> activation floor (probed via setTier)
+    local relList  = {};    -- sorted setIds whose tiers carry any weighted stat
+    if eff ~= nil then
+        local seen = {};
+        candSets = {};
+        for _, label in ipairs(labels) do
+            local cs = {};
+            for ci, cand in ipairs(pools[label]) do
+                local id = (type(cand.ref) == 'table') and cand.ref.Id or nil;
+                local sids = (id ~= nil) and eff.setsOf(id) or nil;
+                if sids ~= nil and #sids > 0 then
+                    cs[ci] = sids;
+                    for _, sid in ipairs(sids) do seen[sid] = true; end
+                end
+            end
+            candSets[label] = cs;
+        end
+        if type(eff.baseComposition) == 'table' then
+            for _, rec in pairs(eff.baseComposition) do
+                local id = (type(rec) == 'table') and rec.Id or nil;
+                local sids = (id ~= nil) and eff.setsOf(id) or nil;
+                if sids ~= nil then
+                    for _, sid in ipairs(sids) do
+                        baseCnt[sid] = (baseCnt[sid] or 0) + 1;
+                        seen[sid] = true;
+                    end
+                end
+            end
+        end
+        -- Materialize every seen set's tier vectors per reachable count. A set
+        -- none of whose tiers moves any weighted stat is dropped outright.
+        local cmax = #labels;
+        for _, n in pairs(baseCnt) do cmax = math.max(cmax, #labels + n); end
+        tierVec = {};
+        for sid in pairs(seen) do
+            local tv, any, mn = {}, false, nil;
+            for c = 1, cmax do
+                local d = eff.setTier(sid, c);
+                if d ~= nil then
+                    if mn == nil then mn = c; end
+                    local v = project(d);
+                    tv[c] = v;
+                    if not any then
+                        for wi = 1, #wl do
+                            if v[wi] ~= 0 then any = true; break; end
+                        end
+                    end
+                end
+            end
+            if any then
+                tierVec[sid] = tv;
+                minOf[sid] = mn;
+                relList[#relList + 1] = sid;
+            end
+        end
+        table.sort(relList);
+        if #relList == 0 then eff = nil; candSets = nil; end   -- nothing weightable
+    end
+
     local picks = {};                                  -- label -> candidate index (nil = empty)
+    local cnt = {};                                    -- setId -> pieces among picks + baseComposition
+    for sid, n in pairs(baseCnt) do cnt[sid] = n; end
+    -- Assignment wrapper: keeps the per-set piece counts incremental, O(1) per
+    -- probe (a candidate's setIds list is almost always length 0 or 1). Counting
+    -- is per LABEL with no uniqueness check -- two owned copies in Ring1/Ring2
+    -- count as two, the verified server semantics (design #7.2).
+    local function setPick(label, ci)
+        local old = picks[label];
+        if old == ci then return; end
+        if candSets ~= nil then
+            local cs = candSets[label];
+            local oldIds = (old ~= nil) and cs[old] or nil;
+            if oldIds ~= nil then
+                for _, sid in ipairs(oldIds) do cnt[sid] = cnt[sid] - 1; end
+            end
+            local newIds = (ci ~= nil) and cs[ci] or nil;
+            if newIds ~= nil then
+                for _, sid in ipairs(newIds) do cnt[sid] = (cnt[sid] or 0) + 1; end
+            end
+        end
+        picks[label] = ci;
+    end
+
     local function totalScore()
         local t = 0;
         for wi, w in ipairs(wl) do
@@ -1226,6 +1329,13 @@ function M.optimizePicks(pools, weights, opts)
             for _, label in ipairs(labels) do
                 local ci = picks[label];
                 if ci ~= nil then sum = sum + vecs[label][ci][wi]; end
+            end
+            -- Active set tiers land INSIDE the cap fold: bonuses share the cap
+            -- budget with regular stats (capped Haste from a set is still capped).
+            for si = 1, #relList do
+                local sid = relList[si];
+                local tv = tierVec[sid][cnt[sid] or 0];
+                if tv ~= nil then sum = sum + tv[wi]; end
             end
             if w.cap ~= nil and sum > w.cap then sum = w.cap; end
             t = t + w.perUnit * sum;
@@ -1244,24 +1354,175 @@ function M.optimizePicks(pools, weights, opts)
     end
 
     local EPS = 1e-6;
-    for _ = 1, 8 do
-        local improved = false;
-        for _, label in ipairs(labels) do
-            local saved = picks[label];
-            picks[label] = nil;
-            local bestIdx, bestSc = nil, totalScore();  -- EMPTY is the tie-winning baseline
-            for ci = 1, #pools[label] do
-                if not conflicts(label, ci) then
-                    picks[label] = ci;
-                    local sc = totalScore();
-                    if sc > bestSc + EPS then bestSc = sc; bestIdx = ci; end
+    local function climb()
+        for _ = 1, 8 do
+            local improved = false;
+            for _, label in ipairs(labels) do
+                local saved = picks[label];
+                setPick(label, nil);
+                local bestIdx, bestSc = nil, totalScore();  -- EMPTY is the tie-winning baseline
+                for ci = 1, #pools[label] do
+                    if not conflicts(label, ci) then
+                        setPick(label, ci);
+                        local sc = totalScore();
+                        if sc > bestSc + EPS then bestSc = sc; bestIdx = ci; end
+                    end
+                end
+                setPick(label, bestIdx);
+                if bestIdx ~= saved then improved = true; end
+            end
+            if not improved then break; end
+        end
+    end
+    climb();
+
+    -- ---- set-seeded restarts (design #7.3, ADR 0011) ------------------------
+    -- Single-slot hill climbing provably cannot ENTER a k-piece bonus whose
+    -- pieces are each a solo loss (every single insertion scores <= 0). Restart
+    -- from the converged baseline with a feasible set's pieces force-placed,
+    -- climb again, and keep the result only on STRICT improvement -- monotone
+    -- acceptance: the answer is never worse than the plain climb. Seeded pieces
+    -- are not pinned; a seed that doesn't pay for itself is evicted by the climb
+    -- and the restart dissolves back to the baseline answer.
+    if eff ~= nil then
+        local function snapshot()
+            local s = {};
+            for _, l in ipairs(labels) do s[l] = picks[l]; end
+            return s;
+        end
+        local function restore(s)
+            for _, l in ipairs(labels) do setPick(l, s[l]); end
+        end
+        -- Solo projected value, uncapped -- ordering / least-loss heuristics only
+        -- (the true objective is always totalScore).
+        local function soloVal(label, ci)
+            local v, vec = 0, vecs[label][ci];
+            for wi = 1, #wl do v = v + wl[wi].perUnit * vec[wi]; end
+            return v;
+        end
+        -- Placement plan for one set against a reference assignment: (label, ci)
+        -- options holding a piece, best candidate first, one per label, the
+        -- least-losing incumbent as tiebreak, capped at the tier ceiling
+        -- (alternate-piece lists can EXCEED it -- 37 shipped sets do).
+        local function planFor(sid, refPicks)
+            local options = {};
+            for _, label in ipairs(labels) do
+                for ci, sids in pairs(candSets[label]) do
+                    for _, s in ipairs(sids) do
+                        if s == sid then
+                            local inc = refPicks[label];
+                            options[#options + 1] = {
+                                label = label, ci = ci,
+                                val  = soloVal(label, ci),
+                                loss = (inc ~= nil) and soloVal(label, inc) or 0,
+                            };
+                            break;
+                        end
+                    end
                 end
             end
-            picks[label] = bestIdx;
-            if bestIdx ~= saved then improved = true; end
+            table.sort(options, function(a, b)
+                if a.val ~= b.val then return a.val > b.val; end
+                if a.loss ~= b.loss then return a.loss < b.loss; end
+                if a.label ~= b.label then return a.label < b.label; end
+                return a.ci < b.ci;
+            end);
+            local plan, used, refs = {}, {}, {};
+            local capPieces = 0;
+            for c in pairs(tierVec[sid]) do capPieces = math.max(capPieces, c); end
+            for _, o in ipairs(options) do
+                if #plan >= capPieces then break; end
+                if not used[o.label] then
+                    local ref = pools[o.label][o.ci].ref;
+                    local clash = false;
+                    if type(opts.conflict) == 'function' then
+                        for _, r2 in ipairs(refs) do
+                            if opts.conflict(ref, r2) == true then clash = true; break; end
+                        end
+                    end
+                    if not clash then
+                        plan[#plan + 1] = o;
+                        used[o.label] = true;
+                        refs[#refs + 1] = ref;
+                    end
+                end
+            end
+            return plan, used;
         end
-        if not improved then break; end
+        local B0 = snapshot();
+        local best, bestPicks = totalScore(), B0;
+        -- Relevant sets by DESCENDING best-tier projected value (ascending setId
+        -- ties): the hard seed caps then drop the least valuable sets, never
+        -- arbitrary ones. Net-negative projections never seed.
+        local ranked = {};
+        for _, sid in ipairs(relList) do
+            local top, topC = nil, 0;
+            for c, v in pairs(tierVec[sid]) do
+                if c > topC then topC = c; top = v; end
+            end
+            local val = 0;
+            if top ~= nil then
+                for wi = 1, #wl do val = val + wl[wi].perUnit * top[wi]; end
+            end
+            if val > EPS then ranked[#ranked + 1] = { sid = sid, val = val }; end
+        end
+        table.sort(ranked, function(a, b)
+            if a.val ~= b.val then return a.val > b.val; end
+            return a.sid < b.sid;
+        end);
+        local SEED_SINGLE_CAP, SEED_TOTAL_CAP = 6, 12;   -- hard deterministic ceilings
+        local seeds = {};                                -- each: array of setIds
+        local plans = {};                                -- sid -> { plan, used } against B0
+        local nSingles = math.min(#ranked, SEED_SINGLE_CAP);
+        for i = 1, nSingles do
+            local sid = ranked[i].sid;
+            local plan, used = planFor(sid, B0);
+            plans[sid] = { plan = plan, used = used };
+            seeds[#seeds + 1] = { sid };
+        end
+        for i = 1, nSingles do
+            for j = i + 1, nSingles do
+                if #seeds >= SEED_TOTAL_CAP then break; end
+                local a, b = ranked[i].sid, ranked[j].sid;
+                local disjoint = true;
+                for l in pairs(plans[a].used) do
+                    if plans[b].used[l] then disjoint = false; break; end
+                end
+                if disjoint then seeds[#seeds + 1] = { a, b }; end
+            end
+            if #seeds >= SEED_TOTAL_CAP then break; end
+        end
+        for _, seed in ipairs(seeds) do
+            restore(B0);
+            for _, sid in ipairs(seed) do
+                for _, o in ipairs(plans[sid].plan) do
+                    local ref = pools[o.label][o.ci].ref;
+                    if type(opts.conflict) == 'function' then
+                        -- one physical copy: a conflicting pick elsewhere yields
+                        -- its slot (the climb refills it)
+                        for _, other in ipairs(labels) do
+                            if other ~= o.label and picks[other] ~= nil
+                               and opts.conflict(ref, pools[other][picks[other]].ref) == true then
+                                setPick(other, nil);
+                            end
+                        end
+                    end
+                    setPick(o.label, o.ci);
+                end
+            end
+            local feasible = true;
+            for _, sid in ipairs(seed) do
+                if (cnt[sid] or 0) < minOf[sid] then feasible = false; break; end
+            end
+            if feasible then
+                climb();
+                local t = totalScore();
+                if t > best + EPS then best = t; bestPicks = snapshot(); end
+            end
+        end
+        restore(bestPicks);
     end
+
     return { picks = picks, total = totalScore() };
 end
 
@@ -1405,13 +1666,44 @@ function M.buildBestSet(opts)
     -- capped set total, so cap budget goes to the pieces that bring the most
     -- alongside it, and redundant single-stat pieces stay home. Ear/Ring share a
     -- pool with a distinct-entry conflict rule.
+    local effects = hasGfx and { setsOf = gfx.setsOf, setTier = gfx.setTier } or nil;
+    -- Set relevance memo for the pool augmentation below: does ANY tier of this
+    -- set move a weighted stat? (Probed through setTier; shipped tiers top out
+    -- at 5 pieces, 16 is a safe ceiling.)
+    local relMemo = {};
+    local function setMatters(sid)
+        if relMemo[sid] == nil then
+            local rel = false;
+            for c = 2, 16 do
+                local d = gfx.setTier(sid, c);
+                if d ~= nil and M.score(d, weights) ~= 0 then rel = true; break; end
+            end
+            relMemo[sid] = rel;
+        end
+        return relMemo[sid];
+    end
     local pools = {};
     local function poolFor(slotKey)
         local ranked = rankSlot(slotKey, function(stats) return M.score(stats, weights); end, job, level);
         local p = {};
         for i, r in ipairs(ranked) do
-            if i > 20 then break; end                  -- top 20 per slot is plenty
-            p[#p + 1] = { stats = r.stats, ref = r.entry, score = r.score };
+            if i <= 20 then                            -- top 20 per slot is plenty...
+                p[#p + 1] = { stats = r.stats, ref = r.entry, score = r.score };
+            elseif effects ~= nil and r.entry.Id ~= nil then
+                -- ...APPENDED (never replacing -- the augmentation is add-only)
+                -- by any member of a weight-relevant gear set: a piece that is
+                -- individually worthless can pay via its bonus, and the seeded
+                -- restarts need it in the pool to try it (design #7.3a).
+                local sids = gfx.setsOf(r.entry.Id);
+                if sids ~= nil then
+                    for _, sid in ipairs(sids) do
+                        if setMatters(sid) then
+                            p[#p + 1] = { stats = r.stats, ref = r.entry, score = r.score };
+                            break;
+                        end
+                    end
+                end
+            end
         end
         if #p == 0 then return nil; end
         return p;
@@ -1435,6 +1727,7 @@ function M.buildBestSet(opts)
             return a == b or (a.Id ~= nil and a.Id == b.Id)
                 or string.lower(tostring(a.Name or '?')) == string.lower(tostring(b.Name or '??'));
         end,
+        effects = effects,
     });
     local out = { slots = {}, order = {}, perSlot = {}, total = res.total,
                   job = job, level = level, mode = 'weights' };
@@ -1456,6 +1749,10 @@ end
 -- ---------------------------------------------------------------------------
 -- M.buildMaxStatSet(statKey, opts) -> set
 -- Set that maximizes ONE raw stat (alias-summed), e.g. best Accuracy or STR set.
+-- Deliberately SET-BLIND (ADR 0011): this greedy path is raw-single-stat by
+-- design and owns the Range/Ammo legality rule; gear-set bonuses are credited
+-- only in the optimizePicks paths. A set bonus can therefore never change
+-- (and in particular never legalize) a Range/Ammo pairing here.
 -- ---------------------------------------------------------------------------
 function M.buildMaxStatSet(statKey, opts)
     opts = opts or {};

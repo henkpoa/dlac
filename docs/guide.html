@@ -152,6 +152,25 @@ rules via the <b>B</b> (behaviour) button: a level range (<code>min 30 / max 54<
 a <span class="mode">mode gate</span> (see Modes below). That's how one set stays correct
 from level 10 to 75.</div>
 
+<h3>Set bonuses</h3>
+<p>Some gear only shows its worth in company: Lava's + Kusha's Rings together add
+ATT+6 / ACC+12 / DEF+6, the Iron Ram pieces grant a bonus that grows with every piece
+worn, and so on. dlac knows all of these sets and shows them wherever the item shows:</p>
+<ul>
+  <li><b>Hover any set piece</b> and its tooltip lists the bonus ladder (what 2, 3, 4, 5
+      pieces grant), which partner pieces complete it, and a <code>*</code> on every
+      partner you already own.</li>
+  <li><b>Worn totals and Set totals</b> include active bonuses in the numbers, with a
+      caption underneath naming the set — gold when active
+      (<i>Set: Lava's Ring + Kusha's Ring (2/2)</i>), dim when you're a piece short
+      (<i>1/2 — bonus at 2</i>), so a near-miss is visible at a glance.</li>
+  <li><b>Auto-build counts them too:</b> when weights are set, the optimizer scores whole
+      combinations — two individually modest rings win when their combined bonus
+      arithmetically beats the alternatives, and lose when it doesn't. (The plain
+      <code>/dl max &lt;stat&gt;</code> single-stat command stays a raw per-item
+      maximizer and ignores set bonuses.)</li>
+</ul>
+
 <h2 id="triggers">4. Triggers — when sets get worn</h2>
 <p>A <b>trigger rule</b> says: <i>when this happens, wear that set</i>. Rules live in the
 <b>Triggers</b> tab, grouped by the game event that fires them. Several rules can match at
