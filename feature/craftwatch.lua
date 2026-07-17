@@ -243,7 +243,7 @@ function M.gpReady() gpLoad(); return M.gpSeen or M.gpPersisted; end
 -- ungated, and it replies with s2c 0x113). VERIFIED 2026-07-13: a real GP
 -- turn-in reflected through this request (/dl craft gp matched the currency
 -- menu), so it now also fires automatically -- once on login (tick below)
--- and EVERY entry into the Auto Craft Set view (triggersui passes force=true:
+-- and EVERY entry into the Auto Craft Set view (automationsui passes force=true:
 -- Henrik wants each visit fresh, so entry skips the 5s debounce; a 1s floor
 -- still kills flicker/double-click dupes). Unforced calls keep the 5s gap --
 -- still never call this unconditionally from a render loop.
@@ -430,18 +430,18 @@ local function ensureManifestFresh()
     local first = not M._craftRescanned;
     M._craftRescanned = true;
     pcall(function()
-        local tg = require('dlac\\ui\\triggersui');
-        if type(tg.rescanAutogear) ~= 'function' then return; end
+        local au = require('dlac\\ui\\automationsui');
+        if type(au.rescanAutogear) ~= 'function' then return; end
         -- ALWAYS regenerate on the first call this session (guarantees the
         -- current AUTO_FMT ladders even if manifestStale errors); after that,
         -- only when the on-disk schema is behind.
         local stale = first;
         if not first then
             pcall(function()
-                if type(tg.manifestStale) == 'function' then stale = tg.manifestStale(); end
+                if type(au.manifestStale) == 'function' then stale = au.manifestStale(); end
             end);
         end
-        if stale then tg.rescanAutogear(); end
+        if stale then au.rescanAutogear(); end
     end);
 end
 

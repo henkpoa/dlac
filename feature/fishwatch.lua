@@ -152,15 +152,15 @@ local function ensureManifestFresh()
     local first = not M._rescanned;
     M._rescanned = true;
     pcall(function()
-        local tg = require('dlac\\ui\\triggersui');
-        if type(tg.rescanAutogear) ~= 'function' then return; end
+        local au = require('dlac\\ui\\automationsui');
+        if type(au.rescanAutogear) ~= 'function' then return; end
         local stale = first;
         if not first then
             pcall(function()
-                if type(tg.manifestStale) == 'function' then stale = tg.manifestStale(); end
+                if type(au.manifestStale) == 'function' then stale = au.manifestStale(); end
             end);
         end
-        if stale then tg.rescanAutogear(); end
+        if stale then au.rescanAutogear(); end
     end);
 end
 

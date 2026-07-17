@@ -8,7 +8,8 @@
 --
 -- Wiring: triggersui configures deps (setsRoot / lookupByName / trigger model)
 -- and renders the "Gear warnings" section; chat warnings fire on job change
--- (rescanAutogear) and after a gearmove move; /dl gearcheck runs it on demand.
+-- (automationsui.rescanAutogear -- the manifest-rescan cadence) and after a
+-- gearmove move; /dl gearcheck runs it on demand.
 -- Pure data module: no imgui here, headless-testable.
 
 local M = {};

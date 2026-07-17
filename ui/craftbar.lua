@@ -113,7 +113,7 @@ local BAR_MIN_W = 430;   -- min CONTENT width (Henrik: wider bar, centered rows;
                          -- fits the goal row + Last Synth with air to spare)
 
 -- Center the next row of known width within the bar: Dummy + SameLine(indent)
--- (the triggersui craft-glyph pattern).
+-- (the automationsui craft-glyph pattern).
 local function centerNext(availW, rowW)
     local indent = math.max(0, math.floor((availW - rowW) / 2));
     if indent > 0 then imgui.Dummy({ 0, 0 }); imgui.SameLine(indent); end

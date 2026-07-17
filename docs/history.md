@@ -2522,3 +2522,32 @@ quality mark kept visible ("Ares +1 set" distinct from base "Ares set"),
 uihost service; smoke S41-S44 pin Ares/Ares+1/Mdk.+1 against the REAL catalog
 plus a sweep: every one of the 126 labels is a pair or "... set", never an
 HQ-item shape. 1234 + 135 green.
+
+## Session "automationsui extraction — the migration completed" (2026-07-18, overnight)
+
+Henrik, heading to bed: "complete the automation tab migration -- last time we
+did the cheap way and let a lot be left." The cheap move (07-17) promoted
+Automations to its own MAIN tab but left the renderer + manifest machinery in
+triggersui behind an `M.renderAutomationsTab` wrapper, with the extraction
+spec'd in architecture.md for "when triggersui next grows."
+
+**What moved:** the whole ~1,100-line automation block (`ELEMENTS8` through the
+tab entry) went to `ui/automationsui.lua` verbatim -- manifest derivation
+(staves/obis ADR 0004, MaxMP batteries, craft/HELM/fish ladders, `AUTO_FMT` 8),
+the self-heal, the list/detail views, and the seams `rescanAutogear` /
+`manifestStale` / `currentFmt`. The tab entry is `M.renderTab`; the dead
+`noHeader` CollapsingHeader path (unreachable since the tab promotion) was
+dropped rather than carried. triggersui 3713 → 2609 lines, 30 top-level locals
+freed (plus 3 more: its `levelstats` require turned out to be automation-only).
+
+**The seam repoint is COMPLETE -- no forwarders.** craftwatch, helmwatch and
+fishwatch's `ensureManifestFresh` and gearui's syncflags rescan hook all
+require automationsui now (the commit note had said "repoint them or leave
+zero-local forwarders"; forwarders would have split the manifest cache into
+two modules' copies that could disagree about staleness). gearui builds ONE
+deps table and hands it to both `trigui.init` and `autoui.init`, so
+helmui/fishui -- which take the whole table per call -- kept their contract
+bit-for-bit. smoke_ui grew S140-S151: the new module loads headless, every
+seam exists and no-ops safely uninitialized, and triggersui NO LONGER carries
+`rescanAutogear`/`manifestStale`/`renderAutomationsTab` (the zombie-forwarder
+guard). 1234 + 147 green.

@@ -1,7 +1,7 @@
 -- fishui.lua -- the fishing panel (Automations -> "Auto Fish Set").
--- docs/design/fishing-gear.md #2. helmui's sibling: rendered from triggersui's
--- detail delegation with the SAME deps table; own module because triggersui
--- rides the 200-local cap. Coverage/status live ABOVE the imgui guard so the
+-- docs/design/fishing-gear.md #2. helmui's sibling: rendered from
+-- automationsui's detail delegation with the SAME deps table.
+-- Coverage/status live ABOVE the imgui guard so the
 -- headless tests reach them (improvement over helmui, whose guard hides all).
 --
 -- Sections: status line (skill / GP / VP) -> gear matrix (BASE / ANGLER'S /

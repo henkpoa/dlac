@@ -298,15 +298,16 @@ agent; the per-repo setup lives in `docs/agents/`.
   Validate any new API field against `tools/api_cache/<id>.json` for an item you KNOW is
   unimplemented before trusting it. Runbook: `tools/README.md` "The junk rows";
   provenance: architecture.md's catalog section; story: history.md round 2.
-- **main**: healthy; **1071 tests green + 125 smoke_ui** — current as of 2026-07-17
-  (Automations promoted to its own MAIN tab right of Triggers; renderer stayed in
-  triggersui — `M.renderAutomationsTab`; extracting the ~1,000-line automation block to
-  `ui/automationsui.lua` would free 30 of triggersui's 123/200 top-level locals, see
-  architecture.md § triggersui). Note `tests\run_tests.lua` has now hit the **200-local
+- **main**: healthy; **1234 tests green + 147 smoke_ui** — current as of 2026-07-18
+  (the automation block — manifest machinery + the Automations MAIN tab — now lives in
+  its own `ui/automationsui.lua`; seams `rescanAutogear`/`manifestStale`/`currentFmt`
+  and the tab entry `renderTab` moved WITH it, no forwarders left on triggersui;
+  craftwatch/helmwatch/fishwatch + gearui's sync hook require automationsui now, see
+  architecture.md § automationsui). Note `tests\run_tests.lua` has now hit the **200-local
   cap** itself: new sections must be `(function() ... end)()`, not `do ... end` (a do
   block shares the chunk's budget; a function body gets its own 200). The whole **crafting-gear system** landed here (see
   history.md "crafting system + catalog pipeline"): read that section before touching
-  craftwatch/craftbar/dispatch-overlay/triggersui-craft code.
+  craftwatch/craftbar/dispatch-overlay/automationsui-craft code.
   - **Craft gear model (know this before editing):** MANUAL — you pick craft + goal +
     on/off in the craft bar (`craftbar.lua`) or Automations panel; craftwatch WRITES
     `<char>\dlac\craftstate.lua`; the **dispatch engine OVERLAYS** the craft gear on
@@ -338,7 +339,7 @@ agent; the per-repo setup lives in `docs/agents/`.
     (Surveyor-major, stat-driven from catalog `HELM`/`Surveyor` keys + the
     semantic hat map). Craft-vs-helm both-on → newer `at` stamp wins (engine
     arbitration, no cross-requires). New: `helmwatch.lua`, `helmbar.lua`,
-    `helmui.lua` (own module — triggersui rides the 200-local cap),
+    `helmui.lua` (own module; rendered from automationsui's detail views),
     `assets/helm/*.png`. Venture points ride CatsEyeXI's custom 0x1A4
     request/response (trove's protocol, reimplemented); `!ventures` replies are
     0x017-captured raw until a field capture pins the private module's format;

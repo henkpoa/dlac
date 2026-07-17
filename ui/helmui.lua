@@ -1,11 +1,11 @@
 --[[
     dlac/helmui.lua -- the Auto HELM Set panel (docs/design/helm-gear.md).
 
-    Rendered inside triggersui's Automations detail (auto.view == 'helm');
-    lives in its OWN module because triggersui rides the LuaJIT 200-local
-    chunk cap -- triggersui only pcall-requires this at render time and hands
-    over its deps table (lookupByName / ownedCounts / renderIcon /
-    itemTooltip / playerJob -- the trigui.init injection).
+    Rendered inside automationsui's Automations detail (auto.view == 'helm');
+    its OWN module (predates the automations extraction) -- automationsui only
+    pcall-requires this at render time and hands over its deps table
+    (lookupByName / ownedCounts / renderIcon / itemTooltip / playerJob --
+    the gearui init injection).
 
     Layout (Henrik's spec, verbatim intent):
       four columns, rows height-aligned --
@@ -77,7 +77,7 @@ end
 M.texture = texture;   -- helmbar reuses the same loader/cache
 
 -- ---------------------------------------------------------------------------
--- ownership (the triggersui ownedRec pattern, deps passed per call)
+-- ownership (the automationsui ownedRec pattern, deps passed per call)
 -- ---------------------------------------------------------------------------
 local function ownedRec(deps, name)
     if deps == nil or deps.lookupByName == nil then return nil; end
@@ -207,7 +207,7 @@ end
 M.maxLevel = 4;
 
 -- ---------------------------------------------------------------------------
--- The detail view (triggersui: auto.view == 'helm').
+-- The detail view (automationsui: auto.view == 'helm').
 -- ---------------------------------------------------------------------------
 function M.render(deps, availW)
     local hwok, hw = pcall(require, 'dlac\\feature\\helmwatch');

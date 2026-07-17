@@ -25,8 +25,8 @@ utils.lua  dispatch.lua  chatfmt.lua  profiles.lua  gear.lua
                            see "Dual identity" below before touching their paths.
 PROFILE_TEMPLATE.lua     what Setup writes into a user's <JOB>.lua
 
-ui/        imgui modules: gearui, triggersui, equippedui, profilesmenu, setupui,
-           weightsui, craftbar, uistyle, uihost, itemicons, filetex, floatgear
+ui/        imgui modules: gearui, triggersui, automationsui, equippedui, profilesmenu,
+           setupui, weightsui, craftbar, uistyle, uihost, itemicons, filetex, floatgear
 data/      generated / static tables: catalog, crafts, fishdb, spells, abilities,
            statdefs, levelscaling, levelstats
 gear/      the gear pipeline: gearoptim, gearimport, gearexport, gearcheck, gearfmt,
@@ -66,7 +66,7 @@ Requires `common` and `chatfmt`, then loads a folder-qualified list — `gear`,
 `feature\useitem`, `feature\craftwatch`, `ui\craftbar`, `feature\helmwatch`,
 `ui\helmbar`, `feature\fishwatch`, `ui\fishbar`, `feature\lockstyle`, `ui\gearui`;
 everything else (`utils`, `dispatch`, `gear\setmanager`, `ui\triggersui`,
-`gear\profilesets`, `gear\gearcheck`) loads transitively. That list is built by string
+`ui\automationsui`, `gear\profilesets`, `gear\gearcheck`) loads transitively. That list is built by string
 concat (`'dlac\\' .. mod`), so a grep for a literal `require('dlac\\gearexport')` finds
 nothing — the loop is the only loader for some modules.
 **Writes** `<char>\dlac\{utils,dispatch,chatfmt,profiles}.lua` every load (always flat —
@@ -192,23 +192,13 @@ pumped from gearui's d3d_present whether or not the window is open): the engine 
 the file from LAC's state, so a stale file would dress you at login. "Lock" still means
 the old, near-opposite thing (`M.locks` = engine ignores the slot).
 
-### ui/triggersui.lua — Triggers tab + Automations tab
-GUI editor for the dispatch engine's data: rules per handler, mode toggle buttons, and
-the Automations manifest builder. Split out of gearui for the 200-local cap. Commit
-rewrites the trigger file via `dispatch.serializeTriggers` and pings the engine to
-hot-reload. Writes `<char>\dlac\triggers\<JOB>.lua` and `<char>\dlac\autogear.lua`.
-
-**Automations is its own MAIN tab** (right of Triggers, 2026-07-17 — was a nav section
-inside Triggers) but still renders from this module: gearui registers a thin tab that
-calls `M.renderAutomationsTab` (M.render's guard ladder + `renderAutomations(true)`);
-the machinery never moved. **Noted 200-local relief:** the ~1,000-line automation block
-(`ELEMENTS8` through `renderAutomations`) owns 30 of triggersui's 123 top-level locals
-(cap 200) and nothing outside the block references them — extracting it to
-`ui/automationsui.lua` frees exactly those 30 slots (123 → 93, ~47% of the cap). The
-seams that move with it: `M.rescanAutogear` / `M.manifestStale` / `M.currentFmt`
-(craftwatch + helmwatch call these ON TRIGGERSUI — repoint them or leave zero-local
-forwarders), and the new module needs its own `deps` handoff (gearui `init`, the
-helmui pattern). Do it when triggersui next grows, not before.
+### ui/triggersui.lua — Triggers tab (+ Groups section)
+GUI editor for the dispatch engine's data: rules per handler, mode toggle buttons.
+Split out of gearui for the 200-local cap. Commit rewrites the trigger file via
+`dispatch.serializeTriggers` and pings the engine to hot-reload. Writes
+`<char>\dlac\triggers\<JOB>.lua`. The Automations machinery lived here until
+2026-07-18 — it is now `ui/automationsui.lua` (below), which freed 30 of this
+module's 123 top-level locals (cap 200; the "noted 200-local relief", done).
 
 Also owns the **Groups section** (`M.renderGroups`, issue #25 / ADR 0009) — a nav
 section inside the Triggers tab (NOT a uihost tab; smoke_ui asserts `host.get('groups')`
@@ -219,6 +209,25 @@ dropdown of the job's groups, and a rule pointing at a missing group is surfaced
 with a missing set). Members are added by free-name typing or from a searchable,
 job-filtered spell/ability browse-list with multi-mark (issue #26, G3 — pure list/search
 core `gear/actionpicker.lua`).
+
+### ui/automationsui.lua — Automations tab + the manifest machinery
+The whole automations block, extracted verbatim from triggersui 2026-07-18 (it owned
+30 of triggersui's top-level locals and shared nothing with the trigger editor beyond
+the deps table). Owns DERIVING the manifest — staves/obis/Iridescence (ADR 0004),
+MaxMP battery ladders, craft/HELM/fish gear ladders — from the player's bags via
+`deps.ownedList`/`lookupByName`, and writes `<char>\dlac\autogear.lua` (`AUTO_FMT`
+schema; an outdated on-disk manifest self-heals on render). The LAC-state engine
+hot-reloads that file and resolves the `dlac:` virtual markers from it.
+
+gearui builds **one deps table** and hands it to BOTH `trigui.init` and `autoui.init`
+— helmui/fishui take the whole table per call from this module's detail views, so
+every downstream contract kept its pre-extraction shape. The rescan seams live here:
+`M.rescanAutogear` (manifest regen + gearcheck chat warn, called by gearui's
+auto-sync hook at login/job-change/inventory cadence), `M.manifestStale` /
+`M.currentFmt` (craftwatch, helmwatch and fishwatch force a regen before the engine
+reads stale ladders). `M.renderTab` is the tab entry point (guard ladder + login
+gate). No forwarders were left on triggersui — smoke_ui S140–S151 pin both the new
+home and the absence of the old one.
 
 ### gear/groupsmodel.lua — Trigger-Groups model core (pure)
 The Ashita/imgui/file-IO-free CRUD + name/member validation the Groups tab drives (issue
@@ -499,7 +508,7 @@ Per-character, under `<install>\config\addons\luashitacast\<Char>_<ServerId>\`
 | `dlac\profiles\<Name>\sets\<JOB>.lua` | setmanager (Sets tab) | committed dynamic sets |
 | `dlac\profiles\<Name>\triggers\<JOB>.lua` | triggersui/dispatch | trigger rules |
 | `dlac\triggers\<JOB>.lua` | (legacy, read-only fallback) | pre-profile trigger rules |
-| `dlac\autogear.lua` | triggersui | automations manifest |
+| `dlac\autogear.lua` | automationsui | automations manifest |
 | `dlac\modestate.lua` | dispatch | mode/lock/VERSION mirror |
 | `dlac\uiflags.lua` | gearui | debug/autosync flags |
 | `dlac\gearweights.lua` | gearoptim | stat weights |

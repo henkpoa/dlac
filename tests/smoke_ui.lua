@@ -568,6 +568,36 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- 8. Automations machinery: its own module since 2026-07-18 (the noted
+--    triggersui 200-local relief, extraction complete). The seams that
+--    craftwatch/helmwatch/fishwatch and gearui's sync hook call must live on
+--    automationsui -- and must be GONE from triggersui: a zombie forwarder
+--    would split the manifest cache into two modules' copies, and the two
+--    could disagree about staleness.
+-- ---------------------------------------------------------------------------
+(function()
+    local ok, aui = pcall(require, 'dlac\\ui\\automationsui');
+    check('S140 automationsui loads headless', ok and type(aui) == 'table', true);
+    if not ok then return; end
+    check('S141 rescanAutogear seam', type(aui.rescanAutogear), 'function');
+    check('S142 manifestStale seam', type(aui.manifestStale), 'function');
+    check('S143 currentFmt seam', type(aui.currentFmt), 'function');
+    check('S144 manifest fmt is current (>= 8: fish ladders)',
+        type(aui.currentFmt()) == 'number' and aui.currentFmt() >= 8, true);
+    check('S145 renderTab entry point', type(aui.renderTab), 'function');
+    -- headless no-deps safety: every entry point is a safe no-op before init/login
+    check('S146 rescanAutogear is a safe no-op headless', pcall(aui.rescanAutogear), true);
+    check('S147 manifestStale headless says stale (no manifest readable)',
+        select(2, pcall(aui.manifestStale)), true);
+    check('S148 renderTab is a safe no-op headless', pcall(aui.renderTab), true);
+    -- the migration is COMPLETE: no automation seams left behind on triggersui
+    local tui = require('dlac\\ui\\triggersui');
+    check('S149 triggersui no longer carries rescanAutogear', tui.rescanAutogear, nil);
+    check('S150 triggersui no longer carries manifestStale', tui.manifestStale, nil);
+    check('S151 triggersui no longer carries renderAutomationsTab', tui.renderAutomationsTab, nil);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures > 0 then

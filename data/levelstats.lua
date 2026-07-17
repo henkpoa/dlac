@@ -11,7 +11,7 @@
     scaling pass through untouched, so callers can apply unconditionally.
 
     Consumed by gearui (worn/set totals, tooltips, row summaries, scoring),
-    gearoptim (slot ranking) and triggersui (automation manifest MP values) --
+    gearoptim (slot ranking) and automationsui (automation manifest MP values) --
     all through M.effective, THE central stats-at-level resolver. The dispatch
     engine never needs it -- it equips by name; the GAME applies the real latents.
 ]]--
@@ -28,7 +28,7 @@ end
 
 -- THE central "stats of this item at this level". Every section that reads item
 -- stats for a character resolves through here -- gearui (display, totals,
--- scoring), gearoptim (slot ranking), triggersui (automation manifests) -- so a
+-- scoring), gearoptim (slot ranking), automationsui (automation manifests) -- so a
 -- scaling item (Tamas Ring: MP 15 base, 29 at Lv74, 30 at 75) is never valued
 -- at its base stats by one section and its real stats by another. nil level or
 -- a non-scaling item returns rec.Stats untouched.

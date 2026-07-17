@@ -3308,8 +3308,8 @@ if inLac() then
             -- THIS side applies by building the 0x053 itself (_lockstylePacket
             -- above -- gFunc.LockStyle is gone, see the note there). gFunc
             -- presence still gates the handler to the LAC state: the same
-            -- command fires in the ADDON state too (gearui/triggersui require
-            -- dispatch there); one state, one printer.
+            -- command fires in the ADDON state too (the gearui module tree
+            -- requires dispatch there); one state, one printer.
             local g = rawget(_G, 'gFunc');
             if g == nil then return; end
             if string.lower(tostring(args[2] or '')) ~= 'apply' then

@@ -2051,36 +2051,49 @@ profsets.configure({ jobFile = jobFile });
 -- HERE (before renderSetsTab) so the Sets tab can call trigui.renderSetOptions.
 -- ---------------------------------------------------------------------------
 local trigui;
+local autoui;         -- ui\automationsui.lua: the Automations tab + manifest machinery
 local _modeSetRefs;   -- assigned after modeSetRefs (defined with the Sets machinery below);
                       -- the trigui deps closure above it must not capture a global
 do
+    -- ONE deps table for both modules: triggersui (Triggers/Groups editor) and
+    -- automationsui (the extracted Automations machinery) -- helmui/fishui take
+    -- the whole table per call from automationsui, so sharing keeps every
+    -- downstream contract identical to the pre-extraction shape.
+    local d = {
+        ui = ui,   -- the Trigger Monitor toggle rides gearui's persisted view-state
+        charBase = charBase, jobFile = jobFile, seedTriggersFile = setup.seedTriggersFile,
+        dynamicSetNames = profsets.dynamicSetNames, staticSetNames = profsets.staticSetNames,
+        liveSetNames = profsets.liveSetNames,   -- Dynamic + LIVE-file statics (no backup): trigger-target authority
+        lookupByName = lookupByName, ownedCounts = owned.counts,  -- automations manifest (owned staves/obis)
+        ownedList = buildOwned,                                   -- max-MP manifest (piece MP values)
+        allEquipList = buildAllEquip,                             -- AutoCraft panel: full catalog (owned OR not)
+        haveInBags = owned.haveInBags,                            -- max-MP batteries must be equippable NOW
+        playerJob = function()                                    -- battery job-eligibility (no gData in this state)
+            local abbr = nil;
+            pcall(function() abbr = JOB_ABBR[AshitaCore:GetMemoryManager():GetPlayer():GetMainJob()]; end);
+            return abbr;
+        end,
+        modeSetRefs = function(n, s)                              -- mode delete: set-entry references (scan / strip)
+            if _modeSetRefs == nil then return { refs = {}, touched = {} }; end
+            return _modeSetRefs(n, s);
+        end,
+        renderIcon = icons.renderIcon,                            -- automation detail views (item icons)
+        itemTooltip = renderItemTooltip,                          -- hover cards on automation gear lines
+        setsRoot = profsets.getSetsRoot,                          -- gearcheck: set contents for the audit
+    };
     local ok, m = pcall(require, "dlac\\ui\\triggersui");
     if ok and type(m) == 'table' then
         trigui = m;
-        pcall(trigui.init, {
-            ui = ui,   -- the Trigger Monitor toggle rides gearui's persisted view-state
-            charBase = charBase, jobFile = jobFile, seedTriggersFile = setup.seedTriggersFile,
-            dynamicSetNames = profsets.dynamicSetNames, staticSetNames = profsets.staticSetNames,
-            liveSetNames = profsets.liveSetNames,   -- Dynamic + LIVE-file statics (no backup): trigger-target authority
-            lookupByName = lookupByName, ownedCounts = owned.counts,  -- automations manifest (owned staves/obis)
-            ownedList = buildOwned,                                   -- max-MP manifest (piece MP values)
-            allEquipList = buildAllEquip,                             -- AutoCraft panel: full catalog (owned OR not)
-            haveInBags = owned.haveInBags,                            -- max-MP batteries must be equippable NOW
-            playerJob = function()                                    -- battery job-eligibility (no gData in this state)
-                local abbr = nil;
-                pcall(function() abbr = JOB_ABBR[AshitaCore:GetMemoryManager():GetPlayer():GetMainJob()]; end);
-                return abbr;
-            end,
-            modeSetRefs = function(n, s)                              -- mode delete: set-entry references (scan / strip)
-                if _modeSetRefs == nil then return { refs = {}, touched = {} }; end
-                return _modeSetRefs(n, s);
-            end,
-            renderIcon = icons.renderIcon,                            -- automation detail views (item icons)
-            itemTooltip = renderItemTooltip,                          -- hover cards on automation gear lines
-            setsRoot = profsets.getSetsRoot,                          -- gearcheck: set contents for the audit
-        });
+        pcall(trigui.init, d);
     else
         pcall(function() print('[dlac] triggersui failed to load: ' .. tostring(m)); end);
+    end
+    local aok, am = pcall(require, "dlac\\ui\\automationsui");
+    if aok and type(am) == 'table' then
+        autoui = am;
+        pcall(autoui.init, d);
+    else
+        pcall(function() print('[dlac] automationsui failed to load: ' .. tostring(am)); end);
     end
 end
 
@@ -3513,15 +3526,14 @@ host.register({ name = 'triggers', tabs = {
         else imgui.TextColored(COL.ERR, 'triggersui module unavailable.'); end
     end },
 } });
--- Automations: its own MAIN tab (was a nav section inside Triggers). The renderer
--- still lives in triggersui -- the manifest machinery shares that module's deps --
--- so this is a thin registration, not a module of its own (yet: extracting it is
--- the noted 200-local relief for triggersui, docs\architecture.md).
+-- Automations: its own MAIN tab (was a nav section inside Triggers), rendered by
+-- its own module since 2026-07-18 -- ui\automationsui.lua owns the whole manifest
+-- machinery (the extraction architecture.md used to note as "later").
 host.register({ name = 'automations', tabs = {
     { label = 'Automations', render = function(job, level)
-        if trigui ~= nil and type(trigui.renderAutomationsTab) == 'function' then
-            trigui.renderAutomationsTab(job, level);
-        else imgui.TextColored(COL.ERR, 'triggersui module unavailable.'); end
+        if autoui ~= nil and type(autoui.renderTab) == 'function' then
+            autoui.renderTab(job, level);
+        else imgui.TextColored(COL.ERR, 'automationsui module unavailable.'); end
     end },
 } });
 -- Groups is NOT a standalone tab -- it's a section inside the Triggers tab (under
@@ -3629,10 +3641,10 @@ sf.configure({
     -- staves/obis/Iridescence detection never needs a manual Rescan. Builds the
     -- name indexes first: the UI may never have been opened.
     rescanAutogear = function()
-        if trigui == nil or type(trigui.rescanAutogear) ~= 'function' then return; end
+        if autoui == nil or type(autoui.rescanAutogear) ~= 'function' then return; end
         buildOwned();
         buildAllEquip();
-        trigui.rescanAutogear();
+        autoui.rescanAutogear();
     end,
 });
 
