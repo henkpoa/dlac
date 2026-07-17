@@ -2626,7 +2626,7 @@ local function renderAddPopup(job, level)
         -- NOTE: dlac:AutoCraft is deliberately NOT offered here. Craft gear is a SET
         -- automation -- the engine overlays the whole craft set (dispatch.craftOverlay)
         -- when a craft is active -- not a per-slot pick. It is still configured under
-        -- Triggers > Automations, and the engine's per-slot resolveVirtual('dlac:AutoCraft')
+        -- the Automations tab, and the engine's per-slot resolveVirtual('dlac:AutoCraft')
         -- (used by the overlay) and any set that still carries the marker keep working.
         if vlist ~= nil then
             for vi, vd in ipairs(vlist) do
@@ -3266,6 +3266,17 @@ host.register({ name = 'sets', tabs = {
 host.register({ name = 'triggers', tabs = {
     { label = 'Triggers', render = function(job, level)
         if trigui ~= nil then trigui.render(job, level);
+        else imgui.TextColored(COL.ERR, 'triggersui module unavailable.'); end
+    end },
+} });
+-- Automations: its own MAIN tab (was a nav section inside Triggers). The renderer
+-- still lives in triggersui -- the manifest machinery shares that module's deps --
+-- so this is a thin registration, not a module of its own (yet: extracting it is
+-- the noted 200-local relief for triggersui, docs\architecture.md).
+host.register({ name = 'automations', tabs = {
+    { label = 'Automations', render = function(job, level)
+        if trigui ~= nil and type(trigui.renderAutomationsTab) == 'function' then
+            trigui.renderAutomationsTab(job, level);
         else imgui.TextColored(COL.ERR, 'triggersui module unavailable.'); end
     end },
 } });

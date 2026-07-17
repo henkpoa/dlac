@@ -286,7 +286,11 @@ agent; the per-repo setup lives in `docs/agents/`.
   Validate any new API field against `tools/api_cache/<id>.json` for an item you KNOW is
   unimplemented before trusting it. Runbook: `tools/README.md` "The junk rows";
   provenance: architecture.md's catalog section; story: history.md round 2.
-- **main**: healthy; **525 tests green + 120 smoke_ui** — current as of this session. Note `tests\run_tests.lua` has now hit the **200-local
+- **main**: healthy; **1071 tests green + 125 smoke_ui** — current as of 2026-07-17
+  (Automations promoted to its own MAIN tab right of Triggers; renderer stayed in
+  triggersui — `M.renderAutomationsTab`; extracting the ~1,000-line automation block to
+  `ui/automationsui.lua` would free 30 of triggersui's 123/200 top-level locals, see
+  architecture.md § triggersui). Note `tests\run_tests.lua` has now hit the **200-local
   cap** itself: new sections must be `(function() ... end)()`, not `do ... end` (a do
   block shares the chunk's budget; a function body gets its own 200). The whole **crafting-gear system** landed here (see
   history.md "crafting system + catalog pipeline"): read that section before touching

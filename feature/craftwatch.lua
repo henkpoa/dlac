@@ -705,7 +705,7 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
                 for _, slot in ipairs(SLOT_LABELS) do
                     if picks[slot] ~= nil then any = true; say(string.format('  %-6s %s', slot, picks[slot])); end
                 end
-                if not any then say('  (nothing -- Rescan owned gear in Triggers > Automations)'); end
+                if not any then say('  (nothing -- open the Automations tab; the manifest rescans itself)'); end
                 return;
             end
             -- bare /dl craft: status.

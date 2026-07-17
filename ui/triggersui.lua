@@ -1,5 +1,6 @@
 --[[
-    dlac/triggersui.lua -- the Triggers tab (GUI editor for the dispatch engine's data).
+    dlac/triggersui.lua -- the Triggers tab (GUI editor for the dispatch engine's data)
+    plus the Automations tab (its own main tab, right of Triggers; M.renderAutomationsTab).
 
     Split out of gearui.lua: LuaJIT caps a chunk at 200 local variables, and gearui's
     main chunk was already near it -- new tabs get their own module from now on.
@@ -1115,7 +1116,7 @@ local function autoCommit()
     end);
     if goal ~= 'nq' and goal ~= 'skillup' then goal = 'hq'; end
     local L = {
-        '-- dlac automation manifest -- written by the GUI (Triggers tab > Automations).',
+        '-- dlac automation manifest -- written by the GUI (Automations tab).',
         '-- Tiered Iridescence: per-element staves (NQ +1 / HQ +2, own element only) and',
         '-- the best universal weapon (all elements). The engine picks the higher tier',
         '-- per cast; ties go to the universal. WHETHER it fires is decided by the set:',
@@ -1256,10 +1257,11 @@ function M.manifestStale()
 end
 M.currentFmt = function() return AUTO_FMT; end
 
--- The Automations section (rendered under the handler sections): the manifest data +
--- rescan. The ON/OFF switches live per set (Sets tab -> Auto staff / Auto obi).
+-- The Automations tab (its OWN main tab, right of Triggers -- rendered via
+-- M.renderAutomationsTab below): the manifest data + rescan. The ON/OFF
+-- switches live per set (Sets tab -> Auto staff / Auto obi).
 -- ---------------------------------------------------------------------------
--- Automations section, two levels: the LIST (name + KIND + a status that lights
+-- Two levels: the LIST (name + KIND + a status that lights
 -- up brighter the better the automation is covered; red = nothing applicable)
 -- and a DETAIL box per automation (click a row; '< Automations' returns).
 -- ---------------------------------------------------------------------------
@@ -1769,6 +1771,24 @@ local function renderAutomations(noHeader)
     -- No rescan button, no status line: the scan runs itself (login, job
     -- change, any inventory change, schema self-heal) and each row already
     -- reports its own state -- extra chrome earned nothing (field request).
+end
+
+-- The Automations MAIN-tab entry point: gearui registers the tab and calls this.
+-- The machinery above stays in this module (it shares deps/ownedRec/usableRec with
+-- the manifest writer, and craftwatch/helmwatch reach it via M.rescanAutogear /
+-- M.manifestStale). Same guard ladder as M.render; login gate via autoPath (the
+-- manifest is per character -- nothing to show or write while logged out).
+function M.renderAutomationsTab(job, level)
+    if not hasImgui then return; end
+    if deps == nil then
+        imgui.TextColored(COL_ERR, 'Automations tab not initialized (gearui deps missing).');
+        return;
+    end
+    if autoPath() == nil then
+        imgui.TextColored(COL_DIM, 'Log in to manage automations.');
+        return;
+    end
+    pcall(renderAutomations, true);
 end
 
 -- ---------------------------------------------------------------------------
@@ -3395,6 +3415,10 @@ function M.render(job, level)
     -- ONE section at a time: a slim nav column picks what fills the big main
     -- area -- no stacked collapsibles, no permanently-scrolling sidebar.
     trig.section = trig.section or 'Modes';
+    -- Automations moved to its own MAIN tab (right of Triggers); a stale section
+    -- value would fall through to the handler branch below and render an empty
+    -- "Automations rules" list.
+    if trig.section == 'Automations' then trig.section = 'Modes'; end
     imgui.BeginChild('##trgnav', { 148, -1 }, false);
     local function navItem(id, label)
         imgui.PushID('trgnav_' .. id);
@@ -3408,7 +3432,6 @@ function M.render(job, level)
     for _, h in ipairs(TRIG_HANDLERS) do
         navItem(h, string.format('%s (%d)', h, #(trig.data[h] or {})));
     end
-    navItem('Automations', 'Automations');
     navItem('Warnings', string.format('Warnings (%d)', warnCount));
     imgui.EndChild();
     imgui.SameLine(0, 10);
@@ -3418,8 +3441,6 @@ function M.render(job, level)
         renderModesSection(defs, modes);
     elseif trig.section == 'Groups' then
         M.renderGroups(job, level);
-    elseif trig.section == 'Automations' then
-        pcall(renderAutomations, true);
     elseif trig.section == 'Warnings' then
         pcall(renderGearWarnings, true);
     else

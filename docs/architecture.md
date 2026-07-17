@@ -189,14 +189,28 @@ pumped from gearui's d3d_present whether or not the window is open): the engine 
 the file from LAC's state, so a stale file would dress you at login. "Lock" still means
 the old, near-opposite thing (`M.locks` = engine ignores the slot).
 
-### ui/triggersui.lua — Triggers tab
+### ui/triggersui.lua — Triggers tab + Automations tab
 GUI editor for the dispatch engine's data: rules per handler, mode toggle buttons, and
 the Automations manifest builder. Split out of gearui for the 200-local cap. Commit
 rewrites the trigger file via `dispatch.serializeTriggers` and pings the engine to
 hot-reload. Writes `<char>\dlac\triggers\<JOB>.lua` and `<char>\dlac\autogear.lua`.
-Also owns the **Groups tab** (`M.renderGroups`, issue #25 / ADR 0009) — a separate
-top-level uihost tab (registered by gearui after Triggers) that edits the *same* file's
-`Groups` section, so both tabs share one `trig.data` / one Commit. The pure CRUD +
+
+**Automations is its own MAIN tab** (right of Triggers, 2026-07-17 — was a nav section
+inside Triggers) but still renders from this module: gearui registers a thin tab that
+calls `M.renderAutomationsTab` (M.render's guard ladder + `renderAutomations(true)`);
+the machinery never moved. **Noted 200-local relief:** the ~1,000-line automation block
+(`ELEMENTS8` through `renderAutomations`) owns 30 of triggersui's 123 top-level locals
+(cap 200) and nothing outside the block references them — extracting it to
+`ui/automationsui.lua` frees exactly those 30 slots (123 → 93, ~47% of the cap). The
+seams that move with it: `M.rescanAutogear` / `M.manifestStale` / `M.currentFmt`
+(craftwatch + helmwatch call these ON TRIGGERSUI — repoint them or leave zero-local
+forwarders), and the new module needs its own `deps` handoff (gearui `init`, the
+helmui pattern). Do it when triggersui next grows, not before.
+
+Also owns the **Groups section** (`M.renderGroups`, issue #25 / ADR 0009) — a nav
+section inside the Triggers tab (NOT a uihost tab; smoke_ui asserts `host.get('groups')`
+is nil) that edits the *same* file's
+`Groups` section, so both surfaces share one `trig.data` / one Commit. The pure CRUD +
 name/member validation is `gear/groupsmodel.lua`; the `group` trigger condition's value is a
 dropdown of the job's groups, and a rule pointing at a missing group is surfaced (parity
 with a missing set). Members are added by free-name typing or from a searchable,

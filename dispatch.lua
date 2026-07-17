@@ -765,7 +765,7 @@ local function ensureAutoLoaded()
             -- Old boolean-format manifest: we can't know the universal weapon's name, so
             -- staff swapping stays suppressed. Tell the player how to fix it (once per change).
             if t.universal == nil and t.iridescence == true then
-                printwarn('autogear.lua is an old format (staff swapping is OFF) -- open the GUI: Triggers tab > Automations > "Rescan owned gear".');
+                printwarn('autogear.lua is an old format (staff swapping is OFF) -- open the GUI\'s Automations tab (the manifest self-heals on render).');
             end
         end
     end
@@ -826,7 +826,7 @@ end
 -- markers (dlac:AutoCraft); staff/obi ignore it (Main/Waist by convention).
 local function resolveVirtual(marker, ctx, slot)
     local a = ensureAutoLoaded();
-    if a == nil then return nil, 'no autogear manifest (Automations > Rescan owned gear)'; end
+    if a == nil then return nil, 'no autogear manifest (open the Automations tab -- it rescans itself)'; end
     local el = ctx.action and ctx.action.Element;
     if type(el) ~= 'string' or ci(el, 'Non-Elemental') then el = nil; end
     local lvl = playerLevel(ctx);
@@ -889,7 +889,7 @@ local function resolveVirtual(marker, ctx, slot)
         local gv = ctx.gatherOverride;
         if type(gv) ~= 'string' or gv == '' then return nil, 'no gather category (HELM bar)'; end
         local h = (type(a.helm) == 'table') and a.helm or nil;
-        if h == nil then return nil, 'no helm gear data (Automations > rescan)'; end
+        if h == nil then return nil, 'no helm gear data (open the Automations tab -- it rescans itself)'; end
         local slotKey = string.lower(tostring(slot or ''));
         if slotKey == 'head' and type(h.hats) == 'table' then
             local hat = h.hats[gv];
@@ -1447,7 +1447,7 @@ local function equipResolved(s, ctx)
             -- The mode is ON but the engine has no battery data: say so ONCE
             -- instead of silently doing nothing (the classic dead-mode symptom).
             M._mpWarned = true;
-            print('[dlac] maxmp is ON but the gear manifest has no MP data yet -- open Triggers > Automations (it self-heals) or relog, then act again.');
+            print('[dlac] maxmp is ON but the gear manifest has no MP data yet -- open the Automations tab (it self-heals) or relog, then act again.');
         end
     end
     -- AutoAcc (Type automation) decisions for this set; nil when it carries no
