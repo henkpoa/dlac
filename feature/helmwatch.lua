@@ -103,7 +103,9 @@ M.barVisible = false;      -- floating HELM bar (helmbar.lua) shown?
 M.activeGather = nil;      -- 'Harvesting' | 'Excavation' | 'Logging' | 'Mining'
 M.enabled = false;         -- "Set HELM Idle": session-only; starts OFF
 M.autoHelm = false;        -- "Auto HELM": detection-armed temporary overlay;
-                           -- PERSISTED (Henrik: remember until turned off)
+                           -- session-only like the idle switch (Henrik
+                           -- reversed the brief persist-it ruling: armed, a
+                           -- mere tab-target in passing re-dresses you)
 M._autoUntil = 0;          -- os.time() the auto hold runs to; each swing's
                            -- 0x034 result refreshes it (0 = not holding)
 M.AUTO_HOLD_S = 4;         -- hold tail after each swing's result. TIMING TRUTH
@@ -149,12 +151,11 @@ function M.loadState()
             local ok, t = pcall(chunk);
             if ok and type(t) == 'table' then
                 if type(t.gather) == 'string' and VALID[t.gather] == true then M.activeGather = t.gather; end
-                -- `enabled` (Set HELM Idle) is NOT restored: it starts OFF each
-                -- session (no gathering gear glued on at login). The category
-                -- AND the Auto HELM arming DO persist (Henrik: auto is
-                -- remembered until turned off -- it only dresses you while you
-                -- are actually swinging, so restoring it is harmless).
-                M.autoHelm = (t.auto == true);
+                -- NEITHER switch is restored -- both start OFF each session.
+                -- Auto HELM was briefly persisted; Henrik reversed it same day:
+                -- armed, it re-dresses you for merely TAB-TARGETING a Point in
+                -- passing, which is annoying when you are not out gathering.
+                -- Only the category (and the range setting) persist.
                 -- Detect-range override (0 / out-of-bounds = unset -> default,
                 -- so an old file tracks a future default change).
                 if type(t.range) == 'number' and t.range >= M.PROX_MIN and t.range <= M.PROX_MAX then
@@ -164,6 +165,7 @@ function M.loadState()
         end
     end);
     M.enabled = false;
+    M.autoHelm = false;
     M._autoUntil = 0;                     -- holds never survive a login
     saveState();                          -- sync the file for the engine
 end
@@ -883,7 +885,7 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
             if b == 'auto' then                        -- Auto HELM: detection-armed overlay
                 M.setAutoHelm(not M.isAutoHelm());
                 say('Auto HELM ' .. (M.isAutoHelm()
-                    and 'ON -- a gathering swing auto-equips that category\'s gear; normal idle gear returns after the last swing. Remembered across sessions.'
+                    and 'ON -- targeting a Point (or swinging) auto-equips that category\'s gear; normal gear returns after you leave. Starts off each session.'
                     or 'off.'));
                 return;
             end

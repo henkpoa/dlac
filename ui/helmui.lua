@@ -237,8 +237,8 @@ function M.render(deps, availW)
     imgui.TextColored(COL_TEXT, 'Auto HELM:');
     imgui.SameLine(0, 6);
     local rangeY = (hwok and type(hw.proxEnter) == 'function') and hw.proxEnter() or 10;
-    local AUTO_ON  = string.format('Auto HELM is ON (remembered across sessions): target a gathering Point within\n%d yalms (or just swing) and that category\'s gear equips itself; it stays on\nwhile you remain near the SAME point -- even though HELMing clears your\ntarget -- and your normal gear returns moments after you walk away.\nClick to turn off.', rangeY);
-    local AUTO_OFF = string.format('Target a gathering Point within %d yalms (or swing at one) and Auto HELM\nequips that category\'s gear; it stays on while you remain near that point\nand your normal gear returns moments after you leave. Remembered across\nsessions.', rangeY);
+    local AUTO_ON  = string.format('Auto HELM is ON: target a gathering Point within %d yalms (or just swing)\nand that category\'s gear equips itself; it stays on while you remain near\nthe SAME point -- even though HELMing clears your target -- and your normal\ngear returns moments after you walk away. Starts OFF each session.\nClick to turn off.', rangeY);
+    local AUTO_OFF = string.format('Target a gathering Point within %d yalms (or swing at one) and Auto HELM\nequips that category\'s gear; it stays on while you remain near that point\nand your normal gear returns moments after you leave. Starts OFF each\nsession (a tab-target in passing should not re-dress you).', rangeY);
     if pill ~= nil then
         if pill(autoOn, 'helmauto', AUTO_ON, AUTO_OFF) and hwok then hw.setAutoHelm(not autoOn); end
     else

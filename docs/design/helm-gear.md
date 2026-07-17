@@ -110,8 +110,10 @@ Henrik's SVGs — DONE), order Harvesting/Excavation/Logging/Mining. Per selecte
   "Rendered" = RenderFlags0 bit 0x200 (the storage-move `nomadNearestSq` precedent,
   field-proven look-alike resistance) — a relocated Point lingering in the entity
   array with a stale distance drops its render bit. Memory reads only; no packets.
-  **PERSISTED across sessions** until turned off — restoring it is harmless because it
-  only dresses you while you actually gather. Holds never survive a login.
+  **Session-only, starts OFF at login** (same rule as the idle switch — Henrik
+  reversed the brief persist-it ruling same day: armed, a mere tab-target on a Point
+  in passing re-dresses you, which is annoying when not out gathering). Holds never
+  survive a login either.
   Engine truth: `helmStateActive` = `enabled` OR (`auto` AND `autoUntil` in the future);
   detection bumps `at`, so a stale craft switch loses arbitration while you gather.
 
