@@ -162,6 +162,23 @@ local PLAYER_PARAMS = {
     { key = 'buff',    label = 'Has(De)Buff',    kind = 'buff', hint = 'a status effect (buff OR debuff) must be ON you --\ngear up while Asleep, or only while Refresh is active' },
     { key = 'buffNot', label = 'HasNot(De)Buff', kind = 'buff', hint = 'a status effect must NOT be on you' },
 };
+
+-- Pet conditions (engine v63): a second cascading entry, the Player shape --
+-- one 'Pet' row that cascades into these parameters. kind 'fixed' = the
+-- parameter IS the value (HasPet/NoPet are two spellings of ONE key, pet =
+-- true/false), so no value widget shows. The engine reads gData.GetPet(),
+-- which is nil with NO pet and when the pet's HPP is 0: a dead pet counts as
+-- none, and PetStatus/PetName never match petless.
+local PET_PARAMS = {
+    { key = 'pet',       label = 'HasPet',    kind = 'fixed', value = true,
+      hint = 'a living pet is out -- avatar, jug pet, automaton, wyvern, luopan.\n(a dead pet counts as NO pet)' },
+    { key = 'pet',       label = 'NoPet',     kind = 'fixed', value = false,
+      hint = 'no living pet out (a dead pet counts as none)' },
+    { key = 'petStatus', label = 'PetStatus', kind = 'list', items = { 'Idle', 'Engaged' },
+      hint = 'what the PET is doing. status = Idle + petStatus = Engaged is the classic\n"master stands back while the pet fights" posture. Never matches petless.' },
+    { key = 'petName',   label = 'PetName',   kind = 'text',
+      hint = 'exact pet name, case-insensitive -- Garuda, Fire Spirit, a jug pet\'s name --\nfor avatar-specific perpetuation gear and the like. Never matches petless.' },
+};
 do
     -- Precast/Midcast share one defs table (SPELL_CONDS) -- append ONCE per table.
     local seenDef = {};
@@ -169,6 +186,7 @@ do
         if not seenDef[defs] then
             seenDef[defs] = true;
             defs[#defs + 1] = { key = 'player', kind = 'player', label = 'Player' };
+            defs[#defs + 1] = { key = 'pet', kind = 'pet', label = 'Pet' };   -- engine v63
         end
     end
 end
@@ -255,7 +273,9 @@ local trig = {
     data = nil, job = nil, err = nil, dirty = false,
     status = '', statusErr = false,
     addFor = nil, addConds = {}, _addDef = 1, _addValSel = nil, _addPlayer = 1,
-    _condDrill = false,   -- no-BeginMenu fallback: Player drill-down open?
+    _addPet = 1,          -- the Pet cascade's picked parameter (engine v63)
+    _condDrill = false,   -- no-BeginMenu fallback: which drill-down is open --
+                          -- false closed, 'player' or 'pet' (truthy = open)
     addValText = { '' }, addValNum = { 0 }, addSet = nil, addPrio = { 0 }, _openAdd = false,
     editIdx = nil, _editEquip = nil,   -- rule-builder edit mode (replace in place)
     _openModePopup = false,
@@ -2071,6 +2091,10 @@ local COND_COLORS = {
     mpbelow = { 0.55, 0.70, 1.00, 1.0 }, mpabove = { 0.55, 0.70, 1.00, 1.0 },
     tpbelow = { 0.95, 0.85, 0.50, 1.0 }, tpabove = { 0.95, 0.85, 0.50, 1.0 },
     buff = { 0.85, 0.65, 1.00, 1.0 },    buffnot = { 0.85, 0.65, 1.00, 1.0 },
+    -- Pet conditions (engine v63): the pet family reads green; petName a shade
+    -- lighter (identity, like `name` vs `skill`).
+    pet = { 0.50, 0.90, 0.60, 1.0 }, petstatus = { 0.50, 0.90, 0.60, 1.0 },
+    petname = { 0.75, 0.95, 0.60, 1.0 },
 };
 
 -- A rule's conditions as display lines (sorted, one per line; 'any' when empty).
@@ -2107,7 +2131,14 @@ local PSTATE_KEYS = {
     tpbelow = true, tpabove = true, buff = true, buffnot = true,
     -- v53 alias spellings (percent semantics) stay markable too
     hpbelow = true, hpabove = true, mpbelow = true, mpabove = true,
+    -- Pet conditions (engine v63) light too: pet-out is exactly the kind of
+    -- state you want to SEE holding while you build the rule.
+    pet = true, petstatus = true, petname = true,
 };
+-- LAC's EntityStatus resolution (constants.lua:236 via ResolveString's +1):
+-- raw entity status 0 Idle / 1 Engaged / 2-3 Dead / 4 Zoning / 33 Resting.
+local PET_STATUS_OF = { [0] = 'Idle', [1] = 'Engaged', [2] = 'Dead', [3] = 'Dead',
+                        [4] = 'Zoning', [33] = 'Resting' };
 local _psAt, _psCtx = -1, nil;
 local function pstateCtx()
     if os.clock() < _psAt then return _psCtx; end
@@ -2120,6 +2151,19 @@ local function pstateCtx()
             _psCtx = { player = { HPP = hpp, MPP = party:GetMemberMPPercent(0),
                                   HP = party:GetMemberHP(0), MP = party:GetMemberMP(0),
                                   TP = party:GetMemberTP(0) } };
+            -- ctx.pet for the pet markers (v63): the same read LAC's
+            -- gData.GetPet does (data.lua:534) -- pet index 0 or pet HPP 0 is
+            -- NO pet, so a dead pet reads as none here exactly like in the
+            -- engine. Inner pcall: a pet read must never cost the vitals.
+            pcall(function()
+                local ent = AshitaCore:GetMemoryManager():GetEntity();
+                local petIndex = ent:GetPetTargetIndex(party:GetMemberTargetIndex(0));
+                if petIndex ~= 0 and ent:GetHPPercent(petIndex) ~= 0 then
+                    _psCtx.pet = { Name = ent:GetName(petIndex),
+                                   Status = PET_STATUS_OF[ent:GetStatus(petIndex)] or 'Unknown',
+                                   HPP = ent:GetHPPercent(petIndex) };
+                end
+            end);
         end
     end);
     return _psCtx;
@@ -2221,7 +2265,7 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
                 imgui.TextColored(holds and COL_USABLE or COL_DIM,
                     holds and '[on now]' or '[off now]');
                 if imgui.IsItemHovered() then
-                    imgui.SetTooltip('Checked against your CURRENT vitals/buffs (refreshes every second)\nwith the engine\'s own matcher. The engine re-evaluates at every dispatch.');
+                    imgui.SetTooltip('Checked against your CURRENT vitals/buffs/pet (refreshes every second)\nwith the engine\'s own matcher. The engine re-evaluates at every dispatch.');
                 end
             end
         end
@@ -2237,7 +2281,7 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
                 imgui.TextColored(holds and COL_USABLE or COL_DIM,
                     holds and '[on now]' or '[off now]');
                 if imgui.IsItemHovered() then
-                    imgui.SetTooltip('Checked against your CURRENT vitals/buffs (refreshes every second)\nwith the engine\'s own matcher. The engine re-evaluates at every dispatch.');
+                    imgui.SetTooltip('Checked against your CURRENT vitals/buffs/pet (refreshes every second)\nwith the engine\'s own matcher. The engine re-evaluates at every dispatch.');
                 end
             end
         end
@@ -2465,6 +2509,7 @@ local function renderTrigAddPopup()
     -- Re-add with + & or + | -- moving a condition between legs is the same
     -- motion. v53 alias spellings edit into their canonical percent params.
     local PARAM_OF = nil;
+    local PET_OF = nil;
     local function editCond(ci)
         local c = trig.addConds[ci];
         if c == nil or type(c.value) == 'table' then return; end   -- list values: delete + re-add
@@ -2476,6 +2521,10 @@ local function renderTrigAddPopup()
             PARAM_OF.hpabove = PARAM_OF.playerhppercentabove;
             PARAM_OF.mpbelow = PARAM_OF.playermppercentbelow;
             PARAM_OF.mpabove = PARAM_OF.playermppercentabove;
+            -- Pet cascade (v63): 'pet' appears twice (HasPet/NoPet -- one key,
+            -- two values); membership here, the entry resolves by VALUE below.
+            PET_OF = {};
+            for pi, p in ipairs(PET_PARAMS) do PET_OF[string.lower(p.key)] = pi; end
         end
         local defIdx, kind = nil, nil;
         if PARAM_OF[key] ~= nil then
@@ -2485,6 +2534,16 @@ local function renderTrigAddPopup()
             if defIdx ~= nil then
                 trig._addPlayer = PARAM_OF[key];
                 kind = PLAYER_PARAMS[PARAM_OF[key]].kind;
+            end
+        elseif PET_OF[key] ~= nil then
+            for di, d in ipairs(defs) do
+                if d.kind == 'pet' then defIdx = di; break; end
+            end
+            if defIdx ~= nil then
+                local pi = PET_OF[key];
+                if key == 'pet' then pi = (c.value == false) and 2 or 1; end   -- NoPet vs HasPet
+                trig._addPet = pi;
+                kind = PET_PARAMS[pi].kind;
             end
         else
             for di, d in ipairs(defs) do
@@ -2544,6 +2603,9 @@ local function renderTrigAddPopup()
     if cur ~= nil and cur.kind == 'player' then
         local pp = PLAYER_PARAMS[trig._addPlayer] or PLAYER_PARAMS[1];
         curLabel = pp.label or pp.key;
+    elseif cur ~= nil and cur.kind == 'pet' then
+        local pp = PET_PARAMS[trig._addPet] or PET_PARAMS[1];
+        curLabel = pp.label or pp.key;
     else
         curLabel = (cur and (cur.label or trigPrettyKey(string.lower(cur.key)))) or '?';
     end
@@ -2552,25 +2614,28 @@ local function renderTrigAddPopup()
         imgui.OpenPopup('##trgcondmenu');
     end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Pick the condition type. Player cascades into the HP / MP / TP /\nbuff parameters.');
+        imgui.SetTooltip('Pick the condition type. Player and Pet cascade into their\nparameter lists (HP / MP / buffs; pet out / status / name).');
     end
     if imgui.BeginPopup('##trgcondmenu') then
         local function pickDef(di)
             trig._addDef = di; trig.addValText[1] = ''; trig._addValSel = nil; trig.addValNum[1] = 0;
         end
         if trig._condDrill and not hasMenu then
-            -- Drill-down fallback: the parameter list in place, with a way back.
-            imgui.TextColored(COL_HEADER, 'Player');
+            -- Drill-down fallback: the parameter list in place, with a way
+            -- back. _condDrill names the cascade ('player' or 'pet', v63).
+            local isPet = (trig._condDrill == 'pet');
+            local params = isPet and PET_PARAMS or PLAYER_PARAMS;
+            imgui.TextColored(COL_HEADER, isPet and 'Pet' or 'Player');
             if imgui.Selectable('< back##trgcback') then
                 trig._condDrill = false;
             else
                 imgui.Separator();
-                for pi, p in ipairs(PLAYER_PARAMS) do
+                for pi, p in ipairs(params) do
                     if imgui.Selectable((p.label or p.key) .. '##trgcpp' .. pi) then
                         for di, d in ipairs(defs) do
-                            if d.kind == 'player' then pickDef(di); break; end
+                            if d.kind == (isPet and 'pet' or 'player') then pickDef(di); break; end
                         end
-                        trig._addPlayer = pi;
+                        if isPet then trig._addPet = pi; else trig._addPlayer = pi; end
                         trig._condDrill = false;
                         imgui.CloseCurrentPopup();
                     end
@@ -2579,13 +2644,18 @@ local function renderTrigAddPopup()
             end
         else
             for di, d in ipairs(defs) do
-                if d.kind == 'player' then
+                if d.kind == 'player' or d.kind == 'pet' then
+                    -- Both cascades share one shape; only the parameter list
+                    -- and the picked-index slot differ (v63).
+                    local isPet = (d.kind == 'pet');
+                    local params = isPet and PET_PARAMS or PLAYER_PARAMS;
+                    local title = isPet and 'Pet' or 'Player';
                     if hasMenu then
-                        if imgui.BeginMenu('Player##trgcplayer') then
-                            for pi, p in ipairs(PLAYER_PARAMS) do
-                                if imgui.MenuItem((p.label or p.key) .. '##trgcpp' .. pi) then
+                        if imgui.BeginMenu(title .. '##trgc' .. d.kind) then
+                            for pi, p in ipairs(params) do
+                                if imgui.MenuItem((p.label or p.key) .. '##trgc' .. d.kind .. pi) then
                                     pickDef(di);
-                                    trig._addPlayer = pi;
+                                    if isPet then trig._addPet = pi; else trig._addPlayer = pi; end
                                     pcall(function() imgui.CloseCurrentPopup(); end);
                                 end
                                 if p.hint ~= nil and imgui.IsItemHovered() then imgui.SetTooltip(p.hint); end
@@ -2593,7 +2663,7 @@ local function renderTrigAddPopup()
                             imgui.EndMenu();
                         end
                     else
-                        if imgui.Selectable('Player  >##trgcplayer') then trig._condDrill = true; end
+                        if imgui.Selectable(title .. '  >##trgc' .. d.kind) then trig._condDrill = d.kind; end
                     end
                 else
                     local disp = d.label or trigPrettyKey(string.lower(d.key));
@@ -2649,6 +2719,29 @@ local function renderTrigAddPopup()
                 imgui.PopItemWidth();
                 if pp.hint ~= nil and imgui.IsItemHovered() then imgui.SetTooltip(pp.hint); end
             end
+        elseif cur.kind == 'pet' then
+            -- The Pet cascade's value widget (v63): 'fixed' parameters
+            -- (HasPet/NoPet) carry their value -- nothing to type.
+            local pp = PET_PARAMS[trig._addPet] or PET_PARAMS[1];
+            if pp.kind == 'list' then
+                imgui.PushItemWidth(170);
+                if imgui.BeginCombo('##trgcondval', trig._addValSel or '(pick)') then
+                    for vi, it in ipairs(pp.items) do
+                        if imgui.Selectable(it .. '##trgcpv' .. vi, trig._addValSel == it) then trig._addValSel = it; end
+                    end
+                    imgui.EndCombo();
+                end
+                imgui.PopItemWidth();
+                if pp.hint ~= nil and imgui.IsItemHovered() then imgui.SetTooltip(pp.hint); end
+            elseif pp.kind == 'text' then
+                imgui.PushItemWidth(170);
+                imgui.InputText('##trgcondtext', trig.addValText, 48);
+                imgui.PopItemWidth();
+                if pp.hint ~= nil and imgui.IsItemHovered() then imgui.SetTooltip(pp.hint); end
+            else
+                imgui.TextColored(COL_DIM, '(flag)');
+                if pp.hint ~= nil and imgui.IsItemHovered() then imgui.SetTooltip(pp.hint); end
+            end
         elseif cur.kind == 'number' then
             imgui.PushItemWidth(90);
             imgui.InputInt('##trgcondnum', trig.addValNum, 0);
@@ -2670,12 +2763,18 @@ local function renderTrigAddPopup()
         -- to the SELECTED parameter's key and widget kind.
         local function addCond(isOr)
             local ckey, ck = cur.key, cur.kind;
+            local fixedVal = nil;
             if ck == 'player' then
                 local pp = PLAYER_PARAMS[trig._addPlayer] or PLAYER_PARAMS[1];
                 ckey, ck = pp.key, pp.kind;
+            elseif ck == 'pet' then
+                local pp = PET_PARAMS[trig._addPet] or PET_PARAMS[1];
+                ckey, ck = pp.key, pp.kind;
+                fixedVal = pp.value;   -- only the 'fixed' parameters carry one
             end
             local val;
-            if ck == 'list' or ck == 'group' or ck == 'buff' then val = trig._addValSel;
+            if ck == 'fixed' then val = fixedVal;   -- pet = true/false: false is a real value
+            elseif ck == 'list' or ck == 'group' or ck == 'buff' then val = trig._addValSel;
             elseif ck == 'text' then val = (trig.addValText[1] ~= '') and trig.addValText[1] or nil;
             elseif ck == 'number' then
                 val = ((tonumber(trig.addValNum[1]) or 0) > 0) and trig.addValNum[1] or nil;
@@ -3503,13 +3602,13 @@ function M.render(job, level)
             trig.addSet = (type(r.set) == 'table') and r.set[1] or r.set;   -- builder edits ONE set; extras stay on the rule
             trig.addPrio[1] = r.priority or 0;
             trig._addDef = 1; trig.addValText[1] = ''; trig._addValSel = nil;
-            trig._addPlayer = 1; trig.addValNum[1] = 0;
+            trig._addPlayer = 1; trig._addPet = 1; trig.addValNum[1] = 0;
             trig._openAdd = true;
         end
         if imgui.Button('+ Add rule##trgadd_' .. h, { 0, 28 }) then
             trig.addFor = h; trig.addConds = {}; trig._addDef = 1;
             trig.addValText[1] = ''; trig._addValSel = nil; trig.addSet = nil; trig.addPrio[1] = 0;
-            trig._addPlayer = 1; trig.addValNum[1] = 0;
+            trig._addPlayer = 1; trig._addPet = 1; trig.addValNum[1] = 0;
             trig.editIdx, trig._editEquip = nil, nil;   -- fresh add, not an edit
             trig._openAdd = true;
         end

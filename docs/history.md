@@ -2330,3 +2330,36 @@ migrateToCleanProfiles per-job loop, and the healthy-state re-seed). Tests
 Y25b/Y25c; sims 26/26 + 9/9; 1090 + 125 green. (599bfd4; the sim also caught
 and fixed the empty legacy dlac\triggers\ dir a fresh player used to get --
 3788e62.)
+
+## Session "pet conditions v1" (2026-07-18)
+
+**Theme:** Henrik: no condition matches "you have a pet" -- pet jobs (BST/SMN/
+PUP/DRG, GEO idle-luopan) cannot express pet-aware Default gear. Researched the
+whole ecosystem FIRST (background agent over GearSwap core, Mote-Include,
+Kinematics jobs, Selindrile, LuAshitacast + local ffxi-lac) ->
+`docs/reference/pet-handling-other-luas.md`, every claim source-cited.
+
+**Findings that shaped the design:** every framework's baseline is exactly two
+primitives -- pet-exists + pet-status (the player x pet 2x2, incl. "master idle
+while the pet fights": Mote `sets.idle.Pet.Engaged`, lac-profile `Pet_Only_Tp`);
+identity comes third (avatar perp sets keyed by pet name). dlac's synthesized
+PetAction event already covers the action-window half (GearSwap pet_midcast
+parity, better than stock LAC's poll pattern). Jug NQ/HQ: nobody beats the
+existing sets+cycle answer. Parked for later: pet HPP/TP thresholds, Selindrile's
+petWillAct anticipation hold (maps onto our stateless-hold pattern if PUP
+automaton WS ever misses), pet-stat namespace for the optimizer (ffxi-lac
+precedent scores nested Pet={} as 0).
+
+**Landed (engine v63):** conditions `pet` (true/false), `petStatus`
+(Idle/Engaged), `petName` (Henrik: essential for SMN) off `ctx.pet =
+gData.GetPet()` -- nil petless AND at pet HPP 0, so a dead pet reads as NONE;
+petStatus/petName imply existence (never match petless). Tiers: pet 22 /
+petStatus 23 between status (20) and moving (25) -- a pet-refined rule outranks
+its base rule with no hand priority, Movement still overlays; petName 50 =
+identity tier. GUI: second cascading **Pet** row beside Player (HasPet / NoPet /
+PetStatus / PetName -- HasPet/NoPet are one key, two fixed values), pet family
+colored green, live `[on now]` markers via an addon-side GetPet mirror
+(EntityStatus map, data.lua:534 shape). `/dl why` Default line now carries
+`pet=Name(Status)`. Starter-file comment + trigger-system.md updated. Tests: PT1-22
+(matchers, tier ladder, 2x2 through _matches, serializer round-trip incl.
+`pet = false`, normalize). 1112 green.

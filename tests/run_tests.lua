@@ -2833,6 +2833,71 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- PT. Pet conditions (engine v63): pet / petStatus / petName off ctx.pet
+--     (gData.GetPet() -- nil petless AND at pet HPP 0, so a dead pet reads as
+--     NO pet: pet=false fires). petStatus/petName IMPLY existence -- they must
+--     never match a petless job (petStatus='Idle' is not "no pet"). Tiers 22/23
+--     sit between status (20) and moving (25): a pet-refined rule outranks its
+--     base status rule with no hand priority; petName is identity (name tier).
+-- ---------------------------------------------------------------------------
+(function()
+    local mm = dispatchM._matchers;
+    local petless = { player = { Status = 'Idle' } };
+    local out = { player = { Status = 'Idle' },
+                  pet = { Name = 'Garuda', Status = 'Engaged', HPP = 100, TP = 0 } };
+    check('PT1 pet=true fires with a pet out',    mm.pet(true, out), true);
+    check('PT2 pet=true quiet petless',           mm.pet(true, petless), false);
+    check('PT3 pet=false fires petless',          mm.pet(false, petless), true);
+    check('PT4 pet=false quiet with a pet out',   mm.pet(false, out), false);
+    check('PT5 petStatus matches case-insensitively', mm.petstatus('engaged', out), true);
+    check('PT6 petStatus wrong state quiet',      mm.petstatus('Idle', out), false);
+    check('PT7 petStatus NEVER matches petless',  mm.petstatus('Idle', petless), false);
+    check('PT8 petName matches case-insensitively', mm.petname('garuda', out), true);
+    check('PT9 petName other pet quiet',          mm.petname('Carbuncle', out), false);
+    check('PT10 petName petless quiet',           mm.petname('Garuda', petless), false);
+    -- Tier ordering (the overlay ladder, no hand priorities anywhere):
+    check('PT11 status+pet outranks bare status',
+        dispatchM.defaultPriority({ status = 'Engaged', pet = true })
+            > dispatchM.defaultPriority({ status = 'Engaged' }), true);
+    check('PT12 petStatus outranks pet-exists',
+        dispatchM.defaultPriority({ petstatus = 'Engaged' })
+            > dispatchM.defaultPriority({ pet = true }), true);
+    check('PT13 moving still overlays petStatus',
+        dispatchM.defaultPriority({ moving = true })
+            > dispatchM.defaultPriority({ petstatus = 'Engaged' }), true);
+    check('PT14 petName sits at the name tier',
+        dispatchM.defaultPriority({ petname = 'Garuda' }), 50);
+    -- The player x pet 2x2 through the engine's own matches() -- the classic
+    -- BST postures, incl. "master idle while the pet fights".
+    local mt = dispatchM._matches;
+    local r = { when = { status = 'Idle', petstatus = 'Engaged' } };
+    check('PT15 idle + pet fighting fires',
+        mt(r, { player = { Status = 'Idle' }, pet = { Status = 'Engaged' } }), true);
+    check('PT16 same rule quiet when the pet idles',
+        mt(r, { player = { Status = 'Idle' }, pet = { Status = 'Idle' } }), false);
+    -- Serializer: pretty spellings round-trip byte-stable, pet = false included
+    -- (false is a real value -- it must not vanish like nil).
+    local text = dispatchM.serializeTriggers({
+        Default = {
+            { when = { status = 'Idle', petstatus = 'Engaged' }, set = 'Idle_PetFight' },
+            { when = { pet = false }, set = 'NoPet' },
+            { when = { petname = 'Carbuncle' }, set = 'Perp_Carby' },
+        },
+    });
+    check('PT17 petStatus serializes pretty', text:find('petStatus = "Engaged"', 1, true) ~= nil, true);
+    check('PT18 pet = false serializes',      text:find('pet = false', 1, true) ~= nil, true);
+    check('PT19 petName serializes pretty',   text:find('petName = "Carbuncle"', 1, true) ~= nil, true);
+    local t2 = (loadstring or load)(text)();
+    check('PT20 round-trip byte-stable', dispatchM.serializeTriggers(t2) == text, true);
+    -- normalize: the new keys are first-class vocabulary, priorities derive.
+    local norm = dispatchM._normalize({
+        Default = { { when = { status = 'Idle', petStatus = 'Engaged' }, set = 'Idle_PetFight' } },
+    });
+    check('PT21 normalize keeps pet keys', norm.Default ~= nil and #norm.Default, 1);
+    check('PT22 normalized prio = petStatus tier', norm.Default[1].prio, 23);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- TGM. Trigger Groups model (G2, issue #25, ADR 0009): the pure GUI-side CRUD +
 --      name / member validation the Groups tab drives (groupsmodel.lua). Group
 --      names and member names compare case-insensitively (engine parity), an

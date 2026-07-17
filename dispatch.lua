@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 62;   -- 62: virtual markers carry a LADDER LEVEL -- M.virtualMinLevel(marker) = the lowest level among the manifest items the marker can resolve to (AutoStaff/AutoIridescence: universal + per-element staves; AutoObi: obis; nil for craft/helm/acc and legacy name-only shapes). BuildDynamicSets skips a marker below that level so the flattened Main shows the item actually worn (Henrik's field case: a leveling WHM's set showed dlac:AutoIridescence "at Lv0" while wearing Pilgrim's Wand -- the marker now reads as a Lv51 rung, his Chatoyant Staff); the Sets tab displays the derived level and only shows the marker as the current pick once it's reachable. nil keeps the old always-adopt behavior everywhere.
+M.VERSION = 63;   -- 63: Pet conditions v1 (research: docs/reference/pet-handling-other-luas.md) -- pet = true/false (a LIVING pet exists: gData.GetPet() is nil petless AND at pet HPP 0, so a dead pet reads as none), petStatus (the pet's own Idle/Engaged -- status + petStatus spells the player x pet 2x2, incl. the classic "master idle while the pet fights"), petName (identity -- avatar/spirit perpetuation gear; Henrik: essential for SMN). ctx.pet read once per dispatch beside ctx.player; petStatus/petName IMPLY existence (never match petless). Tiers: pet 22 / petStatus 23 sit between status (20) and moving (25) so a pet-refined rule outranks its base status rule with no hand priority and Movement still overlays; petName 50 = the exact-name (identity) tier.
+                  -- 62: virtual markers carry a LADDER LEVEL -- M.virtualMinLevel(marker) = the lowest level among the manifest items the marker can resolve to (AutoStaff/AutoIridescence: universal + per-element staves; AutoObi: obis; nil for craft/helm/acc and legacy name-only shapes). BuildDynamicSets skips a marker below that level so the flattened Main shows the item actually worn (Henrik's field case: a leveling WHM's set showed dlac:AutoIridescence "at Lv0" while wearing Pilgrim's Wand -- the marker now reads as a Lv51 rung, his Chatoyant Staff); the Sets tab displays the derived level and only shows the marker as the current pick once it's reachable. nil keeps the old always-adopt behavior everywhere.
                   -- 61: HELM overlay stands aside in combat -- field report: "Default" is NOT "idle" (HandleDefault runs every frame, engaged gear resolves inside it too), so the overlay was pinning over combat gear. helmOverlayFor now returns nil while ctx.player.Status is Engaged or Dead (the same Status string the trigger matchers read); 'Event' deliberately stays dressed -- the HELM animation itself reads as an event, and dropping there would churn every swing. Henrik: you HELM in dangerous places -- aggro means FIGHT.
                   -- 60: Auto HELM (helmstate auto/autoUntil) -- the helm overlay is active when the manual idle switch is ON, or when auto is armed AND a detection hold is running (helmwatch re-arms autoUntil on every 0x034 Point result; expiry is checked live per dispatch, so normal idle gear returns ~60s after the last swing with no file write needed). Same Default-only gate, same slots, same arbitration.
                   -- 59: HELM overlay (docs/design/helm-gear.md) -- helmstate.lua {gather,enabled,at} read like craftstate; dlac:AutoHelm resolves the manifest's fmtver-7 helm ladders (armor+neck+waist ONLY -- never weapons: tools are inventory items and idle weapon swaps burn TP); overlay gated to Default exactly like craft (idle-only is the FEATURE here, Henrik's hard requirement). Craft-vs-helm arbitration: both switches on -> the newer `at` stamp wins whole (the watchers already exclude each other addon-side; this is the engine-native backstop -- no cross-module requires, no cycles).
@@ -422,6 +423,13 @@ local MATCHERS = {
     mpbelow = numGate('MPP', true),  mpabove = numGate('MPP', false),
     buff    = function(v, ctx) return buffActive(ctx, v) == true; end,
     buffnot = function(v, ctx) return buffActive(ctx, v) == false; end,
+    -- Pet conditions (v63): ctx.pet is gData.GetPet() -- nil with NO pet and
+    -- when the pet's HPP is 0, so a dead pet reads as none (pet = false fires).
+    -- petStatus/petName IMPLY existence: petStatus = 'Idle' must never match a
+    -- petless job. Status strings are LAC's EntityStatus (Idle/Engaged/...).
+    pet       = function(v, ctx) return (ctx.pet ~= nil) == (v == true); end,
+    petstatus = function(v, ctx) return ctx.pet ~= nil and ci(ctx.pet.Status, v); end,
+    petname   = function(v, ctx) return ctx.pet ~= nil and ci(ctx.pet.Name, v); end,
 };
 M._matchers = MATCHERS;   -- headless test seam (the _autoOverride idiom)
 
@@ -433,11 +441,16 @@ M._matchers = MATCHERS;   -- headless test seam (the _autoOverride idiom)
 local TIER = {
     any = 10,
     status = 20, skill = 20, abilitytype = 20,
+    -- Pet conditions (v63) sit between status and moving: a pet-refined rule
+    -- ({status,pet} -> 22, petStatus -> 23) outranks its base status rule with
+    -- no hand priority, and Movement still overlays a pet idle set. petName is
+    -- identity -> the exact-name tier (50, next to `name` below).
+    pet = 22, petstatus = 23,
     moving = 25,
     magictype = 30, element = 30, songtype = 30, dayweatherbonus = 30,
     contains = 40, family = 40,
     group = 45,   -- baseline for many spells that share gear; a per-spell `name` (50) overrides it, and it beats contains/skill (ADR 0009)
-    name = 50,
+    name = 50, petname = 50,
     -- Player-state gates sit just under mode: "low HP" is nearly as deliberate
     -- as a hand toggle, and a mode-gated rule still edges it when both match.
     -- (hpbelow/... are the v53 alias spellings, kept loadable.)
@@ -459,6 +472,7 @@ local PRETTY_KEY = {
     hpbelow = 'hpBelow', hpabove = 'hpAbove', mpbelow = 'mpBelow',
     mpabove = 'mpAbove', tpbelow = 'tpBelow', tpabove = 'tpAbove',
     buff = 'buff', buffnot = 'buffNot',
+    pet = 'pet', petstatus = 'petStatus', petname = 'petName',
     playerhpbelow = 'playerHPBelow', playerhpabove = 'playerHPAbove',
     playerhppercentbelow = 'playerHPPercentBelow', playerhppercentabove = 'playerHPPercentAbove',
     playermpbelow = 'playerMPBelow', playermpabove = 'playerMPAbove',
@@ -1740,6 +1754,10 @@ end
 local function buildCtx(event)
     local ctx = { event = event };
     pcall(function() ctx.player = gData.GetPlayer(); end);
+    -- v63: the pet beside the player -- nil petless AND when the pet is dead
+    -- (GetPet's own rule). Read once per dispatch so every rule in one pass
+    -- judges the same pet.
+    pcall(function() ctx.pet = gData.GetPet(); end);
     if event == 'PetAction' then
         -- the PET's action (Blood Pact / Ready move / pet spell) -- same shape
         -- as GetAction (Name/Skill/Element/Type), so the matchers just work
@@ -1789,7 +1807,11 @@ local function actionLabel(ctx)
         return string.format('%q%s', tostring(a.Name), tail);
     end
     if ctx.player ~= nil then
-        return string.format('status=%s moving=%s', tostring(ctx.player.Status), tostring(ctx.player.IsMoving));
+        local s = string.format('status=%s moving=%s', tostring(ctx.player.Status), tostring(ctx.player.IsMoving));
+        if ctx.pet ~= nil then   -- v63: the pet reads into /dl why too
+            s = s .. string.format(' pet=%s(%s)', tostring(ctx.pet.Name), tostring(ctx.pet.Status));
+        end
+        return s;
     end
     return '?';
 end
@@ -2738,7 +2760,10 @@ M.starterTriggersText = [[
 -- Handlers:   Default, Precast, Midcast, Ability, Item, Weaponskill, Preshot, Midshot,
 --             PetAction (fires when YOUR PET starts an action -- Blood Pact / Ready move /
 --             pet spell; your gear holds until it completes. dlac provides this event itself).
--- Conditions: status/moving/mode | any/skill/magicType/element/songType/family/name/dayWeatherBonus
+-- Conditions: status/moving/mode | pet (true/false), petStatus, petName (YOUR pet: a dead
+--             pet counts as NO pet; petStatus/petName never match petless -- so
+--             status = 'Idle' + petStatus = 'Engaged' is "master idle, pet fighting")
+--             | any/skill/magicType/element/songType/family/name/dayWeatherBonus
 --             | abilityType | player state: playerHPBelow/Above, playerHPPercentBelow/Above,
 --             playerMPBelow/Above, playerMPPercentBelow/Above, tpBelow/tpAbove (raw TP),
 --             buff/buffNot (active status effect, name or id).
@@ -2746,8 +2771,9 @@ M.starterTriggersText = [[
 --             applies, lowest priority first (later overlays earlier per slot).
 -- OR groups:  whenAny = { { buff = "Sleep" }, { buff = "Lullaby" } } -- the rule matches
 --             when ALL `when` conditions hold OR ANY whenAny entry holds.
--- Priority defaults by specificity: any 10 < status/skill 20 < class/element 30 < family 40
---             < exact name 50 < player state 95 < mode 100.  See docs/design/trigger-system.md.
+-- Priority defaults by specificity: any 10 < status/skill 20 < pet 22/petStatus 23 < moving 25
+--             < class/element 30 < family 40 < exact name/petName 50 < player state 95
+--             < mode 100.  See docs/design/trigger-system.md.
 return {
     Default = {
         { when = { status = 'Engaged' }, set = 'Tp_Default' },
