@@ -370,6 +370,8 @@ end
 M.goal = 'hq';            -- hq | nq | skillup
 M.activeCraft = nil;      -- the craft you selected
 M.enabled = false;        -- the on/off switch; session-only, starts OFF
+M._enabledAt = 0;         -- os.time() of the last enable -- the engine's craft-vs-helm
+                          -- arbitration key (v59: both switches on -> newer stamp wins)
 local _stateLoaded = false;
 
 local function craftStatePath()
@@ -381,8 +383,9 @@ local function saveCraftState()
         local p = craftStatePath();
         if p == nil then return; end
         local f = io.open(p, 'wb'); if f == nil then return; end
-        f:write(string.format('return { craft = %q, goal = %q, enabled = %s }\n',
-            tostring(M.activeCraft or ''), tostring(M.goal or 'hq'), tostring(M.enabled == true)));
+        f:write(string.format('return { craft = %q, goal = %q, enabled = %s, at = %d }\n',
+            tostring(M.activeCraft or ''), tostring(M.goal or 'hq'), tostring(M.enabled == true),
+            M._enabledAt or 0));
         f:close();
     end);
 end
@@ -444,7 +447,7 @@ end
 function M.setEnabled(on)
     M.loadCraftState();
     M.enabled = (on == true);
-    if M.enabled then ensureManifestFresh(); end
+    if M.enabled then M._enabledAt = os.time(); ensureManifestFresh(); end
     saveCraftState();
     -- No chat line either way (removed 2026-07-13, Henrik: too chatty) -- the
     -- craft bar's switch state IS the announcement.

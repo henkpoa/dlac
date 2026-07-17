@@ -1,0 +1,178 @@
+# HELM Gear Automation — design
+
+Status: **DESIGNED 2026-07-17** — implementation in progress. Fishing explicitly OUT OF SCOPE
+(Henrik wants a separate automation for it; it works too differently).
+
+The craft-gear system (docs/design/craft-automation.md) is the template. Same philosophy:
+**don't fight the engine, BE the engine** — a small per-char state file, read by dispatch
+every tick, engine wears the result as the last writer. HELM clones that spine with one
+deliberate difference: the overlay is **idle-only by requirement** (it happens to match the
+craft overlay's existing `event == 'Default'` gate exactly, so no new engine concept).
+
+---
+
+## 1. The progression this UI models
+
+CatsEyeXI HELM gearing (wiki + server-source verified 2026-07-17):
+
+1. **Field gear** (retail, cheap): Body/Hands/Legs/Feet + Field Torque + Field Rope.
+   Each piece carries a hidden **+73 result mod** = +7.3 on the break roll
+   (`scripts/globals/hobbies/helm/logic.lua:39-53`: `roll = rand(1,100) + mod/10`,
+   break if `roll <= 33`). **Five pieces → min roll 37.5 > 33 → breakage impossible.**
+   This is the real math behind "+5 removes tool breakage". Excavation stays breakable
+   (its result mod 2006 is a private-module addition wired differently — As Square Enix
+   Intended). Torque+Rope exist so you can hit 5 without all four armor pieces.
+2. **Venture points** (per-category currency: Harvesting/Excavation/Logging/Mining pools
+   are SEPARATE) buy the **Plain** pieces (3000 VP, Surveyor+1 = fewer "nothing" results)
+   and the four **hats** (5000 VP, Surveyor+1 + scripted chance of double yield in that
+   hat's category only; no public % — "~10%" is folklore).
+3. **Plain +1** (Surveyor+2): NOT bought with VP — trade Union Commendations + the retail
+   Worker piece to Alternix (Tunica x25+14375, Gloves x15+14818, Hose x20+14298,
+   Boots x15+14177). Hats have no +1.
+
+### Item matrix (ids verified in data/catalog.lua AND server sql — they agree)
+
+| Row | Field | Plain (VP 3000) | Plain +1 | Hat (VP 5000) |
+|---|---|---|---|---|
+| Body | Field Tunica 14374 | Plain Tunica 26533 (Excav. VP) | 26534 | — |
+| Hands | Field Gloves 14817 | Plain Gloves 25984 (Harv. VP) | 25985 | — |
+| Legs | Field Hose 14297 | Plain Hose 25897 (Mining VP) | 25898 | — |
+| Feet | Field Boots 14176 | Plain Boots 25964 (Logging VP) | 25965 | — |
+| Neck | Field Torque 10926 | — | — | — |
+| Waist | Field Rope 11769 | — | — | — |
+| Head | — | — | — | Harv. Sun Hat 25557 / Excavators Shades 25558 / Lumberjacks Beret 25559 / Miners Helmet 25560 |
+
+Hat ↔ category is a **hardcoded semantic map** (contiguous id block 25557-25560, one per
+category, catalog stats can't express "which category"). Everything else is **stat-driven**
+from the catalog: `Stats.HELM` (break-roll pieces) and `Stats.Surveyor` — the exact analog
+of `Stats['<Craft>Skill']`. Ladders are built by catalog walk so future gear (Worker set,
+Miners Pendant 13122, HELM waist oddities) lands automatically.
+
+Catalog stat caveat (docs/server-questions.md §1): live DB stores Surveyor 2/4 where item
+text says 1/2 — ladder ORDERING is unaffected (monotone), so we sort by catalog values.
+
+## 2. UI — the HELM panel (Automations → "Auto HELM Set")
+
+Four columns, rows height-aligned across columns (Henrik's spec, verbatim intent):
+
+```
+FIELD GEAR        PLAIN            PLAIN +1          HATS
+Field Tunica      Plain Tunica     Plain Tunica +1   Harv. Sun Hat
+Field Gloves      Plain Gloves     Plain Gloves +1   Excavators Shades
+Field Hose        Plain Hose       Plain Hose +1     Lumberjacks Beret
+Field Boots       Plain Boots      Plain Boots +1    Miners Helmet
+Field Torque
+Field Rope
+```
+
+- **Green = owned OR a strictly-better corresponding piece is owned** ("you're awesome"
+  cascade): Plain+1 owned → Plain and Field of that slot are green too. Field
+  Torque/Rope have no better variant (green only if owned). Hats ordered as the goblin
+  NPC lists them: Harvesting, Excavation, Logging, Mining.
+- **Dim = not owned** (and nothing better owned). Red = owned-but-stored follows the
+  craft panel's color language where applicable.
+- **Holy-light backlight** on top-tier owned pieces: Plain +1 column and the hats get a
+  soft warm glow behind the row when OWNED (draw-list `AddRectFilled` halo, gold-white
+  low-alpha, behind the text). Dopamine is a design requirement.
+- Ownership via `ownedcache` counts (same green/red/dim semantics as craft panel,
+  triggersui.lua:1235-1264 pattern).
+
+Below the matrix: **category tab row** using `assets/helm/<Category>.png` (40×40, from
+Henrik's SVGs — DONE), order Harvesting/Excavation/Logging/Mining. Per selected tab:
+- **Venture points** for that category (see §4).
+- **Today's ventures** for that category (see §5).
+
+## 3. HELM bar + engine overlay (idle-only pin)
+
+- `ui/helmbar.lua` — clone of craftbar: 4 category glyphs + on/off pill. Selecting a
+  category + ON writes `<char>\dlac\helmstate.lua` `{ gather = 'Mining', enabled = bool }`.
+  `enabled` deliberately NOT restored across sessions (same rule as craftstate — no gear
+  glued on at login).
+- Engine (dispatch v59): `ensureHelmState` + `helmOverlayFor`, **gated exactly like craft:
+  `event == 'Default'` only** — never Engaged/Precast/Midcast/anything. Applied after the
+  craft overlay, below pins.
+- **Mutual exclusivity**: enabling the HELM bar disables the craft bar and vice versa
+  (written at the state files, not the engine — engine stays stateless).
+- **Overlay slots: armor + accessories only** (Head/Body/Hands/Legs/Feet/Neck/Waist).
+  Never Main/Sub/Ranged/Ammo — HELM tools are inventory items (Sickle 1020, Hatchet 1021,
+  Pickaxe 605), and weapon swaps would burn TP for zero gain.
+- Ladder resolution per slot (manifest `helm` block, AUTO_FMT 6→7): candidates from
+  catalog walk, sorted Surveyor desc → HELM desc → level asc; first owned+wearable wins.
+  Head slot resolves through the **active category's hat** (hardcoded map), else nothing.
+
+## 4. Venture points — packet strategy
+
+Server keeps per-category VP in private-module charVars; **no retail packet carries them**.
+BUT: trove's custom `0x1A4` request/response protocol (trove/utils/packet.lua) is
+server-authoritative and already streams a Points list — Dynamis Venture Points arrive as
+group `Ventures`, label `Dynamis` (POINTS_ENTRY offsets: group@0x08 len19, label@0x1C
+len23, value@0x34 i32le; request = 64-byte packet, action byte 8 @0x04).
+
+**Hypothesis (needs one field test): the four HELM pools are in the same stream**, group
+`Ventures`, labels per category. Plan:
+- helmwatch sends `GET_POINTS` (debounced, on panel entry + login, like the 0x10F GP
+  request) and parses ALL `POINTS_ENTRY` responses into `<char>\dlac\venturepoints.lua`.
+- Debug command dumps every (group, label, value) seen → Henrik runs it once, we pin the
+  exact labels.
+- **Fallback** if absent from the stream: parse Alternix/Populox customMenu text —
+  CatsEyeXI custom menus arrive as incoming `0x017` CHAT_STD, type 12 (MESSAGE_GMPROMPT),
+  speaker `_CUSTOM_MENU`, payload `"Title""Opt1""Opt2"…` — and/or the `!ventures` reply.
+
+## 5. Today's ventures — `!ventures helm`
+
+- Rotate at JST midnight, one objective per tier (Low/Mid/High) per category, auto-repeat,
+  progress carries over days, partial credit with a threshold. Reward 35-50 VP + EXP.
+- The `!ventures` reply arrives as incoming `0x017` CHAT_STD (printToPlayer → type 6
+  MESSAGE_SYSTEM_1, but be tolerant on type). **Format strings are in the private module —
+  unknowable from source.** Plan: helmwatch has a capture mode that logs all 0x017 system
+  lines for ~5s after the player sends a `!ventures` command (we watch outgoing chat for
+  it); one Henrik capture → write the regex → passive parse forever after. Panel gets a
+  "Refresh" button that types `!ventures helm` for the user (user-visible, not sneaky).
+- Parsed per-category objectives persist to `<char>\dlac\helmventures.lua` with the JST
+  day-stamp; stale (past JST midnight) shows as "run !ventures helm to refresh".
+- NOTE: packet `0x1A3` (the `ventures` addon) is the daily venture **NM hunt** rotation —
+  a different system; not HELM. Don't confuse them.
+
+## 6. Category auto-detection — NOT a dead end
+
+HELM is trade-to-NPC, and the point NPCs are literally named `Harvesting Point` /
+`Excavation Point` / `Logging Point` / `Mining Point` (zone scripts). Detection:
+outgoing trade-complete packet → target index → entity name from memory → category.
+Tool disambiguation not even needed (name says it all; pickaxe covers both Mining and
+Excavation anyway).
+
+So the bar can **auto-switch category on every swing** (auto-equip the right hat for the
+NEXT swing — the current trade is already in flight, which is fine: gathering is a stream
+of swings at the same node type). Result events land as incoming `0x034` EVENTNUM
+(num[0]=item, 0=nothing; num[1]=broke; num[2]=inv full) with per-zone csids — usable later
+for a yield/session tracker, not needed for v1.
+
+Packet id/offsets for the outgoing trade need one dlacprobe confirmation (expected: the
+NPC trade-complete packet, target id @0x04 area).
+
+## 7. dlacprobe shopping list (Henrik field session)
+
+All diagnostics in dlacprobe, never dlac (hard rule):
+1. `!ventures` and `!ventures helm` once each → capture the 0x017 reply lines (format
+   strings → regexes).
+2. Open Alternix's shop/menu once → capture 0x017 type-12 `_CUSTOM_MENU` payload (VP
+   balance in menu text? fallback source).
+3. One HELM swing per category (a Mining and a Harvesting swing suffice if short on time)
+   → confirm outgoing trade packet id + offsets, and the 0x034 result eventnum.
+4. helmwatch's own points-dump after GET_POINTS → do HELM pools appear in the 0x1A4
+   Points stream, and under which group/label?
+
+## 8. File map (implementation)
+
+| File | Role |
+|---|---|
+| `feature/helmwatch.lua` | state owner: helmstate/venturepoints/helmventures files, 0x1A4 send+parse, 0x017 capture+parse, trade watch, category auto-switch |
+| `ui/helmbar.lua` | floating bar: 4 glyphs + on/off (craftbar clone) |
+| `ui/helmui.lua` | panel: ownership matrix + category tabs + VP + today's ventures; `init(deps)` DI like trigui |
+| `ui/triggersui.lua` | +1 row in Automations list (`key='helm'`), detail delegates to helmui |
+| `dispatch.lua` | v59: ensureHelmState, helmOverlayFor (Default-only), HELM_OVERLAY_SLOTS, resolveVirtual `dlac:AutoHelm` |
+| `assets/helm/*.png` | DONE — Harvesting/Excavation/Logging/Mining 40×40 |
+| manifest `helm` block | AUTO_FMT 7, per-slot ladders + per-category head ladder |
+
+Open questions carried in docs/server-questions.md style: Surveyor 1/2-vs-2/4 catalog
+discrepancy (ordering-safe); hat double-yield % unknown (display "chance", no number).

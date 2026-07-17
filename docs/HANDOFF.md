@@ -314,7 +314,21 @@ agent; the per-repo setup lives in `docs/agents/`.
   - **Verify-then-automate — DONE (2026-07-13):** guild-points self-request (c2s
     `0x10F`) turn-in-verified; now auto-fires once on login + on AutoCraft panel
     open (debounced). `/dl craft gp` remains the manual check.
-- **feature/storage-move**: gearmove v8 + gearcheck + the gearui modularization
+  - **HELM gear system (2026-07-17, engine v59) — the craft system's gathering
+    twin** (docs/design/helm-gear.md; history.md "HELM gear automation").
+    Same MANUAL model: helmwatch writes `<char>\dlac\helmstate.lua`; the engine
+    overlays `dlac:AutoHelm` on **Default ONLY (idle-only is the requirement,
+    not an accident)**, armor+neck+waist only, fmtver-7 manifest ladders
+    (Surveyor-major, stat-driven from catalog `HELM`/`Surveyor` keys + the
+    semantic hat map). Craft-vs-helm both-on → newer `at` stamp wins (engine
+    arbitration, no cross-requires). New: `helmwatch.lua`, `helmbar.lua`,
+    `helmui.lua` (own module — triggersui rides the 200-local cap),
+    `assets/helm/*.png`. Venture points ride CatsEyeXI's custom 0x1A4
+    request/response (trove's protocol, reimplemented); `!ventures` replies are
+    0x017-captured raw until a field capture pins the private module's format;
+    category auto-detected from outgoing trade 0x036 → "* Point" NPC name.
+    Field tests pending: design doc §7 (`/dl helm points`, one `!ventures helm`
+    capture, one swing per category).
   commits. Local-only pending GM verdict; strip TEMP probes (`/dlmv`, RMB debug,
   branch-print) before any merge. The Storage-into-Provenance packet experiment is
   designed, unrun (docs/design/storage-move.md "open questions").

@@ -805,7 +805,7 @@ local UNIVERSAL = {
 -- Manifest schema version: bump when autoCommit writes NEW fields. An on-disk
 -- manifest with an older fmtver self-heals (renderAutomations triggers a rescan)
 -- so a dlac update never needs a manual "Rescan owned gear" click.
-local AUTO_FMT = 6;   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked; 5: craft ladders; 6: skill-up fillers in hq/nq
+local AUTO_FMT = 7;   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked; 5: craft ladders; 6: skill-up fillers in hq/nq; 7: helm ladders + hat map
 
 local auto = { data = nil, loadedFor = nil, status = '' };
 
@@ -1052,6 +1052,57 @@ local function autoCommit()
             end
         end
     end);
+    -- HELM gathering ladders (docs/design/helm-gear.md): per SLOT, a best-first
+    -- ladder of owned+in-bags gear carrying the catalog's HELM / Surveyor stats
+    -- (Surveyor-major -- fewer "nothing" results; HELM-minor -- the break-roll
+    -- rating, +7.3 per point on the 33% break check), PLUS the semantic hat map
+    -- (WHICH category a hat doubles is not a catalog stat -- the id block
+    -- 25557-25560 is one hat per category). Stat-driven like the craft
+    -- ladders: new server gear lands on the next rescan, no table to edit.
+    local helmBest, helmHats = {}, {};
+    pcall(function()
+        if type(deps.ownedList) ~= 'function' then return; end
+        local lvl = mainLevel();
+        local HLADDER = 4;
+        local bySlot = {};   -- slot -> { {name, score, level, helm, surv}, ... }
+        for _, rec in ipairs(deps.ownedList() or {}) do
+            local st = (hasLScale and type(lscale.effective) == 'function')
+                and lscale.effective(rec, lvl) or rec.Stats;
+            local sl = tostring(rec.Slot or '');
+            if type(st) == 'table' and rec.Name ~= nil and sl ~= ''
+               and (not hasDispatch or type(dsp.canWear) ~= 'function' or dsp.canWear(rec, job, 99))
+               and (type(deps.haveInBags) ~= 'function' or deps.haveInBags(rec)) then
+                local helm = tonumber(st.HELM) or 0;
+                local surv = tonumber(st.Surveyor) or 0;
+                if helm > 0 or surv > 0 then
+                    bySlot[sl] = bySlot[sl] or {};
+                    local lad = bySlot[sl];
+                    lad[#lad + 1] = { name = rec.Name, score = surv * 10 + helm,
+                                      level = rec.Level or 0, helm = helm, surv = surv };
+                end
+            end
+        end
+        for sl, lad in pairs(bySlot) do
+            table.sort(lad, function(a, b)
+                if a.score ~= b.score then return a.score > b.score; end
+                return a.name < b.name;
+            end);
+            local l = {};
+            for i = 1, math.min(#lad, HLADDER) do l[i] = lad[i]; end
+            helmBest[string.lower(sl)] = l;
+        end
+        -- Owned hats only; the engine falls back to the generic head ladder
+        -- (another category's hat still carries Surveyor) when one is missing.
+        for g, nm in pairs({ Harvesting = 'Harv. Sun Hat', Excavation = 'Excavators Shades',
+                             Logging = 'Lumberjacks Beret', Mining = 'Miners Helmet' }) do
+            local rec = usableRec(nm, job);
+            if rec ~= nil and (type(deps.haveInBags) ~= 'function' or deps.haveInBags(rec)) then
+                local st = type(rec.Stats) == 'table' and rec.Stats or {};
+                helmHats[g] = { name = rec.Name, level = rec.Level or 0,
+                                surv = tonumber(st.Surveyor) or 0 };
+            end
+        end
+    end);
     -- The crafting GOAL persisted for the trigger-set path (the manual overlay
     -- reads craftstate.lua instead). Read it from craftwatch -- NOT from
     -- CRAFT_UI, which is declared LATER in this file: referencing it here made
@@ -1142,6 +1193,30 @@ local function autoCommit()
             L[#L + 1] = string.format('            %s = { %s },', cr, table.concat(parts, ', '));
         end
         L[#L + 1] = '        },';
+    end
+    L[#L + 1] = '    },';
+    -- helm ladders: slotKey -> best-first rungs (Surveyor-major), plus the
+    -- owned-hat map keyed by category (engine: dlac:AutoHelm).
+    L[#L + 1] = '    helm = {';
+    L[#L + 1] = '        hats = {';
+    for _, g in ipairs({ 'Harvesting', 'Excavation', 'Logging', 'Mining' }) do
+        local h = helmHats[g];
+        if h ~= nil then
+            L[#L + 1] = string.format('            %s = { name = %q, level = %d, surv = %d },',
+                g, h.name, h.level, h.surv);
+        end
+    end
+    L[#L + 1] = '        },';
+    local hbKeys = {};
+    for k in pairs(helmBest) do hbKeys[#hbKeys + 1] = k; end
+    table.sort(hbKeys);
+    for _, k in ipairs(hbKeys) do
+        local rungs = {};
+        for _, c in ipairs(helmBest[k]) do
+            rungs[#rungs + 1] = string.format('{ name = %q, score = %d, level = %d, helm = %d, surv = %d }',
+                c.name, c.score, c.level, c.helm, c.surv);
+        end
+        L[#L + 1] = string.format('        %s = { %s },', k, table.concat(rungs, ', '));
     end
     L[#L + 1] = '    },';
     L[#L + 1] = '};';
@@ -1601,6 +1676,15 @@ local function renderAutomations(noHeader)
             end
             imgui.Spacing();
             imgui.TextColored(COL_DIM, 'Green = owned; red = owned but this job can\'t wear it; dim = not owned.');
+        elseif auto.view == 'helm' then
+            -- The whole panel lives in ui/helmui.lua (triggersui rides the
+            -- 200-local cap -- a pcall-require here adds none).
+            local hok, helmui = pcall(require, 'dlac\\ui\\helmui');
+            if hok and type(helmui) == 'table' and type(helmui.render) == 'function' then
+                pcall(helmui.render, deps, availW);
+            else
+                imgui.TextColored(COL_ERR, 'helmui failed to load.');
+            end
         elseif auto.view == 'maxmp' then
             imgui.TextColored(COL_HEADER, 'MaxMP');
             imgui.SameLine(0, 10); imgui.TextColored(COL_DIM, 'set automation -- /dl mode maxmp; wears batteries at a full pool, releases as spent');
@@ -1649,10 +1733,19 @@ local function renderAutomations(noHeader)
           level = obiLevel(),         max = 2, txt = nil },
         { key = 'craft',       name = 'Auto Craft Set',  kind = 'craft-gear helper (manual pick)',
           level = CRAFT_UI.level(),   max = 4, txt = nil },
+        { key = 'helm',        name = 'Auto HELM Set',   kind = 'gathering-gear helper (idle only)',
+          level = 0,                  max = 4, txt = nil },
     };
     rows[1].txt = IRID_TXT[rows[1].level];
     rows[2].txt = OBI_TXT[rows[2].level];
     rows[3].txt = CRAFT_UI.txt[rows[3].level];
+    -- HELM coverage lives in helmui (200-local cap: pcall-require, no upvalue).
+    pcall(function()
+        local helmui = require('dlac\\ui\\helmui');
+        rows[4].level = helmui.level(deps);
+        rows[4].max = helmui.maxLevel or 4;
+        rows[4].txt = helmui.txt[rows[4].level];
+    end);
     -- Column headers, same fixed offsets as the rows.
     imgui.Dummy({ 0, 0 });
     imgui.SameLine(8);   imgui.TextColored(COL_HEADER, 'Name');

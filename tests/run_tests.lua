@@ -3379,6 +3379,113 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- HELM: helmwatch state + parsers + the engine's dlac:AutoHelm overlay (v59)
+-- -- docs/design/helm-gear.md. Idle-only is STRUCTURAL (the overlay is only
+-- consulted on Default, same gate as craft); these cover resolution + rules.
+-- ---------------------------------------------------------------------------
+(function()
+    local helmwatch = dofile('feature/helmwatch.lua');
+
+    -- state rules (the craftwatch model: select does not enable; fishing is
+    -- deliberately not a category -- it gets its own automation someday)
+    helmwatch.selectGather('Mining');
+    check('H1 selectGather sets active',   helmwatch.getGather(), 'Mining');
+    check('H2 select does NOT enable',     helmwatch.isEnabled(), false);
+    helmwatch.selectGather('logging');
+    check('H3 lowercase tolerated',        helmwatch.getGather(), 'Logging');
+    helmwatch.selectGather('Fishing');
+    check('H4 fishing rejected',           helmwatch.getGather(), 'Logging');
+    helmwatch.setEnabled(true);
+    check('H5 switch turns on',            helmwatch.isEnabled(), true);
+    helmwatch.setEnabled(false);
+    check('H6 switch off',                 helmwatch.isEnabled(), false);
+
+    -- category from NPC name (outgoing-trade 0x036 auto-detect)
+    check('H7 Mining Point -> Mining',     helmwatch.gatherFromNpcName('Mining Point'), 'Mining');
+    check('H8 Harvesting Point',           helmwatch.gatherFromNpcName('Harvesting Point'), 'Harvesting');
+    check('H9 unrelated npc -> nil',       helmwatch.gatherFromNpcName('Goblin Miner'), nil);
+    check('H10 nil npc -> nil',            helmwatch.gatherFromNpcName(nil), nil);
+
+    -- 0x1A4 POINTS_ENTRY wire format (trove protocol): group@0x08 (19b) |
+    -- label@0x1C (23b) | i32 value@0x34; CLEAR/END_LIST commits the stream.
+    local function zi32(v) return string.char(v % 256, math.floor(v/256)%256, math.floor(v/65536)%256, math.floor(v/16777216)%256); end
+    local function zfield(s, width) return s .. string.rep('\0', width - #s); end
+    local function pointsEntry(group, label, value)
+        return string.char(0xA4, 0, 0, 0) .. string.char(7) .. string.rep('\0', 3)
+            .. zfield(group, 20) .. zfield(label, 24) .. zi32(value);
+    end
+    local endList = string.char(0xA4, 0, 0, 0) .. string.char(2) .. '\0';
+    check('H11 entry consumed',  helmwatch.on1A4(pointsEntry('Ventures', 'Mining', 3200)), true);
+    check('H12 no commit before END', helmwatch.pointsFor('Mining'), nil);
+    helmwatch.on1A4(pointsEntry('Ventures', 'Harvesting', 150));
+    helmwatch.on1A4(pointsEntry('Ventures', 'Dynamis', 999));
+    check('H13 END commits stream', helmwatch.on1A4(endList), true);
+    check('H14 exact label match',  helmwatch.pointsFor('Mining'), 3200);
+    check('H15 second category',    helmwatch.pointsFor('Harvesting'), 150);
+    check('H16 absent category',    helmwatch.pointsFor('Excavation'), nil);
+    check('H17 pointsReady',        helmwatch.pointsReady(), true);
+
+    -- chat-line bucketing + sanitizing (the pre-capture display path)
+    check('H18 mining line',   helmwatch.lineCategory('Mining: Zeruhn Mines (3/10)'), 'Mining');
+    check('H19 harvest line',  helmwatch.lineCategory('Harvest 10 stalks in Giddeus'), 'Harvesting');
+    check('H20 plain chatter', helmwatch.lineCategory('Hello there adventurer'), nil);
+    check('H21 control bytes scrubbed', helmwatch.cleanLine('a\1\2b  c\127'), 'a b c');
+    check('H22 jst day rollover', helmwatch.jstDay(15 * 3600) - helmwatch.jstDay(0), 1);
+
+    -- Engine overlay: dlac:AutoHelm resolves the manifest helm block -- the
+    -- category hat first for Head (semantic map), the generic ladder as the
+    -- fallback (another category's hat still carries Surveyor), best-first
+    -- level-gated rungs everywhere else. Armor+neck+waist only by design.
+    dispatchM._autoOverride = { helm = {
+        hats = { Mining = { name = 'Miners Helmet', level = 1, surv = 1 } },
+        head = { { name = 'Lumberjacks Beret', score = 10, level = 1, helm = 0, surv = 1 } },
+        body = { { name = 'Plain Tunica +1', score = 21, level = 40, helm = 1, surv = 2 },
+                 { name = 'Field Tunica',    score = 1,  level = 1,  helm = 1, surv = 0 } },
+        neck = { { name = 'Field Torque',    score = 1,  level = 65, helm = 1, surv = 0 } },
+    } };
+    local hov = dispatchM._helmOverlayFor({ gather = 'Mining', enabled = true, at = 1 },
+        { player = { MainJobSync = 75 } });
+    check('H23 hat resolves for category',   hov and hov.Head, 'Miners Helmet');
+    check('H24 body best rung',              hov and hov.Body, 'Plain Tunica +1');
+    check('H25 neck usable at 75',           hov and hov.Neck, 'Field Torque');
+    local hov2 = dispatchM._helmOverlayFor({ gather = 'Harvesting', enabled = true },
+        { player = { MainJobSync = 75 } });
+    check('H26 missing hat -> head ladder',  hov2 and hov2.Head, 'Lumberjacks Beret');
+    local hov3 = dispatchM._helmOverlayFor({ gather = 'Mining', enabled = true },
+        { player = { MainJobSync = 30 } });
+    check('H27 underlevel rung falls through', hov3 and hov3.Body, 'Field Tunica');
+    check('H28 underlevel neck -> slot empty', hov3 and hov3.Neck, nil);
+    local hoff = dispatchM._helmOverlayFor({ gather = 'Mining', enabled = false },
+        { player = { MainJobSync = 75 } });
+    check('H29 disabled -> no overlay',      hoff, nil);
+    local hnog = dispatchM._helmOverlayFor({ gather = '', enabled = true },
+        { player = { MainJobSync = 75 } });
+    check('H30 no category -> no overlay',   hnog, nil);
+    dispatchM._autoOverride = nil;
+
+    -- rating / preview (helmwatch reads the same manifest shape itself for
+    -- the bar display: HELM sum over non-Head picks, >=5 = break-proof)
+    helmwatch._setManifest({ helm = {
+        hats  = { Mining = { name = 'Miners Helmet', level = 1, surv = 1 } },
+        body  = { { name = 'Plain Tunica', score = 11, level = 30, helm = 1, surv = 1 } },
+        hands = { { name = 'Field Gloves', score = 1,  level = 1,  helm = 1, surv = 0 } },
+        neck  = { { name = 'Field Torque', score = 1,  level = 65, helm = 1, surv = 0 } },
+        waist = { { name = 'Field Rope',   score = 1,  level = 65, helm = 1, surv = 0 } },
+        legs  = { { name = 'Plain Hose',   score = 11, level = 30, helm = 1, surv = 1 } },
+        feet  = { { name = 'Plain Boots',  score = 11, level = 30, helm = 1, surv = 1 } },
+    } });
+    local pv = helmwatch.preview('Mining', 75);
+    check('H31 preview head is the hat',  pv.Head ~= nil and pv.Head.name, 'Miners Helmet');
+    check('H32 preview body',             pv.Body ~= nil and pv.Body.name, 'Plain Tunica');
+    local hr, hs, hbp = helmwatch.rating('Mining', 75);
+    check('H33 rating sums HELM (no head)', hr, 6);
+    check('H34 surveyor total',             hs, 4);
+    check('H35 break-proof at >= 5',        hbp, true);
+    local lr = select(1, helmwatch.rating('Mining', 20));
+    check('H36 level gating trims rating',  lr, 1);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then

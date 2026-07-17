@@ -2167,3 +2167,57 @@ table — load as nothing). Also folded in: an x with a red second-click confirm
 on every Saved Sets / Saved Lists row in the copy-from menus, so "save as..."
 templates can finally be deleted. AE/AS/AW/AP rewritten for the unbound
 semantics (987 checks).
+
+## Session "HELM gear automation" (2026-07-17, engine v59, docs/design/helm-gear.md)
+
+**Feature: the craft-gear system's gathering twin** for Harvesting / Excavation
+/ Logging / Mining (fishing excluded on purpose — it gets its own automation
+someday). Research fanned out three ways before a line was written: the dlac
+craftgear map (the template), the trove + ventures addons (the 0x1A4 protocol),
+and the public server fork + wiki (mechanics, IDs, prices).
+
+**What research settled:**
+- The catalog already carries machine-readable `Stats.HELM` and
+  `Stats.Surveyor` — HELM ladders are stat-driven exactly like craft skill
+  ladders. All item IDs verified catalog-vs-server-SQL (design doc table).
+- **The "+5 removes breakage" math decoded**: every field/plain piece carries a
+  +73 result mod = +7.3 on the break roll (`hobbies/helm/logic.lua`: break if
+  `rand(1,100)+mod/10 <= 33`) — five pieces → min 37.5 → unbreakable. This also
+  explains server-questions §2's mystery flat 73. Excavation's result mod
+  (2006) is private-module-added and stays breakable — As Square Enix Intended.
+- **Venture points**: no retail packet — but trove's custom 0x1A4
+  request/response streams a server-authoritative Points list (group/label/
+  value; DVP arrives as group `Ventures`). helmwatch speaks the protocol
+  itself (GET_POINTS=8 / POINTS_ENTRY=7); whether the four HELM pools ride the
+  stream is field-test #1 (`/dl helm points` dumps everything).
+- **`!ventures` reply format is unknowable from source** (private submodules:
+  modules/catseyexi, cexi-src — all 404). helmwatch watches outgoing 0x0B5 for
+  a typed `!ventures`, opens a 6s capture on incoming 0x017, mirrors raw lines
+  to `helmventures_capture.txt` (the data that will pin the real regexes) and
+  keyword-buckets them per category for display meanwhile.
+- **Category auto-detection is NOT a dead end** (Henrik suspected it was): the
+  point NPCs are literally named `Mining Point` etc. — outgoing trade 0x036
+  target index → entity name → category; with the bar ON the hat auto-follows.
+- 0x1A3 (the `ventures` addon's packet) is the venture-NM daily rotation, NOT
+  HELM — a different system wearing the same name.
+
+**What shipped:** `feature/helmwatch.lua` (state owner: helmstate/venturepoints/
+helmventures mirrors, 0x1A4 + 0x017 + 0x036 + 0x0B5 glue, `/dl helm`),
+`ui/helmui.lua` (the Automations panel: Henrik's four-column progression matrix
+— Field / Plain / Plain +1 / Hats — with the "you're awesome" green cascade
+(better piece greens its ancestors) and a holy-light backlight on owned
+top-tier pieces; category tabs with the new gold glyphs; VP + today's ventures
+per tab), `ui/helmbar.lua` (floating bar: four glyphs + pill + VP/rating/
+Surveyor status line), engine v59 (`dlac:AutoHelm`, helmstate read gated to
+Default — IDLE-ONLY is the feature — armor+neck+waist only, never weapons;
+craft-vs-helm both-on arbitration by newer `at` stamp), manifest fmtver 7
+(helm ladders Surveyor-major + owned-hat map). Icons: Henrik's four SVGs
+rasterized to `assets/helm/*.png` at the craft-glyph spec (40×40 alpha).
+En route: helmOverlayFor passes ctx.player through to the ladder level gate —
+the craft overlay's inner ctx drops it (harmless there, Lv65 Field Torque/Rope
+would flap here). H1–H36 cover state rules, wire parsers, overlay resolution,
+rating math (1023 checks).
+
+**Field tests pending (dlacprobe / live):** §7 of the design doc — the 0x1A4
+points dump, one `!ventures helm` capture, one Alternix menu, one swing per
+category to confirm 0x036 offsets.

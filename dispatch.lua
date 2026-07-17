@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 58;   -- 58: monitor stream is frame-paced -- fired lines buffer in _monQ and the tick's frame pass streams ONE '/dlacmonev' per frame. Two commands queued in the same frame cross the command bus in REVERSE order (field case: the monitor showed every cast's Precast ABOVE its Midcast -- the engine equipped in the right order all along, only the display lied). Ring, file mirror and monitor untouched.
+M.VERSION = 59;   -- 59: HELM overlay (docs/design/helm-gear.md) -- helmstate.lua {gather,enabled,at} read like craftstate; dlac:AutoHelm resolves the manifest's fmtver-7 helm ladders (armor+neck+waist ONLY -- never weapons: tools are inventory items and idle weapon swaps burn TP); overlay gated to Default exactly like craft (idle-only is the FEATURE here, Henrik's hard requirement). Craft-vs-helm arbitration: both switches on -> the newer `at` stamp wins whole (the watchers already exclude each other addon-side; this is the engine-native backstop -- no cross-module requires, no cycles).
+                  -- 58: monitor stream is frame-paced -- fired lines buffer in _monQ and the tick's frame pass streams ONE '/dlacmonev' per frame. Two commands queued in the same frame cross the command bus in REVERSE order (field case: the monitor showed every cast's Precast ABOVE its Midcast -- the engine equipped in the right order all along, only the display lied). Ring, file mirror and monitor untouched.
                   -- 57: settle window 3s -> 1s (Henrik's ruling: 3 felt long). Semantics unchanged: the window is stability-since-LAST-change, every flip re-arms it, so staged transitions stay covered; 1s only outlasts the gap after the final flip. Raise M.SYNC_SETTLE_S first if a sync ever eats TP again.
                   -- 56: Level-sync settle hold -- a MainJobSync jump on the SAME job (a level sync landing: Incursion boss pop, party re-sync) arms a ~3s hold: every dispatch keeps Main/Sub/Range as worn (ctx.syncHold, the pinReserved pattern; a Range-reserving stat-stick Ammo holds WITH the Range it reserves, or the server would strip the worn ranged weapon -- ADR 0010), and HandleDefault is gated whole for legacy profiles via M.defaultGateHold (pet hold + sync hold), consulted AT CALL TIME by a thin generational wrap shell (WRAP_GEN) so the gate itself hot-swaps live. Tracker parked on M (survives self-swap mid-hold). Job changes and first reads adopt instantly -- no hold. Pure rule: M.syncSettleStep (LS tests). Root cause of the field report "popping an Incursion boss sometimes zeroes saved TP": a mid-transition level reading resolving a different Main.
                   -- 55: Trigger-monitor feed -- a 5-entry ring of fired-rule lines (updated on every retrace: Default only when its matched-rule set changes, action events always). Each new line STREAMS to the addon state as a blocked '/dlacmonev' command (the /bind queue precedent -- the live channel two Lua states share) AND flushes coalesced to firedstate.lua (reload bootstrap + fallback). Display only; the engine never reads it back.
@@ -868,6 +869,40 @@ local function resolveVirtual(marker, ctx, slot)
         local chain = (type(perCraft) == 'table') and perCraft[goal] or nil;
         if type(chain) ~= 'table' then
             return nil, string.format('no %s craft gear for %s (%s)', slotKey, tostring(craftV), goal);
+        end
+        for _, r in ipairs(chain) do                     -- ladder is best-first
+            if type(r) == 'table' and type(r.name) == 'string' and usableAt(r.level, lvl) then
+                return r.name;
+            end
+        end
+        return nil, string.format('no usable %s rung at Lv%d', slotKey, lvl);
+    end
+    if mk == 'dlac:autohelm' then
+        -- HELM automation (docs/design/helm-gear.md): manifest `helm` block =
+        -- per-slot best-first ladders (score = Surveyor-major, HELM-minor) +
+        -- the semantic hat map (hats[category] -- WHICH category a hat doubles
+        -- is not a catalog stat). Head: the active category's hat first; any
+        -- other owned hat still carries Surveyor, so the generic head ladder
+        -- is the fallback rather than an empty slot.
+        local gv = ctx.gatherOverride;
+        if type(gv) ~= 'string' or gv == '' then return nil, 'no gather category (HELM bar)'; end
+        local h = (type(a.helm) == 'table') and a.helm or nil;
+        if h == nil then return nil, 'no helm gear data (Automations > rescan)'; end
+        local slotKey = string.lower(tostring(slot or ''));
+        if slotKey == 'head' and type(h.hats) == 'table' then
+            local hat = h.hats[gv];
+            if hat == nil then                           -- tolerate caps drift
+                for k, v in pairs(h.hats) do
+                    if ci(tostring(k), tostring(gv)) then hat = v; break; end
+                end
+            end
+            if type(hat) == 'table' and type(hat.name) == 'string' and usableAt(hat.level, lvl) then
+                return hat.name;
+            end
+        end
+        local chain = h[slotKey];
+        if type(chain) ~= 'table' then
+            return nil, string.format('no %s helm gear owned', slotKey);
         end
         for _, r in ipairs(chain) do                     -- ladder is best-first
             if type(r) == 'table' and type(r.name) == 'string' and usableAt(r.level, lvl) then
@@ -1789,6 +1824,53 @@ local function craftOverlayFor(cs, ctx)
 end
 M._craftOverlayFor = craftOverlayFor;   -- test seam
 
+-- ---------------------------------------------------------------------------
+-- HELM overlay (v59) -- the craft overlay's gathering twin. helmwatch writes
+-- <char>\dlac\helmstate.lua { gather, enabled, at }; when enabled, the engine
+-- overlays the resolved HELM gear on Default ONLY (idle-only is the feature:
+-- gathering gear must never ride into an action event). Armor + neck + waist
+-- only -- HELM tools live in inventory, and an idle weapon swap eats TP.
+-- ---------------------------------------------------------------------------
+local _helm = { raw = nil, data = nil, lastCheck = -1 };
+local function ensureHelmState()
+    local now = os.time();
+    if now == _helm.lastCheck then return _helm.data; end
+    _helm.lastCheck = now;
+    local dir = charDir();
+    if dir == nil then return _helm.data; end
+    local raw = readFile(dir .. 'helmstate.lua');
+    if raw == nil then _helm.raw, _helm.data = nil, nil; return nil; end
+    if raw == _helm.raw then return _helm.data; end
+    _helm.raw = raw;
+    local chunk = (loadstring or load)(raw, '@helmstate.lua');
+    if chunk ~= nil then
+        local ok, t = pcall(chunk);
+        if ok and type(t) == 'table' then _helm.data = t; else _helm.data = nil; end
+    end
+    return _helm.data;
+end
+
+local HELM_OVERLAY_SLOTS = { 'Head', 'Neck', 'Body', 'Hands', 'Waist', 'Legs', 'Feet' };
+
+-- The HELM equip table for a given helm-state, or nil when off. Split out so
+-- tests can pass an explicit state instead of the on-disk file.
+local function helmOverlayFor(hs, ctx)
+    if type(hs) ~= 'table' or hs.enabled ~= true
+       or type(hs.gather) ~= 'string' or hs.gather == '' then return nil; end
+    local equip = nil;
+    -- ctx.player rides along so the ladder's level gate sees the REAL level
+    -- (the craft overlay's inner ctx drops it and defaults to 75 -- harmless
+    -- there, but Field Torque/Rope are Lv65: an underleveled overlay pick
+    -- would flap against the client forever).
+    local inner = { gatherOverride = hs.gather, player = (type(ctx) == 'table') and ctx.player or nil };
+    for _, slot in ipairs(HELM_OVERLAY_SLOTS) do
+        local nm = resolveVirtual('dlac:AutoHelm', inner, slot);
+        if type(nm) == 'string' then equip = equip or {}; equip[slot] = nm; end
+    end
+    return equip;
+end
+M._helmOverlayFor = helmOverlayFor;   -- test seam
+
 -- (There was a craftOverlay(ctx) wrapper here that paired ensureCraftState with
 -- craftOverlayFor. M.dispatch now reads the state itself -- it has to decide
 -- whether there is anything to do BEFORE building the context -- so the wrapper
@@ -2079,7 +2161,18 @@ function M.dispatch(event)
         local craftState = (event == 'Default') and ensureCraftState() or nil;
         local craftOn    = (type(craftState) == 'table' and craftState.enabled == true
                             and type(craftState.craft) == 'string' and craftState.craft ~= '');
-        if not hasRules and not hasPins and not craftOn then return; end
+        local helmState  = (event == 'Default') and ensureHelmState() or nil;
+        local helmOn     = (type(helmState) == 'table' and helmState.enabled == true
+                            and type(helmState.gather) == 'string' and helmState.gather ~= '');
+        -- One crafting/gathering overlay at a time (they contest the same
+        -- slots). The watchers already exclude each other addon-side; if both
+        -- switches are somehow on, the NEWER enable (`at` stamp) wins whole --
+        -- stateless arbitration, no cross-module requires (v59).
+        if craftOn and helmOn then
+            if (tonumber(helmState.at) or 0) > (tonumber(craftState.at) or 0) then craftOn = false;
+            else helmOn = false; end
+        end
+        if not hasRules and not hasPins and not craftOn and not helmOn then return; end
 
         local ctx = buildCtx(event);
         -- Level-sync settle (v56): computed ONCE per dispatch and ridden by every
@@ -2096,6 +2189,9 @@ function M.dispatch(event)
         -- Craft overlay applies on Default even with NO trigger match, and always
         -- LAST (top priority) below -- but under the pin.
         local cEquip = craftOn and craftOverlayFor(craftState, ctx) or nil;
+        -- HELM overlay: same law, same rank (arbitration above means at most
+        -- one of the two is on this dispatch).
+        local hEquip = helmOn and helmOverlayFor(helmState, ctx) or nil;
 
         -- Pins apply on EVERY event (a pin that lost its slot mid-cast would not
         -- be a pin). Scoped pins need `hits` to know whether their trigger fired,
@@ -2125,7 +2221,7 @@ function M.dispatch(event)
                          and pEquip or cEquip;
         ctx.craftMainGuard = (guardSrc ~= nil) and craftMainGuard(guardSrc) or nil;
 
-        if #hits == 0 and cEquip == nil and pEquip == nil then
+        if #hits == 0 and cEquip == nil and hEquip == nil and pEquip == nil then
             if event ~= 'Default' then   -- Default runs every frame; only action events trace a miss
                 _trace[event] = { time = os.date('%H:%M:%S'), action = actionLabel(ctx),
                                   sig = '', lines = { '(no trigger matched)' } };
@@ -2160,8 +2256,15 @@ function M.dispatch(event)
             table.sort(pk);
             pSig = table.concat(pk, ',');
         end
+        local hSig = '';                                  -- helm overlay changes must retrace too
+        if hEquip ~= nil then
+            local hk = {};
+            for slot, item in pairs(hEquip) do hk[#hk + 1] = slot .. '=' .. item; end
+            table.sort(hk);
+            hSig = table.concat(hk, ',');
+        end
         sig = event .. ':' .. table.concat(sig, ',') .. '|' .. table.concat(lk, ',')
-              .. '|' .. cSig .. '|' .. pSig;
+              .. '|' .. cSig .. '|' .. pSig .. '|' .. hSig;
         local old = _trace[event];
         local retrace = (old == nil) or (old.sig ~= sig) or (event ~= 'Default');
         local lines = retrace and {} or old.lines;
@@ -2241,6 +2344,16 @@ function M.dispatch(event)
                 for slot in pairs(cEquip) do ks[#ks + 1] = tostring(slot); end
                 table.sort(ks);
                 lines[#lines + 1] = 'craft gear (overlay)  ->  ' .. table.concat(ks, ', ');
+            end
+        end
+        -- HELM overlay: same rank as craft (arbitration guarantees only one).
+        if hEquip ~= nil then
+            equipResolved(hEquip, ctx);
+            if retrace then
+                local ks = {};
+                for slot in pairs(hEquip) do ks[#ks + 1] = tostring(slot); end
+                table.sort(ks);
+                lines[#lines + 1] = 'HELM gear (overlay)  ->  ' .. table.concat(ks, ', ');
             end
         end
         -- Pins LAST of all: above the craft overlay, above every trigger. This is
