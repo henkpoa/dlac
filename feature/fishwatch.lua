@@ -21,8 +21,9 @@
     so this module just reads through it. Guild points: craftwatch's 0x113
     parser carries the fishing guild at offset 0x20 (fishing guild id 0
     server-side). Today's ventures: same 0x017 capture trick as HELM, with
-    the fishing reply format UNPINNED until a field capture -- raw lines
-    mirror to fishventures_capture.txt, 'Fishing:' lines parse structurally.
+    the fishing reply format FIELD-CONFIRMED 2026-07-18 (the HELM line shape
+    holds) -- raw lines still mirror to fishventures_capture.txt as drift
+    insurance, 'Fishing:' lines parse structurally.
 
     Pure helpers are headless-testable; Ashita glue guarded at the bottom.
 ]]--
@@ -445,10 +446,10 @@ end
 
 -- ---------------------------------------------------------------------------
 -- Today's fishing ventures -- 0x017 capture (helmwatch's trick, own window +
--- files). Format UNPINNED until a field capture: 'Fishing:' lines parse
--- structurally (the HELM line shape), everything venture-ish lands in
--- general, and the raw mirror (fishventures_capture.txt) pins the real
--- format when Henrik runs it live.
+-- files). Format FIELD-CONFIRMED 2026-07-18 ("works like a charm" -- the
+-- HELM line shape holds): 'Fishing:' lines parse structurally, everything
+-- venture-ish lands in general, and the raw mirror
+-- (fishventures_capture.txt) stays as drift insurance.
 -- ---------------------------------------------------------------------------
 M.ventures = nil;        -- { day = <JST daystamp>, lines = {..}, general = {..} }
 local _capUntil = -1;

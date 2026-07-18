@@ -2603,3 +2603,15 @@ same frame with the stale `tgtId` local and re-pinned the old fish, so the
 spot list looked unclearable. The fix is one line: Clear nils the frame's
 copy too. fix/fish-isolation-bait was field-confirmed the same message and
 fast-forwarded into main first. 1253 + 170 green.
+
+### Field round 6: all clear (2026-07-18)
+
+Henrik's confirmations closed the field-test slate in one message: `!ventures
+fishing` "works like a charm" (the command exists as spelled and the reply
+holds the HELM line shape -- the tolerant parser was enough; the raw mirror
+stays as drift insurance), GP at 0x20 matches ("we know it works since other
+times"), VP needs no worry, and the round-5 dropdown pins behave. Remaining
+from the slate: only the custom-gear stat-text report (needs the items to
+drop) and the GetRank cap question. Docs + fishwatch's two UNPINNED status
+comments synced; no code behavior changed. A new fishing feature is planned
+for a fresh session.

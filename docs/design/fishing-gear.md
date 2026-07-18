@@ -277,17 +277,19 @@ the test fixtures.
 
 ## 6. Field tests (dlacprobe stays home — none of these need probes)
 
-1. `!ventures fishing` — one capture pins the reply format (until then: tolerant parse +
-   raw mirror). Also confirms the command's exact spelling.
-2. VP sanity: panel VP vs in-game Fishing venture points (label already field-confirmed
-   in the 0x1A4 stream 2026-07-17).
-3. GP: `/dl fish gp` (or panel) vs guild NPC balance — offset 0x20 is fixture-proven but
-   not field-proven.
-4. Overlay: pill ON at a pond — rod+bait+armor dress on idle, combat gear returns on
-   engage, bait re-equips after a stack runs out (heartbeat rewrite).
+**All CONFIRMED in the field, rounds 5–6 (2026-07-18), except item 5:**
+
+1. ~~`!ventures fishing`~~ **CONFIRMED** — the command exists as spelled and the reply
+   parses structurally ("works like a charm": the HELM line shape holds). The tolerant
+   parse + raw mirror stay as drift insurance, no longer a blocker.
+2. ~~VP sanity~~ **CONFIRMED** — label field-confirmed in the 0x1A4 stream 2026-07-17;
+   Henrik: not worried.
+3. ~~GP offset 0x20~~ **CONFIRMED** — "we know it works since other times."
+4. ~~Overlay live run~~ **CONFIRMED** — round 5 pond session (no-rod detection, the
+   heartbeat) and round 6 (the dropdown pins behave).
 5. Halieutica/Mariners/Brigands Eyepatch: if Henrik owns any, hover shows them in
    ladders via gearBonus; report actual in-game stats text so the "unverified" labels
-   can be tightened.
+   can be tightened. **Still open** — needs the items to drop first.
 
 ## 7. Open questions (server-questions.md style)
 

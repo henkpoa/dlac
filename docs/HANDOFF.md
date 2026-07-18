@@ -375,8 +375,11 @@ agent; the per-repo setup lives in `docs/agents/`.
     parse + raw capture mirror until a field run. New: `fishcalc`/`fishwatch`
     (feature), `fishui`/`fishbar` (ui, zero new assets — item icons), fishdb
     (data). The Mariners set (ids beside HELM's Plain block) + Brigands
-    Eyepatch = fishing's VP tier — the panel's fourth column. Field tests
-    pending: design doc §6. Field round 5 (same day, design doc §8): legendary
+    Eyepatch = fishing's VP tier — the panel's fourth column. Field tests: §6
+    ALL CONFIRMED rounds 5–6 (07-18) — `!ventures fishing` parses (HELM line
+    shape holds), GP 0x20 matches, overlay + dropdown pins verified — except
+    custom-gear stat text (§6.5, needs drops) and the GetRank cap question
+    (§7). Field round 5 (same day, design doc §8): legendary
     rod tier in the sort (Ebisu > Lu Shang's > the field, still BELOW risk),
     the heartbeat re-ranks every ~2s beat (a better/first rod is adopted with
     no pill toggle), fish bar rod/bait names are dropdown buttons with PINNING
