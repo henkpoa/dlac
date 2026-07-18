@@ -4406,8 +4406,7 @@ end)();
     local gamemode = dofile('feature/gamemode.lua');
 
     AshitaCore = nil;
-    check('GM1 headless icon -> nil', gamemode.icon(), nil);
-    check('GM2 headless hasCrystal -> nil', gamemode.hasCrystal(), nil);
+    check('GM1 headless get -> nil', gamemode.get(), nil);
 
     -- fake entity table straight from the field capture
     local flagsByIdx = {
@@ -4431,21 +4430,19 @@ end)();
     end
 
     AshitaCore = ashitaWithIcons(1107);
-    check('GM3 self (UCW) icon -> crystal', gamemode.icon(), 'crystal');
-    check('GM4 self hasCrystal -> true', gamemode.hasCrystal(), true);
-    check('GM5 remote CW icon -> crystal', gamemode.icon(1055), 'crystal');
-    check('GM6 Wings icon by idx', gamemode.icon(1029), 'wings');
-    check('GM7 ACE icon by idx -> none', gamemode.icon(1074), 'none');
-    check('GM8 ACE hasCrystal -> false', gamemode.hasCrystal(1074), false);
-    check('GM9 unrendered idx -> nil', gamemode.icon(1500), nil);
+    check('GM2 self (UCW capture) -> CW', gamemode.get(), 'CW');
+    check('GM3 remote CW by idx -> CW', gamemode.get(1055), 'CW');
+    check('GM4 Wings by idx', gamemode.get(1029), 'Wings');
+    check('GM5 ACE by idx', gamemode.get(1074), 'ACE');
+    check('GM6 unrendered idx -> nil', gamemode.get(1500), nil);
 
     AshitaCore = ashitaWithIcons(0);        -- empty party slot: no self index
-    check('GM10 no self index -> nil', gamemode.icon(), nil);
+    check('GM7 no self index -> nil', gamemode.get(), nil);
 
     -- Ashita hands back SIGNED dwords: a sign-bit flags word must normalize
     flagsByIdx[1107] = 0xC0001000 - 4294967296;
     AshitaCore = ashitaWithIcons(1107);
-    check('GM11 negative dword normalized -> crystal', gamemode.hasCrystal(), true);
+    check('GM8 negative dword normalized -> CW', gamemode.get(), 'CW');
 
     AshitaCore = nil;
 end)();

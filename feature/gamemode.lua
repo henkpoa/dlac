@@ -1,21 +1,21 @@
--- Game-mode detection from the overhead name icon: the crystal that marks
--- CW/UCW (Crystal Warrior) characters and the Cait Sith that marks Wings.
--- CatsEyeXI re-skins the retail name-icon graphics; the server's private
--- isCrystalWarrior() state therefore surfaces client-side as ordinary
+-- What game mode is a character playing? THE central, reusable answer:
+--     gamemode.get()  ->  'CW' | 'Wings' | 'ACE' | nil (unknown)
+-- CatsEyeXI marks modes with an overhead name icon (CW/UCW crystal, Wings
+-- Cait Sith, ACE none). Those are re-skinned retail name icons, so the
+-- server's private isCrystalWarrior() state surfaces client-side as ordinary
 -- name-icon flag bits on the rendered entity:
---     RenderFlags4 & 0x1000  = crystal, CW or UCW   (retail: new-character '?')
---     RenderFlags4 & 0x4000  = Wings Cait Sith      (retail: mentor 'M')
---     neither                = ACE (no icon)
+--     RenderFlags4 & 0x1000  = crystal -> 'CW'   (retail: new-character '?')
+--     RenderFlags4 & 0x4000  = 'Wings'           (retail: mentor 'M')
+--     neither                = 'ACE'
 -- Field truth 2026-07-18, Tavnazian Safehold ICON dump (dlacprobe v1.8):
 -- Mindie=UCW and Skincrawler=CW both carry 0x1000; Askar=Wings carries
--- 0x4000; Tcb/Brehanin=ACE carry neither. WHITE-vs-PINK (CW vs UCW) is
--- deliberately NOT distinguished -- Henrik's ruling 2026-07-18: "CW and UCW
--- are still in the same playmode and have the same restrictions", so
--- crystal-or-not IS the play-mode answer this module exists to give. Do not
--- add a color split (revival path, if a feature ever truly needs shatter
--- risk: memory cw-ucw-mode-detection).
--- The self entity is always rendered, so the self read cannot go stale; reads
--- are uncached because they are one array access.
+-- 0x4000; Tcb/Brehanin=ACE carry neither. UCW deliberately ALSO returns
+-- 'CW' -- Henrik's ruling 2026-07-18: "CW and UCW are still in the same
+-- playmode and have the same restrictions", the crystal color changes
+-- nothing a feature can gate on. Do not add a color split (revival path, if
+-- shatter risk ever truly matters: memory cw-ucw-mode-detection).
+-- The self entity is always rendered, so the self read cannot go stale;
+-- reads are uncached because they are one array access.
 
 local M = {};
 
@@ -49,7 +49,8 @@ M.readFlags4 = function(idx)
 end;
 
 -- RenderFlags4 as an unsigned dword, or nil when the entity is unreadable.
--- idx defaults to the local player.
+-- idx defaults to the local player. (Plumbing under get(); public only as
+-- the seam probes and tests reach through.)
 function M.flags4(idx)
     idx = idx or M.selfIndex();
     if idx == nil then return nil; end
@@ -59,22 +60,15 @@ function M.flags4(idx)
     return v;
 end
 
--- 'crystal' | 'wings' | 'none' | nil (unknown/headless).
-function M.icon(idx)
+-- The game mode of the local player (or any rendered index): 'CW' | 'Wings'
+-- | 'ACE', or nil when it cannot be read (headless, entity not rendered).
+-- nil means UNKNOWN -- gate on an explicit mode, never on nil.
+function M.get(idx)
     local v = M.flags4(idx);
     if v == nil then return nil; end
-    if hasbit(v, M.BIT_CRYSTAL) then return 'crystal'; end
-    if hasbit(v, M.BIT_WINGS) then return 'wings'; end
-    return 'none';
-end
-
--- true = CW/UCW character, false = not, nil = unknown (headless, entity not
--- rendered). Gate features on == true / == false explicitly; never treat nil
--- as either answer.
-function M.hasCrystal(idx)
-    local i = M.icon(idx);
-    if i == nil then return nil; end
-    return i == 'crystal';
+    if hasbit(v, M.BIT_CRYSTAL) then return 'CW'; end
+    if hasbit(v, M.BIT_WINGS) then return 'Wings'; end
+    return 'ACE';
 end
 
 return M;

@@ -392,11 +392,13 @@ agent; the per-repo setup lives in `docs/agents/`.
     RenderFlags4 `0x1000` = CW/UCW crystal (retail new-character '?'),
     `0x4000` = Wings Cait Sith (retail mentor 'M'), neither = ACE —
     field-pinned from labeled samples (dlacprobe v1.8 `/probe icons`,
-    Tavnazian Safehold). `gamemode.icon()` / `gamemode.hasCrystal()` read
-    self by default, any rendered index optionally; nil ALWAYS means unknown
-    — never gate on nil. Henrik's ruling: CW-vs-UCW is MOOT (same playmode,
-    same restrictions) — the white-vs-pink split is deliberately not pursued.
-    Dormant foundation, no consumer wired yet. Tests GM1–GM11.
+    Tavnazian Safehold). ONE central question, Henrik's shape: callers ask
+    for the mode, the crystal is plumbing — `gamemode.get()` → `'CW'` |
+    `'Wings'` | `'ACE'` | nil, self by default, any rendered index
+    optionally; nil ALWAYS means unknown — never gate on nil. Henrik's
+    ruling: CW-vs-UCW is MOOT (same playmode, same restrictions) — UCW also
+    returns `'CW'`; the white-vs-pink split is deliberately not pursued.
+    Dormant foundation, no consumer wired yet. Tests GM1–GM8.
   commits. Local-only pending GM verdict; strip TEMP probes (`/dlmv`, RMB debug,
   branch-print) before any merge. The Storage-into-Provenance packet experiment is
   designed, unrun (docs/design/storage-move.md "open questions").

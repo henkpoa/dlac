@@ -2630,9 +2630,11 @@ the retail nameplate renderer, re-skinned. dlacprobe v1.8 grew
 the bits in one pass: RenderFlags4 `0x1000` = crystal (his UCW and
 Skincrawler's CW read identically), `0x4000` = Askar's Wings Cait Sith,
 ACE = neither -- XiPackets names those slots as the retail new-character '?'
-and mentor 'M' icons. `feature/gamemode.lua` ships the check
-(`icon()`/`hasCrystal()`, nil = unknown and never a guess, GM1-GM11) as
-dormant foundation for whatever gets gated on play mode next.
+and mentor 'M' icons. `feature/gamemode.lua` ships the check as dormant
+foundation for whatever gets gated on play mode next -- and Henrik set its
+shape: not "is there a crystal" but ONE central reusable question,
+`gamemode.get()` -> `'CW'` | `'Wings'` | `'ACE'` (nil = unknown and never a
+guess, GM1-GM8). The crystal is plumbing; the mode is the answer.
 
 One thread was deliberately cut rather than resolved: white vs pink.
 Mindie's extra F7/F8 bits were confounded (sole local-player sample in the
