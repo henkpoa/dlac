@@ -73,27 +73,13 @@ local SUB_LABEL = {
     Sword  = 'Sword',  Axe    = 'Axe',    Katana = 'Katana', Club = 'Club',
 };
 
--- Legacy Type spellings. Early gear.lua vocabularies wrote display forms ('Great Axe',
--- 'Hand-to-Hand', 'Wind Instrument', even bare 'String') where the importer now writes
--- catalog keys ('GreatAxe', ...) -- and a scan never rewrites an existing entry, so owned
--- files keep whatever form they were first written with, mixed. Field case (Henrik,
--- 2026-07-18): Mindie's Lv20 Savagery carried Type = "Great Axe" and vanished under the
--- Great Axe filter (nil bucket) while the name search still found it -- and the drifted
--- spelling ALSO surfaced as a second, identical-looking bucket in the dropdown. So every
--- bucket key resolves through normalization first: strip non-alphanumerics, casefold,
--- map to the canonical key. Unknown types still pass through untouched (the defensive
--- trailing-bucket path keeps them visible).
-local TYPE_ALIAS = { string = 'StringInstrument' };   -- legacy Range oddity (bare 'String')
-local function normKey(s) return string.lower((tostring(s):gsub('%W', ''))); end
-local CANON = {};   -- normalized -> canonical key, across every slot's vocabulary
-for _, list in ipairs({ MAIN_ORDER, RANGE_ORDER, AMMO_ORDER, SUB_ORDER }) do
-    for _, k in ipairs(list) do CANON[normKey(k)] = k; end
-end
-for a, k in pairs(TYPE_ALIAS) do CANON[a] = k; end
-local function canonType(t)
-    if t == nil then return nil; end
-    return CANON[normKey(t)] or t;
-end
+-- Legacy Type spellings (the invisible spaced-Type Savagery, 2026-07-18): every bucket
+-- key resolves through the ONE canonical vocabulary in gearrecord -- the same normalizer
+-- the record-side heal uses, so the filter and the records can never drift apart again.
+-- Unknown types still pass through untouched (the defensive trailing-bucket path keeps
+-- them visible); tests REC* pin that every order key below canonizes to itself.
+local grec = require('dlac\\gear\\gearrecord');
+local canonType = grec.canonType;
 
 -- Bucket a Sub-slot record: mirror of utils.classifySub for shields/grips, but a one-hander
 -- keeps its weapon Type instead of classifying to nil. A view narrowing only -- this NEVER

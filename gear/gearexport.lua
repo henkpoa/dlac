@@ -29,6 +29,9 @@ local function printerr(s) if _cfok then _cfmt.err(s); else print('[dlac] ' .. s
 
 local gok, gear = pcall(require, 'dlac\\gear');
 if not gok or type(gear) ~= 'table' then gear = {}; end
+-- Owned-gear record rules: the enrichment precedence lives ONCE (gearrecord),
+-- so an export before the GUI ever opened matches one after (same heal, same merge).
+local grec = require('dlac\\gear\\gearrecord');
 local hasCatalog, catalog = pcall(require, 'dlac\\data\\catalog');
 hasCatalog = hasCatalog and type(catalog) == 'table';
 local haok, aug = pcall(require, 'dlac\\feature\\augments');
@@ -127,28 +130,14 @@ function M.catalogIndex(cat)
     return byId;
 end
 
--- Owned record overrides, catalog fills gaps (gearui's enrich precedence,
--- read-only). nil when neither side has stats (the key is then omitted).
-local function statsFor(rec, catRec)
-    local cs = (catRec ~= nil) and catRec.Stats or nil;
-    local rs = rec.Stats;
-    local hasCs = type(cs) == 'table' and next(cs) ~= nil;
-    local hasRs = type(rs) == 'table' and next(rs) ~= nil;
-    if not hasCs and not hasRs then return nil; end
-    if not hasCs then return rs; end
-    if not hasRs then return cs; end
-    local m = {};
-    for k, x in pairs(cs) do m[k] = x; end
-    for k, x in pairs(rs) do m[k] = x; end
-    return m;
-end
-
 local function itemEntry(slot, rec, catRec, augs, augStats, counts)
     local e = {
         name  = rec.Name,
         id    = rec.Id,
         slot  = slot,
-        type  = rec.Type or (catRec ~= nil and catRec.Type or nil),
+        -- The record rule, not `rec.Type or cat.Type`: a legacy spelling heals to
+        -- the catalog key here exactly as the GUI's enrich heals it in memory.
+        type  = grec.healType(rec.Type, (catRec ~= nil) and catRec.Type or nil),
         level = rec.Level or (catRec ~= nil and catRec.Level or nil),
         jobs  = rec.Jobs or (catRec ~= nil and catRec.Jobs or nil),
     };
@@ -156,7 +145,7 @@ local function itemEntry(slot, rec, catRec, augs, augStats, counts)
     if oh == nil and catRec ~= nil then oh = catRec.OneHanded; end
     if oh ~= nil then e.oneHanded = oh; end
     if counts ~= nil and rec.Id ~= nil then e.count = counts[rec.Id] or 0; end
-    e.stats = statsFor(rec, catRec);
+    e.stats = grec.mergedStats(rec, catRec);
     if rec.Id ~= nil then
         local a = (augs ~= nil) and augs[rec.Id] or nil;
         if type(a) == 'table' and #a > 0 then e.augments = a; end

@@ -21,6 +21,9 @@
 ]]--
 
 local gear = require("dlac\\gear");
+-- The Owned-gear record rules (Type canon/heal, Shield/Grip by name, effective
+-- RSlot): one home, shared with gearui's enrich, gearexport and the type filter.
+local grec = require("dlac\\gear\\gearrecord");
 
 local M = {};
 
@@ -88,20 +91,10 @@ local function slotFromMask(slots)
     return nil;
 end
 
--- The Range slot bit in the server's reserved-slot mask (item_equipment.rslot).
-local RANGE_BIT = 0x0004;
-
--- The effective reserved-slot mask for a catalog record: its own RSlot, OR -- for a stat-stick
--- TRINKET (Ammo that fires nothing: Type='Ammo' with no AmmoType) -- the Range bit. The whole
--- throwing-ammo class reserves Range server-side, and the crawl stamped most of it but left some
--- stat sticks off (Cinderstone, Coiste Bodhar), so we complete the category HERE, the one place
--- gear.lua's RSlot is decided, so both the fresh write and the /dl fix backfill agree. (ADR 0010.)
-local function effectiveRSlot(catRec)
-    if type(catRec) ~= 'table' then return nil; end
-    if catRec.RSlot ~= nil then return catRec.RSlot; end
-    if catRec.Type == 'Ammo' and catRec.AmmoType == nil then return RANGE_BIT; end
-    return nil;
-end
+-- The effective reserved-slot mask (server rslot + the ADR 0010 trinket completion)
+-- is a RECORD RULE and lives in gearrecord with the rest of them, so the fresh
+-- write and the /dl fix backfill can never disagree with any other consumer.
+local effectiveRSlot = grec.effectiveRSlot;
 
 -- RSlot (reserved slots) by item id, from the catalog. The CLIENT resource has no such field --
 -- reservation is server data (item_equipment.rslot), so it can only come from the API crawl (plus
@@ -623,13 +616,9 @@ local function parseStatHints(desc, isWeapon)
 end
 M.parseStatHints = parseStatHints;
 
--- 'Grip' for grips/straps, else 'Shield' -- a Sub-only item is one or the other,
--- and every grip/strap is named "* Grip" / "* Strap". Mirrors utils.classifySub.
-local function subTypeFromName(name)
-    local n = string.lower(tostring(name or ''));
-    if n:find('grip', 1, true) ~= nil or n:find('strap', 1, true) ~= nil then return 'Grip'; end
-    return 'Shield';
-end
+-- 'Grip' for grips/straps, else 'Shield' (record rule, gearrecord; the engine's
+-- own mirror stays utils.classifySub -- the seeded state can't require us).
+local subTypeFromName = grec.subTypeFromName;
 
 -- Render one record as Lua source for a gear.lua entry. Returns
 -- { path = {"Main","Sword"} or {"Head"}, key = "WaxSword_1", lua = "<text>" }.

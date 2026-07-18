@@ -63,6 +63,8 @@ local lscale = try("dlac\\data\\levelstats");
 -- Gear-set bonuses (conditional-effects P1/P3): membership, tier ladders, and
 -- THE whole-composition evaluator (comboStats) behind totals and hover.
 local gfx = try("dlac\\gear\\geareffects");
+-- Owned-gear record rules (Type heal, enrichment precedence) -- one home, REC*.
+local grec = try("dlac\\gear\\gearrecord");
 -- Window theme (partyfinder-matched palette), pushed around the whole draw.
 local style = try("dlac\\ui\\uistyle");
 -- Per-job macro book/set (header "Macro" button; applied on login/job change)
@@ -274,42 +276,12 @@ local function enrichGearFromCatalog()
             if type(v) == 'table' then
                 if v.Id ~= nil and v.Name ~= nil then                       -- an item entry
                     local c = _allEquipById[v.Id];
-                    if c ~= nil then
-                        -- Pairing metadata (Sub-slot rule): older imported gear.lua
-                        -- entries carry no Type / OneHanded -- take the catalog's.
-                        -- A LEGACY spelling of the same type ('Great Axe',
-                        -- 'Hand-to-Hand' vs the catalog's 'GreatAxe'/'HandToHand')
-                        -- heals to the catalog key too: old files carry the form
-                        -- they were first written with, and the drift made gear
-                        -- invisible to the canonical vocabulary (the weapon-type
-                        -- filter missed Mindie's spaced-Type Savagery, 07-18).
-                        if v.Type == nil then v.Type = c.Type;
-                        elseif c.Type ~= nil and v.Type ~= c.Type
-                           and string.lower((tostring(v.Type):gsub('%W', ''))) ==
-                               string.lower((tostring(c.Type):gsub('%W', ''))) then
-                            v.Type = c.Type;
-                        end
-                        if v.OneHanded == nil then v.OneHanded = c.OneHanded; end
-                        -- Pairing metadata (Range/Ammo rule): what a Range weapon can
-                        -- fire this ammo as. gear.lua is an ownership record and never
-                        -- carries one. Absent stays absent -- nil is meaningful here, it
-                        -- marks an unfirable stat stick that forces Range empty.
-                        if v.AmmoType == nil then v.AmmoType = c.AmmoType; end
-                        -- Appearance model id: gear.lua is an ownership record and never
-                        -- carries one; the catalog does, for every item that renders. The
-                        -- lockstyle look preview reads it off the owned entry. Absent stays
-                        -- absent -- nil means the slot has no model (neck/ear/ring/waist/back).
-                        if v.Model == nil then v.Model = c.Model; end
-                        if type(c.Stats) == 'table' and next(c.Stats) ~= nil then
-                            if type(v.Stats) ~= 'table' or next(v.Stats) == nil then
-                                v.Stats = c.Stats;
-                            else
-                                local m = {};
-                                for k, x in pairs(c.Stats) do m[k] = x; end
-                                for k, x in pairs(v.Stats) do m[k] = x; end
-                                v.Stats = m;
-                            end
-                        end
+                    if c ~= nil and grec ~= nil then
+                        -- Per-record fill (Type + legacy-spelling heal, OneHanded,
+                        -- AmmoType, Model, Stats -- owned overrides, catalog fills)
+                        -- is a RECORD RULE: gearrecord.enrich, tested REC*. Only
+                        -- the container walk lives here.
+                        grec.enrich(v, c);
                     end
                 else                                                        -- a slot/category table
                     walk(v);

@@ -9,6 +9,7 @@ package.loaded['dlac\\gear'] = { NameToObject = {} };   -- utils requires dlac\g
 ashita = { events = { register = function() end } };    -- utils registers /dl at load
 package.loaded['dlac\\profiles'] = dofile('profiles.lua');   -- dispatch/setmanager require it (guarded)
 package.loaded['dlac\\data\\nativemp'] = dofile('data/nativemp.lua');   -- dispatch requires it (Oneiros resolver)
+package.loaded['dlac\\gear\\gearrecord'] = dofile('gear/gearrecord.lua');   -- record rules: gearimport/weaponfilter/gearexport require it
 
 local TEST_PLAYER = nil;                                -- set per test
 gData = { GetPlayer = function() return TEST_PLAYER; end };
@@ -3345,6 +3346,75 @@ end)();
     local level2 = function(n) return ({ Cinderstone = 75, ['Power Bow'] = 75 })[n]; end
     check('TR10 tie -> keep the trinket, drop Range',
         dispatchM.trinketRangeDrop({ Range = 'Power Bow', Ammo = 'Cinderstone' }, rslot, level2), 'Range');
+end)();
+
+-- ---------------------------------------------------------------------------
+-- REC. gearrecord -- the Owned-gear record rules, ONE home (Type canon + legacy
+--      heal, Shield/Grip by name, effectiveRSlot trinket completion, catalog
+--      enrichment precedence). Every stamp site (renderEntry fresh write,
+--      /dl fix backfill, gearui enrich, gearexport, the weapon-type filter)
+--      resolves through these; TR0-TR4 above pin the gearimport delegate.
+-- ---------------------------------------------------------------------------
+(function()
+    local grec = package.loaded['dlac\\gear\\gearrecord'];
+    check('REC0 module seeded', type(grec), 'table');
+
+    -- Type canon + heal
+    check('REC1 spaced legacy heals',     grec.canonType('Great Axe'), 'GreatAxe');
+    check('REC2 hyphenated legacy heals', grec.canonType('Hand-to-Hand'), 'HandToHand');
+    check('REC3 bare String alias',       grec.canonType('String'), 'StringInstrument');
+    check('REC4 unknown passes through',  grec.canonType('Oddball'), 'Oddball');
+    check('REC5 healType absent takes catalog',        grec.healType(nil, 'GreatAxe'), 'GreatAxe');
+    check('REC6 healType drift heals to catalog',      grec.healType('Great Axe', 'GreatAxe'), 'GreatAxe');
+    check('REC7 healType exact keeps owned',           grec.healType('GreatAxe', 'GreatAxe'), 'GreatAxe');
+    check('REC8 healType real difference keeps owned', grec.healType('Sword', 'Dagger'), 'Sword');
+
+    -- weaponfilter's whole bucket vocabulary must resolve through the same canon
+    -- (a key gearrecord did not know would silently stop healing that bucket).
+    local wf = dofile('gear/weaponfilter.lua');
+    for slot, cfg in pairs(wf.SLOTS) do
+        for _, key in ipairs(cfg.order) do
+            if key ~= '__trinket' then   -- presentation sentinel, not a Type
+                check('REC9 vocabulary closure ' .. slot .. '/' .. key, grec.canonType(key), key);
+            end
+        end
+    end
+
+    -- Shield/Grip by name (GUI-side mirror of utils.classifySub)
+    check('REC10 grip by name',  grec.subTypeFromName('Pole Grip'), 'Grip');
+    check('REC11 strap by name', grec.subTypeFromName('Claymore Strap'), 'Grip');
+    check('REC12 else shield',   grec.subTypeFromName("Genbu's Shield"), 'Shield');
+
+    -- effectiveRSlot: the rule itself (TR1-TR4 pin the gearimport delegate)
+    check('REC13 trinket completion',   grec.effectiveRSlot({ Type = 'Ammo' }), 4);
+    check('REC14 explicit RSlot wins',  grec.effectiveRSlot({ Type = 'Ammo', RSlot = 8 }), 8);
+    check('REC15 fired ammo untouched', grec.effectiveRSlot({ Type = 'Ammo', AmmoType = 'Archery' }), nil);
+
+    -- enrich: owned overrides, catalog fills; legacy Type heals; Stats merge
+    local rec = { Name = 'Savagery', Type = 'Great Axe', Stats = { STR = 2 } };
+    local cat = { Name = 'Savagery', Type = 'GreatAxe', OneHanded = false, Model = 123,
+                  Stats = { STR = 1, DEX = 3 } };
+    grec.enrich(rec, cat);
+    check('REC16 enrich heals legacy Type',         rec.Type, 'GreatAxe');
+    check('REC17 enrich fills OneHanded',           rec.OneHanded, false);
+    check('REC18 enrich fills Model',               rec.Model, 123);
+    check('REC19 enrich merge: owned stat wins',    rec.Stats.STR, 2);
+    check('REC20 enrich merge: catalog fills',      rec.Stats.DEX, 3);
+    check('REC21 catalog Stats untouched by merge', cat.Stats.STR, 1);
+
+    -- a statless record SHARES the catalog Stats table (the documented in-place
+    -- semantics consumers' copy-on-write discipline depends on -- do not "fix")
+    local thin = { Name = 'X' };
+    grec.enrich(thin, cat);
+    check('REC22 statless record shares catalog Stats table', thin.Stats == cat.Stats, true);
+
+    -- mergedStats read-only (gearexport's precedence)
+    local r2 = { Stats = { ACC = 5 } };
+    local m = grec.mergedStats(r2, { Stats = { ACC = 1, EVA = 2 } });
+    check('REC23 mergedStats owned wins',        m.ACC, 5);
+    check('REC24 mergedStats catalog fills',     m.EVA, 2);
+    check('REC25 mergedStats fresh table',       r2.Stats.EVA, nil);
+    check('REC26 mergedStats both empty -> nil', grec.mergedStats({}, {}), nil);
 end)();
 
 -- ---------------------------------------------------------------------------
