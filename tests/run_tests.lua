@@ -4397,6 +4397,60 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- section GM: game-mode icon detection (feature/gamemode.lua)
+-- Field truth 2026-07-18 Tavnazian Safehold (dlacprobe ICON dump): crystal
+-- players (UCW Mindie idx 1107, CW Skincrawler idx 1055) carry RenderFlags4
+-- 0x1000; Wings (Askar idx 1029) carries 0x4000; ACE (Tcb idx 1074) neither.
+-- ---------------------------------------------------------------------------
+(function()
+    local gamemode = dofile('feature/gamemode.lua');
+
+    AshitaCore = nil;
+    check('GM1 headless icon -> nil', gamemode.icon(), nil);
+    check('GM2 headless hasCrystal -> nil', gamemode.hasCrystal(), nil);
+
+    -- fake entity table straight from the field capture
+    local flagsByIdx = {
+        [1107] = 0x40001000,    -- Mindie (UCW, local in the capture)
+        [1055] = 0x40001000,    -- Skincrawler (CW)
+        [1029] = 0x41004000,    -- Askar (Wings)
+        [1074] = 0x41000000,    -- Tcb (ACE)
+    };
+    local function ashitaWithIcons(selfIdx)
+        local em = {
+            GetRawEntity    = function(self, i) if flagsByIdx[i] ~= nil then return {}; end return nil; end,
+            GetRenderFlags4 = function(self, i) return flagsByIdx[i]; end,
+        };
+        local party = { GetMemberTargetIndex = function(self, n) return selfIdx; end };
+        return { GetMemoryManager = function(self)
+            return {
+                GetEntity = function(self) return em; end,
+                GetParty  = function(self) return party; end,
+            };
+        end };
+    end
+
+    AshitaCore = ashitaWithIcons(1107);
+    check('GM3 self (UCW) icon -> crystal', gamemode.icon(), 'crystal');
+    check('GM4 self hasCrystal -> true', gamemode.hasCrystal(), true);
+    check('GM5 remote CW icon -> crystal', gamemode.icon(1055), 'crystal');
+    check('GM6 Wings icon by idx', gamemode.icon(1029), 'wings');
+    check('GM7 ACE icon by idx -> none', gamemode.icon(1074), 'none');
+    check('GM8 ACE hasCrystal -> false', gamemode.hasCrystal(1074), false);
+    check('GM9 unrendered idx -> nil', gamemode.icon(1500), nil);
+
+    AshitaCore = ashitaWithIcons(0);        -- empty party slot: no self index
+    check('GM10 no self index -> nil', gamemode.icon(), nil);
+
+    -- Ashita hands back SIGNED dwords: a sign-bit flags word must normalize
+    flagsByIdx[1107] = 0xC0001000 - 4294967296;
+    AshitaCore = ashitaWithIcons(1107);
+    check('GM11 negative dword normalized -> crystal', gamemode.hasCrystal(), true);
+
+    AshitaCore = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then
