@@ -3138,7 +3138,10 @@ local function renderSetBuilder(job, level)
         -- No up/down reordering -- list order doesn't matter (best-by-level + rules
         -- decide the pick).
         local openEdit = false;
-        for di, it in ipairs(disp) do
+        local rowN = 0;   -- running render counter: row ids + bg alternation across root + sections
+        local function renderRow(it)
+            rowN = rowN + 1;
+            local di = rowN;
             local rec = it.rec;
             local ss = rec and fmt.statSummary(rec, level) or '';
             local at = fmt.augTag(rec);                -- your copy's augments (line 2, gold)
@@ -3217,6 +3220,33 @@ local function renderSetBuilder(job, level)
             end
             imgui.EndChild();
             imgui.PopStyleColor(1);
+        end
+        -- Mode sections (Henrik, 2026-07-18): a mode gating 2+ rows collapses
+        -- them under one header -- mode name + the level ladder inside -- so a
+        -- slot bloated with per-mode ladders (Caster rungs + Club rungs on WHM)
+        -- stays readable. Rows whose every gate is sectioned live only there;
+        -- ungated / solo-gated rows stay in the root list (a solo-gated row that
+        -- ALSO has a sectioned gate renders in both). Default collapsed; the id
+        -- is set+slot+mode so a toggled-open header survives re-sorts but never
+        -- leaks its state across sets or slots.
+        local rootRows, modeSecs = fmt.modeSections(disp);
+        for _, it in ipairs(rootRows) do renderRow(it); end
+        for _, sec in ipairs(modeSecs) do
+            local act = entryModeOk(sec.name);
+            local label = string.format('@%s  (%d)  Lv %s###msec_%s_%s_%s',
+                sec.name, #sec.items, table.concat(sec.levels, ', '),
+                tostring(M.workingSetName), tostring(ui.setSelected), sec.key);
+            if act then imgui.PushStyleColor(ImGuiCol_Text, COL.JOBS); end
+            local open = imgui.CollapsingHeader(label);
+            if act then imgui.PopStyleColor(1); end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('All rows in this list gated on this mode; the numbers are\ntheir item levels, so you can see the ladder at a glance.\nGreen = the mode is active right now (these rows beat the\nunconditional ones). A row gated on several modes appears\nunder each of its sections.');
+            end
+            if open then
+                imgui.Indent(10);
+                for _, it in ipairs(sec.items) do renderRow(it); end
+                imgui.Unindent(10);
+            end
         end
         -- The popup must open in THIS window's scope, not inside a row child --
         -- OpenPopup/BeginPopup resolve ids per window, so the button only sets a flag.

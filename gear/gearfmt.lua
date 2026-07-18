@@ -164,6 +164,71 @@ local function augTag(rec)
     return 'Aug: ' .. txt;
 end
 
+-- Mode sections for the Sets-tab slot list: a mode gating MORE THAN ONE row
+-- earns a collapsible section named after it (mode ladders were drowning the
+-- root list -- many Caster rungs + many Club rungs in one flat Main list).
+-- Membership rules (Henrik, 2026-07-18):
+--   * a row whose EVERY gate has a section leaves the root -- it shows only
+--     under its section(s);
+--   * a row that is ungated, or alone on ANY of its gates (no section formed
+--     for it), stays in the root -- and still ALSO appears under each of its
+--     sectioned gates;
+--   * an OR-gated row (mode = {A, B}) appears under EVERY sectioned gate.
+-- Grouping is case-insensitive; the first-seen spelling names the section.
+-- Pure: input is the display-ordered wrapper list ({rec, mode, ...}); row
+-- order inside root/sections preserves the input order. Returns two values:
+--   root     -- array of rows to render at the top level
+--   sections -- alpha-ordered array of { name, key, items, levels }
+--               (levels = ascending deduped rec.Level list, for the header)
+local function modeSections(items)
+    local root, kept = {}, {};
+    if type(items) ~= 'table' then return root, kept; end
+    local function gatesOf(it)
+        local m = (it ~= nil) and it.mode or nil;
+        if m == nil then return {}; end
+        if type(m) ~= 'table' then return { tostring(m) }; end
+        local seen, out = {}, {};      -- dedup inside one row's OR list: {'DT','dt'}
+        for _, g in ipairs(m) do       -- must not fake a two-row section
+            local k = string.lower(tostring(g));
+            if not seen[k] then seen[k] = true; out[#out + 1] = tostring(g); end
+        end
+        return out;
+    end
+    local byKey = {};
+    for _, it in ipairs(items) do
+        for _, g in ipairs(gatesOf(it)) do
+            local k = string.lower(g);
+            local sec = byKey[k];
+            if sec == nil then
+                sec = { name = g, key = k, items = {}, levels = {} };
+                byKey[k] = sec;
+            end
+            sec.items[#sec.items + 1] = it;
+        end
+    end
+    for _, sec in pairs(byKey) do
+        if #sec.items >= 2 then
+            kept[#kept + 1] = sec;
+            local seen = {};
+            for _, it in ipairs(sec.items) do
+                local lv = (it.rec ~= nil and tonumber(it.rec.Level)) or 0;
+                if not seen[lv] then seen[lv] = true; sec.levels[#sec.levels + 1] = lv; end
+            end
+            table.sort(sec.levels);
+        end
+    end
+    table.sort(kept, function(a, b) return a.key < b.key; end);
+    for _, it in ipairs(items) do
+        local gates = gatesOf(it);
+        local inRoot = (#gates == 0);
+        for _, g in ipairs(gates) do
+            if #byKey[string.lower(g)].items < 2 then inRoot = true; break; end
+        end
+        if inRoot then root[#root + 1] = it; end
+    end
+    return root, kept;
+end
+
 -- Static name-column width for a record list: the longest name decides (capped),
 -- so rows align. Shared by the Equipped alternatives and the All Equipment tree.
 local function nameWidthOf(list)
@@ -185,6 +250,7 @@ M.statSummary  = statSummary;
 M.fullStatList = fullStatList;
 M.qtyTag       = qtyTag;
 M.augTag       = augTag;
+M.modeSections = modeSections;
 M.nameWidthOf  = nameWidthOf;
 
 return M;

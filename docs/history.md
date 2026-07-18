@@ -2812,3 +2812,31 @@ with the subjob: the flat-value alternative is dead, the percent rule
 is tick-verified twice over, and server question #6 now carries both
 data points. Every number the automation computes is double-confirmed
 against the live server.
+
+## Session "mode sections in the set builder" (2026-07-18)
+
+Henrik: slot lists bloat once mode cycles are in play -- a WHM Main list
+carries the whole Caster ladder AND the whole Club ladder in one flat
+list, "kind of hard to follow properly". His design, implemented
+verbatim: a mode gating MORE THAN ONE row in the list earns a
+collapsible section (default collapsed) headed by the mode name plus the
+ascending item-level ladder of what's inside, so level coverage per mode
+reads at a glance. Membership rules: an OR-gated row appears under EVERY
+sectioned gate; a row whose every gate is sectioned leaves the root; a
+row ungated -- or alone on any of its gates (no section forms for one
+row) -- stays in the root, and still also shows under its sectioned
+gates.
+
+Implementation: the grouping is a pure function, `gearfmt.modeSections`
+(display-ordered wrappers in; root rows + alpha-ordered sections out;
+case-insensitive keys, first-seen spelling names the section, per-row OR
+lists deduped so {'DT','dt'} can't fake a two-row section). The Sets-tab
+renderer extracts its row block into one `renderRow` closure -- ids and
+the alternating row background ride a running counter, so a row
+rendering twice (root + section, or two sections) keeps unique imgui
+ids, and the B/D/x actions already resolve by wrapper identity so they
+work from any copy. Section headers are `CollapsingHeader`s with
+`###`-stable ids keyed set+slot+mode (toggled-open survives re-sorts,
+never leaks across sets/slots), text green while the mode is live
+(`entryModeOk`), rows indented 10px inside. MS0-MS16 pin the grouping
+rules headless. 1326 + 170 green.
