@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 69;   -- 69: obi + Oneiros virtual decisions extracted PURE (resolveObi / resolveOneiros, the resolveStaff shape): the rims in resolveVirtual only read env/nativemp/vitals, the decisions take data in -- behavior bit-identical, but the two field-calibrated gates (positive day/weather sign; MP <= floor(base*50/100), boundary inclusive) are finally pinned headless (tests VG*). One /dl why nuance: with the grip unowned AND nativemp missing (broken install), the reason now reads module-unavailable first.
+M.VERSION = 70;   -- 70: the statefile seam gets ONE reader -- ensureStateFile behind the auto/acc/craft/helm/fish/pin caches (six near-identical clones collapsed; charDir gains the _charDirOverride seam so the file-driven surface finally runs headless, tests SF*). POLICY unified on the pin reader's v44 field lesson: a torn/corrupt state write now DROPS that state everywhere -- craft/helm/fish/auto used to keep the LAST GOOD table forever on a parse failure (raw already held the corrupt text, so the raw-compare short-circuited and even the watcher's clear could not unstick it -- a stale craft overlay glued on was one torn write away). The next good write self-heals; triggers deliberately keep their own keep-previous-and-say-so loader (hand-edited file).
+                  -- 69: obi + Oneiros virtual decisions extracted PURE (resolveObi / resolveOneiros, the resolveStaff shape): the rims in resolveVirtual only read env/nativemp/vitals, the decisions take data in -- behavior bit-identical, but the two field-calibrated gates (positive day/weather sign; MP <= floor(base*50/100), boundary inclusive) are finally pinned headless (tests VG*). One /dl why nuance: with the grip unowned AND nativemp missing (broken install), the reason now reads module-unavailable first.
                   -- 68: the AutoOneiros marker is a Lv75 rung UNCONDITIONALLY -- the grip is one fixed Lv75 item, so virtualMinLevel answers 75 even when the manifest has not learned it yet (no more Lv0 always-adopt wildcard on a stale manifest); gearui's + Add stamps the virtual rec Level 75 so the set editor shows the truth.
                   -- 67: Oneiros latent percent FIELD-PINNED at 50 -- Henrik measured the live break with refresh ticks: MP 357 = last point the grip's +1 ticks, 358 = gone, and 357 is EXACTLY 50.0% of maxmp 714 (confirming the denominator AND the inclusive <= boundary in one shot; 75% of anything plausible = 535-543, 50% of the displayed 724 = 362 -- nothing else fits). The public repo's item_latents row says param 75, so live diverges from the sql seed: docs/server-questions.md #6. Threshold is now floor(base * 50/100); if the team ever answers "75 is right, the DB was stale", this one line re-aims.
                   -- 66: Oneiros merit clamp field-corrected -- Henrik's menu reads 10/10: merit.cpp caps usable merits at cap[mlvl] (10 at Lv75; the merits.sql upgrade=15 headroom needs Lv80+, unreachable here), so the resolver clamps mpMerits to 0..10. His naked 724 fully decomposed: 614 formula + 100 merits + 10 SCH-sub Max MP Boost (traits.sql trait 8 job 20 Lv30, Mod::BASE_MP 1096) -- and BASE_MP rides health.MODMP (UpdateHealth, the DISPLAYED max) while the latent divides by health.MAXMP (CalculateStats only), so the trait does NOT move the threshold: his true line is floor(714*0.75) = 535, and the detail view now warns against tuning merits to make base match the naked screen number.
@@ -190,6 +191,7 @@ end
 -- <char>\dlac\ config dir: LuaAshitacast's gState when inside a profile, else the
 -- party manager (same pattern as setmanager/gearoptim). nil if not logged in.
 local function charDir()
+    if M._charDirOverride ~= nil then return M._charDirOverride; end   -- headless test seam
     local name, id;
     if gState ~= nil and gState.PlayerName ~= nil and gState.PlayerId ~= nil then
         name, id = gState.PlayerName, gState.PlayerId;
@@ -204,6 +206,37 @@ local function charDir()
     if name == nil or id == nil then return nil; end
     return string.format('%sconfig\\addons\\luashitacast\\%s_%u\\dlac\\', AshitaCore:GetInstallPath(), name, id);
 end
+
+-- ---------------------------------------------------------------------------
+-- Cached per-character state-file reader -- the ONE implementation behind the
+-- auto/acc/craft/helm/fish/pin caches (the GUI->engine statefile handoff, v70;
+-- they were six near-identical clones and had already drifted). Throttle: one
+-- disk check per second; missing file = state off (nil); pre-login (no char
+-- dir) keeps whatever is cached. POLICY, unified from the pin reader's field
+-- lesson (v44): a torn/corrupt write DROPS the state -- cache.raw is already
+-- the corrupt text, so keeping the last good table would glue it on forever
+-- (the raw-compare short-circuits every later call and nothing could clear
+-- it, not even the watcher's clear-on-load). The next good write self-heals.
+-- The TRIGGER file deliberately does NOT ride this: it is hand-editable, so
+-- mid-typo it keeps the previous rules and says so (ensureLoaded below).
+-- ---------------------------------------------------------------------------
+local function ensureStateFile(cache, filename)
+    local now = os.time();
+    if now == cache.lastCheck then return cache.data; end
+    cache.lastCheck = now;
+    local dir = charDir();
+    if dir == nil then return cache.data; end
+    local raw = readFile(dir .. filename);
+    if raw == nil then cache.raw, cache.data = nil, nil; return nil; end
+    if raw == cache.raw then return cache.data; end
+    cache.raw = raw;
+    local chunk = (loadstring or load)(raw, '@' .. filename);
+    if chunk == nil then cache.data = nil; return nil; end
+    local ok, t = pcall(chunk);
+    if ok and type(t) == 'table' then cache.data = t; else cache.data = nil; end
+    return cache.data;
+end
+M._ensureStateFile = ensureStateFile;   -- headless seam: the corrupt-drop policy pinned once (SF*)
 
 -- The CURRENT main job's trigger file, profile-aware. Reads fall back per file:
 -- the active profile's triggers\<JOB>.lua when it exists, else the legacy
@@ -774,28 +807,14 @@ local _auto = { raw = nil, data = nil, lastCheck = -1 };
 
 local function ensureAutoLoaded()
     if M._autoOverride ~= nil then return M._autoOverride; end   -- headless test seam
-    local now = os.time();
-    if now == _auto.lastCheck then return _auto.data; end
-    _auto.lastCheck = now;
-    local dir = charDir();
-    if dir == nil then return _auto.data; end
-    local raw = readFile(dir .. 'autogear.lua');
-    if raw == nil then _auto.raw, _auto.data = nil, nil; return nil; end   -- no manifest -> off
-    if raw == _auto.raw then return _auto.data; end
-    _auto.raw = raw;
-    local chunk = (loadstring or load)(raw, '@autogear.lua');
-    if chunk ~= nil then
-        local ok, t = pcall(chunk);
-        if ok and type(t) == 'table' then
-            _auto.data = t;
-            -- Old boolean-format manifest: we can't know the universal weapon's name, so
-            -- staff swapping stays suppressed. Tell the player how to fix it (once per change).
-            if t.universal == nil and t.iridescence == true then
-                printwarn('autogear.lua is an old format (staff swapping is OFF) -- open the GUI\'s Automations tab (the manifest self-heals on render).');
-            end
-        end
+    local before = _auto.data;
+    local t = ensureStateFile(_auto, 'autogear.lua');
+    -- Old boolean-format manifest: we can't know the universal weapon's name, so
+    -- staff swapping stays suppressed. Tell the player how to fix it (once per change).
+    if t ~= nil and t ~= before and t.universal == nil and t.iridescence == true then
+        printwarn('autogear.lua is an old format (staff swapping is OFF) -- open the GUI\'s Automations tab (the manifest self-heals on render).');
     end
-    return _auto.data;
+    return t;
 end
 
 -- Virtual slot entries ("slot functions", ADR 0004 4th revision): a set slot may
@@ -1334,21 +1353,7 @@ local ACC_STALE_S = 900;   -- measurements older than 15 min are not acted on
 
 local function ensureAccState()
     if M._accStateOverride ~= nil then return M._accStateOverride; end   -- headless test seam
-    local now = os.time();
-    if now == _accfile.lastCheck then return _accfile.data; end
-    _accfile.lastCheck = now;
-    local dir = charDir();
-    if dir == nil then return _accfile.data; end
-    local raw = readFile(dir .. 'accstate.lua');
-    if raw == nil then _accfile.raw, _accfile.data = nil, nil; return nil; end
-    if raw == _accfile.raw then return _accfile.data; end
-    _accfile.raw = raw;
-    local chunk = (loadstring or load)(raw, '@accstate.lua');
-    if chunk ~= nil then
-        local ok, t = pcall(chunk);
-        if ok and type(t) == 'table' then _accfile.data = t; else _accfile.data = nil; end
-    end
-    return _accfile.data;
+    return ensureStateFile(_accfile, 'accstate.lua');
 end
 
 -- 'dlac:AutoAcc:<prio>:<acc>:<Name>' -> prio, acc, name (nil unless it parses).
@@ -1947,23 +1952,7 @@ end
 -- nothing reverts them. Disable -> no overlay -> normal Default returns.
 -- ---------------------------------------------------------------------------
 local _craft = { raw = nil, data = nil, lastCheck = -1 };
-local function ensureCraftState()
-    local now = os.time();
-    if now == _craft.lastCheck then return _craft.data; end
-    _craft.lastCheck = now;
-    local dir = charDir();
-    if dir == nil then return _craft.data; end
-    local raw = readFile(dir .. 'craftstate.lua');
-    if raw == nil then _craft.raw, _craft.data = nil, nil; return nil; end
-    if raw == _craft.raw then return _craft.data; end
-    _craft.raw = raw;
-    local chunk = (loadstring or load)(raw, '@craftstate.lua');
-    if chunk ~= nil then
-        local ok, t = pcall(chunk);
-        if ok and type(t) == 'table' then _craft.data = t; else _craft.data = nil; end
-    end
-    return _craft.data;
-end
+local function ensureCraftState() return ensureStateFile(_craft, 'craftstate.lua'); end
 
 -- Proper-case slot keys for gFunc.EquipSet (resolveVirtual lowercases for the
 -- manifest lookup). Ammo excluded: crafting never wants an ammo swap.
@@ -1993,23 +1982,7 @@ M._craftOverlayFor = craftOverlayFor;   -- test seam
 -- only -- HELM tools live in inventory, and an idle weapon swap eats TP.
 -- ---------------------------------------------------------------------------
 local _helm = { raw = nil, data = nil, lastCheck = -1 };
-local function ensureHelmState()
-    local now = os.time();
-    if now == _helm.lastCheck then return _helm.data; end
-    _helm.lastCheck = now;
-    local dir = charDir();
-    if dir == nil then return _helm.data; end
-    local raw = readFile(dir .. 'helmstate.lua');
-    if raw == nil then _helm.raw, _helm.data = nil, nil; return nil; end
-    if raw == _helm.raw then return _helm.data; end
-    _helm.raw = raw;
-    local chunk = (loadstring or load)(raw, '@helmstate.lua');
-    if chunk ~= nil then
-        local ok, t = pcall(chunk);
-        if ok and type(t) == 'table' then _helm.data = t; else _helm.data = nil; end
-    end
-    return _helm.data;
-end
+local function ensureHelmState() return ensureStateFile(_helm, 'helmstate.lua'); end
 
 local HELM_OVERLAY_SLOTS = { 'Head', 'Neck', 'Body', 'Hands', 'Waist', 'Legs', 'Feet' };
 
@@ -2063,23 +2036,7 @@ M._helmOverlayFor = helmOverlayFor;   -- test seam
 -- never sees a weapon swap.
 -- ---------------------------------------------------------------------------
 local _fish = { raw = nil, data = nil, lastCheck = -1 };
-local function ensureFishState()
-    local now = os.time();
-    if now == _fish.lastCheck then return _fish.data; end
-    _fish.lastCheck = now;
-    local dir = charDir();
-    if dir == nil then return _fish.data; end
-    local raw = readFile(dir .. 'fishstate.lua');
-    if raw == nil then _fish.raw, _fish.data = nil, nil; return nil; end
-    if raw == _fish.raw then return _fish.data; end
-    _fish.raw = raw;
-    local chunk = (loadstring or load)(raw, '@fishstate.lua');
-    if chunk ~= nil then
-        local ok, t = pcall(chunk);
-        if ok and type(t) == 'table' then _fish.data = t; else _fish.data = nil; end
-    end
-    return _fish.data;
-end
+local function ensureFishState() return ensureStateFile(_fish, 'fishstate.lua'); end
 
 -- Ladder-resolved slots. Range/Ammo are handled separately from the state
 -- file; Sub is never touched (nothing fishing-related exists there).
@@ -2145,29 +2102,9 @@ M._fishOverlayFor = fishOverlayFor;   -- test seam
 -- applies only on a dispatch where one of those triggers actually matched.
 -- ---------------------------------------------------------------------------
 local _pin = { raw = nil, data = nil, lastCheck = -1 };
-local function ensurePinState()
-    local now = os.time();
-    if now == _pin.lastCheck then return _pin.data; end
-    _pin.lastCheck = now;
-    local dir = charDir();
-    if dir == nil then return _pin.data; end
-    local raw = readFile(dir .. 'pinstate.lua');
-    if raw == nil then _pin.raw, _pin.data = nil, nil; return nil; end
-    if raw == _pin.raw then return _pin.data; end
-    _pin.raw = raw;
-    local chunk = (loadstring or load)(raw, '@pinstate.lua');
-    if chunk == nil then
-        -- A torn/corrupt write must DROP the pins, not keep the last good ones.
-        -- _pin.raw is already the corrupt text, so the raw-compare above would
-        -- short-circuit every later call and the stale pins would stay glued on
-        -- with nothing able to clear them -- including pinwatch's clear-on-load.
-        _pin.data = nil;
-        return nil;
-    end
-    local ok, t = pcall(chunk);
-    if ok and type(t) == 'table' then _pin.data = t; else _pin.data = nil; end
-    return _pin.data;
-end
+-- (The corrupt-write DROP that used to be special-cased here is now the shared
+-- ensureStateFile policy -- this reader is where the field lesson came from.)
+local function ensurePinState() return ensureStateFile(_pin, 'pinstate.lua'); end
 
 -- Scope entries are "<Event>|<rule label>" -- the rule label ALONE is ambiguous
 -- ('any' is the label of every unconditional rule, so a Precast 'any' and a

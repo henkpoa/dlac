@@ -3585,6 +3585,70 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- SF. The statefile seam (engine v70): ONE cached reader (ensureStateFile)
+--     behind the auto/acc/craft/helm/fish/pin caches -- they were six
+--     near-identical clones and had drifted (pin dropped corrupt writes, the
+--     others kept the last good table glued on forever). Policy pinned HERE,
+--     once, for all of them; _charDirOverride makes the file-driven surface
+--     run headless for the first time.
+-- ---------------------------------------------------------------------------
+(function()
+    local esf = dispatchM._ensureStateFile;
+    check('SF0 helper exported', type(esf), 'function');
+    local function put(p, t) local f = io.open(p, 'w'); f:write(t); f:close(); end
+    dispatchM._charDirOverride = 'tests\\';
+    local cache = { raw = nil, data = nil, lastCheck = -1 };
+
+    put('tests\\sf_state.lua', 'return { enabled = true, craft = "Alchemy" }');
+    local d = esf(cache, 'sf_state.lua');
+    check('SF1 file read + parsed', d ~= nil and d.craft, 'Alchemy');
+
+    -- same-second throttle: a changed file is not re-read until the clock moves
+    put('tests\\sf_state.lua', 'return { craft = "Smithing" }');
+    cache.lastCheck = os.time();
+    check('SF2 throttled within the second', esf(cache, 'sf_state.lua').craft, 'Alchemy');
+
+    -- THE POLICY: corrupt write -> DROP (not last-good); re-reads stay dropped
+    cache.lastCheck = -1;
+    put('tests\\sf_state.lua', 'return {');
+    check('SF3 corrupt write drops the state', esf(cache, 'sf_state.lua'), nil);
+    cache.lastCheck = -1;
+    check('SF4 corrupt stays dropped on re-read', esf(cache, 'sf_state.lua'), nil);
+
+    -- the next good write self-heals
+    cache.lastCheck = -1;
+    put('tests\\sf_state.lua', 'return { craft = "Bonecraft" }');
+    check('SF5 good write self-heals', esf(cache, 'sf_state.lua').craft, 'Bonecraft');
+
+    -- a file that parses but ERRORS on run drops too
+    cache.lastCheck = -1;
+    put('tests\\sf_state.lua', 'error("boom")');
+    check('SF6 run-error drops the state', esf(cache, 'sf_state.lua'), nil);
+
+    -- missing file = state off
+    cache.lastCheck = -1;
+    os.remove('tests\\sf_state.lua');
+    check('SF7 missing file = state off', esf(cache, 'sf_state.lua'), nil);
+
+    -- pre-login (no char dir) keeps whatever is cached
+    cache.lastCheck = -1; cache.data = { keep = true };
+    dispatchM._charDirOverride = nil;
+    check('SF8 no char dir keeps cache', esf(cache, 'sf_state.lua').keep, true);
+
+    -- WIRING: with no test override, the auto manifest reads through the seam.
+    -- The _auto singleton's 1s throttle may have been armed by an earlier
+    -- section in this same second -- cross the boundary so the read is live.
+    dispatchM._charDirOverride = 'tests\\';
+    dispatchM._autoOverride = nil;
+    put('tests\\autogear.lua', 'return { universal = { name = "Chatoyant Staff", tier = 2, level = 51 } }');
+    local t0 = os.time(); repeat until os.time() ~= t0;
+    check('SF9 resolveVirtual reads the manifest through the seam',
+        dispatchM._resolveVirtual('dlac:AutoStaff', { player = { MainJobSync = 75 } }), 'Chatoyant Staff');
+    os.remove('tests\\autogear.lua');
+    dispatchM._charDirOverride = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- GS. Groups auto-import scanner (Item 1): the pure `scan(fileText) -> candidates, notes`
 --     transform (groupscan.lua). Text-scans a LuaAshitacast file for top-level
 --     `[local] NAME = T?{...}` blocks and surfaces every group-shaped table (a flat string
