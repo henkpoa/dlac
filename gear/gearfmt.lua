@@ -229,6 +229,24 @@ local function modeSections(items)
     return root, kept;
 end
 
+-- Remove ONE gate from an entry's mode condition (the section x, Henrik
+-- 2026-07-18: Harpoon gated Base + Polearm lost the whole row to a Polearm x).
+-- gateKey is the section's lowercase key; comparison is case-insensitive.
+-- Returns the new mode value in the storage convention: nil when no gate is
+-- left (the row turns unconditional), a plain string for a single survivor,
+-- a list otherwise.
+local function stripGate(mode, gateKey)
+    if mode == nil then return nil; end
+    local gates = (type(mode) == 'table') and mode or { mode };
+    local kept = {};
+    for _, g in ipairs(gates) do
+        if string.lower(tostring(g)) ~= tostring(gateKey) then kept[#kept + 1] = g; end
+    end
+    if #kept == 0 then return nil; end
+    if #kept == 1 then return kept[1]; end
+    return kept;
+end
+
 -- Static name-column width for a record list: the longest name decides (capped),
 -- so rows align. Shared by the Equipped alternatives and the All Equipment tree.
 local function nameWidthOf(list)
@@ -251,6 +269,7 @@ M.fullStatList = fullStatList;
 M.qtyTag       = qtyTag;
 M.augTag       = augTag;
 M.modeSections = modeSections;
+M.stripGate    = stripGate;
 M.nameWidthOf  = nameWidthOf;
 
 return M;

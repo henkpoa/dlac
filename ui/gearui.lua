@@ -3164,7 +3164,10 @@ local function renderSetBuilder(job, level)
         -- decide the pick).
         local openEdit = false;
         local rowN = 0;   -- running render counter: row ids + bg alternation across root + sections
-        local function renderRow(it)
+        -- sec = the mode section this copy renders under (nil = the root list).
+        -- It only changes what x means: root x removes the ROW (root is the
+        -- data list); section x removes THIS GATE (sections are views).
+        local function renderRow(it, sec)
             rowN = rowN + 1;
             local di = rowN;
             local rec = it.rec;
@@ -3233,8 +3236,17 @@ local function renderSetBuilder(job, level)
                 imgui.SetTooltip('Duplicate this row: same item, its own Behaviour rules.\nUse it to run one item in several level ranges, e.g.\nRajas Ring min30 max54 on one row, min75 on the other.');
             end
             imgui.SameLine(0, 4);
-            if imgui.Button('x##rm_' .. di, { 24, 20 }) then action = { kind = 'remove', it = it }; end
-            if imgui.IsItemHovered() then imgui.SetTooltip('Remove from this list.'); end
+            if imgui.Button('x##rm_' .. di, { 24, 20 }) then
+                -- Section x = leave THIS mode only (Henrik: a Harpoon gated
+                -- Base + Polearm lost the whole row to one Polearm x).
+                if sec ~= nil then action = { kind = 'ungate', it = it, gateKey = sec.key };
+                else action = { kind = 'remove', it = it }; end
+            end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip((sec ~= nil)
+                    and ('Remove from this mode only: the row loses its @' .. fmt.esc(sec.name) .. ' gate.\nOther mode gates keep it in their sections; with no gate left\nit becomes unconditional and moves to the main list.')
+                    or 'Remove from this list.');
+            end
             if ss ~= '' or at ~= '' then               -- line 2: stats + your augments
                 imgui.SetCursorPosX(26);
                 if ss ~= '' then
@@ -3287,7 +3299,7 @@ local function renderSetBuilder(job, level)
             end
             if open then
                 imgui.Indent(10);
-                for _, it in ipairs(sec.items) do renderRow(it); end
+                for _, it in ipairs(sec.items) do renderRow(it, sec); end
                 imgui.Unindent(10);
             end
         end
@@ -3304,6 +3316,11 @@ local function renderSetBuilder(job, level)
         if di ~= nil then
             if action.kind == 'remove' then
                 table.remove(list, di);
+            elseif action.kind == 'ungate' then
+                -- The row stays; it just leaves the clicked section. No gate
+                -- left -> unconditional, so it reappears in the root list --
+                -- visible, never silently gone.
+                action.it.mode = fmt.stripGate(action.it.mode, action.gateKey);
             elseif action.kind == 'dup' then
                 -- Fresh rules on the clone: the point of a second row is a DIFFERENT
                 -- range/mode, so start blank and let Behaviour set it. Same rec

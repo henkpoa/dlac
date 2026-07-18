@@ -2885,3 +2885,16 @@ plain + Add button clears the gate. He explicitly waved off the
 auto-primed weapon-type filter idea ("no need, I was just explaining a
 nice scenario") -- the filter stays manual, resetting to All each open
 as before.
+
+## Session addendum "the section x ungates, never deletes" (2026-07-18)
+
+Field report minutes later: Harpoon gated Base + Polearm, one x inside
+the Polearm section, and the row vanished from BOTH ("I can understand
+why, but I just want it to remove the mode if so"). Settled semantics:
+sections are VIEWS, the root list is the DATA -- so x inside a section
+now strips only that section's gate (gearfmt.stripGate, MS17-22; other
+gates keep the row in their sections), and a row with no gate left
+turns unconditional and visibly reappears in the root list rather than
+silently dying OR silently entering the ladder unseen. Only the root
+x deletes the row. renderRow learned its render context (sec) for
+exactly this; the tooltips say which x you are hovering. 1361 + 170.

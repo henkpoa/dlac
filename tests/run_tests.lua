@@ -4722,6 +4722,19 @@ end)();
     -- degenerate inputs stay safe
     local r4, s4 = gf.modeSections(nil);
     check('MS16 nil input -> empty root + no sections', #r4 + #s4, 0);
+
+    -- stripGate: the section x removes ONE gate, never the row (Henrik
+    -- 2026-07-18: Harpoon gated Base + Polearm lost the whole row to one x).
+    check('MS17 stripGate exported', type(gf.stripGate), 'function');
+    check('MS18 pair loses one -> the survivor as a plain string',
+        gf.stripGate({ 'Weapon:Base', 'Weapon:Polearm' }, 'weapon:polearm'), 'Weapon:Base');
+    check('MS19 sole gate strips to nil (row turns unconditional)',
+        gf.stripGate('Weapon:Polearm', 'weapon:polearm'), nil);
+    check('MS20 case-insensitive match', gf.stripGate('WEAPON:Polearm', 'weapon:polearm'), nil);
+    local left = gf.stripGate({ 'A', 'B', 'C' }, 'b');
+    check('MS21 three gates keep the other two, still a list',
+        type(left) == 'table' and left[1] .. '/' .. left[2], 'A/C');
+    check('MS22 unrelated key is a no-op', gf.stripGate('DT', 'weapon:polearm'), 'DT');
 end)();
 
 -- ---------------------------------------------------------------------------
