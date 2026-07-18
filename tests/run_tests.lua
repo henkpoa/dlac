@@ -4243,6 +4243,26 @@ end)();
         check('F47 explicit bait survives autoPick(keep)', select(1, fw.getBait()), altBait);
         fw._ownedAvail[altBait] = nil;
     end
+    -- THE ISOLATION RULE under the bag heartbeat: a rod-only loss must re-pick
+    -- the ROD and leave the user's explicit (lower-power) isolation bait alone.
+    -- revalidate passed keepBait=false, silently trading it up to the strongest
+    -- stocked bait -- and saying nothing, because the bait announcement only
+    -- fires when the BAIT stack emptied (review find, 2026-07-18).
+    local topBait = (carpBaits[1] or {}).id;
+    local lowBait = (carpBaits[#carpBaits] or {}).id;
+    if lowBait ~= nil and topBait ~= nil and lowBait ~= topBait then
+        fw._ownedAvail = { [17391] = 1, [17390] = 1, [topBait] = 50, [lowBait] = 12 };
+        fw.setTarget(4401, lowBait);              -- the user's isolation pick
+        fw.setEnabled(true);
+        fw._ownedAvail[17390] = nil;              -- the worn Yew vanishes; Willow remains
+        fw.revalidate();
+        check('F47b rod-only heartbeat re-picks the rod', select(1, fw.getRod()), 17391);
+        check('F47c ...and the explicit ISOLATION bait survives (never traded for power)',
+            select(1, fw.getBait()), lowBait);
+        fw.setEnabled(false);
+        fw._ownedAvail = { [17391] = 1, [17390] = 1, [17396] = 99 };
+        fw.setTarget(4401);                       -- re-arm the exhaustion flow below
+    end
     fw.setEnabled(true);
     check('F48 pill on', fw.isEnabled(), true);
     fw._ownedAvail = { [17390] = 1 };   -- bait stack gone, rod still here

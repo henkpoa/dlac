@@ -323,10 +323,13 @@ function M.revalidate()
     local rodGone = M.rodId ~= nil and (avail[M.rodId] or 0) == 0;
     local baitGone = M.baitId ~= nil and (avail[M.baitId] or 0) == 0;
     if not rodGone and not baitGone then return; end
-    local oldRod, oldBait = M.rod, M.bait;
+    local oldRod = M.rod;
     if rodGone then M.rodId, M.rod = nil, nil; end
     if baitGone then M.baitId, M.bait = nil, nil; end
-    M.autoPick(false);
+    -- keepBait unless the BAIT is what emptied: a rod-only loss must never
+    -- trade the user's explicit isolation bait up to a stronger one (the
+    -- whole point of keepBait; false here did exactly that, silently).
+    M.autoPick(not baitGone);
     if rodGone and M.rod ~= oldRod then
         say(string.format('fishing rod gone -- switched to %s.', tostring(M.rod or 'nothing')));
     end
