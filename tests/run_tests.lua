@@ -4622,11 +4622,14 @@ end)();
     -- the write path: same instance meritwatch will require at packet time
     local aui = dofile('ui/automationsui.lua');
     package.loaded['dlac\\ui\\automationsui'] = aui;
+    check('MW10 getter nil before any write', aui.getMpMerits(), nil);
     check('MW6 setMpMerits clamps 15 -> 10 + reports change', aui.setMpMerits(15), true);
     check('MW7 clamped value current: 10 = no change', aui.setMpMerits(10), false);
+    check('MW11 getter reads the clamped value', aui.getMpMerits(), 10);
     mw.onMeritPacket(pkt(1, { { 66, 0, 4 } }));
     check('MW8 packet write landed (4 = no change now)', aui.setMpMerits(4), false);
     check('MW9 session mirror holds the wire count', mw.learned, 4);
+    check('MW12 getter tracks the packet write', aui.getMpMerits(), 4);
     package.loaded['dlac\\ui\\automationsui'] = nil;
 end)();
 

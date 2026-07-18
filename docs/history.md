@@ -2789,3 +2789,8 @@ LSB 5x61 TODO shape), so a total respec also lands. One real bug fell
 out of the same doc: downgrading a merit's LAST point flags the wire
 entry by setting the index's low bit (66 -> 67) -- the parser now reads
 odd ids as "back to zero" (MW5b/5c). 1303 + 170 green.
+
+A hidden `/dl merits` diagnostic closes the loop (Henrik: "just to see
+that this workflow works") -- wire-this-session vs manifest vs the
+resulting Oneiros aim, in no help list on purpose. MW10-12 pin the new
+getMpMerits getter it reads from.

@@ -442,8 +442,10 @@ agent; the per-repo setup lives in `docs/agents/`.
     bundle carries just the point pool; Ashita memory only the unspent
     pool) — so the sync is fully automatic: **every zone-in** plus every
     merit spend, via `automationsui.setMpMerits`; the full-removal
-    low-bit flag (id|1) parses as count 0. Mindie's aim: 614 + 100 = 714
-    → fires at MP ≤ 357. The flatten
+    low-bit flag (id|1) parses as count 0. HIDDEN diagnostic:
+    `/dl merits` (deliberately in no help list) prints wire-this-session
+    vs manifest vs the resulting aim — the workflow check. Mindie's aim:
+    614 + 100 = 714 → fires at MP ≤ 357. The flatten
     treats the marker as a GRIP under the shared subSlotAllowed rule (2H
     main → `dlac:AutoOneiros|<fallback>`, 1H main vetoes the marker; the
     + Add Sub picker offers it unconditionally per the HARD RULE);

@@ -77,6 +77,35 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
         if e.id ~= 0x08C then return; end
         pcall(function() M.onMeritPacket(e.data); end);
     end);
+
+    -- /dl merits -- HIDDEN diagnostic (not in any help list): shows what the
+    -- wire delivered this session vs what the manifest persisted, plus the
+    -- Oneiros aim those numbers produce. Verifies the zone-in learn workflow.
+    ashita.events.register('command', 'dlac-meritwatch-cmd', function(e)
+        pcall(function()
+            local raw = string.lower(e.command or '');
+            local a = raw:match('^/dl%s+(%S+)') or raw:match('^/dlac%s+(%S+)');
+            if a ~= 'merits' then return; end
+            e.blocked = true;
+            local wire = (M.learned ~= nil) and tostring(M.learned)
+                or 'nothing yet this session (zone once, or open the merit menu)';
+            say('Max MP merits -- wire: ' .. wire);
+            local saved = nil;
+            pcall(function()
+                local aui = require('dlac\\ui\\automationsui');
+                if type(aui.getMpMerits) == 'function' then saved = aui.getMpMerits(); end
+            end);
+            say('Max MP merits -- manifest: ' .. ((saved ~= nil) and tostring(saved) or 'unset (counts as 0)'));
+            pcall(function()
+                local nmp = require('dlac\\data\\nativemp');
+                local lv = math.min(math.max(saved or 0, 0), 10);
+                local base = nmp.self(lv * 10);
+                if base ~= nil and base > 0 then
+                    say(string.format('Oneiros aim: base %d -> grip at MP <= %d', base, math.floor(base * 50 / 100)));
+                end
+            end);
+        end);
+    end);
 end
 
 return M;

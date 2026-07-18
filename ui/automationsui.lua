@@ -641,6 +641,15 @@ function M.setMpMerits(n)
     return true;
 end
 
+-- The persisted Max MP merit levels, or nil when the manifest holds none yet
+-- (fresh character: no zone-in learn and no manual input so far). /dl merits
+-- reads this beside meritwatch's session mirror.
+function M.getMpMerits()
+    autoLoad();
+    if type(auto.data) ~= 'table' or auto.data.mpMerits == nil then return nil; end
+    return math.floor(tonumber(auto.data.mpMerits) or 0);
+end
+
 -- Is the on-disk manifest an older schema than this build writes? (craftwatch
 -- uses this to force a regen before the engine reads stale craft ladders --
 -- e.g. a fmtver-5 manifest lacks the fmtver-6 head/back skill-up fillers.)
