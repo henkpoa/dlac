@@ -1000,27 +1000,16 @@ local function renderItemTooltip(rec)
             end
         end
         -- WHERE the item lives (every owned copy): red when only in storage, dim when
-        -- equippable -- so "which wardrobe is it in" never needs a bag hunt.
+        -- equippable -- so "which wardrobe is it in" never needs a bag hunt. The
+        -- container aggregation is ownedcache.whereText (one builder); a stored item
+        -- with no location detail still warns ('?') rather than staying silent.
         if rec.Id ~= nil then
-            local w = owned.whereOf(rec.Id);           -- populates the split cache too
-            if w ~= nil then
-                local locs = '';
-                pcall(function()
-                    local okm, mod = pcall(require, "dlac\\gear\\gearimport");
-                    if not okm or type(mod.containerName) ~= 'function' then return; end
-                    local parts = {};
-                    for cid, n in pairs(w) do
-                        parts[#parts + 1] = mod.containerName(cid) .. ((n > 1) and (' x' .. n) or '');
-                    end
-                    table.sort(parts);
-                    locs = table.concat(parts, ', ');
-                end);
-                if owned.isStored(rec) then
-                    imgui.TextColored(COL.ERR, 'IN STORAGE: ' .. fmt.esc((locs ~= '') and locs or '?')
-                        .. '  (move to Inventory/Wardrobe to equip)');
-                elseif locs ~= '' then
-                    imgui.TextColored(COL.DIM, 'Held: ' .. fmt.esc(locs));
-                end
+            local locs = owned.whereText(rec);         -- populates the split cache too
+            if owned.isStored(rec) then
+                imgui.TextColored(COL.ERR, 'IN STORAGE: ' .. fmt.esc((locs ~= '') and locs or '?')
+                    .. '  (move to Inventory/Wardrobe to equip)');
+            elseif locs ~= '' then
+                imgui.TextColored(COL.DIM, 'Held: ' .. fmt.esc(locs));
             end
         end
         if rec.Id ~= nil then                          -- private augments on your owned copy

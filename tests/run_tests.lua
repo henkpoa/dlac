@@ -3509,6 +3509,44 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- AV. ownedcache -- the availability verdict (ADR 0005: Owned vs Available are
+--     two facts; stored beats locked beats ok) + the whereText caption builder.
+--     First test reach this module has ever had, via the _splitOverride seam.
+-- ---------------------------------------------------------------------------
+(function()
+    local oc = dofile('gear/ownedcache.lua');
+    oc._splitOverride = {
+        avail = { [1] = 1, [3] = 2 },              -- id 1, 3 equippable now
+        total = { [1] = 1, [2] = 1, [3] = 2 },     -- id 2 owned but parked
+        where = { [2] = { [1] = 1, [4] = 2 } },    -- id 2: container 1 x1, container 4 x2
+    };
+    check('AV1 available -> ok',        oc.verdict({ Id = 1 }), 'ok');
+    check('AV2 stored beats usable',    oc.verdict({ Id = 2 }, true), 'stored');
+    check('AV3 stored beats locked',    oc.verdict({ Id = 2 }, false), 'stored');
+    check('AV4 locked when not usable', oc.verdict({ Id = 1 }, false), 'locked');
+    check('AV5 nil usable reads ok',    oc.verdict({ Id = 3 }), 'ok');
+    check('AV6 unowned never stored',   oc.verdict({ Id = 99 }, true), 'ok');
+    check('AV7 isStored fact',          oc.isStored({ Id = 2 }), true);
+    check('AV8 haveInBags stored copy', oc.haveInBags({ Id = 2 }), true);
+    check('AV9 haveInBags unowned',     oc.haveInBags({ Id = 99 }), false);
+
+    -- whereText: sorted container names via gearimport.containerName (faked,
+    -- restored -- keep the swap contained to this closure)
+    local saved = package.loaded['dlac\\gear\\gearimport'];
+    package.loaded['dlac\\gear\\gearimport'] = { containerName = function(cid) return 'C' .. cid; end };
+    check('AV10 whereText sorted with counts', oc.whereText({ Id = 2 }), 'C1, C4 x2');
+    package.loaded['dlac\\gear\\gearimport'] = saved;
+    check('AV11 whereText unowned empty', oc.whereText({ Id = 99 }), '');
+
+    -- the safe fallback (documented): an empty scan hides NOTHING -- availability
+    -- is colour, ownership gates visibility, and no data means no gating
+    local oc2 = dofile('gear/ownedcache.lua');
+    oc2._splitOverride = { avail = {}, total = {} };
+    check('AV12 empty scan: haveInBags stays true', oc2.haveInBags({ Id = 5 }), true);
+    check('AV13 empty scan: nothing stored',        oc2.verdict({ Id = 5 }, true), 'ok');
+end)();
+
+-- ---------------------------------------------------------------------------
 -- GS. Groups auto-import scanner (Item 1): the pure `scan(fileText) -> candidates, notes`
 --     transform (groupscan.lua). Text-scans a LuaAshitacast file for top-level
 --     `[local] NAME = T?{...}` blocks and surfaces every group-shaped table (a flat string

@@ -16,7 +16,12 @@ local M = {};
 
 local _ownedCounts = nil;   -- the cached split table
 
+-- Test seam (the _override idiom): headless suites inject a split table in
+-- place of the live bag scan. nil in production.
+M._splitOverride = nil;
+
 function M.counts()   -- AVAIL map (equip-correct: pairing, DW, automations)
+    if M._splitOverride ~= nil then _ownedCounts = M._splitOverride; end
     if _ownedCounts ~= nil then return _ownedCounts.avail; end
     local split = { avail = {}, total = {} };
     pcall(function()
@@ -63,6 +68,38 @@ function M.isStored(rec)
     if type(tot) ~= 'table' or (tot[rec.Id] or 0) < 1 then return false; end
     local av = M.counts();
     return type(av) == 'table' and (av[rec.Id] or 0) == 0;
+end
+
+-- THE availability verdict (ADR 0005's two bag facts + the caller's eligibility
+-- fact, combined ONCE): 'stored' beats 'locked' beats 'ok'. `usable` is the
+-- caller's own job/level eligibility for its surface (nil = not asked). Panels
+-- map states to their own palette -- the STATE is the shared meaning, the
+-- colour stays theirs. Tests AV* pin the precedence.
+function M.verdict(rec, usable)
+    if M.isStored(rec) then return 'stored'; end
+    if usable == false then return 'locked'; end
+    return 'ok';
+end
+
+-- Human-readable holding containers for a record's owned copies, sorted --
+-- 'Mog Safe, Wardrobe 2 x2' ('' when unknown). The one builder behind the
+-- IN STORAGE / Held captions, so the phrasing sites stop re-aggregating bags.
+function M.whereText(rec)
+    if rec == nil or rec.Id == nil then return ''; end
+    local w = M.whereOf(rec.Id);
+    if w == nil then return ''; end
+    local locs = '';
+    pcall(function()
+        local okm, mod = pcall(require, "dlac\\gear\\gearimport");
+        if not okm or type(mod.containerName) ~= 'function' then return; end
+        local parts = {};
+        for cid, n in pairs(w) do
+            parts[#parts + 1] = mod.containerName(cid) .. ((n > 1) and (' x' .. n) or '');
+        end
+        table.sort(parts);
+        locs = table.concat(parts, ', ');
+    end);
+    return locs;
 end
 
 return M;

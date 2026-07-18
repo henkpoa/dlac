@@ -84,7 +84,10 @@ local function renderBrowseRow(rec, ordinal, job, level, nameW)
     imgui.BeginChild('##aeqrow_' .. tostring(rec.Id or ('n' .. ordinal)), { -1, 22 }, false);
     icons.renderIcon(rec.Id, 18);
     local usable = S.isUsable(rec, job, level);
-    local nameColr = owned.isStored(rec) and COL.ERR or (usable and COL.USABLE or COL.LOCKED);
+    -- stored beats locked beats ok -- the precedence lives in ownedcache.verdict
+    -- (tests AV*); this panel only maps states onto its palette.
+    local v = owned.verdict(rec, usable);
+    local nameColr = (v == 'stored' and COL.ERR) or (v == 'locked' and COL.LOCKED) or COL.USABLE;
     imgui.TextColored(nameColr, fmt.esc(rec.Name or '?'));
     local nameCol = 26 + (nameW or 200);               -- icon (18+6 pad) + name column
     imgui.SameLine(nameCol);
