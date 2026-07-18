@@ -3650,6 +3650,26 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- PL. equipResolved's post-pass order is DATA (engine v71): the five
+--     whole-table passes run in M._postPassOrder. A reorder must edit BOTH the
+--     list and this pin -- which is the point: the ADR 0010 constraint
+--     (trinket-vs-ranged strictly before reserved-drops, or the loser gets to
+--     reserve and the result flaps) is now checkable instead of prose.
+-- ---------------------------------------------------------------------------
+(function()
+    local po = dispatchM._postPassOrder;
+    check('PL1 order exported', type(po), 'table');
+    check('PL2 exact order', table.concat(po, '>'),
+        'mp-equip-uncovered>craft-sub-guard>sync-hold-ammo>trinket-vs-ranged>reserved-drops');
+    local ti, ri = nil, nil;
+    for i, nm in ipairs(po) do
+        if nm == 'trinket-vs-ranged' then ti = i; end
+        if nm == 'reserved-drops' then ri = i; end
+    end
+    check('PL3 ADR 0010: trinket strictly before reserved', ti ~= nil and ri ~= nil and ti < ri, true);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- GS. Groups auto-import scanner (Item 1): the pure `scan(fileText) -> candidates, notes`
 --     transform (groupscan.lua). Text-scans a LuaAshitacast file for top-level
 --     `[local] NAME = T?{...}` blocks and surfaces every group-shaped table (a flat string

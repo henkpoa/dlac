@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 70;   -- 70: the statefile seam gets ONE reader -- ensureStateFile behind the auto/acc/craft/helm/fish/pin caches (six near-identical clones collapsed; charDir gains the _charDirOverride seam so the file-driven surface finally runs headless, tests SF*). POLICY unified on the pin reader's v44 field lesson: a torn/corrupt state write now DROPS that state everywhere -- craft/helm/fish/auto used to keep the LAST GOOD table forever on a parse failure (raw already held the corrupt text, so the raw-compare short-circuited and even the watcher's clear could not unstick it -- a stale craft overlay glued on was one torn write away). The next good write self-heals; triggers deliberately keep their own keep-previous-and-say-so loader (hand-edited file).
+M.VERSION = 71;   -- 71: equipResolved's resolve order becomes DATA -- the five whole-table post-passes (mp-equip-uncovered, craft-sub-guard, sync-hold-ammo, trinket-vs-ranged, reserved-drops) are named entries run in M._postPassOrder, so the trinket-BEFORE-reserved constraint (ADR 0010) and every future overlay's place in line are one visible, test-pinned list (PL*) instead of prose; the per-slot chain keeps its elseif precedence (locks > sync-hold > pin-reserved > AutoAcc > virtuals > MP), now named; the copy-on-write dance and note building are written once (W/note) instead of eleven times. Behavior bit-identical -- the H/AK/TR/LS/MC sections are the net.
+                  -- 70: the statefile seam gets ONE reader -- ensureStateFile behind the auto/acc/craft/helm/fish/pin caches (six near-identical clones collapsed; charDir gains the _charDirOverride seam so the file-driven surface finally runs headless, tests SF*). POLICY unified on the pin reader's v44 field lesson: a torn/corrupt state write now DROPS that state everywhere -- craft/helm/fish/auto used to keep the LAST GOOD table forever on a parse failure (raw already held the corrupt text, so the raw-compare short-circuited and even the watcher's clear could not unstick it -- a stale craft overlay glued on was one torn write away). The next good write self-heals; triggers deliberately keep their own keep-previous-and-say-so loader (hand-edited file).
                   -- 69: obi + Oneiros virtual decisions extracted PURE (resolveObi / resolveOneiros, the resolveStaff shape): the rims in resolveVirtual only read env/nativemp/vitals, the decisions take data in -- behavior bit-identical, but the two field-calibrated gates (positive day/weather sign; MP <= floor(base*50/100), boundary inclusive) are finally pinned headless (tests VG*). One /dl why nuance: with the grip unowned AND nativemp missing (broken install), the reason now reads module-unavailable first.
                   -- 68: the AutoOneiros marker is a Lv75 rung UNCONDITIONALLY -- the grip is one fixed Lv75 item, so virtualMinLevel answers 75 even when the manifest has not learned it yet (no more Lv0 always-adopt wildcard on a stale manifest); gearui's + Add stamps the virtual rec Level 75 so the set editor shows the truth.
                   -- 67: Oneiros latent percent FIELD-PINNED at 50 -- Henrik measured the live break with refresh ticks: MP 357 = last point the grip's +1 ticks, 358 = gone, and 357 is EXACTLY 50.0% of maxmp 714 (confirming the denominator AND the inclusive <= boundary in one shot; 75% of anything plausible = 535-543, 50% of the displayed 724 = 362 -- nothing else fits). The public repo's item_latents row says param 75, so live diverges from the sql seed: docs/server-questions.md #6. Threshold is now floor(base * 50/100); if the team ever answers "75 is right, the DB was stale", this one line re-aims.
@@ -1578,8 +1579,37 @@ local function levelOf(name)
     return lv;
 end
 
+-- The whole-table resolve order is DATA (v71): after the per-slot chain, these
+-- five post-passes run in exactly this sequence -- reordering this list IS the
+-- behavioral change, and the constraints that used to live only in prose are
+-- adjacency here:
+--   * trinket-vs-ranged MUST precede reserved-drops (ADR 0010: the loser must
+--     never get to reserve anything, or the result flaps instead of settling);
+--   * every post-pass judges the CURRENT names (pairs(out or s)): a slot an
+--     earlier pass HELD (nil in out) is invisible to later passes, on purpose
+--     (LS12: a held Range keeps its trinket judgement consistent).
+-- The next overlay/post-rule gets an entry here, nowhere else. Tests PL* pin
+-- this list as data.
+local POST_ORDER = { 'mp-equip-uncovered', 'craft-sub-guard', 'sync-hold-ammo',
+                     'trinket-vs-ranged', 'reserved-drops' };
+M._postPassOrder = POST_ORDER;
+
 local function equipResolved(s, ctx)
     local out, notes = nil, nil;
+    -- Copy-on-write + note, written ONCE (every branch used to repeat both).
+    -- nil-ing a slot in `out` HOLDS it: the engine says nothing for that slot,
+    -- LAC leaves what you are wearing, and later passes' pairs() walks skip it.
+    local function W()
+        if out == nil then
+            out = {};
+            for k2, v2 in pairs(s) do out[k2] = v2; end
+        end
+        return out;
+    end
+    local function note(f, ...)
+        notes = notes or {};
+        notes[#notes + 1] = string.format(f, ...);
+    end
     local anyLocks = (next(M.locks) ~= nil);
     -- Slots a PINNED item takes away (RSlot). reservedDrops cannot catch this on
     -- its own: it judges ONE table at a time, and the pin lands in its own pass,
@@ -1609,69 +1639,47 @@ local function equipResolved(s, ctx)
     -- AutoAcc (Type automation) decisions for this set; nil when it carries no
     -- dlac:AutoAcc markers. Resolved before the generic virtual branch below.
     local accPick = accResolveSet(s);
+    -- Per-slot precedence chain -- FIRST claim wins a slot (the elseif IS the
+    -- priority): locks > sync-hold weapons > pin-reserved > AutoAcc >
+    -- dlac: virtuals > MP hold/upgrade.
     for slot, v in pairs(s) do
         if anyLocks and M.locks[string.lower(tostring(slot))] == true then
-            if out == nil then
-                out = {};
-                for k2, v2 in pairs(s) do out[k2] = v2; end
-            end
-            out[slot] = nil;                           -- locked: the engine leaves it alone
-            notes = notes or {};
-            notes[#notes + 1] = string.format('%s=LOCKED (kept as worn)', tostring(slot));
+            W()[slot] = nil;                           -- locked: the engine leaves it alone
+            note('%s=LOCKED (kept as worn)', tostring(slot));
         elseif ctx ~= nil and ctx.syncHold == true and WEAPON_SLOTS[string.lower(tostring(slot))] then
             -- MUST sit above the AutoAcc and dlac: branches: a virtual marker in a
             -- weapon slot has to be held UNRESOLVED (resolving it at the transient
             -- level IS the bug this hold exists for -- LS tests pin the order).
-            if out == nil then
-                out = {};
-                for k2, v2 in pairs(s) do out[k2] = v2; end
-            end
-            out[slot] = nil;               -- level reading is settling: weapons stay as worn
-            notes = notes or {};
-            notes[#notes + 1] = string.format('%s=SYNC-HOLD (level just changed; kept as worn)', tostring(slot));
+            W()[slot] = nil;               -- level reading is settling: weapons stay as worn
+            note('%s=SYNC-HOLD (level just changed; kept as worn)', tostring(slot));
         elseif pinRes ~= nil and pinRes[string.lower(tostring(slot))] ~= nil then
-            if out == nil then
-                out = {};
-                for k2, v2 in pairs(s) do out[k2] = v2; end
-            end
-            out[slot] = nil;               -- a pinned piece takes this slot away
-            notes = notes or {};
-            notes[#notes + 1] = string.format('%s=RESERVED by pinned %s',
+            W()[slot] = nil;               -- a pinned piece takes this slot away
+            note('%s=RESERVED by pinned %s',
                 tostring(slot), tostring(pinRes[string.lower(tostring(slot))]));
         elseif accPick ~= nil and accPick[slot] ~= nil then
-            if out == nil then
-                out = {};
-                for k2, v2 in pairs(s) do out[k2] = v2; end
-            end
-            out[slot] = accPick[slot];
-            notes = notes or {};
+            W()[slot] = accPick[slot];
             local mkOnly = v;
             local pb = string.find(v, '|', 1, true);
             if pb ~= nil then mkOnly = string.sub(v, 1, pb - 1); end
             local _, cacc, cname = parseAccMarker(mkOnly);
             if cname ~= nil and accPick[slot] ~= cname then
-                notes[#notes + 1] = string.format('AutoAcc=%s RELEASED (acc+%d redundant) -> %s',
+                note('AutoAcc=%s RELEASED (acc+%d redundant) -> %s',
                     cname, cacc or 0, accPick[slot]);
             else
-                notes[#notes + 1] = string.format('AutoAcc=%s', tostring(accPick[slot]));
+                note('AutoAcc=%s', tostring(accPick[slot]));
             end
         elseif type(v) == 'string' and string.lower(string.sub(v, 1, 5)) == 'dlac:' then
-            if out == nil then
-                out = {};
-                for k2, v2 in pairs(s) do out[k2] = v2; end
-            end
             local marker, fallback = v, nil;
             local p = string.find(v, '|', 1, true);
             if p ~= nil then marker, fallback = string.sub(v, 1, p - 1), string.sub(v, p + 1); end
             local nm, why = resolveVirtual(marker, ctx, slot);
-            out[slot] = nm or fallback;                -- nil fallback drops the slot
-            notes = notes or {};
+            W()[slot] = nm or fallback;                -- nil fallback drops the slot
             if nm ~= nil then
-                notes[#notes + 1] = string.format('%s=%s', marker, nm);
+                note('%s=%s', marker, nm);
             elseif fallback ~= nil then
-                notes[#notes + 1] = string.format('%s=fallback %s (%s)', marker, fallback, tostring(why));
+                note('%s=fallback %s (%s)', marker, fallback, tostring(why));
             else
-                notes[#notes + 1] = string.format('%s=skipped (%s)', marker, tostring(why));
+                note('%s=skipped (%s)', marker, tostring(why));
             end
         elseif mpMap ~= nil and type(v) == 'string'
                and not MP_HOLD_EXEMPT[string.lower(tostring(slot))] then
@@ -1681,14 +1689,8 @@ local function equipResolved(s, ctx)
             local tgtMP  = mpMap[string.lower(v)] or 0;
             if worn ~= nil and string.lower(worn) ~= string.lower(v)
                and M.mpHoldNeeded(wornMP, tgtMP, curMP, maxMP) then
-                if out == nil then
-                    out = {};
-                    for k2, v2 in pairs(s) do out[k2] = v2; end
-                end
-                out[slot] = nil;                       -- keep the MP battery until it's spent
-                notes = notes or {};
-                notes[#notes + 1] = string.format('%s=MP-HOLD %s (+%d MP unspent)',
-                    tostring(slot), worn, wornMP - tgtMP);
+                W()[slot] = nil;                       -- keep the MP battery until it's spent
+                note('%s=MP-HOLD %s (+%d MP unspent)', tostring(slot), worn, wornMP - tgtMP);
             else
                 if worn ~= nil and wornMP > tgtMP and string.lower(worn) ~= string.lower(v) then
                     _mpCd[lslot] = os.time() + 15;     -- battery released: no instant re-equip
@@ -1702,116 +1704,96 @@ local function equipResolved(s, ctx)
                    and (c.mp or 0) > math.max(wornMP, tgtMP)
                    and curMP >= maxMP
                    and os.time() >= (_mpCd[lslot] or 0) then
-                    if out == nil then
-                        out = {};
-                        for k2, v2 in pairs(s) do out[k2] = v2; end
+                    W()[slot] = c.name;
+                    note('%s=MP-EQUIP %s (+%d MP)', tostring(slot), c.name, (c.mp or 0) - math.max(wornMP, tgtMP));
+                end
+            end
+        end
+    end
+    -- The five whole-table post-passes, run in POST_ORDER (the data above).
+    local PASS = {
+        -- MP-EQUIP covers slots the set does NOT address too: an unwritten ring
+        -- or neck slot is exactly where a battery is freest to sit. Full pool
+        -- only, locked and weapon slots never. (Nothing else ever writes such a
+        -- slot, so the battery simply stays worn until you or a set replace it
+        -- -- there is no MP to waste by leaving it on.)
+        ['mp-equip-uncovered'] = function()
+            if mpBest == nil or curMP == nil or maxMP == nil or curMP < maxMP then return; end
+            local covered = {};
+            for slot in pairs(s) do covered[string.lower(tostring(slot))] = true; end
+            for lslot, canon in pairs(MP_SLOT_CANON) do
+                if mpBest[lslot] ~= nil and not covered[lslot] and M.locks[lslot] ~= true then
+                    local c = M.mpPick(mpBest[lslot], playerLevel(ctx));
+                    local worn = wornItemName(lslot);
+                    local wornMP = (worn ~= nil) and (mpMap[string.lower(worn)] or 0) or 0;
+                    if c ~= nil and (worn == nil or string.lower(c.name) ~= string.lower(worn))
+                       and (c.mp or 0) > wornMP
+                       and os.time() >= (_mpCd[lslot] or 0) then
+                        W()[canon] = c.name;
+                        note('%s=MP-EQUIP %s (+%d MP)', lslot, c.name, (c.mp or 0) - wornMP);
                     end
-                    out[slot] = c.name;
-                    notes = notes or {};
-                    notes[#notes + 1] = string.format('%s=MP-EQUIP %s (+%d MP)',
-                        tostring(slot), c.name, (c.mp or 0) - math.max(wornMP, tgtMP));
                 end
             end
-        end
-    end
-    -- MP-EQUIP covers slots the set does NOT address too: an unwritten ring or
-    -- neck slot is exactly where a battery is freest to sit. Full pool only,
-    -- locked and weapon slots never. (Nothing else ever writes such a slot, so
-    -- the battery simply stays worn until you or a set replace it -- there is
-    -- no MP to waste by leaving it on.)
-    if mpBest ~= nil and curMP ~= nil and maxMP ~= nil and curMP >= maxMP then
-        local covered = {};
-        for slot in pairs(s) do covered[string.lower(tostring(slot))] = true; end
-        for lslot, canon in pairs(MP_SLOT_CANON) do
-            if mpBest[lslot] ~= nil and not covered[lslot] and M.locks[lslot] ~= true then
-                local c = M.mpPick(mpBest[lslot], playerLevel(ctx));
-                local worn = wornItemName(lslot);
-                local wornMP = (worn ~= nil) and (mpMap[string.lower(worn)] or 0) or 0;
-                if c ~= nil and (worn == nil or string.lower(c.name) ~= string.lower(worn))
-                   and (c.mp or 0) > wornMP
-                   and os.time() >= (_mpCd[lslot] or 0) then
-                    if out == nil then
-                        out = {};
-                        for k2, v2 in pairs(s) do out[k2] = v2; end
-                    end
-                    out[canon] = c.name;
-                    notes = notes or {};
-                    notes[#notes + 1] = string.format('%s=MP-EQUIP %s (+%d MP)',
-                        lslot, c.name, (c.mp or 0) - wornMP);
+        end,
+        -- Craft Sub guard: hold a Main that pairs badly with the craft overlay's
+        -- Sub (see craftMainGuard). On the FINAL names so it also covers a Main
+        -- that a virtual (dlac:AutoStaff) or AutoAcc resolved above.
+        ['craft-sub-guard'] = function()
+            if ctx == nil or ctx.craftMainGuard == nil then return; end
+            for slot, v in pairs(out or s) do
+                if string.lower(tostring(slot)) == 'main' and type(v) == 'string'
+                   and ctx.craftMainGuard(v) then
+                    W()[slot] = nil;
+                    note('Main=%s HELD (pairs badly with the craft Sub)', tostring(v));
+                    break;
                 end
             end
-        end
-    end
-    -- Craft Sub guard: hold a Main that pairs badly with the craft overlay's Sub
-    -- (see craftMainGuard). Post-pass on the FINAL names so it also covers a Main
-    -- that a virtual (dlac:AutoStaff) or AutoAcc resolved above.
-    if ctx ~= nil and ctx.craftMainGuard ~= nil then
-        for slot, v in pairs(out or s) do
-            if string.lower(tostring(slot)) == 'main' and type(v) == 'string'
-               and ctx.craftMainGuard(v) then
-                if out == nil then
-                    out = {};
-                    for k2, v2 in pairs(s) do out[k2] = v2; end
+        end,
+        -- Sync-hold companion rule: with Range HELD out of the plan above, a
+        -- stat-stick Ammo (RSlot reserves Range, ADR 0010) must hold too --
+        -- trinket-vs-ranged judges only the plan, so the trinket would sail
+        -- through, land, and the SERVER would strip the worn ranged weapon: a
+        -- Range unequip during the very window the hold keeps weapons stable.
+        -- Fired ammo (arrows/bolts: no Range bit) keeps dispatching (LS12).
+        ['sync-hold-ammo'] = function()
+            if ctx == nil or ctx.syncHold ~= true then return; end
+            for slot, v in pairs(out or s) do
+                if string.lower(tostring(slot)) == 'ammo' and type(v) == 'string'
+                   and hasBit(tonumber(rslotOf(v)) or 0, 0x0004) then
+                    W()[slot] = nil;
+                    note('%s=SYNC-HOLD (%s reserves Range; kept as worn)', tostring(slot), tostring(v));
+                    break;
                 end
-                out[slot] = nil;
-                notes = notes or {};
-                notes[#notes + 1] = string.format('Main=%s HELD (pairs badly with the craft Sub)', tostring(v));
-                break;
             end
-        end
-    end
-    -- Sync-hold companion rule: with Range HELD out of the plan above, a
-    -- stat-stick Ammo (RSlot reserves Range, ADR 0010) must hold too --
-    -- trinketRangeDrop below judges only the plan, so the trinket would sail
-    -- through, land, and the SERVER would strip the worn ranged weapon: a
-    -- Range unequip during the very window the hold keeps weapons stable.
-    -- Fired ammo (arrows/bolts: no Range bit) keeps dispatching (LS12).
-    if ctx ~= nil and ctx.syncHold == true then
-        for slot, v in pairs(out or s) do
-            if string.lower(tostring(slot)) == 'ammo' and type(v) == 'string'
-               and hasBit(tonumber(rslotOf(v)) or 0, 0x0004) then
-                if out == nil then
-                    out = {};
-                    for k2, v2 in pairs(s) do out[k2] = v2; end
+        end,
+        -- Trinket vs ranged weapon (ADR 0010): a stat stick reserves the Range
+        -- slot server-side, so the two can't coexist -- keep the higher-Level
+        -- one and drop the other. BEFORE reserved-drops (POST_ORDER adjacency),
+        -- so the loser can't go on to reserve anything and it settles.
+        ['trinket-vs-ranged'] = function()
+            local tdKey, tdWinner = M.trinketRangeDrop(out or s, rslotOf, levelOf);
+            if tdKey ~= nil then
+                W()[tdKey] = nil;
+                note('%s=dropped (stat stick vs ranged weapon; kept %s)', tostring(tdKey), tostring(tdWinner));
+            end
+        end,
+        -- Reserved-slot pass (see RSLOT_ORDER). LAST, on the FINAL names: only
+        -- here are the overlay, the virtuals, AutoAcc and MP-EQUIP all resolved.
+        -- It has to be here rather than at build time -- two individually legal
+        -- sets can overlay into an illegal pair (a Body from one trigger, a Head
+        -- from another), and MP-EQUIP writes slots no set ever named. A set is a
+        -- plan; conflicts are the engine's call (ADR 0006).
+        ['reserved-drops'] = function()
+            local drops = M.reservedDrops(out or s, rslotOf, wornItemName);
+            if drops ~= nil then
+                for slot, by in pairs(drops) do
+                    W()[slot] = nil;
+                    note('%s=RESERVED by %s (kept as worn)', tostring(slot), tostring(by));
                 end
-                out[slot] = nil;
-                notes = notes or {};
-                notes[#notes + 1] = string.format('%s=SYNC-HOLD (%s reserves Range; kept as worn)', tostring(slot), tostring(v));
-                break;
             end
-        end
-    end
-    -- Trinket vs ranged weapon (ADR 0010): a stat stick reserves the Range slot server-side, so
-    -- the two can't coexist -- keep the higher-Level one and drop the other, BEFORE the reserved
-    -- pass, so the loser can't go on to reserve anything and the result never flaps.
-    local tdKey, tdWinner = M.trinketRangeDrop(out or s, rslotOf, levelOf);
-    if tdKey ~= nil then
-        if out == nil then
-            out = {};
-            for k2, v2 in pairs(s) do out[k2] = v2; end
-        end
-        out[tdKey] = nil;
-        notes = notes or {};
-        notes[#notes + 1] = string.format('%s=dropped (stat stick vs ranged weapon; kept %s)', tostring(tdKey), tostring(tdWinner));
-    end
-    -- Reserved-slot pass (see RSLOT_ORDER). LAST, on the FINAL names: only here are
-    -- the overlay, the virtuals, AutoAcc and MP-EQUIP all resolved. It has to be
-    -- here rather than at build time -- two individually legal sets can overlay into
-    -- an illegal pair (a Body from one trigger, a Head from another), and MP-EQUIP
-    -- writes slots no set ever named. A set is a plan; conflicts are the engine's
-    -- call (ADR 0006).
-    local drops = M.reservedDrops(out or s, rslotOf, wornItemName);
-    if drops ~= nil then
-        for slot, by in pairs(drops) do
-            if out == nil then
-                out = {};
-                for k2, v2 in pairs(s) do out[k2] = v2; end
-            end
-            out[slot] = nil;
-            notes = notes or {};
-            notes[#notes + 1] = string.format('%s=RESERVED by %s (kept as worn)', tostring(slot), tostring(by));
-        end
-    end
+        end,
+    };
+    for _, nm in ipairs(POST_ORDER) do PASS[nm](); end
     pcall(function() gFunc.EquipSet(out or s); end);
     local note = '';
     if notes ~= nil then
