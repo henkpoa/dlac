@@ -407,26 +407,36 @@ agent; the per-repo setup lives in `docs/agents/`.
     the subjob level instead. `get(race, mjob, mlvl, sjob, slvl [, meritMP])`
     → integer (nil = bad input, 0 is a real answer); `self()` reads look-race
     + jobs live, gamemode-pattern injectable. Merits are NOT native — pass
-    them in: CatsEyeXI Max MP merits = 10 MP × cap 15 (merits.sql id 66).
-    Field pin: Mindie Hume WHM75/SCH37 naked 724 = 614 formula + 110 ⇒
-    predicts 11/15 merit levels (unconfirmed — check the merit menu).
-    Tests NMP1–NMP16.
-  - **Auto Oneiros Grip (2026-07-18)** (`dlac:AutoOneiros`, engine v65,
-    manifest fmtver 9; history.md "the first nativemp consumer"). Sub-slot
-    automation: equips Oneiros Grip while its latent Refresh +1 is LIVE —
-    server truth (stable `latent_effect_container.cpp`): `MP_UNDER_PERCENT`
-    is `health.mp / health.maxmp <= 75%`, and `health.maxmp` is the BASE pool
-    (nativemp formula + merit MP, gear excluded). Engine threshold =
-    `floor((nativemp.self() + 10×mpMerits) × 0.75)` — exact for every integer
-    base, boundary inclusive — recomputed per resolve (job/sync changes
-    re-aim it). `mpMerits` (0–15) is the manifest's first USER-OWNED field:
-    set on the Automations-tab detail view (live aim readout), carried
-    through every rescan by autoCommit; merits are client-unreadable
-    passively, so the number is the player's to keep current. The flatten
+    them in: 10 MP/level, **10 usable at Lv75** (merit.cpp `cap[75]`; the
+    merits.sql upgrade=15 headroom needs Lv80+, unreachable here). Field pin
+    RESOLVED (Henrik: menu reads 10/10): naked 724 = 614 formula + 100
+    merits + 10 SCH-sub Max MP Boost trait — the trait (Mod::BASE_MP) and
+    all weapon/food MP ride `health.modmp` (the DISPLAYED max), never
+    `health.maxmp`, so on-screen naked max may legitimately exceed
+    get()+merits. Tests NMP1–NMP16.
+  - **Auto Oneiros Grip (2026-07-18)** (`dlac:AutoOneiros`, engine v65+v66,
+    manifest fmtver 9; history.md "the first nativemp consumer" + "the 724
+    decomposes completely"). Sub-slot automation: equips Oneiros Grip while
+    its latent Refresh +1 is LIVE — server truth (stable
+    `latent_effect_container.cpp`; item_latents 18811 = latent id 4 =
+    `MP_UNDER_PERCENT`): `health.mp / health.maxmp <= 75%`, and
+    `health.maxmp` is the BASE pool (nativemp formula + merit MP, gear
+    excluded). BG-wiki's retail "counts weapon/grip MP" rule is a DIFFERENT
+    latent (`MP_UNDER_VISIBLE_GEAR`) the grip doesn't use and whose CatsEyeXI
+    implementation is commented out — the grip's own MP+5 and Max MP Boost
+    traits sit in the displayed max only. Engine threshold =
+    `floor((nativemp.self() + 10×min(mpMerits,10)) × 0.75)` — exact for every
+    integer base, boundary inclusive — recomputed per resolve (job/sync
+    changes re-aim it). `mpMerits` (0–10; merit.cpp `cap[75]`) is the
+    manifest's first USER-OWNED field: set on the Automations-tab detail view
+    (live aim readout + a warning not to tune it to match the naked screen
+    number), carried through every rescan by autoCommit; merits are
+    client-unreadable passively, so the number is the player's to keep
+    current. Mindie's aim: 614 + 100 = 714 → fires at MP ≤ 535. The flatten
     treats the marker as a GRIP under the shared subSlotAllowed rule (2H
     main → `dlac:AutoOneiros|<fallback>`, 1H main vetoes the marker; the
     + Add Sub picker offers it unconditionally per the HARD RULE);
-    virtualMinLevel = the grip's Lv75. Tests AO1–AO12.
+    virtualMinLevel = the grip's Lv75. Tests AO1–AO12 (+clamp AO2c/d).
   commits. Local-only pending GM verdict; strip TEMP probes (`/dlmv`, RMB debug,
   branch-print) before any merge. The Storage-into-Provenance packet experiment is
   designed, unrun (docs/design/storage-move.md "open questions").

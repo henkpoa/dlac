@@ -4452,18 +4452,20 @@ end)();
 -- section NMP: native max MP (data/nativemp.lua)
 -- Server-formula port (charutils.cpp CalculateStats MP + grades.cpp, stable
 -- branch 2026-07-18). Expectations are HAND-computed from the server tables,
--- not from the module -- a table typo fails here. Field pin: Mindie Hume
--- WHM75/SCH37 read 724 naked = 614 formula + 110 Max MP merit (11 levels
--- x 10; CatsEyeXI cap 15, merits.sql id 66).
+-- not from the module -- a table typo fails here. Field pin, FULLY resolved
+-- (Henrik 2026-07-18: menu reads 10/10): Mindie Hume WHM75/SCH37 shows 724
+-- naked = 614 formula + 100 merits (10 x 10, merit.cpp cap[75]) + 10 SCH-sub
+-- Max MP Boost -- the trait rides health.modmp (DISPLAY); health.maxmp = 714.
 -- ---------------------------------------------------------------------------
 (function()
     local nmp = dofile('data/nativemp.lua');
     local g = nmp.get;
 
     -- the field pin: race D 10+3*59+4*15=247, WHM C 12+4*59+4*15=308,
-    -- sub SCH D (10+3*36)/2=59 -> 614; +110 merit = the observed 724
+    -- sub SCH D (10+3*36)/2=59 -> 614; +100 merit = maxmp 714 (the latent
+    -- denominator; the on-screen 724 adds the DISPLAY-side SCH trait)
     check('NMP1 field pin Hume WHM75/SCH37 base', g(1, 3, 75, 20, 37), 614);
-    check('NMP2 field pin + 11 merit levels = on-screen 724', g(1, 3, 75, 20, 37, 110), 724);
+    check('NMP2 field pin + 10 merit levels = maxmp 714', g(1, 3, 75, 20, 37, 100), 714);
     check('NMP3 Hume female = same row', g(2, 3, 75, 20, 37), 614);
 
     check('NMP4 Taru BLM75/WHM37 (430+369+78)', g(5, 4, 75, 3, 37), 877);
@@ -4507,12 +4509,17 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
--- section AO: Auto Oneiros Grip (dlac:AutoOneiros, engine v65)
--- Server semantics (stable latent_effect_container.cpp): the grip's Refresh+1
--- latent fires while mp/maxmp <= 75/100, and health.maxmp is the BASE pool --
--- CalculateStats' race/job/sub formula + merit MP, NO gear. Threshold =
--- floor(base * 0.75), boundary INCLUSIVE. Mindie's shape (Hume WHM75/SCH37,
--- 11 merit levels): base 724 -> fires at MP <= 543; meritless 614 -> 460.
+-- section AO: Auto Oneiros Grip (dlac:AutoOneiros, engine v66)
+-- Server semantics (stable latent_effect_container.cpp + item_latents 18811 =
+-- latent id 4 MP_UNDER_PERCENT): the grip's Refresh+1 fires while
+-- mp/maxmp <= 75/100, and health.maxmp is the BASE pool -- CalculateStats'
+-- race/job/sub formula + merit MP, NO gear (weapon/grip MP and Max MP Boost
+-- traits ride health.MODMP -- the display -- never the denominator; BG-wiki's
+-- retail visible-gear rule is a DIFFERENT latent id whose implementation is
+-- commented out here). Threshold = floor(base * 0.75), boundary inclusive.
+-- Usable merits cap at merit.cpp cap[75] = 10 -> the resolver clamps.
+-- Mindie's shape (Hume WHM75/SCH37, 10/10 merits): maxmp 714 -> fires at
+-- MP <= 535; meritless 614 -> 460.
 -- ---------------------------------------------------------------------------
 (function()
     local nmpM = package.loaded['dlac\\data\\nativemp'];   -- THE instance dispatch captured
@@ -4525,14 +4532,21 @@ end)();
     nmpM.readRace  = function(idx) return (idx == 42) and 1 or nil; end
     nmpM.readJobs  = function() return 3, 75, 20, 37; end
 
-    dispatchM._autoOverride = { oneiros = { name = 'Oneiros Grip', level = 75 }, mpMerits = 11 };
+    dispatchM._autoOverride = { oneiros = { name = 'Oneiros Grip', level = 75 }, mpMerits = 10 };
 
-    TEST_PLAYER = { MP = 543 };
-    check('AO1 boundary INCLUSIVE: MP 543 of base 724 -> grip', rv('dlac:AutoOneiros', ctx75, 'Sub'), 'Oneiros Grip');
-    TEST_PLAYER = { MP = 544 };
+    TEST_PLAYER = { MP = 535 };
+    check('AO1 boundary: MP 535 of maxmp 714 -> grip', rv('dlac:AutoOneiros', ctx75, 'Sub'), 'Oneiros Grip');
+    TEST_PLAYER = { MP = 536 };
     local nm, why = rv('dlac:AutoOneiros', ctx75, 'Sub');
     check('AO2 one MP above -> fallback', nm, nil);
-    check('AO2b reason carries the threshold', string.find(tostring(why), '543', 1, true) ~= nil, true);
+    check('AO2b reason carries the threshold', string.find(tostring(why), '535', 1, true) ~= nil, true);
+    -- over-cap merit input (sql headroom, hand-edited manifest): clamped to
+    -- the usable 10 -- the threshold must NOT move
+    dispatchM._autoOverride = { oneiros = { name = 'Oneiros Grip', level = 75 }, mpMerits = 15 };
+    TEST_PLAYER = { MP = 535 };
+    check('AO2c merit clamp: 15 acts as 10', rv('dlac:AutoOneiros', ctx75, 'Sub'), 'Oneiros Grip');
+    TEST_PLAYER = { MP = 536 };
+    check('AO2d merit clamp: threshold unmoved', (rv('dlac:AutoOneiros', ctx75, 'Sub')), nil);
 
     dispatchM._autoOverride = { oneiros = { name = 'Oneiros Grip', level = 75 }, mpMerits = 0 };
     TEST_PLAYER = { MP = 460 };

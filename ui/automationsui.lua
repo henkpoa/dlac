@@ -148,12 +148,13 @@ local function autoCommit()
     if p == nil then auto.status = 'not logged in.'; return; end
     -- USER-SET fields survive regeneration by riding the loaded manifest:
     -- seed auto.data from disk first (no-op when already loaded), then carry
-    -- mpMerits forward. mpMerits = Max MP merit LEVELS (0..15 on CatsEyeXI,
-    -- 10 MP each) -- the one Oneiros-threshold input the client cannot read
-    -- passively (merit allocations only cross the wire when the menu opens).
+    -- mpMerits forward. mpMerits = Max MP merit LEVELS (0..10: merit.cpp caps
+    -- usable merits at cap[75]=10 -- the menu's own 10/10; the merits.sql 15
+    -- headroom needs Lv80+) -- the one Oneiros-threshold input the client
+    -- cannot read passively (merits only cross the wire when the menu opens).
     autoLoad();
     local mpMerits = (type(auto.data) == 'table') and math.floor(tonumber(auto.data.mpMerits) or 0) or 0;
-    if mpMerits < 0 then mpMerits = 0; elseif mpMerits > 15 then mpMerits = 15; end
+    if mpMerits < 0 then mpMerits = 0; elseif mpMerits > 10 then mpMerits = 10; end
     -- Per-element pick: HQ staff (Iridescence +2 for its element) over NQ (+1).
     -- Every entry records its item LEVEL so the engine can skip gear the character
     -- is under-leveled for (and fall back to the slot's regular pick).
@@ -1087,7 +1088,7 @@ local function renderAutomations()
             imgui.PushItemWidth(110);
             if imgui.InputInt('Max MP merits##onmerits', auto._meritBuf) then
                 local v = math.floor(tonumber(auto._meritBuf[1]) or 0);
-                if v < 0 then v = 0; elseif v > 15 then v = 15; end
+                if v < 0 then v = 0; elseif v > 10 then v = 10; end
                 auto._meritBuf[1] = v;
                 if type(auto.data) ~= 'table' then auto.data = {}; end
                 if auto.data.mpMerits ~= v then
@@ -1097,11 +1098,12 @@ local function renderAutomations()
             end
             imgui.PopItemWidth();
             if imgui.IsItemHovered() then
-                imgui.SetTooltip('Your Max MP merit LEVELS (menu: Merit Points > HP-MP). 10 MP each,\ncap 15 on CatsEyeXI. They count toward the latent\'s base pool, so an\nunset value aims the threshold low (the grip stays off longer).');
+                imgui.SetTooltip('Your Max MP merit LEVELS (menu: Merit Points > HP-MP). 10 MP each, 10\nusable at Lv75 (the menu\'s own cap). They count toward the latent\'s base\npool, so an unset value aims the threshold low (the grip stays off longer).');
             end
             imgui.Spacing();
             -- The live aim: base pool -> threshold -> where your MP sits now.
             local meritLv = (type(auto.data) == 'table') and math.floor(tonumber(auto.data.mpMerits) or 0) or 0;
+            if meritLv < 0 then meritLv = 0; elseif meritLv > 10 then meritLv = 10; end   -- pre-clamp manifests
             local native = (hasNmp and type(nmp.self) == 'function') and nmp.self(0) or nil;
             if native == nil then
                 imgui.TextColored(COL_DIM, 'Native MP unreadable (log in / zone once).');
@@ -1122,7 +1124,7 @@ local function renderAutomations()
                 end
             end
             imgui.Spacing();
-            imgui.TextColored(COL_DIM, 'The latent compares your CURRENT MP against 75%% of the BASE pool -- the naked\nrace/job/sub number plus merits; gear MP never moves the threshold. Add the\ndlac: entry to a set\'s Sub list via + Add; the other items are the fallback.');
+            imgui.TextColored(COL_DIM, 'The latent compares your CURRENT MP against 75%% of the BASE pool -- the\nrace/job/sub formula plus merits; gear MP never moves the threshold. Your\nNAKED on-screen max can read higher than the base: Max MP Boost traits\n(/SCH30+, /BLU, GEO) and the grip\'s own MP+5 sit in the DISPLAYED max only\n-- do not raise the merit number to make Base match the screen. Add the\ndlac: entry to a set\'s Sub list via + Add; the other items are the fallback.');
         elseif auto.view == 'maxmp' then
             imgui.TextColored(COL_HEADER, 'MaxMP');
             imgui.SameLine(0, 10); imgui.TextColored(COL_DIM, 'set automation -- /dl mode maxmp; wears batteries at a full pool, releases as spent');

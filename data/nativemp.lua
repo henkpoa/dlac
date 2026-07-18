@@ -20,10 +20,14 @@
         main : base + perLvl*upTo60 + over60rate*over60      (0 when no grade)
         sub  : (base + perLvl*(slvl-1)) / 2                  (0 when no grade)
         MP   = floor(race + main + sub + meritMP)
-    Merits are NOT native: CatsEyeXI raises Max MP merits to 15 levels x 10 MP
-    (sql/merits.sql id 66) -- pass the character's merit MP if you want the
-    on-screen naked number. Field pin 2026-07-18: Mindie Hume WHM75/SCH37
-    reads 724 naked = 614 formula + 110 merit (11/15 levels).
+    Merits are NOT native: pass merit MP in (10/level, 10 usable at Lv75 --
+    merit.cpp cap[75]; the merits.sql upgrade=15 headroom needs Lv80+). And
+    the on-screen naked max can still read HIGHER than get()+merits: Max MP
+    Boost traits (Mod::BASE_MP) and weapon/food MP ride health.modmp -- the
+    DISPLAYED max -- never health.maxmp, which this module reproduces. Field
+    pin 2026-07-18, fully decomposed: Mindie Hume WHM75/SCH37 shows 724
+    naked = 614 formula + 100 merits (10/10) + 10 SCH-sub Max MP Boost
+    (traits.sql trait 8, SCH Lv30) -- and the LATENT denominator is 714.
 
     Race here is the LOOK race (GRAP_LIST id 1..8) -- exactly what the server
     switches on (PChar->look.race). Cosmetic client mods (sexchange,
@@ -73,7 +77,16 @@ M.JOB_GRADE = {
 
 M.SJ_MP_DIVISOR       = 2;      -- settings map.SJ_MP_DIVISOR (retail half)
 M.MERIT_MP_PER_LEVEL  = 10;     -- merits.sql id 66 value
-M.MERIT_MP_CAP_LEVELS = 15;     -- CatsEyeXI-raised cap (retail was 8)
+M.MERIT_MP_CAP_LEVELS = 10;     -- USABLE cap: merit.cpp min(count, cap[mlvl]) and
+                                -- cap[75]=10 -- the sql upgrade=15 headroom only
+                                -- opens at Lv80+, unreachable on a 75-cap server
+                                -- (field truth 2026-07-18: menu shows 10/10).
+                                -- NOTE for display math: Max MP Boost traits
+                                -- (SCH>=30 / GEO>=30 / BLU, Mod::BASE_MP 1096)
+                                -- and food/gear ride health.modmp -- the shown
+                                -- max -- but NEVER health.maxmp, which this
+                                -- module computes; naked on-screen max can read
+                                -- above get()+merits legitimately.
 
 local function pool(grade, upTo60, over60)
     local s = M.SCALE[grade];

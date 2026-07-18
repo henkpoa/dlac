@@ -2703,3 +2703,34 @@ whole aim live: native + merit = base, the <=threshold line, and whether
 the grip is ACTIVE right now. AO1-AO12 (boundary inclusive both with and
 without merits, no-pool jobs, unreadable native, the 2H/1H flatten pair);
 1290 + 170 green.
+
+### The 724 decomposes completely (2026-07-18)
+
+Henrik's field correction landed within the hour: the merit menu reads
+10/10, not the predicted 11/15 -- and he brought BG-wiki's Oneiros page,
+which describes the retail latent as counting weapon and grip MP (the
+grip's own MP+5 included). Both threads resolved against the server source
+in one pass. The merit side: merit.cpp multiplies value by
+min(count, cap[level]) and cap[75] = 10 -- the merits.sql upgrade=15
+headroom only opens at Lv80+, which a 75-cap server never reaches, so the
+menu's 10/10 IS the mechanic. The missing 10: traits.sql gives SCH Max MP
+Boost +10 at level 30 (trait 8, Mod::BASE_MP 1096), so his /SCH37 carries
+it -- 614 formula + 100 merits + 10 trait = 724 on the nose.
+
+The decisive part is WHERE each term lives. UpdateHealth builds
+health.modmp -- the DISPLAYED max -- from health.maxmp + BASE_MP (traits)
++ Mod::MP (gear) + conversions + food; the latent divides by health.maxmp
+alone, which only CalculateStats writes (formula + merits). And BG-wiki's
+weapon-counting rule turned out to be a DIFFERENT latent id
+(MP_UNDER_VISIBLE_GEAR) whose CatsEyeXI implementation is entirely
+commented out -- item_latents row 18811 carries latent id 4, plain
+MP_UNDER_PERCENT (the generated latentstats.lua label was right all
+along). Net: the trait and the grip's MP+5 move the screen number, never
+the denominator. Mindie's true aim is 714 -> Refresh live at MP <= 535,
+not the 543 the 11-merit theory implied. Engine v66 clamps mpMerits to
+the usable 10, nativemp's constants/comments state the modmp-vs-maxmp
+split, and the detail view now warns against tuning merits to make Base
+match the naked screen. A three-point field test can still adjudicate
+code-vs-live if wanted: with the grip on, standing MP ticks at 535 (code),
+539 (wiki rule incl. grip+main MP on a bare main), or 543 (11-merit
+theory). AO grew the clamp pair; 1292 + 170 green.
