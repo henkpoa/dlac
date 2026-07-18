@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 66;   -- 66: Oneiros merit clamp field-corrected -- Henrik's menu reads 10/10: merit.cpp caps usable merits at cap[mlvl] (10 at Lv75; the merits.sql upgrade=15 headroom needs Lv80+, unreachable here), so the resolver clamps mpMerits to 0..10. His naked 724 fully decomposed: 614 formula + 100 merits + 10 SCH-sub Max MP Boost (traits.sql trait 8 job 20 Lv30, Mod::BASE_MP 1096) -- and BASE_MP rides health.MODMP (UpdateHealth, the DISPLAYED max) while the latent divides by health.MAXMP (CalculateStats only), so the trait does NOT move the threshold: his true line is floor(714*0.75) = 535, and the detail view now warns against tuning merits to make base match the naked screen number.
+M.VERSION = 67;   -- 67: Oneiros latent percent FIELD-PINNED at 50 -- Henrik measured the live break with refresh ticks: MP 357 = last point the grip's +1 ticks, 358 = gone, and 357 is EXACTLY 50.0% of maxmp 714 (confirming the denominator AND the inclusive <= boundary in one shot; 75% of anything plausible = 535-543, 50% of the displayed 724 = 362 -- nothing else fits). The public repo's item_latents row says param 75, so live diverges from the sql seed: docs/server-questions.md #6. Threshold is now floor(base * 50/100); if the team ever answers "75 is right, the DB was stale", this one line re-aims.
+                  -- 66: Oneiros merit clamp field-corrected -- Henrik's menu reads 10/10: merit.cpp caps usable merits at cap[mlvl] (10 at Lv75; the merits.sql upgrade=15 headroom needs Lv80+, unreachable here), so the resolver clamps mpMerits to 0..10. His naked 724 fully decomposed: 614 formula + 100 merits + 10 SCH-sub Max MP Boost (traits.sql trait 8 job 20 Lv30, Mod::BASE_MP 1096) -- and BASE_MP rides health.MODMP (UpdateHealth, the DISPLAYED max) while the latent divides by health.MAXMP (CalculateStats only), so the trait does NOT move the threshold: his true line is floor(714*0.75) = 535, and the detail view now warns against tuning merits to make base match the naked screen number.
                   -- 65: Auto Oneiros Grip (dlac:AutoOneiros, Sub) -- equips the grip while its latent is LIVE: current MP <= 75% of the BASE pool. Server truth (stable latent_effect_container.cpp): MP_UNDER_PERCENT divides health.mp by health.maxmp = CalculateStats' race/job/sub formula + merit MP, NO gear -- so the threshold is floor((nativemp.self + 10*mpMerits) * 0.75), recomputed live per resolve (job change / level sync re-aim it). Manifest carries {oneiros = {name, level}} + mpMerits (the one number the client can't read passively -- Automations tab input, cap 15 on CatsEyeXI); virtualMinLevel answers the grip's level so the flatten skips the rung under Lv75; utils' flatten treats the marker as a GRIP for Sub pairing (2H main only).
                   -- 64: Fishing overlay (docs/design/fishing-gear.md) -- the craft/HELM systems' third sibling. fishstate.lua {enabled,at,target,rod,bait} read like helmstate (enabled = the manual "Set Fish Idle" pill, session-only addon-side); dlac:AutoFish resolves the manifest's fish ladders (armor + Main -- Halieutica is a Main-slot fishing weapon, craft precedent for weapon slots; a Main swap costs TP, accepted while idle-fishing); Range/Ammo come STRAIGHT from the state file (rod + bait are target-fish-specific picks fishwatch pre-resolves and keeps owned-valid on its bag heartbeat -- the engine wears names, never chooses). Same Default-only gate + Engaged/Dead stand-aside as HELM (v61 law); bait re-equip after a stack empties is free (the overlay re-asserts the name every dispatch, LAC pulls the next stack). Arbitration generalizes v59: craft/helm/fish -- newest `at` stamp wins whole, ties keep the older system (craft > helm > fish), pins still beat everything.
                   -- 63: Pet conditions v1 (research: docs/reference/pet-handling-other-luas.md) -- pet = true/false (a LIVING pet exists: gData.GetPet() is nil petless AND at pet HPP 0, so a dead pet reads as none), petStatus (the pet's own Idle/Engaged -- status + petStatus spells the player x pet 2x2, incl. the classic "master idle while the pet fights"), petName (identity -- avatar/spirit perpetuation gear; Henrik: essential for SMN). ctx.pet read once per dispatch beside ctx.player; petStatus/petName IMPLY existence (never match petless). Tiers: pet 22 / petStatus 23 sit between status (20) and moving (25) so a pet-refined rule outranks its base status rule with no hand priority and Movement still overlays; petName 50 = the exact-name (identity) tier.
@@ -958,15 +959,17 @@ local function resolveVirtual(marker, ctx, slot)
     end
     if mk == 'dlac:autooneiros' then
         -- Oneiros Grip (Sub): latent 'Refresh +1' while current MP is at or
-        -- below 75% of the BASE pool. Server truth (stable branch
+        -- below 50% of the BASE pool. Denominator (stable branch
         -- latent_effect_container.cpp): MP_UNDER_PERCENT divides health.mp by
-        -- health.maxmp, and health.maxmp is CalculateStats' race/job/sub
-        -- formula + merit MP -- gear is NOT in the denominator. The threshold
-        -- recomputes here per resolve from live race/job/levels (nativemp)
-        -- plus the merit levels saved on the Automations tab, so a job change
-        -- or level sync re-aims it by itself. floor() mirrors the server
-        -- exactly: base*0.75 either lands on an integer (base divisible by 4
-        -- -- equality still fires the <= latent) or strictly between two.
+        -- health.maxmp = CalculateStats' race/job/sub formula + merit MP --
+        -- gear, traits and food are NOT in it. The 50 is FIELD-PINNED
+        -- (Henrik 2026-07-18): refresh ticks stop between MP 357 and 358 on
+        -- maxmp 714 -- exactly 50.0%, equality ACTIVE, confirming the <=
+        -- boundary; the repo's item_latents param of 75 is not what live
+        -- runs (docs/server-questions.md #6). The threshold recomputes per
+        -- resolve from live race/job/levels (nativemp) plus the merit levels
+        -- saved on the Automations tab, so a job change or level sync
+        -- re-aims it by itself.
         local g = a.oneiros;
         if type(g) ~= 'table' or type(g.name) ~= 'string' then
             return nil, 'Oneiros Grip not owned (the Automations tab rescans itself)';
@@ -985,14 +988,14 @@ local function resolveVirtual(marker, ctx, slot)
         local base = _nmp.self(meritLv * 10);
         if base == nil then return nil, 'native MP unreadable (login settle?)'; end
         if base <= 0 then return nil, 'no native MP pool on this job'; end
-        local thr = math.floor(base * 75 / 100);
+        local thr = math.floor(base * 50 / 100);   -- 50 = live truth (v67); repo sql says 75
         local cur = nil;   -- gData vitals read inline (playerMP is declared later in the file)
         pcall(function() cur = tonumber(gData.GetPlayer().MP); end);
         if cur == nil then return nil, 'current MP unreadable'; end
         if cur > thr then
             -- percent-free wording on purpose: /dl why reasons may render
             -- through imgui's printf-style Text calls
-            return nil, string.format('MP %d above the latent threshold %d (3/4 of base %d)', cur, thr, base);
+            return nil, string.format('MP %d above the latent threshold %d (half of base %d)', cur, thr, base);
         end
         return g.name;
     end

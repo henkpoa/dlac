@@ -4509,17 +4509,18 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
--- section AO: Auto Oneiros Grip (dlac:AutoOneiros, engine v66)
--- Server semantics (stable latent_effect_container.cpp + item_latents 18811 =
--- latent id 4 MP_UNDER_PERCENT): the grip's Refresh+1 fires while
--- mp/maxmp <= 75/100, and health.maxmp is the BASE pool -- CalculateStats'
--- race/job/sub formula + merit MP, NO gear (weapon/grip MP and Max MP Boost
--- traits ride health.MODMP -- the display -- never the denominator; BG-wiki's
--- retail visible-gear rule is a DIFFERENT latent id whose implementation is
--- commented out here). Threshold = floor(base * 0.75), boundary inclusive.
--- Usable merits cap at merit.cpp cap[75] = 10 -> the resolver clamps.
--- Mindie's shape (Hume WHM75/SCH37, 10/10 merits): maxmp 714 -> fires at
--- MP <= 535; meritless 614 -> 460.
+-- section AO: Auto Oneiros Grip (dlac:AutoOneiros, engine v67)
+-- Denominator (stable latent_effect_container.cpp + item_latents 18811 =
+-- latent id 4 MP_UNDER_PERCENT): health.maxmp = CalculateStats' race/job/sub
+-- formula + merit MP, NO gear (weapon/grip MP and Max MP Boost traits ride
+-- health.MODMP -- the display -- never the denominator; BG-wiki's retail
+-- visible-gear rule is a DIFFERENT latent id, commented out here). The
+-- PERCENT is field truth, not repo truth: Henrik's tick test broke at
+-- MP 357/358 on maxmp 714 = exactly 50.0%, equality ACTIVE -- live runs 50
+-- where the repo sql says 75 (docs/server-questions.md #6). Threshold =
+-- floor(base * 0.50), boundary inclusive. Usable merits cap at merit.cpp
+-- cap[75] = 10 -> the resolver clamps. Mindie's shape (Hume WHM75/SCH37,
+-- 10/10 merits): maxmp 714 -> fires at MP <= 357; meritless 614 -> 307.
 -- ---------------------------------------------------------------------------
 (function()
     local nmpM = package.loaded['dlac\\data\\nativemp'];   -- THE instance dispatch captured
@@ -4534,25 +4535,25 @@ end)();
 
     dispatchM._autoOverride = { oneiros = { name = 'Oneiros Grip', level = 75 }, mpMerits = 10 };
 
-    TEST_PLAYER = { MP = 535 };
-    check('AO1 boundary: MP 535 of maxmp 714 -> grip', rv('dlac:AutoOneiros', ctx75, 'Sub'), 'Oneiros Grip');
-    TEST_PLAYER = { MP = 536 };
+    TEST_PLAYER = { MP = 357 };
+    check('AO1 field pin: MP 357 of maxmp 714 -> grip', rv('dlac:AutoOneiros', ctx75, 'Sub'), 'Oneiros Grip');
+    TEST_PLAYER = { MP = 358 };
     local nm, why = rv('dlac:AutoOneiros', ctx75, 'Sub');
-    check('AO2 one MP above -> fallback', nm, nil);
-    check('AO2b reason carries the threshold', string.find(tostring(why), '535', 1, true) ~= nil, true);
+    check('AO2 field pin: 358 -> fallback', nm, nil);
+    check('AO2b reason carries the threshold', string.find(tostring(why), '357', 1, true) ~= nil, true);
     -- over-cap merit input (sql headroom, hand-edited manifest): clamped to
     -- the usable 10 -- the threshold must NOT move
     dispatchM._autoOverride = { oneiros = { name = 'Oneiros Grip', level = 75 }, mpMerits = 15 };
-    TEST_PLAYER = { MP = 535 };
+    TEST_PLAYER = { MP = 357 };
     check('AO2c merit clamp: 15 acts as 10', rv('dlac:AutoOneiros', ctx75, 'Sub'), 'Oneiros Grip');
-    TEST_PLAYER = { MP = 536 };
+    TEST_PLAYER = { MP = 358 };
     check('AO2d merit clamp: threshold unmoved', (rv('dlac:AutoOneiros', ctx75, 'Sub')), nil);
 
     dispatchM._autoOverride = { oneiros = { name = 'Oneiros Grip', level = 75 }, mpMerits = 0 };
-    TEST_PLAYER = { MP = 460 };
-    check('AO3 meritless base 614 -> fires at 460', rv('dlac:AutoOneiros', ctx75, 'Sub'), 'Oneiros Grip');
-    TEST_PLAYER = { MP = 461 };
-    check('AO4 meritless 461 stays off', (rv('dlac:AutoOneiros', ctx75, 'Sub')), nil);
+    TEST_PLAYER = { MP = 307 };
+    check('AO3 meritless base 614 -> fires at 307', rv('dlac:AutoOneiros', ctx75, 'Sub'), 'Oneiros Grip');
+    TEST_PLAYER = { MP = 308 };
+    check('AO4 meritless 308 stays off', (rv('dlac:AutoOneiros', ctx75, 'Sub')), nil);
 
     TEST_PLAYER = { MP = 100 };
     check('AO5 under the grip level -> unresolved',

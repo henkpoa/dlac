@@ -424,15 +424,18 @@ agent; the per-repo setup lives in `docs/agents/`.
     excluded). BG-wiki's retail "counts weapon/grip MP" rule is a DIFFERENT
     latent (`MP_UNDER_VISIBLE_GEAR`) the grip doesn't use and whose CatsEyeXI
     implementation is commented out — the grip's own MP+5 and Max MP Boost
-    traits sit in the displayed max only. Engine threshold =
-    `floor((nativemp.self() + 10×min(mpMerits,10)) × 0.75)` — exact for every
-    integer base, boundary inclusive — recomputed per resolve (job/sync
-    changes re-aim it). `mpMerits` (0–10; merit.cpp `cap[75]`) is the
+    traits sit in the displayed max only. **The percent is FIELD truth, not
+    repo truth: live fires at 50%, not the SQL's 75** (Henrik's tick test:
+    break 357/358 on maxmp 714 = exactly 50.0%, equality active —
+    server-questions #6). Engine threshold =
+    `floor((nativemp.self() + 10×min(mpMerits,10)) × 50/100)` — boundary
+    inclusive — recomputed per resolve (job/sync changes re-aim it).
+    `mpMerits` (0–10; merit.cpp `cap[75]`) is the
     manifest's first USER-OWNED field: set on the Automations-tab detail view
     (live aim readout + a warning not to tune it to match the naked screen
     number), carried through every rescan by autoCommit; merits are
     client-unreadable passively, so the number is the player's to keep
-    current. Mindie's aim: 614 + 100 = 714 → fires at MP ≤ 535. The flatten
+    current. Mindie's aim: 614 + 100 = 714 → fires at MP ≤ 357. The flatten
     treats the marker as a GRIP under the shared subSlotAllowed rule (2H
     main → `dlac:AutoOneiros|<fallback>`, 1H main vetoes the marker; the
     + Add Sub picker offers it unconditionally per the HARD RULE);

@@ -2880,7 +2880,7 @@ local function renderAddPopup(job, level)
         elseif ui.setSelected == 'Waist' then
             vlist[#vlist + 1] = { name = 'dlac:ElementalObi', tip = 'Equips the matching elemental obi when the net day/weather bonus for\nthe spell\'s element is positive (level-checked). Other items in this\nslot\'s list are the fallback.\n(Sets written as dlac:AutoObi keep working.)' };
         elseif ui.setSelected == 'Sub' then
-            vlist[#vlist + 1] = { name = 'dlac:AutoOneiros', tip = 'Equips Oneiros Grip while its latent Refresh +1 is LIVE: current MP at\nor below 75%% of your BASE pool -- the race/job/sub formula plus Max MP\nmerits, gear excluded (set your merit count on the Automations tab;\nthe threshold re-aims itself on job change and level sync). Needs a\ntwo-handed main; other items in this slot\'s list are the fallback.' };
+            vlist[#vlist + 1] = { name = 'dlac:AutoOneiros', tip = 'Equips Oneiros Grip while its latent Refresh +1 is LIVE: current MP at\nor below 50%% of your BASE pool -- the race/job/sub formula plus Max MP\nmerits, gear excluded (set your merit count on the Automations tab;\nthe threshold re-aims itself on job change and level sync). Needs a\ntwo-handed main; other items in this slot\'s list are the fallback.' };
         end
         -- NOTE: dlac:AutoCraft is deliberately NOT offered here. Craft gear is a SET
         -- automation -- the engine overlays the whole craft set (dispatch.craftOverlay)

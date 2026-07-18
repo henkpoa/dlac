@@ -124,3 +124,31 @@ a stat stick reserves the Range slot server-side (`item_equipment.rslot`), so
 `dispatch.trinketRangeDrop` keeps the higher-Level of {trinket, ranged weapon} and drops the other,
 matching the server so nothing flaps (ADR 0010; tests TR*). The underlying question — whether adding
 ammo delay to ranged TP with no compatibility check is intended — is still **OPEN** for the team.
+
+---
+
+## 6. Oneiros Grip latent fires at 50% MP, the repo SQL says 75 — OPEN
+
+`sql/item_latents.sql` (stable) row for Oneiros Grip:
+
+```sql
+INSERT INTO `item_latents` VALUES (18811,369,1,4,75);  -- Refresh MP <= 75%
+```
+
+Latent id 4 = `MP_UNDER_PERCENT`, param **75** — but the live server breaks at **50%**.
+Field-measured 2026-07-18 (Mindie, Hume WHM75/SCH37, `health.maxmp` = 714 = 614
+formula + 100 merits): the grip's +1 Refresh ticks at **MP 357** and stops at **358**
+— 357/714 is exactly 50.0% (and the equality firing confirms the `<=` comparison).
+75% would break at 535/536; nothing else fits the measurement. The denominator itself
+matched the source exactly (gear, food, and the SCH Max MP Boost trait all excluded —
+they ride `health.modmp`), so the divergence is isolated to the percent.
+
+**Question:** is the live `item_latents` row tuned to 50 (a balance decision the repo
+seed never got), or is the seed's 75 the intent and live drifted?
+
+**What dlac does meanwhile:** the Auto Oneiros Grip automation aims at the MEASURED
+rule — `floor(maxmp × 50/100)`, boundary inclusive (`dispatch.lua` v67, the one
+`* 50 / 100` line in the `dlac:autooneiros` resolver).
+
+**On an answer:** if 75 is intent and the DB gets fixed, flip that line back to 75
+(tests AO1–AO4 pin the numbers to re-aim).

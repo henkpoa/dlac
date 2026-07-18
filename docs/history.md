@@ -2734,3 +2734,20 @@ match the naked screen. A three-point field test can still adjudicate
 code-vs-live if wanted: with the grip on, standing MP ticks at 535 (code),
 539 (wiki rule incl. grip+main MP on a bare main), or 543 (11-merit
 theory). AO grew the clamp pair; 1292 + 170 green.
+
+### The field says 50, not 75 (2026-07-18)
+
+Henrik ran the tick test and none of the three candidates hit: his break
+is **357/358** -- with refresh gear on, 4 MP a tick through 357, back to 3
+at 358. One division later the number identified itself: 357 is exactly
+**50.0%** of 714. So the measurement CONFIRMED the hard part -- the
+denominator is health.maxmp = formula 614 + merits 100, with gear, food
+and the SCH trait all excluded (50% of the on-screen 724 would break at
+362), and equality-fires confirmed the `<=` boundary -- while overturning
+the easy part: the live percent is 50 where the repo's item_latents row
+says 75. Repo seed vs live DB divergence, filed as server question #6;
+live wins per standing rule. Engine v67 changes exactly one line
+(`* 50 / 100`), the UI and tips now say 50 and cite the field pin, and
+the AO tests re-aim to 357/358 (meritless 307/308). Mindie's automation
+now equips the grip at MP <= 357. If the team ever answers "75 was the
+intent", the same line flips back.

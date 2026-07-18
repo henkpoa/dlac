@@ -1109,7 +1109,7 @@ local function renderAutomations()
                 imgui.TextColored(COL_DIM, 'Native MP unreadable (log in / zone once).');
             else
                 local base = native + meritLv * 10;
-                local thr  = math.floor(base * 75 / 100);
+                local thr  = math.floor(base * 50 / 100);   -- 50 = live truth (field-pinned); repo sql says 75
                 imgui.Text(string.format('Base pool: %d native + %d merit = %d', native, meritLv * 10, base));
                 if imgui.IsItemHovered() then
                     imgui.SetTooltip('Native = the server\'s race/job/sub formula for your CURRENT race, jobs\nand levels (gear never counts). Recomputed live -- job change, subjob\nchange and level sync re-aim the threshold by themselves.');
@@ -1124,7 +1124,7 @@ local function renderAutomations()
                 end
             end
             imgui.Spacing();
-            imgui.TextColored(COL_DIM, 'The latent compares your CURRENT MP against 75%% of the BASE pool -- the\nrace/job/sub formula plus merits; gear MP never moves the threshold. Your\nNAKED on-screen max can read higher than the base: Max MP Boost traits\n(/SCH30+, /BLU, GEO) and the grip\'s own MP+5 sit in the DISPLAYED max only\n-- do not raise the merit number to make Base match the screen. Add the\ndlac: entry to a set\'s Sub list via + Add; the other items are the fallback.');
+            imgui.TextColored(COL_DIM, 'The latent compares your CURRENT MP against 50%% of the BASE pool -- the\nrace/job/sub formula plus merits; gear MP never moves the threshold. (50 is\nthe FIELD-MEASURED live rule -- tick break 357/358 on base 714; the public\nrepo claims 75. docs/server-questions.md #6.) Your NAKED on-screen max can\nread higher than the base: Max MP Boost traits (/SCH30+) and the grip\'s own\nMP+5 sit in the DISPLAYED max only -- do not raise the merit number to make\nBase match the screen. Add the dlac: entry to a set\'s Sub list via + Add;\nthe other items in the list are the fallback.');
         elseif auto.view == 'maxmp' then
             imgui.TextColored(COL_HEADER, 'MaxMP');
             imgui.SameLine(0, 10); imgui.TextColored(COL_DIM, 'set automation -- /dl mode maxmp; wears batteries at a full pool, releases as spent');
