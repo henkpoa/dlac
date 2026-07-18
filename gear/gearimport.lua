@@ -24,6 +24,9 @@ local gear = require("dlac\\gear");
 -- The Owned-gear record rules (Type canon/heal, Shield/Grip by name, effective
 -- RSlot): one home, shared with gearui's enrich, gearexport and the type filter.
 local grec = require("dlac\\gear\\gearrecord");
+-- The safe file-replacement ladder (backup / tmp / validate / rename / restore),
+-- written once -- both gear.lua writers here (commit and /dl fix) ride it.
+local sw = require("dlac\\lib\\safewrite");
 
 local M = {};
 
@@ -975,6 +978,24 @@ local function readFile(p) local f = io.open(p, 'r'); if f == nil then return ni
 local function writeFile(p, t) local f = io.open(p, 'w'); if f == nil then return false; end f:write(t); f:close(); return true; end
 local function parses(text) local c = (loadstring or load)(text); return c ~= nil; end
 
+local function charBackupDir()
+    local _pn, _pi = pNameId();
+    return string.format('%sconfig\\addons\\luashitacast\\%s_%u\\backups\\', AshitaCore:GetInstallPath(), _pn, _pi);
+end
+
+-- safewrite validator for gear.lua: RUN the candidate file in a sandbox (env
+-- falls through to _G for reads, captures gear/NameToObject writes). Catches
+-- runtime errors a parse-only check misses -- e.g. a mis-shaped entry making
+-- NameToObject[nil] blow up. Shared by commit and /dl fix (it used to live in
+-- both, and only one copy would have gotten a future fix).
+local function gearLoadValidator(chunk)
+    local env = setmetatable({}, { __index = _G });
+    if setfenv ~= nil then setfenv(chunk, env); end
+    local runok, runerr = pcall(chunk);
+    if not runok or type(env.gear) ~= 'table' then return nil, runerr; end
+    return true;
+end
+
 -- quiet: only the success narration is suppressed (auto-sync); every abort/failure
 -- prints regardless -- a user must never lose data silently.
 function M.commit(quiet)
@@ -998,37 +1019,14 @@ function M.commit(quiet)
     if report.inserted == 0 then print('[dlac] commit: nothing to insert.'); return; end
     if not parses(newText) then print('[dlac] commit ABORTED: spliced result would not parse. gear.lua untouched.'); return; end
 
-    -- backup
-    local _pn, _pi = pNameId();
-    local dir = string.format('%sconfig\\addons\\luashitacast\\%s_%u\\backups\\', AshitaCore:GetInstallPath(), _pn, _pi);
-    if ashita and ashita.fs and ashita.fs.create_directory then ashita.fs.create_directory(dir); end
-    local backupPath = dir .. 'gear_' .. os.date('%Y%m%d_%H%M%S') .. '.lua';
-    if not writeFile(backupPath, gearText) then print('[dlac] commit ABORTED: could not write backup. gear.lua untouched.'); return; end
-
-    -- atomic-ish: temp -> validate -> swap
-    local tmp = gpath .. '.tmp';
-    if not writeFile(tmp, newText) then print('[dlac] commit ABORTED: could not write temp file.'); return; end
-    -- Validate by RUNNING the merged file in a sandbox (env falls through to _G for
-    -- reads, captures gear/NameToObject writes). Catches runtime errors a parse-only
-    -- check misses -- e.g. a mis-shaped entry making NameToObject[nil] blow up.
-    local chunk = loadfile(tmp);
-    if chunk == nil then os.remove(tmp); print('[dlac] commit ABORTED: merged file failed to parse. gear.lua untouched. backup: ' .. backupPath); return; end
-    local env = setmetatable({}, { __index = _G });
-    if setfenv ~= nil then setfenv(chunk, env); end
-    local runok, runerr = pcall(chunk);
-    if not runok or type(env.gear) ~= 'table' then
-        os.remove(tmp);
-        print('[dlac] commit ABORTED: merged gear.lua would error on load (' .. tostring(runerr) .. '). gear.lua untouched. backup: ' .. backupPath);
+    -- backup, then the shared atomic replace (lib\safewrite): tmp -> parse ->
+    -- sandbox-run validate -> swap -> post-check, restore on any late failure.
+    local backupPath = sw.timestampBackup(charBackupDir(), 'gear_', gearText);
+    if backupPath == nil then print('[dlac] commit ABORTED: could not write backup. gear.lua untouched.'); return; end
+    local wok, werr = sw.replaceLua(gpath, newText, { origText = gearText, validate = gearLoadValidator });
+    if not wok then
+        print('[dlac] commit ABORTED: ' .. tostring(werr) .. '. backup: ' .. backupPath);
         return;
-    end
-    os.remove(gpath);
-    if not os.rename(tmp, gpath) then
-        writeFile(gpath, gearText); os.remove(tmp);
-        print('[dlac] commit FAILED (rename); gear.lua restored. backup: ' .. backupPath); return;
-    end
-    if loadfile(gpath) == nil then
-        writeFile(gpath, gearText);
-        print('[dlac] commit FAILED post-write; gear.lua restored from backup.'); return;
     end
 
     writeFile(spath, 'return {}\n');   -- clear staging so it can't commit twice
@@ -1213,26 +1211,13 @@ function M.computeFixes(gearText, ownedItems, metaById)
     return table.concat(out, '\n') .. '\n', report;
 end
 
--- Backup origText, atomically write newText, validate by RUNNING it (env.gear must
--- be a table), restore on any failure. Returns backupPath, or nil + error.
+-- Backup origText, then the shared atomic replace (lib\safewrite) with the
+-- sandbox-run validator. Returns backupPath, or nil + error.
 local function safeReplaceGear(gpath, newText, origText)
-    if not parses(newText) then return nil, 'result would not parse'; end
-    local _pn, _pi = pNameId();
-    local dir = string.format('%sconfig\\addons\\luashitacast\\%s_%u\\backups\\', AshitaCore:GetInstallPath(), _pn, _pi);
-    if ashita and ashita.fs and ashita.fs.create_directory then ashita.fs.create_directory(dir); end
-    local backupPath = dir .. 'gear_' .. os.date('%Y%m%d_%H%M%S') .. '.lua';
-    if not writeFile(backupPath, origText) then return nil, 'could not write backup'; end
-    local tmp = gpath .. '.tmp';
-    if not writeFile(tmp, newText) then return nil, 'could not write temp file'; end
-    local chunk = loadfile(tmp);
-    if chunk == nil then os.remove(tmp); return nil, 'temp failed to parse (backup: ' .. backupPath .. ')'; end
-    local env = setmetatable({}, { __index = _G });
-    if setfenv ~= nil then setfenv(chunk, env); end
-    local runok, runerr = pcall(chunk);
-    if not runok or type(env.gear) ~= 'table' then os.remove(tmp); return nil, 'would error on load: ' .. tostring(runerr) .. ' (backup: ' .. backupPath .. ')'; end
-    os.remove(gpath);
-    if not os.rename(tmp, gpath) then writeFile(gpath, origText); os.remove(tmp); return nil, 'rename failed; restored (backup: ' .. backupPath .. ')'; end
-    if loadfile(gpath) == nil then writeFile(gpath, origText); return nil, 'post-write failed; restored'; end
+    local backupPath, berr = sw.timestampBackup(charBackupDir(), 'gear_', origText);
+    if backupPath == nil then return nil, berr; end
+    local wok, werr = sw.replaceLua(gpath, newText, { origText = origText, validate = gearLoadValidator });
+    if not wok then return nil, tostring(werr) .. ' (backup: ' .. backupPath .. ')'; end
     return backupPath;
 end
 

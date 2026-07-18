@@ -10,6 +10,7 @@ ashita = { events = { register = function() end } };    -- utils registers /dl a
 package.loaded['dlac\\profiles'] = dofile('profiles.lua');   -- dispatch/setmanager require it (guarded)
 package.loaded['dlac\\data\\nativemp'] = dofile('data/nativemp.lua');   -- dispatch requires it (Oneiros resolver)
 package.loaded['dlac\\gear\\gearrecord'] = dofile('gear/gearrecord.lua');   -- record rules: gearimport/weaponfilter/gearexport require it
+package.loaded['dlac\\lib\\safewrite'] = dofile('lib/safewrite.lua');   -- safe-replace ladder: gearimport requires it, profiles guards it
 
 local TEST_PLAYER = nil;                                -- set per test
 gData = { GetPlayer = function() return TEST_PLAYER; end };
@@ -3415,6 +3416,60 @@ end)();
     check('REC24 mergedStats catalog fills',     m.EVA, 2);
     check('REC25 mergedStats fresh table',       r2.Stats.EVA, nil);
     check('REC26 mergedStats both empty -> nil', grec.mergedStats({}, {}), nil);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- SW. lib\safewrite -- the safe file-replacement ladder, written once (both
+--     gear.lua writers ride replaceLua; profiles' deleters ride verifiedMove).
+--     Real files under tests\ (cwd = addon root), removed at section end.
+-- ---------------------------------------------------------------------------
+(function()
+    local sw = package.loaded['dlac\\lib\\safewrite'];
+    check('SW0 module seeded', type(sw), 'table');
+    local base = 'tests\\';
+    local target = base .. 'sw_target.lua';
+    local function put(p, t) local f = io.open(p, 'w'); f:write(t); f:close(); end
+    local function get(p) local f = io.open(p, 'r'); if f == nil then return nil; end local t = f:read('*a'); f:close(); return t; end
+
+    -- happy path: replace lands, tmp gone
+    put(target, 'return { old = true }\n');
+    check('SW1 replace succeeds', sw.replaceLua(target, 'return { new = true }\n', { origText = 'return { old = true }\n' }), true);
+    check('SW2 new content live', get(target), 'return { new = true }\n');
+    check('SW3 tmp cleaned',      get(target .. '.tmp'), nil);
+
+    -- parse failure: refused before anything is written
+    check('SW4 bad text refused',  (sw.replaceLua(target, 'return {', {})), nil);
+    check('SW5 target untouched',  get(target), 'return { new = true }\n');
+
+    -- validator failure: tmp removed, target untouched, reason carried
+    local ok2, err2 = sw.replaceLua(target, 'return { v = 2 }\n', {
+        origText = get(target),
+        validate = function() return nil, 'nope'; end });
+    check('SW6 validator can refuse', ok2, nil);
+    check('SW6b reason carried',      err2 ~= nil and err2:find('nope', 1, true) ~= nil, true);
+    check('SW7 target untouched on validate fail', get(target), 'return { new = true }\n');
+    check('SW8 tmp cleaned on validate fail',      get(target .. '.tmp'), nil);
+
+    -- the validator receives the loaded (unrun) chunk -- the sandbox-run shape
+    -- gearimport's gearLoadValidator uses
+    local seen = nil;
+    sw.replaceLua(target, 'return 42\n', { validate = function(chunk) seen = chunk(); return true; end });
+    check('SW9 validator gets runnable chunk', seen, 42);
+    check('SW9b validated write landed',       get(target), 'return 42\n');
+
+    -- timestampBackup (ashita.fs absent headless -> guarded dir creation skipped)
+    local bp = sw.timestampBackup(base, 'swb_', 'content');
+    check('SW10 backup written', bp ~= nil and get(bp), 'content');
+
+    -- verifiedMove: copy + read-back verify + remove; missing source flagged
+    put(base .. 'sw_src.lua', 'MOVE ME');
+    check('SW11 verified move ok', sw.verifiedMove(base .. 'sw_src.lua', base .. 'sw_dst.lua'), true);
+    check('SW12 dst holds content', get(base .. 'sw_dst.lua'), 'MOVE ME');
+    check('SW13 src removed',       get(base .. 'sw_src.lua'), nil);
+    local m2, _, missing = sw.verifiedMove(base .. 'sw_missing.lua', base .. 'sw_dst2.lua');
+    check('SW14 missing source flagged', (m2 == nil and missing == true), true);
+
+    os.remove(target); if bp then os.remove(bp); end os.remove(base .. 'sw_dst.lua');
 end)();
 
 -- ---------------------------------------------------------------------------

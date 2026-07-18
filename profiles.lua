@@ -34,6 +34,13 @@ M.JOBS = { 'WAR','MNK','WHM','BLM','RDM','THF','PLD','DRK','BST','BRD','RNG',
 -- iterates THIS list, so a new kind rides the whole machinery at once.
 M.KINDS = { 'sets', 'triggers', 'lockstyles' };
 
+-- Verified-move safety net for the deleters (lib\safewrite: copy, read-back
+-- verify, only then remove). Guarded: pure definitions, loads in both states;
+-- if it is ever missing the DELETERS REFUSE rather than degrade -- nothing in
+-- this module may remove a file without the verified copy.
+local _swok, sw = pcall(require, 'dlac\\lib\\safewrite');
+_swok = _swok and type(sw) == 'table';
+
 -- ---------------------------------------------------------------------------
 -- paths
 -- ---------------------------------------------------------------------------
@@ -594,6 +601,7 @@ end
 -- profile visible instead of being destroyed). deletedCount, backupDir | nil, why.
 function M.deleteProfileAt(charFolder, profName)
     if charFolder == nil or profName == nil then return nil, 'bad args'; end
+    if not _swok then return nil, 'safewrite module unavailable -- deletion refused'; end
     if charFolder == M.currentCharFolder() and profName == M.activeName() then
         return nil, 'that is the ACTIVE profile -- switch first (/dl profile use <other>)';
     end
@@ -622,8 +630,7 @@ function M.deleteProfileAt(charFolder, profName)
             if entryHasKind(e, kind) then
                 local sp = dir .. kind .. '\\' .. e.name .. '.lua';
                 local bp = bdir .. kind .. '\\' .. e.name .. '.lua';
-                local t = readFile(sp);
-                if t ~= nil and writeFile(bp, t) and readFile(bp) == t and os.remove(sp) then
+                if sw.verifiedMove(sp, bp) then
                     removed = removed + 1;
                 else
                     failed = failed + 1;
@@ -647,6 +654,7 @@ end
 -- removedCount, backupDir | nil, why.
 function M.deleteJobAt(charFolder, profName, name)
     if charFolder == nil or profName == nil or name == nil then return nil, 'bad args'; end
+    if not _swok then return nil, 'safewrite module unavailable -- deletion refused'; end
     local root = M.lacRoot();
     local dir = M.profileDirAt(charFolder, profName);
     if root == nil or dir == nil then return nil, 'bad profile'; end
@@ -657,15 +665,12 @@ function M.deleteJobAt(charFolder, profName, name)
     local removed, failed = 0, 0;
     for _, kind in ipairs(M.KINDS) do
         local sp = dir .. kind .. '\\' .. name .. '.lua';
-        local t = readFile(sp);
-        if t ~= nil then
-            local bp = bdir .. profName .. '-' .. name .. '-' .. stamp .. '-' .. kind .. '.lua';
-            if writeFile(bp, t) and readFile(bp) == t and os.remove(sp) then
-                removed = removed + 1;
-            else
-                failed = failed + 1;
-            end
-        end
+        local bp = bdir .. profName .. '-' .. name .. '-' .. stamp .. '-' .. kind .. '.lua';
+        -- a missing kind file is a skip (a job entry rarely has all kinds),
+        -- never a failure -- only a real copy/verify/remove problem counts
+        local mok, _, missing = sw.verifiedMove(sp, bp);
+        if mok then removed = removed + 1;
+        elseif not missing then failed = failed + 1; end
     end
     if failed > 0 then return nil, string.format('%d file(s) could not be verified+removed', failed); end
     if removed == 0 then return nil, 'nothing to delete (no files for ' .. tostring(name) .. ')'; end
