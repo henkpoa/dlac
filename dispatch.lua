@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 64;   -- 64: Fishing overlay (docs/design/fishing-gear.md) -- the craft/HELM systems' third sibling. fishstate.lua {enabled,at,target,rod,bait} read like helmstate (enabled = the manual "Set Fish Idle" pill, session-only addon-side); dlac:AutoFish resolves the manifest's fish ladders (armor + Main -- Halieutica is a Main-slot fishing weapon, craft precedent for weapon slots; a Main swap costs TP, accepted while idle-fishing); Range/Ammo come STRAIGHT from the state file (rod + bait are target-fish-specific picks fishwatch pre-resolves and keeps owned-valid on its bag heartbeat -- the engine wears names, never chooses). Same Default-only gate + Engaged/Dead stand-aside as HELM (v61 law); bait re-equip after a stack empties is free (the overlay re-asserts the name every dispatch, LAC pulls the next stack). Arbitration generalizes v59: craft/helm/fish -- newest `at` stamp wins whole, ties keep the older system (craft > helm > fish), pins still beat everything.
+M.VERSION = 65;   -- 65: Auto Oneiros Grip (dlac:AutoOneiros, Sub) -- equips the grip while its latent is LIVE: current MP <= 75% of the BASE pool. Server truth (stable latent_effect_container.cpp): MP_UNDER_PERCENT divides health.mp by health.maxmp = CalculateStats' race/job/sub formula + merit MP, NO gear -- so the threshold is floor((nativemp.self + 10*mpMerits) * 0.75), recomputed live per resolve (job change / level sync re-aim it). Manifest carries {oneiros = {name, level}} + mpMerits (the one number the client can't read passively -- Automations tab input, cap 15 on CatsEyeXI); virtualMinLevel answers the grip's level so the flatten skips the rung under Lv75; utils' flatten treats the marker as a GRIP for Sub pairing (2H main only).
+                  -- 64: Fishing overlay (docs/design/fishing-gear.md) -- the craft/HELM systems' third sibling. fishstate.lua {enabled,at,target,rod,bait} read like helmstate (enabled = the manual "Set Fish Idle" pill, session-only addon-side); dlac:AutoFish resolves the manifest's fish ladders (armor + Main -- Halieutica is a Main-slot fishing weapon, craft precedent for weapon slots; a Main swap costs TP, accepted while idle-fishing); Range/Ammo come STRAIGHT from the state file (rod + bait are target-fish-specific picks fishwatch pre-resolves and keeps owned-valid on its bag heartbeat -- the engine wears names, never chooses). Same Default-only gate + Engaged/Dead stand-aside as HELM (v61 law); bait re-equip after a stack empties is free (the overlay re-asserts the name every dispatch, LAC pulls the next stack). Arbitration generalizes v59: craft/helm/fish -- newest `at` stamp wins whole, ties keep the older system (craft > helm > fish), pins still beat everything.
                   -- 63: Pet conditions v1 (research: docs/reference/pet-handling-other-luas.md) -- pet = true/false (a LIVING pet exists: gData.GetPet() is nil petless AND at pet HPP 0, so a dead pet reads as none), petStatus (the pet's own Idle/Engaged -- status + petStatus spells the player x pet 2x2, incl. the classic "master idle while the pet fights"), petName (identity -- avatar/spirit perpetuation gear; Henrik: essential for SMN). ctx.pet read once per dispatch beside ctx.player; petStatus/petName IMPLY existence (never match petless). Tiers: pet 22 / petStatus 23 sit between status (20) and moving (25) so a pet-refined rule outranks its base status rule with no hand priority and Movement still overlays; petName 50 = the exact-name (identity) tier.
                   -- 62: virtual markers carry a LADDER LEVEL -- M.virtualMinLevel(marker) = the lowest level among the manifest items the marker can resolve to (AutoStaff/AutoIridescence: universal + per-element staves; AutoObi: obis; nil for craft/helm/acc and legacy name-only shapes). BuildDynamicSets skips a marker below that level so the flattened Main shows the item actually worn (Henrik's field case: a leveling WHM's set showed dlac:AutoIridescence "at Lv0" while wearing Pilgrim's Wand -- the marker now reads as a Lv51 rung, his Chatoyant Staff); the Sets tab displays the derived level and only shows the marker as the current pick once it's reachable. nil keeps the old always-adopt behavior everywhere.
                   -- 61: HELM overlay stands aside in combat -- field report: "Default" is NOT "idle" (HandleDefault runs every frame, engaged gear resolves inside it too), so the overlay was pinning over combat gear. helmOverlayFor now returns nil while ctx.player.Status is Engaged or Dead (the same Status string the trigger matchers read); 'Event' deliberately stays dressed -- the HELM animation itself reads as an event, and dropping there would churn every swing. Henrik: you HELM in dangerous places -- aggro means FIGHT.
@@ -86,6 +87,11 @@ local function printerr(s)  if _cfok then _cfmt.err(s);  else print('[dlac] ' ..
 -- a stale char folder without it degrades to the legacy layout everywhere.
 local _pok, _prof = pcall(require, 'dlac\\profiles');
 _pok = _pok and type(_prof) == 'table';
+
+-- Native-MP calculator (data/nativemp.lua): the server's base-pool formula.
+-- The Oneiros resolver aims its latent threshold with it at resolve time.
+local _nmok, _nmp = pcall(require, 'dlac\\data\\nativemp');
+if not (_nmok and type(_nmp) == 'table') then _nmp = nil; end
 
 -- ---------------------------------------------------------------------------
 -- State
@@ -949,6 +955,41 @@ local function resolveVirtual(marker, ctx, slot)
         end
         return nil, string.format('no usable %s rung at Lv%d', slotKey, lvl);
     end
+    if mk == 'dlac:autooneiros' then
+        -- Oneiros Grip (Sub): latent 'Refresh +1' while current MP is at or
+        -- below 75% of the BASE pool. Server truth (stable branch
+        -- latent_effect_container.cpp): MP_UNDER_PERCENT divides health.mp by
+        -- health.maxmp, and health.maxmp is CalculateStats' race/job/sub
+        -- formula + merit MP -- gear is NOT in the denominator. The threshold
+        -- recomputes here per resolve from live race/job/levels (nativemp)
+        -- plus the merit levels saved on the Automations tab, so a job change
+        -- or level sync re-aims it by itself. floor() mirrors the server
+        -- exactly: base*0.75 either lands on an integer (base divisible by 4
+        -- -- equality still fires the <= latent) or strictly between two.
+        local g = a.oneiros;
+        if type(g) ~= 'table' or type(g.name) ~= 'string' then
+            return nil, 'Oneiros Grip not owned (the Automations tab rescans itself)';
+        end
+        if not usableAt(g.level, lvl) then
+            return nil, string.format('under level for %s (Lv%d)', g.name, tonumber(g.level) or 0);
+        end
+        if _nmp == nil or type(_nmp.self) ~= 'function' then
+            return nil, 'nativemp module unavailable';
+        end
+        local base = _nmp.self(math.floor(tonumber(a.mpMerits) or 0) * 10);   -- Max MP merit = 10 MP/level
+        if base == nil then return nil, 'native MP unreadable (login settle?)'; end
+        if base <= 0 then return nil, 'no native MP pool on this job'; end
+        local thr = math.floor(base * 75 / 100);
+        local cur = nil;   -- gData vitals read inline (playerMP is declared later in the file)
+        pcall(function() cur = tonumber(gData.GetPlayer().MP); end);
+        if cur == nil then return nil, 'current MP unreadable'; end
+        if cur > thr then
+            -- percent-free wording on purpose: /dl why reasons may render
+            -- through imgui's printf-style Text calls
+            return nil, string.format('MP %d above the latent threshold %d (3/4 of base %d)', cur, thr, base);
+        end
+        return g.name;
+    end
     if mk == 'dlac:autostaff' then
         local nm = resolveStaff(a, el, lvl);
         if nm == nil then
@@ -1016,6 +1057,10 @@ function M.virtualMinLevel(marker)
         if type(a.obi) == 'table' then
             for _, o in pairs(a.obi) do consider(o); end
         end
+        return best;
+    end
+    if mk == 'dlac:autooneiros' then
+        consider(a.oneiros);   -- the grip's own level (75): below it the marker is not a rung
         return best;
     end
     return nil;

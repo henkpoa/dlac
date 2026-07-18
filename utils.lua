@@ -361,6 +361,17 @@ function M.BuildDynamicSets(sets)
                         local vok, vlv = pcall(dsp.virtualMinLevel, virt);
                         if vok and type(vlv) == 'number' and vlv > mjLevel then return; end
                     end
+                    -- A Sub-slot GRIP marker (dlac:AutoOneiros) obeys the shared
+                    -- pairing rule at flatten time exactly like a real grip:
+                    -- 2H main -> legal, 1H or no main -> the slot's real items
+                    -- win the slot (the engine would only resolve the marker to
+                    -- a grip the server then refuses to equip).
+                    if slotName == 'Sub'
+                       and string.sub(string.lower(virt), 1, 16) == 'dlac:autooneiros'
+                       and not M.subSlotAllowed({ Name = virt, Type = 'Grip', OneHanded = false, Level = 0 },
+                                                currentMain, { dw = isDW }) then
+                        return;
+                    end
                     slotVirtual = virt;
                     return;
                 end

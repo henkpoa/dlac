@@ -20,9 +20,11 @@ local M = {};
 local _iok, imgui = pcall(require, 'imgui');
 local _dpok, dsp  = pcall(require, "dlac\\dispatch");
 local _lsok, lscale = pcall(require, "dlac\\data\\levelstats");
+local _nmok, nmp  = pcall(require, "dlac\\data\\nativemp");
 local hasImgui    = _iok and imgui ~= nil;
 local hasDispatch = _dpok and type(dsp) == 'table';
 local hasLScale   = _lsok and type(lscale) == 'table';
+local hasNmp      = _nmok and type(nmp) == 'table';
 
 local function mainLevel()
     local lv = nil;
@@ -89,7 +91,7 @@ local UNIVERSAL = {
 -- Manifest schema version: bump when autoCommit writes NEW fields. An on-disk
 -- manifest with an older fmtver self-heals (renderAutomations triggers a rescan)
 -- so a dlac update never needs a manual "Rescan owned gear" click.
-local AUTO_FMT = 8;   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked; 5: craft ladders; 6: skill-up fillers in hq/nq; 7: helm ladders + hat map; 8: fish ladders
+local AUTO_FMT = 9;   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked; 5: craft ladders; 6: skill-up fillers in hq/nq; 7: helm ladders + hat map; 8: fish ladders; 9: oneiros grip + mpMerits
 
 local auto = { data = nil, loadedFor = nil, status = '' };
 
@@ -144,12 +146,23 @@ end
 local function autoCommit()
     local p = autoPath();
     if p == nil then auto.status = 'not logged in.'; return; end
+    -- USER-SET fields survive regeneration by riding the loaded manifest:
+    -- seed auto.data from disk first (no-op when already loaded), then carry
+    -- mpMerits forward. mpMerits = Max MP merit LEVELS (0..15 on CatsEyeXI,
+    -- 10 MP each) -- the one Oneiros-threshold input the client cannot read
+    -- passively (merit allocations only cross the wire when the menu opens).
+    autoLoad();
+    local mpMerits = (type(auto.data) == 'table') and math.floor(tonumber(auto.data.mpMerits) or 0) or 0;
+    if mpMerits < 0 then mpMerits = 0; elseif mpMerits > 15 then mpMerits = 15; end
     -- Per-element pick: HQ staff (Iridescence +2 for its element) over NQ (+1).
     -- Every entry records its item LEVEL so the engine can skip gear the character
     -- is under-leveled for (and fall back to the slot's regular pick).
     -- Job-aware picks: gData does NOT exist in the addon state -- the job comes
     -- from Ashita memory via deps.playerJob.
     local job = curJob();
+    -- Oneiros Grip (dlac:AutoOneiros, Sub): one item, but the engine can't read
+    -- the catalog -- name + level ride the manifest like every other automation.
+    local oneirosGrip = usableRec('Oneiros Grip', job);
     local staff, obi, nStaff, nObi = {}, {}, 0, 0;
     for _, el in ipairs(ELEMENTS8) do
         local hq, nq = usableRec(STAFF_HQ[el], job), usableRec(STAFF_NQ[el], job);
@@ -466,6 +479,10 @@ local function autoCommit()
         string.format('    fmtver = %d,', AUTO_FMT),   -- manifest schema: outdated -> auto-rescan
         string.format('    written = %q,', os.date('%Y-%m-%d %H:%M:%S')),
         string.format('    craftGoal = %q,', goal),    -- hq | nq | skillup (AutoCraft goal)
+        string.format('    mpMerits = %d,', mpMerits), -- Max MP merit levels (0..15, 10 MP each) -- Oneiros threshold
+        (oneirosGrip ~= nil)
+            and string.format('    oneiros = { name = %q, level = %d },', oneirosGrip.Name, oneirosGrip.Level or 0)
+            or  '    oneiros = false,',
         (uni ~= nil)
             and string.format('    universal = { name = %q, tier = %d, level = %d },', uni.name, uni.tier, uniLevel)
             or  '    universal = false,',
@@ -657,8 +674,12 @@ local function obiLevel()
     for _, nm in ipairs(OBI_UNIVERSAL) do if usable(nm) then lv = 2; break; end end
     return lv;
 end
+local function oneirosLevel()
+    return usable('Oneiros Grip') and 1 or 0;
+end
 local IRID_TXT = { [0] = 'nothing applicable', 'NQ staves', 'HQ staves', 'Iridal (+1)', 'universal +2' };
 local OBI_TXT  = { [0] = 'nothing applicable', 'elemental obis', 'universal obi' };
+local ONEIROS_TXT = { [0] = 'grip not owned', 'Oneiros Grip' };
 
 -- One item row in a detail column: green = owned and equippable by this job,
 -- red = owned but this JOB can't wear it (the automation skips it), dim = not owned.
@@ -1051,6 +1072,57 @@ local function renderAutomations()
             else
                 imgui.TextColored(COL_ERR, 'fishui failed to load.');
             end
+        elseif auto.view == 'oneiros' then
+            imgui.TextColored(COL_HEADER, 'Auto Oneiros Grip');
+            imgui.SameLine(0, 10); imgui.TextColored(COL_DIM, 'slot automation -- dlac:AutoOneiros in a set\'s Sub slot (needs a 2H main)');
+            imgui.Spacing();
+            autoItemLine('Oneiros Grip');
+            imgui.Spacing();
+            -- Merit input: merit allocations only cross the wire when the merit
+            -- menu opens, so the client cannot read them passively -- this ONE
+            -- number is yours to keep current. Persisted in the manifest and
+            -- carried through every rescan.
+            local saved = (type(auto.data) == 'table') and math.floor(tonumber(auto.data.mpMerits) or 0) or 0;
+            if auto._meritBuf == nil then auto._meritBuf = { saved }; end
+            imgui.PushItemWidth(110);
+            if imgui.InputInt('Max MP merits##onmerits', auto._meritBuf) then
+                local v = math.floor(tonumber(auto._meritBuf[1]) or 0);
+                if v < 0 then v = 0; elseif v > 15 then v = 15; end
+                auto._meritBuf[1] = v;
+                if type(auto.data) ~= 'table' then auto.data = {}; end
+                if auto.data.mpMerits ~= v then
+                    auto.data.mpMerits = v;
+                    pcall(autoCommit);       -- rewrite + hot-reload: the engine re-aims now
+                end
+            end
+            imgui.PopItemWidth();
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Your Max MP merit LEVELS (menu: Merit Points > HP-MP). 10 MP each,\ncap 15 on CatsEyeXI. They count toward the latent\'s base pool, so an\nunset value aims the threshold low (the grip stays off longer).');
+            end
+            imgui.Spacing();
+            -- The live aim: base pool -> threshold -> where your MP sits now.
+            local meritLv = (type(auto.data) == 'table') and math.floor(tonumber(auto.data.mpMerits) or 0) or 0;
+            local native = (hasNmp and type(nmp.self) == 'function') and nmp.self(0) or nil;
+            if native == nil then
+                imgui.TextColored(COL_DIM, 'Native MP unreadable (log in / zone once).');
+            else
+                local base = native + meritLv * 10;
+                local thr  = math.floor(base * 75 / 100);
+                imgui.Text(string.format('Base pool: %d native + %d merit = %d', native, meritLv * 10, base));
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('Native = the server\'s race/job/sub formula for your CURRENT race, jobs\nand levels (gear never counts). Recomputed live -- job change, subjob\nchange and level sync re-aim the threshold by themselves.');
+                end
+                imgui.TextColored(COL_HEADER, string.format('Refresh +1 is live at MP <= %d', thr));
+                local cur = nil;
+                pcall(function() cur = tonumber(AshitaCore:GetMemoryManager():GetParty():GetMemberMP(0)); end);
+                if cur ~= nil then
+                    local active = (cur <= thr);
+                    imgui.TextColored(active and GREEN_OWNED or COL_DIM,
+                        string.format('Right now: MP %d -- %s', cur, active and 'ACTIVE (the grip equips)' or 'inactive (the Sub fallback is worn)'));
+                end
+            end
+            imgui.Spacing();
+            imgui.TextColored(COL_DIM, 'The latent compares your CURRENT MP against 75%% of the BASE pool -- the naked\nrace/job/sub number plus merits; gear MP never moves the threshold. Add the\ndlac: entry to a set\'s Sub list via + Add; the other items are the fallback.');
         elseif auto.view == 'maxmp' then
             imgui.TextColored(COL_HEADER, 'MaxMP');
             imgui.SameLine(0, 10); imgui.TextColored(COL_DIM, 'set automation -- /dl mode maxmp; wears batteries at a full pool, releases as spent');
@@ -1097,6 +1169,8 @@ local function renderAutomations()
           level = iridescenceLevel(), max = 4, txt = nil },
         { key = 'obi',         name = 'ElementalObi',    kind = 'slot automation (Waist)',
           level = obiLevel(),         max = 2, txt = nil },
+        { key = 'oneiros',     name = 'Auto Oneiros Grip', kind = 'slot automation (Sub)',
+          level = oneirosLevel(),     max = 1, txt = nil },
         { key = 'craft',       name = 'Auto Craft Set',  kind = 'craft-gear helper (manual pick)',
           level = CRAFT_UI.level(),   max = 4, txt = nil },
         { key = 'helm',        name = 'Auto HELM Set',   kind = 'gathering-gear helper (idle only)',
@@ -1106,18 +1180,19 @@ local function renderAutomations()
     };
     rows[1].txt = IRID_TXT[rows[1].level];
     rows[2].txt = OBI_TXT[rows[2].level];
-    rows[3].txt = CRAFT_UI.txt[rows[3].level];
+    rows[3].txt = ONEIROS_TXT[rows[3].level];
+    rows[4].txt = CRAFT_UI.txt[rows[4].level];
     -- HELM coverage lives in helmui (own module; pcall-require, no upvalue).
     pcall(function()
         local helmui = require('dlac\\ui\\helmui');
-        rows[4].max = helmui.maxLevel or 4;
-        rows[4].level, rows[4].txt = helmui.status(deps);   -- label + HELM+/Surv+ totals
+        rows[5].max = helmui.maxLevel or 4;
+        rows[5].level, rows[5].txt = helmui.status(deps);   -- label + HELM+/Surv+ totals
     end);
     -- Fishing coverage lives in fishui (same pattern).
     pcall(function()
         local fishui = require('dlac\\ui\\fishui');
-        rows[5].max = fishui.maxLevel or 4;
-        rows[5].level, rows[5].txt = fishui.status(deps);
+        rows[6].max = fishui.maxLevel or 4;
+        rows[6].level, rows[6].txt = fishui.status(deps);
     end);
     -- Column headers, same fixed offsets as the rows.
     -- Offsets widened 2026-07-17 (field report: the HELM row's Kind ran into

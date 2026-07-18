@@ -2670,3 +2670,36 @@ field pin, the 240.5-truncates-to-240 Galka case, the over-60 kink, the
 race-rides-sub NIN/WHM case (NMP1-NMP16). Dormant like gamemode was --
 first consumer candidates: Refresh/Convert valuation and the latent "MP <
 N%" gates when latents wake (#41/#43/#44).
+
+### Auto Oneiros Grip: the first nativemp consumer (2026-07-18)
+
+Dormant for about an hour. Henrik's next message asked for a Sub-slot
+automation around Oneiros Grip -- latent Refresh +1 while MP sits under 75%
+of the "native base MP without any gear" -- and the server source confirmed
+his phrasing is EXACTLY the mechanic: `MP_UNDER_PERCENT` divides
+`health.mp` by `health.maxmp`, and `health.maxmp` is CalculateStats' base
+pool (race/job/sub formula + merit MP) -- equipment MP rides a separate
+modifier and never moves the denominator. Comparison is `<=`, and
+`floor(base * 0.75)` reproduces it exactly for every integer base (a base
+divisible by 4 lands the boundary ON an integer and the latent still
+fires there; any other base puts it strictly between two).
+
+`dlac:AutoOneiros` (engine v65) follows the AutoStaff shape end to end:
+manifest entry `oneiros = {name, level}` (fmtver 9), resolveVirtual
+computes threshold = floor((nativemp.self() + 10 x mpMerits) x 0.75) live
+-- so job change, subjob change and level sync re-aim it with no rescan --
+and answers /dl why with the numbers when MP is too high; virtualMinLevel
+reports the grip's Lv75 so the flatten skips the marker as an unreachable
+rung below that. Two things earned their own design beats: the FLATTEN now
+treats the marker as a grip under the shared subSlotAllowed rule (2H main
+composes 'dlac:AutoOneiros|<real grip>', a 1H main vetoes the marker
+outright -- the + Add picker still offers it unconditionally per the
+sub-slot HARD RULE), and merit MP became the manifest's first USER-OWNED
+field: `mpMerits` (0-15, an Automations-tab input on the new detail view)
+survives every rescan by riding the loaded manifest through autoCommit,
+because merit allocations only cross the wire when the merit menu opens --
+the one number the client cannot read passively. The detail view shows the
+whole aim live: native + merit = base, the <=threshold line, and whether
+the grip is ACTIVE right now. AO1-AO12 (boundary inclusive both with and
+without merits, no-pool jobs, unreadable native, the 2H/1H flatten pair);
+1290 + 170 green.

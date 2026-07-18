@@ -409,8 +409,24 @@ agent; the per-repo setup lives in `docs/agents/`.
     + jobs live, gamemode-pattern injectable. Merits are NOT native — pass
     them in: CatsEyeXI Max MP merits = 10 MP × cap 15 (merits.sql id 66).
     Field pin: Mindie Hume WHM75/SCH37 naked 724 = 614 formula + 110 ⇒
-    predicts 11/15 merit levels (unconfirmed — check the merit menu). Dormant,
-    no consumer wired yet. Tests NMP1–NMP16.
+    predicts 11/15 merit levels (unconfirmed — check the merit menu).
+    Tests NMP1–NMP16.
+  - **Auto Oneiros Grip (2026-07-18)** (`dlac:AutoOneiros`, engine v65,
+    manifest fmtver 9; history.md "the first nativemp consumer"). Sub-slot
+    automation: equips Oneiros Grip while its latent Refresh +1 is LIVE —
+    server truth (stable `latent_effect_container.cpp`): `MP_UNDER_PERCENT`
+    is `health.mp / health.maxmp <= 75%`, and `health.maxmp` is the BASE pool
+    (nativemp formula + merit MP, gear excluded). Engine threshold =
+    `floor((nativemp.self() + 10×mpMerits) × 0.75)` — exact for every integer
+    base, boundary inclusive — recomputed per resolve (job/sync changes
+    re-aim it). `mpMerits` (0–15) is the manifest's first USER-OWNED field:
+    set on the Automations-tab detail view (live aim readout), carried
+    through every rescan by autoCommit; merits are client-unreadable
+    passively, so the number is the player's to keep current. The flatten
+    treats the marker as a GRIP under the shared subSlotAllowed rule (2H
+    main → `dlac:AutoOneiros|<fallback>`, 1H main vetoes the marker; the
+    + Add Sub picker offers it unconditionally per the HARD RULE);
+    virtualMinLevel = the grip's Lv75. Tests AO1–AO12.
   commits. Local-only pending GM verdict; strip TEMP probes (`/dlmv`, RMB debug,
   branch-print) before any merge. The Storage-into-Provenance packet experiment is
   designed, unrun (docs/design/storage-move.md "open questions").

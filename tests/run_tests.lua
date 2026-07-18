@@ -8,6 +8,7 @@
 package.loaded['dlac\\gear'] = { NameToObject = {} };   -- utils requires dlac\gear at load
 ashita = { events = { register = function() end } };    -- utils registers /dl at load
 package.loaded['dlac\\profiles'] = dofile('profiles.lua');   -- dispatch/setmanager require it (guarded)
+package.loaded['dlac\\data\\nativemp'] = dofile('data/nativemp.lua');   -- dispatch requires it (Oneiros resolver)
 
 local TEST_PLAYER = nil;                                -- set per test
 gData = { GetPlayer = function() return TEST_PLAYER; end };
@@ -4503,6 +4504,79 @@ end)();
     check('NMP16 self(meritMP) forwards', nmp.self(110), 987);
 
     AshitaCore = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- section AO: Auto Oneiros Grip (dlac:AutoOneiros, engine v65)
+-- Server semantics (stable latent_effect_container.cpp): the grip's Refresh+1
+-- latent fires while mp/maxmp <= 75/100, and health.maxmp is the BASE pool --
+-- CalculateStats' race/job/sub formula + merit MP, NO gear. Threshold =
+-- floor(base * 0.75), boundary INCLUSIVE. Mindie's shape (Hume WHM75/SCH37,
+-- 11 merit levels): base 724 -> fires at MP <= 543; meritless 614 -> 460.
+-- ---------------------------------------------------------------------------
+(function()
+    local nmpM = package.loaded['dlac\\data\\nativemp'];   -- THE instance dispatch captured
+    local rv = dispatchM._resolveVirtual;
+    local ctx75 = { player = { MainJobSync = 75 } };
+
+    -- live-reader stubs: Mindie's shape -- Hume(1) WHM75/SCH37
+    local oldIdx, oldRace, oldJobs = nmpM.selfIndex, nmpM.readRace, nmpM.readJobs;
+    nmpM.selfIndex = function() return 42; end
+    nmpM.readRace  = function(idx) return (idx == 42) and 1 or nil; end
+    nmpM.readJobs  = function() return 3, 75, 20, 37; end
+
+    dispatchM._autoOverride = { oneiros = { name = 'Oneiros Grip', level = 75 }, mpMerits = 11 };
+
+    TEST_PLAYER = { MP = 543 };
+    check('AO1 boundary INCLUSIVE: MP 543 of base 724 -> grip', rv('dlac:AutoOneiros', ctx75, 'Sub'), 'Oneiros Grip');
+    TEST_PLAYER = { MP = 544 };
+    local nm, why = rv('dlac:AutoOneiros', ctx75, 'Sub');
+    check('AO2 one MP above -> fallback', nm, nil);
+    check('AO2b reason carries the threshold', string.find(tostring(why), '543', 1, true) ~= nil, true);
+
+    dispatchM._autoOverride = { oneiros = { name = 'Oneiros Grip', level = 75 }, mpMerits = 0 };
+    TEST_PLAYER = { MP = 460 };
+    check('AO3 meritless base 614 -> fires at 460', rv('dlac:AutoOneiros', ctx75, 'Sub'), 'Oneiros Grip');
+    TEST_PLAYER = { MP = 461 };
+    check('AO4 meritless 461 stays off', (rv('dlac:AutoOneiros', ctx75, 'Sub')), nil);
+
+    TEST_PLAYER = { MP = 100 };
+    check('AO5 under the grip level -> unresolved',
+        (rv('dlac:AutoOneiros', { player = { MainJobSync = 70 } }, 'Sub')), nil);
+
+    dispatchM._autoOverride = { oneiros = false };
+    check('AO6 not owned -> unresolved', (rv('dlac:AutoOneiros', ctx75, 'Sub')), nil);
+
+    dispatchM._autoOverride = { oneiros = { name = 'Oneiros Grip', level = 75 } };
+    nmpM.readRace = function() return 8; end               -- Galka...
+    nmpM.readJobs = function() return 1, 75, 13, 37; end   -- ...WAR/NIN: no pool anywhere
+    check('AO7 no native pool on this job -> unresolved', (rv('dlac:AutoOneiros', ctx75, 'Sub')), nil);
+
+    nmpM.selfIndex = function() return nil; end            -- self unreadable (login settle)
+    check('AO8 native unreadable -> unresolved', (rv('dlac:AutoOneiros', ctx75, 'Sub')), nil);
+
+    -- the marker is a Lv75 ladder rung (the grip's level), composite form too
+    check('AO9 virtualMinLevel = grip level', dispatchM.virtualMinLevel('dlac:AutoOneiros'), 75);
+    check('AO10 composite form tolerated', dispatchM.virtualMinLevel('dlac:AutoOneiros|GenbusShield'), 75);
+
+    nmpM.selfIndex, nmpM.readRace, nmpM.readJobs = oldIdx, oldRace, oldJobs;
+
+    -- flatten pairing: the marker IS a grip -- a 2H main composes it with the
+    -- slot's regular grip as fallback (a shield would itself be illegal under
+    -- a 2H, so it can't serve); a 1H main vetoes the marker outright and the
+    -- shield wins the slot (shared subSlotAllowed rule both ways)
+    TEST_PLAYER = { MainJob = 'WHM', SubJob = 'SCH', MainJobSync = 75, SubJobSync = 37 };
+    AshitaCore = ashitaWithDW(false);
+    local s2H = utils.BuildDynamicSets({ Dynamic = { TP = {
+        Main = { gsword2H }, Sub = { 'dlac:AutoOneiros', grip } } } });
+    check('AO11 2H main: marker + grip fallback', s2H.TP and s2H.TP.Sub, 'dlac:AutoOneiros|PoleGrip');
+    local s1H = utils.BuildDynamicSets({ Dynamic = { TP = {
+        Main = { dagger1H }, Sub = { 'dlac:AutoOneiros', shield } } } });
+    check('AO12 1H main: marker vetoed, shield wins', s1H.TP and s1H.TP.Sub, 'GenbusShield');
+    AshitaCore = nil;
+
+    dispatchM._autoOverride = nil;
+    TEST_PLAYER = nil;
 end)();
 
 -- ---------------------------------------------------------------------------
