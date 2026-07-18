@@ -449,7 +449,10 @@ agent; the per-repo setup lives in `docs/agents/`.
     treats the marker as a GRIP under the shared subSlotAllowed rule (2H
     main → `dlac:AutoOneiros|<fallback>`, 1H main vetoes the marker; the
     + Add Sub picker offers it unconditionally per the HARD RULE);
-    virtualMinLevel = the grip's Lv75. Tests AO1–AO12 (+clamp AO2c/d).
+    virtualMinLevel = the grip's Lv75 UNCONDITIONALLY (v68: one fixed item,
+    so an unlearned manifest never degrades the marker to a Lv0 wildcard;
+    the + Add rec is stamped Level 75 so the editor shows it). Tests
+    AO1–AO14 (+clamp AO2c/d, unlearned-manifest AO10b).
   commits. Local-only pending GM verdict; strip TEMP probes (`/dlmv`, RMB debug,
   branch-print) before any merge. The Storage-into-Provenance packet experiment is
   designed, unrun (docs/design/storage-move.md "open questions").

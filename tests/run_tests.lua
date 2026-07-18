@@ -4584,6 +4584,11 @@ end)();
     -- the marker is a Lv75 ladder rung (the grip's level), composite form too
     check('AO9 virtualMinLevel = grip level', dispatchM.virtualMinLevel('dlac:AutoOneiros'), 75);
     check('AO10 composite form tolerated', dispatchM.virtualMinLevel('dlac:AutoOneiros|GenbusShield'), 75);
+    -- the grip is one FIXED Lv75 item: a manifest that has not learned it yet
+    -- still answers 75 -- never a Lv0 always-adopt wildcard (v68)
+    dispatchM._autoOverride = {};
+    check('AO10b unlearned manifest: still a Lv75 rung', dispatchM.virtualMinLevel('dlac:AutoOneiros'), 75);
+    dispatchM._autoOverride = { oneiros = { name = 'Oneiros Grip', level = 75 } };
 
     nmpM.selfIndex, nmpM.readRace, nmpM.readJobs = oldIdx, oldRace, oldJobs;
 

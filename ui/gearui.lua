@@ -2880,7 +2880,10 @@ local function renderAddPopup(job, level)
         elseif ui.setSelected == 'Waist' then
             vlist[#vlist + 1] = { name = 'dlac:ElementalObi', tip = 'Equips the matching elemental obi when the net day/weather bonus for\nthe spell\'s element is positive (level-checked). Other items in this\nslot\'s list are the fallback.\n(Sets written as dlac:AutoObi keep working.)' };
         elseif ui.setSelected == 'Sub' then
-            vlist[#vlist + 1] = { name = 'dlac:AutoOneiros', tip = 'Equips Oneiros Grip while its latent Refresh +1 is LIVE: current MP at\nor below 50%% of your BASE pool -- the race/job/sub formula plus Max MP\nmerits, gear excluded (set your merit count on the Automations tab;\nthe threshold re-aims itself on job change and level sync). Needs a\ntwo-handed main; other items in this slot\'s list are the fallback.' };
+            -- level = 75: the grip is one fixed Lv75 item, so the marker IS a
+            -- Lv75 rung -- the editor row shows it (AutoStaff/Obi stay level 0:
+            -- their rung varies with owned gear, virtualMinLevel derives it).
+            vlist[#vlist + 1] = { name = 'dlac:AutoOneiros', level = 75, tip = 'Equips Oneiros Grip while its latent Refresh +1 is LIVE: current MP at\nor below 50%% of your BASE pool -- the race/job/sub formula plus Max MP\nmerits, gear excluded (set your merit count on the Automations tab;\nthe threshold re-aims itself on job change and level sync). Needs a\ntwo-handed main; other items in this slot\'s list are the fallback.' };
         end
         -- NOTE: dlac:AutoCraft is deliberately NOT offered here. Craft gear is a SET
         -- automation -- the engine overlays the whole craft set (dispatch.craftOverlay)
@@ -2898,7 +2901,7 @@ local function renderAddPopup(job, level)
                         -- No CloseCurrentPopup (Henrik): the popup stays open so several
                         -- pieces can be added in a row; the added entry drops out of the
                         -- pick list next frame (inList), which is the click feedback.
-                        list[#list + 1] = { rec = { Name = vd.name, Level = 0, Virtual = true } };
+                        list[#list + 1] = { rec = { Name = vd.name, Level = vd.level or 0, Virtual = true } };
                         M.working[ui.setSelected] = list;
                         _setDirty = true;
                     end
