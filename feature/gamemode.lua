@@ -8,12 +8,12 @@
 --     neither                = ACE (no icon)
 -- Field truth 2026-07-18, Tavnazian Safehold ICON dump (dlacprobe v1.8):
 -- Mindie=UCW and Skincrawler=CW both carry 0x1000; Askar=Wings carries
--- 0x4000; Tcb/Brehanin=ACE carry neither. WHITE-vs-PINK (CW vs UCW) is NOT
--- readable here yet -- the only candidate bits (RenderFlags7 0xE0000000,
--- RenderFlags8 low nibble 7) come from the sole local-player sample and may
--- be local render state; a remote-UCW capture settles it (memory:
--- cw-ucw-mode-detection). Until then this module answers "crystal or not",
--- which is the gameplay-mode split (CW and UCW play identically).
+-- 0x4000; Tcb/Brehanin=ACE carry neither. WHITE-vs-PINK (CW vs UCW) is
+-- deliberately NOT distinguished -- Henrik's ruling 2026-07-18: "CW and UCW
+-- are still in the same playmode and have the same restrictions", so
+-- crystal-or-not IS the play-mode answer this module exists to give. Do not
+-- add a color split (revival path, if a feature ever truly needs shatter
+-- risk: memory cw-ucw-mode-detection).
 -- The self entity is always rendered, so the self read cannot go stale; reads
 -- are uncached because they are one array access.
 

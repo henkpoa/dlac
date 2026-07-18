@@ -386,6 +386,17 @@ agent; the per-repo setup lives in `docs/agents/`.
     manual overrides (`rodPin`/`baitPin` persisted in fishstate, unpinned by
     vanish or target change; `*`/"(manual)" markers), and Clear's same-frame
     stale-local re-adopt is fixed (F70–F84).
+  - **Game-mode detection foundation (2026-07-18)** (`feature/gamemode.lua`;
+    history.md "game modes become readable"). CatsEyeXI's overhead mode icons
+    are re-skinned retail name icons, readable off the rendered entity:
+    RenderFlags4 `0x1000` = CW/UCW crystal (retail new-character '?'),
+    `0x4000` = Wings Cait Sith (retail mentor 'M'), neither = ACE —
+    field-pinned from labeled samples (dlacprobe v1.8 `/probe icons`,
+    Tavnazian Safehold). `gamemode.icon()` / `gamemode.hasCrystal()` read
+    self by default, any rendered index optionally; nil ALWAYS means unknown
+    — never gate on nil. Henrik's ruling: CW-vs-UCW is MOOT (same playmode,
+    same restrictions) — the white-vs-pink split is deliberately not pursued.
+    Dormant foundation, no consumer wired yet. Tests GM1–GM11.
   commits. Local-only pending GM verdict; strip TEMP probes (`/dlmv`, RMB debug,
   branch-print) before any merge. The Storage-into-Provenance packet experiment is
   designed, unrun (docs/design/storage-move.md "open questions").

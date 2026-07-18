@@ -2615,3 +2615,29 @@ from the slate: only the custom-gear stat-text report (needs the items to
 drop) and the GetRank cap question. Docs + fishwatch's two UNPINNED status
 comments synced; no code behavior changed. A new fishing feature is planned
 for a fresh session.
+
+### Game modes become readable (2026-07-18)
+
+Henrik asked whether the crystal next to a name -- CatsEyeXI's CW/UCW
+marker -- could be read from memory. The hunt ran the whole stack in one
+session: the public server repo's `base` branch turned out six months stale
+(`stable` is the live branch -- correction recorded in memory),
+`isCrystalWarrior()` exists there only as a CI-whitelisted PRIVATE binding,
+and Nameplate.dll's "hidestars" strings gave the tell that the icons ride
+the retail nameplate renderer, re-skinned. dlacprobe v1.8 grew
+`/probe icons` (every rendered player's icon words in one dump) plus an
+0x00D wire watch, and Henrik's labeled capture in Tavnazian Safehold pinned
+the bits in one pass: RenderFlags4 `0x1000` = crystal (his UCW and
+Skincrawler's CW read identically), `0x4000` = Askar's Wings Cait Sith,
+ACE = neither -- XiPackets names those slots as the retail new-character '?'
+and mentor 'M' icons. `feature/gamemode.lua` ships the check
+(`icon()`/`hasCrystal()`, nil = unknown and never a guess, GM1-GM11) as
+dormant foundation for whatever gets gated on play mode next.
+
+One thread was deliberately cut rather than resolved: white vs pink.
+Mindie's extra F7/F8 bits were confounded (sole local-player sample in the
+capture), and before a deconfounding capture happened Henrik ruled the
+question moot -- "CW and UCW are still in the same playmode and have the
+same restrictions"; crystal-vs-not IS the play-mode split, and the need is
+"100 %" satisfied. The revival path, should shatter-risk ever matter to a
+feature, lives in the cw-ucw-mode-detection memory file.
