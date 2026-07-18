@@ -472,40 +472,81 @@ local function modeCondText(mc)
     return tostring(mc);
 end
 
--- Rule references to mode `name` ('X' or 'X:Value', alone or in a list).
--- strip=true edits trig.data in place: a rule gated ONLY on this mode is
--- removed (the mode was load-bearing); a list gate just loses the dead name.
-local function modeCondRefs(name, strip)
+-- Rule references to a dead mode CONDITION in `data` (the trigger model):
+-- `name` is a whole mode ('X' -- matches 'X' and every 'X:Value') or one exact
+-- cycle value ('X:Value'). strip=true edits the model in place, honouring the
+-- v54 shape -- a rule fires on (ALL of `when`) OR (ANY whenAny entry):
+--   * a mode list just loses the dead name when other modes remain;
+--   * a leg whose mode list EMPTIES was load-bearing on it: an & leg collapses
+--     to {} (the rule lives on as OR-only), a dead | entry is removed whole;
+--   * a rule with no live leg left is removed.
+-- Takes the model explicitly (callers pass trig.data) so the offline tests can
+-- drive it on a built table; only strip marks trig.dirty.
+local function modeCondRefs(data, name, strip)
     local out = { rules = {}, removedRules = 0, editedRules = 0 };
     local target = string.lower(tostring(name or ''));
-    if target == '' or trig.data == nil then return out; end
+    if target == '' or type(data) ~= 'table' then return out; end
     local function matches(m)
         local s = string.lower(tostring(m));
         return s == target or string.sub(s, 1, #target + 1) == (target .. ':');
     end
+    local function split(mc)   -- mode cond (string | list | nil) -> hit, kept[]
+        if mc == nil then return false, nil; end
+        local gates = (type(mc) == 'table') and mc or { mc };
+        local kept, hit = {}, false;
+        for _, m in ipairs(gates) do
+            if matches(m) then hit = true; else kept[#kept + 1] = m; end
+        end
+        return hit, kept;
+    end
     for _, sec in ipairs(TRIG_HANDLERS) do
-        local list = trig.data[sec];
+        local list = data[sec];
         if type(list) == 'table' then
             for i = #list, 1, -1 do
                 local r = list[i];
-                local mc = (type(r) == 'table' and type(r.when) == 'table') and r.when.mode or nil;
-                if mc ~= nil then
-                    local gates = (type(mc) == 'table') and mc or { mc };
-                    local kept, hit = {}, false;
-                    for _, m in ipairs(gates) do
-                        if matches(m) then hit = true; else kept[#kept + 1] = m; end
+                if type(r) == 'table' and type(r.when) == 'table' then
+                    local whenHit, whenKept = split(r.when.mode);
+                    local anyHit, hitEntries = false, 0;
+                    if type(r.whenAny) == 'table' then
+                        for j = #r.whenAny, 1, -1 do
+                            local e = r.whenAny[j];
+                            local eHit, eKept = split((type(e) == 'table') and e.mode or nil);
+                            if eHit then
+                                anyHit = true; hitEntries = hitEntries + 1;
+                                if strip then
+                                    if #eKept == 0 then table.remove(r.whenAny, j);
+                                    else e.mode = (#eKept == 1) and eKept[1] or eKept; end
+                                end
+                            end
+                        end
                     end
-                    if hit then
-                        out.rules[#out.rules + 1] = string.format('%s:  mode %s  ->  %s',
-                            sec, modeCondText(mc),
+                    if whenHit or anyHit then
+                        local what = {};   -- described BEFORE any narrowing below
+                        if whenHit then what[#what + 1] = 'mode ' .. modeCondText(r.when.mode); end
+                        if anyHit then
+                            what[#what + 1] = string.format('%d OR-group entr%s',
+                                hitEntries, (hitEntries == 1) and 'y' or 'ies');
+                        end
+                        out.rules[#out.rules + 1] = string.format('%s:  %s  ->  %s',
+                            sec, table.concat(what, ' + '),
                             (r.set ~= nil) and ('set ' .. ((type(r.set) == 'table') and table.concat(r.set, ' + ') or tostring(r.set)))
                             or 'equip { ... }');
                         if strip then
-                            if #kept == 0 then
-                                table.remove(list, i);
+                            local hadAny = (type(r.whenAny) == 'table');
+                            local anyLeft = hadAny and #r.whenAny or 0;
+                            local whenLegDead = whenHit and #whenKept == 0;
+                            -- OR-only shape: the & leg carried no conditions at all
+                            local orOnly = (not whenHit) and next(r.when) == nil and hadAny;
+                            if (whenLegDead and (not hadAny or anyLeft == 0))
+                               or (orOnly and anyLeft == 0) then
+                                table.remove(list, i);          -- no live leg left
                                 out.removedRules = out.removedRules + 1;
                             else
-                                r.when.mode = (#kept == 1) and kept[1] or kept;
+                                if whenLegDead then r.when = {};    -- collapses to OR-only
+                                elseif whenHit then
+                                    r.when.mode = (#whenKept == 1) and whenKept[1] or whenKept;
+                                end
+                                if hadAny and anyLeft == 0 then r.whenAny = nil; end
                                 out.editedRules = out.editedRules + 1;
                             end
                             trig.dirty = true;
@@ -517,6 +558,7 @@ local function modeCondRefs(name, strip)
     end
     return out;
 end
+M._modeCondRefs = modeCondRefs;   -- headless test seam (dispatch's _matches idiom)
 
 -- Remove the definition, write the file NOW, and kill the live flag. The commit's
 -- '/dl triggers reload' makes the engine purge a stale cycle value; the queued
@@ -947,8 +989,45 @@ local function renderModePopup()
         local bind = (modeUI.bind[1] ~= nil and modeUI.bind[1] ~= '') and modeUI.bind[1] or nil;
         trig.data.Modes = trig.data.Modes or {};
         if modeUI.kind == 'cycle' then
+            -- Values removed by this edit kill their 'Name:Value' condition
+            -- everywhere it is applied (Henrik 2026-07-18: a changed cycle left
+            -- dead gates on the weapons). Diff BEFORE the overwrite lands.
+            local removed = {};
+            if editing then
+                local old = trig.data.Modes[nm];
+                local keep = {};
+                for _, v in ipairs(modeUI.values) do keep[string.lower(v)] = true; end
+                for _, v in ipairs((old ~= nil and type(old.values) == 'table') and old.values or {}) do
+                    if not keep[string.lower(v)] then removed[#removed + 1] = v; end
+                end
+            end
             trig.data.Modes[nm] = { values = modeUI.values, bind = bind };
-            trigSetStatus(string.format('Cycle mode "%s": wire values with the rule condition  mode = %s:<value>,  then Commit.', nm, nm), false);
+            if #removed > 0 then
+                -- Same cleanup + commit-now discipline as mode deletion: the
+                -- reload also purges a removed value that is active right now
+                -- (the engine's stale-cycle purge).
+                local rem, trm, touched = 0, 0, {};
+                for _, v in ipairs(removed) do
+                    local rr = modeCondRefs(trig.data, nm .. ':' .. v, true);
+                    rem = rem + rr.removedRules; trm = trm + rr.editedRules;
+                    local sr = (deps ~= nil and type(deps.modeSetRefs) == 'function')
+                        and deps.modeSetRefs(nm .. ':' .. v, true) or { touched = {} };
+                    for _, s in ipairs(sr.touched or {}) do
+                        local dup = false;
+                        for _, t in ipairs(touched) do if t == s then dup = true; break; end end
+                        if not dup then touched[#touched + 1] = s; end
+                    end
+                end
+                table.sort(touched);
+                trigCommit();
+                trigSetStatus(string.format(
+                    'Cycle "%s" saved; dead value gate(s) %s swept: %d rule(s) removed, %d trimmed; sets rewritten: %s%s',
+                    nm, table.concat(removed, ', '), rem, trm,
+                    (#touched > 0) and table.concat(touched, ', ') or '(none)',
+                    (#touched > 0) and '  -- Reload LAC to apply the set changes.' or ''), false);
+            else
+                trigSetStatus(string.format('Cycle mode "%s": wire values with the rule condition  mode = %s:<value>,  then Commit.', nm, nm), false);
+            end
         else
             if bind ~= nil then trig.data.Modes[nm] = { bind = bind };
             else trig.data.Modes[nm] = nil; end        -- toggle without a bind needs no definition
@@ -977,7 +1056,7 @@ local function renderModePopup()
         imgui.SameLine(0, 12);
         if imgui.Button('Delete mode###modedel', { 0, 0 }) then
             local nmDel = modeUI.editing;
-            local rr = modeCondRefs(nmDel, false);
+            local rr = modeCondRefs(trig.data, nmDel, false);
             local sr = (deps ~= nil and type(deps.modeSetRefs) == 'function')
                 and deps.modeSetRefs(nmDel, false) or { refs = {} };
             if #rr.rules == 0 and #(sr.refs or {}) == 0 then
@@ -1019,7 +1098,7 @@ local function renderModeDeleteWindow()
         end
         imgui.Spacing();
         if imgui.Button('Delete mode + ALL references##modedelall', { 0, 22 }) then
-            local rr = modeCondRefs(d.name, true);
+            local rr = modeCondRefs(trig.data, d.name, true);
             local sr = (deps ~= nil and type(deps.modeSetRefs) == 'function')
                 and deps.modeSetRefs(d.name, true) or { touched = {} };
             deleteModeNow(d.name);

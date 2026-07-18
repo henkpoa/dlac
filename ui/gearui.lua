@@ -2337,6 +2337,14 @@ local function modeSetRefs(modeName, strip)
     if strip and #out.touched > 0 then profsets.invalidate(); end
     M.working, M.workingSetName, ui.setSelected, _setDirty = keepW, keepN, keepSel, keepDirty;
     table.sort(out.touched);
+    -- A stripped set that is ALSO loaded in the builder (with no unsaved edits)
+    -- would keep showing the dead gates: re-load it from the rewritten file. A
+    -- dirty working copy is the user's -- left alone.
+    if strip and keepN ~= nil and not keepDirty then
+        for _, s in ipairs(out.touched) do
+            if s == keepN then loadSet(keepN); ui.setSelected = keepSel; break; end
+        end
+    end
     return out;
 end
 _modeSetRefs = modeSetRefs;

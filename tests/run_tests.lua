@@ -4695,6 +4695,88 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- section MC: dead mode-condition sweep (triggersui._modeCondRefs)
+-- Henrik 2026-07-18: editing a cycle left nonexistent 'Name:Value' gates on
+-- weapons/rules. The sweep takes a whole mode ('X' -> 'X' + every 'X:*') or
+-- ONE value ('X:V', exact); v54 legs are honoured -- a rule fires on (ALL of
+-- when) OR (ANY whenAny entry), so: a mode list loses just the dead name; a
+-- leg whose mode list empties dies (an & leg collapses to OR-only, a | entry
+-- is removed); a rule with no live leg is removed whole.
+-- ---------------------------------------------------------------------------
+(function()
+    local tui = dofile('ui/triggersui.lua');
+    check('MC0 sweep seam exported', type(tui._modeCondRefs), 'function');
+    local f = tui._modeCondRefs;
+
+    -- whole-mode target: bare gate, valued gate, list gate
+    local d = { Default = {
+        { when = { mode = 'Inc' },              set = 'A' },
+        { when = { mode = 'Inc:Wpn' },          set = 'B' },
+        { when = { mode = { 'Inc', 'DT' } },    set = 'C' },
+        { when = { mode = 'DT' },               set = 'D' },
+    } };
+    local r = f(d, 'Inc', true);
+    check('MC1 whole-mode: bare + valued gates removed, list trimmed', r.removedRules .. '/' .. r.editedRules, '2/1');
+    check('MC2 survivors: trimmed rule + unrelated rule', #d.Default, 2);
+    check('MC3 list gate collapses to the surviving mode (plain string)', d.Default[1].when.mode, 'DT');
+    check('MC4 unrelated DT rule untouched', d.Default[2].set, 'D');
+
+    -- value-level target: exact only -- sibling values and the BARE name survive
+    d = { Default = {
+        { when = { mode = 'Weapon:Club' },                     set = 'A' },
+        { when = { mode = 'weapon:club' },                     set = 'B' },   -- case drift
+        { when = { mode = 'Weapon:Caster' },                   set = 'C' },
+        { when = { mode = 'Weapon' },                          set = 'D' },
+        { when = { mode = { 'Weapon:Club', 'Weapon:Caster' }}, set = 'E' },
+    } };
+    r = f(d, 'Weapon:Club', true);
+    check('MC5 value target: both spellings removed, list trimmed', r.removedRules .. '/' .. r.editedRules, '2/1');
+    check('MC6 sibling value survives', d.Default[1].set, 'C');
+    check('MC7 bare cycle gate survives a value removal', d.Default[2].set, 'D');
+    check('MC8 trimmed list keeps the sibling', d.Default[3].when.mode, 'Weapon:Caster');
+
+    -- load-bearing: the mode was one of several & conditions -> rule removed whole
+    d = { Default = { { when = { mode = 'X', spell = 'Cure' }, set = 'A' } } };
+    r = f(d, 'X', true);
+    check('MC9 load-bearing & rule removed despite other conditions', #d.Default .. '/' .. r.removedRules, '0/1');
+
+    -- v54 legs
+    d = { Default = {
+        { when = { spell = 'Cure' }, whenAny = { { mode = 'X' }, { buff = 'Sleep' } }, set = 'A' },
+        { when = {},                 whenAny = { { mode = 'X' } },                     set = 'B' },
+        { when = { mode = 'X' },     whenAny = { { buff = 'Sleep' } },                 set = 'C' },
+        { when = { mode = 'X' },     whenAny = { { mode = 'X:1' } },                   set = 'D' },
+        { when = { spell = 'Fire' }, whenAny = { { mode = 'X' } },                     set = 'E' },
+        { when = {},                 whenAny = { { mode = { 'X', 'DT' } } },           set = 'F' },
+    } };
+    r = f(d, 'X', true);
+    check('MC10 counts: OR-only + both-legs-dead removed, rest edited', r.removedRules .. '/' .. r.editedRules, '2/4');
+    check('MC11 dead | entry removed, sibling entry stays', #d.Default[1].whenAny .. '/' .. tostring(d.Default[1].whenAny[1].buff), '1/Sleep');
+    check('MC12 dead & leg collapses to OR-only (when emptied, | kept)',
+        next(d.Default[2].when) == nil and d.Default[2].whenAny[1].buff, 'Sleep');
+    check('MC13 emptied whenAny drops to nil, & leg carries on',
+        d.Default[3].set == 'E' and d.Default[3].whenAny, nil);
+    check('MC14 | entry mode list keeps its other mode', d.Default[4].whenAny[1].mode, 'DT');
+    check('MC15 the removed rules are the right ones', (function()
+        for _, rule in ipairs(d.Default) do
+            if rule.set == 'B' or rule.set == 'D' then return rule.set; end
+        end
+        return true;
+    end)(), true);
+
+    -- report mode: counts without mutating
+    d = { Default = {
+        { when = { mode = 'X' }, set = 'A' },
+        { when = { spell = 'Cure' }, whenAny = { { mode = 'X' } }, set = 'B' },
+    } };
+    r = f(d, 'X', false);
+    check('MC16 report lists every referencing rule', #r.rules, 2);
+    check('MC17 report mutates nothing', #d.Default == 2 and d.Default[1].when.mode .. '/' .. tostring(d.Default[2].whenAny[1].mode), 'X/X');
+    check('MC18 near-name mode never matches (Incog vs Inc)',
+        #f({ Default = { { when = { mode = 'Incog' }, set = 'A' } } }, 'Inc', false).rules, 0);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then
