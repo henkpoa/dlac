@@ -11,6 +11,7 @@ package.loaded['dlac\\profiles'] = dofile('profiles.lua');   -- dispatch/setmana
 package.loaded['dlac\\data\\nativemp'] = dofile('data/nativemp.lua');   -- dispatch requires it (Oneiros resolver)
 package.loaded['dlac\\gear\\gearrecord'] = dofile('gear/gearrecord.lua');   -- record rules: gearimport/weaponfilter/gearexport require it
 package.loaded['dlac\\lib\\safewrite'] = dofile('lib/safewrite.lua');   -- safe-replace ladder: gearimport requires it, profiles guards it
+package.loaded['dlac\\gear\\catalogindex'] = dofile('gear/catalogindex.lua');   -- catalog walker: gearimport requires it (no catalog headless -> empty indexes)
 
 local TEST_PLAYER = nil;                                -- set per test
 gData = { GetPlayer = function() return TEST_PLAYER; end };
@@ -3470,6 +3471,41 @@ end)();
     check('SW14 missing source flagged', (m2 == nil and missing == true), true);
 
     os.remove(target); if bp then os.remove(bp); end os.remove(base .. 'sw_dst.lua');
+end)();
+
+-- ---------------------------------------------------------------------------
+-- CI. gear\catalogindex -- Catalog access, one walker (raw id index + the
+--     flattened browse copies + the generic gear-shaped flattener). Fresh
+--     dofile instances per case so the lazy-load cache starts clean.
+-- ---------------------------------------------------------------------------
+(function()
+    package.loaded['dlac\\data\\catalog'] = {
+        Head = { TestCap = { Id = 11, Name = 'Test Cap', Level = 10, Stats = { HP = 5 } } },
+        Main = { Sword = { Wax = { Id = 22, Name = 'Wax Sword', Level = 1, Type = 'Sword', OneHanded = true } } },
+        Ammo = { Stone = { Id = 33, Name = 'Cinder Test', Level = 60, Type = 'Ammo' } },
+        NameToObject = { ['Test Cap'] = { Id = 999, Name = 'DECOY' } },   -- aliases: must be skipped
+    };
+    local ci = dofile('gear/catalogindex.lua');
+    check('CI0 available with catalog seeded', ci.available(), true);
+    local raw = ci.rawIndex();
+    check('CI1 raw ids indexed',        raw[11].Name, 'Test Cap');
+    check('CI2 NameToObject skipped',   raw[999], nil);
+    check('CI3 nested weapon reached',  raw[22].Type, 'Sword');
+    check('CI4 rawById',                ci.rawById(33).Name, 'Cinder Test');
+    local list, byId, byName = ci.flat();
+    check('CI5 flat copies carry Slot',        byId[11].Slot, 'Head');
+    check('CI6 flat Category from nesting',    byId[22].Category, 'Sword');
+    check('CI7 byName lowercased',             byName['wax sword'].Id, 22);
+    check('CI8 flat records are COPIES',       byId[11] ~= raw[11], true);
+    check('CI9 flatten generic over gear-shaped tables',
+        (select(2, ci.flatten({ Head = { C = { Id = 7, Name = 'C' } } })))[7].Slot, 'Head');
+
+    -- missing catalog degrades quietly (guarded callers behave as before)
+    package.loaded['dlac\\data\\catalog'] = nil;
+    local ci2 = dofile('gear/catalogindex.lua');
+    check('CI10 unavailable without catalog', ci2.available(), false);
+    check('CI11 rawIndex empty, not nil',     next(ci2.rawIndex()), nil);
+    check('CI12 flat empty, not nil',         #(ci2.flat()), 0);
 end)();
 
 -- ---------------------------------------------------------------------------

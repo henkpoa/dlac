@@ -51,9 +51,10 @@ end)();
 -- same way gearimport requires 'encoding'.
 local imgui = try('imgui');
 local optim = try("dlac\\gear\\gearoptim");
--- Full CatsEyeXI equipment reference (1306 items), same nested shape as gear.lua.
--- Powers the "All Equipment" browse tab only; falls back to gear.lua if missing.
-local catalog = try("dlac\\data\\catalog");
+-- Full CatsEyeXI equipment reference access (gear\catalogindex): the lazy 5MB
+-- load, the raw id index and the flattened browse records all live THERE now --
+-- one walker for every consumer. Powers the All Equipment tab + item lookups.
+local ci = require("dlac\\gear\\catalogindex");
 -- Dynamic-set writer (commit/delete a set into the <JOB>.lua file). Sets tab only.
 local setmgr = try("dlac\\gear\\setmanager");
 -- Augment reader: decode private augments from item Extra bytes (worn-stat totals).
@@ -81,7 +82,7 @@ end)();
 local has = {
     imgui    = imgui ~= nil,
     optim    = optim ~= nil,
-    catalog  = catalog ~= nil,
+    catalog  = ci.available(),
     setmgr   = setmgr ~= nil,
     aug      = aug ~= nil,
     lscale   = lscale ~= nil,
@@ -201,64 +202,22 @@ pmenu.configure({ ui = ui, COL = COL });   -- Profiles popup state lives in the 
 local icons = require("dlac\\ui\\itemicons");
 
 -- ---------------------------------------------------------------------------
--- Flatten any gear-shaped table (gear.lua OR catalog.lua -- identical structure)
--- into a sorted record list plus by-Id / by-Name indexes. Walked exactly the way
--- gear.lua's NameToObject builder walks (a table with a .Name is an entry; anything
--- else is a container). Records are fresh copies, so per-row memo fields never
--- mutate the source table.
+-- Flattening (any gear-shaped table -> sorted records + by-Id/by-Name indexes)
+-- lives in gear\catalogindex now (M.flatten -- the one walker); the owned table
+-- flattens through the same code the catalog does.
 -- ---------------------------------------------------------------------------
 local function flattenGear(src)
-    local list, byId, byName = {}, {}, {};
-    local function add(slot, category, key, e)
-        local rec = {
-            Name = e.Name, Level = e.Level or 0, Id = e.Id, Jobs = e.Jobs,
-            Slot = slot, Category = category, Type = e.Type, Stats = e.Stats,
-            Key = key,                     -- gear.lua table key, for building a commit path
-            OneHanded = e.OneHanded,       -- weapon 1H vs 2H (Sub-slot pairing rules)
-            AmmoType = e.AmmoType,         -- what a Range weapon fires this ammo AS (Ammo-slot
-                                           -- weapon-type filter, #17); absent = Trinket
-            Count = e.Count,   -- scanned copy count (>= 2 = same-weapon dual-wield)
-            Model = e.Model,   -- appearance model id (catalog) -- the lockstyle look
-                               -- preview resolves through THESE records (catalogById /
-                               -- enrichment), so dropping it here blanks the preview
-        };
-        list[#list + 1] = rec;
-        if rec.Id ~= nil then byId[rec.Id] = rec; end
-        if type(rec.Name) == 'string' then byName[string.lower(rec.Name)] = rec; end
-    end
-    local function walk(slot, container, category)
-        for key, v in pairs(container) do
-            if type(v) == 'table' then
-                if v.Name ~= nil then
-                    add(slot, category, key, v);
-                else
-                    walk(slot, v, (category == nil) and tostring(key) or category);
-                end
-            end
-        end
-    end
-    if type(src) == 'table' then
-        for slot, slotVars in pairs(src) do
-            if slot ~= 'NameToObject' and type(slotVars) == 'table' then
-                walk(slot, slotVars, nil);
-            end
-        end
-    end
-    table.sort(list, function(a, b)
-        if a.Slot ~= b.Slot then return tostring(a.Slot) < tostring(b.Slot); end
-        local ca, cb = a.Category or '', b.Category or '';
-        if ca ~= cb then return ca < cb; end
-        if a.Level ~= b.Level then return (a.Level or 0) < (b.Level or 0); end
-        return tostring(a.Name) < tostring(b.Name);
-    end);
-    return list, byId, byName;
+    return ci.flatten(src);
 end
 
--- Full CatsEyeXI reference (catalog.lua) for the All Equipment tab + item lookups.
--- Falls back to gear.lua if catalog failed to load, so the tab always works.
+-- Full CatsEyeXI reference (catalogindex.flat) for the All Equipment tab + item
+-- lookups. Falls back to gear.lua if catalog failed to load, so the tab always works.
 local _allEquip, _allEquipById, _allEquipByName;
 local function buildAllEquip()
-    if _allEquip == nil then _allEquip, _allEquipById, _allEquipByName = flattenGear(has.catalog and catalog or gear); end
+    if _allEquip == nil then
+        if has.catalog then _allEquip, _allEquipById, _allEquipByName = ci.flat();
+        else _allEquip, _allEquipById, _allEquipByName = flattenGear(gear); end
+    end
     return _allEquip;
 end
 

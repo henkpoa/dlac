@@ -27,6 +27,8 @@ local grec = require("dlac\\gear\\gearrecord");
 -- The safe file-replacement ladder (backup / tmp / validate / rename / restore),
 -- written once -- both gear.lua writers here (commit and /dl fix) ride it.
 local sw = require("dlac\\lib\\safewrite");
+-- Catalog access (lazy load + raw id index): the one walker, shared with gearui.
+local ci = require("dlac\\gear\\catalogindex");
 
 local M = {};
 
@@ -108,17 +110,10 @@ local function rslotFor(id)
     if _rslotById == nil then
         _rslotById = {};
         pcall(function()
-            local function walk(t)
-                for k, v in pairs(t) do
-                    if type(v) == 'table' then
-                        if v.Id ~= nil and v.Name ~= nil then
-                            local rs = effectiveRSlot(v);
-                            if rs ~= nil then _rslotById[v.Id] = rs; end
-                        elseif k ~= 'NameToObject' then walk(v); end
-                    end
-                end
+            for cid, rec in pairs(ci.rawIndex()) do
+                local rs = effectiveRSlot(rec);
+                if rs ~= nil then _rslotById[cid] = rs; end
             end
-            walk(require('dlac\\data\\catalog'));
         end);
     end
     return _rslotById[id];
@@ -1232,21 +1227,10 @@ function M.fix()
         owned[#owned+1] = { Name = it.Name, FullName = it.FullName, Level = it.Level, Id = it.Id };
     end
 
-    -- Catalog metadata (Type / OneHanded) by Id for the pairing backfill.
-    -- Guarded: without the catalog, fix behaves exactly as before.
-    local metaById = {};
-    pcall(function()
-        local cat = require('dlac\\data\\catalog');
-        local function walk(t)
-            for k, v in pairs(t) do
-                if type(v) == 'table' then
-                    if v.Id ~= nil and v.Name ~= nil then metaById[v.Id] = v;
-                    elseif k ~= 'NameToObject' then walk(v); end
-                end
-            end
-        end
-        walk(cat);
-    end);
+    -- Catalog metadata (Type / OneHanded) by Id for the pairing backfill, from
+    -- the one walker (catalogindex.rawIndex -- read-only shared map). Without
+    -- the catalog it is empty and fix behaves exactly as before.
+    local metaById = ci.rawIndex();
 
     local newText, report = M.computeFixes(gearText, owned, metaById);
 
