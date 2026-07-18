@@ -12,6 +12,7 @@ package.loaded['dlac\\data\\nativemp'] = dofile('data/nativemp.lua');   -- dispa
 package.loaded['dlac\\gear\\gearrecord'] = dofile('gear/gearrecord.lua');   -- record rules: gearimport/weaponfilter/gearexport require it
 package.loaded['dlac\\lib\\safewrite'] = dofile('lib/safewrite.lua');   -- safe-replace ladder: gearimport requires it, profiles guards it
 package.loaded['dlac\\gear\\catalogindex'] = dofile('gear/catalogindex.lua');   -- catalog walker: gearimport requires it (no catalog headless -> empty indexes)
+package.loaded['dlac\\lib\\statefile'] = dofile('lib/statefile.lua');   -- addon-side charDir: the watchers require it (guarded)
 
 local TEST_PLAYER = nil;                                -- set per test
 gData = { GetPlayer = function() return TEST_PLAYER; end };

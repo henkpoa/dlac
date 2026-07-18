@@ -37,18 +37,10 @@ local _cfok, _cfmt = pcall(require, 'dlac\\chatfmt');
 _cfok = _cfok and type(_cfmt) == 'table';
 local function say(s) if _cfok and _cfmt.msg then _cfmt.msg(s); else print('[dlac] ' .. s); end end
 
--- <char>\dlac\ dir (craftwatch's kiCharDir pattern). nil pre-login.
-local function charDir()
-    local dir = nil;
-    pcall(function()
-        local party = AshitaCore:GetMemoryManager():GetParty();
-        local name, id = party:GetMemberName(0), party:GetMemberServerId(0);
-        if name == nil or name == '' or id == nil then return; end
-        dir = string.format('%sconfig\\addons\\luashitacast\\%s_%u\\dlac\\',
-            AshitaCore:GetInstallPath(), name, id);
-    end);
-    return dir;
-end
+-- <char>\dlac\ dir: the one addon-side copy (lib\statefile). nil pre-login.
+local _sfok, _sfile = pcall(require, 'dlac\\lib\\statefile');
+local charDir = (_sfok and type(_sfile) == 'table') and _sfile.charDir
+    or function() return nil; end;
 M._charDir = charDir;   -- test seam
 
 -- Fixed-width, NUL-terminated string field (0x017 / 0x0B5 payloads).

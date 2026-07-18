@@ -89,17 +89,11 @@ M.kiPersisted = 0;      -- entries restored from the per-char mirror at startup
 -- (Henrik), so the last-known table is restored at startup -- the panel works
 -- without a fresh zone-in -- and every 0x055 resync corrects and re-saves it.
 local _kiLoaded, _kiLoadAt = false, -10;
-local function kiCharDir()
-    local dir = nil;
-    pcall(function()
-        local party = AshitaCore:GetMemoryManager():GetParty();
-        local name, id = party:GetMemberName(0), party:GetMemberServerId(0);
-        if name == nil or name == '' or id == nil then return; end
-        dir = string.format('%sconfig\\addons\\luashitacast\\%s_%u\\dlac\\',
-            AshitaCore:GetInstallPath(), name, id);
-    end);
-    return dir;
-end
+-- <char>\dlac\ dir: the one addon-side copy (lib\statefile) -- this function
+-- was the "kiCharDir pattern" three other watchers carried copies of.
+local _sfok, _sfile = pcall(require, 'dlac\\lib\\statefile');
+local kiCharDir = (_sfok and type(_sfile) == 'table') and _sfile.charDir
+    or function() return nil; end;
 
 local function kiLoad()
     if _kiLoaded then return; end

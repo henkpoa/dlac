@@ -32,17 +32,10 @@ M.pins = {};
 
 local _loadedFor = nil;   -- the <char>\dlac\ dir this table was cleared for
 
-local function charDir()
-    local dir = nil;
-    pcall(function()
-        local party = AshitaCore:GetMemoryManager():GetParty();
-        local name, id = party:GetMemberName(0), party:GetMemberServerId(0);
-        if name == nil or name == '' or id == nil then return; end
-        dir = string.format('%sconfig\\addons\\luashitacast\\%s_%u\\dlac\\',
-            AshitaCore:GetInstallPath(), name, id);
-    end);
-    return dir;
-end
+-- <char>\dlac\ dir: the one addon-side copy (lib\statefile). nil pre-login.
+local _sfok, _sfile = pcall(require, 'dlac\\lib\\statefile');
+local charDir = (_sfok and type(_sfile) == 'table') and _sfile.charDir
+    or function() return nil; end;
 
 local function pinStatePath()
     local dir = charDir();
