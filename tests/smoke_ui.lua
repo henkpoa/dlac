@@ -598,6 +598,141 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- 9. The manifest WRITER, end to end (headless): fake bags in -> autogear.lua
+--    out -> re-read and assert every automation family's decisive rule. This
+--    is the coverage the extraction unlocked: autoCommit lived buried in
+--    triggersui behind gearui's live deps, so the fmtver-5 class of bug (the
+--    writer silently aborting inside its pcall and the manifest never
+--    regenerating) had no net under it. automationsui.init takes ANY deps
+--    table -- so feed it a curated inventory where each pick is hand-checkable.
+-- ---------------------------------------------------------------------------
+(function()
+    local ok, aui = pcall(require, 'dlac\\ui\\automationsui');
+    if not ok then return; end   -- S140 already failed loudly
+    local sep = package.config:sub(1, 1);
+    local root = 'tests' .. sep .. 'tmp_autogear' .. sep;
+    if sep == '\\' then os.execute('mkdir "tests\\tmp_autogear\\dlac" >nul 2>&1');
+    else os.execute('mkdir -p "tests/tmp_autogear" >/dev/null 2>&1'); end
+
+    -- One decisive case per family. We play BLM at 99 (mainLevel headless = 99).
+    local INV = {
+        -- iridescence: HQ beats NQ (Fire); NQ-only = tier 1 (Ice); the JOB GATE
+        -- (Terra's is WHM-only on a BLM manifest -- the Foreshadow field case);
+        -- universal pecking order (owned Chatoyant +2 outranks owned Iridal +1).
+        { Name = 'Fire Staff',        Id = 90001, Level = 51, Slot = 'Main',  Jobs = { 'All' } },
+        { Name = "Vulcan's Staff",    Id = 90002, Level = 51, Slot = 'Main',  Jobs = { 'All' } },
+        { Name = 'Ice Staff',         Id = 90003, Level = 51, Slot = 'Main',  Jobs = { 'All' } },
+        { Name = "Terra's Staff",     Id = 90004, Level = 51, Slot = 'Main',  Jobs = { 'WHM' } },
+        { Name = 'Chatoyant Staff',   Id = 90005, Level = 75, Slot = 'Main',  Jobs = { 'All' } },
+        { Name = 'Iridal Staff',      Id = 90006, Level = 71, Slot = 'Main',  Jobs = { 'All' } },
+        { Name = 'Karin Obi',         Id = 90007, Level = 71, Slot = 'Waist', Jobs = { 'All' } },
+        { Name = 'Hachirin-no-obi',   Id = 90008, Level = 71, Slot = 'Waist', Jobs = { 'All' } },
+        -- maxmp: paired-slot dup (x2 -> BOTH ring ladders), ConvertHPtoMP
+        -- counted, and a weapon battery (hold map yes, mpBest NO -- TP rule).
+        { Name = 'Astral Ring',       Id = 90010, Level = 10, Slot = 'Ring',  Jobs = { 'All' },
+          Stats = { MP = 12 } },
+        { Name = 'Uggalepih Pendant', Id = 90011, Level = 70, Slot = 'Neck',  Jobs = { 'All' },
+          Stats = { ConvertHPtoMP = 25 } },
+        { Name = 'Mana Club',         Id = 90012, Level = 40, Slot = 'Main',  Jobs = { 'All' },
+          Stats = { MP = 10 } },
+        -- craft: a real skill item, an anti-HQ item (BLOCKS the hq goal, tops
+        -- nq), and a skill-up item (fills hq at gainFill, tops skillup).
+        { Name = 'Chefs Hat',         Id = 90020, Level = 1,  Slot = 'Head',  Jobs = { 'All' },
+          Stats = { CookingSkill = 1 } },
+        { Name = 'Chefs Ring',        Id = 90021, Level = 1,  Slot = 'Ring',  Jobs = { 'All' },
+          Stats = { AntiHQCooking = 1 } },
+        { Name = 'Bonze Cape',        Id = 90022, Level = 1,  Slot = 'Back',  Jobs = { 'All' },
+          Stats = { SynthSkillGain = 4 } },
+        -- helm: Surveyor-major scoring + the semantic hat map (exact name).
+        { Name = 'Field Tunica',      Id = 90030, Level = 1,  Slot = 'Body',  Jobs = { 'All' },
+          Stats = { HELM = 2, Surveyor = 1 } },
+        { Name = 'Miners Helmet',     Id = 90031, Level = 1,  Slot = 'Head',  Jobs = { 'All' },
+          Stats = { Surveyor = 1 } },
+        -- fish: FishingSkill-major; Main deliberately IN (fishing weapons);
+        -- Range/Ammo deliberately OUT (rod and bait are fishstate picks).
+        { Name = 'Fishermans Tunica', Id = 90040, Level = 1,  Slot = 'Body',  Jobs = { 'All' },
+          Stats = { FishingSkill = 1 } },
+        { Name = 'Halieutica',        Id = 90041, Level = 49, Slot = 'Main',  Jobs = { 'All' },
+          Stats = { FishingSkill = 2 } },
+        { Name = 'Halcyon Rod',       Id = 90042, Level = 1,  Slot = 'Range', Jobs = { 'All' },
+          Stats = { FishingSkill = 10 } },
+    };
+    local byName, counts = {}, {};
+    for _, r in ipairs(INV) do
+        byName[r.Name] = r;
+        counts[r.Id] = (r.Name == 'Astral Ring') and 2 or 1;
+    end
+    aui.init({
+        charBase = function() return root; end,
+        lookupByName = function(n) return byName[n]; end,
+        ownedCounts = function() return counts; end,
+        ownedList = function() return INV; end,
+        allEquipList = function() return INV; end,
+        haveInBags = function() return true; end,
+        playerJob = function() return 'BLM'; end,
+    });
+    aui.rescanAutogear();
+
+    local mpath = root .. 'dlac\\autogear.lua';
+    local chunk = loadfile(mpath);
+    check('S160 rescan wrote a loadable manifest', chunk ~= nil, true);
+    if chunk == nil then return; end
+    local m = chunk();
+    check('S161 fmtver matches currentFmt', m.fmtver, aui.currentFmt());
+    check('S162 manifestStale is false right after the write', aui.manifestStale(), false);
+    check('S163 HQ staff beats NQ', m.staff and m.staff.Fire and m.staff.Fire.name .. '/' .. m.staff.Fire.tier,
+        "Vulcan's Staff/2");
+    check('S164 NQ-only element is tier 1', m.staff.Ice and m.staff.Ice.tier, 1);
+    check('S165 JOB GATE: a WHM-only staff stays OFF a BLM manifest (the Foreshadow case)',
+        m.staff.Earth, nil);
+    check('S166 universal pecking order: +2 outranks owned +1',
+        type(m.universal) == 'table' and m.universal.name .. '/' .. m.universal.tier, 'Chatoyant Staff/2');
+    check('S167 elemental obi picked', m.obi and m.obi.Fire and m.obi.Fire.name, 'Karin Obi');
+    check('S168 universal obi picked', type(m.obiUniversal) == 'table' and m.obiUniversal.name,
+        'Hachirin-no-obi');
+    check('S169 mp hold map: lowercased + ConvertHPtoMP counted',
+        (m.mp['uggalepih pendant'] or 0) .. '/' .. (m.mp['astral ring'] or 0) .. '/' .. (m.mp['mana club'] or 0),
+        '25/12/10');
+    check('S170 an x2 battery fills BOTH ring ladders',
+        m.mpBest.ring1 and m.mpBest.ring1[1].name == 'Astral Ring'
+        and m.mpBest.ring2 and m.mpBest.ring2[1].name == 'Astral Ring', true);
+    check('S171 weapon batteries stay OUT of mpBest (TP preservation)', m.mpBest.main, nil);
+    check('S172 craft skill gear tops its slot hq ladder',
+        m.craft.head and m.craft.head.Cooking and m.craft.head.Cooking.hq
+        and m.craft.head.Cooking.hq[1].name .. '/' .. m.craft.head.Cooking.hq[1].score, 'Chefs Hat/10');
+    check('S173a anti-HQ gear tops the nq goal',
+        m.craft.ring1 and m.craft.ring1.Cooking and m.craft.ring1.Cooking.nq
+        and m.craft.ring1.Cooking.nq[1].name .. '/' .. m.craft.ring1.Cooking.nq[1].score, 'Chefs Ring/100');
+    check('S173b ...and is BLOCKED from the hq goal', m.craft.ring1.Cooking.hq, nil);
+    check('S174a skill-up gear fills hq at gainFill (never beats real skill gear)',
+        m.craft.back and m.craft.back.Cooking and m.craft.back.Cooking.hq
+        and m.craft.back.Cooking.hq[1].name .. '/' .. m.craft.back.Cooking.hq[1].score, 'Bonze Cape/1');
+    check('S174b ...and tops the skillup goal at full weight',
+        m.craft.back.Cooking.skillup and m.craft.back.Cooking.skillup[1].score, 40);
+    check('S175 helm ladder is Surveyor-major (surv*10 + helm)',
+        m.helm and m.helm.body and m.helm.body[1].name .. '/' .. m.helm.body[1].score, 'Field Tunica/12');
+    check('S176 helm hat map: exact-name owned hat lands with its Surveyor',
+        m.helm.hats and m.helm.hats.Mining and m.helm.hats.Mining.name .. '/' .. m.helm.hats.Mining.surv,
+        'Miners Helmet/1');
+    check('S177 fish ladder is FishingSkill-major (x1000)',
+        m.fish and m.fish.body and m.fish.body[1].name .. '/' .. m.fish.body[1].score,
+        'Fishermans Tunica/1000');
+    check('S178 fishing WEAPONS ride the Main fish ladder',
+        m.fish.main and m.fish.main[1].name, 'Halieutica');
+    check('S179 rods stay OUT of the fish ladders (fishstate owns rod+bait)', m.fish.range, nil);
+    check('S180 craftGoal is always one of the three goals',
+        m.craftGoal == 'hq' or m.craftGoal == 'nq' or m.craftGoal == 'skillup', true);
+
+    os.remove(mpath);
+    if sep == '\\' then
+        os.execute('rmdir "tests\\tmp_autogear\\dlac" >nul 2>&1');
+        os.execute('rmdir "tests\\tmp_autogear" >nul 2>&1');
+    else
+        os.execute('rm -rf "tests/tmp_autogear" >/dev/null 2>&1');
+    end
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures > 0 then
