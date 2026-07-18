@@ -2804,3 +2804,11 @@ persists, the formula generalizes across subjobs (652 + 100 = 752 ->
 /BLM), proving the per-resolve re-aim -- with the /BLM naked number
 carrying no +10, which confirms the SCH-trait display theory from the
 other side. AO13/14 pin this second field shape. 1308 + 170 green.
+
+The last nail followed the same evening: Henrik watched the tick on
+/BLM -- works at 376, gone at 377. Two shapes, both breaking at exactly
+50.0% of maxmp with inclusive boundaries, and a threshold that MOVES
+with the subjob: the flat-value alternative is dead, the percent rule
+is tick-verified twice over, and server question #6 now carries both
+data points. Every number the automation computes is double-confirmed
+against the live server.
