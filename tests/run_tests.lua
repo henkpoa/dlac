@@ -2592,6 +2592,36 @@ end)();
     check('AP20 bucketOf unknown slot -> nil', wf.bucketOf(cands[1], 'Head'), nil);
 end)();
 
+-- APL. weaponfilter legacy Type spellings (Henrik 2026-07-18: Mindie's Lv20
+--   Savagery, Type = "Great Axe" WITH a space, vanished under the Great Axe
+--   filter while name search found it). Early gear.lua vocabularies wrote
+--   display forms; a scan never rewrites an existing entry, so real files mix
+--   'Great Axe'/'GreatAxe', 'Hand-to-Hand'/'HandToHand', 'Wind Instrument',
+--   bare 'String'... Buckets resolve through normalization (strip
+--   non-alphanumerics + casefold + alias) so both spellings are ONE bucket.
+-- ---------------------------------------------------------------------------
+(function()
+    local wf = dofile('gear/weaponfilter.lua');
+    -- THE field case: a spaced-Type record is visible under its canonical mark
+    check('APL1 Savagery: spaced Type buckets canonically',
+        wf.bucketOf({ Name = 'Savagery', Type = 'Great Axe' }, 'Main'), 'GreatAxe');
+    check('APL2 ...so the Great Axe mark shows it',
+        wf.visible({ Name = 'Savagery', Type = 'Great Axe' }, { GreatAxe = true }, 'Main'), true);
+    check('APL3 hyphen drift: Hand-to-Hand', wf.bucketOf({ Type = 'Hand-to-Hand' }, 'Main'), 'HandToHand');
+    check('APL4 case drift alone heals too', wf.bucketOf({ Type = 'greataxe' }, 'Main'), 'GreatAxe');
+    check('APL5 Range: spaced instrument', wf.bucketOf({ Type = 'Wind Instrument' }, 'Range'), 'WindInstrument');
+    check('APL6 Range: legacy bare String aliases', wf.bucketOf({ Type = 'String' }, 'Range'), 'StringInstrument');
+    check('APL7 Sub: one-hander with case drift', wf.bucketOf({ Type = 'sword' }, 'Sub'), 'Sword');
+    check('APL8 unknown types still pass through', wf.bucketOf({ Type = 'Chainsaw' }, 'Main'), 'Chainsaw');
+    -- both spellings in one pool -> ONE dropdown bucket, not two "Great Axe" twins
+    local buckets = wf.presentBuckets({
+        { Name = 'Savagery',     Type = 'Great Axe' },
+        { Name = 'Colossal Axe', Type = 'GreatAxe'  },
+    }, 'Main');
+    check('APL9 mixed spellings merge to one bucket', #buckets, 1);
+    check('APL10 ...the canonical one', buckets[1].key .. '/' .. buckets[1].label, 'GreatAxe/Great Axe');
+end)();
+
 -- AP2. weaponfilter Range + Ammo -- the F2b buckets (issue #17, PRD #14)
 --
 --   Range buckets off the catalog `Type`: Bows (Archery), Guns & Crossbows (Marksmanship

@@ -277,7 +277,18 @@ local function enrichGearFromCatalog()
                     if c ~= nil then
                         -- Pairing metadata (Sub-slot rule): older imported gear.lua
                         -- entries carry no Type / OneHanded -- take the catalog's.
-                        if v.Type == nil then v.Type = c.Type; end
+                        -- A LEGACY spelling of the same type ('Great Axe',
+                        -- 'Hand-to-Hand' vs the catalog's 'GreatAxe'/'HandToHand')
+                        -- heals to the catalog key too: old files carry the form
+                        -- they were first written with, and the drift made gear
+                        -- invisible to the canonical vocabulary (the weapon-type
+                        -- filter missed Mindie's spaced-Type Savagery, 07-18).
+                        if v.Type == nil then v.Type = c.Type;
+                        elseif c.Type ~= nil and v.Type ~= c.Type
+                           and string.lower((tostring(v.Type):gsub('%W', ''))) ==
+                               string.lower((tostring(c.Type):gsub('%W', ''))) then
+                            v.Type = c.Type;
+                        end
                         if v.OneHanded == nil then v.OneHanded = c.OneHanded; end
                         -- Pairing metadata (Range/Ammo rule): what a Range weapon can
                         -- fire this ammo as. gear.lua is an ownership record and never

@@ -2840,3 +2840,32 @@ work from any copy. Section headers are `CollapsingHeader`s with
 never leaks across sets/slots), text green while the mode is live
 (`entryModeOk`), rows indented 10px inside. MS0-MS16 pin the grouping
 rules headless. 1326 + 170 green.
+
+## Session "dead mode gates + the invisible Savagery" (2026-07-18, same evening)
+
+Two field reports within the hour of mode sections shipping. First:
+"if I change my Cycle mode, the non-existent modes are still there on
+the weapons." The delete flow already swept references (modeSetRefs /
+modeCondRefs) but VALUE edits never did -- so Save on an edited cycle
+now diffs the value list and sweeps every removed 'Name:Value' through
+the same machinery, then commits immediately (the delete-flow
+discipline: the trigger reload also purges a live stale value). The
+sweep also learned the v54 OR shape it never knew: whenAny legs are
+honoured -- a dead & leg collapses to OR-only, a dead | entry is
+removed, a rule with no live leg goes whole (MC0-18).
+
+Second: "why can I not find my level 20 great axe Savagery with the
+Great Axe filter?" -- because Mindie's owned record says Type = "Great
+Axe" WITH a space. Early gear.lua vocabularies wrote display forms;
+the importer now writes catalog keys ('GreatAxe'); a scan never
+rewrites an existing entry, so real files MIX spellings (Mindie: 8
+'Great Axe' + 6 'GreatAxe', plus 'Hand-to-Hand', 'Great Katana',
+'Wind Instrument', bare 'String'). The drifted form bucketed as an
+unknown type: invisible under the canonical mark AND a second
+identical-looking "Great Axe" entry in the dropdown. Fixed in both
+layers (the S21/S22 pattern): weaponfilter normalizes every bucket key
+(strip non-alphanumerics + casefold + alias, APL1-10), and
+enrichGearFromCatalog heals a spelling-drifted Type to the catalog key
+by Id. Note for the future: the LIVE ownership record is
+<char>\dlac\gear.lua -- <char>\gear.lua beside it is the pre-dlac
+legacy file and reads stale. 1355 + 170 green.

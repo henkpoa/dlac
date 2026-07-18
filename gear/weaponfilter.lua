@@ -73,11 +73,33 @@ local SUB_LABEL = {
     Sword  = 'Sword',  Axe    = 'Axe',    Katana = 'Katana', Club = 'Club',
 };
 
+-- Legacy Type spellings. Early gear.lua vocabularies wrote display forms ('Great Axe',
+-- 'Hand-to-Hand', 'Wind Instrument', even bare 'String') where the importer now writes
+-- catalog keys ('GreatAxe', ...) -- and a scan never rewrites an existing entry, so owned
+-- files keep whatever form they were first written with, mixed. Field case (Henrik,
+-- 2026-07-18): Mindie's Lv20 Savagery carried Type = "Great Axe" and vanished under the
+-- Great Axe filter (nil bucket) while the name search still found it -- and the drifted
+-- spelling ALSO surfaced as a second, identical-looking bucket in the dropdown. So every
+-- bucket key resolves through normalization first: strip non-alphanumerics, casefold,
+-- map to the canonical key. Unknown types still pass through untouched (the defensive
+-- trailing-bucket path keeps them visible).
+local TYPE_ALIAS = { string = 'StringInstrument' };   -- legacy Range oddity (bare 'String')
+local function normKey(s) return string.lower((tostring(s):gsub('%W', ''))); end
+local CANON = {};   -- normalized -> canonical key, across every slot's vocabulary
+for _, list in ipairs({ MAIN_ORDER, RANGE_ORDER, AMMO_ORDER, SUB_ORDER }) do
+    for _, k in ipairs(list) do CANON[normKey(k)] = k; end
+end
+for a, k in pairs(TYPE_ALIAS) do CANON[a] = k; end
+local function canonType(t)
+    if t == nil then return nil; end
+    return CANON[normKey(t)] or t;
+end
+
 -- Bucket a Sub-slot record: mirror of utils.classifySub for shields/grips, but a one-hander
 -- keeps its weapon Type instead of classifying to nil. A view narrowing only -- this NEVER
 -- decides eligibility (that stays utils.subSlotAllowed's call at equip time; HARD RULE 6).
 local function subBucket(rec)
-    local t = rec.Type;
+    local t = canonType(rec.Type);
     if t == 'Grip' or t == 'Shield' then return t; end
     if t == 'Sub' then                                 -- catalog collapses shield + grip here
         local n = string.lower(tostring(rec.Name or ''));
@@ -95,19 +117,19 @@ M.SLOTS = {
     Main = {
         order  = MAIN_ORDER,
         label  = MAIN_LABEL,
-        bucket = function(rec) return rec.Type; end,   -- the weapon category
+        bucket = function(rec) return canonType(rec.Type); end,   -- the weapon category
     },
     Range = {
         order  = RANGE_ORDER,
         label  = RANGE_LABEL,
-        bucket = function(rec) return rec.Type; end,   -- Archery / Marksmanship / Throwing / instrument / rod
+        bucket = function(rec) return canonType(rec.Type); end,   -- Archery / Marksmanship / Throwing / instrument / rod
     },
     Ammo = {
         order  = AMMO_ORDER,
         label  = AMMO_LABEL,
         -- AmmoType is the discriminator; absent = a Trinket (fired by nothing). Never nil,
         -- so every ammo-slot record buckets -- a stat stick can't fall through to "no bucket".
-        bucket = function(rec) return rec.AmmoType or AMMO_TRINKET; end,
+        bucket = function(rec) return canonType(rec.AmmoType) or AMMO_TRINKET; end,
     },
     Sub = {
         order  = SUB_ORDER,
