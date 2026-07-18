@@ -2869,3 +2869,19 @@ enrichGearFromCatalog heals a spelling-drifted Type to the catalog key
 by Id. Note for the future: the LIVE ownership record is
 <char>\dlac\gear.lua -- <char>\gear.lua beside it is the pre-dlac
 legacy file and reads stale. 1355 + 170 green.
+
+## Session addendum "Add more -- gated adds from a section" (2026-07-18)
+
+Henrik, minutes after trying the sections: "once a section has been
+created, add an Add more button to the right in the section box" -- so
+building a mode ladder stops being add-piece-then-open-Behaviour per
+item. The section header now carries an Add more button (submitted
+after the CollapsingHeader so the button wins the hover -- the imgui
+overlap idiom); it opens the SAME + Add picker with ui._addGate set to
+the section's mode, the picker announces the gate in green, and both
+add paths (real items and the dlac:* virtual rows) stamp the gate on
+the new row -- which therefore lands straight in the section. The
+plain + Add button clears the gate. He explicitly waved off the
+auto-primed weapon-type filter idea ("no need, I was just explaining a
+nice scenario") -- the filter stays manual, resetting to All each open
+as before.

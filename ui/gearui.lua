@@ -2788,6 +2788,11 @@ local function renderAddPopup(job, level)
         imgui.SameLine(0, 10); renderSortCombo('add');
         imgui.SameLine(0, 10);
         imgui.TextColored(COL.DIM, 'stays open -- add several; Esc / click outside closes');
+        -- Gated add (a section's "Add more"): say so loudly -- every click below
+        -- stamps this mode gate on the new row.
+        if ui._addGate ~= nil then
+            imgui.TextColored(COL.JOBS, '@' .. fmt.esc(tostring(ui._addGate)) .. '  -- every piece added is gated on this mode');
+        end
         -- Candidate pool first (the weapon-type filter's buckets derive from it, so it
         -- has to exist before the filter row renders). Sub takes the full paired pool.
         local gearKey = GEAR_OF[ui.setSelected] or ui.setSelected;
@@ -2920,7 +2925,8 @@ local function renderAddPopup(job, level)
                         -- No CloseCurrentPopup (Henrik): the popup stays open so several
                         -- pieces can be added in a row; the added entry drops out of the
                         -- pick list next frame (inList), which is the click feedback.
-                        list[#list + 1] = { rec = { Name = vd.name, Level = vd.level or 0, Virtual = true } };
+                        list[#list + 1] = { rec = { Name = vd.name, Level = vd.level or 0, Virtual = true },
+                                            mode = ui._addGate };   -- nil unless a section's gated add
                         M.working[ui.setSelected] = list;
                         _setDirty = true;
                     end
@@ -2934,7 +2940,7 @@ local function renderAddPopup(job, level)
             if renderAddRow(rec, i, useLevel, nW) then
                 -- No CloseCurrentPopup (Henrik): stay open for multi-add; the row
                 -- vanishes from the list next frame (now inList) as feedback.
-                list[#list + 1] = { rec = rec };
+                list[#list + 1] = { rec = rec, mode = ui._addGate };   -- gate nil unless a section's gated add
                 M.working[ui.setSelected] = list;
                 _setDirty = true;   -- added an item to the slot -> unsaved changes
             end
@@ -3140,7 +3146,7 @@ local function renderSetBuilder(job, level)
 
     local list = M.working[ui.setSelected] or {};
     imgui.TextColored(COL.HEADER, string.format('%s list (%d):', ui.setSelected, #list));
-    imgui.SameLine(); if imgui.Button('+ Add##setadd', { 60, 0 }) then ui._openAddPopup = true; ui.addSearch = { '' }; ui.addTypeFilter = {}; end   -- weapon-type filter resets to "All" each open (F2a/F2b)
+    imgui.SameLine(); if imgui.Button('+ Add##setadd', { 60, 0 }) then ui._openAddPopup = true; ui.addSearch = { '' }; ui.addTypeFilter = {}; ui._addGate = nil; end   -- weapon-type filter resets to "All" each open (F2a/F2b); no mode gate (that's the sections' Add more)
     imgui.SameLine(0, 8); renderSortCombo('setlist');
 
     local pick = bestByLevel(list, level);
@@ -3260,6 +3266,19 @@ local function renderSetBuilder(job, level)
             if act then imgui.PopStyleColor(1); end
             if imgui.IsItemHovered() then
                 imgui.SetTooltip('All rows in this list gated on this mode; the numbers are\ntheir item levels, so you can see the ladder at a glance.\nGreen = the mode is active right now (these rows beat the\nunconditional ones). A row gated on several modes appears\nunder each of its sections.');
+            end
+            -- "Add more" (Henrik 2026-07-18): the picker opens GATED -- every
+            -- piece added lands straight in this mode, no Behaviour round-trip
+            -- per item. Submitted after the header so the button wins the hover
+            -- (the imgui overlap idiom); themed font: ~9.5px/char + padding.
+            imgui.SameLine(imgui.GetWindowWidth() - 104);
+            if imgui.SmallButton('Add more##msadd_' .. sec.key) then
+                ui._openAddPopup = true; ui.addSearch = { '' };
+                ui.addTypeFilter = {};                  -- same All reset as + Add
+                ui._addGate = sec.name;
+            end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Add gear straight into this mode: every piece added in the picker\ngets the @' .. fmt.esc(sec.name) .. ' gate automatically.');
             end
             if open then
                 imgui.Indent(10);
