@@ -2513,6 +2513,62 @@ ladder belongs to the +1 (Salvage II) sets 77/78/80/81: 3/5/7/9. **(2) The
 label fallback was the bug:** "<first piece> +N-more" reads as an HQ item name
 ("Ares' Cuirass +4"), and it fired because piece names drift per source --
 owned resolves "Ares's Cuirass" (game), unowned "Ares Mask" (catalog short
+
+## Session "architecture review → refactor/deepening" (2026-07-18/19)
+
+**Theme:** /improve-codebase-architecture over the whole addon (four explorer
+walks: engine, GUI, gear data, test surface), then Henrik: *"You are the
+maintainer, do it all, but keep it in a separate branch where we test each
+step."* Eight deepening steps landed on `refactor/deepening`, one commit each,
+suite-gated (1355 → 1508 headless checks + 170 smoke); engine v68 → v71.
+
+**Landed (in order):**
+1. `gear\triggermodel.lua` — the Triggers tab's raw→edit-model translation,
+   pure (canonEvent injected, groupsmodel pattern). THE wipe contract (Commit
+   serializes the whole model; an uncarried section is erased — shipped once)
+   finally test-pinned: TM1-19.
+2. `gear\gearrecord.lua` — the Owned-gear record rules in one home: canonType/
+   healType (legacy-spelling heal), subTypeFromName, effectiveRSlot (ADR 0010),
+   enrich/mergedStats precedence. Five stamp sites delegate; REC0-26 include a
+   vocabulary-closure check (every filter bucket key canonizes to itself).
+   Deliberate alignment: gearexport now heals drifted Types like the GUI.
+3. `lib\safewrite.lua` — backup/tmp/validate/rename/restore written once
+   (gearimport carried it twice, near-copies); profiles' deleters ride
+   verifiedMove and REFUSE when the net is missing. setmanager's rotated
+   policy deliberately stays its own (one adapter = hypothetical seam). SW0-14.
+4. `gear\catalogindex.lua` — the one catalog walker: lazy load, rawIndex/
+   rawById, flat browse copies, the generic flatten (gearui's flattenGear is a
+   delegate; owned gear flattens through the same code). Engine still never
+   loads the catalog. CI0-12.
+5. ownedcache deepened (no parallel module — it already IS the ADR 0005 home):
+   verdict(rec, usable) with stored>locked>ok precedence + whereText caption
+   builder + _splitOverride = its first test reach ever (AV1-13). Noted, not
+   changed: automationsui lights an owned-but-STORED staff green.
+6. **v69** — obi + Oneiros decisions extracted pure (resolveObi /
+   resolveOneiros, the resolveStaff shape); the two field-calibrated gates
+   pinned headless (VG1-15, incl. the Mindie 714→357-inclusive boundary
+   verbatim).
+7. **v70** — the statefile seam: ensureStateFile behind the auto/acc/craft/
+   helm/fish/pin caches (six near-identical clones that had DRIFTED); corrupt-
+   write policy unified on pin's v44 DROP — craft/helm/fish/auto used to keep
+   stale state glued on forever after a torn write. _charDirOverride runs the
+   file-driven surface headless (SF0-9). Then `lib\statefile.lua` = the one
+   addon-side charDir (four watcher copies deleted); watcher write sites
+   deliberately untouched (3-line dances, churn > depth).
+8. **v71** — equipResolved: the five whole-table post-passes are named entries
+   run in M._postPassOrder (trinket-BEFORE-reserved is checkable adjacency,
+   PL1-3); the per-slot chain keeps its elseif precedence, now named; copy-on-
+   write + note built once. The review card's "11 uniform passes" sketch was
+   wrong about the shape — the per-slot chain is correct as-is and stayed.
+
+**Key decisions:** candidate 9 (watch-bar chassis) NOT built — its own deletion
+test failed (deleting fishbar deletes a feature, not a coupling); revisit if a
+fourth gear-system twin lands. The one deliberate behavior change on the
+branch: statefile corrupt policy = DROP everywhere (+ gearexport's Type heal);
+everything else bit-identical by test.
+
+**Standing:** branch `refactor/deepening`, 10 commits, unmerged. Field-test the
+engine steps (the Reload LAC banner will prompt — v71), then merge to main.
 names; the +1 sets even mix "Marduks Jubbah +1" with "Mdk. Dastanas +1"), so
 the all-pieces word-prefix never matched. setLabelOf rebuilt: majority
 first-word family via a drift-tolerant stem (lowercase, punctuation out,

@@ -5,7 +5,7 @@ dlac ("dynamic LuaAshitacast") is an Ashita v4 addon for CatsEyeXI that lets pla
 ## Language
 
 **Catalog**:
-The full CatsEyeXI equipment reference (`catalog.lua`), crawled from the live API — base-truth stats for every item, keyed by Id.
+The full CatsEyeXI equipment reference (`catalog.lua`), crawled from the live API — base-truth stats for every item, keyed by Id. Access goes through `gear\catalogindex` (the one walker: rawIndex/rawById/flat/flatten); the equip-time engine never loads it — gear.lua stamps carry what it needs.
 _Avoid_: item database, item list
 
 **Owned gear**:
@@ -77,7 +77,7 @@ CatsEyeXI's tiered staff-affinity stat (+1/+2). Elemental staves carry it for th
 _Avoid_: staff bonus (that's the related per-element potency mod)
 
 **Owned vs Available**:
-Two distinct facts about an item. *Owned* = present in any of the 17 containers (`ALL_CONTAINERS` — the truth `gear.lua` and `/dl prune` use). *Available* = in an equip-eligible bag right now (Inventory + the 8 Wardrobes, `SCAN_CONTAINERS`) — what the engine and the GUI's red-name marking use. Gear can be owned and unavailable (parked in storage).
+Two distinct facts about an item. *Owned* = present in any of the 17 containers (`ALL_CONTAINERS` — the truth `gear.lua` and `/dl prune` use). *Available* = in an equip-eligible bag right now (Inventory + the 8 Wardrobes, `SCAN_CONTAINERS`) — what the engine and the GUI's red-name marking use. Gear can be owned and unavailable (parked in storage). The combined per-surface answer is `ownedcache.verdict` (stored beats locked beats ok); panels map states onto their own palette — the state is the shared meaning, the colour is theirs.
 _Avoid_: "has it" without saying which of the two you mean
 
 **Plan vs Equip**:
@@ -86,6 +86,10 @@ _Avoid_: validating sets against current traits/state
 
 **Engine handshake**:
 `dispatch.M.VERSION`, mirrored through `modestate.lua`, lets the GUI detect that LuaAshitacast is still running a stale seeded engine and show the red "Reload LAC" banner. Bump it whenever seeded-file behavior changes.
+
+**Statefile**:
+A per-character `return {...}` mirror crossing the two Lua states (craftstate, helmstate, fishstate, pinstate, accstate, the autogear manifest): a watcher/GUI writes it, the engine hot-reloads it on a ~1s throttle through ONE reader (`ensureStateFile`, engine v70) with one policy — a torn/corrupt write DROPS that state until the next good write self-heals it. The trigger file is deliberately NOT a Statefile (hand-editable: it keeps the previous rules and says so). Addon-side path truth: `lib\statefile.charDir`.
+_Avoid_: config file, settings file
 
 **Set bonus**:
 A server-applied stat package for wearing N+ pieces of a gear set (`data\gearsets.lua`, 126 sets). Tiers are value-AT-count replacements (`tiers[min(count, max)]`, nil below `min`), counting is per SLOT (two copies count twice) and level-gated. Evaluated by `gear\geareffects.lua`; the game applies the real thing at equip time — dlac only plans, displays and scores it.
