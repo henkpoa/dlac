@@ -300,3 +300,34 @@ the test fixtures.
   (cap = (rank+1)×10), status line shows skill/cap; else skill only.
 - Fish Ranking contest (fully wired server-side, 23 eligible fish) — deliberately out
   of v1; the `contest` flag ships in fishdb for a later "contest corner".
+
+## 8. Field round 5 (2026-07-18) — rod priority, manual overrides, Clear
+
+Henrik's live findings (Moat Carp + Lu Shang's/Clothespole session), all shipped:
+
+- **Legendary rod tier** (`fishcalc.LEG_RANK` / `legRank()`): at equal risk the sort
+  runs Ebisu +1 > Ebisu > Lu Shang's +1 > Lu Shang's > the field. The tier sits BELOW
+  the risk sort on purpose — a fish that would snap Lu Shang's still gets the safe
+  base rod (F73). The live bug: Clothespole's raw `atk` outranked Lu Shang's on any
+  risk-0 fish (F70b). The panel's "safest rod" shopping hint now skips legendaries
+  (LEG_ANY) or it would pitch Ebisu for every carp. The no-target generic pick runs
+  legRank before the rating column too.
+- **Upgrade heartbeat**: `revalidate()` re-ranks every ~2s beat instead of reacting
+  only to a vanish — a rod added to an empty hand ("rod in your bags -- using X.") or
+  a better rod returning over a base one ("better rod in your bags -- switched to
+  X.") is adopted with no pill toggle (F79 pins the exact field scenario).
+- **Manual overrides (fish bar dropdowns)**: the rod and bait names in the bar are
+  buttons now — the popup lists what the bags hold (rods with live verdict tags at
+  the panel's effective-skill convention via `fishcalc.wornFishTotal`, moved there
+  from fishui; baits affine-first with power, off-affinity rows marked "target will
+  NOT bite this" but still pickable — manual beats automation, every day). A pick
+  PINS (`rodPin`/`baitPin`, persisted in fishstate; the engine reads only
+  `enabled/rod/bait/at`, extra keys ignored): auto never trades a pinned item while
+  it's in the bags; a vanish unpins; changing target unpins (a rod pinned for carp
+  could snap on the new fish). `*` on the bar and "(manual)" on the panel's
+  current-target line mark a held pin; the AUTO row hands the slot back.
+- **Clear, fixed for real**: round 4 reset `sel.*`, but the target-adopt line ran
+  later in the SAME frame with the stale `tgtId` local and re-pinned the old fish —
+  the spot list looked unclearable. Clear now also nils the frame's copy.
+
+Tests F70–F84; fishstate format gained `rodId/baitId/rodPin/baitPin`.

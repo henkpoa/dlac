@@ -17,6 +17,8 @@ local M = {};
 local _iok, imgui = pcall(require, 'imgui');
 if not _iok then return M; end
 local fw = require('dlac\\feature\\fishwatch');
+local _fcok, fcalc = pcall(require, 'dlac\\feature\\fishcalc');
+_fcok = _fcok and type(fcalc) == 'table';
 local _uok, uistyle = pcall(require, 'dlac\\ui\\uistyle');
 _uok = _uok and type(uistyle) == 'table';
 local _icok, icons = pcall(require, 'dlac\\ui\\itemicons');
@@ -38,10 +40,9 @@ local function onOffSwitch(on, id, tipOn, tipOff)
     return false;
 end
 
--- Bait count left (equippable bags), ~1s cached.
+-- Equippable-bag counts, ~1s cached (bait count + the dropdown lists).
 local _cnt = { at = 0, v = nil };
-local function baitCount(id)
-    if id == nil then return nil; end
+local function bagCounts()
     if os.clock() > _cnt.at then
         _cnt.at = os.clock() + 1;
         _cnt.v = nil;
@@ -51,7 +52,130 @@ local function baitCount(id)
             if type(t) == 'table' then _cnt.v = t; end
         end);
     end
-    return (_cnt.v ~= nil) and (_cnt.v[id] or 0) or nil;
+    return _cnt.v;
+end
+local function baitCount(id)
+    if id == nil then return nil; end
+    local t = bagCounts();
+    return (t ~= nil) and (t[id] or 0) or nil;
+end
+
+-- ---------------------------------------------------------------------------
+-- Manual override dropdowns (Henrik, field round 5: "manual overrides beat
+-- automation, every day"). Clicking the rod or bait name opens a popup of
+-- what the bags actually hold; a pick PINS (fishwatch holds it until the
+-- target changes or the item vanishes), AUTO hands the slot back.
+-- ---------------------------------------------------------------------------
+local function riskTag(v)
+    if v.ok then return 'SAFE'; end
+    local parts = {};
+    if (v.lose or 0) > 0 then parts[#parts + 1] = string.format('lose %d%%', v.lose); end
+    if (v.snap or 0) > 0 then parts[#parts + 1] = string.format('snap %d%%', v.snap); end
+    if (v.brk or 0) > 0 then parts[#parts + 1] = string.format('break %d%%', v.brk); end
+    return table.concat(parts, ', ');
+end
+local function itemName(id, fallback)
+    local n = type(fw._clientName) == 'function' and fw._clientName(id) or nil;
+    return n or fallback or ('item ' .. tostring(id));
+end
+
+local function rodPopup()
+    if not imgui.BeginPopup('##fbrodpop') then return; end
+    if imgui.Selectable('AUTO -- best rod for the target##fbrodauto') then fw.setRod(nil); end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Back to automatic: the server\'s own fail math picks the\nsafest owned rod (Ebisu > Lu Shang\'s > the field).');
+    end
+    local db = _fcok and fcalc.db() or nil;
+    local counts = bagCounts();
+    if db ~= nil and counts ~= nil then
+        imgui.Separator();
+        local ownedSet, any = {}, false;
+        for id in pairs(db.rods) do
+            if (counts[id] or 0) > 0 then ownedSet[id] = true; any = true; end
+        end
+        if not any then
+            imgui.TextDisabled('no rods in your bags');
+        else
+            local tid = fw.getTarget();
+            local f = tid ~= nil and db.fish[tid] or nil;
+            if f ~= nil then
+                local eff = (fw.playerFishSkill() or 0) + (fcalc.wornFishTotal ~= nil and fcalc.wornFishTotal(counts) or 0);
+                for _, r in ipairs(fcalc.rodsFor(f, eff, ownedSet)) do
+                    if r.owned then
+                        local lbl = string.format('%s  --  %s##fbrod%d',
+                            itemName(r.id, (r.rod or {}).n), riskTag(r.v), r.id);
+                        if imgui.Selectable(lbl) then fw.setRod(r.id); end
+                    end
+                end
+            else
+                local rows = {};
+                for id in pairs(ownedSet) do
+                    rows[#rows + 1] = { id = id, rod = db.rods[id] };
+                end
+                table.sort(rows, function(a, b)
+                    local ar = fcalc.legRank ~= nil and fcalc.legRank(a.id) or 0;
+                    local br = fcalc.legRank ~= nil and fcalc.legRank(b.id) or 0;
+                    if ar ~= br then return ar > br; end
+                    if ((a.rod or {}).rating or 0) ~= ((b.rod or {}).rating or 0) then
+                        return ((a.rod or {}).rating or 0) > ((b.rod or {}).rating or 0);
+                    end
+                    return ((a.rod or {}).n or '') < ((b.rod or {}).n or '');
+                end);
+                for _, r in ipairs(rows) do
+                    if imgui.Selectable(string.format('%s##fbrod%d', itemName(r.id, (r.rod or {}).n), r.id)) then
+                        fw.setRod(r.id);
+                    end
+                end
+            end
+        end
+    end
+    imgui.EndPopup();
+end
+
+local function baitPopup()
+    if not imgui.BeginPopup('##fbbaitpop') then return; end
+    local tid = fw.getTarget();
+    if imgui.Selectable('AUTO -- best bait for the target##fbbaitauto') then fw.setBait(nil); end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip(tid ~= nil
+            and 'Back to automatic: best-power owned bait for the target\n(an isolation-row pick stays while its stack lasts).'
+            or 'Back to automatic. Without a target fish, auto equips NO bait.');
+    end
+    local db = _fcok and fcalc.db() or nil;
+    local counts = bagCounts();
+    if db ~= nil and counts ~= nil then
+        imgui.Separator();
+        local affine, shownAffine = {}, 0;   -- baits the target actually bites, popup top
+        if tid ~= nil then
+            for _, e in ipairs(fcalc.baitsFor(tid)) do
+                if (counts[e.id] or 0) > 0 then
+                    affine[e.id] = true;
+                    shownAffine = shownAffine + 1;
+                    if imgui.Selectable(string.format('%s x%d  (power %d)##fbbait%d',
+                            itemName(e.id, (e.bait or {}).n), counts[e.id], e.power or 0, e.id)) then
+                        fw.setBait(e.id);
+                    end
+                end
+            end
+        end
+        local rest = {};
+        for id, b in pairs(db.baits) do
+            if (counts[id] or 0) > 0 and not affine[id] then
+                rest[#rest + 1] = { id = id, bait = b };
+            end
+        end
+        table.sort(rest, function(a, b) return ((a.bait or {}).n or '') < ((b.bait or {}).n or ''); end);
+        if #rest > 0 and shownAffine > 0 then imgui.Separator(); end
+        for _, e in ipairs(rest) do
+            local warn = (tid ~= nil) and '  -- target will NOT bite this' or '';
+            if imgui.Selectable(string.format('%s x%d%s##fbbait%d',
+                    itemName(e.id, (e.bait or {}).n), counts[e.id], warn, e.id)) then
+                fw.setBait(e.id);
+            end
+        end
+        if shownAffine == 0 and #rest == 0 then imgui.TextDisabled('no bait in your bags'); end
+    end
+    imgui.EndPopup();
 end
 
 local isOpen = { true };
@@ -86,22 +210,29 @@ function M.render()
                 end
             end
             imgui.Separator();
-            -- Row 2: rod + bait, icons first (the identity).
+            -- Row 2: rod + bait, icons first (the identity); the names are
+            -- BUTTONS now -- click for the manual-override dropdown (* marks
+            -- a manual pick holding the slot).
             if _icok then icons.renderIcon(rodId, 18); end
-            imgui.TextColored(rodName ~= nil and COL_TEXT or COL_DIM,
-                rodName ~= nil and tostring(rodName) or 'no rod picked');
-            if baitName ~= nil then
-                imgui.SameLine(0, 12);
-                if _icok then icons.renderIcon(baitId, 18); end
-                local n = baitCount(baitId);
-                local col = COL_TEXT;
-                if n ~= nil and n == 0 then col = COL_WARN; end
-                imgui.TextColored(col, string.format('%s%s', tostring(baitName),
-                    n ~= nil and (' x' .. n) or ''));
-                if imgui.IsItemHovered() then
-                    imgui.SetTooltip('Bait in your equippable bags. A used-up stack re-equips\nitself; when the LAST one goes, the next owned bait for the\ntarget takes over (chat line says so).');
-                end
+            local rodLbl = (rodName ~= nil and tostring(rodName) or 'no rod picked')
+                           .. (fw.rodPinned() and ' *' or '');
+            if imgui.SmallButton(rodLbl .. '##fbrodbtn') then imgui.OpenPopup('##fbrodpop'); end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Click: pick the rod yourself. A manual pick (*) beats auto\nuntil the target changes or the rod leaves your bags.');
             end
+            rodPopup();
+            imgui.SameLine(0, 12);
+            if _icok and baitId ~= nil then icons.renderIcon(baitId, 18); end
+            local n = baitCount(baitId);
+            local baitLbl = (baitName ~= nil
+                    and (tostring(baitName) .. (n ~= nil and (' x' .. n) or ''))
+                    or 'no bait')
+                    .. (fw.baitPinned() and ' *' or '');
+            if imgui.SmallButton(baitLbl .. '##fbbaitbtn') then imgui.OpenPopup('##fbbaitpop'); end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Bait in your equippable bags -- a used-up stack re-equips\nitself; the LAST one gone auto-switches (chat line says so).\nClick: pick the bait yourself. A manual pick (*) beats auto\nwhile its stack lasts.');
+            end
+            baitPopup();
             -- Row 3: skill + VP breadcrumb.
             local sk = fw.playerFishSkill();
             local vp = fw.venturePoints();

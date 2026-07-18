@@ -111,8 +111,21 @@ function M.verdictFor(fish, rod, skill)
              ok = (lose == 0 and snap == 0 and brk == 0) };
 end
 
+-- The legendary rods outrank everything at equal risk (Henrik's ruling
+-- 2026-07-18: "Lu Shang's always beats base rods, Ebisu always beats Lu
+-- Shang's"). The tier sits BELOW the risk sort on purpose: a fish that
+-- would snap Lu Shang's still gets the safe base rod recommended.
+local LEG_RANK = {
+    [19321] = 4,   -- Ebisu Rod +1 (unobtainable here, but if ever owned...)
+    [17011] = 3,   -- Ebisu Fishing Rod
+    [19320] = 2,   -- Lu Shang's Fishing Rod +1
+    [17386] = 1,   -- Lu Shang's Fishing Rod
+};
+function M.legRank(id) return LEG_RANK[id] or 0; end
+
 -- Rank every rod in the db for a target fish. ownedSet is { [rodItemId]=true }
 -- (or nil = rank all). Sort: clean verdicts first, then least total risk, then
+-- the legendary-rod tier (Ebisu > Lu Shang's > the field), then
 -- legendary-matches-legendary, then mini-game muscle (attack incl. legendary
 -- bonus when both sides are legendary, then hook time), then the server's own
 -- rating column, then name -- deterministic, no magic scalars.
@@ -131,6 +144,8 @@ function M.rodsFor(fish, skill, ownedSet)
     table.sort(out, function(a, b)
         if a.v.ok ~= b.v.ok then return a.v.ok; end
         if a.risk ~= b.risk then return a.risk < b.risk; end
+        local aRank, bRank = LEG_RANK[a.id] or 0, LEG_RANK[b.id] or 0;
+        if aRank ~= bRank then return aRank > bRank; end
         local aLeg = ((fish.leg or 0) ~= 0 and (a.rod.leg or 0) ~= 0) and 1 or 0;
         local bLeg = ((fish.leg or 0) ~= 0 and (b.rod.leg or 0) ~= 0) and 1 or 0;
         if aLeg ~= bLeg then return aLeg > bLeg; end
@@ -325,6 +340,27 @@ end
 function M.bonusFor(itemId)
     local db = M.db(); if db == nil then return nil; end
     return (db.gearBonus or {})[itemId];
+end
+
+-- Worn-at-once Fish+ total from a bag-counts table: per slot the best owned
+-- Mod::FISH piece (rings twice when two are owned -- two fingers). Rod/bait
+-- slots excluded -- they're the pick, not the bonus. Shared by fishui's
+-- status label and fishbar's verdict tags (one effective-skill convention).
+function M.wornFishTotal(counts)
+    local db = M.db();
+    if db == nil or type(counts) ~= 'table' then return 0; end
+    local bySlot = {};
+    for id, g in pairs(db.gearBonus or {}) do
+        local f = tonumber(g.fish) or 0;
+        if f > 0 and (counts[id] or 0) >= 1 and g.sl ~= 'Range' and g.sl ~= 'Ammo' then
+            local cur = bySlot[g.sl];
+            local pair = (g.sl == 'Ring' and (counts[id] or 0) >= 2) and f * 2 or f;
+            if cur == nil or pair > cur then bySlot[g.sl] = pair; end
+        end
+    end
+    local sum = 0;
+    for _, v in pairs(bySlot) do sum = sum + v; end
+    return sum;
 end
 
 return M;

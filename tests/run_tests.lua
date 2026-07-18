@@ -4317,6 +4317,83 @@ end)();
     cw2.onCurrencyPacket(pkt);
     check('F68 fishing GP parsed at 0x20', cw2.guildPointsFor('Fishing'), 1111);
     check('F69 craft offsets unmoved', cw2.guildPointsFor('Woodworking'), 2555);
+
+    -- field round 5 (2026-07-18): the legendary tier, manual pins, and the
+    -- upgrade heartbeat. Henrik's ruling: "Lu Shang's always beats base rods,
+    -- Ebisu always beats Lu Shang's" -- and no pill toggle to get there.
+
+    -- the live bug verbatim: Moat Carp at high skill is risk-0 on everything,
+    -- and the old sort let Clothespole's raw attack outrank Lu Shang's
+    local poleId = nil;
+    for id, r in pairs(db.rods) do
+        if (r.n or ''):lower() == 'clothespole' then poleId = id; break; end
+    end
+    check('F70 Clothespole ships', poleId ~= nil, true);
+    if poleId ~= nil then
+        local best5 = fcalc.bestOwnedRod(db.fish[4401], 100, { [poleId] = true, [17386] = true });
+        check('F70b Lu Shang over Clothespole on the carp', best5 and best5.id, 17386);
+    end
+    local bestLeg = fcalc.bestOwnedRod(db.fish[4401], 100, { [17386] = true, [17011] = true });
+    check('F71 Ebisu over Lu Shang', bestLeg and bestLeg.id, 17011);
+    check('F72 legRank tiers ordered', fcalc.legRank(17011) > fcalc.legRank(17386)
+        and fcalc.legRank(17386) > fcalc.legRank(17390), true);
+    -- risk STILL beats the tier: a fish that would snap Lu Shang's gets the
+    -- safe base rod recommended (the whole point of the verdict system)
+    local realDb = db;
+    fcalc._setDb({ fish = { [1] = { n = 'Brutus', sk = 10, rank = 40, sz = 1 } },
+                   rods = { [17386] = { n = 'Lu', leg = 1, brk = 1, sz = 0, minR = 1, maxR = 28 },
+                            [900] = { n = 'Big Safe Rod', sz = 1, minR = 1, maxR = 45, brk = 1 } },
+                   baits = {}, aff = {}, pools = {}, zones = {}, mobs = {} });
+    local rRisk = fcalc.rodsFor(fcalc.db().fish[1], 100, { [17386] = true, [900] = true });
+    check('F73 risk beats the legendary tier', rRisk[1] and rRisk[1].id, 900);
+    fcalc._setDb(realDb);
+
+    -- manual pins (the fish bar dropdowns): a pin holds through the heartbeat,
+    -- falls back to auto when the item vanishes, and target changes unpin
+    fw._ownedAvail = { [17391] = 1, [17390] = 1, [17396] = 99 };
+    fw.setTarget(4401);
+    fw.setEnabled(true);
+    check('F74 auto rod first (least-risk Yew)', select(1, fw.getRod()), 17390);
+    fw.setRod(17391);                          -- the user says Willow
+    check('F75 manual rod set + pinned', select(1, fw.getRod()) == 17391 and fw.rodPinned(), true);
+    fw.revalidate();                           -- the beat must NOT trade it back
+    check('F76 pinned rod survives the heartbeat', select(1, fw.getRod()), 17391);
+    fw._ownedAvail[17391] = nil;               -- the pinned rod vanishes
+    fw.revalidate();
+    check('F77 vanished pin falls back to auto', select(1, fw.getRod()) == 17390 and not fw.rodPinned(), true);
+    fw._ownedAvail = { [17391] = 1, [17396] = 99 };   -- Yew gone, only Willow
+    fw.revalidate();
+    check('F78 vanish still re-picks what exists', select(1, fw.getRod()), 17391);
+    fw._ownedAvail[17390] = 1;                 -- the better (least-risk) Yew RETURNS
+    fw.revalidate();                           -- no vanish, no toggle -- just the beat
+    check('F79 better rod adopted on the beat (the Lu Shang bug)', select(1, fw.getRod()), 17390);
+    fw.setRod(17391);                          -- pin Willow again...
+    fw.setTarget(4401);                        -- ...then change target
+    check('F80 target change unpins', fw.rodPinned(), false);
+    -- pinned bait is absolute while stocked -- even off-affinity (the user
+    -- may know something fishdb doesn't)
+    local offBait = nil;
+    for id in pairs(db.baits) do if (db.aff[id] or {})[4401] == nil then offBait = id; break; end end
+    check('F81 an off-affinity bait exists', offBait ~= nil, true);
+    if offBait ~= nil then
+        fw._ownedAvail[offBait] = 3;
+        fw.setBait(offBait);
+        check('F81b off-affinity manual bait honoured', select(1, fw.getBait()), offBait);
+        fw.revalidate();
+        check('F82 pinned bait survives the heartbeat', select(1, fw.getBait()), offBait);
+        fw.setBait(nil);
+        check('F83 AUTO returns the affine pick', select(1, fw.getBait()), 17396);
+        fw._ownedAvail[offBait] = nil;
+    end
+    fw.setEnabled(false);
+
+    -- wornFishTotal moved into fishcalc (fishui + fishbar share it)
+    fcalc._setDb({ gearBonus = { [1] = { sl = 'Body', fish = 2 }, [2] = { sl = 'Body', fish = 1 },
+                                 [3] = { sl = 'Ring', fish = 1 }, [4] = { sl = 'Range', fish = 5 } },
+                   fish = {}, rods = {}, baits = {}, aff = {}, pools = {} });
+    check('F84 wornFishTotal: best body + doubled ring, rod excluded',
+        fcalc.wornFishTotal({ [1] = 1, [2] = 1, [3] = 2, [4] = 1 }), 4);
+    fcalc._setDb(realDb);
 end)();
 
 -- ---------------------------------------------------------------------------

@@ -60,23 +60,12 @@ local function counts(deps)
 end
 local function owned(oc, id) return oc ~= nil and (oc[id] or 0) >= 1; end
 
--- Worn-at-once Fish+ total: per slot the best owned Mod::FISH piece (rings
--- twice when two are owned -- two fingers).
+-- Worn-at-once Fish+ total: per slot the best owned Mod::FISH piece. The
+-- math lives in fishcalc.wornFishTotal now (the fish bar's rod-dropdown
+-- verdict tags share the same effective-skill convention).
 local function fishTotal(oc)
-    if not _fcok then return 0; end
-    local db = fcalc.db(); if db == nil or oc == nil then return 0; end
-    local bySlot = {};
-    for id, g in pairs(db.gearBonus or {}) do
-        local f = tonumber(g.fish) or 0;
-        if f > 0 and owned(oc, id) and g.sl ~= 'Range' and g.sl ~= 'Ammo' then
-            local cur = bySlot[g.sl];
-            local pair = (g.sl == 'Ring' and (oc[id] or 0) >= 2) and f * 2 or f;
-            if cur == nil or pair > cur then bySlot[g.sl] = pair; end
-        end
-    end
-    local sum = 0;
-    for _, v in pairs(bySlot) do sum = sum + v; end
-    return sum;
+    if not _fcok or type(fcalc.wornFishTotal) ~= 'function' then return 0; end
+    return fcalc.wornFishTotal(oc);
 end
 
 function M.coverage(deps)
@@ -408,6 +397,10 @@ function M.render(deps, availW)
             sel.id = nil;             -- the panel's view too: a clean start
             sel.q[1] = '';
             sel.showAllIso = false;   -- collapsed spot list next time as well
+            -- and the FRAME's copy: the adopt line below ran in this same
+            -- frame with the stale local and re-pinned the old fish -- the
+            -- spot list looked unclearable (Henrik, field round 5).
+            tgtId, tgtName = nil, nil;
         end
     end
     -- the pill, right here where the eye already is (label shortened so the
@@ -469,8 +462,11 @@ function M.render(deps, availW)
         if _fwok and tgtId == fid then
             local _, rodN = fw.getRod();
             local _, baitN = fw.getBait();
-            imgui.TextColored(GREEN_OWNED, esc(string.format('current target -- rod: %s, bait: %s',
-                tostring(rodN or 'none'), tostring(baitN or 'none'))));
+            local rp = type(fw.rodPinned) == 'function' and fw.rodPinned();
+            local bp = type(fw.baitPinned) == 'function' and fw.baitPinned();
+            imgui.TextColored(GREEN_OWNED, esc(string.format('current target -- rod: %s%s, bait: %s%s',
+                tostring(rodN or 'none'), rp and ' (manual)' or '',
+                tostring(baitN or 'none'), bp and ' (manual)' or '')));
         end
 
         -- rod verdicts (server fail math)
@@ -495,7 +491,9 @@ function M.render(deps, availW)
                 imgui.SameLine(0, 8);
                 imgui.TextColored(col, esc(label));
             end
-            if suggest == nil and r.v.ok and not NO_SUGGEST[r.id] then suggest = r; end
+            -- LEG_ANY excluded: the legendary tier tops every risk-0 ranking
+            -- now, and "go quest Ebisu" is no shopping hint for a carp.
+            if suggest == nil and r.v.ok and not NO_SUGGEST[r.id] and not LEG_ANY[r.id] then suggest = r; end
         end
         if shownOwned == 0 then imgui.TextColored(COL_ERR, 'you own no fishing rod.'); end
         -- Only pitch a buy when you actually lack a safe rod for this fish.

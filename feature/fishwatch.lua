@@ -101,6 +101,7 @@ M.target = nil;         -- fishdb fish id (nil = no target: gear + best generic 
 M.targetName = nil;     -- display name (fishdb)
 M.rodId, M.rod = nil, nil;     -- chosen rod: item id + CLIENT name
 M.baitId, M.bait = nil, nil;   -- chosen bait: item id + CLIENT name
+M.rodPin, M.baitPin = false, false;   -- manual dropdown picks (beat auto while owned)
 M._enabledAt = 0;
 M._rescanned = false;
 local _stateLoaded = false;
@@ -115,9 +116,12 @@ local function saveState()
         if p == nil then return; end
         local f = io.open(p, 'wb'); if f == nil then return; end
         f:write(string.format(
-            'return { enabled = %s, at = %d, target = %d, targetName = %q, rod = %q, bait = %q }\n',
+            'return { enabled = %s, at = %d, target = %d, targetName = %q, rod = %q, bait = %q,'
+            .. ' rodId = %d, baitId = %d, rodPin = %s, baitPin = %s }\n',
             tostring(M.enabled == true), M._enabledAt or 0, M.target or 0,
-            tostring(M.targetName or ''), tostring(M.rod or ''), tostring(M.bait or '')));
+            tostring(M.targetName or ''), tostring(M.rod or ''), tostring(M.bait or ''),
+            M.rodId or 0, M.baitId or 0,
+            tostring(M.rodPin == true), tostring(M.baitPin == true)));
         f:close();
     end);
 end
@@ -139,6 +143,10 @@ function M.loadState()
                 if type(t.targetName) == 'string' and t.targetName ~= '' then M.targetName = t.targetName; end
                 if type(t.rod) == 'string' and t.rod ~= '' then M.rod = t.rod; end
                 if type(t.bait) == 'string' and t.bait ~= '' then M.bait = t.bait; end
+                if type(t.rodId) == 'number' and t.rodId > 0 then M.rodId = t.rodId; end
+                if type(t.baitId) == 'number' and t.baitId > 0 then M.baitId = t.baitId; end
+                M.rodPin = t.rodPin == true;
+                M.baitPin = t.baitPin == true;
             end
         end
     end);
@@ -219,20 +227,26 @@ function M.autoPick(keepBait)
     local skill = M.playerFishSkill() or 0;
     local f = (M.target ~= nil) and db.fish[M.target] or nil;
 
-    -- Rod: verdict-best owned for the target; no target -> highest server
-    -- rating owned (the generic "best fishing rod you have").
+    -- Rod: a MANUAL pick (fish bar dropdown) holds while it's in the bags;
+    -- otherwise verdict-best owned for the target, or -- no target -- the
+    -- legendary tier first (Ebisu > Lu Shang's, always preferred), then
+    -- highest server rating (the generic "best fishing rod you have").
+    local rodPinned = M.rodPin == true and M.rodId ~= nil and (avail[M.rodId] or 0) > 0;
     local newRodId = nil;
-    local rods = ownedRodSet(avail);
+    local rods = (not rodPinned) and ownedRodSet(avail) or nil;
     if rods ~= nil then
         if f ~= nil then
             local best = fc.bestOwnedRod(f, skill, rods);
             if best ~= nil then newRodId = best.id; end
         else
-            local bestRating = -1;
+            local bestRank, bestRating = -1, -1;
             for id in pairs(rods) do
                 local r = db.rods[id];
+                local rank = (type(fc.legRank) == 'function') and fc.legRank(id) or 0;
                 local rating = (r and r.rating) or 0;
-                if rating > bestRating then bestRating, newRodId = rating, id; end
+                if rank > bestRank or (rank == bestRank and rating > bestRating) then
+                    bestRank, bestRating, newRodId = rank, rating, id;
+                end
             end
         end
     end
@@ -246,8 +260,12 @@ function M.autoPick(keepBait)
     -- burn stacks). Keep a still-stocked explicit choice; else best power
     -- owned for the target.
     if f ~= nil then
-        local keep = keepBait == true and M.baitId ~= nil and (avail[M.baitId] or 0) > 0
-                     and (db.aff[M.baitId] or {})[M.target] ~= nil;
+        -- A pinned bait is absolute while stocked (manual beats automation,
+        -- even off-affinity: the user may know something fishdb doesn't).
+        local baitPinned = M.baitPin == true and M.baitId ~= nil and (avail[M.baitId] or 0) > 0;
+        local keep = baitPinned
+                     or (keepBait == true and M.baitId ~= nil and (avail[M.baitId] or 0) > 0
+                         and (db.aff[M.baitId] or {})[M.target] ~= nil);
         if not keep then
             local pick = nil;
             for _, e in ipairs(fc.baitsFor(M.target)) do
@@ -268,13 +286,17 @@ end
 function M.setTarget(fishid, baitid)
     M.loadState();
     local db = _fcok and fc.db() or nil;
+    -- Changing (or clearing) the target drops both manual pins: a rod pinned
+    -- for carp could SNAP on the new fish -- back to the verdict math.
     if fishid == nil then
         M.target, M.targetName = nil, nil;
         M.baitId, M.bait = nil, nil;
+        M.rodPin, M.baitPin = false, false;
         saveState();
         return;
     end
     if db == nil or db.fish[fishid] == nil then return; end
+    M.rodPin, M.baitPin = false, false;
     M.target = fishid;
     M.targetName = db.fish[fishid].n;
     if baitid ~= nil and (db.aff[baitid] or {})[fishid] ~= nil then
@@ -285,6 +307,45 @@ function M.setTarget(fishid, baitid)
     ensureManifestFresh();
     saveState();
 end
+
+-- Manual overrides (the fish bar dropdowns -- Henrik's rule: manual beats
+-- automation, every day). A pin holds while the item is in the bags; a
+-- vanish unpins (the heartbeat falls back to auto), and changing target
+-- unpins too. id = nil -> back to auto for that slot.
+function M.setRod(id)
+    M.loadState();
+    local db = _fcok and fc.db() or nil;
+    if id == nil then
+        M.rodPin = false;
+        M.autoPick(true);
+        saveState();
+        return;
+    end
+    if db == nil or db.rods[id] == nil then return; end
+    M.rodId = id;
+    M.rod = M._clientName(id) or (db.rods[id] or {}).n;
+    M.rodPin = true;
+    saveState();
+end
+function M.setBait(id)
+    M.loadState();
+    local db = _fcok and fc.db() or nil;
+    if id == nil then
+        M.baitPin = false;
+        -- auto with no target means NO bait (generic bait guessing burns stacks)
+        if M.target == nil then M.baitId, M.bait = nil, nil; end
+        M.autoPick(false);
+        saveState();
+        return;
+    end
+    if db == nil or db.baits[id] == nil then return; end
+    M.baitId = id;
+    M.bait = M._clientName(id) or (db.baits[id] or {}).n;
+    M.baitPin = true;
+    saveState();
+end
+function M.rodPinned() M.loadState(); return M.rodPin == true; end
+function M.baitPinned() M.loadState(); return M.baitPin == true; end
 
 -- The pill (bar + panel). Enabling fishing turns the CRAFT and HELM switches
 -- off (one overlay at a time). One-way requires only (neither ever requires
@@ -311,10 +372,12 @@ function M.setEnabled(on)
     saveState();
 end
 
--- Bag heartbeat: while dressed, a vanished rod or an emptied bait stack
--- re-picks and rewrites the state (the engine re-reads within a second).
--- A same-name restock needs nothing -- the overlay re-asserts the name every
--- dispatch and LAC pulls the next stack.
+-- Bag heartbeat: while dressed, re-rank EVERY beat (field round 5: the old
+-- vanish-only check meant a rod added to an empty hand -- or Lu Shang's
+-- returning over a base rod -- sat unnoticed until a pill toggle). A better
+-- rod arriving in your bags is adopted on the spot; manual pins stay put
+-- while owned; a same-name bait restock still needs nothing (the overlay
+-- re-asserts the name every dispatch and LAC pulls the next stack).
 function M.revalidate()
     M.loadState();
     if not M.enabled then return; end
@@ -322,21 +385,31 @@ function M.revalidate()
     if avail == nil then return; end
     local rodGone = M.rodId ~= nil and (avail[M.rodId] or 0) == 0;
     local baitGone = M.baitId ~= nil and (avail[M.baitId] or 0) == 0;
-    if not rodGone and not baitGone then return; end
-    local oldRod = M.rod;
+    -- a pin can't hold air: vanished manual picks fall back to auto
+    if rodGone then M.rodPin = false; end
+    if baitGone then M.baitPin = false; end
+    local oldRodId, oldBait = M.rodId, M.bait;
     if rodGone then M.rodId, M.rod = nil, nil; end
     if baitGone then M.baitId, M.bait = nil, nil; end
-    -- keepBait unless the BAIT is what emptied: a rod-only loss must never
+    -- keepBait unless the BAIT is what emptied: a rod-side change must never
     -- trade the user's explicit isolation bait up to a stronger one (the
     -- whole point of keepBait; false here did exactly that, silently).
-    M.autoPick(not baitGone);
-    if rodGone and M.rod ~= oldRod then
-        say(string.format('fishing rod gone -- switched to %s.', tostring(M.rod or 'nothing')));
+    local changed = M.autoPick(not baitGone);
+    if not changed and not rodGone and not baitGone then return; end
+    if M.rodId ~= oldRodId then
+        if rodGone then
+            say(string.format('fishing rod gone -- switched to %s.', tostring(M.rod or 'nothing')));
+        elseif oldRodId == nil then
+            say(string.format('rod in your bags -- using %s.', tostring(M.rod)));
+        elseif M.rod ~= nil then
+            say(string.format('better rod in your bags -- switched to %s.', tostring(M.rod)));
+        end
     end
-    if baitGone then
+    if M.bait ~= oldBait then
         if M.bait ~= nil then
-            say(string.format('bait ran out -- switched to %s.', tostring(M.bait)));
-        else
+            say(string.format(baitGone and 'bait ran out -- switched to %s.' or 'bait: now using %s.',
+                tostring(M.bait)));
+        elseif baitGone then
             say('bait ran out -- nothing suitable left in your bags.');
         end
     end

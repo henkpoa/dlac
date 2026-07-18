@@ -298,7 +298,7 @@ agent; the per-repo setup lives in `docs/agents/`.
   Validate any new API field against `tools/api_cache/<id>.json` for an item you KNOW is
   unimplemented before trusting it. Runbook: `tools/README.md` "The junk rows";
   provenance: architecture.md's catalog section; story: history.md round 2.
-- **main**: healthy; **1234 tests green + 170 smoke_ui** — current as of 2026-07-18
+- **main**: healthy; **1253 tests green + 170 smoke_ui** — current as of 2026-07-18
   (the automation block — manifest machinery + the Automations MAIN tab — now lives in
   its own `ui/automationsui.lua`; seams `rescanAutogear`/`manifestStale`/`currentFmt`
   and the tab entry `renderTab` moved WITH it, no forwarders left on triggersui;
@@ -376,7 +376,13 @@ agent; the per-repo setup lives in `docs/agents/`.
     (feature), `fishui`/`fishbar` (ui, zero new assets — item icons), fishdb
     (data). The Mariners set (ids beside HELM's Plain block) + Brigands
     Eyepatch = fishing's VP tier — the panel's fourth column. Field tests
-    pending: design doc §6.
+    pending: design doc §6. Field round 5 (same day, design doc §8): legendary
+    rod tier in the sort (Ebisu > Lu Shang's > the field, still BELOW risk),
+    the heartbeat re-ranks every ~2s beat (a better/first rod is adopted with
+    no pill toggle), fish bar rod/bait names are dropdown buttons with PINNING
+    manual overrides (`rodPin`/`baitPin` persisted in fishstate, unpinned by
+    vanish or target change; `*`/"(manual)" markers), and Clear's same-frame
+    stale-local re-adopt is fixed (F70–F84).
   commits. Local-only pending GM verdict; strip TEMP probes (`/dlmv`, RMB debug,
   branch-print) before any merge. The Storage-into-Provenance packet experiment is
   designed, unrun (docs/design/storage-move.md "open questions").

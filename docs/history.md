@@ -2566,3 +2566,40 @@ map, FishingSkill-major fish ladders with Main IN and rods OUT, and the
 fmtver/manifestStale round trip. The fmtver-5 silent-abort bug class -- the
 writer dying inside its pcall and the manifest never regenerating -- can no
 longer ship unseen. 1234 + 170 green.
+
+### Field round 5: the rod that wouldn't come back (2026-07-18)
+
+Henrik at the pond with the exact scenario the system exists for: target Moat
+Carp, remove Lu Shang's, add Clothespole, take Lu Shang's back -- and dlac
+kept fishing with the Clothespole. Two real defects and a missing feature
+behind one symptom. The sort: `rodsFor` had no idea legendary rods ARE the
+prioritization -- on a risk-0 fish the atk tiebreaker put Clothespole over Lu
+Shang's. Henrik's ruling became `LEG_RANK` (Ebisu +1 > Ebisu > Lu Shang's +1 >
+Lu Shang's > the field), sitting deliberately BELOW the risk sort: a fish
+that would snap Lu Shang's still gets the safe base rod (F73 pins that
+primacy). The heartbeat: `revalidate` only acted when the CURRENT rod
+vanished -- with rodId already nil (or a better rod merely arriving) it
+early-returned forever, which is why only a pill toggle re-picked. It
+re-ranks every ~2s beat now; the field scenario is F79, and the chat says
+"better rod in your bags -- switched to" when it happens. The suggestion
+line needed a guard the same minute the tier landed: overall-best is now
+always Ebisu, and "go quest Ebisu" is no shopping hint for a carp -- LEG_ANY
+excluded from `suggest`.
+
+The missing feature was Henrik's second ask made law: manual overrides >
+automation, every day. The fish bar's rod and bait names are BUTTONS now --
+popups listing what the bags actually hold (rods with live verdict tags at
+the panel's effective-skill convention -- `wornFishTotal` moved to fishcalc
+so both sides share it; baits affine-first with power, off-affinity rows
+marked "target will NOT bite this" but still pickable). A pick PINS:
+`rodPin`/`baitPin` persist in fishstate (the engine reads only
+enabled/rod/bait/at), auto never trades a pinned item while it's owned, a
+vanish unpins, and changing target unpins -- a rod pinned for carp could
+snap on the new fish. `*` in the bar, "(manual)" on the panel.
+
+And Clear, round three: the round-4 reset was CORRECT and still lost -- the
+adopt line (`sel.id = tgtId` when the panel has no view) ran later in the
+same frame with the stale `tgtId` local and re-pinned the old fish, so the
+spot list looked unclearable. The fix is one line: Clear nils the frame's
+copy too. fix/fish-isolation-bait was field-confirmed the same message and
+fast-forwarded into main first. 1253 + 170 green.
