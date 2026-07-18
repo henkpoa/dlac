@@ -4555,6 +4555,17 @@ end)();
     TEST_PLAYER = { MP = 308 };
     check('AO4 meritless 308 stays off', (rv('dlac:AutoOneiros', ctx75, 'Sub')), nil);
 
+    -- second FIELD-VERIFIED shape (Henrik 2026-07-18, post-shutdown login):
+    -- WHM75/BLM37, wire-learned 10 merits -> 652 + 100 = 752 -> aim 376,
+    -- reported by /dl merits and MP-checked live. Pins the sub-swap re-aim.
+    dispatchM._autoOverride = { oneiros = { name = 'Oneiros Grip', level = 75 }, mpMerits = 10 };
+    nmpM.readJobs = function() return 3, 75, 4, 37; end   -- WHM75/BLM37
+    TEST_PLAYER = { MP = 376 };
+    check('AO13 field pin 2: /BLM37 base 752 -> grip at 376', rv('dlac:AutoOneiros', ctx75, 'Sub'), 'Oneiros Grip');
+    TEST_PLAYER = { MP = 377 };
+    check('AO14 field pin 2: 377 -> fallback', (rv('dlac:AutoOneiros', ctx75, 'Sub')), nil);
+    nmpM.readJobs = function() return 3, 75, 20, 37; end  -- back to /SCH for anything below
+
     TEST_PLAYER = { MP = 100 };
     check('AO5 under the grip level -> unresolved',
         (rv('dlac:AutoOneiros', { player = { MainJobSync = 70 } }, 'Sub')), nil);

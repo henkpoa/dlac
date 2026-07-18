@@ -2794,3 +2794,13 @@ A hidden `/dl merits` diagnostic closes the loop (Henrik: "just to see
 that this workflow works") -- wire-this-session vs manifest vs the
 resulting Oneiros aim, in no help list on purpose. MW10-12 pin the new
 getMpMerits getter it reads from.
+
+And then the loop actually closed: Henrik logged in after a full
+shutdown as WHM75/BLM37 and /dl merits reported wire 10 / manifest 10 /
+aim 376 -- MP-checked correct. One login confirmed four things: the
+zone-in push survives a cold start with no menu visit, the manifest
+persists, the formula generalizes across subjobs (652 + 100 = 752 ->
+376), and the aim MOVED with the sub change (357 on /SCH -> 376 on
+/BLM), proving the per-resolve re-aim -- with the /BLM naked number
+carrying no +10, which confirms the SCH-trait display theory from the
+other side. AO13/14 pin this second field shape. 1308 + 170 green.
