@@ -2643,3 +2643,30 @@ question moot -- "CW and UCW are still in the same playmode and have the
 same restrictions"; crystal-vs-not IS the play-mode split, and the need is
 "100 %" satisfied. The revival path, should shatter-risk ever matter to a
 feature, lives in the cw-ucw-mode-detection memory file.
+
+### Native MP becomes computable (2026-07-18)
+
+Henrik asked whether a character's native MP -- the 724 his Hume WHM75/SCH37
+shows naked -- could be produced by a callable function instead of a lookup
+table. It can, exactly: the server repo's `grades.cpp` carries the whole
+system (race MP grades, job MP grades, a 7-rank growth table) and
+`charutils.cpp CalculateStats()` combines them -- race pool + main-job pool
+grown to the main level (rate KINKS at 60: D-G grades speed UP past it),
+plus the subjob's pool at `(slvl-1)` halved by `SJ_MP_DIVISOR = 2`; when the
+main job has no MP grade at all, the RACE pool rides the subjob's level
+instead, also halved (why NIN/WHM has any MP). The formula put Mindie at
+614, not 724 -- and the 110-point gap closed on CatsEyeXI's merits.sql: Max
+MP merits are 10 MP each with the cap raised 8 -> 15 levels, so 724 = 614 +
+11 merit levels, a checkable prediction (open the merit menu). Merits are
+the one part the client can't read passively, so they stay a caller-supplied
+argument.
+
+`data/nativemp.lua` ships the port verbatim (tables exposed for display,
+`get(race, mjob, mlvl, sjob, slvl [, meritMP])`, plus a gamemode-pattern
+`self()` with injectable live readers -- race comes from the entity's look
+id, the exact field the server switches on). Expectations in the tests are
+hand-computed from the server tables so a transcription typo fails: the 614
+field pin, the 240.5-truncates-to-240 Galka case, the over-60 kink, the
+race-rides-sub NIN/WHM case (NMP1-NMP16). Dormant like gamemode was --
+first consumer candidates: Refresh/Convert valuation and the latent "MP <
+N%" gates when latents wake (#41/#43/#44).

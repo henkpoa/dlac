@@ -4448,6 +4448,64 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- section NMP: native max MP (data/nativemp.lua)
+-- Server-formula port (charutils.cpp CalculateStats MP + grades.cpp, stable
+-- branch 2026-07-18). Expectations are HAND-computed from the server tables,
+-- not from the module -- a table typo fails here. Field pin: Mindie Hume
+-- WHM75/SCH37 read 724 naked = 614 formula + 110 Max MP merit (11 levels
+-- x 10; CatsEyeXI cap 15, merits.sql id 66).
+-- ---------------------------------------------------------------------------
+(function()
+    local nmp = dofile('data/nativemp.lua');
+    local g = nmp.get;
+
+    -- the field pin: race D 10+3*59+4*15=247, WHM C 12+4*59+4*15=308,
+    -- sub SCH D (10+3*36)/2=59 -> 614; +110 merit = the observed 724
+    check('NMP1 field pin Hume WHM75/SCH37 base', g(1, 3, 75, 20, 37), 614);
+    check('NMP2 field pin + 11 merit levels = on-screen 724', g(1, 3, 75, 20, 37, 110), 724);
+    check('NMP3 Hume female = same row', g(2, 3, 75, 20, 37), 614);
+
+    check('NMP4 Taru BLM75/WHM37 (430+369+78)', g(5, 4, 75, 3, 37), 877);
+    check('NMP5 no pool anywhere: Galka WAR75/NIN37', g(8, 1, 75, 13, 37), 0);
+    -- main without MP, sub with: race rides the SUB level, halved
+    check('NMP6 Hume NIN75/WHM37 (59+0+78)', g(1, 13, 75, 3, 37), 137);
+    -- Galka G-grade half-point rate: 48.5+95+97 = 240.5 truncates like (int16)
+    check('NMP7 truncation: Galka DRK75/BLM37', g(8, 8, 75, 4, 37), 240);
+
+    check('NMP8 under 60, no sub: Elvaan RDM50 (106+157)', g(3, 5, 50), 263);
+    check('NMP9 over-60 kink: Hume WHM61 (191+252)', g(1, 3, 61), 443);
+    check('NMP10 level 1 Hume WHM (10+12)', g(1, 3, 1), 22);
+    check('NMP11 slvl 0 = subless: Hume WHM75 (247+308)', g(1, 3, 75, 20, 0), 555);
+
+    check('NMP12 nil race -> nil', g(nil, 3, 75), nil);
+    check('NMP13 nil level -> nil', g(1, 3, nil), nil);
+
+    AshitaCore = nil;
+    check('NMP14 headless self -> nil', nmp.self(), nil);
+
+    -- live-read seam: Taru female BLM75/WHM37 through the stubbed managers
+    local player = {
+        GetMainJob      = function(self) return 4; end,
+        GetMainJobLevel = function(self) return 75; end,
+        GetSubJob       = function(self) return 3; end,
+        GetSubJobLevel  = function(self) return 37; end,
+    };
+    local em    = { GetRace = function(self, i) return (i == 1234) and 6 or nil; end };
+    local party = { GetMemberTargetIndex = function(self, n) return 1234; end };
+    AshitaCore = { GetMemoryManager = function(self)
+        return {
+            GetEntity = function(self) return em; end,
+            GetParty  = function(self) return party; end,
+            GetPlayer = function(self) return player; end,
+        };
+    end };
+    check('NMP15 self() live reads -> Taru BLM75/WHM37', nmp.self(), 877);
+    check('NMP16 self(meritMP) forwards', nmp.self(110), 987);
+
+    AshitaCore = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then

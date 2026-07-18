@@ -399,6 +399,18 @@ agent; the per-repo setup lives in `docs/agents/`.
     ruling: CW-vs-UCW is MOOT (same playmode, same restrictions) — UCW also
     returns `'CW'`; the white-vs-pink split is deliberately not pursued.
     Dormant foundation, no consumer wired yet. Tests GM1–GM8.
+  - **Native MP calculator (2026-07-18)** (`data/nativemp.lua`; history.md
+    "native MP becomes computable"). The server's MP formula ported verbatim
+    (charutils.cpp `CalculateStats` + grades.cpp, stable branch): race pool +
+    main-job pool at main level (growth rate kinks at 60), subjob pool at
+    `(slvl-1)` ÷ `SJ_MP_DIVISOR = 2`; a 0-MP main job lets the RACE pool ride
+    the subjob level instead. `get(race, mjob, mlvl, sjob, slvl [, meritMP])`
+    → integer (nil = bad input, 0 is a real answer); `self()` reads look-race
+    + jobs live, gamemode-pattern injectable. Merits are NOT native — pass
+    them in: CatsEyeXI Max MP merits = 10 MP × cap 15 (merits.sql id 66).
+    Field pin: Mindie Hume WHM75/SCH37 naked 724 = 614 formula + 110 ⇒
+    predicts 11/15 merit levels (unconfirmed — check the merit menu). Dormant,
+    no consumer wired yet. Tests NMP1–NMP16.
   commits. Local-only pending GM verdict; strip TEMP probes (`/dlmv`, RMB debug,
   branch-print) before any merge. The Storage-into-Provenance packet experiment is
   designed, unrun (docs/design/storage-move.md "open questions").
