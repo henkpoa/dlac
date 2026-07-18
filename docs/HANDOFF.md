@@ -298,7 +298,7 @@ agent; the per-repo setup lives in `docs/agents/`.
   Validate any new API field against `tools/api_cache/<id>.json` for an item you KNOW is
   unimplemented before trusting it. Runbook: `tools/README.md` "The junk rows";
   provenance: architecture.md's catalog section; story: history.md round 2.
-- **main**: healthy; **1234 tests green + 147 smoke_ui** — current as of 2026-07-18
+- **main**: healthy; **1234 tests green + 170 smoke_ui** — current as of 2026-07-18
   (the automation block — manifest machinery + the Automations MAIN tab — now lives in
   its own `ui/automationsui.lua`; seams `rescanAutogear`/`manifestStale`/`currentFmt`
   and the tab entry `renderTab` moved WITH it, no forwarders left on triggersui;

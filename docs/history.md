@@ -2551,3 +2551,18 @@ bit-for-bit. smoke_ui grew S140-S151: the new module loads headless, every
 seam exists and no-ops safely uninitialized, and triggersui NO LONGER carries
 `rescanAutogear`/`manifestStale`/`renderAutomationsTab` (the zombie-forwarder
 guard). 1234 + 147 green.
+
+### Same night: the writer gets its net
+
+With the machinery extracted, `autoCommit` became injectable for the first
+time -- smoke section 9 (S160-S180) feeds `automationsui.init` a curated
+19-item fake inventory, runs a REAL `rescanAutogear`, re-reads the written
+`autogear.lua` and asserts every family's decisive rule: the HQ-over-NQ and
+job-gate staff picks (the Foreshadow case, now pinned), universal pecking
+order, the lowercased/ConvertHPtoMP hold map, the x2-ring disjoint ladders,
+weapon batteries excluded from mpBest, anti-HQ blocked from the hq goal,
+skill-up gainFill fillers, Surveyor-major helm scoring + the exact-name hat
+map, FishingSkill-major fish ladders with Main IN and rods OUT, and the
+fmtver/manifestStale round trip. The fmtver-5 silent-abort bug class -- the
+writer dying inside its pcall and the manifest never regenerating -- can no
+longer ship unseen. 1234 + 170 green.
