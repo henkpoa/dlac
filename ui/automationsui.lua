@@ -1117,10 +1117,10 @@ local function renderAutomations()
             end
             imgui.PopItemWidth();
             if imgui.IsItemHovered() then
-                imgui.SetTooltip('Your Max MP merit LEVELS (menu: Merit Points > HP-MP). 10 MP each, 10\nusable at Lv75 (the menu\'s own cap). They count toward the latent\'s base\npool, so an unset value aims the threshold low (the grip stays off longer).\nTeaches itself: opening the merit menu in game syncs this automatically.');
+                imgui.SetTooltip('Your Max MP merit LEVELS (menu: Merit Points > HP-MP). 10 MP each, 10\nusable at Lv75 (the menu\'s own cap). They count toward the latent\'s base\npool, so an unset value aims the threshold low (the grip stays off longer).\nTeaches itself: the server pushes the merit list at EVERY zone-in (and on\neach merit spend), so this syncs on its own -- no menu visit needed.');
             end
             imgui.SameLine(0, 10);
-            imgui.TextColored(COL_DIM, 'auto-learns when you open the merit menu');
+            imgui.TextColored(COL_DIM, 'auto-syncs at zone-in and on merit spends');
             imgui.Spacing();
             -- The live aim: base pool -> threshold -> where your MP sits now.
             local meritLv = (type(auto.data) == 'table') and math.floor(tonumber(auto.data.mpMerits) or 0) or 0;

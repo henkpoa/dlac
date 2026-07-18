@@ -2,25 +2,28 @@
     dlac/meritwatch.lua -- passive Max MP merit learner (s2c 0x08C).
 
     Can merits be read from memory? NO -- Ashita's IPlayer exposes only the
-    unspent pool (GetMeritPoints/Max), never per-category allocations. The
-    allocations exist client-side only while the merit MENU is populated,
-    and the server sends them in GP_SERV_COMMAND_MERIT (0x08C, stable
-    packets/s2c/0x08c_merit.h):
+    unspent pool (GetMeritPoints/Max), never per-category allocations. And
+    there is NO request packet to inject either: the merit system is
+    PUSH-ONLY (XiPackets 0x008C -- the client wipes its merit cache at every
+    zone and the server re-populates at zone-in; c2s 0x0BE validates Kind to
+    {spend, EXP/Limit flip} only, and the 0x061 status bundle carries just
+    the point pool). The allocations ride GP_SERV_COMMAND_MERIT (0x08C,
+    stable packets/s2c/0x08c_merit.h):
 
         u16 merit_count; u16 pad; { u16 id; u8 next; u8 count; } x N
 
-    The full list (5 packets x 61 entries) flows when the merit menu opens;
-    a SINGLE-entry form flows on every merit raise/lower. So dlac listens:
-    open the menu once, ever, and mpMerits (merits.sql id 66 'max_mp')
-    teaches itself into the autogear manifest -- and respeccing Max MP while
-    dlac runs re-aims the Oneiros threshold live. There is NO benign request
-    packet to inject (c2s 0x0BE only spends points or flips EXP/Limit mode),
-    so unlike the guild-point 0x10F self-request this stays listen-only.
+    So dlac listens, and the pushes come by themselves: the full list at
+    EVERY ZONE-IN (CatsEyeXI sends all entries, zero-counts included -- the
+    5x61 full-form), plus a single-entry update on every merit raise/lower.
+    mpMerits (merits.sql id 66 'max_mp') teaches itself into the autogear
+    manifest at the first zone after this ships and re-syncs forever after;
+    respeccing Max MP mid-session re-aims the Oneiros threshold live.
+    Removal edge (XiPackets): downgrading a merit's LAST point flags the
+    entry by setting the index's low bit (66 -> 67) -- parsed as count 0.
 
     The manifest write goes through automationsui.setMpMerits -- the same
     clamp (0..10, merit.cpp cap[75]) and autoCommit hot-reload the manual
-    input uses; the input stays as the fallback for characters whose menu
-    has never been opened.
+    input uses; the input stays as the fallback until the first zone/menu.
 ]]--
 
 local M = {};
@@ -33,8 +36,10 @@ _cfok = _cfok and type(_cfmt) == 'table';
 local function say(s) if _cfok and _cfmt.msg then _cfmt.msg(s); else print('[dlac] ' .. s); end end
 
 -- Pure parser: 0x08C wire data (header included) -> the max_mp COUNT, or nil
--- when the packet carries no max_mp entry (most of the 5 menu chunks won't).
--- Bounds-checked per entry: a short/legacy packet can never over-read.
+-- when the packet carries no max_mp entry (single-update packets for other
+-- merits). Bounds-checked per entry: a short/legacy packet can never
+-- over-read. Merit ids are even on the wire; an ODD id is the full-removal
+-- flag (id|1, XiPackets usage 3) -- that merit is back to 0 points.
 function M.parse08C(data)
     if type(data) ~= 'string' or #data < 0x0C then return nil; end
     local n = (string.byte(data, 0x04 + 1) or 0) + (string.byte(data, 0x05 + 1) or 0) * 256;
@@ -43,8 +48,10 @@ function M.parse08C(data)
         local off = 0x08 + i * 4;                       -- {id u16 LE, next u8, count u8}
         if off + 4 > #data then break; end
         local id = (string.byte(data, off + 1) or 0) + (string.byte(data, off + 2) or 0) * 256;
+        local removed = (id % 2 == 1);
+        if removed then id = id - 1; end
         if id == M.MERIT_MAX_MP_ID then
-            found = string.byte(data, off + 4) or 0;
+            found = removed and 0 or (string.byte(data, off + 4) or 0);
         end
     end
     return found;
@@ -60,7 +67,7 @@ function M.onMeritPacket(data)
     local ok, aui = pcall(require, 'dlac\\ui\\automationsui');
     if ok and type(aui) == 'table' and type(aui.setMpMerits) == 'function' then
         if aui.setMpMerits(n) then
-            say(string.format('Max MP merits learned from the menu: %d (Oneiros threshold re-aimed).', n));
+            say(string.format('Max MP merits learned: %d (Oneiros threshold re-aimed).', n));
         end
     end
 end

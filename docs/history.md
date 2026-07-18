@@ -2773,3 +2773,19 @@ automationsui.setMpMerits -- the same clamp/persist/hot-reload path the
 manual input uses, which stays as the fallback and now carries an
 "auto-learns" hint. MW1-MW9 drive the parser and the write end to end
 (the learn chat line fires in the test run); 1301 + 170 green.
+
+Henrik then asked the natural next question -- inject a packet that
+simulates opening the menu, as a refresh button -- and the answer
+dissolved the problem entirely: the merit protocol has NO request packet.
+XiPackets' 0x008C doc states the client wipes its merit cache at every
+zone and the server re-populates at ZONE-IN unprompted; the menu never
+asks for anything (0x0BE validates Kind to spend/mode-flip only, and the
+0x061 status bundle carries just the point pool -- verified in
+SendLocalPlayerPackets). His own menu reading 10/10 mid-session proves
+live CatsEyeXI pushes at zone-in too. So no button: meritwatch hears the
+full list at EVERY zone -- the first zone after this ships is the first
+sync, and CatsEyeXI's full-form even includes zero-count entries (the
+LSB 5x61 TODO shape), so a total respec also lands. One real bug fell
+out of the same doc: downgrading a merit's LAST point flags the wire
+entry by setting the index's low bit (66 -> 67) -- the parser now reads
+odd ids as "back to zero" (MW5b/5c). 1303 + 170 green.

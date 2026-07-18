@@ -434,13 +434,16 @@ agent; the per-repo setup lives in `docs/agents/`.
     manifest's first USER-OWNED field: set on the Automations-tab detail view
     (live aim readout + a warning not to tune it to match the naked screen
     number), carried through every rescan by autoCommit — and it now
-    **teaches itself**: `feature/meritwatch.lua` listens for s2c 0x08C (the
-    merit menu's own data, layout from the server's `0x08c_merit.h`; Ashita
-    memory only exposes the unspent pool, and c2s 0x0BE can't request the
-    list without side effects, so listen-only) — one menu open ever learns
-    the count, every later open or merit spend re-syncs it via
-    `automationsui.setMpMerits`. Mindie's aim: 614 + 100 = 714 → fires at
-    MP ≤ 357. The flatten
+    **teaches itself**: `feature/meritwatch.lua` listens for s2c 0x08C
+    (layout from the server's `0x08c_merit.h`). The merit protocol is
+    PUSH-only — no request packet exists anywhere (the client wipes its
+    merit cache at every zone and the server re-populates at zone-in,
+    XiPackets 0x008C; c2s 0x0BE only spends/flips mode; the 0x061 status
+    bundle carries just the point pool; Ashita memory only the unspent
+    pool) — so the sync is fully automatic: **every zone-in** plus every
+    merit spend, via `automationsui.setMpMerits`; the full-removal
+    low-bit flag (id|1) parses as count 0. Mindie's aim: 614 + 100 = 714
+    → fires at MP ≤ 357. The flatten
     treats the marker as a GRIP under the shared subSlotAllowed rule (2H
     main → `dlac:AutoOneiros|<fallback>`, 1H main vetoes the marker; the
     + Add Sub picker offers it unconditionally per the HARD RULE);

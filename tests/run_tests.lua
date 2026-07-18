@@ -4614,6 +4614,10 @@ end)();
     check('MW3 chunk without max_mp -> nil', mw.parse08C(pkt(2, { { 64, 5, 8 }, { 68, 1, 3 } })), nil);
     check('MW4 truncated claim reads safely', mw.parse08C(pkt(5, { { 64, 5, 8 } })), nil);
     check('MW5 garbage -> nil', mw.parse08C('xx'), nil);
+    -- XiPackets usage 3: the LAST point removed -> index arrives as id|1
+    -- (67) and the merit is back to zero, whatever the count byte claims
+    check('MW5b full removal: odd index 67 -> 0', mw.parse08C(pkt(1, { { 67, 0, 9 } })), 0);
+    check('MW5c other merits removal flag ignored', mw.parse08C(pkt(1, { { 129, 0, 4 } })), nil);
 
     -- the write path: same instance meritwatch will require at packet time
     local aui = dofile('ui/automationsui.lua');
