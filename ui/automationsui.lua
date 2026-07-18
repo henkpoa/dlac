@@ -46,6 +46,12 @@ local COL_HEADER = { 0.60, 0.75, 1.00, 1.00 };
 local COL_DIM    = { 0.70, 0.70, 0.70, 1.00 };
 local COL_ERR    = { 1.00, 0.45, 0.40, 1.00 };
 
+-- Owned-vs-Available facts (ADR 0005) for the item rows: a piece parked in
+-- storage must read RED (owned, can't be equipped), not dim-as-unowned.
+-- Guarded: without the module the rows just keep the pre-ruling colors.
+local _ocok, ocache = pcall(require, 'dlac\\gear\\ownedcache');
+_ocok = _ocok and type(ocache) == 'table';
+
 local function esc(s) return (tostring(s):gsub('%%', '%%%%')); end
 local function writeFileText(p, t)
     local f = io.open(p, 'w'); if f == nil then return false; end
@@ -711,10 +717,14 @@ local OBI_TXT  = { [0] = 'nothing applicable', 'elemental obis', 'universal obi'
 local ONEIROS_TXT = { [0] = 'grip not owned', 'Oneiros Grip' };
 
 -- One item row in a detail column: green = owned and equippable by this job,
--- red = owned but this JOB can't wear it (the automation skips it), dim = not owned.
+-- red = owned but this JOB can't wear it (the automation skips it) OR owned
+-- but parked in STORAGE (Henrik's ruling 2026-07-19: red, never dim-as-unowned
+-- -- you own it, the automation just can't reach it), dim = not owned.
 -- synergyNote (optional): mark this item green as SYNERGIZED-INTO-ARTISANS -- you
 -- must have owned every guild torque/ring to synth the Artisans piece, so owning
--- Artisans implies you had them all (Henrik).
+-- Artisans implies you had them all (Henrik). The synergy branch stays ABOVE the
+-- stored check on purpose ("keep the backlight"): an Artisans-implied piece keeps
+-- its green even while a spare copy sits in storage -- its presence is irrelevant.
 local function autoItemLine(name, synergyNote)
     local rec = (deps.lookupByName ~= nil) and deps.lookupByName(name) or nil;
     if type(deps.renderIcon) == 'function' then deps.renderIcon(rec and rec.Id or nil, 18); end
@@ -730,6 +740,15 @@ local function autoItemLine(name, synergyNote)
     if not owned and synergyNote ~= nil then           -- implied-owned via Artisans synergy
         imgui.TextColored(GREEN_OWNED, esc(name));
         if imgui.IsItemHovered() then imgui.SetTooltip(synergyNote); end
+        return;
+    end
+    if not owned and _ocok and ocache.isStored(rec) then   -- owned somewhere, zero equippable copies
+        imgui.TextColored(COL_ERR, esc(name));
+        if imgui.IsItemHovered() then
+            local where = ocache.whereText(rec);
+            imgui.SetTooltip(string.format('Owned -- but parked in %s, so the automation cannot equip it.\nMove it to Inventory/Wardrobe, then Rescan.',
+                (where ~= '') and where or 'storage'));
+        end
         return;
     end
     imgui.TextColored(owned and GREEN_OWNED or COL_DIM, esc(name));
