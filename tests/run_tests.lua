@@ -4595,6 +4595,38 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- section MW: merit auto-learn (feature/meritwatch.lua, s2c 0x08C)
+-- Layout from the server's own packets/s2c/0x08c_merit.h: u16 merit_count,
+-- u16 pad, then {u16 id, u8 next, u8 count} entries -- full menu chunks AND
+-- the single-entry spend update parse identically. max_mp = merits.sql 66.
+-- ---------------------------------------------------------------------------
+(function()
+    local mw = dofile('feature/meritwatch.lua');
+    local function pkt(count, entries)
+        local t = { string.char(0x8C, 0x00, 0x00, 0x00, count % 256, math.floor(count / 256), 0, 0) };
+        for _, e in ipairs(entries) do
+            t[#t + 1] = string.char(e[1] % 256, math.floor(e[1] / 256) % 256, e[2], e[3]);
+        end
+        return table.concat(t);
+    end
+    check('MW1 full form: max_mp found', mw.parse08C(pkt(3, { { 64, 5, 8 }, { 66, 7, 10 }, { 128, 3, 5 } })), 10);
+    check('MW2 single-update form', mw.parse08C(pkt(1, { { 66, 9, 7 } })), 7);
+    check('MW3 chunk without max_mp -> nil', mw.parse08C(pkt(2, { { 64, 5, 8 }, { 68, 1, 3 } })), nil);
+    check('MW4 truncated claim reads safely', mw.parse08C(pkt(5, { { 64, 5, 8 } })), nil);
+    check('MW5 garbage -> nil', mw.parse08C('xx'), nil);
+
+    -- the write path: same instance meritwatch will require at packet time
+    local aui = dofile('ui/automationsui.lua');
+    package.loaded['dlac\\ui\\automationsui'] = aui;
+    check('MW6 setMpMerits clamps 15 -> 10 + reports change', aui.setMpMerits(15), true);
+    check('MW7 clamped value current: 10 = no change', aui.setMpMerits(10), false);
+    mw.onMeritPacket(pkt(1, { { 66, 0, 4 } }));
+    check('MW8 packet write landed (4 = no change now)', aui.setMpMerits(4), false);
+    check('MW9 session mirror holds the wire count', mw.learned, 4);
+    package.loaded['dlac\\ui\\automationsui'] = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then

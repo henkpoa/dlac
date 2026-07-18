@@ -2751,3 +2751,25 @@ live wins per standing rule. Engine v67 changes exactly one line
 the AO tests re-aim to 357/358 (meritless 307/308). Mindie's automation
 now equips the grip at MP <= 357. If the team ever answers "75 was the
 intent", the same line flips back.
+
+### Merits teach themselves (2026-07-18)
+
+Henrik asked whether merits could be read from memory -- the one manual
+input the Oneiros automation still carried. From MEMORY: no. Ashita's
+IPlayer stops at the unspent pool (GetMeritPoints/Max); per-category
+allocations never sit in a readable structure. From the WIRE: yes. The
+server's own packet headers (packets/s2c/0x08c_merit.h) spell the layout
+-- u16 count, u16 pad, {u16 id, u8 next, u8 count} entries -- and 0x08C
+flows as five 61-entry chunks when the merit menu opens PLUS a
+single-entry update on every merit raise/lower. There is no benign
+request to inject (c2s 0x0BE only spends points or flips EXP/Limit mode
+-- both mutate), so unlike craftwatch's guild-point self-request this
+stays listen-only: open the menu once, ever, and the number is learned;
+respec Max MP mid-session and the threshold re-aims live.
+
+feature/meritwatch.lua is the whole feature: a pure bounds-checked
+parser (max_mp = merits.sql id 66), a packet hook, and a call into
+automationsui.setMpMerits -- the same clamp/persist/hot-reload path the
+manual input uses, which stays as the fallback and now carries an
+"auto-learns" hint. MW1-MW9 drive the parser and the write end to end
+(the learn chat line fires in the test run); 1301 + 170 green.

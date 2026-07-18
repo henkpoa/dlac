@@ -622,6 +622,25 @@ function M.rescanAutogear()
     pcall(function() require("dlac\\gear\\gearcheck").chatWarn(false); end);
 end
 
+-- Learned Max MP merit levels (meritwatch, s2c 0x08C -- the merit menu's own
+-- data). Same clamp and persistence as the manual input: 0..10 (merit.cpp
+-- cap[75]), manifest mpMerits, autoCommit hot-reload. Returns true when the
+-- value CHANGED (meritwatch chats only then); safe headless (autoCommit
+-- no-ops logged out, the value still parks in auto.data for the session).
+function M.setMpMerits(n)
+    n = math.floor(tonumber(n) or 0);
+    if n < 0 then n = 0; elseif n > 10 then n = 10; end
+    autoLoad();
+    if type(auto.data) ~= 'table' then auto.data = {}; end
+    if math.floor(tonumber(auto.data.mpMerits) or 0) == n and auto.data.mpMerits ~= nil then
+        return false;
+    end
+    auto.data.mpMerits = n;
+    auto._meritBuf = nil;              -- the detail-view input re-seeds itself
+    pcall(autoCommit);
+    return true;
+end
+
 -- Is the on-disk manifest an older schema than this build writes? (craftwatch
 -- uses this to force a regen before the engine reads stale craft ladders --
 -- e.g. a fmtver-5 manifest lacks the fmtver-6 head/back skill-up fillers.)
@@ -1098,8 +1117,10 @@ local function renderAutomations()
             end
             imgui.PopItemWidth();
             if imgui.IsItemHovered() then
-                imgui.SetTooltip('Your Max MP merit LEVELS (menu: Merit Points > HP-MP). 10 MP each, 10\nusable at Lv75 (the menu\'s own cap). They count toward the latent\'s base\npool, so an unset value aims the threshold low (the grip stays off longer).');
+                imgui.SetTooltip('Your Max MP merit LEVELS (menu: Merit Points > HP-MP). 10 MP each, 10\nusable at Lv75 (the menu\'s own cap). They count toward the latent\'s base\npool, so an unset value aims the threshold low (the grip stays off longer).\nTeaches itself: opening the merit menu in game syncs this automatically.');
             end
+            imgui.SameLine(0, 10);
+            imgui.TextColored(COL_DIM, 'auto-learns when you open the merit menu');
             imgui.Spacing();
             -- The live aim: base pool -> threshold -> where your MP sits now.
             local meritLv = (type(auto.data) == 'table') and math.floor(tonumber(auto.data.mpMerits) or 0) or 0;
