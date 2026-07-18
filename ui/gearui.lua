@@ -3262,15 +3262,20 @@ local function renderSetBuilder(job, level)
                 sec.name, #sec.items, table.concat(sec.levels, ', '),
                 tostring(M.workingSetName), tostring(ui.setSelected), sec.key);
             if act then imgui.PushStyleColor(ImGuiCol_Text, COL.JOBS); end
-            local open = imgui.CollapsingHeader(label);
+            -- AllowItemOverlap is LOAD-BEARING for the Add more button: without
+            -- it the header owns the whole row's hit box and the button only
+            -- toggles the section (field report, 07-18). Guarded like every
+            -- flag constant -- absent just means the header keeps the row.
+            local open = imgui.CollapsingHeader(label,
+                (ImGuiTreeNodeFlags_AllowItemOverlap ~= nil) and ImGuiTreeNodeFlags_AllowItemOverlap or 0);
             if act then imgui.PopStyleColor(1); end
             if imgui.IsItemHovered() then
                 imgui.SetTooltip('All rows in this list gated on this mode; the numbers are\ntheir item levels, so you can see the ladder at a glance.\nGreen = the mode is active right now (these rows beat the\nunconditional ones). A row gated on several modes appears\nunder each of its sections.');
             end
             -- "Add more" (Henrik 2026-07-18): the picker opens GATED -- every
             -- piece added lands straight in this mode, no Behaviour round-trip
-            -- per item. Submitted after the header so the button wins the hover
-            -- (the imgui overlap idiom); themed font: ~9.5px/char + padding.
+            -- per item. Wins the hover because it is submitted after a header
+            -- that passes AllowItemOverlap; themed font: ~9.5px/char + padding.
             imgui.SameLine(imgui.GetWindowWidth() - 104);
             if imgui.SmallButton('Add more##msadd_' .. sec.key) then
                 ui._openAddPopup = true; ui.addSearch = { '' };
