@@ -2751,6 +2751,73 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- TM. triggermodel.fromRaw -- the GUI-side raw->edit-model translation (moved
+--     out of triggersui; pure, canonEvent injected). THE WIPE CONTRACT: Commit
+--     serializes the WHOLE model, so every section serializeTriggers can emit
+--     must survive fromRaw or the next Commit erases it (the SetOptions/Modes
+--     lesson -- that bug shipped once). TM2 is the contract; the rest pin the
+--     normalization the old in-triggersui copy never had a test for.
+-- ---------------------------------------------------------------------------
+(function()
+    package.loaded['dlac\\gear\\groupsmodel'] = package.loaded['dlac\\gear\\groupsmodel'] or dofile('gear/groupsmodel.lua');
+    local tmodel = dofile('gear/triggermodel.lua');
+
+    -- A maximal file: every field + section the serializer can emit. Written by
+    -- the real serializer, reloaded, translated, re-serialized -- byte-stable.
+    local text = dispatchM.serializeTriggers({
+        Precast = {
+            { when = { skill = 'Enfeebling Magic' }, set = 'FastCast', priority = 12 },
+        },
+        Midcast = {
+            { when = { name = 'Slow II' }, whenAny = { { mode = 'DT' }, { hpbelow = 50 } }, set = { 'MidA', 'MidB' } },
+            { when = { group = 'StrBlue' }, equip = { Waist = 'Karin Obi', Head = 'Zha Xia Hat' } },
+        },
+        Modes  = { Weapon = { values = { 'Melee', 'Ranged' }, bind = '^F3' }, DT = { values = { 'On', 'Off' } } },
+        Groups = { StrBlue = { 'Hysteric Barrage', 'Quad. Continuum' } },
+    });
+    local rawT = (loadstring or load)(text)();
+    check('TM1 maximal fixture reloads', type(rawT), 'table');
+    local model = tmodel.fromRaw(rawT, dispatchM.canonEvent);
+    check('TM2 WIPE CONTRACT model round-trip byte-stable', dispatchM.serializeTriggers(model) == text, true);
+
+    -- Normalization: condition keys lowercase, priority numeric, list shapes kept.
+    check('TM3 when keys lowercased',      model.Precast[1].when.skill, 'Enfeebling Magic');
+    check('TM4 priority numeric',          model.Precast[1].priority, 12);
+    check('TM5 multi-set stays ordered',   model.Midcast[1].set[2], 'MidB');
+    check('TM6 whenAny entries carried',   model.Midcast[1].whenAny[2].hpbelow, 50);
+    check('TM7 equip payload carried',     model.Midcast[2].equip.Waist, 'Karin Obi');
+    check('TM8 Modes carried',             model.Modes.Weapon.bind, '^F3');
+    check('TM9 Groups carried',            model.Groups.StrBlue[2], 'Quad. Continuum');
+
+    -- Handler keys canon through the INJECTED fn; unknown sections dropped.
+    local m2 = tmodel.fromRaw({ midCAST = { { when = { name = 'X' }, set = 'S' } },
+                                Junk    = { { when = {}, set = 'S' } } }, dispatchM.canonEvent);
+    check('TM10 handler key canonicalized', type(m2.Midcast), 'table');
+    check('TM11 unknown section dropped',   m2.Junk, nil);
+
+    -- Malformed rules are skipped, never carried as garbage.
+    local m3 = tmodel.fromRaw({ Midcast = { { set = 'NoWhen' }, { when = { name = 'Y' } }, 'junk' } }, dispatchM.canonEvent);
+    check('TM12 malformed rules skipped', #m3.Midcast, 0);
+
+    -- Legacy spellings: whenany, modes, bare mode-value arrays; 1-item set list collapses.
+    local m4 = tmodel.fromRaw({ Midcast = { { when = { name = 'Z' }, whenany = { { mode = 'DT' } }, set = { 'OnlyOne' } } },
+                                modes = { Idle = { 'On', 'Off' } } }, dispatchM.canonEvent);
+    check('TM13 legacy whenany accepted',   m4.Midcast[1].whenAny[1].mode, 'DT');
+    check('TM14 1-item set list collapses', m4.Midcast[1].set, 'OnlyOne');
+    check('TM15 legacy bare modes array',   m4.Modes.Idle.values[2], 'Off');
+
+    -- No canonEvent: handler sections unreachable, Modes/Groups still carried --
+    -- the degraded no-dispatch behavior the Triggers tab always had.
+    local m6 = tmodel.fromRaw({ Midcast = { { when = { name = 'X' }, set = 'S' } },
+                                Modes = { A = { values = { 'B' } } },
+                                Groups = { G = { 'x' } } }, nil);
+    check('TM16 no-canon drops handlers', m6.Midcast, nil);
+    check('TM17 no-canon keeps Modes',    m6.Modes.A.values[1], 'B');
+    check('TM18 no-canon keeps Groups',   m6.Groups.G[1], 'x');
+    check('TM19 non-table raw yields {}', next(tmodel.fromRaw(nil, dispatchM.canonEvent)), nil);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- PM. Player-state trigger conditions (v53): hpBelow/hpAbove, mpBelow/mpAbove,
 --     tpBelow/tpAbove (strict compares off ctx.player) and buff/buffNot (the
 --     per-dispatch buff set; tests inject ctx.buffs -- the seam the matchers

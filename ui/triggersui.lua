@@ -22,6 +22,7 @@ local M = {};
 local _iok, imgui = pcall(require, 'imgui');
 local _dpok, dsp  = pcall(require, "dlac\\dispatch");
 local _gmok, gm   = pcall(require, "dlac\\gear\\groupsmodel");
+local _tmok, tmodel = pcall(require, "dlac\\gear\\triggermodel");
 local _giok, gimp = pcall(require, "dlac\\gear\\groupimport");
 local _gsok, gscan = pcall(require, "dlac\\gear\\groupscan");   -- Item 1: auto-import from the Lua file
 -- Searchable spell/ability browse-list for the Groups member picker (G3, issue #26):
@@ -34,6 +35,7 @@ local _abok, abilityDB = pcall(require, "dlac\\data\\abilities");
 local hasImgui    = _iok and imgui ~= nil;
 local hasDispatch = _dpok and type(dsp) == 'table';
 local hasGroups   = _gmok and type(gm) == 'table';
+local hasTrigModel = _tmok and type(tmodel) == 'table';
 local hasGroupImport = _giok and type(gimp) == 'table';
 local hasGroupScan   = _gsok and type(gscan) == 'table';
 -- InputTextMultiline is the right widget for a paste box, but it is not used anywhere else in
@@ -333,99 +335,20 @@ local function trigFilePath()
     return lp, abbr;
 end
 
--- Build the Triggers-tab edit model from a raw trigger-file table: canonical handler
--- keys, lowercased condition keys. Commit serializes the WHOLE model back to the
--- file, so any section not carried here gets silently wiped on the next Commit --
--- that bug shipped once; keep this exported so the offline tests pin the round-trip.
--- (Legacy SetOptions sections are dropped deliberately: automation is a virtual SLOT
--- entry now -- dlac:AutoStaff / dlac:AutoObi inside the set, ADR 0004 4th revision.)
-function M.fileToModel(raw)
-    local data = {};
-    if type(raw) ~= 'table' then return data; end
-    for k, v in pairs(raw) do
-        local ev = (hasDispatch and type(dsp.canonEvent) == 'function') and dsp.canonEvent(k) or nil;
-        if ev ~= nil and type(v) == 'table' then
-            local list = data[ev] or {};
-            for _, r in ipairs(v) do
-                if type(r) == 'table' and type(r.when) == 'table'
-                   and (r.set ~= nil or type(r.equip) == 'table') then
-                    local when = {};
-                    for ck, cv in pairs(r.when) do when[string.lower(tostring(ck))] = cv; end
-                    -- v54 OR group: carried through the model or Commit WIPES it
-                    -- (the SetOptions/Modes lesson).
-                    local whenAny = nil;
-                    local rawAny = r.whenAny or r.whenany;
-                    if type(rawAny) == 'table' then
-                        for _, e in ipairs(rawAny) do
-                            if type(e) == 'table' then
-                                local ne = {};
-                                for ck, cv in pairs(e) do ne[string.lower(tostring(ck))] = cv; end
-                                if next(ne) ~= nil then whenAny = whenAny or {}; whenAny[#whenAny + 1] = ne; end
-                            end
-                        end
-                    end
-                    -- set: 'Name' or an ORDERED list (multi-set rule); the model
-                    -- mirrors the file (string when single, array when several).
-                    local sv = nil;
-                    if type(r.set) == 'table' then
-                        for _, sn in ipairs(r.set) do
-                            if type(sn) == 'string' and sn ~= '' then sv = sv or {}; sv[#sv + 1] = sn; end
-                        end
-                        if sv ~= nil and #sv == 1 then sv = sv[1]; end
-                    elseif r.set ~= nil then
-                        sv = tostring(r.set);
-                    end
-                    list[#list + 1] = {
-                        when = when,
-                        whenAny = whenAny,
-                        set = sv,
-                        equip = (type(r.equip) == 'table') and r.equip or nil,
-                        priority = tonumber(r.priority),
-                    };
-                end
-            end
-            data[ev] = list;
-        end
-    end
-    -- Modes section (cycle definitions + keybinds): carried through so Commit
-    -- round-trips it (same lesson as the SetOptions wipe).
-    local md = raw.Modes or raw.modes;
-    if type(md) == 'table' then
-        local copy = {};
-        for nm, def in pairs(md) do
-            if type(nm) == 'string' and type(def) == 'table' then
-                local e = {};
-                local src = (type(def.values) == 'table') and def.values or def;
-                for _, v in ipairs(src) do
-                    if type(v) == 'string' then e.values = e.values or {}; e.values[#e.values + 1] = v; end
-                end
-                if type(def.bind) == 'string' then e.bind = def.bind; end
-                if e.values ~= nil or e.bind ~= nil then copy[nm] = e; end
-            end
-        end
-        if next(copy) ~= nil then data.Modes = copy; end
-    end
-    -- Groups section (ADR 0009): named action-name lists per Job entry, beside
-    -- Modes. Carried through so Commit round-trips it (same SetOptions/Modes wipe
-    -- lesson). The sanitize lives in groupsmodel so the carry-through is tested
-    -- headless (tests TGM*); guarded so a missing module only loses the feature.
-    if hasGroups then
-        local gr = gm.fromRaw(raw);
-        if next(gr) ~= nil then data.Groups = gr; end
-    end
-    return data;
-end
+-- Raw file table -> edit model lives in gear\triggermodel.lua (pure, tests TM* pin
+-- the full serialize round-trip -- the wipe contract). This tab only draws it.
 
--- Load the trigger file into the edit model (see M.fileToModel).
+-- Load the trigger file into the edit model (triggermodel.fromRaw).
 local function trigLoad(force)
     local path, abbr = trigFilePath();
     if path == nil then trig.data, trig.job, trig.err = nil, nil, 'not logged in / unknown job'; return; end
     if not force and trig.job == abbr and trig.data ~= nil then return; end
     trig.job, trig.data, trig.err, trig.dirty, trig._prioBuf = abbr, nil, nil, false, {};
     if not hasDispatch then trig.err = 'dispatch module unavailable'; return; end
+    if not hasTrigModel then trig.err = 'triggermodel module unavailable'; return; end
     local raw, err = dsp.readTriggersRaw(path);
     if raw == nil then trig.err = err; return; end
-    trig.data = M.fileToModel(raw);
+    trig.data = tmodel.fromRaw(raw, dsp.canonEvent);
 end
 
 local function trigSetStatus(msg, isErr) trig.status = msg or ''; trig.statusErr = (isErr == true); trig.statusAt = os.clock(); end
