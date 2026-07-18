@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 68;   -- 68: the AutoOneiros marker is a Lv75 rung UNCONDITIONALLY -- the grip is one fixed Lv75 item, so virtualMinLevel answers 75 even when the manifest has not learned it yet (no more Lv0 always-adopt wildcard on a stale manifest); gearui's + Add stamps the virtual rec Level 75 so the set editor shows the truth.
+M.VERSION = 69;   -- 69: obi + Oneiros virtual decisions extracted PURE (resolveObi / resolveOneiros, the resolveStaff shape): the rims in resolveVirtual only read env/nativemp/vitals, the decisions take data in -- behavior bit-identical, but the two field-calibrated gates (positive day/weather sign; MP <= floor(base*50/100), boundary inclusive) are finally pinned headless (tests VG*). One /dl why nuance: with the grip unowned AND nativemp missing (broken install), the reason now reads module-unavailable first.
+                  -- 68: the AutoOneiros marker is a Lv75 rung UNCONDITIONALLY -- the grip is one fixed Lv75 item, so virtualMinLevel answers 75 even when the manifest has not learned it yet (no more Lv0 always-adopt wildcard on a stale manifest); gearui's + Add stamps the virtual rec Level 75 so the set editor shows the truth.
                   -- 67: Oneiros latent percent FIELD-PINNED at 50 -- Henrik measured the live break with refresh ticks: MP 357 = last point the grip's +1 ticks, 358 = gone, and 357 is EXACTLY 50.0% of maxmp 714 (confirming the denominator AND the inclusive <= boundary in one shot; 75% of anything plausible = 535-543, 50% of the displayed 724 = 362 -- nothing else fits). The public repo's item_latents row says param 75, so live diverges from the sql seed: docs/server-questions.md #6. Threshold is now floor(base * 50/100); if the team ever answers "75 is right, the DB was stale", this one line re-aims.
                   -- 66: Oneiros merit clamp field-corrected -- Henrik's menu reads 10/10: merit.cpp caps usable merits at cap[mlvl] (10 at Lv75; the merits.sql upgrade=15 headroom needs Lv80+, unreachable here), so the resolver clamps mpMerits to 0..10. His naked 724 fully decomposed: 614 formula + 100 merits + 10 SCH-sub Max MP Boost (traits.sql trait 8 job 20 Lv30, Mod::BASE_MP 1096) -- and BASE_MP rides health.MODMP (UpdateHealth, the DISPLAYED max) while the latent divides by health.MAXMP (CalculateStats only), so the trait does NOT move the threshold: his true line is floor(714*0.75) = 535, and the detail view now warns against tuning merits to make base match the naked screen number.
                   -- 65: Auto Oneiros Grip (dlac:AutoOneiros, Sub) -- equips the grip while its latent is LIVE: current MP <= 75% of the BASE pool. Server truth (stable latent_effect_container.cpp): MP_UNDER_PERCENT divides health.mp by health.maxmp = CalculateStats' race/job/sub formula + merit MP, NO gear -- so the threshold is floor((nativemp.self + 10*mpMerits) * 0.75), recomputed live per resolve (job change / level sync re-aim it). Manifest carries {oneiros = {name, level}} + mpMerits (the one number the client can't read passively -- Automations tab input, cap 15 on CatsEyeXI); virtualMinLevel answers the grip's level so the flatten skips the rung under Lv75; utils' flatten treats the marker as a GRIP for Sub pairing (2H main only).
@@ -846,6 +847,54 @@ local function resolveStaff(a, el, lvl)
     return elName;
 end
 
+-- Obi pick, the PURE half (mirrors resolveStaff; tests VG*): elemental obi for
+-- this element first, else the universal (Hachirin-no-obi -- on CatsEyeXI the
+-- only one), both level-gated; equip only on a positive net day/weather sign
+-- for the SPELL's element ("the moment it's positive, it's better", ADR 0004).
+-- `net` is the caller's day/weather read -- no gData in here.
+local function resolveObi(a, el, lvl, net)
+    if el == nil then return nil, 'no element'; end
+    local nm, olvl = nil, nil;
+    local o = (type(a.obi) == 'table') and a.obi[el] or nil;
+    if type(o) == 'table' and type(o.name) == 'string' then nm, olvl = o.name, o.level;
+    elseif type(o) == 'string' then nm = o; end     -- legacy manifest: name only
+    if nm ~= nil and not usableAt(olvl, lvl) then nm, olvl = nil, nil; end
+    if nm == nil then
+        local u = a.obiUniversal;
+        if type(u) == 'table' and type(u.name) == 'string' and usableAt(u.level, lvl) then
+            nm = u.name;
+        end
+    end
+    if nm == nil then return nil, 'no usable obi for ' .. el .. ' at Lv' .. lvl; end
+    if (tonumber(net) or 0) <= 0 then return nil, 'day/weather not positive'; end
+    return nm;
+end
+
+-- Oneiros gate, the PURE half (tests VG*): the FIELD-PINNED latent rule. thr =
+-- floor(base * 50/100) -- 50 is live truth (v67; the repo sql's 75 is not what
+-- runs, docs/server-questions.md #6) -- and the boundary is INCLUSIVE: cur ==
+-- thr still resolves (Mindie: refresh ticks at MP 357 of base 714, gone at
+-- 358). `base`/`cur` are the caller's nativemp + vitals reads -- no gData here,
+-- so the threshold rule the field calibration paid for is pinned headless.
+local function resolveOneiros(g, lvl, base, cur)
+    if type(g) ~= 'table' or type(g.name) ~= 'string' then
+        return nil, 'Oneiros Grip not owned (the Automations tab rescans itself)';
+    end
+    if not usableAt(g.level, lvl) then
+        return nil, string.format('under level for %s (Lv%d)', g.name, tonumber(g.level) or 0);
+    end
+    if base == nil then return nil, 'native MP unreadable (login settle?)'; end
+    if base <= 0 then return nil, 'no native MP pool on this job'; end
+    local thr = math.floor(base * 50 / 100);   -- 50 = live truth (v67); repo sql says 75
+    if cur == nil then return nil, 'current MP unreadable'; end
+    if cur > thr then
+        -- percent-free wording on purpose: /dl why reasons may render
+        -- through imgui's printf-style Text calls
+        return nil, string.format('MP %d above the latent threshold %d (half of base %d)', cur, thr, base);
+    end
+    return g.name;
+end
+
 -- Marker -> item name for this cast, or nil + reason (for /dl why).
 -- `slot` (the set's slot key, e.g. 'Neck'/'Ring1') is needed by per-slot
 -- markers (dlac:AutoCraft); staff/obi ignore it (Main/Waist by convention).
@@ -963,42 +1012,23 @@ local function resolveVirtual(marker, ctx, slot)
         -- below 50% of the BASE pool. Denominator (stable branch
         -- latent_effect_container.cpp): MP_UNDER_PERCENT divides health.mp by
         -- health.maxmp = CalculateStats' race/job/sub formula + merit MP --
-        -- gear, traits and food are NOT in it. The 50 is FIELD-PINNED
-        -- (Henrik 2026-07-18): refresh ticks stop between MP 357 and 358 on
-        -- maxmp 714 -- exactly 50.0%, equality ACTIVE, confirming the <=
-        -- boundary; the repo's item_latents param of 75 is not what live
-        -- runs (docs/server-questions.md #6). The threshold recomputes per
+        -- gear, traits and food are NOT in it. The threshold recomputes per
         -- resolve from live race/job/levels (nativemp) plus the merit levels
-        -- saved on the Automations tab, so a job change or level sync
-        -- re-aims it by itself.
-        local g = a.oneiros;
-        if type(g) ~= 'table' or type(g.name) ~= 'string' then
-            return nil, 'Oneiros Grip not owned (the Automations tab rescans itself)';
-        end
-        if not usableAt(g.level, lvl) then
-            return nil, string.format('under level for %s (Lv%d)', g.name, tonumber(g.level) or 0);
-        end
+        -- saved on the Automations tab, so a job change or level sync re-aims
+        -- it by itself. This rim only READS (nativemp + vitals); the field-
+        -- pinned rule itself is pure resolveOneiros above (tests VG*).
         if _nmp == nil or type(_nmp.self) ~= 'function' then
             return nil, 'nativemp module unavailable';
         end
         -- Max MP merit = 10 MP/level, USABLE count capped by merit.cpp's
         -- cap[mlvl] = 10 at Lv75 (the sql's 15 headroom needs Lv80+; this
-        -- resolver only runs at 75 -- the grip's own level gate above).
+        -- resolver only runs at 75 -- the grip's own level gate).
         local meritLv = math.floor(tonumber(a.mpMerits) or 0);
         if meritLv < 0 then meritLv = 0; elseif meritLv > 10 then meritLv = 10; end
         local base = _nmp.self(meritLv * 10);
-        if base == nil then return nil, 'native MP unreadable (login settle?)'; end
-        if base <= 0 then return nil, 'no native MP pool on this job'; end
-        local thr = math.floor(base * 50 / 100);   -- 50 = live truth (v67); repo sql says 75
         local cur = nil;   -- gData vitals read inline (playerMP is declared later in the file)
         pcall(function() cur = tonumber(gData.GetPlayer().MP); end);
-        if cur == nil then return nil, 'current MP unreadable'; end
-        if cur > thr then
-            -- percent-free wording on purpose: /dl why reasons may render
-            -- through imgui's printf-style Text calls
-            return nil, string.format('MP %d above the latent threshold %d (half of base %d)', cur, thr, base);
-        end
-        return g.name;
+        return resolveOneiros(a.oneiros, lvl, base, cur);
     end
     if mk == 'dlac:autostaff' then
         local nm = resolveStaff(a, el, lvl);
@@ -1009,28 +1039,15 @@ local function resolveVirtual(marker, ctx, slot)
         return nm;
     end
     if mk == 'dlac:autoobi' then
-        if el == nil then return nil, 'no element'; end
-        -- Elemental obi for this element first; else the universal obi (Hachirin-no-obi
-        -- -- on CatsEyeXI the only obi). Both level-gated; the day/weather gate is
-        -- evaluated per cast for the SPELL's element either way.
-        local nm, olvl = nil, nil;
-        local o = (type(a.obi) == 'table') and a.obi[el] or nil;
-        if type(o) == 'table' and type(o.name) == 'string' then nm, olvl = o.name, o.level;
-        elseif type(o) == 'string' then nm = o; end     -- legacy manifest: name only
-        if nm ~= nil and not usableAt(olvl, lvl) then nm, olvl = nil, nil; end
-        if nm == nil then
-            local u = a.obiUniversal;
-            if type(u) == 'table' and type(u.name) == 'string' and usableAt(u.level, lvl) then
-                nm = u.name;
-            end
-        end
-        if nm == nil then return nil, 'no usable obi for ' .. el .. ' at Lv' .. lvl; end
-        if netDayWeather(ctx) <= 0 then return nil, 'day/weather not positive'; end
-        return nm;
+        -- The rim only reads the environment; the pick + the positive-sign
+        -- gate are pure resolveObi above (tests VG*).
+        return resolveObi(a, el, lvl, netDayWeather(ctx));
     end
     return nil, 'unknown marker';
 end
 M._resolveVirtual = resolveVirtual;   -- addon-side craft equip + headless tests
+M._resolveObi = resolveObi;           -- pure decision seams (the _resolveVirtual idiom):
+M._resolveOneiros = resolveOneiros;   -- the field-calibrated gates, pinned headless (VG*)
 
 -- The level a virtual marker becomes USABLE at: the lowest level among the
 -- manifest items it can resolve to. A marker is a ladder RUNG at this level,

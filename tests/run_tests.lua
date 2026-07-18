@@ -3547,6 +3547,44 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- VG. Virtual-decision gates, pure halves (engine v69): resolveObi and
+--     resolveOneiros mirror resolveStaff -- data in, decision out; the rims in
+--     resolveVirtual only read env/nativemp/vitals. These were the ONLY two
+--     virtual decisions no test could reach, and both carry field-calibrated
+--     rules (positive day/weather sign; the Mindie-pinned 50% inclusive MP
+--     boundary) that now cannot drift silently.
+-- ---------------------------------------------------------------------------
+(function()
+    local ro = dispatchM._resolveObi;
+    local a = { obi = { Fire = { name = 'Karin Obi', level = 71 },
+                        Ice  = { name = 'Hyorin Obi', level = 71 } },
+                obiUniversal = { name = 'Hachirin-no-obi', level = 61 } };
+    check('VG1 elemental obi on positive sign', ro(a, 'Fire', 75, 1), 'Karin Obi');
+    local n2, w2 = ro(a, 'Fire', 75, 0);
+    check('VG2 zero sign refused',  n2, nil);
+    check('VG2b reason',            w2, 'day/weather not positive');
+    check('VG3 negative sign refused', (ro(a, 'Fire', 75, -1)), nil);
+    check('VG4 under-level elemental falls to universal', ro(a, 'Ice', 70, 1), 'Hachirin-no-obi');
+    check('VG5 no elemental -> universal', ro({ obi = {}, obiUniversal = { name = 'Hachirin-no-obi', level = 61 } }, 'Earth', 75, 2), 'Hachirin-no-obi');
+    check('VG6 elementless action refused', select(2, ro(a, nil, 75, 1)), 'no element');
+    check('VG7 legacy string obi shape', ro({ obi = { Wind = 'Furin Obi' } }, 'Wind', 75, 1), 'Furin Obi');
+    check('VG8 nothing usable reason', select(2, ro({ obi = {} }, 'Dark', 75, 1)), 'no usable obi for Dark at Lv75');
+
+    local rg = dispatchM._resolveOneiros;
+    local g = { name = 'Oneiros Grip', level = 75 };
+    -- THE field pin (Mindie 2026-07-18): base 714 -> threshold 357, equality ACTIVE.
+    check('VG9 at the boundary the latent is LIVE', rg(g, 75, 714, 357), 'Oneiros Grip');
+    local n10, w10 = rg(g, 75, 714, 358);
+    check('VG10 one MP above -> refused', n10, nil);
+    check('VG10b threshold spelled in the reason', w10, 'MP 358 above the latent threshold 357 (half of base 714)');
+    check('VG11 not owned',      select(2, rg(nil, 75, 714, 100)), 'Oneiros Grip not owned (the Automations tab rescans itself)');
+    check('VG12 under level',    select(2, rg(g, 74, 714, 100)), 'under level for Oneiros Grip (Lv75)');
+    check('VG13 base unreadable', select(2, rg(g, 75, nil, 100)), 'native MP unreadable (login settle?)');
+    check('VG14 no pool',        select(2, rg(g, 75, 0, 0)), 'no native MP pool on this job');
+    check('VG15 cur unreadable', select(2, rg(g, 75, 714, nil)), 'current MP unreadable');
+end)();
+
+-- ---------------------------------------------------------------------------
 -- GS. Groups auto-import scanner (Item 1): the pure `scan(fileText) -> candidates, notes`
 --     transform (groupscan.lua). Text-scans a LuaAshitacast file for top-level
 --     `[local] NAME = T?{...}` blocks and surfaces every group-shaped table (a flat string
