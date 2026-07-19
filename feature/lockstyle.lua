@@ -866,25 +866,10 @@ function M.render()
                 .. 'job\'s boxes -- those are OnLoad Lockstyle\'s business (above). A\n'
                 .. 'lockstyle you turned off yourself stays off.');
         end
-        -- Live keep-state readout, in the WINDOW deliberately (field round 4:
-        -- chat and command routing were exactly the layers in doubt -- this
-        -- line only needs the window to render, which the field has proven).
-        -- Doubling as the staleness check: no 'keep4' line = old file loaded.
-        pcall(function()
-            local box = (type(M._lastBox) == 'function') and M._lastBox() or nil;
-            local due = (type(M._healDue) == 'function') and M._healDue() or nil;
-            local on  = (type(M._guardOn) == 'function') and M._guardOn() or false;
-            imgui.TextColored(COL_DIM, string.format('keep6: box %s%s%s',
-                box ~= nil and tostring(box) or '-',
-                due ~= nil and string.format(', heal %ds', math.max(0, math.ceil(due - os.clock()))) or '',
-                on and '' or ', guard off'));
-            if imgui.IsItemHovered() then
-                imgui.SetTooltip('Keep-on-subjob live state (debug). box = the lockstyle a subjob change\n'
-                    .. 'will restore (set by any Apply, cleared by /lockstyle off or a main-job\n'
-                    .. 'change). heal = a restore is booked. guard off = no dlac lockstyle is\n'
-                    .. 'live right now. If this line is missing, an OLD lockstyle.lua is loaded.');
-            end
-        end);
+        -- (The 'keep6' live-readout line lived here during field rounds 5-6;
+        -- removed once the feature was confirmed -- Henrik: the user doesn't
+        -- need it. '/dl ls state' remains the on-demand debug readout, and
+        -- the LGF suite drives the whole chain headlessly.)
         -- own row (Henrik: beside the checkbox it widened the whole window);
         -- full column width, same as Import/Preview
         if imgui.Button('Apply lockstyle##lsgo', { 216, 0 }) then

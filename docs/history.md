@@ -3093,3 +3093,12 @@ HOUSE RULE learned: an addon state never hears its own queued
 commands. Any self-queued '/dl ...' whose effects the SAME state must
 know about needs its bookkeeping done at the queue site, not in the
 command handler.
+
+## Session close "keep-on-subjob confirmed" (2026-07-19)
+
+Field round 6: "Works now, perfect." The keep6 debug readout removed
+from the window on request (the user does not need it); /dl ls state
+stays as the on-demand readout and LGF drives the chain headlessly.
+v44 keep-on-subjob is DONE: six rounds, root cause = an addon state
+never hears its own queued commands (now a house rule in this file
+and in memory).
