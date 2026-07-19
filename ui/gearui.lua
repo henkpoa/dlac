@@ -3842,10 +3842,6 @@ local function drawWindow()
             end
         end
 
-        -- Profiles menu popup: own module (dlac\profilesmenu.lua) -- the header
-        -- button sets ui._profMenuBuild; pmenu.render() snapshots + opens here
-        -- (same window scope: OpenPopup/BeginPopup must share gearui's Begin).
-        pmenu.render();
         imgui.Separator();
 
         if imgui.BeginTabBar('##ffxilac_tabs', ImGuiTabBarFlags_None) then
@@ -3878,6 +3874,11 @@ local function drawWindow()
     -- Registered floating windows (each owns its visibility; the weights window
     -- is the first). A broken window costs itself, never the frame.
     host.renderWindows(function(name, fn, a, b) pcall(fn, a, b); end, job, level);
+
+    -- Profiles menu: its own movable, RESIZABLE window since 2026-07-20 (was a
+    -- BeginPopup inside the main Begin). The header button sets
+    -- ui._profMenuBuild; render() snapshots, opens and draws it.
+    pcall(pmenu.render);
 
     M.visible = (isOpen[1] == true);
 end

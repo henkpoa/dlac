@@ -778,6 +778,24 @@ function M.listExports()
     return out;
 end
 
+-- Delete one export file from dlac-exports\ (the Profiles menu's x button;
+-- Henrik 2026-07-20). Only the shared file goes -- profiles imported from it
+-- keep their copies. Returns true | nil, why.
+function M.deleteExport(fileBase)
+    local ed = M.exportsDir();
+    if ed == nil then return nil, 'not available'; end
+    local base = tostring(fileBase or '');
+    if base == '' or base:find('[/\\]') ~= nil or base:find('%.%.', 1, true) ~= nil then
+        return nil, 'bad file name';
+    end
+    local path = ed .. base .. '.lua';
+    if readFile(path) == nil then return nil, 'no such export: ' .. base; end
+    if os.remove(path) == nil and readFile(path) ~= nil then
+        return nil, 'could not delete ' .. path;
+    end
+    return true;
+end
+
 -- Import an export file into any character/profile under dstName. Payloads
 -- are parse-checked before anything is written; never overwrites. n | nil, why.
 function M.importJobFile(fileBase, dstCharFolder, dstProf, dstName)

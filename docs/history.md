@@ -3305,3 +3305,18 @@ message. The hook only builds when the import landed on THIS
 character's active profile as the CURRENT job (candidate pools are
 this job's); any other target gets a pointer to the button instead.
 1693 + 170 (smoke pins the late-wiring load path).
+
+## Profiles menu: real resizable window + export delete (2026-07-20)
+
+Henrik: wider, resizable, and a delete for shared exports. The
+Profiles popup became a REAL window (dlac Profiles, 980x540 default,
+user-resizable 700x360..1600x1200, [X] closes via ui._profMenuOpen)
+-- gearui now calls pmenu.render() AFTER its main End, beside
+host.renderWindows, since no popup scope is shared anymore. The
+tree layout derives W from GetWindowWidth (safe in a USER-sized
+window; the old fixed-800 rule guarded the AlwaysAutoResize popup's
+feedback loop) and the body child fills the window, reserving a
+bottom strip when a status message shows. Every Shared exports row
+gets an x beside import: red second-click confirm, deletes the
+FILE from dlac-exports (profiles.deleteExport -- path-traversal
+guarded; imported copies stay), re-lists. 1693 + 170.

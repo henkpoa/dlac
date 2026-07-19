@@ -12,8 +12,10 @@
     header button keeps working unchanged: it sets ui._profMenuBuild = true and
     pm.render() snapshots + opens on the next frame.
 
-    pm.render() MUST be called inside gearui's main imgui.Begin: OpenPopup and
-    BeginPopup have to share that window scope.
+    A REAL window since 2026-07-20 (Henrik: wider + user-resizable), not a
+    BeginPopup: movable, resizable, closed by its [X] (ui._profMenuOpen).
+    gearui calls pm.render() AFTER its main window's End, beside the other
+    top-level windows (host.renderWindows) -- no shared popup scope anymore.
 
     Deps arrive via pm.configure{} (the profilesets.configure precedent);
     fields MERGE, so gearui can wire late-defined hooks with a second call:
@@ -71,9 +73,14 @@ pm.render = function()
         end);
         ui._profMenu = m;
         ui._pmForm, ui._pmChk = nil, nil;   -- reopening always lands on the tree view
-        imgui.OpenPopup('##dlac_profmenu');
+        ui._pmDelArm = nil;                 -- disarm any pending export delete
+        ui._profMenuOpen = true;
     end
-    if imgui.BeginPopup('##dlac_profmenu') then
+    if ui._profMenuOpen ~= true then return; end
+    imgui.SetNextWindowSize({ 980, 540 }, ImGuiCond_FirstUseEver);
+    imgui.SetNextWindowSizeConstraints({ 700, 360 }, { 1600, 1200 });
+    local wopen = { true };
+    if imgui.Begin('dlac Profiles###dlac_profmenu', wopen, ImGuiWindowFlags_None) then
         local m = ui._profMenu or { chars = {} };
         local f = ui._pmForm;
 
@@ -406,12 +413,17 @@ pm.render = function()
             if imgui.Button(isDelete and 'Cancel##pm_back' or 'Back##pm_back', { 90, 24 }) then ui._pmForm, ui._pmChk = nil, nil; end
         else
             -- ------- TREE VIEW: character > profile > job files -------
-            do   -- centered PROFILES title, Refresh pinned right. Laid out
-                 -- against a FIXED width: deriving it from GetWindowWidth in
-                 -- an auto-sized popup feeds back on itself (content reaches
-                 -- last frame's width, padding is added, the window crawls to
-                 -- full-screen -- field screenshot 2026-07-13).
-                local W = 800;   -- matches the tree child below: the layout authority
+            -- W derives from the live window width: safe now that this is a
+            -- USER-sized window -- the old fixed-800 rule guarded the
+            -- AlwaysAutoResize popup, where GetWindowWidth fed back on itself
+            -- (content reaches last frame's width, padding is added, the
+            -- window crawls to full-screen -- field screenshot 2026-07-13).
+            local W = 800;
+            pcall(function()
+                local gw = imgui.GetWindowWidth();
+                if type(gw) == 'number' and gw > 100 then W = gw - 16; end
+            end);
+            do   -- centered PROFILES title, Refresh pinned right
                 local tw = 62;
                 pcall(function() local cw = imgui.CalcTextSize('PROFILES'); if type(cw) == 'number' then tw = cw; end end);
                 pcall(function() imgui.SetCursorPosX(math.max(0, (W - tw) / 2)); end);
@@ -421,7 +433,9 @@ pm.render = function()
             end
             imgui.Separator();
             if m.err ~= nil then fmt.textWrapped(COL.ERR, m.err); end
-            imgui.BeginChild('##pm_body', { 800, 340 }, false);
+            -- Fill the resizable window; reserve a strip at the bottom for the
+            -- status message when one is showing.
+            imgui.BeginChild('##pm_body', { -1, (ui._profMenuMsg ~= nil) and -72 or -1 }, false);
             for _, c in ipairs(m.chars) do
                 local fl = (c.isCurrent and ImGuiTreeNodeFlags_DefaultOpen ~= nil) and ImGuiTreeNodeFlags_DefaultOpen or 0;
                 local cOpen = imgui.CollapsingHeader((c.disp or c.name) .. (c.isCurrent and '   (this character)' or '') .. '###pm_c_' .. c.name, fl);
@@ -433,7 +447,7 @@ pm.render = function()
                 local canOverlap = type(imgui.SetItemAllowOverlap) == 'function';
                 if canOverlap then
                     pcall(imgui.SetItemAllowOverlap);
-                    imgui.SameLine(800 - 34);   -- right-aligned on the character row
+                    imgui.SameLine(math.max(0, W - 34));   -- right-aligned on the character row
                     if imgui.SmallButton('+##pm_np_' .. c.name) then
                         ui._pmForm = { kind = 'newProfile', srcChar = c.name, srcDisp = c.disp or c.name, name = { '' } };
                         ui._pmChk = nil;
@@ -554,6 +568,31 @@ pm.render = function()
                                        prof = { 'Default' }, name = { ex.job } };
                         ui._pmChk = nil;
                     end
+                    -- x: delete the export FILE (Henrik 2026-07-20) -- red
+                    -- second-click confirms; profiles imported from it keep
+                    -- their copies.
+                    imgui.SameLine(0, 6);
+                    if ui._pmDelArm == ex.file then
+                        local red = (ImGuiCol_Button ~= nil);
+                        if red then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
+                        if imgui.SmallButton('sure?##pm_dx_' .. ex.file) then
+                            ui._pmDelArm = nil;
+                            pcall(function()
+                                local prof = require('dlac\\profiles');
+                                local okd, derr = prof.deleteExport(ex.file);
+                                ui._profMenuMsg = (okd == true)
+                                    and string.format('Deleted export %s.lua from dlac-exports.', ex.file)
+                                    or ('Delete failed: ' .. tostring(derr));
+                            end);
+                            ui._profMenuBuild = true;   -- re-list without the file
+                        end
+                        if red then imgui.PopStyleColor(1); end
+                    else
+                        if imgui.SmallButton('x##pm_dx_' .. ex.file) then ui._pmDelArm = ex.file; end
+                        if imgui.IsItemHovered() then
+                            imgui.SetTooltip('Delete this export file from dlac-exports -- the second (red) click\nconfirms. Profiles already imported from it keep their copies.');
+                        end
+                    end
                     imgui.SameLine(0, 10);
                     imgui.TextColored(COL.USABLE, tostring(ex.job));
                     -- What the file carries (selective exports differ).
@@ -574,8 +613,9 @@ pm.render = function()
                 fmt.textWrapped(COL.SCORE, ui._profMenuMsg);
             end
         end
-        imgui.EndPopup();
     end
+    imgui.End();
+    if wopen[1] == false then ui._profMenuOpen = false; end
 end
 
 return pm;
