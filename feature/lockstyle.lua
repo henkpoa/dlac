@@ -11,7 +11,12 @@
     with unsaved changes warns first -- continuing DISCARDS the edits.
 
     Storage: <char>\dlac\profiles\<Name>\lockstyles\<JOB>.lua -- the boxes
-    are PER JOB ENTRY (v41) { active, onload = {JOB=box}, slots }. Reads fall
+    are PER JOB ENTRY (v41) { active, keepSub, onload = {JOB=box}, slots }.
+    keepSub (v44) = "Keep on sub change": the game clears style lock on ANY
+    job change (server 0x100 handler -- a server-side clear, so unlike the
+    zone guard there is nothing to block); with the option on, the pump
+    re-applies the session's last-applied box ~3s after a subjob-only
+    change. Main-job changes stay OnLoad Lockstyle's business. Reads fall
     back per file: the v40 per-profile lockstyles.lua, then the pre-profile
     global dlac\lockstyles.lua; every save serializes ALL boxes into the job
     entry's file, so older-tier boxes migrate whole on the first write.
@@ -103,6 +108,18 @@ local function jobAbbr()
     return abbr;
 end
 
+local function subAbbr()
+    local abbr = nil;
+    pcall(function()
+        local p = AshitaCore:GetMemoryManager():GetPlayer();
+        local j = p:GetSubJob();
+        if j == nil or j == 0 then return; end   -- no subjob set = nil, a valid state
+        local s = AshitaCore:GetResourceManager():GetString('jobs.names_abbr', j);
+        if type(s) == 'string' and s ~= '' then abbr = s; end
+    end);
+    return abbr;
+end
+
 local function legacyPath()
     local base = charBase();
     return base and (base .. 'dlac\\lockstyles.lua') or nil;
@@ -130,6 +147,7 @@ local function load_()
         local ok, t = pcall(chunk);
         if ok and type(t) == 'table' then
             if tonumber(t.active) ~= nil then data.active = math.max(1, math.min(N_BOXES, tonumber(t.active))); end
+            if t.keepSub == true then data.keepSub = true; end
             if type(t.onload) == 'table' then data.onload = t.onload; end
             if type(t.slots) == 'table' then data.slots = t.slots; end
         end
@@ -139,10 +157,12 @@ end
 -- Pure serializer (headless-tested): data table -> file text.
 function M._serialize(d)
     local L = { '-- dlac lockstyle sets -- written by the GUI (header armor button); safe to hand-edit.',
-                '-- active = the marked box; onload.<JOB> = box applied on login/job change for that job.',
+                '-- active = the marked box; onload.<JOB> = box applied on login/job change for that job;',
+                '-- keepSub = re-apply the last-applied box after a subjob-only change (v44).',
                 'return {',
-                string.format('    active = %d,', tonumber(d.active) or 1),
-                '    onload = {' };
+                string.format('    active = %d,', tonumber(d.active) or 1) };
+    if d.keepSub == true then L[#L + 1] = '    keepSub = true,'; end
+    L[#L + 1] = '    onload = {';
     local jobs = {};
     for j in pairs(d.onload or {}) do jobs[#jobs + 1] = j; end
     table.sort(jobs);
@@ -189,7 +209,8 @@ end
 -- whose onload still names it, and the OnLoad pump fires a stale box (field:
 -- DRG=1 from box-1 "test" leaked into every file). Each save scrubs its file.
 function M._entryData(d, job)
-    local out = { active = d.active, slots = d.slots, onload = {} };
+    local out = { active = d.active, slots = d.slots, onload = {},
+                  keepSub = (d.keepSub == true) or nil };   -- scalar, rides whole
     if job ~= nil and type(d.onload) == 'table' and d.onload[job] ~= nil then
         out.onload[job] = d.onload[job];
     end
@@ -821,6 +842,24 @@ function M.render()
                 tostring(job or '?'),
                 (cur_ol ~= nil and cur_ol ~= data.active) and string.format('\nCurrently bound to box %d.', cur_ol) or ''));
         end
+        -- Keep-on-subjob (v44). The game clears style lock on ANY job change,
+        -- server-side (0x100 handler) -- nothing to block, so this one is a
+        -- re-apply, the OnLoad pump's pattern.
+        local ksBox = { data.keepSub == true };
+        if imgui.Checkbox('Keep on sub change##lsks', ksBox) then
+            data.keepSub = (ksBox[1] == true) or nil;
+            save();
+            _status = (data.keepSub ~= nil)
+                and 'lockstyle re-applies a few seconds after a subjob change.'
+                or  'subjob changes drop the lockstyle again (game default).';
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('The game clears style lock on ANY job change (that is the server, not\n'
+                .. 'dlac). With this on, dlac re-applies the LAST APPLIED lockstyle a few\n'
+                .. 'seconds after a subjob-only change. Main-job changes load a different\n'
+                .. 'job\'s boxes -- those are OnLoad Lockstyle\'s business (above). A\n'
+                .. 'lockstyle you turned off yourself stays off.');
+        end
         -- own row (Henrik: beside the checkbox it widened the whole window);
         -- full column width, same as Import/Preview
         if imgui.Button('Apply lockstyle##lsgo', { 216, 0 }) then
@@ -880,6 +919,13 @@ end
 -- Jobs with no OnLoad binding are never touched.
 -- ---------------------------------------------------------------------------
 local appliedJob, pendingJob, dueAt = nil, nil, nil;
+-- Keep-on-subjob (v44) state. lastBox = the box this session last actually
+-- applied ('/dl ls apply' observed in the command handler below -- covers the
+-- GUI button, the OnLoad pump and hand-typed applies alike); box numbers are
+-- per JOB ENTRY, so a main-job change resets it and the OnLoad apply that
+-- follows re-records it. Session-only on purpose: after a reload we no longer
+-- know a lockstyle is ours to keep, and the guard starts inactive anyway.
+local lastSub, lastBox, subDueAt = nil, nil, nil;
 function M.pump()
     retireLegacyPreview();
     -- Closing the window while previewing ends the preview (Henrik: always);
@@ -900,6 +946,9 @@ function M.pump()
     if job ~= appliedJob and job ~= pendingJob then
         pendingJob = job;
         dueAt = os.clock() + ((appliedJob == nil) and 6 or 3);
+        -- a MAIN change switches the whole box set: yesterday's box number
+        -- means nothing in the new job entry, and the sub reading flips too
+        lastBox, lastSub, subDueAt = nil, nil, nil;
     end
     if pendingJob ~= nil and dueAt ~= nil and os.clock() >= dueAt then
         appliedJob, pendingJob, dueAt = pendingJob, nil, nil;
@@ -907,6 +956,28 @@ function M.pump()
         if tonumber(box) ~= nil then
             pcall(function()
                 AshitaCore:GetChatManager():QueueCommand(1, string.format('/dl ls apply %d', tonumber(box)));
+            end);
+        end
+    end
+    -- Keep-on-subjob (v44): a subjob-only flip clears the server's style lock
+    -- (0x100 handler) but keeps this job's boxes -- re-apply the last one,
+    -- 3s in (the pump's job-change grace), but only while the zone guard
+    -- still considers a dlac lockstyle live: one the player turned off, or a
+    -- session that never applied one, stays untouched.
+    local sub = subAbbr();
+    if sub ~= lastSub then
+        local realFlip = (lastSub ~= nil) and (pendingJob == nil);   -- not login settle, not a main change in flight
+        lastSub = sub;
+        if realFlip and data.keepSub == true and lastBox ~= nil
+           and type(M._guardActive) == 'function' and M._guardActive() then
+            subDueAt = os.clock() + 3;
+        end
+    end
+    if subDueAt ~= nil and os.clock() >= subDueAt then
+        subDueAt = nil;
+        if lastBox ~= nil then
+            pcall(function()
+                AshitaCore:GetChatManager():QueueCommand(1, string.format('/dl ls apply %d', lastBox));
             end);
         end
     end
@@ -954,8 +1025,9 @@ function M._lsGuard(mode, now, zoneInAt, active, userOffAt)
     return 'pass';
 end
 
-local guard = { active = false, zoneInAt = -1e9, userOffAt = -1e9, said = false };
+local guard = { active = false, zoneInAt = -1e9, userOffAt = -1e9 };
 function M._guardUserOff() guard.userOffAt = os.clock(); end
+function M._guardActive() return guard.active; end   -- the keep-on-subjob pump asks (defined above this section)
 
 ashita.events.register('packet_in', 'dlac-lockstyle-pin', function(e)
     if e.id == 0x00A then guard.zoneInAt = os.clock(); end
@@ -971,11 +1043,9 @@ ashita.events.register('packet_out', 'dlac-lockstyle-pout', function(e)
     elseif act == 'deactivate' then
         guard.active = false;
     elseif act == 'block' then
+        -- silently (Henrik, field round 1): the player asked for a lockstyle;
+        -- it still being on after a zone is not news.
         e.blocked = true;
-        if not guard.said then   -- one explanation per session, then silence
-            guard.said = true;
-            print('[dlac] lockstyle kept -- the client tried to auto-disable it on zone-in (it forgets injected lockstyles). Blocked; later zones are guarded silently.');
-        end
     end
 end);
 
@@ -1005,6 +1075,13 @@ ashita.events.register('command', 'dlac-lockstyle', function(e)
     if args[1] ~= 'ls' then return; end
     e.blocked = true;
     if args[2] == nil or args[2] == 'open' or args[2] == 'ui' then M.open(); end
+    -- Keep-on-subjob's memory of "the lockstyle that is on": every apply
+    -- passes through here (GUI button, OnLoad pump, hand-typed -- the LAC
+    -- state's dispatch does the actual sending, this state just remembers).
+    -- No explicit box = the marked one, same resolution dispatch uses.
+    if args[2] == 'apply' then
+        lastBox = tonumber(args[3]) or (data ~= nil and tonumber(data.active)) or nil;
+    end
 end);
 
 return M;

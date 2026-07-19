@@ -5243,6 +5243,22 @@ end)();
     check('LG12 nil stamps never block an inactive guard', f(0, 5, nil, false, nil), 'deactivate');
     check('LG13 user-off stamp is exported for the command handler',
         type(ls._guardUserOff), 'function');
+
+    -- v44 keep-on-subjob: the option's storage seams. The game clears style
+    -- lock server-side on ANY job change (0x100 handler), so this one is a
+    -- re-apply, not a block -- the pump half is live-only; the pure seams are
+    -- the serializer, the loader default and the job-entry filter.
+    local txt = ls._serialize({ active = 2, keepSub = true, onload = {}, slots = {} });
+    check('LG14 serializer writes keepSub', txt:find('keepSub = true', 1, true) ~= nil, true);
+    local back = (loadstring or load)(txt)();
+    check('LG15 round-trip keeps it', back.keepSub, true);
+    check('LG16 absent option is not written',
+        ls._serialize({ active = 1, onload = {}, slots = {} }):find('keepSub = true', 1, true), nil);
+    local ed = ls._entryData({ active = 1, slots = {}, onload = { DRK = 2 }, keepSub = true }, 'DRK');
+    check('LG17 _entryData carries the option whole', ed.keepSub, true);
+    check('LG18 _entryData without it stays absent',
+        ls._entryData({ active = 1, slots = {}, onload = {} }, 'DRK').keepSub, nil);
+    check('LG19 guard-active accessor exported for the pump', type(ls._guardActive), 'function');
 end)();
 
 -- ---------------------------------------------------------------------------

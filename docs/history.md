@@ -2982,3 +2982,22 @@ guard. Blocking beats re-applying: no undressed flash, no extra
 traffic, and the preserved steady state (server locked, client flag
 off) is the state every dlac lockstyle already lived in between zones.
 Decision half is pure (_lsGuard, LG series). 1509 + 13.
+
+## Session addendum "keep it across subjob changes" (2026-07-19)
+
+Field round 1 on the zone guard: works; the "[dlac] lockstyle kept"
+chat line removed on request ("the user doesn't need to know").
+
+Next ask, shipped as v44: keep the lockstyle across SUBJOB switches,
+as an option in the lockstyle window. Unlike the zone drop, this clear
+is server-side (the 0x100 job-change handler calls SetStyleLock(false)
+itself), so there is nothing to block -- it is a re-apply, the OnLoad
+pump's own pattern. "Keep on sub change" (per job entry, keepSub in
+the storage table): the command handler remembers the session's last
+'/dl ls apply' box (GUI button, OnLoad pump and hand-typed all pass
+through it), the pump watches the subjob abbreviation, and a
+subjob-only flip -- not login settle, not a main change in flight,
+main changes reset the memory since box numbers are per job entry --
+queues that box again 3s later, but only while the zone guard still
+considers a dlac lockstyle live: one the player turned off stays off.
+Storage seams pure-tested (LG14-19). 1522 + 6, smoke_ui 170.
