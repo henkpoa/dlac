@@ -101,8 +101,10 @@ re-detected automatically on login/job change.
 | `/dl set level main <n>` | Preview as another level |
 | `/dl p` / `/dl w` | Panic escape: lock Ring2, equip the Provenance/Warp Ring, wait out its equip delay, use it (`off` cancels) |
 | `/dl iw` | Instant Warp scroll: used straight from Inventory — no equip, no lock, no wait |
+| `/dl ir` | Instant Retrace scroll: same, back to your Campaign nation |
 | `/dl c` | Chocobo Whistle: lock Neck, equip it, call the chocobo the moment the game says ready (`off` cancels) |
-| `/dl t <where>` | Teleport earring: lock Ear2, equip the matching earring (norg, jeuno, sandy, bastok...), wait, use it — no arg lists destinations |
+| `/dl shirt` | Shadow Lord Shirt: lock Body, equip it, teleport to Castle Zvahl Keep (`off` cancels) |
+| `/dl t <where>` | Teleport earring/ring: lock Ear2 or Ring2, equip the matching item (norg, jeuno, sandy, holla, vahzl...), wait, use it — no arg lists destinations |
 
 ## Safety
 

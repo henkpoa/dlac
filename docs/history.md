@@ -3202,3 +3202,26 @@ action; inline-equip rules carry none). The form disables Triggers
 when Sets is unticked and any rule names a set -- set NAMES ride the
 empty shells, so ticking Sets (gear or not) satisfies it. trigNeeds
 lists Sets first, then Modes/Groups. PX18b/19b/19c. 1651 + 170.
+
+## Teleports menu revamp: cascades + new travel items (2026-07-19)
+
+Henrik: too many rows in the Teleports dropdown. New shape, three
+tiers: (1) top strip = instant/panic options, now ALL ownedOnly --
+show what you can actually reach for, otherwise nothing -- Instant
+Warp, Warp Ring, Provenance, Chocobo, plus NEW Shadow Lord Shirt
+(/dl shirt, Body slot, 30s delay, teleports to Castle Zvahl Keep;
+server-gated on having visited) and NEW Instant Retrace scroll
+(/dl ir, id 5428, usable from Inventory, back to your Campaign
+nation -- SCROLL_* generalized into a SCROLLS table). (2) Cascading
+submenus "Teleport Earrings" and "Teleport Rings" (BeginMenu,
+floatgear-proven; flat-section fallback when unbound). The six crag
+rings (Holla/Dem/Mea/Yhoat/Altep/Vahzl, Ring2, same 30s delay) join
+TELEPORTS with a slot field, so /dl t holla just works; rows carry
+grp ear|ring|xp (the old xp flag is gone). Unowned earrings/rings
+still list dim INSIDE the submenus -- the reminder rows moved, not
+died. (3) Exp rings as before, minus the "only the ones you own are
+listed" hint; added the two DEDICATION rings CatsEyeXI actually
+implements as exp: Expertise (+75%) and Anniversary (+100%, 15s
+equip delay -> per-entry wait override). Trizek/Endorsement/
+Facility/Capacity/Vocation grant COMMITMENT (capacity points, not
+exp on this server) and were deliberately left out. 1651 + 170.

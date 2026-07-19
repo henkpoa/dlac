@@ -1136,12 +1136,102 @@ setup.configure({
 
 -- Reload LAC / Scan / Stage / Commit / Augs / Setup, right-aligned on the header row.
 
--- The "Teleports" header dropdown: useitem's enchanted-travel items, clickable.
--- Fixed columns (destination / item / charges / state) so the rows line up;
--- colors follow the house rules -- lit = equippable now, red = owned but
--- stored, dim = not owned -- plus an amber countdown while the enchant
--- recharges (out of charges). charges = "2/7" for charge-tracked items
--- (Henrik: know at a glance how much is left on the exp bands), red at 0.
+-- The "Teleports" header dropdown, three tiers (Henrik, 2026-07-19): the
+-- instant/panic strip on top (owned-only -- useitem.menu() already dropped the
+-- rest), then "Teleport Earrings" / "Teleport Rings" cascading submenus (every
+-- destination listed, dim when unowned), then the exp rings. Fixed columns
+-- (destination / item / charges / state) so the rows line up; colors follow
+-- the house rules -- lit = equippable now, red = owned but stored, dim = not
+-- owned -- plus an amber countdown while the enchant recharges (out of
+-- charges). charges = "2/7" for charge-tracked items (Henrik: know at a
+-- glance how much is left on the exp bands), red at 0.
+--
+-- Cascades: probe the BeginMenu binding, never assume (hard rule 2; floatgear
+-- field-proved it in this install). Without it the groups fall back to flat
+-- sections under dim headers -- the pre-revamp look.
+local tpHasMenu = (imgui ~= nil)
+    and (type(imgui.BeginMenu) == 'function') and (type(imgui.EndMenu) == 'function');
+
+-- One menu row. key makes the invisible Selectable id unique across the
+-- popup's sections and submenus.
+local function renderTeleportRow(r, key)
+    local id = r.id;
+    if id == nil then                              -- not owned: the catalog still knows the icon
+        local rec = lookupByName(r.name);
+        id = rec and rec.Id or nil;
+    end
+    icons.renderIcon(id, 18);
+    local clickable = (r.owned and r.avail);
+    if imgui.Selectable('##tprow' .. key, false) and clickable then
+        pcall(function() AshitaCore:GetChatManager():QueueCommand(1, r.cmd); end);
+        imgui.CloseCurrentPopup();
+    end
+    -- ", 2/7 charges" tooltip suffix -- only for owned, charge-tracked items
+    local chinfo = (r.owned and (r.maxch or 0) > 0 and r.charges ~= nil)
+        and string.format(', %d/%d charges', r.charges, r.maxch) or '';
+    if imgui.IsItemHovered() then
+        if not r.owned then
+            imgui.SetTooltip(r.name .. ' -- not owned.');
+        elseif not r.avail then
+            imgui.SetTooltip(string.format('%s is in %s -- move it to Inventory/Wardrobe to use it.', r.name, tostring(r.where)));
+        elseif r.rem > 0 then
+            imgui.SetTooltip(string.format('%s: recharging%s -- clicking now equips it and fires the moment it\'s ready  (%s).', r.name, chinfo, r.cmd));
+        else
+            imgui.SetTooltip(string.format('%s: ready%s  (%s).', r.name, chinfo, r.cmd));
+        end
+    end
+    local col = COL.DIM;                           -- not owned
+    if r.owned and r.avail then col = COL.USABLE;  -- lit
+    elseif r.owned then col = COL.ERR; end         -- stored: red, as usual
+    imgui.SameLine(30);
+    imgui.TextColored(col, fmt.esc(r.label));
+    imgui.SameLine(150);
+    imgui.TextColored(COL.DIM, fmt.esc(r.name));
+    if chinfo ~= '' then
+        -- charges column: red at 0 -- the reuse countdown alone can't say
+        -- "spent"; what 0 means (NPC recharge etc.) is the server's business,
+        -- so the number just shows red without claiming a remedy.
+        imgui.SameLine(340);   -- clear of the longest names (Federation/Republic Earring) + breathing room
+        imgui.TextColored((r.charges > 0) and COL.DIM or COL.ERR,
+            string.format('%d/%d', r.charges, r.maxch));
+    elseif r.owned and (r.count or 0) > 1 then
+        -- stackables (Instant Warp scrolls): the stack size rides the same
+        -- column, so you know when you're down to your last one.
+        imgui.SameLine(340);
+        imgui.TextColored(COL.DIM, 'x' .. tostring(r.count));
+    end
+    imgui.SameLine(400);   -- state column, past the widest charges text (e.g. "30/30")
+    if not r.owned then
+        imgui.TextColored(COL.DIM, 'not owned');
+    elseif not r.avail then
+        imgui.TextColored(COL.ERR, fmt.esc(tostring(r.where)));
+    elseif r.rem > 0 then
+        local t = math.floor(r.rem);
+        imgui.TextColored({ 1.0, 0.72, 0.25, 1.0 }, (t >= 3600)
+            and string.format('%d:%02d:%02d', math.floor(t / 3600), math.floor(t / 60) % 60, t % 60)
+            or  string.format('%d:%02d', math.floor(t / 60), t % 60));
+    else
+        imgui.TextColored(COL.USABLE, 'ready');
+    end
+end
+
+-- A cascading group ("Teleport Earrings" / "Teleport Rings"). No fmt.esc on
+-- the menu label -- menu labels are not format strings (floatgear's rule).
+-- NO BeginChild anywhere in this chain: a child under a submenu makes ImGui
+-- tear the whole popup down when the mouse travels (floatgear, field).
+local function renderTeleportGroup(title, list, key)
+    if #list == 0 then return; end
+    if tpHasMenu then
+        if imgui.BeginMenu(title .. '##tp' .. key) then
+            for i, r in ipairs(list) do renderTeleportRow(r, key .. i); end
+            imgui.EndMenu();
+        end
+    else
+        imgui.TextColored(COL.HEADER, title);
+        for i, r in ipairs(list) do renderTeleportRow(r, key .. i); end
+    end
+end
+
 local function renderTeleportsPopup()
     if not imgui.BeginPopup('##dlac_teleports') then return; end
     imgui.TextColored(COL.HEADER, 'Teleports');
@@ -1150,75 +1240,24 @@ local function renderTeleportsPopup()
     imgui.Separator();
     local rows = {};
     pcall(function() rows = useit.menu() or {}; end);
-    local xpHeaderDrawn = false;
-    for i, r in ipairs(rows) do
-        -- Exp rings sit in their own section under the teleports (Henrik);
+    -- Split into the popup's tiers by the rows' grp tag (useitem owns the tag).
+    local top, ears, rings, xps = {}, {}, {}, {};
+    for _, r in ipairs(rows) do
+        if     r.grp == 'ear'  then ears[#ears + 1]   = r;
+        elseif r.grp == 'ring' then rings[#rings + 1] = r;
+        elseif r.grp == 'xp'   then xps[#xps + 1]     = r;
+        else                        top[#top + 1]     = r; end
+    end
+    for i, r in ipairs(top) do renderTeleportRow(r, 't' .. i); end
+    if #top > 0 then imgui.Separator(); end
+    renderTeleportGroup('Teleport Earrings', ears, 'e');
+    renderTeleportGroup('Teleport Rings', rings, 'r');
+    if #xps > 0 then
+        -- Exp rings stay a flat section under the teleports (Henrik);
         -- useitem.menu() already dropped the unowned ones.
-        if r.xp and not xpHeaderDrawn then
-            xpHeaderDrawn = true;
-            imgui.Separator();
-            imgui.TextColored(COL.HEADER, 'Exp rings');
-            imgui.SameLine(0, 10);
-            imgui.TextColored(COL.DIM, 'only the ones you own are listed');
-        end
-        local id = r.id;
-        if id == nil then                              -- not owned: the catalog still knows the icon
-            local rec = lookupByName(r.name);
-            id = rec and rec.Id or nil;
-        end
-        icons.renderIcon(id, 18);
-        local clickable = (r.owned and r.avail);
-        if imgui.Selectable('##tprow' .. i, false) and clickable then
-            pcall(function() AshitaCore:GetChatManager():QueueCommand(1, r.cmd); end);
-            imgui.CloseCurrentPopup();
-        end
-        -- ", 2/7 charges" tooltip suffix -- only for owned, charge-tracked items
-        local chinfo = (r.owned and (r.maxch or 0) > 0 and r.charges ~= nil)
-            and string.format(', %d/%d charges', r.charges, r.maxch) or '';
-        if imgui.IsItemHovered() then
-            if not r.owned then
-                imgui.SetTooltip(r.name .. ' -- not owned.');
-            elseif not r.avail then
-                imgui.SetTooltip(string.format('%s is in %s -- move it to Inventory/Wardrobe to use it.', r.name, tostring(r.where)));
-            elseif r.rem > 0 then
-                imgui.SetTooltip(string.format('%s: recharging%s -- clicking now equips it and fires the moment it\'s ready  (%s).', r.name, chinfo, r.cmd));
-            else
-                imgui.SetTooltip(string.format('%s: ready%s  (%s).', r.name, chinfo, r.cmd));
-            end
-        end
-        local col = COL.DIM;                           -- not owned
-        if r.owned and r.avail then col = COL.USABLE;  -- lit
-        elseif r.owned then col = COL.ERR; end         -- stored: red, as usual
-        imgui.SameLine(30);
-        imgui.TextColored(col, fmt.esc(r.label));
-        imgui.SameLine(150);
-        imgui.TextColored(COL.DIM, fmt.esc(r.name));
-        if chinfo ~= '' then
-            -- charges column: red at 0 -- the reuse countdown alone can't say
-            -- "spent"; what 0 means (NPC recharge etc.) is the server's business,
-            -- so the number just shows red without claiming a remedy.
-            imgui.SameLine(340);   -- clear of the longest names (Federation/Republic Earring) + breathing room
-            imgui.TextColored((r.charges > 0) and COL.DIM or COL.ERR,
-                string.format('%d/%d', r.charges, r.maxch));
-        elseif r.owned and (r.count or 0) > 1 then
-            -- stackables (Instant Warp scrolls): the stack size rides the same
-            -- column, so you know when you're down to your last one.
-            imgui.SameLine(340);
-            imgui.TextColored(COL.DIM, 'x' .. tostring(r.count));
-        end
-        imgui.SameLine(400);   -- state column, past the widest charges text (e.g. "30/30")
-        if not r.owned then
-            imgui.TextColored(COL.DIM, 'not owned');
-        elseif not r.avail then
-            imgui.TextColored(COL.ERR, fmt.esc(tostring(r.where)));
-        elseif r.rem > 0 then
-            local t = math.floor(r.rem);
-            imgui.TextColored({ 1.0, 0.72, 0.25, 1.0 }, (t >= 3600)
-                and string.format('%d:%02d:%02d', math.floor(t / 3600), math.floor(t / 60) % 60, t % 60)
-                or  string.format('%d:%02d', math.floor(t / 60), t % 60));
-        else
-            imgui.TextColored(COL.USABLE, 'ready');
-        end
+        imgui.Separator();
+        imgui.TextColored(COL.HEADER, 'Exp rings');
+        for i, r in ipairs(xps) do renderTeleportRow(r, 'x' .. i); end
     end
     -- Footer: pin/unpin the PF-style floating button. The same menu renders from
     -- the floating button itself, so it is removable from EITHER place.
@@ -1361,7 +1400,7 @@ local function renderHeaderButtons()
                   clicked = imgui.Button('Tele##hdrtp', { 26, 22 });   -- no texture: text fallback
               end
               if imgui.IsItemHovered() then
-                  imgui.SetTooltip('Teleports: Instant Warp scrolls (used on the spot, no equip), Warp Ring /\nProvenance Ring / teleport earrings, plus your exp rings -- click one to\nequip it and use it the moment the game says ready (the /dl iw, w, p, t,\nxp commands, clickable). Lit = ready, amber = recharging, red = stored,\ndim = not owned.');
+                  imgui.SetTooltip('Teleports: Instant Warp / Instant Retrace scrolls (used on the spot, no\nequip), Warp / Provenance Ring, Chocobo Whistle, Shadow Lord Shirt, the\nTeleport Earrings / Teleport Rings submenus, plus your exp rings -- click\none to equip it and use it the moment the game says ready (the /dl iw,\nir, w, p, c, shirt, t, xp commands, clickable). Lit = ready, amber =\nrecharging, red = stored, dim = not owned.');
               end
               if clicked then ui._tpOpen = true; end
           end };
@@ -2810,7 +2849,7 @@ local function renderAddPopup(job, level)
         imgui.SameLine(0, 14);
         imgui.Checkbox('Hide teleport/exp items', ui.addHideTravel);
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('Hide the Teleports-menu utility items (Warp / Provenance Ring, teleport\nearrings, exp rings) -- no combat stats, they only bloat the Ear/Ring\nlists. Untick to add one to a set deliberately.');
+            imgui.SetTooltip('Hide the Teleports-menu utility items (Warp / Provenance Ring, Shadow\nLord Shirt, teleport earrings/rings, exp rings) -- no combat stats, they\nonly bloat the Ear/Ring lists. Untick to add one to a set deliberately.');
         end
         -- Weapon-type filter (F2a/F2b, PRD #14): a multiselect narrowing the VISIBLE
         -- candidates by weapon type -- view-only, never eligibility (HARD RULE 6 /

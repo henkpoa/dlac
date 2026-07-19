@@ -6,16 +6,23 @@
         /dl w              same with the Warp Ring (shorter delay).
         /dl iw             use an Instant Warp scroll from Inventory -- a USABLE
                            item, not an enchantment: no equip, no lock, no wait.
+        /dl ir             same with an Instant Retrace scroll -- back to your
+                           Campaign nation (the server refuses it without an
+                           allegiance; that message is the server's to give).
         /dl c              lock Neck, equip the Chocobo Whistle, call the chocobo.
-        /dl t <where>      lock Ear2, equip the matching teleport earring, use it.
-                           <where> matches a destination or alias (norg, jeuno,
-                           sandy, bastok...); an ambiguous query lists the options,
-                           no argument lists every destination.
+        /dl shirt          lock Body, equip the Shadow Lord Shirt, teleport to
+                           Castle Zvahl Keep (server-gated on having visited).
+        /dl t <where>      lock Ear2 (earrings) or Ring2 (teleport rings), equip
+                           the matching item, use it. <where> matches a
+                           destination or alias (norg, jeuno, sandy, holla,
+                           vahzl...); an ambiguous query lists the options, no
+                           argument lists every destination.
         /dl xp <ring>      lock Ring2, equip the matching EXPERIENCE ring, use it
-                           (empress, emperor, resolution, chariot, kupofried,
-                           allied, caliber, echad). Same countdown machinery; the
-                           GUI menu lists only the ones you own.
-        /dl p|w|c|t|xp off cancel the pending use and release the slot.
+                           (empress, emperor, resolution, chariot, expertise,
+                           anniversary, kupofried, allied, caliber, echad). Same
+                           countdown machinery; the GUI menu lists only the ones
+                           you own.
+        /dl p|w|c|shirt|t|xp off   cancel the pending use and release the slot.
 
     Readiness is read from the GAME, not guessed: an enchanted item's Extra data
     carries its last-use timestamp (offset 5) and -- for Flags == 5 equipment --
@@ -47,55 +54,81 @@ local ITEMS = {
     w = { name = 'Warp Ring',        slot = 'ring2', wait = 12 },  --  8s equip delay + margin
     c = { name = 'Chocobo Whistle',  slot = 'neck',  wait = 15,    -- delay unknown; clock rules
           verb = 'calling your chocobo' },
+    shirt = { name = 'Shadow Lord Shirt', slot = 'body', wait = 34,   -- 30s equip delay + margin
+          verb = 'teleporting to Castle Zvahl Keep' },
 };
 
--- Teleport earrings (CatsEyeXI): 30s equip delay + margin, all worn in Ear2.
--- aliases are matched exact -> prefix -> substring; keep them lowercase.
+-- Teleport earrings + teleport rings (CatsEyeXI): 30s equip delay + margin for
+-- both (item_usable useDelay = 30). Earrings wear in Ear2, the crag rings in
+-- Ring2 -- one list so /dl t resolves ANY destination; grp splits the GUI's
+-- two cascading submenus. aliases are matched exact -> prefix -> substring;
+-- keep them lowercase.
 local TELE_WAIT = 34;
 local TELEPORTS = {
-    { name = 'Nashmau Earring',    dest = 'Nashmau',    aliases = { 'nashmau' } },
-    { name = 'Norg Earring',       dest = 'Norg',       aliases = { 'norg' } },
-    { name = 'Duchy Earring',      dest = 'Jeuno',      aliases = { 'jeuno', 'duchy' } },
-    { name = 'Rabao Earring',      dest = 'Rabao',      aliases = { 'rabao' } },
-    { name = 'Selbina Earring',    dest = 'Selbina',    aliases = { 'selbina' } },
-    { name = 'Mhaura Earring',     dest = 'Mhaura',     aliases = { 'mhaura' } },
-    { name = 'Kingdom Earring',    dest = "San d'Oria", aliases = { 'sandoria', 'sandy', 'sand', 'san', 'kingdom' } },
-    { name = 'Federation Earring', dest = 'Windurst',   aliases = { 'windurst', 'windy', 'wind', 'federation' } },
-    { name = 'Republic Earring',   dest = 'Bastok',     aliases = { 'bastok', 'republic' } },
+    { name = 'Nashmau Earring',    dest = 'Nashmau',    slot = 'ear2', grp = 'ear', aliases = { 'nashmau' } },
+    { name = 'Norg Earring',       dest = 'Norg',       slot = 'ear2', grp = 'ear', aliases = { 'norg' } },
+    { name = 'Duchy Earring',      dest = 'Jeuno',      slot = 'ear2', grp = 'ear', aliases = { 'jeuno', 'duchy' } },
+    { name = 'Rabao Earring',      dest = 'Rabao',      slot = 'ear2', grp = 'ear', aliases = { 'rabao' } },
+    { name = 'Selbina Earring',    dest = 'Selbina',    slot = 'ear2', grp = 'ear', aliases = { 'selbina' } },
+    { name = 'Mhaura Earring',     dest = 'Mhaura',     slot = 'ear2', grp = 'ear', aliases = { 'mhaura' } },
+    { name = 'Kingdom Earring',    dest = "San d'Oria", slot = 'ear2', grp = 'ear', aliases = { 'sandoria', 'sandy', 'sand', 'san', 'kingdom' } },
+    { name = 'Federation Earring', dest = 'Windurst',   slot = 'ear2', grp = 'ear', aliases = { 'windurst', 'windy', 'wind', 'federation' } },
+    { name = 'Republic Earring',   dest = 'Bastok',     slot = 'ear2', grp = 'ear', aliases = { 'bastok', 'republic' } },
+    -- The six crag/teleport rings (Henrik's order, 2026-07-19). dest is the
+    -- classic Teleport name -- that IS the destination the enchant casts.
+    { name = 'Holla Ring',         dest = 'Holla',      slot = 'ring2', grp = 'ring', aliases = { 'holla' } },
+    { name = 'Dem Ring',           dest = 'Dem',        slot = 'ring2', grp = 'ring', aliases = { 'dem' } },
+    { name = 'Mea Ring',           dest = 'Mea',        slot = 'ring2', grp = 'ring', aliases = { 'mea' } },
+    { name = 'Yhoat Ring',         dest = 'Yhoat',      slot = 'ring2', grp = 'ring', aliases = { 'yhoat' } },
+    { name = 'Altep Ring',         dest = 'Altep',      slot = 'ring2', grp = 'ring', aliases = { 'altep', 'altepa' } },
+    { name = 'Vahzl Ring',         dest = 'Vahzl',      slot = 'ring2', grp = 'ring', aliases = { 'vahzl' } },
 };
 
 -- Experience bands/rings (Henrik): equip Ring2, wait out the equip delay, use
 -- -- exactly the teleport machinery. `dest` doubles as the short label the
 -- list/menu shows; bonus rides along for the menu label. Only OWNED ones
 -- appear in the GUI menu (you can't have them all). Fallback wait = 10s equip
--- delay + margin; the game-clock poll fires at the true moment as always.
+-- delay + margin -- entries whose server useDelay is longer carry their own
+-- wait; the game-clock poll fires at the true moment as always. Bonuses are
+-- CatsEyeXI's item scripts, NOT retail; only DEDICATION (true exp) rings
+-- belong here -- the capacity-point rings (Trizek, Endorsement, Facility,
+-- Capacity, Vocation) grant COMMITMENT, which is not exp on this server.
 local XP_WAIT = 15;
 local EXPRINGS = {
-    { name = 'Empress Band',     dest = 'Empress',    bonus = '+50%',  aliases = { 'empress' } },
-    { name = 'Emperor Band',     dest = 'Emperor',    bonus = '+50%',  aliases = { 'emperor' } },
-    { name = 'Resolution Ring',  dest = 'Resolution', bonus = '+50%',  aliases = { 'resolution', 'reso' } },
-    { name = 'Chariot Band',     dest = 'Chariot',    bonus = '+75%',  aliases = { 'chariot' } },
-    { name = "Kupofried's Ring", dest = 'Kupofried',  bonus = '+100%', aliases = { 'kupofried', 'kupo' } },
-    { name = 'Allied Ring',      dest = 'Allied',     bonus = '+150%', aliases = { 'allied' } },
-    { name = 'Caliber Ring',     dest = 'Caliber',    bonus = '+150%', aliases = { 'caliber' } },
-    { name = 'Echad Ring',       dest = 'Echad',      bonus = '+150%', aliases = { 'echad' } },
+    { name = 'Empress Band',     dest = 'Empress',     bonus = '+50%',  aliases = { 'empress' } },
+    { name = 'Emperor Band',     dest = 'Emperor',     bonus = '+50%',  aliases = { 'emperor' } },
+    { name = 'Resolution Ring',  dest = 'Resolution',  bonus = '+50%',  aliases = { 'resolution', 'reso' } },
+    { name = 'Chariot Band',     dest = 'Chariot',     bonus = '+75%',  aliases = { 'chariot' } },
+    { name = 'Expertise Ring',   dest = 'Expertise',   bonus = '+75%',  aliases = { 'expertise' } },
+    { name = 'Anniversary Ring', dest = 'Anniversary', bonus = '+100%', aliases = { 'anniversary', 'anni' },
+      wait = 20 },   -- 15s equip delay (item_usable), not the usual 10
+    { name = "Kupofried's Ring", dest = 'Kupofried',   bonus = '+100%', aliases = { 'kupofried', 'kupo' } },
+    { name = 'Allied Ring',      dest = 'Allied',      bonus = '+150%', aliases = { 'allied' } },
+    { name = 'Caliber Ring',     dest = 'Caliber',     bonus = '+150%', aliases = { 'caliber' } },
+    { name = 'Echad Ring',       dest = 'Echad',       bonus = '+150%', aliases = { 'echad' } },
 };
 
-local SLOT_ID = { ring2 = 0x0E, ear2 = 0x0C, neck = 0x09 };   -- native equip-slot indexes
+local SLOT_ID = { ring2 = 0x0E, ear2 = 0x0C, neck = 0x09, body = 0x05 };   -- native equip-slot indexes
 
--- Instant Warp scroll (item 4181, server `instant_warp`): a USABLE item, not an
--- enchantment -- no equip, no slot lock, no delay. /item works from Inventory
--- ONLY, which the menu's avail flag already expresses (scrolls can't sit in
--- wardrobes, so avail=true is exactly "in Inventory"). The canonical name comes
--- from the client resource so the bag scan and the /item command can never
--- drift from what the game calls it; the literal is only the headless fallback.
-local SCROLL_ID = 4181;
-local SCROLL_NAME = 'Instant Warp';
-pcall(function()
-    local r = AshitaCore:GetResourceManager():GetItemById(SCROLL_ID);
-    local nm = (r ~= nil and r.Name ~= nil) and r.Name[1] or nil;
-    if type(nm) == 'string' and #nm > 0 then SCROLL_NAME = nm; end
-end);
+-- Usable travel scrolls: /item straight from Inventory -- no equip, no slot
+-- lock, no delay. /item works from Inventory ONLY, which the menu's avail flag
+-- already expresses (scrolls can't sit in wardrobes, so avail=true is exactly
+-- "in Inventory"). iw warps home; ir returns you to your Campaign nation (the
+-- server refuses it without an allegiance -- its message, not ours). The
+-- canonical names come from the client resource so the bag scan and the /item
+-- command can never drift from what the game calls it; the literals are only
+-- the headless fallback.
+local SCROLLS = {
+    iw = { id = 4181, name = 'Instant Warp',    verb = 'warping home' },
+    ir = { id = 5428, name = 'Instant Retrace', verb = 'returning to your Campaign nation' },
+};
+for _, sc in pairs(SCROLLS) do
+    pcall(function()
+        local r = AshitaCore:GetResourceManager():GetItemById(sc.id);
+        local nm = (r ~= nil and r.Name ~= nil) and r.Name[1] or nil;
+        if type(nm) == 'string' and #nm > 0 then sc.name = nm; end
+    end);
+end
 
 -- Seconds to hold fire past the first measured remaining==0 (the SE quirk: the
 -- displayed 0 is still a live second). 1.2 still fired early at times in the
@@ -286,38 +319,42 @@ end);
 -- item resource. charges is nil / maxch 0 when unowned or not charge-tracked.
 -- ---------------------------------------------------------------------------
 -- ownedOnly rows are dropped from the menu entirely when you don't have one,
--- instead of showing as a dim "not owned" row. Use it for items a character
--- CANNOT obtain -- the Provenance Ring is CW/UCW-only, so an ACE or Wings
--- character listing it forever is noise, not information (Henrik). Items
--- everyone can eventually own stay listed while unowned: that row is the
--- reminder they exist.
+-- instead of showing as a dim "not owned" row. The TOP strip is all ownedOnly
+-- (Henrik, 2026-07-19: it shows the instant/panic options you can actually
+-- reach for, otherwise nothing) and so are the exp rings (you can't have them
+-- all -- a wall of "not owned" rows is noise). The teleport earrings/rings
+-- keep their unowned rows: they live inside their own cascading submenus now,
+-- and there the dim row is the reminder the destination exists.
 local MENU = {
     -- Instant Warp scroll rides on TOP (Henrik, 2026-07-17): the instant, free
-    -- option should be the first thing you see when you have one. Not ownedOnly
-    -- (anyone can stock scrolls -- the unowned row is the reminder they exist).
-    { name = SCROLL_NAME,       label = 'Instant Warp', cmd = '/dl iw' },
-    { name = 'Warp Ring',       label = 'Warp',        cmd = '/dl w' },
-    { name = 'Provenance Ring', label = 'Provenance',  cmd = '/dl p', ownedOnly = true },
-    { name = 'Chocobo Whistle', label = 'Chocobo',     cmd = '/dl c' },
+    -- option should be the first thing you see when you have one.
+    { name = SCROLLS.iw.name,     label = 'Instant Warp', cmd = '/dl iw',    ownedOnly = true },
+    { name = 'Warp Ring',         label = 'Warp',         cmd = '/dl w',     ownedOnly = true },
+    { name = 'Provenance Ring',   label = 'Provenance',   cmd = '/dl p',     ownedOnly = true },
+    { name = 'Chocobo Whistle',   label = 'Chocobo',      cmd = '/dl c',     ownedOnly = true },
+    { name = 'Shadow Lord Shirt', label = 'Zvahl Keep',   cmd = '/dl shirt', ownedOnly = true },
+    { name = SCROLLS.ir.name,     label = 'Retrace',      cmd = '/dl ir',    ownedOnly = true },
 };
+-- Earrings and rings carry their grp through to the rows: the GUI folds each
+-- group into its own cascading submenu ("Teleport Earrings" / "Teleport Rings").
 for _, t in ipairs(TELEPORTS) do
-    MENU[#MENU + 1] = { name = t.name, label = t.dest, cmd = '/dl t ' .. t.aliases[1] };
+    MENU[#MENU + 1] = { name = t.name, label = t.dest, cmd = '/dl t ' .. t.aliases[1], grp = t.grp };
 end
--- Exp rings ride the same menu, marked xp: the GUI draws them in their own
--- section under the teleports. All ownedOnly (Henrik: you can't have them all --
--- listing eight "not owned" rows is noise). label = the short name only (Henrik:
--- no percentages in the first column; the bonus still shows in the /dl xp line).
+-- Exp rings ride the same menu, grp 'xp': the GUI draws them in their own
+-- section under the teleports. label = the short name only (Henrik: no
+-- percentages in the first column; the bonus still shows in the /dl xp line).
 for _, x in ipairs(EXPRINGS) do
     MENU[#MENU + 1] = { name = x.name, label = x.dest,
-                        cmd = '/dl xp ' .. x.aliases[1], xp = true, ownedOnly = true };
+                        cmd = '/dl xp ' .. x.aliases[1], grp = 'xp', ownedOnly = true };
 end
 local WANTED = {};
 for _, m in ipairs(MENU) do WANTED[string.lower(m.name)] = true; end
 
 -- The Teleports-menu name-set for OTHER modules: { lower(name) -> true } over
--- everything above (Warp/Provenance rings, Chocobo Whistle, teleport earrings,
--- exp rings). gearui's + Add picker hides these from set building by default --
--- utility enchantments carry no combat stats and only bloat the slot lists.
+-- everything above (scrolls, Warp/Provenance rings, Chocobo Whistle, Shadow
+-- Lord Shirt, teleport earrings/rings, exp rings). gearui's + Add picker hides
+-- these from set building by default -- utility enchantments carry no combat
+-- stats and only bloat the slot lists.
 function M.menuNames() return WANTED; end
 
 -- Containers the game lets you EQUIP from (inventory + wardrobes); anything
@@ -388,7 +425,7 @@ function M.menu()
         local f = found[string.lower(m.name)];
         if f ~= nil or not m.ownedOnly then            -- exp rings, Provenance: owned only
             rows[#rows + 1] = {
-                name = m.name, label = m.label, cmd = m.cmd, xp = m.xp,
+                name = m.name, label = m.label, cmd = m.cmd, grp = m.grp,
                 id = f and f.id or nil,
                 owned = (f ~= nil),
                 avail = (f ~= nil) and f.avail or false,
@@ -417,11 +454,12 @@ ashita.events.register('command', 'dlac-useitem', function(e)
     local args = {};
     for a in string.gmatch(string.sub(raw, s), '[^%s]+') do args[#args + 1] = a; end
     local sub = args[1];
-    if ITEMS[sub] == nil and sub ~= 't' and sub ~= 'xp' and sub ~= 'iw' then return; end
+    if ITEMS[sub] == nil and SCROLLS[sub] == nil and sub ~= 't' and sub ~= 'xp' then return; end
     e.blocked = true;
     if args[2] == 'off' or args[2] == 'cancel' or args[2] == 'stop' then cancel(); return; end
 
-    if sub == 'iw' then
+    local sc = SCROLLS[sub];
+    if sc ~= nil then
         -- Usable scroll: nothing to equip, nothing to lock, nothing to wait out.
         -- Verify it's in Inventory (the game can't /item from any other bag),
         -- then use it on the spot.
@@ -432,7 +470,7 @@ ashita.events.register('command', 'dlac-useitem', function(e)
                 local max = inv:GetContainerCountMax(bag) or 0;
                 for i = 1, max do
                     local item = inv:GetContainerItem(bag, i);
-                    if item ~= nil and item.Id == SCROLL_ID and (item.Count or 0) > 0 then
+                    if item ~= nil and item.Id == sc.id and (item.Count or 0) > 0 then
                         if bag == 0 then inInv = true; return; end
                         where = where or (BAG_NAMES[bag] or ('bag ' .. tostring(bag)));
                     end
@@ -440,12 +478,12 @@ ashita.events.register('command', 'dlac-useitem', function(e)
             end
         end);
         if inInv then
-            queue('/item "' .. SCROLL_NAME .. '" <me>');
-            print('[dlac] using ' .. SCROLL_NAME .. ' -- warping home.');
+            queue('/item "' .. sc.name .. '" <me>');
+            print('[dlac] using ' .. sc.name .. ' -- ' .. sc.verb .. '.');
         elseif where ~= nil then
-            print('[dlac] your ' .. SCROLL_NAME .. ' is in ' .. where .. ' -- move it to Inventory to use it.');
+            print('[dlac] your ' .. sc.name .. ' is in ' .. where .. ' -- move it to Inventory to use it.');
         else
-            print('[dlac] no ' .. SCROLL_NAME .. ' owned.');
+            print('[dlac] no ' .. sc.name .. ' owned.');
         end
         return;
     end
@@ -463,7 +501,7 @@ ashita.events.register('command', 'dlac-useitem', function(e)
             print('[dlac] "' .. q .. '" is ambiguous -- did you mean: ' .. listTeleports(hits) .. '?');
         else
             local t = hits[1];
-            start({ name = t.name, slot = 'ear2', wait = TELE_WAIT },
+            start({ name = t.name, slot = t.slot, wait = TELE_WAIT },
                 'teleporting to ' .. t.dest, '/dl t off');
         end
         return;
@@ -482,7 +520,7 @@ ashita.events.register('command', 'dlac-useitem', function(e)
             print('[dlac] "' .. q .. '" is ambiguous -- did you mean: ' .. listTeleports(hits) .. '?');
         else
             local x = hits[1];
-            start({ name = x.name, slot = 'ring2', wait = XP_WAIT },
+            start({ name = x.name, slot = 'ring2', wait = x.wait or XP_WAIT },
                 'popping the ' .. x.bonus .. ' exp bonus', '/dl xp off');
         end
         return;
