@@ -959,18 +959,24 @@ function M.pump()
             end);
         end
     end
-    -- Keep-on-subjob (v44): a subjob-only flip clears the server's style lock
-    -- (0x100 handler) but keeps this job's boxes -- re-apply the last one,
-    -- 3s in (the pump's job-change grace), but only while the zone guard
-    -- still considers a dlac lockstyle live: one the player turned off, or a
-    -- session that never applied one, stays untouched.
+    -- Keep-on-subjob (v44, gate fixed in round 2): a subjob-only flip loses
+    -- the lockstyle -- the mog-house path clears it server-side (0x100
+    -- handler) and the client's own job-change reflex sends a DISABLE (its
+    -- private flag is off, the zone-in story again). Round 1 gated the
+    -- re-apply on the guard still holding the lockstyle live, and that
+    -- DISABLE had already retired the guard by flip time -- the gate vetoed
+    -- the exact event the feature exists for. Now lastBox alone is the
+    -- authority: it survives client noise and clears only when the PLAYER
+    -- ends the lockstyle ('retire'/'adopt' in the guard). The flip also arms
+    -- the guard's blockable window, so a straggling DISABLE around the
+    -- change is swallowed whichever side of our re-apply it lands on.
     local sub = subAbbr();
     if sub ~= lastSub then
         local realFlip = (lastSub ~= nil) and (pendingJob == nil);   -- not login settle, not a main change in flight
         lastSub = sub;
-        if realFlip and data.keepSub == true and lastBox ~= nil
-           and type(M._guardActive) == 'function' and M._guardActive() then
+        if realFlip and data.keepSub == true and lastBox ~= nil then
             subDueAt = os.clock() + 3;
+            if type(M._guardArm) == 'function' then M._guardArm(); end
         end
     end
     if subDueAt ~= nil and os.clock() >= subDueAt then
@@ -1013,12 +1019,22 @@ end
 local ZONE_WINDOW  = 10;   -- s after zone-in 0x00A the client's auto-DISABLE can land (field: ~0.6s)
 local INTENT_WINDOW = 3;   -- s after a typed '/lockstyle off' its packet counts as the player's
 
--- Pure (headless-tested, AK series): one outgoing 0x053 mode -> what to do.
+-- Pure (headless-tested, LG series): one outgoing 0x053 mode -> what to do.
 -- modes: 0 Disable / 1 Continue / 2 Query / 3 Set / 4 Enable (server enum).
+-- The two disable verdicts are NOT the same thing (field round 2, the keep-
+-- on-subjob fix): 'retire' = the player typed it -- the guard yields AND the
+-- keep memory forgets the box, nothing may resurrect it. 'deactivate' = a
+-- disable we let through but nobody asked for (the client's job-change
+-- reflex, mostly) -- the guard yields but the keep memory SURVIVES, because
+-- keep-on-subjob exists exactly for those. 'adopt' = a native /lockstyle on:
+-- the server rebuilds the style from WORN gear, stomping any dlac box -- so
+-- the guard arms but the box memory clears; keep must not resurrect a look
+-- the player replaced.
 function M._lsGuard(mode, now, zoneInAt, active, userOffAt)
-    if mode == 3 or mode == 4 then return 'activate'; end
+    if mode == 3 then return 'activate'; end
+    if mode == 4 then return 'adopt'; end
     if mode == 0 then
-        if now - (userOffAt or -1e9) < INTENT_WINDOW then return 'deactivate'; end
+        if now - (userOffAt or -1e9) < INTENT_WINDOW then return 'retire'; end
         if active and now - (zoneInAt or -1e9) < ZONE_WINDOW then return 'block'; end
         return 'deactivate';
     end
@@ -1027,7 +1043,11 @@ end
 
 local guard = { active = false, zoneInAt = -1e9, userOffAt = -1e9 };
 function M._guardUserOff() guard.userOffAt = os.clock(); end
-function M._guardActive() return guard.active; end   -- the keep-on-subjob pump asks (defined above this section)
+-- The keep-on-subjob pump (above) calls this on a subjob flip it intends to
+-- survive: the client's confused DISABLE (its private flag is off) can land
+-- before OR after our re-apply, so open the same blockable window a zone-in
+-- gets and swallow it either way.
+function M._guardArm() guard.active = true; guard.zoneInAt = os.clock(); end
 
 ashita.events.register('packet_in', 'dlac-lockstyle-pin', function(e)
     if e.id == 0x00A then guard.zoneInAt = os.clock(); end
@@ -1040,8 +1060,14 @@ ashita.events.register('packet_out', 'dlac-lockstyle-pout', function(e)
     local act = M._lsGuard(mode, os.clock(), guard.zoneInAt, guard.active, guard.userOffAt);
     if act == 'activate' then
         guard.active = true;
-    elseif act == 'deactivate' then
+    elseif act == 'adopt' then
+        guard.active = true;   -- native enable: live style = worn gear now
+        lastBox = nil;         -- ...so the dlac box is not what is showing
+    elseif act == 'retire' then
         guard.active = false;
+        lastBox = nil;         -- the player meant OFF: nothing resurrects it
+    elseif act == 'deactivate' then
+        guard.active = false;  -- yields -- but lastBox survives (client noise)
     elseif act == 'block' then
         -- silently (Henrik, field round 1): the player asked for a lockstyle;
         -- it still being on after a zone is not news.

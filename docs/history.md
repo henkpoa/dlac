@@ -3001,3 +3001,20 @@ main changes reset the memory since box numbers are per job entry --
 queues that box again 3s later, but only while the zone guard still
 considers a dlac lockstyle live: one the player turned off stays off.
 Storage seams pure-tested (LG14-19). 1522 + 6, smoke_ui 170.
+
+## Session addendum "the gate vetoed its own feature" (2026-07-19)
+
+Field round 2 on keep-on-subjob: "I think the idea is right, but does
+not work." Diagnosis from the round-1 wiring itself: the client sends
+its confused DISABLE on job changes too (same private-flag reflex as
+zone-in), it lands outside the zone window, the guard duly retires --
+and the pump gated the re-apply on the guard still being live. The
+safety condition ate exactly the event the feature exists for.
+
+Fix: lastBox alone is the keep authority now. The guard grew honest
+verdicts: retire (player typed it; box memory clears, nothing
+resurrects) vs deactivate (unasked; box memory survives) vs adopt
+(native /lockstyle on; guard arms but the box no longer describes the
+shown style -- the server rebuilds from worn gear). The subjob flip
+also arms the guard window, so a straggling DISABLE around the change
+is swallowed on either side of the re-apply. LG repinned. 1529 + 170.

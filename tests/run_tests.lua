@@ -5226,15 +5226,18 @@ end)();
     local FAR = -1e9;   -- "never happened" stamp
     -- mode, now, zoneInAt, active, userOffAt
     check('LG1 SET arms the guard',    f(3, 100, FAR, false, FAR), 'activate');
-    check('LG2 ENABLE arms it too (native path, harmless)', f(4, 100, FAR, false, FAR), 'activate');
+    check('LG2 native ENABLE adopts: guard arms, box memory must clear (worn gear stomped the box)',
+        f(4, 100, FAR, false, FAR), 'adopt');
     check('LG3 THE BUG: in-window DISABLE while live -> blocked',
         f(0, 100.6, 100, true, FAR), 'block');
-    check('LG4 late DISABLE is real -> retire', f(0, 111, 100, true, FAR), 'deactivate');
+    check('LG4 late unasked DISABLE -> guard yields, keep memory survives',
+        f(0, 111, 100, true, FAR), 'deactivate');
     check('LG5 window edge: 10s is already late', f(0, 110, 100, true, FAR), 'deactivate');
-    check('LG6 in-window but nothing live -> pass through as retire',
+    check('LG6 in-window but nothing live -> pass through',
         f(0, 100.6, 100, false, FAR), 'deactivate');
-    check('LG7 player typed /lockstyle off -> NEVER blocked, even in-window',
-        f(0, 100.6, 100, true, 100.5), 'deactivate');
+    check('LG7 player typed /lockstyle off -> RETIRE, never blocked, box memory clears',
+        f(0, 100.6, 100, true, 100.5), 'retire');
+    check('LG7b typed off outside any window is still retire', f(0, 500, 100, false, 499), 'retire');
     check('LG8 stale intent stamp does not shield the auto-disable',
         f(0, 100.6, 100, true, 90), 'block');
     check('LG9 CONTINUE passes untouched', f(1, 100.6, 100, true, FAR), 'pass');
@@ -5258,7 +5261,8 @@ end)();
     check('LG17 _entryData carries the option whole', ed.keepSub, true);
     check('LG18 _entryData without it stays absent',
         ls._entryData({ active = 1, slots = {}, onload = {} }, 'DRK').keepSub, nil);
-    check('LG19 guard-active accessor exported for the pump', type(ls._guardActive), 'function');
+    check('LG19 guard-arm (the subjob-flip window) exported for the pump',
+        type(ls._guardArm), 'function');
 end)();
 
 -- ---------------------------------------------------------------------------
