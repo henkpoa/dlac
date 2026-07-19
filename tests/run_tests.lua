@@ -5766,8 +5766,14 @@ end)();
     local refs = pexp.triggerRefs(rawDeps, dispatchM.canonEvent);
     check('PX17 group condition detected', refs.groups, true);
     check('PX18 mode condition detected inside whenAny', refs.modes, true);
+    check('PX18b set action is a dependency', refs.sets, true);
     local refs2 = pexp.triggerRefs({ Midcast = { { when = { name = 'Cure' }, set = 'A' } } }, dispatchM.canonEvent);
-    check('PX19 no refs when rules use neither', refs2.modes == false and refs2.groups == false, true);
+    check('PX19 no group/mode refs when rules use neither', refs2.modes == false and refs2.groups == false, true);
+    -- an EMPTY-condition rule still depends on its set; an inline-equip rule does not
+    local refsE = pexp.triggerRefs({ Precast = { { when = {}, set = 'Cure_Fast' } } }, dispatchM.canonEvent);
+    check('PX19b empty condition still needs its set', refsE.sets == true and refsE.modes == false and refsE.groups == false, true);
+    local refsQ = pexp.triggerRefs({ Precast = { { when = { name = 'X' }, equip = { Head = 'Y' } } } }, dispatchM.canonEvent);
+    check('PX19c inline-equip rule carries no set dep', refsQ.sets, false);
     local gated = profilesM.frameSetsText('Dynamic = {\n        Idle = {\n            Body = {\n                {gear.Body.X, mode = "DT"},\n            },\n        },\n    }');
     check('PX20 mode-gated gear detected', pexp.setsUseModes(gated), true);
     check('PX21 plain gear carries no mode dep', pexp.setsUseModes(setsSrc), false);

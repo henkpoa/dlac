@@ -118,13 +118,19 @@ end
 
 -- ---------------------------------------------------------------------------
 -- Dependency analysis (Henrik 2026-07-19 round 2): a rule with a dangling
--- `group`/`mode` condition never fires on the receiver (groupMatch/modeActive
--- return false against nothing) and a mode-gated set rung goes inert -- no
--- crash, just silent dead data. The export form uses these to DISABLE a
--- selection that would ship such dead references.
+-- reference never fires on the receiver -- a `group`/`mode` condition matches
+-- against nothing (groupMatch/modeActive return false), a `set = 'Name'`
+-- action points at a set that isn't there, and a mode-gated set rung goes
+-- inert. No crash, just silent dead data. The export form uses these to
+-- DISABLE a selection that would ship such dead references.
+--
+-- A trigger with an EMPTY condition (fires on anything) still depends on its
+-- SET: that is the whole point of the rule (Henrik). Set NAMES travel even as
+-- empty shells, so ticking Sets -- gear or not -- satisfies it.
 -- ---------------------------------------------------------------------------
 
--- Which condition kinds one rule uses (when + whenAny entries).
+-- Which references one rule carries: group/mode conditions (when + whenAny)
+-- and whether its action names a set (vs an inline equip).
 local function ruleRefs(r, refs)
     local function scan(map)
         for k in pairs(map or {}) do
@@ -140,12 +146,13 @@ local function ruleRefs(r, refs)
             if type(e) == 'table' then scan(e); end
         end
     end
+    if r.set ~= nil then refs.sets = true; end   -- a named-set action (inline equip carries no set dep)
 end
 
--- Pure: does any handler rule in a raw trigger table condition on modes /
--- groups? Returns { modes = bool, groups = bool }.
+-- Pure: what a raw trigger table's handler rules reference.
+-- Returns { modes = bool, groups = bool, sets = bool }.
 function M.triggerRefs(raw, canonEvent)
-    local refs = { modes = false, groups = false };
+    local refs = { modes = false, groups = false, sets = false };
     if type(raw) ~= 'table' then return refs; end
     for k, v in pairs(raw) do
         local ev = (type(canonEvent) == 'function') and canonEvent(k) or nil;
@@ -181,7 +188,7 @@ end
 -- File-reading wrapper for the export form: what this job's data references.
 -- All-false when unreadable (no file = no dependency).
 function M.analyzeJob(charFolder, profName, job, dirOverride)
-    local deps = { trigModes = false, trigGroups = false, setModes = false };
+    local deps = { trigModes = false, trigGroups = false, trigSets = false, setModes = false };
     if prof == nil then return deps; end
     local dir = dirOverride or prof.profileDirAt(charFolder, profName);
     if dir == nil then return deps; end
@@ -189,7 +196,7 @@ function M.analyzeJob(charFolder, profName, job, dirOverride)
         local raw = dispatch.readTriggersRaw(dir .. 'triggers\\' .. job .. '.lua');
         if raw ~= nil then
             local r = M.triggerRefs(raw, dispatch.canonEvent);
-            deps.trigModes, deps.trigGroups = r.modes, r.groups;
+            deps.trigModes, deps.trigGroups, deps.trigSets = r.modes, r.groups, r.sets;
         end
     end
     local t = readFile(dir .. 'sets\\' .. job .. '.lua');

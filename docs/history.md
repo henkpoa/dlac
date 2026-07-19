@@ -3190,3 +3190,15 @@ and disables Set equipment when the gear is Mode-gated and Modes are
 off. Blocked rows render inert without mutating the remembered tick
 (restore the dep, the choice comes back); the export reads f._eff, the
 dependency-gated effective values. PX17-21. 1648 + 170.
+
+## Export dep gating round 2: trigger->set (2026-07-19)
+
+Henrik: triggers can have empty conditions, so the dependency isn't
+only groups/modes -- an empty-condition rule still points at a SET.
+Confirmed group/mode detection already covers when + whenAny (the
+"only a group/mode condition" case = PX17/18). Added the trigger->set
+dependency: triggerRefs now reports .sets (a rule with a named `set`
+action; inline-equip rules carry none). The form disables Triggers
+when Sets is unticked and any rule names a set -- set NAMES ride the
+empty shells, so ticking Sets (gear or not) satisfies it. trigNeeds
+lists Sets first, then Modes/Groups. PX18b/19b/19c. 1651 + 170.

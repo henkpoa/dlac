@@ -135,10 +135,14 @@ pm.render = function()
                         imgui.SetTooltip('OFF (default): sets travel as EMPTY shells -- names only, no gear.\nGear rarely aligns between characters; the receiver auto-builds their own.\nON: the exact gear ladders travel verbatim.');
                     end
                 end
-                -- Triggers need Modes / Groups when their rules condition on
-                -- them: a dangling reference never fires on the receiver, so
-                -- a choice that would ship one is disabled, not just warned.
+                -- Triggers need whatever their rules reference: Sets (rules
+                -- point at set names -- shells are enough), Modes and Groups
+                -- (conditions). A dangling reference never fires on the
+                -- receiver, so a choice that would ship one is disabled, not
+                -- just warned. Sets first: it's the reference even an
+                -- empty-condition rule carries.
                 local trigNeeds = {};
+                if deps.trigSets and not setsOn then trigNeeds[#trigNeeds + 1] = 'Sets'; end
                 if deps.trigModes and not modesOn then trigNeeds[#trigNeeds + 1] = 'Modes'; end
                 if deps.trigGroups and not groupsOn then trigNeeds[#trigNeeds + 1] = 'Groups'; end
                 if #trigNeeds > 0 then
@@ -486,7 +490,7 @@ pm.render = function()
                                     -- deps: which selections REFERENCE which others (one
                                     -- disk probe at open, like the menu snapshot) -- the
                                     -- form disables choices that would ship dead references.
-                                    local deps = { trigModes = false, trigGroups = false, setModes = false };
+                                    local deps = { trigModes = false, trigGroups = false, trigSets = false, setModes = false };
                                     pcall(function()
                                         local pexp = require('dlac\\gear\\profileexport');
                                         deps = pexp.analyzeJob(c.name, p.name, jf2.name) or deps;
