@@ -15,9 +15,13 @@
     pm.render() MUST be called inside gearui's main imgui.Begin: OpenPopup and
     BeginPopup have to share that window scope.
 
-    Deps arrive once via pm.configure{} (the profilesets.configure precedent):
-        ui   -- gearui's live view-state table
-        COL  -- shared palette
+    Deps arrive via pm.configure{} (the profilesets.configure precedent);
+    fields MERGE, so gearui can wire late-defined hooks with a second call:
+        ui          -- gearui's live view-state table
+        COL         -- shared palette
+        afterImport -- fn(dstChar, dstProf, jobName) -> note|nil, called after a
+                       weights-bearing job import lands (Henrik 2026-07-20:
+                       auto-build the imported sets right away)
 ]]--
 
 local pm = {};
@@ -28,9 +32,13 @@ local imgui = (function()
     return (ok and type(m) == 'table') and m or nil;
 end)();
 
-local ui, COL;   -- set once by configure; render() no-ops until then
+local ui, COL, afterImport;   -- set by configure; render() no-ops until ui/COL land
 pm.configure = function(deps)
-    if type(deps) == 'table' then ui = deps.ui; COL = deps.COL; end
+    if type(deps) == 'table' then
+        ui = deps.ui or ui;
+        COL = deps.COL or COL;
+        afterImport = deps.afterImport or afterImport;
+    end
 end
 
 pm.render = function()
@@ -309,13 +317,14 @@ pm.render = function()
                             -- through gearoptim -- live merge for the current character,
                             -- file merge for another -- with the job re-keyed to its
                             -- imported name. Failure only annotates; files already landed.
-                            local wnote = '';
+                            local wnote, wOK = '', false;
                             if n ~= nil then
                                 pcall(function()
                                     local meta = prof.readExportFile(f.file);
                                     if meta ~= nil and type(meta.weights) == 'string' then
                                         local optim = require('dlac\\gear\\gearoptim');
                                         local wn, werr = optim.importJobWeightsTextAt(dstC.name, meta.weights, meta.job, prof.sanitizeName(f.name[1]));
+                                        wOK = (wn ~= nil and wn > 0);
                                         wnote = (wn ~= nil)
                                             and string.format(' + stat weights for %d set(s)', wn)
                                             or (' (stat weights skipped: ' .. tostring(werr) .. ')');
@@ -325,6 +334,21 @@ pm.render = function()
                             ui._profMenuMsg = (n ~= nil)
                                 and string.format('Imported %s -> %s / "%s" as %s (%d file(s))%s.', f.job, dstC.disp or dstC.name, prof.sanitizeName(f.prof[1]), prof.sanitizeName(f.name[1]), n, wnote)
                                 or ('Import failed: ' .. tostring(err));
+                            -- Weights landed -> auto-build the imported sets right away
+                            -- (Henrik 2026-07-20: the exported shells are EMPTY on
+                            -- purpose; the importer's own gear fills them). The hook
+                            -- (gearui's Auto-Build All) decides whether it CAN --
+                            -- current character, active profile, current job -- and
+                            -- returns the note either way.
+                            if n ~= nil and wOK and afterImport ~= nil then
+                                local note = nil;
+                                pcall(function()
+                                    note = afterImport(dstC.name, prof.sanitizeName(f.prof[1]), prof.sanitizeName(f.name[1]));
+                                end);
+                                if type(note) == 'string' and note ~= '' then
+                                    ui._profMenuMsg = tostring(ui._profMenuMsg) .. note;
+                                end
+                            end
                         elseif f.kind == 'exportJob' then
                             local pexp = require('dlac\\gear\\profileexport');
                             -- f._eff = the dependency-gated effective choices the

@@ -3285,3 +3285,23 @@ a status note. Row cleanup while at it: set picker 150->240, name
 box 104->200 (dead space, clipped names), and the Lock checkbox is
 GONE (applySetLock deleted) -- that workflow belongs to Equipped's
 "Lock when equipped". SN14-19 / RK1-6 / RS0-7. 1693 + 170.
+
+## Auto-Build All + auto-build on weights-bearing import (2026-07-20)
+
+Henrik: exports deliberately carry stat weights + EMPTY set shells
+(equipment/lockstyles are too individual) -- so when a profile
+import lands with weights, AUTO BUILD the sets immediately: the
+importer's own gear fills the shells. New gearui.autoBuildAll(job,
+level): every dynamic set of the job with per-set weights (points
+or priority) is loaded, bound, autoBuilt and committed; sets whose
+weights score nothing keep their contents (no empty commit); the
+panel returns to the set it showed. Surfaced twice: (1) a new
+"Auto-Build All" button at the end of the Sets controls row (hover:
+"Will auto-build all gear-sets with stat weights set."), and (2)
+the Profiles menu's import flow -- profilesmenu.configure now
+MERGES deps and takes an afterImport hook; a weights-bearing job
+import (wn > 0) calls it and appends the result to the menu
+message. The hook only builds when the import landed on THIS
+character's active profile as the CURRENT job (candidate pools are
+this job's); any other target gets a pointer to the button instead.
+1693 + 170 (smoke pins the late-wiring load path).

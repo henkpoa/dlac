@@ -2797,6 +2797,84 @@ local function renameCurrentSet(job, newName)
     return true;
 end
 
+-- Auto-Build All (Henrik 2026-07-20): build and COMMIT every dynamic set of
+-- this job that has stat weights set (per-set points or a priority list) --
+-- load, bind, autoBuild, commit, next; the panel returns to the set it showed.
+-- The receiving half of a weights-bearing profile import (exports carry
+-- weights and EMPTY set shells, never equipment -- the importer's own gear
+-- fills them here), and the controls row's "Auto-Build All" button. A set
+-- whose weights score nothing keeps its current contents (no empty commit).
+-- Returns built, skippedNoWeights, scoredNothing.
+local function autoBuildAll(job, level)
+    if not has.setmgr then setStatus('setmanager unavailable.', true); return 0, 0, 0; end
+    if job == nil or job == '' then setStatus('Unknown job (are you logged in?).', true); return 0, 0, 0; end
+    profsets.invalidate();          -- an import may have just written the sets file
+    local names = profsets.dynamicSetNames();
+    local weighted = {};
+    if has.optim then
+        pcall(function()
+            for _, k in ipairs(optim.perSetKeys() or {}) do weighted[k] = true; end
+            for _, k in ipairs(optim.prioPerSetKeys() or {}) do weighted[k] = true; end
+        end);
+    end
+    local todo = {};
+    for _, nm in ipairs(names) do
+        if weighted[tostring(job) .. '|' .. nm] == true then todo[#todo + 1] = nm; end
+    end
+    if #todo == 0 then
+        setStatus('No set of this job has stat weights set -- nothing to auto-build.', true);
+        return 0, #names, 0;
+    end
+    local prevName = M.workingSetName;
+    local built, empty = 0, 0;
+    for _, nm in ipairs(todo) do
+        loadSet(nm);
+        if has.optim and optim.bindSetWeights ~= nil then pcall(optim.bindSetWeights, job, nm); end
+        ui._wbuf = {};
+        invalidateCandidates();
+        local nSlots = 0;
+        pcall(function() nSlots = autoBuild(job, level); end);
+        if (nSlots or 0) > 0 then
+            commitCurrentSet(job);
+            built = built + 1;
+        else
+            empty = empty + 1;
+            _setDirty = false;      -- untouched set: no unsaved-changes flag
+        end
+    end
+    -- Put the panel back on the set it showed before the sweep.
+    if prevName ~= nil then loadSet(prevName);
+    else M.working = {}; M.workingSetName = nil; ui.setSelected = nil; _setDirty = false; end
+    local skipped = #names - #todo;
+    setStatus(string.format('Auto-built %d set%s%s%s -- committed and live.',
+        built, (built == 1) and '' or 's',
+        (empty > 0) and string.format(' (%d scored nothing and kept their contents)', empty) or '',
+        (skipped > 0) and string.format(' (%d without weights untouched)', skipped) or ''), false);
+    return built, skipped, empty;
+end
+
+-- A weights-bearing job import auto-builds its sets the moment it lands
+-- (profilesmenu calls back; configure MERGES, so this late wiring keeps the
+-- ui/COL deps from line ~194). Only possible when the import targeted THIS
+-- character's ACTIVE profile under the CURRENT job -- the candidate pools
+-- (owned gear, job/level usability) are the current job's; anything else
+-- gets a pointer to the Sets tab's Auto-Build All instead.
+pmenu.configure({ afterImport = function(dstChar, dstProf, jobName)
+    local prof = require('dlac\\profiles');
+    if dstChar ~= prof.currentCharFolder() or dstProf ~= prof.activeName() then
+        return '  (sets not auto-built: they landed outside this character\'s active profile -- switch there and click Auto-Build All on the Sets tab)';
+    end
+    local job, level = getPlayerInfo();
+    if job == nil or tostring(job) ~= tostring(jobName) then
+        return string.format('  (sets not auto-built: you are on %s and the import is %s -- switch job and click Auto-Build All on the Sets tab)',
+            tostring(job or '?'), tostring(jobName));
+    end
+    local built, _, empty = autoBuildAll(job, level);
+    return string.format('  Auto-built %d imported set%s from their stat weights with YOUR gear%s.',
+        built, (built == 1) and '' or 's',
+        (empty > 0) and string.format(' (%d scored nothing you own)', empty) or '');
+end });
+
 -- (the stat-weights editor body moved to dlac\weightsui.lua -- wui.editor().)
 
 -- Add-item popup: usable owned items for the selected slot not already in its list.
@@ -3456,6 +3534,14 @@ local function renderSetsTab(job, level)
     imgui.SameLine();
     if imgui.Button((ui.showWeights and 'Weights v' or 'Weights >') .. '##setwtoggle', { 84, 22 }) then ui.showWeights = not ui.showWeights; end
     if imgui.IsItemHovered() then imgui.SetTooltip('Toggle the Stat Weights editor -- opens in its own resizable, movable window.'); end
+
+    imgui.SameLine();
+    if imgui.Button('Auto-Build All##setbuildall', { 0, 22 }) then
+        autoBuildAll(job, level);
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Will auto-build all gear-sets with stat weights set.');
+    end
 
     -- Build-level override (general set management): lifts the item level cap for BOTH
     -- Auto-build and the manual + Add picker, so you can assemble over-level sets.
