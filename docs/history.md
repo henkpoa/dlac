@@ -3018,3 +3018,19 @@ resurrects) vs deactivate (unasked; box memory survives) vs adopt
 shown style -- the server rebuilds from worn gear). The subjob flip
 also arms the guard window, so a straggling DISABLE around the change
 is swallowed on either side of the re-apply. LG repinned. 1529 + 170.
+
+## Session addendum "arm off the packet, not the poll" (2026-07-19)
+
+A /probe ls capture of the failing subjob switch (Upper Jeuno moogle,
+11:27) fixed the order of events: mog menu opens, and the client's
+lockstyle DISABLE leaves AT the confirm -- before the player struct
+shows the new subjob. So the round-2 poll-armed window opens too late
+to block it and could only heal afterwards (and whether that capture
+ran round-1 or round-2 code, the poll race stood either way). Round 3
+arms off the OUTGOING 0x100 job-change request instead -- same
+confirm, but ahead of the DISABLE: a subjob-only request (main=0,
+sub~=0; also catches re-selecting the SAME sub, which no poll can
+see and which the server still clears for) arms the guard window and
+schedules the +3s re-apply; a main-job request drops the keep memory.
+The poll stays as fallback for job-change paths without 0x100.
+dlacprobe v2.0 decodes OUT 0x100 under /probe ls. 1535 + 170.

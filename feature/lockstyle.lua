@@ -1041,6 +1041,23 @@ function M._lsGuard(mode, now, zoneInAt, active, userOffAt)
     return 'pass';
 end
 
+-- The job-change packet is the keep trigger of record (round 3). The memory
+-- poll in the pump races the client's DISABLE -- field capture 2026-07-19
+-- 11:27 (Upper Jeuno moogle): the DISABLE leaves AT menu confirm, before the
+-- player struct shows the new sub, so a poll-armed window comes too late.
+-- The outgoing 0x100 job-change request does not race anything: it leaves at
+-- the same confirm, through this very handler, BEFORE the DISABLE. Fields
+-- (server 0x100_myroom_job.h): MainJobIndex u8 @0x04, SupportJobIndex u8
+-- @0x05, 0 = unchanged -- so main==0 with sub~=0 is a subjob-only change,
+-- and re-selecting the SAME sub still shows here (the server still clears
+-- style lock for it; the poll could never see that one). The pump's poll
+-- stays as the fallback for job-change paths that skip 0x100.
+function M._jobPktKind(mainIdx, subIdx)
+    if (mainIdx or 0) ~= 0 then return 'main'; end
+    if (subIdx or 0) ~= 0 then return 'sub'; end
+    return 'none';
+end
+
 local guard = { active = false, zoneInAt = -1e9, userOffAt = -1e9 };
 function M._guardUserOff() guard.userOffAt = os.clock(); end
 -- The keep-on-subjob pump (above) calls this on a subjob flip it intends to
@@ -1054,6 +1071,17 @@ ashita.events.register('packet_in', 'dlac-lockstyle-pin', function(e)
 end);
 
 ashita.events.register('packet_out', 'dlac-lockstyle-pout', function(e)
+    if e.id == 0x100 then
+        local kind = M._jobPktKind((#e.data >= 6) and e.data:byte(5) or 0,
+                                   (#e.data >= 6) and e.data:byte(6) or 0);
+        if kind == 'main' then
+            lastBox = nil;   -- new job = new box set; main changes are OnLoad's business
+        elseif kind == 'sub' and data ~= nil and data.keepSub == true and lastBox ~= nil then
+            M._guardArm();               -- the client's DISABLE follows this packet: swallow it
+            subDueAt = os.clock() + 3;   -- ...and heal the server's own 0x100-side clear
+        end
+        return;
+    end
     if e.id ~= 0x053 then return; end
     -- Mode u8 @0x05 (4-byte header + Count) -- same decode as dlacprobe's lsOut.
     local mode = (#e.data >= 6) and e.data:byte(6) or -1;

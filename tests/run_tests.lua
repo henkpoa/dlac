@@ -5263,6 +5263,19 @@ end)();
         ls._entryData({ active = 1, slots = {}, onload = {} }, 'DRK').keepSub, nil);
     check('LG19 guard-arm (the subjob-flip window) exported for the pump',
         type(ls._guardArm), 'function');
+
+    -- round 3: the 0x100 job-change packet is the keep trigger of record --
+    -- it leaves BEFORE the client's DISABLE (field capture 07-19 11:27), so
+    -- arming off it wins the race the memory poll lost. 0 = unchanged field.
+    local k = ls._jobPktKind;
+    check('LG20 _jobPktKind exported', type(k), 'function');
+    if type(k) == 'function' then
+        check('LG21 sub-only change (incl. re-selecting the same sub)', k(0, 5), 'sub');
+        check('LG22 main change is not ours to keep', k(7, 0), 'main');
+        check('LG23 main+sub together is still a main change', k(7, 5), 'main');
+        check('LG24 nothing changed', k(0, 0), 'none');
+        check('LG25 nil-safe', k(nil, nil), 'none');
+    end
 end)();
 
 -- ---------------------------------------------------------------------------
