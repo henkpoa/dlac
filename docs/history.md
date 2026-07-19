@@ -2954,3 +2954,31 @@ turns unconditional and visibly reappears in the root list rather than
 silently dying OR silently entering the ladder unseen. Only the root
 x deletes the row. renderRow learned its render context (sec) for
 exactly this; the tooltips say which x you are hovering. 1361 + 170.
+
+## Session "the client forgets injected lockstyles" (2026-07-19)
+
+Field report: a dlac-applied lockstyle died on zoning -- often, not
+always, no visible pattern -- while a native /lockstyle never did. Code
+sweep (dlac + the new local server clone) exonerated both ends: dlac
+only ever sends 0x053 SET from /dl ls apply, and the server persists the
+lock (chars.isstylelocked + char_style, reloaded every zone-in) with no
+zone-time clearer. That left the client, and /probe ls (dlacprobe v1.9,
+decoding every OUT 0x053 mode word) convicted it in one session: the
+retail client keeps a PRIVATE lockstyle flag only its own /lockstyle
+command sets, and ~0.6s after every zone-in it re-asserts that flag --
+CONTINUE when on (which is why native lockstyles self-healed every zone,
+and why the drops looked intermittent: any session that touched native
+/lockstyle had the flag on), DISABLE when off. Our injected SET never
+turns the client flag on, so the client itself killed the style each
+zone.
+
+Shipped v43: a zone-in guard in feature\lockstyle.lua blocks exactly
+that packet -- an outgoing DISABLE inside 10s of zone-in, while a
+lockstyle we saw SET is live, that the player did not just type (the
+command handler stamps a real "/lockstyle off", typed or via the
+window's Disable button, and the guard yields to it). CONTINUE/QUERY
+always pass; out-of-window or no-live disables pass and retire the
+guard. Blocking beats re-applying: no undressed flash, no extra
+traffic, and the preserved steady state (server locked, client flag
+off) is the state every dlac lockstyle already lived in between zones.
+Decision half is pure (_lsGuard, LG series). 1509 + 13.

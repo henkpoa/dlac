@@ -5209,6 +5209,43 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- LG. lockstyle zone-in guard (v43) -- the pure decision half of the packet
+--     watcher in feature\lockstyle.lua. Field-pinned 2026-07-19 (/probe ls):
+--     the retail client re-asserts ITS private lockstyle flag to the server
+--     after every zone-in -- CONTINUE when it thinks the lock is on, DISABLE
+--     when it thinks it is off -- and dlac's injected SET never turns that
+--     flag on, so the client killed our lockstyle ~0.6s after each zone-in.
+--     The guard blocks exactly that DISABLE: in-window, lockstyle live, not
+--     player-typed. Everything else must pass or retire the live flag.
+-- ---------------------------------------------------------------------------
+(function()
+    local ls = dofile('feature/lockstyle.lua');
+    check('LG0 _lsGuard exported', type(ls._lsGuard), 'function');
+    if type(ls._lsGuard) ~= 'function' then return; end
+    local f = ls._lsGuard;
+    local FAR = -1e9;   -- "never happened" stamp
+    -- mode, now, zoneInAt, active, userOffAt
+    check('LG1 SET arms the guard',    f(3, 100, FAR, false, FAR), 'activate');
+    check('LG2 ENABLE arms it too (native path, harmless)', f(4, 100, FAR, false, FAR), 'activate');
+    check('LG3 THE BUG: in-window DISABLE while live -> blocked',
+        f(0, 100.6, 100, true, FAR), 'block');
+    check('LG4 late DISABLE is real -> retire', f(0, 111, 100, true, FAR), 'deactivate');
+    check('LG5 window edge: 10s is already late', f(0, 110, 100, true, FAR), 'deactivate');
+    check('LG6 in-window but nothing live -> pass through as retire',
+        f(0, 100.6, 100, false, FAR), 'deactivate');
+    check('LG7 player typed /lockstyle off -> NEVER blocked, even in-window',
+        f(0, 100.6, 100, true, 100.5), 'deactivate');
+    check('LG8 stale intent stamp does not shield the auto-disable',
+        f(0, 100.6, 100, true, 90), 'block');
+    check('LG9 CONTINUE passes untouched', f(1, 100.6, 100, true, FAR), 'pass');
+    check('LG10 QUERY passes untouched',   f(2, 100.6, 100, true, FAR), 'pass');
+    check('LG11 garbage mode passes',      f(-1, 100.6, 100, true, FAR), 'pass');
+    check('LG12 nil stamps never block an inactive guard', f(0, 5, nil, false, nil), 'deactivate');
+    check('LG13 user-off stamp is exported for the command handler',
+        type(ls._guardUserOff), 'function');
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then

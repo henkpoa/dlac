@@ -912,6 +912,73 @@ function M.pump()
     end
 end
 
+-- ---------------------------------------------------------------------------
+-- Zone-in guard (v43): dlac lockstyles survive zoning.
+--
+-- Field-pinned 2026-07-19 (dlacprobe v1.9 /probe ls, Mindie, Upper Jeuno):
+-- the retail client keeps a PRIVATE lockstyle flag that only its own
+-- /lockstyle command (or menu) sets, and ~0.6s after every zone-in packet it
+-- re-asserts that flag to the server -- 0x053 CONTINUE when it thinks the
+-- lock is on, 0x053 DISABLE when it thinks it is off. Our apply injects the
+-- SET packet straight to the server, so the client's flag stays off and the
+-- client itself killed the lockstyle on the next zone (the server is
+-- blameless: it persists the lock in DB and reloads it every zone-in --
+-- chars.isstylelocked, 0x053_lockstyle.cpp + charutils.cpp, read 07-19).
+-- A natively-set lockstyle never dropped because CONTINUE healed it each
+-- zone, which is also why the drops looked intermittent: any session that
+-- ever touched native /lockstyle had the flag on.
+--
+-- The guard swallows exactly that one packet: an outgoing DISABLE inside the
+-- zone-in window, while a lockstyle we saw SET is live, that the player did
+-- not just ask for. Everything else passes untouched -- CONTINUE/QUERY
+-- always, a DISABLE the player typed (the command stamp below), a DISABLE
+-- outside the window, or one with no live lockstyle (blocking would be a
+-- server no-op anyway; letting it through keeps the client honest).
+-- Blocking beats re-applying: no undressed flash, no extra traffic, and the
+-- house already intercepts appearance packets (lookpreview). The steady
+-- state it preserves -- server locked, client flag off -- is exactly the
+-- state every dlac lockstyle already lives in between zones today.
+-- ---------------------------------------------------------------------------
+local ZONE_WINDOW  = 10;   -- s after zone-in 0x00A the client's auto-DISABLE can land (field: ~0.6s)
+local INTENT_WINDOW = 3;   -- s after a typed '/lockstyle off' its packet counts as the player's
+
+-- Pure (headless-tested, AK series): one outgoing 0x053 mode -> what to do.
+-- modes: 0 Disable / 1 Continue / 2 Query / 3 Set / 4 Enable (server enum).
+function M._lsGuard(mode, now, zoneInAt, active, userOffAt)
+    if mode == 3 or mode == 4 then return 'activate'; end
+    if mode == 0 then
+        if now - (userOffAt or -1e9) < INTENT_WINDOW then return 'deactivate'; end
+        if active and now - (zoneInAt or -1e9) < ZONE_WINDOW then return 'block'; end
+        return 'deactivate';
+    end
+    return 'pass';
+end
+
+local guard = { active = false, zoneInAt = -1e9, userOffAt = -1e9, said = false };
+function M._guardUserOff() guard.userOffAt = os.clock(); end
+
+ashita.events.register('packet_in', 'dlac-lockstyle-pin', function(e)
+    if e.id == 0x00A then guard.zoneInAt = os.clock(); end
+end);
+
+ashita.events.register('packet_out', 'dlac-lockstyle-pout', function(e)
+    if e.id ~= 0x053 then return; end
+    -- Mode u8 @0x05 (4-byte header + Count) -- same decode as dlacprobe's lsOut.
+    local mode = (#e.data >= 6) and e.data:byte(6) or -1;
+    local act = M._lsGuard(mode, os.clock(), guard.zoneInAt, guard.active, guard.userOffAt);
+    if act == 'activate' then
+        guard.active = true;
+    elseif act == 'deactivate' then
+        guard.active = false;
+    elseif act == 'block' then
+        e.blocked = true;
+        if not guard.said then   -- one explanation per session, then silence
+            guard.said = true;
+            print('[dlac] lockstyle kept -- the client tried to auto-disable it on zone-in (it forgets injected lockstyles). Blocked; later zones are guarded silently.');
+        end
+    end
+end);
+
 -- Unloading mid-preview is the one way to leave a mark: ActorLockFlag would stay
 -- set and freeze the model until a zone. End the preview first, always -- /addon
 -- reload dlac is routine while iterating on this very window.
@@ -924,6 +991,11 @@ end);
 -- same command -- separate Lua state), which owns gFunc.LockStyle.
 ashita.events.register('command', 'dlac-lockstyle', function(e)
     local raw = string.lower(e.command);
+    -- The zone guard's user-intent stamp: a REAL '/lockstyle off' (typed, or
+    -- queued by this window's Disable button) must never be blocked -- stamp
+    -- it here and let it through; the guard reads the stamp when the client's
+    -- 0x053 goes out a frame later.
+    if raw:match('^/lockstyle%s+off%s*$') ~= nil then M._guardUserOff(); end
     local s = nil;
     if raw == '/dlac' or string.sub(raw, 1, 6) == '/dlac ' then s = 7;
     elseif raw == '/dl' or string.sub(raw, 1, 4) == '/dl ' then s = 5; end
