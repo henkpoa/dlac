@@ -13,6 +13,11 @@
                            errors { string, ... } )
       parsePrio(text) -> ( lists { name -> ordered { {stat, cap|nil}, ... } } | nil,
                            errors )                       -- the Priority tab's twin
+      parseLocal(text)     -> ( statmap | nil, errors )   -- ONE nameless table, for
+                           the per-set import (a single Name = wrapper is ignored;
+                           two or more named tables are refused -- that shape is the
+                           shared import's)
+      parsePrioLocal(text) -> ( ordered list | nil, errors )  -- its Priority twin
       classify(profiles, existingNames) -> created {names}, overwritten {names}
       renderPoints(named) / renderPrio(prioNamed) -> text  -- EXPORT: emits exactly
                            the text the matching parser accepts (round-trip pinned)
@@ -192,6 +197,62 @@ function M.parsePrio(text)
     end
     table.sort(errors);
     return lists, errors;
+end
+
+-- ---------------------------------------------------------------------------
+-- LOCAL (per-set) import (Henrik 2026-07-20): the weights editor's import...
+-- button feeds THE BOUND SET directly, so the paste is ONE table and needs no
+-- name:
+--     { Accuracy = 12, Attack = 10, BlueMagicSkill = { 3, 40 } }
+--     STR_DEX = { ... }        -- a single name wrapper is tolerated and IGNORED
+-- Two or more named tables are REFUSED (that shape belongs to the shared
+-- import under manage shared...). The pure-table reading is tried FIRST, so
+-- `{ STR = { 3, 40 } }` is a capped stat row, never a name wrapper. Appliers:
+-- gearoptim.importSetWeights / importSetPrio.
+-- ---------------------------------------------------------------------------
+
+-- Shared shell: eval, try the direct reading, then the one-wrapper fallback.
+-- toDirect(root) -> (value|nil, reason); the same transform re-runs on the
+-- sole wrapped table.
+local function parseLocalWith(text, toDirect, emptyHint, what)
+    if not hasEval then
+        return nil, { 'weights import unavailable (groupimport.evalTable missing)' };
+    end
+    if type(text) ~= 'string' or trim(text) == '' then
+        return nil, { 'Nothing to import -- paste a ' .. emptyHint .. ' table first.' };
+    end
+    local root, evalErr = gimp.evalTable(text);
+    if type(root) ~= 'table' then
+        return nil, { 'Could not parse the pasted text: ' .. tostring(evalErr) };
+    end
+    local direct, directWhy = toDirect(root);
+    if direct ~= nil then return direct, {}; end
+    local names, sole = 0, nil;
+    for k, v in pairs(root) do
+        if type(k) == 'string' and type(v) == 'table' then
+            names = names + 1;
+            sole = v;
+        end
+    end
+    if names > 1 then
+        return nil, { string.format('%d named tables pasted -- this import takes exactly ONE %s (it feeds this set only). Import several at once via manage shared...', names, what) };
+    end
+    if names == 1 then
+        local val, reason = toDirect(sole);
+        if val ~= nil then return val, {}; end
+        return nil, { 'The pasted ' .. what .. ' ' .. tostring(reason) .. '.' };
+    end
+    return nil, { 'The pasted ' .. what .. ' ' .. tostring(directWhy) .. '.' };
+end
+
+-- ONE nameless Stat -> pts table for the bound set. (statmap, errors).
+function M.parseLocal(text)
+    return parseLocalWith(text, toStatmap, '{ Stat = pts, ... }', 'table');
+end
+
+-- ONE nameless ordered list for the bound set. (list, errors).
+function M.parsePrioLocal(text)
+    return parseLocalWith(text, toPrioList, "{ 'Stat', ... }", 'list');
 end
 
 -- ---------------------------------------------------------------------------

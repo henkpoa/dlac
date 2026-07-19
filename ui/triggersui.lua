@@ -298,13 +298,16 @@ local modeUI = {
 local groupUI = {
     newName = { '' }, memberInput = {}, renaming = nil, renameBuf = { '' },
     status = '', statusErr = false, _openAdd = false, _openRename = false,
-    -- Import Lua Table(s) (G4, issue #30): a collapsible paste box + a pending plan awaiting the
-    -- overwrite confirmation. `plan` holds the parsed groups + the created/overwritten/skipped
-    -- split between the Import click and the (Overwrite &) Import Groups click.
-    importText = { '' }, plan = nil,
-    -- Auto-import (Item 1): the scanned candidates + their tick state (name -> bool) + notes for
-    -- the skipped tables + a pending plan awaiting the overwrite confirmation.
+    -- Import window (G4, issue #30; 07-20: a top-row button + popup, no longer a collapsible
+    -- section): the paste box + a pending plan awaiting the overwrite confirmation. `plan` holds
+    -- the parsed groups + the created/overwritten/skipped split between the Import click and the
+    -- (Overwrite &) Import Groups click. _openImport defers the OpenPopup (the section pattern).
+    importText = { '' }, plan = nil, _openImport = false,
+    -- Auto-Import window (Item 1; 07-20: its top-row button RUNS the scan, then opens the picker):
+    -- the scanned candidates + their tick state (name -> bool) + notes for the skipped tables + a
+    -- pending plan awaiting the overwrite confirmation.
     autoCands = nil, autoNotes = nil, autoMarks = {}, autoPlan = nil, autoScanned = false,
+    _openAuto = false,
     -- Browse-list picker (G3, issue #26): browseFor = the group the picker targets;
     -- browseSearch = its search box; browseMarks = a set of MARKED entries
     -- (lowercased name -> the proper-cased name to add); _list / _listJob cache the
@@ -1967,24 +1970,26 @@ local function applyImportPlan(plan, groups)
     groupSetStatus('Imported: ' .. table.concat(parts, ', ') .. ' -- Commit to save.', false);
 end
 
--- The "Import Lua Table(s)" control (G4, issue #30): a collapsible paste box that bulk-creates one
--- group per top-level key of a pasted `Name = T{...}` table. Parsing is the sandboxed pure
--- transform (groupimport.parse); collisions with an existing group require an explicit confirm
--- before overwriting (parity with "Copy from static"); a pre-import summary shows created /
--- overwritten / skipped. `groups` is the live trig.data.Groups map.
-local function renderGroupImport(groups)
+-- The Import window (G4, issue #30; 07-20: opened from the top-row Import button instead of a
+-- collapsible bottom section): a paste box that bulk-creates one group per top-level key of a
+-- pasted `Name = T{...}` table. Parsing is the sandboxed pure transform (groupimport.parse);
+-- collisions with an existing group require an explicit confirm before overwriting (parity with
+-- "Copy from static"); a pre-import summary shows created / overwritten / skipped. `groups` is
+-- the live trig.data.Groups map.
+local function renderGroupImportPopup(groups)
     if not hasGroupImport then return; end
-    imgui.Spacing();
-    if not imgui.CollapsingHeader('Import Lua Table(s)###grpimport') then return; end
+    imgui.SetNextWindowSizeConstraints({ 500, 0 }, { 660, 520 });
+    if not imgui.BeginPopup('##dlac_grpimport') then return; end
+    imgui.TextColored(COL_HEADER, 'Import Lua Table(s)');
     imgui.TextColored(COL_DIM, 'Already keep your spells grouped in a Lua table? Paste it -- one group per name.');
     imgui.TextColored(COL_DIM, "e.g.   STR_DEX = T{'Foot Kick', 'Wild Oats'},   VIT = {'Cannonball', 'Tail Slap'},");
     imgui.TextColored(COL_DIM, 'The  T  is optional; plain  {...}  works too. A nested / non-list value skips just that name.');
 
     if hasMultiline then
-        imgui.InputTextMultiline('##grpimptext', groupUI.importText, 8192, { -1, 120 });
+        imgui.InputTextMultiline('##grpimptext', groupUI.importText, 8192, { 490, 120 });
     else
         imgui.TextColored(COL_SCORE, '(this build has no multiline box -- keep it on ONE line; names are comma-separated)');
-        imgui.PushItemWidth(-1);
+        imgui.PushItemWidth(490);
         imgui.InputText('##grpimptext', groupUI.importText, 8192);
         imgui.PopItemWidth();
     end
@@ -2038,6 +2043,7 @@ local function renderGroupImport(groups)
             end
         end
     end
+    imgui.EndPopup();
 end
 
 -- Names that read like config/variant tables rather than spell groups -- pre-UNticked so the
@@ -2048,42 +2054,50 @@ local function looksLikeConfig(name)
         or n:find('[Cc]onfig') ~= nil or n:find('[Oo]ption') ~= nil or n:find('Table$') ~= nil;
 end
 
--- The "Auto-import from my Lua file" control (Item 1): scans the character's live LuaAshitacast
--- <JOB>.lua (and its pre-profiles backup, since migration shims the live file) for group-shaped
--- tables and lists them as tick-able candidates -- pre-ticked except obvious config tables. The
--- scan is the pure groupscan.scan; import reuses the same classify / overwrite-confirm / apply as
--- the paste flow. `groups` is the live trig.data.Groups map.
-local function renderGroupAutoImport(groups)
-    if not hasGroupScan then return; end
-    imgui.Spacing();
-    if not imgui.CollapsingHeader('Auto-import from my Lua file###grpautoimp') then return; end
-    imgui.TextColored(COL_DIM, 'Scan your LuaAshitacast job file for spell tables and import them as groups -- no copy-paste.');
-
-    if imgui.Button('Scan my Lua file##grpautoscan', { 0, 24 }) then
-        local text, srcs, abbr = '', 0, nil;
-        if deps and deps.jobFile then
-            local live; live, abbr = deps.jobFile();
-            local t1 = live and readFileText(live) or nil;
-            if t1 ~= nil then text = text .. '\n' .. t1; srcs = srcs + 1; end
-        end
-        if abbr ~= nil and deps and deps.charBase then
-            local t2 = readFileText(deps.charBase() .. 'backups\\pre-profiles\\' .. abbr .. '.lua');
-            if t2 ~= nil then text = text .. '\n' .. t2; srcs = srcs + 1; end
-        end
-        if srcs == 0 then
-            groupUI.autoCands, groupUI.autoNotes, groupUI.autoPlan = nil, nil, nil;
-            groupUI.autoScanned = true;
-            groupSetStatus('No Lua file found to scan (looked for your job file + its pre-profiles backup).', true);
-        else
-            local cands, notes = gscan.scan(text);
-            groupUI.autoCands, groupUI.autoNotes, groupUI.autoPlan = cands, notes, nil;
-            groupUI.autoMarks, groupUI.autoScanned = {}, true;
-            for _, c in ipairs(cands) do groupUI.autoMarks[c.name] = not looksLikeConfig(c.name); end
-        end
+-- The Auto-Import scan (Item 1; 07-20: fired straight from the top-row Auto-Import button, and
+-- from the picker window's Rescan): read the character's live LuaAshitacast <JOB>.lua (and its
+-- pre-profiles backup, since migration shims the live file) and list every group-shaped table as
+-- a tick-able candidate -- pre-ticked except obvious config tables.
+local function groupAutoScan()
+    local text, srcs, abbr = '', 0, nil;
+    if deps and deps.jobFile then
+        local live; live, abbr = deps.jobFile();
+        local t1 = live and readFileText(live) or nil;
+        if t1 ~= nil then text = text .. '\n' .. t1; srcs = srcs + 1; end
     end
-    if imgui.IsItemHovered() then imgui.SetTooltip('Read your live <JOB>.lua (and its pre-profiles backup) and list every group-shaped table found.'); end
+    if abbr ~= nil and deps and deps.charBase then
+        local t2 = readFileText(deps.charBase() .. 'backups\\pre-profiles\\' .. abbr .. '.lua');
+        if t2 ~= nil then text = text .. '\n' .. t2; srcs = srcs + 1; end
+    end
+    if srcs == 0 then
+        groupUI.autoCands, groupUI.autoNotes, groupUI.autoPlan = nil, nil, nil;
+        groupUI.autoScanned = true;
+        groupSetStatus('No Lua file found to scan (looked for your job file + its pre-profiles backup).', true);
+    else
+        local cands, notes = gscan.scan(text);
+        groupUI.autoCands, groupUI.autoNotes, groupUI.autoPlan = cands, notes, nil;
+        groupUI.autoMarks, groupUI.autoScanned = {}, true;
+        for _, c in ipairs(cands) do groupUI.autoMarks[c.name] = not looksLikeConfig(c.name); end
+    end
+end
+
+-- The Auto-Import picker window (Item 1; 07-20: a popup, no longer a collapsible section with
+-- its own Scan button -- the top-row button already scanned). The scan is the pure
+-- groupscan.scan; import reuses the same classify / overwrite-confirm / apply as the paste flow.
+-- `groups` is the live trig.data.Groups map.
+local function renderGroupAutoImportPopup(groups)
+    if not hasGroupScan then return; end
+    imgui.SetNextWindowSizeConstraints({ 460, 0 }, { 640, 560 });
+    if not imgui.BeginPopup('##dlac_grpautoimp') then return; end
+    imgui.TextColored(COL_HEADER, 'Auto-Import from my Lua file');
+    imgui.SameLine(0, 10);
+    if imgui.SmallButton('Rescan##grpautoscan') then groupAutoScan(); end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Read your live <JOB>.lua (and its pre-profiles backup) again.'); end
 
     local cands = groupUI.autoCands;
+    if cands == nil then
+        imgui.TextColored(COL_DIM, 'No Lua file found to scan (looked for your job file + its pre-profiles backup).');
+    end
     if cands ~= nil and #cands > 0 then
         imgui.Spacing();
         imgui.TextColored(COL_HEADER, string.format('Found %d table%s -- tick the ones to import:', #cands, (#cands == 1) and '' or 's'));
@@ -2120,7 +2134,7 @@ local function renderGroupAutoImport(groups)
         imgui.TextColored(COL_DIM, '  (no group-shaped tables found in your Lua file)');
     end
 
-    -- The overwrite-confirm preview, mirroring renderGroupImport.
+    -- The overwrite-confirm preview, mirroring renderGroupImportPopup.
     local plan = groupUI.autoPlan;
     if plan ~= nil then
         imgui.Spacing();
@@ -2143,6 +2157,7 @@ local function renderGroupAutoImport(groups)
             end
         end
     end
+    imgui.EndPopup();
 end
 
 -- The shared spell/ability browse-list popup (G3, issue #26). ONE popup for the whole
@@ -2281,6 +2296,31 @@ function M.renderGroups(job, level)
         imgui.TextColored(se and COL_ERR or COL_SCORE, esc(st));
     end
 
+    -- Bulk fast-paths, promoted to the top row (Henrik 07-20: the collapsible
+    -- sections at the bottom were easy to miss). Import opens the paste window
+    -- (issue #30's flow); Auto-Import runs the Lua-file scan right away (Item
+    -- 1's flow) and opens its picker.
+    imgui.Spacing();
+    if hasGroupImport then
+        if imgui.Button('Import##grpimptop', { 0, 24 }) then
+            groupUI.plan = nil;
+            groupUI._openImport = true;
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Paste a Lua table of groups -- one group per  Name = {...}.');
+        end
+    end
+    if hasGroupScan then
+        if hasGroupImport then imgui.SameLine(0, 6); end
+        if imgui.Button('Auto-Import##grpautotop', { 0, 24 }) then
+            groupAutoScan();
+            groupUI._openAuto = true;
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Scan your LuaAshitacast job file for spell tables and pick which to\nimport as groups -- no copy-paste.');
+        end
+    end
+
     imgui.Spacing();
     imgui.TextColored(COL_DIM, 'One trigger can gear many spells that share stats: build a group here, then add a');
     imgui.TextColored(COL_DIM, '"group" condition to a Precast / Midcast / Ability / Item / Weaponskill rule.');
@@ -2312,10 +2352,11 @@ function M.renderGroups(job, level)
         imgui.SetTooltip('Create a named group, then add member action names by typing them.');
     end
 
-    -- Bulk fast-path: paste a whole Lua table of groups (issue #30).
-    renderGroupImport(groups);
-    -- Auto fast-path: scan the character's Lua file for group tables (Item 1).
-    renderGroupAutoImport(groups);
+    -- The Import / Auto-Import windows (opened from the top row).
+    if groupUI._openImport then imgui.OpenPopup('##dlac_grpimport'); groupUI._openImport = false; end
+    renderGroupImportPopup(groups);
+    if groupUI._openAuto then imgui.OpenPopup('##dlac_grpautoimp'); groupUI._openAuto = false; end
+    renderGroupAutoImportPopup(groups);
 
     if groupUI._openAdd then imgui.OpenPopup('##dlac_groupadd'); groupUI._openAdd = false; end
     renderGroupAddPopup();

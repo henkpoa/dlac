@@ -195,14 +195,21 @@ wui.slotGrid = function()
 end
 
 -- ---------------------------------------------------------------------------
--- Weights IMPORT / EXPORT (Henrik 2026-07-19; round 2 adds the Priority tab
--- and export). Import: paste `Name = {...}` tables to bulk-create Saved Sets
--- (Points) / Saved Lists (Priority) -- the weights siblings of the Groups
--- tab's "Import Lua Table(s)". Export: the named store rendered back into the
--- EXACT text the matching importer accepts (weightimport pins the round trip).
+-- Weights IMPORT (Henrik 2026-07-19; round 3, 07-20, splits it in two):
+--   import...        -- LOCAL: paste ONE nameless table, it becomes THE BOUND
+--                       SET's tuning directly (parseLocal / parsePrioLocal ->
+--                       importSetWeights / importSetPrio, behind the copy-from
+--                       revert snapshot). A single Name = wrapper is ignored;
+--                       two+ named tables are refused.
+--   manage shared... -- the named store's window ("Saved Sets" / "Saved
+--                       Lists" in copy from...): list + delete, create from
+--                       the current set, bulk-import `Name = {...}` tables
+--                       (several at once, overwrite-confirmed) and export the
+--                       store as re-importable text (weightimport pins the
+--                       round trip).
 -- Pure transforms in weightimport.lua; appliers in gearoptim; this is only
--- the popups. Each tab passes a SPEC { key, help, parse, existing, apply };
--- popup state lives under wui['_imp'|'_exp' .. key].
+-- the popups. Each tab passes SPECs; popup state lives under
+-- wui['_imp'|'_exp' .. key].
 -- ---------------------------------------------------------------------------
 local hasClipboard = (imgui ~= nil) and type(imgui.SetClipboardText) == 'function';
 
@@ -292,7 +299,7 @@ end
 -- -- edits never stick, so it reads as a copy source, not an editor.
 local function renderExportPopup(specKey, text, COL)
     if text == nil or text == '' then
-        imgui.TextColored(COL.DIM, '(nothing saved yet -- save as... or import... first)');
+        imgui.TextColored(COL.DIM, '(nothing shared yet -- create or import one above first)');
         return;
     end
     imgui.TextColored(COL.DIM, 'Copy this block -- the matching import... accepts it verbatim.');
@@ -311,7 +318,8 @@ local function renderExportPopup(specKey, text, COL)
     end
 end
 
--- The two tab specs. Guarded at the call sites on wimp + the applier.
+-- The two named-store (shared) import specs, fed to renderImportPopup inside
+-- the manage shared... window. Guarded at the call sites on wimp + the applier.
 local PTS_SPEC = {
     key = 'pts',
     help = {
@@ -334,6 +342,184 @@ local PRIO_SPEC = {
     existing = function() return optim.prioNamedKeys(); end,
     apply    = function(p) return optim.importNamedPrio(p); end,
 };
+
+-- The LOCAL import specs (Henrik 07-20): import... feeds the BOUND SET
+-- directly -- ONE nameless table, no named-store detour. applied() is the
+-- post-import housekeeping (stale edit buffers + candidate re-sort).
+local PTS_LOCAL = {
+    key = 'lpts',
+    help = {
+        'Paste ONE plain table -- it becomes THIS set\'s point weights, no name needed:',
+        '    { Accuracy = 12, Attack = 10, STR = 10, BlueMagicSkill = { 3, 40 } }',
+        'A single  Name = {...}  wrapper is ignored; several named tables are refused',
+        '(import those via manage shared...). Stat spellings are forgiving.',
+    },
+    what    = 'stat',
+    parse   = function(t) return wimp.parseLocal(t); end,
+    apply   = function(p) return optim.importSetWeights(p); end,
+    applied = function() D.ui._wbuf = {}; D.invalidateCandidates(); end,
+};
+local PRIO_LOCAL = {
+    key = 'lprio',
+    help = {
+        'Paste ONE plain ORDERED list -- it becomes THIS set\'s priority list, no name needed:',
+        '    { \'MACC\', \'BlueMagicSkill\', { \'INT\', 60 } }',
+        'A single  Name = {...}  wrapper is ignored; several named lists are refused',
+        '(import those via manage shared...). Top matters most.',
+    },
+    what    = 'row',
+    parse   = function(t) return wimp.parsePrioLocal(t); end,
+    apply   = function(p) return optim.importSetPrio(p); end,
+    applied = function() wui._pbuf = {}; D.invalidateCandidates(); end,
+};
+
+-- The manage shared... window descriptors: one place to see, create, delete,
+-- bulk-import and export the named store. spec = the bulk-import SPEC above.
+local PTS_SHARED = {
+    key = 'pts', spec = PTS_SPEC,
+    title = 'Shared weight sets',
+    hint  = '("Saved Sets" in copy from... -- reachable from every job and set)',
+    names  = function() return optim.namedKeys(); end,
+    tip    = function(n) return weightsTip('named', n); end,
+    create = function(n) return optim.saveNamedWeights(n); end,
+    delete = function(n) return optim.deleteNamedWeights(n); end,
+    render = function() return wimp.renderPoints(optim.allNamedWeights()); end,
+    createTip = 'Save THIS set\'s current weights + build-slot marks under the name.\nSame name = update in place.',
+};
+local PRIO_SHARED = {
+    key = 'prio', spec = PRIO_SPEC,
+    title = 'Shared priority lists',
+    hint  = '("Saved Lists" in copy from... -- reachable from every job and set)',
+    names  = function() return optim.prioNamedKeys(); end,
+    tip    = function(n) return prioTip('named', n); end,
+    create = function(n) return optim.savePrioNamed(n); end,
+    delete = function(n) return optim.deletePrioNamed(n); end,
+    render = function() return wimp.renderPrio(optim.allNamedPrio()); end,
+    createTip = 'Save THIS set\'s current priority list under the name.\nSame name = update in place.',
+};
+
+-- The LOCAL import popup body: paste -> parse -> apply to the bound set
+-- immediately. No confirm step: the target is always this set, and the
+-- copy-from revert snapshot is the safety net.
+local function renderLocalImportPopup(spec, COL)
+    local st = impState(spec);
+    for _, line in ipairs(spec.help) do imgui.TextColored(COL.DIM, line); end
+    if hasMultiline then
+        imgui.InputTextMultiline('##wlimptext_' .. spec.key, st.text, 16384, { 470, 120 });
+    else
+        imgui.TextColored(COL.SCORE, '(this build has no multiline box -- keep the paste on ONE line)');
+        imgui.PushItemWidth(470);
+        imgui.InputText('##wlimptext_' .. spec.key, st.text, 16384);
+        imgui.PopItemWidth();
+    end
+    if imgui.Button('Import##wlimpgo_' .. spec.key, { 0, 24 }) then
+        local parsed, errs = spec.parse(st.text[1]);
+        if parsed == nil then
+            st.plan = { errors = errs or {} };
+        else
+            local ok, n = false, nil;
+            pcall(function() ok, n = spec.apply(parsed); end);
+            if ok then
+                pcall(optim.saveWeights);
+                spec.applied();
+                st.plan = { errors = errs or {}, n = tonumber(n) or 0 };
+            else
+                st.plan = { errors = { tostring(n or 'import failed') } };
+            end
+        end
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Replace this set\'s current tuning with the paste.\nMis-paste? copy from... > revert restores what was there.');
+    end
+    imgui.SameLine(0, 6);
+    if imgui.Button('Clear##wlimpclr_' .. spec.key, { 0, 24 }) then
+        st.text[1] = ''; st.plan = nil;
+    end
+    local plan = st.plan;
+    if plan ~= nil then
+        imgui.Spacing();
+        if plan.n ~= nil then
+            imgui.TextColored(COL.SCORE, string.format('Imported %d %s%s into this set.',
+                plan.n, spec.what, (plan.n == 1) and '' or 's'));
+        end
+        for _, e in ipairs(plan.errors) do fmt.textWrapped(COL.ERR, fmt.esc(e)); end
+    end
+end
+
+-- The manage shared... window body: the named store's verbs in one place --
+-- list + delete (red second-click confirm, the copy-from pattern), create
+-- from the current set, the bulk import, and the export text.
+local function renderSharedPopup(sh, COL)
+    imgui.TextColored(COL.HEADER, sh.title);
+    imgui.SameLine(0, 8);
+    imgui.TextColored(COL.DIM, sh.hint);
+    imgui.Spacing();
+    local named = {};
+    pcall(function() named = sh.names() or {}; end);
+    if #named == 0 then
+        imgui.TextColored(COL.DIM, '(none yet -- create or import one below)');
+    end
+    local colQ = 110;
+    for _, n in ipairs(named) do
+        local w = textW(n) + 18;
+        if w > colQ then colQ = w; end
+    end
+    for _, n in ipairs(named) do
+        imgui.TextColored(COL.USABLE, fmt.esc(n));
+        imgui.SameLine(colQ);
+        imgui.TextColored(COL.DIM, '(?)');
+        if imgui.IsItemHovered() then imgui.SetTooltip(sh.tip(n)); end
+        imgui.SameLine(0, 8);
+        local armKey = 'm:' .. sh.key .. ':' .. n;
+        if wui._delArm == armKey then
+            local red = (ImGuiCol_Button ~= nil);
+            if red then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
+            if imgui.SmallButton('sure?##wshd_' .. n) then
+                pcall(sh.delete, n);
+                pcall(optim.saveWeights);
+                wui._delArm = nil;
+            end
+            if red then imgui.PopStyleColor(1); end
+        else
+            if imgui.SmallButton('x##wshd_' .. n) then wui._delArm = armKey; end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Delete this shared entry -- the second (red) click confirms.\nSets that copied from it keep their copy.');
+            end
+        end
+    end
+    imgui.Separator();
+    imgui.TextColored(COL.DIM, 'create from this set:');
+    imgui.SameLine(0, 6);
+    wui._sharedName = wui._sharedName or { '' };
+    imgui.PushItemWidth(160);
+    imgui.InputText('##wshname_' .. sh.key, wui._sharedName, 48);
+    imgui.PopItemWidth();
+    imgui.SameLine(0, 6);
+    if imgui.Button('Create##wshcreate_' .. sh.key, { 0, 22 }) then
+        local ok = false;
+        pcall(function() ok = sh.create(wui._sharedName[1]); end);
+        if ok then
+            pcall(optim.saveWeights);
+            wui._sharedName[1] = '';
+        end
+    end
+    if imgui.IsItemHovered() then imgui.SetTooltip(sh.createTip); end
+    imgui.Separator();
+    imgui.TextColored(COL.HEADER, 'Import shared');
+    renderImportPopup(sh.spec, COL);
+    imgui.Separator();
+    local expOpen = true;
+    if type(imgui.CollapsingHeader) == 'function' then
+        expOpen = imgui.CollapsingHeader('Export all as text###wshexp_' .. sh.key);
+    else
+        imgui.TextColored(COL.HEADER, 'Export');
+    end
+    if expOpen then
+        local text = nil;
+        pcall(function() text = sh.render(); end);
+        renderExportPopup(sh.key, text, COL);
+    end
+end
 
 -- The set's build mode ('points' | 'priority'), read fresh each frame.
 local function modeNow()
@@ -414,34 +600,40 @@ local function renderPointsTab(boundKey)
                 imgui.SetTooltip('Remove EVERY stat weight from this table (build-slot marks stay).\nMis-click? copy from... > This set (revert) brings it back.');
             end
         end
-        -- import... / export...: bulk Saved Sets via paste, and the store
-        -- rendered back into that same text.
-        if wimp ~= nil and type(optim.importNamedWeights) == 'function' then
+        -- import...: ONE nameless table straight into THIS set (Henrik 07-20;
+        -- the named bulk import + export live under manage shared... now).
+        if wimp ~= nil and type(wimp.parseLocal) == 'function'
+           and type(optim.importSetWeights) == 'function' then
             imgui.SameLine(0, 6);
             if imgui.SmallButton('import...##wimport') then
-                impState(PTS_SPEC).plan = nil;
-                imgui.OpenPopup('##wimport_pop');
+                impState(PTS_LOCAL).plan = nil;
+                imgui.OpenPopup('##wlimport_pop');
             end
             if imgui.IsItemHovered() then
-                imgui.SetTooltip('Bulk-add Saved Sets from a pasted Lua table -- the weights sibling of the\nGroups tab\'s "Import Lua Table(s)". One profile per  Name = { Stat = pts, ... };\napply one to a set afterwards via copy from... > Saved Sets.');
+                imgui.SetTooltip('Paste ONE plain  { Stat = pts, ... }  table -- it becomes THIS set\'s\nweights, no name needed. Several named tables at once go through\nmanage shared... instead.');
             end
-            imgui.SetNextWindowSizeConstraints({ 450, 0 }, { 560, 460 });
-            if imgui.BeginPopup('##wimport_pop') then
-                renderImportPopup(PTS_SPEC, COL);
+            imgui.SetNextWindowSizeConstraints({ 490, 0 }, { 620, 420 });
+            if imgui.BeginPopup('##wlimport_pop') then
+                renderLocalImportPopup(PTS_LOCAL, COL);
                 imgui.EndPopup();
             end
+        end
+        -- manage shared...: the Saved Sets store's window -- create, delete,
+        -- bulk-import and export shared tunings.
+        if wimp ~= nil and type(optim.importNamedWeights) == 'function' then
             imgui.SameLine(0, 6);
-            if imgui.SmallButton('export...##wexport') then
-                wui._exppts = nil;
-                pcall(function() wui._exppts = wimp.renderPoints(optim.allNamedWeights()); end);
-                imgui.OpenPopup('##wexport_pop');
+            if imgui.SmallButton('manage shared...##wshared') then
+                impState(PTS_SPEC).plan = nil;
+                wui._sharedName = { '' };
+                wui._delArm = nil;
+                imgui.OpenPopup('##wshared_pop');
             end
             if imgui.IsItemHovered() then
-                imgui.SetTooltip('Every Saved Set rendered as importable text -- share it, keep it in a job\nfile comment, or re-import it on another character.');
+                imgui.SetTooltip('The shared store behind copy from... > Saved Sets: create one from this\nset, delete one, bulk-import  Name = { Stat = pts, ... }  tables (several\nat once) or export them all as text.');
             end
-            imgui.SetNextWindowSizeConstraints({ 450, 0 }, { 560, 400 });
-            if imgui.BeginPopup('##wexport_pop') then
-                renderExportPopup('pts', wui._exppts, COL);
+            imgui.SetNextWindowSizeConstraints({ 500, 0 }, { 620, 560 });
+            if imgui.BeginPopup('##wshared_pop') then
+                renderSharedPopup(PTS_SHARED, COL);
                 imgui.EndPopup();
             end
         end
@@ -825,33 +1017,39 @@ local function renderPrioTab(boundKey)
     if imgui.IsItemHovered() then
         imgui.SetTooltip('Empty this priority list.\nMis-click? copy from... > This list (revert) brings it back.');
     end
-    -- import... / export...: the Points tab's pair, on the Saved Lists store.
-    if wimp ~= nil and type(optim.importNamedPrio) == 'function' then
+    -- import...: ONE nameless ordered list straight into THIS set (Henrik
+    -- 07-20; the named bulk import + export live under manage shared... now).
+    if wimp ~= nil and type(wimp.parsePrioLocal) == 'function'
+       and type(optim.importSetPrio) == 'function' then
         imgui.SameLine(0, 6);
         if imgui.SmallButton('import...##pimport') then
-            impState(PRIO_SPEC).plan = nil;
-            imgui.OpenPopup('##pimport_pop');
+            impState(PRIO_LOCAL).plan = nil;
+            imgui.OpenPopup('##plimport_pop');
         end
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('Bulk-add Saved Lists from a pasted Lua table. One ORDERED list per\nName = { \'Stat\', { \'Stat\', cap }, ... }; apply one to a set afterwards\nvia copy from... > Saved Lists.');
+            imgui.SetTooltip('Paste ONE plain ordered list --  { \'MACC\', { \'INT\', 60 } }  -- it becomes\nTHIS set\'s priority list, no name needed. Several named lists at once\ngo through manage shared... instead.');
         end
-        imgui.SetNextWindowSizeConstraints({ 450, 0 }, { 560, 460 });
-        if imgui.BeginPopup('##pimport_pop') then
-            renderImportPopup(PRIO_SPEC, COL);
+        imgui.SetNextWindowSizeConstraints({ 490, 0 }, { 620, 420 });
+        if imgui.BeginPopup('##plimport_pop') then
+            renderLocalImportPopup(PRIO_LOCAL, COL);
             imgui.EndPopup();
         end
+    end
+    -- manage shared...: the Saved Lists store's window.
+    if wimp ~= nil and type(optim.importNamedPrio) == 'function' then
         imgui.SameLine(0, 6);
-        if imgui.SmallButton('export...##pexport') then
-            wui._expprio = nil;
-            pcall(function() wui._expprio = wimp.renderPrio(optim.allNamedPrio()); end);
-            imgui.OpenPopup('##pexport_pop');
+        if imgui.SmallButton('manage shared...##pshared') then
+            impState(PRIO_SPEC).plan = nil;
+            wui._sharedName = { '' };
+            wui._delArm = nil;
+            imgui.OpenPopup('##pshared_pop');
         end
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('Every Saved List rendered as importable text -- share it or re-import it\non another character.');
+            imgui.SetTooltip('The shared store behind copy from... > Saved Lists: create one from this\nset, delete one, bulk-import  Name = { \'Stat\', ... }  lists (several at\nonce) or export them all as text.');
         end
-        imgui.SetNextWindowSizeConstraints({ 450, 0 }, { 560, 400 });
-        if imgui.BeginPopup('##pexport_pop') then
-            renderExportPopup('prio', wui._expprio, COL);
+        imgui.SetNextWindowSizeConstraints({ 500, 0 }, { 620, 560 });
+        if imgui.BeginPopup('##pshared_pop') then
+            renderSharedPopup(PRIO_SHARED, COL);
             imgui.EndPopup();
         end
     end

@@ -5691,6 +5691,52 @@ end)();
     check('WX4 prio roundtrip: order survives', pback ~= nil and pback.DebuffL[1].stat == 'MACC'
         and pback.DebuffL[2].stat == 'INT', true);
     check('WX5 prio roundtrip: cap survives', pback ~= nil and pback.DebuffL[2].cap, 60);
+
+    -- LOCAL (per-set) import (2026-07-20): ONE nameless table for the bound
+    -- set. A single Name = wrapper is ignored; two+ named tables are refused
+    -- (that shape belongs to the shared import); the appliers replace the
+    -- BOUND set's tuning behind the copy-from revert snapshot and never touch
+    -- the named stores.
+    local lmap, lerr = wimpT.parseLocal('{ Accuracy = 12, Attack = 10, BlueMagicSkill = { 3, 40 } }');
+    check('LW1 pure table parses clean', type(lmap) == 'table' and #lerr == 0, true);
+    check('LW2 bare number row', lmap.Accuracy.perUnit, 12);
+    check('LW3 capped pair row', lmap.BlueMagicSkill.perUnit == 3 and lmap.BlueMagicSkill.cap == 40, true);
+    local wmap = wimpT.parseLocal('STR_DEX = { Accuracy = 12, STR = 10 },');
+    check('LW4 single name wrapper ignored', wmap ~= nil and wmap.Accuracy.perUnit == 12
+        and wmap.STR_DEX == nil, true);
+    local two, twoErr = wimpT.parseLocal('A = { Accuracy = 12 },\nB = { Attack = 10 },');
+    check('LW5 two named tables refused', two, nil);
+    check('LW6 refusal names the rule', tostring(twoErr[1]):find('exactly ONE', 1, true) ~= nil, true);
+    check('LW7 garbage refused', (wimpT.parseLocal('}{')), nil);
+
+    local llist, llerr = wimpT.parsePrioLocal("{ 'MACC', 'BlueMagicSkill', { 'INT', 60 } }");
+    check('LP1 pure list parses in order', #llerr == 0 and llist ~= nil and llist[1].stat == 'MACC'
+        and llist[2].stat == 'BlueMagicSkill' and llist[3].stat == 'INT', true);
+    check('LP2 pair cap lands', llist[3].cap, 60);
+    local wlist = wimpT.parsePrioLocal("Debuff = { 'MACC', 'INT' },");
+    check('LP3 single name wrapper ignored', wlist ~= nil and wlist[1].stat == 'MACC'
+        and wlist[2].stat == 'INT', true);
+    check('LP4 two named lists refused', (wimpT.parsePrioLocal("A = { 'MACC' }, B = { 'INT' },")), nil);
+
+    optim.bindSetWeights('IMP', 'LocalSet');
+    optim.setWeight('VIT', 5);
+    local namedBefore = #optim.namedKeys();
+    local okw, nw = optim.importSetWeights(lmap);
+    check('LW8 set import applies', okw == true and nw, 3);
+    local cur = optim.getPointWeights();
+    check('LW9 replaces, not merges', cur.Accuracy ~= nil and cur.Accuracy.perUnit == 12
+        and cur.VIT == nil, true);
+    check('LW10 revert snapshot taken', optim.copyUndoAvailable(), true);
+    check('LW11 mode lands on points', optim.weightsMode(), 'points');
+    check('LW12 named store untouched', #optim.namedKeys(), namedBefore);
+
+    local dupList = wimpT.parsePrioLocal("{ 'MACC', { 'INT', 60 }, 'MACC' }");
+    local okp, np = optim.importSetPrio(dupList);
+    check('LP5 set import applies + dedups', okp == true and np, 2);
+    local plNow = optim.getPrio();
+    check('LP6 order + cap survive', plNow[1].stat == 'MACC' and plNow[2].stat == 'INT'
+        and plNow[2].cap == 60, true);
+    check('LP7 mode lands on priority', optim.weightsMode(), 'priority');
 end)();
 
 -- ---------------------------------------------------------------------------

@@ -3225,3 +3225,24 @@ implements as exp: Expertise (+75%) and Anniversary (+100%, 15s
 equip delay -> per-entry wait override). Trizek/Endorsement/
 Facility/Capacity/Vocation grant COMMITMENT (capacity points, not
 exp on this server) and were deliberately left out. 1651 + 170.
+
+## Weights import split local/shared; Groups import to top buttons (2026-07-20)
+
+Henrik: the Weights import... should feed THE SET, not the named
+store. Split in two. import... (both tabs) is now LOCAL: paste ONE
+nameless table -- `{ Accuracy = 12, BlueMagicSkill = { 3, 40 } }` /
+`{ 'MACC', { 'INT', 60 } }` -- and it becomes the bound set's tuning
+directly (weightimport.parseLocal/parsePrioLocal -> gearoptim.
+importSetWeights/importSetPrio, replace semantics behind the same
+revert snapshot as copy from...). A single `Name =` wrapper is
+tolerated and IGNORED; two+ named tables are REFUSED with a pointer
+to the shared flow. New manage shared... button (both tabs) opens
+the named store's window: list + red-confirm delete, create from
+the current set, the old bulk `Name = {...}` import (several at
+once, overwrite-confirmed) and the export text -- export... moved
+in there since it renders that same store. On Triggers > Groups the
+two bottom collapsible sections ("Import Lua Table(s)", "Auto-import
+from my Lua file") became two top-row buttons: Import opens the
+paste window (same flow), Auto-Import runs the Lua-file scan
+immediately and opens the tick-list picker (Rescan inside). All
+functions kept, only the surfaces moved. LW1-12/LP1-7. 1670 + 170.

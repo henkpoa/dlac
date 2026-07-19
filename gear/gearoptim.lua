@@ -754,6 +754,32 @@ function M.clearAllWeights()
     return true;
 end
 
+-- The LOCAL weights import (Henrik 2026-07-20): land a parsed nameless
+-- { Stat -> {perUnit, cap|nil} } map straight in the BOUND set, replacing its
+-- point weights -- the paste twin of copyWeightsFrom, behind the same
+-- pre-first-copy snapshot so "This set (revert)" undoes a mis-paste. Stats
+-- canonicalize via canonStat; build-slot marks are untouched (the paste
+-- carries none). Returns (true, statCount) or (false, why).
+function M.importSetWeights(statmap)
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    if M._boundKey == nil then return false, 'no set selected'; end
+    if type(statmap) ~= 'table' or next(statmap) == nil then return false, 'nothing to import'; end
+    if M._copyUndo[undoKey()] == nil then
+        M._copyUndo[undoKey()] = { w = deepWeights(M._weights), s = deepMask(M._slots) };
+    end
+    for k in pairs(M._weights) do M._weights[k] = nil; end
+    local n = 0;
+    for k, w in pairs(statmap) do
+        if type(k) == 'string' and type(w) == 'table' and type(w.perUnit) == 'number' then
+            M._weights[canonStat(k)] = { perUnit = w.perUnit,
+                cap = (type(w.cap) == 'number' and w.cap > 0) and w.cap or nil };
+            n = n + 1;
+        end
+    end
+    M.setWeightsMode('points');
+    return true, n;
+end
+
 -- ===========================================================================
 -- Priority-list mode -- the "simple" weights (Henrik's friends, 2026-07-17).
 --
@@ -983,6 +1009,35 @@ function M.revertCopiedPrio()
     invalidatePrioCache();
     M.setWeightsMode('priority');
     return true;
+end
+
+-- importSetWeights' priority twin: replace the BOUND set's list with a parsed
+-- nameless ordered { {stat, cap|nil}, ... } list (weightimport.parsePrioLocal's
+-- output). Duplicate stats keep their FIRST (highest) position, matching
+-- prioAdd's case-insensitive dedup. Returns (true, rowCount) or (false, why).
+function M.importSetPrio(list)
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    if M._boundKey == nil then return false, 'no set selected'; end
+    if type(list) ~= 'table' or #list == 0 then return false, 'nothing to import'; end
+    if M._prioUndo[undoKey()] == nil then
+        M._prioUndo[undoKey()] = deepPrio(M._prio);
+    end
+    for i = #M._prio, 1, -1 do M._prio[i] = nil; end
+    local seen, n = {}, 0;
+    for _, e in ipairs(list) do
+        if type(e) == 'table' and type(e.stat) == 'string' and e.stat ~= '' then
+            local s = canonStat(e.stat);
+            if not seen[string.lower(s)] then
+                seen[string.lower(s)] = true;
+                local cap = tonumber(e.cap);
+                M._prio[#M._prio + 1] = { stat = s, cap = (cap ~= nil and cap > 0) and cap or nil };
+                n = n + 1;
+            end
+        end
+    end
+    invalidatePrioCache();
+    M.setWeightsMode('priority');
+    return true, n;
 end
 
 -- ---------------------------------------------------------------------------
