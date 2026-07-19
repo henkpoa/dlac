@@ -78,6 +78,7 @@ pm.render = function()
             elseif f.kind == 'deleteJob' then title = string.format('Delete %s from %s\'s "%s"', f.job, f.srcDisp, f.srcProf);
             elseif f.kind == 'newProfile' then title = string.format('New empty profile on %s', f.srcDisp);
             elseif f.kind == 'importJob' then title = string.format('Import %s (shared by %s, from their "%s")', f.job, f.srcDisp, f.srcProf);
+            elseif f.kind == 'exportJob' then title = string.format('Export %s from %s\'s "%s"', f.job, f.srcDisp, f.srcProf);
             elseif f.kind == 'deleteProfile' then title = string.format('Delete profile "%s" from %s', f.srcProf, f.srcDisp);
             else title = string.format('Rename profile "%s"', f.srcProf); end
             imgui.TextColored(COL.HEADER, title);
@@ -106,6 +107,35 @@ pm.render = function()
                 imgui.PushItemWidth(180);
                 imgui.InputText('##pm_fname', f.name, 48);
                 imgui.PopItemWidth();
+            end
+            if f.kind == 'exportJob' then
+                -- What travels. Set equipment and Stat weights ride the sets:
+                -- without Sets they are forced off and shown inert.
+                imgui.TextColored(COL.DIM, 'Pick what travels; the file lands in dlac-exports\\ for sharing.');
+                imgui.Checkbox('Sets##pmx_sets', f.xSets);
+                local setsOn = f.xSets[1] == true;
+                if not setsOn then f.xEquip[1] = false; f.xWts[1] = false; end
+                if setsOn then
+                    imgui.Text('    '); imgui.SameLine(0, 0);
+                    imgui.Checkbox('Set equipment##pmx_equip', f.xEquip);
+                    if imgui.IsItemHovered() then
+                        imgui.SetTooltip('OFF (default): sets travel as EMPTY shells -- names only, no gear.\nGear rarely aligns between characters; the receiver auto-builds their own.\nON: the exact gear ladders travel verbatim.');
+                    end
+                else
+                    imgui.TextColored(COL.DIM, '    [ ] Set equipment  (needs Sets)');
+                end
+                imgui.Checkbox('Triggers##pmx_trig', f.xTrig);
+                imgui.Checkbox('Groups##pmx_groups', f.xGroups);
+                imgui.Checkbox('Modes##pmx_modes', f.xModes);
+                if setsOn then
+                    imgui.Checkbox('Stat weights##pmx_wts', f.xWts);
+                    if imgui.IsItemHovered() then
+                        imgui.SetTooltip('The per-set stat weights of this job\'s sets (points, priority lists,\nbuild-slot marks). They ride the sets -- can\'t travel without them.');
+                    end
+                else
+                    imgui.TextColored(COL.DIM, '    [ ] Stat weights  (needs Sets)');
+                end
+                imgui.Checkbox('Lockstyles##pmx_ls', f.xLs);
             end
 
             -- Collision / validity check -- recomputed only when an input
@@ -204,7 +234,7 @@ pm.render = function()
             end
             imgui.Separator();
             local isDelete = (f.kind == 'deleteProfile' or f.kind == 'deleteJob');
-            local goLabel = isDelete and 'DELETE PERMANENTLY' or 'Commit';
+            local goLabel = isDelete and 'DELETE PERMANENTLY' or (f.kind == 'exportJob' and 'Export' or 'Commit');
             if chk.blocked then
                 fmt.textWrapped(COL.ERR, chk.why or 'blocked');
                 local grey = ImGuiCol_Button ~= nil;
@@ -237,9 +267,41 @@ pm.render = function()
                                 or ('Rename failed: ' .. tostring(err));
                         elseif f.kind == 'importJob' then
                             local n, err = prof.importJobFile(f.file, dstC.name, f.prof[1], f.name[1]);
+                            -- The weights payload (selective export) rides along: applied
+                            -- through gearoptim -- live merge for the current character,
+                            -- file merge for another -- with the job re-keyed to its
+                            -- imported name. Failure only annotates; files already landed.
+                            local wnote = '';
+                            if n ~= nil then
+                                pcall(function()
+                                    local meta = prof.readExportFile(f.file);
+                                    if meta ~= nil and type(meta.weights) == 'string' then
+                                        local optim = require('dlac\\gear\\gearoptim');
+                                        local wn, werr = optim.importJobWeightsTextAt(dstC.name, meta.weights, meta.job, prof.sanitizeName(f.name[1]));
+                                        wnote = (wn ~= nil)
+                                            and string.format(' + stat weights for %d set(s)', wn)
+                                            or (' (stat weights skipped: ' .. tostring(werr) .. ')');
+                                    end
+                                end);
+                            end
                             ui._profMenuMsg = (n ~= nil)
-                                and string.format('Imported %s -> %s / "%s" as %s (%d file(s)).', f.job, dstC.disp or dstC.name, prof.sanitizeName(f.prof[1]), prof.sanitizeName(f.name[1]), n)
+                                and string.format('Imported %s -> %s / "%s" as %s (%d file(s))%s.', f.job, dstC.disp or dstC.name, prof.sanitizeName(f.prof[1]), prof.sanitizeName(f.name[1]), n, wnote)
                                 or ('Import failed: ' .. tostring(err));
+                        elseif f.kind == 'exportJob' then
+                            local pexp = require('dlac\\gear\\profileexport');
+                            local opts = { sets = f.xSets[1] == true, equipment = f.xEquip[1] == true,
+                                           triggers = f.xTrig[1] == true, groups = f.xGroups[1] == true,
+                                           modes = f.xModes[1] == true, lockstyles = f.xLs[1] == true,
+                                           weights = f.xWts[1] == true and f.xSets[1] == true };
+                            local payloads, perr = pexp.buildPayloads(f.srcChar, f.srcProf, f.job, opts);
+                            if payloads == nil then
+                                ui._profMenuMsg = 'Export failed: ' .. tostring(perr);
+                            else
+                                local path, err = prof.exportJob(f.srcChar, f.srcProf, f.job, payloads);
+                                ui._profMenuMsg = (path ~= nil)
+                                    and string.format('Exported %s -> %s   Send that file; your friend drops it into THEIR dlac-exports folder and imports it from this menu.', f.job, path)
+                                    or ('Export failed: ' .. tostring(err));
+                            end
                         elseif f.kind == 'newProfile' then
                             local ok2, err = prof.createProfileAt(f.srcChar, f.name[1]);
                             ui._profMenuMsg = (ok2 ~= nil)
@@ -380,14 +442,13 @@ pm.render = function()
                                 end
                                 imgui.SameLine(0, 6);
                                 if imgui.SmallButton('export##pm_je_' .. c.name .. '_' .. p.name .. '_' .. jf2.name) then
-                                    pcall(function()
-                                        local prof = require('dlac\\profiles');
-                                        local path, err = prof.exportJob(c.name, p.name, jf2.name);
-                                        ui._profMenuMsg = (path ~= nil)
-                                            and string.format('Exported %s -> %s   Send that file; your friend drops it into THEIR dlac-exports folder and imports it from this menu.', jf2.name, path)
-                                            or ('Export failed: ' .. tostring(err));
-                                        if path ~= nil then ui._profMenuBuild = true; end
-                                    end);
+                                    -- Selective export (2026-07-19): the form picks what
+                                    -- travels; defaults = everything except set equipment.
+                                    ui._pmForm = { kind = 'exportJob', srcChar = c.name, srcDisp = c.disp or c.name,
+                                                   srcProf = p.name, job = jf2.name,
+                                                   xSets = { true }, xEquip = { false }, xTrig = { true },
+                                                   xGroups = { true }, xModes = { true }, xWts = { true }, xLs = { true } };
+                                    ui._pmChk = nil;
                                 end
                                 imgui.SameLine(0, 10);
                                 local dormant = (m.jobsSet ~= nil and m.jobsSet[jf2.name] ~= true);
@@ -420,6 +481,14 @@ pm.render = function()
                     end
                     imgui.SameLine(0, 10);
                     imgui.TextColored(COL.USABLE, tostring(ex.job));
+                    -- What the file carries (selective exports differ).
+                    local parts = {};
+                    if ex.sets then parts[#parts + 1] = 'sets'; end
+                    if ex.trig then parts[#parts + 1] = 'triggers'; end
+                    if ex.ls then parts[#parts + 1] = 'lockstyles'; end
+                    if ex.wts then parts[#parts + 1] = 'weights'; end
+                    imgui.SameLine(0, 8);
+                    imgui.TextColored(COL.DIM, '[' .. table.concat(parts, '+') .. ']');
                     imgui.SameLine(0, 10);
                     imgui.TextColored(COL.DIM, string.format('from %s / "%s"   %s.lua', tostring(ex.from), tostring(ex.profile), ex.file));
                 end

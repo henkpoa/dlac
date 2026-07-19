@@ -3146,3 +3146,26 @@ rebuilt buffer = read-as-copy-source, clipboard button when the
 binding has SetClipboardText); both tabs now carry import.../export...
 The BLU payload doc gains a Priority-list variant of every profile.
 WP1-12, WX1-5. 1608 + 170.
+
+## Selective profile export (2026-07-19)
+
+Henrik: the Profiles-menu export should "open a box, to select what we
+want to export" -- Sets / Set equipment (OFF by default, gear doesn't
+align between characters) / Triggers / Groups / Modes / Stat weights
+(rides Sets, inert without them) / Lockstyles. Ruling honored: no new
+readers or writers -- every transform routes through the existing one.
+gear/profileexport.lua builds the payloads: equipment-stripped sets =
+EMPTY shells via profiles.frameSetsText + setmanager.renderKey (an
+empty set is a legal trigger target); trigger filtering =
+dispatch.readTriggersRaw -> drop sections -> serializeTriggers (the
+wipe-contract serializer); weights = gearoptim's own file renderer
+filtered to '<JOB>|' keys. To get that, gearoptim's saveWeights/
+loadWeights were split into renderWeightsFileText + parseWeightsData
+(one writer, one validating reader; cleaners hoisted) with
+renderJobWeightsTextAt / importJobWeightsTextAt on top -- import
+re-keys to the imported job name, merges LIVE for the current
+character and read-merge-rewrites the file for another. The file
+format stays job-export v1 with an optional `weights` key (old
+readers ignore it); the import path applies it and annotates the
+result; the Shared-exports list now shows [sets+triggers+...] per
+file. PX1-16. 1624 + 170.

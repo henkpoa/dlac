@@ -1849,8 +1849,15 @@ end
 
 -- Built exactly like gearimport's stagingPath, so it lands in the same dlac
 -- folder this module lives in, next to gear.lua.
-function M.weightsPath()
+-- The weights file of ANY character folder ('Name_1234'); the per-job export/
+-- import path goes through here, so there is exactly one path rule.
+local function weightsPathFor(charFolder)
     local install = safeCall(function() return AshitaCore:GetInstallPath(); end);
+    if type(install) ~= 'string' or type(charFolder) ~= 'string' or charFolder == '' then return nil; end
+    return string.format('%sconfig\\addons\\luashitacast\\%s\\dlac\\gearweights.lua', install, charFolder);
+end
+
+function M.weightsPath()
     -- gState inside a profile, else the party manager (dlac addon context).
     local name, id;
     if gState ~= nil and gState.PlayerName ~= nil and gState.PlayerId ~= nil then
@@ -1863,9 +1870,91 @@ function M.weightsPath()
             if name == '' then name = nil; end
         end);
     end
-    if type(install) ~= 'string' or name == nil or id == nil then return nil; end
-    return string.format('%sconfig\\addons\\luashitacast\\%s_%s\\dlac\\gearweights.lua',
-        install, tostring(name), tostring(id));
+    if name == nil or id == nil then return nil; end
+    return weightsPathFor(tostring(name) .. '_' .. tostring(id));
+end
+
+-- Validating deep-cleaners for weights-file data, shared by loadWeights and
+-- the export/import paths (hoisted out of loadWeights 2026-07-19 -- one way
+-- of reading these files, not two).
+local function cleanTable(src)
+    local clean = {};
+    for k, w in pairs(src) do
+        if type(k) == 'string' and type(w) == 'table' and type(w.perUnit) == 'number' then
+            local cap = w.cap;
+            if type(cap) ~= 'number' then cap = nil; end
+            clean[canonStat(k)] = { perUnit = w.perUnit, cap = cap };
+        end
+    end
+    return clean;
+end
+local function cleanMask(src)
+    local m = {};
+    for _, l in ipairs(src) do
+        if type(l) == 'string' then m[l] = true; end   -- labels validated on use
+    end
+    return m;
+end
+local function cleanPrioList(src)
+    local out = {};
+    for _, e in ipairs(src) do
+        if type(e) == 'table' and type(e.stat) == 'string' and e.stat ~= '' then
+            local cap = tonumber(e.cap);
+            out[#out + 1] = { stat = canonStat(e.stat),
+                              cap = (cap ~= nil and cap > 0) and cap or nil };
+        end
+    end
+    return out;
+end
+
+-- A decoded weights-file table -> validated store-shaped data, or nil for a
+-- legacy flat file (nothing but the dead shared table -- dropped on sight).
+-- result.shared / slotsShared / prioShared / mode are deliberately ignored.
+local function parseWeightsData(result)
+    if type(result) ~= 'table'
+       or (type(result.shared) ~= 'table' and type(result.perSet) ~= 'table') then
+        return nil;
+    end
+    local d = { perSet = {}, slotsPerSet = {}, named = {}, namedSlots = {},
+                modePerSet = {}, prioPerSet = {}, prioNamed = {} };
+    if type(result.perSet) == 'table' then
+        for k, t in pairs(result.perSet) do
+            if type(k) == 'string' and type(t) == 'table' then d.perSet[k] = cleanTable(t); end
+        end
+    end
+    if type(result.slotsPerSet) == 'table' then
+        for k, t in pairs(result.slotsPerSet) do
+            if type(k) == 'string' and type(t) == 'table' then d.slotsPerSet[k] = cleanMask(t); end
+        end
+    end
+    if type(result.named) == 'table' then
+        for k, t in pairs(result.named) do
+            if type(k) == 'string' and type(t) == 'table' then d.named[k] = cleanTable(t); end
+        end
+    end
+    if type(result.namedSlots) == 'table' then
+        for k, t in pairs(result.namedSlots) do
+            if type(k) == 'string' and type(t) == 'table' and d.named[k] ~= nil then
+                d.namedSlots[k] = cleanMask(t);
+            end
+        end
+    end
+    if type(result.modePerSet) == 'table' then
+        for k, v in pairs(result.modePerSet) do
+            if type(k) == 'string' and v == 'priority' then d.modePerSet[k] = 'priority'; end
+        end
+    end
+    if type(result.prioPerSet) == 'table' then
+        for k, t in pairs(result.prioPerSet) do
+            if type(k) == 'string' and type(t) == 'table' then d.prioPerSet[k] = cleanPrioList(t); end
+        end
+    end
+    if type(result.prioNamed) == 'table' then
+        for k, t in pairs(result.prioNamed) do
+            if type(k) == 'string' and type(t) == 'table' then d.prioNamed[k] = cleanPrioList(t); end
+        end
+    end
+    return d;
 end
 
 -- Serialize the per-set weights and write it. Alphabetical order -> stable
@@ -1873,10 +1962,11 @@ end
 -- named/namedSlots, and the priority-mode sections (modePerSet/prioPerSet/
 -- prioNamed -- ordered arrays). The shared sections older files carried are
 -- gone (dead concept, Henrik 07-17); loadWeights DROPS them on sight.
-function M.saveWeights()
-    local path = M.weightsPath();
-    if path == nil then return false, 'profile path unavailable (not logged in?)'; end
-
+-- Render store-shaped data ({perSet, slotsPerSet, named, namedSlots,
+-- modePerSet, prioPerSet, prioNamed}) as the gearweights file text.
+-- saveWeights feeds it the live stores; the per-job export feeds it a
+-- filtered copy -- ONE writer for this format, not two.
+local function renderWeightsFileText(d)
     local function rows(L, t, indent)
         local keys = {};
         for k in pairs(t) do keys[#keys + 1] = k; end
@@ -1900,13 +1990,13 @@ function M.saveWeights()
     local skeys = {};
     -- Empty tables are skipped: blank is the new-binding default (07-17), so
     -- rebinding recreates one -- persisting them would only bloat the file.
-    for k, t in pairs(M._perSet) do
+    for k, t in pairs(d.perSet) do
         if next(t) ~= nil then skeys[#skeys + 1] = k; end
     end
     table.sort(skeys);
     for _, sk in ipairs(skeys) do
         L[#L + 1] = string.format('        [%q] = {', sk);
-        rows(L, M._perSet[sk], '            ');
+        rows(L, d.perSet[sk], '            ');
         L[#L + 1] = '        },';
     end
     L[#L + 1] = '    },';
@@ -1923,28 +2013,28 @@ function M.saveWeights()
     end
     L[#L + 1] = '    slotsPerSet = {';
     local mkeys = {};
-    for k in pairs(M._slotsPerSet) do mkeys[#mkeys + 1] = k; end
+    for k in pairs(d.slotsPerSet) do mkeys[#mkeys + 1] = k; end
     table.sort(mkeys);
     for _, mk in ipairs(mkeys) do
-        L[#L + 1] = string.format('        [%q] = %s,', mk, maskRow(M._slotsPerSet[mk]));
+        L[#L + 1] = string.format('        [%q] = %s,', mk, maskRow(d.slotsPerSet[mk]));
     end
     L[#L + 1] = '    },';
     -- Named weight profiles ("Saved Sets" in the copy-from menu): the tunings
     -- you saved on purpose, independent of any job or set.
     L[#L + 1] = '    named = {';
     local nkeys = {};
-    for k in pairs(M._named) do nkeys[#nkeys + 1] = k; end
+    for k in pairs(d.named) do nkeys[#nkeys + 1] = k; end
     table.sort(nkeys);
     for _, nk in ipairs(nkeys) do
         L[#L + 1] = string.format('        [%q] = {', nk);
-        rows(L, M._named[nk], '            ');
+        rows(L, d.named[nk], '            ');
         L[#L + 1] = '        },';
     end
     L[#L + 1] = '    },';
     L[#L + 1] = '    namedSlots = {';
     for _, nk in ipairs(nkeys) do
-        if M._namedSlots[nk] ~= nil then
-            L[#L + 1] = string.format('        [%q] = %s,', nk, maskRow(M._namedSlots[nk]));
+        if d.namedSlots[nk] ~= nil then
+            L[#L + 1] = string.format('        [%q] = %s,', nk, maskRow(d.namedSlots[nk]));
         end
     end
     L[#L + 1] = '    },';
@@ -1960,7 +2050,7 @@ function M.saveWeights()
     end
     L[#L + 1] = '    modePerSet = {';
     local mokeys = {};
-    for k, v in pairs(M._modePerSet) do
+    for k, v in pairs(d.modePerSet) do
         if v == 'priority' then mokeys[#mokeys + 1] = k; end
     end
     table.sort(mokeys);
@@ -1970,37 +2060,55 @@ function M.saveWeights()
     L[#L + 1] = '    },';
     L[#L + 1] = '    prioPerSet = {';
     local pkeys = {};
-    for k, t in pairs(M._prioPerSet) do
+    for k, t in pairs(d.prioPerSet) do
         if #t > 0 then pkeys[#pkeys + 1] = k; end
     end
     table.sort(pkeys);
     for _, pk in ipairs(pkeys) do
         L[#L + 1] = string.format('        [%q] = {', pk);
-        prioRows(M._prioPerSet[pk], '            ');
+        prioRows(d.prioPerSet[pk], '            ');
         L[#L + 1] = '        },';
     end
     L[#L + 1] = '    },';
     L[#L + 1] = '    prioNamed = {';
     local pnkeys = {};
-    for k in pairs(M._prioNamed) do pnkeys[#pnkeys + 1] = k; end
+    for k in pairs(d.prioNamed) do pnkeys[#pnkeys + 1] = k; end
     table.sort(pnkeys);
     for _, pk in ipairs(pnkeys) do
         L[#L + 1] = string.format('        [%q] = {', pk);
-        prioRows(M._prioNamed[pk], '            ');
+        prioRows(d.prioNamed[pk], '            ');
         L[#L + 1] = '        },';
     end
     L[#L + 1] = '    },';
     L[#L + 1] = '}';
     L[#L + 1] = '';
+    return table.concat(L, '\n');
+end
 
+local function writeTextFile(path, text)
     local ok = safeCall(function()
         local f = io.open(path, 'w');
         if f == nil then return false; end
-        f:write(table.concat(L, '\n'));
+        f:write(text);
         f:close();
         return true;
     end);
-    if ok ~= true then return false, 'could not write ' .. tostring(path); end
+    return ok == true;
+end
+
+local function liveWeightsData()
+    return { perSet = M._perSet, slotsPerSet = M._slotsPerSet,
+             named = M._named, namedSlots = M._namedSlots,
+             modePerSet = M._modePerSet, prioPerSet = M._prioPerSet,
+             prioNamed = M._prioNamed };
+end
+
+function M.saveWeights()
+    local path = M.weightsPath();
+    if path == nil then return false, 'profile path unavailable (not logged in?)'; end
+    if not writeTextFile(path, renderWeightsFileText(liveWeightsData())) then
+        return false, 'could not write ' .. tostring(path);
+    end
     return true, path;
 end
 
@@ -2017,84 +2125,15 @@ function M.loadWeights()
     local ok, result = pcall(chunk);
     if not ok or type(result) ~= 'table' then return false, 'weights file did not return a table'; end
 
-    local function cleanTable(src)
-        local clean = {};
-        for k, w in pairs(src) do
-            if type(k) == 'string' and type(w) == 'table' and type(w.perUnit) == 'number' then
-                local cap = w.cap;
-                if type(cap) ~= 'number' then cap = nil; end
-                clean[canonStat(k)] = { perUnit = w.perUnit, cap = cap };
-            end
-        end
-        return clean;
-    end
-    local function cleanMask(src)
-        local m = {};
-        for _, l in ipairs(src) do
-            if type(l) == 'string' then m[l] = true; end   -- labels validated on use
-        end
-        return m;
-    end
-    local function cleanPrioList(src)
-        local out = {};
-        for _, e in ipairs(src) do
-            if type(e) == 'table' and type(e.stat) == 'string' and e.stat ~= '' then
-                local cap = tonumber(e.cap);
-                out[#out + 1] = { stat = canonStat(e.stat),
-                                  cap = (cap ~= nil and cap > 0) and cap or nil };
-            end
-        end
-        return out;
-    end
-    if type(result.shared) == 'table' or type(result.perSet) == 'table' then
-        -- result.shared / result.slotsShared / result.prioShared / result.mode
-        -- are deliberately IGNORED here: the shared table is a dead concept.
-        M._perSet = {};
-        if type(result.perSet) == 'table' then
-            for k, t in pairs(result.perSet) do
-                if type(k) == 'string' and type(t) == 'table' then M._perSet[k] = cleanTable(t); end
-            end
-        end
-        -- Slot masks: absent = each set falls back to the default on bind.
-        M._slotsPerSet = {};
-        if type(result.slotsPerSet) == 'table' then
-            for k, t in pairs(result.slotsPerSet) do
-                if type(k) == 'string' and type(t) == 'table' then M._slotsPerSet[k] = cleanMask(t); end
-            end
-        end
-        -- Named profiles: absent section = none saved yet (pre-feature file).
-        M._named, M._namedSlots = {}, {};
-        if type(result.named) == 'table' then
-            for k, t in pairs(result.named) do
-                if type(k) == 'string' and type(t) == 'table' then M._named[k] = cleanTable(t); end
-            end
-        end
-        if type(result.namedSlots) == 'table' then
-            for k, t in pairs(result.namedSlots) do
-                if type(k) == 'string' and type(t) == 'table' and M._named[k] ~= nil then
-                    M._namedSlots[k] = cleanMask(t);
-                end
-            end
-        end
-        -- Priority-list sections: absent = pre-feature file (all-points, empty).
-        M._modePerSet = {};
-        if type(result.modePerSet) == 'table' then
-            for k, v in pairs(result.modePerSet) do
-                if type(k) == 'string' and v == 'priority' then M._modePerSet[k] = 'priority'; end
-            end
-        end
-        M._prioPerSet = {};
-        if type(result.prioPerSet) == 'table' then
-            for k, t in pairs(result.prioPerSet) do
-                if type(k) == 'string' and type(t) == 'table' then M._prioPerSet[k] = cleanPrioList(t); end
-            end
-        end
-        M._prioNamed = {};
-        if type(result.prioNamed) == 'table' then
-            for k, t in pairs(result.prioNamed) do
-                if type(k) == 'string' and type(t) == 'table' then M._prioNamed[k] = cleanPrioList(t); end
-            end
-        end
+    local d = parseWeightsData(result);   -- the ONE validating reader for this format
+    if d ~= nil then
+        M._perSet      = d.perSet;
+        M._slotsPerSet = d.slotsPerSet;
+        M._named       = d.named;
+        M._namedSlots  = d.namedSlots;
+        M._modePerSet  = d.modePerSet;
+        M._prioPerSet  = d.prioPerSet;
+        M._prioNamed   = d.prioNamed;
     else
         -- Legacy FLAT file: it was nothing but the dead shared table -- drop it.
         M._perSet = {};
@@ -2125,6 +2164,116 @@ ensureWeightsLoaded = function()
     if M.weightsPath() == nil then return; end   -- not logged in yet -> retry later
     _weightsLoaded = true;
     M.loadWeights();                              -- ok even if there's simply no file yet
+end
+
+-- ===========================================================================
+-- Per-job weights export / import (the Profiles menu's selective export,
+-- 2026-07-19). A job's weights are every per-set entry keyed '<JOB>|...'
+-- (points, masks, modes, priority lists -- NOT the char-global named stores).
+-- The payload text IS the gearweights format, produced and consumed by the
+-- same renderer/parser the live file uses.
+-- ===========================================================================
+
+-- charFolder's weights data: the LIVE stores when it is (or resolves like)
+-- the current character, else that character's file read through the one
+-- validating parser. Returns data | nil.
+local function weightsDataFor(charFolder)
+    local pf = weightsPathFor(charFolder);
+    if pf == nil or pf == M.weightsPath() then
+        if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+        return liveWeightsData();
+    end
+    local chunk = safeCall(function() return loadfile(pf); end);
+    if chunk == nil then return nil; end
+    local ok, result = pcall(chunk);
+    if not ok then return nil; end
+    return parseWeightsData(result);
+end
+
+-- Copy `map`'s entries whose key starts with '<srcJob>|', re-prefixed to
+-- '<dstJob>|'. Returns copies (cheap deep enough: values are re-rendered or
+-- re-cleaned downstream, never shared with a live store).
+local function rekeyJobEntries(map, srcJob, dstJob, out)
+    local pre, n = srcJob .. '|', 0;
+    for k, v in pairs(map or {}) do
+        if type(k) == 'string' and k:sub(1, #pre) == pre then
+            out[dstJob .. '|' .. k:sub(#pre + 1)] = v;
+            n = n + 1;
+        end
+    end
+    return n;
+end
+
+-- Render charFolder's weights for one job as importable gearweights text.
+-- Returns text, setCount | nil, why.
+function M.renderJobWeightsTextAt(charFolder, job)
+    local d = weightsDataFor(charFolder);
+    if d == nil then return nil, 'no weights file for ' .. tostring(charFolder); end
+    local out = { perSet = {}, slotsPerSet = {}, named = {}, namedSlots = {},
+                  modePerSet = {}, prioPerSet = {}, prioNamed = {} };
+    rekeyJobEntries(d.perSet, job, job, out.perSet);
+    rekeyJobEntries(d.slotsPerSet, job, job, out.slotsPerSet);
+    rekeyJobEntries(d.modePerSet, job, job, out.modePerSet);
+    rekeyJobEntries(d.prioPerSet, job, job, out.prioPerSet);
+    -- Meaningful = at least one set with real weights or a real priority
+    -- list (empty tables and bare masks are skipped by the renderer anyway).
+    local sets = {};
+    for k, t in pairs(out.perSet) do if next(t) ~= nil then sets[k] = true; end end
+    for k, t in pairs(out.prioPerSet) do if #t > 0 then sets[k] = true; end end
+    local n = 0;
+    for _ in pairs(sets) do n = n + 1; end
+    if n == 0 then return nil, 'no stat weights stored for ' .. tostring(job); end
+    return renderWeightsFileText(out), n;
+end
+
+-- Import a weights payload (renderJobWeightsTextAt's output) into
+-- charFolder's weights, re-keying '<srcJob>|Set' -> '<dstJob>|Set' (imports
+-- may rename the job). Current character: merged into the LIVE stores and
+-- saved through saveWeights; another character: their file is read, merged
+-- and re-rendered -- the same parser and renderer either way.
+-- Returns setCount | nil, why.
+function M.importJobWeightsTextAt(charFolder, text, srcJob, dstJob)
+    if type(text) ~= 'string' or type(srcJob) ~= 'string' or type(dstJob) ~= 'string' then
+        return nil, 'bad arguments';
+    end
+    local chunk = (loadstring or load)(text, 'dlac-weights-import');
+    if chunk == nil then return nil, 'weights payload does not parse'; end
+    if setfenv ~= nil then setfenv(chunk, {}); end   -- data file: runs against nothing
+    local ok, result = pcall(chunk);
+    if not ok then return nil, 'weights payload errored'; end
+    local d = parseWeightsData(result);
+    if d == nil then return nil, 'not a dlac weights payload'; end
+
+    local add = { perSet = {}, slotsPerSet = {}, modePerSet = {}, prioPerSet = {} };
+    local n = 0;
+    n = n + rekeyJobEntries(d.perSet, srcJob, dstJob, add.perSet);
+    rekeyJobEntries(d.slotsPerSet, srcJob, dstJob, add.slotsPerSet);
+    rekeyJobEntries(d.modePerSet, srcJob, dstJob, add.modePerSet);
+    n = n + rekeyJobEntries(d.prioPerSet, srcJob, dstJob, add.prioPerSet);
+    if n == 0 then return nil, 'payload holds no weights for ' .. tostring(srcJob); end
+
+    local pf = weightsPathFor(charFolder);
+    if pf == nil or pf == M.weightsPath() then
+        -- The current character: merge live, save through the one writer.
+        if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+        for k, v in pairs(add.perSet) do M._perSet[k] = v; end
+        for k, v in pairs(add.slotsPerSet) do M._slotsPerSet[k] = v; end
+        for k, v in pairs(add.modePerSet) do M._modePerSet[k] = v; end
+        for k, v in pairs(add.prioPerSet) do M._prioPerSet[k] = v; end
+        M.saveWeights();   -- may report "not logged in" headless; the merge itself stands
+        return n;
+    end
+    -- Another character: read-merge-rewrite their file.
+    local dst = weightsDataFor(charFolder) or { perSet = {}, slotsPerSet = {}, named = {}, namedSlots = {},
+                                                modePerSet = {}, prioPerSet = {}, prioNamed = {} };
+    for k, v in pairs(add.perSet) do dst.perSet[k] = v; end
+    for k, v in pairs(add.slotsPerSet) do dst.slotsPerSet[k] = v; end
+    for k, v in pairs(add.modePerSet) do dst.modePerSet[k] = v; end
+    for k, v in pairs(add.prioPerSet) do dst.prioPerSet[k] = v; end
+    if not writeTextFile(pf, renderWeightsFileText(dst)) then
+        return nil, 'could not write ' .. tostring(pf);
+    end
+    return n;
 end
 
 -- ===========================================================================

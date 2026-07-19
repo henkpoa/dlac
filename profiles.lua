@@ -692,9 +692,10 @@ function M.exportsDir()
     return root and (root .. 'dlac-exports\\') or nil;
 end
 
--- Pure text builders (offline-tested round trip). The lockstyles field is
--- optional and still "job-export v1": readers that predate it ignore the key.
-function M.buildExportText(job, profName, from, setsText, trigText, lsText)
+-- Pure text builders (offline-tested round trip). The lockstyles and weights
+-- fields are optional and still "job-export v1": readers that predate them
+-- ignore the keys (weights = a gearweights-format fragment, 2026-07-19).
+function M.buildExportText(job, profName, from, setsText, trigText, lsText, weightsText)
     local parts = {
         '-- dlac job export -- ' .. tostring(job) .. ' from profile "' .. tostring(profName) .. '" (' .. tostring(from) .. ')',
         '-- Import: drop this file into config\\addons\\luashitacast\\dlac-exports\\ and use the dlac Profiles menu.',
@@ -707,6 +708,7 @@ function M.buildExportText(job, profName, from, setsText, trigText, lsText)
     if setsText ~= nil then parts[#parts + 1] = string.format('    sets     = %q,', setsText); end
     if trigText ~= nil then parts[#parts + 1] = string.format('    triggers = %q,', trigText); end
     if lsText ~= nil then parts[#parts + 1] = string.format('    lockstyles = %q,', lsText); end
+    if weightsText ~= nil then parts[#parts + 1] = string.format('    weights = %q,', weightsText); end
     parts[#parts + 1] = '};';
     return table.concat(parts, '\n') .. '\n';
 end
@@ -718,25 +720,42 @@ function M.parseExportText(text)
     if setfenv ~= nil then setfenv(chunk, {}); end   -- data file: runs against nothing
     local ok, t = pcall(chunk);
     if not ok or type(t) ~= 'table' or t.dlac ~= 'job-export v1' or type(t.job) ~= 'string'
-       or (type(t.sets) ~= 'string' and type(t.triggers) ~= 'string' and type(t.lockstyles) ~= 'string') then
+       or (type(t.sets) ~= 'string' and type(t.triggers) ~= 'string' and type(t.lockstyles) ~= 'string'
+           and type(t.weights) ~= 'string') then
         return nil, 'not a dlac job export';
     end
     return t, nil;
 end
 
+-- Parsed meta of one dlac-exports file (the import side's reader; the
+-- Profiles menu uses it to hand the weights payload to gearoptim).
+function M.readExportFile(fileBase)
+    local ed = M.exportsDir();
+    if ed == nil then return nil, 'not available'; end
+    return M.parseExportText(readFile(ed .. tostring(fileBase) .. '.lua'));
+end
+
 -- Write <exportsDir>\<Job>-<Profile>-<Char>-<stamp>.lua. path | nil, why.
-function M.exportJob(charFolder, profName, job)
+-- `payloads` (optional) = pre-built texts { sets, triggers, lockstyles,
+-- weights } from the selective export (gear/profileexport.lua); absent, the
+-- three profile files travel verbatim -- the original everything export.
+function M.exportJob(charFolder, profName, job, payloads)
     local dir = M.profileDirAt(charFolder, profName);
     local ed = M.exportsDir();
     if dir == nil or ed == nil then return nil, 'not available (log in first?)'; end
-    local setsText = readFile(dir .. 'sets\\' .. job .. '.lua');
-    local trigText = readFile(dir .. 'triggers\\' .. job .. '.lua');
-    local lsText   = readFile(dir .. 'lockstyles\\' .. job .. '.lua');
-    if setsText == nil and trigText == nil and lsText == nil then return nil, 'nothing to export (no files for ' .. tostring(job) .. ')'; end
+    local setsText, trigText, lsText, wText;
+    if type(payloads) == 'table' then
+        setsText, trigText, lsText, wText = payloads.sets, payloads.triggers, payloads.lockstyles, payloads.weights;
+    else
+        setsText = readFile(dir .. 'sets\\' .. job .. '.lua');
+        trigText = readFile(dir .. 'triggers\\' .. job .. '.lua');
+        lsText   = readFile(dir .. 'lockstyles\\' .. job .. '.lua');
+    end
+    if setsText == nil and trigText == nil and lsText == nil and wText == nil then return nil, 'nothing to export (no files for ' .. tostring(job) .. ')'; end
     ensureDir(ed);
     local short = charFolder:match('^(.-)_%d+$') or charFolder;
     local path = ed .. string.format('%s-%s-%s-%s.lua', job, profName, short, os.date('%Y%m%d_%H%M%S'));
-    local text = M.buildExportText(job, profName, short, setsText, trigText, lsText);
+    local text = M.buildExportText(job, profName, short, setsText, trigText, lsText, wText);
     if not writeFile(path, text) or readFile(path) ~= text then return nil, 'could not write ' .. path; end
     return path, nil;
 end
@@ -753,7 +772,7 @@ function M.listExports()
         if meta ~= nil then
             out[#out + 1] = { file = b, job = meta.job, profile = meta.profile, from = meta.from,
                               sets = type(meta.sets) == 'string', trig = type(meta.triggers) == 'string',
-                              ls = type(meta.lockstyles) == 'string' };
+                              ls = type(meta.lockstyles) == 'string', wts = type(meta.weights) == 'string' };
         end
     end
     return out;

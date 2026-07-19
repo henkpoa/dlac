@@ -5543,6 +5543,72 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- PX. selective profile export (gear/profileexport.lua + profiles weights key
+-- + gearoptim per-job weights render/import) -- the export dialog's engine.
+-- ---------------------------------------------------------------------------
+(function()
+    package.loaded['dlac\\gear\\setmanager'] = package.loaded['dlac\\gear\\setmanager'] or dofile('gear/setmanager.lua');
+    package.loaded['dlac\\gear\\gearoptim'] = package.loaded['dlac\\gear\\gearoptim'] or optim;
+    local pexp = dofile('gear/profileexport.lua');
+
+    -- equipment strip: names (incl. a dashed one) survive as EMPTY shells
+    local setsSrc = profilesM.frameSetsText('Dynamic = {\n'
+        .. '        Idle = {\n            Head = {\n                {gear.Head.PoetsCirclet},\n            },\n        },\n'
+        .. '        ["Midcast_STR-VIT"] = {\n            Body = {\n                {gear.Body.X},\n            },\n        },\n'
+        .. '    }');
+    local shell = pexp.stripEquipment(setsSrc);
+    check('PX1 shells build', type(shell) == 'string', true);
+    check('PX2 shells parse', (loadstring or load)(shell or '') ~= nil, true);
+    local sc = loadWithEnv(shell or '', setmetatable({}, { __index = _G }));
+    local sok, sres = pcall(sc);
+    check('PX3 both names survive (dashed included)', sok and type(sres.Dynamic.Idle) == 'table'
+        and type(sres.Dynamic['Midcast_STR-VIT']) == 'table', true);
+    check('PX4 shells are EMPTY', sok and next(sres.Dynamic.Idle) == nil
+        and next(sres.Dynamic['Midcast_STR-VIT']) == nil, true);
+    check('PX5 no gear refs travel', (shell or ''):find('PoetsCirclet', 1, true), nil);
+
+    -- triggers filter: sections drop independently; the ONE serializer round-trips
+    local raw = {
+        Midcast = { { when = { group = 'Debuff' }, set = 'Midcast_Debuff' } },
+        Groups = { Debuff = { 'Sheep Song' } },
+        Modes = { DT = { values = { 'On', 'Off' } } },
+    };
+    local outT = pexp.filterTriggersRaw(raw, { triggers = true }, dispatchM.canonEvent);
+    check('PX6 triggers only', outT.Midcast ~= nil and outT.Groups == nil and outT.Modes == nil, true);
+    local outG = pexp.filterTriggersRaw(raw, { groups = true, modes = true }, dispatchM.canonEvent);
+    check('PX7 groups+modes only', outG.Midcast == nil and outG.Groups ~= nil and outG.Modes ~= nil, true);
+    local ser = dispatchM.serializeTriggers(outG);
+    local tok, tres = pcall((loadstring or load)(ser));
+    check('PX8 filtered file parses', tok and type(tres) == 'table', true);
+    check('PX9 filtered file: groups+modes, no rules', tok and tres.Midcast == nil
+        and type(tres.Groups) == 'table' and tres.Groups.Debuff[1] == 'Sheep Song'
+        and type(tres.Modes) == 'table' and tres.Modes.DT ~= nil, true);
+
+    -- export format: the weights key rides job-export v1 and round-trips
+    local ex = profilesM.buildExportText('BLU', 'Default', 'Mindie', 'return {};', nil, nil, '-- w\nreturn { perSet = {} };\n');
+    local meta = profilesM.parseExportText(ex);
+    check('PX10 weights key round-trips', meta ~= nil and type(meta.weights) == 'string', true);
+    check('PX11 weights-only export is valid', (profilesM.parseExportText(
+        profilesM.buildExportText('BLU', 'P', 'X', nil, nil, nil, 'return { perSet = {} };'))) ~= nil, true);
+
+    -- per-job weights render/import (headless paths resolve nil -> LIVE stores)
+    optim.bindSetWeights('BLU', 'PXSet');
+    optim.setWeight('Accuracy', 12, 60);
+    local wtext, wn = optim.renderJobWeightsTextAt('Whoever_1', 'BLU');
+    check('PX12 render finds exactly the job\'s set', wn, 1);
+    check('PX13 payload is gearweights-shaped', type(wtext) == 'string'
+        and wtext:find('["BLU|PXSet"]', 1, true) ~= nil, true);
+    local iN = optim.importJobWeightsTextAt('Whoever_1', wtext, 'BLU', 'BLU2');
+    check('PX14 import re-keys to the imported job name', iN, 1);
+    local got = optim._perSet['BLU2|PXSet'];
+    check('PX15 imported weights land intact', got ~= nil and got.Accuracy ~= nil
+        and got.Accuracy.perUnit == 12 and got.Accuracy.cap == 60, true);
+    check('PX16 payload without the named job refuses',
+        (select(2, optim.importJobWeightsTextAt('Whoever_1', wtext, 'DRK', 'DRK'))) ~= nil, true);
+    optim.bindSetWeights(nil, nil);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then
