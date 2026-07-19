@@ -4036,6 +4036,76 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- PLL. level-banded PAIR ladders (gearoptim.pairLevelLadders) -- the Ear/Ring
+--      twin of levelLadder: at every band the pair wears the true top-2 by
+--      score-at-that-level. Flat scores must reproduce pairLadders' chains
+--      verbatim (PL5/6, PL12/13 parity); a decaying piece hands its slot over
+--      at the breakpoint with a between-level window.
+-- ---------------------------------------------------------------------------
+(function()
+    local optim = dofile('gear/gearoptim.lua');
+    local function fmt(lad)
+        local t = {};
+        for _, e in ipairs(lad) do
+            t[#t + 1] = tostring(e.ref) .. '[' .. tostring(e.minLevel or '') .. '-' .. tostring(e.maxLevel or '') .. ']';
+        end
+        return table.concat(t, ',');
+    end
+    local function pair(cands, scores, pins, cap)
+        local cA, cB = optim.pairLevelLadders(cands, {
+            cap = cap or 75,
+            scoreAt = function(ref, L) return scores[ref](L); end,
+            pins = pins,
+        });
+        return fmt(cA), fmt(cB);
+    end
+    local flat = {
+        A = function() return 5; end,  B = function() return 10; end,
+        C = function() return 12; end, D = function() return 20; end,
+    };
+    local A = { ref = 'A', name = 'A', id = 11, level = 10 };
+    local B = { ref = 'B', name = 'B', id = 12, level = 20 };
+    local C = { ref = 'C', name = 'C', id = 13, level = 30 };
+    local D = { ref = 'D', name = 'D', id = 14, level = 40 };
+
+    -- flat scores: byte-for-byte the classic running top-2 chains (PL5/6)
+    local a, b = pair({ A, B, C, D }, flat);
+    check('PLL1 flat scores keep pairLadders chains (1)', a, 'A[-],C[-]');
+    check('PLL2 flat scores keep pairLadders chains (2)', b, 'B[-],D[-]');
+
+    -- decay handover on a pair: E1 (Refresh-style, dies past 50) owns a slot to
+    -- 50, then the SECOND-best remaining piece takes that slot with a window
+    local E1 = { ref = 'E1', name = 'E1', id = 21, level = 20, breaks = { 51 } };
+    local E2 = { ref = 'E2', name = 'E2', id = 22, level = 20 };
+    local E3 = { ref = 'E3', name = 'E3', id = 23, level = 30 };
+    a, b = pair({ E1, E2, E3 }, {
+        E1 = function(L) return (L < 51) and 10 or 2; end,
+        E2 = function() return 6; end,
+        E3 = function() return 5; end,
+    });
+    check('PLL3 decaying piece hands its slot over at 51', a, 'E1[-50],E3[51-]');
+    check('PLL4 partner slot undisturbed', b, 'E2[-]');
+
+    -- one owned copy fills one slot; two copies fill both
+    local S = { ref = 'S', name = 'Solo', id = 31, level = 30 };
+    a, b = pair({ S }, { S = function() return 8; end });
+    check('PLL5 one copy -> one chain only', a .. '|' .. b, 'S[-]|');
+    local T = { ref = 'T', name = 'Twin', id = 32, level = 30, copies = 2 };
+    a, b = pair({ T }, { T = function() return 8; end });
+    check('PLL6 two copies -> both chains', a .. '|' .. b, 'T[-]|T[-]');
+
+    -- pin reconciliation parity (PL12/13): a leftover pin trims its chain, a
+    -- single-copy pin is swept from the other chain
+    a, b = pair({ A, B, C, D }, flat, { D, B });
+    check('PLL7 leftover pin trims its chain',                  a, 'A[-],B[-]');
+    check('PLL8 single-copy pin swept from the other chain',    b, 'D[-]');
+
+    -- zero scorers are never kept
+    a, b = pair({ A }, { A = function() return 0; end });
+    check('PLL9 zero score never kept', a .. '|' .. b, '|');
+end)();
+
+-- ---------------------------------------------------------------------------
 -- HELM: helmwatch state + parsers + the engine's dlac:AutoHelm overlay (v59)
 -- -- docs/design/helm-gear.md. Idle-only is STRUCTURAL (the overlay is only
 -- consulted on Default, same gate as craft); these cover resolution + rules.

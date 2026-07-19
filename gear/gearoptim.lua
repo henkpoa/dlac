@@ -1711,6 +1711,50 @@ function M.pairLadders(cands, opts)
     return chains[1], chains[2];
 end
 
+-- Segment emission shared by levelLadder and pairLevelLadders. segs = ordered
+-- disjoint { ref, from, to }; lvOf[ref] = adoption level. Prefers the classic
+-- chain (unique winners, no windows) whenever the plain flatten -- a ranged
+-- entry live at this level owns its window, otherwise highest adoption wins,
+-- exactly bestByLevel and the engine -- already lands every segment winner;
+-- else each segment gets explicit windows (first opens at adoption, last stays
+-- open-ended so the set keeps working above the build cap).
+local function emitLadder(segs, cap, lvOf)
+    local function flattenPick(entries, L)
+        local best, bLv, bRank = nil, -1, -1;
+        for _, e in ipairs(entries) do
+            local lv = lvOf[e.ref];
+            local rank = (e.minLevel ~= nil or e.maxLevel ~= nil) and 1 or 0;
+            if lv <= L and L >= (e.minLevel or 0) and L <= (e.maxLevel or 999)
+               and (rank > bRank or (rank == bRank and lv > bLv)) then
+                best, bLv, bRank = e.ref, lv, rank;
+            end
+        end
+        return best;
+    end
+    local function matchesSegs(entries)
+        for _, sg in ipairs(segs) do
+            if flattenPick(entries, sg.from) ~= sg.ref
+               or flattenPick(entries, sg.to) ~= sg.ref then return false; end
+        end
+        return true;
+    end
+
+    local classic, seen = {}, {};
+    for _, sg in ipairs(segs) do
+        if not seen[sg.ref] then seen[sg.ref] = true; classic[#classic + 1] = { ref = sg.ref }; end
+    end
+    if matchesSegs(classic) then return classic; end
+
+    local out = {};
+    for i, sg in ipairs(segs) do
+        local e = { ref = sg.ref };
+        if i > 1 then e.minLevel = sg.from; end
+        if sg.to < cap then e.maxLevel = sg.to; end
+        out[#out + 1] = e;
+    end
+    return out;
+end
+
 -- Level-banded ladder for ONE slot (dynamic Auto-build): score candidates at every
 -- level where any candidate's value can change -- adoption (item Level) plus its
 -- level-scaling thresholds (levelstats.thresholds) -- then merge same-winner bands
@@ -1803,48 +1847,193 @@ function M.levelLadder(items, opts)
         segs = kept;
     end
     if #segs == 0 then return {}; end
+    return emitLadder(segs, cap, lvOf);
+end
 
-    -- The flatten both the engine and bestByLevel apply: a ranged entry live at
-    -- this level owns its window; otherwise highest adoption level wins.
-    local function flattenPick(entries, L)
-        local best, bLv, bRank = nil, -1, -1;
-        for _, e in ipairs(entries) do
-            local lv = lvOf[e.ref];
-            local rank = (e.minLevel ~= nil or e.maxLevel ~= nil) and 1 or 0;
-            if lv <= L and L >= (e.minLevel or 0) and L <= (e.maxLevel or 999)
-               and (rank > bRank or (rank == bRank and lv > bLv)) then
-                best, bLv, bRank = e.ref, lv, rank;
+-- Level-banded PAIR ladders (Ear/Ring twin of levelLadder): at every band the
+-- pair must wear the true TOP-2 by score-at-that-level, so a decaying earring
+-- hands its slot over at the breakpoint instead of squatting on a stale score.
+-- Chain assignment prefers continuity (an item stays on the chain that wears
+-- it), so segments stay long; a single physical copy is never live on both
+-- chains at the same level (a twin owned twice may be). Pins reconcile exactly
+-- like pairLadders: a pin already topping a chain claims it untouched, a
+-- leftover pin trims an unclaimed chain and is swept from the other.
+--
+--   cands: { { ref, name, id, level, copies, breaks }, ... }  (pairLadders'
+--          shape plus breaks; the static score field is ignored)
+--   opts:  { cap = N, scoreAt = function(ref, L) -> number, pins = {cand,...} }
+--
+-- Returns two ordered arrays of { ref, minLevel?, maxLevel? }.
+function M.pairLevelLadders(cands, opts)
+    opts = opts or {};
+    local cap = tonumber(opts.cap) or M.MAX_LEVEL or 75;
+    local scoreAt = opts.scoreAt;
+    if type(cands) ~= 'table' or #cands == 0 or type(scoreAt) ~= 'function' then return {}, {}; end
+
+    local function copiesOf(c) return tonumber(c.copies) or 1; end
+    local function samePhysical(a, b)
+        if a == b then return true; end
+        if a.id ~= nil and a.id == b.id then return true; end
+        return a.name ~= nil and b.name ~= nil
+           and string.lower(tostring(a.name)) == string.lower(tostring(b.name));
+    end
+
+    local lvOf, startSet = {}, {};
+    for _, c in ipairs(cands) do
+        local lv = math.max(tonumber(c.level) or 0, 1);
+        lvOf[c] = lv;
+        if lv <= cap then
+            startSet[lv] = true;
+            for _, b in ipairs(c.breaks or {}) do
+                b = tonumber(b);
+                if b ~= nil and b > lv and b <= cap then startSet[b] = true; end
             end
         end
-        return best;
     end
-    local function matchesSegs(entries)
-        for _, sg in ipairs(segs) do
-            if flattenPick(entries, sg.from) ~= sg.ref
-               or flattenPick(entries, sg.to) ~= sg.ref then return false; end
+    local starts = {};
+    for s in pairs(startSet) do starts[#starts + 1] = s; end
+    table.sort(starts);
+    if #starts == 0 then return {}, {}; end
+
+    local segsA, segsB = {}, {};
+    local function lastRef(segs) return (#segs > 0) and segs[#segs].ref or nil; end
+    local function extendOrAdd(segs, c, s, bandEnd)
+        if c == nil then
+            -- winner-less band for this chain: keep wearing the last piece
+            if #segs > 0 then segs[#segs].to = bandEnd; end
+        elseif #segs > 0 and segs[#segs].ref == c and segs[#segs].to == s - 1 then
+            segs[#segs].to = bandEnd;
+        else
+            segs[#segs + 1] = { ref = c, from = s, to = bandEnd };
         end
-        return true;
     end
 
-    -- Emission 1: the classic chain (unique winners, no windows) -- byte-for-byte
-    -- today's ladder whenever plain flatten already lands every segment winner.
-    local classic, seen = {}, {};
-    for _, sg in ipairs(segs) do
-        if not seen[sg.ref] then seen[sg.ref] = true; classic[#classic + 1] = { ref = sg.ref }; end
+    for i, s in ipairs(starts) do
+        local bandEnd = (i < #starts) and (starts[i + 1] - 1) or cap;
+        local prevA, prevB = lastRef(segsA), lastRef(segsB);
+        -- Top-2 at this band. Ties prefer the current holders (fewest segments),
+        -- then the higher-Level item, then name -- deterministic.
+        local function beats(c, sc, lv, bc, bsc, blv)
+            if bc == nil then return true; end
+            if sc ~= bsc then return sc > bsc; end
+            local cPrev = (c == prevA or c == prevB);
+            local bPrev = (bc == prevA or bc == prevB);
+            if cPrev ~= bPrev then return cPrev; end
+            if lv ~= blv then return lv > blv; end
+            return tostring(c.name or c.ref) < tostring(bc.name or bc.ref);
+        end
+        local P, Psc, Plv = nil, 0, -1;
+        for _, c in ipairs(cands) do
+            if lvOf[c] <= s then
+                local sc = tonumber(scoreAt(c.ref, s)) or 0;
+                if sc > 0 and beats(c, sc, lvOf[c], P, Psc, Plv) then P, Psc, Plv = c, sc, lvOf[c]; end
+            end
+        end
+        local Q, Qsc, Qlv = nil, 0, -1;
+        if P ~= nil then
+            -- second slot: a different physical, or the same one owned twice
+            for _, c in ipairs(cands) do
+                if lvOf[c] <= s and (not samePhysical(c, P) or copiesOf(c) >= 2) then
+                    local sc = tonumber(scoreAt(c.ref, s)) or 0;
+                    if sc > 0 and beats(c, sc, lvOf[c], Q, Qsc, Qlv) then
+                        Q, Qsc, Qlv = c, sc, lvOf[c];
+                    end
+                end
+            end
+        end
+        -- Chain assignment: continuity first, else the better scorer to chain 1.
+        local a, b;
+        if P ~= nil and Q ~= nil then
+            if P == prevA or Q == prevB then a, b = P, Q;
+            elseif P == prevB or Q == prevA then a, b = Q, P;
+            else a, b = P, Q; end
+        elseif P ~= nil then
+            if P == prevB then b = P;
+            elseif P == prevA then a = P;
+            elseif prevA == nil and prevB ~= nil then a = P;
+            elseif prevB == nil and prevA ~= nil then b = P;
+            else a = P; end
+        end
+        extendOrAdd(segsA, a, s, bandEnd);
+        extendOrAdd(segsB, b, s, bandEnd);
     end
-    if matchesSegs(classic) then return classic; end
 
-    -- Emission 2: explicit windows -- each segment owns [from, to]; the first
-    -- opens at its item's adoption (no minLevel), the last stays open-ended so
-    -- the set keeps working above the build cap.
-    local out = {};
-    for i, sg in ipairs(segs) do
-        local e = { ref = sg.ref };
-        if i > 1 then e.minLevel = sg.from; end
-        if sg.to < cap then e.maxLevel = sg.to; end
-        out[#out + 1] = e;
+    -- Pin reconciliation (the joint optimizer's picks; the two physical slots
+    -- are interchangeable, so match pins to chains as a SET first).
+    local pins = opts.pins;
+    if type(pins) == 'table' and #pins > 0 then
+        local segsPair = { segsA, segsB };
+        local claimed, rest = {}, {};
+        for _, p in ipairs(pins) do
+            local hit = nil;
+            for ci = 1, 2 do
+                if claimed[ci] == nil and lastRef(segsPair[ci]) == p then hit = ci; break; end
+            end
+            if hit ~= nil then claimed[hit] = true; else rest[#rest + 1] = p; end
+        end
+        for _, p in ipairs(rest) do
+            for ci = 1, 2 do
+                if claimed[ci] == nil then
+                    claimed[ci] = true;
+                    local jlv = lvOf[p] or 1;
+                    local kept = {};
+                    for _, sg in ipairs(segsPair[ci]) do
+                        if sg.from < jlv then
+                            if sg.to >= jlv then sg.to = jlv - 1; end
+                            kept[#kept + 1] = sg;
+                        end
+                    end
+                    if #kept > 0 and kept[#kept].ref == p and kept[#kept].to == jlv - 1 then
+                        kept[#kept].to = cap;
+                    else
+                        kept[#kept + 1] = { ref = p, from = math.max(jlv, 1), to = cap };
+                    end
+                    segsPair[ci] = kept;
+                    -- A single-copy pin is swept from the OTHER chain (it would
+                    -- double-equip where both flatten to it). Its windows fall to
+                    -- the previous segment -- unless that piece is live on the
+                    -- pin's chain there (the double-equip guard), then the gap
+                    -- stays empty.
+                    if copiesOf(p) < 2 then
+                        local other, swept = segsPair[3 - ci], {};
+                        for _, sg in ipairs(other) do
+                            if samePhysical(sg.ref, p) then
+                                if #swept > 0 then
+                                    local prev = swept[#swept];
+                                    local clash = false;
+                                    for _, og in ipairs(segsPair[ci]) do
+                                        if samePhysical(og.ref, prev.ref)
+                                           and og.from <= sg.to and og.to >= sg.from then clash = true; break; end
+                                    end
+                                    if not clash then prev.to = sg.to; end
+                                end
+                            elseif #swept > 0 and swept[#swept].ref == sg.ref
+                               and swept[#swept].to == sg.from - 1 then
+                                swept[#swept].to = sg.to;
+                            else
+                                swept[#swept + 1] = sg;
+                            end
+                        end
+                        segsPair[3 - ci] = swept;
+                    end
+                    break;
+                end
+            end
+        end
+        segsA, segsB = segsPair[1], segsPair[2];
     end
-    return out;
+
+    -- Emit each chain independently (each physical slot flattens on its own),
+    -- then unwrap to the caller's records.
+    local function convert(entries)
+        local out = {};
+        for _, e in ipairs(entries) do
+            out[#out + 1] = { ref = e.ref.ref, minLevel = e.minLevel, maxLevel = e.maxLevel };
+        end
+        return out;
+    end
+    return convert(#segsA > 0 and emitLadder(segsA, cap, lvOf) or {}),
+           convert(#segsB > 0 and emitLadder(segsB, cap, lvOf) or {});
 end
 
 -- Resolve job/level from opts, falling back to the live player.

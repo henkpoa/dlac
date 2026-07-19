@@ -2388,7 +2388,9 @@ local function autoBuild(job, level)
             for _, r in ipairs(pools[sl.label] or {}) do
                 ds[#ds + 1] = { ref = r, score = scoreOfItem(r, useLevel), level = r.Level or 0,
                                 copies = (r.Id ~= nil) and (oc[r.Id] or 0) or 1,
-                                id = r.Id, name = r.Name };
+                                id = r.Id, name = r.Name,
+                                breaks = (has.lscale and type(lscale.thresholds) == 'function')
+                                     and lscale.thresholds(r.Id) or nil };
             end
             local pins = {};
             if jointPick ~= nil then
@@ -2401,11 +2403,24 @@ local function autoBuild(job, level)
                     end
                 end
             end
-            local okp, cA, cB = pcall(optim.pairLadders, ds, { pins = pins });
+            -- Banded pair ladders first (the levelLadder twin: value re-scored at
+            -- every band edge, between-level windows at breakpoints); the classic
+            -- static top-2 walk stays as the fallback.
+            local okp, cA, cB;
+            if type(optim.pairLevelLadders) == 'function' then
+                okp, cA, cB = pcall(optim.pairLevelLadders, ds, {
+                    cap = useLevel,
+                    scoreAt = function(ref, L) return scoreOfItem(ref, L); end,
+                    pins = pins,
+                });
+            end
+            if not (okp and type(cA) == 'table' and type(cB) == 'table') then
+                okp, cA, cB = pcall(optim.pairLadders, ds, { pins = pins });
+            end
             if okp and type(cA) == 'table' and type(cB) == 'table' then
                 local lA, lB = {}, {};
-                for _, d in ipairs(cA) do lA[#lA + 1] = { rec = d.ref }; end
-                for _, d in ipairs(cB) do lB[#lB + 1] = { rec = d.ref }; end
+                for _, d in ipairs(cA) do lA[#lA + 1] = { rec = d.ref, minLevel = d.minLevel, maxLevel = d.maxLevel }; end
+                for _, d in ipairs(cB) do lB[#lB + 1] = { rec = d.ref, minLevel = d.minLevel, maxLevel = d.maxLevel }; end
                 if #lA > 0 then built[sl.label] = lA; end
                 if #lB > 0 then built[pairWith] = lB; end
                 pairDone[sl.label] = true;
