@@ -136,6 +136,9 @@ pm.render = function()
                     imgui.TextColored(COL.DIM, '    [ ] Stat weights  (needs Sets)');
                 end
                 imgui.Checkbox('Lockstyles##pmx_ls', f.xLs);
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('OFF (default): lockstyle boxes reference YOUR items, like set gear --\nthey rarely make sense on another character. ON: they travel verbatim.');
+                end
             end
 
             -- Collision / validity check -- recomputed only when an input
@@ -443,11 +446,13 @@ pm.render = function()
                                 imgui.SameLine(0, 6);
                                 if imgui.SmallButton('export##pm_je_' .. c.name .. '_' .. p.name .. '_' .. jf2.name) then
                                     -- Selective export (2026-07-19): the form picks what
-                                    -- travels; defaults = everything except set equipment.
+                                    -- travels; defaults = everything except set equipment
+                                    -- and lockstyles (both reference YOUR items -- field
+                                    -- ruling, Henrik: gear doesn't align between characters).
                                     ui._pmForm = { kind = 'exportJob', srcChar = c.name, srcDisp = c.disp or c.name,
                                                    srcProf = p.name, job = jf2.name,
                                                    xSets = { true }, xEquip = { false }, xTrig = { true },
-                                                   xGroups = { true }, xModes = { true }, xWts = { true }, xLs = { true } };
+                                                   xGroups = { true }, xModes = { true }, xWts = { true }, xLs = { false } };
                                     ui._pmChk = nil;
                                 end
                                 imgui.SameLine(0, 10);

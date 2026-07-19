@@ -3169,3 +3169,8 @@ format stays job-export v1 with an optional `weights` key (old
 readers ignore it); the import path applies it and annotates the
 result; the Shared-exports list now shows [sets+triggers+...] per
 file. PX1-16. 1624 + 170.
+
+Field round (2026-07-19): export dialog tried in game -- "works
+great". One default flipped on request: Lockstyles now OFF by default
+too (lockstyle boxes reference the exporter's own items, same reason
+as Set equipment).
