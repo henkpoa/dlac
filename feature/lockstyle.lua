@@ -1058,6 +1058,20 @@ function M._jobPktKind(mainIdx, subIdx)
     return 'none';
 end
 
+-- Round 4: the unasked DISABLE is the heal trigger of record. Field captures
+-- (11:27 and 11:34, Upper Jeuno moogle) put it BEFORE the 0x100 on the wire
+-- -- round 3's "arm off the job packet, it leaves first" was backwards -- and
+-- it is the one event present in every observed kill of a kept lockstyle.
+-- So the kill itself schedules the cure: an unasked disable passing through
+-- ('deactivate') while keep is on and a box is remembered books the +3s
+-- re-apply. Main-job changes stay safe without special-casing the order:
+-- their 0x100 lands right after the DISABLE and nils lastBox, and the pump
+-- re-checks lastBox when the timer fires. 0x100-sub and the pump's poll stay
+-- as belts.
+function M._keepHeal(verdict, keepSub, box)
+    return verdict == 'deactivate' and keepSub == true and box ~= nil;
+end
+
 local guard = { active = false, zoneInAt = -1e9, userOffAt = -1e9 };
 function M._guardUserOff() guard.userOffAt = os.clock(); end
 -- The keep-on-subjob pump (above) calls this on a subjob flip it intends to
@@ -1075,7 +1089,8 @@ ashita.events.register('packet_out', 'dlac-lockstyle-pout', function(e)
         local kind = M._jobPktKind((#e.data >= 6) and e.data:byte(5) or 0,
                                    (#e.data >= 6) and e.data:byte(6) or 0);
         if kind == 'main' then
-            lastBox = nil;   -- new job = new box set; main changes are OnLoad's business
+            lastBox = nil;    -- new job = new box set; main changes are OnLoad's business
+            subDueAt = nil;   -- cancels the heal the preceding DISABLE just booked
         elseif kind == 'sub' and data ~= nil and data.keepSub == true and lastBox ~= nil then
             M._guardArm();               -- the client's DISABLE follows this packet: swallow it
             subDueAt = os.clock() + 3;   -- ...and heal the server's own 0x100-side clear
@@ -1091,11 +1106,16 @@ ashita.events.register('packet_out', 'dlac-lockstyle-pout', function(e)
     elseif act == 'adopt' then
         guard.active = true;   -- native enable: live style = worn gear now
         lastBox = nil;         -- ...so the dlac box is not what is showing
+        subDueAt = nil;        -- a pending heal must not stomp the new style
     elseif act == 'retire' then
         guard.active = false;
         lastBox = nil;         -- the player meant OFF: nothing resurrects it
+        subDueAt = nil;        -- ...including a heal already booked
     elseif act == 'deactivate' then
         guard.active = false;  -- yields -- but lastBox survives (client noise)
+        if M._keepHeal(act, data ~= nil and data.keepSub == true, lastBox) then
+            subDueAt = os.clock() + 3;   -- the kill schedules the cure (round 4)
+        end
     elseif act == 'block' then
         -- silently (Henrik, field round 1): the player asked for a lockstyle;
         -- it still being on after a zone is not news.
@@ -1129,6 +1149,14 @@ ashita.events.register('command', 'dlac-lockstyle', function(e)
     if args[1] ~= 'ls' then return; end
     e.blocked = true;
     if args[2] == nil or args[2] == 'open' or args[2] == 'ui' then M.open(); end
+    -- Field-debug readout for the keep machinery ('/dl ls state'): every value
+    -- the keep decision reads, plus a round marker -- an old seeded copy of
+    -- this file answers with nothing, which is itself the diagnosis.
+    if args[2] == 'state' then
+        print(string.format('[dlac] ls state (keep round 4): keepSub=%s lastBox=%s lastSub=%s guardActive=%s healPending=%s',
+            tostring(data ~= nil and data.keepSub or nil), tostring(lastBox), tostring(lastSub),
+            tostring(guard.active), tostring(subDueAt ~= nil)));
+    end
     -- Keep-on-subjob's memory of "the lockstyle that is on": every apply
     -- passes through here (GUI button, OnLoad pump, hand-typed -- the LAC
     -- state's dispatch does the actual sending, this state just remembers).

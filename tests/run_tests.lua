@@ -5276,6 +5276,19 @@ end)();
         check('LG24 nothing changed', k(0, 0), 'none');
         check('LG25 nil-safe', k(nil, nil), 'none');
     end
+
+    -- round 4: the unasked DISABLE itself books the heal (field 11:34 -- it
+    -- precedes the 0x100 on the wire, so round 3's arm-first plan was
+    -- backwards; the kill is the one event every capture shows).
+    local h = ls._keepHeal;
+    check('LG26 _keepHeal exported', type(h), 'function');
+    if type(h) == 'function' then
+        check('LG27 unasked disable + keep on + box remembered -> heal', h('deactivate', true, 7), true);
+        check('LG28 player-meant retire never heals',   h('retire', true, 7), false);
+        check('LG29 keep off -> no heal',               h('deactivate', false, 7), false);
+        check('LG30 no box remembered -> no heal',      h('deactivate', true, nil), false);
+        check('LG31 blocked disable needs no heal',     h('block', true, 7), false);
+    end
 end)();
 
 -- ---------------------------------------------------------------------------

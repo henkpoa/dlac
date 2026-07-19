@@ -3034,3 +3034,22 @@ see and which the server still clears for) arms the guard window and
 schedules the +3s re-apply; a main-job request drops the keep memory.
 The poll stays as fallback for job-change paths without 0x100.
 dlacprobe v2.0 decodes OUT 0x100 under /probe ls. 1535 + 170.
+
+## Session addendum "the kill schedules the cure" (2026-07-19)
+
+Second /probe ls capture (11:34, dlacprobe v2.0, two clean subjob
+cycles) overturned round 3: the client's DISABLE leaves BEFORE the
+0x100 job-change request -- same stamp, DISABLE logged first -- so
+arming off 0x100 can never beat it, and no automatic heal fired in
+either cycle (the SET 17s later was Henrik re-applying by hand).
+
+Round 4 hangs the heal on the one event every capture shows: the
+unasked DISABLE itself. A 'deactivate' passing through while keep is
+on and a box is remembered books the +3s re-apply on the spot
+(_keepHeal, pure). Main changes cancel naturally -- their 0x100 lands
+just after and nils lastBox and the timer, and the pump re-checks
+lastBox at fire time; retire/adopt also cancel a booked heal. The
+0x100-sub arm and the pump poll stay as belts. New '/dl ls state'
+prints every value the keep decision reads plus a round marker, so a
+stale seeded copy of this file diagnoses itself by silence. LG26-31.
+1535 + 6, smoke 170.
