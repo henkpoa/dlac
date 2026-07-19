@@ -209,6 +209,30 @@ Enmity = {
 }
 ```
 
+## Priority-list alternative (paste into Weights editor > Priority tab > import...)
+
+The same tunings as ORDERED lists for the Priority tab (top matters most, caps where
+the points version caps). Import here instead if the set should build waterfall-style;
+apply via *copy from... > Saved Lists*.
+
+```lua
+STR_DEX = { 'Accuracy', 'Attack', 'STR', 'DEX', { 'BlueMagicSkill', 40 } },
+AGI     = { 'Accuracy', 'Attack', 'STR', 'AGI', { 'BlueMagicSkill', 40 } },
+STR_VIT = { 'Accuracy', 'Attack', 'STR', 'VIT', { 'BlueMagicSkill', 40 } },
+VIT     = { 'Accuracy', 'Attack', 'STR', 'VIT', 'DEF', { 'BlueMagicSkill', 40 } },
+Debuff  = { 'MACC', 'BlueMagicSkill', 'INT' },
+Stun    = { 'Accuracy', 'MACC', 'BlueMagicSkill', 'INT', 'Attack' },
+Buff    = { 'SpellInterruptionRateDown' },
+Blu_Skill = { 'BlueMagicSkill', 'MACC', 'MAB', 'INT' },
+BluMagDiffus = { 'EnhancingMagicDuration', 'SpellInterruptionRateDown' },
+MND     = { { 'CurePotency', 50 }, 'MND', 'VIT' },
+Magic   = { 'MAB', 'INT', 'MACC', 'BlueMagicSkill' },
+Magic_CHR = { 'MAB', 'CHR', 'MACC', 'BlueMagicSkill' },
+Magic_MND = { 'MAB', 'MND', 'MACC', 'BlueMagicSkill' },
+HP      = { 'BreathDamage', 'HP', 'MACC' },
+Enmity  = { 'Enmity', 'MACC', 'BlueMagicSkill', 'INT', 'SpellInterruptionRateDown' }
+```
+
 ## Per-category rationale (one line each)
 
 | Profile | Why |

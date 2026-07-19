@@ -195,54 +195,64 @@ wui.slotGrid = function()
 end
 
 -- ---------------------------------------------------------------------------
--- Weights IMPORT (Henrik 2026-07-19): paste `Name = { Stat = pts, ... }` tables
--- and bulk-create Saved Sets -- the weights sibling of the Groups tab's
--- "Import Lua Table(s)". Pure transform in weightimport.lua; applier in
--- gearoptim.importNamedWeights; this is only the paste box + confirm flow.
+-- Weights IMPORT / EXPORT (Henrik 2026-07-19; round 2 adds the Priority tab
+-- and export). Import: paste `Name = {...}` tables to bulk-create Saved Sets
+-- (Points) / Saved Lists (Priority) -- the weights siblings of the Groups
+-- tab's "Import Lua Table(s)". Export: the named store rendered back into the
+-- EXACT text the matching importer accepts (weightimport pins the round trip).
+-- Pure transforms in weightimport.lua; appliers in gearoptim; this is only
+-- the popups. Each tab passes a SPEC { key, help, parse, existing, apply };
+-- popup state lives under wui['_imp'|'_exp' .. key].
 -- ---------------------------------------------------------------------------
-local function applyWeightsImport()
-    local plan = wui._impPlan;
-    if plan == nil or plan.profiles == nil then return; end
+local hasClipboard = (imgui ~= nil) and type(imgui.SetClipboardText) == 'function';
+
+local function impState(spec)
+    local slot = '_imp' .. spec.key;
+    wui[slot] = wui[slot] or { text = { '' }, plan = nil };
+    return wui[slot];
+end
+
+local function applyImport(spec, st)
+    local plan = st.plan;
+    if plan == nil or plan.parsed == nil then return; end
     local sum = nil;
-    pcall(function() sum = optim.importNamedWeights(plan.profiles); end);
+    pcall(function() sum = spec.apply(plan.parsed); end);
     pcall(optim.saveWeights);
     plan.pending = false;
     plan.summary = sum or { created = 0, updated = 0, stats = 0 };
 end
 
-local function renderWeightsImport(COL)
-    imgui.TextColored(COL.DIM, 'One Saved Set per name. A weight is  pts,  { pts, cap }  or  { perUnit = ..., cap = ... }.');
-    imgui.TextColored(COL.DIM, 'e.g.   Debuff = { MACC = 12, BlueMagicSkill = 12, INT = 10 },');
-    imgui.TextColored(COL.DIM, 'Stat spellings are forgiving (ACC / Acc / Accuracy all resolve). Apply via copy from... > Saved Sets.');
-    wui._impText = wui._impText or { '' };
+local function renderImportPopup(spec, COL)
+    local st = impState(spec);
+    for _, line in ipairs(spec.help) do imgui.TextColored(COL.DIM, line); end
     if hasMultiline then
-        imgui.InputTextMultiline('##wimptext', wui._impText, 16384, { 430, 130 });
+        imgui.InputTextMultiline('##wimptext_' .. spec.key, st.text, 16384, { 430, 130 });
     else
         imgui.TextColored(COL.SCORE, '(this build has no multiline box -- keep the paste on ONE line)');
         imgui.PushItemWidth(430);
-        imgui.InputText('##wimptext', wui._impText, 16384);
+        imgui.InputText('##wimptext_' .. spec.key, st.text, 16384);
         imgui.PopItemWidth();
     end
-    if imgui.Button('Import##wimpgo', { 0, 24 }) then
-        local parsed, errs = wimp.parse(wui._impText[1]);
+    if imgui.Button('Import##wimpgo_' .. spec.key, { 0, 24 }) then
+        local parsed, errs = spec.parse(st.text[1]);
         if parsed == nil then
-            wui._impPlan = { errors = errs or {}, created = {}, overwritten = {}, pending = false };
+            st.plan = { errors = errs or {}, created = {}, overwritten = {}, pending = false };
         else
             local existing = {};
-            pcall(function() existing = optim.namedKeys() or {}; end);
+            pcall(function() existing = spec.existing() or {}; end);
             local created, overwritten = wimp.classify(parsed, existing);
-            wui._impPlan = { profiles = parsed, errors = errs or {},
-                             created = created, overwritten = overwritten, pending = true };
+            st.plan = { parsed = parsed, errors = errs or {},
+                        created = created, overwritten = overwritten, pending = true };
             -- No collisions -> land immediately; the confirm step is only for overwrites.
-            if #overwritten == 0 then applyWeightsImport(); end
+            if #overwritten == 0 then applyImport(spec, st); end
         end
     end
     if imgui.IsItemHovered() then imgui.SetTooltip('Parse the paste and preview what would be created / overwritten.'); end
     imgui.SameLine(0, 6);
-    if imgui.Button('Clear##wimpclr', { 0, 24 }) then
-        wui._impText[1] = ''; wui._impPlan = nil;
+    if imgui.Button('Clear##wimpclr_' .. spec.key, { 0, 24 }) then
+        st.text[1] = ''; st.plan = nil;
     end
-    local plan = wui._impPlan;
+    local plan = st.plan;
     if plan ~= nil then
         imgui.Spacing();
         imgui.TextColored(COL.HEADER, plan.pending and 'Preview' or 'Imported');
@@ -261,21 +271,69 @@ local function renderWeightsImport(COL)
         end
         if plan.pending then
             if ImGuiCol_Button ~= nil then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
-            if imgui.Button(string.format('Overwrite %d & import###wimpconfirm', #plan.overwritten), { 0, 24 }) then
-                applyWeightsImport();
+            if imgui.Button(string.format('Overwrite %d & import###wimpconfirm_%s', #plan.overwritten, spec.key), { 0, 24 }) then
+                applyImport(spec, st);
             end
             if ImGuiCol_Button ~= nil then imgui.PopStyleColor(1); end
-            if imgui.IsItemHovered() then imgui.SetTooltip('Replaces the named existing Saved Set(s) with the pasted weights.\nNamed profiles have no revert snapshot -- sure?'); end
+            if imgui.IsItemHovered() then imgui.SetTooltip('Replaces the named existing profile(s) with the paste.\nNamed profiles have no revert snapshot -- sure?'); end
             imgui.SameLine(0, 6);
-            if imgui.Button('Cancel##wimpcancel', { 0, 24 }) then
-                wui._impPlan = nil;
+            if imgui.Button('Cancel##wimpcancel_' .. spec.key, { 0, 24 }) then
+                st.plan = nil;
             end
         elseif plan.summary ~= nil then
-            imgui.TextColored(COL.DIM, string.format('  %d created, %d updated, %d stat rows.',
+            imgui.TextColored(COL.DIM, string.format('  %d created, %d updated, %d rows.',
                 plan.summary.created or 0, plan.summary.updated or 0, plan.summary.stats or 0));
         end
     end
 end
+
+-- The export popup: the store rendered to importable text at button-click
+-- time (wui['_exp'..key]), shown in a box whose buffer is rebuilt every frame
+-- -- edits never stick, so it reads as a copy source, not an editor.
+local function renderExportPopup(specKey, text, COL)
+    if text == nil or text == '' then
+        imgui.TextColored(COL.DIM, '(nothing saved yet -- save as... or import... first)');
+        return;
+    end
+    imgui.TextColored(COL.DIM, 'Copy this block -- the matching import... accepts it verbatim.');
+    local buf = { text };
+    if hasMultiline then
+        imgui.InputTextMultiline('##wexptext_' .. specKey, buf, #text + 64, { 430, 200 });
+    else
+        imgui.PushItemWidth(430);
+        imgui.InputText('##wexptext_' .. specKey, buf, #text + 64);
+        imgui.PopItemWidth();
+    end
+    if hasClipboard then
+        if imgui.Button('Copy to clipboard##wexpcopy_' .. specKey, { 0, 24 }) then
+            pcall(function() imgui.SetClipboardText(text); end);
+        end
+    end
+end
+
+-- The two tab specs. Guarded at the call sites on wimp + the applier.
+local PTS_SPEC = {
+    key = 'pts',
+    help = {
+        'One Saved Set per name. A weight is  pts,  { pts, cap }  or  { perUnit = ..., cap = ... }.',
+        'e.g.   Debuff = { MACC = 12, BlueMagicSkill = 12, INT = 10 },',
+        'Stat spellings are forgiving (ACC / Acc / Accuracy all resolve). Apply via copy from... > Saved Sets.',
+    },
+    parse    = function(t) return wimp.parse(t); end,
+    existing = function() return optim.namedKeys(); end,
+    apply    = function(p) return optim.importNamedWeights(p); end,
+};
+local PRIO_SPEC = {
+    key = 'prio',
+    help = {
+        'One Saved List per name -- ORDERED, top matters most. An entry is  \'Stat\'  or  { \'Stat\', cap }.',
+        'e.g.   Debuff = { \'MACC\', \'BlueMagicSkill\', { \'INT\', 60 } },',
+        'Stat spellings are forgiving. Apply via copy from... > Saved Lists.',
+    },
+    parse    = function(t) return wimp.parsePrio(t); end,
+    existing = function() return optim.prioNamedKeys(); end,
+    apply    = function(p) return optim.importNamedPrio(p); end,
+};
 
 -- The set's build mode ('points' | 'priority'), read fresh each frame.
 local function modeNow()
@@ -356,12 +414,12 @@ local function renderPointsTab(boundKey)
                 imgui.SetTooltip('Remove EVERY stat weight from this table (build-slot marks stay).\nMis-click? copy from... > This set (revert) brings it back.');
             end
         end
-        -- import...: paste a whole table of tunings -> Saved Sets in bulk.
+        -- import... / export...: bulk Saved Sets via paste, and the store
+        -- rendered back into that same text.
         if wimp ~= nil and type(optim.importNamedWeights) == 'function' then
             imgui.SameLine(0, 6);
             if imgui.SmallButton('import...##wimport') then
-                wui._impText = wui._impText or { '' };
-                wui._impPlan = nil;
+                impState(PTS_SPEC).plan = nil;
                 imgui.OpenPopup('##wimport_pop');
             end
             if imgui.IsItemHovered() then
@@ -369,7 +427,21 @@ local function renderPointsTab(boundKey)
             end
             imgui.SetNextWindowSizeConstraints({ 450, 0 }, { 560, 460 });
             if imgui.BeginPopup('##wimport_pop') then
-                renderWeightsImport(COL);
+                renderImportPopup(PTS_SPEC, COL);
+                imgui.EndPopup();
+            end
+            imgui.SameLine(0, 6);
+            if imgui.SmallButton('export...##wexport') then
+                wui._exppts = nil;
+                pcall(function() wui._exppts = wimp.renderPoints(optim.allNamedWeights()); end);
+                imgui.OpenPopup('##wexport_pop');
+            end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Every Saved Set rendered as importable text -- share it, keep it in a job\nfile comment, or re-import it on another character.');
+            end
+            imgui.SetNextWindowSizeConstraints({ 450, 0 }, { 560, 400 });
+            if imgui.BeginPopup('##wexport_pop') then
+                renderExportPopup('pts', wui._exppts, COL);
                 imgui.EndPopup();
             end
         end
@@ -752,6 +824,36 @@ local function renderPrioTab(boundKey)
     end
     if imgui.IsItemHovered() then
         imgui.SetTooltip('Empty this priority list.\nMis-click? copy from... > This list (revert) brings it back.');
+    end
+    -- import... / export...: the Points tab's pair, on the Saved Lists store.
+    if wimp ~= nil and type(optim.importNamedPrio) == 'function' then
+        imgui.SameLine(0, 6);
+        if imgui.SmallButton('import...##pimport') then
+            impState(PRIO_SPEC).plan = nil;
+            imgui.OpenPopup('##pimport_pop');
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Bulk-add Saved Lists from a pasted Lua table. One ORDERED list per\nName = { \'Stat\', { \'Stat\', cap }, ... }; apply one to a set afterwards\nvia copy from... > Saved Lists.');
+        end
+        imgui.SetNextWindowSizeConstraints({ 450, 0 }, { 560, 460 });
+        if imgui.BeginPopup('##pimport_pop') then
+            renderImportPopup(PRIO_SPEC, COL);
+            imgui.EndPopup();
+        end
+        imgui.SameLine(0, 6);
+        if imgui.SmallButton('export...##pexport') then
+            wui._expprio = nil;
+            pcall(function() wui._expprio = wimp.renderPrio(optim.allNamedPrio()); end);
+            imgui.OpenPopup('##pexport_pop');
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Every Saved List rendered as importable text -- share it or re-import it\non another character.');
+        end
+        imgui.SetNextWindowSizeConstraints({ 450, 0 }, { 560, 400 });
+        if imgui.BeginPopup('##pexport_pop') then
+            renderExportPopup('prio', wui._expprio, COL);
+            imgui.EndPopup();
+        end
     end
 
     imgui.SetNextWindowSizeConstraints({ 250, 0 }, { 380, 340 });

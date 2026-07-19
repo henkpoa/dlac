@@ -655,6 +655,46 @@ function M.importNamedWeights(profiles)
     return summary;
 end
 
+-- The priority-list twin of importNamedWeights: lands ordered lists in the
+-- prio named store ("Saved Lists"). Entries arrive as { stat, cap|nil } rows
+-- (weightimport.parsePrio's output); stats canonicalize, caps must be > 0.
+function M.importNamedPrio(lists)
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    local summary = { created = 0, updated = 0, stats = 0 };
+    if type(lists) ~= 'table' then return summary; end
+    for name, list in pairs(lists) do
+        if type(name) == 'string' and name ~= '' and type(list) == 'table' then
+            local out = {};
+            for _, e in ipairs(list) do
+                if type(e) == 'table' and type(e.stat) == 'string' and e.stat ~= '' then
+                    local cap = tonumber(e.cap);
+                    out[#out + 1] = { stat = canonStat(e.stat),
+                                      cap = (cap ~= nil and cap > 0) and cap or nil };
+                end
+            end
+            if #out > 0 then
+                if M._prioNamed[name] ~= nil then summary.updated = summary.updated + 1;
+                else summary.created = summary.created + 1; end
+                M._prioNamed[name] = out;
+                summary.stats = summary.stats + #out;
+            end
+        end
+    end
+    return summary;
+end
+
+-- Read-only views of the two named stores, for the EXPORT popups (weightimport
+-- renders them back into importable text). Callers must not mutate.
+function M.allNamedWeights()
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    return M._named;
+end
+
+function M.allNamedPrio()
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    return M._prioNamed;
+end
+
 function M.deleteNamedWeights(name)
     if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
     if M._named[name] == nil then return false, 'no such profile'; end

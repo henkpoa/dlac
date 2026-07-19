@@ -5493,6 +5493,53 @@ end)();
         { name = 'Head', items = { { path = 'gear.Head.X' } } },
     });
     check('SN13 identifier still renders bare', tostring(t4):find('        Tp_Default = {', 1, true) ~= nil, true);
+
+    -- priority-list twin: ordered parse, entry forms, order preserved
+    local plists, perr = wimpT.parsePrio([[
+        Debuff = { 'MACC', 'BlueMagicSkill', { 'INT', 60 } },
+        Phys = T{ { stat = 'Accuracy' }, 'Attack' },
+        BadEntry = { 'MACC', 5 },
+        Mapish = { MACC = 1 },
+        EmptyL = {},
+    ]]);
+    check('WP1 parsePrio returns lists', type(plists) == 'table', true);
+    check('WP2 order preserved', plists.Debuff[1].stat == 'MACC' and plists.Debuff[2].stat == 'BlueMagicSkill'
+        and plists.Debuff[3].stat == 'INT', true);
+    check('WP3 pair-form cap lands', plists.Debuff[3].cap, 60);
+    check('WP4 stat= form + bare string both work', plists.Phys[1].stat == 'Accuracy' and plists.Phys[2].stat == 'Attack', true);
+    check('WP5 non-stat entry skips the list', plists.BadEntry, nil);
+    check('WP6 named fields skip the list', plists.Mapish, nil);
+    check('WP7 empty list skipped', plists.EmptyL, nil);
+    check('WP8 one reason per bad key', #perr, 3);
+
+    local psum = optim.importNamedPrio({ DebuffL = plists.Debuff });
+    check('WP9 prio import created', psum.created, 1);
+    check('WP10 rows counted', psum.stats, 3);
+    local pn = false;
+    for _, n in ipairs(optim.prioNamedKeys()) do if n == 'DebuffL' then pn = true; end end
+    check('WP11 lands under Saved Lists', pn, true);
+    local psum2 = optim.importNamedPrio({ DebuffL = { { stat = 'MND' } } });
+    check('WP12 same name = update', psum2.updated, 1);
+
+    -- export round trips: render -> matching parse -> identical data
+    local namedFix = {
+        ['STR_DEX']  = { Accuracy = { perUnit = 12 }, BlueMagicSkill = { perUnit = 3, cap = 40 } },
+        ['Odd-Name'] = { MACC = { perUnit = 8 } },
+    };
+    local ptext = wimpT.renderPoints(namedFix);
+    local back = wimpT.parse(ptext);
+    check('WX1 points roundtrip: perUnit', back ~= nil and back.STR_DEX.Accuracy.perUnit, 12);
+    check('WX2 points roundtrip: cap', back ~= nil and back.STR_DEX.BlueMagicSkill.cap, 40);
+    check('WX3 points roundtrip: non-identifier profile name', back ~= nil and back['Odd-Name'] ~= nil
+        and back['Odd-Name'].MACC.perUnit, 8);
+    local prioFix = {
+        ['DebuffL'] = { { stat = 'MACC' }, { stat = 'INT', cap = 60 } },
+    };
+    local prtext = wimpT.renderPrio(prioFix);
+    local pback = wimpT.parsePrio(prtext);
+    check('WX4 prio roundtrip: order survives', pback ~= nil and pback.DebuffL[1].stat == 'MACC'
+        and pback.DebuffL[2].stat == 'INT', true);
+    check('WX5 prio roundtrip: cap survives', pback ~= nil and pback.DebuffL[2].cap, 60);
 end)();
 
 -- ---------------------------------------------------------------------------

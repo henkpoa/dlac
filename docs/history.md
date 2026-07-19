@@ -3131,3 +3131,18 @@ reload. Fix: renderKey bracket-quotes non-identifier/keyword names,
 splice/delete find BOTH key forms (findSetKey), and Delete on a
 never-committed working set now DISCARDS it in-session instead of
 erroring. SN1-13. 1591 + 170.
+
+## Weights import round 2: Priority tab + export (2026-07-19)
+
+Henrik: "make an import button for the priority system as well, also
+an export for both." weightimport gains parsePrio (ORDERED paste:
+'Stat' | {'Stat', cap} | {stat=, cap=}) and the two exporters
+renderPoints/renderPrio, whose contract is the ROUND TRIP: render
+output re-parses to identical data (WX1-5). gearoptim gains
+importNamedPrio + read-only allNamedWeights/allNamedPrio. weightsui's
+one-off points popup generalized into spec-driven renderImportPopup
+({key, help, parse, existing, apply}) + renderExportPopup (per-frame
+rebuilt buffer = read-as-copy-source, clipboard button when the
+binding has SetClipboardText); both tabs now carry import.../export...
+The BLU payload doc gains a Priority-list variant of every profile.
+WP1-12, WX1-5. 1608 + 170.
