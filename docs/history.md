@@ -3174,3 +3174,19 @@ Field round (2026-07-19): export dialog tried in game -- "works
 great". One default flipped on request: Lockstyles now OFF by default
 too (lockstyle boxes reference the exporter's own items, same reason
 as Set equipment).
+
+## Export dependency gating (2026-07-19)
+
+Henrik asked: a trigger conditioning on a group/mode that isn't
+exported, or gated set gear whose Modes are dropped -- what happens?
+Answer from the engine: nothing crashes, the reference just goes DEAD
+(groupMatch/modeActive return false against nothing; a mode-gated rung
+stays inert). So the export form now PREVENTS shipping dead refs
+rather than warning. profileexport.analyzeJob (one disk probe at form
+open) reports { trigModes, trigGroups, setModes } via pure triggerRefs
++ setsUseModes. The form disables Triggers while it uses Modes/Groups
+you've unticked ("triggers use Modes -- include Modes to export them")
+and disables Set equipment when the gear is Mode-gated and Modes are
+off. Blocked rows render inert without mutating the remembered tick
+(restore the dep, the choice comes back); the export reads f._eff, the
+dependency-gated effective values. PX17-21. 1648 + 170.

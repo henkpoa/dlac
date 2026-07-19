@@ -116,6 +116,87 @@ function M.filterTriggersRaw(raw, keep, canonEvent)
     return out, n;
 end
 
+-- ---------------------------------------------------------------------------
+-- Dependency analysis (Henrik 2026-07-19 round 2): a rule with a dangling
+-- `group`/`mode` condition never fires on the receiver (groupMatch/modeActive
+-- return false against nothing) and a mode-gated set rung goes inert -- no
+-- crash, just silent dead data. The export form uses these to DISABLE a
+-- selection that would ship such dead references.
+-- ---------------------------------------------------------------------------
+
+-- Which condition kinds one rule uses (when + whenAny entries).
+local function ruleRefs(r, refs)
+    local function scan(map)
+        for k in pairs(map or {}) do
+            local lk = string.lower(tostring(k));
+            if lk == 'mode' then refs.modes = true;
+            elseif lk == 'group' then refs.groups = true; end
+        end
+    end
+    scan(r.when);
+    local anyList = r.whenAny or r.whenany;
+    if type(anyList) == 'table' then
+        for _, e in ipairs(anyList) do
+            if type(e) == 'table' then scan(e); end
+        end
+    end
+end
+
+-- Pure: does any handler rule in a raw trigger table condition on modes /
+-- groups? Returns { modes = bool, groups = bool }.
+function M.triggerRefs(raw, canonEvent)
+    local refs = { modes = false, groups = false };
+    if type(raw) ~= 'table' then return refs; end
+    for k, v in pairs(raw) do
+        local ev = (type(canonEvent) == 'function') and canonEvent(k) or nil;
+        if ev ~= nil and type(v) == 'table' then
+            for _, r in ipairs(v) do
+                if type(r) == 'table' then ruleRefs(r, refs); end
+            end
+        end
+    end
+    return refs;
+end
+
+-- Pure: does any set item carry a mode gate? (Only equipment references modes
+-- -- an empty shell has no rungs, so this dep exists only when gear travels.)
+function M.setsUseModes(setsText)
+    local res = sandboxRun(setsText);
+    local dyn = (type(res) == 'table') and res.Dynamic or nil;
+    if type(dyn) ~= 'table' then return false; end
+    for _, set in pairs(dyn) do
+        if type(set) == 'table' then
+            for _, slotList in pairs(set) do
+                if type(slotList) == 'table' then
+                    for _, it in ipairs(slotList) do
+                        if type(it) == 'table' and it.mode ~= nil then return true; end
+                    end
+                end
+            end
+        end
+    end
+    return false;
+end
+
+-- File-reading wrapper for the export form: what this job's data references.
+-- All-false when unreadable (no file = no dependency).
+function M.analyzeJob(charFolder, profName, job, dirOverride)
+    local deps = { trigModes = false, trigGroups = false, setModes = false };
+    if prof == nil then return deps; end
+    local dir = dirOverride or prof.profileDirAt(charFolder, profName);
+    if dir == nil then return deps; end
+    if dispatch ~= nil then
+        local raw = dispatch.readTriggersRaw(dir .. 'triggers\\' .. job .. '.lua');
+        if raw ~= nil then
+            local r = M.triggerRefs(raw, dispatch.canonEvent);
+            deps.trigModes, deps.trigGroups = r.modes, r.groups;
+        end
+    end
+    local t = readFile(dir .. 'sets\\' .. job .. '.lua');
+    if t ~= nil then deps.setModes = M.setsUseModes(t); end
+    return deps;
+end
+
 -- The assembly. Missing source files are skipped silently (same rule as the
 -- verbatim export); only "every selected thing came up empty" is an error.
 -- `dirOverride` (tests only) bypasses the profile-path resolution.

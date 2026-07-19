@@ -5757,6 +5757,20 @@ end)();
     check('PX16 payload without the named job refuses',
         (select(2, optim.importJobWeightsTextAt('Whoever_1', wtext, 'DRK', 'DRK'))) ~= nil, true);
     optim.bindSetWeights(nil, nil);
+
+    -- dependency analysis: what the data references (the form's gating input)
+    local rawDeps = {
+        Midcast = { { when = { group = 'Debuff' }, set = 'A' } },
+        Precast = { { when = { name = 'Cure' }, whenAny = { { mode = 'DT' }, { status = 'Engaged' } }, set = 'B' } },
+    };
+    local refs = pexp.triggerRefs(rawDeps, dispatchM.canonEvent);
+    check('PX17 group condition detected', refs.groups, true);
+    check('PX18 mode condition detected inside whenAny', refs.modes, true);
+    local refs2 = pexp.triggerRefs({ Midcast = { { when = { name = 'Cure' }, set = 'A' } } }, dispatchM.canonEvent);
+    check('PX19 no refs when rules use neither', refs2.modes == false and refs2.groups == false, true);
+    local gated = profilesM.frameSetsText('Dynamic = {\n        Idle = {\n            Body = {\n                {gear.Body.X, mode = "DT"},\n            },\n        },\n    }');
+    check('PX20 mode-gated gear detected', pexp.setsUseModes(gated), true);
+    check('PX21 plain gear carries no mode dep', pexp.setsUseModes(setsSrc), false);
 end)();
 
 -- ---------------------------------------------------------------------------

@@ -112,19 +112,41 @@ pm.render = function()
                 -- What travels. Set equipment and Stat weights ride the sets:
                 -- without Sets they are forced off and shown inert.
                 imgui.TextColored(COL.DIM, 'Pick what travels; the file lands in dlac-exports\\ for sharing.');
+                -- Dependency gating: a blocked row renders INERT (dim text)
+                -- but the underlying tick is never mutated, so restoring the
+                -- dependency restores the choice. The export click reads the
+                -- same effective values (f._eff) -- blocked = not exported.
+                local deps = f.deps or {};
+                local modesOn, groupsOn = f.xModes[1] == true, f.xGroups[1] == true;
                 imgui.Checkbox('Sets##pmx_sets', f.xSets);
                 local setsOn = f.xSets[1] == true;
-                if not setsOn then f.xEquip[1] = false; f.xWts[1] = false; end
-                if setsOn then
+                local equipBlock = nil;
+                if not setsOn then equipBlock = '(needs Sets)';
+                elseif deps.setModes and not modesOn then
+                    -- Gated gear without its Modes = inert rungs on the receiver.
+                    equipBlock = '(this gear is Mode-gated -- include Modes to export it)';
+                end
+                if equipBlock ~= nil then
+                    imgui.TextColored(COL.DIM, '    [ ] Set equipment  ' .. equipBlock);
+                else
                     imgui.Text('    '); imgui.SameLine(0, 0);
                     imgui.Checkbox('Set equipment##pmx_equip', f.xEquip);
                     if imgui.IsItemHovered() then
                         imgui.SetTooltip('OFF (default): sets travel as EMPTY shells -- names only, no gear.\nGear rarely aligns between characters; the receiver auto-builds their own.\nON: the exact gear ladders travel verbatim.');
                     end
-                else
-                    imgui.TextColored(COL.DIM, '    [ ] Set equipment  (needs Sets)');
                 end
-                imgui.Checkbox('Triggers##pmx_trig', f.xTrig);
+                -- Triggers need Modes / Groups when their rules condition on
+                -- them: a dangling reference never fires on the receiver, so
+                -- a choice that would ship one is disabled, not just warned.
+                local trigNeeds = {};
+                if deps.trigModes and not modesOn then trigNeeds[#trigNeeds + 1] = 'Modes'; end
+                if deps.trigGroups and not groupsOn then trigNeeds[#trigNeeds + 1] = 'Groups'; end
+                if #trigNeeds > 0 then
+                    imgui.TextColored(COL.DIM, string.format('[ ] Triggers  (this job\'s triggers use %s -- include %s to export them)',
+                        table.concat(trigNeeds, ' and '), (#trigNeeds > 1) and 'them' or 'it'));
+                else
+                    imgui.Checkbox('Triggers##pmx_trig', f.xTrig);
+                end
                 imgui.Checkbox('Groups##pmx_groups', f.xGroups);
                 imgui.Checkbox('Modes##pmx_modes', f.xModes);
                 if setsOn then
@@ -135,6 +157,15 @@ pm.render = function()
                 else
                     imgui.TextColored(COL.DIM, '    [ ] Stat weights  (needs Sets)');
                 end
+                f._eff = {
+                    sets       = setsOn,
+                    equipment  = f.xEquip[1] == true and equipBlock == nil,
+                    triggers   = f.xTrig[1] == true and #trigNeeds == 0,
+                    groups     = groupsOn,
+                    modes      = modesOn,
+                    weights    = f.xWts[1] == true and setsOn,
+                    lockstyles = f.xLs[1] == true,
+                };
                 imgui.Checkbox('Lockstyles##pmx_ls', f.xLs);
                 if imgui.IsItemHovered() then
                     imgui.SetTooltip('OFF (default): lockstyle boxes reference YOUR items, like set gear --\nthey rarely make sense on another character. ON: they travel verbatim.');
@@ -292,10 +323,13 @@ pm.render = function()
                                 or ('Import failed: ' .. tostring(err));
                         elseif f.kind == 'exportJob' then
                             local pexp = require('dlac\\gear\\profileexport');
-                            local opts = { sets = f.xSets[1] == true, equipment = f.xEquip[1] == true,
-                                           triggers = f.xTrig[1] == true, groups = f.xGroups[1] == true,
-                                           modes = f.xModes[1] == true, lockstyles = f.xLs[1] == true,
-                                           weights = f.xWts[1] == true and f.xSets[1] == true };
+                            -- f._eff = the dependency-gated effective choices the
+                            -- form just rendered (a blocked row exports nothing,
+                            -- whatever its remembered tick says).
+                            local opts = f._eff or { sets = f.xSets[1] == true, equipment = f.xEquip[1] == true,
+                                                     triggers = f.xTrig[1] == true, groups = f.xGroups[1] == true,
+                                                     modes = f.xModes[1] == true, lockstyles = f.xLs[1] == true,
+                                                     weights = f.xWts[1] == true and f.xSets[1] == true };
                             local payloads, perr = pexp.buildPayloads(f.srcChar, f.srcProf, f.job, opts);
                             if payloads == nil then
                                 ui._profMenuMsg = 'Export failed: ' .. tostring(perr);
@@ -449,8 +483,16 @@ pm.render = function()
                                     -- travels; defaults = everything except set equipment
                                     -- and lockstyles (both reference YOUR items -- field
                                     -- ruling, Henrik: gear doesn't align between characters).
+                                    -- deps: which selections REFERENCE which others (one
+                                    -- disk probe at open, like the menu snapshot) -- the
+                                    -- form disables choices that would ship dead references.
+                                    local deps = { trigModes = false, trigGroups = false, setModes = false };
+                                    pcall(function()
+                                        local pexp = require('dlac\\gear\\profileexport');
+                                        deps = pexp.analyzeJob(c.name, p.name, jf2.name) or deps;
+                                    end);
                                     ui._pmForm = { kind = 'exportJob', srcChar = c.name, srcDisp = c.disp or c.name,
-                                                   srcProf = p.name, job = jf2.name,
+                                                   srcProf = p.name, job = jf2.name, deps = deps,
                                                    xSets = { true }, xEquip = { false }, xTrig = { true },
                                                    xGroups = { true }, xModes = { true }, xWts = { true }, xLs = { false } };
                                     ui._pmChk = nil;
