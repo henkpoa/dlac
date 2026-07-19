@@ -715,6 +715,12 @@ function M.render()
             end
             if imgui.Button('Disable lockstyle##lsoff', { bw, 0 }) then
                 queueCmd('/lockstyle off');
+                -- stamp the intent HERE (round 6): our own queued command
+                -- never re-enters this state's command event, and an
+                -- unstamped disable is "client noise" to the guard -- it
+                -- would block this button inside an armed window and let a
+                -- subjob switch resurrect a style the player just killed
+                pcall(function() M._guardUserOff(); end);
                 _status = 'lockstyle disabled (/lockstyle off) -- your real gear shows again.';
             end
             if imgui.IsItemHovered() then
@@ -868,7 +874,7 @@ function M.render()
             local box = (type(M._lastBox) == 'function') and M._lastBox() or nil;
             local due = (type(M._healDue) == 'function') and M._healDue() or nil;
             local on  = (type(M._guardOn) == 'function') and M._guardOn() or false;
-            imgui.TextColored(COL_DIM, string.format('keep4: box %s%s%s',
+            imgui.TextColored(COL_DIM, string.format('keep6: box %s%s%s',
                 box ~= nil and tostring(box) or '-',
                 due ~= nil and string.format(', heal %ds', math.max(0, math.ceil(due - os.clock()))) or '',
                 on and '' or ', guard off'));
@@ -883,6 +889,10 @@ function M.render()
         -- full column width, same as Import/Preview
         if imgui.Button('Apply lockstyle##lsgo', { 216, 0 }) then
             queueCmd('/dl ls apply');
+            -- record the box HERE: our own queued command never re-enters
+            -- this state's command event (round 6) -- and apply-without-a-
+            -- number means the marked box, the same resolution dispatch uses
+            pcall(function() M._noteApplied(data.active); end);
         end
         if imgui.IsItemHovered() then
             imgui.SetTooltip('Lockstyle the MARKED box now (engine-side: /dl ls apply --\nneeds LuaAshitacast loaded). Unsaved edits are NOT applied: Save first.');
@@ -950,6 +960,15 @@ local lastSub, lastBox, subDueAt = nil, nil, nil;
 -- late-binding pattern as M._touched).
 function M._lastBox() return lastBox; end
 function M._healDue() return subDueAt; end
+-- The keep memory's writer (field round 6). The GUI Apply button and the
+-- OnLoad pump call this DIRECTLY at their queue sites: a command queued from
+-- this very state does NOT loop back into this state's own command event
+-- (field: lastBox stayed nil after button applies -- 'keep4: box -'), so the
+-- command-event observation below catches only hand-TYPED applies, where the
+-- event provably fires.
+function M._noteApplied(b)
+    if tonumber(b) ~= nil then lastBox = tonumber(b); end
+end
 function M.pump()
     retireLegacyPreview();
     -- Closing the window while previewing ends the preview (Henrik: always);
@@ -978,6 +997,7 @@ function M.pump()
         appliedJob, pendingJob, dueAt = pendingJob, nil, nil;
         local box = data.onload[appliedJob];
         if tonumber(box) ~= nil then
+            M._noteApplied(box);   -- same round-6 rule: the queue site records
             pcall(function()
                 AshitaCore:GetChatManager():QueueCommand(1, string.format('/dl ls apply %d', tonumber(box)));
             end);
@@ -1183,7 +1203,7 @@ ashita.events.register('command', 'dlac-lockstyle', function(e)
     -- the keep decision reads, plus a round marker -- an old seeded copy of
     -- this file answers with nothing, which is itself the diagnosis.
     if args[2] == 'state' then
-        print(string.format('[dlac] ls state (keep round 4): keepSub=%s lastBox=%s lastSub=%s guardActive=%s healPending=%s',
+        print(string.format('[dlac] ls state (keep round 6): keepSub=%s lastBox=%s lastSub=%s guardActive=%s healPending=%s',
             tostring(data ~= nil and data.keepSub or nil), tostring(lastBox), tostring(lastSub),
             tostring(guard.active), tostring(subDueAt ~= nil)));
     end

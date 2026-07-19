@@ -3071,3 +3071,25 @@ layers in doubt, and the window only needs to render. No keep4 line
 after a reload = an old lockstyle.lua is loaded, which is then the
 finding. Heal booking made book-once at all three triggers. 1555 +
 170.
+
+## Session addendum "the state does not hear itself" (2026-07-19)
+
+Round-5 window readout in the field: after a button apply + subjob
+switch, "keep4: box -, guard off" -- lastBox never set. Diagnosis: a
+command QUEUED from the addon state (the Apply button's '/dl ls
+apply') does not loop back into that same state's command event --
+cross-state delivery works (OnLoad proves it daily, dispatch receives
+in the LAC state), but self-loopback does not exist. The round-5 sim
+invoked the handler directly: the one link it could not test was the
+broken one. Round 6 moves the bookkeeping to the queue sites
+themselves: Apply button and OnLoad pump call M._noteApplied directly;
+the command observation stays for hand-typed applies. Same principle
+for the Disable button -- it stamps M._guardUserOff at the click, else
+its own '/lockstyle off' reads as client noise (blockable in an armed
+window; lastBox left alive to resurrect a killed style on the next
+subjob switch). Window marker now 'keep6'. LG32-34. 1558 + 170.
+
+HOUSE RULE learned: an addon state never hears its own queued
+commands. Any self-queued '/dl ...' whose effects the SAME state must
+know about needs its bookkeeping done at the queue site, not in the
+command handler.

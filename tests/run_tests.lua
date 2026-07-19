@@ -5277,6 +5277,18 @@ end)();
         check('LG25 nil-safe', k(nil, nil), 'none');
     end
 
+    -- round 6: the queue sites write the keep memory directly -- a command
+    -- queued from the addon's own state never re-enters that state's command
+    -- event (field: 'keep4: box -' after button applies), so the event
+    -- observation covers only hand-typed applies.
+    check('LG32 _noteApplied exported', type(ls._noteApplied), 'function');
+    if type(ls._noteApplied) == 'function' then
+        ls._noteApplied(9);
+        check('LG33 the queue site writes what the readout reads', ls._lastBox(), 9);
+        ls._noteApplied('nonsense');
+        check('LG34 a non-number never corrupts the memory', ls._lastBox(), 9);
+    end
+
     -- round 4: the unasked DISABLE itself books the heal (field 11:34 -- it
     -- precedes the 0x100 on the wire, so round 3's arm-first plan was
     -- backwards; the kill is the one event every capture shows).
