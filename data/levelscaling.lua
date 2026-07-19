@@ -133,4 +133,143 @@ return {
         { stat = "MP", add = 1, from = 72 },
         { stat = "MP", add = 1, from = 75 },
     },
+    [18905] = {
+        { stat = "DMG_RATING", add = 2, from = 59 },
+    },
+    [20531] = {
+        { stat = "DMG_RATING", add = 2, from = 59 },
+    },
+    [20597] = {
+        { stat = "MAX_SWINGS", add = 2, below = 50 },
+    },
+    [20617] = {
+        { stat = "DMG_RATING", add = 6, from = 59 },
+    },
+    [20719] = {
+        { stat = "DMG_RATING", add = 8, from = 59 },
+    },
+    [20760] = {
+        { stat = "DMG_RATING", add = 8, from = 59 },
+    },
+    [20903] = {
+        { stat = "DMG_RATING", add = 8, from = 59 },
+    },
+    [20947] = {
+        { stat = "DMG_RATING", add = 8, from = 59 },
+    },
+    [20993] = {
+        { stat = "DMG_RATING", add = 6, from = 59 },
+    },
+    [21109] = {
+        { stat = "DMG_RATING", add = 6, from = 59 },
+    },
+    [21172] = {
+        { stat = "DMG_RATING", add = 8, from = 59 },
+    },
+    [21226] = {
+        { stat = "DMG_RATING", add = 4, from = 59 },
+    },
+    [21275] = {
+        { stat = "DMG_RATING", add = 4, from = 59 },
+    },
+    [21406] = {
+        { stat = "WIND", add = 2, from = 59 },
+    },
+    [21510] = {
+        { stat = "DMG_RATING", add = 2, from = 29 },
+    },
+    [21566] = {
+        { stat = "DMG_RATING", add = 2, from = 29 },
+    },
+    [21622] = {
+        { stat = "DMG_RATING", add = 5, from = 29 },
+    },
+    [21665] = {
+        { stat = "DMG_RATING", add = 8, from = 29 },
+    },
+    [21712] = {
+        { stat = "DMG_RATING", add = 8, from = 29 },
+    },
+    [21769] = {
+        { stat = "DMG_RATING", add = 16, from = 29 },
+    },
+    [21822] = {
+        { stat = "DMG_RATING", add = 12, from = 29 },
+    },
+    [21864] = {
+        { stat = "DMG_RATING", add = 16, from = 29 },
+    },
+    [21912] = {
+        { stat = "DMG_RATING", add = 7, from = 29 },
+    },
+    [21976] = {
+        { stat = "DMG_RATING", add = 10, from = 29 },
+    },
+    [22006] = {
+        { stat = "DMG_RATING", add = 8, from = 29 },
+    },
+    [22088] = {
+        { stat = "DMG_RATING", add = 8, from = 29 },
+    },
+    [22133] = {
+        { stat = "DMG_RATING", add = 12, from = 29 },
+    },
+    [22144] = {
+        { stat = "DMG_RATING", add = 8, from = 29 },
+    },
+    [22219] = {
+        { stat = "DMG_RATING", add = 8, from = 29 },
+    },
+    [22291] = {
+        { stat = "DMG_RATING", add = 8, from = 29 },
+    },
+    [22296] = {
+        { stat = "WIND", add = 3, from = 29 },
+    },
+    [23996] = {
+        { stat = "Accuracy", add = 50, below = 31 },
+        { stat = "MagicAccuracy", add = 50, below = 31 },
+        { stat = "RangedAccuracy", add = 50, below = 31 },
+        { stat = "STR", add = 1, below = 31 },
+        { stat = "VIT", add = 1, below = 31 },
+    },
+    [23997] = {
+        { stat = "AGI", add = 1, below = 31 },
+        { stat = "Accuracy", add = 50, below = 31 },
+        { stat = "DEX", add = 1, below = 31 },
+        { stat = "MagicAccuracy", add = 50, below = 31 },
+        { stat = "RangedAccuracy", add = 50, below = 31 },
+    },
+    [23998] = {
+        { stat = "Accuracy", add = 50, below = 31 },
+        { stat = "CHR", add = 1, below = 31 },
+        { stat = "INT", add = 1, below = 31 },
+        { stat = "MND", add = 1, below = 31 },
+        { stat = "MagicAccuracy", add = 50, below = 31 },
+        { stat = "RangedAccuracy", add = 50, below = 31 },
+    },
+    [25567] = {
+        { stat = "Regen", add = 1, below = 51 },
+    },
+    [25907] = {
+        { stat = "HASTE_GEAR", add = 200, below = 51 },
+    },
+    [26413] = {
+        { stat = "DEF", add = 2, from = 29 },
+    },
+    [26543] = {
+        { stat = "Refresh", add = 1, below = 51 },
+    },
+    [27624] = {
+        { stat = "DEF", add = 2, from = 59 },
+    },
+    [39018] = {
+        { stat = "Refresh", add = 1, below = 51 },
+    },
+    [39028] = {
+        { stat = "Refresh", add = 1, below = 51 },
+    },
+    [39038] = {
+        { stat = "Refresh", add = 1, below = 51 },
+    },
 };

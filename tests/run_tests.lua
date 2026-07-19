@@ -4253,8 +4253,11 @@ end)();
             if r.cond == 'JOB_LEVEL_ABOVE' or r.cond == 'JOB_LEVEL_BELOW' then levelLeak = true; end
         end
     end
-    check('GD10 latentstats rows in range', rows >= 1700 and rows <= 1900, true);
-    check('GD11 latentstats items in range', items >= 750 and items <= 900, true);
+    -- windows re-pinned 2026-07-19: generator now unions the live API's per-item
+    -- latents (tools/api_cache) with the repo SQL -- live-only content (the CEXI
+    -- "+1" leveling line, Malphas set, ...) added ~470 rows.
+    check('GD10 latentstats rows in range', rows >= 2100 and rows <= 2500, true);
+    check('GD11 latentstats items in range', items >= 850 and items <= 980, true);
     check('GD12 zero level-latent rows leaked', levelLeak, false);
     local spot = lsD[11312];
     check('GD13 spot row 11312 (STR +5 while TP > 100)', spot ~= nil
