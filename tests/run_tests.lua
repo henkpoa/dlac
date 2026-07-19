@@ -5368,6 +5368,30 @@ end)();
     check('MC17 report mutates nothing', #d.Default == 2 and d.Default[1].when.mode .. '/' .. tostring(d.Default[2].whenAny[1].mode), 'X/X');
     check('MC18 near-name mode never matches (Incog vs Inc)',
         #f({ Default = { { when = { mode = 'Incog' }, set = 'A' } } }, 'Inc', false).rules, 0);
+
+    -- RS: set-rename reference rewrite (2026-07-20, the Sets tab Rename).
+    -- EXACT match only; string and multi-set list actions; every handler
+    -- section including Default's mode overlays; equip rules untouched.
+    check('RS0 rename seam exported', type(tui._renameSetRefsIn), 'function');
+    local rd = {
+        Default = {
+            { when = { mode = 'DT' }, set = 'Idle' },
+            { when = { mode = 'X' },  set = { 'Idle', 'Tp' } },
+        },
+        Midcast = {
+            { when = { name = 'Cure' }, set = 'Idle' },
+            { when = { name = 'Dia' },  set = 'idle' },   -- case drift = already broken; stays visibly broken
+            { when = { group = 'G' },   equip = { Head = 'Hat' } },
+        },
+    };
+    local rsn = tui._renameSetRefsIn(rd, 'Idle', 'Field');
+    check('RS1 three rules rewritten', rsn, 3);
+    check('RS2 string action follows', rd.Default[1].set, 'Field');
+    check('RS3 list entry follows, sibling kept', rd.Default[2].set[1] .. '/' .. rd.Default[2].set[2], 'Field/Tp');
+    check('RS4 other sections follow too', rd.Midcast[1].set, 'Field');
+    check('RS5 case-drifted ref untouched', rd.Midcast[2].set, 'idle');
+    check('RS6 equip rule untouched', rd.Midcast[3].equip.Head, 'Hat');
+    check('RS7 no match = zero, nothing mutated', tui._renameSetRefsIn(rd, 'Nope', 'X'), 0);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -5656,6 +5680,23 @@ end)();
     });
     check('SN13 identifier still renders bare', tostring(t4):find('        Tp_Default = {', 1, true) ~= nil, true);
 
+    -- renameSetText (2026-07-20, the Sets tab Rename): re-key only, content
+    -- untouched; a dashed new name bracket-quotes itself; unknown names and
+    -- collisions refuse with the file untouched.
+    local rt = sm.spliceSet(base, 'Idle', { { name = 'Head', items = { { path = 'gear.Head.X' } } } });
+    rt = sm.spliceSet(rt, 'Tp', { { name = 'Body', items = { { path = 'gear.Body.Y' } } } });
+    local rn, ra = sm.renameSetText(rt, 'Idle', 'Field');
+    check('SN14 rename re-keys', ra, 'renamed');
+    check('SN15 renamed text parses', (loadstring or load)(rn or '') ~= nil, true);
+    check('SN16 old key gone, content kept', rn:find('Idle', 1, true) == nil
+        and rn:find('gear.Head.X', 1, true) ~= nil, true);
+    local rn2 = sm.renameSetText(rn, 'Field', 'STR-VIT');
+    check('SN17 dashed new name bracket-quotes', tostring(rn2):find('["STR-VIT"] = {', 1, true) ~= nil, true);
+    local _, rerr1 = sm.renameSetText(rn, 'Nope', 'X');
+    check('SN18 unknown set refuses', tostring(rerr1):find('set not found', 1, true) ~= nil, true);
+    local _, rerr2 = sm.renameSetText(rn, 'Field', 'Tp');
+    check('SN19 collision refuses', tostring(rerr2):find('already exists', 1, true) ~= nil, true);
+
     -- priority-list twin: ordered parse, entry forms, order preserved
     local plists, perr = wimpT.parsePrio([[
         Debuff = { 'MACC', 'BlueMagicSkill', { 'INT', 60 } },
@@ -5748,6 +5789,18 @@ end)();
     check('LP6 order + cap survive', plNow[1].stat == 'MACC' and plNow[2].stat == 'INT'
         and plNow[2].cap == 60, true);
     check('LP7 mode lands on priority', optim.weightsMode(), 'priority');
+
+    -- renameSetKey (2026-07-20, the Sets tab Rename): every per-set store and
+    -- the live binding follow the new name; the actives keep working.
+    check('RK1 rename returns true', optim.renameSetKey('IMP', 'LocalSet', 'LocalSet2'), true);
+    check('RK2 binding follows', optim.weightsBoundTo(), 'IMP|LocalSet2');
+    check('RK3 point weights ride along', optim.getPointWeights().Accuracy.perUnit, 12);
+    check('RK4 old key gone from perSet', (function()
+        for _, k in ipairs(optim.perSetKeys()) do if k == 'IMP|LocalSet' then return k; end end
+        return nil;
+    end)(), nil);
+    check('RK5 prio list rides along', optim.getPrio()[1].stat, 'MACC');
+    check('RK6 build mode rides along', optim.weightsMode(), 'priority');
 end)();
 
 -- ---------------------------------------------------------------------------

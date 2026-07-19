@@ -780,6 +780,26 @@ function M.importSetWeights(statmap)
     return true, n;
 end
 
+-- Set RENAME support (Henrik 2026-07-20: rename once, everything follows):
+-- move every per-set store from '<job>|<old>' to '<job>|<new>' -- point
+-- weights, slot marks, priority list, build mode and both session undo
+-- snapshots. A live binding follows (the actives alias the moved tables, so
+-- identity survives). The sets-file and trigger halves live elsewhere; the
+-- caller persists via saveWeights.
+function M.renameSetKey(job, old, new)
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
+    if job == nil or old == nil or new == nil or old == new then return false; end
+    local ok = tostring(job) .. '|' .. tostring(old);
+    local nk = tostring(job) .. '|' .. tostring(new);
+    local function mv(t)
+        if type(t) == 'table' and t[ok] ~= nil then t[nk] = t[ok]; t[ok] = nil; end
+    end
+    mv(M._perSet); mv(M._slotsPerSet); mv(M._prioPerSet); mv(M._modePerSet);
+    mv(M._copyUndo); mv(M._prioUndo);
+    if M._boundKey == ok then M._boundKey = nk; end
+    return true;
+end
+
 -- ===========================================================================
 -- Priority-list mode -- the "simple" weights (Henrik's friends, 2026-07-17).
 --

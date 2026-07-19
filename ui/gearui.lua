@@ -122,7 +122,6 @@ local ui = {
     -- Sets tab
     setSelected = nil,
     newSetName  = { '' },
-    lockSet     = { false },
     setsDynamic = { true },   -- Auto-build "Dynamic" (level-scaling list) mode, default ON
     buildMax    = { true },   -- optimizer "build as lv.75" toggle (mirrors optim.buildAtMaxLevel; default ON)
     showWeights = false,      -- right-side weights panel toggle
@@ -2618,16 +2617,6 @@ local function autoBuild(job, level)
     return nSlots, nRows;
 end
 
--- "Lock" a committed set via LAC (takes effect once the file is committed + reloaded).
-local function applySetLock(setName, lock)
-    if lock then
-        cmdq.enqueue(2, '/lac enable');
-        if setName ~= nil and setName ~= '' then cmdq.enqueue(26, '/lac set ' .. setName); end
-    else
-        pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/lac enable'); end);
-    end
-end
-
 local function setStatus(msg, isErr)
     ui.setsStatus = msg or '';
     ui.setsStatusErr = (isErr == true);
@@ -2760,6 +2749,52 @@ local function deleteCurrentSet(job)
     else
         setStatus('Delete failed: ' .. tostring(action), true);
     end
+end
+
+-- Rename the selected set EVERYWHERE it is referenced (Henrik 2026-07-20: "I
+-- don't want to look for everywhere it is used"): the sets file re-keys the
+-- block (content untouched, setmgr.renameSet's backup/parse-check rails),
+-- every trigger rule pointing at the old name is rewritten (triggersui
+-- commits -- live at once), and the per-set weight stores (points / slot
+-- marks / priority / mode + undo snapshots) move along. The panel follows
+-- under the new name and the engine hot-swaps sets like Commit. A set that
+-- was never committed just renames in the panel.
+local function renameCurrentSet(job, newName)
+    if not has.setmgr then setStatus('setmanager unavailable.', true); return false; end
+    local old = M.workingSetName;
+    if old == nil or old == '' then setStatus('No set selected.', true); return false; end
+    if job == nil or job == '' then setStatus('Unknown job (are you logged in?).', true); return false; end
+    newName = tostring(newName or ''):gsub('^%s+', ''):gsub('%s+$', '');
+    if newName == '' then setStatus('Type the new name first.', true); return false; end
+    if newName == old then setStatus('That is already the name.', true); return false; end
+    for _, nm in ipairs(profsets.dynamicSetNames()) do
+        if string.lower(nm) == string.lower(newName) then
+            setStatus(string.format('A set named "%s" already exists -- pick another name.', nm), true);
+            return false;
+        end
+    end
+    local ok, action = nil, nil;
+    local pok = pcall(function() ok, action = setmgr.renameSet(job, old, newName); end);
+    if not pok then setStatus('Rename failed: ' .. tostring(action or 'internal error'), true); return false; end
+    local onDisk = (ok == true);
+    if not onDisk and tostring(action):find('set not found', 1, true) == nil then
+        setStatus('Rename failed: ' .. tostring(action), true);
+        return false;
+    end
+    local rules = 0;
+    pcall(function() rules = require('dlac\\ui\\triggersui').renameSetRefs(old, newName) or 0; end);
+    if has.optim and optim.renameSetKey ~= nil then
+        pcall(optim.renameSetKey, job, old, newName);
+        pcall(optim.saveWeights);
+    end
+    M.workingSetName = newName;
+    profsets.invalidate();
+    pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl sets reload'); end);
+    setStatus(string.format('Renamed "%s" -> "%s"%s; %d trigger rule%s updated; weights moved along -- live now (hot-swapped).',
+        old, newName,
+        onDisk and '' or ' (never committed -- panel renamed, nothing on disk to re-key)',
+        rules, (rules == 1) and '' or 's'), false);
+    return true;
 end
 
 -- (the stat-weights editor body moved to dlac\weightsui.lua -- wui.editor().)
@@ -3361,9 +3396,12 @@ local function renderSetsTab(job, level)
         if okb and changed then ui._wbuf = {}; invalidateCandidates(); end
     end
 
-    -- Controls row: set picker + New + Commit + Delete + Lock + Weights toggle.
+    -- Controls row: set picker + New + Commit + Delete + Rename + Stats/Weights
+    -- toggles. Picker and name box widened 2026-07-20 (Henrik: the row had a
+    -- ton of dead space and names clipped); the Lock checkbox is gone -- that
+    -- workflow lives on the Equipped tab ("Lock when equipped").
     imgui.TextColored(COL.DIM, 'Set:'); imgui.SameLine(0, 4);
-    imgui.PushItemWidth(150);
+    imgui.PushItemWidth(240);
     if imgui.BeginCombo('##ffxilac_setpick', M.workingSetName or '(select)') then
         local names = profsets.dynamicSetNames();
         if #names == 0 then
@@ -3380,7 +3418,7 @@ local function renderSetsTab(job, level)
     end
     imgui.PopItemWidth();
     imgui.SameLine();
-    imgui.PushItemWidth(104); imgui.InputText('##ffxilac_newset', ui.newSetName, 32); imgui.PopItemWidth();
+    imgui.PushItemWidth(200); imgui.InputText('##ffxilac_newset', ui.newSetName, 32); imgui.PopItemWidth();
     imgui.SameLine();
     if imgui.Button('New##setnew', { 46, 22 }) then
         local nm = ui.newSetName[1];
@@ -3401,11 +3439,17 @@ local function renderSetsTab(job, level)
     imgui.SameLine(); if imgui.Button('Delete##setdel', { 58, 22 }) then deleteCurrentSet(job); end
 
     imgui.SameLine();
-    local prevLock = ui._setLockPrev;
-    imgui.Checkbox('Lock', ui.lockSet);
-    if imgui.IsItemHovered() then imgui.SetTooltip('Checked: /lac enable then /lac set <set>.  Unchecked: /lac enable.  (Commit + Reload first.)'); end
-    if prevLock ~= nil and prevLock ~= ui.lockSet[1] then applySetLock(M.workingSetName, ui.lockSet[1] == true); end
-    ui._setLockPrev = ui.lockSet[1];
+    if imgui.Button('Rename##setren', { 0, 22 }) then
+        if M.workingSetName == nil or M.workingSetName == '' then
+            setStatus('No set selected (pick one first).', true);
+        else
+            ui._renameBuf = { M.workingSetName };
+            ui._renameOpen = true;
+        end
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Rename this set EVERYWHERE it is used -- the sets file, every trigger\nrule pointing at it, and its weights/build-slot marks. No manual hunting.');
+    end
 
     imgui.SameLine();
     if imgui.Button((ui.showStats and 'Stats v' or 'Stats >') .. '##setstats', { 72, 22 }) then ui.showStats = not ui.showStats; end
@@ -3559,6 +3603,25 @@ local function renderSetsTab(job, level)
             ui._copyConfirm = nil;
             imgui.CloseCurrentPopup();
         end
+        imgui.EndPopup();
+    end
+
+    -- Rename popup (2026-07-20): type the new name, one click renames the set
+    -- everywhere (sets file + trigger rules + weights). Click-away aborts.
+    if ui._renameOpen then imgui.OpenPopup('##dlac_setrename'); ui._renameOpen = false; end
+    if imgui.BeginPopup('##dlac_setrename') then
+        imgui.TextColored(COL.HEADER, 'Rename set: ' .. fmt.esc(tostring(M.workingSetName)));
+        if imgui.IsWindowAppearing ~= nil and imgui.IsWindowAppearing()
+           and imgui.SetKeyboardFocusHere ~= nil then imgui.SetKeyboardFocusHere(0); end
+        ui._renameBuf = ui._renameBuf or { '' };
+        imgui.PushItemWidth(200);
+        imgui.InputText('##setrenname', ui._renameBuf, 32);
+        imgui.PopItemWidth();
+        imgui.SameLine(0, 6);
+        if imgui.Button('Rename##setrengo', { 0, 22 }) then
+            if renameCurrentSet(job, ui._renameBuf[1]) then imgui.CloseCurrentPopup(); end
+        end
+        fmt.textWrapped(COL.DIM, 'Renames the set and every reference to it: the sets file block, trigger rules (live at once) and its weights/build-slot marks. Sets hot-swap like Commit.');
         imgui.EndPopup();
     end
 end

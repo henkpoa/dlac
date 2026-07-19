@@ -210,6 +210,26 @@ M.spliceSet = function(fileText, setName, slots)
     end
 end
 
+-- Rename a set IN TEXT: re-key its block (bare or bracket-quoted, whichever
+-- the file holds), content and indentation untouched -- the new key renders
+-- through renderKey so a dashed/keyword name bracket-quotes itself. Refuses
+-- when the new name already keys a set in Dynamic. Returns newText,
+-- 'renamed' | nil, errmsg.
+M.renameSetText = function(fileText, oldName, newName)
+    local ds, de = fileText:find('Dynamic%s*=%s*{');
+    if not ds then return nil, 'could not locate sets.Dynamic block'; end
+    local dynClose = matchBrace(fileText, de);
+    if not dynClose then return nil, 'sets.Dynamic block is not closed'; end
+    local ns = findSetKey(fileText, newName, ds);
+    if ns ~= nil and ns < dynClose then
+        return nil, string.format('a set named %q already exists', tostring(newName));
+    end
+    local ss, se = findSetKey(fileText, oldName, ds);
+    if not ss or ss > dynClose then return nil, 'set not found: ' .. tostring(oldName); end
+    -- ss..se spans `Old = {` (or the bracket form) -- swap just the key part.
+    return fileText:sub(1, ss - 1) .. renderKey(newName) .. ' = {' .. fileText:sub(se + 1), 'renamed';
+end
+
 -- Delete a named set. returns newText, 'deleted' | nil, errmsg
 M.deleteSetText = function(fileText, setName)
     local lines, nl = splitLines(fileText);
@@ -600,6 +620,28 @@ M.deleteSet = function(job, setName)
     if not newText then return false, action; end
     local chunk, cerr = loadstring(newText, '@' .. path);
     if not chunk then return false, 'delete would not parse: ' .. tostring(cerr) .. ' (file untouched)'; end
+    local bpath, berr = backupWithRotation(text, job, 20);
+    if not bpath then return false, berr; end
+    if not writeFile(path, newText) then return false, 'write failed (backup: ' .. bpath .. ')'; end
+    return true, action, bpath;
+end
+
+-- Rename a set on disk (the Sets tab's rename-everywhere entry point owns the
+-- trigger/weights halves): same read-where-the-sets-live rule as deleteSet,
+-- same backup -> splice -> parse-check -> write rails as commitSet.
+M.renameSet = function(job, oldName, newName)
+    local path = _pok and _prof.setsPath(job) or nil;
+    local text = path ~= nil and readFile(path) or nil;
+    if text == nil then
+        path = M.jobPath(job);
+        if path == nil then return false, 'not logged in (no profile path)'; end
+        text = readFile(path);
+    end
+    if not text then return false, 'could not read ' .. tostring(path); end
+    local newText, action = M.renameSetText(text, oldName, newName);
+    if not newText then return false, action; end
+    local chunk, cerr = loadstring(newText, '@' .. path);
+    if not chunk then return false, 'rename would not parse: ' .. tostring(cerr) .. ' (file untouched)'; end
     local bpath, berr = backupWithRotation(text, job, 20);
     if not bpath then return false, berr; end
     if not writeFile(path, newText) then return false, 'write failed (backup: ' .. bpath .. ')'; end

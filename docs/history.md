@@ -3264,3 +3264,24 @@ Same flow as the editor's Delete mode (unreferenced = delete +
 commit now; referenced = the reference window with its one-click
 cleanup) behind the red second-click confirm, because the delete
 writes the file immediately. 1673 + 170.
+
+## Set rename-everywhere; Sets row widened, Lock dropped (2026-07-20)
+
+Henrik: rename sets so it propagates to triggers and everything --
+"I don't want to look for everywhere it is used." New Rename button
+on the Sets controls row opens a popup; one click renames the set
+in every store: (1) the sets file re-keys the block in place
+(setmanager.renameSetText -- content untouched, bare or bracket
+form, dashed new names bracket-quote, collision/unknown refuse;
+renameSet wraps it in the commit rails), (2) every trigger rule
+whose set action names it -- string or multi-set list, all handler
+sections incl. Default's mode overlays -- rewrites and commits live
+(triggersui.renameSetRefs; EXACT match, case-drifted refs were
+already broken and stay visibly broken), (3) the per-set weight
+stores move (gearoptim.renameSetKey: points/slots/prio/mode + undo
+snapshots, live binding follows), (4) the panel follows and sets
+hot-swap like Commit. A never-committed set renames panel-only with
+a status note. Row cleanup while at it: set picker 150->240, name
+box 104->200 (dead space, clipped names), and the Lock checkbox is
+GONE (applySetLock deleted) -- that workflow belongs to Equipped's
+"Lock when equipped". SN14-19 / RK1-6 / RS0-7. 1693 + 170.

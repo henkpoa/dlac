@@ -486,6 +486,53 @@ local function modeCondRefs(data, name, strip)
 end
 M._modeCondRefs = modeCondRefs;   -- headless test seam (dispatch's _matches idiom)
 
+-- Set RENAME references (Henrik 2026-07-20: rename a set once, every rule
+-- follows): rewrite every rule whose `set` action names `old` to `new` --
+-- plain strings and multi-set lists, across every handler section including
+-- Default's mode overlays. EXACT match: the engine's gProfile.Sets lookup is
+-- exact, so only exact references ever worked; a case-drifted one is already
+-- broken and stays visibly broken ([missing set]) instead of silently
+-- changing meaning. Pure on `data` for the headless tests (RS*).
+local function renameSetRefsIn(data, old, new)
+    local edited = 0;
+    if type(data) ~= 'table' then return edited; end
+    for _, sec in ipairs(TRIG_HANDLERS) do
+        local list = data[sec];
+        if type(list) == 'table' then
+            for _, r in ipairs(list) do
+                if type(r) == 'table' then
+                    if r.set == old then
+                        r.set = new;
+                        edited = edited + 1;
+                    elseif type(r.set) == 'table' then
+                        local hit = false;
+                        for i, s in ipairs(r.set) do
+                            if s == old then r.set[i] = new; hit = true; end
+                        end
+                        if hit then edited = edited + 1; end
+                    end
+                end
+            end
+        end
+    end
+    return edited;
+end
+M._renameSetRefsIn = renameSetRefsIn;   -- headless test seam
+
+-- The Sets tab calls this right after renaming the set on disk. Returns the
+-- number of rules rewritten; commits (and hot-reloads the engine's triggers)
+-- only when something changed.
+function M.renameSetRefs(old, new)
+    pcall(trigLoad, false);
+    if trig.data == nil then return 0; end
+    local edited = renameSetRefsIn(trig.data, old, new);
+    if edited > 0 then
+        trig.dirty = true;
+        trigCommit();
+    end
+    return edited;
+end
+
 -- Remove the definition, write the file NOW, and kill the live flag. The commit's
 -- '/dl triggers reload' makes the engine purge a stale cycle value; the queued
 -- 'off' (processed after the reload) clears a live toggle flag.
