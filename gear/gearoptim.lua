@@ -624,6 +624,37 @@ function M.saveNamedWeights(name)
     return true, name;
 end
 
+-- Bulk-add named weight profiles: the applier behind the weights IMPORT
+-- (weightimport.lua parses; this lands the result). Unlike saveNamedWeights it
+-- reads nothing from the ACTIVE table and needs no binding -- the pasted data
+-- IS the profile. Stat keys canonicalize through canonStat so ACC / Acc /
+-- Accuracy all land on the catalog spelling. Same-name = overwrite (the caller
+-- confirms via weightimport.classify first). Returns { created, updated,
+-- stats }; the caller persists with M.saveWeights().
+function M.importNamedWeights(profiles)
+    if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end   -- mutate-after-load, or the lazy load would clobber the import
+    local summary = { created = 0, updated = 0, stats = 0 };
+    if type(profiles) ~= 'table' then return summary; end
+    for name, wmap in pairs(profiles) do
+        if type(name) == 'string' and name ~= '' and type(wmap) == 'table' then
+            local t, n = {}, 0;
+            for k, w in pairs(wmap) do
+                if type(k) == 'string' and type(w) == 'table' and type(w.perUnit) == 'number' then
+                    t[canonStat(k)] = { perUnit = w.perUnit, cap = (type(w.cap) == 'number') and w.cap or nil };
+                    n = n + 1;
+                end
+            end
+            if n > 0 then
+                if M._named[name] ~= nil then summary.updated = summary.updated + 1;
+                else summary.created = summary.created + 1; end
+                M._named[name] = t;
+                summary.stats = summary.stats + n;
+            end
+        end
+    end
+    return summary;
+end
+
 function M.deleteNamedWeights(name)
     if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
     if M._named[name] == nil then return false, 'no such profile'; end

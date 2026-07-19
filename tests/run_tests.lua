@@ -5412,6 +5412,90 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- WI/SN. weights import (weightimport.parse/classify -> gearoptim.
+-- importNamedWeights) and non-identifier set names through setmanager --
+-- the Midcast_STR-VIT field bug: a dashed name must serialize bracket-quoted,
+-- re-splice via the bracket form, and delete cleanly; identifiers stay bare.
+-- ---------------------------------------------------------------------------
+(function()
+    package.loaded['dlac\\gear\\groupimport'] = package.loaded['dlac\\gear\\groupimport'] or dofile('gear/groupimport.lua');
+    local wimpT = dofile('gear/weightimport.lua');
+
+    local wprof, werr = wimpT.parse([[
+        STR_DEX = T{ Accuracy = 12, Attack = { 10 }, STR = { perUnit = 10, cap = 60 }, BlueMagicSkill = { 3, 330 } },
+        Debuff = { MACC = 12 },
+        Bad1 = { 'Accuracy' },
+        Bad2 = { Accuracy = 'twelve' },
+        Empty = {},
+        NotTable = 5,
+    ]]);
+    check('WI1 parse returns profiles', type(wprof) == 'table', true);
+    check('WI2 bare number form', wprof.STR_DEX ~= nil and wprof.STR_DEX.Accuracy.perUnit, 12);
+    check('WI3 array form, no cap', wprof.STR_DEX.Attack.perUnit == 10 and wprof.STR_DEX.Attack.cap == nil, true);
+    check('WI4 explicit-field form keeps cap', wprof.STR_DEX.STR.cap, 60);
+    check('WI5 array form keeps cap', wprof.STR_DEX.BlueMagicSkill.cap, 330);
+    check('WI6 second profile lands', wprof.Debuff ~= nil and wprof.Debuff.MACC.perUnit, 12);
+    check('WI7 list-entry profile skipped', wprof.Bad1, nil);
+    check('WI8 bad stat value skips profile', wprof.Bad2, nil);
+    check('WI9 empty profile skipped', wprof.Empty, nil);
+    check('WI10 non-table value skipped', wprof.NotTable, nil);
+    check('WI11 one skip reason per bad key', #werr, 4);
+    local nilp = wimpT.parse('not lua at all }{');
+    check('WI12 total parse failure returns nil', nilp, nil);
+
+    local cre, ovr = wimpT.classify(wprof, { 'Debuff', 'SomethingElse' });
+    check('WI13 classify created', table.concat(cre, ','), 'STR_DEX');
+    check('WI14 classify overwritten (exact match)', table.concat(ovr, ','), 'Debuff');
+
+    -- the applier: lands in the NAMED store, no set binding required
+    local sum1 = optim.importNamedWeights({ STR_DEX = wprof.STR_DEX, Debuff = wprof.Debuff });
+    check('WI15 import created 2', sum1.created, 2);
+    check('WI16 named store readable', optim.peekWeights('named', 'Debuff').MACC.perUnit, 12);
+    check('WI17 stat rows counted', sum1.stats, 5);
+    local sum2 = optim.importNamedWeights({ Debuff = { INT = { perUnit = 10 } } });
+    check('WI18 same name = update', sum2.updated, 1);
+    check('WI19 update replaces, not merges', optim.peekWeights('named', 'Debuff').INT.perUnit == 10
+        and optim.peekWeights('named', 'Debuff').MACC == nil, true);
+    local inNamed = false;
+    for _, n in ipairs(optim.namedKeys()) do if n == 'STR_DEX' then inNamed = true; end end
+    check('WI20 imports list under Saved Sets', inNamed, true);
+
+    -- non-identifier set names (setmanager)
+    local sm = dofile('gear/setmanager.lua');
+    check('SN1 identifier renders bare', sm.renderKey('Midcast_STRDEX'), 'Midcast_STRDEX');
+    check('SN2 dash renders bracket-quoted', sm.renderKey('Midcast_STR-VIT'), '["Midcast_STR-VIT"]');
+    check('SN3 keyword renders bracket-quoted', sm.renderKey('end'), '["end"]');
+    check('SN4 leading digit renders bracket-quoted', sm.renderKey('2HSet'), '["2HSet"]');
+
+    local base = 'local sets = {\n    Dynamic = {\n    },\n};\nreturn sets;\n';
+    local STUB; STUB = setmetatable({}, { __index = function() return STUB; end });
+    local t1, a1 = sm.spliceSet(base, 'Midcast_STR-VIT', {
+        { name = 'Head', items = { { path = 'gear.Head.X' } } },
+    });
+    check('SN5 dashed name inserts', a1, 'inserted');
+    check('SN6 dashed insert PARSES (the field bug)', (loadstring or load)(t1 or '') ~= nil, true);
+    local t2, a2 = sm.spliceSet(t1, 'Midcast_STR-VIT', {
+        { name = 'Body', items = { { path = 'gear.Body.Y' } } },
+    });
+    check('SN7 dashed re-splice replaces via the bracket form', a2, 'replaced');
+    local _, ncopies = tostring(t2):gsub('Midcast_STR%-VIT', '');
+    check('SN8 exactly one copy after replace', ncopies, 1);
+    local c2 = loadWithEnv(t2, setmetatable({ gear = STUB }, { __index = _G }));
+    local sok, sres = pcall(c2);
+    check('SN9 dashed set reachable at runtime', sok and type(sres) == 'table'
+        and type(sres.Dynamic['Midcast_STR-VIT']) == 'table', true);
+    check('SN10 replace swapped the content', sok and sres.Dynamic['Midcast_STR-VIT'].Body ~= nil
+        and sres.Dynamic['Midcast_STR-VIT'].Head == nil, true);
+    local t3, a3 = sm.deleteSetText(t2, 'Midcast_STR-VIT');
+    check('SN11 dashed delete', a3, 'deleted');
+    check('SN12 delete removed it', tostring(t3):find('Midcast', 1, true), nil);
+    local t4 = sm.spliceSet(base, 'Tp_Default', {
+        { name = 'Head', items = { { path = 'gear.Head.X' } } },
+    });
+    check('SN13 identifier still renders bare', tostring(t4):find('        Tp_Default = {', 1, true) ~= nil, true);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then

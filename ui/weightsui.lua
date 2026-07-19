@@ -35,7 +35,11 @@ end
 local imgui    = try('imgui');
 local optim    = try("dlac\\gear\\gearoptim");
 local statdefs = try("dlac\\data\\statdefs");
+local wimp     = try("dlac\\gear\\weightimport");
 local hasStatdefs = statdefs ~= nil and type(statdefs.list) == 'table';
+-- Multiline paste box probe (triggersui's group-import precedent): absent
+-- binding -> a one-line box with a "keep it on one line" hint, never a crash.
+local hasMultiline = (imgui ~= nil) and type(imgui.InputTextMultiline) == 'function';
 
 local D = nil;   -- deps from gearui; editor() no-ops until configured
 wui.configure = function(deps)
@@ -190,6 +194,89 @@ wui.slotGrid = function()
     end
 end
 
+-- ---------------------------------------------------------------------------
+-- Weights IMPORT (Henrik 2026-07-19): paste `Name = { Stat = pts, ... }` tables
+-- and bulk-create Saved Sets -- the weights sibling of the Groups tab's
+-- "Import Lua Table(s)". Pure transform in weightimport.lua; applier in
+-- gearoptim.importNamedWeights; this is only the paste box + confirm flow.
+-- ---------------------------------------------------------------------------
+local function applyWeightsImport()
+    local plan = wui._impPlan;
+    if plan == nil or plan.profiles == nil then return; end
+    local sum = nil;
+    pcall(function() sum = optim.importNamedWeights(plan.profiles); end);
+    pcall(optim.saveWeights);
+    plan.pending = false;
+    plan.summary = sum or { created = 0, updated = 0, stats = 0 };
+end
+
+local function renderWeightsImport(COL)
+    imgui.TextColored(COL.DIM, 'One Saved Set per name. A weight is  pts,  { pts, cap }  or  { perUnit = ..., cap = ... }.');
+    imgui.TextColored(COL.DIM, 'e.g.   Debuff = { MACC = 12, BlueMagicSkill = 12, INT = 10 },');
+    imgui.TextColored(COL.DIM, 'Stat spellings are forgiving (ACC / Acc / Accuracy all resolve). Apply via copy from... > Saved Sets.');
+    wui._impText = wui._impText or { '' };
+    if hasMultiline then
+        imgui.InputTextMultiline('##wimptext', wui._impText, 16384, { 430, 130 });
+    else
+        imgui.TextColored(COL.SCORE, '(this build has no multiline box -- keep the paste on ONE line)');
+        imgui.PushItemWidth(430);
+        imgui.InputText('##wimptext', wui._impText, 16384);
+        imgui.PopItemWidth();
+    end
+    if imgui.Button('Import##wimpgo', { 0, 24 }) then
+        local parsed, errs = wimp.parse(wui._impText[1]);
+        if parsed == nil then
+            wui._impPlan = { errors = errs or {}, created = {}, overwritten = {}, pending = false };
+        else
+            local existing = {};
+            pcall(function() existing = optim.namedKeys() or {}; end);
+            local created, overwritten = wimp.classify(parsed, existing);
+            wui._impPlan = { profiles = parsed, errors = errs or {},
+                             created = created, overwritten = overwritten, pending = true };
+            -- No collisions -> land immediately; the confirm step is only for overwrites.
+            if #overwritten == 0 then applyWeightsImport(); end
+        end
+    end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Parse the paste and preview what would be created / overwritten.'); end
+    imgui.SameLine(0, 6);
+    if imgui.Button('Clear##wimpclr', { 0, 24 }) then
+        wui._impText[1] = ''; wui._impPlan = nil;
+    end
+    local plan = wui._impPlan;
+    if plan ~= nil then
+        imgui.Spacing();
+        imgui.TextColored(COL.HEADER, plan.pending and 'Preview' or 'Imported');
+        if #plan.created > 0 then
+            imgui.TextColored(COL.SCORE, string.format('  create %d: %s', #plan.created, fmt.esc(table.concat(plan.created, ', '))));
+        end
+        if #plan.overwritten > 0 then
+            imgui.TextColored(COL.ERR, string.format('  overwrite %d existing: %s', #plan.overwritten, fmt.esc(table.concat(plan.overwritten, ', '))));
+        end
+        if #plan.errors > 0 then
+            imgui.TextColored(COL.DIM, string.format('  skip %d:', #plan.errors));
+            for _, e in ipairs(plan.errors) do imgui.TextColored(COL.DIM, '     ' .. fmt.esc(e)); end
+        end
+        if #plan.created == 0 and #plan.overwritten == 0 and #plan.errors == 0 then
+            imgui.TextColored(COL.DIM, '  (nothing to import)');
+        end
+        if plan.pending then
+            if ImGuiCol_Button ~= nil then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
+            if imgui.Button(string.format('Overwrite %d & import###wimpconfirm', #plan.overwritten), { 0, 24 }) then
+                applyWeightsImport();
+            end
+            if ImGuiCol_Button ~= nil then imgui.PopStyleColor(1); end
+            if imgui.IsItemHovered() then imgui.SetTooltip('Replaces the named existing Saved Set(s) with the pasted weights.\nNamed profiles have no revert snapshot -- sure?'); end
+            imgui.SameLine(0, 6);
+            if imgui.Button('Cancel##wimpcancel', { 0, 24 }) then
+                wui._impPlan = nil;
+            end
+        elseif plan.summary ~= nil then
+            imgui.TextColored(COL.DIM, string.format('  %d created, %d updated, %d stat rows.',
+                plan.summary.created or 0, plan.summary.updated or 0, plan.summary.stats or 0));
+        end
+    end
+end
+
 -- The set's build mode ('points' | 'priority'), read fresh each frame.
 local function modeNow()
     local m = 'points';
@@ -267,6 +354,23 @@ local function renderPointsTab(boundKey)
             end
             if imgui.IsItemHovered() then
                 imgui.SetTooltip('Remove EVERY stat weight from this table (build-slot marks stay).\nMis-click? copy from... > This set (revert) brings it back.');
+            end
+        end
+        -- import...: paste a whole table of tunings -> Saved Sets in bulk.
+        if wimp ~= nil and type(optim.importNamedWeights) == 'function' then
+            imgui.SameLine(0, 6);
+            if imgui.SmallButton('import...##wimport') then
+                wui._impText = wui._impText or { '' };
+                wui._impPlan = nil;
+                imgui.OpenPopup('##wimport_pop');
+            end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Bulk-add Saved Sets from a pasted Lua table -- the weights sibling of the\nGroups tab\'s "Import Lua Table(s)". One profile per  Name = { Stat = pts, ... };\napply one to a set afterwards via copy from... > Saved Sets.');
+            end
+            imgui.SetNextWindowSizeConstraints({ 450, 0 }, { 560, 460 });
+            if imgui.BeginPopup('##wimport_pop') then
+                renderWeightsImport(COL);
+                imgui.EndPopup();
             end
         end
 

@@ -2655,6 +2655,15 @@ local function deleteCurrentSet(job)
                 tostring(M.workingSetName)), true);
             return;
         end
+        -- Not on disk and not static: a working set that never committed (e.g. its
+        -- commit failed). There is nothing to delete -- discard the working copy so
+        -- the name doesn't haunt the panel until a reload (field bug: Midcast_STR-VIT).
+        if tostring(action):find('set not found', 1, true) ~= nil then
+            local nm = tostring(M.workingSetName);
+            M.working = {}; M.workingSetName = nil; ui.setSelected = nil; _setDirty = false;
+            setStatus(string.format('"%s" was never committed -- discarded the unsaved working set (nothing on disk to delete).', nm), false);
+            return;
+        end
     end
     if pok and ok == true then
         profsets.invalidate();

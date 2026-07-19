@@ -95,10 +95,43 @@ local function renderItem(it)
     return string.rep(' ', 16) .. '{' .. table.concat(parts, ', ') .. '},';
 end
 
+-- A set name only serializes as a BARE key when it is a legal Lua identifier;
+-- anything else ("Midcast_STR-VIT", a name with a space, a keyword) must be
+-- bracket-quoted or commitSet's parse check rejects the whole edit. The field
+-- bug: a dashed name rendered bare -> 'edit would not parse' on every commit.
+local LUA_KEYWORD = {
+    ['and'] = true, ['break'] = true, ['do'] = true, ['else'] = true, ['elseif'] = true,
+    ['end'] = true, ['false'] = true, ['for'] = true, ['function'] = true, ['goto'] = true,
+    ['if'] = true, ['in'] = true, ['local'] = true, ['nil'] = true, ['not'] = true,
+    ['or'] = true, ['repeat'] = true, ['return'] = true, ['then'] = true, ['true'] = true,
+    ['until'] = true, ['while'] = true,
+};
+local function renderKey(name)
+    name = tostring(name);
+    if name:match('^[%a_][%w_]*$') ~= nil and not LUA_KEYWORD[name] then return name; end
+    return string.format('[%q]', name);
+end
+M.renderKey = renderKey;
+
+-- Find `setName`'s assignment at/after byte `init`: the bare form (Name = {)
+-- OR the bracket-quoted form (['Name'] = { / ["Name"] = {), whichever occurs
+-- FIRST. Both forms must be sought -- a pre-fix file holds bare keys, a
+-- post-fix commit of a dashed name writes the bracket form. Returns ss, se
+-- (match start, byte index of the '{') or nil.
+local function findSetKey(text, setName, init)
+    local esc = setName:gsub('(%W)', '%%%1');
+    local ss, se = text:find('%f[%w_]' .. esc .. '%s*=%s*{', init);
+    local bs, be = text:find('%[%s*[\'"]' .. esc .. '[\'"]%s*%]%s*=%s*{', init);
+    if ss == nil then return bs, be; end
+    if bs == nil then return ss, se; end
+    if bs < ss then return bs, be; end
+    return ss, se;
+end
+
 -- returns an array of lines (no newline chars) for the whole set block at indent 8.
 M.renderSetLines = function(setName, slots)
     local L = {};
-    L[#L + 1] = string.rep(' ', 8) .. setName .. ' = {';
+    L[#L + 1] = string.rep(' ', 8) .. renderKey(setName) .. ' = {';
     for _, slot in ipairs(slots) do
         if slot.items and #slot.items > 0 then
             L[#L + 1] = string.rep(' ', 12) .. slot.name .. ' = {';
@@ -154,8 +187,7 @@ M.spliceSet = function(fileText, setName, slots)
     local dynClose = matchBrace(fileText, de);
     if not dynClose then return nil, 'sets.Dynamic block is not closed'; end
     local block = M.renderSetLines(setName, slots);
-    local pat = '%f[%w_]' .. setName:gsub('(%W)', '%%%1') .. '%s*=%s*{';
-    local ss, se = fileText:find(pat, ds);
+    local ss, se = findSetKey(fileText, setName, ds);
     local out = {};
     if ss and ss < dynClose then
         local setClose = matchBrace(fileText, se);
@@ -185,8 +217,7 @@ M.deleteSetText = function(fileText, setName)
     if not ds then return nil, 'could not locate sets.Dynamic block'; end
     local dynClose = matchBrace(fileText, de);
     if not dynClose then return nil, 'sets.Dynamic block is not closed'; end
-    local pat = '%f[%w_]' .. setName:gsub('(%W)', '%%%1') .. '%s*=%s*{';
-    local ss, se = fileText:find(pat, ds);
+    local ss, se = findSetKey(fileText, setName, ds);
     if not ss or ss > dynClose then return nil, 'set not found: ' .. tostring(setName); end
     local setClose = matchBrace(fileText, se);
     if not setClose then return nil, 'set block not closed: ' .. setName; end

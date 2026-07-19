@@ -3102,3 +3102,32 @@ stays as the on-demand readout and LGF drives the chain headlessly.
 v44 keep-on-subjob is DONE: six rounds, root cause = an addon state
 never hears its own queued commands (now a house rule in this file
 and in memory).
+
+## BLU midcast payload + weights import + dashed set names (2026-07-19)
+
+Server-source investigation (Catsandboats clone) pinned BLU scaling:
+TP touches blue magic ONLY under Chain Affinity / Azure Lore (fTP over
+tp150/tp300, spell-side crit/acc riders, TP zeroed, the only SC/MB
+path); physical spells roll melee ACC + ATT with a per-spell D cap
+that tops out ~330 total skill; magical spells get NOTHING from skill
+(INT/MAB carry); debuffs land on dINT + skill(1:1 macc) + MACC gear;
+cures are 3xMND+VIT with a 50% potency cap; breaths are currentHP /
+divisor. Henrik's category table taken as authoritative for the live
+server (hidden CEXI repo confirms the post-75 additions via the wiki).
+Payload doc: docs/reference/blu-midcast-import.md -- paste blocks for
+Groups AND Weights, one weight profile per group name.
+
+Weights IMPORT shipped as the groups-import sibling: pure transform in
+gear/weightimport.lua (reuses groupimport.evalTable -- one sandboxed
+loader), applier gearoptim.importNamedWeights (canonStat, named store,
+no binding needed), UI = "import..." button + popup in the weights
+editor's Points tab (paste -> preview -> overwrite-confirm, the
+triggersui pattern). WI1-20.
+
+Field bug "Midcast_STR-VIT": renderSetLines wrote set names as BARE
+Lua keys, so a dashed name failed commitSet's parse check on every
+commit, and the uncommitted working set haunted the panel until
+reload. Fix: renderKey bracket-quotes non-identifier/keyword names,
+splice/delete find BOTH key forms (findSetKey), and Delete on a
+never-committed working set now DISCARDS it in-session instead of
+erroring. SN1-13. 1591 + 170.
