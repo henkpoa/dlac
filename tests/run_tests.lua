@@ -2824,6 +2824,17 @@ end)();
     check('TM17 no-canon keeps Modes',    m6.Modes.A.values[1], 'B');
     check('TM18 no-canon keeps Groups',   m6.Groups.G[1], 'x');
     check('TM19 non-table raw yields {}', next(tmodel.fromRaw(nil, dispatchM.canonEvent)), nil);
+
+    -- Bare toggle definitions (2026-07-20, Mindie BLU): a toggle with no bind
+    -- and no values is a REAL definition -- `[name] = {}` must survive the
+    -- whole wipe contract, or a plain UI-created toggle vanishes from the
+    -- Modes list on the next load.
+    local tg = dispatchM.serializeTriggers({ Modes = { Stoneskin = {}, DT = { bind = 'F9' } } });
+    check('TM20 bare toggle serialized', tg:find('["Stoneskin"] = {},', 1, true) ~= nil, true);
+    local tgM = tmodel.fromRaw((loadstring or load)(tg)(), dispatchM.canonEvent);
+    check('TM21 bare toggle survives fromRaw', type(tgM.Modes.Stoneskin) == 'table'
+        and tgM.Modes.Stoneskin.values == nil and tgM.Modes.Stoneskin.bind == nil, true);
+    check('TM22 bare toggle round-trip byte-stable', dispatchM.serializeTriggers(tgM) == tg, true);
 end)();
 
 -- ---------------------------------------------------------------------------

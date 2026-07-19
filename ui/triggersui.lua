@@ -955,8 +955,12 @@ local function renderModePopup()
                 trigSetStatus(string.format('Cycle mode "%s": wire values with the rule condition  mode = %s:<value>,  then Commit.', nm, nm), false);
             end
         else
-            if bind ~= nil then trig.data.Modes[nm] = { bind = bind };
-            else trig.data.Modes[nm] = nil; end        -- toggle without a bind needs no definition
+            -- A bind-less toggle keeps an EXPLICIT empty definition (Henrik
+            -- 2026-07-20, Mindie BLU: created a plain toggle and it never
+            -- showed in the Modes list -- it used to store nothing, so only a
+            -- rule referencing it made it visible). serializeTriggers and
+            -- triggermodel.fromRaw carry the {} through (TM20-22).
+            trig.data.Modes[nm] = (bind ~= nil) and { bind = bind } or {};
             -- Overlay-set sync, on CREATE and EDIT alike: own the exact-shape
             -- rule (see findOverlayRule) -- picking a set writes/updates it,
             -- (none) removes it. Editing used to ignore the pick entirely.
@@ -1428,6 +1432,33 @@ local function renderModeBox(m, def, cur, colX)
     imgui.SameLine(0, 12);
     if imgui.SmallButton('edit##trgmedit_' .. m) then openModeEditor(m, def); end
     if imgui.IsItemHovered() then imgui.SetTooltip('Edit this mode (values / keybind / delete).'); end
+    -- x: delete without opening the editor (Henrik 2026-07-20). Same flow as
+    -- the editor's Delete mode -- unreferenced deletes (and commits) at once,
+    -- references open the cleanup window -- behind the red second-click
+    -- confirm, because the delete writes the file immediately.
+    imgui.SameLine(0, 6);
+    if trig._modeDelArm == m then
+        local red = (ImGuiCol_Button ~= nil);
+        if red then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
+        if imgui.SmallButton('sure?##trgmdel_' .. m) then
+            trig._modeDelArm = nil;
+            local rr = modeCondRefs(trig.data, m, false);
+            local sr = (deps ~= nil and type(deps.modeSetRefs) == 'function')
+                and deps.modeSetRefs(m, false) or { refs = {} };
+            if #rr.rules == 0 and #(sr.refs or {}) == 0 then
+                deleteModeNow(m);
+                trigSetStatus(string.format('Deleted mode "%s" (nothing referenced it) -- live now.', m), false);
+            else
+                modeUI.del = { name = m, rules = rr.rules, sets = sr.refs or {} };
+            end
+        end
+        if red then imgui.PopStyleColor(1); end
+    else
+        if imgui.SmallButton('x##trgmdel_' .. m) then trig._modeDelArm = m; end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Delete this mode -- the second (red) click confirms.\nIf rules or set entries still reference it, the reference window\nopens first (with its one-click "delete all").');
+        end
+    end
     imgui.EndGroup();
 
     imgui.EndChild();

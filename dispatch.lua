@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 71;   -- 71: equipResolved's resolve order becomes DATA -- the five whole-table post-passes (mp-equip-uncovered, craft-sub-guard, sync-hold-ammo, trinket-vs-ranged, reserved-drops) are named entries run in M._postPassOrder, so the trinket-BEFORE-reserved constraint (ADR 0010) and every future overlay's place in line are one visible, test-pinned list (PL*) instead of prose; the per-slot chain keeps its elseif precedence (locks > sync-hold > pin-reserved > AutoAcc > virtuals > MP), now named; the copy-on-write dance and note building are written once (W/note) instead of eleven times. Behavior bit-identical -- the H/AK/TR/LS/MC sections are the net.
+M.VERSION = 72;   -- 72: serializeTriggers keeps BARE mode definitions -- `[name] = {}` (no bind, no values) is emitted instead of dropped, so a plain UI-created toggle survives the commit round-trip and stays in the Modes list (triggermodel.fromRaw keeps the empty def too; tests TM20-22). Rule matching, resolve order and every other engine path untouched.
+                  -- 71: equipResolved's resolve order becomes DATA -- the five whole-table post-passes (mp-equip-uncovered, craft-sub-guard, sync-hold-ammo, trinket-vs-ranged, reserved-drops) are named entries run in M._postPassOrder, so the trinket-BEFORE-reserved constraint (ADR 0010) and every future overlay's place in line are one visible, test-pinned list (PL*) instead of prose; the per-slot chain keeps its elseif precedence (locks > sync-hold > pin-reserved > AutoAcc > virtuals > MP), now named; the copy-on-write dance and note building are written once (W/note) instead of eleven times. Behavior bit-identical -- the H/AK/TR/LS/MC sections are the net.
                   -- 70: the statefile seam gets ONE reader -- ensureStateFile behind the auto/acc/craft/helm/fish/pin caches (six near-identical clones collapsed; charDir gains the _charDirOverride seam so the file-driven surface finally runs headless, tests SF*). POLICY unified on the pin reader's v44 field lesson: a torn/corrupt state write now DROPS that state everywhere -- craft/helm/fish/auto used to keep the LAST GOOD table forever on a parse failure (raw already held the corrupt text, so the raw-compare short-circuited and even the watcher's clear could not unstick it -- a stale craft overlay glued on was one torn write away). The next good write self-heals; triggers deliberately keep their own keep-previous-and-say-so loader (hand-edited file).
                   -- 69: obi + Oneiros virtual decisions extracted PURE (resolveObi / resolveOneiros, the resolveStaff shape): the rims in resolveVirtual only read env/nativemp/vitals, the decisions take data in -- behavior bit-identical, but the two field-calibrated gates (positive day/weather sign; MP <= floor(base*50/100), boundary inclusive) are finally pinned headless (tests VG*). One /dl why nuance: with the grip unowned AND nativemp missing (broken install), the reason now reads module-unavailable first.
                   -- 68: the AutoOneiros marker is a Lv75 rung UNCONDITIONALLY -- the grip is one fixed Lv75 item, so virtualMinLevel answers 75 even when the manifest has not learned it yet (no more Lv0 always-adopt wildcard on a stale manifest); gearui's + Add stamps the virtual rec Level 75 so the set editor shows the truth.
@@ -2696,6 +2697,11 @@ function M.serializeTriggers(data)
                 if type(def.bind) == 'string' then bits[#bits + 1] = string.format('bind = %q', def.bind); end
                 if #bits > 0 then
                     L[#L + 1] = string.format('        [%q] = { %s },', nm, table.concat(bits, ', '));
+                else
+                    -- a bare toggle (no bind, no values) is still a definition:
+                    -- dropping it made a plain UI-created toggle vanish from
+                    -- the Modes list on the next load (2026-07-20)
+                    L[#L + 1] = string.format('        [%q] = {},', nm);
                 end
             end
             L[#L + 1] = '    },';

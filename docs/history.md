@@ -3246,3 +3246,21 @@ from my Lua file") became two top-row buttons: Import opens the
 paste window (same flow), Auto-Import runs the Lua-file scan
 immediately and opens the tick-list picker (Rescan inside). All
 functions kept, only the surfaces moved. LW1-12/LP1-7. 1670 + 170.
+
+## Bare toggles persist; mode boxes get a delete x (2026-07-20)
+
+Henrik on Mindie BLU: created a simple toggle mode, Commit worked,
+but it never showed in the Modes list. Root cause: a toggle with no
+keybind stored NO definition at all ("needs no definition") -- only
+a rule referencing the mode made it visible, and all three layers
+conspired to drop an empty def (the builder wrote nil, dispatch.
+serializeTriggers skipped `#bits == 0`, triggermodel.fromRaw kept a
+def only when it had values or a bind). Fixed in all three: a bare
+toggle is now an EXPLICIT `[name] = {}` definition that survives
+the whole wipe contract (engine v72; TM20-22 pin serialize -> load
+-> fromRaw -> re-serialize byte-stable). Second ask: every mode box
+now carries an x beside edit -- delete without opening the editor.
+Same flow as the editor's Delete mode (unreferenced = delete +
+commit now; referenced = the reference window with its one-click
+cleanup) behind the red second-click confirm, because the delete
+writes the file immediately. 1673 + 170.

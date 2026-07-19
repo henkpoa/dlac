@@ -93,7 +93,9 @@ function M.fromRaw(raw, canonEvent)
                     if type(v) == 'string' then e.values = e.values or {}; e.values[#e.values + 1] = v; end
                 end
                 if type(def.bind) == 'string' then e.bind = def.bind; end
-                if e.values ~= nil or e.bind ~= nil then copy[nm] = e; end
+                -- an EMPTY e is a bare toggle -- a real definition (dropping
+                -- it un-listed plain UI-created toggles, 2026-07-20)
+                copy[nm] = e;
             end
         end
         if next(copy) ~= nil then data.Modes = copy; end
