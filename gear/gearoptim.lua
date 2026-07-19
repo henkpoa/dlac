@@ -1711,6 +1711,142 @@ function M.pairLadders(cands, opts)
     return chains[1], chains[2];
 end
 
+-- Level-banded ladder for ONE slot (dynamic Auto-build): score candidates at every
+-- level where any candidate's value can change -- adoption (item Level) plus its
+-- level-scaling thresholds (levelstats.thresholds) -- then merge same-winner bands
+-- into segments. A piece whose value DECAYS (Garrison Tunica +1: Refresh+1 dies
+-- past Lv.50) gets an explicit window and the next-best piece takes over -- the
+-- between-level-x-and-y entries the sets already support, assigned automatically.
+-- When the classic chain (no windows, highest-Level-wins flatten) reproduces the
+-- segment winners, it is emitted instead, so monotone slots keep today's output.
+--
+--   items: { { ref = <record>, level = N, breaks = { L1, L2, ... } or nil }, ... }
+--   opts:  { cap = N, scoreAt = function(ref, L) -> number, joint = <ref> or nil }
+--
+-- Returns an ordered array of { ref, minLevel?, maxLevel? } ({} = nothing scores).
+-- Joint rule mirrors the classic chain: segments at/above the joint pick's level
+-- give way to it, lower ones stay as leveling fallbacks.
+function M.levelLadder(items, opts)
+    opts = opts or {};
+    local cap = tonumber(opts.cap) or M.MAX_LEVEL or 75;
+    local scoreAt = opts.scoreAt;
+    if type(items) ~= 'table' or #items == 0 or type(scoreAt) ~= 'function' then return {}; end
+
+    local lvOf = {};
+    for _, it in ipairs(items) do lvOf[it.ref] = math.max(tonumber(it.level) or 0, 1); end
+
+    -- Band starts: each candidate's adoption level + its in-range thresholds.
+    local startSet = {};
+    for _, it in ipairs(items) do
+        local lv = lvOf[it.ref];
+        if lv <= cap then
+            startSet[lv] = true;
+            for _, b in ipairs(it.breaks or {}) do
+                b = tonumber(b);
+                if b ~= nil and b > lv and b <= cap then startSet[b] = true; end
+            end
+        end
+    end
+    local starts = {};
+    for s in pairs(startSet) do starts[#starts + 1] = s; end
+    table.sort(starts);
+    if #starts == 0 then return {}; end
+
+    -- Winner per band, scored AT the band start (nothing changes inside a band).
+    -- score > 0 to win (a 0-value item is never kept). Ties keep the previous
+    -- band's winner (fewest segments), else the higher-Level item.
+    local segs = {};   -- { ref, from, to }, level-ascending, disjoint
+    for i, s in ipairs(starts) do
+        local bandEnd = (i < #starts) and (starts[i + 1] - 1) or cap;
+        local prev = (#segs > 0) and segs[#segs].ref or nil;
+        local win, winSc, winLv = nil, 0, -1;
+        for _, it in ipairs(items) do
+            local lv = lvOf[it.ref];
+            if lv <= s then
+                local sc = tonumber(scoreAt(it.ref, s)) or 0;
+                if sc > 0 and (sc > winSc
+                   or (sc == winSc and win ~= prev and (it.ref == prev or lv > winLv))) then
+                    win, winSc, winLv = it.ref, sc, lv;
+                end
+            end
+        end
+        if win ~= nil then
+            if #segs > 0 and segs[#segs].ref == win and segs[#segs].to == s - 1 then
+                segs[#segs].to = bandEnd;
+            else
+                segs[#segs + 1] = { ref = win, from = s, to = bandEnd };
+            end
+        elseif #segs > 0 then
+            -- Winner-less band (everything scores 0 here): keep wearing the last
+            -- piece that was worth anything -- unweighted stats (DEF) still count
+            -- for something, and the classic chain never bared the slot either.
+            segs[#segs].to = bandEnd;
+        end
+    end
+
+    -- Joint trim: everything at/above the joint pick's adoption level yields.
+    local joint = opts.joint;
+    if joint ~= nil then
+        local jlv = lvOf[joint] or 0;
+        local kept = {};
+        for _, sg in ipairs(segs) do
+            if sg.from < jlv then
+                if sg.to >= jlv then sg.to = jlv - 1; end
+                kept[#kept + 1] = sg;
+            end
+        end
+        if #kept > 0 and kept[#kept].ref == joint and kept[#kept].to == jlv - 1 then
+            kept[#kept].to = cap;   -- contiguous with its own earlier window: one entry
+        else
+            kept[#kept + 1] = { ref = joint, from = math.max(jlv, 1), to = cap };
+        end
+        segs = kept;
+    end
+    if #segs == 0 then return {}; end
+
+    -- The flatten both the engine and bestByLevel apply: a ranged entry live at
+    -- this level owns its window; otherwise highest adoption level wins.
+    local function flattenPick(entries, L)
+        local best, bLv, bRank = nil, -1, -1;
+        for _, e in ipairs(entries) do
+            local lv = lvOf[e.ref];
+            local rank = (e.minLevel ~= nil or e.maxLevel ~= nil) and 1 or 0;
+            if lv <= L and L >= (e.minLevel or 0) and L <= (e.maxLevel or 999)
+               and (rank > bRank or (rank == bRank and lv > bLv)) then
+                best, bLv, bRank = e.ref, lv, rank;
+            end
+        end
+        return best;
+    end
+    local function matchesSegs(entries)
+        for _, sg in ipairs(segs) do
+            if flattenPick(entries, sg.from) ~= sg.ref
+               or flattenPick(entries, sg.to) ~= sg.ref then return false; end
+        end
+        return true;
+    end
+
+    -- Emission 1: the classic chain (unique winners, no windows) -- byte-for-byte
+    -- today's ladder whenever plain flatten already lands every segment winner.
+    local classic, seen = {}, {};
+    for _, sg in ipairs(segs) do
+        if not seen[sg.ref] then seen[sg.ref] = true; classic[#classic + 1] = { ref = sg.ref }; end
+    end
+    if matchesSegs(classic) then return classic; end
+
+    -- Emission 2: explicit windows -- each segment owns [from, to]; the first
+    -- opens at its item's adoption (no minLevel), the last stays open-ended so
+    -- the set keeps working above the build cap.
+    local out = {};
+    for i, sg in ipairs(segs) do
+        local e = { ref = sg.ref };
+        if i > 1 then e.minLevel = sg.from; end
+        if sg.to < cap then e.maxLevel = sg.to; end
+        out[#out + 1] = e;
+    end
+    return out;
+end
+
 -- Resolve job/level from opts, falling back to the live player.
 local function jobLevelFromOpts(opts)
     local job, level = opts.job, opts.level;

@@ -38,6 +38,23 @@ function M.effective(rec, level)
     return M.apply(rec.Id, level, rec.Stats);
 end
 
+-- Levels at which this item's effective stats CHANGE -- the band edges for
+-- level-aware set building (a `from` row turns on at its value, a `below` row
+-- turns off at it). Sorted ascending; {} for non-scaling items.
+function M.thresholds(id)
+    local rows = (id ~= nil) and DATA[id] or nil;
+    if rows == nil then return {}; end
+    local set = {};
+    for _, r in ipairs(rows) do
+        local t = tonumber(r.from) or tonumber(r.below);
+        if t ~= nil then set[t] = true; end
+    end
+    local out = {};
+    for t in pairs(set) do out[#out + 1] = t; end
+    table.sort(out);
+    return out;
+end
+
 -- Effective stats for `id` at `level`, starting from baseStats (catalog values).
 -- Returns baseStats itself when the item has no scaling (zero-copy fast path).
 function M.apply(id, level, baseStats)

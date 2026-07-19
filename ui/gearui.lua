@@ -2480,32 +2480,64 @@ local function autoBuild(job, level)
                 if not inPool then jp = nil; end
             end
             if dyn then
-                local byLevel = {};
-                for _, r in ipairs(cands) do byLevel[#byLevel + 1] = r; end
-                table.sort(byLevel, function(a, b)
-                    if (a.Level or 0) ~= (b.Level or 0) then return (a.Level or 0) < (b.Level or 0); end
-                    return scoreOfItem(a, useLevel) > scoreOfItem(b, useLevel);
-                end);
-                -- Seed at 0 (not -inf): keep an item only when it actually scores > 0 on the
-                -- weighted stats, so a 0-value item is never kept just for being the lowest level.
-                local kept, bestScore = {}, 0;
-                for _, r in ipairs(byLevel) do
-                    local sc = scoreOfItem(r, useLevel);
-                    if sc > bestScore then kept[#kept + 1] = { rec = r }; bestScore = sc; end
-                end
-                -- The JOINT pick caps the ladder: rungs at/above its level give way
-                -- (they would win the level flatten and undo the set-level choice);
-                -- lower rungs stay as leveling fallbacks. A joint EMPTY leaves the
-                -- ladder alone -- it still earns its keep below the build level.
-                if jp ~= nil then
-                    local trimmed = {};
-                    for _, it in ipairs(kept) do
-                        if (it.rec.Level or 0) < (jp.Level or 0) and it.rec ~= jp then trimmed[#trimmed + 1] = it; end
+                -- Banded ladder (gearoptim.levelLadder): candidates are re-scored at
+                -- every level where value can change (adoption + levelstats
+                -- thresholds), so a piece whose worth DECAYS mid-ladder (Garrison
+                -- Tunica +1: Refresh+1 dies past Lv.50) gets an explicit
+                -- between-level window and the next-best piece takes over. Monotone
+                -- slots come back as the classic unranged chain. Joint rule
+                -- unchanged: rungs at/above the joint pick's level give way.
+                local ladder = nil;
+                if has.optim and type(optim.levelLadder) == 'function' then
+                    local litems = {};
+                    for _, r in ipairs(cands) do
+                        litems[#litems + 1] = { ref = r, level = r.Level or 0,
+                            breaks = (has.lscale and type(lscale.thresholds) == 'function')
+                                 and lscale.thresholds(r.Id) or nil };
                     end
-                    trimmed[#trimmed + 1] = { rec = jp };
-                    kept = trimmed;
+                    local okl, lad = pcall(optim.levelLadder, litems, {
+                        cap = useLevel,
+                        scoreAt = function(ref, L) return scoreOfItem(ref, L); end,
+                        joint = jp,
+                    });
+                    if okl and type(lad) == 'table' then
+                        ladder = {};
+                        for _, e in ipairs(lad) do
+                            ladder[#ladder + 1] = { rec = e.ref, minLevel = e.minLevel, maxLevel = e.maxLevel };
+                        end
+                    end
                 end
-                if #kept > 0 then built[sl.label] = kept; end
+                if ladder ~= nil then
+                    if #ladder > 0 then built[sl.label] = ladder; end
+                else
+                    -- Fallback (gearoptim absent): the classic single-level chain.
+                    local byLevel = {};
+                    for _, r in ipairs(cands) do byLevel[#byLevel + 1] = r; end
+                    table.sort(byLevel, function(a, b)
+                        if (a.Level or 0) ~= (b.Level or 0) then return (a.Level or 0) < (b.Level or 0); end
+                        return scoreOfItem(a, useLevel) > scoreOfItem(b, useLevel);
+                    end);
+                    -- Seed at 0 (not -inf): keep an item only when it actually scores > 0 on the
+                    -- weighted stats, so a 0-value item is never kept just for being the lowest level.
+                    local kept, bestScore = {}, 0;
+                    for _, r in ipairs(byLevel) do
+                        local sc = scoreOfItem(r, useLevel);
+                        if sc > bestScore then kept[#kept + 1] = { rec = r }; bestScore = sc; end
+                    end
+                    -- The JOINT pick caps the ladder: rungs at/above its level give way
+                    -- (they would win the level flatten and undo the set-level choice);
+                    -- lower rungs stay as leveling fallbacks. A joint EMPTY leaves the
+                    -- ladder alone -- it still earns its keep below the build level.
+                    if jp ~= nil then
+                        local trimmed = {};
+                        for _, it in ipairs(kept) do
+                            if (it.rec.Level or 0) < (jp.Level or 0) and it.rec ~= jp then trimmed[#trimmed + 1] = it; end
+                        end
+                        trimmed[#trimmed + 1] = { rec = jp };
+                        kept = trimmed;
+                    end
+                    if #kept > 0 then built[sl.label] = kept; end
+                end
             else
                 if jointPick ~= nil then
                     -- Set-level choice: fill only what the joint optimizer chose.

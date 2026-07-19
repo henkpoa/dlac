@@ -571,6 +571,11 @@ check('L3 base table never mutated', tamas.Stats.MP, 15);
 check('L4 non-scaling passthrough', lstats.effective({ Id = 13548, Stats = { ConvertHPtoMP = 25 } }, 74).ConvertHPtoMP, 25);
 check('L5 nil level = base stats', lstats.effective(tamas, nil).MP, 15);
 check('L6 nil-safe',               lstats.effective(nil, 74), nil);
+-- thresholds = the band edges levelLadder re-scores at (real generated data:
+-- Garrison Tunica +1 changes once at 51; 13680 ramps DEF at every decade)
+check('L7 thresholds: Garrison Tunica +1', table.concat(lstats.thresholds(26543), ','), '51');
+check('L8 thresholds: DEF ramp item',      table.concat(lstats.thresholds(13680), ','), '30,40,50,60,70,80,90');
+check('L9 thresholds: non-scaling = {}',   #lstats.thresholds(13548), 0);
 
 -- ---------------------------------------------------------------------------
 -- M. cross-job cycle values. Mode DEFINITIONS are per-job trigger data; VALUES
@@ -3955,6 +3960,79 @@ end)();
     c1, c2 = optim.pairLadders({ A, B, C, D }, { pins = { D, B } });
     check('PL12 leftover pin trims its chain',                 names(c1), 'A,B');
     check('PL13 single-copy pin stripped from the other chain', names(c2), 'D');
+end)();
+
+-- ---------------------------------------------------------------------------
+-- LL. level-banded single-slot ladders (gearoptim.levelLadder) -- Auto-build
+--     re-scores candidates at every band edge (adoption level + levelstats
+--     thresholds) and emits between-level windows where value changes. Field
+--     case (Henrik, 2026-07-19): Garrison Tunica +1's Refresh+1 dies past
+--     Lv.50 -- its points must stop at 50 and the next body take over at 51.
+--     Monotone slots must come back as the classic unranged chain (parity).
+-- ---------------------------------------------------------------------------
+(function()
+    local optim = dofile('gear/gearoptim.lua');
+    local function fmt(lad)
+        local t = {};
+        for _, e in ipairs(lad) do
+            t[#t + 1] = tostring(e.ref) .. '[' .. tostring(e.minLevel or '') .. '-' .. tostring(e.maxLevel or '') .. ']';
+        end
+        return table.concat(t, ',');
+    end
+    local function ladder(items, scores, joint, cap)
+        return optim.levelLadder(items, {
+            cap = cap or 75,
+            scoreAt = function(ref, L) return scores[ref](L); end,
+            joint = joint,
+        });
+    end
+
+    -- monotone upgrades: classic chain, zero windows -- today's output verbatim
+    local lad = ladder(
+        { { ref = 'A', level = 1 }, { ref = 'B', level = 20 } },
+        { A = function() return 5; end, B = function() return 9; end });
+    check('LL1 monotone slot keeps the classic unranged chain', fmt(lad), 'A[-],B[-]');
+
+    -- THE tunica shape: A is worth 10 up to 50 then decays to 4; B (worth 6,
+    -- wearable at 30) must own 51+ -- and A's window must CLOSE at 50 even
+    -- though B's adoption level is lower than the handover level
+    lad = ladder(
+        { { ref = 'A', level = 20, breaks = { 51 } }, { ref = 'B', level = 30 } },
+        { A = function(L) return (L < 51) and 10 or 4; end, B = function() return 6; end });
+    check('LL2 decay closes the window and hands over', fmt(lad), 'A[-50],B[51-]');
+
+    -- joint pick (set-level choice, per-item score irrelevant) trims exactly
+    -- like the classic chain: lower rungs stay, output unranged (parity)
+    lad = ladder(
+        { { ref = 'A', level = 20 }, { ref = 'C', level = 40 } },
+        { A = function() return 10; end, C = function() return 3; end }, 'C');
+    check('LL3 joint trim stays classic', fmt(lad), 'A[-],C[-]');
+
+    -- zero scorers are never kept (the seed-at-0 rule)
+    lad = ladder({ { ref = 'Z', level = 10 } }, { Z = function() return 0; end });
+    check('LL4 zero score never kept', fmt(lad), '');
+
+    -- a `from` gainer can win, lose the middle, and win again: the SAME item
+    -- appears twice with disjoint windows
+    lad = ladder(
+        { { ref = 'B', level = 10, breaks = { 40 } }, { ref = 'A', level = 30 } },
+        { B = function(L) return (L < 40) and 2 or 9; end, A = function() return 5; end });
+    check('LL5 regain emits the item twice with disjoint windows', fmt(lad), 'B[-29],A[30-39],B[40-]');
+
+    -- a winner-less gap (everything scores 0 there) inherits the previous
+    -- winner: unweighted stats still count, the slot is never bared
+    lad = ladder(
+        { { ref = 'A', level = 20, breaks = { 41 } }, { ref = 'B', level = 30, breaks = { 50 } } },
+        { A = function(L) return (L < 41) and 10 or 0; end, B = function(L) return (L < 50) and 0 or 7; end });
+    check('LL6 winner-less gap extends the previous winner', fmt(lad), 'A[-49],B[50-]');
+
+    -- thresholds above the build cap are ignored: below it the tunica never
+    -- decays, so the slot is a single classic entry
+    lad = ladder(
+        { { ref = 'A', level = 20, breaks = { 51 } }, { ref = 'B', level = 30 } },
+        { A = function(L) return (L < 51) and 10 or 4; end, B = function() return 6; end },
+        nil, 40);
+    check('LL7 breaks beyond the cap are ignored', fmt(lad), 'A[-]');
 end)();
 
 -- ---------------------------------------------------------------------------
