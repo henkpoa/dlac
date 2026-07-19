@@ -3053,3 +3053,21 @@ lastBox at fire time; retire/adopt also cancel a booked heal. The
 prints every value the keep decision reads plus a round marker, so a
 stale seeded copy of this file diagnoses itself by silence. LG26-31.
 1535 + 6, smoke 170.
+
+## Session addendum "the window is the debugger" (2026-07-19)
+
+'/dl ls state' came back silent. Round 5 found two truths at once.
+First: in the LAC state, dispatch answered any non-apply ls subcommand
+with its usage line, so the new command LOOKED unknown -- dispatch now
+stays quiet for 'state'. Second and bigger: a headless sim driving the
+REAL registered handlers in the 11:34 capture's exact wire order shows
+the whole round-4 chain working -- DISABLE books the heal, the pump
+queues the re-apply, stragglers get blocked, main changes and typed
+offs cancel. So the assembled chain became a permanent test (LGF
+series, fixture tree under tests\fixtures\keepflow), and the live
+keep state now renders IN the lockstyle window ('keep4: box N ...'
+under the checkbox) -- chat and command routing were exactly the
+layers in doubt, and the window only needs to render. No keep4 line
+after a reload = an old lockstyle.lua is loaded, which is then the
+finding. Heal booking made book-once at all three triggers. 1555 +
+170.

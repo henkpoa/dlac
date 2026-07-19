@@ -860,6 +860,25 @@ function M.render()
                 .. 'job\'s boxes -- those are OnLoad Lockstyle\'s business (above). A\n'
                 .. 'lockstyle you turned off yourself stays off.');
         end
+        -- Live keep-state readout, in the WINDOW deliberately (field round 4:
+        -- chat and command routing were exactly the layers in doubt -- this
+        -- line only needs the window to render, which the field has proven).
+        -- Doubling as the staleness check: no 'keep4' line = old file loaded.
+        pcall(function()
+            local box = (type(M._lastBox) == 'function') and M._lastBox() or nil;
+            local due = (type(M._healDue) == 'function') and M._healDue() or nil;
+            local on  = (type(M._guardOn) == 'function') and M._guardOn() or false;
+            imgui.TextColored(COL_DIM, string.format('keep4: box %s%s%s',
+                box ~= nil and tostring(box) or '-',
+                due ~= nil and string.format(', heal %ds', math.max(0, math.ceil(due - os.clock()))) or '',
+                on and '' or ', guard off'));
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Keep-on-subjob live state (debug). box = the lockstyle a subjob change\n'
+                    .. 'will restore (set by any Apply, cleared by /lockstyle off or a main-job\n'
+                    .. 'change). heal = a restore is booked. guard off = no dlac lockstyle is\n'
+                    .. 'live right now. If this line is missing, an OLD lockstyle.lua is loaded.');
+            end
+        end);
         -- own row (Henrik: beside the checkbox it widened the whole window);
         -- full column width, same as Import/Preview
         if imgui.Button('Apply lockstyle##lsgo', { 216, 0 }) then
@@ -926,6 +945,11 @@ local appliedJob, pendingJob, dueAt = nil, nil, nil;
 -- follows re-records it. Session-only on purpose: after a reload we no longer
 -- know a lockstyle is ours to keep, and the guard starts inactive anyway.
 local lastSub, lastBox, subDueAt = nil, nil, nil;
+-- Live-state accessors for the window readout (render() is defined ABOVE
+-- these locals, so it reaches them through M at frame time -- the same
+-- late-binding pattern as M._touched).
+function M._lastBox() return lastBox; end
+function M._healDue() return subDueAt; end
 function M.pump()
     retireLegacyPreview();
     -- Closing the window while previewing ends the preview (Henrik: always);
@@ -975,7 +999,9 @@ function M.pump()
         local realFlip = (lastSub ~= nil) and (pendingJob == nil);   -- not login settle, not a main change in flight
         lastSub = sub;
         if realFlip and data.keepSub == true and lastBox ~= nil then
-            subDueAt = os.clock() + 3;
+            -- book-once: an earlier trigger (the DISABLE heal, or 0x100) may
+            -- already hold the timer -- never push a booked heal further out
+            if subDueAt == nil then subDueAt = os.clock() + 3; end
             if type(M._guardArm) == 'function' then M._guardArm(); end
         end
     end
@@ -1074,6 +1100,7 @@ end
 
 local guard = { active = false, zoneInAt = -1e9, userOffAt = -1e9 };
 function M._guardUserOff() guard.userOffAt = os.clock(); end
+function M._guardOn() return guard.active; end   -- window readout
 -- The keep-on-subjob pump (above) calls this on a subjob flip it intends to
 -- survive: the client's confused DISABLE (its private flag is off) can land
 -- before OR after our re-apply, so open the same blockable window a zone-in
@@ -1092,8 +1119,10 @@ ashita.events.register('packet_out', 'dlac-lockstyle-pout', function(e)
             lastBox = nil;    -- new job = new box set; main changes are OnLoad's business
             subDueAt = nil;   -- cancels the heal the preceding DISABLE just booked
         elseif kind == 'sub' and data ~= nil and data.keepSub == true and lastBox ~= nil then
-            M._guardArm();               -- the client's DISABLE follows this packet: swallow it
-            subDueAt = os.clock() + 3;   -- ...and heal the server's own 0x100-side clear
+            M._guardArm();               -- stragglers around the change get swallowed
+            if subDueAt == nil then      -- book-once (the DISABLE usually got here first)
+                subDueAt = os.clock() + 3;
+            end
         end
         return;
     end
@@ -1113,7 +1142,8 @@ ashita.events.register('packet_out', 'dlac-lockstyle-pout', function(e)
         subDueAt = nil;        -- ...including a heal already booked
     elseif act == 'deactivate' then
         guard.active = false;  -- yields -- but lastBox survives (client noise)
-        if M._keepHeal(act, data ~= nil and data.keepSub == true, lastBox) then
+        if M._keepHeal(act, data ~= nil and data.keepSub == true, lastBox)
+           and subDueAt == nil then      -- book-once, like every other trigger
             subDueAt = os.clock() + 3;   -- the kill schedules the cure (round 4)
         end
     elseif act == 'block' then

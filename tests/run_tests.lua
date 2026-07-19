@@ -5292,6 +5292,114 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- LGF. keep-on-subjob FULL FLOW -- the whole addon-state chain driven
+--      headlessly through the REAL registered handlers, in the exact wire
+--      order of the 11:34 field capture (client DISABLE first, 0x100 second,
+--      player struct flips after). Born in field round 4: every pure seam
+--      was green while the assembled chain sat unproven -- this is the
+--      assembled chain. Fixture: tests\fixtures\keepflow (legacy-tier file,
+--      box 3, keepSub on).
+-- ---------------------------------------------------------------------------
+(function()
+    local savedReg, savedClock, savedCore = ashita.events.register, os.clock, AshitaCore;
+    local savedProf = package.loaded['dlac\\profiles'];
+    package.loaded['dlac\\profiles'] = nil;   -- force the legacy-tier read (restored below)
+
+    local handlers, queued = {}, {};
+    ashita.events.register = function(ev, nm, fn) handlers[ev .. '/' .. nm] = fn; end
+    local t = { v = 100 };
+    os.clock = function() return t.v; end
+    local subId = 1;   -- WAR -> RDM at the "moogle"
+    local ABBR = { [1] = 'WAR', [5] = 'RDM', [8] = 'DRK' };
+    AshitaCore = {
+        GetInstallPath = function() return 'tests\\fixtures\\keepflow\\'; end,
+        GetMemoryManager = function()
+            return {
+                GetParty = function() return {
+                    GetMemberName = function() return 'Testy'; end,
+                    GetMemberServerId = function() return 1234; end,
+                }; end,
+                GetPlayer = function() return {
+                    GetMainJob = function() return 8; end,
+                    GetSubJob = function() return subId; end,
+                }; end,
+            };
+        end,
+        GetResourceManager = function()
+            return { GetString = function(_, _, id) return ABBR[id]; end };
+        end,
+        GetChatManager = function()
+            return { QueueCommand = function(_, _, c) queued[#queued + 1] = c; end };
+        end,
+    };
+
+    local ls = dofile('feature/lockstyle.lua');
+    local cmd, pout, pin = handlers['command/dlac-lockstyle'],
+                           handlers['packet_out/dlac-lockstyle-pout'],
+                           handlers['packet_in/dlac-lockstyle-pin'];
+    check('LGF0 all three handlers registered', cmd ~= nil and pout ~= nil and pin ~= nil, true);
+    if cmd == nil or pout == nil or pin == nil then
+        ashita.events.register, os.clock, AshitaCore = savedReg, savedClock, savedCore;
+        package.loaded['dlac\\profiles'] = savedProf;
+        return;
+    end
+    local function pkt(id, bytes)
+        local d = {};
+        for i = 1, 136 do d[i] = string.char(0); end
+        for off, v in pairs(bytes) do d[off] = string.char(v); end
+        return { id = id, data = table.concat(d), blocked = false };
+    end
+
+    ls.pump(); t.v = 107; ls.pump();   -- login settle (6s grace resolves)
+
+    -- apply box 3, engine SET follows
+    cmd({ command = '/dl ls apply 3', blocked = false });
+    pout(pkt(0x053, { [6] = 3 }));
+    check('LGF1 apply remembered', ls._lastBox(), 3);
+    check('LGF2 guard live after SET', ls._guardOn(), true);
+
+    -- the moogle subjob switch, field wire order
+    t.v = 200;
+    local dis = pkt(0x053, { [6] = 0 });
+    pout(dis);
+    check('LGF3 pre-0x100 DISABLE passes (nothing armed yet)', dis.blocked, false);
+    check('LGF4 ...but it books the heal', ls._healDue() ~= nil, true);
+    pout(pkt(0x100, { [5] = 0, [6] = 5 }));   -- sub-only request
+    check('LGF5 box memory survives the change', ls._lastBox(), 3);
+    subId = 5;                                 -- player struct catches up
+    t.v = 202; ls.pump();
+    t.v = 210; ls.pump();
+    check('LGF6 THE FEATURE: the heal re-applies the box', queued[#queued], '/dl ls apply 3');
+    check('LGF7 heal timer consumed', ls._healDue(), nil);
+    pout(pkt(0x053, { [6] = 3 }));             -- the healing SET goes out
+    local straggler = pkt(0x053, { [6] = 0 });
+    pout(straggler);
+    check('LGF8 straggler DISABLE after the heal is swallowed (window armed)', straggler.blocked, true);
+
+    -- main-job change cancels the keep
+    t.v = 300;
+    local dis2 = pkt(0x053, { [6] = 0 });
+    pout(dis2);                                -- client reflex first, books a heal
+    pout(pkt(0x100, { [5] = 5, [6] = 0 }));    -- ...then the MAIN change lands
+    check('LGF9 main change forgets the box', ls._lastBox(), nil);
+    check('LGF10 ...and cancels the booked heal', ls._healDue(), nil);
+
+    -- typed /lockstyle off ends it for real
+    t.v = 400;
+    cmd({ command = '/dl ls apply 3', blocked = false });
+    pout(pkt(0x053, { [6] = 3 }));
+    cmd({ command = '/lockstyle off', blocked = false });
+    local dis3 = pkt(0x053, { [6] = 0 });
+    pout(dis3);
+    check('LGF11 typed off is never blocked', dis3.blocked, false);
+    check('LGF12 typed off forgets the box', ls._lastBox(), nil);
+    check('LGF13 typed off books no heal', ls._healDue(), nil);
+
+    ashita.events.register, os.clock, AshitaCore = savedReg, savedClock, savedCore;
+    package.loaded['dlac\\profiles'] = savedProf;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then

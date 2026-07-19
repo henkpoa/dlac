@@ -3306,7 +3306,9 @@ if inLac() then
             -- requires dispatch there); one state, one printer.
             local g = rawget(_G, 'gFunc');
             if g == nil then return; end
-            if string.lower(tostring(args[2] or '')) ~= 'apply' then
+            local lsSub = string.lower(tostring(args[2] or ''));
+            if lsSub == 'state' then return; end   -- the addon state's keep readout; not ours to answer (its usage line here read as "unknown command" in the field)
+            if lsSub ~= 'apply' then
                 print('[dlac] usage: /dl ls apply [box]   (GUI: the armor button in the dlac header)');
                 return;
             end
