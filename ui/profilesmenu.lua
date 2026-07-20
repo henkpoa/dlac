@@ -332,8 +332,11 @@ pm.render = function()
                                         local optim = require('dlac\\gear\\gearoptim');
                                         local wn, werr = optim.importJobWeightsTextAt(dstC.name, meta.weights, meta.job, prof.sanitizeName(f.name[1]));
                                         wOK = (wn ~= nil and wn > 0);
+                                        -- werr beside a real count = the live merge landed but could
+                                        -- not persist -- surface it, or the import dies on reload.
                                         wnote = (wn ~= nil)
-                                            and string.format(' + stat weights for %d set(s)', wn)
+                                            and (string.format(' + stat weights for %d set(s)', wn)
+                                                 .. ((werr ~= nil) and ('  [!] ' .. tostring(werr)) or ''))
                                             or (' (stat weights skipped: ' .. tostring(werr) .. ')');
                                     end
                                 end);

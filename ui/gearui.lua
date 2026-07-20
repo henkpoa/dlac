@@ -2665,7 +2665,7 @@ local function doCopyFromStatic(srcName)
     end
 end
 
--- Entry point from the "Copy from" combo: refuse without a target, confirm an
+-- Entry point from the Copy from window: refuse without a target, confirm an
 -- overwrite, else copy straight in. The overwrite modal is rendered in renderSetsTab.
 local function copyFromStaticSet(srcName)
     if M.workingSetName == nil or M.workingSetName == '' then
@@ -2678,11 +2678,66 @@ local function copyFromStaticSet(srcName)
         if type(list) == 'table' and #list > 0 then filled = filled + 1; end
     end
     if filled > 0 then
-        ui._copyConfirm = { src = srcName, target = M.workingSetName, filled = filled };
+        ui._copyConfirm = { src = srcName, target = M.workingSetName, filled = filled, kind = 'static' };
         ui._copyConfirmOpen = true;   -- one-shot OpenPopup (see renderSetsTab)
         return;
     end
     doCopyFromStatic(srcName);
+end
+
+-- Copy another DYNAMIC set's slots INTO the selected set (Henrik 2026-07-20:
+-- the Copy from window offers dynamic sources beside the legacy statics).
+-- Same FULL-REPLACE contract as the static copy; the source set is untouched.
+local function doCopyFromDynamic(srcName)
+    local target = M.workingSetName;
+    local built, nSlots = {}, 0;
+    pcall(function()
+        local dyn = profsets.getDynamicSets();
+        local setT = (type(dyn) == 'table') and dyn[srcName] or nil;
+        if type(setT) ~= 'table' then return; end
+        for _, sl in ipairs(EQUIP_SLOTS) do
+            local slotList = setT[sl.label];
+            if type(slotList) == 'table' then
+                local items = {};
+                for _, elem in ipairs(slotList) do
+                    local it = resolveSetItem(elem);
+                    if it ~= nil then items[#items + 1] = it; end
+                end
+                if #items > 0 then built[sl.label] = items; nSlots = nSlots + 1; end
+            end
+        end
+    end);
+    if nSlots > 0 then
+        M.working = built;   -- FULL-REPLACE: slots the source doesn't fill are cleared
+        ui.setSelected = nil;
+        _setDirty = true;
+        setStatus(string.format('Copied dynamic "%s" into "%s" (%d slots -- whole set replaced). Edit, then Commit.',
+            srcName, target, nSlots), false);
+    else
+        setStatus(string.format('Dynamic set "%s" has nothing to copy (empty, or its items are not resolvable). "%s" left unchanged.',
+            srcName, target), true);
+    end
+end
+
+local function copyFromDynamicSet(srcName)
+    if M.workingSetName == nil or M.workingSetName == '' then
+        setStatus('Create or pick a set first, then copy into it.', true);
+        return;
+    end
+    if srcName == M.workingSetName then
+        setStatus('That IS the selected set -- pick a different source.', true);
+        return;
+    end
+    local filled = 0;
+    for _, list in pairs(M.working) do
+        if type(list) == 'table' and #list > 0 then filled = filled + 1; end
+    end
+    if filled > 0 then
+        ui._copyConfirm = { src = srcName, target = M.workingSetName, filled = filled, kind = 'dynamic' };
+        ui._copyConfirmOpen = true;
+        return;
+    end
+    doCopyFromDynamic(srcName);
 end
 
 local function commitCurrentSet(job)
@@ -3474,10 +3529,13 @@ local function renderSetsTab(job, level)
         if okb and changed then ui._wbuf = {}; invalidateCandidates(); end
     end
 
-    -- Controls row: set picker + New + Commit + Delete + Rename + Stats/Weights
-    -- toggles. Picker and name box widened 2026-07-20 (Henrik: the row had a
-    -- ton of dead space and names clipped); the Lock checkbox is gone -- that
-    -- workflow lives on the Equipped tab ("Lock when equipped").
+    -- Controls row (compacted 2026-07-20, Henrik: "much more compact, less
+    -- bloaty"): set picker + ONE Manage... menu (New / Rename / Delete /
+    -- Copy from / Delete static) + the Stats toggle. Commit, Weights and
+    -- Auto-Build All moved below the build-level checkbox; the free-text
+    -- new-set box, the Profile: line and the Copy from / Delete static row
+    -- are gone -- their flows live in the Manage popups now (the Profiles
+    -- window covers profile naming/switching).
     imgui.TextColored(COL.DIM, 'Set:'); imgui.SameLine(0, 4);
     imgui.PushItemWidth(240);
     if imgui.BeginCombo('##ffxilac_setpick', M.workingSetName or '(select)') then
@@ -3496,52 +3554,51 @@ local function renderSetsTab(job, level)
     end
     imgui.PopItemWidth();
     imgui.SameLine();
-    imgui.PushItemWidth(200); imgui.InputText('##ffxilac_newset', ui.newSetName, 32); imgui.PopItemWidth();
-    imgui.SameLine();
-    if imgui.Button('New##setnew', { 46, 22 }) then
-        local nm = ui.newSetName[1];
-        if nm ~= nil and nm ~= '' then
-            M.workingSetName = nm; M.working = {}; ui.setSelected = nil; ui.newSetName[1] = '';
-            _setDirty = false;   -- brand-new empty set -> nothing unsaved yet
-            setStatus('New empty set "' .. nm .. '" -- add items, then Commit.', false);
+    -- The Manage... menu: selectables only SET one-shot flags -- the popups
+    -- must OpenPopup in the window scope, never inside the combo's own popup.
+    imgui.PushItemWidth(140);
+    if imgui.BeginCombo('##ffxilac_setmanage', 'Manage...') then
+        if imgui.Selectable('New...##smg_new') then
+            ui.newSetName[1] = '';
+            ui._newSetOpen = true;
         end
-    end
-    imgui.SameLine();
-    -- Light the Commit button red while the working set has unsaved changes (same pattern as the
-    -- header 'Setup' button). Guarded on ImGuiCol_Button so a missing constant can't error.
-    local _cdirty = _setDirty and ImGuiCol_Button ~= nil;
-    if _cdirty then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
-    if imgui.Button('Commit##setcommit', { 62, 22 }) then commitCurrentSet(job); end
-    if _cdirty then imgui.PopStyleColor(1); end
-    if imgui.IsItemHovered() then imgui.SetTooltip('Saves your current set into sets.Dynamic in your job file (writes <JOB>.lua). Reload LAC afterward.'); end
-    imgui.SameLine(); if imgui.Button('Delete##setdel', { 58, 22 }) then deleteCurrentSet(job); end
-
-    imgui.SameLine();
-    if imgui.Button('Rename##setren', { 0, 22 }) then
-        if M.workingSetName == nil or M.workingSetName == '' then
-            setStatus('No set selected (pick one first).', true);
-        else
-            ui._renameBuf = { M.workingSetName };
-            ui._renameOpen = true;
+        if imgui.Selectable('Rename...##smg_ren') then
+            if M.workingSetName == nil or M.workingSetName == '' then
+                setStatus('No set selected (pick one first).', true);
+            else
+                ui._renameBuf = { M.workingSetName };
+                ui._renameOpen = true;
+            end
         end
+        if imgui.Selectable('Delete...##smg_del') then
+            if M.workingSetName == nil or M.workingSetName == '' then
+                setStatus('No set selected (pick one first).', true);
+            else
+                ui._delSetOpen = true;
+            end
+        end
+        if imgui.Selectable('Copy from...##smg_copy') then
+            if M.workingSetName == nil or M.workingSetName == '' then
+                setStatus('Pick or create a set first -- Copy from replaces its contents.', true);
+            else
+                ui._copyFromOpen = true;
+            end
+        end
+        if #profsets.staticSetNames() > 0 then
+            if imgui.Selectable('Delete static...##smg_dstat') then
+                ui._delStatic = nil;
+                ui._delStaticOpen = true;
+            end
+        end
+        imgui.EndCombo();
     end
+    imgui.PopItemWidth();
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Rename this set EVERYWHERE it is used -- the sets file, every trigger\nrule pointing at it, and its weights/build-slot marks. No manual hunting.');
+        imgui.SetTooltip('Everything that manages the selected set: New, Rename (propagates\neverywhere), Delete, Copy from another set -- and Delete static when\nlegacy static sets are present.');
     end
 
     imgui.SameLine();
     if imgui.Button((ui.showStats and 'Stats v' or 'Stats >') .. '##setstats', { 72, 22 }) then ui.showStats = not ui.showStats; end
-    imgui.SameLine();
-    if imgui.Button((ui.showWeights and 'Weights v' or 'Weights >') .. '##setwtoggle', { 84, 22 }) then ui.showWeights = not ui.showWeights; end
-    if imgui.IsItemHovered() then imgui.SetTooltip('Toggle the Stat Weights editor -- opens in its own resizable, movable window.'); end
-
-    imgui.SameLine();
-    if imgui.Button('Auto-Build All##setbuildall', { 0, 22 }) then
-        autoBuildAll(job, level);
-    end
-    if imgui.IsItemHovered() then
-        imgui.SetTooltip('Will auto-build all gear-sets with stat weights set.');
-    end
 
     -- Build-level override (general set management): lifts the item level cap for BOTH
     -- Auto-build and the manual + Add picker, so you can assemble over-level sets.
@@ -3558,69 +3615,28 @@ local function renderSetsTab(job, level)
         end
     end
 
+    -- Commit / Weights / Auto-Build All (moved under the level checkbox,
+    -- Henrik 07-20 -- the top row keeps only selection + management).
+    -- Commit lights red while the working set has unsaved changes (the header
+    -- 'Setup' pattern); guarded on ImGuiCol_Button.
+    local _cdirty = _setDirty and ImGuiCol_Button ~= nil;
+    if _cdirty then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
+    if imgui.Button('Commit##setcommit', { 62, 22 }) then commitCurrentSet(job); end
+    if _cdirty then imgui.PopStyleColor(1); end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Saves your current set into sets.Dynamic in your job file (writes <JOB>.lua). Reload LAC afterward.'); end
+    imgui.SameLine();
+    if imgui.Button((ui.showWeights and 'Weights v' or 'Weights >') .. '##setwtoggle', { 84, 22 }) then ui.showWeights = not ui.showWeights; end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Toggle the Stat Weights editor -- opens in its own resizable, movable window.'); end
+    imgui.SameLine();
+    if imgui.Button('Auto-Build All##setbuildall', { 0, 22 }) then
+        autoBuildAll(job, level);
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Will auto-build all gear-sets with stat weights set.');
+    end
+
     -- Automation is a SLOT entry now (ADR 0004, 4th revision): + Add on the Main slot
     -- offers dlac:AutoStaff, on Waist dlac:AutoObi -- no per-set flags anymore.
-
-    -- Profile storage layer: name the active profile so it's never a mystery
-    -- where a Commit lands (function-scoped require: gearui is at the LuaJIT
-    -- 200-local cap, so no new upvalue).
-    pcall(function()
-        local prof = require('dlac\\profiles');
-        if type(prof) == 'table' and prof.storageExists() then
-            imgui.TextColored(COL.DIM, 'Profile: ' .. prof.activeName() .. '   (switch/clone: /dl profile)');
-        end
-    end);
-
-    -- Migration helper: seed a Dynamic working set from a static (non-Dynamic) set.
-    -- Statics come from the live job file AND backups\pre-profiles\ (profilesets).
-    imgui.TextColored(COL.DIM, 'Copy from:'); imgui.SameLine(0, 4);
-    imgui.PushItemWidth(150);
-    if imgui.BeginCombo('##ffxilac_copyfrom', '(static set)') then
-        local statics = profsets.staticSetNames();
-        if #statics == 0 then imgui.TextColored(COL.DIM, '(none -- no static sets on this profile)'); end
-        for _, nm in ipairs(statics) do
-            if imgui.Selectable(nm, false) then copyFromStaticSet(nm); end
-        end
-        imgui.EndCombo();
-    end
-    imgui.PopItemWidth();
-    if imgui.IsItemHovered() then
-        imgui.SetTooltip('Copy an old static set (e.g. Idle) INTO the dynamic set you have selected --\nit keeps that set\'s name and replaces its slots. Pick or create a set first.\nCandidate order is preserved; a slot not ordered best-first is flagged in chat.\nEdit the lists, then Commit to write it into sets.Dynamic.');
-    end
-    imgui.SameLine(0, 6); imgui.TextColored(COL.DIM, 'copy a static set into the selected dynamic set (migration)');
-    -- Faulty legacy statics (items you no longer own, pre-dlac experiments) can
-    -- go: pick, then confirm on the red button. Backed up like every profile
-    -- write; the live LAC table keeps it until the next Reload LAC.
-    imgui.SameLine(0, 16); imgui.TextColored(COL.DIM, 'Delete static:'); imgui.SameLine(0, 4);
-    imgui.PushItemWidth(150);
-    if imgui.BeginCombo('##ffxilac_delstatic', ui._delStatic or '(static set)') then
-        for _, nm in ipairs(profsets.staticSetNames()) do
-            if imgui.Selectable(nm .. '##dstat_' .. nm, ui._delStatic == nm) then ui._delStatic = nm; end
-        end
-        imgui.EndCombo();
-    end
-    imgui.PopItemWidth();
-    if ui._delStatic ~= nil then
-        imgui.SameLine(0, 4);
-        local red = (ImGuiCol_Button ~= nil);
-        if red then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
-        if imgui.Button('DELETE##dstatgo', { 0, 22 }) then
-            local ok, action, backup = nil, nil, nil;
-            pcall(function() ok, action, backup = setmgr.deleteStaticSet(job, ui._delStatic); end);
-            if ok == true then
-                profsets.invalidate();
-                setStatus(string.format('deleted static "%s" -- Reload LAC to apply.  backup: %s',
-                    tostring(ui._delStatic), tostring(backup)), false);
-            else
-                setStatus('delete static failed: ' .. tostring(action), true);
-            end
-            ui._delStatic = nil;
-        end
-        if red then imgui.PopStyleColor(1); end
-        if imgui.IsItemHovered() then
-            imgui.SetTooltip('Deletes this static set block from <JOB>.lua (backed up first).\nTrigger rules still pointing at it will show [missing].');
-        end
-    end
 
     -- Auto-expire after 5s: a lingering "... live now" line would otherwise read as a fresh
     -- commit the next time, hiding whether the new one actually took.
@@ -3671,23 +3687,145 @@ local function renderSetsTab(job, level)
         if c == nil then imgui.CloseCurrentPopup(); imgui.EndPopup(); return; end
         imgui.TextColored(COL.HEADER, 'Replace set contents?');
         imgui.Separator();
-        fmt.textWrapped(COL.USABLE, string.format('Replace "%s" (%d filled slot%s) with static "%s"?',
-            tostring(c.target), c.filled, (c.filled == 1) and '' or 's', tostring(c.src)));
-        fmt.textWrapped(COL.DIM, 'The whole set is replaced: slots the static set does not define are cleared. Nothing is committed until you press Commit.');
+        fmt.textWrapped(COL.USABLE, string.format('Replace "%s" (%d filled slot%s) with %s "%s"?',
+            tostring(c.target), c.filled, (c.filled == 1) and '' or 's',
+            (c.kind == 'dynamic') and 'dynamic set' or 'static', tostring(c.src)));
+        fmt.textWrapped(COL.DIM, 'The whole set is replaced: slots the source does not define are cleared. Nothing is committed until you press Commit.');
         imgui.Separator();
         local red = (ImGuiCol_Button ~= nil);
         if red then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
         if imgui.Button('Replace##copyconfirmgo', { 120, 24 }) then
-            local src = c.src;
+            local src, kind = c.src, c.kind;
             ui._copyConfirm = nil;
             imgui.CloseCurrentPopup();
-            doCopyFromStatic(src);
+            if kind == 'dynamic' then doCopyFromDynamic(src); else doCopyFromStatic(src); end
         end
         if red then imgui.PopStyleColor(1); end
         imgui.SameLine(0, 8);
         if imgui.Button('Cancel##copyconfirmno', { 90, 24 }) then
             ui._copyConfirm = nil;
             imgui.CloseCurrentPopup();
+        end
+        imgui.EndPopup();
+    end
+
+    -- New set (Manage... > New): name it, Enter (or Create) starts editing.
+    if ui._newSetOpen then imgui.OpenPopup('##dlac_setnew'); ui._newSetOpen = false; end
+    if imgui.BeginPopup('##dlac_setnew') then
+        imgui.TextColored(COL.HEADER, 'New set');
+        if imgui.IsWindowAppearing ~= nil and imgui.IsWindowAppearing()
+           and imgui.SetKeyboardFocusHere ~= nil then imgui.SetKeyboardFocusHere(0); end
+        imgui.PushItemWidth(200);
+        local entered = false;
+        if ImGuiInputTextFlags_EnterReturnsTrue ~= nil then
+            entered = imgui.InputText('##setnewname', ui.newSetName, 32, ImGuiInputTextFlags_EnterReturnsTrue);
+        else
+            imgui.InputText('##setnewname', ui.newSetName, 32);
+        end
+        imgui.PopItemWidth();
+        imgui.SameLine(0, 6);
+        if imgui.Button('Create##setnewgo', { 0, 22 }) or entered then
+            local nm = tostring(ui.newSetName[1] or ''):gsub('^%s+', ''):gsub('%s+$', '');
+            if nm ~= '' then
+                M.workingSetName = nm; M.working = {}; ui.setSelected = nil; ui.newSetName[1] = '';
+                _setDirty = false;   -- brand-new empty set -> nothing unsaved yet
+                setStatus('New empty set "' .. nm .. '" -- add items, then Commit.', false);
+                imgui.CloseCurrentPopup();
+            end
+        end
+        imgui.TextColored(COL.DIM, 'Enter creates the set and starts editing it.');
+        imgui.EndPopup();
+    end
+
+    -- Delete set (Manage... > Delete): the warning Henrik asked for verbatim.
+    if ui._delSetOpen then imgui.OpenPopup('##dlac_setdelconfirm'); ui._delSetOpen = false; end
+    if imgui.BeginPopup('##dlac_setdelconfirm') then
+        fmt.textWrapped(COL.USABLE, string.format('Are you sure you want to delete this set?  ("%s")',
+            tostring(M.workingSetName)));
+        imgui.Separator();
+        local red = (ImGuiCol_Button ~= nil);
+        if red then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
+        if imgui.Button('Delete##setdelgo', { 100, 24 }) then
+            deleteCurrentSet(job);
+            imgui.CloseCurrentPopup();
+        end
+        if red then imgui.PopStyleColor(1); end
+        imgui.SameLine(0, 8);
+        if imgui.Button('Cancel##setdelno', { 90, 24 }) then imgui.CloseCurrentPopup(); end
+        imgui.EndPopup();
+    end
+
+    -- Copy from (Manage... > Copy from): dynamic OR legacy static sources,
+    -- each in its own scroll list; the pick replaces the selected set's
+    -- contents (a filled target still goes through the Replace confirm).
+    -- Picks are gathered and dispatched AFTER the children: a Selectable
+    -- inside a child never auto-closes the popup, so the close is explicit.
+    if ui._copyFromOpen then imgui.OpenPopup('##dlac_setcopyfrom'); ui._copyFromOpen = false; end
+    if imgui.BeginPopup('##dlac_setcopyfrom') then
+        imgui.TextColored(COL.HEADER, 'Copy into: ' .. fmt.esc(tostring(M.workingSetName)));
+        imgui.TextColored(COL.DIM, 'Pick a source -- its slots replace this set\'s contents.');
+        imgui.Separator();
+        local pick = nil;
+        imgui.BeginChild('##setcf_dyn', { 210, 260 }, true);
+        imgui.TextColored(COL.HEADER, 'Dynamic sets');
+        local anyD = false;
+        for _, nm in ipairs(profsets.dynamicSetNames()) do
+            if nm ~= M.workingSetName then
+                anyD = true;
+                if imgui.Selectable(nm .. '##cfd_' .. nm, false) then pick = { kind = 'dynamic', nm = nm }; end
+            end
+        end
+        if not anyD then imgui.TextColored(COL.DIM, '(no other dynamic sets)'); end
+        imgui.EndChild();
+        imgui.SameLine(0, 8);
+        imgui.BeginChild('##setcf_stat', { 210, 260 }, true);
+        imgui.TextColored(COL.HEADER, 'Static sets (legacy)');
+        local statics = profsets.staticSetNames();
+        if #statics == 0 then imgui.TextColored(COL.DIM, '(none on this profile)'); end
+        for _, nm in ipairs(statics) do
+            if imgui.Selectable(nm .. '##cfs_' .. nm, false) then pick = { kind = 'static', nm = nm }; end
+        end
+        imgui.EndChild();
+        if pick ~= nil then
+            imgui.CloseCurrentPopup();
+            if pick.kind == 'dynamic' then copyFromDynamicSet(pick.nm); else copyFromStaticSet(pick.nm); end
+        end
+        imgui.EndPopup();
+    end
+
+    -- Delete static (Manage... > Delete static): pick a row to arm it, then
+    -- the red DELETE confirms -- same backup + Reload-LAC contract as before.
+    if ui._delStaticOpen then imgui.OpenPopup('##dlac_delstaticpop'); ui._delStaticOpen = false; end
+    if imgui.BeginPopup('##dlac_delstaticpop') then
+        imgui.TextColored(COL.HEADER, 'Delete a static set');
+        fmt.textWrapped(COL.DIM, 'Legacy sets at the root of <JOB>.lua (backed up first; the live LAC table keeps the set until the next Reload LAC). Trigger rules still pointing at it will show [missing].');
+        imgui.Separator();
+        imgui.BeginChild('##dstatlist', { 260, 200 }, true);
+        local statics = profsets.staticSetNames();
+        if #statics == 0 then imgui.TextColored(COL.DIM, '(none left)'); end
+        for _, nm in ipairs(statics) do
+            if imgui.Selectable(nm .. '##dst_' .. nm, ui._delStatic == nm) then ui._delStatic = nm; end
+        end
+        imgui.EndChild();
+        if ui._delStatic ~= nil then
+            local red = (ImGuiCol_Button ~= nil);
+            if red then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
+            if imgui.Button('DELETE ' .. fmt.esc(ui._delStatic) .. '##dstatgo', { 0, 24 }) then
+                local ok, action, backup = nil, nil, nil;
+                pcall(function() ok, action, backup = setmgr.deleteStaticSet(job, ui._delStatic); end);
+                if ok == true then
+                    profsets.invalidate();
+                    setStatus(string.format('deleted static "%s" -- Reload LAC to apply.  backup: %s',
+                        tostring(ui._delStatic), tostring(backup)), false);
+                else
+                    setStatus('delete static failed: ' .. tostring(action), true);
+                end
+                ui._delStatic = nil;
+                imgui.CloseCurrentPopup();
+            end
+            if red then imgui.PopStyleColor(1); end
+        else
+            imgui.TextColored(COL.DIM, '(pick a set above to arm the delete)');
         end
         imgui.EndPopup();
     end

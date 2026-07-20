@@ -2631,7 +2631,9 @@ end
 -- may rename the job). Current character: merged into the LIVE stores and
 -- saved through saveWeights; another character: their file is read, merged
 -- and re-rendered -- the same parser and renderer either way.
--- Returns setCount | nil, why.
+-- Returns setCount [, warning] | nil, why. The warning fires when the merge
+-- landed live but could not persist -- callers surface it, because the
+-- import would silently evaporate on the next reload otherwise.
 function M.importJobWeightsTextAt(charFolder, text, srcJob, dstJob)
     if type(text) ~= 'string' or type(srcJob) ~= 'string' or type(dstJob) ~= 'string' then
         return nil, 'bad arguments';
@@ -2652,18 +2654,46 @@ function M.importJobWeightsTextAt(charFolder, text, srcJob, dstJob)
     n = n + rekeyJobEntries(d.prioPerSet, srcJob, dstJob, add.prioPerSet);
     if n == 0 then return nil, 'payload holds no weights for ' .. tostring(srcJob); end
 
+    -- Current-character detection is BELT AND BRACES (2026-07-20, field case:
+    -- a friend's imported weights never showed in the GUI): the path-string
+    -- compare can miss when the party identity read hiccups, and taking the
+    -- FILE branch for the character whose stores are LIVE is fatal -- the
+    -- file gets the weights, the live stores don't, and the next GUI save
+    -- rewrites the file FROM those import-less stores. So the profiles
+    -- layer's own current-folder answer backs the path compare up.
     local pf = weightsPathFor(charFolder);
-    if pf == nil or pf == M.weightsPath() then
+    local isCurrent = (pf == nil) or (pf == M.weightsPath());
+    if not isCurrent then
+        pcall(function()
+            local prof = require('dlac\\profiles');
+            if type(prof) == 'table' and type(prof.currentCharFolder) == 'function' then
+                isCurrent = (charFolder == prof.currentCharFolder());
+            end
+        end);
+    end
+    if isCurrent then
         -- The current character: merge live, save through the one writer.
         if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
         for k, v in pairs(add.perSet) do M._perSet[k] = v; end
         for k, v in pairs(add.slotsPerSet) do M._slotsPerSet[k] = v; end
         for k, v in pairs(add.modePerSet) do M._modePerSet[k] = v; end
         for k, v in pairs(add.prioPerSet) do M._prioPerSet[k] = v; end
-        M.saveWeights();   -- may report "not logged in" headless; the merge itself stands
+        local sok, serr = M.saveWeights();
+        if not sok then
+            -- The merge stands for THIS session; without the file it dies on
+            -- the next reload -- say so instead of losing it silently.
+            return n, 'imported live, but saving gearweights.lua failed: ' .. tostring(serr);
+        end
         return n;
     end
-    -- Another character: read-merge-rewrite their file.
+    -- Another character: read-merge-rewrite their file. Their dlac\ folder
+    -- may not exist yet (fresh character) -- io.open never creates dirs.
+    pcall(function()
+        if ashita and ashita.fs and ashita.fs.create_directory then
+            local dir = pf:match('^(.*\\)[^\\]+$');
+            if dir ~= nil then ashita.fs.create_directory(dir); end
+        end
+    end);
     local dst = weightsDataFor(charFolder) or { perSet = {}, slotsPerSet = {}, named = {}, namedSlots = {},
                                                 modePerSet = {}, prioPerSet = {}, prioNamed = {} };
     for k, v in pairs(add.perSet) do dst.perSet[k] = v; end

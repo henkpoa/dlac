@@ -5866,6 +5866,14 @@ end)();
         and got.Accuracy.perUnit == 12 and got.Accuracy.cap == 60, true);
     check('PX16 payload without the named job refuses',
         (select(2, optim.importJobWeightsTextAt('Whoever_1', wtext, 'DRK', 'DRK'))) ~= nil, true);
+    -- Live-branch persist failures are LOUD (2026-07-20, the field case of a
+    -- friend's weightless import): headless saveWeights cannot resolve a
+    -- path, so the import must return its count PLUS the warning -- losing
+    -- the merge silently on the next reload was the failure mode.
+    local iN2, iWarn = optim.importJobWeightsTextAt('Whoever_1', wtext, 'BLU', 'BLU3');
+    check('PX16b live merge still counts', iN2, 1);
+    check('PX16c persist failure surfaces as a warning', type(iWarn) == 'string'
+        and iWarn:find('saving gearweights', 1, true) ~= nil, true);
     optim.bindSetWeights(nil, nil);
 
     -- dependency analysis: what the data references (the form's gating input)

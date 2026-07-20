@@ -3320,3 +3320,32 @@ bottom strip when a status message shows. Every Shared exports row
 gets an x beside import: red second-click confirm, deletes the
 FILE from dlac-exports (profiles.deleteExport -- path-traversal
 guarded; imported copies stay), re-lists. 1693 + 170.
+
+## Sets row compacted: Manage menu; import weights hardened (2026-07-20)
+
+Henrik round 2 on compactness: the Sets top row is now picker +
+Manage... menu (New / Rename / Delete / Copy from / Delete static
+-- last one only when statics exist) + Stats. New opens a name
+popup (Enter creates + starts editing); Delete asks "Are you sure
+you want to delete this set?"; Copy from opens a two-list window
+(dynamic sources beside legacy statics -- doCopyFromDynamic is the
+new dynamic twin, same FULL-REPLACE + Replace-confirm contract);
+Delete static moved into its own pick-to-arm popup. Commit /
+Weights / Auto-Build All moved under the Build-as-lv.75 checkbox;
+the free-text new-set box, the Profile: line and the Copy from /
+Delete static row are gone.
+
+Import investigation (friend's weights didn't follow): the
+mechanism itself verified CLEAN headless against Henrik's exact
+export file (parse -> importJobWeightsTextAt -> perSetKeys -> bound
+weights all land; scratchpad repro). Three SILENT failure holes
+fixed in importJobWeightsTextAt: (1) current-character detection is
+belt-and-braces now -- path-string compare OR profiles.
+currentCharFolder -- because taking the file branch for the LIVE
+character wrote a file the next GUI save clobbered from import-less
+stores (the weights evaporate exactly as reported); (2) a live
+merge whose gearweights.lua save fails now returns a WARNING that
+the Profiles menu shows ([!] beside the set count) instead of dying
+silently on the next reload; (3) the other-character branch creates
+the target dlac\ folder first (io.open never mkdirs). PX16b/c pin
+the loud-warning contract. 1695 + 170.
