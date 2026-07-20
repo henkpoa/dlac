@@ -574,6 +574,10 @@ end)();
         ok4 and select(1, ammoui.status(nil)), 0);
     local ok5, amw = pcall(require, 'dlac\\feature\\ammowatch');
     check('S138 ammowatch loads under the ui tree', ok5 and type(amw) == 'table', true);
+    local ok6, ebx = pcall(require, 'dlac\\feature\\eboxammo');
+    check('S139 eboxammo loads headless', ok6 and type(ebx) == 'table', true);
+    check('S139b headless is never a Crystal Warrior (affirmative-only gate)',
+        ok6 and ebx.isCW(), false);
 end)();
 
 -- ---------------------------------------------------------------------------

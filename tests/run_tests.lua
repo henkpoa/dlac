@@ -6103,6 +6103,78 @@ end)();
     aw.removeAmmo(1);
     check('AW15 removeAmmo', #aw.list == 1 and aw.list[1].name == 'Iron Bullet', true);
 
+    -- EB. eboxammo -- the E-Box 0x1A4 client (trove's wire format, reimplemented;
+    -- Crystal-Warrior-only consumer of gamemode.get). Parsing is string.byte so
+    -- the whole wire path runs here; packets are built as synthetic strings.
+    local eb = dofile('feature/eboxammo.lua');
+    local function pk(bytes)
+        local t = {};
+        for off = 0, 63 do t[off + 1] = string.char(bytes[off] or 0); end
+        return table.concat(t);
+    end
+    local function msgAt(t, off, s)
+        for k = 1, #s do t[off + k - 1] = string.byte(s, k); end
+        return t;
+    end
+    check('EB1 clamp: none in box -> 0', eb._clampQty(99, 0), 0);
+    check('EB1b clamp to what the box holds', eb._clampQty(99, 12), 12);
+    check('EB1c junk qty -> 0', eb._clampQty('x', 5), 0);
+    check('EB1d floors fractions', eb._clampQty(3.7, 5), 3);
+
+    check('EB2 ITEM outside our stream is not ours (trove\'s traffic)',
+        eb._onPacket(pk({ [0x04] = 1, [0x08] = 10 })), false);
+    eb._beginStream();
+    check('EB3 CLEAR consumed while pending', eb._onPacket(pk({ [0x04] = 0 })), true);
+    eb._onPacket(pk({ [0x04] = 1, [0x08] = 0x36, [0x09] = 0x53, [0x0C] = 200 }));   -- id 21302 x200
+    eb._onPacket(pk({ [0x04] = 1, [0x08] = 0x56, [0x09] = 0x53, [0x0C] = 1 }));     -- id 21334 x1
+    check('EB3b END_LIST from another source does not commit',
+        eb._onPacket(pk({ [0x04] = 2, [0x05] = 3 })), false);
+    check('EB3c END_LIST source 0 commits', eb._onPacket(pk({ [0x04] = 2, [0x05] = 0 })), true);
+    check('EB3d counts committed', eb.counts[21302] == 200 and eb.counts[21334] == 1, true);
+    check('EB4 stream closed: a late ITEM is not ours',
+        eb._onPacket(pk({ [0x04] = 1, [0x08] = 10 })), false);
+
+    eb.busy = true;
+    check('EB5 ACK for someone else\'s action is not ours',
+        eb._onPacket(pk({ [0x04] = 3, [0x05] = 15, [0x06] = 1 })), false);
+    check('EB5b withdraw ACK success clears busy',
+        eb._onPacket(pk({ [0x04] = 3, [0x05] = 2, [0x06] = 1 })), true);
+    check('EB5c success status is not an error', eb.busy == false and eb.statusErr == false, true);
+    eb.busy = true;
+    eb._onPacket(pk(msgAt({ [0x04] = 3, [0x05] = 2, [0x06] = 0 }, 0x10, 'Inventory full.')));
+    check('EB5d refusal carries the server\'s words', eb.status, 'Inventory full.');
+    check('EB5e refusal is an error', eb.statusErr, true);
+    check('EB5f ACK with nothing in flight is not ours',
+        eb._onPacket(pk({ [0x04] = 3, [0x05] = 2, [0x06] = 1 })), false);
+
+    check('EB6 unsolicited LOCKED is not ours (must not shut the panel)',
+        eb._onPacket(pk({ [0x04] = 4, [0x05] = 1 })), false);
+    eb._beginStream();
+    eb._onPacket(pk({ [0x04] = 4, [0x05] = 1 }));
+    check('EB6b LOCKED reason 1 while pending = not a Crystal Warrior', eb.lockedReason, 'cw');
+    eb.lockedReason = nil;
+    eb._beginStream();
+    eb._onPacket(pk(msgAt({ [0x04] = 4, [0x05] = 2 }, 0x10, 'Locked.')));
+    check('EB6c LOCKED reason 2 = box not unlocked', eb.lockedReason == 'locked' and eb.lockedMsg == 'Locked.', true);
+    eb.lockedReason = nil;
+
+    check('EB7 refresh refuses headless (not CW -- the affirmative-only gate)', eb.refresh(), false);
+    check('EB7b withdraw refuses headless too', eb.withdraw(21334, 1), false);
+
+    -- the box scan (probe-injected, the helmwatch proximity convention:
+    -- distances are SQUARED on the wire, yalms out)
+    local world = { [12] = { name = 'Ephemeral Box', d2 = 100 },
+                    [40] = { name = 'Ephemeral Box', d2 = 25 },
+                    [77] = { name = 'Nomad Moogle',  d2 = 4 } };
+    local probe = {
+        present = function(idx) return world[idx] ~= nil; end,
+        name    = function(idx) return world[idx] and world[idx].name; end,
+        distSq  = function(idx) return world[idx] and world[idx].d2; end,
+    };
+    check('EB8 nearest box wins, in yalms', eb._scanBox(probe), 5.0);
+    world[40] = nil; world[12] = nil;
+    check('EB8b no box rendered -> nil (moogles are not boxes)', eb._scanBox(probe), nil);
+
     -- level: persisted per entry (GUI sort data; the engine ignores it)
     local txt2 = aw._serialize(true, 1, {}, {
         { name = 'A', id = 1, type = 'Marksmanship', level = 75, ranged = true, ws = false, special = false } });

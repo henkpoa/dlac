@@ -26,6 +26,13 @@ local _iok, imgui = pcall(require, 'imgui');
 local _awok, aw = pcall(require, 'dlac\\feature\\ammowatch');
 _awok = _awok and type(aw) == 'table';
 
+-- E-Box counts + withdraw (Crystal Warriors ONLY -- Henrik: "only crystal
+-- warriors may view this"; eboxammo.isCW gates on an affirmative
+-- gamemode.get() == 'CW', so Wings/ACE/unknown see nothing at all).
+local _ebok, eb = pcall(require, 'dlac\\feature\\eboxammo');
+_ebok = _ebok and type(eb) == 'table';
+local EB_QTY = {};   -- per-item withdraw-qty input state, keyed by item id
+
 local COL_HEADER = { 0.60, 0.75, 1.00, 1.00 };
 local COL_DIM    = { 0.55, 0.55, 0.55, 1.00 };
 local COL_TEXT   = { 0.70, 0.70, 0.70, 1.00 };
@@ -113,6 +120,10 @@ function M.render(deps, availW)
         return;
     end
     aw.loadState();
+    -- Crystal Warriors ONLY (affirmative gamemode 'CW' -- unknown shows
+    -- nothing); a server LOCKED reason 'cw' shuts it again from the other end.
+    local cwBox = _ebok and eb.isCW() and eb.lockedReason ~= 'cw';
+    if cwBox then eb.refreshIfStale(15); end
 
     imgui.TextColored(COL_HEADER, 'AutoAmmo');
     imgui.SameLine(0, 10);
@@ -176,6 +187,18 @@ function M.render(deps, availW)
     end
     if #aw.list == 0 then
         imgui.TextColored(COL_DIM, 'nothing configured yet -- add ammo from the owned list below.');
+    end
+    -- Proximity warning (CW only): fetching needs a nearby Ephemeral Box --
+    -- warned here without targeting anything (the helmwatch proximity read).
+    if cwBox and eb.lockedReason == nil then
+        local d = eb.boxDistance();
+        if d == nil then
+            imgui.TextColored(COL_DIM, string.format(
+                'No %s in sight -- stand near one to fetch.', eb.BOX_NAME));
+        elseif d > eb.BOX_RANGE then
+            imgui.TextColored(COL_ERR, string.format(
+                'Too far from the %s (%.1f yalms -- get within %d).', eb.BOX_NAME, d, eb.BOX_RANGE));
+        end
     end
     local removeAt = nil;
     for i, e in ipairs(aw.list) do
@@ -244,9 +267,53 @@ function M.render(deps, availW)
                 imgui.SetTooltip('Worn for the three magical ranged weapon skills that consume NO ammo\non this server: Leaden Salute, Wildfire, Trueflight.');
             end
         end
+        -- E-Box line: CRYSTAL WARRIORS ONLY -- invisible to everyone else
+        -- (affirmative gamemode 'CW'; the server's own LOCKED reply is the
+        -- belt-and-braces second gate).
+        if cwBox and (tonumber(e.id) or 0) > 0 then
+            imgui.Dummy({ 0, 0 }); imgui.SameLine(NAME_X);
+            if eb.lockedReason == 'locked' then
+                imgui.TextColored(COL_DIM, 'E-Box: '
+                    .. ((eb.lockedMsg ~= nil and eb.lockedMsg ~= '') and esc(eb.lockedMsg) or 'not unlocked yet'));
+            else
+                local have = (eb.counts ~= nil) and (eb.counts[e.id] or 0) or nil;
+                imgui.TextColored(COL_GOLD, 'E-Box:');
+                imgui.SameLine(0, 6);
+                imgui.TextColored((have ~= nil and have > 0) and COL_TEXT or COL_DIM,
+                    (have ~= nil) and ('x' .. tostring(have)) or '...');
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('How many are stored in your E-Box (refreshes itself while this panel\nis open, and after every fetch).');
+                end
+                imgui.SameLine(QTY_X);
+                local qb = EB_QTY[e.id];
+                if qb == nil then qb = { 99 }; EB_QTY[e.id] = qb; end
+                imgui.PushItemWidth(86);
+                imgui.InputInt('##ebq' .. tostring(e.id), qb);
+                imgui.PopItemWidth();
+                if qb[1] < 1 then qb[1] = 1; end
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('How many to take out (clamped to what the box holds).');
+                end
+                imgui.SameLine(0, 8);
+                local busy = eb.isBusy();
+                local can = (have ~= nil and have > 0) and not busy;
+                if imgui.SmallButton((busy and 'Fetching...' or 'Fetch') .. '##ebf' .. tostring(e.id)) and can then
+                    eb.withdraw(e.id, qb[1]);
+                end
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip(can and 'Withdraw that many from the E-Box into your bags.'
+                                     or (busy and 'A fetch is already in flight.' or 'The box holds none of these.'));
+                end
+            end
+        end
         imgui.PopID();
     end
     if removeAt ~= nil then aw.removeAmmo(removeAt); end
+    -- The last fetch's verdict (the server's own words on refusal), briefly.
+    if cwBox and eb.status ~= nil and (os.clock() - (eb.statusAt or 0)) < 8 then
+        imgui.Dummy({ 0, 0 }); imgui.SameLine(NAME_X);
+        imgui.TextColored(eb.statusErr and COL_ERR or COL_GREEN, 'E-Box: ' .. esc(eb.status));
+    end
 
     imgui.Separator();
 

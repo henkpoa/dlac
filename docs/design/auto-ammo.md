@@ -129,6 +129,47 @@ Layout, top to bottom:
   "make the table look nice") — name/qty in both; the priority row continues
   with the flag ticks, the owned row with skill / Lv / `+ Add`, and the space
   right of `+ Add` is deliberately reserved for future per-row controls.
+
+### 2b. E-Box counts + fetch — CRYSTAL WARRIORS ONLY (field round 1)
+
+Henrik: "This should not be seen at all if you are not Crystal Warrior mode,
+only crystal warriors may view this." The gate is `gamemode.get() == 'CW'`
+**affirmative only** (Wings/ACE/nil-unknown all see nothing — the
+never-gate-on-nil rule points the safe way: unknown = hidden). This is the
+FIRST consumer of the gamemode foundation. The server's `LOCKED` reply is the
+belt-and-braces second gate (reason 1 = not CW shuts the section again; reason
+2 = E-Box not unlocked shows the server's own message).
+
+`feature/eboxammo.lua` speaks CatsEyeXI's custom **0x1A4** protocol — the
+trove addon's wire format (`trove/utils/packet.lua` + `plugins/ebox.lua`),
+reimplemented exactly like helmwatch reimplemented GET_POINTS so dlac never
+depends on trove being installed:
+
+- counts: `GET_CATEGORY(5)` with ahCat **15 = Ammunition** at 0x0A — ONE
+  request streams every ammo in the box (`ITEM(1)`: u16 id @0x08, u32 qty
+  @0x0C; `CLEAR(0)` resets, `END_LIST(2)` with source byte @0x05 == 0
+  commits). Refreshed while the panel is open (15 s stale window) and after
+  every fetch.
+- fetch: `WITHDRAW(2)` — u16 itemId @0x08, u32 qty @0x0C; the `ACK(3)`
+  carries success @0x06 + the server's message @0x10 (shown verbatim on
+  refusal). One in flight at a time, 3 s lost-ACK timeout (trove's rule).
+- pending discipline: 0x1A4 is a party line (helmwatch's points, trove's own
+  panels) — ITEM rows are staged only while OUR request is in flight, and only
+  what we asked for is consumed/blocked (Ashita still hands blocked events to
+  every addon; blocking matters because the retail client has no idea what
+  opcode 0x1A4 is).
+- Parsing is plain `string.byte` (no struct) so the whole wire path is
+  headless-tested (EB*).
+
+Per configured row (CW only): an `E-Box: xN` line + a qty input (clamped to
+what the box holds) + `Fetch`. Above the list, the **proximity warning**
+(field round 1 addition): E-Boxes are ordinary zone NPCs named **"Ephemeral
+Box"** (Henrik's Bastok Mines sample, server id 17737730, decodes to a plain
+zone-NPC slot), so the panel scans the entity array by NAME — no targeting
+needed, the helmwatch proximity conventions (GetDistance is SQUARED; reads
+memory-only, ~2 s throttle) — and warns when the nearest box is beyond
+`BOX_RANGE = 6` yalms or none is rendered in the zone. Warn only; the fetch
+stays clickable and the server's ACK has the final word.
 - Footer: the strictness one-liner ("Special ammo is never left equipped where
   a shot could consume it; with nothing else to load, the slot is emptied.").
 
@@ -209,7 +250,8 @@ the live Range/Ammo picks — lands AutoAmmo entirely on the state-file side.
 | File | Role |
 |---|---|
 | `feature/ammowatch.lua` | config state + load/save (persisted enabled), pure list helpers; test seams `_saveState`, `_setDeps` |
-| `ui/ammoui.lua` | Automations detail view (helmui contract); owned-ammo enumeration via catalogindex.flat() ∩ ownedcache.counts() |
+| `feature/eboxammo.lua` | E-Box 0x1A4 client (CW-only): GET_CATEGORY(15) counts, WITHDRAW + ACK, LOCKED gates, Ephemeral-Box proximity scan; seams `_onPacket`/`_beginStream`/`_scanBox`/`_clampQty` |
+| `ui/ammoui.lua` | Automations detail view (helmui contract); owned-ammo enumeration via catalogindex.flat() ∩ ownedcache.counts(); CW-gated E-Box rows |
 | `ui/automationsui.lua` | +1 row (`ammo`) + detail-view dispatch arm (pcall-require pattern) |
 | `dispatch.lua` | ensureAmmoState, bag counter, WS id sets, resolveAmmoPlan (pure), ammoOverlayFor, M.dispatch wiring; **M.VERSION 73** |
 | `tests/run_tests.lua` | new AM section, `(function() ... end)()` wrapped |
@@ -234,6 +276,10 @@ the live Range/Ammo picks — lands AutoAmmo entirely on the state-file side.
 8. Fishing pill ON + AutoAmmo ON → bait keeps the Ammo slot at Default
    (stand-down verified).
 9. Job not in the jobs map → AutoAmmo does nothing at all on that job.
+10. E-Box section (CW char): counts appear and match the box; fetch lands the
+    qty in the bags; refusal shows the server's message; the proximity warning
+    reads sane yalms near a real Ephemeral Box and clears within 6.
+11. E-Box section (non-CW char / Wings / ACE): completely invisible.
 
 ## 7. Open questions
 
@@ -244,3 +290,7 @@ the live Range/Ammo picks — lands AutoAmmo entirely on the state-file side.
 - Whether ranged ammo ↔ ranged weapon skill-type mismatch (arrows in a gun)
   needs a UI hint; the server gate only checks "a weapon-type ammo exists".
   Deferred — users enable sensible ammo.
+- Does the server enforce Ephemeral-Box PROXIMITY on GET_CATEGORY/WITHDRAW,
+  or is the box remote-usable (trove carries no distance check)? The warning
+  threshold (6 yalms) is the trade-range convention, unverified — field test
+  10 calibrates or deletes it.

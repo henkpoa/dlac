@@ -3418,3 +3418,26 @@ Quick Draw / Unlimited Shot windows), the Default protection sweep
 ammo the player actually owns), 'remove' ladder end. Pure core
 M.resolveAmmoPlan; docs/design/auto-ammo.md holds the decision
 table + field-test checklist. +41 checks (AM/AW), +4 smoke.
+
+## AutoAmmo field round 1: columns, level sort, the CW E-Box (2026-07-20)
+
+Henrik pre-play polish, three asks. (1) Fixed shared column offsets
+so the two panel lists read as one table (name/qty both lists; flag
+ticks vs skill/Lv/+Add; the space right of + Add stays RESERVED).
+(2) "Sort by level" on the priority list -- one-shot best-first,
+stable ties; entries persist `level` now, the sorter backfills
+pre-level entries from the catalog. (3) E-Box counts + fetch, the
+FIRST gamemode.get() consumer: Crystal Warriors ONLY (affirmative
+'CW' -- Wings/ACE/unknown see nothing at all; the server's LOCKED
+is the second gate). feature/eboxammo.lua reimplements trove's ebox
+0x1A4 wire format (helmwatch precedent -- no trove dependency):
+GET_CATEGORY(ahCat 15 Ammunition) streams every boxed ammo count in
+ONE request; WITHDRAW/ACK surfaces the server's refusal words; ITEM
+staging only while OUR request is pending (0x1A4 is a party line).
+Parsing is string.byte only -- the whole wire path runs headless
+(EB1-EB8b). Mid-round addition: proximity warning without targeting
+-- E-Boxes are ordinary zone NPCs named "Ephemeral Box" (Bastok
+Mines sample id 17737730 = plain zone-NPC slot), scanned by NAME
+with helmwatch's squared-distance conventions; 6-yalm warn
+threshold is the trade-range convention, unverified (design doc
+S:7). Engine untouched all round. +31 checks, +6 smoke.

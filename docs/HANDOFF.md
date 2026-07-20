@@ -214,6 +214,17 @@ agent; the per-repo setup lives in `docs/agents/`.
   core `M.resolveAmmoPlan` (tests AM*), ammowatch serializer (AW*), smoke
   S135-138. **Read docs/design/auto-ammo.md before touching it** — the decision
   table (§3) and the field-test checklist (§6, unrun) live there.
+  - **E-Box counts + fetch (same day, field round 1) — CRYSTAL WARRIORS
+    ONLY**, the FIRST consumer of `gamemode.get()` (affirmative `'CW'` shows,
+    Wings/ACE/nil see NOTHING; the server's 0x1A4 `LOCKED` reply is the second
+    gate). `feature/eboxammo.lua` = trove's ebox wire format reimplemented
+    (GET_CATEGORY ahCat 15 streams every boxed ammo's count in one request;
+    WITHDRAW + ACK with the server's refusal words; pending discipline on the
+    shared 0x1A4 party line; `string.byte` parsing, headless EB*). Per-row
+    `E-Box: xN` + qty + Fetch in ammoui, plus a no-target proximity warning —
+    E-Boxes are zone NPCs named **"Ephemeral Box"**, scanned by name with the
+    helmwatch distance conventions (squared, 6-yalm warn, unverified — design
+    doc §7).
 - **GEAR-SET BONUSES ARE LIVE — display + optimizer (07-18, ADR 0011).**
   `gear\geareffects.lua` is THE evaluator (`comboStats` = whole-composition truth;
   `setsOf`/`setTier` the optimizer seam; counting per SLOT — duplicates twice,
