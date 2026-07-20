@@ -37,6 +37,32 @@ those weren't dropped and flapped forever.
 - The optimizer (`pickRangeAmmo`) is unchanged — it already leaves Range empty when a trinket wins
   the Ammo slot, so Auto-build never proposes the illegal pair.
 
+## Scope ruling (2026-07-20, engine v78)
+
+Field case: a worn **Rimestone (Lv60)** kept a set's **Rouser (Lv20** wind instrument**)** out of
+Range forever — the safeguard was acting *globally*. Henrik's ruling: **the keep-higher-Level
+contest is a WITHIN-SET rule.** It arbitrates a Range+Ammo pair the *plan itself names*; a trinket
+that is merely worn (yesterday's MP battery, a manual equip) never defends the Range slot from
+outside the plan.
+
+- **Worn trinket vs a set's ranged piece → the set wins, whatever the Levels
+  (`dispatch.trinketWornDisplace`).** Because the server keeps Range clear while such ammo is worn,
+  equipping the weapon alone would just be stripped back (the original flap) — so the engine
+  *displaces* the trinket: the plan gains `Ammo = 'remove'` (LAC's native unequip) and the ranged
+  piece lands. **Locked or pin-reserved Ammo is the user's explicit word** — no displacement, and
+  the old worn-reserves-Range mirror keeps Range dropped (stability over the set).
+- **MP-EQUIP never stages a conflicting battery (`dispatch.mpStageEligible`).** The max-MP overlay
+  is an outside-the-set writer, so a battery whose RSlot reserves an *occupied* slot (planned or
+  worn) is filtered out of the staged-equip candidates. Filtering at the source also keeps the
+  one-battery-per-dispatch stage meaningful — a doomed biggest-gain pick would win the stage every
+  full-pool dispatch and starve every other slot's battery.
+- **Within a set, nothing changes**: both pieces named → keep the higher Level, drop the other,
+  exactly as decided above. The reserved-slot mirror for every *other* RSlot conflict (Tunic
+  reserves Head, etc.) is untouched.
+
+Tests: TR11–TR15 / MS9–MS10 (pure rules), TB1–TB7 (wired through `equipResolved`).
+`dispatch.M.VERSION` → 78.
+
 ## Consequences
 
 - No coexistence (the server forbids it) — but a clean, stable result and no flap for the whole

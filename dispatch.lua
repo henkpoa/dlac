@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 77;   -- 77: MP-RELEASE names the INCOMING piece -- 'Hands=MP-RELEASE Oracle's Gloves -> Blessed Mitts +1 (+7 MP surplus spent)'. Field round 1 of v76: a release re-decided identically for 8+ seconds with the worn piece unmoved -- the swap-back never landed, and because the stalled slot keeps the smallest surplus it BLOCKS the whole release queue behind it. Root cause NOT yet found (wardrobe availability was a dead lead -- the server enables all wardrobe flags; Henrik confirms no unavailable gear). The named target turns any future stall into a checkable fact instead of a guess. BuildDynamicSets checks level only (no ownership/bag check) -- a plan can name stored/unowned/bazaared gear; parked in docs/design/maxmp-mode.md.
+M.VERSION = 78;   -- 78: ADR 0010 scoped WITHIN the set (Henrik's ruling; field: worn Rimestone Lv60 kept a Lv20 Rouser out of Range). The keep-higher-Level contest still arbitrates a Range+Ammo pair the PLAN names, but a merely-WORN trinket no longer defends Range from outside it -- the engine DISPLACES it (Ammo='remove', LAC's native unequip; equipping the weapon alone would just be server-stripped, the original flap) unless Ammo is locked or pin-reserved. And MP-EQUIP never stages a battery whose RSlot reserves an occupied slot (planned or worn) -- a doomed biggest-gain pick would also win the one-per-dispatch stage forever and starve every other battery. Pure rules M.trinketWornDisplace / M.mpStageEligible (tests TR11-15, MS9-10, TB*).
+                  -- 77: MP-RELEASE names the INCOMING piece -- 'Hands=MP-RELEASE Oracle's Gloves -> Blessed Mitts +1 (+7 MP surplus spent)'. Field round 1 of v76: a release re-decided identically for 8+ seconds with the worn piece unmoved -- the swap-back never landed, and because the stalled slot keeps the smallest surplus it BLOCKS the whole release queue behind it. Root cause NOT yet found (wardrobe availability was a dead lead -- the server enables all wardrobe flags; Henrik confirms no unavailable gear). The named target turns any future stall into a checkable fact instead of a guess. BuildDynamicSets checks level only (no ownership/bag check) -- a plan can name stored/unowned/bazaared gear; parked in docs/design/maxmp-mode.md.
                   -- 76: maxmp STAGED -- at most ONE battery moves per dispatch (field report: the mode read as an on/off switch, everything on / everything off in one dispatch). Release: smallest surplus first (the big battery stays on longest, per the original spec) -- the all-at-once release was also an accounting bug: N same-dispatch releases drop max MP by the SUM of surpluses while each per-slot hold justified only its own, and the server clamp (cur = min(cur, newMax)) ate the difference; a single smallest-surplus release is clamp-free by construction. Equip: biggest gain first at a full pool; the full-pool gate then paces the ladder (the next battery waits until recovery refills the last one's headroom). Pure choosers M.mpStageRelease/M.mpStageEquip (tests MS*); post-pass 'mp-equip-uncovered' renamed 'mp-stage' (PL2) -- it now owns BOTH the single release and the single equip across covered + uncovered slots.
                   -- 75: /dl lock set <name> -- the Sets tab's "Equip & Lock" (Incursion T3: the server locks your equipment on entry). Wears the COMMITTED set once -- bracketed ClearBuffer/ProcessBuffer, the PetAction tick's lesson, or the equips evaporate -- then locks ALL 16 slots so the engine stops proposing swaps the server would refuse; stale locks are cleared first so the set lands whole. Release: /dl lock all off (or the Sets tab's Unlock). Dispatch rules untouched.
                   -- 74: AutoAmmo per-job config (ammostate fmt 2) -- every job carries its OWN priority list + persisted on/off (field round 2: "all jobs can't use all ammos"); the overlay resolves against as.jobs[<main job>]'s section, legacy fmt-1 files (top-level ammo list + jobs map) keep working unchanged until the GUI migrates them. Decision rules untouched.
@@ -1595,6 +1596,72 @@ function M.trinketRangeDrop(set, rslotFn, levelFn)
     return rangeKey, ammoName;                                -- trinket is higher-or-equal -> drop the ranged weapon
 end
 
+-- Scope ruling (2026-07-20, Henrik): the keep-higher-Level contest above is a
+-- WITHIN-SET rule -- it arbitrates two pieces the plan itself names. A trinket
+-- that is merely WORN (yesterday's MP battery, a manual equip) must not defend
+-- the Range slot from OUTSIDE the plan: the set's ranged piece wins, whatever
+-- the Levels (field case: worn Rimestone Lv60 kept a Lv20 Rouser out of Range
+-- forever). And because the server keeps Range CLEAR while such ammo is worn
+-- (equipping the weapon alone would just be stripped back -- the ADR 0010
+-- flap), winning means DISPLACING the trinket: plan Ammo = 'remove', LAC's
+-- native unequip. Pure; the caller guards locks/pins and writes the plan.
+--   plan     -- the resolved slot->name table. ANY Ammo entry means the plan
+--               speaks for the slot itself (equip or 'remove') -- no displace.
+--   wornAmmo -- the name worn in Ammo right now, or nil.
+-- Returns ('Ammo', incomingRangeName) when the plan must add Ammo='remove',
+-- else nil.
+function M.trinketWornDisplace(plan, wornAmmo, rslotFn)
+    if type(plan) ~= 'table' or type(wornAmmo) ~= 'string' then return nil; end
+    local rangeName = nil;
+    for slot, v in pairs(plan) do
+        local ls = string.lower(tostring(slot));
+        if ls == 'ammo' then return nil; end
+        if ls == 'range' and type(v) == 'string' and v ~= 'remove' then rangeName = v; end
+    end
+    if rangeName == nil then return nil; end                  -- nothing incoming to protect
+    if not hasBit(tonumber(rslotFn(wornAmmo)) or 0, 0x0004) then return nil; end
+    return 'Ammo', rangeName;
+end
+
+-- The same scope ruling from the OTHER side: MP-EQUIP is an outside-the-set
+-- writer, so a battery whose RSlot reserves an OCCUPIED slot never stages (a
+-- Rimestone landing in Ammo makes the server strip the planned or worn
+-- instrument out of Range). Filtering the candidates -- rather than letting
+-- trinket-vs-ranged drop the piece afterwards -- keeps the ONE staged equip
+-- per dispatch meaningful: a doomed biggest-gain pick would win the stage
+-- every full-pool dispatch and starve every other slot's battery forever.
+--   occupantFn(lslot) -- what the slot holds if this dispatch leaves it alone:
+--                        the plan's name for it, else the worn piece ('remove'
+--                        counts as free).
+-- Returns kept, skipped; skipped entries are { c = cand, blocking = lslot }.
+function M.mpStageEligible(cands, occupantFn, rslotFn)
+    if type(cands) ~= 'table' then return cands, nil; end
+    local keep, skipped = {}, nil;
+    for _, c in ipairs(cands) do
+        local mask = tonumber(rslotFn(c.name)) or 0;
+        local blocking = nil;
+        if mask > 0 then
+            for _, e in ipairs(RSLOT_ORDER) do
+                local ls = string.lower(e[2]);
+                if ls ~= tostring(c.lslot) and hasBit(mask, e[1]) then
+                    local occ = occupantFn(ls);
+                    if type(occ) == 'string' and occ ~= 'remove' then
+                        blocking = ls;
+                        break;
+                    end
+                end
+            end
+        end
+        if blocking == nil then
+            keep[#keep + 1] = c;
+        else
+            skipped = skipped or {};
+            skipped[#skipped + 1] = { c = c, blocking = blocking };
+        end
+    end
+    return keep, skipped;
+end
+
 -- RSlot by item name, from the gear manifest. Resolved lazily: in LAC's state the
 -- require finds the character's real gear.lua. Guarded -- a missing/old manifest
 -- means every lookup is nil, and the engine behaves exactly as it did before.
@@ -1816,7 +1883,23 @@ local function equipResolved(s, ctx)
                     end
                 end
             end
-            local up = M.mpStageEquip(mpUp);
+            -- Scope ruling (see mpStageEligible): a battery that RESERVES an
+            -- occupied slot is not a candidate -- outside writers never shove
+            -- planned or worn gear off via RSlot.
+            local planned = {};   -- lowercase slot -> the plan's name for it
+            for slot, v in pairs(out or s) do
+                if type(v) == 'string' then planned[string.lower(tostring(slot))] = v; end
+            end
+            local eligible, skipped = M.mpStageEligible(mpUp, function(ls)
+                return planned[ls] or wornItemName(ls);
+            end, rslotOf);
+            if skipped ~= nil then
+                for _, sk in ipairs(skipped) do
+                    note('%s=MP-SKIP %s (reserves the occupied %s)',
+                        tostring(sk.c.lslot), tostring(sk.c.name), tostring(sk.blocking));
+                end
+            end
+            local up = M.mpStageEquip(eligible);
             if up ~= nil then
                 W()[up.slot] = up.name;
                 if #mpUp > 1 then
@@ -1867,6 +1950,20 @@ local function equipResolved(s, ctx)
             if tdKey ~= nil then
                 W()[tdKey] = nil;
                 note('%s=dropped (stat stick vs ranged weapon; kept %s)', tostring(tdKey), tostring(tdWinner));
+            end
+            -- Scope ruling: the Level contest above is WITHIN-SET only. A worn
+            -- trinket the plan never named must not keep the set's ranged piece
+            -- out (the server would strip the weapon while the trinket sits) --
+            -- displace it: Ammo='remove' rides the same EquipSet. Locked or
+            -- pin-reserved Ammo stays the user's explicit word, so no displace.
+            if M.locks['ammo'] ~= true and (pinRes == nil or pinRes['ammo'] == nil) then
+                local wornAmmo = wornItemName('Ammo');
+                local dk, incoming = M.trinketWornDisplace(out or s, wornAmmo, rslotOf);
+                if dk ~= nil then
+                    W()[dk] = 'remove';
+                    note('%s=remove (worn %s yields Range to the set\'s %s)',
+                        tostring(dk), tostring(wornAmmo), tostring(incoming));
+                end
             end
         end,
         -- Reserved-slot pass (see RSLOT_ORDER). LAST, on the FINAL names: only

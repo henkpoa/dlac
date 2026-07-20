@@ -3501,3 +3501,23 @@ now, once. eboxammo.boxDistance shrank to a three-line consumer;
 arc: Nexus Cape joined the Teleports menu under the Whistle
 (/dl nexus, party-leader teleport, server-gated; pushed to origin
 per Henrik). Tests EW1-EW10 + smoke S139c/d. Suites 1837 + 178.
+
+## ADR 0010 scoped within the set (2026-07-20)
+
+Field case: a worn Rimestone (Lv60 stat stick) kept a set's Rouser
+(Lv20 BRD instrument) out of Range forever -- the trinket/ranged
+keep-higher-Level safeguard was acting globally. Henrik's ruling:
+the Level contest is a WITHIN-SET rule; it arbitrates a Range+Ammo
+pair the plan itself names, and a merely-WORN trinket never defends
+Range from outside the plan. Engine v78: trinketWornDisplace adds
+Ammo='remove' (LAC's native unequip) when a set names Range over a
+worn trinket -- equipping the weapon alone would just be
+server-stripped, the original flap -- unless Ammo is locked or
+pin-reserved (the user's explicit word keeps the old mirror). The
+other outside writer, MP-EQUIP, is filtered at the source:
+mpStageEligible drops battery candidates whose RSlot reserves an
+occupied (planned or worn) slot, which also stops a doomed
+biggest-gain pick from starving the one-per-dispatch stage. Within
+a set nothing changes, and every other reserved-slot mirror (Tunic
+reserves Head) is untouched. Tests TR11-15 / MS9-10 / TB1-7.
+Suites 1868 + 178.

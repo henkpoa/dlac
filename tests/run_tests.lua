@@ -580,6 +580,26 @@ check('MS6 equip picks the biggest gain', dispatchM.mpStageEquip(upCands).slot, 
 check('MS7 equip tie breaks on slot name',
     dispatchM.mpStageEquip({ { slot = 'Ear2', gain = 25 }, { slot = 'Ear1', gain = 25 } }).slot, 'Ear1');
 check('MS8 equip nil-safe',         dispatchM.mpStageEquip(nil), nil);
+
+-- v78 scope ruling: a battery whose RSlot reserves an OCCUPIED slot never
+-- stages (it would shove the planned/worn piece off server-side) -- and
+-- filtering it here keeps the one-per-dispatch stage from being starved by a
+-- doomed biggest-gain pick.
+local msOcc = function(ls) return ({ range = 'Rouser' })[ls]; end
+local msRs  = function(n) return ({ Rimestone = 4 })[n]; end
+local msKeep, msSkip = dispatchM.mpStageEligible(
+    { { slot = 'Ammo', lslot = 'ammo', name = 'Rimestone', gain = 20 },
+      { slot = 'Ring1', lslot = 'ring1', name = 'Astral Ring', gain = 15 } }, msOcc, msRs);
+check('MS9 Range-reserving battery skipped when Range occupied', #msKeep, 1);
+check('MS9b the survivor is the ring',           msKeep[1].name, 'Astral Ring');
+check('MS9c skip reports the blocking slot',     msSkip[1].blocking, 'range');
+check('MS10 free Range: the battery stages',
+    #(dispatchM.mpStageEligible({ { slot = 'Ammo', lslot = 'ammo', name = 'Rimestone', gain = 20 } },
+        function() return nil; end, msRs)), 1);
+check('MS10b Range=remove counts as free',
+    #(dispatchM.mpStageEligible({ { slot = 'Ammo', lslot = 'ammo', name = 'Rimestone', gain = 20 } },
+        function(ls) return ({ range = 'remove' })[ls]; end, msRs)), 1);
+check('MS10c nil-safe', dispatchM.mpStageEligible(nil, msOcc, msRs), nil);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -3412,6 +3432,83 @@ end)();
     local level2 = function(n) return ({ Cinderstone = 75, ['Power Bow'] = 75 })[n]; end
     check('TR10 tie -> keep the trinket, drop Range',
         dispatchM.trinketRangeDrop({ Range = 'Power Bow', Ammo = 'Cinderstone' }, rslot, level2), 'Range');
+
+    -- Scope ruling (v78): the Level contest is WITHIN-SET only. A worn trinket
+    -- OUTSIDE the plan is displaced (Ammo='remove') so the set's ranged piece
+    -- can land -- Level never protects it from outside the pairing.
+    local function disp(plan, worn) return dispatchM.trinketWornDisplace(plan, worn, rslot); end
+    check('TR11 worn trinket vs set Range -> displace',      disp({ Range = 'Toy Bow' }, 'Cinderstone'), 'Ammo');
+    check('TR11b Level does NOT protect a worn trinket',     disp({ Range = 'Toy Bow' }, 'Morion'), 'Ammo');
+    local _, tr11in = disp({ Range = 'Toy Bow' }, 'Cinderstone');
+    check('TR11c the incoming piece is named',               tr11in, 'Toy Bow');
+    check('TR12 plan speaks for Ammo itself -> no displace', disp({ Range = 'Toy Bow', Ammo = 'Iron Arrow' }, 'Cinderstone'), nil);
+    check('TR13 worn fired ammo -> no displace',             disp({ Range = 'Toy Bow' }, 'Iron Arrow'), nil);
+    check('TR13b nothing worn -> no displace',               disp({ Range = 'Toy Bow' }, nil), nil);
+    check('TR14 no Range in plan -> no displace',            disp({ Body = 'Gaudy Harness' }, 'Cinderstone'), nil);
+    check('TR15 Range=remove is not incoming',               disp({ Range = 'remove' }, 'Cinderstone'), nil);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- TB. ADR 0010 scope ruling wired through equipResolved (v78): the field case
+--     -- worn Rimestone Lv60 must not keep a set's Lv20 Rouser out of Range.
+--     Worn ammo comes through the real wornItemName glue (AshitaCore stubbed);
+--     RSlot/Level through the real gear-manifest delegates (NameToObject
+--     stubbed, the LS20 technique). Locked Ammo keeps the OLD behavior: the
+--     user's explicit word outranks the set, so the worn trinket still
+--     reserves Range away (the server mirror stays intact).
+-- ---------------------------------------------------------------------------
+(function()
+    local gearTB = package.loaded['dlac\\gear'];
+    gearTB.NameToObject['Rimestone'] = { Name = 'Rimestone', RSlot = 4, Level = 60 };
+    gearTB.NameToObject['Rouser']    = { Name = 'Rouser', Level = 20 };
+    local savedAC = AshitaCore;
+    -- Worn-gear stub: `name` sits in Ammo (equip id 3), every other slot empty.
+    AshitaCore = {
+        GetMemoryManager = function()
+            return { GetInventory = function()
+                return {
+                    GetEquippedItem = function(self, id)
+                        if id == 3 then return { Index = 1 }; end
+                        return { Index = 0 };
+                    end,
+                    GetContainerItem = function(self, c, i) return { Id = 9001 }; end,
+                };
+            end };
+        end,
+        GetResourceManager = function()
+            return { GetItemById = function(self, id) return { Name = { 'Rimestone' } }; end };
+        end,
+    };
+    for k in pairs(dispatchM.locks) do dispatchM.locks[k] = nil; end
+    dispatchM.modes['maxmp'] = nil;   -- the mp branch must not join this test
+
+    -- the field case: set names Range only -> the worn trinket is displaced
+    local tbNote, tbTbl = dispatchM._equipResolved({ Range = 'Rouser' }, {});
+    check('TB1 set Range survives the worn trinket',  tbTbl.Range, 'Rouser');
+    check('TB2 the worn trinket is displaced',        tbTbl.Ammo, 'remove');
+    check('TB3 the displacement is traced',
+        string.find(tbNote, 'yields Range', 1, true) ~= nil, true);
+
+    -- locked Ammo: no displacement; the worn trinket reserves Range away
+    dispatchM.locks['ammo'] = true;
+    local _, tbLk = dispatchM._equipResolved({ Range = 'Rouser' }, {});
+    check('TB4 locked Ammo: no displacement',              tbLk.Ammo, nil);
+    check('TB5 locked Ammo: the worn trinket keeps Range', tbLk.Range, nil);
+    dispatchM.locks['ammo'] = nil;
+
+    -- the plan speaking for Ammo itself needs no displacement
+    local _, tbAr = dispatchM._equipResolved({ Range = 'Rouser', Ammo = 'Iron Arrow' }, {});
+    check('TB6 plan Ammo rides as-is', tbAr.Ammo, 'Iron Arrow');
+    check('TB6b Range untouched',      tbAr.Range, 'Rouser');
+
+    -- WITHIN-SET pairing unchanged: both named -> Level decides (ADR 0010)
+    local _, tbIn = dispatchM._equipResolved({ Range = 'Rouser', Ammo = 'Rimestone' }, {});
+    check('TB7 within-set: the higher-Level trinket still wins', tbIn.Ammo, 'Rimestone');
+    check('TB7b ... and the set Range drops',                    tbIn.Range, nil);
+
+    AshitaCore = savedAC;
+    gearTB.NameToObject['Rimestone'] = nil;
+    gearTB.NameToObject['Rouser'] = nil;
 end)();
 
 -- ---------------------------------------------------------------------------
