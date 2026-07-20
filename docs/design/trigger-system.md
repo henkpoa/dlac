@@ -119,7 +119,7 @@ manual override). Obis: the eight elemental ones are preferred for their element
 universal Hachirin-no-obi as the owned fallback:
 - **dlac:AutoStaff**: tiered Iridescence pick per cast — elemental staves carry it for their own
   element only (NQ +1 / HQ +2), universal weapons for all elements (+1..+3 per the catalog:
-  Iridal/Ephemeron +1; Chatoyant, Foreshadow +1 and the job-specific Incursion pieces +2;
+  Iridal/Ephemeron +1; Chatoyant, Foreshadow +1 and the other job-specific customs +2;
   Inanna/Keraunos/Gridarvor and the Lv75 relic staves +3 — engine v82 reads the manifest's
   preference-ordered `universals` ladder, first rung usable at the live level). Higher tier
   wins; ties go to the universal, which also covers elementless actions (e.g. Ability triggers).

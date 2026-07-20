@@ -3574,3 +3574,11 @@ rung, so the set marker adopts at the LOWEST universal's level. The
 coverage light grows a 5th step (universal +3) and the detail view a
 +3 column. Old manifests read exactly as before; fmtver forces the
 self-heal rescan. Tests VL8-13, S166b. Suites 1897 + 179.
+
+**Correction, same day (Henrik's ruling):** the id-block inference
+overreached -- Gridarvor, Coeus and Kaladanda are "Oboro weapons",
+customs available to ALL game modes, so their cw flags came off
+(they'd have been invisible on Wings/ACE panels while fully
+functional). Arcanium +1 the inference got right: CW-only,
+confirmed. CW-flagged now = exactly the Incursion lines: Foreshadow
++1, Arcanium +1, Claritas, Izuna, Inanna, Keraunos.

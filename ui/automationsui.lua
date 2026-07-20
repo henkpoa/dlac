@@ -100,15 +100,15 @@ local UNIVERSAL = {
     { name = 'Tupsimati',       tier = 3 },             -- SCH relic staff (Lv75 stage)
     { name = 'Keraunos',        tier = 3, cw = true },  -- BLM/SCH, Incursion T3
     { name = 'Inanna',          tier = 3, cw = true },  -- DRK/BLM, Incursion T3 (Foreshadow's next tier)
-    { name = 'Gridarvor',       tier = 3, cw = true },  -- SMN, Incursion T3
+    { name = 'Gridarvor',       tier = 3 },             -- SMN, Oboro weapon (all modes -- Henrik 07-21)
     -- Iridescence +2
     { name = 'Claritas',        tier = 2, cw = true },  -- RDM, Incursion T3 (over Chatoyant on RDM)
     { name = 'Izuna',           tier = 2, cw = true },  -- NIN, Incursion T3
-    { name = 'Coeus',           tier = 2, cw = true },  -- SCH, Incursion T3
-    { name = 'Kaladanda',       tier = 2, cw = true },  -- BLM, Incursion T3
+    { name = 'Coeus',           tier = 2 },             -- SCH, Oboro weapon (all modes)
+    { name = 'Kaladanda',       tier = 2 },             -- BLM, Oboro weapon (all modes)
     { name = 'Nightingale',     tier = 2 },             -- BRD dagger (Lv70)
     { name = 'Foreshadow +1',   tier = 2, cw = true },  -- DRK/BLM, Incursion (Lv50)
-    { name = 'Arcanium +1',     tier = 2, cw = true },  -- BLM/SCH, Incursion (Lv50)
+    { name = 'Arcanium +1',     tier = 2, cw = true },  -- BLM/SCH, Incursion (Lv50) -- CW CONFIRMED
     { name = 'Chatoyant Staff', tier = 2 },             -- anyone: the +2 fallback
     -- Iridescence +1
     { name = 'Ephemeron',       tier = 1 },             -- RDM/BRD sword (Lv75)
