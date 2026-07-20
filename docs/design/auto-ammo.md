@@ -120,6 +120,15 @@ Layout, top to bottom:
   whole panel edits that job's section, and a dim "also configured:" line
   summarizes the other jobs' sections. The engine resolves against the main
   job's section only — no section, or its switch off, means do nothing.
+- **Ammo type selector** (field round 5: "list is gonna become super
+  bloated") — a combo (Bullets / Bolts / Arrows / Throwing, + Other only when
+  it exists) filtering BOTH lists below; each entry shows "(n set up, m more
+  owned)". Category is a VIEW, derived per item (`ammowatch.categoryOf`:
+  Archery→Arrows, Throwing→Throwing, Marksmanship split by NAME into
+  Bullets/Bolts — the catalog doesn't crawl item_weapon.subskill); the job's
+  priority order still spans all types underneath, and the filtered view's
+  ▲▼ swap VISIBLE neighbours (`swapAmmo` — not necessarily adjacent in the
+  full list).
 - **Priority list** (configured ammo, order = fallback order): per row —
   icon + name (shared renderIcon/itemTooltip), live count (red at 0),
   `Ranged` / `WS` / `Special` checkboxes, ▲▼ reorder, ✕ remove-from-config.

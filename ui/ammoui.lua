@@ -32,6 +32,7 @@ _awok = _awok and type(aw) == 'table';
 local _ebok, eb = pcall(require, 'dlac\\feature\\eboxammo');
 _ebok = _ebok and type(eb) == 'table';
 local EB_QTY = {};   -- per-item withdraw-qty input state, keyed by item id
+local CAT_SEL = nil; -- the category view selection (session-only)
 
 local BTN_RED_OFF  = { 0.45, 0.14, 0.14, 1.0 };   -- out of box range
 local BTN_GREY_OFF = { 0.28, 0.28, 0.28, 1.0 };   -- nothing to fetch / busy
@@ -172,6 +173,51 @@ function M.render(deps, availW)
     imgui.Separator();
 
     -- ------------------------------------------------------------------
+    -- Category view (field round 5: "list is gonna become super bloated").
+    -- One ammo type at a time; the selector filters BOTH lists below. The
+    -- job's priority list still spans all types underneath -- category is a
+    -- VIEW, nothing is stored.
+    -- ------------------------------------------------------------------
+    local ownedAll = ownedShootingAmmo(deps);
+    local inList = {};
+    for _, e in ipairs(aw.list) do inList[string.lower(e.name)] = true; end
+    local catCfg, catOwn = {}, {};
+    for _, e in ipairs(aw.list) do
+        local c = aw.categoryOf(e.name, e.type);
+        catCfg[c] = (catCfg[c] or 0) + 1;
+    end
+    for _, rec in ipairs(ownedAll) do
+        if not inList[string.lower(rec.Name)] then
+            local c = aw.categoryOf(rec.Name, rec.AmmoType);
+            catOwn[c] = (catOwn[c] or 0) + 1;
+        end
+    end
+    if CAT_SEL == nil then   -- first open: land on the first type this job configured
+        for _, c in ipairs(aw.CATEGORIES) do
+            if (catCfg[c] or 0) > 0 then CAT_SEL = c; break; end
+        end
+        CAT_SEL = CAT_SEL or 'Bullets';
+    end
+    imgui.TextColored(COL_TEXT, 'Ammo type:');
+    imgui.SameLine(0, 6);
+    imgui.PushItemWidth(220);
+    if imgui.BeginCombo('##ammocat', string.format('%s  (%d set up, %d more owned)',
+            CAT_SEL, catCfg[CAT_SEL] or 0, catOwn[CAT_SEL] or 0)) then
+        for _, c in ipairs(aw.CATEGORIES) do
+            local nCfg, nOwn = catCfg[c] or 0, catOwn[c] or 0;
+            if c ~= 'Other' or (nCfg + nOwn) > 0 then   -- Other only when it exists
+                local label = string.format('%s  (%d set up, %d more owned)##ammocat_%s', c, nCfg, nOwn, c);
+                if imgui.Selectable(label, c == CAT_SEL) then CAT_SEL = c; end
+            end
+        end
+        imgui.EndCombo();
+    end
+    imgui.PopItemWidth();
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Which ammo type you are editing -- both lists below show only that\ntype. The job\'s priority order still spans all types underneath.');
+    end
+
+    -- ------------------------------------------------------------------
     -- Priority list. Order IS the engine's fallback order.
     -- ------------------------------------------------------------------
     imgui.TextColored(COL_HEADER, 'Priority list');
@@ -230,12 +276,24 @@ function M.render(deps, availW)
         imgui.PopStyleColor(3);
         return false;
     end
-    local removeAt = nil;
+    -- The category-visible subsequence: move buttons swap VISIBLE neighbours
+    -- (which need not be adjacent in the underlying all-types list).
+    local vis = {};
     for i, e in ipairs(aw.list) do
+        if aw.categoryOf(e.name, e.type) == CAT_SEL then vis[#vis + 1] = i; end
+    end
+    if #aw.list > 0 and #vis == 0 then
+        imgui.TextColored(COL_DIM, string.format(
+            'no %s configured for %s yet -- add from the owned list below (other types: use the selector).',
+            string.lower(CAT_SEL), tostring(job or '?')));
+    end
+    local removeAt = nil;
+    for vk, i in ipairs(vis) do
+        local e = aw.list[i];
         imgui.PushID('ammorow_' .. i);
-        if imgui.SmallButton('^') and i > 1 then aw.moveAmmo(i, -1); end
+        if imgui.SmallButton('^') and vk > 1 then aw.swapAmmo(i, vis[vk - 1]); end
         imgui.SameLine(0, 2);
-        if imgui.SmallButton('v') and i < #aw.list then aw.moveAmmo(i, 1); end
+        if imgui.SmallButton('v') and vk < #vis then aw.swapAmmo(i, vis[vk + 1]); end
         imgui.SameLine(NAME_X);
         local rec = (deps ~= nil and type(deps.lookupByName) == 'function') and deps.lookupByName(e.name) or nil;
         if deps ~= nil and type(deps.renderIcon) == 'function' then
@@ -371,14 +429,13 @@ function M.render(deps, availW)
     -- ------------------------------------------------------------------
     -- Owned, not configured.
     -- ------------------------------------------------------------------
-    imgui.TextColored(COL_HEADER, 'Owned ammo');
+    imgui.TextColored(COL_HEADER, 'Owned ' .. string.lower(CAT_SEL));
     imgui.SameLine(0, 8);
-    imgui.TextColored(COL_DIM, '(shooting ammo in your equippable bags, not configured yet)');
-    local inList = {};
-    for _, e in ipairs(aw.list) do inList[string.lower(e.name)] = true; end
+    imgui.TextColored(COL_DIM, '(in your equippable bags, not configured yet)');
     local shown = 0;
-    for _, rec in ipairs(ownedShootingAmmo(deps)) do
-        if not inList[string.lower(rec.Name)] then
+    for _, rec in ipairs(ownedAll) do
+        if not inList[string.lower(rec.Name)]
+           and aw.categoryOf(rec.Name, rec.AmmoType) == CAT_SEL then
             shown = shown + 1;
             imgui.PushID('ammoown_' .. tostring(rec.Id));
             imgui.Dummy({ 0, 0 });
@@ -402,7 +459,8 @@ function M.render(deps, availW)
         end
     end
     if shown == 0 then
-        imgui.TextColored(COL_DIM, 'nothing new -- everything you own is configured (or you carry no shooting ammo).');
+        imgui.TextColored(COL_DIM, string.format(
+            'nothing new -- every %s you own is configured (or you carry none).', string.lower(CAT_SEL)));
     end
 
     imgui.Separator();

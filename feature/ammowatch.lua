@@ -281,6 +281,34 @@ function M.moveAmmo(i, delta)
     saveState();
 end
 
+-- Swap two ARBITRARY priority positions: the category-filtered view's move
+-- buttons swap visible neighbours, which need not be adjacent underneath.
+function M.swapAmmo(i, j)
+    if not validIdx(i) or not validIdx(j) or i == j then return; end
+    M.list[i], M.list[j] = M.list[j], M.list[i];
+    saveState();
+end
+
+-- ---------------------------------------------------------------------------
+-- Display categories (field round 5, Henrik: "categorize this with bullets,
+-- bolts and arrows -- list is gonna become super bloated"). DERIVED, never
+-- stored: the catalog's AmmoType lumps bullets AND bolts under Marksmanship
+-- (item_weapon.subskill isn't crawled), so that split rides the NAME --
+-- '... Bullet' / '... Bolt' is reliable across this era's item set; anything
+-- unmatched lands in 'Other' (shown only when it exists). Pure (tests AW*).
+-- ---------------------------------------------------------------------------
+M.CATEGORIES = { 'Bullets', 'Bolts', 'Arrows', 'Throwing', 'Other' };
+function M.categoryOf(name, ammoType)
+    if ammoType == 'Archery' then return 'Arrows'; end
+    if ammoType == 'Throwing' then return 'Throwing'; end
+    if ammoType == 'Marksmanship' then
+        local ln = string.lower(tostring(name or ''));
+        if string.find(ln, 'bullet', 1, true) ~= nil then return 'Bullets'; end
+        if string.find(ln, 'bolt', 1, true) ~= nil then return 'Bolts'; end
+    end
+    return 'Other';
+end
+
 -- flag: 'ranged' | 'ws'. Refused on a special entry (exclusivity).
 function M.setFlag(i, flag, on)
     if not validIdx(i) then return; end

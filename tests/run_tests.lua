@@ -6272,6 +6272,29 @@ end)();
     check('AW17e ties keep their original order (stable)',
         aw.list[3].name == 'Mid A' and aw.list[4].name == 'Mid B', true);
     check('AW17f already-sorted list reports no change', aw.sortByLevel(nil), false);
+
+    -- Categories (field round 5): DERIVED from AmmoType + name -- the catalog
+    -- lumps bullets and bolts under Marksmanship, the name splits them.
+    check('AW21 bullets by name', aw.categoryOf('Bronze Bullet', 'Marksmanship'), 'Bullets');
+    check('AW21b bolts by name', aw.categoryOf('Bloody Bolt', 'Marksmanship'), 'Bolts');
+    check('AW21c name match is ci', aw.categoryOf('SPARTAN BULLET', 'Marksmanship'), 'Bullets');
+    check('AW21d archery = arrows regardless of name', aw.categoryOf('Kabura Arrow', 'Archery'), 'Arrows');
+    check('AW21e throwing keeps its own bucket', aw.categoryOf('Fuma Shuriken', 'Throwing'), 'Throwing');
+    check('AW21f unmatched marksmanship falls to Other', aw.categoryOf('Gold Quarrel', 'Marksmanship'), 'Other');
+    check('AW21g trinket-ish types fall to Other', aw.categoryOf('Tiphia Sting', ''), 'Other');
+
+    -- swapAmmo: the filtered view's move (non-adjacent underneath)
+    aw.jobsData.COR.ammo = {
+        { name = 'A', id = 1, type = 'Marksmanship', level = 1, ranged = true, ws = false, special = false },
+        { name = 'B', id = 2, type = 'Archery',      level = 1, ranged = true, ws = false, special = false },
+        { name = 'C', id = 3, type = 'Marksmanship', level = 1, ranged = true, ws = false, special = false },
+    };
+    aw.selectJob('COR');
+    aw.swapAmmo(1, 3);
+    check('AW22 swapAmmo swaps non-adjacent positions',
+        aw.list[1].name == 'C' and aw.list[3].name == 'A' and aw.list[2].name == 'B', true);
+    aw.swapAmmo(1, 9);
+    check('AW22b out-of-bounds swap is a no-op', aw.list[1].name, 'C');
 end)();
 
 -- ---------------------------------------------------------------------------
