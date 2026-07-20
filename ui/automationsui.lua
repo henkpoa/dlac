@@ -95,9 +95,10 @@ local OBI_UNIVERSAL = { 'Hachirin-no-obi' };
 -- unless gamemode.get() == 'CW' (the affirmative gate, architecture.md); the
 -- ownership scan stays unconditional -- a non-CW character never owns them.
 local UNIVERSAL = {
-    -- Iridescence +3
-    { name = 'Laevateinn',      tier = 3 },             -- BLM relic staff (Lv75 stage)
-    { name = 'Tupsimati',       tier = 3 },             -- SCH relic staff (Lv75 stage)
+    -- Iridescence +3. The relics PIN their id (Henrik 07-21): every retail
+    -- stage shares the display name, and ONLY the Lv75 stage carries the stat.
+    { name = 'Laevateinn',      tier = 3, id = 18994 }, -- BLM relic staff, Lv75 stage
+    { name = 'Tupsimati',       tier = 3, id = 18990 }, -- SCH relic staff, Lv75 stage
     { name = 'Keraunos',        tier = 3, cw = true },  -- BLM/SCH, Incursion T3
     { name = 'Inanna',          tier = 3, cw = true },  -- DRK/BLM, Incursion T3 (Foreshadow's next tier)
     { name = 'Gridarvor',       tier = 3 },             -- SMN, Oboro weapon (all modes -- Henrik 07-21)
@@ -141,11 +142,23 @@ local function autoLoad()
     end);
 end
 
--- Is this exact item name in the player's bags? (catalog/owned lookup -> Id -> count)
-local function ownedRec(name)
-    if deps.lookupByName == nil then return nil; end
-    local rec = deps.lookupByName(name);
+-- Is this exact item in the player's bags? (catalog/owned lookup -> Id -> count)
+-- `pinId` pins the EXACT catalog id (Henrik 07-21): relic stages share one
+-- display name -- 'Laevateinn' is half a dozen records and only the Lv75 stage
+-- (18994) carries Iridescence on live -- so a name lookup can land on the wrong
+-- stage and test ownership of an id nobody holds. With a pin, the id IS the
+-- lookup; a name-resolved record with a different id is rejected, never adopted.
+local function ownedRec(name, pinId)
+    local rec = nil;
+    if pinId ~= nil and type(deps.lookupById) == 'function' then
+        rec = deps.lookupById(pinId);
+    end
+    if rec == nil then
+        if deps.lookupByName == nil then return nil; end
+        rec = deps.lookupByName(name);
+    end
     if rec == nil or rec.Id == nil then return nil; end
+    if pinId ~= nil and rec.Id ~= pinId then return nil; end   -- wrong stage
     local oc = (deps.ownedCounts ~= nil) and deps.ownedCounts() or nil;
     if type(oc) == 'table' and (oc[rec.Id] or 0) >= 1 then return rec; end
     return nil;
@@ -159,8 +172,8 @@ end
 local function curJob()
     return (type(deps.playerJob) == 'function') and deps.playerJob() or nil;
 end
-local function usableRec(name, job)
-    local rec = ownedRec(name);
+local function usableRec(name, job, pinId)
+    local rec = ownedRec(name, pinId);
     if rec == nil then return nil; end
     if hasDispatch and type(dsp.canWear) == 'function'
        and not dsp.canWear(rec, job, 99) then return nil; end
@@ -206,7 +219,7 @@ local function autoCommit()
     -- under level sync (Incursion syncs: Inanna Lv75 parked -> Foreshadow Lv50).
     local uni, uniLevel, unis = nil, 0, {};
     for _, u in ipairs(UNIVERSAL) do
-        local rec = usableRec(u.name, job);
+        local rec = usableRec(u.name, job, u.id);
         if rec ~= nil then
             unis[#unis + 1] = { name = u.name, tier = u.tier or 1, level = rec.Level or 0 };
             if uni == nil then uni, uniLevel = u, rec.Level or 0; end
@@ -722,8 +735,8 @@ local function levelColor(level, maxLevel)
     return { 0.75, 0.62, 0.30, 1.0 };
 end
 
-local function owns(name) return ownedRec(name) ~= nil; end
-local function usable(name) return usableRec(name, curJob()) ~= nil; end
+local function owns(name, pinId) return ownedRec(name, pinId) ~= nil; end
+local function usable(name, pinId) return usableRec(name, curJob(), pinId) ~= nil; end
 
 -- Coverage: Iridescence 1 = any NQ elemental, 2 = any HQ elemental,
 -- 3 = a +1 universal, 4 = a +2 universal, 5 = a +3 universal. Obi: 1 elemental,
@@ -737,7 +750,7 @@ local function iridescenceLevel()
         if usable(STAFF_HQ[el]) then lv = math.max(lv, 2); end
     end
     for _, u in ipairs(UNIVERSAL) do
-        if usable(u.name) then
+        if usable(u.name, u.id) then
             local t = u.tier or 1;
             lv = math.max(lv, (t >= 3) and 5 or ((t >= 2) and 4 or 3));
         end
@@ -766,11 +779,17 @@ local ONEIROS_TXT = { [0] = 'grip not owned', 'Oneiros Grip' };
 -- Artisans implies you had them all (Henrik). The synergy branch stays ABOVE the
 -- stored check on purpose ("keep the backlight"): an Artisans-implied piece keeps
 -- its green even while a spare copy sits in storage -- its presence is irrelevant.
-local function autoItemLine(name, synergyNote)
-    local rec = (deps.lookupByName ~= nil) and deps.lookupByName(name) or nil;
+local function autoItemLine(item, synergyNote)
+    -- `item` is a plain name, or { name, id } for an id-PINNED entry (relic
+    -- stages share one name; the pin keeps icon/owned/tooltip on the REAL one).
+    local name, pinId = item, nil;
+    if type(item) == 'table' then name, pinId = item.name, item.id; end
+    local rec = nil;
+    if pinId ~= nil and type(deps.lookupById) == 'function' then rec = deps.lookupById(pinId); end
+    if rec == nil then rec = (deps.lookupByName ~= nil) and deps.lookupByName(name) or nil; end
     if type(deps.renderIcon) == 'function' then deps.renderIcon(rec and rec.Id or nil, 18); end
-    local owned = owns(name);
-    if owned and not usable(name) then
+    local owned = owns(name, pinId);
+    if owned and not usable(name, pinId) then
         imgui.TextColored(COL_ERR, esc(name));
         if imgui.IsItemHovered() then
             imgui.SetTooltip(string.format('Owned -- but %s cannot equip it, so the automation skips it on this job.',
@@ -1083,7 +1102,7 @@ local function renderAutomations()
             for _, u in ipairs(UNIVERSAL) do
                 if u.cw ~= true or showCW then
                     local t = ir[math.min(math.max(u.tier or 1, 1), 3)];
-                    t[#t + 1] = u.name;
+                    t[#t + 1] = (u.id ~= nil) and { name = u.name, id = u.id } or u.name;
                 end
             end
             local colW = math.max(165, math.floor(availW / 5));

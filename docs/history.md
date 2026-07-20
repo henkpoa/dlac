@@ -3588,3 +3588,15 @@ gear" checkbox at the bottom of the AutoIridescence detail
 (session-only peek; Henrik: let them see what they're missing).
 The affirmative-CW gate stays the default; the checkbox only widens
 the DISPLAY filter, never the scan.
+
+**Addendum 2 (same day, Henrik's catch):** the relics were adopted by
+NAME, and 'Laevateinn' is half a dozen catalog records (every retail
+upgrade stage) of which only the Lv75 stage -- 18994 (Tupsimati:
+18990) -- carries Iridescence on live. The single-winner byName
+lookup could land on the base stage and test ownership of an id
+nobody holds. UNIVERSAL entries can now PIN an exact catalog id;
+ownedRec/usableRec/autoItemLine resolve pinned entries through
+lookupById (newly injected into the automations deps) and reject a
+name-resolved record with the wrong id -- conservative: a missing
+pin lookup never false-adopts. Smoke pins the trap: byName aimed at
+the base, the owned Lv75 stage adopted anyway (S166-S166c).

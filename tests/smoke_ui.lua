@@ -673,14 +673,26 @@ end)();
         { Name = 'Halcyon Rod',       Id = 90042, Level = 1,  Slot = 'Range', Jobs = { 'All' },
           Stats = { FishingSkill = 10 } },
     };
-    local byName, counts = {}, {};
+    local byName, byId, counts = {}, {}, {};
     for _, r in ipairs(INV) do
         byName[r.Name] = r;
+        byId[r.Id] = r;
         counts[r.Id] = (r.Name == 'Astral Ring') and 2 or 1;
     end
+    -- The id-PIN trap (Henrik 07-21): relic stages share one display name.
+    -- byName resolves 'Laevateinn' to the BASE stage (18974, NOT owned); the
+    -- owned copy is the Lv75 stage 18994, reachable only through lookupById.
+    -- The pinned UNIVERSAL entry must adopt it (tier 3 tops the ladder) --
+    -- an unpinned name lookup would test ownership of 18974 and miss.
+    local LAEV_BASE = { Name = 'Laevateinn', Id = 18974, Level = 73, Slot = 'Main', Jobs = { 'BLM' } };
+    local LAEV_75   = { Name = 'Laevateinn', Id = 18994, Level = 75, Slot = 'Main', Jobs = { 'BLM' } };
+    byName[LAEV_BASE.Name] = LAEV_BASE;
+    byId[LAEV_BASE.Id] = LAEV_BASE; byId[LAEV_75.Id] = LAEV_75;
+    counts[LAEV_75.Id] = 1;
     aui.init({
         charBase = function() return root; end,
         lookupByName = function(n) return byName[n]; end,
+        lookupById = function(id) return byId[id]; end,
         ownedCounts = function() return counts; end,
         ownedList = function() return INV; end,
         allEquipList = function() return INV; end,
@@ -701,11 +713,14 @@ end)();
     check('S164 NQ-only element is tier 1', m.staff.Ice and m.staff.Ice.tier, 1);
     check('S165 JOB GATE: a WHM-only staff stays OFF a BLM manifest (the Foreshadow case)',
         m.staff.Earth, nil);
-    check('S166 universal pecking order: +2 outranks owned +1',
-        type(m.universal) == 'table' and m.universal.name .. '/' .. m.universal.tier, 'Chatoyant Staff/2');
+    check('S166 universal pecking order: the id-PINNED +3 relic tops +2',
+        type(m.universal) == 'table' and m.universal.name .. '/' .. m.universal.tier, 'Laevateinn/3');
     check('S166b universals LADDER rides the manifest in preference order (v82/fmt 10)',
-        type(m.universals) == 'table' and #m.universals == 2
-        and (m.universals[1].name .. '>' .. m.universals[2].name), 'Chatoyant Staff>Iridal Staff');
+        type(m.universals) == 'table' and #m.universals == 3
+        and table.concat({ m.universals[1].name, m.universals[2].name, m.universals[3].name }, '>'),
+        'Laevateinn>Chatoyant Staff>Iridal Staff');
+    check('S166c id-PIN adopts the OWNED Lv75 stage, not the byName base (Level proves the record)',
+        m.universals[1].level, 75);
     check('S167 elemental obi picked', m.obi and m.obi.Fire and m.obi.Fire.name, 'Karin Obi');
     check('S168 universal obi picked', type(m.obiUniversal) == 'table' and m.obiUniversal.name,
         'Hachirin-no-obi');

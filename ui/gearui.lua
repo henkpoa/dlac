@@ -2348,6 +2348,7 @@ do
         dynamicSetNames = profsets.dynamicSetNames, staticSetNames = profsets.staticSetNames,
         liveSetNames = profsets.liveSetNames,   -- Dynamic + LIVE-file statics (no backup): trigger-target authority
         lookupByName = lookupByName, ownedCounts = owned.counts,  -- automations manifest (owned staves/obis)
+        lookupById = lookupById,   -- id-PINNED automation entries (relic stages share one name)
         ownedList = buildOwned,                                   -- max-MP manifest (piece MP values)
         allEquipList = buildAllEquip,                             -- AutoCraft panel: full catalog (owned OR not)
         -- Automation ladders plan equips for RIGHT NOW, so owned-somewhere is
