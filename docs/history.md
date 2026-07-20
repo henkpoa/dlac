@@ -3349,3 +3349,25 @@ the Profiles menu shows ([!] beside the set count) instead of dying
 silently on the next reload; (3) the other-character branch creates
 the target dlac\ folder first (io.open never mkdirs). PX16b/c pin
 the loud-warning contract. 1695 + 170.
+
+## Import from text + collision overwrite/keep (2026-07-20)
+
+Henrik: importing should be easier -- paste the file instead of the
+dlac-exports file dance, and a name collision should offer
+OVERWRITE (optionally keeping the old job under a new name) instead
+of "change the name" ping-pong. profiles.importJobMeta is the new
+shared core (parse-checked payloads; opts.overwrite replaces;
+opts.backupName renames the old job first via renameJobAt -- a
+dormant archive in the same profile; without it the old files go
+through deleteJobAt's verified backups\deleted-jobs\ copies; third
+return isCollision lets callers offer the choice). importJobFile is
+now a thin read+parse shell. Profiles menu: "Import from text..."
+button beside the always-shown Shared exports header opens a form
+with a multiline paste box -- parsed live, shows what the paste
+carries, auto-fills the As-name from the export's job; both import
+forms share one commit path (meta -> importJobMeta -> weights leg
+-> auto-build hook) and both get the collision controls: Overwrite
+checkbox + optional "keep the old one, renamed to" input, validated
+live (bad/taken/same backup names block). Ashita has no OS
+file-browse dialog to bind, so the paste route IS the browse
+substitute. 1695 + 170.

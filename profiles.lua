@@ -796,20 +796,25 @@ function M.deleteExport(fileBase)
     return true;
 end
 
--- Import an export file into any character/profile under dstName. Payloads
--- are parse-checked before anything is written; never overwrites. n | nil, why.
-function M.importJobFile(fileBase, dstCharFolder, dstProf, dstName)
+-- Apply a PARSED export (parseExportText's meta) into dstCharFolder/dstProf
+-- under dstName -- the shared core of the file import AND the paste import
+-- (Henrik 2026-07-20: "Import from text"). Collision handling, same round
+-- ("having to rename back and forth is annoying"):
+--   opts.overwrite  = true   -> an existing job of that name is replaced;
+--   opts.backupName = 'Old'  -> the existing files are RENAMED to that name
+--                               first (a dormant archive in the same profile,
+--                               revivable via Rename); without it they still
+--                               get deleteJobAt's verified safety copies in
+--                               backups\deleted-jobs\ before removal.
+-- Payloads are parse-checked before anything is touched. Returns
+-- n, nil | nil, why, isCollision -- isCollision=true when ONLY the name
+-- collision stopped it, so callers can offer Overwrite instead of a dead end.
+function M.importJobMeta(meta, dstCharFolder, dstProf, dstName, opts)
+    if type(meta) ~= 'table' then return nil, 'not a dlac job export'; end
     dstName = M.sanitizeName(dstName);
     if dstName == nil then return nil, 'bad name (letters/digits/_/- only)'; end
     dstProf = M.sanitizeName(dstProf);
     if dstProf == nil then return nil, 'bad profile name (letters/digits/_/- only)'; end
-    local ed = M.exportsDir();
-    if ed == nil then return nil, 'not available'; end
-    local meta, merr = M.parseExportText(readFile(ed .. fileBase .. '.lua'));
-    if meta == nil then return nil, merr; end
-    if M.jobNameTakenAt(dstCharFolder, dstProf, dstName) then
-        return nil, 'name collision: "' .. dstName .. '" already exists in that profile';
-    end
     if type(meta.sets) == 'string' and (loadstring or load)(meta.sets) == nil then
         return nil, 'export is damaged: sets payload does not parse';
     end
@@ -818,6 +823,22 @@ function M.importJobFile(fileBase, dstCharFolder, dstProf, dstName)
     end
     if type(meta.lockstyles) == 'string' and (loadstring or load)(meta.lockstyles) == nil then
         return nil, 'export is damaged: lockstyles payload does not parse';
+    end
+    opts = (type(opts) == 'table') and opts or {};
+    if M.jobNameTakenAt(dstCharFolder, dstProf, dstName) then
+        if opts.overwrite ~= true then
+            return nil, 'name collision: "' .. dstName .. '" already exists in that profile', true;
+        end
+        if opts.backupName ~= nil then
+            local bn = M.sanitizeName(opts.backupName);
+            if bn == nil then return nil, 'bad backup name (letters/digits/_/- only)'; end
+            if bn == dstName then return nil, 'the backup name must differ from the imported name'; end
+            local rn, rerr = M.renameJobAt(dstCharFolder, dstProf, dstName, bn);
+            if rn == nil then return nil, 'could not keep the old job: ' .. tostring(rerr); end
+        else
+            local dn, derr = M.deleteJobAt(dstCharFolder, dstProf, dstName);
+            if dn == nil then return nil, 'could not clear the old job: ' .. tostring(derr); end
+        end
     end
     if not ensureStorageAt(dstCharFolder, dstProf) then return nil, 'could not create storage'; end
     local dstDir = M.profileDirAt(dstCharFolder, dstProf);
@@ -830,6 +851,16 @@ function M.importJobFile(fileBase, dstCharFolder, dstProf, dstName)
        and writeFile(dstDir .. 'lockstyles\\' .. dstName .. '.lua', meta.lockstyles) then n = n + 1; end
     if n == 0 then return nil, 'nothing imported'; end
     return n, nil;
+end
+
+-- Import an export file into any character/profile under dstName -- a thin
+-- read+parse shell over importJobMeta (same opts / same returns).
+function M.importJobFile(fileBase, dstCharFolder, dstProf, dstName, opts)
+    local ed = M.exportsDir();
+    if ed == nil then return nil, 'not available'; end
+    local meta, merr = M.parseExportText(readFile(ed .. fileBase .. '.lua'));
+    if meta == nil then return nil, merr; end
+    return M.importJobMeta(meta, dstCharFolder, dstProf, dstName, opts);
 end
 
 -- Import another character's profile into THIS character under dstName.

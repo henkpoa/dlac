@@ -33,6 +33,9 @@ local imgui = (function()
     local ok, m = pcall(require, 'imgui');
     return (ok and type(m) == 'table') and m or nil;
 end)();
+-- Multiline paste box probe (the triggersui precedent): absent binding -> a
+-- one-line box with a hint, never a crash.
+local hasMultiline = (imgui ~= nil) and type(imgui.InputTextMultiline) == 'function';
 
 local ui, COL, afterImport;   -- set by configure; render() no-ops until ui/COL land
 pm.configure = function(deps)
@@ -93,13 +96,54 @@ pm.render = function()
             elseif f.kind == 'deleteJob' then title = string.format('Delete %s from %s\'s "%s"', f.job, f.srcDisp, f.srcProf);
             elseif f.kind == 'newProfile' then title = string.format('New empty profile on %s', f.srcDisp);
             elseif f.kind == 'importJob' then title = string.format('Import %s (shared by %s, from their "%s")', f.job, f.srcDisp, f.srcProf);
+            elseif f.kind == 'importText' then title = 'Import from pasted text';
             elseif f.kind == 'exportJob' then title = string.format('Export %s from %s\'s "%s"', f.job, f.srcDisp, f.srcProf);
             elseif f.kind == 'deleteProfile' then title = string.format('Delete profile "%s" from %s', f.srcProf, f.srcDisp);
             else title = string.format('Rename profile "%s"', f.srcProf); end
             imgui.TextColored(COL.HEADER, title);
             imgui.Separator();
 
-            if f.kind == 'cloneProfile' or f.kind == 'cloneJob' or f.kind == 'importJob' then
+            if f.kind == 'importText' then
+                -- The paste route: the whole export file's text, parsed live.
+                -- The As-name auto-fills from the export's job the first time
+                -- the paste parses; the user can still change it.
+                fmt.textWrapped(COL.DIM, 'Paste the WHOLE export file below (the text your friend sent -- first comment line included is fine).');
+                if hasMultiline then
+                    imgui.InputTextMultiline('##pm_ittext', f.text, 262144, { 540, 150 });
+                else
+                    imgui.TextColored(COL.SCORE, '(this build has no multiline box -- paste as ONE line)');
+                    imgui.PushItemWidth(540);
+                    imgui.InputText('##pm_ittext', f.text, 262144);
+                    imgui.PopItemWidth();
+                end
+                if f._parsedLen ~= #(f.text[1] or '') then
+                    f._parsedLen = #(f.text[1] or '');
+                    f._meta = nil;
+                    pcall(function()
+                        local prof = require('dlac\\profiles');
+                        f._meta = prof.parseExportText(f.text[1]);
+                    end);
+                    if f._meta ~= nil and (f.name[1] == nil or f.name[1] == '') then
+                        f.name[1] = tostring(f._meta.job or '');
+                    end
+                    ui._pmChk = nil;   -- new content -> recheck names/collisions
+                end
+                if f._meta ~= nil then
+                    local parts = {};
+                    if type(f._meta.sets) == 'string' then parts[#parts + 1] = 'sets'; end
+                    if type(f._meta.triggers) == 'string' then parts[#parts + 1] = 'triggers'; end
+                    if type(f._meta.lockstyles) == 'string' then parts[#parts + 1] = 'lockstyles'; end
+                    if type(f._meta.weights) == 'string' then parts[#parts + 1] = 'weights'; end
+                    imgui.TextColored(COL.SCORE, string.format('Recognized: %s from %s / "%s"   [%s]',
+                        tostring(f._meta.job), tostring(f._meta.from), tostring(f._meta.profile),
+                        table.concat(parts, '+')));
+                elseif (f.text[1] or '') ~= '' then
+                    imgui.TextColored(COL.ERR, 'Not a dlac export (yet) -- paste the complete file text.');
+                end
+                imgui.Separator();
+            end
+
+            if f.kind == 'cloneProfile' or f.kind == 'cloneJob' or f.kind == 'importJob' or f.kind == 'importText' then
                 imgui.TextColored(COL.DIM, 'To character:'); imgui.SameLine(0, 8);
                 local dstC = m.chars[f.dstIdx] or m.chars[1];
                 imgui.PushItemWidth(180);
@@ -117,7 +161,7 @@ pm.render = function()
                 imgui.InputText('##pm_fprof', f.prof, 48);
                 imgui.PopItemWidth();
             end
-            if f.kind == 'cloneJob' or f.kind == 'renameJob' or f.kind == 'newProfile' or f.kind == 'importJob' then
+            if f.kind == 'cloneJob' or f.kind == 'renameJob' or f.kind == 'newProfile' or f.kind == 'importJob' or f.kind == 'importText' then
                 imgui.TextColored(COL.DIM, (f.kind == 'renameJob') and 'New name:' or (f.kind == 'newProfile') and 'Name:' or 'As name:'); imgui.SameLine(0, 8);
                 imgui.PushItemWidth(180);
                 imgui.InputText('##pm_fname', f.name, 48);
@@ -193,8 +237,11 @@ pm.render = function()
 
             -- Collision / validity check -- recomputed only when an input
             -- changes (a per-frame disk probe would spawn popen consoles).
+            -- The over/backup/parse fields ride the key so ticking Overwrite
+            -- or typing a backup name re-runs it.
             local dstC = m.chars[f.dstIdx] or m.chars[1];
-            local key = f.kind .. '|' .. (dstC and dstC.name or '?') .. '|' .. tostring(f.prof and f.prof[1]) .. '|' .. tostring(f.name and f.name[1]);
+            local key = f.kind .. '|' .. (dstC and dstC.name or '?') .. '|' .. tostring(f.prof and f.prof[1]) .. '|' .. tostring(f.name and f.name[1])
+                .. '|' .. tostring(f.over and f.over[1]) .. '|' .. tostring(f.backup and f.backup[1]) .. '|' .. tostring(f._parsedLen);
             if ui._pmChk == nil or ui._pmChk.key ~= key then
                 local chk = { key = key, blocked = false, why = nil, note = nil };
                 pcall(function()
@@ -245,12 +292,34 @@ pm.render = function()
                         elseif m.jobsSet ~= nil and m.jobsSet[nm] ~= true then
                             chk.note = '"' .. nm .. '" is not a job name: it is copied as a dormant archive (the engine only reads <JOB>.lua).';
                         end
-                    elseif f.kind == 'importJob' then
+                    elseif f.kind == 'importJob' or f.kind == 'importText' then
+                        if f.kind == 'importText' and f._meta == nil then
+                            chk.blocked, chk.why = true, 'Paste a valid dlac export above first.';
+                            return;
+                        end
                         local nm = prof.sanitizeName(f.name[1]);
                         if nm == nil then chk.blocked, chk.why = true, 'Invalid file name: one word, letters/digits/_/- only.'; return; end
+                        -- A collision is no longer a dead end (Henrik 07-20:
+                        -- "renaming back and forth is annoying"): it arms the
+                        -- Overwrite controls below instead; only an unticked
+                        -- Overwrite or a bad backup name blocks.
                         if prof.jobNameTakenAt(dstC.name, pn, nm) then
-                            chk.blocked, chk.why = true, string.format('NAME COLLISION: "%s" already has a %s -- change the name to continue.', pn, nm);
-                        elseif m.jobsSet ~= nil and m.jobsSet[nm] ~= true then
+                            chk.collision = true;
+                            if f.over == nil or f.over[1] ~= true then
+                                chk.blocked, chk.why = true, string.format(
+                                    'NAME COLLISION: "%s" already has a %s. Tick Overwrite below (optionally keeping the old one under a new name), or change the name.', pn, nm);
+                            elseif f.backup ~= nil and f.backup[1] ~= '' then
+                                local bn = prof.sanitizeName(f.backup[1]);
+                                if bn == nil then
+                                    chk.blocked, chk.why = true, 'Invalid backup name: one word, letters/digits/_/- only.';
+                                elseif bn == nm then
+                                    chk.blocked, chk.why = true, 'The backup name must differ from the imported name.';
+                                elseif prof.jobNameTakenAt(dstC.name, pn, bn) then
+                                    chk.blocked, chk.why = true, string.format('NAME COLLISION: "%s" already has a %s -- pick another backup name.', pn, bn);
+                                end
+                            end
+                        end
+                        if not chk.blocked and m.jobsSet ~= nil and m.jobsSet[nm] ~= true then
                             chk.note = '"' .. nm .. '" is not a job name: it is imported as a dormant archive (the engine only reads <JOB>.lua).';
                         end
                     else   -- rename
@@ -265,6 +334,23 @@ pm.render = function()
             end
             local chk = ui._pmChk;
             if chk.note ~= nil then fmt.textWrapped(COL.DIM, chk.note); end
+            -- Import collision controls (Henrik 07-20): Overwrite instead of a
+            -- dead end, with an optional keep-the-old-one rename.
+            if chk.collision and (f.kind == 'importJob' or f.kind == 'importText') and f.over ~= nil then
+                imgui.Checkbox('Overwrite the existing one##pm_over', f.over);
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('Replaces the existing job of that name with the import.\nWithout a keep-name below, the replaced files still get verified\nsafety copies in backups\\deleted-jobs\\ first.');
+                end
+                if f.over[1] == true and f.backup ~= nil then
+                    imgui.Text('    '); imgui.SameLine(0, 0);
+                    imgui.TextColored(COL.DIM, 'keep the old one, renamed to:'); imgui.SameLine(0, 6);
+                    imgui.PushItemWidth(140);
+                    imgui.InputText('##pm_overbak', f.backup, 48);
+                    imgui.PopItemWidth();
+                    imgui.SameLine(0, 6);
+                    imgui.TextColored(COL.DIM, '(optional -- it stays in the profile as a dormant archive)');
+                end
+            end
             if f.kind == 'deleteJob' and not chk.blocked then
                 fmt.textWrapped(COL.ERR, string.format(
                     'THIS DELETES %s FROM "%s" ON %s -- its sets, triggers and lockstyle boxes, together.',
@@ -318,31 +404,52 @@ pm.render = function()
                             ui._profMenuMsg = (n ~= nil)
                                 and string.format('Renamed %s -> %s in "%s" (%d file(s)).', f.job, prof.sanitizeName(f.name[1]), f.srcProf, n)
                                 or ('Rename failed: ' .. tostring(err));
-                        elseif f.kind == 'importJob' then
-                            local n, err = prof.importJobFile(f.file, dstC.name, f.prof[1], f.name[1]);
+                        elseif f.kind == 'importJob' or f.kind == 'importText' then
+                            -- One path for both routes (file row / pasted text):
+                            -- meta -> importJobMeta, with the collision options
+                            -- from the form (overwrite + optional keep-name).
+                            local meta, merr;
+                            if f.kind == 'importText' then meta, merr = prof.parseExportText(f.text[1]);
+                            else meta, merr = prof.readExportFile(f.file); end
+                            local n, err, hadCollision;
+                            if meta == nil then
+                                err = merr;
+                            else
+                                pcall(function()
+                                    hadCollision = prof.jobNameTakenAt(dstC.name,
+                                        prof.sanitizeName(f.prof[1]), prof.sanitizeName(f.name[1]));
+                                end);
+                                n, err = prof.importJobMeta(meta, dstC.name, f.prof[1], f.name[1], {
+                                    overwrite  = f.over ~= nil and f.over[1] == true,
+                                    backupName = (f.backup ~= nil and f.backup[1] ~= '') and f.backup[1] or nil,
+                                });
+                            end
                             -- The weights payload (selective export) rides along: applied
                             -- through gearoptim -- live merge for the current character,
                             -- file merge for another -- with the job re-keyed to its
                             -- imported name. Failure only annotates; files already landed.
                             local wnote, wOK = '', false;
-                            if n ~= nil then
+                            if n ~= nil and meta ~= nil and type(meta.weights) == 'string' then
                                 pcall(function()
-                                    local meta = prof.readExportFile(f.file);
-                                    if meta ~= nil and type(meta.weights) == 'string' then
-                                        local optim = require('dlac\\gear\\gearoptim');
-                                        local wn, werr = optim.importJobWeightsTextAt(dstC.name, meta.weights, meta.job, prof.sanitizeName(f.name[1]));
-                                        wOK = (wn ~= nil and wn > 0);
-                                        -- werr beside a real count = the live merge landed but could
-                                        -- not persist -- surface it, or the import dies on reload.
-                                        wnote = (wn ~= nil)
-                                            and (string.format(' + stat weights for %d set(s)', wn)
-                                                 .. ((werr ~= nil) and ('  [!] ' .. tostring(werr)) or ''))
-                                            or (' (stat weights skipped: ' .. tostring(werr) .. ')');
-                                    end
+                                    local optim = require('dlac\\gear\\gearoptim');
+                                    local wn, werr = optim.importJobWeightsTextAt(dstC.name, meta.weights, meta.job, prof.sanitizeName(f.name[1]));
+                                    wOK = (wn ~= nil and wn > 0);
+                                    -- werr beside a real count = the live merge landed but could
+                                    -- not persist -- surface it, or the import dies on reload.
+                                    wnote = (wn ~= nil)
+                                        and (string.format(' + stat weights for %d set(s)', wn)
+                                             .. ((werr ~= nil) and ('  [!] ' .. tostring(werr)) or ''))
+                                        or (' (stat weights skipped: ' .. tostring(werr) .. ')');
                                 end);
                             end
+                            local kept = '';
+                            if n ~= nil and hadCollision == true and f.over ~= nil and f.over[1] == true then
+                                kept = (f.backup ~= nil and f.backup[1] ~= '')
+                                    and string.format(' (old one kept as %s)', prof.sanitizeName(f.backup[1]) or f.backup[1])
+                                    or ' (old one backed up to backups\\deleted-jobs\\)';
+                            end
                             ui._profMenuMsg = (n ~= nil)
-                                and string.format('Imported %s -> %s / "%s" as %s (%d file(s))%s.', f.job, dstC.disp or dstC.name, prof.sanitizeName(f.prof[1]), prof.sanitizeName(f.name[1]), n, wnote)
+                                and string.format('Imported %s -> %s / "%s" as %s (%d file(s))%s%s.', tostring(meta and meta.job), dstC.disp or dstC.name, prof.sanitizeName(f.prof[1]), prof.sanitizeName(f.name[1]), n, kept, wnote)
                                 or ('Import failed: ' .. tostring(err));
                             -- Weights landed -> auto-build the imported sets right away
                             -- (Henrik 2026-07-20: the exported shells are EMPTY on
@@ -401,7 +508,7 @@ pm.render = function()
                         -- touched the CURRENT character's ACTIVE profile? make the
                         -- engine follow right now (sets + trigger hot-reload).
                         local tc, tp = nil, nil;
-                        if f.kind == 'cloneJob' or f.kind == 'importJob' then tc, tp = dstC.name, prof.sanitizeName(f.prof[1]);
+                        if f.kind == 'cloneJob' or f.kind == 'importJob' or f.kind == 'importText' then tc, tp = dstC.name, prof.sanitizeName(f.prof[1]);
                         elseif f.kind == 'renameJob' or f.kind == 'deleteJob' then tc, tp = f.srcChar, f.srcProf; end
                         if tc ~= nil and tc == prof.currentCharFolder() and tp == prof.activeName() then
                             AshitaCore:GetChatManager():QueueCommand(1, '/dl sets reload');
@@ -556,19 +663,35 @@ pm.render = function()
                 end
             end
             -- Shared exports: per-job files in the install-wide dlac-exports\
-            -- folder -- your own exports AND anything a friend sent you.
-            if #(m.exports or {}) > 0 then
-                imgui.Separator();
-                imgui.TextColored(COL.HEADER, 'Shared exports');
-                imgui.SameLine(0, 8);
-                imgui.TextColored(COL.DIM, '(config\\addons\\luashitacast\\dlac-exports\\)');
-                for _, ex in ipairs(m.exports) do
+            -- folder -- your own exports AND anything a friend sent you --
+            -- plus the paste route (Henrik 2026-07-20): Import from text
+            -- skips the file dance entirely, so the section always shows.
+            imgui.Separator();
+            imgui.TextColored(COL.HEADER, 'Shared exports');
+            imgui.SameLine(0, 8);
+            if imgui.SmallButton('Import from text...##pm_importtext') then
+                ui._pmForm = { kind = 'importText', text = { '' }, dstIdx = 1,
+                               prof = { 'Default' }, name = { '' },
+                               over = { false }, backup = { '' } };
+                ui._pmChk = nil;
+            end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Paste the CONTENTS of a dlac export (the text a friend sent you)\ninstead of saving it as a file in dlac-exports\\ first.');
+            end
+            imgui.SameLine(0, 8);
+            imgui.TextColored(COL.DIM, '(files: config\\addons\\luashitacast\\dlac-exports\\)');
+            if #(m.exports or {}) == 0 then
+                imgui.TextColored(COL.DIM, '  (no export files found -- or paste one via Import from text...)');
+            end
+            do
+                for _, ex in ipairs(m.exports or {}) do
                     imgui.Text('  ');
                     imgui.SameLine(0, 0);
                     if imgui.SmallButton('import##pm_ix_' .. ex.file) then
                         ui._pmForm = { kind = 'importJob', srcDisp = tostring(ex.from), srcProf = tostring(ex.profile),
                                        job = ex.job, file = ex.file, dstIdx = 1,
-                                       prof = { 'Default' }, name = { ex.job } };
+                                       prof = { 'Default' }, name = { ex.job },
+                                       over = { false }, backup = { '' } };
                         ui._pmChk = nil;
                     end
                     -- x: delete the export FILE (Henrik 2026-07-20) -- red
