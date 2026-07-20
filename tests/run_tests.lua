@@ -10,6 +10,7 @@ ashita = { events = { register = function() end } };    -- utils registers /dl a
 package.loaded['dlac\\profiles'] = dofile('profiles.lua');   -- dispatch/setmanager require it (guarded)
 package.loaded['dlac\\data\\nativemp'] = dofile('data/nativemp.lua');   -- dispatch requires it (Oneiros resolver)
 package.loaded['dlac\\data\\zones'] = dofile('data/zones.lua');   -- dispatch requires it (the inTown town set)
+package.loaded['dlac\\feature\\location'] = dofile('feature/location.lua');   -- lockstyle requires it (Disable-in-town)
 package.loaded['dlac\\gear\\gearrecord'] = dofile('gear/gearrecord.lua');   -- record rules: gearimport/weaponfilter/gearexport require it
 package.loaded['dlac\\lib\\safewrite'] = dofile('lib/safewrite.lua');   -- safe-replace ladder: gearimport requires it, profiles guards it
 package.loaded['dlac\\gear\\catalogindex'] = dofile('gear/catalogindex.lua');   -- catalog walker: gearimport requires it (no catalog headless -> empty indexes)
@@ -694,13 +695,24 @@ check('MPS8b plan row carries the pair note',
 --     [cur*100/(mpp+1), cur*100/mpp]; 100% pins it exactly.
 -- ---------------------------------------------------------------------------
 check('MR1 field pin: 100% pins max = cur', dispatchM.mpReconcileMax(975, 1052, 100), 975);
-check('MR2 in-window max is trusted',       dispatchM.mpReconcileMax(975, 1000, 97), 1000);
-check('MR3 stale-high clamps to hi',        dispatchM.mpReconcileMax(500, 1200, 50), 1000);
-check('MR4 stale-low clamps to lo',         dispatchM.mpReconcileMax(500, 700, 50), 981);
+-- v87 LOW bias: below full GetMPMax is ignored outright -- an under-estimate
+-- can only over-hold a battery, never dump it early (round 7's cascade).
+check('MR2 below full: GetMPMax ignored, low edge wins', dispatchM.mpReconcileMax(975, 1000, 97), 995);
+check('MR3 stale-high ignored the same way', dispatchM.mpReconcileMax(500, 1200, 50), 981);
+check('MR4 stale-low ignored the same way',  dispatchM.mpReconcileMax(500, 700, 50), 981);
 check('MR5 nil mpp: raw max unchanged',     dispatchM.mpReconcileMax(975, 1052, nil), 1052);
 check('MR6 empty pool: raw max unchanged',  dispatchM.mpReconcileMax(0, 714, 0), 714);
 check('MR7 nil max at 100% still pins',     dispatchM.mpReconcileMax(975, nil, 100), 975);
 check('MR8 nil max mid-pool takes lo',      dispatchM.mpReconcileMax(500, nil, 50), 981);
+
+-- MF. the exact full-pool signal (dispatch.mpPoolFull, v87): floored MP%
+--     reads 100 ONLY at cur == max; cur >= max survives as the fallback when
+--     the percent is unreadable (its stale-low false-full armed round 7).
+check('MF1 100% = full',                    dispatchM.mpPoolFull(975, 975, 100), true);
+check('MF2 99% never full (fresh battery)', dispatchM.mpPoolFull(975, 975, 99), false);
+check('MF3 no percent: cur >= max fallback', dispatchM.mpPoolFull(975, 975, nil), true);
+check('MF3b no percent, below max',         dispatchM.mpPoolFull(975, 1052, nil), false);
+check('MF4 nil-safe',                       dispatchM.mpPoolFull(nil, nil, nil), false);
 
 check('MPS8c dup stays advertised',
     string.find(tostring((function()
@@ -5805,6 +5817,33 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- LOC. location service (v45) -- the central town/zone answer (feature/
+--      location.lua) behind the lockstyle Disable-in-town option (and a future
+--      home for the inTown read). Town membership is data/zones.lua's .town
+--      flag; the live read is injectable (M.reader) and nils out on failure.
+-- ---------------------------------------------------------------------------
+(function()
+    local loc = dofile('feature/location.lua');
+    check('LOC0 module loads', type(loc), 'table');
+    -- isTown: the curated town set (server CITY + Nashmau - combat zones).
+    check('LOC1 isTown city (S. San dOria 230)',      loc.isTown(230), true);
+    check('LOC2 isTown Nashmau 53 (curated ADD)',     loc.isTown(53), true);
+    check('LOC3 isTown Celennia 284 (Wings hub)',     loc.isTown(284), true);
+    check('LOC4 isTown Sealions Den 32 (curated DROP)', loc.isTown(32), false);
+    check('LOC5 isTown field zone (Phanauet 1)',      loc.isTown(1), false);
+    check('LOC6 isTown nil-safe',                     loc.isTown(nil), false);
+    -- inTown() folds the live read through isTown; reader is the injected seam.
+    loc.reader = function() return 230; end;
+    check('LOC7 inTown true in a city', loc.inTown(), true);
+    check('LOC8 zoneId reads the seam', loc.zoneId(), 230);
+    loc.reader = function() return 1; end;
+    check('LOC9 inTown false in the field', loc.inTown(), false);
+    loc.reader = function() return nil; end;
+    check('LOC10 inTown nil on unknown zone', loc.inTown(), nil);
+    check('LOC11 zoneId nil on unknown', loc.zoneId(), nil);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- LG. lockstyle zone-in guard (v43) -- the pure decision half of the packet
 --     watcher in feature\lockstyle.lua. Field-pinned 2026-07-19 (/probe ls):
 --     the retail client re-asserts ITS private lockstyle flag to the server
@@ -5840,6 +5879,20 @@ end)();
     check('LG10 QUERY passes untouched',   f(2, 100.6, 100, true, FAR), 'pass');
     check('LG11 garbage mode passes',      f(-1, 100.6, 100, true, FAR), 'pass');
     check('LG12 nil stamps never block an inactive guard', f(0, 5, nil, false, nil), 'deactivate');
+    -- v45 disable-in-town: with suppressTown, dlac WANTS the lock off in a town,
+    -- so ANY disable -> 'suppress' (let through, keep the box, book no keep-heal),
+    -- EXCEPT a player-typed off, which still 'retire's (explicit intent wins).
+    check('LG12a town-suppress: in-window disable is NOT blocked -> suppress',
+        f(0, 100.6, 100, true, FAR, true), 'suppress');
+    check('LG12b town-suppress: out-of-window disable -> suppress, not deactivate (no keep-heal)',
+        f(0, 500, 100, false, FAR, true), 'suppress');
+    check('LG12c town-suppress still yields to a typed /lockstyle off -> retire',
+        f(0, 100.6, 100, true, 100.5, true), 'retire');
+    check('LG12d suppressTown does not disturb SET', f(3, 100, FAR, false, FAR, true), 'activate');
+    check('LG12e _wantTownOff = townOff AND inTown',   ls._wantTownOff(true, true), true);
+    check('LG12f _wantTownOff false when not in town',  ls._wantTownOff(true, false), false);
+    check('LG12g _wantTownOff false when option off',   ls._wantTownOff(false, true), false);
+    check('LG12h _wantTownOff false on unknown (nil)',  ls._wantTownOff(true, nil), false);
     check('LG13 user-off stamp is exported for the command handler',
         type(ls._guardUserOff), 'function');
 
