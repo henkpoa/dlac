@@ -192,8 +192,28 @@ agent; the per-repo setup lives in `docs/agents/`.
 - A GM is currently evaluating the addon for server approval — polish requests from
   that channel (like the word-wrap fix) take priority.
 
-## Current state (as of 2026-07-18)
+## Current state (as of 2026-07-20)
 
+- **AutoAmmo — the Ammo-slot automation (07-20, engine v73, main-destined).**
+  Henrik's COR-friend feature: LAC never re-equips depleted ammo and a stranded
+  Rare/Ex super-bullet (Animikii) gets eaten by the next shot — dlac now owns the
+  slot. `feature/ammowatch.lua` + `ui/ammoui.lua` (Automations → AutoAmmo row)
+  write `<char>\dlac\ammostate.lua` (per-ammo Ranged / WS / Special flags,
+  priority order, jobs map; **`enabled` PERSISTS across sessions** — deliberate
+  deviation from the craftstate rule, a protection must not disarm at login);
+  the engine overlays the Ammo slot on EVERY event below pins with
+  **count-verified** picks (the LAC state's first bag counter — per-second
+  cache, FRESH on action events) and a ladder ending in a literal `'remove'`
+  (LAC-native unequip; an empty gun is server-blocked, so the shot refuses
+  instead of eating the bullet). Server truth baked in (public stable branch,
+  field promotion pending — design doc §0): free ranged WS = **Trueflight 217 /
+  Leaden Salute 218 / Wildfire 220 ONLY** (the sql `type` column cannot tell —
+  it's the Lua handler); Quick Draw consumes a card, never the worn bullet, but
+  hard-requires a Marksmanship ammo equipped (AutoAmmo un-blocks it when the
+  slot ran empty); Unlimited Shot = effect 115, affirmative-only window. Pure
+  core `M.resolveAmmoPlan` (tests AM*), ammowatch serializer (AW*), smoke
+  S135-138. **Read docs/design/auto-ammo.md before touching it** — the decision
+  table (§3) and the field-test checklist (§6, unrun) live there.
 - **GEAR-SET BONUSES ARE LIVE — display + optimizer (07-18, ADR 0011).**
   `gear\geareffects.lua` is THE evaluator (`comboStats` = whole-composition truth;
   `setsOf`/`setTier` the optimizer seam; counting per SLOT — duplicates twice,

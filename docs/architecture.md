@@ -26,14 +26,16 @@ utils.lua  dispatch.lua  chatfmt.lua  profiles.lua  gear.lua
 PROFILE_TEMPLATE.lua     what Setup writes into a user's <JOB>.lua
 
 ui/        imgui modules: gearui, triggersui, automationsui, equippedui, profilesmenu,
-           setupui, weightsui, craftbar, uistyle, uihost, itemicons, filetex, floatgear
+           setupui, weightsui, craftbar, uistyle, uihost, itemicons, filetex, floatgear,
+           ammoui (the AutoAmmo panel)
 data/      generated / static tables: catalog, crafts, fishdb, spells, abilities,
            statdefs, levelscaling, levelstats
 gear/      the gear pipeline: gearoptim, gearimport, gearexport, gearcheck, gearfmt,
            setmanager, setimport, profilesets, ownedcache, syncflags, weaponfilter,
            groupsmodel, actionpicker
 feature/   self-contained features: lockstyle, macrobook, useitem, craftwatch, augments,
-           pinwatch, helmwatch, fishwatch, fishcalc (pure fishing math -- headless)
+           pinwatch, helmwatch, fishwatch, fishcalc (pure fishing math -- headless),
+           ammowatch (AutoAmmo config state)
 lib/       generic helpers: cmdqueue
 assets/    PNGs (loaded by absolute path via AshitaCore:GetInstallPath — not by module path)
 docs/  tests/  tools/
@@ -46,7 +48,7 @@ Two traps when moving files or grepping module names:
 
 1. **`dlac\X` is not always a module.** The same prefix names *per-character data files* under
    `<char>\dlac\` — `dlac\triggers`, `dlac\modestate`, `dlac\lockstyles`, `dlac\macrobooks`,
-   `dlac\craftstate`, `dlac\gearweights`, `dlac\profiles\<name>\`. Those are user state and must
+   `dlac\craftstate`, `dlac\ammostate`, `dlac\gearweights`, `dlac\profiles\<name>\`. Those are user state and must
    never be folder-qualified. Note the near-misses: the `lockstyle` **module** vs the
    `lockstyles` **data file**; `macrobook` vs `macrobooks`; `crafts` vs `craftstate`.
 2. **The engine five cannot move.** See below.
@@ -98,8 +100,12 @@ changes); matcher table `MATCHERS` (170-205); specificity `TIER` (212-220); hot-
 (451-471) / `resolveVirtual` (474-510) / `equipResolved` (521-560); `M.dispatch(event)`
 (644-724); `M.serializeTriggers` (757-825); mode state mirror `saveModeState` (833-851);
 command handler (946-1079).
-Reads/writes `<char>\dlac\triggers\<JOB>.lua`; reads `<char>\dlac\autogear.lua`; writes
-`<char>\dlac\modestate.lua`.
+Reads/writes `<char>\dlac\triggers\<JOB>.lua`; reads `<char>\dlac\autogear.lua` and the
+per-feature state files (`craftstate`/`helmstate`/`fishstate`/`pinstate`/`ammostate`);
+writes `<char>\dlac\modestate.lua`. Since v73 it also owns the **AutoAmmo overlay**
+(docs/design/auto-ammo.md): a per-event Ammo-slot decision with the engine's first bag
+counter and the literal-`'remove'` plan (LAC's native unequip) — pure core
+`M.resolveAmmoPlan`, tests AM*.
 
 ### gear.lua — owned-gear template
 The **per-character owned-gear** record: thin entries (Name/Level/Id + weapon metadata)
@@ -509,6 +515,7 @@ Per-character, under `<install>\config\addons\luashitacast\<Char>_<ServerId>\`
 | `dlac\profiles\<Name>\triggers\<JOB>.lua` | triggersui/dispatch | trigger rules |
 | `dlac\triggers\<JOB>.lua` | (legacy, read-only fallback) | pre-profile trigger rules |
 | `dlac\autogear.lua` | automationsui | automations manifest |
+| `dlac\ammostate.lua` | ammowatch (Automations > AutoAmmo) | AutoAmmo config (persisted `enabled`, jobs map, the priority list) — the engine reads it per second |
 | `dlac\modestate.lua` | dispatch | mode/lock/VERSION mirror |
 | `dlac\uiflags.lua` | gearui | debug/autosync flags |
 | `dlac\gearweights.lua` | gearoptim | stat weights |

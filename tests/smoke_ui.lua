@@ -565,6 +565,15 @@ end)();
     check('S133 fishbar loads headless', ok2 and type(fishbar) == 'table', true);
     local ok3, fw = pcall(require, 'dlac\\feature\\fishwatch');
     check('S134 fishwatch loads under the ui tree', ok3 and type(fw) == 'table', true);
+    -- AutoAmmo modules: the same imgui-less contract (ammoui's row status
+    -- sits above its guard, ammowatch is pure file I/O + mutators).
+    local ok4, ammoui = pcall(require, 'dlac\\ui\\ammoui');
+    check('S135 ammoui loads headless', ok4 and type(ammoui) == 'table', true);
+    check('S136 ammoui.maxLevel', ammoui and ammoui.maxLevel, 1);
+    check('S137 ammoui.status callable without deps',
+        ok4 and select(1, ammoui.status(nil)), 0);
+    local ok5, amw = pcall(require, 'dlac\\feature\\ammowatch');
+    check('S138 ammowatch loads under the ui tree', ok5 and type(amw) == 'table', true);
 end)();
 
 -- ---------------------------------------------------------------------------

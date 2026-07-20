@@ -1120,6 +1120,14 @@ local function renderAutomations()
             else
                 imgui.TextColored(COL_ERR, 'fishui failed to load.');
             end
+        elseif auto.view == 'ammo' then
+            -- Same pattern: the whole panel lives in ui/ammoui.lua.
+            local aok, ammoui = pcall(require, 'dlac\\ui\\ammoui');
+            if aok and type(ammoui) == 'table' and type(ammoui.render) == 'function' then
+                pcall(ammoui.render, deps, availW);
+            else
+                imgui.TextColored(COL_ERR, 'ammoui failed to load.');
+            end
         elseif auto.view == 'oneiros' then
             imgui.TextColored(COL_HEADER, 'Auto Oneiros Grip');
             imgui.SameLine(0, 10); imgui.TextColored(COL_DIM, 'slot automation -- dlac:AutoOneiros in a set\'s Sub slot (needs a 2H main)');
@@ -1228,6 +1236,12 @@ local function renderAutomations()
           level = 0,                  max = 4, txt = nil },
         { key = 'fish',        name = 'Auto Fish Set',   kind = 'fishing-gear helper (idle only)',
           level = 0,                  max = 4, txt = nil },
+        -- AutoAmmo is appended LAST on purpose: rows[5]/rows[6] are read by
+        -- index below (helm/fish) -- keep every existing index stable. (The
+        -- combo branch appends its AutoAcc row before this one; the status
+        -- patch below finds this row by KEY, so the index difference is fine.)
+        { key = 'ammo',        name = 'AutoAmmo',        kind = 'slot automation (Ammo)',
+          level = 0,                  max = 1, txt = nil },
     };
     rows[1].txt = IRID_TXT[rows[1].level];
     rows[2].txt = OBI_TXT[rows[2].level];
@@ -1244,6 +1258,18 @@ local function renderAutomations()
         local fishui = require('dlac\\ui\\fishui');
         rows[6].max = fishui.maxLevel or 4;
         rows[6].level, rows[6].txt = fishui.status(deps);
+    end);
+    -- AutoAmmo status lives in ammoui (same pattern; found by key, not index --
+    -- the row sits at a different index on main vs the combo branch).
+    pcall(function()
+        local ammoui = require('dlac\\ui\\ammoui');
+        for _, r in ipairs(rows) do
+            if r.key == 'ammo' then
+                r.max = ammoui.maxLevel or 1;
+                r.level, r.txt = ammoui.status(deps);
+                break;
+            end
+        end
     end);
     -- Column headers, same fixed offsets as the rows.
     -- Offsets widened 2026-07-17 (field report: the HELM row's Kind ran into

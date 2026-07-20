@@ -5916,6 +5916,195 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- AM. AutoAmmo (engine v73) -- the pure decision core M.resolveAmmoPlan
+--     (docs/design/auto-ammo.md). The strictness contract pinned headless:
+--     special ammo is never planned where a shot could consume it; windows
+--     open only on AFFIRMATIVE facts (unlimited == nil is "unknown" and opens
+--     nothing); picks are count-verified; with a special worn and nothing
+--     enabled in stock the answer is 'remove' (an empty gun is server-blocked
+--     -- the shot refuses instead of eating the bullet).
+-- ---------------------------------------------------------------------------
+(function()
+    local rap = dispatchM.resolveAmmoPlan;
+    local CFG = {
+        enabled = true,
+        jobs = { COR = true },
+        ammo = {   -- array order = fallback priority
+            { name = 'Bronze Bullet',   id = 1, type = 'Marksmanship', ranged = true,  ws = false, special = false },
+            { name = 'Ruszor Bullet',   id = 2, type = 'Marksmanship', ranged = false, ws = true,  special = false },
+            { name = 'Animikii Bullet', id = 3, type = 'Marksmanship', ranged = false, ws = false,
+              special = { unlimited = true, quickdraw = true, freews = true } },
+        },
+    };
+    -- facts builder: stock is id -> count; everything else overridable
+    local function F(over, stock)
+        local f = { event = 'Preshot', job = 'COR',
+                    count = function(e) return (stock or { [1] = 12, [2] = 12, [3] = 1 })[e.id] or 0; end };
+        for k, v in pairs(over or {}) do f[k] = v; end
+        return f;
+    end
+
+    -- Preshot / Midshot (normal ranged attacks)
+    check('AM1 Preshot picks the first ranged-enabled with stock', rap(CFG, F()), 'Bronze Bullet');
+    check('AM2 Midshot same law', rap(CFG, F({ event = 'Midshot' })), 'Bronze Bullet');
+    local p3, w3 = rap(CFG, F({ worn = 'Animikii Bullet' }, { [3] = 1 }));
+    check('AM3 worn special + nothing stocked = remove', p3, 'remove');
+    check('AM3b the reason names the protected bullet', (w3 or ''):find('Animikii Bullet', 1, true) ~= nil, true);
+    check('AM4 worn normal + nothing stocked = hold (server refuses the empty shot)',
+        rap(CFG, F({ worn = 'Bronze Bullet' }, { [3] = 1 })), nil);
+    check('AM5 Unlimited Shot window opens the special', rap(CFG, F({ unlimited = true })), 'Animikii Bullet');
+    check('AM5b unknown buff state opens NOTHING (affirmative-only)',
+        rap(CFG, F({ unlimited = nil })), 'Bronze Bullet');
+    check('AM6 US window but special unowned -> ranged pick',
+        rap(CFG, F({ unlimited = true }, { [1] = 12 })), 'Bronze Bullet');
+    local CFG2 = { enabled = true, ammo = {
+        { name = 'Cheap A', id = 1, type = 'Marksmanship', ranged = true, ws = false, special = false },
+        { name = 'Cheap B', id = 2, type = 'Marksmanship', ranged = true, ws = false, special = false },
+    } };
+    check('AM7 priority = list order: first out of stock falls to second',
+        rap(CFG2, F(nil, { [2] = 5 })), 'Cheap B');
+
+    -- Weaponskill: the three free magical ranged WS (217/218/220)
+    check('AM8 Leaden Salute (218) opens the free-WS window',
+        rap(CFG, F({ event = 'Weaponskill', wsId = 218 })), 'Animikii Bullet');
+    local CFGnf = { enabled = true, jobs = { COR = true }, ammo = {
+        { name = 'Bronze Bullet', id = 1, type = 'Marksmanship', ranged = true, ws = false, special = false },
+        { name = 'Ruszor Bullet', id = 2, type = 'Marksmanship', ranged = false, ws = true, special = false },
+        { name = 'Animikii Bullet', id = 3, type = 'Marksmanship', ranged = false, ws = false,
+          special = { unlimited = true, quickdraw = true, freews = false } },
+    } };
+    check('AM8b freews unticked -> the WS pick instead',
+        rap(CFGnf, F({ event = 'Weaponskill', wsId = 218 })), 'Ruszor Bullet');
+    check('AM8c free WS with no special and no WS ammo -> ranged pick (nothing is consumed)',
+        rap(CFGnf, F({ event = 'Weaponskill', wsId = 220 }, { [1] = 12 })), 'Bronze Bullet');
+
+    -- Weaponskill: consuming physical ranged WS
+    check('AM9 Last Stand (221) takes the WS pick',
+        rap(CFG, F({ event = 'Weaponskill', wsId = 221 })), 'Ruszor Bullet');
+    check('AM10 consuming WS, WS ammo dry, special worn -> falls to ranged',
+        rap(CFG, F({ event = 'Weaponskill', wsId = 212, worn = 'Animikii Bullet' }, { [1] = 12, [3] = 1 })),
+        'Bronze Bullet');
+    check('AM10b consuming WS, everything dry, special worn -> remove',
+        rap(CFG, F({ event = 'Weaponskill', wsId = 212, worn = 'Animikii Bullet' }, { [3] = 1 })),
+        'remove');
+    check('AM11 consuming WS, no WS ammo, worn normal -> hold',
+        rap(CFG, F({ event = 'Weaponskill', wsId = 212, worn = 'Bronze Bullet' }, { [1] = 12 })), nil);
+    check('AM12 melee/unknown WS never touches ammo, even with the special worn',
+        rap(CFG, F({ event = 'Weaponskill', wsId = 33, worn = 'Animikii Bullet' })), nil);
+
+    -- Ability: Quick Draw
+    check('AM13 QD by LAC ability type', rap(CFG, F({ event = 'Ability', abilityType = 'Quick Draw' })), 'Animikii Bullet');
+    check('AM13b QD by shot name (type fallback)',
+        rap(CFG, F({ event = 'Ability', abilityName = 'Fire Shot' })), 'Animikii Bullet');
+    local CFGarrow = { enabled = true, ammo = {
+        { name = 'Wing Arrow', id = 9, type = 'Archery', ranged = false, ws = false,
+          special = { quickdraw = true } },
+    } };
+    check('AM13c QD never offers a non-Marksmanship special (the server gate)',
+        rap(CFGarrow, F({ event = 'Ability', abilityType = 'Quick Draw' }, { [9] = 99 })), nil);
+    check('AM13d any other ability is not ours',
+        rap(CFG, F({ event = 'Ability', abilityName = 'Provoke' })), nil);
+
+    -- Default: the protection sweep + reload
+    check('AM14 sweep: worn special outside every window -> ranged pick',
+        rap(CFG, F({ event = 'Default', worn = 'Animikii Bullet' })), 'Bronze Bullet');
+    check('AM14b sweep with nothing stocked -> remove',
+        rap(CFG, F({ event = 'Default', worn = 'Animikii Bullet' }, { [3] = 1 })), 'remove');
+    check('AM15 US window at Default pre-loads/keeps the special',
+        rap(CFG, F({ event = 'Default', worn = 'Animikii Bullet', unlimited = true })), 'Animikii Bullet');
+    check('AM16 fishing owns Ammo at Default -> stand down',
+        rap(CFG, F({ event = 'Default', worn = 'Animikii Bullet', fishing = true })), nil);
+    check('AM17 empty slot reloads the ranged pick (the marquee LAC fix)',
+        rap(CFG, F({ event = 'Default' })), 'Bronze Bullet');
+    check('AM17b sets planned an owned ammo -> theirs',
+        rap(CFG, F({ event = 'Default', plannedAmmo = true })), nil);
+    check('AM17c worn unconfigured trinket -> never touched',
+        rap(CFG, F({ event = 'Default', worn = 'Tiphia Sting' })), nil);
+
+    -- Gates
+    check('AM18 jobs gate: unticked job does nothing', rap(CFG, F({ job = 'WHM' })), nil);
+    check('AM18b not-ready job (nil) does nothing',   -- built by hand: pairs() skips a nil override
+        rap(CFG, { event = 'Preshot', count = function() return 99; end }), nil);
+    local CFGnojobs = { enabled = true, ammo = CFG.ammo };
+    check('AM18c hand-written file without a jobs map is ungated', rap(CFGnojobs, F()), 'Bronze Bullet');
+    check('AM19 disabled -> nil', rap({ enabled = false, ammo = CFG.ammo }, F()), nil);
+    check('AM19b empty config -> nil', rap({ enabled = true, ammo = {} }, F()), nil);
+    check('AM20 no counter: picks never fire but protection still does',
+        rap(CFG, F({ worn = 'Animikii Bullet', count = false })), 'remove');
+    check('AM20b no counter, nothing to protect -> hold',
+        rap(CFG, F({ worn = 'Bronze Bullet', count = false })), nil);
+    check('AM21 worn match is case-insensitive',
+        rap(CFG, F({ event = 'Default', worn = 'ANIMIKII bullet' })), 'Bronze Bullet');
+
+    -- The baked server-truth tables (seam _ammoWs): the three free ids and a
+    -- consuming spot-check cannot drift silently.
+    check('AM22 free set = Trueflight/Leaden/Wildfire',
+        dispatchM._ammoWs.free[217] == true and dispatchM._ammoWs.free[218] == true
+        and dispatchM._ammoWs.free[220] == true, true);
+    check('AM22b free ids are not in the consuming set',
+        dispatchM._ammoWs.consume[218], nil);
+    check('AM22c Coronach consumes', dispatchM._ammoWs.consume[216], true);
+    check('AM23 ammoStateOn wants enabled + a non-empty list',
+        dispatchM._ammoStateOn({ enabled = true, ammo = CFG.ammo }), true);
+    check('AM23b enabled with no list is OFF',
+        dispatchM._ammoStateOn({ enabled = true, ammo = {} }), false);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- AW. ammowatch -- the GUI's half of AutoAmmo: the ammostate.lua serializer
+--     (round-trips through the engine's reader shape) and the mutator
+--     invariants (special is exclusive; priority moves stay in bounds).
+--     Headless: charDir is nil, so every save is a silent no-op -- the
+--     in-memory list is what's under test.
+-- ---------------------------------------------------------------------------
+(function()
+    local aw = dofile('feature/ammowatch.lua');   -- the harness has no addons/ on package.path
+
+    local list = {
+        { name = 'Bronze Bullet', id = 21306, type = 'Marksmanship', ranged = true, ws = false, special = false },
+        { name = "Animikii Bullet", id = 21334, type = 'Marksmanship', ranged = false, ws = false,
+          special = { unlimited = true, quickdraw = true, freews = false } },
+    };
+    local txt = aw._serialize(true, 1753000000, { COR = true, RNG = true }, list);
+    local back = (loadstring or load)(txt)();
+    check('AW1 serializer round-trips enabled', back.enabled, true);
+    check('AW2 at stamp survives', back.at, 1753000000);
+    check('AW3 jobs map survives', back.jobs.COR == true and back.jobs.RNG == true, true);
+    check('AW4 entry order preserved', back.ammo[1].name, 'Bronze Bullet');
+    check('AW5 normal entry: special = false', back.ammo[1].special, false);
+    check('AW6 special table survives with only true bits',
+        back.ammo[2].special.unlimited == true and back.ammo[2].special.quickdraw == true
+        and back.ammo[2].special.freews == nil, true);
+    check('AW7 the engine gate accepts the round-trip', dispatchM._ammoStateOn(back), true);
+
+    -- mutators (in-memory; saves no-op headless)
+    aw.list = {};
+    check('AW8 addAmmo', aw.addAmmo({ Name = 'Iron Bullet', Id = 21310, AmmoType = 'Marksmanship' }), true);
+    check('AW8b dedup by name (ci)', aw.addAmmo({ Name = 'IRON bullet', Id = 21310, AmmoType = 'Marksmanship' }), false);
+    aw.addAmmo({ Name = 'Bomb Core', Id = 5309, AmmoType = 'Throwing' });
+    aw.moveAmmo(2, -1);
+    check('AW9 moveAmmo reorders', aw.list[1].name, 'Bomb Core');
+    aw.moveAmmo(1, -1);
+    check('AW9b out-of-bounds move is a no-op', aw.list[1].name, 'Bomb Core');
+    aw.setFlag(1, 'ranged', true);
+    check('AW10 setFlag ranged', aw.list[1].ranged, true);
+    aw.setSpecial(1, true);
+    check('AW11 special is exclusive: ranged cleared', aw.list[1].ranged, false);
+    check('AW11b behaviours default off',
+        aw.list[1].special.unlimited == false and aw.list[1].special.quickdraw == false, true);
+    aw.setFlag(1, 'ranged', true);
+    check('AW12 setFlag refused on a special entry', aw.list[1].ranged, false);
+    aw.setBehaviour(1, 'freews', true);
+    check('AW13 setBehaviour', aw.list[1].special.freews, true);
+    aw.setBehaviour(1, 'nonsense', true);
+    check('AW13b unknown behaviour refused', aw.list[1].special.nonsense, nil);
+    aw.setSpecial(1, false);
+    check('AW14 special off restores a normal entry', aw.list[1].special, false);
+    aw.removeAmmo(1);
+    check('AW15 removeAmmo', #aw.list == 1 and aw.list[1].name == 'Iron Bullet', true);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then

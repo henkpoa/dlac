@@ -3392,3 +3392,29 @@ returns ok) and autoBuildAll commits quietly, queues ONE /dl sets
 reload after the loop and reports one summary -- built / scored-
 nothing / failed-to-commit / no-weights counts -- in the Sets status
 and the import-hook note alike. 1695 + 170.
+
+## AutoAmmo -- the Ammo-slot automation (2026-07-20)
+
+Henrik (for his COR friend): LuaAshitacast is "HORRENDOUS" when ammo
+runs out -- it never re-equips, and a stranded one-of super-bullet
+(Animikii) gets eaten by the next shot. Root cause verified in LAC
+source: purely event-driven, NO fallback (a set naming unowned ammo
+silently equips nothing), though 'remove' is a first-class unequip.
+Server research (stable branch, field promotion pending): Leaden
+Salute 218 / Wildfire 220 / Trueflight 217 are the ONLY ranged WS
+that consume no ammo (magical handler, no ammo code -- the sql type
+column canNOT discriminate); Quick Draw consumes a card, never the
+worn bullet, but HARD-REQUIRES a Marksmanship ammo equipped; empty
+gun = shot blocked server-side (which makes 'remove' a real guard);
+Unlimited Shot = effect 115. Build: ammostate.lua (ammowatch, GUI =
+ui/ammoui.lua under Automations; enabled PERSISTS -- a protection
+system must not disarm at login; jobs map = blast radius) + engine
+v73 overlay on EVERY event below pins: count-verified picks (first
+LAC-state bag counter -- per-second cache, FRESH on action events,
+because a stale count at Preshot is exactly how the special gets
+eaten), per-context ladders (ranged / WS / the three free WS /
+Quick Draw / Unlimited Shot windows), the Default protection sweep
++ empty-slot reload (stands down for fish bait and for set-planned
+ammo the player actually owns), 'remove' ladder end. Pure core
+M.resolveAmmoPlan; docs/design/auto-ammo.md holds the decision
+table + field-test checklist. +41 checks (AM/AW), +4 smoke.

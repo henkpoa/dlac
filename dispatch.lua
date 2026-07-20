@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 72;   -- 72: serializeTriggers keeps BARE mode definitions -- `[name] = {}` (no bind, no values) is emitted instead of dropped, so a plain UI-created toggle survives the commit round-trip and stays in the Modes list (triggermodel.fromRaw keeps the empty def too; tests TM20-22). Rule matching, resolve order and every other engine path untouched.
+M.VERSION = 73;   -- 73: AutoAmmo -- the Ammo-slot automation (docs/design/auto-ammo.md). ammostate.lua (GUI-written) + an overlay on EVERY event: count-verified picks per context (ranged / consuming-WS / the three free magical WS 217,218,220 / Quick Draw / Unlimited Shot 115), special ammo swept off wherever a shot could consume it, ladder ends in a literal 'remove' (LAC's native unequip; an empty gun is server-blocked, so the shot refuses instead of eating the bullet). New engine capabilities: the first LAC-state bag counter (per-second cache, fresh on action events) and the 'remove' plan. Pure core M.resolveAmmoPlan (tests AM*).
+                  -- 72: serializeTriggers keeps BARE mode definitions -- `[name] = {}` (no bind, no values) is emitted instead of dropped, so a plain UI-created toggle survives the commit round-trip and stays in the Modes list (triggermodel.fromRaw keeps the empty def too; tests TM20-22). Rule matching, resolve order and every other engine path untouched.
                   -- 71: equipResolved's resolve order becomes DATA -- the five whole-table post-passes (mp-equip-uncovered, craft-sub-guard, sync-hold-ammo, trinket-vs-ranged, reserved-drops) are named entries run in M._postPassOrder, so the trinket-BEFORE-reserved constraint (ADR 0010) and every future overlay's place in line are one visible, test-pinned list (PL*) instead of prose; the per-slot chain keeps its elseif precedence (locks > sync-hold > pin-reserved > AutoAcc > virtuals > MP), now named; the copy-on-write dance and note building are written once (W/note) instead of eleven times. Behavior bit-identical -- the H/AK/TR/LS/MC sections are the net.
                   -- 70: the statefile seam gets ONE reader -- ensureStateFile behind the auto/acc/craft/helm/fish/pin caches (six near-identical clones collapsed; charDir gains the _charDirOverride seam so the file-driven surface finally runs headless, tests SF*). POLICY unified on the pin reader's v44 field lesson: a torn/corrupt state write now DROPS that state everywhere -- craft/helm/fish/auto used to keep the LAST GOOD table forever on a parse failure (raw already held the corrupt text, so the raw-compare short-circuited and even the watcher's clear could not unstick it -- a stale craft overlay glued on was one torn write away). The next good write self-heals; triggers deliberately keep their own keep-previous-and-say-so loader (hand-edited file).
                   -- 69: obi + Oneiros virtual decisions extracted PURE (resolveObi / resolveOneiros, the resolveStaff shape): the rims in resolveVirtual only read env/nativemp/vitals, the decisions take data in -- behavior bit-identical, but the two field-calibrated gates (positive day/weather sign; MP <= floor(base*50/100), boundary inclusive) are finally pinned headless (tests VG*). One /dl why nuance: with the grip unowned AND nativemp missing (broken install), the reason now reads module-unavailable first.
@@ -2065,6 +2066,345 @@ M._fishOverlayFor = fishOverlayFor;   -- test seam
 -- would just be a second, hidden read of the same cache.)
 
 -- ---------------------------------------------------------------------------
+-- AutoAmmo (v73) -- the Ammo-slot automation (docs/design/auto-ammo.md).
+-- ammowatch (addon state) writes <char>\dlac\ammostate.lua:
+--
+--     return { enabled = true, at = <stamp>, jobs = { COR = true },
+--              ammo = {  -- array order = fallback priority
+--                { name = "Bronze Bullet", id = 21306, type = "Marksmanship",
+--                  ranged = true, ws = false, special = false },
+--                { name = "Animikii Bullet", id = 21334, type = "Marksmanship",
+--                  ranged = false, ws = false,
+--                  special = { unlimited = true, quickdraw = true, freews = true } },
+--              } }
+--
+-- Unlike craft/HELM/fish this overlay is NOT Default-only: it owns the Ammo
+-- slot on the shooting events (Preshot/Midshot/Weaponskill/Ability) and runs a
+-- protection sweep on Default. The engine plans only ammo it has just COUNTED
+-- in the equippable bags -- LuaAshitacast has no fallback (a set naming an
+-- unowned ammo silently equips nothing, which is exactly how a stranded Rare/Ex
+-- bullet gets eaten) -- and the ladder ends in a literal 'remove': LAC's
+-- first-class unequip (MakeItemTable: 'remove' -> Index 0). An empty gun is
+-- BLOCKED server-side (range_state.cpp CanUseRangedAttack), so emptying the
+-- slot converts "waste the bullet" into "the shot refuses".
+--
+-- Server truth the tables encode (public stable branch; §0 of the design doc;
+-- live field tests are the promotion gate): ammo is consumed by normal ranged
+-- attacks and by PHYSICAL ranged WS only. The three MAGICAL ranged WS --
+-- Trueflight 217, Leaden Salute 218, Wildfire 220 -- route through
+-- doMagicWeaponskill, which has no ammo code at all: they read the worn ammo's
+-- stats but never decrement it. Quick Draw consumes an elemental/Trump card
+-- from inventory, never the worn bullet -- but HARD-REQUIRES a Marksmanship
+-- ammo equipped (error 216 otherwise), so equipping the special here also
+-- un-blocks QD when the slot ran empty. Unlimited Shot = effect id 115.
+-- ---------------------------------------------------------------------------
+local AMMO_WS_FREE    = { [217] = true, [218] = true, [220] = true };
+local AMMO_WS_CONSUME = {   -- every physical Archery(25)/Marksmanship(26) WS in weapon_skills.sql
+    [192] = true, [193] = true, [194] = true, [196] = true, [197] = true,
+    [198] = true, [199] = true, [200] = true, [201] = true, [203] = true,
+    [208] = true, [209] = true, [210] = true, [212] = true, [213] = true,
+    [214] = true, [215] = true, [216] = true, [219] = true, [221] = true,
+};
+-- Quick Draw arrives as HandleAbility; LAC types it 'Quick Draw' off recast
+-- timer 195 -- the name set is the belt-and-braces fallback.
+local AMMO_QD_NAMES = { ['fire shot'] = true, ['ice shot'] = true, ['wind shot'] = true,
+                        ['earth shot'] = true, ['thunder shot'] = true, ['water shot'] = true,
+                        ['light shot'] = true, ['dark shot'] = true };
+M._ammoWs = { free = AMMO_WS_FREE, consume = AMMO_WS_CONSUME, qd = AMMO_QD_NAMES };   -- test seam
+
+local _ammoSt = { raw = nil, data = nil, lastCheck = -1 };
+local function ensureAmmoState() return ensureStateFile(_ammoSt, 'ammostate.lua'); end
+
+local function ammoStateOn(as)
+    return type(as) == 'table' and as.enabled == true
+           and type(as.ammo) == 'table' and #as.ammo > 0;
+end
+M._ammoStateOn = ammoStateOn;   -- test seam
+
+-- The LAC state's first bag counter (the LocateItems pattern, engine-side).
+-- Equippable containers only; id -> summed Count, plus lowered-name -> count
+-- via a session-memoized id -> name table (resources are immutable). Cached
+-- per second for the every-frame Default dispatch; `fresh` forces a rescan --
+-- the action events use it, because the one moment staleness can hurt is a
+-- Preshot planning a replacement that was JUST consumed (a stale count would
+-- no-op LAC and leave the special bullet in the slot for the shot to eat).
+local AMMO_BAGS = { 0, 8, 10, 11, 12, 13, 14, 15, 16 };
+local _bagCache = { at = -1, byId = nil, byName = nil };
+local _itemNmMemo = {};
+local function bagCounts(fresh)
+    local now = os.time();
+    if not fresh and _bagCache.byId ~= nil and _bagCache.at == now then
+        return _bagCache.byId, _bagCache.byName;
+    end
+    local byId, byName = nil, nil;
+    pcall(function()
+        local inv  = AshitaCore:GetMemoryManager():GetInventory();
+        local resx = AshitaCore:GetResourceManager();
+        local bi, bn = {}, {};
+        for _, cid in ipairs(AMMO_BAGS) do
+            local max = inv:GetContainerCountMax(cid);
+            if max ~= nil and max > 0 then
+                for idx = 1, max do
+                    local it = inv:GetContainerItem(cid, idx);
+                    if it ~= nil and it.Id ~= nil and it.Id > 0 and it.Id ~= 65535 then
+                        local n = tonumber(it.Count) or 0;
+                        if n > 0 then
+                            bi[it.Id] = (bi[it.Id] or 0) + n;
+                            local nm = _itemNmMemo[it.Id];
+                            if nm == nil then
+                                local res = resx:GetItemById(it.Id);
+                                if res ~= nil and res.Name ~= nil and res.Name[1] ~= nil then
+                                    nm = string.lower(res.Name[1]);
+                                else
+                                    nm = '';
+                                end
+                                _itemNmMemo[it.Id] = nm;
+                            end
+                            if nm ~= '' then bn[nm] = (bn[nm] or 0) + n; end
+                        end
+                    end
+                end
+            end
+        end
+        byId, byName = bi, bn;
+    end);
+    if byId ~= nil then
+        _bagCache.at, _bagCache.byId, _bagCache.byName = now, byId, byName;
+    end
+    return _bagCache.byId, _bagCache.byName;
+end
+
+-- The PURE decision (tests AM*): everything read from `cfg` (the state file
+-- table) and `f` (the facts the impure wrapper gathered). Returns
+-- name | 'remove' | nil(hold), why. STRICTNESS RULES, in the scope guard's
+-- words: special ammo is never planned where a shot could consume it; a
+-- window opens only on an AFFIRMATIVE fact (f.unlimited == nil is "unknown"
+-- and opens nothing); with a special worn and nothing enabled in stock, the
+-- answer is 'remove', because an empty slot refuses the shot server-side.
+--
+--   f = { event, job, wsId, abilityType, abilityName, unlimited,
+--         worn (name|nil), count = function(entry) -> n,
+--         plannedAmmo (bool: this dispatch's rules planned an ammo they own),
+--         fishing (bool) }
+function M.resolveAmmoPlan(cfg, f)
+    if type(cfg) ~= 'table' or cfg.enabled ~= true
+       or type(cfg.ammo) ~= 'table' or #cfg.ammo == 0 then
+        return nil;
+    end
+    f = (type(f) == 'table') and f or {};
+    -- Jobs gate: the map holds main-job abbreviations the user ticked. A
+    -- not-ready job ('NON', '?', nil) is simply never in the map -- the ADR
+    -- 0007 rule (gate on what you accept, never enumerate the bad values).
+    if type(cfg.jobs) == 'table' then
+        if f.job == nil or cfg.jobs[f.job] ~= true then return nil; end
+    end
+    local list = cfg.ammo;
+    local wornL = (type(f.worn) == 'string') and string.lower(f.worn) or nil;
+    local wornE = nil;
+    if wornL ~= nil then
+        for _, e in ipairs(list) do
+            if type(e) == 'table' and type(e.name) == 'string'
+               and string.lower(e.name) == wornL then wornE = e; break; end
+        end
+    end
+    local wornSpecial = (wornE ~= nil and type(wornE.special) == 'table');
+    local function stocked(e)
+        if type(f.count) ~= 'function' then return false; end   -- no counter = no picks (protection still runs)
+        local ok, n = pcall(f.count, e);
+        return ok and (tonumber(n) or 0) >= 1;
+    end
+    local function firstRanged()
+        for _, e in ipairs(list) do
+            if type(e) == 'table' and e.ranged == true and type(e.special) ~= 'table'
+               and stocked(e) then return e; end
+        end
+        return nil;
+    end
+    local function firstWs()
+        for _, e in ipairs(list) do
+            if type(e) == 'table' and e.ws == true and type(e.special) ~= 'table'
+               and stocked(e) then return e; end
+        end
+        return nil;
+    end
+    local function firstSpecial(beh, needType)
+        for _, e in ipairs(list) do
+            if type(e) == 'table' and type(e.special) == 'table' and e.special[beh] == true
+               and (needType == nil or e.type == needType) and stocked(e) then return e; end
+        end
+        return nil;
+    end
+    local ev = tostring(f.event or '');
+
+    if ev == 'Preshot' or ev == 'Midshot' then
+        if f.unlimited == true then
+            local sp = firstSpecial('unlimited');
+            if sp ~= nil then return sp.name, 'Unlimited Shot window'; end
+        end
+        local r = firstRanged();
+        if r ~= nil then return r.name, 'ranged pick'; end
+        if wornSpecial then
+            return 'remove', 'no enabled ammo in bags -- protecting ' .. wornE.name;
+        end
+        return nil;   -- nothing to load, nothing to protect: the server refuses the empty shot
+    end
+
+    if ev == 'Weaponskill' then
+        local id = tonumber(f.wsId);
+        if id ~= nil and AMMO_WS_FREE[id] then
+            -- No consumption possible: wear the best thing for the WS.
+            local sp = firstSpecial('freews');
+            if sp ~= nil then return sp.name, 'free-WS window'; end
+            local w = firstWs();
+            if w ~= nil then return w.name, 'WS pick (free WS)'; end
+            local r = firstRanged();
+            if r ~= nil then return r.name, 'ranged pick (free WS)'; end
+            return nil;
+        end
+        if id ~= nil and AMMO_WS_CONSUME[id] then
+            local w = firstWs();
+            if w ~= nil then return w.name, 'WS pick'; end
+            if wornSpecial then
+                local r = firstRanged();
+                if r ~= nil then return r.name, 'no WS ammo -- protecting ' .. wornE.name; end
+                return 'remove', 'no enabled ammo in bags -- protecting ' .. wornE.name;
+            end
+            return nil;
+        end
+        return nil;   -- melee (or unknown) WS: attack.slot = MAIN, ammo untouched
+    end
+
+    if ev == 'Ability' then
+        local isQD = (f.abilityType == 'Quick Draw');
+        if not isQD and type(f.abilityName) == 'string'
+           and AMMO_QD_NAMES[string.lower(f.abilityName)] then isQD = true; end
+        if isQD then
+            -- QD requires a Marksmanship ammo worn -- never offer it an arrow.
+            local sp = firstSpecial('quickdraw', 'Marksmanship');
+            if sp ~= nil then return sp.name, 'Quick Draw window'; end
+        end
+        return nil;
+    end
+
+    if ev == 'Default' then
+        if f.fishing == true then return nil; end   -- the fish overlay owns Ammo (bait) at Default
+        if f.unlimited == true then
+            -- Pre-load (and keep) the Unlimited Shot special while the buff is
+            -- up -- an active plan, so a TP set's generic bullet can't strip
+            -- the bullet you popped the ability FOR.
+            local sp = firstSpecial('unlimited');
+            if sp ~= nil then return sp.name, 'Unlimited Shot window'; end
+        end
+        if wornSpecial then
+            -- Window closed: sweep it off. This deliberately beats a set that
+            -- plans the special itself -- the contract is that special ammo is
+            -- never LEFT equipped where the next shot could eat it.
+            local r = firstRanged();
+            if r ~= nil then return r.name, 'sweep -- protecting ' .. wornE.name; end
+            return 'remove', 'sweep -- no enabled ammo, protecting ' .. wornE.name;
+        end
+        if f.plannedAmmo == true then return nil; end  -- sets planned an ammo they own: theirs
+        if wornL == nil then
+            local r = firstRanged();
+            if r ~= nil then return r.name, 'reload (slot ran empty)'; end
+        end
+        return nil;
+    end
+
+    return nil;   -- Precast/Midcast/Item/PetAction: never ours
+end
+
+-- What did this dispatch's matched rules plan for Ammo? Read-only walk of the
+-- SORTED hits (last writer wins, the overlay law). A 'dlac:' marker counts as
+-- planned (another automation owns the slot); a plain name/table counts only
+-- if the player actually stocks it -- a planned-but-unowned ammo is LAC's
+-- silent no-op, i.e. exactly the hole AutoAmmo exists to fill.
+local function ammoPlannedByHits(hits)
+    local plan = nil;
+    for _, r in ipairs(hits or {}) do
+        if r.equip ~= nil and r.equip.Ammo ~= nil then
+            plan = r.equip.Ammo;
+        elseif r.sets ~= nil then
+            for _, sn in ipairs(r.sets) do
+                pcall(function()
+                    local prof = rawget(_G, 'gProfile');
+                    if type(prof) == 'table' and type(prof.Sets) == 'table'
+                       and type(prof.Sets[sn]) == 'table' and prof.Sets[sn].Ammo ~= nil then
+                        plan = prof.Sets[sn].Ammo;
+                    end
+                end);
+            end
+        end
+    end
+    if plan == nil then return false; end
+    local nm = nil;
+    if type(plan) == 'table' then nm = plan.Name;
+    elseif type(plan) == 'string' then
+        if string.lower(string.sub(plan, 1, 5)) == 'dlac:' then return true; end
+        nm = plan;
+    end
+    if type(nm) ~= 'string' or nm == '' then return false; end
+    local _, byName = bagCounts(false);
+    return byName ~= nil and (byName[string.lower(nm)] or 0) >= 1;
+end
+
+-- The impure rim: gather facts, ask the pure rule, shape the overlay table.
+local function ammoOverlayFor(as, ctx, event, hits, fishOn)
+    if not ammoStateOn(as) then return nil; end
+    local job = nil;
+    if type(ctx) == 'table' and type(ctx.player) == 'table' then
+        job = ctx.player.MainJob;
+    end
+    -- Fresh bag scan on action events (see bagCounts); cached on Default.
+    local isAction = (event ~= 'Default');
+    local byId, byName = bagCounts(isAction);
+    local f = {
+        event   = event,
+        job     = job,
+        worn    = wornItemName('Ammo'),
+        fishing = (fishOn == true),
+        unlimited = buffActive(ctx, 115),   -- EFFECT_UNLIMITED_SHOT
+        count   = function(e)
+            if type(e) ~= 'table' then return 0; end
+            local n = (byId ~= nil and tonumber(e.id) ~= nil) and byId[tonumber(e.id)] or nil;
+            if n == nil and byName ~= nil and type(e.name) == 'string' then
+                n = byName[string.lower(e.name)];
+            end
+            return n or 0;
+        end,
+    };
+    if event == 'Weaponskill' and type(ctx) == 'table' and type(ctx.action) == 'table' then
+        f.wsId = tonumber(ctx.action.Id);
+    elseif event == 'Ability' and type(ctx) == 'table' and type(ctx.action) == 'table' then
+        f.abilityType = ctx.action.Type;
+        f.abilityName = ctx.action.Name;
+    elseif event == 'Default' then
+        f.plannedAmmo = ammoPlannedByHits(hits);
+    end
+    local plan, why = M.resolveAmmoPlan(as, f);
+    if plan == nil then return nil; end
+    -- Already wearing the plan: hold (no churn, no trace noise). 'remove' with
+    -- an empty slot is the same no-op.
+    local wornL = (type(f.worn) == 'string') and string.lower(f.worn) or nil;
+    if plan == 'remove' then
+        if wornL == nil then return nil; end
+    elseif wornL ~= nil and string.lower(plan) == wornL then
+        return nil;
+    end
+    -- Loudness (hard rule 12): protection actions PRINT (throttled per cause) --
+    -- an emptied slot mid-fight with no line is indistinguishable from a bug.
+    if plan == 'remove' then
+        local now = os.time();
+        if now >= (tonumber(M._ammoWarnAt) or 0) then
+            M._ammoWarnAt = now + 10;
+            pcall(function() print('[dlac] AutoAmmo: ' .. tostring(why) .. ' -- Ammo slot emptied.'); end);
+        end
+    end
+    return { Ammo = plan }, why;
+end
+M._ammoOverlayFor = ammoOverlayFor;   -- test seam
+
+-- ---------------------------------------------------------------------------
 -- PINNED slots (v44) -- "equip item, lock slot so nothing removes it" (Henrik).
 -- Same shape as the craft overlay, and for the same reason: don't fight the
 -- engine, BE the engine. pinwatch (addon state) writes <char>\dlac\pinstate.lua
@@ -2333,6 +2673,13 @@ function M.dispatch(event)
         local helmOn     = helmStateActive(helmState);
         local fishState  = (event == 'Default') and ensureFishState() or nil;
         local fishOn     = fishStateActive(fishState);
+        -- AutoAmmo is NOT Default-gated: it owns the Ammo slot on the shooting
+        -- events and only sweeps on Default. It never joins the craft/helm/fish
+        -- arbitration -- its Default arm stands down whenever the fish overlay
+        -- is live (bait owns the slot), and none of the three touch Ammo
+        -- anywhere else (craft/HELM exclude it by design).
+        local ammoState  = ensureAmmoState();
+        local ammoOn     = ammoStateOn(ammoState);
         -- One crafting/gathering/fishing overlay at a time (they contest the
         -- same slots). The watchers already exclude each other addon-side; if
         -- several switches are somehow on, the NEWEST enable (`at` stamp)
@@ -2347,7 +2694,7 @@ function M.dispatch(event)
             elseif hAt >= fAt then craftOn, fishOn = false, false;
             else craftOn, helmOn = false, false; end
         end
-        if not hasRules and not hasPins and not craftOn and not helmOn and not fishOn then return; end
+        if not hasRules and not hasPins and not craftOn and not helmOn and not fishOn and not ammoOn then return; end
 
         local ctx = buildCtx(event);
         -- Level-sync settle (v56): computed ONCE per dispatch and ridden by every
@@ -2360,6 +2707,14 @@ function M.dispatch(event)
                 if matches(r, ctx) then hits[#hits + 1] = r; end
             end
         end
+        -- Sorted HERE (was just before application): the AutoAmmo overlay's
+        -- planned-Ammo walk needs the same last-writer-wins order the
+        -- application loop uses. Ascending priority, file order on ties
+        -- (ADR 0003).
+        table.sort(hits, function(a, b)
+            if a.prio ~= b.prio then return a.prio < b.prio; end
+            return a.ord < b.ord;
+        end);
 
         -- Craft overlay applies on Default even with NO trigger match, and always
         -- LAST (top priority) below -- but under the pin.
@@ -2398,7 +2753,14 @@ function M.dispatch(event)
                          and pEquip or cEquip;
         ctx.craftMainGuard = (guardSrc ~= nil) and craftMainGuard(guardSrc) or nil;
 
-        if #hits == 0 and cEquip == nil and hEquip == nil and fEquip == nil and pEquip == nil then
+        -- AutoAmmo overlay (v73): every event; applied below the pin, above
+        -- everything else that names the Ammo slot.
+        local aEquip, aWhy;
+        if ammoOn then
+            aEquip, aWhy = ammoOverlayFor(ammoState, ctx, event, hits, fishOn);
+        end
+
+        if #hits == 0 and cEquip == nil and hEquip == nil and fEquip == nil and pEquip == nil and aEquip == nil then
             if event ~= 'Default' then   -- Default runs every frame; only action events trace a miss
                 _trace[event] = { time = os.date('%H:%M:%S'), action = actionLabel(ctx),
                                   sig = '', lines = { '(no trigger matched)' } };
@@ -2406,11 +2768,7 @@ function M.dispatch(event)
             return;
         end
 
-        -- Overlay: ascending priority, file order on ties (ADR 0003).
-        table.sort(hits, function(a, b)
-            if a.prio ~= b.prio then return a.prio < b.prio; end
-            return a.ord < b.ord;
-        end);
+        -- (hits already sorted above -- the AutoAmmo walk needed the order.)
 
         -- Equip every hit. Trace strings are rebuilt only when the matched-rule
         -- signature changes (Default dispatches per frame -- keep the GC quiet).
@@ -2447,8 +2805,10 @@ function M.dispatch(event)
             table.sort(fk);
             fSig = table.concat(fk, ',');
         end
+        local aSig = '';                                  -- AutoAmmo decision changes must retrace too
+        if aEquip ~= nil then aSig = 'Ammo=' .. tostring(aEquip.Ammo); end
         sig = event .. ':' .. table.concat(sig, ',') .. '|' .. table.concat(lk, ',')
-              .. '|' .. cSig .. '|' .. pSig .. '|' .. hSig .. '|' .. fSig;
+              .. '|' .. cSig .. '|' .. pSig .. '|' .. hSig .. '|' .. fSig .. '|' .. aSig;
         local old = _trace[event];
         local retrace = (old == nil) or (old.sig ~= sig) or (event ~= 'Default');
         local lines = retrace and {} or old.lines;
@@ -2548,6 +2908,16 @@ function M.dispatch(event)
                 for slot in pairs(fEquip) do ks[#ks + 1] = tostring(slot); end
                 table.sort(ks);
                 lines[#lines + 1] = 'fishing gear (overlay)  ->  ' .. table.concat(ks, ', ');
+            end
+        end
+        -- AutoAmmo: above the sets and the activity overlays (it owns the Ammo
+        -- slot when it has an opinion), below the pin -- a pinned Ammo is the
+        -- player's explicit word.
+        if aEquip ~= nil then
+            equipResolved(aEquip, ctx);
+            if retrace then
+                lines[#lines + 1] = string.format('AutoAmmo  ->  Ammo=%s  (%s)',
+                    tostring(aEquip.Ammo), tostring(aWhy));
             end
         end
         -- Pins LAST of all: above the craft overlay, above every trigger. This is
