@@ -75,11 +75,16 @@ trigger rules), which the existing machinery already handles. This mirrors the
   names the INCOMING piece (v77) because of field round 1's stall: a release
   that repeats across dispatches with the worn piece unmoved means LAC cannot
   equip that exact target — `LocateItems` searches `gSettings.EquipBags`
-  (Inventory + Wardrobes) only, and `PrepareEquip` silently drops a piece it
-  cannot find. `BuildDynamicSets` checks level only, so a flattened plan can
-  name gear that is stored, unowned, or bazaared — and because the stalled
-  slot keeps the smallest surplus, it stays the winner and BLOCKS every other
-  release behind it.
+  (Inventory + Wardrobes) only, skips any container `GetContainerAvailable`
+  refuses, and `PrepareEquip` silently drops a piece it cannot find. On
+  CatsEyeXI the MW3–MW8 checks (containers 11–16) read retail POL premium
+  account flags the server never sets, so those six wardrobes are INVISIBLE
+  to every LAC equip unless the char's LAC settings force them
+  (`ForceEnableBags` 11–16 — applied to Mindie 2026-07-20). Separately,
+  `BuildDynamicSets` checks level only, so a flattened plan can name gear
+  that is stored, unowned, or bazaared — and because the stalled slot keeps
+  the smallest surplus, it stays the winner and BLOCKS every other release
+  behind it.
 - Data: the autogear manifest's `mp` (lower(name) → flat MP, every owned piece)
   and `mpBest` (slot → best battery, filtered by the central `canWear` +
   `haveInBags`) maps. The manifest is fully self-maintaining: it regenerates on
