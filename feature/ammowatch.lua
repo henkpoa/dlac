@@ -16,8 +16,11 @@
 
     Entry shape (array order = the engine's fallback priority):
       { name = <client item name>, id = <item id>, type = <catalog AmmoType>,
-        ranged = bool, ws = bool,
+        level = <item level, 0 = unknown>, ranged = bool, ws = bool,
         special = false | { unlimited = bool, quickdraw = bool, freews = bool } }
+    `level` exists for the GUI's Sort-by-level button (the engine ignores it);
+    entries saved before it existed read back as 0 and the sorter backfills
+    from the catalog.
     Special is exclusive: ticking it clears ranged/ws (the engine also never
     treats a special entry as a normal pick -- belt and braces).
 
@@ -72,8 +75,8 @@ function M._serialize(enabled, at, jobs, list)
                 sp = '{ ' .. table.concat(bits, ', ') .. ' }';
             end
             L[#L + 1] = string.format(
-                '        { name = %q, id = %d, type = %q, ranged = %s, ws = %s, special = %s },',
-                e.name, tonumber(e.id) or 0, tostring(e.type or ''),
+                '        { name = %q, id = %d, type = %q, level = %d, ranged = %s, ws = %s, special = %s },',
+                e.name, tonumber(e.id) or 0, tostring(e.type or ''), tonumber(e.level) or 0,
                 tostring(e.ranged == true), tostring(e.ws == true), sp);
         end
     end
@@ -119,6 +122,7 @@ function M.loadState()
                     M.list[#M.list + 1] = {
                         name = e.name, id = tonumber(e.id) or 0,
                         type = tostring(e.type or ''),
+                        level = tonumber(e.level) or 0,
                         ranged = (e.ranged == true), ws = (e.ws == true),
                         special = (type(e.special) == 'table') and {
                             unlimited = (e.special.unlimited == true),
@@ -165,9 +169,39 @@ function M.addAmmo(rec)
     end
     M.list[#M.list + 1] = { name = rec.Name, id = tonumber(rec.Id) or 0,
                             type = tostring(rec.AmmoType or ''),
+                            level = tonumber(rec.Level) or 0,
                             ranged = false, ws = false, special = false };
     saveState();
     return true;
+end
+
+-- One-shot best-first reorder: item level DESC, original order on ties
+-- (table.sort alone is not stable -- the index rides along as tiebreak).
+-- lvlOf(entry) -> level fills the gap for entries saved before `level`
+-- existed; a learned level is backfilled onto the entry so the next sort
+-- (and the file) know it.
+function M.sortByLevel(lvlOf)
+    local dec = {};
+    for i, e in ipairs(M.list) do
+        local lv = tonumber(e.level) or 0;
+        if lv <= 0 and type(lvlOf) == 'function' then
+            local ok, n = pcall(lvlOf, e);
+            if ok then lv = tonumber(n) or 0; end
+            if lv > 0 then e.level = lv; end
+        end
+        dec[#dec + 1] = { e = e, lv = lv, i = i };
+    end
+    table.sort(dec, function(a, b)
+        if a.lv ~= b.lv then return a.lv > b.lv; end
+        return a.i < b.i;
+    end);
+    local changed = false;
+    for i, d in ipairs(dec) do
+        if M.list[i] ~= d.e then changed = true; end
+        M.list[i] = d.e;
+    end
+    if changed then saveState(); end
+    return changed;
 end
 
 function M.removeAmmo(i)

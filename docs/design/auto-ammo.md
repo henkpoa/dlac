@@ -119,9 +119,16 @@ Layout, top to bottom:
   `Ranged` / `WS` / `Special` checkboxes, ▲▼ reorder, ✕ remove-from-config.
   Ticking Special disables/clears Ranged+WS and reveals the three behaviour
   ticks inline: `Unlimited Shot`, `Quick Draw`,
-  `Free WSs (Leaden/Wildfire/Trueflight)`.
+  `Free WSs (Leaden/Wildfire/Trueflight)`. A `Sort by level` button reorders
+  the whole list best-first (level DESC, stable ties; entries persist `level`,
+  the sorter backfills pre-level entries from the catalog) — field round 1
+  (Henrik): "that's usually how you want it either way."
 - **Owned, not configured** below: every owned AmmoType item not yet in the
   list, one `+ Add` per row (adds with all flags off).
+- **Columns are fixed-offset and SHARED between the two lists** (field round 1:
+  "make the table look nice") — name/qty in both; the priority row continues
+  with the flag ticks, the owned row with skill / Lv / `+ Add`, and the space
+  right of `+ Add` is deliberately reserved for future per-row controls.
 - Footer: the strictness one-liner ("Special ammo is never left equipped where
   a shot could consume it; with nothing else to load, the slot is emptied.").
 

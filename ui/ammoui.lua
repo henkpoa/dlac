@@ -35,6 +35,18 @@ local COL_GREEN  = { 0.45, 0.90, 0.45, 1.00 };
 
 local function esc(s) return (tostring(s):gsub('%%', '%%%%')); end
 
+-- Fixed column offsets, shared by BOTH lists so they read as one table
+-- (Henrik's field ask). The automationsui row-offset pattern; the themed font
+-- runs ~9.5px/char, so text columns need real room or they collide.
+local NAME_X  = 64;    -- icon + name (the priority arrows live left of it)
+local QTY_X   = 330;   -- stack count
+local FLAGS_X = 392;   -- priority rows: the Ranged/WS/Special ticks
+local DEL_X   = 660;   -- priority rows: remove
+local SKILL_X = 392;   -- owned rows: AmmoType
+local LV_X    = 516;   -- owned rows: Lv xx
+local ADD_X   = 578;   -- owned rows: + Add (space RESERVED to its right -- more
+                       -- per-row controls are planned)
+
 -- Shooting-ammo catalog rows (flat records), owned split off per render.
 -- AmmoType is the discriminator: absent = trinket/pet food -- not ours.
 local SHOOT_TYPE = { Marksmanship = true, Archery = true, Throwing = true };
@@ -148,7 +160,20 @@ function M.render(deps, availW)
     -- ------------------------------------------------------------------
     imgui.TextColored(COL_HEADER, 'Priority list');
     imgui.SameLine(0, 8);
-    imgui.TextColored(COL_DIM, '(top loads first; Ranged = normal shots, WS = ammo-consuming weapon skills)');
+    imgui.TextColored(COL_DIM, '(top loads first)');
+    imgui.SameLine(0, 10);
+    if imgui.SmallButton('Sort by level##ammosort') then
+        aw.sortByLevel(function(e)
+            if deps ~= nil and type(deps.lookupByName) == 'function' then
+                local r = deps.lookupByName(e.name);
+                if r ~= nil then return r.Level; end
+            end
+            return 0;
+        end);
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Reorder the whole list best-first (item level, highest first) -- usually\nwhat you want. Order = the engine\'s fallback order; fine-tune with the arrows.');
+    end
     if #aw.list == 0 then
         imgui.TextColored(COL_DIM, 'nothing configured yet -- add ammo from the owned list below.');
     end
@@ -158,7 +183,7 @@ function M.render(deps, availW)
         if imgui.SmallButton('^') and i > 1 then aw.moveAmmo(i, -1); end
         imgui.SameLine(0, 2);
         if imgui.SmallButton('v') and i < #aw.list then aw.moveAmmo(i, 1); end
-        imgui.SameLine(0, 8);
+        imgui.SameLine(NAME_X);
         local rec = (deps ~= nil and type(deps.lookupByName) == 'function') and deps.lookupByName(e.name) or nil;
         if deps ~= nil and type(deps.renderIcon) == 'function' then
             deps.renderIcon((rec and rec.Id) or e.id, 18);
@@ -168,31 +193,37 @@ function M.render(deps, availW)
         if imgui.IsItemHovered() and rec ~= nil and deps ~= nil and type(deps.itemTooltip) == 'function' then
             pcall(deps.itemTooltip, rec);
         end
-        imgui.SameLine(0, 8);
+        imgui.SameLine(QTY_X);
         imgui.TextColored((n >= 1) and COL_DIM or COL_ERR, 'x' .. tostring(n));
         if n < 1 and imgui.IsItemHovered() then
             imgui.SetTooltip('None in your equippable bags -- the engine skips this entry\n(and never plans ammo you do not stock).');
         end
-        imgui.SameLine(240);
+        imgui.SameLine(FLAGS_X);
         local sp = (type(e.special) == 'table');
         local b1 = { e.ranged == true };
         if imgui.Checkbox('Ranged##r' .. i, b1) then aw.setFlag(i, 'ranged', b1[1]); end
-        if sp and imgui.IsItemHovered() then imgui.SetTooltip('Special ammo is never a normal pick.'); end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip(sp and 'Special ammo is never a normal pick.'
+                             or 'OK for normal ranged attacks.');
+        end
         imgui.SameLine(0, 10);
         local b2 = { e.ws == true };
         if imgui.Checkbox('WS##w' .. i, b2) then aw.setFlag(i, 'ws', b2[1]); end
-        if sp and imgui.IsItemHovered() then imgui.SetTooltip('Special ammo is never a normal pick.'); end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip(sp and 'Special ammo is never a normal pick.'
+                             or 'OK for ammo-consuming ranged weapon skills.');
+        end
         imgui.SameLine(0, 10);
         local b3 = { sp };
         if imgui.Checkbox('Special##s' .. i, b3) then aw.setSpecial(i, b3[1]); end
         if imgui.IsItemHovered() then
             imgui.SetTooltip('NEVER equipped where a shot could consume it -- only for the ticked\nwindows below, and swept off (or the slot emptied) everywhere else.');
         end
-        imgui.SameLine(0, 14);
+        imgui.SameLine(DEL_X);
         if imgui.SmallButton('x##del' .. i) then removeAt = i; end
         if imgui.IsItemHovered() then imgui.SetTooltip('Remove from AutoAmmo (the item itself is untouched).'); end
         if sp then
-            imgui.Dummy({ 24, 1 }); imgui.SameLine(0, 0);
+            imgui.Dummy({ 0, 0 }); imgui.SameLine(NAME_X);
             imgui.TextColored(COL_GOLD, 'windows:');
             imgui.SameLine(0, 8);
             local u = { e.special.unlimited == true };
@@ -232,6 +263,8 @@ function M.render(deps, availW)
         if not inList[string.lower(rec.Name)] then
             shown = shown + 1;
             imgui.PushID('ammoown_' .. tostring(rec.Id));
+            imgui.Dummy({ 0, 0 });
+            imgui.SameLine(NAME_X);   -- same name column as the priority list: one table, two sections
             if deps ~= nil and type(deps.renderIcon) == 'function' then
                 deps.renderIcon(rec.Id, 18);
             end
@@ -239,10 +272,13 @@ function M.render(deps, availW)
             if imgui.IsItemHovered() and deps ~= nil and type(deps.itemTooltip) == 'function' then
                 pcall(deps.itemTooltip, rec);
             end
-            imgui.SameLine(0, 8);
-            imgui.TextColored(COL_DIM, string.format('x%d  (%s, Lv %d)',
-                countOf(deps, rec.Id), tostring(rec.AmmoType), tonumber(rec.Level) or 0));
-            imgui.SameLine(0, 14);
+            imgui.SameLine(QTY_X);
+            imgui.TextColored(COL_DIM, 'x' .. tostring(countOf(deps, rec.Id)));
+            imgui.SameLine(SKILL_X);
+            imgui.TextColored(COL_DIM, tostring(rec.AmmoType));
+            imgui.SameLine(LV_X);
+            imgui.TextColored(COL_DIM, string.format('Lv %d', tonumber(rec.Level) or 0));
+            imgui.SameLine(ADD_X);
             if imgui.SmallButton('+ Add##add' .. tostring(rec.Id)) then aw.addAmmo(rec); end
             imgui.PopID();
         end

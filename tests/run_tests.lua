@@ -6102,6 +6102,30 @@ end)();
     check('AW14 special off restores a normal entry', aw.list[1].special, false);
     aw.removeAmmo(1);
     check('AW15 removeAmmo', #aw.list == 1 and aw.list[1].name == 'Iron Bullet', true);
+
+    -- level: persisted per entry (GUI sort data; the engine ignores it)
+    local txt2 = aw._serialize(true, 1, {}, {
+        { name = 'A', id = 1, type = 'Marksmanship', level = 75, ranged = true, ws = false, special = false } });
+    check('AW16 level round-trips', ((loadstring or load)(txt2)()).ammo[1].level, 75);
+    aw.list = {};
+    aw.addAmmo({ Name = 'Lv-carrier', Id = 7, AmmoType = 'Marksmanship', Level = 40 });
+    check('AW16b addAmmo stores the catalog level', aw.list[1].level, 40);
+
+    -- Sort by level: DESC, stable on ties, catalog backfill for old entries
+    aw.list = {
+        { name = 'Old NoLv',  id = 1, type = 'Marksmanship', level = 0,  ranged = true, ws = false, special = false },
+        { name = 'Mid A',     id = 2, type = 'Marksmanship', level = 50, ranged = true, ws = false, special = false },
+        { name = 'Top',       id = 3, type = 'Marksmanship', level = 99, ranged = true, ws = false, special = false },
+        { name = 'Mid B',     id = 4, type = 'Marksmanship', level = 50, ranged = true, ws = false, special = false },
+    };
+    local changed = aw.sortByLevel(function(e) return (e.name == 'Old NoLv') and 75 or 0; end);
+    check('AW17 sort reordered (and said so)', changed, true);
+    check('AW17b highest first', aw.list[1].name, 'Top');
+    check('AW17c backfilled level slots in by its looked-up value', aw.list[2].name, 'Old NoLv');
+    check('AW17d the backfill is written onto the entry', aw.list[2].level, 75);
+    check('AW17e ties keep their original order (stable)',
+        aw.list[3].name == 'Mid A' and aw.list[4].name == 'Mid B', true);
+    check('AW17f already-sorted list reports no change', aw.sortByLevel(nil), false);
 end)();
 
 -- ---------------------------------------------------------------------------
