@@ -136,7 +136,10 @@ function M.countPieces(composition, ctx)
 end
 
 -- THE TRUE COMBINATION EVALUATOR: stats of a whole composition -- every item's
--- effective stats summed PLUS every active set-bonus tier. Returns
+-- effective stats summed PLUS every active set-bonus tier PLUS the caller's
+-- private augment deltas (ctx.augStats = { itemId -> { statKey -> delta } },
+-- optional): each piece folds its map entry per SLOT like everything else, so
+-- every totals/score consumer values augmented copies identically. Returns
 --   { stats = { statKey -> total },      -- numeric keys only; fresh table
 --     setBonuses = { { setId, count, min, max, tier, deltas, active }, ... } }
 -- setBonuses lists every set with at least one piece present (sorted by setId),
@@ -145,11 +148,18 @@ end
 -- (min(count, max)) when active.
 function M.comboStats(composition, ctx)
     local out = {};
+    local augs = (ctx ~= nil and type(ctx.augStats) == 'table') and ctx.augStats or nil;
     for _, rec in pairs(composition or {}) do
         if type(rec) == 'table' then
             local st = M.itemStats(rec, ctx);
             if type(st) == 'table' then
                 for k, v in pairs(st) do
+                    if type(v) == 'number' then out[k] = (out[k] or 0) + v; end
+                end
+            end
+            local a = (augs ~= nil and rec.Id ~= nil) and augs[rec.Id] or nil;
+            if type(a) == 'table' then
+                for k, v in pairs(a) do
                     if type(v) == 'number' then out[k] = (out[k] or 0) + v; end
                 end
             end

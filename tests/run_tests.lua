@@ -4523,6 +4523,24 @@ end)();
         tostring(four.stats.Haste) .. '/' .. tostring(fourRow ~= nil and fourRow.active), 'nil/false');
     check('GE21 all five: the full bonus, whole', five.stats.Haste .. '/' .. tostring(fiveRow.active), '5/true');
 
+    -- augment fold (ctx.augStats = { itemId -> deltas }): the caller's private
+    -- augments ride THE evaluator, so Set totals, the weighted score, and every
+    -- future consumer read identical numbers (Henrik's field case: Refresh+1
+    -- body native + Refresh+1 legs augment showed "+1" in Set totals while the
+    -- score already counted +2).
+    local body = { Id = 2001, Name = 'Refresh Body', Level = 40, Stats = { Refresh = 1 } };
+    local legs = { Id = 2002, Name = 'Plain Legs',   Level = 40, Stats = {} };
+    local augd = gfe.comboStats({ Body = body, Legs = legs },
+        { level = 75, augStats = { [2002] = { Refresh = 1, Note = 'hq' } } });
+    check('GE22 augStats folds private augment deltas (base+aug)', augd.stats.Refresh, 2);
+    check('GE23 non-numeric augment values never leak into totals', augd.stats.Note, nil);
+    local noaug = gfe.comboStats({ Body = body, Legs = legs }, { level = 75 });
+    check('GE24 no augStats -> base only (back-compat)', noaug.stats.Refresh, 1);
+    -- per-SLOT like everything else: the same augmented ring worn twice folds twice
+    local dupA = gfe.comboStats({ Ring1 = lava, Ring2 = lava },
+        { level = 75, augStats = { [1001] = { Accuracy = 3 } } });
+    check('GE25 augment deltas count per SLOT (5+5 base, 12 set, 3+3 aug)', dupA.stats.Accuracy, 28);
+
     -- the REAL shipped data end-to-end: worn Lava's + Kusha's (ids 15850/15851)
     local gfe2 = dofile('gear/geareffects.lua');
     gfe2.configure({ gearsets = dofile('data/gearsets.lua') });

@@ -2168,11 +2168,14 @@ end
 -- Returns (totals, setBonuses) -- the planned composition through comboStats,
 -- so a planned Lava's + Kusha's pair shows its bonus in Set totals (the
 -- wornSetTotals twin; same caption plumbing via renderStatsPanel's third arg).
+-- Your copies' augments ride ctx.augStats (Henrik's field case: Refresh+1 body
+-- native + Refresh+1 legs augment read "+1" here while the score saw +2).
 local function workingSetTotals(mainLevel)
     local totals = {};
     local comp = workingComposition(mainLevel);
     if has.gfx then
-        local ok, res = pcall(gfx.comboStats, comp, { level = mainLevel });
+        local ok, res = pcall(gfx.comboStats, comp,
+            { level = mainLevel, augStats = ownedAugStatsMap() });
         if ok and type(res) == 'table' and type(res.stats) == 'table' then
             for k, v in pairs(res.stats) do
                 if k ~= 'DMG' and k ~= 'Delay' then totals[k] = v; end
@@ -2181,7 +2184,7 @@ local function workingSetTotals(mainLevel)
         end
     end
     for _, rec in pairs(comp) do   -- fallback: the pre-P1 per-item sum
-        local _st = effStats(rec, mainLevel);
+        local _st = candidateStats(rec, mainLevel);
         if type(_st) == 'table' then
             for k, v in pairs(_st) do
                 if type(v) == 'number' and k ~= 'DMG' and k ~= 'Delay' then
@@ -2194,23 +2197,17 @@ local function workingSetTotals(mainLevel)
 end
 
 -- Weighted score of the working set: ONE whole-composition evaluation -- caps
--- applied to the summed stats, active set bonuses included, augments folded --
--- the same objective Auto-build's optimizer maximizes (design #6: one function,
--- one number, zero drift). Falls back to the per-item sum without geareffects.
+-- applied to the summed stats, active set bonuses included, augments folded
+-- (ctx.augStats, same fold Set totals displays) -- the same objective
+-- Auto-build's optimizer maximizes (design #6: one function, one number, zero
+-- drift). Falls back to the per-item sum without geareffects.
 local function workingWeightedScore(mainLevel)
     local comp = workingComposition(mainLevel);
     if has.gfx then
-        local ok, res = pcall(gfx.comboStats, comp, { level = mainLevel });
+        local ok, res = pcall(gfx.comboStats, comp,
+            { level = mainLevel, augStats = ownedAugStatsMap() });
         if ok and type(res) == 'table' and type(res.stats) == 'table' then
-            local st = {};
-            for k, v in pairs(res.stats) do st[k] = v; end
-            for _, rec in pairs(comp) do
-                local a = (rec.Id ~= nil) and ownedAugStatsMap()[rec.Id] or nil;
-                if a ~= nil then
-                    for k, v in pairs(a) do st[k] = (st[k] or 0) + v; end
-                end
-            end
-            return scoreOf(st);
+            return scoreOf(res.stats);
         end
     end
     local total = 0;
