@@ -6051,37 +6051,78 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
--- AW. ammowatch -- the GUI's half of AutoAmmo: the ammostate.lua serializer
---     (round-trips through the engine's reader shape) and the mutator
---     invariants (special is exclusive; priority moves stay in bounds).
+-- AW. ammowatch -- the GUI's half of AutoAmmo: the fmt-2 PER-JOB serializer
+--     (round-trips through the engine's reader shape), the fmt-1 migration
+--     (every ticked job gets its own copy; an unowned list becomes the
+--     orphan the first job in adopts), and the mutator invariants (special
+--     is exclusive; priority moves stay in bounds; jobs never cross-read).
 --     Headless: charDir is nil, so every save is a silent no-op -- the
---     in-memory list is what's under test.
+--     in-memory jobsData is what's under test.
 -- ---------------------------------------------------------------------------
 (function()
     local aw = dofile('feature/ammowatch.lua');   -- the harness has no addons/ on package.path
 
-    local list = {
-        { name = 'Bronze Bullet', id = 21306, type = 'Marksmanship', ranged = true, ws = false, special = false },
-        { name = "Animikii Bullet", id = 21334, type = 'Marksmanship', ranged = false, ws = false,
-          special = { unlimited = true, quickdraw = true, freews = false } },
+    local corSec = {
+        enabled = true, at = 1753000000,
+        ammo = {
+            { name = 'Bronze Bullet', id = 21306, type = 'Marksmanship', level = 5, ranged = true, ws = false, special = false },
+            { name = "Animikii Bullet", id = 21334, type = 'Marksmanship', level = 75, ranged = false, ws = false,
+              special = { unlimited = true, quickdraw = true, freews = false } },
+        },
     };
-    local txt = aw._serialize(true, 1753000000, { COR = true, RNG = true }, list);
+    local txt = aw._serialize({ COR = corSec, RNG = { enabled = false, at = 0, ammo = {} } });
     local back = (loadstring or load)(txt)();
-    check('AW1 serializer round-trips enabled', back.enabled, true);
-    check('AW2 at stamp survives', back.at, 1753000000);
-    check('AW3 jobs map survives', back.jobs.COR == true and back.jobs.RNG == true, true);
-    check('AW4 entry order preserved', back.ammo[1].name, 'Bronze Bullet');
-    check('AW5 normal entry: special = false', back.ammo[1].special, false);
+    check('AW1 fmt 2 on the wire', back.fmt, 2);
+    check('AW2 per-job enabled + at survive',
+        back.jobs.COR.enabled == true and back.jobs.COR.at == 1753000000
+        and back.jobs.RNG.enabled == false, true);
+    check('AW4 entry order preserved', back.jobs.COR.ammo[1].name, 'Bronze Bullet');
+    check('AW5 normal entry: special = false', back.jobs.COR.ammo[1].special, false);
+    check('AW5b level survives', back.jobs.COR.ammo[2].level, 75);
     check('AW6 special table survives with only true bits',
-        back.ammo[2].special.unlimited == true and back.ammo[2].special.quickdraw == true
-        and back.ammo[2].special.freews == nil, true);
+        back.jobs.COR.ammo[2].special.unlimited == true and back.jobs.COR.ammo[2].special.quickdraw == true
+        and back.jobs.COR.ammo[2].special.freews == nil, true);
     check('AW7 the engine gate accepts the round-trip', dispatchM._ammoStateOn(back), true);
+    check('AW7b the engine gate refuses all-off sections',
+        dispatchM._ammoStateOn({ fmt = 2, jobs = { RNG = { enabled = false, ammo = corSec.ammo } } }), false);
+    check('AW7c the engine gate refuses an enabled EMPTY section',
+        dispatchM._ammoStateOn({ fmt = 2, jobs = { RNG = { enabled = true, ammo = {} } } }), false);
 
-    -- mutators (in-memory; saves no-op headless)
-    aw.list = {};
+    -- fmt-1 migration: every ticked job gets its OWN COPY; no ticked job = orphan
+    local old = { enabled = true, at = 9, jobs = { COR = true, RNG = true, WAR = false },
+                  ammo = { { name = 'Bullet', id = 1, type = 'Marksmanship', ranged = true, ws = false, special = false } } };
+    local jd, orph = aw._migrate(old);
+    check('AW18 fmt-1 ticked jobs each get a section',
+        jd.COR ~= nil and jd.RNG ~= nil and jd.WAR == nil, true);
+    check('AW18b sections carry the old switch + list',
+        jd.COR.enabled == true and jd.COR.ammo[1].name == 'Bullet', true);
+    check('AW18c no orphan when jobs were ticked', orph, nil);
+    jd.COR.ammo[1].ranged = false;
+    check('AW18d sections are COPIES (jobs diverge independently)', jd.RNG.ammo[1].ranged, true);
+    local jd2, orph2 = aw._migrate({ enabled = true, jobs = {}, ammo = old.ammo });
+    check('AW19 fmt-1 with no ticked job -> orphan (nothing lost)',
+        next(jd2) == nil and orph2 ~= nil and orph2.ammo[1].name == 'Bullet', true);
+    check('AW19b orphan comes back disarmed', orph2.enabled, false);
+    aw.jobsData = {};
+    aw._setOrphan(orph2);
+    aw.selectJob('WAR');
+    check('AW19c first job in adopts the orphan', aw.jobsData.WAR ~= nil and #aw.list == 1, true);
+
+    -- mutators (in-memory; saves no-op headless) + per-job isolation
+    aw.jobsData = {};
+    aw.selectJob('COR');
     check('AW8 addAmmo', aw.addAmmo({ Name = 'Iron Bullet', Id = 21310, AmmoType = 'Marksmanship' }), true);
     check('AW8b dedup by name (ci)', aw.addAmmo({ Name = 'IRON bullet', Id = 21310, AmmoType = 'Marksmanship' }), false);
     aw.addAmmo({ Name = 'Bomb Core', Id = 5309, AmmoType = 'Throwing' });
+    aw.setEnabled(true, 'COR');
+    aw.selectJob('RNG');
+    check('AW20 another job reads EMPTY and OFF (per-job isolation)',
+        #aw.list == 0 and aw.enabled == false, true);
+    aw.addAmmo({ Name = 'Wing Arrow', Id = 9000, AmmoType = 'Archery' });
+    aw.selectJob('COR');
+    check('AW20b the first job kept its own list and switch',
+        #aw.list == 2 and aw.enabled == true and aw.list[1].name == 'Iron Bullet', true);
+    check('AW20c jobSummary sees both jobs', #aw.jobSummary(), 2);
     aw.moveAmmo(2, -1);
     check('AW9 moveAmmo reorders', aw.list[1].name, 'Bomb Core');
     aw.moveAmmo(1, -1);
@@ -6174,22 +6215,23 @@ end)();
     check('EB8 nearest box wins, in yalms', eb._scanBox(probe), 5.0);
     world[40] = nil; world[12] = nil;
     check('EB8b no box rendered -> nil (moogles are not boxes)', eb._scanBox(probe), nil);
+    check('EB9 box range is FIELD-PINNED at 5 yalms (Henrik 2026-07-20)', eb.BOX_RANGE, 5);
 
-    -- level: persisted per entry (GUI sort data; the engine ignores it)
-    local txt2 = aw._serialize(true, 1, {}, {
-        { name = 'A', id = 1, type = 'Marksmanship', level = 75, ranged = true, ws = false, special = false } });
-    check('AW16 level round-trips', ((loadstring or load)(txt2)()).ammo[1].level, 75);
-    aw.list = {};
+    -- level: persisted per entry (GUI sort data; the engine ignores it --
+    -- the fmt-2 round-trip above pins the serializer side)
+    aw.jobsData.COR.ammo = {};
+    aw.selectJob('COR');
     aw.addAmmo({ Name = 'Lv-carrier', Id = 7, AmmoType = 'Marksmanship', Level = 40 });
-    check('AW16b addAmmo stores the catalog level', aw.list[1].level, 40);
+    check('AW16 addAmmo stores the catalog level', aw.list[1].level, 40);
 
     -- Sort by level: DESC, stable on ties, catalog backfill for old entries
-    aw.list = {
+    aw.jobsData.COR.ammo = {
         { name = 'Old NoLv',  id = 1, type = 'Marksmanship', level = 0,  ranged = true, ws = false, special = false },
         { name = 'Mid A',     id = 2, type = 'Marksmanship', level = 50, ranged = true, ws = false, special = false },
         { name = 'Top',       id = 3, type = 'Marksmanship', level = 99, ranged = true, ws = false, special = false },
         { name = 'Mid B',     id = 4, type = 'Marksmanship', level = 50, ranged = true, ws = false, special = false },
     };
+    aw.selectJob('COR');   -- re-point the proxy at the fresh table
     local changed = aw.sortByLevel(function(e) return (e.name == 'Old NoLv') and 75 or 0; end);
     check('AW17 sort reordered (and said so)', changed, true);
     check('AW17b highest first', aw.list[1].name, 'Top');

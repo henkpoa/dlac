@@ -75,7 +75,10 @@ Field tests (§6) are what promote these to pinned.
 
 ## 1. The model
 
-One per-character config, one priority-ordered list. Every entry is an owned
+One config **per job** (fmt 2, field round 2 — Henrik: "all jobs can't use all
+ammos, I want this list to be seperate for all jobs seperately, where it
+remembers if you have activated it or not"): every job carries its OWN
+priority-ordered list and its OWN persisted on/off. Every entry is an owned
 shooting ammo (catalog `AmmoType` ∈ Marksmanship / Archery / Throwing —
 trinkets are set-managed and never AutoAmmo's business) with three flags:
 
@@ -98,11 +101,13 @@ no behaviour window is open, the engine plans a replacement — first
 ranged-enabled with stock, else **`remove`** (empty slot = shot blocked
 server-side = bullet saved).
 
-`enabled` PERSISTS across sessions — a deliberate deviation from the
+`enabled` (per job) PERSISTS across sessions — a deliberate deviation from the
 craftstate/fishstate session-only rule. Those are activity pills (a gathering
 overlay must not glue itself on at login); this is a protection system, and a
-protection that silently disarms at login is how the bullet dies. The `jobs`
-map (below) is what keeps it from acting on jobs it wasn't meant for.
+protection that silently disarms at login is how the bullet dies. The per-job
+split IS the blast-radius limiter (it replaced fmt 1's jobs boolean map; the
+GUI migrates old files — every ticked job gets its own copy of the list, and
+a list no job owned is adopted by the first job that opens the panel).
 
 ## 2. UI — Automations → "AutoAmmo" (slot automation (Ammo))
 
@@ -111,9 +116,10 @@ branch's row-index rules), detail view delegated to a new `ui/ammoui.lua`
 (helmui contract: `render(deps, availW)` / `status(deps)` / `maxLevel`).
 
 Layout, top to bottom:
-- Master ON/OFF + "Active on: <job chips>" — the jobs map. Enabling adds the
-  current main job; chips toggle. The engine ignores every event when the
-  current job isn't ticked.
+- "AutoAmmo on <JOB>:" ON/OFF — the CURRENT job's own switch (fmt 2); the
+  whole panel edits that job's section, and a dim "also configured:" line
+  summarizes the other jobs' sections. The engine resolves against the main
+  job's section only — no section, or its switch off, means do nothing.
 - **Priority list** (configured ammo, order = fallback order): per row —
   icon + name (shared renderIcon/itemTooltip), live count (red at 0),
   `Ranged` / `WS` / `Special` checkboxes, ▲▼ reorder, ✕ remove-from-config.
@@ -161,15 +167,23 @@ depends on trove being installed:
 - Parsing is plain `string.byte` (no struct) so the whole wire path is
   headless-tested (EB*).
 
-Per configured row (CW only): an `E-Box: xN` line + a qty input (clamped to
-what the box holds) + `Fetch`. Above the list, the **proximity warning**
-(field round 1 addition): E-Boxes are ordinary zone NPCs named **"Ephemeral
-Box"** (Henrik's Bastok Mines sample, server id 17737730, decodes to a plain
-zone-NPC slot), so the panel scans the entity array by NAME — no targeting
-needed, the helmwatch proximity conventions (GetDistance is SQUARED; reads
-memory-only, ~2 s throttle) — and warns when the nearest box is beyond
-`BOX_RANGE = 6` yalms or none is rendered in the zone. Warn only; the fetch
-stays clickable and the server's ACK has the final word.
+Per configured row (CW only): an `E-Box: xN` line + a qty input (120 px —
+triple digits fit; both buttons work from it, always clamped to what the box
+holds) + two buttons:
+- **Fetch** — withdraw exactly the typed qty (box-clamped).
+- **Fetch up to** (field round 2) — top-up: reads how many you carry in the
+  equippable bags and fetches the DIFFERENCE so you end at the typed number
+  (box-clamped; refuses when you already carry that many).
+
+Above the list, the **proximity check**: E-Boxes are ordinary zone NPCs named
+**"Ephemeral Box"** (Henrik's Bastok Mines sample, server id 17737730, decodes
+to a plain zone-NPC slot), so the panel scans the entity array by NAME — no
+targeting needed, the helmwatch proximity conventions (GetDistance is SQUARED;
+reads memory-only, ~2 s throttle). `BOX_RANGE = 5` yalms is **FIELD-PINNED**
+(Henrik, field round 2; the round-1 trade-range guess was 6). Out of range (or
+no box rendered): the warning line shows AND both fetch buttons go dead —
+dim RED for out-of-range, GREY for nothing-to-fetch/busy — with the reason in
+the tooltip. The server's ACK still has the final word.
 - Footer: the strictness one-liner ("Special ammo is never left equipped where
   a shot could consume it; with nothing else to load, the slot is emptied.").
 
@@ -227,15 +241,21 @@ fishwatch's saveState; loadState restores EVERYTHING including `enabled`):
 
 ```lua
 return {
-  enabled = true,
-  at = 1753000000,            -- arbitration stamp (set on enable)
-  jobs = { COR = true, RNG = true },
-  ammo = {                    -- array order = priority order
-    { name = "Bronze Bullet",   id = 21306, type = "Marksmanship",
-      ranged = true,  ws = false, special = false },
-    { name = "Animikii Bullet", id = 21334, type = "Marksmanship",
-      ranged = false, ws = false,
-      special = { unlimited = true, quickdraw = true, freews = true } },
+  fmt = 2,                      -- per-job sections (v74); fmt 1 = one shared
+                                -- list + jobs boolean map, engine-supported
+                                -- until the GUI migrates the file
+  jobs = {
+    ["RNG"] = {
+      enabled = true,           -- THIS job's own persisted switch
+      at = 1753000000,          -- stamp (set on enable)
+      ammo = {                  -- array order = priority order
+        { name = "Bronze Bullet",   id = 21306, type = "Marksmanship",
+          level = 5,  ranged = true,  ws = false, special = false },
+        { name = "Animikii Bullet", id = 21334, type = "Marksmanship",
+          level = 75, ranged = false, ws = false,
+          special = { unlimited = true, quickdraw = true, freews = true } },
+      },
+    },
   },
 }
 ```
@@ -290,7 +310,6 @@ the live Range/Ammo picks — lands AutoAmmo entirely on the state-file side.
 - Whether ranged ammo ↔ ranged weapon skill-type mismatch (arrows in a gun)
   needs a UI hint; the server gate only checks "a weapon-type ammo exists".
   Deferred — users enable sensible ammo.
-- Does the server enforce Ephemeral-Box PROXIMITY on GET_CATEGORY/WITHDRAW,
-  or is the box remote-usable (trove carries no distance check)? The warning
-  threshold (6 yalms) is the trade-range convention, unverified — field test
-  10 calibrates or deletes it.
+- ~~Does the server enforce Ephemeral-Box PROXIMITY, and at what range?~~
+  **ANSWERED (field round 2, Henrik): the box range is 5 yalms** —
+  `BOX_RANGE = 5`, pinned by test EB9; the fetch buttons go dead-red beyond it.

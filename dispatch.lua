@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 73;   -- 73: AutoAmmo -- the Ammo-slot automation (docs/design/auto-ammo.md). ammostate.lua (GUI-written) + an overlay on EVERY event: count-verified picks per context (ranged / consuming-WS / the three free magical WS 217,218,220 / Quick Draw / Unlimited Shot 115), special ammo swept off wherever a shot could consume it, ladder ends in a literal 'remove' (LAC's native unequip; an empty gun is server-blocked, so the shot refuses instead of eating the bullet). New engine capabilities: the first LAC-state bag counter (per-second cache, fresh on action events) and the 'remove' plan. Pure core M.resolveAmmoPlan (tests AM*).
+M.VERSION = 74;   -- 74: AutoAmmo per-job config (ammostate fmt 2) -- every job carries its OWN priority list + persisted on/off (field round 2: "all jobs can't use all ammos"); the overlay resolves against as.jobs[<main job>]'s section, legacy fmt-1 files (top-level ammo list + jobs map) keep working unchanged until the GUI migrates them. Decision rules untouched.
+                  -- 73: AutoAmmo -- the Ammo-slot automation (docs/design/auto-ammo.md). ammostate.lua (GUI-written) + an overlay on EVERY event: count-verified picks per context (ranged / consuming-WS / the three free magical WS 217,218,220 / Quick Draw / Unlimited Shot 115), special ammo swept off wherever a shot could consume it, ladder ends in a literal 'remove' (LAC's native unequip; an empty gun is server-blocked, so the shot refuses instead of eating the bullet). New engine capabilities: the first LAC-state bag counter (per-second cache, fresh on action events) and the 'remove' plan. Pure core M.resolveAmmoPlan (tests AM*).
                   -- 72: serializeTriggers keeps BARE mode definitions -- `[name] = {}` (no bind, no values) is emitted instead of dropped, so a plain UI-created toggle survives the commit round-trip and stays in the Modes list (triggermodel.fromRaw keeps the empty def too; tests TM20-22). Rule matching, resolve order and every other engine path untouched.
                   -- 71: equipResolved's resolve order becomes DATA -- the five whole-table post-passes (mp-equip-uncovered, craft-sub-guard, sync-hold-ammo, trinket-vs-ranged, reserved-drops) are named entries run in M._postPassOrder, so the trinket-BEFORE-reserved constraint (ADR 0010) and every future overlay's place in line are one visible, test-pinned list (PL*) instead of prose; the per-slot chain keeps its elseif precedence (locks > sync-hold > pin-reserved > AutoAcc > virtuals > MP), now named; the copy-on-write dance and note building are written once (W/note) instead of eleven times. Behavior bit-identical -- the H/AK/TR/LS/MC sections are the net.
                   -- 70: the statefile seam gets ONE reader -- ensureStateFile behind the auto/acc/craft/helm/fish/pin caches (six near-identical clones collapsed; charDir gains the _charDirOverride seam so the file-driven surface finally runs headless, tests SF*). POLICY unified on the pin reader's v44 field lesson: a torn/corrupt state write now DROPS that state everywhere -- craft/helm/fish/auto used to keep the LAST GOOD table forever on a parse failure (raw already held the corrupt text, so the raw-compare short-circuited and even the watcher's clear could not unstick it -- a stale craft overlay glued on was one torn write away). The next good write self-heals; triggers deliberately keep their own keep-previous-and-say-so loader (hand-edited file).
@@ -2066,17 +2067,24 @@ M._fishOverlayFor = fishOverlayFor;   -- test seam
 -- would just be a second, hidden read of the same cache.)
 
 -- ---------------------------------------------------------------------------
--- AutoAmmo (v73) -- the Ammo-slot automation (docs/design/auto-ammo.md).
--- ammowatch (addon state) writes <char>\dlac\ammostate.lua:
+-- AutoAmmo (v73; per-job fmt 2 in v74) -- the Ammo-slot automation
+-- (docs/design/auto-ammo.md). ammowatch (addon state) writes
+-- <char>\dlac\ammostate.lua -- fmt 2 gives EVERY JOB its own section
+-- (list + persisted on/off; "all jobs can't use all ammos"):
 --
---     return { enabled = true, at = <stamp>, jobs = { COR = true },
---              ammo = {  -- array order = fallback priority
---                { name = "Bronze Bullet", id = 21306, type = "Marksmanship",
---                  ranged = true, ws = false, special = false },
---                { name = "Animikii Bullet", id = 21334, type = "Marksmanship",
---                  ranged = false, ws = false,
---                  special = { unlimited = true, quickdraw = true, freews = true } },
---              } }
+--     return { fmt = 2, jobs = {
+--       ["RNG"] = { enabled = true, at = <stamp>,
+--         ammo = {  -- array order = fallback priority
+--           { name = "Bronze Bullet", id = 21306, type = "Marksmanship",
+--             ranged = true, ws = false, special = false },
+--           { name = "Animikii Bullet", id = 21334, type = "Marksmanship",
+--             ranged = false, ws = false,
+--             special = { unlimited = true, quickdraw = true, freews = true } },
+--         } } } }
+--
+-- (Legacy fmt 1 -- a top-level ammo list + a jobs BOOLEAN map -- still
+-- resolves: the whole table is the cfg and resolveAmmoPlan's map gate does
+-- the job check. The GUI migrates the file to fmt 2 on its first load.)
 --
 -- Unlike craft/HELM/fish this overlay is NOT Default-only: it owns the Ammo
 -- slot on the shooting events (Preshot/Midshot/Weaponskill/Ability) and runs a
@@ -2116,8 +2124,19 @@ local _ammoSt = { raw = nil, data = nil, lastCheck = -1 };
 local function ensureAmmoState() return ensureStateFile(_ammoSt, 'ammostate.lua'); end
 
 local function ammoStateOn(as)
-    return type(as) == 'table' and as.enabled == true
-           and type(as.ammo) == 'table' and #as.ammo > 0;
+    if type(as) ~= 'table' then return false; end
+    if type(as.ammo) == 'table' then   -- legacy fmt 1: one list + jobs map
+        return as.enabled == true and #as.ammo > 0;
+    end
+    if type(as.jobs) == 'table' then   -- fmt 2: per-job sections
+        for _, s in pairs(as.jobs) do
+            if type(s) == 'table' and s.enabled == true
+               and type(s.ammo) == 'table' and #s.ammo > 0 then
+                return true;
+            end
+        end
+    end
+    return false;
 end
 M._ammoStateOn = ammoStateOn;   -- test seam
 
@@ -2355,6 +2374,17 @@ local function ammoOverlayFor(as, ctx, event, hits, fishOn)
     if type(ctx) == 'table' and type(ctx.player) == 'table' then
         job = ctx.player.MainJob;
     end
+    -- fmt 2: this job's OWN section is the whole config (no section = this
+    -- job never set AutoAmmo up = do nothing). Legacy fmt 1 keeps the whole
+    -- table as cfg; resolveAmmoPlan's jobs-map gate does the job check there.
+    local cfg = as;
+    if type(as.ammo) ~= 'table' and type(as.jobs) == 'table' then
+        cfg = (job ~= nil) and as.jobs[job] or nil;
+        if type(cfg) ~= 'table' or cfg.enabled ~= true
+           or type(cfg.ammo) ~= 'table' or #cfg.ammo == 0 then
+            return nil;
+        end
+    end
     -- Fresh bag scan on action events (see bagCounts); cached on Default.
     local isAction = (event ~= 'Default');
     local byId, byName = bagCounts(isAction);
@@ -2381,7 +2411,7 @@ local function ammoOverlayFor(as, ctx, event, hits, fishOn)
     elseif event == 'Default' then
         f.plannedAmmo = ammoPlannedByHits(hits);
     end
-    local plan, why = M.resolveAmmoPlan(as, f);
+    local plan, why = M.resolveAmmoPlan(cfg, f);
     if plan == nil then return nil; end
     -- Already wearing the plan: hold (no churn, no trace noise). 'remove' with
     -- an empty slot is the same no-op.

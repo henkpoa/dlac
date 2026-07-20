@@ -3441,3 +3441,24 @@ Mines sample id 17737730 = plain zone-NPC slot), scanned by NAME
 with helmwatch's squared-distance conventions; 6-yalm warn
 threshold is the trade-range convention, unverified (design doc
 S:7). Engine untouched all round. +31 checks, +6 smoke.
+
+## AutoAmmo field round 2: verified live; per-job config (2026-07-20)
+
+Henrik verified round 1 live on his RNG ("so far it works") and
+pinned the E-Box interaction range: 5 yalms (BOX_RANGE, test EB9;
+the trade-range guess of 6 lasted one round). Round-2 asks, all
+shipped: fetch buttons go DEAD when they cannot work -- dim red out
+of box range, grey for empty-box/busy, reason in the tooltip; the
+qty input widened to 120px (triple digits beside the steppers);
+new "Fetch up to" button tops you up -- reads the equippable-bag
+count and fetches the difference so you land at the typed number
+(box-clamped like everything; plain Fetch already clamped). The
+big one: ammostate fmt 2 = PER-JOB sections ("all jobs can't use
+all ammos") -- every job keeps its OWN priority list and its OWN
+persisted on/off; the panel edits the current job's section (a dim
+"also configured:" line shows the rest), the engine (v74) resolves
+against as.jobs[<main job>] only, and fmt-1 files migrate on first
+panel open (every ticked job gets a copy; a list no job owned is
+adopted by the first job in -- nothing lost, tests AW18-19c).
+Legacy fmt-1 stays engine-readable until migrated. resolveAmmoPlan
+untouched. Suites 1802 + 176.

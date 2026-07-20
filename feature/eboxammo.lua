@@ -240,7 +240,8 @@ end
 -- reads are memory-only, and the scan is probe-injected so it runs headless.
 -- ---------------------------------------------------------------------------
 M.BOX_NAME = 'Ephemeral Box';
-M.BOX_RANGE = 6;   -- yalms -- the trade-range convention (helmwatch's old default)
+M.BOX_RANGE = 5;   -- yalms -- FIELD-PINNED (Henrik, 2026-07-20: "the box range
+                   -- is 5"); was 6 (the trade-range guess) for one round
 local _boxCache = { at = -10, dist = nil };
 
 -- Pure half (tests EB*): probe = { present=fn(idx)->bool, name=fn(idx)->

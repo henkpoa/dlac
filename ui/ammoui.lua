@@ -33,6 +33,9 @@ local _ebok, eb = pcall(require, 'dlac\\feature\\eboxammo');
 _ebok = _ebok and type(eb) == 'table';
 local EB_QTY = {};   -- per-item withdraw-qty input state, keyed by item id
 
+local BTN_RED_OFF  = { 0.45, 0.14, 0.14, 1.0 };   -- out of box range
+local BTN_GREY_OFF = { 0.28, 0.28, 0.28, 1.0 };   -- nothing to fetch / busy
+
 local COL_HEADER = { 0.60, 0.75, 1.00, 1.00 };
 local COL_DIM    = { 0.55, 0.55, 0.55, 1.00 };
 local COL_TEXT   = { 0.70, 0.70, 0.70, 1.00 };
@@ -97,13 +100,14 @@ end
 M.maxLevel = 1;
 function M.status(deps)
     if not _awok then return 0, 'ammowatch failed to load'; end
-    aw.loadState();
-    if not aw.enabled then return 0, 'OFF'; end
+    local job = (deps ~= nil and type(deps.playerJob) == 'function') and deps.playerJob() or nil;
+    aw.selectJob(job);   -- fmt 2: the row reports the CURRENT job's own switch
+    if not aw.enabled then return 0, 'OFF' .. ((job ~= nil) and (' on ' .. job) or ''); end
     local n, sp = #aw.list, 0;
     for _, e in ipairs(aw.list) do
         if type(e.special) == 'table' then sp = sp + 1; end
     end
-    local txt = string.format('ON -- %d ammo', n);
+    local txt = string.format('ON on %s -- %d ammo', tostring(job), n);
     if sp > 0 then txt = txt .. string.format(', %d special', sp); end
     return 1, txt;
 end
@@ -119,7 +123,8 @@ function M.render(deps, availW)
         imgui.TextColored(COL_ERR, 'ammowatch failed to load.');
         return;
     end
-    aw.loadState();
+    local job = (deps ~= nil and type(deps.playerJob) == 'function') and deps.playerJob() or nil;
+    aw.selectJob(job);   -- fmt 2: everything below edits THIS job's own section
     -- Crystal Warriors ONLY (affirmative gamemode 'CW' -- unknown shows
     -- nothing); a server LOCKED reason 'cw' shuts it again from the other end.
     local cwBox = _ebok and eb.isCW() and eb.lockedReason ~= 'cw';
@@ -129,39 +134,39 @@ function M.render(deps, availW)
     imgui.SameLine(0, 10);
     imgui.TextColored(COL_TEXT, 'decides what sits in the Ammo slot, per shot and per weapon skill.');
 
-    -- Master pill (craftbar's one implementation) + the jobs chips.
+    -- Per-job switch (field round 2: "all jobs can't use all ammos") -- each
+    -- job keeps its OWN priority list and its OWN persisted on/off.
     local on = (aw.enabled == true);
-    imgui.TextColored(COL_TEXT, 'AutoAmmo:');
+    imgui.TextColored(COL_TEXT, 'AutoAmmo on');
+    imgui.SameLine(0, 5);
+    imgui.TextColored(COL_GOLD, tostring(job or '?'));
+    imgui.SameLine(0, 2);
+    imgui.TextColored(COL_TEXT, ':');
     imgui.SameLine(0, 6);
     local cbok, craftbar = pcall(require, 'dlac\\ui\\craftbar');
     local pill = (cbok and type(craftbar) == 'table' and type(craftbar.onOffSwitch) == 'function')
         and craftbar.onOffSwitch or nil;
-    local job = (deps ~= nil and type(deps.playerJob) == 'function') and deps.playerJob() or nil;
-    local TIP_ON  = 'AutoAmmo is ON (stays on across sessions -- it is a protection system).\nClick to turn off.';
-    local TIP_OFF = 'Loads your enabled ammo for ranged attacks and weapon skills, and strictly\nguards special ammo (equipped only for its windows; swept off -- or the slot\nemptied -- anywhere a shot could consume it). Stays on across sessions.';
-    if pill ~= nil then
+    local TIP_ON  = 'AutoAmmo is ON for this job (each job remembers its own switch and list;\nstays on across sessions -- it is a protection system). Click to turn off.';
+    local TIP_OFF = 'Loads this job\'s enabled ammo for ranged attacks and weapon skills, and\nstrictly guards special ammo (equipped only for its windows; swept off --\nor the slot emptied -- anywhere a shot could consume it). Each job keeps\nits own list and switch, remembered across sessions.';
+    if job == nil then
+        imgui.TextColored(COL_DIM, '(log in first)');
+    elseif pill ~= nil then
         if pill(on, 'ammoonoff', TIP_ON, TIP_OFF) then aw.setEnabled(not on, job); end
     else
         if imgui.Button((on and 'ON' or 'OFF') .. '##ammoonoff', { 46, 22 }) then aw.setEnabled(not on, job); end
     end
     imgui.SameLine(0, 14);
-    imgui.TextColored(COL_TEXT, 'Active on:');
-    local jk = {};
-    for j in pairs(aw.jobs) do jk[#jk + 1] = j; end
-    table.sort(jk);
-    for _, j in ipairs(jk) do
-        imgui.SameLine(0, 6);
-        if imgui.SmallButton(j .. '  x##ammojob_' .. j) then aw.setJob(j, false); end
-        if imgui.IsItemHovered() then imgui.SetTooltip('AutoAmmo acts on ' .. j .. '. Click to remove.'); end
+    imgui.TextColored(COL_DIM, 'each job keeps its own list and switch');
+    -- The other jobs' sections, at a glance (and proof nothing was lost).
+    local sum = (type(aw.jobSummary) == 'function') and aw.jobSummary() or {};
+    local others = {};
+    for _, s in ipairs(sum) do
+        if s.job ~= job then
+            others[#others + 1] = string.format('%s %s (%d)', s.job, s.enabled and 'ON' or 'off', s.n);
+        end
     end
-    if job ~= nil and aw.jobs[job] ~= true then
-        imgui.SameLine(0, 6);
-        if imgui.SmallButton('+ ' .. job .. '##ammojobadd') then aw.setJob(job, true); end
-        if imgui.IsItemHovered() then imgui.SetTooltip('Add your current job -- AutoAmmo only acts on listed jobs.'); end
-    end
-    if #jk == 0 then
-        imgui.SameLine(0, 6);
-        imgui.TextColored(COL_ERR, '(no jobs -- AutoAmmo acts on nothing)');
+    if #others > 0 then
+        imgui.TextColored(COL_DIM, 'also configured: ' .. esc(table.concat(others, ', ')));
     end
 
     imgui.Separator();
@@ -188,17 +193,31 @@ function M.render(deps, availW)
     if #aw.list == 0 then
         imgui.TextColored(COL_DIM, 'nothing configured yet -- add ammo from the owned list below.');
     end
-    -- Proximity warning (CW only): fetching needs a nearby Ephemeral Box --
-    -- warned here without targeting anything (the helmwatch proximity read).
+    -- Proximity (CW only): fetching needs a nearby Ephemeral Box -- checked
+    -- without targeting anything (the helmwatch proximity read). Range 5 is
+    -- FIELD-PINNED. ebInRange also greys/reds the fetch buttons below.
+    local ebDist, ebInRange = nil, false;
     if cwBox and eb.lockedReason == nil then
-        local d = eb.boxDistance();
-        if d == nil then
+        ebDist = eb.boxDistance();
+        ebInRange = (ebDist ~= nil and ebDist <= eb.BOX_RANGE);
+        if ebDist == nil then
             imgui.TextColored(COL_DIM, string.format(
                 'No %s in sight -- stand near one to fetch.', eb.BOX_NAME));
-        elseif d > eb.BOX_RANGE then
+        elseif not ebInRange then
             imgui.TextColored(COL_ERR, string.format(
-                'Too far from the %s (%.1f yalms -- get within %d).', eb.BOX_NAME, d, eb.BOX_RANGE));
+                'Too far from the %s (%.1f yalms -- get within %d).', eb.BOX_NAME, ebDist, eb.BOX_RANGE));
         end
+    end
+    -- A SmallButton that visibly refuses: dim red (out of range) or grey
+    -- (nothing to fetch / busy), click swallowed.
+    local function offableButton(label, canClick, offCol)
+        if canClick then return imgui.SmallButton(label); end
+        imgui.PushStyleColor(ImGuiCol_Button, offCol);
+        imgui.PushStyleColor(ImGuiCol_ButtonHovered, offCol);
+        imgui.PushStyleColor(ImGuiCol_ButtonActive, offCol);
+        imgui.SmallButton(label);
+        imgui.PopStyleColor(3);
+        return false;
     end
     local removeAt = nil;
     for i, e in ipairs(aw.list) do
@@ -287,22 +306,43 @@ function M.render(deps, availW)
                 imgui.SameLine(QTY_X);
                 local qb = EB_QTY[e.id];
                 if qb == nil then qb = { 99 }; EB_QTY[e.id] = qb; end
-                imgui.PushItemWidth(86);
+                imgui.PushItemWidth(120);   -- room for triple digits beside the +/- steppers
                 imgui.InputInt('##ebq' .. tostring(e.id), qb);
                 imgui.PopItemWidth();
                 if qb[1] < 1 then qb[1] = 1; end
                 if imgui.IsItemHovered() then
-                    imgui.SetTooltip('How many to take out (clamped to what the box holds).');
+                    imgui.SetTooltip('The quantity both buttons work from (always clamped to what the box holds).');
                 end
-                imgui.SameLine(0, 8);
                 local busy = eb.isBusy();
-                local can = (have ~= nil and have > 0) and not busy;
-                if imgui.SmallButton((busy and 'Fetching...' or 'Fetch') .. '##ebf' .. tostring(e.id)) and can then
+                local boxed = (have ~= nil and have > 0);
+                local offCol = (not ebInRange) and BTN_RED_OFF or BTN_GREY_OFF;
+                local offWhy = (not ebInRange)
+                        and ((ebDist == nil) and 'No Ephemeral Box in sight.' or 'Too far from the Ephemeral Box.')
+                        or (busy and 'A fetch is already in flight.' or 'The box holds none of these.');
+                imgui.SameLine(0, 8);
+                local canF = boxed and not busy and ebInRange;
+                if offableButton((busy and 'Fetching...' or 'Fetch') .. '##ebf' .. tostring(e.id), canF, offCol) then
                     eb.withdraw(e.id, qb[1]);
                 end
                 if imgui.IsItemHovered() then
-                    imgui.SetTooltip(can and 'Withdraw that many from the E-Box into your bags.'
-                                     or (busy and 'A fetch is already in flight.' or 'The box holds none of these.'));
+                    imgui.SetTooltip(canF and 'Withdraw exactly this many (clamped to what the box holds).' or offWhy);
+                end
+                imgui.SameLine(0, 6);
+                local bags = countOf(deps, e.id);
+                local need = (qb[1] or 0) - bags;
+                local canU = canF and need >= 1;
+                if offableButton('Fetch up to##ebu' .. tostring(e.id), canU, offCol) then
+                    eb.withdraw(e.id, need);
+                end
+                if imgui.IsItemHovered() then
+                    if canU then
+                        imgui.SetTooltip(string.format(
+                            'Top up: you carry x%d -- fetches %d more so you end at %d\n(clamped to what the box holds).', bags, need, qb[1]));
+                    elseif canF and need < 1 then
+                        imgui.SetTooltip(string.format('You already carry x%d -- nothing to top up.', bags));
+                    else
+                        imgui.SetTooltip(offWhy);
+                    end
                 end
             end
         end

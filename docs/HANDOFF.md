@@ -199,8 +199,11 @@ agent; the per-repo setup lives in `docs/agents/`.
   Rare/Ex super-bullet (Animikii) gets eaten by the next shot — dlac now owns the
   slot. `feature/ammowatch.lua` + `ui/ammoui.lua` (Automations → AutoAmmo row)
   write `<char>\dlac\ammostate.lua` (per-ammo Ranged / WS / Special flags,
-  priority order, jobs map; **`enabled` PERSISTS across sessions** — deliberate
-  deviation from the craftstate rule, a protection must not disarm at login);
+  priority order; **fmt 2 since v74: one section PER JOB** — each job keeps its
+  own list AND its own persisted on/off ("all jobs can't use all ammos"), fmt-1
+  files migrate on first panel open; **`enabled` PERSISTS across sessions** —
+  deliberate deviation from the craftstate rule, a protection must not disarm
+  at login);
   the engine overlays the Ammo slot on EVERY event below pins with
   **count-verified** picks (the LAC state's first bag counter — per-second
   cache, FRESH on action events) and a ladder ending in a literal `'remove'`
@@ -221,10 +224,12 @@ agent; the per-repo setup lives in `docs/agents/`.
     (GET_CATEGORY ahCat 15 streams every boxed ammo's count in one request;
     WITHDRAW + ACK with the server's refusal words; pending discipline on the
     shared 0x1A4 party line; `string.byte` parsing, headless EB*). Per-row
-    `E-Box: xN` + qty + Fetch in ammoui, plus a no-target proximity warning —
-    E-Boxes are zone NPCs named **"Ephemeral Box"**, scanned by name with the
-    helmwatch distance conventions (squared, 6-yalm warn, unverified — design
-    doc §7).
+    `E-Box: xN` + qty + Fetch + **Fetch up to** (top-up against bag counts) in
+    ammoui, plus a no-target proximity check — E-Boxes are zone NPCs named
+    **"Ephemeral Box"**, scanned by name with the helmwatch distance
+    conventions (squared; **range 5 FIELD-PINNED**, test EB9); out of range =
+    warning + the fetch buttons go dead-red. Field round 2 (07-20): "so far it
+    works".
 - **GEAR-SET BONUSES ARE LIVE — display + optimizer (07-18, ADR 0011).**
   `gear\geareffects.lua` is THE evaluator (`comboStats` = whole-composition truth;
   `setsOf`/`setTier` the optimizer seam; counting per SLOT — duplicates twice,
