@@ -633,6 +633,35 @@ check('MPL6 no manifest -> self-heal hint',
 end)();
 
 -- ---------------------------------------------------------------------------
+-- MPS. paired-slot veto (dispatch.mpPairSkip, engine v83) -- a battery worn
+--      in the SIBLING ear/ring is the same physical item (equipping it here
+--      would shuffle it across and leave a hole; field: Loquacious Earring
+--      hopped ear2 -> ear1 on rest). Duplicates are exempt: the manifest
+--      lists dup-owned items in BOTH paired ladders, so a sibling ladder
+--      naming the item means a second copy exists.
+-- ---------------------------------------------------------------------------
+(function()
+local sibLad = { { name = 'Outlaw\'s Earring', mp = 15, level = 60 },
+                 { name = 'Morion Earring', mp = 4, level = 16 } };
+check('MPS1 single copy worn in sibling -> veto',
+    dispatchM.mpPairSkip('Loquac. Earring', 'Loquac. Earring', sibLad), true);
+check('MPS2 case-insensitive match still vetoes',
+    dispatchM.mpPairSkip('Loquac. Earring', 'loquac. earring', sibLad), true);
+check('MPS3 dup-owned (sibling ladder lists it) -> allowed',
+    dispatchM.mpPairSkip('Astral Ring', 'Astral Ring',
+        { { name = 'Astral Ring', mp = 25, level = 10 } }), false);
+check('MPS4 different item worn in sibling -> allowed',
+    dispatchM.mpPairSkip('Loquac. Earring', 'Outlaw\'s Earring', sibLad), false);
+check('MPS5 empty sibling slot -> allowed',
+    dispatchM.mpPairSkip('Loquac. Earring', nil, sibLad), false);
+check('MPS6 legacy single-entry sibling ladder shape',
+    dispatchM.mpPairSkip('Astral Ring', 'Astral Ring',
+        { name = 'Astral Ring', mp = 25, level = 10 }), false);
+check('MPS7 nil ladder: worn in sibling still vetoes',
+    dispatchM.mpPairSkip('Loquac. Earring', 'Loquac. Earring', nil), true);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- L. THE central stats-at-level resolver (levelstats.effective), against the
 --    REAL generated scaling data: Tamas Ring is MP 15 on paper, 29 at Lv74,
 --    30 fully scaled (Lv75). Every section -- gearui display/scoring, gearoptim

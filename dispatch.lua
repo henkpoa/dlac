@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 82;   -- 82: Iridescence universals LADDER -- the manifest's new `universals` array (fmtver 10: EVERY owned universal, preference-ordered by the GUI -- tier desc, job-specific over the Chatoyant/Iridal fallbacks; catalog-verified tiers, +3 now exists: Inanna/Keraunos/Gridarvor/Laevateinn/Tupsimati) replaces the single `universal` read when present: resolveStaff takes the FIRST rung usable at the live level, so a level-synced character falls through a parked Lv75 Inanna to Foreshadow +1 Lv50 instead of losing the universal outright (Incursion syncs); the tier contest vs the elemental staff is unchanged (ties still go universal). virtualMinLevel considers every rung -- the set marker becomes a rung at the LOWEST universal's level. Old manifests (single `universal` / legacy string) read exactly as before.
+M.VERSION = 83;   -- 83: paired-slot veto -- a battery already WORN in the sibling ear/ring is the SAME physical item, and equipping it "here" made LAC unequip it over there (UnequipConflicts) and shuffle it across, leaving the sibling empty (field: resting WHM, Loquacious Earring hopped ear2 -> ear1, ear2 left bare; the resting set names no earrings at all -- the uncovered pass drove the churn, net MP zero). M.mpPairSkip (pure, tests MPS*) vetoes such candidates at all three collection sites (hold-upgrade, covered upgrade, uncovered); genuine duplicates are EXEMPT -- the manifest lists dup-owned items in both paired ladders (owned counts), so "the sibling's own ladder also names it" = a second copy exists and the pick proceeds (2x Astral Ring).
+                  -- 82: Iridescence universals LADDER -- the manifest's new `universals` array (fmtver 10: EVERY owned universal, preference-ordered by the GUI -- tier desc, job-specific over the Chatoyant/Iridal fallbacks; catalog-verified tiers, +3 now exists: Inanna/Keraunos/Gridarvor/Laevateinn/Tupsimati) replaces the single `universal` read when present: resolveStaff takes the FIRST rung usable at the live level, so a level-synced character falls through a parked Lv75 Inanna to Foreshadow +1 Lv50 instead of losing the universal outright (Incursion syncs); the tier contest vs the elemental staff is unchanged (ties still go universal). virtualMinLevel considers every rung -- the set marker becomes a rung at the LOWEST universal's level. Old manifests (single `universal` / legacy string) read exactly as before.
                   -- 81: `target` condition -- WHO the action is aimed at; v1 vocabulary: 'Self' (Henrik's case: waltz potency reads the TARGET's VIT beside your CHR, so a self-waltz wants a VIT+CHR set while waltzing someone else keeps the plain CHR set). Live read: gData.GetActionTarget().Index (LAC stores the outgoing action packet's target index for Spell/Ability/Item/WS/Ranged before Precast fires) vs my own party index, once per dispatch (ctx.targetSelf, tri-state -- unknown matches NOTHING, the buff-cache rule, so Default-handler rules and failed reads never fire a target rule). Tier 55: a self-refined rule overlays its base rule (name 50, contains 40, group 45) with no hand priority, under the Automations band (60). GUI: a `target` dropdown on Precast/Midcast/Ability, one value today, built to grow. /dl why tags a self-aimed action '@self'.
                   -- 80: a HELD battery still upgrades at a FULL pool. Field round 4 froze with 7 positive-gain batteries queued at 1040/1040: the MP-HOLD branch fires for any worn piece with surplus over the set piece and used to swallow the upgrade check entirely -- a worn SMALL battery (Curate's Earring 10) blocked its own upgrade (Loquac. Earring 30) forever; only slots already wearing their top pick ever equipped. The hold branch now collects the upgrade candidate too (same full-pool gate, cooldown, and mp-stage one-per-dispatch pick; the atomic swap keeps current MP intact, so the hold's no-waste guarantee holds). /dl why shows the winner slot as MP-HOLD + MP-EQUIP together: held from the SET piece, upgraded by the stage.
                   -- 79: /dl plan -- the maxmp battery plan as chat lines (kept OFF the Automations tab per the hidden ruling). Per slot: the live pick (mpPick at the current level), its MP, WORN/gain-vs-worn/LOCKED status and the full ladder with above-level rungs tagged (LvNN); rows sorted biggest gain first = the equip order at a full pool; header restates the two staging rules; footer flags the stale-manifest tell (a listed piece not in Inventory/Wardrobes). Pure assembly M.mpPlanLines (tests MPL*), inputs injected; the command glue gFunc-gates like /dl ls (one state, one printer). Engine dispatch rules untouched.
@@ -109,6 +110,20 @@ _pok = _pok and type(_prof) == 'table';
 -- The Oneiros resolver aims its latent threshold with it at resolve time.
 local _nmok, _nmp = pcall(require, 'dlac\\data\\nativemp');
 if not (_nmok and type(_nmp) == 'table') then _nmp = nil; end
+
+-- Zone table (data/zones.lua): the curated town set behind the inTown condition
+-- (v82). town = server CITY zonetype + Nashmau, minus combat-staging CITY zones
+-- (see tools/gen_zones.py). A missing/old file just means inTown never matches
+-- (graceful degrade, the nativemp rule). Flattened to a zid -> true lookup once.
+local TOWN = {};
+do
+    local _zok, _zones = pcall(require, 'dlac\\data\\zones');
+    if _zok and type(_zones) == 'table' then
+        for zid, z in pairs(_zones) do
+            if type(z) == 'table' and z.town then TOWN[zid] = true; end
+        end
+    end
+end
 
 -- ---------------------------------------------------------------------------
 -- State
@@ -441,6 +456,22 @@ local function targetIsSelf(ctx)
     return r;
 end
 
+-- The zone id I'm standing in (v82), memoized on ctx like targetSelf. nil =
+-- unknown (a failed read, or headless) and unknown matches NEITHER inTown
+-- polarity, so a bad read never flaps gear (the buff-cache rule). Zone 0 is the
+-- demo stub, never a real player location, so it also reads as unknown. Tests
+-- inject ctx.zone directly; live it is one party-memory read per dispatch.
+local function zoneOf(ctx)
+    if ctx.zone ~= nil then return ctx.zone; end
+    local z = nil;
+    pcall(function()
+        z = AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0);
+    end);
+    if type(z) ~= 'number' or z == 0 then z = nil; end
+    ctx.zone = z;   -- nil stays nil -> retried next matcher call
+    return z;
+end
+
 -- Threshold matcher factory: one field off ctx.player, strict compare, junk
 -- or unreadable values never match.
 local function numGate(field, below)
@@ -519,6 +550,16 @@ local MATCHERS = {
         if ci(v, 'Self') then return slf; end
         return false;
     end,
+    -- inTown (v82): am I standing in a town? true = in a town (show off your
+    -- gear while idle), false = NOT in a town (a "field idle" set). Town = the
+    -- curated set in data/zones.lua (server CITY zonetype + Nashmau, minus
+    -- combat-staging CITY zones). An unknown zone matches NEITHER polarity, so
+    -- an inTown rule never fires blind (the target rule's discipline).
+    intown = function(v, ctx)
+        local z = zoneOf(ctx);
+        if z == nil then return false; end
+        return (TOWN[z] == true) == (v == true);
+    end,
 };
 M._matchers = MATCHERS;   -- headless test seam (the _autoOverride idiom)
 
@@ -551,6 +592,10 @@ local TIER = {
     playermpbelow = 95, playermpabove = 95, playermppercentbelow = 95, playermppercentabove = 95,
     hpbelow = 95, hpabove = 95, mpbelow = 95, mpabove = 95,
     tpbelow = 95, tpabove = 95, buff = 95, buffnot = 95,
+    -- inTown (v82) is a LOCATION gate, deliberate like a player-state one: a
+    -- town show-off set should decisively overlay the plain Idle set, while an
+    -- explicit mode still wins. Same 95 band.
+    intown = 95,
     mode = 100,
 };
 
@@ -566,7 +611,7 @@ local PRETTY_KEY = {
     mpabove = 'mpAbove', tpbelow = 'tpBelow', tpabove = 'tpAbove',
     buff = 'buff', buffnot = 'buffNot',
     pet = 'pet', petstatus = 'petStatus', petname = 'petName',
-    target = 'target',
+    target = 'target', intown = 'inTown',
     playerhpbelow = 'playerHPBelow', playerhpabove = 'playerHPAbove',
     playerhppercentbelow = 'playerHPPercentBelow', playerhppercentabove = 'playerHPPercentAbove',
     playermpbelow = 'playerMPBelow', playermpabove = 'playerMPAbove',
@@ -1296,6 +1341,31 @@ function M.mpStageEquip(cands)
     return best;
 end
 
+-- Paired slots (ears/rings, v83): a battery already WORN in the SIBLING slot
+-- is the SAME physical item -- equipping it "here" would make LAC unequip it
+-- over there (UnequipConflicts) and shuffle it across, leaving a hole (field:
+-- resting WHM, Loquacious Earring hopped ear2 -> ear1 with ear2 left empty;
+-- net MP zero, pure churn). The one exception is a genuine duplicate: the
+-- manifest lists dup-owned items in BOTH paired ladders (owned counts;
+-- ladders are disjoint otherwise), so "the sibling's own ladder also names
+-- it" = a second copy exists and the pick may proceed (2x Astral Ring).
+-- Pure rule, headless tests MPS*.
+M.MP_PAIR = { ear1 = 'ear2', ear2 = 'ear1', ring1 = 'ring2', ring2 = 'ring1' };
+function M.mpPairSkip(name, sibWorn, sibLadder)
+    if name == nil or sibWorn == nil then return false; end
+    if string.lower(tostring(sibWorn)) ~= string.lower(tostring(name)) then return false; end
+    if type(sibLadder) == 'table' then
+        if sibLadder.name ~= nil then sibLadder = { sibLadder }; end   -- legacy single-entry shape
+        for _, r in ipairs(sibLadder) do
+            if type(r) == 'table' and type(r.name) == 'string'
+               and string.lower(r.name) == string.lower(tostring(name)) then
+                return false;   -- dup-owned: the sibling wears the OTHER copy
+            end
+        end
+    end
+    return true;
+end
+
 -- The battery plan as chat lines (/dl plan, v78 -- Henrik: "give me the
 -- plan"). PURE assembly, inputs injected so it runs headless (tests MP*):
 -- data = the autogear manifest (mp + mpBest), cur/max/level the live
@@ -1864,6 +1934,13 @@ local function equipResolved(s, ctx)
     -- one of each kind through per dispatch (staged, v76).
     local mpMap, mpBest, curMP, maxMP = nil, nil, nil, nil;
     local mpRel, mpUp = {}, {};
+    -- Paired-slot veto (v83): candidate c for lslot loses when its item is the
+    -- sibling ear/ring's worn piece -- see M.mpPairSkip (dup-owned excepted).
+    local function pairBlocked(lslot, c)
+        local sib = M.MP_PAIR[lslot];
+        if sib == nil or c == nil then return false; end
+        return M.mpPairSkip(c.name, wornItemName(sib), (mpBest ~= nil) and mpBest[sib] or nil);
+    end
     if M.modes['maxmp'] ~= nil then
         local a = ensureAutoLoaded();
         if a ~= nil and type(a.mp) == 'table' then
@@ -1950,7 +2027,8 @@ local function equipResolved(s, ctx)
                    and string.lower(c.name) ~= string.lower(worn)
                    and (c.mp or 0) > wornMP
                    and curMP >= maxMP
-                   and os.time() >= (_mpCd[lslot] or 0) then
+                   and os.time() >= (_mpCd[lslot] or 0)
+                   and not pairBlocked(lslot, c) then
                     mpUp[#mpUp + 1] = { slot = slot, lslot = lslot, name = c.name,
                                         gain = (c.mp or 0) - wornMP };
                 end
@@ -1971,7 +2049,8 @@ local function equipResolved(s, ctx)
                    and (worn == nil or string.lower(c.name) ~= string.lower(worn))
                    and (c.mp or 0) > math.max(wornMP, tgtMP)
                    and curMP >= maxMP
-                   and os.time() >= (_mpCd[lslot] or 0) then
+                   and os.time() >= (_mpCd[lslot] or 0)
+                   and not pairBlocked(lslot, c) then
                     mpUp[#mpUp + 1] = { slot = slot, lslot = lslot, name = c.name,
                                         gain = (c.mp or 0) - math.max(wornMP, tgtMP) };
                 end
@@ -2021,7 +2100,8 @@ local function equipResolved(s, ctx)
                     local wornMP = (worn ~= nil) and (mpMap[string.lower(worn)] or 0) or 0;
                     if c ~= nil and (worn == nil or string.lower(c.name) ~= string.lower(worn))
                        and (c.mp or 0) > wornMP
-                       and os.time() >= (_mpCd[lslot] or 0) then
+                       and os.time() >= (_mpCd[lslot] or 0)
+                       and not pairBlocked(lslot, c) then
                         mpUp[#mpUp + 1] = { slot = canon, lslot = lslot, name = c.name,
                                             gain = (c.mp or 0) - wornMP };
                     end
