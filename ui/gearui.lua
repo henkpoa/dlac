@@ -1244,6 +1244,20 @@ end
 local TPQ_KEEP  = ImGuiSelectableFlags_DontClosePopups or 0;
 local TPQ_GREEN = { 0.45, 0.90, 0.45, 1.0 };
 
+-- Jump to one automation's panel: show the main window, one-shot select the
+-- Automations tab (uihost), land on the detail view, close the popup chain.
+-- automationsui is pcall-required, not captured (the autoui local is declared
+-- far below -- hard rule 8).
+local function tpqOpenPanel(key)
+    pcall(function()
+        local au = require('dlac\\ui\\automationsui');
+        if type(au.openDetail) == 'function' then au.openDetail(key); end
+    end);
+    pcall(host.selectTab, 'Automations');
+    M.visible = true;
+    imgui.CloseCurrentPopup();
+end
+
 local function renderAutomationsQuick()
     local aok, au = pcall(require, 'dlac\\ui\\automationsui');
     if not aok or type(au) ~= 'table' or type(au.listRows) ~= 'function' then
@@ -1258,8 +1272,9 @@ local function renderAutomationsQuick()
     -- The live switches, keyed like the rows: state() -> (text, on) for the
     -- second column, flip() = the same call the bars/panels make. Mutual
     -- exclusion between the craft/HELM/fish overlays lives inside the
-    -- watchers, never here. AutoAmmo's state text is nil on purpose -- its
-    -- row txt (ammoui.status) already reads "ON on RNG -- 3 ammo".
+    -- watchers, never here. Only rows with a switch render at all (Henrik,
+    -- 07-20 round 2): the set-driven trio (Iridescence / Obi / Oneiros) has
+    -- nothing to flip -- their panels live on the Automations tab itself.
     local SWITCH = {
         craft = {
             tip = 'Craft overlay: wears the selected craft\'s gear while ON (idle only).\nPick craft + goal on the craft bar (/dl craft bar) or the Automations tab.',
@@ -1300,8 +1315,11 @@ local function renderAutomationsQuick()
         ammo = {
             tip = 'AutoAmmo for the current job: loads enabled ammo for shots and guards\nspecial ammo. Manage the list on its panel.',
             state = function()
+                -- Bare ON/off like the rest (Henrik, 07-20 round 2) -- the
+                -- job + ammo count still ride the tooltip's Coverage line.
                 local aw = require('dlac\\feature\\ammowatch');
-                return nil, (aw.enabled == true);   -- text nil: the row txt shows ON/OFF
+                if aw.enabled ~= true then return 'off', false; end
+                return 'ON', true;
             end,
             flip = function()
                 local aw = require('dlac\\feature\\ammowatch');
@@ -1310,54 +1328,44 @@ local function renderAutomationsQuick()
         },
     };
     for _, r in ipairs(rows) do
-        local col = (type(au.levelColor) == 'function') and au.levelColor(r.level, r.max) or COL.DIM;
         local sw = SWITCH[r.key];
-        -- LEFT-click (Henrik, 2026-07-20): open this automation's panel --
-        -- show the main window, jump the tab bar to Automations (one-shot
-        -- host.selectTab) and land on the detail view. The whole popup chain
-        -- closes (CloseCurrentPopup from inside a child menu walks the chain).
-        if imgui.Selectable('##tpqa' .. r.key, false, TPQ_KEEP) then
-            pcall(function()
-                if type(au.openDetail) == 'function' then au.openDetail(r.key); end
-            end);
-            pcall(host.selectTab, 'Automations');
-            M.visible = true;
-            imgui.CloseCurrentPopup();
-        end
-        -- RIGHT-click on a switch row: a small on/off context menu. Manual
-        -- OpenPopup/BeginPopup (both field-proven in this binding) rather
-        -- than the unprobed BeginPopupContextItem. The context popup is a
-        -- plain popup, not a child menu, so its CloseCurrentPopup closes
-        -- ONLY itself -- the Automations menu stays open showing the flip.
-        if sw ~= nil and imgui.IsItemClicked(1) then
-            imgui.OpenPopup('##tpqactx' .. r.key);
-        end
-        if imgui.IsItemHovered() then
-            local how = (sw ~= nil)
-                and 'Left-click: open its panel. Right-click: turn it on/off.'
-                or  'Left-click: open its panel. Set-driven -- the dlac: entry in a set\'s slot\nIS the switch (add it via + Add, Sets tab).';
-            local tip = (sw ~= nil) and (sw.tip .. '\n') or '';
-            imgui.SetTooltip(tip .. how .. '\nCoverage: ' .. tostring(r.txt or ''));
-        end
-        local txt, on = nil, nil;
-        if sw ~= nil then pcall(function() txt, on = sw.state(); end); end
-        if sw ~= nil and imgui.BeginPopup('##tpqactx' .. r.key) then
-            imgui.TextColored(COL.HEADER, fmt.esc(r.name));
-            imgui.Separator();
-            if imgui.Selectable((on and 'Turn off' or 'Turn ON') .. '##tpqactxgo' .. r.key,
-                                false, TPQ_KEEP) then
-                pcall(sw.flip);
-                imgui.CloseCurrentPopup();
+        if sw ~= nil then
+            local col = (type(au.levelColor) == 'function') and au.levelColor(r.level, r.max) or COL.DIM;
+            -- LEFT-click (Henrik, 2026-07-20): open this automation's panel;
+            -- the whole popup chain closes (CloseCurrentPopup from inside a
+            -- child menu walks the chain).
+            if imgui.Selectable('##tpqa' .. r.key, false, TPQ_KEEP) then
+                tpqOpenPanel(r.key);
             end
-            imgui.EndPopup();
-        end
-        imgui.SameLine(8);
-        imgui.TextColored(col, fmt.esc(r.name));
-        imgui.SameLine(190);
-        if txt ~= nil then
-            imgui.TextColored(on and TPQ_GREEN or COL.DIM, fmt.esc(txt));
-        else
-            imgui.TextColored(col, fmt.esc(r.txt or ''));   -- slot rows + AutoAmmo: the row txt
+            -- RIGHT-click: a small on/off context menu. Manual
+            -- OpenPopup/BeginPopup (both field-proven in this binding) rather
+            -- than the unprobed BeginPopupContextItem. The context popup is a
+            -- plain popup, not a child menu, so its CloseCurrentPopup closes
+            -- ONLY itself -- the Automations menu stays open showing the flip.
+            if imgui.IsItemClicked(1) then
+                imgui.OpenPopup('##tpqactx' .. r.key);
+            end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip(sw.tip
+                    .. '\nLeft-click: open its panel. Right-click: turn it on/off.\nCoverage: '
+                    .. tostring(r.txt or ''));
+            end
+            local txt, on = nil, nil;
+            pcall(function() txt, on = sw.state(); end);
+            if imgui.BeginPopup('##tpqactx' .. r.key) then
+                imgui.TextColored(COL.HEADER, fmt.esc(r.name));
+                imgui.Separator();
+                if imgui.Selectable((on and 'Turn off' or 'Turn ON') .. '##tpqactxgo' .. r.key,
+                                    false, TPQ_KEEP) then
+                    pcall(sw.flip);
+                    imgui.CloseCurrentPopup();
+                end
+                imgui.EndPopup();
+            end
+            imgui.SameLine(8);
+            imgui.TextColored(col, fmt.esc(r.name));
+            imgui.SameLine(190);
+            imgui.TextColored(on and TPQ_GREEN or COL.DIM, fmt.esc(txt or 'off'));
         end
     end
 end
@@ -1370,6 +1378,17 @@ local function renderHelmQuick()
     end
     local sel, on, armed;
     pcall(function() sel = hw.getGather(); on = hw.isEnabled(); armed = hw.isAutoHelm(); end);
+    -- Top row (Henrik, 07-20 round 2): jump to the full HELM panel -- the
+    -- GUI behind this quick menu (Automations tab detail view).
+    imgui.Dummy({ 18, 18 });
+    imgui.SameLine(0, 6);
+    if imgui.Selectable('##tpqhmenu', false, TPQ_KEEP) then tpqOpenPanel('helm'); end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Open the HELM panel (Automations tab): ratings, hats, gear ladders and\nboth switches in full.');
+    end
+    imgui.SameLine(30);
+    imgui.TextColored(COL.HEADER, 'HELM menu');
+    imgui.Separator();
     for i, g in ipairs({ 'Harvesting', 'Excavation', 'Logging', 'Mining' }) do
         -- Category glyph (helmbar's Image pattern -- these are not item icons);
         -- bright = selected, like the bar. Dummy keeps the columns when the
@@ -1440,6 +1459,66 @@ local function renderHelmQuick()
         armed and (holding and 'ON -- holding' or 'ON -- armed') or 'off');
 end
 
+-- Fishing quick menu (Henrik, 07-20 round 2): panel jump + the idle switch +
+-- the current rod/bait/target at a glance. STREAMLINING ONLY -- the fishing
+-- scope guard binds here too: no casting, no bite reads, nothing automated.
+-- Rod/bait rows are read-only (picking/pinning lives on the fish bar and the
+-- panel); '*' marks a manual pin, same glyph as the bar.
+local function renderFishQuick()
+    local fok, fw = pcall(require, 'dlac\\feature\\fishwatch');
+    if not fok or type(fw) ~= 'table' then
+        imgui.TextColored(COL.ERR, 'fishwatch unavailable.');
+        return;
+    end
+    -- Top row: the full fishing panel (Automations tab detail view).
+    if imgui.Selectable('##tpqfmenu', false, TPQ_KEEP) then tpqOpenPanel('fish'); end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Open the Fishing panel (Automations tab): target fish, rod risk, gear\nladders and the switch in full.');
+    end
+    imgui.SameLine(8);
+    imgui.TextColored(COL.HEADER, 'Fishing menu');
+    imgui.Separator();
+    -- The idle switch (fishwatch: enabling turns the craft/HELM overlays off).
+    local on = false;
+    pcall(function() on = fw.isEnabled(); end);
+    if imgui.Selectable('##tpqfon', false, TPQ_KEEP) then
+        pcall(function() fw.setEnabled(not on); end);
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip(on
+            and 'Fishing set is ON -- rod, bait and fishing gear stay on while idle. Click to\nturn off.'
+            or  'Fishing set: wears your rod, bait and best fishing gear while idle, until\nturned off. Turning it on turns the craft/HELM overlays off.');
+    end
+    imgui.SameLine(8);
+    imgui.TextColored(COL.DIM, 'Idle set');
+    imgui.SameLine(90);
+    imgui.TextColored(on and TPQ_GREEN or COL.DIM, on and 'ON' or 'off');
+    -- Read-only state rows: rod / bait (with the bar's pin glyph) + target.
+    local PICK_TIP = 'Picked by the heartbeat (best owned, re-ranked ~2s). Pick and pin by hand\non the fish bar (/dl fish bar) or the panel.';
+    local PIN_TIP  = 'Pinned by hand (the * ) -- unpinned when it vanishes or the target changes.\nPick and pin on the fish bar (/dl fish bar) or the panel.';
+    local rows = {};
+    pcall(function()
+        local _, rod = fw.getRod();
+        local rp = fw.rodPinned();
+        rows[#rows + 1] = { 'Rod', rod, rp, rp and PIN_TIP or PICK_TIP };
+        local _, bait = fw.getBait();
+        local bp = fw.baitPinned();
+        rows[#rows + 1] = { 'Bait', bait, bp, bp and PIN_TIP or PICK_TIP };
+        local _, tgt = fw.getTarget();
+        rows[#rows + 1] = { 'Target', tgt, false,
+            'The fish the rod/bait picks aim at. Choose it on the fishing panel\n(or the fish bar).' };
+    end);
+    for i, s in ipairs(rows) do
+        imgui.Dummy({ 0, 0 });
+        imgui.SameLine(8);
+        imgui.TextColored(COL.DIM, s[1]);
+        if imgui.IsItemHovered() then imgui.SetTooltip(s[4]); end
+        imgui.SameLine(90);
+        imgui.TextColored(s[2] ~= nil and COL.USABLE or COL.DIM,
+            fmt.esc(tostring(s[2] or '(none)')) .. (s[3] and ' *' or ''));
+    end
+end
+
 local function renderTeleportsPopup()
     if not imgui.BeginPopup('##dlac_teleports') then return; end
     imgui.TextColored(COL.HEADER, 'Teleports');
@@ -1481,11 +1560,17 @@ local function renderTeleportsPopup()
             pcall(renderHelmQuick);
             imgui.EndMenu();
         end
+        if imgui.BeginMenu('Fishing##tpqf') then
+            pcall(renderFishQuick);
+            imgui.EndMenu();
+        end
     else
         imgui.TextColored(COL.HEADER, 'Automations');
         pcall(renderAutomationsQuick);
         imgui.TextColored(COL.HEADER, 'HELM');
         pcall(renderHelmQuick);
+        imgui.TextColored(COL.HEADER, 'Fishing');
+        pcall(renderFishQuick);
     end
     -- Footer: pin/unpin the PF-style floating button. The same menu renders from
     -- the floating button itself, so it is removable from EITHER place.
@@ -1628,7 +1713,7 @@ local function renderHeaderButtons()
                   clicked = imgui.Button('Tele##hdrtp', { 26, 22 });   -- no texture: text fallback
               end
               if imgui.IsItemHovered() then
-                  imgui.SetTooltip('Teleports: Instant Warp / Instant Retrace scrolls (used on the spot, no\nequip), Warp / Provenance Ring, Chocobo Whistle, Nexus Cape (to your\nparty leader), Shadow Lord Shirt, the Teleport Earrings / Teleport Rings\nsubmenus, plus your exp rings -- click one to equip it and use it the\nmoment the game says ready (the /dl iw, ir, w, p, c, nexus, shirt, t, xp\ncommands, clickable). Lit = ready, amber = recharging, red = stored,\ndim = not owned. Below the travel tiers: the Automations and HELM quick\nmenus (switch overlays and pick a gathering category without opening\nthe main window).');
+                  imgui.SetTooltip('Teleports: Instant Warp / Instant Retrace scrolls (used on the spot, no\nequip), Warp / Provenance Ring, Chocobo Whistle, Nexus Cape (to your\nparty leader), Shadow Lord Shirt, the Teleport Earrings / Teleport Rings\nsubmenus, plus your exp rings -- click one to equip it and use it the\nmoment the game says ready (the /dl iw, ir, w, p, c, nexus, shirt, t, xp\ncommands, clickable). Lit = ready, amber = recharging, red = stored,\ndim = not owned. Below the travel tiers: the Automations, HELM and\nFishing quick menus (switch overlays, pick a gathering category, check\nrod/bait -- left-click a row to open its full panel).');
               end
               if clicked then ui._tpOpen = true; end
           end };
