@@ -326,3 +326,12 @@ the live Range/Ammo picks — lands AutoAmmo entirely on the state-file side.
 - ~~Does the server enforce Ephemeral-Box PROXIMITY, and at what range?~~
   **ANSWERED (field round 2, Henrik): the box range is 5 yalms** —
   `BOX_RANGE = 5`, pinned by test EB9; the fetch buttons go dead-red beyond it.
+- **PLANNED (Henrik, field round 4): a central entity watcher** — once the
+  box detection is field-confirmed, the scan moves to a shared
+  `lib/entwatch.lua`: a DEMAND-DRIVEN snapshot service (sweep only when a
+  consumer asks and the cache is stale, ~2 s) carrying all the scan idioms in
+  ONE place (trimmed+ci names, rendered bit 0x200 with the signed-u32 fix,
+  the full 0x000-0x8FF range, GetRawEntity), with `nearestByName`-style
+  queries so future "is there an X near me?" features are one-liners.
+  eboxammo.boxDistance becomes a thin consumer; gearmove's moogle scans
+  migrate whenever that (GM-frozen) branch is next touched.
