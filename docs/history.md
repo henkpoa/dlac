@@ -3371,3 +3371,14 @@ checkbox + optional "keep the old one, renamed to" input, validated
 live (bad/taken/same backup names block). Ashita has no OS
 file-browse dialog to bind, so the paste route IS the browse
 substitute. 1695 + 170.
+
+## Export "view text" + Copy all (2026-07-20)
+
+Henrik: sending an export should not require hunting the file down.
+Every Shared exports row gets a "view text" button -> a self-
+contained viewer (own branch, none of the form machinery) showing
+the whole file in a copy-source text box with "Copy all to
+clipboard" (SetClipboardText, probed like weightsui's; no-clipboard
+builds get a select-and-Ctrl+C hint). The receiving side is
+Import from text..., so a share is now copy -> paste -> done.
+profiles.readExportRaw is the traversal-guarded reader. 1695 + 170.

@@ -36,6 +36,7 @@ end)();
 -- Multiline paste box probe (the triggersui precedent): absent binding -> a
 -- one-line box with a hint, never a crash.
 local hasMultiline = (imgui ~= nil) and type(imgui.InputTextMultiline) == 'function';
+local hasClipboard = (imgui ~= nil) and type(imgui.SetClipboardText) == 'function';
 
 local ui, COL, afterImport;   -- set by configure; render() no-ops until ui/COL land
 pm.configure = function(deps)
@@ -87,7 +88,41 @@ pm.render = function()
         local m = ui._profMenu or { chars = {} };
         local f = ui._pmForm;
 
-        if f ~= nil then
+        if f ~= nil and f.kind == 'viewExport' then
+            -- ------- VIEW: one export file's whole text + Copy all (Henrik
+            -- 2026-07-20: easiest way to send it to a friend -- their side is
+            -- Import from text...). Self-contained: none of the form
+            -- machinery below (dst pickers, collision check, Commit) applies.
+            imgui.TextColored(COL.HEADER, 'Export text: ' .. fmt.esc(tostring(f.file)) .. '.lua');
+            imgui.Separator();
+            fmt.textWrapped(COL.DIM, 'Send this whole text to your friend -- they paste it under Profiles > Import from text...');
+            local txt = f.textCache or '';
+            local buf = { txt };   -- rebuilt every frame: a copy source, not an editor
+            if hasMultiline then
+                imgui.InputTextMultiline('##pm_viewtext', buf, #txt + 64, { 560, 300 });
+            else
+                imgui.PushItemWidth(560);
+                imgui.InputText('##pm_viewtext', buf, #txt + 64);
+                imgui.PopItemWidth();
+            end
+            if hasClipboard then
+                if imgui.Button('Copy all to clipboard##pm_viewcopy', { 0, 24 }) then
+                    pcall(function() imgui.SetClipboardText(txt); end);
+                    ui._profMenuMsg = 'Copied ' .. tostring(f.file) .. '.lua to the clipboard -- paste it to your friend.';
+                end
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('Puts the whole export text on the clipboard in one click.');
+                end
+                imgui.SameLine(0, 8);
+            else
+                imgui.TextColored(COL.DIM, '(no clipboard API in this build -- select the text and Ctrl+C)');
+            end
+            if imgui.Button('Back##pm_viewback', { 90, 24 }) then ui._pmForm, ui._pmChk = nil, nil; end
+            if ui._profMenuMsg ~= nil then
+                imgui.Separator();
+                fmt.textWrapped(COL.SCORE, ui._profMenuMsg);
+            end
+        elseif f ~= nil then
             -- ------- FORM VIEW: clone (profile/job) or rename, collision-gated -------
             local title;
             if f.kind == 'cloneProfile' then title = string.format('Clone profile "%s" from %s', f.srcProf, f.srcDisp);
@@ -693,6 +728,25 @@ pm.render = function()
                                        prof = { 'Default' }, name = { ex.job },
                                        over = { false }, backup = { '' } };
                         ui._pmChk = nil;
+                    end
+                    -- view text: the whole file + Copy all, for pasting to a
+                    -- friend (their side: Import from text...).
+                    imgui.SameLine(0, 6);
+                    if imgui.SmallButton('view text##pm_vx_' .. ex.file) then
+                        local txt, terr = nil, nil;
+                        pcall(function()
+                            local prof = require('dlac\\profiles');
+                            txt, terr = prof.readExportRaw(ex.file);
+                        end);
+                        if txt ~= nil then
+                            ui._pmForm = { kind = 'viewExport', file = ex.file, textCache = txt };
+                            ui._pmChk = nil;
+                        else
+                            ui._profMenuMsg = 'Could not read the export: ' .. tostring(terr);
+                        end
+                    end
+                    if imgui.IsItemHovered() then
+                        imgui.SetTooltip('Show the whole export file with a one-click Copy all --\npaste it to your friend (they use Import from text...).');
                     end
                     -- x: delete the export FILE (Henrik 2026-07-20) -- red
                     -- second-click confirms; profiles imported from it keep

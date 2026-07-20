@@ -778,6 +778,21 @@ function M.listExports()
     return out;
 end
 
+-- Raw text of one dlac-exports file (the Profiles menu's "view text" button,
+-- Henrik 2026-07-20: copy the whole export to the clipboard and paste it to
+-- a friend -- no file hunting). Returns text | nil, why.
+function M.readExportRaw(fileBase)
+    local ed = M.exportsDir();
+    if ed == nil then return nil, 'not available'; end
+    local base = tostring(fileBase or '');
+    if base == '' or base:find('[/\\]') ~= nil or base:find('%.%.', 1, true) ~= nil then
+        return nil, 'bad file name';
+    end
+    local text = readFile(ed .. base .. '.lua');
+    if text == nil then return nil, 'no such export: ' .. base; end
+    return text, nil;
+end
+
 -- Delete one export file from dlac-exports\ (the Profiles menu's x button;
 -- Henrik 2026-07-20). Only the shared file goes -- profiles imported from it
 -- keep their copies. Returns true | nil, why.
