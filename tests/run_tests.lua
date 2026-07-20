@@ -1722,6 +1722,25 @@ local _, afTbl3 = dispatchM._equipResolved({ Main = 'Death Scythe' }, {});
 check('AF12 no guard, no hold (craft off)', afTbl3.Main, 'Death Scythe');
 
 -- ---------------------------------------------------------------------------
+-- LK. slot locks -- what the Sets tab's "Equip & Lock" (/dl lock set) rests on:
+--     setLock('all') flips every slot, and equipResolved strips locked slots,
+--     so the engine leaves server-locked (Incursion T3) gear alone.
+-- ---------------------------------------------------------------------------
+check('LK1 lock all reports ON', dispatchM.setLock('all', true), true);
+local lkN = 0;
+for _ in pairs(dispatchM.locks) do lkN = lkN + 1; end
+check('LK2 all 16 slots locked', lkN, 16);
+local lkNote, lkTbl = dispatchM._equipResolved({ Main = 'Death Scythe', Body = 'Weaver Apron' }, {});
+check('LK3 a locked slot is stripped (kept as worn)', lkTbl.Main, nil);
+check('LK4 every locked slot is stripped', lkTbl.Body, nil);
+check('LK5 the strip is traced for /dl why', string.find(lkNote, 'LOCKED', 1, true) ~= nil, true);
+check('LK6 unknown slot names refuse', dispatchM.setLock('incursion'), nil);
+check('LK7 unlock all reports OFF', dispatchM.setLock('all', false), false);
+check('LK8 no locks left behind', next(dispatchM.locks), nil);
+local _, lkTbl2 = dispatchM._equipResolved({ Body = 'Weaver Apron' }, {});
+check('LK9 an unlocked slot equips again', lkTbl2.Body, 'Weaver Apron');
+
+-- ---------------------------------------------------------------------------
 -- AG. lockstyle sets -- dispatch._lockstyleFrom picks the box and reduces it
 --     to what gFunc.LockStyle takes; lockstyle.lua's serializer round-trips.
 -- ---------------------------------------------------------------------------

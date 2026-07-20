@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 74;   -- 74: AutoAmmo per-job config (ammostate fmt 2) -- every job carries its OWN priority list + persisted on/off (field round 2: "all jobs can't use all ammos"); the overlay resolves against as.jobs[<main job>]'s section, legacy fmt-1 files (top-level ammo list + jobs map) keep working unchanged until the GUI migrates them. Decision rules untouched.
+M.VERSION = 75;   -- 75: /dl lock set <name> -- the Sets tab's "Equip & Lock" (Incursion T3: the server locks your equipment on entry). Wears the COMMITTED set once -- bracketed ClearBuffer/ProcessBuffer, the PetAction tick's lesson, or the equips evaporate -- then locks ALL 16 slots so the engine stops proposing swaps the server would refuse; stale locks are cleared first so the set lands whole. Release: /dl lock all off (or the Sets tab's Unlock). Dispatch rules untouched.
+                  -- 74: AutoAmmo per-job config (ammostate fmt 2) -- every job carries its OWN priority list + persisted on/off (field round 2: "all jobs can't use all ammos"); the overlay resolves against as.jobs[<main job>]'s section, legacy fmt-1 files (top-level ammo list + jobs map) keep working unchanged until the GUI migrates them. Decision rules untouched.
                   -- 73: AutoAmmo -- the Ammo-slot automation (docs/design/auto-ammo.md). ammostate.lua (GUI-written) + an overlay on EVERY event: count-verified picks per context (ranged / consuming-WS / the three free magical WS 217,218,220 / Quick Draw / Unlimited Shot 115), special ammo swept off wherever a shot could consume it, ladder ends in a literal 'remove' (LAC's native unequip; an empty gun is server-blocked, so the shot refuses instead of eating the bullet). New engine capabilities: the first LAC-state bag counter (per-second cache, fresh on action events) and the 'remove' plan. Pure core M.resolveAmmoPlan (tests AM*).
                   -- 72: serializeTriggers keeps BARE mode definitions -- `[name] = {}` (no bind, no values) is emitted instead of dropped, so a plain UI-created toggle survives the commit round-trip and stays in the Modes list (triggermodel.fromRaw keeps the empty def too; tests TM20-22). Rule matching, resolve order and every other engine path untouched.
                   -- 71: equipResolved's resolve order becomes DATA -- the five whole-table post-passes (mp-equip-uncovered, craft-sub-guard, sync-hold-ammo, trinket-vs-ranged, reserved-drops) are named entries run in M._postPassOrder, so the trinket-BEFORE-reserved constraint (ADR 0010) and every future overlay's place in line are one visible, test-pinned list (PL*) instead of prose; the per-slot chain keeps its elseif precedence (locks > sync-hold > pin-reserved > AutoAcc > virtuals > MP), now named; the copy-on-write dance and note building are written once (W/note) instead of eleven times. Behavior bit-identical -- the H/AK/TR/LS/MC sections are the net.
@@ -3922,7 +3923,53 @@ if inLac() then
                 for s in pairs(M.locks) do out[#out + 1] = s; end
                 table.sort(out);
                 print('[dlac] locked slots: ' .. ((#out > 0) and table.concat(out, ', ') or '(none)')
-                    .. '   (/dl lock <slot|all> [on|off|toggle])');
+                    .. '   (/dl lock <slot|all> [on|off|toggle] | /dl lock set <name>)');
+                return;
+            end
+            if slot == 'set' then
+                -- Equip & Lock (the Sets tab button). Incursion T3 locks your equipment
+                -- server-side on entry: wear the committed set FIRST, then lock every
+                -- slot so the engine stops proposing swaps the server would refuse.
+                local nm = (args[3] ~= nil) and table.concat(args, ' ', 3) or nil;
+                if nm == nil then
+                    print('[dlac] usage: /dl lock set <name> -- equips that committed set, then locks every slot. Release: /dl lock all off.');
+                    return;
+                end
+                local s;
+                pcall(function()
+                    local prof = rawget(_G, 'gProfile');
+                    if type(prof) == 'table' and type(prof.Sets) == 'table' then s = prof.Sets[nm]; end
+                end);
+                if type(s) ~= 'table' then
+                    print(string.format('[dlac] lock set: no committed set named "%s" for this job (names are case-sensitive; Commit it in the Sets tab first).', nm));
+                    return;
+                end
+                -- Existing locks would STRIP their slots out of this very equip (that is
+                -- their job), so they go first; setLock('all') below re-locks and writes
+                -- the mirror once, so a failed name above never half-clears the state.
+                for k in pairs(M.locks) do M.locks[k] = nil; end
+                local ctx = buildCtx('Default');
+                ctx.syncHold = M.syncSettleHold();
+                local note = '';
+                -- The PetAction tick's lesson: gFunc.EquipSet only LANDS when LAC
+                -- brackets the call with ClearBuffer/ProcessBuffer -- a bare command-
+                -- handler equip sits in the buffer and evaporates.
+                pcall(function()
+                    local eq = rawget(_G, 'gEquip');
+                    local st = rawget(_G, 'gState');
+                    if eq ~= nil and type(eq.ClearBuffer) == 'function' and type(eq.ProcessBuffer) == 'function' then
+                        eq.ClearBuffer();
+                        local cc = (st ~= nil) and st.CurrentCall or nil;
+                        if st ~= nil then st.CurrentCall = 'LockSet'; end
+                        pcall(function() note = select(1, equipResolved(s, ctx)) or ''; end);
+                        if st ~= nil then st.CurrentCall = cc or 'N/A'; end
+                        eq.ProcessBuffer('auto');
+                    else
+                        note = select(1, equipResolved(s, ctx)) or '';
+                    end
+                end);
+                M.setLock('all', true);
+                print(string.format('[dlac] "%s" equipped -- ALL slots locked; the engine will not change gear until /dl lock all off (or the Sets tab\'s Unlock).%s', nm, note));
                 return;
             end
             local a3 = args[3] and string.lower(args[3]) or nil;

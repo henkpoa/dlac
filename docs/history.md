@@ -3462,3 +3462,20 @@ panel open (every ticked job gets a copy; a list no job owned is
 adopted by the first job in -- nothing lost, tests AW18-19c).
 Legacy fmt-1 stays engine-readable until migrated. resolveAmmoPlan
 untouched. Suites 1802 + 176.
+
+## Sets: Equip & Lock for Incursion T3 (2026-07-20)
+
+Incursion T3 locks your equipment server-side on entry, so the play is:
+land a full set, then stop the engine from fighting the server lock.
+New engine command `/dl lock set <name>` (v75): wears the COMMITTED set
+once -- bracketed ClearBuffer/ProcessBuffer, the PetAction tick's
+lesson, or the equips evaporate -- then locks ALL 16 slots; stale locks
+are cleared first (they would strip their slots out of the very equip).
+The Sets tab grows an "Equip & Lock" button on the action row: it sends
+that one command and reads the engine's lock mirror, flipping to
+"Unlock" (= /dl lock all off) when all 16 slots are locked (~1s mirror
+throttle; partial Equipped-tab locks do NOT flip it). Uncommitted
+working-set edits are not equipped -- the status line says so when the
+set is dirty. Locks stay session-only by their existing design, so a
+Reload LAC also releases. Tests LK1-9 pin setLock('all') + the
+equipResolved strip. Suites 1814 + 176.

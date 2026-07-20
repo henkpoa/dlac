@@ -3647,6 +3647,43 @@ local function renderSetsTab(job, level)
         imgui.SetTooltip('Will auto-build all gear-sets with stat weights set.');
     end
 
+    -- Equip & Lock / Unlock (Henrik, 07-20: Incursion T3 locks your equipment
+    -- server-side on entry -- land a set first, then stop the engine from fighting
+    -- the server lock). ONE engine command ('/dl lock set <name>') wears the
+    -- COMMITTED set and locks all 16 slots; the button reads the engine's lock
+    -- mirror, so it flips to Unlock (and back) within the mirror's ~1s throttle.
+    -- All-16 is the flip test: partial locks (Equipped tab) keep Equip & Lock up.
+    imgui.SameLine();
+    local elLocks, elN = engineLocks(), 0;
+    for _ in pairs(elLocks) do elN = elN + 1; end
+    if elN >= 16 then
+        if imgui.Button('Unlock##seteqlock', { 0, 22 }) then
+            pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl lock all off'); end);
+            _lockMirror.at = -1;
+            setStatus('Slot locks released -- the engine may swap gear again.');
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Every slot is locked (Equip & Lock). Click to release them all --\nthe engine resumes normal gear swaps.  (/dl lock all off)');
+        end
+    else
+        if imgui.Button('Equip & Lock##seteqlock', { 0, 22 }) then
+            if M.workingSetName == nil or M.workingSetName == '' then
+                setStatus('Pick a set first -- Equip & Lock wears the committed set, then locks every slot.', true);
+            else
+                pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl lock set ' .. M.workingSetName); end);
+                _lockMirror.at = -1;
+                if _setDirty then
+                    setStatus(string.format('"%s" equipped & locked -- NOTE: your uncommitted edits are NOT in it (Commit, then Equip & Lock again).', M.workingSetName), true);
+                else
+                    setStatus(string.format('"%s" equipped & all slots locked -- the engine will not change gear until you Unlock.', M.workingSetName));
+                end
+            end
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Incursion T3 locks your equipment on entry: this equips the COMMITTED version\nof the selected set, then locks every slot so the engine stops changing gear.\nThe button becomes Unlock; locks also release on /dl lock all off or Reload LAC.');
+        end
+    end
+
     -- Automation is a SLOT entry now (ADR 0004, 4th revision): + Add on the Main slot
     -- offers dlac:AutoStaff, on Waist dlac:AutoObi -- no per-set flags anymore.
 
