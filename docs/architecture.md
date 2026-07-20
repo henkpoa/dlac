@@ -74,6 +74,7 @@ engine cannot require them; it has its own minimal reads).
 | **Queue a chat/game command safely?** | `cmdqueue` | `lib/cmdqueue.lua` | Two same-frame QueueCommands arrive REVERSED in other states — this queue drains one per frame. Also: an addon state never hears its OWN queued commands back. |
 | **E-Box (CW storage) counts / withdraw?** | `eboxammo.counts` / `.withdraw(id, qty)` / `.boxDistance()` | `feature/eboxammo.lua` | Crystal Warriors only (see gamemode row); 0x1A4 is a party line — pending-request discipline; `BOX_RANGE = 5` field-pinned. |
 | **Item icon / hover card in UI?** | `deps.renderIcon(id, size)` / `deps.itemTooltip(rec)` | `ui/itemicons.lua` + gearui's `renderItemTooltip`, injected via the shared deps table | ONE hover card serves every equipment surface — never draw a rival. |
+| **The automations list + coverage status?** | `automationsui.listRows()` + `.levelColor(level, max)` | `ui/automationsui.lua` | The SAME rows/ramp the Automations tab shows (Teleports quick menu is consumer #1) — never rebuild the list or invent a rival color ramp. `{}` before init/login; MaxMP deliberately absent until it graduates. |
 
 Adding a new central service: generic plumbing goes in `lib/`, game-domain
 answers in `feature/` or `data/`; give it the gamemode shape (one exported

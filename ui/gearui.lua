@@ -1231,6 +1231,192 @@ local function renderTeleportGroup(title, list, key)
     end
 end
 
+-- Quick controls (Henrik, 2026-07-20): the popup doubles as the floating
+-- quick menu, so two more cascading groups ride under the travel tiers --
+-- "Automations" (the Automations-tab list: same rows, same coverage colors;
+-- the four with a live switch toggle on click) and "HELM" (the four
+-- gathering categories + the idle/auto switches). Toggle and category rows
+-- keep the popup OPEN (DontClosePopups) so "pick Mining, flip the idle set
+-- ON" is one visit; a binding without the flag closes per click -- degraded,
+-- not broken. Modules are pcall-required per frame, NOT captured: the autoui
+-- local is declared far BELOW these functions (hard rule 8 -- a forward
+-- reference here would be a silent nil global).
+local TPQ_KEEP  = ImGuiSelectableFlags_DontClosePopups or 0;
+local TPQ_GREEN = { 0.45, 0.90, 0.45, 1.0 };
+
+local function renderAutomationsQuick()
+    local aok, au = pcall(require, 'dlac\\ui\\automationsui');
+    if not aok or type(au) ~= 'table' or type(au.listRows) ~= 'function' then
+        imgui.TextColored(COL.ERR, 'automations unavailable.');
+        return;
+    end
+    local rows = au.listRows();
+    if #rows == 0 then
+        imgui.TextColored(COL.DIM, 'log in to see automations.');
+        return;
+    end
+    -- The live switches, keyed like the rows: state() -> (text, on) for the
+    -- second column, flip() = the same call the bars/panels make. Mutual
+    -- exclusion between the craft/HELM/fish overlays lives inside the
+    -- watchers, never here. AutoAmmo's state text is nil on purpose -- its
+    -- row txt (ammoui.status) already reads "ON on RNG -- 3 ammo".
+    local SWITCH = {
+        craft = {
+            tip = 'Craft overlay: wears the selected craft\'s gear while ON (idle only).\nPick craft + goal on the craft bar (/dl craft bar) or the Automations tab.\nClick to toggle.',
+            state = function()
+                local cw = require('dlac\\feature\\craftwatch');
+                if not cw.isEnabled() then return 'off', false; end
+                return string.format('ON -- %s (%s)', cw.getCraft() or 'no craft picked', cw.getGoal()), true;
+            end,
+            flip = function()
+                local cw = require('dlac\\feature\\craftwatch');
+                cw.setEnabled(not cw.isEnabled());
+            end,
+        },
+        helm = {
+            tip = 'HELM idle set: wears the active category\'s gathering gear while ON (idle\nonly). Pick the category in the HELM menu below. Click to toggle.',
+            state = function()
+                local hw = require('dlac\\feature\\helmwatch');
+                if not hw.isEnabled() then return 'off', false; end
+                return 'ON -- ' .. tostring(hw.getGather() or 'no category'), true;
+            end,
+            flip = function()
+                local hw = require('dlac\\feature\\helmwatch');
+                hw.setEnabled(not hw.isEnabled());
+            end,
+        },
+        fish = {
+            tip = 'Fishing set: rod, bait and fishing gear while ON (idle only). Pin a rod\nor bait on the fish bar (/dl fish bar). Click to toggle.',
+            state = function()
+                local fw = require('dlac\\feature\\fishwatch');
+                if not fw.isEnabled() then return 'off', false; end
+                return 'ON', true;
+            end,
+            flip = function()
+                local fw = require('dlac\\feature\\fishwatch');
+                fw.setEnabled(not fw.isEnabled());
+            end,
+        },
+        ammo = {
+            tip = 'AutoAmmo for the current job: loads enabled ammo for shots and guards\nspecial ammo. Manage the list in the Automations tab. Click to toggle.',
+            state = function() return nil, nil; end,
+            flip = function()
+                local aw = require('dlac\\feature\\ammowatch');
+                aw.setEnabled(not aw.enabled, select(2, jobFile()));
+            end,
+        },
+    };
+    for _, r in ipairs(rows) do
+        local col = (type(au.levelColor) == 'function') and au.levelColor(r.level, r.max) or COL.DIM;
+        local sw = SWITCH[r.key];
+        if sw ~= nil then
+            if imgui.Selectable('##tpqa' .. r.key, false, TPQ_KEEP) then pcall(sw.flip); end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip(sw.tip .. '\nCoverage: ' .. tostring(r.txt or ''));
+            end
+            local txt, on = nil, nil;
+            pcall(function() txt, on = sw.state(); end);
+            imgui.SameLine(8);
+            imgui.TextColored(col, fmt.esc(r.name));
+            imgui.SameLine(190);
+            if txt ~= nil then
+                imgui.TextColored(on and TPQ_GREEN or COL.DIM, fmt.esc(txt));
+            else
+                imgui.TextColored(col, fmt.esc(r.txt or ''));   -- AutoAmmo: status txt carries ON/OFF
+            end
+        else
+            -- Set-driven slot automations: no global switch -- status only.
+            -- Plain text rows (no hover highlight): nothing here to click.
+            imgui.Dummy({ 0, 0 });
+            imgui.SameLine(8);
+            imgui.TextColored(col, fmt.esc(r.name));
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Slot automation -- lives INSIDE a set: add the dlac: entry to the slot\nvia + Add (Sets tab). No global switch; details on the Automations tab.');
+            end
+            imgui.SameLine(190);
+            imgui.TextColored(col, fmt.esc(r.txt or ''));
+        end
+    end
+end
+
+local function renderHelmQuick()
+    local hok, hw = pcall(require, 'dlac\\feature\\helmwatch');
+    if not hok or type(hw) ~= 'table' then
+        imgui.TextColored(COL.ERR, 'helmwatch unavailable.');
+        return;
+    end
+    local sel, on, armed;
+    pcall(function() sel = hw.getGather(); on = hw.isEnabled(); armed = hw.isAutoHelm(); end);
+    for i, g in ipairs({ 'Harvesting', 'Excavation', 'Logging', 'Mining' }) do
+        -- Category glyph (helmbar's Image pattern -- these are not item icons);
+        -- bright = selected, like the bar. Dummy keeps the columns when the
+        -- texture is missing.
+        local drew = false;
+        pcall(function()
+            local hui = require('dlac\\ui\\helmui');
+            local tex = (type(hui.texture) == 'function') and hui.texture(g) or nil;
+            if tex == nil then return; end
+            local ffi = require('ffi');
+            imgui.Image(tonumber(ffi.cast('uint32_t', tex)), { 18, 18 },
+                { 0, 0 }, { 1, 1 }, (sel == g) and { 1, 1, 1, 1 } or { 1, 1, 1, 0.5 });
+            drew = true;
+        end);
+        if not drew then imgui.Dummy({ 18, 18 }); end
+        imgui.SameLine(0, 6);
+        if imgui.Selectable('##tpqh' .. i, false, TPQ_KEEP) then
+            pcall(function() hw.selectGather(g); end);
+        end
+        if imgui.IsItemHovered() then
+            local helm, surv, bp = 0, 0, false;
+            pcall(function() helm, surv, bp = hw.rating(g); end);
+            imgui.SetTooltip(string.format(
+                '%s -- click to make this the active category (worn while the idle set is ON).\nBreak rating %d%s, Surveyor +%d.',
+                g, helm, bp and ' -- BREAK-PROOF' or '/5', surv));
+        end
+        imgui.SameLine(30);
+        imgui.TextColored((sel == g) and COL.USABLE or COL.DIM, g);
+        local vp = nil;
+        pcall(function() vp = hw.pointsFor(g); end);
+        imgui.SameLine(170);
+        imgui.TextColored(vp ~= nil and COL.SCORE or COL.DIM,
+            'VP ' .. (vp ~= nil and tostring(vp) or '?'));
+    end
+    imgui.Separator();
+    -- The idle switch -- the thing that actually WEARS the gear.
+    imgui.Dummy({ 18, 18 });
+    imgui.SameLine(0, 6);
+    if imgui.Selectable('##tpqhon', false, TPQ_KEEP) then
+        pcall(function() hw.setEnabled(not on); end);
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip(on
+            and 'HELM idle set is ON -- gathering gear stays on while idle. Click to turn off.'
+            or  'Set HELM Idle: wears your best gathering gear whenever idle, until turned off.\nStarts off each session.');
+    end
+    imgui.SameLine(30);
+    imgui.TextColored(COL.DIM, 'Idle set');
+    imgui.SameLine(170);
+    imgui.TextColored(on and TPQ_GREEN or COL.DIM, on and 'ON' or 'off');
+    -- Auto HELM: the detection-armed overlay (swings / targeting a Point).
+    imgui.Dummy({ 18, 18 });
+    imgui.SameLine(0, 6);
+    if imgui.Selectable('##tpqhauto', false, TPQ_KEEP) then
+        pcall(function() hw.setAutoHelm(not armed); end);
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip(armed
+            and 'Auto HELM is armed -- targeting a Point (or swinging) auto-equips that\ncategory\'s gear; normal gear returns after you leave. Click to disarm.'
+            or  'Auto HELM: arms detection -- targeting a Point (or swinging) auto-equips\nthat category\'s gear; normal gear returns after you leave.');
+    end
+    imgui.SameLine(30);
+    imgui.TextColored(COL.DIM, 'Auto HELM');
+    imgui.SameLine(170);
+    local holding = false;
+    pcall(function() holding = hw.autoActive(); end);
+    imgui.TextColored(armed and TPQ_GREEN or COL.DIM,
+        armed and (holding and 'ON -- holding' or 'ON -- armed') or 'off');
+end
+
 local function renderTeleportsPopup()
     if not imgui.BeginPopup('##dlac_teleports') then return; end
     imgui.TextColored(COL.HEADER, 'Teleports');
@@ -1257,6 +1443,26 @@ local function renderTeleportsPopup()
         imgui.Separator();
         imgui.TextColored(COL.HEADER, 'Exp rings');
         for i, r in ipairs(xps) do renderTeleportRow(r, 'x' .. i); end
+    end
+    -- Quick controls (Henrik, 2026-07-20): Automations + HELM ride along as
+    -- cascading groups -- the popup is the floating quick menu, not just
+    -- travel. Same fallback rule as the teleport groups: no BeginMenu
+    -- binding -> flat sections under dim headers.
+    imgui.Separator();
+    if tpHasMenu then
+        if imgui.BeginMenu('Automations##tpqa') then
+            pcall(renderAutomationsQuick);
+            imgui.EndMenu();
+        end
+        if imgui.BeginMenu('HELM##tpqh') then
+            pcall(renderHelmQuick);
+            imgui.EndMenu();
+        end
+    else
+        imgui.TextColored(COL.HEADER, 'Automations');
+        pcall(renderAutomationsQuick);
+        imgui.TextColored(COL.HEADER, 'HELM');
+        pcall(renderHelmQuick);
     end
     -- Footer: pin/unpin the PF-style floating button. The same menu renders from
     -- the floating button itself, so it is removable from EITHER place.
@@ -1399,7 +1605,7 @@ local function renderHeaderButtons()
                   clicked = imgui.Button('Tele##hdrtp', { 26, 22 });   -- no texture: text fallback
               end
               if imgui.IsItemHovered() then
-                  imgui.SetTooltip('Teleports: Instant Warp / Instant Retrace scrolls (used on the spot, no\nequip), Warp / Provenance Ring, Chocobo Whistle, Nexus Cape (to your\nparty leader), Shadow Lord Shirt, the Teleport Earrings / Teleport Rings\nsubmenus, plus your exp rings -- click one to equip it and use it the\nmoment the game says ready (the /dl iw, ir, w, p, c, nexus, shirt, t, xp\ncommands, clickable). Lit = ready, amber = recharging, red = stored,\ndim = not owned.');
+                  imgui.SetTooltip('Teleports: Instant Warp / Instant Retrace scrolls (used on the spot, no\nequip), Warp / Provenance Ring, Chocobo Whistle, Nexus Cape (to your\nparty leader), Shadow Lord Shirt, the Teleport Earrings / Teleport Rings\nsubmenus, plus your exp rings -- click one to equip it and use it the\nmoment the game says ready (the /dl iw, ir, w, p, c, nexus, shirt, t, xp\ncommands, clickable). Lit = ready, amber = recharging, red = stored,\ndim = not owned. Below the travel tiers: the Automations and HELM quick\nmenus (switch overlays and pick a gathering category without opening\nthe main window).');
               end
               if clicked then ui._tpOpen = true; end
           end };

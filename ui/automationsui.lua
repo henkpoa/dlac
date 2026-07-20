@@ -889,6 +889,73 @@ local function mpPickAt(cands, level)
     return nil;
 end
 
+-- The automation LIST rows -- ONE builder for both surfaces: the Automations
+-- tab below and gearui's Teleports quick menu (M.listRows). MaxMP is
+-- deliberately NOT listed: still unofficial, pending more field
+-- troubleshooting (/dl mode maxmp keeps working; its detail view and the
+-- manifest mp data stay intact -- re-add the row here when it graduates).
+local function buildAutoRows()
+    local rows = {
+        { key = 'iridescence', name = 'AutoIridescence', kind = 'slot automation (Main)',
+          level = iridescenceLevel(), max = 4, txt = nil },
+        { key = 'obi',         name = 'ElementalObi',    kind = 'slot automation (Waist)',
+          level = obiLevel(),         max = 2, txt = nil },
+        { key = 'oneiros',     name = 'Auto Oneiros Grip', kind = 'slot automation (Sub)',
+          level = oneirosLevel(),     max = 1, txt = nil },
+        { key = 'craft',       name = 'Auto Craft Set',  kind = 'craft-gear helper (manual pick)',
+          level = CRAFT_UI.level(),   max = 4, txt = nil },
+        { key = 'helm',        name = 'Auto HELM Set',   kind = 'gathering-gear helper (idle only)',
+          level = 0,                  max = 4, txt = nil },
+        { key = 'fish',        name = 'Auto Fish Set',   kind = 'fishing-gear helper (idle only)',
+          level = 0,                  max = 4, txt = nil },
+        -- AutoAmmo is appended LAST on purpose: rows[5]/rows[6] are read by
+        -- index below (helm/fish) -- keep every existing index stable. (The
+        -- combo branch appends its AutoAcc row before this one; the status
+        -- patch below finds this row by KEY, so the index difference is fine.)
+        { key = 'ammo',        name = 'AutoAmmo',        kind = 'slot automation (Ammo)',
+          level = 0,                  max = 1, txt = nil },
+    };
+    rows[1].txt = IRID_TXT[rows[1].level];
+    rows[2].txt = OBI_TXT[rows[2].level];
+    rows[3].txt = ONEIROS_TXT[rows[3].level];
+    rows[4].txt = CRAFT_UI.txt[rows[4].level];
+    -- HELM coverage lives in helmui (own module; pcall-require, no upvalue).
+    pcall(function()
+        local helmui = require('dlac\\ui\\helmui');
+        rows[5].max = helmui.maxLevel or 4;
+        rows[5].level, rows[5].txt = helmui.status(deps);   -- label + HELM+/Surv+ totals
+    end);
+    -- Fishing coverage lives in fishui (same pattern).
+    pcall(function()
+        local fishui = require('dlac\\ui\\fishui');
+        rows[6].max = fishui.maxLevel or 4;
+        rows[6].level, rows[6].txt = fishui.status(deps);
+    end);
+    -- AutoAmmo status lives in ammoui (same pattern; found by key, not index --
+    -- the row sits at a different index on main vs the combo branch).
+    pcall(function()
+        local ammoui = require('dlac\\ui\\ammoui');
+        for _, r in ipairs(rows) do
+            if r.key == 'ammo' then
+                r.max = ammoui.maxLevel or 1;
+                r.level, r.txt = ammoui.status(deps);
+                break;
+            end
+        end
+    end);
+    return rows;
+end
+
+-- gearui's Teleports quick menu renders the SAME list with the SAME status
+-- ramp -- one truth for "how covered is this automation", two surfaces.
+-- Safe {} before init / logged out.
+function M.listRows()
+    if deps == nil then return {}; end
+    local ok, rows = pcall(buildAutoRows);
+    return (ok and type(rows) == 'table') and rows or {};
+end
+M.levelColor = levelColor;
+
 -- Last frame the guild-points section rendered -- a gap >1s means the panel
 -- (or the AutoCraft section) just OPENED, which triggers one fresh GP fetch.
 -- Declared BEFORE renderAutomations on purpose (hard rule 8: a forward
@@ -1219,58 +1286,10 @@ local function renderAutomations()
 
     -- LIST view: the automation table FIRST, no explanations above it (field
     -- request) -- how-it-works lives in the tooltips and detail views. The
-    -- rescan shove + status sit small under the table.
-    -- MaxMP is deliberately NOT listed: still unofficial, pending more field
-    -- troubleshooting (/dl mode maxmp keeps working; its detail view and the
-    -- manifest mp data stay intact -- re-add the row here when it graduates).
-    local rows = {
-        { key = 'iridescence', name = 'AutoIridescence', kind = 'slot automation (Main)',
-          level = iridescenceLevel(), max = 4, txt = nil },
-        { key = 'obi',         name = 'ElementalObi',    kind = 'slot automation (Waist)',
-          level = obiLevel(),         max = 2, txt = nil },
-        { key = 'oneiros',     name = 'Auto Oneiros Grip', kind = 'slot automation (Sub)',
-          level = oneirosLevel(),     max = 1, txt = nil },
-        { key = 'craft',       name = 'Auto Craft Set',  kind = 'craft-gear helper (manual pick)',
-          level = CRAFT_UI.level(),   max = 4, txt = nil },
-        { key = 'helm',        name = 'Auto HELM Set',   kind = 'gathering-gear helper (idle only)',
-          level = 0,                  max = 4, txt = nil },
-        { key = 'fish',        name = 'Auto Fish Set',   kind = 'fishing-gear helper (idle only)',
-          level = 0,                  max = 4, txt = nil },
-        -- AutoAmmo is appended LAST on purpose: rows[5]/rows[6] are read by
-        -- index below (helm/fish) -- keep every existing index stable. (The
-        -- combo branch appends its AutoAcc row before this one; the status
-        -- patch below finds this row by KEY, so the index difference is fine.)
-        { key = 'ammo',        name = 'AutoAmmo',        kind = 'slot automation (Ammo)',
-          level = 0,                  max = 1, txt = nil },
-    };
-    rows[1].txt = IRID_TXT[rows[1].level];
-    rows[2].txt = OBI_TXT[rows[2].level];
-    rows[3].txt = ONEIROS_TXT[rows[3].level];
-    rows[4].txt = CRAFT_UI.txt[rows[4].level];
-    -- HELM coverage lives in helmui (own module; pcall-require, no upvalue).
-    pcall(function()
-        local helmui = require('dlac\\ui\\helmui');
-        rows[5].max = helmui.maxLevel or 4;
-        rows[5].level, rows[5].txt = helmui.status(deps);   -- label + HELM+/Surv+ totals
-    end);
-    -- Fishing coverage lives in fishui (same pattern).
-    pcall(function()
-        local fishui = require('dlac\\ui\\fishui');
-        rows[6].max = fishui.maxLevel or 4;
-        rows[6].level, rows[6].txt = fishui.status(deps);
-    end);
-    -- AutoAmmo status lives in ammoui (same pattern; found by key, not index --
-    -- the row sits at a different index on main vs the combo branch).
-    pcall(function()
-        local ammoui = require('dlac\\ui\\ammoui');
-        for _, r in ipairs(rows) do
-            if r.key == 'ammo' then
-                r.max = ammoui.maxLevel or 1;
-                r.level, r.txt = ammoui.status(deps);
-                break;
-            end
-        end
-    end);
+    -- rescan shove + status sit small under the table. Rows come from the
+    -- shared builder (buildAutoRows -- gearui's Teleports quick menu shows
+    -- the same list).
+    local rows = buildAutoRows();
     -- Column headers, same fixed offsets as the rows.
     -- Offsets widened 2026-07-17 (field report: the HELM row's Kind ran into
     -- Status): Name 190->215, Kind 470->580 (~30% more -- the themed font
