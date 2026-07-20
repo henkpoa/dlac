@@ -244,18 +244,24 @@ M.BOX_RANGE = 5;   -- yalms -- FIELD-PINNED (Henrik, 2026-07-20: "the box range
                    -- is 5"); was 6 (the trade-range guess) for one round
 local _boxCache = { at = -10, dist = nil };
 
--- Pure half (tests EB*): probe = { present=fn(idx)->bool, name=fn(idx)->
--- string|nil, distSq=fn(idx)->number|nil }. Returns nearest distance in
--- YALMS, or nil when no box is rendered in this zone.
+-- Pure half (tests EB*): probe = { present=fn(idx)->bool (exists AND is
+-- rendered), name=fn(idx)->string|nil, distSq=fn(idx)->number|nil }. Returns
+-- nearest distance in YALMS, or nil when no box is rendered in this zone.
+-- Name matching is TRIMMED + case-insensitive: GetName comes back with
+-- trailing whitespace (the gearmove mhBootstrap field lesson -- an exact
+-- compare against the literal never matches, which read as "always red").
 function M._scanBox(probe)
+    local want = string.lower(M.BOX_NAME);
     local best = nil;
-    for idx = 1, 1023 do   -- zone-static NPC slots; players start at 0x400... but
-        -- custom NPCs can sit high, and a 1..1023 pass is one memory sweep --
-        -- names filter everything that is not the box.
-        if probe.present(idx) == true and probe.name(idx) == M.BOX_NAME then
-            local d = probe.distSq(idx);
-            if type(d) == 'number' and d >= 0 and (best == nil or d < best) then
-                best = d;
+    for idx = 0, 1023 do   -- zone-static NPC slots (0-based; the box in
+        -- Henrik's Bastok Mines sample sits at index 2)
+        if probe.present(idx) == true then
+            local nm = tostring(probe.name(idx) or ''):gsub('%s+$', '');
+            if string.lower(nm) == want then
+                local d = probe.distSq(idx);
+                if type(d) == 'number' and d >= 0 and (best == nil or d < best) then
+                    best = d;
+                end
             end
         end
     end
@@ -263,6 +269,11 @@ function M._scanBox(probe)
 end
 
 -- Live rim: throttled ~2s (the panel calls this per frame while open).
+-- The scan idiom is gearmove's field-verified mhBootstrap one, verbatim:
+-- IEntity::GetRawEntity for existence (luashitacast's CheckForNomad calls a
+-- NONEXISTENT GetEntity(i) -- dead code, do not copy), then RenderFlags0 bit
+-- 0x200 = rendered (signed u32 read needs the +2^32 fix) before trusting a
+-- distance -- unrendered slots carry stale garbage.
 function M.boxDistance()
     local now = M._now();
     if (now - _boxCache.at) < 2 then return _boxCache.dist; end
@@ -273,7 +284,12 @@ function M.boxDistance()
         dist = M._scanBox({
             present = function(idx)
                 local ok = false;
-                pcall(function() ok = (em:GetRawEntity(idx) ~= nil); end);
+                pcall(function()
+                    if em:GetRawEntity(idx) == nil then return; end
+                    local rf = em:GetRenderFlags0(idx) or 0;
+                    if rf < 0 then rf = rf + 4294967296; end     -- signed u32 -> unsigned
+                    ok = (math.floor(rf / 0x200) % 2) == 1;      -- bit 0x200: rendered
+                end);
                 return ok;
             end,
             name = function(idx)

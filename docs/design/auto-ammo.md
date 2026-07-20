@@ -179,7 +179,12 @@ Above the list, the **proximity check**: E-Boxes are ordinary zone NPCs named
 **"Ephemeral Box"** (Henrik's Bastok Mines sample, server id 17737730, decodes
 to a plain zone-NPC slot), so the panel scans the entity array by NAME — no
 targeting needed, the helmwatch proximity conventions (GetDistance is SQUARED;
-reads memory-only, ~2 s throttle). `BOX_RANGE = 5` yalms is **FIELD-PINNED**
+reads memory-only, ~2 s throttle). The scan idiom is gearmove's field-verified
+mhBootstrap one: GetRawEntity for existence, RenderFlags0 bit 0x200 = rendered
+(signed-u32 fix) before trusting distance, and **names TRIMMED + ci** —
+GetName returns trailing whitespace, and the exact compare shipped in round 2
+never matched (every button sat red; field round 3, tests EB8-EB8c pin the
+padded shapes). `BOX_RANGE = 5` yalms is **FIELD-PINNED**
 (Henrik, field round 2; the round-1 trade-range guess was 6). Out of range (or
 no box rendered): the warning line shows AND both fetch buttons go dead —
 dim RED for out-of-range, GREY for nothing-to-fetch/busy — with the reason in

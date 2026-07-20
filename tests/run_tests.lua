@@ -6202,19 +6202,26 @@ end)();
     check('EB7 refresh refuses headless (not CW -- the affirmative-only gate)', eb.refresh(), false);
     check('EB7b withdraw refuses headless too', eb.withdraw(21334, 1), false);
 
-    -- the box scan (probe-injected, the helmwatch proximity convention:
-    -- distances are SQUARED on the wire, yalms out)
-    local world = { [12] = { name = 'Ephemeral Box', d2 = 100 },
-                    [40] = { name = 'Ephemeral Box', d2 = 25 },
-                    [77] = { name = 'Nomad Moogle',  d2 = 4 } };
+    -- the box scan (probe-injected; distances are SQUARED on the wire, yalms
+    -- out). THE FIELD BUG (round 3): GetName returns TRAILING-WHITESPACE
+    -- names, so the round-2 exact compare never matched and every button sat
+    -- red -- the padded/cased names here pin the trimmed, ci match forever.
+    local world = { [12] = { name = 'Ephemeral Box   ', d2 = 100 },   -- padded: the live shape
+                    [40] = { name = 'EPHEMERAL box',    d2 = 25 },    -- case must not matter
+                    [0]  = { name = 'Ephemeral Box',    d2 = 3600 },  -- slot 0 is scanned too
+                    [77] = { name = 'Nomad Moogle',     d2 = 4 } };
     local probe = {
         present = function(idx) return world[idx] ~= nil; end,
         name    = function(idx) return world[idx] and world[idx].name; end,
         distSq  = function(idx) return world[idx] and world[idx].d2; end,
     };
-    check('EB8 nearest box wins, in yalms', eb._scanBox(probe), 5.0);
-    world[40] = nil; world[12] = nil;
-    check('EB8b no box rendered -> nil (moogles are not boxes)', eb._scanBox(probe), nil);
+    check('EB8 nearest box wins despite padding/case, in yalms', eb._scanBox(probe), 5.0);
+    world[40] = nil;
+    check('EB8b padded name alone still matches (the live shape)', eb._scanBox(probe), 10.0);
+    world[12] = nil;
+    check('EB8c index 0 is scanned', eb._scanBox(probe), 60.0);
+    world[0] = nil;
+    check('EB8d no box rendered -> nil (moogles are not boxes)', eb._scanBox(probe), nil);
     check('EB9 box range is FIELD-PINNED at 5 yalms (Henrik 2026-07-20)', eb.BOX_RANGE, 5);
 
     -- level: persisted per entry (GUI sort data; the engine ignores it --
