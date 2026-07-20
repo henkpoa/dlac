@@ -2740,10 +2740,14 @@ local function copyFromDynamicSet(srcName)
     doCopyFromDynamic(srcName);
 end
 
-local function commitCurrentSet(job)
-    if not has.setmgr then setStatus('setmanager unavailable.', true); return; end
-    if M.workingSetName == nil or M.workingSetName == '' then setStatus('No set selected (pick one, or type a name + New).', true); return; end
-    if job == nil or job == '' then setStatus('Unknown job (are you logged in?).', true); return; end
+-- quiet=true (Auto-Build All's loop, Henrik 07-20: "just state how many sets
+-- you've rebuilt, not one line for each"): no per-set status and no per-set
+-- '/dl sets reload' -- the caller queues ONE reload and one summary at the
+-- end. Returns true on a successful commit either way.
+local function commitCurrentSet(job, quiet)
+    if not has.setmgr then setStatus('setmanager unavailable.', true); return false; end
+    if M.workingSetName == nil or M.workingSetName == '' then setStatus('No set selected (pick one, or type a name + New).', true); return false; end
+    if job == nil or job == '' then setStatus('Unknown job (are you logged in?).', true); return false; end
     local slots = buildCommitSlots();
     -- An EMPTY set commits on purpose: it's a valid placeholder -- a trigger can
     -- point at it today and gear can come later; dispatching it changes nothing
@@ -2754,14 +2758,17 @@ local function commitCurrentSet(job)
     if pok and ok == true then
         _setDirty = false;         -- committed -> the working set now matches what's saved
         profsets.invalidate();     -- re-read the job file so the Sets list reflects the change
-        -- Hot-swap the running engine's copy: gProfile.Sets is a live table in the
-        -- LAC state, so no LAC reload -- the engine confirms (or refuses) in chat.
-        pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl sets reload'); end);
-        setStatus(string.format('%s "%s" for %s -- live now (hot-swapped; Reload LAC only if chat says the swap failed).  backup: %s%s',
-            tostring(action), tostring(M.workingSetName), tostring(job), tostring(backup), emptyNote), false);
-    else
-        setStatus('Commit failed: ' .. tostring(action), true);
+        if not quiet then
+            -- Hot-swap the running engine's copy: gProfile.Sets is a live table in the
+            -- LAC state, so no LAC reload -- the engine confirms (or refuses) in chat.
+            pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl sets reload'); end);
+            setStatus(string.format('%s "%s" for %s -- live now (hot-swapped; Reload LAC only if chat says the swap failed).  backup: %s%s',
+                tostring(action), tostring(M.workingSetName), tostring(job), tostring(backup), emptyNote), false);
+        end
+        return true;
     end
+    if not quiet then setStatus('Commit failed: ' .. tostring(action), true); end
+    return false;
 end
 
 local function deleteCurrentSet(job)
@@ -2881,7 +2888,7 @@ local function autoBuildAll(job, level)
         return 0, #names, 0;
     end
     local prevName = M.workingSetName;
-    local built, empty = 0, 0;
+    local built, empty, failed = 0, 0, 0;
     for _, nm in ipairs(todo) do
         loadSet(nm);
         if has.optim and optim.bindSetWeights ~= nil then pcall(optim.bindSetWeights, job, nm); end
@@ -2890,22 +2897,29 @@ local function autoBuildAll(job, level)
         local nSlots = 0;
         pcall(function() nSlots = autoBuild(job, level); end);
         if (nSlots or 0) > 0 then
-            commitCurrentSet(job);
-            built = built + 1;
+            -- QUIET commit (Henrik 07-20: one summary, not a line per set) --
+            -- the single hot-swap + summary below covers the whole sweep.
+            if commitCurrentSet(job, true) then built = built + 1;
+            else failed = failed + 1; end
         else
             empty = empty + 1;
             _setDirty = false;      -- untouched set: no unsaved-changes flag
         end
     end
-    -- Put the panel back on the set it showed before the sweep.
+    -- Put the panel back on the set it showed before the sweep, then ONE
+    -- engine hot-swap for everything the loop committed.
     if prevName ~= nil then loadSet(prevName);
     else M.working = {}; M.workingSetName = nil; ui.setSelected = nil; _setDirty = false; end
+    if built > 0 then
+        pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl sets reload'); end);
+    end
     local skipped = #names - #todo;
-    setStatus(string.format('Auto-built %d set%s%s%s -- committed and live.',
+    setStatus(string.format('Auto-built %d set%s%s%s%s -- committed and live.',
         built, (built == 1) and '' or 's',
         (empty > 0) and string.format(' (%d scored nothing and kept their contents)', empty) or '',
+        (failed > 0) and string.format(' (%d FAILED to commit -- try committing one by hand for the reason)', failed) or '',
         (skipped > 0) and string.format(' (%d without weights untouched)', skipped) or ''), false);
-    return built, skipped, empty;
+    return built, skipped, empty, failed;
 end
 
 -- A weights-bearing job import auto-builds its sets the moment it lands
@@ -2924,10 +2938,11 @@ pmenu.configure({ afterImport = function(dstChar, dstProf, jobName)
         return string.format('  (sets not auto-built: you are on %s and the import is %s -- switch job and click Auto-Build All on the Sets tab)',
             tostring(job or '?'), tostring(jobName));
     end
-    local built, _, empty = autoBuildAll(job, level);
-    return string.format('  Auto-built %d imported set%s from their stat weights with YOUR gear%s.',
+    local built, _, empty, failed = autoBuildAll(job, level);
+    return string.format('  Auto-built %d imported set%s from their stat weights with YOUR gear%s%s.',
         built, (built == 1) and '' or 's',
-        (empty > 0) and string.format(' (%d scored nothing you own)', empty) or '');
+        (empty > 0) and string.format(' (%d scored nothing you own)', empty) or '',
+        ((failed or 0) > 0) and string.format(' (%d failed to commit)', failed) or '');
 end });
 
 -- (the stat-weights editor body moved to dlac\weightsui.lua -- wui.editor().)

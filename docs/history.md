@@ -3382,3 +3382,13 @@ clipboard" (SetClipboardText, probed like weightsui's; no-clipboard
 builds get a select-and-Ctrl+C hint). The receiving side is
 Import from text..., so a share is now copy -> paste -> done.
 profiles.readExportRaw is the traversal-guarded reader. 1695 + 170.
+
+## Auto-Build All: one summary, one hot-swap (2026-07-20)
+
+Henrik: the sweep spammed one "sets hot-swapped" chat line per set
+(every commitCurrentSet queued its own /dl sets reload). commit-
+CurrentSet grows a quiet flag (no per-set status, no per-set reload;
+returns ok) and autoBuildAll commits quietly, queues ONE /dl sets
+reload after the loop and reports one summary -- built / scored-
+nothing / failed-to-commit / no-weights counts -- in the Sets status
+and the import-hook note alike. 1695 + 170.
