@@ -19,7 +19,7 @@ Everything else — *which* MP gear to put on and *when* — is data (sets and
 trigger rules), which the existing machinery already handles. This mirrors the
 "builder is a plan, the engine decides" split (ADR 0006).
 
-## Stage 1 — equip + hold (BUILT, engine VERSION 10)
+## Stage 1 — equip + hold (BUILT, engine VERSION 10; STAGED movement v76)
 
 `/dl mode maxmp` is the whole interface — no set-building required:
 
@@ -47,9 +47,31 @@ trigger rules), which the existing machinery already handles. This mirrors the
   Cleric's Bliaut +29 → Bunzi's Robe +50). Release requires spending strictly
   past the surplus; a released slot has a 15 s re-equip cooldown so the
   full/spent boundary can't churn gear per action.
+- **STAGED movement (v76)**: at most ONE battery moves per dispatch — the
+  field complaint was the mode reading as an on/off switch (everything on /
+  everything off in one dispatch). Releases pick the SMALLEST surplus first:
+  the big battery stays on longest (the original spec), and the all-at-once
+  release was also an accounting bug — each per-slot hold justifies removing
+  only ITS piece, so N same-dispatch releases dropped max MP by the SUM of
+  surpluses and the server clamp (`cur = min(cur, newMax)`) ate the
+  difference; a single smallest-surplus release is clamp-free by construction,
+  and the next dispatch re-judges against the post-release max, so shedding
+  each further piece takes spending ITS surplus too (cumulative). Equips pick
+  the BIGGEST gain first ("find the piece with the highest MP"); the
+  full-pool gate then paces the ladder — the next battery waits until
+  recovery refills the headroom the last one opened. One known leak, doc'd
+  not fixed: a single recovery tick larger than the just-equipped battery's
+  headroom caps the difference once per rung (stage 2's headroom leeway is
+  the fix if it matters in the field). Pure choosers
+  `dispatch.mpStageRelease`/`mpStageEquip` (tests MS1–MS8); the staged pick
+  runs in the `mp-stage` post-pass (renamed from `mp-equip-uncovered`, PL2),
+  which owns both the single release and the single equip across covered and
+  uncovered slots.
 - Weapons exempt (`MP_HOLD_EXEMPT`), `dlac:` virtual markers exempt (staff/obi
-  automation keeps its two slots). Both decisions annotate `/dl why`:
-  `body=MP-EQUIP Bunzi's Robe (+21 MP)` / `body=MP-HOLD Bunzi's Robe (+21 MP unspent)`.
+  automation keeps its two slots). Decisions annotate `/dl why`:
+  `body=MP-EQUIP Bunzi's Robe (+21 MP)` / `body=MP-HOLD Bunzi's Robe (+21 MP unspent)` /
+  `body=MP-RELEASE Bunzi's Robe (+21 MP surplus spent)` /
+  `ring1=MP-STAGE Astral Ring (+25 MP; neck releases first)`.
 - Data: the autogear manifest's `mp` (lower(name) → flat MP, every owned piece)
   and `mpBest` (slot → best battery, filtered by the central `canWear` +
   `haveInBags`) maps. The manifest is fully self-maintaining: it regenerates on
@@ -70,10 +92,12 @@ trigger rules), which the existing machinery already handles. This mirrors the
   MP-EQUIP this is usually unnecessary (a full pool already wears batteries),
   but it forces the swap when the pool is NOT full at pop time.
 
-## Stage 2 — resting escalation (NOT BUILT)
+## Stage 2 — resting escalation (NOT BUILT; partly obsoleted by v76)
 
-While `status = Resting` and the mode is on, progressively re-equip max-MP
-pieces as the pool refills, so recovery is never capped early:
+The v76 staged equip already climbs one battery per refill in ANY recovery
+situation (resting, refresh, sublimation) — what remains of this stage is the
+headroom LEEWAY: equipping the next piece *before* the pool is strictly full,
+so a big rest tick never caps against a small battery's headroom:
 
 - **Measure, don't model**: CatsEyeXI's hMP traits are custom (private
   submodules; wiki incomplete). Instead of trait tables, observe the actual MP

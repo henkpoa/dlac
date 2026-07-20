@@ -555,6 +555,34 @@ check('K6 legacy entry too high',  dispatchM.mpPick({ name = 'X', mp = 1, level 
 check('K7 nil-safe',               dispatchM.mpPick(nil, 74), nil);
 
 -- ---------------------------------------------------------------------------
+-- MS. staged battery movement (dispatch.mpStageRelease / mpStageEquip, engine
+--     v76): at most ONE battery moves per dispatch. Release picks the SMALLEST
+--     surplus (the big battery stays on longest; simultaneous releases were
+--     the clamp bug -- N same-dispatch releases drop max MP by the SUM of
+--     surpluses while each hold justified only its own). Equip picks the
+--     BIGGEST gain. Both tie-break on the slot name so pairs() collection
+--     order can never flip the pick.
+-- ---------------------------------------------------------------------------
+(function()
+local relCands = { { slot = 'Body', surplus = 29 },
+                   { slot = 'Ring1', surplus = 10 },
+                   { slot = 'Head', surplus = 45 } };
+check('MS1 release picks the smallest surplus', dispatchM.mpStageRelease(relCands).slot, 'Ring1');
+check('MS2 release tie breaks on slot name',
+    dispatchM.mpStageRelease({ { slot = 'Ring2', surplus = 10 }, { slot = 'Ring1', surplus = 10 } }).slot, 'Ring1');
+check('MS3 single candidate wins',  dispatchM.mpStageRelease({ { slot = 'Neck', surplus = 5 } }).slot, 'Neck');
+check('MS4 release empty -> none',  dispatchM.mpStageRelease({}), nil);
+check('MS5 release nil-safe',       dispatchM.mpStageRelease(nil), nil);
+local upCands = { { slot = 'Ring1', gain = 25 },
+                  { slot = 'Body', gain = 50 },
+                  { slot = 'Neck', gain = 5 } };
+check('MS6 equip picks the biggest gain', dispatchM.mpStageEquip(upCands).slot, 'Body');
+check('MS7 equip tie breaks on slot name',
+    dispatchM.mpStageEquip({ { slot = 'Ear2', gain = 25 }, { slot = 'Ear1', gain = 25 } }).slot, 'Ear1');
+check('MS8 equip nil-safe',         dispatchM.mpStageEquip(nil), nil);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- L. THE central stats-at-level resolver (levelstats.effective), against the
 --    REAL generated scaling data: Tamas Ring is MP 15 on paper, 29 at Lv74,
 --    30 fully scaled (Lv75). Every section -- gearui display/scoring, gearoptim
@@ -3695,7 +3723,7 @@ end)();
     local po = dispatchM._postPassOrder;
     check('PL1 order exported', type(po), 'table');
     check('PL2 exact order', table.concat(po, '>'),
-        'mp-equip-uncovered>craft-sub-guard>sync-hold-ammo>trinket-vs-ranged>reserved-drops');
+        'mp-stage>craft-sub-guard>sync-hold-ammo>trinket-vs-ranged>reserved-drops');
     local ti, ri = nil, nil;
     for i, nm in ipairs(po) do
         if nm == 'trinket-vs-ranged' then ti = i; end

@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 75;   -- 75: /dl lock set <name> -- the Sets tab's "Equip & Lock" (Incursion T3: the server locks your equipment on entry). Wears the COMMITTED set once -- bracketed ClearBuffer/ProcessBuffer, the PetAction tick's lesson, or the equips evaporate -- then locks ALL 16 slots so the engine stops proposing swaps the server would refuse; stale locks are cleared first so the set lands whole. Release: /dl lock all off (or the Sets tab's Unlock). Dispatch rules untouched.
+M.VERSION = 76;   -- 76: maxmp STAGED -- at most ONE battery moves per dispatch (field report: the mode read as an on/off switch, everything on / everything off in one dispatch). Release: smallest surplus first (the big battery stays on longest, per the original spec) -- the all-at-once release was also an accounting bug: N same-dispatch releases drop max MP by the SUM of surpluses while each per-slot hold justified only its own, and the server clamp (cur = min(cur, newMax)) ate the difference; a single smallest-surplus release is clamp-free by construction. Equip: biggest gain first at a full pool; the full-pool gate then paces the ladder (the next battery waits until recovery refills the last one's headroom). Pure choosers M.mpStageRelease/M.mpStageEquip (tests MS*); post-pass 'mp-equip-uncovered' renamed 'mp-stage' (PL2) -- it now owns BOTH the single release and the single equip across covered + uncovered slots.
+                  -- 75: /dl lock set <name> -- the Sets tab's "Equip & Lock" (Incursion T3: the server locks your equipment on entry). Wears the COMMITTED set once -- bracketed ClearBuffer/ProcessBuffer, the PetAction tick's lesson, or the equips evaporate -- then locks ALL 16 slots so the engine stops proposing swaps the server would refuse; stale locks are cleared first so the set lands whole. Release: /dl lock all off (or the Sets tab's Unlock). Dispatch rules untouched.
                   -- 74: AutoAmmo per-job config (ammostate fmt 2) -- every job carries its OWN priority list + persisted on/off (field round 2: "all jobs can't use all ammos"); the overlay resolves against as.jobs[<main job>]'s section, legacy fmt-1 files (top-level ammo list + jobs map) keep working unchanged until the GUI migrates them. Decision rules untouched.
                   -- 73: AutoAmmo -- the Ammo-slot automation (docs/design/auto-ammo.md). ammostate.lua (GUI-written) + an overlay on EVERY event: count-verified picks per context (ranged / consuming-WS / the three free magical WS 217,218,220 / Quick Draw / Unlimited Shot 115), special ammo swept off wherever a shot could consume it, ladder ends in a literal 'remove' (LAC's native unequip; an empty gun is server-blocked, so the shot refuses instead of eating the bullet). New engine capabilities: the first LAC-state bag counter (per-second cache, fresh on action events) and the 'remove' plan. Pure core M.resolveAmmoPlan (tests AM*).
                   -- 72: serializeTriggers keeps BARE mode definitions -- `[name] = {}` (no bind, no values) is emitted instead of dropped, so a plain UI-created toggle survives the commit round-trip and stays in the Modes list (triggermodel.fromRaw keeps the empty def too; tests TM20-22). Rule matching, resolve order and every other engine path untouched.
@@ -1192,6 +1193,48 @@ function M.mpPick(cands, level)
     return nil;
 end
 
+-- Staged battery movement (v76): at most ONE battery moves per dispatch, and
+-- these pure choosers pick which (headless tests MS*). Release: the SMALLEST
+-- surplus goes first -- the highest-MP battery stays on longest (the original
+-- spec) and any single eligible release is clamp-free by construction
+-- (eligibility means its own surplus is already spent). Simultaneous releases
+-- were the field bug: each per-slot hold justifies removing only ITS piece, so
+-- N same-dispatch releases dropped max MP by the SUM of surpluses and the
+-- server clamp (cur = min(cur, newMax)) ate the difference. Ties break on the
+-- slot name so pairs() collection order can never flip the pick.
+function M.mpStageRelease(cands)
+    if type(cands) ~= 'table' then return nil; end
+    local best = nil;
+    for _, c in ipairs(cands) do
+        if type(c) == 'table'
+           and (best == nil
+                or (c.surplus or 0) < (best.surplus or 0)
+                or ((c.surplus or 0) == (best.surplus or 0)
+                    and tostring(c.slot) < tostring(best.slot))) then
+            best = c;
+        end
+    end
+    return best;
+end
+
+-- Equip: the BIGGEST gain first ("find the piece with the highest MP"). The
+-- full-pool gate does the pacing: the next battery only becomes a candidate
+-- again once recovery has refilled the headroom the last one opened.
+function M.mpStageEquip(cands)
+    if type(cands) ~= 'table' then return nil; end
+    local best = nil;
+    for _, c in ipairs(cands) do
+        if type(c) == 'table'
+           and (best == nil
+                or (c.gain or 0) > (best.gain or 0)
+                or ((c.gain or 0) == (best.gain or 0)
+                    and tostring(c.slot) < tostring(best.slot))) then
+            best = c;
+        end
+    end
+    return best;
+end
+
 -- ---------------------------------------------------------------------------
 -- Level-sync settle hold (v56). When a level sync lands (Incursion boss pop,
 -- party re-sync), MainJobSync jumps -- and for the next frames the reading and
@@ -1594,7 +1637,7 @@ end
 --     (LS12: a held Range keeps its trinket judgement consistent).
 -- The next overlay/post-rule gets an entry here, nowhere else. Tests PL* pin
 -- this list as data.
-local POST_ORDER = { 'mp-equip-uncovered', 'craft-sub-guard', 'sync-hold-ammo',
+local POST_ORDER = { 'mp-stage', 'craft-sub-guard', 'sync-hold-ammo',
                      'trinket-vs-ranged', 'reserved-drops' };
 M._postPassOrder = POST_ORDER;
 
@@ -1624,7 +1667,11 @@ local function equipResolved(s, ctx)
     -- pin table; unpin and the slot dispatches normally on the very next pass.
     local pinRes = (type(ctx) == 'table') and ctx.pinReserved or nil;
     -- Max-MP context (only while the mode is on and the manifest carries MP data).
+    -- The per-slot chain COLLECTS battery moves (mpRel = spent-past-surplus
+    -- releases, mpUp = full-pool upgrades); the mp-stage post-pass lets exactly
+    -- one of each kind through per dispatch (staged, v76).
     local mpMap, mpBest, curMP, maxMP = nil, nil, nil, nil;
+    local mpRel, mpUp = {}, {};
     if M.modes['maxmp'] ~= nil then
         local a = ensureAutoLoaded();
         if a ~= nil and type(a.mp) == 'table' then
@@ -1696,32 +1743,57 @@ local function equipResolved(s, ctx)
                 W()[slot] = nil;                       -- keep the MP battery until it's spent
                 note('%s=MP-HOLD %s (+%d MP unspent)', tostring(slot), worn, wornMP - tgtMP);
             else
+                -- Spent past the surplus: a release CANDIDATE, not a release --
+                -- mp-stage lets ONE go per dispatch, the rest hold as worn.
                 if worn ~= nil and wornMP > tgtMP and string.lower(worn) ~= string.lower(v) then
-                    _mpCd[lslot] = os.time() + 15;     -- battery released: no instant re-equip
+                    mpRel[#mpRel + 1] = { slot = slot, lslot = lslot, worn = worn,
+                                          surplus = wornMP - tgtMP };
                 end
                 -- Upgrade: a full pool means recovery would be capped -- wear the
                 -- slot's best battery instead of the set piece so refresh/resting/
-                -- sublimation land into the larger pool. The hold above then owns it.
+                -- sublimation land into the larger pool. A CANDIDATE too:
+                -- mp-stage wears the single biggest gain across covered AND
+                -- uncovered slots, and the hold above then owns what landed.
                 local c = (mpBest ~= nil) and M.mpPick(mpBest[lslot], playerLevel(ctx)) or nil;
                 if c ~= nil
                    and (worn == nil or string.lower(c.name) ~= string.lower(worn))
                    and (c.mp or 0) > math.max(wornMP, tgtMP)
                    and curMP >= maxMP
                    and os.time() >= (_mpCd[lslot] or 0) then
-                    W()[slot] = c.name;
-                    note('%s=MP-EQUIP %s (+%d MP)', tostring(slot), c.name, (c.mp or 0) - math.max(wornMP, tgtMP));
+                    mpUp[#mpUp + 1] = { slot = slot, lslot = lslot, name = c.name,
+                                        gain = (c.mp or 0) - math.max(wornMP, tgtMP) };
                 end
             end
         end
     end
     -- The five whole-table post-passes, run in POST_ORDER (the data above).
     local PASS = {
-        -- MP-EQUIP covers slots the set does NOT address too: an unwritten ring
-        -- or neck slot is exactly where a battery is freest to sit. Full pool
-        -- only, locked and weapon slots never. (Nothing else ever writes such a
-        -- slot, so the battery simply stays worn until you or a set replace it
-        -- -- there is no MP to waste by leaving it on.)
-        ['mp-equip-uncovered'] = function()
+        -- Staged battery movement (v76): at most ONE battery moves per dispatch.
+        -- The per-slot chain collected the candidates (mpRel/mpUp); this pass
+        -- picks the winners. RELEASE: smallest surplus first (the big battery
+        -- stays on longest); every candidate NOT chosen holds as worn -- the
+        -- next dispatch (0.4s tick) re-judges against the post-release max, so
+        -- shedding the next piece takes spending ITS surplus too (cumulative,
+        -- the original spec). EQUIP: biggest gain first, uncovered slots (a
+        -- bare ring or neck no set writes -- where a battery is freest to sit)
+        -- join the same single pick; full pool only, locked and weapon slots
+        -- never. A battery in an uncovered slot stays worn when the mode turns
+        -- off -- nothing else writes that slot, no MP is wasted leaving it on.
+        ['mp-stage'] = function()
+            if mpMap == nil then return; end
+            local rel = M.mpStageRelease(mpRel);
+            if rel ~= nil then
+                for _, r in ipairs(mpRel) do
+                    if r ~= rel then
+                        W()[r.slot] = nil;             -- not this one's turn: hold as worn
+                        note('%s=MP-STAGE %s (+%d MP; %s releases first)',
+                            tostring(r.slot), r.worn, r.surplus, tostring(rel.slot));
+                    end
+                end
+                _mpCd[rel.lslot] = os.time() + 15;     -- battery released: no instant re-equip
+                note('%s=MP-RELEASE %s (+%d MP surplus spent)',
+                    tostring(rel.slot), rel.worn, rel.surplus);
+            end
             if mpBest == nil or curMP == nil or maxMP == nil or curMP < maxMP then return; end
             local covered = {};
             for slot in pairs(s) do covered[string.lower(tostring(slot))] = true; end
@@ -1733,9 +1805,19 @@ local function equipResolved(s, ctx)
                     if c ~= nil and (worn == nil or string.lower(c.name) ~= string.lower(worn))
                        and (c.mp or 0) > wornMP
                        and os.time() >= (_mpCd[lslot] or 0) then
-                        W()[canon] = c.name;
-                        note('%s=MP-EQUIP %s (+%d MP)', lslot, c.name, (c.mp or 0) - wornMP);
+                        mpUp[#mpUp + 1] = { slot = canon, lslot = lslot, name = c.name,
+                                            gain = (c.mp or 0) - wornMP };
                     end
+                end
+            end
+            local up = M.mpStageEquip(mpUp);
+            if up ~= nil then
+                W()[up.slot] = up.name;
+                if #mpUp > 1 then
+                    note('%s=MP-EQUIP %s (+%d MP; %d more staged)',
+                        up.lslot, up.name, up.gain, #mpUp - 1);
+                else
+                    note('%s=MP-EQUIP %s (+%d MP)', up.lslot, up.name, up.gain);
                 end
             end
         end,
