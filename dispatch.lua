@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 79;   -- 79: /dl plan -- the maxmp battery plan as chat lines (kept OFF the Automations tab per the hidden ruling). Per slot: the live pick (mpPick at the current level), its MP, WORN/gain-vs-worn/LOCKED status and the full ladder with above-level rungs tagged (LvNN); rows sorted biggest gain first = the equip order at a full pool; header restates the two staging rules; footer flags the stale-manifest tell (a listed piece not in Inventory/Wardrobes). Pure assembly M.mpPlanLines (tests MPL*), inputs injected; the command glue gFunc-gates like /dl ls (one state, one printer). Engine dispatch rules untouched.
+M.VERSION = 80;   -- 80: a HELD battery still upgrades at a FULL pool. Field round 4 froze with 7 positive-gain batteries queued at 1040/1040: the MP-HOLD branch fires for any worn piece with surplus over the set piece and used to swallow the upgrade check entirely -- a worn SMALL battery (Curate's Earring 10) blocked its own upgrade (Loquac. Earring 30) forever; only slots already wearing their top pick ever equipped. The hold branch now collects the upgrade candidate too (same full-pool gate, cooldown, and mp-stage one-per-dispatch pick; the atomic swap keeps current MP intact, so the hold's no-waste guarantee holds). /dl why shows the winner slot as MP-HOLD + MP-EQUIP together: held from the SET piece, upgraded by the stage.
+                  -- 79: /dl plan -- the maxmp battery plan as chat lines (kept OFF the Automations tab per the hidden ruling). Per slot: the live pick (mpPick at the current level), its MP, WORN/gain-vs-worn/LOCKED status and the full ladder with above-level rungs tagged (LvNN); rows sorted biggest gain first = the equip order at a full pool; header restates the two staging rules; footer flags the stale-manifest tell (a listed piece not in Inventory/Wardrobes). Pure assembly M.mpPlanLines (tests MPL*), inputs injected; the command glue gFunc-gates like /dl ls (one state, one printer). Engine dispatch rules untouched.
                   -- 78: ADR 0010 scoped WITHIN the set (Henrik's ruling; field: worn Rimestone Lv60 kept a Lv20 Rouser out of Range). The keep-higher-Level contest still arbitrates a Range+Ammo pair the PLAN names, but a merely-WORN trinket no longer defends Range from outside it -- the engine DISPLACES it (Ammo='remove', LAC's native unequip; equipping the weapon alone would just be server-stripped, the original flap) unless Ammo is locked or pin-reserved. And MP-EQUIP never stages a battery whose RSlot reserves an occupied slot (planned or worn) -- a doomed biggest-gain pick would also win the one-per-dispatch stage forever and starve every other battery. Pure rules M.trinketWornDisplace / M.mpStageEligible (tests TR11-15, MS9-10, TB*).
                   -- 77: MP-RELEASE names the INCOMING piece -- 'Hands=MP-RELEASE Oracle's Gloves -> Blessed Mitts +1 (+7 MP surplus spent)'. Field round 1 of v76: a release re-decided identically for 8+ seconds with the worn piece unmoved -- the swap-back never landed, and because the stalled slot keeps the smallest surplus it BLOCKS the whole release queue behind it. Root cause NOT yet found (wardrobe availability was a dead lead -- the server enables all wardrobe flags; Henrik confirms no unavailable gear). The named target turns any future stall into a checkable fact instead of a guess. BuildDynamicSets checks level only (no ownership/bag check) -- a plan can name stored/unowned/bazaared gear; parked in docs/design/maxmp-mode.md.
                   -- 76: maxmp STAGED -- at most ONE battery moves per dispatch (field report: the mode read as an on/off switch, everything on / everything off in one dispatch). Release: smallest surplus first (the big battery stays on longest, per the original spec) -- the all-at-once release was also an accounting bug: N same-dispatch releases drop max MP by the SUM of surpluses while each per-slot hold justified only its own, and the server clamp (cur = min(cur, newMax)) ate the difference; a single smallest-surplus release is clamp-free by construction. Equip: biggest gain first at a full pool; the full-pool gate then paces the ladder (the next battery waits until recovery refills the last one's headroom). Pure choosers M.mpStageRelease/M.mpStageEquip (tests MS*); post-pass 'mp-equip-uncovered' renamed 'mp-stage' (PL2) -- it now owns BOTH the single release and the single equip across covered + uncovered slots.
@@ -1876,6 +1877,26 @@ local function equipResolved(s, ctx)
                and M.mpHoldNeeded(wornMP, tgtMP, curMP, maxMP) then
                 W()[slot] = nil;                       -- keep the MP battery until it's spent
                 note('%s=MP-HOLD %s (+%d MP unspent)', tostring(slot), worn, wornMP - tgtMP);
+                -- A HELD battery still upgrades at a FULL pool (v80, field
+                -- round 4: every slot wearing a small battery froze -- this
+                -- branch swallowed the bigger battery's candidacy, so worn
+                -- Curate's Earring 10 kept Loquac. Earring 30 out forever;
+                -- only slots already wearing their top pick ever read WORN).
+                -- The swap is atomic (one equip packet replaces the piece),
+                -- so current MP never dips and the hold's guarantee -- no MP
+                -- wasted -- is intact. Same full-pool gate + cooldown as the
+                -- free branch; mpHoldNeeded means wornMP > tgtMP, so worn is
+                -- the floor to beat. Not chosen by mp-stage this dispatch?
+                -- The slot is already nil'd above = stays held as worn.
+                local c = (mpBest ~= nil) and M.mpPick(mpBest[lslot], playerLevel(ctx)) or nil;
+                if c ~= nil
+                   and string.lower(c.name) ~= string.lower(worn)
+                   and (c.mp or 0) > wornMP
+                   and curMP >= maxMP
+                   and os.time() >= (_mpCd[lslot] or 0) then
+                    mpUp[#mpUp + 1] = { slot = slot, lslot = lslot, name = c.name,
+                                        gain = (c.mp or 0) - wornMP };
+                end
             else
                 -- Spent past the surplus: a release CANDIDATE, not a release --
                 -- mp-stage lets ONE go per dispatch, the rest hold as worn.
