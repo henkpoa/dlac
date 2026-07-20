@@ -335,12 +335,14 @@ the live Range/Ammo picks — lands AutoAmmo entirely on the state-file side.
 - ~~Does the server enforce Ephemeral-Box PROXIMITY, and at what range?~~
   **ANSWERED (field round 2, Henrik): the box range is 5 yalms** —
   `BOX_RANGE = 5`, pinned by test EB9; the fetch buttons go dead-red beyond it.
-- **PLANNED (Henrik, field round 4): a central entity watcher** — once the
-  box detection is field-confirmed, the scan moves to a shared
-  `lib/entwatch.lua`: a DEMAND-DRIVEN snapshot service (sweep only when a
-  consumer asks and the cache is stale, ~2 s) carrying all the scan idioms in
-  ONE place (trimmed+ci names, rendered bit 0x200 with the signed-u32 fix,
-  the full 0x000-0x8FF range, GetRawEntity), with `nearestByName`-style
-  queries so future "is there an X near me?" features are one-liners.
-  eboxammo.boxDistance becomes a thin consumer; gearmove's moogle scans
-  migrate whenever that (GM-frozen) branch is next touched.
+- ~~PLANNED: a central entity watcher~~ **BUILT (field round 6, after Henrik
+  confirmed the box detection works): `lib/entwatch.lua`** — the subscription
+  registry he specced: `watch(who, name [, cb])` registers WHAT is looked for
+  and WHO is asking; one shared full-array sweep (2 s) serves every active
+  watch, tracked matches get fast (0.25 s) distance refreshes with per-index
+  name re-verification (slot reuse evicts, and evictions notify — a despawn
+  between sweeps must not go silent); callbacks fire on match-SET changes;
+  callback-less watches are demand-windowed (idle = zero work); `poke()` is
+  the rescan cache-bust. All the entity-array idioms live there now.
+  `eboxammo.boxDistance` = a three-line consumer (#1); gearmove's moogle
+  scans migrate whenever that (GM-frozen) branch is next touched. Tests EW*.

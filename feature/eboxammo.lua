@@ -166,10 +166,10 @@ function M.isBusy()
 end
 
 -- Manual rescan (Henrik, field round 3: "would be nice to be able to have it
--- scanned"): bust the entity-scan cache AND re-request the box counts. The
--- next boxDistance() read does a fresh sweep.
+-- scanned"): poke the entity watcher (next tick sweeps fresh) AND re-request
+-- the box counts.
 function M.rescan()
-    _boxCache.at, _boxCache.dist = -10, nil;
+    if _ewok then _ew.poke(M.BOX_NAME); end
     M.at = 0;
     return M.refresh();
 end
@@ -241,83 +241,28 @@ function M._onPacket(data)
 end
 
 -- ---------------------------------------------------------------------------
--- The physical box. E-Boxes are ordinary zone NPCs named "Ephemeral Box"
--- (Henrik's Bastok Mines sample id 17737730 decodes to a plain zone-NPC
--- slot), so proximity works WITHOUT targeting: scan the zone-static entity
--- indices for the name, take the nearest. The helmwatch proximity rules
--- apply: Ashita's GetDistance is SQUARED (the distance addon's convention),
--- reads are memory-only, and the scan is probe-injected so it runs headless.
+-- The physical box, via the CENTRAL entity watcher (lib/entwatch -- built
+-- from this feature's field rounds; eboxammo is its first consumer). E-Boxes
+-- are DYNAMICALLY SPAWNED NPCs named "Ephemeral Box" (Henrik's Bastok Mines
+-- sample 17737730 = zone 234, index 0x802); entwatch owns every scan idiom
+-- those rounds paid for (trimmed/ci names, rendered bit, the full
+-- 0x000-0x8FF range) and keeps the tracked boxes' distances fresh.
 -- ---------------------------------------------------------------------------
 M.BOX_NAME = 'Ephemeral Box';
 M.BOX_RANGE = 5;   -- yalms -- FIELD-PINNED (Henrik, 2026-07-20: "the box range
                    -- is 5"); was 6 (the trade-range guess) for one round
-local _boxCache = { at = -10, dist = nil };
 
--- Pure half (tests EB*): probe = { present=fn(idx)->bool (exists AND is
--- rendered), name=fn(idx)->string|nil, distSq=fn(idx)->number|nil }. Returns
--- nearest distance in YALMS, or nil when no box is rendered in this zone.
--- Name matching is TRIMMED + case-insensitive: GetName comes back with
--- trailing whitespace (the gearmove mhBootstrap field lesson -- an exact
--- compare against the literal never matches, which read as "always red").
-function M._scanBox(probe)
-    local want = string.lower(M.BOX_NAME);
-    local best = nil;
-    for idx = 0, 2303 do   -- the WHOLE entity array (0x000-0x8FF). E-Boxes are
-        -- DYNAMICALLY SPAWNED NPCs living in the dynamic range 0x700-0x8FF --
-        -- Henrik's Bastok Mines sample 17737730 = 0x010EA802 = zone 234, index
-        -- 0x802 = 2050 (round 3 scanned only the 0-1023 statics and could
-        -- never see it). LAC's own dynamic-id sweep uses the same ceiling.
-        if probe.present(idx) == true then
-            local nm = tostring(probe.name(idx) or ''):gsub('%s+$', '');
-            if string.lower(nm) == want then
-                local d = probe.distSq(idx);
-                if type(d) == 'number' and d >= 0 and (best == nil or d < best) then
-                    best = d;
-                end
-            end
-        end
-    end
-    return (best ~= nil) and math.sqrt(best) or nil;
-end
+local _ewok, _ew = pcall(require, 'dlac\\lib\\entwatch');
+_ewok = _ewok and type(_ew) == 'table';
 
--- Live rim: throttled ~2s (the panel calls this per frame while open).
--- The scan idiom is gearmove's field-verified mhBootstrap one, verbatim:
--- IEntity::GetRawEntity for existence (luashitacast's CheckForNomad calls a
--- NONEXISTENT GetEntity(i) -- dead code, do not copy), then RenderFlags0 bit
--- 0x200 = rendered (signed u32 read needs the +2^32 fix) before trusting a
--- distance -- unrendered slots carry stale garbage.
+-- Nearest box in YALMS, or nil when none is tracked in this zone. The watch
+-- is (re)registered on every ask -- idempotent -- and the ask itself is what
+-- keeps the callback-less watch inside entwatch's demand window: the panel
+-- polls while open, and an unopened panel costs nothing.
 function M.boxDistance()
-    local now = M._now();
-    if (now - _boxCache.at) < 2 then return _boxCache.dist; end
-    _boxCache.at = now;
-    local dist = nil;
-    pcall(function()
-        local em = AshitaCore:GetMemoryManager():GetEntity();
-        dist = M._scanBox({
-            present = function(idx)
-                local ok = false;
-                pcall(function()
-                    if em:GetRawEntity(idx) == nil then return; end
-                    local rf = em:GetRenderFlags0(idx) or 0;
-                    if rf < 0 then rf = rf + 4294967296; end     -- signed u32 -> unsigned
-                    ok = (math.floor(rf / 0x200) % 2) == 1;      -- bit 0x200: rendered
-                end);
-                return ok;
-            end,
-            name = function(idx)
-                local n = nil;
-                pcall(function() n = em:GetName(idx); end);
-                return n;
-            end,
-            distSq = function(idx)
-                local d = nil;
-                pcall(function() d = em:GetDistance(idx); end);
-                return d;
-            end,
-        });
-    end);
-    _boxCache.dist = dist;
-    return dist;
+    if not _ewok then return nil; end
+    _ew.watch('eboxammo', M.BOX_NAME);
+    return (_ew.nearest(M.BOX_NAME));
 end
 
 -- Ashita glue, guarded (headless: no ashita global, nothing registers).
@@ -347,6 +292,12 @@ pcall(function()
             print(string.format('[dlac] ebox: gamemode=%s isCW=%s locked=%s counts=%s dist=%s range=%d',
                 tostring(gm), tostring(M.isCW()), tostring(M.lockedReason),
                 (M.counts ~= nil) and 'cached' or 'nil', tostring(M.boxDistance()), M.BOX_RANGE));
+            if _ewok then   -- the watcher's own view (the raw sweep below stays independent)
+                for _, w in ipairs(_ew.debugState()) do
+                    print(string.format('[dlac] ebox watch: %q subs=[%s] matches=%d active=%s',
+                        w.name, w.subs, w.matches, tostring(w.active)));
+                end
+            end
             local em = AshitaCore:GetMemoryManager():GetEntity();
             local nRaw, nRen, nHit, near = 0, 0, 0, {};
             for i = 0, 2303 do

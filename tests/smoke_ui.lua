@@ -578,6 +578,9 @@ end)();
     check('S139 eboxammo loads headless', ok6 and type(ebx) == 'table', true);
     check('S139b headless is never a Crystal Warrior (affirmative-only gate)',
         ok6 and ebx.isCW(), false);
+    local ok7, entw = pcall(require, 'dlac\\lib\\entwatch');
+    check('S139c entwatch loads headless', ok7 and type(entw) == 'table', true);
+    check('S139d entwatch starts with an empty registry', ok7 and #entw.debugState(), 0);
 end)();
 
 -- ---------------------------------------------------------------------------

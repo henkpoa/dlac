@@ -6221,33 +6221,65 @@ end)();
     check('EB7 refresh refuses headless (not CW -- the affirmative-only gate)', eb.refresh(), false);
     check('EB7b withdraw refuses headless too', eb.withdraw(21334, 1), false);
 
-    -- the box scan (probe-injected; distances are SQUARED on the wire, yalms
-    -- out). THE FIELD BUG (round 3): GetName returns TRAILING-WHITESPACE
-    -- names, so the round-2 exact compare never matched and every button sat
-    -- red -- the padded/cased names here pin the trimmed, ci match forever.
-    local world = { [12] = { name = 'Ephemeral Box   ', d2 = 100 },   -- padded: the live shape
-                    [40] = { name = 'EPHEMERAL box',    d2 = 25 },    -- case must not matter
-                    [0]  = { name = 'Ephemeral Box',    d2 = 3600 },  -- slot 0 is scanned too
-                    [77] = { name = 'Nomad Moogle',     d2 = 4 } };
+    -- EW. lib/entwatch -- the CENTRAL entity watcher (field round 6; built
+    -- from this feature's scan lessons, eboxammo is consumer #1). Injected
+    -- probe + clock; the padded/cased names, index 0 and the 0x802 dynamic
+    -- slot pin the field lessons (rounds 2-4: exact-name compare never
+    -- matched GetName's trailing whitespace; the 0-1023 static sweep could
+    -- never reach a dynamically spawned box) forever.
+    local ew = dofile('lib/entwatch.lua');
+    local ewNow = 1000;
+    ew._now = function() return ewNow; end;
+    local world = { [12]   = { name = 'Ephemeral Box   ', d2 = 100 },   -- padded: the live shape
+                    [40]   = { name = 'EPHEMERAL box',    d2 = 25 },    -- case must not matter
+                    [0]    = { name = 'Ephemeral Box',    d2 = 3600 },  -- slot 0 is scanned too
+                    [2050] = { name = 'Ephemeral Box ',   d2 = 16 },    -- 0x802: the live dynamic slot
+                    [77]   = { name = 'Nomad Moogle',     d2 = 4 } };
     local probe = {
         present = function(idx) return world[idx] ~= nil; end,
         name    = function(idx) return world[idx] and world[idx].name; end,
         distSq  = function(idx) return world[idx] and world[idx].d2; end,
     };
-    check('EB8 nearest box wins despite padding/case, in yalms', eb._scanBox(probe), 5.0);
-    world[40] = nil;
-    check('EB8b padded name alone still matches (the live shape)', eb._scanBox(probe), 10.0);
-    world[12] = nil;
-    check('EB8c index 0 is scanned', eb._scanBox(probe), 60.0);
-    world[0] = nil;
-    check('EB8d no box rendered -> nil (moogles are not boxes)', eb._scanBox(probe), nil);
-    -- THE round-4 fix: E-Boxes are DYNAMIC entities (Henrik's live sample
-    -- 17737730 = zone 234, index 0x802 = 2050) -- the 0-1023 static sweep
-    -- could never see one. The whole array (0x000-0x8FF) is scanned now.
-    world[2050] = { name = 'Ephemeral Box ', d2 = 16 };
-    check('EB8e dynamic-range slots are scanned (0x802 = the live box)', eb._scanBox(probe), 4.0);
-    world[2050] = nil;
+    check('EW1 nearest before any watch = nil', ew.nearest('Ephemeral Box'), nil);
+    local cbN = {};
+    check('EW2 watch registers', ew.watch('t_ebox', 'Ephemeral Box', function(m) cbN[#cbN + 1] = #m; end), true);
+    check('EW2b a callback watch is active without polling', ew._sweep(probe, ewNow), true);
+    check('EW2c the callback fired with the sorted match set', cbN[1], 4);
+    local d1, i1 = ew.nearest('Ephemeral Box');
+    check('EW3 nearest despite padding/case, in yalms', d1, 4.0);
+    check('EW3b ...and it is the dynamic 0x802 slot', i1, 2050);
+    local ms = ew.matches('Ephemeral Box');
+    check('EW4 matches sorted nearest-first', ms[1].idx == 2050 and ms[#ms].idx == 0, true);
+    check('EW5 sweep cadence: not due again yet', ew._sweep(probe, ewNow + 1), false);
+    -- fast refresh: distance moves WITHOUT a sweep; slot reuse gets evicted
+    world[2050].d2 = 9;
+    world[40] = { name = 'Goblin Digger', d2 = 1 };   -- slot REUSED by a stranger
+    ew._refresh(probe, ewNow + 1);
+    check('EW6 tracked distance refreshed between sweeps', (ew.nearest('Ephemeral Box')), 3.0);
+    check('EW6b reused slot evicted (name re-verified)', #ew.matches('Ephemeral Box'), 3);
+    -- change detection: the next due sweep sees the same 3 -> no new callback
+    ewNow = ewNow + 3;
+    ew._sweep(probe, ewNow);
+    check('EW7 unchanged match set fires no callback', #cbN, 2);   -- 1 initial + 1 for the eviction round
+    ew._sweep(probe, ewNow + 3);
+    check('EW7b (still none without a change)', #cbN, 2);
+    -- demand window: a POLLED watch sleeps IDLE_S after its last ask
+    ew.unwatch('t_ebox');
+    check('EW8 last subscriber leaving tears the entry down', ew.nearest('Ephemeral Box'), nil);
+    ew.watch('t_poll', 'Ephemeral Box');
+    ewNow = ewNow + 100;                              -- stale ask: inactive
+    check('EW8b idle polled watch sweeps nothing', ew._sweep(probe, ewNow), false);
+    ew.nearest('Ephemeral Box');                      -- the ask IS the demand
+    check('EW8c a fresh ask wakes it', ew._sweep(probe, ewNow), true);
+    -- poke: cache-bust ahead of the cadence (the panel's rescan button)
+    check('EW9 not due again', ew._sweep(probe, ewNow + 1), false);
+    ew.poke('Ephemeral Box');
+    check('EW9b poke forces the next sweep', ew._sweep(probe, ewNow + 1), true);
+    ew.unwatch('t_poll');
+    check('EW10 empty registry reports empty', #ew.debugState(), 0);
+
     check('EB9 box range is FIELD-PINNED at 5 yalms (Henrik 2026-07-20)', eb.BOX_RANGE, 5);
+    check('EB10 boxDistance is headless-safe through the watcher', eb.boxDistance(), nil);
 
     -- level: persisted per entry (GUI sort data; the engine ignores it --
     -- the fmt-2 round-trip above pins the serializer side)

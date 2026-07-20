@@ -225,11 +225,17 @@ agent; the per-repo setup lives in `docs/agents/`.
     WITHDRAW + ACK with the server's refusal words; pending discipline on the
     shared 0x1A4 party line; `string.byte` parsing, headless EB*). Per-row
     `E-Box: xN` + qty + Fetch + **Fetch up to** (top-up against bag counts) in
-    ammoui, plus a no-target proximity check — E-Boxes are zone NPCs named
-    **"Ephemeral Box"**, scanned by name with the helmwatch distance
-    conventions (squared; **range 5 FIELD-PINNED**, test EB9); out of range =
-    warning + the fetch buttons go dead-red. Field round 2 (07-20): "so far it
-    works".
+    ammoui, plus a no-target proximity check — E-Boxes are **DYNAMIC entities**
+    named "Ephemeral Box" (index 0x802 in the field sample; **range 5
+    FIELD-PINNED**, test EB9); out of range = warning + the fetch buttons go
+    dead-red. Box detection field-CONFIRMED (round 6) after two scan-bug
+    rounds, then generalized at Henrik's ask into **`lib/entwatch.lua` — THE
+    central entity watcher** (watch(who, name[, cb]) subscriptions, one shared
+    0x000-0x8FF sweep, fast tracked-distance refresh with slot-reuse eviction
+    that notifies, demand-windowed when callback-less; every entity-array
+    idiom lives THERE, tests EW*). eboxammo is consumer #1; use entwatch for
+    any future "is there an X near me?" — never a local scan. Hidden
+    diagnostic: `/dl ebox`.
 - **GEAR-SET BONUSES ARE LIVE — display + optimizer (07-18, ADR 0011).**
   `gear\geareffects.lua` is THE evaluator (`comboStats` = whole-composition truth;
   `setsOf`/`setTier` the optimizer seam; counting per SLOT — duplicates twice,

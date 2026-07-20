@@ -36,7 +36,9 @@ gear/      the gear pipeline: gearoptim, gearimport, gearexport, gearcheck, gear
 feature/   self-contained features: lockstyle, macrobook, useitem, craftwatch, augments,
            pinwatch, helmwatch, fishwatch, fishcalc (pure fishing math -- headless),
            ammowatch (AutoAmmo config state)
-lib/       generic helpers: cmdqueue
+lib/       generic helpers: cmdqueue, statefile, entwatch (the central entity
+           watcher: subscription registry + one shared scan, all the
+           entity-array idioms in one place)
 assets/    PNGs (loaded by absolute path via AshitaCore:GetInstallPath — not by module path)
 docs/  tests/  tools/
 ```

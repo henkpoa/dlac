@@ -3479,3 +3479,25 @@ working-set edits are not equipped -- the status line says so when the
 set is dirty. Locks stay session-only by their existing design, so a
 Reload LAC also releases. Tests LK1-9 pin setLock('all') + the
 equipResolved strip. Suites 1814 + 176.
+
+## The central entity watcher (2026-07-20)
+
+Box detection field-CONFIRMED (round 6), and Henrik generalized it
+on the spot: "a point that scans all loaded entities, where you can
+apply for things you look for and who is looking for it, [keeping]
+track of the current distances to the active monitored entities."
+lib/entwatch.lua is exactly that: watch(who, name [, cb]) registers
+the interest; ONE full-array sweep (2s) serves every active watch;
+tracked matches get 0.25s distance refreshes with per-index name
+re-verification (slot reuse evicts -- and evictions NOTIFY, or a
+despawn between sweeps would never fire the callback); callbacks
+ride match-SET changes; callback-less watches are demand-windowed
+(15s past the last ask -- an idle client does zero work); poke() =
+the rescan cache-bust. Every idiom the AutoAmmo scan rounds paid
+for (trimmed+ci names, rendered bit 0x200 signed-u32, GetRawEntity
+not the dead GetEntity(i), the full 0x000-0x8FF range) lives THERE
+now, once. eboxammo.boxDistance shrank to a three-line consumer;
+/dl ebox additionally prints the watcher's registry view. Also this
+arc: Nexus Cape joined the Teleports menu under the Whistle
+(/dl nexus, party-leader teleport, server-gated; pushed to origin
+per Henrik). Tests EW1-EW10 + smoke S139c/d. Suites 1837 + 178.
