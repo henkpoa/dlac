@@ -78,7 +78,8 @@ in Waist) via the normal **+ Add** picker. At cast time dlac equips:
   Iridescence +3 — Inanna, Keraunos, Gridarvor, the Lv75 relic staves — rank above
   them), highest tier wins, ties go to the universal. Every owned universal rides a
   level-ordered ladder, so a level sync falls through to the best one you can still
-  wear. CW-only Incursion weapons appear in the Automations tab only in CW mode.
+  wear. CW-only Incursion weapons appear in the Automations tab only in CW mode
+  (other modes get a "Show Crystal Warrior gear" preview checkbox).
 - **Obi** — the matching elemental obi (or the universal Hachirin-no-obi) only when
   the day/weather bonus for the spell's element is net positive.
 

@@ -3582,3 +3582,9 @@ customs available to ALL game modes, so their cw flags came off
 functional). Arcanium +1 the inference got right: CW-only,
 confirmed. CW-flagged now = exactly the Incursion lines: Foreshadow
 +1, Arcanium +1, Claritas, Izuna, Inanna, Keraunos.
+
+**Addendum (same day):** non-CW modes get a "Show Crystal Warrior
+gear" checkbox at the bottom of the AutoIridescence detail
+(session-only peek; Henrik: let them see what they're missing).
+The affirmative-CW gate stays the default; the checkbox only widens
+the DISPLAY filter, never the scan.

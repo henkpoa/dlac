@@ -1072,13 +1072,16 @@ local function renderAutomations()
             imgui.Spacing();
             -- CW-only rows (the Incursion lines) gate on the AFFIRMATIVE mode
             -- read (architecture.md): shown in 'CW', hidden on Wings/ACE and
-            -- on nil-unknown alike. Display only -- the ownership scan never
-            -- gates (a non-CW character simply never owns them).
+            -- on nil-unknown alike -- unless the peek checkbox below opts in
+            -- (session-only; Henrik: let other modes see what CW has). Display
+            -- only -- the ownership scan never gates (a non-CW character
+            -- simply never owns them).
             local isCW = hasGmode and gmode.get() == 'CW';
+            local showCW = isCW or auto.showCW == true;
             local nq, hq, ir = {}, {}, { {}, {}, {} };
             for _, el in ipairs(ELEMENTS8) do nq[#nq + 1] = STAFF_NQ[el]; hq[#hq + 1] = STAFF_HQ[el]; end
             for _, u in ipairs(UNIVERSAL) do
-                if u.cw ~= true or isCW then
+                if u.cw ~= true or showCW then
                     local t = ir[math.min(math.max(u.tier or 1, 1), 3)];
                     t[#t + 1] = u.name;
                 end
@@ -1091,6 +1094,13 @@ local function renderAutomations()
             autoColumn('Iridescence +3', ir[3]);
             imgui.Spacing();
             imgui.TextColored(COL_DIM, 'Highest usable tier wins; within a tier your job\'s own weapon beats the fallbacks. Green = owned.');
+            if not isCW then
+                local pk = { auto.showCW == true };
+                if imgui.Checkbox('Show Crystal Warrior gear', pk) then auto.showCW = pk[1]; end
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('Preview the CW-only Incursion weapons.\nThey cannot be obtained or equipped on this game mode.');
+                end
+            end
         elseif auto.view == 'obi' then
             imgui.TextColored(COL_HEADER, 'ElementalObi');
             imgui.SameLine(0, 10); imgui.TextColored(COL_DIM, 'slot automation -- dlac:ElementalObi in a set\'s Waist slot');
