@@ -124,7 +124,7 @@ function M.render()
                 else
                     local ry = (type(hw.proxEnter) == 'function') and hw.proxEnter() or 10;
                     imgui.TextColored({ 0.55, 0.55, 0.55, 1 },
-                        string.format('Auto HELM armed -- target a Point (%dy) or swing', ry));
+                        string.format('Auto HELM armed -- gear equips within %dy of a Point', ry));
                 end
             elseif hw.lastDetect ~= nil and (os.clock() - (hw.lastDetect.at or 0)) < 120 then
                 imgui.TextColored({ 0.55, 0.55, 0.55, 1 },

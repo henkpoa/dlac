@@ -97,23 +97,29 @@ Henrik's SVGs — DONE), order Harvesting/Excavation/Logging/Mining. Per selecte
   trade — the 0x034 result is the first client signal, so a result-driven hold can
   never dress its own swing; every FOLLOWING swing is (equip lands ~0.5s after the
   result, the next trade is seconds later).
-- **Proximity anchor (Henrik's first-swing fix):** TARGETING a "* Point" within the
-  detect range equips the gear BEFORE the first trade. Detect range is a **panel
-  setting** (clamped 3–20y, persisted per char as helmstate `range`; 0/absent =
-  default): default 10y — was 6 (trade range), raised for macro spammers swinging
-  from distance and for lag headroom. The keep-wearing leash is always range+2y
-  (hysteresis). The anchor outlives the target (HELMing clears it — the game's
-  quirk): while the SAME entity is rendered and within the leash, a ~4/s memory
-  tick keeps the hold refreshed (sparse state writes, ~1 per 2s); walk away or let
-  the point relocate and the 4s tail drops the gear. A swing's 0x034 also (re)seats the anchor
-  from its ActIndex, so the anchor self-heals mid-session without re-targeting.
-  "Rendered" = RenderFlags0 bit 0x200 (the storage-move `nomadNearestSq` precedent,
-  field-proven look-alike resistance) — a relocated Point lingering in the entity
-  array with a stale distance drops its render bit. Memory reads only; no packets.
+- **Proximity hold (entwatch migration, 2026-07-20 — replaced the targeting anchor):**
+  Auto HELM tracks all four "* Point" names through the CENTRAL entity watcher
+  (`lib/entwatch`, the eboxammo pattern) — ANY tracked point within the detect range
+  keeps the hold alive; **no targeting involved**. The targeting model broke two ways
+  in the field: a `/target` macro swings before the ~4/s tick sees the new target
+  (first swing undressed, gear popping off between points), and mined-out points
+  DESPAWN while stacked twins sit on the same spot (this server spawns several points
+  on one spot — the gear dropped with the next point right there). Detect range is a
+  **panel setting** (clamped 3–20y, persisted per char as helmstate `range`; 0/absent
+  = default): default 10y — was 6 (trade range), raised for macro spammers swinging
+  from distance and for lag headroom. Hysteresis: the ACTIVE category holds to
+  range+2y (the leash); a fresh acquire or a category SWITCH needs full enter range —
+  nearest point wins, and a stacked twin of another category hands the hold over at
+  ~0y without ever dropping the gear. A swing's 0x034 result stays the category
+  authority; it also latches the hold, covering a fresh spawn the sweep (2s cadence)
+  hasn't seen yet. entwatch owns the scan idioms (rendered bit 0x200, trimmed/ci
+  names, dynamic-entity range 0x000–0x8FF, squared distances → yalms out); watches
+  register while armed (`nearest()` asks are the demand signal) and tear down on
+  disarm — an idle session costs zero.
   **Session-only, starts OFF at login** (same rule as the idle switch — Henrik
-  reversed the brief persist-it ruling same day: armed, a mere tab-target on a Point
-  in passing re-dresses you, which is annoying when not out gathering). Holds never
-  survive a login either.
+  reversed the brief persist-it ruling same day: armed, merely coming NEAR a Point
+  in passing re-dresses you, which is annoying when not out gathering; the old
+  tab-target rationale, only stronger now). Holds never survive a login either.
   Engine truth: `helmStateActive` = `enabled` OR (`auto` AND `autoUntil` in the future);
   detection bumps `at`, so a stale craft switch loses arbitration while you gather.
 

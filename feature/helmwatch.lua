@@ -29,6 +29,14 @@
     player is gathering -- the bar auto-switches so the right hat is on for
     the NEXT swing.
 
+    Auto HELM proximity: the CENTRAL entity watcher (lib/entwatch) tracks
+    the four "* Point" names while armed -- ANY point within the detect
+    range keeps the temporary hold alive; no targeting involved. (The old
+    target-anchor model died in the field: /target macros swing before the
+    tick ever sees the new target, and mined-out points DESPAWN under you
+    while stacked twins sit on the same spot -- the gear popped off with the
+    next point right there.)
+
     Pure helpers are headless-testable; Ashita glue guarded at the bottom.
 ]]--
 
@@ -56,6 +64,12 @@ local _sfok, _sfile = pcall(require, 'dlac\\lib\\statefile');
 local charDir = (_sfok and type(_sfile) == 'table') and _sfile.charDir
     or function() return nil; end;
 M._charDir = charDir;   -- test seam
+
+-- The CENTRAL entity watcher (lib/entwatch): Auto HELM's proximity hold
+-- subscribes to the four "* Point" names through it -- see the proximity
+-- section. Never write a local entity scan (the architecture.md rule).
+local _ewok, _ew = pcall(require, 'dlac\\lib\\entwatch');
+_ewok = _ewok and type(_ew) == 'table';
 
 -- ---------------------------------------------------------------------------
 -- byte helpers (pure; shared by every parser below)
@@ -96,8 +110,8 @@ M.activeGather = nil;      -- 'Harvesting' | 'Excavation' | 'Logging' | 'Mining'
 M.enabled = false;         -- "Set HELM Idle": session-only; starts OFF
 M.autoHelm = false;        -- "Auto HELM": detection-armed temporary overlay;
                            -- session-only like the idle switch (Henrik
-                           -- reversed the brief persist-it ruling: armed, a
-                           -- mere tab-target in passing re-dresses you)
+                           -- reversed the brief persist-it ruling: armed,
+                           -- merely coming NEAR a Point re-dresses you)
 M._autoUntil = 0;          -- os.time() the auto hold runs to; each swing's
                            -- 0x034 result refreshes it (0 = not holding)
 M.AUTO_HOLD_S = 4;         -- hold tail after each swing's result. TIMING TRUTH
@@ -145,7 +159,7 @@ function M.loadState()
                 if type(t.gather) == 'string' and VALID[t.gather] == true then M.activeGather = t.gather; end
                 -- NEITHER switch is restored -- both start OFF each session.
                 -- Auto HELM was briefly persisted; Henrik reversed it same day:
-                -- armed, it re-dresses you for merely TAB-TARGETING a Point in
+                -- armed, it re-dresses you for merely COMING NEAR a Point in
                 -- passing, which is annoying when you are not out gathering.
                 -- Only the category (and the range setting) persist.
                 -- Detect-range override (0 / out-of-bounds = unset -> default,
@@ -209,12 +223,19 @@ function M.setEnabled(on)
     saveState();
 end
 
--- "Auto HELM": arm/disarm the detection overlay. Persisted (unlike the idle
--- switch); disarming also ends a running hold at once.
+-- "Auto HELM": arm/disarm the detection overlay. Session-only (like the idle
+-- switch); disarming ends a running hold at once AND tears the entity
+-- watches down (an idle session costs entwatch zero work).
 function M.setAutoHelm(on)
     M.loadState();
     M.autoHelm = (on == true);
-    if M.autoHelm then ensureManifestFresh(); else M._autoUntil = 0; M._anchor = nil; end
+    if M.autoHelm then
+        ensureManifestFresh();
+    else
+        M._autoUntil = 0;
+        M._proxHold = false;
+        if _ewok then pcall(_ew.unwatch, 'helmwatch'); end
+    end
     saveState();
 end
 
@@ -522,23 +543,28 @@ function M.gatherFromNpcName(name)
 end
 
 -- ---------------------------------------------------------------------------
--- Proximity anchor (Henrik's first-swing fix): TARGETING a "* Point" within
--- PROX_ENTER yalms equips the gear BEFORE the first trade -- the one moment
--- the result event can never cover. The anchor then outlives the target
--- (HELMing clears your target -- the game's quirk): as long as the SAME
--- entity is present and within PROX_LEAVE (hysteresis: no boundary flap),
--- the hold keeps refreshing; walk away or watch it despawn and the tail
--- drops the gear. A swing result also (re)sets the anchor from its ActIndex,
--- so mid-session the anchor is self-healing even if you never re-target.
--- Ashita memory reads only (target index + entity Distance, which is
--- SQUARED -- the distance addon's convention); no packets involved.
+-- Proximity hold -- via the CENTRAL entity watcher (lib/entwatch; the
+-- eboxammo pattern). Auto HELM used to anchor on the player's TARGET, which
+-- broke two ways in the field: a /target macro swings before the ~4/s tick
+-- ever sees the new target (first swing undressed), and mined-out points
+-- DESPAWN -- on this server several points spawn STACKED on one spot, so
+-- the gear popped off with the next point right there. Now the watcher
+-- tracks all four "* Point" names itself: ANY point within the detect
+-- range keeps the hold alive -- no targeting involved. Hysteresis: the
+-- ACTIVE category holds to range+2y (the leash -- no boundary flap); a
+-- fresh acquire or a category SWITCH needs full enter range (nearest point
+-- wins; a stacked twin of another category hands the hold over at ~0y
+-- without ever dropping). The 0x034 swing result stays the category
+-- authority when stacked points overlap. entwatch owns every scan idiom
+-- (rendered bit, trimmed names, dynamic-entity range, squared distances --
+-- yalms come out).
 -- ---------------------------------------------------------------------------
 M.PROX_DEFAULT = 10;   -- yalms (Henrik: was 6 = trade range; raised for macro
                        -- spammers who swing from distance, and for lag)
 M.PROX_MIN, M.PROX_MAX = 3, 20;
 M._proxRange = nil;    -- user override, persisted per char (helmstate `range`);
                        -- nil = PROX_DEFAULT. The keep-wearing leash is +2y.
-M._anchor = nil;       -- { idx, name, gather }
+M._proxHold = false;   -- currently held by proximity? (the hysteresis latch)
 
 function M.proxEnter()
     M.loadState();
@@ -555,41 +581,35 @@ function M.setProxRange(n)
     saveState();
 end
 
--- One proximity pass. `probe` abstracts the memory reads for tests:
---   { target=fn()->idx|nil, present=fn(idx)->bool, name=fn(idx)->string|nil,
---     distSq=fn(idx)->number|nil }
--- Returns true while anchored (and keeps the engine hold alive, with sparse
--- state writes -- roughly one per 2s, not one per frame).
+-- One proximity pass. `probe` abstracts the watcher for tests:
+--   { nearest = fn('<Category> Point') -> distance in YALMS, or nil }
+-- Returns true while any point holds us (and keeps the engine hold alive,
+-- with sparse state writes -- roughly one per 2s, not one per frame).
 function M.proximityStep(probe)
-    if not M.isAutoHelm() then M._anchor = nil; return false; end
+    if not M.isAutoHelm() then M._proxHold = false; return false; end
     local enter = M.proxEnter();
     local leave = enter + 2;
-    local a = M._anchor;
-    if a ~= nil then
-        local ok = probe.present(a.idx) == true;
-        if ok then ok = (probe.name(a.idx) == a.name); end
-        if ok then
-            local d = probe.distSq(a.idx);
-            ok = type(d) == 'number' and d >= 0 and d <= leave * leave;
-        end
-        if not ok then M._anchor = nil; a = nil; end
+    local pick = nil;
+    -- The ACTIVE category is sticky to the leash: still gathering here.
+    if M._proxHold and M.activeGather ~= nil then
+        local d = probe.nearest(M.activeGather .. ' Point');
+        if type(d) == 'number' and d <= leave then pick = M.activeGather; end
     end
-    if a == nil then
-        local ti = probe.target();
-        if type(ti) == 'number' and ti > 0 and probe.present(ti) == true then
-            local nm = probe.name(ti);
-            local g = M.gatherFromNpcName(nm);
-            if g ~= nil then
-                local d = probe.distSq(ti);
-                if type(d) == 'number' and d >= 0 and d <= enter * enter then
-                    M._anchor = { idx = ti, name = nm, gather = g };
-                    a = M._anchor;
-                end
+    -- Fresh acquire / category switch: the NEAREST point within enter range
+    -- (a stacked twin of another category sits at ~0y -- the hold hands
+    -- over without ever dropping the gear).
+    if pick == nil then
+        local best = nil;
+        for _, g in ipairs(M.ORDER) do
+            local d = probe.nearest(g .. ' Point');
+            if type(d) == 'number' and d <= enter and (best == nil or d < best) then
+                best, pick = d, g;
             end
         end
     end
-    if a == nil then return false; end
-    if M.activeGather ~= a.gather then M.selectGather(a.gather); end
+    if pick == nil then M._proxHold = false; return false; end
+    M._proxHold = true;
+    if M.activeGather ~= pick then M.selectGather(pick); end
     local now = os.time();
     if (M._autoUntil or 0) < now + 2 then
         M._autoUntil = now + M.AUTO_HOLD_S;
@@ -628,9 +648,10 @@ function M.onEventNum(data, nameOf)
     -- AUTO_HOLD_S after the last swing. `at` bumps so a stale craft switch
     -- loses the arbitration while you gather.
     if M.isAutoHelm() then
-        -- Remember the entity we just HELM'd (target is gone by now -- the
-        -- game clears it): the proximity tick keeps the hold alive from here.
-        M._anchor = { idx = idx, name = name, gather = g };
+        -- The swing proves we're gathering HERE: latch the proximity hold so
+        -- the active category gets the +2y leash from the first result on
+        -- (entwatch's sweep can be a beat behind a fresh stacked spawn).
+        M._proxHold = true;
         M._autoUntil = os.time() + M.AUTO_HOLD_S;
         M._enabledAt = os.time();
         saveState();
@@ -747,48 +768,25 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
         end
     end);
 
-    -- Proximity tick (~4/s): target/anchor distance reads for Auto HELM.
-    -- Ashita memory only; the probe closure matches proximityStep's contract.
+    -- Proximity tick (~4/s): entwatch-backed distances for Auto HELM. The
+    -- watch registration is idempotent, and the nearest() ask itself is the
+    -- demand signal that keeps the callback-less watches swept (the eboxammo
+    -- pattern); disarming stops the asks and setAutoHelm(false) unwatches,
+    -- so an idle session costs entwatch zero work.
     local _proxAt = 0;
+    local _liveProx = {
+        nearest = function(pointName)
+            if not _ewok then return nil; end
+            _ew.watch('helmwatch', pointName);
+            return (_ew.nearest(pointName));
+        end,
+    };
     ashita.events.register('d3d_present', 'dlac-helmwatch-prox', function()
         pcall(function()
             if os.clock() < _proxAt then return; end
             _proxAt = os.clock() + 0.25;
             if not M.isAutoHelm() then return; end
-            local mm = AshitaCore:GetMemoryManager();
-            M.proximityStep({
-                target = function()
-                    local i = nil;
-                    pcall(function() i = mm:GetTarget():GetTargetIndex(0); end);
-                    if i == 0 then i = nil; end
-                    return i;
-                end,
-                present = function(idx)
-                    -- RENDERED, not merely in memory: RenderFlags0 bit 0x200
-                    -- (the storage-move nomadNearestSq precedent, field-proven
-                    -- 2026-07) -- a relocated Point can linger in the entity
-                    -- array with a stale distance; the render bit drops.
-                    local p = false;
-                    pcall(function()
-                        local em = mm:GetEntity();
-                        if em:GetRawEntity(idx) == nil then return; end
-                        local rf = em:GetRenderFlags0(idx) or 0;
-                        if rf < 0 then rf = rf + 4294967296; end
-                        p = (math.floor(rf / 0x200) % 2) == 1;
-                    end);
-                    return p;
-                end,
-                name = function(idx)
-                    local n = nil;
-                    pcall(function() n = mm:GetEntity():GetName(idx); end);
-                    return n;
-                end,
-                distSq = function(idx)
-                    local d = nil;
-                    pcall(function() d = mm:GetEntity():GetDistance(idx); end);
-                    return d;
-                end,
-            });
+            M.proximityStep(_liveProx);
         end);
     end);
 
@@ -877,7 +875,7 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
             if b == 'auto' then                        -- Auto HELM: detection-armed overlay
                 M.setAutoHelm(not M.isAutoHelm());
                 say('Auto HELM ' .. (M.isAutoHelm()
-                    and 'ON -- targeting a Point (or swinging) auto-equips that category\'s gear; normal gear returns after you leave. Starts off each session.'
+                    and string.format('ON -- within %dy of a gathering Point that category\'s gear auto-equips (no targeting needed); normal gear returns after you leave. Starts off each session.', M.proxEnter())
                     or 'off.'));
                 return;
             end
@@ -887,7 +885,7 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
                 M.isAutoHelm() and 'ON' or 'off',
                 M.autoActive() and ' (holding now)' or ''));
             say('  Set HELM Idle wears the gear until turned off (starts off each session);');
-            say('  /dl helm auto arms detection: swings auto-equip, idle gear returns after.');
+            say('  /dl helm auto arms detection: gear equips near a Point, idle gear returns after.');
             if M.lastDetect ~= nil then
                 say(string.format('  last detected: %s (%s)', M.lastDetect.gather, M.lastDetect.npc or '?'));
             end
