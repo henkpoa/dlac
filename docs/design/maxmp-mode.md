@@ -70,8 +70,16 @@ trigger rules), which the existing machinery already handles. This mirrors the
 - Weapons exempt (`MP_HOLD_EXEMPT`), `dlac:` virtual markers exempt (staff/obi
   automation keeps its two slots). Decisions annotate `/dl why`:
   `body=MP-EQUIP Bunzi's Robe (+21 MP)` / `body=MP-HOLD Bunzi's Robe (+21 MP unspent)` /
-  `body=MP-RELEASE Bunzi's Robe (+21 MP surplus spent)` /
-  `ring1=MP-STAGE Astral Ring (+25 MP; neck releases first)`.
+  `Hands=MP-RELEASE Oracle's Gloves -> Zealot's Mitts (+7 MP surplus spent)` /
+  `ring1=MP-STAGE Astral Ring (+25 MP; neck releases first)`. The release note
+  names the INCOMING piece (v77) because of field round 1's stall: a release
+  that repeats across dispatches with the worn piece unmoved means LAC cannot
+  equip that exact target — `LocateItems` searches `gSettings.EquipBags`
+  (Inventory + Wardrobes) only, and `PrepareEquip` silently drops a piece it
+  cannot find. `BuildDynamicSets` checks level only, so a flattened plan can
+  name gear that is stored, unowned, or bazaared — and because the stalled
+  slot keeps the smallest surplus, it stays the winner and BLOCKS every other
+  release behind it.
 - Data: the autogear manifest's `mp` (lower(name) → flat MP, every owned piece)
   and `mpBest` (slot → best battery, filtered by the central `canWear` +
   `haveInBags`) maps. The manifest is fully self-maintaining: it regenerates on
@@ -123,6 +131,22 @@ so a big rest tick never caps against a small battery's headroom:
   revisit if a real conflict shows up in play.
 
 ## Open questions
+
+- **Un-landable release targets** (field round 1, 2026-07-20): the flatten can
+  plan a piece LAC cannot equip (stored/unowned/bazaared — no ownership check
+  in `BuildDynamicSets`; normally invisible because the previous piece just
+  stays worn). Under maxmp the stalled slot blocks the whole release queue.
+  Candidate fixes, undecided: (a) flatten skips rungs failing
+  `ownedcache.haveInBags`/`isStored` — but "sets are plans" and the flatten
+  runs profile-side; (b) engine-side staleness heuristic — a winner whose worn
+  piece hasn't moved after N identical decisions yields to the next candidate;
+  (c) leave it to the player, now that the v77 note names the piece.
+- **Stored batteries**: the manifest wiring passes `owned.haveInBags` where
+  the comment says "must be equippable NOW" (gearui deps) — but `haveInBags`
+  counts STORED copies (test AV8), so `mpBest` can ladder a battery in Mog
+  Safe and MP-EQUIP would stall the same silent way. Fix is a one-liner
+  (`haveInBags(rec) and not isStored(rec)` at the wiring site); parked to keep
+  the field test single-variable.
 
 - Does unequipping +MP gear on CatsEyeXI clamp current MP exactly as retail
   (cur = min(cur, newMax))? The hold rule assumes yes — field-verify with

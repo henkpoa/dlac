@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 76;   -- 76: maxmp STAGED -- at most ONE battery moves per dispatch (field report: the mode read as an on/off switch, everything on / everything off in one dispatch). Release: smallest surplus first (the big battery stays on longest, per the original spec) -- the all-at-once release was also an accounting bug: N same-dispatch releases drop max MP by the SUM of surpluses while each per-slot hold justified only its own, and the server clamp (cur = min(cur, newMax)) ate the difference; a single smallest-surplus release is clamp-free by construction. Equip: biggest gain first at a full pool; the full-pool gate then paces the ladder (the next battery waits until recovery refills the last one's headroom). Pure choosers M.mpStageRelease/M.mpStageEquip (tests MS*); post-pass 'mp-equip-uncovered' renamed 'mp-stage' (PL2) -- it now owns BOTH the single release and the single equip across covered + uncovered slots.
+M.VERSION = 77;   -- 77: MP-RELEASE names the INCOMING piece -- 'Hands=MP-RELEASE Oracle's Gloves -> Zealot's Mitts (+7 MP surplus spent)'. Field round 1 of v76: the release stalled forever because the set's flattened pick (Zealot's Mitts) was not in an equippable bag -- LAC's LocateItems searches gSettings.EquipBags (Inventory+Wardrobes) only and PrepareEquip silently drops a piece it cannot find, so the worn battery never moved and the same smallest-surplus winner re-decided every dispatch, BLOCKING the whole release queue behind it. BuildDynamicSets checks level only (no ownership/bag check) -- the plan can name gear you cannot equip. The note makes the stall self-diagnosing; the flatten/ownership question is parked in docs/design/maxmp-mode.md.
+                  -- 76: maxmp STAGED -- at most ONE battery moves per dispatch (field report: the mode read as an on/off switch, everything on / everything off in one dispatch). Release: smallest surplus first (the big battery stays on longest, per the original spec) -- the all-at-once release was also an accounting bug: N same-dispatch releases drop max MP by the SUM of surpluses while each per-slot hold justified only its own, and the server clamp (cur = min(cur, newMax)) ate the difference; a single smallest-surplus release is clamp-free by construction. Equip: biggest gain first at a full pool; the full-pool gate then paces the ladder (the next battery waits until recovery refills the last one's headroom). Pure choosers M.mpStageRelease/M.mpStageEquip (tests MS*); post-pass 'mp-equip-uncovered' renamed 'mp-stage' (PL2) -- it now owns BOTH the single release and the single equip across covered + uncovered slots.
                   -- 75: /dl lock set <name> -- the Sets tab's "Equip & Lock" (Incursion T3: the server locks your equipment on entry). Wears the COMMITTED set once -- bracketed ClearBuffer/ProcessBuffer, the PetAction tick's lesson, or the equips evaporate -- then locks ALL 16 slots so the engine stops proposing swaps the server would refuse; stale locks are cleared first so the set lands whole. Release: /dl lock all off (or the Sets tab's Unlock). Dispatch rules untouched.
                   -- 74: AutoAmmo per-job config (ammostate fmt 2) -- every job carries its OWN priority list + persisted on/off (field round 2: "all jobs can't use all ammos"); the overlay resolves against as.jobs[<main job>]'s section, legacy fmt-1 files (top-level ammo list + jobs map) keep working unchanged until the GUI migrates them. Decision rules untouched.
                   -- 73: AutoAmmo -- the Ammo-slot automation (docs/design/auto-ammo.md). ammostate.lua (GUI-written) + an overlay on EVERY event: count-verified picks per context (ranged / consuming-WS / the three free magical WS 217,218,220 / Quick Draw / Unlimited Shot 115), special ammo swept off wherever a shot could consume it, ladder ends in a literal 'remove' (LAC's native unequip; an empty gun is server-blocked, so the shot refuses instead of eating the bullet). New engine capabilities: the first LAC-state bag counter (per-second cache, fresh on action events) and the 'remove' plan. Pure core M.resolveAmmoPlan (tests AM*).
@@ -1747,7 +1748,7 @@ local function equipResolved(s, ctx)
                 -- mp-stage lets ONE go per dispatch, the rest hold as worn.
                 if worn ~= nil and wornMP > tgtMP and string.lower(worn) ~= string.lower(v) then
                     mpRel[#mpRel + 1] = { slot = slot, lslot = lslot, worn = worn,
-                                          surplus = wornMP - tgtMP };
+                                          tgt = v, surplus = wornMP - tgtMP };
                 end
                 -- Upgrade: a full pool means recovery would be capped -- wear the
                 -- slot's best battery instead of the set piece so refresh/resting/
@@ -1791,8 +1792,13 @@ local function equipResolved(s, ctx)
                     end
                 end
                 _mpCd[rel.lslot] = os.time() + 15;     -- battery released: no instant re-equip
-                note('%s=MP-RELEASE %s (+%d MP surplus spent)',
-                    tostring(rel.slot), rel.worn, rel.surplus);
+                -- The incoming piece is NAMED (v77): a release that repeats across
+                -- dispatches with the worn piece unmoved means LAC cannot equip
+                -- this exact target (not in an equip bag / not owned / bazaared)
+                -- -- LAC drops unfindable pieces silently, so the name here is
+                -- the only breadcrumb (field round 1: Zealot's Mitts, stored).
+                note('%s=MP-RELEASE %s -> %s (+%d MP surplus spent)',
+                    tostring(rel.slot), rel.worn, tostring(rel.tgt), rel.surplus);
             end
             if mpBest == nil or curMP == nil or maxMP == nil or curMP < maxMP then return; end
             local covered = {};
