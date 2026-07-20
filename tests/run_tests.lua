@@ -686,6 +686,22 @@ check('MPS8 plan pick falls past the vetoed rung',
     string.find(tostring(pear1), 'ear1: Curate\'s Earring', 1, true) ~= nil, true);
 check('MPS8b plan row carries the pair note',
     string.find(tostring(pear1), 'worn in ear2', 1, true) ~= nil, true);
+-- ---------------------------------------------------------------------------
+-- MR. max-MP reconciliation (dispatch.mpReconcileMax, engine v86): Ashita's
+--     GetMPMax can go stale across gear/job churn (field: engine 975/1052 vs
+--     bar 975/975 -- dead full-pool gate + early releases). The party MP%
+--     (floored, same packet family as cur) pins true max in
+--     [cur*100/(mpp+1), cur*100/mpp]; 100% pins it exactly.
+-- ---------------------------------------------------------------------------
+check('MR1 field pin: 100% pins max = cur', dispatchM.mpReconcileMax(975, 1052, 100), 975);
+check('MR2 in-window max is trusted',       dispatchM.mpReconcileMax(975, 1000, 97), 1000);
+check('MR3 stale-high clamps to hi',        dispatchM.mpReconcileMax(500, 1200, 50), 1000);
+check('MR4 stale-low clamps to lo',         dispatchM.mpReconcileMax(500, 700, 50), 981);
+check('MR5 nil mpp: raw max unchanged',     dispatchM.mpReconcileMax(975, 1052, nil), 1052);
+check('MR6 empty pool: raw max unchanged',  dispatchM.mpReconcileMax(0, 714, 0), 714);
+check('MR7 nil max at 100% still pins',     dispatchM.mpReconcileMax(975, nil, 100), 975);
+check('MR8 nil max mid-pool takes lo',      dispatchM.mpReconcileMax(500, nil, 50), 981);
+
 check('MPS8c dup stays advertised',
     string.find(tostring((function()
         local d = { mp = {}, mpBest = {
