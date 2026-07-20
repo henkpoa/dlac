@@ -9,6 +9,7 @@ package.loaded['dlac\\gear'] = { NameToObject = {} };   -- utils requires dlac\g
 ashita = { events = { register = function() end } };    -- utils registers /dl at load
 package.loaded['dlac\\profiles'] = dofile('profiles.lua');   -- dispatch/setmanager require it (guarded)
 package.loaded['dlac\\data\\nativemp'] = dofile('data/nativemp.lua');   -- dispatch requires it (Oneiros resolver)
+package.loaded['dlac\\data\\zones'] = dofile('data/zones.lua');   -- dispatch requires it (the inTown town set)
 package.loaded['dlac\\gear\\gearrecord'] = dofile('gear/gearrecord.lua');   -- record rules: gearimport/weaponfilter/gearexport require it
 package.loaded['dlac\\lib\\safewrite'] = dofile('lib/safewrite.lua');   -- safe-replace ladder: gearimport requires it, profiles guards it
 package.loaded['dlac\\gear\\catalogindex'] = dofile('gear/catalogindex.lua');   -- catalog walker: gearimport requires it (no catalog headless -> empty indexes)
@@ -659,6 +660,44 @@ check('MPS6 legacy single-entry sibling ladder shape',
         { name = 'Astral Ring', mp = 25, level = 10 }), false);
 check('MPS7 nil ladder: worn in sibling still vetoes',
     dispatchM.mpPairSkip('Loquac. Earring', 'Loquac. Earring', nil), true);
+
+-- The plan applies the same veto (v84): the ear1 row must fall to the next
+-- rung and carry the pair note, never advertise the vetoed gain (field:
+-- plan said "+20 gain" for a pick the engine would never equip).
+local pdata = {
+    mp = { ['loquac. earring'] = 30, ['curate\'s earring'] = 10 },
+    mpBest = {
+        ear1 = { { name = 'Loquac. Earring', mp = 30, level = 41 },
+                 { name = 'Curate\'s Earring', mp = 10, level = 21 } },
+        ear2 = { { name = 'Outlaw\'s Earring', mp = 15, level = 60 } },
+    },
+};
+local pworn = function(l)
+    if l == 'ear2' then return 'Loquac. Earring'; end
+    if l == 'ear1' then return 'Curate\'s Earring'; end
+    return nil;
+end
+local plines = dispatchM.mpPlanLines(pdata, 800, 800, 75, pworn, {});
+local pear1 = nil;
+for _, l in ipairs(plines) do
+    if string.find(l, 'ear1:', 1, true) ~= nil then pear1 = l; end
+end
+check('MPS8 plan pick falls past the vetoed rung',
+    string.find(tostring(pear1), 'ear1: Curate\'s Earring', 1, true) ~= nil, true);
+check('MPS8b plan row carries the pair note',
+    string.find(tostring(pear1), 'worn in ear2', 1, true) ~= nil, true);
+check('MPS8c dup stays advertised',
+    string.find(tostring((function()
+        local d = { mp = {}, mpBest = {
+            ring1 = { { name = 'Astral Ring', mp = 25, level = 10 } },
+            ring2 = { { name = 'Astral Ring', mp = 25, level = 10 } } } };
+        local ls = dispatchM.mpPlanLines(d, 800, 800, 75,
+            function(l) return (l == 'ring1') and 'Astral Ring' or nil; end, {});
+        for _, l in ipairs(ls) do
+            if string.find(l, 'ring2:', 1, true) ~= nil then return l; end
+        end
+        return '';
+    end)()), 'ring2: Astral Ring', 1, true) ~= nil, true);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -3216,6 +3255,73 @@ end)();
     });
     check('TG15 normalize keeps target', norm.Ability ~= nil and #norm.Ability, 1);
     check('TG16 normalized prio = target tier', norm.Ability[1].prio, 55);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- IT. inTown condition (engine v84): am I standing in a town? Town = the
+--     curated data/zones.lua set -- server CITY zonetype + Nashmau, minus
+--     combat-staging CITY zones (tools/gen_zones.py). ctx.zone is the injected
+--     seam (live: GetParty():GetMemberZone(0), one read/dispatch); an unknown
+--     zone (nil) matches NEITHER polarity, so the rule never fires blind. Tier
+--     95 (location gate): a town show-off set overlays the plain Idle set, under
+--     mode. Loader lowercases inTown -> intown + TIER-validates it (IT21/IT22).
+-- ---------------------------------------------------------------------------
+(function()
+    local mm = dispatchM._matchers;
+    local sandoria = { zone = 230 };   -- Southern San d'Oria: server CITY -> town
+    local celennia = { zone = 284 };   -- Celennia Memorial Library: SoA zone, CITY -> town (the Wings-hub case)
+    local nashmau  = { zone = 53  };   -- Nashmau: server types OUTDOORS -> town ONLY via the curated ADD
+    local sealions = { zone = 32  };   -- Sealion's Den: server CITY, but curated-DROPPED (combat staging)
+    local channel  = { zone = 1   };   -- Phanauet Channel: OUTDOORS, plainly not a town
+    check('IT1 inTown=true fires in a city',           mm.intown(true,  sandoria), true);
+    check('IT2 inTown=true fires in Celennia (Wings)', mm.intown(true,  celennia), true);
+    check('IT3 curated ADD: Nashmau counts as town',   mm.intown(true,  nashmau),  true);
+    check('IT4 curated DROP: Sealions Den not town',   mm.intown(true,  sealions), false);
+    check('IT5 inTown=true quiet out in the field',    mm.intown(true,  channel),  false);
+    check('IT6 inTown=false fires out in the field',   mm.intown(false, channel),  true);
+    check('IT7 inTown=false quiet in a city',          mm.intown(false, sandoria), false);
+    check('IT8 inTown=false quiet in Nashmau',         mm.intown(false, nashmau),  false);
+    check('IT9 zone 0 (demo stub) is not a town',      mm.intown(true,  { zone = 0 }), false);
+    -- Unknown zone (failed / headless read) matches NEITHER polarity. Force the
+    -- live read to fail by nil-ing AshitaCore (harness idiom, ~line 116); restore.
+    local savedAshita = AshitaCore;
+    AshitaCore = nil;
+    check('IT10 unknown zone quiet (inTown=true)',     mm.intown(true,  {}), false);
+    check('IT11 unknown zone quiet (inTown=false)',    mm.intown(false, {}), false);
+    AshitaCore = savedAshita;
+    -- Tier ladder: the 95 location gate overlays the plain Idle set, under mode.
+    check('IT12 inTown sits at 95', dispatchM.defaultPriority({ inTown = true }), 95);
+    check('IT13 idle+inTown overlays plain idle',
+        dispatchM.defaultPriority({ status = 'Idle', inTown = true })
+            > dispatchM.defaultPriority({ status = 'Idle' }), true);
+    check('IT14 mode still outranks inTown',
+        dispatchM.defaultPriority({ mode = 'DT' })
+            > dispatchM.defaultPriority({ inTown = true }), true);
+    -- The headline scenario through the engine's own matches(): {Idle, inTown}
+    -- fires standing in town, quiet in the field; the base idle rule fires both.
+    -- (matches() sees post-load keys -> lowercase 'intown'.)
+    local mt = dispatchM._matches;
+    local base     = { when = { status = 'Idle' } };
+    local townRule = { when = { status = 'Idle', intown = true } };
+    local idleTown  = { player = { Status = 'Idle' }, zone = 230 };
+    local idleField = { player = { Status = 'Idle' }, zone = 1 };
+    check('IT15 base idle rule fires in town',       mt(base, idleTown),  true);
+    check('IT16 town rule fires idle in town',       mt(townRule, idleTown),  true);
+    check('IT17 town rule quiet idle in the field',  mt(townRule, idleField), false);
+    check('IT18 base idle rule still fires in field',mt(base, idleField), true);
+    -- First-class vocabulary: PRETTY-case inTown serializes + round-trips, and
+    -- _normalize accepts it (loader lowercases + TIER-validates) at prio 95.
+    local text = dispatchM.serializeTriggers({
+        Default = { { when = { status = 'Idle', inTown = true }, set = 'ShowOff' } },
+    });
+    check('IT19 inTown serializes PRETTY-case', text:find('inTown', 1, true) ~= nil, true);
+    local t2 = (loadstring or load)(text)();
+    check('IT20 round-trip byte-stable', dispatchM.serializeTriggers(t2) == text, true);
+    local norm = dispatchM._normalize({
+        Default = { { when = { status = 'Idle', inTown = true }, set = 'ShowOff' } },
+    });
+    check('IT21 normalize keeps inTown rule', norm.Default ~= nil and #norm.Default, 1);
+    check('IT22 normalized prio = 95',        norm.Default[1].prio, 95);
 end)();
 
 -- ---------------------------------------------------------------------------
