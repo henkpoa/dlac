@@ -1399,7 +1399,7 @@ local function renderHeaderButtons()
                   clicked = imgui.Button('Tele##hdrtp', { 26, 22 });   -- no texture: text fallback
               end
               if imgui.IsItemHovered() then
-                  imgui.SetTooltip('Teleports: Instant Warp / Instant Retrace scrolls (used on the spot, no\nequip), Warp / Provenance Ring, Chocobo Whistle, Shadow Lord Shirt, the\nTeleport Earrings / Teleport Rings submenus, plus your exp rings -- click\none to equip it and use it the moment the game says ready (the /dl iw,\nir, w, p, c, shirt, t, xp commands, clickable). Lit = ready, amber =\nrecharging, red = stored, dim = not owned.');
+                  imgui.SetTooltip('Teleports: Instant Warp / Instant Retrace scrolls (used on the spot, no\nequip), Warp / Provenance Ring, Chocobo Whistle, Nexus Cape (to your\nparty leader), Shadow Lord Shirt, the Teleport Earrings / Teleport Rings\nsubmenus, plus your exp rings -- click one to equip it and use it the\nmoment the game says ready (the /dl iw, ir, w, p, c, nexus, shirt, t, xp\ncommands, clickable). Lit = ready, amber = recharging, red = stored,\ndim = not owned.');
               end
               if clicked then ui._tpOpen = true; end
           end };

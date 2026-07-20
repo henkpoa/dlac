@@ -103,6 +103,7 @@ re-detected automatically on login/job change.
 | `/dl iw` | Instant Warp scroll: used straight from Inventory — no equip, no lock, no wait |
 | `/dl ir` | Instant Retrace scroll: same, back to your Campaign nation |
 | `/dl c` | Chocobo Whistle: lock Neck, equip it, call the chocobo the moment the game says ready (`off` cancels) |
+| `/dl nexus` | Nexus Cape: lock Back, equip it, teleport to your party leader the moment the game says ready (`off` cancels) |
 | `/dl shirt` | Shadow Lord Shirt: lock Body, equip it, teleport to Castle Zvahl Keep (`off` cancels) |
 | `/dl t <where>` | Teleport earring/ring: lock Ear2 or Ring2, equip the matching item (norg, jeuno, sandy, holla, vahzl...), wait, use it — no arg lists destinations |
 

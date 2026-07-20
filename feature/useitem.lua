@@ -12,6 +12,10 @@
         /dl c              lock Neck, equip the Chocobo Whistle, call the chocobo.
         /dl shirt          lock Body, equip the Shadow Lord Shirt, teleport to
                            Castle Zvahl Keep (server-gated on having visited).
+        /dl nexus          lock Back, equip the Nexus Cape, teleport to your
+                           PARTY LEADER (server-gated: leader in a valid zone
+                           you have visited, not in a Mog House, not yourself
+                           -- all refusals are the server's messages).
         /dl t <where>      lock Ear2 (earrings) or Ring2 (teleport rings), equip
                            the matching item, use it. <where> matches a
                            destination or alias (norg, jeuno, sandy, holla,
@@ -56,6 +60,8 @@ local ITEMS = {
           verb = 'calling your chocobo' },
     shirt = { name = 'Shadow Lord Shirt', slot = 'body', wait = 34,   -- 30s equip delay + margin
           verb = 'teleporting to Castle Zvahl Keep' },
+    nexus = { name = 'Nexus Cape',   slot = 'back',  wait = 34,   -- 30s equip delay (item_usable) + margin
+          verb = 'teleporting to your party leader' },
 };
 
 -- Teleport earrings + teleport rings (CatsEyeXI): 30s equip delay + margin for
@@ -108,7 +114,7 @@ local EXPRINGS = {
     { name = 'Echad Ring',       dest = 'Echad',       bonus = '+150%', aliases = { 'echad' } },
 };
 
-local SLOT_ID = { ring2 = 0x0E, ear2 = 0x0C, neck = 0x09, body = 0x05 };   -- native equip-slot indexes
+local SLOT_ID = { ring2 = 0x0E, ear2 = 0x0C, neck = 0x09, body = 0x05, back = 0x0F };   -- native equip-slot indexes
 
 -- Usable travel scrolls: /item straight from Inventory -- no equip, no slot
 -- lock, no delay. /item works from Inventory ONLY, which the menu's avail flag
@@ -332,6 +338,8 @@ local MENU = {
     { name = 'Warp Ring',         label = 'Warp',         cmd = '/dl w',     ownedOnly = true },
     { name = 'Provenance Ring',   label = 'Provenance',   cmd = '/dl p',     ownedOnly = true },
     { name = 'Chocobo Whistle',   label = 'Chocobo',      cmd = '/dl c',     ownedOnly = true },
+    -- Under the Whistle (Henrik, 2026-07-20): teleport to the party leader.
+    { name = 'Nexus Cape',        label = 'Nexus',        cmd = '/dl nexus', ownedOnly = true },
     { name = 'Shadow Lord Shirt', label = 'Zvahl Keep',   cmd = '/dl shirt', ownedOnly = true },
     { name = SCROLLS.ir.name,     label = 'Retrace',      cmd = '/dl ir',    ownedOnly = true },
 };
