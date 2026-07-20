@@ -165,6 +165,15 @@ function M.isBusy()
     return M.busy;
 end
 
+-- Manual rescan (Henrik, field round 3: "would be nice to be able to have it
+-- scanned"): bust the entity-scan cache AND re-request the box counts. The
+-- next boxDistance() read does a fresh sweep.
+function M.rescan()
+    _boxCache.at, _boxCache.dist = -10, nil;
+    M.at = 0;
+    return M.refresh();
+end
+
 local function setStatus(msg, isErr)
     M.status, M.statusErr, M.statusAt = msg, (isErr == true), M._now();
 end
@@ -253,8 +262,11 @@ local _boxCache = { at = -10, dist = nil };
 function M._scanBox(probe)
     local want = string.lower(M.BOX_NAME);
     local best = nil;
-    for idx = 0, 1023 do   -- zone-static NPC slots (0-based; the box in
-        -- Henrik's Bastok Mines sample sits at index 2)
+    for idx = 0, 2303 do   -- the WHOLE entity array (0x000-0x8FF). E-Boxes are
+        -- DYNAMICALLY SPAWNED NPCs living in the dynamic range 0x700-0x8FF --
+        -- Henrik's Bastok Mines sample 17737730 = 0x010EA802 = zone 234, index
+        -- 0x802 = 2050 (round 3 scanned only the 0-1023 statics and could
+        -- never see it). LAC's own dynamic-id sweep uses the same ceiling.
         if probe.present(idx) == true then
             local nm = tostring(probe.name(idx) or ''):gsub('%s+$', '');
             if string.lower(nm) == want then
@@ -314,6 +326,57 @@ pcall(function()
         if e.id ~= PKT_1A4 then return; end
         local ok, consumed = pcall(M._onPacket, e.data_modified or e.data);
         if ok and consumed == true then e.blocked = true; end
+    end);
+end);
+
+-- HIDDEN diagnostic (the /dl merits precedent -- deliberately in no help
+-- list): `/dl ebox` dumps what the scan actually sees, so a field round
+-- returns DATA, not theories -- round 2 shipped an exact-name compare
+-- (GetName pads with whitespace), round 3 a too-short index range (the boxes
+-- are dynamic entities); this dump would have caught both in one pass.
+pcall(function()
+    ashita.events.register('command', 'dlac_eboxammo_cmd', function(e)
+        pcall(function()
+            local cmd = string.lower(e.command or '');
+            local a = cmd:match('^/dl%s+(%S+)');
+            if a == nil then a = cmd:match('^/dlac%s+(%S+)'); end
+            if a ~= 'ebox' then return; end
+            e.blocked = true;
+            local gm = nil;
+            pcall(function() gm = _gm.get(); end);
+            print(string.format('[dlac] ebox: gamemode=%s isCW=%s locked=%s counts=%s dist=%s range=%d',
+                tostring(gm), tostring(M.isCW()), tostring(M.lockedReason),
+                (M.counts ~= nil) and 'cached' or 'nil', tostring(M.boxDistance()), M.BOX_RANGE));
+            local em = AshitaCore:GetMemoryManager():GetEntity();
+            local nRaw, nRen, nHit, near = 0, 0, 0, {};
+            for i = 0, 2303 do
+                pcall(function()
+                    if em:GetRawEntity(i) == nil then return; end
+                    nRaw = nRaw + 1;
+                    local rf = em:GetRenderFlags0(i) or 0;
+                    if rf < 0 then rf = rf + 4294967296; end
+                    local ren = (math.floor(rf / 0x200) % 2) == 1;
+                    if ren then nRen = nRen + 1; end
+                    local nm = tostring(em:GetName(i) or ''):gsub('%s+$', '');
+                    local d = em:GetDistance(i);
+                    if string.find(string.lower(nm), 'ephemeral', 1, true) ~= nil then
+                        nHit = nHit + 1;
+                        print(string.format('[dlac] ebox HIT idx=0x%03X name=%q sid=%s rf0=0x%08X rendered=%s distSq=%s (%.1fy)',
+                            i, nm, tostring(em:GetServerId(i)), rf, tostring(ren), tostring(d),
+                            (type(d) == 'number' and d >= 0) and math.sqrt(d) or -1));
+                    elseif ren and nm ~= '' and type(d) == 'number' and d >= 0 and d < 900 then
+                        near[#near + 1] = { i = i, nm = nm, d = d };
+                    end
+                end);
+            end
+            table.sort(near, function(x, y) return x.d < y.d; end);
+            local parts = {};
+            for k = 1, math.min(8, #near) do
+                parts[#parts + 1] = string.format('%s(0x%03X,%.1fy)', near[k].nm, near[k].i, math.sqrt(near[k].d));
+            end
+            print(string.format('[dlac] ebox: raw=%d rendered=%d ephemeral-hits=%d; nearest named: %s',
+                nRaw, nRen, nHit, table.concat(parts, ', ')));
+        end);
     end);
 end);
 

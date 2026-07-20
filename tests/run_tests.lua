@@ -6222,6 +6222,12 @@ end)();
     check('EB8c index 0 is scanned', eb._scanBox(probe), 60.0);
     world[0] = nil;
     check('EB8d no box rendered -> nil (moogles are not boxes)', eb._scanBox(probe), nil);
+    -- THE round-4 fix: E-Boxes are DYNAMIC entities (Henrik's live sample
+    -- 17737730 = zone 234, index 0x802 = 2050) -- the 0-1023 static sweep
+    -- could never see one. The whole array (0x000-0x8FF) is scanned now.
+    world[2050] = { name = 'Ephemeral Box ', d2 = 16 };
+    check('EB8e dynamic-range slots are scanned (0x802 = the live box)', eb._scanBox(probe), 4.0);
+    world[2050] = nil;
     check('EB9 box range is FIELD-PINNED at 5 yalms (Henrik 2026-07-20)', eb.BOX_RANGE, 5);
 
     -- level: persisted per entry (GUI sort data; the engine ignores it --

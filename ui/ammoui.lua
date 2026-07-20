@@ -194,8 +194,11 @@ function M.render(deps, availW)
         imgui.TextColored(COL_DIM, 'nothing configured yet -- add ammo from the owned list below.');
     end
     -- Proximity (CW only): fetching needs a nearby Ephemeral Box -- checked
-    -- without targeting anything (the helmwatch proximity read). Range 5 is
-    -- FIELD-PINNED. ebInRange also greys/reds the fetch buttons below.
+    -- without targeting anything (the gearmove scan idiom over the WHOLE
+    -- entity array; boxes are dynamic entities). Range 5 is FIELD-PINNED.
+    -- Always-on status line (positive feedback beats silence when debugging
+    -- in the field) + a manual rescan. ebInRange also greys/reds the fetch
+    -- buttons below.
     local ebDist, ebInRange = nil, false;
     if cwBox and eb.lockedReason == nil then
         ebDist = eb.boxDistance();
@@ -206,6 +209,14 @@ function M.render(deps, availW)
         elseif not ebInRange then
             imgui.TextColored(COL_ERR, string.format(
                 'Too far from the %s (%.1f yalms -- get within %d).', eb.BOX_NAME, ebDist, eb.BOX_RANGE));
+        else
+            imgui.TextColored(COL_GREEN, string.format(
+                '%s in range (%.1f yalms).', eb.BOX_NAME, ebDist));
+        end
+        imgui.SameLine(0, 10);
+        if imgui.SmallButton('rescan##ebscan') then eb.rescan(); end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Force a fresh box scan + count refresh right now\n(both also refresh themselves every couple of seconds).');
         end
     end
     -- A SmallButton that visibly refuses: dim red (out of range) or grey

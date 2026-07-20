@@ -180,11 +180,19 @@ Above the list, the **proximity check**: E-Boxes are ordinary zone NPCs named
 to a plain zone-NPC slot), so the panel scans the entity array by NAME — no
 targeting needed, the helmwatch proximity conventions (GetDistance is SQUARED;
 reads memory-only, ~2 s throttle). The scan idiom is gearmove's field-verified
-mhBootstrap one: GetRawEntity for existence, RenderFlags0 bit 0x200 = rendered
-(signed-u32 fix) before trusting distance, and **names TRIMMED + ci** —
-GetName returns trailing whitespace, and the exact compare shipped in round 2
-never matched (every button sat red; field round 3, tests EB8-EB8c pin the
-padded shapes). `BOX_RANGE = 5` yalms is **FIELD-PINNED**
+mhBootstrap one — GetRawEntity for existence, RenderFlags0 bit 0x200 =
+rendered (signed-u32 fix) before trusting distance, **names TRIMMED + ci**
+(GetName returns trailing whitespace) — over the **WHOLE entity array
+0x000-0x8FF**: E-Boxes are DYNAMIC entities (the Bastok Mines sample 17737730
+= zone 234, index **0x802**). Two field rounds of always-red buttons paid for
+those rules: round 2's exact-name compare could never match, round 3's
+0-1023 static sweep could never reach the box (tests EB8-EB8e pin both).
+The status line is always-on when CW (in range / too far / none in sight) with
+a `rescan` button (cache-bust + count re-request), and the HIDDEN `/dl ebox`
+diagnostic dumps gamemode, every 'ephemeral' entity hit (idx, exact name,
+server id, render flags, distance) and the nearest named entities — the
+data-not-theories probe for any future round. `BOX_RANGE = 5` yalms is
+**FIELD-PINNED**
 (Henrik, field round 2; the round-1 trade-range guess was 6). Out of range (or
 no box rendered): the warning line shows AND both fetch buttons go dead —
 dim RED for out-of-range, GREY for nothing-to-fetch/busy — with the reason in
