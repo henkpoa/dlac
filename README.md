@@ -74,8 +74,11 @@ Put the virtual entry **`dlac:AutoStaff`** in a set's Main slot (or **`dlac:Auto
 in Waist) via the normal **+ Add** picker. At cast time dlac equips:
 
 - **Staff** — your best *usable* Iridescence option for that cast: HQ/NQ elemental
-  staff vs a universal weapon (Chatoyant Staff, Foreshadow +1, Iridal Staff), highest
-  tier wins, ties go to the universal.
+  staff vs a universal weapon (Chatoyant/Iridal for anyone; job-specific pieces up to
+  Iridescence +3 — Inanna, Keraunos, Gridarvor, the Lv75 relic staves — rank above
+  them), highest tier wins, ties go to the universal. Every owned universal rides a
+  level-ordered ladder, so a level sync falls through to the best one you can still
+  wear. CW-only Incursion weapons appear in the Automations tab only in CW mode.
 - **Obi** — the matching elemental obi (or the universal Hachirin-no-obi) only when
   the day/weather bonus for the spell's element is net positive.
 

@@ -3540,3 +3540,37 @@ GUI: a `target` dropdown on Precast/Midcast/Ability -- one value
 today, deliberately a list so future answers (party member, enemy,
 NPC) extend the dropdown, not the vocabulary. /dl why tags a
 self-aimed action '@self'. Tests TG1-16. Suites 1891 + 178.
+
+## Iridescence: the catalog sweep, +3 tier, and the universals ladder (2026-07-21)
+
+Henrik's question -- "we've inventoried a lot now; what carries
+Iridescence that the automation doesn't know?" -- answered from the
+shipped catalog itself (the stat the ADR 0004 crawl work paid for):
+exactly 15 carriers. The old UNIVERSAL fallback list knew 4, and one
+of those was wrong -- Claustrum carries NO Iridescence on live (all
+six relic stages: accuracy only, an early guess now removed). New to
+the list: the Incursion T3 job weapons -- Inanna (DRK/BLM), Keraunos
+(BLM/SCH) and Gridarvor (SMN) at the NEW +3 tier, Claritas (RDM),
+Izuna (NIN), Coeus (SCH), Kaladanda (BLM) at +2 -- plus Arcanium +1
+(BLM/SCH Lv50, +2), Nightingale (BRD Lv70, +2), Ephemeron (RDM/BRD
+Lv75, +1) and the Lv75 relic staves Laevateinn/Tupsimati (+3).
+Local server repo is behind live for these (Claritas is still
+'sanus_ensis' there); the catalog scrape is the authority, as
+designed.
+
+Two mechanics landed with the data. (1) CW-only weapons (the
+Incursion lines, Foreshadow +1 included) are display-gated on the
+AFFIRMATIVE gamemode.get() == 'CW' -- hidden on Wings/ACE and on
+nil-unknown alike, per architecture.md's gating rule; the ownership
+scan never gates (a non-CW character simply never owns them).
+(2) Engine v82 + manifest fmt 10: the GUI writes `universals`, a
+preference-ordered ladder of EVERY owned universal (tier desc,
+job-specific over the Chatoyant/Iridal fallbacks) -- resolveStaff
+takes the first rung usable at the live level, so an Incursion-
+synced character falls through a parked Lv75 Inanna to Foreshadow +1
+Lv50 instead of losing the universal outright (the single-pick
+manifest could only go all or nothing). virtualMinLevel counts every
+rung, so the set marker adopts at the LOWEST universal's level. The
+coverage light grows a 5th step (universal +3) and the detail view a
++3 column. Old manifests read exactly as before; fmtver forces the
+self-heal rescan. Tests VL8-13, S166b. Suites 1897 + 179.

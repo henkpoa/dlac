@@ -73,7 +73,7 @@ _Avoid_: lockstyle set (a box holds one; the plural reads as gear sets)
 Writing GUI state to disk (a set into the active Profile's job entry, staged items into `gear.lua`, triggers into the trigger file).
 
 **Iridescence**:
-CatsEyeXI's tiered staff-affinity stat (+1/+2). Elemental staves carry it for their own element only (NQ +1, HQ +2); universal weapons (Iridal Staff +1; Chatoyant Staff, Foreshadow +1 at +2) carry it for every element.
+CatsEyeXI's tiered staff-affinity stat (+1..+3, per the catalog's `Iridescence` stat). Elemental staves carry it for their own element only (NQ +1, HQ +2); universal weapons carry it for every element — Iridal/Ephemeron +1; Chatoyant, Foreshadow +1 and the job-specific Incursion pieces (Claritas, Izuna, Coeus, Kaladanda, Nightingale, Arcanium +1) +2; Inanna, Keraunos, Gridarvor and the Lv75 relic staves (Laevateinn, Tupsimati) +3.
 _Avoid_: staff bonus (that's the related per-element potency mod)
 
 **Owned vs Available**:

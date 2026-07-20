@@ -703,6 +703,9 @@ end)();
         m.staff.Earth, nil);
     check('S166 universal pecking order: +2 outranks owned +1',
         type(m.universal) == 'table' and m.universal.name .. '/' .. m.universal.tier, 'Chatoyant Staff/2');
+    check('S166b universals LADDER rides the manifest in preference order (v82/fmt 10)',
+        type(m.universals) == 'table' and #m.universals == 2
+        and (m.universals[1].name .. '>' .. m.universals[2].name), 'Chatoyant Staff>Iridal Staff');
     check('S167 elemental obi picked', m.obi and m.obi.Fire and m.obi.Fire.name, 'Karin Obi');
     check('S168 universal obi picked', type(m.obiUniversal) == 'table' and m.obiUniversal.name,
         'Hachirin-no-obi');

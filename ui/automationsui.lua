@@ -21,10 +21,12 @@ local _iok, imgui = pcall(require, 'imgui');
 local _dpok, dsp  = pcall(require, "dlac\\dispatch");
 local _lsok, lscale = pcall(require, "dlac\\data\\levelstats");
 local _nmok, nmp  = pcall(require, "dlac\\data\\nativemp");
+local _gmok, gmode = pcall(require, "dlac\\feature\\gamemode");
 local hasImgui    = _iok and imgui ~= nil;
 local hasDispatch = _dpok and type(dsp) == 'table';
 local hasLScale   = _lsok and type(lscale) == 'table';
 local hasNmp      = _nmok and type(nmp) == 'table';
+local hasGmode    = _gmok and type(gmode) == 'table';
 
 local function mainLevel()
     local lv = nil;
@@ -83,21 +85,40 @@ local OBI = {
 local OBI_UNIVERSAL = { 'Hachirin-no-obi' };
 -- Universal Iridescence weapons (all elements) -> their tier. CatsEyeXI tiers:
 -- elemental staves carry Iridescence for THEIR element only (NQ +1 / HQ +2);
--- these carry it for every element. Fallback list until the catalog carries the
--- Iridescence stat (issue #5); ordered check picks the highest owned tier.
+-- these carry it for every element. Tiers are the CATALOG's Iridescence stat
+-- (full sweep 2026-07-21: these are ALL the universal carriers the API knows;
+-- Claustrum carries none on live -- the old fallback guess is gone). The list
+-- stays curated for what the catalog can't say: preference ORDER (tier desc,
+-- then your job's own weapon over the anyone-can-wear fallbacks -- usableRec
+-- job-gates, so order across jobs never collides) and the cw flag.
+-- cw = CW-only content (the Incursion lines): HIDDEN from the detail view
+-- unless gamemode.get() == 'CW' (the affirmative gate, architecture.md); the
+-- ownership scan stays unconditional -- a non-CW character never owns them.
 local UNIVERSAL = {
-    -- ordered check picks the FIRST owned: the specific +2 weapons are preferred,
-    -- Chatoyant is the +2 fallback, Iridal the +1 tier.
-    { name = 'Foreshadow +1',   tier = 2 },
-    { name = 'Claustrum',       tier = 2 },
-    { name = 'Chatoyant Staff', tier = 2 },
-    { name = 'Iridal Staff',    tier = 1 },
+    -- Iridescence +3
+    { name = 'Laevateinn',      tier = 3 },             -- BLM relic staff (Lv75 stage)
+    { name = 'Tupsimati',       tier = 3 },             -- SCH relic staff (Lv75 stage)
+    { name = 'Keraunos',        tier = 3, cw = true },  -- BLM/SCH, Incursion T3
+    { name = 'Inanna',          tier = 3, cw = true },  -- DRK/BLM, Incursion T3 (Foreshadow's next tier)
+    { name = 'Gridarvor',       tier = 3, cw = true },  -- SMN, Incursion T3
+    -- Iridescence +2
+    { name = 'Claritas',        tier = 2, cw = true },  -- RDM, Incursion T3 (over Chatoyant on RDM)
+    { name = 'Izuna',           tier = 2, cw = true },  -- NIN, Incursion T3
+    { name = 'Coeus',           tier = 2, cw = true },  -- SCH, Incursion T3
+    { name = 'Kaladanda',       tier = 2, cw = true },  -- BLM, Incursion T3
+    { name = 'Nightingale',     tier = 2 },             -- BRD dagger (Lv70)
+    { name = 'Foreshadow +1',   tier = 2, cw = true },  -- DRK/BLM, Incursion (Lv50)
+    { name = 'Arcanium +1',     tier = 2, cw = true },  -- BLM/SCH, Incursion (Lv50)
+    { name = 'Chatoyant Staff', tier = 2 },             -- anyone: the +2 fallback
+    -- Iridescence +1
+    { name = 'Ephemeron',       tier = 1 },             -- RDM/BRD sword (Lv75)
+    { name = 'Iridal Staff',    tier = 1 },             -- anyone: the +1 fallback
 };
 
 -- Manifest schema version: bump when autoCommit writes NEW fields. An on-disk
 -- manifest with an older fmtver self-heals (renderAutomations triggers a rescan)
 -- so a dlac update never needs a manual "Rescan owned gear" click.
-local AUTO_FMT = 9;   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked; 5: craft ladders; 6: skill-up fillers in hq/nq; 7: helm ladders + hat map; 8: fish ladders; 9: oneiros grip + mpMerits
+local AUTO_FMT = 10;   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked; 5: craft ladders; 6: skill-up fillers in hq/nq; 7: helm ladders + hat map; 8: fish ladders; 9: oneiros grip + mpMerits; 10: universals ladder
 
 local auto = { data = nil, loadedFor = nil, status = '' };
 
@@ -178,11 +199,18 @@ local function autoCommit()
         local ob = usableRec(OBI[el], job);
         if ob ~= nil then obi[el] = { name = ob.Name, level = ob.Level or 0 }; nObi = nObi + 1; end
     end
-    -- Best usable universal (highest tier first -- the list is ordered).
-    local uni, uniLevel = nil, 0;
+    -- Universal LADDER: every owned+usable universal in preference order (the
+    -- UNIVERSAL list order = tier desc, job-specific over generic). The top
+    -- rung stays in `universal` (status line + pre-v82 engine reads); the full
+    -- ladder rides `universals` so the engine can fall through to a lower rung
+    -- under level sync (Incursion syncs: Inanna Lv75 parked -> Foreshadow Lv50).
+    local uni, uniLevel, unis = nil, 0, {};
     for _, u in ipairs(UNIVERSAL) do
         local rec = usableRec(u.name, job);
-        if rec ~= nil then uni = u; uniLevel = rec.Level or 0; break; end
+        if rec ~= nil then
+            unis[#unis + 1] = { name = u.name, tier = u.tier or 1, level = rec.Level or 0 };
+            if uni == nil then uni, uniLevel = u, rec.Level or 0; end
+        end
     end
     -- Universal obi (Hachirin-no-obi): covers every element.
     local obiUni, obiUniLevel = nil, 0;
@@ -479,9 +507,10 @@ local function autoCommit()
     local L = {
         '-- dlac automation manifest -- written by the GUI (Automations tab).',
         '-- Tiered Iridescence: per-element staves (NQ +1 / HQ +2, own element only) and',
-        '-- the best universal weapon (all elements). The engine picks the higher tier',
-        '-- per cast; ties go to the universal. WHETHER it fires is decided by the set:',
-        '-- a dlac:AutoStaff / dlac:AutoObi entry in its Main / Waist slot (Sets tab).',
+        '-- universals (all elements, +1..+3; `universals` = the full preference-ordered',
+        '-- ladder, first rung usable at the live level wins). The engine picks the',
+        '-- higher tier per cast; ties go to the universal. WHETHER it fires is decided',
+        '-- by the set: a dlac:AutoStaff / dlac:AutoObi entry in Main / Waist (Sets tab).',
         'return {',
         string.format('    fmtver = %d,', AUTO_FMT),   -- manifest schema: outdated -> auto-rescan
         string.format('    written = %q,', os.date('%Y-%m-%d %H:%M:%S')),
@@ -496,8 +525,15 @@ local function autoCommit()
         (obiUni ~= nil)
             and string.format('    obiUniversal = { name = %q, level = %d },', obiUni, obiUniLevel)
             or  '    obiUniversal = false,',
-        '    staff = {',
     };
+    if #unis > 0 then
+        local rungs = {};
+        for _, u in ipairs(unis) do
+            rungs[#rungs + 1] = string.format('{ name = %q, tier = %d, level = %d }', u.name, u.tier, u.level);
+        end
+        L[#L + 1] = string.format('    universals = { %s },', table.concat(rungs, ', '));
+    end
+    L[#L + 1] = '    staff = {';
     for _, el in ipairs(ELEMENTS8) do
         local s = staff[el];
         if s ~= nil then
@@ -606,7 +642,8 @@ local function autoCommit()
         auto.data = nil; autoLoad();   -- re-read what we just wrote
         pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl triggers reload'); end);
         auto.status = string.format('staves %d/8, obis %d/8%s%s -- saved, live now.', nStaff, nObi,
-            (uni ~= nil) and string.format(', universal: %s (Iridescence +%d)', uni.name, uni.tier) or '',
+            (uni ~= nil) and string.format(', universal: %s (Iridescence +%d%s)', uni.name, uni.tier,
+                (#unis > 1) and string.format(', ladder of %d', #unis) or '') or '',
             (obiUni ~= nil) and (', obi: ' .. obiUni .. ' (all elements)') or '');
     else
         auto.status = 'could not write ' .. p;
@@ -689,7 +726,8 @@ local function owns(name) return ownedRec(name) ~= nil; end
 local function usable(name) return usableRec(name, curJob()) ~= nil; end
 
 -- Coverage: Iridescence 1 = any NQ elemental, 2 = any HQ elemental,
--- 3 = Iridal (+1 universal), 4 = any +2 universal. Obi: 1 elemental, 2 universal.
+-- 3 = a +1 universal, 4 = a +2 universal, 5 = a +3 universal. Obi: 1 elemental,
+-- 2 universal.
 -- Job-aware (usable, not merely owned): the status light answers "what can THIS
 -- job's automation actually do" -- an owned Foreshadow +1 must not light WHM up.
 local function iridescenceLevel()
@@ -699,7 +737,10 @@ local function iridescenceLevel()
         if usable(STAFF_HQ[el]) then lv = math.max(lv, 2); end
     end
     for _, u in ipairs(UNIVERSAL) do
-        if usable(u.name) then lv = math.max(lv, ((u.tier or 1) >= 2) and 4 or 3); end
+        if usable(u.name) then
+            local t = u.tier or 1;
+            lv = math.max(lv, (t >= 3) and 5 or ((t >= 2) and 4 or 3));
+        end
     end
     return lv;
 end
@@ -712,7 +753,7 @@ end
 local function oneirosLevel()
     return usable('Oneiros Grip') and 1 or 0;
 end
-local IRID_TXT = { [0] = 'nothing applicable', 'NQ staves', 'HQ staves', 'Iridal (+1)', 'universal +2' };
+local IRID_TXT = { [0] = 'nothing applicable', 'NQ staves', 'HQ staves', 'universal +1', 'universal +2', 'universal +3' };
 local OBI_TXT  = { [0] = 'nothing applicable', 'elemental obis', 'universal obi' };
 local ONEIROS_TXT = { [0] = 'grip not owned', 'Oneiros Grip' };
 
@@ -897,7 +938,7 @@ end
 local function buildAutoRows()
     local rows = {
         { key = 'iridescence', name = 'AutoIridescence', kind = 'slot automation (Main)',
-          level = iridescenceLevel(), max = 4, txt = nil },
+          level = iridescenceLevel(), max = 5, txt = nil },
         { key = 'obi',         name = 'ElementalObi',    kind = 'slot automation (Waist)',
           level = obiLevel(),         max = 2, txt = nil },
         { key = 'oneiros',     name = 'Auto Oneiros Grip', kind = 'slot automation (Sub)',
@@ -1029,18 +1070,27 @@ local function renderAutomations()
             imgui.TextColored(COL_HEADER, 'AutoIridescence');
             imgui.SameLine(0, 10); imgui.TextColored(COL_DIM, 'slot automation -- dlac:AutoIridescence in a set\'s Main slot');
             imgui.Spacing();
-            local nq, hq, ir1, ir2 = {}, {}, {}, {};
+            -- CW-only rows (the Incursion lines) gate on the AFFIRMATIVE mode
+            -- read (architecture.md): shown in 'CW', hidden on Wings/ACE and
+            -- on nil-unknown alike. Display only -- the ownership scan never
+            -- gates (a non-CW character simply never owns them).
+            local isCW = hasGmode and gmode.get() == 'CW';
+            local nq, hq, ir = {}, {}, { {}, {}, {} };
             for _, el in ipairs(ELEMENTS8) do nq[#nq + 1] = STAFF_NQ[el]; hq[#hq + 1] = STAFF_HQ[el]; end
             for _, u in ipairs(UNIVERSAL) do
-                if (u.tier or 1) >= 2 then ir2[#ir2 + 1] = u.name; else ir1[#ir1 + 1] = u.name; end
+                if u.cw ~= true or isCW then
+                    local t = ir[math.min(math.max(u.tier or 1, 1), 3)];
+                    t[#t + 1] = u.name;
+                end
             end
-            local colW = math.max(185, math.floor(availW / 4));
+            local colW = math.max(165, math.floor(availW / 5));
             autoColumn('Elemental NQ', nq);        imgui.SameLine(colW);
             autoColumn('Elemental HQ', hq);        imgui.SameLine(colW * 2);
-            autoColumn('Iridescence +1', ir1);     imgui.SameLine(colW * 3);
-            autoColumn('Iridescence +2', ir2);
+            autoColumn('Iridescence +1', ir[1]);   imgui.SameLine(colW * 3);
+            autoColumn('Iridescence +2', ir[2]);   imgui.SameLine(colW * 4);
+            autoColumn('Iridescence +3', ir[3]);
             imgui.Spacing();
-            imgui.TextColored(COL_DIM, 'Specific +2 weapons are preferred; Chatoyant is the +2 fallback. Green = owned.');
+            imgui.TextColored(COL_DIM, 'Highest usable tier wins; within a tier your job\'s own weapon beats the fallbacks. Green = owned.');
         elseif auto.view == 'obi' then
             imgui.TextColored(COL_HEADER, 'ElementalObi');
             imgui.SameLine(0, 10); imgui.TextColored(COL_DIM, 'slot automation -- dlac:ElementalObi in a set\'s Waist slot');

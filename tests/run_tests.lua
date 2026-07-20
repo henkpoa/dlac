@@ -742,6 +742,31 @@ do
     TEST_PLAYER = { MainJob = 'WHM', SubJob = 'BLM', MainJobSync = 40, SubJobSync = 20 };
     sVL = utils.BuildDynamicSets(whmWeapon());
     check('VL7 legacy manifest: old always-adopt behavior', sVL.W and sVL.W.Main, 'dlac:AutoIridescence|Pilgrims Wand');
+
+    -- v82: the universals LADDER (manifest fmt 10). Preference-ordered by the
+    -- GUI (tier desc, job-specific first); the engine takes the FIRST rung
+    -- usable at the live level -- a level-synced character falls through a
+    -- parked Inanna to Foreshadow +1 instead of losing the universal outright.
+    -- virtualMinLevel answers the LOWEST rung: the marker adopts as early as
+    -- the earliest universal, not only the top pick.
+    local ladder = {
+        { name = 'Inanna',        tier = 3, level = 75 },
+        { name = 'Foreshadow +1', tier = 2, level = 50 },
+    };
+    dispatchM._autoOverride = { universals = ladder };
+    check('VL8 ladder min level = lowest rung', dispatchM.virtualMinLevel('dlac:AutoIridescence'), 50);
+    dispatchM._autoOverride = { universals = ladder,
+        staff = { Fire = { name = 'Vulcans Staff', tier = 2, level = 40 } },
+    };
+    local function rs(lvl, el)
+        return dispatchM._resolveVirtual('dlac:AutoStaff',
+            { player = { MainJobSync = lvl }, action = (el ~= nil) and { Element = el } or nil });
+    end
+    check('VL9 top rung at level',                    rs(75), 'Inanna');
+    check('VL10 synced under the top rung: falls through', rs(60), 'Foreshadow +1');
+    check('VL11 tier tie vs elemental goes universal', rs(60, 'Fire'), 'Foreshadow +1');
+    check('VL12 under every rung: elemental owns the cast', rs(45, 'Fire'), 'Vulcans Staff');
+    check('VL13 under everything: no resolution',      rs(30, 'Fire'), nil);
     dispatchM._autoOverride = nil;
 end
 

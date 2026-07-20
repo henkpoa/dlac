@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 81;   -- 81: `target` condition -- WHO the action is aimed at; v1 vocabulary: 'Self' (Henrik's case: waltz potency reads the TARGET's VIT beside your CHR, so a self-waltz wants a VIT+CHR set while waltzing someone else keeps the plain CHR set). Live read: gData.GetActionTarget().Index (LAC stores the outgoing action packet's target index for Spell/Ability/Item/WS/Ranged before Precast fires) vs my own party index, once per dispatch (ctx.targetSelf, tri-state -- unknown matches NOTHING, the buff-cache rule, so Default-handler rules and failed reads never fire a target rule). Tier 55: a self-refined rule overlays its base rule (name 50, contains 40, group 45) with no hand priority, under the Automations band (60). GUI: a `target` dropdown on Precast/Midcast/Ability, one value today, built to grow. /dl why tags a self-aimed action '@self'.
+M.VERSION = 82;   -- 82: Iridescence universals LADDER -- the manifest's new `universals` array (fmtver 10: EVERY owned universal, preference-ordered by the GUI -- tier desc, job-specific over the Chatoyant/Iridal fallbacks; catalog-verified tiers, +3 now exists: Inanna/Keraunos/Gridarvor/Laevateinn/Tupsimati) replaces the single `universal` read when present: resolveStaff takes the FIRST rung usable at the live level, so a level-synced character falls through a parked Lv75 Inanna to Foreshadow +1 Lv50 instead of losing the universal outright (Incursion syncs); the tier contest vs the elemental staff is unchanged (ties still go universal). virtualMinLevel considers every rung -- the set marker becomes a rung at the LOWEST universal's level. Old manifests (single `universal` / legacy string) read exactly as before.
+                  -- 81: `target` condition -- WHO the action is aimed at; v1 vocabulary: 'Self' (Henrik's case: waltz potency reads the TARGET's VIT beside your CHR, so a self-waltz wants a VIT+CHR set while waltzing someone else keeps the plain CHR set). Live read: gData.GetActionTarget().Index (LAC stores the outgoing action packet's target index for Spell/Ability/Item/WS/Ranged before Precast fires) vs my own party index, once per dispatch (ctx.targetSelf, tri-state -- unknown matches NOTHING, the buff-cache rule, so Default-handler rules and failed reads never fire a target rule). Tier 55: a self-refined rule overlays its base rule (name 50, contains 40, group 45) with no hand priority, under the Automations band (60). GUI: a `target` dropdown on Precast/Midcast/Ability, one value today, built to grow. /dl why tags a self-aimed action '@self'.
                   -- 80: a HELD battery still upgrades at a FULL pool. Field round 4 froze with 7 positive-gain batteries queued at 1040/1040: the MP-HOLD branch fires for any worn piece with surplus over the set piece and used to swallow the upgrade check entirely -- a worn SMALL battery (Curate's Earring 10) blocked its own upgrade (Loquac. Earring 30) forever; only slots already wearing their top pick ever equipped. The hold branch now collects the upgrade candidate too (same full-pool gate, cooldown, and mp-stage one-per-dispatch pick; the atomic swap keeps current MP intact, so the hold's no-waste guarantee holds). /dl why shows the winner slot as MP-HOLD + MP-EQUIP together: held from the SET piece, upgraded by the stage.
                   -- 79: /dl plan -- the maxmp battery plan as chat lines (kept OFF the Automations tab per the hidden ruling). Per slot: the live pick (mpPick at the current level), its MP, WORN/gain-vs-worn/LOCKED status and the full ladder with above-level rungs tagged (LvNN); rows sorted biggest gain first = the equip order at a full pool; header restates the two staging rules; footer flags the stale-manifest tell (a listed piece not in Inventory/Wardrobes). Pure assembly M.mpPlanLines (tests MPL*), inputs injected; the command glue gFunc-gates like /dl ls (one state, one printer). Engine dispatch rules untouched.
                   -- 78: ADR 0010 scoped WITHIN the set (Henrik's ruling; field: worn Rimestone Lv60 kept a Lv20 Rouser out of Range). The keep-higher-Level contest still arbitrates a Range+Ammo pair the PLAN names, but a merely-WORN trinket no longer defends Range from outside it -- the engine DISPLACES it (Ammo='remove', LAC's native unequip; equipping the weapon alone would just be server-stripped, the original flap) unless Ammo is locked or pin-reserved. And MP-EQUIP never stages a battery whose RSlot reserves an occupied slot (planned or worn) -- a doomed biggest-gain pick would also win the one-per-dispatch stage forever and starve every other battery. Pure rules M.trinketWornDisplace / M.mpStageEligible (tests TR11-15, MS9-10, TB*).
@@ -889,18 +890,32 @@ local function usableAt(entryLevel, lvl)
 end
 
 -- Best staff by tiered Iridescence (CatsEyeXI): per-element staves carry it for their
--- own element only (NQ +1 / HQ +2); universal weapons for every element (Iridal +1,
--- Chatoyant / Foreshadow +1 = +2). Higher tier wins; ties go to the universal (no
--- cross-element swapping, and it needs no element at all). LEVEL-GATED: anything
--- above the character's current level is not a candidate at all.
+-- own element only (NQ +1 / HQ +2); universal weapons for every element, +1..+3
+-- (catalog tiers: Iridal/Ephemeron +1; Chatoyant/Foreshadow +1/Claritas/Izuna... +2;
+-- Inanna/Keraunos/Gridarvor and the Lv75 relic staves +3). Higher tier wins; ties go
+-- to the universal (no cross-element swapping, and it needs no element at all).
+-- LEVEL-GATED: anything above the character's current level is not a candidate at all.
 local function resolveStaff(a, el, lvl)
     if a.iridescence == true then return nil; end   -- legacy boolean manifest: suppress (Rescan regenerates)
     local uniName, uniTier = nil, 0;
-    if type(a.universal) == 'table' and type(a.universal.name) == 'string'
-       and usableAt(a.universal.level, lvl) then
-        uniName, uniTier = a.universal.name, tonumber(a.universal.tier) or 1;
-    elseif type(a.iridescence) == 'string' then        -- legacy manifest: name, assume +2
-        uniName, uniTier = a.iridescence, 2;
+    -- v82 ladder: `universals` is preference-ordered by the GUI (tier desc,
+    -- job-specific first) -- the first rung usable at the LIVE level wins, so a
+    -- level-synced character falls through to a lower rung it can still wear.
+    if type(a.universals) == 'table' then
+        for _, u in ipairs(a.universals) do
+            if type(u) == 'table' and type(u.name) == 'string' and usableAt(u.level, lvl) then
+                uniName, uniTier = u.name, tonumber(u.tier) or 1;
+                break;
+            end
+        end
+    end
+    if uniName == nil then
+        if type(a.universal) == 'table' and type(a.universal.name) == 'string'
+           and usableAt(a.universal.level, lvl) then
+            uniName, uniTier = a.universal.name, tonumber(a.universal.tier) or 1;
+        elseif type(a.iridescence) == 'string' then    -- legacy manifest: name, assume +2
+            uniName, uniTier = a.iridescence, 2;
+        end
     end
     local elName, elTier = nil, 0;
     if el ~= nil and type(a.staff) == 'table' then
@@ -1142,6 +1157,9 @@ function M.virtualMinLevel(marker)
     end
     if mk == 'dlac:autostaff' then
         consider(a.universal);
+        if type(a.universals) == 'table' then           -- v82 ladder: EVERY rung counts --
+            for _, u in ipairs(a.universals) do consider(u); end   -- the marker adopts at the lowest
+        end
         if type(a.staff) == 'table' then
             for _, s in pairs(a.staff) do consider(s); end
         end
