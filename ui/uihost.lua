@@ -67,14 +67,33 @@ end
 
 host.get = function(name) return byName[name]; end
 
+-- One-shot forced tab selection: the NEXT renderTabs pass hands
+-- ImGuiTabItemFlags_SetSelected to that label's BeginTabItem, then forgets
+-- (gearui's Teleports quick menu: left-click jumps to an Automations panel).
+-- Probe-don't-assume (hard rule 2): a binding without the 3-arg BeginTabItem
+-- or the flag global just renders normally -- the jump is dropped, not a crash.
+local _selectTab = nil;
+host.selectTab = function(label) _selectTab = label; end
+
 -- Render every registered tab inside an already-open TabBar.
 -- guard(label, renderFn, job, level) comes from the caller (gearui's tabGuard).
 host.renderTabs = function(guard, job, level)
     if imgui == nil then return; end
+    local want = _selectTab;
+    _selectTab = nil;                       -- one shot: consumed (or dropped) this pass
     for _, m in ipairs(mods) do
         if type(m.tabs) == 'table' then
             for _, t in ipairs(m.tabs) do
-                if imgui.BeginTabItem(t.label) then
+                local open;
+                if want == t.label then
+                    local ok, o = pcall(imgui.BeginTabItem, t.label, nil,
+                        ImGuiTabItemFlags_SetSelected or 2);
+                    if ok then open = (o == true);
+                    else open = imgui.BeginTabItem(t.label); end
+                else
+                    open = imgui.BeginTabItem(t.label);
+                end
+                if open then
                     guard(t.label, t.render, job, level);
                     imgui.EndTabItem();
                 end

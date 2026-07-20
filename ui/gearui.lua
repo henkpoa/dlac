@@ -1262,7 +1262,7 @@ local function renderAutomationsQuick()
     -- row txt (ammoui.status) already reads "ON on RNG -- 3 ammo".
     local SWITCH = {
         craft = {
-            tip = 'Craft overlay: wears the selected craft\'s gear while ON (idle only).\nPick craft + goal on the craft bar (/dl craft bar) or the Automations tab.\nClick to toggle.',
+            tip = 'Craft overlay: wears the selected craft\'s gear while ON (idle only).\nPick craft + goal on the craft bar (/dl craft bar) or the Automations tab.',
             state = function()
                 local cw = require('dlac\\feature\\craftwatch');
                 if not cw.isEnabled() then return 'off', false; end
@@ -1274,7 +1274,7 @@ local function renderAutomationsQuick()
             end,
         },
         helm = {
-            tip = 'HELM idle set: wears the active category\'s gathering gear while ON (idle\nonly). Pick the category in the HELM menu below. Click to toggle.',
+            tip = 'HELM idle set: wears the active category\'s gathering gear while ON (idle\nonly). Pick the category in the HELM menu below.',
             state = function()
                 local hw = require('dlac\\feature\\helmwatch');
                 if not hw.isEnabled() then return 'off', false; end
@@ -1286,7 +1286,7 @@ local function renderAutomationsQuick()
             end,
         },
         fish = {
-            tip = 'Fishing set: rod, bait and fishing gear while ON (idle only). Pin a rod\nor bait on the fish bar (/dl fish bar). Click to toggle.',
+            tip = 'Fishing set: rod, bait and fishing gear while ON (idle only). Pin a rod\nor bait on the fish bar (/dl fish bar).',
             state = function()
                 local fw = require('dlac\\feature\\fishwatch');
                 if not fw.isEnabled() then return 'off', false; end
@@ -1298,8 +1298,11 @@ local function renderAutomationsQuick()
             end,
         },
         ammo = {
-            tip = 'AutoAmmo for the current job: loads enabled ammo for shots and guards\nspecial ammo. Manage the list in the Automations tab. Click to toggle.',
-            state = function() return nil, nil; end,
+            tip = 'AutoAmmo for the current job: loads enabled ammo for shots and guards\nspecial ammo. Manage the list on its panel.',
+            state = function()
+                local aw = require('dlac\\feature\\ammowatch');
+                return nil, (aw.enabled == true);   -- text nil: the row txt shows ON/OFF
+            end,
             flip = function()
                 local aw = require('dlac\\feature\\ammowatch');
                 aw.setEnabled(not aw.enabled, select(2, jobFile()));
@@ -1309,32 +1312,52 @@ local function renderAutomationsQuick()
     for _, r in ipairs(rows) do
         local col = (type(au.levelColor) == 'function') and au.levelColor(r.level, r.max) or COL.DIM;
         local sw = SWITCH[r.key];
-        if sw ~= nil then
-            if imgui.Selectable('##tpqa' .. r.key, false, TPQ_KEEP) then pcall(sw.flip); end
-            if imgui.IsItemHovered() then
-                imgui.SetTooltip(sw.tip .. '\nCoverage: ' .. tostring(r.txt or ''));
+        -- LEFT-click (Henrik, 2026-07-20): open this automation's panel --
+        -- show the main window, jump the tab bar to Automations (one-shot
+        -- host.selectTab) and land on the detail view. The whole popup chain
+        -- closes (CloseCurrentPopup from inside a child menu walks the chain).
+        if imgui.Selectable('##tpqa' .. r.key, false, TPQ_KEEP) then
+            pcall(function()
+                if type(au.openDetail) == 'function' then au.openDetail(r.key); end
+            end);
+            pcall(host.selectTab, 'Automations');
+            M.visible = true;
+            imgui.CloseCurrentPopup();
+        end
+        -- RIGHT-click on a switch row: a small on/off context menu. Manual
+        -- OpenPopup/BeginPopup (both field-proven in this binding) rather
+        -- than the unprobed BeginPopupContextItem. The context popup is a
+        -- plain popup, not a child menu, so its CloseCurrentPopup closes
+        -- ONLY itself -- the Automations menu stays open showing the flip.
+        if sw ~= nil and imgui.IsItemClicked(1) then
+            imgui.OpenPopup('##tpqactx' .. r.key);
+        end
+        if imgui.IsItemHovered() then
+            local how = (sw ~= nil)
+                and 'Left-click: open its panel. Right-click: turn it on/off.'
+                or  'Left-click: open its panel. Set-driven -- the dlac: entry in a set\'s slot\nIS the switch (add it via + Add, Sets tab).';
+            local tip = (sw ~= nil) and (sw.tip .. '\n') or '';
+            imgui.SetTooltip(tip .. how .. '\nCoverage: ' .. tostring(r.txt or ''));
+        end
+        local txt, on = nil, nil;
+        if sw ~= nil then pcall(function() txt, on = sw.state(); end); end
+        if sw ~= nil and imgui.BeginPopup('##tpqactx' .. r.key) then
+            imgui.TextColored(COL.HEADER, fmt.esc(r.name));
+            imgui.Separator();
+            if imgui.Selectable((on and 'Turn off' or 'Turn ON') .. '##tpqactxgo' .. r.key,
+                                false, TPQ_KEEP) then
+                pcall(sw.flip);
+                imgui.CloseCurrentPopup();
             end
-            local txt, on = nil, nil;
-            pcall(function() txt, on = sw.state(); end);
-            imgui.SameLine(8);
-            imgui.TextColored(col, fmt.esc(r.name));
-            imgui.SameLine(190);
-            if txt ~= nil then
-                imgui.TextColored(on and TPQ_GREEN or COL.DIM, fmt.esc(txt));
-            else
-                imgui.TextColored(col, fmt.esc(r.txt or ''));   -- AutoAmmo: status txt carries ON/OFF
-            end
+            imgui.EndPopup();
+        end
+        imgui.SameLine(8);
+        imgui.TextColored(col, fmt.esc(r.name));
+        imgui.SameLine(190);
+        if txt ~= nil then
+            imgui.TextColored(on and TPQ_GREEN or COL.DIM, fmt.esc(txt));
         else
-            -- Set-driven slot automations: no global switch -- status only.
-            -- Plain text rows (no hover highlight): nothing here to click.
-            imgui.Dummy({ 0, 0 });
-            imgui.SameLine(8);
-            imgui.TextColored(col, fmt.esc(r.name));
-            if imgui.IsItemHovered() then
-                imgui.SetTooltip('Slot automation -- lives INSIDE a set: add the dlac: entry to the slot\nvia + Add (Sets tab). No global switch; details on the Automations tab.');
-            end
-            imgui.SameLine(190);
-            imgui.TextColored(col, fmt.esc(r.txt or ''));
+            imgui.TextColored(col, fmt.esc(r.txt or ''));   -- slot rows + AutoAmmo: the row txt
         end
     end
 end

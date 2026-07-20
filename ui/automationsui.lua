@@ -956,6 +956,15 @@ function M.listRows()
 end
 M.levelColor = levelColor;
 
+-- Jump the Automations tab to one automation's DETAIL view (quick menu:
+-- left-click = open the panel; gearui shows the window + selects the tab).
+-- An unknown key lands on the list view instead of a blank detail.
+local DETAIL_KEYS = { iridescence = true, obi = true, oneiros = true, craft = true,
+                      helm = true, fish = true, ammo = true, maxmp = true };
+function M.openDetail(key)
+    auto.view = (DETAIL_KEYS[key] == true) and key or nil;
+end
+
 -- Last frame the guild-points section rendered -- a gap >1s means the panel
 -- (or the AutoCraft section) just OPENED, which triggers one fresh GP fetch.
 -- Declared BEFORE renderAutomations on purpose (hard rule 8: a forward
