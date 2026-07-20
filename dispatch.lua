@@ -49,7 +49,7 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 77;   -- 77: MP-RELEASE names the INCOMING piece -- 'Hands=MP-RELEASE Oracle's Gloves -> Blessed Mitts +1 (+7 MP surplus spent)'. Field round 1 of v76: the release stalled forever because LAC could not equip the set's flattened pick -- LocateItems searches only bags GetContainerAvailable says yes to, and on CatsEyeXI (Topaz lineage) the MW3-MW8 availability checks read retail POL premium account flags that the server never sets, so containers 11-16 are INVISIBLE to every LAC equip and PrepareEquip silently drops what it cannot find. The worn battery never moved and the same smallest-surplus winner re-decided every dispatch, BLOCKING the whole release queue behind it. Fix lives in LAC settings: ForceEnableBags 11-16 (per char). BuildDynamicSets checks level only (no ownership/bag check) -- a plan can also name stored/unowned/bazaared gear outright; that question is parked in docs/design/maxmp-mode.md.
+M.VERSION = 77;   -- 77: MP-RELEASE names the INCOMING piece -- 'Hands=MP-RELEASE Oracle's Gloves -> Blessed Mitts +1 (+7 MP surplus spent)'. Field round 1 of v76: a release re-decided identically for 8+ seconds with the worn piece unmoved -- the swap-back never landed, and because the stalled slot keeps the smallest surplus it BLOCKS the whole release queue behind it. Root cause NOT yet found (wardrobe availability was a dead lead -- the server enables all wardrobe flags; Henrik confirms no unavailable gear). The named target turns any future stall into a checkable fact instead of a guess. BuildDynamicSets checks level only (no ownership/bag check) -- a plan can name stored/unowned/bazaared gear; parked in docs/design/maxmp-mode.md.
                   -- 76: maxmp STAGED -- at most ONE battery moves per dispatch (field report: the mode read as an on/off switch, everything on / everything off in one dispatch). Release: smallest surplus first (the big battery stays on longest, per the original spec) -- the all-at-once release was also an accounting bug: N same-dispatch releases drop max MP by the SUM of surpluses while each per-slot hold justified only its own, and the server clamp (cur = min(cur, newMax)) ate the difference; a single smallest-surplus release is clamp-free by construction. Equip: biggest gain first at a full pool; the full-pool gate then paces the ladder (the next battery waits until recovery refills the last one's headroom). Pure choosers M.mpStageRelease/M.mpStageEquip (tests MS*); post-pass 'mp-equip-uncovered' renamed 'mp-stage' (PL2) -- it now owns BOTH the single release and the single equip across covered + uncovered slots.
                   -- 75: /dl lock set <name> -- the Sets tab's "Equip & Lock" (Incursion T3: the server locks your equipment on entry). Wears the COMMITTED set once -- bracketed ClearBuffer/ProcessBuffer, the PetAction tick's lesson, or the equips evaporate -- then locks ALL 16 slots so the engine stops proposing swaps the server would refuse; stale locks are cleared first so the set lands whole. Release: /dl lock all off (or the Sets tab's Unlock). Dispatch rules untouched.
                   -- 74: AutoAmmo per-job config (ammostate fmt 2) -- every job carries its OWN priority list + persisted on/off (field round 2: "all jobs can't use all ammos"); the overlay resolves against as.jobs[<main job>]'s section, legacy fmt-1 files (top-level ammo list + jobs map) keep working unchanged until the GUI migrates them. Decision rules untouched.
@@ -1793,11 +1793,10 @@ local function equipResolved(s, ctx)
                 end
                 _mpCd[rel.lslot] = os.time() + 15;     -- battery released: no instant re-equip
                 -- The incoming piece is NAMED (v77): a release that repeats across
-                -- dispatches with the worn piece unmoved means LAC cannot equip
-                -- this exact target (bag invisible to LAC / not owned / bazaared)
-                -- -- LAC drops unfindable pieces silently, so the name here is
-                -- the only breadcrumb (field round 1: MW3-MW8 are invisible to
-                -- LAC on CatsEyeXI without ForceEnableBags 11-16).
+                -- dispatches with the worn piece unmoved means the swap-back is
+                -- not landing -- LAC drops pieces it cannot find/equip silently,
+                -- so the name here is the only breadcrumb (field round 1
+                -- stalled exactly this way; root cause still open).
                 note('%s=MP-RELEASE %s -> %s (+%d MP surplus spent)',
                     tostring(rel.slot), rel.worn, tostring(rel.tgt), rel.surplus);
             end

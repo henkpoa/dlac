@@ -73,18 +73,18 @@ trigger rules), which the existing machinery already handles. This mirrors the
   `Hands=MP-RELEASE Oracle's Gloves -> Zealot's Mitts (+7 MP surplus spent)` /
   `ring1=MP-STAGE Astral Ring (+25 MP; neck releases first)`. The release note
   names the INCOMING piece (v77) because of field round 1's stall: a release
-  that repeats across dispatches with the worn piece unmoved means LAC cannot
-  equip that exact target — `LocateItems` searches `gSettings.EquipBags`
-  (Inventory + Wardrobes) only, skips any container `GetContainerAvailable`
-  refuses, and `PrepareEquip` silently drops a piece it cannot find. On
-  CatsEyeXI the MW3–MW8 checks (containers 11–16) read retail POL premium
-  account flags the server never sets, so those six wardrobes are INVISIBLE
-  to every LAC equip unless the char's LAC settings force them
-  (`ForceEnableBags` 11–16 — applied to Mindie 2026-07-20). Separately,
-  `BuildDynamicSets` checks level only, so a flattened plan can name gear
-  that is stored, unowned, or bazaared — and because the stalled slot keeps
-  the smallest surplus, it stays the winner and BLOCKS every other release
-  behind it.
+  re-decided identically for 8+ seconds with the worn piece unmoved — the
+  swap-back never landed, and because the stalled slot keeps the smallest
+  surplus it stays the winner and BLOCKS every other release behind it. Root
+  cause still OPEN. Ruled out in the field: server-side gear locks (none on
+  this server) and wardrobe availability (the server hardcodes all wardrobe
+  bits on — char_status.cpp writes 0x7B — and Henrik confirms no unavailable
+  gear; a `ForceEnableBags` detour was reverted). Known silent-drop paths in
+  LAC for reference: `LocateItems` only finds pieces in `EquipBags`,
+  bazaared items are skipped (Flags 19), and `PrepareEquip` drops what it
+  cannot find without a message. Separately, `BuildDynamicSets` checks level
+  only, so a flattened plan can name gear that is stored, unowned, or
+  bazaared.
 - Data: the autogear manifest's `mp` (lower(name) → flat MP, every owned piece)
   and `mpBest` (slot → best battery, filtered by the central `canWear` +
   `haveInBags`) maps. The manifest is fully self-maintaining: it regenerates on
