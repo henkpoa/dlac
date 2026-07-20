@@ -13,7 +13,11 @@ maintainer IMO, I am just the one with the creative vision."*
 2. [CONTEXT.md](../CONTEXT.md) — the controlled vocabulary. Use these terms; avoid the
    listed synonyms.
 3. [architecture.md](architecture.md) — module map, two-Lua-state design, data flow,
-   `/dl` command surface, per-char file layout.
+   `/dl` command surface, per-char file layout — and **"Central services"**, the
+   table of one-answer functions (is this a Crystal Warrior → `gamemode.get()`;
+   entity-near-me → `lib/entwatch`; owned counts, catalog lookups, char dir,
+   native MP, command queue...). When Henrik says "the global/central function
+   for X", that table is where it lives — consume it, never re-derive it.
 4. [design/trigger-system.md](design/trigger-system.md) — the trigger engine spec.
    [design/profiles.md](design/profiles.md) — the profile storage layer (where sets
    and triggers live since v33, the one read/write compatibility rule, migration).

@@ -55,6 +55,30 @@ Two traps when moving files or grepping module names:
    `lockstyles` **data file**; `macrobook` vs `macrobooks`; `crafts` vs `craftstate`.
 2. **The engine five cannot move.** See below.
 
+## Central services — ask these, never re-derive
+
+The one-answer functions ("Henrik's shape": callers ask the question, the
+plumbing is the service's problem). When a feature needs one of these answers,
+it CONSUMES the service — a local re-implementation is a bug waiting for the
+field round that already happened. All run in the **addon state** (the seeded
+engine cannot require them; it has its own minimal reads).
+
+| The question | Call | Module | The rules that bite |
+|---|---|---|---|
+| **Is this character a Crystal Warrior?** (game mode at all) | `gamemode.get()` → `'CW'` \| `'Wings'` \| `'ACE'` \| `nil` | `feature/gamemode.lua` | UCW deliberately ⇒ `'CW'` (same playmode — Henrik's ruling). `nil` = UNKNOWN, never a value to gate on: CW-only UI must gate on the **affirmative** `== 'CW'` and stay hidden on nil. First consumer: `eboxammo.isCW()`. |
+| **Is there an entity named X nearby, and how far?** | `entwatch.watch(who, name[, cb])` then `entwatch.nearest(name)` / `.matches(name)`; `.poke(name)` = rescan | `lib/entwatch.lua` | THE central entity watcher — never write a local scan. It owns the idioms that cost three field rounds: GetName pads with whitespace (trim + ci), rendered bit 0x200 (signed-u32 fix) before trusting a distance, `GetRawEntity` (never the dead `GetEntity(i)`), the FULL 0x000-0x8FF range (custom NPCs are dynamic entities). Distances in yalms (squared on the wire). Callbacks fire on match-set changes incl. evictions; callback-less watches sleep 15 s after the last ask. |
+| **How many of item id N do I own?** | `ownedcache.counts()` (equippable bags) / `.totals()` (anywhere) / `.verdict(rec)` | `gear/ownedcache.lua` | counts = what can actually be equipped/consumed NOW; totals includes storage (the red "stored" coloring everywhere in dlac). |
+| **What is this item?** (any item, owned or not) | `catalogindex.flat()` / `.rawById(id)` / `.rawIndex()` | `gear/catalogindex.lua` over `data/catalog.lua` | The catalog's `Slot` lies toward Body for unimplemented rows (`jobs==0` is the junk marker); `AmmoType` absent = trinket. |
+| **Where is this character's dlac state dir?** | `statefile.charDir()` | `lib/statefile.lua` | nil pre-login — retry, never cache the nil. (The seeded engine has its own `charDir()` inside dispatch.lua.) |
+| **This character's native MP pool?** | `nativemp.self([meritMP])` / `.get(race, mjob, mlvl, sjob, slvl)` | `data/nativemp.lua` | The server's formula verbatim; merits are NOT native — pass them in. Never calibrate against the on-screen max (traits/gear ride the display only). |
+| **Queue a chat/game command safely?** | `cmdqueue` | `lib/cmdqueue.lua` | Two same-frame QueueCommands arrive REVERSED in other states — this queue drains one per frame. Also: an addon state never hears its OWN queued commands back. |
+| **E-Box (CW storage) counts / withdraw?** | `eboxammo.counts` / `.withdraw(id, qty)` / `.boxDistance()` | `feature/eboxammo.lua` | Crystal Warriors only (see gamemode row); 0x1A4 is a party line — pending-request discipline; `BOX_RANGE = 5` field-pinned. |
+| **Item icon / hover card in UI?** | `deps.renderIcon(id, size)` / `deps.itemTooltip(rec)` | `ui/itemicons.lua` + gearui's `renderItemTooltip`, injected via the shared deps table | ONE hover card serves every equipment surface — never draw a rival. |
+
+Adding a new central service: generic plumbing goes in `lib/`, game-domain
+answers in `feature/` or `data/`; give it the gamemode shape (one exported
+question, injectable reads, headless tests) and ADD IT TO THIS TABLE.
+
 ## Module reference
 
 ### dlac.lua — addon entry point
