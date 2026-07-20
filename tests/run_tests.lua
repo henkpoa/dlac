@@ -3113,6 +3113,58 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- TG. Target condition (engine v81): WHO the action is aimed at; v1 value
+--     'Self'. ctx.targetSelf is the injected seam (live: GetActionTarget's
+--     entity index vs my own party index, one read per dispatch); tri-state --
+--     nil = unknown (Default handler, failed read) matches NOTHING, so a
+--     target rule never fires blind. Tier 55: a self-refined rule overlays
+--     its base name/contains/group rule with no hand priority, under the
+--     Automations band (60).
+-- ---------------------------------------------------------------------------
+(function()
+    local mm = dispatchM._matchers;
+    local selfCast  = { action = { Name = 'Curing Waltz III' }, targetSelf = true };
+    local otherCast = { action = { Name = 'Curing Waltz III' }, targetSelf = false };
+    local unknown   = { action = { Name = 'Curing Waltz III' } };   -- no seam, stub gData has no GetActionTarget
+    check('TG1 target=Self fires on a self-cast',     mm.target('Self', selfCast), true);
+    check('TG2 target=Self quiet on another target',  mm.target('Self', otherCast), false);
+    check('TG3 target matches case-insensitively',    mm.target('self', selfCast), true);
+    check('TG4 unknown target matches NOTHING',       mm.target('Self', unknown), false);
+    check('TG5 unknown VALUE never matches',          mm.target('Enemy', selfCast), false);
+    -- Tier ladder: the self-refinement overlays its base rule (name 50,
+    -- contains 40) with no hand priority, and stays under player gates / mode.
+    check('TG6 target sits at 55', dispatchM.defaultPriority({ target = 'Self' }), 55);
+    check('TG7 name+target outranks bare name',
+        dispatchM.defaultPriority({ name = 'Curing Waltz III', target = 'Self' })
+            > dispatchM.defaultPriority({ name = 'Curing Waltz III' }), true);
+    check('TG8 mode still outranks target',
+        dispatchM.defaultPriority({ mode = 'DT' })
+            > dispatchM.defaultPriority({ target = 'Self' }), true);
+    -- Henrik's waltz pair through the engine's own matches(): the base rule
+    -- fires either way, the Self rule only on the self-cast -- the overlay
+    -- (55 > 40) puts VIT+CHR on top of the plain CHR set.
+    local mt = dispatchM._matches;
+    local base     = { when = { contains = 'Waltz' } };
+    local selfRule = { when = { contains = 'Waltz', target = 'Self' } };
+    check('TG9 base waltz rule fires on a self-cast', mt(base, selfCast), true);
+    check('TG10 self rule fires on a self-cast',      mt(selfRule, selfCast), true);
+    check('TG11 self rule quiet on another target',   mt(selfRule, otherCast), false);
+    check('TG12 base rule still fires on others',     mt(base, otherCast), true);
+    -- Serializer + normalize: first-class vocabulary, round-trips byte-stable.
+    local text = dispatchM.serializeTriggers({
+        Ability = { { when = { contains = 'Waltz', target = 'Self' }, set = 'Waltz_Self' } },
+    });
+    check('TG13 target serializes', text:find('target = "Self"', 1, true) ~= nil, true);
+    local t2 = (loadstring or load)(text)();
+    check('TG14 round-trip byte-stable', dispatchM.serializeTriggers(t2) == text, true);
+    local norm = dispatchM._normalize({
+        Ability = { { when = { name = 'Curing Waltz III', target = 'Self' }, set = 'Waltz_Self' } },
+    });
+    check('TG15 normalize keeps target', norm.Ability ~= nil and #norm.Ability, 1);
+    check('TG16 normalized prio = target tier', norm.Ability[1].prio, 55);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- TGM. Trigger Groups model (G2, issue #25, ADR 0009): the pure GUI-side CRUD +
 --      name / member validation the Groups tab drives (groupsmodel.lua). Group
 --      names and member names compare case-insensitively (engine parity), an

@@ -89,6 +89,15 @@ local TRIG_HANDLERS = { 'Default', 'Precast', 'Midcast', 'Ability', 'Item', 'Wea
 -- Condition metadata for the add-rule builder: per handler, the choosable condition
 -- types and their value widgets. kind: 'list' = fixed dropdown, 'text' = free text,
 -- 'flag' = boolean true. Vocabulary mirrors dispatch.lua's MATCHERS (v1).
+
+-- Target condition (engine v81): WHO the action is aimed at. ONE value today --
+-- the dropdown shape is the point (new answers slot in as the engine grows them).
+local TARGET_ITEMS = { 'Self' };
+local TARGET_HINT = 'who the action is aimed at. Self = the action targets YOU --\n'
+    .. 'a self-waltz can wear VIT+CHR together (waltz potency reads the TARGET\'s\n'
+    .. 'VIT beside your CHR) while waltzing someone else keeps the plain CHR set.\n'
+    .. 'Stack it with contains/name: the self rule overlays the base rule.';
+
 local SPELL_CONDS = {
     { key = 'skill',     kind = 'list', items = { 'Divine Magic', 'Healing Magic', 'Enhancing Magic', 'Enfeebling Magic', 'Elemental Magic', 'Dark Magic', 'Summoning', 'Ninjutsu', 'Singing', 'Blue Magic', 'Geomancy' } },
     { key = 'magicType', kind = 'list', items = { 'White Magic', 'Black Magic', 'Bard Song', 'Ninjutsu', 'Summoning', 'Blue Magic' } },
@@ -97,6 +106,7 @@ local SPELL_CONDS = {
     { key = 'contains',  kind = 'text', hint = 'name contains this text: "Madrigal" matches Blade + Sword\nMadrigal; "Stone" matches every Stone tier. Stack it with skill\nvia [+ condition] for AND logic (e.g. skill=Elemental + contains=Stone).' },
     { key = 'group',     kind = 'group', hint = 'match every action in a named group -- one rule gears many\nspells that share gear. Build groups in the Groups section; a per-spell\nname rule still overrides the group.' },
     { key = 'name',      kind = 'text', hint = 'exact spell name, e.g. Slow II' },
+    { key = 'target',    kind = 'list', items = TARGET_ITEMS, hint = TARGET_HINT },
     { key = 'dayWeatherBonus', kind = 'flag' },
     { key = 'mode',      kind = 'text', hint = 'a player-toggled mode must be ON (e.g. DT) -- stack with other\nconditions to make a rule mode-dependent' },
     { key = 'any',       kind = 'flag' },
@@ -114,6 +124,7 @@ local COND_DEFS = {
         { key = 'contains', kind = 'text', hint = 'name contains this text' },
         { key = 'group',    kind = 'group', hint = 'match every ability in a named group (Groups section)' },
         { key = 'name',     kind = 'text', hint = 'exact ability name, e.g. Repair' },
+        { key = 'target',   kind = 'list', items = TARGET_ITEMS, hint = TARGET_HINT },
         { key = 'mode',     kind = 'text', hint = 'a player-toggled mode must be ON' },
         { key = 'any',      kind = 'flag' },
     },

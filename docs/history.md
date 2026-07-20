@@ -3521,3 +3521,22 @@ biggest-gain pick from starving the one-per-dispatch stage. Within
 a set nothing changes, and every other reserved-slot mirror (Tunic
 reserves Head) is untouched. Tests TR11-15 / MS9-10 / TB1-7.
 Suites 1868 + 178.
+
+## The target condition: who the action is aimed at (2026-07-20)
+
+Henrik's case: waltzes (and kin) scale off the TARGET's VIT beside
+your CHR -- a self-waltz wants VIT+CHR together, waltzing someone
+else keeps the plain CHR set. The trigger vocabulary had no way to
+say "aimed at me". Engine v81 adds `target`, v1 value 'Self': live
+it compares gData.GetActionTarget().Index (LAC keeps the outgoing
+action packet's target index on PlayerAction for Spell/Ability/
+Item/WS/Ranged, set before Precast fires) against my own party
+index, once per dispatch (ctx.targetSelf, tri-state -- unknown
+matches NOTHING, the buff-cache rule, so Default-handler rules and
+failed reads never fire a target rule). Tier 55: a self-refined
+rule overlays its base name (50) / group (45) / contains (40) rule
+with no hand priority and stays under the Automations band (60).
+GUI: a `target` dropdown on Precast/Midcast/Ability -- one value
+today, deliberately a list so future answers (party member, enemy,
+NPC) extend the dropdown, not the vocabulary. /dl why tags a
+self-aimed action '@self'. Tests TG1-16. Suites 1891 + 178.

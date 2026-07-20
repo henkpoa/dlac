@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 80;   -- 80: a HELD battery still upgrades at a FULL pool. Field round 4 froze with 7 positive-gain batteries queued at 1040/1040: the MP-HOLD branch fires for any worn piece with surplus over the set piece and used to swallow the upgrade check entirely -- a worn SMALL battery (Curate's Earring 10) blocked its own upgrade (Loquac. Earring 30) forever; only slots already wearing their top pick ever equipped. The hold branch now collects the upgrade candidate too (same full-pool gate, cooldown, and mp-stage one-per-dispatch pick; the atomic swap keeps current MP intact, so the hold's no-waste guarantee holds). /dl why shows the winner slot as MP-HOLD + MP-EQUIP together: held from the SET piece, upgraded by the stage.
+M.VERSION = 81;   -- 81: `target` condition -- WHO the action is aimed at; v1 vocabulary: 'Self' (Henrik's case: waltz potency reads the TARGET's VIT beside your CHR, so a self-waltz wants a VIT+CHR set while waltzing someone else keeps the plain CHR set). Live read: gData.GetActionTarget().Index (LAC stores the outgoing action packet's target index for Spell/Ability/Item/WS/Ranged before Precast fires) vs my own party index, once per dispatch (ctx.targetSelf, tri-state -- unknown matches NOTHING, the buff-cache rule, so Default-handler rules and failed reads never fire a target rule). Tier 55: a self-refined rule overlays its base rule (name 50, contains 40, group 45) with no hand priority, under the Automations band (60). GUI: a `target` dropdown on Precast/Midcast/Ability, one value today, built to grow. /dl why tags a self-aimed action '@self'.
+                  -- 80: a HELD battery still upgrades at a FULL pool. Field round 4 froze with 7 positive-gain batteries queued at 1040/1040: the MP-HOLD branch fires for any worn piece with surplus over the set piece and used to swallow the upgrade check entirely -- a worn SMALL battery (Curate's Earring 10) blocked its own upgrade (Loquac. Earring 30) forever; only slots already wearing their top pick ever equipped. The hold branch now collects the upgrade candidate too (same full-pool gate, cooldown, and mp-stage one-per-dispatch pick; the atomic swap keeps current MP intact, so the hold's no-waste guarantee holds). /dl why shows the winner slot as MP-HOLD + MP-EQUIP together: held from the SET piece, upgraded by the stage.
                   -- 79: /dl plan -- the maxmp battery plan as chat lines (kept OFF the Automations tab per the hidden ruling). Per slot: the live pick (mpPick at the current level), its MP, WORN/gain-vs-worn/LOCKED status and the full ladder with above-level rungs tagged (LvNN); rows sorted biggest gain first = the equip order at a full pool; header restates the two staging rules; footer flags the stale-manifest tell (a listed piece not in Inventory/Wardrobes). Pure assembly M.mpPlanLines (tests MPL*), inputs injected; the command glue gFunc-gates like /dl ls (one state, one printer). Engine dispatch rules untouched.
                   -- 78: ADR 0010 scoped WITHIN the set (Henrik's ruling; field: worn Rimestone Lv60 kept a Lv20 Rouser out of Range). The keep-higher-Level contest still arbitrates a Range+Ammo pair the PLAN names, but a merely-WORN trinket no longer defends Range from outside it -- the engine DISPLACES it (Ammo='remove', LAC's native unequip; equipping the weapon alone would just be server-stripped, the original flap) unless Ammo is locked or pin-reserved. And MP-EQUIP never stages a battery whose RSlot reserves an occupied slot (planned or worn) -- a doomed biggest-gain pick would also win the one-per-dispatch stage forever and starve every other battery. Pure rules M.trinketWornDisplace / M.mpStageEligible (tests TR11-15, MS9-10, TB*).
                   -- 77: MP-RELEASE names the INCOMING piece -- 'Hands=MP-RELEASE Oracle's Gloves -> Blessed Mitts +1 (+7 MP surplus spent)'. Field round 1 of v76: a release re-decided identically for 8+ seconds with the worn piece unmoved -- the swap-back never landed, and because the stalled slot keeps the smallest surplus it BLOCKS the whole release queue behind it. Root cause NOT yet found (wardrobe availability was a dead lead -- the server enables all wardrobe flags; Henrik confirms no unavailable gear). The named target turns any future stall into a checkable fact instead of a guess. BuildDynamicSets checks level only (no ownership/bag check) -- a plan can name stored/unowned/bazaared gear; parked in docs/design/maxmp-mode.md.
@@ -418,6 +419,27 @@ local function buffActive(ctx, v)
     return set[string.lower(tostring(v))] == true;
 end
 
+-- Is the current action aimed at ME? (v81.) Tri-state, memoized on ctx: true /
+-- false, or nil = unknown (no action in flight -- the Default handler -- or a
+-- failed read), and unknown matches NOTHING, so a bad read can never flap gear
+-- (the buff-cache rule). Tests inject ctx.targetSelf; live it compares the
+-- action target's entity index (LAC keeps the outgoing action packet's target
+-- index on PlayerAction for Spell/Ability/Item/WS/Ranged, set before Precast)
+-- against my own party index -- one read per dispatch.
+local function targetIsSelf(ctx)
+    if ctx.targetSelf ~= nil then return ctx.targetSelf; end
+    local r = nil;
+    pcall(function()
+        local tgt = gData.GetActionTarget();
+        if tgt == nil or tonumber(tgt.Index) == nil then return; end
+        local me = AshitaCore:GetMemoryManager():GetParty():GetMemberTargetIndex(0);
+        if tonumber(me) == nil or tonumber(me) == 0 then return; end
+        r = (tonumber(tgt.Index) == tonumber(me));
+    end);
+    ctx.targetSelf = r;   -- nil stays nil -> retried next matcher call
+    return r;
+end
+
 -- Threshold matcher factory: one field off ctx.player, strict compare, junk
 -- or unreadable values never match.
 local function numGate(field, below)
@@ -484,6 +506,18 @@ local MATCHERS = {
     pet       = function(v, ctx) return (ctx.pet ~= nil) == (v == true); end,
     petstatus = function(v, ctx) return ctx.pet ~= nil and ci(ctx.pet.Status, v); end,
     petname   = function(v, ctx) return ctx.pet ~= nil and ci(ctx.pet.Name, v); end,
+    -- Target condition (v81): WHO the action is aimed at. Vocabulary is a
+    -- closed list the GUI mirrors as a dropdown -- v1: 'Self' (the action
+    -- targets YOU; Henrik's case: a self-waltz wants VIT+CHR together, since
+    -- waltz potency reads the TARGET's VIT beside your CHR -- waltzing someone
+    -- else keeps the plain CHR set). Unknown target or unknown value matches
+    -- nothing: a target-refined rule never fires blind.
+    target = function(v, ctx)
+        local slf = targetIsSelf(ctx);
+        if slf == nil then return false; end
+        if ci(v, 'Self') then return slf; end
+        return false;
+    end,
 };
 M._matchers = MATCHERS;   -- headless test seam (the _autoOverride idiom)
 
@@ -505,6 +539,10 @@ local TIER = {
     contains = 40, family = 40,
     group = 45,   -- baseline for many spells that share gear; a per-spell `name` (50) overrides it, and it beats contains/skill (ADR 0009)
     name = 50, petname = 50,
+    -- target (v81) refines the exact action -- 'Curing Waltz III on MYSELF' is
+    -- more specific than the name rule it rides on, so it overlays name (50)
+    -- with no hand priority and still sits under the Automations band (60).
+    target = 55,
     -- Player-state gates sit just under mode: "low HP" is nearly as deliberate
     -- as a hand toggle, and a mode-gated rule still edges it when both match.
     -- (hpbelow/... are the v53 alias spellings, kept loadable.)
@@ -527,6 +565,7 @@ local PRETTY_KEY = {
     mpabove = 'mpAbove', tpbelow = 'tpBelow', tpabove = 'tpAbove',
     buff = 'buff', buffnot = 'buffNot',
     pet = 'pet', petstatus = 'petStatus', petname = 'petName',
+    target = 'target',
     playerhpbelow = 'playerHPBelow', playerhpabove = 'playerHPAbove',
     playerhppercentbelow = 'playerHPPercentBelow', playerhppercentabove = 'playerHPPercentAbove',
     playermpbelow = 'playerMPBelow', playermpabove = 'playerMPAbove',
@@ -2163,6 +2202,9 @@ local function actionLabel(ctx)
             if type(a[k]) == 'string' then bits[#bits + 1] = a[k]; end
         end
         local tail = (#bits > 0) and (' [' .. table.concat(bits, '/') .. ']') or '';
+        -- v81: a self-aimed action reads '@self' -- the checkable fact behind
+        -- "why didn't my target=Self rule fire". Unknown target stays silent.
+        if targetIsSelf(ctx) == true then tail = tail .. ' @self'; end
         return string.format('%q%s', tostring(a.Name), tail);
     end
     if ctx.player ~= nil then
@@ -3554,7 +3596,9 @@ M.starterTriggersText = [[
 --             pet counts as NO pet; petStatus/petName never match petless -- so
 --             status = 'Idle' + petStatus = 'Engaged' is "master idle, pet fighting")
 --             | any/skill/magicType/element/songType/family/name/dayWeatherBonus
---             | abilityType | player state: playerHPBelow/Above, playerHPPercentBelow/Above,
+--             | abilityType | target ('Self': the action is aimed at YOU -- a self-waltz
+--             can wear VIT+CHR while waltzing someone else keeps the plain CHR set)
+--             | player state: playerHPBelow/Above, playerHPPercentBelow/Above,
 --             playerMPBelow/Above, playerMPPercentBelow/Above, tpBelow/tpAbove (raw TP),
 --             buff/buffNot (active status effect, name or id).
 --             All conditions in one `when` must hold; every matching rule
@@ -3562,8 +3606,8 @@ M.starterTriggersText = [[
 -- OR groups:  whenAny = { { buff = "Sleep" }, { buff = "Lullaby" } } -- the rule matches
 --             when ALL `when` conditions hold OR ANY whenAny entry holds.
 -- Priority defaults by specificity: any 10 < status/skill 20 < pet 22/petStatus 23 < moving 25
---             < class/element 30 < family 40 < exact name/petName 50 < player state 95
---             < mode 100.  See docs/design/trigger-system.md.
+--             < class/element 30 < family 40 < exact name/petName 50 < target 55
+--             < player state 95 < mode 100.  See docs/design/trigger-system.md.
 return {
     Default = {
         { when = { status = 'Engaged' }, set = 'Tp_Default' },

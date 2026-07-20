@@ -61,6 +61,7 @@ at dispatch time:
 | Weaponskill | `any`, `name`, `group` |
 | Preshot / Midshot | `any` |
 | **every handler** (v54) | Player-state gates, raw AND percent variants: `playerHPBelow`/`playerHPAbove`, `playerHPPercentBelow`/`playerHPPercentAbove` (0–100), `playerMPBelow`/`playerMPAbove`, `playerMPPercentBelow`/`playerMPPercentAbove` (0–100), `tpBelow`/`tpAbove` (raw TP, 1000 = a full shot), `buff`/`buffNot` (active status effect by name — case-insensitive — or numeric id). Strict compares. Tier 95, just under `mode`. Buffs resolve through a per-dispatch cache of the client's own buff array; unreadable state matches NEITHER polarity, so a failed read never flaps gear. The v53 spellings (`hpBelow`… percent semantics) load as hidden aliases. |
+| **action handlers** (v81) | `target` — WHO the action is aimed at; v1 vocabulary: `Self` (the action targets YOU). Field case: waltz potency reads the **target's** VIT beside your CHR, so a self-waltz wants a VIT+CHR set while waltzing someone else keeps the plain CHR set. Live read: `gData.GetActionTarget().Index` (LAC stores the outgoing action packet's target index for Spell/Ability/Item/WS/Ranged before Precast fires) vs my own party index, once per dispatch (`ctx.targetSelf`, tri-state). Unknown target (Default handler, failed read) and unknown values match NOTHING — a target rule never fires blind. Tier 55: a self-refined rule overlays its base `name`/`contains`/`group` rule with no hand priority, under Automations (60). GUI: a `target` dropdown on Precast/Midcast/Ability — one value today, the list shape is deliberate (more answers slot in: party member, enemy, ...). |
 | **every handler** (v63) | Pet conditions, off `ctx.pet` = `gData.GetPet()` read once per dispatch: `pet` (true/false — a LIVING pet exists; GetPet is nil petless AND at pet HPP 0, so a dead pet counts as none and `pet = false` fires), `petStatus` (the pet's own Idle/Engaged — `status = 'Idle'` + `petStatus = 'Engaged'` is the classic "master idle while the pet fights"), `petName` (exact, case-insensitive — avatar/spirit identity, SMN perpetuation gear). `petStatus`/`petName` IMPLY existence: they never match petless. Tiers: `pet` 22 / `petStatus` 23 sit between `status` (20) and `moving` (25), so a pet-refined rule outranks its base status rule with no hand priority and Movement still overlays; `petName` 50 = the identity (name) tier. GUI: a second cascading **Pet** row beside Player (HasPet / NoPet / PetStatus / PetName) with live `[on now]` markers. Ecosystem survey behind the design: `docs/reference/pet-handling-other-luas.md`. |
 
 **OR groups (v54).** A rule may carry `whenAny = { { buff = "Sleep" }, { buff = "Lullaby" } }`
@@ -73,7 +74,8 @@ both legs. Field case: Toxin Earring poison-wakeup — `whenAny` of Sleep OR Lul
 WakeMeUp set.
 
 v2 candidates (matcher is an open table; additive): day/weather/moon beyond the obi rule,
-area, target type, subjob.
+area, subjob. (Target landed in v81 with `Self`; more target answers — party member,
+enemy, NPC — extend its dropdown, not the vocabulary.)
 
 ## Evaluation (ADR 0003)
 
@@ -81,7 +83,7 @@ Every matching Trigger applies: sort priority ascending, `EquipSet`/inline-equip
 later overlays earlier per slot. Full sets are replacements; partial sets are layers.
 Specificity defaults: Any 10 · skill/status 20 · **pet 22 / petStatus 23** · moving 25 ·
 class/element 30 · family/contains 40 · **group 45** · exact name/petName 50 ·
-**Automations 60** · player state 95 · Mode 100. Ties: file order. A `group`
+**target 55** · **Automations 60** · player state 95 · Mode 100. Ties: file order. A `group`
 rule is a baseline a per-spell `name` rule overrides, and still beats `contains` / `skill`.
 
 Groups are stored in a `Groups` section of the trigger file, beside `Modes` — a named,
