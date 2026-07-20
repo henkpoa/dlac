@@ -2350,7 +2350,14 @@ do
         lookupByName = lookupByName, ownedCounts = owned.counts,  -- automations manifest (owned staves/obis)
         ownedList = buildOwned,                                   -- max-MP manifest (piece MP values)
         allEquipList = buildAllEquip,                             -- AutoCraft panel: full catalog (owned OR not)
-        haveInBags = owned.haveInBags,                            -- max-MP batteries must be equippable NOW
+        -- Automation ladders plan equips for RIGHT NOW, so owned-somewhere is
+        -- not enough: a stored piece (no copy in Inventory/Wardrobes) is
+        -- invisible to LAC's equip, which drops it SILENTLY -- and a staged
+        -- winner that never lands blocks every candidate behind it (field
+        -- round 3: Radiant Lantern, stored, froze the whole equip queue).
+        haveInBags = function(rec)
+            return owned.haveInBags(rec) and not owned.isStored(rec);
+        end,
         playerJob = function()                                    -- battery job-eligibility (no gData in this state)
             local abbr = nil;
             pcall(function() abbr = JOB_ABBR[AshitaCore:GetMemoryManager():GetPlayer():GetMainJob()]; end);

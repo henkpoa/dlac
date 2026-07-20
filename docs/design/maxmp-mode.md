@@ -146,12 +146,15 @@ so a big rest tick never caps against a small battery's headroom:
   runs profile-side; (b) engine-side staleness heuristic — a winner whose worn
   piece hasn't moved after N identical decisions yields to the next candidate;
   (c) leave it to the player, now that the v77 note names the piece.
-- **Stored batteries**: the manifest wiring passes `owned.haveInBags` where
-  the comment says "must be equippable NOW" (gearui deps) — but `haveInBags`
-  counts STORED copies (test AV8), so `mpBest` can ladder a battery in Mog
-  Safe and MP-EQUIP would stall the same silent way. Fix is a one-liner
-  (`haveInBags(rec) and not isStored(rec)` at the wiring site); parked to keep
-  the field test single-variable.
+- ~~**Stored batteries**~~ FIXED after field round 3 confirmed it live
+  (Radiant Lantern, owned but stored, planned as the neck battery — LAC
+  dropped the equip silently and, as the biggest gain, it froze the other 7
+  staged batteries behind it). The gearui deps wiring now passes
+  `haveInBags(rec) and not isStored(rec)`, so every automation ladder (mp,
+  staff/obi, craft/HELM/fish) only plans pieces equippable RIGHT NOW; the
+  manifest's inventory-change rebuild keeps it current as gear moves bags.
+  NOTE the release direction can still stall the same way — the SET side
+  (`BuildDynamicSets`) has no availability check (first open question above).
 
 - Does unequipping +MP gear on CatsEyeXI clamp current MP exactly as retail
   (cur = min(cur, newMax))? The hold rule assumes yes — field-verify with
