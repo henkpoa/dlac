@@ -603,6 +603,36 @@ check('MS10c nil-safe', dispatchM.mpStageEligible(nil, msOcc, msRs), nil);
 end)();
 
 -- ---------------------------------------------------------------------------
+-- MPL. /dl plan line builder (dispatch.mpPlanLines, engine v79) -- pure
+--      assembly with injected inputs. Rows sort biggest gain first (= the
+--      full-pool equip order), a worn pick reads WORN (gain 0), locked
+--      slots print LOCKED and sink below real rows, above-level ladder
+--      rungs are tagged (LvNN), and a missing manifest answers with the
+--      self-heal hint instead of a plan.
+-- ---------------------------------------------------------------------------
+(function()
+local data = {
+    mp = { ['vermillion cloak'] = 30, ['astral ring'] = 25 },
+    mpBest = {
+        body  = { { name = 'Bunzi\'s Robe', mp = 50, level = 99 },
+                  { name = 'Vermillion Cloak', mp = 30, level = 59 } },
+        ring1 = { { name = 'Astral Ring', mp = 25, level = 10 } },
+        neck  = { { name = 'Star Necklace', mp = 10, level = 30 } },
+    },
+};
+local worn = function(l) if l == 'body' then return 'Vermillion Cloak'; end return nil; end
+local lines = dispatchM.mpPlanLines(data, 800, 800, 75, worn, { neck = true });
+check('MPL1 header first',            string.find(lines[1], 'battery plan') ~= nil, true);
+check('MPL2 biggest gain sorts first', string.find(lines[2], 'ring1: Astral Ring', 1, true) ~= nil, true);
+check('MPL3 worn pick tagged WORN',   string.find(lines[3], 'WORN', 1, true) ~= nil, true);
+check('MPL3b pick respects level',    string.find(lines[3], 'body: Vermillion Cloak', 1, true) ~= nil, true);
+check('MPL4 locked slot sinks below', string.find(lines[4], 'neck: LOCKED', 1, true) ~= nil, true);
+check('MPL5 above-level rung tagged', string.find(lines[3], '(Lv99)', 1, true) ~= nil, true);
+check('MPL6 no manifest -> self-heal hint',
+    string.find(dispatchM.mpPlanLines(nil)[1], 'no battery data', 1, true) ~= nil, true);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- L. THE central stats-at-level resolver (levelstats.effective), against the
 --    REAL generated scaling data: Tamas Ring is MP 15 on paper, 29 at Lv74,
 --    30 fully scaled (Lv75). Every section -- gearui display/scoring, gearoptim

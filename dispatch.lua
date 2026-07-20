@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 78;   -- 78: ADR 0010 scoped WITHIN the set (Henrik's ruling; field: worn Rimestone Lv60 kept a Lv20 Rouser out of Range). The keep-higher-Level contest still arbitrates a Range+Ammo pair the PLAN names, but a merely-WORN trinket no longer defends Range from outside it -- the engine DISPLACES it (Ammo='remove', LAC's native unequip; equipping the weapon alone would just be server-stripped, the original flap) unless Ammo is locked or pin-reserved. And MP-EQUIP never stages a battery whose RSlot reserves an occupied slot (planned or worn) -- a doomed biggest-gain pick would also win the one-per-dispatch stage forever and starve every other battery. Pure rules M.trinketWornDisplace / M.mpStageEligible (tests TR11-15, MS9-10, TB*).
+M.VERSION = 79;   -- 79: /dl plan -- the maxmp battery plan as chat lines (kept OFF the Automations tab per the hidden ruling). Per slot: the live pick (mpPick at the current level), its MP, WORN/gain-vs-worn/LOCKED status and the full ladder with above-level rungs tagged (LvNN); rows sorted biggest gain first = the equip order at a full pool; header restates the two staging rules; footer flags the stale-manifest tell (a listed piece not in Inventory/Wardrobes). Pure assembly M.mpPlanLines (tests MPL*), inputs injected; the command glue gFunc-gates like /dl ls (one state, one printer). Engine dispatch rules untouched.
+                  -- 78: ADR 0010 scoped WITHIN the set (Henrik's ruling; field: worn Rimestone Lv60 kept a Lv20 Rouser out of Range). The keep-higher-Level contest still arbitrates a Range+Ammo pair the PLAN names, but a merely-WORN trinket no longer defends Range from outside it -- the engine DISPLACES it (Ammo='remove', LAC's native unequip; equipping the weapon alone would just be server-stripped, the original flap) unless Ammo is locked or pin-reserved. And MP-EQUIP never stages a battery whose RSlot reserves an occupied slot (planned or worn) -- a doomed biggest-gain pick would also win the one-per-dispatch stage forever and starve every other battery. Pure rules M.trinketWornDisplace / M.mpStageEligible (tests TR11-15, MS9-10, TB*).
                   -- 77: MP-RELEASE names the INCOMING piece -- 'Hands=MP-RELEASE Oracle's Gloves -> Blessed Mitts +1 (+7 MP surplus spent)'. Field round 1 of v76: a release re-decided identically for 8+ seconds with the worn piece unmoved -- the swap-back never landed, and because the stalled slot keeps the smallest surplus it BLOCKS the whole release queue behind it. Root cause NOT yet found (wardrobe availability was a dead lead -- the server enables all wardrobe flags; Henrik confirms no unavailable gear). The named target turns any future stall into a checkable fact instead of a guess. BuildDynamicSets checks level only (no ownership/bag check) -- a plan can name stored/unowned/bazaared gear; parked in docs/design/maxmp-mode.md.
                   -- 76: maxmp STAGED -- at most ONE battery moves per dispatch (field report: the mode read as an on/off switch, everything on / everything off in one dispatch). Release: smallest surplus first (the big battery stays on longest, per the original spec) -- the all-at-once release was also an accounting bug: N same-dispatch releases drop max MP by the SUM of surpluses while each per-slot hold justified only its own, and the server clamp (cur = min(cur, newMax)) ate the difference; a single smallest-surplus release is clamp-free by construction. Equip: biggest gain first at a full pool; the full-pool gate then paces the ladder (the next battery waits until recovery refills the last one's headroom). Pure choosers M.mpStageRelease/M.mpStageEquip (tests MS*); post-pass 'mp-equip-uncovered' renamed 'mp-stage' (PL2) -- it now owns BOTH the single release and the single equip across covered + uncovered slots.
                   -- 75: /dl lock set <name> -- the Sets tab's "Equip & Lock" (Incursion T3: the server locks your equipment on entry). Wears the COMMITTED set once -- bracketed ClearBuffer/ProcessBuffer, the PetAction tick's lesson, or the equips evaporate -- then locks ALL 16 slots so the engine stops proposing swaps the server would refuse; stale locks are cleared first so the set lands whole. Release: /dl lock all off (or the Sets tab's Unlock). Dispatch rules untouched.
@@ -1235,6 +1236,71 @@ function M.mpStageEquip(cands)
         end
     end
     return best;
+end
+
+-- The battery plan as chat lines (/dl plan, v78 -- Henrik: "give me the
+-- plan"). PURE assembly, inputs injected so it runs headless (tests MP*):
+-- data = the autogear manifest (mp + mpBest), cur/max/level the live
+-- numbers, wornOf(lslot) -> worn item name, locks = M.locks. Rows sort
+-- biggest gain first = the equip order at a full pool. Gains are vs WORN
+-- gear (the uncovered-slot math) -- the live dispatch additionally weighs
+-- each set's own piece, so covered slots can differ slightly in play.
+local MP_PLAN_ORDER = { 'ammo', 'head', 'neck', 'ear1', 'ear2', 'body', 'hands',
+                        'ring1', 'ring2', 'back', 'waist', 'legs', 'feet' };
+function M.mpPlanLines(data, cur, max, level, wornOf, locks)
+    if type(data) ~= 'table' or type(data.mpBest) ~= 'table' then
+        return { 'maxmp plan: no battery data yet -- open the Automations tab (the manifest self-heals) or relog.' };
+    end
+    local mp = (type(data.mp) == 'table') and data.mp or {};
+    local rows = {};
+    for _, lslot in ipairs(MP_PLAN_ORDER) do
+        if locks ~= nil and locks[lslot] == true then
+            rows[#rows + 1] = { slot = lslot, gain = -2,
+                txt = string.format('%s: LOCKED -- the engine leaves it alone', lslot) };
+        else
+            local cands = data.mpBest[lslot];
+            local c = M.mpPick(cands, level);
+            if c ~= nil then
+                local worn = (wornOf ~= nil) and wornOf(lslot) or nil;
+                local wornMP = (worn ~= nil) and (mp[string.lower(worn)] or 0) or 0;
+                local gain, tag = (c.mp or 0) - wornMP, nil;
+                if worn ~= nil and string.lower(worn) == string.lower(c.name) then
+                    gain, tag = 0, 'WORN';
+                elseif gain > 0 then
+                    tag = string.format('+%d gain over %s', gain, worn or 'empty slot');
+                else
+                    tag = string.format('worn %s already best (+%d MP)', tostring(worn), wornMP);
+                end
+                -- Ladder tail: the fallback rungs, so "in what order" is visible
+                -- per slot too (rung 1 may be gear to grow into; skipped rungs
+                -- above the current level print with their level).
+                local lad = '';
+                if type(cands) == 'table' and cands.name == nil and #cands > 1 then
+                    local parts = {};
+                    for _, r in ipairs(cands) do
+                        if type(r) == 'table' and type(r.name) == 'string' then
+                            parts[#parts + 1] = string.format('%s %d%s', r.name, r.mp or 0,
+                                ((tonumber(r.level) or 0) > (tonumber(level) or 0)) and (' (Lv' .. tostring(r.level) .. ')') or '');
+                        end
+                    end
+                    if #parts > 1 then lad = '   [ladder: ' .. table.concat(parts, ' > ') .. ']'; end
+                end
+                rows[#rows + 1] = { slot = lslot, gain = gain,
+                    txt = string.format('%s: %s (+%d MP) -- %s%s', lslot, c.name, c.mp or 0, tag, lad) };
+            end
+        end
+    end
+    table.sort(rows, function(a, b)
+        if a.gain ~= b.gain then return a.gain > b.gain; end
+        return a.slot < b.slot;
+    end);
+    local lines = {};
+    lines[1] = string.format('maxmp battery plan -- MP %s/%s, level %s. Equip order below (biggest gain first, FULL pool only); releases go smallest surplus first as you spend.',
+        tostring(cur), tostring(max), tostring(level));
+    for _, r in ipairs(rows) do lines[#lines + 1] = r.txt; end
+    if #rows == 0 then lines[#lines + 1] = '(no batteries owned for any slot)'; end
+    lines[#lines + 1] = 'Main/Sub/Range exempt (TP preservation). A piece listed here that is NOT in Inventory/Wardrobes = stale manifest -- open the Automations tab or move any bag item to rebuild.';
+    return lines;
 end
 
 -- ---------------------------------------------------------------------------
@@ -3885,8 +3951,24 @@ if inLac() then
         -- WHITELIST FIRST, branch second: a new subcommand needs adding HERE as well as
         -- below, or it returns in silence and looks like the command does not exist
         -- (v46's /dl instdiag, an hour lost to exactly this).
-        if sub ~= 'mode' and sub ~= 'why' and sub ~= 'triggers' and sub ~= 'env' and sub ~= 'lock' and sub ~= 'sets' and sub ~= 'profile' and sub ~= 'ls' then return; end
+        if sub ~= 'mode' and sub ~= 'why' and sub ~= 'triggers' and sub ~= 'env' and sub ~= 'lock' and sub ~= 'sets' and sub ~= 'profile' and sub ~= 'ls' and sub ~= 'plan' then return; end
         e.blocked = true;
+
+        if sub == 'plan' then
+            -- The maxmp battery plan (v78). gFunc gates to the LAC state (the
+            -- ls pattern: the same command fires in the ADDON state too --
+            -- one state, one printer).
+            local g = rawget(_G, 'gFunc');
+            if g == nil then return; end
+            local pl = nil;
+            pcall(function() pl = gData.GetPlayer(); end);
+            local cur, mx = playerMP();
+            local lines = M.mpPlanLines(ensureAutoLoaded(), cur, mx,
+                playerLevel({ player = pl }), wornItemName, M.locks);
+            print('[dlac] ' .. lines[1]);
+            for i = 2, #lines do print('    ' .. lines[i]); end
+            return;
+        end
 
         if sub == 'ls' then
             -- Lockstyle sets (v38; per-profile v40; JOB ENTRY v41; engine-built

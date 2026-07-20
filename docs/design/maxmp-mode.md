@@ -21,7 +21,11 @@ trigger rules), which the existing machinery already handles. This mirrors the
 
 ## Stage 1 — equip + hold (BUILT, engine VERSION 10; STAGED movement v76)
 
-`/dl mode maxmp` is the whole interface — no set-building required:
+`/dl mode maxmp` is the whole interface — no set-building required — plus
+`/dl plan` (v79): the battery plan as chat lines, per slot the live pick with
+WORN/gain/LOCKED status and the full ladder, sorted biggest gain first (= the
+full-pool equip order), with a stale-manifest tell in the footer. Chat-only
+on purpose: the Automations tab stays maxmp-free (the hidden ruling).
 
 - **MP-EQUIP**: whenever the pool is FULL (`curMP >= maxMP`), each dispatch
   wears each slot's best owned battery — for slots the set addresses (instead
