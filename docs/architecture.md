@@ -283,6 +283,16 @@ with a missing set). Members are added by free-name typing or from a searchable,
 job-filtered spell/ability browse-list with multi-mark (issue #26, G3 — pure list/search
 core `gear/actionpicker.lua`).
 
+Also owns the **Blueprints section** (`M.renderBlueprints`, issue #65 / PRD #64) — the same
+Groups-style nav section (NOT a uihost tab; smoke_ui asserts `host.get('blueprints')` is nil).
+A per-rule **"bp" (Save as Blueprint)** button on every trigger row captures the rule into the
+per-character library (`gear/blueprintsmodel.lua`, `<char>\dlac\blueprints.lua` — outside
+Profiles, addon-state only); the section lists the library with **Stamp onto this job** (insert
+the rule into the current job's Handler and commit through the SAME `trigCommit` path — engine
+hot-reloads it, no Reload LAC; warn-but-allow on an identical rule), **Edit** (the existing rule
+editor bound to the library entry via `trig._bpEdit` — no second editor, never retro-edits
+stamped Triggers), rename and Delete. Library writes go through the `lib/safewrite` ladder.
+
 ### ui/automationsui.lua — Automations tab + the manifest machinery
 The whole automations block, extracted verbatim from triggersui 2026-07-18 (it owned
 30 of triggersui's top-level locals and shared nothing with the trigger editor beyond
@@ -349,6 +359,23 @@ comma-separated, ALL-terms-substring search predicate (the item-search shape, mi
 aliases). triggersui caches the list per job and draws the multi-mark popup; the two helpers
 are the whole browse capability, coupling-free so an ordinary `name` trigger condition can
 adopt the same picker later (issue #12). Headless-tested (ACP*). Never seeded into LAC.
+
+### gear/blueprintsmodel.lua — Blueprints library + stamp transform (pure)
+The Ashita/imgui/file-IO-free core of **Blueprints** (issue #65, slice 1; PRD #64; CONTEXT.md
+term, ADR 0009 the structural precedent). A Blueprint is a job-independent saved Trigger kept
+in ONE per-character library file OUTSIDE Profiles (`<char>\dlac\blueprints.lua`) — addon-state
+only, the engine never reads it (no VERSION involvement). An entry is `{ name, handler, rule }`
+where `rule` is the ordinary trigger edit-model rule VERBATIM (`when`/`whenAny`, a `set`
+string/list OR inline `equip` payload, optional priority) — so a stamped rule is an ordinary
+Trigger forever. Exports: `fromRaw`/`parse`/`serialize` (the library file, sandboxed load +
+deterministic emit — a `blueprints v1` table), `defaultName` (a readable condition summary,
+e.g. "Sleep or Lullaby"), `add`/`rename`/`remove` (CRUD), `makeEntry`, and the two transforms
+the headless suite pins (TGB*): **`stamp(entry, jobData)`** → a NEW data table with the rule
+appended to the entry's Handler (non-mutating, deep-copied → detached both ways) and
+**`identicalExists`** (the warn-but-allow double-stamp check). `emitRule` is a self-contained
+mirror of `dispatch.serializeTriggers`' per-rule form (issue #65 forbids any engine change), so
+the file, the identical-rule canonical form, and (slice 2) the shareable text render a rule ONE
+way. triggersui owns the file IO (the safewrite ladder) + the section render. Never seeded into LAC.
 
 ### gear/profilesets.lua — profile `sets` reader
 Reads the loaded profile's `sets` table for the Sets tab. In LAC state reads
@@ -588,6 +615,7 @@ Per-character, under `<install>\config\addons\luashitacast\<Char>_<ServerId>\`
 | `dlac\profiles\<Name>\triggers\<JOB>.lua` | triggersui/dispatch | trigger rules |
 | `dlac\triggers\<JOB>.lua` | (legacy, read-only fallback) | pre-profile trigger rules |
 | `dlac\autogear.lua` | automationsui | automations manifest |
+| `dlac\blueprints.lua` | triggersui (Blueprints section) | per-character Blueprint library (reusable trigger rules; outside Profiles, addon-state only — the engine never reads it) |
 | `dlac\ammostate.lua` | ammowatch (Automations > AutoAmmo) | AutoAmmo config (persisted `enabled`, jobs map, the priority list) — the engine reads it per second |
 | `dlac\modestate.lua` | dispatch | mode/lock/VERSION mirror |
 | `dlac\uiflags.lua` | gearui | debug/autosync flags |

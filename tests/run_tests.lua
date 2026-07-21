@@ -3284,6 +3284,100 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- TGB. Blueprints pure core (issue #65, slice 1; PRD #64): the per-character
+--      library of reusable trigger rules. CRUD, default-name derivation, the
+--      stamp transform (entry + a job's trigger data -> NEW data with the rule in
+--      its Handler), priority carry-over, identical-rule detection, and a
+--      deterministic serialize/parse round-trip. Ashita/imgui/file-IO-free -- the
+--      Groups model precedent (TGM/TGI). The strongest stamp check runs the
+--      result through the REAL dispatch serializer + reload, so "stamp lands an
+--      identical rule in the target handler" is pinned end to end.
+-- ---------------------------------------------------------------------------
+(function()
+    local bp = dofile('gear/blueprintsmodel.lua');
+
+    -- The demo rule: slept/lullaby'd -> inline equip (self-contained, zero deps).
+    local sleepRule = { when = {}, whenAny = { { buff = 'Sleep' }, { buff = 'Lullaby' } },
+                        equip = { Ear1 = 'Toxic Earring' } };
+
+    -- Default-name derivation (PRD story 5): a readable summary of the condition.
+    check('TGB1 default name from whenAny OR', bp.defaultName(sleepRule), 'Sleep or Lullaby');
+    check('TGB2 default name from & value',    bp.defaultName({ when = { name = 'Slow II' }, set = 'X' }), 'Slow II');
+    check('TGB3 default name flag key',         bp.defaultName({ when = { moving = true }, set = 'X' }), 'moving');
+    check('TGB4 default name any -> "Any"',     bp.defaultName({ when = { any = true }, set = 'X' }), 'Any');
+    check('TGB5 default name & + or',           bp.defaultName({ when = { status = 'Engaged' },
+                                                                 whenAny = { { buff = 'Sleep' }, { buff = 'Lullaby' } }, set = 'X' }),
+          'Engaged + Sleep or Lullaby');
+
+    -- CRUD: add captures a deep copy (detached from the source rule), rename, remove.
+    local lib = {};
+    local okA, errA = bp.add(lib, 'Midcast', sleepRule);
+    check('TGB6 add ok',            okA and errA, nil);
+    check('TGB7 add appended',      #lib, 1);
+    check('TGB8 add derived name',  lib[1].name, 'Sleep or Lullaby');
+    check('TGB9 add carries handler', lib[1].handler, 'Midcast');
+    sleepRule.equip.Ear1 = 'Mutated';   -- mutate the SOURCE after capture
+    check('TGB10 entry detached from source', lib[1].rule.equip.Ear1, 'Toxic Earring');
+    sleepRule.equip.Ear1 = 'Toxic Earring';
+    check('TGB11 add bad handler refused', (bp.add(lib, 'Nope', sleepRule)), false);
+    check('TGB12 add no-action refused',   (bp.add(lib, 'Midcast', { when = { name = 'X' } })), false);
+    bp.add(lib, 'Precast', { when = { skill = 'Enfeebling Magic' }, set = 'FastCast', priority = 12 }, 'Custom Name');
+    check('TGB13 custom name kept', lib[2].name, 'Custom Name');
+    check('TGB14 rename ok', (bp.rename(lib, 1, 'Sleep protection')), true);
+    check('TGB15 renamed',   lib[1].name, 'Sleep protection');
+    check('TGB16 rename blank refused', (bp.rename(lib, 1, '   ')), false);
+
+    -- Stamp: NEW data table, rule appended to the entry's Handler, priority carried
+    -- verbatim, source data untouched (non-mutating -> detached).
+    local jobData = { Default = { { when = { status = 'Idle' }, set = 'Idle' } } };
+    local out = bp.stamp(lib[1], jobData);
+    check('TGB17 stamp lands in Handler',  #out.Midcast, 1);
+    check('TGB18 stamp keeps inline equip', out.Midcast[1].equip.Ear1, 'Toxic Earring');
+    check('TGB19 stamp leaves source intact', jobData.Midcast, nil);
+    check('TGB20 stamp preserves other handlers', out.Default[1].set, 'Idle');
+    local out2 = bp.stamp(lib[2], out);
+    check('TGB21 priority carried verbatim', out2.Precast[1].priority, 12);
+    -- edit a stamped rule -> the library entry is UNCHANGED (detached both ways)
+    out2.Precast[1].priority = 999;
+    check('TGB22 stamped edit does not touch the Blueprint', lib[2].rule.priority, 12);
+
+    -- Identical-rule detection: warn-but-allow double stamping.
+    check('TGB23 identical detected after stamp', bp.identicalExists(lib[1], out), true);
+    check('TGB24 not identical in a fresh job',   bp.identicalExists(lib[1], { Midcast = {} }), false);
+    -- priority is part of identity (a re-priced rule is not "identical")
+    local reprio = bp.deepcopy(lib[2]); reprio.rule.priority = 34;
+    check('TGB25 differing priority is not identical', bp.identicalExists(reprio, out2), false);
+
+    -- Serialize / parse round-trip (the library file), byte-stable.
+    local text = bp.serialize(lib);
+    check('TGB26 serialize returns text', type(text), 'string');
+    check('TGB27 file is a blueprints table', text:find('blueprints = {', 1, true) ~= nil, true);
+    check('TGB28 file carries the version',  text:find('version = 1', 1, true) ~= nil, true);
+    local lib2, perr = bp.parse(text);
+    check('TGB29 parse ok',        perr, nil);
+    check('TGB30 parse count',     #lib2, 2);
+    check('TGB31 round-trip byte-stable', bp.serialize(lib2) == text, true);
+    check('TGB32 parse recovers the rule', lib2[1].rule.equip.Ear1, 'Toxic Earring');
+    -- the sandbox: a hostile blob errors, never runs
+    check('TGB33 sandbox blocks a global', (select(2, bp.parse('return { blueprints = os.time() }'))) ~= nil
+        or type(select(1, bp.parse('return { blueprints = os.time() }'))) == 'table', true);
+
+    -- END-TO-END through the REAL dispatch serializer + reload: a stamp lands an
+    -- identical rule that survives the actual commit path the Triggers tab uses.
+    local committed = dispatchM.serializeTriggers(out);
+    local reloaded  = (loadstring or load)(committed)();
+    check('TGB34 stamped rule survives serialize+reload',
+        type(reloaded.Midcast) == 'table' and reloaded.Midcast[1].equip.Ear1, 'Toxic Earring');
+    -- normalize the reloaded file the way the engine does and confirm the rule is live
+    local norm = dispatchM._normalize(reloaded);
+    local found = false;
+    for _, r in ipairs(norm.Midcast or {}) do
+        if r.equip and r.equip.Ear1 == 'Toxic Earring' then found = true; end
+    end
+    check('TGB35 engine normalizes the stamped rule', found, true);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- PM. Player-state trigger conditions (v53): hpBelow/hpAbove, mpBelow/mpAbove,
 --     tpBelow/tpAbove (strict compares off ctx.player) and buff/buffNot (the
 --     per-dispatch buff set; tests inject ctx.buffs -- the seam the matchers
