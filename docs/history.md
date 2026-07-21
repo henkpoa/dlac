@@ -3805,3 +3805,59 @@ scaffolding (`ctx.mpCeded` / `ctx.mpRespectLocks` consulted from inside other
 claimants' resolves) into a discrete stage, and `/dl why` per-slot claimant + veto
 attribution. The live apply still runs the reverse-rank overlay loop, not
 `arbResolve`; that unification is step 4's job.
+
+## The Arbiter, step 4: collapse hardcoded arms; /dl why names claimants (2026-07-21, engine v100)
+
+**Theme:** make the registry the ONLY precedence authority a reader has to consult,
+and let the pure resolve that DECIDES also EXPLAIN. Two deliverables from step 3's
+deferred list, plus the doc that lets the next claimant (AutoAcc) join without an
+engine change.
+
+**MaxMP becomes a registered CLAIM (the scaffolding retires).** Through step 3 MaxMP
+was woven-only: it had a rank *row* but no claim *table*, so its precedence lived in
+`ctx.mpCeded` — a rank-consult computed from `arbCededAbove` and read from *inside
+every other claimant's* `equipResolved`. Step 4 gives it a real registry entry:
+`mpClaimFor(ctx)` turns the banded ladder's per-slot target into a claim table
+(`{ [Slot] = rungName }`) and `M.dispatch` registers `claims['MaxMP'] = mpClaim`
+before computing `ctx.mpCeded` from that same `claims`. `arbCededAbove` excludes
+MaxMP's own row, so the ceded set is byte-identical — **no behavior change**, but the
+*precedence* now flows from one registry rather than woven scaffolding. Only MaxMP's
+EQUIP stays woven (hold/release/upgrade, sticky pairs, movement yield are within-set
+resolution, deliberately outside the Arbiter per ADR 0012). `ctx.mpRespectLocks` is
+now computed *before* `mpClaimFor` so the claim and the woven `mpBands` agree on which
+locked slots MaxMP dresses.
+
+**`/dl why` names the winner + rank per slot.** The apply loop already collected the
+discrete claims; step 4 also merges the trigger-overlay result into `floorTbl` (the
+floor the claims dress over), then runs the Arbiter's pure resolve over the SAME
+claims + rank + floor and appends a `claimants (rank order)` block to the trace. New
+pure seams: `M.arbExplain(claims, order, floor)` → per slot, the rank-ordered list of
+every claimant with an opinion (first = winner); `M.arbWhyLines` → the formatted lines
+— `Ammo: AutoAmmo (rank 3) over MaxMP (rank 4)`, a veto slot reads `stopped by Locks`,
+and the slots the trigger floor dressed uncontested collapse into one trailing
+`Triggers floor (rank 8, uncontested): ...` summary (a floor-only slot wins only when no
+claim touched it, so nothing is lost and idle `/dl why` stays readable). Slot matching is
+case-insensitive because
+the producers disagree (overlay tables proper-case, `M.locks` lowercase). Locks join the
+attribution as the veto claim (`arbLockClaim(M.locks)`); the live equip already honoured
+them via `layerRespectsLocks` / `ctx.mpRespectLocks`. A new `mSig` (MaxMP target) joins
+the retrace signature so the attribution stays fresh when the battery plan shifts.
+
+**The Claim record shape is documented** (arbExplain header comment + architecture.md
+"The Arbiter — claim registry"): a Claim is `{ [SlotKey] = itemName }`; a new claimant
+joins with ONE rank row + ONE claim table (+ an `applyClaim` closure if it applies a
+discrete overlay), never a new engine arm. AutoAcc — the per-piece claimant on
+`feature/autoacc` — is the shape's first future consumer; its `accResolveSet` arm in
+`equipResolved` stays put as the shape-ready seam.
+
+**What stayed OUT, unchanged** (existing test families prove it — the whole suite is
+green): sync-settle/proximity holds, the PetAction gate, AutoStaff/AutoObi virtual
+entries, Dynamic flattening, the ADR 0010 trinket contests, and every within-set
+resolution arm of `equipResolved`. The Arbiter arbitrates *between* claimants; a
+claimant's own conditions stay inside the feature.
+
+**Tests:** AR11 (whole claim path pinned in one `arbExplain` resolve — the Ammo cede,
+a battery over craft armor, a battery in a bare ring, the Locks veto, a floor-only
+slot), AR12 (the `/dl why` line format incl. the issue's headline example + canonical
+LAC slot order). 2151 headless + 199 smoke green. Engine v100, addon.version
+2026.07.21d.

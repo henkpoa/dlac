@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 99;   -- 99: THE ARBITER, step 3 (ADR 0012) -- LOCKS BECOME THE DRAGGABLE VETO ROW. The lock veto is no longer an absolute per-slot strip inside every equipResolved: it is a RANK position. A claimant ranked ABOVE Locks punches through a locked slot; one ranked BELOW it stops. The engine's separate lock special-casing is retired -- the hidden "pins never check locks" rule and the unconditional first-arm strip are gone, replaced by the registry law: each claim layer's equipResolved is told whether to respect locks (rank below Locks) or punch through (above), and woven MaxMP consults its OWN rank vs Locks (ctx.mpRespectLocks) for the band build AND the mp-stage placement (the old hardcoded M.locks skips now derive from rank). Default order Pins > Locks > ... preserves today's field behavior: pins punch through locks, every other claimant + the Triggers floor stop at them. Locks at TOP = absolute veto including pins; dragged lower = everyone above punches through, everyone below stops. Pure resolve model M.arbResolve gains the Locks veto (M.LOCK_HELD sentinel + M.arbLockClaim); /dl lock + Equip & Lock user-facing behavior unchanged. Tests LV* (position semantics + the equipResolved/mpBands wiring).
+M.VERSION = 100;  -- 100: THE ARBITER, step 4 (ADR 0012) -- COLLAPSE HARDCODED ARMS; /dl why NAMES CLAIMANTS. The registry is now the SINGLE precedence authority: MaxMP registers a proper CLAIM (mpClaimFor -> claims['MaxMP'] = its battery targets), so ctx.mpCeded derives from that one registry and the woven rank-consult scaffolding is retired -- only MaxMP's EQUIP stays woven (hold/release/upgrade/sticky/movement-yield are within-set resolution, deliberately outside the Arbiter). /dl why gains a per-slot CLAIMANT ATTRIBUTION block: the pure resolve (M.arbExplain / M.arbWhyLines) runs over the SAME claims + rank + floor the live overlay applied and names every contested slot's winner + rank -- 'Ammo: AutoAmmo (rank 3) over MaxMP (rank 4)', veto slots read 'stopped by Locks', floor-only slots 'Triggers (floor)'. The Claim record shape is documented at the registry (arbExplain header) + architecture.md: a new claimant (AutoAcc next) joins as ONE rank row + ONE claim table, no new arm. Holds + within-set resolution (sync settle, PetAction, AutoStaff/AutoObi, ADR 0010) unchanged. Tests AR11/AR12 (whole-path order pinning + /dl why attribution, headless).
+                  -- 99: THE ARBITER, step 3 (ADR 0012) -- LOCKS BECOME THE DRAGGABLE VETO ROW. The lock veto is no longer an absolute per-slot strip inside every equipResolved: it is a RANK position. A claimant ranked ABOVE Locks punches through a locked slot; one ranked BELOW it stops. The engine's separate lock special-casing is retired -- the hidden "pins never check locks" rule and the unconditional first-arm strip are gone, replaced by the registry law: each claim layer's equipResolved is told whether to respect locks (rank below Locks) or punch through (above), and woven MaxMP consults its OWN rank vs Locks (ctx.mpRespectLocks) for the band build AND the mp-stage placement (the old hardcoded M.locks skips now derive from rank). Default order Pins > Locks > ... preserves today's field behavior: pins punch through locks, every other claimant + the Triggers floor stop at them. Locks at TOP = absolute veto including pins; dragged lower = everyone above punches through, everyone below stops. Pure resolve model M.arbResolve gains the Locks veto (M.LOCK_HELD sentinel + M.arbLockClaim); /dl lock + Equip & Lock user-facing behavior unchanged. Tests LV* (position semantics + the equipResolved/mpBands wiring).
                   -- 98: THE ARBITER, step 1.5 (ADR 0012 amendment) -- activities CO-CLAIM. The newest-armed (`at` stamp) exclusivity among Craft/HELM/Fishing is retired: each armed activity now claims whenever its own gates hold, all three may co-claim in one dispatch, and the rank-ordered apply loop settles every contested slot PER SLOT (arming an activity no longer stands the others down whole). The field case (PUP): idle floor Range = Animator; Fishing armed -> rod in Range; HELM also armed wins only its seven armor slots (HELM never claims weapons/Range/rings/Ammo), so the rod stays in Range until Fishing itself disarms. Each feature's own gates are UNCHANGED (HELM/Fishing Engaged/Dead stand-asides + Default-only, Craft Default-only, AutoAmmo's stand-down while fishing is live, MaxMP's rank consult). /dl prio now shows every concurrent claimant ON.
                   -- 97: THE ARBITER, step 1 (ADR 0012). One data-driven claim registry orders every Claim's application -- the hardcoded craft > HELM > fish > AutoAmmo > pin overlay sequence at the bottom of M.dispatch is gone, replaced by a single rank-ordered loop (applied LOW->HIGH so higher rank wins the slot, over the Trigger floor). The rank is one strict draggable list per character, persisted as the `arbstate` Statefile (hand-editable this step; the GUI writer is step 2; hot-reloaded on the 1s throttle, torn/missing = built-in default). Default order: Pins > Locks (veto placeholder, semantics unchanged) > AutoAmmo > MaxMP > Craft > HELM > Fishing > Triggers floor -- reproduces today's winners with ONE deliberate change: AutoAmmo's named projectile beats a MaxMP battery in Ammo. MaxMP stays WOVEN through the resolves (not a discrete overlay) but consults the rank via ctx.mpCeded: it never contests a slot won by a claimant ranked above it (so Ammo is ceded to AutoAmmo; batteries still override Craft/HELM/Fishing armor, both ranked below). Pure resolve core M.arbResolve / M.arbOrder / M.arbCededAbove (tests AR*); read-only /dl prio prints the live rank + per-claimant claim status. All claim-side conditions untouched (newest-armed craft/HELM/fish exclusivity, AutoAmmo's fishing stand-down, MaxMP 'remove'-respect / movement yield / sticky pairs / stage-eligibility).
                   -- 96: MOVEMENT YIELD (panel setting, manifest fmt 14 -- mpMoveYield + the mv map): while MOVING, a set piece carrying Movement+ beats the battery in its slot even at max MP (field ask: Pegasus Collar over the neck battery on BRD; the movement trigger set's piece flows, the battery steps aside, and stopping resumes the band plan untouched). The check is the FIRST arm of the per-slot MP branch -- before target logic, after the v91 'remove' skip -- and reads the same ctx.player.IsMoving the `moving` trigger matcher uses. Off by default; the MaxMP panel checkbox persists it inside the manifest like the pair override. /dl why notes it as MP-MOVE.
@@ -2297,6 +2298,138 @@ function M.arbCededAbove(claims, order, who)
     return ceded;
 end
 
+-- ---------------------------------------------------------------------------
+-- /dl why claimant attribution (ADR 0012, step 4). The Arbiter is the SINGLE
+-- precedence authority, so the same pure resolve that decides winners also
+-- EXPLAINS them. arbExplain returns, per slot, the rank-ordered list of every
+-- claimant that had an opinion on it (highest rank first) -- the first is the
+-- winner, the rest are who it beat. Slot matching is case-insensitive because
+-- the producers disagree on case: overlay tables use proper-case LAC keys, the
+-- Locks veto rides M.locks (lowercased). 'Triggers' is the floor row; 'Locks'
+-- the veto. Pure -- the order-pinning tests drive it directly (AR*/LV*).
+--
+-- THE CLAIM RECORD SHAPE (documented here for the next claimant, AutoAcc):
+-- a Claim is just `{ [SlotKey] = itemName }` -- the slots a feature wants to
+-- dress, one item per slot (or the M.LOCK_HELD sentinel for the veto). A new
+-- claimant joins the Arbiter with exactly TWO things and NO new arm:
+--   1. one rank row  -- add its name to ARB_ORDER_DEFAULT (and arbwatch's UI);
+--   2. one claim table -- register `claims['<Name>'] = <its slot->item table>`
+--      in M.dispatch, and (if it applies a discrete overlay) one applyClaim
+--      closure keyed by the same name.
+-- Everything else -- who wins each contested slot, ceding, the Locks veto,
+-- /dl why attribution -- falls out of the rank list automatically. MaxMP is the
+-- worked example: it registers a claim (mpClaimFor) yet keeps its equip WOVEN,
+-- because hold/release/upgrade/sticky/movement-yield are within-set resolution
+-- deliberately outside the Arbiter (ADR 0012 consequences).
+function M.arbExplain(claims, order, floor)
+    local src = {};
+    for name, tbl in pairs(claims or {}) do
+        if type(tbl) == 'table' then src[name] = tbl; end
+    end
+    src['Triggers'] = floor or {};
+    local rankOf = {};
+    for i, n in ipairs(order or {}) do rankOf[n] = i; end
+    -- Index each claimant's slots by lowercase key; keep a display key (prefer a
+    -- proper-case one when any producer used it).
+    local disp, held = {}, {};
+    for name, tbl in pairs(src) do
+        local m = {};
+        for slot, item in pairs(tbl) do
+            local ls = string.lower(tostring(slot));
+            m[ls] = item;
+            if disp[ls] == nil or string.find(tostring(slot), '%u') ~= nil then disp[ls] = slot; end
+        end
+        held[name] = m;
+    end
+    local out = {};
+    for ls, d in pairs(disp) do
+        local ops = {};
+        for _, name in ipairs(order or {}) do
+            local m = held[name];
+            if m ~= nil and m[ls] ~= nil then
+                ops[#ops + 1] = { name = name, rank = rankOf[name], item = m[ls] };
+            end
+        end
+        if #ops > 0 then out[d] = ops; end
+    end
+    return out;
+end
+
+-- The /dl why claimant lines: one per slot, naming the winning claimant + rank
+-- and, when contested, who it beat -- 'Ammo: AutoAmmo (rank 3) over MaxMP
+-- (rank 4)'. A slot the Locks veto won reads 'stopped by Locks'; a slot only the
+-- trigger floor named reads 'Triggers (floor)'. Slots emit in canonical LAC
+-- order for a stable, greppable trace. Pure (headless-tested): arbExplain +
+-- formatting, no engine reads.
+function M.arbWhyLines(claims, order, floor)
+    local attrib = M.arbExplain(claims, order, floor);
+    local slotRank = {};
+    for i, s in ipairs(LAC_SLOTS) do slotRank[s] = i; end
+    local rows = {};
+    for slot, ops in pairs(attrib) do rows[#rows + 1] = { slot = slot, ops = ops }; end
+    table.sort(rows, function(a, b)
+        local ra = slotRank[string.lower(tostring(a.slot))] or 99;
+        local rb = slotRank[string.lower(tostring(b.slot))] or 99;
+        if ra ~= rb then return ra < rb; end
+        return tostring(a.slot) < tostring(b.slot);
+    end);
+    -- Contested / veto slots get their own line; slots the trigger floor dressed
+    -- uncontested collapse into ONE trailing summary (a floor-only slot wins only
+    -- when NO claim touched it -- #ops == 1 -- so nothing is lost, and idle /dl
+    -- why is not buried under a dozen 'Triggers (floor)' lines).
+    local lines, floorOnly, floorRank = {}, {}, nil;
+    for _, r in ipairs(rows) do
+        local ops, win = r.ops, r.ops[1];
+        if win.name == 'Triggers' then
+            floorOnly[#floorOnly + 1] = tostring(r.slot);
+            floorRank = win.rank;
+        else
+            local rest = {};
+            for i = 2, #ops do rest[#rest + 1] = string.format('%s (rank %d)', ops[i].name, ops[i].rank or 0); end
+            local restStr = table.concat(rest, ', ');
+            if win.name == 'Locks' then
+                lines[#lines + 1] = string.format('%s: stopped by Locks (rank %d)%s',
+                    tostring(r.slot), win.rank or 0,
+                    (#rest > 0) and ('  [' .. restStr .. ' held off]') or '');
+            else
+                lines[#lines + 1] = string.format('%s: %s (rank %d)%s',
+                    tostring(r.slot), win.name, win.rank or 0,
+                    (#rest > 0) and ('  over ' .. restStr) or '');
+            end
+        end
+    end
+    if #floorOnly > 0 then
+        lines[#lines + 1] = 'Triggers floor (rank ' .. tostring(floorRank or 0) .. ', uncontested): '
+                            .. table.concat(floorOnly, ', ');
+    end
+    return lines;
+end
+
+-- MaxMP's CLAIM table (ADR 0012, step 4): canonical slot -> the rung name the
+-- banded ladder wants ON, for every slot mpBands targets a battery. This is
+-- MaxMP's registry entry -- ctx.mpCeded (rank consult) and /dl why attribution
+-- read it, retiring the step-1 scaffolding that consulted rank from inside other
+-- claimants' resolves. The battery EQUIP itself stays woven in equipResolved
+-- (holds are within-set). nil when maxmp is off or the manifest has no bands.
+-- ctx.mpRespectLocks must already be set so this and the woven mpBands agree on
+-- locked slots.
+local function mpClaimFor(ctx)
+    if M.modes['maxmp'] == nil then return nil; end
+    local mc = M.mpBands(ctx);
+    if type(mc) ~= 'table' or type(mc.target) ~= 'table' then return nil; end
+    local out = nil;
+    for lslot, want in pairs(mc.target) do
+        if type(want) == 'string' then
+            local canon = MP_SLOT_CANON[lslot];
+            if canon ~= nil then
+                out = out or {};
+                out[canon] = want;
+            end
+        end
+    end
+    return out;
+end
+
 -- respectLocks (ADR 0012, step 3): does THIS layer stop at a locked slot? A
 -- claim layer ranked BELOW Locks respects them (the veto stops it); one ranked
 -- ABOVE punches through (the strip is skipped for its slots). nil == true, so
@@ -3609,14 +3742,16 @@ function M.dispatch(event)
             aEquip, aWhy = ammoOverlayFor(ammoState, ctx, event, hits, fishOn);
         end
 
-        -- THE ARBITER (ADR 0012, step 1). One data-driven registry orders every
-        -- Claim's application: the discrete overlays are collected as claims,
+        -- THE ARBITER (ADR 0012, steps 1 + 4). One data-driven registry orders
+        -- every Claim's application: the discrete overlays are collected as claims,
         -- the live rank order is read from arbstate, and the whole thing is
         -- applied below in RANK order -- the hardcoded craft/HELM/fish/ammo/pin
-        -- sequence is gone. MaxMP stays woven this step but consults the rank
-        -- (ctx.mpCeded): it never contests a slot won by a claimant ranked above
-        -- it, computed ONCE here so every equipResolved call below (floor
-        -- included) sees the same ceded set.
+        -- sequence is gone. MaxMP now REGISTERS a claim too (step 4, below), so
+        -- ctx.mpCeded derives from the one registry: MaxMP never contests a slot
+        -- won by a claimant ranked above it, computed ONCE here so every
+        -- equipResolved call below (floor included) sees the same ceded set. Its
+        -- battery EQUIP stays woven (holds are within-set); only its precedence
+        -- and /dl why attribution live here.
         local arbOrder = M.arbOrder(ensureArbState());
         local claims = {};
         if pEquip ~= nil then claims['Pins']     = pEquip; end
@@ -3624,7 +3759,6 @@ function M.dispatch(event)
         if cEquip ~= nil then claims['Craft']     = cEquip; end
         if hEquip ~= nil then claims['HELM']      = hEquip; end
         if fEquip ~= nil then claims['Fishing']   = fEquip; end
-        ctx.mpCeded = M.arbCededAbove(claims, arbOrder, 'MaxMP');
         -- LOCKS ARE THE VETO ROW (ADR 0012, step 3). Locks sit at a rank; a
         -- claimant ABOVE the row punches through a locked slot, one BELOW stops.
         -- rankOf indexes the live order; layerRespectsLocks answers per claimant
@@ -3632,7 +3766,9 @@ function M.dispatch(event)
         -- punch through, the strip is skipped for its slots). The Triggers floor
         -- is always last, so it always respects. Woven MaxMP consults its OWN
         -- rank vs Locks (ctx.mpRespectLocks) -- carried on ctx because MaxMP runs
-        -- inside every equipResolved call and the band build alike.
+        -- inside every equipResolved call and the band build alike. Computed
+        -- BEFORE MaxMP's claim so mpClaimFor and the woven mpBands agree on which
+        -- locked slots MaxMP dresses.
         local rankOf = {};
         for i, n in ipairs(arbOrder) do rankOf[n] = i; end
         local lockRank = rankOf['Locks'] or 0;
@@ -3641,6 +3777,16 @@ function M.dispatch(event)
             return r == nil or r > lockRank;   -- below Locks (or unknown) => respect
         end
         ctx.mpRespectLocks = layerRespectsLocks('MaxMP');
+        -- MaxMP registers as a CLAIM (ADR 0012, step 4): its battery targets are a
+        -- claim table, so the rank list -- not woven scaffolding -- is the single
+        -- precedence authority. ctx.mpCeded now derives from this same registry
+        -- (arbCededAbove excludes MaxMP's own row, so the ceded set is unchanged),
+        -- and /dl why can name the battery in a contest. The battery EQUIP stays
+        -- woven inside equipResolved: hold/release/upgrade/sticky/movement-yield
+        -- are within-set resolution, deliberately outside the Arbiter.
+        local mpClaim = mpClaimFor(ctx);
+        if mpClaim ~= nil then claims['MaxMP'] = mpClaim; end
+        ctx.mpCeded = M.arbCededAbove(claims, arbOrder, 'MaxMP');
 
         if #hits == 0 and cEquip == nil and hEquip == nil and fEquip == nil and pEquip == nil and aEquip == nil then
             if event ~= 'Default' then   -- Default runs every frame; only action events trace a miss
@@ -3689,8 +3835,15 @@ function M.dispatch(event)
         end
         local aSig = '';                                  -- AutoAmmo decision changes must retrace too
         if aEquip ~= nil then aSig = 'Ammo=' .. tostring(aEquip.Ammo); end
+        local mSig = '';                                  -- MaxMP battery target changes must retrace (/dl why attribution)
+        if mpClaim ~= nil then
+            local mk = {};
+            for slot, item in pairs(mpClaim) do mk[#mk + 1] = slot .. '=' .. item; end
+            table.sort(mk);
+            mSig = table.concat(mk, ',');
+        end
         sig = event .. ':' .. table.concat(sig, ',') .. '|' .. table.concat(lk, ',')
-              .. '|' .. cSig .. '|' .. pSig .. '|' .. hSig .. '|' .. fSig .. '|' .. aSig;
+              .. '|' .. cSig .. '|' .. pSig .. '|' .. hSig .. '|' .. fSig .. '|' .. aSig .. '|' .. mSig;
         local old = _trace[event];
         local retrace = (old == nil) or (old.sig ~= sig) or (event ~= 'Default');
         local lines = retrace and {} or old.lines;
@@ -3727,8 +3880,12 @@ function M.dispatch(event)
 
         -- Apply in order, attributing each SLOT to its final writer -- with partial
         -- sets (weapon-only, DT-only, ...) this is what proves the overlay: every
-        -- slot lists the rule that actually owns it this dispatch.
+        -- slot lists the rule that actually owns it this dispatch. floorTbl also
+        -- collects the merged trigger-overlay result (last-writer-wins, the same
+        -- order): it is the FLOOR the claims dress over, fed to the Arbiter's
+        -- attribution below (ADR 0012, step 4).
         local slotSrc = retrace and {} or nil;
+        local floorTbl = retrace and {} or nil;
         for _, r in ipairs(hits) do
             if r.sets ~= nil then
                 -- A rule may wear SEVERAL sets: applied IN ORDER, later overlaying
@@ -3741,8 +3898,10 @@ function M.dispatch(event)
                             r.label, sn, (#r.sets > 1) and string.format(' [%d/%d]', si, #r.sets) or '',
                             r.prio, found and '' or '  [NOT FOUND in profile Sets]', note or '');
                         if type(tbl) == 'table' then
-                            for slot in pairs(tbl) do
-                                if string.sub(tostring(slot), 1, 2) ~= '__' then slotSrc[slot] = sn; end
+                            for slot, item in pairs(tbl) do
+                                if string.sub(tostring(slot), 1, 2) ~= '__' then
+                                    slotSrc[slot] = sn; floorTbl[slot] = item;
+                                end
                             end
                         end
                     end
@@ -3753,8 +3912,10 @@ function M.dispatch(event)
                     lines[#lines + 1] = string.format('%s  ->  equip { %s }  (prio %d)%s',
                         r.label, inlineSummary(r.equip), r.prio, note or '');
                     if type(tbl) == 'table' then
-                        for slot in pairs(tbl) do
-                            if string.sub(tostring(slot), 1, 2) ~= '__' then slotSrc[slot] = r.label; end
+                        for slot, item in pairs(tbl) do
+                            if string.sub(tostring(slot), 1, 2) ~= '__' then
+                                slotSrc[slot] = r.label; floorTbl[slot] = item;
+                            end
                         end
                     end
                 end
@@ -3826,6 +3987,26 @@ function M.dispatch(event)
             if #parts > 0 then
                 table.sort(parts);
                 lines[#lines + 1] = 'slots: ' .. table.concat(parts, ', ');
+            end
+        end
+
+        -- Per-slot CLAIMANT attribution (ADR 0012, step 4). Run the Arbiter's pure
+        -- resolve over the SAME claims + rank + floor the live overlay just applied
+        -- and name every contested slot's winner + rank in /dl why -- veto slots
+        -- read 'stopped by Locks', floor-only slots read 'Triggers (floor)'. The
+        -- registry is the single precedence authority, so the resolve that decides
+        -- also explains; the order-pinning tests (AR*/LV*) drive the same seam.
+        -- Locks join here as the veto claim (M.locks -> arbLockClaim); the live
+        -- equip already honoured them via layerRespectsLocks / ctx.mpRespectLocks.
+        if retrace then
+            local whyClaims = {};
+            for k, v in pairs(claims) do whyClaims[k] = v; end
+            local lockClaim = M.arbLockClaim(M.locks);
+            if next(lockClaim) ~= nil then whyClaims['Locks'] = lockClaim; end
+            local why = M.arbWhyLines(whyClaims, arbOrder, floorTbl or {});
+            if #why > 0 then
+                lines[#lines + 1] = 'claimants (rank order, highest wins):';
+                for _, wl in ipairs(why) do lines[#lines + 1] = '  ' .. wl; end
             end
         end
 
@@ -4600,7 +4781,7 @@ if inLac() then
                 Locks    = anyLock and 'ON (veto -- claims above punch through, below stop)'
                                    or 'off (veto -- no slots locked)',
                 AutoAmmo = ammoOn and 'ON (claims Ammo on shooting events)' or 'off',
-                MaxMP    = maxmpOn and 'ON (woven; ceded slots above it stand down)' or 'off',
+                MaxMP    = maxmpOn and 'ON (claims batteries; slots won above it stand down)' or 'off',
                 Craft    = craftOn and 'ON (armed)' or 'off',
                 HELM     = helmOn and 'ON (armed)' or 'off',
                 Fishing  = fishOn and 'ON (armed)' or 'off',
