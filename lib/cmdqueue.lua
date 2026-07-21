@@ -4,7 +4,7 @@
     Split out of gearui.lua: LuaJIT caps a chunk at 200 local variables, and gearui's
     main chunk was already at it -- cohesive helpers get their own module from now on.
 
-    Used for the "Lock when equipped" enable/equip/disable sequence (and the set-lock
+    Used for the "Lock when equipped" lock/equip sequence (and the set-lock
     command pair): commands run a fixed number of frames apart so they never block.
     gearui calls M.tick() once per d3d_present -- it advances the frame clock, then
     flushes every queued command that has come due. M.frame() exposes the clock for
