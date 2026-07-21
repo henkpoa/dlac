@@ -119,7 +119,7 @@ local UNIVERSAL = {
 -- Manifest schema version: bump when autoCommit writes NEW fields. An on-disk
 -- manifest with an older fmtver self-heals (renderAutomations triggers a rescan)
 -- so a dlac update never needs a manual "Rescan owned gear" click.
-local AUTO_FMT = 10;   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked; 5: craft ladders; 6: skill-up fillers in hq/nq; 7: helm ladders + hat map; 8: fish ladders; 9: oneiros grip + mpMerits; 10: universals ladder
+local AUTO_FMT = 11;   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked; 5: craft ladders; 6: skill-up fillers in hq/nq; 7: helm ladders + hat map; 8: fish ladders; 9: oneiros grip + mpMerits; 10: universals ladder; 11: Refresh rides mp/mpBest (rf map + rung rf -- the banded ladder sinks refresh batteries deep)
 
 local auto = { data = nil, loadedFor = nil, status = '' };
 
@@ -235,12 +235,12 @@ local function autoCommit()
     -- PLUS the best battery per equip slot (ear/ring get the top two) so the
     -- engine can EQUIP them, not just hold them. The engine can't read the
     -- catalog, so both ride this manifest.
-    local mp, mpBest = {}, {};
+    local mp, mpBest, rf = {}, {}, {};
     pcall(function()
         if type(deps.ownedList) ~= 'function' then return; end
         local counts = (type(deps.ownedCounts) == 'function') and deps.ownedCounts() or nil;
         local lvl = mainLevel();
-        local bySlot = {};   -- gear-slot key -> candidates { name, mp, level }
+        local bySlot = {};   -- gear-slot key -> candidates { name, mp, level, rf }
         for _, rec in ipairs(deps.ownedList() or {}) do
             -- LEVEL-EFFECTIVE stats via THE central resolver (levelstats.effective):
             -- Tamas Ring is MP 15 on paper but 29 at Lv74. Values are a snapshot at
@@ -248,6 +248,15 @@ local function autoCommit()
             local st = (hasLScale and type(lscale.effective) == 'function')
                 and lscale.effective(rec, lvl) or rec.Stats;
             if type(st) ~= 'table' then st = nil; end
+            -- Refresh map (fmtver 11): EVERY owned piece with Refresh, MP or not
+            -- -- the band builder compares battery refresh against the potency
+            -- piece's ("Refresh > least mp diff": such batteries sink deep and
+            -- come back FIRST as MP recovers).
+            local rfv = (st ~= nil) and (tonumber(st.Refresh) or 0) or 0;
+            if rfv > 0 and rec.Name ~= nil then
+                local rk = string.lower(rec.Name);
+                if (rf[rk] or 0) < rfv then rf[rk] = rfv; end
+            end
             -- Convert counts: 25 HP -> MP is +25 max MP for this mode's purposes.
             local v = (st ~= nil) and ((tonumber(st.MP) or 0) + (tonumber(st.ConvertHPtoMP) or 0)) or 0;
             if v > 0 and rec.Name ~= nil then
@@ -264,7 +273,7 @@ local function autoCommit()
                    and (not hasDispatch or type(dsp.canWear) ~= 'function' or dsp.canWear(rec, job, 99))
                    and (type(deps.haveInBags) ~= 'function' or deps.haveInBags(rec)) then
                     bySlot[sl] = bySlot[sl] or {};
-                    local c = { name = rec.Name, mp = v, level = rec.Level or 0 };
+                    local c = { name = rec.Name, mp = v, level = rec.Level or 0, rf = rfv };
                     table.insert(bySlot[sl], c);
                     -- A genuine duplicate (two Astral Rings) may fill BOTH paired slots.
                     if (sl == 'Ear' or sl == 'Ring') and type(counts) == 'table'
@@ -570,6 +579,15 @@ local function autoCommit()
         L[#L + 1] = string.format('        [%q] = %d,', k, mp[k]);
     end
     L[#L + 1] = '    },';
+    -- Refresh map (fmtver 11): name -> Refresh, every owned piece carrying it.
+    L[#L + 1] = '    rf = {';
+    local rfKeys = {};
+    for k in pairs(rf) do rfKeys[#rfKeys + 1] = k; end
+    table.sort(rfKeys);
+    for _, k in ipairs(rfKeys) do
+        L[#L + 1] = string.format('        [%q] = %d,', k, rf[k]);
+    end
+    L[#L + 1] = '    },';
     L[#L + 1] = '    mpBest = {';
     local mbKeys = {};
     for k in pairs(mpBest) do mbKeys[#mbKeys + 1] = k; end
@@ -577,7 +595,11 @@ local function autoCommit()
     for _, k in ipairs(mbKeys) do
         local rungs = {};
         for _, c in ipairs(mpBest[k]) do
-            rungs[#rungs + 1] = string.format('{ name = %q, mp = %d, level = %d }', c.name, c.mp, c.level);
+            if (c.rf or 0) > 0 then
+                rungs[#rungs + 1] = string.format('{ name = %q, mp = %d, level = %d, rf = %d }', c.name, c.mp, c.level, c.rf);
+            else
+                rungs[#rungs + 1] = string.format('{ name = %q, mp = %d, level = %d }', c.name, c.mp, c.level);
+            end
         end
         L[#L + 1] = string.format('        %s = { %s },', k, table.concat(rungs, ', '));
     end

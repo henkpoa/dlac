@@ -31,8 +31,12 @@ local M = {};
 -- the recovery margin for the current state (standing refresh vs resting).
 --
 -- Returns bands ordered smallest difference first (= first OUT to potency,
--- the lowest-hanging fruit; the big battery releases last), each carrying
--- Henrik's data points:
+-- the lowest-hanging fruit; the big battery releases last) -- EXCEPT that a
+-- band whose battery carries REFRESH the potency piece lacks (s.refresh)
+-- outranks the diff order entirely and sinks to the DEEP end of the ladder:
+-- released last while spending, back on FIRST as MP recovers, so recovery
+-- accelerates as early as possible (Henrik's 2026-07-21 night addendum:
+-- "Refresh > least mp diff"). Each band carries Henrik's data points:
 --   diff     = high - low
 --   lastMax  = max MP while this piece (and everything after it) is worn
 --   endMax   = max MP once this piece is out (= the next band's lastMax)
@@ -52,11 +56,13 @@ function M.build(slots, total, tick)
             if diff > 0 then
                 bands[#bands + 1] = { slot = tostring(s.slot), name = s.name,
                                       low = tonumber(s.low) or 0,
-                                      high = tonumber(s.high) or 0, diff = diff };
+                                      high = tonumber(s.high) or 0, diff = diff,
+                                      refresh = (s.refresh == true) };
             end
         end
     end
     table.sort(bands, function(a, b)
+        if a.refresh ~= b.refresh then return not a.refresh; end   -- refresh sinks deep
         if a.diff ~= b.diff then return a.diff < b.diff; end
         return a.slot < b.slot;
     end);

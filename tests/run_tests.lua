@@ -10,6 +10,7 @@ ashita = { events = { register = function() end } };    -- utils registers /dl a
 package.loaded['dlac\\profiles'] = dofile('profiles.lua');   -- dispatch/setmanager require it (guarded)
 package.loaded['dlac\\data\\nativemp'] = dofile('data/nativemp.lua');   -- dispatch requires it (Oneiros resolver)
 package.loaded['dlac\\data\\zones'] = dofile('data/zones.lua');   -- dispatch requires it (the inTown town set)
+package.loaded['dlac\\feature\\mpbands'] = dofile('feature/mpbands.lua');   -- dispatch requires it (the banded ladder, maxmp v2)
 package.loaded['dlac\\feature\\location'] = dofile('feature/location.lua');   -- lockstyle requires it (Disable-in-town)
 package.loaded['dlac\\gear\\gearrecord'] = dofile('gear/gearrecord.lua');   -- record rules: gearimport/weaponfilter/gearexport require it
 package.loaded['dlac\\lib\\safewrite'] = dofile('lib/safewrite.lua');   -- safe-replace ladder: gearimport requires it, profiles guards it
