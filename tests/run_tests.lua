@@ -4555,12 +4555,108 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- LV. LOCKS ARE THE DRAGGABLE VETO ROW (ADR 0012, step 3 / issue #50). Two
+--     pinned surfaces: (a) the PURE resolve model -- Locks passed to arbResolve
+--     as a veto claim (arbLockClaim -> the LOCK_HELD sentinel), so its rank
+--     decides who punches through and who stops; (b) the LIVE wiring -- the
+--     per-layer respectLocks flag through equipResolved, and woven MaxMP's own
+--     rank vs Locks via ctx.mpRespectLocks (band build + mp-stage placement).
+-- ---------------------------------------------------------------------------
+(function()
+    -- (a) The pure resolve model. arbLockClaim builds the veto table.
+    local lc = dispatchM.arbLockClaim({ head = true, ring2 = false });
+    check('LV0 arbLockClaim maps only truthy slots to the veto sentinel',
+        lc.head == dispatchM.LOCK_HELD and lc.ring2 == nil, true);
+    check('LV0b arbLockClaim accepts an array of slot keys',
+        dispatchM.arbLockClaim({ 'Head', 'Ring1' }).Ring1, dispatchM.LOCK_HELD);
+
+    local order = dispatchM.arbOrder(nil);  -- Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers
+    local floor = { Head = 'Idle Hat', Ring1 = 'Idle Ring' };
+    local locked = dispatchM.arbLockClaim({ 'Head', 'Ring1' });  -- both slots locked
+
+    -- Default position: pins (above Locks) punch through; craft + floor (below) stop.
+    local w1, by1 = dispatchM.arbResolve({
+        Pins  = { Head = 'Pinned Crown' },
+        Craft = { Head = 'Craft Cap', Ring1 = 'Craft Ring' },
+        Locks = locked,
+    }, order, floor);
+    check('LV1 a pin above Locks punches through the locked slot', w1.Head, 'Pinned Crown');
+    check('LV1b that slot is attributed to the pin', by1.Head, 'Pins');
+    check('LV1c craft below Locks stops at the lock (kept worn)', w1.Ring1, dispatchM.LOCK_HELD);
+    check('LV1d the locked-stop is attributed to Locks', by1.Ring1, 'Locks');
+
+    -- Locks dragged to the TOP: an absolute veto, pins included.
+    local topLocks = dispatchM.arbOrder({ order = {
+        'Locks', 'Pins', 'AutoAmmo', 'MaxMP', 'Craft', 'HELM', 'Fishing', 'Triggers' } });
+    local w2, by2 = dispatchM.arbResolve({
+        Pins = { Head = 'Pinned Crown' }, Locks = locked,
+    }, topLocks, floor);
+    check('LV2 Locks at the top vetoes even pins', w2.Head, dispatchM.LOCK_HELD);
+    check('LV2b attributed to Locks', by2.Head, 'Locks');
+
+    -- Locks dragged LOWER: everyone above punches through, everyone below stops.
+    local lowLocks = dispatchM.arbOrder({ order = {
+        'Pins', 'AutoAmmo', 'MaxMP', 'Craft', 'Locks', 'HELM', 'Fishing', 'Triggers' } });
+    local w3, by3 = dispatchM.arbResolve({
+        Craft = { Head = 'Craft Cap' },   -- rank 4, above the lowered Locks (5): punches through
+        HELM  = { Ring1 = 'Helm Ring' },  -- rank 6, below Locks: stops
+        Locks = locked,
+    }, lowLocks, floor);
+    check('LV3 a claimant above the lowered Locks punches through', w3.Head, 'Craft Cap');
+    check('LV3b a claimant below the lowered Locks stops', w3.Ring1, dispatchM.LOCK_HELD);
+    check('LV3c the below-Locks stop is attributed to Locks', by3.Ring1, 'Locks');
+
+    -- (b) The LIVE wiring through equipResolved: the per-layer respectLocks flag.
+    local savedAC = AshitaCore;
+    AshitaCore = nil;                                   -- wornItemName -> nil
+    for k in pairs(dispatchM.locks) do dispatchM.locks[k] = nil; end
+    dispatchM.locks['head'] = true;
+    -- respectLocks default (nil == true): the locked slot is stripped (held worn).
+    local _, wResp = dispatchM._equipResolved({ Head = 'Some Hat', Body = 'Some Body' }, {});
+    check('LV4 respectLocks default strips the locked slot', wResp.Head, nil);
+    check('LV4b an unlocked slot still equips', wResp.Body, 'Some Body');
+    check('LV4c the strip is still traced', (function()
+        local note = dispatchM._equipResolved({ Head = 'Some Hat' }, {});
+        return string.find(note, 'LOCKED', 1, true) ~= nil;
+    end)(), true);
+    -- respectLocks = false: a layer ranked ABOVE Locks punches through.
+    local _, wPunch = dispatchM._equipResolved({ Head = 'Some Hat', Body = 'Some Body' }, {}, false);
+    check('LV5 respectLocks=false punches the layer through the lock', wPunch.Head, 'Some Hat');
+    check('LV5b explicit respectLocks=true stops (== the default)',
+        select(2, dispatchM._equipResolved({ Head = 'Some Hat' }, {}, true)).Head, nil);
+
+    -- (b) woven MaxMP vs Locks -- its OWN rank via ctx.mpRespectLocks. mp-stage
+    -- must not dress a locked UNCOVERED slot while MaxMP ranks below Locks, and
+    -- must punch through when it ranks above. Stub mpBands (the MB* tests own the
+    -- band core); the veto guard is what this exercises.
+    local savedBands = dispatchM.mpBands;
+    dispatchM.modes['maxmp'] = true;
+    for k in pairs(dispatchM.locks) do dispatchM.locks[k] = nil; end
+    dispatchM.locks['ring1'] = true;
+    dispatchM.mpBands = function()
+        return { mpMap = { ['mp ring'] = 15 }, target = { ring1 = 'MP Ring' },
+                 bands = {}, mpBest = {}, moveYield = false, moving = false, mvMap = {} };
+    end;
+    local _, wRespMp = dispatchM._equipResolved({ Head = 'Idle Hat' },
+        { mpCeded = {}, mpRespectLocks = true });
+    check('LV6 MaxMP staging respects a locked slot while below Locks', wRespMp.Ring1, nil);
+    local _, wPunchMp = dispatchM._equipResolved({ Head = 'Idle Hat' },
+        { mpCeded = {}, mpRespectLocks = false });
+    check('LV7 MaxMP staging punches through a locked slot while above Locks', wPunchMp.Ring1, 'MP Ring');
+
+    dispatchM.modes['maxmp'] = nil;
+    dispatchM.mpBands = savedBands;
+    for k in pairs(dispatchM.locks) do dispatchM.locks[k] = nil; end
+    AshitaCore = savedAC;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- AB. arbwatch -- the ADDON-SIDE writer of the arbstate rank Statefile (ADR
 --     0012, step 2 / issue #49). The engine's read side is AR* above; these pin
 --     the WRITER's pure seams: the default/sanitize reuse the engine's one
 --     truth, serialize round-trips through arbOrder, and moveClaimant encodes
---     the step-2 drag rules (Locks/Triggers refuse the drag, Triggers stays the
---     floor, a claimant may cross the Locks veto row).
+--     the drag rules (only the Triggers floor refuses the drag and stays last;
+--     every other row -- claimants AND the Locks veto (step 3) -- moves freely).
 -- ---------------------------------------------------------------------------
 (function()
     local aw = dofile('feature/arbwatch.lua');
@@ -4602,7 +4698,13 @@ end)();
         'Pins>Locks>MaxMP>AutoAmmo>Craft>HELM>Fishing>Triggers');
     check('AB4c the input order is not mutated', table.concat(def, '>'),
         'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers');
-    check('AB5 Locks refuses the drag (special veto row)', aw.moveClaimant(def, 2, 1), nil);
+    -- Step 3: the Locks veto row now DRAGS (only the Triggers floor is fixed).
+    check('AB5 Locks drags down one (#2 -> #3, under AutoAmmo)',
+        table.concat(aw.moveClaimant(def, 2, 1), '>'),
+        'Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Triggers');
+    check('AB5a Locks drags up one to the top (absolute veto, over Pins)',
+        table.concat(aw.moveClaimant(def, 2, -1), '>'),
+        'Locks>Pins>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers');
     check('AB5b Triggers refuses the drag (the floor)', aw.moveClaimant(def, 8, -1), nil);
     check('AB6 Fishing cannot move down into the Triggers floor (stays last)',
         aw.moveClaimant(def, 7, 1), nil);

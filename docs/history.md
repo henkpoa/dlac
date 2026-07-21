@@ -3752,3 +3752,56 @@ Arbiter it was a second, conflicting decision point that pulled whole activities
 off the board. The Arbiter's rank is the single settling law now -- claimants
 decide WHETHER to claim, the rank decides WHO WINS each slot, and never again does
 a claimant reach across and silence a peer wholesale.
+
+## The Arbiter, step 3: locks become the draggable veto row (2026-07-21, engine v99)
+
+**Theme:** locks were the last piece of gear-precedence encoded OUTSIDE the rank
+list. Before this step Locks was a placeholder row in the arbstate order that did
+nothing; the real veto lived as an **absolute per-slot strip** at the top of every
+`equipResolved` (`M.locks[slot] == true -> hold as worn`), plus MaxMP's own
+hardcoded `M.locks` skips in the band build and the mp-stage, plus the hidden
+"pins never check locks" law the ADR wanted to make visible. Step 3 folds all of
+it into the registry: **Locks is a rank position** -- a claim ranked ABOVE it
+punches through a locked slot, one ranked BELOW stops.
+
+**The mechanism (no big rewrite -- the rank already existed, only the veto moved
+onto it):**
+- `equipResolved(s, ctx, respectLocks)` gained a third arg. `nil == true`, so the
+  Triggers floor, the immediate-equip paths (`/dl lock set`, the LK tests) all keep
+  the old absolute-veto behavior with no change. The dispatch apply loop passes the
+  per-claimant answer from `layerRespectsLocks(name)` = *is this claimant ranked
+  below Locks?* Below -> the strip runs (stops); above -> the strip is skipped for
+  its slots (punches through).
+- Woven MaxMP consults its OWN rank vs Locks, carried on `ctx.mpRespectLocks`
+  (MaxMP runs inside every `equipResolved` call and the band build, so it can't ride
+  a single layer's flag). The two hardcoded `M.locks` skips -- the `mpBands` band
+  build and the mp-stage uncovered-slot placement -- now gate on that flag instead of
+  the raw lock table: at default (MaxMP below Locks) a locked slot still gets no band,
+  exactly as before; drag MaxMP above Locks and its batteries punch through.
+- The pure model `M.arbResolve` gained the veto too: callers pass `Locks` in
+  `claims` as a veto table (`M.arbLockClaim` -> the `M.LOCK_HELD` sentinel), and the
+  existing top-down rank walk does the rest -- a claim above Locks wins the slot
+  first, one below never reaches it. Same law, two representations (woven flags live,
+  a claim row in the model), pinned to agree by the tests.
+
+**Default order Pins > Locks > ... reproduces today's field behavior:** pins punch
+through locks, every other claimant + the Triggers floor stop at them. Locks dragged
+to the TOP = an absolute veto including pins; dragged lower = everyone above punches
+through, everyone below stops.
+
+**UI:** the Locks row dropped out of `arbwatch.M.FIXED` (only the Triggers floor
+stays fixed), so `moveClaimant` now reorders it and `priorityui` renders it draggable
+-- still in the floor colour (`COL_FLOOR`) so the veto never reads as an ordinary
+claimant. `/dl lock` and the Sets tab's "Equip & Lock" are untouched at defaults.
+
+**Tests:** LV0-7 (the pure position semantics through `arbResolve` + the live
+`respectLocks` / `ctx.mpRespectLocks` wiring through `equipResolved` with `mpBands`
+stubbed), AB5/AB5a + S199b/c (the Locks row now drags), S197 inverted (Locks
+draggable, only Triggers fixed). 2132 headless + 199 smoke green. Engine v99,
+addon.version 2026.07.21c.
+
+**Deferred to step 4 (not this issue):** collapsing the remaining woven-MaxMP
+scaffolding (`ctx.mpCeded` / `ctx.mpRespectLocks` consulted from inside other
+claimants' resolves) into a discrete stage, and `/dl why` per-slot claimant + veto
+attribution. The live apply still runs the reverse-rank overlay loop, not
+`arbResolve`; that unification is step 4's job.

@@ -3,12 +3,13 @@
     (ADR 0012, step 2 / issue #49).
 
     ONE strict draggable list, top wins: the six claimants (Pins, AutoAmmo,
-    MaxMP, Craft, HELM, Fishing) plus the two special rows -- the Locks veto
-    (renders at its stored position, refuses drag this step; the fold is step 3)
-    and the Triggers floor (pinned last, immovable). A row shows a drag control,
-    the claimant name, a source/control hint (where the feature is set) and a
-    LIVE claim status. Reordering commits through arbwatch (the arbstate Statefile
-    writer) and the engine hot-reloads it -- no Reload LAC.
+    MaxMP, Craft, HELM, Fishing) plus the Locks veto row (draggable since step 3,
+    ADR 0012 -- a claimant above it punches through a locked slot, one below stops;
+    rendered visually distinct so it never reads as an ordinary claimant) and the
+    Triggers floor (pinned last, immovable). A row shows a drag control, the row
+    name, a source/control hint (where the feature is set) and a LIVE claim/veto
+    status. Reordering commits through arbwatch (the arbstate Statefile writer)
+    and the engine hot-reloads it -- no Reload LAC.
 
     Rendered from automationsui's list view (M.render(deps)); the pure display
     seams (SOURCE / HINT / statusText / buildRows) sit ABOVE the imgui guard so
@@ -48,8 +49,9 @@ M.HINT = {
 M.SOURCE = {
     Pins     = 'Set from the floating gear window\'s PIN menu (right-click a slot to pin/unpin).',
     Locks    = 'Set by /dl lock, the Equipped tab\'s "Lock when equipped", or the Sets tab\'s "Equip & Lock".\n'
-            .. 'A claim ranked ABOVE this row punches through a lock; a claim below it stops. '
-            .. 'Dragging the veto row itself is a later step -- for now it shows its position.',
+            .. 'This is the VETO row -- a claim ranked ABOVE it punches through a locked slot; a claim below it stops. '
+            .. 'Drag it to choose which claimants the lock stops: at the top it vetoes everyone (pins included); '
+            .. 'lower, everyone above it punches through.',
     AutoAmmo = 'Set on the AutoAmmo row above (click it for the per-job ammo panel).',
     MaxMP    = 'Set on the MaxMP row above (click it for the band panel), or /dl mode maxmp.',
     Craft    = 'Set on the Auto Craft Set row above, or the floating craft bar.',
@@ -256,7 +258,7 @@ function M.render(deps)
     end
 
     imgui.Spacing();
-    imgui.TextColored(COL_DIM, 'The Triggers floor is pinned last; the Locks veto shows its position (its own drag is a later step).');
+    imgui.TextColored(COL_DIM, 'The Triggers floor is pinned last. The Locks veto drags like any row: a claimant above it punches through a locked slot, one below it stops.');
 end
 
 return M;

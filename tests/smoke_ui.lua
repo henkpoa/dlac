@@ -834,14 +834,16 @@ end)();
     check('S194 AutoAmmo stands down while fishing is live',
         pui.statusText('AutoAmmo', { ammo = { on = true }, fishing = true }), 'standing down: fishing live');
     check('S195 the Triggers floor is always on', pui.statusText('Triggers', {}), 'floor -- always on');
-    -- buildRows marks the two special rows non-draggable, the six claimants draggable.
+    -- buildRows: only the Triggers floor is non-draggable now (step 3 folded the
+    -- Locks veto into the list). Locks drags but stays a SPECIAL row (distinct
+    -- color); the six claimants drag.
     local aw = require('dlac\\feature\\arbwatch');
     local rows = pui.buildRows(aw.defaultOrder(), {});
     check('S196 buildRows yields all eight rows in order', #rows, 8);
-    check('S197 Locks + Triggers are non-draggable special rows', (function()
+    check('S197 Locks is a draggable veto row; only Triggers is fixed', (function()
         local byName = {};
         for _, r in ipairs(rows) do byName[r.name] = r; end
-        return byName.Locks.draggable == false and byName.Locks.special == true
+        return byName.Locks.draggable == true and byName.Locks.special == true
            and byName.Triggers.draggable == false and byName.Triggers.special == true
            and byName.AutoAmmo.draggable == true;
     end)(), true);
@@ -849,6 +851,16 @@ end)();
     check('S198 arbwatch loads headless', type(aw), 'table');
     check('S199 arbwatch.moveClaimant refuses to drag the Triggers floor',
         aw.moveClaimant(aw.defaultOrder(), 8, -1), nil);
+    -- S199b: the Locks veto now drags -- raising it one step swaps it above Pins
+    -- (the absolute-veto position), and it never displaces the floor.
+    check('S199b Locks drags up past Pins', (function()
+        local moved = aw.moveClaimant(aw.defaultOrder(), 2, -1);
+        return moved ~= nil and moved[1] == 'Locks' and moved[2] == 'Pins';
+    end)(), true);
+    check('S199c Locks drags down under AutoAmmo', (function()
+        local moved = aw.moveClaimant(aw.defaultOrder(), 2, 1);
+        return moved ~= nil and moved[2] == 'AutoAmmo' and moved[3] == 'Locks';
+    end)(), true);
 end)();
 
 -- ---------------------------------------------------------------------------
