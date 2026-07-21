@@ -203,22 +203,18 @@ local function ensureManifestFresh()
     end);
 end
 
--- The on/off switch (bar + panel). Enabling HELM turns the CRAFT switch off
--- (one gathering/crafting overlay at a time -- they fight over the same
--- slots). One-way require only (craftwatch never requires helmwatch: no
--- cycle); the reverse direction -- craft enabled while helm is on -- is
--- settled inside the engine by the state files' `at` stamps (newer wins).
+-- The on/off switch (bar + panel). Craft/HELM/Fishing CO-CLAIM now (ADR 0012
+-- amendment, engine v98): arming HELM no longer stands the craft switch down --
+-- all armed activities claim and the Arbiter's rank settles every overlapping
+-- slot per slot. Walking from the bench to the pond means disarming Craft
+-- yourself; arming is no longer a mode switch. (Was: enabling HELM turned the
+-- craft switch off; the cross-require is gone.)
 function M.setEnabled(on)
     M.loadState();
     M.enabled = (on == true);
     if M.enabled then
         M._enabledAt = os.time();
         ensureManifestFresh();
-        pcall(function()
-            local cw = require('dlac\\feature\\craftwatch');
-            if type(cw.isEnabled) == 'function' and cw.isEnabled()
-               and type(cw.setEnabled) == 'function' then cw.setEnabled(false); end
-        end);
     end
     saveState();
 end

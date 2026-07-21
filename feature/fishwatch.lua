@@ -340,10 +340,12 @@ end
 function M.rodPinned() M.loadState(); return M.rodPin == true; end
 function M.baitPinned() M.loadState(); return M.baitPin == true; end
 
--- The pill (bar + panel). Enabling fishing turns the CRAFT and HELM switches
--- off (one overlay at a time). One-way requires only (neither ever requires
--- fishwatch: no cycle); the reverse directions are settled inside the engine
--- by the state files' `at` stamps (newest wins, v64).
+-- The pill (bar + panel). Craft/HELM/Fishing CO-CLAIM now (ADR 0012 amendment,
+-- engine v98): arming fishing no longer stands the craft or HELM switches down --
+-- all armed activities claim and the Arbiter's rank settles every overlapping
+-- slot per slot. Disarming a peer is the player's own act now; arming is no
+-- longer a mode switch. (Was: enabling fishing turned craft AND helm off; both
+-- cross-requires are gone.)
 function M.setEnabled(on)
     M.loadState();
     M.enabled = (on == true);
@@ -351,16 +353,6 @@ function M.setEnabled(on)
         M._enabledAt = os.time();
         ensureManifestFresh();
         M.autoPick(true);
-        pcall(function()
-            local cw = require('dlac\\feature\\craftwatch');
-            if type(cw.isEnabled) == 'function' and cw.isEnabled()
-               and type(cw.setEnabled) == 'function' then cw.setEnabled(false); end
-        end);
-        pcall(function()
-            local hw = require('dlac\\feature\\helmwatch');
-            if type(hw.isEnabled) == 'function' and hw.isEnabled()
-               and type(hw.setEnabled) == 'function' then hw.setEnabled(false); end
-        end);
     end
     saveState();
 end

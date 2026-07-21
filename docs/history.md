@@ -3707,3 +3707,48 @@ regression has one suspect, not six):**
 Priority drag UI (step 2); folding Locks from a placeholder row into a real
 draggable veto (step 3); collapsing the remaining woven-MaxMP scaffolding and the
 hardcoded arms, plus `/dl why` per-slot claimant attribution (step 4).
+
+## The Arbiter, step 1.5: activities co-claim -- drop the newest-armed exclusivity (2026-07-21, engine v98)
+
+**Theme:** the first field round on step 1 falsified a claim-side rule ADR 0012
+had carried forward unquestioned. The **newest-armed (`at` stamp) exclusivity**
+among Craft/HELM/Fishing -- whichever switch was enabled most recently stood the
+other two down WHOLE (`at` compare inline in `M.dispatch`, generalized three-way
+in v64) -- was the pre-Arbiter conflict resolver. With rank arbitration now
+settling every slot, it was redundant, and it actively defeated per-slot
+composition.
+
+**The field case that drove the ruling (PUP), now a verbatim test (AR10):** the
+idle floor names Range = Animator. Fishing armed put Lu Shang's in Range. Then
+arming HELM stood Fishing down wholesale and the Animator came back to Range --
+even though HELM never claims weapons, Range, rings or Ammo. The player wanted
+both: HELM's seven armor slots AND the fishing rod still in Range.
+
+**Landed:**
+- The `at`-stamp exclusivity block is deleted from BOTH sites -- the `M.dispatch`
+  arm and the `/dl prio` status read. `craftOn`/`helmOn`/`fishOn` now stay exactly
+  what each feature's own gates return; all three overlays (`cEquip`/`hEquip`/
+  `fEquip`) are built whenever armed and enter `claims` as separate rows.
+- Nothing else moved: the rank-ordered apply loop already settled overlapping
+  slots per slot (last-writer-wins in rank order == the Arbiter's first-wins
+  walk), so co-claim needed only the exclusivity's removal, not a new mechanism.
+  Each feature's own gates are untouched (HELM/Fishing Engaged/Dead stand-asides +
+  Default-only, Craft Default-only, AutoAmmo's stand-down while fishing is live --
+  now MORE consistently correct since `fishOn` no longer gets flipped off by a
+  newer craft/helm arm, MaxMP's `ctx.mpCeded` rank consult).
+- **Consequence, accepted deliberately (Henrik's ruling):** arming no longer
+  switches activities. Walking from the bench to the pond means disarming Craft
+  yourself (quick menu / panel). `/dl prio` now shows every concurrent claimant ON.
+- Headless tests AR8/AR9 (two- and three-way co-claim: each keeps its exclusive
+  slot, rank settles the shared one) + AR10 (the PUP case verbatim, incl. the
+  Animator returning only when Fishing itself is disarmed). The exclusivity lived
+  inline in `M.dispatch`, never at a pure seam, so there was no old exclusivity-pin
+  test to invert -- these ADD the co-claim law that replaced it. 2096 headless +
+  187 smoke green.
+
+**Dead end recorded:** newest-armed exclusivity as a *claim-side* rule. It made
+sense when it was the ONLY arbitration (v59/v64, pre-Arbiter); carried into the
+Arbiter it was a second, conflicting decision point that pulled whole activities
+off the board. The Arbiter's rank is the single settling law now -- claimants
+decide WHETHER to claim, the rank decides WHO WINS each slot, and never again does
+a claimant reach across and silence a peer wholesale.

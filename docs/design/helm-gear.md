@@ -135,8 +135,11 @@ Henrik's SVGs — DONE), order Harvesting/Excavation/Logging/Mining. Per selecte
   there would churn per swing). Applied after the craft overlay, below pins.
   NOTE: the CRAFT overlay does NOT carry this status gate (crafting happens in safe
   zones; unchanged behavior) — revisit only if Henrik asks.
-- **Mutual exclusivity**: enabling the HELM bar disables the craft bar and vice versa
-  (written at the state files, not the engine — engine stays stateless).
+- **Co-claim, not mutual exclusivity** (ADR 0012 amendment, engine v98): HELM claims
+  whenever armed, alongside an armed craft or fishing switch; the Arbiter's rank settles
+  every overlapping slot per slot. Arming HELM no longer disables the craft/fishing bars
+  — disarming a peer is the player's own act now. (Was: enabling one bar disabled the
+  others at the state files; the newest-`at`-wins exclusivity is retired.)
 - **Overlay slots: armor + accessories only** (Head/Body/Hands/Legs/Feet/Neck/Waist).
   Never Main/Sub/Ranged/Ammo — HELM tools are inventory items (Sickle 1020, Hatchet 1021,
   Pickaxe 605), and weapon swaps would burn TP for zero gain.
