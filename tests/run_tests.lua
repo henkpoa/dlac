@@ -12,6 +12,7 @@ package.loaded['dlac\\data\\nativemp'] = dofile('data/nativemp.lua');   -- dispa
 package.loaded['dlac\\data\\zones'] = dofile('data/zones.lua');   -- dispatch requires it (the inTown town set)
 package.loaded['dlac\\feature\\mpbands'] = dofile('feature/mpbands.lua');   -- dispatch requires it (the banded ladder, maxmp v2)
 package.loaded['dlac\\feature\\location'] = dofile('feature/location.lua');   -- lockstyle requires it (Disable-in-town)
+package.loaded['dlac\\gear\\jobgate'] = dofile('gear/jobgate.lua');   -- lockstyle requires it (v47 picker/box job-level gate)
 package.loaded['dlac\\gear\\gearrecord'] = dofile('gear/gearrecord.lua');   -- record rules: gearimport/weaponfilter/gearexport require it
 package.loaded['dlac\\lib\\safewrite'] = dofile('lib/safewrite.lua');   -- safe-replace ladder: gearimport requires it, profiles guards it
 package.loaded['dlac\\gear\\catalogindex'] = dofile('gear/catalogindex.lua');   -- catalog walker: gearimport requires it (no catalog headless -> empty indexes)
@@ -2160,17 +2161,17 @@ end
 -- ---------------------------------------------------------------------------
 -- AH. lockstyle picker: you can lockstyle to ANYTHING you own
 --
---    HARD RULE (Henrik, 2026-07-15): the picker offers EVERY item you own for
---    the slot -- wrong job AND under-level for your CURRENT job both included.
---    (Server precision, source read 07-15: the style renders when one of YOUR
---    jobs at its current level could wear the piece -- canEquipItemOnAnyJob;
---    the AJ section below mirrors that gate and the engine warns at apply.)
---    The PICKER still filters nothing: gear.lua (what you have) is already the
---    source. Do not reintroduce a jobOK/Level check, and do not dim or flag
---    off-job picks either: here an off-job lockstyle is ordinary, not an edge
---    case, and marking it would imply it might fail. Compare the A-series above:
---    the same "never gate the picker" ruling was reverted THREE times there.
---    This is CatsEyeXI, not retail/LSB -- do not port a retail rule back in.
+--    RULE (Henrik, 2026-07-20 -- REVISES the 07-15 "anything you own" rule,
+--    which was too OPEN): the picker offers gear ONE of your jobs can wear at
+--    its CURRENT level -- the server's canEquipItemOnAnyJob (charutils.cpp:2591,
+--    getReqLvl() <= jobs.job[i]). We mirror it via GetJobLevel, which reads that
+--    same current level, so it is PRESTIGE-CORRECT: a DE-LEVELED THF's gear
+--    drops out. Not the OLD current-job-only filter (too tight) and not
+--    anything-owned (too loose) -- the middle. It FAILS OPEN on a nil levels
+--    read (pre-login): offer everything, never hide it all (the Save-gate
+--    lesson). Ownership is a SEPARATE axis, still gated only at Save. Supersedes
+--    [[lockstyle-anything-you-own]]; the engine's _lsStyleGate (AJ) is the same
+--    gate, and the LOOK preview (AI) still renders anything.
 -- ---------------------------------------------------------------------------
 local savedGear = package.loaded['dlac\\gear'];
 package.loaded['dlac\\gear'] = {
@@ -2181,6 +2182,7 @@ package.loaded['dlac\\gear'] = {
         Highlevel = { Name = 'Highlevel Cap', Level = 99, Jobs = { 'WHM' } },
         Wrongboth = { Name = 'Wrongboth Cap', Level = 99, Jobs = { 'BLM' } },
         Anyjob    = { Name = 'Anyjob Cap',    Level = 1,  Jobs = { 'All' } },
+        Thief     = { Name = 'Thief Cap',     Level = 50, Jobs = { 'THF' } },   -- the prestige case
     },
     Main = {   -- Main/Range nest one level deeper, by skill category
         Sword      = { Offsword = { Name = 'Offjob Sword', Level = 75, Jobs = { 'DRK' }, OneHanded = true } },
@@ -2198,39 +2200,55 @@ package.loaded['dlac\\gear'] = savedGear;
 
 check('AH0 _listFor exported', type(lockstyleM._listFor), 'function');
 if type(lockstyleM._listFor) == 'function' then
-    local function offered(slot, q)
+    -- You have WHM 50, THF 30 (prestige-lowered), DRK 80. No BLM.
+    local JL = { WHM = 50, THF = 30, DRK = 80 };
+    local function offered(slot, jl, q)
         local set = {};
-        for _, rec in ipairs(lockstyleM._listFor(slot, q or '')) do set[rec.Name] = true; end
+        for _, rec in ipairs(lockstyleM._listFor(slot, q or '', false, jl)) do set[rec.Name] = true; end
         return set;
     end
-    local head = offered('Head');
-    check('AH1 HARD RULE: wrong-job item offered',            head['Wrongjob Cap'],  true);
-    check('AH2 HARD RULE: under-level item offered',          head['Highlevel Cap'], true);
-    check('AH3 HARD RULE: wrong-job AND under-level offered', head['Wrongboth Cap'], true);
-    check('AH4 on-job item still offered',                    head['Onjob Cap'],     true);
-    check('AH5 All-jobs item still offered',                  head['Anyjob Cap'],    true);
-    check('AH6 HARD RULE: nothing is filtered out',           #lockstyleM._listFor('Head', ''), 5);
-    check('AH7 HARD RULE: wrong-job Main offered (nested by skill)',
-        offered('Main')['Offjob Sword'], true);
-    -- the ONLY thing that narrows the list is the search box:
-    check('AH8 search still narrows by name', #lockstyleM._listFor('Head', 'wrongjob'), 1);
-    check('AH9 unknown slot -> empty, no error', #lockstyleM._listFor('Nope', ''), 0);
-    -- Sub lists dual-wield offhands (Henrik, 07-17): gear.Sub's shields/grips
-    -- PLUS the 1H records under Main -- the set builder's Sub-pool regulation,
-    -- no Dual Wield or pairing gate. 2H stays out (never Sub-capable).
-    local sub = offered('Sub');
-    check('AH10 native Sub item offered',                          sub['Test Targe'],   true);
-    check('AH11 DUAL WIELD: a 1H weapon under Main offered in Sub', sub['Offjob Sword'], true);
-    check('AH12 a 2H weapon is NOT offered in Sub',                sub['Big Blade'],    nil);
-    check('AH13 Main list itself is unchanged (no Sub bleed-back)', offered('Main')['Test Targe'], nil);
+    local head = offered('Head', JL);
+    check('AH1 wrong-job item NOT offered (no BLM)',      head['Wrongjob Cap'],  nil);
+    check('AH2 under-level item NOT offered (WHM 50<99)', head['Highlevel Cap'], nil);
+    check('AH3 wrong-job AND under-level NOT offered',    head['Wrongboth Cap'], nil);
+    check('AH4 on-job item offered (WHM 50>=1)',          head['Onjob Cap'],     true);
+    check('AH5 All-jobs item offered (some job >=1)',     head['Anyjob Cap'],    true);
+    check('AH5b PRESTIGE: de-leveled THF gear NOT offered (THF 30<50)', head['Thief Cap'], nil);
+    check('AH6 picker offers only wearable gear (2 of 6)', #lockstyleM._listFor('Head', '', false, JL), 2);
+    check('AH7 any-job gear offered when a job IS at level (DRK 80 >= sword 75)',
+        offered('Main', JL)['Offjob Sword'], true);
+    -- FAIL OPEN: a nil levels read (pre-login) offers EVERYTHING, never hides it.
+    check('AH8 FAIL-OPEN: nil levels offers all 6',       #lockstyleM._listFor('Head', '', false, nil), 6);
+    check('AH9 search still narrows by name (fail-open)', #lockstyleM._listFor('Head', 'wrongjob', false, nil), 1);
+    check('AH10 unknown slot -> empty, no error',         #lockstyleM._listFor('Nope', '', false, JL), 0);
+    -- Sub still merges dual-wield 1H offhands from Main, now also gated.
+    local sub = offered('Sub', JL);
+    check('AH11 native Sub item offered (Targe Lv30, WHM 50>=30)', sub['Test Targe'],   true);
+    check('AH12 DW: a 1H DRK weapon offered in Sub (DRK 80>=75)',  sub['Offjob Sword'], true);
+    check('AH13 a 2H weapon is NOT offered in Sub',               sub['Big Blade'],    nil);
+    check('AH14 Main list has no Sub bleed-back',                 offered('Main', JL)['Test Targe'], nil);
+    -- the pure gate (jobgate.canEquip) itself:
+    local jg = dofile('gear/jobgate.lua');
+    check('AH15 canEquip: on-job at level',               jg.canEquip({ Jobs = { 'THF' }, Level = 30 }, { THF = 30 }), true);
+    check('AH16 canEquip: on-job UNDER level (prestige)', jg.canEquip({ Jobs = { 'THF' }, Level = 50 }, { THF = 30 }), false);
+    check('AH17 canEquip: All jobs, any at level',        jg.canEquip({ Jobs = { 'All' }, Level = 40 }, { WHM = 50 }), true);
+    check('AH18 canEquip: no such job of yours',          jg.canEquip({ Jobs = { 'BLM' }, Level = 1 }, { WHM = 50 }), false);
+    check('AH19 canEquip: no Jobs data -> pass',          jg.canEquip({ Level = 99 }, { WHM = 1 }), true);
+    -- box gate: a box with a piece no job can wear is flagged (the offending name).
+    local resolve = function(nm) return ({
+        ['Thief Cap'] = { Name = 'Thief Cap', Level = 50, Jobs = { 'THF' } },
+        ['Onjob Cap'] = { Name = 'Onjob Cap', Level = 1,  Jobs = { 'WHM' } } })[nm]; end
+    check('AH20 box with a de-leveled piece -> flagged',  lockstyleM._boxBadPiece({ Head = 'Thief Cap' }, JL, resolve), 'Thief Cap');
+    check('AH21 box all-wearable -> nil',                 lockstyleM._boxBadPiece({ Head = 'Onjob Cap' }, JL, resolve), nil);
+    check('AH22 box gate FAILS OPEN (nil levels)',        lockstyleM._boxBadPiece({ Head = 'Thief Cap' }, nil, resolve), nil);
 end
 
 -- ---------------------------------------------------------------------------
 -- AI. lockstyle LOOK preview: entity look_t plan (v42)
 --
---    The preview writes the player's look_t instead of equipping, because this
---    server lockstyles to anything you OWN (see AH) and LAC will never equip an
---    off-job piece to show it. Bases are the SDK's (plugins/sdk/ffxi/entity.h:
+--    The preview writes the player's look_t instead of equipping, because the
+--    picker offers gear a job of yours can wear (see AH) -- often off your
+--    CURRENT job -- and LAC will never equip an off-job piece to show it. Bases are the SDK's (plugins/sdk/ffxi/entity.h:
 --    "Head Armor (Starts at 0x1000)" ... Ranged 0x8000); the stored value is
 --    base + model id, so base alone = nothing in the slot.
 -- ---------------------------------------------------------------------------
@@ -6074,6 +6092,11 @@ end)();
     check('LG12l townPick None (no options) = nil', ls._townPick(true, nil, nil), nil);
     check('LG12m townPick off beats box (safety)',  ls._townPick(true, true, 5), 'off');
     check('LG12n townPick unknown zone (nil) = nil', ls._townPick(nil, nil, 5), nil);
+    -- v46 leave-town clear: drop the town box only when there's no base to restore.
+    check('LG12o townLeaveClear: had a box, no base -> clear',   ls._townLeaveClear(5, nil), true);
+    check('LG12p townLeaveClear: has a base -> restore not clear', ls._townLeaveClear(5, 3), false);
+    check('LG12q townLeaveClear: off-mode (not a box) -> no clear', ls._townLeaveClear('off', nil), false);
+    check('LG12r townLeaveClear: no prior town style -> no clear', ls._townLeaveClear(nil, nil), false);
     check('LG13 user-off stamp is exported for the command handler',
         type(ls._guardUserOff), 'function');
 

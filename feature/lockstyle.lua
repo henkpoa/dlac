@@ -68,6 +68,10 @@ local _pfok, profiles = pcall(require, 'dlac\\profiles');
 _pfok = _pfok and type(profiles) == 'table';
 local _lvok, look = pcall(require, 'dlac\\feature\\lookpreview');
 _lvok = _lvok and type(look) == 'table';
+-- Job-level gate (v47): the addon-side canEquipItemOnAnyJob mirror -- only offer
+-- lockstyle gear one of your jobs can wear at its CURRENT level.
+local _jgok, jobgate = pcall(require, 'dlac\\gear\\jobgate');
+_jgok = _jgok and type(jobgate) == 'table';
 -- Central town service (v45): "am I in a town?" for the Disable-in-town option.
 local _locok, location = pcall(require, 'dlac\\feature\\location');
 _locok = _locok and type(location) == 'table';
@@ -355,12 +359,18 @@ M._hasLook = hasLook;   -- test seam
 -- Sub-capable anywhere in dlac.
 local function is1H(rec) return rec.OneHanded == true; end
 
-local function listFor(slot, q, all)
+local function listFor(slot, q, all, jobLevels)
     local out = {};
+    -- v47: only offer gear ONE of your jobs can wear at its CURRENT level
+    -- (canEquipItemOnAnyJob). nil jobLevels (pre-login / no jobgate) FAILS OPEN.
+    local function gateOk(rec)
+        return jobLevels == nil or not _jgok or jobgate.canEquip(rec, jobLevels);
+    end
     local function take(t, pred)
         for _, rec in pairs(t) do
             if type(rec) == 'table' and type(rec.Name) == 'string'
                and (pred == nil or pred(rec))
+               and gateOk(rec)
                and (q == '' or string.find(string.lower(rec.Name), q, 1, true) ~= nil) then
                 out[#out + 1] = rec;
             end
@@ -371,6 +381,7 @@ local function listFor(slot, q, all)
             for _, rec in ipairs(W.allEquip()) do   -- flat, and already carries .Slot
                 if (rec.Slot == slot or (slot == 'Sub' and rec.Slot == 'Main' and is1H(rec)))
                    and type(rec.Name) == 'string' and hasLook(rec)
+                   and gateOk(rec)
                    and (q == '' or string.find(string.lower(rec.Name), q, 1, true) ~= nil) then
                     out[#out + 1] = rec;
                 end
@@ -453,6 +464,50 @@ local function recOf(name)
     pcall(function() rec = _gok and gear.NameToObject[name] or nil; end);
     if rec == nil and W.catalog ~= nil then pcall(function() rec = W.catalog(name); end); end
     return rec;
+end
+
+-- Job-level gate plumbing (v47). Live job levels, throttled; a nil read
+-- (pre-login) FAILS OPEN so the picker/grid never hide everything.
+local _jlAt, _jlLevels = -1e9, nil;
+local function jobLevels()
+    if os.clock() >= _jlAt then
+        _jlAt = os.clock() + 1.0;
+        _jlLevels = _jgok and jobgate.levels() or nil;
+    end
+    return _jlLevels;
+end
+
+-- Pure: the first piece in a box's set that NO job of yours can wear at level, or
+-- nil (box is fine). `resolve` maps a piece name -> record (live: recOf; tests
+-- inject a stub). A nil jl FAILS OPEN (returns nil). Test seam.
+function M._boxBadPiece(setTable, jl, resolve)
+    if type(setTable) ~= 'table' or jl == nil or not _jgok then return nil; end
+    for _, nm in pairs(setTable) do
+        if type(nm) == 'string' and nm ~= '' and nm ~= 'remove' then
+            local rec = resolve and resolve(nm) or nil;
+            if rec ~= nil and not jobgate.canEquip(rec, jl) then return nm; end
+        end
+    end
+    return nil;
+end
+
+-- Throttled { boxNum -> offending piece name } for the grid grey-out + Apply guard.
+local _bbAt, _badBox = -1e9, {};
+local function badBoxes()
+    if os.clock() >= _bbAt then
+        _bbAt = os.clock() + 1.0;
+        local jl, bad = jobLevels(), {};
+        if data ~= nil then
+            for n, e in pairs(data.slots or {}) do
+                if type(e) == 'table' then
+                    local p = M._boxBadPiece(e.set, jl, recOf);
+                    if p ~= nil then bad[n] = p; end
+                end
+            end
+        end
+        _badBox = bad;
+    end
+    return _badBox;
 end
 
 -- ---------------------------------------------------------------------------
@@ -566,6 +621,7 @@ local ui = { selSlot = nil, pick = { '' }, pendingBox = nil, openPick = false, o
 
 local function boxColumn(from, to)
     local clickedBox = nil;
+    local bad = badBoxes();   -- v47: { boxNum -> offending piece name }
     imgui.BeginGroup();
     for n = from, to do
         local e = data.slots[n];
@@ -574,16 +630,18 @@ local function boxColumn(from, to)
         local nm = (type(e) == 'table' and type(e.name) == 'string' and e.name ~= '') and e.name or '--';
         if #nm > 15 then nm = string.sub(nm, 1, 14) .. '~'; end
         local on = (n == data.active);
-        if on then imgui.PushStyleColor(ImGuiCol_Button, GOLD); end
+        local dead = bad[n];   -- a piece no job of yours can wear at its level
+        if on then imgui.PushStyleColor(ImGuiCol_Button, GOLD);
+        elseif dead then imgui.PushStyleColor(ImGuiCol_Text, COL_DIM); end   -- grey the unavailable box
         if imgui.Button(nm .. '##lsbox' .. n, { BOX_W, 19 }) then clickedBox = n; end
-        if on then imgui.PopStyleColor(1); end
+        if on or dead then imgui.PopStyleColor(1); end
         if imgui.IsItemHovered() then
-            local job = jobAbbr();
             local ol = '';
             for j, b in pairs(data.onload or {}) do if b == n then ol = ol .. ' [OnLoad: ' .. j .. ']'; end end
-            imgui.SetTooltip(string.format('box %d%s%s\nClick to mark it -- Save lands in the marked box.%s',
+            imgui.SetTooltip(string.format('box %d%s%s\nClick to mark it -- Save lands in the marked box.%s%s',
                 n, (nm ~= '--') and (': ' .. tostring(e.name)) or ' (empty)', ol,
-                (cur ~= nil and cur.dirty and n ~= data.active) and '\nWARNING: unsaved edits on the current box.' or ''));
+                (cur ~= nil and cur.dirty and n ~= data.active) and '\nWARNING: unsaved edits on the current box.' or '',
+                dead and ('\nUNAVAILABLE: "' .. tostring(dead) .. '" -- no job of yours can wear it at its level; it will not apply.') or ''));
         end
     end
     imgui.EndGroup();
@@ -632,7 +690,7 @@ local function renderPicker()
     -- merely "the box is ticked": listFor degrades to the owned list without
     -- gearui, and rows must not then be painted as gear you don't own.
     local all   = (ui.showAll[1] == true) and (W.allEquip ~= nil);
-    local items = listFor(slot, q, all);
+    local items = listFor(slot, q, all, jobLevels());   -- v47: gate by canEquipItemOnAnyJob (fail-open pre-login)
     local shown = #items;
     if all and shown > BROWSE_CAP then shown = BROWSE_CAP; end
     for i = 1, shown do
@@ -913,11 +971,17 @@ function M.render()
         -- own row (Henrik: beside the checkbox it widened the whole window);
         -- full column width, same as Import/Preview
         if imgui.Button('Apply lockstyle##lsgo', { 216, 0 }) then
-            queueCmd('/dl ls apply');
-            -- record the box HERE: our own queued command never re-enters
-            -- this state's command event (round 6) -- and apply-without-a-
-            -- number means the marked box, the same resolution dispatch uses
-            pcall(function() M._noteApplied(data.active); end);
+            local dead = badBoxes()[data.active];   -- v47: a box with an unwearable piece won't fully render
+            if dead ~= nil then
+                _status = string.format('box %d has "%s" -- no job of yours can wear it at its level, so it would keep its old look. Swap it or re-level that job.',
+                    data.active, tostring(dead));
+            else
+                queueCmd('/dl ls apply');
+                -- record the box HERE: our own queued command never re-enters
+                -- this state's command event (round 6) -- and apply-without-a-
+                -- number means the marked box, the same resolution dispatch uses
+                pcall(function() M._noteApplied(data.active); end);
+            end
         end
         if imgui.IsItemHovered() then
             imgui.SetTooltip('Lockstyle the MARKED box now (engine-side: /dl ls apply --\nneeds LuaAshitacast loaded). Unsaved edits are NOT applied: Save first.');
@@ -1025,6 +1089,14 @@ local lastSub, lastBox, subDueAt = nil, nil, nil;
 -- a box number = the town lockstyle / nil = no override), so the pump acts only
 -- on a real change and holds through a mid-zone unreadable blink.
 local lastTownPick = nil;
+-- A town-BOX apply (entering replace-mode, or leaving -> restoring the base box)
+-- is a SET, and the server RELOADS the previously-persisted style on this very
+-- zone-in -- an immediate SET loses that race (the same reason OnLoad/keep-sub
+-- wait out their windows; off-mode is spared only because the guard 'suppress'
+-- rides the client's own ~0.6s auto-disable). The pump books the SET this long
+-- past the zone change, then applies; a 'off' drop still fires at once.
+local TOWN_APPLY_DELAY = 2.0;   -- seconds after the zone change; field-tunable
+local townDueAt, townDuePick, townDueBase = nil, nil, nil;
 -- Live-state accessors for the window readout (render() is defined ABOVE
 -- these locals, so it reaches them through M at frame time -- the same
 -- late-binding pattern as M._touched).
@@ -1047,6 +1119,14 @@ end
 -- restore to on leaving town is still your real lockstyle.
 local function applyTownPick(pick, baseBox)
     if pick == 'off' then
+        queueCmd('/lockstyle off');
+    elseif pick == 'clear' then
+        -- Leaving town with NO base lockstyle to restore: DROP the town box.
+        -- Replace-mode's guard BLOCKS the client's remove packet, so stamp userOff
+        -- to make the guard 'retire' it -- let the remove through, leaving no
+        -- lockstyle outside town (Henrik: don't keep the town style alive when
+        -- nothing is set to replace it).
+        M._guardUserOff();
         queueCmd('/lockstyle off');
     elseif type(pick) == 'number' then
         M._guardArm();
@@ -1086,9 +1166,26 @@ function M.pump()
     if it ~= nil then
         local pick = M._townPick(it, data.townOff, data.townBox);
         if pick ~= lastTownPick then
-            applyTownPick(pick, lastBox or (type(data.onload) == 'table' and data.onload[job]) or nil);
+            if pick == 'off' then
+                applyTownPick('off', nil);   -- a drop is immediate (and the guard 'suppress' drops it anyway)
+            else
+                -- a box (enter replace-mode) or nil (leave -> restore the base
+                -- box) is a SET; the server reloads the previously-persisted
+                -- style on this same zone-in, so an immediate SET loses the race.
+                -- Book it past the zone-in reload window (TOWN_APPLY_DELAY).
+                local base = lastBox or (type(data.onload) == 'table' and data.onload[job]) or nil;
+                townDueBase = base;
+                -- leaving town (pick=nil) with a town box applied but NO base to
+                -- restore -> DROP it, else the guard keeps the town box alive.
+                townDuePick = (pick == nil and M._townLeaveClear(lastTownPick, base)) and 'clear' or pick;
+                townDueAt = os.clock() + TOWN_APPLY_DELAY;
+            end
             lastTownPick = pick;
         end
+    end
+    if townDueAt ~= nil and os.clock() >= townDueAt then
+        townDueAt = nil;
+        applyTownPick(townDuePick, townDueBase);
     end
     if job ~= appliedJob and job ~= pendingJob then
         pendingJob = job;
@@ -1165,6 +1262,13 @@ function M._townPick(inTownVal, townOff, townBox)
     local b = tonumber(townBox);
     if b ~= nil then return b; end
     return nil;
+end
+-- Leaving town (the town pick resolved to nil): should we DROP the town box we
+-- applied instead of restoring? Yes only when we HAD a town box (lastPick is a
+-- number) and there is NO base lockstyle to fall back to -- otherwise the guard
+-- keeps the town box alive and the player is stuck with it outside town. Pure.
+function M._townLeaveClear(lastPick, base)
+    return base == nil and type(lastPick) == 'number';
 end
 
 -- ---------------------------------------------------------------------------
@@ -1348,6 +1452,12 @@ ashita.events.register('command', 'dlac-lockstyle', function(e)
         print(string.format('[dlac] ls state (keep round 6): keepSub=%s lastBox=%s lastSub=%s guardActive=%s healPending=%s',
             tostring(data ~= nil and data.keepSub or nil), tostring(lastBox), tostring(lastSub),
             tostring(guard.active), tostring(subDueAt ~= nil)));
+        -- v46 town readout: run it while standing in a town to see WHY a town
+        -- lockstyle did/didn't apply -- townBox=nil (setting lost), inTown~=true
+        -- (zone not detected), lastPick=the applied pick, townDue=apply pending.
+        print(string.format('[dlac] ls town (v46): townOff=%s townBox=%s inTown=%s lastPick=%s townDue=%s',
+            tostring(data ~= nil and data.townOff or nil), tostring(data ~= nil and data.townBox or nil),
+            tostring(_locok and location.inTown()), tostring(lastTownPick), tostring(townDueAt ~= nil)));
     end
     -- Keep-on-subjob's memory of "the lockstyle that is on": every apply
     -- passes through here (GUI button, OnLoad pump, hand-typed -- the LAC
