@@ -25,11 +25,14 @@ falling MP / rising Refresh (dominated rungs pruned), each adjacent pair
 banded with its own diff and rfDelta, the last rung banding against the
 potency point. The order collapses to ONE rule: **rfDelta ascending, then
 diff ascending** — refresh-cost top-ups come off first and return last;
-refresh-gain bands sink by magnitude (+1 releases before +2). Field pin:
-Erudite Cap and Bunzi's Robe are shallow top-ups; Bunzi's Hat (+1) holds
-second-last; Hlr. Bliaut +1 (+2) is the last thing to go and the first
-thing back. `target()` answers the piece NAME per slot (or false = the set's
-piece); tests MB13*.
+refresh-gain bands sink by magnitude (+1 releases before +2). Field pin
+(names corrected round 9b, augments ALWAYS in the totals): Hlr. Bliaut +1
+at 35+18 aug = **53 MP** tops the body ladder — Bunzi's Robe (50, flat) is
+DOMINATED and pruned, never worn; Erudite Cap and the Hlr. Bliaut are the
+shallow top-ups; **Bunzi's Hat (+1 Refresh) holds second-last; Clr. Bliaut
++1 (Refresh 1 native + 1 augment = 2) is the last thing to go and the
+first thing back.** `target()` answers the piece NAME per slot (or false =
+the set's piece); tests MB13*, S169b-e prove the augment fold end-to-end.
 
 **Night addendum (Henrik, in-flight): "Refresh > least mp diff."** A battery
 whose Refresh the potency piece lacks outranks the difference ordering and

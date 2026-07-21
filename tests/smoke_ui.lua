@@ -651,6 +651,15 @@ end)();
           Stats = { ConvertHPtoMP = 25 } },
         { Name = 'Mana Club',         Id = 90012, Level = 40, Slot = 'Main',  Jobs = { 'All' },
           Stats = { MP = 10 } },
+        -- maxmp augments (fmt 12, field 07-21): the OWNED copy's augment MP
+        -- and Refresh fold into mp/rf -- Hlr. Bliaut +1 reads 35+18=53 MP
+        -- (and beats a flat 50), Clr. Bliaut +1 reads Refresh 1+1=2.
+        { Name = 'Hlr. Bliaut +1',    Id = 90013, Level = 70, Slot = 'Body',  Jobs = { 'All' },
+          Stats = { MP = 35 } },
+        { Name = 'Clr. Bliaut +1',    Id = 90014, Level = 74, Slot = 'Body',  Jobs = { 'All' },
+          Stats = { MP = 29, Refresh = 1 } },
+        { Name = "Bunzi's Robe",      Id = 90015, Level = 74, Slot = 'Body',  Jobs = { 'All' },
+          Stats = { MP = 50 } },
         -- craft: a real skill item, an anti-HQ item (BLOCKS the hq goal, tops
         -- nq), and a skill-up item (fills hq at gainFill, tops skillup).
         { Name = 'Chefs Hat',         Id = 90020, Level = 1,  Slot = 'Head',  Jobs = { 'All' },
@@ -699,6 +708,13 @@ end)();
         haveInBags = function() return true; end,
         playerJob = function() return 'BLM'; end,
     });
+    -- Private augments on the OWNED copies (fmt 12): the builder folds these
+    -- through augments.ownedAugStats -- stubbed here keyed by item id.
+    package.loaded['dlac\\feature\\augments'] = {
+        ownedAugStats = function()
+            return { [90013] = { MP = 18 }, [90014] = { Refresh = 1 } };
+        end,
+    };
     aui.rescanAutogear();
 
     local mpath = root .. 'dlac\\autogear.lua';
@@ -727,6 +743,18 @@ end)();
     check('S169 mp hold map: lowercased + ConvertHPtoMP counted',
         (m.mp['uggalepih pendant'] or 0) .. '/' .. (m.mp['astral ring'] or 0) .. '/' .. (m.mp['mana club'] or 0),
         '25/12/10');
+    check('S169b augment MP folds into the hold map (35+18)',
+        m.mp['hlr. bliaut +1'], 53);
+    check('S169c augment Refresh folds into rf (1 native + 1 aug)',
+        m.rf and m.rf['clr. bliaut +1'], 2);
+    check('S169d the augmented copy TOPS the body ladder (53 beats the flat 50)',
+        m.mpBest.body and m.mpBest.body[1].name .. '/' .. m.mpBest.body[1].mp, 'Hlr. Bliaut +1/53');
+    check('S169e the rung carries its refresh',
+        (function()
+            for _, r in ipairs(m.mpBest.body or {}) do
+                if r.name == 'Clr. Bliaut +1' then return r.rf; end
+            end
+        end)(), 2);
     check('S170 an x2 battery fills BOTH ring ladders',
         m.mpBest.ring1 and m.mpBest.ring1[1].name == 'Astral Ring'
         and m.mpBest.ring2 and m.mpBest.ring2[1].name == 'Astral Ring', true);

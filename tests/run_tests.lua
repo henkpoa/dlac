@@ -798,41 +798,48 @@ check('MB12d legacy refresh=true alias sinks deep',
     mb.build({ { slot = 'a', low = 0, high = 10, refresh = true },
                { slot = 'b', low = 0, high = 5 } }, 100, 0)[2].slot, 'a');
 
--- MB13: MULTI-RUNG bands (v90, field round 9). Henrik's pin: "Bunzi's Hat
--- should be in 2nd last space due to refresh, last place Hlr. Bliaut +1"
--- -- refresh mid-rungs are their own bands, flat top-ups over them float
--- shallow, and the refresh-gain bands order by magnitude (+1 before +2).
+-- MB13: MULTI-RUNG bands, Henrik's CORRECTED field pin (round 9b -- his
+-- real gear with augments counted): body = Hlr. Bliaut +1 (35+18 aug = 53
+-- MP, flat) > Bunzi's Robe (50, DOMINATED -- pruned, never worn) > Clr.
+-- Bliaut +1 (Refresh 1 native + 1 aug = 2). Last out / first back: Clr.
+-- Bliaut +1 (+2), then Bunzi's Hat (+1) second-last; flat top-ups float
+-- shallowest. "Augs must always be calculated into the total."
 local multi = mb.build({
     { slot = 'head', low = 0, lowRf = 0,
       rungs = { { name = 'Erudite Cap', mp = 30, rf = 0 },
                 { name = 'Bunzi\'s Hat', mp = 25, rf = 1 } } },
-    { slot = 'body', low = 29, lowRf = 0,
-      rungs = { { name = 'Bunzi\'s Robe', mp = 50, rf = 0 },
-                { name = 'Hlr. Bliaut +1', mp = 35, rf = 2 } } },
+    { slot = 'body', low = 5, lowRf = 0,
+      rungs = { { name = 'Hlr. Bliaut +1', mp = 53, rf = 0 },
+                { name = 'Bunzi\'s Robe', mp = 50, rf = 0 },
+                { name = 'Clr. Bliaut +1', mp = 31, rf = 2 } } },
     { slot = 'feet', low = 5, lowRf = 0,
       rungs = { { name = 'Boots', mp = 15, rf = 0 } } },
 }, 1100, 15);
 local order = {};
 for _, b in ipairs(multi) do order[#order + 1] = b.name; end
-check('MB13 the field order pin', table.concat(order, '>'),
-    'Bunzi\'s Robe>Erudite Cap>Boots>Bunzi\'s Hat>Hlr. Bliaut +1');
--- Mid-pool (cur 1050, Hat worn): the flat top-ups are off, Bunzi's Hat
--- HOLDS its slot (the round-9 bug: it was being replaced way earlier),
--- and body wants the refresh rung, not the flat 50.
-local mtgt = mb.target(multi, 1050, function(sl)
+check('MB13 the corrected field order pin', table.concat(order, '>'),
+    'Hlr. Bliaut +1>Erudite Cap>Boots>Bunzi\'s Hat>Clr. Bliaut +1');
+check('MB13g Bunzi\'s Robe pruned as dominated (the augmented 53 owns the top)',
+    (function()
+        for _, b in ipairs(multi) do
+            if b.name == 'Bunzi\'s Robe' then return 'present'; end
+        end
+        return 'pruned';
+    end)(), 'pruned');
+-- Mid-pool (cur 1040, Hat + Clr. worn): flat top-ups are off, the refresh
+-- pieces HOLD (the round-9 bug: the hat was being replaced way earlier).
+local wornMid = function(sl)
     if sl == 'head' then return 'Bunzi\'s Hat'; end
+    if sl == 'body' then return 'Clr. Bliaut +1'; end
     return nil;
-end);
+end
+local mtgt = mb.target(multi, 1040, wornMid);
 check('MB13b mid-pool: the refresh hat stays', mtgt.head, 'Bunzi\'s Hat');
-check('MB13c mid-pool: body wants the refresh rung', mtgt.body, 'Hlr. Bliaut +1');
+check('MB13c mid-pool: the refresh body stays', mtgt.body, 'Clr. Bliaut +1');
 -- Near the top the flat top-ups come back over the refresh rungs.
-local ttgt = mb.target(multi, 1090, function(sl)
-    if sl == 'head' then return 'Bunzi\'s Hat'; end
-    if sl == 'body' then return 'Hlr. Bliaut +1'; end
-    return nil;
-end);
+local ttgt = mb.target(multi, 1090, wornMid);
 check('MB13d peak: the flat top-up returns', ttgt.head, 'Erudite Cap');
-check('MB13e peak: body tops up too', ttgt.body, 'Bunzi\'s Robe');
+check('MB13e peak: body tops up to the augmented 53', ttgt.body, 'Hlr. Bliaut +1');
 -- A dominated rung (less MP, no refresh gained) never becomes a band.
 check('MB13f dominated rung pruned',
     #(mb.build({ { slot = 'x', low = 0, lowRf = 0,
