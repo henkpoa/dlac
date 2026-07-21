@@ -729,6 +729,63 @@ check('MPS8c dup stays advertised',
 end)();
 
 -- ---------------------------------------------------------------------------
+-- MB. the banded-ladder core (feature/mpbands.lua, maxmp v2 -- Henrik's
+--     2026-07-21 design). Thresholds are precomputed absolute current-MP
+--     numbers; current MP is the ONLY live input. MB1/MB5/MB6 pin Henrik's
+--     worked example VERBATIM: total 1100, feet low 5 / high 15 (diff 10),
+--     tick 15 -> unequip at 1075, re-equip at 1085.
+-- ---------------------------------------------------------------------------
+(function()
+local mb = dofile('feature/mpbands.lua');
+package.loaded['dlac\\feature\\mpbands'] = mb;
+
+local ex = mb.build({ { slot = 'feet', name = 'MP Boots', low = 5, high = 15 } }, 1100, 15);
+check('MB1 worked example: one band',      #ex, 1);
+check('MB1b lastMax = total',              ex[1].lastMax, 1100);
+check('MB1c endMax = total - diff',        ex[1].endMax, 1090);
+check('MB1d unequip trigger (Henrik: 1075)', ex[1].offAt, 1075);
+check('MB1e re-equip trigger (Henrik: 1085)', ex[1].onAt, 1085);
+
+local three = mb.build({
+    { slot = 'neck', name = 'Locket', low = 0, high = 45 },
+    { slot = 'feet', name = 'Boots',  low = 5, high = 15 },
+    { slot = 'ring', name = 'Ring',   low = 0, high = 25 },
+}, 1100, 15);
+check('MB2 smallest diff first',   three[1].slot .. '>' .. three[2].slot .. '>' .. three[3].slot, 'feet>ring>neck');
+check('MB2b bands chain: lastMax', three[2].lastMax, 1090);
+check('MB2c bands chain: deepest', three[3].endMax, 1020);
+check('MB3 non-positive diff gets no band',
+    #(mb.build({ { slot = 'body', low = 50, high = 50 }, { slot = 'head', low = 30, high = 20 } }, 1100, 15)), 0);
+check('MB3b nil-safe build', #(mb.build(nil, nil, nil)), 0);
+
+local offOn = function(v) return function() return v; end end
+check('MB4 above onAt: battery on',   mb.target(ex, 1085, offOn(false)).feet, true);
+check('MB5 at/below offAt: battery off', mb.target(ex, 1075, offOn(true)).feet, false);
+check('MB6 dead zone keeps worn ON',  mb.target(ex, 1080, offOn(true)).feet, true);
+check('MB6b dead zone keeps worn OFF', mb.target(ex, 1080, offOn(false)).feet, false);
+check('MB7 unreadable cur keeps state', mb.target(ex, nil, offOn(true)).feet, true);
+local plunge = mb.target(three, 900, offOn(true));   -- big spell: BATCH release
+check('MB8 batch release on a big drop', tostring(plunge.feet) .. ',' .. tostring(plunge.ring) .. ',' .. tostring(plunge.neck),
+    'false,false,false');
+local surge = mb.target(three, 1100, offOn(false));  -- Sublimation pop: BATCH equip
+check('MB8b batch equip on a big rise', tostring(surge.feet) .. ',' .. tostring(surge.ring) .. ',' .. tostring(surge.neck),
+    'true,true,true');
+
+mb.reset();
+check('MB9 unmeasured tick = default', mb.tick(false), mb.DEFAULT_TICK);
+mb.observe(900, false); mb.observe(912, false); mb.observe(912, false); mb.observe(927, false); mb.observe(939, false);
+check('MB10 standing tick = median of rises', mb.tick(false), 12);
+mb.observe(600, false);            -- a spell DROP is not a tick
+mb.observe(1000, false);           -- a +400 zone/item jump is not a tick
+check('MB10b drops and jumps ignored', mb.tick(false), 12);
+mb.observe(500, true); mb.observe(535, true);
+check('MB11 resting bucket separate', mb.tick(true), 35);
+mb.reset();
+mb.observe(900, false); mb.observe(910, false);
+check('MB11b resting falls back to standing measure', mb.tick(true), 10);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- L. THE central stats-at-level resolver (levelstats.effective), against the
 --    REAL generated scaling data: Tamas Ring is MP 15 on paper, 29 at Lv74,
 --    30 fully scaled (Lv75). Every section -- gearui display/scoring, gearoptim
