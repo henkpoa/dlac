@@ -3657,3 +3657,53 @@ rescinded) with a live ON/OFF switch (modestate mirror + explicit
 command), idle-set picker, and the Teleports quick-menu switch.
 Field-confirmed: "now it works, awesome" -- refresh ordering correct,
 Loquacious holding ear2. All pushed to origin/main.
+
+## The Arbiter, step 1: claim registry + arbstate + rank-ordered application (2026-07-21, engine v97)
+
+**Theme:** the first of ADR 0012's four incremental steps. Give the six gear
+claimants (Pins, AutoAmmo, MaxMP, Craft, HELM, Fishing) ONE user-orderable
+priority list, replacing the precedence that lived in three separately-encoded
+constructs -- the hardcoded overlay application sequence at the bottom of
+`M.dispatch`, the per-slot `elseif` chain in `equipResolved`, and `POST_ORDER`.
+
+**Landed (this step only -- the migration is deliberately incremental so a
+regression has one suspect, not six):**
+- A **claim registry** in `M.dispatch`: the discrete overlays (Pins, AutoAmmo,
+  Craft, HELM, Fishing) are collected as `claims`, and the old hardcoded
+  `craft > HELM > fish > AutoAmmo > pin` apply sequence is replaced by ONE loop
+  walking the live rank order LOW->HIGH (overlay last-writer-wins == the rank
+  walk's first-wins). At default order the applied sequence is byte-identical to
+  before (craft/HELM/fish are mutually exclusive via the newest-armed
+  arbitration, so their internal reorder is moot).
+- The **`arbstate` Statefile** (`return { order = {...} }`): one strict draggable
+  list per character, hand-editable this step (the GUI writer is step 2). Read
+  through the shared `ensureStateFile` reader -- 1s throttle, torn/missing =
+  built-in default. `M.arbOrder` sanitizes: unknown rows dropped, missing known
+  rows appended in default order, so a partial-but-parseable file still yields a
+  complete strict order.
+- **Default order: Pins > Locks (veto placeholder -- semantics unchanged this
+  step) > AutoAmmo > MaxMP > Craft > HELM > Fishing > Triggers floor.** Reproduces
+  today's winners with exactly ONE deliberate change: **AutoAmmo's named
+  projectile beats a MaxMP battery in Ammo** (a shooting job must never fire its
+  stat-trinket ammo -- Henrik's ADR 0012 ruling).
+- **MaxMP stays WOVEN** through the resolves (not a discrete overlay), but now
+  consults the rank: `M.arbCededAbove` computes the slots any claimant ranked
+  above MaxMP has won this dispatch, passed as `ctx.mpCeded`; the per-slot MP
+  branch and the mp-stage pass both skip a ceded slot. So Ammo is ceded to
+  AutoAmmo, while batteries still override Craft/HELM/Fishing armor (both ranked
+  BELOW MaxMP -- the previously-silent behavior, now explicit and orderable). A
+  hand-edited reorder that moves MaxMP above AutoAmmo un-cedes Ammo and the
+  battery wins again, no LAC reload.
+- **Pure resolve core** `M.arbResolve(claims, order, floor) -> winners, by` (the
+  seam the acceptance criteria pin): walk the order top-down, first claimant with
+  an opinion on the slot wins; 'Triggers' resolves to the floor. Headless tests
+  AR* (order-pin, sanitizer, resolve, ceding) + ARE* (the AutoAmmo-over-battery
+  change wired through `equipResolved` with `M.mpBands` stubbed).
+- Read-only **`/dl prio`** prints the live rank + each claimant's claim status --
+  the tracer's demo surface until the GUI Priority section lands (step 2). Added
+  to the command WHITELIST (the v46 lesson).
+
+**Deferred to later ADR 0012 steps (not this issue):** the Automations-tab
+Priority drag UI (step 2); folding Locks from a placeholder row into a real
+draggable veto (step 3); collapsing the remaining woven-MaxMP scaffolding and the
+hardcoded arms, plus `/dl why` per-slot claimant attribution (step 4).

@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 96;   -- 96: MOVEMENT YIELD (panel setting, manifest fmt 14 -- mpMoveYield + the mv map): while MOVING, a set piece carrying Movement+ beats the battery in its slot even at max MP (field ask: Pegasus Collar over the neck battery on BRD; the movement trigger set's piece flows, the battery steps aside, and stopping resumes the band plan untouched). The check is the FIRST arm of the per-slot MP branch -- before target logic, after the v91 'remove' skip -- and reads the same ctx.player.IsMoving the `moving` trigger matcher uses. Off by default; the MaxMP panel checkbox persists it inside the manifest like the pair override. /dl why notes it as MP-MOVE.
+M.VERSION = 97;   -- 97: THE ARBITER, step 1 (ADR 0012). One data-driven claim registry orders every Claim's application -- the hardcoded craft > HELM > fish > AutoAmmo > pin overlay sequence at the bottom of M.dispatch is gone, replaced by a single rank-ordered loop (applied LOW->HIGH so higher rank wins the slot, over the Trigger floor). The rank is one strict draggable list per character, persisted as the `arbstate` Statefile (hand-editable this step; the GUI writer is step 2; hot-reloaded on the 1s throttle, torn/missing = built-in default). Default order: Pins > Locks (veto placeholder, semantics unchanged) > AutoAmmo > MaxMP > Craft > HELM > Fishing > Triggers floor -- reproduces today's winners with ONE deliberate change: AutoAmmo's named projectile beats a MaxMP battery in Ammo. MaxMP stays WOVEN through the resolves (not a discrete overlay) but consults the rank via ctx.mpCeded: it never contests a slot won by a claimant ranked above it (so Ammo is ceded to AutoAmmo; batteries still override Craft/HELM/Fishing armor, both ranked below). Pure resolve core M.arbResolve / M.arbOrder / M.arbCededAbove (tests AR*); read-only /dl prio prints the live rank + per-claimant claim status. All claim-side conditions untouched (newest-armed craft/HELM/fish exclusivity, AutoAmmo's fishing stand-down, MaxMP 'remove'-respect / movement yield / sticky pairs / stage-eligibility).
+                  -- 96: MOVEMENT YIELD (panel setting, manifest fmt 14 -- mpMoveYield + the mv map): while MOVING, a set piece carrying Movement+ beats the battery in its slot even at max MP (field ask: Pegasus Collar over the neck battery on BRD; the movement trigger set's piece flows, the battery steps aside, and stopping resumes the band plan untouched). The check is the FIRST arm of the per-slot MP branch -- before target logic, after the v91 'remove' skip -- and reads the same ctx.player.IsMoving the `moving` trigger matcher uses. Off by default; the MaxMP panel checkbox persists it inside the manifest like the pair override. /dl why notes it as MP-MOVE.
                   -- 95: the refresh BASELINE is the POTENTIAL refresh (field round 13: Clr. Bliaut +1 displaced by Hlr. Bliaut +1 at MP ~800, plan row 12 'body (0->53)' with NO [refresh-cost] tags anywhere). lowRf was the min-MP piece's refresh -- which reads 0 the moment ANY combat/precast set writes the slot with potency gear, so every refresh-cost delta vanished, the Hlr band sorted deep-and-plain and its clamped on-trigger landed mid-pool. Now lowRf = the MOST refresh any trigger-reachable set puts in the slot ("you should be aware that there is a POTENTIAL refresh piece there" -- the round-10 ruling verbatim); the MP low stays the minimum (the true potency point). Plus mpbands.MIN_TICK = 5: the measured tick is honest (unbuffed gear refresh really ticks +1..3) but a 1-MP margin makes hair-width hysteresis (off<=1086/on>=1087) -- the margin floors at 5, the buckets keep the true readings. Not the pair-homes change: that stays ear/ring-only.
                   -- 94: sticky pairs check BOTH claims (field: Loquac. still moved ear2 -> ear1 ONCE, no bounce). Root cause found OUTSIDE the engine: Henrik's gear.lua has NO LoquaciousEarring entry, so his Idle Ear2 ladder's gear.Ear.LoquaciousEarring reference is silently nil (nil list entries VANISH -- no warning possible) and the SET equips Outlaw's into ear2, displacing the earring to the bag; the band then legitimately picked the freed 30-MP battery for ear1. Engine hardening shipped anyway: mpStickyPairs consulted `plan or worn`, so a sibling plan naming a DIFFERENT piece shadowed the worn claim -- both claims veto independently now (MSS5). The data fix is Henrik's side: /dl sync to index the earring, then the set holds it in ear2 and the plan-claim pins it forever.
                   -- 93: STICKY paired slots (field: Loquacious Earring bounced ear2 <-> ear1). The v83 pick veto reads WORN state, which lags ~a dispatch behind LAC's swaps -- so the band pulled the earring toward its ladder home (ear1) whenever the read went stale, and the idle set planted it back (ear2), forever. M.mpStickyPairs (tests MSS*) closes it at the APPLY site: a battery candidate whose piece is already claimed by the sibling ear/ring -- in THIS dispatch's resolved PLAN (cannot lag) or on the body -- never writes; genuine duplicates stay exempt (mpPairSkip: dup-owned items ride both paired ladders). MP earrings and rings never relocate across their pair once set; /dl why notes the skip as MP-PAIR sticky.
@@ -2164,6 +2165,102 @@ local POST_ORDER = { 'mp-stage', 'craft-sub-guard', 'sync-hold-ammo',
                      'trinket-vs-ranged', 'reserved-drops' };
 M._postPassOrder = POST_ORDER;
 
+-- ---------------------------------------------------------------------------
+-- The Arbiter (ADR 0012, step 1) -- ONE data-driven registry that orders every
+-- Claim's application, replacing the hardcoded overlay sequence at the bottom
+-- of M.dispatch. A Claim is a feature's declared wish to dress slots (Pins,
+-- AutoAmmo, MaxMP, Craft, HELM, Fishing); the Arbiter decides, per slot, which
+-- claimant wins by the user's rank order (CONTEXT.md: Claim / Arbiter).
+--
+-- The rank is ONE strict list per character, highest priority first, persisted
+-- as the `arbstate` Statefile (hand-editable this step; the GUI writer is step
+-- 2). 'Triggers' is the fixed FLOOR the claims dress over; 'Locks' is a
+-- placeholder VETO row this step (lock semantics unchanged -- the veto fold is
+-- step 3). MaxMP is still WOVEN through the resolves this step (not a discrete
+-- overlay); it keeps its rank ROW so a reorder moves it, and it consults the
+-- rank with one rule -- never contest a slot won by a claimant ranked above it
+-- (M.arbCededAbove). Default order reproduces today's winners with exactly ONE
+-- deliberate change: AutoAmmo's named projectile now beats a MaxMP battery in
+-- Ammo (it ranks above MaxMP, so Ammo is ceded to it).
+-- ---------------------------------------------------------------------------
+local ARB_ORDER_DEFAULT = { 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
+                            'Craft', 'HELM', 'Fishing', 'Triggers' };
+M._arbDefaultOrder = ARB_ORDER_DEFAULT;
+
+-- The live rank order: arbstate's `order` array sanitized against the KNOWN
+-- rows -- unknown names dropped, missing known rows appended in default order,
+-- so a partial or hand-mangled (but still parseable) file yields a COMPLETE
+-- strict order. A torn/missing file (ensureStateFile drops it to nil) reads as
+-- the built-in default. Pure so tests can drive it directly.
+function M.arbOrder(st)
+    local given = (type(st) == 'table' and type(st.order) == 'table') and st.order or nil;
+    local out, seen = {}, {};
+    if given ~= nil then
+        local known = {};
+        for _, n in ipairs(ARB_ORDER_DEFAULT) do known[n] = true; end
+        for _, n in ipairs(given) do
+            if known[n] and not seen[n] then out[#out + 1] = n; seen[n] = true; end
+        end
+    end
+    for _, n in ipairs(ARB_ORDER_DEFAULT) do
+        if not seen[n] then out[#out + 1] = n; seen[n] = true; end
+    end
+    return out;
+end
+
+-- The Arbiter's pure RESOLVE CORE (the seam the acceptance criteria pin): given
+-- each active claimant's claim table (slot -> item), the rank `order` (highest
+-- first, including the 'Triggers' floor row) and the trigger floor result,
+-- decide per slot which claimant wins -- walk the order TOP-DOWN, the first
+-- claimant with an opinion on that slot takes it ('Triggers' resolves to the
+-- floor). Rows with no claim table (the Locks veto placeholder, woven MaxMP)
+-- are simply skipped. Returns winners (slot -> item) and by (slot -> claimant).
+-- Slot keys are the canonical LAC keys every producer emits, matched as-is.
+function M.arbResolve(claims, order, floor)
+    local src = {};                       -- claimant name -> claim table
+    for name, tbl in pairs(claims or {}) do
+        if type(tbl) == 'table' then src[name] = tbl; end
+    end
+    src['Triggers'] = floor or {};
+    local slots = {};                     -- every slot any layer names
+    for _, tbl in pairs(src) do
+        for slot in pairs(tbl) do slots[slot] = true; end
+    end
+    local winners, by = {}, {};
+    for slot in pairs(slots) do
+        for _, name in ipairs(order or {}) do
+            local tbl = src[name];
+            if tbl ~= nil and tbl[slot] ~= nil then
+                winners[slot], by[slot] = tbl[slot], name;
+                break;
+            end
+        end
+    end
+    return winners, by;
+end
+
+-- Slots claimed by any ACTIVE claimant ranked strictly ABOVE `who` in `order`,
+-- as { [lowercase slot] = winning-claimant-name }. This is how woven MaxMP
+-- "never contests a slot won above me" (ADR 0012): at default order the ceded
+-- set is the union of Pins' and AutoAmmo's slots, so a battery yields the Ammo
+-- slot to an AutoAmmo projectile but still overrides Craft/HELM/Fishing armor
+-- (both ranked below MaxMP). Pure. Reorder MaxMP above AutoAmmo and the Ammo
+-- slot is no longer ceded -- the battery wins again, no LAC reload.
+function M.arbCededAbove(claims, order, who)
+    local rankOf = {};
+    for i, n in ipairs(order or {}) do rankOf[n] = i; end
+    local mine = rankOf[who];
+    local ceded = {};
+    if mine == nil then return ceded; end
+    for name, tbl in pairs(claims or {}) do
+        local r = rankOf[name];
+        if r ~= nil and r < mine and type(tbl) == 'table' then
+            for slot in pairs(tbl) do ceded[string.lower(tostring(slot))] = name; end
+        end
+    end
+    return ceded;
+end
+
 local function equipResolved(s, ctx)
     local out, notes = nil, nil;
     -- Copy-on-write + note, written ONCE (every branch used to repeat both).
@@ -2189,6 +2286,12 @@ local function equipResolved(s, ctx)
     -- forever. ctx.pinReserved is a stateless hold computed per dispatch from the
     -- pin table; unpin and the slot dispatches normally on the very next pass.
     local pinRes = (type(ctx) == 'table') and ctx.pinReserved or nil;
+    -- Slots a higher-ranked claimant (Pins, AutoAmmo, ... whatever the arbstate
+    -- ranks above MaxMP) has won this dispatch. Woven MaxMP must never contest
+    -- them (ADR 0012): the per-slot MP branch and the mp-stage pass both skip a
+    -- ceded slot, so the higher claimant's piece flows through untouched. nil
+    -- pre-Arbiter (every non-dispatch equipResolved call), i.e. no ceding.
+    local mpCeded = (type(ctx) == 'table') and ctx.mpCeded or nil;
     -- Max-MP context (v88, the banded ladder): M.mpBands precomputes the whole
     -- plan -- bands, thresholds, the target loadout -- from the manifest, the
     -- trigger sets and CURRENT MP (the only live number; docs/design v2). The
@@ -2254,7 +2357,8 @@ local function equipResolved(s, ctx)
                 note('%s=skipped (%s)', marker, tostring(why));
             end
         elseif mpMap ~= nil and type(v) == 'string' and string.lower(v) ~= 'remove'
-               and not MP_HOLD_EXEMPT[string.lower(tostring(slot))] then
+               and not MP_HOLD_EXEMPT[string.lower(tostring(slot))]
+               and not (mpCeded ~= nil and mpCeded[string.lower(tostring(slot))] ~= nil) then
             -- (an explicit 'remove' skips the ladder: it is a deliberate
             -- empty-the-slot claim -- the fishing overlay guarding its rod,
             -- AutoAmmo's protective sweep -- and holding a battery against
@@ -2324,6 +2428,7 @@ local function equipResolved(s, ctx)
             for lslot, canon in pairs(MP_SLOT_CANON) do
                 local want = mpCtx.target[lslot];   -- a rung NAME, false, or nil (v90)
                 if not covered[lslot] and M.locks[lslot] ~= true
+                   and not (mpCeded ~= nil and mpCeded[lslot] ~= nil)
                    and type(want) == 'string' then
                     local worn = wornItemName(lslot);
                     if worn == nil or string.lower(worn) ~= string.lower(want) then
@@ -3116,6 +3221,13 @@ local _pin = { raw = nil, data = nil, lastCheck = -1 };
 -- ensureStateFile policy -- this reader is where the field lesson came from.)
 local function ensurePinState() return ensureStateFile(_pin, 'pinstate.lua'); end
 
+-- The Arbiter's rank Statefile (ADR 0012). Same policy as every other state
+-- file: a hand-edited reorder applies on the next dispatch (1s throttle), a
+-- torn/missing write drops to nil and M.arbOrder falls back to the built-in
+-- default. `return { order = { 'Pins', 'Locks', 'AutoAmmo', ... } }`.
+local _arb = { raw = nil, data = nil, lastCheck = -1 };
+local function ensureArbState() return ensureStateFile(_arb, 'arbstate.lua'); end
+
 -- Scope entries are "<Event>|<rule label>" -- the rule label ALONE is ambiguous
 -- ('any' is the label of every unconditional rule, so a Precast 'any' and a
 -- Midcast 'any' would be indistinguishable and one pin would silently cover
@@ -3447,6 +3559,23 @@ function M.dispatch(event)
             aEquip, aWhy = ammoOverlayFor(ammoState, ctx, event, hits, fishOn);
         end
 
+        -- THE ARBITER (ADR 0012, step 1). One data-driven registry orders every
+        -- Claim's application: the discrete overlays are collected as claims,
+        -- the live rank order is read from arbstate, and the whole thing is
+        -- applied below in RANK order -- the hardcoded craft/HELM/fish/ammo/pin
+        -- sequence is gone. MaxMP stays woven this step but consults the rank
+        -- (ctx.mpCeded): it never contests a slot won by a claimant ranked above
+        -- it, computed ONCE here so every equipResolved call below (floor
+        -- included) sees the same ceded set.
+        local arbOrder = M.arbOrder(ensureArbState());
+        local claims = {};
+        if pEquip ~= nil then claims['Pins']     = pEquip; end
+        if aEquip ~= nil then claims['AutoAmmo']  = aEquip; end
+        if cEquip ~= nil then claims['Craft']     = cEquip; end
+        if hEquip ~= nil then claims['HELM']      = hEquip; end
+        if fEquip ~= nil then claims['Fishing']   = fEquip; end
+        ctx.mpCeded = M.arbCededAbove(claims, arbOrder, 'MaxMP');
+
         if #hits == 0 and cEquip == nil and hEquip == nil and fEquip == nil and pEquip == nil and aEquip == nil then
             if event ~= 'Default' then   -- Default runs every frame; only action events trace a miss
                 _trace[event] = { time = os.date('%H:%M:%S'), action = actionLabel(ctx),
@@ -3565,59 +3694,63 @@ function M.dispatch(event)
                 end
             end
         end
-        -- Craft overlay LAST: it owns every craft slot this dispatch, on top of
-        -- whatever Default resolved (the whole point -- the engine wears the
-        -- craft gear, so nothing reverts it).
-        if cEquip ~= nil then
-            equipResolved(cEquip, ctx);
-            if retrace then
-                local ks = {};
-                for slot in pairs(cEquip) do ks[#ks + 1] = tostring(slot); end
-                table.sort(ks);
-                lines[#lines + 1] = 'craft gear (overlay)  ->  ' .. table.concat(ks, ', ');
-            end
-        end
-        -- HELM overlay: same rank as craft (arbitration guarantees only one).
-        if hEquip ~= nil then
-            equipResolved(hEquip, ctx);
-            if retrace then
-                local ks = {};
-                for slot in pairs(hEquip) do ks[#ks + 1] = tostring(slot); end
-                table.sort(ks);
-                lines[#lines + 1] = 'HELM gear (overlay)  ->  ' .. table.concat(ks, ', ');
-            end
-        end
-        -- Fishing overlay: same rank again (arbitration guarantees only one).
-        if fEquip ~= nil then
-            equipResolved(fEquip, ctx);
-            if retrace then
-                local ks = {};
-                for slot in pairs(fEquip) do ks[#ks + 1] = tostring(slot); end
-                table.sort(ks);
-                lines[#lines + 1] = 'fishing gear (overlay)  ->  ' .. table.concat(ks, ', ');
-            end
-        end
-        -- AutoAmmo: above the sets and the activity overlays (it owns the Ammo
-        -- slot when it has an opinion), below the pin -- a pinned Ammo is the
-        -- player's explicit word.
-        if aEquip ~= nil then
-            equipResolved(aEquip, ctx);
-            if retrace then
-                lines[#lines + 1] = string.format('AutoAmmo  ->  Ammo=%s  (%s)',
-                    tostring(aEquip.Ammo), tostring(aWhy));
-            end
-        end
-        -- Pins LAST of all: above the craft overlay, above every trigger. This is
-        -- the whole mechanism -- last writer wins the slot, so a pinned piece is
-        -- simply what the engine wears and nothing can take it back off.
-        if pEquip ~= nil then
-            equipResolved(pEquip, ctx);
-            if retrace then
-                local ks = {};
-                for slot, item in pairs(pEquip) do ks[#ks + 1] = tostring(slot) .. '=' .. tostring(item); end
-                table.sort(ks);
-                lines[#lines + 1] = 'PINNED  ->  ' .. table.concat(ks, ', ');
-            end
+        -- Apply every Claim in RANK order (ADR 0012). Overlay last-writer-wins,
+        -- so higher rank must be applied LAST -- the loop walks the rank order
+        -- LOW to HIGH (reverse), each active claimant overwriting the ones
+        -- below it, above the Trigger floor already applied. This one loop
+        -- replaces the old hardcoded craft > HELM > fish > AutoAmmo > pin
+        -- sequence; MaxMP is woven inside every equipResolved (rank-consulted
+        -- via ctx.mpCeded) and Locks stay in equipResolved's per-slot chain, so
+        -- neither has a discrete overlay here. Each claimant keeps its own trace
+        -- line for /dl why.
+        local applyClaim = {
+            ['Craft'] = function()
+                equipResolved(cEquip, ctx);
+                if retrace then
+                    local ks = {};
+                    for slot in pairs(cEquip) do ks[#ks + 1] = tostring(slot); end
+                    table.sort(ks);
+                    lines[#lines + 1] = 'craft gear (overlay)  ->  ' .. table.concat(ks, ', ');
+                end
+            end,
+            ['HELM'] = function()
+                equipResolved(hEquip, ctx);
+                if retrace then
+                    local ks = {};
+                    for slot in pairs(hEquip) do ks[#ks + 1] = tostring(slot); end
+                    table.sort(ks);
+                    lines[#lines + 1] = 'HELM gear (overlay)  ->  ' .. table.concat(ks, ', ');
+                end
+            end,
+            ['Fishing'] = function()
+                equipResolved(fEquip, ctx);
+                if retrace then
+                    local ks = {};
+                    for slot in pairs(fEquip) do ks[#ks + 1] = tostring(slot); end
+                    table.sort(ks);
+                    lines[#lines + 1] = 'fishing gear (overlay)  ->  ' .. table.concat(ks, ', ');
+                end
+            end,
+            ['AutoAmmo'] = function()
+                equipResolved(aEquip, ctx);
+                if retrace then
+                    lines[#lines + 1] = string.format('AutoAmmo  ->  Ammo=%s  (%s)',
+                        tostring(aEquip.Ammo), tostring(aWhy));
+                end
+            end,
+            ['Pins'] = function()
+                equipResolved(pEquip, ctx);
+                if retrace then
+                    local ks = {};
+                    for slot, item in pairs(pEquip) do ks[#ks + 1] = tostring(slot) .. '=' .. tostring(item); end
+                    table.sort(ks);
+                    lines[#lines + 1] = 'PINNED  ->  ' .. table.concat(ks, ', ');
+                end
+            end,
+        };
+        for i = #arbOrder, 1, -1 do
+            local name = arbOrder[i];
+            if claims[name] ~= nil and applyClaim[name] ~= nil then applyClaim[name](); end
         end
 
         if retrace and #hits > 1 then                    -- who won each slot (overlap visibility)
@@ -4368,8 +4501,56 @@ if inLac() then
         -- WHITELIST FIRST, branch second: a new subcommand needs adding HERE as well as
         -- below, or it returns in silence and looks like the command does not exist
         -- (v46's /dl instdiag, an hour lost to exactly this).
-        if sub ~= 'mode' and sub ~= 'why' and sub ~= 'triggers' and sub ~= 'env' and sub ~= 'lock' and sub ~= 'sets' and sub ~= 'profile' and sub ~= 'ls' and sub ~= 'plan' then return; end
+        if sub ~= 'mode' and sub ~= 'why' and sub ~= 'triggers' and sub ~= 'env' and sub ~= 'lock' and sub ~= 'sets' and sub ~= 'profile' and sub ~= 'ls' and sub ~= 'plan' and sub ~= 'prio' then return; end
         e.blocked = true;
+
+        if sub == 'prio' then
+            -- The Arbiter's live rank + per-claimant claim status (ADR 0012).
+            -- Read-only -- the tracer's demo surface until the GUI Priority
+            -- section lands (step 2). gFunc gates it to the LAC state (the /dl
+            -- plan / ls pattern: the same command fires in the ADDON state too).
+            local g = rawget(_G, 'gFunc');
+            if g == nil then return; end
+            local order = M.arbOrder(ensureArbState());
+            -- Live claim status per claimant (the same reads M.dispatch does).
+            local craftState = ensureCraftState();
+            local craftOn = (type(craftState) == 'table' and craftState.enabled == true
+                             and type(craftState.craft) == 'string' and craftState.craft ~= '');
+            local helmState = ensureHelmState();
+            local helmOn = helmStateActive(helmState);
+            local fishState = ensureFishState();
+            local fishOn = fishStateActive(fishState);
+            -- Newest-armed exclusivity: only one of craft/HELM/fish is live.
+            if (craftOn and helmOn) or (craftOn and fishOn) or (helmOn and fishOn) then
+                local cAt = craftOn and (tonumber(craftState.at) or 0) or -1;
+                local hAt = helmOn and (tonumber(helmState.at) or 0) or -1;
+                local fAt = fishOn and (tonumber(fishState.at) or 0) or -1;
+                if cAt >= hAt and cAt >= fAt then helmOn, fishOn = false, false;
+                elseif hAt >= fAt then craftOn, fishOn = false, false;
+                else craftOn, helmOn = false, false; end
+            end
+            local pinState = ensurePinState();
+            local hasPins = (type(pinState) == 'table' and next(pinState) ~= nil);
+            local ammoOn = ammoStateOn(ensureAmmoState());
+            local maxmpOn = (M.modes['maxmp'] ~= nil);
+            local anyLock = (next(M.locks) ~= nil);
+            local status = {
+                Pins     = hasPins and 'ON (armed)' or 'off',
+                Locks    = anyLock and 'ON (veto -- step 3 folds it in; semantics unchanged)'
+                                   or 'off (veto -- step 3 folds it in; semantics unchanged)',
+                AutoAmmo = ammoOn and 'ON (claims Ammo on shooting events)' or 'off',
+                MaxMP    = maxmpOn and 'ON (woven; ceded slots above it stand down)' or 'off',
+                Craft    = craftOn and 'ON (armed)' or 'off',
+                HELM     = helmOn and 'ON (armed)' or 'off',
+                Fishing  = fishOn and 'ON (armed)' or 'off',
+                Triggers = 'floor (always on)',
+            };
+            print('[dlac] Claim priority (arbstate rank, highest first):');
+            for i, name in ipairs(order) do
+                print(string.format('    %d. %-9s %s', i, name, status[name] or '?'));
+            end
+            return;
+        end
 
         if sub == 'plan' then
             -- The maxmp band plan (v88): renders the SAME context the dispatch
