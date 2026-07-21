@@ -7,6 +7,72 @@ equipped."* Example: a +50 MP head vs trigger sets whose lowest head gives +5 MP
 Main/Sub/Range (TP preservation). Plus: resting-recovery-aware re-equipping, and
 topping off before a completed Sublimation is popped.
 
+## v2 — the BANDED LADDER (Henrik's redesign, 2026-07-21; ADOPTED, not built)
+
+Ruling after the 07-21 field night (rounds 6–7): **stop dynamic per-dispatch
+marginal decisions; precompute the whole plan.** The v1 engine decided each
+slot against LIVE max-MP reads every 0.4s — and this client cannot provide an
+accurate max during gear churn (`GetMPMax` stale both directions; the party MP%
+window is only ±1%). Result: false-full over-equips, boundary dumps, an
+equip↔release oscillation (v87 patched it with exact-fullness + low-bias, but
+the climb stayed a one-piece-per-refill staircase — "VERY roundabout", and
+every extra swap risks MP). Henrik's design removes the live-max dependency
+entirely:
+
+**The precomputed band ladder.** For every non-weapon slot:
+- `LOW` = the LEAST slot MP across ALL sets assigned to trigger rules (the
+  "no max-MP gear" point — potency gear). Conservative minimum; per-set
+  variation lands inside a band instead of moving thresholds. Virtual
+  (`dlac:`) entries count their fallback.
+- `HIGH` = the slot's best battery (the existing mpBest pick).
+- `Difference = HIGH − LOW`.
+
+Sort slots by `Difference` ASCENDING — lowest difference = first OUT to
+potency (lowest-hanging fruit), highest difference releases last (big battery
+stays longest, same philosophy as v76's smallest-surplus-first, now planned).
+Then chain, in that order, each piece's data points (Henrik's spec verbatim):
+- `MP Difference`
+- `LastMaxMP` — nil for the first piece = TOTAL max MP (all batteries worn);
+  otherwise the previous piece's EndMaxMP.
+- `EndMaxMP` (the max after this piece is out) = `LastMaxMP − Difference`;
+  the UNEQUIP trigger fires at `cur ≤ LastMaxMP − Difference − tick` (the
+  tick margin means an incoming refresh tick can never be capped by the swap).
+- `StartMaxMP` (re-equip trigger) = `EndMaxMP + Difference − tick` — the
+  piece goes BACK ON before the pool is full, timed so the next tick lands
+  into the battery's headroom (this replaces v1's exact-full gate AND solves
+  old stage 2's headroom leeway in one move).
+
+Worked example (Henrik's): TOTAL 1100; feet LOW 5 / HIGH 15 / diff 10 =
+smallest → first band. Unequip at `1100 − 10 − 15(tick) = 1075`; post-swap max
+1090; re-equip at `1090 + 10 − 15 = 1085`. The 1075..1085 gap is structural
+HYSTERESIS — churn is impossible by construction, no cooldown needed (the 15s
+cooldown survives only as a backstop).
+
+**Per dispatch the engine does one cheap thing:** read CURRENT MP (the one
+reliable number), walk the ladder → target loadout (which batteries should be
+worn), diff vs worn, issue ALL needed swaps at once. Big steps are explicitly
+fine (spell casts are big); the margins make batch moves safe.
+
+**Refinements agreed on top of the spec:**
+1. **Measure ticks, don't model** (the old stage-2 ruling): observe live MP
+   deltas per tick for the refresh tick standing and refresh+hMP resting —
+   CatsEyeXI traits are custom, live memory beats the repo. Self-calibrating;
+   optional manual override. Resting uses the bigger measured tick in both
+   trigger formulas (pieces re-equip earlier, per the spec).
+2. **Anchor self-correction**: TOTAL is predicted (nativemp base + auto-learned
+   merits + Σ battery MP) but corrected by ONE observed offset whenever MP%
+   reads 100 (the maxmp≠modmp lesson: never trust computed absolutes alone).
+3. **LOW recomputes** when sets/triggers change (the manifest-rebuild events).
+4. **Bands decide WHEN; the existing machinery decides WHAT**: mpBest ladders,
+   equippable-NOW filtering, the ear/ring pair veto (v83), the RSlot
+   eligibility guard (v78) all stay underneath. `/dl plan` v2 prints the band
+   table — the plan and the behavior become the same artifact.
+
+Open implementation parameters: where the measured tick persists (modestate vs
+manifest); the loadout signature for the anchor offset; whether Sublimation's
+release counts as a "tick" for the Start margins (probably yes, measured the
+same way).
+
 ## The key insight
 
 The engine-side rule is **generic and slot-local** — it does not care how the MP
