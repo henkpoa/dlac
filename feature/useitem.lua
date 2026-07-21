@@ -99,6 +99,8 @@ local TELEPORTS = {
 -- CatsEyeXI's item scripts, NOT retail; only DEDICATION (true exp) rings
 -- belong here -- the capacity-point rings (Trizek, Endorsement, Facility,
 -- Capacity, Vocation) grant COMMITMENT, which is not exp on this server.
+-- Venture Ring included by maintainer ruling (2026-07-21); capacity/commitment
+-- rings stay excluded.
 local XP_WAIT = 15;
 local EXPRINGS = {
     { name = 'Empress Band',     dest = 'Empress',     bonus = '+50%',  aliases = { 'empress' } },
@@ -112,6 +114,7 @@ local EXPRINGS = {
     { name = 'Allied Ring',      dest = 'Allied',      bonus = '+150%', aliases = { 'allied' } },
     { name = 'Caliber Ring',     dest = 'Caliber',     bonus = '+150%', aliases = { 'caliber' } },
     { name = 'Echad Ring',       dest = 'Echad',       bonus = '+150%', aliases = { 'echad' } },
+    { name = 'Venture Ring',     dest = 'Venture',     bonus = '+Exp',  aliases = { 'venture' } },
 };
 
 local SLOT_ID = { ring2 = 0x0E, ear2 = 0x0C, neck = 0x09, body = 0x05, back = 0x0F };   -- native equip-slot indexes
