@@ -77,4 +77,46 @@ function M.importStaticSet(staticSet, slotLabels, resolve)
     return { working = working, notBestFirst = notBestFirst, slotCount = slotCount };
 end
 
+-- "Copy from" -> "New set(s)" mode: pick the DESTINATION name for each source in a
+-- migrate-many batch. Each new set is kept under its SOURCE name; a name that already
+-- exists among the dynamic sets -- OR one already claimed earlier in this same batch --
+-- gains a '_Copy' suffix (then '_Copy2', '_Copy3', ... if that too is taken) so an import
+-- is never silently merged into an existing set. Case-insensitive, matching the Sets tab's
+-- own duplicate rule (rename compares via string.lower). Pure: no ImGui, no file I/O.
+--
+--   sources  : ordered array of { name = 'Idle', kind = 'static'|'dynamic' } (or bare
+--              name strings) -- ORDER is preserved, so in-batch collisions resolve
+--              top-to-bottom, matching what the picker shows.
+--   existing : array of the current dynamic set-name strings
+--   -> ordered array of { name, kind, finalName, renamed = <bool> }
+function M.resolveNewSetNames(sources, existing)
+    local taken = {};   -- lowercased name -> true
+    if type(existing) == 'table' then
+        for _, nm in ipairs(existing) do taken[string.lower(tostring(nm))] = true; end
+    end
+    local out = {};
+    if type(sources) ~= 'table' then return out; end
+    for _, s in ipairs(sources) do
+        local base = tostring((type(s) == 'table') and s.name or s);
+        local final, renamed = base, false;
+        if taken[string.lower(final)] then
+            renamed = true;
+            final = base .. '_Copy';
+            local n = 2;
+            while taken[string.lower(final)] do
+                final = base .. '_Copy' .. n;
+                n = n + 1;
+            end
+        end
+        taken[string.lower(final)] = true;
+        out[#out + 1] = {
+            name = base,
+            kind = (type(s) == 'table') and s.kind or nil,
+            finalName = final,
+            renamed = renamed,
+        };
+    end
+    return out;
+end
+
 return M;

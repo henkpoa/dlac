@@ -2951,6 +2951,62 @@ local function setStatus(msg, isErr)
     ui.setsStatusAt = os.clock();   -- stamp for the 5s auto-expiry (see the render site)
 end
 
+-- Resolve a source set into the working model (slotLabel -> { entry, ... }), owned/known
+-- gear only -- the shared core of every "Copy from" flow. No side effects: the callers
+-- decide whether to load the result into M.working (single copy) or feed it straight to
+-- buildCommitSlots for a new set (the "New set(s)" batch). Two source kinds:
+--
+--   workingFromDynamic(name)  -> working                 (another Dynamic set)
+--   workingFromStatic(name)   -> working, notBestFirst   (a legacy static set)
+--
+-- The static path routes through the pinned pure transform in dlac\gear\setimport (the
+-- headless suite covers its ordering / best-first rules); notBestFirst names the slots
+-- whose candidate order diverges from LAC's first-in-list (ADR 0008), for the caller's
+-- per-slot chat warning.
+local function workingFromDynamic(srcName)
+    local built = {};
+    pcall(function()
+        local dyn = profsets.getDynamicSets();
+        local setT = (type(dyn) == 'table') and dyn[srcName] or nil;
+        if type(setT) ~= 'table' then return; end
+        for _, sl in ipairs(EQUIP_SLOTS) do
+            local slotList = setT[sl.label];
+            if type(slotList) == 'table' then
+                local items = {};
+                for _, elem in ipairs(slotList) do
+                    local it = resolveSetItem(elem);
+                    if it ~= nil then items[#items + 1] = it; end
+                end
+                if #items > 0 then built[sl.label] = items; end
+            end
+        end
+    end);
+    return built;
+end
+
+local function workingFromStatic(srcName)
+    local working, notBest = {}, {};
+    pcall(function()
+        local simport = require('dlac\\gear\\setimport');   -- function-scoped: gearui is near the 200-local cap
+        local S = profsets.getSetsRoot();
+        if type(S) ~= 'table' then return; end
+        local setT = S[srcName];
+        if type(setT) ~= 'table' then return; end
+        local r = simport.importStaticSet(setT, EQUIP_SLOTS, resolveSetItem);
+        working, notBest = r.working, r.notBestFirst;
+    end);
+    return working, notBest;
+end
+
+-- #(a working table): count filled slots (working is keyed by label, not an array).
+local function countFilledSlots(working)
+    local n = 0;
+    for _, list in pairs(working) do
+        if type(list) == 'table' and #list > 0 then n = n + 1; end
+    end
+    return n;
+end
+
 -- Copy a static (non-Dynamic) set's slots INTO the currently-selected dynamic set,
 -- keeping that set's name (issue #15 / ADR 0008). No longer spawns a set named after
 -- the source. FULL-REPLACE: the target becomes the static's contents; slots the static
@@ -2961,15 +3017,8 @@ end
 -- not-best-first slots) lives in dlac\gear\setimport so the headless suite can pin it.
 local function doCopyFromStatic(srcName)
     local target = M.workingSetName;
-    local result = { working = {}, notBestFirst = {}, slotCount = 0 };
-    pcall(function()
-        local simport = require('dlac\\gear\\setimport');   -- function-scoped: gearui is near the 200-local cap
-        local S = profsets.getSetsRoot();
-        if type(S) ~= 'table' then return; end
-        local setT = S[srcName];
-        if type(setT) ~= 'table' then return; end
-        result = simport.importStaticSet(setT, EQUIP_SLOTS, resolveSetItem);
-    end);
+    local working, notBest = workingFromStatic(srcName);
+    local result = { working = working, notBestFirst = notBest, slotCount = countFilledSlots(working) };
     if result.slotCount > 0 then
         M.working = result.working;   -- FULL-REPLACE: undefined slots are gone
         ui.setSelected = nil;
@@ -3018,23 +3067,8 @@ end
 -- Same FULL-REPLACE contract as the static copy; the source set is untouched.
 local function doCopyFromDynamic(srcName)
     local target = M.workingSetName;
-    local built, nSlots = {}, 0;
-    pcall(function()
-        local dyn = profsets.getDynamicSets();
-        local setT = (type(dyn) == 'table') and dyn[srcName] or nil;
-        if type(setT) ~= 'table' then return; end
-        for _, sl in ipairs(EQUIP_SLOTS) do
-            local slotList = setT[sl.label];
-            if type(slotList) == 'table' then
-                local items = {};
-                for _, elem in ipairs(slotList) do
-                    local it = resolveSetItem(elem);
-                    if it ~= nil then items[#items + 1] = it; end
-                end
-                if #items > 0 then built[sl.label] = items; nSlots = nSlots + 1; end
-            end
-        end
-    end);
+    local built = workingFromDynamic(srcName);
+    local nSlots = countFilledSlots(built);
     if nSlots > 0 then
         M.working = built;   -- FULL-REPLACE: slots the source doesn't fill are cleared
         ui.setSelected = nil;
@@ -3066,6 +3100,59 @@ local function copyFromDynamicSet(srcName)
         return;
     end
     doCopyFromDynamic(srcName);
+end
+
+-- "Copy from" > "New set(s)" mode: create a fresh dynamic set for EACH marked source,
+-- kept under its source name -- migrate many legacy statics (or duplicate dynamics) in
+-- one click, no naming a set by hand for each. A name already in use gains a '_Copy'
+-- suffix (dlac\gear\setimport.resolveNewSetNames -- the same plan the popup warns from).
+-- Each source is resolved with YOUR owned gear and committed straight into <JOB>.lua
+-- (a backup per commit, like Auto-Build All), then ONE '/dl sets reload'. The panel's
+-- in-progress working set is borrowed for the build and restored, so an uncommitted edit
+-- survives untouched. `sources` = ordered array of { name, kind = 'static'|'dynamic' }.
+local function copyAsNewSets(job, sources)
+    if not has.setmgr then setStatus('setmanager unavailable.', true); return; end
+    if job == nil or job == '' then setStatus('Unknown job (are you logged in?).', true); return; end
+    if type(sources) ~= 'table' or #sources == 0 then
+        setStatus('Mark at least one set to import first.', true); return;
+    end
+    local simport = require('dlac\\gear\\setimport');
+    local plan = simport.resolveNewSetNames(sources, profsets.dynamicSetNames());
+    -- Borrow the panel's working state (mirror autoBuildAll / modeSetRefs) so a commit
+    -- loop that overwrites M.working leaves the user's in-progress edit intact.
+    local keepW, keepN, keepSel, keepDirty = M.working, M.workingSetName, ui.setSelected, _setDirty;
+    local made, blank, failed, renamed = 0, 0, 0, 0;
+    for _, p in ipairs(plan) do
+        local built = (p.kind == 'dynamic') and workingFromDynamic(p.name) or workingFromStatic(p.name);
+        M.working = built;
+        local slots = buildCommitSlots();
+        if #slots > 0 then
+            local ok = nil;
+            pcall(function() ok = setmgr.commitSet(job, p.finalName, slots); end);
+            if ok == true then
+                made = made + 1;
+                if p.renamed then renamed = renamed + 1; end
+            else
+                failed = failed + 1;
+            end
+        else
+            -- Nothing resolved to owned/known gear with a path: skip rather than create an
+            -- empty set (hard rule 12 -- don't silently manufacture blanks on a migrate).
+            blank = blank + 1;
+        end
+    end
+    M.working, M.workingSetName, ui.setSelected, _setDirty = keepW, keepN, keepSel, keepDirty;
+    if made > 0 then
+        profsets.invalidate();
+        pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl sets reload'); end);
+    end
+    setStatus(string.format('Created %d new set%s%s%s%s%s',
+        made, (made == 1) and '' or 's',
+        (made > 0) and ' -- committed and live (hot-swapped).' or ' -- nothing created.',
+        (renamed > 0) and string.format('  %d renamed _Copy (name already existed).', renamed) or '',
+        (blank > 0) and string.format('  %d skipped: no owned/known gear.', blank) or '',
+        (failed > 0) and string.format('  %d FAILED to commit -- try one by hand for the reason.', failed) or ''),
+        (made == 0));
 end
 
 -- quiet=true (Auto-Build All's loop, Henrik 07-20: "just state how many sets
@@ -3921,11 +4008,13 @@ local function renderSetsTab(job, level)
             end
         end
         if imgui.Selectable('Copy from...##smg_copy') then
-            if M.workingSetName == nil or M.workingSetName == '' then
-                setStatus('Pick or create a set first -- Copy from replaces its contents.', true);
-            else
-                ui._copyFromOpen = true;
-            end
+            -- Opens with no set selected too: the "New set(s)" destination needs no
+            -- target (that IS the migrate-many case). Default to replacing the marked
+            -- set when there is one, else straight to new-set mode.
+            local hasCur = (M.workingSetName ~= nil and M.workingSetName ~= '');
+            ui._copyMode  = hasCur and 'current' or 'new';
+            ui._copyMarks = {};
+            ui._copyFromOpen = true;
         end
         if #profsets.staticSetNames() > 0 then
             if imgui.Selectable('Delete static...##smg_dstat') then
@@ -4135,40 +4224,121 @@ local function renderSetsTab(job, level)
         imgui.EndPopup();
     end
 
-    -- Copy from (Manage... > Copy from): dynamic OR legacy static sources,
-    -- each in its own scroll list; the pick replaces the selected set's
-    -- contents (a filled target still goes through the Replace confirm).
-    -- Picks are gathered and dispatched AFTER the children: a Selectable
-    -- inside a child never auto-closes the popup, so the close is explicit.
+    -- Copy from (Manage... > Copy from): dynamic OR legacy static sources, each in
+    -- its own scroll list. A destination selector at the top picks WHERE they land:
+    --   Current set : the marked set is REPLACED by the one source you click (legacy
+    --                 behaviour -- a filled target still goes through the Replace confirm).
+    --   New set(s)  : mark ANY number of sources; each becomes a fresh set kept under
+    --                 its own name (a name already taken -> _Copy). This is the migrate-
+    --                 many path -- no naming a set by hand for each one.
+    -- Picks/marks are gathered and dispatched AFTER the children: a Selectable inside a
+    -- child never auto-closes the popup, so the close is always explicit.
     if ui._copyFromOpen then imgui.OpenPopup('##dlac_setcopyfrom'); ui._copyFromOpen = false; end
     if imgui.BeginPopup('##dlac_setcopyfrom') then
-        imgui.TextColored(COL.HEADER, 'Copy into: ' .. fmt.esc(tostring(M.workingSetName)));
-        imgui.TextColored(COL.DIM, 'Pick a source -- its slots replace this set\'s contents.');
+        local hasCur = (M.workingSetName ~= nil and M.workingSetName ~= '');
+        if ui._copyMode == nil then ui._copyMode = hasCur and 'current' or 'new'; end
+        if not hasCur then ui._copyMode = 'new'; end   -- nothing marked -> new-set is the only home
+        ui._copyMarks = ui._copyMarks or {};
+        local newMode = (ui._copyMode == 'new');
+
+        -- Destination selector.
+        local curLabel = hasCur and ('Current set: ' .. tostring(M.workingSetName)) or '(no set selected)';
+        imgui.TextColored(COL.DIM, 'Copy into:'); imgui.SameLine(0, 6);
+        imgui.PushItemWidth(300);
+        if imgui.BeginCombo('##dlac_cfdest', newMode and 'New set(s) -- keep source name' or curLabel) then
+            if hasCur then
+                if imgui.Selectable(curLabel, not newMode) then ui._copyMode = 'current'; end
+            end
+            if imgui.Selectable('New set(s) -- keep source name', newMode) then ui._copyMode = 'new'; end
+            imgui.EndCombo();
+        end
+        imgui.PopItemWidth();
+        newMode = (ui._copyMode == 'new');   -- re-read: the combo may have just flipped it
+
+        if newMode then
+            imgui.TextColored(COL.DIM, 'Mark one or more sources -- each becomes a NEW set under its own name, built with your gear.');
+        else
+            imgui.TextColored(COL.DIM, 'Pick a source -- its slots replace "' .. fmt.esc(tostring(M.workingSetName)) .. '".');
+        end
         imgui.Separator();
-        local pick = nil;
-        imgui.BeginChild('##setcf_dyn', { 210, 260 }, true);
+
+        local statics = profsets.staticSetNames();
+        local pick = nil;   -- 'current' mode: single immediate pick
+
+        imgui.BeginChild('##setcf_dyn', { 210, 240 }, true);
         imgui.TextColored(COL.HEADER, 'Dynamic sets');
         local anyD = false;
         for _, nm in ipairs(profsets.dynamicSetNames()) do
-            if nm ~= M.workingSetName then
+            -- 'current' hides the marked set (can't copy onto itself); 'new' shows all
+            -- (marking the current set duplicates it as <name>_Copy).
+            if newMode or nm ~= M.workingSetName then
                 anyD = true;
-                if imgui.Selectable(nm .. '##cfd_' .. nm, false) then pick = { kind = 'dynamic', nm = nm }; end
+                if newMode then
+                    local key = 'dynamic\0' .. nm;
+                    local on = ui._copyMarks[key] == true;
+                    if imgui.Selectable(nm .. '##cfd_' .. nm, on) then ui._copyMarks[key] = (not on) or nil; end
+                else
+                    if imgui.Selectable(nm .. '##cfd_' .. nm, false) then pick = { kind = 'dynamic', nm = nm }; end
+                end
             end
         end
-        if not anyD then imgui.TextColored(COL.DIM, '(no other dynamic sets)'); end
+        if not anyD then imgui.TextColored(COL.DIM, newMode and '(no dynamic sets)' or '(no other dynamic sets)'); end
         imgui.EndChild();
         imgui.SameLine(0, 8);
-        imgui.BeginChild('##setcf_stat', { 210, 260 }, true);
+        imgui.BeginChild('##setcf_stat', { 210, 240 }, true);
         imgui.TextColored(COL.HEADER, 'Static sets (legacy)');
-        local statics = profsets.staticSetNames();
         if #statics == 0 then imgui.TextColored(COL.DIM, '(none on this profile)'); end
         for _, nm in ipairs(statics) do
-            if imgui.Selectable(nm .. '##cfs_' .. nm, false) then pick = { kind = 'static', nm = nm }; end
+            if newMode then
+                local key = 'static\0' .. nm;
+                local on = ui._copyMarks[key] == true;
+                if imgui.Selectable(nm .. '##cfs_' .. nm, on) then ui._copyMarks[key] = (not on) or nil; end
+            else
+                if imgui.Selectable(nm .. '##cfs_' .. nm, false) then pick = { kind = 'static', nm = nm }; end
+            end
         end
         imgui.EndChild();
-        if pick ~= nil then
-            imgui.CloseCurrentPopup();
-            if pick.kind == 'dynamic' then copyFromDynamicSet(pick.nm); else copyFromStaticSet(pick.nm); end
+
+        if newMode then
+            -- Gather marks in display order (dynamic list, then static list) so the
+            -- create plan / duplicate warning line up with what the eye sees.
+            local sources = {};
+            for _, nm in ipairs(profsets.dynamicSetNames()) do
+                if ui._copyMarks['dynamic\0' .. nm] then sources[#sources + 1] = { name = nm, kind = 'dynamic' }; end
+            end
+            for _, nm in ipairs(statics) do
+                if ui._copyMarks['static\0' .. nm] then sources[#sources + 1] = { name = nm, kind = 'static' }; end
+            end
+            -- Duplicate warning: run the SAME plan the commit will, so the names shown
+            -- are exactly what gets created (existing names, and in-batch collisions).
+            local simport = require('dlac\\gear\\setimport');
+            local plan = simport.resolveNewSetNames(sources, profsets.dynamicSetNames());
+            local dups = {};
+            for _, p in ipairs(plan) do
+                if p.renamed then dups[#dups + 1] = p.name .. ' -> ' .. p.finalName; end
+            end
+            if #dups > 0 then
+                fmt.textWrapped(COL.ERR, string.format('%d name%s already exist%s -- will be created as _Copy: %s',
+                    #dups, (#dups == 1) and '' or 's', (#dups == 1) and 's' or '', table.concat(dups, ', ')));
+            end
+            local n = #sources;
+            if imgui.Button((n > 0) and string.format('Create %d new set%s##cfnewgo', n, (n == 1) and '' or 's')
+                                     or 'Create new set(s)##cfnewgo', { 0, 24 }) then
+                if n > 0 then
+                    imgui.CloseCurrentPopup();
+                    copyAsNewSets(job, sources);
+                    ui._copyMarks = {};
+                else
+                    setStatus('Mark at least one set on the left first.', true);
+                end
+            end
+            imgui.SameLine(0, 8);
+            if imgui.Button('Cancel##cfnewcancel', { 90, 24 }) then imgui.CloseCurrentPopup(); ui._copyMarks = {}; end
+        else
+            if pick ~= nil then
+                imgui.CloseCurrentPopup();
+                if pick.kind == 'dynamic' then copyFromDynamicSet(pick.nm); else copyFromStaticSet(pick.nm); end
+            end
         end
         imgui.EndPopup();
     end

@@ -2936,6 +2936,53 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- AP. setimport.resolveNewSetNames -- "Copy from" > "New set(s)" destination naming.
+--     Migrate many sets at once: each keeps its source name; a name already taken
+--     becomes <name>_Copy (then _Copy2, _Copy3, ...). Case-insensitive; in-batch
+--     collisions resolve top-to-bottom.
+-- ---------------------------------------------------------------------------
+(function()
+    local simport = dofile('gear/setimport.lua');   -- forward slash: also loads on Linux CI
+    check('AP0 resolveNewSetNames exported', type(simport.resolveNewSetNames), 'function');
+
+    -- No collision: names kept verbatim, nothing flagged renamed.
+    local r1 = simport.resolveNewSetNames(
+        { { name = 'Idle', kind = 'static' }, { name = 'TP', kind = 'static' } },
+        { 'Precast', 'Midcast' });
+    check('AP1 kept name [1]', r1[1].finalName, 'Idle');
+    check('AP2 not renamed [1]', r1[1].renamed, false);
+    check('AP3 kept name [2]', r1[2].finalName, 'TP');
+    check('AP4 kind carried through', r1[1].kind, 'static');
+
+    -- Collision with an existing dynamic set -> _Copy, flagged renamed.
+    local r2 = simport.resolveNewSetNames({ { name = 'Idle', kind = 'static' } }, { 'Idle' });
+    check('AP5 collided -> _Copy', r2[1].finalName, 'Idle_Copy');
+    check('AP6 renamed flagged', r2[1].renamed, true);
+
+    -- Case-insensitive collision (matches the Sets tab rename rule).
+    local r3 = simport.resolveNewSetNames({ { name = 'idle' } }, { 'IDLE' });
+    check('AP7 case-insensitive collision', r3[1].finalName, 'idle_Copy');
+
+    -- _Copy ALSO taken -> _Copy2, _Copy3 ...
+    local r4 = simport.resolveNewSetNames({ { name = 'Idle' } }, { 'Idle', 'Idle_Copy', 'Idle_Copy2' });
+    check('AP8 stacks to _Copy3', r4[1].finalName, 'Idle_Copy3');
+
+    -- Two marked sources sharing a name: the second dodges the first WITHIN the batch.
+    local r5 = simport.resolveNewSetNames({ { name = 'Nuke' }, { name = 'Nuke' } }, {});
+    check('AP9 first keeps name', r5[1].finalName, 'Nuke');
+    check('AP10 second gets _Copy (in-batch)', r5[2].finalName, 'Nuke_Copy');
+    check('AP11 first not flagged', r5[1].renamed, false);
+
+    -- Bare-string sources are accepted too (kind optional).
+    local r6 = simport.resolveNewSetNames({ 'Solo' }, {});
+    check('AP12 bare string name', r6[1].finalName, 'Solo');
+
+    -- Degenerate inputs never error.
+    check('AP13 nil sources -> empty', #simport.resolveNewSetNames(nil, {}), 0);
+    check('AP14 nil existing tolerated', simport.resolveNewSetNames({ { name = 'A' } }, nil)[1].finalName, 'A');
+end)();
+
+-- ---------------------------------------------------------------------------
 -- AP. weaponfilter -- the pure weapon-type picker filter (#16 F2a, PRD #14)
 --
 --   Two pure decisions the Add-item picker's weapon-type dropdown is a thin shell over:
