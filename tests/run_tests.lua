@@ -724,6 +724,30 @@ check('MF4 nil-safe',                       dispatchM.mpPoolFull(nil, nil, nil),
 check('MPS8c dup-owned pick survives the veto',
     dispatchM.mpBestPick(pBest, 'ring2', 75, pworn).name, 'Astral Ring');
 check('MPS8d nil-safe', dispatchM.mpBestPick(nil, 'ear1', 75, pworn), nil);
+
+-- MSS. STICKY paired slots (dispatch.mpStickyPairs, engine v93): a battery
+--      candidate whose piece the sibling ear/ring already claims -- in this
+--      dispatch's PLAN or on the body -- never writes (field: Loquacious
+--      bounced ear2 <-> ear1 between the set's plan and the band's ladder
+--      home). Dup-owned items stay exempt (both paired ladders list them).
+local claims = function(map) return function(ls) return map[ls]; end end
+local kept, moved = dispatchM.mpStickyPairs(
+    { { slot = 'Ear1', lslot = 'ear1', name = 'Loquac. Earring', gain = 20 },
+      { slot = 'Neck', lslot = 'neck', name = 'Warloq\'s Locket', gain = 31 } },
+    claims({ ear2 = 'Loquac. Earring' }), pBest);
+check('MSS1 sibling-claimed piece never writes', #kept, 1);
+check('MSS1b the survivor is the unpaired slot', kept[1].lslot, 'neck');
+check('MSS1c the skip names the claim', moved[1].sib .. '/' .. moved[1].claimed,
+    'ear2/Loquac. Earring');
+check('MSS2 dup-owned pair still writes',
+    #(dispatchM.mpStickyPairs(
+        { { slot = 'Ring2', lslot = 'ring2', name = 'Astral Ring', gain = 25 } },
+        claims({ ring1 = 'Astral Ring' }), pBest)), 1);
+check('MSS3 unclaimed sibling: candidate passes',
+    #(dispatchM.mpStickyPairs(
+        { { slot = 'Ear1', lslot = 'ear1', name = 'Loquac. Earring', gain = 20 } },
+        claims({ ear2 = 'Outlaw\'s Earring' }), pBest)), 1);
+check('MSS4 nil-safe', #(dispatchM.mpStickyPairs(nil, nil, nil)), 0);
 end)();
 
 -- ---------------------------------------------------------------------------
