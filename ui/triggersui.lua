@@ -2832,23 +2832,33 @@ end
 
 -- One library entry box: name + handler on the left, the rule text dim below; Stamp / Edit /
 -- rename / delete on the right. Returns nothing (actions fire in place).
-local function renderBlueprintBox(i, e)
-    local id = 'bp_' .. tostring(i);
-    local ruleText = '';
-    pcall(function() ruleText = bp.emitRule(e.rule, hasDispatch and dsp.PRETTY_KEY or nil); end);
+-- One Blueprint box's height: the identity/button line plus the WRAPPED rule
+-- text (long inline payloads used to run off the box edge). The line count is
+-- an estimate from CalcTextSize -- the real wrap is PushTextWrapPos(0.0) at the
+-- box's live width; the estimate only sizes the child.
+local function bpBoxHeight(ruleText, availW)
     local lh = lineH();
-    local boxH = math.max(2 * lh + 30, 56) + 12;
+    local tw = nil;
+    pcall(function()
+        local w = imgui.CalcTextSize(ruleText);
+        if type(w) == 'number' then tw = w; end
+    end);
+    tw = tw or (#tostring(ruleText or '') * 7);
+    local wrapW = math.max(200, (availW or 740) - 18);
+    local nLines = math.max(1, math.ceil(tw / wrapW));
+    return math.max(lh + nLines * lh + 28, 56);
+end
+
+local function renderBlueprintBox(i, e, ruleText, boxH)
+    local id = 'bp_' .. tostring(i);
     imgui.BeginChild('##bpbox' .. id, { -1, boxH }, true, BOX_FLAGS);
 
-    imgui.BeginGroup();
+    -- Top line: identity, then the actions on the same line (the rule text gets
+    -- the full box width below, so it can wrap instead of fighting the buttons).
     imgui.TextColored(COL_SCORE, esc(e.name));
     imgui.SameLine(0, 8);
     imgui.TextColored(COND_COLORS.mode or COL_HEADER, esc(e.handler));
-    imgui.TextColored(COL_DIM, esc(ruleText));
-    imgui.EndGroup();
-
-    imgui.SameLine(0, 12);
-    imgui.BeginGroup();
+    imgui.SameLine(0, 14);
     if imgui.SmallButton('Stamp onto this job##bpstamp' .. id) then bpStamp(e); end
     if imgui.IsItemHovered() then
         imgui.SetTooltip('Insert this rule into the current job\'s ' .. e.handler .. ' handler\nand commit -- live immediately (no Reload LAC). The stamped Trigger\nis ordinary afterwards; editing this Blueprint will not change it.');
@@ -2888,7 +2898,11 @@ local function renderBlueprintBox(i, e)
         if imgui.SmallButton('x##bpdel' .. id) then bpUI.delArm = i; end
         if imgui.IsItemHovered() then imgui.SetTooltip('Delete this Blueprint from your library (click again to confirm).'); end
     end
-    imgui.EndGroup();
+
+    -- The rule, wrapped at the live box edge (the gearcheck-warnings pattern).
+    imgui.PushTextWrapPos(0.0);
+    imgui.TextColored(COL_DIM, esc(ruleText));
+    imgui.PopTextWrapPos();
 
     imgui.EndChild();
 end
@@ -2953,7 +2967,29 @@ function M.renderBlueprints(job, level)
     if #lib == 0 then
         imgui.TextColored(COL_DIM, '(no Blueprints yet -- save a rule with its "bp" button)');
     end
-    for i, e in ipairs(lib) do renderBlueprintBox(i, e); end
+    if #lib > 0 then
+        -- The library scrolls in a capped child (the Sets-list pattern) so a
+        -- grown collection stops eating the tab. Rule text is emitted ONCE per
+        -- entry per frame and shared with the box renderer.
+        local availW = 740;
+        pcall(function()
+            local v = imgui.GetContentRegionAvail();
+            if type(v) == 'table' then v = v[1] or v.x; end
+            if type(v) == 'number' and v > 100 then availW = v; end
+        end);
+        local texts, listH = {}, 8;
+        for i, e in ipairs(lib) do
+            local rt = '';
+            pcall(function() rt = bp.emitRule(e.rule, hasDispatch and dsp.PRETTY_KEY or nil); end);
+            texts[i] = rt;
+            listH = listH + bpBoxHeight(rt, availW - 24) + 6;
+        end
+        imgui.BeginChild('##bplist', { -1, math.min(math.max(listH, 60), 320) }, false);
+        for i, e in ipairs(lib) do
+            renderBlueprintBox(i, e, texts[i], bpBoxHeight(texts[i], availW - 24));
+        end
+        imgui.EndChild();
+    end
 
     if bpUI._openRename then imgui.OpenPopup('##dlac_bprename'); bpUI._openRename = false; end
     renderBpRenamePopup();
