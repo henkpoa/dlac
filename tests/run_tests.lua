@@ -814,6 +814,10 @@ check('MB11 resting bucket separate', mb.tick(true), 35);
 mb.reset();
 mb.observe(900, false); mb.observe(910, false);
 check('MB11b resting falls back to standing measure', mb.tick(true), 10);
+mb.reset();
+mb.observe(900, false); mb.observe(901, false); mb.observe(902, false);
+check('MB11c margin floors at MIN_TICK (unbuffed +1 ticks are real but tiny)',
+    mb.tick(false), mb.MIN_TICK);
 
 -- MB12: the SIGNED refresh delta ("mp recovery is key", engine v89). Field
 -- pin: Bunzi's Robe (flat 50 MP) over Cleric's Bliaut +1 (Refresh 2 with

@@ -147,6 +147,11 @@ end
 -- ---------------------------------------------------------------------------
 M.DEFAULT_TICK = 15;   -- Henrik's real endgame refresh; the pre-measurement stand-in
 M.MAX_RISE = 150;
+-- The MARGIN floor (v95): the measurement is honest -- unbuffed gear refresh
+-- really does tick +1..3 -- but a 1-MP margin makes hair-width hysteresis
+-- (field: off<=1086 / on>=1087). tick() never answers below this; the
+-- buckets keep the true readings.
+M.MIN_TICK = 5;
 local KEEP = 5;
 
 M._rises = M._rises or { stand = {}, rest = {} };
@@ -177,7 +182,8 @@ function M.tick(resting)
     local m;
     if resting then m = median(M._rises.rest) or median(M._rises.stand);
     else m = median(M._rises.stand); end
-    return m or M.DEFAULT_TICK;
+    if m == nil then return M.DEFAULT_TICK; end
+    return math.max(m, M.MIN_TICK);
 end
 
 function M.reset()
