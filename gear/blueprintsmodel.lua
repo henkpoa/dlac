@@ -357,4 +357,103 @@ function M.parse(text)
     return M.fromRaw(ret), nil;
 end
 
+-- ---------------------------------------------------------------------------
+-- Text sharing (issue #66, slice 2). "View text" per Blueprint and section-level
+-- "Copy all" both reuse M.serialize: a shareable blob is the SAME `blueprints v1`
+-- format, ALWAYS list-shaped (one entry or many) -- one entry for View text, the
+-- whole library for Copy all. So there is nothing new to render; the sharing text
+-- IS the library file text.
+--
+-- Import is the paste sibling of groupimport.classify / .apply (issue #30): parse the
+-- pasted blob (the SAME hardened sandbox as M.parse), classify each entry against the
+-- existing library by NAME case-insensitively (created vs collide), then apply under an
+-- explicit overwrite confirmation (no silent clobber). A friend's Blueprint that names a
+-- set/Mode/Group the importer lacks imports cleanly -- the warnings happen at STAMP time
+-- (slice 1 behavior), never here.
+-- ---------------------------------------------------------------------------
+
+local function ci(a, b) return string.lower(tostring(a)) == string.lower(tostring(b)); end
+
+-- The library index of the entry whose display name matches `name` case-insensitively,
+-- else nil. Mirrors the Groups-import collision rule (findCI) -- the name is the identity
+-- for import purposes, even though the library is an ordered array, not a keyed map.
+local function findEntryCI(list, name)
+    if type(list) ~= 'table' then return nil; end
+    for i, e in ipairs(list) do
+        if type(e) == 'table' and type(e.name) == 'string' and ci(e.name, name) then return i; end
+    end
+    return nil;
+end
+M.findEntryCI = findEntryCI;
+
+-- Serialize ONE library entry as a one-entry shareable blob (View text). A thin wrapper on
+-- M.serialize so a single Blueprint and the whole library render the SAME way (list-shaped).
+function M.serializeOne(entry, prettyKey)
+    return M.serialize({ entry }, prettyKey);
+end
+
+-- Split parsed import entries into the names that would be CREATED vs the names that COLLIDE
+-- with an existing Blueprint (case-insensitive) and would be OVERWRITTEN. Both lists carry the
+-- IMPORTED spelling and are sorted (deterministic display -- hard rule 8). The caller surfaces
+-- collisions and requires confirmation before apply (the Groups-import precedent).
+function M.classifyImport(entries, existing)
+    local created, collided = {}, {};
+    if type(entries) == 'table' then
+        for _, e in ipairs(entries) do
+            if type(e) == 'table' and type(e.name) == 'string' then
+                if findEntryCI(existing, e.name) ~= nil then collided[#collided + 1] = e.name;
+                else created[#created + 1] = e.name; end
+            end
+        end
+    end
+    table.sort(created);
+    table.sort(collided);
+    return created, collided;
+end
+
+-- Parse pasted text + classify against the existing library in one call (the live-preview
+-- seam the UI draws before commit). Returns ( preview | nil, err ):
+--   preview = { entries = { entry, ... }, created = { name, ... }, collided = { name, ... } }
+-- entries carries each entry's name/handler/rule (the UI lists them with emitRule); nil+err on
+-- a parse failure (a torn or hostile blob -- the sandbox never executes it).
+function M.previewImport(text, existing)
+    local list, err = M.parse(text);
+    if list == nil then return nil, err; end
+    local created, collided = M.classifyImport(list, existing);
+    return { entries = list, created = created, collided = collided }, nil;
+end
+
+-- Merge parsed import entries into `existing` (mutated in place). A collision (case-insensitive
+-- name) is OVERWRITTEN only when `overwrite` is true -- the existing entry keeps its stored name
+-- spelling but adopts the imported handler + rule; otherwise it is REFUSED (skipped). A new name
+-- is appended. Each adopted rule is re-sanitized + deep-copied (makeEntry), so the library shares
+-- no table with the parsed blob (detached). Returns { created, updated, refused }.
+function M.applyImport(existing, entries, overwrite)
+    local created, updated, refused = 0, 0, 0;
+    if type(existing) ~= 'table' or type(entries) ~= 'table' then
+        return { created = 0, updated = 0, refused = 0 };
+    end
+    for _, e in ipairs(entries) do
+        if type(e) == 'table' then
+            local entry = M.makeEntry(e.handler, e.rule, e.name);
+            if entry ~= nil then
+                local idx = findEntryCI(existing, entry.name);
+                if idx ~= nil then
+                    if overwrite == true then
+                        -- Overwrite THAT Blueprint: keep the stored name, adopt handler + rule.
+                        existing[idx] = { name = existing[idx].name, handler = entry.handler, rule = entry.rule };
+                        updated = updated + 1;
+                    else
+                        refused = refused + 1;
+                    end
+                else
+                    existing[#existing + 1] = entry;
+                    created = created + 1;
+                end
+            end
+        end
+    end
+    return { created = created, updated = updated, refused = refused };
+end
+
 return M;

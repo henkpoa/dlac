@@ -112,6 +112,13 @@ do
         check('S5g stamp lands the rule in its handler', out.Midcast[1].equip.Ear1, 'Toxic Earring');
         local lib2 = bpm.parse(bpm.serialize(lib));
         check('S5h library text round-trips', lib2 and lib2[1].name, 'Sleep or Lullaby');
+        -- Slice 2 (issue #66): the text-sharing seams the Blueprints section draws -- View text
+        -- (one-entry blob) and the paste-import live preview (parse + classify).
+        check('S5i View text serializes one entry',
+            type(bpm.serializeOne) == 'function' and bpm.serializeOne(lib[1]):find('blueprints = {', 1, true) ~= nil, true);
+        local prev = bpm.previewImport(bpm.serialize(lib), {});
+        check('S5j import preview lists entries before commit', prev and #prev.entries, 1);
+        check('S5k import preview classifies against the library', prev and #prev.created, 1);
     end
 end
 

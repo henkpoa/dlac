@@ -3375,6 +3375,66 @@ end)();
         if r.equip and r.equip.Ear1 == 'Toxic Earring' then found = true; end
     end
     check('TGB35 engine normalizes the stamped rule', found, true);
+
+    -- ------- Slice 2 (issue #66): text sharing -- View text / Copy all / paste-import. -------
+
+    -- Round-trip is byte-stable: serialize -> parse -> serialize is identical (headless, pure
+    -- core). Both one-entry (View text) and multi-entry (Copy all) blobs are the SAME format.
+    local oneBlob = bp.serializeOne(lib[1]);
+    check('TGB36 one-entry blob is list-shaped', oneBlob:find('blueprints = {', 1, true) ~= nil, true);
+    local one, oneErr = bp.parse(oneBlob);
+    check('TGB37 one-entry blob parses', oneErr == nil and #one, 1);
+    check('TGB38 one-entry round-trip byte-stable', bp.serialize(one) == oneBlob, true);
+    local allBlob = bp.serialize(lib);
+    local many, manyErr = bp.parse(allBlob);
+    check('TGB39 multi-entry blob parses', manyErr == nil and #many, 2);
+    check('TGB40 multi-entry round-trip byte-stable', bp.serialize(many) == allBlob, true);
+
+    -- Live-preview: parse + classify in one call, entries listed before commit.
+    local emptyLib = {};
+    local prev, prevErr = bp.previewImport(allBlob, emptyLib);
+    check('TGB41 preview lists entries before commit', prevErr == nil and #prev.entries, 2);
+    check('TGB42 preview: all new against an empty library', #prev.created, 2);
+    check('TGB43 preview: nothing collides yet', #prev.collided, 0);
+
+    -- Collision matrix. CREATED: both import into the empty library.
+    local sumNew = bp.applyImport(emptyLib, prev.entries, false);
+    check('TGB44 created: both imported', sumNew.created, 2);
+    check('TGB45 created: library now holds them', #emptyLib, 2);
+    check('TGB46 created: entry detached from the blob', emptyLib[1].rule.equip.Ear1, 'Toxic Earring');
+
+    -- COLLIDE-REFUSE (default): re-importing the same blob touches nothing.
+    local prev2 = bp.previewImport(allBlob, emptyLib);
+    check('TGB47 collide classified case-insensitively', #prev2.collided, 2);
+    local sumRefuse = bp.applyImport(emptyLib, prev2.entries, false);
+    check('TGB48 collide-refuse: none overwritten', sumRefuse.updated, 0);
+    check('TGB49 collide-refuse: all refused',       sumRefuse.refused, 2);
+    check('TGB50 collide-refuse: library unchanged',  #emptyLib, 2);
+
+    -- COLLIDE-OVERWRITE (confirmed): the same names, a CHANGED rule -> the entry adopts it.
+    local changed = bp.deepcopy(lib);
+    changed[1].rule.equip.Ear1 = 'Star Earring';   -- same name, different rule
+    local sumOver = bp.applyImport(emptyLib, changed, true);
+    check('TGB51 collide-overwrite: both updated', sumOver.updated, 2);
+    check('TGB52 collide-overwrite: no growth',    #emptyLib, 2);
+    local overIdx = bp.findEntryCI(emptyLib, changed[1].name);
+    check('TGB53 collide-overwrite: rule adopted', emptyLib[overIdx].rule.equip.Ear1, 'Star Earring');
+
+    -- Case-insensitive collision: a different-cased name still collides (never a duplicate).
+    local recased = bp.deepcopy(lib[1]); recased.name = string.upper(lib[1].name);
+    local _, coll = bp.classifyImport({ recased }, emptyLib);
+    check('TGB54 collide-refuse matches across case', #coll, 1);
+
+    -- Sandbox hardness (issue #66): a blob calling a global, or a non-text (bytecode) load,
+    -- errors WITHOUT executing (the TGI* hardened-env precedent).
+    local badGlobal, gErr = bp.parse('return { blueprints = { os.execute("echo pwned") } }');
+    check('TGB55 sandbox: a global errors, never runs', badGlobal == nil and type(gErr), 'string');
+    local bytecode = string.dump(load('return {}'));
+    local badBytes = bp.parse(bytecode);
+    check('TGB56 sandbox: non-text (bytecode) load refused', badBytes, nil);
+    -- previewImport surfaces the same parse error (nil + message), never a crash.
+    local nilPrev, nilErr = bp.previewImport('return function() end', emptyLib);
+    check('TGB57 preview surfaces a bad blob as an error', nilPrev == nil and type(nilErr), 'string');
 end)();
 
 -- ---------------------------------------------------------------------------
