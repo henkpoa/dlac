@@ -119,7 +119,7 @@ local UNIVERSAL = {
 -- Manifest schema version: bump when autoCommit writes NEW fields. An on-disk
 -- manifest with an older fmtver self-heals (renderAutomations triggers a rescan)
 -- so a dlac update never needs a manual "Rescan owned gear" click.
-local AUTO_FMT = 13;   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked; 5: craft ladders; 6: skill-up fillers in hq/nq; 7: helm ladders + hat map; 8: fish ladders; 9: oneiros grip + mpMerits; 10: universals ladder; 11: Refresh rides mp/mpBest (rf map + rung rf); 12: AUGMENTS counted -- MP and Refresh deltas from your actual bag copies fold into mp/rf; 13: PAIR HOMES -- ear/ring ladders re-home to the IDLE SET's declared positions (Default rule matching status=Idle; the MaxMP panel picker ALWAYS overrides detection) so the engine never relocates a piece across its pair
+local AUTO_FMT = 14;   -- 14: mv map (name -> MovementSpeed) + the mpMoveYield setting (movement gear may override batteries while moving);   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked; 5: craft ladders; 6: skill-up fillers in hq/nq; 7: helm ladders + hat map; 8: fish ladders; 9: oneiros grip + mpMerits; 10: universals ladder; 11: Refresh rides mp/mpBest (rf map + rung rf); 12: AUGMENTS counted -- MP and Refresh deltas from your actual bag copies fold into mp/rf; 13: PAIR HOMES -- ear/ring ladders re-home to the IDLE SET's declared positions (Default rule matching status=Idle; the MaxMP panel picker ALWAYS overrides detection) so the engine never relocates a piece across its pair
 
 local auto = { data = nil, loadedFor = nil, status = '' };
 
@@ -235,8 +235,11 @@ local function autoCommit()
     -- PLUS the best battery per equip slot (ear/ring get the top two) so the
     -- engine can EQUIP them, not just hold them. The engine can't read the
     -- catalog, so both ride this manifest.
-    local mp, mpBest, rf = {}, {}, {};
+    local mp, mpBest, rf, mv = {}, {}, {}, {};
     local mpPairIdle, mpPairIdleOverride = nil, nil;   -- the pair-home idle set (fmt 13)
+    -- Movement-yield setting (fmt 14): panel checkbox, preserved across
+    -- rescans exactly like the pair override.
+    local mpMoveYield = (type(auto.data) == 'table') and (auto.data.mpMoveYield == true) or false;
     pcall(function()
         if type(deps.ownedList) ~= 'function' then return; end
         local counts = (type(deps.ownedCounts) == 'function') and deps.ownedCounts() or nil;
@@ -272,6 +275,14 @@ local function autoCommit()
             if rfv > 0 and rec.Name ~= nil then
                 local rk = string.lower(rec.Name);
                 if (rf[rk] or 0) < rfv then rf[rk] = rfv; end
+            end
+            -- Movement map (fmt 14): every owned piece with Movement+ -- the
+            -- engine's movement-yield setting releases a battery to one of
+            -- these while MOVING (field: Pegasus Collar over a neck battery).
+            local mvv = (st ~= nil) and (tonumber(st.MovementSpeed) or 0) or 0;
+            if mvv > 0 and rec.Name ~= nil then
+                local mk = string.lower(rec.Name);
+                if (mv[mk] or 0) < mvv then mv[mk] = mvv; end
             end
             -- Convert counts: 25 HP -> MP is +25 max MP for this mode's purposes.
             local v = ((st ~= nil) and ((tonumber(st.MP) or 0) + (tonumber(st.ConvertHPtoMP) or 0)) or 0) + augMP;
@@ -686,6 +697,16 @@ local function autoCommit()
         L[#L + 1] = string.format('        [%q] = %d,', k, rf[k]);
     end
     L[#L + 1] = '    },';
+    -- Movement map + the yield setting (fmt 14).
+    L[#L + 1] = '    mv = {';
+    local mvKeys = {};
+    for k in pairs(mv) do mvKeys[#mvKeys + 1] = k; end
+    table.sort(mvKeys);
+    for _, k in ipairs(mvKeys) do
+        L[#L + 1] = string.format('        [%q] = %d,', k, mv[k]);
+    end
+    L[#L + 1] = '    },';
+    L[#L + 1] = mpMoveYield and '    mpMoveYield = true,' or '    mpMoveYield = false,';
     L[#L + 1] = '    mpBest = {';
     local mbKeys = {};
     for k in pairs(mpBest) do mbKeys[#mbKeys + 1] = k; end
@@ -1577,6 +1598,17 @@ local function renderAutomations()
             end
             if imgui.IsItemHovered() then
                 imgui.SetTooltip('The set whose Ear1/Ear2/Ring1/Ring2 lists say WHERE each earring\nand ring belongs. The picker always overrides the auto-detection.');
+            end
+            -- Movement yield (fmt 14): while MOVING, a set piece with
+            -- Movement+ beats the battery in its slot.
+            imgui.Spacing();
+            local my = { (type(auto.data) == 'table') and auto.data.mpMoveYield == true };
+            if imgui.Checkbox('Movement gear overrides batteries while moving##maxmpmv', my) then
+                auto.data.mpMoveYield = my[1];
+                pcall(autoCommit);
+            end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('While you are MOVING, a set piece carrying Movement+ (your movement\ntrigger gear -- e.g. Pegasus Collar) wins its slot from the battery,\neven at max MP. Stop moving and the band plan resumes untouched.');
             end
         end
         return;

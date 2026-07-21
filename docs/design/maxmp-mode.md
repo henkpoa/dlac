@@ -106,6 +106,18 @@ absolutes alone; never trust `GetMPMax` at all below full).
   ladders, so a sibling claim proves a second copy. Once an MP earring or
   ring sits in a paired slot, the engine never relocates it.
 
+### Movement yield (v96, panel setting — off by default)
+
+While MOVING, a set piece carrying Movement+ beats the battery in its slot,
+even at max MP (the field ask: Pegasus Collar over the neck battery on
+BRD). The check is the first arm of the per-slot MP branch and reads the
+same `ctx.player.IsMoving` the `moving` trigger matcher uses; the piece
+must actually be in the dispatched plan (i.e. the player's own movement
+trigger equips it — the engine adds nothing). Stop moving and the band
+plan resumes untouched. Manifest fmt 14 carries the `mv` map
+(name → MovementSpeed) and the persisted `mpMoveYield` checkbox; `/dl why`
+notes the yield as `MP-MOVE`.
+
 ### What the bands DON'T decide
 
 Bands decide **WHEN**. The existing machinery decides **WHAT** and stands

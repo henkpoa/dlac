@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 95;   -- 95: the refresh BASELINE is the POTENTIAL refresh (field round 13: Clr. Bliaut +1 displaced by Hlr. Bliaut +1 at MP ~800, plan row 12 'body (0->53)' with NO [refresh-cost] tags anywhere). lowRf was the min-MP piece's refresh -- which reads 0 the moment ANY combat/precast set writes the slot with potency gear, so every refresh-cost delta vanished, the Hlr band sorted deep-and-plain and its clamped on-trigger landed mid-pool. Now lowRf = the MOST refresh any trigger-reachable set puts in the slot ("you should be aware that there is a POTENTIAL refresh piece there" -- the round-10 ruling verbatim); the MP low stays the minimum (the true potency point). Plus mpbands.MIN_TICK = 5: the measured tick is honest (unbuffed gear refresh really ticks +1..3) but a 1-MP margin makes hair-width hysteresis (off<=1086/on>=1087) -- the margin floors at 5, the buckets keep the true readings. Not the pair-homes change: that stays ear/ring-only.
+M.VERSION = 96;   -- 96: MOVEMENT YIELD (panel setting, manifest fmt 14 -- mpMoveYield + the mv map): while MOVING, a set piece carrying Movement+ beats the battery in its slot even at max MP (field ask: Pegasus Collar over the neck battery on BRD; the movement trigger set's piece flows, the battery steps aside, and stopping resumes the band plan untouched). The check is the FIRST arm of the per-slot MP branch -- before target logic, after the v91 'remove' skip -- and reads the same ctx.player.IsMoving the `moving` trigger matcher uses. Off by default; the MaxMP panel checkbox persists it inside the manifest like the pair override. /dl why notes it as MP-MOVE.
+                  -- 95: the refresh BASELINE is the POTENTIAL refresh (field round 13: Clr. Bliaut +1 displaced by Hlr. Bliaut +1 at MP ~800, plan row 12 'body (0->53)' with NO [refresh-cost] tags anywhere). lowRf was the min-MP piece's refresh -- which reads 0 the moment ANY combat/precast set writes the slot with potency gear, so every refresh-cost delta vanished, the Hlr band sorted deep-and-plain and its clamped on-trigger landed mid-pool. Now lowRf = the MOST refresh any trigger-reachable set puts in the slot ("you should be aware that there is a POTENTIAL refresh piece there" -- the round-10 ruling verbatim); the MP low stays the minimum (the true potency point). Plus mpbands.MIN_TICK = 5: the measured tick is honest (unbuffed gear refresh really ticks +1..3) but a 1-MP margin makes hair-width hysteresis (off<=1086/on>=1087) -- the margin floors at 5, the buckets keep the true readings. Not the pair-homes change: that stays ear/ring-only.
                   -- 94: sticky pairs check BOTH claims (field: Loquac. still moved ear2 -> ear1 ONCE, no bounce). Root cause found OUTSIDE the engine: Henrik's gear.lua has NO LoquaciousEarring entry, so his Idle Ear2 ladder's gear.Ear.LoquaciousEarring reference is silently nil (nil list entries VANISH -- no warning possible) and the SET equips Outlaw's into ear2, displacing the earring to the bag; the band then legitimately picked the freed 30-MP battery for ear1. Engine hardening shipped anyway: mpStickyPairs consulted `plan or worn`, so a sibling plan naming a DIFFERENT piece shadowed the worn claim -- both claims veto independently now (MSS5). The data fix is Henrik's side: /dl sync to index the earring, then the set holds it in ear2 and the plan-claim pins it forever.
                   -- 93: STICKY paired slots (field: Loquacious Earring bounced ear2 <-> ear1). The v83 pick veto reads WORN state, which lags ~a dispatch behind LAC's swaps -- so the band pulled the earring toward its ladder home (ear1) whenever the read went stale, and the idle set planted it back (ear2), forever. M.mpStickyPairs (tests MSS*) closes it at the APPLY site: a battery candidate whose piece is already claimed by the sibling ear/ring -- in THIS dispatch's resolved PLAN (cannot lag) or on the body -- never writes; genuine duplicates stay exempt (mpPairSkip: dup-owned items ride both paired ladders). MP earrings and rings never relocate across their pair once set; /dl why notes the skip as MP-PAIR sticky.
                   -- 92: ONE band per slot + reachable on-triggers (field round 10, Henrik's RULING: "to get refresh in is NOT YOUR JOB -- that is the idle set's job... be aware there is a potential refresh piece there and adapt accordingly"). The v90 multi-rung experiment is retired: the engine wore refresh mid-rungs itself (overstepping the job) AND wearing them depressed the pool below the top bands' re-equip thresholds -- the ladder deadlocked, batteries never displaced the refresh pieces even at max MP. Now: the band = the slot's TOP battery (augs counted, equal-MP ties prefer the refresh copy) vs the POTENCY POINT (the sets' own piece, lowRf-aware); refresh awareness lives ONLY in the order (rfDelta ASC then diff ASC -- the battery over the idle's refresh piece is first off/last on, so the idle's Clr. Bliaut +1 returns FIRST, Bunzi's Hat second). And onAt clamps to endMax: the raw lastMax - tick sits above the reachable pool whenever diff > tick (Hlr-over-Clr diff 22 > 15 could never re-fire); clamped, small diffs keep the early re-equip, big diffs fire the moment the pool tops out; the hysteresis gap stays min(diff, tick) wide. Tests MB13* rewritten.
@@ -1740,9 +1741,19 @@ function M.mpBands(ctx)
     local tick = _mpb.tick(resting);
     local bands = _mpb.build(slots, wornMax + sumHead, tick);
     local target = _mpb.target(bands, cur, wornItemName);
+    -- Movement yield (v96): the setting + the movement map ride the manifest;
+    -- moving comes from the same ctx read the `moving` trigger matcher uses.
+    local moving = false;
+    pcall(function()
+        moving = (ctx ~= nil and ctx.player ~= nil) and (ctx.player.IsMoving == true)
+                 or (gData.GetPlayer().IsMoving == true);
+    end);
     return { bands = bands, target = target, hi = hi,
              cur = cur, total = wornMax + sumHead, tick = tick, low = low,
-             resting = resting, mpMap = mpMap, mpBest = mpBest };
+             resting = resting, mpMap = mpMap, mpBest = mpBest,
+             moveYield = (a.mpMoveYield == true),
+             mvMap = (type(a.mv) == 'table') and a.mv or {},
+             moving = moving };
 end
 
 -- STICKY paired slots (v93, Henrik's ruling: "MP earrings and rings...
@@ -2258,7 +2269,18 @@ local function equipResolved(s, ctx)
             local worn = wornItemName(slot);
             local wornMP = (worn ~= nil) and (mpMap[string.lower(worn)] or 0) or 0;
             local tgtMP  = mpMap[string.lower(v)] or 0;
-            if type(tgt) == 'string' then
+            -- Movement yield (v96, panel setting): while MOVING, a set piece
+            -- carrying Movement+ beats the battery in its slot -- even at max
+            -- MP (field: Pegasus Collar over the neck battery on BRD). Stop
+            -- moving and the band logic below resumes untouched.
+            if mpCtx.moveYield and mpCtx.moving
+               and (mpCtx.mvMap[string.lower(v)] or 0) > 0 then
+                if worn ~= nil and string.lower(worn) ~= string.lower(v) then
+                    note('%s=MP-MOVE %s -> %s (movement overrides the battery)',
+                        tostring(slot), worn, tostring(v));
+                end
+                -- the movement piece flows
+            elseif type(tgt) == 'string' then
                 if worn ~= nil and string.lower(worn) == string.lower(tgt) then
                     if string.lower(worn) ~= string.lower(v) then
                         W()[slot] = nil;               -- the right rung is on: the set piece stays out

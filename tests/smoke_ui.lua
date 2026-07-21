@@ -660,6 +660,10 @@ end)();
           Stats = { MP = 29, Refresh = 1 } },
         { Name = "Bunzi's Robe",      Id = 90015, Level = 74, Slot = 'Body',  Jobs = { 'All' },
           Stats = { MP = 50 } },
+        -- maxmp movement yield (fmt 14): Movement+ pieces ride the mv map so
+        -- the engine can let them beat a battery while MOVING.
+        { Name = 'Pegasus Collar',    Id = 90016, Level = 60, Slot = 'Neck',  Jobs = { 'All' },
+          Stats = { MovementSpeed = 12 } },
         -- craft: a real skill item, an anti-HQ item (BLOCKS the hq goal, tops
         -- nq), and a skill-up item (fills hq at gainFill, tops skillup).
         { Name = 'Chefs Hat',         Id = 90020, Level = 1,  Slot = 'Head',  Jobs = { 'All' },
@@ -755,6 +759,15 @@ end)();
                 if r.name == 'Clr. Bliaut +1' then return r.rf; end
             end
         end)(), 2);
+    check('S169f movement map built (fmt 14)', m.mv and m.mv['pegasus collar'], 12);
+    check('S169g movement piece with no MP stays OUT of the ladders',
+        (function()
+            for _, r in ipairs(m.mpBest.neck or {}) do
+                if r.name == 'Pegasus Collar' then return 'in ladder'; end
+            end
+            return 'out';
+        end)(), 'out');
+    check('S169h movement-yield setting defaults off and serializes', m.mpMoveYield, false);
     check('S170 an x2 battery fills BOTH ring ladders',
         m.mpBest.ring1 and m.mpBest.ring1[1].name == 'Astral Ring'
         and m.mpBest.ring2 and m.mpBest.ring2[1].name == 'Astral Ring', true);
