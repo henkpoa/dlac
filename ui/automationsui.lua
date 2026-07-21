@@ -1644,6 +1644,18 @@ local function renderAutomations()
     -- No rescan button, no status line: the scan runs itself (login, job
     -- change, any inventory change, schema self-heal) and each row already
     -- reports its own state -- extra chrome earned nothing (field request).
+
+    -- The Arbiter's Priority section (ADR 0012, step 2 / issue #49): one strict
+    -- draggable list, top wins, reading + writing the arbstate Statefile. Its
+    -- own module (the helmui/fishui pattern -- keeps this chunk's local budget
+    -- clear); render-time pcall-require so a load knot only dims the section.
+    imgui.Spacing();
+    imgui.Separator();
+    imgui.Spacing();
+    pcall(function()
+        local priorityui = require('dlac\\ui\\priorityui');
+        priorityui.render(deps);
+    end);
 end
 
 -- The Automations MAIN-tab entry point: gearui registers the tab and calls this.
