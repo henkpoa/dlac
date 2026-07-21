@@ -3861,3 +3861,71 @@ a battery over craft armor, a battery in a bare ring, the Locks veto, a floor-on
 slot), AR12 (the `/dl why` line format incl. the issue's headline example + canonical
 LAC slot order). 2151 headless + 199 smoke green. Engine v100, addon.version
 2026.07.21d.
+
+## Engine-native slot locks: /lac disable retired from the lock path (2026-07-21, PRD #57)
+
+**The field find (Henrik, step-3 checkpoint):** pin-into-locked-slot did NOT punch
+through at default rank — yet every LV* test said it must. Root cause: the Equipped-tab
+lock paths queued `/lac disable <slot>` alongside the engine lock ("belt-and-suspenders
+for legacy profile code"). `/lac disable` blocks the slot BELOW the engine — LAC refuses
+every write — so the Arbiter's rank law was correct and unobeyable. The Priority list
+showed a law the game ignored.
+
+**The fix (#58/PR #60):** the engine lock is the ONLY lock. Lock actions queue no `/lac`
+at all; unlock keeps `/lac enable <slot>` as a self-healing release for stale legacy
+disables (the whole migration story — no sweep). Scope fences pinned BY TEST: Free equip
+keeps its global `/lac disable` pair (that feature's point is "LAC hands off"), useitem's
+countdown disable stays (a temporal hold, future engine-hold candidate). Tests S200–S211.
+With the clean-shim Setup standard, legacy hand-written equip code — the original reason
+for the belt — is explicitly outside the lock's guarantee. Field-confirmed same evening:
+punch-through at defaults, Locks-at-top vetoes pins. The standing lesson generalized:
+**a command-layer state the engine doesn't own will eventually contradict the engine**
+(same family as [[self-queued-commands-not-heard]] and the v43 lockstyle saga).
+
+## Blueprints: the trigger-rule library (2026-07-21, PRD #64, engine untouched)
+
+**Origin (Henrik):** "slept or lullaby'd → Toxic Earring" belongs on all 22 jobs;
+rebuilding it per job is "atrocious". Grilled to a decision record the same evening.
+
+**The rulings:** *Blueprint* (CONTEXT.md; _avoid_ favourite/template/preset) = a
+job-independent saved Trigger in ONE per-character library file OUTSIDE Profiles;
+*stamping* creates an ordinary Trigger in the job entry, detached both ways. Payload =
+the rule VERBATIM (when/whenAny, action, priority) + Handler + display name — **carrying
+referenced sets was REJECTED** (Henrik: dangling set/Mode/Group references stamp anyway
+and the existing missing-reference warnings suffice; revisit only on field demand).
+Inline-payload rules are the dependency-free sweet spot — the export system already
+treats them as self-contained.
+
+**Shape (#67+#68):** pure core `gear/blueprintsmodel.lua` (TGB1–46: naming, detachment,
+warn-but-allow double-stamp, byte-stable `blueprints v1` round-trip, sandbox hardness,
+import collision matrix); Blueprints section in the Triggers tab (Groups-section
+precedent — NOT a uihost tab); "bp" button on every rule row; Stamp/Edit/View
+text/Copy/Copy all/paste-import with live preview. **Maintenance tripwire:** `emitRule`
+is a deliberate MIRROR of `serializeTriggers`' per-rule form (the issues forbade engine
+changes) — TGB34/35 pin behavioral parity through the REAL engine path; if the engine's
+rule form ever changes, the mirror follows. Polish from the first field round: rule text
+wraps at the live box edge, the library scrolls in a capped child (the Sets-list
+pattern). Fully field-confirmed incl. the sharing round trip.
+
+## The day of the agents: CI parity, serial dispatch, and two corrections (2026-07-21)
+
+Eight label-dispatched cloud-agent PRs shipped in one day (#52→#68: Arbiter v97–v100,
+engine-native locks, Venture Ring, Blueprints ×2), every one review-gated and
+field-gated. What made it possible and what it taught:
+
+- **CI had been red since 07-19** — LGF4/6/8 failed ONLY on Ubuntu lua5.4: lockstyle's
+  `'\'`-joined io paths are literal filename chars on Linux, so the keepflow fixture
+  never loaded (the stray files literally NAMED `tests\fixtures\...` were the
+  fingerprint). Fix: `fsp()` separator normalization at lockstyle's io boundaries, a
+  no-op under Ashita. **Windows-green ≠ CI-green** — the parity loop is lua5.4 under
+  WSL; agents self-verify with this suite, so a red main poisons every dispatch.
+- **Serial dispatch is law** when issues share files (dispatch.lua, run_tests.lua):
+  one `ready-for-agent` at a time, review, merge, next.
+- **Correction 1:** step 4's docs named AutoAcc the next-claimant example. Henrik's
+  ruling: AutoAcc is a **Type automation** — per-piece candidate release at WITHIN-SET
+  altitude, any slot — never a claimant; the Arbiter never sees it. Docs fixed
+  (ADR 0012, architecture.md, the registry comment). The rank-row+claim-table recipe
+  stands for genuine future claimants.
+- **Correction 2:** Venture Ring's bonus is **Venture Points +100%** (the HELM
+  currency), not exp — it keeps its seat in the exp-rings section by ruling, labeled
+  `+100% VP`.

@@ -541,6 +541,17 @@ agent; the per-repo setup lives in `docs/agents/`.
   commits. Local-only pending GM verdict; strip TEMP probes (`/dlmv`, RMB debug,
   branch-print) before any merge. The Storage-into-Provenance packet experiment is
   designed, unrun (docs/design/storage-move.md "open questions").
+- **The Arbiter batch + Blueprints (2026-07-21, engine v97→v100):** the six gear
+  claimants (Pins, AutoAmmo, MaxMP, Craft, HELM, Fishing) now register **Claims** with
+  one **Arbiter** — a strict draggable per-character rank list (`arbstate`; Priority
+  section in the Automations tab; Locks = draggable VETO row, default under Pins;
+  Triggers = the floor). `/dl prio` shows the live ranks, `/dl why` names each slot's
+  winner + rank. Locks are engine-native (the lock path no longer emits `/lac disable`).
+  **Blueprints** = job-independent saved Triggers (Triggers-tab section: save/stamp/
+  edit/share-as-text, `blueprints v1`). AutoAcc is deliberately NOT a claimant (Type
+  automation, within-set altitude). Start at ADR 0012 (+ Amendment) and the four
+  "Arbiter, step N" + two follow-up entries in [history.md](history.md); glossary:
+  Claim / Arbiter / Blueprint in CONTEXT.md. All field-confirmed 07-21.
 - **Open threads:** see the "Standing loose ends" section at the end of
   [history.md](history.md) — notably `/dl dw` positive-case verification, GitHub issues
   #8/#9/#12/#13, picker-DB wiki overlay, stat hover descriptors, TPBonus scale,
