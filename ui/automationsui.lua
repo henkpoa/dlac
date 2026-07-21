@@ -119,7 +119,7 @@ local UNIVERSAL = {
 -- Manifest schema version: bump when autoCommit writes NEW fields. An on-disk
 -- manifest with an older fmtver self-heals (renderAutomations triggers a rescan)
 -- so a dlac update never needs a manual "Rescan owned gear" click.
-local AUTO_FMT = 12;   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked; 5: craft ladders; 6: skill-up fillers in hq/nq; 7: helm ladders + hat map; 8: fish ladders; 9: oneiros grip + mpMerits; 10: universals ladder; 11: Refresh rides mp/mpBest (rf map + rung rf); 12: AUGMENTS counted -- MP and Refresh deltas from your actual bag copies (augments.ownedAugStats) fold into mp/rf (field: Cleric's Bliaut +1 carries Refresh+1 native AND +1 augmented)
+local AUTO_FMT = 13;   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked; 5: craft ladders; 6: skill-up fillers in hq/nq; 7: helm ladders + hat map; 8: fish ladders; 9: oneiros grip + mpMerits; 10: universals ladder; 11: Refresh rides mp/mpBest (rf map + rung rf); 12: AUGMENTS counted -- MP and Refresh deltas from your actual bag copies fold into mp/rf; 13: PAIR HOMES -- ear/ring ladders re-home to the IDLE SET's declared positions (Default rule matching status=Idle; the MaxMP panel picker ALWAYS overrides detection) so the engine never relocates a piece across its pair
 
 local auto = { data = nil, loadedFor = nil, status = '' };
 
@@ -236,6 +236,7 @@ local function autoCommit()
     -- engine can EQUIP them, not just hold them. The engine can't read the
     -- catalog, so both ride this manifest.
     local mp, mpBest, rf = {}, {}, {};
+    local mpPairIdle, mpPairIdleOverride = nil, nil;   -- the pair-home idle set (fmt 13)
     pcall(function()
         if type(deps.ownedList) ~= 'function' then return; end
         local counts = (type(deps.ownedCounts) == 'function') and deps.ownedCounts() or nil;
@@ -298,8 +299,71 @@ local function autoCommit()
                 end
             end
         end
-        -- Ladders, best first. Ear/Ring alternate into two DISJOINT ladders so
-        -- one physical item can never be picked for both slots.
+        -- Pair-position HOME map (fmt 13, Henrik's ruling): the IDLE SET --
+        -- the player's Default rule matching exactly `status = Idle`, or the
+        -- MaxMP panel's picker which ALWAYS overrides the detection -- says
+        -- which paired slot each ear/ring belongs to. A piece the idle set
+        -- lists under Ear2 is an ear2 piece, full stop: it joins ear2's
+        -- ladder below, so the engine can never plan it across the pair.
+        local override = (type(auto.data) == 'table')
+            and (type(auto.data.mpPairIdleOverride) == 'string') and auto.data.mpPairIdleOverride or nil;
+        mpPairIdle, mpPairIdleOverride = nil, override;
+        local pairHome = {};
+        pcall(function()
+            local prof = require('dlac\\profiles');
+            if job == nil or job == '' then return; end
+            local setName = override;
+            if setName == nil and hasDispatch and type(dsp.readTriggersRaw) == 'function'
+               and type(prof.triggersPath) == 'function' then
+                local raw = dsp.readTriggersRaw(prof.triggersPath(job));
+                if type(raw) == 'table' then
+                    for ev, rules in pairs(raw) do
+                        if string.lower(tostring(ev)) == 'default' and type(rules) == 'table' then
+                            for _, r in ipairs(rules) do
+                                local w = (type(r) == 'table') and r.when or nil;
+                                if type(w) == 'table' then
+                                    local n, k1, v1 = 0, nil, nil;
+                                    for k, v in pairs(w) do n = n + 1; k1, v1 = k, v; end
+                                    if n == 1 and string.lower(tostring(k1)) == 'status'
+                                       and string.lower(tostring(v1)) == 'idle' then
+                                        local sn = r.set;
+                                        if type(sn) == 'table' then sn = sn[1]; end
+                                        if type(sn) == 'string' and sn ~= '' then setName = sn; break; end
+                                    end
+                                end
+                            end
+                        end
+                        if setName ~= nil then break; end
+                    end
+                end
+            end
+            if setName == nil then setName = 'Idle'; end   -- the convention fallback
+            local dyn = (type(prof.readSetsFile) == 'function') and prof.readSetsFile(job) or nil;
+            local s = (type(dyn) == 'table') and dyn[setName] or nil;
+            if type(s) ~= 'table' then return; end
+            mpPairIdle = setName;
+            for _, slotKey in ipairs({ 'Ear1', 'Ear2', 'Ring1', 'Ring2' }) do
+                local lst = s[slotKey];
+                if type(lst) == 'table' then
+                    local entries = (lst.Name ~= nil or lst.gear ~= nil) and { lst } or lst;
+                    for _, e in ipairs(entries) do
+                        local nm = nil;
+                        if type(e) == 'string' then nm = e;
+                        elseif type(e) == 'table' then
+                            nm = e.Name;
+                            if nm == nil and type(e.gear) == 'table' then nm = e.gear.Name; end
+                        end
+                        if type(nm) == 'string' and string.lower(string.sub(nm, 1, 5)) ~= 'dlac:' then
+                            local k = string.lower(nm);
+                            if pairHome[k] == nil then pairHome[k] = string.lower(slotKey); end
+                        end
+                    end
+                end
+            end
+        end);
+        -- Ladders, best first. Ear/Ring split into two DISJOINT ladders so one
+        -- physical item can never be picked for both slots -- HOMED pieces go
+        -- to their idle-set slot, dup twins fill the other, the rest balance.
         local LADDER = 4;
         for sl, list in pairs(bySlot) do
             table.sort(list, function(a, b)
@@ -307,9 +371,21 @@ local function autoCommit()
                 return a.name < b.name;
             end);
             if sl == 'Ear' or sl == 'Ring' then
+                local base = string.lower(sl);
                 local l1, l2 = {}, {};
-                for i, c in ipairs(list) do
-                    local t = (i % 2 == 1) and l1 or l2;
+                local firstT = {};
+                for _, c in ipairs(list) do
+                    local k = string.lower(c.name);
+                    local t;
+                    if firstT[k] ~= nil then
+                        t = (firstT[k] == l1) and l2 or l1;   -- dup twin: the other slot
+                    else
+                        local home = pairHome[k];
+                        if home == base .. '1' then t = l1;
+                        elseif home == base .. '2' then t = l2;
+                        else t = (#l1 <= #l2) and l1 or l2; end
+                        firstT[k] = t;
+                    end
                     if #t < LADDER then t[#t + 1] = c; end
                 end
                 if #l1 > 0 then mpBest[string.lower(sl) .. '1'] = l1; end
@@ -594,6 +670,13 @@ local function autoCommit()
         L[#L + 1] = string.format('        [%q] = %d,', k, mp[k]);
     end
     L[#L + 1] = '    },';
+    -- Pair-home provenance (fmt 13): the idle set the ear/ring ladders were
+    -- homed against, and the player's panel override (preserved across
+    -- rescans -- the rescan reads it back from the loaded manifest).
+    L[#L + 1] = (mpPairIdle ~= nil) and string.format('    mpPairIdle = %q,', mpPairIdle)
+        or '    mpPairIdle = false,';
+    L[#L + 1] = (mpPairIdleOverride ~= nil) and string.format('    mpPairIdleOverride = %q,', mpPairIdleOverride)
+        or '    mpPairIdleOverride = false,';
     -- Refresh map (fmtver 11): name -> Refresh, every owned piece carrying it.
     L[#L + 1] = '    rf = {';
     local rfKeys = {};
@@ -988,9 +1071,8 @@ end
 
 -- The automation LIST rows -- ONE builder for both surfaces: the Automations
 -- tab below and gearui's Teleports quick menu (M.listRows). MaxMP is
--- deliberately NOT listed: still unofficial, pending more field
--- troubleshooting (/dl mode maxmp keeps working; its detail view and the
--- manifest mp data stay intact -- re-add the row here when it graduates).
+-- MaxMP graduated to the list 2026-07-21 (Henrik's call, after the
+-- banded-ladder field rounds); its row is appended last below.
 local function buildAutoRows()
     local rows = {
         { key = 'iridescence', name = 'AutoIridescence', kind = 'slot automation (Main)',
@@ -1011,7 +1093,22 @@ local function buildAutoRows()
         -- patch below finds this row by KEY, so the index difference is fine.)
         { key = 'ammo',        name = 'AutoAmmo',        kind = 'slot automation (Ammo)',
           level = 0,                  max = 1, txt = nil },
+        -- MaxMP GRADUATED 2026-07-21 (Henrik: "reenable now in GUI") after
+        -- the banded-ladder field rounds -- appended last so every existing
+        -- row index stays stable.
+        { key = 'maxmp',       name = 'MaxMP',           kind = 'set automation (MP batteries)',
+          level = 0,                  max = 1, txt = 'no battery data yet' },
     };
+    pcall(function()
+        local r = rows[#rows];
+        local mb = (type(auto.data) == 'table') and auto.data.mpBest or nil;
+        local n = 0;
+        if type(mb) == 'table' then for _ in pairs(mb) do n = n + 1; end end
+        if n > 0 then
+            r.level = 1;
+            r.txt = string.format('%d battery slots -- /dl mode maxmp', n);
+        end
+    end);
     rows[1].txt = IRID_TXT[rows[1].level];
     rows[2].txt = OBI_TXT[rows[2].level];
     rows[3].txt = ONEIROS_TXT[rows[3].level];
@@ -1405,6 +1502,38 @@ local function renderAutomations()
             imgui.TextColored((total > 0) and GREEN_OWNED or COL_ERR,
                 string.format('Best case: +%d Max MP', total));
             imgui.TextColored(COL_DIM, 'Battery data maintains itself (login, job change, any inventory change).');
+            -- Pair homes (fmt 13): which idle set anchors the ear/ring
+            -- positions. Auto-detected from the Default status=Idle rule; the
+            -- picker ALWAYS overrides the detection (Henrik's ruling).
+            imgui.Spacing(); imgui.Separator(); imgui.Spacing();
+            local ov  = (type(auto.data) == 'table' and type(auto.data.mpPairIdleOverride) == 'string')
+                        and auto.data.mpPairIdleOverride or nil;
+            local det = (type(auto.data) == 'table' and type(auto.data.mpPairIdle) == 'string')
+                        and auto.data.mpPairIdle or nil;
+            imgui.TextColored(COL_HEADER, 'Ear/ring positions follow the idle set');
+            imgui.TextColored(COL_DIM, (ov ~= nil)
+                and ('anchored to "' .. ov .. '" (your override)')
+                or ((det ~= nil) and ('auto-detected: "' .. det .. '" (Default rule: status = Idle)')
+                                  or 'no idle set found -- pick one below so pair positions stick'));
+            imgui.SetNextItemWidth(220);
+            if imgui.BeginCombo('##maxmpidleset', ov or '(auto)') then
+                if imgui.Selectable('(auto)', ov == nil) and ov ~= nil then
+                    auto.data.mpPairIdleOverride = nil;
+                    pcall(autoCommit);
+                end
+                pcall(function()
+                    for _, nm in ipairs(deps.dynamicSetNames() or {}) do
+                        if imgui.Selectable(nm, nm == ov) then
+                            auto.data.mpPairIdleOverride = nm;
+                            pcall(autoCommit);
+                        end
+                    end
+                end);
+                imgui.EndCombo();
+            end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('The set whose Ear1/Ear2/Ring1/Ring2 lists say WHERE each earring\nand ring belongs. The picker always overrides the auto-detection.');
+            end
         end
         return;
     end
