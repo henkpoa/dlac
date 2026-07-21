@@ -2308,7 +2308,10 @@ end
 -- Locks veto rides M.locks (lowercased). 'Triggers' is the floor row; 'Locks'
 -- the veto. Pure -- the order-pinning tests drive it directly (AR*/LV*).
 --
--- THE CLAIM RECORD SHAPE (documented here for the next claimant, AutoAcc):
+-- THE CLAIM RECORD SHAPE (documented here for whatever claimant comes next --
+-- NOT AutoAcc: Henrik's ruling 2026-07-21 places AutoAcc at within-set
+-- altitude, a per-piece Type automation releasing candidates while over the
+-- hit cap, the AutoStaff/AutoObi family; the Arbiter never sees it):
 -- a Claim is just `{ [SlotKey] = itemName }` -- the slots a feature wants to
 -- dress, one item per slot (or the M.LOCK_HELD sentinel for the veto). A new
 -- claimant joins the Arbiter with exactly TWO things and NO new arm:

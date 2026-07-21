@@ -237,8 +237,10 @@ one vocabulary). Default order **Pins > Locks (veto) > AutoAmmo > MaxMP > Craft 
 Fishing > Triggers (floor)**.
 
 **The Claim record shape** — deliberately tiny, because a new claimant must be *one
-registry entry + one rank row, never a new engine arm* (the shape the future per-piece
-claimant **AutoAcc** joins as):
+registry entry + one rank row, never a new engine arm*. (**AutoAcc is NOT a future
+claimant** — Henrik's ruling 2026-07-21: it is a Type automation, per-piece candidate
+release while over the hit cap, any slot — within-set resolution, the altitude below
+the Arbiter. Its effect is part of whatever the floor or a claimant resolves.)
 
 - A **Claim** is just `{ [SlotKey] = itemName }` — the slots a feature wants to dress, one
   item per slot. The Locks veto is a Claim whose values are the `M.LOCK_HELD` sentinel

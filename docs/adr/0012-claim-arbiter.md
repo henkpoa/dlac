@@ -74,8 +74,11 @@ the UI step).
 
 ## Consequences
 
-- The next claimant (AutoAcc, when GM-approved) is one registry entry plus a rank row,
-  not three code edits.
+- A new claimant is one registry entry plus a rank row, not three code edits.
+  (AutoAcc is deliberately NOT one — Henrik's ruling, 2026-07-21: it is a Type
+  automation, per-piece candidate release at within-set altitude, any slot, the
+  AutoStaff/AutoObi family. From the Arbiter's view its effect is simply part of
+  whatever the floor or a claimant resolves.)
 - Deliberately below/outside the Arbiter's altitude: settle/proximity holds and the
   PetAction gate (temporal dampers with no gear opinion); within-set resolution
   (AutoStaff/AutoObi virtual entries, Dynamic flattening, the ADR 0010 trinket
