@@ -23,9 +23,9 @@ locks). None of this was visible to the player, and none of it was changeable.
   as turning it off, and every claimant has its own switch.
 - **Claimants decide WHETHER to claim; the Arbiter decides WHO WINS.** Claim-side rules
   stay inside the features: newest-armed exclusivity among Craft/HELM/Fishing (tie
-  craft > helm > fish), AutoAmmo's stand-down while fishing is live, MaxMP's
-  `'remove'`-respect, movement yield, sticky pairs and stage-eligibility (ADR 0010).
-  The Arbiter never re-derives a feature's conditions.
+  craft > helm > fish) — **SUPERSEDED, see the Amendment below**, AutoAmmo's stand-down
+  while fishing is live, MaxMP's `'remove'`-respect, movement yield, sticky pairs and
+  stage-eligibility (ADR 0010). The Arbiter never re-derives a feature's conditions.
 - **Locks are a draggable VETO row**: a claim above it punches through, a claim below it
   stops. Default position directly under Pins — which preserves the previously-hidden
   Pin > Lock law while making it visible and user-changeable.
@@ -52,6 +52,25 @@ locks). None of this was visible to the player, and none of it was changeable.
 - **Big-bang rewrite** — one giant field round where any regression could be any of six
   features, on corner cases (`'remove'` semantics, sticky pairs, pin reserves,
   sub-pairing guards) that each cost real field rounds to pin down the first time.
+
+## Amendment — activities co-claim (2026-07-21, after the step-1 field round)
+
+The newest-armed exclusivity among Craft/HELM/Fishing was carried into the Arbiter as a
+claim-side rule; the first field round falsified it. Field case (PUP): idle floor names
+Range = Animator; Fishing armed put Lu Shang's in Range — then arming HELM stood Fishing
+down **wholesale**, and the Animator returned to Range even though HELM never claims
+weapons, Range, rings or Ammo.
+
+The exclusivity was the pre-Arbiter conflict resolution — with rank arbitration in
+place it is redundant, and it actively defeats per-slot composition. **Ruling (Henrik):
+all three activity claimants claim whenever armed; the rank list settles every overlap
+per slot.** Each feature's own gates are untouched (idle-only stand-asides, Default-only
+application, AutoAmmo's fishing stand-down). The `at` stamp loses its arbitration role.
+
+Consequence, accepted deliberately: **arming no longer switches activities** — walking
+from the bench to the pond means disarming Craft yourself (quick menu / panel);
+`/dl prio` shows every concurrent claimant. Implemented as step 1.5 (between step 1 and
+the UI step).
 
 ## Consequences
 
