@@ -53,6 +53,14 @@ _Avoid_: merge, stack
 **Specificity**:
 How narrowly a Trigger's condition matches (Any → skill/status → class/element → family → group → exact name → Mode). Drives the *default* priority: more specific overlays less specific.
 
+**Claim**:
+A feature's declared wish to dress one or more slots (wear this item, or keep what's worn), registered with the Arbiter instead of equipped directly. Slots are contested one by one — losing a contest costs a claimant only that slot.
+_Avoid_: pin (the floatgear feature — one claimant among many), override, hijack
+
+**Arbiter**:
+The single decision point that gathers every Claim and decides, per slot, which claimant wins, by user-visible priority. The Triggers' overlay result is the floor that Claims dress over; the Arbiter can list every claimant and why each slot went the way it did.
+_Avoid_: pinning system, priority manager
+
 **Profile**:
 A character's named bundle of dlac data (e.g. `Default`) — the unit the PROFILES menu switches, clones, and imports. Exactly one is active per character; changing jobs never changes the Profile.
 _Avoid_: character profile (redundant — a Profile is always per character), LAC profile
