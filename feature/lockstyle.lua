@@ -102,6 +102,15 @@ local GOLD       = { 0.42, 0.36, 0.16, 1.0 };
 -- ---------------------------------------------------------------------------
 local data = nil;   -- { active = 1..30, onload = { JOB = box }, slots = { [n] = { name, set = {Slot=Name} } } }
 
+-- Windows joins ('\') are the addon's native tongue; the headless suite also
+-- runs where '/' is the separator (CI), and there a '\' is a filename char --
+-- every io/loadfile boundary below goes through fsp, a no-op under Ashita.
+local DIRSEP = package.config:sub(1, 1);
+local function fsp(p)
+    if p == nil or DIRSEP == '\\' then return p; end
+    return (p:gsub('\\', '/'));
+end
+
 local function charBase()
     local base = nil;
     pcall(function()
@@ -159,7 +168,7 @@ local function load_()
     data = { active = 1, onload = {}, slots = {} };  -- box 1 marked until chosen otherwise
     M._curReset();                                   -- profile switch: working copy follows
     pcall(function()
-        local chunk = loadfile(p);
+        local chunk = loadfile(fsp(p));
         if chunk == nil then return; end
         local ok, t = pcall(chunk);
         if ok and type(t) == 'table' then
@@ -257,7 +266,7 @@ local function save()
     -- other jobs' real bindings.
     local d = perJob and M._entryData(data, dataJob) or data;
     pcall(function()
-        local f = io.open(p, 'w');
+        local f = io.open(fsp(p), 'w');
         if f ~= nil then f:write(M._serialize(d)); f:close(); end
     end);
 end
@@ -606,7 +615,7 @@ local function retireLegacyPreview()
     local base = charBase(); if base == nil then return; end   -- pre-login: retry next pump
     _legacyRetired = true;
     pcall(function()
-        local f = io.open(base .. 'dlac\\lspreview.lua', 'w');
+        local f = io.open(fsp(base .. 'dlac\\lspreview.lua'), 'w');
         if f == nil then return; end
         f:write('-- dlac lockstyle preview -- RETIRED (v42 previews the look, not the gear).\nreturn {\n    enabled = false,\n};\n');
         f:close();
