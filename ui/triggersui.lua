@@ -32,6 +32,10 @@ local _gsok, gscan = pcall(require, "dlac\\gear\\groupscan");   -- Item 1: auto-
 local _apok, ap   = pcall(require, "dlac\\gear\\actionpicker");
 local _spok, spellDB   = pcall(require, "dlac\\data\\spells");
 local _abok, abilityDB = pcall(require, "dlac\\data\\abilities");
+-- Blueprints (issue #65, slice 1): the per-character library of reusable trigger rules.
+-- Pure core (CRUD / stamp transform / serialize) here; the file IO + section render below.
+-- Guarded like the others: a missing module only loses the Blueprints section.
+local _bpok, bp   = pcall(require, "dlac\\gear\\blueprintsmodel");
 local hasImgui    = _iok and imgui ~= nil;
 local hasDispatch = _dpok and type(dsp) == 'table';
 local hasGroups   = _gmok and type(gm) == 'table';
@@ -44,6 +48,7 @@ local hasGroupScan   = _gsok and type(gscan) == 'table';
 local hasMultiline = hasImgui and type(imgui.InputTextMultiline) == 'function';
 local hasBrowse   = _apok and type(ap) == 'table'
     and _spok and type(spellDB) == 'table' and _abok and type(abilityDB) == 'table';
+local hasBlueprints = _bpok and type(bp) == 'table';
 
 local function mainLevel()
     local lv = nil;
@@ -292,6 +297,8 @@ local trig = {
                           -- false closed, 'player' or 'pet' (truthy = open)
     addValText = { '' }, addValNum = { 0 }, addSet = nil, addPrio = { 0 }, _openAdd = false,
     editIdx = nil, _editEquip = nil,   -- rule-builder edit mode (replace in place)
+    _bpEdit = nil,   -- when set, the rule builder edits Blueprint library entry #_bpEdit
+                     -- (Save writes back to the library, not trig.data) -- issue #65
     _openModePopup = false,
     _prioBuf = {},
     _modeState = {}, _modeStateAt = -1,
@@ -396,6 +403,99 @@ local function trigCommit()
     trig.dirty = false;
     pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl triggers reload'); end);
     trigSetStatus('Committed -- live now (hot-reloaded; no /lac reload needed).', false);
+end
+
+-- ---------------------------------------------------------------------------
+-- Blueprints (issue #65, slice 1). The library is ONE per-character file OUTSIDE
+-- Profiles (<char>\dlac\blueprints.lua) -- addon-state only, the engine never reads
+-- it. bp is the pure core (CRUD / stamp / serialize); this block owns the file IO
+-- (the backup->temp->validate->swap ladder, hard rule 7) and the section render.
+-- Stamp routes through trigCommit -- the SAME commit path the Triggers tab uses.
+-- ---------------------------------------------------------------------------
+local bpUI = {
+    lib = nil, path = nil, err = nil,
+    status = '', statusErr = false, statusAt = 0,
+    renaming = nil, renameBuf = { '' }, _openRename = false,
+    delArm = nil,
+};
+local function bpSetStatus(msg, isErr)
+    bpUI.status = msg or ''; bpUI.statusErr = (isErr == true); bpUI.statusAt = os.clock();
+end
+
+-- The per-character library path (NOT profile-scoped -- a Blueprint is job- AND
+-- profile-independent). nil before login / known char dir; retry, never cache the nil.
+local function bpFilePath()
+    local base = deps and deps.charBase and deps.charBase() or nil;
+    if base == nil then return nil; end
+    return base .. 'dlac\\blueprints.lua';
+end
+
+-- Load (or reload) the library. Caches by path; a char change re-reads. A missing
+-- file is an empty library; a torn file loses the library (reported) until the next
+-- good save self-heals it -- never a crash (the sandboxed parse).
+local function bpLoad(force)
+    local path = bpFilePath();
+    if path == nil then return; end
+    if not force and bpUI.lib ~= nil and bpUI.path == path then return; end
+    bpUI.path, bpUI.err = path, nil;
+    if not hasBlueprints then bpUI.lib = {}; bpUI.err = 'blueprintsmodel module unavailable'; return; end
+    local text = readFileText(path);
+    if text == nil then bpUI.lib = {}; return; end        -- no library yet
+    local list, perr = bp.parse(text);
+    if list == nil then bpUI.lib = {}; bpUI.err = perr; return; end
+    bpUI.lib = list;
+end
+
+-- Persist the library through the safe-replace ladder (backup -> temp -> parse/validate
+-- -> atomic swap -> restore on failure). Falls back to a guarded plain write only when
+-- lib\safewrite is unreachable. Returns ok.
+local function bpSave()
+    local path = bpFilePath();
+    if path == nil or bpUI.lib == nil then bpSetStatus('Not logged in -- cannot save Blueprints.', true); return false; end
+    local text;
+    local ok = pcall(function() text = bp.serialize(bpUI.lib, hasDispatch and dsp.PRETTY_KEY or nil); end);
+    if not ok or type(text) ~= 'string' then bpSetStatus('Serialize failed.', true); return false; end
+    local base = deps.charBase();
+    local prev = readFileText(path);
+    local swok, sw = pcall(require, 'dlac\\lib\\safewrite');
+    if swok and type(sw) == 'table' and type(sw.replaceLua) == 'function' then
+        if prev ~= nil then                                -- back up an existing library first
+            pcall(function() sw.timestampBackup(base .. 'backups\\', 'blueprints-', prev); end);
+        end
+        local rok, rerr = sw.replaceLua(path, text, {
+            origText = prev,
+            validate = function(chunk)
+                local vok, ret = pcall(chunk);
+                return vok and type(ret) == 'table', 'library did not return a table';
+            end,
+        });
+        if rok ~= true then bpSetStatus('Could not save Blueprints: ' .. tostring(rerr), true); return false; end
+        return true;
+    end
+    -- fallback: ensure the dlac dir, then plain write
+    pcall(function()
+        if ashita and ashita.fs and ashita.fs.create_directory then
+            ashita.fs.create_directory(base .. 'dlac\\');
+        end
+    end);
+    if not writeFileText(path, text) then bpSetStatus('Could not write ' .. path, true); return false; end
+    return true;
+end
+
+-- Capture a live trigger rule into the library (Save-as-Blueprint, one click). The rule
+-- is deep-copied + sanitized by the pure core, so the Blueprint detaches immediately.
+local function bpCapture(handler, rule)
+    if not hasBlueprints then bpSetStatus('Blueprints unavailable.', true); return; end
+    bpLoad(false);
+    if bpUI.lib == nil then bpSetStatus('Log in before saving a Blueprint.', true); return; end
+    local okA, errA = bp.add(bpUI.lib, handler, rule);
+    if not okA then bpSetStatus('Could not save Blueprint: ' .. tostring(errA), true); return; end
+    if bpSave() then
+        local nm = bpUI.lib[#bpUI.lib].name;
+        bpSetStatus(string.format('Saved as Blueprint "%s" -- rename or stamp it in the Blueprints section.', nm), false);
+    else
+        table.remove(bpUI.lib);                            -- write failed: don't keep a phantom entry
+    end
 end
 
 -- ---------------------------------------------------------------------------
@@ -1434,6 +1534,13 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
     imgui.SameLine(0, 10);
     if imgui.SmallButton('edit##trgedit' .. id) then act = 'edit'; end
     if imgui.IsItemHovered() then imgui.SetTooltip('Edit this rule in the rule builder.'); end
+    if hasBlueprints then
+        imgui.SameLine(0, 4);
+        if imgui.SmallButton('bp##trgbp' .. id) then act = 'blueprint'; end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Save as Blueprint: capture this rule into your per-character library,\nready to stamp onto any job (Blueprints section).');
+        end
+    end
     imgui.SameLine(0, 4);
     if imgui.SmallButton('x##trgdel' .. id) then act = 'remove'; end
     if imgui.IsItemHovered() then imgui.SetTooltip('Remove this rule.'); end
@@ -1583,8 +1690,11 @@ local function renderTrigAddPopup()
     if not imgui.BeginPopup('##dlac_trigadd') then return; end
     local h = trig.addFor;
     if h == nil then imgui.EndPopup(); return; end
-    local editing = (trig.editIdx ~= nil);
-    imgui.TextColored(COL_HEADER, (editing and 'Edit ' or 'New ') .. h .. ' rule');
+    local bpEditing = (trig._bpEdit ~= nil);   -- editing a Blueprint library entry, not a job rule
+    local editing = (trig.editIdx ~= nil) or bpEditing;
+    local title = bpEditing and ('Edit Blueprint (' .. h .. ' rule)')
+                  or ((editing and 'Edit ' or 'New ') .. h .. ' rule');
+    imgui.TextColored(COL_HEADER, title);
     imgui.Separator();
 
     local defs = COND_DEFS[h] or {};
@@ -1912,15 +2022,25 @@ local function renderTrigAddPopup()
         if trig.addSet ~= nil then rule.set = trig.addSet;
         else rule.equip = trig._editEquip; end         -- editing an inline-equip rule: keep its payload
         if (tonumber(trig.addPrio[1]) or 0) > 0 then rule.priority = trig.addPrio[1]; end
-        trig.data[h] = trig.data[h] or {};
-        if editing and trig.data[h][trig.editIdx] ~= nil then
-            trig.data[h][trig.editIdx] = rule;         -- replace in place (keeps file order / tie-breaks)
+        if bpEditing then
+            -- Editing a Blueprint: the SAME rule editor, bound to the library entry.
+            -- Writes back to the library file (never retro-edits already-stamped Triggers).
+            local e = bpUI.lib and bpUI.lib[trig._bpEdit] or nil;
+            if e ~= nil then
+                e.rule = rule;                         -- handler + name unchanged; the rule is replaced
+                if bpSave() then bpSetStatus(string.format('Blueprint "%s" updated.', e.name), false); end
+            end
         else
-            table.insert(trig.data[h], rule);
+            trig.data[h] = trig.data[h] or {};
+            if trig.editIdx ~= nil and trig.data[h][trig.editIdx] ~= nil then
+                trig.data[h][trig.editIdx] = rule;     -- replace in place (keeps file order / tie-breaks)
+            else
+                table.insert(trig.data[h], rule);
+            end
+            trig.dirty = true;
         end
-        trig.dirty = true;
         trig.addConds = {}; trig.addSet = nil; trig.addPrio[1] = 0;
-        trig.editIdx, trig._editEquip = nil, nil;
+        trig.editIdx, trig._editEquip, trig._bpEdit = nil, nil, nil;
         trig._prioBuf = {};                            -- rule objects changed; rebuild priority buffers
         imgui.CloseCurrentPopup();
     end
@@ -2471,6 +2591,173 @@ function M.renderGroups(job, level)
     end
 end
 
+-- ---------------------------------------------------------------------------
+-- Blueprints section (issue #65, slice 1). A nav section inside the Triggers tab
+-- (the Groups precedent -- NOT a uihost tab; smoke_ui asserts non-registration).
+-- Lists the per-character library with per-entry Stamp / Edit / Delete. Stamp routes
+-- through trigCommit (the normal trigger commit + hot-reload); Edit reuses the
+-- existing rule editor (renderTrigAddPopup), bound to the library entry.
+-- ---------------------------------------------------------------------------
+
+-- Insert the entry's rule into the CURRENT job's trigger data in its Handler and commit
+-- through the normal path -- the engine hot-reloads it, no Reload LAC. Warn-but-allow when
+-- an identical rule already exists (double-stamp caught, never forbidden). Dangling set /
+-- Mode / Group references stamp verbatim -- the existing missing-* banners cover them.
+local function bpStamp(entry)
+    local _, abbr = trigFilePath();
+    if abbr == nil then bpSetStatus('Log in (with a known job) to stamp.', true); return; end
+    trigLoad(false);
+    trig.data = trig.data or {};
+    local dup = bp.identicalExists(entry, trig.data);
+    trig.data = bp.stamp(entry, trig.data);            -- NEW table (detached); rule appended
+    trig.dirty = true;
+    trig._prioBuf = {};                                -- rule objects changed identity
+    trigCommit();                                      -- serialize + /dl triggers reload
+    if dup then
+        bpSetStatus(string.format('Stamped "%s" onto %s %s -- an identical rule already existed there (added anyway).',
+            entry.name, abbr, entry.handler), true);
+    else
+        bpSetStatus(string.format('Stamped "%s" onto %s %s -- live now (hot-reloaded, no Reload LAC).',
+            entry.name, abbr, entry.handler), false);
+    end
+end
+
+-- Bind the EXISTING rule editor to library entry #index (no second editor). Loads the rule's
+-- conditions/set/priority into the builder exactly as a job-rule edit does; Save writes back
+-- to the library (renderTrigAddPopup, bpEditing branch). Never retro-edits stamped Triggers.
+local function bpEdit(index)
+    local e = bpUI.lib and bpUI.lib[index] or nil;
+    if e == nil then return; end
+    trig.addFor, trig._bpEdit, trig.editIdx, trig._editEquip = e.handler, index, nil, e.rule.equip;
+    trig.addConds = {};
+    for k, v in pairs(e.rule.when or {}) do
+        trig.addConds[#trig.addConds + 1] = { key = k, value = v };
+    end
+    table.sort(trig.addConds, function(a, b) return tostring(a.key) < tostring(b.key); end);
+    for _, entry in ipairs(e.rule.whenAny or {}) do
+        for k, v in pairs(entry) do
+            trig.addConds[#trig.addConds + 1] = { key = k, value = v, any = true };
+        end
+    end
+    trig.addSet = (type(e.rule.set) == 'table') and e.rule.set[1] or e.rule.set;
+    trig.addPrio[1] = e.rule.priority or 0;
+    trig._addDef = 1; trig.addValText[1] = ''; trig._addValSel = nil;
+    trig._addPlayer = 1; trig._addPet = 1; trig.addValNum[1] = 0;
+    trig._openAdd = true;
+end
+
+local function renderBpRenamePopup()
+    if not imgui.BeginPopup('##dlac_bprename') then return; end
+    local e = bpUI.lib and bpUI.lib[bpUI.renaming] or nil;
+    if e == nil then imgui.EndPopup(); return; end
+    imgui.TextColored(COL_HEADER, 'Rename Blueprint');
+    imgui.PushItemWidth(240);
+    imgui.InputText('##bprenamebuf', bpUI.renameBuf, 96);
+    imgui.PopItemWidth();
+    if imgui.Button('Rename##bprenamego', { 0, 0 }) then
+        local ok, err = bp.rename(bpUI.lib, bpUI.renaming, bpUI.renameBuf[1]);
+        if not ok then bpSetStatus(err, true);
+        elseif bpSave() then bpSetStatus('Renamed.', false); bpUI.renaming = nil; imgui.CloseCurrentPopup(); end
+    end
+    imgui.SameLine(0, 6);
+    if imgui.Button('Cancel##bprenamex', { 0, 0 }) then bpUI.renaming = nil; imgui.CloseCurrentPopup(); end
+    imgui.EndPopup();
+end
+
+-- One library entry box: name + handler on the left, the rule text dim below; Stamp / Edit /
+-- rename / delete on the right. Returns nothing (actions fire in place).
+local function renderBlueprintBox(i, e)
+    local id = 'bp_' .. tostring(i);
+    local ruleText = '';
+    pcall(function() ruleText = bp.emitRule(e.rule, hasDispatch and dsp.PRETTY_KEY or nil); end);
+    local lh = lineH();
+    local boxH = math.max(2 * lh + 30, 56) + 12;
+    imgui.BeginChild('##bpbox' .. id, { -1, boxH }, true, BOX_FLAGS);
+
+    imgui.BeginGroup();
+    imgui.TextColored(COL_SCORE, esc(e.name));
+    imgui.SameLine(0, 8);
+    imgui.TextColored(COND_COLORS.mode or COL_HEADER, esc(e.handler));
+    imgui.TextColored(COL_DIM, esc(ruleText));
+    imgui.EndGroup();
+
+    imgui.SameLine(0, 12);
+    imgui.BeginGroup();
+    if imgui.SmallButton('Stamp onto this job##bpstamp' .. id) then bpStamp(e); end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Insert this rule into the current job\'s ' .. e.handler .. ' handler\nand commit -- live immediately (no Reload LAC). The stamped Trigger\nis ordinary afterwards; editing this Blueprint will not change it.');
+    end
+    imgui.SameLine(0, 6);
+    if imgui.SmallButton('Edit##bpedit' .. id) then bpEdit(i); end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Edit this Blueprint in the rule builder (the same editor as the Triggers tab).'); end
+    imgui.SameLine(0, 6);
+    if imgui.SmallButton('rename##bpren' .. id) then
+        bpUI.renaming = i; bpUI.renameBuf[1] = e.name; bpUI._openRename = true;
+    end
+    imgui.SameLine(0, 6);
+    if bpUI.delArm == i then
+        local red = (ImGuiCol_Button ~= nil);
+        if red then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
+        if imgui.SmallButton('confirm delete##bpdel' .. id) then
+            bp.remove(bpUI.lib, i); bpUI.delArm = nil;
+            if bpSave() then bpSetStatus('Blueprint deleted.', false); end
+        end
+        if red then imgui.PopStyleColor(1); end
+        imgui.SameLine(0, 4);
+        if imgui.SmallButton('keep##bpkeep' .. id) then bpUI.delArm = nil; end
+    else
+        if imgui.SmallButton('x##bpdel' .. id) then bpUI.delArm = i; end
+        if imgui.IsItemHovered() then imgui.SetTooltip('Delete this Blueprint from your library (click again to confirm).'); end
+    end
+    imgui.EndGroup();
+
+    imgui.EndChild();
+end
+
+function M.renderBlueprints(job, level)
+    if not hasImgui then return; end
+    if deps == nil then
+        imgui.TextColored(COL_ERR, 'Blueprints section not initialized (gearui deps missing).');
+        return;
+    end
+    if not hasBlueprints then
+        imgui.TextColored(COL_ERR, 'blueprintsmodel module unavailable -- the Blueprints section is disabled.');
+        return;
+    end
+    if bpFilePath() == nil then
+        imgui.TextColored(COL_DIM, 'Log in to use Blueprints (your reusable rule library).');
+        return;
+    end
+    bpLoad(false);
+
+    imgui.TextColored(COL_HEADER, 'Blueprints');
+    imgui.SameLine(0, 10);
+    imgui.TextColored(COL_DIM, 'reusable trigger rules -- job-independent, saved once, stamped onto any job');
+
+    -- Auto-expire the status line so a lingering receipt never reads as a fresh action.
+    if bpUI.status ~= '' and os.clock() - (bpUI.statusAt or 0) > 6 then bpUI.status = ''; end
+    if bpUI.status ~= '' then
+        imgui.TextColored(bpUI.statusErr and COL_ERR or COL_SCORE, esc(bpUI.status));
+    end
+    if bpUI.err ~= nil then
+        imgui.TextColored(COL_ERR, esc('Library problem: ' .. tostring(bpUI.err)));
+    end
+
+    imgui.Spacing();
+    imgui.TextColored(COL_DIM, 'Save any rule as a Blueprint with the "bp" button on its row (any handler).');
+    imgui.TextColored(COL_DIM, 'Then Stamp it onto whatever job you are on -- the rule arrives without rebuilding it.');
+    imgui.Spacing();
+
+    local lib = bpUI.lib or {};
+    if #lib == 0 then
+        imgui.TextColored(COL_DIM, '(no Blueprints yet -- save a rule with its "bp" button)');
+    end
+    for i, e in ipairs(lib) do renderBlueprintBox(i, e); end
+
+    if bpUI._openRename then imgui.OpenPopup('##dlac_bprename'); bpUI._openRename = false; end
+    renderBpRenamePopup();
+end
+
 function M.render(job, level)
     if not hasImgui then return; end
     if deps == nil then
@@ -2633,6 +2920,9 @@ function M.render(job, level)
             warnCount = #(gc.auditCached(2) or {});
         end
     end);
+    -- Blueprints library count for the nav label (per-character, loaded on demand).
+    local bpCount = 0;
+    if hasBlueprints then pcall(bpLoad, false); bpCount = bpUI.lib and #bpUI.lib or 0; end
 
     -- ONE section at a time: a slim nav column picks what fills the big main
     -- area -- no stacked collapsibles, no permanently-scrolling sidebar.
@@ -2651,6 +2941,7 @@ function M.render(job, level)
     end
     navItem('Modes', string.format('Modes (%d)', #modes));
     navItem('Groups', string.format('Groups (%d)', groupCount));
+    if hasBlueprints then navItem('Blueprints', string.format('Blueprints (%d)', bpCount)); end
     for _, h in ipairs(TRIG_HANDLERS) do
         navItem(h, string.format('%s (%d)', h, #(trig.data[h] or {})));
     end
@@ -2663,6 +2954,8 @@ function M.render(job, level)
         renderModesSection(defs, modes);
     elseif trig.section == 'Groups' then
         M.renderGroups(job, level);
+    elseif trig.section == 'Blueprints' then
+        M.renderBlueprints(job, level);
     elseif trig.section == 'Warnings' then
         pcall(renderGearWarnings, true);
     else
@@ -2697,7 +2990,8 @@ function M.render(job, level)
         for i, r in ipairs(list) do
             local act = renderTrigRuleBox(h, i, r, setNames, colX);
             if act == 'remove' then removeAt = i;
-            elseif act == 'edit' then editAt = i; end
+            elseif act == 'edit' then editAt = i;
+            elseif act == 'blueprint' then bpCapture(h, r); end   -- Save as Blueprint (one click)
         end
         if removeAt ~= nil then
             table.remove(list, removeAt);
@@ -2708,7 +3002,7 @@ function M.render(job, level)
         if editAt ~= nil then
             -- Pre-load the rule builder with this rule and open it in edit mode.
             local r = list[editAt];
-            trig.addFor, trig.editIdx, trig._editEquip = h, editAt, r.equip;
+            trig.addFor, trig.editIdx, trig._editEquip, trig._bpEdit = h, editAt, r.equip, nil;
             trig.addConds = {};
             for k, v in pairs(r.when or {}) do
                 trig.addConds[#trig.addConds + 1] = { key = k, value = v };
@@ -2732,7 +3026,7 @@ function M.render(job, level)
             trig.addFor = h; trig.addConds = {}; trig._addDef = 1;
             trig.addValText[1] = ''; trig._addValSel = nil; trig.addSet = nil; trig.addPrio[1] = 0;
             trig._addPlayer = 1; trig._addPet = 1; trig.addValNum[1] = 0;
-            trig.editIdx, trig._editEquip = nil, nil;   -- fresh add, not an edit
+            trig.editIdx, trig._editEquip, trig._bpEdit = nil, nil, nil;   -- fresh add, not an edit
             trig._openAdd = true;
         end
     end

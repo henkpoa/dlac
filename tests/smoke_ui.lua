@@ -95,6 +95,25 @@ do
         check('S5d groupimport parses a pasted table', type(g) == 'table' and g.STR_VIT and g.STR_VIT[1], 'Quad. Continuum');
     end
 end
+-- Blueprints (issue #65, slice 1): like Groups, a SECTION inside the Triggers tab, NOT a
+-- standalone uihost tab -- no 'blueprints' host module; triggersui exposes the renderer.
+check('S5e blueprints is a Triggers section, not a tab',
+    host.get('blueprints') == nil and type(require('dlac\\ui\\triggersui').renderBlueprints) == 'function', true);
+-- The pure core resolves under the addon require shim (the same path triggersui uses) and
+-- runs headless: capture a rule, stamp it into a job's data, round-trip the library text.
+do
+    local bpok, bpm = pcall(require, 'dlac\\gear\\blueprintsmodel');
+    check('S5f blueprintsmodel resolves via require shim', bpok and type(bpm.stamp), 'function');
+    if bpok then
+        local lib = {};
+        bpm.add(lib, 'Midcast', { when = {}, whenAny = { { buff = 'Sleep' }, { buff = 'Lullaby' } },
+                                  equip = { Ear1 = 'Toxic Earring' } });
+        local out = bpm.stamp(lib[1], { Default = {} });
+        check('S5g stamp lands the rule in its handler', out.Midcast[1].equip.Ear1, 'Toxic Earring');
+        local lib2 = bpm.parse(bpm.serialize(lib));
+        check('S5h library text round-trips', lib2 and lib2[1].name, 'Sleep or Lullaby');
+    end
+end
 
 local labels = {};
 for _, name in ipairs({ 'equipped', 'sets', 'triggers', 'automations', 'groups' }) do
