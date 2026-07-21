@@ -617,17 +617,18 @@ local bands = mb.build({
     { slot = 'feet', name = 'MP Boots', low = 5, high = 15 },
     { slot = 'body', name = 'Refresh Robe', low = 0, high = 30, refresh = true },
 }, 1100, 15);
--- cur 1060: feet (off<=1075) is past its off threshold -> releasing/off;
--- body (refresh band: off<=1045, on>=1075) sits in its DEAD ZONE -> holding.
+-- cur 1050: feet (off<=1075) is past its off threshold -> releasing/off;
+-- body (refresh band: off<=1045, on>=1060 clamped) sits in its DEAD ZONE
+-- -> holding.
+local worn = function(sl) if sl == 'body' then return 'Refresh Robe'; end return nil; end
 local mpCtx = {
-    bands = bands, cur = 1060, total = 1100, tick = 15, resting = false,
-    target = mb.target(bands, 1060, function(sl) return sl == 'body'; end),
+    bands = bands, cur = 1050, total = 1100, tick = 15, resting = false,
+    target = mb.target(bands, 1050, worn),
     hi = {}, mpMap = {},
 };
-local worn = function(sl) if sl == 'body' then return 'Refresh Robe'; end return nil; end
 local lines = dispatchM.mpPlanLines(mpCtx, worn);
 check('MPL1 header carries cur/total/tick',
-    string.find(lines[1], 'MP 1060 of 1100', 1, true) ~= nil
+    string.find(lines[1], 'MP 1050 of 1100', 1, true) ~= nil
     and string.find(lines[1], 'tick 15', 1, true) ~= nil, true);
 check('MPL2 release order: small diff row first',
     string.find(lines[2], '1. feet:', 1, true) ~= nil, true);
@@ -798,53 +799,59 @@ check('MB12d legacy refresh=true alias sinks deep',
     mb.build({ { slot = 'a', low = 0, high = 10, refresh = true },
                { slot = 'b', low = 0, high = 5 } }, 100, 0)[2].slot, 'a');
 
--- MB13: MULTI-RUNG bands, Henrik's CORRECTED field pin (round 9b -- his
--- real gear with augments counted): body = Hlr. Bliaut +1 (35+18 aug = 53
--- MP, flat) > Bunzi's Robe (50, DOMINATED -- pruned, never worn) > Clr.
--- Bliaut +1 (Refresh 1 native + 1 aug = 2). Last out / first back: Clr.
--- Bliaut +1 (+2), then Bunzi's Hat (+1) second-last; flat top-ups float
--- shallowest. "Augs must always be calculated into the total."
+-- MB13: ONE band per slot, the round-10 RULING: "to get refresh in is NOT
+-- YOUR JOB -- that is the idle set's job... you should be aware there is a
+-- potential refresh piece there and adapt accordingly." The engine's band
+-- = the top battery (augs counted: Hlr. Bliaut +1 at 35+18=53 tops body)
+-- vs the POTENCY POINT = the idle's own piece (Clr. Bliaut +1 rf2 body,
+-- Bunzi's Hat rf1 head). Awareness = ordering only: the refresh-cost
+-- bands float shallowest, so the idle's refresh pieces are back FIRST
+-- (body then head) and displaced LAST.
 local multi = mb.build({
-    { slot = 'head', low = 0, lowRf = 0,
+    { slot = 'head', low = 25, lowRf = 1,   -- idle wears Bunzi's Hat (its job, not ours)
       rungs = { { name = 'Erudite Cap', mp = 30, rf = 0 },
                 { name = 'Bunzi\'s Hat', mp = 25, rf = 1 } } },
-    { slot = 'body', low = 5, lowRf = 0,
+    { slot = 'body', low = 31, lowRf = 2,   -- idle wears Clr. Bliaut +1
       rungs = { { name = 'Hlr. Bliaut +1', mp = 53, rf = 0 },
-                { name = 'Bunzi\'s Robe', mp = 50, rf = 0 },
-                { name = 'Clr. Bliaut +1', mp = 31, rf = 2 } } },
+                { name = 'Bunzi\'s Robe', mp = 50, rf = 0 } } },
     { slot = 'feet', low = 5, lowRf = 0,
       rungs = { { name = 'Boots', mp = 15, rf = 0 } } },
 }, 1100, 15);
 local order = {};
 for _, b in ipairs(multi) do order[#order + 1] = b.name; end
-check('MB13 the corrected field order pin', table.concat(order, '>'),
-    'Hlr. Bliaut +1>Erudite Cap>Boots>Bunzi\'s Hat>Clr. Bliaut +1');
-check('MB13g Bunzi\'s Robe pruned as dominated (the augmented 53 owns the top)',
+check('MB13 one band per slot, refresh-cost shallowest', table.concat(order, '>'),
+    'Hlr. Bliaut +1>Erudite Cap>Boots');
+check('MB13b the engine never wears the refresh piece (no Hat/Clr band)',
     (function()
         for _, b in ipairs(multi) do
-            if b.name == 'Bunzi\'s Robe' then return 'present'; end
+            if b.name == 'Bunzi\'s Hat' or b.name == 'Clr. Bliaut +1' then return 'worn by engine'; end
         end
-        return 'pruned';
-    end)(), 'pruned');
--- Mid-pool (cur 1040, Hat + Clr. worn): flat top-ups are off, the refresh
--- pieces HOLD (the round-9 bug: the hat was being replaced way earlier).
-local wornMid = function(sl)
-    if sl == 'head' then return 'Bunzi\'s Hat'; end
-    if sl == 'body' then return 'Clr. Bliaut +1'; end
+        return 'idle set\'s job';
+    end)(), 'idle set\'s job');
+-- REACHABILITY (the round-10 field bug: "not switching away the refresh
+-- pieces even at max MP"): body diff 22 > tick 15, so the raw on-trigger
+-- (lastMax - tick = 1085) sits ABOVE the reachable pool (endMax 1078) --
+-- clamped to endMax it fires the moment the pool genuinely tops out.
+check('MB13c big-diff on-trigger clamps reachable', multi[1].onAt, multi[1].endMax);
+check('MB13d small-diff keeps the early trigger (worked example intact)',
+    mb.build({ { slot = 'feet', low = 5, lowRf = 0,
+        rungs = { { name = 'MP Boots', mp = 15, rf = 0 } } } }, 1100, 15)[1].onAt, 1085);
+-- At the top the battery displaces the refresh set piece; spending brings
+-- the refresh piece back FIRST (body band shallowest).
+local wornTop = function(sl)
+    if sl == 'body' then return 'Hlr. Bliaut +1'; end
+    if sl == 'head' then return 'Erudite Cap'; end
     return nil;
 end
-local mtgt = mb.target(multi, 1040, wornMid);
-check('MB13b mid-pool: the refresh hat stays', mtgt.head, 'Bunzi\'s Hat');
-check('MB13c mid-pool: the refresh body stays', mtgt.body, 'Clr. Bliaut +1');
--- Near the top the flat top-ups come back over the refresh rungs.
-local ttgt = mb.target(multi, 1090, wornMid);
-check('MB13d peak: the flat top-up returns', ttgt.head, 'Erudite Cap');
-check('MB13e peak: body tops up to the augmented 53', ttgt.body, 'Hlr. Bliaut +1');
--- A dominated rung (less MP, no refresh gained) never becomes a band.
-check('MB13f dominated rung pruned',
-    #(mb.build({ { slot = 'x', low = 0, lowRf = 0,
-        rungs = { { name = 'Big', mp = 30, rf = 1 },
-                  { name = 'Small Flat', mp = 20, rf = 0 } } } }, 100, 0)), 1);
+check('MB13e at the top: the battery belongs on',
+    mb.target(multi, 1078, wornTop).body, 'Hlr. Bliaut +1');
+check('MB13f spending: the battery off first -> the idle refresh piece returns',
+    mb.target(multi, 1060, wornTop).body, false);
+-- At equal MP the higher-Refresh copy wins the pick.
+check('MB13g equal-MP pick prefers the refresh copy',
+    mb.build({ { slot = 'x', low = 0, lowRf = 0,
+        rungs = { { name = 'Flat', mp = 30, rf = 0 },
+                  { name = 'Rf Copy', mp = 30, rf = 1 } } } }, 100, 0)[1].name, 'Rf Copy');
 end)();
 
 -- ---------------------------------------------------------------------------
