@@ -6023,6 +6023,13 @@ end)();
     check('LG12f _wantTownOff false when not in town',  ls._wantTownOff(true, false), false);
     check('LG12g _wantTownOff false when option off',   ls._wantTownOff(false, true), false);
     check('LG12h _wantTownOff false on unknown (nil)',  ls._wantTownOff(true, nil), false);
+    -- v46 town lockstyle pick: 'off' (disable-in-town) | a box number | nil.
+    check('LG12i townPick nil when not in town',    ls._townPick(false, true, 5), nil);
+    check('LG12j townPick off-mode is off',         ls._townPick(true, true, nil), 'off');
+    check('LG12k townPick replace-mode = the box',  ls._townPick(true, nil, 5), 5);
+    check('LG12l townPick None (no options) = nil', ls._townPick(true, nil, nil), nil);
+    check('LG12m townPick off beats box (safety)',  ls._townPick(true, true, 5), 'off');
+    check('LG12n townPick unknown zone (nil) = nil', ls._townPick(nil, nil, 5), nil);
     check('LG13 user-off stamp is exported for the command handler',
         type(ls._guardUserOff), 'function');
 
@@ -6040,6 +6047,15 @@ end)();
     check('LG17 _entryData carries the option whole', ed.keepSub, true);
     check('LG18 _entryData without it stays absent',
         ls._entryData({ active = 1, slots = {}, onload = {} }, 'DRK').keepSub, nil);
+    -- v46 townBox rides the same storage seams as keepSub/townOff.
+    check('LG18a serializer writes townBox',
+        ls._serialize({ active = 1, townBox = 7, onload = {}, slots = {} }):find('townBox = 7', 1, true) ~= nil, true);
+    check('LG18b round-trip keeps townBox',
+        ((loadstring or load)(ls._serialize({ active = 1, townBox = 7, onload = {}, slots = {} }))()).townBox, 7);
+    check('LG18c _entryData carries townBox',
+        ls._entryData({ active = 1, townBox = 7, slots = {}, onload = {} }).townBox, 7);
+    check('LG18d absent townBox writes no field (header note aside)',
+        ls._serialize({ active = 1, onload = {}, slots = {} }):find('townBox = %d'), nil);
     check('LG19 guard-arm (the subjob-flip window) exported for the pump',
         type(ls._guardArm), 'function');
 

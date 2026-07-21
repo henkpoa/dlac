@@ -11,12 +11,17 @@
     with unsaved changes warns first -- continuing DISCARDS the edits.
 
     Storage: <char>\dlac\profiles\<Name>\lockstyles\<JOB>.lua -- the boxes
-    are PER JOB ENTRY (v41) { active, keepSub, townOff, onload = {JOB=box}, slots }.
+    are PER JOB ENTRY (v41) { active, keepSub, townOff, townBox, onload={JOB=box}, slots }.
+    In a town, ONE of two answers (mutually exclusive in the GUI) governs the look:
     townOff (v45) = "Disable in town": drop the lockstyle while you stand in a
-    town (data/zones.lua, via feature/location) so your inTown idle gear shows,
-    and re-apply the last box when you leave. The pump gates the OnLoad / keep-
-    sub apply so it never fires in a town in the first place, and the zone guard
-    stops blocking the client's auto-disable there so an applied style drops.
+    town (data/zones.lua, via feature/location) so your inTown idle gear shows --
+    the zone guard stops blocking the client's auto-disable there so the style
+    falls, and the base box re-applies when you leave. townBox (v46) = a chosen
+    box worn WHILE in a town: it REPLACES your style on entering and restores your
+    normal box on leaving, and the guard blocks zoning resets so it survives, like
+    any lockstyle. The pump's applyTownPick resolves one 'pick' ('off' / a box /
+    nil) at every apply site -- OnLoad, keep-sub, and the zone transition -- so
+    logging in INSIDE a town lands the town look with the right timing.
     keepSub (v44) = "Keep on sub change": the game clears style lock on ANY
     job change (server 0x100 handler -- a server-side clear, so unlike the
     zone guard there is nothing to block); with the option on, the pump
@@ -157,6 +162,7 @@ local function load_()
             if tonumber(t.active) ~= nil then data.active = math.max(1, math.min(N_BOXES, tonumber(t.active))); end
             if t.keepSub == true then data.keepSub = true; end
             if t.townOff == true then data.townOff = true; end
+            if tonumber(t.townBox) ~= nil then data.townBox = math.max(1, math.min(N_BOXES, tonumber(t.townBox))); end
             if type(t.onload) == 'table' then data.onload = t.onload; end
             if type(t.slots) == 'table' then data.slots = t.slots; end
         end
@@ -169,10 +175,12 @@ function M._serialize(d)
                 '-- active = the marked box; onload.<JOB> = box applied on login/job change for that job;',
                 '-- keepSub = re-apply the last-applied box after a subjob-only change (v44).',
                 '-- townOff = drop the lockstyle while you stand in a town (v45), restored on leaving.',
+                '-- townBox = a lockstyle box worn while in a town (v46; mutually exclusive with townOff).',
                 'return {',
                 string.format('    active = %d,', tonumber(d.active) or 1) };
     if d.keepSub == true then L[#L + 1] = '    keepSub = true,'; end
     if d.townOff == true then L[#L + 1] = '    townOff = true,'; end
+    if tonumber(d.townBox) ~= nil then L[#L + 1] = string.format('    townBox = %d,', tonumber(d.townBox)); end
     L[#L + 1] = '    onload = {';
     local jobs = {};
     for j in pairs(d.onload or {}) do jobs[#jobs + 1] = j; end
@@ -222,7 +230,8 @@ end
 function M._entryData(d, job)
     local out = { active = d.active, slots = d.slots, onload = {},
                   keepSub = (d.keepSub == true) or nil,
-                  townOff = (d.townOff == true) or nil };   -- scalars, ride whole
+                  townOff = (d.townOff == true) or nil,
+                  townBox = tonumber(d.townBox) or nil };   -- scalars, ride whole
     if job ~= nil and type(d.onload) == 'table' and d.onload[job] ~= nil then
         out.onload[job] = d.onload[job];
     end
@@ -883,6 +892,7 @@ function M.render()
         local tsBox = { data.townOff == true };
         if imgui.Checkbox('Disable in town##lstown', tsBox) then
             data.townOff = (tsBox[1] == true) or nil;
+            if data.townOff then data.townBox = nil; end   -- mutually exclusive with a town lockstyle
             save();
             _status = (data.townOff ~= nil)
                 and 'lockstyle turns OFF while you are in a town -- your real (idle) gear shows there.'
@@ -941,6 +951,47 @@ function M.render()
             end
         end
 
+        -- Town lockstyle (v46), UNDER the boxes: ONE box worn while in a town --
+        -- it REPLACES your current style on entering and restores your normal one
+        -- on leaving, and rides zoning like any lockstyle (the guard keeps it).
+        -- None = keep your normal style. Mutually exclusive with Disable-in-town.
+        imgui.Separator();
+        imgui.TextColored(COL_HEADER, 'In town, wear:');
+        imgui.SameLine(0, 6);
+        imgui.PushItemWidth(240);
+        local curTB = tonumber(data.townBox);
+        local tbName = (curTB ~= nil and type(data.slots[curTB]) == 'table'
+                        and type(data.slots[curTB].name) == 'string' and data.slots[curTB].name ~= '')
+                       and (' -- ' .. data.slots[curTB].name) or '';
+        local tbPreview = (curTB ~= nil) and string.format('box %d%s', curTB, tbName)
+                          or 'None (keep your normal lockstyle)';
+        if imgui.BeginCombo('##lstownbox', tbPreview) then
+            if imgui.Selectable('None##lstb_none', curTB == nil) then
+                data.townBox = nil; save();
+                _status = 'no town lockstyle -- your normal lockstyle shows in town too.';
+            end
+            for n = 1, N_BOXES do
+                local e = data.slots[n];
+                local nm = (type(e) == 'table' and type(e.name) == 'string' and e.name ~= '')
+                           and (' -- ' .. e.name) or (type(e) == 'table' and '' or ' (empty)');
+                if imgui.Selectable(string.format('box %d%s##lstb_%d', n, nm, n), curTB == n) then
+                    data.townBox = n;
+                    data.townOff = nil;   -- a chosen town lockstyle replaces "Disable in town"
+                    save();
+                    _status = string.format('town lockstyle = box %d -- worn while you are in a town (Disable-in-town cleared).', n);
+                end
+            end
+            imgui.EndCombo();
+        end
+        imgui.PopItemWidth();
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Pick ONE lockstyle to wear while you are in a town. It replaces your\n'
+                .. 'current lockstyle when you enter a town and restores your normal one\n'
+                .. 'when you leave, and it survives zoning like any lockstyle. None = keep\n'
+                .. 'your normal style in town. Choosing a box turns OFF "Disable in town"\n'
+                .. '(they are two answers to the same question).');
+        end
+
         if _status ~= nil then
             imgui.Separator();
             imgui.TextColored(COL_DIM, _status);
@@ -970,9 +1021,10 @@ local appliedJob, pendingJob, dueAt = nil, nil, nil;
 -- follows re-records it. Session-only on purpose: after a reload we no longer
 -- know a lockstyle is ours to keep, and the guard starts inactive anyway.
 local lastSub, lastBox, subDueAt = nil, nil, nil;
--- Disable-in-town (v45): the last DEFINITE town-suppress verdict, so the pump
--- acts only on a real change and holds through a mid-zone unreadable blink.
-local lastTownSup = nil;
+-- Town lockstyle (v45/v46): the last DEFINITE town pick applied ('off' = drop /
+-- a box number = the town lockstyle / nil = no override), so the pump acts only
+-- on a real change and holds through a mid-zone unreadable blink.
+local lastTownPick = nil;
 -- Live-state accessors for the window readout (render() is defined ABOVE
 -- these locals, so it reaches them through M at frame time -- the same
 -- late-binding pattern as M._touched).
@@ -986,6 +1038,24 @@ function M._healDue() return subDueAt; end
 -- event provably fires.
 function M._noteApplied(b)
     if tonumber(b) ~= nil then lastBox = tonumber(b); end
+end
+-- Apply a town pick's effect (v46). 'off' -> drop the style (the guard's
+-- 'suppress' verdict lets it fall in a town); a BOX -> replace with it and ARM
+-- the guard so the client's zoning resets are BLOCKED and the town style
+-- survives, exactly as a normal lockstyle does; nil -> restore the base (normal)
+-- box. A town-box override deliberately does NOT touch lastBox, so what you
+-- restore to on leaving town is still your real lockstyle.
+local function applyTownPick(pick, baseBox)
+    if pick == 'off' then
+        queueCmd('/lockstyle off');
+    elseif type(pick) == 'number' then
+        M._guardArm();
+        queueCmd(string.format('/dl ls apply %d', pick));
+    elseif tonumber(baseBox) ~= nil then
+        M._guardArm();
+        M._noteApplied(tonumber(baseBox));
+        queueCmd(string.format('/dl ls apply %d', tonumber(baseBox)));
+    end
 end
 function M.pump()
     retireLegacyPreview();
@@ -1004,32 +1074,22 @@ function M.pump()
     if job == nil then return; end
     load_();
     if data == nil then return; end
-    -- Disable-in-town transitions (v45). location.inTown() is tri-state; a nil
-    -- (mid-zone / unreadable) HOLDS the last verdict so a blink never flips the
-    -- style. Entering a town (or ticking the option while in one) drops the
-    -- visible style now -- the guard passes our own off in a town, so we need not
-    -- wait for a zone-in; leaving town re-applies the last box (or this job's
-    -- OnLoad binding). The apply-gates below are the real stop (Henrik): they
-    -- keep the OnLoad / keep-sub apply from ever firing while you are in a town.
+    -- Town lockstyle transitions (v46). pick = 'off' (disable-in-town, drop) |
+    -- <box> (replace your style with that town lockstyle) | nil (no override).
+    -- location.inTown() is tri-state; a nil (mid-zone) HOLDS the last pick. The
+    -- apply-SITES below (OnLoad / keep-sub) own the login/job-change timing, so a
+    -- town box shows correctly when you log in INSIDE a town; this transition
+    -- owns genuine zone in/out. Both paths are idempotent -- a login that also
+    -- trips this transition just re-asserts the same pick.
     local it = nil;
     if _locok then it = location.inTown(); end   -- true / false / nil (keep false!)
     if it ~= nil then
-        local wantSup = (data.townOff == true) and it;
-        if wantSup ~= lastTownSup then
-            if wantSup then
-                queueCmd('/lockstyle off');   -- drop the visible style (dlac OR server-persisted); the guard passes it in a town
-            elseif lastTownSup == true then
-                local rb = lastBox or (type(data.onload) == 'table' and data.onload[job]) or nil;
-                if tonumber(rb) ~= nil then
-                    M._guardArm();               -- swallow a straggling disable around the re-apply
-                    M._noteApplied(tonumber(rb));
-                    queueCmd(string.format('/dl ls apply %d', tonumber(rb)));
-                end
-            end
-            lastTownSup = wantSup;
+        local pick = M._townPick(it, data.townOff, data.townBox);
+        if pick ~= lastTownPick then
+            applyTownPick(pick, lastBox or (type(data.onload) == 'table' and data.onload[job]) or nil);
+            lastTownPick = pick;
         end
     end
-    local sup = lastTownSup == true;   -- held verdict; the OnLoad / keep-sub apply-gates below read it
     if job ~= appliedJob and job ~= pendingJob then
         pendingJob = job;
         dueAt = os.clock() + ((appliedJob == nil) and 6 or 3);
@@ -1039,13 +1099,13 @@ function M.pump()
     end
     if pendingJob ~= nil and dueAt ~= nil and os.clock() >= dueAt then
         appliedJob, pendingJob, dueAt = pendingJob, nil, nil;
-        local box = data.onload[appliedJob];
-        if tonumber(box) ~= nil and not sup then   -- v45: never APPLY a lockstyle while in a town (Henrik)
-            M._noteApplied(box);   -- same round-6 rule: the queue site records
-            pcall(function()
-                AshitaCore:GetChatManager():QueueCommand(1, string.format('/dl ls apply %d', tonumber(box)));
-            end);
-        end
+        -- v46: a town pick (off / a town box) overrides the OnLoad box while you
+        -- are in a town -- applied HERE so it lands with the login/job-change
+        -- timing the game needs (logging in inside a town shows the town box, not
+        -- the plain one). Not in a town -> the normal OnLoad box, as before.
+        local pick = (it ~= nil) and M._townPick(it, data.townOff, data.townBox) or nil;
+        applyTownPick(pick, data.onload[appliedJob]);
+        if it ~= nil then lastTownPick = pick; end
     end
     -- Keep-on-subjob (v44, gate fixed in round 2): a subjob-only flip loses
     -- the lockstyle -- the mog-house path clears it server-side (0x100
@@ -1071,11 +1131,11 @@ function M.pump()
     end
     if subDueAt ~= nil and os.clock() >= subDueAt then
         subDueAt = nil;
-        if lastBox ~= nil and not sup then   -- v45: town outranks keep-on-sub -- no re-apply while in a town
-            pcall(function()
-                AshitaCore:GetChatManager():QueueCommand(1, string.format('/dl ls apply %d', lastBox));
-            end);
-        end
+        -- v46: the town pick governs the re-apply too -- the town box in a town,
+        -- the last normal box otherwise, a drop in disable-in-town mode.
+        local pick = (it ~= nil) and M._townPick(it, data.townOff, data.townBox) or nil;
+        applyTownPick(pick, lastBox);
+        if it ~= nil then lastTownPick = pick; end
     end
 end
 
@@ -1093,6 +1153,18 @@ function M._wantTownOff(townOff, inTownVal) return townOff == true and inTownVal
 function M._townSuppress()
     if data == nil or data.townOff ~= true or not _locok then return false; end
     return M._wantTownOff(true, location.inTown());
+end
+-- Town lockstyle pick (v46): what should show while you are in a town --
+-- 'off' (disable-in-town: drop to your real gear), a BOX number (replace your
+-- style with that town lockstyle), or nil (no override -- keep your normal
+-- style). Pure; 'off' outranks a box (the GUI keeps them mutually exclusive --
+-- this is just the safety). A nil inTown (unknown zone) is not a town here.
+function M._townPick(inTownVal, townOff, townBox)
+    if inTownVal ~= true then return nil; end
+    if townOff == true then return 'off'; end
+    local b = tonumber(townBox);
+    if b ~= nil then return b; end
+    return nil;
 end
 
 -- ---------------------------------------------------------------------------
