@@ -227,6 +227,44 @@ pumped from gearui's d3d_present whether or not the window is open): the engine 
 the file from LAC's state, so a stale file would dress you at login. "Lock" still means
 the old, near-opposite thing (`M.locks` = engine ignores the slot).
 
+### The Arbiter — claim registry (dispatch.lua + feature/arbwatch.lua, ADR 0012)
+The **single precedence authority** for gear that dresses over the Trigger overlay floor.
+Every feature that wants a slot registers a **Claim** with the Arbiter instead of equipping
+directly; per slot the Arbiter walks a strict, draggable rank list top-down and the first
+claimant with an opinion wins. The rank is one per character, persisted as the `arbstate`
+Statefile (writer: `feature/arbwatch.lua`; reader/default/sanitize: `dispatch.arbOrder`,
+one vocabulary). Default order **Pins > Locks (veto) > AutoAmmo > MaxMP > Craft > HELM >
+Fishing > Triggers (floor)**.
+
+**The Claim record shape** — deliberately tiny, because a new claimant must be *one
+registry entry + one rank row, never a new engine arm* (the shape the future per-piece
+claimant **AutoAcc** joins as):
+
+- A **Claim** is just `{ [SlotKey] = itemName }` — the slots a feature wants to dress, one
+  item per slot. The Locks veto is a Claim whose values are the `M.LOCK_HELD` sentinel
+  ("keep what is worn"); the Triggers floor is the merged trigger-overlay table.
+- To join the Arbiter a claimant adds exactly two things: **(1)** its name to
+  `ARB_ORDER_DEFAULT` (+ the arbwatch UI list), and **(2)** in `M.dispatch`,
+  `claims['<Name>'] = <its slot→item table>` plus — if it applies a discrete overlay —
+  one `applyClaim` closure keyed by the same name. Who wins each contested slot, ceding,
+  the Locks veto and `/dl why` attribution all fall out of the rank list automatically.
+
+**Pure seams** (all headless-tested, tests `AR*`/`LV*`): `arbResolve(claims, order, floor)`
+→ winners + `by` attribution; `arbCededAbove(claims, order, who)` → slots a claimant must
+not contest (won above it); `arbLockClaim(locked)` → the veto Claim; `arbExplain` /
+`arbWhyLines` → the per-slot `/dl why` claimant lines ("`Ammo: AutoAmmo (rank 3) over MaxMP
+(rank 4)`"; veto slots read "stopped by Locks"; the slots the floor dressed uncontested
+collapse into one trailing "Triggers floor (uncontested): …" summary).
+
+**MaxMP is the worked example of the boundary.** It registers a Claim (`mpClaimFor` → its
+battery targets) so its *precedence* is fully in the registry, yet its *equip* stays WOVEN
+inside `equipResolved` — hold/release/upgrade, sticky pairs and movement yield are
+**within-set resolution**, deliberately OUTSIDE the Arbiter (ADR 0012). Also outside, by the
+same rule: sync-settle/proximity holds, the PetAction gate, AutoStaff/AutoObi virtual
+entries, Dynamic flattening and the ADR 0010 trinket contests. The Arbiter arbitrates
+*between* claimants; each claimant's *own* conditions (idle-only stand-asides, AutoAmmo's
+fishing stand-down, `'remove'`-respect) stay inside the feature.
+
 ### ui/triggersui.lua — Triggers tab (+ Groups section)
 GUI editor for the dispatch engine's data: rules per handler, mode toggle buttons.
 Split out of gearui for the 200-local cap. Commit rewrites the trigger file via
@@ -520,7 +558,8 @@ Registered across six handlers; each blocks only its own subcommands.
 | `/dl view_ids [on\|off]` | gearui | Add item id + model id to every equipment tooltip |
 | `/dl mode <name> [on\|off\|toggle\|<value>]` | dispatch | Flip a mode (no arg: list) |
 | `/dl lock <slot\|all> [on\|off\|toggle]` | dispatch | Engine-owned slot locks |
-| `/dl why` | dispatch | Last-dispatch trace, per-slot attribution |
+| `/dl why` | dispatch | Last-dispatch trace + per-slot **claimant** attribution (winner + rank, "stopped by Locks", "Triggers" floor) |
+| `/dl prio` | dispatch | The Arbiter's live rank + per-claimant claim status (ADR 0012) |
 | `/dl env` | dispatch | Day/weather + per-element obi math |
 | `/dl triggers reload\|init\|path` | dispatch | Trigger-file management |
 | `/dl scan` / `preview` / `stage` / `commit` | gearimport | Gear import pipeline |

@@ -4508,6 +4508,79 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- AR11/AR12. THE ARBITER, step 4 (ADR 0012 / issue #51). The registry is the
+--      SINGLE precedence authority, so the pure resolve that decides winners
+--      ALSO explains them (/dl why). AR11 pins the whole claim path -- every
+--      claimant (incl. the MaxMP battery claim + the Locks veto) resolved in
+--      ONE rank walk via arbExplain. AR12 pins the /dl why line format:
+--      'Ammo: AutoAmmo (rank 3) over MaxMP (rank 4)', veto slots 'stopped by
+--      Locks', floor-only slots 'Triggers (floor)', in canonical LAC order.
+-- ---------------------------------------------------------------------------
+(function()
+    local ord = dispatchM.arbOrder(nil);  -- Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers
+    -- The whole claim path in one resolve. MaxMP is a proper CLAIM now (step 4):
+    -- its battery targets a claim table, ranked below AutoAmmo (the deliberate
+    -- cede) and above Craft (batteries over craft armor).
+    local claims = {
+        Pins     = { Head = 'Pinned Crown' },
+        AutoAmmo = { Ammo = 'Orichalc. Bullet' },
+        MaxMP    = { Ammo = 'MP Bullet', Ring1 = 'MP Ring', Head = 'MP Crown' },
+        Craft    = { Head = 'Craft Cap', Hands = 'Craft Gloves' },
+        Locks    = dispatchM.arbLockClaim({ 'Legs' }),
+    };
+    local floor = { Head = 'Idle Hat', Ammo = 'Idle Ammo', Ring1 = 'Idle Ring',
+                    Hands = 'Idle Hands', Legs = 'Idle Legs', Body = 'Idle Body' };
+    local ex = dispatchM.arbExplain(claims, ord, floor);
+    -- Ammo: AutoAmmo(3) > MaxMP(4) > Triggers(8) -- the issue's headline contest.
+    check('AR11 Ammo winner is AutoAmmo',            ex.Ammo[1].name, 'AutoAmmo');
+    check('AR11b Ammo winner rank is 3',             ex.Ammo[1].rank, 3);
+    check('AR11c Ammo runner-up is the MaxMP battery (the deliberate cede)', ex.Ammo[2].name, 'MaxMP');
+    check('AR11d Ammo third is the floor',           ex.Ammo[3].name, 'Triggers');
+    -- Head: Pins(1) > MaxMP(4) > Craft(5) > Triggers(8).
+    check('AR11e Head winner is the pin',            ex.Head[1].name, 'Pins');
+    check('AR11f Head second is MaxMP (battery over craft armor)', ex.Head[2].name, 'MaxMP');
+    check('AR11g Head third is Craft',               ex.Head[3].name, 'Craft');
+    -- Ring1: a MaxMP battery in a bare ring over the floor.
+    check('AR11h Ring1 winner is MaxMP',             ex.Ring1[1].name, 'MaxMP');
+    check('AR11i Ring1 second is the floor',         ex.Ring1[2].name, 'Triggers');
+    -- Hands: only Craft claims it.
+    check('AR11j Hands winner is Craft',             ex.Hands[1].name, 'Craft');
+    -- Legs: the Locks veto (rank 2) wins; nothing claims above it.
+    check('AR11k Legs winner is the Locks veto',     ex.Legs[1].name, 'Locks');
+    check('AR11l Legs veto held off the floor',      ex.Legs[2].name, 'Triggers');
+    -- Body: floor-only.
+    check('AR11m Body is floor-only Triggers',       ex.Body[1].name, 'Triggers');
+    check('AR11n Body has no other opinion',         #ex.Body, 1);
+end)();
+
+(function()
+    local ord = dispatchM.arbOrder(nil);
+    local claims = {
+        AutoAmmo = { Ammo = 'Orichalc. Bullet' },
+        MaxMP    = { Ammo = 'MP Bullet', Ring1 = 'MP Ring' },
+        Craft    = { Hands = 'Craft Gloves' },
+        Locks    = dispatchM.arbLockClaim({ 'legs' }),   -- lowercase key (the live M.locks shape)
+    };
+    local floor = { Ammo = 'Idle Ammo', Ring1 = 'Idle Ring', Hands = 'Idle Hands',
+                    Legs = 'Idle Legs', Body = 'Idle Body' };
+    local joined = table.concat(dispatchM.arbWhyLines(claims, ord, floor), '\n');
+    check('AR12 the Ammo contest line names winner over runner-up (the issue example)',
+        joined:find('Ammo: AutoAmmo (rank 3)  over MaxMP (rank 4)', 1, true) ~= nil, true);
+    check('AR12b a MaxMP-only slot reads MaxMP over the floor',
+        joined:find('Ring1: MaxMP (rank 4)  over Triggers (rank 8)', 1, true) ~= nil, true);
+    check('AR12c a veto slot reads stopped by Locks (even from a lowercase key)',
+        joined:find('Legs: stopped by Locks (rank 2)', 1, true) ~= nil, true);
+    check('AR12d floor-only slots collapse into one named Triggers-floor summary',
+        joined:find('Triggers floor (rank 8, uncontested):', 1, true) ~= nil
+        and joined:find('Body', 1, true) ~= nil, true);
+    -- Contested slots emit individually in canonical LAC order (ammo 4 < hands 10
+    -- < ring1 11), BEFORE the trailing floor summary.
+    local iAmmo, iHands, iRing = joined:find('Ammo:', 1, true), joined:find('Hands:', 1, true), joined:find('Ring1:', 1, true);
+    check('AR12e contested slots emit in canonical LAC order (Ammo < Hands < Ring1)',
+        iAmmo < iHands and iHands < iRing, true);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- ARE. The Arbiter's ONE deliberate change wired through equipResolved (v97):
 --      with an ON battery band and an AutoAmmo plan both wanting Ammo, the
 --      named projectile wins -- Ammo is ceded to AutoAmmo (ranked above MaxMP),
