@@ -3600,3 +3600,60 @@ lookupById (newly injected into the automations deps) and reject a
 name-resolved record with the wrong id -- conservative: a missing
 pin lookup never false-adopts. Smoke pins the trap: byName aimed at
 the base, the owned Lv75 stage adopted anyway (S166-S166c).
+
+## Session "the banded ladder -- maxmp v2 end to end" (2026-07-20 evening -> 07-21, engine v76..v95)
+
+The maxmp marathon: one evening of field-debugging the v1 per-dispatch
+engine, one overnight autonomous build of Henrik's redesign, one morning
+of field rounds tuning it to settled. Full detail (architecture, rulings
+ledger, failure museum) lives in docs/design/maxmp-mode.md -- THE
+reference for revisiting; this entry is the timeline.
+
+**Evening (v76-v87, the v1 endgame).** Staged one-battery-per-dispatch
+movement (v76: the all-at-once release was an accounting bug -- N
+slot-local holds mass-released drop max by the SUM and the clamp eats the
+difference). Release notes name the incoming piece (v77) after an 8-second
+identical-decision stall exposed LAC's silent drop of un-locatable gear;
+the stall's true root landed later as the equippable-NOW manifest filter
+(round 3: a STORED Radiant Lantern froze the whole equip queue). Held
+batteries could not see their own upgrades (v80); the ear-shuffle veto
+(v83). Then the deep one: GetMPMax is UNRELIABLE in both directions across
+gear churn (field: engine 975/1052 vs bar 975/975; LAC's .MaxMP is the
+same call) -- v86 window-clamped it, v87 made fullness exact (floored
+party MP% == 100 is the ONLY exact signal) and low-biased the estimate,
+killing a spectacular equip<->release oscillation caught in a /lac debug
+log. Detours retracted the same night: a wardrobe-availability theory
+(server hardcodes all wardrobe bits -- char_status.cpp 0x7B) and a
+missing-gear-entry theory (the entry exists under the client's shortened
+name).
+
+**Overnight (v88-v89, the redesign).** Henrik: "stop with dynamic
+equipping -- make it orderly and calculated." The banded ladder:
+precomputed absolute current-MP thresholds chained from an anchored TOTAL,
+tick-margined both directions (unequip never caps an incoming tick;
+re-equip EARLY so the tick lands in the headroom), structural hysteresis,
+batch swaps, CURRENT MP the only live read. feature/mpbands.lua pure core
++ measured recovery ticks (never trait tables); /dl plan renders the SAME
+context the engine executes -- the plan IS the behavior, which then
+cracked every remaining field bug. Night addendum: Refresh > least mp
+diff; augments always in the totals (fmt 12, augments.ownedAugStats).
+
+**Morning (v90-v95, field-settling).** Multi-rung bands (v90) RETIRED by
+ruling (v92): equipping refresh gear is the IDLE SET's job -- the engine
+only ADAPTS TO the potential refresh, in the ordering (rfDelta asc, diff
+asc); the experiment also deadlocked (worn mid-rungs depress the pool
+below big-diff re-equip triggers -> the reachability clamp, onAt =
+min(lastMax - tick, endMax)). Sticky pairs (v93/v94: pair pieces never
+relocate; the same-dispatch resolved plan is the only lag-free claim --
+worn reads lag a dispatch). Pair HOMES (fmt 13): ear/ring ladders re-home
+to the idle set's declared positions (detected from the Default rule
+matching exactly status=Idle; the panel picker ALWAYS overrides).
+Refresh baseline fixed to the POTENTIAL refresh -- max across
+trigger-reachable sets, not the min-MP piece's (v95: every [refresh-cost]
+tag had vanished and a deep plain band displaced Clr. Bliaut +1 at MP
+~800); margin floors at MIN_TICK 5 (measured tick 1 was HONEST -- unbuffed
+gear refresh). MaxMP GRADUATED to the Automations GUI (hidden ruling
+rescinded) with a live ON/OFF switch (modestate mirror + explicit
+command), idle-set picker, and the Teleports quick-menu switch.
+Field-confirmed: "now it works, awesome" -- refresh ordering correct,
+Loquacious holding ear2. All pushed to origin/main.

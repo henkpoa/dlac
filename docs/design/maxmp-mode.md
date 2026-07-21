@@ -1,275 +1,250 @@
-# Max-MP mode — design (staged)
+# Max-MP mode — the banded ladder
 
-Henrik's spec, 2026-07-11: *"Find the piece with the highest MP, keep that piece
-active until you have spent enough MP for any potential pieces that would be
-equipped."* Example: a +50 MP head vs trigger sets whose lowest head gives +5 MP
-→ the head may swap out once 45 MP has been spent. Applies to every slot except
-Main/Sub/Range (TP preservation). Plus: resting-recovery-aware re-equipping, and
-topping off before a completed Sublimation is popped.
+**Status: BUILT and field-settled** (engine v95, addon 2026.07.21; confirmed
+live on WHM). One marathon arc — 2026-07-20 evening through 07-21 morning,
+~20 engine versions, thirteen field rounds — took this from a per-dispatch
+heuristic to a precomputed plan. This document is the definitive reference:
+the final architecture, the rulings that shaped it, and the failure museum
+(kept deliberately — the dead ends teach more than the survivor).
 
-## v2 — the BANDED LADDER (Henrik's redesign, 2026-07-21; BUILT overnight, engine v88)
+Henrik's original spec (2026-07-11): *"Find the piece with the highest MP,
+keep that piece active until you have spent enough MP for any potential
+pieces that would be equipped."* Weapons (Main/Sub/Range) always exempt —
+TP preservation.
 
-Implementation homes: `feature/mpbands.lua` (the pure core — build/target +
-tick measurement; tests MB*), `dispatch.M.mpBands` (the live context: LOW
-scan over trigger-reachable sets, `M.mpBestPick` the ONE pair-veto-aware
-battery resolver shared by engine/plan/builder — tests MPS8*, TOTAL anchor =
-nativemp base + auto-learned merits + worn MP with an offset learned at any
-true-full MP%), the rewired per-slot branch + `mp-stage` pass (batch apply
-through the v78 RSlot guard), and `/dl plan` v2 (`M.mpPlanLines`, tests MPL*)
-which renders the exact context the engine runs — the plan IS the behavior.
-The manifest carries Refresh from fmtver 11 (`rf` map + rung `rf`).
+---
 
-**Round-10 RULING (2026-07-21, engine v92): equipping refresh gear is NOT
-the engine's job — it is the idle set's.** "If someone does not use refresh
-pieces in those slots (if available), that's their problem. But you should
-be aware that there is a potential refresh piece there and adapt
-accordingly." So: ONE band per slot — the top battery (augments ALWAYS in
-the totals: Hlr. Bliaut +1 at 35+18 = 53 MP tops body; equal-MP ties prefer
-the refresh copy) versus the POTENCY POINT, the sets' own piece with ITS
-refresh (lowRf). The awareness lives ONLY in the ordering — **rfDelta
-ascending, then diff ascending** — so a battery displacing the idle's
-refresh piece floats shallowest: first off as spending starts (the idle's
-Clr. Bliaut +1 with Refresh 2 is back FIRST, Bunzi's Hat +1 second), last
-back on at the very top. (The v90 multi-rung experiment — the engine
-wearing refresh mid-rungs itself — is retired: it overstepped the job AND
-deadlocked, since wearing the mid-rungs depressed the pool below the top
-bands' re-equip thresholds; field round 10 = "not switching away the
-refresh pieces even at max MP".)
+## The final architecture
 
-**Reachability clamp (v92):** the raw re-equip trigger `lastMax − tick`
-sits above the reachable pool whenever a band's `diff > tick` — recovery
-can never arrive there. `onAt = min(lastMax − tick, endMax)`: small-diff
-bands keep the early re-equip (the next tick lands in the headroom),
-big-diff bands fire the moment the pool genuinely tops out; the hysteresis
-gap stays `min(diff, tick)` wide. Tests MB13*; S169b-e prove the augment
-fold end-to-end.
+**One idea:** stop making marginal per-dispatch decisions against live
+max-MP readings (this client cannot provide an accurate max during gear
+churn — see the failure museum), and instead **precompute the whole plan as
+absolute current-MP thresholds**. Current MP is the only live input; it is
+the one number that never lies.
 
-**Night addendum (Henrik, in-flight): "Refresh > least mp diff."** A battery
-whose Refresh the potency piece lacks outranks the difference ordering and
-sinks to the DEEP end of the ladder — released last while spending, back on
-FIRST as MP recovers, so recovery accelerates as early as possible. Ties on
-the LOW side assume the incoming piece lacks refresh (keeps the battery deep
-— the safe direction).
+### The band ladder (`feature/mpbands.lua` — pure, tests MB*)
 
-Ruling after the 07-21 field night (rounds 6–7): **stop dynamic per-dispatch
-marginal decisions; precompute the whole plan.** The v1 engine decided each
-slot against LIVE max-MP reads every 0.4s — and this client cannot provide an
-accurate max during gear churn (`GetMPMax` stale both directions; the party MP%
-window is only ±1%). Result: false-full over-equips, boundary dumps, an
-equip↔release oscillation (v87 patched it with exact-fullness + low-bias, but
-the climb stayed a one-piece-per-refill staircase — "VERY roundabout", and
-every extra swap risks MP). Henrik's design removes the live-max dependency
-entirely:
+ONE band per non-weapon slot: the slot's **top battery** versus its
+**potency point**:
 
-**The precomputed band ladder.** For every non-weapon slot:
-- `LOW` = the LEAST slot MP across ALL sets assigned to trigger rules (the
-  "no max-MP gear" point — potency gear). Conservative minimum; per-set
-  variation lands inside a band instead of moving thresholds. Virtual
-  (`dlac:`) entries count their fallback.
-- `HIGH` = the slot's best battery (the existing mpBest pick).
-- `Difference = HIGH − LOW`.
+- `HIGH` = the best owned battery for the slot — augments ALWAYS included
+  (manifest fmt 12+); at equal MP the higher-Refresh copy wins the pick.
+- `LOW` = the LEAST MP any trigger-reachable set puts in the slot (the true
+  potency point — combat sets full of 0-MP gear legitimately make this 0).
+- `lowRf` = the **POTENTIAL refresh**: the MOST Refresh any trigger-reachable
+  set puts there (NOT the min-MP piece's refresh — that reads 0 the moment a
+  combat set exists; v95's field lesson).
+- `diff = HIGH − LOW`, `rfDelta = HIGH's refresh − lowRf`.
 
-Sort slots by `Difference` ASCENDING — lowest difference = first OUT to
-potency (lowest-hanging fruit), highest difference releases last (big battery
-stays longest, same philosophy as v76's smallest-surplus-first, now planned).
-Then chain, in that order, each piece's data points (Henrik's spec verbatim):
-- `MP Difference`
-- `LastMaxMP` — nil for the first piece = TOTAL max MP (all batteries worn);
-  otherwise the previous piece's EndMaxMP.
-- `EndMaxMP` (the max after this piece is out) = `LastMaxMP − Difference`;
-  the UNEQUIP trigger fires at `cur ≤ LastMaxMP − Difference − tick` (the
-  tick margin means an incoming refresh tick can never be capped by the swap).
-- `StartMaxMP` (re-equip trigger) = `EndMaxMP + Difference − tick` — the
-  piece goes BACK ON before the pool is full, timed so the next tick lands
-  into the battery's headroom (this replaces v1's exact-full gate AND solves
-  old stage 2's headroom leeway in one move).
+**Order** (release order, top-down as MP is spent): `rfDelta` ascending,
+then `diff` ascending. One rule expresses everything:
 
-Worked example (Henrik's): TOTAL 1100; feet LOW 5 / HIGH 15 / diff 10 =
-smallest → first band. Unequip at `1100 − 10 − 15(tick) = 1075`; post-swap max
-1090; re-equip at `1090 + 10 − 15 = 1085`. The 1075..1085 gap is structural
-HYSTERESIS — churn is impossible by construction, no cooldown needed (the 15s
-cooldown survives only as a backstop).
+- refresh-COST bands (a flat battery displacing a set's refresh piece,
+  e.g. Hlr. Bliaut +1 over Clr. Bliaut +1) float **shallowest** — first
+  off as spending starts, back on only at the true peak, so the refresh
+  piece is worn through the whole spend-and-recover cycle;
+- plain bands run by smallest difference (lowest-hanging fruit first out);
+- refresh-GAIN bands sink by magnitude — the strongest refresh battery
+  releases last and returns first. *"Refresh > least mp diff; mp recovery
+  is key."*
 
-**Per dispatch the engine does one cheap thing:** read CURRENT MP (the one
-reliable number), walk the ladder → target loadout (which batteries should be
-worn), diff vs worn, issue ALL needed swaps at once. Big steps are explicitly
-fine (spell casts are big); the margins make batch moves safe.
+**Thresholds** (Henrik's data points, chained from `TOTAL` = max with every
+battery worn):
 
-**Refinements agreed on top of the spec:**
-1. **Measure ticks, don't model** (the old stage-2 ruling): observe live MP
-   deltas per tick for the refresh tick standing and refresh+hMP resting —
-   CatsEyeXI traits are custom, live memory beats the repo. Self-calibrating;
-   optional manual override. Resting uses the bigger measured tick in both
-   trigger formulas (pieces re-equip earlier, per the spec).
-2. **Anchor self-correction**: TOTAL is predicted (nativemp base + auto-learned
-   merits + Σ battery MP) but corrected by ONE observed offset whenever MP%
-   reads 100 (the maxmp≠modmp lesson: never trust computed absolutes alone).
-3. **LOW recomputes** when sets/triggers change (the manifest-rebuild events).
-4. **Bands decide WHEN; the existing machinery decides WHAT**: mpBest ladders,
-   equippable-NOW filtering, the ear/ring pair veto (v83), the RSlot
-   eligibility guard (v78) all stay underneath. `/dl plan` v2 prints the band
-   table — the plan and the behavior become the same artifact.
+```
+lastMax_i = TOTAL − Σ diffs of shallower bands
+endMax_i  = lastMax_i − diff_i
+offAt_i   = endMax_i − tick              (unequip: an incoming tick can
+                                          never be capped by the swap)
+onAt_i    = min(lastMax_i − tick,        (re-equip EARLY so the next tick
+             endMax_i)                    lands in the headroom — clamped
+                                          to the reachable pool: the raw
+                                          formula is unreachable whenever
+                                          diff > tick)
+```
 
-Open implementation parameters: where the measured tick persists (modestate vs
-manifest); the loadout signature for the anchor offset; whether Sublimation's
-release counts as a "tick" for the Start margins (probably yes, measured the
-same way).
+The `offAt..onAt` gap is `min(diff, tick)` wide — **hysteresis is
+structural**; churn is impossible by construction, no cooldowns needed.
+Worked example (the spec's, pinned as tests MB1/MB13d): TOTAL 1100, feet
+5→15 (diff 10), tick 15 → unequip at 1075, re-equip at 1085.
 
-## The key insight
+**Per dispatch** the engine reads current MP, walks the ladder to a target
+loadout (`target()` answers a piece NAME per slot, or false = the set's
+piece), diffs against worn, and issues **all** needed swaps at once — batch
+moves are safe because the margins are in the thresholds. Big drops
+(spell dumps) batch-release; big rises (Sublimation pops) batch-equip.
 
-The engine-side rule is **generic and slot-local** — it does not care how the MP
-gear got equipped (a resting set, a trigger, a manual equip):
+### The recovery tick — measured, never modeled
 
-> Keep the WORN piece while swapping it for the incoming piece would waste
-> unspent MP: `hold when curMP > maxMP − (wornMP − incomingMP)`.
+`mpbands.observe()` (fed by the engine's 0.4s tick) records upward MP jumps
+into standing/resting buckets; `tick()` answers the median. CatsEyeXI's
+refresh/hMP numbers are custom — live memory beats every table. The
+measurement is honest (unbuffed gear refresh really ticks +1..3), so the
+MARGIN floors at `MIN_TICK = 5` to keep hysteresis from going hair-width;
+`DEFAULT_TICK = 15` (endgame buffed refresh) until anything is measured.
 
-Everything else — *which* MP gear to put on and *when* — is data (sets and
-trigger rules), which the existing machinery already handles. This mirrors the
-"builder is a plan, the engine decides" split (ADR 0006).
+### The TOTAL anchor
 
-## Stage 1 — equip + hold (BUILT, engine VERSION 10; STAGED movement v76)
+`TOTAL = wornMax + remaining battery headroom`, where wornMax is predicted
+(nativemp base + auto-learned merits + every worn piece's manifest MP) and
+corrected by ONE offset learned whenever the party MP% reads a true full —
+floored MP% reads 100 *only* at cur == max, the single exact fullness
+signal this client offers (maxmp≠modmp lesson: never trust computed
+absolutes alone; never trust `GetMPMax` at all below full).
 
-`/dl mode maxmp` is the whole interface — no set-building required — plus
-`/dl plan` (v79): the battery plan as chat lines, per slot the live pick with
-WORN/gain/LOCKED status and the full ladder, sorted biggest gain first (= the
-full-pool equip order), with a stale-manifest tell in the footer. Chat-only
-on purpose: the Automations tab stays maxmp-free (the hidden ruling).
+### Paired slots (ears/rings)
 
-- **MP-EQUIP**: whenever the pool is FULL (`curMP >= maxMP`), each dispatch
-  wears each slot's best owned battery — for slots the set addresses (instead
-  of the set piece) AND for slots no set writes at all (a bare ring slot is
-  where a battery is freest to sit). The manifest's `mpBest` carries a LADDER
-  of up to 4 candidates per slot (`dispatch.mpPick`, tests K1–K7): rung 1 may
-  be gear to grow into (Bunzi's Robe at 99), and the engine wears the best rung
-  wearable at the LIVE level. Ear/ring ladders are disjoint (alternating), so
-  one physical item can never fill both slots; genuine duplicates (two Astral
-  Rings) are listed twice via owned counts. MP value counts `ConvertHPtoMP`
-  (Astral Ring = 25) and is LEVEL-EFFECTIVE via the central
-  `levelstats.effective` resolver (Tamas Ring: 15 on paper, 29 at Lv74) — a
-  snapshot at scan-time level, kept fresh by the constant auto-rescans.
-  Full-pool gating is what makes equipping worthwhile:
-  batteries only pay when recovery (refresh, resting, sublimation) can land
-  into the larger pool. A battery in a slot no set writes stays worn when the
-  mode turns off — nothing else ever touches that slot, and no MP is wasted by
-  leaving it on.
-- **MP-HOLD**: the battery then stays until its surplus over the incoming piece
-  is spent — `hold while curMP >= maxMP − (wornMP − incomingMP)`. The boundary
-  is `>=` on purpose: a battery equipped at a full pool sits exactly on it, and
-  a `>` rule would drop it before any recovery landed (field case: 960/960,
-  Cleric's Bliaut +29 → Bunzi's Robe +50). Release requires spending strictly
-  past the surplus; a released slot has a 15 s re-equip cooldown so the
-  full/spent boundary can't churn gear per action.
-- **STAGED movement (v76)**: at most ONE battery moves per dispatch — the
-  field complaint was the mode reading as an on/off switch (everything on /
-  everything off in one dispatch). Releases pick the SMALLEST surplus first:
-  the big battery stays on longest (the original spec), and the all-at-once
-  release was also an accounting bug — each per-slot hold justifies removing
-  only ITS piece, so N same-dispatch releases dropped max MP by the SUM of
-  surpluses and the server clamp (`cur = min(cur, newMax)`) ate the
-  difference; a single smallest-surplus release is clamp-free by construction,
-  and the next dispatch re-judges against the post-release max, so shedding
-  each further piece takes spending ITS surplus too (cumulative). Equips pick
-  the BIGGEST gain first ("find the piece with the highest MP"); the
-  full-pool gate then paces the ladder — the next battery waits until
-  recovery refills the headroom the last one opened. One known leak, doc'd
-  not fixed: a single recovery tick larger than the just-equipped battery's
-  headroom caps the difference once per rung (stage 2's headroom leeway is
-  the fix if it matters in the field). Pure choosers
-  `dispatch.mpStageRelease`/`mpStageEquip` (tests MS1–MS8); the staged pick
-  runs in the `mp-stage` post-pass (renamed from `mp-equip-uncovered`, PL2),
-  which owns both the single release and the single equip across covered and
-  uncovered slots.
-- Weapons exempt (`MP_HOLD_EXEMPT`), `dlac:` virtual markers exempt (staff/obi
-  automation keeps its two slots). Decisions annotate `/dl why`:
-  `body=MP-EQUIP Bunzi's Robe (+21 MP)` / `body=MP-HOLD Bunzi's Robe (+21 MP unspent)` /
-  `Hands=MP-RELEASE Oracle's Gloves -> Zealot's Mitts (+7 MP surplus spent)` /
-  `ring1=MP-STAGE Astral Ring (+25 MP; neck releases first)`. The release note
-  names the INCOMING piece (v77) because of field round 1's stall: a release
-  re-decided identically for 8+ seconds with the worn piece unmoved — the
-  swap-back never landed, and because the stalled slot keeps the smallest
-  surplus it stays the winner and BLOCKS every other release behind it. Root
-  cause still OPEN. Ruled out in the field: server-side gear locks (none on
-  this server) and wardrobe availability (the server hardcodes all wardrobe
-  bits on — char_status.cpp writes 0x7B — and Henrik confirms no unavailable
-  gear; a `ForceEnableBags` detour was reverted). Known silent-drop paths in
-  LAC for reference: `LocateItems` only finds pieces in `EquipBags`,
-  bazaared items are skipped (Flags 19), and `PrepareEquip` drops what it
-  cannot find without a message. Separately, `BuildDynamicSets` checks level
-  only, so a flattened plan can name gear that is stored, unowned, or
-  bazaared.
-- Data: the autogear manifest's `mp` (lower(name) → flat MP, every owned piece)
-  and `mpBest` (slot → best battery, filtered by the central `canWear` +
-  `haveInBags`) maps. The manifest is fully self-maintaining: it regenerates on
-  login, job change and any inventory change, and an outdated schema (`fmtver`)
-  self-heals when the Automations section renders — no manual rescan, ever.
-  The engine never loads the catalog (ADR 0004). Pure rule:
-  `dispatch.mpHoldNeeded` (tests I1–I7).
-- The GUI derives the manifest in the ADDON state, where LAC's `gData` does
-  not exist — the job for eligibility comes from Ashita memory
-  (`deps.playerJob`). A nil job would silently keep only `Jobs={'All'}` gear
-  (the field symptom: a grid of nothing but Star/Chaplain's/Astral rings).
+- **Pair homes** (manifest fmt 13): the ear/ring battery ladders re-home to
+  the positions the player's IDLE SET declares — detected from the Default
+  trigger rule matching exactly `status = Idle`; the MaxMP panel's idle-set
+  picker ALWAYS overrides detection; a set literally named `Idle` is the
+  convention fallback. The idle set is used for pairing positions ONLY.
+- **Sticky pairs** (`M.mpStickyPairs`): at apply time, a candidate whose
+  piece is claimed by the sibling slot — in THIS dispatch's resolved plan
+  (which cannot lag) OR on the body — never writes. Genuine duplicates
+  (2× Astral Ring) stay exempt: the manifest lists dup-owned items in both
+  ladders, so a sibling claim proves a second copy. Once an MP earring or
+  ring sits in a paired slot, the engine never relocates it.
 
-### Optional extras
+### What the bands DON'T decide
 
-- Sublimation top-off as plain trigger data:
-  `Ability: name = Sublimation, mode = maxmp -> <any MP-ish set>` — HandleAbility
-  fires before the JA lands, so the grant arrives into the enlarged pool. With
-  MP-EQUIP this is usually unnecessary (a full pool already wears batteries),
-  but it forces the swap when the pool is NOT full at pop time.
+Bands decide **WHEN**. The existing machinery decides **WHAT** and stands
+guard underneath: `M.mpRungs`/`mpBestPick` (the one pair-veto-aware battery
+resolver shared by engine, plan and builder), equippable-NOW filtering
+(owned AND not stored — LAC silently drops what it can't find),
+`mpStageEligible` (the v78 RSlot ruling: a battery reserving an occupied
+slot never stages), explicit `remove` plans win over batteries (v91:
+fishing/AutoAmmo empty-slot claims), and slot locks/pins/virtuals keep
+their precedence in the per-slot chain.
 
-## Stage 2 — resting escalation (NOT BUILT; partly obsoleted by v76)
+### Surfaces
 
-The v76 staged equip already climbs one battery per refill in ANY recovery
-situation (resting, refresh, sublimation) — what remains of this stage is the
-headroom LEEWAY: equipping the next piece *before* the pool is strictly full,
-so a big rest tick never caps against a small battery's headroom:
+- `/dl mode maxmp [on|off]` — the mode; **auto-disables on job change**,
+  re-enable per job.
+- `/dl plan` — prints the band table: release order, thresholds,
+  `[refresh]`/`[refresh-cost]` tags, live state per band. It renders the
+  SAME context object the engine executes — **the plan IS the behavior**;
+  they cannot disagree by construction. This one property cracked most of
+  the field bugs.
+- `/dl why` — per-dispatch notes (`MP-EQUIP`/`MP-HOLD`/`MP-RELEASE` with
+  band thresholds, `MP-SKIP`, `MP-PAIR sticky`).
+- **Automations tab → MaxMP** (graduated 2026-07-21; the hidden ruling
+  rescinded): ON/OFF switch reflecting the live mode (modestate mirror,
+  1s re-read; toggles via the explicit command), battery grid, idle-set
+  picker. The Teleports quick menu carries the same switch.
 
-- **Measure, don't model**: CatsEyeXI's hMP traits are custom (private
-  submodules; wiki incomplete). Instead of trait tables, observe the actual MP
-  delta on each rest tick (~10 s cadence) from memory — self-calibrating and
-  server-proof. (Trust ladder: live memory > wiki > public SQL.)
-- **Headroom leeway**: equip the next MP piece when
-  `maxMP − curMP < lastTickRecovery + margin` would otherwise overflow a tick —
-  i.e. always keep at least one tick of headroom.
-- **Replacement order**: fill slots whose RESTING pieces carry no hMP/Refresh
-  first, so the recovery-boosting pieces stay on longest.
-- Likely shape: a small engine-side state machine ticking on the Default
-  dispatch while resting; candidates from the manifest `mp` map sorted by MP,
-  filtered by an `hmp`/`refresh` map (manifest addition).
+### Data flow
 
-## Stage 3 — refinements (NOT BUILT)
+```
+catalog + bags + augments (augments.ownedAugStats — the player's ACTUAL copies)
+        │  addon state: automationsui manifest builder (fmt 13)
+        ▼
+autogear.lua: mp (name→MP), rf (name→Refresh), mpBest (per-slot ladders,
+              pair-homed, equippable-NOW), mpPairIdle(+Override), mpMerits
+        │  LAC state: dispatch.M.mpBands (per dispatch)
+        ▼
+LOW/lowRf (trigger-set scan, 10s TTL) + rungs + TOTAL anchor + measured tick
+        │  feature/mpbands.lua (pure)
+        ▼
+bands → target loadout → per-slot chain + mp-stage pass (batch, guarded)
+        │
+        ├── gFunc.EquipSet (LAC)
+        └── /dl plan (the same context, printed)
+```
 
-- Buff-aware Sublimation: gate the rule on the *completed* charge (buff id) so
-  the top-off only fires on the release, not the activation. Needs a `buff`
-  trigger condition — useful far beyond this feature.
-- Percent MP gear (`MPP`) in the manifest values (flat `ConvertHPtoMP` is
-  already counted as of fmtver 2).
-- Waist: `dlac:AutoObi` vs an MP belt — today the obi automation wins its slot;
-  revisit if a real conflict shows up in play.
+---
 
-## Open questions
+## The rulings ledger (Henrik's design law, in his words)
 
-- **Un-landable release targets** (field round 1, 2026-07-20): the flatten can
-  plan a piece LAC cannot equip (stored/unowned/bazaared — no ownership check
-  in `BuildDynamicSets`; normally invisible because the previous piece just
-  stays worn). Under maxmp the stalled slot blocks the whole release queue.
-  Candidate fixes, undecided: (a) flatten skips rungs failing
-  `ownedcache.haveInBags`/`isStored` — but "sets are plans" and the flatten
-  runs profile-side; (b) engine-side staleness heuristic — a winner whose worn
-  piece hasn't moved after N identical decisions yields to the next candidate;
-  (c) leave it to the player, now that the v77 note names the piece.
-- ~~**Stored batteries**~~ FIXED after field round 3 confirmed it live
-  (Radiant Lantern, owned but stored, planned as the neck battery — LAC
-  dropped the equip silently and, as the biggest gain, it froze the other 7
-  staged batteries behind it). The gearui deps wiring now passes
-  `haveInBags(rec) and not isStored(rec)`, so every automation ladder (mp,
-  staff/obi, craft/HELM/fish) only plans pieces equippable RIGHT NOW; the
-  manifest's inventory-change rebuild keeps it current as gear moves bags.
-  NOTE the release direction can still stall the same way — the SET side
-  (`BuildDynamicSets`) has no availability check (first open question above).
+1. *"Find the piece with the highest MP, keep it until you have spent
+   enough for any potential pieces."* — the founding spec (07-11).
+2. *"Stop with dynamic equipping — make it orderly and calculated /
+   planned."* — the banded-ladder redesign (07-21 night).
+3. *"Refresh > least mp diff. Refresh pieces should release last and be
+   returned first — mp recovery is key."*
+4. *"To get refresh in is NOT YOUR JOB — that is the idle set's job...
+   but you should be aware that there is a POTENTIAL refresh piece there
+   and adapt accordingly."* — refresh lives in the ORDERING only; the
+   engine never wears refresh gear itself (v92), and the baseline is the
+   potential (max) refresh, not the minimum (v95).
+5. *"Augs must always be calculated into the total."* — every MP/Refresh
+   number folds the player's actual augments (fmt 12; S169b-e).
+6. *"Have MP earrings and rings sticky — don't move positions once set."*
+   + *"pair positions follow the idle set; the GUI picker always
+   overrides."* (v93/v94 + fmt 13).
+7. Positions beat optimality: the engine accepts a few MP of theoretical
+   loss to never rearrange the player's pair placement.
+8. The player's sets are the authority on what a slot returns to; the
+   engine works around them, never through them.
 
-- Does unequipping +MP gear on CatsEyeXI clamp current MP exactly as retail
-  (cur = min(cur, newMax))? The hold rule assumes yes — field-verify with
-  `/dl why` + the MP-HOLD notes.
-- Rest tick cadence/size on CatsEyeXI (stage 2 measurement makes this moot,
-  but knowing it helps pick the margin).
+---
+
+## The failure museum (v76–v95 — why per-dispatch heuristics died)
+
+Kept for inspiration: each of these was a real field round with a
+screenshot, and each produced a pinned test.
+
+1. **All-at-once flip** (pre-v76): every battery on at full, every battery
+   off past the surplus — and the mass release was an accounting bug: N
+   per-slot holds each justify removing only THEIR piece, so simultaneous
+   releases dropped max by the SUM and the server clamp ate the
+   difference. *Lesson: slot-local rules break when applied in bulk.*
+2. **The silent equip stall** (v77 era): a release re-decided identically
+   forever because LAC drops un-locatable pieces with no message.
+   *Lessons: name the target in every trace (v77) — a repeating decision
+   with unmoved gear then diagnoses itself; automation must only plan
+   equippable-NOW gear (the stored-battery freeze, round 3).*
+3. **The held-battery deadlock** (v80): the hold branch swallowed the
+   upgrade check, so a worn small battery blocked its own upgrade forever.
+   *Lesson: a guard that eats a branch eats its candidates too.*
+4. **The ear shuffle** (v83): disjoint alternating pair ladders + LAC's
+   UnequipConflicts moved one physical earring across ears, leaving holes.
+5. **Stale max-MP reads** (v86/v87): `GetMPMax` goes stale in BOTH
+   directions across gear churn (engine read 975/1052 vs a 975/975 bar;
+   LAC's own `.MaxMP` is the same call). False fullness over-equipped;
+   ±1% window error at exact boundaries dumped fresh batteries; the whole
+   ladder oscillated — climb, alternate, cascade to idle, repeat.
+   *Lessons: floored party MP% == 100 is the ONLY exact fullness signal;
+   below full, bias any estimate toward HOLDING; and ultimately — remove
+   the live-max dependency entirely (the banded ladder).*
+6. **The multi-rung overreach** (v90, retired by ruling): the engine wore
+   refresh mid-rungs itself — overstepping the idle set's job AND
+   deadlocking (wearing mid-rungs depressed the pool below the top bands'
+   re-equip triggers: unreachable whenever diff > tick → the v92 clamp).
+7. **The plan-shadowed worn claim** (v94): sticky checked `plan or worn`,
+   so a sibling plan naming a different piece hid the worn claim.
+   *Lesson: independent claims veto independently.*
+8. **The collapsed refresh baseline** (v95): lowRf from the min-MP piece
+   reads 0 once any combat set exists → every [refresh-cost] tag vanished
+   → a deep plain band displaced the refresh body at MP ~800. *Lesson:
+   "potential X" means MAX over the possibilities, and the /dl plan tags
+   are the instant diagnostic — no tags = collapsed baseline.*
+9. **Cross-cutting**: worn-state reads lag ~a dispatch behind LAC's swaps —
+   the same-dispatch resolved plan is the only lag-free claim signal; and
+   twice a "bug" was actually data (a set ladder resolving a different
+   rung than the player assumed) — `/dl plan` + `/dl why` together settled
+   every single round.
+
+---
+
+## Parked / open
+
+- **Un-landable release targets**: `BuildDynamicSets` has no
+  ownership/bag check, so a set plan can name gear LAC can't equip; under
+  maxmp a stalled slot's release repeats (named in `/dl why` since v77).
+  Options parked: flatten-side filter vs staleness-yield vs player-fixes.
+- **Sets-file lint**: `gear.*` references that don't resolve vanish as nil
+  silently — a text scan against the gear table would catch the class.
+- Resting-tick bucket barely exercised; Sublimation-pop-as-tick question;
+  the equipment-menu freeze (re-observe fresh on v2 before chasing);
+  clamp-on-unequip server behavior (assumed retail-like, unfalsified).
+- Multi-job sweep: architecture is job-generic (per-job manifest, per-job
+  LOW scan, job-aware base); confirmed WHM + a BLU cameo.
+
+## Test map
+
+`MB*` band build/target/measurement (worked-example pins) · `MPS*` pair
+veto + shared resolver · `MSS*` sticky pairs · `MPL*` plan formatter ·
+`MR*/MF*` max reconciliation + exact fullness (legacy but live fallbacks) ·
+`I*/K*/MS1-8` v1-era pure rules (exported for compat) · `S169b-e` the
+augment fold end-to-end · smoke: manifest build incl. pair-homed ladders.

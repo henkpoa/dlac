@@ -282,6 +282,21 @@ agent; the per-repo setup lives in `docs/agents/`.
   SAM, Mindie WHM); the v46–49 `/dl instdiag` diagnostic is stripped again in v50.
   **Read ADR 0007 and hard rules 11–12 before touching anything that reads client state
   at login.** Nothing open — the diagnostic is stripped and both suites are green.
+- **MAXMP = THE BANDED LADDER (07-20→21, engine v76..v95, field-settled on
+  WHM, pushed):** max-MP gear follows a PRECOMPUTED threshold ladder —
+  current MP is the only live read (GetMPMax is unreliable during gear
+  churn; floored party MP% == 100 is the only exact fullness signal).
+  `feature/mpbands.lua` pure core + `dispatch.M.mpBands` context +
+  `/dl plan` (renders the SAME context the engine runs — plan IS behavior).
+  Standing rulings: refresh is the IDLE SET's job (the engine adapts the
+  ORDER to the *potential* refresh only); augments always in the totals;
+  ear/ring pieces never relocate across their pair (sticky + idle-set pair
+  homes, panel picker overrides detection); positions beat optimality.
+  MaxMP is IN the Automations GUI (ON/OFF switch, live state). **Read
+  docs/design/maxmp-mode.md before touching ANY of it** — the final
+  architecture, the rulings ledger and the failure museum (v76–v95) live
+  there; history.md "the banded ladder" is the timeline. Cross-session
+  memory: `memory/maxmp-staged-hidden.md`.
 - **THE ACC SYSTEM LIVES ON `feature/autoacc` (07-14, Henrik's call, pending GM
   approval — do not merge or push without his word):** LuaAshitacast is on the
   server's special approved list *because* of automation; auto-swapping gear by
