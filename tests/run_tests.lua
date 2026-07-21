@@ -755,18 +755,18 @@ check('MB3 non-positive diff gets no band',
     #(mb.build({ { slot = 'body', low = 50, high = 50 }, { slot = 'head', low = 30, high = 20 } }, 1100, 15)), 0);
 check('MB3b nil-safe build', #(mb.build(nil, nil, nil)), 0);
 
-local offOn = function(v) return function() return v; end end
-check('MB4 above onAt: battery on',   mb.target(ex, 1085, offOn(false)).feet, true);
-check('MB5 at/below offAt: battery off', mb.target(ex, 1075, offOn(true)).feet, false);
-check('MB6 dead zone keeps worn ON',  mb.target(ex, 1080, offOn(true)).feet, true);
-check('MB6b dead zone keeps worn OFF', mb.target(ex, 1080, offOn(false)).feet, false);
-check('MB7 unreadable cur keeps state', mb.target(ex, nil, offOn(true)).feet, true);
-local plunge = mb.target(three, 900, offOn(true));   -- big spell: BATCH release
+local wearing = function(name) return function() return name; end end
+check('MB4 above onAt: the rung belongs on', mb.target(ex, 1085, wearing(nil)).feet, 'MP Boots');
+check('MB5 at/below offAt: set piece belongs on', mb.target(ex, 1075, wearing('MP Boots')).feet, false);
+check('MB6 dead zone keeps worn rung',  mb.target(ex, 1080, wearing('MP Boots')).feet, 'MP Boots');
+check('MB6b dead zone keeps empty slot empty', mb.target(ex, 1080, wearing(nil)).feet, false);
+check('MB7 unreadable cur keeps state', mb.target(ex, nil, wearing('MP Boots')).feet, 'MP Boots');
+local plunge = mb.target(three, 900, wearing('x'));   -- big spell: BATCH release
 check('MB8 batch release on a big drop', tostring(plunge.feet) .. ',' .. tostring(plunge.ring) .. ',' .. tostring(plunge.neck),
     'false,false,false');
-local surge = mb.target(three, 1100, offOn(false));  -- Sublimation pop: BATCH equip
+local surge = mb.target(three, 1100, wearing(nil));  -- Sublimation pop: BATCH equip
 check('MB8b batch equip on a big rise', tostring(surge.feet) .. ',' .. tostring(surge.ring) .. ',' .. tostring(surge.neck),
-    'true,true,true');
+    'Boots,Ring,Locket');
 
 mb.reset();
 check('MB9 unmeasured tick = default', mb.tick(false), mb.DEFAULT_TICK);
@@ -797,6 +797,47 @@ check('MB12c refresh-gain sinks deepest',     signed[3].slot, 'neck');
 check('MB12d legacy refresh=true alias sinks deep',
     mb.build({ { slot = 'a', low = 0, high = 10, refresh = true },
                { slot = 'b', low = 0, high = 5 } }, 100, 0)[2].slot, 'a');
+
+-- MB13: MULTI-RUNG bands (v90, field round 9). Henrik's pin: "Bunzi's Hat
+-- should be in 2nd last space due to refresh, last place Hlr. Bliaut +1"
+-- -- refresh mid-rungs are their own bands, flat top-ups over them float
+-- shallow, and the refresh-gain bands order by magnitude (+1 before +2).
+local multi = mb.build({
+    { slot = 'head', low = 0, lowRf = 0,
+      rungs = { { name = 'Erudite Cap', mp = 30, rf = 0 },
+                { name = 'Bunzi\'s Hat', mp = 25, rf = 1 } } },
+    { slot = 'body', low = 29, lowRf = 0,
+      rungs = { { name = 'Bunzi\'s Robe', mp = 50, rf = 0 },
+                { name = 'Hlr. Bliaut +1', mp = 35, rf = 2 } } },
+    { slot = 'feet', low = 5, lowRf = 0,
+      rungs = { { name = 'Boots', mp = 15, rf = 0 } } },
+}, 1100, 15);
+local order = {};
+for _, b in ipairs(multi) do order[#order + 1] = b.name; end
+check('MB13 the field order pin', table.concat(order, '>'),
+    'Bunzi\'s Robe>Erudite Cap>Boots>Bunzi\'s Hat>Hlr. Bliaut +1');
+-- Mid-pool (cur 1050, Hat worn): the flat top-ups are off, Bunzi's Hat
+-- HOLDS its slot (the round-9 bug: it was being replaced way earlier),
+-- and body wants the refresh rung, not the flat 50.
+local mtgt = mb.target(multi, 1050, function(sl)
+    if sl == 'head' then return 'Bunzi\'s Hat'; end
+    return nil;
+end);
+check('MB13b mid-pool: the refresh hat stays', mtgt.head, 'Bunzi\'s Hat');
+check('MB13c mid-pool: body wants the refresh rung', mtgt.body, 'Hlr. Bliaut +1');
+-- Near the top the flat top-ups come back over the refresh rungs.
+local ttgt = mb.target(multi, 1090, function(sl)
+    if sl == 'head' then return 'Bunzi\'s Hat'; end
+    if sl == 'body' then return 'Hlr. Bliaut +1'; end
+    return nil;
+end);
+check('MB13d peak: the flat top-up returns', ttgt.head, 'Erudite Cap');
+check('MB13e peak: body tops up too', ttgt.body, 'Bunzi\'s Robe');
+-- A dominated rung (less MP, no refresh gained) never becomes a band.
+check('MB13f dominated rung pruned',
+    #(mb.build({ { slot = 'x', low = 0, lowRf = 0,
+        rungs = { { name = 'Big', mp = 30, rf = 1 },
+                  { name = 'Small Flat', mp = 20, rf = 0 } } } }, 100, 0)), 1);
 end)();
 
 -- ---------------------------------------------------------------------------

@@ -19,6 +19,18 @@ through the v78 RSlot guard), and `/dl plan` v2 (`M.mpPlanLines`, tests MPL*)
 which renders the exact context the engine runs — the plan IS the behavior.
 The manifest carries Refresh from fmtver 11 (`rf` map + rung `rf`).
 
+**Round-9 addendum (2026-07-21, engine v90): MULTI-RUNG bands.** A slot's
+battery ladder contributes one band per meaningful rung — rungs sanitized to
+falling MP / rising Refresh (dominated rungs pruned), each adjacent pair
+banded with its own diff and rfDelta, the last rung banding against the
+potency point. The order collapses to ONE rule: **rfDelta ascending, then
+diff ascending** — refresh-cost top-ups come off first and return last;
+refresh-gain bands sink by magnitude (+1 releases before +2). Field pin:
+Erudite Cap and Bunzi's Robe are shallow top-ups; Bunzi's Hat (+1) holds
+second-last; Hlr. Bliaut +1 (+2) is the last thing to go and the first
+thing back. `target()` answers the piece NAME per slot (or false = the set's
+piece); tests MB13*.
+
 **Night addendum (Henrik, in-flight): "Refresh > least mp diff."** A battery
 whose Refresh the potency piece lacks outranks the difference ordering and
 sinks to the DEEP end of the ladder — released last while spending, back on

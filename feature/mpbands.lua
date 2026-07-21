@@ -24,58 +24,90 @@
 local M = {};
 
 -- ---------------------------------------------------------------------------
--- The band ladder. slots = { { slot='feet', name='Oracle\'s Pigaches',
--- low=5, high=15 }, ... } -- low = the LEAST slot MP across every set a
--- trigger rule can equip (the potency point), high = the battery. total =
--- max MP with EVERY battery worn (anchor-corrected by the caller). tick =
--- the recovery margin for the current state (standing refresh vs resting).
+-- The band ladder, MULTI-RUNG (v90 -- field round 9: "Bunzi's Hat should be
+-- 2nd last, Healer's Bliaut +1 last"). A slot contributes ONE BAND PER
+-- MEANINGFUL RUNG, not just its top battery:
+--   slots = { { slot='body', low=29, lowRf=0,
+--               rungs = { {name="Bunzi's Robe", mp=50, rf=0},
+--                         {name="Hlr. Bliaut +1", mp=35, rf=2}, ... } }, ... }
+-- Rungs are sanitized to a strictly-falling-MP, strictly-RISING-refresh
+-- chain (at equal MP the higher-Refresh copy wins outright; a deeper rung
+-- that adds no refresh over the one above is dominated -- stepping down to
+-- it is never better than stepping straight to the potency piece). Each
+-- adjacent pair becomes a band: wearing rung i INSTEAD OF rung i+1 (the
+-- last rung bands against the potency point low/lowRf), with
+--   diff    = mp_i - mp_next          (the max-MP this band holds)
+--   rfDelta = rf_i - rf_next          (the refresh this band gains/costs)
+-- Legacy single-battery inputs (s.high [+ s.rfDelta / s.refresh]) still
+-- build the one band exactly as before.
 --
--- Returns bands ordered smallest difference first (= first OUT to potency,
--- the lowest-hanging fruit; the big battery releases last) -- EXCEPT that
--- REFRESH outranks the diff order entirely ("Refresh > least mp diff";
--- refresh pieces release LAST and return FIRST -- mp recovery is key).
--- s.rfDelta = battery Refresh minus the potency piece's (augments counted):
---   > 0  the battery ADDS refresh -> sinks DEEP (released last, back on
---        first as MP recovers);
---   < 0  the battery COSTS refresh (field: Bunzi's Robe 50 MP flat over
---        Cleric's Bliaut +1 with Refresh 2) -> floats SHALLOWEST (first
---        out, last back on), so the refresh piece under it stays worn
---        through the spend and returns the moment the band drops;
---   = 0  plain diff order.
--- (s.refresh = true is accepted as a legacy alias for rfDelta 1.)
--- Each band carries Henrik's data points:
---   diff     = high - low
---   lastMax  = max MP while this piece (and everything after it) is worn
---   endMax   = max MP once this piece is out (= the next band's lastMax)
---   offAt    = UNEQUIP trigger: cur <= endMax - tick (an incoming tick can
---              never be capped by the swap)
---   onAt     = RE-EQUIP trigger: cur >= lastMax - tick (the piece goes back
---              on BEFORE full, so the next tick lands into its headroom)
--- The offAt..onAt gap is exactly `diff` wide: churn is impossible by
--- construction. A slot whose difference is <= 0 (the set's own piece is the
--- battery, or better) gets NO band -- the set already handles it.
+-- ORDER ("Refresh > least mp diff"; refresh pieces release LAST and return
+-- FIRST -- mp recovery is key): plain sort by rfDelta ASC, then diff ASC.
+-- Refresh-COST bands (a flat-MP top-up displacing a refresh rung: Bunzi's
+-- Robe over Hlr. Bliaut +1) float shallowest -- first out, last back;
+-- plain bands run by smallest difference; refresh-GAIN bands sink by
+-- MAGNITUDE -- +1 (Bunzi's Hat over a plain set piece) releases before +2
+-- (Hlr. Bliaut +1), so the strongest refresh is the last thing to go and
+-- the first thing back.
+--
+-- Each band carries Henrik's data points (lastMax/endMax and the offAt/onAt
+-- triggers, tick-margined both directions); the offAt..onAt gap is exactly
+-- `diff` wide -- churn is impossible by construction.
 -- ---------------------------------------------------------------------------
 function M.build(slots, total, tick)
     local bands = {};
     for _, s in ipairs(slots or {}) do
         if type(s) == 'table' and s.slot ~= nil then
-            local diff = (tonumber(s.high) or 0) - (tonumber(s.low) or 0);
-            if diff > 0 then
+            local low = tonumber(s.low) or 0;
+            local lowRf = tonumber(s.lowRf) or 0;
+            -- Normalize input to a rung chain (legacy single-battery accepted).
+            local src = {};
+            if type(s.rungs) == 'table' then
+                for _, r in ipairs(s.rungs) do
+                    if type(r) == 'table' and r.name ~= nil then
+                        src[#src + 1] = { name = r.name, mp = tonumber(r.mp) or 0,
+                                          rf = tonumber(r.rf) or 0 };
+                    end
+                end
+            elseif s.high ~= nil then
                 local rd = tonumber(s.rfDelta) or ((s.refresh == true) and 1 or 0);
-                bands[#bands + 1] = { slot = tostring(s.slot), name = s.name,
-                                      low = tonumber(s.low) or 0,
-                                      high = tonumber(s.high) or 0, diff = diff,
-                                      rfDelta = rd, refresh = (rd > 0) };
+                src[1] = { name = s.name, mp = tonumber(s.high) or 0, rf = lowRf + rd };
+            end
+            table.sort(src, function(a, b)
+                if a.mp ~= b.mp then return a.mp > b.mp; end
+                return a.rf > b.rf;
+            end);
+            -- Keep the top rung, then only rungs that BUY refresh on the way
+            -- down; drop anything at-or-below the potency point.
+            local chain = {};
+            for _, r in ipairs(src) do
+                if r.mp > low then
+                    local prev = chain[#chain];
+                    if prev == nil or (r.mp < prev.mp and r.rf > prev.rf) then
+                        chain[#chain + 1] = r;
+                    end
+                end
+            end
+            for i, r in ipairs(chain) do
+                local nxt = chain[i + 1];
+                local underMp = (nxt ~= nil) and nxt.mp or low;
+                local underRf = (nxt ~= nil) and nxt.rf or lowRf;
+                local diff = r.mp - underMp;
+                if diff > 0 then
+                    bands[#bands + 1] = { slot = tostring(s.slot), name = r.name,
+                                          under = (nxt ~= nil) and nxt.name or nil,
+                                          low = underMp, high = r.mp, diff = diff,
+                                          rfDelta = r.rf - underRf,
+                                          refresh = (r.rf - underRf) > 0 };
+                end
             end
         end
     end
     table.sort(bands, function(a, b)
-        -- refresh-cost floats shallow (0), plain by diff (1), refresh-gain deep (2)
-        local ga = (a.rfDelta < 0) and 0 or ((a.rfDelta > 0) and 2 or 1);
-        local gb = (b.rfDelta < 0) and 0 or ((b.rfDelta > 0) and 2 or 1);
-        if ga ~= gb then return ga < gb; end
+        if a.rfDelta ~= b.rfDelta then return a.rfDelta < b.rfDelta; end
         if a.diff ~= b.diff then return a.diff < b.diff; end
-        return a.slot < b.slot;
+        if a.slot ~= b.slot then return a.slot < b.slot; end
+        return tostring(a.name) < tostring(b.name);
     end);
     local last = tonumber(total) or 0;
     local t = tonumber(tick) or 0;
@@ -90,24 +122,33 @@ function M.build(slots, total, tick)
 end
 
 -- ---------------------------------------------------------------------------
--- Target loadout: which batteries SHOULD be worn at this current MP. isOn
--- answers "is this band's piece worn right now" -- inside a band's dead zone
--- the current state is kept (the structural hysteresis), so the answer is a
--- function of (cur, worn state), never of a live max read. cur unreadable =
--- keep everything as it is (a bad read never moves gear -- the house rule).
--- Returns { [slot] = true|false } -- true: the battery belongs on; false:
--- the set's piece belongs on; absent: no band, the engine leaves the slot
--- to the normal set machinery.
+-- Target loadout: WHICH PIECE each banded slot should wear at this current
+-- MP. wornOf(slot) -> the worn item name (the hysteresis state: inside a
+-- band's dead zone the current state is kept, so the answer is a function
+-- of (cur, worn), never of a live max read; cur unreadable = keep as-is).
+-- Per band: ON at cur >= onAt, OFF at cur <= offAt, dead zone = ON iff the
+-- worn piece IS this band's rung. Per slot the answer is the SHALLOWEST ON
+-- band's rung (bands arrive shallow-first from build):
+--   out[slot] = "Piece Name"  -> that rung belongs on
+--   out[slot] = false         -> no rung is on: the set's piece belongs on
+--   out[slot] absent          -> no band, the normal set machinery owns it
 -- ---------------------------------------------------------------------------
-function M.target(bands, cur, isOn)
+function M.target(bands, cur, wornOf)
     local out = {};
     cur = tonumber(cur);
     for _, b in ipairs(bands or {}) do
-        local worn = (isOn ~= nil) and (isOn(b.slot) == true) or false;
-        if cur == nil then out[b.slot] = worn;
-        elseif cur >= b.onAt then out[b.slot] = true;
-        elseif cur <= b.offAt then out[b.slot] = false;
-        else out[b.slot] = worn; end
+        if out[b.slot] == nil then out[b.slot] = false; end
+        if out[b.slot] == false then   -- no shallower rung claimed the slot yet
+            local worn = (wornOf ~= nil) and wornOf(b.slot) or nil;
+            local isOn = worn ~= nil and b.name ~= nil
+                         and string.lower(tostring(worn)) == string.lower(tostring(b.name));
+            local on;
+            if cur == nil then on = isOn;
+            elseif cur >= b.onAt then on = true;
+            elseif cur <= b.offAt then on = false;
+            else on = isOn; end
+            if on then out[b.slot] = b.name; end
+        end
     end
     return out;
 end

@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 89;   -- 89: augments counted + SIGNED refresh delta (field round 8, Henrik: "include augments as with gearwatch" / "refresh pieces release last, return first -- mp recovery is key"). The manifest folds each owned copy's private-augment MP and Refresh into mp/rf (augments.ownedAugStats, fmtver 12 -- Cleric's Bliaut +1 = Refresh 1 native + 1 augmented = 2), and the band order runs on rfDelta = battery Refresh - potency Refresh: positive sinks DEEP (refresh battery back first as MP recovers), NEGATIVE floats SHALLOWEST (a flat-MP battery that would COST refresh -- Bunzi's Robe over Cleric's +1 -- comes off first and returns last, keeping the refresh piece worn through the spend). /dl plan tags [refresh] / [refresh-cost]. Tests MB12*.
+M.VERSION = 90;   -- 90: MULTI-RUNG bands (field round 9: "Bunzi's Hat should be 2nd last, Hlr. Bliaut +1 last"). A slot's battery ladder contributes ONE BAND PER MEANINGFUL RUNG -- rungs sanitized to falling MP / rising Refresh (dominated rungs pruned), each adjacent pair banded with its own diff and rfDelta, the last rung banding against the potency point. Order collapses to ONE rule: rfDelta ASC then diff ASC -- refresh-cost top-ups (Bunzi's Robe over Hlr. Bliaut +1, Erudite Cap over Bunzi's Hat) come off FIRST and return LAST; refresh-gain bands sink by magnitude (+1 before +2), so the strongest refresh releases last and returns first. target() now answers the PIECE NAME per slot (shallowest ON band's rung) or false; M.mpRungs supersedes single-pick (mpBestPick stays as the rungs[1] shim); notes/plan find thresholds via M.mpBandFind. Tests MB13*.
+                  -- 89: augments counted + SIGNED refresh delta (field round 8, Henrik: "include augments as with gearwatch" / "refresh pieces release last, return first -- mp recovery is key"). The manifest folds each owned copy's private-augment MP and Refresh into mp/rf (augments.ownedAugStats, fmtver 12 -- Cleric's Bliaut +1 = Refresh 1 native + 1 augmented = 2), and the band order runs on rfDelta = battery Refresh - potency Refresh: positive sinks DEEP (refresh battery back first as MP recovers), NEGATIVE floats SHALLOWEST (a flat-MP battery that would COST refresh -- Bunzi's Robe over Cleric's +1 -- comes off first and returns last, keeping the refresh piece worn through the spend). /dl plan tags [refresh] / [refresh-cost]. Tests MB12*.
                   -- 88: maxmp v2 -- THE BANDED LADDER (Henrik's 2026-07-21 redesign, docs/design/maxmp-mode.md "v2"; feature/mpbands.lua is the pure core, tests MB*). Dynamic per-dispatch marginal decisions retired: M.mpBands precomputes per-slot bands (LOW = least MP across trigger-reachable sets, HIGH = the pair-veto-aware battery pick via the shared M.mpBestPick) chained into absolute thresholds -- unequip at endMax - tick, re-equip EARLY at lastMax - tick so the next recovery tick lands into the headroom; smallest difference releases first EXCEPT refresh batteries sink deep ("Refresh > least mp diff", manifest fmtver 11 carries rf); hysteresis is each band's own width, so the 15s cooldown is gone. CURRENT MP is the only live input (the one read that never lies); the TOTAL anchor is nativemp base + merits + worn MP, offset-corrected at any true-full MP%. Ticks are MEASURED (median of observed rises, standing/resting buckets, fed by the 0.4s engine tick), never modeled from traits. Batch swaps: every eligible ON-candidate lands in one dispatch through the v78 RSlot guard. v76-v87's pure rules stay exported for compatibility.
                   -- 87: the equip-release OSCILLATION killed (field round 7 debug log: batteries climbed, alternated with their set pieces, cascaded back to idle gear, "back to 975 again"). Two causes, both from an unreliable GetMPMax: (a) FALSE FULL -- a stale-low max made curMP >= maxMP fire below a genuinely full pool, over-equipping batteries into headroom that instantly read as spent; (b) BOUNDARY DUMPS -- a fresh battery sits exactly on the hold boundary, so a few MP of max error released it immediately, dropped max, flipped the next boundary, cascade. Fix: M.mpPoolFull (tests MF*) -- the floored party MP% reads 100 ONLY at cur == max, so fullness is now exact and every equip gate uses it (cur >= max survives just as the no-percent fallback); M.mpReconcileMax (v86) goes LOW-biased -- below full, GetMPMax is ignored outright and max = ceil(cur*100/(mpp+1)), the window's low edge: an under-estimate can only over-hold (release needs surplus + at most ~1% extra spend), never dump a battery early.
                   -- 86: max-MP read RECONCILED against the party MP percent (M.mpReconcileMax, tests MR*). Field round 6's real cause -- not the full-pool gate: Ashita's GetMPMax() went stale across the BLU/WHM gear churn (engine read 975/1052, the client bar said 975/975), so curMP >= maxMP never fired (dead ladder) and small-delta holds read as spent (the "de-equips at times" report). The party MP% rides the same packet family as current MP: mpp >= 100 pins max = cur EXACTLY, otherwise max clamps into [cur*100/(mpp+1), cur*100/mpp]; unreadable cur/mpp degrade to the raw read. playerMP() is the single consumer -- gates, holds, and /dl plan all heal at once.
@@ -1627,25 +1628,34 @@ local function mpLowMap(mpMap, rfMap)
     return low, lowRf;
 end
 
--- THE battery pick for a slot: the ladder's best rung wearable at the level
--- AND not pair-vetoed (v83) -- the ONE resolver the engine, the band builder
--- and /dl plan all share, so what is planned is exactly what equips.
-function M.mpBestPick(mpBest, lslot, level, wornOf)
+-- Every wearable, non-pair-vetoed rung of a slot's battery ladder (v90) --
+-- the multi-rung band builder wants them ALL (a refresh mid-rung like
+-- Bunzi's Hat is its own band; field round 9). The ONE resolver the engine,
+-- the band builder and /dl plan share, so what is planned is what equips.
+function M.mpRungs(mpBest, lslot, level, wornOf)
     if type(mpBest) ~= 'table' then return nil; end
     local cands = mpBest[lslot];
     if type(cands) ~= 'table' then return nil; end
     local list = (cands.name ~= nil) and { cands } or cands;
     local sib = M.MP_PAIR[lslot];
+    local out = nil;
     for _, r in ipairs(list) do
         if type(r) == 'table' and type(r.name) == 'string'
            and (tonumber(r.level) or 0) <= (tonumber(level) or 0) then
             if sib == nil or wornOf == nil
                or not M.mpPairSkip(r.name, wornOf(sib), mpBest[sib]) then
-                return r;
+                out = out or {};
+                out[#out + 1] = r;
             end
         end
     end
-    return nil;
+    return out;
+end
+
+-- The single best rung (compat shim over mpRungs -- tests MPS8*).
+function M.mpBestPick(mpBest, lslot, level, wornOf)
+    local rungs = M.mpRungs(mpBest, lslot, level, wornOf);
+    return (rungs ~= nil) and rungs[1] or nil;
 end
 
 -- The live band context: everything the dispatch pass AND /dl plan need,
@@ -1674,23 +1684,24 @@ function M.mpBands(ctx)
     local hi, slots, sumHead = {}, {}, 0;
     for lslot in pairs(MP_SLOT_CANON) do
         if M.locks[lslot] ~= true then
-            local c = M.mpBestPick(mpBest, lslot, lvl, wornItemName);
-            if c ~= nil then
-                -- Refresh outranks least-diff ("mp recovery is key"): the
-                -- SIGNED delta -- battery Refresh minus the potency piece's
-                -- (augments counted, fmtver 12) -- places the band. Positive
-                -- sinks deep (refresh battery: released last, back first);
-                -- negative floats shallowest (a flat-MP battery that COSTS
-                -- refresh comes off first, so the refresh piece under it
-                -- stays worn through the spend).
-                local crf = (tonumber(c.rf) or rfMap[string.lower(c.name)] or 0);
-                hi[lslot] = { name = c.name, mp = c.mp or 0 };
-                slots[#slots + 1] = { slot = lslot, name = c.name,
-                                      low = low[lslot] or 0, high = c.mp or 0,
-                                      rfDelta = crf - (lowRf[lslot] or 0) };
+            -- ALL wearable rungs (v90): each refresh mid-rung becomes its own
+            -- band, so Bunzi's Hat and Hlr. Bliaut +1 hold their late-order
+            -- places instead of being invisible under the top pick. Refresh
+            -- rides each rung (augments counted, fmtver 12).
+            local rungs = M.mpRungs(mpBest, lslot, lvl, wornItemName);
+            if rungs ~= nil and rungs[1] ~= nil then
+                local rr = {};
+                for _, r in ipairs(rungs) do
+                    rr[#rr + 1] = { name = r.name, mp = r.mp or 0,
+                                    rf = tonumber(r.rf) or rfMap[string.lower(r.name)] or 0 };
+                end
+                hi[lslot] = { name = rungs[1].name, mp = rungs[1].mp or 0 };
+                slots[#slots + 1] = { slot = lslot, rungs = rr,
+                                      low = low[lslot] or 0,
+                                      lowRf = lowRf[lslot] or 0 };
                 local w = wornItemName(lslot);
                 local wmp = (w ~= nil) and (mpMap[string.lower(w)] or 0) or 0;
-                sumHead = sumHead + math.max(0, (c.mp or 0) - wmp);
+                sumHead = sumHead + math.max(0, (rungs[1].mp or 0) - wmp);
             end
         end
     end
@@ -1719,16 +1730,22 @@ function M.mpBands(ctx)
     if wornMax == nil then return nil; end
     local tick = _mpb.tick(resting);
     local bands = _mpb.build(slots, wornMax + sumHead, tick);
-    local bandOf = {};
-    for _, b in ipairs(bands) do bandOf[b.slot] = b; end
-    local target = _mpb.target(bands, cur, function(ls)
-        local w = wornItemName(ls);
-        local h = hi[ls];
-        return w ~= nil and h ~= nil and string.lower(w) == string.lower(h.name);
-    end);
-    return { bands = bands, bandOf = bandOf, target = target, hi = hi,
+    local target = _mpb.target(bands, cur, wornItemName);
+    return { bands = bands, target = target, hi = hi,
              cur = cur, total = wornMax + sumHead, tick = tick, low = low,
              resting = resting, mpMap = mpMap };
+end
+
+-- The band a (slot, piece) pair belongs to -- notes and the plan look
+-- thresholds up by name now that a slot can carry several bands (v90).
+function M.mpBandFind(bands, lslot, name)
+    for _, b in ipairs(bands or {}) do
+        if b.slot == lslot and b.name ~= nil and name ~= nil
+           and string.lower(tostring(b.name)) == string.lower(tostring(name)) then
+            return b;
+        end
+    end
+    return nil;
 end
 
 -- ---------------------------------------------------------------------------
@@ -2189,36 +2206,33 @@ local function equipResolved(s, ctx)
             -- (the release IS letting the plan through); dead zone / no band
             -- -> a worn MP-heavier piece holds, anything else flows.
             local lslot = string.lower(tostring(slot));
-            local tgt = mpCtx.target[lslot];
-            local hi = mpCtx.hi[lslot];
+            local tgt = mpCtx.target[lslot];   -- a rung NAME, false, or nil (v90)
             local worn = wornItemName(slot);
             local wornMP = (worn ~= nil) and (mpMap[string.lower(worn)] or 0) or 0;
             local tgtMP  = mpMap[string.lower(v)] or 0;
-            local b = mpCtx.bandOf[lslot];
-            if tgt == true and hi ~= nil then
-                if worn ~= nil and string.lower(worn) == string.lower(hi.name) then
+            if type(tgt) == 'string' then
+                if worn ~= nil and string.lower(worn) == string.lower(tgt) then
                     if string.lower(worn) ~= string.lower(v) then
-                        W()[slot] = nil;               -- battery worn: the set piece stays out
+                        W()[slot] = nil;               -- the right rung is on: the set piece stays out
+                        local b = M.mpBandFind(mpCtx.bands, lslot, tgt);
                         note('%s=MP-HOLD %s (band: off<=%d)', tostring(slot), worn,
                             (b ~= nil) and b.offAt or 0);
                     end
                 else
                     W()[slot] = nil;                   -- hold as worn until mp-stage writes it
-                    mpUp[#mpUp + 1] = { slot = slot, lslot = lslot, name = hi.name,
-                                        gain = hi.mp - wornMP };
+                    mpUp[#mpUp + 1] = { slot = slot, lslot = lslot, name = tgt,
+                                        gain = (mpMap[string.lower(tgt)] or 0) - wornMP };
                 end
             elseif tgt == false then
                 if worn ~= nil and wornMP > tgtMP and string.lower(worn) ~= string.lower(v) then
-                    note('%s=MP-RELEASE %s -> %s (band: on>=%d)', tostring(slot), worn,
-                        tostring(v), (b ~= nil) and b.onAt or 0);
+                    note('%s=MP-RELEASE %s -> %s', tostring(slot), worn, tostring(v));
                 end
                 -- the set piece flows
             else
-                -- dead zone (keep) or no band: protect a worn MP-heavier piece
+                -- no band for this slot: protect a worn MP-heavier piece
                 if worn ~= nil and wornMP > tgtMP and string.lower(worn) ~= string.lower(v) then
                     W()[slot] = nil;
-                    note('%s=MP-HOLD %s (+%d MP%s)', tostring(slot), worn, wornMP - tgtMP,
-                        (b ~= nil) and string.format('; band %d..%d', b.offAt, b.onAt) or '');
+                    note('%s=MP-HOLD %s (+%d MP)', tostring(slot), worn, wornMP - tgtMP);
                 end
             end
         end
@@ -2238,13 +2252,14 @@ local function equipResolved(s, ctx)
             local covered = {};
             for slot in pairs(s) do covered[string.lower(tostring(slot))] = true; end
             for lslot, canon in pairs(MP_SLOT_CANON) do
+                local want = mpCtx.target[lslot];   -- a rung NAME, false, or nil (v90)
                 if not covered[lslot] and M.locks[lslot] ~= true
-                   and mpCtx.target[lslot] == true then
-                    local hi = mpCtx.hi[lslot];
+                   and type(want) == 'string' then
                     local worn = wornItemName(lslot);
-                    if hi ~= nil and (worn == nil or string.lower(worn) ~= string.lower(hi.name)) then
-                        mpUp[#mpUp + 1] = { slot = canon, lslot = lslot, name = hi.name,
-                                            gain = hi.mp - ((worn ~= nil) and (mpCtx.mpMap[string.lower(worn)] or 0) or 0) };
+                    if worn == nil or string.lower(worn) ~= string.lower(want) then
+                        mpUp[#mpUp + 1] = { slot = canon, lslot = lslot, name = want,
+                                            gain = (mpCtx.mpMap[string.lower(want)] or 0)
+                                                 - ((worn ~= nil) and (mpCtx.mpMap[string.lower(worn)] or 0) or 0) };
                     end
                 end
             end
@@ -2263,7 +2278,7 @@ local function equipResolved(s, ctx)
             end
             for _, up in ipairs(eligible or {}) do
                 W()[up.slot] = up.name;
-                local b = mpCtx.bandOf[up.lslot];
+                local b = M.mpBandFind(mpCtx.bands, up.lslot, up.name);
                 note('%s=MP-EQUIP %s (+%d MP%s)', up.lslot, up.name, up.gain,
                     (b ~= nil) and string.format('; band on>=%d', b.onAt) or '');
             end
