@@ -7478,6 +7478,60 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- UR. useitem exp rings -- Venture Ring is the LAST exp ring (issue #62).
+--     Data-shape pin: name + position (after Echad Ring) + alias resolution.
+--     useitem loads headlessly (its Ashita bindings are pcall-guarded); a tiny
+--     inventory stub reports Echad + Venture owned so the owned-only xp menu
+--     rows surface, and the /dl xp venture command path proves the alias.
+-- ---------------------------------------------------------------------------
+(function()
+    local savedReg = ashita.events.register;
+    local cmdHandler = nil;
+    ashita.events.register = function(evt, name, fn)   -- capture the /dl command handler
+        if evt == 'command' then cmdHandler = fn; end
+    end;
+    package.loaded['dlac\\chatfmt'] = { print = function() end };   -- silence module output
+
+    -- minimal AshitaCore: an inventory holding the two exp rings we assert on,
+    -- plus the chat manager start() queues its /equip through.
+    local nameById = { [1001] = 'Echad Ring', [1002] = 'Venture Ring' };
+    local bag0 = { { Id = 1001, Count = 1, Extra = '' }, { Id = 1002, Count = 1, Extra = '' } };
+    local inv = {
+        GetContainerCountMax = function(self, bag) return (bag == 0) and #bag0 or 0; end,
+        GetContainerItem = function(self, bag, i) return (bag == 0) and bag0[i] or nil; end,
+    };
+    AshitaCore = {
+        GetMemoryManager = function(self) return { GetInventory = function() return inv; end }; end,
+        GetResourceManager = function(self) return {
+            GetItemById = function(self2, id) return { Name = { nameById[id] }, MaxCharges = 0 }; end,
+        }; end,
+        GetChatManager = function(self) return { QueueCommand = function() end }; end,
+    };
+
+    local useitem = dofile('feature/useitem.lua');
+    ashita.events.register = savedReg;   -- restore
+
+    -- data shape: the xp-group menu rows, in menu order (== EXPRINGS order)
+    local xp = {};
+    for _, row in ipairs(useitem.menu()) do
+        if row.grp == 'xp' then xp[#xp + 1] = row; end
+    end
+    local last = xp[#xp];
+    check('UR1 last exp ring is Venture Ring', last and last.name, 'Venture Ring');
+    check('UR1b ...labelled Venture', last and last.label, 'Venture');
+    check('UR1c ...aliased venture (menu cmd)', last and last.cmd, '/dl xp venture');
+    check('UR1d ...positioned after Echad Ring', xp[#xp - 1] and xp[#xp - 1].name, 'Echad Ring');
+
+    -- alias resolution: /dl xp venture resolves the ring and stages it
+    check('UR2 command handler registered', type(cmdHandler), 'function');
+    if cmdHandler ~= nil then cmdHandler({ command = '/dl xp venture' }); end
+    local pend = useitem.pending();
+    check('UR3 /dl xp venture staged the ring', pend and pend.name, 'Venture Ring');
+
+    AshitaCore = nil;   -- leave the harness as we found it
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then
