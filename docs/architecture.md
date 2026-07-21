@@ -248,8 +248,11 @@ The whole automations block, extracted verbatim from triggersui 2026-07-18 (it o
 30 of triggersui's top-level locals and shared nothing with the trigger editor beyond
 the deps table). Owns DERIVING the manifest — staves/obis/Iridescence (ADR 0004),
 MaxMP battery ladders, craft/HELM/fish gear ladders — from the player's bags via
-`deps.ownedList`/`lookupByName`, and writes `<char>\dlac\autogear.lua` (`AUTO_FMT`
-schema; an outdated on-disk manifest self-heals on render). The LAC-state engine
+`deps.ownedList`/`lookupByName` (plus `lookupById` for id-PINNED entries: relic
+stages share one display name, so 'Laevateinn' pins 18994 / 'Tupsimati' 18990 —
+the only stages carrying Iridescence on live; a name-resolved record with the
+wrong id is rejected, never adopted), and writes `<char>\dlac\autogear.lua`
+(`AUTO_FMT` schema; an outdated on-disk manifest self-heals on render). The LAC-state engine
 hot-reloads that file and resolves the `dlac:` virtual markers from it.
 
 gearui builds **one deps table** and hands it to BOTH `trigui.init` and `autoui.init`
@@ -495,9 +498,11 @@ never a hot swap.
    `gFunc.EquipSet`. Locked slots (`/dl lock`) are stripped.
 6. Virtual slot entries: `BuildDynamicSets` encodes `'dlac:AutoStaff|<fallback>'`;
    `equipResolved` splits marker/fallback → `resolveVirtual`: AutoStaff = best tiered-
-   Iridescence staff from autogear.lua (level-gated; ties go to the universal); AutoObi =
-   elemental/universal obi only when the day/weather net is positive. Unresolvable →
-   fallback; no fallback → drop the slot.
+   Iridescence staff from autogear.lua (level-gated; ties go to the universal; since
+   v82 the universal comes from the manifest's `universals` ladder — preference-ordered,
+   first rung usable at the live level, so a level sync falls through to a lower rung);
+   AutoObi = elemental/universal obi only when the day/weather net is positive.
+   Unresolvable → fallback; no fallback → drop the slot.
 7. Per-slot attribution is recorded for `/dl why`.
 
 ## The `/dl` (= `/dlac`) command surface

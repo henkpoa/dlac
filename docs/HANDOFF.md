@@ -196,7 +196,27 @@ agent; the per-repo setup lives in `docs/agents/`.
 - A GM is currently evaluating the addon for server approval — polish requests from
   that channel (like the word-wrap fix) take priority.
 
-## Current state (as of 2026-07-20)
+## Current state (as of 2026-07-21)
+
+- **Iridescence catalog sweep + universals ladder (07-21, engine v82, manifest
+  fmt 10, field UNRUN).** The shipped catalog's `Iridescence` stat is now the
+  tier authority: exactly **15 carriers**, a **+3 tier exists** (Inanna,
+  Keraunos, Gridarvor, and the Lv75 relic stages of Laevateinn/Tupsimati), and
+  **Claustrum carries none on live** (old fallback guess, removed). The
+  `UNIVERSAL` list (ui/automationsui.lua) stays curated for what the catalog
+  can't say: preference order (tier desc, your job's weapon over the
+  Chatoyant/Iridal fallbacks), the `cw` flag (**exactly the six Incursion
+  lines** — Foreshadow +1, Arcanium +1, Claritas, Izuna, Inanna, Keraunos;
+  Gridarvor/Coeus/Kaladanda are "Oboro weapons", all modes — Henrik's ruling),
+  and the **id pin** (relic stages share one name; Laevateinn pins 18994,
+  Tupsimati 18990, resolved via `deps.lookupById`, wrong stage never adopted).
+  CW-only rows display-gate on the affirmative `gamemode.get() == 'CW'`; other
+  modes get a "Show Crystal Warrior gear" peek checkbox (session-only). The
+  manifest's `universals` = preference-ordered ladder of every owned universal;
+  the engine equips the first rung usable at the live level (a level-synced
+  BLM falls through a parked Inanna to Foreshadow +1). Coverage light runs
+  0..5 now (5 = +3 universal). Tests VL8-13, S166-S166c. Commits 397d75b,
+  4af43b5, 5289600, c0ac739.
 
 - **AutoAmmo — the Ammo-slot automation (07-20, engine v73, main-destined).**
   Henrik's COR-friend feature: LAC never re-equips depleted ammo and a stranded
