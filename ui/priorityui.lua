@@ -167,7 +167,9 @@ end
 
 -- Fixed column offsets (absolute from the window's left margin, the
 -- automationsui table convention). The reorder controls sit left of Name.
-local X_NAME, X_HINT, X_STATUS = 66, 190, 430;
+-- Hints are the longest text (multi-surface lists), so Controlled-from sits
+-- LAST and gets the open right edge (Henrik, field round 07-21).
+local X_NAME, X_STATUS, X_HINT = 66, 190, 460;
 
 -- ---------------------------------------------------------------------------
 -- The section. Rendered from automationsui's list view (below the automation
@@ -195,8 +197,8 @@ function M.render(deps)
 
     imgui.Dummy({ 0, 0 });
     imgui.SameLine(X_NAME);   imgui.TextColored(COL_HEADER, 'Claimant');
-    imgui.SameLine(X_HINT);   imgui.TextColored(COL_HEADER, 'Controlled from');
     imgui.SameLine(X_STATUS); imgui.TextColored(COL_HEADER, 'Live status');
+    imgui.SameLine(X_HINT);   imgui.TextColored(COL_HEADER, 'Controlled from');
     imgui.Separator();
 
     local LMB = ImGuiMouseButton_Left or 0;
@@ -248,8 +250,8 @@ function M.render(deps)
         -- the floor color so they are visibly not ordinary claimants.
         local nameCol = r.special and COL_FLOOR or COL_TEXT;
         imgui.SameLine(X_NAME);   imgui.TextColored(nameCol, r.name);
-        imgui.SameLine(X_HINT);   imgui.TextColored(COL_DIM, r.hint);
         imgui.SameLine(X_STATUS); imgui.TextColored(r.active and COL_ON or COL_IDLE, r.status);
+        imgui.SameLine(X_HINT);   imgui.TextColored(COL_DIM, r.hint);
         imgui.PopID();
     end
 
