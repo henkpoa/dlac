@@ -1326,6 +1326,15 @@ local function renderAutomationsQuick()
                 aw.setEnabled(not aw.enabled, select(2, jobFile()));
             end,
         },
+        maxmp = {
+            tip = 'MaxMP: the banded battery ladder -- max-MP gear follows the precomputed\nplan (/dl plan). Auto-disables on job change; re-enable per job.',
+            state = function()
+                return (au.maxmpMode() and 'ON' or 'off'), au.maxmpMode();
+            end,
+            flip = function()
+                au.maxmpToggle();
+            end,
+        },
     };
     for _, r in ipairs(rows) do
         local sw = SWITCH[r.key];

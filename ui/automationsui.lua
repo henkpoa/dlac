@@ -1071,6 +1071,34 @@ end
 
 -- The automation LIST rows -- ONE builder for both surfaces: the Automations
 -- tab below and gearui's Teleports quick menu (M.listRows). MaxMP is
+-- MaxMP mode state, read from the LAC engine's modestate mirror (the
+-- triggersui pattern: <char>\dlac\modestate.lua, re-read at most once a
+-- second). The TOGGLE queues the explicit command -- the LAC state hears
+-- it (cross-state commands always arrive), flips the mode, re-mirrors,
+-- and this display catches up within a beat.
+local _mm = { at = -1, on = false };
+function M.maxmpMode()
+    local now = os.time();
+    if now ~= _mm.at then
+        _mm.at = now;
+        _mm.on = false;
+        pcall(function()
+            local base = deps.charBase();
+            if base == nil then return; end
+            local chunk = loadfile(base .. 'dlac\\modestate.lua');
+            if chunk == nil then return; end
+            local ok, t = pcall(chunk);
+            _mm.on = (ok and type(t) == 'table' and t.maxmp == true);
+        end);
+    end
+    return _mm.on;
+end
+function M.maxmpToggle()
+    local to = M.maxmpMode() and 'off' or 'on';   -- explicit, never a blind flip
+    pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl mode maxmp ' .. to); end);
+    _mm.at = -1;   -- drop the cache: pick up the mirror on the next beat
+end
+
 -- MaxMP graduated to the list 2026-07-21 (Henrik's call, after the
 -- banded-ladder field rounds); its row is appended last below.
 local function buildAutoRows()
@@ -1104,9 +1132,12 @@ local function buildAutoRows()
         local mb = (type(auto.data) == 'table') and auto.data.mpBest or nil;
         local n = 0;
         if type(mb) == 'table' then for _ in pairs(mb) do n = n + 1; end end
+        local on = M.maxmpMode();
+        r.level = on and 1 or 0;
         if n > 0 then
-            r.level = 1;
-            r.txt = string.format('%d battery slots -- /dl mode maxmp', n);
+            r.txt = (on and 'ON' or 'off') .. string.format(' -- %d battery slots', n);
+        elseif on then
+            r.txt = 'ON -- no battery data yet';
         end
     end);
     rows[1].txt = IRID_TXT[rows[1].level];
@@ -1473,7 +1504,20 @@ local function renderAutomations()
             imgui.TextColored(COL_DIM, 'The latent compares your CURRENT MP against 50%% of the BASE pool -- the\nrace/job/sub formula plus merits; gear MP never moves the threshold. (50 is\nthe FIELD-MEASURED live rule -- tick break 357/358 on base 714; the public\nrepo claims 75. docs/server-questions.md #6.) Your NAKED on-screen max can\nread higher than the base: Max MP Boost traits (/SCH30+) and the grip\'s own\nMP+5 sit in the DISPLAYED max only -- do not raise the merit number to make\nBase match the screen. Add the dlac: entry to a set\'s Sub list via + Add;\nthe other items in the list are the fallback.');
         elseif auto.view == 'maxmp' then
             imgui.TextColored(COL_HEADER, 'MaxMP');
-            imgui.SameLine(0, 10); imgui.TextColored(COL_DIM, 'set automation -- /dl mode maxmp; wears batteries at a full pool, releases as spent');
+            imgui.SameLine(0, 10); imgui.TextColored(COL_DIM, 'set automation -- the banded ladder (/dl plan shows it live)');
+            imgui.Spacing();
+            -- The switch: reflects the LIVE mode (the LAC engine's modestate
+            -- mirror) and toggles it with the explicit on/off command.
+            local mmOn = M.maxmpMode();
+            if imgui.Button((mmOn and 'ON' or 'OFF') .. '##maxmptgl', { 64, 22 }) then
+                M.maxmpToggle();
+            end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Toggle the MaxMP mode (= /dl mode maxmp on/off).\nAuto-disables on job change -- re-enable per job.');
+            end
+            imgui.SameLine(0, 8);
+            imgui.TextColored(mmOn and GREEN_OWNED or COL_DIM,
+                mmOn and 'running -- batteries follow the band plan' or 'off');
             imgui.Spacing();
             local mb = (type(auto.data) == 'table' and type(auto.data.mpBest) == 'table') and auto.data.mpBest or {};
             local lvl = mainLevel();
