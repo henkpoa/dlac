@@ -4328,6 +4328,160 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- AR. THE ARBITER, step 1 (engine v97, ADR 0012). One data-driven claim
+--     registry orders every Claim's application, replacing the hardcoded
+--     overlay sequence. This section is the ORDER-PINNING test (a reorder of
+--     the built-in default must edit BOTH the constant and this pin), the pure
+--     resolve core (claims + rank + floor -> winners + attribution), arbstate
+--     sanitization + the Statefile drop policy, MaxMP's rank-consult (ceded
+--     slots), and the ONE deliberate change wired through equipResolved
+--     (AutoAmmo's projectile beats a battery in Ammo).
+-- ---------------------------------------------------------------------------
+(function()
+    -- AR1: the built-in default rank, highest first. Pinned so an accidental
+    -- reorder fails loudly (the POST_ORDER precedent, PL2).
+    local def = dispatchM._arbDefaultOrder;
+    check('AR1 default order exported', type(def), 'table');
+    check('AR1b exact default rank', table.concat(def, '>'),
+        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers');
+    -- AR1c: the ADR 0012 laws the order encodes, checked as adjacency (not prose)
+    local rank = {}; for i, n in ipairs(def) do rank[n] = i; end
+    check('AR1d Pins outrank everything',    rank['Pins'], 1);
+    check('AR1e Locks veto sits under Pins', rank['Locks'] == rank['Pins'] + 1, true);
+    check('AR1f AutoAmmo outranks MaxMP (the deliberate change)', rank['AutoAmmo'] < rank['MaxMP'], true);
+    check('AR1g MaxMP outranks Craft/HELM/Fishing (batteries over their armor)',
+        rank['MaxMP'] < rank['Craft'] and rank['Craft'] < rank['HELM'] and rank['HELM'] < rank['Fishing'], true);
+    check('AR1h Triggers is the floor (last)', rank['Triggers'], #def);
+
+    -- AR2: arbOrder sanitizes. Missing/torn -> default; unknown dropped, missing
+    -- known rows appended; a valid reorder is preserved.
+    check('AR2 nil -> default', table.concat(dispatchM.arbOrder(nil), '>'),
+        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers');
+    check('AR2b no order field -> default', table.concat(dispatchM.arbOrder({ foo = 1 }), '>'),
+        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers');
+    check('AR2c a valid reorder is preserved',
+        table.concat(dispatchM.arbOrder({ order = { 'MaxMP', 'AutoAmmo', 'Pins', 'Locks', 'Craft', 'HELM', 'Fishing', 'Triggers' } }), '>'),
+        'MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Triggers');
+    check('AR2d unknown rows dropped, missing known rows appended in default order',
+        table.concat(dispatchM.arbOrder({ order = { 'Fishing', 'Nonsense', 'Pins' } }), '>'),
+        'Fishing>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Triggers');
+    check('AR2e duplicates collapse',
+        table.concat(dispatchM.arbOrder({ order = { 'Pins', 'Pins', 'AutoAmmo' } }), '>'),
+        'Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Triggers');
+
+    -- AR3: the PURE resolve core -- claims + rank + floor -> winners + by.
+    local order = dispatchM.arbOrder(nil);
+    local floor = { Head = 'Idle Hat', Body = 'Idle Robe', Ammo = 'Iron Arrow' };
+    -- floor only
+    local w0, by0 = dispatchM.arbResolve({}, order, floor);
+    check('AR3 floor flows when no claims', w0.Body, 'Idle Robe');
+    check('AR3b floor attribution', by0.Body, 'Triggers');
+    -- pins over everything (default-order equivalence: pins over craft over floor)
+    local w1, by1 = dispatchM.arbResolve({
+        Pins  = { Head = 'Pinned Crown' },
+        Craft = { Head = 'Craft Cap', Hands = 'Craft Gloves' },
+    }, order, floor);
+    check('AR4 pins win the contested slot',   w1.Head, 'Pinned Crown');
+    check('AR4b attribution names the pin',    by1.Head, 'Pins');
+    check('AR4c craft wins where pins are silent', w1.Hands, 'Craft Gloves');
+    check('AR4d craft over the floor',         by1.Hands, 'Craft');
+    check('AR4e the floor still shows through', w1.Body, 'Idle Robe');
+    -- reorder changes winners: move Craft above Pins and craft takes Head
+    local reordered = dispatchM.arbOrder({ order = { 'Craft', 'Pins', 'Locks', 'AutoAmmo', 'MaxMP', 'HELM', 'Fishing', 'Triggers' } });
+    local w2 = dispatchM.arbResolve({
+        Pins  = { Head = 'Pinned Crown' },
+        Craft = { Head = 'Craft Cap' },
+    }, reordered, floor);
+    check('AR5 a reorder changes the winner (craft over pins)', w2.Head, 'Craft Cap');
+
+    -- AR6: arbCededAbove -- the slots woven MaxMP must not contest. At default
+    -- rank the ceded set is Pins' and AutoAmmo's slots; Craft/HELM/Fishing rank
+    -- BELOW MaxMP so their slots are never ceded (batteries keep overriding
+    -- their armor). Reorder MaxMP above AutoAmmo and Ammo is no longer ceded.
+    local ceded = dispatchM.arbCededAbove({
+        Pins     = { Head = 'Pinned Crown' },
+        AutoAmmo = { Ammo = 'Fire Bomblet' },
+        Craft    = { Hands = 'Craft Gloves', Neck = 'Craft Torque' },
+    }, order, 'MaxMP');
+    check('AR6 Ammo ceded to AutoAmmo',        ceded['ammo'], 'AutoAmmo');
+    check('AR6b Head ceded to Pins',           ceded['head'], 'Pins');
+    check('AR6c Craft slots NOT ceded (below MaxMP)', ceded['hands'], nil);
+    check('AR6d Craft neck NOT ceded',         ceded['neck'], nil);
+    local cededReord = dispatchM.arbCededAbove({
+        AutoAmmo = { Ammo = 'Fire Bomblet' },
+    }, dispatchM.arbOrder({ order = { 'Pins', 'Locks', 'MaxMP', 'AutoAmmo', 'Craft', 'HELM', 'Fishing', 'Triggers' } }), 'MaxMP');
+    check('AR6e reorder MaxMP above AutoAmmo -> Ammo no longer ceded', cededReord['ammo'], nil);
+    check('AR6f who not in the order -> nothing ceded',
+        next(dispatchM.arbCededAbove({ Pins = { Head = 'x' } }, order, 'Nobody')), nil);
+
+    -- AR7: arbstate as a Statefile through the shared reader -- a hand-edited
+    -- reorder changes the order; a torn write drops to the default (the SF
+    -- policy). Driven through _ensureStateFile like the SF section.
+    local esf = dispatchM._ensureStateFile;
+    local function put(p, t) local f = io.open(p, 'w'); f:write(t); f:close(); end
+    dispatchM._charDirOverride = 'tests\\';
+    local cache = { raw = nil, data = nil, lastCheck = -1 };
+    put('tests\\arbstate.lua', 'return { order = { "MaxMP", "AutoAmmo", "Pins", "Locks", "Craft", "HELM", "Fishing", "Triggers" } }');
+    check('AR7 hand-edited reorder is read + sanitized',
+        table.concat(dispatchM.arbOrder(esf(cache, 'arbstate.lua')), '>'),
+        'MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Triggers');
+    cache.lastCheck = -1;
+    put('tests\\arbstate.lua', 'return { order = {');   -- torn write
+    check('AR7b torn write drops to default',
+        table.concat(dispatchM.arbOrder(esf(cache, 'arbstate.lua')), '>'),
+        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers');
+    os.remove('tests\\arbstate.lua');
+    dispatchM._charDirOverride = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- ARE. The Arbiter's ONE deliberate change wired through equipResolved (v97):
+--      with an ON battery band and an AutoAmmo plan both wanting Ammo, the
+--      named projectile wins -- Ammo is ceded to AutoAmmo (ranked above MaxMP),
+--      so woven MaxMP stands down on that slot. Stubs M.mpBands so the MP path
+--      is reachable headless without the whole manifest (the mpbands core has
+--      its own MB* tests); the ceding GUARD is what this exercises.
+-- ---------------------------------------------------------------------------
+(function()
+    local savedAC, savedBands = AshitaCore, dispatchM.mpBands;
+    AshitaCore = nil;                                   -- wornItemName -> nil everywhere
+    for k in pairs(dispatchM.locks) do dispatchM.locks[k] = nil; end
+    dispatchM.modes['maxmp'] = true;
+    -- A band that WANTS a 20-MP battery in Ammo. mpBandFind reads .bands ({} ->
+    -- nil, harmless); mpStickyPairs reads .mpBest (nil-safe for ammo).
+    dispatchM.mpBands = function()
+        return {
+            mpMap = { ['mp bullet'] = 20, ['fire bomblet'] = 0 },
+            target = { ammo = 'MP Bullet' },
+            bands = {}, mpBest = {}, moveYield = false, moving = false, mvMap = {},
+        };
+    end;
+
+    -- No ceding: the battery band takes Ammo (today's behavior).
+    local _, wOn = dispatchM._equipResolved({ Ammo = 'Fire Bomblet' }, { mpCeded = {} });
+    check('ARE1 with no ceding the battery wins Ammo', wOn.Ammo, 'MP Bullet');
+    -- Ammo ceded to AutoAmmo (the default rank): the projectile survives.
+    local _, wCede = dispatchM._equipResolved({ Ammo = 'Fire Bomblet' },
+        { mpCeded = { ammo = 'AutoAmmo' } });
+    check('ARE2 Ammo ceded -> the named projectile wins', wCede.Ammo, 'Fire Bomblet');
+    -- A NON-ceded MP slot still gets its battery (ceding is per-slot, not global).
+    dispatchM.mpBands = function()
+        return {
+            mpMap = { ['mp ring'] = 15, ['plain ring'] = 0 },
+            target = { ring1 = 'MP Ring' },
+            bands = {}, mpBest = {}, moveYield = false, moving = false, mvMap = {},
+        };
+    end;
+    local _, wRing = dispatchM._equipResolved({ Ring1 = 'Plain Ring' },
+        { mpCeded = { ammo = 'AutoAmmo' } });
+    check('ARE3 an un-ceded slot still takes its battery', wRing.Ring1, 'MP Ring');
+
+    dispatchM.modes['maxmp'] = nil;
+    dispatchM.mpBands = savedBands;
+    AshitaCore = savedAC;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- GS. Groups auto-import scanner (Item 1): the pure `scan(fileText) -> candidates, notes`
 --     transform (groupscan.lua). Text-scans a LuaAshitacast file for top-level
 --     `[local] NAME = T?{...}` blocks and surfaces every group-shaped table (a flat string
