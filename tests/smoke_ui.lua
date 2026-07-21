@@ -808,6 +808,50 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- 10. The Arbiter Priority section (ADR 0012, step 2 / issue #49): priorityui is
+--     its OWN module (the helmui/fishui pattern -- keeps automationsui's local
+--     budget clear), rendered from the Automations list view. Same imgui-less
+--     contract: the pure display seams (SOURCE/HINT/statusText/buildRows) sit
+--     above the render guard, and arbwatch (the arbstate writer) loads headless.
+-- ---------------------------------------------------------------------------
+(function()
+    local ok, pui = pcall(require, 'dlac\\ui\\priorityui');
+    check('S190 priorityui loads headless', ok and type(pui) == 'table', true);
+    if not ok then return; end
+    -- render lives BELOW the imgui guard (nil headless, like fishui/ammoui); the
+    -- pure display seams above it are what the smoke can exercise.
+    check('S191 priorityui exposes the pure display seams', type(pui.buildRows), 'function');
+    -- source/control hints exist for all six claimants + the two special rows.
+    check('S192 every row has a source/control hint', (function()
+        for _, n in ipairs({ 'Pins', 'Locks', 'AutoAmmo', 'MaxMP', 'Craft', 'HELM', 'Fishing', 'Triggers' }) do
+            if type(pui.SOURCE[n]) ~= 'string' or pui.SOURCE[n] == '' then return n; end
+            if type(pui.HINT[n]) ~= 'string' or pui.HINT[n] == '' then return n .. ' (hint)'; end
+        end
+        return true;
+    end)(), true);
+    -- statusText reflects live claim state (a claiming row is not "idle/off").
+    check('S193 armed craft reads as claiming', pui.statusText('Craft', { craft = true }), 'claiming: armed');
+    check('S194 AutoAmmo stands down while fishing is live',
+        pui.statusText('AutoAmmo', { ammo = { on = true }, fishing = true }), 'standing down: fishing live');
+    check('S195 the Triggers floor is always on', pui.statusText('Triggers', {}), 'floor -- always on');
+    -- buildRows marks the two special rows non-draggable, the six claimants draggable.
+    local aw = require('dlac\\feature\\arbwatch');
+    local rows = pui.buildRows(aw.defaultOrder(), {});
+    check('S196 buildRows yields all eight rows in order', #rows, 8);
+    check('S197 Locks + Triggers are non-draggable special rows', (function()
+        local byName = {};
+        for _, r in ipairs(rows) do byName[r.name] = r; end
+        return byName.Locks.draggable == false and byName.Locks.special == true
+           and byName.Triggers.draggable == false and byName.Triggers.special == true
+           and byName.AutoAmmo.draggable == true;
+    end)(), true);
+    -- arbwatch loads under the ui tree and its pure move rule holds headless.
+    check('S198 arbwatch loads headless', type(aw), 'table');
+    check('S199 arbwatch.moveClaimant refuses to drag the Triggers floor',
+        aw.moveClaimant(aw.defaultOrder(), 8, -1), nil);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures > 0 then

@@ -4555,6 +4555,66 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- AB. arbwatch -- the ADDON-SIDE writer of the arbstate rank Statefile (ADR
+--     0012, step 2 / issue #49). The engine's read side is AR* above; these pin
+--     the WRITER's pure seams: the default/sanitize reuse the engine's one
+--     truth, serialize round-trips through arbOrder, and moveClaimant encodes
+--     the step-2 drag rules (Locks/Triggers refuse the drag, Triggers stays the
+--     floor, a claimant may cross the Locks veto row).
+-- ---------------------------------------------------------------------------
+(function()
+    local aw = dofile('feature/arbwatch.lua');
+    check('AB0 arbwatch loads', type(aw), 'table');
+
+    -- Default + sanitize delegate to the engine (one vocabulary, no drift).
+    check('AB1 default order matches the engine default',
+        table.concat(aw.defaultOrder(), '>'),
+        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers');
+    check('AB1b defaultOrder is a fresh copy (mutating it does not stick)',
+        (function() local d = aw.defaultOrder(); d[1] = 'X'; return aw.defaultOrder()[1]; end)(), 'Pins');
+    check('AB2 sanitize nil -> default',
+        table.concat(aw.sanitize(nil), '>'),
+        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers');
+    check('AB2b sanitize drops unknown, appends missing',
+        table.concat(aw.sanitize({ order = { 'Fishing', 'Nonsense', 'Pins' } }), '>'),
+        'Fishing>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Triggers');
+
+    -- serialize -> the engine's file shape; round-trips through arbOrder.
+    local txt = aw.serialize({ 'MaxMP', 'AutoAmmo', 'Pins', 'Locks', 'Craft', 'HELM', 'Fishing', 'Triggers' });
+    check('AB3 serialize is a return { order = {...} } file',
+        txt:match('^return { order = {') ~= nil, true);
+    local chunk = (loadstring or load)(txt);
+    check('AB3b serialized file parses', type(chunk), 'function');
+    local roundtrip = dispatchM.arbOrder(chunk());
+    check('AB3c serialize -> arbOrder round-trips a valid reorder',
+        table.concat(roundtrip, '>'),
+        'MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Triggers');
+    check('AB3d serialize skips non-string / empty entries',
+        aw.serialize({ 'Pins', '', 42, 'Triggers' }), 'return { order = { "Pins", "Triggers" } }\n');
+
+    -- moveClaimant: the step-2 drag rules, pure.
+    local def = aw.defaultOrder();   -- Pins Locks AutoAmmo MaxMP Craft HELM Fishing Triggers
+    check('AB4 a claimant moves up one (AutoAmmo #3 -> #2, crossing the Locks veto)',
+        table.concat(aw.moveClaimant(def, 3, -1), '>'),
+        'Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Triggers');
+    check('AB4b a claimant moves down one (AutoAmmo #3 -> #4)',
+        table.concat(aw.moveClaimant(def, 3, 1), '>'),
+        'Pins>Locks>MaxMP>AutoAmmo>Craft>HELM>Fishing>Triggers');
+    check('AB4c the input order is not mutated', table.concat(def, '>'),
+        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers');
+    check('AB5 Locks refuses the drag (special veto row)', aw.moveClaimant(def, 2, 1), nil);
+    check('AB5b Triggers refuses the drag (the floor)', aw.moveClaimant(def, 8, -1), nil);
+    check('AB6 Fishing cannot move down into the Triggers floor (stays last)',
+        aw.moveClaimant(def, 7, 1), nil);
+    check('AB6b Fishing CAN move up (HELM #6 <-> Fishing #7)',
+        table.concat(aw.moveClaimant(def, 7, -1), '>'),
+        'Pins>Locks>AutoAmmo>MaxMP>Craft>Fishing>HELM>Triggers');
+    check('AB7 out-of-range / bad args are nil, never a throw',
+        aw.moveClaimant(def, 1, -1) == nil and aw.moveClaimant(def, 0, 1) == nil
+        and aw.moveClaimant(def, 3, 0) == nil and aw.moveClaimant(nil, 1, 1) == nil, true);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- GS. Groups auto-import scanner (Item 1): the pure `scan(fileText) -> candidates, notes`
 --     transform (groupscan.lua). Text-scans a LuaAshitacast file for top-level
 --     `[local] NAME = T?{...}` blocks and surfaces every group-shaped table (a flat string
