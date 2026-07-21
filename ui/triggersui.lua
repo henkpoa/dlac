@@ -46,6 +46,9 @@ local hasGroupScan   = _gsok and type(gscan) == 'table';
 -- this install -- probe it (hard rule 2: presence proves nothing, but absence is certain), and
 -- degrade to a single-line box with a visible note rather than silently disabling the feature.
 local hasMultiline = hasImgui and type(imgui.InputTextMultiline) == 'function';
+-- Clipboard for View text / Copy / Copy all (issue #66; the profilesmenu "Copy all" precedent).
+-- Probe it (hard rule 2); degrade to a selectable box + a note when the build lacks it.
+local hasClipboard = hasImgui and type(imgui.SetClipboardText) == 'function';
 local hasBrowse   = _apok and type(ap) == 'table'
     and _spok and type(spellDB) == 'table' and _abok and type(abilityDB) == 'table';
 local hasBlueprints = _bpok and type(bp) == 'table';
@@ -417,6 +420,11 @@ local bpUI = {
     status = '', statusErr = false, statusAt = 0,
     renaming = nil, renameBuf = { '' }, _openRename = false,
     delArm = nil,
+    -- Text sharing (issue #66, slice 2). View text: the popup shows ONE entry's blob (viewIdx set)
+    -- or the WHOLE library (viewIdx == 'all', Copy all); viewText is the cached blob. Import: a
+    -- paste box with a live-parsed plan (created/collided split) awaiting the overwrite confirm.
+    viewIdx = nil, viewText = '', viewBuf = { '' }, _openView = false,
+    importText = { '' }, importPlan = nil, importParsedLen = -1, _openImport = false,
 };
 local function bpSetStatus(msg, isErr)
     bpUI.status = msg or ''; bpUI.statusErr = (isErr == true); bpUI.statusAt = os.clock();
@@ -2664,6 +2672,164 @@ local function renderBpRenamePopup()
     imgui.EndPopup();
 end
 
+-- ---------------------------------------------------------------------------
+-- Text sharing (issue #66, slice 2). View text / Copy (one entry), Copy all (the whole
+-- library), and paste-import -- the profilesmenu "view text + Copy all" and Groups-import
+-- classify/apply precedents. The shareable text is the SAME `blueprints v1` blob the library
+-- file uses (bp.serialize), so a single Blueprint and the whole library render one way.
+-- ---------------------------------------------------------------------------
+
+-- Open the View-text popup for entry #idx (a one-entry blob) or the whole library (idx == 'all',
+-- Copy all). Serializes ONCE, into bpUI.viewText; the popup rebuilds a copy buffer each frame.
+local function bpOpenView(idx)
+    local pretty = hasDispatch and dsp.PRETTY_KEY or nil;
+    local text = '';
+    local ok = pcall(function()
+        if idx == 'all' then text = bp.serialize(bpUI.lib or {}, pretty);
+        else text = bp.serializeOne((bpUI.lib or {})[idx], pretty); end
+    end);
+    if not ok then bpSetStatus('Could not render the Blueprint text.', true); return; end
+    bpUI.viewIdx, bpUI.viewText, bpUI._openView = idx, text, true;
+end
+
+-- Put `text` on the clipboard (guarded), report via the section status line.
+local function bpCopyToClipboard(text, receipt)
+    if not hasClipboard then bpSetStatus('No clipboard API in this build -- select the text and Ctrl+C.', true); return; end
+    pcall(function() imgui.SetClipboardText(text or ''); end);
+    bpSetStatus(receipt, false);
+end
+
+-- The View-text popup: a selectable box of the blob (one entry or the whole library) with a
+-- one-click Copy. A copy source, never an editor -- the buffer is rebuilt every frame.
+local function renderBpViewPopup()
+    if not imgui.BeginPopup('##dlac_bpview') then return; end
+    local all = (bpUI.viewIdx == 'all');
+    imgui.TextColored(COL_HEADER, all and 'Copy all -- the whole Blueprint library' or 'Blueprint text');
+    imgui.TextColored(COL_DIM, 'Send this text to a friend -- they paste it under Blueprints > Import from text.');
+    imgui.Separator();
+    local txt = bpUI.viewText or '';
+    bpUI.viewBuf[1] = txt;                                 -- rebuilt each frame: a copy source
+    if hasMultiline then
+        imgui.InputTextMultiline('##bpviewtext', bpUI.viewBuf, #txt + 64, { 540, 220 });
+    else
+        imgui.PushItemWidth(540);
+        imgui.InputText('##bpviewtext', bpUI.viewBuf, #txt + 64);
+        imgui.PopItemWidth();
+    end
+    if hasClipboard then
+        if imgui.Button(all and 'Copy all to clipboard##bpviewcopy' or 'Copy to clipboard##bpviewcopy', { 0, 24 }) then
+            bpCopyToClipboard(txt, all and 'Copied the whole library to the clipboard.' or 'Copied the Blueprint to the clipboard.');
+        end
+        if imgui.IsItemHovered() then imgui.SetTooltip('Puts the text on the clipboard in one click.'); end
+        imgui.SameLine(0, 8);
+    else
+        imgui.TextColored(COL_DIM, '(no clipboard API -- select the text and Ctrl+C)');
+    end
+    if imgui.Button('Close##bpviewclose', { 90, 24 }) then imgui.CloseCurrentPopup(); end
+    imgui.EndPopup();
+end
+
+-- Apply the pending import plan into the live library and save. Overwrite happens only on the
+-- confirm path (overwrite == true); the default refuses collisions. Mirrors applyImportPlan.
+local function bpApplyImport(overwrite)
+    local plan = bpUI.importPlan;
+    if plan == nil or bpUI.lib == nil then return; end
+    local sum = bp.applyImport(bpUI.lib, plan.entries, overwrite);
+    plan.pending = false;
+    local parts = {};
+    if sum.created > 0 then parts[#parts + 1] = sum.created .. ' created'; end
+    if sum.updated > 0 then parts[#parts + 1] = sum.updated .. ' overwritten'; end
+    if sum.refused > 0 then parts[#parts + 1] = sum.refused .. ' skipped (name already in your library)'; end
+    if #parts == 0 then parts[#parts + 1] = 'nothing changed'; end
+    if (sum.created + sum.updated) > 0 then
+        if bpSave() then bpSetStatus('Imported: ' .. table.concat(parts, ', ') .. '.', false);
+        else bpLoad(true); end                             -- save failed: reload the on-disk truth
+    else
+        bpSetStatus('Import: ' .. table.concat(parts, ', ') .. '.', sum.refused > 0);
+    end
+end
+
+-- The paste-import popup: a box for a friend's Blueprint blob, live-parsed to a preview (entries
+-- listed with handler + condition summary, created vs collide split) BEFORE commit. A collision
+-- requires the explicit overwrite confirm (the Groups-import law); no collisions -> import at once.
+local function renderBpImportPopup()
+    imgui.SetNextWindowSizeConstraints({ 520, 0 }, { 680, 560 });
+    if not imgui.BeginPopup('##dlac_bpimport') then return; end
+    imgui.TextColored(COL_HEADER, 'Import Blueprints from text');
+    imgui.TextColored(COL_DIM, 'Paste a friend\'s Blueprint text (one entry or a whole library). It parses live below.');
+    imgui.TextColored(COL_DIM, 'Referenced sets / Modes / Groups you lack import fine -- the warning appears when you Stamp.');
+
+    if hasMultiline then
+        imgui.InputTextMultiline('##bpimptext', bpUI.importText, 262144, { 540, 130 });
+    else
+        imgui.TextColored(COL_SCORE, '(this build has no multiline box -- paste as ONE line)');
+        imgui.PushItemWidth(540);
+        imgui.InputText('##bpimptext', bpUI.importText, 262144);
+        imgui.PopItemWidth();
+    end
+
+    -- Live parse: re-run only when the text length changed (cheap frame-to-frame).
+    if bpUI.importParsedLen ~= #(bpUI.importText[1] or '') then
+        bpUI.importParsedLen = #(bpUI.importText[1] or '');
+        bpUI.importPlan = nil;
+        local text = bpUI.importText[1] or '';
+        if text:gsub('%s+', '') ~= '' then
+            local prev, perr = bp.previewImport(text, bpUI.lib or {});
+            if prev == nil then
+                bpUI.importPlan = { err = perr or 'could not parse the pasted text' };
+            else
+                bpUI.importPlan = { entries = prev.entries, created = prev.created,
+                                    collided = prev.collided, pending = true };
+            end
+        end
+    end
+
+    local plan = bpUI.importPlan;
+    if plan ~= nil and plan.err ~= nil then
+        imgui.Separator();
+        imgui.TextColored(COL_ERR, esc('Not a Blueprint blob (yet): ' .. tostring(plan.err)));
+    elseif plan ~= nil and plan.entries ~= nil then
+        imgui.Separator();
+        imgui.TextColored(COL_HEADER, plan.pending and string.format('Preview -- %d entr%s', #plan.entries, (#plan.entries == 1) and 'y' or 'ies') or 'Imported');
+        for _, e in ipairs(plan.entries) do
+            local summary = '';
+            pcall(function() summary = bp.emitRule(e.rule, hasDispatch and dsp.PRETTY_KEY or nil); end);
+            imgui.TextColored(COL_SCORE, esc('  ' .. tostring(e.name)));
+            imgui.SameLine(0, 8);
+            imgui.TextColored(COND_COLORS.mode or COL_HEADER, esc(tostring(e.handler)));
+            imgui.TextColored(COL_DIM, esc('      ' .. summary));
+        end
+        if #plan.created > 0 then
+            imgui.TextColored(COL_USABLE, string.format('create %d: %s', #plan.created, esc(table.concat(plan.created, ', '))));
+        end
+        if #plan.collided > 0 then
+            imgui.TextColored(COL_ERR, string.format('collide %d (name already in your library): %s', #plan.collided, esc(table.concat(plan.collided, ', '))));
+        end
+        if plan.pending then
+            if #plan.collided == 0 then
+                if imgui.Button('Import##bpimpgo', { 0, 24 }) then bpApplyImport(false); end
+                if imgui.IsItemHovered() then imgui.SetTooltip('Add these Blueprints to your library and save.'); end
+            else
+                if imgui.Button('Import new only##bpimpnew', { 0, 24 }) then bpApplyImport(false); end
+                if imgui.IsItemHovered() then imgui.SetTooltip('Add only the non-colliding Blueprints; keep your existing ones.'); end
+                imgui.SameLine(0, 6);
+                if ImGuiCol_Button ~= nil then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
+                if imgui.Button(string.format('Overwrite %d & import##bpimpover', #plan.collided), { 0, 24 }) then bpApplyImport(true); end
+                if ImGuiCol_Button ~= nil then imgui.PopStyleColor(1); end
+                if imgui.IsItemHovered() then imgui.SetTooltip('Replace the named existing Blueprint(s) with the pasted ones, and import the rest.'); end
+            end
+            imgui.SameLine(0, 6);
+        end
+        if imgui.Button('Clear##bpimpclr', { 0, 24 }) then
+            bpUI.importText[1] = ''; bpUI.importPlan = nil; bpUI.importParsedLen = -1;
+        end
+    else
+        imgui.Separator();
+        if imgui.Button('Close##bpimpclose', { 90, 24 }) then imgui.CloseCurrentPopup(); end
+    end
+    imgui.EndPopup();
+end
+
 -- One library entry box: name + handler on the left, the rule text dim below; Stamp / Edit /
 -- rename / delete on the right. Returns nothing (actions fire in place).
 local function renderBlueprintBox(i, e)
@@ -2690,6 +2856,19 @@ local function renderBlueprintBox(i, e)
     imgui.SameLine(0, 6);
     if imgui.SmallButton('Edit##bpedit' .. id) then bpEdit(i); end
     if imgui.IsItemHovered() then imgui.SetTooltip('Edit this Blueprint in the rule builder (the same editor as the Triggers tab).'); end
+    imgui.SameLine(0, 6);
+    if imgui.SmallButton('View text##bpview' .. id) then bpOpenView(i); end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Show this Blueprint\'s shareable text with a one-click Copy --\npaste it to a friend (they use Import from text).'); end
+    if hasClipboard then
+        imgui.SameLine(0, 6);
+        if imgui.SmallButton('Copy##bpcopy' .. id) then
+            local pretty = hasDispatch and dsp.PRETTY_KEY or nil;
+            local text = '';
+            pcall(function() text = bp.serializeOne(e, pretty); end);
+            bpCopyToClipboard(text, string.format('Copied "%s" to the clipboard.', e.name));
+        end
+        if imgui.IsItemHovered() then imgui.SetTooltip('Copy this Blueprint\'s text straight to the clipboard.'); end
+    end
     imgui.SameLine(0, 6);
     if imgui.SmallButton('rename##bpren' .. id) then
         bpUI.renaming = i; bpUI.renameBuf[1] = e.name; bpUI._openRename = true;
@@ -2746,9 +2925,31 @@ function M.renderBlueprints(job, level)
     imgui.Spacing();
     imgui.TextColored(COL_DIM, 'Save any rule as a Blueprint with the "bp" button on its row (any handler).');
     imgui.TextColored(COL_DIM, 'Then Stamp it onto whatever job you are on -- the rule arrives without rebuilding it.');
+
+    -- Section-level text sharing (issue #66): Copy all (the whole library) + Import from text.
+    local lib = bpUI.lib or {};
+    imgui.Spacing();
+    if #lib > 0 then
+        if imgui.SmallButton('Copy all (view text)##bpcopyall') then bpOpenView('all'); end
+        if imgui.IsItemHovered() then imgui.SetTooltip('View the whole library as one blob with a one-click Copy all --\nshare your entire protection kit in a single paste.'); end
+        if hasClipboard then
+            imgui.SameLine(0, 6);
+            if imgui.SmallButton('Copy all to clipboard##bpcopyallclip') then
+                local pretty = hasDispatch and dsp.PRETTY_KEY or nil;
+                local text = '';
+                pcall(function() text = bp.serialize(lib, pretty); end);
+                bpCopyToClipboard(text, string.format('Copied all %d Blueprint%s to the clipboard.', #lib, (#lib == 1) and '' or 's'));
+            end
+            if imgui.IsItemHovered() then imgui.SetTooltip('Put the whole library on the clipboard in one click.'); end
+        end
+        imgui.SameLine(0, 12);
+    end
+    if imgui.SmallButton('Import from text...##bpimport') then
+        bpUI.importText[1] = ''; bpUI.importPlan = nil; bpUI.importParsedLen = -1; bpUI._openImport = true;
+    end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Paste a friend\'s Blueprint text -- see what it contains before importing.'); end
     imgui.Spacing();
 
-    local lib = bpUI.lib or {};
     if #lib == 0 then
         imgui.TextColored(COL_DIM, '(no Blueprints yet -- save a rule with its "bp" button)');
     end
@@ -2756,6 +2957,10 @@ function M.renderBlueprints(job, level)
 
     if bpUI._openRename then imgui.OpenPopup('##dlac_bprename'); bpUI._openRename = false; end
     renderBpRenamePopup();
+    if bpUI._openView then imgui.OpenPopup('##dlac_bpview'); bpUI._openView = false; end
+    renderBpViewPopup();
+    if bpUI._openImport then imgui.OpenPopup('##dlac_bpimport'); bpUI._openImport = false; end
+    renderBpImportPopup();
 end
 
 function M.render(job, level)
