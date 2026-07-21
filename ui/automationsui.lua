@@ -119,7 +119,7 @@ local UNIVERSAL = {
 -- Manifest schema version: bump when autoCommit writes NEW fields. An on-disk
 -- manifest with an older fmtver self-heals (renderAutomations triggers a rescan)
 -- so a dlac update never needs a manual "Rescan owned gear" click.
-local AUTO_FMT = 11;   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked; 5: craft ladders; 6: skill-up fillers in hq/nq; 7: helm ladders + hat map; 8: fish ladders; 9: oneiros grip + mpMerits; 10: universals ladder; 11: Refresh rides mp/mpBest (rf map + rung rf -- the banded ladder sinks refresh batteries deep)
+local AUTO_FMT = 12;   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked; 5: craft ladders; 6: skill-up fillers in hq/nq; 7: helm ladders + hat map; 8: fish ladders; 9: oneiros grip + mpMerits; 10: universals ladder; 11: Refresh rides mp/mpBest (rf map + rung rf); 12: AUGMENTS counted -- MP and Refresh deltas from your actual bag copies (augments.ownedAugStats) fold into mp/rf (field: Cleric's Bliaut +1 carries Refresh+1 native AND +1 augmented)
 
 local auto = { data = nil, loadedFor = nil, status = '' };
 
@@ -240,6 +240,14 @@ local function autoCommit()
         if type(deps.ownedList) ~= 'function' then return; end
         local counts = (type(deps.ownedCounts) == 'function') and deps.ownedCounts() or nil;
         local lvl = mainLevel();
+        -- Augment deltas from the player's ACTUAL bag copies (fmtver 12) --
+        -- the same decoder the set scoring uses. Headless / no augments =
+        -- nil, every delta reads 0.
+        local augStats = nil;
+        pcall(function()
+            local aug = require('dlac\\feature\\augments');
+            if type(aug.ownedAugStats) == 'function' then augStats = aug.ownedAugStats(); end
+        end);
         local bySlot = {};   -- gear-slot key -> candidates { name, mp, level, rf }
         for _, rec in ipairs(deps.ownedList() or {}) do
             -- LEVEL-EFFECTIVE stats via THE central resolver (levelstats.effective):
@@ -248,17 +256,24 @@ local function autoCommit()
             local st = (hasLScale and type(lscale.effective) == 'function')
                 and lscale.effective(rec, lvl) or rec.Stats;
             if type(st) ~= 'table' then st = nil; end
+            -- Augment deltas for THIS record's owned copy (fmtver 12): MP and
+            -- Refresh from the player's private augments count exactly like
+            -- native stats (field: Cleric's Bliaut +1 = Refresh 1 native + 1
+            -- augmented = 2).
+            local as = (augStats ~= nil and rec.Id ~= nil) and augStats[rec.Id] or nil;
+            local augMP = (as ~= nil) and (tonumber(as.MP) or 0) or 0;
+            local augRf = (as ~= nil) and (tonumber(as.Refresh) or 0) or 0;
             -- Refresh map (fmtver 11): EVERY owned piece with Refresh, MP or not
             -- -- the band builder compares battery refresh against the potency
-            -- piece's ("Refresh > least mp diff": such batteries sink deep and
-            -- come back FIRST as MP recovers).
-            local rfv = (st ~= nil) and (tonumber(st.Refresh) or 0) or 0;
+            -- piece's ("Refresh > least mp diff": refresh pieces release LAST
+            -- and return FIRST -- mp recovery is key).
+            local rfv = ((st ~= nil) and (tonumber(st.Refresh) or 0) or 0) + augRf;
             if rfv > 0 and rec.Name ~= nil then
                 local rk = string.lower(rec.Name);
                 if (rf[rk] or 0) < rfv then rf[rk] = rfv; end
             end
             -- Convert counts: 25 HP -> MP is +25 max MP for this mode's purposes.
-            local v = (st ~= nil) and ((tonumber(st.MP) or 0) + (tonumber(st.ConvertHPtoMP) or 0)) or 0;
+            local v = ((st ~= nil) and ((tonumber(st.MP) or 0) + (tonumber(st.ConvertHPtoMP) or 0)) or 0) + augMP;
             if v > 0 and rec.Name ~= nil then
                 local k = string.lower(rec.Name);
                 if (mp[k] or 0) < v then mp[k] = v; end   -- hold map: unfiltered (worn = legal)

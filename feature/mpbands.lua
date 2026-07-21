@@ -31,12 +31,19 @@ local M = {};
 -- the recovery margin for the current state (standing refresh vs resting).
 --
 -- Returns bands ordered smallest difference first (= first OUT to potency,
--- the lowest-hanging fruit; the big battery releases last) -- EXCEPT that a
--- band whose battery carries REFRESH the potency piece lacks (s.refresh)
--- outranks the diff order entirely and sinks to the DEEP end of the ladder:
--- released last while spending, back on FIRST as MP recovers, so recovery
--- accelerates as early as possible (Henrik's 2026-07-21 night addendum:
--- "Refresh > least mp diff"). Each band carries Henrik's data points:
+-- the lowest-hanging fruit; the big battery releases last) -- EXCEPT that
+-- REFRESH outranks the diff order entirely ("Refresh > least mp diff";
+-- refresh pieces release LAST and return FIRST -- mp recovery is key).
+-- s.rfDelta = battery Refresh minus the potency piece's (augments counted):
+--   > 0  the battery ADDS refresh -> sinks DEEP (released last, back on
+--        first as MP recovers);
+--   < 0  the battery COSTS refresh (field: Bunzi's Robe 50 MP flat over
+--        Cleric's Bliaut +1 with Refresh 2) -> floats SHALLOWEST (first
+--        out, last back on), so the refresh piece under it stays worn
+--        through the spend and returns the moment the band drops;
+--   = 0  plain diff order.
+-- (s.refresh = true is accepted as a legacy alias for rfDelta 1.)
+-- Each band carries Henrik's data points:
 --   diff     = high - low
 --   lastMax  = max MP while this piece (and everything after it) is worn
 --   endMax   = max MP once this piece is out (= the next band's lastMax)
@@ -54,15 +61,19 @@ function M.build(slots, total, tick)
         if type(s) == 'table' and s.slot ~= nil then
             local diff = (tonumber(s.high) or 0) - (tonumber(s.low) or 0);
             if diff > 0 then
+                local rd = tonumber(s.rfDelta) or ((s.refresh == true) and 1 or 0);
                 bands[#bands + 1] = { slot = tostring(s.slot), name = s.name,
                                       low = tonumber(s.low) or 0,
                                       high = tonumber(s.high) or 0, diff = diff,
-                                      refresh = (s.refresh == true) };
+                                      rfDelta = rd, refresh = (rd > 0) };
             end
         end
     end
     table.sort(bands, function(a, b)
-        if a.refresh ~= b.refresh then return not a.refresh; end   -- refresh sinks deep
+        -- refresh-cost floats shallow (0), plain by diff (1), refresh-gain deep (2)
+        local ga = (a.rfDelta < 0) and 0 or ((a.rfDelta > 0) and 2 or 1);
+        local gb = (b.rfDelta < 0) and 0 or ((b.rfDelta > 0) and 2 or 1);
+        if ga ~= gb then return ga < gb; end
         if a.diff ~= b.diff then return a.diff < b.diff; end
         return a.slot < b.slot;
     end);

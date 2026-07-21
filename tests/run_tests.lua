@@ -780,6 +780,23 @@ check('MB11 resting bucket separate', mb.tick(true), 35);
 mb.reset();
 mb.observe(900, false); mb.observe(910, false);
 check('MB11b resting falls back to standing measure', mb.tick(true), 10);
+
+-- MB12: the SIGNED refresh delta ("mp recovery is key", engine v89). Field
+-- pin: Bunzi's Robe (flat 50 MP) over Cleric's Bliaut +1 (Refresh 2 with
+-- augments) = rfDelta -2 -> that band floats SHALLOWEST (first out, last
+-- back) even with the biggest diff, so the refresh piece stays worn through
+-- the spend; a refresh-GAIN battery still sinks deepest.
+local signed = mb.build({
+    { slot = 'body', name = 'Bunzi\'s Robe',  low = 29, high = 50, rfDelta = -2 },
+    { slot = 'feet', name = 'Boots',          low = 5,  high = 15 },
+    { slot = 'neck', name = 'Refresh Torque', low = 0,  high = 10, rfDelta = 1 },
+}, 1100, 15);
+check('MB12 refresh-cost floats shallowest',  signed[1].slot, 'body');
+check('MB12b plain diff order in the middle', signed[2].slot, 'feet');
+check('MB12c refresh-gain sinks deepest',     signed[3].slot, 'neck');
+check('MB12d legacy refresh=true alias sinks deep',
+    mb.build({ { slot = 'a', low = 0, high = 10, refresh = true },
+               { slot = 'b', low = 0, high = 5 } }, 100, 0)[2].slot, 'a');
 end)();
 
 -- ---------------------------------------------------------------------------

@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 88;   -- 88: maxmp v2 -- THE BANDED LADDER (Henrik's 2026-07-21 redesign, docs/design/maxmp-mode.md "v2"; feature/mpbands.lua is the pure core, tests MB*). Dynamic per-dispatch marginal decisions retired: M.mpBands precomputes per-slot bands (LOW = least MP across trigger-reachable sets, HIGH = the pair-veto-aware battery pick via the shared M.mpBestPick) chained into absolute thresholds -- unequip at endMax - tick, re-equip EARLY at lastMax - tick so the next recovery tick lands into the headroom; smallest difference releases first EXCEPT refresh batteries sink deep ("Refresh > least mp diff", manifest fmtver 11 carries rf); hysteresis is each band's own width, so the 15s cooldown is gone. CURRENT MP is the only live input (the one read that never lies); the TOTAL anchor is nativemp base + merits + worn MP, offset-corrected at any true-full MP%. Ticks are MEASURED (median of observed rises, standing/resting buckets, fed by the 0.4s engine tick), never modeled from traits. Batch swaps: every eligible ON-candidate lands in one dispatch through the v78 RSlot guard. v76-v87's pure rules stay exported for compatibility.
+M.VERSION = 89;   -- 89: augments counted + SIGNED refresh delta (field round 8, Henrik: "include augments as with gearwatch" / "refresh pieces release last, return first -- mp recovery is key"). The manifest folds each owned copy's private-augment MP and Refresh into mp/rf (augments.ownedAugStats, fmtver 12 -- Cleric's Bliaut +1 = Refresh 1 native + 1 augmented = 2), and the band order runs on rfDelta = battery Refresh - potency Refresh: positive sinks DEEP (refresh battery back first as MP recovers), NEGATIVE floats SHALLOWEST (a flat-MP battery that would COST refresh -- Bunzi's Robe over Cleric's +1 -- comes off first and returns last, keeping the refresh piece worn through the spend). /dl plan tags [refresh] / [refresh-cost]. Tests MB12*.
+                  -- 88: maxmp v2 -- THE BANDED LADDER (Henrik's 2026-07-21 redesign, docs/design/maxmp-mode.md "v2"; feature/mpbands.lua is the pure core, tests MB*). Dynamic per-dispatch marginal decisions retired: M.mpBands precomputes per-slot bands (LOW = least MP across trigger-reachable sets, HIGH = the pair-veto-aware battery pick via the shared M.mpBestPick) chained into absolute thresholds -- unequip at endMax - tick, re-equip EARLY at lastMax - tick so the next recovery tick lands into the headroom; smallest difference releases first EXCEPT refresh batteries sink deep ("Refresh > least mp diff", manifest fmtver 11 carries rf); hysteresis is each band's own width, so the 15s cooldown is gone. CURRENT MP is the only live input (the one read that never lies); the TOTAL anchor is nativemp base + merits + worn MP, offset-corrected at any true-full MP%. Ticks are MEASURED (median of observed rises, standing/resting buckets, fed by the 0.4s engine tick), never modeled from traits. Batch swaps: every eligible ON-candidate lands in one dispatch through the v78 RSlot guard. v76-v87's pure rules stay exported for compatibility.
                   -- 87: the equip-release OSCILLATION killed (field round 7 debug log: batteries climbed, alternated with their set pieces, cascaded back to idle gear, "back to 975 again"). Two causes, both from an unreliable GetMPMax: (a) FALSE FULL -- a stale-low max made curMP >= maxMP fire below a genuinely full pool, over-equipping batteries into headroom that instantly read as spent; (b) BOUNDARY DUMPS -- a fresh battery sits exactly on the hold boundary, so a few MP of max error released it immediately, dropped max, flipped the next boundary, cascade. Fix: M.mpPoolFull (tests MF*) -- the floored party MP% reads 100 ONLY at cur == max, so fullness is now exact and every equip gate uses it (cur >= max survives just as the no-percent fallback); M.mpReconcileMax (v86) goes LOW-biased -- below full, GetMPMax is ignored outright and max = ceil(cur*100/(mpp+1)), the window's low edge: an under-estimate can only over-hold (release needs surplus + at most ~1% extra spend), never dump a battery early.
                   -- 86: max-MP read RECONCILED against the party MP percent (M.mpReconcileMax, tests MR*). Field round 6's real cause -- not the full-pool gate: Ashita's GetMPMax() went stale across the BLU/WHM gear churn (engine read 975/1052, the client bar said 975/975), so curMP >= maxMP never fired (dead ladder) and small-delta holds read as spent (the "de-equips at times" report). The party MP% rides the same packet family as current MP: mpp >= 100 pins max = cur EXACTLY, otherwise max clamps into [cur*100/(mpp+1), cur*100/mpp]; unreadable cur/mpp degrade to the raw read. playerMP() is the single consumer -- gates, holds, and /dl plan all heal at once.
                   -- 85: /dl plan applies the paired-slot veto (v83's rule) -- the plan advertised 'ear1: Loquac. Earring +20 gain' while the live engine vetoes that pick (single copy worn in ear2), so the overview promised an equip that never happens. The plan's pick now walks the ladder past pair-vetoed rungs exactly like the engine (falls to the next wearable rung, tags the row '[pair: X worn in ear2]'; a slot whose every rung is vetoed says so; dup-owned stays advertised). Tests MPS8*. Display only -- dispatch rules untouched.
@@ -1436,9 +1437,12 @@ function M.mpPlanLines(mpCtx, wornOf)
         elseif cur >= (b.onAt or 0) then state = isOn and 'ON (worn)' or 'ON (equipping)';
         elseif cur <= (b.offAt or 0) then state = isOn and 'RELEASING' or 'off';
         else state = isOn and 'holding (dead zone)' or 'off (dead zone)'; end
+        local rtag = '';
+        if (tonumber(b.rfDelta) or 0) > 0 then rtag = ' [refresh]';
+        elseif (tonumber(b.rfDelta) or 0) < 0 then rtag = ' [refresh-cost]'; end
         lines[#lines + 1] = string.format('%d. %s: %s (%d->%d, diff %d)%s   off<=%d  on>=%d   -- %s',
             i, b.slot, tostring(b.name), b.low or 0, b.high or 0, b.diff or 0,
-            b.refresh and ' [refresh]' or '', b.offAt or 0, b.onAt or 0, state);
+            rtag, b.offAt or 0, b.onAt or 0, state);
     end
     if #mpCtx.bands == 0 then
         lines[#lines + 1] = '(no bands: every trigger set already wears its slot\'s best battery, or no batteries are owned)';
@@ -1672,14 +1676,18 @@ function M.mpBands(ctx)
         if M.locks[lslot] ~= true then
             local c = M.mpBestPick(mpBest, lslot, lvl, wornItemName);
             if c ~= nil then
-                -- Refresh outranks least-diff (Henrik's night addendum): a
-                -- battery whose Refresh the potency piece lacks sinks DEEP --
-                -- released last, back on first as MP recovers.
+                -- Refresh outranks least-diff ("mp recovery is key"): the
+                -- SIGNED delta -- battery Refresh minus the potency piece's
+                -- (augments counted, fmtver 12) -- places the band. Positive
+                -- sinks deep (refresh battery: released last, back first);
+                -- negative floats shallowest (a flat-MP battery that COSTS
+                -- refresh comes off first, so the refresh piece under it
+                -- stays worn through the spend).
                 local crf = (tonumber(c.rf) or rfMap[string.lower(c.name)] or 0);
                 hi[lslot] = { name = c.name, mp = c.mp or 0 };
                 slots[#slots + 1] = { slot = lslot, name = c.name,
                                       low = low[lslot] or 0, high = c.mp or 0,
-                                      refresh = (crf > 0) and ((lowRf[lslot] or 0) <= 0) };
+                                      rfDelta = crf - (lowRf[lslot] or 0) };
                 local w = wornItemName(lslot);
                 local wmp = (w ~= nil) and (mpMap[string.lower(w)] or 0) or 0;
                 sumHead = sumHead + math.max(0, (c.mp or 0) - wmp);
