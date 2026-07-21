@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 98;   -- 98: THE ARBITER, step 1.5 (ADR 0012 amendment) -- activities CO-CLAIM. The newest-armed (`at` stamp) exclusivity among Craft/HELM/Fishing is retired: each armed activity now claims whenever its own gates hold, all three may co-claim in one dispatch, and the rank-ordered apply loop settles every contested slot PER SLOT (arming an activity no longer stands the others down whole). The field case (PUP): idle floor Range = Animator; Fishing armed -> rod in Range; HELM also armed wins only its seven armor slots (HELM never claims weapons/Range/rings/Ammo), so the rod stays in Range until Fishing itself disarms. Each feature's own gates are UNCHANGED (HELM/Fishing Engaged/Dead stand-asides + Default-only, Craft Default-only, AutoAmmo's stand-down while fishing is live, MaxMP's rank consult). /dl prio now shows every concurrent claimant ON.
+M.VERSION = 99;   -- 99: THE ARBITER, step 3 (ADR 0012) -- LOCKS BECOME THE DRAGGABLE VETO ROW. The lock veto is no longer an absolute per-slot strip inside every equipResolved: it is a RANK position. A claimant ranked ABOVE Locks punches through a locked slot; one ranked BELOW it stops. The engine's separate lock special-casing is retired -- the hidden "pins never check locks" rule and the unconditional first-arm strip are gone, replaced by the registry law: each claim layer's equipResolved is told whether to respect locks (rank below Locks) or punch through (above), and woven MaxMP consults its OWN rank vs Locks (ctx.mpRespectLocks) for the band build AND the mp-stage placement (the old hardcoded M.locks skips now derive from rank). Default order Pins > Locks > ... preserves today's field behavior: pins punch through locks, every other claimant + the Triggers floor stop at them. Locks at TOP = absolute veto including pins; dragged lower = everyone above punches through, everyone below stops. Pure resolve model M.arbResolve gains the Locks veto (M.LOCK_HELD sentinel + M.arbLockClaim); /dl lock + Equip & Lock user-facing behavior unchanged. Tests LV* (position semantics + the equipResolved/mpBands wiring).
+                  -- 98: THE ARBITER, step 1.5 (ADR 0012 amendment) -- activities CO-CLAIM. The newest-armed (`at` stamp) exclusivity among Craft/HELM/Fishing is retired: each armed activity now claims whenever its own gates hold, all three may co-claim in one dispatch, and the rank-ordered apply loop settles every contested slot PER SLOT (arming an activity no longer stands the others down whole). The field case (PUP): idle floor Range = Animator; Fishing armed -> rod in Range; HELM also armed wins only its seven armor slots (HELM never claims weapons/Range/rings/Ammo), so the rod stays in Range until Fishing itself disarms. Each feature's own gates are UNCHANGED (HELM/Fishing Engaged/Dead stand-asides + Default-only, Craft Default-only, AutoAmmo's stand-down while fishing is live, MaxMP's rank consult). /dl prio now shows every concurrent claimant ON.
                   -- 97: THE ARBITER, step 1 (ADR 0012). One data-driven claim registry orders every Claim's application -- the hardcoded craft > HELM > fish > AutoAmmo > pin overlay sequence at the bottom of M.dispatch is gone, replaced by a single rank-ordered loop (applied LOW->HIGH so higher rank wins the slot, over the Trigger floor). The rank is one strict draggable list per character, persisted as the `arbstate` Statefile (hand-editable this step; the GUI writer is step 2; hot-reloaded on the 1s throttle, torn/missing = built-in default). Default order: Pins > Locks (veto placeholder, semantics unchanged) > AutoAmmo > MaxMP > Craft > HELM > Fishing > Triggers floor -- reproduces today's winners with ONE deliberate change: AutoAmmo's named projectile beats a MaxMP battery in Ammo. MaxMP stays WOVEN through the resolves (not a discrete overlay) but consults the rank via ctx.mpCeded: it never contests a slot won by a claimant ranked above it (so Ammo is ceded to AutoAmmo; batteries still override Craft/HELM/Fishing armor, both ranked below). Pure resolve core M.arbResolve / M.arbOrder / M.arbCededAbove (tests AR*); read-only /dl prio prints the live rank + per-claimant claim status. All claim-side conditions untouched (newest-armed craft/HELM/fish exclusivity, AutoAmmo's fishing stand-down, MaxMP 'remove'-respect / movement yield / sticky pairs / stage-eligibility).
                   -- 96: MOVEMENT YIELD (panel setting, manifest fmt 14 -- mpMoveYield + the mv map): while MOVING, a set piece carrying Movement+ beats the battery in its slot even at max MP (field ask: Pegasus Collar over the neck battery on BRD; the movement trigger set's piece flows, the battery steps aside, and stopping resumes the band plan untouched). The check is the FIRST arm of the per-slot MP branch -- before target logic, after the v91 'remove' skip -- and reads the same ctx.player.IsMoving the `moving` trigger matcher uses. Off by default; the MaxMP panel checkbox persists it inside the manifest like the pair override. /dl why notes it as MP-MOVE.
                   -- 95: the refresh BASELINE is the POTENTIAL refresh (field round 13: Clr. Bliaut +1 displaced by Hlr. Bliaut +1 at MP ~800, plan row 12 'body (0->53)' with NO [refresh-cost] tags anywhere). lowRf was the min-MP piece's refresh -- which reads 0 the moment ANY combat/precast set writes the slot with potency gear, so every refresh-cost delta vanished, the Hlr band sorted deep-and-plain and its clamped on-trigger landed mid-pool. Now lowRf = the MOST refresh any trigger-reachable set puts in the slot ("you should be aware that there is a POTENTIAL refresh piece there" -- the round-10 ruling verbatim); the MP low stays the minimum (the true potency point). Plus mpbands.MIN_TICK = 5: the measured tick is honest (unbuffed gear refresh really ticks +1..3) but a 1-MP margin makes hair-width hysteresis (off<=1086/on>=1087) -- the margin floors at 5, the buckets keep the true readings. Not the pair-homes change: that stays ear/ring-only.
@@ -155,11 +156,13 @@ M.modes = {};   -- mode state: lower(name) -> true (toggle) or 'Value' (cycle).
                 -- Lua-state lifetimes. maxmp drops itself on a job change (tick).
 M.modesRev = 0; -- bumped on every mode change: utils.rebuildSets re-flattens the
                 -- Dynamic sets when it moves (mode-gated entries pick differently).
-M.locks = {};   -- session-only SLOT LOCKS: lower(lac slot name) -> true. A locked slot is
-                -- stripped from every set/inline payload the engine equips, so nothing
-                -- dispatch-driven can overwrite a manual equip. /dl lock drives it; the
-                -- Equipped tab's "Lock when equipped" sends that command. Mirrored to
-                -- modestate.lua (__locks) for GUI display; reset on LAC reload like modes.
+M.locks = {};   -- session-only SLOT LOCKS: lower(lac slot name) -> true. Locks are the
+                -- draggable VETO ROW in the Arbiter rank (ADR 0012, step 3): a locked slot
+                -- is stripped from every layer ranked BELOW the Locks row (the Triggers
+                -- floor + any claimant under it), while a claimant ranked ABOVE it (Pins,
+                -- by default) punches through. /dl lock drives it; the Equipped tab's
+                -- "Lock when equipped" sends that command. Mirrored to modestate.lua
+                -- (__locks) for GUI display; reset on LAC reload like modes.
 local saveModeState;   -- defined in the mode section below; used by the trigger loader
 
 -- The 16 lac slot names (also the /dl lock vocabulary; 'all' fans out to every one).
@@ -1694,8 +1697,14 @@ function M.mpBands(ctx)
         resting = (st == 'Resting');
     end);
     local hi, slots, sumHead = {}, {}, 0;
+    -- Locks veto by RANK (ADR 0012, step 3): MaxMP builds a band on a locked slot
+    -- ONLY when it is ranked ABOVE Locks (ctx.mpRespectLocks == false -- it punches
+    -- through). At default order MaxMP sits below Locks, so a locked slot gets no
+    -- band, exactly as the old hardcoded skip did. nil ctx (/dl plan, tests) =
+    -- respect locks (the pre-step-3 behavior).
+    local mpRespectsLocks = not (type(ctx) == 'table' and ctx.mpRespectLocks == false);
     for lslot in pairs(MP_SLOT_CANON) do
-        if M.locks[lslot] ~= true then
+        if not mpRespectsLocks or M.locks[lslot] ~= true then
             -- ALL wearable rungs (v90): each refresh mid-rung becomes its own
             -- band, so Bunzi's Hat and Hlr. Bliaut +1 hold their late-order
             -- places instead of being invisible under the top pick. Refresh
@@ -2174,15 +2183,17 @@ M._postPassOrder = POST_ORDER;
 -- claimant wins by the user's rank order (CONTEXT.md: Claim / Arbiter).
 --
 -- The rank is ONE strict list per character, highest priority first, persisted
--- as the `arbstate` Statefile (hand-editable this step; the GUI writer is step
--- 2). 'Triggers' is the fixed FLOOR the claims dress over; 'Locks' is a
--- placeholder VETO row this step (lock semantics unchanged -- the veto fold is
--- step 3). MaxMP is still WOVEN through the resolves this step (not a discrete
--- overlay); it keeps its rank ROW so a reorder moves it, and it consults the
--- rank with one rule -- never contest a slot won by a claimant ranked above it
--- (M.arbCededAbove). Default order reproduces today's winners with exactly ONE
--- deliberate change: AutoAmmo's named projectile now beats a MaxMP battery in
--- Ammo (it ranks above MaxMP, so Ammo is ceded to it).
+-- as the `arbstate` Statefile (GUI writer: arbwatch). 'Triggers' is the fixed
+-- FLOOR the claims dress over; 'Locks' is the draggable VETO row (step 3): a
+-- claimant ranked ABOVE it punches through a locked slot, one below stops (the
+-- live wiring is equipResolved's per-layer respectLocks + ctx.mpRespectLocks;
+-- the pure model puts Locks in `claims` as a veto, M.arbLockClaim). MaxMP is
+-- still WOVEN through the resolves (not a discrete overlay); it keeps its rank
+-- ROW so a reorder moves it, and it consults the rank with one rule -- never
+-- contest a slot won by a claimant ranked above it (M.arbCededAbove), Locks
+-- included via ctx.mpRespectLocks. Default order reproduces today's winners with
+-- exactly ONE deliberate change: AutoAmmo's named projectile now beats a MaxMP
+-- battery in Ammo (it ranks above MaxMP, so Ammo is ceded to it).
 -- ---------------------------------------------------------------------------
 local ARB_ORDER_DEFAULT = { 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
                             'Craft', 'HELM', 'Fishing', 'Triggers' };
@@ -2209,13 +2220,37 @@ function M.arbOrder(st)
     return out;
 end
 
+-- The Locks VETO, modelled as a claim value (ADR 0012, step 3). A locked slot is
+-- a Locks "claim" whose winning value is this sentinel -- "keep what is worn". In
+-- the rank walk it behaves like any other claimant: a claim ranked ABOVE Locks
+-- wins the slot first (punches through), a claim ranked BELOW never reaches it
+-- (stops at the lock). The live engine expresses the same law by per-layer
+-- lock-respect flags in equipResolved; this is the pure model the tests pin.
+M.LOCK_HELD = setmetatable({}, { __tostring = function() return 'LOCK-HELD'; end });
+
+-- Build the Locks claim table for arbResolve from a set of locked slot keys
+-- ({ 'head', 'ring1', ... } or { head = true, ... }) -> { [slot] = M.LOCK_HELD }.
+-- Pure; the caller passes it in as claims['Locks'].
+function M.arbLockClaim(locked)
+    local out = {};
+    if type(locked) ~= 'table' then return out; end
+    if locked[1] ~= nil then
+        for _, s in ipairs(locked) do out[s] = M.LOCK_HELD; end
+    else
+        for s, on in pairs(locked) do if on then out[s] = M.LOCK_HELD; end end
+    end
+    return out;
+end
+
 -- The Arbiter's pure RESOLVE CORE (the seam the acceptance criteria pin): given
 -- each active claimant's claim table (slot -> item), the rank `order` (highest
 -- first, including the 'Triggers' floor row) and the trigger floor result,
 -- decide per slot which claimant wins -- walk the order TOP-DOWN, the first
 -- claimant with an opinion on that slot takes it ('Triggers' resolves to the
--- floor). Rows with no claim table (the Locks veto placeholder, woven MaxMP)
--- are simply skipped. Returns winners (slot -> item) and by (slot -> claimant).
+-- floor). 'Locks' is passed in `claims` as a veto table (M.arbLockClaim): a slot
+-- it wins resolves to M.LOCK_HELD (keep worn), so its rank decides who punches
+-- through it and who stops. Rows with no claim table (woven MaxMP) are skipped.
+-- Returns winners (slot -> item or LOCK_HELD) and by (slot -> claimant).
 -- Slot keys are the canonical LAC keys every producer emits, matched as-is.
 function M.arbResolve(claims, order, floor)
     local src = {};                       -- claimant name -> claim table
@@ -2262,7 +2297,18 @@ function M.arbCededAbove(claims, order, who)
     return ceded;
 end
 
-local function equipResolved(s, ctx)
+-- respectLocks (ADR 0012, step 3): does THIS layer stop at a locked slot? A
+-- claim layer ranked BELOW Locks respects them (the veto stops it); one ranked
+-- ABOVE punches through (the strip is skipped for its slots). nil == true, so
+-- every pre-step-3 caller (the Triggers floor, the immediate-equip paths, the
+-- headless tests) keeps the old absolute-veto behavior. The dispatch apply loop
+-- passes the per-claimant answer; woven MaxMP's own lock-respect rides
+-- ctx.mpRespectLocks (independent of the layer).
+local function equipResolved(s, ctx, respectLocks)
+    if respectLocks == nil then respectLocks = true; end
+    -- Does woven MaxMP respect locks in THIS dispatch (its rank vs Locks)? nil ctx
+    -- (immediate-equip / tests) = yes, the pre-step-3 behavior.
+    local mpRespectsLocks = not (type(ctx) == 'table' and ctx.mpRespectLocks == false);
     local out, notes = nil, nil;
     -- Copy-on-write + note, written ONCE (every branch used to repeat both).
     -- nil-ing a slot in `out` HOLDS it: the engine says nothing for that slot,
@@ -2319,7 +2365,7 @@ local function equipResolved(s, ctx)
     -- priority): locks > sync-hold weapons > pin-reserved > AutoAcc >
     -- dlac: virtuals > MP hold/upgrade.
     for slot, v in pairs(s) do
-        if anyLocks and M.locks[string.lower(tostring(slot))] == true then
+        if respectLocks and anyLocks and M.locks[string.lower(tostring(slot))] == true then
             W()[slot] = nil;                           -- locked: the engine leaves it alone
             note('%s=LOCKED (kept as worn)', tostring(slot));
         elseif ctx ~= nil and ctx.syncHold == true and WEAPON_SLOTS[string.lower(tostring(slot))] then
@@ -2359,7 +2405,12 @@ local function equipResolved(s, ctx)
             end
         elseif mpMap ~= nil and type(v) == 'string' and string.lower(v) ~= 'remove'
                and not MP_HOLD_EXEMPT[string.lower(tostring(slot))]
+               and not (mpRespectsLocks and M.locks[string.lower(tostring(slot))] == true)
                and not (mpCeded ~= nil and mpCeded[string.lower(tostring(slot))] ~= nil) then
+            -- (a locked slot the naming layer PUNCHED THROUGH -- respectLocks
+            --  false -- still holds MaxMP off when MaxMP itself ranks below Locks;
+            --  the strip no longer runs for that slot, so the veto is checked here
+            --  too rather than relied on upstream)
             -- (an explicit 'remove' skips the ladder: it is a deliberate
             -- empty-the-slot claim -- the fishing overlay guarding its rod,
             -- AutoAmmo's protective sweep -- and holding a battery against
@@ -2428,7 +2479,7 @@ local function equipResolved(s, ctx)
             for slot in pairs(s) do covered[string.lower(tostring(slot))] = true; end
             for lslot, canon in pairs(MP_SLOT_CANON) do
                 local want = mpCtx.target[lslot];   -- a rung NAME, false, or nil (v90)
-                if not covered[lslot] and M.locks[lslot] ~= true
+                if not covered[lslot] and (not mpRespectsLocks or M.locks[lslot] ~= true)
                    and not (mpCeded ~= nil and mpCeded[lslot] ~= nil)
                    and type(want) == 'string' then
                     local worn = wornItemName(lslot);
@@ -3574,6 +3625,22 @@ function M.dispatch(event)
         if hEquip ~= nil then claims['HELM']      = hEquip; end
         if fEquip ~= nil then claims['Fishing']   = fEquip; end
         ctx.mpCeded = M.arbCededAbove(claims, arbOrder, 'MaxMP');
+        -- LOCKS ARE THE VETO ROW (ADR 0012, step 3). Locks sit at a rank; a
+        -- claimant ABOVE the row punches through a locked slot, one BELOW stops.
+        -- rankOf indexes the live order; layerRespectsLocks answers per claimant
+        -- (below Locks => respect, so its equipResolved keeps the strip; above =>
+        -- punch through, the strip is skipped for its slots). The Triggers floor
+        -- is always last, so it always respects. Woven MaxMP consults its OWN
+        -- rank vs Locks (ctx.mpRespectLocks) -- carried on ctx because MaxMP runs
+        -- inside every equipResolved call and the band build alike.
+        local rankOf = {};
+        for i, n in ipairs(arbOrder) do rankOf[n] = i; end
+        local lockRank = rankOf['Locks'] or 0;
+        local function layerRespectsLocks(name)
+            local r = rankOf[name];
+            return r == nil or r > lockRank;   -- below Locks (or unknown) => respect
+        end
+        ctx.mpRespectLocks = layerRespectsLocks('MaxMP');
 
         if #hits == 0 and cEquip == nil and hEquip == nil and fEquip == nil and pEquip == nil and aEquip == nil then
             if event ~= 'Default' then   -- Default runs every frame; only action events trace a miss
@@ -3699,12 +3766,13 @@ function M.dispatch(event)
         -- below it, above the Trigger floor already applied. This one loop
         -- replaces the old hardcoded craft > HELM > fish > AutoAmmo > pin
         -- sequence; MaxMP is woven inside every equipResolved (rank-consulted
-        -- via ctx.mpCeded) and Locks stay in equipResolved's per-slot chain, so
-        -- neither has a discrete overlay here. Each claimant keeps its own trace
-        -- line for /dl why.
+        -- via ctx.mpCeded / ctx.mpRespectLocks). Locks are the VETO ROW (step 3):
+        -- each claim layer is told whether to respect the lock (rank below Locks)
+        -- or punch through it (above) via layerRespectsLocks -- no discrete Locks
+        -- overlay here. Each claimant keeps its own trace line for /dl why.
         local applyClaim = {
             ['Craft'] = function()
-                equipResolved(cEquip, ctx);
+                equipResolved(cEquip, ctx, layerRespectsLocks('Craft'));
                 if retrace then
                     local ks = {};
                     for slot in pairs(cEquip) do ks[#ks + 1] = tostring(slot); end
@@ -3713,7 +3781,7 @@ function M.dispatch(event)
                 end
             end,
             ['HELM'] = function()
-                equipResolved(hEquip, ctx);
+                equipResolved(hEquip, ctx, layerRespectsLocks('HELM'));
                 if retrace then
                     local ks = {};
                     for slot in pairs(hEquip) do ks[#ks + 1] = tostring(slot); end
@@ -3722,7 +3790,7 @@ function M.dispatch(event)
                 end
             end,
             ['Fishing'] = function()
-                equipResolved(fEquip, ctx);
+                equipResolved(fEquip, ctx, layerRespectsLocks('Fishing'));
                 if retrace then
                     local ks = {};
                     for slot in pairs(fEquip) do ks[#ks + 1] = tostring(slot); end
@@ -3731,14 +3799,14 @@ function M.dispatch(event)
                 end
             end,
             ['AutoAmmo'] = function()
-                equipResolved(aEquip, ctx);
+                equipResolved(aEquip, ctx, layerRespectsLocks('AutoAmmo'));
                 if retrace then
                     lines[#lines + 1] = string.format('AutoAmmo  ->  Ammo=%s  (%s)',
                         tostring(aEquip.Ammo), tostring(aWhy));
                 end
             end,
             ['Pins'] = function()
-                equipResolved(pEquip, ctx);
+                equipResolved(pEquip, ctx, layerRespectsLocks('Pins'));
                 if retrace then
                     local ks = {};
                     for slot, item in pairs(pEquip) do ks[#ks + 1] = tostring(slot) .. '=' .. tostring(item); end
@@ -4529,8 +4597,8 @@ if inLac() then
             local anyLock = (next(M.locks) ~= nil);
             local status = {
                 Pins     = hasPins and 'ON (armed)' or 'off',
-                Locks    = anyLock and 'ON (veto -- step 3 folds it in; semantics unchanged)'
-                                   or 'off (veto -- step 3 folds it in; semantics unchanged)',
+                Locks    = anyLock and 'ON (veto -- claims above punch through, below stop)'
+                                   or 'off (veto -- no slots locked)',
                 AutoAmmo = ammoOn and 'ON (claims Ammo on shooting events)' or 'off',
                 MaxMP    = maxmpOn and 'ON (woven; ceded slots above it stand down)' or 'off',
                 Craft    = craftOn and 'ON (armed)' or 'off',

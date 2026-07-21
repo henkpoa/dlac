@@ -34,9 +34,10 @@ local hasDispatch = _dpok and type(dsp) == 'table';
 local FALLBACK_DEFAULT = { 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
                            'Craft', 'HELM', 'Fishing', 'Triggers' };
 
--- Rows a player CANNOT pick up THIS step (ADR 0012): Triggers is the fixed floor
--- (always last); Locks displays its stored position but its own drag is step 3.
-M.FIXED = { Locks = true, Triggers = true };
+-- Rows a player CANNOT pick up: only the Triggers floor (always last -- the
+-- claims dress over it). Locks became a draggable VETO row in step 3 (ADR 0012):
+-- a claimant dragged above it punches through a locked slot, one below it stops.
+M.FIXED = { Triggers = true };
 
 -- The built-in default rank (a fresh copy each call -- callers may keep it).
 function M.defaultOrder()
@@ -142,14 +143,14 @@ function M.setOrder(order)
     return ok;
 end
 
--- One-step reorder for the drag gesture / the arrow buttons: move the claimant at
--- `fromIdx` one row in `dir` (-1 = up/higher priority, +1 = down), returning a
+-- One-step reorder for the drag gesture / the arrow buttons: move the row at
+-- `fromIdx` one place in `dir` (-1 = up/higher priority, +1 = down), returning a
 -- NEW order (the input is untouched) or nil if the move is illegal. Legality
--- (ADR 0012, step 2): only a claimant row can be picked up (Locks / Triggers
--- refuse -- M.FIXED); the target must be in bounds; and Triggers is never
--- displaced from last (it is the floor). A claimant MAY swap past the Locks row
--- -- that is how "a claim above the veto punches through" is set, without the
--- player grabbing Locks itself (its own drag is step 3).
+-- (ADR 0012): the Triggers floor never moves and is never displaced from last
+-- (M.FIXED); the target must be in bounds. Every other row -- the claimants AND
+-- the Locks veto (step 3) -- drags freely: raising a claimant above Locks makes
+-- it punch through a locked slot, and dragging Locks itself resets which
+-- claimants the veto stops.
 function M.moveClaimant(order, fromIdx, dir)
     if type(order) ~= 'table' then return nil; end
     local n = #order;
