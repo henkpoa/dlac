@@ -46,6 +46,10 @@ _Avoid_: stance, variant table
 A named, player-authored list of action names (primarily blue-magic spells), stored per Job entry beside Modes; a Trigger matches `group = '<name>'` when the current action's name is in the list. Unlike a Mode (player *state*), a Group is tested against the *current action* — one Trigger can cover many spells that share gear (e.g. all STR-scaling blue magic) instead of one Trigger per spell.
 _Avoid_: tag, category, spell set (a set is gear)
 
+**Blueprint**:
+A job-independent saved Trigger kept in a per-character library outside Profiles; adding one to a job stamps an ordinary Trigger into that job entry. Detached both ways — editing a Blueprint never retro-edits stamped Triggers, and vice versa. Shareable as text.
+_Avoid_: favourite, template, preset, saved rule
+
 **Overlay**:
 The combining rule for matching Triggers: all of them apply, ascending priority, later winning per slot. A full-16-slot set acts as a replacement; a partial set layers onto whatever came before.
 _Avoid_: merge, stack
