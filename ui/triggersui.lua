@@ -115,6 +115,8 @@ local COND_DEFS = {
     Default = {
         { key = 'status', kind = 'list', items = { 'Engaged', 'Resting', 'Idle' } },
         { key = 'moving', kind = 'flag' },
+        { key = 'inTown', kind = 'flag',
+          hint = 'you are standing in a town -- pair with status = Idle to show off\nyour gear in the cities. The town list is server-derived (data/zones.lua):\nevery city plus Nashmau, Celennia Memorial Library, Mog Garden.' },
         { key = 'mode',   kind = 'text', hint = 'mode name, e.g. DT' },
     },
     Precast = SPELL_CONDS,
@@ -1123,6 +1125,7 @@ end
 -- Distinct colour per condition type, so a rule's methods read at a glance.
 local COND_COLORS = {
     status = { 0.55, 0.75, 1.00, 1.0 },  moving = { 0.55, 0.75, 1.00, 1.0 },
+    intown = { 0.50, 0.82, 0.92, 1.0 },   -- location gate (v84): a teal-blue beside status/moving
     mode = { 0.80, 0.60, 1.00, 1.0 },
     skill = { 0.55, 0.85, 0.55, 1.0 },
     magictype = { 0.45, 0.80, 0.75, 1.0 }, abilitytype = { 0.45, 0.80, 0.75, 1.0 },
@@ -1185,6 +1188,10 @@ local PSTATE_KEYS = {
     -- Pet conditions (engine v63) light too: pet-out is exactly the kind of
     -- state you want to SEE holding while you build the rule.
     pet = true, petstatus = true, petname = true,
+    -- inTown (engine v84): the [on now] marker reads your live zone through the
+    -- engine's own matcher (zoneOf does GetMemberZone on the addon side), so you
+    -- can watch it light up as you walk into a city while building the rule.
+    intown = true,
 };
 -- LAC's EntityStatus resolution (constants.lua:236 via ResolveString's +1):
 -- raw entity status 0 Idle / 1 Engaged / 2-3 Dead / 4 Zoning / 33 Resting.
@@ -1316,7 +1323,7 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
                 imgui.TextColored(holds and COL_USABLE or COL_DIM,
                     holds and '[on now]' or '[off now]');
                 if imgui.IsItemHovered() then
-                    imgui.SetTooltip('Checked against your CURRENT vitals/buffs/pet (refreshes every second)\nwith the engine\'s own matcher. The engine re-evaluates at every dispatch.');
+                    imgui.SetTooltip('Checked against your CURRENT vitals/buffs/pet/zone (refreshes every second)\nwith the engine\'s own matcher. The engine re-evaluates at every dispatch.');
                 end
             end
         end
@@ -1332,7 +1339,7 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
                 imgui.TextColored(holds and COL_USABLE or COL_DIM,
                     holds and '[on now]' or '[off now]');
                 if imgui.IsItemHovered() then
-                    imgui.SetTooltip('Checked against your CURRENT vitals/buffs/pet (refreshes every second)\nwith the engine\'s own matcher. The engine re-evaluates at every dispatch.');
+                    imgui.SetTooltip('Checked against your CURRENT vitals/buffs/pet/zone (refreshes every second)\nwith the engine\'s own matcher. The engine re-evaluates at every dispatch.');
                 end
             end
         end

@@ -11,7 +11,12 @@
     with unsaved changes warns first -- continuing DISCARDS the edits.
 
     Storage: <char>\dlac\profiles\<Name>\lockstyles\<JOB>.lua -- the boxes
-    are PER JOB ENTRY (v41) { active, keepSub, onload = {JOB=box}, slots }.
+    are PER JOB ENTRY (v41) { active, keepSub, townOff, onload = {JOB=box}, slots }.
+    townOff (v45) = "Disable in town": drop the lockstyle while you stand in a
+    town (data/zones.lua, via feature/location) so your inTown idle gear shows,
+    and re-apply the last box when you leave. The pump gates the OnLoad / keep-
+    sub apply so it never fires in a town in the first place, and the zone guard
+    stops blocking the client's auto-disable there so an applied style drops.
     keepSub (v44) = "Keep on sub change": the game clears style lock on ANY
     job change (server 0x100 handler -- a server-side clear, so unlike the
     zone guard there is nothing to block); with the option on, the pump
@@ -58,6 +63,9 @@ local _pfok, profiles = pcall(require, 'dlac\\profiles');
 _pfok = _pfok and type(profiles) == 'table';
 local _lvok, look = pcall(require, 'dlac\\feature\\lookpreview');
 _lvok = _lvok and type(look) == 'table';
+-- Central town service (v45): "am I in a town?" for the Disable-in-town option.
+local _locok, location = pcall(require, 'dlac\\feature\\location');
+_locok = _locok and type(location) == 'table';
 
 M.visible = false;
 
@@ -148,6 +156,7 @@ local function load_()
         if ok and type(t) == 'table' then
             if tonumber(t.active) ~= nil then data.active = math.max(1, math.min(N_BOXES, tonumber(t.active))); end
             if t.keepSub == true then data.keepSub = true; end
+            if t.townOff == true then data.townOff = true; end
             if type(t.onload) == 'table' then data.onload = t.onload; end
             if type(t.slots) == 'table' then data.slots = t.slots; end
         end
@@ -159,9 +168,11 @@ function M._serialize(d)
     local L = { '-- dlac lockstyle sets -- written by the GUI (header armor button); safe to hand-edit.',
                 '-- active = the marked box; onload.<JOB> = box applied on login/job change for that job;',
                 '-- keepSub = re-apply the last-applied box after a subjob-only change (v44).',
+                '-- townOff = drop the lockstyle while you stand in a town (v45), restored on leaving.',
                 'return {',
                 string.format('    active = %d,', tonumber(d.active) or 1) };
     if d.keepSub == true then L[#L + 1] = '    keepSub = true,'; end
+    if d.townOff == true then L[#L + 1] = '    townOff = true,'; end
     L[#L + 1] = '    onload = {';
     local jobs = {};
     for j in pairs(d.onload or {}) do jobs[#jobs + 1] = j; end
@@ -210,7 +221,8 @@ end
 -- DRG=1 from box-1 "test" leaked into every file). Each save scrubs its file.
 function M._entryData(d, job)
     local out = { active = d.active, slots = d.slots, onload = {},
-                  keepSub = (d.keepSub == true) or nil };   -- scalar, rides whole
+                  keepSub = (d.keepSub == true) or nil,
+                  townOff = (d.townOff == true) or nil };   -- scalars, ride whole
     if job ~= nil and type(d.onload) == 'table' and d.onload[job] ~= nil then
         out.onload[job] = d.onload[job];
     end
@@ -866,6 +878,24 @@ function M.render()
                 .. 'job\'s boxes -- those are OnLoad Lockstyle\'s business (above). A\n'
                 .. 'lockstyle you turned off yourself stays off.');
         end
+        -- Disable in town (v45): show off your inTown idle gear. Just flips the
+        -- setting -- the pump sees the change next frame and drops/restores.
+        local tsBox = { data.townOff == true };
+        if imgui.Checkbox('Disable in town##lstown', tsBox) then
+            data.townOff = (tsBox[1] == true) or nil;
+            save();
+            _status = (data.townOff ~= nil)
+                and 'lockstyle turns OFF while you are in a town -- your real (idle) gear shows there.'
+                or  'lockstyle stays on in towns again.';
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Show off your town idle gear: while you stand in a town, dlac drops the\n'
+                .. 'lockstyle so your real gear shows, and re-applies your last box when you\n'
+                .. 'leave. It also skips applying a lockstyle at all while in a town -- OnLoad\n'
+                .. 'and Keep-on-sub included -- so logging in inside a town stays bare. Town\n'
+                .. 'list is server-derived: every city plus Nashmau, Celennia, Mog Garden.\n'
+                .. 'A lockstyle you turned off yourself stays off.');
+        end
         -- (The 'keep6' live-readout line lived here during field rounds 5-6;
         -- removed once the feature was confirmed -- Henrik: the user doesn't
         -- need it. '/dl ls state' remains the on-demand debug readout, and
@@ -940,6 +970,9 @@ local appliedJob, pendingJob, dueAt = nil, nil, nil;
 -- follows re-records it. Session-only on purpose: after a reload we no longer
 -- know a lockstyle is ours to keep, and the guard starts inactive anyway.
 local lastSub, lastBox, subDueAt = nil, nil, nil;
+-- Disable-in-town (v45): the last DEFINITE town-suppress verdict, so the pump
+-- acts only on a real change and holds through a mid-zone unreadable blink.
+local lastTownSup = nil;
 -- Live-state accessors for the window readout (render() is defined ABOVE
 -- these locals, so it reaches them through M at frame time -- the same
 -- late-binding pattern as M._touched).
@@ -971,6 +1004,32 @@ function M.pump()
     if job == nil then return; end
     load_();
     if data == nil then return; end
+    -- Disable-in-town transitions (v45). location.inTown() is tri-state; a nil
+    -- (mid-zone / unreadable) HOLDS the last verdict so a blink never flips the
+    -- style. Entering a town (or ticking the option while in one) drops the
+    -- visible style now -- the guard passes our own off in a town, so we need not
+    -- wait for a zone-in; leaving town re-applies the last box (or this job's
+    -- OnLoad binding). The apply-gates below are the real stop (Henrik): they
+    -- keep the OnLoad / keep-sub apply from ever firing while you are in a town.
+    local it = nil;
+    if _locok then it = location.inTown(); end   -- true / false / nil (keep false!)
+    if it ~= nil then
+        local wantSup = (data.townOff == true) and it;
+        if wantSup ~= lastTownSup then
+            if wantSup then
+                queueCmd('/lockstyle off');   -- drop the visible style (dlac OR server-persisted); the guard passes it in a town
+            elseif lastTownSup == true then
+                local rb = lastBox or (type(data.onload) == 'table' and data.onload[job]) or nil;
+                if tonumber(rb) ~= nil then
+                    M._guardArm();               -- swallow a straggling disable around the re-apply
+                    M._noteApplied(tonumber(rb));
+                    queueCmd(string.format('/dl ls apply %d', tonumber(rb)));
+                end
+            end
+            lastTownSup = wantSup;
+        end
+    end
+    local sup = lastTownSup == true;   -- held verdict; the OnLoad / keep-sub apply-gates below read it
     if job ~= appliedJob and job ~= pendingJob then
         pendingJob = job;
         dueAt = os.clock() + ((appliedJob == nil) and 6 or 3);
@@ -981,7 +1040,7 @@ function M.pump()
     if pendingJob ~= nil and dueAt ~= nil and os.clock() >= dueAt then
         appliedJob, pendingJob, dueAt = pendingJob, nil, nil;
         local box = data.onload[appliedJob];
-        if tonumber(box) ~= nil then
+        if tonumber(box) ~= nil and not sup then   -- v45: never APPLY a lockstyle while in a town (Henrik)
             M._noteApplied(box);   -- same round-6 rule: the queue site records
             pcall(function()
                 AshitaCore:GetChatManager():QueueCommand(1, string.format('/dl ls apply %d', tonumber(box)));
@@ -1012,12 +1071,28 @@ function M.pump()
     end
     if subDueAt ~= nil and os.clock() >= subDueAt then
         subDueAt = nil;
-        if lastBox ~= nil then
+        if lastBox ~= nil and not sup then   -- v45: town outranks keep-on-sub -- no re-apply while in a town
             pcall(function()
                 AshitaCore:GetChatManager():QueueCommand(1, string.format('/dl ls apply %d', lastBox));
             end);
         end
     end
+end
+
+-- ---------------------------------------------------------------------------
+-- Disable-in-town (v45): with data.townOff on, dlac wants the lockstyle OFF
+-- while you stand in a town, so your inTown idle gear shows. Two pillars:
+--   * PASSIVE -- the guard stops blocking the client's zone-in auto-disable in a
+--     town (verdict 'suppress'), so an ALREADY-applied style just drops.
+--   * ACTIVE  -- the pump STOPS the OnLoad / keep-on-sub apply from firing in a
+--     town at all (Henrik: at login there is no style yet -- dlac applies it,
+--     so we must not apply it in the first place, not merely disable it after).
+-- Pure decision + the live wrapper (location = the central town service). A nil
+-- inTown (mid-zone/unreadable) is NOT a town here -- callers hold via lastTownSup.
+function M._wantTownOff(townOff, inTownVal) return townOff == true and inTownVal == true; end
+function M._townSuppress()
+    if data == nil or data.townOff ~= true or not _locok then return false; end
+    return M._wantTownOff(true, location.inTown());
 end
 
 -- ---------------------------------------------------------------------------
@@ -1061,11 +1136,16 @@ local INTENT_WINDOW = 3;   -- s after a typed '/lockstyle off' its packet counts
 -- the server rebuilds the style from WORN gear, stomping any dlac box -- so
 -- the guard arms but the box memory clears; keep must not resurrect a look
 -- the player replaced.
-function M._lsGuard(mode, now, zoneInAt, active, userOffAt)
+function M._lsGuard(mode, now, zoneInAt, active, userOffAt, suppressTown)
     if mode == 3 then return 'activate'; end
     if mode == 4 then return 'adopt'; end
     if mode == 0 then
         if now - (userOffAt or -1e9) < INTENT_WINDOW then return 'retire'; end
+        -- Disable-in-town (v45): in a town with the option on, dlac WANTS the
+        -- lock off -- let any disable through (the client's zone-in auto-disable,
+        -- or our own queued one) and KEEP lastBox so leaving town restores it.
+        -- Never block, never book a keep-heal: townOff outranks keepSub in a town.
+        if suppressTown then return 'suppress'; end
         if active and now - (zoneInAt or -1e9) < ZONE_WINDOW then return 'block'; end
         return 'deactivate';
     end
@@ -1134,7 +1214,7 @@ ashita.events.register('packet_out', 'dlac-lockstyle-pout', function(e)
     if e.id ~= 0x053 then return; end
     -- Mode u8 @0x05 (4-byte header + Count) -- same decode as dlacprobe's lsOut.
     local mode = (#e.data >= 6) and e.data:byte(6) or -1;
-    local act = M._lsGuard(mode, os.clock(), guard.zoneInAt, guard.active, guard.userOffAt);
+    local act = M._lsGuard(mode, os.clock(), guard.zoneInAt, guard.active, guard.userOffAt, M._townSuppress());
     if act == 'activate' then
         guard.active = true;
     elseif act == 'adopt' then
@@ -1151,6 +1231,11 @@ ashita.events.register('packet_out', 'dlac-lockstyle-pout', function(e)
            and subDueAt == nil then      -- book-once, like every other trigger
             subDueAt = os.clock() + 3;   -- the kill schedules the cure (round 4)
         end
+    elseif act == 'suppress' then
+        -- Disable-in-town (v45): we WANT the style off here -- let the disable
+        -- reach the server (drops the lock, your inTown gear shows) and yield,
+        -- but keep lastBox so leaving town restores it, and book no keep-heal.
+        guard.active = false;
     elseif act == 'block' then
         -- silently (Henrik, field round 1): the player asked for a lockstyle;
         -- it still being on after a zone is not news.
