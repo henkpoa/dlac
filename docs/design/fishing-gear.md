@@ -222,7 +222,12 @@ Panel layout, top to bottom:
   never reach LAC as a status, so no extra case needed). `FISH_OVERLAY_SLOTS = { Main,
   Range, Ammo, Head, Neck, Body, Hands, Ring1, Ring2, Waist, Legs, Feet }` — Range/Ammo
   carry rod/bait straight from fishstate; armor (and Main) resolve `dlac:AutoFish`
-  through the manifest `fish` ladders. **Main included on the CRAFT precedent** (craft's
+  through the manifest `fish` ladders. **The rod always brings an Ammo claim (v91)**:
+  no bait resolved → `Ammo = 'remove'` (LAC's native unequip). Left unclaimed, an idle
+  set's stat-stick trinket (Cinderstone etc.) re-plans into Ammo every Default frame
+  beside the rod and the server strips the rod (ADR 0010) — the overlay applies above
+  the sets, so the claim overwrites the trinket plan and it settles rod-on, ammo-empty
+  (field case 2026-07-21, born of the v78 within-set scope ruling). **Main included on the CRAFT precedent** (craft's
   slot list carries Main/Sub) because Halieutica is a Main-slot fishing weapon — the
   ladder only ever contains fishing Mains, so players without one never see a Main swap;
   a swap does eat TP, which idle fishing accepts (worth a doc note in the panel).

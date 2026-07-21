@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 90;   -- 90: MULTI-RUNG bands (field round 9: "Bunzi's Hat should be 2nd last, Hlr. Bliaut +1 last"). A slot's battery ladder contributes ONE BAND PER MEANINGFUL RUNG -- rungs sanitized to falling MP / rising Refresh (dominated rungs pruned), each adjacent pair banded with its own diff and rfDelta, the last rung banding against the potency point. Order collapses to ONE rule: rfDelta ASC then diff ASC -- refresh-cost top-ups (Bunzi's Robe over Hlr. Bliaut +1, Erudite Cap over Bunzi's Hat) come off FIRST and return LAST; refresh-gain bands sink by magnitude (+1 before +2), so the strongest refresh releases last and returns first. target() now answers the PIECE NAME per slot (shallowest ON band's rung) or false; M.mpRungs supersedes single-pick (mpBestPick stays as the rungs[1] shim); notes/plan find thresholds via M.mpBandFind. Tests MB13*.
+M.VERSION = 91;   -- 91: the fishing overlay claims Ammo WITH the rod, bait or no bait (Henrik's field case: fishing enabled with no bait in the bags -> the idle set's stat-stick trinket re-planned into Ammo every Default frame beside the rod, the server stripped the rod (ADR 0010), the overlay re-equipped it, forever -- the v78 within-set scope ruling means nothing in the IDLE set's own resolve stops a trinket next to a merely-WORN rod, and trinketWornDisplace judges worn gear only, so a plan-borne trinket kept arriving). fishOverlayFor now writes Ammo = bait or 'remove' whenever it writes Range; and the maxmp per-slot branch skips an explicit 'remove' plan (a deliberate empty-the-slot claim -- fishing's rod guard, AutoAmmo's sweep -- must not have a battery held against it). Tests F68-F71.
+                  -- 90: MULTI-RUNG bands (field round 9: "Bunzi's Hat should be 2nd last, Hlr. Bliaut +1 last"). A slot's battery ladder contributes ONE BAND PER MEANINGFUL RUNG -- rungs sanitized to falling MP / rising Refresh (dominated rungs pruned), each adjacent pair banded with its own diff and rfDelta, the last rung banding against the potency point. Order collapses to ONE rule: rfDelta ASC then diff ASC -- refresh-cost top-ups (Bunzi's Robe over Hlr. Bliaut +1, Erudite Cap over Bunzi's Hat) come off FIRST and return LAST; refresh-gain bands sink by magnitude (+1 before +2), so the strongest refresh releases last and returns first. target() now answers the PIECE NAME per slot (shallowest ON band's rung) or false; M.mpRungs supersedes single-pick (mpBestPick stays as the rungs[1] shim); notes/plan find thresholds via M.mpBandFind. Tests MB13*.
                   -- 89: augments counted + SIGNED refresh delta (field round 8, Henrik: "include augments as with gearwatch" / "refresh pieces release last, return first -- mp recovery is key"). The manifest folds each owned copy's private-augment MP and Refresh into mp/rf (augments.ownedAugStats, fmtver 12 -- Cleric's Bliaut +1 = Refresh 1 native + 1 augmented = 2), and the band order runs on rfDelta = battery Refresh - potency Refresh: positive sinks DEEP (refresh battery back first as MP recovers), NEGATIVE floats SHALLOWEST (a flat-MP battery that would COST refresh -- Bunzi's Robe over Cleric's +1 -- comes off first and returns last, keeping the refresh piece worn through the spend). /dl plan tags [refresh] / [refresh-cost]. Tests MB12*.
                   -- 88: maxmp v2 -- THE BANDED LADDER (Henrik's 2026-07-21 redesign, docs/design/maxmp-mode.md "v2"; feature/mpbands.lua is the pure core, tests MB*). Dynamic per-dispatch marginal decisions retired: M.mpBands precomputes per-slot bands (LOW = least MP across trigger-reachable sets, HIGH = the pair-veto-aware battery pick via the shared M.mpBestPick) chained into absolute thresholds -- unequip at endMax - tick, re-equip EARLY at lastMax - tick so the next recovery tick lands into the headroom; smallest difference releases first EXCEPT refresh batteries sink deep ("Refresh > least mp diff", manifest fmtver 11 carries rf); hysteresis is each band's own width, so the 15s cooldown is gone. CURRENT MP is the only live input (the one read that never lies); the TOTAL anchor is nativemp base + merits + worn MP, offset-corrected at any true-full MP%. Ticks are MEASURED (median of observed rises, standing/resting buckets, fed by the 0.4s engine tick), never modeled from traits. Batch swaps: every eligible ON-candidate lands in one dispatch through the v78 RSlot guard. v76-v87's pure rules stay exported for compatibility.
                   -- 87: the equip-release OSCILLATION killed (field round 7 debug log: batteries climbed, alternated with their set pieces, cascaded back to idle gear, "back to 975 again"). Two causes, both from an unreliable GetMPMax: (a) FALSE FULL -- a stale-low max made curMP >= maxMP fire below a genuinely full pool, over-equipping batteries into headroom that instantly read as spent; (b) BOUNDARY DUMPS -- a fresh battery sits exactly on the hold boundary, so a few MP of max error released it immediately, dropped max, flipped the next boundary, cascade. Fix: M.mpPoolFull (tests MF*) -- the floored party MP% reads 100 ONLY at cur == max, so fullness is now exact and every equip gate uses it (cur >= max survives just as the no-percent fallback); M.mpReconcileMax (v86) goes LOW-biased -- below full, GetMPMax is ignored outright and max = ceil(cur*100/(mpp+1)), the window's low edge: an under-estimate can only over-hold (release needs surplus + at most ~1% extra spend), never dump a battery early.
@@ -2198,8 +2199,12 @@ local function equipResolved(s, ctx)
             else
                 note('%s=skipped (%s)', marker, tostring(why));
             end
-        elseif mpMap ~= nil and type(v) == 'string'
+        elseif mpMap ~= nil and type(v) == 'string' and string.lower(v) ~= 'remove'
                and not MP_HOLD_EXEMPT[string.lower(tostring(slot))] then
+            -- (an explicit 'remove' skips the ladder: it is a deliberate
+            -- empty-the-slot claim -- the fishing overlay guarding its rod,
+            -- AutoAmmo's protective sweep -- and holding a battery against
+            -- it would put the very conflict it exists to clear back on)
             -- The banded ladder (v88): apply the precomputed target for this
             -- slot. ON -> the battery is a batch candidate (mp-stage runs the
             -- RSlot eligibility and writes it); OFF -> the set piece flows
@@ -2577,7 +2582,9 @@ M._helmOverlayFor = helmOverlayFor;   -- test seam
 -- standing aside in combat exactly like HELM. Range (rod) and Ammo (bait)
 -- come straight from the state file -- they are TARGET-FISH-specific picks
 -- the addon resolves (server break math + ownership) and keeps current on
--- its bag heartbeat; armor and Main ride the manifest fish ladders. Main is
+-- its bag heartbeat; armor and Main ride the manifest fish ladders. A rod
+-- with no bait still CLAIMS Ammo ('remove', v91): the slot belongs to the
+-- overlay whenever the rod is out, or an idle set's trinket flaps it. Main is
 -- included on the craft precedent (Halieutica is a Main-slot fishing
 -- weapon); the ladder only ever holds fishing Mains, so everyone else
 -- never sees a weapon swap.
@@ -2611,6 +2618,16 @@ local function fishOverlayFor(fs, ctx)
     end
     if type(fs.bait) == 'string' and fs.bait ~= '' then
         equip = equip or {}; equip.Ammo = fs.bait;
+    elseif equip ~= nil and equip.Range ~= nil then
+        -- No bait resolved: the rod still brings an Ammo claim -- 'remove',
+        -- LAC's native unequip (Henrik, 2026-07-21). Left unclaimed, an idle
+        -- set's stat-stick trinket re-plans into Ammo every Default frame
+        -- beside the rod, the server strips the rod (ADR 0010), the overlay
+        -- re-equips it, and the two flap forever; trinketWornDisplace can't
+        -- settle it because the trinket keeps arriving from INSIDE a plan.
+        -- Claiming the slot means the overlay (applied above the sets)
+        -- overwrites that plan every frame, so it settles rod-on, ammo-empty.
+        equip.Ammo = 'remove';
     end
     -- ctx.player rides along so the ladder's level gate sees the REAL level
     -- (the helm overlay's lesson -- Angler's Tunica is Lv15, Angler's Ring 75).

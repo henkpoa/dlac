@@ -5419,6 +5419,17 @@ end)();
     local fovNoRod = dispatchM._fishOverlayFor(fsNoGear, { player = { MainJobSync = 75, Status = 'Idle' } });
     check('F65 no rod picked -> Range untouched, ladders still dress',
         (fovNoRod and fovNoRod.Range) == nil and (fovNoRod and fovNoRod.Body) ~= nil, true);
+    -- v91: the rod brings an Ammo claim even with NO bait ('remove') -- an
+    -- unclaimed Ammo lets an idle set's stat-stick trinket land beside the
+    -- rod and the server strips the rod (ADR 0010), forever.
+    local fsNoBait = { enabled = true, at = 1, rod = 'Willow Fish. Rod' };
+    local fovNoBait = dispatchM._fishOverlayFor(fsNoBait, { player = { MainJobSync = 75, Status = 'Idle' } });
+    check('F68 rod with no bait -> Ammo claimed empty', fovNoBait and fovNoBait.Ammo, 'remove');
+    check('F69 ... and the rod still equips', fovNoBait and fovNoBait.Range, 'Willow Fish. Rod');
+    check('F70 no rod AND no bait -> Ammo left alone', fovNoRod and fovNoRod.Ammo, nil);
+    local fsBaitOnly = { enabled = true, at = 1, bait = 'Little Worm' };
+    local fovBaitOnly = dispatchM._fishOverlayFor(fsBaitOnly, { player = { MainJobSync = 75, Status = 'Idle' } });
+    check('F71 bait without a rod rides as itself', fovBaitOnly and fovBaitOnly.Ammo, 'Little Worm');
     check('F66 resolveVirtual dlac:AutoFish body', dispatchM._resolveVirtual('dlac:AutoFish',
         { player = { MainJobSync = 75 } }, 'Body'), 'Anglers Tunica');
     check('F67 resolveVirtual unknown fish slot -> nil', dispatchM._resolveVirtual('dlac:AutoFish',
