@@ -1410,96 +1410,40 @@ function M.mpPairSkip(name, sibWorn, sibLadder)
     return true;
 end
 
--- The battery plan as chat lines (/dl plan, v78 -- Henrik: "give me the
--- plan"). PURE assembly, inputs injected so it runs headless (tests MP*):
--- data = the autogear manifest (mp + mpBest), cur/max/level the live
--- numbers, wornOf(lslot) -> worn item name, locks = M.locks. Rows sort
--- biggest gain first = the equip order at a full pool. Gains are vs WORN
--- gear (the uncovered-slot math) -- the live dispatch additionally weighs
--- each set's own piece, so covered slots can differ slightly in play.
-local MP_PLAN_ORDER = { 'ammo', 'head', 'neck', 'ear1', 'ear2', 'body', 'hands',
-                        'ring1', 'ring2', 'back', 'waist', 'legs', 'feet' };
-function M.mpPlanLines(data, cur, max, level, wornOf, locks)
-    if type(data) ~= 'table' or type(data.mpBest) ~= 'table' then
+-- The band plan as chat lines (/dl plan v2, engine v88): the plan and the
+-- BEHAVIOR are the same artifact -- the formatter renders the exact band
+-- context M.mpBands hands the dispatch pass, so what prints is what runs.
+-- PURE formatter (tests MPL*): mpCtx injected, wornOf(lslot) -> worn name.
+-- Rows print in RELEASE order (top comes off first as MP is spent; the
+-- bottom -- big batteries and refresh pieces -- returns first as MP
+-- recovers, before the pool is full, so recovery ticks land in headroom).
+function M.mpPlanLines(mpCtx, wornOf)
+    if mpCtx == nil or type(mpCtx.bands) ~= 'table' then
         return { 'maxmp plan: no battery data yet -- open the Automations tab (the manifest self-heals) or relog.' };
     end
-    local mp = (type(data.mp) == 'table') and data.mp or {};
-    local rows = {};
-    for _, lslot in ipairs(MP_PLAN_ORDER) do
-        if locks ~= nil and locks[lslot] == true then
-            rows[#rows + 1] = { slot = lslot, gain = -2,
-                txt = string.format('%s: LOCKED -- the engine leaves it alone', lslot) };
-        else
-            local cands = data.mpBest[lslot];
-            -- The pick applies the paired-slot veto exactly like the live
-            -- engine (v83) -- without it the plan advertised a +20 ear1 gain
-            -- the engine would never equip (field: single-copy Loquacious worn
-            -- in ear2). Walk to the first rung that is level-legal AND not
-            -- pair-vetoed; remember the best vetoed rung for the row note.
-            local c, vetoed = nil, nil;
-            local sib = M.MP_PAIR[lslot];
-            if type(cands) == 'table' then
-                local list = (cands.name ~= nil) and { cands } or cands;
-                for _, r in ipairs(list) do
-                    if type(r) == 'table' and type(r.name) == 'string'
-                       and (tonumber(r.level) or 0) <= (tonumber(level) or 0) then
-                        if sib ~= nil and wornOf ~= nil
-                           and M.mpPairSkip(r.name, wornOf(sib), data.mpBest[sib]) then
-                            vetoed = vetoed or r.name;
-                        else
-                            c = r;
-                            break;
-                        end
-                    end
-                end
-            end
-            if c == nil and vetoed ~= nil then
-                rows[#rows + 1] = { slot = lslot, gain = -1,
-                    txt = string.format('%s: %s -- worn in %s (pair-vetoed; no other rung wearable)',
-                        lslot, vetoed, tostring(sib)) };
-            end
-            if c ~= nil then
-                local pairNote = (vetoed ~= nil)
-                    and string.format('   [pair: %s worn in %s]', vetoed, tostring(sib)) or '';
-                local worn = (wornOf ~= nil) and wornOf(lslot) or nil;
-                local wornMP = (worn ~= nil) and (mp[string.lower(worn)] or 0) or 0;
-                local gain, tag = (c.mp or 0) - wornMP, nil;
-                if worn ~= nil and string.lower(worn) == string.lower(c.name) then
-                    gain, tag = 0, 'WORN';
-                elseif gain > 0 then
-                    tag = string.format('+%d gain over %s', gain, worn or 'empty slot');
-                else
-                    tag = string.format('worn %s already best (+%d MP)', tostring(worn), wornMP);
-                end
-                -- Ladder tail: the fallback rungs, so "in what order" is visible
-                -- per slot too (rung 1 may be gear to grow into; skipped rungs
-                -- above the current level print with their level).
-                local lad = '';
-                if type(cands) == 'table' and cands.name == nil and #cands > 1 then
-                    local parts = {};
-                    for _, r in ipairs(cands) do
-                        if type(r) == 'table' and type(r.name) == 'string' then
-                            parts[#parts + 1] = string.format('%s %d%s', r.name, r.mp or 0,
-                                ((tonumber(r.level) or 0) > (tonumber(level) or 0)) and (' (Lv' .. tostring(r.level) .. ')') or '');
-                        end
-                    end
-                    if #parts > 1 then lad = '   [ladder: ' .. table.concat(parts, ' > ') .. ']'; end
-                end
-                rows[#rows + 1] = { slot = lslot, gain = gain,
-                    txt = string.format('%s: %s (+%d MP) -- %s%s%s', lslot, c.name, c.mp or 0, tag, pairNote, lad) };
-            end
-        end
-    end
-    table.sort(rows, function(a, b)
-        if a.gain ~= b.gain then return a.gain > b.gain; end
-        return a.slot < b.slot;
-    end);
     local lines = {};
-    lines[1] = string.format('maxmp battery plan -- MP %s/%s, level %s. Equip order below (biggest gain first, FULL pool only); releases go smallest surplus first as you spend.',
-        tostring(cur), tostring(max), tostring(level));
-    for _, r in ipairs(rows) do lines[#lines + 1] = r.txt; end
-    if #rows == 0 then lines[#lines + 1] = '(no batteries owned for any slot)'; end
-    lines[#lines + 1] = 'Main/Sub/Range exempt (TP preservation). A piece listed here that is NOT in Inventory/Wardrobes = stale manifest -- open the Automations tab or move any bag item to rebuild.';
+    lines[1] = string.format('maxmp band plan -- MP %s of %s (every battery worn), recovery tick %s%s. Spending releases TOP-DOWN at off<=; recovery re-equips BOTTOM-UP at on>= (early on purpose: the next tick lands in the headroom).',
+        tostring(mpCtx.cur), tostring(mpCtx.total), tostring(mpCtx.tick),
+        mpCtx.resting and ' (resting)' or '');
+    for i, b in ipairs(mpCtx.bands) do
+        local worn = (wornOf ~= nil) and wornOf(b.slot) or nil;
+        local isOn = worn ~= nil and b.name ~= nil
+                     and string.lower(worn) == string.lower(b.name);
+        -- Zone from cur vs THIS band's thresholds (the resolved target can't
+        -- tell a dead-zone keep from a threshold-ON -- both read true).
+        local cur, state = tonumber(mpCtx.cur), nil;
+        if cur == nil then state = isOn and 'holding (no MP read)' or 'off';
+        elseif cur >= (b.onAt or 0) then state = isOn and 'ON (worn)' or 'ON (equipping)';
+        elseif cur <= (b.offAt or 0) then state = isOn and 'RELEASING' or 'off';
+        else state = isOn and 'holding (dead zone)' or 'off (dead zone)'; end
+        lines[#lines + 1] = string.format('%d. %s: %s (%d->%d, diff %d)%s   off<=%d  on>=%d   -- %s',
+            i, b.slot, tostring(b.name), b.low or 0, b.high or 0, b.diff or 0,
+            b.refresh and ' [refresh]' or '', b.offAt or 0, b.onAt or 0, state);
+    end
+    if #mpCtx.bands == 0 then
+        lines[#lines + 1] = '(no bands: every trigger set already wears its slot\'s best battery, or no batteries are owned)';
+    end
+    lines[#lines + 1] = 'Main/Sub/Range exempt (TP preservation); locked slots get no band. A state that never changes while MP moves = that piece may be unequippable (LAC drops those silently) -- check its bag.';
     return lines;
 end
 
@@ -4310,16 +4254,15 @@ if inLac() then
         e.blocked = true;
 
         if sub == 'plan' then
-            -- The maxmp battery plan (v78). gFunc gates to the LAC state (the
-            -- ls pattern: the same command fires in the ADDON state too --
-            -- one state, one printer).
+            -- The maxmp band plan (v88): renders the SAME context the dispatch
+            -- pass runs, so what prints is what happens. gFunc gates to the
+            -- LAC state (the ls pattern: the same command fires in the ADDON
+            -- state too -- one state, one printer).
             local g = rawget(_G, 'gFunc');
             if g == nil then return; end
             local pl = nil;
             pcall(function() pl = gData.GetPlayer(); end);
-            local cur, mx = playerMP();
-            local lines = M.mpPlanLines(ensureAutoLoaded(), cur, mx,
-                playerLevel({ player = pl }), wornItemName, M.locks);
+            local lines = M.mpPlanLines(M.mpBands({ player = pl }), wornItemName);
             print('[dlac] ' .. lines[1]);
             for i = 2, #lines do print('    ' .. lines[i]); end
             return;

@@ -7,7 +7,24 @@ equipped."* Example: a +50 MP head vs trigger sets whose lowest head gives +5 MP
 Main/Sub/Range (TP preservation). Plus: resting-recovery-aware re-equipping, and
 topping off before a completed Sublimation is popped.
 
-## v2 — the BANDED LADDER (Henrik's redesign, 2026-07-21; ADOPTED, not built)
+## v2 — the BANDED LADDER (Henrik's redesign, 2026-07-21; BUILT overnight, engine v88)
+
+Implementation homes: `feature/mpbands.lua` (the pure core — build/target +
+tick measurement; tests MB*), `dispatch.M.mpBands` (the live context: LOW
+scan over trigger-reachable sets, `M.mpBestPick` the ONE pair-veto-aware
+battery resolver shared by engine/plan/builder — tests MPS8*, TOTAL anchor =
+nativemp base + auto-learned merits + worn MP with an offset learned at any
+true-full MP%), the rewired per-slot branch + `mp-stage` pass (batch apply
+through the v78 RSlot guard), and `/dl plan` v2 (`M.mpPlanLines`, tests MPL*)
+which renders the exact context the engine runs — the plan IS the behavior.
+The manifest carries Refresh from fmtver 11 (`rf` map + rung `rf`).
+
+**Night addendum (Henrik, in-flight): "Refresh > least mp diff."** A battery
+whose Refresh the potency piece lacks outranks the difference ordering and
+sinks to the DEEP end of the ladder — released last while spending, back on
+FIRST as MP recovers, so recovery accelerates as early as possible. Ties on
+the LOW side assume the incoming piece lacks refresh (keeps the battery deep
+— the safe direction).
 
 Ruling after the 07-21 field night (rounds 6–7): **stop dynamic per-dispatch
 marginal decisions; precompute the whole plan.** The v1 engine decided each

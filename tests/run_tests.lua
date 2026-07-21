@@ -606,32 +606,42 @@ check('MS10c nil-safe', dispatchM.mpStageEligible(nil, msOcc, msRs), nil);
 end)();
 
 -- ---------------------------------------------------------------------------
--- MPL. /dl plan line builder (dispatch.mpPlanLines, engine v79) -- pure
---      assembly with injected inputs. Rows sort biggest gain first (= the
---      full-pool equip order), a worn pick reads WORN (gain 0), locked
---      slots print LOCKED and sink below real rows, above-level ladder
---      rungs are tagged (LvNN), and a missing manifest answers with the
---      self-heal hint instead of a plan.
+-- MPL. /dl plan v2 formatter (dispatch.mpPlanLines, engine v88) -- renders
+--      the band context: rows in RELEASE order with off<=/on>= thresholds,
+--      refresh tag, live state (ON worn / ON equipping / RELEASING / off /
+--      holding); a missing context answers the self-heal hint.
 -- ---------------------------------------------------------------------------
 (function()
-local data = {
-    mp = { ['vermillion cloak'] = 30, ['astral ring'] = 25 },
-    mpBest = {
-        body  = { { name = 'Bunzi\'s Robe', mp = 50, level = 99 },
-                  { name = 'Vermillion Cloak', mp = 30, level = 59 } },
-        ring1 = { { name = 'Astral Ring', mp = 25, level = 10 } },
-        neck  = { { name = 'Star Necklace', mp = 10, level = 30 } },
-    },
+local mb = dofile('feature/mpbands.lua');
+local bands = mb.build({
+    { slot = 'feet', name = 'MP Boots', low = 5, high = 15 },
+    { slot = 'body', name = 'Refresh Robe', low = 0, high = 30, refresh = true },
+}, 1100, 15);
+-- cur 1060: feet (off<=1075) is past its off threshold -> releasing/off;
+-- body (refresh band: off<=1045, on>=1075) sits in its DEAD ZONE -> holding.
+local mpCtx = {
+    bands = bands, cur = 1060, total = 1100, tick = 15, resting = false,
+    target = mb.target(bands, 1060, function(sl) return sl == 'body'; end),
+    hi = {}, mpMap = {},
 };
-local worn = function(l) if l == 'body' then return 'Vermillion Cloak'; end return nil; end
-local lines = dispatchM.mpPlanLines(data, 800, 800, 75, worn, { neck = true });
-check('MPL1 header first',            string.find(lines[1], 'battery plan') ~= nil, true);
-check('MPL2 biggest gain sorts first', string.find(lines[2], 'ring1: Astral Ring', 1, true) ~= nil, true);
-check('MPL3 worn pick tagged WORN',   string.find(lines[3], 'WORN', 1, true) ~= nil, true);
-check('MPL3b pick respects level',    string.find(lines[3], 'body: Vermillion Cloak', 1, true) ~= nil, true);
-check('MPL4 locked slot sinks below', string.find(lines[4], 'neck: LOCKED', 1, true) ~= nil, true);
-check('MPL5 above-level rung tagged', string.find(lines[3], '(Lv99)', 1, true) ~= nil, true);
-check('MPL6 no manifest -> self-heal hint',
+local worn = function(sl) if sl == 'body' then return 'Refresh Robe'; end return nil; end
+local lines = dispatchM.mpPlanLines(mpCtx, worn);
+check('MPL1 header carries cur/total/tick',
+    string.find(lines[1], 'MP 1060 of 1100', 1, true) ~= nil
+    and string.find(lines[1], 'tick 15', 1, true) ~= nil, true);
+check('MPL2 release order: small diff row first',
+    string.find(lines[2], '1. feet:', 1, true) ~= nil, true);
+check('MPL2b refresh band sinks deep + tagged',
+    string.find(lines[3], '2. body:', 1, true) ~= nil
+    and string.find(lines[3], '[refresh]', 1, true) ~= nil, true);
+check('MPL3 thresholds printed (worked example)',
+    string.find(lines[2], 'off<=1075', 1, true) ~= nil
+    and string.find(lines[2], 'on>=1085', 1, true) ~= nil, true);
+check('MPL4 dead-zone worn battery reads holding',
+    string.find(lines[3], 'holding', 1, true) ~= nil, true);
+check('MPL5 dead-zone empty slot reads off',
+    string.find(lines[2], '-- off', 1, true) ~= nil, true);
+check('MPL6 no context -> self-heal hint',
     string.find(dispatchM.mpPlanLines(nil)[1], 'no battery data', 1, true) ~= nil, true);
 end)();
 
@@ -663,31 +673,26 @@ check('MPS6 legacy single-entry sibling ladder shape',
 check('MPS7 nil ladder: worn in sibling still vetoes',
     dispatchM.mpPairSkip('Loquac. Earring', 'Loquac. Earring', nil), true);
 
--- The plan applies the same veto (v84): the ear1 row must fall to the next
--- rung and carry the pair note, never advertise the vetoed gain (field:
--- plan said "+20 gain" for a pick the engine would never equip).
-local pdata = {
-    mp = { ['loquac. earring'] = 30, ['curate\'s earring'] = 10 },
-    mpBest = {
-        ear1 = { { name = 'Loquac. Earring', mp = 30, level = 41 },
-                 { name = 'Curate\'s Earring', mp = 10, level = 21 } },
-        ear2 = { { name = 'Outlaw\'s Earring', mp = 15, level = 60 } },
-    },
+-- MPS8+: THE shared battery resolver (dispatch.mpBestPick, engine v88) --
+-- the engine, the band builder and /dl plan all pick through it, and it
+-- applies the pair veto while walking the ladder (field: the plan once
+-- advertised a +20 ear1 gain the engine would never equip).
+local pBest = {
+    ear1 = { { name = 'Loquac. Earring', mp = 30, level = 41 },
+             { name = 'Curate\'s Earring', mp = 10, level = 21 } },
+    ear2 = { { name = 'Outlaw\'s Earring', mp = 15, level = 60 } },
+    ring1 = { { name = 'Astral Ring', mp = 25, level = 10 } },
+    ring2 = { { name = 'Astral Ring', mp = 25, level = 10 } },
 };
 local pworn = function(l)
     if l == 'ear2' then return 'Loquac. Earring'; end
-    if l == 'ear1' then return 'Curate\'s Earring'; end
+    if l == 'ring1' then return 'Astral Ring'; end
     return nil;
 end
-local plines = dispatchM.mpPlanLines(pdata, 800, 800, 75, pworn, {});
-local pear1 = nil;
-for _, l in ipairs(plines) do
-    if string.find(l, 'ear1:', 1, true) ~= nil then pear1 = l; end
-end
-check('MPS8 plan pick falls past the vetoed rung',
-    string.find(tostring(pear1), 'ear1: Curate\'s Earring', 1, true) ~= nil, true);
-check('MPS8b plan row carries the pair note',
-    string.find(tostring(pear1), 'worn in ear2', 1, true) ~= nil, true);
+check('MPS8 pick falls past the vetoed rung',
+    dispatchM.mpBestPick(pBest, 'ear1', 75, pworn).name, 'Curate\'s Earring');
+check('MPS8b level gate still applies',
+    dispatchM.mpBestPick(pBest, 'ear1', 20, pworn), nil);
 -- ---------------------------------------------------------------------------
 -- MR. max-MP reconciliation (dispatch.mpReconcileMax, engine v86): Ashita's
 --     GetMPMax can go stale across gear/job churn (field: engine 975/1052 vs
@@ -715,18 +720,9 @@ check('MF3 no percent: cur >= max fallback', dispatchM.mpPoolFull(975, 975, nil)
 check('MF3b no percent, below max',         dispatchM.mpPoolFull(975, 1052, nil), false);
 check('MF4 nil-safe',                       dispatchM.mpPoolFull(nil, nil, nil), false);
 
-check('MPS8c dup stays advertised',
-    string.find(tostring((function()
-        local d = { mp = {}, mpBest = {
-            ring1 = { { name = 'Astral Ring', mp = 25, level = 10 } },
-            ring2 = { { name = 'Astral Ring', mp = 25, level = 10 } } } };
-        local ls = dispatchM.mpPlanLines(d, 800, 800, 75,
-            function(l) return (l == 'ring1') and 'Astral Ring' or nil; end, {});
-        for _, l in ipairs(ls) do
-            if string.find(l, 'ring2:', 1, true) ~= nil then return l; end
-        end
-        return '';
-    end)()), 'ring2: Astral Ring', 1, true) ~= nil, true);
+check('MPS8c dup-owned pick survives the veto',
+    dispatchM.mpBestPick(pBest, 'ring2', 75, pworn).name, 'Astral Ring');
+check('MPS8d nil-safe', dispatchM.mpBestPick(nil, 'ear1', 75, pworn), nil);
 end)();
 
 -- ---------------------------------------------------------------------------
