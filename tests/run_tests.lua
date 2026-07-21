@@ -748,6 +748,15 @@ check('MSS3 unclaimed sibling: candidate passes',
         { { slot = 'Ear1', lslot = 'ear1', name = 'Loquac. Earring', gain = 20 } },
         claims({ ear2 = 'Outlaw\'s Earring' }), pBest)), 1);
 check('MSS4 nil-safe', #(dispatchM.mpStickyPairs(nil, nil, nil)), 0);
+-- v94, the field hole: the sibling's PLAN names a different piece (the set
+-- displacing the earring) while the WORN claim still holds it -- either
+-- claim vetoes now; `plan or worn` used to shadow the worn signal.
+check('MSS5 worn claim vetoes even when the plan differs',
+    #(dispatchM.mpStickyPairs(
+        { { slot = 'Ear1', lslot = 'ear1', name = 'Loquac. Earring', gain = 20 } },
+        function(ls)
+            if ls == 'ear2' then return 'Outlaw\'s Earring', 'Loquac. Earring'; end
+        end, pBest)), 0);
 end)();
 
 -- ---------------------------------------------------------------------------

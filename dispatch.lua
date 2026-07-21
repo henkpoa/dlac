@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 93;   -- 93: STICKY paired slots (field: Loquacious Earring bounced ear2 <-> ear1). The v83 pick veto reads WORN state, which lags ~a dispatch behind LAC's swaps -- so the band pulled the earring toward its ladder home (ear1) whenever the read went stale, and the idle set planted it back (ear2), forever. M.mpStickyPairs (tests MSS*) closes it at the APPLY site: a battery candidate whose piece is already claimed by the sibling ear/ring -- in THIS dispatch's resolved PLAN (cannot lag) or on the body -- never writes; genuine duplicates stay exempt (mpPairSkip: dup-owned items ride both paired ladders). MP earrings and rings never relocate across their pair once set; /dl why notes the skip as MP-PAIR sticky.
+M.VERSION = 94;   -- 94: sticky pairs check BOTH claims (field: Loquac. still moved ear2 -> ear1 ONCE, no bounce). Root cause found OUTSIDE the engine: Henrik's gear.lua has NO LoquaciousEarring entry, so his Idle Ear2 ladder's gear.Ear.LoquaciousEarring reference is silently nil (nil list entries VANISH -- no warning possible) and the SET equips Outlaw's into ear2, displacing the earring to the bag; the band then legitimately picked the freed 30-MP battery for ear1. Engine hardening shipped anyway: mpStickyPairs consulted `plan or worn`, so a sibling plan naming a DIFFERENT piece shadowed the worn claim -- both claims veto independently now (MSS5). The data fix is Henrik's side: /dl sync to index the earring, then the set holds it in ear2 and the plan-claim pins it forever.
+                  -- 93: STICKY paired slots (field: Loquacious Earring bounced ear2 <-> ear1). The v83 pick veto reads WORN state, which lags ~a dispatch behind LAC's swaps -- so the band pulled the earring toward its ladder home (ear1) whenever the read went stale, and the idle set planted it back (ear2), forever. M.mpStickyPairs (tests MSS*) closes it at the APPLY site: a battery candidate whose piece is already claimed by the sibling ear/ring -- in THIS dispatch's resolved PLAN (cannot lag) or on the body -- never writes; genuine duplicates stay exempt (mpPairSkip: dup-owned items ride both paired ladders). MP earrings and rings never relocate across their pair once set; /dl why notes the skip as MP-PAIR sticky.
                   -- 92: ONE band per slot + reachable on-triggers (field round 10, Henrik's RULING: "to get refresh in is NOT YOUR JOB -- that is the idle set's job... be aware there is a potential refresh piece there and adapt accordingly"). The v90 multi-rung experiment is retired: the engine wore refresh mid-rungs itself (overstepping the job) AND wearing them depressed the pool below the top bands' re-equip thresholds -- the ladder deadlocked, batteries never displaced the refresh pieces even at max MP. Now: the band = the slot's TOP battery (augs counted, equal-MP ties prefer the refresh copy) vs the POTENCY POINT (the sets' own piece, lowRf-aware); refresh awareness lives ONLY in the order (rfDelta ASC then diff ASC -- the battery over the idle's refresh piece is first off/last on, so the idle's Clr. Bliaut +1 returns FIRST, Bunzi's Hat second). And onAt clamps to endMax: the raw lastMax - tick sits above the reachable pool whenever diff > tick (Hlr-over-Clr diff 22 > 15 could never re-fire); clamped, small diffs keep the early re-equip, big diffs fire the moment the pool tops out; the hysteresis gap stays min(diff, tick) wide. Tests MB13* rewritten.
                   -- 91: the fishing overlay claims Ammo WITH the rod, bait or no bait (Henrik's field case: fishing enabled with no bait in the bags -> the idle set's stat-stick trinket re-planned into Ammo every Default frame beside the rod, the server stripped the rod (ADR 0010), the overlay re-equipped it, forever -- the v78 within-set scope ruling means nothing in the IDLE set's own resolve stops a trinket next to a merely-WORN rod, and trinketWornDisplace judges worn gear only, so a plan-borne trinket kept arriving). fishOverlayFor now writes Ammo = bait or 'remove' whenever it writes Range; and the maxmp per-slot branch skips an explicit 'remove' plan (a deliberate empty-the-slot claim -- fishing's rod guard, AutoAmmo's sweep -- must not have a battery held against it). Tests F68-F71.
                   -- 90: MULTI-RUNG bands (field round 9; names CORRECTED 9b: last out/first back = Clr. Bliaut +1 (Refresh 1 native + 1 aug = 2), then Bunzi's Hat (+1) -- and with augs ALWAYS in the totals, Hlr. Bliaut +1 at 35+18=53 MP TOPS the body ladder while Bunzi's Robe 50 is DOMINATED, pruned, never worn). One band per meaningful rung -- rungs sanitized to falling MP / rising Refresh (dominated rungs pruned), each adjacent pair banded with its own diff and rfDelta, the last rung banding against the potency point. Order = ONE rule: rfDelta ASC then diff ASC -- refresh-cost top-ups (Hlr. Bliaut +1 over Clr. Bliaut +1, Erudite Cap over Bunzi's Hat) come off FIRST and return LAST; refresh-gain bands sink by magnitude (+1 before +2). target() answers the PIECE NAME per slot (shallowest ON band's rung) or false; M.mpRungs supersedes single-pick (mpBestPick = rungs[1] shim); M.mpBandFind serves notes/plan. Tests MB13*, S169b-e (the augment fold end-to-end).
@@ -1748,16 +1749,25 @@ end
 -- (the set planting it in ear2 while the band pulled it toward its
 -- ladder home in ear1) dies at the apply site. Genuine duplicates stay
 -- exempt via mpPairSkip (dup-owned items ride BOTH paired ladders).
+-- claimsOf(sib) answers BOTH claims -- the sibling's planned piece and its
+-- worn piece -- and EITHER vetoes (v94: `plan or worn` shadowed the worn
+-- claim whenever the plan named a different piece, so a set displacing the
+-- earring from ear2 left the worn signal unread and the band relocated it).
 -- Returns kept-candidates, sticky-skipped { c, sib, claimed }.
-function M.mpStickyPairs(cands, claimOf, mpBest)
+function M.mpStickyPairs(cands, claimsOf, mpBest)
     local keep, moved = {}, nil;
     for _, c in ipairs(cands or {}) do
         local sib = M.MP_PAIR[c.lslot];
-        local claimed = (sib ~= nil and claimOf ~= nil) and claimOf(sib) or nil;
-        if claimed ~= nil
-           and M.mpPairSkip(c.name, claimed, (mpBest ~= nil) and mpBest[sib] or nil) then
+        local hit = nil;
+        if sib ~= nil and claimsOf ~= nil then
+            local p, w = claimsOf(sib);
+            local lad = (mpBest ~= nil) and mpBest[sib] or nil;
+            if p ~= nil and M.mpPairSkip(c.name, p, lad) then hit = p;
+            elseif w ~= nil and M.mpPairSkip(c.name, w, lad) then hit = w; end
+        end
+        if hit ~= nil then
             moved = moved or {};
-            moved[#moved + 1] = { c = c, sib = sib, claimed = claimed };
+            moved[#moved + 1] = { c = c, sib = sib, claimed = hit };
         else
             keep[#keep + 1] = c;
         end
@@ -2305,7 +2315,7 @@ local function equipResolved(s, ctx)
             -- here (dup-owned exempt). See M.mpStickyPairs.
             local sticky;
             mpUp, sticky = M.mpStickyPairs(mpUp, function(ls)
-                return planned[ls] or wornItemName(ls);
+                return planned[ls], wornItemName(ls);   -- BOTH claims (v94)
             end, mpCtx.mpBest);
             if sticky ~= nil then
                 for _, sk in ipairs(sticky) do
