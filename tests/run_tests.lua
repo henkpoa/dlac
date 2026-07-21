@@ -4432,6 +4432,79 @@ end)();
         'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers');
     os.remove('tests\\arbstate.lua');
     dispatchM._charDirOverride = nil;
+
+    -- AR8: activities CO-CLAIM (ADR 0012 amendment, step 1.5). The newest-armed
+    -- (`at` stamp) exclusivity that stood the others down whole is retired: with
+    -- two OR three of Craft/HELM/Fishing armed, EVERY armed activity claims and
+    -- the rank list settles each overlapping slot PER SLOT. Pinned at the resolve
+    -- seam -- arbResolve is blind to any `at` field, which is exactly the point:
+    -- arming one activity does not affect the others' claims. (The exclusivity
+    -- lived inline in M.dispatch, never at a pure seam, so there was no old
+    -- exclusivity-pin test to invert -- these ADD the co-claim law it replaced.)
+    do
+        local ord = dispatchM.arbOrder(nil);   -- ...Craft>HELM>Fishing...
+        -- Two armed: Craft + HELM share Head/Hands; Craft ranks above HELM.
+        local w, by = dispatchM.arbResolve({
+            Craft = { Head = 'Craft Cap', Hands = 'Craft Gloves', Neck = 'Craft Torque' },
+            HELM  = { Head = 'Field Hat', Hands = 'Field Gloves', Waist = 'Field Belt' },
+        }, ord, { Body = 'Idle Robe' });
+        check('AR8 both armed -> both claim, no whole stand-down (craft neck kept)', w.Neck, 'Craft Torque');
+        check('AR8b HELM keeps its own slot (waist)', w.Waist, 'Field Belt');
+        check('AR8c rank settles the shared slot per slot (Craft > HELM on Head)', w.Head, 'Craft Cap');
+        check('AR8d shared Hands also to Craft', by.Hands, 'Craft');
+        check('AR8e floor still shows where none claim', w.Body, 'Idle Robe');
+        -- Three armed at once: each keeps its own exclusive slot; the shared one
+        -- goes to the highest rank. Nothing stands down.
+        local w3 = dispatchM.arbResolve({
+            Craft   = { Hands = 'Craft Gloves' },
+            HELM    = { Neck  = 'Field Torque' },
+            Fishing = { Range = 'Lu Shangs Rod', Hands = 'Fishing Gloves' },
+        }, ord, {});
+        check('AR9 three armed: craft keeps Hands (ranked top of the three)', w3.Hands, 'Craft Gloves');
+        check('AR9b HELM keeps Neck',   w3.Neck, 'Field Torque');
+        check('AR9c Fishing keeps Range (no other claims it)', w3.Range, 'Lu Shangs Rod');
+    end
+
+    -- AR10: the PUP field case that drove the ruling, VERBATIM (issue #53). PUP
+    -- idle floor names Range = Animator. Fishing armed -> rod in Range. HELM also
+    -- armed (ranked ABOVE Fishing) wins only its seven armor slots; HELM never
+    -- claims weapons/Range/rings/Ammo, so the ROD STAYS IN RANGE. The Animator
+    -- returns only when Fishing itself is disarmed.
+    do
+        local ord = dispatchM.arbOrder(nil);   -- default: HELM ranks above Fishing
+        -- PUP idle floor (the trigger overlay result the claims dress over).
+        local floor = {
+            Main = 'Animator P', Sub = 'Animator P II', Range = 'Animator',
+            Head = 'Idle Head', Body = 'Idle Body', Hands = 'Idle Hands',
+            Legs = 'Idle Legs', Feet = 'Idle Feet', Neck = 'Idle Neck',
+            Waist = 'Idle Waist', Ring1 = 'Idle Ring1', Ring2 = 'Idle Ring2',
+        };
+        -- Fishing armed: rod in Range, spear in Main, bait in Ammo, fishing armor.
+        local fishing = {
+            Main = 'Halieutica', Range = 'Lu Shangs Rod', Ammo = 'Little Worm',
+            Head = 'Fish Head', Body = 'Fish Body', Hands = 'Fish Hands',
+            Legs = 'Fish Legs', Feet = 'Fish Feet',
+        };
+        -- HELM armed: its seven armor slots ONLY (armor + neck + waist).
+        local helm = {
+            Head = 'Helm Head', Body = 'Helm Body', Hands = 'Helm Hands',
+            Legs = 'Helm Legs', Feet = 'Helm Feet', Neck = 'Helm Neck',
+            Waist = 'Helm Waist',
+        };
+        local w, by = dispatchM.arbResolve({ HELM = helm, Fishing = fishing }, ord, floor);
+        check('AR10 the rod stays in Range (HELM never claims it)', w.Range, 'Lu Shangs Rod');
+        check('AR10b Range attributed to Fishing, not the floor Animator', by.Range, 'Fishing');
+        check('AR10c HELM wins its seven armor slots (Head)', by.Head, 'HELM');
+        check('AR10d HELM wins Neck', w.Neck, 'Helm Neck');
+        check('AR10e HELM wins Waist', w.Waist, 'Helm Waist');
+        check('AR10f fishing Main spear survives (HELM never claims weapons)', w.Main, 'Halieutica');
+        check('AR10g fishing bait survives in Ammo (HELM never claims Ammo)', w.Ammo, 'Little Worm');
+        check('AR10h rings fall to the floor (neither claims them)', w.Ring1, 'Idle Ring1');
+        -- Disarm Fishing (drop its claim): the Animator returns to Range.
+        local w2, by2 = dispatchM.arbResolve({ HELM = helm }, ord, floor);
+        check('AR10i Fishing disarmed -> Animator returns to Range', w2.Range, 'Animator');
+        check('AR10j and Range is the floor again', by2.Range, 'Triggers');
+    end
 end)();
 
 -- ---------------------------------------------------------------------------

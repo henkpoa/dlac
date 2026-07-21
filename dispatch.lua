@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 97;   -- 97: THE ARBITER, step 1 (ADR 0012). One data-driven claim registry orders every Claim's application -- the hardcoded craft > HELM > fish > AutoAmmo > pin overlay sequence at the bottom of M.dispatch is gone, replaced by a single rank-ordered loop (applied LOW->HIGH so higher rank wins the slot, over the Trigger floor). The rank is one strict draggable list per character, persisted as the `arbstate` Statefile (hand-editable this step; the GUI writer is step 2; hot-reloaded on the 1s throttle, torn/missing = built-in default). Default order: Pins > Locks (veto placeholder, semantics unchanged) > AutoAmmo > MaxMP > Craft > HELM > Fishing > Triggers floor -- reproduces today's winners with ONE deliberate change: AutoAmmo's named projectile beats a MaxMP battery in Ammo. MaxMP stays WOVEN through the resolves (not a discrete overlay) but consults the rank via ctx.mpCeded: it never contests a slot won by a claimant ranked above it (so Ammo is ceded to AutoAmmo; batteries still override Craft/HELM/Fishing armor, both ranked below). Pure resolve core M.arbResolve / M.arbOrder / M.arbCededAbove (tests AR*); read-only /dl prio prints the live rank + per-claimant claim status. All claim-side conditions untouched (newest-armed craft/HELM/fish exclusivity, AutoAmmo's fishing stand-down, MaxMP 'remove'-respect / movement yield / sticky pairs / stage-eligibility).
+M.VERSION = 98;   -- 98: THE ARBITER, step 1.5 (ADR 0012 amendment) -- activities CO-CLAIM. The newest-armed (`at` stamp) exclusivity among Craft/HELM/Fishing is retired: each armed activity now claims whenever its own gates hold, all three may co-claim in one dispatch, and the rank-ordered apply loop settles every contested slot PER SLOT (arming an activity no longer stands the others down whole). The field case (PUP): idle floor Range = Animator; Fishing armed -> rod in Range; HELM also armed wins only its seven armor slots (HELM never claims weapons/Range/rings/Ammo), so the rod stays in Range until Fishing itself disarms. Each feature's own gates are UNCHANGED (HELM/Fishing Engaged/Dead stand-asides + Default-only, Craft Default-only, AutoAmmo's stand-down while fishing is live, MaxMP's rank consult). /dl prio now shows every concurrent claimant ON.
+                  -- 97: THE ARBITER, step 1 (ADR 0012). One data-driven claim registry orders every Claim's application -- the hardcoded craft > HELM > fish > AutoAmmo > pin overlay sequence at the bottom of M.dispatch is gone, replaced by a single rank-ordered loop (applied LOW->HIGH so higher rank wins the slot, over the Trigger floor). The rank is one strict draggable list per character, persisted as the `arbstate` Statefile (hand-editable this step; the GUI writer is step 2; hot-reloaded on the 1s throttle, torn/missing = built-in default). Default order: Pins > Locks (veto placeholder, semantics unchanged) > AutoAmmo > MaxMP > Craft > HELM > Fishing > Triggers floor -- reproduces today's winners with ONE deliberate change: AutoAmmo's named projectile beats a MaxMP battery in Ammo. MaxMP stays WOVEN through the resolves (not a discrete overlay) but consults the rank via ctx.mpCeded: it never contests a slot won by a claimant ranked above it (so Ammo is ceded to AutoAmmo; batteries still override Craft/HELM/Fishing armor, both ranked below). Pure resolve core M.arbResolve / M.arbOrder / M.arbCededAbove (tests AR*); read-only /dl prio prints the live rank + per-claimant claim status. All claim-side conditions untouched (newest-armed craft/HELM/fish exclusivity, AutoAmmo's fishing stand-down, MaxMP 'remove'-respect / movement yield / sticky pairs / stage-eligibility).
                   -- 96: MOVEMENT YIELD (panel setting, manifest fmt 14 -- mpMoveYield + the mv map): while MOVING, a set piece carrying Movement+ beats the battery in its slot even at max MP (field ask: Pegasus Collar over the neck battery on BRD; the movement trigger set's piece flows, the battery steps aside, and stopping resumes the band plan untouched). The check is the FIRST arm of the per-slot MP branch -- before target logic, after the v91 'remove' skip -- and reads the same ctx.player.IsMoving the `moving` trigger matcher uses. Off by default; the MaxMP panel checkbox persists it inside the manifest like the pair override. /dl why notes it as MP-MOVE.
                   -- 95: the refresh BASELINE is the POTENTIAL refresh (field round 13: Clr. Bliaut +1 displaced by Hlr. Bliaut +1 at MP ~800, plan row 12 'body (0->53)' with NO [refresh-cost] tags anywhere). lowRf was the min-MP piece's refresh -- which reads 0 the moment ANY combat/precast set writes the slot with potency gear, so every refresh-cost delta vanished, the Hlr band sorted deep-and-plain and its clamped on-trigger landed mid-pool. Now lowRf = the MOST refresh any trigger-reachable set puts in the slot ("you should be aware that there is a POTENTIAL refresh piece there" -- the round-10 ruling verbatim); the MP low stays the minimum (the true potency point). Plus mpbands.MIN_TICK = 5: the measured tick is honest (unbuffed gear refresh really ticks +1..3) but a 1-MP margin makes hair-width hysteresis (off<=1086/on>=1087) -- the margin floors at 5, the buckets keep the true readings. Not the pair-homes change: that stays ear/ring-only.
                   -- 94: sticky pairs check BOTH claims (field: Loquac. still moved ear2 -> ear1 ONCE, no bounce). Root cause found OUTSIDE the engine: Henrik's gear.lua has NO LoquaciousEarring entry, so his Idle Ear2 ladder's gear.Ear.LoquaciousEarring reference is silently nil (nil list entries VANISH -- no warning possible) and the SET equips Outlaw's into ear2, displacing the earring to the bag; the band then legitimately picked the freed 30-MP battery for ear1. Engine hardening shipped anyway: mpStickyPairs consulted `plan or worn`, so a sibling plan naming a DIFFERENT piece shadowed the worn claim -- both claims veto independently now (MSS5). The data fix is Henrik's side: /dl sync to index the earring, then the set holds it in ear2 and the plan-claim pins it forever.
@@ -3479,20 +3480,16 @@ function M.dispatch(event)
         -- anywhere else (craft/HELM exclude it by design).
         local ammoState  = ensureAmmoState();
         local ammoOn     = ammoStateOn(ammoState);
-        -- One crafting/gathering/fishing overlay at a time (they contest the
-        -- same slots). The watchers already exclude each other addon-side; if
-        -- several switches are somehow on, the NEWEST enable (`at` stamp)
-        -- wins whole -- stateless arbitration, no cross-module requires
-        -- (v59, generalized three-way in v64; ties keep the OLDER system,
-        -- craft > helm > fish, exactly the old pairwise tie rule).
-        if (craftOn and helmOn) or (craftOn and fishOn) or (helmOn and fishOn) then
-            local cAt = craftOn and (tonumber(craftState.at) or 0) or -1;
-            local hAt = helmOn and (tonumber(helmState.at) or 0) or -1;
-            local fAt = fishOn and (tonumber(fishState.at) or 0) or -1;
-            if cAt >= hAt and cAt >= fAt then helmOn, fishOn = false, false;
-            elseif hAt >= fAt then craftOn, fishOn = false, false;
-            else craftOn, helmOn = false, false; end
-        end
+        -- Craft/HELM/Fishing CO-CLAIM (ADR 0012 amendment, step 1.5). Each armed
+        -- activity claims whenever its own gates hold -- all three may claim in
+        -- one dispatch -- and the Arbiter's rank order settles every contested
+        -- slot, per slot (the apply loop below). The newest-armed (`at` stamp)
+        -- exclusivity that stood the others down WHOLE is retired: it was the
+        -- pre-Arbiter conflict resolver, redundant once rank arbitrates and
+        -- actively defeating per-slot composition (the PUP field case: arming
+        -- HELM must not pull a fishing rod out of Range that HELM never claims).
+        -- Each feature's own gates are untouched (idle-only stand-asides,
+        -- Default-only application); arming no longer switches activities.
         if not hasRules and not hasPins and not craftOn and not helmOn and not fishOn and not ammoOn then return; end
 
         local ctx = buildCtx(event);
@@ -3515,13 +3512,15 @@ function M.dispatch(event)
             return a.ord < b.ord;
         end);
 
-        -- Craft overlay applies on Default even with NO trigger match, and always
-        -- LAST (top priority) below -- but under the pin.
+        -- Craft overlay applies on Default even with NO trigger match. It is one
+        -- Claim among the co-claiming activities; the Arbiter's rank settles any
+        -- slot it shares with HELM/Fishing below.
         local cEquip = craftOn and craftOverlayFor(craftState, ctx) or nil;
-        -- HELM overlay: same law, same rank (arbitration above means at most
-        -- one of the three is on this dispatch).
+        -- HELM overlay: same law, its own Claim (co-claims with craft/fish now;
+        -- step 1.5 dropped the newest-armed exclusivity, so all armed activities
+        -- claim and rank settles each overlapping slot).
         local hEquip = helmOn and helmOverlayFor(helmState, ctx) or nil;
-        -- Fishing overlay: same law, same rank (v64).
+        -- Fishing overlay: same law, its own Claim (v64; co-claims since step 1.5).
         local fEquip = fishOn and fishOverlayFor(fishState, ctx) or nil;
 
         -- Pins apply on EVERY event (a pin that lost its slot mid-cast would not
@@ -4520,15 +4519,9 @@ if inLac() then
             local helmOn = helmStateActive(helmState);
             local fishState = ensureFishState();
             local fishOn = fishStateActive(fishState);
-            -- Newest-armed exclusivity: only one of craft/HELM/fish is live.
-            if (craftOn and helmOn) or (craftOn and fishOn) or (helmOn and fishOn) then
-                local cAt = craftOn and (tonumber(craftState.at) or 0) or -1;
-                local hAt = helmOn and (tonumber(helmState.at) or 0) or -1;
-                local fAt = fishOn and (tonumber(fishState.at) or 0) or -1;
-                if cAt >= hAt and cAt >= fAt then helmOn, fishOn = false, false;
-                elseif hAt >= fAt then craftOn, fishOn = false, false;
-                else craftOn, helmOn = false, false; end
-            end
+            -- Co-claim (ADR 0012 amendment): every armed activity claims; rank
+            -- settles overlapping slots. No newest-armed exclusivity -- the
+            -- status below shows all concurrent claimants ON.
             local pinState = ensurePinState();
             local hasPins = (type(pinState) == 'table' and next(pinState) ~= nil);
             local ammoOn = ammoStateOn(ensureAmmoState());

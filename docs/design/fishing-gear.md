@@ -232,11 +232,14 @@ Panel layout, top to bottom:
   ladder only ever contains fishing Mains, so players without one never see a Main swap;
   a swap does eat TP, which idle fishing accepts (worth a doc note in the panel).
   **Sub never touched**; no Back/Ear until a fishing item shows up there.
-- **Arbitration**: three-way now — craft vs helm vs fish all read at Default; if more
-  than one is active the **newest `at` stamp wins whole** (generalizes the v59 pairwise
-  rule; pins still beat everything). Bars keep the belt-and-suspenders writes: enabling
-  fish disables craft+helm at their state files (one-way requires, no cycles: fishwatch
-  → craftwatch/helmwatch).
+- **Arbitration**: CO-CLAIM (ADR 0012 amendment, engine v98) — craft, helm and fish all
+  read at Default and **each claims whenever armed**; the Arbiter's rank list settles
+  every overlapping slot **per slot** (default rank Craft &gt; HELM &gt; Fishing; pins still
+  beat everything). The **newest-`at`-wins whole** exclusivity is RETIRED: it was the
+  pre-Arbiter conflict resolver, redundant once rank arbitrates and actively defeating
+  per-slot composition (the PUP field case — arming HELM pulled a fishing rod out of Range
+  that HELM never claims). The bars no longer cross-disable: arming fishing leaves an armed
+  craft/helm switch on, and disarming a peer is the player's own act.
 - **Manifest**: AUTO_FMT 7 → **8**; `fish` block built in triggersui's autoCommit walk —
   candidates = owned gear with `Stats.FishingSkill &gt; 0` OR a fishdb `gearBonus` entry;
   score = FishingSkill + gearBonus.fish (+ gearBonus.cexi ordering nudge); sort score
@@ -276,7 +279,7 @@ the test fixtures.
 | `feature/fishwatch.lua` | state owner: fishstate read/write (session-only enabled), target/rod/bait resolution + bag heartbeat re-validation, skill read (GetCraftSkill(0)), !ventures 0x0B5 trigger + 0x017 capture → fishventures.lua + raw mirror, `/dl fish` subcommands, barVisible; VP delegated to helmwatch, GP to craftwatch |
 | `ui/fishui.lua` | the panel (§2), helmui's DI shape (`render(deps, availW)`), imgui pcall-guard |
 | `ui/fishbar.lua` | floating bar (§3) |
-| `dispatch.lua` v64 | ensureFishState/fishStateActive/fishOverlayFor/FISH_OVERLAY_SLOTS, `dlac:AutoFish` resolveVirtual branch (manifest `a.fish`), three-way arbitration |
+| `dispatch.lua` v64 (co-claim v98) | ensureFishState/fishStateActive/fishOverlayFor/FISH_OVERLAY_SLOTS, `dlac:AutoFish` resolveVirtual branch (manifest `a.fish`); the three-way `at`-stamp arbitration is retired — craft/helm/fish CO-CLAIM and the Arbiter's rank settles each slot (ADR 0012 amendment) |
 | `ui/triggersui.lua` | +1 Automations row, fish detail delegation, autoCommit `fish` manifest block (AUTO_FMT 8) |
 | `feature/craftwatch.lua` | GP_OFFSET += `Fishing = 0x20` (fixture test flips from "ignored" to parsed) |
 
