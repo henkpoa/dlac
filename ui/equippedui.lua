@@ -386,7 +386,7 @@ local function renderEquippedTab(job, level)
         local prevLock = ui._lockPrev;
         imgui.Checkbox('Lock when equipped', ui.lockEquipped);
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('While on, clicking an alternative LOCKS this slot (the dlac engine stops\nequipping into it, /lac disable covers legacy profile code) and equips it via\nthe game\'s native /equip -- so it stays put. Uncheck to release the slot.');
+            imgui.SetTooltip('While on, clicking an alternative LOCKS this slot (the dlac engine stops\nequipping into it -- the same engine lock the Priority list\'s Locks row governs)\nand equips it via the game\'s native /equip -- so it stays put.\nUncheck to release the slot.');
         end
         if prevLock == true and ui.lockEquipped[1] == false then
             local s = ui.eqSelected and S.lacSlot(ui.eqSelected) or 'all';

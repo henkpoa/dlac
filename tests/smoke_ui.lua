@@ -864,6 +864,140 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- 11. ENGINE-NATIVE SLOT LOCKS (issue #58 / PRD #57): the lock path is engine-
+--     native only -- it no longer sabotages the slot at the LAC layer with
+--     /lac disable, which was defeating the Arbiter's punch-through (a pin that
+--     outranks Locks could never dress a /lac-disabled slot). These pin the
+--     retirement at the queued-command seam -- assert the EXACT command strings
+--     each UI action queues -- so the legacy dependency cannot silently return.
+-- ---------------------------------------------------------------------------
+(function()
+    -- (a) THE LOCK ACTION -- equipToSlot's lock mode runs through the cmdqueue.
+    --     gearui captured the cmdqueue MODULE TABLE at load, so mutating its
+    --     enqueue records exactly what the lock action queues (the auto-equip
+    --     queued-/lac-command prior art). Must queue the ENGINE lock + native
+    --     /equip and NOTHING at the /lac layer.
+    local cmdq = require('dlac\\lib\\cmdqueue');
+    local realEnqueue = cmdq.enqueue;
+    local rec = {};
+    cmdq.enqueue = function(_, c) rec[#rec + 1] = c; end
+    S.equipToSlot('Head', "Genbu's Kabuto", true, false, false);   -- lock, not free, not already locked
+    cmdq.enqueue = realEnqueue;
+    local joined = table.concat(rec, ' | ');
+    check('S200 lock action queues the engine lock', string.find(joined, '/dl lock head on', 1, true) ~= nil, true);
+    check('S201 lock action equips via native /equip', string.find(joined, '/equip head', 1, true) ~= nil, true);
+    check('S202 lock action queues NO /lac disable (engine-native only)',
+        string.find(joined, '/lac disable', 1, true), nil);
+    check('S203 lock action touches the /lac layer not at all',
+        string.find(joined, '/lac ', 1, true), nil);
+
+    -- already-locked lock action: re-equips only (no re-lock spam), still no /lac.
+    rec = {};
+    cmdq.enqueue = function(_, c) rec[#rec + 1] = c; end
+    S.equipToSlot('Head', "Genbu's Kabuto", true, false, true);
+    cmdq.enqueue = realEnqueue;
+    check('S204 already-locked lock re-equips only, no /lac',
+        #rec == 1 and string.find(rec[1], '/equip head', 1, true) ~= nil, true);
+
+    -- (b) FREE EQUIP + UNLOCK go through equippedui's render + AshitaCore's
+    --     command queue (not the cmdqueue). Drive renderEquippedTab against a
+    --     stub imgui + a recording AshitaCore -- the floatgear section's
+    --     re-require pattern -- and read back the exact commands. Free equip
+    --     KEEPS its global /lac pair (the scope boundary this change must not
+    --     cross); unlock KEEPS /lac enable (the legacy heal).
+    local nop = function() end
+    local IM = setmetatable({}, { __index = function() return nop; end });
+    IM.GetContentRegionAvail = function() return 620; end
+    IM.BeginChild = function() return true; end
+    IM.Button     = function() return false; end
+    IM.Checkbox   = function() return false; end
+    IM.IsItemHovered = function() return false; end
+    IM.InputText  = function() return false; end
+    IM.SliderFloat = function() return false; end
+
+    local queued = {};
+    local recAshita = { GetChatManager = function()
+        return { QueueCommand = function(_, _, c) queued[#queued + 1] = c; end };
+    end };
+
+    -- re-require equippedui so its captured imgui is the stub (host.register
+    -- replaces in place -- tab order is untouched). Stub the services its render
+    -- touches (the real ones captured the nil imgui at load).
+    package.loaded['imgui'] = IM;
+    package.loaded['dlac\\ui\\equippedui'] = nil;
+    local eqOk = pcall(require, 'dlac\\ui\\equippedui');
+    check('S205 equippedui re-requires against a stub imgui', eqOk, true);
+    local eqmod = host.get('equipped');
+    local render = eqmod and eqmod.tabs and eqmod.tabs[1] and eqmod.tabs[1].render;
+    check('S206 the Equipped tab render is reachable', type(render), 'function');
+
+    if eqOk and type(render) == 'function' then
+        local Sx = host.services;
+        local keep = { Sx.renderSlotGrid, Sx.renderStatsPanel, Sx.renderSortCombo,
+            Sx.candidatesForSlot, Sx.sortForDisplay, Sx.getEquippedId, Sx.displayName,
+            Sx.lookupById, Sx.engineLocks };
+        Sx.renderSlotGrid  = nop;  Sx.renderStatsPanel = nop;  Sx.renderSortCombo = nop;
+        Sx.candidatesForSlot = function() return {}; end
+        Sx.sortForDisplay  = function(l) return l or {}; end
+        Sx.getEquippedId   = function() return nil; end
+        Sx.displayName     = function() return 'X'; end
+        Sx.lookupById      = function() return nil; end
+        Sx.engineLocks     = function() return {}; end
+
+        local realAshita = AshitaCore;
+        AshitaCore = recAshita;
+        local u = Sx.ui;
+        u.showStats = false;  u._gearFloat = false;  u.altSearch = { '' };
+
+        -- FREE EQUIP on: the global /lac disable pair (a DIFFERENT feature -- must
+        -- stay exactly as before). eqSelected nil keeps the drive on the top block.
+        u.eqSelected = nil;
+        u.freeEquip = { true };  u._freePrev = false;
+        u.lockEquipped = { false };  u._lockPrev = false;
+        queued = {};
+        pcall(render, 'WHM', 75);
+        local fjoin = table.concat(queued, ' | ');
+        check('S207 Free equip ON still queues the GLOBAL /lac disable (scope boundary held)',
+            string.find(fjoin, '/lac disable', 1, true) ~= nil
+              and string.find(fjoin, '/lac disable %S') == nil, true);   -- global: no slot argument
+
+        -- FREE EQUIP off: /lac enable + release engine locks (unchanged).
+        u.freeEquip = { false };  u._freePrev = true;
+        queued = {};
+        pcall(render, 'WHM', 75);
+        local fjoin2 = table.concat(queued, ' | ');
+        check('S208 Free equip OFF still queues /lac enable', string.find(fjoin2, '/lac enable', 1, true) ~= nil, true);
+        check('S209 Free equip OFF releases engine locks', string.find(fjoin2, '/dl lock all off', 1, true) ~= nil, true);
+
+        -- THE UNLOCK ACTION: unchecking "Lock when equipped" queues the engine
+        -- unlock AND the legacy /lac enable heal (a no-op for clean users, a
+        -- cleanup for anyone carrying a stale disable from the old lock path).
+        u.eqSelected = 'Head';
+        u.freeEquip = { false };  u._freePrev = false;      -- no free-equip edge
+        u.lockEquipped = { false };  u._lockPrev = true;    -- the unlock edge
+        queued = {};
+        pcall(render, 'WHM', 75);
+        local ujoin = table.concat(queued, ' | ');
+        check('S210 unlock queues the engine unlock', string.find(ujoin, '/dl lock head off', 1, true) ~= nil, true);
+        check('S211 unlock queues /lac enable <slot> (the legacy heal)',
+            string.find(ujoin, '/lac enable head', 1, true) ~= nil, true);
+
+        AshitaCore = realAshita;
+        for i, f in ipairs({ 'renderSlotGrid', 'renderStatsPanel', 'renderSortCombo',
+            'candidatesForSlot', 'sortForDisplay', 'getEquippedId', 'displayName',
+            'lookupById', 'engineLocks' }) do
+            Sx[f] = keep[i];
+        end
+        u.eqSelected = nil;  u._lockPrev = nil;  u._freePrev = nil;
+    end
+
+    -- restore the real (nil) imgui binding for anything downstream
+    package.loaded['imgui'] = nil;
+    package.loaded['dlac\\ui\\equippedui'] = nil;
+    pcall(require, 'dlac\\ui\\equippedui');
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures > 0 then

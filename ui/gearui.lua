@@ -686,7 +686,7 @@ end
 
 -- ---------------------------------------------------------------------------
 -- Frame-delayed command queue + frame clock (for the "Lock when equipped"
--- enable/equip/disable sequence) -- own module now (dlac\\cmdqueue.lua, the
+-- lock/equip sequence) -- own module now (dlac\\cmdqueue.lua, the
 -- 200-local cap again). cmdq.tick() runs every d3d_present so it never blocks;
 -- cmdq.frame() is the shared frame clock the per-frame logic below reads.
 -- ---------------------------------------------------------------------------
@@ -704,11 +704,14 @@ local function lacSlot(label) return string.lower(tostring(label or '')); end
 --                /equip command so it bypasses LAC entirely and sticks (LAC won't
 --                re-override while disabled). This is the "equip outside LAC" path.
 --   lock      -- lock the slot ENGINE-SIDE (/dl lock: the dispatch engine strips it
---                from every set it equips -- this is what actually holds, and it's
---                what the mirror displays), plus /lac disable as belt-and-suspenders
---                against any legacy hand-written EquipSet calls in the profile, then
---                native /equip. alreadyLocked (from the engine's mirror, so it resets
---                correctly when LAC reloads) skips the re-lock spam.
+--                from every set it equips -- this is what actually holds, it's what
+--                the mirror displays, and it's the state the Locks veto row governs
+--                (ADR 0012). The lock is engine-native ONLY: it deliberately does NOT
+--                /lac disable the slot, because that blocks the slot BELOW the engine
+--                and defeats the punch-through the Priority list promises (a pin that
+--                outranks Locks could never dress a /lac-disabled slot -- issue #58).
+--                Then native /equip. alreadyLocked (from the engine's mirror, so it
+--                resets correctly when LAC reloads) skips the re-lock spam.
 --   default   -- /lac equip temp-swap (LAC may re-override on the next action).
 local function equipToSlot(slotLabel, itemName, lock, freeEquip, alreadyLocked)
     if slotLabel == nil or itemName == nil then return; end
@@ -722,8 +725,7 @@ local function equipToSlot(slotLabel, itemName, lock, freeEquip, alreadyLocked)
         if alreadyLocked then
             cmdq.enqueue(2, string.format('/equip %s "%s"', slot, nm));          -- locked; just equip
         else
-            cmdq.enqueue(2,  string.format('/dl lock %s on', slot));             -- engine lock (the real hold)
-            cmdq.enqueue(4,  string.format('/lac disable %s', slot));            -- belt for legacy profile code
+            cmdq.enqueue(2,  string.format('/dl lock %s on', slot));             -- engine lock (the real hold, engine-native only -- no /lac disable, issue #58)
             cmdq.enqueue(26, string.format('/equip %s "%s"', slot, nm));         -- then equip after it settles
         end
     else
