@@ -224,8 +224,11 @@ agent; the per-repo setup lives in `docs/agents/`.
   keys (All + best named type — a pet is exactly ONE type), merged at gearui's
   `candidateStats` seam so every scoring path prices pet gear identically;
   `petStatKeys` + statdefs' derived `Pet:` labels put the family in the weights
-  stat menu (type "pet" to browse it). `stats()`/`setStats()` stay pet-blind —
-  goldens byte-identical through the change.
+  stat menu (type "pet" to browse it; pet-type names are search terms too —
+  "wyvern" finds Pet:HP%). `stats()`/`setStats()` stay pet-blind — goldens
+  byte-identical through the change. **Field-CONFIRMED 07-22.** Deployment
+  lesson from round 1: the game loads the MAIN checkout — after pushing, pull
+  it (`git -C <checkout> pull --ff-only`) before asking for a field round.
 
 - **Iridescence catalog sweep + universals ladder (07-21, engine v82, manifest
   fmt 10, field-CONFIRMED 07-22).** The shipped catalog's `Iridescence` stat is now the

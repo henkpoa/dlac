@@ -165,7 +165,9 @@ twin; mirror the edit. Never silence the pin.
   menu"): `petScoreStats` + `petStatKeys` price the channel — `Pet:`-namespaced
   keys through gearui's `candidateStats` seam and the weights picker, master
   `stats()`/`setStats()` untouched (goldens byte-identical through the change,
-  PM17+ pins the flatten rule).
+  PM17+ pins the flatten rule). **Field-confirmed the same night** after one
+  instinct fix: pet-type names became picker search terms ("wyvern" finds
+  Pet:HP% — `petStatKeys`' second return).
 
 ## Troubleshooting quick table
 

@@ -4147,3 +4147,13 @@ system prices ONE flat map — and the answer was a **namespace**: `Pet:`-prefix
 - **PM17+ pins it all:** the All+best-named flatten (via a swap table), the
   namespace hygiene (no bare master key ever leaks), statdefs derivation, and
   gearoptim's pricing + negation. 2363 + 225 green on Windows and WSL lua5.4.
+
+Field rounds, same night. Round 1: "not seeing wyvern hpp+" — the code was fine;
+the DEPLOYMENT seam wasn't. The game loads the MAIN checkout, and the feature sat
+two commits ahead of it on origin — **pushed ≠ playable**, now a survival rule:
+after pushing, pull the main checkout before asking for a field round. The report
+also exposed a search-instinct gap: Henrik looked for the stat by his PET's name.
+So `petStatKeys` grew a second return — { statKey → the pet types carrying it } —
+and the picker folds those names into its search terms: typing "wyvern" surfaces
+Pet:HP%, "automaton" its accuracy family (7cc98f1; PM18a/b pin the shape). Round 2:
+**field-CONFIRMED** — "It's there."
