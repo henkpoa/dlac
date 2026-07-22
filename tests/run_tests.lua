@@ -6990,6 +6990,11 @@ end)();
     check('PM17f nil-safe', oracle.petScoreStats(nil), nil);
     check('PM18 petStatKeys: distinct + sorted (the stat-menu source)',
         table.concat(oracle.petStatKeys(), ','), 'Attack,Haste,RangedAccuracy');
+    local _, ptypes = oracle.petStatKeys();
+    check('PM18a ...second return names the carrying pet types (search terms:',
+        table.concat(ptypes.Haste, ','), 'All,Avatar,Wyvern');
+    check('PM18b ...per stat, sorted ("wyvern" finds Pet:HP% -- the field case)',
+        table.concat(ptypes.RangedAccuracy, ','), 'Automaton');
 
     -- statdefs speaks the namespace: derived label/section, canon keeps the prefix
     local sd = dofile('data/statdefs.lua');

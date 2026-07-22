@@ -310,24 +310,39 @@ end
 -- petStatKeys(): the sorted, distinct RAW stat keys appearing anywhere in the
 -- pet data -- the weights editor's "add stat" menu asks this to list exactly
 -- the pet family the data can actually deliver (prefix 'Pet:' before use as a
--- weight key). Fresh walk each call like every oracle answer; the caller memoizes.
+-- weight key). SECOND return: { statKey -> sorted pet-type names carrying it }
+-- ("which pets does HPP reach?") -- the menu folds those into its search terms,
+-- so typing "wyvern" surfaces Pet:HP% (Henrik's field instinct, 07-22). Fresh
+-- walk each call like every oracle answer; the caller memoizes.
 function M.petStatKeys()
     local pm = petmods();
-    if pm == nil then return {}; end
-    local seen, out = {}, {};
+    if pm == nil then return {}, {}; end
+    local seen, out, typeSets = {}, {}, {};
     for _, pets in pairs(pm) do
         if type(pets) == 'table' then
-            for _, st in pairs(pets) do
-                if type(st) == 'table' then
+            for ptype, st in pairs(pets) do
+                if type(st) == 'table' and type(ptype) == 'string' then
                     for k in pairs(st) do
-                        if type(k) == 'string' and not seen[k] then seen[k] = true; out[#out + 1] = k; end
+                        if type(k) == 'string' then
+                            if not seen[k] then
+                                seen[k] = true; out[#out + 1] = k; typeSets[k] = {};
+                            end
+                            typeSets[k][ptype] = true;
+                        end
                     end
                 end
             end
         end
     end
     table.sort(out);
-    return out;
+    local types = {};
+    for k, set in pairs(typeSets) do
+        local l = {};
+        for t in pairs(set) do l[#l + 1] = t; end
+        table.sort(l);
+        types[k] = l;
+    end
+    return out, types;
 end
 
 -- setStats(composition, ctx): the FULL composition evaluation -- every piece's

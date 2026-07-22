@@ -127,16 +127,21 @@ local function weightSuggestions()
     -- The pet-channel family ('Pet:Haste' -> what your gear grants YOUR PET --
     -- scored via oracle.petScoreStats' namespace). Sourced from the oracle so the
     -- menu lists exactly the stats the pet data actually carries; terms include
-    -- 'pet' plus the inner stat's key/label, so typing "pet" browses the family
-    -- and "haste" still surfaces Pet:Haste beside Haste.
+    -- 'pet', the inner stat's key/label, AND the pet-type names carrying the stat
+    -- -- so typing "pet" browses the family, "haste" surfaces Pet:Haste beside
+    -- Haste, and "wyvern" finds Pet:HP% (the field instinct that reported this).
     if oracle ~= nil and type(oracle.petStatKeys) == 'function' then
-        for _, k in ipairs(oracle.petStatKeys()) do
+        local pkeys, ptypes = oracle.petStatKeys();
+        for _, k in ipairs(pkeys) do
             local ie = hasStatdefs and statdefs.get(k) or nil;
             local innerLbl = (ie ~= nil and ie.label) or k;
             local key = 'Pet:' .. k;
             local terms = { 'pet', string.lower(key), string.lower(k) };
             if string.lower(innerLbl) ~= string.lower(k) then
                 terms[#terms + 1] = string.lower(innerLbl);
+            end
+            for _, t in ipairs((type(ptypes) == 'table' and ptypes[k]) or {}) do
+                if t ~= 'All' then terms[#terms + 1] = string.lower(t); end
             end
             out[#out + 1] = { key = key, label = 'Pet: ' .. innerLbl, terms = terms };
         end
