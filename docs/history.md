@@ -4260,3 +4260,56 @@ A profile SWITCH with unsaved trigger edits now discards them loudly (carrying
 them over would splice old-profile rules into the new file). Pure decision seams
 `_followTriggers` / `_followBoxes` + the profilesets behavior test are pinned as
 TGW1-8 / PSW0-3 / LGW1-7.
+
+## HELM first-contact round: the categoryless arm + the apostrophe the catalog drops (2026-07-22, addon 2026.07.22n, commit 3b999ad)
+
+**Theme:** two same-evening HELM field cases, both presenting as "the gear
+never comes" with NO HELM claimant in /dl why -- which is itself the
+diagnostic: absence from /dl why means no claim ever FORMED (the state gate
+or the gear gate failed), not that HELM lost an arbitration. The support
+chain that cracked both, worth keeping: `/dl helm` (category + switches as
+helmwatch sees them) -> `/dl prio` (the ENGINE's helmStateActive verdict --
+the same gate the dispatch runs) -> `/dl helm show` (what the overlay would
+resolve, or "(nothing -- no HELM gear in bags, or rescan pending)").
+
+**Case 1 -- a friend's first session: armed, categoryless, silently dead.**
+"Set HELM Idle" armed fine with no category ever picked; helmstate carried
+gather="" and helmStateActive() returned false forever -- switch ON in the
+UI, engine treating HELM as fully off, nothing anywhere saying so. A chat
+warning at the arm choke point was written first, then replaced by Henrik's
+ruling: **Harvesting is the first-timer default.** helmwatch.activeGather
+now STARTS as 'Harvesting'; loadState only overrides from a VALID persisted
+value, so existing gather="" state files heal to the default on their next
+load. Any real pick (bar, command, 0x034 swing auto-detect, Auto-HELM
+proximity) replaces it exactly as before. H0 pins the default.
+
+**Case 2 -- Mindie's Miner's Helmet equipped under every category EXCEPT
+Mining.** Perfectly backwards, and the manifest had the receipts:
+hats.Mining said "Miners Helmet" (catalog spelling) while the head ladder's
+rung said "Miner's Helmet" (the gear DB's client name). The hat-map builder
+did a NAME-ONLY usableRec lookup with the hardcoded catalog string; the
+oracle lookup missed ownedByName (apostrophe), fell through to the CATALOG
+record -- id right, Name wrong -- and ownedRec validated ownership by ID,
+so the manifest carried a name LAC can never equip. Mining took the hat-map
+hit and failed; every other category MISSED the hat map and fell to the
+generic head ladder, whose rungs come from ownedList records -- the real
+client spelling -- and equipped fine. Fix: the semantic hat map is now
+**id-PINNED (25557-25560, all four hats)** through usableRec's existing
+pinId arm -- lookupById puts the gear-DB record (the REAL client name)
+first; the catalog spelling survives only as the owned-but-not-yet-indexed
+fallback, which autosync closes on its next rescan. The fixtures model the
+true divergence now (real id 25560 + the apostrophe name, the Laevateinn
+id-PIN precedent); S176 pins that the map adopts the DB spelling; the
+regenerated golden diff is exactly the two name lines.
+
+**The general law this round adds** (already the relic/universals rule, now
+proven against the catalog itself): **any hardcoded item name must pin its
+id -- catalog spellings are NOT client spellings.** The catalog drops
+apostrophes; the client keeps them; an ownership check keyed by id will
+happily validate a record whose Name can never equip.
+
+No tracker items existed for either case (field reports came straight to
+the session); nothing to close. Henrik declared the round fixed 2026-07-22.
+Both changes are addon-side -- /addon reload dlac to board; a session's
+first arm rescans the manifest and rewrites the hat map with the id-pinned
+names.
