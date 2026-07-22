@@ -127,6 +127,9 @@ local function itemEntry(slot, rec, catRec, augs, augStats, counts)
     };
     local oh = rec.OneHanded;
     if oh == nil and catRec ~= nil then oh = catRec.OneHanded; end
+    -- Same record rule as enrich//dl fix: H2H pins false (the catalog's flag
+    -- lies there -- see gearrecord.healOneHanded), so exports never carry it.
+    oh = grec.healOneHanded(e.type, oh);
     if oh ~= nil then e.oneHanded = oh; end
     if counts ~= nil and rec.Id ~= nil then e.count = counts[rec.Id] or 0; end
     e.stats = grec.mergedStats(rec, catRec);

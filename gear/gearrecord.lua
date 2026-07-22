@@ -65,6 +65,23 @@ function M.healType(ownedType, catType)
     return ownedType;
 end
 
+-- The OneHanded flag a record should carry given its Type: HandToHand pins
+-- FALSE -- H2H occupies both hands (the server knocks even grips off an H2H
+-- main; ADR 0006 addendum 2026-07-22) -- everything else keeps the given
+-- value (false and nil pass through intact). Exists because the flag LIES in
+-- the wild for H2H: apicrawl's ONE set stamped the catalog true (fixed
+-- locally 2026-07-22, ships with the next crawl) and /dl fix propagated it
+-- into gear.lua files. Every stamp this module's callers write goes through
+-- here, and computeFixes corrects a wrong stamped value in place
+-- (machine-owned BOTH ways, the RSlot precedent). Readers ALSO refuse H2H by
+-- Type (utils.subSlotAllowed isH2H + mirrors), so a stamp not yet corrected
+-- stays inert.
+function M.healOneHanded(recType, oneHanded)
+    local k = M.normKey(recType or '');
+    if k == 'handtohand' or k == 'h2h' then return false; end
+    return oneHanded;
+end
+
 -- 'Grip' for grips/straps, else 'Shield' -- a Sub-only item is one or the other,
 -- and every grip/strap is named "* Grip" / "* Strap". GUI-side mirror of the
 -- engine's utils.classifySub (which stays engine-owned: the seeded state cannot
@@ -118,9 +135,13 @@ end
 -- CONSUMERS' rule -- see docs/design/conditional-effects.md).
 function M.enrich(rec, c)
     if type(rec) ~= 'table' or type(c) ~= 'table' then return rec; end
-    -- Pairing metadata (Sub-slot rule) + the legacy-spelling heal.
+    -- Pairing metadata (Sub-slot rule) + the legacy-spelling heal. OneHanded
+    -- rides through the record rule: catalog fills a missing flag, and an H2H
+    -- record's lying true (see healOneHanded) is corrected in memory.
     rec.Type = M.healType(rec.Type, c.Type);
-    if rec.OneHanded == nil then rec.OneHanded = c.OneHanded; end
+    local oh = rec.OneHanded;
+    if oh == nil then oh = c.OneHanded; end
+    rec.OneHanded = M.healOneHanded(rec.Type, oh);
     -- Pairing metadata (Range/Ammo rule). Absent stays absent -- nil is
     -- meaningful: it marks an unfirable stat stick that forces Range empty.
     if rec.AmmoType == nil then rec.AmmoType = c.AmmoType; end

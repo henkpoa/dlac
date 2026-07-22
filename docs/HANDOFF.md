@@ -564,7 +564,7 @@ agent; the per-repo setup lives in `docs/agents/`.
     vs manifest vs the resulting aim — the workflow check. Mindie's aim:
     614 + 100 = 714 → fires at MP ≤ 357. The flatten
     treats the marker as a GRIP under the shared subSlotAllowed rule (2H
-    main → `dlac:AutoOneiros|<fallback>`, 1H main vetoes the marker; the
+    main → `dlac:AutoOneiros|<fallback>`, a 1H or H2H main vetoes the marker; the
     + Add Sub picker offers it unconditionally per the HARD RULE);
     virtualMinLevel = the grip's Lv75 UNCONDITIONALLY (v68: one fixed item,
     so an unlearned manifest never degrades the marker to a Lv0 wildcard;

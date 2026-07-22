@@ -4221,6 +4221,15 @@ wears the catalog-lie shape so the accident cannot repeat. Tests A18–A25.
 (utils.lua rides the seeder + a profile reload, not the engine self-swap: one
 `/lac load` or job flip boards it; the GUI mirror boards on `/addon reload dlac`.)
 
+Close-out, same evening: the lie's WRITERS are fixed through one record rule,
+`gearrecord.healOneHanded` (H2H pins false; false/nil pass through intact).
+enrich corrects the flag in memory, gearexport stops exporting it, and /dl fix
+treats OneHanded as machine-owned BOTH ways like RSlot — a missing flag
+backfills the healed value, the previously propagated true is corrected in
+place, idempotent (REC27–33, E18–21). The shipped catalog keeps its wrong H2H
+flags until Henrik's next crawl (tools/ is gitignored; the apicrawl fix cannot
+ship via git) — inert either way: readers key on Type, writers heal on contact.
+
 ## Same-job profile import left the GUI in limbo: the addon-state readers now content-follow (2026-07-22)
 
 Field report (Henrik): importing a friend's BLU export while ON BLU "imports and

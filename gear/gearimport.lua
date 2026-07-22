@@ -1181,9 +1181,22 @@ function M.computeFixes(gearText, ownedItems, metaById)
                 if (isMain or isRange) and e.Type == nil and c.Type ~= nil then
                     ins(string.format('Type = %q,', c.Type), string.format('+Type %q', c.Type));
                 end
-                if isMain and e.OneHanded == nil and c.OneHanded ~= nil then
-                    ins('OneHanded = ' .. tostring(c.OneHanded == true) .. ',',
-                        '+OneHanded ' .. tostring(c.OneHanded == true));
+                -- OneHanded rides through the record rule (healOneHanded):
+                -- the catalog says true for H2H (apicrawl ONE-set bug, fixed
+                -- locally 2026-07-22) and this very backfill propagated the
+                -- lie into files -- H2H pins false, and the stamp is
+                -- machine-owned BOTH ways like RSlot below: a wrong stamped
+                -- value is corrected in place. Readers key on Type, so an
+                -- uncorrected stamp was already inert; this keeps the FILES
+                -- truthful too.
+                if isMain and c.OneHanded ~= nil then
+                    local oh = grec.healOneHanded(e.Type or c.Type, c.OneHanded) == true;
+                    if e.OneHanded == nil then
+                        ins('OneHanded = ' .. tostring(oh) .. ',', '+OneHanded ' .. tostring(oh));
+                    elseif e.OneHanded ~= oh and e.OneHandedLine ~= nil then
+                        replace[e.OneHandedLine] = lines[e.OneHandedLine]:gsub('OneHanded = %a+', 'OneHanded = ' .. tostring(oh), 1);
+                        report.fixed[#report.fixed + 1] = string.format('%s: OneHanded %s -> %s', e.key, tostring(e.OneHanded), tostring(oh));
+                    end
                 end
                 if e.parent == 'Sub' and e.Type == nil then
                     local t = subTypeFromName(e.Name);

@@ -108,8 +108,9 @@ see Repository layout); seeds `<char>\dlac\gear.lua` only if absent.
 ### utils.lua — profile-side rebuild engine
 The single `require` a migrated profile needs. Re-exports the gear inventory and the
 dispatch entry point, and owns the level-scaling **Dynamic-set rebuild** engine plus the
-dual-wield / sub-slot pairing rules. Refreshed into every character's `dlac\` folder on
-each addon load.
+dual-wield / sub-slot pairing rules (H2H pairs with NOTHING — decided by Type via
+`isH2H`, never the OneHanded flag, which lies for H2H; ADR 0006 addendum 2026-07-22).
+Refreshed into every character's `dlac\` folder on each addon load.
 Exports: `M.rebuildSets(sets)` (utils.lua:120-129); `M.BuildDynamicSets(sets)` (212-372,
 virtual-entry handling 251-254 and 350-356); `M.subSlotAllowed` (193-210);
 `M.classifySub` (176-185); `M.isDualWieldAvailable` (131-171, trusts `HasAbility(1554)`);

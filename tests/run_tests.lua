@@ -670,6 +670,47 @@ check('E15 removal + correction reported', #e3Rep.fixed, 2);
 check('E16 result still parses',           (loadstring or load)(e3Text) ~= nil, true);
 local _, e3Rep2 = gearimport.computeFixes(e3Text, {}, e3Meta);
 check('E17 retraction is idempotent',      #e3Rep2.fixed, 0);
+
+-- H2H OneHanded: the catalog LIES true (apicrawl ONE-set bug, 2026-07-22) and
+-- this backfill once propagated it -- computeFixes now rides the record rule
+-- (gearrecord.healOneHanded): a missing flag backfills FALSE despite the
+-- catalog, and a previously propagated true is corrected in place
+-- (machine-owned both ways, the RSlot precedent above). do-block: the main
+-- chunk sits at Lua's 200-local limit.
+do
+    local ehGear = table.concat({
+        'gear = {',
+        '    Main = {',
+        '        HandToHand = {',
+        '            BeatCesti = {',
+        '                Name = "Beat Cesti",',
+        '                Level = 40,',
+        '                Id = 17478,',
+        '            },',
+        '            CatBaghnakhs = {',
+        '                Name = "Cat Baghnakhs",',
+        '                Level = 30,',
+        '                Id = 17510,',
+        '                Type = "Hand-to-Hand",',
+        '                OneHanded = true,',
+        '            },',
+        '        },',
+        '    },',
+        '};',
+    }, '\n');
+    local ehMeta = {
+        [17478] = { Type = 'HandToHand', OneHanded = true },   -- the catalog lie, verbatim
+        [17510] = { Type = 'HandToHand', OneHanded = true },
+    };
+    local ehText, ehRep = gearimport.computeFixes(ehGear, {}, ehMeta);
+    check('E18 H2H missing flag backfills FALSE despite the catalog lie',
+          ehText:find('OneHanded = false', 1, true) ~= nil, true);
+    check('E19 the propagated H2H lie is corrected in place',
+          ehText:find('OneHanded = true', 1, true), nil);
+    check('E20 H2H fix result still parses', (loadstring or load)(ehText) ~= nil, true);
+    local _, ehRep2 = gearimport.computeFixes(ehText, {}, ehMeta);
+    check('E21 H2H OneHanded fix idempotent', #ehRep2.fixed, 0);
+end
 end
 
 -- ---------------------------------------------------------------------------
@@ -4699,6 +4740,21 @@ end)();
     check('REC24 mergedStats catalog fills',     m.EVA, 2);
     check('REC25 mergedStats fresh table',       r2.Stats.EVA, nil);
     check('REC26 mergedStats both empty -> nil', grec.mergedStats({}, {}), nil);
+
+    -- healOneHanded: H2H pins FALSE by Type -- the catalog's flag lies for
+    -- H2H (apicrawl ONE-set bug 2026-07-22); everything else passes through,
+    -- false and nil intact.
+    check('REC27 healOneHanded: H2H pinned false',    grec.healOneHanded('HandToHand', true), false);
+    check('REC28 healOneHanded: legacy spelling too', grec.healOneHanded('Hand-to-Hand', true), false);
+    check('REC29 healOneHanded: 1H passes through',   grec.healOneHanded('Sword', true), true);
+    check('REC30 healOneHanded: 2H false intact',     grec.healOneHanded('GreatSword', false), false);
+    check('REC31 healOneHanded: nil flag stays nil',  grec.healOneHanded('Sword', nil), nil);
+    local h2hRec = { Name = 'Beat Cesti', Type = 'HandToHand', OneHanded = true };
+    grec.enrich(h2hRec, { Name = 'Beat Cesti', Type = 'HandToHand', OneHanded = true });
+    check('REC32 enrich corrects the H2H lie in memory', h2hRec.OneHanded, false);
+    local swd = { Name = 'Joyeuse', Type = 'Sword', OneHanded = true };
+    grec.enrich(swd, { Name = 'Joyeuse', Type = 'Sword', OneHanded = true });
+    check('REC33 enrich: a real 1H flag survives the rule', swd.OneHanded, true);
 end)();
 
 -- ---------------------------------------------------------------------------

@@ -155,3 +155,13 @@ planned still gates no Sub offer, pinned by A24/A25). The gearui fallback mirror
 matches. Tests A18–A25 cover the shapes; AF4's fixture now wears the catalog-lie
 shape (`OneHanded = true`) so the guard test fails on any flag-trusting regression
 (the old flag-less fixture passed by accident while the field failed).
+
+Close-out (same day): the lie's WRITERS are fixed too, through one record rule —
+`gearrecord.healOneHanded` (H2H pins `false`, everything else passes through, false
+and nil intact). Enrich corrects an H2H record's flag in memory, gearexport never
+exports the lie, and `/dl fix` treats the stamp as machine-owned BOTH ways like
+RSlot: a missing flag backfills the healed value and the previously propagated
+`true` is corrected in place, idempotently (REC27–REC33, E18–E21). The shipped
+catalog still carries `OneHanded = true` for H2H until the next apicrawl run
+(tools/ is gitignored — the generator fix lives only on the dev machine); that is
+harmless everywhere: readers key on Type, writers heal on contact.
