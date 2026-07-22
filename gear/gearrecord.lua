@@ -76,18 +76,35 @@ function M.subTypeFromName(name)
 end
 
 -- ---------------------------------------------------------------------------
--- Reserved slots (server item_equipment.rslot). The Range bit + the trinket
--- completion: the WHOLE throwing-ammo class reserves Range server-side, but the
--- crawl left the bit off a few stat sticks (Cinderstone, Coiste Bodhar) -- so
--- the category is completed HERE, the one place gear.lua's RSlot is decided,
--- and the fresh write and the /dl fix backfill can never disagree. (ADR 0010.)
+-- Reserved slots (server item_equipment.rslot) + the ADR 0010 trinket
+-- completion. The catalog's RSlot mirrors the server column faithfully, but
+-- rslot is not the whole conflict story: the server ALSO strips a Range/Ammo
+-- pair whose weapon skill/subskill differ (charutils.cpp EquipItem,
+-- SLOT_RANGED/SLOT_AMMO arms) -- that check, not rslot, is what clears the
+-- Rimestone-class stat sticks (their server rslot is 0). So an AmmoType-less
+-- Ammo item is completed to the Range bit HERE, the one place gear.lua's
+-- RSlot is decided, and the fresh write and the /dl fix backfill can never
+-- disagree. EXCEPT the Automaton Oils: item_weapon gives them subskill 10,
+-- the subskill of every Animator, so the server KEEPS oil + Animator together
+-- (field case 2026-07-22: Mindie's manually equipped Automat. Oil +2 was
+-- displaced by trinketWornDisplace every Default dispatch because the
+-- completion had stamped it Range-reserving).
 -- ---------------------------------------------------------------------------
 M.RANGE_BIT = 0x0004;
+
+-- Ammo the server PAIRS with a Range piece instead of conflicting: the four
+-- Automaton Oils (item_weapon skill 0 / subskill 10 == every Animator; the
+-- census over item_equipment x item_weapon shows they are the ONLY such
+-- class). By id -- names vary, ids are pinned.
+M.ANIMATOR_FED = { [18731] = true, [18732] = true, [18733] = true, [19185] = true };
 
 function M.effectiveRSlot(catRec)
     if type(catRec) ~= 'table' then return nil; end
     if catRec.RSlot ~= nil then return catRec.RSlot; end
-    if catRec.Type == 'Ammo' and catRec.AmmoType == nil then return M.RANGE_BIT; end
+    if catRec.Type == 'Ammo' and catRec.AmmoType == nil
+       and M.ANIMATOR_FED[catRec.Id] ~= true then
+        return M.RANGE_BIT;
+    end
     return nil;
 end
 

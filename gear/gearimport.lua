@@ -1126,7 +1126,7 @@ function M.computeFixes(gearText, ownedItems, metaById)
                 table.insert(report.duplicates, string.format('name "%s" x%d', e.Name, nameN[ln])); end end
     end
 
-    local replace, insertAfter = {}, {};
+    local replace, insertAfter, removeLine = {}, {}, {};
     for _, item in ipairs(ownedItems) do
         local itemKey = makeKey(item.FullName or item.Name);
         local cand, seen = {}, {};
@@ -1192,9 +1192,19 @@ function M.computeFixes(gearText, ownedItems, metaById)
                 -- Reserved slots -- any slot, not just the weapon pair. Every gear.lua
                 -- written before RSlot existed lacks it, and the engine cannot see the
                 -- catalog, so this backfill is what makes an old file conflict-aware.
-                local effRS = effectiveRSlot(c);
-                if e.RSlot == nil and (tonumber(effRS) or 0) ~= 0 then
+                -- The stamp is machine-owned BOTH ways: when the record rule retracts
+                -- a reservation (the Automaton Oils, wrongly completed to the Range
+                -- bit until 2026.07.22g -- the engine kept displacing a manually
+                -- equipped oil), fix removes or corrects the stale line too.
+                local effRS = tonumber(effectiveRSlot(c)) or 0;
+                if e.RSlot == nil and effRS ~= 0 then
                     ins(string.format('RSlot = %d,', effRS), string.format('+RSlot %d', effRS));
+                elseif e.RSlot ~= nil and e.RSlotLine ~= nil and effRS == 0 then
+                    removeLine[e.RSlotLine] = true;
+                    report.fixed[#report.fixed + 1] = string.format('%s: -RSlot %d', e.key, e.RSlot);
+                elseif e.RSlot ~= nil and e.RSlotLine ~= nil and e.RSlot ~= effRS then
+                    replace[e.RSlotLine] = lines[e.RSlotLine]:gsub('RSlot = %d+', 'RSlot = ' .. tostring(effRS), 1);
+                    report.fixed[#report.fixed + 1] = string.format('%s: RSlot %d -> %d', e.key, e.RSlot, effRS);
                 end
             end
         end
@@ -1202,7 +1212,7 @@ function M.computeFixes(gearText, ownedItems, metaById)
 
     local out = {};
     for idx = 1, #lines do
-        out[#out+1] = replace[idx] or lines[idx];
+        if not removeLine[idx] then out[#out+1] = replace[idx] or lines[idx]; end
         if insertAfter[idx] then for _, l in ipairs(insertAfter[idx]) do out[#out+1] = l; end end
     end
     return table.concat(out, '\n') .. '\n', report;

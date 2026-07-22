@@ -603,6 +603,53 @@ check('E10 RSlot backfill is idempotent',     #e2Rep2.fixed, 0);
 check('E11 the backfill is reported',
     e2Rep.fixed[1] ~= nil and e2Rep.fixed[1]:find('RSlot', 1, true) ~= nil, true);
 
+-- RSlot retraction: the stamp is machine-owned both ways. A reservation the
+-- record rule no longer asserts (the Automaton Oils' wrongly-completed Range
+-- bit -- field case 2026-07-22: a manually equipped oil was displaced every
+-- Default dispatch) must be REMOVED by the same machinery that stamped it; a
+-- reservation whose catalog value changed is corrected in place. Genuine
+-- reservations (Rimestone-class sticks, still completed) stay.
+-- (do-block: keeps the main chunk under Lua's 200-local limit.)
+do
+local e3Gear = table.concat({
+    'gear = {',
+    '    Ammo = {',
+    '        CanOfAutomatonOil_2 = {',
+    '            Name = "Automat. Oil +2",',
+    '            Level = 50,',
+    '            Id = 18733,',
+    '            RSlot = 4,',
+    '        },',
+    '        Rimestone = {',
+    '            Name = "Rimestone",',
+    '            Level = 60,',
+    '            Id = 21384,',
+    '            RSlot = 4,',
+    '        },',
+    '        PetFoodAlpha = {',
+    '            Name = "Pet Food Alpha",',
+    '            Level = 12,',
+    '            Id = 17016,',
+    '            RSlot = 8,',
+    '        },',
+    '    },',
+    '};',
+}, '\n');
+local e3Meta = {
+    [18733] = { Type = 'Ammo', Id = 18733 },              -- oil: completion now exempts it
+    [21384] = { Type = 'Ammo', Id = 21384 },              -- stat stick: still completed to 4
+    [17016] = { Type = 'Ammo', Id = 17016, RSlot = 4 },   -- catalog value changed: 8 -> 4
+};
+local e3Text, e3Rep = gearimport.computeFixes(e3Gear, {}, e3Meta);
+check('E12 stale oil RSlot removed',       select(2, e3Text:gsub('RSlot', '')), 2);
+check('E13 genuine reservation kept',      e3Text:find('Id = 21384,\n            RSlot = 4,', 1, true) ~= nil, true);
+check('E14 changed value corrected',       e3Text:find('Id = 17016,\n            RSlot = 4,', 1, true) ~= nil, true);
+check('E15 removal + correction reported', #e3Rep.fixed, 2);
+check('E16 result still parses',           (loadstring or load)(e3Text) ~= nil, true);
+local _, e3Rep2 = gearimport.computeFixes(e3Text, {}, e3Meta);
+check('E17 retraction is idempotent',      #e3Rep2.fixed, 0);
+end
+
 -- ---------------------------------------------------------------------------
 -- F. setmanager shim analysis -- COMMENTED-OUT handlers ("-- profile.HandleX =
 --    function()") are dead code: they must read as 'missing' (Setup creates
@@ -4403,6 +4450,11 @@ end)();
     check('TR2 fired ammo (has AmmoType) -> nil',          gimp.effectiveRSlot({ Type = 'Ammo', AmmoType = 'Archery' }), nil);
     check('TR3 explicit RSlot kept',                       gimp.effectiveRSlot({ Type = 'Ammo', RSlot = 8 }), 8);
     check('TR4 non-ammo -> nil',                           gimp.effectiveRSlot({ Type = 'Body' }), nil);
+    -- Animator-fed oils: item_weapon subskill 10 == every Animator, so the server
+    -- KEEPS oil + Animator together -- the completion must not paint them
+    -- Range-reserving (field case 2026-07-22: a manually equipped Automat. Oil +2
+    -- was displaced every Default dispatch).
+    check('TR5 Animator-fed oil exempt -> nil',            gimp.effectiveRSlot({ Type = 'Ammo', Id = 18733 }), nil);
 
     -- the level tiebreak (dispatchM.trinketRangeDrop). rslot: only the stat sticks reserve Range.
     local rslot = function(n) return ({ Cinderstone = 4, Morion = 4 })[n]; end
@@ -4542,6 +4594,7 @@ end)();
     check('REC13 trinket completion',   grec.effectiveRSlot({ Type = 'Ammo' }), 4);
     check('REC14 explicit RSlot wins',  grec.effectiveRSlot({ Type = 'Ammo', RSlot = 8 }), 8);
     check('REC15 fired ammo untouched', grec.effectiveRSlot({ Type = 'Ammo', AmmoType = 'Archery' }), nil);
+    check('REC15b Animator-fed oil exempt', grec.effectiveRSlot({ Type = 'Ammo', Id = 18731 }), nil);
 
     -- enrich: owned overrides, catalog fills; legacy Type heals; Stats merge
     local rec = { Name = 'Savagery', Type = 'Great Axe', Stats = { STR = 2 } };
