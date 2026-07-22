@@ -4157,3 +4157,42 @@ So `petStatKeys` grew a second return — { statKey → the pet types carrying i
 and the picker folds those names into its search terms: typing "wyvern" surfaces
 Pet:HP%, "automaton" its accuracy family (7cc98f1; PM18a/b pin the shape). Round 2:
 **field-CONFIRMED** — "It's there."
+
+## The oil that would not stay: a stale stamp, not the Arbiter (2026-07-22, night)
+
+Field report (Mindie, PUP): a MANUALLY equipped Automat. Oil +2 vanished from Ammo
+every Default dispatch — suspicion fell on the new Claim Arbiter "blocking manual
+equips completely". The Arbiter was innocent: manual equips never pass through it.
+The killer was ADR 0010's worn-trinket displace running on wrong data — the trinket
+completion ("Ammo with no AmmoType ⇒ RSlot=4") had stamped the oil Range-reserving
+in the manifest, so any plan holding the idle set's Animator in Range displaced the
+worn oil with `Ammo='remove'`, every dispatch.
+
+The census that settled it (local server clone, item_equipment × item_weapon over
+every Ammo-slot item): the real Range/Ammo conflict law is **charutils' weapon
+skill/subskill compat check**, not rslot — Rimestone, Cinderstone and Coiste Bodhar
+all carry server rslot=0 yet genuinely conflict through that check (skill 0:0
+matches no Range piece). The four Automaton Oils are skill 0 / **subskill 10 — the
+subskill of every Animator** — so the server KEEPS oil + Animator together; they
+are the ONLY AmmoType-less ammo class that PAIRS with a Range piece. (Animator II
+variants are subskill 11: oils do not pair with them, server-enforced. Henrik's
+field statement — "automaton oils are operable with animators" — was the exact
+falsifier of the blanket completion.)
+
+The fix, two altitudes (6b149ea + d4c602f, engine v101, addon 2026.07.22h):
+
+- **gearrecord.ANIMATOR_FED** id-pins the oils (18731/18732/18733/19185) out of
+  the completion — the one place RSlot is decided — and `/dl fix` learned that the
+  RSlot stamp is machine-owned BOTH ways: a reservation the rule no longer asserts
+  is retracted, a changed catalog value corrected in place (E12–E17).
+- **The engine distrusts the stale stamp itself**: `M.recordRSlot` is now the one
+  reader of a manifest record's RSlot and ignores it for the pinned ids (engine
+  mirror of the addon-side set, TR17 parity-pinned). Because dispatch.lua re-seeds
+  into every character folder on every addon load, the update alone heals every
+  user — no `/dl fix` migration step required (that command remains as tidying).
+  TB8 drives the field case end-to-end through the real glue.
+
+**Field-CONFIRMED same night**: "I can equip all the oils now." Noted for a
+follow-up during verification: the engine self-swap is keyed on `M.VERSION` alone,
+so same-version content edits go unswapped until a manual Reload LAC — a
+content-keyed swap is the proposed cure.
