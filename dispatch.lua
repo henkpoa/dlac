@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 101;  -- 101: STALE Range-bit stamps distrusted (field case 2026-07-22, Mindie PUP: a MANUALLY equipped Automat. Oil +2 was displaced from Ammo every Default dispatch beside the idle set's Animator). The ADR 0010 trinket completion had wrongly stamped RSlot=4 on the Animator-fed oils in gear.lua (server truth: item_weapon subskill 10 == every Animator, so charutils' Range/Ammo compat check KEEPS oil + Animator together -- the census over item_equipment x item_weapon shows the oils are the ONLY such paired class). The completion is fixed addon-side (gearrecord.ANIMATOR_FED) and /dl fix retracts the stale line -- but the ENGINE must not require a migration step: M.recordRSlot is now the one reader of a manifest record's RSlot and ignores the stamp for the pinned oil ids, so every user is healed by the addon update alone (dispatch.lua re-seeds every load). Tests TR16*/TR17 (guard + twin parity), TB8* (end-to-end: worn oil survives the Animator plan).
+M.VERSION = 102;  -- 102: CONTENT-KEYED self-swap (field friction 2026-07-22, Henrik: "during engine change the hot reload doesn't always work -- I've had to reload LAC manually"). The self-swap trigger was the parsed M.VERSION number alone, so any engine edit under the SAME version -- the normal shape of mid-round field debugging -- never swapped; only a manual Reload LAC picked it up. Now the tick compares the seeded file's BYTES against the bytes the running engine was loaded from (M._swapSourceRaw, initialized from the first readable tick, updated on every successful swap), with the version compare kept as a secondary trigger that self-heals a stale baseline. The decision is a pure seam, M.swapWanted (tests SW*): unreadable/foreign/failed-before bytes skip, version difference swaps, nil baseline captures, byte difference swaps. Companion dlac.lua change (2026.07.22i): the seeder writes only files whose bytes CHANGED and re-runs every 5s (dlac-seed-watch), so a bare `git pull` now propagates addon -> seeded copy -> running LAC engine with no manual step; the swap chat line names a same-version swap explicitly.
+                  -- 101: STALE Range-bit stamps distrusted (field case 2026-07-22, Mindie PUP: a MANUALLY equipped Automat. Oil +2 was displaced from Ammo every Default dispatch beside the idle set's Animator). The ADR 0010 trinket completion had wrongly stamped RSlot=4 on the Animator-fed oils in gear.lua (server truth: item_weapon subskill 10 == every Animator, so charutils' Range/Ammo compat check KEEPS oil + Animator together -- the census over item_equipment x item_weapon shows the oils are the ONLY such paired class). The completion is fixed addon-side (gearrecord.ANIMATOR_FED) and /dl fix retracts the stale line -- but the ENGINE must not require a migration step: M.recordRSlot is now the one reader of a manifest record's RSlot and ignores the stamp for the pinned oil ids, so every user is healed by the addon update alone (dispatch.lua re-seeds every load). Tests TR16*/TR17 (guard + twin parity), TB8* (end-to-end: worn oil survives the Animator plan).
                   -- 100: THE ARBITER, step 4 (ADR 0012) -- COLLAPSE HARDCODED ARMS; /dl why NAMES CLAIMANTS. The registry is now the SINGLE precedence authority: MaxMP registers a proper CLAIM (mpClaimFor -> claims['MaxMP'] = its battery targets), so ctx.mpCeded derives from that one registry and the woven rank-consult scaffolding is retired -- only MaxMP's EQUIP stays woven (hold/release/upgrade/sticky/movement-yield are within-set resolution, deliberately outside the Arbiter). /dl why gains a per-slot CLAIMANT ATTRIBUTION block: the pure resolve (M.arbExplain / M.arbWhyLines) runs over the SAME claims + rank + floor the live overlay applied and names every contested slot's winner + rank -- 'Ammo: AutoAmmo (rank 3) over MaxMP (rank 4)', veto slots read 'stopped by Locks', floor-only slots 'Triggers (floor)'. The Claim record shape is documented at the registry (arbExplain header) + architecture.md: a new claimant (AutoAcc next) joins as ONE rank row + ONE claim table, no new arm. Holds + within-set resolution (sync settle, PetAction, AutoStaff/AutoObi, ADR 0010) unchanged. Tests AR11/AR12 (whole-path order pinning + /dl why attribution, headless).
                   -- 99: THE ARBITER, step 3 (ADR 0012) -- LOCKS BECOME THE DRAGGABLE VETO ROW. The lock veto is no longer an absolute per-slot strip inside every equipResolved: it is a RANK position. A claimant ranked ABOVE Locks punches through a locked slot; one ranked BELOW it stops. The engine's separate lock special-casing is retired -- the hidden "pins never check locks" rule and the unconditional first-arm strip are gone, replaced by the registry law: each claim layer's equipResolved is told whether to respect locks (rank below Locks) or punch through (above), and woven MaxMP consults its OWN rank vs Locks (ctx.mpRespectLocks) for the band build AND the mp-stage placement (the old hardcoded M.locks skips now derive from rank). Default order Pins > Locks > ... preserves today's field behavior: pins punch through locks, every other claimant + the Triggers floor stop at them. Locks at TOP = absolute veto including pins; dragged lower = everyone above punches through, everyone below stops. Pure resolve model M.arbResolve gains the Locks veto (M.LOCK_HELD sentinel + M.arbLockClaim); /dl lock + Equip & Lock user-facing behavior unchanged. Tests LV* (position semantics + the equipResolved/mpBands wiring).
                   -- 98: THE ARBITER, step 1.5 (ADR 0012 amendment) -- activities CO-CLAIM. The newest-armed (`at` stamp) exclusivity among Craft/HELM/Fishing is retired: each armed activity now claims whenever its own gates hold, all three may co-claim in one dispatch, and the rank-ordered apply loop settles every contested slot PER SLOT (arming an activity no longer stands the others down whole). The field case (PUP): idle floor Range = Animator; Fishing armed -> rod in Range; HELM also armed wins only its seven armor slots (HELM never claims weapons/Range/rings/Ammo), so the rod stays in Range until Fishing itself disarms. Each feature's own gates are UNCHANGED (HELM/Fishing Engaged/Dead stand-asides + Default-only, Craft Default-only, AutoAmmo's stand-down while fishing is live, MaxMP's rank consult). /dl prio now shows every concurrent claimant ON.
@@ -4514,6 +4515,27 @@ local function argStart(raw)
     return nil;
 end
 
+-- The self-swap DECISION, pure (tests SW*): should the tick act on the seeded
+-- file's bytes? Content is the key -- the version number alone went BLIND to
+-- same-version engine edits (Henrik's field friction, 2026-07-22: mid-round
+-- fixes under one vNN never swapped; only a manual Reload LAC picked them up).
+--   raw       -- the seeded file's bytes (nil = unreadable).
+--   sourceRaw -- the bytes the RUNNING engine was loaded from (nil = not yet known).
+--   failedRaw -- the last build that failed to swap (retried only when edited).
+--   fileV/runV -- parsed M.VERSION of the file / the running engine. A version
+--                DIFFERENCE swaps even when sourceRaw is stale (the baseline
+--                self-heals); an unparseable fileV is a torn or foreign file --
+--                never execute one.
+-- Returns 'swap' | 'init' (capture raw as the baseline) | 'skip'.
+function M.swapWanted(raw, sourceRaw, failedRaw, fileV, runV)
+    if raw == nil or raw == failedRaw then return 'skip'; end
+    if fileV == nil then return 'skip'; end
+    if runV ~= nil and fileV ~= runV then return 'swap'; end
+    if sourceRaw == nil then return 'init'; end
+    if raw ~= sourceRaw then return 'swap'; end
+    return 'skip';
+end
+
 if inLac() then
     loadModeState();        -- dlac-owned flags: restore (same job only) BEFORE the first mirror
     pcall(saveModeState);   -- then mirror whatever we start with for the GUI
@@ -4554,27 +4576,35 @@ if inLac() then
     end);
 
     -- ENGINE SELF-SWAP: hot-reload this file the way the trigger data reloads.
-    -- The addon's seeder refreshes <char>\dlac\dispatch.lua on every dlac
-    -- (re)load, but LAC's require cache keeps running the OLD code until a full
-    -- Reload LAC -- the one reload the version banner still asks for. Instead:
-    -- every ~2s the tick parses the seeded file's version assignment; when it
-    -- differs from the running version, the file is re-executed INTO THIS SAME
-    -- MODULE TABLE (the __dlacEngineRoot handshake at the top of the file), so
-    -- utils' captured reference and the profiles' shims run the new code with
-    -- no re-require. The re-run re-registers both event handlers (unregister-
-    -- first makes the replace deterministic), skips the Default-gate wrap
-    -- re-install when the shell shape is unchanged (_dlacWrapGen guard -- the
-    -- gate LOGIC lives on M.defaultGateHold and swaps live regardless), and
-    -- re-runs loadModeState + saveModeState -- a swap
-    -- inherits Reload-LAC semantics exactly: modes survive via the modestate
-    -- mirror (whose re-stamp also clears the GUI banner), slot locks reset.
+    -- The addon's seeder refreshes <char>\dlac\dispatch.lua whenever the addon
+    -- copy changes (load-time + the 5s watch in dlac.lua), but LAC's require
+    -- cache keeps running the OLD code until a full Reload LAC -- the one
+    -- reload the version banner still asks for. Instead: every ~2s the tick
+    -- compares the seeded file's BYTES against the bytes this engine was
+    -- loaded from (M._swapSourceRaw; version-keying alone went blind to
+    -- same-version edits -- see M.swapWanted, the pure decision). On a
+    -- difference the file is re-executed INTO THIS SAME MODULE TABLE (the
+    -- __dlacEngineRoot handshake at the top of the file), so utils' captured
+    -- reference and the profiles' shims run the new code with no re-require.
+    -- The re-run re-registers both event handlers (unregister-first makes the
+    -- replace deterministic), skips the Default-gate wrap re-install when the
+    -- shell shape is unchanged (_dlacWrapGen guard -- the gate LOGIC lives on
+    -- M.defaultGateHold and swaps live regardless), and re-runs loadModeState
+    -- + saveModeState -- a swap inherits Reload-LAC semantics exactly: modes
+    -- survive via the modestate mirror (whose re-stamp also clears the GUI
+    -- banner), slot locks reset.
+    -- The BASELINE initializes from the first readable tick (the engine and
+    -- the seeded file are the same bytes at load in every ordinary sequence)
+    -- and self-heals through the version compare if a reseed ever lands in
+    -- the sub-second between require and the first tick.
     -- Failure degrades to today's behavior: a syntax error is caught by
     -- loadstring BEFORE anything executes; a runtime error mid-execution rolls
     -- the version stamp back to the old one (the mixed state IS old-with-holes;
     -- the banner must stay up) and the broken CONTENT is remembered on the
     -- SHARED table (M._swapFailedRaw -- a half-swapped generation may already
     -- be running the new tick), so a broken build is tried once per edit, not
-    -- every 2 seconds, and a same-version fix still gets its retry.
+    -- every 2 seconds, and a fixed build -- same version or not -- always
+    -- differs from the remembered bytes and gets its retry.
     local _swapAt = 0;
     local function trySelfSwap()
         if os.clock() < _swapAt then return; end
@@ -4583,9 +4613,10 @@ if inLac() then
         if dir == nil then return; end
         local path = dir .. 'dispatch.lua';
         local raw = readFile(path);
-        if raw == nil or raw == M._swapFailedRaw then return; end
-        local v = tonumber(string.match(raw, 'M%.VERSION%s*=%s*(%d+)'));
-        if v == nil or v == M.VERSION then return; end
+        local v = (raw ~= nil) and tonumber(string.match(raw, 'M%.VERSION%s*=%s*(%d+)')) or nil;
+        local want = M.swapWanted(raw, M._swapSourceRaw, M._swapFailedRaw, v, M.VERSION);
+        if want == 'init' then M._swapSourceRaw = raw; return; end
+        if want ~= 'swap' then return; end
         local chunk, cerr = (loadstring or load)(raw, '@' .. path);
         if chunk == nil then
             M._swapFailedRaw = raw;
@@ -4606,8 +4637,13 @@ if inLac() then
             return;
         end
         M._swapFailedRaw = nil;
-        print(string.format('[dlac] engine hot-swapped v%d -> v%d -- no Reload LAC needed (modes kept, slot locks reset).',
-            old, v));
+        M._swapSourceRaw = raw;
+        if v == old then
+            print(string.format('[dlac] engine hot-swapped v%d (same-version content change) -- no Reload LAC needed (modes kept, slot locks reset).', v));
+        else
+            print(string.format('[dlac] engine hot-swapped v%d -> v%d -- no Reload LAC needed (modes kept, slot locks reset).',
+                old, v));
+        end
     end
 
     -- A self-swap re-runs these registrations; unregister-first makes the

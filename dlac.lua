@@ -25,7 +25,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.07.22h';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.07.22i';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
 addon.desc    = 'Build gear sets and view live stats with level scaling (for LuaAshitacast).';
 
@@ -60,9 +60,11 @@ end);
 -- Make the dlac library resolvable from your LuaAshitacast <JOB>.lua profiles WITHOUT a
 -- fragile per-profile bootstrap line. LAC adds the profile folder to its own package.path,
 -- so a copy of utils.lua (+ gear.lua) in <char>\dlac\ makes require("dlac\\utils") resolve
--- there -- the exact first path LAC searches. utils.lua is refreshed every load (tracks the
--- addon); gear.lua is seeded only when absent, so your scanned inventory is never overwritten.
--- Returns true once the character is known (so the pre-login retry below knows when to stop).
+-- there -- the exact first path LAC searches. Library files are written only when their
+-- BYTES differ from the seeded copy (the 5s watch below re-runs this, so unconditional
+-- writes would grind the disk for nothing); gear.lua is seeded only when absent, so your
+-- scanned inventory is never overwritten.
+-- Returns true once the character is known (so the pre-login watch below can tell).
 local function seedCharFolder()
     local seeded = false;
     pcall(function()
@@ -75,9 +77,9 @@ local function seedCharFolder()
         if ashita and ashita.fs and ashita.fs.create_directory then ashita.fs.create_directory(dstDir); end
         local function slurp(p) local f = io.open(p, 'rb'); if f == nil then return nil; end local d = f:read('*a'); f:close(); return d; end
         local function spit(p, d) local f = io.open(p, 'wb'); if f == nil then return; end f:write(d); f:close(); end
-        for _, f in ipairs({ 'utils.lua', 'dispatch.lua', 'chatfmt.lua', 'profiles.lua' }) do   -- library: always refresh from the addon
+        for _, f in ipairs({ 'utils.lua', 'dispatch.lua', 'chatfmt.lua', 'profiles.lua' }) do   -- library: track the addon copy
             local d = slurp(addonDir .. f);
-            if d ~= nil then spit(dstDir .. f, d); end
+            if d ~= nil and d ~= slurp(dstDir .. f) then spit(dstDir .. f, d); end
         end
         if slurp(dstDir .. 'gear.lua') == nil then           -- your data: seed the empty template only if absent
             local g = slurp(addonDir .. 'gear.lua');
@@ -90,19 +92,23 @@ local function seedCharFolder()
 end
 
 -- The addon normally loads at Ashita boot -- BEFORE login -- so neither the gear preload
--- above nor this seeding can find a character; both silently no-op. Retry the seeding ONCE,
--- the first frame the character is known, so the library copies land and a fresh character
--- still gets the gear.lua template. (The in-memory gear preload is deliberately NOT retried
--- here: by then the modules below have already captured the shared gear table, so swapping
--- package.loaded would split them apart -- gearui re-reads the real gear.lua IN PLACE on its
--- own first-login hook, before the first auto-sync.)
-if not seedCharFolder() then
-    ashita.events.register('d3d_present', 'dlac-seed-retry', function()
-        if seedCharFolder() then
-            ashita.events.unregister('d3d_present', 'dlac-seed-retry');
-        end
-    end);
-end
+-- above nor this seeding can find a character; both silently no-op. The seeding runs again
+-- every ~5s FOREVER (not just until the character is known): the addon directory is a git
+-- checkout, and a `git pull` while the game runs used to strand the seeded copies until a
+-- manual /addon reload -- the one missing hop in the update chain. With the watch, a pull
+-- propagates addon -> seeded copy on its own, and the engine's content-keyed self-swap
+-- (dispatch.lua v102) carries it the last hop into LAC's running state -- no manual step.
+-- Compare-before-write above keeps the steady state read-only. (The in-memory gear preload
+-- is deliberately NOT retried here: by then the modules below have already captured the
+-- shared gear table, so swapping package.loaded would split them apart -- gearui re-reads
+-- the real gear.lua IN PLACE on its own first-login hook, before the first auto-sync.)
+seedCharFolder();
+local _seedAt = 0;
+ashita.events.register('d3d_present', 'dlac-seed-watch', function()
+    if os.clock() < _seedAt then return; end
+    _seedAt = os.clock() + 5.0;
+    seedCharFolder();
+end);
 
 -- LuaAshitacast supplies gData inside a profile; a standalone addon doesn't. Provide a
 -- minimal gData shim from AshitaCore so the shared modules (gearui/utils/gearoptim) that

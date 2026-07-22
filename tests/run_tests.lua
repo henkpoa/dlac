@@ -4587,6 +4587,29 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- SW. Engine self-swap decision (v102): CONTENT is the key -- version-keying
+--     alone went blind to same-version engine edits (field friction 2026-07-22:
+--     mid-round fixes never swapped; a manual Reload LAC each time). The
+--     version compare stays as a secondary trigger that heals a stale baseline.
+-- ---------------------------------------------------------------------------
+(function()
+    local W = dispatchM.swapWanted;
+    check('SW0 exported',                        type(W), 'function');
+    check('SW1 unreadable file -> skip',         W(nil, 'old', nil, nil, 101), 'skip');
+    check('SW2 failed build remembered -> skip', W('bad', 'old', 'bad', 102, 101), 'skip');
+    check('SW3 no parseable version -> skip',    W('garbage', 'old', nil, nil, 101), 'skip');
+    check('SW4 version difference -> swap even on a stale baseline',
+                                                 W('new', 'new', nil, 102, 101), 'swap');
+    check('SW5 nil baseline -> init',            W('same', nil, nil, 101, 101), 'init');
+    check('SW6 same bytes -> skip',              W('same', 'same', nil, 101, 101), 'skip');
+    check('SW7 same-version content edit -> swap (the field case)',
+                                                 W('edited', 'orig', nil, 101, 101), 'swap');
+    check('SW8 an edited failed build gets its retry',
+                                                 W('bad2', 'old', 'bad', 101, 101), 'swap');
+    check('SW9 failed build blocks init too',    W('bad', nil, 'bad', 101, 101), 'skip');
+end)();
+
+-- ---------------------------------------------------------------------------
 -- REC. gearrecord -- the Owned-gear record rules, ONE home (Type canon + legacy
 --      heal, Shield/Grip by name, effectiveRSlot trinket completion, catalog
 --      enrichment precedence). Every stamp site (renderEntry fresh write,
