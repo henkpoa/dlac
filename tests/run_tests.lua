@@ -5853,6 +5853,8 @@ end)();
 
     -- state rules (the craftwatch model: select does not enable; fishing is
     -- deliberately not a category -- it gets its own automation someday)
+    check('H0 fresh state defaults to Harvesting (first-timer rule: an armed switch must never sit categoryless)',
+                                           helmwatch.getGather(), 'Harvesting');
     helmwatch.selectGather('Mining');
     check('H1 selectGather sets active',   helmwatch.getGather(), 'Mining');
     check('H2 select does NOT enable',     helmwatch.isEnabled(), false);
@@ -8272,6 +8274,78 @@ end)();
     check('UR3 /dl xp venture staged the ring', pend and pend.name, 'Venture Ring');
 
     AshitaCore = nil;   -- leave the harness as we found it
+end)();
+
+-- ---------------------------------------------------------------------------
+-- FW. GUI content-follow (2026-07-22): a Profiles-menu import rewrites the
+--     ACTIVE profile's files for the CURRENT job -- same cache keys, new
+--     bytes. The engine already follows (queued reloads + its own content
+--     watches); these pin the three ADDON-state readers that used to serve
+--     the PREVIOUS profile until a job flip (field case: importing a BLU
+--     export while ON BLU left the Triggers tab listing the old profile's
+--     sets as [missing], and a stale Commit could write the old rules back
+--     over the import).
+-- ---------------------------------------------------------------------------
+
+-- TGW. Triggers tab follow decision (ui/triggersui.lua : M._followTriggers).
+--      The tab is an EDITOR: clean models follow the disk; a dirty model is
+--      never clobbered and never silently clobbers -- 'drift' renders the red
+--      banner (Commit = yours wins, Revert = disk wins).
+(function()
+    local tri = dofile('ui/triggersui.lua');
+    check('TGW0 triggersui loads headless', type(tri), 'table');
+    local f = tri._followTriggers;
+    check('TGW1 pure decision exported', type(f), 'function');
+    check('TGW2 same bytes keep (clean)', f('A', 'A', false), 'keep');
+    check('TGW3 same bytes keep (dirty)', f('A', 'A', true), 'keep');
+    check('TGW4 changed bytes + clean tab reload', f('B', 'A', false), 'reload');
+    check('TGW5 changed bytes + dirty tab DRIFT (never clobber edits)', f('B', 'A', true), 'drift');
+    check('TGW6 file deleted + clean tab reload', f(nil, 'A', false), 'reload');
+    check('TGW7 file deleted + dirty tab drift', f(nil, 'A', true), 'drift');
+    check('TGW8 file appeared under an empty tab reloads', f('A', nil, false), 'reload');
+end)();
+
+-- PSW. profilesets content-follow: changed Dynamic-source bytes rebuild the
+--      cached root WITHOUT an explicit invalidate() call (the import path
+--      never had one). Headless there is no char dir, so the profile-storage
+--      tier reads absent and the legacy job-file branch carries the test --
+--      the watch mechanism is the same for both sources.
+(function()
+    local ps = dofile('gear/profilesets.lua');
+    check('PSW0 profilesets loads headless', type(ps), 'table');
+    local TMP = 'tests/_tmp_psw_job.lua';
+    local function writeTmp(setName)
+        local f = assert(io.open(TMP, 'w'));
+        f:write('local profile = {};\nlocal sets = { Dynamic = { ' .. setName
+            .. ' = {} } };\nprofile.Sets = sets;\nreturn profile;\n');
+        f:close();
+    end
+    writeTmp('SetA');
+    ps.configure({ jobFile = function() return TMP, 'BLU'; end });
+    check('PSW1 initial read sees SetA', ps.liveSetNames()[1], 'SetA');
+    writeTmp('SetB');                    -- the "import": same path, new bytes
+    ps._recheck();                       -- arm past the 1s throttle (tests)
+    local n2 = ps.liveSetNames();
+    check('PSW2 changed bytes rebuild the cache (no invalidate call)', n2[1], 'SetB');
+    check('PSW2b the old name is gone', #n2, 1);
+    ps._recheck();
+    check('PSW3 unchanged bytes keep the answer', ps.liveSetNames()[1], 'SetB');
+    os.remove(TMP);
+end)();
+
+-- LGW. lockstyle boxes follow decision (feature/lockstyle.lua : M._followBoxes).
+--      Boxes save on click (no tab-level dirty state), so changed bytes always
+--      follow; only the 4x4's mid-edit working copy is carried across.
+(function()
+    local ls = dofile('feature/lockstyle.lua');
+    local f = ls._followBoxes;
+    check('LGW1 pure decision exported', type(f), 'function');
+    check('LGW2 same bytes keep', f('A', 'A', false), 'keep');
+    check('LGW3 same bytes keep (mid-edit)', f('A', 'A', true), 'keep');
+    check('LGW4 changed bytes follow', f('B', 'A', false), 'follow');
+    check('LGW5 changed bytes mid-edit follow but KEEP the 4x4', f('B', 'A', true), 'follow-keep-edit');
+    check('LGW6 file appeared follows', f('A', nil, false), 'follow');
+    check('LGW7 file deleted follows (back to defaults)', f(nil, 'A', false), 'follow');
 end)();
 
 -- ---------------------------------------------------------------------------

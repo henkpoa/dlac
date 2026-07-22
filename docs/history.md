@@ -4220,3 +4220,34 @@ Main-blind otherwise, pinned A24/A25). gearui's fallback mirror matches; AF4 now
 wears the catalog-lie shape so the accident cannot repeat. Tests A18–A25.
 (utils.lua rides the seeder + a profile reload, not the engine self-swap: one
 `/lac load` or job flip boards it; the GUI mirror boards on `/addon reload dlac`.)
+
+## Same-job profile import left the GUI in limbo: the addon-state readers now content-follow (2026-07-22)
+
+Field report (Henrik): importing a friend's BLU export while ON BLU "imports and
+builds everything, but complains a lot of sets are not known (from previous
+profile)" -- importing for a job you are NOT on felt clean. Diagnosis: the import
+writes the files and the ENGINE follows fine (the menu queues `/dl sets reload` +
+`/dl triggers reload`, and the engine content-watches the trigger file anyway).
+The limbo was three ADDON-STATE caches whose keys do not move when the import
+lands on the current job + active profile:
+
+- **triggersui's edit model** cached by JOB alone -- the tab kept showing the
+  previous profile's rules against the NEW set-name list, so the missing-set
+  banner listed the old profile's sets, and a Commit from that stale tab would
+  have written the old rules back over the import (the real danger).
+- **profilesets** cached by `jobfile|activeProfile` -- same key, new bytes; only
+  the weights flow survived, because Auto-Build All happens to invalidate it.
+- **lockstyle boxes** keyed `(profile, job)` -- imported `lockstyles\<JOB>.lua`
+  stayed invisible until a job flip.
+
+Cure (not a restart): the v102 content-keyed idiom extended to the GUI readers.
+Each cache hit re-reads its source file's bytes at most once per second and
+follows changes -- import, `/dl profile use` typed in chat, another session's
+write, hand edits, all routes. The Triggers tab is an EDITOR, so it follows only
+when clean; with unsaved edits it renders a red drift banner (Commit = your rules
+win, Revert = the disk wins) instead of clobbering either side. Its Commit and
+lockstyle's save() re-baseline the watch so their own writes never read as drift.
+A profile SWITCH with unsaved trigger edits now discards them loudly (carrying
+them over would splice old-profile rules into the new file). Pure decision seams
+`_followTriggers` / `_followBoxes` + the profilesets behavior test are pinned as
+TGW1-8 / PSW0-3 / LGW1-7.

@@ -75,17 +75,51 @@ end
 --   .<StaticName>  from the live job file, then the pre-profiles backup fills
 --                  names the live file no longer has (post-migration statics).
 -- Cached per (job file, active profile); invalidate() drops it after a commit.
+-- The key alone is NOT enough: a Profiles-menu import rewrites the ACTIVE
+-- profile's sets file for the CURRENT job -- same key, new bytes (field case
+-- 2026-07-22: the Sets/Triggers tabs kept serving the previous profile's set
+-- names after an import). So cache hits also content-follow the Dynamic
+-- source file, throttled to one disk read per second -- the engine's own
+-- content-keyed watch idiom (triggers ensureLoaded / the v102 self-swap).
 local _cache, _cacheKey, _setsDiag = nil, nil, nil;
 local _liveNames = nil;   -- set names that exist in the LIVE profile (see liveSetNames)
+local _watch = { at = -1, path = nil, raw = nil };   -- the Dynamic source the cache mirrors
+
+local function readAll(p)
+    if p == nil then return nil; end
+    local f = io.open(p, 'r'); if f == nil then return nil; end
+    local t = f:read('*a'); f:close(); return t;
+end
+
+-- The Dynamic source RIGHT NOW: the active profile's sets file when readable,
+-- else the (legacy) job file. Returns path, bytes -- the pair the watch compares.
+local function dynSourceNow(jf, abbr)
+    if _pok and abbr ~= nil then
+        local pp = nil;
+        pcall(function() pp = _prof.setsPath(abbr); end);
+        local t = readAll(pp);
+        if t ~= nil then return pp, t; end
+    end
+    return jf, readAll(jf);
+end
+
 local function loadRoot()
     local jf, abbr = nil, nil;
     if deps ~= nil and deps.jobFile ~= nil then jf, abbr = deps.jobFile(); end
     if jf == nil then _setsDiag = 'no job file (logged in? job known?)'; return nil; end
     local act = (_pok and _prof.activeName()) or '';
     local key = jf .. '|' .. act;
-    if _cacheKey == key and _cache ~= nil then return _cache; end
+    if _cacheKey == key and _cache ~= nil then
+        local now = os.time();
+        if _watch.at == now then return _cache; end
+        _watch.at = now;
+        local p, raw = dynSourceNow(jf, abbr);
+        if p == _watch.path and raw == _watch.raw then return _cache; end
+        -- source moved or its bytes changed: fall through and rebuild
+    end
     _cacheKey = key;
     _setsDiag = nil;
+    _watch.path, _watch.raw = dynSourceNow(jf, abbr);
 
     local root = {};
     local dynSrc = nil;
@@ -211,7 +245,11 @@ end
 function M.diag() return _setsDiag; end
 
 -- Drop the cached sets so the next read re-parses the files (post commit/delete).
-function M.invalidate() _cache = nil; _cacheKey = nil; _liveNames = nil; end
+function M.invalidate() _cache = nil; _cacheKey = nil; _liveNames = nil; _watch.at, _watch.path, _watch.raw = -1, nil, nil; end
+
+-- Arm the content-follow to run on the NEXT read regardless of the 1s throttle
+-- (tests; callers that just watched a file land and want the refresh this frame).
+function M._recheck() _watch.at = -1; end
 
 M.getSetsRoot     = getSetsRoot;
 M.getDynamicSets  = getDynamicSets;

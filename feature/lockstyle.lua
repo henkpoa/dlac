@@ -159,19 +159,53 @@ end
 -- which profile + job `data` was loaded for: a change in EITHER reloads the
 -- boxes (job changes switch the job entry; the profile menu switches profiles)
 local dataProf, dataJob = nil, nil;
+local dataRaw = nil;    -- the file bytes `data` mirrors (nil = loaded from nothing)
+local _watchAt = -1;    -- 1s content-follow throttle
+
+local function readAll(p)
+    if p == nil then return nil; end
+    local f = io.open(p, 'r'); if f == nil then return nil; end
+    local t = f:read('*a'); f:close(); return t;
+end
+
+-- Content-follow decision, pure (tests LGW*): same profile + job, but the
+-- resolved boxes file may have been REPLACED underneath (a Profiles-menu
+-- import writes lockstyles\<JOB>.lua without moving the (profile, job) key --
+-- field case 2026-07-22). Changed bytes reload the boxes; a mid-edit working
+-- copy (the 4x4) survives the reload -- Save afterwards writes it over the
+-- imported box, the user's explicit call.
+function M._followBoxes(diskRaw, loadedRaw, curDirty)
+    if diskRaw == loadedRaw then return 'keep'; end
+    return curDirty and 'follow-keep-edit' or 'follow';
+end
 
 local function load_()
     local prof = _pfok and profiles.activeName() or nil;
     local job = jobAbbr();
-    if data ~= nil and prof == dataProf and job == dataJob then return; end
+    local keepCur = false;
+    if data ~= nil and prof == dataProf and job == dataJob then
+        -- Same key: follow the file's CONTENT, one disk read per second (the
+        -- engine's content-keyed watch cadence). Re-resolve the path fresh --
+        -- an import can CREATE the per-job file above the tier we loaded from.
+        local now = os.time();
+        if _watchAt == now then return; end
+        _watchAt = now;
+        local pNow = (_pfok and profiles.readLockstylesPath(job) or nil) or legacyPath();
+        local act = M._followBoxes(readAll(fsp(pNow)), dataRaw, M._curDirty());
+        if act == 'keep' then return; end
+        keepCur = (act == 'follow-keep-edit');
+    end
     if charBase() == nil or job == nil then return; end   -- pre-login: retry next call
     -- boxes are PER JOB ENTRY: the active profile's lockstyles\<JOB>.lua,
     -- falling back to the v40 per-profile file, then the pre-profile global
     -- one (profiles.lua is the shared path authority)
     local p = (_pfok and profiles.readLockstylesPath(job) or nil) or legacyPath();
     dataProf, dataJob = prof, job;
+    dataRaw = readAll(fsp(p));
     data = { active = 1, onload = {}, slots = {} };  -- box 1 marked until chosen otherwise
-    M._curReset();                                   -- profile switch: working copy follows
+    if not keepCur then
+        M._curReset();                               -- profile switch: working copy follows
+    end
     pcall(function()
         local chunk = loadfile(fsp(p));
         if chunk == nil then return; end
@@ -271,8 +305,14 @@ local function save()
     -- other jobs' real bindings.
     local d = perJob and M._entryData(data, dataJob) or data;
     pcall(function()
+        local text = M._serialize(d);
         local f = io.open(fsp(p), 'w');
-        if f ~= nil then f:write(M._serialize(d)); f:close(); end
+        if f ~= nil then
+            f:write(text); f:close();
+            -- Our own write is the content-follow's new baseline (load_):
+            -- without this, every Save would read as an external change.
+            dataRaw = text;
+        end
     end);
 end
 
@@ -286,6 +326,9 @@ local _status = nil;
 -- load_ is defined above this local: a profile switch drops the working copy
 -- through this hook (the M._touched pattern) and ensure() rebuilds it.
 function M._curReset() cur = nil; end
+-- Same hook pattern for the content-follow: is the 4x4 mid-edit? (load_ keeps
+-- a dirty working copy across a followed reload -- see M._followBoxes.)
+function M._curDirty() return cur ~= nil and cur.dirty == true; end
 
 local function loadBox()
     local e = data.slots[data.active];

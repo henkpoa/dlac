@@ -435,6 +435,10 @@ exactly one catalog nested walk in the codebase.
 ### gear/profilesets.lua — profile `sets` reader
 Reads the loaded profile's `sets` table for the Sets tab. In LAC state reads
 `gProfile.Sets`; in addon state parses the current `<JOB>.lua` in a permissive sandbox.
+Cache hits content-follow the Dynamic source file (1s byte compare) — a Profiles-menu
+import rewrites the active profile's files without moving the cache key. The same
+follow idiom lives in triggersui's edit model (dirty models get a drift banner instead
+of a silent clobber) and lockstyle's boxes (2026-07-22; tests TGW/PSW/LGW).
 
 ### gear/setmanager.lua — `<JOB>.lua` reader/writer
 Splices dynamic sets into `<JOB>.lua` and analyzes the dispatch handler shims —

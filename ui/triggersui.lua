@@ -293,6 +293,8 @@ end
 
 local trig = {
     data = nil, job = nil, err = nil, dirty = false,
+    path = nil, rawText = nil,    -- the file (and its bytes) the model was loaded from
+    _watchAt = -1, _drift = false,-- 1s content-follow throttle + "disk changed under edits" flag
     status = '', statusErr = false,
     addFor = nil, addConds = {}, _addDef = 1, _addValSel = nil, _addPlayer = 1,
     _addPet = 1,          -- the Pet cascade's picked parameter (engine v63)
@@ -364,20 +366,57 @@ end
 -- Raw file table -> edit model lives in gear\triggermodel.lua (pure, tests TM* pin
 -- the full serialize round-trip -- the wipe contract). This tab only draws it.
 
+local function trigSetStatus(msg, isErr) trig.status = msg or ''; trig.statusErr = (isErr == true); trig.statusAt = os.clock(); end
+
+-- Content-follow decision, pure (tests TGW*): the model was loaded from
+-- loadedRaw bytes; the file now holds diskRaw. Should the tab keep its model,
+-- reload from disk, or flag drift? An import / profile switch / the LAC state /
+-- a hand edit can all rewrite the file while this tab shows it (field case,
+-- 2026-07-22: importing a job export while ON that job left the tab on the
+-- PREVIOUS profile's rules -- every target set read [missing]). A clean model
+-- follows the disk; a DIRTY one is never clobbered (and never silently
+-- clobbers the disk either): 'drift' renders a red banner -- Commit means your
+-- rules win, Revert means the disk wins. The engine's own content-keyed
+-- watches (triggers ensureLoaded, the v102 self-swap) are the precedent.
+function M._followTriggers(diskRaw, loadedRaw, dirty)
+    if diskRaw == loadedRaw then return 'keep'; end
+    if dirty then return 'drift'; end
+    return 'reload';
+end
+
 -- Load the trigger file into the edit model (triggermodel.fromRaw).
 local function trigLoad(force)
     local path, abbr = trigFilePath();
     if path == nil then trig.data, trig.job, trig.err = nil, nil, 'not logged in / unknown job'; return; end
-    if not force and trig.job == abbr and trig.data ~= nil then return; end
+    if not force and trig.job == abbr and trig.data ~= nil then
+        if trig.path == path then
+            -- Same file: follow its CONTENT (throttled to one disk read per
+            -- second -- the engine's ensureLoaded cadence).
+            local now = os.time();
+            if trig._watchAt == now then return; end
+            trig._watchAt = now;
+            local act = M._followTriggers(readFileText(path), trig.rawText, trig.dirty);
+            if act ~= 'reload' then trig._drift = (act == 'drift'); return; end
+            trigSetStatus('Trigger file changed on disk -- reloaded (import / another session / hand edit).', false);
+            -- fall through to the re-read below
+        else
+            -- The resolved file MOVED (profile switch): the model belongs to
+            -- another profile's file -- carrying it over would splice old-
+            -- profile rules into the new one. Unsaved edits are lost; say so.
+            if trig.dirty then
+                trigSetStatus('Profile switched -- unsaved trigger edits for the previous profile were DISCARDED (Commit before switching next time).', true);
+            end
+        end
+    end
     trig.job, trig.data, trig.err, trig.dirty, trig._prioBuf = abbr, nil, nil, false, {};
+    trig.path, trig.rawText, trig._drift = path, nil, false;
     if not hasDispatch then trig.err = 'dispatch module unavailable'; return; end
     if not hasTrigModel then trig.err = 'triggermodel module unavailable'; return; end
     local raw, err = dsp.readTriggersRaw(path);
+    trig.rawText = readFileText(path);   -- the bytes the model mirrors (nil = no file)
     if raw == nil then trig.err = err; return; end
     trig.data = tmodel.fromRaw(raw, dsp.canonEvent);
 end
-
-local function trigSetStatus(msg, isErr) trig.status = msg or ''; trig.statusErr = (isErr == true); trig.statusAt = os.clock(); end
 
 -- Current trigger model + job, loading on demand (for gearcheck and other consumers).
 function M.currentModel()
@@ -404,6 +443,9 @@ local function trigCommit()
     end);
     if not writeFileText(path, text) then trigSetStatus('Could not write ' .. path, true); return; end
     trig.dirty = false;
+    -- Our own write is the new baseline for the content-follow (trigLoad):
+    -- without this, every Commit reads as "changed on disk" a second later.
+    trig.path, trig.rawText, trig._drift = path, text, false;
     pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl triggers reload'); end);
     trigSetStatus('Committed -- live now (hot-reloaded; no /lac reload needed).', false);
 end
@@ -3058,6 +3100,16 @@ function M.render(job, level)
             imgui.TextColored(COL_ERR,
                 '[!] LuaAshitacast is running an OUTDATED dlac engine -- click "Reload LAC" (top-right).');
         end
+    end
+
+    -- Disk-drift banner: the trigger file changed UNDER unsaved edits (an
+    -- import, another session, a hand edit). A clean tab follows the disk on
+    -- its own (trigLoad's content-follow); a dirty one holds and says so here
+    -- instead of silently clobbering either side (hard rule 12 energy).
+    if trig._drift then
+        imgui.TextColored(COL_ERR,
+            '[!] The trigger file on disk CHANGED under this tab (import / another session) while you have UNSAVED edits'
+            .. ' -- Commit writes YOUR rules over it; Revert discards them and loads the disk version.');
     end
 
     -- Missing-set banner: rules that would MATCH and then equip NOTHING. The
