@@ -4021,3 +4021,34 @@ door. Behaviour-identical by construction — no engine change, no seeded-file b
 OR14–OR29 (canWear vs `dispatch.canWear`, anyJobCanWear vs `jobgate.canEquip`, the lookup
 join, the claim-blind boundary). Full headless suite green: 2293 run_tests + 225 smoke_ui,
 Ubuntu lua5.4 CI parity.
+
+## The pet channel: stats the API never showed us (2026-07-22)
+
+A friend's report ("dlac shows no Wyvern HP+ on my gear") uncovered a whole invisible
+stat channel. CatsEyeXI applies pet-targeted gear stats — Drachen Brais "Wyvern:
+HP+10%", Wyvern Mail's hidden wyvern HP+65/HHP+65 — through a separate
+`item_mods_pet` table loaded into `CItemEquipment::addPetModifier` (a channel apart
+from the regular mods). The live API serializes only `{item, mods, latents, weapon}`:
+verified across all 21,860 cached responses, the pet channel NEVER leaves the server.
+So apicrawl was blameless and the repo SQL is the only possible source (corollary:
+live-only custom pet mods, if the live DB ever diverges like it does for latents,
+stay invisible — nothing to cross-check).
+
+Shipped as the established sibling-data pattern, per Henrik's tooling ruling (one
+umbrella command, independently runnable steps, one shared parser):
+
+- **`gen_petmods.py`** (gitignored tools/) parses the SQL (anchored INSERTs — the
+  table carries ~21 commented-out rows, the item_latents trap again) through
+  **`modmap.py`**, THE shared modid→stat-key bridge, into shipped
+  **`data/petmods.lua`**: `[itemId] = { Wyvern = { HPP = 10 } }` on canonical catalog
+  keys. 396 items, 816 rows, 9 pet types; generation asserts pin the field cases.
+- **`refresh_all.py`** = the one-command maintainer update (apicrawl → petmods →
+  levelscaling → gearsets, continue-on-error summary). Adopting the pet mod names
+  into modmap.CORE immediately rippled canonical spellings into latentstats.lua and
+  gearsets.lua (`REGAIN`→`Regain`, `ABSORB_DMG_CHANCE`→`AbsorbDamageChance`) — the
+  shared-parser effect working as intended, plus four new statdefs entries (DEFP,
+  AbsorbDamageChance, MainDMGRating, MonsterCorrelation).
+- **Display-first** (`gearfmt.petLines`): tooltips get one line per pet type
+  ("Wyvern: HPP+10"; `All` reads as "Pet"), row summaries spend leftover token budget
+  ("Wyvern:HPP+10") which also makes pet gear findable by the stat search.
+  No engine/optimizer participation — that is a separate later call.

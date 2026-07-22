@@ -108,7 +108,7 @@ return {
         { stat = "FISH", add = 1, cond = "SYNTH_TRAINEE", param = 48 },
     },
     [11545] = {
-        { stat = "REGAIN", add = 10, cond = "STATUS_EFFECT_ACTIVE", param = 267 },
+        { stat = "Regain", add = 10, cond = "STATUS_EFFECT_ACTIVE", param = 267 },
     },
     [11546] = {
         { stat = "DoubleAttack", add = 1, cond = "DARKSDAY", param = 0 },
@@ -156,8 +156,8 @@ return {
         { stat = "MagicAttackBonus", add = 3, cond = "MOON_PHASE", param = 7 },
     },
     [11621] = {
-        { stat = "REGAIN", add = -1, cond = "TP_OVER", param = 0 },
         { stat = "Refresh", add = 1, cond = "TP_OVER", param = 0 },
+        { stat = "Regain", add = -1, cond = "TP_OVER", param = 0 },
     },
     [11636] = {
         { stat = "Regen", add = 3, cond = "STATUS_EFFECT_ACTIVE", param = 267 },
@@ -167,8 +167,8 @@ return {
         { stat = "MagicAccuracy", add = 3, cond = "MP_UNDER_PERCENT", param = 51 },
     },
     [11667] = {
-        { stat = "REGAIN", add = 10, cond = "ELEVEN_ROLL_ACTIVE", param = 0 },
         { stat = "Refresh", add = 1, cond = "ELEVEN_ROLL_ACTIVE", param = 0 },
+        { stat = "Regain", add = 10, cond = "ELEVEN_ROLL_ACTIVE", param = 0 },
     },
     [11671] = {
         { stat = "DoubleAttack", add = 1, cond = "MP_OVER", param = 100 },
@@ -191,7 +191,7 @@ return {
         { stat = "Evasion", add = 1, cond = "PARTY_MEMBERS_IN_ZONE", param = 6 },
     },
     [11752] = {
-        { stat = "PERPETUATION_REDUCTION", add = 1, cond = "PET_ID", param = 16 },
+        { stat = "PerpetuationCost", add = 1, cond = "PET_ID", param = 16 },
     },
     [12366] = {
         { stat = "HP", add = 7, cond = "NATION_CONTROL", param = 0 },
@@ -269,7 +269,7 @@ return {
         { stat = "Refresh", add = 1, cond = "STATUS_EFFECT_ACTIVE", param = 4 },
     },
     [12493] = {
-        { stat = "PERPETUATION_REDUCTION", add = 1, cond = "PET_ID", param = 9 },
+        { stat = "PerpetuationCost", add = 1, cond = "PET_ID", param = 9 },
     },
     [12589] = {
         { stat = "Regen", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 3 },
@@ -339,9 +339,9 @@ return {
         { stat = "HP", add = 15, cond = "NATION_CONTROL", param = 1 },
     },
     [13143] = {
-        { stat = "REGAIN", add = 25, cond = "STATUS_EFFECT_ACTIVE", param = 2 },
-        { stat = "REGAIN", add = 25, cond = "STATUS_EFFECT_ACTIVE", param = 19 },
-        { stat = "REGAIN", add = 25, cond = "STATUS_EFFECT_ACTIVE", param = 193 },
+        { stat = "Regain", add = 25, cond = "STATUS_EFFECT_ACTIVE", param = 2 },
+        { stat = "Regain", add = 25, cond = "STATUS_EFFECT_ACTIVE", param = 19 },
+        { stat = "Regain", add = 25, cond = "STATUS_EFFECT_ACTIVE", param = 193 },
     },
     [13145] = {
         { stat = "MagicAttackBonus", add = 8, cond = "MP_UNDER_PERCENT", param = 51 },
@@ -459,7 +459,7 @@ return {
         { stat = "JUMP_TP_BONUS", add = 10, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
     },
     [13300] = {
-        { stat = "PERPETUATION_REDUCTION", add = 1, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
+        { stat = "PerpetuationCost", add = 1, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
     },
     [13399] = {
         { stat = "Attack", add = 10, cond = "TIME_OF_DAY", param = 0 },
@@ -491,7 +491,7 @@ return {
         { stat = "Evasion", add = 15, cond = "HP_UNDER_TP_UNDER_100", param = 25 },
     },
     [13425] = {
-        { stat = "SPELLINTERRUPT", add = 30, cond = "HP_UNDER_TP_UNDER_100", param = 25 },
+        { stat = "SpellInterruptionRateDown", add = 30, cond = "HP_UNDER_TP_UNDER_100", param = 25 },
     },
     [13426] = {
         { stat = "PDT", add = -20, cond = "HP_UNDER_TP_UNDER_100", param = 25 },
@@ -892,7 +892,7 @@ return {
         { stat = "Attack", add = 8, cond = "HP_OVER_PERCENT", param = 75 },
     },
     [14062] = {
-        { stat = "PERPETUATION_REDUCTION", add = 0, cond = "PET_ID", param = 8 },
+        { stat = "PerpetuationCost", add = 0, cond = "PET_ID", param = 8 },
     },
     [14065] = {
         { stat = "Regen", add = 1, cond = "TIME_OF_DAY", param = 0 },
@@ -1100,10 +1100,10 @@ return {
         { stat = "Counter", add = 1, cond = "HP_UNDER_PERCENT", param = 25 },
     },
     [14401] = {
-        { stat = "PERPETUATION_REDUCTION", add = 1, cond = "PET_ID", param = 7 },
+        { stat = "PerpetuationCost", add = 1, cond = "PET_ID", param = 7 },
     },
     [14410] = {
-        { stat = "PERPETUATION_REDUCTION", add = 1, cond = "PET_ID", param = 6 },
+        { stat = "PerpetuationCost", add = 1, cond = "PET_ID", param = 6 },
     },
     [14413] = {
         { stat = "Refresh", add = 1, cond = "MP_UNDER", param = 49 },
@@ -1334,8 +1334,8 @@ return {
         { stat = "RangedAccuracy", add = 10, cond = "STATUS_EFFECT_ACTIVE", param = 566 },
     },
     [14946] = {
-        { stat = "PERPETUATION_REDUCTION", add = 1, cond = "STATUS_EFFECT_ACTIVE", param = 2 },
-        { stat = "PERPETUATION_REDUCTION", add = 1, cond = "STATUS_EFFECT_ACTIVE", param = 19 },
+        { stat = "PerpetuationCost", add = 1, cond = "STATUS_EFFECT_ACTIVE", param = 2 },
+        { stat = "PerpetuationCost", add = 1, cond = "STATUS_EFFECT_ACTIVE", param = 19 },
     },
     [14953] = {
         { stat = "DoubleAttack", add = 2, cond = "NO_FOOD_ACTIVE", param = 0 },
@@ -1344,7 +1344,7 @@ return {
     [14954] = {
         { stat = "HMP", add = 1, cond = "NO_FOOD_ACTIVE", param = 0 },
         { stat = "MP", add = 35, cond = "NO_FOOD_ACTIVE", param = 0 },
-        { stat = "SPELLINTERRUPT", add = -5, cond = "NO_FOOD_ACTIVE", param = 0 },
+        { stat = "SpellInterruptionRateDown", add = -5, cond = "NO_FOOD_ACTIVE", param = 0 },
     },
     [15008] = {
         { stat = "BONE", add = 1, cond = "SYNTH_TRAINEE", param = 54 },
@@ -1488,7 +1488,7 @@ return {
         { stat = "POLEARM", add = 5, cond = "SUBJOB", param = 14 },
     },
     [15285] = {
-        { stat = "PERPETUATION_REDUCTION", add = 2, cond = "SUBJOB", param = 15 },
+        { stat = "PerpetuationCost", add = 2, cond = "SUBJOB", param = 15 },
     },
     [15312] = {
         { stat = "Evasion", add = 2, cond = "EARTHSDAY", param = 0 },
@@ -1561,8 +1561,8 @@ return {
         { stat = "Counter", add = 5, cond = "HP_UNDER_PERCENT", param = 25 },
     },
     [15530] = {
-        { stat = "REGAIN", add = 10, cond = "WEAPON_DRAWN", param = 0 },
         { stat = "REGEN_DOWN", add = 50, cond = "WEAPON_DRAWN", param = 0 },
+        { stat = "Regain", add = 10, cond = "WEAPON_DRAWN", param = 0 },
     },
     [15532] = {
         { stat = "Refresh", add = -3, cond = "WEAPON_DRAWN_MP_OVER", param = 2 },
@@ -1863,7 +1863,7 @@ return {
         { stat = "Accuracy", add = -30, cond = "TIME_OF_DAY", param = 1 },
     },
     [16154] = {
-        { stat = "PERPETUATION_REDUCTION", add = 2, cond = "PET_ID", param = 13 },
+        { stat = "PerpetuationCost", add = 2, cond = "PET_ID", param = 13 },
     },
     [16165] = {
         { stat = "SHIELD", add = 5, cond = "IN_ASSAULT", param = 0 },
@@ -3061,8 +3061,8 @@ return {
         { stat = "DMG_RATING", add = 3, cond = "EQUIPPED_IN_SLOT", param = 0 },
     },
     [18891] = {
-        { stat = "REGAIN", add = 10, cond = "WEAPON_DRAWN_MP_OVER", param = 0 },
         { stat = "Refresh", add = -3, cond = "WEAPON_DRAWN_MP_OVER", param = 0 },
+        { stat = "Regain", add = 10, cond = "WEAPON_DRAWN_MP_OVER", param = 0 },
     },
     [18895] = {
         { stat = "DoubleAttack", add = 4, cond = "STATUS_EFFECT_ACTIVE", param = 94 },
@@ -3464,9 +3464,9 @@ return {
         { stat = "StoreTP", add = 5, cond = "WEAPON_DRAWN_MP_OVER", param = 0 },
     },
     [21661] = {
-        { stat = "ALL_WSDMG_ALL_HITS", add = 1, cond = "WEAPON_DRAWN_MP_OVER", param = 0 },
         { stat = "Refresh", add = -3, cond = "WEAPON_DRAWN_MP_OVER", param = 0 },
         { stat = "VIT", add = 5, cond = "WEAPON_DRAWN_MP_OVER", param = 0 },
+        { stat = "WeaponSkillDamage", add = 1, cond = "WEAPON_DRAWN_MP_OVER", param = 0 },
     },
     [21757] = {
         { stat = "CriticalHitRate", add = 14, cond = "STATUS_EFFECT_ACTIVE", param = 56 },
@@ -3487,7 +3487,7 @@ return {
         { stat = "COOK", add = 3, cond = "EQUIPPED_IN_SLOT", param = 0 },
     },
     [21968] = {
-        { stat = "TP_BONUS", add = 50, cond = "STATUS_EFFECT_ACTIVE", param = 408 },
+        { stat = "TPBonus", add = 50, cond = "STATUS_EFFECT_ACTIVE", param = 408 },
     },
     [21970] = {
         { stat = "ADDS_WEAPONSKILL", add = 144, cond = "STATUS_EFFECT_ACTIVE", param = 408 },
@@ -3519,28 +3519,28 @@ return {
         { stat = "ITEM_SUBEFFECT", add = 8, cond = "TIME_OF_DAY", param = 1 },
     },
     [23030] = {
-        { stat = "ALL_WSDMG_ALL_HITS", add = 1, cond = "JOB_IN_PARTY", param = 1 },
-        { stat = "ALL_WSDMG_ALL_HITS", add = 1, cond = "JOB_IN_PARTY", param = 2 },
-        { stat = "ALL_WSDMG_ALL_HITS", add = 1, cond = "JOB_IN_PARTY", param = 3 },
-        { stat = "ALL_WSDMG_ALL_HITS", add = 1, cond = "JOB_IN_PARTY", param = 4 },
-        { stat = "ALL_WSDMG_ALL_HITS", add = 1, cond = "JOB_IN_PARTY", param = 5 },
-        { stat = "ALL_WSDMG_ALL_HITS", add = 1, cond = "JOB_IN_PARTY", param = 6 },
-        { stat = "ALL_WSDMG_ALL_HITS", add = 1, cond = "JOB_IN_PARTY", param = 7 },
-        { stat = "ALL_WSDMG_ALL_HITS", add = 1, cond = "JOB_IN_PARTY", param = 8 },
-        { stat = "ALL_WSDMG_ALL_HITS", add = 1, cond = "JOB_IN_PARTY", param = 9 },
-        { stat = "ALL_WSDMG_ALL_HITS", add = 1, cond = "JOB_IN_PARTY", param = 10 },
-        { stat = "ALL_WSDMG_ALL_HITS", add = 1, cond = "JOB_IN_PARTY", param = 11 },
-        { stat = "ALL_WSDMG_ALL_HITS", add = 1, cond = "JOB_IN_PARTY", param = 12 },
-        { stat = "ALL_WSDMG_ALL_HITS", add = 1, cond = "JOB_IN_PARTY", param = 13 },
-        { stat = "ALL_WSDMG_ALL_HITS", add = 1, cond = "JOB_IN_PARTY", param = 14 },
-        { stat = "ALL_WSDMG_ALL_HITS", add = 1, cond = "JOB_IN_PARTY", param = 15 },
-        { stat = "ALL_WSDMG_ALL_HITS", add = 1, cond = "JOB_IN_PARTY", param = 16 },
-        { stat = "ALL_WSDMG_ALL_HITS", add = 1, cond = "JOB_IN_PARTY", param = 17 },
-        { stat = "ALL_WSDMG_ALL_HITS", add = 1, cond = "JOB_IN_PARTY", param = 18 },
-        { stat = "ALL_WSDMG_ALL_HITS", add = 1, cond = "JOB_IN_PARTY", param = 19 },
-        { stat = "ALL_WSDMG_ALL_HITS", add = 1, cond = "JOB_IN_PARTY", param = 20 },
-        { stat = "ALL_WSDMG_ALL_HITS", add = 1, cond = "JOB_IN_PARTY", param = 21 },
-        { stat = "ALL_WSDMG_ALL_HITS", add = 1, cond = "JOB_IN_PARTY", param = 22 },
+        { stat = "WeaponSkillDamage", add = 1, cond = "JOB_IN_PARTY", param = 1 },
+        { stat = "WeaponSkillDamage", add = 1, cond = "JOB_IN_PARTY", param = 2 },
+        { stat = "WeaponSkillDamage", add = 1, cond = "JOB_IN_PARTY", param = 3 },
+        { stat = "WeaponSkillDamage", add = 1, cond = "JOB_IN_PARTY", param = 4 },
+        { stat = "WeaponSkillDamage", add = 1, cond = "JOB_IN_PARTY", param = 5 },
+        { stat = "WeaponSkillDamage", add = 1, cond = "JOB_IN_PARTY", param = 6 },
+        { stat = "WeaponSkillDamage", add = 1, cond = "JOB_IN_PARTY", param = 7 },
+        { stat = "WeaponSkillDamage", add = 1, cond = "JOB_IN_PARTY", param = 8 },
+        { stat = "WeaponSkillDamage", add = 1, cond = "JOB_IN_PARTY", param = 9 },
+        { stat = "WeaponSkillDamage", add = 1, cond = "JOB_IN_PARTY", param = 10 },
+        { stat = "WeaponSkillDamage", add = 1, cond = "JOB_IN_PARTY", param = 11 },
+        { stat = "WeaponSkillDamage", add = 1, cond = "JOB_IN_PARTY", param = 12 },
+        { stat = "WeaponSkillDamage", add = 1, cond = "JOB_IN_PARTY", param = 13 },
+        { stat = "WeaponSkillDamage", add = 1, cond = "JOB_IN_PARTY", param = 14 },
+        { stat = "WeaponSkillDamage", add = 1, cond = "JOB_IN_PARTY", param = 15 },
+        { stat = "WeaponSkillDamage", add = 1, cond = "JOB_IN_PARTY", param = 16 },
+        { stat = "WeaponSkillDamage", add = 1, cond = "JOB_IN_PARTY", param = 17 },
+        { stat = "WeaponSkillDamage", add = 1, cond = "JOB_IN_PARTY", param = 18 },
+        { stat = "WeaponSkillDamage", add = 1, cond = "JOB_IN_PARTY", param = 19 },
+        { stat = "WeaponSkillDamage", add = 1, cond = "JOB_IN_PARTY", param = 20 },
+        { stat = "WeaponSkillDamage", add = 1, cond = "JOB_IN_PARTY", param = 21 },
+        { stat = "WeaponSkillDamage", add = 1, cond = "JOB_IN_PARTY", param = 22 },
     },
     [23096] = {
         { stat = "Counter", add = 16, cond = "STATUS_EFFECT_ACTIVE", param = 354 },
@@ -3738,7 +3738,7 @@ return {
         { stat = "Regen", add = 4, cond = "STATUS_EFFECT_ACTIVE", param = 45 },
     },
     [25633] = {
-        { stat = "PERPETUATION_REDUCTION", add = 1, cond = "PET_ID", param = 8 },
+        { stat = "PerpetuationCost", add = 1, cond = "PET_ID", param = 8 },
     },
     [26163] = {
         { stat = "DoubleAttack", add = 2, cond = "ZONE", param = 33 },
@@ -3971,12 +3971,12 @@ return {
         { stat = "OCCULT_ACUMEN", add = 5, cond = "VS_SUPERFAMILY", param = 140 },
     },
     [27047] = {
-        { stat = "ALL_WSDMG_ALL_HITS", add = 3, cond = "VS_SUPERFAMILY", param = 94 },
-        { stat = "ALL_WSDMG_ALL_HITS", add = 3, cond = "VS_SUPERFAMILY", param = 98 },
-        { stat = "ALL_WSDMG_ALL_HITS", add = 3, cond = "VS_SUPERFAMILY", param = 140 },
         { stat = "MagicAttackBonus", add = 5, cond = "VS_SUPERFAMILY", param = 94 },
         { stat = "MagicAttackBonus", add = 5, cond = "VS_SUPERFAMILY", param = 98 },
         { stat = "MagicAttackBonus", add = 5, cond = "VS_SUPERFAMILY", param = 140 },
+        { stat = "WeaponSkillDamage", add = 3, cond = "VS_SUPERFAMILY", param = 94 },
+        { stat = "WeaponSkillDamage", add = 3, cond = "VS_SUPERFAMILY", param = 98 },
+        { stat = "WeaponSkillDamage", add = 3, cond = "VS_SUPERFAMILY", param = 140 },
     },
     [27049] = {
         { stat = "CLUB", add = 5, cond = "VS_SUPERFAMILY", param = 94 },
@@ -3989,8 +3989,8 @@ return {
     [27233] = {
         { stat = "AMNESIARES", add = 15, cond = "ZONE", param = 54 },
         { stat = "AMNESIARES", add = 15, cond = "ZONE", param = 57 },
-        { stat = "SPELLINTERRUPT", add = 5, cond = "ZONE", param = 54 },
-        { stat = "SPELLINTERRUPT", add = 5, cond = "ZONE", param = 57 },
+        { stat = "SpellInterruptionRateDown", add = 5, cond = "ZONE", param = 54 },
+        { stat = "SpellInterruptionRateDown", add = 5, cond = "ZONE", param = 57 },
     },
     [27234] = {
         { stat = "CRIT_DMG_INCREASE", add = 3, cond = "ZONE", param = 65 },
@@ -4119,9 +4119,9 @@ return {
         { stat = "Evasion", add = 10, cond = "NO_FOOD_ACTIVE", param = 0 },
     },
     [28567] = {
-        { stat = "REGAIN", add = 10, cond = "STATUS_EFFECT_ACTIVE", param = 2 },
-        { stat = "REGAIN", add = 10, cond = "STATUS_EFFECT_ACTIVE", param = 19 },
-        { stat = "REGAIN", add = 10, cond = "STATUS_EFFECT_ACTIVE", param = 193 },
+        { stat = "Regain", add = 10, cond = "STATUS_EFFECT_ACTIVE", param = 2 },
+        { stat = "Regain", add = 10, cond = "STATUS_EFFECT_ACTIVE", param = 19 },
+        { stat = "Regain", add = 10, cond = "STATUS_EFFECT_ACTIVE", param = 193 },
         { stat = "Regen", add = 1, cond = "STATUS_EFFECT_ACTIVE", param = 2 },
         { stat = "Regen", add = 1, cond = "STATUS_EFFECT_ACTIVE", param = 19 },
         { stat = "Regen", add = 1, cond = "STATUS_EFFECT_ACTIVE", param = 193 },

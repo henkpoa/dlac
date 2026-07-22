@@ -217,8 +217,11 @@ M.list = {
 
     -- ---- Defense / mitigation ----
     { key = 'DEF',          label = 'DEF',     section = 'Defense' },
+    { key = 'DEFP',         label = 'DEF%',    section = 'Defense', percent = true },   -- mirrors HPP/MPP
     { key = 'Evasion',      label = 'Evasion', section = 'Defense' },
     { key = 'MagicEvasion', label = 'M.Eva',   section = 'Defense' },
+    -- proc stat -> named "Chance" per the stat-naming ruling (never reads as a reduction)
+    { key = 'AbsorbDamageChance', label = 'Absorb Dmg Chance', section = 'Defense', percent = true },
     -- Mitigation: the beneficial side is LOW / negative (less damage taken). lowerBetter makes
     -- the scorer negate it so a positive weight rewards damage reduction.
     { key = 'DT',  section = 'Defense', percent = true, lowerBetter = true },
@@ -624,6 +627,9 @@ M.list = {
     { key = 'FamiliarBonus', label = 'Familiar+', section = 'Pet' },
     { key = 'TandemStrikePower', label = 'Tandem Strike+', section = 'Pet' },
     { key = 'TandemBlowPower', label = 'Tandem Blow+', section = 'Pet' },
+    -- pet-channel-only mods (item_mods_pet / gen_petmods.py; no master-side carrier known)
+    { key = 'MainDMGRating', label = 'Pet Weapon DMG', section = 'Pet' },
+    { key = 'MonsterCorrelation', label = 'Pet Correlation', section = 'Pet' },   -- pet acc/att vs weaker ecosystem
 };
 
 --[[ ADOPTION STATE (2026-07-14 round complete -- 302 entries added, all row-by-row

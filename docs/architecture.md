@@ -552,11 +552,17 @@ to the migration. Regenerate ONLY after an intentional builder/format change (re
 diff): `lua5.4 tests/gen_goldens.lua`.
 
 ### tools/ — maintainer scripts (gitignored, not shipped)
-`apicrawl.py` builds catalog.lua; `gen_levelscaling.py` builds levelscaling.lua;
-`gen_pickerdb.py` builds spells/abilities; `modifier_map.lua` = modid→stat map;
-`api_cache/` holds the crawl cache + the stat-naming decision log
-(`stats_decisions.txt` — the agreed mod→key bridge). Gitignored so scraping details and
-the mod enum aren't published; only generated data ships.
+`refresh_all.py` = THE one-command update after a CatsEyeXI patch (runs everything
+below in order); each script also runs alone, and all SQL generators share
+`modmap.py` as the one modid→stat-key parser so a lone re-run and the umbrella can
+never disagree. `apicrawl.py` builds catalog.lua (live API); `gen_petmods.py` builds
+petmods.lua (item_mods_pet SQL — the pet channel the API never serializes);
+`gen_levelscaling.py` builds levelscaling.lua + latentstats.lua;
+`gen_gearsets.py` builds gearsets.lua; `gen_pickerdb.py` builds spells/abilities;
+`modifier_map.lua` = modid→stat map; `api_cache/` holds the crawl cache + the
+stat-naming decision log (`stats_decisions.txt` — the agreed mod→key bridge).
+Gitignored so scraping details and the mod enum aren't published; only generated
+data ships.
 
 ---
 
@@ -595,6 +601,11 @@ never a hot swap.
 - **catalog.lua** (shipped) — crawled base-truth stats; addon-state only (browse,
   tooltips, enrichment, optimizer). `enrichGearFromCatalog` fills statless owned entries
   by Id.
+- **petmods.lua** (shipped) — pet-channel gear stats (`item_mods_pet`: what the gear
+  grants TO YOUR PET, e.g. Drachen Brais "Wyvern: HP+10%"). Lives BESIDE catalog Stats
+  because the live API never serializes the pet channel — the repo SQL is the only
+  source. Joined by Id at display time (`gearfmt.petLines` for tooltips; row summaries
+  spend leftover token budget). Display-only: no engine/optimizer participation yet.
 - **gear.lua** (per-char) — thin ownership record. Written by stage→commit and by
   auto-sync (`M.sync`, add-only). `refreshGear` re-reads it in place so the GUI updates
   without an addon reload. Ownership = ALL_CONTAINERS; availability (= can equip right

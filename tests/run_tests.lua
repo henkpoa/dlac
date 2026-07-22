@@ -6904,6 +6904,50 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- section PM: pet-channel gear stats (data/petmods.lua + gearfmt.petLines)
+-- The server grants pet-targeted gear stats (Drachen Brais "Wyvern: HP+10%")
+-- through item_mods_pet -- a channel the live API NEVER serializes, so these
+-- stats exist beside catalog Stats in data/petmods.lua (tools/gen_petmods.py).
+-- Pins: the generated table's field-case rows, and the display composition
+-- (petLines for tooltips, statSummary's leftover-budget pet tokens for rows).
+-- ---------------------------------------------------------------------------
+(function()
+    local pm = dofile('data/petmods.lua');
+    check('PM0 petmods loads', type(pm), 'table');
+    check('PM1 Drachen Brais wyvern HP% (the field case)',
+        pm[14227] ~= nil and pm[14227].Wyvern ~= nil and pm[14227].Wyvern.HPP, 10);
+    check('PM2 Drachen Brais +1 rides the ladder',
+        pm[15574] ~= nil and pm[15574].Wyvern ~= nil and pm[15574].Wyvern.HPP, 15);
+    check('PM3 Wyvern Mail hidden wyvern HP',
+        pm[14405] ~= nil and pm[14405].Wyvern ~= nil and pm[14405].Wyvern.HP, 65);
+    check('PM4 ...and its HHP partner stat', pm[14405] ~= nil and pm[14405].Wyvern.HHP, 65);
+    check('PM5 all-pets rows keyed All (Sabong DA)',
+        pm[10299] ~= nil and pm[10299].All ~= nil and pm[10299].All.DoubleAttack, 2);
+
+    -- display composition through gearfmt (preload so its pcall require resolves headlessly)
+    package.loaded['dlac\\data\\petmods'] = pm;
+    local gf = dofile('gear/gearfmt.lua');
+    check('PM6 petLines exported', type(gf.petLines), 'function');
+    local lines = gf.petLines({ Id = 14227 });
+    check('PM7 one line per pet type', #lines, 1);
+    check('PM8 composed tooltip line', lines[1], 'Wyvern: HPP+10');
+    check('PM9 All reads as Pet', gf.petLines({ Id = 10299 })[1], 'Pet: DoubleAttack+2');
+    check('PM10 priority order inside a line (HP first, rest alpha)',
+        gf.petLines({ Id = 14405 })[1], 'Wyvern: HP+65 HHP+65');
+    check('PM11 item without pet data -> empty list', #gf.petLines({ Id = 4096 }), 0);
+    check('PM12 nil rec safe', #gf.petLines(nil), 0);
+
+    -- statSummary: pet tokens ride ONLY the leftover <=4-token budget
+    gf.configure({ effStats = function(rec) return rec.Stats; end });
+    check('PM13 row summary appends a pet token',
+        gf.statSummary({ Id = 14227, Stats = { DEF = 27 } }), 'DEF+27 Wyvern:HPP+10');
+    check('PM14 a full budget leaves pet tokens out',
+        gf.statSummary({ Id = 14227, Stats = { DEF = 1, HP = 1, MP = 1, Accuracy = 1 } }),
+        'DEF+1 HP+1 MP+1 Accuracy+1');
+    package.loaded['dlac\\data\\petmods'] = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- section MC: dead mode-condition sweep (triggersui._modeCondRefs)
 -- Henrik 2026-07-18: editing a cycle left nonexistent 'Name:Value' gates on
 -- weapons/rules. The sweep takes a whole mode ('X' -> 'X' + every 'X:*') or

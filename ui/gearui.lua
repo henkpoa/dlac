@@ -940,6 +940,11 @@ local function renderItemTooltip(rec)
         end
         local sl = fmt.fullStatList(stats);
         if sl ~= '' then imgui.TextColored(COL.STATS, fmt.esc(sl)); end
+        -- Pet-channel stats (petmods.lua): one line per pet type, e.g.
+        -- "Wyvern: HPP+10" -- these live outside catalog Stats (API-invisible).
+        for _, pl in ipairs(fmt.petLines(rec)) do
+            imgui.TextColored(COL.STATS, fmt.esc(pl));
+        end
         local jt = fmt.jobsText(rec.Jobs);
         if jt == 'All' then jt = 'All Jobs'; end
         imgui.TextColored(COL.JOBS, string.format('Lv.%s %s', tostring(rec.Level or 0), jt));

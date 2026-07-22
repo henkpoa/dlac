@@ -62,6 +62,47 @@ local STAT_PRIORITY = {
     'INT', 'MND', 'CHR', 'Evasion', 'Enmity', 'StoreTP',
 };
 
+-- Pet-channel stats (data\petmods.lua): stats this gear grants TO YOUR PET --
+-- generated from the server's item_mods_pet table, which the live API never
+-- exposes (so they are NOT in catalog Stats). Keyed by item id; pet type 'All'
+-- applies to every pet and reads as "Pet". Display-only for now.
+local _pok, petmods = pcall(require, 'dlac\\data\\petmods');
+if not _pok or type(petmods) ~= 'table' then petmods = {}; end
+local PETORDER = { 'All', 'Avatar', 'Wyvern', 'Automaton', 'Harlequin',
+                   'Valoredge', 'Sharpshot', 'Stormwaker', 'Luopan' };
+local function petLabel(p) return (p == 'All') and 'Pet' or p; end
+
+-- Ordered keys of a stats table: STAT_PRIORITY hits first, the rest alpha --
+-- the same reading order the flat stat lines use.
+local function orderedStatKeys(t)
+    local out, used = {}, {};
+    for _, k in ipairs(STAT_PRIORITY) do
+        if t[k] ~= nil then out[#out + 1] = k; used[k] = true; end
+    end
+    local rest = {};
+    for k in pairs(t) do if not used[k] then rest[#rest + 1] = k; end end
+    table.sort(rest);
+    for _, k in ipairs(rest) do out[#out + 1] = k; end
+    return out;
+end
+
+-- One display line per pet type: "Wyvern: HPP+10 HHP+65". Empty list when the
+-- item grants nothing to pets (or has no Id to look up).
+local function petLines(rec)
+    local pets = (rec ~= nil and rec.Id ~= nil) and petmods[rec.Id] or nil;
+    if type(pets) ~= 'table' then return {}; end
+    local lines = {};
+    for _, p in ipairs(PETORDER) do
+        local st = pets[p];
+        if type(st) == 'table' then
+            local parts = {};
+            for _, k in ipairs(orderedStatKeys(st)) do parts[#parts + 1] = fmtStat(k, st[k]); end
+            if #parts > 0 then lines[#lines + 1] = petLabel(p) .. ': ' .. table.concat(parts, ' '); end
+        end
+    end
+    return lines;
+end
+
 -- Collapse the 8-way crafting families into ONE display token when uniform
 -- (Henrik: "All Skills +2 instead of listing each skill one by one"). Display
 -- only -- scoring and the engine still see the real per-craft keys.
@@ -115,6 +156,21 @@ local function statSummary(rec, level)
                     parts[#parts + 1] = fmtStat(k, v);
                     if #parts >= 4 then break; end
                 end
+            end
+        end
+        -- pet-channel tokens ride the leftover budget ("Wyvern:HPP+10") -- for
+        -- pet gear they ARE the item's point, and this also makes them findable
+        -- by the stat search (which matches against this summary).
+        if #parts < 4 and rec.Id ~= nil and petmods[rec.Id] ~= nil then
+            for _, p in ipairs(PETORDER) do
+                local st = petmods[rec.Id][p];
+                if type(st) == 'table' then
+                    for _, k in ipairs(orderedStatKeys(st)) do
+                        if #parts >= 4 then break; end
+                        parts[#parts + 1] = petLabel(p) .. ':' .. fmtStat(k, st[k]);
+                    end
+                end
+                if #parts >= 4 then break; end
             end
         end
         out = table.concat(parts, ' ');
@@ -266,6 +322,7 @@ M.sortedKeys   = sortedKeys;
 M.jobsText     = jobsText;
 M.statSummary  = statSummary;
 M.fullStatList = fullStatList;
+M.petLines     = petLines;
 M.qtyTag       = qtyTag;
 M.augTag       = augTag;
 M.modeSections = modeSections;

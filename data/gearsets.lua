@@ -347,10 +347,10 @@ return {
         min = 2,
         max = 5,
         tiers = {
-            [2] = { ABSORB_DMG_CHANCE = 2 },
-            [3] = { ABSORB_DMG_CHANCE = 3 },
-            [4] = { ABSORB_DMG_CHANCE = 4 },
-            [5] = { ABSORB_DMG_CHANCE = 5 },
+            [2] = { AbsorbDamageChance = 2 },
+            [3] = { AbsorbDamageChance = 3 },
+            [4] = { AbsorbDamageChance = 4 },
+            [5] = { AbsorbDamageChance = 5 },
         },
     },
     [38] = {
@@ -524,10 +524,10 @@ return {
         min = 2,
         max = 5,
         tiers = {
-            [2] = { ABSORB_DMG_CHANCE = 2 },
-            [3] = { ABSORB_DMG_CHANCE = 3 },
-            [4] = { ABSORB_DMG_CHANCE = 4 },
-            [5] = { ABSORB_DMG_CHANCE = 5 },
+            [2] = { AbsorbDamageChance = 2 },
+            [3] = { AbsorbDamageChance = 3 },
+            [4] = { AbsorbDamageChance = 4 },
+            [5] = { AbsorbDamageChance = 5 },
         },
     },
     [63] = {
@@ -1121,10 +1121,10 @@ return {
         min = 2,
         max = 5,
         tiers = {
-            [2] = { BP_DAMAGE = 4 },
-            [3] = { BP_DAMAGE = 6 },
-            [4] = { BP_DAMAGE = 8 },
-            [5] = { BP_DAMAGE = 10 },
+            [2] = { BloodPactDamage = 4 },
+            [3] = { BloodPactDamage = 6 },
+            [4] = { BloodPactDamage = 8 },
+            [5] = { BloodPactDamage = 10 },
         },
     },
     [120] = {
