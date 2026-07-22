@@ -4454,7 +4454,7 @@ end)();
     -- KEEPS oil + Animator together -- the completion must not paint them
     -- Range-reserving (field case 2026-07-22: a manually equipped Automat. Oil +2
     -- was displaced every Default dispatch).
-    check('TR5 Animator-fed oil exempt -> nil',            gimp.effectiveRSlot({ Type = 'Ammo', Id = 18733 }), nil);
+    check('TR4b Animator-fed oil exempt -> nil',           gimp.effectiveRSlot({ Type = 'Ammo', Id = 18733 }), nil);
 
     -- the level tiebreak (dispatchM.trinketRangeDrop). rslot: only the stat sticks reserve Range.
     local rslot = function(n) return ({ Cinderstone = 4, Morion = 4 })[n]; end
@@ -4488,6 +4488,24 @@ end)();
     check('TR13b nothing worn -> no displace',               disp({ Range = 'Toy Bow' }, nil), nil);
     check('TR14 no Range in plan -> no displace',            disp({ Body = 'Gaudy Harness' }, 'Cinderstone'), nil);
     check('TR15 Range=remove is not incoming',               disp({ Range = 'remove' }, 'Cinderstone'), nil);
+
+    -- Engine-side stale-stamp guard (v101): gear.lua files written before
+    -- 2026.07.22g carry a wrongly-completed RSlot=4 on the Animator-fed oils;
+    -- the engine ignores it at the manifest reader, so the addon update alone
+    -- heals every user -- no /dl fix migration required for behavior.
+    check('TR16 recordRSlot exported',          type(dispatchM.recordRSlot), 'function');
+    check('TR16b stale oil stamp ignored',      dispatchM.recordRSlot({ Id = 18733, RSlot = 4 }), nil);
+    check('TR16c genuine reservation trusted',  dispatchM.recordRSlot({ Id = 21384, RSlot = 4 }), 4);
+    check('TR16d no stamp -> nil',              dispatchM.recordRSlot({ Id = 21384 }), nil);
+    check('TR16e no record -> nil',             dispatchM.recordRSlot(nil), nil);
+    -- Twin parity: the engine's id-pin and gearrecord's must never drift apart.
+    local grecTR = dofile('gear/gearrecord.lua');
+    for _, oid in ipairs({ 18731, 18732, 18733, 19185 }) do
+        check('TR17 twin parity for oil id ' .. oid,
+            grecTR.effectiveRSlot({ Type = 'Ammo', Id = oid }) == nil
+            and grecTR.ANIMATOR_FED[oid] == true
+            and dispatchM.recordRSlot({ Id = oid, RSlot = 4 }) == nil, true);
+    end
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -4547,6 +4565,21 @@ end)();
     local _, tbIn = dispatchM._equipResolved({ Range = 'Rouser', Ammo = 'Rimestone' }, {});
     check('TB7 within-set: the higher-Level trinket still wins', tbIn.Ammo, 'Rimestone');
     check('TB7b ... and the set Range drops',                    tbIn.Range, nil);
+
+    -- The v101 field case end-to-end: a MANUALLY equipped Automat. Oil +2 whose
+    -- manifest record still carries the stale RSlot=4 stamp must survive the
+    -- idle set's Animator -- the engine's recordRSlot guard, not /dl fix, is
+    -- what stops the displace.
+    gearTB.NameToObject['Automat. Oil +2'] = { Name = 'Automat. Oil +2', Id = 18733, RSlot = 4, Level = 50 };
+    gearTB.NameToObject['Animator']        = { Name = 'Animator', Id = 17859, Level = 10 };
+    AshitaCore.GetResourceManager = function()
+        return { GetItemById = function(self, id) return { Name = { 'Automat. Oil +2' } }; end };
+    end;
+    local _, tbOil = dispatchM._equipResolved({ Range = 'Animator' }, {});
+    check('TB8 worn oil survives the Animator plan', tbOil.Ammo, nil);
+    check('TB8b the Animator still lands',           tbOil.Range, 'Animator');
+    gearTB.NameToObject['Automat. Oil +2'] = nil;
+    gearTB.NameToObject['Animator'] = nil;
 
     AshitaCore = savedAC;
     gearTB.NameToObject['Rimestone'] = nil;
