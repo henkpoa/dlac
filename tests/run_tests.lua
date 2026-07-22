@@ -184,6 +184,215 @@ end
 end)();
 
 -- ---------------------------------------------------------------------------
+-- GRD. Gear Oracle HARD RULE source guards (issue #73, PRD #69) -- "the door
+--      becomes law". Source-level greps that make a private gear deduction a CI
+--      failure, not a review catch. Prior art in spirit: the Sub-slot never-gated
+--      A* HARD RULES (behaviour) and the OR parity pins (twins) above; these are
+--      the SOURCE ratchet. Each guard:
+--        * confines a centralized gear answer to its ONE sanctioned home(s);
+--        * on reintroduction elsewhere, FAILS naming the rule + the offending file;
+--        * carries a SELF-CHECK proving the pattern is actually detectable (a guard
+--          that matches nothing is a false sense of security -- issue #73).
+--
+--      The interpreter-require guard (GRD5) carries the ONE temporary allowlist --
+--      the Phase-2 stat-glue surfaces that still hand-glue level-scaled/augment/
+--      set-bonus stats. Oracle step 5 (issue #74) migrates them onto oracle.stats()
+--      / setStats() and EMPTIES the allowlist; from then the rule is absolute.
+-- ---------------------------------------------------------------------------
+(function()
+    -- Read a source file with Lua comments stripped, so a PROSE mention of a
+    -- banned idiom (e.g. gearui's "equipped-item lookup via GetEquippedItem"
+    -- doc-comment) never false-trips a guard. Block comments (--[[ ]] / --[==[ ]==])
+    -- first, then line comments to EOL. Returns '' for a missing/empty file.
+    local function readStripped(path)
+        local fh = io.open(path, 'r');
+        if fh == nil then return nil; end
+        local src = fh:read('*a'); fh:close();
+        if type(src) ~= 'string' then return ''; end
+        src = src:gsub('%-%-%[(=*)%[.-%]%1%]', ' ');   -- long-bracket block comments
+        src = src:gsub('%-%-[^\n]*', '');              -- line comments
+        return src;
+    end
+
+    -- The production modules the guards scan. Explicit (deterministic, cross-platform
+    -- -- no io.popen, which the repo forbids for discovery) and MAINTAINED: a new
+    -- logic module belongs here so it cannot dodge the ratchet. Generated data tables
+    -- (data/catalog, fishdb, spells, ...) carry no gear-fetch logic and are excluded.
+    local ROOT_FILES = { 'utils.lua', 'dispatch.lua', 'chatfmt.lua', 'profiles.lua', 'gear.lua', 'dlac.lua' };
+    local UI = { 'ammoui','automationsui','craftbar','equippedui','filetex','fishbar','fishui',
+                 'floatgear','gearui','helmbar','helmui','itemicons','priorityui','profilesmenu',
+                 'setupui','triggersui','uihost','uistyle','weightsui' };
+    local GEAR = { 'actionpicker','blueprintsmodel','catalogindex','gearcheck','geareffects','gearexport',
+                   'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
+                   'groupsmodel','jobgate','ownedcache','profileexport','profilesets','setimport',
+                   'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
+    local FEATURE = { 'ammowatch','arbwatch','augments','craftwatch','eboxammo','fishcalc','fishwatch',
+                      'gamemode','helmwatch','location','lockstyle','lookpreview','macrobook','meritwatch',
+                      'mpbands','pinwatch','useitem' };
+    local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
+
+    local ALL = {};
+    for _, f in ipairs(ROOT_FILES) do ALL[#ALL + 1] = f; end
+    for _, n in ipairs(UI)      do ALL[#ALL + 1] = 'ui/' .. n .. '.lua'; end
+    for _, n in ipairs(GEAR)    do ALL[#ALL + 1] = 'gear/' .. n .. '.lua'; end
+    for _, n in ipairs(FEATURE) do ALL[#ALL + 1] = 'feature/' .. n .. '.lua'; end
+    for _, n in ipairs(LIB)     do ALL[#ALL + 1] = 'lib/' .. n .. '.lua'; end
+
+    -- Cache each scanned file's stripped source once.
+    local STRIPPED = {};
+    local readable = 0;
+    for _, path in ipairs(ALL) do
+        local s = readStripped(path);
+        if s ~= nil then STRIPPED[path] = s; readable = readable + 1; end
+    end
+    -- Coverage sanity: the scan must actually see the files (a wrong CWD would make
+    -- every guard vacuously pass). gearoracle + dispatch are load-bearing sanctions.
+    check('GRD0 scan sees the tree (CWD is the addon root)', readable >= #ALL, true);
+    check('GRD0a scan reached the oracle',  STRIPPED['gear/gearoracle.lua'] ~= nil and #STRIPPED['gear/gearoracle.lua'] > 0, true);
+    check('GRD0b scan reached the engine',  STRIPPED['dispatch.lua'] ~= nil and #STRIPPED['dispatch.lua'] > 0, true);
+
+    -- Run `detect` over every scanned file except the sanctioned homes; return the
+    -- offenders as a comma-joined string ('' == clean). `subset` limits the scan
+    -- (nil == the whole tree) so a folder-scoped rule (interpreter requires) only
+    -- polices its folder.
+    local function offendersOf(detect, sanctioned, subset)
+        local list = subset or ALL;
+        local hits = {};
+        for _, path in ipairs(list) do
+            local s = STRIPPED[path];
+            if s ~= nil and not sanctioned[path] and detect(s) then
+                hits[#hits + 1] = path;
+            end
+        end
+        return table.concat(hits, ', ');
+    end
+
+    -- Prove a sanctioned home actually CONTAINS the idiom -- otherwise the guard
+    -- guards nothing (the pattern rotted) and its green is a lie.
+    local function present(detect, path)
+        local s = STRIPPED[path];
+        return (s ~= nil and detect(s)) == true;
+    end
+
+    -- --- GRD1: raw equipped-item read (the worn-item packed-index decode entry).
+    -- GetEquippedItem is THE raw equipped-item read (PRD: duplicated x4 before the
+    -- oracle). Confined to the engine twin (dispatch) + the oracle door. Match the
+    -- CALL form so a stray prose mention that survived comment-stripping still can't
+    -- trip it.
+    local function hasWornRead(s) return s:find('GetEquippedItem%s*%(') ~= nil; end
+    local WORN_HOMES = { ['dispatch.lua'] = true, ['gear/gearoracle.lua'] = true };
+    check('GRD1 raw GetEquippedItem read confined to {dispatch, gearoracle}',
+          offendersOf(hasWornRead, WORN_HOMES), '');
+    check('GRD1a self-check: the read pattern is detectable', hasWornRead('local e = inv:GetEquippedItem(0)'), true);
+    check('GRD1b self-check: prose without a call does not trip', hasWornRead('the GetEquippedItem index maps to a slot'), false);
+    check('GRD1c self-check: the engine twin really holds the read', present(hasWornRead, 'dispatch.lua'), true);
+    check('GRD1d self-check: the oracle door really holds the read', present(hasWornRead, 'gear/gearoracle.lua'), true);
+
+    -- --- GRD2: the packed-index decode ARITHMETIC (container + slot from one Index).
+    -- The distinctive signature is the TWO-value split "... / 256) % 256, <i> % 256"
+    -- (container AND slot). Plain "math.floor(x / 256) % 256;" is generic byte-split
+    -- packet math (eboxammo/lookpreview/dispatch packet code) and is NOT banned -- the
+    -- trailing comma is what marks the worn-index decode. Confined to {dispatch, oracle}.
+    local function hasIndexDecode(s) return s:find('/%s*256%s*%)%s*%%%s*256%s*,') ~= nil; end
+    check('GRD2 packed-index decode arithmetic confined to {dispatch, gearoracle}',
+          offendersOf(hasIndexDecode, WORN_HOMES), '');
+    check('GRD2a self-check: the decode split is detectable',
+          hasIndexDecode('return math.floor(index / 256) % 256, index % 256'), true);
+    check('GRD2b self-check: a lone byte-split is not the decode',
+          hasIndexDecode('pkt[o] = math.floor(id / 256) % 256;'), false);
+    check('GRD2c self-check: the engine twin really holds the decode', present(hasIndexDecode, 'dispatch.lua'), true);
+    check('GRD2d self-check: the oracle door really holds the decode', present(hasIndexDecode, 'gear/gearoracle.lua'), true);
+
+    -- --- GRD3: the equip-eligible bag list literal (Inventory + 8 Wardrobes).
+    -- { 0, 8, 10, 11, 12, 13, 14, 15, 16 } -- duplicated x4 before the oracle. Confined
+    -- to the engine twin (dispatch.AMMO_BAGS) + the oracle (EQUIP_BAGS); every other
+    -- consumer sources oracle.equipBags().
+    local function hasBagList(s)
+        return s:find('0%s*,%s*8%s*,%s*10%s*,%s*11%s*,%s*12%s*,%s*13%s*,%s*14%s*,%s*15%s*,%s*16') ~= nil;
+    end
+    check('GRD3 equip-bag list literal confined to {dispatch, gearoracle}',
+          offendersOf(hasBagList, WORN_HOMES), '');
+    check('GRD3a self-check: the bag list is detectable',
+          hasBagList('local B = { 0, 8, 10, 11, 12, 13, 14, 15, 16 };'), true);
+    check('GRD3b self-check: a different bag set does not trip',
+          hasBagList('local B = { 0, 1, 2, 3, 4, 5, 6, 7, 8 };'), false);
+    check('GRD3c self-check: the engine twin really holds the list', present(hasBagList, 'dispatch.lua'), true);
+    check('GRD3d self-check: the oracle door really holds the list', present(hasBagList, 'gear/gearoracle.lua'), true);
+
+    -- --- GRD4: the 22-job ORDERED list ({ 'WAR', 'MNK', 'WHM', ... }).
+    -- The gate/level list, duplicated across the engine twins and the addon gate. The
+    -- id->name MAP form ([1]='WAR',[2]='MNK', ... used by gearui/gearimport to decode a
+    -- numeric job id) is a DIFFERENT structure and is deliberately not matched -- only a
+    -- comma-then-quote sequence (the ordered list) trips. Confined to the engine twins
+    -- (dispatch.LS_JOBS, profiles.JOBS) + the addon-state gate the oracle delegates to
+    -- (jobgate.JOBS -- anyJobCanWear's home).
+    local function hasJobList(s) return s:find("WAR['\"]%s*,%s*['\"]MNK['\"]%s*,%s*['\"]WHM") ~= nil; end
+    local JOB_HOMES = { ['dispatch.lua'] = true, ['profiles.lua'] = true, ['gear/jobgate.lua'] = true };
+    check('GRD4 22-job ordered list confined to {dispatch, profiles, jobgate}',
+          offendersOf(hasJobList, JOB_HOMES), '');
+    check('GRD4a self-check: the ordered list is detectable',
+          hasJobList("local J = { 'WAR', 'MNK', 'WHM', 'BLM' };"), true);
+    check('GRD4b self-check: the id->name map form does not trip',
+          hasJobList("local J = { [1]='WAR',[2]='MNK',[3]='WHM' };"), false);
+    check('GRD4c self-check: an engine twin really holds the list', present(hasJobList, 'dispatch.lua'), true);
+    check('GRD4d self-check: the addon gate really holds the list', present(hasJobList, 'gear/jobgate.lua'), true);
+
+    -- --- GRD5: interpreter REQUIRES (feature/ + ui/ only). The stat interpreters the
+    -- oracle fronts -- level-stats resolver (data\levelstats), set-bonus evaluator
+    -- (gear\geareffects), augment decoder (feature\augments) -- may be required only by
+    -- the oracle and the gear pipeline itself. A feature/UI module that loads one is
+    -- hand-gluing stats; it must ask the oracle instead. (The catalog index is a
+    -- STANDING central service -- callers browse it directly, architecture.md -- so it
+    -- is not policed here; the oracle fronts it only for the identity JOIN.)
+    --
+    -- On-disk the path reads with escaped separators (dlac\\data\\levelstats); plain
+    -- find, backslashes literal. Load form (require / try / pcall) is irrelevant -- the
+    -- PATH string is the signal.
+    local function loadsInterp(s)
+        return s:find('dlac\\\\data\\\\levelstats', 1, true) ~= nil
+            or s:find('dlac\\\\gear\\\\geareffects', 1, true) ~= nil
+            or s:find('dlac\\\\feature\\\\augments', 1, true) ~= nil;
+    end
+    -- The feature/ + ui/ slice only (the gear pipeline is a sanctioned requirer).
+    local FEATURE_UI = {};
+    for _, n in ipairs(UI)      do FEATURE_UI[#FEATURE_UI + 1] = 'ui/' .. n .. '.lua'; end
+    for _, n in ipairs(FEATURE) do FEATURE_UI[#FEATURE_UI + 1] = 'feature/' .. n .. '.lua'; end
+
+    -- THE TEMPORARY ALLOWLIST -- the Phase-2 stat-glue surfaces, emptied by Oracle
+    -- step 5 (issue #74). Each entry is a feature/UI module that still hand-glues
+    -- level-scaled / augment / set-bonus stats and so still loads an interpreter; #74
+    -- migrates it onto oracle.stats()/setStats() and deletes its line here. When this
+    -- table is {}, the rule is absolute.
+    local STATGLUE_ALLOWLIST = {
+        ['ui/automationsui.lua'] = true,   -- #74: MaxMP/HELM/fishing/craft manifest ladders (levelstats + augments)
+        ['ui/gearui.lua']        = true,   -- #74: Sets-core stat totals/hover/scoring (levelstats + geareffects + augments)
+        ['ui/equippedui.lua']    = true,   -- #74: Equipped/All-Equipment worn-augment display (augments)
+    };
+    check('GRD5 stat interpreters (levelstats/geareffects/augments) not loaded outside the allowlist',
+          offendersOf(loadsInterp, STATGLUE_ALLOWLIST, FEATURE_UI), '');
+    check('GRD5a self-check: an interpreter load is detectable',
+          loadsInterp('local g = require("dlac\\\\gear\\\\geareffects")'), true);
+    check('GRD5b self-check: a try-form load is detectable',
+          loadsInterp('local a = try("dlac\\\\feature\\\\augments")'), true);
+    check('GRD5c self-check: the oracle door is not a stat-interpreter load',
+          loadsInterp('local o = require("dlac\\\\gear\\\\gearoracle")'), false);
+    check('GRD5d self-check: the catalog index is a standing service, not policed here',
+          loadsInterp('local c = require("dlac\\\\gear\\\\catalogindex")'), false);
+    -- The allowlist is TEMPORARY and must shrink, never grow. Pin its exact membership
+    -- so adding a new stat-glue exemption is a deliberate, reviewed edit (and so #74
+    -- can assert it reaches {} on completion).
+    local allowN = 0;
+    for _ in pairs(STATGLUE_ALLOWLIST) do allowN = allowN + 1; end
+    check('GRD5e allowlist is exactly the three known Phase-2 stat-glue surfaces', allowN, 3);
+    check('GRD5f every allowlist entry is a real, scanned module', (function()
+        for path in pairs(STATGLUE_ALLOWLIST) do
+            if STRIPPED[path] == nil then return path; end   -- a stale name would silently widen the rule
+        end
+        return '';
+    end)(), '');
+end)();
+
+-- ---------------------------------------------------------------------------
 -- fixtures
 -- ---------------------------------------------------------------------------
 local sword1H  = { Name = 'Joyeuse',       Level = 72, OneHanded = true,  Type = 'Sword'  };
