@@ -4313,3 +4313,13 @@ the session); nothing to close. Henrik declared the round fixed 2026-07-22.
 Both changes are addon-side -- /addon reload dlac to board; a session's
 first arm rescans the manifest and rewrites the hat map with the id-pinned
 names.
+
+**Addendum, same day: the CRAFT twin.** Henrik: activating Craft on a FIRST
+dlac run equips nothing for exactly the categoryless-arm reason -- craftstate
+carries craft="" and the engine gate (craftOn requires a non-empty craft)
+silently stands the whole claim down. Same ruling, same shape:
+**Woodworking is the first-timer default** -- craftwatch.activeCraft STARTS
+as 'Woodworking', loadCraftState only overrides from a non-empty persisted
+value (old craft="" state files heal), any real pick replaces it. T14b pins
+the default (the H0 twin). Fishing needs no sibling: fishstate has no
+category -- rod/bait picks are ownership-driven, not chosen.

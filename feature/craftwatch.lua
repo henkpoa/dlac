@@ -365,7 +365,16 @@ end
 -- normal gear returns. No commands, no locks, no fighting the engine.
 -- ---------------------------------------------------------------------------
 M.goal = 'hq';            -- hq | nq | skillup
-M.activeCraft = nil;      -- the craft you selected
+M.activeCraft = 'Woodworking';   -- the craft you selected. Woodworking is the
+                          -- FIRST-TIMER DEFAULT (Henrik 07-22, the HELM
+                          -- Harvesting twin): a fresh character has no pick,
+                          -- and an armed switch with craft="" is a dead
+                          -- state the engine silently ignores (craftOn
+                          -- requires a non-empty craft) -- very confusing on
+                          -- a first run. Any real pick replaces it;
+                          -- loadCraftState only overrides from a non-empty
+                          -- persisted value, so an old craft="" state file
+                          -- heals to the default too.
 M.enabled = false;        -- the on/off switch; session-only, starts OFF
 M._enabledAt = 0;         -- os.time() of the last enable -- the engine's craft-vs-helm
                           -- arbitration key (v59: both switches on -> newer stamp wins)

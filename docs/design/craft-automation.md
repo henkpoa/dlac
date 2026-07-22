@@ -86,3 +86,18 @@ even grips off an H2H main, and a shield equipped onto one knocks the MAIN off
 
 - First-synth menu detection (memory probe, separate research).
 - Trove-channel recipe learner (blocked on GM blessing, see history).
+
+## Shipped addenda
+
+- **Manual model (v31, superseding the mode-cycle sketch above):** you pick
+  craft + goal + on/off on the craft bar / Automations panel; craftwatch
+  writes `<char>\dlac\craftstate.lua` and the dispatch ENGINE overlays the
+  gear on Default (no commands, no locks -- see craftwatch.lua "MANUAL craft
+  control" and docs/history.md).
+- **Default craft = Woodworking (2026-07-22, the HELM Harvesting twin):**
+  `craftwatch.activeCraft` STARTS as `'Woodworking'` -- a first-run character
+  armed the switch with no craft picked and the engine silently ignored it
+  (`craftOn` requires a non-empty craft; no claim, invisible in /dl why).
+  Any real pick replaces it; `loadCraftState` only overrides from a
+  non-empty persisted value, so an old `craft=""` state file heals to the
+  default. T14b pins it.

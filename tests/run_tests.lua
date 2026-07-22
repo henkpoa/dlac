@@ -1588,6 +1588,8 @@ check('T14 entry: wrapper form',    craftwatch._entryName({ gear = 'Y', minLevel
 -- MANUAL model (Henrik): craftwatch just holds state (craft/goal/switch);
 -- the ENGINE overlays the gear (dispatch.craftOverlay). No commands here.
 -- saveCraftState no-ops without a live client, so we assert state only.
+check('T14b fresh state defaults to Woodworking (first-timer rule, the HELM H0 twin)',
+                                      craftwatch.getCraft(), 'Woodworking');
 craftwatch.goal = 'hq';
 craftwatch.selectCraft('Alchemy');
 check('T15 selectCraft sets active',  craftwatch.getCraft(), 'Alchemy');
