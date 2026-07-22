@@ -54,8 +54,10 @@ end
 
 -- Equip-eligible containers: Inventory (0) + the 8 Wardrobes (8, 10-16). This is the
 -- AVAILABILITY set -- gear in Safe/Storage/Locker/Satchel is owned but can't be
--- equipped until moved here (the GUI shows such gear with a red name).
-M.SCAN_CONTAINERS = { 0, 8, 10, 11, 12, 13, 14, 15, 16 };
+-- equipped until moved here (the GUI shows such gear with a red name). The list is
+-- THE oracle's (issue #70); re-exported here as published API for existing callers
+-- (ownedcache, and through it the fishing heartbeat).
+M.SCAN_CONTAINERS = require("dlac\\gear\\gearoracle").equipBags();
 local AVAIL_SET = {};
 for _, cid in ipairs(M.SCAN_CONTAINERS) do AVAIL_SET[cid] = true; end
 

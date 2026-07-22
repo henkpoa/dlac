@@ -1549,6 +1549,15 @@ local MP_SLOT_CANON = { ammo = 'Ammo', head = 'Head', neck = 'Neck', ear1 = 'Ear
                         ring2 = 'Ring2', back = 'Back', waist = 'Waist', legs = 'Legs',
                         feet = 'Feet' };
 
+-- Decode a packed GetEquippedItem Index -> container, slot (high byte = container,
+-- low byte = slot). The seeded engine's TWIN of gearoracle.decodeIndex -- ADR 0002
+-- keeps a copy here because the engine cannot require addon-folder modules. The
+-- arithmetic is byte-for-byte the oracle's; tests/run_tests.lua (section OR) pins
+-- them together and NAMES this twin on any drift.
+function M.decodeEquipIndex(index)
+    return math.floor(index / 256) % 256, index % 256;
+end
+
 local function wornItemName(slotKey)
     local nm = nil;
     pcall(function()
@@ -1557,7 +1566,7 @@ local function wornItemName(slotKey)
         local inv = AshitaCore:GetMemoryManager():GetInventory();
         local eitem = inv:GetEquippedItem(id);
         if eitem == nil or eitem.Index == 0 then return; end
-        local item = inv:GetContainerItem(math.floor(eitem.Index / 256) % 256, eitem.Index % 256);
+        local item = inv:GetContainerItem(M.decodeEquipIndex(eitem.Index));
         if item == nil or item.Id == nil or item.Id == 0 then return; end
         local res = AshitaCore:GetResourceManager():GetItemById(item.Id);
         if res ~= nil and res.Name ~= nil then nm = res.Name[1]; end
@@ -3097,7 +3106,12 @@ M._ammoStateOn = ammoStateOn;   -- test seam
 -- the action events use it, because the one moment staleness can hurt is a
 -- Preshot planning a replacement that was JUST consumed (a stale count would
 -- no-op LAC and leave the special bullet in the slot for the shot to eat).
+-- Inventory (0) + the 8 Wardrobes: the seeded engine's equip-eligible bag list.
+-- The TWIN of gearoracle.equipBags (ADR 0002: the engine can't require the addon
+-- oracle). Byte-for-byte the oracle's list; the OR-section parity pins compare them
+-- element-for-element and name this twin on drift.
 local AMMO_BAGS = { 0, 8, 10, 11, 12, 13, 14, 15, 16 };
+M.AMMO_BAGS = AMMO_BAGS;
 local _bagCache = { at = -1, byId = nil, byName = nil };
 local _itemNmMemo = {};
 local function bagCounts(fresh)

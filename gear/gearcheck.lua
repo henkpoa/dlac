@@ -23,9 +23,10 @@ _cfok = _cfok and type(_cfmt) == 'table';
 local function sayWarn(s) if _cfok and _cfmt.warn then _cfmt.warn(s); else print('[dlac] ' .. s); end end
 local function sayInfo(s) if _cfok and _cfmt.msg  then _cfmt.msg(s);  else print('[dlac] ' .. s); end end
 
--- Equippable containers (matches gearimport's AVAIL_SET: Inventory + Wardrobes).
-local EQUIPPABLE = { [0] = true, [8] = true, [10] = true, [11] = true, [12] = true,
-                     [13] = true, [14] = true, [15] = true, [16] = true };
+-- Equippable containers (Inventory + Wardrobes) -- the oracle's list (issue #70),
+-- indexed as a set for the membership tests below.
+local EQUIPPABLE = {};
+for _, cid in ipairs(require("dlac\\gear\\gearoracle").equipBags()) do EQUIPPABLE[cid] = true; end
 
 local function ownedInfo()
     local ok, gi = pcall(require, "dlac\\gear\\gearimport");

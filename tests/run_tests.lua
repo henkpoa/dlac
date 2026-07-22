@@ -16,6 +16,7 @@ package.loaded['dlac\\gear\\jobgate'] = dofile('gear/jobgate.lua');   -- locksty
 package.loaded['dlac\\gear\\gearrecord'] = dofile('gear/gearrecord.lua');   -- record rules: gearimport/weaponfilter/gearexport require it
 package.loaded['dlac\\lib\\safewrite'] = dofile('lib/safewrite.lua');   -- safe-replace ladder: gearimport requires it, profiles guards it
 package.loaded['dlac\\gear\\catalogindex'] = dofile('gear/catalogindex.lua');   -- catalog walker: gearimport requires it (no catalog headless -> empty indexes)
+package.loaded['dlac\\gear\\gearoracle'] = dofile('gear/gearoracle.lua');   -- THE worn-item/bag door: gearimport + useitem require it (issue #70; parity-pinned below)
 package.loaded['dlac\\lib\\statefile'] = dofile('lib/statefile.lua');   -- addon-side charDir: the watchers require it (guarded)
 
 local TEST_PLAYER = nil;                                -- set per test
@@ -50,6 +51,66 @@ local function check(name, got, want)
         failures[#failures + 1] = string.format('%s: got %s, want %s', name, tostring(got), tostring(want));
     end
 end
+
+-- ---------------------------------------------------------------------------
+-- OR. Gear Oracle parity pins (issue #70) -- worn-item decode + equip-bag list.
+--
+--   The oracle (gear/gearoracle.lua) is the ONE door in the addon state; the
+--   seeded engine (dispatch.lua) keeps its OWN twin decode + bag list because
+--   ADR 0002 forbids it requiring addon modules. These pins feed BOTH the door
+--   and the engine twin a fixture matrix so the two can never silently drift --
+--   and every failure message NAMES the twin (dispatch.decodeEquipIndex /
+--   dispatch.AMMO_BAGS) so the fix has an address. Prior art: the Blueprints
+--   serializer parity pins (TGB34/35).
+-- ---------------------------------------------------------------------------
+(function()
+    local oracle = package.loaded['dlac\\gear\\gearoracle'];
+    check('OR0 oracle module present',        type(oracle), 'table');
+    check('OR1 wornItem is the door',         type(oracle.wornItem), 'function');
+    check('OR2 equipBags is the door',        type(oracle.equipBags), 'function');
+    check('OR3 decodeIndex is pure+exported', type(oracle.decodeIndex), 'function');
+
+    -- LITERAL bag-list comparison: oracle.equipBags() vs the engine twin
+    -- dispatch.AMMO_BAGS, element for element. The list is Inventory(0) + the 8
+    -- Wardrobes (8,10-16) -- pinned ABSOLUTELY too, so a matched drift in BOTH
+    -- copies is still caught.
+    local EXPECT_BAGS = { 0, 8, 10, 11, 12, 13, 14, 15, 16 };
+    local bags = oracle.equipBags();
+    local twinBags = dispatchM.AMMO_BAGS;
+    check('OR4 engine exposes twin bag list (dispatch.AMMO_BAGS)', type(twinBags), 'table');
+    check('OR5 oracle bag list length',      #bags, #EXPECT_BAGS);
+    check('OR6 twin bag list length (dispatch.AMMO_BAGS)', twinBags and #twinBags, #EXPECT_BAGS);
+    for i = 1, #EXPECT_BAGS do
+        check('OR7.' .. i .. ' oracle bag[' .. i .. '] == absolute',      bags[i], EXPECT_BAGS[i]);
+        check('OR8.' .. i .. ' twin bag[' .. i .. '] == oracle (dispatch.AMMO_BAGS DRIFT)',
+              twinBags and twinBags[i], bags[i]);
+    end
+
+    -- DECODE parity matrix: synthetic packed Indexes (high byte = container, low
+    -- byte = slot) fed to oracle.decodeIndex AND dispatch.decodeEquipIndex. Both
+    -- must agree with each other AND with the hand-computed container/slot.
+    local FIX = {
+        { idx = 0x0001, cont = 0,   slot = 1   },  -- Inventory, slot 1
+        { idx = 0x0801, cont = 8,   slot = 1   },  -- Wardrobe, slot 1
+        { idx = 0x0A05, cont = 10,  slot = 5   },  -- Wardrobe 2, slot 5
+        { idx = 0x1010, cont = 16,  slot = 16  },  -- Wardrobe 8, slot 16
+        { idx = 0x0100, cont = 1,   slot = 0   },  -- container 1, slot 0
+        { idx = 0x00FF, cont = 0,   slot = 255 },  -- low-byte extreme
+        { idx = 0xFFFF, cont = 255, slot = 255 },  -- both-byte extreme
+    };
+    for _, f in ipairs(FIX) do
+        local oc, os_ = oracle.decodeIndex(f.idx);
+        local tc, ts  = dispatchM.decodeEquipIndex(f.idx);
+        local tag = string.format('0x%04X', f.idx);
+        check('OR9 oracle decode container ' .. tag,  oc,  f.cont);
+        check('OR10 oracle decode slot ' .. tag,      os_, f.slot);
+        check('OR11 twin decode container ' .. tag .. ' (dispatch.decodeEquipIndex DRIFT)', tc, oc);
+        check('OR12 twin decode slot ' .. tag .. ' (dispatch.decodeEquipIndex DRIFT)',      ts, os_);
+    end
+
+    -- wornItem is safe to call headless (no AshitaCore) and returns nil, never throws.
+    check('OR13 wornItem headless-safe', oracle.wornItem(0), nil);
+end)();
 
 -- ---------------------------------------------------------------------------
 -- fixtures
