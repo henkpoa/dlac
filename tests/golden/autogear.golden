@@ -65,10 +65,10 @@ return {
     },
     helm = {
         hats = {
-            Mining = { name = "Miners Helmet", level = 1, surv = 1 },
+            Mining = { name = "Miner's Helmet", level = 1, surv = 1 },
         },
         body = { { name = "Field Tunica", score = 12, level = 1, helm = 2, surv = 1 } },
-        head = { { name = "Miners Helmet", score = 10, level = 1, helm = 0, surv = 1 } },
+        head = { { name = "Miner's Helmet", score = 10, level = 1, helm = 0, surv = 1 } },
         waist = { { name = "Survey Sash", score = 10, level = 50, helm = 0, surv = 1 } },
     },
     fish = {

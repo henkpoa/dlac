@@ -106,7 +106,17 @@ M._zstr = zstr;   -- test seam
 -- on (newer writer wins; see dispatch v59).
 -- ---------------------------------------------------------------------------
 M.barVisible = false;      -- floating HELM bar (helmbar.lua) shown?
-M.activeGather = nil;      -- 'Harvesting' | 'Excavation' | 'Logging' | 'Mining'
+M.activeGather = 'Harvesting';   -- 'Harvesting' | 'Excavation' | 'Logging' | 'Mining'.
+                           -- Harvesting is the FIRST-TIMER DEFAULT (Henrik
+                           -- 07-22): a fresh character has no pick, and an
+                           -- armed idle switch with no category is a dead
+                           -- state the engine silently ignores
+                           -- (helmStateActive needs `gather`) -- the field
+                           -- case that burned a friend's first session. Any
+                           -- real pick (bar, command, swing detect,
+                           -- proximity) replaces it; loadState only
+                           -- overrides from a VALID persisted value, so an
+                           -- old gather="" state file heals to the default.
 M.enabled = false;         -- "Set HELM Idle": session-only; starts OFF
 M.autoHelm = false;        -- "Auto HELM": detection-armed temporary overlay;
                            -- session-only like the idle switch (Henrik

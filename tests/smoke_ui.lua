@@ -698,10 +698,14 @@ end)();
           Stats = { AntiHQCooking = 1 } },
         { Name = 'Bonze Cape',        Id = 90022, Level = 1,  Slot = 'Back',  Jobs = { 'All' },
           Stats = { SynthSkillGain = 4 } },
-        -- helm: Surveyor-major scoring + the semantic hat map (exact name).
+        -- helm: Surveyor-major scoring + the semantic hat map. The hat rides
+        -- its REAL id: the map is id-PINNED (the Laevateinn rule below),
+        -- because the CLIENT name carries an apostrophe the catalog drops --
+        -- a name-only lookup would land the catalog spelling in the manifest
+        -- and LAC could never equip it (the 07-22 Mining field bug).
         { Name = 'Field Tunica',      Id = 90030, Level = 1,  Slot = 'Body',  Jobs = { 'All' },
           Stats = { HELM = 2, Surveyor = 1 } },
-        { Name = 'Miners Helmet',     Id = 90031, Level = 1,  Slot = 'Head',  Jobs = { 'All' },
+        { Name = "Miner's Helmet",    Id = 25560, Level = 1,  Slot = 'Head',  Jobs = { 'All' },
           Stats = { Surveyor = 1 } },
         -- fish: FishingSkill-major; Main deliberately IN (fishing weapons);
         -- Range/Ammo deliberately OUT (rod and bait are fishstate picks).
@@ -812,9 +816,9 @@ end)();
         m.craft.back.Cooking.skillup and m.craft.back.Cooking.skillup[1].score, 40);
     check('S175 helm ladder is Surveyor-major (surv*10 + helm)',
         m.helm and m.helm.body and m.helm.body[1].name .. '/' .. m.helm.body[1].score, 'Field Tunica/12');
-    check('S176 helm hat map: exact-name owned hat lands with its Surveyor',
+    check('S176 helm hat map: id-PIN adopts the DB record -- the CLIENT spelling, not the catalog\'s',
         m.helm.hats and m.helm.hats.Mining and m.helm.hats.Mining.name .. '/' .. m.helm.hats.Mining.surv,
-        'Miners Helmet/1');
+        "Miner's Helmet/1");
     check('S177 fish ladder is FishingSkill-major (x1000)',
         m.fish and m.fish.body and m.fish.body[1].name .. '/' .. m.fish.body[1].score,
         'Fishermans Tunica/1000');

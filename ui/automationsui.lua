@@ -542,9 +542,21 @@ local function autoCommit()
         end
         -- Owned hats only; the engine falls back to the generic head ladder
         -- (another category's hat still carries Surveyor) when one is missing.
-        for g, nm in pairs({ Harvesting = 'Harv. Sun Hat', Excavation = 'Excavators Shades',
-                             Logging = 'Lumberjacks Beret', Mining = 'Miners Helmet' }) do
-            local rec = usableRec(nm, job);
+        -- Id-PINNED (the relic/universals rule): the catalog spells these hats
+        -- WITHOUT apostrophes ("Miners Helmet") but the CLIENT item is
+        -- "Miner's Helmet" -- a name-only lookup misses the gear DB, falls to
+        -- the catalog record, and the manifest then carries a name LAC can
+        -- never equip. Field case 07-22 (Mindie): the helmet equipped under
+        -- every category EXCEPT Mining -- the hat-map hit returned the catalog
+        -- spelling while the other categories fell through to the head
+        -- ladder's DB-spelled rung. lookupById puts the DB record (the REAL
+        -- client name) first; the catalog name remains the fallback for an
+        -- owned hat autosync has not indexed yet (heals on its next rescan).
+        for g, hat in pairs({ Harvesting = { 'Harv. Sun Hat', 25557 },
+                              Excavation = { 'Excavators Shades', 25558 },
+                              Logging    = { 'Lumberjacks Beret', 25559 },
+                              Mining     = { 'Miners Helmet', 25560 } }) do
+            local rec = usableRec(hat[1], job, hat[2]);
             if rec ~= nil and (type(deps.haveInBags) ~= 'function' or deps.haveInBags(rec)) then
                 local st = gearOracle.stats(rec, { level = lvl }) or {};
                 helmHats[g] = { name = rec.Name, level = rec.Level or 0,

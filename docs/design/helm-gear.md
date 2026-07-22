@@ -48,6 +48,21 @@ from the catalog: `Stats.HELM` (break-roll pieces) and `Stats.Surveyor` — the 
 of `Stats['<Craft>Skill']`. Ladders are built by catalog walk so future gear (Worker set,
 Miners Pendant 13122, HELM waist oddities) lands automatically.
 
+**The hat map is id-PINNED** (2026-07-22 field bug): the catalog spells the hats WITHOUT
+apostrophes (`Miners Helmet`) but the client item is `Miner's Helmet`. The builder's old
+name-only lookup missed the gear DB, fell through to the catalog record, and the manifest
+carried a name LAC could never equip — so the helmet equipped under every category EXCEPT
+Mining (the others fell through the missed hat map to the head ladder's DB-spelled rung).
+`usableRec(name, job, id)` with the pinned id resolves the DB record — the REAL client
+name — first; the catalog spelling remains only as the not-yet-indexed fallback. Any
+future hardcoded item name must be id-pinned for the same reason (the relic rule).
+
+**Default category = Harvesting** (2026-07-22): a fresh character armed the idle switch
+with no category picked and the engine silently ignored it (`helmStateActive` requires
+`gather`). `helmwatch.M.activeGather` now *starts* as `'Harvesting'`; a real pick (bar,
+command, swing detect, proximity) replaces it, and `loadState` only overrides from a
+valid persisted value, so old `gather=""` state files heal to the default too.
+
 Catalog stat caveat (docs/server-questions.md §1): live DB stores Surveyor 2/4 where item
 text says 1/2 — ladder ORDERING is unaffected (monotone), so we sort by catalog values.
 

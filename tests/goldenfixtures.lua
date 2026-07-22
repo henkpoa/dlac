@@ -142,7 +142,7 @@ local INV = {
     { Name = 'Tamas Ring',        Id = 15545, Level = 74, Slot = 'Ring',  Jobs = { 'All' }, Stats = { MP = 15 } },            -- MP 15 base -> 29 at char Lv74 (NOT the base value)
     -- HELM ladders ----------------------------------------------------------
     { Name = 'Field Tunica',      Id = 90030, Level = 1,  Slot = 'Body',  Jobs = { 'All' }, Stats = { HELM = 2, Surveyor = 1 } },
-    { Name = 'Miners Helmet',     Id = 90031, Level = 1,  Slot = 'Head',  Jobs = { 'All' }, Stats = { Surveyor = 1 } },       -- + semantic hat map (Mining)
+    { Name = "Miner's Helmet",    Id = 25560, Level = 1,  Slot = 'Head',  Jobs = { 'All' }, Stats = { Surveyor = 1 } },       -- + semantic hat map (Mining): REAL id -- the map is id-PINNED, and the CLIENT name carries the apostrophe the catalog drops (the 07-22 field bug)
     -- Craft-skill lists (the full owned-gear walk per craft) ----------------
     { Name = 'Chefs Hat',         Id = 90020, Level = 1,  Slot = 'Head',  Jobs = { 'All' }, Stats = { CookingSkill = 1 } },   -- tops the hq ladder
     { Name = 'Chefs Ring',        Id = 90021, Level = 1,  Slot = 'Ring',  Jobs = { 'All' }, Stats = { AntiHQCooking = 1 } },  -- nq only; BLOCKED from hq
