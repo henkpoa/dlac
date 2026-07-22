@@ -16,6 +16,9 @@
         setStats(comp, ctx) -> full composition evaluation INCLUDING set bonuses; a
                                thin delegation to the reference set-bonus evaluator
                                (gear/geareffects.comboStats), which stays untouched.
+        petStats(recOrId)   -> the PET-channel stats an item grants your pet
+                               (data\petmods.lua -- API-invisible, SQL-sourced);
+                               separate from stats() BY DESIGN (never folded).
     Plus the interpreter passthroughs the Sets core + worn panel read through the
     door instead of requiring the interpreters directly (the GRD5 allowlist #74
     empties): set membership (setsOf/setInfo/setTier), level-scaling introspection
@@ -210,6 +213,7 @@ end
 local function levelstats()  return interp('dlac\\data\\levelstats');   end
 local function geareffects() return interp('dlac\\gear\\geareffects');  end
 local function augmod()      return interp('dlac\\feature\\augments');  end
+local function petmods()     return interp('dlac\\data\\petmods');      end
 
 -- stats(rec, ctx): the effective item stats for THIS character right now -- the
 -- level-scaled resolver (levelstats.effective at ctx.level) PLUS the private-augment
@@ -241,6 +245,25 @@ function M.stats(rec, ctx)
         if type(v) == 'number' then out[k] = (out[k] or 0) + v; end
     end
     return out;
+end
+
+-- petStats(recOrId): the PET-CHANNEL stats of an item -- what wearing it grants
+-- YOUR PET ("Wyvern: HP+10%"), from data\petmods.lua (generated off the server's
+-- item_mods_pet table; the live API never serializes that channel, so this data
+-- lives BESIDE catalog Stats and no API-fed path can answer it). Returns the raw
+-- { PetTypeName -> { statKey -> value } } table (pet names = the server's
+-- PetModType enum, 'All' = every pet type) or nil. DELIBERATELY a separate answer
+-- from stats(): pet-channel values must never fold into master stats (wyvern HP
+-- is not your HP), and the golden gate pins stats() byte-identical. Display
+-- composition (labels, ordering, token budget) stays with the presenter
+-- (gear/gearfmt.petLines) -- the oracle answers, it does not format.
+function M.petStats(recOrId)
+    local id = (type(recOrId) == 'table') and recOrId.Id or recOrId;
+    if type(id) ~= 'number' then return nil; end
+    local pm = petmods();
+    if pm == nil then return nil; end
+    local t = pm[id];
+    return (type(t) == 'table') and t or nil;
 end
 
 -- setStats(composition, ctx): the FULL composition evaluation -- every piece's

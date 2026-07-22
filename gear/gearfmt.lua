@@ -62,12 +62,17 @@ local STAT_PRIORITY = {
     'INT', 'MND', 'CHR', 'Evasion', 'Enmity', 'StoreTP',
 };
 
--- Pet-channel stats (data\petmods.lua): stats this gear grants TO YOUR PET --
--- generated from the server's item_mods_pet table, which the live API never
--- exposes (so they are NOT in catalog Stats). Keyed by item id; pet type 'All'
+-- Pet-channel stats: what wearing this gear grants TO YOUR PET (item_mods_pet --
+-- a channel the live API never exposes, so it is NOT in catalog Stats). Asked
+-- through THE Gear Oracle (oracle.petStats -- the one door for gear questions,
+-- docs/design/gear-oracle.md); gearfmt only COMPOSES the display: pet type 'All'
 -- applies to every pet and reads as "Pet". Display-only for now.
-local _pok, petmods = pcall(require, 'dlac\\data\\petmods');
-if not _pok or type(petmods) ~= 'table' then petmods = {}; end
+local _ook, oracle = pcall(require, 'dlac\\gear\\gearoracle');
+if not _ook or type(oracle) ~= 'table' then oracle = nil; end
+local function petStatsOf(rec)
+    if oracle == nil or type(oracle.petStats) ~= 'function' then return nil; end
+    return oracle.petStats(rec);
+end
 local PETORDER = { 'All', 'Avatar', 'Wyvern', 'Automaton', 'Harlequin',
                    'Valoredge', 'Sharpshot', 'Stormwaker', 'Luopan' };
 local function petLabel(p) return (p == 'All') and 'Pet' or p; end
@@ -89,7 +94,7 @@ end
 -- One display line per pet type: "Wyvern: HPP+10 HHP+65". Empty list when the
 -- item grants nothing to pets (or has no Id to look up).
 local function petLines(rec)
-    local pets = (rec ~= nil and rec.Id ~= nil) and petmods[rec.Id] or nil;
+    local pets = petStatsOf(rec);
     if type(pets) ~= 'table' then return {}; end
     local lines = {};
     for _, p in ipairs(PETORDER) do
@@ -161,9 +166,10 @@ local function statSummary(rec, level)
         -- pet-channel tokens ride the leftover budget ("Wyvern:HPP+10") -- for
         -- pet gear they ARE the item's point, and this also makes them findable
         -- by the stat search (which matches against this summary).
-        if #parts < 4 and rec.Id ~= nil and petmods[rec.Id] ~= nil then
+        local pets = (#parts < 4) and petStatsOf(rec) or nil;
+        if type(pets) == 'table' then
             for _, p in ipairs(PETORDER) do
-                local st = petmods[rec.Id][p];
+                local st = pets[p];
                 if type(st) == 'table' then
                     for _, k in ipairs(orderedStatKeys(st)) do
                         if #parts >= 4 then break; end

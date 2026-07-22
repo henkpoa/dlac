@@ -604,8 +604,10 @@ never a hot swap.
 - **petmods.lua** (shipped) — pet-channel gear stats (`item_mods_pet`: what the gear
   grants TO YOUR PET, e.g. Drachen Brais "Wyvern: HP+10%"). Lives BESIDE catalog Stats
   because the live API never serializes the pet channel — the repo SQL is the only
-  source. Joined by Id at display time (`gearfmt.petLines` for tooltips; row summaries
-  spend leftover token budget). Display-only: no engine/optimizer participation yet.
+  source. Answered by THE Gear Oracle (`oracle.petStats`, a deliberately separate
+  answer from `stats()` — pet values never fold into master stats); `gearfmt.petLines`
+  composes the display (tooltips; row summaries spend leftover token budget).
+  Display-only: no engine/optimizer participation yet.
 - **gear.lua** (per-char) — thin ownership record. Written by stage→commit and by
   auto-sync (`M.sync`, add-only). `refreshGear` re-reads it in place so the GUI updates
   without an addon reload. Ownership = ALL_CONTAINERS; availability (= can equip right

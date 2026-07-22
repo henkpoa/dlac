@@ -48,6 +48,7 @@ All answers are **capability**, never permission (see ruling 2). Names use could
 | What is this item? | `lookup(idOrName)` | Owned-record + catalog join: owned first, then catalog; **id authoritative, name the fallback** (multi-stage relic names are single-winner traps — see the Iridescence id-pin rule). Enriched flat indexes are injected by the surface that builds them (`setLookupSource`). |
 | Effective stats for me, now? | `stats(rec, ctx)` | `levelstats.effective` (level scaling — never value a Tamas at base) **plus the full augment fold**. Note: full map, not MP/Refresh-only — a deliberate, disclosed widening in #79; Henrik's law "augs must always be calculated into the total". |
 | A whole composition's stats? | `setStats(comp, ctx)` | Thin delegation to `geareffects.comboStats` — level scaling + augments + server-verified set-bonus tiers. The reference interpreter, untouched. |
+| What does this grant my PET? | `petStats(recOrId)` | The pet channel (`data/petmods.lua`, SQL-sourced — the live API never serializes it). Returns `{ PetTypeName -> { statKey -> value } }` or nil. **Deliberately separate from `stats()`**: pet values never fold into master stats (wyvern HP is not your HP), and the golden gate pins `stats()` byte-identical. Display composition stays with the presenter (`gearfmt.petLines`). |
 | Owned / available? | ADR 0005 verbatim | Ownership = ALL containers; availability = Inventory + Wardrobes; stored-only renders red. The oracle exposes the predicates; it invents no new semantics. |
 
 **Not the oracle's job:** browsing the catalog (`catalogindex` is a standing central
@@ -153,8 +154,11 @@ twin; mirror the edit. Never silence the pin.
 - Engine `dispatch.M.VERSION` never bumped — the engine five's behavior was untouched
   throughout (the step-1 twin refactor was arithmetic-identical, hoisted only for
   test reachability).
-- First planned post-ship consumer: the pet-mods reporter rewrite (its session holds
-  its commit for exactly this).
+- First post-ship consumer: **landed same day** — the pet-channel stats surface
+  (`petStats`, fronting `data/petmods.lua`) with `gearfmt.petLines` asking the door;
+  the PM test section swap-proves the routing (the fresh-each-call require made it
+  observable). The oracle gained its first new answer without a rival door forming —
+  the extension path working as designed.
 
 ## Troubleshooting quick table
 

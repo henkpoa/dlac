@@ -4094,3 +4094,26 @@ AutoAmmo v73). Two flags turned out doubly stale (Blueprints, MaxMP pair homes w
 already confirmed in their files — index rot). Engine VERSION untouched all day; the
 pet-mods commit rode the rebases (held by its session for the oracle-reporter rewrite —
 the oracle's first post-ship consumer).
+
+## The oracle's first new answer: pet stats enter the door (2026-07-22, same evening)
+
+The pet-mods session validated its held commit against the freshly-written oracle
+reference and found the predicted mini rival door: `gearfmt` requiring
+`data/petmods.lua` directly. GRD5 does not police data tables — the commit passed CI
+by the letter — but "extending gear knowledge = adding an answer to the oracle" is
+the law's spirit, and the design doc had already named pet-mods the first planned
+consumer. The alignment landed the same evening:
+
+- **`oracle.petStats(recOrId)`** — the pet-channel answer, in the oracle's own idiom
+  (lazy `interp` require, FRESH each call, nil-safe). **Deliberately separate from
+  `stats()`**: pet values never fold into master stats (wyvern HP is not your HP),
+  and the golden gate pins `stats()` byte-identical — a fold would be a gate breach.
+- **`gearfmt` asks the door** and keeps only composition (labels, order, budget) —
+  presenter, not knower.
+- **PM section grew the door proof:** swap `package.loaded['dlac\data\petmods']`
+  under a live gearfmt and watch petLines change — observable only because the
+  oracle requires fresh each call. A private copy in any presenter now fails CI.
+
+Goldens stayed byte-identical through the rewire on both platforms (2345 + 225
+checks). The extension path — "if the oracle can't answer it, that's a gap in the
+oracle" — worked exactly as the doc promised on its first exercise.

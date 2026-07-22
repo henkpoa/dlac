@@ -6904,12 +6904,17 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
--- section PM: pet-channel gear stats (data/petmods.lua + gearfmt.petLines)
+-- section PM: pet-channel gear stats (petmods.lua -> oracle.petStats -> gearfmt)
 -- The server grants pet-targeted gear stats (Drachen Brais "Wyvern: HP+10%")
 -- through item_mods_pet -- a channel the live API NEVER serializes, so these
 -- stats exist beside catalog Stats in data/petmods.lua (tools/gen_petmods.py).
--- Pins: the generated table's field-case rows, and the display composition
--- (petLines for tooltips, statSummary's leftover-budget pet tokens for rows).
+-- The ORACLE is the one door that answers them (petStats -- a deliberately
+-- SEPARATE answer from stats(): pet values never fold into master stats, the
+-- golden gate pins that); gearfmt only composes the display. Pins: the
+-- generated table's field-case rows, the door's answer, the display composition
+-- (petLines for tooltips, statSummary's leftover-budget tokens), and -- via a
+-- package.loaded swap, honoured because the oracle requires FRESH each call --
+-- that the display truly flows THROUGH the door, not a private copy.
 -- ---------------------------------------------------------------------------
 (function()
     local pm = dofile('data/petmods.lua');
@@ -6924,12 +6929,20 @@ end)();
     check('PM5 all-pets rows keyed All (Sabong DA)',
         pm[10299] ~= nil and pm[10299].All ~= nil and pm[10299].All.DoubleAttack, 2);
 
-    -- display composition through gearfmt (preload so its pcall require resolves headlessly)
+    -- the door's answer (oracle.petStats): rec or bare id, nil-safe
     package.loaded['dlac\\data\\petmods'] = pm;
+    local oracle = package.loaded['dlac\\gear\\gearoracle'];
+    check('PM6 oracle answers pet stats', type(oracle.petStats), 'function');
+    check('PM6a by bare id', oracle.petStats(14227).Wyvern.HPP, 10);
+    check('PM6b by record', oracle.petStats({ Id = 14405 }).Wyvern.HP, 65);
+    check('PM6c unknown id -> nil', oracle.petStats(4096), nil);
+    check('PM6d nil -> nil', oracle.petStats(nil), nil);
+
+    -- display composition through gearfmt (which asks the oracle)
     local gf = dofile('gear/gearfmt.lua');
-    check('PM6 petLines exported', type(gf.petLines), 'function');
+    check('PM7 petLines exported', type(gf.petLines), 'function');
     local lines = gf.petLines({ Id = 14227 });
-    check('PM7 one line per pet type', #lines, 1);
+    check('PM7a one line per pet type', #lines, 1);
     check('PM8 composed tooltip line', lines[1], 'Wyvern: HPP+10');
     check('PM9 All reads as Pet', gf.petLines({ Id = 10299 })[1], 'Pet: DoubleAttack+2');
     check('PM10 priority order inside a line (HP first, rest alpha)',
@@ -6944,6 +6957,14 @@ end)();
     check('PM14 a full budget leaves pet tokens out',
         gf.statSummary({ Id = 14227, Stats = { DEF = 1, HP = 1, MP = 1, Accuracy = 1 } }),
         'DEF+1 HP+1 MP+1 Accuracy+1');
+
+    -- THE DOOR PROOF: swap the data table under the oracle; the already-loaded
+    -- gearfmt must see the swap (it holds no private petmods binding -- the
+    -- oracle's fresh-each-call require is what makes this observable).
+    package.loaded['dlac\\data\\petmods'] = { [777] = { Wyvern = { HP = 1 } } };
+    check('PM15 petLines flows through the door (swap honoured)',
+        gf.petLines({ Id = 777 })[1], 'Wyvern: HP+1');
+    check('PM16 ...and the old table is truly gone', #gf.petLines({ Id = 14227 }), 0);
     package.loaded['dlac\\data\\petmods'] = nil;
 end)();
 
