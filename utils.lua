@@ -207,13 +207,33 @@ end
 -- with NO Main planned, even without DW. Sets feed TRIGGERS (e.g. a dual-wield
 -- set for when DW is up); gating the builder on today's main/DW makes exactly
 -- those sets impossible to compose. The only building-time exclusions are
--- physical impossibilities: a 2H weapon never fits the Sub slot, and a
+-- physical impossibilities: a 2H or H2H weapon never fits the Sub slot, and a
 -- same-name off-hand needs a provable second copy (a copy count >= 2 --
 -- that's item identity, not game state).
 --
--- Equip-time (ctx.building falsy) keeps the strict pairing: 2H main -> Grip
--- only; 1H main -> Shield always, a 1H weapon only while ctx.dw (the engine
--- makes this call per cast; the list's shield is the fallback).
+-- Equip-time (ctx.building falsy) keeps the strict pairing: H2H main -> NOTHING
+-- pairs (the server knocks even a grip off, unlike 2H); 2H main -> Grip only;
+-- 1H main -> Shield always, a 1H weapon only while ctx.dw (the engine makes
+-- this call per cast; the list's shield is the fallback).
+
+-- Hand-to-Hand detection BY TYPE, never by the OneHanded flag: H2H records
+-- carry every flag shape in the wild (fresh scans stamp false via TWO_HANDED;
+-- the catalog said true -- apicrawl's ONE set, fixed 2026-07-22 -- and /dl fix
+-- backfilled that true into files; legacy entries carry none), so the flag
+-- cannot decide. Server law (charutils.cpp EquipItem): an H2H main knocks ANY
+-- Sub off -- grips included, unlike 2H -- and a shield equipped onto an H2H
+-- main knocks the MAIN off; the pair flaps forever (field case 2026-07-22: a
+-- monk's H2H Main vs the craft overlay's Kupo Shield). Spellings: imports
+-- write 'HandToHand', legacy files 'Hand-to-Hand' (same normalization as
+-- gearrecord.canonType -- inlined, utils is LAC-side and cannot require
+-- addon modules).
+local function isH2H(rec)
+    local t = type(rec) == 'table' and rec.Type or nil;
+    if type(t) ~= 'string' then return false; end
+    t = string.lower((t:gsub('%W', '')));
+    return t == 'handtohand' or t == 'h2h';
+end
+
 function M.subSlotAllowed(subRec, mainRec, ctx)
     if type(subRec) ~= 'table' then return false; end
     ctx = ctx or {};
@@ -227,6 +247,7 @@ function M.subSlotAllowed(subRec, mainRec, ctx)
         return ((fc > n) and fc or n) >= 2;
     end
     local kind = M.classifySub(subRec);
+    if isH2H(subRec) then return false; end   -- H2H never sits in Sub (physical -- both modes)
     if ctx.building == true then
         if kind ~= nil then return true; end               -- shield / grip: always offered
         if subRec.OneHanded ~= true then return false; end -- 2H or metadata-less: never an off-hand
@@ -236,6 +257,7 @@ function M.subSlotAllowed(subRec, mainRec, ctx)
         return true;                                        -- 1H weapon: ALWAYS offered
     end
     if type(mainRec) ~= 'table' then return false; end
+    if isH2H(mainRec) then return false; end  -- H2H main: NOTHING pairs -- grips too, unlike 2H
     if mainRec.OneHanded == false then
         return kind == 'Grip';
     end

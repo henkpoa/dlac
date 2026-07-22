@@ -413,12 +413,19 @@ local catAxe1H  = { Name = 'Kriegsbeil',    Level = 70, Type = 'Axe', OneHanded 
 --    STOP and read docs/adr/0006-builder-plans-engine-decides.md, addendum):
 --    building=true (composing a set) offers EVERY Sub-capable item -- shield,
 --    grip, one-hander -- regardless of Main pick, DW trait, or any live state.
---    Only physical impossibility excludes: 2H in Sub; same-name without a
+--    Only physical impossibility excludes: 2H/H2H in Sub; same-name without a
 --    provable second copy. Equip-time (building absent): DW/pairing decides.
 -- ---------------------------------------------------------------------------
 check('A0 subSlotAllowed exported', type(utils.subSlotAllowed), 'function');
 if type(utils.subSlotAllowed) == 'function' then
     local f = utils.subSlotAllowed;
+    -- H2H: the OneHanded flag is UNRELIABLE in the wild -- the catalog stamped
+    -- true (apicrawl's old ONE set) and /dl fix backfilled it into files, fresh
+    -- scans stamp false, legacy entries carry none -- so the rule keys on Type.
+    -- h2hCat is the FIELD shape (the catalog lie) that slipped the craft guard.
+    -- (Block-local on purpose: the main chunk sits at Lua's 200-local limit.)
+    local h2hCat    = { Name = 'Beat Cesti',    Level = 40, Type = 'HandToHand',   OneHanded = true };
+    local h2hLegacy = { Name = 'Cat Baghnakhs', Level = 30, Type = 'Hand-to-Hand' };
     -- HARD RULE regression guards -- building never adapts to Main/DW:
     check('A1 HARD RULE build: 1H+1H, no DW -> offered',      f(sword1H, dagger1H, { building = true             }), true);
     check('A5 HARD RULE build: 1H even with 2H main planned', f(sword1H, gsword2H, { dw = true, building = true  }), true);
@@ -444,6 +451,21 @@ if type(utils.subSlotAllowed) == 'function' then
     check('A14b equip: catalog grip, 1H main',  f(catGrip, catAxe1H, { dw = true }), false);
     check('A15 equip: catalog grip, 2H main',   f(catGrip, gsword2H, {        }), true);
     check('A17 classifySub exported',        type(utils.classifySub), 'function');
+    -- H2H pairs with NOTHING at equip time (server knocks grips too, unlike
+    -- 2H) -- and the catalog's OneHanded=true lie must not win (field case
+    -- 2026-07-22: a monk's Main vs the craft overlay's Kupo Shield):
+    check('A18 equip: H2H main, shield never',           f(shield,  h2hCat, {           }), false);
+    check('A19 equip: H2H main, grip never (unlike 2H)', f(grip,    h2hCat, {           }), false);
+    check('A20 equip: H2H main, 1H weapon never',        f(sword1H, h2hCat, { dw = true }), false);
+    check('A21 equip: legacy-spelled H2H main held too', f(shield,  h2hLegacy, {        }), false);
+    check('A22 equip: H2H never sits in Sub',            f(h2hCat, dagger1H, { dw = true }), false);
+    check('A23 build: H2H in Sub never -- physical, like 2H',
+          f(h2hCat, dagger1H, { dw = true, building = true }), false);
+    -- HARD RULE stands: an H2H MAIN planned still gates nothing while building
+    check('A24 HARD RULE build: shield offered with H2H main planned',
+          f(shield,  h2hCat, { building = true }), true);
+    check('A25 HARD RULE build: 1H offered with H2H main planned',
+          f(sword1H, h2hCat, { building = true }), true);
 end
 
 -- ---------------------------------------------------------------------------
@@ -2444,7 +2466,7 @@ local gearT = package.loaded['dlac\\gear'];
 gearT.NameToObject['Kupo Shield']  = { Name = 'Kupo Shield',  Type = 'Sub' };   -- catalog vocab: Sub + name -> Shield
 gearT.NameToObject['Death Scythe'] = { Name = 'Death Scythe', Type = 'Great Scythe', OneHanded = false };
 gearT.NameToObject['Parry Knife']  = { Name = 'Parry Knife',  Type = 'Dagger', OneHanded = true };
-gearT.NameToObject['Cat Baghnakhs'] = { Name = 'Cat Baghnakhs', Type = 'Hand-to-Hand' };   -- H2H: no OneHanded flag
+gearT.NameToObject['Cat Baghnakhs'] = { Name = 'Cat Baghnakhs', Type = 'Hand-to-Hand', OneHanded = true };   -- H2H, the FIELD shape: the catalog lied OneHanded=true (/dl fix backfilled it) -- Type must decide the hold
 utils._resetNameIndex();
 
 local guard = dispatchM._craftMainGuard({ Sub = 'Kupo Shield', Hands = 'Weaver Gloves' });

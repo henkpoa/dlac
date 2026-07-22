@@ -3,9 +3,10 @@
 Set building never gates on current game state. The Sub-slot picker offers every 1H
 weapon the job (main OR support) can ever wield, regardless of whether Dual Wield is up
 right now; the ordered slot list carries both the weapon and the shield/grip. At equip
-time `utils.subSlotAllowed` resolves legality: 2H main → grip only; 1H main → shield
-always, a 1H weapon only when the Dual Wield trait bit (`HasAbility(1554)`, live memory,
-authoritative both ways) is set. `utils.classifySub` distinguishes grips from shields by
+time `utils.subSlotAllowed` resolves legality: H2H main → nothing pairs (the server
+knocks even a grip off, unlike 2H — see the 2026-07-22 addendum); 2H main → grip only;
+1H main → shield always, a 1H weapon only when the Dual Wield trait bit
+(`HasAbility(1554)`, live memory, authoritative both ways) is set. `utils.classifySub` distinguishes grips from shields by
 name ("* Grip"/"* Strap") because the catalog collapses both into `Type="Sub"`.
 
 We rejected gating the builder on `isDualWieldAvailable()` — the original bug: a
@@ -36,7 +37,7 @@ The rule, stated so it cannot be mis-shrunk: **while building (`ctx.building == 
 the Sub-slot offer never adapts to ANYTHING live — not the DW trait, not the planned or
 equipped Main, not the sub job.** Every owned, job/level-usable Sub-capable item is
 offered: shields, grips, AND one-handed weapons, always. The only building-time
-exclusions are physical impossibilities: a 2H weapon cannot sit in Sub, and a same-name
+exclusions are physical impossibilities: a 2H or H2H weapon cannot sit in Sub, and a same-name
 off-hand needs a provable second copy (a copy count >= 2, from the record's scanned
 `Count` or the caller's live `ctx.copies` — item identity, not game state; the legacy
 `InBothHands` flag was removed 2026-07-13). Sets feed *triggers*; a set planned for
@@ -133,3 +134,24 @@ on you, and the hole is unreachable. Left alone deliberately rather than fixed b
 a craft rung ever gains a reserver (a re-crawl is the thing that would change this),
 `ctx.pinReserved` is the shape to reuse: build it from `cEquip` too and pass it the same
 way.
+
+## Addendum (2026-07-22): H2H pairs with NOTHING — and Type, not the flag, decides
+
+Round 2 of the v37 craft-guard field case, monk edition: a Hand-to-Hand Main slipped
+the guard and flapped against the overlay's Kupo Shield. `OneHanded` cannot carry this
+rule — H2H records exist in every flag shape in the wild (fresh scans stamp `false`,
+gearimport's `TWO_HANDED` includes skill 1; the catalog stamped `true` — apicrawl's
+`ONE` set wrongly listed HandToHand, fixed the same day — and `/dl fix` backfilled
+that `true` into gear.lua files; legacy entries carry none), and a boolean cannot say
+"both hands" anyway: 2H takes a grip, H2H takes NOTHING. Server law (charutils.cpp
+`EquipItem`): an H2H main knocks ANY Sub off — grips included, unlike 2H — and a
+shield equipped onto an H2H main knocks the **MAIN** off, so the pair flaps forever.
+
+`subSlotAllowed` now keys on `Type` for H2H (`isH2H`, normalized: 'HandToHand',
+legacy 'Hand-to-Hand', 'h2h'): an H2H main pairs with nothing at equip time, and an
+H2H item never sits in Sub — a physical impossibility, excluded even while building
+(the hard rule's exempt class; building stays Main-blind otherwise — an H2H Main
+planned still gates no Sub offer, pinned by A24/A25). The gearui fallback mirror
+matches. Tests A18–A25 cover the shapes; AF4's fixture now wears the catalog-lie
+shape (`OneHanded = true`) so the guard test fails on any flag-trusting regression
+(the old flag-less fixture passed by accident while the field failed).

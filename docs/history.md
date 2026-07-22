@@ -4196,3 +4196,27 @@ The fix, two altitudes (6b149ea + d4c602f, engine v101, addon 2026.07.22h):
 follow-up during verification: the engine self-swap is keyed on `M.VERSION` alone,
 so same-version content edits go unswapped until a manual Reload LAC — a
 content-keyed swap is the proposed cure.
+
+## Hand-to-Hand slips the craft Sub guard: the flag lied, Type now decides (2026-07-22)
+
+Round 2 of the v37 Kupo-Shield flap, monk edition: with the craft overlay owning
+Sub, a Hand-to-Hand Main was NOT held — it equipped, the server knocked the shield
+off, craft re-equipped the shield, forever. The guard asks `utils.subSlotAllowed`,
+and the rule read `OneHanded` — which for H2H is a lie with three faces: fresh
+scans stamp `false` (gearimport's TWO_HANDED includes skill 1), the CATALOG stamped
+`true` (apicrawl's `ONE` set wrongly listed HandToHand — fixed; Henrik's next
+`--refresh` heals catalog.lua), `/dl fix` backfilled that `true` into gear.lua
+files, and legacy entries carry none. Test AF4 even "covered" H2H — with a
+flag-less fixture that passed by accident while every backfilled record failed in
+the field.
+
+A boolean cannot say "both hands" anyway: server law (charutils.cpp EquipItem) is
+that an H2H main knocks ANY Sub off — grips included, unlike 2H — and a shield
+equipped onto an H2H main knocks the MAIN off. So the shared rule now keys on Type
+for H2H (`isH2H`, normalized 'HandToHand' / legacy 'Hand-to-Hand'): an H2H main
+pairs with NOTHING at equip time; an H2H item never sits in Sub, building included
+(a physical impossibility, the HARD RULE's exempt class — building stays
+Main-blind otherwise, pinned A24/A25). gearui's fallback mirror matches; AF4 now
+wears the catalog-lie shape so the accident cannot repeat. Tests A18–A25.
+(utils.lua rides the seeder + a profile reload, not the engine self-swap: one
+`/lac load` or job flip boards it; the GUI mirror boards on `/addon reload dlac`.)

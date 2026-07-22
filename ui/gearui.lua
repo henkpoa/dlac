@@ -821,6 +821,16 @@ local function subCandidateOk(subRec, mainRec, mainJob, mainLevel, subJob, subLe
     elseif kind ~= 'Grip' and kind ~= 'Shield' then
         kind = nil;   -- a weapon type ('Sword', 'Axe', ...) or no metadata
     end
+    -- H2H by TYPE (the OneHanded flag is a lie for H2H -- the catalog said
+    -- true; see the isH2H note in utils.lua): an H2H item never sits in Sub,
+    -- and an H2H main pairs with NOTHING, grips included.
+    local function h2h(r)
+        local t = type(r) == 'table' and r.Type or nil;
+        if type(t) ~= 'string' then return false; end
+        t = string.lower((t:gsub('%W', '')));
+        return t == 'handtohand' or t == 'h2h';
+    end
+    if h2h(subRec) then return false; end
     if building == true then                          -- mirror of the utils HARD RULE branch
         if kind ~= nil then return true; end
         if subRec.OneHanded ~= true then return false; end
@@ -829,6 +839,7 @@ local function subCandidateOk(subRec, mainRec, mainJob, mainLevel, subJob, subLe
         end
         return true;
     end
+    if h2h(mainRec) then return false; end
     if mainRec.OneHanded == false then return kind == 'Grip'; end
     if mainRec.OneHanded ~= true then return false; end
     if kind == 'Shield' then return true; end

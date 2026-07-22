@@ -65,6 +65,13 @@ overlay clears, Main dispatches normally again -- nothing to re-enable.
 (`/lac disable main` was considered and rejected: it also blocks `/lac equip`
 and leaks a disabled slot if a craft ends abnormally.)
 
+Round 2 (2026-07-22, monk edition): an H2H Main slipped the guard — the catalog
+stamped H2H `OneHanded = true` (apicrawl's `ONE` set, fixed the same day), so the
+pairing rule saw a "1H" main and let the shield pair. `subSlotAllowed` now keys on
+`Type` for H2H (both spellings): an H2H main pairs with NOTHING — the server knocks
+even grips off an H2H main, and a shield equipped onto one knocks the MAIN off
+(charutils.cpp). ADR 0006's 2026-07-22 addendum has the full flag-shape story.
+
 ## Open decisions (Henrik)
 
 - **D1 — restore behavior:** when the craft mode clears (zone, manual off,
