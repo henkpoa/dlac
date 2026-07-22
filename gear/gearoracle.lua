@@ -19,6 +19,12 @@
         petStats(recOrId)   -> the PET-channel stats an item grants your pet
                                (data\petmods.lua -- API-invisible, SQL-sourced);
                                separate from stats() BY DESIGN (never folded).
+        petScoreStats(recOrId) -> the pet channel FLATTENED for scoring: 'Pet:'-
+                               namespaced keys ({ ['Pet:Haste'] = 6 }) the weights
+                               system prices like any stat; per stat the scalar is
+                               All + the best named type (a pet is exactly one type).
+        petStatKeys()       -> sorted distinct stat keys across the pet data --
+                               the weights editor's "stat menu" source.
     Plus the interpreter passthroughs the Sets core + worn panel read through the
     door instead of requiring the interpreters directly (the GRD5 allowlist #74
     empties): set membership (setsOf/setInfo/setTier), level-scaling introspection
@@ -264,6 +270,64 @@ function M.petStats(recOrId)
     if pm == nil then return nil; end
     local t = pm[id];
     return (type(t) == 'table') and t or nil;
+end
+
+-- petScoreStats(recOrId): the pet channel FLATTENED for the weights system --
+-- one { ['Pet:'..statKey] = value } map per item, or nil when the item grants
+-- nothing to pets. The 'Pet:' namespace is the whole point: pet values enter
+-- the same scoring map as master stats WITHOUT ever colliding with them, so
+-- the petStats ruling (wyvern HP is not your HP) survives pricing. Per stat
+-- the context-free scalar is All + the BEST named type: on the server a pet
+-- receives All PLUS its own type's mods, and a pet is exactly ONE type, so
+-- summing across named types would credit mutually exclusive pets; max is the
+-- most this item can do for a single pet (exact whenever one named type
+-- carries the stat -- the overwhelming case in the data).
+function M.petScoreStats(recOrId)
+    local pets = M.petStats(recOrId);
+    if pets == nil then return nil; end
+    local best = {};   -- statKey -> best named-type value
+    for ptype, st in pairs(pets) do
+        if ptype ~= 'All' and type(st) == 'table' then
+            for k, v in pairs(st) do
+                if type(v) == 'number' and (best[k] == nil or v > best[k]) then best[k] = v; end
+            end
+        end
+    end
+    local out = {};
+    if type(pets.All) == 'table' then
+        for k, v in pairs(pets.All) do
+            if type(v) == 'number' then out['Pet:' .. k] = v; end
+        end
+    end
+    for k, v in pairs(best) do
+        local nk = 'Pet:' .. k;
+        out[nk] = (out[nk] or 0) + v;
+    end
+    if next(out) == nil then return nil; end
+    return out;
+end
+
+-- petStatKeys(): the sorted, distinct RAW stat keys appearing anywhere in the
+-- pet data -- the weights editor's "add stat" menu asks this to list exactly
+-- the pet family the data can actually deliver (prefix 'Pet:' before use as a
+-- weight key). Fresh walk each call like every oracle answer; the caller memoizes.
+function M.petStatKeys()
+    local pm = petmods();
+    if pm == nil then return {}; end
+    local seen, out = {}, {};
+    for _, pets in pairs(pm) do
+        if type(pets) == 'table' then
+            for _, st in pairs(pets) do
+                if type(st) == 'table' then
+                    for k in pairs(st) do
+                        if type(k) == 'string' and not seen[k] then seen[k] = true; out[#out + 1] = k; end
+                    end
+                end
+            end
+        end
+    end
+    table.sort(out);
+    return out;
 end
 
 -- setStats(composition, ctx): the FULL composition evaluation -- every piece's

@@ -6914,7 +6914,10 @@ end)();
 -- generated table's field-case rows, the door's answer, the display composition
 -- (petLines for tooltips, statSummary's leftover-budget tokens), and -- via a
 -- package.loaded swap, honoured because the oracle requires FRESH each call --
--- that the display truly flows THROUGH the door, not a private copy.
+-- that the display truly flows THROUGH the door, not a private copy. Since
+-- 07-22 evening the channel is also PRICED: petScoreStats ('Pet:' namespace,
+-- All + best named type), petStatKeys (the stat-menu source), statdefs' Pet:
+-- namespace and gearoptim's pricing/negation are pinned below (PM17+).
 -- ---------------------------------------------------------------------------
 (function()
     local pm = dofile('data/petmods.lua');
@@ -6965,6 +6968,53 @@ end)();
     check('PM15 petLines flows through the door (swap honoured)',
         gf.petLines({ Id = 777 })[1], 'Wyvern: HP+1');
     check('PM16 ...and the old table is truly gone', #gf.petLines({ Id = 14227 }), 0);
+
+    -- WEIGHTS-facing answers (2026-07-22, "pet stats become stat weights"): the
+    -- pet channel FLATTENED under 'Pet:' keys (petScoreStats) + the stat-menu
+    -- key list (petStatKeys). The flatten rule is the pin that matters: per stat
+    -- All + the BEST named type -- a pet is exactly ONE type, so summing across
+    -- named types would credit mutually exclusive pets. Same fresh-each-call
+    -- door, so a swap table pins the rule exactly.
+    package.loaded['dlac\\data\\petmods'] = {
+        [1] = { All = { Haste = 2 }, Wyvern = { Haste = 3 }, Avatar = { Haste = 1, Attack = 4 } },
+        [2] = { Automaton = { RangedAccuracy = 5 } },
+    };
+    check('PM17 petScoreStats: All + BEST named type, never the cross-pet sum',
+        oracle.petScoreStats(1)['Pet:Haste'], 5);
+    check('PM17a a stat one named type carries', oracle.petScoreStats(1)['Pet:Attack'], 4);
+    check('PM17b named-only item', oracle.petScoreStats(2)['Pet:RangedAccuracy'], 5);
+    check('PM17c keys are namespaced -- no bare master key ever leaks',
+        oracle.petScoreStats(1).Haste, nil);
+    check('PM17d rec form works', oracle.petScoreStats({ Id = 2 })['Pet:RangedAccuracy'], 5);
+    check('PM17e non-pet item -> nil', oracle.petScoreStats(4096), nil);
+    check('PM17f nil-safe', oracle.petScoreStats(nil), nil);
+    check('PM18 petStatKeys: distinct + sorted (the stat-menu source)',
+        table.concat(oracle.petStatKeys(), ','), 'Attack,Haste,RangedAccuracy');
+
+    -- statdefs speaks the namespace: derived label/section, canon keeps the prefix
+    local sd = dofile('data/statdefs.lua');
+    check('PM19 Pet: label derives from the inner stat', sd.get('Pet:Haste').label, 'Pet: Haste');
+    check('PM19a ...and lands in the Pet section', sd.get('Pet:Haste').section, 'Pet');
+    check('PM19b inner aliases resolve through (MagicAttackBonus -> MAB)',
+        sd.get('Pet:MagicAttackBonus').label, 'Pet: ' .. sd.get('MagicAttackBonus').label);
+    check('PM20 canon: case-insensitive prefix, canonical inner',
+        sd.canon('PET:Haste'), 'Pet:Haste');
+    check('PM20a canon: inner alias canonicalizes', sd.canon('Pet:MagicAttackBonus'), 'Pet:MAB');
+    check('PM20b a non-pet unknown still passes through', sd.canon('NoSuchStat'), 'NoSuchStat');
+
+    -- and the scorer prices the namespace: exact keys, case-insensitive spelling
+    -- (statSpellings learns 'pet:haste' from the oracle), negative-good inner
+    -- stats keep their lower-is-better rule (Pet:PDT scores like PDT).
+    local optim = dofile('gear/gearoptim.lua');
+    check('PM21 score prices a Pet: weight',
+        optim.score({ ['Pet:Haste'] = 5 }, { ['Pet:Haste'] = { perUnit = 2 } }), 10);
+    check('PM21a typed-lowercase weight still hits (spelling table via the oracle)',
+        optim.score({ ['Pet:Haste'] = 5 }, { ['pet:haste'] = { perUnit = 2 } }), 10);
+    check('PM21b Pet:PDT is negative-good like PDT (-3 taken as +3 goodness)',
+        optim.score({ ['Pet:PDT'] = -3 }, { ['Pet:PDT'] = { perUnit = 1 } }), 3);
+    check('PM21c a Pet: weight never touches the master stat',
+        optim.score({ Haste = 9 }, { ['Pet:Haste'] = { perUnit = 2 } }), 0);
+
     package.loaded['dlac\\data\\petmods'] = nil;
 end)();
 

@@ -115,6 +115,17 @@ local function statSpellings()
             if _statSpelling[string.lower(k)] == nil then _statSpelling[string.lower(k)] = k; end
         end
     end
+    -- the pet-channel weight namespace ('Pet:Haste' -- oracle.petScoreStats' keys):
+    -- resolvable case-insensitively like everything else, so a typed "pet:haste"
+    -- lands on the exact key the scoring maps carry. The oracle knows which stats
+    -- the pet data delivers (required here, not as an upvalue -- it lives below).
+    local pok, po = pcall(require, 'dlac\\gear\\gearoracle');
+    if pok and type(po) == 'table' and type(po.petStatKeys) == 'function' then
+        for _, k in ipairs(po.petStatKeys()) do
+            local key = 'Pet:' .. k;
+            if _statSpelling[string.lower(key)] == nil then _statSpelling[string.lower(key)] = key; end
+        end
+    end
     return _statSpelling;
 end
 
@@ -129,6 +140,16 @@ local function canonStat(key)
     return statSpellings()[string.lower(key)] or key;
 end
 M.canonStat = canonStat;
+
+-- A 'Pet:'-prefixed spelling is negative-good exactly when its inner stat is:
+-- Pet:PDT rides the same lower-is-better rule as PDT (the pet data stores
+-- "damage taken -3%" as PDT = -3, same convention as master gear).
+local function isNegativeGood(stat)
+    local lk = string.lower(canonStat(stat));
+    if NEGATIVE_GOOD[lk] then return true; end
+    local inner = string.match(lk, '^pet:(.+)$');
+    return inner ~= nil and NEGATIVE_GOOD[inner] == true;
+end
 
 -- Value of one stat on a Stats table, alias-aware. Non-number values (booleans
 -- like DomainIncursion, or the nested Pet table) count as 0 so scoring never errors.
@@ -1097,7 +1118,7 @@ function M.score(itemStats, weights)
                 -- number, so score the negation: -15 DT -> +15 goodness. Matched on the
                 -- same canonical/lowercased spelling statValue uses, so a weight typed
                 -- "dt" still hits. The cap below then clamps the goodness value.
-                if NEGATIVE_GOOD[string.lower(canonStat(stat))] then v = -v; end
+                if isNegativeGood(stat) then v = -v; end
                 local eff = v;
                 if type(w.cap) == 'number' and v > w.cap then eff = w.cap; end
                 total = total + w.perUnit * eff;
@@ -1331,7 +1352,7 @@ function M.optimizePicks(pools, weights, opts)
                 stat    = stat,
                 perUnit = w.perUnit,
                 cap     = (type(w.cap) == 'number' and w.cap > 0) and w.cap or nil,
-                neg     = NEGATIVE_GOOD[string.lower(canonStat(stat))] == true,
+                neg     = isNegativeGood(stat),
             };
         end
     end

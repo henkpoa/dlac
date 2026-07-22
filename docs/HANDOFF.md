@@ -219,8 +219,13 @@ agent; the per-repo setup lives in `docs/agents/`.
   repo SQL is the only source). A SEPARATE answer from `stats()` BY DESIGN:
   pet values never fold into master stats (wyvern HP is not your HP) and the
   golden gate pins `stats()` byte-identical. Display composition stays with
-  the presenter (`gearfmt.petLines`); display-only for now — optimizer use is
-  a later call.
+  the presenter (`gearfmt.petLines`). Priced for weights later the same evening
+  (Henrik's call): `petScoreStats` flattens the channel under `Pet:`-namespaced
+  keys (All + best named type — a pet is exactly ONE type), merged at gearui's
+  `candidateStats` seam so every scoring path prices pet gear identically;
+  `petStatKeys` + statdefs' derived `Pet:` labels put the family in the weights
+  stat menu (type "pet" to browse it). `stats()`/`setStats()` stay pet-blind —
+  goldens byte-identical through the change.
 
 - **Iridescence catalog sweep + universals ladder (07-21, engine v82, manifest
   fmt 10, field-CONFIRMED 07-22).** The shipped catalog's `Iridescence` stat is now the

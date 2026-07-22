@@ -66,7 +66,8 @@ local STAT_PRIORITY = {
 -- a channel the live API never exposes, so it is NOT in catalog Stats). Asked
 -- through THE Gear Oracle (oracle.petStats -- the one door for gear questions,
 -- docs/design/gear-oracle.md); gearfmt only COMPOSES the display: pet type 'All'
--- applies to every pet and reads as "Pet". Display-only for now.
+-- applies to every pet and reads as "Pet". Scoring is NOT this file's business:
+-- the weights system prices the channel via oracle.petScoreStats ('Pet:' keys).
 local _ook, oracle = pcall(require, 'dlac\\gear\\gearoracle');
 if not _ook or type(oracle) ~= 'table' then oracle = nil; end
 local function petStatsOf(rec)

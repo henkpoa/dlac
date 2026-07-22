@@ -545,18 +545,22 @@ local function ownedAugStatsMap()
 end
 
 -- THE candidate-stats seam: effective stats at level PLUS the augment deltas on
--- the copy you own (by Id). Every scoring consumer -- scoreOfItem, the joint
--- Auto-build pools, the Sub marginal call -- reads candidates through this one
--- helper, so augmented gear is weighed identically everywhere. Zero-copy when
--- the item has no augments.
+-- the copy you own (by Id) PLUS the 'Pet:'-namespaced pet channel
+-- (oracle.petScoreStats) -- namespaced keys, so a Pet:Haste weight prices pet
+-- gear while master Haste stays untouched. Every scoring consumer -- scoreOfItem,
+-- the joint Auto-build pools, the Sub marginal call -- reads candidates through
+-- this one helper, so augmented and pet gear are weighed identically everywhere.
+-- Zero-copy when the item has neither augments nor pet stats.
 local function candidateStats(rec, level)
     if rec == nil then return nil; end
     local base = effStats(rec, level);
     local a = (rec.Id ~= nil) and ownedAugStatsMap()[rec.Id] or nil;
-    if a == nil then return base; end
+    local p = (type(gearOracle.petScoreStats) == 'function') and gearOracle.petScoreStats(rec) or nil;
+    if a == nil and p == nil then return base; end
     local combined = {};
     if type(base) == 'table' then for k, v in pairs(base) do combined[k] = v; end end
-    for k, v in pairs(a) do combined[k] = (combined[k] or 0) + v; end
+    if a ~= nil then for k, v in pairs(a) do combined[k] = (combined[k] or 0) + v; end end
+    if p ~= nil then for k, v in pairs(p) do combined[k] = (combined[k] or 0) + v; end end
     return combined;
 end
 
@@ -2530,7 +2534,24 @@ local function workingWeightedScore(mainLevel)
         local ok, res = pcall(gearOracle.setStats, comp,
             { level = mainLevel, augStats = ownedAugStatsMap() });
         if ok and type(res) == 'table' and type(res.stats) == 'table' then
-            return scoreOf(res.stats);
+            -- Pet channel on top (COPY -- res.stats is the evaluator's): 'Pet:'
+            -- keys summed per piece, so this number stays THE one objective
+            -- Auto-build maximizes (its pools carry candidateStats' pet keys).
+            -- setStats itself stays pet-blind: the goldens pin it byte-identical.
+            local stats, copied = res.stats, false;
+            for _, rec in pairs(comp) do
+                local p = (type(gearOracle.petScoreStats) == 'function')
+                    and gearOracle.petScoreStats(rec) or nil;
+                if p ~= nil then
+                    if not copied then
+                        local c = {};
+                        for k, v in pairs(stats) do c[k] = v; end
+                        stats, copied = c, true;
+                    end
+                    for k, v in pairs(p) do stats[k] = (stats[k] or 0) + v; end
+                end
+            end
+            return scoreOf(stats);
         end
     end
     local total = 0;

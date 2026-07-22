@@ -655,6 +655,14 @@ for _, e in ipairs(M.list) do
     end
 end
 
+-- 'Pet:'-prefixed keys = the pet-channel WEIGHT namespace (gearoracle.petScoreStats
+-- flattens data\petmods.lua under them so pet values can be priced without ever
+-- colliding with master stats). Not rows in M.list -- the family is derived: the
+-- inner stat resolves normally and wears a 'Pet: ' label prefix, section 'Pet'.
+local function petInner(key)
+    return string.match(key, '^[Pp][Ee][Tt]:(.+)$');
+end
+
 -- Resolve any spelling (case-insensitive, alias-aware) to its entry. An unknown stat falls
 -- back to { key, label=key, section='Misc' } so a new/unlisted stat never errors -- it just
 -- shows un-styled until it's added above.
@@ -665,6 +673,13 @@ function M.get(key)
         local canon = M.aliasOf[string.lower(key)];
         e = (canon ~= nil) and M.byKey[canon] or nil;
     end
+    if e == nil then
+        local inner = petInner(key);
+        if inner ~= nil then
+            local ie = M.get(inner);
+            return { key = 'Pet:' .. ie.key, label = 'Pet: ' .. (ie.label or ie.key), section = 'Pet' };
+        end
+    end
     return e or { key = key, label = key, section = 'Misc' };
 end
 
@@ -672,7 +687,11 @@ end
 function M.canon(key)
     if type(key) ~= 'string' then return key; end
     if M.byKey[key] ~= nil then return key; end
-    return M.aliasOf[string.lower(key)] or key;
+    local a = M.aliasOf[string.lower(key)];
+    if a ~= nil then return a; end
+    local inner = petInner(key);
+    if inner ~= nil then return 'Pet:' .. M.canon(inner); end
+    return key;
 end
 
 return M;

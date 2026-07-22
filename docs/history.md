@@ -4117,3 +4117,33 @@ consumer. The alignment landed the same evening:
 Goldens stayed byte-identical through the rewire on both platforms (2345 + 225
 checks). The extension path — "if the oracle can't answer it, that's a gap in the
 oracle" — worked exactly as the doc promised on its first exercise.
+
+## Pet stats become priceable: the channel enters the weights system (2026-07-22, later that evening)
+
+Henrik made the "optimizer = later call" call the same day the channel shipped:
+pet stats should be weightable and listed in the stat menu. The design problem was
+squaring two rulings — pet values must never fold into master stats, yet the weights
+system prices ONE flat map — and the answer was a **namespace**: `Pet:`-prefixed keys
+(`Pet:Haste`) live in the same scoring map without ever colliding with `Haste`.
+
+- **`oracle.petScoreStats(recOrId)`** — the channel flattened for scoring. Per stat
+  the context-free scalar is **All + the BEST named type**: the server grants a pet
+  All plus its own type's mods, and a pet is exactly ONE type — summing across named
+  types would credit mutually exclusive pets. Max is exact whenever one named type
+  carries the stat, which is nearly every row in the data.
+- **`oracle.petStatKeys()`** — the distinct stat keys the pet data actually delivers;
+  the weights editor's "add stat" picker lists the family from it (type "pet" to
+  browse it; "haste" surfaces `Pet:Haste` beside `Haste`).
+- **One seam, no drift:** gearui's `candidateStats` merges the pet keys, so every
+  scoring consumer — per-item sorts, Auto-build's joint pools, pair ladders — prices
+  pet gear identically; `workingWeightedScore` folds the same keys per piece on top
+  of `setStats` (which stays pet-blind — the goldens pin it byte-identical, and they
+  stayed so through this change).
+- **The pricing plumbing followed:** `statdefs` derives label/section for the
+  namespace (`Pet:Haste` → "Pet: Haste", section Pet; `canon` keeps the prefix and
+  canonicalizes the inner stat), `gearoptim`'s spelling table learns the family from
+  the oracle (a typed `pet:haste` resolves), and `Pet:PDT` is negative-good exactly
+  like `PDT`.
+- **PM17+ pins it all:** the All+best-named flatten (via a swap table), the
+  namespace hygiene (no bare master key ever leaks), statdefs derivation, and
+  gearoptim's pricing + negation. 2363 + 225 green on Windows and WSL lua5.4.

@@ -49,6 +49,8 @@ All answers are **capability**, never permission (see ruling 2). Names use could
 | Effective stats for me, now? | `stats(rec, ctx)` | `levelstats.effective` (level scaling — never value a Tamas at base) **plus the full augment fold**. Note: full map, not MP/Refresh-only — a deliberate, disclosed widening in #79; Henrik's law "augs must always be calculated into the total". |
 | A whole composition's stats? | `setStats(comp, ctx)` | Thin delegation to `geareffects.comboStats` — level scaling + augments + server-verified set-bonus tiers. The reference interpreter, untouched. |
 | What does this grant my PET? | `petStats(recOrId)` | The pet channel (`data/petmods.lua`, SQL-sourced — the live API never serializes it). Returns `{ PetTypeName -> { statKey -> value } }` or nil. **Deliberately separate from `stats()`**: pet values never fold into master stats (wyvern HP is not your HP), and the golden gate pins `stats()` byte-identical. Display composition stays with the presenter (`gearfmt.petLines`). |
+| The pet channel, priced for weights? | `petScoreStats(recOrId)` | The channel FLATTENED under **`Pet:`-namespaced keys** (`{ ['Pet:Haste'] = 6 }`) so the weights system prices it in the same map as master stats **without ever colliding with them** — the never-folded ruling survives pricing by namespace. Per stat the context-free scalar is **All + the BEST named type**: the server grants a pet All plus its own type's mods, and a pet is exactly ONE type, so summing across named types would credit mutually exclusive pets (max is exact whenever one named type carries the stat — the overwhelming case). Consumers: gearui's `candidateStats` seam (every per-item score), the composition score's per-piece fold (setStats itself stays pet-blind — goldens), `gearoptim`'s spelling/negation tables (`pet:haste` types resolve; `Pet:PDT` is negative-good like `PDT`). |
+| Which pet stats exist at all? | `petStatKeys()` | Sorted distinct raw stat keys across the pet data — the weights editor's "add stat" menu source (prefix `Pet:` before use as a weight key). `statdefs` derives label/section for the namespace (`Pet:Haste` → "Pet: Haste", section Pet). |
 | Owned / available? | ADR 0005 verbatim | Ownership = ALL containers; availability = Inventory + Wardrobes; stored-only renders red. The oracle exposes the predicates; it invents no new semantics. |
 
 **Not the oracle's job:** browsing the catalog (`catalogindex` is a standing central
@@ -159,6 +161,11 @@ twin; mirror the edit. Never silence the pin.
   the PM test section swap-proves the routing (the fresh-each-call require made it
   observable). The oracle gained its first new answer without a rival door forming —
   the extension path working as designed.
+- Second extension, same evening (Henrik: "pet stats become stat weights + stat
+  menu"): `petScoreStats` + `petStatKeys` price the channel — `Pet:`-namespaced
+  keys through gearui's `candidateStats` seam and the weights picker, master
+  `stats()`/`setStats()` untouched (goldens byte-identical through the change,
+  PM17+ pins the flatten rule).
 
 ## Troubleshooting quick table
 
