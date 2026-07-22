@@ -10,7 +10,8 @@ hand-editable for power users, but they are storage, not the interface.
 
 **New to LuaAshitacast or gear automation entirely?** Open
 [docs/guide.html](docs/guide.html) in a browser — a from-zero walkthrough of sets,
-triggers, modes, and the automations.
+triggers, modes, the automations and their priority ladder, lockstyle, and the
+teleport/convenience surfaces.
 
 ## Setup — two clicks per job
 
@@ -41,10 +42,16 @@ and from here on everything is GUI work. Repeat for each job.
 
 | Tab | Does |
 |---|---|
-| **Equipped** | Live 16-slot view, worn stat totals (augment-aware), per-slot alternatives, slot locking |
+| **Equipped** | Live 16-slot view, worn stat totals (augment- and set-bonus-aware), per-slot alternatives, slot locking, the **floating equipment window** (an always-up 4×4 with right-click item **pins**) |
 | **All Equipment** | Browse everything you own — or the full CatsEyeXI catalog — with search and stats |
-| **Sets** | Build sets by hand or **Auto-build** from stat weights; level-scaling candidate lists per slot; live score |
-| **Triggers** | Wire sets to the game: statuses, spells (by skill / type / element / `contains` / exact name), abilities, items, weaponskills, **player state** (HP/MP — raw or percent — TP, active buffs & debuffs) with **AND/OR condition groups** — plus player-defined **Modes** with live toggle buttons |
+| **Sets** | Build sets by hand or **Auto-build** from stat weights (**Points** or ordered **Priority** mode); level-scaling candidate lists per slot; live score; **Equip & Lock**; import your old profile's sets via **Copy from** |
+| **Triggers** | Wire sets to the game: statuses, spells (by skill / type / element / `contains` / exact name), abilities, items, weaponskills, pets, **player state** (HP/MP — raw or percent — TP, active buffs & debuffs), **in-town**, **target = Self**, with **AND/OR condition groups** — plus player-defined **Modes** with live toggle buttons and the **Blueprints** rule library |
+| **Automations** | The self-driving gear family (below) with live per-job coverage, and the **Priority** section — the draggable ladder that referees which automation wins a contested slot |
+
+Beyond the tabs: **lockstyle sets** (the armor header button — your look, in 30
+saved boxes per job, with town behaviour), the **Teleports** menu (one click from
+anywhere to anywhere, plus quick rows for every automation), per-job **macro
+books**, and named **profiles** per character.
 
 ### Triggers, in short
 
@@ -68,24 +75,75 @@ Flip them from the Triggers tab buttons (cycles show their current value), by ch
 (`/dl mode dt`, `/dl mode weapon`, `/dl mode weapon caster`), or give a mode an optional
 **keybind** in the GUI — applied automatically at profile load, no OnLoad code.
 
-### Automations (auto staff / auto obi)
+### Blueprints — share rules like macros
 
-Put the virtual entry **`dlac:AutoStaff`** in a set's Main slot (or **`dlac:AutoObi`**
-in Waist) via the normal **+ Add** picker. At cast time dlac equips:
+Any trigger rule can be saved as a **Blueprint** (the `bp` button on its row): a
+job-independent copy in your per-character library (Triggers tab, Blueprints
+section). **Stamp** one onto any job's handler — the stamped rule is an ordinary
+trigger afterwards — or **Edit** it in the same rule builder. Blueprints travel as
+plain text: **View/Copy** per entry, **Copy all** for the whole library, and
+**Import from text** parses a friend's pasted blob with a live preview and
+collision choices. The payload is the rule verbatim; a stamped rule that names a
+set the job doesn't have simply warns until you create it.
 
-- **Staff** — your best *usable* Iridescence option for that cast: HQ/NQ elemental
-  staff vs a universal weapon (Chatoyant/Iridal for anyone; job-specific pieces up to
-  Iridescence +3 — Inanna, Keraunos, Gridarvor, the Lv75 relic staves — rank above
-  them), highest tier wins, ties go to the universal. Every owned universal rides a
-  level-ordered ladder, so a level sync falls through to the best one you can still
-  wear. CW-only Incursion weapons appear in the Automations tab only in CW mode
-  (other modes get a "Show Crystal Warrior gear" preview checkbox).
-- **Obi** — the matching elemental obi (or the universal Hachirin-no-obi) only when
-  the day/weather bonus for the spell's element is net positive.
+### Automations — gear that picks itself
 
-Everything is level-checked, and the other items in the same slot list act as the
-fallback — being under-leveled never blocks the slot. Owned staves/obis are
-re-detected automatically on login/job change.
+The **Automations** tab hosts the whole family; each row shows live per-job
+coverage, and the same rows appear as quick controls inside the Teleports menu
+(left-click opens the panel, right-click toggles). Slot automations are **virtual
+entries** you place in a set slot via the normal **+ Add** picker; the other items
+in the same slot list act as the fallback, and everything is level-checked and
+re-detected on login/job change/inventory change.
+
+- **`dlac:AutoIridescence`** (Main) — your best *usable* Iridescence option per
+  cast: HQ/NQ elemental staff vs a universal weapon (Chatoyant/Iridal for anyone;
+  job-specific pieces up to Iridescence +3 — Inanna, Keraunos, Gridarvor, the Lv75
+  relic staves — rank above them), highest tier wins, ties go to the universal.
+  Every owned universal rides a level-ordered ladder, so a level sync falls
+  through to the best one you can still wear. CW-only Incursion weapons appear in
+  the tab only in CW mode (other modes get a "Show Crystal Warrior gear" preview
+  checkbox). *(Sets written as `dlac:AutoStaff` keep working.)*
+- **`dlac:ElementalObi`** (Waist) — the matching elemental obi (or the universal
+  Hachirin-no-obi) only when the day/weather bonus for the spell's element is net
+  positive. *(`dlac:AutoObi` keeps working.)*
+- **`dlac:AutoOneiros`** (Sub) — Oneiros Grip while its latent Refresh +1 is
+  actually live (MP at or below 50% of your *base* pool — merit-aware, gear
+  excluded), your regular grip otherwise.
+- **AutoAmmo** (Ammo) — keeps the slot fed per job: your ammo by category
+  (Bullets / Bolts / Arrows / Throwing), level-sorted, with the free-WS trio
+  recognized; Crystal Warriors get Ephemeral Box counts and one-click fetch.
+- **MaxMP** — the battery ladder: when ON, your MP+ "battery" pieces are worn
+  while your MP is high (a bigger pool holds more) and each slot hands back to
+  the normal set piece as MP falls past that piece's break-even point — strongest
+  refresh batteries last, ear/ring pairs kept stable, movement gear allowed
+  through while you move. `/dl plan` prints the ladder.
+- **Auto Craft / HELM / Fishing sets** — whole-set helpers with their own
+  floating bars: craft gear per craft with an HQ / NQ / Skill-Up goal, gathering
+  gear while idle near a HELM point, fishing gear that re-ranks rod/bait every
+  heartbeat (Ebisu > Lu Shang's > base at equal risk) with rod/bait pins on the
+  bar. Gear only — dlac never automates the activity itself.
+
+### Priority — who wins a contested slot
+
+Automations claim slots; the **Priority** section (Automations tab) is ONE
+draggable ladder that referees them: Pins, the **Locks veto row** (a claimant
+above it punches through a locked slot, one below it stops), AutoAmmo, MaxMP,
+Craft, HELM, Fishing, and the immovable **Triggers floor** — what you wear when
+no claim wins. Reordering is live, no reload. `/dl prio` prints the ladder with
+live claim status; `/dl why` names the winning claimant and its rank per slot.
+
+### Lockstyle sets — your look, not your gear
+
+The armor button in the header opens the lockstyle window: build a *look* in the
+same 4×4 grid (one item per visual slot — the server happily styles off-job and
+under-level gear) and save it into numbered boxes, stored **per job**. The
+preview is client-side and equips nothing — tick "Show gear I don't own" to try
+looks on before hunting the pieces (Save is what enforces ownership). **OnLoad
+Lockstyle** applies your marked box on login and job change; **Keep on sub
+change** re-applies it after subjob flips (the game clears style lock there);
+in towns, choose either **Disable in town** (drop the style so your real gear
+shows) or a dedicated **town box** worn while you're there. The picker offers
+anything *any* of your jobs can wear at its current level.
 
 ## Commands
 
@@ -96,11 +154,15 @@ re-detected automatically on login/job change.
 | `/dl ui` | Open/close the GUI (also bound to **CTRL+K**) |
 | `/dl mode <name> [on\|off\|toggle]` | Flip a mode (no name: list active modes) |
 | `/dl lock <slot\|all> [on\|off\|toggle]` | Lock a slot: the engine stops equipping into it (no arg: list locks) |
-| `/dl why` | Explain the last dispatch per handler — what matched, what equipped |
+| `/dl why` | Explain the last dispatch per handler — what matched, what equipped, which claimant won each contested slot and at what rank |
+| `/dl prio` | The live claim-priority ladder (Pins / Locks veto / automations / Triggers floor) with per-claimant status |
+| `/dl plan` | The MaxMP battery ladder: release order, thresholds, live state per band |
 | `/dl env` | Day/weather as dlac sees it + per-element obi math |
 | `/dl triggers reload\|init\|path` | Force re-read / seed / locate the trigger file |
 | `/dl sync` | Import new gear from bags now (also runs automatically) |
 | `/dl prune` (then `/dl prune commit`) | Remove gear.lua entries for items you no longer own anywhere — dry-run first; checks every container incl. storage |
+| `/dl fix` | Re-stamp gear.lua entries with fields the scan has since learned (reserved slots etc.) |
+| `/dl ls apply [box]` | Apply a saved lockstyle box (GUI: the armor header button) |
 | `/dl weight` / `best` | Stat-weight helpers for set auto-building |
 | `/dl set level main <n>` | Preview as another level |
 | `/dl p` / `/dl w` | Panic escape: lock Ring2, equip the Provenance/Warp Ring, wait out its equip delay, use it (`off` cancels) |
@@ -110,6 +172,7 @@ re-detected automatically on login/job change.
 | `/dl nexus` | Nexus Cape: lock Back, equip it, teleport to your party leader the moment the game says ready (`off` cancels) |
 | `/dl shirt` | Shadow Lord Shirt: lock Body, equip it, teleport to Castle Zvahl Keep (`off` cancels) |
 | `/dl t <where>` | Teleport earring/ring: lock Ear2 or Ring2, equip the matching item (norg, jeuno, sandy, holla, vahzl...), wait, use it — no arg lists destinations |
+| `/dl xp <ring>` | Exp/VP rings (Empress, Chariot, Kupofried, Venture...): same equip-wait-use dance on Ring2 — no arg lists what you own |
 
 ## Safety
 

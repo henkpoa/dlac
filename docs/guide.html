@@ -83,8 +83,10 @@
     <li><a href="#sets">Sets — your gear plans</a></li>
     <li><a href="#triggers">Triggers — when sets get worn</a></li>
     <li><a href="#modes">Modes — one set, several behaviours</a></li>
-    <li><a href="#automations">Automations — AutoIridescence &amp; ElementalObi</a></li>
-    <li><a href="#extras">Small conveniences — Teleports &amp; macro books</a></li>
+    <li><a href="#automations">Automations — gear that picks itself</a></li>
+    <li><a href="#priority">Priority — who wins a contested slot</a></li>
+    <li><a href="#lockstyle">Lockstyle — your look, not your gear</a></li>
+    <li><a href="#extras">Small conveniences — Teleports, floating gear &amp; macro books</a></li>
     <li><a href="#debug">When something looks wrong</a></li>
   </ol>
 </nav>
@@ -103,10 +105,15 @@ look, but they are storage, not the interface.</p>
   <li>Drop the <code>dlac</code> folder into <code>Ashita\addons\</code> and run
       <code>/addon load dlac</code> (add it to your boot script to load it every time).</li>
   <li>Press <kbd>CTRL+K</kbd> (or type <code>/dl ui</code>) — the window opens.</li>
-  <li>Click the red <b>Setup</b> button, top-right. It converts your current job's profile
-      in place (your own logic is kept and backed up), or writes a fresh starter if the job
-      has none — including the four classic trigger rules you'll read about below.</li>
-  <li>Click <b>Reload LAC</b>. Done — repeat Setup once per job.</li>
+  <li>Click the red <b>Setup</b> button, top-right. Whatever your current job's profile
+      looks like — ffxi-lac, hand-written, or nothing at all — it always ends the same
+      way: the live profile becomes a small, clean dlac shim. Your old file is backed up
+      first (and verified byte-for-byte), and nothing in it is lost: your old sets import
+      via <b>Copy from</b> in the Sets tab, your old group tables via <b>Scan my Lua</b>
+      in the Triggers tab. A job with no profile gets the four classic starter sets and
+      trigger rules you'll read about below.</li>
+  <li>LuaAshitacast reloads by itself (on a brand-new job, click <b>Reload LAC</b>).
+      Done — repeat Setup once per job.</li>
 </ol>
 <div class="box tip"><b>Your gear indexes itself.</b> dlac scans your bags on login, on job
 change, and whenever your inventory changes. There is no "import" step — new drops just
@@ -134,12 +141,15 @@ exactly as they are (partial sets are how overlays work — more under Triggers)
   <li>Type a name (say <code>Idle</code>) and click <b>New</b>.</li>
   <li>Click a slot in the 4×4 grid, then <b>+ Add</b> — a searchable picker of gear you own
       and can equip appears. Click items to add them to the slot's list.</li>
-  <li>Or skip the clicking: set stat <b>weights</b> in the right-hand panel (say Haste 5,
-      Accuracy 3) and press <b>Auto-build</b> — dlac fills every marked slot with your
-      best-scoring owned gear, as a level-scaling plan. The <b>build-slots grid</b> (a 4×4
-      of checkboxes above the button) marks which slots Auto-build touches — weapons start
-      unmarked so building never resets your TP; tick them when you do want weapons picked.
-      Each set remembers its own marks, right beside its weights.</li>
+  <li>Or skip the clicking: set stat <b>weights</b> in the right-hand panel and press
+      <b>Auto-build</b> — dlac fills every marked slot with your best-scoring owned gear,
+      as a level-scaling plan. Weights come in two flavours, one tab each:
+      <b>Points</b> (numbers — say Haste 5, Accuracy 3) and <b>Priority</b> (an ordered
+      stat list, top matters most, no numbers to reason about — drag to reorder).
+      Whichever tab you edit becomes that set's build mode. The <b>build-slots grid</b>
+      (a 4×4 of checkboxes above the button) marks which slots Auto-build touches —
+      weapons start unmarked so building never resets your TP; tick them when you do want
+      weapons picked. Each set remembers its own marks, right beside its weights.</li>
   <li>Click <b>Commit</b> (it turns red when you have unsaved changes), then
       <b>Reload LAC</b>.</li>
 </ol>
@@ -151,6 +161,16 @@ searchable, with "Available only" filtering to gear you can equip right now.</fi
 rules via the <b>B</b> (behaviour) button: a level range (<code>min 30 / max 54</code>) and
 a <span class="mode">mode gate</span> (see Modes below). That's how one set stays correct
 from level 10 to 75.</div>
+<div class="box tip"><b>Equip &amp; Lock.</b> One click wears the committed set
+<i>right now</i> and locks all 16 slots, so nothing — triggers, automations, anything —
+changes you out of it (Incursion T3 locks your equipment menu; this is the same idea,
+self-imposed). The button flips to <b>Unlock</b> while everything is locked; click again
+to release. The manual override for "wear exactly this until I say otherwise".</div>
+<div class="box tip"><b>Your old profile's sets are one click away.</b> <b>Copy from</b>
+(in the set row's Manage&hellip; menu) reads the sets out of any profile backup or Lua
+file — including the backup Setup made of your pre-dlac profile — and imports them,
+one into the loaded set or many as new sets. Old group tables import the same way from
+the Triggers tab (<b>Scan my Lua</b>).</div>
 
 <h3>Set bonuses</h3>
 <p>Some gear only shows its worth in company: Lava's + Kusha's Rings together add
@@ -239,11 +259,34 @@ that must (or must not) be on you, picked from a searchable list of every buff a
 in the game. Stack them with any other condition: an emergency set below 50% HP, movement
 gear only while Flee is up, gear that swaps in while you're Asleep. These gates rank just
 under a mode toggle in priority, so they win over ordinary rules when both match.</p>
+<p>Two more conditions worth knowing: <b>inTown</b> is true while you stand in a town
+zone — the classic use is <i>status = Idle + inTown → TownGear</i>, so you show off your
+favourite look in Jeuno and switch back to real idle gear the moment you zone out. And
+<b>target = Self</b> fires only when the action is aimed at you — a self-cast Cure can
+wear different gear than the same Cure on a party member.</p>
 <p>Rules also take <b>AND / OR logic</b>: <b>+ &amp; condition</b> adds to the AND group
 (all must be true), <b>+ | condition</b> adds to the OR group (any one is enough). A rule
 matches when <i>all</i> its &amp; conditions hold <i>or any</i> of its | conditions does.
 The classic use: <code>| Has(De)Buff = Sleep</code>, <code>| Has(De)Buff = Lullaby</code>
 → your WakeMeUp set (Toxin Earring says hello) — one rule, either sleep effect.</p>
+
+<h3>Blueprints — save a rule, reuse it anywhere</h3>
+<p>A good rule is worth keeping. The <b>bp</b> button on any rule's row saves it as a
+<b>Blueprint</b> — a job-independent copy in your personal library (the Blueprints
+section, further down the Triggers tab). From there:</p>
+<ul>
+  <li><b>Stamp</b> inserts the rule into the current job's matching event, live
+      immediately. The stamped rule is an ordinary trigger afterwards — editing the
+      Blueprint later won't change it.</li>
+  <li><b>Edit</b> opens it in the same rule builder you already know.</li>
+  <li><b>View / Copy</b> turns one Blueprint into shareable text; <b>Copy all</b> exports
+      the whole library. Send the text to a friend — they paste it under
+      <b>Import from text</b>, which previews live and lets them pick what to keep on a
+      name collision.</li>
+</ul>
+<div class="box"><b>Blueprints carry the rule, not the set.</b> A stamped rule that names
+a set the target job doesn't have simply warns until you create (or import) a set with
+that name — nothing breaks.</div>
 
 <h2 id="modes">5. Modes — one set, several behaviours</h2>
 <p>Modes are named switches <i>you</i> flip; sets and rules can react to them. They come in
@@ -318,9 +361,19 @@ with a grip in Sub — and Kraken Club stays home until you cycle to
 
 <h2 id="automations">6. Automations — gear that picks itself</h2>
 <p>Some gear decisions are pure bookkeeping — the right elemental staff per spell, the
-right obi per day. Automations do those for you. They are <b>virtual slot entries</b>: in
-the + Add picker you'll find pseudo-items that you place in a set slot like any other item.
-Their icon is the 8-colour element wheel.</p>
+right obi per day, ammo in the Ammo slot, MP gear while your pool refills, the crafting
+apron the moment you sit down at a crystal. Automations do those for you. The
+<b>Automations</b> tab lists the whole family; each row's status column tells you at a
+glance what that automation can do on this job (brighter = better coverage), and clicking
+a row opens its detail panel. The same rows appear as quick controls inside the
+<b>Teleports</b> menu — left-click opens the panel, right-click flips the automation on
+or off without opening the window at all.</p>
+<p>They come in two shapes. <b>Slot automations</b> are virtual entries: in the + Add
+picker you'll find pseudo-items (their icon is the 8-colour element wheel) that you place
+in a set slot like any other item — the other items in the slot's list are the fallback,
+so an automation that has nothing to say never blocks the slot. <b>Set automations</b>
+work without touching your sets at all: switch them on and they overlay whole outfits or
+walk gear in and out on their own schedule.</p>
 
 <h3>AutoIridescence (elemental staves) — Main slot</h3>
 <p>Add <code>dlac:AutoIridescence</code> to a set's <b>Main</b> slot (your caster/idle
@@ -360,11 +413,106 @@ can't wear it (Foreshadow +1 on WHM — the automation skips it), dim = not owne
 <figcaption>The ElementalObi detail: one universal obi covers every element; it only swaps
 in when the day/weather bonus is positive.</figcaption></figure>
 
+<h3>Auto Oneiros Grip — Sub slot</h3>
+<p>Add <code>dlac:AutoOneiros</code> to a set's <b>Sub</b> slot (needs a two-handed
+main). The Oneiros Grip's Refresh +1 is a latent: it only works while your MP is at or
+below half of your <i>base</i> pool. dlac does that arithmetic per dispatch — race, job,
+sub, and your Max MP merits (learned automatically when you open the merit menu, or set
+by hand on the Automations tab), gear excluded — and wears the grip exactly while the
+latent is live, your regular grip otherwise.</p>
+
+<h3>AutoAmmo — the Ammo slot feeds itself</h3>
+<p>Switch <b>AutoAmmo</b> on (its Automations row, or the Teleports quick menu) and the
+Ammo slot stays stocked: your owned ammo, grouped by category — Bullets, Bolts, Arrows,
+Throwing — and sorted by level, with the best usable one equipped for your ranged weapon.
+The detail panel is per job, so your RNG and your COR can disagree about what "best"
+means. Crystal Warriors also get their Ephemeral Box counts in the panel, with a
+one-click fetch when a stack runs low.</p>
+
+<h3>MaxMP — battery gear while your pool refills</h3>
+<p>MP+ gear is "battery" gear: worn at the right moment it makes your pool bigger, but it
+does nothing for the fight itself. Switch <b>MaxMP</b> on (its row's ON/OFF switch, or
+<code>/dl mode maxmp</code>) and dlac walks those pieces in and out for you: batteries
+are worn while your MP is high — a bigger pool holds more — and each slot hands back to
+your normal set piece as your MP falls past the point where the battery stops mattering.
+Refresh-bearing batteries hold out longest, ear/ring pairs stay put instead of shuffling,
+and movement gear still wins its slot while you're running. <code>/dl plan</code> prints
+the whole ladder — which piece releases at which MP — if you want to watch it think.</p>
+
+<h3>Craft, HELM &amp; Fishing — outfits for the job at hand</h3>
+<p>Three whole-set helpers, each with its own floating bar you can leave on screen:</p>
+<ul>
+  <li><b>Auto Craft Set</b> — pick a craft on the bar and dlac overlays your best
+      crafting gear while you synth, with a goal switch: <b>HQ</b> (break HQ tiers),
+      <b>NQ</b> (the anti-HQ guild rings, for materials you do <i>not</i> want HQ'd),
+      or <b>Skill-Up</b> (Synth Skill+ first).</li>
+  <li><b>Auto HELM Set</b> — Harvesting/Excavation/Logging/Mining gear while you're
+      idle: flip the bar's switch to wear it until you turn it off, or arm <b>Auto
+      HELM</b> (Automations panel) and it engages by itself while you stand at a
+      gathering point. The bar shows your Venture Points and tool rating per
+      category.</li>
+  <li><b>Auto Fish Set</b> — fishing gear while idle, re-ranked every beat (Ebisu &gt;
+      Lu Shang's &gt; base at equal risk); the bar's dropdowns <b>pin</b> a rod and bait
+      when you'd rather choose yourself, and a wielded rod owns the Ammo slot for its
+      bait — no idle trinket fights over it mid-cast.</li>
+</ul>
+<div class="box warn"><b>Gear only.</b> These dress you for the activity — they never
+perform it. dlac will not cast your line, swing your pickaxe, or run your synth.</div>
+
 <div class="box"><b>No upkeep.</b> The automation data maintains itself — it rescans on
 login, job change, and any inventory change. Buy a new staff and it's a candidate before
 you've closed the shop window.</div>
 
-<h2 id="extras">7. Small conveniences</h2>
+<h2 id="priority">7. Priority — who wins a contested slot</h2>
+<p>Turn on a few automations and sooner or later two of them want the same slot — the
+fishing rod and AutoAmmo both claiming Ammo, a MaxMP battery in a ring slot your craft
+set also fills. dlac referees this with one ladder, and shows it to you: the
+<b>Priority</b> section at the top of the Automations tab.</p>
+<p>It's a strict, draggable list — top wins. The claimants (Pins, AutoAmmo, MaxMP, Craft,
+HELM, Fishing) each show where they're controlled from and a live status ("claiming
+Ammo on RNG", "idle"). Two rows are special:</p>
+<ul>
+  <li><b>Locks</b> is the <b>veto row</b>, and it drags like any other: a claimant
+      <i>above</i> it punches through a locked slot; a claimant <i>below</i> it is
+      stopped by the lock. At the top, a lock stops everyone — pins included.</li>
+  <li><b>Triggers</b> is the immovable <b>floor</b>: your trigger rules dress every slot
+      no claimant takes. Automations ride on top of your sets, never instead of
+      them.</li>
+</ul>
+<p>Reordering commits instantly — no reload. The same ladder is printed by
+<code>/dl prio</code>, and <code>/dl why</code> names which claimant won each slot and at
+what rank, so "why am I wearing this?" always has a one-command answer.</p>
+<div class="box tip"><b>You rarely need to touch it.</b> The default order (Pins first,
+then Locks, AutoAmmo, MaxMP, Craft, HELM, Fishing) matches how deliberate each action
+is — a pin you placed by hand outranks a helper that switched on by proximity. Drag only
+when a real conflict annoys you.</div>
+
+<h2 id="lockstyle">8. Lockstyle — your look, not your gear</h2>
+<p>Gear swaps are ugly. Lockstyle is the game's answer — your <i>appearance</i> freezes
+while your real gear keeps swapping underneath — and dlac gives it the same treatment as
+everything else: a window, saved boxes, and zero commands to remember. Click the
+<b>armor button</b> in the header.</p>
+<ul>
+  <li><b>Build the look</b> in the familiar 4×4 grid: click a slot, pick a piece. The
+      preview is client-side and equips <i>nothing</i> — it just redraws you, so you can
+      flip through looks mid-town. The server happily styles off-job and under-level
+      gear, and the picker offers anything <i>any</i> of your jobs can wear at its
+      current level. Tick <i>Show gear I don't own</i> to try on pieces you're still
+      hunting — Save is what enforces ownership, not the preview.</li>
+  <li><b>Save it in a box.</b> Thirty numbered boxes per job (the macro-menu look); the
+      gold-marked box is where Save lands. <b>Apply</b> wears a saved box
+      (<code>/dl ls apply [box]</code> does the same from a macro).</li>
+  <li><b>OnLoad Lockstyle</b> applies your marked box automatically on login and job
+      change — your look is simply always on. <b>Keep on sub change</b> re-applies it
+      after subjob flips, where the game clears style locks.</li>
+  <li><b>Towns:</b> pick one of two behaviours. <b>Disable in town</b> drops the style
+      while you're in a town so your actual gear shows (pairs nicely with an
+      <i>inTown</i> trigger rule wearing your favourite outfit). Or choose a
+      <b>town box</b> — a separate look worn only in towns, your normal box restored
+      when you leave.</li>
+</ul>
+
+<h2 id="extras">9. Small conveniences</h2>
 
 <h3>Teleports — one click from anywhere to anywhere</h3>
 <p>The ring-icon button in the header opens every enchanted travel item you could own in
@@ -383,9 +531,14 @@ and ready; an amber countdown = out of charges (clicking is still fine — it eq
 and fires the moment the recharge ends); <span class="red">red</span> = owned but stored
 where the game can't equip from; dim = not owned.</p>
 <p>The top strip and the exp rings are listed only if you actually have them — a
-permanent dim row for something you may never stock is noise, not a reminder. The
-earring and ring submenus keep their dim rows: there the row is the reminder the
-destination exists.</p>
+permanent dim row for something you may never stock is noise, not a reminder. (The exp
+rings cover the Dedication bands — Empress through Echad — plus the Venture Ring, whose
++100% is Venture Points for gathering, not exp.) The earring and ring submenus keep
+their dim rows: there the row is the reminder the destination exists.</p>
+<p>The same menu doubles as your automation remote: <b>Automations</b>, <b>HELM</b> and
+<b>Fishing</b> cascades list the family with the same status colours as the tab —
+left-click a row to open its panel, right-click to switch it on or off without opening
+the main window at all.</p>
 <figure class="shot"><img src="img/tp-menu.png" alt="The Teleports dropdown">
 <figcaption>The Teleports dropdown — destination, item, live state. At the bottom: the
 <b>Floating button</b> pin.</figcaption></figure>
@@ -408,18 +561,39 @@ be aborted.</p>
 <figcaption>A Warp Ring use in flight: the floating button is now the abort — one click
 sends <code>/dl w off</code> and everything unwinds.</figcaption></figure>
 
+<h3>The floating equipment window — and pins</h3>
+<p>Tick <b>Floating equipment</b> on the Equipped tab and the 4×4 worn-gear grid gets a
+little sibling that stays on screen while you play — scalable (the tab's slider),
+movable with <kbd>SHIFT</kbd>+drag, with the same hover tooltips as the tab.
+<b>Right-click any slot</b> to <b>pin</b> an item into it: a pinned slot turns red and
+wears that item no matter what any set, trigger, or automation wants — the strongest
+claim in the game (see Priority above). Right-click again to unpin. It's the "I want
+THIS ring on until I say otherwise" gesture, one click deep.</p>
+
 <h3>Macro books</h3>
 <p>The <b>Macro</b> header button stores your macro book and set per job, applied
 automatically on login and every job change. No more <code>/macro book</code> lines in
 profiles.</p>
 
-<h2 id="debug">8. When something looks wrong</h2>
+<h3>Profiles</h3>
+<p>The <b>PROFILES</b> menu (header) keeps named collections of your sets and triggers
+per character — a "Dynamis WHM" beside your everyday WHM, switchable in two clicks.
+Reads fall back to your regular files, so profiles are opt-in: ignore the menu and
+nothing changes.</p>
+
+<h2 id="debug">10. When something looks wrong</h2>
 <ul>
   <li><b>Red banner in the window?</b> Do what it says — usually <b>Reload LAC</b>. It
       appears when the running engine is older than the addon (after an update).</li>
   <li><code>/dl why</code> — the single most useful command: it prints the last thing each
       event did — which rules matched, which set won each slot, what the automations
-      resolved to, and why something was skipped.</li>
+      resolved to, which claimant took a contested slot (and at what priority rank), and
+      why something was skipped.</li>
+  <li><code>/dl prio</code> — the claim ladder as chat lines: every claimant, its rank,
+      and whether it's claiming right now. The fastest answer to "which automation is
+      dressing me?".</li>
+  <li><code>/dl plan</code> — MaxMP's battery ladder: which piece releases at which MP,
+      and what's currently held.</li>
   <li><b>A set didn't change anything?</b> Check you Committed it <i>and</i> reloaded LAC
       (sets need the reload; triggers and modes don't).</li>
   <li><b>An item never equips?</b> If it's <span class="red">red</span> in the lists, it's
