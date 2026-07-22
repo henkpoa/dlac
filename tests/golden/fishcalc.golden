@@ -1,0 +1,75 @@
+-- fishcalc rod-ranking gear reads (golden -- issue #72)
+return {
+  ["bestOwnedRod"] = {
+    ["id"] = 17386,
+    ["name"] = "Lu Shang's Fishing Rod",
+    ["ok"] = false
+  },
+  ["fish"] = {
+    ["leg"] = 0,
+    ["rank"] = 40,
+    ["sk"] = 50,
+    ["sz"] = 1
+  },
+  ["gearScore"] = {
+    ["fish=0,no-bonus"] = 0,
+    ["fish=1,no-bonus"] = 1000,
+    ["fish=2,cx4=1cx5=3"] = 2005,
+    ["fish=3,cx4=1cx5=3"] = 3005
+  },
+  ["ownedRods"] = {
+    [17386] = true,
+    [7001] = true
+  },
+  ["rodRanking"] = {
+    {
+      ["brk"] = 0,
+      ["id"] = 17011,
+      ["lose"] = 0,
+      ["name"] = "Ebisu Fishing Rod",
+      ["ok"] = false,
+      ["owned"] = false,
+      ["pos"] = 1,
+      ["risk"] = 25,
+      ["snap"] = 25
+    },
+    {
+      ["brk"] = 13,
+      ["id"] = 17386,
+      ["lose"] = 50,
+      ["loseWhy"] = "toobig",
+      ["name"] = "Lu Shang's Fishing Rod",
+      ["ok"] = false,
+      ["owned"] = true,
+      ["pos"] = 2,
+      ["risk"] = 118,
+      ["snap"] = 55
+    },
+    {
+      ["brk"] = 19,
+      ["id"] = 7002,
+      ["lose"] = 50,
+      ["loseWhy"] = "toobig",
+      ["name"] = "Halcyon Rod",
+      ["ok"] = false,
+      ["owned"] = false,
+      ["pos"] = 3,
+      ["risk"] = 124,
+      ["snap"] = 55
+    },
+    {
+      ["brk"] = 26,
+      ["id"] = 7001,
+      ["lose"] = 50,
+      ["loseWhy"] = "toobig",
+      ["name"] = "Composite Fishing Rod",
+      ["ok"] = false,
+      ["owned"] = true,
+      ["pos"] = 4,
+      ["risk"] = 131,
+      ["snap"] = 55
+    }
+  },
+  ["skill"] = 45,
+  ["wornFishTotal"] = 5
+}

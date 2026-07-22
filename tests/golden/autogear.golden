@@ -1,0 +1,79 @@
+-- dlac automation manifest -- written by the GUI (Automations tab).
+-- Tiered Iridescence: per-element staves (NQ +1 / HQ +2, own element only) and
+-- universals (all elements, +1..+3; `universals` = the full preference-ordered
+-- ladder, first rung usable at the live level wins). The engine picks the
+-- higher tier per cast; ties go to the universal. WHETHER it fires is decided
+-- by the set: a dlac:AutoStaff / dlac:AutoObi entry in Main / Waist (Sets tab).
+return {
+    fmtver = 14,
+    written = "<golden -- normalized>",
+    craftGoal = "hq",
+    mpMerits = 0,
+    oneiros = false,
+    universal = { name = "Chatoyant Staff", tier = 2, level = 75 },
+    obiUniversal = { name = "Hachirin-no-obi", level = 71 },
+    universals = { { name = "Chatoyant Staff", tier = 2, level = 75 }, { name = "Iridal Staff", tier = 1, level = 71 } },
+    staff = {
+        Fire = { name = "Vulcan's Staff", tier = 2, level = 51 },
+        Ice = { name = "Ice Staff", tier = 1, level = 51 },
+    },
+    obi = {
+        Fire = { name = "Karin Obi", level = 71 },
+    },
+    mp = {
+        ["astral ring"] = 12,
+        ["clr. bliaut +1"] = 29,
+        ["hlr. bliaut +1"] = 53,
+        ["mana club"] = 10,
+        ["survey sash"] = 8,
+        ["tamas ring"] = 29,
+        ["uggalepih pendant"] = 25,
+    },
+    mpPairIdle = false,
+    mpPairIdleOverride = false,
+    rf = {
+        ["clr. bliaut +1"] = 2,
+    },
+    mv = {
+        ["pegasus collar"] = 12,
+    },
+    mpMoveYield = false,
+    mpBest = {
+        body = { { name = "Hlr. Bliaut +1", mp = 53, level = 70 }, { name = "Clr. Bliaut +1", mp = 29, level = 74, rf = 2 } },
+        neck = { { name = "Uggalepih Pendant", mp = 25, level = 70 } },
+        ring1 = { { name = "Tamas Ring", mp = 29, level = 74 }, { name = "Astral Ring", mp = 12, level = 10 } },
+        ring2 = { { name = "Astral Ring", mp = 12, level = 10 } },
+        waist = { { name = "Survey Sash", mp = 8, level = 50 } },
+    },
+    craft = {
+        back = {
+            Alchemy = { hq = { { name = "Bonze Cape", score = 1, level = 1 } }, nq = { { name = "Bonze Cape", score = 1, level = 1 } }, skillup = { { name = "Bonze Cape", score = 40, level = 1 } } },
+            Bonecraft = { hq = { { name = "Bonze Cape", score = 1, level = 1 } }, nq = { { name = "Bonze Cape", score = 1, level = 1 } }, skillup = { { name = "Bonze Cape", score = 40, level = 1 } } },
+            Clothcraft = { hq = { { name = "Bonze Cape", score = 1, level = 1 } }, nq = { { name = "Bonze Cape", score = 1, level = 1 } }, skillup = { { name = "Bonze Cape", score = 40, level = 1 } } },
+            Cooking = { hq = { { name = "Bonze Cape", score = 1, level = 1 } }, nq = { { name = "Bonze Cape", score = 1, level = 1 } }, skillup = { { name = "Bonze Cape", score = 40, level = 1 } } },
+            Goldsmithing = { hq = { { name = "Bonze Cape", score = 1, level = 1 } }, nq = { { name = "Bonze Cape", score = 1, level = 1 } }, skillup = { { name = "Bonze Cape", score = 40, level = 1 } } },
+            Leathercraft = { hq = { { name = "Bonze Cape", score = 1, level = 1 } }, nq = { { name = "Bonze Cape", score = 1, level = 1 } }, skillup = { { name = "Bonze Cape", score = 40, level = 1 } } },
+            Smithing = { hq = { { name = "Bonze Cape", score = 1, level = 1 } }, nq = { { name = "Bonze Cape", score = 1, level = 1 } }, skillup = { { name = "Bonze Cape", score = 40, level = 1 } } },
+            Woodworking = { hq = { { name = "Bonze Cape", score = 1, level = 1 } }, nq = { { name = "Bonze Cape", score = 1, level = 1 } }, skillup = { { name = "Bonze Cape", score = 40, level = 1 } } },
+        },
+        head = {
+            Cooking = { hq = { { name = "Chefs Hat", score = 10, level = 1 } }, nq = { { name = "Chefs Hat", score = 3, level = 1 } }, skillup = { { name = "Chefs Hat", score = 2, level = 1 } } },
+        },
+        ring1 = {
+            Cooking = { nq = { { name = "Chefs Ring", score = 100, level = 1 } } },
+        },
+    },
+    helm = {
+        hats = {
+            Mining = { name = "Miners Helmet", level = 1, surv = 1 },
+        },
+        body = { { name = "Field Tunica", score = 12, level = 1, helm = 2, surv = 1 } },
+        head = { { name = "Miners Helmet", score = 10, level = 1, helm = 0, surv = 1 } },
+        waist = { { name = "Survey Sash", score = 10, level = 50, helm = 0, surv = 1 } },
+    },
+    fish = {
+        body = { { name = "Fishermans Tunica", score = 1000, level = 1, fish = 1 } },
+        main = { { name = "Halieutica", score = 2000, level = 49, fish = 2 } },
+        waist = { { name = "Survey Sash", score = 1000, level = 50, fish = 1 } },
+    },
+};

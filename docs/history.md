@@ -3929,3 +3929,44 @@ field-gated. What made it possible and what it taught:
 - **Correction 2:** Venture Ring's bonus is **Venture Points +100%** (the HELM
   currency), not exp — it keeps its seat in the exp-rings section by ruling, labeled
   `+100% VP`.
+
+## Gear Oracle step 3: the golden-output harness (2026-07-22, tests-only, PRD #69)
+
+**Theme:** the Phase 2 safety gate, captured BEFORE any stat-glue migration touches the
+field-tuned ladders. PRD #69 phases the Gear Oracle: Phase 1 (step 1, #70) moved the
+mechanical fetch layer behind one door; Phase 2 (step 5, still BLOCKED on the unrun field
+rounds) will migrate the manifest builders that hand-glue "effective stats = level-scaled
+stats + augment fold" onto a shared `oracle.stats()` recipe. The PRD's phasing decision is
+explicit: Phase 2 must be *proven* byte-identical, not assumed, so a later field failure
+can never be misattributed to the refactor. This slice builds the proof harness.
+
+**Landed (tests + docs only — no runtime file touched, no seeded behavior, no VERSION bump):**
+- `tests/goldenfixtures.lua` — one deterministic, synthetic, headless BLM at Lv74 and one
+  curated bag, fed through the REAL builders (`automationsui.rescanAutogear` for the
+  manifest; `fishcalc` for the rod-ranking reads). Captures the builders' own output
+  verbatim; the only value dropped is the manifest's `written` clock stamp (normalized).
+- `tests/golden/autogear.golden` + `tests/golden/fishcalc.golden` — the committed goldens.
+- `tests/gen_goldens.lua` — the regenerator (run ONLY after an intentional builder change,
+  review the diff).
+- **smoke_ui section 12** (S220–S223) — asserts the builders reproduce the goldens
+  BYTE-IDENTICALLY; on drift it names the first differing line and points at the
+  regenerator. `.gitattributes` pins `tests/golden/*.golden -text` so Windows autocrlf
+  can't turn a byte-identical golden into a CRLF mismatch.
+
+**Coverage (the interesting cases the PRD names, one item carries each):**
+- **level-scaling** valued at the character's level, not base — Tamas Ring (catalog id
+  15545): MP 15 base → **29 at Lv74** through the central `levelstats.effective` resolver;
+- **augment fold** — Hlr. Bliaut +1 reads MP 35+18 = **53**, Clr. Bliaut +1 reads Refresh
+  1 native + 1 aug = **2** (the same decoder the set scoring uses, stubbed by id);
+- **one item across multiple ladders** — Survey Sash lands in `mpBest.waist` + `helm.waist`
+  + `fish.waist`;
+- every named builder: MaxMP battery ladder (mp/rf/mv/mpBest incl. Convert), HELM ladders +
+  hat map, fishing ladders + the fishcalc rod ranking / `wornFishTotal` / `gearScore`, and
+  the full per-craft owned-gear walk (Bonze Cape as the skill-up filler across all eight
+  crafts).
+
+**Two determinism traps handled:** the manifest builder stamps `written = os.date(...)`
+(normalized out before capture/compare), and the fishcalc reads run against a SYNTHETIC rod
+db injected through the `_setDb` test seam (restored after) so the ranking never depends on
+the shipped `fishdb.lua`. Merge-adjacent with step 1 in the test registry (both grew the
+suites). Full headless suite green: 2268 run_tests + 225 smoke_ui, Ubuntu lua5.4 CI parity.
