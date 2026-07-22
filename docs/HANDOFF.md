@@ -21,6 +21,9 @@ maintainer IMO, I am just the one with the creative vision."*
 4. [design/trigger-system.md](design/trigger-system.md) — the trigger engine spec.
    [design/profiles.md](design/profiles.md) — the profile storage layer (where sets
    and triggers live since v33, the one read/write compatibility rule, migration).
+   [design/gear-oracle.md](design/gear-oracle.md) — the one door for gear questions
+   (API + the four boundary rulings + guards/goldens troubleshooting); read it
+   before touching anything gear-flavored.
 5. [adr/](adr/) — decision records; **0002** (data-driven dispatch) and **0003**
    (overlay) explain most "why is it like this" questions. **0006** (the builder plans,
    the engine decides) and **0007** (resolve only when ready; a latch must remember what
@@ -196,10 +199,23 @@ agent; the per-repo setup lives in `docs/agents/`.
 - A GM is currently evaluating the addon for server approval — polish requests from
   that channel (like the word-wrap fix) take priority.
 
-## Current state (as of 2026-07-21)
+## Current state (as of 2026-07-22)
+
+- **THE GEAR ORACLE — one door for every gear question (07-22, PRD #69, COMPLETE,
+  PRs #75–#79).** `gear/gearoracle.lua` is the single sanctioned door in the addon
+  state: `wornItem` / `equipBags` / `canWear` / `anyJobCanWear` / `lookup` /
+  `stats` / `setStats` + the augment passthrough. Feature/UI modules ask, never
+  re-derive — CI-enforced (run_tests §GRD guards, allowlist EMPTY and it must stay
+  so; parity pins hold the three engine twins byte-identical per ADR 0002). The
+  oracle is CLAIM-BLIND: capability only — the Arbiter (ADR 0012) stays the sole
+  precedence authority; the two compose, never contest. Stat migration proven
+  byte-identical by the committed golden corpus (tests/golden/, a STANDING gate —
+  a golden diff is a claim a field-tuned ladder moved and needs sign-off). Read
+  **docs/design/gear-oracle.md** before touching anything gear-flavored; rulings
+  in **ADR 0013**. Field-cleared 07-22 along with the whole prior UNRUN pile.
 
 - **Iridescence catalog sweep + universals ladder (07-21, engine v82, manifest
-  fmt 10, field UNRUN).** The shipped catalog's `Iridescence` stat is now the
+  fmt 10, field-CONFIRMED 07-22).** The shipped catalog's `Iridescence` stat is now the
   tier authority: exactly **15 carriers**, a **+3 tier exists** (Inanna,
   Keraunos, Gridarvor, and the Lv75 relic stages of Laevateinn/Tupsimati), and
   **Claustrum carries none on live** (old fallback guess, removed). The

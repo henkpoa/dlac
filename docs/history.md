@@ -4052,3 +4052,45 @@ umbrella command, independently runnable steps, one shared parser):
   ("Wyvern: HPP+10"; `All` reads as "Pet"), row summaries spend leftover token budget
   ("Wyvern:HPP+10") which also makes pet gear findable by the stat search.
   No engine/optimizer participation — that is a separate later call.
+
+## The Gear Oracle: one door for every gear question (2026-07-22, PRD #69, COMPLETE)
+
+**The arc:** Henrik's morning suspicion — "every time gear data tries to be fetched,
+many areas of the code do their own thing" — grilled into PRD #69 and shipped complete
+the same day: five squash-merged PRs (#75–#79), agent-built via the label-dispatch
+pipeline, every PR maintainer-reviewed (footprint, claim-blind grep, both-platform
+battery, golden cleanliness). Full reference: **docs/design/gear-oracle.md**; rulings:
+**ADR 0013**. The investigation's surprise: the *interpretation* layer was already
+centralized (`comboStats`/`levelstats`/`augments` — Henrik's hunch about the weighing
+path confirmed); the real drift was the *fetch* layer (worn-item decode ×4, bag list
+×4, gate fallbacks, catalog walk ×2). The oracle deleted every copy.
+
+**What shipped, per slice:** #75 — `gear/gearoracle.lua` born: `wornItem`/`equipBags`,
+three addon-state decodes deleted, engine twins hoisted to named form
+(`M.decodeEquipIndex`, `M.AMMO_BAGS`) and parity-pinned. #76 — the golden harness
+(separate entry above) + the Windows scaffold-dir fix (`60facb5`: `dlac\autogear.lua`
+is one *filename* on Linux, a *subpath* on Windows — CI-green ≠ Windows-green on
+golden work). #77 — `canWear`/`anyJobCanWear`/`lookup`; the gearoptim/gearui inline
+gate fallbacks deleted; gearexport's duplicate catalog walk retired onto catalogindex.
+#78 — GRD1–5 HARD RULE guards (three-way self-checks incl. sanctioned-home-contains-
+idiom), ADR 0013, the Central-services row; temporary allowlist named automationsui +
+gearui + equippedui (wider than the issue's prose — the guard found every interpreter
+load). #79 — `stats()`/`setStats()` recipes; the three allowlisted surfaces migrated;
+**goldens byte-identical on both platforms with the .golden files untouched in the
+diff**; allowlist emptied, rule absolute. One disclosed widening: the augment fold is
+now the full map, not MP/Refresh-only (correct per "augs must always be calculated
+into the total"). fishcalc untouched by design: pure/parameterized — its stat feed was
+automationsui's ladder read, now oracle-sourced.
+
+**The boundary that matters most:** the oracle is CLAIM-BLIND, permanently. Capability
+("could I wear this") lives here; permission ("may this slot change, who wins") stays
+the Arbiter's (ADR 0012). Henrik's ruling verbatim: "otherwise they would contest,
+that would only create complexity." Names enforce it — `canWear`, never `canEquip`.
+
+**Same-day housekeeping:** the field ledger emptied — Henrik blanket-confirmed the
+whole UNRUN pile (fishing v91, Blueprints, town lockstyle v46, Iridescence sweep,
+MaxMP pair homes, then Target condition, Teleports quick menus, Sets Equip & Lock T3,
+AutoAmmo v73). Two flags turned out doubly stale (Blueprints, MaxMP pair homes were
+already confirmed in their files — index rot). Engine VERSION untouched all day; the
+pet-mods commit rode the rebases (held by its session for the oracle-reporter rewrite —
+the oracle's first post-ship consumer).
