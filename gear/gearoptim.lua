@@ -359,8 +359,8 @@ end
 
 -- Build-at-max-level toggle. When true, M.buildBestSet / M.buildMaxStatSet treat the
 -- character as level MAX_LEVEL for the item-Level ELIGIBILITY cap ONLY, so you can
--- preview the best set you'll grow into. The JOB restriction is unchanged (jobAllowed
--- still filters on your real main job), so gear your job can't wear stays excluded.
+-- preview the best set you'll grow into. The JOB restriction is unchanged (isEligible
+-- still filters on your real main job via the oracle), so gear your job can't wear stays excluded.
 -- ON by default (Henrik 2026-07-17: building sets should always ignore the level
 -- cap unless deliberately narrowed). An UNTICK is remembered across reloads via
 -- uiflags.lua (absent key = this ON default).
@@ -1129,27 +1129,20 @@ end
 -- Jobs list is absent (unrestricted, gear.lua's convention for most armor), contains
 -- "All", or names your job. Entries without a numeric Level are skipped -- same
 -- caution BuildDynamicSets takes, so we never recommend something un-vettable.
--- Delegates to THE central rule (dispatch.jobCanEquip); inline fallback kept.
-local _dspok, _dsp = pcall(require, "dlac\\dispatch");
-local function jobAllowed(entry, job)
-    if job == nil or job == '' then return true; end     -- unknown job -> don't filter
-    if _dspok and type(_dsp) == 'table' and type(_dsp.jobCanEquip) == 'function' then
-        return _dsp.jobCanEquip(entry.Jobs, job);
-    end
-    local jobs = entry.Jobs;
-    if type(jobs) ~= 'table' then return true; end
-    for _, j in ipairs(jobs) do
-        if j == 'All' or j == job then return true; end
-    end
-    return false;
-end
-
+-- THE central rule now has ONE door: the Gear Oracle's canWear (issue #71), which
+-- fronts dispatch.canWear (main job only, level gated on main). The old inline
+-- fallback is DELETED -- its restatement of "no job list means wearable" was exactly
+-- the drift issue #71 ends. An UNKNOWN job keeps the optimizer's own "don't job-
+-- filter" (the level gate still applies): canWear would reject a job-restricted piece
+-- against an empty job, which is not this tool's intent.
+local oracle = require("dlac\\gear\\gearoracle");
 local function isEligible(entry, job, level)
     if type(entry) ~= 'table' then return false; end
     if type(entry.Stats) ~= 'table' then return false; end
     if type(entry.Level) ~= 'number' then return false; end
     if entry.Level > (level or 0) then return false; end
-    return jobAllowed(entry, job);
+    if job == nil or job == '' then return true; end     -- unknown job -> level only
+    return oracle.canWear(entry, job, level);
 end
 
 -- ---- slot iteration --------------------------------------------------------
@@ -2129,7 +2122,7 @@ function M.buildBestSet(opts)
     opts = opts or {};
     local job, level = jobLevelFromOpts(opts);
     -- Level-75 preview: lift the item-Level cap only. Job is left untouched, so the
-    -- job-eligibility filter (jobAllowed) still excludes gear your job can't wear.
+    -- job-eligibility filter (isEligible/oracle.canWear) still excludes gear your job can't wear.
     if M.buildAtMaxLevel == true then level = MAX_LEVEL; end
     local weights = opts.weights or activeWeights();
     -- Rank each slot's candidates, then optimize the SET as a whole under the
@@ -2229,7 +2222,7 @@ function M.buildMaxStatSet(statKey, opts)
     opts = opts or {};
     local job, level = jobLevelFromOpts(opts);
     -- Level-75 preview: lift the item-Level cap only. Job is left untouched, so the
-    -- job-eligibility filter (jobAllowed) still excludes gear your job can't wear.
+    -- job-eligibility filter (isEligible/oracle.canWear) still excludes gear your job can't wear.
     if M.buildAtMaxLevel == true then level = MAX_LEVEL; end
     statKey = canonStat(statKey);
     -- Only fill a slot with a piece that actually carries some of the stat; a slot

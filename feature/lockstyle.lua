@@ -69,9 +69,14 @@ _pfok = _pfok and type(profiles) == 'table';
 local _lvok, look = pcall(require, 'dlac\\feature\\lookpreview');
 _lvok = _lvok and type(look) == 'table';
 -- Job-level gate (v47): the addon-side canEquipItemOnAnyJob mirror -- only offer
--- lockstyle gear one of your jobs can wear at its CURRENT level.
+-- lockstyle gear one of your jobs can wear at its CURRENT level. The GATE now goes
+-- through the Gear Oracle's one door (oracle.anyJobCanWear, issue #71), which delegates
+-- to jobgate.canEquip and preserves its FAIL-OPEN semantics; jobgate stays required for
+-- its live level READER (jobgate.levels()), which the oracle does not front.
 local _jgok, jobgate = pcall(require, 'dlac\\gear\\jobgate');
 _jgok = _jgok and type(jobgate) == 'table';
+local _orok, oracle = pcall(require, 'dlac\\gear\\gearoracle');
+_orok = _orok and type(oracle) == 'table';
 -- Central town service (v45): "am I in a town?" for the Disable-in-town option.
 local _locok, location = pcall(require, 'dlac\\feature\\location');
 _locok = _locok and type(location) == 'table';
@@ -373,7 +378,7 @@ local function listFor(slot, q, all, jobLevels)
     -- v47: only offer gear ONE of your jobs can wear at its CURRENT level
     -- (canEquipItemOnAnyJob). nil jobLevels (pre-login / no jobgate) FAILS OPEN.
     local function gateOk(rec)
-        return jobLevels == nil or not _jgok or jobgate.canEquip(rec, jobLevels);
+        return jobLevels == nil or not _jgok or not _orok or oracle.anyJobCanWear(rec, jobLevels);
     end
     local function take(t, pred)
         for _, rec in pairs(t) do
@@ -490,11 +495,11 @@ end
 -- nil (box is fine). `resolve` maps a piece name -> record (live: recOf; tests
 -- inject a stub). A nil jl FAILS OPEN (returns nil). Test seam.
 function M._boxBadPiece(setTable, jl, resolve)
-    if type(setTable) ~= 'table' or jl == nil or not _jgok then return nil; end
+    if type(setTable) ~= 'table' or jl == nil or not _jgok or not _orok then return nil; end
     for _, nm in pairs(setTable) do
         if type(nm) == 'string' and nm ~= '' and nm ~= 'remove' then
             local rec = resolve and resolve(nm) or nil;
-            if rec ~= nil and not jobgate.canEquip(rec, jl) then return nm; end
+            if rec ~= nil and not oracle.anyJobCanWear(rec, jl) then return nm; end
         end
     end
     return nil;

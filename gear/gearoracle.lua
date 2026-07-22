@@ -1,11 +1,34 @@
 --[[
     dlac/gear/gearoracle.lua -- THE Gear Oracle: one door for gear-fetch questions
-    (issue #70, PRD #69). A Central Service (architecture.md) in the ADDON state --
-    callers ask the question, the plumbing is the oracle's problem. Two answers today,
-    the two that were duplicated hardest:
+    (issues #70/#71, PRD #69). A Central Service (architecture.md) in the ADDON state --
+    callers ask the question, the plumbing is the oracle's problem.
 
+    FETCH answers (issue #70), the two that were duplicated hardest:
         wornItem(equipSlot) -> { id, rec, extra, item } | nil   -- THE equipped-item resolution
         equipBags()         -> { 0, 8, 10, 11, 12, 13, 14, 15, 16 }  -- THE equip-eligible bag list
+
+    ELIGIBILITY + IDENTITY answers (issue #71) -- a FACADE, not an absorb (PRD #69):
+    the proven interpreters keep their homes; the oracle is the one door that fronts
+    them, so no module re-states the rule and drifts:
+        canWear(rec, job, level) -> main-job/level equip gate; DELEGATES to the engine
+                                    module's addon-visible rule (dispatch.canWear). The
+                                    two inline fallbacks (gearoptim, gearui) are GONE --
+                                    their re-statements of "no job list means wearable"
+                                    were the exact deduction drift this ends.
+        anyJobCanWear(rec, jobLevels) -> the lockstyle any-job-at-current-level gate;
+                                    DELEGATES to the addon-state gate module
+                                    (gear/jobgate.canEquip), which keeps its home and its
+                                    FAIL-OPEN semantics.
+        lookup(idOrName)         -> "what is this item": the owned-record + catalog-record
+                                    join (owned first, then the full catalog; id
+                                    authoritative, name the fallback). ONE recipe; the
+                                    enriched flattened indexes are injected by the surface
+                                    that builds them (gearui) via setLookupSource.
+
+    Claim-BLIND, permanently (PRD #69): every answer is a CAPABILITY ("could this
+    character use this item") -- never permission ("may this slot change now, who wins").
+    The Arbiter is the sole precedence authority; the two compose, they never contest.
+    Method names use could-words (canWear), never may-words (canEquip).
 
     NEVER seeded into LAC. Per ADR 0002 the seeded engine (dispatch.lua) cannot require
     addon-folder modules, so it keeps its OWN worn-item decode and bag list as TWINS
@@ -82,6 +105,74 @@ function M.wornItem(equipSlot)
         out = { id = item.Id, rec = recordFor(item.Id), extra = item.Extra, item = item };
     end);
     return out;
+end
+
+-- ---------------------------------------------------------------------------
+-- ELIGIBILITY -- main-job/level equip gate (issue #71).
+-- ---------------------------------------------------------------------------
+-- Lazy + guarded, exactly like recordFor: the oracle must load with no heavyweight
+-- deps (gearimport sources EQUIP_BAGS from it at load time). dispatch is an engine-
+-- five, always present in BOTH Lua states -- but requiring it lazily keeps that
+-- load-order promise. There is NO re-statement of the rule here: a missing engine
+-- yields a conservative false (never a private copy of "no job list means wearable").
+local function dispatchMod()
+    local m = nil;
+    pcall(function() m = require('dlac\\dispatch'); end);
+    return (type(m) == 'table') and m or nil;
+end
+
+-- canWear(rec, job, level): can THIS main job, at THIS level, equip rec? THE central
+-- rule lives once, in the engine module's addon-visible surface (dispatch.canWear:
+-- main job only -- sub NEVER widens, field-verified on CatsEyeXI -- level gated on the
+-- main level). The oracle is the only door modules ask; the inline fallbacks are gone.
+function M.canWear(rec, job, level)
+    local d = dispatchMod();
+    if d == nil or type(d.canWear) ~= 'function' then return false; end
+    return d.canWear(rec, job, level);
+end
+
+-- anyJobCanWear(rec, jobLevels): can ANY of the character's jobs, each at its CURRENT
+-- level, wear rec? (the lockstyle-style gate -- the server's canEquipItemOnAnyJob).
+-- DELEGATES to the addon-state gate module (gear/jobgate), which keeps its home, its
+-- tests and its rule (an unknown record -- no Jobs -- passes; the server decides). The
+-- nil-jobLevels FAIL-OPEN belongs to the CALLER (lockstyle short-circuits on a nil
+-- levels read, the Save-gate lesson) -- the door copies no logic and adds none. A
+-- missing gate MODULE fails OPEN here (returns true), never crashes.
+function M.anyJobCanWear(rec, jobLevels)
+    local jg = nil;
+    pcall(function() jg = require('dlac\\gear\\jobgate'); end);
+    if type(jg) ~= 'table' or type(jg.canEquip) ~= 'function' then return true; end
+    return jg.canEquip(rec, jobLevels);
+end
+
+-- ---------------------------------------------------------------------------
+-- IDENTITY -- "what is this item?" the owned+catalog join (issue #71).
+-- ---------------------------------------------------------------------------
+-- ONE recipe: owned record first (the character's real, enriched entry), then the
+-- full catalog; id authoritative, name the fallback. The enriched flattened indexes
+-- live where the enrichment happens (gearui builds them once); the oracle owns the
+-- JOIN and takes those indexes through setLookupSource. Each resolver takes the key
+-- (name keys ALREADY lower-cased by the oracle) and returns a record or nil.
+local _lookupSrc = nil;
+function M.setLookupSource(src)
+    _lookupSrc = (type(src) == 'table') and src or nil;
+end
+
+function M.lookup(idOrName)
+    if idOrName == nil or _lookupSrc == nil then return nil; end
+    local s = _lookupSrc;
+    if type(idOrName) == 'number' then
+        local o = (type(s.ownedById) == 'function') and s.ownedById(idOrName) or nil;
+        if o ~= nil then return o; end
+        return (type(s.catalogById) == 'function') and s.catalogById(idOrName) or nil;
+    end
+    if type(idOrName) == 'string' then
+        local ln = string.lower(idOrName);
+        local o = (type(s.ownedByName) == 'function') and s.ownedByName(ln) or nil;
+        if o ~= nil then return o; end
+        return (type(s.catalogByName) == 'function') and s.catalogByName(ln) or nil;
+    end
+    return nil;
 end
 
 return M;

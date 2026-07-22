@@ -70,7 +70,7 @@ engine cannot require them; it has its own minimal reads).
 | **Is there an entity named X nearby, and how far?** | `entwatch.watch(who, name[, cb])` then `entwatch.nearest(name)` / `.matches(name)`; `.poke(name)` = rescan | `lib/entwatch.lua` | THE central entity watcher — never write a local scan. It owns the idioms that cost three field rounds: GetName pads with whitespace (trim + ci), rendered bit 0x200 (signed-u32 fix) before trusting a distance, `GetRawEntity` (never the dead `GetEntity(i)`), the FULL 0x000-0x8FF range (custom NPCs are dynamic entities). Distances in yalms (squared on the wire). Callbacks fire on match-set changes incl. evictions; callback-less watches sleep 15 s after the last ask. Consumers: `eboxammo` (Ephemeral Box), `helmwatch` (the four "* Point" names while Auto HELM is armed). |
 | **How many of item id N do I own?** | `ownedcache.counts()` (equippable bags) / `.totals()` (anywhere) / `.verdict(rec)` | `gear/ownedcache.lua` | counts = what can actually be equipped/consumed NOW; totals includes storage (the red "stored" coloring everywhere in dlac). |
 | **What is this item?** (any item, owned or not) | `catalogindex.flat()` / `.rawById(id)` / `.rawIndex()` | `gear/catalogindex.lua` over `data/catalog.lua` | The catalog's `Slot` lies toward Body for unimplemented rows (`jobs==0` is the junk marker); `AmmoType` absent = trinket. |
-| **What is worn in equipment slot N?** / **the equip-eligible bags?** | `gearoracle.wornItem(slot)` → `{ id, rec, extra, item }` \| nil; `gearoracle.equipBags()` | `gear/gearoracle.lua` | THE worn-item decode (packed Index → container/slot → item) + the ONE equip-bag list (Inventory + 8 Wardrobes). Addon-state only; the seeded engine keeps byte-identical TWINS (`dispatch.decodeEquipIndex` / `dispatch.AMMO_BAGS`, ADR 0002) that the OR-section parity pins hold to it. `wornItem` hands the id back RAW (0/65535 included) — each worn reader keeps its own id guard. |
+| **Any gear question** (worn item, equip bags, eligibility, identity) | `gearoracle.wornItem(slot)` → `{ id, rec, extra, item }` \| nil; `.equipBags()`; `.canWear(rec, job, level)`; `.anyJobCanWear(rec, jobLevels)`; `.lookup(idOrName)` | `gear/gearoracle.lua` | THE one door in the addon state (issues #70/#71, PRD #69). **FETCH:** the worn-item decode (packed Index → container/slot → item) + the ONE equip-bag list (Inventory + 8 Wardrobes); byte-identical engine TWINS (`dispatch.decodeEquipIndex` / `dispatch.AMMO_BAGS`, ADR 0002) held by the OR-section parity pins. `wornItem` hands the id back RAW (0/65535 included). **ELIGIBILITY:** `canWear` fronts the engine rule (`dispatch.canWear` — main job only, level on main); `anyJobCanWear` delegates to the addon-state gate (`gear/jobgate.canEquip`, fail-open). **IDENTITY:** `lookup` joins owned-first then catalog (id authoritative). **Claim-BLIND, permanently** — capability only, never permission (`canWear`, never `canEquip`); the Arbiter is the sole precedence authority. FACADE, not absorb: the interpreters keep their homes. |
 | **Where is this character's dlac state dir?** | `statefile.charDir()` | `lib/statefile.lua` | nil pre-login — retry, never cache the nil. (The seeded engine has its own `charDir()` inside dispatch.lua.) |
 | **This character's native MP pool?** | `nativemp.self([meritMP])` / `.get(race, mjob, mlvl, sjob, slvl)` | `data/nativemp.lua` | The server's formula verbatim; merits are NOT native — pass them in. Never calibrate against the on-screen max (traits/gear ride the display only). |
 | **Queue a chat/game command safely?** | `cmdqueue` | `lib/cmdqueue.lua` | Two same-frame QueueCommands arrive REVERSED in other states — this queue drains one per frame. Also: an addon state never hears its OWN queued commands back. |
@@ -381,19 +381,41 @@ mirror of `dispatch.serializeTriggers`' per-rule form (issue #65 forbids any eng
 the file, the identical-rule canonical form, and (slice 2) the shareable text render a rule ONE
 way. triggersui owns the file IO (the safewrite ladder) + the section render. Never seeded into LAC.
 
-### gear/gearoracle.lua — THE worn-item + equip-bag door (issue #70)
-The single addon-state answer for two gear-fetch questions that were duplicated
-hardest: **`wornItem(slot)`** — the equipped-item resolution (packed `GetEquippedItem`
-Index → container/slot → the container item), returning `{ id, rec, extra, item }`
-(id RAW so each caller keeps its own guard; `rec` = catalog/owned record; `extra` =
-augment / enchant-charge bytes; `item` = the raw container item for Flags/Count) or nil;
-and **`equipBags()`** — the ONE equip-eligible bag list (Inventory + the 8 Wardrobes).
-The three hand-rolled worn decodes (gearui `getEquippedId`, augments `slotExtra`, useitem
-`readiness`) and the bag-list literals (gearimport `SCAN_CONTAINERS`, the augment scan,
-useitem's readiness set, and through ownedcache the fishing heartbeat) all route here.
+### gear/gearoracle.lua — THE Gear Oracle: one door for gear questions (issues #70/#71, PRD #69)
+The single addon-state answer for every gear question. A **facade, not an absorb**: it
+fronts the proven interpreters (which keep their homes, tests and field-tuned behaviour),
+so no module re-states a rule and drifts. **Claim-BLIND, permanently** — every answer is
+a capability ("*could* this character use this item"), never permission ("*may* this slot
+change now"); the Arbiter stays the sole precedence authority; method names use could-words
+(`canWear`), never may-words (`canEquip`).
+
+- **FETCH (issue #70).** **`wornItem(slot)`** — the equipped-item resolution (packed
+  `GetEquippedItem` Index → container/slot → the container item), returning
+  `{ id, rec, extra, item }` (id RAW so each caller keeps its own guard) or nil; and
+  **`equipBags()`** — the ONE equip-eligible bag list (Inventory + the 8 Wardrobes). The
+  three hand-rolled worn decodes (gearui `getEquippedId`, augments `slotExtra`, useitem
+  `readiness`) and the bag-list literals all route here.
+- **ELIGIBILITY (issue #71).** **`canWear(rec, job, level)`** — main-job/level equip gate;
+  DELEGATES to the engine module's addon-visible rule (`dispatch.canWear`). The two inline
+  fallbacks (gearoptim, gearui) are DELETED — their re-statements of "no job list means
+  wearable" were the exact deduction drift this ends. **`anyJobCanWear(rec, jobLevels)`** —
+  the lockstyle any-job-at-current-level gate; DELEGATES to the addon-state gate module
+  (`gear/jobgate.canEquip`), which keeps its FAIL-OPEN semantics (the nil-levels fail-open
+  belongs to the caller). lockstyle's gate calls migrated here.
+- **IDENTITY (issue #71).** **`lookup(idOrName)`** — "what is this item": the owned-record +
+  catalog-record join (owned first, then the full catalog; id authoritative, name the
+  case-insensitive fallback). ONE recipe; the enriched flattened indexes are injected by the
+  surface that builds them (gearui, via `setLookupSource`) — the oracle can't flatten raw
+  gear.lua itself because a Phase-2 owned record carries no stats until enrichment. gearui's
+  `lookupById`/`lookupByName` are now thin adapters over this door.
+
 Addon-state only, **never seeded** — ADR 0002 keeps the engine's own byte-identical TWINS
 in dispatch.lua (`decodeEquipIndex` / `AMMO_BAGS`), and the OR-section parity pins in
-`tests/run_tests.lua` feed both a fixture matrix and NAME the twin on any drift.
+`tests/run_tests.lua` feed both a fixture matrix and NAME the twin on any drift; OR14-29
+pin canWear against `dispatch.canWear`, anyJobCanWear against `jobgate.canEquip`, the lookup
+join, and the claim-blind boundary (no `canEquip` door). The exporter's duplicate catalog
+walk is retired too — it now routes its id-index through `catalogindex.rawIndex()`, leaving
+exactly one catalog nested walk in the codebase.
 
 ### gear/profilesets.lua — profile `sets` reader
 Reads the loaded profile's `sets` table for the Sets tab. In LAC state reads

@@ -32,8 +32,11 @@ if not gok or type(gear) ~= 'table' then gear = {}; end
 -- Owned-gear record rules: the enrichment precedence lives ONCE (gearrecord),
 -- so an export before the GUI ever opened matches one after (same heal, same merge).
 local grec = require('dlac\\gear\\gearrecord');
-local hasCatalog, catalog = pcall(require, 'dlac\\data\\catalog');
-hasCatalog = hasCatalog and type(catalog) == 'table';
+-- The catalog id-index comes from THE one walker (gear\catalogindex, issue #71):
+-- gearexport's private nested walk is retired, so exactly one catalog walk remains
+-- in the codebase (the acknowledged tech-debt cleanup from architecture.md).
+local _ciok, catindex = pcall(require, 'dlac\\gear\\catalogindex');
+_ciok = _ciok and type(catindex) == 'table';
 local haok, aug = pcall(require, 'dlac\\feature\\augments');
 haok = haok and type(aug) == 'table';
 local hook, ownedc = pcall(require, 'dlac\\gear\\ownedcache');
@@ -110,25 +113,6 @@ function M.jsonEncode(v) return encode(v, 0); end
 -- ---------------------------------------------------------------------------
 -- Export builders (pure).
 -- ---------------------------------------------------------------------------
-
--- id -> catalog record, walking the catalog's nested slot/type shape once.
-function M.catalogIndex(cat)
-    local byId = {};
-    local function walk(t)
-        for _, v in pairs(t) do
-            if type(v) == 'table' then
-                if type(v.Name) == 'string' and v.Id ~= nil then byId[v.Id] = v;
-                else walk(v); end
-            end
-        end
-    end
-    if type(cat) == 'table' then
-        for k, v in pairs(cat) do
-            if k ~= 'NameToObject' and type(v) == 'table' then walk(v); end
-        end
-    end
-    return byId;
-end
 
 local function itemEntry(slot, rec, catRec, augs, augStats, counts)
     local e = {
@@ -227,7 +211,7 @@ function M.export()
     local dir, cname = charDirAndName();
     if dir == nil then return false, 'not logged in (no character folder yet)'; end
 
-    local byId = hasCatalog and M.catalogIndex(catalog) or {};
+    local byId = _ciok and catindex.rawIndex() or {};
     local augs, augStats;
     if haok then
         pcall(function() augs = aug.ownedAugments(); end);

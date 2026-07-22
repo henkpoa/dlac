@@ -110,6 +110,77 @@ end
 
     -- wornItem is safe to call headless (no AshitaCore) and returns nil, never throws.
     check('OR13 wornItem headless-safe', oracle.wornItem(0), nil);
+
+    -- Eligibility + identity join the oracle (issue #71). These are FACADE checks:
+    -- the door must give the SAME answer as the interpreter it fronts. canWear must
+    -- track dispatch.canWear exactly (the two inline fallbacks are deleted); a claim-
+    -- blind boundary means it never consults locks/pins/claims.
+    check('OR14 canWear is the door',        type(oracle.canWear), 'function');
+    check('OR15 anyJobCanWear is the door',  type(oracle.anyJobCanWear), 'function');
+    check('OR16 lookup is the door',         type(oracle.lookup), 'function');
+    check('OR17 setLookupSource is the door',type(oracle.setLookupSource), 'function');
+
+    -- canWear parity with the fronted engine rule (dispatch.canWear), same matrix as J5-7.
+    local CW = {
+        { rec = { Jobs = { 'RDM' }, Level = 74 }, job = 'RDM', lvl = 73 },  -- under level
+        { rec = { Jobs = { 'RDM' }, Level = 74 }, job = 'RDM', lvl = 74 },  -- at level
+        { rec = { Jobs = { 'WHM' }, Level = 10 }, job = 'RDM', lvl = 75 },  -- wrong job
+        { rec = { Jobs = { 'All' }, Level = 20 }, job = 'RDM', lvl = 20 },  -- All at level
+        { rec = { Level = 5 },                    job = 'RDM', lvl = 99 },  -- no Jobs -> wearable
+    };
+    for i, c in ipairs(CW) do
+        check('OR18.' .. i .. ' canWear == dispatch.canWear (fronted rule)',
+              oracle.canWear(c.rec, c.job, c.lvl), dispatchM.canWear(c.rec, c.job, c.lvl));
+    end
+
+    -- anyJobCanWear delegates to the addon-state gate module (jobgate.canEquip), same
+    -- answer, and keeps its FAIL-OPEN semantics (nil/unknown offers everything).
+    local jg = package.loaded['dlac\\gear\\jobgate'];
+    local AJ = {
+        { rec = { Jobs = { 'THF' }, Level = 30 }, jl = { THF = 30 } },  -- on-job at level
+        { rec = { Jobs = { 'THF' }, Level = 50 }, jl = { THF = 30 } },  -- under level
+        { rec = { Jobs = { 'All' }, Level = 40 }, jl = { WHM = 50 } },  -- All, one at level
+        { rec = { Jobs = { 'BLM' }, Level = 1  }, jl = { WHM = 50 } },  -- no such job
+        { rec = { Level = 99 },                   jl = { WHM = 1  } },  -- no Jobs -> pass
+    };
+    for i, c in ipairs(AJ) do
+        check('OR19.' .. i .. ' anyJobCanWear == jobgate.canEquip (delegation)',
+              oracle.anyJobCanWear(c.rec, c.jl), jg.canEquip(c.rec, c.jl));
+    end
+    -- No fabricated fail-open inside the door: nil jobLevels delegates faithfully
+    -- (the CALLER short-circuits on jobLevels == nil -- lockstyle's gateOk does). An
+    -- unknown record (no Jobs) still passes, jobgate's own fail-open.
+    check('OR20 anyJobCanWear on nil jobLevels == jobgate (no fabricated fail-open)',
+          oracle.anyJobCanWear({ Jobs = { 'WAR' }, Level = 1 }, nil), jg.canEquip({ Jobs = { 'WAR' }, Level = 1 }, nil));
+    check('OR20b anyJobCanWear passes an unknown record (no Jobs)', oracle.anyJobCanWear({ Level = 99 }, {}), true);
+
+    -- lookup(idOrName): the owned+catalog JOIN recipe. Inject a stub source (the role
+    -- gearui fills in production) and prove owned wins over catalog, id is authoritative,
+    -- name is the case-insensitive fallback, and a miss is nil.
+    local owned = { byId = { [7] = { Name = 'Owned Cap', Id = 7 } },
+                    byName = { ['owned cap'] = { Name = 'Owned Cap', Id = 7 } } };
+    local cat   = { byId = { [7] = { Name = 'Catalog Cap', Id = 7 }, [9] = { Name = 'Catalog Only', Id = 9 } },
+                    byName = { ['catalog only'] = { Name = 'Catalog Only', Id = 9 } } };
+    oracle.setLookupSource({
+        ownedById     = function(id) return owned.byId[id]; end,
+        ownedByName   = function(ln) return owned.byName[ln]; end,
+        catalogById   = function(id) return cat.byId[id]; end,
+        catalogByName = function(ln) return cat.byName[ln]; end,
+    });
+    check('OR21 lookup by id: owned wins over catalog', oracle.lookup(7).Name, 'Owned Cap');
+    check('OR22 lookup by id: catalog fallback',        oracle.lookup(9).Name, 'Catalog Only');
+    check('OR23 lookup by id: unknown -> nil',          oracle.lookup(404), nil);
+    check('OR24 lookup by name: owned wins',            oracle.lookup('Owned Cap').Name, 'Owned Cap');
+    check('OR25 lookup by name: case-insensitive fallback', oracle.lookup('CATALOG only').Name, 'Catalog Only');
+    check('OR26 lookup by name: unknown -> nil',        oracle.lookup('nope'), nil);
+    check('OR27 lookup nil arg -> nil',                 oracle.lookup(nil), nil);
+    oracle.setLookupSource(nil);
+    check('OR28 lookup with no source -> nil',          oracle.lookup(7), nil);
+
+    -- CLAIM-BLIND boundary (PRD #69): the oracle answers capability, never permission.
+    -- It must expose no may-word door -- canEquip is the Arbiter's word, never the
+    -- oracle's -- and no method may consult locks/pins/claims (all absent by design).
+    check('OR29 no permission-word door (canEquip never exists on the oracle)', oracle.canEquip, nil);
 end)();
 
 -- ---------------------------------------------------------------------------
