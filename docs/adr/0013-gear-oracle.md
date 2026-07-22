@@ -79,11 +79,15 @@ pins):
   central service (browsed directly, architecture.md) — the oracle fronts it only for the
   identity join, so it is deliberately not policed by GRD5.
 
-GRD5 carries the **one temporary allowlist** — the Phase-2 stat-glue surfaces that still
-hand-glue stats and so still load an interpreter. It is the ratchet: Oracle step 5 (#74)
-migrates those surfaces onto `oracle.stats()`/`setStats()`, **empties** the allowlist, and
-from then the rule is absolute. Every guard carries a self-check proving its pattern is
-actually detectable — a guard that matches nothing is a false sense of security.
+GRD5 carried **one temporary allowlist** — the Phase-2 stat-glue surfaces that still
+hand-glued stats and so still loaded an interpreter (`ui/automationsui`, `ui/gearui`,
+`ui/equippedui`). It was the ratchet: **Oracle step 5 (#74) migrated those surfaces onto
+`oracle.stats()`/`setStats()`** (plus the augment-display passthrough), proven byte-identical
+by the golden harness (#72), and **emptied the allowlist**. From that slice on the rule is
+absolute: no feature/UI module requires `levelstats`/`geareffects`/`augments`, and GRD5e pins
+the allowlist at zero so a re-introduced exemption fails CI. Every guard carries a self-check
+proving its pattern is actually detectable — a guard that matches nothing is a false sense of
+security.
 
 ## Alternatives rejected
 
@@ -103,8 +107,8 @@ actually detectable — a guard that matches nothing is a false sense of securit
 ## Consequences
 
 - Any module can ask one door: `wornItem`, `equipBags`, `canWear`, `anyJobCanWear`,
-  `lookup`, and (after #74) `stats`/`setStats`. A future bag addition is one edit; a gate
-  rule lives in one place.
+  `lookup`, and (since #74) `stats`/`setStats` plus the set-membership and augment-display
+  passthroughs. A future bag addition is one edit; a gate rule lives in one place.
 - The retired duplicates were **deleted, not deprecated**, so copy-paste cannot resurrect
   them; the guards keep them from coming back under a new name.
 - The oracle and the Arbiter are two clean authorities an automation composes — "*could*

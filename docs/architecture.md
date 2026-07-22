@@ -70,7 +70,7 @@ engine cannot require them; it has its own minimal reads).
 | **Is there an entity named X nearby, and how far?** | `entwatch.watch(who, name[, cb])` then `entwatch.nearest(name)` / `.matches(name)`; `.poke(name)` = rescan | `lib/entwatch.lua` | THE central entity watcher — never write a local scan. It owns the idioms that cost three field rounds: GetName pads with whitespace (trim + ci), rendered bit 0x200 (signed-u32 fix) before trusting a distance, `GetRawEntity` (never the dead `GetEntity(i)`), the FULL 0x000-0x8FF range (custom NPCs are dynamic entities). Distances in yalms (squared on the wire). Callbacks fire on match-set changes incl. evictions; callback-less watches sleep 15 s after the last ask. Consumers: `eboxammo` (Ephemeral Box), `helmwatch` (the four "* Point" names while Auto HELM is armed). |
 | **How many of item id N do I own?** | `ownedcache.counts()` (equippable bags) / `.totals()` (anywhere) / `.verdict(rec)` | `gear/ownedcache.lua` | counts = what can actually be equipped/consumed NOW; totals includes storage (the red "stored" coloring everywhere in dlac). |
 | **What is this item?** (any item, owned or not) | `catalogindex.flat()` / `.rawById(id)` / `.rawIndex()` | `gear/catalogindex.lua` over `data/catalog.lua` | The catalog's `Slot` lies toward Body for unimplemented rows (`jobs==0` is the junk marker); `AmmoType` absent = trinket. |
-| **Any gear question** (worn item, equip bags, eligibility, identity) | `gearoracle.wornItem(slot)` → `{ id, rec, extra, item }` \| nil; `.equipBags()`; `.canWear(rec, job, level)`; `.anyJobCanWear(rec, jobLevels)`; `.lookup(idOrName)` | `gear/gearoracle.lua` | THE one door in the addon state (issues #70/#71, PRD #69; boundary rulings in **ADR 0013**). **FETCH:** the worn-item decode (packed Index → container/slot → item) + the ONE equip-bag list (Inventory + 8 Wardrobes); byte-identical engine TWINS (`dispatch.decodeEquipIndex` / `dispatch.AMMO_BAGS`, ADR 0002) held by the OR-section parity pins. `wornItem` hands the id back RAW (0/65535 included). **ELIGIBILITY:** `canWear` fronts the engine rule (`dispatch.canWear` — main job only, level on main); `anyJobCanWear` delegates to the addon-state gate (`gear/jobgate.canEquip`, fail-open). **IDENTITY:** `lookup` joins owned-first then catalog (id authoritative). **Claim-BLIND, permanently** — capability only, never permission (`canWear`, never `canEquip`); the Arbiter is the sole precedence authority. FACADE, not absorb: the interpreters keep their homes. **The door is LAW (#73):** the HARD RULE source guards (run_tests §GRD) confine the worn read, the packed-index decode, the equip-bag list and the 22-job list to their one home, and forbid feature/UI modules from requiring the stat interpreters — a temporary allowlist of the Phase-2 stat-glue surfaces is emptied by #74. |
+| **Any gear question** (worn item, equip bags, eligibility, identity, effective stats) | `gearoracle.wornItem(slot)` → `{ id, rec, extra, item }` \| nil; `.equipBags()`; `.canWear(rec, job, level)`; `.anyJobCanWear(rec, jobLevels)`; `.lookup(idOrName)`; `.stats(rec, ctx)`; `.setStats(comp, ctx)` | `gear/gearoracle.lua` | THE one door in the addon state (issues #70/#71, PRD #69; boundary rulings in **ADR 0013**). **FETCH:** the worn-item decode (packed Index → container/slot → item) + the ONE equip-bag list (Inventory + 8 Wardrobes); byte-identical engine TWINS (`dispatch.decodeEquipIndex` / `dispatch.AMMO_BAGS`, ADR 0002) held by the OR-section parity pins. `wornItem` hands the id back RAW (0/65535 included). **ELIGIBILITY:** `canWear` fronts the engine rule (`dispatch.canWear` — main job only, level on main); `anyJobCanWear` delegates to the addon-state gate (`gear/jobgate.canEquip`, fail-open). **IDENTITY:** `lookup` joins owned-first then catalog (id authoritative). **Claim-BLIND, permanently** — capability only, never permission (`canWear`, never `canEquip`); the Arbiter is the sole precedence authority. FACADE, not absorb: the interpreters keep their homes. **The door is LAW (#73):** the HARD RULE source guards (run_tests §GRD) confine the worn read, the packed-index decode, the equip-bag list and the 22-job list to their one home, and forbid feature/UI modules from requiring the stat interpreters — the Phase-2 stat-glue allowlist was **emptied by #74** (`stats`/`setStats` migration), so the rule is now absolute. |
 | **Where is this character's dlac state dir?** | `statefile.charDir()` | `lib/statefile.lua` | nil pre-login — retry, never cache the nil. (The seeded engine has its own `charDir()` inside dispatch.lua.) |
 | **This character's native MP pool?** | `nativemp.self([meritMP])` / `.get(race, mjob, mlvl, sjob, slvl)` | `data/nativemp.lua` | The server's formula verbatim; merits are NOT native — pass them in. Never calibrate against the on-screen max (traits/gear ride the display only). |
 | **Queue a chat/game command safely?** | `cmdqueue` | `lib/cmdqueue.lua` | Two same-frame QueueCommands arrive REVERSED in other states — this queue drains one per frame. Also: an addon state never hears its OWN queued commands back. |
@@ -381,7 +381,7 @@ mirror of `dispatch.serializeTriggers`' per-rule form (issue #65 forbids any eng
 the file, the identical-rule canonical form, and (slice 2) the shareable text render a rule ONE
 way. triggersui owns the file IO (the safewrite ladder) + the section render. Never seeded into LAC.
 
-### gear/gearoracle.lua — THE Gear Oracle: one door for gear questions (issues #70/#71, PRD #69)
+### gear/gearoracle.lua — THE Gear Oracle: one door for gear questions (issues #70/#71/#74, PRD #69)
 The single addon-state answer for every gear question. A **facade, not an absorb**: it
 fronts the proven interpreters (which keep their homes, tests and field-tuned behaviour),
 so no module re-states a rule and drifts. **Claim-BLIND, permanently** — every answer is
@@ -408,6 +408,21 @@ change now"); the Arbiter stays the sole precedence authority; method names use 
   surface that builds them (gearui, via `setLookupSource`) — the oracle can't flatten raw
   gear.lua itself because a Phase-2 owned record carries no stats until enrichment. gearui's
   `lookupById`/`lookupByName` are now thin adapters over this door.
+- **EFFECTIVE STATS (issue #74, the Phase-2 stat-glue migration).** **`stats(rec, ctx)`** —
+  effective item stats: the level-scaled resolver (`levelstats.effective` at `ctx.level`)
+  PLUS the private-augment fold (`ctx.augStats`, folded per Id, copy-on-write). ONE recipe,
+  replacing the hand-glue the manifest builders carried. **`setStats(comp, ctx)`** — the
+  full composition evaluation INCLUDING set bonuses, a THIN delegation to the reference
+  set-bonus evaluator (`geareffects.comboStats`, untouched). Plus the interpreter
+  passthroughs the Sets core + worn panel now read through the door instead of requiring the
+  interpreters: `setsOf`/`setInfo`/`setTier` (membership + tier ladders), `scales`/
+  `levelThresholds` (level-scaling introspection), and the augment reads (`augStats`/
+  `augLabels`/`wornAugStats`/`wornAugExtra`/`describeAugments`/`dumpAugments`). The migrated
+  callers — automationsui's MaxMP/HELM/fishing/craft manifest ladders, gearui's Sets-core
+  totals/hover/scoring, equippedui's worn-augment display — are proven byte-identical by the
+  golden harness (#72, smoke_ui §12). This **emptied the GRD5 stat-glue allowlist**
+  (`tests/run_tests.lua`): no feature/UI module requires `levelstats`/`geareffects`/`augments`
+  any more, and the source guard is now absolute.
 
 Addon-state only, **never seeded** — ADR 0002 keeps the engine's own byte-identical TWINS
 in dispatch.lua (`decodeEquipIndex` / `AMMO_BAGS`), and the OR-section parity pins in

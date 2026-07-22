@@ -23,7 +23,10 @@ local function try(name)
     return (ok and type(m) == 'table') and m or nil;
 end
 local imgui    = try('imgui');
-local aug      = try("dlac\\feature\\augments");
+-- Worn private-augment display goes through the Gear Oracle now (issue #74, PRD
+-- #69): this module asks gearOracle.wornAugExtra/describeAugments and never
+-- requires the augment decoder itself (the GRD5 rule is absolute since #74).
+local gearOracle = require("dlac\\gear\\gearoracle");
 local statdefs = try("dlac\\data\\statdefs");
 
 local S = host.services;
@@ -287,7 +290,7 @@ local function renderEquippedTab(job, level)
     local leftUsed = ui.showStats and (STATS_W + 8) or 0;
 
     if ui.showStats then
-        S.renderStatsPanel((aug ~= nil) and 'Worn totals (base+aug)' or 'Worn set totals', S.wornSetTotals());
+        S.renderStatsPanel(gearOracle.hasAugments() and 'Worn totals (base+aug)' or 'Worn set totals', S.wornSetTotals());
         imgui.SameLine();
     end
 
@@ -345,9 +348,9 @@ local function renderEquippedTab(job, level)
                 local ss = fmt.statSummary(rec, level);
                 if ss ~= '' then imgui.TextColored(COL.STATS, fmt.esc(ss)); end
             end
-            if aug ~= nil and slDef ~= nil then        -- private augments on the worn piece
-                local extra = aug.slotExtra(slDef.equip);
-                local ad = extra and aug.describe(extra) or '';
+            if gearOracle.hasAugments() and slDef ~= nil then  -- private augments on the worn piece
+                local extra = gearOracle.wornAugExtra(slDef.equip);
+                local ad = extra and gearOracle.describeAugments(extra) or '';
                 if ad ~= '' then imgui.TextColored(COL.SCORE, 'Aug: ' .. fmt.esc(ad)); end
             end
         else

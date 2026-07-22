@@ -7,6 +7,22 @@
         wornItem(equipSlot) -> { id, rec, extra, item } | nil   -- THE equipped-item resolution
         equipBags()         -> { 0, 8, 10, 11, 12, 13, 14, 15, 16 }  -- THE equip-eligible bag list
 
+    EFFECTIVE-STATS answers (issue #74, PRD #69 Phase 2) -- the combination recipes
+    the manifest builders hand-glued, now behind the one door (goldens byte-identical):
+        stats(record, ctx)  -> effective item stats: the level-scaled resolver
+                               (levelstats.effective at ctx.level) PLUS the private-
+                               augment fold (ctx.augStats). ONE recipe -- the MaxMP/
+                               HELM/fishing/craft ladders stop gluing it by hand.
+        setStats(comp, ctx) -> full composition evaluation INCLUDING set bonuses; a
+                               thin delegation to the reference set-bonus evaluator
+                               (gear/geareffects.comboStats), which stays untouched.
+    Plus the interpreter passthroughs the Sets core + worn panel read through the
+    door instead of requiring the interpreters directly (the GRD5 allowlist #74
+    empties): set membership (setsOf/setInfo/setTier), level-scaling introspection
+    (scales/levelThresholds) and the augment reads (augStats/augLabels/wornAugStats/
+    wornAugExtra/describeAugments/dumpAugments) -- ADR 0013's "augment description
+    passthrough". FACADE, not absorb: the interpreters keep their homes and tests.
+
     ELIGIBILITY + IDENTITY answers (issue #71) -- a FACADE, not an absorb (PRD #69):
     the proven interpreters keep their homes; the oracle is the one door that fronts
     them, so no module re-states the rule and drifts:
@@ -173,6 +189,147 @@ function M.lookup(idOrName)
         return (type(s.catalogByName) == 'function') and s.catalogByName(ln) or nil;
     end
     return nil;
+end
+
+-- ---------------------------------------------------------------------------
+-- EFFECTIVE STATS -- the combination recipes (issue #74, PRD #69 Phase 2).
+-- ---------------------------------------------------------------------------
+-- The stat interpreters the oracle fronts. Lazy + guarded exactly like recordFor
+-- / dispatchMod: the oracle must load with no heavyweight deps (gearimport sources
+-- EQUIP_BAGS from it at load time). Required FRESH each call, NEVER cached in an
+-- upvalue -- so a test that swaps package.loaded (the golden harness stubs the
+-- augment decoder) is honoured, and no interpreter is pulled in until a stat
+-- question is actually asked. ADR 0013 ruling 1 (facade, not absorb): the
+-- interpreters keep their homes, tests and field-tuned math; the oracle only joins
+-- level-scaling to the augment fold and fronts the set-bonus evaluator.
+local function interp(path)
+    local m = nil;
+    pcall(function() m = require(path); end);
+    return (type(m) == 'table') and m or nil;
+end
+local function levelstats()  return interp('dlac\\data\\levelstats');   end
+local function geareffects() return interp('dlac\\gear\\geareffects');  end
+local function augmod()      return interp('dlac\\feature\\augments');  end
+
+-- stats(rec, ctx): the effective item stats for THIS character right now -- the
+-- level-scaled resolver (levelstats.effective at ctx.level) PLUS the private-augment
+-- fold (ctx.augStats = { itemId -> { statKey -> delta } }, optional; folded per Id
+-- exactly like comboStats). ONE recipe, replacing the hand-glue the manifest builders
+-- carried. Copy-on-write (the levelstats.apply discipline: never mutate rec.Stats) --
+-- a FRESH table only when an augment delta actually lands, otherwise the resolver's
+-- own (zero-copy) return. Returns nil for a non-table rec, and the level-scaled base
+-- (possibly nil) when no augment applies -- each caller keeps its own type guard, so
+-- routing through the oracle is behaviour-identical to the glue it replaces.
+function M.stats(rec, ctx)
+    if type(rec) ~= 'table' then return nil; end
+    local level = (type(ctx) == 'table') and ctx.level or nil;
+    local ls = levelstats();
+    local base;
+    if ls ~= nil and type(ls.effective) == 'function' then
+        base = ls.effective(rec, level);
+    else
+        base = rec.Stats;
+    end
+    local augs = (type(ctx) == 'table' and type(ctx.augStats) == 'table') and ctx.augStats or nil;
+    local a = (augs ~= nil and rec.Id ~= nil) and augs[rec.Id] or nil;
+    if type(a) ~= 'table' then return base; end     -- zero-copy: nothing to fold
+    local out = {};
+    if type(base) == 'table' then
+        for k, v in pairs(base) do out[k] = v; end
+    end
+    for k, v in pairs(a) do
+        if type(v) == 'number' then out[k] = (out[k] or 0) + v; end
+    end
+    return out;
+end
+
+-- setStats(composition, ctx): the FULL composition evaluation -- every piece's
+-- effective stats summed, active set-bonus tiers folded, the caller's augment deltas
+-- applied (ctx.augStats). A THIN delegation to the set-bonus composition evaluator
+-- (gear/geareffects.comboStats), which stays THE reference interpreter, untouched.
+-- Returns geareffects' { stats = {...}, setBonuses = {...} } shape, or nil when the
+-- evaluator is unavailable (the caller keeps its pre-P1 per-item-sum fallback).
+function M.setStats(composition, ctx)
+    local g = geareffects();
+    if g == nil or type(g.comboStats) ~= 'function' then return nil; end
+    return g.comboStats(composition, ctx);
+end
+
+-- Presence predicates -- the door's answer to the load-time has.aug/lscale/gfx flags
+-- the UI kept when it required the interpreters itself.
+function M.hasLevelScaling() return levelstats() ~= nil; end
+function M.hasAugments()     return augmod() ~= nil; end
+function M.hasSetStats()
+    local g = geareffects();
+    return g ~= nil and type(g.comboStats) == 'function';
+end
+
+-- Level-scaling introspection (the Sets tab's "scales with level" markers +
+-- threshold ladders), fronting levelstats.has / levelstats.thresholds.
+function M.scales(itemId)
+    local ls = levelstats();
+    if ls == nil or type(ls.has) ~= 'function' then return false; end
+    return ls.has(itemId) == true;
+end
+function M.levelThresholds(itemId)
+    local ls = levelstats();
+    if ls == nil or type(ls.thresholds) ~= 'function' then return nil; end
+    return ls.thresholds(itemId);
+end
+
+-- Set membership (the optimizer seam opts.effects + the Sets/hover tier ladders),
+-- fronting geareffects.setsOf / setInfo / setTier. Behaviour-identical to the
+-- interpreter (nil when the set data is unavailable).
+function M.setsOf(itemId)
+    local g = geareffects();
+    if g == nil or type(g.setsOf) ~= 'function' then return nil; end
+    return g.setsOf(itemId);
+end
+function M.setInfo(setId)
+    local g = geareffects();
+    if g == nil or type(g.setInfo) ~= 'function' then return nil; end
+    return g.setInfo(setId);
+end
+function M.setTier(setId, count)
+    local g = geareffects();
+    if g == nil or type(g.setTier) ~= 'function' then return nil; end
+    return g.setTier(setId, count);
+end
+
+-- Augment passthroughs (ADR 0013's "augment description passthrough") -- the owned-
+-- copy stat map + label list, the worn totals, the per-slot worn Extra decode + its
+-- readable description, and the shareable dump. The decoder keeps its home
+-- (feature/augments); the oracle is the one door the UI asks so no surface re-requires
+-- it. Each is nil/no-op-safe when the decoder is unavailable (headless).
+function M.augStats()
+    local a = augmod();
+    if a == nil or type(a.ownedAugStats) ~= 'function' then return nil; end
+    return a.ownedAugStats();
+end
+function M.augLabels()
+    local a = augmod();
+    if a == nil or type(a.ownedAugments) ~= 'function' then return nil; end
+    return a.ownedAugments();
+end
+function M.wornAugStats()
+    local a = augmod();
+    if a == nil or type(a.wornStats) ~= 'function' then return nil; end
+    return a.wornStats();
+end
+function M.wornAugExtra(equipSlot)
+    local a = augmod();
+    if a == nil or type(a.slotExtra) ~= 'function' then return nil; end
+    return a.slotExtra(equipSlot);
+end
+function M.describeAugments(extra)
+    local a = augmod();
+    if a == nil or type(a.describe) ~= 'function' then return nil; end
+    return a.describe(extra);
+end
+function M.dumpAugments()
+    local a = augmod();
+    if a == nil or type(a.dumpToFile) ~= 'function' then return nil, nil, nil; end
+    return a.dumpToFile();
 end
 
 return M;
