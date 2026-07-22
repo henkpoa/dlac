@@ -358,16 +358,13 @@ end)();
     for _, n in ipairs(UI)      do FEATURE_UI[#FEATURE_UI + 1] = 'ui/' .. n .. '.lua'; end
     for _, n in ipairs(FEATURE) do FEATURE_UI[#FEATURE_UI + 1] = 'feature/' .. n .. '.lua'; end
 
-    -- THE TEMPORARY ALLOWLIST -- the Phase-2 stat-glue surfaces, emptied by Oracle
-    -- step 5 (issue #74). Each entry is a feature/UI module that still hand-glues
-    -- level-scaled / augment / set-bonus stats and so still loads an interpreter; #74
-    -- migrates it onto oracle.stats()/setStats() and deletes its line here. When this
-    -- table is {}, the rule is absolute.
-    local STATGLUE_ALLOWLIST = {
-        ['ui/automationsui.lua'] = true,   -- #74: MaxMP/HELM/fishing/craft manifest ladders (levelstats + augments)
-        ['ui/gearui.lua']        = true,   -- #74: Sets-core stat totals/hover/scoring (levelstats + geareffects + augments)
-        ['ui/equippedui.lua']    = true,   -- #74: Equipped/All-Equipment worn-augment display (augments)
-    };
+    -- THE ALLOWLIST -- EMPTIED by Oracle step 5 (issue #74). The Phase-2 stat-glue
+    -- surfaces (automationsui manifest ladders, gearui Sets-core totals/hover/scoring,
+    -- equippedui worn-augment display) were migrated onto oracle.stats()/setStats()
+    -- plus the augment passthrough, so NO feature/UI module loads an interpreter any
+    -- more. The table is now {} and the rule is ABSOLUTE: a new interpreter require in
+    -- feature/ or ui/ is a CI failure, no exemptions. It must stay empty.
+    local STATGLUE_ALLOWLIST = {};
     check('GRD5 stat interpreters (levelstats/geareffects/augments) not loaded outside the allowlist',
           offendersOf(loadsInterp, STATGLUE_ALLOWLIST, FEATURE_UI), '');
     check('GRD5a self-check: an interpreter load is detectable',
@@ -378,12 +375,12 @@ end)();
           loadsInterp('local o = require("dlac\\\\gear\\\\gearoracle")'), false);
     check('GRD5d self-check: the catalog index is a standing service, not policed here',
           loadsInterp('local c = require("dlac\\\\gear\\\\catalogindex")'), false);
-    -- The allowlist is TEMPORARY and must shrink, never grow. Pin its exact membership
-    -- so adding a new stat-glue exemption is a deliberate, reviewed edit (and so #74
-    -- can assert it reaches {} on completion).
+    -- The allowlist is EMPTY and must STAY empty (issue #74 finishing move): a
+    -- non-zero count is a re-introduced stat-glue exemption and fails here, so the
+    -- door stays absolute.
     local allowN = 0;
     for _ in pairs(STATGLUE_ALLOWLIST) do allowN = allowN + 1; end
-    check('GRD5e allowlist is exactly the three known Phase-2 stat-glue surfaces', allowN, 3);
+    check('GRD5e allowlist is EMPTY -- the door is absolute (issue #74)', allowN, 0);
     check('GRD5f every allowlist entry is a real, scanned module', (function()
         for path in pairs(STATGLUE_ALLOWLIST) do
             if STRIPPED[path] == nil then return path; end   -- a stale name would silently widen the rule

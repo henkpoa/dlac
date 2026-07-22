@@ -19,12 +19,15 @@ local M = {};
 
 local _iok, imgui = pcall(require, 'imgui');
 local _dpok, dsp  = pcall(require, "dlac\\dispatch");
-local _lsok, lscale = pcall(require, "dlac\\data\\levelstats");
+-- THE Gear Oracle: effective item stats (level-scaled + augment fold) via
+-- oracle.stats -- the ONE recipe the manifest ladders below read (issue #74, PRD
+-- #69). The interpreters (levelstats/augments) keep their homes; this module asks
+-- the door, never requires them (the GRD5 rule, now absolute).
+local gearOracle  = require("dlac\\gear\\gearoracle");
 local _nmok, nmp  = pcall(require, "dlac\\data\\nativemp");
 local _gmok, gmode = pcall(require, "dlac\\feature\\gamemode");
 local hasImgui    = _iok and imgui ~= nil;
 local hasDispatch = _dpok and type(dsp) == 'table';
-local hasLScale   = _lsok and type(lscale) == 'table';
 local hasNmp      = _nmok and type(nmp) == 'table';
 local hasGmode    = _gmok and type(gmode) == 'table';
 
@@ -244,34 +247,25 @@ local function autoCommit()
         if type(deps.ownedList) ~= 'function' then return; end
         local counts = (type(deps.ownedCounts) == 'function') and deps.ownedCounts() or nil;
         local lvl = mainLevel();
-        -- Augment deltas from the player's ACTUAL bag copies (fmtver 12) --
-        -- the same decoder the set scoring uses. Headless / no augments =
-        -- nil, every delta reads 0.
-        local augStats = nil;
-        pcall(function()
-            local aug = require('dlac\\feature\\augments');
-            if type(aug.ownedAugStats) == 'function' then augStats = aug.ownedAugStats(); end
-        end);
+        -- Augment deltas from the player's ACTUAL bag copies (fmtver 12), asked of
+        -- the oracle (which fronts the same decoder the set scoring uses). Headless /
+        -- no augments = nil; the oracle folds each rec's deltas into oracle.stats below.
+        local augStats = gearOracle.augStats();
         local bySlot = {};   -- gear-slot key -> candidates { name, mp, level, rf }
         for _, rec in ipairs(deps.ownedList() or {}) do
-            -- LEVEL-EFFECTIVE stats via THE central resolver (levelstats.effective):
-            -- Tamas Ring is MP 15 on paper but 29 at Lv74. Values are a snapshot at
-            -- scan-time level; the constant auto-rescans keep them fresh.
-            local st = (hasLScale and type(lscale.effective) == 'function')
-                and lscale.effective(rec, lvl) or rec.Stats;
+            -- EFFECTIVE stats via THE Gear Oracle (issue #74): the level-scaled
+            -- resolver PLUS this copy's private-augment fold, in one recipe. Tamas
+            -- Ring is MP 15 on paper but 29 at Lv74; Cleric's Bliaut +1 folds its
+            -- Refresh 1 native + 1 augmented = 2. Values are a snapshot at scan-time
+            -- level; the constant auto-rescans keep them fresh.
+            local st = gearOracle.stats(rec, { level = lvl, augStats = augStats });
             if type(st) ~= 'table' then st = nil; end
-            -- Augment deltas for THIS record's owned copy (fmtver 12): MP and
-            -- Refresh from the player's private augments count exactly like
-            -- native stats (field: Cleric's Bliaut +1 = Refresh 1 native + 1
-            -- augmented = 2).
-            local as = (augStats ~= nil and rec.Id ~= nil) and augStats[rec.Id] or nil;
-            local augMP = (as ~= nil) and (tonumber(as.MP) or 0) or 0;
-            local augRf = (as ~= nil) and (tonumber(as.Refresh) or 0) or 0;
             -- Refresh map (fmtver 11): EVERY owned piece with Refresh, MP or not
             -- -- the band builder compares battery refresh against the potency
             -- piece's ("Refresh > least mp diff": refresh pieces release LAST
-            -- and return FIRST -- mp recovery is key).
-            local rfv = ((st ~= nil) and (tonumber(st.Refresh) or 0) or 0) + augRf;
+            -- and return FIRST -- mp recovery is key). Augment Refresh is already
+            -- folded into st by the oracle.
+            local rfv = (st ~= nil) and (tonumber(st.Refresh) or 0) or 0;
             if rfv > 0 and rec.Name ~= nil then
                 local rk = string.lower(rec.Name);
                 if (rf[rk] or 0) < rfv then rf[rk] = rfv; end
@@ -285,7 +279,8 @@ local function autoCommit()
                 if (mv[mk] or 0) < mvv then mv[mk] = mvv; end
             end
             -- Convert counts: 25 HP -> MP is +25 max MP for this mode's purposes.
-            local v = ((st ~= nil) and ((tonumber(st.MP) or 0) + (tonumber(st.ConvertHPtoMP) or 0)) or 0) + augMP;
+            -- Augment MP is already folded into st.MP by the oracle.
+            local v = (st ~= nil) and ((tonumber(st.MP) or 0) + (tonumber(st.ConvertHPtoMP) or 0)) or 0;
             if v > 0 and rec.Name ~= nil then
                 local k = string.lower(rec.Name);
                 if (mp[k] or 0) < v then mp[k] = v; end   -- hold map: unfiltered (worn = legal)
@@ -426,8 +421,7 @@ local function autoCommit()
         local CLADDER = 3;
         local bySlot = {};   -- slotKey -> craft -> goal -> { {name, score, level}, ... }
         for _, rec in ipairs(deps.ownedList() or {}) do
-            local st = (hasLScale and type(lscale.effective) == 'function')
-                and lscale.effective(rec, lvl) or rec.Stats;
+            local st = gearOracle.stats(rec, { level = lvl });
             local sl = tostring(rec.Slot or '');
             if type(st) == 'table' and rec.Name ~= nil and sl ~= ''
                and (not hasDispatch or type(dsp.canWear) ~= 'function' or dsp.canWear(rec, job, 99))
@@ -522,8 +516,7 @@ local function autoCommit()
         local HLADDER = 4;
         local bySlot = {};   -- slot -> { {name, score, level, helm, surv}, ... }
         for _, rec in ipairs(deps.ownedList() or {}) do
-            local st = (hasLScale and type(lscale.effective) == 'function')
-                and lscale.effective(rec, lvl) or rec.Stats;
+            local st = gearOracle.stats(rec, { level = lvl });
             local sl = tostring(rec.Slot or '');
             if type(st) == 'table' and rec.Name ~= nil and sl ~= ''
                and (not hasDispatch or type(dsp.canWear) ~= 'function' or dsp.canWear(rec, job, 99))
@@ -553,7 +546,7 @@ local function autoCommit()
                              Logging = 'Lumberjacks Beret', Mining = 'Miners Helmet' }) do
             local rec = usableRec(nm, job);
             if rec ~= nil and (type(deps.haveInBags) ~= 'function' or deps.haveInBags(rec)) then
-                local st = type(rec.Stats) == 'table' and rec.Stats or {};
+                local st = gearOracle.stats(rec, { level = lvl }) or {};
                 helmHats[g] = { name = rec.Name, level = rec.Level or 0,
                                 surv = tonumber(st.Surveyor) or 0 };
             end
@@ -576,8 +569,7 @@ local function autoCommit()
         local counts = (type(deps.ownedCounts) == 'function') and deps.ownedCounts() or nil;
         local bySlot = {};
         for _, rec in ipairs(deps.ownedList() or {}) do
-            local st = (hasLScale and type(lscale.effective) == 'function')
-                and lscale.effective(rec, lvl) or rec.Stats;
+            local st = gearOracle.stats(rec, { level = lvl });
             local sl = tostring(rec.Slot or '');
             if type(st) == 'table' and rec.Name ~= nil and sl ~= ''
                and sl ~= 'Range' and sl ~= 'Ammo'

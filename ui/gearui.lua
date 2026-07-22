@@ -59,13 +59,11 @@ local ci = require("dlac\\gear\\catalogindex");
 local gearOracle = require("dlac\\gear\\gearoracle");
 -- Dynamic-set writer (commit/delete a set into the <JOB>.lua file). Sets tab only.
 local setmgr = try("dlac\\gear\\setmanager");
--- Augment reader: decode private augments from item Extra bytes (worn-stat totals).
-local aug = try("dlac\\feature\\augments");
--- Level-scaling stats (Rajas/Tamas/Sattva etc.): effective stats per level.
-local lscale = try("dlac\\data\\levelstats");
--- Gear-set bonuses (conditional-effects P1/P3): membership, tier ladders, and
--- THE whole-composition evaluator (comboStats) behind totals and hover.
-local gfx = try("dlac\\gear\\geareffects");
+-- Stat interpreters -- augments (worn-stat totals), level-scaling (effective
+-- stats per level) and gear-set bonuses (membership, tier ladders, THE whole-
+-- composition evaluator) -- are ALL fronted by the Gear Oracle now (issue #74,
+-- PRD #69): this module asks gearOracle.stats/setStats/setsOf/augStats/... and
+-- never requires the interpreters itself (the GRD5 rule is absolute since #74).
 -- Owned-gear record rules (Type heal, enrichment precedence) -- one home, REC*.
 local grec = try("dlac\\gear\\gearrecord");
 -- Window theme (partyfinder-matched palette), pushed around the whole draw.
@@ -86,16 +84,16 @@ local has = {
     optim    = optim ~= nil,
     catalog  = ci.available(),
     setmgr   = setmgr ~= nil,
-    aug      = aug ~= nil,
-    lscale   = lscale ~= nil,
-    gfx      = gfx ~= nil and type(gfx.comboStats) == 'function',
+    aug      = gearOracle.hasAugments(),
+    lscale   = gearOracle.hasLevelScaling(),
+    gfx      = gearOracle.hasSetStats(),
 };
--- Effective stats of a record at a level -- delegates to THE central resolver
--- (levelstats.effective) so every section values scaling items identically.
+-- Effective stats of a record at a level -- delegates to THE Gear Oracle
+-- (oracle.stats, level-scaled via levelstats.effective; no augStats here, so the
+-- fold is left to candidateStats) so every section values scaling items identically.
 local function effStats(rec, level)
     if rec == nil then return nil; end
-    if not has.lscale or type(lscale.effective) ~= 'function' then return rec.Stats; end
-    return lscale.effective(rec, level);
+    return gearOracle.stats(rec, { level = level });
 end
 
 local M = {};
@@ -424,7 +422,7 @@ end
 local setLabelCache = {};
 local function setLabelOf(setId)
     if setLabelCache[setId] ~= nil then return setLabelCache[setId]; end
-    local e = (gfx ~= nil and type(gfx.setInfo) == 'function') and gfx.setInfo(setId) or nil;
+    local e = gearOracle.setInfo(setId);
     if e == nil then return 'set #' .. tostring(setId); end
     local names, resolved = {}, true;
     for i, pid in ipairs(e.pieces) do
@@ -541,7 +539,7 @@ local _ownedAugStats = nil;
 local function ownedAugStatsMap()
     if _ownedAugStats ~= nil then return _ownedAugStats; end
     local m = {};
-    if has.aug then pcall(function() m = aug.ownedAugStats() or {}; end); end
+    if has.aug then pcall(function() m = gearOracle.augStats() or {}; end); end
     _ownedAugStats = m;
     return _ownedAugStats;
 end
@@ -639,7 +637,7 @@ local function wornSetTotals()
     end
     local bonuses = nil;
     if has.gfx then
-        local ok, res = pcall(gfx.comboStats, comp, { level = _wlvl });
+        local ok, res = pcall(gearOracle.setStats, comp, { level = _wlvl });
         if ok and type(res) == 'table' and type(res.stats) == 'table' then
             for k, v in pairs(res.stats) do
                 if k ~= 'DMG' and k ~= 'Delay' then totals[k] = v; end
@@ -661,7 +659,7 @@ local function wornSetTotals()
     end
     -- Fold in live augment deltas so worn totals reflect base + your private augments.
     if has.aug then
-        local ok, augTotals = pcall(aug.wornStats);
+        local ok, augTotals = pcall(gearOracle.wornAugStats);
         if ok and type(augTotals) == 'table' then
             for k, v in pairs(augTotals) do
                 if k ~= 'DMG' and k ~= 'Delay' then totals[k] = (totals[k] or 0) + v; end
@@ -764,7 +762,7 @@ end
 local function ownedAugMap()
     if _ownedAug ~= nil then return _ownedAug; end
     local m = {};
-    if has.aug then pcall(function() m = aug.ownedAugments() or {}; end); end
+    if has.aug then pcall(function() m = gearOracle.augLabels() or {}; end); end
     _ownedAug = m;
     return _ownedAug;
 end
@@ -934,7 +932,7 @@ local function renderItemTooltip(rec)
         if typeStr ~= nil then imgui.TextColored(COL.DIM, '(' .. fmt.esc(tostring(typeStr)) .. ')'); end
         local _, _lvl = getPlayerInfo();
         local stats = effStats(rec, _lvl);
-        if has.lscale and rec.Id ~= nil and lscale.has(rec.Id) then
+        if has.lscale and rec.Id ~= nil and gearOracle.scales(rec.Id) then
             imgui.TextColored(COL.DIM, string.format('(scales with level -- shown for Lv%d)', _lvl or 0));
         end
         if type(stats) == 'table' and type(stats.DMG) == 'number' and type(stats.Delay) == 'number' then
@@ -948,13 +946,13 @@ local function renderItemTooltip(rec)
         -- Gear-set membership: the bonus tier ladder + the partner pieces, so an
         -- item's set potential reads off the item itself. * marks pieces you own
         -- (anywhere). Multi-set items show one block per set.
-        if has.gfx and rec.Id ~= nil and type(gfx.setsOf) == 'function' then
-            local sids = gfx.setsOf(rec.Id);
+        if has.gfx and rec.Id ~= nil then
+            local sids = gearOracle.setsOf(rec.Id);
             if sids ~= nil then
                 local tot = owned.totals();
                 if type(tot) ~= 'table' then tot = {}; end
                 for _, sid in ipairs(sids) do
-                    local e = gfx.setInfo(sid);
+                    local e = gearOracle.setInfo(sid);
                     if e ~= nil then
                         local ownedN = 0;
                         for _, pid in ipairs(e.pieces) do
@@ -1046,7 +1044,7 @@ end
 local _augStatus = nil;
 local function dumpAugs()
     if not has.aug then _augStatus = 'Augment reader unavailable.'; return; end
-    local ok, path, count, unk = pcall(aug.dumpToFile);
+    local ok, path, count, unk = pcall(gearOracle.dumpAugments);
     if ok and path ~= nil then
         _augStatus = string.format('Wrote %d augmented items to %s', count or 0, tostring(path));
         if unk ~= nil and #unk > 0 then
@@ -2494,7 +2492,7 @@ local function workingSetTotals(mainLevel)
     local totals = {};
     local comp = workingComposition(mainLevel);
     if has.gfx then
-        local ok, res = pcall(gfx.comboStats, comp,
+        local ok, res = pcall(gearOracle.setStats, comp,
             { level = mainLevel, augStats = ownedAugStatsMap() });
         if ok and type(res) == 'table' and type(res.stats) == 'table' then
             for k, v in pairs(res.stats) do
@@ -2524,7 +2522,7 @@ end
 local function workingWeightedScore(mainLevel)
     local comp = workingComposition(mainLevel);
     if has.gfx then
-        local ok, res = pcall(gfx.comboStats, comp,
+        local ok, res = pcall(gearOracle.setStats, comp,
             { level = mainLevel, augStats = ownedAugStatsMap() });
         if ok and type(res) == 'table' and type(res.stats) == 'table' then
             return scoreOf(res.stats);
@@ -2686,7 +2684,7 @@ local function autoBuild(job, level)
     -- optimizer counts set pieces across its assignment and folds active tier
     -- bonuses into the capped objective, with seeded restarts so a pair whose
     -- pieces are individually worthless still gets found.
-    local fx = has.gfx and { setsOf = gfx.setsOf, setTier = gfx.setTier } or nil;
+    local fx = has.gfx and { setsOf = gearOracle.setsOf, setTier = gearOracle.setTier } or nil;
     if has.optim and type(optim.optimizePicks) == 'function' and weightsActive() then
         local op = {};
         for label, cands in pairs(pools) do
@@ -2744,8 +2742,7 @@ local function autoBuild(job, level)
                 ds[#ds + 1] = { ref = r, score = scoreOfItem(r, useLevel), level = r.Level or 0,
                                 copies = (r.Id ~= nil) and (oc[r.Id] or 0) or 1,
                                 id = r.Id, name = r.Name,
-                                breaks = (has.lscale and type(lscale.thresholds) == 'function')
-                                     and lscale.thresholds(r.Id) or nil };
+                                breaks = has.lscale and gearOracle.levelThresholds(r.Id) or nil };
             end
             local pins = {};
             if jointPick ~= nil then
@@ -2862,8 +2859,7 @@ local function autoBuild(job, level)
                     local litems = {};
                     for _, r in ipairs(cands) do
                         litems[#litems + 1] = { ref = r, level = r.Level or 0,
-                            breaks = (has.lscale and type(lscale.thresholds) == 'function')
-                                 and lscale.thresholds(r.Id) or nil };
+                            breaks = has.lscale and gearOracle.levelThresholds(r.Id) or nil };
                     end
                     local okl, lad = pcall(optim.levelLadder, litems, {
                         cap = useLevel,

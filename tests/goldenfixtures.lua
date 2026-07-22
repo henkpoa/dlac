@@ -3,19 +3,21 @@
 -- ===========================================================================
 -- THE safety gate for the Phase 2 stat-glue migration. PRD #69 splits the Gear
 -- Oracle into two phases: Phase 1 (step 1, #70) moved the mechanical fetch layer
--- behind one door; Phase 2 (step 5, still BLOCKED) will migrate the manifest
--- builders that today hand-glue "effective stats = level-scaled stats + augment
--- fold" onto a shared oracle.stats() recipe. PRD phasing decision: "Phase 2 must
--- not begin until [the field] rounds clear ... migration is proven byte-identical,
--- not assumed."
+-- behind one door; Phase 2 (step 5, #74 -- SHIPPED) migrated the manifest builders
+-- that hand-glued "effective stats = level-scaled stats + augment fold" onto the
+-- shared oracle.stats()/setStats() recipe. PRD phasing decision: "Phase 2 must not
+-- begin until [the field] rounds clear ... migration is proven byte-identical, not
+-- assumed."
 --
--- This module captures the EXACT current output of every stat-glue builder from a
--- set of deterministic, synthetic, headless fixtures (no live client) -- the same
--- fixture style tests/smoke_ui.lua section 9 already uses. The captured strings
--- are committed as goldens under tests/golden/. A suite test (smoke_ui section 12)
--- asserts the builders reproduce those goldens BYTE-IDENTICALLY. When the Phase 2
--- migration lands, the SAME fixtures must produce the SAME goldens -- so a later
--- field failure can never be misattributed to the migration.
+-- This module captures the EXACT output of every stat-glue builder from a set of
+-- deterministic, synthetic, headless fixtures (no live client) -- the same fixture
+-- style tests/smoke_ui.lua section 9 already uses. The captured strings are
+-- committed as goldens under tests/golden/. A suite test (smoke_ui section 12)
+-- asserts the builders reproduce those goldens BYTE-IDENTICALLY. The #74 migration
+-- routed the SAME fixtures through the oracle and produced the SAME goldens -- so a
+-- later field failure can never be misattributed to the migration. The gate STAYS:
+-- any future stat-glue change must keep these goldens byte-identical or justify the
+-- diff.
 --
 -- The builders captured (issue #72):
 --   * the MaxMP battery ladder derivation -- MP / Refresh / Convert batteries,
