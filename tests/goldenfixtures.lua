@@ -171,9 +171,12 @@ local function captureManifest()
 
     local sep = package.config:sub(1, 1);
     local root = 'tests' .. sep .. 'tmp_golden' .. sep;
-    if sep == '\\' then os.execute('mkdir "tests\\tmp_golden" >nul 2>&1');
+    -- autoPath appends the literal 'dlac\autogear.lua'. On Linux that is ONE
+    -- filename (backslash inside the name); on Windows the same string is a
+    -- subpath, so the dlac\ directory must exist or the write silently fails.
+    if sep == '\\' then os.execute('mkdir "tests\\tmp_golden\\dlac" >nul 2>&1');
     else os.execute('mkdir -p "tests/tmp_golden" >/dev/null 2>&1'); end
-    local mpath = root .. 'dlac\\autogear.lua';   -- literal filename (matches autoPath)
+    local mpath = root .. 'dlac\\autogear.lua';   -- matches autoPath verbatim
     os.remove(mpath);
 
     local byName, byId, counts = {}, {}, {};
@@ -212,7 +215,9 @@ local function captureManifest()
     local text = f and f:read('*a') or nil;
     if f then f:close(); end
     os.remove(mpath);
-    if sep == '\\' then os.execute('rmdir "tests\\tmp_golden" >nul 2>&1');
+    -- Windows: the tree is tmp_golden\dlac\ (two levels), so /s /q; the file is
+    -- already removed, so this only ever deletes the empty scaffold dirs.
+    if sep == '\\' then os.execute('rmdir /s /q "tests\\tmp_golden" >nul 2>&1');
     else os.execute('rmdir "tests/tmp_golden" >/dev/null 2>&1'); end
 
     if text == nil then return nil; end
