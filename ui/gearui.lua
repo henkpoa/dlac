@@ -55,6 +55,8 @@ local optim = try("dlac\\gear\\gearoptim");
 -- load, the raw id index and the flattened browse records all live THERE now --
 -- one walker for every consumer. Powers the All Equipment tab + item lookups.
 local ci = require("dlac\\gear\\catalogindex");
+-- THE equipped-item resolution (packed-index decode) + equip-bag list (issue #70).
+local gearOracle = require("dlac\\gear\\gearoracle");
 -- Dynamic-set writer (commit/delete a set into the <JOB>.lua file). Sets tab only.
 local setmgr = try("dlac\\gear\\setmanager");
 -- Augment reader: decode private augments from item Extra bytes (worn-stat totals).
@@ -384,23 +386,14 @@ local function jobHeader()
     return s;
 end
 
--- Equipped item id for an equipment slot (equipmon's method), or nil.
+-- Equipped item id for an equipment slot (equipmon's method), or nil. The
+-- packed-index decode lives in gearoracle (issue #70) -- this is just the id guard.
 local function getEquippedId(equipSlot)
-    local id = nil;
-    pcall(function()
-        local inv = AshitaCore:GetMemoryManager():GetInventory();
-        if inv == nil then return; end
-        local eitem = inv:GetEquippedItem(equipSlot);
-        if eitem == nil or eitem.Index == 0 then return; end
-        local cont = bit.band(eitem.Index, 0xFF00) / 0x0100;
-        local slotInCont = eitem.Index % 0x0100;
-        local iitem = inv:GetContainerItem(cont, slotInCont);
-        if iitem == nil then return; end
-        local iid = iitem.Id;
-        if iid == nil or iid == 0 or iid == 65535 then return; end
-        id = iid;
-    end);
-    return id;
+    local w = gearOracle.wornItem(equipSlot);
+    if w == nil then return nil; end
+    local iid = w.id;
+    if iid == nil or iid == 0 or iid == 65535 then return nil; end
+    return iid;
 end
 
 -- Clean display name: prefer our data (gear.lua/catalog), fall back to the resource.

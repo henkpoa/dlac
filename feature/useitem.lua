@@ -46,6 +46,8 @@
 local _cfok, _cfmt = pcall(require, 'dlac\\chatfmt');
 local print = (_cfok and type(_cfmt) == 'table' and type(_cfmt.print) == 'function') and _cfmt.print or print;
 local _stok, struct = pcall(require, 'struct');
+-- THE equipped-item resolution + equip-bag list (issue #70).
+local oracle = require('dlac\\gear\\gearoracle');
 
 local M = {};
 
@@ -185,12 +187,11 @@ local function readiness(def)
     if not _stok then return nil; end
     local rem = nil;
     pcall(function()
-        local inv = AshitaCore:GetMemoryManager():GetInventory();
-        local eitem = inv:GetEquippedItem(SLOT_ID[def.slot]);
-        if eitem == nil or eitem.Index == 0 then return; end
-        local cont = math.floor(eitem.Index / 256) % 256;
-        local slotInCont = eitem.Index % 256;
-        local item = inv:GetContainerItem(cont, slotInCont);
+        -- Packed-index decode lives in gearoracle (issue #70); we read the worn
+        -- item's charge timestamps (Extra) + Flags below.
+        local w = oracle.wornItem(SLOT_ID[def.slot]);
+        if w == nil then return; end
+        local item = w.item;
         if item == nil or item.Id == nil or item.Id == 0 then return; end
         local res = AshitaCore:GetResourceManager():GetItemById(item.Id);
         local nm = res ~= nil and res.Name ~= nil and res.Name[1] or nil;
@@ -370,8 +371,9 @@ function M.menuNames() return WANTED; end
 
 -- Containers the game lets you EQUIP from (inventory + wardrobes); anything
 -- else is owned-but-stored -- the menu paints it red, as everywhere in dlac.
-local EQUIP_BAGS = { [0] = true, [8] = true, [10] = true, [11] = true, [12] = true,
-                     [13] = true, [14] = true, [15] = true, [16] = true };
+-- The list is the oracle's (issue #70); we index it as a set for the lookup below.
+local EQUIP_BAGS = {};
+for _, cid in ipairs(oracle.equipBags()) do EQUIP_BAGS[cid] = true; end
 local BAG_NAMES = { [0] = 'Inventory', [1] = 'Mog Safe', [2] = 'Storage', [3] = 'Temporary',
                     [4] = 'Mog Locker', [5] = 'Satchel', [6] = 'Sack', [7] = 'Case',
                     [8] = 'Wardrobe', [9] = 'Mog Safe 2', [10] = 'Wardrobe 2', [11] = 'Wardrobe 3',

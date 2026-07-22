@@ -20,6 +20,10 @@
 
 local M = {};
 
+-- THE equipped-item resolution + equip-bag list (issue #70): the packed-index
+-- decode and the scan-container list are the oracle's, not ours.
+local oracle = require('dlac\\gear\\gearoracle');
+
 -- augment id -> gear.lua stat key(s) it grants (each at the augment's magnitude).
 local AUG_STATS = {
     [1]   = {'HP'},     [9]   = {'MP'},     [17]  = {'HP','MP'},
@@ -228,21 +232,10 @@ function M.isAugmented(extra)
 end
 
 -- The Extra byte-string of the item worn in equipment slot 0-15, or nil.
--- GetEquippedItem returns a PACKED Index (high byte = container, low byte = slot),
--- matching gearui's getEquippedId -- there is no separate .Slot field in this build.
+-- The packed-index decode lives in gearoracle (issue #70) -- we just want Extra.
 function M.slotExtra(equipSlot)
-    local extra = nil;
-    pcall(function()
-        local inv = AshitaCore:GetMemoryManager():GetInventory();
-        if inv == nil then return; end
-        local eitem = inv:GetEquippedItem(equipSlot);
-        if eitem == nil or eitem.Index == 0 then return; end
-        local cont       = math.floor(eitem.Index / 256) % 256;   -- high byte = container
-        local slotInCont = eitem.Index % 256;                     -- low byte  = slot in container
-        local item = inv:GetContainerItem(cont, slotInCont);
-        if item ~= nil then extra = item.Extra; end
-    end);
-    return extra;
+    local w = oracle.wornItem(equipSlot);
+    return w and w.extra or nil;
 end
 
 -- Summed augment stat deltas across all 16 worn slots: { statKey = delta }.
@@ -260,8 +253,8 @@ end
 -- ---------------------------------------------------------------------------
 -- Bag scanning: owned augments per item + a shareable dump file.
 -- ---------------------------------------------------------------------------
--- Equip-eligible containers (Inventory + the 8 Wardrobes), matching gearimport.
-local SCAN_CONTAINERS = { 0, 8, 10, 11, 12, 13, 14, 15, 16 };
+-- Equip-eligible containers (Inventory + the 8 Wardrobes) -- the oracle's list.
+local SCAN_CONTAINERS = oracle.equipBags();
 
 local function hexOf(extra)
     if type(extra) ~= 'string' then return ''; end
