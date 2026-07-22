@@ -1,0 +1,4 @@
+# Golden-output fixtures (issue #72): committed byte-for-byte. Never let git's
+# autocrlf rewrite their line endings on Windows checkout, or the byte-identical
+# assertion (smoke_ui section 12) would fail against a CRLF-mangled copy.
+tests/golden/*.golden -text

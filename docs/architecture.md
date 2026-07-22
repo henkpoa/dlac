@@ -495,6 +495,25 @@ B isDualWieldAvailable, C BuildDynamicSets, D-E computePrune/computeFixes,
 F analyzeShims/repairShimsText.
 Run from the addon root: `& "$env:LOCALAPPDATA\Programs\Lua\bin\lua.exe" tests\run_tests.lua`
 
+### tests/goldenfixtures.lua + tests/golden/ — the Phase 2 golden-output gate (issue #72)
+**THE safety gate for the Gear Oracle Phase 2 stat-glue migration** (PRD #69, step 5).
+`goldenfixtures.lua` builds one deterministic, synthetic, headless BLM character and
+captures the EXACT output of every stat-glue manifest builder — the MaxMP battery ladder
+(MP / Refresh / Convert batteries, the movement map, **and the augment fold**), the HELM
+ladders + hat map, the fishing ladders, the fishcalc **rod-ranking gear reads**
+(`rodsFor`/`bestOwnedRod`, `wornFishTotal`, `gearScore`), and the per-craft owned-gear
+walk. The fixtures cover the interesting cases the PRD names: **level-scaling** items
+valued at the character's level (Tamas Ring, catalog id 15545: MP 15 base → 29 at Lv74),
+**augment-fold** copies (Hlr./Clr. Bliaut +1), and **one item across multiple ladders**
+(Survey Sash → MaxMP + HELM + fishing). The captured strings are the builders' own output
+verbatim — only the manifest's `written` clock stamp is normalized — committed under
+`tests/golden/*.golden` (pinned `-text` in `.gitattributes` so Windows autocrlf can't
+mangle them). **smoke_ui section 12 asserts the builders reproduce the goldens
+BYTE-IDENTICALLY**, so when Phase 2 migrates the builders onto `oracle.stats()` the same
+fixtures must produce the same goldens — a later field failure can never be misattributed
+to the migration. Regenerate ONLY after an intentional builder/format change (review the
+diff): `lua5.4 tests/gen_goldens.lua`.
+
 ### tools/ — maintainer scripts (gitignored, not shipped)
 `apicrawl.py` builds catalog.lua; `gen_levelscaling.py` builds levelscaling.lua;
 `gen_pickerdb.py` builds spells/abilities; `modifier_map.lua` = modid→stat map;

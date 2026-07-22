@@ -1024,6 +1024,53 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- 12. GOLDEN-OUTPUT HARNESS (issue #72 / PRD #69 Phase 2 gate). THE safety gate
+--     for the coming stat-glue migration (Oracle step 5): capture every manifest
+--     stat-glue builder's EXACT output -- the MaxMP battery ladder (incl. the
+--     augment fold), the HELM ladders, the fishing ladders + the fishcalc rod-
+--     ranking reads, and the per-craft owned-gear walk -- from deterministic
+--     synthetic fixtures, and assert it reproduces the committed goldens
+--     BYTE-IDENTICALLY. When Phase 2 lands, the same fixtures must produce the
+--     same goldens, so a later field failure can never be misattributed to the
+--     migration. The fixtures + capture live in tests/goldenfixtures.lua; the
+--     goldens in tests/golden/; (re)generate with `lua5.4 tests/gen_goldens.lua`.
+-- ---------------------------------------------------------------------------
+(function()
+    local ok, fixtures = pcall(dofile, 'tests/goldenfixtures.lua');
+    check('S220 golden harness loads', ok and type(fixtures) == 'table', true);
+    if not ok then print('  goldenfixtures error: ' .. tostring(fixtures)); return; end
+
+    local goldens = fixtures.capture();
+    for _, name in ipairs({ 'autogear.golden', 'fishcalc.golden' }) do
+        local got = goldens[name];
+        check('S221 ' .. name .. ' captured (builder ran headless)', type(got), 'string');
+        local f = io.open(fixtures.pathFor(name), 'rb');
+        check('S222 ' .. name .. ' golden is committed', f ~= nil, true);
+        if f ~= nil and type(got) == 'string' then
+            local want = f:read('*a'); f:close();
+            local same = (got == want);
+            check('S223 ' .. name .. ' reproduced byte-identically', same, true);
+            if not same then
+                -- Name the first differing line so the failure has an address.
+                local gl, wl = {}, {};
+                for line in (got .. '\n'):gmatch('([^\n]*)\n') do gl[#gl + 1] = line; end
+                for line in (want .. '\n'):gmatch('([^\n]*)\n') do wl[#wl + 1] = line; end
+                for i = 1, math.max(#gl, #wl) do
+                    if gl[i] ~= wl[i] then
+                        print(string.format('  %s: first diff at line %d', name, i));
+                        print('    committed: ' .. tostring(wl[i]));
+                        print('    captured : ' .. tostring(gl[i]));
+                        break;
+                    end
+                end
+                print('  A stat-glue builder output MOVED. Phase 2 must be byte-identical --');
+                print('  if this change is intentional, run: lua5.4 tests/gen_goldens.lua (review the diff).');
+            end
+        end
+    end
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures > 0 then
