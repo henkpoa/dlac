@@ -369,9 +369,15 @@ M._hasLook = hasLook;   -- test seam
 -- set builder's Sub pool (gearui subCandidatePool + the A-series HARD RULE):
 -- every shield, grip AND 1H weapon is offered, with no Dual Wield or pairing
 -- gate -- the player composes, the server decides what renders (and the engine
--- apply already warns per piece). 2H/H2H stay out: OneHanded ~= true, never
--- Sub-capable anywhere in dlac.
-local function is1H(rec) return rec.OneHanded == true; end
+-- apply already warns per piece). 2H/H2H stay out -- but NOT via the flag
+-- alone: the catalog wrongly stamps H2H OneHanded=true (apicrawl ONE-set bug,
+-- 2026-07-22), so H2H is refused by Type, exactly like utils.subSlotAllowed's
+-- isH2H (normalized 'HandToHand' / legacy 'Hand-to-Hand').
+local function is1H(rec)
+    if rec.OneHanded ~= true then return false; end
+    local t = type(rec.Type) == 'string' and string.lower((rec.Type:gsub('%W', ''))) or '';
+    return t ~= 'handtohand' and t ~= 'h2h';
+end
 
 local function listFor(slot, q, all, jobLevels)
     local out = {};
