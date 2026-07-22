@@ -20,8 +20,10 @@
 
     The equip-time ENGINE still never loads the catalog (by design: gear.lua
     stamps carry what it needs -- ADR 0006/0010); this module is addon-state.
-    gearexport.catalogIndex keeps its injected pure form (tests pass fixture
-    catalogs through it); its production caller can migrate later if it earns it.
+    gearexport's private catalog walk is RETIRED (issue #71): its production
+    export routes the id-index through rawIndex() here, so exactly one catalog
+    nested walk remains in the codebase (its Z-tests inject a pre-built byId map
+    into buildExport directly, so nothing there re-walks either).
     Pure at load (catalog required lazily under pcall) -- headless tests CI*.
 ]]--
 

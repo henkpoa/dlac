@@ -3970,3 +3970,54 @@ can never be misattributed to the refactor. This slice builds the proof harness.
 db injected through the `_setDb` test seam (restored after) so the ranking never depends on
 the shipped `fishdb.lua`. Merge-adjacent with step 1 in the test registry (both grew the
 suites). Full headless suite green: 2268 run_tests + 225 smoke_ui, Ubuntu lua5.4 CI parity.
+
+## Gear Oracle step 2: eligibility + identity through the oracle (2026-07-22, PRD #69, engine untouched)
+
+**Theme:** Phase 1's second slice (#71). Step 1 (#70) moved the mechanical FETCH layer
+(worn-item decode, equip-bag list) behind the oracle; this slice moves the ELIGIBILITY and
+IDENTITY questions the same way, and deletes the private re-statements that were the whole
+point — the "no job list means wearable" rule existed inline in two places besides the
+central one, exactly the deduction drift the oracle ends.
+
+**Three questions get their one door (facade, not absorb — the interpreters keep their homes):**
+- **`canWear(rec, job, level)`** — main-job/level equip gate. DELEGATES to the engine
+  module's addon-visible rule (`dispatch.canWear`: main job only — sub never widens,
+  field-verified — level on main). The two inline fallbacks are DELETED: gearoptim's
+  `jobAllowed` (its own `All`/job loop) and gearui's `jobCanEquip`/`isUsable` fallback (its
+  own `#jobs == 0 -> wearable` restatement). Both now call `oracle.canWear`; gearui's
+  `has.dsp` flag went with them (`_dsp` stays only for `virtualMinLevel`). gearoptim keeps
+  its own "unknown job → don't job-filter, level still gates" (canWear would reject a
+  restricted piece against an empty job — not that tool's intent).
+- **`anyJobCanWear(rec, jobLevels)`** — the any-job-at-current-level gate (the lockstyle
+  rule, the server's `canEquipItemOnAnyJob`). DELEGATES to the existing addon-state gate
+  module (`gear/jobgate.canEquip`), which keeps its home, tests and FAIL-OPEN semantics.
+  lockstyle's two gate calls (`gateOk`, `_boxBadPiece`) migrated to the door; jobgate stays
+  required there for its live level READER (`jobgate.levels()`), which the oracle does not
+  front. The nil-jobLevels fail-open stays the CALLER's (lockstyle short-circuits on a nil
+  levels read) — the door copies no logic and fabricates none; only a missing gate MODULE
+  fails open inside `anyJobCanWear`.
+- **`lookup(idOrName)`** — "what is this item": the owned-record + catalog-record join
+  (owned first, then the full catalog; id authoritative, name the case-insensitive
+  fallback), moved out of its UI-local home. The JOIN recipe lives in the oracle now;
+  gearui's `lookupById`/`lookupByName` are thin adapters over it. **The trap:** the oracle
+  can't just flatten raw `gear.lua` itself — a Phase-2 owned record carries no stats until
+  gearui's enrichment pass mutates the shared table, so the oracle takes the enriched,
+  flattened indexes through `setLookupSource` (READ-ONLY accessors that never trigger a
+  build — the render paths own when the flatten happens, exactly the old pair's lazy-read
+  semantics; a first cut that forced `buildOwned()` inside the accessor early-cached the
+  owned table and broke smoke_ui S19, the apostrophe-bridge test that adds gear AFTER load).
+
+**Also this slice:** the exporter's duplicate catalog nested walk is retired
+(`gearexport.catalogIndex` deleted); `M.export` routes its id-index through
+`catalogindex.rawIndex()`, so exactly ONE catalog nested walk remains in the codebase (the
+acknowledged tech-debt cleanup from architecture.md; the Z-tests inject a pre-built byId map
+into `buildExport` directly, so nothing there re-walks either).
+
+**Claim-blind, permanently:** every answer is a CAPABILITY (could this character use it),
+never permission (may this slot change now — the Arbiter's word). Method names use
+could-words (`canWear`), never may-words; OR29 pins that the oracle exposes no `canEquip`
+door. Behaviour-identical by construction — no engine change, no seeded-file behaviour, no
+`dispatch.M.VERSION` bump; only the addon `version` date-bumped (`2026.07.22b`). Tests:
+OR14–OR29 (canWear vs `dispatch.canWear`, anyJobCanWear vs `jobgate.canEquip`, the lookup
+join, the claim-blind boundary). Full headless suite green: 2293 run_tests + 225 smoke_ui,
+Ubuntu lua5.4 CI parity.

@@ -80,7 +80,7 @@ local useit = (function()
 end)();
 
 -- Capability flags in ONE table (each was its own local; the 200-cap again).
--- has.dsp / has.statdefs are assigned where those modules load, further down.
+-- has.statdefs is assigned where that module loads, further down.
 local has = {
     imgui    = imgui ~= nil,
     optim    = optim ~= nil,
@@ -267,20 +267,24 @@ end
 pcall(enrichGearFromCatalog);   -- eager: gearui loads last, so raw gear is stat-ready before any use
 
 -- Resolve an item to a record (for tooltips / worn-set stats): owned first, then
--- the full catalog. Id is authoritative; name is the fallback.
-local function lookupById(id)
-    if id == nil then return nil; end
-    if _ownedById   and _ownedById[id]   then return _ownedById[id];   end
-    if _allEquipById and _allEquipById[id] then return _allEquipById[id]; end
-    return nil;
-end
-local function lookupByName(name)
-    if name == nil then return nil; end
-    local ln = string.lower(name);
-    if _ownedByName   and _ownedByName[ln]   then return _ownedByName[ln];   end
-    if _allEquipByName and _allEquipByName[ln] then return _allEquipByName[ln]; end
-    return nil;
-end
+-- the full catalog. Id is authoritative; name is the fallback. THE join recipe now
+-- lives in the Gear Oracle (issue #71) -- gearui owns only the enriched indexes and
+-- hands the oracle four accessors; lookupById/lookupByName are thin adapters over the
+-- one door (kept because ~15 sites + the deps table spell the pair). Registered once
+-- at load, the closures capture the lazy _owned*/_allEquip* upvalues buildOwned /
+-- buildAllEquip fill (enriched BEFORE the flatten -- the reason the oracle can't just
+-- flatten raw gear.lua itself: a Phase-2 owned record carries no stats until enrich).
+-- READ-ONLY accessors (they never trigger a build -- exactly the old lookup pair's
+-- semantics: the render paths own when _owned/_allEquip get flattened; a lookup only
+-- reads whatever is built, so this migration adds no eager flatten).
+gearOracle.setLookupSource({
+    ownedById     = function(id) return _ownedById     and _ownedById[id]      or nil; end,
+    ownedByName   = function(ln) return _ownedByName   and _ownedByName[ln]    or nil; end,
+    catalogById   = function(id) return _allEquipById  and _allEquipById[id]   or nil; end,
+    catalogByName = function(ln) return _allEquipByName and _allEquipByName[ln] or nil; end,
+});
+local function lookupById(id)   return gearOracle.lookup(id);   end
+local function lookupByName(name) return gearOracle.lookup(name); end
 
 -- ---------------------------------------------------------------------------
 -- Small display / eligibility helpers. The display formatters (esc/truncate/
@@ -325,26 +329,16 @@ local function getSubInfo()
     return sj, slv;
 end
 
--- Equip legality now lives in ONE place: dispatch.jobCanEquip / dispatch.canWear
--- (main job only, level gated on main level -- field-verified on CatsEyeXI:
--- RDM/WHM cannot wear Hlr. Bliaut +1). These wrappers delegate; the inline
--- fallback keeps the GUI usable if dispatch ever fails to load.
+-- Equip legality lives in ONE place: the Gear Oracle's canWear (issue #71), which
+-- fronts the engine module's addon-visible rule (dispatch.canWear -- main job only,
+-- level gated on main level; field-verified on CatsEyeXI: RDM/WHM cannot wear Hlr.
+-- Bliaut +1). The old inline fallback is DELETED: a private re-statement of "no job
+-- list means wearable" is the exact deduction drift issue #71 ends. `_dsp` stays only
+-- for virtualMinLevel (further down); wearability never touches it directly.
 local _dsp = try("dlac\\dispatch");
-has.dsp = _dsp ~= nil and type(_dsp.jobCanEquip) == 'function';
-
-local function jobCanEquip(jobs, playerJob)
-    if has.dsp then return _dsp.jobCanEquip(jobs, playerJob); end
-    if jobs == nil or type(jobs) ~= 'table' or #jobs == 0 then return true; end
-    for _, j in ipairs(jobs) do
-        if j == 'All' or (playerJob ~= nil and playerJob ~= '' and j == playerJob) then return true; end
-    end
-    return false;
-end
 
 local function isUsable(rec, playerJob, playerLevel)
-    if has.dsp then return _dsp.canWear(rec, playerJob, playerLevel); end
-    if (rec.Level or 0) > (playerLevel or 0) then return false; end
-    return jobCanEquip(rec.Jobs, playerJob);
+    return gearOracle.canWear(rec, playerJob, playerLevel);
 end
 
 -- ---------------------------------------------------------------------------
