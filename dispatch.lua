@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 113;  -- 113: the maxmp boot-cache guard (native field round 2, the self-healing glimpse). Henrik saw the refresh body released FIRST right after boarding v112, then the order corrected itself with no code change: the LOW map had computed -- and CACHED for its 10s TTL -- an answer from before the tick's identity latch populated M._nativeSets, so every named set was invisible and lowRf/rfDelta sorted the bands wrong until the TTL lapsed. The cache no longer latches a result computed while the native store is absent (serve once, recompute next consult). LAC-state behavior untouched (the guard is not-inLac-gated).
+M.VERSION = 114;  -- 114: THE READINESS GATE (native field round 3 -- Henrik's plan captures + his spec made law). His two /dl plan screenshots proved the boot glimpse exactly: seconds after a reload the ladder rendered with every low 0, every refresh tag gone (pure diff+alphabetical order, Bliaut dead last) and a PHANTOM ammo band (Talon Tathlum's diff stopped reading 0) -- then self-corrected. Cause family: mpBands built eagerly during the boot storm from whichever input lost its race (trigger rules resolving, the store's first flatten, per-second identity caches), and the 10s LOW-map TTL amplified one bad glimpse (v113's store-only guard missed every variant where the store existed but another input didn't). The law, Henrik's own framing: the band ORDER is a PURE FUNCTION of manifest + sets + rules -- three deterministic files -- and current MP only picks the position on the ladder. So mpBands now refuses to build until the world is attested: mpLowMap returns a READY flag (trigger world resolved -- rules loaded OR path resolved with the file legitimately absent -- AND a sets source present), unready results are never cached, and native mode additionally requires the store to hold at least one flattened set. Unready = nil = the live overlay holds worn gear and /dl plan says it is warming up. LAC mode is ready from the first dispatch (gProfile + rules precede any dispatch), so nothing changes there. Enable timing now provably cannot change the order -- only the per-session warm-up (offset at first true-full, measured ticks) remains, and persisting those is the standing offer.
+                  -- 113: the maxmp boot-cache guard (native field round 2, the self-healing glimpse). Henrik saw the refresh body released FIRST right after boarding v112, then the order corrected itself with no code change: the LOW map had computed -- and CACHED for its 10s TTL -- an answer from before the tick's identity latch populated M._nativeSets, so every named set was invisible and lowRf/rfDelta sorted the bands wrong until the TTL lapsed. The cache no longer latches a result computed while the native store is absent (serve once, recompute next consult). LAC-state behavior untouched (the guard is not-inLac-gated).
                   -- 112: NATIVE FIELD ROUND 1 -- maxmp made whole (Henrik, 07-23 evening: "maxMP acting super weird" in native mode; the automation with the deepest LAC-state plumbing had exactly two native holes + one adjacent). (1) The banded ladder's OBSERVER (v88: measured MP ticks "fed by the 0.4s engine tick") only ran in the LAC tail the native branch returns before -- no observations, no measured tick, nonsense hysteresis; the native Default drive now feeds _mpb.observe identically (same zoning gate, same placement). (2) mpLowMap read gProfile.Sets DIRECTLY (predates the M._nativeSets seam), so every named set's potency point was invisible natively -- the LOW map saw only inline equips and the band thresholds were fiction; it now falls back to the native store like equipSetByName does. (3) The '/dl mode' flip re-flatten had the same direct read -- mode-gated entries natively stayed stale until a level/subjob change; now the native store re-flattens on the flip too.
                   -- 111: THE NATIVE BACKEND (feature/native-engine step 5). The addon-state copy of this module -- inert since v1 -- becomes the ACTIVE engine when the native flag is armed: engineActive() widens every inLac() gate that is an ENGINE concern (dispatch entry, the machinery block, mode state, the tick, the command surface, the /dl prio + plan printers), while LAC-BRIDGE machinery stays inLac()-pinned (self-swap, handoff/request files, the HandleEquipEvent wrap, lockstyle engine halves -- the #80 move owns native lockstyle). One equip seam: engineEquipSet routes resolved sets to gFunc.EquipSet (LAC) or equipengine's buffer (native). The gProfile gap closes with M._nativeSets -- the native sets store: readSetsSource + installSets install the active profile's job sets into it (the tick's NATIVE identity latch reloads on job/profile change), utils.rebuildSets re-flattens it on the shim's own cadence (every Default + modesRev), equipSetByName/ammoPlannedByHits/lock-set consult it after gProfile. The native Default drive rides the same tick with the same zoning guards. Flag off = byte-identical LAC-state behavior (twins parity pinned).
                   -- 110: THE STORAGE-HOME SEAM (feature/native-engine step 1). charDir() now resolves through profiles.dataDir() -- the one mode-aware storage authority -- so when the native-engine flag (config\addons\dlac\engine.lua) is on, the engine's mode state / trigger reads / debug handoffs all live under dlac's OWN config root (config\addons\dlac\<char>\) instead of piggybacking on LuaAshitacast's tree. Flag off (the default, and the shipped state until the native engine lands) = byte-identical path behavior. The inline composition stays as the no-profiles fallback.
@@ -1559,7 +1560,7 @@ end
 -- recovers, before the pool is full, so recovery ticks land in headroom).
 function M.mpPlanLines(mpCtx, wornOf)
     if mpCtx == nil or type(mpCtx.bands) ~= 'table' then
-        return { 'maxmp plan: no battery data yet -- open the Automations tab (the manifest self-heals) or relog.' };
+        return { 'maxmp plan: no battery data yet -- right after a reload this means the world is still loading (ask again in a few seconds); otherwise open the Automations tab (the manifest self-heals) or relog.' };
     end
     local lines = {};
     lines[1] = string.format('maxmp band plan -- MP %s of %s (every battery worn), recovery tick %s%s. Spending releases TOP-DOWN at off<=; recovery re-equips BOTTOM-UP at on>= (early on purpose: the next tick lands in the headroom).',
@@ -1728,9 +1729,11 @@ end
 -- and trigger edits are picked up within a beat, no invalidation plumbing.
 local _mpLow = { at = 0, map = nil, rf = nil };
 local function mpLowMap(mpMap, rfMap)
-    if _mpLow.map ~= nil and os.time() < _mpLow.at then return _mpLow.map, _mpLow.rf; end
+    -- cache hits are always READY results (unready is never cached below)
+    if _mpLow.map ~= nil and os.time() < _mpLow.at then return _mpLow.map, _mpLow.rf, true; end
     _mpLow.at = os.time() + 10;
     local low, lowRf = {}, {};
+    local _mpLowReady = false;
     local function scanSet(set)
         if type(set) ~= 'table' then return; end
         for slot, v in pairs(set) do
@@ -1772,6 +1775,10 @@ local function mpLowMap(mpMap, rfMap)
         -- ladder fired at nonsense thresholds (Henrik's first native field
         -- round: "maxMP acting super weird").
         if sets == nil then sets = M._nativeSets; end
+        -- ready = the trigger WORLD resolved (rules loaded, or the path
+        -- resolved and the file is legitimately absent -- a trigger-less job
+        -- is ready with empty rules) AND a sets source existed.
+        _mpLowReady = ((rules ~= nil or _trig.path ~= nil) and sets ~= nil);
         for _, list in pairs(rules or {}) do
             for _, r in ipairs(list) do
                 if r.equip ~= nil then scanSet(r.equip); end
@@ -1781,18 +1788,19 @@ local function mpLowMap(mpMap, rfMap)
             end
         end
     end);
-    -- NATIVE boot guard (v113): a result computed BEFORE the native sets
-    -- store exists (the tick's identity latch hasn't fired yet -- the first
-    -- seconds after /addon reload) must not poison the 10s cache: the LOW/
-    -- lowRf maps would miss every named set and the band order reads wrong
-    -- until the TTL expires (Henrik's field glimpse: refresh body released
-    -- first, self-healed a minute later). Serve the partial answer once,
-    -- but recompute on the next consult.
-    if not inLac() and M._nativeSets == nil then
+    -- READINESS (v114, replacing v113's store-only guard -- Henrik's field
+    -- round 3 plan captures + his spec: the band ORDER is a pure function of
+    -- manifest + sets + rules, three deterministic files, so a ladder must
+    -- never be built from a world that has not finished loading). The scan is
+    -- ready only when the trigger rules resolved AND a sets source existed.
+    -- An unready result is served to THIS caller (who gates on the flag) but
+    -- never cached -- the boot-window glimpse (all lows 0, refresh tags gone,
+    -- a phantom ammo band) can no longer be amplified by the 10s TTL.
+    if not _mpLowReady then
         _mpLow.at = 0;
     end
     _mpLow.map, _mpLow.rf = low, lowRf;
-    return low, lowRf;
+    return low, lowRf, _mpLowReady;
 end
 
 -- Every wearable, non-pair-vetoed rung of a slot's battery ladder (v90) --
@@ -1842,7 +1850,25 @@ function M.mpBands(ctx)
     local rfMap = (type(a.rf) == 'table') and a.rf or {};
     local cur, maxLo, full = playerMP();
     local lvl = playerLevel(ctx or {});
-    local low, lowRf = mpLowMap(mpMap, rfMap);
+    local low, lowRf, lowReady = mpLowMap(mpMap, rfMap);
+    -- READINESS GATE (v114): no ladder from a half-loaded world -- the order
+    -- is a pure function of manifest + sets + rules (Henrik's spec), so until
+    -- all three are attested this answers nil: the live overlay holds worn
+    -- gear untouched and /dl plan says it is warming up. Native boot needs a
+    -- second: the identity latch installs sets on the first tick; LAC mode is
+    -- ready from the first dispatch (gProfile + rules load before any
+    -- dispatch runs), so this gate never fires there.
+    if not lowReady then return nil; end
+    if not inLac() then
+        local s = M._nativeSets;
+        local any = false;
+        if type(s) == 'table' then
+            for k in pairs(s) do
+                if k ~= 'Dynamic' then any = true; break; end
+            end
+        end
+        if not any then return nil; end   -- store present but no flattened sets yet
+    end
     local resting = false;
     pcall(function()
         local st = (ctx ~= nil and ctx.player ~= nil) and ctx.player.Status or gData.GetPlayer().Status;
