@@ -201,6 +201,24 @@ agent; the per-repo setup lives in `docs/agents/`.
 
 ## Current state (as of 2026-07-22)
 
+- **THE NATIVE ENGINE — dlac absorbing LuaAshitacast (07-23, branch
+  `feature/native-engine`, BUILT + suite-green, NOT field-tested).** The whole
+  LAC dependency behind one default-OFF flag (`config\addons\dlac\engine.lua`):
+  `gear/equipcore` (pure resolver + 0x050/0x051 builders, LAC-parity, EQC*),
+  `feature/equipengine` (the block→Precast→re-inject→Midcast timing service,
+  0x028 completion/interrupts/pet stream, coexistence tripwire, EQE*/NEB*),
+  `feature/nativedata` (LAC-parity gData providers incl. sig-scan weather/
+  vanatime), dispatch v111 (`engineActive()` widens the engine gates; the
+  native sets store `M._nativeSets`; LAC-bridge machinery stays inLac-pinned),
+  and the storage move (`profiles.dataDir()` — dlac's own config root
+  `config\addons\dlac\<char>\` with copy-only auto-migration). Board it:
+  `/dl engine native on` → `/addon unload luashitacast` → `/addon reload dlac`.
+  Flag off = byte-identical legacy behavior (2648 checks green both platforms).
+  Read **architecture.md § The Native engine** — incl. the v1 gaps list
+  (lockstyle stays LAC-pinned until #80 lands; monitor stream; augment string
+  pins). FIELD ROUNDS PENDING: precast/midcast ordering under lag, resends,
+  interrupts, ranged, items — budget 6–12 rounds before this merges.
+
 - **THE GEAR ORACLE — one door for every gear question (07-22, PRD #69, COMPLETE,
   PRs #75–#79).** `gear/gearoracle.lua` is the single sanctioned door in the addon
   state: `wornItem` / `equipBags` / `canWear` / `anyJobCanWear` / `lookup` /

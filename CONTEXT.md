@@ -20,7 +20,20 @@ _Avoid_: level-scaling set, scaling set
 The plain slot→item table produced from a Dynamic Set by `rebuildSets` — what LuaAshitacast actually equips.
 
 **Handler**:
-One of LuaAshitacast's profile event functions (`HandleDefault`, `HandlePrecast`, `HandleMidcast`, `HandleAbility`, `HandleItem`, `HandleWeaponskill`, ...). dlac's dispatch shim runs at the end of each.
+One of LuaAshitacast's profile event functions (`HandleDefault`, `HandlePrecast`, `HandleMidcast`, `HandleAbility`, `HandleItem`, `HandleWeaponskill`, ...). dlac's dispatch shim runs at the end of each. Under the Native engine the same handler names are dispatch points fired by dlac's own action pipeline — the vocabulary is engine-independent.
+
+**Native engine**:
+dlac's own equip pipeline (`feature/equipengine` + `gear/equipcore`) replacing LuaAshitacast entirely: it blocks outgoing action packets, fires Precast, re-injects, fires Midcast, and sends the 0x050/0x051 equip packets itself. Armed by the **Engine flag**; mutually exclusive with a loaded LuaAshitacast (the **Tripwire** disarms on contact). LAC-parity by construction: same set semantics, same timing formulas.
+_Avoid_: standalone mode, LAC-less mode
+
+**Engine flag**:
+`config\addons\dlac\engine.lua` (`return { native = true }`) — the ONE install-wide switch both Lua states read (throttled) deciding which engine equips and where storage lives. Written by `/dl engine native on|off`; a broken flag file reads as OFF (the battle-tested LAC path is the failure mode).
+
+**Storage home**:
+Where a character's dlac data lives. Legacy home: inside LuaAshitacast's config tree (`config\addons\luashitacast\<char>\dlac\`). Native home: dlac's own root (`config\addons\dlac\<char>\`, no extra `dlac\` level). `profiles.dataDir()` / `charRoot()` / `storageRoot()` are the only composers; the flip auto-migrates by COPY (legacy files never move, so flipping back finds everything).
+
+**Tripwire**:
+equipengine's coexistence guard: every packet it injects is fingerprinted; a foreign injected action packet matching a fresh fingerprint means another engine (LuaAshitacast) re-emitted it — interception disarms for the session, loudly. Two engines both blocking action packets is a feedback hazard; the tripwire makes the failure mode a chat line instead.
 
 **Trigger**:
 A data rule connecting a game condition to gear: *when* (matcher on the current action / player state) → *action* (a set name, or an inline slot→item payload), evaluated by the dispatch engine inside a Handler.

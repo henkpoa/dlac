@@ -694,6 +694,7 @@ Registered across six handlers; each blocks only its own subcommands.
 | `/dl dw` | utils | Dual Wield trait-bit probe |
 | `/dl recalc` / `test` / `reload` (`r`) | utils | Rebuild sets / probe / reload LAC |
 | `/dl gearcheck` | gearcheck | Trigger-gear availability audit |
+| `/dl engine [native on\|off \| migrate]` | feature/engine | The Native-engine flip: status / flag + storage migration (see § The Native engine) |
 | `/dlmv` | gearmove | (branch-only) gate/version diagnostic |
 
 ## Per-character state vs repo
@@ -723,3 +724,74 @@ Per-character, under `<install>\config\addons\luashitacast\<Char>_<ServerId>\`
 
 The old pre-dlac profile code lives at `<char>\ffxi-lac\` (reference only — the origin of
 the "builder is a plan" pairing semantics).
+
+## The Native engine (feature/native-engine)
+
+dlac absorbing LuaAshitacast: the addon equips gear itself — LAC becomes
+optional, then removable. Behind the **Engine flag**
+(`config\addons\dlac\engine.lua`, `return { native = true }`; broken file
+reads OFF). Flag off = byte-identical legacy behavior, pinned by the whole
+test suite.
+
+### The module trio
+
+| Module | Role |
+|---|---|
+| `gear/equipcore.lua` | PURE equip pipeline: entry normalization (LAC `MakeItemTable` parity), the set resolver against an injectable snapshot (worn-view reserve semantics, first-fit bag scan, job/level/slot-bit/bag/augment gates, priority order, conflict unequips), 0x050/0x051 byte builders. Tests EQC*. |
+| `feature/equipengine.lua` | The TIMING SERVICE (LAC packethandlers port): block outgoing 0x01A/0x037 → fire Precast → re-inject → fire Midcast; completion timers (LAC formulas + defaults); incoming 0x028 completion/interrupt + pet stream (fires `PetAction` at action START); 0x1B encumbrance; resend dedup; the coexistence TRIPWIRE. Pure half tested EQE*. `ACTION_ROUTES` is the dispatch-point table — **a future dispatch point is one new row (or one `fireEvent` call site); trigger files just carry the new handler name.** |
+| `feature/nativedata.lua` | LAC-parity gData providers for the addon state (player/action/pet/environment/equipment/augment; vanatime+weather sig-scans). Installed as the gData shim by dlac.lua — the old zero-stub is now the fallback. |
+
+`dispatch.lua` (v111) is the same engine in both worlds: `engineActive()` =
+LAC state, or the native-armed addon state. One equip seam
+(`engineEquipSet`) routes resolved sets to `gFunc.EquipSet` or the
+equipengine buffer. `M._nativeSets` is the `gProfile.Sets` equivalent —
+the tick's native identity latch installs the active profile's job sets on
+job/profile change and `utils.rebuildSets` re-flattens on the shim's own
+cadence. LAC-BRIDGE machinery stays `inLac()`-pinned: self-swap, seeding,
+handoff/request files, the HandleEquipEvent wrap, lockstyle engine halves
+(native lockstyle is the #80 addon-residency move's territory).
+
+### Storage homes
+
+`profiles.dataDir()` / `charRoot()` / `storageRoot()` / `charDataDirAt()`
+are the ONLY path composers (statefile delegates; every module swept).
+Legacy home: `config\addons\luashitacast\<char>\dlac\`. Native home:
+`config\addons\dlac\<char>\` (no extra `dlac\` level; backups at
+`<char>\backups\`; exports at `config\addons\dlac\dlac-exports\`, with the
+legacy exports dir still READ so shared files never vanish). The flip
+migrates by COPY — `profiles.engineMigrateStorage` (idempotent,
+byte-verified, existing native files win) runs from `/dl engine native on`
+and auto-runs per character on first login after the flip
+(`engineAutoMigrate`, two file probes when settled). Legacy files never
+move: flipping back finds everything where it was.
+
+### The flip, and coexistence
+
+```
+/dl engine            status (mode, storage home, migration, tripwire)
+/dl engine native on  migrate + flag; then /addon unload luashitacast + /addon reload dlac
+/dl engine native off flag off; then /addon load luashitacast + /addon reload dlac
+/dl engine migrate    re-run the storage copy by hand
+```
+
+Native mode requires LAC unloaded. equipengine refuses to arm inside LAC's
+Lua state (NEB2), and the tripwire disarms interception for the session if
+a foreign engine re-injects one of our fingerprinted action packets —
+the failure mode of "forgot to unload LAC" is a loud chat line, not a
+feedback loop.
+
+### Native-mode gaps (deliberate, v1)
+
+- **Lockstyle**: pinned to LAC mode until the #80 addon-residency move
+  lands (`/dl ls apply` + `debug ls` engine halves return silently native).
+- **Trigger Monitor stream**: the `/dlacmonev` command-bus hop is inert
+  natively (self-queued commands are never heard — the Ashita law); the
+  monitor repopulates when the ring gains a direct native feed.
+- **`/dl check` / `/dl debug`**: diagnose the two-state bridge, which
+  native mode dissolves; they still print their addon halves. A
+  native-aware readout wants its own field round.
+- **Augment string pins** (`Augment = 'STR+5'` entries): the header pins
+  (AugPath/AugRank/AugTrial) resolve natively; per-stat strings need the
+  richer augment table wiring (`equipengine.augmentStringsOf`) — until
+  then such pins never match, which is the SAFE direction (a wrong-augment
+  piece is never equipped).
