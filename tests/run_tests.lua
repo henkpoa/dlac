@@ -2814,6 +2814,135 @@ if type(dispatchM._lockstylePacket) == 'function' then
 end
 
 -- ---------------------------------------------------------------------------
+-- LAP. lockstyleapply (issue #81, PRD #80) -- the ADDON-state lockstyle
+--      executor the GUI Apply button injects through DIRECTLY (no command bus,
+--      no request file, the Engine uninvolved). Its pure core is relocated from
+--      the Engine BYTE-FOR-BYTE: these tests pin the new module's _lockstyleFrom
+--      / _lockstylePacket against the Engine's surviving copy (dispatchM) -- the
+--      AG-suite parity the acceptance criteria demand, so the two produce the
+--      identical 0x053 until phase 2 deletes the Engine's. The live apply() is
+--      driven headlessly through its injectable deps seam: it predicts the
+--      server's silent gates (job gate through the Gear Oracle door; weapon
+--      category from the Addon state's own worn reads) with the Engine's chat
+--      wording VERBATIM, injects, and stamps a sender-side send witness.
+-- ---------------------------------------------------------------------------
+(function()
+    -- Stub the Gear Oracle so the job-gate path (oracle.anyJobCanWear, captured
+    -- at load) is exercisable headlessly: 'Bad Piece' fails the gate, else pass.
+    local savedOracle = package.loaded['dlac\\gear\\gearoracle'];
+    package.loaded['dlac\\gear\\gearoracle'] = {
+        anyJobCanWear = function(rec, _) return type(rec) ~= 'table' or rec.Name ~= 'Bad Piece'; end,
+        wornItem = function() return nil; end,
+    };
+    local lap = dofile('feature/lockstyleapply.lua');
+    package.loaded['dlac\\gear\\gearoracle'] = savedOracle;
+
+    check('LAP0 module loads', type(lap), 'table');
+    check('LAP1 _lockstyleFrom exported', type(lap._lockstyleFrom), 'function');
+    check('LAP2 _lockstylePacket exported', type(lap._lockstylePacket), 'function');
+
+    -- _lockstyleFrom parity vs the Engine (lsT is the AG fixture above).
+    local la1, lan1, lab1 = lap._lockstyleFrom(lsT, 1);
+    local ea1, ean1, eab1 = dispatchM._lockstyleFrom(lsT, 1);
+    check('LAP3 _lockstyleFrom box name parity', lan1, ean1);
+    check('LAP4 _lockstyleFrom box index parity', lab1, eab1);
+    check('LAP5 _lockstyleFrom slot parity (Main)', la1.Main, ea1.Main);
+    check('LAP6 _lockstyleFrom remove-literal parity', la1.Body, ea1.Body);
+    check('LAP7 marked-box fallback parity', select(3, lap._lockstyleFrom(lsT, nil)),
+        select(3, dispatchM._lockstyleFrom(lsT, nil)));
+    check('LAP8 empty-box why parity', select(2, lap._lockstyleFrom(lsT, 9)),
+        select(2, dispatchM._lockstyleFrom(lsT, 9)));
+    check('LAP9 no-table why parity', select(2, lap._lockstyleFrom(nil)),
+        select(2, dispatchM._lockstyleFrom(nil)));
+
+    -- _lockstylePacket BYTE-IDENTICAL to the Engine, same fixtures as AJ.
+    local RES = { ["Arhat's Gi"] = 13795, ['Kris'] = 16450 };
+    local eqf = function(slot) if slot == 'Main' then return 21639; end return nil; end
+    local resolve = function(n) return RES[n]; end
+    local setP = { Body = "Arhat's Gi", Head = 'remove', Legs = 'No Such' };
+    local lpkt = lap._lockstylePacket(setP, resolve, eqf);
+    local epkt = dispatchM._lockstylePacket(setP, resolve, eqf);
+    check('LAP10 same wire length', #lpkt, #epkt);
+    local diff = nil;
+    for i = 1, 136 do if lpkt[i] ~= epkt[i] then diff = i; break; end end
+    check('LAP11 0x053 byte-identical to the Engine (all 136 bytes)', diff, nil);
+
+    -- live apply() via the injectable deps seam: injects, reports, witnesses.
+    local lines, injected = {}, nil;
+    local res = lap.apply(lsT, 1, {
+        resolveId  = function(n) return ({ Kris = 16450, ["Ducal Guard's Ribbon"] = 111 })[n]; end,
+        equippedId = function() return nil; end,
+        jobLevels  = function() return nil; end,   -- nil -> fail open, no gate warnings
+        wornType   = function() return nil; end,
+        recType    = function() return nil; end,
+        rec        = function() return nil; end,
+        inject     = function(pkt) injected = pkt; return true; end,
+        emit       = function(l) lines[#lines + 1] = l; end,
+    });
+    check('LAP12 apply reports ok', res.ok, true);
+    check('LAP13 apply injected a 0x053', injected ~= nil and injected[1], 0x53);
+    check('LAP14 apply reports the box', res.box, 1);
+    check('LAP15 styled count (Kris + Ducal ribbon; Body=remove not counted)', res.styled, 2);
+    local sawOk = false;
+    for _, l in ipairs(lines) do if l:match('^%[dlac%] lockstyle "AF Glam" %(box 1%) sent') then sawOk = true; end end
+    check('LAP16 success line verbatim', sawOk, true);
+    check('LAP17 send witness stamped', lap.lastSend() ~= nil and lap.lastSend().box, 1);
+
+    -- job-gate warning routes through the Gear Oracle door (stub), wording VERBATIM.
+    local glines = {};
+    lap.apply({ slots = { [1] = { name = 'G', set = { Body = 'Bad Piece' } } } }, 1, {
+        resolveId = function() return 5; end, equippedId = function() return nil; end,
+        jobLevels = function() return { WAR = 1 }; end,   -- non-nil -> the gate runs
+        rec = function(n) return { Name = n, Jobs = { 'WAR' }, Level = 75 }; end,
+        wornType = function() return nil; end, recType = function() return nil; end,
+        inject = function() return true; end, emit = function(l) glines[#glines + 1] = l; end,
+    });
+    local sawGate = false;
+    for _, l in ipairs(glines) do
+        if l:match('will KEEP ITS OLD LOOK') and l:match('Bad Piece') and l:match('one of YOUR jobs') then sawGate = true; end
+    end
+    check('LAP18 job-gate warning via the oracle door, wording matches', sawGate, true);
+
+    -- weapon-category warning from the Addon state's own worn reads, wording VERBATIM.
+    local wlines = {};
+    lap.apply({ slots = { [1] = { set = { Main = 'Dagger' } } } }, 1, {
+        resolveId = function() return 5; end, equippedId = function() return nil; end,
+        jobLevels = function() return nil; end,
+        recType = function() return 'Dagger'; end, wornType = function() return 'Great Sword'; end,
+        rec = function() return nil; end, inject = function() return true; end,
+        emit = function(l) wlines[#wlines + 1] = l; end,
+    });
+    local sawWeap = false;
+    for _, l in ipairs(wlines) do
+        if l:match('will NOT show over your') and l:match('same category') then sawWeap = true; end
+    end
+    check('LAP19 weapon-category warning, wording matches', sawWeap, true);
+
+    -- unresolved name -> EMPTY-slot warning, wording VERBATIM.
+    local mlines = {};
+    lap.apply({ slots = { [1] = { set = { Legs = 'Ghost Pants' } } } }, 1, {
+        resolveId = function() return nil; end, equippedId = function() return nil; end,
+        jobLevels = function() return nil; end, recType = function() return nil; end,
+        wornType = function() return nil; end, rec = function() return nil; end,
+        inject = function() return true; end, emit = function(l) mlines[#mlines + 1] = l; end,
+    });
+    local sawMiss = false;
+    for _, l in ipairs(mlines) do if l:match('did not resolve to an item id') then sawMiss = true; end end
+    check('LAP20 unresolved-name warning, wording matches', sawMiss, true);
+
+    -- inject failure and an empty box both report ok=false (no silent apply).
+    local r2 = lap.apply(lsT, 1, {
+        resolveId = function() return 1; end, equippedId = function() return nil; end,
+        jobLevels = function() return nil; end, recType = function() return nil; end,
+        wornType = function() return nil; end, rec = function() return nil; end,
+        inject = function() return false; end, emit = function() end,
+    });
+    check('LAP21 inject failure -> ok=false', r2.ok, false);
+    local r3 = lap.apply(lsT, 3, { emit = function() end });   -- box 3: nothing usable
+    check('LAP22 empty box refused (ok=false)', r3.ok, false);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- AK. reserved slots (dispatch.reservedDrops) -- an item's RSlot mask is the
 --     server's item_equipment.rslot: the slots it TAKES AWAY while worn. The
 --     Ryl.Ftm. Tunic (Body) reserves Head; equipping a head piece anyway makes

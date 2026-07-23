@@ -110,12 +110,12 @@ A set is a *plan*: it may contain anything the character can ever wield (a 1H we
 _Avoid_: validating sets against current traits/state
 
 **Addon state**:
-The Lua state Ashita creates for dlac itself — the GUI, editors, storage, watchers, and every feature that does not equip gear (lockstyle lives here whole: editor, preview, and apply). One of dlac's two Lua states.
-_Avoid_: "the GUI" (the state runs more than rendering)
+The Lua state Ashita loads via `/addon load dlac` — the GUI, editors, previews, writers, and every addon-tree module. It scans bags, writes the per-character files, seeds the runtime (legacy mode), and (since the lockstyle pivot, ADR 0014) owns lockstyle apply end to end. In legacy mode it reaches the Engine's state only by files; under the Native engine it IS the Engine's host — one state, direct calls.
+_Avoid_: dlac side, GUI state, the front end
 
 **Engine**:
-dlac's dispatch code loaded inside LuaAshitacast's Lua state, per character. It exists to equip gear — the one capability only LAC's state has — and to report on its own equipping; anything else belongs in the Addon state. Crossings between the two states go through files, never the command bus.
-_Avoid_: dispatcher, LAC (LAC is the host, the Engine is dlac's tenant in it)
+The equip decision core — `dispatch.lua` and its companions (`utils`/`chatfmt`/`profiles`/`gear`). Its job is to **equip gear** (overlay matching Triggers' sets, resolve virtual entries, honor Claims) and report on its own equipping (`/dl why`, `/dl prio`) — nothing else (ADR 0014). It runs in ONE of two hosts: LuaAshitacast's Lua state (legacy mode — the seeded copies, loaded by the job shim, detected by `inLac()`) or the Addon state itself (Native engine, armed by the Engine flag, detected by `engineActive()`). Only the active engine's host `EquipSet`s — through `gFunc` in legacy, through `equipengine`/`equipcore` natively.
+_Avoid_: LAC engine (LAC is LuaAshitacast; the Engine is dlac's code, whichever state hosts it), seeded side, dispatch (that is one file of it)
 
 **Engine handshake**:
 `dispatch.M.VERSION`, mirrored through `modestate.lua`, lets the GUI detect that LuaAshitacast is still running a stale seeded engine and show the red "Reload LAC" banner. Bump it whenever seeded-file behavior changes.

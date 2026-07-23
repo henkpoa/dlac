@@ -31,12 +31,19 @@
     global dlac\lockstyles.lua; every save serializes ALL boxes into the job
     entry's file, so older-tier boxes migrate whole on the first write.
     Switching profiles OR jobs reloads the boxes live.
-    Apply is ENGINE-side ('/dl ls apply [box]' -- dispatch.lua v38 builds the
-    table and calls gFunc.LockStyle; only the LAC state has gFunc). Apply reads
-    the SAVED file, never the working copy: unsaved edits do not apply. "OnLoad
-    Lockstyle" binds CURRENT JOB -> MARKED BOX: the pump below (macrobook's
-    login/job-change pattern) queues the apply ~6s after login / ~3s after a
-    job change, when the game accepts lockstyle packets again.
+    THE PIVOT (issue #81, PRD #80): lockstyle is becoming 100% addon-resident.
+    The GUI Apply button now applies DIRECTLY from THIS state -- feature/
+    lockstyleapply builds the 0x053 and injects it via AshitaCore (the process-
+    wide SDK, no gFunc, no LuaAshitacast needed), and the call site (M._applyDirect)
+    arms the guard + notes lastBox itself. No command bus, no request file: addon
+    load order can't silence it. The pumps (OnLoad / keep-on-sub / town) and the
+    typed '/dl ls apply' handler STILL ride the Engine path this slice (queueCmd +
+    the v109 request-file bridge -> dispatch's engineApplyHalf, which builds the
+    0x053 itself since v42; gFunc.LockStyle is long gone). Apply reads the SAVED
+    file, never the working copy: unsaved edits do not apply. "OnLoad Lockstyle"
+    binds CURRENT JOB -> MARKED BOX: the pump below (macrobook's login/job-change
+    pattern) queues the apply ~6s after login / ~3s after a job change, when the
+    game accepts lockstyle packets again.
 
     Preview is CLIENT-side and equips NOTHING (v42): it writes the entity's
     look_t (feature/lookpreview.lua). The old equip-based preview could not show
@@ -77,6 +84,12 @@ local _jgok, jobgate = pcall(require, 'dlac\\gear\\jobgate');
 _jgok = _jgok and type(jobgate) == 'table';
 local _orok, oracle = pcall(require, 'dlac\\gear\\gearoracle');
 _orok = _orok and type(oracle) == 'table';
+-- The lockstyle EXECUTOR (issue #81): the GUI Apply button injects its OWN 0x053
+-- from THIS state through this module -- direct call, no command bus, no request
+-- file, the Engine uninvolved. The pumps and the typed '/dl ls apply' handler
+-- stay on the Engine path this slice (see applyDirect below and the Apply button).
+local _laok, lsapply = pcall(require, 'dlac\\feature\\lockstyleapply');
+_laok = _laok and type(lsapply) == 'table';
 -- Central town service (v45): "am I in a town?" for the Disable-in-town option.
 local _locok, location = pcall(require, 'dlac\\feature\\location');
 _locok = _locok and type(location) == 'table';
@@ -1090,15 +1103,16 @@ function M.render()
                 _status = string.format('box %d has "%s" -- no job of yours can wear it at its level, so it would keep its old look. Swap it or re-level that job.',
                     data.active, tostring(dead));
             else
-                queueCmd('/dl ls apply');
-                -- record the box HERE: our own queued command never re-enters
-                -- this state's command event (round 6) -- and apply-without-a-
-                -- number means the marked box, the same resolution dispatch uses
-                pcall(function() M._noteApplied(data.active); end);
+                -- issue #81: apply DIRECTLY from this state -- the executor
+                -- injects the 0x053 itself and the call site arms the guard +
+                -- notes lastBox (no queueCmd, no request file, the Engine
+                -- uninvolved). Unlike the old engine path this never crosses
+                -- the command bus, so addon load order can't silence it.
+                M._applyDirect(data.active);
             end
         end
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('Lockstyle the MARKED box now (engine-side: /dl ls apply --\nneeds LuaAshitacast loaded). Unsaved edits are NOT applied: Save first.');
+            imgui.SetTooltip('Lockstyle the MARKED box now (applied by dlac itself --\nno LuaAshitacast needed). Unsaved edits are NOT applied: Save first.');
         end
         if imgui.Button((_preview and 'End preview' or 'Preview') .. '##lsprev', { 216, 0 }) then
             if _preview then endPreview(); else startPreview(); end
@@ -1225,6 +1239,26 @@ function M._healDue() return subDueAt; end
 function M._noteApplied(b)
     if tonumber(b) ~= nil then lastBox = tonumber(b); end
     M._capNote('apply noted: box ' .. tostring(b));
+end
+-- The GUI Apply button's DIRECT executor call (issue #81). Bookkeeping is HERE,
+-- at the call site: an addon state never hears its own queued commands and
+-- same-state visibility of its OWN injected packet is unproven, so we note
+-- lastBox (keep-on-sub then remembers this box after a subjob flip) and arm the
+-- zone guard (the applied style survives zoning; the client's zone-in
+-- auto-DISABLE is swallowed exactly as today) DIRECTLY -- never off observing
+-- our own packet_out. Then the executor builds and injects the 0x053 from THIS
+-- state, the Engine uninvolved (field-verifiable with LAC not loaded at all).
+-- No queueCmd, no request-file write on this path: exactly one apply, and both
+-- absences are grep-provable. box = the marked box the caller resolved.
+function M._applyDirect(box)
+    M._noteApplied(box);
+    M._guardArm();
+    M._capNote('apply (addon-direct): box ' .. tostring(box));
+    if _laok then
+        pcall(function() lsapply.apply(data, box); end);
+    else
+        print('[dlac] lockstyle: apply executor unavailable (feature/lockstyleapply failed to load).');
+    end
 end
 -- Apply a town pick's effect (v46). 'off' -> drop the style (the guard's
 -- 'suppress' verdict lets it fall in a town); a BOX -> replace with it and ARM

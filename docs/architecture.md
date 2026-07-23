@@ -601,6 +601,32 @@ banner when the seeded engine is stale. The reload pair is always: `/addon reloa
 (reseeds files) **then** Reload LAC (makes LAC re-require them) — disk reseed alone is
 never a hot swap.
 
+**The boundary rule (ADR 0014, cross-referenced with ADR 0002): the Engine equips gear
+(and reports on its own equipping) — nothing else.** The command bus between the two states
+is unreliable BY DESIGN — `e.blocked` halts LATER addons in Ashita's command chain, and
+`/addon reload` order IS chain order — so a feature whose trigger and executor sit in
+different states can starve on one load order and go deaf on the other. The lockstyle pivot
+(2026-07-23) settled the durable law: **never cross the bus.** An Automation lives Engine-
+side because it equips gear THROUGH LAC (`gFunc.EquipSet`); lockstyle equips *nothing* (it
+builds its own 0x053 and injects via the process-wide `AshitaCore`), so it is
+**addon-resident** — trigger and executor in one state, reaching each other by direct call.
+No lockstyle trigger crosses the wall in either direction; the bus problem stops existing
+rather than being bridged. The engine-move direction
+(`docs/design/lockstyle-engine-move.md`) is superseded by this ADR.
+
+Under the **Native engine** (§ The Native engine) the same law holds trivially: there is
+only ONE state, so "never cross the bus" is satisfied by construction — the Engine's
+gear-equipping and lockstyle's 0x053 both live in the addon state, direct calls all the
+way down. The two-state boundary above describes **legacy mode**; it graduates from law
+to history when LAC does.
+
+**The command-surface rule:** *a `/dl` command lives where its subject lives.* Equip state
+in the Engine (`mode`, `why`, `plan`, `prio`, `lock`, `sets`, `profile`, `env`, `triggers`
+— their LAC dependence is subject matter, not accident); everything else in the addon;
+`check`/`debug` straddle the wall by design (they report on both states via the file
+channel). Collapsing a command to ONE claiming state is what makes it chain-order-proof for
+typed use — the deafness bugs came from BOTH states claiming `/dl`.
+
 ## Data flow
 
 - **catalog.lua** (shipped) — crawled base-truth stats; addon-state only (browse,
