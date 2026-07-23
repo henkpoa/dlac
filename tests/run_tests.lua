@@ -226,7 +226,7 @@ end)();
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
                    'groupsmodel','jobgate','ownedcache','profileexport','profilesets','setimport',
                    'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
-    local FEATURE = { 'ammowatch','arbwatch','augments','check','craftwatch','debug','eboxammo','fishcalc','fishwatch',
+    local FEATURE = { 'ammowatch','arbwatch','augments','check','craftwatch','debug','eboxammo','eboxclient','fishcalc','fishwatch',
                       'gamemode','helmwatch','location','lockstyle','lookpreview','macrobook','meritwatch',
                       'mpbands','pinwatch','useitem' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
@@ -8412,6 +8412,110 @@ end)();
 
     check('EB9 box range is FIELD-PINNED at 5 yalms (Henrik 2026-07-20)', eb.BOX_RANGE, 5);
     check('EB10 boxDistance is headless-safe through the watcher', eb.boxDistance(), nil);
+
+    -- EBC. eboxclient -- THE one 0x1A4 client (ADR 0016). Same wire as eboxammo,
+    -- reimplemented with a MULTI-category shared counts cache + batch withdraw +
+    -- search + throttle; every future E-Box feature consumes this, never a second
+    -- speaker. Injected clock; the pk/msgAt helpers above build synthetic packets.
+    local ec = dofile('feature/eboxclient.lua');
+    ec._now = function() return 5000; end
+
+    check('EBC1 clamp: none in box -> 0', ec._clampQty(99, 0), 0);
+    check('EBC1b clamp to what the box holds', ec._clampQty(99, 12), 12);
+    check('EBC1c junk qty -> 0', ec._clampQty('x', 5), 0);
+    check('EBC1d floors fractions', ec._clampQty(3.7, 5), 3);
+
+    check('EBC2 ITEM outside our stream is not ours (party line)',
+        ec._onPacket(pk({ [0x04] = 1, [0x08] = 10 })), false);
+
+    -- a category stream: CLEAR -> ITEM* -> END_LIST(source 0)
+    ec._beginRequest('category', 15);
+    check('EBC3 CLEAR consumed while pending', ec._onPacket(pk({ [0x04] = 0 })), true);
+    ec._onPacket(pk({ [0x04] = 1, [0x08] = 0x36, [0x09] = 0x53, [0x0A] = 15, [0x0C] = 200 }));  -- 21302 x200
+    ec._onPacket(pk({ [0x04] = 1, [0x08] = 0x56, [0x09] = 0x53, [0x0A] = 15, [0x0C] = 1 }));    -- 21334 x1
+    check('EBC3b END_LIST from another source does not commit',
+        ec._onPacket(pk({ [0x04] = 2, [0x05] = 3 })), false);
+    check('EBC3c END_LIST source 0 commits', ec._onPacket(pk({ [0x04] = 2, [0x05] = 0 })), true);
+    check('EBC3d category counts committed (narrowed to the ahCat)',
+        ec.boxCount(21302, 15) == 200 and ec.boxCount(21334, 15) == 1, true);
+    check('EBC3e flat merged view reads without an ahCat', ec.boxCount(21302), 200);
+    check('EBC3f the fetched category is fresh', ec.categoryFresh(15, 20), true);
+
+    -- a SECOND category merges into the flat view (both categories coexist)
+    ec._beginRequest('category', 6);
+    ec._onPacket(pk({ [0x04] = 0 }));
+    ec._onPacket(pk({ [0x04] = 1, [0x08] = 0x34, [0x09] = 0x10, [0x0A] = 6, [0x0C] = 30 }));    -- 4148 x30
+    ec._onPacket(pk({ [0x04] = 2, [0x05] = 0 }));
+    check('EBC4 flat view holds both categories at once',
+        ec.boxCount(21302) == 200 and ec.boxCount(4148) == 30, true);
+
+    -- re-fetching category 15 REPLACES only its own rows (a drained item drops)
+    ec._beginRequest('category', 15);
+    ec._onPacket(pk({ [0x04] = 0 }));
+    ec._onPacket(pk({ [0x04] = 1, [0x08] = 0x36, [0x09] = 0x53, [0x0A] = 15, [0x0C] = 150 }));  -- 21302 now 150
+    ec._onPacket(pk({ [0x04] = 2, [0x05] = 0 }));
+    check('EBC4b re-fetch replaces cat 15 (21334 drained), cat 6 untouched',
+        ec.boxCount(21334, 15) == 0 and ec.boxCount(21302) == 150 and ec.boxCount(4148) == 30, true);
+    check('EBC4c a late ITEM after the stream closed is not ours',
+        ec._onPacket(pk({ [0x04] = 1, [0x08] = 10 })), false);
+
+    -- SEARCH stream: rows carry id/qty/ahCat/name; must NOT touch the counts cache
+    ec._beginRequest('search');
+    ec._onPacket(pk({ [0x04] = 0 }));
+    ec._onPacket(pk(msgAt({ [0x04] = 1, [0x08] = 0x36, [0x09] = 0x53, [0x0A] = 15, [0x0C] = 5 }, 0x10, 'Bronze Bullet')));
+    ec._onPacket(pk({ [0x04] = 2, [0x05] = 0 }));
+    check('EBC5 search results captured (id/ahCat/name/qty)',
+        ec.searchResults ~= nil and #ec.searchResults == 1
+        and ec.searchResults[1].id == 21302 and ec.searchResults[1].ahCat == 15
+        and ec.searchResults[1].name == 'Bronze Bullet' and ec.searchResults[1].qty == 5, true);
+    check('EBC5b search did not pollute the counts cache', ec.boxCount(21302, 15), 150);
+
+    -- batch withdraw ACK counting (the seam stages N in-flight ACKs)
+    ec._beginBatch(2);
+    check('EBC6 ACK for someone else\'s action is not ours',
+        ec._onPacket(pk({ [0x04] = 3, [0x05] = 15, [0x06] = 1 })), false);
+    check('EBC6b first withdraw ACK consumed, still busy (1 left)',
+        ec._onPacket(pk({ [0x04] = 3, [0x05] = 2, [0x06] = 1 })) == true and ec.isBusy() == true, true);
+    check('EBC6c second ACK completes the batch (busy clears)',
+        ec._onPacket(pk({ [0x04] = 3, [0x05] = 2, [0x06] = 1 })) == true and ec.isBusy() == false, true);
+    check('EBC6d completing a batch stales the counts (the box changed)', ec.categoryFresh(15, 20), false);
+    check('EBC6e ACK with nothing in flight is not ours',
+        ec._onPacket(pk({ [0x04] = 3, [0x05] = 2, [0x06] = 1 })), false);
+    ec._beginBatch(1);
+    ec._onPacket(pk(msgAt({ [0x04] = 3, [0x05] = 2, [0x06] = 0 }, 0x10, 'Inventory full.')));
+    check('EBC6f refusal carries the server\'s words',
+        ec.status == 'Inventory full.' and ec.statusErr == true, true);
+
+    -- LOCKED gates
+    check('EBC7 unsolicited LOCKED is not ours (nothing pending)',
+        ec._onPacket(pk({ [0x04] = 4, [0x05] = 1 })), false);
+    ec._beginRequest('category', 15);
+    ec._onPacket(pk({ [0x04] = 4, [0x05] = 1 }));
+    check('EBC7b LOCKED reason 1 while pending = not a Crystal Warrior', ec.lockedReason, 'cw');
+    ec.lockedReason = nil;
+    ec._beginRequest('search');
+    ec._onPacket(pk(msgAt({ [0x04] = 4, [0x05] = 2 }, 0x10, 'Locked.')));
+    check('EBC7c LOCKED reason 2 = box not unlocked',
+        ec.lockedReason == 'locked' and ec.lockedMsg == 'Locked.', true);
+    ec.lockedReason = nil;
+
+    -- SUMMARY (single packet, not a stream): entryCount@0x05, 7-byte rows @0x08
+    ec._beginRequest('summary');
+    check('EBC8 SUMMARY parsed into per-category totals',
+        ec._onPacket(pk({ [0x04] = 5, [0x05] = 1, [0x08] = 15, [0x09] = 2, [0x0B] = 3 })) == true
+        and ec.summary ~= nil and #ec.summary == 1
+        and ec.summary[1].ahCat == 15 and ec.summary[1].count == 2 and ec.summary[1].qty == 3, true);
+
+    -- headless gates: no CW -> every request refuses, nothing hits the wire
+    check('EBC9 ensureCategory refuses headless (affirmative-only CW gate)', ec.ensureCategory(15), false);
+    check('EBC9b search refuses headless', ec.search('bullet'), false);
+    check('EBC9c withdraw refuses headless', ec.withdraw(21302, 1), false);
+    check('EBC9d withdrawBatch refuses headless', ec.withdrawBatch({ { id = 21302, qty = 1 } }), 0);
+
+    -- proximity (headless-safe through the watcher)
+    check('EBC10 box range is FIELD-PINNED at 5 yalms', ec.BOX_RANGE, 5);
+    check('EBC10b boxDistance headless -> nil, nearBox -> false',
+        ec.boxDistance() == nil and ec.nearBox() == false, true);
 
     -- level: persisted per entry (GUI sort data; the engine ignores it --
     -- the fmt-2 round-trip above pins the serializer side)
