@@ -1841,6 +1841,8 @@ local function renderHeaderButtons()
                 add('txt', '  to dlac\'s own home under config\\addons\\dlac\\.');
                 add('head', '  COPY-ONLY: nothing under luashitacast\\ is moved, changed, or deleted, and you');
                 add('head', '  can flip back any time with  /dl engine native off.');
+                add('txt', '  Your old job files and backups stay where they are and remain importable');
+                add('dim', '   ("Copy from" in the Sets tab, "Scan my Lua" in Groups -- both keep reading them).');
                 add('txt', '  Then write the Engine flag native = true. On the next reload dlac\'s native');
                 add('txt', '  engine takes over equipping.');
                 add('txt', 'WHY');
