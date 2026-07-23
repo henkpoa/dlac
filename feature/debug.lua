@@ -133,6 +133,24 @@ local function readAll(p)
     local d = f:read('*a'); f:close(); return d;
 end
 
+-- The report drop, created at LOAD: the folder's very existence proves the
+-- NEW addon state is live. Field case 2026-07-23 (Henrik): "it is not
+-- creating the debug folder" -- the addon half does not hot-swap (only the
+-- engine self-swaps), so an addon state loaded before this module existed
+-- can never write it; after /addon reload dlac the folder appears at load,
+-- before any command runs.
+local function debugDir()
+    local d = nil;
+    pcall(function() d = AshitaCore:GetInstallPath() .. 'addons\\dlac\\debug\\'; end);
+    return d;
+end
+pcall(function()
+    local d = debugDir();
+    if d ~= nil and ashita and ashita.fs and ashita.fs.create_directory then
+        ashita.fs.create_directory(d);
+    end
+end);
+
 -- One pending delivery at a time (a re-run before the tick fires just
 -- replaces it -- latest wins).
 local _pend = nil;
@@ -148,27 +166,32 @@ function M.deliver(label, fileBase, addonLines, handoffName)
               ver = ver, dueAt = os.clock() + 1.2 };
 end
 
+-- The write is pcall-wrapped but NEVER silently: a failure prints itself
+-- (silence has no author -- the very lesson this section exists to teach).
 ashita.events.register('d3d_present', 'dlac-debug-deliver', function()
     if _pend == nil or os.clock() < _pend.dueAt then return; end
     local p = _pend; _pend = nil;
-    pcall(function()
+    local ok, err = pcall(function()
         local engineRaw = nil;
         if p.handoff ~= nil then
             local base = charBase();
             if base ~= nil then engineRaw = readAll(base .. 'dlac\\' .. p.handoff); end
         end
         local text = M._mergeSections(p.label, p.lines, engineRaw, os.time(), p.ver);
-        local dir = AshitaCore:GetInstallPath() .. 'addons\\dlac\\debug\\';
+        local dir = debugDir();
+        if dir == nil then error('install path unavailable', 0); end
         if ashita and ashita.fs and ashita.fs.create_directory then ashita.fs.create_directory(dir); end
         local path = dir .. p.base .. '-' .. charName() .. '.txt';
         local f = io.open(path, 'wb');
-        if f == nil then
-            print('[dlac] ' .. tostring(p.label) .. ': could not write the report file (' .. path .. ').');
-            return;
-        end
+        if f == nil then error('cannot open for write: ' .. path, 0); end
         f:write(text); f:close();
         print('[dlac] ' .. tostring(p.label) .. ': report written -> ' .. path .. ' -- send this file.');
     end);
+    if not ok then
+        pcall(function()
+            print('[dlac] ' .. tostring(p.label) .. ': report write FAILED -- ' .. tostring(err));
+        end);
+    end
 end);
 
 local PRINTERS = {
