@@ -96,6 +96,14 @@ _Avoid_: "has it" without saying which of the two you mean
 A set is a *plan*: it may contain anything the character can ever wield (a 1H weapon in Sub with no Dual Wield). Legality is decided by the engine at *equip* time (`subSlotAllowed`: DW up → weapon; otherwise the list's shield/grip). GUI surfaces that equip immediately gate; builders never do.
 _Avoid_: validating sets against current traits/state
 
+**Addon state**:
+The Lua state Ashita loads via `/addon load dlac` — the GUI, editors, previews, writers, and every addon-tree module. It scans bags, writes the per-character files, seeds the runtime, and (since the lockstyle pivot, ADR 0014) owns lockstyle apply end to end. Reaches the other state only by files.
+_Avoid_: dlac side, GUI state, the front end
+
+**Engine**:
+The seeded runtime (`dispatch.lua` + `utils`/`chatfmt`/`profiles`/`gear`) loaded INSIDE LuaAshitacast's Lua state by the job shim. Its job is to **equip gear** (overlay matching Triggers' sets, resolve virtual entries, honor Claims) and report on its own equipping (`/dl why`, `/dl prio`) — nothing else (ADR 0014). Detected by `inLac()`; only here does anything `EquipSet`.
+_Avoid_: LAC engine (LAC is LuaAshitacast; the Engine is dlac's seeded code running in it), seeded side, dispatch (that is one file of it)
+
 **Engine handshake**:
 `dispatch.M.VERSION`, mirrored through `modestate.lua`, lets the GUI detect that LuaAshitacast is still running a stale seeded engine and show the red "Reload LAC" banner. Bump it whenever seeded-file behavior changes.
 

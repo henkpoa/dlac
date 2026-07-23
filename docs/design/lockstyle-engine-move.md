@@ -1,5 +1,18 @@
 # Lockstyle execution moves engine-side — design handoff
 
+> **SUPERSEDED (2026-07-23) by [ADR 0014](../adr/0014-lockstyle-addon-resident.md) —
+> "Lockstyle is addon-resident; the Engine equips gear only."** The grill session that
+> consumed this document reversed its direction: lockstyle equips *nothing* (it builds
+> its own 0x053 and injects via the process-wide `AshitaCore`), so its executor moves to
+> the ADDON state beside its trigger — NOT into the Engine as §2 below proposes — and
+> every state-crossing becomes a direct call. Henrik's ruling: "Lockstyle should really be
+> able to exist on its own 100% within DLAC." The durable law is *never cross the bus*, and
+> the shortest bus-free path put the executor with the trigger, not in the Engine. **This
+> document is kept ONLY as the fallback design** if the phase-1 injection spike (outgoing
+> 0x053 from the Addon state reaching the server) fails; see the PRD on #80 and ADR 0014.
+> Everything below records the superseded engine-move direction — do not implement it
+> unless the spike fails.
+
 **Tracker: [issue #80](https://github.com/henkpoa/dlac/issues/80)** — the
 reference number for this whole effort; the PRD and its issues chain from it.
 

@@ -27,7 +27,9 @@ maintainer IMO, I am just the one with the creative vision."*
 5. [adr/](adr/) — decision records; **0002** (data-driven dispatch) and **0003**
    (overlay) explain most "why is it like this" questions. **0006** (the builder plans,
    the engine decides) and **0007** (resolve only when ready; a latch must remember what
-   it answered) are the two that bite hardest if ignored.
+   it answered) are the two that bite hardest if ignored. **0014** (lockstyle is
+   addon-resident; the Engine equips gear only) records the 2026-07-23 pivot and the
+   command-bus law it turns on — read it before touching lockstyle or the `/dl` surface.
 6. [history.md](history.md) — session journal: what was tried, what was abandoned, and
    why. **Read the dead-ends lists before proposing anything.**
 7. [server-questions.md](server-questions.md) — suspected server-side bugs / undocumented
@@ -199,7 +201,22 @@ agent; the per-repo setup lives in `docs/agents/`.
 - A GM is currently evaluating the addon for server approval — polish requests from
   that channel (like the word-wrap fix) take priority.
 
-## Current state (as of 2026-07-22)
+## Current state (as of 2026-07-23)
+
+- **THE LOCKSTYLE PIVOT — lockstyle is addon-resident; the Engine equips gear only
+  (07-23, PRD #80, RULED — code lands slice by slice).** After the week-long
+  silent-apply saga (docs/history.md "the silent apply", "the rest of the travel
+  wardrobe"), Henrik reversed the earlier engine-move direction: lockstyle equips
+  nothing (it builds its own 0x053 and injects via `AshitaCore`), so its executor moves
+  to the ADDON state beside its trigger, and every state-crossing becomes a direct call —
+  the command bus stops being in the picture at all. **Start at #80 and its PRD**
+  ([issue #80 comment](https://github.com/henkpoa/dlac/issues/80#issuecomment-5057732153))
+  — the two-phase hand-over (phase 1 addon-only, phase 2 engine-only v110, gated on a
+  field-confirmed spike), the user stories, and the testing gates live there. Decision
+  recorded in **ADR 0014**; the durable command-bus law + command-surface rule are in
+  architecture.md's "Dual identity" boundary section; the engine-move design doc is
+  superseded (banner on it). CONTEXT.md carries the **Addon state** / **Engine** glossary
+  entries.
 
 - **THE GEAR ORACLE — one door for every gear question (07-22, PRD #69, COMPLETE,
   PRs #75–#79).** `gear/gearoracle.lua` is the single sanctioned door in the addon
