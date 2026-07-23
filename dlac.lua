@@ -25,9 +25,25 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.07.23h';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.07.23i';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
 addon.desc    = 'Build gear sets and view live stats with level scaling (for LuaAshitacast).';
+
+-- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
+-- the very top of load, before anything else can fail. Its absence after an
+-- /addon reload = THIS file did not execute (load error -- Ashita prints it
+-- in red -- or a different install); its version line names the code that
+-- DID load; the module loop appends its ledger at the bottom of the file.
+-- It also exercises the exact write path the debug reports use.
+pcall(function()
+    local p = AshitaCore:GetInstallPath() .. 'addons\\dlac\\debug\\';
+    if ashita and ashita.fs and ashita.fs.create_directory then ashita.fs.create_directory(p); end
+    local f = io.open(p .. 'load-report.txt', 'w');
+    if f ~= nil then
+        f:write(('dlac %s loading at %s\n'):format(addon.version, os.date('%Y-%m-%d %H:%M:%S')));
+        f:close();
+    end
+end);
 
 require('common');
 
@@ -171,6 +187,21 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
         if _cfok then _cfmt.err(m); else print('[dlac] ' .. m); end
     end
 end
+
+-- The beacon's second half: the ledger, appended once the loop is done. A
+-- module failure is now readable OFF DISK (addons\dlac\debug\load-report.txt)
+-- even when its chat line scrolled away or chat itself is the broken thing.
+pcall(function()
+    local f = io.open(AshitaCore:GetInstallPath() .. 'addons\\dlac\\debug\\load-report.txt', 'a');
+    if f ~= nil then
+        f:write(('modules: %d total, %d failed\n'):format(ledger.total, #ledger.failed));
+        for _, e in ipairs(ledger.failed) do
+            f:write(('FAILED %s: %s\n'):format(tostring(e.mod), tostring(e.err)));
+        end
+        f:write('load complete\n');
+        f:close();
+    end
+end);
 
 -- GUI keybind: CTRL+K toggles the window (same mechanism as the modes' GUI-managed
 -- binds). Bound on load, released on unload so no bind outlives the addon.
