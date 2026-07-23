@@ -207,7 +207,8 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
                        'gear\\gearexport', 'feature\\useitem', 'feature\\craftwatch',
                        'ui\\craftbar', 'feature\\helmwatch', 'ui\\helmbar',
                        'feature\\fishwatch', 'ui\\fishbar', 'feature\\meritwatch',
-                       'feature\\check', 'feature\\debug', 'feature\\lockstyle', 'ui\\gearui' }) do
+                       'feature\\check', 'feature\\debug', 'feature\\lockstyle',
+                       'feature\\equipengine', 'ui\\gearui' }) do
     local ok, err = pcall(require, 'dlac\\' .. mod);
     ledger.total = ledger.total + 1;
     if not ok then

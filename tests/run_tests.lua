@@ -8991,6 +8991,140 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- EQE. equipengine (feature/native-engine part 2) -- the pure half of the
+-- action pipeline: byte readers, the chunk parser, the ACTION_ROUTES table,
+-- completion math, the 0x028 decode, and the augment header decode.
+-- ---------------------------------------------------------------------------
+(function()
+    local eng = dofile('feature/equipengine.lua');
+    package.loaded['dlac\\feature\\equipengine'] = eng;
+
+    -- bit-writer helper: the inverse of bitsAt (LSB-first within bytes)
+    local function packStr(len, writes)
+        local bytes = {};
+        for i = 1, len do bytes[i] = 0; end
+        for _, w in ipairs(writes) do
+            local bitOff, nbits, value = w[1], w[2], w[3];
+            for i = 0, nbits - 1 do
+                local bit = math.floor(value / (2 ^ i)) % 2;
+                if bit == 1 then
+                    local pos = bitOff + i;
+                    local bi = math.floor(pos / 8) + 1;
+                    bytes[bi] = bytes[bi] + 2 ^ (pos % 8);
+                end
+            end
+        end
+        local out = {};
+        for i = 1, len do out[i] = string.char(bytes[i]); end
+        return table.concat(out);
+    end
+
+    -- --- byte readers ---
+    local s = string.char(0x34, 0x12, 0x78, 0x56);
+    check('EQE1 u16at little-endian', eng.u16at(s, 0), 0x1234);
+    check('EQE2 u32at little-endian', eng.u32at(s, 0), 0x56781234);
+    check('EQE3 u16at past end reads zeros', eng.u16at(s, 10), 0);
+    local bs = packStr(4, { { 10, 4, 9 } });   -- 4 bits at bit 10 = 9
+    check('EQE4 bitsAt round-trips the writer', eng.bitsAt(bs, 0, 10, 4), 9);
+    check('EQE5 bitsAt with byte offset', eng.bitsAt(bs, 1, 2, 4), 9);   -- same bits, byte-relative
+
+    -- --- chunk parsing: id 9 bits, size 7 bits in 4-byte units ---
+    local function header(id, sizeBytes)
+        local w = id + math.floor(sizeBytes / 4) * 512;
+        return string.char(w % 256, math.floor(w / 256));
+    end
+    local pkt1 = header(0x1A, 8) .. string.rep('\1', 6);
+    local pkt2 = header(0x15, 4) .. string.rep('\2', 2);
+    local chunk = pkt1 .. pkt2;
+    local parsed = eng.parseChunk(chunk);
+    check('EQE6 chunk yields both packets', #parsed, 2);
+    check('EQE7 first packet id/size/off', parsed[1].id == 0x1A and parsed[1].size == 8 and parsed[1].off == 0, true);
+    check('EQE8 second packet id/off', parsed[2].id == 0x15 and parsed[2].off == 8, true);
+    check('EQE9 torn header stops the walk', #eng.parseChunk(string.char(0, 0, 1, 1)), 0);
+
+    -- --- action + item-use field decode ---
+    local act = string.rep('\0', 8) .. string.char(0x21, 0x00)   -- target 0x21 at 0x08
+        .. string.char(0x03, 0x00)                               -- category 3 at 0x0A
+        .. string.char(0x38, 0x00);                              -- action id 0x38 at 0x0C
+    local a = eng.parseAction(act);
+    check('EQE10 action fields decode', a.target == 0x21 and a.category == 3 and a.actionId == 0x38, true);
+    local itm = string.rep('\0', 12) .. string.char(0x44, 0x00)  -- target at 0x0C
+        .. string.char(0x07)                                     -- item index at 0x0E
+        .. string.char(0x00) .. string.char(0x08);               -- container at 0x10
+    local u = eng.parseItemUse(itm);
+    check('EQE11 item-use fields decode', u.target == 0x44 and u.itemIndex == 7 and u.container == 8, true);
+
+    -- --- routes: the dispatch-point table ---
+    check('EQE12 spell route', eng.routeOf(0x03).pre == 'Precast' and eng.routeOf(0x03).mid == 'Midcast', true);
+    check('EQE13 ws route has no midcast', eng.routeOf(0x07).pre == 'Weaponskill' and eng.routeOf(0x07).mid == nil, true);
+    check('EQE14 ranged route', eng.routeOf(0x10).pre == 'Preshot' and eng.routeOf(0x10).mid == 'Midshot', true);
+    check('EQE15 unhandled category is nil', eng.routeOf(0x0F), nil);
+    check('EQE16 precast styles: spell=set, ability=auto',
+          eng.routeOf(0x03).preStyle == 'set' and eng.routeOf(0x09).preStyle == 'auto', true);
+
+    -- --- completion math (LAC formulas) ---
+    local S = { FastCast = 0, Snapshot = 0, SpellOffset = 1.0, RangedBase = 10.0,
+                RangedOffset = 0.5, WeaponskillDelay = 3.0, AbilityDelay = 2.5,
+                ItemBase = 8, ItemOffset = 1.0 };
+    check('EQE17 spell completion = cast/4 + offset',
+          eng.completionOf(eng.routeOf(3), 32, S, 100), 100 + 8 + 1.0);
+    S.FastCast = 50;
+    check('EQE18 fast cast halves the base', eng.completionOf(eng.routeOf(3), 32, S, 100), 100 + 4 + 1.0);
+    check('EQE19 ranged completion', eng.completionOf(eng.routeOf(16), nil, S, 100), 100 + 10 + 0.5);
+    S.Snapshot = 50;
+    check('EQE20 snapshot halves ranged base', eng.completionOf(eng.routeOf(16), nil, S, 100), 100 + 5 + 0.5);
+    check('EQE21 ws fixed delay', eng.completionOf(eng.routeOf(7), nil, S, 100), 103.0);
+    check('EQE22 item with cast time', eng.itemCompletionOf(40, S, 100), 100 + 10 + 1.0);
+    check('EQE23 item without resource', eng.itemCompletionOf(nil, S, 100), 100 + 8 + 1.0);
+
+    -- --- 0x028 decode ---
+    local p28 = packStr(24, {
+        { 0x05 * 8, 32, 123456 },   -- userId u32 at byte 5
+        { 10 * 8 + 2, 4, 4 },       -- actionType 4 (complete)
+    });
+    local d28 = eng.parse0x28(p28);
+    check('EQE24 0x28 userId + type', d28.userId == 123456 and d28.actionType == 4, true);
+    check('EQE25 type 4 is a completion type', eng.ACTION_COMPLETE_TYPES[4], true);
+    local p28i = packStr(24, {
+        { 0x05 * 8, 32, 123456 },
+        { 10 * 8 + 2, 4, 8 },        -- type 8 (ranged/magic)
+        { 10 * 8 + 6, 16, 28787 },   -- the interrupt magic
+    });
+    local d28i = eng.parse0x28(p28i);
+    check('EQE26 interrupt magic decodes', d28i.actionType == 8 and d28i.interrupted == true, true);
+    local p28n = packStr(24, { { 0x05 * 8, 32, 1 }, { 10 * 8 + 2, 4, 8 }, { 10 * 8 + 6, 16, 100 } });
+    check('EQE27 type 8 without magic is not an interrupt', eng.parse0x28(p28n).interrupted, false);
+
+    -- --- augment header decode ---
+    check('EQE28 unaugmented extra is nil', eng.parseAugmentHeader(string.char(0, 0, 0, 0)), nil);
+    local delve = packStr(24, { { 0, 8, 2 }, { 8, 8, 0x20 }, { 16, 2, 1 }, { 18, 4, 9 } });
+    local pa = eng.parseAugmentHeader(delve);
+    check('EQE29 delve path+rank', pa.Type == 'Delve' and pa.Path == 'B' and pa.Rank == 9, true);
+    local dyna = packStr(24, { { 0, 8, 2 }, { 8, 8, 131 }, { 32, 2, 2 }, { 50, 5, 20 } });
+    local da = eng.parseAugmentHeader(dyna);
+    check('EQE30 dynamis path+rank', da.Type == 'Dynamis' and da.Path == 'C' and da.Rank == 20, true);
+    local magian = packStr(24, { { 0, 8, 3 }, { 8, 8, 0x40 }, { 80, 15, 5432 } });
+    local ma = eng.parseAugmentHeader(magian);
+    check('EQE31 magian trial', ma.Type == 'Magian' and ma.Trial == 5432, true);
+    local oseem = packStr(24, { { 0, 8, 2 }, { 8, 8, 0 } });
+    check('EQE32 plain augment type is Oseem', eng.parseAugmentHeader(oseem).Type, 'Oseem');
+    check('EQE33 synth-shield flag is nil', eng.parseAugmentHeader(packStr(4, { { 0, 8, 2 }, { 8, 8, 0x08 } })), nil);
+
+    -- --- the buffer merge (through the real equipSet door) ---
+    eng.bufferClear();
+    eng.equipSet({ Head = 'Cap A' });
+    eng.equipSet({ Head = 'Cap B', Body = 'Harness' });
+    eng.equipSet({ Body = 'ignore' });
+    local buf = eng._bufferPeek();
+    check('EQE34 buffer merge: later write wins, ignore clears',
+          buf[5] == 'Cap B' and buf[6] == nil, true);
+    eng.equipSet({ [11] = 'Karin Obi' });   -- numeric slot keys ride too
+    check('EQE35 numeric slot keys accepted', eng._bufferPeek()[11], 'Karin Obi');
+    eng.bufferClear();
+    check('EQE36 clear empties the buffer', next(eng._bufferPeek()), nil);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then
