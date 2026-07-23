@@ -228,7 +228,7 @@ end)();
                    'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
     local FEATURE = { 'ammowatch','arbwatch','augments','check','craftwatch','debug','eboxammo','eboxclient','fishcalc','fishwatch',
                       'gamemode','helmwatch','location','lockstyle','lookpreview','macrobook','meritwatch',
-                      'mpbands','pinwatch','useitem' };
+                      'mpbands','pinwatch','restockwatch','useitem' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
 
     local ALL = {};
@@ -8516,6 +8516,114 @@ end)();
     check('EBC10 box range is FIELD-PINNED at 5 yalms', ec.BOX_RANGE, 5);
     check('EBC10b boxDistance headless -> nil, nearBox -> false',
         ec.boxDistance() == nil and ec.nearBox() == false, true);
+
+    -- RS. restockwatch -- E-Box Restock config + the two PURE cores (ADR 0016;
+    -- docs/design/ebox-restock.md). No packets/engine: the union+override and the
+    -- slot-safety planner are arithmetic, so the panel and the nudge share ONE answer.
+    local rs = dofile('feature/restockwatch.lua');
+
+    -- _fromTable defaults: settings default TRUE; only an explicit false turns off
+    local rsd = rs._fromTable(nil);
+    check('RS1 defaults: master/showNudge/onlyWhenNeeded ON, empty lists',
+        rsd.master == true and rsd.showNudge == true and rsd.onlyWhenNeeded == true
+        and #rsd.character == 0, true);
+    local rsd2 = rs._fromTable({ master = false, character = {
+        { id = 4148, name = 'Echo Drops', ahCat = 8, stack = 12, target = 12 } } });
+    check('RS1b explicit master=false honored; others still default ON',
+        rsd2.master == false and rsd2.showNudge == true and #rsd2.character == 1
+        and rsd2.character[1].id == 4148, true);
+    check('RS1c junk entries dropped (needs id AND name)',
+        #rs._readList({ { name = 'x' }, { id = 5 }, { id = 9, name = 'ok' } }), 1);
+
+    -- _merge: job overrides character on the same id; job entries come first
+    local rsChar = { { id = 1, name = 'Food', ahCat = 6, stack = 12, target = 12 },
+                     { id = 2, name = 'Oil',  ahCat = 8, stack = 12, target = 12 } };
+    local rsRng  = { { id = 2, name = 'Oil',  ahCat = 8,  stack = 12, target = 30 },
+                     { id = 3, name = 'Arrow', ahCat = 15, stack = 99, target = 99 } };
+    local rsEff = rs._merge(rsChar, rsRng);
+    check('RS2 effective set = job entries first, then unshadowed character',
+        #rsEff == 3 and rsEff[1].id == 2 and rsEff[2].id == 3 and rsEff[3].id == 1, true);
+    check('RS2b job entry overrides the character target', rsEff[1].target, 30);
+    check('RS2c the override records the shadowed baseline', rsEff[1].shadow, 12);
+    check('RS2d the shadowed character entry is not listed twice',
+        rsEff[3].id == 1 and rsEff[3].scope == 'character', true);
+    check('RS2e job with no list = plain character set', #rs._merge(rsChar, nil), 2);
+    check('RS2f categoriesOf dedupes ahCats', #rs.categoriesOf(rsEff), 3);   -- 8, 15, 6
+
+    -- plan: the worked example from the design doc (3 free Inventory slots)
+    local rsOn  = { [10] = 0,  [11] = 4,  [12] = 0 };
+    local rsBox = { [10] = 40, [11] = 12, [12] = 99 };
+    local rsCtx = { freeSlots = 3,
+        onHand  = function(id) return rsOn[id]  or 0; end,
+        inBox   = function(id) return rsBox[id] or 0; end,
+        stackOf = function()   return 12; end };
+    local rsEntries = { { id = 10, name = 'Fire Crystal', target = 24, stack = 12 },
+                        { id = 11, name = 'Sole Sushi',   target = 12, stack = 12 },
+                        { id = 12, name = 'Silent Oil',   target = 24, stack = 12 } };
+    local rp = rs.plan(rsEntries, rsCtx);
+    check('RS3 greedy fill: two items fetched, third deferred',
+        #rp.fetches == 2 and #rp.remainder == 1, true);
+    check('RS3b Fire Crystal: 24 fetched = 2 stacks/slots',
+        rp.fetches[1].qty == 24 and rp.fetches[1].slots == 2, true);
+    check('RS3c Sole Sushi: shortfall 8 fetched = 1 slot',
+        rp.fetches[2].qty == 8 and rp.fetches[2].slots == 1, true);
+    check('RS3d Silent Oil deferred whole (no room left)',
+        rp.remainder[1].id == 12 and rp.remainder[1].want == 24, true);
+    check('RS3e all 3 slots consumed', rp.freeLeft, 0);
+    check('RS3f badge counts every box-fillable shortfall (space-independent)', rp.badge, 3);
+    check('RS3g pulls split into <= stack packets (12, 12, 8)',
+        #rp.pulls == 3 and rp.pulls[1].qty == 12 and rp.pulls[2].qty == 12 and rp.pulls[3].qty == 8, true);
+
+    -- plan: single-item partial fill ("space for 2 -> fetch 2, no more")
+    local rp2 = rs.plan({ { id = 10, name = 'Fire Crystal', target = 24, stack = 12 } },
+        { freeSlots = 1, onHand = function() return 0; end,
+          inBox = function() return 40; end, stackOf = function() return 12; end });
+    check('RS4 one free slot -> one stack fetched, remainder reported',
+        rp2.fetches[1].qty == 12 and rp2.remainder[1].want == 12, true);
+
+    -- plan: multi-stack split (150 of a stack-99 item -> 99 + 51 = 2 slots)
+    local rp3 = rs.plan({ { id = 20, name = 'Arrow', target = 150, stack = 99 } },
+        { freeSlots = 10, onHand = function() return 0; end,
+          inBox = function() return 200; end, stackOf = function() return 99; end });
+    check('RS5 150 @ stack 99 = 2 slots, packets 99 + 51',
+        rp3.fetches[1].slots == 2 and #rp3.pulls == 2
+        and rp3.pulls[1].qty == 99 and rp3.pulls[2].qty == 51, true);
+
+    -- plan: nothing to do (at target, or box empty) -> no fetch, no badge
+    local rp4 = rs.plan({ { id = 10, name = 'x', target = 5, stack = 12 } },
+        { freeSlots = 9, onHand = function() return 5; end,
+          inBox = function() return 40; end, stackOf = function() return 12; end });
+    check('RS6 at target -> no fetch, badge 0', #rp4.fetches == 0 and rp4.badge == 0, true);
+    check('RS6b box empty -> no fetch (nothing box-fillable)',
+        rs.needsFetch({ { id = 10, target = 12 } },
+            { freeSlots = 9, onHand = function() return 0; end,
+              inBox = function() return 0; end, stackOf = function() return 12; end }), false);
+
+    -- serialize round-trips settings + both lists
+    local rsCfg = { master = false, showNudge = true, onlyWhenNeeded = false,
+        character = { { id = 1, name = 'Food', ahCat = 6, stack = 12, target = 12 } },
+        jobs = { RNG = { { id = 3, name = 'Arrow', ahCat = 15, stack = 99, target = 99 } } } };
+    local rsBack = assert((loadstring or load)(rs._serialize(rsCfg)))();
+    local rsRt = rs._fromTable(rsBack);
+    check('RS7 serialize round-trips settings + lists',
+        rsRt.master == false and rsRt.onlyWhenNeeded == false and rsRt.showNudge == true
+        and #rsRt.character == 1 and rsRt.character[1].name == 'Food'
+        and rsRt.jobs.RNG ~= nil and rsRt.jobs.RNG[1].target == 99, true);
+
+    -- mutators (saveState no-ops headless: statePath nil pre-login)
+    rs.character = {}; rs.jobs = {};
+    check('RS8 addItem to the character list', rs.addItem('character', nil,
+        { id = 1, name = 'Food', ahCat = 6, stack = 12 }), true);
+    check('RS8b addItem defaults target to one stack', rs.character[1].target, 12);
+    check('RS8c addItem dedupes by id',
+        rs.addItem('character', nil, { id = 1, name = 'Food', ahCat = 6, stack = 12 }), false);
+    check('RS8d addItem to a job list creates the section',
+        rs.addItem('job', 'RNG', { id = 3, name = 'Arrow', ahCat = 15, stack = 99, target = 50 })
+        and rs.jobs.RNG[1].target == 50, true);
+    check('RS8e setTarget updates',
+        rs.setTarget('character', nil, 1, 24) and rs.character[1].target == 24, true);
+    check('RS8f removeItem drops it',
+        rs.removeItem('job', 'RNG', 3) and #rs.jobs.RNG == 0, true);
 
     -- level: persisted per entry (GUI sort data; the engine ignores it --
     -- the fmt-2 round-trip above pins the serializer side)
