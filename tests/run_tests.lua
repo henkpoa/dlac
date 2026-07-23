@@ -8335,6 +8335,100 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- UT. useitem utility teleports (Henrik, 2026-07-23): the 'util' family
+--     (Maat's Cap, Ducal Guard's Ring, stables gear, the Purgonorgo suits...)
+--     is owned-only in the menu, Kazham Earring joins the ear cascade as a
+--     dim-able row, Maat's Cap alone stays visible to the set-building picker
+--     (+7 all stats = real gear), and a multi-hit /dl t query narrows to the
+--     item you OWN (8 suits share dest 'Purgonorgo'; 4 stables destinations
+--     share the substring 'stables'). Stub inventory: Maat's Cap + Custom
+--     Top +1 + Republic Stables Medal, real ids so the load-time id->name
+--     resolution exercises too.
+-- ---------------------------------------------------------------------------
+(function()
+    local savedReg = ashita.events.register;
+    local cmdHandler = nil;
+    ashita.events.register = function(evt, name, fn)
+        if evt == 'command' then cmdHandler = fn; end
+    end;
+    package.loaded['dlac\\chatfmt'] = { print = function() end };
+
+    local nameById = {
+        [15194] = "Maat's Cap",              -- head, keepInPicker
+        [11274] = 'Custom Top +1',           -- body, one of the 8 Purgonorgo suits
+        [13180] = 'Republic Stables Medal',  -- neck, one of 4 'stables' dests
+    };
+    local bag0 = {
+        { Id = 15194, Count = 1, Extra = '' },
+        { Id = 11274, Count = 1, Extra = '' },
+        { Id = 13180, Count = 1, Extra = '' },
+    };
+    local inv = {
+        GetContainerCountMax = function(self, bag) return (bag == 0) and #bag0 or 0; end,
+        GetContainerItem = function(self, bag, i) return (bag == 0) and bag0[i] or nil; end,
+    };
+    AshitaCore = {
+        GetMemoryManager = function(self) return { GetInventory = function() return inv; end }; end,
+        GetResourceManager = function(self) return {
+            GetItemById = function(self2, id)
+                if nameById[id] == nil then return nil; end   -- unstubbed ids: fallback literals stand
+                return { Name = { nameById[id] }, MaxCharges = 0 };
+            end,
+        }; end,
+        GetChatManager = function(self) return { QueueCommand = function() end }; end,
+    };
+
+    local useitem = dofile('feature/useitem.lua');
+    ashita.events.register = savedReg;
+
+    -- menu shape: util rows are owned-only -- exactly the three stubbed items
+    local util, earNames = {}, {};
+    for _, row in ipairs(useitem.menu()) do
+        if row.grp == 'util' then util[#util + 1] = row; end
+        if row.grp == 'ear' then earNames[#earNames + 1] = row.name; end
+    end
+    check('UT1 util tier is owned-only (3 rows)', #util, 3);
+    local haveMaat = false;
+    for _, r in ipairs(util) do if r.name == "Maat's Cap" then haveMaat = true; end end
+    check('UT1b Maat\'s Cap surfaced', haveMaat, true);
+    -- Kazham Earring: a dim not-owned row INSIDE the ear cascade, after Norg
+    local kazhamAt, norgAt = nil, nil;
+    for i, n in ipairs(earNames) do
+        if n == 'Kazham Earring' then kazhamAt = i; end
+        if n == 'Norg Earring' then norgAt = i; end
+    end
+    check('UT2 Kazham Earring rides the ear cascade', kazhamAt ~= nil, true);
+    check('UT2b ...right after Norg', kazhamAt, (norgAt or 0) + 1);
+    -- picker hide: Maat's Cap is EXEMPT (real gear), the trinketry is hidden
+    local hide = useitem.menuNames();
+    check('UT3 Maat\'s Cap stays in the picker', hide["maat's cap"], nil);
+    check('UT3b Tavnazian Ring hidden from the picker', hide['tavnazian ring'], true);
+    check('UT3c suits hidden from the picker', hide['custom top +1'], true);
+    check('UT3d earrings still hidden', hide['kazham earring'], true);
+
+    -- command narrowing
+    check('UT4 command handler registered', type(cmdHandler), 'function');
+    if cmdHandler ~= nil then
+        cmdHandler({ command = '/dl t maat' });
+        local p = useitem.pending();
+        check('UT5 /dl t maat stages Maat\'s Cap', p and p.name, "Maat's Cap");
+        cmdHandler({ command = '/dl t purgonorgo' });
+        p = useitem.pending();
+        check('UT6 /dl t purgonorgo narrows 8 suits to the owned one', p and p.name, 'Custom Top +1');
+        cmdHandler({ command = '/dl t stables' });
+        p = useitem.pending();
+        check('UT7 /dl t stables narrows 4 stables to the owned one', p and p.name, 'Republic Stables Medal');
+        cmdHandler({ command = '/dl t outpost' });   -- Return+Homing share the dest, neither owned
+        p = useitem.pending();
+        check('UT8 unowned same-dest pair refuses (pending unchanged)', p and p.name, 'Republic Stables Medal');
+        cmdHandler({ command = '/dl t off' });
+        check('UT9 /dl t off releases', useitem.pending(), nil);
+    end
+
+    AshitaCore = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- FW. GUI content-follow (2026-07-22): a Profiles-menu import rewrites the
 --     ACTIVE profile's files for the CURRENT job -- same cache keys, new
 --     bytes. The engine already follows (queued reloads + its own content

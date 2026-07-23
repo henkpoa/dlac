@@ -171,7 +171,7 @@ anything *any* of your jobs can wear at its current level.
 | `/dl c` | Chocobo Whistle: lock Neck, equip it, call the chocobo the moment the game says ready (`off` cancels) |
 | `/dl nexus` | Nexus Cape: lock Back, equip it, teleport to your party leader the moment the game says ready (`off` cancels) |
 | `/dl shirt` | Shadow Lord Shirt: lock Body, equip it, teleport to Castle Zvahl Keep (`off` cancels) |
-| `/dl t <where>` | Teleport earring/ring: lock Ear2 or Ring2, equip the matching item (norg, jeuno, sandy, holla, vahzl...), wait, use it — no arg lists destinations |
+| `/dl t <where>` | Teleport gear: lock the item's slot (earrings Ear2, rings Ring2, caps Head, stables gear Neck, suits Body), equip it, wait, use it (norg, jeuno, maat, ducal, purgonorgo...) — shared destinations resolve to the item you own; no arg lists destinations |
 | `/dl xp <ring>` | Exp/VP rings (Empress, Chariot, Kupofried, Venture...): same equip-wait-use dance on Ring2 — no arg lists what you own |
 
 ## Safety

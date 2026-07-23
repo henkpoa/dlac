@@ -16,11 +16,14 @@
                            PARTY LEADER (server-gated: leader in a valid zone
                            you have visited, not in a Mog House, not yourself
                            -- all refusals are the server's messages).
-        /dl t <where>      lock Ear2 (earrings) or Ring2 (teleport rings), equip
-                           the matching item, use it. <where> matches a
-                           destination or alias (norg, jeuno, sandy, holla,
-                           vahzl...); an ambiguous query lists the options, no
-                           argument lists every destination.
+        /dl t <where>      lock the matching item's slot (earrings Ear2, rings
+                           Ring2, caps Head, stables gear Neck, suits Body),
+                           equip it, use it. <where> matches a destination or
+                           alias (norg, jeuno, sandy, holla, maat, ducal,
+                           purgonorgo...); when several items share a
+                           destination the one you OWN wins (readiest first);
+                           an ambiguous query lists the options, no argument
+                           lists every destination.
         /dl xp <ring>      lock Ring2, equip the matching EXPERIENCE ring, use it
                            (empress, emperor, resolution, chariot, expertise,
                            anniversary, kupofried, allied, caliber, echad). Same
@@ -66,15 +69,26 @@ local ITEMS = {
           verb = 'teleporting to your party leader' },
 };
 
--- Teleport earrings + teleport rings (CatsEyeXI): 30s equip delay + margin for
--- both (item_usable useDelay = 30). Earrings wear in Ear2, the crag rings in
--- Ring2 -- one list so /dl t resolves ANY destination; grp splits the GUI's
--- two cascading submenus. aliases are matched exact -> prefix -> substring;
--- keep them lowercase.
+-- Teleport earrings + teleport rings + the utility family (CatsEyeXI): 30s
+-- equip delay + margin for ALL of them (item_usable useDelay = 30 on every
+-- entry, verified against the server sql 2026-07-23). One list so /dl t
+-- resolves ANY destination; grp splits the GUI's cascading submenus ('ear' /
+-- 'ring' keep dim not-owned rows as destination reminders; 'util' rows are
+-- owned-only -- Henrik, 2026-07-23). aliases are matched exact -> prefix ->
+-- substring; keep them lowercase. lbl = short menu label when dest runs past
+-- the ~12 chars the label column holds. Entries with an id resolve their
+-- client-exact name at load (the apostrophe items need it); slots verified
+-- against item_equipment slot masks.
+-- Obtainability (wiki, Henrik 2026-07-23): the town earrings come from
+-- Marceo's Guttable Fish; Dem/Holla/Mea rings can be bought with Domain
+-- Shards.
 local TELE_WAIT = 34;
 local TELEPORTS = {
     { name = 'Nashmau Earring',    dest = 'Nashmau',    slot = 'ear2', grp = 'ear', aliases = { 'nashmau' } },
     { name = 'Norg Earring',       dest = 'Norg',       slot = 'ear2', grp = 'ear', aliases = { 'norg' } },
+    -- Kazham rides between Norg and Jeuno (Elshimo neighbors) -- added 07-23
+    -- with the utility batch; same Guttable Fish source as the rest.
+    { name = 'Kazham Earring',     dest = 'Kazham',     slot = 'ear2', grp = 'ear', aliases = { 'kazham' }, id = 16046 },
     { name = 'Duchy Earring',      dest = 'Jeuno',      slot = 'ear2', grp = 'ear', aliases = { 'jeuno', 'duchy' } },
     { name = 'Rabao Earring',      dest = 'Rabao',      slot = 'ear2', grp = 'ear', aliases = { 'rabao' } },
     { name = 'Selbina Earring',    dest = 'Selbina',    slot = 'ear2', grp = 'ear', aliases = { 'selbina' } },
@@ -90,7 +104,71 @@ local TELEPORTS = {
     { name = 'Yhoat Ring',         dest = 'Yhoat',      slot = 'ring2', grp = 'ring', aliases = { 'yhoat' } },
     { name = 'Altep Ring',         dest = 'Altep',      slot = 'ring2', grp = 'ring', aliases = { 'altep', 'altepa' } },
     { name = 'Vahzl Ring',         dest = 'Vahzl',      slot = 'ring2', grp = 'ring', aliases = { 'vahzl' } },
+    -- ------------------------------------------------------------------
+    -- The utility family (Henrik, 2026-07-23): every other equippable
+    -- teleport enchant the server carries (scripts/items sweep). All grp
+    -- 'util' -- one "Other Teleports" cascade, owned rows only. Weapons
+    -- (Warp Cudgel, the [S] Retrace staves) are deliberately OUT: equipping
+    -- a main weapon wipes TP. Empire/Safehold Earrings exist server-side but
+    -- are not obtainable here (Henrik) -- also out.
+    -- Maat's Cap keeps +7 all stats (item_mods) -- the ONLY entry that is
+    -- real gear, so it alone stays visible in the set-building picker
+    -- (keepInPicker; everything else is DEF 1-2 trinketry the travel filter
+    -- rightly hides).
+    { name = "Maat's Cap",         dest = "Ru'Lude Gardens", lbl = "Ru'Lude", slot = 'head', grp = 'util', aliases = { 'maat', 'maats', 'rulude' }, id = 15194, keepInPicker = true },
+    { name = "Ducal Guard's Ring", dest = "Ru'Lude Gardens", lbl = "Ru'Lude", slot = 'ring2', grp = 'util', aliases = { 'ducal' }, id = 14657 },
+    -- CoP 8-1 completion reward (wiki, Henrik 2026-07-23).
+    { name = 'Tavnazian Ring',     dest = 'Tavnazia',        slot = 'ring2', grp = 'util', aliases = { 'tavnazia' }, id = 14672 },
+    { name = 'Nomad Cap',          dest = 'your home nation', lbl = 'Home nation', slot = 'head', grp = 'util', aliases = { 'nomad' }, id = 16119 },
+    { name = 'Moogle Cap',         dest = 'your home nation', lbl = 'Home nation', slot = 'head', grp = 'util', aliases = { 'moogle' }, id = 16118 },
+    -- Return and Homing Ring are the SAME enchant on this server (both cast
+    -- the current region's outpost warp; scripts verified 07-23) -- they
+    -- differ only in charges (10 vs 30).
+    { name = 'Return Ring',        dest = 'the outpost',     lbl = 'Outpost', slot = 'ring2', grp = 'util', aliases = { 'return' }, id = 15542 },
+    { name = 'Homing Ring',        dest = 'the outpost',     lbl = 'Outpost', slot = 'ring2', grp = 'util', aliases = { 'homing' }, id = 15541 },
+    { name = 'Olduum Ring',        dest = 'Wajaom Woodlands', lbl = 'Wajaom', slot = 'ring2', grp = 'util', aliases = { 'olduum', 'wajaom' }, id = 15769 },
+    -- The [S] Recall rings (Campaign).
+    { name = 'Jugner Ring',        dest = 'Jugner [S]',      slot = 'ring2', grp = 'util', aliases = { 'jugner' }, id = 15841 },
+    { name = 'Pashhow Ring',       dest = 'Pashhow [S]',     slot = 'ring2', grp = 'util', aliases = { 'pashhow' }, id = 15842 },
+    { name = 'Meriphataud Ring',   dest = 'Meriphataud [S]', lbl = 'Meriph. [S]', slot = 'ring2', grp = 'util', aliases = { 'meriphataud', 'meri' }, id = 15843 },
+    -- Chocobo stables: the three nation neck pieces + the Jeuno cap.
+    { name = 'Black Chocobo Cap',        dest = 'Jeuno stables',      lbl = 'Jeuno',      slot = 'head', grp = 'util', aliases = { 'blackchocobo' }, id = 25585 },
+    { name = 'Kingdom Stables Collar',   dest = "San d'Oria stables", lbl = "San d'Oria", slot = 'neck', grp = 'util', aliases = { 'collar' }, id = 13179 },
+    { name = 'Republic Stables Medal',   dest = 'Bastok stables',     lbl = 'Bastok',     slot = 'neck', grp = 'util', aliases = { 'medal' }, id = 13180 },
+    { name = 'Federation Stables Scarf', dest = 'Windurst stables',   lbl = 'Windurst',   slot = 'neck', grp = 'util', aliases = { 'scarf' }, id = 13181 },
+    -- Destination depends on the zone you use it in (the server's
+    -- tidalDestinations map) -- BODY slot here, not retail's pendant slot.
+    -- Bought with Obsidian Fragments on ACE/CW (wiki, Henrik 2026-07-23).
+    { name = 'Tidal Talisman',     dest = 'the coast',       lbl = 'Coast', slot = 'body', grp = 'util', aliases = { 'tidal' }, id = 11290 },
+    -- The HQ seasonal swimsuits (Celestial Nights / Sunbreeze): one per
+    -- race+gender (RSE), all -> Purgonorgo Isle -- owned-only rows mean you
+    -- see just yours. Wyrmking Suit +1 and Cumulus Masque +1 ride the same
+    -- event family but land elsewhere (server scripts, 07-23).
+    { name = 'Custom Gilet +1',    dest = 'Purgonorgo', slot = 'body', grp = 'util', aliases = { 'purgonorgo', 'beach' }, id = 11273 },
+    { name = 'Custom Top +1',      dest = 'Purgonorgo', slot = 'body', grp = 'util', aliases = { 'purgonorgo', 'beach' }, id = 11274 },
+    { name = 'Magna Gilet +1',     dest = 'Purgonorgo', slot = 'body', grp = 'util', aliases = { 'purgonorgo', 'beach' }, id = 11275 },
+    { name = 'Magna Top +1',       dest = 'Purgonorgo', slot = 'body', grp = 'util', aliases = { 'purgonorgo', 'beach' }, id = 11276 },
+    { name = 'Wonder Maillot +1',  dest = 'Purgonorgo', slot = 'body', grp = 'util', aliases = { 'purgonorgo', 'beach' }, id = 11277 },
+    { name = 'Wonder Top +1',      dest = 'Purgonorgo', slot = 'body', grp = 'util', aliases = { 'purgonorgo', 'beach' }, id = 11278 },
+    { name = 'Savage Top +1',      dest = 'Purgonorgo', slot = 'body', grp = 'util', aliases = { 'purgonorgo', 'beach' }, id = 11279 },
+    { name = 'Elder Gilet +1',     dest = 'Purgonorgo', slot = 'body', grp = 'util', aliases = { 'purgonorgo', 'beach' }, id = 11280 },
+    { name = 'Wyrmking Suit +1',   dest = 'Riverne #B01', slot = 'body', grp = 'util', aliases = { 'wyrmking', 'riverne' }, id = 25757 },
+    { name = 'Cumulus Masque +1',  dest = 'Reisenjima',   slot = 'head', grp = 'util', aliases = { 'cumulus', 'reisenjima' }, id = 10385 },
 };
+-- id-pinned entries resolve their CLIENT name at load: catalog/API names drop
+-- apostrophes ("Maats Cap") while /equip and the bag scan need the exact
+-- client string ("Maat's Cap") -- the hardcoded-names-must-pin-ids law (HELM
+-- hats, 2026-07-22). The literals above are only the headless fallback; same
+-- pattern as SCROLLS below.
+for _, t in ipairs(TELEPORTS) do
+    if t.id ~= nil then
+        pcall(function()
+            local r = AshitaCore:GetResourceManager():GetItemById(t.id);
+            local nm = (r ~= nil and r.Name ~= nil) and r.Name[1] or nil;
+            if type(nm) == 'string' and #nm > 0 then t.name = nm; end
+        end);
+    end
+end
 
 -- Experience bands/rings (Henrik): equip Ring2, wait out the equip delay, use
 -- -- exactly the teleport machinery. `dest` doubles as the short label the
@@ -119,7 +197,7 @@ local EXPRINGS = {
     { name = 'Venture Ring',     dest = 'Venture',     bonus = '+100% VP', aliases = { 'venture' } },   -- Venture POINT bonus, not exp (field-confirmed 07-21)
 };
 
-local SLOT_ID = { ring2 = 0x0E, ear2 = 0x0C, neck = 0x09, body = 0x05, back = 0x0F };   -- native equip-slot indexes
+local SLOT_ID = { ring2 = 0x0E, ear2 = 0x0C, neck = 0x09, body = 0x05, back = 0x0F, head = 0x04 };   -- native equip-slot indexes
 
 -- Usable travel scrolls: /item straight from Inventory -- no equip, no slot
 -- lock, no delay. /item works from Inventory ONLY, which the menu's avail flag
@@ -261,9 +339,25 @@ local function findTeleports(list, q)
     return sub;
 end
 
-local function listTeleports(items)
+-- Destination listing. Duplicate dests collapse (the eight Purgonorgo suits
+-- are ONE destination to the reader); withNames instead keeps every item and
+-- tags the ones whose dest repeats in the list ("Ru'Lude Gardens (Maat's
+-- Cap)") -- that form is for ambiguity messages, where the items must stay
+-- tellable apart.
+local function listTeleports(items, withNames)
     local parts = {};
-    for _, t in ipairs(items) do parts[#parts + 1] = t.dest; end
+    if withNames then
+        local dcount = {};
+        for _, t in ipairs(items) do dcount[t.dest] = (dcount[t.dest] or 0) + 1; end
+        for _, t in ipairs(items) do
+            parts[#parts + 1] = (dcount[t.dest] > 1) and (t.dest .. ' (' .. t.name .. ')') or t.dest;
+        end
+    else
+        local seen = {};
+        for _, t in ipairs(items) do
+            if not seen[t.dest] then seen[t.dest] = true; parts[#parts + 1] = t.dest; end
+        end
+    end
     return table.concat(parts, ', ');
 end
 
@@ -347,10 +441,16 @@ local MENU = {
     { name = 'Shadow Lord Shirt', label = 'Zvahl Keep',   cmd = '/dl shirt', ownedOnly = true },
     { name = SCROLLS.ir.name,     label = 'Retrace',      cmd = '/dl ir',    ownedOnly = true },
 };
--- Earrings and rings carry their grp through to the rows: the GUI folds each
--- group into its own cascading submenu ("Teleport Earrings" / "Teleport Rings").
+-- Earrings, rings and the utility family carry their grp through to the rows:
+-- the GUI folds each group into its own cascading submenu ("Teleport
+-- Earrings" / "Teleport Rings" / "Other Teleports"). Utility rows are
+-- ownedOnly (Henrik, 2026-07-23: show them only when the player actually has
+-- them -- a grab-bag of unowned misc is noise, unlike the earring/ring
+-- cascades where the dim row is the destination reminder).
 for _, t in ipairs(TELEPORTS) do
-    MENU[#MENU + 1] = { name = t.name, label = t.dest, cmd = '/dl t ' .. t.aliases[1], grp = t.grp };
+    MENU[#MENU + 1] = { name = t.name, label = t.lbl or t.dest, cmd = '/dl t ' .. t.aliases[1],
+                        grp = t.grp, ownedOnly = (t.grp == 'util') or nil,
+                        keepInPicker = t.keepInPicker };
 end
 -- Exp rings ride the same menu, grp 'xp': the GUI draws them in their own
 -- section under the teleports. label = the short name only (Henrik: no
@@ -364,10 +464,17 @@ for _, m in ipairs(MENU) do WANTED[string.lower(m.name)] = true; end
 
 -- The Teleports-menu name-set for OTHER modules: { lower(name) -> true } over
 -- everything above (scrolls, Warp/Provenance rings, Chocobo Whistle, Shadow
--- Lord Shirt, teleport earrings/rings, exp rings). gearui's + Add picker hides
--- these from set building by default -- utility enchantments carry no combat
--- stats and only bloat the slot lists.
-function M.menuNames() return WANTED; end
+-- Lord Shirt, teleport earrings/rings, exp rings, the utility family).
+-- gearui's + Add picker hides these from set building by default -- utility
+-- enchantments carry no combat stats and only bloat the slot lists. Entries
+-- flagged keepInPicker are EXEMPT: Maat's Cap is +7 all stats on this server
+-- (item_mods), real gear that set building must keep offering. WANTED (the
+-- bag-scan whitelist) still holds everything.
+local PICKER_HIDE = {};
+for _, m in ipairs(MENU) do
+    if not m.keepInPicker then PICKER_HIDE[string.lower(m.name)] = true; end
+end
+function M.menuNames() return PICKER_HIDE; end
 
 -- Containers the game lets you EQUIP from (inventory + wardrobes); anything
 -- else is owned-but-stored -- the menu paints it red, as everywhere in dlac.
@@ -508,10 +615,63 @@ ashita.events.register('command', 'dlac-useitem', function(e)
             return;
         end
         local hits = findTeleports(TELEPORTS, q);
+        if #hits > 1 then
+            -- Ownership narrows a multi-hit (2026-07-23): several items can
+            -- share a destination now (8 Purgonorgo suits, both Ru'Lude
+            -- items, the outpost pair) -- the one you OWN is the one you
+            -- meant. menu() already knows owned/avail/rem per name (1s
+            -- cache). Equippable-now beats owned-but-stored; among several
+            -- equippable copies of ONE destination the readiest wins. Items
+            -- owned by nobody with a single shared dest get a plain "not
+            -- owned" instead of a fake ambiguity ("Purgonorgo, Purgonorgo,
+            -- ..." helps no one). Distinct destinations stay ambiguous --
+            -- ownership must not silently pick a PLACE for you.
+            local byName = {};
+            for _, r in ipairs(M.menu() or {}) do byName[string.lower(r.name)] = r; end
+            local avail, owned = {}, {};
+            local oneDest = true;
+            for _, t in ipairs(hits) do
+                local r = byName[string.lower(t.name)];
+                if r ~= nil and r.owned then
+                    owned[#owned + 1] = t;
+                    if r.avail then avail[#avail + 1] = t; end
+                end
+                if t.dest ~= hits[1].dest then oneDest = false; end
+            end
+            if #avail == 1 then
+                hits = avail;
+            elseif #avail > 1 then
+                local same = true;
+                for _, t in ipairs(avail) do if t.dest ~= avail[1].dest then same = false; end end
+                if same then                           -- interchangeable: the readiest wins
+                    local best = avail[1];
+                    for _, t in ipairs(avail) do
+                        local rb = byName[string.lower(best.name)];
+                        local rt = byName[string.lower(t.name)];
+                        if rt ~= nil and rb ~= nil and (rt.rem or 0) < (rb.rem or 0) then best = t; end
+                    end
+                    hits = { best };
+                end                                    -- mixed dests: stays ambiguous below
+            elseif oneDest then
+                -- One destination, nothing equippable: say the true reason --
+                -- stored beats a fake ambiguity, unowned lists what to get.
+                if #owned > 0 then
+                    local r = byName[string.lower(owned[1].name)];
+                    print(string.format('[dlac] your %s is in %s -- move it to Inventory/Wardrobe to use it.',
+                        owned[1].name, tostring(r and r.where)));
+                else
+                    local names = {};
+                    for _, t in ipairs(hits) do names[#names + 1] = t.name; end
+                    print('[dlac] you don\'t own a teleport to ' .. hits[1].dest
+                        .. ' (' .. table.concat(names, ', ') .. ').');
+                end
+                return;
+            end
+        end
         if #hits == 0 then
             print('[dlac] no teleport matches "' .. q .. '" -- options: ' .. listTeleports(TELEPORTS));
         elseif #hits > 1 then
-            print('[dlac] "' .. q .. '" is ambiguous -- did you mean: ' .. listTeleports(hits) .. '?');
+            print('[dlac] "' .. q .. '" is ambiguous -- did you mean: ' .. listTeleports(hits, true) .. '?');
         else
             local t = hits[1];
             start({ name = t.name, slot = t.slot, wait = TELE_WAIT },

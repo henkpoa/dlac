@@ -1142,10 +1142,12 @@ setup.configure({
 
 -- Reload LAC / Scan / Stage / Commit / Augs / Setup, right-aligned on the header row.
 
--- The "Teleports" header dropdown, three tiers (Henrik, 2026-07-19): the
+-- The "Teleports" header dropdown, tiered (Henrik, 2026-07-19): the
 -- instant/panic strip on top (owned-only -- useitem.menu() already dropped the
 -- rest), then "Teleport Earrings" / "Teleport Rings" cascading submenus (every
--- destination listed, dim when unowned), then the exp rings. Fixed columns
+-- destination listed, dim when unowned), then "Other Teleports" (the utility
+-- family, 2026-07-23 -- owned rows only, so the cascade hides itself until
+-- you have one), then the exp rings. Fixed columns
 -- (destination / item / charges / state) so the rows line up; colors follow
 -- the house rules -- lit = equippable now, red = owned but stored, dim = not
 -- owned -- plus an amber countdown while the enchant recharges (out of
@@ -1193,20 +1195,25 @@ local function renderTeleportRow(r, key)
     imgui.TextColored(col, fmt.esc(r.label));
     imgui.SameLine(150);
     imgui.TextColored(COL.DIM, fmt.esc(r.name));
+    -- The util tier's names run longer than the rest ("Federation Stables
+    -- Scarf", 24 chars) -- its charges/state columns sit further right so the
+    -- name never bleeds into them. Everything else keeps the original grid.
+    local cCol = (r.grp == 'util') and 390 or 340;
+    local sCol = (r.grp == 'util') and 455 or 400;
     if chinfo ~= '' then
         -- charges column: red at 0 -- the reuse countdown alone can't say
         -- "spent"; what 0 means (NPC recharge etc.) is the server's business,
         -- so the number just shows red without claiming a remedy.
-        imgui.SameLine(340);   -- clear of the longest names (Federation/Republic Earring) + breathing room
+        imgui.SameLine(cCol);   -- clear of the longest names (Federation/Republic Earring) + breathing room
         imgui.TextColored((r.charges > 0) and COL.DIM or COL.ERR,
             string.format('%d/%d', r.charges, r.maxch));
     elseif r.owned and (r.count or 0) > 1 then
         -- stackables (Instant Warp scrolls): the stack size rides the same
         -- column, so you know when you're down to your last one.
-        imgui.SameLine(340);
+        imgui.SameLine(cCol);
         imgui.TextColored(COL.DIM, 'x' .. tostring(r.count));
     end
-    imgui.SameLine(400);   -- state column, past the widest charges text (e.g. "30/30")
+    imgui.SameLine(sCol);   -- state column, past the widest charges text (e.g. "30/30")
     if not r.owned then
         imgui.TextColored(COL.DIM, 'not owned');
     elseif not r.avail then
@@ -1544,10 +1551,11 @@ local function renderTeleportsPopup()
     local rows = {};
     pcall(function() rows = useit.menu() or {}; end);
     -- Split into the popup's tiers by the rows' grp tag (useitem owns the tag).
-    local top, ears, rings, xps = {}, {}, {}, {};
+    local top, ears, rings, utils, xps = {}, {}, {}, {}, {};
     for _, r in ipairs(rows) do
         if     r.grp == 'ear'  then ears[#ears + 1]   = r;
         elseif r.grp == 'ring' then rings[#rings + 1] = r;
+        elseif r.grp == 'util' then utils[#utils + 1] = r;
         elseif r.grp == 'xp'   then xps[#xps + 1]     = r;
         else                        top[#top + 1]     = r; end
     end
@@ -1555,6 +1563,10 @@ local function renderTeleportsPopup()
     if #top > 0 then imgui.Separator(); end
     renderTeleportGroup('Teleport Earrings', ears, 'e');
     renderTeleportGroup('Teleport Rings', rings, 'r');
+    -- The utility family (Maat's Cap, Ducal Guard's Ring, stables gear, the
+    -- seasonal suits...): owned rows only, so the whole cascade vanishes when
+    -- you have none (renderTeleportGroup skips empty lists).
+    renderTeleportGroup('Other Teleports', utils, 'u');
     if #xps > 0 then
         -- Exp rings stay a flat section under the teleports (Henrik);
         -- useitem.menu() already dropped the unowned ones.

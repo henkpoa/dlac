@@ -4417,3 +4417,47 @@ keeps a 3-deep 0x053 observation log (M._outLine: "guard saw 0x053 out:
 SET 4s ago (activate); ..." -- reports what it saw, promises nothing about
 injected-packet visibility, the engine witness owns that side). Tests
 DBF1-7 (merge/freshness/sanitize), LGD5-7 (traffic line), 2491 green.
+
+## Session "the rest of the travel wardrobe" (2026-07-23)
+
+**Theme:** Henrik: "list all the teleport items we haven't added to the teleport
+menu yet (if the player has them available)" -- he named Maat's Cap and the Ducal
+ring; a server-scripts sweep (scripts/items, grep for TELEPORT effects) found the
+full remaining family.
+
+**Landed (2026.07.23e):** 28 new entries in useitem's TELEPORTS table. Kazham
+Earring joins the ear cascade (between Norg and Jeuno -- Elshimo neighbors; same
+Marceo's Guttable Fish source as the other town earrings). Everything else is a
+new grp='util' tier -- "Other Teleports" cascade in the popup, rows OWNED-ONLY
+(Henrik's framing: "if the player has them available"; a grab-bag of unowned
+misc is noise, unlike the ear/ring cascades where the dim row reminds you the
+destination exists -- own none and the cascade hides itself): Maat's Cap +
+Ducal Guard's Ring (both Ru'Lude Gardens), Tavnazian Ring (CoP 8-1), Nomad +
+Moogle Caps (home nation, aoe=1 = party-range), Return + Homing Rings (SAME
+enchant on this server -- both cast the current region's outpost warp, differ
+only in charges 10/30), Olduum Ring (Wajaom), the three [S] Recall rings
+(Jugner/Pashhow/Meriphataud), Black Chocobo Cap + the three nation stables neck
+pieces, Tidal Talisman (zone-dependent destination; BODY slot here, not
+retail's pendant; Obsidian Fragments, ACE/CW), the 8 HQ seasonal swimsuits
+(RSE, all -> Purgonorgo Isle), Wyrmking Suit +1 (Riverne #B01) and Cumulus
+Masque +1 (Reisenjima). Excluded by ruling: weapons (Warp Cudgel, the [S]
+Retrace staves -- equipping Main wipes TP), Empire/Safehold Earrings (scripts
+exist server-side but the items are unobtainable here).
+
+**Mechanics:** every new item is useDelay=30 in item_usable -- the existing
+TELE_WAIT=34 covers all 28, no per-entry wait needed. SLOT_ID grew head=0x04
+(the lock/equip chain already accepted 'head'). All new entries id-PINNED with
+load-time name resolution (the id-pin law: catalog/API names drop apostrophes,
+"Maat's Cap" must be client-exact for /equip + the bag scan; SCROLLS pattern).
+/dl t learned ownership narrowing for multi-hits: several items sharing a
+destination resolve to the one you OWN (equippable beats stored, readiest wins
+among equals; 8 suits -> yours, 'stables' -> your nation's); distinct
+destinations stay ambiguous -- ownership must not silently pick a PLACE.
+listTeleports dedupes repeated dests for listings and tags items by name in
+ambiguity messages. menuNames() (the picker-hide export) now exempts
+keepInPicker entries: Maat's Cap is +7 all stats in item_mods -- real gear the
+set-building picker must keep offering; everything else in the family is DEF
+1-2 trinketry and stays hidden. gearui: 'util' tier split + "Other Teleports"
+cascade + a wider charges/state column pair for that tier only (stables names
+run 24 chars into the old 340px column). Tests UT1-UT9 (owned-only tier,
+Kazham placement, picker exemption, narrowing paths), 2505 green both loops.
