@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 103;  -- 103: /dl check -- the wiring-health readout's ENGINE half (Henrik's 2026-07-23 ruling: self-checks that answer "is dlac doing what it should?" belong IN dlac; probe-level capture stays in dlacprobe). Field case: a friend's laptop synced the ADDON tree but LAC never loaded the engine -- GUI + lockstyle preview (addon state) worked, '/dl ls apply' fell into a void with no output at all, and silence has no author. The engine cannot report its own absence, so feature/check.lua (the addon state, which always hears a typed /dl) prints the wiring readout -- addon + engine-file versions, seeded-copy byte-compare, the job file's shim state, the modestate __version handshake -- and names the ONE line the engine must add to it: this branch's '[dlac] check (engine): alive -- vN, job, profile'. A MISSING engine line is itself the verdict. Whitelist + branch added together (the v46 instdiag lesson).
+M.VERSION = 104;  -- 104: THE /dl debug SECTION, engine half (Henrik: "make a proper dl debug section... dl debug ls (please also accept dl debug lockstyle)"). feature/debug.lua (addon state) routes topics and owns the usage line; here one 'debug' branch answers KNOWN topics only. Topic 'ls'/'lockstyle': the apply pipeline as a DRY RUN -- the engine re-reads the boxes file (path printed, MISSING/no-PARSE called out), picks the box exactly like apply ('/dl debug ls <box>'), resolves every name through the SAME resolvers (M._lsResolvers, hoisted verbatim out of the apply branch -- one pair, two commands) and predicts the server's silent job gate -- then prints what WOULD happen (M._lsDebugReport, pure, tests DBG*) instead of sending. Companion addon half: lockstyle.M.debugLines() (boxes file/tier, marked box, UNSAVED-edits warning, v47 gate verdict, keep/town/guard state) -- '/dl ls state' now prints that same report (one readout, two names).
+                  -- 103: /dl check -- the wiring-health readout's ENGINE half (Henrik's 2026-07-23 ruling: self-checks that answer "is dlac doing what it should?" belong IN dlac; probe-level capture stays in dlacprobe). Field case: a friend's laptop synced the ADDON tree but LAC never loaded the engine -- GUI + lockstyle preview (addon state) worked, '/dl ls apply' fell into a void with no output at all, and silence has no author. The engine cannot report its own absence, so feature/check.lua (the addon state, which always hears a typed /dl) prints the wiring readout -- addon + engine-file versions, seeded-copy byte-compare, the job file's shim state, the modestate __version handshake -- and names the ONE line the engine must add to it: this branch's '[dlac] check (engine): alive -- vN, job, profile'. A MISSING engine line is itself the verdict. Whitelist + branch added together (the v46 instdiag lesson).
                   -- 102: CONTENT-KEYED self-swap (field friction 2026-07-22, Henrik: "during engine change the hot reload doesn't always work -- I've had to reload LAC manually"). The self-swap trigger was the parsed M.VERSION number alone, so any engine edit under the SAME version -- the normal shape of mid-round field debugging -- never swapped; only a manual Reload LAC picked it up. Now the tick compares the seeded file's BYTES against the bytes the running engine was loaded from (M._swapSourceRaw, initialized from the first readable tick, updated on every successful swap), with the version compare kept as a secondary trigger that self-heals a stale baseline. The decision is a pure seam, M.swapWanted (tests SW*): unreadable/foreign/failed-before bytes skip, version difference swaps, nil baseline captures, byte difference swaps. Companion dlac.lua change (2026.07.22i): the seeder writes only files whose bytes CHANGED and re-runs every 5s (dlac-seed-watch), so a bare `git pull` now propagates addon -> seeded copy -> running LAC engine with no manual step; the swap chat line names a same-version swap explicitly.
                   -- 101: STALE Range-bit stamps distrusted (field case 2026-07-22, Mindie PUP: a MANUALLY equipped Automat. Oil +2 was displaced from Ammo every Default dispatch beside the idle set's Animator). The ADR 0010 trinket completion had wrongly stamped RSlot=4 on the Animator-fed oils in gear.lua (server truth: item_weapon subskill 10 == every Animator, so charutils' Range/Ammo compat check KEEPS oil + Animator together -- the census over item_equipment x item_weapon shows the oils are the ONLY such paired class). The completion is fixed addon-side (gearrecord.ANIMATOR_FED) and /dl fix retracts the stale line -- but the ENGINE must not require a migration step: M.recordRSlot is now the one reader of a manifest record's RSlot and ignores the stamp for the pinned oil ids, so every user is healed by the addon update alone (dispatch.lua re-seeds every load). Tests TR16*/TR17 (guard + twin parity), TB8* (end-to-end: worn oil survives the Animator plan).
                   -- 100: THE ARBITER, step 4 (ADR 0012) -- COLLAPSE HARDCODED ARMS; /dl why NAMES CLAIMANTS. The registry is now the SINGLE precedence authority: MaxMP registers a proper CLAIM (mpClaimFor -> claims['MaxMP'] = its battery targets), so ctx.mpCeded derives from that one registry and the woven rank-consult scaffolding is retired -- only MaxMP's EQUIP stays woven (hold/release/upgrade/sticky/movement-yield are within-set resolution, deliberately outside the Arbiter). /dl why gains a per-slot CLAIMANT ATTRIBUTION block: the pure resolve (M.arbExplain / M.arbWhyLines) runs over the SAME claims + rank + floor the live overlay applied and names every contested slot's winner + rank -- 'Ammo: AutoAmmo (rank 3) over MaxMP (rank 4)', veto slots read 'stopped by Locks', floor-only slots 'Triggers (floor)'. The Claim record shape is documented at the registry (arbExplain header) + architecture.md: a new claimant (AutoAcc next) joins as ONE rank row + ONE claim table, no new arm. Holds + within-set resolution (sync settle, PetAction, AutoStaff/AutoObi, ADR 0010) unchanged. Tests AR11/AR12 (whole-path order pinning + /dl why attribution, headless).
@@ -3656,6 +3657,68 @@ function M._lockstyleFrom(t, n)
     return out, ((type(e.name) == 'string' and e.name ~= '') and e.name or ('box ' .. n)), n;
 end
 
+-- The lockstyle name/slot resolvers -- ONE pair, two commands ('/dl ls apply'
+-- sends, '/dl debug ls' dry-runs; v104 hoisted them out of the apply branch):
+-- name -> item id via the char's REAL gear.lua reverse map (the boxes' names
+-- came from it) with a resource-manager fallback; slot -> the worn item's id
+-- (freeze-current for unnamed slots).
+function M._lsResolvers(gr)
+    local function resolveId(name)
+        local id = nil;
+        pcall(function()
+            local rec = gr and gr.NameToObject and gr.NameToObject[name] or nil;
+            if rec ~= nil then id = tonumber(rec.Id); end
+        end);
+        if id == nil then
+            pcall(function()
+                local r = AshitaCore:GetResourceManager():GetItemByName(name, 2)
+                       or AshitaCore:GetResourceManager():GetItemByName(name, 0);
+                if r ~= nil then id = tonumber(r.Id); end
+            end);
+        end
+        return id;
+    end
+    local function equippedId(slot)
+        local id = nil;
+        pcall(function()
+            local eq = gData.GetEquipment();
+            local it = eq ~= nil and eq[slot] or nil;
+            if it ~= nil and it.Item ~= nil then id = tonumber(it.Item.Id); end
+        end);
+        return id;
+    end
+    return resolveId, equippedId;
+end
+
+-- '/dl debug ls', the engine report (pure with injected resolvers -- tests
+-- DBG*): the APPLY PIPELINE AS A DRY RUN. Same box pick (_lockstyleFrom),
+-- same packet build (_lockstylePacket), same job-gate prediction -- but the
+-- result is lines, not a send. gateFail(name) -> true when the server's
+-- silent canEquipItemOnAnyJob gate would keep the old look for that piece.
+function M._lsDebugReport(t, n, resolveId, equippedId, gateFail)
+    local set, why, box = M._lockstyleFrom(t, n);
+    if set == nil then return { 'apply would refuse: ' .. tostring(why) }; end
+    local _, r = M._lockstylePacket(set, resolveId, equippedId);
+    local sent, frozen = 0, 0;
+    for _ in pairs(r.sent) do sent = sent + 1; end
+    for _ in pairs(r.frozen) do frozen = frozen + 1; end
+    local L = { string.format('box %d "%s": %d slot%s would style, %d frozen to worn gear',
+        box, tostring(why), sent, (sent == 1) and '' or 's', frozen) };
+    if #r.missing > 0 then
+        L[#L + 1] = 'unresolvable name(s) -> slot shows EMPTY: ' .. table.concat(r.missing, ', ');
+    end
+    local gated = {};
+    for slot, nm in pairs(r.sent) do
+        if gateFail ~= nil and gateFail(nm) then gated[#gated + 1] = slot .. '=' .. nm; end
+    end
+    table.sort(gated);
+    if #gated > 0 then
+        L[#L + 1] = 'server job-gate would KEEP OLD LOOK on: ' .. table.concat(gated, ', ');
+    end
+    L[#L + 1] = 'DRY RUN -- nothing was sent (/dl ls apply sends).';
+    return L;
+end
+
 function M.dispatch(event)
     if not inLac() then return; end
     pcall(function()
@@ -4821,8 +4884,56 @@ if inLac() then
         -- WHITELIST FIRST, branch second: a new subcommand needs adding HERE as well as
         -- below, or it returns in silence and looks like the command does not exist
         -- (v46's /dl instdiag, an hour lost to exactly this).
-        if sub ~= 'mode' and sub ~= 'why' and sub ~= 'triggers' and sub ~= 'env' and sub ~= 'lock' and sub ~= 'sets' and sub ~= 'profile' and sub ~= 'ls' and sub ~= 'plan' and sub ~= 'prio' and sub ~= 'check' then return; end
+        if sub ~= 'mode' and sub ~= 'why' and sub ~= 'triggers' and sub ~= 'env' and sub ~= 'lock' and sub ~= 'sets' and sub ~= 'profile' and sub ~= 'ls' and sub ~= 'plan' and sub ~= 'prio' and sub ~= 'check' and sub ~= 'debug' then return; end
         e.blocked = true;
+
+        if sub == 'debug' then
+            -- The /dl debug section, ENGINE half (v104; feature/debug.lua owns
+            -- the addon half AND the topic list/usage -- an unknown topic
+            -- returns silently here so there is one printer for it). Topics
+            -- grow as field cases demand (Henrik's 07-23 ruling: state
+            -- readouts in dlac, packet capture in dlacprobe).
+            -- 'ls' (alias 'lockstyle'): the apply pipeline as a DRY RUN --
+            -- same file, same box pick ('/dl debug ls <box>' picks like
+            -- apply), same id resolution and job-gate prediction, no send.
+            local topic = string.lower(tostring(args[2] or ''));
+            if topic == 'lockstyle' then topic = 'ls'; end
+            if topic ~= 'ls' then return; end
+            local dir = charDir();
+            if dir == nil then print(string.format('[dlac] debug ls (engine): alive v%d -- not logged in.', M.VERSION)); return; end
+            local job;
+            pcall(function() job = gData.GetPlayer().MainJob; end);
+            if type(job) ~= 'string' or job == '' or job == '?' then job = nil; end
+            local lsPath = (_pok and job ~= nil and _prof.readLockstylesPath(job) or nil) or (dir .. 'lockstyles.lua');
+            local raw = readFile(lsPath);
+            print(string.format('[dlac] debug ls (engine): alive v%d, job %s -- boxes file: %s (%s)',
+                M.VERSION, tostring(job or '?'), tostring(lsPath),
+                (raw ~= nil) and (tostring(#raw) .. ' bytes') or 'MISSING'));
+            local t = nil;
+            if raw ~= nil then
+                local chunk = (loadstring or load)(raw, '@lockstyles.lua');
+                if chunk ~= nil then local okc, v = pcall(chunk); if okc then t = v; end end
+                if type(t) ~= 'table' then
+                    print('[dlac] debug ls (engine): boxes file does not PARSE -- corrupt or conflicted copy?');
+                end
+            end
+            local gr = nil;
+            pcall(function() gr = require('dlac\\gear'); end);
+            local resolveId, equippedId = M._lsResolvers(gr);
+            local lv = {};
+            pcall(function()
+                local pl = AshitaCore:GetMemoryManager():GetPlayer();
+                for i, ab in ipairs(M._LS_JOBS) do lv[ab] = tonumber(pl:GetJobLevel(i)) or 0; end
+            end);
+            local function gateFail(nm)
+                local rec = gr and gr.NameToObject and gr.NameToObject[nm] or nil;
+                return rec ~= nil and not M._lsStyleGate(rec, lv);
+            end
+            for _, l in ipairs(M._lsDebugReport(t, tonumber(args[3]), resolveId, equippedId, gateFail)) do
+                print('[dlac] debug ls (engine): ' .. l);
+            end
+            return;
+        end
 
         if sub == 'check' then
             -- /dl check, engine half (v103; feature/check.lua owns the addon
@@ -4937,33 +5048,11 @@ if inLac() then
             if set == nil then print('[dlac] lockstyle: ' .. tostring(why)); return; end
             -- Build the 0x053 ourselves (v42). The LAC state's require resolves
             -- dlac\gear to the char folder's REAL gear.lua -- names in the boxes
-            -- came from it, so NameToObject is the exact reverse map.
+            -- came from it, so NameToObject is the exact reverse map. The
+            -- resolvers are shared with '/dl debug ls' (M._lsResolvers, v104).
             local gr = nil;
             pcall(function() gr = require('dlac\\gear'); end);
-            local function resolveId(name)
-                local id = nil;
-                pcall(function()
-                    local rec = gr and gr.NameToObject and gr.NameToObject[name] or nil;
-                    if rec ~= nil then id = tonumber(rec.Id); end
-                end);
-                if id == nil then
-                    pcall(function()
-                        local r = AshitaCore:GetResourceManager():GetItemByName(name, 2)
-                               or AshitaCore:GetResourceManager():GetItemByName(name, 0);
-                        if r ~= nil then id = tonumber(r.Id); end
-                    end);
-                end
-                return id;
-            end
-            local function equippedId(slot)
-                local id = nil;
-                pcall(function()
-                    local eq = gData.GetEquipment();
-                    local it = eq ~= nil and eq[slot] or nil;
-                    if it ~= nil and it.Item ~= nil then id = tonumber(it.Item.Id); end
-                end);
-                return id;
-            end
+            local resolveId, equippedId = M._lsResolvers(gr);
             local pkt, r = M._lockstylePacket(set, resolveId, equippedId);
             -- Predict the server's SILENT job gate so "nothing changed" has a
             -- name: a piece failing canEquipItemOnAnyJob leaves the OLD style

@@ -4358,3 +4358,21 @@ compare, shim wording, the three lines); FEATURE guard list grew 'check'.
 **The remote-support script this replaces:** "type /dl ls state (addon state
 answers), then /dl mode (engine answers) -- silence on the second means..."
 -- now it is one command whose output carries its own interpretation.
+
+**Addendum, same day: the /dl debug section (engine v104, 2026.07.23b).**
+Henrik: "make a proper dl debug section, where you create dl debug ls (please
+also accept dl debug lockstyle)." feature/debug.lua is the addon-state router
+-- alias map, ONE usage printer, topics grow as field cases demand -- and
+dispatch's 'debug' branch answers known topics only. Topic `ls`/`lockstyle`
+in the two-halves pattern: the addon half is lockstyle.M.debugLines() (boxes
+file + tier + byte count, marked box + piece count + onload/keepSub/town
+flags, an UNSAVED-edits warning, the v47 gate verdict, keep/guard/town live
+state -- `/dl ls state` now prints this same report, one readout two names);
+the engine half is the APPLY PIPELINE AS A DRY RUN -- same file (path +
+MISSING/no-PARSE called out), same box pick (`/dl debug ls 3`), same
+resolvers (M._lsResolvers, hoisted verbatim out of the apply branch), same
+job-gate prediction, printed instead of sent (M._lsDebugReport, pure). Tests
+DBT0-6 (router), DBG1-6 (dry-run report), LGD1-4 (addon half headless);
+FEATURE guard list grew 'debug'. The support flow for the laptop case is now:
+`/dl check` (wiring) then `/dl debug ls` (feature state, both sides of the
+wall) -- paste chat.

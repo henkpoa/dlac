@@ -1482,6 +1482,51 @@ ashita.events.register('packet_out', 'dlac-lockstyle-pout', function(e)
     end
 end);
 
+-- '/dl debug ls', ADDON half (feature/debug.lua routes here; the engine's
+-- dry-run half lives in dispatch, v104). Everything the apply path depends on
+-- from THIS state plus the keep/town/guard live state -- '/dl ls state'
+-- prints this same report now (one readout, two names; the old two-liner
+-- grew into it). Lines carry no prefix; the printers add theirs.
+function M.debugLines()
+    local L = {};
+    load_();
+    local job = jobAbbr();
+    local prof = _pfok and profiles.activeName() or nil;
+    local p = nil;
+    pcall(function() p = (_pfok and profiles.readLockstylesPath(job) or nil) or legacyPath(); end);
+    local raw = readAll(fsp(p));
+    L[#L + 1] = string.format('job %s, profile %s -- boxes file: %s (%s)',
+        tostring(job or '?'), tostring(prof or '(none)'), tostring(p or '(unresolved)'),
+        (raw ~= nil) and (tostring(#raw) .. ' bytes') or 'MISSING');
+    if data ~= nil then
+        local nBoxes = 0;
+        for _ in pairs(data.slots or {}) do nBoxes = nBoxes + 1; end
+        local e = data.slots[data.active];
+        local pieces = 0;
+        if type(e) == 'table' and type(e.set) == 'table' then for _ in pairs(e.set) do pieces = pieces + 1; end end
+        L[#L + 1] = string.format('%d saved box(es) -- marked box %d %s -- onload[%s]=%s keepSub=%s townOff=%s townBox=%s',
+            nBoxes, data.active,
+            (e ~= nil) and string.format('"%s" (%d piece%s)', tostring(e.name or ''), pieces, (pieces == 1) and '' or 's') or '(empty)',
+            tostring(job), tostring(job ~= nil and data.onload[job] or nil),
+            tostring(data.keepSub), tostring(data.townOff), tostring(data.townBox));
+    else
+        L[#L + 1] = 'boxes not loaded (pre-login?)';
+    end
+    if cur ~= nil and cur.dirty then
+        L[#L + 1] = 'working copy has UNSAVED edits -- apply reads the SAVED file only (Save first!)';
+    end
+    local dead = nil;
+    pcall(function() if data ~= nil then dead = badBoxes()[data.active]; end end);
+    if dead ~= nil then
+        L[#L + 1] = string.format('v47 gate: marked box BLOCKED -- "%s" (no job of yours can wear it at its level); the GUI Apply button refuses it', tostring(dead));
+    end
+    L[#L + 1] = string.format('keep: lastBox=%s lastSub=%s guardActive=%s healPending=%s preview=%s',
+        tostring(lastBox), tostring(lastSub), tostring(guard.active), tostring(subDueAt ~= nil), tostring(_preview));
+    L[#L + 1] = string.format('town: inTown=%s lastPick=%s townDue=%s',
+        tostring(_locok and location.inTown() or nil), tostring(lastTownPick), tostring(townDueAt ~= nil));
+    return L;
+end
+
 -- Unloading mid-preview is the one way to leave a mark: ActorLockFlag would stay
 -- set and freeze the model until a zone. End the preview first, always -- /addon
 -- reload dlac is routine while iterating on this very window.
@@ -1508,19 +1553,12 @@ ashita.events.register('command', 'dlac-lockstyle', function(e)
     if args[1] ~= 'ls' then return; end
     e.blocked = true;
     if args[2] == nil or args[2] == 'open' or args[2] == 'ui' then M.open(); end
-    -- Field-debug readout for the keep machinery ('/dl ls state'): every value
-    -- the keep decision reads, plus a round marker -- an old seeded copy of
-    -- this file answers with nothing, which is itself the diagnosis.
+    -- Field-debug readout ('/dl ls state'): the same report '/dl debug ls'
+    -- prints (M.debugLines -- one readout, two names; the keep-round-6 and
+    -- v46-town two-liner grew into it). An old copy of this file answering
+    -- with nothing is itself the diagnosis.
     if args[2] == 'state' then
-        print(string.format('[dlac] ls state (keep round 6): keepSub=%s lastBox=%s lastSub=%s guardActive=%s healPending=%s',
-            tostring(data ~= nil and data.keepSub or nil), tostring(lastBox), tostring(lastSub),
-            tostring(guard.active), tostring(subDueAt ~= nil)));
-        -- v46 town readout: run it while standing in a town to see WHY a town
-        -- lockstyle did/didn't apply -- townBox=nil (setting lost), inTown~=true
-        -- (zone not detected), lastPick=the applied pick, townDue=apply pending.
-        print(string.format('[dlac] ls town (v46): townOff=%s townBox=%s inTown=%s lastPick=%s townDue=%s',
-            tostring(data ~= nil and data.townOff or nil), tostring(data ~= nil and data.townBox or nil),
-            tostring(_locok and location.inTown()), tostring(lastTownPick), tostring(townDueAt ~= nil)));
+        for _, l in ipairs(M.debugLines()) do print('[dlac] debug ls (addon): ' .. l); end
     end
     -- Keep-on-subjob's memory of "the lockstyle that is on": every apply
     -- passes through here (GUI button, OnLoad pump, hand-typed -- the LAC

@@ -226,7 +226,7 @@ end)();
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
                    'groupsmodel','jobgate','ownedcache','profileexport','profilesets','setimport',
                    'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
-    local FEATURE = { 'ammowatch','arbwatch','augments','check','craftwatch','eboxammo','fishcalc','fishwatch',
+    local FEATURE = { 'ammowatch','arbwatch','augments','check','craftwatch','debug','eboxammo','fishcalc','fishwatch',
                       'gamemode','helmwatch','location','lockstyle','lookpreview','macrobook','meritwatch',
                       'mpbands','pinwatch','useitem' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
@@ -8435,6 +8435,57 @@ end)();
     local L2 = ck._lines({ addonVer = 'x', fileV = nil, seeded = nil, shim = 'nojob', stampV = nil });
     check('CHK13 never-stamped is said', L2[3]:find('NEVER stamped', 1, true) ~= nil, true);
     check('CHK14 pre-login seeded state degrades honestly', L2[1]:find('not logged in', 1, true) ~= nil, true);
+end)();
+
+-- DBT. the /dl debug section router (feature/debug.lua, v104): topic
+--      normalization + the one usage printer.
+(function()
+    local dbg = dofile('feature/debug.lua');
+    check('DBT0 debug router loads headless', type(dbg), 'table');
+    check('DBT1 ls is canonical', dbg._topic('ls'), 'ls');
+    check('DBT2 lockstyle aliases to ls', dbg._topic('lockstyle'), 'ls');
+    check('DBT3 case-insensitive', dbg._topic('LOCKSTYLE'), 'ls');
+    check('DBT4 unknown topic is nil (usage)', dbg._topic('fish'), nil);
+    check('DBT5 absent topic is nil (usage)', dbg._topic(nil), nil);
+    check('DBT6 usage names ls + the alias', dbg._usage():find('ls', 1, true) ~= nil
+          and dbg._usage():find('lockstyle', 1, true) ~= nil, true);
+end)();
+
+-- DBG. '/dl debug ls' engine dry-run report (dispatch M._lsDebugReport):
+--      the apply pipeline's outcome as lines, injected resolvers, no send.
+(function()
+    local t = { active = 1, slots = {
+        [1] = { name = 'Look', set = { Body = "Arhat's Gi", Head = 'Ghost Cap', Feet = 'remove' } },
+        [2] = { name = 'Empty', set = {} } } };
+    local ids = { ["Arhat's Gi"] = 12345 };            -- Ghost Cap does NOT resolve
+    local function resolveId(nm) return ids[nm]; end
+    local function equippedId(slot) return nil; end
+    local L = dispatchM._lsDebugReport(t, nil, resolveId, equippedId, nil);
+    check('DBG1 header names box + styled count', L[1]:find('box 1 "Look"', 1, true) ~= nil
+          and L[1]:find('1 slot would style', 1, true) ~= nil, true);
+    check('DBG2 unresolvable name is listed', L[2]:find('Ghost Cap', 1, true) ~= nil, true);
+    check('DBG3 dry-run line is last', L[#L]:find('nothing was sent', 1, true) ~= nil, true);
+    local Lg = dispatchM._lsDebugReport(t, 1, resolveId, equippedId,
+        function(nm) return nm == "Arhat's Gi"; end);
+    local gline = nil;
+    for _, l in ipairs(Lg) do if l:find('KEEP OLD LOOK', 1, true) then gline = l; end end
+    check('DBG4 gate prediction names slot=piece', gline ~= nil
+          and gline:find("Body=Arhat's Gi", 1, true) ~= nil, true);
+    check('DBG5 empty box refuses like apply', dispatchM._lsDebugReport(t, 2, resolveId, equippedId, nil)[1],
+          'apply would refuse: lockstyle box 2 has no items');
+    check('DBG6 no file refuses like apply', dispatchM._lsDebugReport(nil, nil, resolveId, equippedId, nil)[1],
+          'apply would refuse: no lockstyle sets saved yet');
+end)();
+
+-- LGD. lockstyle.M.debugLines -- the '/dl debug ls' addon half exists and
+--      degrades honestly headless (no char, no boxes: the report still forms).
+(function()
+    local ls = dofile('feature/lockstyle.lua');
+    check('LGD1 debugLines exported', type(ls.debugLines), 'function');
+    local ok, L = pcall(ls.debugLines);
+    check('LGD2 headless readout does not error', ok, true);
+    check('LGD3 at least file/boxes/keep/town lines', ok and type(L) == 'table' and #L >= 4, true);
+    check('LGD4 boxes-file line leads', ok and L[1]:find('boxes file', 1, true) ~= nil, true);
 end)();
 
 -- ---------------------------------------------------------------------------
