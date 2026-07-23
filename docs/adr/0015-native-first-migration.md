@@ -107,3 +107,45 @@ a new one is a branding decision for graduation day.
 - Augment-string pins natively (`equipengine.augmentStringsOf` wiring).
 - Persisting the maxmp measured tick + full-pool offset (the standing offer —
   erases the last per-session warm-up).
+
+## Addendum (2026-07-23, issue #91) -- Onboarding v2: ruling 4 refined to ZERO ceremony; Setup = the migration wizard
+
+Henrik's ruling the same evening #87 landed: **Setup exists for exactly ONE reason
+now -- migrating a current legacy dlac user to native. New players get the native
+engine automatically, with zero ceremony.** This refines ruling 4 (and finishes
+ruling 3's Setup consequence) and implements the Phase-C migration nudge banner
+early, on this branch.
+
+1. **Fresh installs: full auto-setup, no Setup interaction ever.** #87 made a fresh
+   install *boot* native (flag auto-written). This removes the remaining ceremony:
+   when native mode is on and the character+job's baseline is missing, dlac creates
+   it **automatically** at the login/job beat -- storage, gear inventory, the four
+   base sets, starter triggers (the `setupNative` content, per job, idempotent,
+   never clobbering) -- silently apart from a friendly one-line chat/status notice.
+   No red Setup button, no plan popup, no Commit for new users, ever. A later login
+   on a NEW job auto-seeds that job's starters the same way. Auto-setup NEVER fires
+   in legacy mode, never before `firstRunInit` has resolved, and never for a
+   not-ready job (id-0 `NON` at login -- hard rule 11); a persistent failure (disk
+   error) surfaces as a status/chat line and retries next beat -- it is never
+   ceremonialized. The LAC-alive polite ask (ruling 4) is unchanged. Seam:
+   `setupui.autoSetupNative` (+ `nativeBaselineComplete`), driven from `dlac.lua`
+   `maintainStorage`.
+
+2. **The Setup button + popup become THE migration box**, shown for exactly one
+   reason: a legacy-mode session with existing dlac data. For that user the red
+   Setup button is the standing nudge (present all session until they migrate), and
+   the popup is a three-part migration box (what you should do / what Commit will do
+   / why) plus the hard rule, verbatim-clear: **"It's either LAC or DLAC -- never
+   both at once. Once migrated, do NOT run LuaAshitacast."** Commit is the GUI twin
+   of `/dl engine native on`: `engineMigrateStorage` (COPY-ONLY -- nothing under
+   `luashitacast\` is moved, changed, or deleted; flip back any time with
+   `/dl engine native off`) + `setNativeMode(true)`, then the unload/reload
+   checklist. Seam: `setupui.migrateToNative`. The legacy clean-shim / ffxilac
+   Setup plans retire from the UI (the underlying writers -- `migrateToCleanProfiles`,
+   `migrateCurrentJob`, `setupNative` -- stay in the code for Phase D and as the
+   auto-setup content source). The in-window warning banner rewords from
+   "X.lua is NOT set up for dlac" to the migration nudge.
+
+3. **`needsSetup` v2:** native -> always false (auto-setup owns it); legacy with
+   dlac data -> true ("migration offered"). Fresh installs never see the button --
+   they are native before the first frame ends. Tests NO20-NO42.
