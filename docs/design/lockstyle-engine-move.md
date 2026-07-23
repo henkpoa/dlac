@@ -1,20 +1,18 @@
 # Lockstyle execution moves engine-side — design handoff
 
-> **SUPERSEDED (2026-07-23, the grill session this doc asked for).** The
-> direction REVERSED: lockstyle goes fully **addon-resident** — the addon
-> edits, previews, and applies; the Engine equips gear only. The apply's LAC
-> residence was historical accident (v38's `gFunc.LockStyle`, replaced in v42
-> by a self-built 0x053 + `AshitaCore` inject — available in any state); the
-> pumps/guard/memory already lived addon-side, so moving the *executor* to
-> the *trigger's* state dissolves every wall crossing into a direct call.
-> The week's law "the engine is the reliable executor" was derived from
-> automations, which must live in LAC because they equip THROUGH it; the
-> deeper law is "never cross the bus," and lockstyle obeys it more cheaply
-> in the other direction. **The PRD on
-> [issue #80](https://github.com/henkpoa/dlac/issues/80) is the authority.**
-> This document is kept as the FALLBACK design if the addon-state outgoing
-> 0x053 injection spike fails, and for its §1 story, §4 Ashita facts, and
-> §5 code map, which remain accurate.
+> **SUPERSEDED (2026-07-23) by [ADR 0014](../adr/0014-lockstyle-addon-resident.md) —
+> "Lockstyle is addon-resident; the Engine equips gear only."** The grill session that
+> consumed this document reversed its direction: lockstyle equips *nothing* (it builds
+> its own 0x053 and injects via the process-wide `AshitaCore`), so its executor moves to
+> the ADDON state beside its trigger — NOT into the Engine as §2 below proposes — and
+> every state-crossing becomes a direct call. Henrik's ruling: "Lockstyle should really be
+> able to exist on its own 100% within DLAC." The durable law is *never cross the bus*, and
+> the shortest bus-free path put the executor with the trigger, not in the Engine. **This
+> document is kept ONLY as the fallback design** if the phase-1 injection spike (outgoing
+> 0x053 from the Addon state reaching the server) fails; see the PRD on #80 and ADR 0014.
+> The §1 story, §4 Ashita facts, and §5 code map remain accurate history; the §2 target
+> and §6 agenda are the superseded direction — do not implement them unless the spike
+> fails.
 
 **Tracker: [issue #80](https://github.com/henkpoa/dlac/issues/80)** — the
 reference number for this whole effort; the PRD and its issues chain from it.
