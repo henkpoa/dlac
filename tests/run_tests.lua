@@ -8929,6 +8929,104 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- NO. Native-first onboarding (ADR 0015 ruling 4, issue #87) -- the pure
+-- first-run decision (flag presence x legacy-data presence -> action), the
+-- LAC-alive ask's once-per-session gate, and the native Setup path (storage +
+-- starter files, ZERO writes under config\addons\luashitacast\).
+-- ---------------------------------------------------------------------------
+(function()
+    local prof = package.loaded['dlac\\profiles'];
+
+    -- The pure first-run decision. A flag on disk (either value) is ALWAYS
+    -- respected -- boot never rewrites it, never auto-flips an existing user.
+    check('NO1 flag native -> respect',        prof.firstRunAction('native', false), 'respect');
+    check('NO2 flag native + legacy -> respect', prof.firstRunAction('native', true), 'respect');
+    check('NO3 flag legacy -> respect',        prof.firstRunAction('legacy', false), 'respect');
+    check('NO4 flag legacy + data -> respect', prof.firstRunAction('legacy', true), 'respect');
+    -- No flag: legacy data present = existing user (stay legacy, write nothing);
+    -- no legacy data = fresh install (born native).
+    check('NO5 absent + legacy data -> legacy',   prof.firstRunAction('absent', true), 'legacy');
+    check('NO6 absent + no data -> write-native',  prof.firstRunAction('absent', false), 'write-native');
+
+    -- The once-per-session ask gate: fires the FIRST time LAC is alive, then latches.
+    prof._resetAskGate();
+    check('NO7 ask gate: no LAC -> silent',    prof.shouldAskUnloadLac(false), false);
+    check('NO8 ask gate: LAC alive -> ask',    prof.shouldAskUnloadLac(true), true);
+    check('NO9 ask gate: latched after asking', prof.shouldAskUnloadLac(true), false);
+    check('NO10 ask gate: stays latched',       prof.shouldAskUnloadLac(true), false);
+    prof._resetAskGate();
+    check('NO11 ask gate: reset re-arms',       prof.shouldAskUnloadLac(true), true);
+    prof._resetAskGate();
+
+    -- The native Setup path. Stub the install + identity, force native mode, and
+    -- capture every write: the ACCEPTANCE guarantee is zero <JOB>.lua / shim /
+    -- backup writes under LuaAshitacast's tree. IO-touching profiles helpers are
+    -- overridden to no-ops (the WSL parity rule: '\'-joined io paths break on
+    -- Linux) so the only writes flow through the captured writeFileText.
+    local savedAC, savedNative, savedEnsure, savedExists, savedExec =
+        AshitaCore, prof.nativeMode, prof.ensureStorage, prof.storageExists, os.execute;
+    AshitaCore = {
+        GetInstallPath = function() return 'I:\\game\\'; end,
+        GetMemoryManager = function() return {
+            GetParty = function() return {
+                GetMemberName = function() return 'Mindie'; end,
+                GetMemberServerId = function() return 12345; end,
+            }; end,
+        }; end,
+    };
+    prof.ensureStorage = function() return true; end          -- no real disk
+    prof.storageExists = function() return true; end          -- seed into profile storage
+    os.execute = function() return true; end                  -- swallow seedGearFile's mkdir
+
+    local setup = dofile('ui/setupui.lua');
+    package.loaded['dlac\\ui\\setupui'] = setup;
+    local base = 'I:\\game\\config\\addons\\luashitacast\\Mindie_12345\\';
+    local jf = base .. 'WHM.lua';
+    local writes;
+    local function mkDeps()
+        return {
+            charBase = function() return base; end,
+            jobFile  = function() return jf, 'WHM'; end,
+            dataDir  = function() return prof.dataDir(); end,
+            charRoot = function() return prof.charRoot(); end,
+            readFileText  = function() return nil; end,                 -- nothing exists yet
+            writeFileText = function(p) writes[#writes + 1] = p; return true; end,
+            status = function() end,
+            ui = {},
+        };
+    end
+    local function has(sub)
+        for _, p in ipairs(writes) do if type(p) == 'string' and p:find(sub, 1, true) then return true; end end
+        return false;
+    end
+
+    -- NATIVE: setupNative writes storage + starter files, never the LAC tree.
+    prof.nativeMode = function() return true; end
+    writes = {};
+    setup.configure(mkDeps());
+    check('NO12 setup reports native mode', setup.isNative(), true);
+    setup.setupNative(base, 'WHM');
+    check('NO13 native setup wrote something', #writes > 0, true);
+    check('NO14 native setup: NO write under luashitacast\\', has('luashitacast'), false);
+    check('NO15 native setup: no <JOB>.lua shim written', has('WHM.lua') and has(jf), false);
+    check('NO16 native setup: no backup written', has('backups'), false);
+    check('NO17 native setup lands under the dlac root', has('config\\addons\\dlac\\'), true);
+
+    -- LEGACY (contrast): the flag-off path still writes the <JOB>.lua shim.
+    prof.nativeMode = function() return false; end
+    writes = {};
+    setup.configure(mkDeps());
+    check('NO18 setup reports legacy mode', setup.isNative(), false);
+    setup.migrateCurrentJob();   -- state 'nofile' (readFileText nil) -> write the shim
+    local wroteShim = false;
+    for _, p in ipairs(writes) do if p == jf then wroteShim = true; end end
+    check('NO19 legacy setup still writes the shim', wroteShim, true);
+
+    prof.nativeMode, prof.ensureStorage, prof.storageExists = savedNative, savedEnsure, savedExists;
+    os.execute, AshitaCore = savedExec, savedAC;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- EQC. equipcore (feature/native-engine part 1) -- the pure equip pipeline:
 -- entry normalization, the set resolver, and the 0x050/0x051 packet builders.
 -- Semantics are LuaAshitacast-parity (equip.lua is the reference); these pins

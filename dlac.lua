@@ -25,7 +25,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.07.23y';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.07.23z';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
 addon.desc    = 'Build gear sets and view live stats with level scaling (for LuaAshitacast).';
 
@@ -136,13 +136,60 @@ end
 -- instead: the first login after the flag turns on copies this character's
 -- legacy data into config\addons\dlac\<char>\ (profiles.engineAutoMigrate --
 -- copy only, legacy files stay put; settles to two file probes per beat).
+-- Best-effort "is LuaAshitacast alive and equipping alongside us?" for the
+-- native-boot polite ask (ADR 0015 ruling 4). Positive evidence, in order of
+-- certainty: (1) equipengine's coexistence tripwire fired this session -- a
+-- foreign engine re-injected one of our fingerprinted action packets, i.e. LAC
+-- is definitely loaded and equipping; (2) a modestate mirror in the LEGACY LAC
+-- home was written recently -- a dlac engine hosted INSIDE LuaAshitacast stamped
+-- it (native mode never writes there; our own engine writes the native home).
+-- Best-effort by design: the tripwire remains the hard backstop either way, so a
+-- miss here only means the loud DISARMED line arrives instead of the polite one.
+local function lacAlive()
+    local alive = false;
+    pcall(function()
+        local eng = require('dlac\\feature\\equipengine');
+        if type(eng) == 'table' and type(eng.state) == 'table' and eng.state.tripped == true then
+            alive = true;
+        end
+    end);
+    if alive then return true; end
+    pcall(function()
+        local party = AshitaCore:GetMemoryManager():GetParty();
+        local name  = party:GetMemberName(0);
+        local id    = party:GetMemberServerId(0);
+        if name == nil or name == '' or id == nil then return; end
+        local p = string.format('%sconfig\\addons\\luashitacast\\%s_%u\\dlac\\modestate.lua',
+            AshitaCore:GetInstallPath(), name, id);
+        local chunk = loadfile(p);
+        if chunk == nil then return; end
+        local ok, t = pcall(chunk);
+        if ok and type(t) == 'table' and type(t.__at) == 'number' and (os.time() - t.__at) <= 15 then
+            alive = true;
+        end
+    end);
+    return alive;
+end
+
 local function maintainStorage()
     local isNative = false;
     pcall(function()
         local prof = require('dlac\\profiles');
+        prof.firstRunInit();          -- native-first onboarding (ADR 0015 ruling 4)
         if prof.nativeMode() then
             isNative = true;
             prof.engineAutoMigrate(print);
+            -- The LAC-alive polite ask, once per session (the tripwire is the
+            -- hard backstop). Ask BEFORE the coexistence hazard bites.
+            if prof.shouldAskUnloadLac(lacAlive()) then
+                local msg = 'dlac now equips your gear itself (native engine). LuaAshitacast is still '
+                    .. 'loaded -- please turn it off so the two do not fight over your gear:  '
+                    .. '/addon unload luashitacast';
+                pcall(function()
+                    local c = require('dlac\\chatfmt');
+                    if type(c) == 'table' and type(c.warn) == 'function' then c.warn(msg); else print('[dlac] ' .. msg); end
+                end);
+            end
         end
     end);
     if not isNative then seedCharFolder(); end

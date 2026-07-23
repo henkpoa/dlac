@@ -502,6 +502,101 @@ function M.currentCharFolder()
     return M.charFolder();
 end
 
+-- ---------------------------------------------------------------------------
+-- Native-first onboarding (ADR 0015 ruling 4)
+--
+-- A FRESH install (no Engine flag AND no legacy dlac data on the whole install)
+-- is born native: the flag is written native=true on first run, storage lives
+-- in dlac's own root, and no LuaAshitacast tree is ever created. An existing
+-- user is NEVER auto-flipped -- legacy data present, or a flag already on disk,
+-- means current behavior EXACTLY (a flag is honored, never rewritten by boot).
+-- The decision is a pure seam (firstRunAction, headless-tested); firstRunInit
+-- runs it once, writes the flag only for the fresh case, and is idempotent.
+-- ---------------------------------------------------------------------------
+
+-- The flag file as one of three states -- 'native' | 'legacy' | 'absent'. A
+-- present-but-broken file reads as 'legacy' (present): a fresh-install write
+-- must never clobber a file the user already has, so anything on disk is
+-- honored (parseEngineFlag decides its VALUE; existence alone decides 'absent').
+function M.engineFlagState()
+    local p = M.engineFlagPath();
+    if p == nil then return 'absent'; end
+    local f = io.open(p, 'r');
+    if f == nil then return 'absent'; end
+    local text = f:read('*a'); f:close();
+    return M.parseEngineFlag(text) and 'native' or 'legacy';
+end
+
+-- Any character on this install with LEGACY dlac data under LuaAshitacast's tree
+-- (config\addons\luashitacast\<char>\dlac\)? Returns present, scanned. scanned
+-- is false when the listing API itself failed (nil) -- the caller must NOT treat
+-- "couldn't tell" as "fresh" (an existing legacy user would be wrongly flipped).
+-- A missing luashitacast\ dir lists as {} (the popen fallback), which is a real
+-- "no legacy data" answer -- exactly the fresh install.
+function M.legacyDataPresent()
+    local root = M.lacRoot();
+    if root == nil then return false, false; end   -- install path unknown -> can't tell
+    local dirs = listDirs(root);
+    if dirs == nil then return false, false; end    -- listing API failed -> can't tell
+    for _, d in ipairs(dirs) do
+        if d:match('^%a+_%d+$') then
+            local dd = root .. d .. '\\dlac\\';
+            if readFile(dd .. 'profile.lua') ~= nil or readFile(dd .. 'gear.lua') ~= nil then
+                return true, true;
+            end
+        end
+    end
+    return false, true;   -- scanned, none found -> fresh
+end
+
+-- PURE first-run decision (headless-tested). flagState in {'native','legacy',
+-- 'absent'}; legacyPresent boolean. Returns the boot action:
+--   'respect'      -> a flag is already on disk: honor it, never rewrite
+--   'legacy'       -> no flag but legacy data present: stay legacy, write nothing
+--   'write-native' -> no flag, no legacy data: fresh install -> born native
+function M.firstRunAction(flagState, legacyPresent)
+    if flagState ~= 'absent' then return 'respect'; end
+    if legacyPresent then return 'legacy'; end
+    return 'write-native';
+end
+
+-- Boot seam: run the decision once and, for a FRESH install ONLY, arm the Engine
+-- flag native. Idempotent -- a written flag makes engineFlagState() ~= 'absent'
+-- forever after, so re-runs return 'respect'. Returns the action, or nil when it
+-- could not decide yet (listing API not ready / flag write failed) so the caller
+-- retries on the next beat rather than latching a half-answer.
+local _firstRun = { done = false, action = nil };
+function M.firstRunInit()
+    if _firstRun.done then return _firstRun.action; end
+    local flagState = M.engineFlagState();
+    local present = true;
+    if flagState == 'absent' then
+        local ok;
+        present, ok = M.legacyDataPresent();
+        if not ok then return nil; end   -- can't tell yet -- not latched, retry next beat
+    end
+    local action = M.firstRunAction(flagState, present);
+    if action == 'write-native' then
+        if M.setNativeMode(true) ~= true then return nil; end   -- write failed -- retry next beat
+    end
+    _firstRun.done = true; _firstRun.action = action;
+    return action;
+end
+function M._resetFirstRun() _firstRun.done = false; _firstRun.action = nil; end   -- headless test seam
+
+-- The LAC-alive polite ask, gated to ONCE per session (ADR 0015 ruling 4). PURE
+-- gate: fed the live "is LuaAshitacast alive?" reading, it returns true the FIRST
+-- time that is true and latches, so the ask fires exactly once. The coexistence
+-- tripwire stays the hard backstop; this is the gentle first word.
+local _asked = false;
+function M.shouldAskUnloadLac(lacAlive)
+    if _asked then return false; end
+    if lacAlive ~= true then return false; end
+    _asked = true;
+    return true;
+end
+function M._resetAskGate() _asked = false; end   -- headless test seam
+
 function M.profileDirAt(charFolder, name)
     local d = M.charDataDirAt(charFolder);
     if d == nil or name == nil then return nil; end

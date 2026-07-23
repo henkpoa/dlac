@@ -1655,17 +1655,12 @@ end
 -- is measured each frame so the row stays right-aligned no matter which buttons are present.
 local function renderHeaderButtons()
     local gap = 4;
-    local needSetup = (setup.jobSetupState() ~= 'ok');
-    if not needSetup then
-        -- dlac-wired but NO profile storage yet: migration is pending, and that
-        -- is a setup need too (the popup shows the migrate plan). Once storage
-        -- exists the nag ends -- a veteran who keeps a hand-written job file
-        -- alongside storage is a supported choice, not a warning state.
-        pcall(function()
-            local p = require('dlac\\profiles');
-            if type(p) == 'table' and not p.storageExists() then needSetup = true; end
-        end);
-    end
+    -- Native (ADR 0015): setup need = storage not yet created (no shim to judge).
+    -- Legacy: the job shim is not the clean managed shim, or storage is missing
+    -- (a dlac-wired job with no profile storage yet -- migration pending; a
+    -- veteran keeping a hand-written job file ALONGSIDE storage is a supported
+    -- choice, not a warning state). setupui.needsSetup encapsulates both.
+    local needSetup = setup.needsSetup();
 
     -- Reload-LAC watcher: the engine stamps a LAC-load generation into
     -- modestate.lua (__loadstamp -- constant across mode changes and engine
@@ -1827,6 +1822,24 @@ local function renderHeaderButtons()
                 local plan = { mode = 'migrate', abbr = abbr, title = 'Set up ' .. abbr .. ' for dlac', lines = {} };
                 local L = plan.lines;
                 local function add(c, t) L[#L + 1] = { c = c, t = t }; end
+                -- NATIVE (ADR 0015): dlac equips gear itself -- no <JOB>.lua shim,
+                -- no migration, no backup. Commit takes the setupNative path.
+                if setup.isNative() then
+                    plan.mode = 'native';
+                    plan.title = 'Set up ' .. abbr .. ' (native engine)';
+                    add('txt', 'dlac equips your gear directly -- no LuaAshitacast profile is involved.');
+                    add('txt', 'Commit will, WITHOUT touching a single LuaAshitacast file:');
+                    add('txt', '1.  Create your profile storage under config\\addons\\dlac\\.');
+                    add('txt', '2.  Seed an empty gear inventory (gear.lua) -- fill it afterwards with Scan.');
+                    add('txt', '3.  Seed the four base sets (Idle / Tp_Default / Resting / Movement, empty) and');
+                    add('dim', '     the starter triggers that target them -- everything runs out of the box.');
+                    add('head', 'No <JOB>.lua shim, no backup, nothing under luashitacast\\ is ever written.');
+                    add('txt', 'Nothing that already exists is overwritten.');
+                    add('head', 'After Commit: Scan your gear, then build sets in the Sets tab.');
+                    ui._setupPlan = plan;
+                    ui._setupOpen = true;
+                    return;
+                end
                 if state == 'nofile' then
                     plan.mode = 'fresh';
                     plan.title = 'First-time setup -- ' .. abbr;
@@ -4589,7 +4602,9 @@ local function drawWindow()
             fmt.textWrapped(COL.SCORE, fmt.esc(_augStatus));
         end
         do  -- prominent warning when the current job isn't on the clean dlac standard yet
-            local _st = setup.jobSetupState();
+            -- Native (ADR 0015): dlac never touches <JOB>.lua, so its state is not
+            -- a warning -- the legacy migration nag stays silent under the flag.
+            local _st = setup.isNative() and 'ok' or setup.jobSetupState();
             if _st == 'ffxilac' or _st == 'none' then
                 local _, _ab = jobFile();
                 fmt.textWrapped(COL.ERR, string.format('  [!]  %s.lua is NOT set up for dlac -- click the red "Setup" button (top-right). Your file is backed up and replaced by a clean dlac profile; your old sets and groups stay importable from the backup.', tostring(_ab or '?')));

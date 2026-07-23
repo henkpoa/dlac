@@ -72,7 +72,15 @@ native, no legacy-only regressions open.
 freeze ends. Legacy mode ships one last time as the flag-off fallback, formally
 sunset: a legacy-mode session shows a migration nudge (GUI banner — chat stays
 quiet per the house rule). New-user onboarding defaults native (ruling 4
-implemented by then: first-run flag write + LAC-alive ask).
+implemented by then: first-run flag write + LAC-alive ask). **DONE EARLY
+(2026-07-23, issue #87):** ruling 4 and ruling 3's Setup consequence are
+implemented on this branch now — `profiles.firstRunInit`/`firstRunAction`
+(fresh installs write `native = true`, existing users never auto-flipped),
+`profiles.shouldAskUnloadLac` (the once-per-session LAC-alive ask, tripwire still
+the backstop), and `setupui.setupNative` (Setup produces a playable install
+writing zero `<JOB>.lua`/shim/backup). Job-file imports stay read-only in both
+modes. Tests NO1–NO19; architecture.md § The Native engine → Onboarding. The
+Phase-C migration nudge banner (a legacy-mode concern) is still tracked below.
 
 **Phase D — the deletion party.** After a sunset window with zero legacy users:
 delete the bridge machinery (the list above), collapse the oracle twins to one
@@ -86,10 +94,14 @@ a new one is a branding decision for graduation day.
 
 ## Follow-up work items (tracked, not yet built)
 
-- Ruling 4 implementation: first-run native default (write the flag when no legacy
+- ~~Ruling 4 implementation: first-run native default (write the flag when no legacy
   data and no flag exist) + LAC-alive detection (modestate `__loadstamp` freshness)
   with the polite ask; Setup flow grows a native path that never writes `<JOB>.lua`
-  (storage + starter files only, shim migration becomes legacy-mode-only UI).
+  (storage + starter files only, shim migration becomes legacy-mode-only UI).~~
+  **DONE 2026-07-23 (issue #87).** LAC-alive detection landed as the equipengine
+  tripwire plus legacy-home modestate freshness (`dlac.lua` `lacAlive()`); the
+  first-run decision + Setup native path are the pure `profiles.firstRun*` seams
+  and `setupui.setupNative`.
 - Legacy-mode migration nudge (Phase C banner in gearui).
 - The Trigger Monitor's native feed (the `/dlacmonev` bus hop is legacy-only).
 - Augment-string pins natively (`equipengine.augmentStringsOf` wiring).
