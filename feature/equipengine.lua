@@ -266,8 +266,12 @@ local function say(s)
 end
 
 -- Native flag, throttled via profiles (the one authority). Tripwire wins.
+-- NEVER arms inside LuaAshitacast's Lua state: dispatch.lua is seeded there
+-- and requires this module too -- two armed interceptors (one per state) is
+-- exactly the double-engine hazard. The addon state is the only home.
 local function nativeOn()
     if M.state.tripped then return false; end
+    if rawget(_G, 'gFunc') ~= nil then return false; end   -- LAC state: refuse
     local ok, prof = pcall(require, 'dlac\\profiles');
     if not ok or type(prof) ~= 'table' then return false; end
     local ok2, on = pcall(prof.nativeMode);
@@ -306,6 +310,17 @@ local function currentEquip(slot, invMgr, resMgr)
             ResFlags = res.Flags,
             augment = M.parseAugmentHeader(ci.Extra),
         };
+    end);
+    return item;
+end
+
+-- The worn view for one slot, for OTHER modules (nativedata's GetEquipment):
+-- same trust-window-first read the resolver uses.
+function M.currentEquipView(slot)
+    local item = nil;
+    pcall(function()
+        local mm = AshitaCore:GetMemoryManager();
+        item = currentEquip(slot, mm:GetInventory(), AshitaCore:GetResourceManager());
     end);
     return item;
 end
@@ -486,14 +501,15 @@ end
 
 -- Fire one dispatch point: clear the buffer, let the backend fill it, flush.
 -- This is the call every current AND future dispatch source rides through.
+-- Always flushes: unlike LAC's HandleEquipEvent (whose action-in-flight gate
+-- guards against stale shim calls), every fireEvent here has a live cause --
+-- an action, the Default pump, or a synthesized point like PetAction.
 function M.fireEvent(name, style, ctx)
     if type(M.onEvent) ~= 'function' then return; end
     M.bufferClear();
     local ok, err = pcall(M.onEvent, name, ctx);
     if not ok then say('native engine: ' .. tostring(name) .. ' handler error: ' .. tostring(err)); end
-    if name == 'Default' or M.state.action ~= nil then
-        M.bufferFlush(style);
-    end
+    M.bufferFlush(style);
 end
 
 -- ---------------------------------------------------------------------------
@@ -657,6 +673,15 @@ end
 -- incoming (0x028 completion stream, 0x1B encumbrance)
 -- ---------------------------------------------------------------------------
 
+-- Pet-action fields out of a 0x028 the PET authored (LAC parity: type 7 =
+-- ability/mobskill -- message 43 marks the mobskill -- type 8 = spell).
+function M.parse0x28Pet(str)
+    return {
+        actionId = M.bitsAt(str, 0, 213, 17),
+        message  = M.bitsAt(str, 28, 6, 10),
+    };
+end
+
 function M.handleIncoming(e)
     if not nativeOn() then return; end
     if e.id == 0x028 then
@@ -669,7 +694,43 @@ function M.handleIncoming(e)
             if M.ACTION_COMPLETE_TYPES[a.actionType] or a.interrupted then
                 M.state.action = nil;
             end
+            return;
         end
+        -- the pet's stream: track its action for the PetAction dispatch hold
+        pcall(function()
+            local mm = AshitaCore:GetMemoryManager();
+            local myIndex = mm:GetParty():GetMemberTargetIndex(0);
+            local petIndex = mm:GetEntity():GetPetTargetIndex(myIndex);
+            if petIndex == 0 then return; end
+            if a.userId ~= mm:GetEntity():GetServerId(petIndex) then return; end
+            if M.PET_ACTION_COMPLETE_TYPES[a.actionType] or a.interrupted then
+                M.state.petAction = nil;
+                return;
+            end
+            if a.actionType ~= 7 and a.actionType ~= 8 then return; end
+            local p = M.parse0x28Pet(e.data);
+            if p.actionId == 0 then return; end
+            local now = os.clock();
+            local pa = { Id = p.actionId };
+            if a.actionType == 7 then
+                pa.Completion = now + (M.SETTINGS.PetskillDelay or 4.0);
+                if p.message == 43 then
+                    pa.Type = 'MobSkill';
+                    local nm = AshitaCore:GetResourceManager():GetString('monsters.abilities', p.actionId - 256);
+                    pa.Name = (type(nm) == 'string') and nm or nil;
+                else
+                    pa.Type = 'Ability';
+                    pa.Resource = AshitaCore:GetResourceManager():GetAbilityById(p.actionId + 512);
+                end
+            else
+                pa.Type = 'Spell';
+                pa.Resource = AshitaCore:GetResourceManager():GetSpellById(p.actionId);
+                local ct = (pa.Resource ~= nil) and pa.Resource.CastTime or 0;
+                pa.Completion = now + ct * 0.25 + (M.SETTINGS.SpellOffset or 1.0);
+            end
+            M.state.petAction = pa;
+            M.fireEvent('PetAction', 'auto', pa);   -- the dispatch point pet rules ride
+        end);
     elseif e.id == 0x01B then
         pcall(function()
             for i = 1, 16 do

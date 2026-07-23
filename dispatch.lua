@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 110;  -- 110: THE STORAGE-HOME SEAM (feature/native-engine step 1). charDir() now resolves through profiles.dataDir() -- the one mode-aware storage authority -- so when the native-engine flag (config\addons\dlac\engine.lua) is on, the engine's mode state / trigger reads / debug handoffs all live under dlac's OWN config root (config\addons\dlac\<char>\) instead of piggybacking on LuaAshitacast's tree. Flag off (the default, and the shipped state until the native engine lands) = byte-identical path behavior. The inline composition stays as the no-profiles fallback.
+M.VERSION = 111;  -- 111: THE NATIVE BACKEND (feature/native-engine step 5). The addon-state copy of this module -- inert since v1 -- becomes the ACTIVE engine when the native flag is armed: engineActive() widens every inLac() gate that is an ENGINE concern (dispatch entry, the machinery block, mode state, the tick, the command surface, the /dl prio + plan printers), while LAC-BRIDGE machinery stays inLac()-pinned (self-swap, handoff/request files, the HandleEquipEvent wrap, lockstyle engine halves -- the #80 move owns native lockstyle). One equip seam: engineEquipSet routes resolved sets to gFunc.EquipSet (LAC) or equipengine's buffer (native). The gProfile gap closes with M._nativeSets -- the native sets store: readSetsSource + installSets install the active profile's job sets into it (the tick's NATIVE identity latch reloads on job/profile change), utils.rebuildSets re-flattens it on the shim's own cadence (every Default + modesRev), equipSetByName/ammoPlannedByHits/lock-set consult it after gProfile. The native Default drive rides the same tick with the same zoning guards. Flag off = byte-identical LAC-state behavior (twins parity pinned).
+                  -- 110: THE STORAGE-HOME SEAM (feature/native-engine step 1). charDir() now resolves through profiles.dataDir() -- the one mode-aware storage authority -- so when the native-engine flag (config\addons\dlac\engine.lua) is on, the engine's mode state / trigger reads / debug handoffs all live under dlac's OWN config root (config\addons\dlac\<char>\) instead of piggybacking on LuaAshitacast's tree. Flag off (the default, and the shipped state until the native engine lands) = byte-identical path behavior. The inline composition stays as the no-profiles fallback.
                   -- 109: THE APPLY RIDES THE REQUEST FILE -- the friend's original bug, mechanically closed. "Everything works but lockstyle" (his 07-23 report, pre-update) is exactly the chain law's shadow: every automation rides LAC's internal handler flow, but lockstyle apply was the ONE player feature whose trigger crossed the COMMAND BUS ('/dl ls apply' queued by the GUI button/pumps or hand-typed) -- and on his load order the command died at dlac's own blocking handlers before LAC's engine received it (preview addon-local = fine; apply = silence). Now: lockstyle's queueCmd wrapper AND its typed-apply observation both write 'apply [box]' into debug-request.txt; the request watch runs engineApplyHalf -- the apply branch's body, extracted (one implementation, two doors, like check/ls) -- within ~1s when the command path is idle. All four order/hearing quadrants land exactly ONE apply (8s idle gate; last-writer-wins on the request file degrades a sub-second apply BURST to its last entry in the starved case only -- town/keep flows re-assert, acceptable). M._reqSpec (pure) parses the spec line.
                   -- 108: SYMMETRIC command handoff -- the starvation pair closed from both ends. Field 07-23, one day, both directions: Henrik's /addon reload cycles left the ADDON state deaf to typed /dl (engine heard, addon inert -- v107's watch cured that side); the friend's reload order starved the ENGINE (addon heard /dl check, receipt written, clean shim + current seeded copies + v107 modestate stamp -- and the report said ENGINE HALF MISSING because check.lua's own e.blocked halted the command before LAC's state received it). Ashita propagation law, now field-established from both sides: e.blocked stops LATER addons in the chain from receiving the command, and reload order IS chain order. Cure: whichever state hears, the other completes via file -- the addon writes debug-request.txt (stamp + 'check'/'ls <dur>'); this tick watches it (M._reqFire, twin of the addon's M._watchFire, 8s idle gate) and runs the same engine halves the command branches use (engineCheckHalf/engineLsHalf, one implementation two doors). Also v108: gearui's dev-buttons toggle no longer swallows '/dl debug <topic>' (the 07-23 namespace collision -- the friend's 'debug ls' flipped the Scan/Stage buttons); the toggle keeps bare/on/off only.
                   -- 107: the debug-ls WINDOW-OPEN marker handoff (debug-ls-open.txt, stamp + 'dur N', written at command time). Field 2026-07-23, Mindie: the dlac ADDON state provably never received typed /dl commands (load beacon clean, 18/18 modules, handlers registered) while THIS state heard every one (handoffs 11:22/11:23) -- so feature/debug.lua now FOLLOWS the engine's handoff stamps as a command-event fallback, and the ls capture window needs this marker to synchronize (the full ls handoff only lands at window END). The engine is the command receiver of record; the addon state is a subscriber.
@@ -232,6 +233,40 @@ local saveFiredState;   -- defined with the mode-state block below (needs charDi
 -- Only the copy of this module living in LuaAshitacast's state may equip, own mode
 -- state, or answer commands. The dlac addon state has no gFunc, so it stays inert.
 local function inLac() return rawget(_G, 'gFunc') ~= nil; end
+
+-- NATIVE ENGINE (feature/native-engine, v111): when the native flag is on,
+-- the ADDON-state copy of this module -- inert since v1 -- becomes the ACTIVE
+-- engine: feature\equipengine supplies the timing service LuaAshitacast used
+-- to (block action -> Precast -> re-inject -> Midcast) and the equip door
+-- (equipSet -> the per-event buffer -> gear\equipcore -> 0x050/0x051).
+-- Returns the ARMED equipengine or nil; never arms inside LAC's state
+-- (equipengine itself refuses there -- two interceptors is the hazard the
+-- tripwire exists for).
+local function nativeEngine()
+    if inLac() then return nil; end
+    local ok, eng = pcall(require, 'dlac\\feature\\equipengine');
+    if not ok or type(eng) ~= 'table' or type(eng.nativeOn) ~= 'function' then return nil; end
+    local ok2, on = pcall(eng.nativeOn);
+    if not ok2 or on ~= true then return nil; end
+    return eng;
+end
+
+-- "Is THIS copy the active engine?" -- LAC state always; addon state when
+-- native mode is armed. The dispatch entry, the outer machinery block and the
+-- command printers all gate on this instead of inLac().
+local function engineActive() return inLac() or nativeEngine() ~= nil; end
+
+-- The one equip write seam: LAC state -> gFunc.EquipSet; native -> the
+-- equipengine buffer (flushed by its fireEvent, ClearBuffer/ProcessBuffer
+-- parity). Every resolved set leaves through here.
+local function engineEquipSet(set)
+    local eng = nativeEngine();
+    if eng ~= nil then
+        pcall(eng.equipSet, set);
+    else
+        pcall(function() gFunc.EquipSet(set); end);
+    end
+end
 
 -- ---------------------------------------------------------------------------
 -- Small helpers
@@ -2847,7 +2882,7 @@ local function equipResolved(s, ctx, respectLocks)
         end,
     };
     for _, nm in ipairs(POST_ORDER) do PASS[nm](); end
-    pcall(function() gFunc.EquipSet(out or s); end);
+    engineEquipSet(out or s);
     local note = '';
     if notes ~= nil then
         table.sort(notes);
@@ -2955,12 +2990,22 @@ local function actionLabel(ctx)
     return '?';
 end
 
+-- NATIVE sets store (v111): the gProfile.Sets equivalent when this copy IS
+-- the engine -- { Dynamic = <profile file data>, <FlattenedName> = <set>, ... },
+-- installed by installSets and re-flattened by utils.rebuildSets on the same
+-- signals a shim would see (level/subjob/mode changes). nil until the native
+-- identity latch (the tick) loads the current job's profile sets.
+M._nativeSets = M._nativeSets or nil;
+
 local function equipSetByName(name, ctx)
     local s;
     pcall(function()
         local prof = rawget(_G, 'gProfile');
         if type(prof) == 'table' and type(prof.Sets) == 'table' then s = prof.Sets[name]; end
     end);
+    if type(s) ~= 'table' and type(M._nativeSets) == 'table' then
+        s = M._nativeSets[name];   -- the native store (flattened names live top-level)
+    end
     if type(s) ~= 'table' then
         -- A trigger MATCHED but its target set is absent from this job's profile
         -- (field case: a Midshot rule pointing at a set never committed on WAR --
@@ -3417,9 +3462,10 @@ local function ammoPlannedByHits(hits)
             for _, sn in ipairs(r.sets) do
                 pcall(function()
                     local prof = rawget(_G, 'gProfile');
-                    if type(prof) == 'table' and type(prof.Sets) == 'table'
-                       and type(prof.Sets[sn]) == 'table' and prof.Sets[sn].Ammo ~= nil then
-                        plan = prof.Sets[sn].Ammo;
+                    local sets = (type(prof) == 'table' and type(prof.Sets) == 'table')
+                                 and prof.Sets or M._nativeSets;   -- native store fallback (v111)
+                    if type(sets) == 'table' and type(sets[sn]) == 'table' and sets[sn].Ammo ~= nil then
+                        plan = sets[sn].Ammo;
                     end
                 end);
             end
@@ -3805,21 +3851,38 @@ function M._lsDebugReport(t, n, resolveId, equippedId, gateFail)
 end
 
 function M.dispatch(event)
-    if not inLac() then return; end
+    if not engineActive() then return; end
     pcall(function()
         event = EVENT_CANON[string.lower(tostring(event))] or event;
         -- While the PET's action is in flight, HOLD Default: the pet gear a
         -- PetAction rule equipped must survive until the action completes
         -- (upstream parity -- LAC clears gState.PetAction on the completion
         -- packet; the Completion timestamp is the backstop). Petless: no effect.
+        -- Native mode reads the same fact from equipengine's state.
         if event == 'Default' then
             local held = false;
             pcall(function()
                 local st = rawget(_G, 'gState');
                 local pa = (st ~= nil) and st.PetAction or nil;
+                if pa == nil then
+                    local eng = nativeEngine();
+                    pa = (eng ~= nil) and eng.state.petAction or nil;
+                end
                 if pa ~= nil and (pa.Completion == nil or os.clock() < pa.Completion) then held = true; end
             end);
             if held then return; end
+            -- NATIVE re-flatten (v111): the shim called utils.rebuildSets on
+            -- every HandleDefault so level/subjob/mode changes re-pick ladder
+            -- rungs; the native store rides the same cadence (cheap no-op when
+            -- nothing changed -- checkRebuildNeeded's own latch).
+            if not inLac() and type(M._nativeSets) == 'table' then
+                pcall(function()
+                    local u = package.loaded['dlac\\utils'];
+                    if u ~= nil and type(u.rebuildSets) == 'function' then
+                        M._nativeSets = u.rebuildSets(M._nativeSets) or M._nativeSets;
+                    end
+                end);
+            end
         end
         local rules = ensureLoaded();
         local list = rules and rules[event] or nil;
@@ -4619,7 +4682,31 @@ end
 -- re-flatten, re-dispatch Default. Returns true, setCount | false, why.
 local function installSets(fresh)
     local prof = rawget(_G, 'gProfile');
-    if type(prof) ~= 'table' or type(prof.Sets) ~= 'table' then return false, 'no profile loaded'; end
+    if type(prof) ~= 'table' or type(prof.Sets) ~= 'table' then
+        -- NATIVE install (v111): no gProfile here -- the module-level store
+        -- plays its part. Same flow: drop dead flattened names, swap Dynamic,
+        -- re-flatten, re-dispatch.
+        if not inLac() and nativeEngine() ~= nil then
+            local store = (type(M._nativeSets) == 'table') and M._nativeSets or { Dynamic = {} };
+            if type(store.Dynamic) == 'table' then
+                for name in pairs(store.Dynamic) do
+                    if fresh.Dynamic[name] == nil then store[name] = nil; end
+                end
+            end
+            store.Dynamic = fresh.Dynamic;
+            M.modesRev = (M.modesRev or 0) + 1;
+            pcall(function()
+                local u = package.loaded['dlac\\utils'];
+                if u ~= nil and type(u.rebuildSets) == 'function' then store = u.rebuildSets(store) or store; end
+            end);
+            M._nativeSets = store;
+            pcall(function() M.dispatch('Default'); end);
+            local n = 0;
+            for _ in pairs(fresh.Dynamic) do n = n + 1; end
+            return true, n;
+        end
+        return false, 'no profile loaded';
+    end
     if type(prof.Sets.Dynamic) == 'table' then
         for name in pairs(prof.Sets.Dynamic) do
             if fresh.Dynamic[name] == nil then prof.Sets[name] = nil; end
@@ -4685,9 +4772,25 @@ function M.swapWanted(raw, sourceRaw, failedRaw, fileV, runV)
     return 'skip';
 end
 
-if inLac() then
+-- The engine machinery block: LAC state always; the ADDON state too when the
+-- native engine is armed (feature/native-engine, v111) -- mode state, the
+-- Default tick and the command surface are ENGINE features, not LAC features.
+-- LAC-bridge machinery inside (self-swap, handoff/request files, the
+-- HandleEquipEvent wrap, lockstyle engine halves) stays inLac()-pinned: it
+-- exists to cross two Lua states, and native mode has one.
+if engineActive() then
     loadModeState();        -- dlac-owned flags: restore (same job only) BEFORE the first mirror
     pcall(saveModeState);   -- then mirror whatever we start with for the GUI
+
+    -- Native wiring: equipengine fires the dispatch points; every handler
+    -- name it emits (ACTION_ROUTES rows + 'Default'/'Item') canonicalizes
+    -- through EVENT_CANON exactly like a shim call would.
+    do
+        local eng = (not inLac()) and nativeEngine() or nil;
+        if eng ~= nil then
+            eng.onEvent = function(name) M.dispatch(name); end
+        end
+    end
 
     -- LAC only parses HandleDefault while OUTGOING packets flow (packethandlers.lua
     -- drives it from HandleOutgoingPacket) -- stand still with a menu open and the
@@ -4959,6 +5062,7 @@ if inLac() then
 
     pcall(function() ashita.events.unregister('d3d_present', 'dlac-dispatch-tick'); end);
     local _tickAt, _tickJob, _tickPet = 0, nil, nil;
+    local _natJob, _natAct = nil, nil;   -- NATIVE identity latch (v111): job + profile the native store answers for
     local _reqAt, _reqSeen = 0, nil;
     -- The JOB is part of the identity -- see M.jobReady / ADR 0007. (v46-v49 carried
     -- a /dl instdiag dump and tick counters here; it is what found the bug and it is
@@ -4976,11 +5080,12 @@ if inLac() then
             end
             if os.clock() < _tickAt then return; end
             _tickAt = os.clock() + 0.4;
-            trySelfSwap();   -- engine hot-reload check (own ~2s gate inside)
+            if inLac() then trySelfSwap(); end   -- engine hot-reload: LAC-state machinery
+                                                 -- (the addon state reloads whole via /addon reload)
             -- '/dl debug ls' window flush (v106): the capture ended -> write
             -- the handoff (snapshot + timeline); the addon's merger reads it
             -- ~4s after window end, well inside its freshness gate.
-            if M._lsDbg ~= nil and os.clock() >= M._lsDbg.untilAt then
+            if inLac() and M._lsDbg ~= nil and os.clock() >= M._lsDbg.untilAt then
                 local d = M._lsDbg; M._lsDbg = nil;
                 writeDebugHandoff('debug-ls-engine.txt', M._lsDbgFlushLines(d.out, d.log, d.dur));
                 print('[dlac] debug ls (engine): capture window closed -- handoff written.');
@@ -4989,8 +5094,8 @@ if inLac() then
             -- watch. Whichever state hears a typed /dl, the other completes
             -- via file (e.blocked halts the command at whichever state sits
             -- first in Ashita's chain -- the 07-23 starvation pair, seen in
-            -- BOTH directions in one day).
-            if os.clock() >= _reqAt then
+            -- BOTH directions in one day). Two-state machinery: inLac-pinned.
+            if inLac() and os.clock() >= _reqAt then
                 _reqAt = os.clock() + 1.0;
                 pcall(function()
                     local dir = charDir();
@@ -5025,6 +5130,55 @@ if inLac() then
                 end
                 _tickJob = j;
             end
+            -- NATIVE Default drive (v111): the same starvation fix the LAC
+            -- tick below exists for -- outgoing packets pause when nothing
+            -- moves, so Default must also ride the frame clock. Same zoning
+            -- guard, same idle-only gate (equipengine's own chunk pump covers
+            -- the packet-flow case; fireEvent dedupes nothing, dispatch's
+            -- retrace gate keeps repeat parses cheap).
+            if not inLac() then
+                local eng = nativeEngine();
+                -- NATIVE identity latch: job or active-profile change reloads
+                -- the profile sets into the native store (the gProfile-install
+                -- twin below, one store instead of a live profile table).
+                if eng ~= nil then
+                    local job = nil;
+                    pcall(function() job = gData.GetPlayer().MainJob; end);
+                    local act = _pok and _prof.activeName() or nil;
+                    if M.jobReady(j, job) and (job ~= _natJob or act ~= _natAct) then
+                        local fresh = select(1, readSetsSource());
+                        if fresh ~= nil and type(fresh.Dynamic) == 'table' then
+                            M._nativeSets = nil;   -- a fresh job: never carry the old job's flatten
+                            local okI, n = installSets(fresh);
+                            if okI == true then
+                                _natJob, _natAct = job, act;
+                                print(string.format('[dlac] native engine: %d set(s) installed for %s%s.',
+                                    n, tostring(job), (act ~= nil) and (' (profile ' .. act .. ')') or ''));
+                            end
+                        else
+                            _natJob, _natAct = job, act;   -- legacy/no file: latch anyway, retry on next change
+                        end
+                    end
+                end
+                if eng ~= nil and eng.state.action == nil then
+                    local zoning = false;
+                    pcall(function()
+                        local pl = AshitaCore:GetMemoryManager():GetPlayer();
+                        if pl ~= nil and pl.GetIsZoning ~= nil then
+                            local z = pl:GetIsZoning();
+                            if z == true or (type(z) == 'number' and z ~= 0) then zoning = true; end
+                        end
+                    end);
+                    if not zoning then
+                        local probe = nil;
+                        pcall(function() probe = AshitaCore:GetMemoryManager():GetInventory():GetEquippedItem(0); end);
+                        if probe == nil then zoning = true; end
+                    end
+                    if not zoning then eng.fireEvent('Default', 'auto'); end
+                end
+                return;   -- everything below is LAC-profile machinery
+            end
+
             local st = rawget(_G, 'gState');
             if rawget(_G, 'gProfile') == nil or st == nil then return; end
             if st.PlayerAction ~= nil or type(st.HandleEquipEvent) ~= 'function' then return; end
@@ -5189,6 +5343,7 @@ if inLac() then
             local topic = string.lower(tostring(args[2] or ''));
             if topic == 'lockstyle' then topic = 'ls'; end
             if topic ~= 'ls' then return; end
+            if not inLac() then return; end   -- lockstyle engine half: LAC-pinned (see /dl ls)
             local dur = tonumber(args[3]);
             dur = (dur ~= nil) and math.max(30, math.min(120, dur)) or 45;
             _dbgCmdAt = os.clock();   -- quiet the request watch: the command DID arrive here
@@ -5211,10 +5366,10 @@ if inLac() then
         if sub == 'prio' then
             -- The Arbiter's live rank + per-claimant claim status (ADR 0012).
             -- Read-only -- the tracer's demo surface until the GUI Priority
-            -- section lands (step 2). gFunc gates it to the LAC state (the /dl
-            -- plan / ls pattern: the same command fires in the ADDON state too).
-            local g = rawget(_G, 'gFunc');
-            if g == nil then return; end
+            -- section lands (step 2). Printer gate: the ACTIVE engine's state
+            -- only (LAC state, or the native-armed addon state -- v111; two
+            -- states never print twice: native arms only with LAC absent).
+            if not engineActive() then return; end
             local order = M.arbOrder(ensureArbState());
             -- Live claim status per claimant (the same reads M.dispatch does).
             local craftState = ensureCraftState();
@@ -5252,11 +5407,9 @@ if inLac() then
 
         if sub == 'plan' then
             -- The maxmp band plan (v88): renders the SAME context the dispatch
-            -- pass runs, so what prints is what happens. gFunc gates to the
-            -- LAC state (the ls pattern: the same command fires in the ADDON
-            -- state too -- one state, one printer).
-            local g = rawget(_G, 'gFunc');
-            if g == nil then return; end
+            -- pass runs, so what prints is what happens. Printer gate: the
+            -- ACTIVE engine's state (v111 -- LAC state, or native-armed addon).
+            if not engineActive() then return; end
             local pl = nil;
             pcall(function() pl = gData.GetPlayer(); end);
             local lines = M.mpPlanLines(M.mpBands({ player = pl }), wornItemName);
@@ -5269,12 +5422,10 @@ if inLac() then
             -- Lockstyle sets (v38; per-profile v40; JOB ENTRY v41; engine-built
             -- packet v42): the GUI (lockstyle.lua, addon state) edits the boxes;
             -- THIS side applies by building the 0x053 itself (_lockstylePacket
-            -- above -- gFunc.LockStyle is gone, see the note there). gFunc
-            -- presence still gates the handler to the LAC state: the same
-            -- command fires in the ADDON state too (the gearui module tree
-            -- requires dispatch there); one state, one printer.
-            local g = rawget(_G, 'gFunc');
-            if g == nil then return; end
+            -- above -- gFunc.LockStyle is gone, see the note there). Pinned to
+            -- the LAC state EXPLICITLY (v111): native-mode lockstyle is the
+            -- #80 addon-residency move's territory, not this branch's.
+            if not inLac() then return; end
             local lsSub = string.lower(tostring(args[2] or ''));
             if lsSub == 'state' then return; end   -- the addon state's keep readout; not ours to answer (its usage line here read as "unknown command" in the field)
             if lsSub ~= 'apply' then
@@ -5410,6 +5561,7 @@ if inLac() then
                 pcall(function()
                     local prof = rawget(_G, 'gProfile');
                     if type(prof) == 'table' and type(prof.Sets) == 'table' then s = prof.Sets[nm]; end
+                    if type(s) ~= 'table' and type(M._nativeSets) == 'table' then s = M._nativeSets[nm]; end   -- native store (v111)
                 end);
                 if type(s) ~= 'table' then
                     print(string.format('[dlac] lock set: no committed set named "%s" for this job (names are case-sensitive; Commit it in the Sets tab first).', nm));

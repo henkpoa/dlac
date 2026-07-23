@@ -9125,6 +9125,56 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- NEB. native backend wiring (feature/native-engine step 5) -- the arming
+-- rules and the pet-stream decode. The dispatch-side seams (engineActive,
+-- the native sets store, engineEquipSet) are exercised through the 2600+
+-- LAC-state checks above staying green: flag off = byte-identical behavior.
+-- ---------------------------------------------------------------------------
+(function()
+    local eng = package.loaded['dlac\\feature\\equipengine'];
+    local prof = package.loaded['dlac\\profiles'];
+
+    -- arming rules: the addon state arms only with the flag on; the LAC state
+    -- REFUSES even with the flag on (two interceptors = the hazard); a fired
+    -- tripwire disarms.
+    local savedNative, savedGFunc = prof.nativeMode, rawget(_G, 'gFunc');
+    prof.nativeMode = function() return true; end
+    _G.gFunc = nil;
+    check('NEB1 addon state + flag on = armed', eng.nativeOn(), true);
+    _G.gFunc = {};
+    check('NEB2 LAC state refuses even with the flag on', eng.nativeOn(), false);
+    _G.gFunc = nil;
+    eng.state.tripped = true;
+    check('NEB3 tripwire disarms', eng.nativeOn(), false);
+    eng.state.tripped = false;
+    prof.nativeMode = function() return false; end
+    check('NEB4 flag off = not armed', eng.nativeOn(), false);
+    prof.nativeMode = savedNative;
+    _G.gFunc = savedGFunc;
+
+    -- the pet 0x28 field decode (actionId at bit 213, message at byte 28 bit 6)
+    local function packStr(len, writes)
+        local bytes = {};
+        for i = 1, len do bytes[i] = 0; end
+        for _, w in ipairs(writes) do
+            for i = 0, w[2] - 1 do
+                if math.floor(w[3] / (2 ^ i)) % 2 == 1 then
+                    local pos = w[1] + i;
+                    bytes[math.floor(pos / 8) + 1] = bytes[math.floor(pos / 8) + 1] + 2 ^ (pos % 8);
+                end
+            end
+        end
+        local out = {};
+        for i = 1, len do out[i] = string.char(bytes[i]); end
+        return table.concat(out);
+    end
+    local pkt = packStr(40, { { 213, 17, 900 }, { 28 * 8 + 6, 10, 43 } });
+    local pp = eng.parse0x28Pet(pkt);
+    check('NEB5 pet actionId decodes', pp.actionId, 900);
+    check('NEB6 pet mobskill message decodes', pp.message, 43);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then
