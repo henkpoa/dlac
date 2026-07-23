@@ -257,6 +257,12 @@ ashita.events.register('command', 'dlac-check', function(e)
     local raw = string.lower(e.command);
     if raw:match('^/dl%s+check%s*$') == nil and raw:match('^/dlac%s+check%s*$') == nil then return; end
     e.blocked = true;
+    -- Receipt + the fallback-quieting stamp (feature/debug.lua): proof on
+    -- disk that this state heard the command (07-23: it provably did not).
+    pcall(function()
+        local dbg = try('dlac\\feature\\debug');
+        if dbg ~= nil and type(dbg.heard) == 'function' then dbg.heard('/dl check (addon handler)'); end
+    end);
     M.report();
 end);
 

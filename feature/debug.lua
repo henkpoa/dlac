@@ -68,9 +68,15 @@ function M._dur(word)
 end
 
 -- How old (seconds) an engine handoff stamp may be and still belong to THIS
--- run. Both states answer in the same command frame; 10s absorbs nothing but
--- a slow disk, while yesterday's handoff can never impersonate today's.
-local FRESH_S = 10;
+-- run. The command-event fallback (below) may fire up to ~16s after the
+-- engine's stamp (15s fire window + the poll + the finalize delay), so this
+-- must comfortably exceed that; yesterday's handoff still can never
+-- impersonate today's.
+local FRESH_S = 25;
+
+-- The command-event FALLBACK's fire window: an engine handoff stamp older
+-- than this is history, not a trigger.
+local WATCH_FRESH_S = 15;
 
 -- ---------------------------------------------------------------------------
 -- pure seams (headless-tested, DBF*)
@@ -124,6 +130,20 @@ function M._safeName(n)
     return (n ~= '') and n or 'unknown';
 end
 
+-- The command-event fallback's decision (pure, tests DBW*). Field 2026-07-23
+-- (Mindie): the dlac ADDON state provably received NO typed /dl commands --
+-- load beacon clean, handlers registered, engine handoffs fresh, addon
+-- inert -- so this state now FOLLOWS the engine's handoff stamps: a NEW,
+-- FRESH stamp while our own command handlers sit idle means "the engine
+-- heard a command we did not" -> run the addon half anyway. A stale stamp
+-- is adopted quietly (history, not a trigger); a fresh one during command
+-- activity is the normal both-heard case, already handled.
+function M._watchFire(stamp, seenStamp, nowEpoch, cmdIdle)
+    if stamp == nil or stamp == seenStamp then return 'keep'; end
+    if math.abs(nowEpoch - stamp) > WATCH_FRESH_S then return 'adopt-quiet'; end
+    return cmdIdle and 'adopt-fire' or 'adopt-quiet';
+end
+
 -- ---------------------------------------------------------------------------
 -- live glue (Ashita only)
 -- ---------------------------------------------------------------------------
@@ -170,9 +190,31 @@ pcall(function()
     end
 end);
 
+-- COMMAND RECEIPTS: every addon-side /dl check|debug handler appends one
+-- line here the instant it hears its command -- so "is this state deaf?"
+-- is answerable from disk (the 07-23 field question, in file form).
+local _cmdAt = -1e9;
+local function receipt(label)
+    pcall(function()
+        local d = debugDir(); if d == nil then return; end
+        local f = io.open(d .. 'cmd-receipt.txt', 'a');
+        if f ~= nil then f:write(os.date('%Y-%m-%d %H:%M:%S') .. '  ' .. tostring(label) .. '\n'); f:close(); end
+    end);
+end
+-- Exported: check.lua's handler stamps through here too. The stamp is what
+-- keeps the fallback quiet while commands actually work.
+function M.heard(label)
+    _cmdAt = os.clock();
+    receipt(label);
+end
+
 -- One pending delivery at a time (a re-run before the tick fires just
 -- replaces it -- latest wins).
 local _pend = nil;
+
+-- forward-declared: the ls runner (defined with PRINTERS below) -- the
+-- watch tick fires it, and the tick registers first.
+local lsRun;
 
 -- Write one report file; returns the path (or nil + a printed failure).
 local function writeOut(base, text, label, word)
@@ -216,8 +258,39 @@ end
 
 -- The finalize pass: overwrite the provisional with the merged report. All
 -- failures print themselves (silence has no author -- the very lesson this
--- section exists to teach).
+-- section exists to teach). The same tick runs the HANDOFF WATCH: the
+-- engine is the command receiver of record (it provably hears every typed
+-- /dl -- the addon state provably did not, 07-23), so a new fresh stamp on
+-- an engine handoff while our own handlers sit idle fires the addon half
+-- off the FILE instead of the command event.
+local _watchAt, _seen = 0, {};
 ashita.events.register('d3d_present', 'dlac-debug-deliver', function()
+    if os.clock() >= _watchAt then
+        _watchAt = os.clock() + 1.0;
+        pcall(function()
+            local base = charBase();
+            if base == nil then return; end
+            local cmdIdle = (os.clock() - _cmdAt) > 8;
+            local raw = readAll(base .. 'dlac\\debug-check-engine.txt');
+            local st = raw ~= nil and tonumber(raw:match('^(%d+)')) or nil;
+            local act = M._watchFire(st, _seen.check, os.time(), cmdIdle);
+            if act ~= 'keep' then _seen.check = st; end
+            if act == 'adopt-fire' then
+                print('[dlac] check: the engine ran /dl check but this state heard NO command -- running the addon half off the handoff (command-event fallback; the receipt file will show the gap).');
+                local c = try('dlac\\feature\\check');
+                if c ~= nil and type(c.report) == 'function' then pcall(c.report); end
+            end
+            local raw2 = readAll(base .. 'dlac\\debug-ls-open.txt');
+            local st2 = raw2 ~= nil and tonumber(raw2:match('^(%d+)')) or nil;
+            local act2 = M._watchFire(st2, _seen.lsopen, os.time(), cmdIdle);
+            if act2 ~= 'keep' then _seen.lsopen = st2; end
+            if act2 == 'adopt-fire' then
+                local dur = tonumber(raw2:match('dur (%d+)')) or 45;
+                print('[dlac] debug ls: the engine opened a capture window but this state heard NO command -- following the handoff (command-event fallback).');
+                if lsRun ~= nil then pcall(lsRun, dur); end
+            end
+        end);
+    end
     if _pend == nil or os.clock() < _pend.dueAt then return; end
     local p = _pend; _pend = nil;
     -- Capture-window runs append their timeline at the WRITE moment (the
@@ -239,42 +312,47 @@ ashita.events.register('d3d_present', 'dlac-debug-deliver', function()
         p.label, 'report finalized -- send this file');
 end);
 
+-- The ls topic's whole addon half, callable from the command handler AND
+-- the handoff watch (lsRun is the forward-declared local above).
+lsRun = function(dur)
+    local m = try('dlac\\feature\\lockstyle');
+    if m == nil or type(m.debugLines) ~= 'function' then
+        print('[dlac] debug ls (addon): lockstyle module not loaded.');
+        return;
+    end
+    local ok, lines = pcall(m.debugLines);
+    if not ok or type(lines) ~= 'table' then
+        print('[dlac] debug ls (addon): readout failed (' .. tostring(lines) .. ').');
+        return;
+    end
+    for _, l in ipairs(lines) do print('[dlac] debug ls (addon): ' .. l); end
+    -- The capture window (v106): snapshot printed, now WATCH. The player
+    -- does the failing thing during the window; both states log what
+    -- they see (the engine opened its own window off this same command),
+    -- and the report writes at window end + 4s with both timelines.
+    pcall(function() m.debugCapture(dur); end);
+    print(string.format('[dlac] debug ls: capturing for %ds -- click Apply (do the failing thing) NOW.'
+        .. ' The report writes itself when the window closes.', dur));
+    M.deliver('debug ls', 'dlac-debug-ls', lines, 'debug-ls-engine.txt', {
+        delay = dur + 4.0,
+        append = function()
+            local ev = {};
+            pcall(function() ev = m.debugCaptureLog(); end);
+            local out = { '', string.format('== captured events, addon side (%ds window) ==', dur) };
+            if #ev == 0 then
+                out[#out + 1] = '(no lockstyle events observed by the addon state during the window)';
+            else
+                for _, l in ipairs(ev) do out[#out + 1] = l; end
+            end
+            return out;
+        end,
+    });
+end
+
 local PRINTERS = {
     -- rest = everything after 'debug' ('ls 60' -> the 60 is the window).
     ls = function(rest)
-        local m = try('dlac\\feature\\lockstyle');
-        if m == nil or type(m.debugLines) ~= 'function' then
-            print('[dlac] debug ls (addon): lockstyle module not loaded.');
-            return;
-        end
-        local ok, lines = pcall(m.debugLines);
-        if not ok or type(lines) ~= 'table' then
-            print('[dlac] debug ls (addon): readout failed (' .. tostring(lines) .. ').');
-            return;
-        end
-        for _, l in ipairs(lines) do print('[dlac] debug ls (addon): ' .. l); end
-        -- The capture window (v106): snapshot printed, now WATCH. The player
-        -- does the failing thing during the window; both states log what
-        -- they see (the engine opened its own window off this same command),
-        -- and the report writes at window end + 4s with both timelines.
-        local dur = M._dur(rest ~= nil and rest:match('^%S+%s+(%S+)') or nil);
-        pcall(function() m.debugCapture(dur); end);
-        print(string.format('[dlac] debug ls: capturing for %ds -- click Apply (do the failing thing) NOW.'
-            .. ' The report writes itself when the window closes.', dur));
-        M.deliver('debug ls', 'dlac-debug-ls', lines, 'debug-ls-engine.txt', {
-            delay = dur + 4.0,
-            append = function()
-                local ev = {};
-                pcall(function() ev = m.debugCaptureLog(); end);
-                local out = { '', string.format('== captured events, addon side (%ds window) ==', dur) };
-                if #ev == 0 then
-                    out[#out + 1] = '(no lockstyle events observed by the addon state during the window)';
-                else
-                    for _, l in ipairs(ev) do out[#out + 1] = l; end
-                end
-                return out;
-            end,
-        });
+        lsRun(M._dur(rest ~= nil and rest:match('^%S+%s+(%S+)') or nil));
     end,
 };
 
@@ -288,6 +366,7 @@ ashita.events.register('command', 'dlac-debug', function(e)
     else rest = raw:match('^/dlac?%s+debug%s+(.*)$'); end
     if rest == nil then return; end
     e.blocked = true;
+    M.heard('/dl debug ' .. tostring(rest) .. ' (addon handler)');
     local topic = M._topic(rest:match('^(%S+)'));
     if topic == nil then print('[dlac] ' .. M._usage()); return; end
     PRINTERS[topic](rest);

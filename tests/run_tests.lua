@@ -8613,6 +8613,16 @@ end)();
     check('DBT9 short floors to 30', dbg._dur('5'), 30);
     check('DBT10 long caps at 120', dbg._dur('999'), 120);
     check('DBT11 garbage = default', dbg._dur('soon'), 45);
+
+    -- DBW. the command-event fallback decision (07-23: the addon state heard
+    --      NO typed /dl while the engine heard every one -- the addon now
+    --      follows the engine's handoff stamps).
+    local now = 1753300000;
+    check('DBW1 no stamp = keep', dbg._watchFire(nil, nil, now, true), 'keep');
+    check('DBW2 same stamp = keep', dbg._watchFire(now - 2, now - 2, now, true), 'keep');
+    check('DBW3 new stale stamp adopts quietly', dbg._watchFire(now - 300, nil, now, true), 'adopt-quiet');
+    check('DBW4 new fresh stamp + commands alive stays quiet', dbg._watchFire(now - 2, nil, now, false), 'adopt-quiet');
+    check('DBW5 new fresh stamp + commands dead FIRES', dbg._watchFire(now - 2, nil, now, true), 'adopt-fire');
 end)();
 
 -- DBG. '/dl debug ls' engine dry-run report (dispatch M._lsDebugReport):
