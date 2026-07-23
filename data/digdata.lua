@@ -106,7 +106,7 @@ cond = {
 
   -- Day ores: the current day's element yields that element's ore, but only
   -- under the full gate -- dig rank >= Craftsman, the matching elemental weather
-  -- is up, the Vana'diel moon day is within 7..21, and only in the 9 elemental-
+  -- is up, the Vana'diel moon phase percent is within 7..21, and only in the 9 elemental-
   -- ore zones (~10% there). byDay maps day->element; byElement carries the ore
   -- item id/name per element (generated); zones is the elemental-ore zone set
   -- (generated). The maps + gate are the stable part.
@@ -114,7 +114,7 @@ cond = {
     chance  = 10,     -- ~10% per dig, ore zones only
     minRank = 6,      -- >= Craftsman
     requiresElementalWeather = true,
-    moonDays = { min = 7, max = 21 },   -- Vana'diel moon day window
+    moonPhaseWindow = { min = 7, max = 21 },   -- moon phase percent (0-100, = VanadielMoonPhase) window
     byDay = {
       Firesday     = "Fire",
       Iceday       = "Ice",

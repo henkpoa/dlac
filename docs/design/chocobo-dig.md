@@ -44,7 +44,7 @@ that layer onto the Regular pool when their condition is live:
   (~5%, any digging zone, dig rank ≥ **Novice**). `byDay` maps the 8 days →
   element; `byElement` carries the concrete rock item id/name (generator-resolved).
 - `ores` — the day's element yields that element's ore under the full gate:
-  dig rank ≥ **Craftsman**, matching elemental weather up, Vana'diel moon day in
+  dig rank ≥ **Craftsman**, matching elemental weather up, Vana'diel moon phase percent in
   7…21, and only in the 9 elemental-ore zones (~10% there). `byDay` / `byElement`
   as for rocks; `zones` is the ore-zone set (generator-resolved).
 

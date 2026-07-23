@@ -9797,7 +9797,7 @@ end)();
     check('DC49 rock day map has 8 days', nDay, 8);
     check('DC50 ore gate ~10% >= Craftsman', cond.ores.chance == 10 and cond.ores.minRank == 6, true);
     check('DC51 ore needs elemental weather', cond.ores.requiresElementalWeather, true);
-    check('DC52 ore moon-day window 7..21', cond.ores.moonDays.min == 7 and cond.ores.moonDays.max == 21, true);
+    check('DC52 ore moon-phase window 7..21', cond.ores.moonPhaseWindow.min == 7 and cond.ores.moonPhaseWindow.max == 21, true);
     check('DC53 ore day->element map (Darksday=Dark)', cond.ores.byDay.Darksday, 'Dark');
     check('DC54 ore has a zone set', type(cond.ores.zones), 'table');
 
