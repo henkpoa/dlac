@@ -370,10 +370,10 @@ setup.autoSetupNative = function()
         return 'failed';
     end
     setup._autoWarned[abbr] = nil;
-    local msg = abbr .. ': dlac is ready -- native starter sets and triggers are in place under '
-        .. 'config\\addons\\dlac\\. Scan your gear, then build sets in the Sets tab.';
-    D.status(msg);
-    pcall(function() print('[dlac] ' .. msg); end);
+    -- A successful seed is SILENT (Henrik, 07-23, post-field-confirm: the
+    -- player is not told about first runs, engines, or scanning -- the gear
+    -- inventory auto-syncs from bags and everything just works). Only the
+    -- failure above speaks, once, because a broken seed must name itself.
     return 'seeded';
 end
 

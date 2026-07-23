@@ -9277,9 +9277,12 @@ end)();
     check('NO48b ...named once', #lines == 1 and lines[1]:find('could not be', 1, true) ~= nil, true);
     prof.setNativeMode = function() return true; end
     check('NO48c write succeeding resolves write-native', prof.firstRunInit(), 'write-native');
-    check('NO48d ...with the loud fresh line', lines[#lines]:find('NATIVE engine armed', 1, true) ~= nil, true);
+    -- A RESOLVED decision is SILENT (Henrik, post-field-confirm: no first-run /
+    -- engine narration for the player) -- only the fail warn above ever spoke.
+    check('NO48d resolution is silent', #lines, 1);
 
-    -- Legacy verdict: the loud line names the evidence char.
+    -- Legacy verdict: silent too -- the GUI banner + Migrate button carry the
+    -- nudge, chat says nothing.
     lines = {}; prof._resetFirstRun();
     prof._listDirs = function(p)
         if p:find('luashitacast', 1, true) then return { 'Testy_123' }; end
@@ -9287,8 +9290,7 @@ end)();
     end
     prof._legacyProbe = function() return true; end
     check('NO49 legacy resolves', prof.firstRunInit(), 'legacy');
-    check('NO49b ...naming the evidence char', lines[#lines]:find('Testy_123', 1, true) ~= nil, true);
-    check('NO49c ...and pointing at the Migrate button', lines[#lines]:find('Migrate button', 1, true) ~= nil, true);
+    check('NO49b legacy resolution is silent', #lines, 0);
 
     print = savedPrint;
     prof._listDirs, prof._legacyProbe = savedList, savedProbe;

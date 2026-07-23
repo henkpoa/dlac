@@ -121,7 +121,7 @@ early, on this branch.
    when native mode is on and the character+job's baseline is missing, dlac creates
    it **automatically** at the login/job beat -- storage, gear inventory, the four
    base sets, starter triggers (the `setupNative` content, per job, idempotent,
-   never clobbering) -- silently apart from a friendly one-line chat/status notice.
+   never clobbering) -- fully SILENTLY (Henrik, post-field-confirm: no first-run/engine/scan talk -- gear auto-syncs from bags; only a FAILURE names itself, once).
    No red Migrate button, no plan popup, no Commit for new users, ever. A later login
    on a NEW job auto-seeds that job's starters the same way. Auto-setup NEVER fires
    in legacy mode, never before `firstRunInit` has resolved, and never for a

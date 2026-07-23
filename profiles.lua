@@ -597,17 +597,17 @@ end
 -- STORAGE WRITERS meanwhile (dlac.lua maintainStorage): an undecided beat must
 -- stay INERT, or dlac seeds the legacy home and then reads its own files as
 -- "existing legacy user" (Henrik's 2026-07-23 fresh-install sim -- the
--- self-manufactured-evidence bug). The decision is LOUD -- one boot line naming
--- the action and its evidence -- and so are both failure modes (once): silence
--- has no author, and the next field round should name its own domino.
+-- self-manufactured-evidence bug). A RESOLVED decision is silent (the player
+-- is not told about first runs or engines); the two FAILURE modes warn once --
+-- silence has no author, and a broken boot should name its own domino.
 local _firstRun = { done = false, action = nil, warned = false };
 function M.firstRunInit()
     if _firstRun.done then return _firstRun.action; end
     local flagState = M.engineFlagState();
-    local present, evidence = true, nil;
+    local present = true;
     if flagState == 'absent' then
         local ok;
-        present, ok, evidence = M.legacyDataPresent();
+        present, ok = M.legacyDataPresent();
         if not ok then
             if not _firstRun.warned then
                 _firstRun.warned = true;
@@ -630,15 +630,12 @@ function M.firstRunInit()
         end
     end
     _firstRun.done = true; _firstRun.action = action;
-    pcall(function()
-        if action == 'write-native' then
-            print('[dlac] first-run: fresh install (no engine flag, no legacy dlac data) -> NATIVE engine armed.');
-        elseif action == 'legacy' then
-            print('[dlac] first-run: no engine flag, but legacy dlac data found (' .. tostring(evidence)
-                .. ') -> staying LEGACY. The red Migrate button (gear window) is the way over.');
-        end
-        -- 'respect' stays quiet: the flag already said it, every boot, nothing new.
-    end);
+    -- A RESOLVED decision is SILENT (Henrik, 07-23, after the field confirm:
+    -- the general player must not be told it is a first run or which engine
+    -- runs -- things just work). The legacy nudge lives in the GUI (banner +
+    -- Migrate button), not chat. Only the two FAILURE warns above speak, and
+    -- only when something is genuinely broken -- those stay: silence has no
+    -- author, and they are invisible to a healthy install by construction.
     return action;
 end
 function M._resetFirstRun() _firstRun.done = false; _firstRun.action = nil; _firstRun.warned = false; end   -- headless test seam

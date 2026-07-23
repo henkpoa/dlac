@@ -4967,3 +4967,20 @@ write-fail retry into resolution, and the loud lines' content. No
 dispatch.M.VERSION bump (addon-only). Henrik's poisoned test env: the buggy
 boot RECREATED luashitacast\<char>\dlac\ folders -- delete those (junk from
 the bug; the real data is in his renamed folders) before re-testing.
+
+## The onboarding goes quiet: a working boot says nothing (2026-07-23, feature/native-engine, addon 2026.07.23ze)
+
+**Henrik's ruling, on field-confirming the fresh-install sim ("Works
+perfectly"):** remove the debug texts -- the general player must not be told
+that it is a first run, that the native engine is in use, or that gear needs
+scanning (the inventory auto-syncs from bags; the instruction was wrong
+anyway). Removed: the first-run decision lines (fresh -> "NATIVE engine
+armed", legacy -> "staying LEGACY...") and autoSetupNative's success notice
+("dlac is ready... Scan your gear"). The legacy nudge lives ONLY in the GUI
+(banner + red Migrate button); a fresh install experiences nothing at all --
+things just work. **The FAILURE warns stay** (undecided-scan, flag-write-fail,
+seed-fail -- each once): they are invisible to a healthy install by
+construction, and removing them would re-blind the next field case (silence
+has no author -- for failures). Tests NO48d/NO49b now pin the SILENCE of both
+resolutions. 2743 -> 2742 checks (the loud-line pins became silence pins
+each), 225 smoke, green both loops.

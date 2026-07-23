@@ -821,10 +821,12 @@ stays the hard backstop.
 **Fresh installs: full auto-setup, no Setup interaction ever (issue #91).** Once
 `firstRunInit` has resolved and native mode is on, the login/job beat calls
 `setupui.autoSetupNative`: when this character+job's baseline is missing it is
-created **automatically and silently** — storage + gear inventory + the four base
+created **automatically and fully silently** — storage + gear inventory + the four base
 sets + starter triggers (the `setupNative` content, per job, idempotent, never
-clobbering) — apart from one friendly chat/status notice the first time anything
-lands. No red Migrate button, no popup, no Commit for new users, ever. A later login
+clobbering). No chat on success (Henrik, post-field-confirm: the player is told
+nothing about first runs, engines, or scanning — the gear inventory auto-syncs
+from bags); only a FAILURE names itself, once. No red Migrate button, no popup,
+no Commit for new users, ever. A later login
 on a NEW job auto-seeds that job's starters the same way. HARD GATES: never in
 legacy mode; never before `firstRunInit` resolves; never for a not-ready job
 (`jobFile()` returns nil until `GetMainJob` settles — id-0 `NON` never seeds, hard
