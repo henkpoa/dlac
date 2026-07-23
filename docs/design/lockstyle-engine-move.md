@@ -10,13 +10,15 @@
 > the shortest bus-free path put the executor with the trigger, not in the Engine. **This
 > document is kept ONLY as the fallback design** if the phase-1 injection spike (outgoing
 > 0x053 from the Addon state reaching the server) fails; see the PRD on #80 and ADR 0014.
-> Everything below records the superseded engine-move direction — do not implement it
-> unless the spike fails.
+> The §1 story, §4 Ashita facts, and §5 code map remain accurate history; the §2 target
+> and §6 agenda are the superseded direction — do not implement them unless the spike
+> fails.
 
 **Tracker: [issue #80](https://github.com/henkpoa/dlac/issues/80)** — the
 reference number for this whole effort; the PRD and its issues chain from it.
 
-**Status:** NOT STARTED — this document is the grill/PRD input (Henrik's call,
+**Status:** SUPERSEDED — see the banner above. (Original status: NOT STARTED
+— this document was the grill/PRD input; Henrik's call,
 2026-07-23: "Can't we just move it to the engine side completely instead of
 troubleshooting an issue that shouldn't be there in the first place?").
 **Base:** engine v109 / addon 2026.07.23l, field-confirmed working on both
