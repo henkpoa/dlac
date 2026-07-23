@@ -30,6 +30,22 @@ local charDir = (_sfok and type(_sfile) == 'table') and _sfile.charDir
     or function() return nil; end;
 M._charDir = charDir;   -- test seam
 
+-- The pure dig-rank brain (issue #97): ratchet / server-read decode / effective-
+-- rank resolution. chocowatch owns only the Ashita glue (the live skill read,
+-- the chat hook, persistence); digrank does the logic and is headless-tested.
+local _drok, digrank = pcall(require, 'dlac\\feature\\digrank');
+_drok = _drok and type(digrank) == 'table';
+M._digrank = _drok and digrank or nil;   -- test seam
+
+-- digcalc.db() is the shipped dig data: the rank ladder labels + the item->rank
+-- map the ratchet consults. Loaded lazily / fails soft, like everywhere else.
+local function digDb()
+    local ok, dc = pcall(require, 'dlac\\feature\\digcalc');
+    if not ok or type(dc) ~= 'table' or type(dc.db) ~= 'function' then return nil; end
+    local d = nil; pcall(function() d = dc.db(); end);
+    return d;
+end
+
 -- ---------------------------------------------------------------------------
 -- MANUAL Chocobo control (the craftwatch/helmwatch model). You flip the switch
 -- from the Automations panel; this just writes chocostate.lua and the engine
@@ -40,6 +56,11 @@ M._charDir = charDir;   -- test seam
 M.enabled = false;         -- "Set Chocobo Idle": session-only; starts OFF
 M._enabledAt = 0;          -- os.time() of the last enable (state-file `at`)
 M._rescanned = false;      -- manifest freshness ensured once this session?
+-- The dig rank is masked out of the client, so dlac assembles it (issue #97).
+-- Unlike `enabled`, these PERSIST across sessions -- a manual pick and a ratchet
+-- floor are knowledge, not a session toggle.
+M.rankManual = 0;          -- the player's dropdown seed (0..8); default Amateur
+M.rankFloor  = 0;          -- the one-way ratchet floor (highest dug requirement)
 local _stateLoaded = false;
 
 local function statePath()
@@ -51,8 +72,11 @@ local function saveState()
         local p = statePath();
         if p == nil then return; end
         local f = io.open(p, 'wb'); if f == nil then return; end
-        f:write(string.format('return { enabled = %s, at = %d }\n',
-            tostring(M.enabled == true), M._enabledAt or 0));
+        -- enabled is session-only (written OFF-truthfully here); rankManual /
+        -- rankFloor persist and are read back by loadState.
+        f:write(string.format('return { enabled = %s, at = %d, rankManual = %d, rankFloor = %d }\n',
+            tostring(M.enabled == true), M._enabledAt or 0,
+            M.rankManual or 0, M.rankFloor or 0));
         f:close();
     end);
 end
@@ -63,12 +87,27 @@ function M.loadState()
     local dir = charDir();
     if dir == nil then return; end        -- pre-login: retry next call
     _stateLoaded = true;
-    -- The switch is NOT restored (craftstate rule): it starts OFF each session.
-    -- Nothing else lives in this file, so there is nothing to read back -- the
-    -- load only exists to sync a clean OFF file for the engine at login.
+    -- Read the persisted rank back (the switch is NOT restored -- craftstate
+    -- rule -- so it starts OFF each session; the rank state is knowledge and
+    -- survives). A torn/absent file leaves the defaults, then re-syncs.
+    pcall(function()
+        local chunk = loadfile(dir .. 'chocostate.lua');
+        if chunk ~= nil then
+            local ok, t = pcall(chunk);
+            if ok and type(t) == 'table' then
+                if _drok then
+                    M.rankManual = digrank.clamp(t.rankManual);
+                    M.rankFloor  = digrank.clamp(t.rankFloor);
+                else
+                    M.rankManual = tonumber(t.rankManual) or 0;
+                    M.rankFloor  = tonumber(t.rankFloor) or 0;
+                end
+            end
+        end
+    end);
     M.enabled = false;
     M._enabledAt = 0;
-    saveState();
+    saveState();                          -- sync a clean OFF file for the engine
 end
 
 -- Manifest freshness (fishwatch clone): the choco ladders must exist before the
@@ -105,6 +144,72 @@ function M.setEnabled(on)
 end
 
 -- ---------------------------------------------------------------------------
+-- Dig rank (issue #97). Three stacked sources, honestly labelled: the manual
+-- pick, the one-way ratchet floor, and a live (usually masked) server read.
+-- digrank does the pure logic; this owns persistence + the Ashita reads.
+-- ---------------------------------------------------------------------------
+
+-- Set the manual rank seed (the guide's dropdown). Clamped to 0..8, persisted.
+function M.setManualRank(rank)
+    M.loadState();
+    M.rankManual = _drok and digrank.clamp(rank) or (tonumber(rank) or 0);
+    saveState();
+end
+
+-- Record a dug item ("Obtained: <item>"): map it to its dig-rank requirement and
+-- ratchet the floor up if the requirement exceeds it. One-way (never lowers).
+-- Returns true when the floor actually rose (so the caller can announce it).
+-- A non-diggable item (not in the data) is a no-op, so a stray "Obtained:" line
+-- from a non-dig source never moves the rank.
+function M.recordObtained(name)
+    if not _drok then return false; end
+    M.loadState();
+    local req = digrank.itemRequirement(name, digDb());
+    if req == nil then return false; end
+    local newFloor = digrank.ratchet(M.rankFloor, req);
+    if newFloor > M.rankFloor then
+        M.rankFloor = newFloor;
+        saveState();
+        return true;
+    end
+    return false;
+end
+
+-- The live server dig-rank read, throttled (~2s). GetCraftSkill(11) returns the
+-- 0xFFFF mask forever on the current server, so this is nil in practice; if a
+-- build ever unmasks it, digrank.serverRank decodes the exact rank and it wins.
+M._serverCache = { rank = nil, at = -1 };
+function M.serverRankLive()
+    if not _drok then return nil; end
+    local now = os.clock();
+    if (now - (M._serverCache.at or -1)) < 2 then return M._serverCache.rank; end
+    M._serverCache.at = now;
+    local raw = nil;
+    pcall(function()
+        if AshitaCore == nil then return; end
+        local pl = AshitaCore:GetMemoryManager():GetPlayer();
+        if pl ~= nil then raw = pl:GetCraftSkill(11); end
+    end);
+    M._serverCache.rank = (raw ~= nil) and digrank.serverRank(raw) or nil;
+    return M._serverCache.rank;
+end
+
+-- The resolved rank state the panel renders AND the tab views gate grey-out on:
+-- { rank, source, exact, label, sourceLabel }. `exact` is true ONLY for a
+-- server-reported rank -- the tab views hard-lock over-rank items against an
+-- exact rank and merely dim them against an estimate (manual/ratchet).
+function M.rankState()
+    M.loadState();
+    if not _drok then
+        return { rank = M.rankManual or 0, source = 'manual', exact = false,
+                 label = 'rank ' .. (M.rankManual or 0), sourceLabel = 'manual' };
+    end
+    local db = digDb();
+    local ranks = (type(db) == 'table') and db.ranks or nil;
+    return digrank.resolve(M.rankManual, M.rankFloor, M.serverRankLive(), ranks);
+end
+
+-- ---------------------------------------------------------------------------
 -- Ashita glue
 -- ---------------------------------------------------------------------------
 if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'function' then
@@ -123,9 +228,32 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
                 say('Chocobo idle set ' .. (M.enabled and 'ON' or 'OFF') .. '.');
                 return;
             end
-            -- bare /dl choco: status.
+            -- bare /dl choco: status, now with the resolved dig rank + source.
+            local rs = M.rankState();
             say('chocobo: idle set = ' .. (M.isEnabled() and 'ON' or 'off')
                 .. ' (session-only -- off after relog). Equips your best riding-time gear while idle.');
+            say(string.format('  dig rank: %s (%s)%s', rs.label or ('rank ' .. rs.rank),
+                rs.sourceLabel or rs.source, rs.exact and '' or ' -- estimate'));
+        end);
+    end);
+
+    -- The auto-ratchet: every "Obtained: <item>" dig line (the same channel the
+    -- hgather addon reads) is mapped to its dig-rank requirement and raises the
+    -- assumed rank if it exceeds the floor. Runs ALWAYS, not just while the idle
+    -- set is on -- the rank is the always-available baseline beneath the guide,
+    -- independent of the riding-gear toggle. A non-diggable obtain is a no-op.
+    ashita.events.register('text_in', 'dlac-chocowatch-obtained', function(e)
+        pcall(function()
+            if not _drok then return; end
+            local msg = e.message;
+            if type(msg) ~= 'string' or not msg:find('btained:', 1, true) then return; end
+            local item = digrank.parseObtained(msg);
+            if item == nil then return; end
+            if M.recordObtained(item) then
+                local rs = M.rankState();
+                say(string.format('dig rank raised to %s (>= from digging %s).',
+                    rs.label or ('rank ' .. rs.rank), item));
+            end
         end);
     end);
 end

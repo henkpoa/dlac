@@ -642,6 +642,21 @@ end)();
         check('S139m unlisted-slot riding gear is ignored (Ring absent)', best.Ring, nil);
         check('S139n coverage level for the full set is the max (3)', chocoui.level(depsRef), 3);
     end
+    -- Dig-guide scaffold helpers (issue #97): the pure rank state + ladder +
+    -- general-success seams sit ABOVE the imgui guard, so they answer headless
+    -- (the tab views read rankState for grey-out even before any render).
+    if ok8 then
+        local rs = chocoui.rankState();
+        check('S139o rankState is a well-formed table', type(rs) == 'table'
+            and type(rs.rank) == 'number' and type(rs.exact) == 'boolean', true);
+        check('S139p a fresh char reads as a manual estimate', rs.source == 'manual' and rs.exact, false);
+        check('S139q rankLadder covers 0..8', (function()
+            local l = chocoui.rankLadder(); return l[0] ~= nil and l[8] ~= nil;
+        end)(), true);
+        -- clock/generalSuccess must not error headless (no client memory).
+        check('S139r clock() answers a table headless', type(chocoui.clock()), 'table');
+        check('S139s generalSuccess nil without a moon read', chocoui.generalSuccess(0, nil), nil);
+    end
 end)();
 
 -- ---------------------------------------------------------------------------
