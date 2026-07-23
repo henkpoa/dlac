@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 118;  -- 118: A HOLLOW INSTALL IS NOT AN INSTALL + the install invalidates the belief (round 5b -- the warm trace's first catch, one reload after shipping). Henrik's debug-mpwarm.txt line 16: 'BELIEVED setN=0 flat=0' at :12 behind a '20 set(s) installed' print at :10 -- the install-time flatten yielded ZERO sets (the fresh utils state's first level read wasn't settled), that hollow-but-stable world earned belief, and the belief CACHE (keyed by time, not world) survived the real store arriving at ~:14 -- serving the :16/:18/:21 bad plans until the 10s TTL expired at :22. Three closures: (1) installSets refuses a flatten that yields 0 sets when the raw Dynamic has real entries -- store left absent, latch retries next tick (genuinely empty starter profiles still pass: their zero is the truth); (2) BOTH install branches wipe the LOW-map cache + earned signature -- a belief can never outlive the world it was earned against; (3) the flatten counts ride the signature (f/h fields), so store identity changes can never share a sig. The trace stays -- it earned its keep in one reload.
+M.VERSION = 119;  -- 119: field-CONFIRMED close of the maxmp boot saga (Henrik's trace showed the designed boot: 12 install refusals holding the door ~4.5s of hollow flattens, then the REAL world's first appearance earns the first-ever belief -- no wrong ladder was ever displayable) + Henrik's debug-folder rule: per-char debug artifacts live in <data home>\debug\ (the warm trace moves to debug\mpwarm.txt and sweeps its old root-level file; the LAC-bridge handoff files stay put -- paired-reader protocol, leaving with LAC).
+                  -- 118: A HOLLOW INSTALL IS NOT AN INSTALL + the install invalidates the belief (round 5b -- the warm trace's first catch, one reload after shipping). Henrik's debug-mpwarm.txt line 16: 'BELIEVED setN=0 flat=0' at :12 behind a '20 set(s) installed' print at :10 -- the install-time flatten yielded ZERO sets (the fresh utils state's first level read wasn't settled), that hollow-but-stable world earned belief, and the belief CACHE (keyed by time, not world) survived the real store arriving at ~:14 -- serving the :16/:18/:21 bad plans until the 10s TTL expired at :22. Three closures: (1) installSets refuses a flatten that yields 0 sets when the raw Dynamic has real entries -- store left absent, latch retries next tick (genuinely empty starter profiles still pass: their zero is the truth); (2) BOTH install branches wipe the LOW-map cache + earned signature -- a belief can never outlive the world it was earned against; (3) the flatten counts ride the signature (f/h fields), so store identity changes can never share a sig. The trace stays -- it earned its keep in one reload.
                   -- 117: THE WARM TRACE + the gear ordering gate (round 5 -- the round the guessing stops). Henrik's capture beat v116's axiom: the wrong world held IDENTICAL for 3+ seconds (two matching bad renders), so it agreed with itself and was believed -- stable-wrong states exist (a flatten over a not-yet-live input is hollow STABLY, not transiently), and no proxy or self-agreement can see through one from the inside. Two moves. (1) debug-mpwarm.txt: every full LOW-map compute writes one row -- latch verdict (attest-failed/new-sig/young/BELIEVED), rules/sets attestation detail (incl. WHICH trigger path resolved and parse errors), rule/set counts, nonzero-low count, gear NameToObject count, manifest mp count, flattened/hollow set counts -- fresh file per session, 150-row cap; the next wrong ladder is a movie with named stages, not a screenshot. (2) The native identity latch defers install/flatten until the gear world is live (NameToObject non-empty) -- the one KNOWN stable-hollow producer, killed by ordering rather than gating; skip never latches, the tick retries.
                   -- 116: THE STABILITY LATCH (round 4 -- "it fixed itself after a bit, so its initial plan is wrong"). Henrik's capture showed the v114/v115 gate FIRING correctly at first ask, then PASSING six seconds later with the world still wrong (lows 0, tags gone, phantom ammo band; healed ~30s later): every proxy attestation can be lied to one level deeper during the boot storm -- a trigger path resolved to the LEGACY tier reads as legitimately trigger-less, a first flatten can leave set names whose tables are still hollow. End of proxy whack-a-mole: the LOW map now attests ITSELF. A ready compute is believed (and cached) only after two computes >= 2s apart produce the IDENTICAL world signature (sorted lows+refresh baselines + rule/set counts). Until agreement: nil ladder, batteries hold worn, /dl plan says warming up. Consults ride the 0.4s Default tick so belief lands ~2.4s after the world truly settles; the steady state re-agrees instantly across cache expiries (the signature persists). Plus the rules-side twin of v115's sets rule: rules nil while a profile trigger file EXISTS = mid-resolution, unready. Both modes.
                   -- 115: the gate covers LAC mode too (Henrik's attribution note, round 3b: "I think this was the case earlier as well, not due to the migration"). He is right, and the mechanism is the same staged boot: after a /lac load / job change, gProfile.Sets exists but its Dynamic is the shim's EMPTY SCAFFOLD until the profile auto-install latch fires on the engine tick -- so v114's sets~=nil readiness read hollow-but-present as ready and the LAC-mode glimpse (which the maxmp v76-v94 saga likely brushed against) stayed possible. Unified rule, both modes: Dynamic empty while a profile sets file EXISTS for the current job = install pending = UNREADY (statics-only characters have no profile file and stay ready; unreadable job falls under the existing path gate). The v114 comment claiming LAC never races is corrected.
@@ -1738,6 +1739,12 @@ local _mpLow = { at = 0, map = nil, rf = nil };
 -- capped), so the next wrong ladder is a MOVIE with named stages instead of a
 -- screenshot. Read it bottom-up: the last lines before 'believed' name what
 -- the world looked like when the ladder was trusted.
+-- Debug artifacts live in <data home>\debug\ (Henrik's folder rule,
+-- 2026-07-23: "keep debugs in a separate debug folder") -- the addon-tree
+-- reports (feature\debug.lua, the load beacon) already comply; per-char
+-- debug files land here. The LAC-bridge handoff files (debug-request /
+-- debug-*-engine) stay at the char root untouched: their paired readers are
+-- field-proven bridge protocol, and the whole family leaves with LAC.
 local _mpWarm = { n = 0, opened = false };
 local function mpWarmNote(line)
     if _mpWarm.n >= 150 then return; end
@@ -1745,7 +1752,15 @@ local function mpWarmNote(line)
     pcall(function()
         local dir = charDir();
         if dir == nil then return; end
-        local f = io.open(dir .. 'debug-mpwarm.txt', _mpWarm.opened and 'a' or 'w');
+        if not _mpWarm.opened then
+            pcall(function()
+                if ashita and ashita.fs and ashita.fs.create_directory then
+                    ashita.fs.create_directory(dir .. 'debug\\');
+                end
+            end);
+            pcall(os.remove, dir .. 'debug-mpwarm.txt');   -- sweep the pre-rule location
+        end
+        local f = io.open(dir .. 'debug\\mpwarm.txt', _mpWarm.opened and 'a' or 'w');
         if f == nil then return; end
         _mpWarm.opened = true;
         f:write(string.format('%s %7.2f  %s\n', os.date('%H:%M:%S'), os.clock(), line));
