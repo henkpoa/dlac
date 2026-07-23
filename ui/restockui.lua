@@ -31,6 +31,8 @@ local _ecok, ec = pcall(require, 'dlac\\feature\\eboxclient');
 _ecok = _ecok and type(ec) == 'table';
 local _gmok, gm = pcall(require, 'dlac\\feature\\gamemode');
 _gmok = _gmok and type(gm) == 'table';
+local _ftok, filetex = pcall(require, 'dlac\\ui\\filetex');   -- the crate icon (assets/ebox.png)
+_ftok = _ftok and type(filetex) == 'table';
 
 local COL_HEADER = { 0.60, 0.75, 1.00, 1.00 };
 local COL_DIM    = { 0.55, 0.55, 0.55, 1.00 };
@@ -417,5 +419,104 @@ function M.render(deps, availW)
     end
     imgui.TextColored(COL_DIM, 'Never withdraws more than your Inventory can hold -- nothing is lost.');
 end
+
+-- ---------------------------------------------------------------------------
+-- The floating Restock nudge (gearui d3d_present hook, beside floatgear). A
+-- small crate icon (assets/ebox.png -- Henrik's art) that pops up near an
+-- Ephemeral Box while you play: hover = the fetch plan, LEFT-click = Fetch all
+-- (pre-clamped, cannot over-draw), RIGHT-click = open the panel, badge = # items
+-- below target the box can fill. Self-gates so it costs nothing away from a box.
+-- INDEPENDENT of the main window (rendered directly from d3d_present, the
+-- floatgear pattern) -- deps is gearui's table, for the current job.
+-- ---------------------------------------------------------------------------
+local _nudgeOpen = { true };
+function M.nudge(deps)
+    if not _rwok or not _ecok then return; end
+    rw.loadState();
+    if not (rw.master and rw.showNudge) then return; end
+    if not cwOK() then return; end
+    local dist = ec.boxDistance();
+    if dist == nil or dist > ec.BOX_RANGE then return; end        -- only near a box
+    local job = (deps ~= nil and type(deps.playerJob) == 'function') and deps.playerJob() or nil;
+    local entries = rw.effectiveList(job);
+    ec.ensureCategories(rw.categoriesOf(entries), 25);
+    local onHand = fieldCounts();
+    local ctx = { freeSlots = freeInvSlots(),
+        onHand  = function(id) return onHand[id] or 0; end,
+        inBox   = function(id) return ec.boxCount(id); end,
+        stackOf = stackOf };
+    local plan = rw.plan(entries, ctx);
+    if rw.onlyWhenNeeded and plan.badge == 0 then return; end     -- quiet mode: hide when nothing
+
+    local FL = (ImGuiWindowFlags_NoTitleBar or 0) + (ImGuiWindowFlags_NoResize or 0)
+             + (ImGuiWindowFlags_NoScrollbar or 0) + (ImGuiWindowFlags_NoCollapse or 0)
+             + (ImGuiWindowFlags_AlwaysAutoResize or 0) + (ImGuiWindowFlags_NoFocusOnAppearing or 0)
+             + (ImGuiWindowFlags_NoNav or 0);
+    imgui.SetNextWindowPos({ 300, 300 }, (ImGuiCond_FirstUseEver or 0));
+    _nudgeOpen[1] = true;   -- forced-true table (floatgear's shape); no title bar = no close
+    if imgui.Begin('##dlac_restock_nudge', _nudgeOpen, FL) then
+        local busy = ec.isBusy();
+        local canFetch = (#plan.pulls > 0) and not busy;
+        local clicked, SZ = false, 40;
+        local h = _ftok and filetex.handle('ebox') or nil;
+        if h ~= nil then
+            pcall(function() clicked = imgui.ImageButton(h, { SZ, SZ }); end);
+        else
+            clicked = imgui.Button('E-Box##rsnudge', { SZ + 8, SZ });   -- fallback if the texture is missing
+        end
+        local rightClicked = imgui.IsItemClicked(1);
+        local hovered = imgui.IsItemHovered();
+        if plan.badge > 0 then
+            imgui.SameLine(0, 6);
+            imgui.TextColored(canFetch and COL_GOLD or COL_DIM, 'x' .. tostring(plan.badge));
+        end
+        if clicked and canFetch then ec.withdrawBatch(plan.pulls); end
+        if rightClicked then
+            pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl restock'); end);
+        end
+        if hovered then
+            imgui.BeginTooltip();
+            imgui.TextColored(COL_HEADER, 'E-Box Restock');
+            if #plan.fetches == 0 then
+                imgui.TextColored(COL_DIM, (plan.badge > 0) and 'Inventory full -- free a slot.' or 'Nothing to fetch right now.');
+            else
+                imgui.TextColored(COL_TEXT, 'Left-click fetches:');
+                local shown = 0;
+                for _, f in ipairs(plan.fetches) do
+                    if shown < 12 then
+                        imgui.TextColored(COL_TEXT, string.format('   %s  x%d', esc(f.name or ('#' .. tostring(f.id))), f.qty));
+                        shown = shown + 1;
+                    end
+                end
+                if #plan.fetches > shown then
+                    imgui.TextColored(COL_DIM, string.format('   +%d more', #plan.fetches - shown));
+                end
+            end
+            if #plan.remainder > 0 then
+                imgui.TextColored(COL_DIM, string.format('%d deferred -- free slots, then click again.', #plan.remainder));
+            end
+            imgui.Separator();
+            imgui.TextColored(COL_DIM, 'Left-click: fetch all    Right-click: open panel');
+            imgui.EndTooltip();
+        end
+    end
+    imgui.End();
+end
+
+-- /dl restock -- open the panel (also the nudge's right-click target). Own
+-- command handler (the useitem pattern): fires for every command, acts only on
+-- 'restock'. gearui is lazy-required at call time (no load-order cycle).
+pcall(function()
+    ashita.events.register('command', 'dlac_restock_cmd', function(e)
+        local raw = string.lower(e.command or '');
+        local a = raw:match('^/dl%s+(%S+)') or raw:match('^/dlac%s+(%S+)');
+        if a ~= 'restock' then return; end
+        e.blocked = true;
+        pcall(function()
+            local g = require('dlac\\ui\\gearui');
+            if type(g.openAutomation) == 'function' then g.openAutomation('restock'); end
+        end);
+    end);
+end);
 
 return M;
