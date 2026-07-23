@@ -226,7 +226,7 @@ end)();
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
                    'groupsmodel','jobgate','ownedcache','profileexport','profilesets','setimport',
                    'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
-    local FEATURE = { 'ammowatch','arbwatch','augments','check','craftwatch','debug','eboxammo','fishcalc','fishwatch',
+    local FEATURE = { 'ammowatch','arbwatch','augments','check','craftwatch','debug','digcalc','eboxammo','fishcalc','fishwatch',
                       'gamemode','helmwatch','location','lockstyle','lookpreview','macrobook','meritwatch',
                       'mpbands','pinwatch','useitem' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
@@ -9716,6 +9716,168 @@ end)();
     local pp = eng.parse0x28Pet(pkt);
     check('NEB5 pet actionId decodes', pp.actionId, 900);
     check('NEB6 pet mobskill message decodes', pp.message, 43);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- CHOCOBO DIGGING: digcalc odds math (hand-computed pools) + digdata shape +
+-- fail-soft loading -- PRD #93 / issue #94, docs/design/chocobo-dig.md. The
+-- odds are derived BY HAND from the PRD formula:
+--   mu   = 1.5 - |moonPhase - 50| / 50
+--   q_i  = min(1, weight_i / (1000 * mu))   (0 if rank < requirement_i)
+--   S    = 1 - PROD_i (1 - q_i)
+--   P_i  = q_i * INT_0^1 PROD_{j!=i}(1 - q_j + q_j*t) dt
+--   (1) On a hit = P_i / S   (sums to ~1 within a pool)
+--   (2) Per dig  = P_i       (sums to S)
+-- If a port edit moves one of these numbers, re-derive from the formula before
+-- touching the test. The math tests use SYNTHETIC pools (no digdata), mirroring
+-- fishcalc's F1-F14; the shape/fail-soft tests exercise the shipped table.
+-- ---------------------------------------------------------------------------
+(function()
+    local dc = dofile('feature/digcalc.lua');
+    package.loaded['dlac\\feature\\digcalc'] = dc;
+    local function r6(x) return math.floor((tonumber(x) or 0) * 1e6 + 0.5) / 1e6; end
+
+    -- moon multiplier: best (0.5) at new/full, worst (1.5) at half; clamps.
+    check('DC1 moon new  -> 0.5', dc.moonMult(0), 0.5);
+    check('DC2 moon full -> 0.5', dc.moonMult(100), 0.5);
+    check('DC3 moon half -> 1.5', dc.moonMult(50), 1.5);
+    check('DC4 moon clamps below 0',  dc.moonMult(-40), 0.5);
+    check('DC5 moon clamps above 100', dc.moonMult(140), 0.5);
+    check('DC6 moon default (nil) = half', dc.moonMult(nil), 1.5);
+
+    -- qualify probability q = min(1, w/(1000*mu)); best moon lifts a mid weight
+    -- to certainty, worst moon thins it.
+    check('DC7 qualify neutral', dc.qualify(500, 1), 0.5);
+    check('DC8 qualify caps at 1', dc.qualify(1000, 1), 1);
+    check('DC9 qualify best moon caps a 500-weight', dc.qualify(500, 0.5), 1);
+    check('DC10 qualify worst moon thins to 1/3', r6(dc.qualify(500, 1.5)), r6(1/3));
+    check('DC11 qualify zero weight -> 0', dc.qualify(0, 1), 0);
+
+    -- two-item pool {500, 1000} at mu=1: q1=0.5, q2=1 -> S=1, P1=0.25, P2=0.75.
+    local two = dc.poolOdds({ { id = 1, n = 'a', w = 500, rank = 0 },
+                              { id = 2, n = 'b', w = 1000, rank = 0 } }, 8, 1);
+    check('DC12 pool success S = 1', two.S, 1);
+    check('DC13 P1 (per dig) = 0.25', r6(two.items[1].perDig), 0.25);
+    check('DC14 P2 (per dig) = 0.75', r6(two.items[2].perDig), 0.75);
+    check('DC15 on-a-hit share 1', r6(two.items[1].onHit), 0.25);
+    check('DC16 on-a-hit share 2', r6(two.items[2].onHit), 0.75);
+    local sPerDig = two.items[1].perDig + two.items[2].perDig;
+    local sOnHit  = two.items[1].onHit + two.items[2].onHit;
+    check('DC17 (2) per-dig sums to S',   r6(sPerDig), r6(two.S));
+    check('DC18 (1) on-a-hit sums to ~1', r6(sOnHit), 1);
+
+    -- symmetric three-item pool, w=100 each, mu=1: q=0.1, S=1-0.9^3=0.271,
+    -- P_i=0.1*INT(0.9+0.1t)^2 = 0.0903333..., on-a-hit = 1/3 each.
+    local three = dc.poolOdds({ { id = 1, n = 'a', w = 100, rank = 0 },
+                                { id = 2, n = 'b', w = 100, rank = 0 },
+                                { id = 3, n = 'c', w = 100, rank = 0 } }, 8, 1);
+    check('DC19 three-item S = 0.271', r6(three.S), 0.271);
+    check('DC20 three-item P_i', r6(three.items[1].P), r6(0.0903333333));
+    check('DC21 three-item on-a-hit = 1/3', r6(three.items[2].onHit), r6(1/3));
+    local t3 = three.items[1].P + three.items[2].P + three.items[3].P;
+    check('DC22 three-item per-dig sums to S', r6(t3), r6(three.S));
+
+    -- rank-gating: item 2 needs rank 5, player is rank 3 -> locked, q2=0, it
+    -- drops out and reshapes the surviving share to 100%.
+    local gated = dc.poolOdds({ { id = 1, n = 'a', w = 500, rank = 0 },
+                                { id = 2, n = 'b', w = 1000, rank = 5 } }, 3, 1);
+    check('DC23 over-rank item is locked', gated.items[2].locked, true);
+    check('DC24 locked item q = 0',        gated.items[2].q, 0);
+    check('DC25 locked item per-dig = 0',  gated.items[2].perDig, 0);
+    check('DC26 surviving S = 0.5',        r6(gated.S), 0.5);
+    check('DC27 surviving on-a-hit reshaped to 1', r6(gated.items[1].onHit), 1);
+    check('DC28 active-item count drops to 1', gated.n, 1);
+
+    -- moon applied correctly: a single 500-weight item is a certainty at best
+    -- moon (S=1) and thins to 1/3 at worst.
+    local mBest  = dc.poolOdds({ { id = 1, n = 'a', w = 500, rank = 0 } }, 8, dc.moonMult(0));
+    local mWorst = dc.poolOdds({ { id = 1, n = 'a', w = 500, rank = 0 } }, 8, dc.moonMult(50));
+    check('DC29 best moon -> S = 1',        r6(mBest.S), 1);
+    check('DC30 worst moon -> S = 1/3',     r6(mWorst.S), r6(1/3));
+    check('DC31 best moon beats worst',     mBest.S > mWorst.S, true);
+
+    -- an asymmetric four-item pool at an off-neutral moon: the sum invariants
+    -- must still hold exactly (the identity SUM P_i = S).
+    local four = dc.poolOdds({ { id = 1, n = 'a', w = 300, rank = 0 },
+                               { id = 2, n = 'b', w = 700, rank = 0 },
+                               { id = 3, n = 'c', w = 250, rank = 0 },
+                               { id = 4, n = 'd', w = 900, rank = 0 } }, 8, 1.2);
+    local fp, fh = 0, 0;
+    for _, it in ipairs(four.items) do fp = fp + it.perDig; fh = fh + it.onHit; end
+    check('DC32 asymmetric per-dig sums to S', r6(fp), r6(four.S));
+    check('DC33 asymmetric on-a-hit sums to 1', r6(fh), 1);
+
+    -- digSuccess combines independent pools: two pools each with S=0.5 ->
+    -- 1 - 0.5*0.5 = 0.75.
+    local half = { { id = 1, n = 'x', w = 500, rank = 0 } };   -- S = 0.5 at mu=1
+    check('DC34 general dig-success across pools', r6(dc.digSuccess({ half, half }, 8, 1)), 0.75);
+
+    -- empty pool: S = 0, no items, no divide-by-zero.
+    local empty = dc.poolOdds({}, 8, 1);
+    check('DC35 empty pool S = 0', empty.S, 0);
+    check('DC36 empty pool no items', #empty.items, 0);
+
+    -- ---- digdata shape (the shipped table the guide trusts) ----
+    dc._setDb(dofile('data/digdata.lua'));
+    local db = dc.db();
+    check('DC37 digdata loads', db ~= nil, true);
+    check('DC38 rank ladder is 0..8', db.ranks and #db.ranks, 8);   -- [0]..[8] -> #=8
+    check('DC39 Novice is rank 3',    db.ranks[3], 'Novice');
+    check('DC40 Craftsman is rank 6', db.ranks[6], 'Craftsman');
+    check('DC41 zones is a table',    type(db.zones), 'table');
+    -- conditional rule tables: maps + gates, well-formed.
+    local cond = dc.conditionals();
+    check('DC42 conditionals present', type(cond), 'table');
+    check('DC43 crystal gate ~10%, no rank', cond.crystals.chance == 10 and cond.crystals.minRank == 0, true);
+    local nEl = 0; for _ in pairs(cond.crystals.byElement) do nEl = nEl + 1; end
+    check('DC44 crystals cover 8 elements', nEl, 8);
+    check('DC45 Fire crystal/cluster ids', cond.crystals.byElement.Fire.crystal == 4096
+        and cond.crystals.byElement.Fire.cluster == 4104, true);
+    check('DC46 Dark crystal/cluster ids', cond.crystals.byElement.Dark.crystal == 4103
+        and cond.crystals.byElement.Dark.cluster == 4111, true);
+    check('DC47 rock gate ~5% >= Novice', cond.rocks.chance == 5 and cond.rocks.minRank == 3, true);
+    check('DC48 rock day->element map (Firesday=Fire)', cond.rocks.byDay.Firesday, 'Fire');
+    local nDay = 0; for _ in pairs(cond.rocks.byDay) do nDay = nDay + 1; end
+    check('DC49 rock day map has 8 days', nDay, 8);
+    check('DC50 ore gate ~10% >= Craftsman', cond.ores.chance == 10 and cond.ores.minRank == 6, true);
+    check('DC51 ore needs elemental weather', cond.ores.requiresElementalWeather, true);
+    check('DC52 ore moon-phase window 7..21', cond.ores.moonPhaseWindow.min == 7 and cond.ores.moonPhaseWindow.max == 21, true);
+    check('DC53 ore day->element map (Darksday=Dark)', cond.ores.byDay.Darksday, 'Dark');
+    check('DC54 ore has a zone set', type(cond.ores.zones), 'table');
+
+    -- every zone entry that IS present is well-formed (positive weights, valid
+    -- pools, ranks in 0..8) -- guards a bad regeneration; passes vacuously while
+    -- `zones` is empty pending the maintainer regen (see digdata's DATA STATUS).
+    local VALID_POOL = { Treasure = true, Regular = true, Bore = true, Burrow = true };
+    local zoneCount, badZone = 0, nil;
+    for zid, z in pairs(db.zones) do
+        zoneCount = zoneCount + 1;
+        if type(z.n) ~= 'string' or type(z.pools) ~= 'table' then badZone = badZone or zid; end
+        for pool, list in pairs(z.pools or {}) do
+            if not VALID_POOL[pool] then badZone = badZone or ('pool:' .. tostring(pool)); end
+            for _, it in ipairs(list) do
+                if type(it.id) ~= 'number' or (tonumber(it.w) or 0) <= 0
+                   or (tonumber(it.rank) or -1) < 0 or (tonumber(it.rank) or 99) > 8 then
+                    badZone = badZone or ('item@' .. tostring(zid));
+                end
+            end
+        end
+    end
+    check('DC55 every present zone is well-formed', badZone, nil);
+    -- Once regenerated the table must hold exactly the 26 enabled zones; until
+    -- then it is empty and the guide's by-zone queries fail soft. This asserts
+    -- the invariant is one of those two honest states, never a partial mess.
+    check('DC56 zone count is 0 (pending regen) or exactly 26', zoneCount == 0 or zoneCount == 26, true);
+
+    -- ---- fail-soft: absent table disables data queries, never errors ----
+    dc._setDb(false);
+    check('DC57 absent db -> db() nil',        dc.db(), nil);
+    check('DC58 absent db -> zoneIds empty',   #dc.zoneIds(), 0);
+    check('DC59 absent db -> zoneOdds nil',    dc.zoneOdds(100, 8, 1), nil);
+    check('DC60 absent db -> conditionals nil', dc.conditionals(), nil);
+    -- pure math still works with no db (it never touches it)
+    check('DC61 math works without a db', dc.poolOdds({ { id = 1, n = 'a', w = 500, rank = 0 } }, 8, 1).S, 0.5);
+    dc._setDb(nil);   -- restore lazy load for any later section
 end)();
 
 -- ---------------------------------------------------------------------------
