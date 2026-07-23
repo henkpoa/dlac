@@ -206,6 +206,13 @@ local function charDirAndName()
         if name == '' then name = nil; end
     end);
     if name == nil or id == nil then return nil, nil; end
+    -- mode-aware data home (feature/native-engine); legacy composition fallback
+    local d = nil;
+    pcall(function()
+        local prof = require('dlac\\profiles');
+        d = prof.dataDir();
+    end);
+    if d ~= nil then return d, name; end
     return string.format('%sconfig\\addons\\luashitacast\\%s_%u\\dlac\\',
         AshitaCore:GetInstallPath(), name, id), name;
 end

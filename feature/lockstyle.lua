@@ -151,9 +151,21 @@ local function subAbbr()
     return abbr;
 end
 
-local function legacyPath()
+-- The dlac data home (mode-aware -- feature/native-engine): profiles.dataDir()
+-- with the legacy composition as fallback.
+local function dataDir()
+    local ok, prof = pcall(require, 'dlac\\profiles');
+    if ok and type(prof) == 'table' and type(prof.dataDir) == 'function' then
+        local ok2, d = pcall(prof.dataDir);
+        if ok2 and d ~= nil then return d; end
+    end
     local base = charBase();
-    return base and (base .. 'dlac\\lockstyles.lua') or nil;
+    return base and (base .. 'dlac\\') or nil;
+end
+
+local function legacyPath()
+    local d = dataDir();
+    return d and (d .. 'lockstyles.lua') or nil;
 end
 
 -- which profile + job `data` was loaded for: a change in EITHER reloads the
@@ -705,10 +717,10 @@ end
 local _legacyRetired = false;
 local function retireLegacyPreview()
     if _legacyRetired then return; end
-    local base = charBase(); if base == nil then return; end   -- pre-login: retry next pump
+    local base = dataDir(); if base == nil then return; end   -- pre-login: retry next pump
     _legacyRetired = true;
     pcall(function()
-        local f = io.open(fsp(base .. 'dlac\\lspreview.lua'), 'w');
+        local f = io.open(fsp(base .. 'lspreview.lua'), 'w');
         if f == nil then return; end
         f:write('-- dlac lockstyle preview -- RETIRED (v42 previews the look, not the gear).\nreturn {\n    enabled = false,\n};\n');
         f:close();

@@ -51,9 +51,21 @@ local function jobAbbr()
     return abbr;
 end
 
-local function path()
+-- The dlac data home (mode-aware -- feature/native-engine): profiles.dataDir()
+-- with the legacy composition as fallback.
+local function dataDir()
+    local ok, prof = pcall(require, 'dlac\\profiles');
+    if ok and type(prof) == 'table' and type(prof.dataDir) == 'function' then
+        local ok2, d = pcall(prof.dataDir);
+        if ok2 and d ~= nil then return d; end
+    end
     local base = charBase();
-    return base and (base .. 'dlac\\macrobooks.lua') or nil;
+    return base and (base .. 'dlac\\') or nil;
+end
+
+local function path()
+    local d = dataDir();
+    return d and (d .. 'macrobooks.lua') or nil;
 end
 
 local function load_()

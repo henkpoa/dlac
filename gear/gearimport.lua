@@ -745,13 +745,25 @@ local function pNameId()
     return name, id;
 end
 
--- Absolute path to the staging file, alongside your profile (NOT in dlac).
--- Built the same way LuAshitacast builds paths to save sets.
-local function stagingPath()
+-- The dlac data home (mode-aware -- feature/native-engine): profiles.dataDir()
+-- with the legacy composition as fallback.
+local function dataDir()
+    local d = nil;
+    pcall(function()
+        local prof = require('dlac\\profiles');
+        d = prof.dataDir();
+    end);
+    if d ~= nil then return d; end
     local name, id = pNameId();
     if name == nil or id == nil then return nil; end
-    return string.format('%sconfig\\addons\\luashitacast\\%s_%u\\dlac\\gear_staging.lua',
+    return string.format('%sconfig\\addons\\luashitacast\\%s_%u\\dlac\\',
         AshitaCore:GetInstallPath(), name, id);
+end
+
+-- Absolute path to the staging file, in the dlac data home next to gear.lua.
+local function stagingPath()
+    local d = dataDir();
+    return d and (d .. 'gear_staging.lua') or nil;
 end
 M.stagingPath = stagingPath;
 
@@ -965,10 +977,8 @@ function M.spliceStaging(gearText, stagingText)
 end
 
 local function gearPath()
-    local name, id = pNameId();
-    if name == nil or id == nil then return nil; end
-    return string.format('%sconfig\\addons\\luashitacast\\%s_%u\\dlac\\gear.lua',
-        AshitaCore:GetInstallPath(), name, id);
+    local d = dataDir();
+    return d and (d .. 'gear.lua') or nil;
 end
 
 local function readFile(p) local f = io.open(p, 'r'); if f == nil then return nil; end local t = f:read('*a'); f:close(); return t; end
@@ -976,6 +986,13 @@ local function writeFile(p, t) local f = io.open(p, 'w'); if f == nil then retur
 local function parses(text) local c = (loadstring or load)(text); return c ~= nil; end
 
 local function charBackupDir()
+    -- backups follow the active storage home (feature/native-engine)
+    local r = nil;
+    pcall(function()
+        local prof = require('dlac\\profiles');
+        r = prof.charRoot();
+    end);
+    if r ~= nil then return r .. 'backups\\'; end
     local _pn, _pi = pNameId();
     return string.format('%sconfig\\addons\\luashitacast\\%s_%u\\backups\\', AshitaCore:GetInstallPath(), _pn, _pi);
 end

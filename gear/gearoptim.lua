@@ -2265,9 +2265,18 @@ end
 -- folder this module lives in, next to gear.lua.
 -- The weights file of ANY character folder ('Name_1234'); the per-job export/
 -- import path goes through here, so there is exactly one path rule.
+-- Mode-aware home (feature/native-engine) via profiles.charDataDirAt; legacy
+-- composition as fallback.
 local function weightsPathFor(charFolder)
+    if type(charFolder) ~= 'string' or charFolder == '' then return nil; end
+    local d = nil;
+    pcall(function()
+        local prof = require('dlac\\profiles');
+        d = prof.charDataDirAt(charFolder);
+    end);
+    if d ~= nil then return d .. 'gearweights.lua'; end
     local install = safeCall(function() return AshitaCore:GetInstallPath(); end);
-    if type(install) ~= 'string' or type(charFolder) ~= 'string' or charFolder == '' then return nil; end
+    if type(install) ~= 'string' then return nil; end
     return string.format('%sconfig\\addons\\luashitacast\\%s\\dlac\\gearweights.lua', install, charFolder);
 end
 

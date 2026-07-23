@@ -345,12 +345,23 @@ local groupUI = {
 -- (dispatch.lua) or the GUI would edit one file while the engine reads another:
 -- the active profile's file when it exists, else the legacy one, else wherever
 -- writes should land (profile storage once it exists, legacy before).
-local function trigFilePath()
+-- The dlac data home (mode-aware -- feature/native-engine): deps.dataDir when
+-- gearui passes it, else the legacy composition off charBase.
+local function dlacDataDir()
+    if deps and type(deps.dataDir) == 'function' then
+        local d = deps.dataDir();
+        if d ~= nil then return d; end
+    end
     local base = deps and deps.charBase and deps.charBase() or nil;
+    return base and (base .. 'dlac\\') or nil;
+end
+
+local function trigFilePath()
+    local base = dlacDataDir();
     local abbr = nil;
     if deps and deps.jobFile then local _; _, abbr = deps.jobFile(); end
     if base == nil or abbr == nil then return nil, nil; end
-    local lp = base .. 'dlac\\triggers\\' .. abbr .. '.lua';
+    local lp = base .. 'triggers\\' .. abbr .. '.lua';
     local pok, prof = pcall(require, 'dlac\\profiles');
     if pok and type(prof) == 'table' then
         local pp = prof.triggersPath(abbr);
@@ -434,7 +445,7 @@ local function trigCommit()
     if not ok or type(text) ~= 'string' then trigSetStatus('Serialize failed.', true); return; end
     pcall(function()
         if ashita and ashita.fs and ashita.fs.create_directory then
-            ashita.fs.create_directory(deps.charBase() .. 'dlac\\triggers\\');
+            ashita.fs.create_directory(dlacDataDir() .. 'triggers\\');
         end
     end);
     pcall(function()   -- the commit target may be profile storage: ensure its dirs too
@@ -475,9 +486,9 @@ end
 -- The per-character library path (NOT profile-scoped -- a Blueprint is job- AND
 -- profile-independent). nil before login / known char dir; retry, never cache the nil.
 local function bpFilePath()
-    local base = deps and deps.charBase and deps.charBase() or nil;
+    local base = dlacDataDir();
     if base == nil then return nil; end
-    return base .. 'dlac\\blueprints.lua';
+    return base .. 'blueprints.lua';
 end
 
 -- Load (or reload) the library. Caches by path; a char change re-reads. A missing
@@ -505,7 +516,7 @@ local function bpSave()
     local text;
     local ok = pcall(function() text = bp.serialize(bpUI.lib, hasDispatch and dsp.PRETTY_KEY or nil); end);
     if not ok or type(text) ~= 'string' then bpSetStatus('Serialize failed.', true); return false; end
-    local base = deps.charBase();
+    local base = (deps and type(deps.charRoot) == 'function') and deps.charRoot() or deps.charBase();
     local prev = readFileText(path);
     local swok, sw = pcall(require, 'dlac\\lib\\safewrite');
     if swok and type(sw) == 'table' and type(sw.replaceLua) == 'function' then
@@ -522,10 +533,10 @@ local function bpSave()
         if rok ~= true then bpSetStatus('Could not save Blueprints: ' .. tostring(rerr), true); return false; end
         return true;
     end
-    -- fallback: ensure the dlac dir, then plain write
+    -- fallback: ensure the data dir, then plain write
     pcall(function()
         if ashita and ashita.fs and ashita.fs.create_directory then
-            ashita.fs.create_directory(base .. 'dlac\\');
+            ashita.fs.create_directory(dlacDataDir());
         end
     end);
     if not writeFileText(path, text) then bpSetStatus('Could not write ' .. path, true); return false; end
@@ -715,9 +726,9 @@ local function trigModeState()
     local st = {};
     trig._modeStateExists = false;
     pcall(function()
-        local base = deps.charBase();
+        local base = dlacDataDir();
         if base == nil then return; end
-        local chunk = loadfile(base .. 'dlac\\modestate.lua');
+        local chunk = loadfile(base .. 'modestate.lua');
         if chunk == nil then return; end
         trig._modeStateExists = true;
         local ok, t = pcall(chunk);
@@ -758,9 +769,9 @@ local function trigFiredState()
     trig._firedAt = now;
     local out = {};
     pcall(function()
-        local base = deps.charBase();
+        local base = dlacDataDir();
         if base == nil then return; end
-        local chunk = loadfile(base .. 'dlac\\firedstate.lua');
+        local chunk = loadfile(base .. 'firedstate.lua');
         if chunk == nil then return; end
         local ok, t = pcall(chunk);
         if ok and type(t) == 'table' then
@@ -2332,7 +2343,8 @@ local function groupAutoScan()
         if t1 ~= nil then text = text .. '\n' .. t1; srcs = srcs + 1; end
     end
     if abbr ~= nil and deps and deps.charBase then
-        local t2 = readFileText(deps.charBase() .. 'backups\\pre-profiles\\' .. abbr .. '.lua');
+        local croot = (type(deps.charRoot) == 'function') and deps.charRoot() or deps.charBase();
+        local t2 = readFileText(croot .. 'backups\\pre-profiles\\' .. abbr .. '.lua');
         if t2 ~= nil then text = text .. '\n' .. t2; srcs = srcs + 1; end
     end
     if srcs == 0 then

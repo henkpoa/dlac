@@ -51,6 +51,11 @@ local _invSyncAt = nil;   -- debounced: ~5s after the LAST inventory-changing pa
 local _flagsLoaded = false;
 
 local function uiFlagsPath()
+    -- mode-aware data home when gearui passes it (feature/native-engine)
+    if type(D.dataDir) == 'function' then
+        local d = D.dataDir();
+        if d ~= nil then return d .. 'uiflags.lua'; end
+    end
     local base = D.charBase();
     return base and (base .. 'dlac\\uiflags.lua') or nil;
 end

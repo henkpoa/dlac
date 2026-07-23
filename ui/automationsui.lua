@@ -127,6 +127,10 @@ local AUTO_FMT = 14;   -- 14: mv map (name -> MovementSpeed) + the mpMoveYield s
 local auto = { data = nil, loadedFor = nil, status = '' };
 
 local function autoPath()
+    if deps and type(deps.dataDir) == 'function' then   -- mode-aware home (feature/native-engine)
+        local d = deps.dataDir();
+        if d ~= nil then return d .. 'autogear.lua'; end
+    end
     local base = deps and deps.charBase and deps.charBase() or nil;
     return base and (base .. 'dlac\\autogear.lua') or nil;
 end
@@ -1108,9 +1112,13 @@ function M.maxmpMode()
         _mm.at = now;
         _mm.on = false;
         pcall(function()
-            local base = deps.charBase();
+            local base = (type(deps.dataDir) == 'function') and deps.dataDir() or nil;
+            if base == nil then
+                local cb = deps.charBase();
+                base = cb and (cb .. 'dlac\\') or nil;
+            end
             if base == nil then return; end
-            local chunk = loadfile(base .. 'dlac\\modestate.lua');
+            local chunk = loadfile(base .. 'modestate.lua');
             if chunk == nil then return; end
             local ok, t = pcall(chunk);
             _mm.on = (ok and type(t) == 'table' and t.maxmp == true);

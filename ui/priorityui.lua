@@ -150,10 +150,14 @@ function M.gatherLive(deps)
     -- MaxMP mode + slot locks both live in the LAC engine's modestate mirror
     -- (<char>\dlac\modestate.lua), the same file gearui reads for the lock pills.
     pcall(function()
-        if deps == nil or type(deps.charBase) ~= 'function' then return; end
-        local base = deps.charBase();
+        if deps == nil then return; end
+        local base = (type(deps.dataDir) == 'function') and deps.dataDir() or nil;
+        if base == nil and type(deps.charBase) == 'function' then
+            local cb = deps.charBase();
+            base = cb and (cb .. 'dlac\\') or nil;
+        end
         if base == nil then return; end
-        local chunk = loadfile(base .. 'dlac\\modestate.lua');
+        local chunk = loadfile(base .. 'modestate.lua');
         if chunk == nil then return; end
         local ok, t = pcall(chunk);
         if not ok or type(t) ~= 'table' then return; end

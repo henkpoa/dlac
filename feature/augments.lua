@@ -313,9 +313,16 @@ function M.ownedAugStats()
     return out;
 end
 
--- <install>config\addons\luashitacast\<Name>_<Id>\dlac\augdump.txt, or nil.
+-- <dlac data home>\augdump.txt, or nil (mode-aware home via profiles.dataDir()
+-- -- feature/native-engine; legacy composition as fallback).
 local function dumpPath()
     local p = nil;
+    pcall(function()
+        local prof = require('dlac\\profiles');
+        local d = prof.dataDir();
+        if d ~= nil then p = d .. 'augdump.txt'; end
+    end);
+    if p ~= nil then return p; end
     pcall(function()
         local party = AshitaCore:GetMemoryManager():GetParty();
         local name  = party:GetMemberName(0);

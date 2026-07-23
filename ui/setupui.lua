@@ -138,7 +138,11 @@ return profile;
 setup.seedTriggersFile = function(base, abbr)
     if D == nil then return false; end
     if base == nil or abbr == nil then return false; end
-    local path = base .. 'dlac\\triggers\\' .. abbr .. '.lua';
+    -- the legacy tier lives in the data home (mode-aware, feature/native-engine)
+    local ddir = (type(D.dataDir) == 'function') and D.dataDir() or nil;
+    if ddir == nil then ddir = base .. 'dlac\\'; end
+    local legacyTierPath = ddir .. 'triggers\\' .. abbr .. '.lua';
+    local path = legacyTierPath;
     if D.readFileText(path) ~= nil then return false; end   -- user data: never overwrite
     -- Profile storage live? Seed INTO the active profile instead (and never
     -- clobber a file already there) -- same target the engine resolves.
@@ -155,10 +159,10 @@ setup.seedTriggersFile = function(base, abbr)
     -- Create the legacy dir only when the seed actually lands there (profile
     -- storage dirs come from ensureStorage) -- a fresh player owns zero
     -- legacy-layout files AND zero legacy-layout dirs (sim finding, 2026-07-17).
-    if path == base .. 'dlac\\triggers\\' .. abbr .. '.lua' then
+    if path == legacyTierPath then
         pcall(function()
             if ashita and ashita.fs and ashita.fs.create_directory then
-                ashita.fs.create_directory(base .. 'dlac\\triggers\\');
+                ashita.fs.create_directory(ddir .. 'triggers\\');
             end
         end);
     end
@@ -186,16 +190,20 @@ setup.seedSetsFile = function(base, abbr)
     return written;
 end
 
--- Seed <char>\dlac\gear.lua (the gear inventory): copied from an existing
+-- Seed the data home's gear.lua (the gear inventory): copied from an existing
 -- ffxi-lac\gear.lua when there is one (a returning player keeps their scanned
 -- inventory), else the bundled empty template so the profile loads and
--- Scan/Commit can populate it. Never clobbers an existing file.
+-- Scan/Commit can populate it. Never clobbers an existing file. The home is
+-- mode-aware (feature/native-engine) via D.dataDir; the ffxi-lac source stays
+-- on the LAC char base -- that is where a pre-migration profile ever lived.
 local function seedGearFile(base)
-    pcall(function() os.execute('mkdir "' .. base .. 'dlac" 2>nul'); end);
-    if D.readFileText(base .. 'dlac\\gear.lua') ~= nil then return; end
+    local ddir = (type(D.dataDir) == 'function') and D.dataDir() or nil;
+    if ddir == nil then ddir = base .. 'dlac\\'; end
+    pcall(function() os.execute('mkdir "' .. ddir:gsub('\\+$', '') .. '" 2>nul'); end);
+    if D.readFileText(ddir .. 'gear.lua') ~= nil then return; end
     local src = D.readFileText(base .. 'ffxi-lac\\gear.lua');
     if src == nil then src = D.readFileText(AshitaCore:GetInstallPath() .. 'addons\\dlac\\gear.lua'); end
-    if src ~= nil then D.writeFileText(base .. 'dlac\\gear.lua', src); end
+    if src ~= nil then D.writeFileText(ddir .. 'gear.lua', src); end
 end
 
 -- The ONE migration path (the standard, see the header): every non-shim

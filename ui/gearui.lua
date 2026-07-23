@@ -741,11 +741,20 @@ local function refreshOwnedCounts() owned.resetCache(); _ownedAug = nil; _ownedA
 -- rebuilds, re-deriving stats from the catalog.
 local function refreshGear()
     pcall(function()
-        local party = AshitaCore:GetMemoryManager():GetParty();
-        local name, id = party:GetMemberName(0), party:GetMemberServerId(0);
-        if name == nil or name == '' or id == nil then return; end
-        local path = string.format('%sconfig\\addons\\luashitacast\\%s_%u\\dlac\\gear.lua',
-            AshitaCore:GetInstallPath(), name, id);
+        -- mode-aware data home (feature/native-engine); legacy fallback inline
+        local path = nil;
+        pcall(function()
+            local prof = require('dlac\\profiles');
+            local d = prof.dataDir();
+            if d ~= nil then path = d .. 'gear.lua'; end
+        end);
+        if path == nil then
+            local party = AshitaCore:GetMemoryManager():GetParty();
+            local name, id = party:GetMemberName(0), party:GetMemberServerId(0);
+            if name == nil or name == '' or id == nil then return; end
+            path = string.format('%sconfig\\addons\\luashitacast\\%s_%u\\dlac\\gear.lua',
+                AshitaCore:GetInstallPath(), name, id);
+        end
         local chunk = loadfile(path);
         if chunk == nil then return; end
         local ok, g = pcall(chunk);
@@ -1084,6 +1093,9 @@ local function readFileText(p) local f=io.open(p,'r'); if f==nil then return nil
 local function writeFileText(p,t) local f=io.open(p,'w'); if f==nil then return false; end f:write(t); f:close(); return true; end
 
 -- <install>\config\addons\luashitacast\<Char>_<id>\  (or nil if not logged in).
+-- This is the LAC char base: <JOB>.lua shims and seeded engine copies live
+-- here in EVERY mode (they are LuaAshitacast concepts). dlac's own data goes
+-- through dataDir() below, which follows the native-engine storage move.
 local function charBase()
     local base = nil;
     pcall(function()
@@ -1097,6 +1109,28 @@ local function charBase()
     return base;
 end
 
+-- The dlac data home (mode-aware -- feature/native-engine): profiles.dataDir()
+-- with the legacy composition as fallback.
+local function dataDir()
+    local ok, prof = pcall(require, 'dlac\\profiles');
+    if ok and type(prof) == 'table' and type(prof.dataDir) == 'function' then
+        local ok2, d = pcall(prof.dataDir);
+        if ok2 and d ~= nil then return d; end
+    end
+    local base = charBase();
+    return base and (base .. 'dlac\\') or nil;
+end
+
+-- The per-char home backups\ composes off (mode-aware like dataDir).
+local function charRoot()
+    local ok, prof = pcall(require, 'dlac\\profiles');
+    if ok and type(prof) == 'table' and type(prof.charRoot) == 'function' then
+        local ok2, r = pcall(prof.charRoot);
+        if ok2 and r ~= nil then return r; end
+    end
+    return charBase();
+end
+
 -- Engine-owned slot locks, read from the modestate mirror (__locks). The ENGINE is
 -- the source of truth -- its session resets on LAC reload, so this view (unlike the
 -- old addon-side _disabledSlots table, which outlived LAC reloads and made "Lock when
@@ -1108,9 +1142,9 @@ local function engineLocks()
     _lockMirror.at = now;
     local locks = {};
     pcall(function()
-        local base = charBase();
+        local base = dataDir();
         if base == nil then return; end
-        local chunk = loadfile(base .. 'dlac\\modestate.lua');
+        local chunk = loadfile(base .. 'modestate.lua');
         if chunk == nil then return; end
         local ok, t = pcall(chunk);
         if ok and type(t) == 'table' and type(t.__locks) == 'table' then locks = t.__locks; end
@@ -1134,7 +1168,7 @@ end
 -- button + plan popup below still render here and call setup.*.
 local setup = require("dlac\\ui\\setupui");
 setup.configure({
-    charBase = charBase, jobFile = jobFile,
+    charBase = charBase, jobFile = jobFile, dataDir = dataDir, charRoot = charRoot,
     readFileText = readFileText, writeFileText = writeFileText,
     ui = ui,
     status = function(s) _augStatus = s; end,   -- the header status line
@@ -1645,9 +1679,9 @@ local function renderHeaderButtons()
         ui._lacStampAt = now;
         local v = nil;
         pcall(function()
-            local base = charBase();
+            local base = dataDir();
             if base == nil then return; end
-            local chunk = loadfile(base .. 'dlac\\modestate.lua');
+            local chunk = loadfile(base .. 'modestate.lua');
             if chunk == nil then return; end
             local ok, t = pcall(chunk);
             if ok and type(t) == 'table' and type(t.__loadstamp) == 'string' then v = t.__loadstamp; end
@@ -2372,7 +2406,8 @@ do
     -- downstream contract identical to the pre-extraction shape.
     local d = {
         ui = ui,   -- the Trigger Monitor toggle rides gearui's persisted view-state
-        charBase = charBase, jobFile = jobFile, seedTriggersFile = setup.seedTriggersFile,
+        charBase = charBase, jobFile = jobFile, dataDir = dataDir, charRoot = charRoot,
+        seedTriggersFile = setup.seedTriggersFile,
         dynamicSetNames = profsets.dynamicSetNames, staticSetNames = profsets.staticSetNames,
         liveSetNames = profsets.liveSetNames,   -- Dynamic + LIVE-file statics (no backup): trigger-target authority
         lookupByName = lookupByName, ownedCounts = owned.counts,  -- automations manifest (owned staves/obis)
@@ -4616,7 +4651,7 @@ end
 -- runs before sf.tick in the d3d_present handler below, so the real <char>
 -- gear.lua is swapped in before the first sync can run.
 sf.configure({
-    charBase = charBase, writeFileText = writeFileText,
+    charBase = charBase, dataDir = dataDir, writeFileText = writeFileText,
     callImport = callImport, refreshGear = refreshGear,
     ui = ui,
     -- Regenerate the automations manifest (autogear.lua) at the sync cadence, so
