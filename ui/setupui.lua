@@ -214,8 +214,27 @@ end
 -- and starter triggers seeded (never clobbering), profilesets drops its cache
 -- so "Copy from" sees the fresh backups, and LuaAshitacast reloads so the
 -- shims go live. One Commit ends with the whole character on the standard.
+-- Is the Native engine armed (ADR 0015)? Under native there is no <JOB>.lua
+-- shim to write and nothing under LuaAshitacast's tree to back up -- Setup takes
+-- the setupNative path instead of any of the legacy migration writers.
+setup.isNative = function()
+    local on = false;
+    pcall(function()
+        local p = require('dlac\\profiles');
+        if type(p) == 'table' and type(p.nativeMode) == 'function' then on = p.nativeMode() == true; end
+    end);
+    return on;
+end
+
 setup.migrateToCleanProfiles = function()
     if D == nil then return; end
+    -- Native mode NEVER writes a <JOB>.lua/shim/backup (ADR 0015 rulings 3+4).
+    -- This is the legacy migration writer; refuse it under the native flag so no
+    -- caller (a stray /dl profile migrate) can breach the rule.
+    if setup.isNative() then
+        D.status('Setup: native engine is on -- dlac equips gear itself, so there is no job file to migrate. Use the Setup button (native path) if storage is missing.');
+        return;
+    end
     local ui = D.ui;
     local base = D.charBase();
     if base == nil then D.status('Setup: log in first (no character folder).'); return; end
@@ -253,6 +272,54 @@ end
 --   anything else -> the standard migration (migrateToCleanProfiles above).
 -- Also seeds <char>\dlac\gear.lua and a starter triggers\<JOB>.lua so the
 -- dispatch shims have data to act on (ADR 0002).
+-- The NATIVE Setup path (ADR 0015 rulings 3+4): produce a playable install
+-- without a single write under config\addons\luashitacast\. Storage + gear
+-- inventory + starter sets/triggers only -- no <JOB>.lua shim, no migration, no
+-- backup (what is never written needs none). Everything it seeds is mode-aware
+-- (dataDir / profile storage resolve to dlac's own root under the flag) and
+-- never clobbers an existing file, so it is safe to re-run. Job-file imports
+-- (Sets "Copy from", Groups "Scan my Lua", the pre-profiles corpus) keep reading
+-- the LAC tree READ-ONLY in both modes -- untouched here.
+setup.setupNative = function(base, abbr)
+    if D == nil then return; end
+    if base == nil or abbr == nil then D.status('Setup: log in first (no character/job).'); return; end
+    pcall(function()
+        local prof = require('dlac\\profiles');
+        if type(prof) == 'table' and type(prof.ensureStorage) == 'function' then prof.ensureStorage(); end
+    end);
+    seedGearFile(base);   -- writes the data home (native root under the flag), not the LAC tree
+    local seededSets = setup.seedSetsFile(base, abbr);
+    local seededTrig = setup.seedTriggersFile(base, abbr);
+    if seededSets or seededTrig then pcall(function() require('dlac\\gear\\profilesets').invalidate(); end); end
+    _setupState = nil;
+    local msg = abbr .. ': native setup complete -- storage and starter sets/triggers are in place under '
+        .. 'config\\addons\\dlac\\. dlac equips your gear directly; no LuaAshitacast profile is needed and '
+        .. 'no job file was written. Scan your gear, then build sets in the Sets tab.';
+    D.status(msg);
+    pcall(function() print('[dlac] ' .. msg); end);
+end
+
+-- Does this character still need Setup (drives the red button + the warning)?
+-- Native: storage not yet created (there is no shim to judge). Legacy: the job
+-- shim is not the clean managed shim, or storage is missing (unchanged).
+setup.needsSetup = function()
+    if setup.isNative() then
+        local hasStorage = false;
+        pcall(function()
+            local p = require('dlac\\profiles');
+            if type(p) == 'table' and type(p.storageExists) == 'function' then hasStorage = p.storageExists() == true; end
+        end);
+        return not hasStorage;
+    end
+    if setup.jobSetupState() ~= 'ok' then return true; end
+    local hasStorage = false;
+    pcall(function()
+        local p = require('dlac\\profiles');
+        if type(p) == 'table' and type(p.storageExists) == 'function' then hasStorage = p.storageExists() == true; end
+    end);
+    return not hasStorage;
+end
+
 setup.migrateCurrentJob = function()
     if D == nil then return; end
     local ui = D.ui;
@@ -260,6 +327,9 @@ setup.migrateCurrentJob = function()
     if base == nil then D.status('Setup: log in first (no character folder).'); return; end
     local jf, abbr = D.jobFile();
     if jf == nil then D.status('Setup: unknown job.'); return; end
+    -- NATIVE (ADR 0015): dlac equips gear itself -- no shim, no migration, no
+    -- backup. The legacy path below is unchanged for flag-off users.
+    if setup.isNative() then return setup.setupNative(base, abbr); end
     local state = setup.jobSetupState();
 
     if state == 'ok' then

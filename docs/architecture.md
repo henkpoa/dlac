@@ -794,6 +794,30 @@ and auto-runs per character on first login after the flip
 (`engineAutoMigrate`, two file probes when settled). Legacy files never
 move: flipping back finds everything where it was.
 
+### Onboarding: fresh installs boot native (ADR 0015 ruling 4)
+
+A **fresh install** — no Engine flag file AND no legacy dlac data anywhere on the
+install (no `config\addons\luashitacast\<char>\dlac\` for any character) — is
+**born native**: the first boot writes the flag `native = true`, storage lives in
+dlac's own root, and no LuaAshitacast tree is ever created. Existing users are
+**never auto-flipped**: legacy data present, or a flag already on disk (either
+value), means current behavior exactly — the flag is honored, never rewritten by
+boot. The decision is a pure seam — `profiles.firstRunAction(flagState,
+legacyPresent)` (flag `'native'|'legacy'|'absent'` × legacy-data present →
+`'respect'|'legacy'|'write-native'`); `profiles.firstRunInit()` runs it once at
+boot (`dlac.lua` `maintainStorage`), writing the flag only for the fresh case and
+guarding against a "couldn't tell" listing failure so an existing user is never
+wrongly flipped. When a native boot detects LuaAshitacast still alive
+(`dlac.lua` `lacAlive()` — the equipengine tripwire, or a fresh legacy-home
+modestate stamp), dlac **asks once per session** to `/addon unload luashitacast`
+(`profiles.shouldAskUnloadLac`, latched); the tripwire stays the hard backstop.
+**Setup goes native** (ADR 0015 ruling 3): under the flag `setupui.migrateCurrentJob`
+routes to `setup.setupNative` — storage + gear inventory + starter sets/triggers
+only, writing **zero** `<JOB>.lua`/shim/backup files; the legacy migration writers
+(`migrateToCleanProfiles`) refuse under native. Job-file imports (Sets "Copy from",
+Groups "Scan my Lua", the `backups\pre-profiles\` corpus) keep reading the LAC tree
+READ-ONLY in both modes. Headless: tests NO1–NO19.
+
 ### The flip, and coexistence
 
 ```

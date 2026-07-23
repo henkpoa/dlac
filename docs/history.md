@@ -4719,3 +4719,75 @@ tick+offset persistence (standing offer). FIELD CONFIRM pending: the three
 native lockstyle paths (Apply button / town flip / typed apply). #84 (delete
 dispatch's lockstyle machinery) is safe to dispatch — origin's branch is
 current.
+
+## Ruling-4 onboarding: fresh installs boot native by default; Setup never writes a job file (2026-07-23, feature/native-engine, addon 2026.07.23z, issue #87)
+
+**Theme:** the "Deferred / next" item from the absorption session — ADR 0015
+ruling 4 (new users native by default) plus ruling 3's Setup consequence (dlac
+never writes a `<JOB>.lua` again) — built on `feature/native-engine`.
+
+**The first-run decision is a pure seam.** `profiles.firstRunAction(flagState,
+legacyPresent)` maps the flag file state (`'native' | 'legacy' | 'absent'`,
+where a present-but-broken file counts as `'legacy'` — present, so never
+clobbered) × whether ANY character on the install has legacy dlac data
+(`config\addons\luashitacast\<char>\dlac\`) to one of three actions:
+`'respect'` (a flag is on disk — honor it, boot NEVER rewrites it, existing
+users are never auto-flipped), `'legacy'` (no flag but legacy data present — an
+existing user, stay legacy, write nothing), or `'write-native'` (no flag, no
+legacy data — a FRESH install, born native). `profiles.firstRunInit()` runs it
+once at boot (`dlac.lua` `maintainStorage`, before the native-mode branch) and
+writes `native = true` only for the fresh case. The one trap avoided: a
+directory-listing API that returns nil ("couldn't tell") must NOT be read as
+"fresh" — `legacyDataPresent()` returns `present, scanned` and firstRunInit
+declines to decide (retries next beat, not latched) when the scan failed, so a
+transient fs hiccup can never wrongly flip an existing legacy user. A missing
+`luashitacast\` dir lists as `{}` (the popen fallback) — a real "no legacy data"
+answer, exactly the fresh install.
+
+**Ordering matters:** because firstRunInit runs at the top of `maintainStorage`
+and writes the flag before the `if prof.nativeMode()` branch, a fresh install is
+native by the time the same beat reaches the seeding fork — so `seedCharFolder`
+(the only writer under `config\addons\luashitacast\`) is never reached, and NO
+file is created in the LAC tree. The decision is install-wide (no character
+needed), so it lands pre-login on frame one.
+
+**The LAC-alive polite ask, once per session.** `profiles.shouldAskUnloadLac`
+is a pure latch: fed the live "is LuaAshitacast alive?" reading, it returns true
+the first time that is true and then stays false for the session. Detection
+(`dlac.lua` `lacAlive()`, best-effort) is the equipengine coexistence tripwire
+having fired OR a legacy-home `modestate.lua` written in the last ~15s (a dlac
+engine hosted inside LAC stamped it — native mode writes only the native home).
+The ask names the exact command (`/addon unload luashitacast`); the tripwire
+remains the hard backstop, so a detection miss only means the loud DISARMED line
+arrives instead of the polite one.
+
+**Setup goes native.** Under the flag, `setupui.migrateCurrentJob` routes to the
+new `setup.setupNative`: ensure storage + seed the gear inventory + the four
+base sets + starter triggers, all mode-aware (they resolve to
+`config\addons\dlac\`), never clobbering an existing file — and writing **zero**
+`<JOB>.lua`/shim/backup files (ruling 3: what is never written needs no backup).
+The legacy migration writer (`migrateToCleanProfiles`) now refuses under the
+native flag as a defense-in-depth guard, so no stray caller can breach the rule.
+The GUI follows: `setup.needsSetup` keys the red Setup button on storage
+existence (not the absent shim) in native mode, the Setup plan popup shows a
+native-worded plan (no shim, no backup, no luashitacast writes), and the legacy
+"not on the clean standard" migration nag stays silent under the flag. Job-file
+imports (Sets "Copy from", Groups "Scan my Lua", the `backups\pre-profiles\`
+corpus) keep reading the LAC tree READ-ONLY in both modes — untouched.
+
+**Why no `dispatch.M.VERSION` bump:** `profiles.lua` is a seeded file and its
+bytes changed, but the new functions are dormant inside LAC's state (called only
+from the addon state's `dlac.lua`), so the engine's equipping behavior is
+byte-identical — the staleness handshake has nothing to announce.
+
+**Tests:** NO1–NO19 — the decision matrix, the once-per-session gate (fire →
+latch → reset re-arms), and the native Setup path (capture every write, assert
+zero land under `luashitacast\` / on the `<JOB>.lua` shim / in `backups\`, with
+a legacy contrast that still writes the shim). 2671→2690 checks, 225 smoke,
+green Windows Lua + WSL lua5.4.
+
+**Deferred / next (this arc):** the legacy-mode nudge banner (Phase C); Trigger
+Monitor's native feed; augment-string pins; maxmp tick+offset persistence. FIELD
+CONFIRM pending (Henrik, issue #87): a simulated fresh install (rename/park the
+config dirs) boots native, asks about LAC if loaded, and Setup produces a
+playable character with zero LAC-tree writes.
