@@ -226,7 +226,7 @@ end)();
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
                    'groupsmodel','jobgate','ownedcache','profileexport','profilesets','setimport',
                    'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
-    local FEATURE = { 'ammowatch','arbwatch','augments','craftwatch','eboxammo','fishcalc','fishwatch',
+    local FEATURE = { 'ammowatch','arbwatch','augments','check','craftwatch','eboxammo','fishcalc','fishwatch',
                       'gamemode','helmwatch','location','lockstyle','lookpreview','macrobook','meritwatch',
                       'mpbands','pinwatch','useitem' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
@@ -8404,6 +8404,37 @@ end)();
     check('LGW5 changed bytes mid-edit follow but KEEP the 4x4', f('B', 'A', true), 'follow-keep-edit');
     check('LGW6 file appeared follows', f('A', nil, false), 'follow');
     check('LGW7 file deleted follows (back to defaults)', f(nil, 'A', false), 'follow');
+end)();
+
+-- CHK. /dl check -- the wiring-health readout (feature/check.lua, v103): the
+--      pure seams. The field case it answers: engine absent from the LAC state
+--      (old hand-written profile) = total silence on '/dl ls apply' -- so the
+--      addon half must SAY that a missing engine line is the diagnosis.
+(function()
+    local ck = dofile('feature/check.lua');
+    check('CHK0 check loads headless', type(ck), 'table');
+    check('CHK1 seeded copies current', ck._seededState({
+        { name = 'utils.lua', addon = 'x', seeded = 'x' },
+        { name = 'dispatch.lua', addon = 'y', seeded = 'y' } }), 'current');
+    check('CHK2 stale + missing seeded copies are NAMED', ck._seededState({
+        { name = 'utils.lua', addon = 'x', seeded = 'y' },
+        { name = 'chatfmt.lua', addon = 'z', seeded = 'z' },
+        { name = 'dispatch.lua', addon = 'w', seeded = nil } }), 'STALE: utils.lua, dispatch.lua');
+    check('CHK3 unreadable tree copy counts stale', ck._seededState({
+        { name = 'utils.lua', addon = nil, seeded = 'x' } }), 'STALE: utils.lua');
+    check('CHK4 clean shim word', ck._shimWord('ok'), 'clean dlac shim');
+    check('CHK5 wired sends to Setup', ck._shimWord('wired'):find('Setup', 1, true) ~= nil, true);
+    check('CHK6 ffxilac sends to Setup', ck._shimWord('ffxilac'):find('Setup', 1, true) ~= nil, true);
+    check('CHK7 nofile sends to Setup', ck._shimWord('nofile'):find('Setup', 1, true) ~= nil, true);
+    local L = ck._lines({ addonVer = '2026.07.23', fileV = 103, seeded = 'current', shim = 'ok', stampV = 103 });
+    check('CHK8 three addon lines', #L, 3);
+    check('CHK9 versions on line 1', L[1]:find('2026.07.23', 1, true) ~= nil and L[1]:find('v103', 1, true) ~= nil, true);
+    check('CHK10 the engine line is named verbatim', L[3]:find('[dlac] check (engine): alive', 1, true) ~= nil, true);
+    check('CHK11 absence = diagnosis is said', L[3]:find('not running the dlac engine', 1, true) ~= nil, true);
+    check('CHK12 stamp rides line 3', L[3]:find('last stamped v103', 1, true) ~= nil, true);
+    local L2 = ck._lines({ addonVer = 'x', fileV = nil, seeded = nil, shim = 'nojob', stampV = nil });
+    check('CHK13 never-stamped is said', L2[3]:find('NEVER stamped', 1, true) ~= nil, true);
+    check('CHK14 pre-login seeded state degrades honestly', L2[1]:find('not logged in', 1, true) ~= nil, true);
 end)();
 
 -- ---------------------------------------------------------------------------

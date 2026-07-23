@@ -4323,3 +4323,38 @@ as 'Woodworking', loadCraftState only overrides from a non-empty persisted
 value (old craft="" state files heal), any real pick replaces it. T14b pins
 the default (the H0 twin). Fishing needs no sibling: fishstate has no
 category -- rod/bait picks are ownership-driven, not chosen.
+
+## Session "the silent apply -- /dl check" (2026-07-23)
+
+**Theme:** a friend switched to a laptop that syncs the addon tree; "everything
+works except lockstyle -- preview fine, Apply produces NOTHING." Diagnosis by
+architecture: preview never leaves the addon state (lookpreview's local 0x051),
+while Apply crosses into the seeded engine in the LAC state ('/dl ls apply' ->
+0x053) -- so total silence means the ENGINE side never heard the command. The
+engine's /dl handler only exists where gFunc does (dispatch.lua header: "no
+gFunc means no command handler"), and an engine that is absent, ancient, or
+behind a dead shim cannot say so.
+
+**Henrik's ruling (recorded):** "It is OK to add debug commands to help me help
+players. But I don't want probe levels of debug commands needlessly. But
+checking if it's doing what it should be doing is fine!" -- wiring-health
+self-checks belong IN dlac; packet-level forensics stay in dlacprobe.
+
+**Landed (engine v103 + feature/check.lua + 2026.07.23):** `/dl check`, in two
+halves. The ADDON half (feature/check.lua, always hears a typed /dl) prints
+three lines: addon version + the addon tree's engine file version + a
+byte-compare of the four seeded library copies against the tree (the seeder's
+steady state); the job file's shim classification (setupui.jobSetupState --
+'clean dlac shim' or a run-Setup verdict); and the engine version last stamped
+into modestate (__version handshake) plus the interpretation line: a
+"[dlac] check (engine): alive" line MUST accompany the readout, and its
+ABSENCE means LAC is not running the dlac engine -> Setup, then Reload LAC.
+The ENGINE half is one branch in dispatch's command whitelist (added together
+with the branch -- the v46 instdiag lesson): "alive -- vN, job, profile".
+The design inversion: the engine cannot report its own absence, so the addon
+side pre-announces what silence means. Tests CHK0-14 (pure seams: seeded-state
+compare, shim wording, the three lines); FEATURE guard list grew 'check'.
+
+**The remote-support script this replaces:** "type /dl ls state (addon state
+answers), then /dl mode (engine answers) -- silence on the second means..."
+-- now it is one command whose output carries its own interpretation.
