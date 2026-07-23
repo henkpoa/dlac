@@ -1807,7 +1807,10 @@ local function renderHeaderButtons()
             fn = function() dumpAugs(); end };
     end
     if needSetup or sf.flags.debug then
-        btns[#btns+1] = { l = 'Setup', w = 56, red = needSetup,
+        -- 'Migrate', not 'Setup' (Henrik's ruling, 07-23): the button only ever
+        -- shows for a legacy-mode user with dlac data, and migration IS its one
+        -- job. Width per the themed-font law (~9.5px/char + 16px, or it clips).
+        btns[#btns+1] = { l = 'Migrate', w = 84, red = needSetup,
             tip = 'Migrate to dlac\'s native engine. Clicking only shows what will happen,\nin plain words -- nothing is touched until you press Commit in the popup.',
             fn = function()
                 -- THE MIGRATION BOX (issue #91). The Setup button exists for exactly
@@ -4552,9 +4555,9 @@ local function drawWindow()
             -- Native: dlac never touches <JOB>.lua and auto-sets-up fresh installs,
             -- so there is nothing to nag about -- the banner stays silent under the
             -- flag. Legacy with dlac data: the standing nudge to migrate (present
-            -- all session until they flip), matching the red Setup button.
+            -- all session until they flip), matching the red Migrate button.
             if not setup.isNative() and setup.needsSetup() then
-                fmt.textWrapped(COL.ERR, '  [!]  You are running the LEGACY engine -- LuaAshitacast equips your gear. Migrate to dlac\'s native engine: click the red "Setup" button (top-right). It COPIES your data (nothing under luashitacast\\ is touched, and you can flip back any time) and then dlac equips your gear itself. It\'s either LAC or DLAC -- never both at once.');
+                fmt.textWrapped(COL.ERR, '  [!]  You are running the LEGACY engine -- LuaAshitacast equips your gear. Migrate to dlac\'s native engine: click the red "Migrate" button (top-right). It COPIES your data (nothing under luashitacast\\ is touched, and you can flip back any time) and then dlac equips your gear itself. It\'s either LAC or DLAC -- never both at once.');
             end
         end
 

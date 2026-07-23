@@ -424,10 +424,11 @@ setup.migrateToNative = function()
     pcall(function() print('[dlac] ' .. msg); end);
 end
 
--- Does this character still need the Setup button (issue #91 -- needsSetup v2)?
+-- Does this character still need the Migrate button (issue #91 -- needsSetup v2;
+-- renamed from 'Setup' by Henrik's 07-23 ruling -- migration is its one job)?
 -- NATIVE: always false -- fresh installs are auto-set-up and there is nothing to
 -- migrate. LEGACY: true iff the character has dlac data, meaning "migration
--- offered" -- the red Setup button is then the standing nudge (present all
+-- offered" -- the red Migrate button is then the standing nudge (present all
 -- session) and the popup is the migration box. A legacy session with no dlac
 -- data has nothing to migrate (and never happens for a fresh install -- those
 -- are born native).

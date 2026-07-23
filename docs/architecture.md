@@ -824,7 +824,7 @@ stays the hard backstop.
 created **automatically and silently** — storage + gear inventory + the four base
 sets + starter triggers (the `setupNative` content, per job, idempotent, never
 clobbering) — apart from one friendly chat/status notice the first time anything
-lands. No red Setup button, no popup, no Commit for new users, ever. A later login
+lands. No red Migrate button, no popup, no Commit for new users, ever. A later login
 on a NEW job auto-seeds that job's starters the same way. HARD GATES: never in
 legacy mode; never before `firstRunInit` resolves; never for a not-ready job
 (`jobFile()` returns nil until `GetMainJob` settles — id-0 `NON` never seeds, hard
@@ -833,7 +833,7 @@ retried next beat — never ceremonialized into the Setup box. `nativeBaselineCo
 is the completeness probe (storage + gear.lua + this job's sets + this job's
 triggers), read through the same deps the seeders write through.
 
-**Setup is now THE migration box (issue #91).** The red Setup button shows for
+**Setup is now THE migration box (issue #91).** The red MIGRATE button (renamed from Setup -- Henrik 07-23: migration is its one job) shows for
 exactly one reason: a **legacy-mode** session with existing dlac data
 (`needsSetup` v2 — native → always false, legacy-with-data → true, driven by
 `setupui.hasDlacData`). It is the standing nudge (present all session until they

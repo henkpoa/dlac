@@ -4907,3 +4907,21 @@ engine's equipping behavior is unchanged. `addon.version` → `2026.07.23zb`.
 zero interaction; his real (already-native) install boots unchanged (no auto-setup
 line on a set-up job); a legacy-mode boot (flag off) with dlac data shows the
 migration box and Commit migrates copy-only.
+
+## The button says what it does: Setup -> Migrate (2026-07-23, feature/native-engine, addon 2026.07.23zc)
+
+**Henrik's ruling**, straight from his first field poke at Onboarding v2 (he
+renamed only `config\addons\dlac\` -- the native home -- and the detector
+correctly read his still-populated `luashitacast\<char>\dlac\` legacy tree as
+"existing user, never auto-flip", test NO5 live in the field): *"For those like
+me who has dlac profiles under config luashitacast, show a MIGRATE button (not
+Setup) explaining what needs to be done, why and how."* The button only ever
+shows for exactly that user (needsSetup v2: native -> never, legacy-with-data ->
+migration offered), so the label now says its one job: **Migrate** (width 56 ->
+84 per the themed-font law, ~9.5px/char + 16 or it clips). The legacy banner and
+the docs sweep follow ("click the red Migrate button"); the box itself already
+explained what/why/how (the three parts + the hard rule + the
+files-stay-importable line). No logic changed; no dispatch.M.VERSION bump
+(addon-only strings). The true fresh-install sim, for the record: rename BOTH
+`config\addons\dlac\` AND `config\addons\luashitacast\` (a never-started-dlac
+player has neither), unload luashitacast, reload dlac.

@@ -122,7 +122,7 @@ early, on this branch.
    it **automatically** at the login/job beat -- storage, gear inventory, the four
    base sets, starter triggers (the `setupNative` content, per job, idempotent,
    never clobbering) -- silently apart from a friendly one-line chat/status notice.
-   No red Setup button, no plan popup, no Commit for new users, ever. A later login
+   No red Migrate button, no plan popup, no Commit for new users, ever. A later login
    on a NEW job auto-seeds that job's starters the same way. Auto-setup NEVER fires
    in legacy mode, never before `firstRunInit` has resolved, and never for a
    not-ready job (id-0 `NON` at login -- hard rule 11); a persistent failure (disk
