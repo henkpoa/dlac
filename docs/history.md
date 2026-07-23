@@ -4491,3 +4491,20 @@ own tripwire: "if this line is still here well after, the deliver tick never
 fired -- send the file anyway, that fact is the finding." A debug run can no
 longer end fileless: booking writes, finalize overwrites, and every failure
 path prints itself. Test DBF8.
+
+**Round close, 11:32-11:34 field confirmation + the deafness finding.** Both
+reports produced complete on Henrik's machine (check: all-healthy, both
+halves; debug ls: two Apply clicks' full journeys -- queued/noted/0x053-out
+addon-side, received/SENT engine-side, timestamps aligning across the state
+wall to 0.1s). The receipt file stayed EMPTY: the addon state heard NEITHER
+typed command -- the command-event fallback drove the entire flow, which is
+the design working, not luck. Durable facts proven in passing: (1) engine-
+injected 0x053s DO fire the addon state's packet_out (the guard witness saw
+every real apply leave); (2) the dlac addon state can be deaf to typed /dl
+while every other event channel (d3d, packets) flows. Leading theory,
+untested: /addon reload re-appends dlac to the END of Ashita's command
+chain and the engine's own e.blocked (LAC ahead of it) halts propagation --
+one fresh-boot receipt test settles it someday; the file-driven design is
+order-proof either way. The friend script, final: update -> /addon reload
+dlac -> /dl check -> /dl debug ls + click Apply during the window -> send
+addons\dlac\debug\dlac-check-<Char>.txt + dlac-debug-ls-<Char>.txt.
