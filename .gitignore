@@ -2,6 +2,10 @@
 gear_staging.lua
 backups/
 
+# Debug report drops ('/dl check', '/dl debug <topic>' write transferable
+# .txt reports here for remote support -- player artifacts, never tracked).
+debug/
+
 # Local-only maintainer tools: the CatsEyeXI API scraper, the server mod-id map, and the
 # item-id list. Untracked so we don't publish how-to-scrape or the mod enum -- the built
 # catalog.lua (shipped) is what users need. Files stay on disk; this only stops tracking.

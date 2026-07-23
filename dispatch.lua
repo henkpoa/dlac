@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 104;  -- 104: THE /dl debug SECTION, engine half (Henrik: "make a proper dl debug section... dl debug ls (please also accept dl debug lockstyle)"). feature/debug.lua (addon state) routes topics and owns the usage line; here one 'debug' branch answers KNOWN topics only. Topic 'ls'/'lockstyle': the apply pipeline as a DRY RUN -- the engine re-reads the boxes file (path printed, MISSING/no-PARSE called out), picks the box exactly like apply ('/dl debug ls <box>'), resolves every name through the SAME resolvers (M._lsResolvers, hoisted verbatim out of the apply branch -- one pair, two commands) and predicts the server's silent job gate -- then prints what WOULD happen (M._lsDebugReport, pure, tests DBG*) instead of sending. Companion addon half: lockstyle.M.debugLines() (boxes file/tier, marked box, UNSAVED-edits warning, v47 gate verdict, keep/town/guard state) -- '/dl ls state' now prints that same report (one readout, two names).
+M.VERSION = 105;  -- 105: DEBUG REPORTS BECOME FILES + the send witnesses (Henrik's file rule: "all things that are considered debugs should generate text files that can be easily transferable so we can help debug"). The two halves live in two Lua states with no shared memory, so the transfer file is assembled by HANDOFF: the 'debug'/'check' branches write their lines to <char>\dlac\debug-<topic>-engine.txt (first line = os.time() stamp, lines bare) in the same command frame; feature/debug.lua's deliver tick reads the handoff ~1.2s later, judges freshness by the stamp (FRESH_S 10s) and writes ONE addons\dlac\debug\<base>-<Char>.txt -- a MISSING or STALE engine half is written into the file in those words, so the artifact carries the absence-is-the-diagnosis property. Plus the "is it actually SENDING?" witnesses: the apply branch stamps M._lsLastSend at its AddOutgoingPacket (sender-side truth, reported by debug ls as 'last REAL apply this engine session'), and the addon guard's packet_out handler keeps a 3-deep 0x053 observation log (lockstyle M._outLine -- reports what it SAW, promises nothing about injected-packet visibility).
+                  -- 104: THE /dl debug SECTION, engine half (Henrik: "make a proper dl debug section... dl debug ls (please also accept dl debug lockstyle)"). feature/debug.lua (addon state) routes topics and owns the usage line; here one 'debug' branch answers KNOWN topics only. Topic 'ls'/'lockstyle': the apply pipeline as a DRY RUN -- the engine re-reads the boxes file (path printed, MISSING/no-PARSE called out), picks the box exactly like apply ('/dl debug ls <box>'), resolves every name through the SAME resolvers (M._lsResolvers, hoisted verbatim out of the apply branch -- one pair, two commands) and predicts the server's silent job gate -- then prints what WOULD happen (M._lsDebugReport, pure, tests DBG*) instead of sending. Companion addon half: lockstyle.M.debugLines() (boxes file/tier, marked box, UNSAVED-edits warning, v47 gate verdict, keep/town/guard state) -- '/dl ls state' now prints that same report (one readout, two names).
                   -- 103: /dl check -- the wiring-health readout's ENGINE half (Henrik's 2026-07-23 ruling: self-checks that answer "is dlac doing what it should?" belong IN dlac; probe-level capture stays in dlacprobe). Field case: a friend's laptop synced the ADDON tree but LAC never loaded the engine -- GUI + lockstyle preview (addon state) worked, '/dl ls apply' fell into a void with no output at all, and silence has no author. The engine cannot report its own absence, so feature/check.lua (the addon state, which always hears a typed /dl) prints the wiring readout -- addon + engine-file versions, seeded-copy byte-compare, the job file's shim state, the modestate __version handshake -- and names the ONE line the engine must add to it: this branch's '[dlac] check (engine): alive -- vN, job, profile'. A MISSING engine line is itself the verdict. Whitelist + branch added together (the v46 instdiag lesson).
                   -- 102: CONTENT-KEYED self-swap (field friction 2026-07-22, Henrik: "during engine change the hot reload doesn't always work -- I've had to reload LAC manually"). The self-swap trigger was the parsed M.VERSION number alone, so any engine edit under the SAME version -- the normal shape of mid-round field debugging -- never swapped; only a manual Reload LAC picked it up. Now the tick compares the seeded file's BYTES against the bytes the running engine was loaded from (M._swapSourceRaw, initialized from the first readable tick, updated on every successful swap), with the version compare kept as a secondary trigger that self-heals a stale baseline. The decision is a pure seam, M.swapWanted (tests SW*): unreadable/foreign/failed-before bytes skip, version difference swaps, nil baseline captures, byte difference swaps. Companion dlac.lua change (2026.07.22i): the seeder writes only files whose bytes CHANGED and re-runs every 5s (dlac-seed-watch), so a bare `git pull` now propagates addon -> seeded copy -> running LAC engine with no manual step; the swap chat line names a same-version swap explicitly.
                   -- 101: STALE Range-bit stamps distrusted (field case 2026-07-22, Mindie PUP: a MANUALLY equipped Automat. Oil +2 was displaced from Ammo every Default dispatch beside the idle set's Animator). The ADR 0010 trinket completion had wrongly stamped RSlot=4 on the Animator-fed oils in gear.lua (server truth: item_weapon subskill 10 == every Animator, so charutils' Range/Ammo compat check KEEPS oil + Animator together -- the census over item_equipment x item_weapon shows the oils are the ONLY such paired class). The completion is fixed addon-side (gearrecord.ANIMATOR_FED) and /dl fix retracts the stale line -- but the ENGINE must not require a migration step: M.recordRSlot is now the one reader of a manifest record's RSlot and ignores the stamp for the pinned oil ids, so every user is healed by the addon update alone (dispatch.lua re-seeds every load). Tests TR16*/TR17 (guard + twin parity), TB8* (end-to-end: worn oil survives the Animator plan).
@@ -4887,6 +4888,23 @@ if inLac() then
         if sub ~= 'mode' and sub ~= 'why' and sub ~= 'triggers' and sub ~= 'env' and sub ~= 'lock' and sub ~= 'sets' and sub ~= 'profile' and sub ~= 'ls' and sub ~= 'plan' and sub ~= 'prio' and sub ~= 'check' and sub ~= 'debug' then return; end
         e.blocked = true;
 
+        -- Debug/check HANDOFF writer (v105, Henrik's file rule: every debug
+        -- run lands as ONE transferable .txt). The addon state assembles the
+        -- transfer file (feature/debug.lua deliver tick) but cannot see THIS
+        -- state -- so engine halves land in <char>\dlac\debug-*-engine.txt,
+        -- first line an os.time() stamp the merger uses to judge freshness;
+        -- lines are BARE (the file's '== engine half ==' section heads them).
+        local function writeHandoff(name, lines)
+            pcall(function()
+                local dir = charDir();
+                if dir == nil then return; end
+                local f = io.open(dir .. name, 'wb');
+                if f == nil then return; end
+                f:write(tostring(os.time()) .. '\n' .. table.concat(lines, '\n') .. '\n');
+                f:close();
+            end);
+        end
+
         if sub == 'debug' then
             -- The /dl debug section, ENGINE half (v104; feature/debug.lua owns
             -- the addon half AND the topic list/usage -- an unknown topic
@@ -4895,10 +4913,15 @@ if inLac() then
             -- readouts in dlac, packet capture in dlacprobe).
             -- 'ls' (alias 'lockstyle'): the apply pipeline as a DRY RUN --
             -- same file, same box pick ('/dl debug ls <box>' picks like
-            -- apply), same id resolution and job-gate prediction, no send.
+            -- apply), same id resolution and job-gate prediction, no send --
+            -- plus this session's last REAL send (M._lsLastSend, stamped by
+            -- the apply branch at its AddOutgoingPacket: sender-side truth
+            -- for "did a packet actually leave").
             local topic = string.lower(tostring(args[2] or ''));
             if topic == 'lockstyle' then topic = 'ls'; end
             if topic ~= 'ls' then return; end
+            local out = {};
+            local function say(l) out[#out + 1] = l; print('[dlac] debug ls (engine): ' .. l); end
             local dir = charDir();
             if dir == nil then print(string.format('[dlac] debug ls (engine): alive v%d -- not logged in.', M.VERSION)); return; end
             local job;
@@ -4906,7 +4929,7 @@ if inLac() then
             if type(job) ~= 'string' or job == '' or job == '?' then job = nil; end
             local lsPath = (_pok and job ~= nil and _prof.readLockstylesPath(job) or nil) or (dir .. 'lockstyles.lua');
             local raw = readFile(lsPath);
-            print(string.format('[dlac] debug ls (engine): alive v%d, job %s -- boxes file: %s (%s)',
+            say(string.format('alive v%d, job %s -- boxes file: %s (%s)',
                 M.VERSION, tostring(job or '?'), tostring(lsPath),
                 (raw ~= nil) and (tostring(#raw) .. ' bytes') or 'MISSING'));
             local t = nil;
@@ -4914,7 +4937,7 @@ if inLac() then
                 local chunk = (loadstring or load)(raw, '@lockstyles.lua');
                 if chunk ~= nil then local okc, v = pcall(chunk); if okc then t = v; end end
                 if type(t) ~= 'table' then
-                    print('[dlac] debug ls (engine): boxes file does not PARSE -- corrupt or conflicted copy?');
+                    say('boxes file does not PARSE -- corrupt or conflicted copy?');
                 end
             end
             local gr = nil;
@@ -4930,8 +4953,15 @@ if inLac() then
                 return rec ~= nil and not M._lsStyleGate(rec, lv);
             end
             for _, l in ipairs(M._lsDebugReport(t, tonumber(args[3]), resolveId, equippedId, gateFail)) do
-                print('[dlac] debug ls (engine): ' .. l);
+                say(l);
             end
+            local snd = M._lsLastSend;
+            say((snd ~= nil)
+                and string.format('last REAL apply this engine session: box %d "%s" (%d slot%s) %ds ago',
+                    snd.box, tostring(snd.name), snd.n, (snd.n == 1) and '' or 's',
+                    math.max(0, math.floor(os.clock() - snd.at)))
+                or 'no REAL apply sent since this engine loaded');
+            writeHandoff('debug-ls-engine.txt', out);
             return;
         end
 
@@ -4950,10 +4980,12 @@ if inLac() then
             end);
             local prof = nil;
             pcall(function() prof = _pok and _prof.activeName() or nil; end);
-            print(string.format('[dlac] check (engine): alive -- v%d, job %s%s, profile %s.',
+            local line = string.format('check (engine): alive -- v%d, job %s%s, profile %s.',
                 M.VERSION, tostring(job),
                 (type(sj) == 'string' and sj ~= '') and ('/' .. sj) or '',
-                (prof ~= nil) and ('"' .. tostring(prof) .. '"') or '(legacy storage)'));
+                (prof ~= nil) and ('"' .. tostring(prof) .. '"') or '(legacy storage)');
+            print('[dlac] ' .. line);
+            writeHandoff('debug-check-engine.txt', { line });
             return;
         end
 
@@ -5099,6 +5131,9 @@ if inLac() then
             if not oks then print('[dlac] lockstyle: packet send failed.'); return; end
             local n = 0;
             for _ in pairs(r.sent) do n = n + 1; end
+            -- Sender-side truth for '/dl debug ls' (v105): the last REAL apply
+            -- that reached AddOutgoingPacket this engine session.
+            M._lsLastSend = { at = os.clock(), box = box, n = n, name = why };
             print(string.format('[dlac] lockstyle "%s" (box %d) sent -- %d styled slot%s; unnamed slots hold your'
                 .. ' current gear\'s look.', tostring(why), box, n, n == 1 and '' or 's'));
             return;

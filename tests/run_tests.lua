@@ -8487,6 +8487,27 @@ end)();
     check('DBT5 absent topic is nil (usage)', dbg._topic(nil), nil);
     check('DBT6 usage names ls + the alias', dbg._usage():find('ls', 1, true) ~= nil
           and dbg._usage():find('lockstyle', 1, true) ~= nil, true);
+
+    -- DBF. the transfer-file assembly (Henrik's file rule): engine half by
+    --      handoff, freshness by stamp, absence/staleness written INTO the file.
+    local now = 1753300000;
+    local A = { 'line one', 'line two' };
+    local fresh = tostring(now - 2) .. '\nalive v105\nbox 1 ok\n';
+    local txt = dbg._mergeSections('debug ls', A, fresh, now, '2026.07.23d');
+    check('DBF1 header carries label + version', txt:find('dlac debug ls', 1, true) ~= nil
+          and txt:find('2026.07.23d', 1, true) ~= nil, true);
+    check('DBF2 both halves sectioned', txt:find('== addon half ==', 1, true) ~= nil
+          and txt:find('== engine half ==', 1, true) ~= nil, true);
+    check('DBF3 fresh handoff lines ride whole', txt:find('alive v105', 1, true) ~= nil
+          and txt:find('box 1 ok', 1, true) ~= nil and txt:find('line two', 1, true) ~= nil, true);
+    local txt2 = dbg._mergeSections('debug ls', A, nil, now, 'v');
+    check('DBF4 missing handoff = the diagnosis, in the file', txt2:find('ENGINE HALF MISSING', 1, true) ~= nil
+          and txt2:find('not running the dlac engine', 1, true) ~= nil, true);
+    local txt3 = dbg._mergeSections('debug ls', A, tostring(now - 60) .. '\nold lines\n', now, 'v');
+    check('DBF5 stale handoff = stale verdict, old lines withheld', txt3:find('ENGINE HALF STALE', 1, true) ~= nil
+          and txt3:find('old lines', 1, true) == nil, true);
+    check('DBF6 filenames sanitize to letters/digits', dbg._safeName("O'harra-2"), 'Oharra2');
+    check('DBF7 no name = unknown', dbg._safeName(nil), 'unknown');
 end)();
 
 -- DBG. '/dl debug ls' engine dry-run report (dispatch M._lsDebugReport):
@@ -8522,8 +8543,16 @@ end)();
     check('LGD1 debugLines exported', type(ls.debugLines), 'function');
     local ok, L = pcall(ls.debugLines);
     check('LGD2 headless readout does not error', ok, true);
-    check('LGD3 at least file/boxes/keep/town lines', ok and type(L) == 'table' and #L >= 4, true);
+    check('LGD3 at least file/boxes/keep/town/traffic lines', ok and type(L) == 'table' and #L >= 5, true);
     check('LGD4 boxes-file line leads', ok and L[1]:find('boxes file', 1, true) ~= nil, true);
+    -- the guard's 0x053 observation line (the "is anything leaving?" witness)
+    check('LGD5 empty log says so', ls._outLine({}, 100):find('no 0x053 seen', 1, true) ~= nil, true);
+    local line = ls._outLine({ { at = 96, mode = 3, act = 'activate' },
+                               { at = 90, mode = 0, act = 'suppress' } }, 100);
+    check('LGD6 SET + disable named with age and verdict', line:find('SET 4s ago (activate)', 1, true) ~= nil
+          and line:find('disable 10s ago (suppress)', 1, true) ~= nil, true);
+    check('LGD7 unknown mode degrades to its number', ls._outLine({ { at = 99, mode = 7, act = 'pass' } }, 100)
+          :find('mode 7', 1, true) ~= nil, true);
 end)();
 
 -- ---------------------------------------------------------------------------

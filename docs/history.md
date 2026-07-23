@@ -4394,3 +4394,26 @@ pre-login unknowns) are reported but never called issues. Tests CHK0-17 +
 CHKI1-10 (the hunt, each provable problem named). Also recorded: the friend's
 folder rename was a deliberate, reversible corruption check -- support
 guidance should match that register (Henrik's correction).
+
+**Addendum 3: debug reports become FILES + the send witnesses (engine v105,
+2026.07.23d).** Henrik's file rule: "all things that are considered debugs
+should generate text files that can be easily transferable so we can help
+debug" -- and his workflow question ("does debug ls check... if he is
+sending the packets?") exposed the one unobserved step. Files: every
+/dl check and /dl debug <topic> run now writes ONE
+addons\dlac\debug\<base>-<Char>.txt (overwritten per run -- support wants
+the latest, not an archive; dir gitignored). The two halves live in two Lua
+states with no shared memory, so the file is assembled by HANDOFF: the
+engine branch writes its bare lines stamped with os.time() to
+<char>\dlac\debug-<topic>-engine.txt in the same command frame;
+feature/debug.lua's deliver tick reads it ~1.2s later, judges freshness
+(10s window) and writes the merged report -- a MISSING or STALE engine half
+is written into the file in those words, so the artifact carries the
+absence-is-the-diagnosis property everywhere chat does. Send witnesses,
+closing the workflow gap: the apply branch stamps M._lsLastSend at its
+AddOutgoingPacket ("last REAL apply this engine session: box N (M slots)
+Xs ago" -- sender-side truth), and the addon guard's packet_out handler
+keeps a 3-deep 0x053 observation log (M._outLine: "guard saw 0x053 out:
+SET 4s ago (activate); ..." -- reports what it saw, promises nothing about
+injected-packet visibility, the engine witness owns that side). Tests
+DBF1-7 (merge/freshness/sanitize), LGD5-7 (traffic line), 2491 green.

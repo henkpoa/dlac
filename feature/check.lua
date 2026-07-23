@@ -239,7 +239,15 @@ function M.report()
         local prof = try('dlac\\profiles');
         if prof ~= nil and type(prof.activeName) == 'function' then info.profName = prof.activeName(); end
     end);
-    for _, l in ipairs(M._lines(info)) do print('[dlac] ' .. l); end
+    local lines = M._lines(info);
+    for _, l in ipairs(lines) do print('[dlac] ' .. l); end
+    -- The file rule (Henrik 07-23): every check/debug run lands as ONE
+    -- transferable .txt. feature/debug.lua owns the writer + the engine-half
+    -- merge (the 'check' engine branch writes debug-check-engine.txt).
+    local dbg = try('dlac\\feature\\debug');
+    if dbg ~= nil and type(dbg.deliver) == 'function' then
+        pcall(dbg.deliver, 'check', 'dlac-check', lines, 'debug-check-engine.txt');
+    end
 end
 
 -- '/dl check' in the ADDON state. e.blocked only quiets the game parser --

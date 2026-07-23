@@ -1425,6 +1425,28 @@ end
 local guard = { active = false, zoneInAt = -1e9, userOffAt = -1e9 };
 function M._guardUserOff() guard.userOffAt = os.clock(); end
 function M._guardOn() return guard.active; end   -- window readout
+
+-- The guard handler's own observation log ('/dl debug ls' reports it): the
+-- last few 0x053s this state SAW leaving, newest first. Passive -- the
+-- handler below already decodes every one; this only remembers. It reports
+-- whatever traffic reaches this state's packet_out and promises nothing
+-- more; the ENGINE's debug half carries the sender-side truth for its own
+-- injected applies (M._lsLastSend over there).
+local outLog = {};
+local OUT_KEEP = 3;
+local MODE_WORD = { [0] = 'disable', [3] = 'SET', [4] = 'native-on' };
+
+-- Pure (headless-tested, LGD*): the log -> one report line.
+function M._outLine(log, now)
+    if log == nil or #log == 0 then return 'no 0x053 seen leaving by this state yet (this session)'; end
+    local parts = {};
+    for _, e in ipairs(log) do
+        parts[#parts + 1] = string.format('%s %ds ago (%s)',
+            MODE_WORD[e.mode] or ('mode ' .. tostring(e.mode)),
+            math.max(0, math.floor((now or 0) - (e.at or 0))), tostring(e.act));
+    end
+    return 'guard saw 0x053 out: ' .. table.concat(parts, '; ');
+end
 -- The keep-on-subjob pump (above) calls this on a subjob flip it intends to
 -- survive: the client's confused DISABLE (its private flag is off) can land
 -- before OR after our re-apply, so open the same blockable window a zone-in
@@ -1454,6 +1476,8 @@ ashita.events.register('packet_out', 'dlac-lockstyle-pout', function(e)
     -- Mode u8 @0x05 (4-byte header + Count) -- same decode as dlacprobe's lsOut.
     local mode = (#e.data >= 6) and e.data:byte(6) or -1;
     local act = M._lsGuard(mode, os.clock(), guard.zoneInAt, guard.active, guard.userOffAt, M._townSuppress());
+    table.insert(outLog, 1, { at = os.clock(), mode = mode, act = act });
+    outLog[OUT_KEEP + 1] = nil;
     if act == 'activate' then
         guard.active = true;
     elseif act == 'adopt' then
@@ -1524,6 +1548,7 @@ function M.debugLines()
         tostring(lastBox), tostring(lastSub), tostring(guard.active), tostring(subDueAt ~= nil), tostring(_preview));
     L[#L + 1] = string.format('town: inTown=%s lastPick=%s townDue=%s',
         tostring(_locok and location.inTown() or nil), tostring(lastTownPick), tostring(townDueAt ~= nil));
+    L[#L + 1] = M._outLine(outLog, os.clock());
     return L;
 end
 
