@@ -4635,3 +4635,87 @@ banner are the docs slice's job (PRD #80). **FIELD CONFIRM pending (Henrik):**
 button apply on both machines + one LAC-absent demonstration. If the injection
 itself fails => STOP; the superseded `docs/design/lockstyle-engine-move.md` is
 the designated fallback (do not improvise one).
+
+## Session "the absorption": dlac becomes its own equip engine (2026-07-23, feature/native-engine, dispatch v110–v119, addon 2026.07.23m→y)
+
+Henrik's morning curiosity — "could DLAC technically do LAC's job?" — was sized
+(LAC 2.02 is ~5,361 lines; the engine's ENTIRE consumption of it is
+`gFunc.EquipSet` + eight gData reads + the Handle* timing contract), ruled GO by
+evening, BUILT the same day, and survived six field rounds before midnight. By
+the Addendum-2 ruling on #80, `feature/native-engine` is THE development branch
+and main is frozen as the stable fallback.
+
+**The build (steps 1–6, a84ef5e..688a623).** (1) The storage-home seam:
+`profiles.dataDir()/charRoot()/storageRoot()/charDataDirAt()` are the only path
+composers; native home `config\addons\dlac\<char>\` (no `dlac\` level) behind
+the install-wide Engine flag (`engine.lua`; broken file reads OFF); copy-only
+migration + per-char auto-migration. (2) ~15 modules swept onto the seam
+(check/debug/setmanager-jobPath stay legacy BY DESIGN — they diagnose the
+bridge). (3) `gear/equipcore.lua`: the pure LAC-parity resolver +
+0x050/0x051 builders (EQC*; the FlagEquippedItems short-circuit — displaced-only
+sets are satisfied silence — is a REAL LAC pin). (4) `feature/equipengine.lua`:
+the timing service — block outgoing 0x01A/0x037 → Precast → re-inject →
+Midcast; LAC's completion formulas verbatim; 0x028 completion/interrupt (28787)
++ the pet stream firing `PetAction` at action START; resend dedup;
+name-prefiltered bag scans; the coexistence TRIPWIRE (fingerprinted injections;
+a foreign echo disarms loudly); refuses to arm inside LAC's state.
+`ACTION_ROUTES` is the dispatch-point table — a future dispatch point is one
+row. (5) dispatch v111: `engineActive()` widens every engine gate;
+`engineEquipSet` is the one write seam; `M._nativeSets` replaces gProfile.Sets
+(tick identity latch + `utils.rebuildSets` on the shim's cadence); LAC-bridge
+machinery stays `inLac()`-pinned. `feature/nativedata.lua` supplies LAC-parity
+gData (sig-scan vanatime/weather, storm override). (6) `/dl engine` command +
+docs (architecture § The Native engine).
+
+**The maxmp boot saga (field rounds 1–6, v112–v119) — read this before
+trusting any cached compute over a staged boot.** Round 1: the observer only
+ran in the LAC tick tail and `mpLowMap` read gProfile.Sets directly → v112
+(the seam-hunting pattern: grep the automation's dispatch region for
+gProfile/gState/gEquip and check the LAC tail behind the native `return`).
+Round 2: a self-healing glimpse → v113 (don't cache store-less results) —
+INSUFFICIENT. Round 3: Henrik's /dl plan screenshots (lows 0, tags gone, a
+phantom ammo band) → v114 THE READINESS GATE (his spec: band order is a pure
+function of manifest+sets+rules) + v115 widened to LAC mode on his attribution
+note ("this was the case earlier as well" — the install latch races existed all
+along; when Henrik says a symptom feels old, believe him). Round 4: the gate
+passed while the world was still wrong → v116 THE STABILITY LATCH (belief
+requires two identical computes ≥2s apart) — DEFEATED by a stable-wrong state.
+**Dead end, named: proxy-readiness attestations and self-agreement both lose to
+a world that is wrong AND stable** (a flatten over a not-yet-live input is
+hollow STABLY). Round 5: v117 instrument-first — the WARM TRACE
+(`debug\mpwarm.txt`, one row per compute: latch verdict + world counts) + the
+gear ordering gate. The trace caught it in ONE reload: 'BELIEVED setN=0 flat=0'
+behind a "20 set(s) installed" print — the install-time flatten was empty and
+the belief cache (keyed by TIME) outlived the real store arriving. v118: a
+hollow install is not an install (refuse + retry); BOTH install branches
+invalidate the belief (caches must be keyed by world identity, not time);
+flatten counts ride the signature. Round 6: Henrik's trace showed the designed
+boot verbatim — 12 refusals holding ~4.5s, then the first-ever belief granted
+to the TRUE world. **"It works now."** v119 also lands Henrik's debug-folder
+rule: per-char debug artifacts live in `<data home>\debug\` (the LAC-bridge
+handoff files stay put — they die with LAC).
+
+**The refocus (same evening).** Step 0 done: main (executor #86 + ADR 0014)
+merged in (00e6f45; reconcile list applied — CONTEXT's Engine entry is
+native-aware, the ADR-0014 boundary paragraph gained its one-state postscript).
+#83 done (9214912): every lockstyle apply path is addon-resident natively — the
+`queueCmd` apply funnel (town/OnLoad/keep-sub) and the typed handler route to
+`M._applyDirect` (nil box = the marked one) because one state means a
+self-queued command is heard by NO ONE; legacy paths untouched. **ADR 0015**
+(3f86c3c) records Henrik's four rulings: legacy is a sunset (push migration
+hard); new features are native-first (LAC is no longer a design input); dlac
+never writes `<JOB>.lua` again but reads them forever (imports); new users
+default native with a polite LAC-alive ask. Four phases: field rounds → recruit
+the roster → graduation merge (+ legacy nudge) → the deletion party (the bridge
+machinery, the oracle twins, the inLac paths).
+
+**Tests:** 2648→2671 checks (NE/EQC/EQE/NEB sections + main's LAP arrived in
+the merge), 225 smoke, green Windows Lua + WSL lua5.4 at every commit.
+
+**Deferred / next:** ruling-4 onboarding (first-run native default + LAC-alive
+ask + a Setup path that never writes job files); the legacy-mode nudge banner;
+Trigger Monitor's native feed; augment-string pins (`augmentStringsOf`); maxmp
+tick+offset persistence (standing offer). FIELD CONFIRM pending: the three
+native lockstyle paths (Apply button / town flip / typed apply). #84 (delete
+dispatch's lockstyle machinery) is safe to dispatch — origin's branch is
+current.

@@ -222,22 +222,31 @@ agent; the per-repo setup lives in `docs/agents/`.
   entries.
 
 - **THE NATIVE ENGINE — dlac absorbing LuaAshitacast (07-23, branch
-  `feature/native-engine`, BUILT + suite-green, NOT field-tested).** The whole
-  LAC dependency behind one default-OFF flag (`config\addons\dlac\engine.lua`):
-  `gear/equipcore` (pure resolver + 0x050/0x051 builders, LAC-parity, EQC*),
-  `feature/equipengine` (the block→Precast→re-inject→Midcast timing service,
-  0x028 completion/interrupts/pet stream, coexistence tripwire, EQE*/NEB*),
-  `feature/nativedata` (LAC-parity gData providers incl. sig-scan weather/
-  vanatime), dispatch v111 (`engineActive()` widens the engine gates; the
-  native sets store `M._nativeSets`; LAC-bridge machinery stays inLac-pinned),
-  and the storage move (`profiles.dataDir()` — dlac's own config root
-  `config\addons\dlac\<char>\` with copy-only auto-migration). Board it:
-  `/dl engine native on` → `/addon unload luashitacast` → `/addon reload dlac`.
-  Flag off = byte-identical legacy behavior (2648 checks green both platforms).
-  Read **architecture.md § The Native engine** — incl. the v1 gaps list
-  (lockstyle stays LAC-pinned until #80 lands; monitor stream; augment string
-  pins). FIELD ROUNDS PENDING: precast/midcast ordering under lag, resends,
-  interrupts, ranged, items — budget 6–12 rounds before this merges.
+  `feature/native-engine` = THE dev branch; main FROZEN until graduation; ADR
+  0015 is the standing direction).** The whole LAC dependency behind one
+  default-OFF flag (`config\addons\dlac\engine.lua`): `gear/equipcore` (pure
+  resolver + 0x050/0x051 builders, LAC-parity), `feature/equipengine` (the
+  block→Precast→re-inject→Midcast timing service, 0x028 completion/interrupts/
+  pet stream, coexistence tripwire, `ACTION_ROUTES` = the future-dispatchers
+  table), `feature/nativedata` (LAC-parity gData incl. sig-scan weather/
+  vanatime), dispatch v111–v119 (`engineActive()`; the native sets store
+  `M._nativeSets`; bridge machinery inLac-pinned), the storage move
+  (`profiles.dataDir()` → `config\addons\dlac\<char>\`, copy-only
+  auto-migration). Board: `/dl engine native on` → `/addon unload luashitacast`
+  → `/addon reload dlac`. Flag off = byte-identical legacy (2671 + 225 checks
+  green both platforms). **Field state: Henrik plays native daily; six rounds
+  survived — the maxmp boot saga (v112–v119, history.md "the absorption") ended
+  field-CONFIRMED with the boot-readiness architecture: attestations → the
+  stability latch → world-keyed belief → producer-validated installs, plus the
+  warm trace (`<char>\debug\mpwarm.txt`). Zero packet-pipeline faults so far.**
+  Post-merge (main's executor #86 + ADR 0014 absorbed): **lockstyle is fully
+  native** (#83 — queueCmd's apply funnel + the typed handler route to
+  `M._applyDirect`; field-confirm of the three paths pending). Remaining gaps:
+  Trigger Monitor stream, augment-string pins, native check/debug — all listed
+  in architecture § The Native engine. NEXT: ruling-4 onboarding (native by
+  default for new users + the LAC-alive ask), then the ADR 0015 phases
+  (recruit roster → graduation merge → deletion party). Henrik's debug-folder
+  rule (07-23): per-char debug artifacts go in `<data home>\debug\`.
 
 - **THE GEAR ORACLE — one door for every gear question (07-22, PRD #69, COMPLETE,
   PRs #75–#79).** `gear/gearoracle.lua` is the single sanctioned door in the addon
