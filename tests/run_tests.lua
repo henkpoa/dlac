@@ -9999,6 +9999,17 @@ end)();
         return type(ph) == 'table' and ph.percent == 100 and ph.name == 'Full Moon';
     end)(), true);
     check('VM10 bad day -> nil (graceful)', vm.phase(nil), nil);
+    -- SERVER-CONVENTION pins (absolute day numbers, NOT relative to OFFSET) --
+    -- these lock vanamoon to moon::get_phase in src/common/vana_time.h, where
+    -- daysmod=(day+26)%84: daysmod 0 (day 58) = 100% Full, daysmod 42 (day 16)
+    -- = 0% New, daysmod<42 waning, daysmod>42 waxing. VM1-VM10 only test the
+    -- internal curve shape and never caught the epoch being half a cycle off.
+    check('VM11 day 58 (daysmod 0) is 100% Full', vm.percent(58), 100);
+    check('VM12 day 58 named Full Moon',          vm.name(58),    'Full Moon');
+    check('VM13 day 16 (daysmod 42) is 0% New',   vm.percent(16), 0);
+    check('VM14 day 16 named New Moon',            vm.name(16),    'New Moon');
+    check('VM15 day 79 (daysmod 21) is waning',   vm.waxing(79),  false);
+    check('VM16 day 37 (daysmod 63) is waxing',   vm.waxing(37),  true);
 
     -- ---- digcalc.averageSuccess: the general dig-success figure ----
     dc._setDb(false);

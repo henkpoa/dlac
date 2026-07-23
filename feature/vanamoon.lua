@@ -11,18 +11,19 @@
 -- This is the community-standard linear model used by the Windower / Ashita
 -- vana-time addons.
 --
--- !! FIELD-CONFIRM the epoch OFFSET (and, if the ore-gate percent must be
--- server-exact, the linear-vs-table curve) against the in-game moon display
--- before trusting it -- see the PR for #97. The offset is a single named
--- constant so a correction is a one-line data swap; the pure math invariants
--- (percent 0..100, symmetric, waxing/waning direction) are tested regardless.
+-- The epoch OFFSET is derived from the CatsEyeXI server's moon::get_phase
+-- (src/common/vana_time.h): daysmod = (day + 26) % 84, with daysmod 0 = 100%
+-- Full (waning side) and daysmod 42 = 0% New. vanamoon's internal age curve
+-- peaks (Full) at age 42, so OFFSET = 68 (= 26 + 42) realigns it onto the
+-- server curve -- both the percent AND the waxing/waning direction then match
+-- the server exactly (tests VM11-VM14 pin concrete day numbers against it).
 --
 -- Lua 5.1 / LuaJIT compatible.
 
 local M = {};
 
 M.CYCLE  = 84;   -- Vana'diel days per lunar cycle
-M.OFFSET = 26;   -- epoch alignment (community-standard; FIELD-CONFIRM -- see above)
+M.OFFSET = 68;   -- epoch alignment: 26 (server daysmod) + 42 (Full-peak) -- see above
 local HALF = M.CYCLE / 2;   -- 42: the Full-Moon midpoint
 
 -- Moon age within the cycle (0 = New, 42 = Full) for an absolute Vana'diel day
