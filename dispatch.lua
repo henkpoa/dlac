@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 111;  -- 111: THE NATIVE BACKEND (feature/native-engine step 5). The addon-state copy of this module -- inert since v1 -- becomes the ACTIVE engine when the native flag is armed: engineActive() widens every inLac() gate that is an ENGINE concern (dispatch entry, the machinery block, mode state, the tick, the command surface, the /dl prio + plan printers), while LAC-BRIDGE machinery stays inLac()-pinned (self-swap, handoff/request files, the HandleEquipEvent wrap, lockstyle engine halves -- the #80 move owns native lockstyle). One equip seam: engineEquipSet routes resolved sets to gFunc.EquipSet (LAC) or equipengine's buffer (native). The gProfile gap closes with M._nativeSets -- the native sets store: readSetsSource + installSets install the active profile's job sets into it (the tick's NATIVE identity latch reloads on job/profile change), utils.rebuildSets re-flattens it on the shim's own cadence (every Default + modesRev), equipSetByName/ammoPlannedByHits/lock-set consult it after gProfile. The native Default drive rides the same tick with the same zoning guards. Flag off = byte-identical LAC-state behavior (twins parity pinned).
+M.VERSION = 112;  -- 112: NATIVE FIELD ROUND 1 -- maxmp made whole (Henrik, 07-23 evening: "maxMP acting super weird" in native mode; the automation with the deepest LAC-state plumbing had exactly two native holes + one adjacent). (1) The banded ladder's OBSERVER (v88: measured MP ticks "fed by the 0.4s engine tick") only ran in the LAC tail the native branch returns before -- no observations, no measured tick, nonsense hysteresis; the native Default drive now feeds _mpb.observe identically (same zoning gate, same placement). (2) mpLowMap read gProfile.Sets DIRECTLY (predates the M._nativeSets seam), so every named set's potency point was invisible natively -- the LOW map saw only inline equips and the band thresholds were fiction; it now falls back to the native store like equipSetByName does. (3) The '/dl mode' flip re-flatten had the same direct read -- mode-gated entries natively stayed stale until a level/subjob change; now the native store re-flattens on the flip too.
+                  -- 111: THE NATIVE BACKEND (feature/native-engine step 5). The addon-state copy of this module -- inert since v1 -- becomes the ACTIVE engine when the native flag is armed: engineActive() widens every inLac() gate that is an ENGINE concern (dispatch entry, the machinery block, mode state, the tick, the command surface, the /dl prio + plan printers), while LAC-BRIDGE machinery stays inLac()-pinned (self-swap, handoff/request files, the HandleEquipEvent wrap, lockstyle engine halves -- the #80 move owns native lockstyle). One equip seam: engineEquipSet routes resolved sets to gFunc.EquipSet (LAC) or equipengine's buffer (native). The gProfile gap closes with M._nativeSets -- the native sets store: readSetsSource + installSets install the active profile's job sets into it (the tick's NATIVE identity latch reloads on job/profile change), utils.rebuildSets re-flattens it on the shim's own cadence (every Default + modesRev), equipSetByName/ammoPlannedByHits/lock-set consult it after gProfile. The native Default drive rides the same tick with the same zoning guards. Flag off = byte-identical LAC-state behavior (twins parity pinned).
                   -- 110: THE STORAGE-HOME SEAM (feature/native-engine step 1). charDir() now resolves through profiles.dataDir() -- the one mode-aware storage authority -- so when the native-engine flag (config\addons\dlac\engine.lua) is on, the engine's mode state / trigger reads / debug handoffs all live under dlac's OWN config root (config\addons\dlac\<char>\) instead of piggybacking on LuaAshitacast's tree. Flag off (the default, and the shipped state until the native engine lands) = byte-identical path behavior. The inline composition stays as the no-profiles fallback.
                   -- 109: THE APPLY RIDES THE REQUEST FILE -- the friend's original bug, mechanically closed. "Everything works but lockstyle" (his 07-23 report, pre-update) is exactly the chain law's shadow: every automation rides LAC's internal handler flow, but lockstyle apply was the ONE player feature whose trigger crossed the COMMAND BUS ('/dl ls apply' queued by the GUI button/pumps or hand-typed) -- and on his load order the command died at dlac's own blocking handlers before LAC's engine received it (preview addon-local = fine; apply = silence). Now: lockstyle's queueCmd wrapper AND its typed-apply observation both write 'apply [box]' into debug-request.txt; the request watch runs engineApplyHalf -- the apply branch's body, extracted (one implementation, two doors, like check/ls) -- within ~1s when the command path is idle. All four order/hearing quadrants land exactly ONE apply (8s idle gate; last-writer-wins on the request file degrades a sub-second apply BURST to its last entry in the starved case only -- town/keep flows re-assert, acceptable). M._reqSpec (pure) parses the spec line.
                   -- 108: SYMMETRIC command handoff -- the starvation pair closed from both ends. Field 07-23, one day, both directions: Henrik's /addon reload cycles left the ADDON state deaf to typed /dl (engine heard, addon inert -- v107's watch cured that side); the friend's reload order starved the ENGINE (addon heard /dl check, receipt written, clean shim + current seeded copies + v107 modestate stamp -- and the report said ENGINE HALF MISSING because check.lua's own e.blocked halted the command before LAC's state received it). Ashita propagation law, now field-established from both sides: e.blocked stops LATER addons in the chain from receiving the command, and reload order IS chain order. Cure: whichever state hears, the other completes via file -- the addon writes debug-request.txt (stamp + 'check'/'ls <dur>'); this tick watches it (M._reqFire, twin of the addon's M._watchFire, 8s idle gate) and runs the same engine halves the command branches use (engineCheckHalf/engineLsHalf, one implementation two doors). Also v108: gearui's dev-buttons toggle no longer swallows '/dl debug <topic>' (the 07-23 namespace collision -- the friend's 'debug ls' flipped the Scan/Stage buttons); the toggle keeps bare/on/off only.
@@ -1764,6 +1765,12 @@ local function mpLowMap(mpMap, rfMap)
         local rules = ensureLoaded();
         local prof = rawget(_G, 'gProfile');
         local sets = (prof ~= nil and type(prof.Sets) == 'table') and prof.Sets or nil;
+        -- NATIVE (v112): no gProfile here -- the native store holds the same
+        -- flattened names. Without this, the LOW map saw only inline equips,
+        -- every named set's potency point read as absent, and the banded
+        -- ladder fired at nonsense thresholds (Henrik's first native field
+        -- round: "maxMP acting super weird").
+        if sets == nil then sets = M._nativeSets; end
         for _, list in pairs(rules or {}) do
             for _, r in ipairs(list) do
                 if r.equip ~= nil then scanSet(r.equip); end
@@ -5174,7 +5181,21 @@ if engineActive() then
                         pcall(function() probe = AshitaCore:GetMemoryManager():GetInventory():GetEquippedItem(0); end);
                         if probe == nil then zoning = true; end
                     end
-                    if not zoning then eng.fireEvent('Default', 'auto'); end
+                    if not zoning then
+                        -- The maxmp OBSERVER rides the native tick exactly like
+                        -- the LAC tail below: measured MP ticks are the banded
+                        -- ladder's live input (v88 -- "fed by the 0.4s engine
+                        -- tick"). v112: its absence here was Henrik's first
+                        -- native field bug -- no observations, no measured
+                        -- tick, nonsense hysteresis.
+                        if _mpb ~= nil then
+                            pcall(function()
+                                local p = gData.GetPlayer();
+                                _mpb.observe(tonumber(p.MP), p.Status == 'Resting');
+                            end);
+                        end
+                        eng.fireEvent('Default', 'auto');
+                    end
                 end
                 return;   -- everything below is LAC-profile machinery
             end
@@ -5677,10 +5698,15 @@ if engineActive() then
                 -- and re-run the Default dispatch so the equip follows the mode.
                 pcall(function()
                     local u = package.loaded['dlac\\utils'];
+                    if u == nil or type(u.rebuildSets) ~= 'function' then return; end
                     local prof = rawget(_G, 'gProfile');
-                    if u ~= nil and type(u.rebuildSets) == 'function'
-                       and prof ~= nil and type(prof.Sets) == 'table' then
+                    if prof ~= nil and type(prof.Sets) == 'table' then
                         u.rebuildSets(prof.Sets);
+                    elseif type(M._nativeSets) == 'table' then
+                        -- NATIVE (v112): the native store re-flattens on a mode
+                        -- flip too, or mode-gated entries stay stale until the
+                        -- next level/subjob change.
+                        M._nativeSets = u.rebuildSets(M._nativeSets) or M._nativeSets;
                     end
                 end);
                 pcall(function() M.dispatch('Default'); end);
