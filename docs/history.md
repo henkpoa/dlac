@@ -4376,3 +4376,21 @@ DBT0-6 (router), DBG1-6 (dry-run report), LGD1-4 (addon half headless);
 FEATURE guard list grew 'debug'. The support flow for the laptop case is now:
 `/dl check` (wiring) then `/dl debug ls` (feature state, both sides of the
 wall) -- paste chat.
+
+**Addendum 2: /dl check grows the ISSUE HUNT (2026.07.23c, addon-side only).**
+Henrik: "dl check is a good command IF it checks the general health of dl and
+can report issues" -- so it stopped being a stamp recital. New: a module-load
+LEDGER (dlac.lua records every require of its load loop into a virtual
+package, 'dlac\loadledger'; check reports "modules: 17/17 loaded" or names
+the failures with their errors -- a corrupt/half-synced tree becomes a named
+verdict instead of a scrolled-away load line); data sanity (catalog item
+count through catalogindex's one door -- under ~10k = "truncated sync?"
+issue; gear.lua entry count vs empty template; active profile); and an
+explicit engine/file version-agreement check (stamp BEHIND file -> Reload
+LAC; stamp AHEAD -> the addon tree is stale). Six lines now, the last a
+verdict: "NO ISSUES addon-side" or the numbered list. States
+indistinguishable from a fresh install (empty gear.lua, legacy storage,
+pre-login unknowns) are reported but never called issues. Tests CHK0-17 +
+CHKI1-10 (the hunt, each provable problem named). Also recorded: the friend's
+folder rename was a deliberate, reversible corruption check -- support
+guidance should match that register (Henrik's correction).

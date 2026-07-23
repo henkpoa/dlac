@@ -25,7 +25,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.07.23b';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.07.23c';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
 addon.desc    = 'Build gear sets and view live stats with level scaling (for LuaAshitacast).';
 
@@ -146,15 +146,27 @@ end
 -- Paths are folder-qualified (see the LAYOUT note at the top of this file): only the
 -- seeded engine sits flat at the addon root, everything else lives under ui\ / gear\ /
 -- feature\. Built by concat, so these names are invisible to a literal require() grep.
+-- Module-load LEDGER: every require result of this loop, recorded for
+-- '/dl check' (its "modules: N/M loaded" line + issue verdict -- a corrupt or
+-- half-synced tree shows up as NAMED failures instead of one scrolled-away
+-- chat line). Stashed under a virtual package name so feature\check.lua can
+-- read it at command time (the gear-preload package.loaded precedent -- no
+-- such file exists on disk, and none may be created).
+local ledger = { total = 0, failed = {} };
+package.loaded['dlac\\loadledger'] = ledger;
 local _cfok, _cfmt = pcall(require, 'dlac\\chatfmt');
 _cfok = _cfok and type(_cfmt) == 'table';
+ledger.total = ledger.total + 1;
+if not _cfok then ledger.failed[#ledger.failed + 1] = { mod = 'chatfmt', err = tostring(_cfmt) }; end
 for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\gearimport',
                        'gear\\gearexport', 'feature\\useitem', 'feature\\craftwatch',
                        'ui\\craftbar', 'feature\\helmwatch', 'ui\\helmbar',
                        'feature\\fishwatch', 'ui\\fishbar', 'feature\\meritwatch',
                        'feature\\check', 'feature\\debug', 'feature\\lockstyle', 'ui\\gearui' }) do
     local ok, err = pcall(require, 'dlac\\' .. mod);
+    ledger.total = ledger.total + 1;
     if not ok then
+        ledger.failed[#ledger.failed + 1] = { mod = mod, err = tostring(err) };
         local m = string.format('failed to load %s: %s', mod, tostring(err));
         if _cfok then _cfmt.err(m); else print('[dlac] ' .. m); end
     end

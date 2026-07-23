@@ -8406,10 +8406,11 @@ end)();
     check('LGW7 file deleted follows (back to defaults)', f(nil, 'A', false), 'follow');
 end)();
 
--- CHK. /dl check -- the wiring-health readout (feature/check.lua, v103): the
---      pure seams. The field case it answers: engine absent from the LAC state
---      (old hand-written profile) = total silence on '/dl ls apply' -- so the
---      addon half must SAY that a missing engine line is the diagnosis.
+-- CHK. /dl check -- the general-health readout (feature/check.lua; issue
+--      verdict per Henrik 07-23: "good IF it checks the general health of dl
+--      and can report issues"): the pure seams. The field case it answers:
+--      engine absent from the LAC state = total silence on '/dl ls apply' --
+--      so the addon half must SAY that a missing engine line is the diagnosis.
 (function()
     local ck = dofile('feature/check.lua');
     check('CHK0 check loads headless', type(ck), 'table');
@@ -8426,15 +8427,52 @@ end)();
     check('CHK5 wired sends to Setup', ck._shimWord('wired'):find('Setup', 1, true) ~= nil, true);
     check('CHK6 ffxilac sends to Setup', ck._shimWord('ffxilac'):find('Setup', 1, true) ~= nil, true);
     check('CHK7 nofile sends to Setup', ck._shimWord('nofile'):find('Setup', 1, true) ~= nil, true);
-    local L = ck._lines({ addonVer = '2026.07.23', fileV = 103, seeded = 'current', shim = 'ok', stampV = 103 });
-    check('CHK8 three addon lines', #L, 3);
-    check('CHK9 versions on line 1', L[1]:find('2026.07.23', 1, true) ~= nil and L[1]:find('v103', 1, true) ~= nil, true);
-    check('CHK10 the engine line is named verbatim', L[3]:find('[dlac] check (engine): alive', 1, true) ~= nil, true);
-    check('CHK11 absence = diagnosis is said', L[3]:find('not running the dlac engine', 1, true) ~= nil, true);
-    check('CHK12 stamp rides line 3', L[3]:find('last stamped v103', 1, true) ~= nil, true);
+    local HEALTHY = { addonVer = '2026.07.23c', fileV = 104, seeded = 'current', shim = 'ok', stampV = 104,
+                      modules = { total = 17, failed = {} }, catalogTried = true, catalogN = 14874,
+                      gearN = 312, profName = 'Default' };
+    local L = ck._lines(HEALTHY);
+    check('CHK8 six addon lines', #L, 6);
+    check('CHK9 versions on line 1', L[1]:find('2026.07.23c', 1, true) ~= nil and L[1]:find('v104', 1, true) ~= nil, true);
+    check('CHK10 the engine line is named verbatim', L[5]:find('[dlac] check (engine): alive', 1, true) ~= nil, true);
+    check('CHK11 absence = diagnosis is said', L[5]:find('not running the dlac engine', 1, true) ~= nil, true);
+    check('CHK12 stamp rides the engine line', L[5]:find('last stamped v104', 1, true) ~= nil, true);
+    check('CHK13 modules line counts', L[3]:find('17/17 loaded', 1, true) ~= nil, true);
+    check('CHK14 data line carries catalog/gear/profile', L[4]:find('14874 items', 1, true) ~= nil
+          and L[4]:find('312 entries', 1, true) ~= nil and L[4]:find('"Default"', 1, true) ~= nil, true);
+    check('CHK15 healthy = NO ISSUES verdict', L[6]:find('NO ISSUES', 1, true) ~= nil, true);
     local L2 = ck._lines({ addonVer = 'x', fileV = nil, seeded = nil, shim = 'nojob', stampV = nil });
-    check('CHK13 never-stamped is said', L2[3]:find('NEVER stamped', 1, true) ~= nil, true);
-    check('CHK14 pre-login seeded state degrades honestly', L2[1]:find('not logged in', 1, true) ~= nil, true);
+    check('CHK16 never-stamped is said', L2[5]:find('NEVER stamped', 1, true) ~= nil, true);
+    check('CHK17 pre-login degrades honestly, not as issues', L2[1]:find('not logged in', 1, true) ~= nil
+          and L2[6]:find('NO ISSUES', 1, true) ~= nil, true);
+    -- the issue hunt (CHKI): each provable problem is NAMED in the verdict.
+    -- override helper: `false` means "unset" (a literal nil never survives
+    -- pairs -- the classic Lua table trap).
+    local function issuesOf(t) local base = {};
+        for k, v in pairs(HEALTHY) do base[k] = v; end
+        for k, v in pairs(t) do if v == false then base[k] = nil; else base[k] = v; end end
+        return ck._issues(base);
+    end
+    check('CHKI1 healthy hunts nothing', #ck._issues(HEALTHY), 0);
+    check('CHKI2 stale seeded is an issue', issuesOf({ seeded = 'STALE: dispatch.lua' })[1]
+          :find('STALE', 1, true) ~= nil, true);
+    check('CHKI3 stamp behind file -> Reload LAC', issuesOf({ stampV = 98 })[1]
+          :find('Reload LAC', 1, true) ~= nil, true);
+    check('CHKI4 stamp ahead of file -> stale tree', issuesOf({ fileV = 98 })[1]
+          :find('tree is stale', 1, true) ~= nil, true);
+    check('CHKI5 module failures named', issuesOf({ modules = { total = 17,
+          failed = { { mod = 'feature\\lockstyle', err = 'boom' } } } })[1]
+          :find('feature\\lockstyle', 1, true) ~= nil, true);
+    check('CHKI6 unreadable catalog is an issue', issuesOf({ catalogN = false })[1]
+          :find('UNREADABLE', 1, true) ~= nil, true);
+    check('CHKI7 truncated catalog is an issue', issuesOf({ catalogN = 4200 })[1]
+          :find('truncated', 1, true) ~= nil, true);
+    check('CHKI8 non-shim job file is an issue', issuesOf({ shim = 'wired' })[1]
+          :find('Setup', 1, true) ~= nil, true);
+    check('CHKI9 nojob is NOT an issue', #issuesOf({ shim = 'nojob' }), 0);
+    check('CHKI10 verdict counts multiple issues', ck._lines({ addonVer = 'x', fileV = 104,
+          seeded = 'STALE: utils.lua', shim = 'wired', stampV = 98,
+          modules = { total = 17, failed = {} }, catalogTried = true, catalogN = 14874 })[6]
+          :find('3 ISSUES', 1, true) ~= nil, true);
 end)();
 
 -- DBT. the /dl debug section router (feature/debug.lua, v104): topic
