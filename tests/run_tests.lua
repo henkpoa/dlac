@@ -8800,6 +8800,197 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- EQC. equipcore (feature/native-engine part 1) -- the pure equip pipeline:
+-- entry normalization, the set resolver, and the 0x050/0x051 packet builders.
+-- Semantics are LuaAshitacast-parity (equip.lua is the reference); these pins
+-- are what "a character flipping to native sees identical equips" MEANS.
+-- ---------------------------------------------------------------------------
+(function()
+    local eqc = dofile('gear/equipcore.lua');
+    package.loaded['dlac\\gear\\equipcore'] = eqc;
+
+    -- --- entry normalization (MakeItemTable parity) ---
+    local e = eqc.normalizeEntry('Miner\'s Helmet');
+    check('EQC1 string entry lowercases',        e and e.Name, 'miner\'s helmet');
+    check('EQC2 default priority 0',             e and e.Priority, 0);
+    local r = eqc.normalizeEntry('remove');
+    check('EQC3 remove pins Index 0 / P-100',    r and r.Index == 0 and r.Priority == -100, true);
+    check('EQC4 ignore drops the slot',          eqc.normalizeEntry('ignore'), nil);
+    local d = eqc.normalizeEntry('displaced');
+    check('EQC5 displaced pins Index -1',        d and d.Index, -1);
+    local t = eqc.normalizeEntry({ Name = 'Karin Obi', Bag = 'Wardrobe2', Priority = 3, Junk = 9 });
+    check('EQC6 table entry: bag name resolves, junk dropped',
+          t and t.Bag == 10 and t.Priority == 3 and t.Junk == nil, true);
+    check('EQC7 nil/bad entries reject',         eqc.normalizeEntry(42), nil);
+
+    -- --- fixture helpers ---
+    local FULLJOBS = 2 ^ 23 - 1;
+    local function mkItem(container, index, name, slot, o)
+        o = o or {};
+        return {
+            Container = container, Index = index, Id = o.Id or 1000 + index,
+            Count = o.Count or 1, Flags = o.Flags or 0,
+            Name = name, Level = o.Level or 1,
+            Jobs = o.Jobs or FULLJOBS,
+            Slots = o.Slots or (2 ^ (slot - 1)),
+            ResFlags = o.ResFlags or 0x800,
+            augment = o.augment,
+        };
+    end
+    local function mkSnap(o)
+        o = o or {};
+        return { job = o.job or 7, level = o.level or 75,
+                 disabled = o.disabled or {}, encumbered = o.encumbered or {},
+                 equipped = o.equipped or {}, items = o.items or {} };
+    end
+
+    -- --- resolver: the plain equip ---
+    local snap = mkSnap({ items = {
+        mkItem(8, 3, 'traveler\'s hat', 5),
+        mkItem(0, 7, 'brass harness', 6),
+    } });
+    local plan = eqc.planSet({ Head = 'Traveler\'s Hat', Body = 'Brass Harness' }, snap);
+    check('EQC8 two pieces resolve to two equips', #plan.equips, 2);
+    check('EQC9 equal priority ties break to the lower slot',
+          plan.equips[1].Slot == 4 and plan.equips[2].Slot == 5, true);   -- Head=5th slot -> 4, Body -> 5
+    check('EQC10 equips carry index+container',
+          plan.equips[1].Index == 3 and plan.equips[1].Container == 8, true);
+    check('EQC11 nothing satisfied yet', plan.satisfied, false);
+
+    -- --- already worn: satisfied, silent ---
+    local worn = mkSnap({
+        equipped = { [5] = mkItem(8, 3, 'traveler\'s hat', 5) },
+        items    = { mkItem(8, 3, 'traveler\'s hat', 5) },
+    });
+    plan = eqc.planSet({ Head = 'Traveler\'s Hat' }, worn);
+    check('EQC12 worn match = satisfied, no packets', plan.satisfied == true and #plan.equips == 0, true);
+
+    -- --- remove semantics ---
+    plan = eqc.planSet({ Head = 'remove' },
+        mkSnap({ equipped = { [5] = mkItem(8, 3, 'traveler\'s hat', 5) } }));
+    check('EQC13 remove on worn slot unequips (Index 0, worn container)',
+          #plan.equips == 1 and plan.equips[1].Index == 0 and plan.equips[1].Container == 8, true);
+    plan = eqc.planSet({ Head = 'remove' }, mkSnap({}));
+    check('EQC14 remove on empty slot sends nothing', plan.satisfied == true and #plan.equips == 0, true);
+
+    -- --- frozen slots ---
+    plan = eqc.planSet({ Head = 'Traveler\'s Hat' },
+        mkSnap({ disabled = { [5] = true }, items = { mkItem(8, 3, 'traveler\'s hat', 5) } }));
+    check('EQC15 disabled slot never resolves', #plan.equips, 0);
+    plan = eqc.planSet({ Head = 'Traveler\'s Hat' },
+        mkSnap({ encumbered = { [5] = true }, items = { mkItem(8, 3, 'traveler\'s hat', 5) } }));
+    check('EQC16 encumbered slot never resolves', #plan.equips, 0);
+
+    -- --- priority ordering ---
+    plan = eqc.planSet({
+        Head = { Name = 'Traveler\'s Hat', Priority = 1 },
+        Body = { Name = 'Brass Harness', Priority = 5 },
+    }, mkSnap({ items = {
+        mkItem(8, 3, 'traveler\'s hat', 5), mkItem(0, 7, 'brass harness', 6),
+    } }));
+    check('EQC17 higher priority equips first', plan.equips[1].Slot, 5);
+
+    -- --- gates: level, job, slot bit, bag pin, bazaar, count ---
+    plan = eqc.planSet({ Head = 'Traveler\'s Hat' },
+        mkSnap({ level = 10, items = { mkItem(8, 3, 'traveler\'s hat', 5, { Level = 50 }) } }));
+    check('EQC18 level gate drops the piece', #plan.equips, 0);
+    plan = eqc.planSet({ Head = 'Traveler\'s Hat' },
+        mkSnap({ job = 3, items = { mkItem(8, 3, 'traveler\'s hat', 5, { Jobs = 2 ^ 7 }) } }));
+    check('EQC19 job gate drops the piece', #plan.equips, 0);
+    plan = eqc.planSet({ Body = 'Traveler\'s Hat' },
+        mkSnap({ items = { mkItem(8, 3, 'traveler\'s hat', 5) } }));
+    check('EQC20 slot-bit mismatch drops the piece', #plan.equips, 0);
+    plan = eqc.planSet({ Head = { Name = 'Traveler\'s Hat', Bag = 'Wardrobe' } },
+        mkSnap({ items = { mkItem(0, 3, 'traveler\'s hat', 5) } }));
+    check('EQC21 bag pin refuses the wrong bag', #plan.equips, 0);
+    plan = eqc.planSet({ Head = 'Traveler\'s Hat' },
+        mkSnap({ items = { mkItem(8, 3, 'traveler\'s hat', 5, { Flags = 19 }) } }));
+    check('EQC22 bazaared item skipped', #plan.equips, 0);
+    plan = eqc.planSet({ Head = 'Traveler\'s Hat' },
+        mkSnap({ items = { mkItem(8, 3, 'traveler\'s hat', 5, { Count = 0 }) } }));
+    check('EQC23 zero-count item skipped', #plan.equips, 0);
+    plan = eqc.planSet({ Head = 'Traveler\'s Hat' },
+        mkSnap({ items = { mkItem(8, 3, 'traveler\'s hat', 5, { ResFlags = 0 }) } }));
+    check('EQC24 non-equippable flag skipped', #plan.equips, 0);
+
+    -- --- augment pins ---
+    local augItem = mkItem(8, 3, 'oneiros ring', 14, { augment = {
+        Path = 'A', Rank = 15, Augs = { { String = 'STR+5' }, { String = 'Accuracy+3' } } } });
+    plan = eqc.planSet({ Ring1 = { Name = 'Oneiros Ring', AugPath = 'A', AugRank = 15 } },
+        mkSnap({ items = { augItem } }));
+    check('EQC25 path+rank pin matches', #plan.equips, 1);
+    plan = eqc.planSet({ Ring1 = { Name = 'Oneiros Ring', AugPath = 'B' } },
+        mkSnap({ items = { augItem } }));
+    check('EQC26 wrong path refuses', #plan.equips, 0);
+    plan = eqc.planSet({ Ring1 = { Name = 'Oneiros Ring', Augment = { 'STR+5', 'Accuracy+3' } } },
+        mkSnap({ items = { augItem } }));
+    check('EQC27 augment string list matches', #plan.equips, 1);
+    plan = eqc.planSet({ Ring1 = { Name = 'Oneiros Ring', Augment = 'VIT+5' } },
+        mkSnap({ items = { augItem } }));
+    check('EQC28 missing augment string refuses', #plan.equips, 0);
+    plan = eqc.planSet({ Ring1 = { Name = 'Oneiros Ring', AugPath = 'A' } },
+        mkSnap({ items = { mkItem(8, 3, 'oneiros ring', 14) } }));
+    check('EQC29 pin vs unaugmented item refuses', #plan.equips, 0);
+
+    -- --- one instance never fills two slots; second copy does ---
+    plan = eqc.planSet({ Ring1 = 'Reraise Ring', Ring2 = 'Reraise Ring' },
+        mkSnap({ items = { mkItem(8, 3, 'reraise ring', 14, { Slots = 2^13 + 2^14 }) } }));
+    check('EQC30 single instance fills exactly one ring', #plan.equips, 1);
+    plan = eqc.planSet({ Ring1 = 'Reraise Ring', Ring2 = 'Reraise Ring' },
+        mkSnap({ items = {
+            mkItem(8, 3, 'reraise ring', 14, { Slots = 2^13 + 2^14 }),
+            mkItem(8, 4, 'reraise ring', 14, { Slots = 2^13 + 2^14 }),
+        } }));
+    check('EQC31 two instances fill both rings', #plan.equips, 2);
+
+    -- --- conflicts: claimed instance worn elsewhere unreserved ---
+    local swordWorn = mkItem(0, 9, 'bronze sword', 2, { Slots = 2^0 + 2^1 });   -- worn in Sub
+    plan = eqc.planSet({ Main = 'Bronze Sword' },
+        mkSnap({ equipped = { [2] = swordWorn }, items = { swordWorn } }));
+    check('EQC32 worn-elsewhere instance claims produce a conflict unequip',
+          #plan.conflicts == 1 and plan.conflicts[1].Slot == 1, true);
+    check('EQC33 ...and the equip itself', #plan.equips == 1 and plan.equips[1].Slot == 0, true);
+    -- when the worn slot's own entry claims it, it is reserved: not stealable
+    plan = eqc.planSet({ Main = 'Bronze Sword', Sub = 'Bronze Sword' },
+        mkSnap({ equipped = { [2] = swordWorn }, items = { swordWorn } }));
+    check('EQC34 reserved instance is not stealable (Sub keeps it, Main unresolved)',
+          #plan.equips == 0 and #plan.conflicts == 0, true);
+
+    -- --- displaced: a stamp, never a packet. LAC parity pin: a set that is
+    -- otherwise satisfied early-returns BEFORE displaced handling (equip.lua's
+    -- FlagEquippedItems short-circuit), so displaced-only sets do nothing;
+    -- the stamp rides only when the set has real work.
+    plan = eqc.planSet({ Ammo = 'displaced' }, mkSnap({}));
+    check('EQC35a displaced-only set is satisfied silence (LAC parity)',
+          plan.satisfied == true and #plan.equips == 0 and #plan.stamps == 0, true);
+    plan = eqc.planSet({ Ammo = 'displaced', Head = 'Traveler\'s Hat' },
+        mkSnap({ items = { mkItem(8, 3, 'traveler\'s hat', 5) } }));
+    check('EQC35b displaced stamps (no packet) when the set does work',
+          #plan.equips == 1 and #plan.stamps == 2, true);
+
+    -- --- packet builders (byte goldens) ---
+    local p50 = eqc.build0x50(12, 4, 8);
+    check('EQC36 0x50 bytes: index/slot/container at 5/6/7',
+          p50[5] == 12 and p50[6] == 4 and p50[7] == 8 and #p50 == 8, true);
+    local un = eqc.buildUnequip0x50(4, 8);
+    check('EQC37 unequip is 0x50 with index 0', un[5] == 0 and un[6] == 4 and un[7] == 8, true);
+    local p51 = eqc.build0x51({
+        { Slot = 4, Index = 3, Container = 8 },
+        { Slot = 5, Index = 7, Container = 0 },
+    });
+    check('EQC38 0x51 count byte', p51[5], 2);
+    check('EQC39 0x51 first entry at offset 9',  p51[9] == 3 and p51[10] == 4 and p51[11] == 8, true);
+    check('EQC40 0x51 second entry at offset 13', p51[13] == 7 and p51[14] == 5 and p51[15] == 0, true);
+    check('EQC41 0x51 is 72 bytes', #p51, 72);
+
+    -- --- style choice ---
+    check('EQC42 auto under 9 = singles', eqc.chooseStyle(8), 'single');
+    check('EQC43 auto at 9 = equipset',   eqc.chooseStyle(9), 'set');
+    check('EQC44 explicit set wins',      eqc.chooseStyle(2, 'set'), 'set');
+    check('EQC45 explicit single wins',   eqc.chooseStyle(12, 'single'), 'single');
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then
