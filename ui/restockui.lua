@@ -512,6 +512,7 @@ pcall(function()
         local a = raw:match('^/dl%s+(%S+)') or raw:match('^/dlac%s+(%S+)');
         if a ~= 'restock' then return; end
         e.blocked = true;
+        if not cwOK() then return; end   -- 100% CW-only: non-CW gets nothing (not even the gated panel)
         pcall(function()
             local g = require('dlac\\ui\\gearui');
             if type(g.openAutomation) == 'function' then g.openAutomation('restock'); end
