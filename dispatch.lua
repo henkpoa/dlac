@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 115;  -- 115: the gate covers LAC mode too (Henrik's attribution note, round 3b: "I think this was the case earlier as well, not due to the migration"). He is right, and the mechanism is the same staged boot: after a /lac load / job change, gProfile.Sets exists but its Dynamic is the shim's EMPTY SCAFFOLD until the profile auto-install latch fires on the engine tick -- so v114's sets~=nil readiness read hollow-but-present as ready and the LAC-mode glimpse (which the maxmp v76-v94 saga likely brushed against) stayed possible. Unified rule, both modes: Dynamic empty while a profile sets file EXISTS for the current job = install pending = UNREADY (statics-only characters have no profile file and stay ready; unreadable job falls under the existing path gate). The v114 comment claiming LAC never races is corrected.
+M.VERSION = 116;  -- 116: THE STABILITY LATCH (round 4 -- "it fixed itself after a bit, so its initial plan is wrong"). Henrik's capture showed the v114/v115 gate FIRING correctly at first ask, then PASSING six seconds later with the world still wrong (lows 0, tags gone, phantom ammo band; healed ~30s later): every proxy attestation can be lied to one level deeper during the boot storm -- a trigger path resolved to the LEGACY tier reads as legitimately trigger-less, a first flatten can leave set names whose tables are still hollow. End of proxy whack-a-mole: the LOW map now attests ITSELF. A ready compute is believed (and cached) only after two computes >= 2s apart produce the IDENTICAL world signature (sorted lows+refresh baselines + rule/set counts). Until agreement: nil ladder, batteries hold worn, /dl plan says warming up. Consults ride the 0.4s Default tick so belief lands ~2.4s after the world truly settles; the steady state re-agrees instantly across cache expiries (the signature persists). Plus the rules-side twin of v115's sets rule: rules nil while a profile trigger file EXISTS = mid-resolution, unready. Both modes.
+                  -- 115: the gate covers LAC mode too (Henrik's attribution note, round 3b: "I think this was the case earlier as well, not due to the migration"). He is right, and the mechanism is the same staged boot: after a /lac load / job change, gProfile.Sets exists but its Dynamic is the shim's EMPTY SCAFFOLD until the profile auto-install latch fires on the engine tick -- so v114's sets~=nil readiness read hollow-but-present as ready and the LAC-mode glimpse (which the maxmp v76-v94 saga likely brushed against) stayed possible. Unified rule, both modes: Dynamic empty while a profile sets file EXISTS for the current job = install pending = UNREADY (statics-only characters have no profile file and stay ready; unreadable job falls under the existing path gate). The v114 comment claiming LAC never races is corrected.
                   -- 114: THE READINESS GATE (native field round 3 -- Henrik's plan captures + his spec made law). His two /dl plan screenshots proved the boot glimpse exactly: seconds after a reload the ladder rendered with every low 0, every refresh tag gone (pure diff+alphabetical order, Bliaut dead last) and a PHANTOM ammo band (Talon Tathlum's diff stopped reading 0) -- then self-corrected. Cause family: mpBands built eagerly during the boot storm from whichever input lost its race (trigger rules resolving, the store's first flatten, per-second identity caches), and the 10s LOW-map TTL amplified one bad glimpse (v113's store-only guard missed every variant where the store existed but another input didn't). The law, Henrik's own framing: the band ORDER is a PURE FUNCTION of manifest + sets + rules -- three deterministic files -- and current MP only picks the position on the ladder. So mpBands now refuses to build until the world is attested: mpLowMap returns a READY flag (trigger world resolved -- rules loaded OR path resolved with the file legitimately absent -- AND a sets source present), unready results are never cached, and native mode additionally requires the store to hold at least one flattened set. Unready = nil = the live overlay holds worn gear and /dl plan says it is warming up. LAC mode is ready from the first dispatch (gProfile + rules precede any dispatch), so nothing changes there. Enable timing now provably cannot change the order -- only the per-session warm-up (offset at first true-full, measured ticks) remains, and persisting those is the standing offer.
                   -- 113: the maxmp boot-cache guard (native field round 2, the self-healing glimpse). Henrik saw the refresh body released FIRST right after boarding v112, then the order corrected itself with no code change: the LOW map had computed -- and CACHED for its 10s TTL -- an answer from before the tick's identity latch populated M._nativeSets, so every named set was invisible and lowRf/rfDelta sorted the bands wrong until the TTL lapsed. The cache no longer latches a result computed while the native store is absent (serve once, recompute next consult). LAC-state behavior untouched (the guard is not-inLac-gated).
                   -- 112: NATIVE FIELD ROUND 1 -- maxmp made whole (Henrik, 07-23 evening: "maxMP acting super weird" in native mode; the automation with the deepest LAC-state plumbing had exactly two native holes + one adjacent). (1) The banded ladder's OBSERVER (v88: measured MP ticks "fed by the 0.4s engine tick") only ran in the LAC tail the native branch returns before -- no observations, no measured tick, nonsense hysteresis; the native Default drive now feeds _mpb.observe identically (same zoning gate, same placement). (2) mpLowMap read gProfile.Sets DIRECTLY (predates the M._nativeSets seam), so every named set's potency point was invisible natively -- the LOW map saw only inline equips and the band thresholds were fiction; it now falls back to the native store like equipSetByName does. (3) The '/dl mode' flip re-flatten had the same direct read -- mode-gated entries natively stayed stale until a level/subjob change; now the native store re-flattens on the flip too.
@@ -1735,6 +1736,7 @@ local function mpLowMap(mpMap, rfMap)
     _mpLow.at = os.time() + 10;
     local low, lowRf = {}, {};
     local _mpLowReady = false;
+    local _ruleN, _setN = 0, 0;   -- world-signature inputs (v116)
     local function scanSet(set)
         if type(set) ~= 'table' then return; end
         for slot, v in pairs(set) do
@@ -1799,25 +1801,62 @@ local function mpLowMap(mpMap, rfMap)
                 end
             end
         end
+        -- the rules-side twin (v116): rules nil while a profile trigger file
+        -- EXISTS for this job = the trigger world is mid-resolution (the
+        -- legacy-path boot window), not legitimately trigger-less.
+        if _mpLowReady and rules == nil then
+            local job = nil;
+            pcall(function() job = gData.GetPlayer().MainJob; end);
+            if type(job) == 'string' and job ~= '?' and job ~= ''
+               and _pok and type(_prof.hasTriggersFile) == 'function' then
+                local has = false;
+                pcall(function() has = _prof.hasTriggersFile(job) == true; end);
+                if has then _mpLowReady = false; end
+            end
+        end
         for _, list in pairs(rules or {}) do
             for _, r in ipairs(list) do
+                _ruleN = _ruleN + 1;
                 if r.equip ~= nil then scanSet(r.equip); end
                 for _, sn in ipairs(r.sets or {}) do
-                    if sets ~= nil then scanSet(sets[sn]); end
+                    if sets ~= nil and type(sets[sn]) == 'table' then
+                        _setN = _setN + 1;
+                        scanSet(sets[sn]);
+                    end
                 end
             end
         end
     end);
-    -- READINESS (v114, replacing v113's store-only guard -- Henrik's field
-    -- round 3 plan captures + his spec: the band ORDER is a pure function of
-    -- manifest + sets + rules, three deterministic files, so a ladder must
-    -- never be built from a world that has not finished loading). The scan is
-    -- ready only when the trigger rules resolved AND a sets source existed.
-    -- An unready result is served to THIS caller (who gates on the flag) but
-    -- never cached -- the boot-window glimpse (all lows 0, refresh tags gone,
-    -- a phantom ammo band) can no longer be amplified by the 10s TTL.
+    -- READINESS (v114) + THE STABILITY LATCH (v116). The v114/v115 proxy
+    -- attestations (rules resolved, sets present, Dynamic installed) each got
+    -- lied to one level deeper during the boot storm (Henrik's round-4
+    -- capture: the gate fired, then PASSED six seconds later with lows still
+    -- 0 -- a resolved-but-legacy trigger path reads as "legitimately
+    -- trigger-less", a first flatten can leave hollow set tables). So the
+    -- result now attests ITSELF: a ready answer is only believed -- and only
+    -- cached -- once two computes >= 2s apart produce the IDENTICAL world
+    -- signature (lows + refresh baselines + rule/set counts). A converging
+    -- world disagrees with itself; a settled one agrees. Consults ride the
+    -- 0.4s Default tick, so belief lands ~2.4s after the world settles --
+    -- and a mid-session set edit earns the same 2s re-agreement blip
+    -- (batteries hold worn through it, by design).
+    local sigParts = {};
+    for k, v in pairs(low) do
+        sigParts[#sigParts + 1] = k .. '=' .. tostring(v) .. ':' .. tostring(lowRf[k] or 0);
+    end
+    table.sort(sigParts);
+    local sig = table.concat(sigParts, ',') .. '|r' .. tostring(_ruleN) .. '|s' .. tostring(_setN);
+    if _mpLowReady then
+        local nowc = os.clock();
+        if sig ~= _mpLow.sig then
+            _mpLow.sig, _mpLow.sigAt = sig, nowc;   -- first sight of this world: sample again
+            _mpLowReady = false;
+        elseif (nowc - (_mpLow.sigAt or 0)) < 2.0 then
+            _mpLowReady = false;                     -- agreed, but not for 2s yet
+        end
+    end
     if not _mpLowReady then
-        _mpLow.at = 0;
+        _mpLow.at = 0;   -- never cache an unbelieved answer
     end
     _mpLow.map, _mpLow.rf = low, lowRf;
     return low, lowRf, _mpLowReady;
