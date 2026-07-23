@@ -30,6 +30,9 @@ maintainer IMO, I am just the one with the creative vision."*
    it answered) are the two that bite hardest if ignored. **0014** (lockstyle is
    addon-resident; the Engine equips gear only) records the 2026-07-23 pivot and the
    command-bus law it turns on — read it before touching lockstyle or the `/dl` surface.
+   **0015** (native-first; LAC independence is the end-goal, legacy is a sunset) is the
+   STANDING DIRECTION: new features target the native engine, never LAC — read it before
+   designing anything.
 6. [history.md](history.md) — session journal: what was tried, what was abandoned, and
    why. **Read the dead-ends lists before proposing anything.**
 7. [server-questions.md](server-questions.md) — suspected server-side bugs / undocumented

@@ -754,7 +754,10 @@ the "builder is a plan" pairing semantics).
 ## The Native engine (feature/native-engine)
 
 dlac absorbing LuaAshitacast: the addon equips gear itself — LAC becomes
-optional, then removable. Behind the **Engine flag**
+optional, then removable. **This is the end-goal, not an experiment — ADR 0015
+(native-first) is the standing direction: new features target this pipeline,
+legacy LAC mode is a sunset with a four-phase migration plan (recruit → merge →
+nudge → delete).** Behind the **Engine flag**
 (`config\addons\dlac\engine.lua`, `return { native = true }`; broken file
 reads OFF). Flag off = byte-identical legacy behavior, pinned by the whole
 test suite.
