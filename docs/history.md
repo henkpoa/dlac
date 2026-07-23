@@ -5021,3 +5021,32 @@ feature/autoacc (GM approval pending, the ONE live pre-native artifact,
 never delete/push) plus storage-move + hidden-features (superseded,
 Henrik's to delete). Confirmed in passing: the whole maxmp boot saga
 (v112-v119) rode the graduation -- main's dispatch reads M.VERSION = 119.
+
+## Chocobo: the fourth idle-gear sibling (2026-07-23, issue #95, engine v120)
+
+**The gear half of the Chocobo automation** (parent PRD #93; docs/design/chocobo-gear.md),
+built as a fourth sibling to craft/HELM/fishing but the SIMPLEST of the four: no target, no
+category, no packet protocol, no proximity, no bar. Turning it on equips your best
+**riding-time gear** (idle-only) and the panel reports the total riding time = `30 + summed
+ChocoboRidingTime` minutes (the server computes duration as `1800 + mod*60` seconds at whistle
+time). The set is the six slots **Main/Neck/Body/Hands/Legs/Feet**, scored per-slot best-first
+by the catalog's `ChocoboRidingTime` (already a shipped stat -- no data table, no generator);
+the **Chocobo Wand is included in Main** even though it takes the weapon slot, with a panel note
+to equip the set before whistling. Same shape as the siblings: `feature/chocowatch.lua` writes
+`<char>\dlac\chocostate.lua { enabled, at }` (session-only `enabled`, off at login); the engine
+overlays `dlac:AutoChoco` on Default only, standing aside Engaged/Dead; the manifest gained a
+`choco` block (AUTO_FMT 14 -> 15) and `dispatch.M.VERSION` moved 119 -> 120.
+
+**The floor-invariant bug it surfaced.** Chocobo registers a `Chocobo` Arbiter claim (default
+rank below Fishing, above the Triggers floor). Adding a NEW known row to `ARB_ORDER_DEFAULT`
+exposed a latent bug in `M.arbOrder`: the append-missing pass walked an existing arbstate file's
+rows first (which end in `Triggers`, the floor) and then appended the missing known row --
+landing Chocobo AFTER `Triggers`. A claimant below the floor never wins a slot the idle set
+already dresses, so every existing player's Chocobo would have equipped nothing. Fixed by
+pinning the `Triggers` floor LAST unconditionally in `arbOrder` (and the arbwatch fallback) --
+a floor invariant that is correct regardless and lets any future claimant be added cleanly.
+Tests AR/AB updated for the 9-row order; the `rank 8` -> `rank 9` /dl-why lines followed.
+New tests CH1-15 (engine overlay), S139e-n (chocoui/chocowatch load + the reference-set 84-min
+total), S179b-d (the manifest choco block); the autogear golden gained the `choco` block +
+fmtver 15 (regenerated, reviewed). 2757 + 238 green both loops. **Player-facing names ("Chocobo",
+"Total riding time", the note) are the issue's own wording, pending the maintainer's sign-off.**

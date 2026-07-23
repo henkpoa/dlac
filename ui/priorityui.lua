@@ -2,8 +2,8 @@
     dlac/ui/priorityui.lua -- the Priority section of the Automations tab
     (ADR 0012, step 2 / issue #49).
 
-    ONE strict draggable list, top wins: the six claimants (Pins, AutoAmmo,
-    MaxMP, Craft, HELM, Fishing) plus the Locks veto row (draggable since step 3,
+    ONE strict draggable list, top wins: the seven claimants (Pins, AutoAmmo,
+    MaxMP, Craft, HELM, Fishing, Chocobo) plus the Locks veto row (draggable since step 3,
     ADR 0012 -- a claimant above it punches through a locked slot, one below stops;
     rendered visually distinct so it never reads as an ordinary claimant) and the
     Triggers floor (pinned last, immovable). A row shows a drag control, the row
@@ -41,6 +41,7 @@ M.HINT = {
     Craft    = 'Auto Craft Set row / craft bar',
     HELM     = 'HELM row / HELM bar',
     Fishing  = 'Fishing row / fish bar',
+    Chocobo  = 'Chocobo row',
     Triggers = 'Triggers tab',
 };
 
@@ -57,6 +58,7 @@ M.SOURCE = {
     Craft    = 'Set on the Auto Craft Set row above, or the floating craft bar.',
     HELM     = 'Set on the HELM row above, or the floating HELM bar.',
     Fishing  = 'Set on the Fishing row above, or the floating fish bar.',
+    Chocobo  = 'Set on the Chocobo row above (click it for the riding-gear panel).',
     Triggers = 'Your Triggers tab. This is the FLOOR -- what is worn when no claim wins a slot.',
 };
 
@@ -89,6 +91,8 @@ function M.statusText(name, live)
         return live.helm and 'claiming: armed (idle only)' or 'idle';
     elseif name == 'Fishing' then
         return live.fishing and 'claiming: armed (idle only)' or 'idle';
+    elseif name == 'Chocobo' then
+        return live.chocobo and 'claiming: armed (idle only)' or 'idle';
     end
     return '?';
 end
@@ -104,6 +108,7 @@ local function rowActive(name, live)
     if name == 'Craft'    then return live.craft == true; end
     if name == 'HELM'     then return live.helm == true; end
     if name == 'Fishing'  then return live.fishing == true; end
+    if name == 'Chocobo'  then return live.chocobo == true; end
     return false;
 end
 
@@ -134,7 +139,7 @@ if not hasImgui then return M; end   -- headless: the pure half above is the mod
 -- ---------------------------------------------------------------------------
 function M.gatherLive(deps)
     local live = { pins = 0, locks = 0, maxmp = false, craft = false, helm = false,
-                   fishing = false, ammo = { on = false, job = nil } };
+                   fishing = false, chocobo = false, ammo = { on = false, job = nil } };
     local job = (deps ~= nil and type(deps.playerJob) == 'function') and deps.playerJob() or nil;
 
     pcall(function() live.pins = require('dlac\\feature\\pinwatch').count() or 0; end);
@@ -146,6 +151,7 @@ function M.gatherLive(deps)
     pcall(function() live.craft   = require('dlac\\feature\\craftwatch').isEnabled() == true; end);
     pcall(function() live.helm    = require('dlac\\feature\\helmwatch').isEnabled() == true; end);
     pcall(function() live.fishing = require('dlac\\feature\\fishwatch').isEnabled() == true; end);
+    pcall(function() live.chocobo = require('dlac\\feature\\chocowatch').isEnabled() == true; end);
 
     -- MaxMP mode + slot locks both live in the LAC engine's modestate mirror
     -- (<char>\dlac\modestate.lua), the same file gearui reads for the lock pills.

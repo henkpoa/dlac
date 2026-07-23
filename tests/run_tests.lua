@@ -5153,7 +5153,7 @@ end)();
     local def = dispatchM._arbDefaultOrder;
     check('AR1 default order exported', type(def), 'table');
     check('AR1b exact default rank', table.concat(def, '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers');
+        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     -- AR1c: the ADR 0012 laws the order encodes, checked as adjacency (not prose)
     local rank = {}; for i, n in ipairs(def) do rank[n] = i; end
     check('AR1d Pins outrank everything',    rank['Pins'], 1);
@@ -5166,18 +5166,18 @@ end)();
     -- AR2: arbOrder sanitizes. Missing/torn -> default; unknown dropped, missing
     -- known rows appended; a valid reorder is preserved.
     check('AR2 nil -> default', table.concat(dispatchM.arbOrder(nil), '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers');
+        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AR2b no order field -> default', table.concat(dispatchM.arbOrder({ foo = 1 }), '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers');
+        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AR2c a valid reorder is preserved',
         table.concat(dispatchM.arbOrder({ order = { 'MaxMP', 'AutoAmmo', 'Pins', 'Locks', 'Craft', 'HELM', 'Fishing', 'Triggers' } }), '>'),
-        'MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Triggers');
+        'MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AR2d unknown rows dropped, missing known rows appended in default order',
         table.concat(dispatchM.arbOrder({ order = { 'Fishing', 'Nonsense', 'Pins' } }), '>'),
-        'Fishing>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Triggers');
+        'Fishing>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Chocobo>Triggers');
     check('AR2e duplicates collapse',
         table.concat(dispatchM.arbOrder({ order = { 'Pins', 'Pins', 'AutoAmmo' } }), '>'),
-        'Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Triggers');
+        'Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
 
     -- AR3: the PURE resolve core -- claims + rank + floor -> winners + by.
     local order = dispatchM.arbOrder(nil);
@@ -5234,12 +5234,12 @@ end)();
     put('tests\\arbstate.lua', 'return { order = { "MaxMP", "AutoAmmo", "Pins", "Locks", "Craft", "HELM", "Fishing", "Triggers" } }');
     check('AR7 hand-edited reorder is read + sanitized',
         table.concat(dispatchM.arbOrder(esf(cache, 'arbstate.lua')), '>'),
-        'MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Triggers');
+        'MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>Triggers');
     cache.lastCheck = -1;
     put('tests\\arbstate.lua', 'return { order = {');   -- torn write
     check('AR7b torn write drops to default',
         table.concat(dispatchM.arbOrder(esf(cache, 'arbstate.lua')), '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers');
+        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     os.remove('tests\\arbstate.lua');
     dispatchM._charDirOverride = nil;
 
@@ -5327,7 +5327,7 @@ end)();
 --      Locks', floor-only slots 'Triggers (floor)', in canonical LAC order.
 -- ---------------------------------------------------------------------------
 (function()
-    local ord = dispatchM.arbOrder(nil);  -- Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers
+    local ord = dispatchM.arbOrder(nil);  -- Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers
     -- The whole claim path in one resolve. MaxMP is a proper CLAIM now (step 4):
     -- its battery targets a claim table, ranked below AutoAmmo (the deliberate
     -- cede) and above Craft (batteries over craft armor).
@@ -5377,11 +5377,11 @@ end)();
     check('AR12 the Ammo contest line names winner over runner-up (the issue example)',
         joined:find('Ammo: AutoAmmo (rank 3)  over MaxMP (rank 4)', 1, true) ~= nil, true);
     check('AR12b a MaxMP-only slot reads MaxMP over the floor',
-        joined:find('Ring1: MaxMP (rank 4)  over Triggers (rank 8)', 1, true) ~= nil, true);
+        joined:find('Ring1: MaxMP (rank 4)  over Triggers (rank 9)', 1, true) ~= nil, true);
     check('AR12c a veto slot reads stopped by Locks (even from a lowercase key)',
         joined:find('Legs: stopped by Locks (rank 2)', 1, true) ~= nil, true);
     check('AR12d floor-only slots collapse into one named Triggers-floor summary',
-        joined:find('Triggers floor (rank 8, uncontested):', 1, true) ~= nil
+        joined:find('Triggers floor (rank 9, uncontested):', 1, true) ~= nil
         and joined:find('Body', 1, true) ~= nil, true);
     -- Contested slots emit individually in canonical LAC order (ammo 4 < hands 10
     -- < ring1 11), BEFORE the trailing floor summary.
@@ -5453,7 +5453,7 @@ end)();
     check('LV0b arbLockClaim accepts an array of slot keys',
         dispatchM.arbLockClaim({ 'Head', 'Ring1' }).Ring1, dispatchM.LOCK_HELD);
 
-    local order = dispatchM.arbOrder(nil);  -- Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers
+    local order = dispatchM.arbOrder(nil);  -- Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers
     local floor = { Head = 'Idle Hat', Ring1 = 'Idle Ring' };
     local locked = dispatchM.arbLockClaim({ 'Head', 'Ring1' });  -- both slots locked
 
@@ -5548,15 +5548,15 @@ end)();
     -- Default + sanitize delegate to the engine (one vocabulary, no drift).
     check('AB1 default order matches the engine default',
         table.concat(aw.defaultOrder(), '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers');
+        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AB1b defaultOrder is a fresh copy (mutating it does not stick)',
         (function() local d = aw.defaultOrder(); d[1] = 'X'; return aw.defaultOrder()[1]; end)(), 'Pins');
     check('AB2 sanitize nil -> default',
         table.concat(aw.sanitize(nil), '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers');
+        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AB2b sanitize drops unknown, appends missing',
         table.concat(aw.sanitize({ order = { 'Fishing', 'Nonsense', 'Pins' } }), '>'),
-        'Fishing>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Triggers');
+        'Fishing>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Chocobo>Triggers');
 
     -- serialize -> the engine's file shape; round-trips through arbOrder.
     local txt = aw.serialize({ 'MaxMP', 'AutoAmmo', 'Pins', 'Locks', 'Craft', 'HELM', 'Fishing', 'Triggers' });
@@ -5567,7 +5567,7 @@ end)();
     local roundtrip = dispatchM.arbOrder(chunk());
     check('AB3c serialize -> arbOrder round-trips a valid reorder',
         table.concat(roundtrip, '>'),
-        'MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Triggers');
+        'MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AB3d serialize skips non-string / empty entries',
         aw.serialize({ 'Pins', '', 42, 'Triggers' }), 'return { order = { "Pins", "Triggers" } }\n');
 
@@ -5575,25 +5575,25 @@ end)();
     local def = aw.defaultOrder();   -- Pins Locks AutoAmmo MaxMP Craft HELM Fishing Triggers
     check('AB4 a claimant moves up one (AutoAmmo #3 -> #2, crossing the Locks veto)',
         table.concat(aw.moveClaimant(def, 3, -1), '>'),
-        'Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Triggers');
+        'Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AB4b a claimant moves down one (AutoAmmo #3 -> #4)',
         table.concat(aw.moveClaimant(def, 3, 1), '>'),
-        'Pins>Locks>MaxMP>AutoAmmo>Craft>HELM>Fishing>Triggers');
+        'Pins>Locks>MaxMP>AutoAmmo>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AB4c the input order is not mutated', table.concat(def, '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers');
+        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     -- Step 3: the Locks veto row now DRAGS (only the Triggers floor is fixed).
     check('AB5 Locks drags down one (#2 -> #3, under AutoAmmo)',
         table.concat(aw.moveClaimant(def, 2, 1), '>'),
-        'Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Triggers');
+        'Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AB5a Locks drags up one to the top (absolute veto, over Pins)',
         table.concat(aw.moveClaimant(def, 2, -1), '>'),
-        'Locks>Pins>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers');
-    check('AB5b Triggers refuses the drag (the floor)', aw.moveClaimant(def, 8, -1), nil);
-    check('AB6 Fishing cannot move down into the Triggers floor (stays last)',
-        aw.moveClaimant(def, 7, 1), nil);
+        'Locks>Pins>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+    check('AB5b Triggers refuses the drag (the floor)', aw.moveClaimant(def, 9, -1), nil);
+    check('AB6 the floor-adjacent claimant (Chocobo #8) cannot move down into the Triggers floor (stays last)',
+        aw.moveClaimant(def, 8, 1), nil);
     check('AB6b Fishing CAN move up (HELM #6 <-> Fishing #7)',
         table.concat(aw.moveClaimant(def, 7, -1), '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>Fishing>HELM>Triggers');
+        'Pins>Locks>AutoAmmo>MaxMP>Craft>Fishing>HELM>Chocobo>Triggers');
     check('AB7 out-of-range / bad args are nil, never a throw',
         aw.moveClaimant(def, 1, -1) == nil and aw.moveClaimant(def, 0, 1) == nil
         and aw.moveClaimant(def, 3, 0) == nil and aw.moveClaimant(nil, 1, 1) == nil, true);
@@ -6911,6 +6911,50 @@ end)();
     check('F84 wornFishTotal: best body + doubled ring, rod excluded',
         fcalc.wornFishTotal({ [1] = 1, [2] = 1, [3] = 2, [4] = 1 }), 4);
     fcalc._setDb(realDb);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- CHOCOBO riding-gear overlay (issue #95, engine v120 -- docs/design/chocobo-
+-- gear.md). The fourth idle-only sibling: chocoStateActive is enabled-only;
+-- chocoOverlayFor resolves the manifest `choco` block through dlac:AutoChoco
+-- for Main/Neck/Body/Hands/Legs/Feet (the Chocobo Wand rides Main), stands
+-- aside Engaged/Dead, and level-gates each rung like HELM/Fishing.
+-- ---------------------------------------------------------------------------
+(function()
+    local act = dispatchM._chocoStateActive;
+    check('CH1 enabled state active',   act({ enabled = true }), true);
+    check('CH2 disabled state inactive', act({ enabled = false }), false);
+    check('CH3 nil state inactive',     act(nil), false);
+
+    dispatchM._autoOverride = { choco = {
+        main = { { name = 'Chocobo Wand', score = 30, level = 1, ride = 30 } },
+        neck = { { name = 'Chocobo Torque', score = 4, level = 1, ride = 4 } },
+        body = { { name = 'Orange Race Silks', score = 10, level = 1, ride = 10 } },
+        legs = { { name = 'Riders Hose', score = 4, level = 55, ride = 4 } },
+    } };
+    local cs = { enabled = true, at = 1 };
+    local cov = dispatchM._chocoOverlayFor(cs, { player = { MainJobSync = 75, Status = 'Idle' } });
+    check('CH4 Main is the Chocobo Wand (weapon slot included)', cov and cov.Main, 'Chocobo Wand');
+    check('CH5 Neck resolves',  cov and cov.Neck, 'Chocobo Torque');
+    check('CH6 Body resolves',  cov and cov.Body, 'Orange Race Silks');
+    check('CH7 Legs usable at 75', cov and cov.Legs, 'Riders Hose');
+    -- slots the ladder has no gear for are simply absent from the overlay.
+    check('CH8 Hands with no owned rung -> slot absent', cov and cov.Hands, nil);
+    local covLow = dispatchM._chocoOverlayFor(cs, { player = { MainJobSync = 10, Status = 'Idle' } });
+    check('CH9 underlevel Legs rung -> slot empty', covLow and covLow.Legs, nil);
+    check('CH10 low-level Main still resolves',      covLow and covLow.Main, 'Chocobo Wand');
+    -- idle-only: Engaged/Dead stand the whole overlay down.
+    check('CH11 engaged -> stands aside',
+        dispatchM._chocoOverlayFor(cs, { player = { MainJobSync = 75, Status = 'Engaged' } }), nil);
+    check('CH12 dead -> stands aside',
+        dispatchM._chocoOverlayFor(cs, { player = { MainJobSync = 75, Status = 'Dead' } }), nil);
+    check('CH13 disabled -> no overlay',
+        dispatchM._chocoOverlayFor({ enabled = false }, { player = { MainJobSync = 75, Status = 'Idle' } }), nil);
+    check('CH14 resolveVirtual dlac:AutoChoco Main', dispatchM._resolveVirtual('dlac:AutoChoco',
+        { player = { MainJobSync = 75 } }, 'Main'), 'Chocobo Wand');
+    check('CH15 resolveVirtual unclaimed choco slot -> nil', dispatchM._resolveVirtual('dlac:AutoChoco',
+        { player = { MainJobSync = 75 } }, 'Ring1'), nil);
+    dispatchM._autoOverride = nil;
 end)();
 
 -- ---------------------------------------------------------------------------
