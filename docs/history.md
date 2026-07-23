@@ -5005,3 +5005,19 @@ the Migrate button is the standing nudge for any returning legacy-data user.
 Remaining on the books: the sunset window itself, then the Phase D deletion
 party -- issue #84 is its lockstyle line-item (never dispatch before Phase D).
 The branch stays on origin as history, awaiting Henrik's delete.
+
+## The great cleanup: zero hanging anything (2026-07-23, post-graduation)
+
+**Henrik's rule:** no hanging issues or PRs now that the native branch is
+main. Executed: #88 closed (shipped in PR #90 -- the PR just lacked the
+auto-close keyword; a recurring pipeline gotcha), #84 closed as PARKED (the
+Phase D lockstyle line-item -- ADR 0015's Phase D section is the deletion
+list of record; reopen/refile when the sunset ends). Tracker: 0 open issues,
+0 open PRs. Origin: NINE merged branches deleted (the graduated
+feature/native-engine, five agent PR branches, three Gear Oracle stragglers)
+-- main is the only remote branch. Local: seven merged branches + one stale
+worktree removed (each verified in-main first); survivors are deliberate --
+feature/autoacc (GM approval pending, the ONE live pre-native artifact,
+never delete/push) plus storage-move + hidden-features (superseded,
+Henrik's to delete). Confirmed in passing: the whole maxmp boot saga
+(v112-v119) rode the graduation -- main's dispatch reads M.VERSION = 119.

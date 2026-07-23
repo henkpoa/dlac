@@ -204,7 +204,30 @@ agent; the per-repo setup lives in `docs/agents/`.
 - A GM is currently evaluating the addon for server approval — polish requests from
   that channel (like the word-wrap fix) take priority.
 
-## Current state (as of 2026-07-23)
+## Current state (as of 2026-07-23, end of day)
+
+- **🎓 GRADUATED — main IS the native era.** `feature/native-engine` fast-forwarded
+  onto main (`d0736a0..4ae8665`, record `77b4c7e`) after Henrik field-verified every
+  onboarding path (fresh install, existing-native boot, legacy Migrate box, AND the
+  migration Commit end-to-end). **Main's freeze is over; main is the one development
+  line; origin holds exactly one branch.** The tracker is ZERO open issues / ZERO open
+  PRs by Henrik's standing rule — #84 (the Phase D lockstyle line-item) is CLOSED as
+  parked; **ADR 0015's Phase D section is the deletion list of record** (reopen/refile
+  #84 when the sunset window ends with zero legacy users). Onboarding is native-first
+  and SILENT: fresh installs are born native and auto-set-up with no ceremony and no
+  chat (only FAILURES speak, once — deliberate); a legacy-data user gets the red
+  **Migrate** button + the three-part box with the hard rule ("either LAC or DLAC —
+  never both at once"). The boot decision seam survived a field bug worth remembering:
+  an undecided first-run beat must stay INERT (it used to seed the legacy home and
+  then read its own gear.lua template as legacy evidence — history.md "the
+  self-manufactured-evidence bug"; also: in-game `ashita.fs.get_dir` returns nil for a
+  MISSING dir while the headless popen fallback returns {}, so the suite masked it).
+  What remains, all unhurried: the sunset window → the Phase D deletion party; the
+  standing offers (maxmp tick/offset persistence, Trigger Monitor native feed,
+  augment-string pins); and the graduation-day branding question (the addon is named
+  after the thing it no longer needs). One live pre-native artifact: local branch
+  `feature/autoacc` (GM approval pending) — never delete, never push. The two blocks
+  below are the build-up story, kept as history.
 
 - **THE LOCKSTYLE PIVOT — lockstyle is addon-resident; the Engine equips gear only
   (07-23, PRD #80, RULED — code lands slice by slice).** After the week-long
