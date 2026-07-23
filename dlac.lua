@@ -25,7 +25,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.07.23z';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.07.23za';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
 addon.desc    = 'Build gear sets and view live stats with level scaling (for LuaAshitacast).';
 
@@ -269,7 +269,8 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
                        'ui\\craftbar', 'feature\\helmwatch', 'ui\\helmbar',
                        'feature\\fishwatch', 'ui\\fishbar', 'feature\\meritwatch',
                        'feature\\check', 'feature\\debug', 'feature\\lockstyle',
-                       'feature\\equipengine', 'feature\\engine', 'ui\\gearui' }) do
+                       'feature\\lockstyleapply', 'feature\\equipengine',
+                       'feature\\engine', 'ui\\gearui' }) do
     local ok, err = pcall(require, 'dlac\\' .. mod);
     ledger.total = ledger.total + 1;
     if not ok then

@@ -4791,3 +4791,45 @@ Monitor's native feed; augment-string pins; maxmp tick+offset persistence. FIELD
 CONFIRM pending (Henrik, issue #87): a simulated fresh install (rename/park the
 config dirs) boots native, asks about LAC if loaded, and Setup produces a
 playable character with zero LAC-tree writes.
+
+## Lockstyle executor polish: apply()'s result is bookkeeping's gate (2026-07-23, feature/native-engine, addon 2026.07.23za, issue #88)
+
+The two review nits recorded on PR #86 (and #83), landed once #87's PR (#89) was
+in and the dlac.lua collision cleared.
+
+**`_applyDirect` conditions its bookkeeping on the executor's result.**
+`lockstyleapply.apply()` returns `{ ok, ... } | { ok = false, why }`
+SYNCHRONOUSLY, but the GUI Apply button's call site (`feature/lockstyle.lua`
+`M._applyDirect`) used to note `lastBox` and arm the zone guard
+UNCONDITIONALLY — before the call, inside a `pcall` that swallowed the return.
+So a refused apply (an empty box, an inject failure) still taught keep-on-sub a
+box the server never got and armed the guard around a style that never went out.
+Now the note+arm ride `res.ok`: on refusal neither fires, and the reason (which
+the executor already emits to chat) is also surfaced in the window's `_status`
+line — a failed button apply is visible in the GUI, not only in chat. A
+SUCCESSFUL apply is byte-identical to before: the same order (note `lastBox`,
+then arm) with the same effect, because the executor reads `data`, never
+`lastBox` or the guard, so moving the two below the call cannot change a good
+apply. The executor-unavailable branch (`_laok` false) and a pcall'd executor
+error are refusals too, each named in `_status`. Tests LAD0–12 drive
+`_applyDirect` with a STUB executor so the `ok` flag is controlled rather than
+derived from headless inject quirks; LAP + LGF stay green (LGF runs the whole
+chain on the legacy queue path — `nativeArmed()` is false headless — so it never
+touched `_applyDirect` and could not regress).
+
+**`feature/lockstyleapply` joins dlac.lua's load-loop ledger.** The executor is
+the one lockstyle module whose silent absence breaks Apply, yet it rode in only
+transitively (required inside `feature/lockstyle`, guarded, `_laok`), so
+`/dl check`'s module census could not name a broken or half-synced copy of it.
+It now sits beside `feature\lockstyle` in the load loop, counted like its
+siblings — a corrupt copy shows up as a NAMED failure in the census
+(`check.lua` reads the ledger's `total`/`failed` dynamically, so nothing pins
+the count). Bumped `addon.version` to `2026.07.23za` (the letters ran out at
+`z`; `za` sorts after). No `dispatch.M.VERSION` bump: the touched files
+(`dlac.lua`, `feature/lockstyle.lua`) are addon-only, not seeded — the engine's
+equipping behavior is unchanged, so the staleness handshake has nothing to say.
+
+**Tests:** 2690→2703 checks, 225 smoke, green lua5.4. FIELD CONFIRM pending
+(Henrik): a button apply of an empty/unwearable box shows the `_status` refusal
+and does NOT arm the guard; a good apply is unchanged; `/dl check` counts
+lockstyleapply and names a corrupted copy.

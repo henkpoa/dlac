@@ -7715,6 +7715,58 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- LAD. _applyDirect conditions its bookkeeping on the executor's result
+--      (issue #88). The GUI Apply button's direct executor call USED to note
+--      lastBox + arm the zone guard unconditionally, before the call, inside a
+--      swallowing pcall that discarded { ok, ... }. Now a REFUSED apply (empty
+--      box, inject failure) must touch neither -- and name the refusal in the
+--      window's _status line -- while a SUCCESSFUL apply keeps the old order and
+--      effect (note lastBox, then arm). Driven with a STUB executor so the ok
+--      flag is controlled, not derived from headless inject quirks.
+-- ---------------------------------------------------------------------------
+(function()
+    local savedLap = package.loaded['dlac\\feature\\lockstyleapply'];
+    local savedLs  = package.loaded['dlac\\feature\\lockstyle'];
+    local stub = { result = nil, calls = 0 };
+    stub.apply = function(_, b) stub.calls = stub.calls + 1; stub.box = b; return stub.result; end
+    package.loaded['dlac\\feature\\lockstyleapply'] = stub;
+    package.loaded['dlac\\feature\\lockstyle'] = nil;
+    local ls = dofile('feature/lockstyle.lua');
+
+    check('LAD0 module loads', type(ls), 'table');
+    check('LAD1 clean start: no box remembered', ls._lastBox(), nil);
+    check('LAD2 clean start: guard not armed', ls._guardOn(), false);
+
+    -- REFUSED apply: the executor says no. Bookkeeping must stay put.
+    stub.result = { ok = false, why = 'lockstyle box 2 has no items' };
+    ls._applyDirect(2);
+    check('LAD3 refusal called the executor', stub.calls, 1);
+    check('LAD4 refusal leaves lastBox unchanged', ls._lastBox(), nil);
+    check('LAD5 refusal does NOT arm the guard', ls._guardOn(), false);
+    check('LAD6 refusal names the reason in _status',
+        ls._statusLine(), 'apply failed -- lockstyle box 2 has no items.');
+
+    -- SUCCESSFUL apply: same order and effect as before -- note lastBox, arm.
+    stub.result = { ok = true, box = 2, name = 'box 2', styled = 1 };
+    ls._applyDirect(2);
+    check('LAD7 success called the executor with the box', stub.box, 2);
+    check('LAD8 success remembers the box (keep-on-sub memory)', ls._lastBox(), 2);
+    check('LAD9 success arms the zone guard', ls._guardOn(), true);
+
+    -- A pcall'd executor ERROR is a refusal too: it surfaces in _status and
+    -- leaves the prior good apply's memory (lastBox 2, guard armed) untouched.
+    stub.apply = function() error('kaboom'); end
+    ls._applyDirect(2);
+    check('LAD10 executor error surfaces in _status',
+        ls._statusLine(), 'apply failed -- apply executor error.');
+    check('LAD11 error refusal leaves lastBox untouched', ls._lastBox(), 2);
+    check('LAD12 error refusal leaves the guard untouched', ls._guardOn(), true);
+
+    package.loaded['dlac\\feature\\lockstyleapply'] = savedLap;
+    package.loaded['dlac\\feature\\lockstyle'] = savedLs;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- WI/SN. weights import (weightimport.parse/classify -> gearoptim.
 -- importNamedWeights) and non-identifier set names through setmanager --
 -- the Midcast_STR-VIT field bug: a dashed name must serialize bracket-quoted,

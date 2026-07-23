@@ -1254,6 +1254,7 @@ local townDueAt, townDuePick, townDueBase = nil, nil, nil;
 -- late-binding pattern as M._touched).
 function M._lastBox() return lastBox; end
 function M._healDue() return subDueAt; end
+function M._statusLine() return _status; end   -- window status readout (tests: apply refusal)
 -- The keep memory's writer (field round 6). The GUI Apply button and the
 -- OnLoad pump call this DIRECTLY at their queue sites: a command queued from
 -- this very state does NOT loop back into this state's own command event
@@ -1285,14 +1286,32 @@ function M._applyDirect(box)
             return;
         end
     end
-    M._noteApplied(box);
-    M._guardArm();
     M._capNote('apply (addon-direct): box ' .. tostring(box));
-    if _laok then
-        pcall(function() lsapply.apply(data, box); end);
-    else
+    if not _laok then
         print('[dlac] lockstyle: apply executor unavailable (feature/lockstyleapply failed to load).');
+        _status = 'apply failed -- executor unavailable (feature/lockstyleapply not loaded).';
+        return;
     end
+    -- The executor returns { ok, ... } | { ok = false, why } SYNCHRONOUSLY, so
+    -- the bookkeeping is CONDITIONED on ok (issue #88): a refused apply -- an
+    -- empty box, an inject failure -- must neither teach keep-on-sub a box the
+    -- server never got (lastBox), nor arm the zone guard around a style that
+    -- never went out. On success the order and effect are byte-identical to
+    -- before (note lastBox, then arm): the executor reads `data`, never lastBox
+    -- or the guard, so moving these below the call cannot change a good apply.
+    local pok, res = pcall(function() return lsapply.apply(data, box); end);
+    if pok and type(res) == 'table' and res.ok == true then
+        M._noteApplied(box);
+        M._guardArm();
+        return;
+    end
+    -- Refused (or the executor itself errored): the executor already emitted the
+    -- reason to chat -- surface it in the window's status line too, so a failed
+    -- button apply is visible in the GUI, not only in chat.
+    local why = (type(res) == 'table' and res.why)
+             or ((not pok) and 'apply executor error')
+             or 'apply refused';
+    _status = 'apply failed -- ' .. tostring(why) .. '.';
 end
 -- Apply a town pick's effect (v46). 'off' -> drop the style (the guard's
 -- 'suppress' verdict lets it fall in a town); a BOX -> replace with it and ARM
