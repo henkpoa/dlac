@@ -96,6 +96,14 @@ _Avoid_: "has it" without saying which of the two you mean
 A set is a *plan*: it may contain anything the character can ever wield (a 1H weapon in Sub with no Dual Wield). Legality is decided by the engine at *equip* time (`subSlotAllowed`: DW up → weapon; otherwise the list's shield/grip). GUI surfaces that equip immediately gate; builders never do.
 _Avoid_: validating sets against current traits/state
 
+**Addon state**:
+The Lua state Ashita creates for dlac itself — the GUI, editors, storage, watchers, and every feature that does not equip gear (lockstyle lives here whole: editor, preview, and apply). One of dlac's two Lua states.
+_Avoid_: "the GUI" (the state runs more than rendering)
+
+**Engine**:
+dlac's dispatch code loaded inside LuaAshitacast's Lua state, per character. It exists to equip gear — the one capability only LAC's state has — and to report on its own equipping; anything else belongs in the Addon state. Crossings between the two states go through files, never the command bus.
+_Avoid_: dispatcher, LAC (LAC is the host, the Engine is dlac's tenant in it)
+
 **Engine handshake**:
 `dispatch.M.VERSION`, mirrored through `modestate.lua`, lets the GUI detect that LuaAshitacast is still running a stale seeded engine and show the red "Reload LAC" banner. Bump it whenever seeded-file behavior changes.
 

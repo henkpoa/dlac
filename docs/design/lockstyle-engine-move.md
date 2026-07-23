@@ -1,9 +1,26 @@
 # Lockstyle execution moves engine-side — design handoff
 
+> **SUPERSEDED (2026-07-23, the grill session this doc asked for).** The
+> direction REVERSED: lockstyle goes fully **addon-resident** — the addon
+> edits, previews, and applies; the Engine equips gear only. The apply's LAC
+> residence was historical accident (v38's `gFunc.LockStyle`, replaced in v42
+> by a self-built 0x053 + `AshitaCore` inject — available in any state); the
+> pumps/guard/memory already lived addon-side, so moving the *executor* to
+> the *trigger's* state dissolves every wall crossing into a direct call.
+> The week's law "the engine is the reliable executor" was derived from
+> automations, which must live in LAC because they equip THROUGH it; the
+> deeper law is "never cross the bus," and lockstyle obeys it more cheaply
+> in the other direction. **The PRD on
+> [issue #80](https://github.com/henkpoa/dlac/issues/80) is the authority.**
+> This document is kept as the FALLBACK design if the addon-state outgoing
+> 0x053 injection spike fails, and for its §1 story, §4 Ashita facts, and
+> §5 code map, which remain accurate.
+
 **Tracker: [issue #80](https://github.com/henkpoa/dlac/issues/80)** — the
 reference number for this whole effort; the PRD and its issues chain from it.
 
-**Status:** NOT STARTED — this document is the grill/PRD input (Henrik's call,
+**Status:** SUPERSEDED — see the banner above. (Original status: NOT STARTED
+— this document was the grill/PRD input; Henrik's call,
 2026-07-23: "Can't we just move it to the engine side completely instead of
 troubleshooting an issue that shouldn't be there in the first place?").
 **Base:** engine v109 / addon 2026.07.23l, field-confirmed working on both
