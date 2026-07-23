@@ -8295,10 +8295,15 @@ end)();
     aw.removeAmmo(1);
     check('AW15 removeAmmo', #aw.list == 1 and aw.list[1].name == 'Iron Bullet', true);
 
-    -- EB. eboxammo -- the E-Box 0x1A4 client (trove's wire format, reimplemented;
-    -- Crystal-Warrior-only consumer of gamemode.get). Parsing is string.byte so
-    -- the whole wire path runs here; packets are built as synthetic strings.
-    local eb = dofile('feature/eboxammo.lua');
+    -- EB. eboxammo -- now a THIN ADAPTER over the one client (ADR 0016). The
+    -- wire itself is tested on the client (EBC*); these checks pin the ADAPTER:
+    -- delegation + the cat-15 mirror ui/ammoui reads. A fresh client is injected
+    -- (require fails headless) and driven THROUGH the adapter. pk/msgAt build the
+    -- synthetic packets (also used by EBC/RS below).
+    local eb  = dofile('feature/eboxammo.lua');
+    local ebc = dofile('feature/eboxclient.lua');
+    eb._setClient(ebc);
+    ebc._now = function() return 4000; end
     local function pk(bytes)
         local t = {};
         for off = 0, 63 do t[off + 1] = string.char(bytes[off] or 0); end
@@ -8313,26 +8318,28 @@ end)();
     check('EB1c junk qty -> 0', eb._clampQty('x', 5), 0);
     check('EB1d floors fractions', eb._clampQty(3.7, 5), 3);
 
-    check('EB2 ITEM outside our stream is not ours (trove\'s traffic)',
+    check('EB2 ITEM outside our stream is not ours (party line)',
         eb._onPacket(pk({ [0x04] = 1, [0x08] = 10 })), false);
-    eb._beginStream();
+    eb._beginStream();   -- delegates to the client's cat-15 request
     check('EB3 CLEAR consumed while pending', eb._onPacket(pk({ [0x04] = 0 })), true);
     eb._onPacket(pk({ [0x04] = 1, [0x08] = 0x36, [0x09] = 0x53, [0x0C] = 200 }));   -- id 21302 x200
     eb._onPacket(pk({ [0x04] = 1, [0x08] = 0x56, [0x09] = 0x53, [0x0C] = 1 }));     -- id 21334 x1
     check('EB3b END_LIST from another source does not commit',
         eb._onPacket(pk({ [0x04] = 2, [0x05] = 3 })), false);
     check('EB3c END_LIST source 0 commits', eb._onPacket(pk({ [0x04] = 2, [0x05] = 0 })), true);
-    check('EB3d counts committed', eb.counts[21302] == 200 and eb.counts[21334] == 1, true);
+    check('EB3d counts mirror the committed cat-15 stream',
+        eb.counts ~= nil and eb.counts[21302] == 200 and eb.counts[21334] == 1, true);
     check('EB4 stream closed: a late ITEM is not ours',
         eb._onPacket(pk({ [0x04] = 1, [0x08] = 10 })), false);
 
-    eb.busy = true;
+    -- withdraw ACK: stage the batch on the client, drive it through the adapter
+    ebc._beginBatch(1);
     check('EB5 ACK for someone else\'s action is not ours',
         eb._onPacket(pk({ [0x04] = 3, [0x05] = 15, [0x06] = 1 })), false);
-    check('EB5b withdraw ACK success clears busy',
-        eb._onPacket(pk({ [0x04] = 3, [0x05] = 2, [0x06] = 1 })), true);
-    check('EB5c success status is not an error', eb.busy == false and eb.statusErr == false, true);
-    eb.busy = true;
+    check('EB5b withdraw ACK success consumed + busy mirror clears',
+        eb._onPacket(pk({ [0x04] = 3, [0x05] = 2, [0x06] = 1 })) == true and eb.busy == false, true);
+    check('EB5c success status is not an error', eb.statusErr, false);
+    ebc._beginBatch(1);
     eb._onPacket(pk(msgAt({ [0x04] = 3, [0x05] = 2, [0x06] = 0 }, 0x10, 'Inventory full.')));
     check('EB5d refusal carries the server\'s words', eb.status, 'Inventory full.');
     check('EB5e refusal is an error', eb.statusErr, true);
@@ -8344,11 +8351,11 @@ end)();
     eb._beginStream();
     eb._onPacket(pk({ [0x04] = 4, [0x05] = 1 }));
     check('EB6b LOCKED reason 1 while pending = not a Crystal Warrior', eb.lockedReason, 'cw');
-    eb.lockedReason = nil;
+    ebc.lockedReason = nil; eb._sync();
     eb._beginStream();
     eb._onPacket(pk(msgAt({ [0x04] = 4, [0x05] = 2 }, 0x10, 'Locked.')));
     check('EB6c LOCKED reason 2 = box not unlocked', eb.lockedReason == 'locked' and eb.lockedMsg == 'Locked.', true);
-    eb.lockedReason = nil;
+    ebc.lockedReason = nil; eb._sync();
 
     check('EB7 refresh refuses headless (not CW -- the affirmative-only gate)', eb.refresh(), false);
     check('EB7b withdraw refuses headless too', eb.withdraw(21334, 1), false);
