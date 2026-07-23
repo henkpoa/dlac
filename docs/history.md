@@ -4565,3 +4565,73 @@ completely, addon becomes editor/preview, files become the only wall
 crossing. Design handoff: docs/design/lockstyle-engine-move.md (the grill
 agenda lives in its section 6); tracked as the GitHub issue referenced in
 that document's issue link once filed.
+
+## The pivot REVERSES: lockstyle goes ADDON-resident -- the Apply button injects its own 0x053 (2026-07-23, addon 2026.07.23m, issue #81 / PRD #80)
+
+**Theme:** the grill (2026-07-23) reversed the engine-move direction. Henrik's
+ruling: *"Lockstyle should really be able to exist on its own 100% within
+DLAC"* -- the addon has grown a central Arbiter and the Gear Oracle, and LAC is
+now needed only to actually equip GEAR. Lockstyle is a purely visual feature
+that equips nothing; coupling it to LuaAshitacast (so it dies entirely without
+LAC and needs two-state debugging to support) was historical accident, not
+necessity. Apply went engine-side when it called `gFunc.LockStyle`, but since
+v42 it BUILDS the 0x053 itself and injects via `AshitaCore` -- the process-wide
+SDK, available in every addon state. So the whole executor can come home.
+PRD #80 stages the hand-over so no mixed-generation `git pull` window can
+double-apply: **phase 1** = addon gains the executor, Engine (v109) untouched;
+**phase 2** = pure Engine deletion, gated on field confirmation. This is the
+first slice: the GUI Apply button, the narrowest real path, proving the one
+unproven mechanic -- **outgoing 0x053 injection from the addon's own Lua
+state**.
+
+**Landed (issue #81):** `feature/lockstyleapply.lua`, the executor. It reads the
+saved boxes table (the caller passes lockstyle's already-Profiles-resolved
+`data` -- SAVED file, never the working copy), picks the box, resolves names to
+ids against Owned gear (`gear.NameToObject` + resource fallback -- identical to
+the Engine's `_lsResolvers`, because `dlac\gear` resolves to the same char file
+in both states), builds the 0x053 with the pure core **relocated from the
+Engine byte-for-byte** (`_lockstyleFrom` / `_lockstylePacket` verbatim -- the
+Engine's copy stays untouched this slice, the two pinned byte-identical by the
+new LAP parity tests), injects via `AshitaCore:GetPacketManager():AddOutgoingPacket`,
+and stamps a sender-side send witness (`M._lsLastSend`). Two deliberate
+divergences from the Engine's copy: the silent job gate is predicted through
+the **Gear Oracle's one door** (`oracle.anyJobCanWear`) -- no `_lsStyleGate`
+twin, the GRD guards forbid a second eligibility home -- and the weapon-category
+warning + freeze-current read come from the Addon state's own worn source
+(`oracle.wornItem`), never `gData` (the addon's shim carries no `GetEquipment`).
+Player-facing chat lines are preserved VERBATIM.
+
+**The button** (`feature/lockstyle.lua`) now calls `M._applyDirect(box)` -- a
+DIRECT function call, no `queueCmd`, no request-file write, the command bus
+untouched -- so addon load order can never silence it (the friend's original
+"preview works, Apply silently doesn't"). **Bookkeeping is at the call site**
+(the established law: an addon state never hears its own queued commands, and
+same-state visibility of its OWN injected packet is unproven): `_applyDirect`
+notes `lastBox` (keep-on-sub then remembers this box) and arms the zone guard
+(`M._guardArm` -- the applied style survives zoning, the client's zone-in
+auto-DISABLE swallowed exactly as today) DIRECTLY, never off observing its own
+packet_out. **The pumps (OnLoad / keep-on-sub / town) and the typed
+`/dl ls apply` handler STILL ride the Engine path this slice** (queueCmd + the
+v109 request bridge -> `engineApplyHalf`); moving them is later phase-1 work.
+Exactly one apply either way; no order quadrant double-applies (grep-provable:
+the button path is queueCmd-free and request-free).
+
+**Tests:** section LAP (23 checks) -- `_lockstyleFrom`/`_lockstylePacket` parity
+vs the Engine (`dispatchM`) across the AG/AJ fixtures (all 136 bytes identical),
+plus the live `apply()` driven through its injectable deps seam: injection,
+byte-0 = 0x53, the styled count, the send witness, and each warning path (job
+gate through a stubbed oracle door, weapon category from the injected worn
+reads, unresolved-name EMPTY) asserted with the Engine's wording verbatim, plus
+inject-failure and empty-box both reporting `ok=false`. Both loops green (2554
+run_tests + 225 smoke_ui). No `dispatch.M.VERSION` bump -- no seeded-file
+behavior changed (the Engine is untouched); `addon.version` date-bumped to
+2026.07.23m.
+
+**Deferred / flagged:** the Apply button TOOLTIP changed from "engine-side:
+/dl ls apply -- needs LuaAshitacast loaded" to "applied by dlac itself -- no
+LuaAshitacast needed" (now factually true); a player-facing string, flagged for
+Henrik's sign-off in the PR. The ADR (0014) and the design-doc supersession
+banner are the docs slice's job (PRD #80). **FIELD CONFIRM pending (Henrik):**
+button apply on both machines + one LAC-absent demonstration. If the injection
+itself fails => STOP; the superseded `docs/design/lockstyle-engine-move.md` is
+the designated fallback (do not improvise one).
