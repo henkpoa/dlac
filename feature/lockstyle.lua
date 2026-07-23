@@ -36,10 +36,12 @@
     lockstyleapply builds the 0x053 and injects it via AshitaCore (the process-
     wide SDK, no gFunc, no LuaAshitacast needed), and the call site (M._applyDirect)
     arms the guard + notes lastBox itself. No command bus, no request file: addon
-    load order can't silence it. The pumps (OnLoad / keep-on-sub / town) and the
-    typed '/dl ls apply' handler STILL ride the Engine path this slice (queueCmd +
-    the v109 request-file bridge -> dispatch's engineApplyHalf, which builds the
-    0x053 itself since v42; gFunc.LockStyle is long gone). Apply reads the SAVED
+    load order can't silence it. LEGACY mode: the pumps (OnLoad / keep-on-sub /
+    town) and the typed '/dl ls apply' handler still ride the Engine path
+    (queueCmd + the v109 request-file bridge -> dispatch's engineApplyHalf).
+    NATIVE mode (#83): there is ONE state, so a self-queued command is heard by
+    no one -- queueCmd's apply funnel and the typed handler both route to
+    M._applyDirect instead; every apply path is addon-resident. Apply reads the SAVED
     file, never the working copy: unsaved edits do not apply. "OnLoad Lockstyle"
     binds CURRENT JOB -> MARKED BOX: the pump below (macrobook's login/job-change
     pattern) queues the apply ~6s after login / ~3s after a job change, when the
@@ -639,6 +641,19 @@ function M.debugCaptureLog()
     return L;
 end
 
+-- Is the Native engine armed in this state? Under it there is exactly ONE Lua
+-- state -- a self-queued '/dl ls apply' would be heard by NO ONE (the Ashita
+-- law: an addon never hears its own queued commands), so every scripted apply
+-- must go DIRECT. Guarded require; false in legacy mode and headless.
+local function nativeArmed()
+    local armed = false;
+    pcall(function()
+        local eng = require('dlac\\feature\\equipengine');
+        armed = (type(eng) == 'table' and type(eng.nativeOn) == 'function' and eng.nativeOn() == true);
+    end);
+    return armed;
+end
+
 local function queueCmd(c)
     M._capNote('queued: ' .. tostring(c));
     -- v109: an APPLY also rides the request file (feature/debug.lua ->
@@ -650,6 +665,15 @@ local function queueCmd(c)
     -- keeps the healthy command path single-run.
     local box = tostring(c):match('^/dl ls apply%s*(%d*)');
     if box ~= nil then
+        -- NATIVE (#83): one state -- the queued command would be heard by no
+        -- one and there is no engine to request. Every scripted apply (town
+        -- transitions, OnLoad restore, keep-on-subjob) funnels through here,
+        -- so this ONE branch routes them all to the addon-resident executor.
+        if nativeArmed() then
+            M._capNote('apply (native-direct via queueCmd): box ' .. tostring(box));
+            M._applyDirect((box ~= '') and tonumber(box) or nil);
+            return;
+        end
         pcall(function()
             local dbg = require('dlac\\feature\\debug');
             if type(dbg) == 'table' and type(dbg.requestEngine) == 'function' then
@@ -1251,6 +1275,16 @@ end
 -- No queueCmd, no request-file write on this path: exactly one apply, and both
 -- absences are grep-provable. box = the marked box the caller resolved.
 function M._applyDirect(box)
+    -- nil box = the MARKED one (the same resolution the engine's apply used;
+    -- the native queueCmd funnel passes nil for a bare '/dl ls apply').
+    if box == nil then
+        load_();
+        box = (data ~= nil) and tonumber(data.active) or nil;
+        if box == nil then
+            print('[dlac] lockstyle: nothing to apply (no marked box).');
+            return;
+        end
+    end
     M._noteApplied(box);
     M._guardArm();
     M._capNote('apply (addon-direct): box ' .. tostring(box));
@@ -1679,9 +1713,16 @@ ashita.events.register('command', 'dlac-lockstyle', function(e)
     -- No explicit box = the marked one, same resolution dispatch uses.
     if args[2] == 'apply' then
         lastBox = tonumber(args[3]) or (data ~= nil and tonumber(data.active)) or nil;
-        -- v109: hand-TYPED applies get the request ride too -- THIS handler
-        -- hearing the command does not mean the engine's state did (the
-        -- chain law; on friend-order chains we block it right here).
+        -- NATIVE (#83): one state -- THIS handler is the only listener, so a
+        -- hand-typed apply executes right here through the addon-resident
+        -- executor. No request ride: there is no engine state to request.
+        if nativeArmed() then
+            M._applyDirect(tonumber(args[3]));
+            return;
+        end
+        -- v109 (legacy): hand-TYPED applies get the request ride too -- THIS
+        -- handler hearing the command does not mean the engine's state did
+        -- (the chain law; on friend-order chains we block it right here).
         pcall(function()
             local dbg = require('dlac\\feature\\debug');
             if type(dbg) == 'table' and type(dbg.requestEngine) == 'function' then

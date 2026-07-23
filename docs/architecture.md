@@ -808,8 +808,11 @@ feedback loop.
 
 ### Native-mode gaps (deliberate, v1)
 
-- **Lockstyle**: pinned to LAC mode until the #80 addon-residency move
-  lands (`/dl ls apply` + `debug ls` engine halves return silently native).
+- **Lockstyle**: CLOSED (post-merge, #83) — the #80 executor
+  (feature/lockstyleapply) is addon-resident, and in native mode every
+  apply path (GUI button, town/OnLoad/keep-sub pumps via the queueCmd
+  funnel, hand-typed `/dl ls apply`) routes to it directly. Only the
+  `/dl debug ls` engine dry-run stays legacy-only (bridge diagnostics).
 - **Trigger Monitor stream**: the `/dlacmonev` command-bus hop is inert
   natively (self-queued commands are never heard — the Ashita law); the
   monitor repopulates when the ring gains a direct native feed.
