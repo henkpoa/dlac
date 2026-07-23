@@ -4479,3 +4479,15 @@ click's whole journey -- queued in the addon, received by the engine, SENT
 or refused-with-reason -- or names the hop that went silent. One run is
 still ONE window: nothing keeps running after it closes. Tests DBT7-11
 (clamp twins), DBG7-8 (flush), LGD8-10 (capture cycle); 2515 green.
+
+**Addendum 5: the provisional write (2026.07.23h, addon-side).** Field
+(Henrik, local): "debug folder created, but no txt file" -- the final write
+deliberately waits out the capture window (~49s), so an early folder check
+finds nothing and looks like failure. Fix: deliver() writes the PROVISIONAL
+report the moment the command runs (addon half + 'PENDING' engine section),
+chat prints 'report file created (finalizes in ~Ns) -> path', and the tick
+OVERWRITES it with the merged final. The pending note doubles as the tick's
+own tripwire: "if this line is still here well after, the deliver tick never
+fired -- send the file anyway, that fact is the finding." A debug run can no
+longer end fileless: booking writes, finalize overwrites, and every failure
+path prints itself. Test DBF8.

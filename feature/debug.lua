@@ -77,8 +77,12 @@ local FRESH_S = 10;
 -- ---------------------------------------------------------------------------
 
 -- Assemble the transfer file's text. engineRaw = the handoff file's bytes
--- (first line = os.time() stamp, rest = the engine's lines) or nil; a nil or
--- stale handoff writes the diagnosis INTO the file instead of an engine half.
+-- (first line = os.time() stamp, rest = the engine's lines); nil or a stale
+-- stamp writes the diagnosis INTO the file instead of an engine half; the
+-- literal `false` marks the PROVISIONAL write (the file lands the moment the
+-- command runs -- field 2026-07-23, "no txt file": the final write waits out
+-- the capture window, so an early look found nothing) and its pending note
+-- doubles as the tick's own tripwire.
 function M._mergeSections(label, addonLines, engineRaw, nowEpoch, addonVer)
     local out = {
         string.format('dlac %s -- written %s -- addon %s', tostring(label),
@@ -94,7 +98,12 @@ function M._mergeSections(label, addonLines, engineRaw, nowEpoch, addonVer)
         stamp = tonumber(engineRaw:match('^(%d+)'));
         rest = engineRaw:match('^%d+[^\n]*\n(.*)$');
     end
-    if stamp == nil then
+    if engineRaw == false then
+        out[#out + 1] = 'PENDING -- this is the provisional report, written the moment the command ran;'
+            .. ' the finished one (engine half + captured events) OVERWRITES this file when the'
+            .. ' window closes. If this line is still here well after, the deliver tick never'
+            .. ' fired -- send the file anyway, that fact is the finding.';
+    elseif stamp == nil then
         out[#out + 1] = 'ENGINE HALF MISSING -- the engine never wrote its handoff: LuaAshitacast is not'
             .. ' running the dlac engine (run Setup, then Reload LAC). That IS the diagnosis.';
     elseif math.abs(nowEpoch - stamp) > FRESH_S then
@@ -165,55 +174,69 @@ end);
 -- replaces it -- latest wins).
 local _pend = nil;
 
+-- Write one report file; returns the path (or nil + a printed failure).
+local function writeOut(base, text, label, word)
+    local path = nil;
+    local ok, err = pcall(function()
+        local dir = debugDir();
+        if dir == nil then error('install path unavailable', 0); end
+        if ashita and ashita.fs and ashita.fs.create_directory then ashita.fs.create_directory(dir); end
+        local p = dir .. base .. '-' .. charName() .. '.txt';
+        local f = io.open(p, 'wb');
+        if f == nil then error('cannot open for write: ' .. p, 0); end
+        f:write(text); f:close();
+        path = p;
+        print('[dlac] ' .. tostring(label) .. ': ' .. word .. ' -> ' .. p);
+    end);
+    if not ok then
+        pcall(function() print('[dlac] ' .. tostring(label) .. ': report write FAILED -- ' .. tostring(err)); end);
+    end
+    return path;
+end
+
 -- Book the transfer-file write: label for the header/chat, fileBase for the
 -- filename, the addon half's lines, and the engine handoff filename to merge
--- (nil = no engine half expected). Default delay 1.2s lets the engine's
--- same-frame handoff write land first; a capture window passes opts.delay =
--- window + 4s (the engine flushes its handoff at window end on a 0.4s tick,
--- so +4s reads it fresh, inside the 10s gate) and opts.append = a fn the
--- write moment calls for the addon-side timeline lines.
+-- (nil = no engine half expected). The PROVISIONAL report writes RIGHT NOW
+-- (the file exists the moment the command runs -- an early folder check
+-- finds it, and its pending note is the tick's tripwire); the finished one
+-- overwrites it at the delay. Default delay 1.2s lets the engine's same-
+-- frame handoff land first; a capture window passes opts.delay = window + 4s
+-- (the engine flushes at window end on a 0.4s tick, so +4s reads it fresh,
+-- inside the 10s gate) and opts.append = a fn the final write calls for the
+-- addon-side timeline lines.
 function M.deliver(label, fileBase, addonLines, handoffName, opts)
     local ver = nil;
     pcall(function() ver = addon ~= nil and addon.version or nil; end);
     opts = opts or {};
+    writeOut(fileBase, M._mergeSections(label, addonLines, false, os.time(), ver), label,
+        string.format('report file created (finalizes in ~%ds)', math.ceil(tonumber(opts.delay) or 1.2)));
     _pend = { label = label, base = fileBase, lines = addonLines, handoff = handoffName,
               ver = ver, append = opts.append, dueAt = os.clock() + (tonumber(opts.delay) or 1.2) };
 end
 
--- The write is pcall-wrapped but NEVER silently: a failure prints itself
--- (silence has no author -- the very lesson this section exists to teach).
+-- The finalize pass: overwrite the provisional with the merged report. All
+-- failures print themselves (silence has no author -- the very lesson this
+-- section exists to teach).
 ashita.events.register('d3d_present', 'dlac-debug-deliver', function()
     if _pend == nil or os.clock() < _pend.dueAt then return; end
     local p = _pend; _pend = nil;
-    local ok, err = pcall(function()
-        -- Capture-window runs append their timeline at the WRITE moment (the
-        -- window just closed; the log is complete now, not at booking time).
-        if p.append ~= nil then
-            local ok2, extra = pcall(p.append);
-            if ok2 and type(extra) == 'table' then
-                for _, l in ipairs(extra) do p.lines[#p.lines + 1] = l; end
-            end
+    -- Capture-window runs append their timeline at the WRITE moment (the
+    -- window just closed; the log is complete now, not at booking time).
+    if p.append ~= nil then
+        local ok2, extra = pcall(p.append);
+        if ok2 and type(extra) == 'table' then
+            for _, l in ipairs(extra) do p.lines[#p.lines + 1] = l; end
         end
-        local engineRaw = nil;
-        if p.handoff ~= nil then
+    end
+    local engineRaw = nil;
+    if p.handoff ~= nil then
+        pcall(function()
             local base = charBase();
             if base ~= nil then engineRaw = readAll(base .. 'dlac\\' .. p.handoff); end
-        end
-        local text = M._mergeSections(p.label, p.lines, engineRaw, os.time(), p.ver);
-        local dir = debugDir();
-        if dir == nil then error('install path unavailable', 0); end
-        if ashita and ashita.fs and ashita.fs.create_directory then ashita.fs.create_directory(dir); end
-        local path = dir .. p.base .. '-' .. charName() .. '.txt';
-        local f = io.open(path, 'wb');
-        if f == nil then error('cannot open for write: ' .. path, 0); end
-        f:write(text); f:close();
-        print('[dlac] ' .. tostring(p.label) .. ': report written -> ' .. path .. ' -- send this file.');
-    end);
-    if not ok then
-        pcall(function()
-            print('[dlac] ' .. tostring(p.label) .. ': report write FAILED -- ' .. tostring(err));
         end);
     end
+    writeOut(p.base, M._mergeSections(p.label, p.lines, engineRaw, os.time(), p.ver),
+        p.label, 'report finalized -- send this file');
 end);
 
 local PRINTERS = {

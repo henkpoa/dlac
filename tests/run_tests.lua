@@ -8602,6 +8602,9 @@ end)();
           and txt3:find('old lines', 1, true) == nil, true);
     check('DBF6 filenames sanitize to letters/digits', dbg._safeName("O'harra-2"), 'Oharra2');
     check('DBF7 no name = unknown', dbg._safeName(nil), 'unknown');
+    local txt4 = dbg._mergeSections('check', A, false, now, 'v');
+    check('DBF8 provisional write = PENDING + the tick tripwire', txt4:find('PENDING', 1, true) ~= nil
+          and txt4:find('never', 1, true) ~= nil and txt4:find('line two', 1, true) ~= nil, true);
 
     -- the capture-window length (v106): 30-120 clamp, default 45 -- the
     -- engine's debug branch clamps identically (twin constants).
