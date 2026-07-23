@@ -8710,6 +8710,96 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- NE. Native-engine storage home (feature/native-engine step 1) -- the flag
+-- parse, the mode-aware path authorities, and the migration copy planner.
+--
+-- All PURE: the flag parse and the copy planner take text/lists; the path
+-- composition runs against a stubbed AshitaCore install path with nativeMode
+-- overridden per check (no file IO -- the WSL CI parity rule: '\'-joined io
+-- paths break on Linux).
+-- ---------------------------------------------------------------------------
+(function()
+    local prof = package.loaded['dlac\\profiles'];
+
+    -- the flag parse: only a well-formed `return { native = true }` reads ON
+    check('NE1 flag: native=true is ON',         prof.parseEngineFlag('return { native = true };'), true);
+    check('NE2 flag: native=false is OFF',       prof.parseEngineFlag('return { native = false };'), false);
+    check('NE3 flag: absent text is OFF',        prof.parseEngineFlag(nil), false);
+    check('NE4 flag: damaged text is OFF',       prof.parseEngineFlag('return { native = '), false);
+    check('NE5 flag: non-table is OFF',          prof.parseEngineFlag('return 42;'), false);
+    check('NE6 flag: truthy-but-not-true is OFF', prof.parseEngineFlag('return { native = 1 };'), false);
+    check('NE7 flag: comments + writer shape parse', prof.parseEngineFlag(
+        '-- dlac engine flag -- written by /dl engine native on|off.\nreturn { native = true };\n'), true);
+
+    -- path authorities under both modes: stub the install + identity, flip
+    -- nativeMode by override (restored after -- the module is shared state).
+    local savedAC, savedNative = AshitaCore, prof.nativeMode;
+    AshitaCore = {
+        GetInstallPath = function() return 'I:\\game\\'; end,
+        GetMemoryManager = function() return {
+            GetParty = function() return {
+                GetMemberName = function() return 'Mindie'; end,
+                GetMemberServerId = function() return 12345; end,
+            }; end,
+        }; end,
+    };
+
+    prof.nativeMode = function() return false; end
+    check('NE8 charFolder is <Name>_<Id>',    prof.charFolder(), 'Mindie_12345');
+    check('NE9 legacy dataDir rides LAC tree', prof.dataDir(),
+          'I:\\game\\config\\addons\\luashitacast\\Mindie_12345\\dlac\\');
+    check('NE10 legacy charRoot is the LAC char base', prof.charRoot(),
+          'I:\\game\\config\\addons\\luashitacast\\Mindie_12345\\');
+    check('NE11 legacy storageRoot is the LAC root', prof.storageRoot(),
+          'I:\\game\\config\\addons\\luashitacast\\');
+    check('NE12 legacy pointer under dataDir', prof.pointerPath(),
+          'I:\\game\\config\\addons\\luashitacast\\Mindie_12345\\dlac\\profile.lua');
+    check('NE13 legacy cross-char data dir nests dlac\\', prof.charDataDirAt('Frieda_777'),
+          'I:\\game\\config\\addons\\luashitacast\\Frieda_777\\dlac\\');
+    check('NE14 legacy has no second exports home', prof.legacyExportsDir(), nil);
+
+    prof.nativeMode = function() return true; end
+    check('NE15 native dataDir is dlac\'s own root, no dlac\\ level', prof.dataDir(),
+          'I:\\game\\config\\addons\\dlac\\Mindie_12345\\');
+    check('NE16 native charRoot equals the char home', prof.charRoot(),
+          'I:\\game\\config\\addons\\dlac\\Mindie_12345\\');
+    check('NE17 native storageRoot is the dlac root', prof.storageRoot(),
+          'I:\\game\\config\\addons\\dlac\\');
+    check('NE18 native pointer under the char home', prof.pointerPath(),
+          'I:\\game\\config\\addons\\dlac\\Mindie_12345\\profile.lua');
+    check('NE19 native cross-char data dir is flat', prof.charDataDirAt('Frieda_777'),
+          'I:\\game\\config\\addons\\dlac\\Frieda_777\\');
+    check('NE20 native profilesRoot composes off dataDir', prof.profilesRoot(),
+          'I:\\game\\config\\addons\\dlac\\Mindie_12345\\profiles\\');
+    check('NE21 native still names the LEGACY exports home', prof.legacyExportsDir(),
+          'I:\\game\\config\\addons\\luashitacast\\dlac-exports\\');
+    check('NE22 native exports live under the dlac root', prof.exportsDir(),
+          'I:\\game\\config\\addons\\dlac\\dlac-exports\\');
+    check('NE23 flag file sits at the native root', prof.engineFlagPath(),
+          'I:\\game\\config\\addons\\dlac\\engine.lua');
+    check('NE24 backups follow the native char home', prof.backupPath('WHM'),
+          'I:\\game\\config\\addons\\dlac\\Mindie_12345\\backups\\pre-profiles\\WHM.lua');
+    check('NE25 legacy trigger tier rides the data home too', prof.legacyTriggersPath('WHM'),
+          'I:\\game\\config\\addons\\dlac\\Mindie_12345\\triggers\\WHM.lua');
+
+    prof.nativeMode = savedNative;
+    AshitaCore = savedAC;
+
+    -- the migration copy planner: skip existing, reject escapes, sort output
+    local copy, skip = prof.planEngineCopy(
+        { 'profiles\\Default\\sets\\WHM.lua', 'gear.lua', 'profile.lua',
+          'profiles\\Default\\sets\\WHM.lua' },   -- duplicate rides through (fs never produces one)
+        { ['gear.lua'] = true });
+    check('NE26 planner copies what the target lacks', table.concat(copy, ','),
+          'profile.lua,profiles\\Default\\sets\\WHM.lua,profiles\\Default\\sets\\WHM.lua');
+    check('NE27 planner skips what the target has', table.concat(skip, ','), 'gear.lua');
+    local c2 = prof.planEngineCopy({ '..\\evil.lua', 'C:\\abs.lua', '\\rooted.lua', '', 'ok.lua' }, {});
+    check('NE28 planner rejects escapes and absolutes', table.concat(c2, ','), 'ok.lua');
+    local c3, s3 = prof.planEngineCopy(nil, nil);
+    check('NE29 planner survives nil args', #c3 + #s3, 0);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then

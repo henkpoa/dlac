@@ -25,7 +25,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.07.23l';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.07.23m';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
 addon.desc    = 'Build gear sets and view live stats with level scaling (for LuaAshitacast).';
 
@@ -52,17 +52,29 @@ pcall(function()
     package.path = package.path .. ';' .. AshitaCore:GetInstallPath() .. 'addons\\?.lua';
 end);
 
--- Load THIS character's gear from their LuaAshitacast config folder, so the GUI shows
--- your real gear instead of the bundled empty template. Preloads package.loaded so every
+-- Load THIS character's gear from their config folder, so the GUI shows your
+-- real gear instead of the bundled empty template. Preloads package.loaded so every
 -- module's require("dlac\\gear") returns it. Falls back to the template if none found.
+-- Candidate order: the native home (config\addons\dlac\<char>\ -- live when the
+-- native-engine flag is on), then the legacy LuaAshitacast homes.
 pcall(function()
     local party = AshitaCore:GetMemoryManager():GetParty();
     local name  = party:GetMemberName(0);
     local id    = party:GetMemberServerId(0);
     if name == nil or name == '' or id == nil then return; end
+    local candidates = {};
+    pcall(function()
+        local prof = require('dlac\\profiles');
+        if prof.nativeMode() then
+            local d = prof.dataDir();
+            if d ~= nil then candidates[#candidates + 1] = d .. 'gear.lua'; end
+        end
+    end);
     local base = string.format('%sconfig\\addons\\luashitacast\\%s_%u\\', AshitaCore:GetInstallPath(), name, id);
-    for _, sub in ipairs({ 'dlac\\gear.lua', 'ffxi-lac\\gear.lua' }) do   -- dlac first, then a pre-migration profile
-        local chunk = loadfile(base .. sub);
+    candidates[#candidates + 1] = base .. 'dlac\\gear.lua';       -- legacy home
+    candidates[#candidates + 1] = base .. 'ffxi-lac\\gear.lua';   -- a pre-migration profile
+    for _, p in ipairs(candidates) do
+        local chunk = loadfile(p);
         if chunk ~= nil then
             local ok, g = pcall(chunk);
             if ok and type(g) == 'table' then
@@ -118,12 +130,29 @@ end
 -- is deliberately NOT retried here: by then the modules below have already captured the
 -- shared gear table, so swapping package.loaded would split them apart -- gearui re-reads
 -- the real gear.lua IN PLACE on its own first-login hook, before the first auto-sync.)
-seedCharFolder();
+--
+-- NATIVE MODE (feature/native-engine): seeding serves the LAC state, which the
+-- native engine replaces -- so the watch flips to storage auto-migration
+-- instead: the first login after the flag turns on copies this character's
+-- legacy data into config\addons\dlac\<char>\ (profiles.engineAutoMigrate --
+-- copy only, legacy files stay put; settles to two file probes per beat).
+local function maintainStorage()
+    local isNative = false;
+    pcall(function()
+        local prof = require('dlac\\profiles');
+        if prof.nativeMode() then
+            isNative = true;
+            prof.engineAutoMigrate(print);
+        end
+    end);
+    if not isNative then seedCharFolder(); end
+end
+maintainStorage();
 local _seedAt = 0;
 ashita.events.register('d3d_present', 'dlac-seed-watch', function()
     if os.clock() < _seedAt then return; end
     _seedAt = os.clock() + 5.0;
-    seedCharFolder();
+    maintainStorage();
 end);
 
 -- LuaAshitacast supplies gData inside a profile; a standalone addon doesn't. Provide a

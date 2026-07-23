@@ -22,6 +22,13 @@
     This module is loaded from BOTH Lua states (it is seeded to <char>\dlac\ next
     to utils/dispatch by dlac.lua), and headlessly by tests\run_tests.lua -- so
     every AshitaCore / fs touch happens at CALL time behind pcall, never at load.
+
+    STORAGE HOMES (feature/native-engine): "<char>\dlac\" above describes the
+    LEGACY home inside LuaAshitacast's config tree. When the native-engine flag
+    is on (config\addons\dlac\engine.lua), the same tree lives under dlac's own
+    root instead -- config\addons\dlac\<Name>_<Id>\ -- with no extra dlac\
+    level. M.dataDir() / M.charRoot() / M.storageRoot() are the one seam; no
+    other module composes these roots by hand.
 ]]--
 
 local M = {};
@@ -45,9 +52,9 @@ _swok = _swok and type(sw) == 'table';
 -- paths
 -- ---------------------------------------------------------------------------
 
--- LuaAshitacast's gState inside a profile, else the party manager (addon state).
--- Returns <install>\config\addons\luashitacast\<Name>_<id>\, or nil pre-login.
-local function charBase()
+-- Character identity: LuaAshitacast's gState inside a profile, else the party
+-- manager (addon state). name, id -- or nil, nil pre-login.
+local function charIdentity()
     local name, id;
     if gState ~= nil and gState.PlayerName ~= nil and gState.PlayerId ~= nil then
         name, id = gState.PlayerName, gState.PlayerId;
@@ -59,16 +66,143 @@ local function charBase()
             if name == '' then name = nil; end
         end);
     end
-    if name == nil or id == nil then return nil; end
-    return string.format('%sconfig\\addons\\luashitacast\\%s_%u\\', AshitaCore:GetInstallPath(), name, id);
+    if name == nil or id == nil then return nil, nil; end
+    return name, id;
+end
+
+-- '<Name>_<Id>' -- the per-character folder name, identical under both roots.
+function M.charFolder()
+    local name, id = charIdentity();
+    if name == nil then return nil; end
+    return string.format('%s_%u', name, id);
+end
+
+-- LuaAshitacast's per-char config home:
+-- <install>\config\addons\luashitacast\<Name>_<id>\, or nil pre-login.
+local function charBase()
+    local cf = M.charFolder();
+    if cf == nil then return nil; end
+    local ok, p = pcall(function()
+        return AshitaCore:GetInstallPath() .. 'config\\addons\\luashitacast\\' .. cf .. '\\';
+    end);
+    return ok and p or nil;
 end
 M.charBase = charBase;
 
+-- ---------------------------------------------------------------------------
+-- the native-engine storage home (feature/native-engine)
+--
+-- dlac's OWN config root -- config\addons\dlac\ -- replaces the piggyback on
+-- LuaAshitacast's config tree when the NATIVE ENGINE flag is on. The flag is
+-- one install-wide file (engine.lua under the native root: `return { native =
+-- true }`), read throttled by BOTH Lua states, so the two can never disagree
+-- about where storage lives. Layout under the native root:
+--     config\addons\dlac\engine.lua                     the flag file
+--     config\addons\dlac\<Name>_<Id>\profile.lua        the active pointer
+--     config\addons\dlac\<Name>_<Id>\profiles\...       (no extra dlac\ level:
+--     config\addons\dlac\<Name>_<Id>\gear.lua            this whole tree IS dlac's)
+--     config\addons\dlac\<Name>_<Id>\backups\...
+--     config\addons\dlac\dlac-exports\                  friend-share files
+-- Every dlac-owned path composes off M.dataDir() / M.charRoot() below, so the
+-- flag is the ONE seam the storage move rides. LAC-only concepts (job-file
+-- shims, seeded engine copies) stay on charBase() unconditionally -- they only
+-- mean anything when LuaAshitacast is the equip engine.
+-- ---------------------------------------------------------------------------
+
+function M.nativeRoot()
+    local ok, p = pcall(function()
+        return AshitaCore:GetInstallPath() .. 'config\\addons\\dlac\\';
+    end);
+    return ok and p or nil;
+end
+
+function M.engineFlagPath()
+    local r = M.nativeRoot(); return r and (r .. 'engine.lua') or nil;
+end
+
+-- Pure flag-text parse (offline-tested): the file must load, return a table,
+-- and carry native == true exactly. Anything else -- absent, damaged, partial,
+-- truthy-but-not-true -- reads as OFF: the failure mode of a broken flag file
+-- is the battle-tested LAC path, never a half-native limbo.
+function M.parseEngineFlag(text)
+    if type(text) ~= 'string' then return false; end
+    local chunk = (loadstring or load)(text);
+    if chunk == nil then return false; end
+    if setfenv ~= nil then setfenv(chunk, {}); end   -- data file: runs against nothing
+    local ok, t = pcall(chunk);
+    return ok == true and type(t) == 'table' and t.native == true;
+end
+
+-- Throttled flag read (the activeName pattern: the other state -- or the user's
+-- editor -- may rewrite it at any time, so a plain cache would go stale).
+-- (Self-contained reader: this block sits above the module's shared readFile
+-- local on purpose -- path authorities first, helpers after.)
+local _nat = { at = -1, on = false };
+function M.nativeMode()
+    local now = os.time();
+    if _nat.at == now then return _nat.on; end
+    _nat.at = now;
+    local on = false;
+    pcall(function()
+        local p = M.engineFlagPath();
+        if p == nil then return; end
+        local f = io.open(p, 'r');
+        if f == nil then return; end
+        local text = f:read('*a'); f:close();
+        on = M.parseEngineFlag(text);
+    end);
+    _nat.on = on;
+    return on;
+end
+function M.invalidateNative() _nat.at = -1; end
+
+-- Write the flag file. true | nil, why. (The caller owns the user guidance --
+-- flipping modes only takes effect for code that composes paths AFTER the
+-- throttle window, and the engine command tells the user to reload.)
+function M.setNativeMode(on)
+    local p = M.engineFlagPath();
+    if p == nil then return nil, 'not available'; end
+    pcall(function()
+        if ashita and ashita.fs and ashita.fs.create_directory then ashita.fs.create_directory(M.nativeRoot()); end
+    end);
+    local text = '-- dlac engine flag -- written by /dl engine native on|off (hand edits are fine).\n'
+        .. '-- native = true: dlac equips gear itself and stores data under config\\addons\\dlac\\.\n'
+        .. '-- native = false (or file absent): LuaAshitacast equips; storage stays under its tree.\n'
+        .. string.format('return { native = %s };\n', on == true and 'true' or 'false');
+    local f = io.open(p, 'w');
+    if f == nil then return nil, 'could not write ' .. p; end
+    f:write(text); f:close();
+    M.invalidateNative();
+    return true;
+end
+
+-- This character's home under the native root.
+function M.nativeCharBase()
+    local r, cf = M.nativeRoot(), M.charFolder();
+    if r == nil or cf == nil then return nil; end
+    return r .. cf .. '\\';
+end
+
+-- The per-char home dlac-owned NON-dlac\ paths (backups\) compose off.
+function M.charRoot()
+    if M.nativeMode() then return M.nativeCharBase(); end
+    return charBase();
+end
+
+-- THE dlac data home: profiles\, profile.lua pointer, gear.lua, modestate,
+-- watcher state files, debug handoffs... -- everything dlac reads and writes
+-- about a character lives under this one directory.
+function M.dataDir()
+    if M.nativeMode() then return M.nativeCharBase(); end
+    local b = charBase();
+    return b and (b .. 'dlac\\') or nil;
+end
+
 function M.pointerPath()
-    local b = charBase(); return b and (b .. 'dlac\\profile.lua') or nil;
+    local d = M.dataDir(); return d and (d .. 'profile.lua') or nil;
 end
 function M.profilesRoot()
-    local b = charBase(); return b and (b .. 'dlac\\profiles\\') or nil;
+    local d = M.dataDir(); return d and (d .. 'profiles\\') or nil;
 end
 function M.profileDir(name)
     local r = M.profilesRoot(); return r and (r .. name .. '\\') or nil;
@@ -80,7 +214,7 @@ function M.triggersPath(job, name)
     local d = M.profileDir(name or M.activeName()); return d and (d .. 'triggers\\' .. job .. '.lua') or nil;
 end
 function M.legacyTriggersPath(job)
-    local b = charBase(); return b and (b .. 'dlac\\triggers\\' .. job .. '.lua') or nil;
+    local d = M.dataDir(); return d and (d .. 'triggers\\' .. job .. '.lua') or nil;
 end
 -- Lockstyle boxes are PER JOB ENTRY (v41): this is where writes land. Reads
 -- resolve through readLockstylesPath below.
@@ -93,7 +227,7 @@ function M.profileLockstylesPath(name)
     local d = M.profileDir(name or M.activeName()); return d and (d .. 'lockstyles.lua') or nil;
 end
 function M.legacyLockstylesPath()
-    local b = charBase(); return b and (b .. 'dlac\\lockstyles.lua') or nil;
+    local d = M.dataDir(); return d and (d .. 'lockstyles.lua') or nil;
 end
 function M.jobFilePath(job)
     local b = charBase(); return b and (b .. job .. '.lua') or nil;
@@ -103,17 +237,17 @@ end
 -- written once, never overwritten, and the Sets tab's "Copy from static"
 -- keeps reading statics out of them forever.
 function M.backupPath(job)
-    local b = charBase(); return b and (b .. 'backups\\pre-profiles\\' .. job .. '.lua') or nil;
+    local b = M.charRoot(); return b and (b .. 'backups\\pre-profiles\\' .. job .. '.lua') or nil;
 end
 function M.triggerBackupPath(job)
-    local b = charBase(); return b and (b .. 'backups\\pre-profiles\\triggers\\' .. job .. '.lua') or nil;
+    local b = M.charRoot(); return b and (b .. 'backups\\pre-profiles\\triggers\\' .. job .. '.lua') or nil;
 end
 -- Re-migration safety copies: when a once-migrated job file holds logic AGAIN
 -- (restored / hand-edited after the first migration), the live file is still
 -- re-shimmed -- the FIRST backup stays untouched (it is the statics truth the
 -- Sets tab imports from), and the current text lands in a stamped copy here.
 function M.reshimBackupPath(job)
-    local b = charBase(); return b and (b .. 'backups\\pre-profiles\\' .. job .. '-' .. os.date('%Y%m%d_%H%M%S') .. '.lua') or nil;
+    local b = M.charRoot(); return b and (b .. 'backups\\pre-profiles\\' .. job .. '-' .. os.date('%Y%m%d_%H%M%S') .. '.lua') or nil;
 end
 
 local function readFile(p)
@@ -152,16 +286,27 @@ local function ensureDir(p)
     end);
 end
 
+-- mkdir -p for a path RELATIVE to base: creates each level of rel's directory
+-- chain under base (rel itself is a file path; only its parents are created).
+local function ensureDirChain(base, rel)
+    local acc = base;
+    for part in rel:gmatch('([^\\]+)\\') do
+        acc = acc .. part .. '\\';
+        ensureDir(acc);
+    end
+end
+
 -- Create the whole storage skeleton for a profile (+ the pointer if absent, so
 -- storageExists() flips true the moment anything profile-shaped is created).
 function M.ensureStorage(name)
     name = name or M.activeName();
-    local b = charBase(); if b == nil then return false; end
-    ensureDir(b .. 'dlac\\');
-    ensureDir(b .. 'dlac\\profiles\\');
-    ensureDir(b .. 'dlac\\profiles\\' .. name .. '\\');
+    local d = M.dataDir(); if d == nil then return false; end
+    if M.nativeMode() then ensureDir(M.nativeRoot()); end   -- parent of the char home
+    ensureDir(d);
+    ensureDir(d .. 'profiles\\');
+    ensureDir(d .. 'profiles\\' .. name .. '\\');
     for _, kind in ipairs(M.KINDS) do
-        ensureDir(b .. 'dlac\\profiles\\' .. name .. '\\' .. kind .. '\\');
+        ensureDir(d .. 'profiles\\' .. name .. '\\' .. kind .. '\\');
     end
     if readFile(M.pointerPath()) == nil then M.setActive(name); end
     return true;
@@ -320,13 +465,30 @@ function M.lacRoot()
     return ok and p or nil;
 end
 
+-- The root character folders live under in the ACTIVE storage home. Native
+-- mode browses config\addons\dlac\; legacy mode browses LuaAshitacast's tree.
+-- (Cross-char browse/import works within the active home -- each character's
+-- data arrives there via the auto-migration, so post-flip everything is here.)
+function M.storageRoot()
+    if M.nativeMode() then return M.nativeRoot(); end
+    return M.lacRoot();
+end
+
+-- A character's dlac DATA home under the active root. The native layout has no
+-- extra dlac\ level (the whole tree is dlac's); the legacy layout nests one.
+function M.charDataDirAt(charFolder)
+    local root = M.storageRoot();
+    if root == nil or charFolder == nil then return nil; end
+    if M.nativeMode() then return root .. charFolder .. '\\'; end
+    return root .. charFolder .. '\\dlac\\';
+end
+
 -- Character folders (<Name>_<Id>), current one first, rest alphabetical.
 function M.listCharFolders()
-    local root = M.lacRoot();
+    local root = M.storageRoot();
     local dirs = listDirs(root);
     if dirs == nil then return nil; end
-    local cur = nil;
-    pcall(function() local b = charBase(); if b ~= nil then cur = b:match('([^\\]+)\\$'); end end);
+    local cur = M.charFolder();
     local out = {};
     for _, d in ipairs(dirs) do
         if d:match('^%a+_%d+$') then   -- STRICTLY <CharName>_<ServerId>; nothing else qualifies
@@ -337,20 +499,19 @@ function M.listCharFolders()
 end
 
 function M.currentCharFolder()
-    local b = charBase();
-    return b and b:match('([^\\]+)\\$') or nil;
+    return M.charFolder();
 end
 
 function M.profileDirAt(charFolder, name)
-    local root = M.lacRoot();
-    if root == nil or charFolder == nil or name == nil then return nil; end
-    return root .. charFolder .. '\\dlac\\profiles\\' .. name .. '\\';
+    local d = M.charDataDirAt(charFolder);
+    if d == nil or name == nil then return nil; end
+    return d .. 'profiles\\' .. name .. '\\';
 end
 
 function M.listProfilesAt(charFolder)
-    local root = M.lacRoot();
-    if root == nil or charFolder == nil then return nil; end
-    local names = listDirs(root .. charFolder .. '\\dlac\\profiles\\');
+    local d = M.charDataDirAt(charFolder);
+    if d == nil then return nil; end
+    local names = listDirs(d .. 'profiles\\');
     if names == nil then return nil; end
     -- get_dir mixes files into the listing: only sanitize-clean names can be
     -- profile FOLDERS (a stray file has a dot; sanitize rejects it).
@@ -447,14 +608,14 @@ end
 -- Storage skeleton on an ARBITRARY character (clone-to target). Does NOT touch
 -- their active pointer -- the profile goes live only when they `use` it.
 local function ensureStorageAt(charFolder, name)
-    local root = M.lacRoot();
-    if root == nil or charFolder == nil or name == nil then return false; end
-    local b = root .. charFolder .. '\\';
-    ensureDir(b .. 'dlac\\');
-    ensureDir(b .. 'dlac\\profiles\\');
-    ensureDir(b .. 'dlac\\profiles\\' .. name .. '\\');
+    local d = M.charDataDirAt(charFolder);
+    if d == nil or name == nil then return false; end
+    if M.nativeMode() then ensureDir(M.nativeRoot()); end
+    ensureDir(d);
+    ensureDir(d .. 'profiles\\');
+    ensureDir(d .. 'profiles\\' .. name .. '\\');
     for _, kind in ipairs(M.KINDS) do
-        ensureDir(b .. 'dlac\\profiles\\' .. name .. '\\' .. kind .. '\\');
+        ensureDir(d .. 'profiles\\' .. name .. '\\' .. kind .. '\\');
     end
     return true;
 end
@@ -605,7 +766,7 @@ function M.deleteProfileAt(charFolder, profName)
     if charFolder == M.currentCharFolder() and profName == M.activeName() then
         return nil, 'that is the ACTIVE profile -- switch first (/dl profile use <other>)';
     end
-    local root = M.lacRoot();
+    local root = M.storageRoot();
     local dir = M.profileDirAt(charFolder, profName);
     if root == nil or dir == nil then return nil, 'bad profile'; end
     local files = M.listProfileFilesAt(charFolder, profName);
@@ -655,7 +816,7 @@ end
 function M.deleteJobAt(charFolder, profName, name)
     if charFolder == nil or profName == nil or name == nil then return nil, 'bad args'; end
     if not _swok then return nil, 'safewrite module unavailable -- deletion refused'; end
-    local root = M.lacRoot();
+    local root = M.storageRoot();
     local dir = M.profileDirAt(charFolder, profName);
     if root == nil or dir == nil then return nil, 'bad profile'; end
     local bdir = root .. charFolder .. '\\backups\\deleted-jobs\\';
@@ -688,6 +849,15 @@ end
 -- ---------------------------------------------------------------------------
 
 function M.exportsDir()
+    local root = M.storageRoot();
+    return root and (root .. 'dlac-exports\\') or nil;
+end
+
+-- The OTHER home's exports dir (nil when it equals the active one): native
+-- mode keeps seeing files friends dropped in the old LuaAshitacast location,
+-- so a mode flip never hides a shared export.
+function M.legacyExportsDir()
+    if not M.nativeMode() then return nil; end
     local root = M.lacRoot();
     return root and (root .. 'dlac-exports\\') or nil;
 end
@@ -727,12 +897,21 @@ function M.parseExportText(text)
     return t, nil;
 end
 
+-- Resolve one export basename to the file's text: the active home first, the
+-- legacy home second (native mode only) -- see legacyExportsDir.
+local function readExportText(fileBase)
+    local ed = M.exportsDir();
+    local t = ed and readFile(ed .. tostring(fileBase) .. '.lua') or nil;
+    if t ~= nil then return t; end
+    local led = M.legacyExportsDir();
+    return led and readFile(led .. tostring(fileBase) .. '.lua') or nil;
+end
+
 -- Parsed meta of one dlac-exports file (the import side's reader; the
 -- Profiles menu uses it to hand the weights payload to gearoptim).
 function M.readExportFile(fileBase)
-    local ed = M.exportsDir();
-    if ed == nil then return nil, 'not available'; end
-    return M.parseExportText(readFile(ed .. tostring(fileBase) .. '.lua'));
+    if M.exportsDir() == nil then return nil, 'not available'; end
+    return M.parseExportText(readExportText(fileBase));
 end
 
 -- Write <exportsDir>\<Job>-<Profile>-<Char>-<stamp>.lua. path | nil, why.
@@ -761,14 +940,23 @@ function M.exportJob(charFolder, profName, job, payloads)
 end
 
 -- Valid export files in dlac-exports\: { file, job, profile, from, sets, trig, ls }.
+-- Native mode merges the legacy home's files in (active home wins a name tie).
 function M.listExports()
     local ed = M.exportsDir();
     if ed == nil then return nil; end
     local files = listLuaFiles(ed);
     if files == nil then return nil; end
+    local seen = {};
+    for _, b in ipairs(files) do seen[b] = true; end
+    local led = M.legacyExportsDir();
+    if led ~= nil then
+        for _, b in ipairs(listLuaFiles(led) or {}) do
+            if not seen[b] then seen[b] = true; files[#files + 1] = b; end
+        end
+    end
     local out = {};
     for _, b in ipairs(files) do
-        local meta = M.parseExportText(readFile(ed .. b .. '.lua'));
+        local meta = M.parseExportText(readExportText(b));
         if meta ~= nil then
             out[#out + 1] = { file = b, job = meta.job, profile = meta.profile, from = meta.from,
                               sets = type(meta.sets) == 'string', trig = type(meta.triggers) == 'string',
@@ -788,7 +976,7 @@ function M.readExportRaw(fileBase)
     if base == '' or base:find('[/\\]') ~= nil or base:find('%.%.', 1, true) ~= nil then
         return nil, 'bad file name';
     end
-    local text = readFile(ed .. base .. '.lua');
+    local text = readExportText(base);
     if text == nil then return nil, 'no such export: ' .. base; end
     return text, nil;
 end
@@ -871,9 +1059,8 @@ end
 -- Import an export file into any character/profile under dstName -- a thin
 -- read+parse shell over importJobMeta (same opts / same returns).
 function M.importJobFile(fileBase, dstCharFolder, dstProf, dstName, opts)
-    local ed = M.exportsDir();
-    if ed == nil then return nil, 'not available'; end
-    local meta, merr = M.parseExportText(readFile(ed .. fileBase .. '.lua'));
+    if M.exportsDir() == nil then return nil, 'not available'; end
+    local meta, merr = M.parseExportText(readExportText(fileBase));
     if meta == nil then return nil, merr; end
     return M.importJobMeta(meta, dstCharFolder, dstProf, dstName, opts);
 end
@@ -1165,6 +1352,131 @@ function M.planMigration(files)
     return plan;
 end
 
+-- ---------------------------------------------------------------------------
+-- native-home storage migration (feature/native-engine)
+--
+-- Moving to the native engine moves storage from LuaAshitacast's config tree
+-- into config\addons\dlac\. The move is a COPY -- the legacy files stay put
+-- untouched, so flipping back to LAC mode finds everything exactly where it
+-- was. Never overwrites: a file already present in the native home wins (it
+-- may hold newer native-mode edits). Two subtrees ride:
+--     <char>\dlac\**      ->  <nativeRoot>\<char>\**          (the data home)
+--     <char>\backups\**   ->  <nativeRoot>\<char>\backups\**  (pre-profiles
+--                              statics: "Copy from static" keeps working)
+-- ---------------------------------------------------------------------------
+
+-- Pure planner: which relative paths need copying. srcRels = array of relpaths
+-- ('profiles\\Default\\sets\\WHM.lua'); dstHas = set of relpaths already in the
+-- native home. Rejects absolute paths and '..' outright (walker output is
+-- trusted, but the rule is cheap and the tests pin it). Returns copy list,
+-- skip list -- both sorted for deterministic reporting.
+function M.planEngineCopy(srcRels, dstHas)
+    local copy, skip = {}, {};
+    for _, rel in ipairs(srcRels or {}) do
+        if type(rel) == 'string' and rel ~= ''
+           and rel:find('%.%.') == nil and rel:match('^[%a]:') == nil and rel:sub(1, 1) ~= '\\' then
+            if dstHas ~= nil and dstHas[rel] then skip[#skip + 1] = rel;
+            else copy[#copy + 1] = rel; end
+        end
+    end
+    table.sort(copy); table.sort(skip);
+    return copy, skip;
+end
+
+-- Recursive file listing under dir, as base-relative paths. Uses the same two
+-- listing APIs the rest of this module rides (get_dir non-recursive + `dir /b`
+-- popen fallbacks), walking directories level by level. Depth-capped: nothing
+-- dlac stores nests deeper than profiles\<Name>\<kind>\<JOB>.lua.
+local function listFilesRecursive(dir, prefix, depth, acc)
+    if depth > 6 or dir == nil then return acc; end
+    -- files at this level: names with an extension shape (listDirs mixes files
+    -- and dirs; a dot separates the two populations in every tree dlac owns)
+    for _, e in ipairs(listDirs(dir) or {}) do
+        if e:find('%.') ~= nil then
+            acc[#acc + 1] = prefix .. e;
+        else
+            listFilesRecursive(dir .. e .. '\\', prefix .. e .. '\\', depth + 1, acc);
+        end
+    end
+    return acc;
+end
+
+local function readFileB(p)
+    if p == nil then return nil; end
+    local f = io.open(p, 'rb'); if f == nil then return nil; end
+    local t = f:read('*a'); f:close(); return t;
+end
+local function writeFileB(p, t)
+    if p == nil then return false; end
+    local f = io.open(p, 'wb'); if f == nil then return false; end
+    f:write(t); f:close(); return true;
+end
+
+-- Copy one subtree (never overwrite, byte-verify every write). Returns
+-- copied, skipped, failed.
+local function copyTree(srcBase, dstBase)
+    local rels = listFilesRecursive(srcBase, '', 0, {});
+    local dstHas = {};
+    for _, rel in ipairs(rels) do
+        if readFileB(dstBase .. rel) ~= nil then dstHas[rel] = true; end
+    end
+    local copy, skip = M.planEngineCopy(rels, dstHas);
+    local done, failed = 0, 0;
+    for _, rel in ipairs(copy) do
+        local bytes = readFileB(srcBase .. rel);
+        if bytes == nil then
+            failed = failed + 1;
+        else
+            ensureDirChain(dstBase, rel);
+            if writeFileB(dstBase .. rel, bytes) and readFileB(dstBase .. rel) == bytes then
+                done = done + 1;
+            else
+                failed = failed + 1;
+            end
+        end
+    end
+    return done, #skip, failed;
+end
+
+-- The storage migration for THIS character. Copies the legacy dlac data home
+-- and backups\ into the native home. Safe to re-run any time (idempotent:
+-- existing native files are skipped). Returns copied, skipped, failed -- or
+-- nil, why. Works regardless of the current mode flag (so the engine command
+-- can migrate BEFORE flipping native on).
+function M.engineMigrateStorage()
+    local b = charBase();
+    local nb = M.nativeCharBase();
+    if b == nil or nb == nil then return nil, 'not logged in'; end
+    ensureDir(M.nativeRoot());
+    ensureDir(nb);
+    local d1, s1, f1 = copyTree(b .. 'dlac\\', nb);
+    ensureDir(nb .. 'backups\\');
+    local d2, s2, f2 = copyTree(b .. 'backups\\', nb .. 'backups\\');
+    return d1 + d2, s1 + s2, f1 + f2;
+end
+
+-- Auto-migration: when native mode is ON but this character's native home is
+-- still empty (no active-profile pointer) while the legacy home has one, run
+-- the copy -- so every character on the install migrates itself the first time
+-- it logs in after the flip, and characters created later are simply born
+-- native. Cheap when settled (two file probes). Returns true when it ran.
+function M.engineAutoMigrate(say)
+    if not M.nativeMode() then return false; end
+    local b = charBase();
+    local nb = M.nativeCharBase();
+    if b == nil or nb == nil then return false; end
+    if readFileB(nb .. 'profile.lua') ~= nil then return false; end   -- already migrated (or born native)
+    if readFileB(b .. 'dlac\\profile.lua') == nil and readFileB(b .. 'dlac\\gear.lua') == nil then
+        return false;   -- nothing legacy to bring over
+    end
+    local done, skipped, failed = M.engineMigrateStorage();
+    if say ~= nil and done ~= nil then
+        say(string.format('[dlac] native storage: migrated %d file(s) from the LuaAshitacast tree (%d already here, %d failed).',
+            done, skipped, failed));
+    end
+    return true;
+end
+
 -- Gather per-job facts from disk for every <JOB>.lua that exists.
 local function migrationFacts(name)
     local files = {};
@@ -1217,7 +1529,7 @@ function M.migrate(execute, say)
     end
 
     M.ensureStorage(name);
-    local b = charBase();
+    local b = M.charRoot();   -- backups follow the active storage home
     ensureDir(b .. 'backups\\');
     ensureDir(b .. 'backups\\pre-profiles\\');
     ensureDir(b .. 'backups\\pre-profiles\\triggers\\');
