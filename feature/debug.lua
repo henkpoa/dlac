@@ -53,8 +53,18 @@ function M._topic(word)
 end
 
 function M._usage()
-    return 'debug topics: ls (alias: lockstyle) -- lockstyle state, addon + engine halves,'
-        .. ' written to addons\\dlac\\debug\\ as a sendable .txt. Wiring health: /dl check.';
+    return 'debug topics: ls [seconds] (alias: lockstyle) -- snapshot, then a 30-120s capture window'
+        .. ' (default 45): do the failing thing DURING it; the report lands in addons\\dlac\\debug\\'
+        .. ' as a sendable .txt when it closes. Wiring health: /dl check.';
+end
+
+-- The capture-window length (pure, tests DBT*): seconds arg clamped 30-120,
+-- default 45. TWIN of the engine's clamp in dispatch's debug branch -- the
+-- same command opens both windows, so the two must always agree.
+function M._dur(word)
+    local n = tonumber(word);
+    if n == nil then return 45; end
+    return math.max(30, math.min(120, n));
 end
 
 -- How old (seconds) an engine handoff stamp may be and still belong to THIS
@@ -157,13 +167,17 @@ local _pend = nil;
 
 -- Book the transfer-file write: label for the header/chat, fileBase for the
 -- filename, the addon half's lines, and the engine handoff filename to merge
--- (nil = no engine half expected). The ~1.2s delay lets the engine's same-
--- frame handoff write land first; see the header note.
-function M.deliver(label, fileBase, addonLines, handoffName)
+-- (nil = no engine half expected). Default delay 1.2s lets the engine's
+-- same-frame handoff write land first; a capture window passes opts.delay =
+-- window + 4s (the engine flushes its handoff at window end on a 0.4s tick,
+-- so +4s reads it fresh, inside the 10s gate) and opts.append = a fn the
+-- write moment calls for the addon-side timeline lines.
+function M.deliver(label, fileBase, addonLines, handoffName, opts)
     local ver = nil;
     pcall(function() ver = addon ~= nil and addon.version or nil; end);
+    opts = opts or {};
     _pend = { label = label, base = fileBase, lines = addonLines, handoff = handoffName,
-              ver = ver, dueAt = os.clock() + 1.2 };
+              ver = ver, append = opts.append, dueAt = os.clock() + (tonumber(opts.delay) or 1.2) };
 end
 
 -- The write is pcall-wrapped but NEVER silently: a failure prints itself
@@ -172,6 +186,14 @@ ashita.events.register('d3d_present', 'dlac-debug-deliver', function()
     if _pend == nil or os.clock() < _pend.dueAt then return; end
     local p = _pend; _pend = nil;
     local ok, err = pcall(function()
+        -- Capture-window runs append their timeline at the WRITE moment (the
+        -- window just closed; the log is complete now, not at booking time).
+        if p.append ~= nil then
+            local ok2, extra = pcall(p.append);
+            if ok2 and type(extra) == 'table' then
+                for _, l in ipairs(extra) do p.lines[#p.lines + 1] = l; end
+            end
+        end
         local engineRaw = nil;
         if p.handoff ~= nil then
             local base = charBase();
@@ -195,7 +217,8 @@ ashita.events.register('d3d_present', 'dlac-debug-deliver', function()
 end);
 
 local PRINTERS = {
-    ls = function()
+    -- rest = everything after 'debug' ('ls 60' -> the 60 is the window).
+    ls = function(rest)
         local m = try('dlac\\feature\\lockstyle');
         if m == nil or type(m.debugLines) ~= 'function' then
             print('[dlac] debug ls (addon): lockstyle module not loaded.');
@@ -207,7 +230,28 @@ local PRINTERS = {
             return;
         end
         for _, l in ipairs(lines) do print('[dlac] debug ls (addon): ' .. l); end
-        M.deliver('debug ls', 'dlac-debug-ls', lines, 'debug-ls-engine.txt');
+        -- The capture window (v106): snapshot printed, now WATCH. The player
+        -- does the failing thing during the window; both states log what
+        -- they see (the engine opened its own window off this same command),
+        -- and the report writes at window end + 4s with both timelines.
+        local dur = M._dur(rest ~= nil and rest:match('^%S+%s+(%S+)') or nil);
+        pcall(function() m.debugCapture(dur); end);
+        print(string.format('[dlac] debug ls: capturing for %ds -- click Apply (do the failing thing) NOW.'
+            .. ' The report writes itself when the window closes.', dur));
+        M.deliver('debug ls', 'dlac-debug-ls', lines, 'debug-ls-engine.txt', {
+            delay = dur + 4.0,
+            append = function()
+                local ev = {};
+                pcall(function() ev = m.debugCaptureLog(); end);
+                local out = { '', string.format('== captured events, addon side (%ds window) ==', dur) };
+                if #ev == 0 then
+                    out[#out + 1] = '(no lockstyle events observed by the addon state during the window)';
+                else
+                    for _, l in ipairs(ev) do out[#out + 1] = l; end
+                end
+                return out;
+            end,
+        });
     end,
 };
 
@@ -223,7 +267,7 @@ ashita.events.register('command', 'dlac-debug', function(e)
     e.blocked = true;
     local topic = M._topic(rest:match('^(%S+)'));
     if topic == nil then print('[dlac] ' .. M._usage()); return; end
-    PRINTERS[topic]();
+    PRINTERS[topic](rest);
 end);
 
 return M;

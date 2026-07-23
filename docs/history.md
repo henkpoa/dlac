@@ -4461,3 +4461,21 @@ set-building picker must keep offering; everything else in the family is DEF
 cascade + a wider charges/state column pair for that tier only (stables names
 run 24 chars into the old 340px column). Tests UT1-UT9 (owned-only tier,
 Kazham placement, picker exemption, narrowing paths), 2505 green both loops.
+
+**Addendum 4: the capture window (engine v106, 2026.07.23g).** Henrik: "have
+it run at least 30 seconds when you issue dl debug ls... so you can capture
+all the events." '/dl debug ls [seconds]' (30-120 clamp, default 45; the
+number now means SECONDS -- the niche box-pick override died for it) prints
+the snapshot, then opens an observation window in BOTH states off the same
+command. Addon side: lockstyle's capture API notes queued commands (the
+Apply button's '/dl ls apply' -- queueCmd is the hook, so the click itself
+is witnessed), 0x053s leaving with their guard verdicts, zone-ins, job
+packets, guard arms, user-off stamps. Engine side: the apply branch notes
+every receipt/refusal/send into M._lsDbg.log; the dispatch tick flushes the
+handoff at window end (M._lsDbgFlushLines, pure). feature/debug.lua delays
+its merge to window + 4s and appends the addon timeline at the WRITE moment
+(the log is complete then, not at booking). The report file now shows the
+click's whole journey -- queued in the addon, received by the engine, SENT
+or refused-with-reason -- or names the hop that went silent. One run is
+still ONE window: nothing keeps running after it closes. Tests DBT7-11
+(clamp twins), DBG7-8 (flush), LGD8-10 (capture cycle); 2515 green.

@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 105;  -- 105: DEBUG REPORTS BECOME FILES + the send witnesses (Henrik's file rule: "all things that are considered debugs should generate text files that can be easily transferable so we can help debug"). The two halves live in two Lua states with no shared memory, so the transfer file is assembled by HANDOFF: the 'debug'/'check' branches write their lines to <char>\dlac\debug-<topic>-engine.txt (first line = os.time() stamp, lines bare) in the same command frame; feature/debug.lua's deliver tick reads the handoff ~1.2s later, judges freshness by the stamp (FRESH_S 10s) and writes ONE addons\dlac\debug\<base>-<Char>.txt -- a MISSING or STALE engine half is written into the file in those words, so the artifact carries the absence-is-the-diagnosis property. Plus the "is it actually SENDING?" witnesses: the apply branch stamps M._lsLastSend at its AddOutgoingPacket (sender-side truth, reported by debug ls as 'last REAL apply this engine session'), and the addon guard's packet_out handler keeps a 3-deep 0x053 observation log (lockstyle M._outLine -- reports what it SAW, promises nothing about injected-packet visibility).
+M.VERSION = 106;  -- 106: THE CAPTURE WINDOW (Henrik: "have it run at least 30 seconds when you issue dl debug ls... so you can capture all the events"). '/dl debug ls [seconds]' (30-120 clamp, default 45; the number arg means SECONDS now -- the niche box-pick override is gone, the dry run reads the MARKED box like the GUI button) prints the snapshot then opens a window in BOTH states off the same command: the engine's apply branch notes every receipt/refusal/send into M._lsDbg.log (M._lsDbgNote, 200-entry cap), the dispatch tick flushes the handoff at window end (M._lsDbgFlushLines, pure -- snapshot + '-- captured events --' timeline), and the addon side (lockstyle capture API + queueCmd/guard/packet hooks; feature/debug.lua delays its merge to end + 4s) writes the ONE report file with both timelines. The player clicks Apply DURING the window; the file shows the click leaving the addon ('queued: /dl ls apply'), arriving at the engine ('apply received'), and its outcome ('SENT box N' / the refusal) -- or which hop went silent.
+                  -- 105: DEBUG REPORTS BECOME FILES + the send witnesses (Henrik's file rule: "all things that are considered debugs should generate text files that can be easily transferable so we can help debug"). The two halves live in two Lua states with no shared memory, so the transfer file is assembled by HANDOFF: the 'debug'/'check' branches write their lines to <char>\dlac\debug-<topic>-engine.txt (first line = os.time() stamp, lines bare) in the same command frame; feature/debug.lua's deliver tick reads the handoff ~1.2s later, judges freshness by the stamp (FRESH_S 10s) and writes ONE addons\dlac\debug\<base>-<Char>.txt -- a MISSING or STALE engine half is written into the file in those words, so the artifact carries the absence-is-the-diagnosis property. Plus the "is it actually SENDING?" witnesses: the apply branch stamps M._lsLastSend at its AddOutgoingPacket (sender-side truth, reported by debug ls as 'last REAL apply this engine session'), and the addon guard's packet_out handler keeps a 3-deep 0x053 observation log (lockstyle M._outLine -- reports what it SAW, promises nothing about injected-packet visibility).
                   -- 104: THE /dl debug SECTION, engine half (Henrik: "make a proper dl debug section... dl debug ls (please also accept dl debug lockstyle)"). feature/debug.lua (addon state) routes topics and owns the usage line; here one 'debug' branch answers KNOWN topics only. Topic 'ls'/'lockstyle': the apply pipeline as a DRY RUN -- the engine re-reads the boxes file (path printed, MISSING/no-PARSE called out), picks the box exactly like apply ('/dl debug ls <box>'), resolves every name through the SAME resolvers (M._lsResolvers, hoisted verbatim out of the apply branch -- one pair, two commands) and predicts the server's silent job gate -- then prints what WOULD happen (M._lsDebugReport, pure, tests DBG*) instead of sending. Companion addon half: lockstyle.M.debugLines() (boxes file/tier, marked box, UNSAVED-edits warning, v47 gate verdict, keep/town/guard state) -- '/dl ls state' now prints that same report (one readout, two names).
                   -- 103: /dl check -- the wiring-health readout's ENGINE half (Henrik's 2026-07-23 ruling: self-checks that answer "is dlac doing what it should?" belong IN dlac; probe-level capture stays in dlacprobe). Field case: a friend's laptop synced the ADDON tree but LAC never loaded the engine -- GUI + lockstyle preview (addon state) worked, '/dl ls apply' fell into a void with no output at all, and silence has no author. The engine cannot report its own absence, so feature/check.lua (the addon state, which always hears a typed /dl) prints the wiring readout -- addon + engine-file versions, seeded-copy byte-compare, the job file's shim state, the modestate __version handshake -- and names the ONE line the engine must add to it: this branch's '[dlac] check (engine): alive -- vN, job, profile'. A MISSING engine line is itself the verdict. Whitelist + branch added together (the v46 instdiag lesson).
                   -- 102: CONTENT-KEYED self-swap (field friction 2026-07-22, Henrik: "during engine change the hot reload doesn't always work -- I've had to reload LAC manually"). The self-swap trigger was the parsed M.VERSION number alone, so any engine edit under the SAME version -- the normal shape of mid-round field debugging -- never swapped; only a manual Reload LAC picked it up. Now the tick compares the seeded file's BYTES against the bytes the running engine was loaded from (M._swapSourceRaw, initialized from the first readable tick, updated on every successful swap), with the version compare kept as a secondary trigger that self-heals a stale baseline. The decision is a pure seam, M.swapWanted (tests SW*): unreadable/foreign/failed-before bytes skip, version difference swaps, nil baseline captures, byte difference swaps. Companion dlac.lua change (2026.07.22i): the seeder writes only files whose bytes CHANGED and re-runs every 5s (dlac-seed-watch), so a bare `git pull` now propagates addon -> seeded copy -> running LAC engine with no manual step; the swap chat line names a same-version swap explicitly.
@@ -261,6 +262,52 @@ local function charDir()
     end
     if name == nil or id == nil then return nil; end
     return string.format('%sconfig\\addons\\luashitacast\\%s_%u\\dlac\\', AshitaCore:GetInstallPath(), name, id);
+end
+
+-- ---------------------------------------------------------------------------
+-- '/dl debug' engine plumbing (v105 handoff, v106 capture window).
+-- The addon state assembles the transferable report file but cannot see THIS
+-- state -- engine halves land in <char>\dlac\debug-<topic>-engine.txt, first
+-- line an os.time() stamp the merger uses to judge freshness, lines BARE (the
+-- file's '== engine half ==' section heads them).
+-- ---------------------------------------------------------------------------
+local function writeDebugHandoff(name, lines)
+    pcall(function()
+        local dir = charDir();
+        if dir == nil then return; end
+        local f = io.open(dir .. name, 'wb');
+        if f == nil then return; end
+        f:write(tostring(os.time()) .. '\n' .. table.concat(lines, '\n') .. '\n');
+        f:close();
+    end);
+end
+
+-- The capture window (v106, Henrik: "let it run for 30-60 seconds... so you
+-- can capture all the events"): '/dl debug ls [seconds]' opens it in BOTH
+-- states (same command, same clamp -- twin constants, addon twin in
+-- feature/debug.lua M._dur); while open, the apply branch notes every
+-- receipt/refusal/send into the timeline; the dispatch tick flushes the
+-- handoff at window end (snapshot + timeline), and the addon's merger reads
+-- it ~4s after that.
+M._lsDbg = nil;   -- { out, log, t0, untilAt, dur }
+
+function M._lsDbgNote(txt)
+    local d = M._lsDbg;
+    if d == nil or os.clock() > d.untilAt or #d.log >= 200 then return; end
+    d.log[#d.log + 1] = string.format('t+%5.1fs  %s', os.clock() - d.t0, txt);
+end
+
+-- Pure (tests DBG7-8): snapshot + timeline -> the handoff's line array.
+function M._lsDbgFlushLines(out, log, dur)
+    local L = {};
+    for _, l in ipairs(out or {}) do L[#L + 1] = l; end
+    L[#L + 1] = string.format('-- captured events, engine side (%ds window) --', tonumber(dur) or 0);
+    if log == nil or #log == 0 then
+        L[#L + 1] = '(no lockstyle events reached this engine during the window)';
+    else
+        for _, l in ipairs(log) do L[#L + 1] = l; end
+    end
+    return L;
 end
 
 -- ---------------------------------------------------------------------------
@@ -4733,6 +4780,14 @@ if inLac() then
             if os.clock() < _tickAt then return; end
             _tickAt = os.clock() + 0.4;
             trySelfSwap();   -- engine hot-reload check (own ~2s gate inside)
+            -- '/dl debug ls' window flush (v106): the capture ended -> write
+            -- the handoff (snapshot + timeline); the addon's merger reads it
+            -- ~4s after window end, well inside its 10s freshness gate.
+            if M._lsDbg ~= nil and os.clock() >= M._lsDbg.untilAt then
+                local d = M._lsDbg; M._lsDbg = nil;
+                writeDebugHandoff('debug-ls-engine.txt', M._lsDbgFlushLines(d.out, d.log, d.dur));
+                print('[dlac] debug ls (engine): capture window closed -- handoff written.');
+            end
             local j = nil;
             pcall(function() j = AshitaCore:GetMemoryManager():GetPlayer():GetMainJob(); end);
             if j ~= nil and j ~= 0 then
@@ -4888,23 +4943,6 @@ if inLac() then
         if sub ~= 'mode' and sub ~= 'why' and sub ~= 'triggers' and sub ~= 'env' and sub ~= 'lock' and sub ~= 'sets' and sub ~= 'profile' and sub ~= 'ls' and sub ~= 'plan' and sub ~= 'prio' and sub ~= 'check' and sub ~= 'debug' then return; end
         e.blocked = true;
 
-        -- Debug/check HANDOFF writer (v105, Henrik's file rule: every debug
-        -- run lands as ONE transferable .txt). The addon state assembles the
-        -- transfer file (feature/debug.lua deliver tick) but cannot see THIS
-        -- state -- so engine halves land in <char>\dlac\debug-*-engine.txt,
-        -- first line an os.time() stamp the merger uses to judge freshness;
-        -- lines are BARE (the file's '== engine half ==' section heads them).
-        local function writeHandoff(name, lines)
-            pcall(function()
-                local dir = charDir();
-                if dir == nil then return; end
-                local f = io.open(dir .. name, 'wb');
-                if f == nil then return; end
-                f:write(tostring(os.time()) .. '\n' .. table.concat(lines, '\n') .. '\n');
-                f:close();
-            end);
-        end
-
         if sub == 'debug' then
             -- The /dl debug section, ENGINE half (v104; feature/debug.lua owns
             -- the addon half AND the topic list/usage -- an unknown topic
@@ -4912,14 +4950,20 @@ if inLac() then
             -- grow as field cases demand (Henrik's 07-23 ruling: state
             -- readouts in dlac, packet capture in dlacprobe).
             -- 'ls' (alias 'lockstyle'): the apply pipeline as a DRY RUN --
-            -- same file, same box pick ('/dl debug ls <box>' picks like
-            -- apply), same id resolution and job-gate prediction, no send --
-            -- plus this session's last REAL send (M._lsLastSend, stamped by
-            -- the apply branch at its AddOutgoingPacket: sender-side truth
-            -- for "did a packet actually leave").
+            -- same file, same MARKED-box pick, same id resolution and
+            -- job-gate prediction, no send -- plus this session's last REAL
+            -- send (M._lsLastSend, stamped by the apply branch at its
+            -- AddOutgoingPacket: sender-side truth for "did a packet
+            -- actually leave"). Then the CAPTURE WINDOW opens (v106):
+            -- '/dl debug ls [seconds]', 30-120 clamped, default 45 -- the
+            -- player clicks Apply DURING it, the apply branch notes every
+            -- receipt/refusal/send, and the tick flushes the handoff at
+            -- window end.
             local topic = string.lower(tostring(args[2] or ''));
             if topic == 'lockstyle' then topic = 'ls'; end
             if topic ~= 'ls' then return; end
+            local dur = tonumber(args[3]);
+            dur = (dur ~= nil) and math.max(30, math.min(120, dur)) or 45;
             local out = {};
             local function say(l) out[#out + 1] = l; print('[dlac] debug ls (engine): ' .. l); end
             local dir = charDir();
@@ -4952,7 +4996,7 @@ if inLac() then
                 local rec = gr and gr.NameToObject and gr.NameToObject[nm] or nil;
                 return rec ~= nil and not M._lsStyleGate(rec, lv);
             end
-            for _, l in ipairs(M._lsDebugReport(t, tonumber(args[3]), resolveId, equippedId, gateFail)) do
+            for _, l in ipairs(M._lsDebugReport(t, nil, resolveId, equippedId, gateFail)) do
                 say(l);
             end
             local snd = M._lsLastSend;
@@ -4961,7 +5005,10 @@ if inLac() then
                     snd.box, tostring(snd.name), snd.n, (snd.n == 1) and '' or 's',
                     math.max(0, math.floor(os.clock() - snd.at)))
                 or 'no REAL apply sent since this engine loaded');
-            writeHandoff('debug-ls-engine.txt', out);
+            -- Open the window; the handoff writes at its END (tick flush), so
+            -- the file carries what happened while the player did the thing.
+            M._lsDbg = { out = out, log = {}, t0 = os.clock(), untilAt = os.clock() + dur, dur = dur };
+            say(string.format('capturing lockstyle events for %ds -- click Apply NOW; the report writes itself after.', dur));
             return;
         end
 
@@ -4985,7 +5032,7 @@ if inLac() then
                 (type(sj) == 'string' and sj ~= '') and ('/' .. sj) or '',
                 (prof ~= nil) and ('"' .. tostring(prof) .. '"') or '(legacy storage)');
             print('[dlac] ' .. line);
-            writeHandoff('debug-check-engine.txt', { line });
+            writeDebugHandoff('debug-check-engine.txt', { line });
             return;
         end
 
@@ -5062,8 +5109,11 @@ if inLac() then
                 print('[dlac] usage: /dl ls apply [box]   (GUI: the armor button in the dlac header)');
                 return;
             end
+            -- '/dl debug ls' window timeline (v106): every receipt and its
+            -- outcome, so the report shows what the Apply click actually did.
+            M._lsDbgNote('apply received' .. ((args[3] ~= nil) and (' (box ' .. tostring(args[3]) .. ')') or ' (marked box)'));
             local dir = charDir();
-            if dir == nil then print('[dlac] lockstyle: not logged in.'); return; end
+            if dir == nil then print('[dlac] lockstyle: not logged in.'); M._lsDbgNote('refused: not logged in'); return; end
             -- boxes are per JOB ENTRY (v41): resolve the current job's file --
             -- the SAME resolver the GUI uses (profiles.lua), so both states
             -- pick one file (falls back v40 per-profile file, then global)
@@ -5072,12 +5122,12 @@ if inLac() then
             if type(job) ~= 'string' or job == '' or job == '?' then job = nil; end
             local lsPath = (_pok and job ~= nil and _prof.readLockstylesPath(job) or nil) or (dir .. 'lockstyles.lua');
             local raw = readFile(lsPath);
-            if raw == nil then print('[dlac] lockstyle: no lockstyle sets saved yet (armor button in the dlac header).'); return; end
+            if raw == nil then print('[dlac] lockstyle: no lockstyle sets saved yet (armor button in the dlac header).'); M._lsDbgNote('refused: no lockstyle sets saved yet'); return; end
             local t = nil;
             local chunk = (loadstring or load)(raw, '@lockstyles.lua');
             if chunk ~= nil then local okc, v = pcall(chunk); if okc then t = v; end end
             local set, why, box = M._lockstyleFrom(t, tonumber(args[3]));
-            if set == nil then print('[dlac] lockstyle: ' .. tostring(why)); return; end
+            if set == nil then print('[dlac] lockstyle: ' .. tostring(why)); M._lsDbgNote('refused: ' .. tostring(why)); return; end
             -- Build the 0x053 ourselves (v42). The LAC state's require resolves
             -- dlac\gear to the char folder's REAL gear.lua -- names in the boxes
             -- came from it, so NameToObject is the exact reverse map. The
@@ -5128,12 +5178,14 @@ if inLac() then
                 print(string.format('[dlac] lockstyle: "%s" did not resolve to an item id -- its slot will show EMPTY.', nm));
             end
             local oks = pcall(function() AshitaCore:GetPacketManager():AddOutgoingPacket(0x053, pkt); end);
-            if not oks then print('[dlac] lockstyle: packet send failed.'); return; end
+            if not oks then print('[dlac] lockstyle: packet send failed.'); M._lsDbgNote('0x053 injection FAILED'); return; end
             local n = 0;
             for _ in pairs(r.sent) do n = n + 1; end
             -- Sender-side truth for '/dl debug ls' (v105): the last REAL apply
             -- that reached AddOutgoingPacket this engine session.
             M._lsLastSend = { at = os.clock(), box = box, n = n, name = why };
+            M._lsDbgNote(string.format('SENT box %d "%s" -- %d slot%s styled, %d name%s unresolved',
+                box, tostring(why), n, (n == 1) and '' or 's', #r.missing, (#r.missing == 1) and '' or 's'));
             print(string.format('[dlac] lockstyle "%s" (box %d) sent -- %d styled slot%s; unnamed slots hold your'
                 .. ' current gear\'s look.', tostring(why), box, n, n == 1 and '' or 's'));
             return;

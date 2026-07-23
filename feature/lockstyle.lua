@@ -592,7 +592,30 @@ end
 -- ---------------------------------------------------------------------------
 local _preview = false;
 
+-- '/dl debug ls' capture window, ADDON half (v106 twin of the engine's
+-- M._lsDbg; feature/debug.lua opens it and collects at window end). While
+-- open, the handlers in this file note what they SEE -- queued commands,
+-- 0x053s leaving with guard verdicts, zone-ins, job packets, guard arms --
+-- so the report shows the Apply click's whole journey through THIS state.
+local capLog, capT0, capUntil = nil, nil, nil;
+local CAP_MAX = 200;
+function M.debugCapture(dur)
+    capT0 = os.clock();
+    capUntil = capT0 + (tonumber(dur) or 45);
+    capLog = {};
+end
+function M._capNote(txt)
+    if capLog == nil or os.clock() > capUntil or #capLog >= CAP_MAX then return; end
+    capLog[#capLog + 1] = string.format('t+%5.1fs  %s', os.clock() - capT0, txt);
+end
+function M.debugCaptureLog()
+    local L = capLog or {};
+    capLog = nil;
+    return L;
+end
+
 local function queueCmd(c)
+    M._capNote('queued: ' .. tostring(c));
     pcall(function() AshitaCore:GetChatManager():QueueCommand(1, c); end);
 end
 
@@ -1173,6 +1196,7 @@ function M._healDue() return subDueAt; end
 -- event provably fires.
 function M._noteApplied(b)
     if tonumber(b) ~= nil then lastBox = tonumber(b); end
+    M._capNote('apply noted: box ' .. tostring(b));
 end
 -- Apply a town pick's effect (v46). 'off' -> drop the style (the guard's
 -- 'suppress' verdict lets it fall in a town); a BOX -> replace with it and ARM
@@ -1423,7 +1447,7 @@ function M._keepHeal(verdict, keepSub, box)
 end
 
 local guard = { active = false, zoneInAt = -1e9, userOffAt = -1e9 };
-function M._guardUserOff() guard.userOffAt = os.clock(); end
+function M._guardUserOff() guard.userOffAt = os.clock(); M._capNote('user-off stamped'); end
 function M._guardOn() return guard.active; end   -- window readout
 
 -- The guard handler's own observation log ('/dl debug ls' reports it): the
@@ -1451,16 +1475,17 @@ end
 -- survive: the client's confused DISABLE (its private flag is off) can land
 -- before OR after our re-apply, so open the same blockable window a zone-in
 -- gets and swallow it either way.
-function M._guardArm() guard.active = true; guard.zoneInAt = os.clock(); end
+function M._guardArm() guard.active = true; guard.zoneInAt = os.clock(); M._capNote('guard armed (blockable window open)'); end
 
 ashita.events.register('packet_in', 'dlac-lockstyle-pin', function(e)
-    if e.id == 0x00A then guard.zoneInAt = os.clock(); end
+    if e.id == 0x00A then guard.zoneInAt = os.clock(); M._capNote('zone-in (0x00A)'); end
 end);
 
 ashita.events.register('packet_out', 'dlac-lockstyle-pout', function(e)
     if e.id == 0x100 then
         local kind = M._jobPktKind((#e.data >= 6) and e.data:byte(5) or 0,
                                    (#e.data >= 6) and e.data:byte(6) or 0);
+        if kind ~= 'none' then M._capNote('job-change packet: ' .. kind); end
         if kind == 'main' then
             lastBox = nil;    -- new job = new box set; main changes are OnLoad's business
             subDueAt = nil;   -- cancels the heal the preceding DISABLE just booked
@@ -1478,6 +1503,7 @@ ashita.events.register('packet_out', 'dlac-lockstyle-pout', function(e)
     local act = M._lsGuard(mode, os.clock(), guard.zoneInAt, guard.active, guard.userOffAt, M._townSuppress());
     table.insert(outLog, 1, { at = os.clock(), mode = mode, act = act });
     outLog[OUT_KEEP + 1] = nil;
+    M._capNote(string.format('0x053 out: %s -> %s', MODE_WORD[mode] or ('mode ' .. tostring(mode)), tostring(act)));
     if act == 'activate' then
         guard.active = true;
     elseif act == 'adopt' then

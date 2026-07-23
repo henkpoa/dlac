@@ -8602,6 +8602,14 @@ end)();
           and txt3:find('old lines', 1, true) == nil, true);
     check('DBF6 filenames sanitize to letters/digits', dbg._safeName("O'harra-2"), 'Oharra2');
     check('DBF7 no name = unknown', dbg._safeName(nil), 'unknown');
+
+    -- the capture-window length (v106): 30-120 clamp, default 45 -- the
+    -- engine's debug branch clamps identically (twin constants).
+    check('DBT7 no arg = 45s default', dbg._dur(nil), 45);
+    check('DBT8 explicit seconds ride', dbg._dur('60'), 60);
+    check('DBT9 short floors to 30', dbg._dur('5'), 30);
+    check('DBT10 long caps at 120', dbg._dur('999'), 120);
+    check('DBT11 garbage = default', dbg._dur('soon'), 45);
 end)();
 
 -- DBG. '/dl debug ls' engine dry-run report (dispatch M._lsDebugReport):
@@ -8628,6 +8636,13 @@ end)();
           'apply would refuse: lockstyle box 2 has no items');
     check('DBG6 no file refuses like apply', dispatchM._lsDebugReport(nil, nil, resolveId, equippedId, nil)[1],
           'apply would refuse: no lockstyle sets saved yet');
+    -- the capture-window flush (v106): snapshot + timeline -> handoff lines.
+    local F = dispatchM._lsDbgFlushLines({ 'alive v106' }, { 't+  1.0s  apply received' }, 45);
+    check('DBG7 flush = snapshot then timeline', F[1] == 'alive v106'
+          and F[2]:find('captured events, engine side (45s window)', 1, true) ~= nil
+          and F[3]:find('apply received', 1, true) ~= nil, true);
+    check('DBG8 empty window says so', dispatchM._lsDbgFlushLines({}, {}, 30)[2],
+          '(no lockstyle events reached this engine during the window)');
 end)();
 
 -- LGD. lockstyle.M.debugLines -- the '/dl debug ls' addon half exists and
@@ -8647,6 +8662,19 @@ end)();
           and line:find('disable 10s ago (suppress)', 1, true) ~= nil, true);
     check('LGD7 unknown mode degrades to its number', ls._outLine({ { at = 99, mode = 7, act = 'pass' } }, 100)
           :find('mode 7', 1, true) ~= nil, true);
+    -- the capture window, addon half (v106): open -> note -> collect clears.
+    check('LGD8 no window = notes are no-ops', (function()
+        ls._capNote('before any window');
+        return #ls.debugCaptureLog();
+    end)(), 0);
+    ls.debugCapture(30);
+    ls._capNote('first event');
+    ls._capNote('second event');
+    local cap = ls.debugCaptureLog();
+    check('LGD9 window collects stamped events in order', #cap == 2
+          and cap[1]:find('t+', 1, true) == 1 and cap[1]:find('first event', 1, true) ~= nil
+          and cap[2]:find('second event', 1, true) ~= nil, true);
+    check('LGD10 collect clears the window', #ls.debugCaptureLog(), 0);
 end)();
 
 -- ---------------------------------------------------------------------------
