@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 116;  -- 116: THE STABILITY LATCH (round 4 -- "it fixed itself after a bit, so its initial plan is wrong"). Henrik's capture showed the v114/v115 gate FIRING correctly at first ask, then PASSING six seconds later with the world still wrong (lows 0, tags gone, phantom ammo band; healed ~30s later): every proxy attestation can be lied to one level deeper during the boot storm -- a trigger path resolved to the LEGACY tier reads as legitimately trigger-less, a first flatten can leave set names whose tables are still hollow. End of proxy whack-a-mole: the LOW map now attests ITSELF. A ready compute is believed (and cached) only after two computes >= 2s apart produce the IDENTICAL world signature (sorted lows+refresh baselines + rule/set counts). Until agreement: nil ladder, batteries hold worn, /dl plan says warming up. Consults ride the 0.4s Default tick so belief lands ~2.4s after the world truly settles; the steady state re-agrees instantly across cache expiries (the signature persists). Plus the rules-side twin of v115's sets rule: rules nil while a profile trigger file EXISTS = mid-resolution, unready. Both modes.
+M.VERSION = 117;  -- 117: THE WARM TRACE + the gear ordering gate (round 5 -- the round the guessing stops). Henrik's capture beat v116's axiom: the wrong world held IDENTICAL for 3+ seconds (two matching bad renders), so it agreed with itself and was believed -- stable-wrong states exist (a flatten over a not-yet-live input is hollow STABLY, not transiently), and no proxy or self-agreement can see through one from the inside. Two moves. (1) debug-mpwarm.txt: every full LOW-map compute writes one row -- latch verdict (attest-failed/new-sig/young/BELIEVED), rules/sets attestation detail (incl. WHICH trigger path resolved and parse errors), rule/set counts, nonzero-low count, gear NameToObject count, manifest mp count, flattened/hollow set counts -- fresh file per session, 150-row cap; the next wrong ladder is a movie with named stages, not a screenshot. (2) The native identity latch defers install/flatten until the gear world is live (NameToObject non-empty) -- the one KNOWN stable-hollow producer, killed by ordering rather than gating; skip never latches, the tick retries.
+                  -- 116: THE STABILITY LATCH (round 4 -- "it fixed itself after a bit, so its initial plan is wrong"). Henrik's capture showed the v114/v115 gate FIRING correctly at first ask, then PASSING six seconds later with the world still wrong (lows 0, tags gone, phantom ammo band; healed ~30s later): every proxy attestation can be lied to one level deeper during the boot storm -- a trigger path resolved to the LEGACY tier reads as legitimately trigger-less, a first flatten can leave set names whose tables are still hollow. End of proxy whack-a-mole: the LOW map now attests ITSELF. A ready compute is believed (and cached) only after two computes >= 2s apart produce the IDENTICAL world signature (sorted lows+refresh baselines + rule/set counts). Until agreement: nil ladder, batteries hold worn, /dl plan says warming up. Consults ride the 0.4s Default tick so belief lands ~2.4s after the world truly settles; the steady state re-agrees instantly across cache expiries (the signature persists). Plus the rules-side twin of v115's sets rule: rules nil while a profile trigger file EXISTS = mid-resolution, unready. Both modes.
                   -- 115: the gate covers LAC mode too (Henrik's attribution note, round 3b: "I think this was the case earlier as well, not due to the migration"). He is right, and the mechanism is the same staged boot: after a /lac load / job change, gProfile.Sets exists but its Dynamic is the shim's EMPTY SCAFFOLD until the profile auto-install latch fires on the engine tick -- so v114's sets~=nil readiness read hollow-but-present as ready and the LAC-mode glimpse (which the maxmp v76-v94 saga likely brushed against) stayed possible. Unified rule, both modes: Dynamic empty while a profile sets file EXISTS for the current job = install pending = UNREADY (statics-only characters have no profile file and stay ready; unreadable job falls under the existing path gate). The v114 comment claiming LAC never races is corrected.
                   -- 114: THE READINESS GATE (native field round 3 -- Henrik's plan captures + his spec made law). His two /dl plan screenshots proved the boot glimpse exactly: seconds after a reload the ladder rendered with every low 0, every refresh tag gone (pure diff+alphabetical order, Bliaut dead last) and a PHANTOM ammo band (Talon Tathlum's diff stopped reading 0) -- then self-corrected. Cause family: mpBands built eagerly during the boot storm from whichever input lost its race (trigger rules resolving, the store's first flatten, per-second identity caches), and the 10s LOW-map TTL amplified one bad glimpse (v113's store-only guard missed every variant where the store existed but another input didn't). The law, Henrik's own framing: the band ORDER is a PURE FUNCTION of manifest + sets + rules -- three deterministic files -- and current MP only picks the position on the ladder. So mpBands now refuses to build until the world is attested: mpLowMap returns a READY flag (trigger world resolved -- rules loaded OR path resolved with the file legitimately absent -- AND a sets source present), unready results are never cached, and native mode additionally requires the store to hold at least one flattened set. Unready = nil = the live overlay holds worn gear and /dl plan says it is warming up. LAC mode is ready from the first dispatch (gProfile + rules precede any dispatch), so nothing changes there. Enable timing now provably cannot change the order -- only the per-session warm-up (offset at first true-full, measured ticks) remains, and persisting those is the standing offer.
                   -- 113: the maxmp boot-cache guard (native field round 2, the self-healing glimpse). Henrik saw the refresh body released FIRST right after boarding v112, then the order corrected itself with no code change: the LOW map had computed -- and CACHED for its 10s TTL -- an answer from before the tick's identity latch populated M._nativeSets, so every named set was invisible and lowRf/rfDelta sorted the bands wrong until the TTL lapsed. The cache no longer latches a result computed while the native store is absent (serve once, recompute next consult). LAC-state behavior untouched (the guard is not-inLac-gated).
@@ -1730,6 +1731,28 @@ end
 -- tables; dlac: virtuals count their fallback piece. TTL-cached 10s -- set
 -- and trigger edits are picked up within a beat, no invalidation plumbing.
 local _mpLow = { at = 0, map = nil, rf = nil };
+-- The maxmp WARM TRACE (v117, Henrik's debug-file rule applied to this fight):
+-- every full LOW-map compute -- boot storm, belief, steady-state expiries --
+-- appends one line to <data home>\debug-mpwarm.txt (fresh file per session,
+-- capped), so the next wrong ladder is a MOVIE with named stages instead of a
+-- screenshot. Read it bottom-up: the last lines before 'believed' name what
+-- the world looked like when the ladder was trusted.
+local _mpWarm = { n = 0, opened = false };
+local function mpWarmNote(line)
+    if _mpWarm.n >= 150 then return; end
+    _mpWarm.n = _mpWarm.n + 1;
+    pcall(function()
+        local dir = charDir();
+        if dir == nil then return; end
+        local f = io.open(dir .. 'debug-mpwarm.txt', _mpWarm.opened and 'a' or 'w');
+        if f == nil then return; end
+        _mpWarm.opened = true;
+        f:write(string.format('%s %7.2f  %s\n', os.date('%H:%M:%S'), os.clock(), line));
+        f:close();
+    end);
+end
+M._mpWarmNote = mpWarmNote;
+
 local function mpLowMap(mpMap, rfMap)
     -- cache hits are always READY results (unready is never cached below)
     if _mpLow.map ~= nil and os.time() < _mpLow.at then return _mpLow.map, _mpLow.rf, true; end
@@ -1737,6 +1760,7 @@ local function mpLowMap(mpMap, rfMap)
     local low, lowRf = {}, {};
     local _mpLowReady = false;
     local _ruleN, _setN = 0, 0;   -- world-signature inputs (v116)
+    local _rulesState, _setsState = '?', '?';   -- warm-trace attestation detail (v117)
     local function scanSet(set)
         if type(set) ~= 'table' then return; end
         for slot, v in pairs(set) do
@@ -1782,6 +1806,9 @@ local function mpLowMap(mpMap, rfMap)
         -- resolved and the file is legitimately absent -- a trigger-less job
         -- is ready with empty rules) AND a sets source existed.
         _mpLowReady = ((rules ~= nil or _trig.path ~= nil) and sets ~= nil);
+        _rulesState = (rules ~= nil) and 'ok'
+            or (_trig.path ~= nil and 'nil(path=' .. tostring(_trig.path):match('([^\\]+)$') .. (_trig.err ~= nil and ',ERR' or '') .. ')' or 'path-nil');
+        _setsState = (sets == nil) and 'nil' or 'ok';
         -- Henrik's field note (round 3b): the empty glimpse PREDATES native.
         -- LAC mode stages its boot the same way -- the profile auto-install
         -- latch fills Dynamic on the tick AFTER a /lac load / job change, so
@@ -1797,7 +1824,7 @@ local function mpLowMap(mpMap, rfMap)
                    and _pok and type(_prof.hasSetsFile) == 'function' then
                     local has = false;
                     pcall(function() has = _prof.hasSetsFile(job) == true; end);
-                    if has then _mpLowReady = false; end
+                    if has then _mpLowReady = false; _setsState = 'dyn-empty+file'; end
                 end
             end
         end
@@ -1811,7 +1838,7 @@ local function mpLowMap(mpMap, rfMap)
                and _pok and type(_prof.hasTriggersFile) == 'function' then
                 local has = false;
                 pcall(function() has = _prof.hasTriggersFile(job) == true; end);
-                if has then _mpLowReady = false; end
+                if has then _mpLowReady = false; _rulesState = 'nil+file-exists'; end
             end
         end
         for _, list in pairs(rules or {}) do
@@ -1846,15 +1873,50 @@ local function mpLowMap(mpMap, rfMap)
     end
     table.sort(sigParts);
     local sig = table.concat(sigParts, ',') .. '|r' .. tostring(_ruleN) .. '|s' .. tostring(_setN);
+    local latchState = 'attest-failed';
     if _mpLowReady then
         local nowc = os.clock();
         if sig ~= _mpLow.sig then
             _mpLow.sig, _mpLow.sigAt = sig, nowc;   -- first sight of this world: sample again
             _mpLowReady = false;
+            latchState = 'new-sig';
         elseif (nowc - (_mpLow.sigAt or 0)) < 2.0 then
             _mpLowReady = false;                     -- agreed, but not for 2s yet
+            latchState = 'young';
+        else
+            latchState = 'BELIEVED';
         end
     end
+    -- the warm-trace line: the whole world in one row
+    pcall(function()
+        local lowsNZ = 0;
+        for _, v in pairs(low) do if (tonumber(v) or 0) > 0 then lowsNZ = lowsNZ + 1; end end
+        local gearN = 0;
+        pcall(function()
+            local g = package.loaded['dlac\\gear'];
+            if type(g) == 'table' and type(g.NameToObject) == 'table' then
+                for _ in pairs(g.NameToObject) do gearN = gearN + 1; end
+            end
+        end);
+        local mpN = 0;
+        for _ in pairs(mpMap or {}) do mpN = mpN + 1; end
+        local flatN, hollowN = 0, 0;
+        local src = nil;
+        pcall(function()
+            local prof = rawget(_G, 'gProfile');
+            src = (prof ~= nil and type(prof.Sets) == 'table') and prof.Sets or M._nativeSets;
+        end);
+        if type(src) == 'table' then
+            for k, v in pairs(src) do
+                if k ~= 'Dynamic' and type(v) == 'table' then
+                    flatN = flatN + 1;
+                    if next(v) == nil then hollowN = hollowN + 1; end
+                end
+            end
+        end
+        mpWarmNote(string.format('%s  rules=%s sets=%s ruleN=%d setN=%d lowsNZ=%d gearN=%d mpN=%d flat=%d hollow=%d',
+            latchState, _rulesState, _setsState, _ruleN, _setN, lowsNZ, gearN, mpN, flatN, hollowN));
+    end);
     if not _mpLowReady then
         _mpLow.at = 0;   -- never cache an unbelieved answer
     end
@@ -5249,6 +5311,24 @@ if engineActive() then
                     pcall(function() job = gData.GetPlayer().MainJob; end);
                     local act = _pok and _prof.activeName() or nil;
                     if M.jobReady(j, job) and (job ~= _natJob or act ~= _natAct) then
+                        -- ORDERING GATE (v117): never install/flatten before the
+                        -- GEAR world is live -- a flatten over an empty gear
+                        -- table produces stably-hollow sets (names present,
+                        -- tables empty), the one wrong state no readiness proxy
+                        -- or stability latch can see through. Skip WITHOUT
+                        -- latching: the tick retries every 0.4s until gear.lua
+                        -- is genuinely loaded. (A truly gear-less fresh
+                        -- character has nothing to flatten anyway; the latch
+                        -- lands right after their first Scan/Commit.)
+                        local gearReady = false;
+                        pcall(function()
+                            local g = package.loaded['dlac\\gear'];
+                            gearReady = type(g) == 'table' and type(g.NameToObject) == 'table'
+                                        and next(g.NameToObject) ~= nil;
+                        end);
+                        if not gearReady then
+                            if type(M._mpWarmNote) == 'function' then M._mpWarmNote('latch: gear world not live yet -- install deferred'); end
+                        else
                         local fresh = select(1, readSetsSource());
                         if fresh ~= nil and type(fresh.Dynamic) == 'table' then
                             M._nativeSets = nil;   -- a fresh job: never carry the old job's flatten
@@ -5260,6 +5340,7 @@ if engineActive() then
                             end
                         else
                             _natJob, _natAct = job, act;   -- legacy/no file: latch anyway, retry on next change
+                        end
                         end
                     end
                 end
