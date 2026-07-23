@@ -32,7 +32,7 @@ local M = {};
 local _dpok, dsp = pcall(require, 'dlac\\dispatch');
 local hasDispatch = _dpok and type(dsp) == 'table';
 local FALLBACK_DEFAULT = { 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
-                           'Craft', 'HELM', 'Fishing', 'Triggers' };
+                           'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' };
 
 -- Rows a player CANNOT pick up: only the Triggers floor (always last -- the
 -- claims dress over it). Locks became a draggable VETO row in step 3 (ADR 0012):
@@ -60,12 +60,15 @@ function M.sanitize(st)
     local out, seen = {}, {};
     local known = {};
     for _, n in ipairs(FALLBACK_DEFAULT) do known[n] = true; end
+    -- Triggers floor pinned last (the dispatch.arbOrder invariant, mirrored so
+    -- the headless-without-dispatch fallback agrees).
     for _, n in ipairs(given or {}) do
-        if known[n] and not seen[n] then out[#out + 1] = n; seen[n] = true; end
+        if known[n] and not seen[n] and n ~= 'Triggers' then out[#out + 1] = n; seen[n] = true; end
     end
     for _, n in ipairs(FALLBACK_DEFAULT) do
-        if not seen[n] then out[#out + 1] = n; seen[n] = true; end
+        if not seen[n] and n ~= 'Triggers' then out[#out + 1] = n; seen[n] = true; end
     end
+    out[#out + 1] = 'Triggers';
     return out;
 end
 

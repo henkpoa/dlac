@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 119;  -- 119: field-CONFIRMED close of the maxmp boot saga (Henrik's trace showed the designed boot: 12 install refusals holding the door ~4.5s of hollow flattens, then the REAL world's first appearance earns the first-ever belief -- no wrong ladder was ever displayable) + Henrik's debug-folder rule: per-char debug artifacts live in <data home>\debug\ (the warm trace moves to debug\mpwarm.txt and sweeps its old root-level file; the LAC-bridge handoff files stay put -- paired-reader protocol, leaving with LAC).
+M.VERSION = 120;  -- 120: Chocobo riding-gear automation (issue #95, docs/design/chocobo-gear.md) -- a fourth idle-only sibling: ensureChocoState/chocoStateActive/chocoOverlayFor, the dlac:AutoChoco resolveVirtual branch (manifest `choco` per-slot best-first ladders, Main/Neck/Body/Hands/Legs/Feet, scored by ChocoboRidingTime, the Chocobo Wand included in Main), a 'Chocobo' Arbiter claim row (default rank below Fishing, above the Triggers floor), and arbOrder now pins the Triggers floor last so a new claimant appended to an existing arbstate file never sinks below it.
+                  -- 119: field-CONFIRMED close of the maxmp boot saga (Henrik's trace showed the designed boot: 12 install refusals holding the door ~4.5s of hollow flattens, then the REAL world's first appearance earns the first-ever belief -- no wrong ladder was ever displayable) + Henrik's debug-folder rule: per-char debug artifacts live in <data home>\debug\ (the warm trace moves to debug\mpwarm.txt and sweeps its old root-level file; the LAC-bridge handoff files stay put -- paired-reader protocol, leaving with LAC).
                   -- 118: A HOLLOW INSTALL IS NOT AN INSTALL + the install invalidates the belief (round 5b -- the warm trace's first catch, one reload after shipping). Henrik's debug-mpwarm.txt line 16: 'BELIEVED setN=0 flat=0' at :12 behind a '20 set(s) installed' print at :10 -- the install-time flatten yielded ZERO sets (the fresh utils state's first level read wasn't settled), that hollow-but-stable world earned belief, and the belief CACHE (keyed by time, not world) survived the real store arriving at ~:14 -- serving the :16/:18/:21 bad plans until the 10s TTL expired at :22. Three closures: (1) installSets refuses a flatten that yields 0 sets when the raw Dynamic has real entries -- store left absent, latch retries next tick (genuinely empty starter profiles still pass: their zero is the truth); (2) BOTH install branches wipe the LOW-map cache + earned signature -- a belief can never outlive the world it was earned against; (3) the flatten counts ride the signature (f/h fields), so store identity changes can never share a sig. The trace stays -- it earned its keep in one reload.
                   -- 117: THE WARM TRACE + the gear ordering gate (round 5 -- the round the guessing stops). Henrik's capture beat v116's axiom: the wrong world held IDENTICAL for 3+ seconds (two matching bad renders), so it agreed with itself and was believed -- stable-wrong states exist (a flatten over a not-yet-live input is hollow STABLY, not transiently), and no proxy or self-agreement can see through one from the inside. Two moves. (1) debug-mpwarm.txt: every full LOW-map compute writes one row -- latch verdict (attest-failed/new-sig/young/BELIEVED), rules/sets attestation detail (incl. WHICH trigger path resolved and parse errors), rule/set counts, nonzero-low count, gear NameToObject count, manifest mp count, flattened/hollow set counts -- fresh file per session, 150-row cap; the next wrong ladder is a movie with named stages, not a screenshot. (2) The native identity latch defers install/flatten until the gear world is live (NameToObject non-empty) -- the one KNOWN stable-hollow producer, killed by ordering rather than gating; skip never latches, the tick retries.
                   -- 116: THE STABILITY LATCH (round 4 -- "it fixed itself after a bit, so its initial plan is wrong"). Henrik's capture showed the v114/v115 gate FIRING correctly at first ask, then PASSING six seconds later with the world still wrong (lows 0, tags gone, phantom ammo band; healed ~30s later): every proxy attestation can be lied to one level deeper during the boot storm -- a trigger path resolved to the LEGACY tier reads as legitimately trigger-less, a first flatten can leave set names whose tables are still hollow. End of proxy whack-a-mole: the LOW map now attests ITSELF. A ready compute is believed (and cached) only after two computes >= 2s apart produce the IDENTICAL world signature (sorted lows+refresh baselines + rule/set counts). Until agreement: nil ladder, batteries hold worn, /dl plan says warming up. Consults ride the 0.4s Default tick so belief lands ~2.4s after the world truly settles; the steady state re-agrees instantly across cache expiries (the signature persists). Plus the rules-side twin of v115's sets rule: rules nil while a profile trigger file EXISTS = mid-resolution, unready. Both modes.
@@ -1283,6 +1284,27 @@ local function resolveVirtual(marker, ctx, slot)
         local chain = f[slotKey];
         if type(chain) ~= 'table' then
             return nil, string.format('no %s fishing gear owned', slotKey);
+        end
+        for _, r in ipairs(chain) do                     -- ladder is best-first
+            if type(r) == 'table' and type(r.name) == 'string' and usableAt(r.level, lvl) then
+                return r.name;
+            end
+        end
+        return nil, string.format('no usable %s rung at Lv%d', slotKey, lvl);
+    end
+    if mk == 'dlac:autochoco' then
+        -- Chocobo riding-gear automation (docs/design/chocobo-gear.md): manifest
+        -- `choco` block = per-slot best-first ladders (score = ChocoboRidingTime).
+        -- One activity, no category, no target -- the fixed "best riding-time
+        -- set". Slots Main/Neck/Body/Hands/Legs/Feet only (the Chocobo Wand is a
+        -- Main-slot weapon and IS included -- riding-time totals beat the TP a
+        -- swap costs while idle before a whistle).
+        local c = (type(a.choco) == 'table') and a.choco or nil;
+        if c == nil then return nil, 'no chocobo gear data (open the Automations tab -- it rescans itself)'; end
+        local slotKey = string.lower(tostring(slot or ''));
+        local chain = c[slotKey];
+        if type(chain) ~= 'table' then
+            return nil, string.format('no %s chocobo gear owned', slotKey);
         end
         for _, r in ipairs(chain) do                     -- ladder is best-first
             if type(r) == 'table' and type(r.name) == 'string' and usableAt(r.level, lvl) then
@@ -2531,7 +2553,7 @@ M._postPassOrder = POST_ORDER;
 -- battery in Ammo (it ranks above MaxMP, so Ammo is ceded to it).
 -- ---------------------------------------------------------------------------
 local ARB_ORDER_DEFAULT = { 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
-                            'Craft', 'HELM', 'Fishing', 'Triggers' };
+                            'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' };
 M._arbDefaultOrder = ARB_ORDER_DEFAULT;
 
 -- The live rank order: arbstate's `order` array sanitized against the KNOWN
@@ -2542,16 +2564,26 @@ M._arbDefaultOrder = ARB_ORDER_DEFAULT;
 function M.arbOrder(st)
     local given = (type(st) == 'table' and type(st.order) == 'table') and st.order or nil;
     local out, seen = {}, {};
+    -- The Triggers floor is a FLOOR INVARIANT: the claims dress OVER it, so it
+    -- is always last, no matter where a (possibly hand-mangled, or simply older)
+    -- file placed it. Both loops skip it here and it is appended once at the
+    -- end. This is what lets a NEW claimant row (Chocobo, 2026) be added to
+    -- ARB_ORDER_DEFAULT without sinking below the floor when an existing
+    -- arbstate file -- which already lists Triggers -- gets the missing row
+    -- appended after it (the append-missing pass would otherwise land the new
+    -- name AFTER Triggers, and a claimant below the floor never wins a slot the
+    -- idle set already dresses).
+    local known = {};
+    for _, n in ipairs(ARB_ORDER_DEFAULT) do known[n] = true; end
     if given ~= nil then
-        local known = {};
-        for _, n in ipairs(ARB_ORDER_DEFAULT) do known[n] = true; end
         for _, n in ipairs(given) do
-            if known[n] and not seen[n] then out[#out + 1] = n; seen[n] = true; end
+            if known[n] and not seen[n] and n ~= 'Triggers' then out[#out + 1] = n; seen[n] = true; end
         end
     end
     for _, n in ipairs(ARB_ORDER_DEFAULT) do
-        if not seen[n] then out[#out + 1] = n; seen[n] = true; end
+        if not seen[n] and n ~= 'Triggers' then out[#out + 1] = n; seen[n] = true; end
     end
+    out[#out + 1] = 'Triggers';
     return out;
 end
 
@@ -3355,6 +3387,50 @@ local function fishOverlayFor(fs, ctx)
 end
 M._fishOverlayFor = fishOverlayFor;   -- test seam
 
+-- ---------------------------------------------------------------------------
+-- Chocobo overlay (v120) -- the fourth sibling (docs/design/chocobo-gear.md).
+-- chocowatch writes <char>\dlac\chocostate.lua { enabled, at }; when enabled,
+-- the engine overlays the best owned riding-time gear on Default only, standing
+-- aside in combat exactly like HELM/Fishing. There is no category, no target
+-- and no Range/Ammo -- one fixed "best riding-time set" resolved through the
+-- manifest choco ladders. Main IS included (the Chocobo Wand): the ladder only
+-- ever holds riding gear, so a character without any never sees a Main swap.
+-- ---------------------------------------------------------------------------
+local _choco = { raw = nil, data = nil, lastCheck = -1 };
+local function ensureChocoState() return ensureStateFile(_choco, 'chocostate.lua'); end
+
+-- Slots the Chocobo set dresses: Main/Neck/Body/Hands/Legs/Feet (issue #95).
+-- Ring/Waist/Head/Back/Ear are never touched -- the reference riding set has no
+-- pieces there and an idle swap in an unrelated slot would just churn gear.
+local CHOCO_OVERLAY_SLOTS = { 'Main', 'Neck', 'Body', 'Hands', 'Legs', 'Feet' };
+
+local function chocoStateActive(cs)
+    return type(cs) == 'table' and cs.enabled == true;
+end
+M._chocoStateActive = chocoStateActive;   -- test seam
+
+local function chocoOverlayFor(cs, ctx)
+    if not chocoStateActive(cs) then return nil; end
+    -- Same idle law as HELM/Fishing (v61): Default runs every frame, so Engaged
+    -- or Dead stand aside -- riding gear is for standing around before a
+    -- whistle, never for combat.
+    if type(ctx) == 'table' and type(ctx.player) == 'table' then
+        local st = tostring(ctx.player.Status or '');
+        if ci(st, 'Engaged') or ci(st, 'Dead') then return nil; end
+    end
+    local equip = nil;
+    -- ctx.player rides along so the ladder's level gate sees the REAL level
+    -- (the HELM/Fishing lesson; riding gear is nearly all Lv1 but the pattern
+    -- stays uniform).
+    local inner = { player = (type(ctx) == 'table') and ctx.player or nil };
+    for _, slot in ipairs(CHOCO_OVERLAY_SLOTS) do
+        local nm = resolveVirtual('dlac:AutoChoco', inner, slot);
+        if type(nm) == 'string' then equip = equip or {}; equip[slot] = nm; end
+    end
+    return equip;
+end
+M._chocoOverlayFor = chocoOverlayFor;   -- test seam
+
 -- (There was a craftOverlay(ctx) wrapper here that paired ensureCraftState with
 -- craftOverlayFor. M.dispatch now reads the state itself -- it has to decide
 -- whether there is anything to do BEFORE building the context -- so the wrapper
@@ -4089,6 +4165,8 @@ function M.dispatch(event)
         local helmOn     = helmStateActive(helmState);
         local fishState  = (event == 'Default') and ensureFishState() or nil;
         local fishOn     = fishStateActive(fishState);
+        local chocoState = (event == 'Default') and ensureChocoState() or nil;
+        local chocoOn    = chocoStateActive(chocoState);
         -- AutoAmmo is NOT Default-gated: it owns the Ammo slot on the shooting
         -- events and only sweeps on Default. It never joins the craft/helm/fish
         -- arbitration -- its Default arm stands down whenever the fish overlay
@@ -4106,7 +4184,7 @@ function M.dispatch(event)
         -- HELM must not pull a fishing rod out of Range that HELM never claims).
         -- Each feature's own gates are untouched (idle-only stand-asides,
         -- Default-only application); arming no longer switches activities.
-        if not hasRules and not hasPins and not craftOn and not helmOn and not fishOn and not ammoOn then return; end
+        if not hasRules and not hasPins and not craftOn and not helmOn and not fishOn and not chocoOn and not ammoOn then return; end
 
         local ctx = buildCtx(event);
         -- Level-sync settle (v56): computed ONCE per dispatch and ridden by every
@@ -4138,6 +4216,8 @@ function M.dispatch(event)
         local hEquip = helmOn and helmOverlayFor(helmState, ctx) or nil;
         -- Fishing overlay: same law, its own Claim (v64; co-claims since step 1.5).
         local fEquip = fishOn and fishOverlayFor(fishState, ctx) or nil;
+        -- Chocobo overlay: same law, its own Claim (v120; co-claims with the rest).
+        local chEquip = chocoOn and chocoOverlayFor(chocoState, ctx) or nil;
 
         -- Pins apply on EVERY event (a pin that lost its slot mid-cast would not
         -- be a pin). Scoped pins need `hits` to know whether their trigger fired,
@@ -4191,6 +4271,7 @@ function M.dispatch(event)
         if cEquip ~= nil then claims['Craft']     = cEquip; end
         if hEquip ~= nil then claims['HELM']      = hEquip; end
         if fEquip ~= nil then claims['Fishing']   = fEquip; end
+        if chEquip ~= nil then claims['Chocobo']  = chEquip; end
         -- LOCKS ARE THE VETO ROW (ADR 0012, step 3). Locks sit at a rank; a
         -- claimant ABOVE the row punches through a locked slot, one BELOW stops.
         -- rankOf indexes the live order; layerRespectsLocks answers per claimant
@@ -4220,7 +4301,7 @@ function M.dispatch(event)
         if mpClaim ~= nil then claims['MaxMP'] = mpClaim; end
         ctx.mpCeded = M.arbCededAbove(claims, arbOrder, 'MaxMP');
 
-        if #hits == 0 and cEquip == nil and hEquip == nil and fEquip == nil and pEquip == nil and aEquip == nil then
+        if #hits == 0 and cEquip == nil and hEquip == nil and fEquip == nil and chEquip == nil and pEquip == nil and aEquip == nil then
             if event ~= 'Default' then   -- Default runs every frame; only action events trace a miss
                 _trace[event] = { time = os.date('%H:%M:%S'), action = actionLabel(ctx),
                                   sig = '', lines = { '(no trigger matched)' } };
@@ -4265,6 +4346,13 @@ function M.dispatch(event)
             table.sort(fk);
             fSig = table.concat(fk, ',');
         end
+        local chSig = '';                                 -- chocobo overlay changes must retrace too
+        if chEquip ~= nil then
+            local chk = {};
+            for slot, item in pairs(chEquip) do chk[#chk + 1] = slot .. '=' .. item; end
+            table.sort(chk);
+            chSig = table.concat(chk, ',');
+        end
         local aSig = '';                                  -- AutoAmmo decision changes must retrace too
         if aEquip ~= nil then aSig = 'Ammo=' .. tostring(aEquip.Ammo); end
         local mSig = '';                                  -- MaxMP battery target changes must retrace (/dl why attribution)
@@ -4275,7 +4363,7 @@ function M.dispatch(event)
             mSig = table.concat(mk, ',');
         end
         sig = event .. ':' .. table.concat(sig, ',') .. '|' .. table.concat(lk, ',')
-              .. '|' .. cSig .. '|' .. pSig .. '|' .. hSig .. '|' .. fSig .. '|' .. aSig .. '|' .. mSig;
+              .. '|' .. cSig .. '|' .. pSig .. '|' .. hSig .. '|' .. fSig .. '|' .. chSig .. '|' .. aSig .. '|' .. mSig;
         local old = _trace[event];
         local retrace = (old == nil) or (old.sig ~= sig) or (event ~= 'Default');
         local lines = retrace and {} or old.lines;
@@ -4389,6 +4477,15 @@ function M.dispatch(event)
                     for slot in pairs(fEquip) do ks[#ks + 1] = tostring(slot); end
                     table.sort(ks);
                     lines[#lines + 1] = 'fishing gear (overlay)  ->  ' .. table.concat(ks, ', ');
+                end
+            end,
+            ['Chocobo'] = function()
+                equipResolved(chEquip, ctx, layerRespectsLocks('Chocobo'));
+                if retrace then
+                    local ks = {};
+                    for slot in pairs(chEquip) do ks[#ks + 1] = tostring(slot); end
+                    table.sort(ks);
+                    lines[#lines + 1] = 'chocobo gear (overlay)  ->  ' .. table.concat(ks, ', ');
                 end
             end,
             ['AutoAmmo'] = function()
@@ -5624,6 +5721,7 @@ if engineActive() then
             local helmOn = helmStateActive(helmState);
             local fishState = ensureFishState();
             local fishOn = fishStateActive(fishState);
+            local chocoOn = chocoStateActive(ensureChocoState());
             -- Co-claim (ADR 0012 amendment): every armed activity claims; rank
             -- settles overlapping slots. No newest-armed exclusivity -- the
             -- status below shows all concurrent claimants ON.
@@ -5641,6 +5739,7 @@ if engineActive() then
                 Craft    = craftOn and 'ON (armed)' or 'off',
                 HELM     = helmOn and 'ON (armed)' or 'off',
                 Fishing  = fishOn and 'ON (armed)' or 'off',
+                Chocobo  = chocoOn and 'ON (armed)' or 'off',
                 Triggers = 'floor (always on)',
             };
             print('[dlac] Claim priority (arbstate rank, highest first):');

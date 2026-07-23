@@ -290,7 +290,8 @@ if not _cfok then ledger.failed[#ledger.failed + 1] = { mod = 'chatfmt', err = t
 for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\gearimport',
                        'gear\\gearexport', 'feature\\useitem', 'feature\\craftwatch',
                        'ui\\craftbar', 'feature\\helmwatch', 'ui\\helmbar',
-                       'feature\\fishwatch', 'ui\\fishbar', 'feature\\meritwatch',
+                       'feature\\fishwatch', 'ui\\fishbar', 'feature\\chocowatch',
+                       'feature\\meritwatch',
                        'feature\\check', 'feature\\debug', 'feature\\lockstyle',
                        'feature\\lockstyleapply', 'feature\\equipengine',
                        'feature\\engine', 'ui\\gearui' }) do

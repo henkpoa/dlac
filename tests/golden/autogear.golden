@@ -5,7 +5,7 @@
 -- higher tier per cast; ties go to the universal. WHETHER it fires is decided
 -- by the set: a dlac:AutoStaff / dlac:AutoObi entry in Main / Waist (Sets tab).
 return {
-    fmtver = 14,
+    fmtver = 15,
     written = "<golden -- normalized>",
     craftGoal = "hq",
     mpMerits = 0,
@@ -75,5 +75,9 @@ return {
         body = { { name = "Fishermans Tunica", score = 1000, level = 1, fish = 1 } },
         main = { { name = "Halieutica", score = 2000, level = 49, fish = 2 } },
         waist = { { name = "Survey Sash", score = 1000, level = 50, fish = 1 } },
+    },
+    choco = {
+        main = { { name = "Chocobo Wand", score = 30, level = 1, ride = 30 } },
+        neck = { { name = "Chocobo Torque", score = 4, level = 1, ride = 4 } },
     },
 };

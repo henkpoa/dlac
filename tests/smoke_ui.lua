@@ -607,6 +607,41 @@ end)();
     local ok7, entw = pcall(require, 'dlac\\lib\\entwatch');
     check('S139c entwatch loads headless', ok7 and type(entw) == 'table', true);
     check('S139d entwatch starts with an empty registry', ok7 and #entw.debugState(), 0);
+    -- Chocobo modules: the same imgui-less contract (chocoui's row status +
+    -- best-per-slot math sit above its guard; chocowatch is pure file I/O).
+    local ok8, chocoui = pcall(require, 'dlac\\ui\\chocoui');
+    check('S139e chocoui loads headless', ok8 and type(chocoui) == 'table', true);
+    check('S139f chocoui.maxLevel', chocoui and chocoui.maxLevel, 3);
+    check('S139g chocoui.status callable without deps',
+        ok8 and select(1, chocoui.status(nil)), 0);
+    check('S139h chocoui.totalMinutes headless is the 30-minute base',
+        ok8 and select(1, chocoui.totalMinutes(nil)), 30);
+    local ok9, chw = pcall(require, 'dlac\\feature\\chocowatch');
+    check('S139i chocowatch loads under the ui tree', ok9 and type(chw) == 'table', true);
+    -- Total riding time from OWNED pieces = 30 base + summed ChocoboRidingTime,
+    -- best per slot; the reference CatsEye set (Wand 30 / Silks 10 / Torque 4 /
+    -- Hose 4 / Gloves 3 / Boots 3) totals 30 + 54 = 84 minutes across the 6 slots.
+    if ok8 then
+        local REF = {
+            { Name = 'Chocobo Wand',      Slot = 'Main',  Stats = { ChocoboRidingTime = 30 } },
+            { Name = 'Orange Race Silks', Slot = 'Body',  Stats = { ChocoboRidingTime = 10 } },
+            { Name = 'Chocobo Torque',    Slot = 'Neck',  Stats = { ChocoboRidingTime = 4 } },
+            { Name = 'Riders Hose',       Slot = 'Legs',  Stats = { ChocoboRidingTime = 4 } },
+            { Name = 'Riders Gloves',     Slot = 'Hands', Stats = { ChocoboRidingTime = 3 } },
+            { Name = 'Riders Boots',      Slot = 'Feet',  Stats = { ChocoboRidingTime = 3 } },
+            -- a lesser Body piece: best-per-slot must keep the Silks, not this
+            { Name = 'Choc. Jack Coat',   Slot = 'Body',  Stats = { ChocoboRidingTime = 5 } },
+            -- riding gear in an unlisted slot never counts (Ring is not dressed)
+            { Name = 'Chocobo Ring',      Slot = 'Ring',  Stats = { ChocoboRidingTime = 5 } },
+        };
+        local depsRef = { ownedList = function() return REF; end, haveInBags = function() return true; end };
+        local minutes, slots, best = chocoui.totalMinutes(depsRef);
+        check('S139j reference set totals 84 minutes (30 base + 54)', minutes, 84);
+        check('S139k all six slots covered', slots, 6);
+        check('S139l best-per-slot keeps the higher Body piece', best.Body and best.Body.name, 'Orange Race Silks');
+        check('S139m unlisted-slot riding gear is ignored (Ring absent)', best.Ring, nil);
+        check('S139n coverage level for the full set is the max (3)', chocoui.level(depsRef), 3);
+    end
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -715,6 +750,12 @@ end)();
           Stats = { FishingSkill = 2 } },
         { Name = 'Halcyon Rod',       Id = 90042, Level = 1,  Slot = 'Range', Jobs = { 'All' },
           Stats = { FishingSkill = 10 } },
+        -- choco: ChocoboRidingTime-scored; Main IS in (the Chocobo Wand takes
+        -- the weapon slot and is included); Range/Ammo/Ring/Waist/Head OUT.
+        { Name = 'Chocobo Wand',      Id = 90060, Level = 1,  Slot = 'Main',  Jobs = { 'All' },
+          Stats = { ChocoboRidingTime = 30 } },
+        { Name = 'Chocobo Torque',    Id = 90061, Level = 1,  Slot = 'Neck',  Jobs = { 'All' },
+          Stats = { ChocoboRidingTime = 4 } },
     };
     local byName, byId, counts = {}, {}, {};
     for _, r in ipairs(INV) do
@@ -825,6 +866,12 @@ end)();
     check('S178 fishing WEAPONS ride the Main fish ladder',
         m.fish.main and m.fish.main[1].name, 'Halieutica');
     check('S179 rods stay OUT of the fish ladders (fishstate owns rod+bait)', m.fish.range, nil);
+    check('S179b choco ladder is ChocoboRidingTime-scored (the Wand tops Main)',
+        m.choco and m.choco.main and m.choco.main[1].name .. '/' .. m.choco.main[1].score, 'Chocobo Wand/30');
+    check('S179c choco Neck ladder carries the ride value on the rung',
+        m.choco and m.choco.neck and m.choco.neck[1].ride, 4);
+    check('S179d riding gear in an unlisted slot stays OUT (Range/Ammo/Head/Ring/Waist)',
+        m.choco and m.choco.range, nil);
     check('S180 craftGoal is always one of the three goals',
         m.craftGoal == 'hq' or m.craftGoal == 'nq' or m.craftGoal == 'skillup', true);
 
@@ -869,7 +916,7 @@ end)();
     -- color); the six claimants drag.
     local aw = require('dlac\\feature\\arbwatch');
     local rows = pui.buildRows(aw.defaultOrder(), {});
-    check('S196 buildRows yields all eight rows in order', #rows, 8);
+    check('S196 buildRows yields all nine rows in order', #rows, 9);
     check('S197 Locks is a draggable veto row; only Triggers is fixed', (function()
         local byName = {};
         for _, r in ipairs(rows) do byName[r.name] = r; end
@@ -880,7 +927,7 @@ end)();
     -- arbwatch loads under the ui tree and its pure move rule holds headless.
     check('S198 arbwatch loads headless', type(aw), 'table');
     check('S199 arbwatch.moveClaimant refuses to drag the Triggers floor',
-        aw.moveClaimant(aw.defaultOrder(), 8, -1), nil);
+        aw.moveClaimant(aw.defaultOrder(), 9, -1), nil);
     -- S199b: the Locks veto now drags -- raising it one step swaps it above Pins
     -- (the absolute-veto position), and it never displaces the floor.
     check('S199b Locks drags up past Pins', (function()
