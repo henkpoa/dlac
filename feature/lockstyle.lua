@@ -616,6 +616,22 @@ end
 
 local function queueCmd(c)
     M._capNote('queued: ' .. tostring(c));
+    -- v109: an APPLY also rides the request file (feature/debug.lua ->
+    -- dispatch's request watch). The chain law (07-23, both directions):
+    -- e.blocked halts a command at whichever state sits first in Ashita's
+    -- chain -- on the friend's load order the queued '/dl ls apply' died
+    -- before LAC's engine ever saw it ("preview works, apply silently
+    -- doesn't"). The file reaches the engine regardless; its 8s idle gate
+    -- keeps the healthy command path single-run.
+    local box = tostring(c):match('^/dl ls apply%s*(%d*)');
+    if box ~= nil then
+        pcall(function()
+            local dbg = require('dlac\\feature\\debug');
+            if type(dbg) == 'table' and type(dbg.requestEngine) == 'function' then
+                dbg.requestEngine((box ~= '') and ('apply ' .. box) or 'apply');
+            end
+        end);
+    end
     pcall(function() AshitaCore:GetChatManager():QueueCommand(1, c); end);
 end
 
@@ -1617,6 +1633,15 @@ ashita.events.register('command', 'dlac-lockstyle', function(e)
     -- No explicit box = the marked one, same resolution dispatch uses.
     if args[2] == 'apply' then
         lastBox = tonumber(args[3]) or (data ~= nil and tonumber(data.active)) or nil;
+        -- v109: hand-TYPED applies get the request ride too -- THIS handler
+        -- hearing the command does not mean the engine's state did (the
+        -- chain law; on friend-order chains we block it right here).
+        pcall(function()
+            local dbg = require('dlac\\feature\\debug');
+            if type(dbg) == 'table' and type(dbg.requestEngine) == 'function' then
+                dbg.requestEngine((args[3] ~= nil) and ('apply ' .. tostring(args[3])) or 'apply');
+            end
+        end);
     end
 end);
 

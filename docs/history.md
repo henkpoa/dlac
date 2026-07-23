@@ -4533,3 +4533,19 @@ doors). Whichever state hears a typed /dl, both halves complete; the
 The friend's NEXT run should produce a complete two-half report -- and his
 original silent-apply case now has a plausible mechanism (command-chain
 starvation) that the debug ls timeline will confirm or refute.
+
+**Round 3: the original bug, mechanically closed (v109, 2026.07.23l).** The
+friend's standing report -- "everything works BUT lockstyle" -- is the chain
+law's precise shadow: every automation rides LAC's internal handler flow
+(no command bus), while lockstyle apply was the ONE player feature whose
+trigger crossed the bus ('/dl ls apply', queued by the GUI button and the
+OnLoad/keep/town pumps, or hand-typed). On his load order the command died
+at dlac's own blocking handlers before LAC's engine received it: preview
+(addon-local) fine, apply silent -- the exact day-one symptom. v109 gives
+the apply the same two-door shape as check/debug: engineApplyHalf (the
+apply branch's body, extracted verbatim), called by the command branch AND
+by the request watch; lockstyle's queueCmd wrapper and its typed-apply
+observation write 'apply [box]' into debug-request.txt. All four
+order/hearing quadrants land exactly one apply (8s idle gate); the starved
+path costs ~1s of latency. M._reqSpec parses the spec line (DBR6-10).
+One update now carries the friend's whole fix: tooling AND the bug.

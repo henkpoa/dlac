@@ -8666,6 +8666,15 @@ end)();
     check('DBR3 fresh + idle FIRES', dispatchM._reqFire(rnow - 2, nil, rnow, true), 'adopt-fire');
     check('DBR4 fresh + commands alive stays quiet', dispatchM._reqFire(rnow - 2, nil, rnow, false), 'adopt-quiet');
     check('DBR5 stale adopts quietly', dispatchM._reqFire(rnow - 300, nil, rnow, true), 'adopt-quiet');
+    -- the spec line parser (v109: apply joins check/ls on the request file)
+    check('DBR6 check spec', dispatchM._reqSpec('check'), 'check');
+    local k7, n7 = dispatchM._reqSpec('ls 60');
+    check('DBR7 ls spec carries dur', k7 == 'ls' and n7 == 60, true);
+    local k8, n8 = dispatchM._reqSpec('apply 3');
+    check('DBR8 apply spec carries box', k8 == 'apply' and n8 == 3, true);
+    local k9, n9 = dispatchM._reqSpec('apply');
+    check('DBR9 bare apply = marked box', k9 == 'apply' and n9 == nil, true);
+    check('DBR10 garbage spec is nil', dispatchM._reqSpec('frobnicate'), nil);
 end)();
 
 -- LGD. lockstyle.M.debugLines -- the '/dl debug ls' addon half exists and

@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 108;  -- 108: SYMMETRIC command handoff -- the starvation pair closed from both ends. Field 07-23, one day, both directions: Henrik's /addon reload cycles left the ADDON state deaf to typed /dl (engine heard, addon inert -- v107's watch cured that side); the friend's reload order starved the ENGINE (addon heard /dl check, receipt written, clean shim + current seeded copies + v107 modestate stamp -- and the report said ENGINE HALF MISSING because check.lua's own e.blocked halted the command before LAC's state received it). Ashita propagation law, now field-established from both sides: e.blocked stops LATER addons in the chain from receiving the command, and reload order IS chain order. Cure: whichever state hears, the other completes via file -- the addon writes debug-request.txt (stamp + 'check'/'ls <dur>'); this tick watches it (M._reqFire, twin of the addon's M._watchFire, 8s idle gate) and runs the same engine halves the command branches use (engineCheckHalf/engineLsHalf, one implementation two doors). Also v108: gearui's dev-buttons toggle no longer swallows '/dl debug <topic>' (the 07-23 namespace collision -- the friend's 'debug ls' flipped the Scan/Stage buttons); the toggle keeps bare/on/off only.
+M.VERSION = 109;  -- 109: THE APPLY RIDES THE REQUEST FILE -- the friend's original bug, mechanically closed. "Everything works but lockstyle" (his 07-23 report, pre-update) is exactly the chain law's shadow: every automation rides LAC's internal handler flow, but lockstyle apply was the ONE player feature whose trigger crossed the COMMAND BUS ('/dl ls apply' queued by the GUI button/pumps or hand-typed) -- and on his load order the command died at dlac's own blocking handlers before LAC's engine received it (preview addon-local = fine; apply = silence). Now: lockstyle's queueCmd wrapper AND its typed-apply observation both write 'apply [box]' into debug-request.txt; the request watch runs engineApplyHalf -- the apply branch's body, extracted (one implementation, two doors, like check/ls) -- within ~1s when the command path is idle. All four order/hearing quadrants land exactly ONE apply (8s idle gate; last-writer-wins on the request file degrades a sub-second apply BURST to its last entry in the starved case only -- town/keep flows re-assert, acceptable). M._reqSpec (pure) parses the spec line.
+                  -- 108: SYMMETRIC command handoff -- the starvation pair closed from both ends. Field 07-23, one day, both directions: Henrik's /addon reload cycles left the ADDON state deaf to typed /dl (engine heard, addon inert -- v107's watch cured that side); the friend's reload order starved the ENGINE (addon heard /dl check, receipt written, clean shim + current seeded copies + v107 modestate stamp -- and the report said ENGINE HALF MISSING because check.lua's own e.blocked halted the command before LAC's state received it). Ashita propagation law, now field-established from both sides: e.blocked stops LATER addons in the chain from receiving the command, and reload order IS chain order. Cure: whichever state hears, the other completes via file -- the addon writes debug-request.txt (stamp + 'check'/'ls <dur>'); this tick watches it (M._reqFire, twin of the addon's M._watchFire, 8s idle gate) and runs the same engine halves the command branches use (engineCheckHalf/engineLsHalf, one implementation two doors). Also v108: gearui's dev-buttons toggle no longer swallows '/dl debug <topic>' (the 07-23 namespace collision -- the friend's 'debug ls' flipped the Scan/Stage buttons); the toggle keeps bare/on/off only.
                   -- 107: the debug-ls WINDOW-OPEN marker handoff (debug-ls-open.txt, stamp + 'dur N', written at command time). Field 2026-07-23, Mindie: the dlac ADDON state provably never received typed /dl commands (load beacon clean, 18/18 modules, handlers registered) while THIS state heard every one (handoffs 11:22/11:23) -- so feature/debug.lua now FOLLOWS the engine's handoff stamps as a command-event fallback, and the ls capture window needs this marker to synchronize (the full ls handoff only lands at window END). The engine is the command receiver of record; the addon state is a subscriber.
                   -- 106: THE CAPTURE WINDOW (Henrik: "have it run at least 30 seconds when you issue dl debug ls... so you can capture all the events"). '/dl debug ls [seconds]' (30-120 clamp, default 45; the number arg means SECONDS now -- the niche box-pick override is gone, the dry run reads the MARKED box like the GUI button) prints the snapshot then opens a window in BOTH states off the same command: the engine's apply branch notes every receipt/refusal/send into M._lsDbg.log (M._lsDbgNote, 200-entry cap), the dispatch tick flushes the handoff at window end (M._lsDbgFlushLines, pure -- snapshot + '-- captured events --' timeline), and the addon side (lockstyle capture API + queueCmd/guard/packet hooks; feature/debug.lua delays its merge to end + 4s) writes the ONE report file with both timelines. The player clicks Apply DURING the window; the file shows the click leaving the addon ('queued: /dl ls apply'), arriving at the engine ('apply received'), and its outcome ('SENT box N' / the refusal) -- or which hop went silent.
                   -- 105: DEBUG REPORTS BECOME FILES + the send witnesses (Henrik's file rule: "all things that are considered debugs should generate text files that can be easily transferable so we can help debug"). The two halves live in two Lua states with no shared memory, so the transfer file is assembled by HANDOFF: the 'debug'/'check' branches write their lines to <char>\dlac\debug-<topic>-engine.txt (first line = os.time() stamp, lines bare) in the same command frame; feature/debug.lua's deliver tick reads the handoff ~1.2s later, judges freshness by the stamp (FRESH_S 10s) and writes ONE addons\dlac\debug\<base>-<Char>.txt -- a MISSING or STALE engine half is written into the file in those words, so the artifact carries the absence-is-the-diagnosis property. Plus the "is it actually SENDING?" witnesses: the apply branch stamps M._lsLastSend at its AddOutgoingPacket (sender-side truth, reported by debug ls as 'last REAL apply this engine session'), and the addon guard's packet_out handler keeps a 3-deep 0x053 observation log (lockstyle M._outLine -- reports what it SAW, promises nothing about injected-packet visibility).
@@ -309,6 +310,20 @@ function M._reqFire(stamp, seenStamp, nowEpoch, cmdIdle)
     if stamp == nil or stamp == seenStamp then return 'keep'; end
     if math.abs(nowEpoch - stamp) > 15 then return 'adopt-quiet'; end
     return cmdIdle and 'adopt-fire' or 'adopt-quiet';
+end
+
+-- Request-spec parser (pure, tests DBR6+): the second line of
+-- debug-request.txt -> kind + optional number. 'check' | 'ls [dur]' |
+-- 'apply [box]' (v109 -- the lockstyle apply rides the request file too:
+-- it was the one player feature whose trigger crossed the command bus).
+function M._reqSpec(spec)
+    spec = tostring(spec or '');
+    if spec:match('^check') ~= nil then return 'check', nil; end
+    local d = spec:match('^ls%s+(%d+)');
+    if d ~= nil or spec:match('^ls') ~= nil then return 'ls', tonumber(d); end
+    local b = spec:match('^apply%s+(%d+)');
+    if b ~= nil or spec:match('^apply') ~= nil then return 'apply', tonumber(b); end
+    return nil, nil;
 end
 
 -- Pure (tests DBG7-8): snapshot + timeline -> the handoff's line array.
@@ -4848,6 +4863,92 @@ if inLac() then
         say(string.format('capturing lockstyle events for %ds -- click Apply NOW; the report writes itself after.', dur));
     end
 
+    -- The lockstyle APPLY, same one-implementation-two-doors shape (v109):
+    -- the '/dl ls apply' command branch calls this when the command arrives
+    -- HERE, and the request watch calls it when the ADDON queued/heard the
+    -- apply but the command died in the chain (the friend's original
+    -- "preview works, apply silently doesn't" -- lockstyle apply was the ONE
+    -- player feature whose trigger crossed the command bus).
+    local function engineApplyHalf(boxArg)
+        M._lsDbgNote('apply received' .. ((boxArg ~= nil) and (' (box ' .. tostring(boxArg) .. ')') or ' (marked box)'));
+        local dir = charDir();
+        if dir == nil then print('[dlac] lockstyle: not logged in.'); M._lsDbgNote('refused: not logged in'); return; end
+        -- boxes are per JOB ENTRY (v41): resolve the current job's file --
+        -- the SAME resolver the GUI uses (profiles.lua), so both states
+        -- pick one file (falls back v40 per-profile file, then global)
+        local job;
+        pcall(function() job = gData.GetPlayer().MainJob; end);
+        if type(job) ~= 'string' or job == '' or job == '?' then job = nil; end
+        local lsPath = (_pok and job ~= nil and _prof.readLockstylesPath(job) or nil) or (dir .. 'lockstyles.lua');
+        local raw = readFile(lsPath);
+        if raw == nil then print('[dlac] lockstyle: no lockstyle sets saved yet (armor button in the dlac header).'); M._lsDbgNote('refused: no lockstyle sets saved yet'); return; end
+        local t = nil;
+        local chunk = (loadstring or load)(raw, '@lockstyles.lua');
+        if chunk ~= nil then local okc, v = pcall(chunk); if okc then t = v; end end
+        local set, why, box = M._lockstyleFrom(t, boxArg);
+        if set == nil then print('[dlac] lockstyle: ' .. tostring(why)); M._lsDbgNote('refused: ' .. tostring(why)); return; end
+        -- Build the 0x053 ourselves (v42). The LAC state's require resolves
+        -- dlac\gear to the char folder's REAL gear.lua -- names in the boxes
+        -- came from it, so NameToObject is the exact reverse map. The
+        -- resolvers are shared with '/dl debug ls' (M._lsResolvers, v104).
+        local gr = nil;
+        pcall(function() gr = require('dlac\\gear'); end);
+        local resolveId, equippedId = M._lsResolvers(gr);
+        local pkt, r = M._lockstylePacket(set, resolveId, equippedId);
+        -- Predict the server's SILENT job gate so "nothing changed" has a
+        -- name: a piece failing canEquipItemOnAnyJob leaves the OLD style
+        -- on that slot, with no message from the server at all.
+        local lv = {};
+        pcall(function()
+            local pl = AshitaCore:GetMemoryManager():GetPlayer();
+            for i, ab in ipairs(M._LS_JOBS) do lv[ab] = tonumber(pl:GetJobLevel(i)) or 0; end
+        end);
+        for slot, nm in pairs(r.sent) do
+            local rec = gr and gr.NameToObject and gr.NameToObject[nm] or nil;
+            if rec ~= nil and not M._lsStyleGate(rec, lv) then
+                print(string.format('[dlac] lockstyle: %s will KEEP ITS OLD LOOK -- "%s" needs %s Lv%d,'
+                    .. ' and no job of yours is there yet (server: one of YOUR jobs must be able to wear it).',
+                    slot, nm, table.concat(type(rec.Jobs) == 'table' and rec.Jobs or { '?' }, '/'),
+                    tonumber(rec.Level) or 0));
+            end
+        end
+        -- Weapon styles only take over the same category (hasValidStyle);
+        -- warn when the style's type visibly disagrees with what is worn.
+        for _, ws in ipairs({ 'Main', 'Range' }) do
+            local nm = r.sent[ws];
+            if nm ~= nil then
+                local st, et = nil, nil;
+                pcall(function()
+                    local srec = gr and gr.NameToObject and gr.NameToObject[nm] or nil;
+                    st = srec ~= nil and srec.Type or nil;
+                    local eq = gData.GetEquipment();
+                    local en = eq ~= nil and eq[ws] ~= nil and eq[ws].Name or nil;
+                    local erec = en ~= nil and gr and gr.NameToObject and gr.NameToObject[en] or nil;
+                    et = erec ~= nil and erec.Type or nil;
+                end);
+                if st ~= nil and et ~= nil and st ~= et then
+                    print(string.format('[dlac] lockstyle: %s style "%s" (%s) will NOT show over your'
+                        .. ' equipped %s -- weapon styles need the same category (server rule).',
+                        ws, nm, tostring(st), tostring(et)));
+                end
+            end
+        end
+        for _, nm in ipairs(r.missing) do
+            print(string.format('[dlac] lockstyle: "%s" did not resolve to an item id -- its slot will show EMPTY.', nm));
+        end
+        local oks = pcall(function() AshitaCore:GetPacketManager():AddOutgoingPacket(0x053, pkt); end);
+        if not oks then print('[dlac] lockstyle: packet send failed.'); M._lsDbgNote('0x053 injection FAILED'); return; end
+        local n = 0;
+        for _ in pairs(r.sent) do n = n + 1; end
+        -- Sender-side truth for '/dl debug ls' (v105): the last REAL apply
+        -- that reached AddOutgoingPacket this engine session.
+        M._lsLastSend = { at = os.clock(), box = box, n = n, name = why };
+        M._lsDbgNote(string.format('SENT box %d "%s" -- %d slot%s styled, %d name%s unresolved',
+            box, tostring(why), n, (n == 1) and '' or 's', #r.missing, (#r.missing == 1) and '' or 's'));
+        print(string.format('[dlac] lockstyle "%s" (box %d) sent -- %d styled slot%s; unnamed slots hold your'
+            .. ' current gear\'s look.', tostring(why), box, n, n == 1 and '' or 's'));
+    end
+
     pcall(function() ashita.events.unregister('d3d_present', 'dlac-dispatch-tick'); end);
     local _tickAt, _tickJob, _tickPet = 0, nil, nil;
     local _reqAt, _reqSeen = 0, nil;
@@ -4891,14 +4992,17 @@ if inLac() then
                     local act = M._reqFire(st, _reqSeen, os.time(), (os.clock() - _dbgCmdAt) > 8);
                     if act ~= 'keep' then _reqSeen = st; end
                     if act == 'adopt-fire' then
-                        local spec = raw:match('\n(%S[^\n]*)') or '';
-                        if spec:match('^check') ~= nil then
-                            print('[dlac] check (engine): request file received (the typed command never arrived in this state) -- answering.');
+                        local kind, num = M._reqSpec(raw:match('\n(%S[^\n]*)'));
+                        if kind == 'check' then
+                            print('[dlac] check (engine): request file received (the command never arrived in this state) -- answering.');
                             engineCheckHalf();
-                        elseif spec:match('^ls') ~= nil then
-                            local d = tonumber(spec:match('^ls%s+(%d+)'));
-                            print('[dlac] debug ls (engine): request file received (the typed command never arrived in this state) -- answering.');
-                            engineLsHalf((d ~= nil) and math.max(30, math.min(120, d)) or 45);
+                        elseif kind == 'ls' then
+                            print('[dlac] debug ls (engine): request file received (the command never arrived in this state) -- answering.');
+                            engineLsHalf((num ~= nil) and math.max(30, math.min(120, num)) or 45);
+                        elseif kind == 'apply' then
+                            -- No extra chat preamble: the apply's own lines are
+                            -- the player feedback, same as the command door.
+                            engineApplyHalf(num);
                         end
                     end
                 end);
@@ -5169,85 +5273,8 @@ if inLac() then
                 print('[dlac] usage: /dl ls apply [box]   (GUI: the armor button in the dlac header)');
                 return;
             end
-            -- '/dl debug ls' window timeline (v106): every receipt and its
-            -- outcome, so the report shows what the Apply click actually did.
-            M._lsDbgNote('apply received' .. ((args[3] ~= nil) and (' (box ' .. tostring(args[3]) .. ')') or ' (marked box)'));
-            local dir = charDir();
-            if dir == nil then print('[dlac] lockstyle: not logged in.'); M._lsDbgNote('refused: not logged in'); return; end
-            -- boxes are per JOB ENTRY (v41): resolve the current job's file --
-            -- the SAME resolver the GUI uses (profiles.lua), so both states
-            -- pick one file (falls back v40 per-profile file, then global)
-            local job;
-            pcall(function() job = gData.GetPlayer().MainJob; end);
-            if type(job) ~= 'string' or job == '' or job == '?' then job = nil; end
-            local lsPath = (_pok and job ~= nil and _prof.readLockstylesPath(job) or nil) or (dir .. 'lockstyles.lua');
-            local raw = readFile(lsPath);
-            if raw == nil then print('[dlac] lockstyle: no lockstyle sets saved yet (armor button in the dlac header).'); M._lsDbgNote('refused: no lockstyle sets saved yet'); return; end
-            local t = nil;
-            local chunk = (loadstring or load)(raw, '@lockstyles.lua');
-            if chunk ~= nil then local okc, v = pcall(chunk); if okc then t = v; end end
-            local set, why, box = M._lockstyleFrom(t, tonumber(args[3]));
-            if set == nil then print('[dlac] lockstyle: ' .. tostring(why)); M._lsDbgNote('refused: ' .. tostring(why)); return; end
-            -- Build the 0x053 ourselves (v42). The LAC state's require resolves
-            -- dlac\gear to the char folder's REAL gear.lua -- names in the boxes
-            -- came from it, so NameToObject is the exact reverse map. The
-            -- resolvers are shared with '/dl debug ls' (M._lsResolvers, v104).
-            local gr = nil;
-            pcall(function() gr = require('dlac\\gear'); end);
-            local resolveId, equippedId = M._lsResolvers(gr);
-            local pkt, r = M._lockstylePacket(set, resolveId, equippedId);
-            -- Predict the server's SILENT job gate so "nothing changed" has a
-            -- name: a piece failing canEquipItemOnAnyJob leaves the OLD style
-            -- on that slot, with no message from the server at all.
-            local lv = {};
-            pcall(function()
-                local pl = AshitaCore:GetMemoryManager():GetPlayer();
-                for i, ab in ipairs(M._LS_JOBS) do lv[ab] = tonumber(pl:GetJobLevel(i)) or 0; end
-            end);
-            for slot, nm in pairs(r.sent) do
-                local rec = gr and gr.NameToObject and gr.NameToObject[nm] or nil;
-                if rec ~= nil and not M._lsStyleGate(rec, lv) then
-                    print(string.format('[dlac] lockstyle: %s will KEEP ITS OLD LOOK -- "%s" needs %s Lv%d,'
-                        .. ' and no job of yours is there yet (server: one of YOUR jobs must be able to wear it).',
-                        slot, nm, table.concat(type(rec.Jobs) == 'table' and rec.Jobs or { '?' }, '/'),
-                        tonumber(rec.Level) or 0));
-                end
-            end
-            -- Weapon styles only take over the same category (hasValidStyle);
-            -- warn when the style's type visibly disagrees with what is worn.
-            for _, ws in ipairs({ 'Main', 'Range' }) do
-                local nm = r.sent[ws];
-                if nm ~= nil then
-                    local st, et = nil, nil;
-                    pcall(function()
-                        local srec = gr and gr.NameToObject and gr.NameToObject[nm] or nil;
-                        st = srec ~= nil and srec.Type or nil;
-                        local eq = gData.GetEquipment();
-                        local en = eq ~= nil and eq[ws] ~= nil and eq[ws].Name or nil;
-                        local erec = en ~= nil and gr and gr.NameToObject and gr.NameToObject[en] or nil;
-                        et = erec ~= nil and erec.Type or nil;
-                    end);
-                    if st ~= nil and et ~= nil and st ~= et then
-                        print(string.format('[dlac] lockstyle: %s style "%s" (%s) will NOT show over your'
-                            .. ' equipped %s -- weapon styles need the same category (server rule).',
-                            ws, nm, tostring(st), tostring(et)));
-                    end
-                end
-            end
-            for _, nm in ipairs(r.missing) do
-                print(string.format('[dlac] lockstyle: "%s" did not resolve to an item id -- its slot will show EMPTY.', nm));
-            end
-            local oks = pcall(function() AshitaCore:GetPacketManager():AddOutgoingPacket(0x053, pkt); end);
-            if not oks then print('[dlac] lockstyle: packet send failed.'); M._lsDbgNote('0x053 injection FAILED'); return; end
-            local n = 0;
-            for _ in pairs(r.sent) do n = n + 1; end
-            -- Sender-side truth for '/dl debug ls' (v105): the last REAL apply
-            -- that reached AddOutgoingPacket this engine session.
-            M._lsLastSend = { at = os.clock(), box = box, n = n, name = why };
-            M._lsDbgNote(string.format('SENT box %d "%s" -- %d slot%s styled, %d name%s unresolved',
-                box, tostring(why), n, (n == 1) and '' or 's', #r.missing, (#r.missing == 1) and '' or 's'));
-            print(string.format('[dlac] lockstyle "%s" (box %d) sent -- %d styled slot%s; unnamed slots hold your'
-                .. ' current gear\'s look.', tostring(why), box, n, n == 1 and '' or 's'));
+            _dbgCmdAt = os.clock();   -- quiet the request watch: the command DID arrive here
+            engineApplyHalf(tonumber(args[3]));
             return;
         end
 
