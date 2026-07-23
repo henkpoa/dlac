@@ -226,9 +226,9 @@ end)();
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
                    'groupsmodel','jobgate','ownedcache','profileexport','profilesets','setimport',
                    'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
-    local FEATURE = { 'ammowatch','arbwatch','augments','check','craftwatch','debug','digcalc','eboxammo','fishcalc','fishwatch',
-                      'gamemode','helmwatch','location','lockstyle','lookpreview','macrobook','meritwatch',
-                      'mpbands','pinwatch','useitem' };
+    local FEATURE = { 'ammowatch','arbwatch','augments','check','chocowatch','craftwatch','debug','digcalc','digrank',
+                      'eboxammo','fishcalc','fishwatch','gamemode','helmwatch','location','lockstyle','lookpreview',
+                      'macrobook','meritwatch','mpbands','pinwatch','useitem','vanamoon' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
 
     local ALL = {};
@@ -9878,6 +9878,142 @@ end)();
     -- pure math still works with no db (it never touches it)
     check('DC61 math works without a db', dc.poolOdds({ { id = 1, n = 'a', w = 500, rank = 0 } }, 8, 1).S, 0.5);
     dc._setDb(nil);   -- restore lazy load for any later section
+end)();
+
+-- ---------------------------------------------------------------------------
+-- CHOCOBO DIG RANK + guide scaffold (issue #97, PRD #93): the pure rank
+-- estimator (digrank -- ratchet / server-read decode / effective-rank resolve /
+-- Obtained parse / item->rank lookup), the pure moon math (vanamoon), and
+-- digcalc.averageSuccess for the general dig-success figure. All headless.
+-- ---------------------------------------------------------------------------
+(function()
+    local dr = dofile('feature/digrank.lua');
+    local vm = dofile('feature/vanamoon.lua');
+    local dc = dofile('feature/digcalc.lua');
+    local function r6(x) return math.floor((tonumber(x) or 0) * 1e6 + 0.5) / 1e6; end
+
+    -- ---- digrank.clamp: snaps into 0..8, floors garbage to 0 ----
+    check('DR1 clamp keeps in-range', dr.clamp(4), 4);
+    check('DR2 clamp floors below 0', dr.clamp(-3), 0);
+    check('DR3 clamp caps above 8',   dr.clamp(50), 8);
+    check('DR4 clamp rounds',         dr.clamp(3.6), 4);
+    check('DR5 clamp nil -> 0',       dr.clamp(nil), 0);
+
+    -- ---- ratchet: one-way, never lowers ----
+    check('DR6 ratchet raises to a higher requirement', dr.ratchet(2, 5), 5);
+    check('DR7 ratchet ignores a lower requirement',    dr.ratchet(5, 2), 5);
+    check('DR8 ratchet equal stays',                    dr.ratchet(4, 4), 4);
+    check('DR9 ratchet nil req leaves floor',           dr.ratchet(3, nil), 3);
+    check('DR10 ratchet clamps a wild requirement',     dr.ratchet(0, 99), 8);
+    -- monotonic across a sequence of digs (never dips)
+    local floor, mono = 0, true;
+    for _, req in ipairs({ 1, 3, 2, 6, 4, 5, 8, 7 }) do
+        local nf = dr.ratchet(floor, req);
+        if nf < floor then mono = false; end
+        floor = nf;
+    end
+    check('DR11 ratchet is monotonic over a dig sequence', mono and floor, 8);
+
+    -- ---- serverRank: masked read -> nil; real in-range -> rank ----
+    check('DR12 masked 0xFFFF -> nil',        dr.serverRank(0xFFFF), nil);
+    check('DR13 rank 31 (masked decode) -> nil', dr.serverRank(31), nil);
+    check('DR14 a real rank 4 word -> 4',     dr.serverRank(4), 4);
+    check('DR15 rank word 8 (Adept) -> 8',    dr.serverRank(8), 8);
+    check('DR16 out-of-ladder word 9 -> nil', dr.serverRank(9), nil);
+    check('DR17 nil word -> nil',             dr.serverRank(nil), nil);
+
+    -- ---- parseObtained: the dig "Obtained: <item>" line ----
+    check('DR18 parses a plain Obtained line', dr.parseObtained('Obtained: Wind Crystal.'), 'Wind Crystal');
+    check('DR19 tolerates no trailing period', dr.parseObtained('Obtained: Handful of Sand'), 'Handful of Sand');
+    check('DR20 non-Obtained line -> nil',     dr.parseObtained('You dig and you dig...but find nothing.'), nil);
+    check('DR21 nil line -> nil',              dr.parseObtained(nil), nil);
+
+    -- ---- itemRequirement: min rank across every source, fail-soft ----
+    local SYNTH = { zones = {
+        [100] = { n = 'A', pools = {
+            Bore   = { { id = 1, n = 'Copper Ore', w = 500, rank = 2 } },
+            Burrow = { { id = 2, n = 'Bird Egg',   w = 300, rank = 0 } },
+        } },
+        [101] = { n = 'B', pools = {
+            Treasure = { { id = 1, n = 'Copper Ore', w = 400, rank = 5 } },   -- same item, harder here
+        } },
+    } };
+    check('DR22 requirement = the MIN across sources', dr.itemRequirement('Copper Ore', SYNTH), 2);
+    check('DR23 requirement is name-insensitive',      dr.itemRequirement('copper ORE.', SYNTH), 2);
+    check('DR24 a rank-0 item',                        dr.itemRequirement('Bird Egg', SYNTH), 0);
+    check('DR25 unknown item -> nil (no ratchet)',     dr.itemRequirement('Adaman Ore', SYNTH), nil);
+    check('DR26 nil db -> nil (fail soft)',            dr.itemRequirement('Copper Ore', nil), nil);
+
+    -- ---- resolve: precedence + honest exact flag ----
+    local ranks = { [0]='Amateur',[1]='Recruit',[2]='Initiate',[3]='Novice',[4]='Apprentice',
+                    [5]='Journeyman',[6]='Craftsman',[7]='Artisan',[8]='Adept' };
+    local rManual = dr.resolve(3, 0, nil, ranks);
+    check('DR27 manual seed drives the rank',   rManual.rank, 3);
+    check('DR28 manual source labelled',        rManual.source, 'manual');
+    check('DR29 manual is NOT exact',           rManual.exact, false);
+    check('DR30 rank label resolved',           rManual.label, 'Novice');
+    local rRatchet = dr.resolve(2, 5, nil, ranks);
+    check('DR31 a floor above the pick wins',   rRatchet.rank, 5);
+    check('DR32 ratchet source labelled',       rRatchet.source, 'ratchet');
+    check('DR33 ratchet source label text',     rRatchet.sourceLabel, '>= from digs');
+    check('DR34 ratchet is an estimate',        rRatchet.exact, false);
+    local rBelow = dr.resolve(6, 3, nil, ranks);
+    check('DR35 a floor below the pick is ignored', rBelow.rank, 6);
+    check('DR36 ...and stays manual',               rBelow.source, 'manual');
+    local rServer = dr.resolve(2, 4, 7, ranks);
+    check('DR37 a server read beats both estimates', rServer.rank, 7);
+    check('DR38 server source labelled',             rServer.source, 'server');
+    check('DR39 server read IS exact',               rServer.exact, true);
+    check('DR40 server source label text',           rServer.sourceLabel, 'reported by server');
+
+    -- ---- gate: the grey-out verdict, where "never lie" lives ----
+    check('DR40a reachable item is ok',            dr.gate(3, rManual), 'ok');   -- req 3 <= rank 3
+    check('DR40b over an ESTIMATE -> dimmed',      dr.gate(5, rManual), 'dimmed');
+    check('DR40c over an EXACT rank -> locked',    dr.gate(8, rServer), 'locked');  -- req 8 > exact 7
+    check('DR40d exact but reachable -> ok',       dr.gate(7, rServer), 'ok');
+    check('DR40e a bare rank number works too',    dr.gate(5, 2), 'dimmed');   -- no state = estimate
+    check('DR40f a nil requirement is never gated', dr.gate(nil, rServer), 'ok');
+
+    -- ---- vanamoon: pure moon math ----
+    check('VM1 percent in 0..100 across the whole cycle', (function()
+        for d = 0, 200 do local p = vm.percent(d); if type(p) ~= 'number' or p < 0 or p > 100 then return false; end end
+        return true;
+    end)(), true);
+    -- symmetric around the Full midpoint: age a and (CYCLE-a) share a percent.
+    check('VM2 illumination is symmetric about Full', (function()
+        for a = 1, 41 do
+            local dayLow  = a - vm.OFFSET;              -- age a
+            local dayHigh = (vm.CYCLE - a) - vm.OFFSET; -- age CYCLE-a
+            if vm.percent(dayLow) ~= vm.percent(dayHigh) then return false; end
+        end
+        return true;
+    end)(), true);
+    check('VM3 New Moon (age 0) is 0%',  vm.percent(0 - vm.OFFSET), 0);
+    check('VM4 Full Moon (age 42) is 100%', vm.percent(42 - vm.OFFSET), 100);
+    check('VM5 waxing before Full', vm.waxing(10 - vm.OFFSET), true);
+    check('VM6 waning after Full',  vm.waxing(60 - vm.OFFSET), false);
+    check('VM7 New Moon named',  vm.name(0 - vm.OFFSET),  'New Moon');
+    check('VM8 Full Moon named', vm.name(42 - vm.OFFSET), 'Full Moon');
+    check('VM9 phase() bundles the fields', (function()
+        local ph = vm.phase(42 - vm.OFFSET);
+        return type(ph) == 'table' and ph.percent == 100 and ph.name == 'Full Moon';
+    end)(), true);
+    check('VM10 bad day -> nil (graceful)', vm.phase(nil), nil);
+
+    -- ---- digcalc.averageSuccess: the general dig-success figure ----
+    dc._setDb(false);
+    check('DR41 averageSuccess nil when no data', dc.averageSuccess(8, 1), nil);
+    dc._setDb({ zones = {
+        [1] = { n = 'X', pools = { Bore = { { id = 1, n = 'a', w = 500, rank = 0 } } } },   -- S = 0.5 at mu=1
+        [2] = { n = 'Y', pools = { Bore = { { id = 2, n = 'b', w = 1000, rank = 0 } } } },  -- S = 1   at mu=1
+    } });
+    local avg, nz = dc.averageSuccess(8, 1);
+    check('DR42 averageSuccess = mean of zone S', r6(avg), r6((0.5 + 1) / 2));
+    check('DR43 averageSuccess reports zone count', nz, 2);
+    -- rank-gating flows through: an over-rank pool zeroes out -> success 0.
+    dc._setDb({ zones = { [1] = { n = 'X', pools = { Bore = { { id = 1, n = 'a', w = 500, rank = 5 } } } } } });
+    check('DR44 averageSuccess honours rank-gating', r6((dc.averageSuccess(0, 1))), 0);
+    dc._setDb(nil);   -- restore lazy load
 end)();
 
 -- ---------------------------------------------------------------------------

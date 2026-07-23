@@ -106,3 +106,71 @@ server-parse seam is marked for confirmation against the live layout.
 The dig-rank ladder labels (Amateur … Adept, with Novice/Craftsman as the
 rock/ore gates) are **proposed, pending maintainer sign-off** (player-facing
 names) — they ship as data only; nothing renders them in this slice.
+
+## The rank model + guide scaffold (issue #97)
+
+> This slice adds the **dig-rank model** and the **guide panel scaffold** the two
+> search tabs (later slices) build on. It does NOT add the by-item / by-area tabs
+> or the timing auto-detect (that later slice is gated on the `/probe dig`
+> calibration from #96). Everything here is honest today even with `zones` still
+> empty: the rank model works standalone, and the scaffold degrades gracefully.
+
+### Why the rank is assembled, not read
+
+The dig rank is the rank of the DIG skill (skill id 59). The server blanks it to
+`0xFFFF` in the only packet that could carry it, so `GetCraftSkill(11)` returns
+the sentinel forever (confirmed by `/probe dig`, #96). dlac assembles the rank
+from **three stacked sources, each honestly labelled**, and only ONE of them is
+exact:
+
+- **manual** — a rank dropdown (Amateur → Adept) the player sets; the seed.
+- **`>= from digs`** — a one-way **ratchet** floor. Every `Obtained: <item>` dig
+  line is mapped to that item's dig-rank requirement (the MINIMUM across every
+  zone/pool it drops from — a pull proves at least the easiest source's rank) and
+  raises the floor if it exceeds it. Never lowers (a lucky low find is not
+  evidence of a lower rank).
+- **`reported by server`** — a live `GetCraftSkill(11)` read. Masked → nil, so
+  this is silent today; if a build ever unmasks index 59, the decoded rank wins
+  and is the one **exact** source.
+
+Precedence: server (exact) → ratchet floor above the manual pick → manual pick.
+The `exact` flag is true ONLY for the server source, and it is what keeps the
+grey-out honest (below).
+
+### Modules
+
+| File | Role |
+|---|---|
+| `feature/digrank.lua` | PURE brain: `clamp` / `ratchet` / `serverRank` (0xFFFF-aware decode, low-5-bit rank matching the probe) / `parseObtained` / `itemRequirement(name, db)` / `resolve(manual, floor, server, ranks)` / `gate(req, rankState)` / `RANKS` fallback ladder. No Ashita, headless-tested (DR*). |
+| `feature/vanamoon.lua` | PURE Vana'diel moon math from the absolute day number: `age`/`percent`/`waxing`/`name`/`phase`. 84-day cycle, illumination 0 (New) → 100 (Full) → 0. **The epoch `OFFSET` is a single named constant flagged for field confirmation.** Tested (VM*). |
+| `feature/chocowatch.lua` | +rank persistence (`rankManual`/`rankFloor` in `chocostate.lua` — they PERSIST, unlike the session-only `enabled`), `setManualRank` / `recordObtained` (ratchet) / `serverRankLive` (throttled read) / `rankState`, and a `text_in` hook that ratchets off every `Obtained:` line (always on — the rank baseline is independent of the riding-gear toggle). |
+| `feature/digcalc.lua` | +`averageSuccess(rank, mu)` — the general dig-success figure: the mean combined dig-success across the enabled zones, or nil when `zones` is empty (so the panel says "pending data", never a fake 0). |
+| `ui/chocoui.lua` | +the **dig guide** panel section below the riding-gear block: the rank dropdown + resolved rank + source label, the live moon/day/weather header, and the general dig-success line. Pure seams above the imgui guard (`rankState` / `rankLadder` / `clock` / `generalSuccess`) so the tab views can read the rank for grey-out headless. |
+
+### Grey-out contract (`digrank.gate`)
+
+`gate(req, rankState)` → `'ok'` | `'locked'` | `'dimmed'`. An over-rank item is
+**hard-locked only against an exact rank**; against a manual/ratchet estimate it
+is **dimmed** (shown with a reason), never claimed impossible. This is the one
+place the "the UI never lies" rule lives, and it is the seam the by-item /
+by-area tabs will call for every row.
+
+### The live clock header
+
+`chocoui.clock()` reads `nativedata` (day + weather via `GetEnvironment`, moon via
+`vanamoon.phase(timestamp().day)`), each through a guarded call that degrades to
+nil — so a failed weather scan shows "unavailable" and the rest of the header
+still renders (issue #97: "graceful when weather is unavailable"). Moon and day
+are pure time functions; weather is client-observed.
+
+### Open / flagged
+
+- **The moon epoch OFFSET** (`vanamoon.OFFSET`, the community-standard 26) wants a
+  one-time **field cross-check** against the in-game moon display. If the ore-gate
+  percent must be server-EXACT, the linear illumination curve should be replaced
+  by the 84-entry LSB moon table — a single data swap, isolated in `vanamoon`.
+- **Player-facing strings** (the rank ladder labels, the source labels
+  `manual` / `>= from digs` / `reported by server`, the header/note wording) are
+  proposed — pending the maintainer's row-by-row sign-off.
+- The **by-item** and **by-area** tabs, the **conditional-drop active/inactive**
+  markers, and the **timing auto-detect** are the remaining PRD #93 slices.

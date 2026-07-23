@@ -190,6 +190,31 @@ function M.zoneOdds(zoneId, playerRank, mu)
     return out;
 end
 
+-- The general dig-success figure for the guide scaffold (issue #97): the TYPICAL
+-- per-dig success across the enabled zones at one rank + moon -- the average of
+-- every enabled zone's combined dig-success. A single honest number for "how
+-- productive is digging right now for me", with no zone selected yet (the by-
+-- area tab prices individual zones). Returns (avg, zoneCount), or nil when the
+-- table carries no zones (pending gen_digdata.py) so the panel can say so
+-- plainly rather than print a fake 0.
+function M.averageSuccess(playerRank, mu)
+    local db = M.db(); if db == nil then return nil; end
+    local sum, n = 0, 0;
+    for _, z in pairs(db.zones or {}) do
+        local poolLists = {};
+        for _, name in ipairs(M.POOLS) do
+            local list = (type(z) == 'table' and z.pools or {})[name];
+            if list ~= nil then poolLists[#poolLists + 1] = list; end
+        end
+        if #poolLists > 0 then
+            sum = sum + M.digSuccess(poolLists, playerRank, mu);
+            n = n + 1;
+        end
+    end
+    if n == 0 then return nil; end
+    return sum / n, n;
+end
+
 -- The conditional Regular-pool rule tables (weather crystals, day rocks/ores +
 -- gates, the elemental-ore zone set). Returns db.cond or nil.
 function M.conditionals()

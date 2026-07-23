@@ -96,6 +96,76 @@ function M.status(deps)
 end
 
 -- ---------------------------------------------------------------------------
+-- Dig-guide scaffold helpers (issue #97) -- ABOVE the imgui guard so they run
+-- headless. The rank state (for the panel AND the tab views' grey-out), the
+-- live Vana'diel clock read, and the general dig-success figure.
+-- ---------------------------------------------------------------------------
+
+-- The resolved dig-rank state -- the ONE door the panel and the (later) tab
+-- views read for grey-out. Delegates to chocowatch (the state owner); a
+-- fail-soft default keeps the panel alive if the watcher is unavailable.
+-- { rank, source, exact, label, sourceLabel }; exact = true only server-reported.
+function M.rankState()
+    local cwok, cw = pcall(require, 'dlac\\feature\\chocowatch');
+    if cwok and type(cw) == 'table' and type(cw.rankState) == 'function' then
+        local ok, rs = pcall(cw.rankState);
+        if ok and type(rs) == 'table' then return rs; end
+    end
+    return { rank = 0, source = 'manual', exact = false, label = 'Amateur', sourceLabel = 'manual' };
+end
+
+-- The dig-rank ladder labels (0..8) -- the shipped data wins, digrank's fallback
+-- covers a missing table. Returns a 0-indexed table.
+function M.rankLadder()
+    local dcok, dc = pcall(require, 'dlac\\feature\\digcalc');
+    if dcok and type(dc) == 'table' and type(dc.db) == 'function' then
+        local db = nil; pcall(function() db = dc.db(); end);
+        if type(db) == 'table' and type(db.ranks) == 'table' then return db.ranks; end
+    end
+    local drok, dr = pcall(require, 'dlac\\feature\\digrank');
+    if drok and type(dr) == 'table' and type(dr.RANKS) == 'table' then return dr.RANKS; end
+    return {};
+end
+
+-- The live Vana'diel clock for the guide header: { day, dayElement, weather,
+-- weatherElement, moon = { name, percent, waxing, age }, vday }. Every field is
+-- read through a guarded nativedata call and degrades to nil (never errors) when
+-- the client memory is unreadable -- so the header renders gracefully with
+-- whatever it could read (issue #97: "graceful when weather is unavailable").
+function M.clock()
+    local out = {};
+    local ndok, nd = pcall(require, 'dlac\\feature\\nativedata');
+    if not ndok or type(nd) ~= 'table' then return out; end
+    pcall(function()
+        local env = (type(nd.GetEnvironment) == 'function') and nd.GetEnvironment() or {};
+        out.day            = env.Day;
+        out.dayElement     = env.DayElement;
+        out.weather        = env.Weather;
+        out.weatherElement = env.WeatherElement;
+        local ts = (type(nd.timestamp) == 'function') and nd.timestamp() or nil;
+        if type(ts) == 'table' and ts.day ~= nil then
+            out.vday = ts.day;
+            local vmok, vm = pcall(require, 'dlac\\feature\\vanamoon');
+            if vmok and type(vm) == 'table' then out.moon = vm.phase(ts.day); end
+        end
+    end);
+    return out;
+end
+
+-- The general dig-success figure for a rank + moon percent: the typical per-dig
+-- success across the enabled zones (digcalc.averageSuccess). Returns (fraction,
+-- zoneCount) or nil when the moon is unknown or the zone data is not yet
+-- generated -- the panel says which, never a fake number.
+function M.generalSuccess(rank, moonPercent)
+    if moonPercent == nil then return nil; end
+    local dcok, dc = pcall(require, 'dlac\\feature\\digcalc');
+    if not dcok or type(dc) ~= 'table' or type(dc.averageSuccess) ~= 'function' then return nil; end
+    local mu = dc.moonMult(moonPercent);
+    local avg, n = dc.averageSuccess(rank or 0, mu);
+    return avg, n;
+end
+
+-- ---------------------------------------------------------------------------
 -- The detail view (automationsui: auto.view == 'choco'). Everything below the
 -- imgui guard: headless require returns the pure stub above.
 -- ---------------------------------------------------------------------------
@@ -178,6 +248,106 @@ function M.render(deps, availW)
     imgui.TextColored(COL_TEXT, 'before you whistle.');
     imgui.Spacing();
     imgui.TextColored(COL_DIM, 'The switch is session-only: it turns OFF after a relog.');
+
+    -- =======================================================================
+    -- Dig guide (scaffold) -- issue #97. The dig rank + its source, the live
+    -- Vana'diel clock header, and the general dig-success figure. The by-item /
+    -- by-area search tabs are later slices; they hang off this rank + clock.
+    -- =======================================================================
+    imgui.Spacing();
+    imgui.Separator();
+    imgui.Spacing();
+    imgui.TextColored(COL_HEADER, 'Dig guide');
+    imgui.SameLine(0, 10);
+    imgui.TextColored(COL_TEXT, 'your dig rank + the live moon/day/weather for the odds.');
+    imgui.Spacing();
+
+    -- ---- Dig rank (manual pick + source label) ----
+    local rs = M.rankState();
+    local ladder = M.rankLadder();
+    local seed = (cwok and tonumber(cw.rankManual)) or 0;
+
+    imgui.TextColored(COL_TEXT, 'Set your dig rank:');
+    imgui.SameLine(0, 6);
+    imgui.PushItemWidth(160);
+    local seedLabel = (ladder[seed] ~= nil) and tostring(ladder[seed]) or ('rank ' .. seed);
+    if imgui.BeginCombo('##chocorank', seedLabel) then
+        for i = 0, 8 do
+            local lbl = (ladder[i] ~= nil) and tostring(ladder[i]) or ('rank ' .. i);
+            if imgui.Selectable(string.format('%s##rank%d', lbl, i), i == seed) and cwok then
+                cw.setManualRank(i);
+            end
+        end
+        imgui.EndCombo();
+    end
+    imgui.PopItemWidth();
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('The dig rank is masked out of the client, so pick your best guess here.\nIt only seeds the guide -- digging an item above it auto-raises the rank.');
+    end
+
+    -- The resolved rank + its honest source label. exact (server-reported) shows
+    -- plainly; an estimate says so, so the grey-out never lies.
+    imgui.TextColored(COL_TEXT, 'Current dig rank:');
+    imgui.SameLine(0, 6);
+    imgui.TextColored(COL_GOLD, tostring(rs.label or ('rank ' .. (rs.rank or 0))));
+    imgui.SameLine(0, 6);
+    if rs.exact then
+        imgui.TextColored(GREEN_OWNED, '(' .. (rs.sourceLabel or 'reported by server') .. ')');
+    else
+        imgui.TextColored(COL_DIM, string.format('(%s -- estimate)', rs.sourceLabel or rs.source or 'manual'));
+    end
+    imgui.TextColored(COL_DIM, 'manual = your pick;  >= from digs = raised by an item you dug;  reported by server = exact.');
+    imgui.Spacing();
+
+    -- ---- Live Vana'diel clock header (moon / day / weather) ----
+    local clk = M.clock();
+    imgui.TextColored(COL_HEADER, 'Right now in Vana\'diel:');
+    -- Moon.
+    imgui.TextColored(COL_DIM, '  Moon');
+    imgui.SameLine(0, 6);
+    if type(clk.moon) == 'table' and clk.moon.name ~= nil then
+        imgui.TextColored(COL_TEXT, string.format('%s (%d%%)', clk.moon.name, clk.moon.percent or 0));
+    else
+        imgui.TextColored(COL_DIM, 'unavailable');
+    end
+    -- Day.
+    imgui.SameLine(0, 16);
+    imgui.TextColored(COL_DIM, 'Day');
+    imgui.SameLine(0, 6);
+    if clk.day ~= nil then
+        imgui.TextColored(COL_TEXT, clk.dayElement and string.format('%s (%s)', clk.day, clk.dayElement) or tostring(clk.day));
+    else
+        imgui.TextColored(COL_DIM, 'unavailable');
+    end
+    -- Weather.
+    imgui.SameLine(0, 16);
+    imgui.TextColored(COL_DIM, 'Weather');
+    imgui.SameLine(0, 6);
+    if clk.weather ~= nil then
+        imgui.TextColored(COL_TEXT, tostring(clk.weather));
+    else
+        imgui.TextColored(COL_DIM, 'unavailable');
+    end
+    imgui.Spacing();
+
+    -- ---- General dig-success figure (current rank + moon) ----
+    local moonPct = (type(clk.moon) == 'table') and clk.moon.percent or nil;
+    local avg, nZones = M.generalSuccess(rs.rank or 0, moonPct);
+    imgui.TextColored(COL_HEADER, 'General dig success:');
+    imgui.SameLine(0, 6);
+    if avg ~= nil then
+        imgui.TextColored(COL_GOLD, string.format('%.0f%%', avg * 100));
+        imgui.SameLine(0, 6);
+        imgui.TextColored(COL_DIM, string.format('(typical of a hit across %d zone%s, at %s + this moon)',
+            nZones or 0, (nZones == 1) and '' or 's', rs.label or ('rank ' .. (rs.rank or 0))));
+    elseif moonPct == nil then
+        imgui.TextColored(COL_DIM, 'waiting on the Vana\'diel clock (moon unavailable).');
+    else
+        imgui.TextColored(COL_DIM, 'no per-zone dig data yet -- run gen_digdata.py (maintainer) to light this up.');
+    end
+    imgui.TextColored(COL_DIM, 'Odds are best on a New or Full moon, worst at the half moons.');
+    imgui.Spacing();
+    imgui.TextColored(COL_DIM, 'v1 assumes standard gear (it ignores the dig-rare weight bonus).');
 end
 
 return M;

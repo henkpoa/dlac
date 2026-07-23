@@ -5050,3 +5050,45 @@ New tests CH1-15 (engine overlay), S139e-n (chocoui/chocowatch load + the refere
 total), S179b-d (the manifest choco block); the autogear golden gained the `choco` block +
 fmtver 15 (regenerated, reviewed). 2757 + 238 green both loops. **Player-facing names ("Chocobo",
 "Total riding time", the note) are the issue's own wording, pending the maintainer's sign-off.**
+
+## Chocobo: dig rank + guide scaffold (2026-07-23, issue #97)
+
+**The dig half's foundation** (parent PRD #93; docs/design/chocobo-dig.md "The rank
+model + guide scaffold"): the dig-rank model both search tabs will read, plus the guide
+panel scaffold — the live moon/day/weather header and the general dig-success line — hung
+below the existing riding-gear section. Not the tabs themselves, and not the timing
+auto-detect (that later slice is gated on the `/probe dig` calibration from #96).
+
+**The rank is masked, so it is assembled from three stacked sources, only one exact.**
+`GetCraftSkill(11)` returns the server's `0xFFFF` sentinel forever (confirmed by `/probe
+dig`), so `feature/digrank.lua` (a PURE, headless-tested brain) resolves the rank from:
+a **manual** dropdown seed; a one-way **ratchet** floor (`>= from digs`) raised whenever an
+`Obtained: <item>` chat line maps — via the shipped `digdata` — to a dig-rank requirement
+above it, never lowered; and a live **server** read that stays silent under the mask but
+would win, labelled `reported by server`, if a build ever unmasks index 59. Only the server
+source carries `exact = true`. `chocowatch` owns the glue — the persisted `rankManual` /
+`rankFloor` in `chocostate.lua` (they survive relog, unlike the session-only `enabled`), the
+throttled skill read, and an always-on `text_in` hook (the rank baseline is independent of
+the riding-gear toggle).
+
+**The "never lie" rule got its one home.** `digrank.gate(req, rankState)` returns `ok` /
+`locked` / `dimmed`: an over-rank item is HARD-locked only against an EXACT rank, and merely
+DIMMED against a manual/ratchet estimate. That is the single seam the by-item / by-area tabs
+will call for every row, and the reason a scaffold shipped before real zone data can be
+trusted not to mislead.
+
+**The scaffold degrades honestly.** `feature/vanamoon.lua` computes moon phase from the
+Vana'diel day (84-day cycle, illumination 0 New → 100 Full); `chocoui.clock()` reads day +
+weather from `nativedata` and the moon from vanamoon, each guarded so a failed weather scan
+shows "unavailable" without taking the header down. The general dig-success line uses a new
+`digcalc.averageSuccess` (mean combined success across enabled zones) — nil while `zones` is
+empty, so the panel says "run gen_digdata.py" rather than print a fake 0. No `dispatch.M.VERSION`
+bump: the engine reads only `enabled`/`at` from `chocostate.lua`, and the added rank fields do
+not change seeded-file behaviour. New tests DR1–44 + gate DR40a–f + VM1–10 (digrank/vanamoon
+pure math), DR41–44 (averageSuccess), S139o–s (the headless scaffold seams). 2878 + 243 green.
+
+**Flagged for the maintainer.** (1) `vanamoon.OFFSET` (the community-standard epoch 26) wants
+a one-time field cross-check against the in-game moon; if the ore-gate percent must be
+server-exact, swap the linear curve for the 84-entry LSB moon table (isolated in vanamoon).
+(2) Every new player-facing string — the rank ladder labels, the source labels, the header /
+note wording — is proposed, pending row-by-row sign-off.
