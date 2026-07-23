@@ -41,15 +41,24 @@ local COL_GREEN  = { 0.45, 0.90, 0.45, 1.00 };
 local BTN_RED_OFF  = { 0.45, 0.14, 0.14, 1.0 };   -- out of box range
 local BTN_GREY_OFF = { 0.28, 0.28, 0.28, 1.0 };   -- nothing to fetch / busy
 
--- Shared fixed columns (themed font ~9.5px/char -- give text real room).
+-- Shared fixed columns (themed font ~9.5px/char). The E-Box AND the field bags
+-- can EACH hold 10000+ of a stackable, so every number column fits 5+ digits;
+-- Fetch and x sit RELATIVE to the input (SameLine(0, GAP)) so they can never
+-- clip into it however wide the number gets.
 local NAME_X   = 30;
-local ONHAND_X = 250;
+local NAME_MAX = 18;    -- clip long names so they never run into the have column
+local HAVE_X   = 210;
 local BOX_X    = 330;
-local TGT_X    = 410;
-local FETCH_X  = 520;
-local DEL_X    = 612;
+local TGT_X    = 440;
+local TGT_W    = 78;    -- the target input width (5+ digits) -- no +/- steppers
+local GAP      = 12;
 
 local function esc(s) return (tostring(s):gsub('%%', '%%%%')); end
+local function clip(s, n)
+    s = tostring(s or '');
+    if #s <= n then return s; end
+    return s:sub(1, n) .. '..';
+end
 
 -- The affirmative CW gate (unknown/Wings/ACE = not CW).
 local function cwOK()
@@ -129,6 +138,7 @@ if not _iok then return M; end   -- headless: the pure half above is the module
 local _add = nil;          -- nil | { scope = 'character'|'job', job = <JOB>|nil }
 local _addBuf = { '' };
 local _addAt, _addLast = 0, nil;
+local _tgtBuf = {};   -- per-row target input strings (type-only, no +/- steppers)
 local function closeAdd() _add = nil; _addBuf[1] = ''; _addLast = nil; _addAt = 0; end
 
 -- A SmallButton that visibly refuses (ammoui's offable pattern): dim red (out of
@@ -240,44 +250,52 @@ function M.render(deps, availW)
     end
 
     local removeReq = nil;   -- { scope, job, id }
+    local DEC = (ImGuiInputTextFlags_CharsDecimal or 0);
     local function row(e, scope)
-        imgui.PushID('rsrow_' .. scope .. '_' .. tostring(e.id));
+        -- Buffer key includes the job so the same item tracked on two jobs keeps
+        -- two independent target inputs.
+        local key = (scope == 'job') and ('j' .. tostring(job) .. '_' .. tostring(e.id))
+                                     or  ('c_' .. tostring(e.id));
+        imgui.PushID('rsrow_' .. key);
         imgui.Dummy({ 0, 0 }); imgui.SameLine(NAME_X);
         local rec = (deps ~= nil and type(deps.lookupById) == 'function') and deps.lookupById(e.id) or nil;
         if deps ~= nil and type(deps.renderIcon) == 'function' then deps.renderIcon(e.id, 18); end
         local have = onHand[e.id] or 0;
         local tgt = effT[e.id] or e.target;
-        imgui.TextColored((have >= tgt) and COL_TEXT or COL_GOLD, esc(e.name));
-        if imgui.IsItemHovered() and rec ~= nil and deps ~= nil and type(deps.itemTooltip) == 'function' then
-            pcall(deps.itemTooltip, rec);
+        imgui.TextColored((have >= tgt) and COL_TEXT or COL_GOLD, esc(clip(e.name, NAME_MAX)));
+        if imgui.IsItemHovered() then
+            if rec ~= nil and deps ~= nil and type(deps.itemTooltip) == 'function' then pcall(deps.itemTooltip, rec);
+            else imgui.SetTooltip(esc(e.name)); end
         end
         if scope == 'character' and shadowed[e.id] then
             imgui.SameLine(0, 6); imgui.TextColored(COL_DIM, string.format('(job uses %d)', tgt));
         elseif scope == 'job' and charTgt[e.id] ~= nil then
-            imgui.SameLine(0, 6); imgui.TextColored(COL_DIM, string.format('(overrides baseline %d)', charTgt[e.id]));
+            imgui.SameLine(0, 6); imgui.TextColored(COL_DIM, string.format('(overrides %d)', charTgt[e.id]));
         end
-        imgui.SameLine(ONHAND_X);
+        imgui.SameLine(HAVE_X);
         imgui.TextColored((have >= tgt) and COL_DIM or COL_ERR, 'have x' .. tostring(have));
         imgui.SameLine(BOX_X);
         local fetched = (select(1, ec.categoryCounts(e.ahCat)) ~= nil);
         local box = ec.boxCount(e.id);
         imgui.TextColored(COL_DIM, master and (fetched and ('box x' .. tostring(box)) or 'box ...') or 'box --');
         imgui.SameLine(TGT_X);
-        imgui.TextColored(COL_DIM, 'keep');
-        imgui.SameLine(0, 4);
-        local tb = { e.target };
-        imgui.PushItemWidth(84);
-        if imgui.InputInt('##rst' .. scope .. tostring(e.id), tb) then
-            if tb[1] < 0 then tb[1] = 0; end
-            rw.setTarget(scope, (scope == 'job') and job or nil, e.id, tb[1]);
+        imgui.TextColored(COL_DIM, 'Target');
+        imgui.SameLine(0, 6);
+        local tb = _tgtBuf[key];
+        if tb == nil then tb = { tostring(e.target) }; _tgtBuf[key] = tb; end
+        imgui.PushItemWidth(TGT_W);
+        if imgui.InputText('##rst' .. key, tb, 8, DEC) then
+            local n = tonumber(tb[1]);
+            if n ~= nil then rw.setTarget(scope, (scope == 'job') and job or nil, e.id, n); end
         end
         imgui.PopItemWidth();
-        imgui.SameLine(FETCH_X);
+        if imgui.IsItemHovered() then imgui.SetTooltip('The quantity to keep on hand -- Restock fetches the shortfall up to this.'); end
         local short = math.max(0, tgt - have);
         local busy = ec.isBusy();
         local canF = master and nearOK and (not busy) and short > 0 and box > 0 and ctx.freeSlots > 0;
         local offCol = (not nearOK) and BTN_RED_OFF or BTN_GREY_OFF;
-        if offableButton((busy and '...' or 'Fetch') .. '##rsf' .. scope .. tostring(e.id), canF, offCol) then
+        imgui.SameLine(0, GAP);
+        if offableButton((busy and '...' or 'Fetch') .. '##rsf' .. key, canF, offCol) then
             fetchOne(e.id);
         end
         if imgui.IsItemHovered() then
@@ -288,8 +306,8 @@ function M.render(deps, availW)
             elseif ctx.freeSlots <= 0 then imgui.SetTooltip('Inventory full -- free a slot.');
             elseif busy then imgui.SetTooltip('A fetch is already in flight.'); end
         end
-        imgui.SameLine(DEL_X);
-        if imgui.SmallButton('x##rsdel' .. scope .. tostring(e.id)) then
+        imgui.SameLine(0, GAP);
+        if imgui.SmallButton('x##rsdel' .. key) then
             removeReq = { scope = scope, job = (scope == 'job') and job or nil, id = e.id };
         end
         if imgui.IsItemHovered() then imgui.SetTooltip('Stop tracking this item (the item itself is untouched).'); end
@@ -348,10 +366,11 @@ function M.render(deps, availW)
                     imgui.PushID('rsres_' .. tostring(r.id));
                     imgui.Dummy({ 0, 0 }); imgui.SameLine(NAME_X);
                     if deps ~= nil and type(deps.renderIcon) == 'function' then deps.renderIcon(r.id, 18); end
-                    imgui.TextColored(COL_TEXT, esc(r.name or ('#' .. tostring(r.id))));
+                    imgui.TextColored(COL_TEXT, esc(clip(r.name or ('#' .. tostring(r.id)), NAME_MAX)));
+                    if imgui.IsItemHovered() and r.name ~= nil then imgui.SetTooltip(esc(r.name)); end
                     imgui.SameLine(BOX_X);
                     imgui.TextColored(COL_DIM, 'box x' .. tostring(r.qty or 0));
-                    imgui.SameLine(FETCH_X);
+                    imgui.SameLine(0, GAP);
                     if imgui.SmallButton('+ track##rsadd' .. tostring(r.id)) then
                         rw.addItem(_add.scope, _add.job, {
                             id = r.id, name = r.name, ahCat = r.ahCat, stack = stackOf(r.id),
