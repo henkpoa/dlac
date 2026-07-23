@@ -170,6 +170,18 @@ function M.zoneIds()
     return out;
 end
 
+-- Every enabled zone as { { id, n }, ... }, sorted by NAME -- the by-area tab's
+-- zone-picker source (issue #98). Empty when the table is missing (fail soft).
+function M.zones()
+    local db = M.db(); if db == nil then return {}; end
+    local out = {};
+    for id, z in pairs(db.zones or {}) do
+        out[#out + 1] = { id = id, n = (type(z) == 'table' and z.n) or ('Zone ' .. tostring(id)) };
+    end
+    table.sort(out, function(a, b) return tostring(a.n) < tostring(b.n); end);
+    return out;
+end
+
 -- Full odds for one zone at a rank + moon: every pool present in the zone,
 -- priced. Returns { name, pools = { { pool = 'Treasure', odds = <poolOdds> } },
 -- success = combined dig-success } or nil when the zone is unknown/absent.
@@ -220,6 +232,101 @@ end
 function M.conditionals()
     local db = M.db(); if db == nil then return nil; end
     return db.cond;
+end
+
+-- Element-name aliases. The live clock (nativedata) names the lightning element
+-- "Thunder"; the conditional maps (digdata cond.*.byElement) key it "Lightning".
+-- Normalise so a live weather/day element resolves against the maps either way,
+-- and treat the non-elemental weathers ("None"/"Clear") as no element.
+local ELEMENT_ALIAS = { Thunder = 'Lightning' };
+local function normElement(e)
+    if type(e) ~= 'string' or e == '' or e == 'None' or e == 'Clear' then return nil; end
+    return ELEMENT_ALIAS[e] or e;
+end
+M._normElement = normElement;   -- test seam
+
+-- The conditional Regular-pool drops resolved against the LIVE clock for one
+-- zone: the current weather's crystal (or cluster on double weather), the
+-- current day's rock, and -- in an elemental-ore zone only -- the current day's
+-- ore under the full gate. Each row is flagged so the panel can mark it
+-- active/inactive against the clock (issue #98) and grey it against the rank.
+--
+-- clock = { dayElement, weatherElement, doubleWeather, moonPercent } -- any
+-- field may be nil (a missing read degrades that row to inactive, never errors).
+-- playerRank is a plain rank number (the caller resolves the rank state).
+-- Returns a list (crystal, then rock, then ore-if-ore-zone), each:
+--   { kind, id, n, chance, minRank, element, condition,
+--     clockActive,  -- the weather/day/moon condition is met right now
+--     rankOk,       -- playerRank >= minRank
+--     active }      -- clockActive AND rankOk -- diggable in this zone NOW
+-- Fail soft: a nil cond table -> empty list.
+function M.conditionalDrops(zoneId, playerRank, clock)
+    local cond = M.conditionals();
+    if cond == nil then return {}; end
+    clock = clock or {};
+    local rank = tonumber(playerRank) or 0;
+    local out = {};
+
+    -- crystal / cluster: the current weather's element (any digging zone).
+    local cr = cond.crystals;
+    if type(cr) == 'table' then
+        local el = normElement(clock.weatherElement);
+        local map = (el ~= nil and type(cr.byElement) == 'table') and cr.byElement[el] or nil;
+        local dbl = (clock.doubleWeather == true);
+        local minRank = tonumber(cr.minRank) or 0;
+        out[#out + 1] = {
+            kind = 'crystal',
+            id = map and (dbl and map.cluster or map.crystal) or nil,
+            n = el and (el .. (dbl and ' Cluster' or ' Crystal')) or 'Weather crystal',
+            chance = cr.chance, minRank = minRank, element = el,
+            condition = el and (el .. ' weather up') or 'any elemental weather up',
+            clockActive = (el ~= nil), rankOk = (rank >= minRank),
+            active = (el ~= nil) and (rank >= minRank),
+        };
+    end
+
+    -- rock: the current day's element (any digging zone, rank >= Novice).
+    local rk = cond.rocks;
+    if type(rk) == 'table' then
+        local el = normElement(clock.dayElement);
+        local map = (el ~= nil and type(rk.byElement) == 'table') and rk.byElement[el] or nil;
+        local minRank = tonumber(rk.minRank) or 0;
+        out[#out + 1] = {
+            kind = 'rock', id = map and map.id or nil,
+            n = map and map.n or 'Day rock',
+            chance = rk.chance, minRank = minRank, element = el,
+            condition = el and (el .. "'s day") or "the day's element",
+            clockActive = (el ~= nil), rankOk = (rank >= minRank),
+            active = (el ~= nil) and (rank >= minRank),
+        };
+    end
+
+    -- ore: the current day's element, ORE ZONES ONLY, under the full gate
+    -- (rank >= Craftsman, matching elemental weather up, moon phase in-window).
+    local or_ = cond.ores;
+    if type(or_) == 'table' and type(or_.zones) == 'table' and or_.zones[zoneId] == true then
+        local el  = normElement(clock.dayElement);
+        local wel = normElement(clock.weatherElement);
+        local map = (el ~= nil and type(or_.byElement) == 'table') and or_.byElement[el] or nil;
+        local minRank = tonumber(or_.minRank) or 0;
+        local win = (type(or_.moonPhaseWindow) == 'table') and or_.moonPhaseWindow or {};
+        local mp = tonumber(clock.moonPercent);
+        local weatherOK = (not or_.requiresElementalWeather) or (el ~= nil and wel == el);
+        local moonOK = (mp ~= nil and win.min ~= nil and win.max ~= nil
+                        and mp >= win.min and mp <= win.max);
+        local clockActive = (el ~= nil) and weatherOK and moonOK;
+        out[#out + 1] = {
+            kind = 'ore', id = map and map.id or nil,
+            n = map and map.n or 'Elemental ore',
+            chance = or_.chance, minRank = minRank, element = el,
+            condition = string.format('%s day + matching weather, moon %s-%s%%',
+                el or 'matching', tostring(win.min or 0), tostring(win.max or 0)),
+            clockActive = clockActive, rankOk = (rank >= minRank),
+            active = clockActive and (rank >= minRank),
+        };
+    end
+
+    return out;
 end
 
 return M;
