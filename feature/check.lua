@@ -246,7 +246,10 @@ function M.report()
     -- merge (the 'check' engine branch writes debug-check-engine.txt).
     local dbg = try('dlac\\feature\\debug');
     if dbg ~= nil and type(dbg.deliver) == 'function' then
-        pcall(dbg.deliver, 'check', 'dlac-check', lines, 'debug-check-engine.txt');
+        -- delay 3s (not the 1.2 default): when the engine answers via the
+        -- REQUEST file instead of the command (its 1s watch + the write),
+        -- the handoff can land ~2s out -- the finalize must read past it.
+        pcall(dbg.deliver, 'check', 'dlac-check', lines, 'debug-check-engine.txt', { delay = 3.0 });
     end
 end
 
@@ -259,9 +262,13 @@ ashita.events.register('command', 'dlac-check', function(e)
     e.blocked = true;
     -- Receipt + the fallback-quieting stamp (feature/debug.lua): proof on
     -- disk that this state heard the command (07-23: it provably did not).
+    -- And the ENGINE REQUEST (v108): our e.blocked can starve the engine of
+    -- this very command when it sits later in Ashita's chain (the friend's
+    -- reload order) -- the request file reaches it regardless.
     pcall(function()
         local dbg = try('dlac\\feature\\debug');
         if dbg ~= nil and type(dbg.heard) == 'function' then dbg.heard('/dl check (addon handler)'); end
+        if dbg ~= nil and type(dbg.requestEngine) == 'function' then dbg.requestEngine('check'); end
     end);
     M.report();
 end);

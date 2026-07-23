@@ -4794,6 +4794,13 @@ ashita.events.register('command', 'dlac-ui', function(e)
         table.insert(args, a);
     end
     local sub = args[1];
+    -- '/dl debug' is TWO things now: bare / on / off = the dev-buttons
+    -- toggle (this handler, historical); 'debug <topic>' = the diagnostics
+    -- SECTION (feature/debug.lua + the engine's branch). Field collision
+    -- 2026-07-23: a player's '/dl debug ls' flipped the buttons and blocked
+    -- the command instead of running the lockstyle report -- the toggle now
+    -- claims only its own three forms and lets topics pass untouched.
+    if sub == 'debug' and args[2] ~= nil and args[2] ~= 'on' and args[2] ~= 'off' then return; end
     if sub ~= 'ui' and sub ~= 'sync' and sub ~= 'autosync' and sub ~= 'debug'
        and sub ~= 'metrics' and sub ~= 'view_ids' then return; end
     e.blocked = true;

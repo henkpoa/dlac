@@ -4508,3 +4508,28 @@ one fresh-boot receipt test settles it someday; the file-driven design is
 order-proof either way. The friend script, final: update -> /addon reload
 dlac -> /dl check -> /dl debug ls + click Apply during the window -> send
 addons\dlac\debug\dlac-check-<Char>.txt + dlac-debug-ls-<Char>.txt.
+
+**Round 2 close: the starvation pair + the namespace collision (v108,
+2026.07.23k).** The friend's first artifacts arrived and the report did its
+job: clean shim, current seeded copies, 18/18 modules, v107 modestate stamp
+-- and "ENGINE HALF MISSING". Plus his receipt file HAD a line (his addon
+hears /dl) and his '/dl debug ls' flipped the dev-buttons toggle. Three
+findings: (1) NAMESPACE COLLISION -- '/dl debug' already belonged to
+gearui's dev-buttons toggle, whose whitelist claimed 'debug' wholesale and
+blocked; fixed: the toggle keeps bare/on/off only, topics pass. (2) THE
+ASHITA PROPAGATION LAW, field-established from BOTH directions in one day:
+e.blocked stops LATER addons in the chain from receiving a command, and
+reload order is chain order -- Henrik's dlac-reloads deafened his ADDON
+state (engine first, blocked), the friend's reload order starved his ENGINE
+(dlac first, check.lua's own e.blocked ate the command before LAC received
+it; his engine was alive the whole time -- it had stamped v107 at LAC
+load). (3) The cure is SYMMETRY: the addon now writes debug-request.txt
+(stamp + 'check'/'ls <dur>') when IT hears; the engine's tick watches it
+(M._reqFire, twin of M._watchFire) and runs the same halves the command
+branches call (engineCheckHalf/engineLsHalf -- one implementation, two
+doors). Whichever state hears a typed /dl, both halves complete; the
+8s idle gates keep the double-hear case single-run. check's finalize delay
+1.2->3.0s to ride out the request round-trip. Tests DBR1-5; 2526 green.
+The friend's NEXT run should produce a complete two-half report -- and his
+original silent-apply case now has a plausible mechanism (command-chain
+starvation) that the debug ls timeline will confirm or refute.

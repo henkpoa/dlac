@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 107;  -- 107: the debug-ls WINDOW-OPEN marker handoff (debug-ls-open.txt, stamp + 'dur N', written at command time). Field 2026-07-23, Mindie: the dlac ADDON state provably never received typed /dl commands (load beacon clean, 18/18 modules, handlers registered) while THIS state heard every one (handoffs 11:22/11:23) -- so feature/debug.lua now FOLLOWS the engine's handoff stamps as a command-event fallback, and the ls capture window needs this marker to synchronize (the full ls handoff only lands at window END). The engine is the command receiver of record; the addon state is a subscriber.
+M.VERSION = 108;  -- 108: SYMMETRIC command handoff -- the starvation pair closed from both ends. Field 07-23, one day, both directions: Henrik's /addon reload cycles left the ADDON state deaf to typed /dl (engine heard, addon inert -- v107's watch cured that side); the friend's reload order starved the ENGINE (addon heard /dl check, receipt written, clean shim + current seeded copies + v107 modestate stamp -- and the report said ENGINE HALF MISSING because check.lua's own e.blocked halted the command before LAC's state received it). Ashita propagation law, now field-established from both sides: e.blocked stops LATER addons in the chain from receiving the command, and reload order IS chain order. Cure: whichever state hears, the other completes via file -- the addon writes debug-request.txt (stamp + 'check'/'ls <dur>'); this tick watches it (M._reqFire, twin of the addon's M._watchFire, 8s idle gate) and runs the same engine halves the command branches use (engineCheckHalf/engineLsHalf, one implementation two doors). Also v108: gearui's dev-buttons toggle no longer swallows '/dl debug <topic>' (the 07-23 namespace collision -- the friend's 'debug ls' flipped the Scan/Stage buttons); the toggle keeps bare/on/off only.
+                  -- 107: the debug-ls WINDOW-OPEN marker handoff (debug-ls-open.txt, stamp + 'dur N', written at command time). Field 2026-07-23, Mindie: the dlac ADDON state provably never received typed /dl commands (load beacon clean, 18/18 modules, handlers registered) while THIS state heard every one (handoffs 11:22/11:23) -- so feature/debug.lua now FOLLOWS the engine's handoff stamps as a command-event fallback, and the ls capture window needs this marker to synchronize (the full ls handoff only lands at window END). The engine is the command receiver of record; the addon state is a subscriber.
                   -- 106: THE CAPTURE WINDOW (Henrik: "have it run at least 30 seconds when you issue dl debug ls... so you can capture all the events"). '/dl debug ls [seconds]' (30-120 clamp, default 45; the number arg means SECONDS now -- the niche box-pick override is gone, the dry run reads the MARKED box like the GUI button) prints the snapshot then opens a window in BOTH states off the same command: the engine's apply branch notes every receipt/refusal/send into M._lsDbg.log (M._lsDbgNote, 200-entry cap), the dispatch tick flushes the handoff at window end (M._lsDbgFlushLines, pure -- snapshot + '-- captured events --' timeline), and the addon side (lockstyle capture API + queueCmd/guard/packet hooks; feature/debug.lua delays its merge to end + 4s) writes the ONE report file with both timelines. The player clicks Apply DURING the window; the file shows the click leaving the addon ('queued: /dl ls apply'), arriving at the engine ('apply received'), and its outcome ('SENT box N' / the refusal) -- or which hop went silent.
                   -- 105: DEBUG REPORTS BECOME FILES + the send witnesses (Henrik's file rule: "all things that are considered debugs should generate text files that can be easily transferable so we can help debug"). The two halves live in two Lua states with no shared memory, so the transfer file is assembled by HANDOFF: the 'debug'/'check' branches write their lines to <char>\dlac\debug-<topic>-engine.txt (first line = os.time() stamp, lines bare) in the same command frame; feature/debug.lua's deliver tick reads the handoff ~1.2s later, judges freshness by the stamp (FRESH_S 10s) and writes ONE addons\dlac\debug\<base>-<Char>.txt -- a MISSING or STALE engine half is written into the file in those words, so the artifact carries the absence-is-the-diagnosis property. Plus the "is it actually SENDING?" witnesses: the apply branch stamps M._lsLastSend at its AddOutgoingPacket (sender-side truth, reported by debug ls as 'last REAL apply this engine session'), and the addon guard's packet_out handler keeps a 3-deep 0x053 observation log (lockstyle M._outLine -- reports what it SAW, promises nothing about injected-packet visibility).
                   -- 104: THE /dl debug SECTION, engine half (Henrik: "make a proper dl debug section... dl debug ls (please also accept dl debug lockstyle)"). feature/debug.lua (addon state) routes topics and owns the usage line; here one 'debug' branch answers KNOWN topics only. Topic 'ls'/'lockstyle': the apply pipeline as a DRY RUN -- the engine re-reads the boxes file (path printed, MISSING/no-PARSE called out), picks the box exactly like apply ('/dl debug ls <box>'), resolves every name through the SAME resolvers (M._lsResolvers, hoisted verbatim out of the apply branch -- one pair, two commands) and predicts the server's silent job gate -- then prints what WOULD happen (M._lsDebugReport, pure, tests DBG*) instead of sending. Companion addon half: lockstyle.M.debugLines() (boxes file/tier, marked box, UNSAVED-edits warning, v47 gate verdict, keep/town/guard state) -- '/dl ls state' now prints that same report (one readout, two names).
@@ -296,6 +297,18 @@ function M._lsDbgNote(txt)
     local d = M._lsDbg;
     if d == nil or os.clock() > d.untilAt or #d.log >= 200 then return; end
     d.log[#d.log + 1] = string.format('t+%5.1fs  %s', os.clock() - d.t0, txt);
+end
+
+-- Twin of feature/debug.lua's M._watchFire (ADR 0002: the engine requires no
+-- addon module -- twin constants, twin logic; tests DBR*): a NEW, FRESH
+-- request stamp while THIS state's own command handlers sit idle means the
+-- ADDON heard a typed /dl this state never received (e.blocked halts the
+-- command at whichever state sits first in Ashita's chain -- the 07-23
+-- starvation pair, both directions field-observed).
+function M._reqFire(stamp, seenStamp, nowEpoch, cmdIdle)
+    if stamp == nil or stamp == seenStamp then return 'keep'; end
+    if math.abs(nowEpoch - stamp) > 15 then return 'adopt-quiet'; end
+    return cmdIdle and 'adopt-fire' or 'adopt-quiet';
 end
 
 -- Pure (tests DBG7-8): snapshot + timeline -> the handoff's line array.
@@ -4762,8 +4775,82 @@ if inLac() then
     -- A self-swap re-runs these registrations; unregister-first makes the
     -- replace deterministic whatever Ashita's same-alias behavior is (pcall:
     -- on the FIRST load there is nothing to unregister).
+    -- The debug/check ENGINE HALVES (v108): one implementation, two doors --
+    -- the command handler calls them when the typed /dl arrives HERE, and
+    -- the tick's request watch calls them when it arrived at the ADDON state
+    -- instead (debug-request.txt, written by feature/debug.lua). _dbgCmdAt
+    -- is the idle gate that keeps the watch quiet while commands work.
+    local _dbgCmdAt = -1e9;
+    local function engineCheckHalf()
+        local job, sj = '?', nil;
+        pcall(function()
+            local p = gData.GetPlayer();
+            job = p.MainJob or '?';
+            sj = p.SubJob;
+        end);
+        local prof = nil;
+        pcall(function() prof = _pok and _prof.activeName() or nil; end);
+        local line = string.format('check (engine): alive -- v%d, job %s%s, profile %s.',
+            M.VERSION, tostring(job),
+            (type(sj) == 'string' and sj ~= '') and ('/' .. sj) or '',
+            (prof ~= nil) and ('"' .. tostring(prof) .. '"') or '(legacy storage)');
+        print('[dlac] ' .. line);
+        writeDebugHandoff('debug-check-engine.txt', { line });
+    end
+    local function engineLsHalf(dur)
+        -- v107 marker: the addon synchronizes its capture window to ours off
+        -- this file (its own command event may never fire).
+        writeDebugHandoff('debug-ls-open.txt', { 'dur ' .. dur });
+        local out = {};
+        local function say(l) out[#out + 1] = l; print('[dlac] debug ls (engine): ' .. l); end
+        local dir = charDir();
+        if dir == nil then print(string.format('[dlac] debug ls (engine): alive v%d -- not logged in.', M.VERSION)); return; end
+        local job;
+        pcall(function() job = gData.GetPlayer().MainJob; end);
+        if type(job) ~= 'string' or job == '' or job == '?' then job = nil; end
+        local lsPath = (_pok and job ~= nil and _prof.readLockstylesPath(job) or nil) or (dir .. 'lockstyles.lua');
+        local raw = readFile(lsPath);
+        say(string.format('alive v%d, job %s -- boxes file: %s (%s)',
+            M.VERSION, tostring(job or '?'), tostring(lsPath),
+            (raw ~= nil) and (tostring(#raw) .. ' bytes') or 'MISSING'));
+        local t = nil;
+        if raw ~= nil then
+            local chunk = (loadstring or load)(raw, '@lockstyles.lua');
+            if chunk ~= nil then local okc, v = pcall(chunk); if okc then t = v; end end
+            if type(t) ~= 'table' then
+                say('boxes file does not PARSE -- corrupt or conflicted copy?');
+            end
+        end
+        local gr = nil;
+        pcall(function() gr = require('dlac\\gear'); end);
+        local resolveId, equippedId = M._lsResolvers(gr);
+        local lv = {};
+        pcall(function()
+            local pl = AshitaCore:GetMemoryManager():GetPlayer();
+            for i, ab in ipairs(M._LS_JOBS) do lv[ab] = tonumber(pl:GetJobLevel(i)) or 0; end
+        end);
+        local function gateFail(nm)
+            local rec = gr and gr.NameToObject and gr.NameToObject[nm] or nil;
+            return rec ~= nil and not M._lsStyleGate(rec, lv);
+        end
+        for _, l in ipairs(M._lsDebugReport(t, nil, resolveId, equippedId, gateFail)) do
+            say(l);
+        end
+        local snd = M._lsLastSend;
+        say((snd ~= nil)
+            and string.format('last REAL apply this engine session: box %d "%s" (%d slot%s) %ds ago',
+                snd.box, tostring(snd.name), snd.n, (snd.n == 1) and '' or 's',
+                math.max(0, math.floor(os.clock() - snd.at)))
+            or 'no REAL apply sent since this engine loaded');
+        -- Open the window; the handoff writes at its END (tick flush), so
+        -- the file carries what happened while the player did the thing.
+        M._lsDbg = { out = out, log = {}, t0 = os.clock(), untilAt = os.clock() + dur, dur = dur };
+        say(string.format('capturing lockstyle events for %ds -- click Apply NOW; the report writes itself after.', dur));
+    end
+
     pcall(function() ashita.events.unregister('d3d_present', 'dlac-dispatch-tick'); end);
     local _tickAt, _tickJob, _tickPet = 0, nil, nil;
+    local _reqAt, _reqSeen = 0, nil;
     -- The JOB is part of the identity -- see M.jobReady / ADR 0007. (v46-v49 carried
     -- a /dl instdiag dump and tick counters here; it is what found the bug and it is
     -- in git history -- cb2fbe2..40288e3 -- if this class of thing ever returns.)
@@ -4783,11 +4870,38 @@ if inLac() then
             trySelfSwap();   -- engine hot-reload check (own ~2s gate inside)
             -- '/dl debug ls' window flush (v106): the capture ended -> write
             -- the handoff (snapshot + timeline); the addon's merger reads it
-            -- ~4s after window end, well inside its 10s freshness gate.
+            -- ~4s after window end, well inside its freshness gate.
             if M._lsDbg ~= nil and os.clock() >= M._lsDbg.untilAt then
                 local d = M._lsDbg; M._lsDbg = nil;
                 writeDebugHandoff('debug-ls-engine.txt', M._lsDbgFlushLines(d.out, d.log, d.dur));
                 print('[dlac] debug ls (engine): capture window closed -- handoff written.');
+            end
+            -- v108: the addon's REQUEST file -- the mirror of its handoff
+            -- watch. Whichever state hears a typed /dl, the other completes
+            -- via file (e.blocked halts the command at whichever state sits
+            -- first in Ashita's chain -- the 07-23 starvation pair, seen in
+            -- BOTH directions in one day).
+            if os.clock() >= _reqAt then
+                _reqAt = os.clock() + 1.0;
+                pcall(function()
+                    local dir = charDir();
+                    if dir == nil then return; end
+                    local raw = readFile(dir .. 'debug-request.txt');
+                    local st = (raw ~= nil) and tonumber(raw:match('^(%d+)')) or nil;
+                    local act = M._reqFire(st, _reqSeen, os.time(), (os.clock() - _dbgCmdAt) > 8);
+                    if act ~= 'keep' then _reqSeen = st; end
+                    if act == 'adopt-fire' then
+                        local spec = raw:match('\n(%S[^\n]*)') or '';
+                        if spec:match('^check') ~= nil then
+                            print('[dlac] check (engine): request file received (the typed command never arrived in this state) -- answering.');
+                            engineCheckHalf();
+                        elseif spec:match('^ls') ~= nil then
+                            local d = tonumber(spec:match('^ls%s+(%d+)'));
+                            print('[dlac] debug ls (engine): request file received (the typed command never arrived in this state) -- answering.');
+                            engineLsHalf((d ~= nil) and math.max(30, math.min(120, d)) or 45);
+                        end
+                    end
+                end);
             end
             local j = nil;
             pcall(function() j = AshitaCore:GetMemoryManager():GetPlayer():GetMainJob(); end);
@@ -4965,59 +5079,8 @@ if inLac() then
             if topic ~= 'ls' then return; end
             local dur = tonumber(args[3]);
             dur = (dur ~= nil) and math.max(30, math.min(120, dur)) or 45;
-            -- v107: the WINDOW-OPEN marker, written at command time (the full
-            -- handoff only lands at window END). The addon state FOLLOWS the
-            -- engine's handoff files instead of trusting its own command
-            -- event (field 2026-07-23: Mindie's addon state provably never
-            -- received typed /dl while this engine did -- beacon clean,
-            -- handlers registered, handoffs fresh, addon inert); this marker
-            -- is what synchronizes its capture window to ours.
-            writeDebugHandoff('debug-ls-open.txt', { 'dur ' .. dur });
-            local out = {};
-            local function say(l) out[#out + 1] = l; print('[dlac] debug ls (engine): ' .. l); end
-            local dir = charDir();
-            if dir == nil then print(string.format('[dlac] debug ls (engine): alive v%d -- not logged in.', M.VERSION)); return; end
-            local job;
-            pcall(function() job = gData.GetPlayer().MainJob; end);
-            if type(job) ~= 'string' or job == '' or job == '?' then job = nil; end
-            local lsPath = (_pok and job ~= nil and _prof.readLockstylesPath(job) or nil) or (dir .. 'lockstyles.lua');
-            local raw = readFile(lsPath);
-            say(string.format('alive v%d, job %s -- boxes file: %s (%s)',
-                M.VERSION, tostring(job or '?'), tostring(lsPath),
-                (raw ~= nil) and (tostring(#raw) .. ' bytes') or 'MISSING'));
-            local t = nil;
-            if raw ~= nil then
-                local chunk = (loadstring or load)(raw, '@lockstyles.lua');
-                if chunk ~= nil then local okc, v = pcall(chunk); if okc then t = v; end end
-                if type(t) ~= 'table' then
-                    say('boxes file does not PARSE -- corrupt or conflicted copy?');
-                end
-            end
-            local gr = nil;
-            pcall(function() gr = require('dlac\\gear'); end);
-            local resolveId, equippedId = M._lsResolvers(gr);
-            local lv = {};
-            pcall(function()
-                local pl = AshitaCore:GetMemoryManager():GetPlayer();
-                for i, ab in ipairs(M._LS_JOBS) do lv[ab] = tonumber(pl:GetJobLevel(i)) or 0; end
-            end);
-            local function gateFail(nm)
-                local rec = gr and gr.NameToObject and gr.NameToObject[nm] or nil;
-                return rec ~= nil and not M._lsStyleGate(rec, lv);
-            end
-            for _, l in ipairs(M._lsDebugReport(t, nil, resolveId, equippedId, gateFail)) do
-                say(l);
-            end
-            local snd = M._lsLastSend;
-            say((snd ~= nil)
-                and string.format('last REAL apply this engine session: box %d "%s" (%d slot%s) %ds ago',
-                    snd.box, tostring(snd.name), snd.n, (snd.n == 1) and '' or 's',
-                    math.max(0, math.floor(os.clock() - snd.at)))
-                or 'no REAL apply sent since this engine loaded');
-            -- Open the window; the handoff writes at its END (tick flush), so
-            -- the file carries what happened while the player did the thing.
-            M._lsDbg = { out = out, log = {}, t0 = os.clock(), untilAt = os.clock() + dur, dur = dur };
-            say(string.format('capturing lockstyle events for %ds -- click Apply NOW; the report writes itself after.', dur));
+            _dbgCmdAt = os.clock();   -- quiet the request watch: the command DID arrive here
+            engineLsHalf(dur);
             return;
         end
 
@@ -5028,20 +5091,8 @@ if inLac() then
             -- diagnosis (LAC not running the engine: old hand-written
             -- profile, dead shim, stale seeded tree). Liveness + identity
             -- only; deep state stays in dlacprobe (Henrik's 07-23 ruling).
-            local job, sj = '?', nil;
-            pcall(function()
-                local p = gData.GetPlayer();
-                job = p.MainJob or '?';
-                sj = p.SubJob;
-            end);
-            local prof = nil;
-            pcall(function() prof = _pok and _prof.activeName() or nil; end);
-            local line = string.format('check (engine): alive -- v%d, job %s%s, profile %s.',
-                M.VERSION, tostring(job),
-                (type(sj) == 'string' and sj ~= '') and ('/' .. sj) or '',
-                (prof ~= nil) and ('"' .. tostring(prof) .. '"') or '(legacy storage)');
-            print('[dlac] ' .. line);
-            writeDebugHandoff('debug-check-engine.txt', { line });
+            _dbgCmdAt = os.clock();   -- quiet the request watch: the command DID arrive here
+            engineCheckHalf();
             return;
         end
 

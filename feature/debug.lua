@@ -111,7 +111,9 @@ function M._mergeSections(label, addonLines, engineRaw, nowEpoch, addonVer)
             .. ' fired -- send the file anyway, that fact is the finding.';
     elseif stamp == nil then
         out[#out + 1] = 'ENGINE HALF MISSING -- the engine never wrote its handoff: LuaAshitacast is not'
-            .. ' running the dlac engine (run Setup, then Reload LAC). That IS the diagnosis.';
+            .. ' running the dlac engine (run Setup, then Reload LAC). That IS the diagnosis.'
+            .. ' (An alive engine also answers the REQUEST file even when the typed command'
+            .. ' never reaches it -- v108 -- so a persistent MISSING is the real thing.)';
     elseif math.abs(nowEpoch - stamp) > FRESH_S then
         out[#out + 1] = string.format('ENGINE HALF STALE (written %ds ago, not this run) -- the engine did not'
             .. ' answer THIS command: LuaAshitacast is not running a current dlac engine'
@@ -206,6 +208,23 @@ end
 function M.heard(label)
     _cmdAt = os.clock();
     receipt(label);
+end
+
+-- The SYMMETRIC half of the command-starvation cure (07-23: blocked /dl
+-- commands halt at whichever state sits first in Ashita's chain -- Henrik's
+-- reloads starved THIS state, the friend's reload order starved the ENGINE).
+-- Whichever state hears the command, the other completes via file: the
+-- engine writes handoffs we watch; WE write this request stamp the engine's
+-- tick watches (dispatch v108). spec = 'check' or 'ls <dur>'.
+function M.requestEngine(spec)
+    pcall(function()
+        local base = charBase();
+        if base == nil then return; end
+        local f = io.open(base .. 'dlac\\debug-request.txt', 'wb');
+        if f == nil then return; end
+        f:write(tostring(os.time()) .. '\n' .. tostring(spec) .. '\n');
+        f:close();
+    end);
 end
 
 -- One pending delivery at a time (a re-run before the tick fires just
@@ -351,8 +370,12 @@ end
 
 local PRINTERS = {
     -- rest = everything after 'debug' ('ls 60' -> the 60 is the window).
+    -- The COMMAND path also files the engine request (the fallback paths do
+    -- not -- they were triggered BY the engine, which already ran).
     ls = function(rest)
-        lsRun(M._dur(rest ~= nil and rest:match('^%S+%s+(%S+)') or nil));
+        local dur = M._dur(rest ~= nil and rest:match('^%S+%s+(%S+)') or nil);
+        M.requestEngine('ls ' .. dur);
+        lsRun(dur);
     end,
 };
 
@@ -365,9 +388,13 @@ ashita.events.register('command', 'dlac-debug', function(e)
     if raw:match('^/dlac?%s+debug%s*$') ~= nil then rest = '';
     else rest = raw:match('^/dlac?%s+debug%s+(.*)$'); end
     if rest == nil then return; end
+    -- Bare '/dl debug' (and on/off) belongs to gearui's dev-buttons toggle,
+    -- the namespace's ORIGINAL tenant (07-23 collision) -- pass untouched.
+    local w1 = rest:match('^(%S+)');
+    if w1 == nil or w1 == 'on' or w1 == 'off' then return; end
     e.blocked = true;
     M.heard('/dl debug ' .. tostring(rest) .. ' (addon handler)');
-    local topic = M._topic(rest:match('^(%S+)'));
+    local topic = M._topic(w1);
     if topic == nil then print('[dlac] ' .. M._usage()); return; end
     PRINTERS[topic](rest);
 end);

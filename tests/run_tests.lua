@@ -8656,6 +8656,16 @@ end)();
           and F[3]:find('apply received', 1, true) ~= nil, true);
     check('DBG8 empty window says so', dispatchM._lsDbgFlushLines({}, {}, 30)[2],
           '(no lockstyle events reached this engine during the window)');
+
+    -- DBR. the engine's request watch (v108): twin of the addon's
+    --      _watchFire -- fires only on a NEW fresh stamp while the engine's
+    --      own command handlers sit idle (the friend's starvation direction).
+    local rnow = 1753300000;
+    check('DBR1 no stamp = keep', dispatchM._reqFire(nil, nil, rnow, true), 'keep');
+    check('DBR2 same stamp = keep', dispatchM._reqFire(rnow - 2, rnow - 2, rnow, true), 'keep');
+    check('DBR3 fresh + idle FIRES', dispatchM._reqFire(rnow - 2, nil, rnow, true), 'adopt-fire');
+    check('DBR4 fresh + commands alive stays quiet', dispatchM._reqFire(rnow - 2, nil, rnow, false), 'adopt-quiet');
+    check('DBR5 stale adopts quietly', dispatchM._reqFire(rnow - 300, nil, rnow, true), 'adopt-quiet');
 end)();
 
 -- LGD. lockstyle.M.debugLines -- the '/dl debug ls' addon half exists and
