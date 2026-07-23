@@ -229,6 +229,24 @@ agent; the per-repo setup lives in `docs/agents/`.
   `feature/autoacc` (GM approval pending) — never delete, never push. The two blocks
   below are the build-up story, kept as history.
 
+- **E-Box Restock — DESIGNED 2026-07-23 (grill-with-docs), NOT yet built.** A new
+  Crystal-Warrior-only Automations feature: a per-item **Target** list where the
+  effective set on a job = **Character list ∪ current-Job list** (job Target overrides
+  character on the same item), and Restock fetches the **Shortfall** from the Ephemeral
+  Box on your click — never silently. The load-bearing rule is **slot-loss safety**
+  (Henrik, field law): each withdrawn stack lands in a *fresh* Inventory slot and never
+  merges into an existing partial on arrival, so a fetch costs `⌈fetch/stackSize⌉` slots
+  (24 fire crystal @ stack 12 = 2 slots) and must **never over-draw** — the box doesn't
+  protect you, too few slots = lost items. On-hand is summed across the field bags
+  {Inventory 0, Satchel 5, Sack 6, Case 7}. A floating **Restock nudge** appears near a
+  box (hover = fetch plan, left-click = Fetch all, right-click = open panel). Full spec:
+  [design/ebox-restock.md](design/ebox-restock.md). The single-client decision — all
+  0x1A4 through ONE `feature/eboxclient.lua`, with the shipped AutoAmmo `eboxammo`
+  refactored onto it — is **ADR 0016**. Build order: **eboxclient → restockwatch/restockui
+  → the eboxammo refactor last** (Henrik field-tests AutoAmmo before that's done). Hard
+  NFR: don't flood 0x1A4 (one-in-flight, near-box-only, per-category coalesced, min-gap).
+  One field-test-only assumption: withdrawals land in Inventory(0).
+
 - **THE LOCKSTYLE PIVOT — lockstyle is addon-resident; the Engine equips gear only
   (07-23, PRD #80, RULED — code lands slice by slice).** After the week-long
   silent-apply saga (docs/history.md "the silent apply", "the rest of the travel

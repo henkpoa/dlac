@@ -105,6 +105,18 @@ _Avoid_: staff bonus (that's the related per-element potency mod)
 Two distinct facts about an item. *Owned* = present in any of the 17 containers (`ALL_CONTAINERS` — the truth `gear.lua` and `/dl prune` use). *Available* = in an equip-eligible bag right now (Inventory + the 8 Wardrobes, `SCAN_CONTAINERS`) — what the engine and the GUI's red-name marking use. Gear can be owned and unavailable (parked in storage). The combined per-surface answer is `ownedcache.verdict` (stored beats locked beats ok); panels map states onto their own palette — the state is the shared meaning, the colour is theirs.
 _Avoid_: "has it" without saying which of the two you mean
 
+**E-Box (Ephemeral Box)**:
+CatsEyeXI's custom Crystal-Warrior-only item store, reached only while in **Crystal Warrior** play mode and standing near an in-world "Ephemeral Box". It is NOT one of the 17 ownership containers: an item sitting in the E-Box is neither *Owned* nor *Available* until it is withdrawn into the bags. Every dlac feature that reads or withdraws from it (AutoAmmo's counts, **E-Box Restock**) speaks through the one shared **E-Box client**.
+_Avoid_: bank, storage (dlac has several — say which), moogle/porter storage (a different game system)
+
+**E-Box client**:
+The one dlac module (`feature/eboxclient.lua`) that speaks CatsEyeXI's custom **E-Box** wire protocol — list a category, search by name, withdraw — reimplemented inside dlac so it never depends on the **trove** addon being installed. Exactly one exists: every E-Box feature (AutoAmmo's counts, **E-Box Restock**) is a thin consumer over its shared, throttled counts, so overlapping requests coalesce (the ammo category is fetched once and read by both) and outgoing traffic stays rate-capped — the party-line courtesy server operators care about.
+_Avoid_: trove wrapper (a clean reimplementation, no trove dependency); a per-feature client (only one exists — features consume it, they never each open the box)
+
+**E-Box Restock**:
+The Crystal-Warrior-only feature that keeps chosen items topped up from the **E-Box**: the player names items to carry and a per-item Target ("keep N"), and Restock fetches the shortfall from the box — clamped to what the box holds and to free bag space — on demand while standing near a box. A pure GUI-plus-**E-Box client** feature (its own Automations row, no gear and no dispatch-engine involvement); it nudges and fetches on a click, never withdrawing on its own.
+_Avoid_: part of AutoAmmo (a separate feature — a sibling consumer of the E-Box client, not folded in); auto-restock / silent withdrawal (it never fetches without a click)
+
 **Plan vs Equip**:
 A set is a *plan*: it may contain anything the character can ever wield (a 1H weapon in Sub with no Dual Wield). Legality is decided by the engine at *equip* time (`subSlotAllowed`: DW up → weapon; otherwise the list's shield/grip). GUI surfaces that equip immediately gate; builders never do.
 _Avoid_: validating sets against current traits/state
