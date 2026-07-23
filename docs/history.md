@@ -4549,3 +4549,19 @@ observation write 'apply [box]' into debug-request.txt. All four
 order/hearing quadrants land exactly one apply (8s idle gate); the starved
 path costs ~1s of latency. M._reqSpec parses the spec line (DBR6-10).
 One update now carries the friend's whole fix: tooling AND the bug.
+
+**SAGA CLOSED -- field-confirmed by the friend, 2026-07-23.** v109's
+request-file apply fixed him: Apply works on his machine, confirming chain
+starvation as the root cause of the original "preview works, apply silently
+doesn't" report. The week's full yield: /dl check (general health + issue
+verdict), /dl debug ls (dry run + capture window + both timelines), the
+load beacon, command receipts, the file-channel machinery (handoffs +
+requests, stamped/watched/idle-gated), three field-established laws (the
+chain law; files are the reliable channel; the engine is the reliable
+executor), and one bug that was never dlac-specific: any two-state Ashita
+system trusting the command bus between its own states has this failure
+mode. NEXT: Henrik's ruling -- lockstyle execution moves engine-side
+completely, addon becomes editor/preview, files become the only wall
+crossing. Design handoff: docs/design/lockstyle-engine-move.md (the grill
+agenda lives in its section 6); tracked as the GitHub issue referenced in
+that document's issue link once filed.
