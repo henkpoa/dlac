@@ -4925,3 +4925,45 @@ files-stay-importable line). No logic changed; no dispatch.M.VERSION bump
 (addon-only strings). The true fresh-install sim, for the record: rename BOTH
 `config\addons\dlac\` AND `config\addons\luashitacast\` (a never-started-dlac
 player has neither), unload luashitacast, reload dlac.
+
+## The self-manufactured-evidence bug: an undecided boot must stay inert (2026-07-23, feature/native-engine, addon 2026.07.23zd)
+
+**Field, Henrik's fresh-install sim round 2** (both dlac folders renamed --
+config\addons\dlac\ AND the luashitacast\<char>\dlac\ legacy data): the Migrate
+button appeared anyway. His diagnosis, verbatim-right: *"he is creating files
+the moment it launches under the lac engine, then it detects the very same
+files which makes him think that there is legacy."* The mechanics: whichever
+first domino fell (in-game `ashita.fs.get_dir` returns NIL for a MISSING
+directory -- the same shape as an API failure, while the headless popen
+fallback returns {} so the suite masked it; or the flag write failing into a
+directory io.open cannot create), every path funneled into the same hole --
+`maintainStorage`'s undecided case fell through to `seedCharFolder()`, the
+LEGACY seeder, the login gear scan wrote gear.lua into the legacy home, and
+the NEXT beat's scan read dlac's own droppings as "existing legacy user".
+Permanently: the files persist across reloads.
+
+**The fix, defense in depth:** (1) **undecided holds EVERYTHING** --
+maintainStorage now resolves `firstRunInit` first and returns INERT on nil: no
+native branch, no legacy seeding, no writer of any kind until the decision
+lands (it retries on the same watch; a held beat costs nothing). (2) **a
+missing root is a definite answer** -- `legacyDataPresent` disambiguates a nil
+root listing by listing the PARENT (config\addons\): luashitacast\ absent
+there = the fresh install, scanned=true; present-but-unlistable or
+parent-unlistable = genuinely can't tell. Seams `M._listDirs` /
+`M._legacyProbe` make the matrix headless. (3) **the flag write grows a
+belt** -- setNativeMode retries through shell mkdir when io.open fails
+(io.open never creates directories; a fresh install has no
+config\addons\dlac\ yet). (4) **the decision is LOUD** -- one boot line names
+the action and its evidence ("fresh install -> NATIVE engine armed" /
+"legacy dlac data found (Char_1234) -> staying LEGACY, the Migrate button is
+the way over"), and both failure modes warn ONCE ("deciding nothing, WRITING
+nothing, retrying") -- silence has no author; the next field round names its
+own domino in chat.
+
+**Tests NO43-NO49c** (2726 -> 2743 + 225 smoke, green Windows lua + WSL
+lua5.4): the parent-listing disambiguation (missing/present/unlistable), the
+evidence third return, the undecided nil+warn-once+never-latch contract, the
+write-fail retry into resolution, and the loud lines' content. No
+dispatch.M.VERSION bump (addon-only). Henrik's poisoned test env: the buggy
+boot RECREATED luashitacast\<char>\dlac\ folders -- delete those (junk from
+the bug; the real data is in his renamed folders) before re-testing.

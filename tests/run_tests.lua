@@ -9204,6 +9204,100 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- NO43+. The self-manufactured-evidence bug (field 2026-07-23, Henrik's
+-- fresh-install sim): in-game ashita.fs.get_dir returns nil for a MISSING
+-- directory (the headless popen fallback returns {} -- the suite masked it),
+-- the undecided beat fell through into the LEGACY seeder, and the next scan
+-- read dlac's own files as "existing legacy user". Pins: the parent-listing
+-- disambiguation (missing root = DEFINITE fresh, not can't-tell), the
+-- undecided contract (nil + warn ONCE + never latch), the loud decision lines
+-- with their evidence, and the flag-write-failure retry.
+-- ---------------------------------------------------------------------------
+(function()
+    local prof = package.loaded['dlac\\profiles'];
+    local savedAC = AshitaCore;
+    local savedList, savedProbe = prof._listDirs, prof._legacyProbe;
+    local savedFlagState, savedSetNative = prof.engineFlagState, prof.setNativeMode;
+    AshitaCore = { GetInstallPath = function() return 'I:\\game\\'; end };
+
+    -- Root listing nil (the in-game missing-dir shape), parent WITHOUT
+    -- luashitacast -> a DEFINITE fresh, scanned=true.
+    prof._listDirs = function(p)
+        if p:find('luashitacast', 1, true) then return nil; end
+        return { 'dlac', 'someotheraddon' };
+    end
+    local pr, sc = prof.legacyDataPresent();
+    check('NO43 missing root disambiguated as FRESH (scanned)', sc, true);
+    check('NO43b ...and not present', pr, false);
+
+    -- Root nil but the parent SHOWS luashitacast -> genuinely can't tell.
+    prof._listDirs = function(p)
+        if p:find('luashitacast', 1, true) then return nil; end
+        return { 'dlac', 'Luashitacast' };   -- case-insensitive match required
+    end
+    pr, sc = prof.legacyDataPresent();
+    check('NO44 unlistable-but-present root stays can\'t-tell', sc, false);
+
+    -- Both listings nil -> can't tell.
+    prof._listDirs = function() return nil; end
+    pr, sc = prof.legacyDataPresent();
+    check('NO45 both listings failed -> can\'t tell', sc, false);
+
+    -- Evidence: the first char folder with real data rides the third return.
+    prof._listDirs = function(p)
+        if p:find('luashitacast', 1, true) then return { 'notachar', 'Testy_123' }; end
+        return { 'luashitacast' };
+    end
+    prof._legacyProbe = function(dd) return dd:find('Testy_123', 1, true) ~= nil; end
+    local pr2, sc2, ev = prof.legacyDataPresent();
+    check('NO46 legacy data found', pr2 and sc2, true);
+    check('NO46b ...with the char named as evidence', ev, 'Testy_123');
+
+    -- firstRunInit undecided: nil, warns ONCE, never latches.
+    local lines = {};
+    local savedPrint = print;
+    print = function(s) lines[#lines + 1] = tostring(s); end
+    prof.engineFlagState = function() return 'absent'; end
+    prof._listDirs = function() return nil; end   -- can't tell
+    prof._resetFirstRun();
+    check('NO47 undecided returns nil', prof.firstRunInit(), nil);
+    check('NO47b ...warns once', #lines, 1);
+    check('NO47c ...the warn says it writes nothing', lines[1]:find('WRITING nothing', 1, true) ~= nil, true);
+    check('NO47d second beat stays nil silently', prof.firstRunInit() == nil and #lines, 1);
+
+    -- Fresh + flag write FAILS: nil + its own one-time warn; then the write
+    -- starts succeeding -> 'write-native' + the loud fresh line.
+    lines = {}; prof._resetFirstRun();
+    prof._listDirs = function(p)
+        if p:find('luashitacast', 1, true) then return nil; end
+        return { 'dlac' };   -- parent without luashitacast -> definite fresh
+    end
+    prof.setNativeMode = function() return nil, 'no dir'; end
+    check('NO48 write-fail returns nil', prof.firstRunInit(), nil);
+    check('NO48b ...named once', #lines == 1 and lines[1]:find('could not be', 1, true) ~= nil, true);
+    prof.setNativeMode = function() return true; end
+    check('NO48c write succeeding resolves write-native', prof.firstRunInit(), 'write-native');
+    check('NO48d ...with the loud fresh line', lines[#lines]:find('NATIVE engine armed', 1, true) ~= nil, true);
+
+    -- Legacy verdict: the loud line names the evidence char.
+    lines = {}; prof._resetFirstRun();
+    prof._listDirs = function(p)
+        if p:find('luashitacast', 1, true) then return { 'Testy_123' }; end
+        return { 'luashitacast' };
+    end
+    prof._legacyProbe = function() return true; end
+    check('NO49 legacy resolves', prof.firstRunInit(), 'legacy');
+    check('NO49b ...naming the evidence char', lines[#lines]:find('Testy_123', 1, true) ~= nil, true);
+    check('NO49c ...and pointing at the Migrate button', lines[#lines]:find('Migrate button', 1, true) ~= nil, true);
+
+    print = savedPrint;
+    prof._listDirs, prof._legacyProbe = savedList, savedProbe;
+    prof.engineFlagState, prof.setNativeMode = savedFlagState, savedSetNative;
+    prof._resetFirstRun();
+    AshitaCore = savedAC;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- EQC. equipcore (feature/native-engine part 1) -- the pure equip pipeline:
 -- entry normalization, the set resolver, and the 0x050/0x051 packet builders.
 -- Semantics are LuaAshitacast-parity (equip.lua is the reference); these pins

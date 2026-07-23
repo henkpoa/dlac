@@ -170,6 +170,14 @@ function M.setNativeMode(on)
         .. '-- native = false (or file absent): LuaAshitacast equips; storage stays under its tree.\n'
         .. string.format('return { native = %s };\n', on == true and 'true' or 'false');
     local f = io.open(p, 'w');
+    if f == nil then
+        -- io.open never creates directories, and a FRESH install has no
+        -- config\addons\dlac\ yet (field 2026-07-23, Henrik's sim -- the
+        -- ashita.fs attempt above is not enough everywhere). Shell mkdir is
+        -- the belt (the seedGearFile pattern), then one retry.
+        pcall(function() os.execute('mkdir "' .. (M.nativeRoot():gsub('\\+$', '')) .. '" 2>nul'); end);
+        f = io.open(p, 'w');
+    end
     if f == nil then return nil, 'could not write ' .. p; end
     f:write(text); f:close();
     M.invalidateNative();
@@ -408,6 +416,7 @@ local function listDirs(path)
     if out ~= nil then table.sort(out); end
     return out;
 end
+M._listDirs = listDirs;   -- injectable: the first-run scan's listing seam (tests NO43+ drive nil/{}/content)
 
 -- Best-effort *.lua basenames in a directory (get_dir file mode is the
 -- field-proven setmanager pattern; `dir /b` popen fallback). nil when both
@@ -528,25 +537,45 @@ function M.engineFlagState()
 end
 
 -- Any character on this install with LEGACY dlac data under LuaAshitacast's tree
--- (config\addons\luashitacast\<char>\dlac\)? Returns present, scanned. scanned
--- is false when the listing API itself failed (nil) -- the caller must NOT treat
+-- (config\addons\luashitacast\<char>\dlac\)? Returns present, scanned, evidence
+-- (the first matching char folder -- the loud boot line names it). scanned is
+-- false only when the listing APIs genuinely failed -- the caller must NOT treat
 -- "couldn't tell" as "fresh" (an existing legacy user would be wrongly flipped).
--- A missing luashitacast\ dir lists as {} (the popen fallback), which is a real
--- "no legacy data" answer -- exactly the fresh install.
+-- FIELD 2026-07-23 (Henrik's fresh-install sim): in-game, ashita.fs.get_dir
+-- returns nil for a MISSING directory -- the same shape as an API failure --
+-- while the headless popen fallback returns {} (the tests masked the field
+-- behavior). A nil root listing is now DISAMBIGUATED by listing the PARENT
+-- (config\addons\): luashitacast\ absent there is a definite "no legacy data
+-- anywhere" -- exactly the fresh install -- not a can't-tell.
+-- M._listDirs / M._legacyProbe are the injectable seams (headless: NO43+).
 function M.legacyDataPresent()
     local root = M.lacRoot();
-    if root == nil then return false, false; end   -- install path unknown -> can't tell
-    local dirs = listDirs(root);
-    if dirs == nil then return false, false; end    -- listing API failed -> can't tell
+    if root == nil then return false, false, nil; end   -- install path unknown -> can't tell
+    local dirs = M._listDirs(root);
+    if dirs == nil then
+        local parent = M._listDirs((root:gsub('luashitacast\\+$', '')));
+        if parent ~= nil then
+            for _, d in ipairs(parent) do
+                if type(d) == 'string' and d:lower() == 'luashitacast' then
+                    return false, false, nil;   -- root exists but will not list -> genuinely can't tell
+                end
+            end
+            return false, true, nil;   -- no luashitacast\ under config\addons\ -> definite fresh
+        end
+        return false, false, nil;      -- both listings failed -> can't tell
+    end
     for _, d in ipairs(dirs) do
         if d:match('^%a+_%d+$') then
-            local dd = root .. d .. '\\dlac\\';
-            if readFile(dd .. 'profile.lua') ~= nil or readFile(dd .. 'gear.lua') ~= nil then
-                return true, true;
-            end
+            if M._legacyProbe(root .. d .. '\\dlac\\') then return true, true, d; end
         end
     end
-    return false, true;   -- scanned, none found -> fresh
+    return false, true, nil;   -- scanned, none found -> fresh
+end
+-- The per-char probe: does this <char>\dlac\ hold real legacy data? profile.lua
+-- (the storage pointer every creator writes) or gear.lua (a pre-storage-move
+-- user's scan). Injectable for the headless matrix.
+function M._legacyProbe(dd)
+    return readFile(dd .. 'profile.lua') ~= nil or readFile(dd .. 'gear.lua') ~= nil;
 end
 
 -- PURE first-run decision (headless-tested). flagState in {'native','legacy',
@@ -563,26 +592,56 @@ end
 -- Boot seam: run the decision once and, for a FRESH install ONLY, arm the Engine
 -- flag native. Idempotent -- a written flag makes engineFlagState() ~= 'absent'
 -- forever after, so re-runs return 'respect'. Returns the action, or nil when it
--- could not decide yet (listing API not ready / flag write failed) so the caller
--- retries on the next beat rather than latching a half-answer.
-local _firstRun = { done = false, action = nil };
+-- could not decide yet (listing not available / flag write failed) so the caller
+-- retries on the next beat rather than latching a half-answer -- and HOLDS ALL
+-- STORAGE WRITERS meanwhile (dlac.lua maintainStorage): an undecided beat must
+-- stay INERT, or dlac seeds the legacy home and then reads its own files as
+-- "existing legacy user" (Henrik's 2026-07-23 fresh-install sim -- the
+-- self-manufactured-evidence bug). The decision is LOUD -- one boot line naming
+-- the action and its evidence -- and so are both failure modes (once): silence
+-- has no author, and the next field round should name its own domino.
+local _firstRun = { done = false, action = nil, warned = false };
 function M.firstRunInit()
     if _firstRun.done then return _firstRun.action; end
     local flagState = M.engineFlagState();
-    local present = true;
+    local present, evidence = true, nil;
     if flagState == 'absent' then
         local ok;
-        present, ok = M.legacyDataPresent();
-        if not ok then return nil; end   -- can't tell yet -- not latched, retry next beat
+        present, ok, evidence = M.legacyDataPresent();
+        if not ok then
+            if not _firstRun.warned then
+                _firstRun.warned = true;
+                pcall(function() print('[dlac] first-run: cannot scan for legacy data yet (listing unavailable)'
+                    .. ' -- deciding nothing, WRITING nothing, retrying each beat.'); end);
+            end
+            return nil;   -- not latched -- retry next beat, all writers held
+        end
     end
     local action = M.firstRunAction(flagState, present);
     if action == 'write-native' then
-        if M.setNativeMode(true) ~= true then return nil; end   -- write failed -- retry next beat
+        local okw, whyw = M.setNativeMode(true);
+        if okw ~= true then
+            if not _firstRun.warned then
+                _firstRun.warned = true;
+                pcall(function() print('[dlac] first-run: FRESH install detected but the engine flag could not be'
+                    .. ' written (' .. tostring(whyw) .. ') -- staying inert, retrying each beat.'); end);
+            end
+            return nil;   -- not latched -- retry next beat, all writers held
+        end
     end
     _firstRun.done = true; _firstRun.action = action;
+    pcall(function()
+        if action == 'write-native' then
+            print('[dlac] first-run: fresh install (no engine flag, no legacy dlac data) -> NATIVE engine armed.');
+        elseif action == 'legacy' then
+            print('[dlac] first-run: no engine flag, but legacy dlac data found (' .. tostring(evidence)
+                .. ') -> staying LEGACY. The red Migrate button (gear window) is the way over.');
+        end
+        -- 'respect' stays quiet: the flag already said it, every boot, nothing new.
+    end);
     return action;
 end
-function M._resetFirstRun() _firstRun.done = false; _firstRun.action = nil; end   -- headless test seam
+function M._resetFirstRun() _firstRun.done = false; _firstRun.action = nil; _firstRun.warned = false; end   -- headless test seam
 
 -- The LAC-alive polite ask, gated to ONCE per session (ADR 0015 ruling 4). PURE
 -- gate: fed the live "is LuaAshitacast alive?" reading, it returns true the FIRST

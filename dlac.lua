@@ -25,7 +25,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.07.23zc';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.07.23zd';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
 addon.desc    = 'Build gear sets and view live stats with level scaling (for LuaAshitacast).';
 
@@ -172,11 +172,23 @@ local function lacAlive()
 end
 
 local function maintainStorage()
+    -- THE FIRST-RUN DECISION GATES EVERYTHING BELOW (field bug 2026-07-23,
+    -- Henrik's fresh-install sim): an undecided beat used to fall through to
+    -- seedCharFolder() -- the LEGACY seeder -- and the login gear scan then
+    -- wrote gear.lua into the legacy home, which the NEXT beat's scan read as
+    -- "existing legacy user": dlac manufactured its own legacy evidence and
+    -- offered Migrate to a fresh install. Undecided now holds EVERY writer,
+    -- native or legacy, until the decision resolves (it retries on this same
+    -- watch; a held beat writes nothing and costs nothing).
+    local action = nil;
+    pcall(function()
+        local prof = require('dlac\\profiles');
+        action = prof.firstRunInit();   -- native-first onboarding (ADR 0015 ruling 4)
+    end);
+    if action == nil then return; end   -- undecided -> INERT: no native branch, no legacy seeding
     local isNative = false;
     pcall(function()
         local prof = require('dlac\\profiles');
-        local action = prof.firstRunInit();   -- native-first onboarding (ADR 0015 ruling 4)
-        if action == nil then return; end     -- first-run decision not resolved yet -- retry next beat (NO auto-setup before it resolves)
         if prof.nativeMode() then
             isNative = true;
             prof.engineAutoMigrate(print);
