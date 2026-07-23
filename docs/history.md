@@ -4984,3 +4984,24 @@ construction, and removing them would re-blind the next field case (silence
 has no author -- for failures). Tests NO48d/NO49b now pin the SILENCE of both
 resolutions. 2743 -> 2742 checks (the loud-line pins became silence pins
 each), 225 smoke, green both loops.
+
+## GRADUATION DAY: the native engine reaches main (2026-07-23)
+
+**Henrik's call, after field-verifying both onboarding scenarios himself
+("first time and LAC DLAC legacy"):** ready for main. Phase C of ADR 0015
+executed the same day it was written -- `feature/native-engine`
+fast-forwarded onto main (`d0736a0..4ae8665`, a strict-ancestor merge, no
+conflicts by construction). **Main's freeze is over; main is the development
+line again.** The graduation carries the whole native era in one motion: the
+absorption (equipcore / equipengine / nativedata, dispatch v111-v119), the
+storage home + Engine flag, the lockstyle pivot's completion (every apply
+path addon-resident), native-first onboarding v2 (born-native fresh installs,
+silent auto-setup, the Migrate button + box), ADR 0014 + 0015, and the whole
+test growth (2742 + 225, green on all three loops -- the main push also ran
+the first full CI over the branch-era work, since direct branch pushes never
+triggered it). Legacy mode rides along as the flag-off fallback, formally in
+its SUNSET window: the roster is native (Henrik daily, the friend confirmed),
+the Migrate button is the standing nudge for any returning legacy-data user.
+Remaining on the books: the sunset window itself, then the Phase D deletion
+party -- issue #84 is its lockstyle line-item (never dispatch before Phase D).
+The branch stays on origin as history, awaiting Henrik's delete.

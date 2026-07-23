@@ -68,7 +68,15 @@ unload LAC, play. Their finds are field rounds; the copy-only migration means an
 of them can retreat instantly. Exit criterion for the phase: every active user
 native, no legacy-only regressions open.
 
-**Phase C — graduation (the merge).** `feature/native-engine` → main; main's
+**Phase C — graduation (the merge). ✅ DONE 2026-07-23 (same day):**
+`feature/native-engine` fast-forwarded onto main (`d0736a0..4ae8665`) after
+Henrik field-verified both onboarding scenarios ("first time and LAC DLAC
+legacy") on top of the week's native field rounds. Main's freeze is OVER —
+main is the development line again; the branch is historical. Everything
+this phase required had already shipped on the branch: the migration nudge
+(the Migrate button + banner, chat quiet per the house rule) and native-first
+onboarding. Legacy mode rides along as the flag-off fallback, formally in its
+sunset window. **Original plan text follows.** `feature/native-engine` → main; main's
 freeze ends. Legacy mode ships one last time as the flag-off fallback, formally
 sunset: a legacy-mode session shows a migration nudge (GUI banner — chat stays
 quiet per the house rule). New-user onboarding defaults native (ruling 4
