@@ -4833,3 +4833,77 @@ equipping behavior is unchanged, so the staleness handshake has nothing to say.
 (Henrik): a button apply of an empty/unwearable box shows the `_status` refusal
 and does NOT arm the guard; a good apply is unchanged; `/dl check` counts
 lockstyleapply and names a corrupted copy.
+
+## Onboarding v2: Setup is now the migration wizard; fresh installs auto-setup with zero ceremony (2026-07-23, feature/native-engine, addon 2026.07.23zb, issue #91)
+
+**Henrik's ruling (same evening #87 landed):** Setup exists for exactly ONE
+reason now — migrating a current *legacy* dlac user to native. New players get
+the native engine automatically, with zero ceremony. This refines ADR 0015
+ruling 4 (which #87 implemented as a fresh-install *boot* — flag auto-written)
+by removing the remaining ceremony, and implements the Phase-C migration nudge
+banner early. Recorded as the ADR 0015 addendum; architecture.md's Onboarding
+section rewritten to "Onboarding v2".
+
+**Fresh installs auto-setup at the login/job beat.** `setupui.autoSetupNative`
+runs from `dlac.lua` `maintainStorage` in the native branch: when this
+character+job's baseline is missing it seeds it silently — storage, gear
+inventory, the four base sets, starter triggers (the existing `setupNative`
+content, per job, idempotent, never clobbering) — apart from ONE friendly
+chat/status line the first time anything lands. No Setup button, no popup, no
+Commit for a new user, ever. A later login on a NEW job auto-seeds that job's
+starters the same way (gear.lua is shared, not rewritten). The gates that
+mattered: **never in legacy mode** (the very first check); **never before
+`firstRunInit` resolves** — `maintainStorage` now captures its return and bails
+on `nil` (couldn't decide yet), so auto-setup can't run against an unresolved
+first-run; **never for a not-ready job** — `jobFile()` returns nil until
+`GetMainJob` settles, so the id-0 `NON` login state (hard rule 11) seeds
+nothing. Completeness is `nativeBaselineComplete` (storage + gear.lua + this
+job's sets + this job's triggers), read through the same deps the seeders write
+through so there's no torn view between write and verify. **Failure is a line,
+not a ceremony:** if the baseline never lands (disk error), it names itself in
+status/chat ONCE (a per-job `_autoWarned` throttle) and keeps retrying quietly —
+it is never escalated into the Setup box. The self-healing shape: no success
+latch — a complete baseline returns `'complete'` silently every beat (four cheap
+reads), so a deleted file re-seeds on its own; only the failure *notice* is
+latched, and it clears on the next success.
+
+**The Setup button + popup become THE migration box.** `needsSetup` v2:
+native → always false (auto-setup owns fresh installs, nothing to migrate);
+legacy with dlac data → true (`setupui.hasDlacData` — the storage pointer, or a
+pre-storage-move user's bare gear.lua). For that one user the red button is the
+standing nudge (present all session until they flip), and the popup is a
+three-part migration box — what you should do (migrate, then unload LAC + drop
+it from autoload) / what Commit will do (copy ALL dlac data to
+`config\addons\dlac\`, COPY-ONLY, flip-back-any-time, then write the flag) / why
+(one engine must own your gear) — closing on the hard rule stated
+verbatim-clear: **"It's either LAC or DLAC — never both at once. Once migrated,
+do NOT run LuaAshitacast."** Commit is `setupui.migrateToNative`, the GUI twin of
+`/dl engine native on`: `engineMigrateStorage` (copy-only) then
+`setNativeMode(true)`, then the unload/reload checklist — and it refuses under
+native (nothing to migrate). A flag-write failure after a good copy is reported
+without leaving the player mid-migration: their legacy tree is byte-for-byte
+untouched, so they lost nothing.
+
+**What retired from the UI, what stayed in the code.** The legacy clean-shim /
+ffxilac / per-job-plan Setup modes are gone from the button handler and the
+popup (a legacy user's answer to ANY setup state is now "migrate to native" — a
+broken shim is irrelevant the moment they flip). The in-window warning banner
+rewords from "X.lua is NOT set up for dlac" to the migration nudge. The
+underlying legacy writers — `migrateToCleanProfiles`, `migrateCurrentJob`,
+`setupNative`, `jobSetupState` — stay in the code untouched: Phase D deletes
+them, and `setupNative`'s seed helpers are the auto-setup content source
+meanwhile.
+
+**Tests:** NO20–NO42 (23 checks) drive it all against a name→content virtual
+disk — the needsSetup matrix, auto-setup seeding + idempotence + zero-clobber +
+zero-`luashitacast\`-writes + the new-job case + the not-ready-job gate + the
+persistent-failure line, and the migration Commit's captured call sequence
+(`migrate,flag:true`) + copy-only + checklist + native-refusal. 2703→2726
+checks, 225 smoke, green lua5.4. No `dispatch.M.VERSION` bump: the touched files
+(`ui/setupui.lua`, `ui/gearui.lua`, `dlac.lua`) are addon-only, not seeded — the
+engine's equipping behavior is unchanged. `addon.version` → `2026.07.23zb`.
+
+**FIELD CONFIRM pending (Henrik):** a fresh-install sim logs into playable with
+zero interaction; his real (already-native) install boots unchanged (no auto-setup
+line on a set-up job); a legacy-mode boot (flag off) with dlac data shows the
+migration box and Commit migrates copy-only.

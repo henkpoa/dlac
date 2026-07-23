@@ -1808,104 +1808,45 @@ local function renderHeaderButtons()
     end
     if needSetup or sf.flags.debug then
         btns[#btns+1] = { l = 'Setup', w = 56, red = needSetup,
-            tip = 'Set up this job for dlac. Clicking only shows a PLAN of what will happen,\nin plain words -- nothing is touched until you press Commit in the popup.',
+            tip = 'Migrate to dlac\'s native engine. Clicking only shows what will happen,\nin plain words -- nothing is touched until you press Commit in the popup.',
             fn = function()
-                -- Build the plan (plain-words, state-dependent); the popup below
-                -- renders it and Commit executes. All function-scoped: gearui's
-                -- main chunk is at the LuaJIT 200-local cap.
+                -- THE MIGRATION BOX (issue #91). The Setup button exists for exactly
+                -- ONE reason now: migrate a legacy-mode user with dlac data to the
+                -- native engine. Fresh installs are auto-set-up and never see it.
+                -- Function-scoped throughout (gearui's chunk is at the 200-local cap).
                 local base = charBase();
                 local jf, abbr = jobFile();
                 if base == nil or jf == nil then _augStatus = 'Setup: log in first (no character/job).'; return; end
-                local state = setup.jobSetupState();
-                local prof = nil;
-                pcall(function() local p = require('dlac\\profiles'); if type(p) == 'table' then prof = p; end end);
-                local plan = { mode = 'migrate', abbr = abbr, title = 'Set up ' .. abbr .. ' for dlac', lines = {} };
+                local plan = { mode = 'migrate', abbr = abbr, title = 'Migrate to the native engine', lines = {} };
                 local L = plan.lines;
                 local function add(c, t) L[#L + 1] = { c = c, t = t }; end
-                -- NATIVE (ADR 0015): dlac equips gear itself -- no <JOB>.lua shim,
-                -- no migration, no backup. Commit takes the setupNative path.
+                -- NATIVE (debug-only reach -- needsSetup is false under the flag):
+                -- dlac already equips your gear, so there is nothing to migrate.
                 if setup.isNative() then
-                    plan.mode = 'native';
-                    plan.title = 'Set up ' .. abbr .. ' (native engine)';
-                    add('txt', 'dlac equips your gear directly -- no LuaAshitacast profile is involved.');
-                    add('txt', 'Commit will, WITHOUT touching a single LuaAshitacast file:');
-                    add('txt', '1.  Create your profile storage under config\\addons\\dlac\\.');
-                    add('txt', '2.  Seed an empty gear inventory (gear.lua) -- fill it afterwards with Scan.');
-                    add('txt', '3.  Seed the four base sets (Idle / Tp_Default / Resting / Movement, empty) and');
-                    add('dim', '     the starter triggers that target them -- everything runs out of the box.');
-                    add('head', 'No <JOB>.lua shim, no backup, nothing under luashitacast\\ is ever written.');
-                    add('txt', 'Nothing that already exists is overwritten.');
-                    add('head', 'After Commit: Scan your gear, then build sets in the Sets tab.');
+                    plan.mode = 'noop';
+                    plan.title = 'Native engine is on';
+                    add('txt', 'dlac already equips your gear itself. There is nothing to set up or migrate --');
+                    add('dim', 'a fresh job auto-seeds its starter sets and triggers on its own.');
                     ui._setupPlan = plan;
                     ui._setupOpen = true;
                     return;
                 end
-                if state == 'nofile' then
-                    plan.mode = 'fresh';
-                    plan.title = 'First-time setup -- ' .. abbr;
-                    add('txt', 'You have no ' .. abbr .. '.lua profile yet. Commit will:');
-                    add('txt', '1.  Write ' .. abbr .. '.lua as a small managed shim. LuaAshitacast auto-loads it on every');
-                    add('dim', '     job change; it holds NO data and you never need to open it.');
-                    add('txt', '2.  Create your profile storage: dlac\\profiles\\Default\\ -- ALL of your sets and');
-                    add('dim', '     triggers will live there (share or switch profiles later with /dl profile).');
-                    add('txt', '3.  Seed an empty gear inventory (dlac\\gear.lua) -- fill it afterwards with Scan.');
-                    add('txt', '4.  Seed the four base sets (Idle / Tp_Default / Resting / Movement, empty) and');
-                    add('dim', '     the starter triggers that target them -- everything runs out of the box,');
-                    add('dim', '     nothing complains; fill the sets in the Sets tab.');
-                    add('txt', 'Nothing that already exists is overwritten.');
-                    add('head', 'After Commit: click Reload LAC, then Scan, then build sets in the Sets tab.');
-                elseif state == 'ok' and prof ~= nil and prof.storageExists() then
-                    plan.mode = 'healthy';
-                    plan.title = abbr .. ' is fully set up';
-                    add('txt', 'The ' .. abbr .. '.lua shim, profile storage and trigger wiring are all in place.');
-                    add('txt', 'Commit only seeds a missing starter sets / trigger file (never overwrites one).');
-                else
-                    -- 'ffxilac' | 'none' | 'wired' | 'ok' without profile storage:
-                    -- ONE standard path. The live <JOB>.lua always ends up the clean
-                    -- managed shim; old logic never stays live (Henrik, 2026-07-17).
-                    plan.mode = 'migrate';
-                    plan.title = 'Move ' .. abbr .. ' (and every other job) to the clean dlac standard';
-                    if state == 'ffxilac' then
-                        add('txt', 'Your ' .. abbr .. '.lua is an ffxi-lac profile.');
-                    elseif state == 'none' then
-                        add('txt', 'Your ' .. abbr .. '.lua is a hand-written LuaAshitacast profile.');
-                    elseif state == 'wired' then
-                        add('txt', 'Your ' .. abbr .. '.lua mixes its own logic with dlac wiring (an old in-place');
-                        add('txt', 'conversion, a hand-wired file, or an edited shim).');
-                    else
-                        add('txt', 'Your jobs are dlac-wired but your data is not in profile storage yet.');
-                    end
-                    add('head', 'THE STANDARD: the live <JOB>.lua is always a small managed dlac shim -- an old');
-                    add('head', 'file with its own equip logic NEVER stays live (two logics fighting over slots');
-                    add('head', 'is the mess dlac exists to end). Commit does, for EVERY job file (not just ' .. abbr .. '):');
-                    add('head', 'SAFETY: every original is copied to backups\\pre-profiles\\ FIRST and verified');
-                    add('head', 'byte-for-byte before anything is rewritten. A first backup is never overwritten');
-                    add('head', '(a re-migrated file is saved to a stamped copy beside it instead).');
-                    add('txt', '- Your dynamic sets move over verbatim (byte-for-byte).');
-                    add('txt', '- Old static sets stay importable: "Copy from" in the Sets tab reads the backup');
-                    add('dim', '   (_Priority lists keep their order, so their level scaling survives -- ADR 0008).');
-                    add('txt', '- Group tables in your old file stay importable: Triggers tab -> Groups ->');
-                    add('dim', '   "Scan my Lua" reads the backup too.');
-                    add('txt', '- Hand-written handler code does NOT stay in the live file (it lives on in the');
-                    add('dim', '   backup) -- equip behavior is trigger data now.');
-                    add('txt', '- Seeds your gear inventory (dlac\\gear.lua) and starter triggers when absent.');
-                    add('txt', '- LuaAshitacast reloads automatically afterwards.');
-                    add('head', 'The plan, job by job:');
-                    local mplan = nil;
-                    if prof ~= nil then pcall(function() mplan = prof.currentPlan(); end); end
-                    if type(mplan) == 'table' then
-                        for _, e in ipairs(mplan) do
-                            if e.action == 'skip' then
-                                add('dim', e.job .. ':  skip -- ' .. tostring(e.reason));
-                            else
-                                add('txt', e.job .. ':  migrate');
-                                for _, n in ipairs(e.notes or {}) do add('dim', '      - ' .. n); end
-                            end
-                        end
-                    else
-                        add('err', '(could not read the per-job plan -- /dl profile migrate shows it in chat)');
-                    end
-                end
+                -- THE MIGRATION BOX: three parts + the hard rule, verbatim-clear.
+                add('head', 'Migrate to the native engine -- dlac equips your gear itself now.');
+                add('txt', 'WHAT YOU SHOULD DO');
+                add('txt', '  Migrate to the native engine. After Commit:  /addon unload luashitacast  and');
+                add('txt', '  remove LuaAshitacast from your autoload -- dlac equips your gear itself now.');
+                add('txt', 'WHAT COMMIT WILL DO');
+                add('txt', '  Copy ALL your dlac data (profiles, sets, triggers, gear, lockstyles, weights)');
+                add('txt', '  to dlac\'s own home under config\\addons\\dlac\\.');
+                add('head', '  COPY-ONLY: nothing under luashitacast\\ is moved, changed, or deleted, and you');
+                add('head', '  can flip back any time with  /dl engine native off.');
+                add('txt', '  Then write the Engine flag native = true. On the next reload dlac\'s native');
+                add('txt', '  engine takes over equipping.');
+                add('txt', 'WHY');
+                add('txt', '  dlac no longer depends on LuaAshitacast; one engine must own your gear.');
+                add('txt', '  Running both makes them fight over your equipment.');
+                add('err', 'It\'s either LAC or DLAC -- never both at once. Once migrated, do NOT run LuaAshitacast.');
                 ui._setupPlan = plan;
                 ui._setupOpen = true;
             end };
@@ -1976,18 +1917,22 @@ local function renderHeaderButtons()
         end
         imgui.EndChild();
         imgui.Separator();
-        fmt.textWrapped(COL.DIM, 'Nothing has been touched yet. Commit runs the steps above; Cancel closes.');
-        local label = (p.mode == 'healthy') and 'Commit (seed triggers)' or 'Commit';
-        if imgui.Button(label .. '##dlac_setupgo', { 170, 26 }) then
+        -- 'noop' (native, debug-only): nothing to do -- just a Close button.
+        if p.mode == 'noop' then
+            if imgui.Button('Close##dlac_setupno', { 90, 26 }) then
+                ui._setupPlan = nil;
+                imgui.CloseCurrentPopup();
+            end
+            imgui.EndPopup();
+            return;
+        end
+        fmt.textWrapped(COL.DIM, 'Nothing has been touched yet. Commit copies your data and flips the engine flag; Cancel closes.');
+        if imgui.Button('Commit (migrate to native)##dlac_setupgo', { 240, 26 }) then
             ui._setupPlan = nil;
             imgui.CloseCurrentPopup();
-            if p.mode == 'migrate' then
-                -- The ONE standard path (setupui) -- loud record in chat, exactly
-                -- like /dl profile migrate go; status + reload flags via configure{}.
-                pcall(function() setup.migrateToCleanProfiles(); end);
-            else
-                setup.migrateCurrentJob();
-            end
+            -- The migration Commit (setupui): copy-only storage move + flag write +
+            -- the unload/reload checklist. The GUI twin of /dl engine native on.
+            pcall(function() setup.migrateToNative(); end);
         end
         imgui.SameLine(0, 8);
         if imgui.Button('Cancel##dlac_setupno', { 90, 26 }) then
@@ -4601,16 +4546,13 @@ local function drawWindow()
         if _augStatus ~= nil and _augStatus ~= '' then
             fmt.textWrapped(COL.SCORE, fmt.esc(_augStatus));
         end
-        do  -- prominent warning when the current job isn't on the clean dlac standard yet
-            -- Native (ADR 0015): dlac never touches <JOB>.lua, so its state is not
-            -- a warning -- the legacy migration nag stays silent under the flag.
-            local _st = setup.isNative() and 'ok' or setup.jobSetupState();
-            if _st == 'ffxilac' or _st == 'none' then
-                local _, _ab = jobFile();
-                fmt.textWrapped(COL.ERR, string.format('  [!]  %s.lua is NOT set up for dlac -- click the red "Setup" button (top-right). Your file is backed up and replaced by a clean dlac profile; your old sets and groups stay importable from the backup.', tostring(_ab or '?')));
-            elseif _st == 'wired' then
-                local _, _ab = jobFile();
-                fmt.textWrapped(COL.ERR, string.format('  [!]  %s.lua still runs its own logic alongside dlac (old-style conversion) -- click the red "Setup" button (top-right) to move to the clean profile standard. Your file is backed up first; nothing is lost.', tostring(_ab or '?')));
+        do  -- LEGACY-MODE MIGRATION NUDGE (issue #91 -- ADR 0015 Phase-C banner, early)
+            -- Native: dlac never touches <JOB>.lua and auto-sets-up fresh installs,
+            -- so there is nothing to nag about -- the banner stays silent under the
+            -- flag. Legacy with dlac data: the standing nudge to migrate (present
+            -- all session until they flip), matching the red Setup button.
+            if not setup.isNative() and setup.needsSetup() then
+                fmt.textWrapped(COL.ERR, '  [!]  You are running the LEGACY engine -- LuaAshitacast equips your gear. Migrate to dlac\'s native engine: click the red "Setup" button (top-right). It COPIES your data (nothing under luashitacast\\ is touched, and you can flip back any time) and then dlac equips your gear itself. It\'s either LAC or DLAC -- never both at once.');
             end
         end
 

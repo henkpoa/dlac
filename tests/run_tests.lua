@@ -9079,6 +9079,131 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- NO20+. Onboarding v2 (issue #91): needsSetup v2 (native always false;
+-- legacy-with-data true), fresh-install auto-setup (idempotent, zero-clobber,
+-- ZERO writes under luashitacast\, never in legacy / before job-ready), a new
+-- job auto-seeding its own starters, and the migration Commit's call sequence
+-- (engineMigrateStorage -> setNativeMode(true) -> the unload checklist), all
+-- captured against a virtual disk -- no real IO.
+-- ---------------------------------------------------------------------------
+(function()
+    local prof = package.loaded['dlac\\profiles'];
+    local setup = dofile('ui/setupui.lua');
+    package.loaded['dlac\\ui\\setupui'] = setup;
+
+    -- A name->content virtual disk the deps read/write through, so idempotence
+    -- and zero-clobber are checkable without touching real files.
+    local disk, writes = {}, {};
+    local savedAC, savedExec = AshitaCore, os.execute;
+    local savedNative, savedEnsure, savedExists = prof.nativeMode, prof.ensureStorage, prof.storageExists;
+    local savedSetsP, savedTrigP, savedDataDir = prof.setsPath, prof.triggersPath, prof.dataDir;
+    local savedMig, savedSet = prof.engineMigrateStorage, prof.setNativeMode;
+    AshitaCore = { GetInstallPath = function() return 'I:\\game\\'; end };
+    os.execute = function() return true; end
+    prof.ensureStorage = function() return true; end
+    -- deterministic native paths (no real charFolder resolution)
+    local NROOT = 'I:\\game\\config\\addons\\dlac\\Mindie_12345\\';
+    prof.dataDir      = function() return NROOT; end
+    prof.setsPath     = function(job) return NROOT .. 'profiles\\Default\\sets\\' .. job .. '.lua'; end
+    prof.triggersPath = function(job) return NROOT .. 'profiles\\Default\\triggers\\' .. job .. '.lua'; end
+    local storageOn = true;
+    prof.storageExists = function() return storageOn; end
+
+    local base = 'I:\\game\\config\\addons\\luashitacast\\Mindie_12345\\';
+    local curAbbr = 'WHM';
+    local deps = {
+        charBase = function() return base; end,
+        jobFile  = function() if curAbbr == nil then return nil, nil; end return base .. curAbbr .. '.lua', curAbbr; end,
+        dataDir  = function() return NROOT; end,
+        charRoot = function() return NROOT; end,
+        readFileText  = function(p) return disk[p]; end,
+        writeFileText = function(p, c) disk[p] = c or 'x'; writes[#writes + 1] = p; return true; end,
+        status = function() end,
+        ui = {},
+    };
+    setup.configure(deps);
+    local function has(sub) for _, p in ipairs(writes) do if type(p) == 'string' and p:find(sub, 1, true) then return true; end end return false; end
+    -- seedGearFile's last-resort source is the bundled empty template.
+    disk['I:\\game\\addons\\dlac\\gear.lua'] = 'return {}\n';
+
+    -- --- needsSetup v2 matrix ---
+    prof.nativeMode = function() return true; end
+    check('NO20 needsSetup native -> always false',   setup.needsSetup(), false);
+    prof.nativeMode = function() return false; end
+    storageOn = false;
+    check('NO21 needsSetup legacy + NO data -> false', setup.needsSetup(), false);
+    storageOn = true;
+    check('NO22 needsSetup legacy + data -> true',     setup.needsSetup(), true);
+
+    -- --- auto-setup NEVER fires in legacy mode ---
+    writes = {};
+    check('NO23 autoSetupNative idles in legacy',      setup.autoSetupNative(), 'idle');
+    check('NO24 legacy auto-setup wrote nothing',      #writes, 0);
+
+    -- --- fresh native install: baseline missing -> seed it ---
+    prof.nativeMode = function() return true; end
+    disk = { ['I:\\game\\addons\\dlac\\gear.lua'] = 'return {}\n' }; writes = {}; storageOn = true;
+    check('NO25 fresh native auto-setup seeds',        setup.autoSetupNative(), 'seeded');
+    check('NO26 auto-setup wrote gear.lua',            has('gear.lua'), true);
+    check('NO27 auto-setup wrote this job\'s sets',    has('sets\\WHM.lua'), true);
+    check('NO28 auto-setup wrote this job\'s triggers', has('triggers\\WHM.lua'), true);
+    check('NO29 auto-setup: ZERO writes under luashitacast\\', has('luashitacast'), false);
+
+    -- --- idempotent: a second run finds the baseline complete, writes nothing ---
+    writes = {};
+    check('NO30 re-run reports complete',              setup.autoSetupNative(), 'complete');
+    check('NO31 re-run clobbers nothing',              #writes, 0);
+
+    -- --- a later NEW job auto-seeds ITS starters (gear.lua is shared, not rewritten) ---
+    curAbbr = 'BLM'; writes = {};
+    check('NO32 new job auto-seeds its starters',      setup.autoSetupNative(), 'seeded');
+    check('NO33 new job wrote BLM sets + triggers',    has('sets\\BLM.lua') and has('triggers\\BLM.lua'), true);
+    check('NO34 new job did NOT rewrite gear.lua',     has('gear.lua'), false);
+    curAbbr = 'WHM';
+
+    -- --- job not ready (abbr nil, GetMainJob 0 at login) never seeds (hard rule 11) ---
+    curAbbr = nil; writes = {};
+    check('NO35 job-not-ready auto-setup idles',       setup.autoSetupNative(), 'idle');
+    check('NO36 job-not-ready wrote nothing',          #writes, 0);
+    curAbbr = 'WHM';
+
+    -- --- a persistent write failure names itself and returns 'failed' (not latched) ---
+    do
+        local prevWrite = deps.writeFileText;
+        deps.writeFileText = function() return true; end   -- pretend writes "succeed" but land nothing
+        disk = { ['I:\\game\\addons\\dlac\\gear.lua'] = 'return {}\n' }; storageOn = true;
+        setup.configure(deps);
+        local failStatus = nil;
+        deps.status = function(s) failStatus = s; end
+        setup.configure(deps);
+        check('NO37 baseline-never-lands reports failed', setup.autoSetupNative(), 'failed');
+        check('NO38 failure names itself in status', type(failStatus) == 'string' and failStatus:find('could not', 1, true) ~= nil, true);
+        deps.writeFileText = prevWrite; deps.status = function() end;
+        setup.configure(deps);
+    end
+
+    -- --- the migration Commit: engineMigrateStorage -> setNativeMode(true) -> checklist ---
+    local seq = {};
+    prof.engineMigrateStorage = function() seq[#seq + 1] = 'migrate'; return 7, 2, 0; end
+    prof.setNativeMode = function(on) seq[#seq + 1] = 'flag:' .. tostring(on); return true; end
+    prof.nativeMode = function() return false; end   -- legacy at Commit time
+    local msg = nil; deps.status = function(s) msg = s; end
+    setup.configure(deps);
+    writes = {};
+    setup.migrateToNative();
+    check('NO39 Commit copies THEN flips the flag',    table.concat(seq, ','), 'migrate,flag:true');
+    check('NO40 Commit is copy-only (no JOB.lua/backup write)', has('luashitacast') or has('backups'), false);
+    check('NO41 Commit prints the unload checklist',   type(msg) == 'string' and msg:find('unload luashitacast', 1, true) ~= nil, true);
+    check('NO42 Commit refuses under native',
+          (function() prof.nativeMode = function() return true; end; seq = {}; setup.migrateToNative(); prof.nativeMode = function() return false; end; return #seq; end)(), 0);
+
+    prof.engineMigrateStorage, prof.setNativeMode = savedMig, savedSet;
+    prof.nativeMode, prof.ensureStorage, prof.storageExists = savedNative, savedEnsure, savedExists;
+    prof.setsPath, prof.triggersPath, prof.dataDir = savedSetsP, savedTrigP, savedDataDir;
+    os.execute, AshitaCore = savedExec, savedAC;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- EQC. equipcore (feature/native-engine part 1) -- the pure equip pipeline:
 -- entry normalization, the set resolver, and the 0x050/0x051 packet builders.
 -- Semantics are LuaAshitacast-parity (equip.lua is the reference); these pins

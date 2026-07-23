@@ -299,25 +299,141 @@ setup.setupNative = function(base, abbr)
     pcall(function() print('[dlac] ' .. msg); end);
 end
 
--- Does this character still need Setup (drives the red button + the warning)?
--- Native: storage not yet created (there is no shim to judge). Legacy: the job
--- shim is not the clean managed shim, or storage is missing (unchanged).
-setup.needsSetup = function()
-    if setup.isNative() then
-        local hasStorage = false;
-        pcall(function()
-            local p = require('dlac\\profiles');
-            if type(p) == 'table' and type(p.storageExists) == 'function' then hasStorage = p.storageExists() == true; end
-        end);
-        return not hasStorage;
+-- Is this character+job's native baseline all in place on disk? Storage +
+-- gear inventory + THIS job's starter sets + THIS job's starter triggers. The
+-- auto-setup guard (below) and its success check both ask this: a fresh player
+-- is incomplete (seed it), an established one is complete (stay silent), and a
+-- brand-new job on an old character is incomplete for its own sets/triggers
+-- only. Reads through the same deps the seeders write through, so what it sees
+-- is exactly what they just wrote (no torn view between write and verify).
+setup.nativeBaselineComplete = function(abbr)
+    if D == nil or abbr == nil then return false; end
+    local complete = false;
+    pcall(function()
+        local prof = require('dlac\\profiles');
+        if type(prof) ~= 'table' then return; end
+        if type(prof.storageExists) == 'function' and prof.storageExists() ~= true then return; end
+        local ddir = (type(D.dataDir) == 'function') and D.dataDir() or nil;
+        if ddir == nil or D.readFileText(ddir .. 'gear.lua') == nil then return; end
+        local sp = (type(prof.setsPath) == 'function') and prof.setsPath(abbr) or nil;
+        if sp == nil or D.readFileText(sp) == nil then return; end
+        local tp = (type(prof.triggersPath) == 'function') and prof.triggersPath(abbr) or nil;
+        if tp == nil or D.readFileText(tp) == nil then return; end
+        complete = true;
+    end);
+    return complete;
+end
+
+-- FRESH-INSTALL AUTO-SETUP (ADR 0015 ruling 4 refined; issue #91). Under the
+-- native flag, silently create this character+job's baseline the moment it is
+-- missing -- storage, gear inventory, the four base sets, starter triggers (the
+-- setupNative content, per job, idempotent, never clobbering) -- so a new player
+-- never touches Setup. Called on the login/job beat (dlac.lua maintainStorage).
+-- HARD GATES: never in legacy mode; never for a not-ready job (D.jobFile()
+-- returns nil until GetMainJob settles -- hard rule 11, so id-0 'NON' never
+-- seeds); never before the caller has resolved firstRunInit (native mode being
+-- ON is itself that resolution -- a fresh install writes the flag first, an
+-- existing user is honored). A persistent disk failure NAMES itself once and is
+-- retried next beat -- it is never ceremonialized into the Setup box.
+-- Returns 'seeded' | 'complete' | 'failed' | 'idle' (for the caller + tests).
+setup._autoWarned = {};   -- per-job failure-notice throttle (cleared on success)
+setup.autoSetupNative = function()
+    if D == nil then return 'idle'; end
+    if not setup.isNative() then return 'idle'; end          -- auto-setup NEVER fires in legacy mode
+    local base = D.charBase();
+    if base == nil then return 'idle'; end                   -- not logged in yet -- retry next beat
+    local _, abbr = D.jobFile();
+    if abbr == nil then return 'idle'; end                   -- job not ready (id 0 at login) -- retry
+    if setup.nativeBaselineComplete(abbr) then
+        setup._autoWarned[abbr] = nil;
+        return 'complete';                                   -- already set up -- silent (installs boot unchanged)
     end
-    if setup.jobSetupState() ~= 'ok' then return true; end
-    local hasStorage = false;
+    -- Missing -> seed it. Every helper checks-then-writes, so this is safe to run
+    -- every beat and re-run after a partial failure; nothing is ever overwritten.
+    pcall(function()
+        local prof = require('dlac\\profiles');
+        if type(prof) == 'table' and type(prof.ensureStorage) == 'function' then prof.ensureStorage(); end
+    end);
+    seedGearFile(base);
+    setup.seedSetsFile(base, abbr);
+    setup.seedTriggersFile(base, abbr);
+    pcall(function() require('dlac\\gear\\profilesets').invalidate(); end);
+    _setupState = nil;
+    if not setup.nativeBaselineComplete(abbr) then
+        if not setup._autoWarned[abbr] then
+            setup._autoWarned[abbr] = true;   -- one loud line, then keep retrying quietly
+            local m = abbr .. ': dlac could not create its native starter files under config\\addons\\dlac\\ '
+                .. '(disk error?) -- it will keep trying.';
+            D.status(m);
+            pcall(function() print('[dlac] ' .. m); end);
+        end
+        return 'failed';
+    end
+    setup._autoWarned[abbr] = nil;
+    local msg = abbr .. ': dlac is ready -- native starter sets and triggers are in place under '
+        .. 'config\\addons\\dlac\\. Scan your gear, then build sets in the Sets tab.';
+    D.status(msg);
+    pcall(function() print('[dlac] ' .. msg); end);
+    return 'seeded';
+end
+
+-- Does this character have dlac data worth migrating? The storage pointer is the
+-- primary signal (every creator writes it); a pre-storage-move legacy user with
+-- only a scanned gear.lua still counts. Read through the current-mode data home.
+setup.hasDlacData = function()
+    local has = false;
     pcall(function()
         local p = require('dlac\\profiles');
-        if type(p) == 'table' and type(p.storageExists) == 'function' then hasStorage = p.storageExists() == true; end
+        if type(p) == 'table' and type(p.storageExists) == 'function' and p.storageExists() == true then has = true; end
     end);
-    return not hasStorage;
+    if has then return true; end
+    if D ~= nil and type(D.dataDir) == 'function' then
+        local d = D.dataDir();
+        if d ~= nil and D.readFileText(d .. 'gear.lua') ~= nil then return true; end
+    end
+    return false;
+end
+
+-- THE MIGRATION COMMIT (issue #91): the GUI twin of `/dl engine native on`.
+-- Copy-only storage migration (engineMigrateStorage -- nothing under
+-- luashitacast\ is moved, changed, or deleted; existing native files win) then
+-- write the Engine flag native = true, then print the unload/reload checklist.
+-- Refuses under native (there is nothing to migrate). A flag-write failure after
+-- a successful copy is reported without leaving the player mid-migration --
+-- their legacy tree is byte-for-byte untouched, so they lost nothing.
+setup.migrateToNative = function()
+    if D == nil then return; end
+    if setup.isNative() then D.status('Migrate: the native engine is already on -- nothing to migrate.'); return; end
+    local prof = try('dlac\\profiles');
+    if prof == nil then D.status('Migrate: profiles module unavailable.'); return; end
+    local done, skipped, failed = prof.engineMigrateStorage();
+    if done == nil then D.status('Migrate: ' .. tostring(skipped)); return; end   -- second return = why (e.g. not logged in)
+    local ok, err = prof.setNativeMode(true);
+    if ok ~= true then
+        D.status('Migrate: copied your data but could NOT write the engine flag (' .. tostring(err)
+            .. ') -- nothing under luashitacast\\ was changed, so you are unharmed. Try again.');
+        return;
+    end
+    _setupState = nil;
+    local msg = string.format('Migrated to the native engine: %d file(s) copied to config\\addons\\dlac\\ '
+        .. '(%d already there, %d failed). Nothing under luashitacast\\ was touched -- flip back any time with '
+        .. '/dl engine native off. NOW:  1) /addon unload luashitacast  2) remove LuaAshitacast from your '
+        .. 'autoload  3) /addon reload dlac.  It is either LAC or DLAC -- never both at once.',
+        done, skipped, failed);
+    D.status(msg);
+    pcall(function() print('[dlac] ' .. msg); end);
+end
+
+-- Does this character still need the Setup button (issue #91 -- needsSetup v2)?
+-- NATIVE: always false -- fresh installs are auto-set-up and there is nothing to
+-- migrate. LEGACY: true iff the character has dlac data, meaning "migration
+-- offered" -- the red Setup button is then the standing nudge (present all
+-- session) and the popup is the migration box. A legacy session with no dlac
+-- data has nothing to migrate (and never happens for a fresh install -- those
+-- are born native).
+setup.needsSetup = function()
+    if setup.isNative() then return false; end
+    return setup.hasDlacData();
 end
 
 setup.migrateCurrentJob = function()

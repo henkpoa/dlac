@@ -25,7 +25,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.07.23za';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.07.23zb';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
 addon.desc    = 'Build gear sets and view live stats with level scaling (for LuaAshitacast).';
 
@@ -175,10 +175,21 @@ local function maintainStorage()
     local isNative = false;
     pcall(function()
         local prof = require('dlac\\profiles');
-        prof.firstRunInit();          -- native-first onboarding (ADR 0015 ruling 4)
+        local action = prof.firstRunInit();   -- native-first onboarding (ADR 0015 ruling 4)
+        if action == nil then return; end     -- first-run decision not resolved yet -- retry next beat (NO auto-setup before it resolves)
         if prof.nativeMode() then
             isNative = true;
             prof.engineAutoMigrate(print);
+            -- FRESH-INSTALL AUTO-SETUP (issue #91): silently create this
+            -- character+job's baseline when it is missing -- storage, gear
+            -- inventory, base sets, starter triggers -- so a new player never
+            -- touches Setup. No-ops until gearui has configured setupui, in legacy
+            -- mode, and for a not-ready job; a disk failure names itself and
+            -- retries. See setupui.autoSetupNative for the full gate list.
+            pcall(function()
+                local setup = require('dlac\\ui\\setupui');
+                if type(setup.autoSetupNative) == 'function' then setup.autoSetupNative(); end
+            end);
             -- The LAC-alive polite ask, once per session (the tripwire is the
             -- hard backstop). Ask BEFORE the coexistence hazard bites.
             if prof.shouldAskUnloadLac(lacAlive()) then
