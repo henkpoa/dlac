@@ -4399,6 +4399,62 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- weatherMatch (engine v121): a spell-handler flag -- true when the CURRENT
+-- weather's element equals the action's element. NOT the day+weather net
+-- (dayWeatherBonus): no day, no opposition, a plain weather match -- the gate
+-- CatsEyeXI's Scholar cast-time bonus (ALACRITY_CELERITY_EFFECT) actually keys
+-- on. ctx.wel is the cached weather-element seam: set it to drive the matcher
+-- headlessly (nil -> a live gData read, which fails to '' in the harness = unknown).
+-- Tier 30 (element band). Unreadable weather / no action element matches NEITHER.
+-- ---------------------------------------------------------------------------
+(function()
+    local mm = dispatchM._matchers;
+    local fireInFire  = { action = { Element = 'Fire' }, wel = 'Fire' };
+    local fireInIce   = { action = { Element = 'Fire' }, wel = 'Ice'  };
+    local fireInClear = { action = { Element = 'Fire' }, wel = 'None' };
+    check('WM1 match: weatherMatch=true fires (Fire in Fire weather)', mm.weathermatch(true,  fireInFire), true);
+    check('WM2 mismatch: weatherMatch=true quiet (Fire in Ice)',      mm.weathermatch(true,  fireInIce),  false);
+    check('WM3 mismatch: weatherMatch=false fires (Fire in Ice)',     mm.weathermatch(false, fireInIce),  true);
+    check('WM4 match: weatherMatch=false quiet (Fire in Fire)',       mm.weathermatch(false, fireInFire), false);
+    check('WM5 element match is case-insensitive',                    mm.weathermatch(true,  { action = { Element = 'fire' }, wel = 'FIRE' }), true);
+    -- Clear / 'None' weather is a REAL non-match (not unknown): =true quiet, =false fires.
+    check('WM6 clear weather: weatherMatch=true quiet',               mm.weathermatch(true,  fireInClear), false);
+    check('WM7 clear weather: weatherMatch=false fires',              mm.weathermatch(false, fireInClear), true);
+    -- No action element (Default handler / Non-Elemental) -> matches NEITHER polarity.
+    check('WM8 no action element: =true quiet',                       mm.weathermatch(true,  { wel = 'Fire' }), false);
+    check('WM9 no action element: =false quiet',                      mm.weathermatch(false, { wel = 'Fire' }), false);
+    check('WM10 Non-Elemental action: =true quiet',                   mm.weathermatch(true,  { action = { Element = 'Non-Elemental' }, wel = 'Fire' }), false);
+    check('WM11 Non-Elemental action: =false quiet',                  mm.weathermatch(false, { action = { Element = 'Non-Elemental' }, wel = 'Fire' }), false);
+    -- Unreadable weather ('' sentinel, e.g. a failed live read) -> matches NEITHER.
+    check('WM12 unreadable weather: =true quiet',                     mm.weathermatch(true,  { action = { Element = 'Fire' }, wel = '' }), false);
+    check('WM13 unreadable weather: =false quiet',                    mm.weathermatch(false, { action = { Element = 'Fire' }, wel = '' }), false);
+    -- Tier ladder: weatherMatch sits at 30 (element band), like dayWeatherBonus.
+    check('WM14 weatherMatch sits at 30', dispatchM.defaultPriority({ weatherMatch = true }), 30);
+    check('WM15 buff still outranks weatherMatch',
+        dispatchM.defaultPriority({ buff = 'Alacrity' })
+            > dispatchM.defaultPriority({ weatherMatch = true }), true);
+    -- Through matches(): the AND leg with a live weather ctx (post-load lowercase key).
+    local mt = dispatchM._matches;
+    check('WM16 matches() fires on a weather match',
+        mt({ when = { weathermatch = true } }, { action = { Element = 'Fire' }, wel = 'Fire' }), true);
+    check('WM17 matches() quiet on a mismatch',
+        mt({ when = { weathermatch = true } }, { action = { Element = 'Fire' }, wel = 'Ice' }), false);
+    -- First-class vocabulary: PRETTY-case weatherMatch serializes + round-trips,
+    -- and _normalize accepts it (loader lowercases + TIER-validates) at prio 30.
+    local text = dispatchM.serializeTriggers({
+        Midcast = { { when = { weatherMatch = true }, set = 'StormNuke' } },
+    });
+    check('WM18 weatherMatch serializes PRETTY-case', text:find('weatherMatch', 1, true) ~= nil, true);
+    local t2 = (loadstring or load)(text)();
+    check('WM19 round-trip byte-stable', dispatchM.serializeTriggers(t2) == text, true);
+    local norm = dispatchM._normalize({
+        Midcast = { { when = { weatherMatch = true }, set = 'StormNuke' } },
+    });
+    check('WM20 normalize keeps weatherMatch rule', norm.Midcast ~= nil and #norm.Midcast, 1);
+    check('WM21 normalized prio = 30',              norm.Midcast[1].prio, 30);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- TGM. Trigger Groups model (G2, issue #25, ADR 0009): the pure GUI-side CRUD +
 --      name / member validation the Groups tab drives (groupsmodel.lua). Group
 --      names and member names compare case-insensitively (engine parity), an

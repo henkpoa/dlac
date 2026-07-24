@@ -115,7 +115,8 @@ local SPELL_CONDS = {
     { key = 'group',     kind = 'group', hint = 'match every action in a named group -- one rule gears many\nspells that share gear. Build groups in the Groups section; a per-spell\nname rule still overrides the group.' },
     { key = 'name',      kind = 'text', hint = 'exact spell name, e.g. Slow II' },
     { key = 'target',    kind = 'list', items = TARGET_ITEMS, hint = TARGET_HINT },
-    { key = 'dayWeatherBonus', kind = 'flag' },
+    { key = 'dayWeatherBonus', kind = 'flag', hint = 'the day + weather NET favours the spell you are casting\n(+1 per matching day/weather, -1 per the opposing element; fires when\nthe net is positive) -- the obi rule. For a plain weather-only match\n(no day), use weatherMatch below.' },
+    { key = 'weatherMatch', kind = 'flag', hint = 'the CURRENT weather element matches the spell you are casting\n(single or double weather, and your own storm counts) -- NOT the\nday+weather net, a plain weather match. Stack with a buff condition\n(Celerity / Alacrity) to gate a Scholar cast-time set.' },
     { key = 'mode',      kind = 'text', hint = 'a player-toggled mode must be ON (e.g. DT) -- stack with other\nconditions to make a rule mode-dependent' },
     { key = 'any',       kind = 'flag' },
 };
@@ -1292,6 +1293,7 @@ local COND_COLORS = {
     magictype = { 0.45, 0.80, 0.75, 1.0 }, abilitytype = { 0.45, 0.80, 0.75, 1.0 },
     element = { 0.95, 0.70, 0.45, 1.0 },  songtype = { 0.80, 0.85, 0.50, 1.0 },
     dayweatherbonus = { 0.60, 0.90, 0.90, 1.0 },
+    weathermatch = { 0.55, 0.80, 0.95, 1.0 },
     contains = { 0.95, 0.85, 0.45, 1.0 }, family = { 0.95, 0.85, 0.45, 1.0 },
     group = { 0.55, 0.80, 1.00, 1.0 },
     name = { 1.00, 0.95, 0.75, 1.0 },

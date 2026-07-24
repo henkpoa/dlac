@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 120;  -- 120: Chocobo riding-gear automation (issue #95, docs/design/chocobo-gear.md) -- a fourth idle-only sibling: ensureChocoState/chocoStateActive/chocoOverlayFor, the dlac:AutoChoco resolveVirtual branch (manifest `choco` per-slot best-first ladders, Main/Neck/Body/Hands/Legs/Feet, scored by ChocoboRidingTime, the Chocobo Wand included in Main), a 'Chocobo' Arbiter claim row (default rank below Fishing, above the Triggers floor), and arbOrder now pins the Triggers floor last so a new claimant appended to an existing arbstate file never sinks below it.
+M.VERSION = 121;  -- 121: weatherMatch trigger condition (feature/weather-match-condition, grill-with-docs 07-24) -- a spell-handler flag, true when the CURRENT weather's element equals the action's element. weatherMatchesAction reads the SAME gData.GetEnvironment().WeatherElement the obi uses (storm-aware: a Scholar's own Firestorm etc. overrides zone weather, so it counts). DISTINCT from dayWeatherBonus (the signed day+weather net with opposition): weatherMatch is a plain weather-element equality -- no day, no opposition -- verified as CatsEyeXI's ALACRITY_CELERITY_EFFECT (Celerity/Alacrity cast-time) gate. Precast+Midcast, tier 30, true/false polarity; unreadable weather or no action element matches NEITHER (never fires blind). Tests WM1-WM21.
+                  -- 120: Chocobo riding-gear automation (issue #95, docs/design/chocobo-gear.md) -- a fourth idle-only sibling: ensureChocoState/chocoStateActive/chocoOverlayFor, the dlac:AutoChoco resolveVirtual branch (manifest `choco` per-slot best-first ladders, Main/Neck/Body/Hands/Legs/Feet, scored by ChocoboRidingTime, the Chocobo Wand included in Main), a 'Chocobo' Arbiter claim row (default rank below Fishing, above the Triggers floor), and arbOrder now pins the Triggers floor last so a new claimant appended to an existing arbstate file never sinks below it.
                   -- 119: field-CONFIRMED close of the maxmp boot saga (Henrik's trace showed the designed boot: 12 install refusals holding the door ~4.5s of hollow flattens, then the REAL world's first appearance earns the first-ever belief -- no wrong ladder was ever displayable) + Henrik's debug-folder rule: per-char debug artifacts live in <data home>\debug\ (the warm trace moves to debug\mpwarm.txt and sweeps its old root-level file; the LAC-bridge handoff files stay put -- paired-reader protocol, leaving with LAC).
                   -- 118: A HOLLOW INSTALL IS NOT AN INSTALL + the install invalidates the belief (round 5b -- the warm trace's first catch, one reload after shipping). Henrik's debug-mpwarm.txt line 16: 'BELIEVED setN=0 flat=0' at :12 behind a '20 set(s) installed' print at :10 -- the install-time flatten yielded ZERO sets (the fresh utils state's first level read wasn't settled), that hollow-but-stable world earned belief, and the belief CACHE (keyed by time, not world) survived the real store arriving at ~:14 -- serving the :16/:18/:21 bad plans until the 10s TTL expired at :22. Three closures: (1) installSets refuses a flatten that yields 0 sets when the raw Dynamic has real entries -- store left absent, latch retries next tick (genuinely empty starter profiles still pass: their zero is the truth); (2) BOTH install branches wipe the LOW-map cache + earned signature -- a belief can never outlive the world it was earned against; (3) the flatten counts ride the signature (f/h fields), so store identity changes can never share a sig. The trace stays -- it earned its keep in one reload.
                   -- 117: THE WARM TRACE + the gear ordering gate (round 5 -- the round the guessing stops). Henrik's capture beat v116's axiom: the wrong world held IDENTICAL for 3+ seconds (two matching bad renders), so it agreed with itself and was believed -- stable-wrong states exist (a flatten over a not-yet-live input is hollow STABLY, not transiently), and no proxy or self-agreement can see through one from the inside. Two moves. (1) debug-mpwarm.txt: every full LOW-map compute writes one row -- latch verdict (attest-failed/new-sig/young/BELIEVED), rules/sets attestation detail (incl. WHICH trigger path resolved and parse errors), rule/set counts, nonzero-low count, gear NameToObject count, manifest mp count, flattened/hollow set counts -- fresh file per session, 150-row cap; the next wrong ladder is a movie with named stages, not a screenshot. (2) The native identity latch defers install/flatten until the gear world is live (NameToObject non-empty) -- the one KNOWN stable-hollow producer, killed by ordering rather than gating; skip never latches, the tick retries.
@@ -483,6 +484,30 @@ local function netDayWeather(ctx)
     return ctx.dw;
 end
 
+-- Does the current WEATHER's element equal the action's element? A plain match --
+-- NOT the day+weather net above. Reads the SAME env the obi uses
+-- (gData.GetEnvironment().WeatherElement), which already folds a Scholar's own
+-- storm buff over the zone weather (Firestorm etc.), so a self-storm counts --
+-- exactly what CatsEyeXI's ALACRITY_CELERITY_EFFECT gate keys on. The weather
+-- element is read once and cached on ctx.wel. Returns true (match), false (a real
+-- non-match, incl. clear/'None' weather), or nil when there is no action element
+-- (Default / Non-Elemental) or the weather is unreadable -- nil makes the matcher
+-- fire on NEITHER polarity, never blind.
+local function weatherMatchesAction(ctx)
+    local el = ctx.action and ctx.action.Element;
+    if type(el) ~= 'string' or ci(el, 'Non-Elemental') then return nil; end
+    if ctx.wel == nil then
+        local w = '';
+        pcall(function()
+            local env = gData.GetEnvironment();
+            if env ~= nil and type(env.WeatherElement) == 'string' then w = env.WeatherElement; end
+        end);
+        ctx.wel = w;   -- cached once per dispatch; '' = unreadable
+    end
+    if ctx.wel == '' then return nil; end
+    return ci(ctx.wel, el);
+end
+
 -- Debuff song families (Bard Song + one of these words in the name = Debuff;
 -- any other Bard Song = Buff). Extend as CatsEyeXI adds custom songs.
 local DEBUFF_SONGS = { 'requiem', 'lullaby', 'elegy', 'finale', 'threnody', 'virelai', 'nocturne' };
@@ -658,6 +683,15 @@ local MATCHERS = {
         if v == false then return netDayWeather(ctx) <= 0; end
         return netDayWeather(ctx) >= (tonumber(v) or 1);
     end,
+    -- Weather-element MATCH (not the day+weather net above): the current weather's
+    -- element equals the action's element. Reads the same env the obi does, so a
+    -- Scholar's own storm counts. v=true requires a match, v=false requires a real
+    -- non-match; unknown weather / no action element matches NEITHER (nil result).
+    weathermatch = function(v, ctx)
+        local m = weatherMatchesAction(ctx);
+        if m == nil then return false; end
+        return m == (v == true);
+    end,
     songtype        = function(v, ctx)
         if ctx.action == nil or not ci(ctx.action.Type, 'Bard Song') then return false; end
         local debuff = false;
@@ -734,7 +768,7 @@ local TIER = {
     -- identity -> the exact-name tier (50, next to `name` below).
     pet = 22, petstatus = 23,
     moving = 25,
-    magictype = 30, element = 30, songtype = 30, dayweatherbonus = 30,
+    magictype = 30, element = 30, songtype = 30, dayweatherbonus = 30, weathermatch = 30,
     contains = 40, family = 40,
     group = 45,   -- baseline for many spells that share gear; a per-spell `name` (50) overrides it, and it beats contains/skill (ADR 0009)
     name = 50, petname = 50,
@@ -763,6 +797,7 @@ local PRETTY_KEY = {
     skill = 'skill', magictype = 'magicType', abilitytype = 'abilityType',
     element = 'element', songtype = 'songType', contains = 'contains',
     family = 'family', name = 'name', dayweatherbonus = 'dayWeatherBonus',
+    weathermatch = 'weatherMatch',
     group = 'group',
     hpbelow = 'hpBelow', hpabove = 'hpAbove', mpbelow = 'mpBelow',
     mpabove = 'mpAbove', tpbelow = 'tpBelow', tpabove = 'tpAbove',

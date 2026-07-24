@@ -70,6 +70,14 @@ _Avoid_: merge, stack
 **Specificity**:
 How narrowly a Trigger's condition matches (Any → skill/status → class/element → family → group → exact name → Mode). Drives the *default* priority: more specific overlays less specific.
 
+**Weather match**:
+The Trigger condition (`weatherMatch`) true when the action's element equals the CURRENT weather element — a plain equality, day-agnostic. It is what CatsEyeXI's Scholar cast-time bonus (server mod `ALACRITY_CELERITY_EFFECT`, active under Celerity/Alacrity) actually keys on — verified in the server: weather only, no day and no opposition. Reads the same `gData.GetEnvironment().WeatherElement` the obi uses, so a Scholar's own storm buff (which overrides zone weather) counts; single and double weather both match.
+_Avoid_: favourability (that is the obi's signed day+weather net — see Day/weather favourability); day match (day is not part of this)
+
+**Day/weather favourability**:
+The obi's environment score for an element: +1 per matching day OR weather, −1 per the OPPOSING element on the elemental wheel; net > 0 = favourable. Powers `dlac:AutoObi` and the `dayWeatherBonus` Trigger condition. A SIGNED net over day AND weather WITH opposition — deliberately different from a plain Weather match.
+_Avoid_: weather match (the day-agnostic equality above); "favourable weather" (it folds in day and opposition, not just weather)
+
 **Claim**:
 A feature's declared wish to dress one or more slots (wear this item, or keep what's worn), registered with the Arbiter instead of equipped directly. Slots are contested one by one — losing a contest costs a claimant only that slot.
 _Avoid_: pin (the floatgear feature — one claimant among many), override, hijack
