@@ -69,6 +69,19 @@ local _stateLoaded = false;
 -- PERSISTED rankFloor (one-way), and rankFloor at MAX is the permanent latch --
 -- skill never deranks, so detection then stops for good (Henrik's rule).
 M._zoneInAt = nil;         -- os.clock() at the last zone-in (nil = none yet)
+-- Proof of a REAL dig this zone visit: the client sends C2S 0x063
+-- (GP_CLI_COMMAND_DIG, dig-exclusive -- server src/map/packets/c2s/0x063_dig.h)
+-- when it finishes a dig animation. Without this gate ANY chat line matching a
+-- dig phrase ("Obtained:", "with ease", "find nothing") near a zone-in could
+-- ratchet the rank up (and latch it at max, permanently). Set on 0x063, cleared
+-- on 0x00A.
+M._digThisZone = false;
+
+-- The timing read only fires when we have a zone-in baseline AND a real dig
+-- happened this visit. Exposed so the gate is headless-testable.
+function M._digGateOpen()
+    return M._zoneInAt ~= nil and M._digThisZone == true;
+end
 
 local function statePath()
     local dir = charDir();
@@ -280,7 +293,16 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
     -- thread; the dlacprobe crash was per-line chat prints from a packet handler,
     -- which this deliberately does none of.
     ashita.events.register('packet_in', 'dlac-chocowatch-zonein', function(e)
-        if e.id == 0x00A then M._zoneInAt = os.clock(); end
+        if e.id == 0x00A then M._zoneInAt = os.clock(); M._digThisZone = false; end
+    end);
+
+    -- Dig-completion proof (issue #100 hardening): the client sends C2S 0x063 when
+    -- it finishes a chocobo dig animation (GP_CLI_COMMAND_DIG, dig-exclusive). Flag
+    -- it so the timing read below trusts ONLY a real dig this zone visit, never a
+    -- passer-by's chat that merely matches a dig phrase. Bare flag -- no chat/IO,
+    -- safe on the packet (network) thread.
+    ashita.events.register('packet_out', 'dlac-chocowatch-digdone', function(e)
+        if e.id == 0x063 then M._digThisZone = true; end
     end);
 
     -- Dig chat -> rank knowledge. Two one-way inputs, BOTH feeding the persisted
@@ -304,8 +326,10 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
             if tag == 'obtained' and item ~= nil and M.recordObtained(item) then
                 raised, why = true, '>= from digging ' .. item;
             end
-            -- (2) timing read on any completed dig, off the zone-in baseline.
-            if digrank.isCompletedDig(tag) and M._zoneInAt ~= nil then
+            -- (2) timing read on a completed dig, off the zone-in baseline -- but
+            -- ONLY when a real dig (0x063) happened this zone visit, so a foreign
+            -- chat line can never ratchet or latch the rank.
+            if digrank.isCompletedDig(tag) and M._digGateOpen() then
                 if M.recordDigTiming(os.clock() - M._zoneInAt) then
                     raised, why = true, 'measured from your first-dig timing';
                 end
