@@ -80,10 +80,12 @@ M._ROW_H   = 26;    -- explicit Selectable height, so the HIT AREA matches the t
 M._LABEL_X = 38;    -- absolute x for the row label, so labels line up regardless
 M._MENU_W  = 104;   -- header button width when there is no art (themed font law:
                     -- ~9.5px/char + 16 padding, or the label clips)
-M._MENU_ICON_W = 20;-- header button icon (was 16) -- it is the entry point to
-                    -- everything now, so it earns the extra pixels
-M._MENU_BTN_W  = 32;-- ...and the declared width must grow with it: gearui
-                    -- right-aligns the header row by summing b.w
+M._MENU_ICON_W = 24;-- header button icon (16 -> 20 -> 24). Deliberately the SAME size
+                    -- as a row icon (_ICON_W): the button is the entry point to the
+                    -- menu, so the art reads identically in both places.
+M._MENU_BTN_W  = 34;-- ...and the declared width must grow with it: gearui right-aligns
+                    -- the header row by summing b.w. Keeps the original +10 slack over
+                    -- the icon (16px icon declared 26), so the label can never clip.
 
 -- The menu roster. `icon` names an assets\<name>.png. All six shipped 2026-07-24
 -- (Henrik's art, 64x64 transparent, drawn at 16x16); any that is missing or fails to

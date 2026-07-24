@@ -10805,6 +10805,10 @@ end)();
     -- right-aligns the header by summing b.w, so a lying width shifts the whole row.
     check('SET53 header button width fits its icon',
         mn._MENU_BTN_W > mn._MENU_ICON_W, true);
+    -- Henrik's call: the entry-point button wears the art at the SAME size the rows
+    -- do, so it reads identically in both places. Pinned so a later row-icon bump
+    -- does not silently leave the header behind.
+    check('SET54 header icon matches the row icon size', mn._MENU_ICON_W, mn._ICON_W);
 
     -- activate() is inert until configure() runs: no deps, no action, no crash.
     check('SET40 activate inert unconfigured', mn.activate('lockstyle'), false);

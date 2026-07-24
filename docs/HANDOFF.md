@@ -214,7 +214,7 @@ agent; the per-repo setup lives in `docs/agents/`.
 
 ## Current state (as of 2026-07-24, end of day)
 
-- **HEADER MENU + SETTINGS — BUILT 2026-07-24 (`ui/menuui.lua`, addon `2026.07.24s`),
+- **HEADER MENU + SETTINGS — BUILT 2026-07-24 (`ui/menuui.lua`, addon `2026.07.24t`),
   awaiting Henrik's field test.** The header was eight right-aligned buttons; it is now
   **Profiles** (left, unchanged) and **Menu · Migrate** (right). Everything that used to
   sit left of "Reload LAC" — Lockstyle, Macro book, Hobby bar, Teleports, Level override
@@ -252,7 +252,7 @@ agent; the per-repo setup lives in `docs/agents/`.
     right-aligns the row by summing `b.w`. The four developer rows share **one** question
     mark on their *Developer* heading rather than repeating it down the column.
   - **Sized up after Henrik's visual pass** (`s`): row icons **16 → 24**, label column
-    30 → 38, header-button icon **16 → 20** (declared width 26 → 32). The row's
+    30 → 38, header-button icon **16 → 24** (declared width 26 → 34, matching the row icons exactly — SET54). The row's
     `Selectable` now takes an **explicit height** (`_ROW_H`) — without it the click
     target stays text-height and the bottom of every taller row goes dead. `SET51-53`
     pin the layout invariant (`_LABEL_X >= _ICON_GAP + _ICON_W`, `_ROW_H >= _ICON_W`,
