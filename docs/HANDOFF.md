@@ -212,6 +212,35 @@ agent; the per-repo setup lives in `docs/agents/`.
 - A GM is currently evaluating the addon for server approval — polish requests from
   that channel (like the word-wrap fix) take priority.
 
+## What's left (open work, as of 2026-07-25)
+
+Nothing below is half-built — these are deliberate stopping points, each with its
+research already recorded. In rough priority order:
+
+1. **FIELD TEST the 07-25 release.** Henrik approved the Menu/Settings **visuals**, but
+   the **Mode library has not been driven in-game at all**. Everything in it is
+   headless-tested only; the suites stub imgui by design, so popup behaviour, the
+   pre-commit window and the stamp→commit round-trip are unverified against the live
+   client. Start here.
+2. **`[missing mode]` surfacing does not exist** (found during the ADR 0019 recon; the
+   single most valuable follow-up). There is no marker on rule boxes, no banner, and on
+   the Sets tab a **dead `@Weapon:Caster` gate renders byte-identical to a live-but-
+   inactive one** — the player cannot tell them apart. Blueprints' import popup claims
+   "the warning appears when you Stamp", but `bpStamp` only checks for an identical rule
+   and never inspects mode refs. Build the twin of `groupDefined`/`[missing group]`
+   (`ui/triggersui.lua:885`) plus a dead-gate tint on the Sets tab. **This gap is why the
+   Overwrite cascade is deliberately confined to the two job-scoped stores and never
+   touches the Blueprint library** — a value dead on this job may be alive on eight others.
+3. **NIN shuriken: Daken / Sange / Yoru Shuriken** — designed, NOT built, waiting on a
+   real NIN. Full record in `docs/design/auto-ammo.md` §8, including the **two live bugs
+   on main** it uncovered (the WS-ammo leak at Preshot; Special-vs-trigger having no safe
+   configuration) and the five-step field test that unblocks it.
+4. **Debug output → files** (Henrik's stated direction, 2026-07-24): rework `/dl debug` so
+   output lands in `<dataDir>\debug\` txt files instead of chat. Explicitly deferred
+   ("we can leave it as it is for now"), but it is the intended end state.
+5. **Icon polish, optional:** the four developer rows share one question mark on their
+   section heading rather than each carrying one. Trivial to change if it reads wrong.
+
 ## Current state (as of 2026-07-24, end of day)
 
 - **MODE LIBRARY — BUILT 2026-07-25 (ADR 0019), awaiting Henrik's field test.**

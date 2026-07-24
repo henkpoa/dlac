@@ -5348,3 +5348,62 @@ field-confirmed features rode the chain to a stable `main`, and origin was clean
 field check. A feature that "should be on dev" may not be — verify with
 `git log dev..feature/x` before assuming `dev → main` carries it (weatherMatch was NOT on
 dev when its `dev == main` looked done).
+
+## Header Menu + Settings, and the Mode library (2026-07-24 → 07-25, ADR 0019)
+
+A `/grill-with-docs` session on four Henrik asks. Two shipped, one was corrected mid-grill,
+one was researched and deliberately parked.
+
+**The branch model changed first.** The morning's `main → dev → feature/<slug>` rule lasted
+half a day. A branch checked out in the working tree cannot be checked out anywhere else, and
+several Claude sessions plus Henrik share ONE checkout — so feature branches made the sessions
+fight over the tree. The chain is now just `main → dev`, everything commits on `dev` directly,
+and Henrik accepted the cost explicitly: **`dev` promotes as a whole or not at all.** Cloud
+agent runs keep their own branches (they clone their own workspace and cannot collide).
+
+**Header Menu + Settings.** The header was eight right-aligned buttons; it became Profiles
+(left) and Menu + Migrate (right). Lockstyle / Macro book / Hobby bar / Teleports / Level
+moved into a Menu popup along with a new Settings panel and a debug-only developer section.
+**"Reload LAC" was deleted outright**, not relocated — legacy LAC is no longer a design
+consideration, and both of its red-arm sites in setupui are legacy-only, so under the native
+engine the button could never go red. The one thing kept OUT of the menu is the in-flight
+ABORT: transient state must not hide behind a click, which is the same reasoning that killed
+Reload LAC. Settings gave the three `/dl`-command-only flags (autosync, view_ids, debug) their
+first visible home, and added *Open the dlac window* — one setting with three values rather
+than two booleans, because "off but also on job change" is a combination someone would tick.
+
+**A recurring bug class, three times in one session.** Lua resolves an unknown name to a
+GLOBAL, which is valid syntax, loads fine, and only errors when the line actually RUNS. It bit
+via an invented `helpLine()` helper, and nearly again where `renderModeBox` (defined above the
+Mode-library code) would have resolved `mlCapture` to a nil global. The existing smoke suite
+could not catch either, because it only *load*-tests UI modules. Hence **smoke section MLU**,
+which drives the real render path against a stub imgui — mutation-verified. When touching a
+large UI chunk, dumping `_ENV` references with `luac -l -l` is a cheap way to see every global
+a file actually touches.
+
+**The Mode library (ADR 0019)** gave Modes the Blueprint treatment: a per-character
+`modes.lua` outside Profiles, stamped onto whichever job you are on, shareable as text. The
+design decision worth remembering is that a `Modes` section is a **map keyed by name**, so
+stamping an existing name is an overwrite, not a duplicate — hence Append (default, merges,
+can never strand a reference) vs Overwrite (routed through a pre-commit reference window).
+
+**Recon corrected the ADR twice, and both would have shipped a broken feature.** (1) The
+cascade needs TWO ref-walkers: trigger conditions and set-entry gates are separate stores with
+separate files and serializers, and a dead gate on the Sets tab renders *byte-identical* to a
+live-but-inactive one, so a half-cascade would never have been noticed. (2) The ADR claimed a
+stranded value "makes the engine complain on every dispatch" — false on both counts; that line
+is in the `/dl mode` command handler, and the real consequence is **silence**. A cycle also
+re-seats itself on the commit's trigger reload, so only a demotion to toggle needs an explicit
+clear. Lesson: an ADR written during design is a hypothesis about the code until someone reads
+the code.
+
+**Also fixed while building:** Append would delete a cycle's values when a toggle was stamped
+onto it — violating its one guarantee. And `modeSetRefs`, the half of the cascade that DELETES
+gear rows, was a gearui chunk-local with no headless coverage; its decision logic moved to
+`modeslibrary.gateRefsInSet` (tests MG*), with gearui now bailing entirely rather than
+half-running if the walker is unavailable.
+
+**Parked, with the research recorded:** the NIN Daken/Sange/Yoru Shuriken work
+(`docs/design/auto-ammo.md` §8) — Henrik's call, it needs a real NIN to field test. It uncovered
+two live bugs on main in the process (the WS-ammo leak at Preshot, and Special-vs-trigger having
+no safe configuration), both documented there rather than fixed blind.
