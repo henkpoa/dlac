@@ -10028,6 +10028,106 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- CHOCOBO BY-AREA: the pure data seams the by-area tab composes (issue #98,
+-- PRD #93) -- digcalc.zones (the zone-picker source) and digcalc.conditionalDrops
+-- (weather crystal / day rock / elemental ore resolved against the live clock,
+-- flagged active/inactive). Uses the SHIPPED digdata (26 zones + the FFXI-standard
+-- cond tables); the odds math itself is covered by DC1-61. All headless.
+-- ---------------------------------------------------------------------------
+(function()
+    local dc = dofile('feature/digcalc.lua');
+    package.loaded['dlac\\feature\\digcalc'] = dc;
+    dc._setDb(dofile('data/digdata.lua'));
+
+    -- ---- zones(): the sorted { id, n } zone-picker source ----
+    local zl = dc.zones();
+    check('BA1 zones() lists the 26 enabled zones', #zl, 26);
+    check('BA2 zones() is sorted by name', (function()
+        for i = 2, #zl do if tostring(zl[i - 1].n) > tostring(zl[i].n) then return false; end end
+        return true;
+    end)(), true);
+    check('BA3 each zone entry has id + name', (function()
+        for _, z in ipairs(zl) do
+            if type(z.id) ~= 'number' or type(z.n) ~= 'string' then return false; end
+        end
+        return true;
+    end)(), true);
+
+    -- ---- _normElement: the Thunder/Lightning + non-elemental normalisation ----
+    check('BA4 Thunder normalises to Lightning', dc._normElement('Thunder'), 'Lightning');
+    check('BA5 an ordinary element passes through', dc._normElement('Fire'), 'Fire');
+    check('BA6 None/Clear/empty -> nil (no elemental weather)',
+        dc._normElement('None') == nil and dc._normElement('Clear') == nil and dc._normElement('') == nil, true);
+
+    -- ---- conditionalDrops on an ORE zone under a fully-satisfied clock ----
+    -- Zone 104 (Jugner Forest) is one of the 9 elemental-ore zones. Firesday +
+    -- Fire weather + moon 14% + rank 8 satisfies every gate.
+    local clkFull = { dayElement = 'Fire', weatherElement = 'Fire', doubleWeather = false, moonPercent = 14 };
+    local cd = dc.conditionalDrops(104, 8, clkFull);
+    check('BA7 ore zone lists crystal + rock + ore', #cd, 3);
+    local byKind = {}; for _, r in ipairs(cd) do byKind[r.kind] = r; end
+    check('BA8 crystal is the Fire Crystal (id + name)',
+        byKind.crystal and byKind.crystal.id == 4096 and byKind.crystal.n, 'Fire Crystal');
+    check('BA9 crystal active under Fire weather', byKind.crystal.active, true);
+    check('BA10 rock is the Fire day rock', byKind.rock and byKind.rock.id == 769 and byKind.rock.n, 'Red Rock');
+    check('BA11 rock active at rank 8 (>= Novice)', byKind.rock.active, true);
+    check('BA12 ore is the Fire ore', byKind.ore and byKind.ore.id == 1255 and byKind.ore.n, 'Chunk of Fire Ore');
+    check('BA13 ore active under the full gate', byKind.ore.active, true);
+
+    -- ---- rank-gating flows through (active is clockActive AND rankOk) ----
+    local cdLow = dc.conditionalDrops(104, 0, clkFull);
+    local lowByKind = {}; for _, r in ipairs(cdLow) do lowByKind[r.kind] = r; end
+    check('BA14 crystal still active at rank 0 (no rank gate)', lowByKind.crystal.active, true);
+    check('BA15 rock inactive at rank 0 but the clock condition IS met',
+        lowByKind.rock.active == false and lowByKind.rock.clockActive == true, true);
+    check('BA16 ore inactive at rank 0 (Craftsman gate) though the clock is met',
+        lowByKind.ore.active == false and lowByKind.ore.clockActive == true, true);
+
+    -- ---- the Thunder alias resolves the live weather to the Lightning crystal ----
+    local cdThunder = dc.conditionalDrops(2, 8, { dayElement = 'Lightning', weatherElement = 'Thunder', moonPercent = 50 });
+    local thByKind = {}; for _, r in ipairs(cdThunder) do thByKind[r.kind] = r; end
+    check('BA17 Thunder weather -> Lightning Crystal id 4100',
+        thByKind.crystal and thByKind.crystal.id, 4100);
+
+    -- ---- a NON-ore zone omits the ore row entirely ----
+    local cdNoOre = dc.conditionalDrops(2, 8, clkFull);   -- zone 2 is not an ore zone
+    check('BA18 non-ore zone lists only crystal + rock', #cdNoOre, 2);
+    check('BA19 ...and no ore row', (function()
+        for _, r in ipairs(cdNoOre) do if r.kind == 'ore' then return 'ore present'; end end
+        return true;
+    end)(), true);
+
+    -- ---- double weather yields the cluster, not the crystal ----
+    local cdDbl = dc.conditionalDrops(2, 8, { dayElement = 'Fire', weatherElement = 'Fire', doubleWeather = true, moonPercent = 50 });
+    local dblByKind = {}; for _, r in ipairs(cdDbl) do dblByKind[r.kind] = r; end
+    check('BA20 double Fire weather -> Fire Cluster (id 4104)',
+        dblByKind.crystal and dblByKind.crystal.id == 4104 and dblByKind.crystal.n, 'Fire Cluster');
+
+    -- ---- the ore gate: weather must match the day, moon must be in-window ----
+    local cdMoon = dc.conditionalDrops(104, 8, { dayElement = 'Fire', weatherElement = 'Fire', moonPercent = 50 });
+    local moonByKind = {}; for _, r in ipairs(cdMoon) do moonByKind[r.kind] = r; end
+    check('BA21 ore inactive when the moon is out of the 7-21% window',
+        moonByKind.ore.active == false and moonByKind.ore.clockActive == false, true);
+    local cdWeather = dc.conditionalDrops(104, 8, { dayElement = 'Fire', weatherElement = 'Ice', moonPercent = 14 });
+    local wByKind = {}; for _, r in ipairs(cdWeather) do wByKind[r.kind] = r; end
+    check('BA22 ore inactive when the weather does not match the day', wByKind.ore.clockActive, false);
+    check('BA23 ...but that same off-element Ice weather lights the Ice crystal',
+        wByKind.crystal and wByKind.crystal.id, 4097);
+
+    -- ---- no elemental weather: the crystal row is inactive, never errors ----
+    local cdClear = dc.conditionalDrops(2, 8, { dayElement = 'Fire', weatherElement = 'None', moonPercent = 14 });
+    local clByKind = {}; for _, r in ipairs(cdClear) do clByKind[r.kind] = r; end
+    check('BA24 no elemental weather -> crystal inactive, no concrete id',
+        clByKind.crystal.clockActive == false and clByKind.crystal.id == nil, true);
+
+    -- ---- fail soft: no db -> empty results, never an error ----
+    dc._setDb(false);
+    check('BA25 absent db -> zones() empty', #dc.zones(), 0);
+    check('BA26 absent db -> conditionalDrops() empty', #dc.conditionalDrops(104, 8, clkFull), 0);
+    dc._setDb(nil);   -- restore lazy load
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then

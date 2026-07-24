@@ -657,6 +657,99 @@ end)();
         check('S139r clock() answers a table headless', type(chocoui.clock()), 'table');
         check('S139s generalSuccess nil without a moon read', chocoui.generalSuccess(0, nil), nil);
     end
+    -- By-area tab seams (issue #98): the zone list + the composed by-area rows sit
+    -- ABOVE the imgui guard too. Here digcalc.db() loads the SHIPPED digdata (26
+    -- zones) through the require shim, so these exercise the real composition.
+    if ok8 then
+        local zl = chocoui.zoneList();
+        check('S139t zoneList reads the 26 enabled zones', #zl, 26);
+        -- pick a real zone (id 2 = Carpenters Landing) + a max rank so nothing is
+        -- gated, and a New-moon clock so mu is defined.
+        local rs = { rank = 8, exact = false, label = 'Adept' };
+        local clk = { moon = { percent = 0 }, dayElement = 'Fire', weatherElement = 'Fire' };
+        local rows = chocoui.areaRows(2, rs, clk);
+        check('S139u areaRows returns a composed view', type(rows) == 'table'
+            and type(rows.name) == 'string' and type(rows.pools) == 'table', true);
+        check('S139v areaRows carries the conditional drops', type(rows.conditionals), 'table');
+        check('S139w each pool row is sorted by per-dig descending', (function()
+            for _, pe in ipairs(rows.pools) do
+                for i = 2, #pe.items do
+                    if (pe.items[i - 1].perDig or 0) < (pe.items[i].perDig or 0) then return false; end
+                end
+            end
+            return true;
+        end)(), true);
+        check('S139x every row carries a grey-out gate verdict', (function()
+            for _, pe in ipairs(rows.pools) do
+                for _, it in ipairs(pe.items) do
+                    if it.gate ~= 'ok' and it.gate ~= 'locked' and it.gate ~= 'dimmed' then return false; end
+                end
+            end
+            return true;
+        end)(), true);
+        -- an unknown zone id fails soft to nil, never errors.
+        check('S139y areaRows on an unknown zone -> nil', chocoui.areaRows(99999, rs, clk), nil);
+    end
+end)();
+
+-- ---------------------------------------------------------------------------
+-- 7b. chocoui RENDER stack balance (issue #98) -- the by-area tab introduces
+--     new BeginCombo/BeginTabBar/BeginTabItem pairs, exactly the class of
+--     imgui-stack imbalance that crashes the client with no Lua error (the
+--     floatgear S50 lesson). Stub imgui, re-require chocoui against it, drive
+--     M.render with a zone SELECTED (Selectable returns true) so the pool +
+--     conditional rows actually render, and assert every stack came back to 0.
+-- ---------------------------------------------------------------------------
+;(function()
+    local depth = { combo = 0, bar = 0, item = 0 };
+    local function nop() end
+    local IM = {};
+    for _, n in ipairs({ 'TextColored', 'Text', 'TextWrapped', 'SameLine', 'Spacing', 'Separator',
+        'Dummy', 'Image', 'PushItemWidth', 'PopItemWidth', 'InputText', 'SetTooltip' }) do
+        IM[n] = nop;
+    end
+    IM.BeginCombo   = function() return true; end
+    IM.EndCombo     = function() depth.combo = depth.combo - 1; end
+    IM.BeginTabBar  = function() depth.bar = depth.bar + 1; return true; end
+    IM.EndTabBar    = function() depth.bar = depth.bar - 1; end
+    IM.BeginTabItem = function() depth.item = depth.item + 1; return true; end
+    IM.EndTabItem   = function() depth.item = depth.item - 1; end
+    -- BeginCombo balance is only tallied when it opens; count the open here.
+    local realBeginCombo = IM.BeginCombo;
+    IM.BeginCombo = function(...) depth.combo = depth.combo + 1; return realBeginCombo(...); end
+    IM.Button    = function() return false; end
+    IM.Selectable = function() return true; end          -- pick a zone / rank each frame
+    IM.IsItemHovered = function() return false; end
+
+    package.loaded['imgui'] = IM;
+    -- stub the two optional collaborators so render never touches files/real imgui
+    package.loaded['dlac\\ui\\craftbar'] = {};            -- no onOffSwitch -> Button fallback
+    package.loaded['dlac\\feature\\chocowatch'] = {
+        isEnabled = function() return false; end, setEnabled = nop,
+        rankManual = 0, setManualRank = nop,
+        rankState = function()
+            return { rank = 8, source = 'manual', exact = false, label = 'Adept', sourceLabel = 'manual' };
+        end,
+    };
+    package.loaded['dlac\\ui\\chocoui'] = nil;
+    local ok, cui = pcall(require, 'dlac\\ui\\chocoui');
+    check('S139aa chocoui re-requires against a stub imgui', ok and type(cui.render), 'function');
+    if ok then
+        local deps = { renderIcon = nop, lookupById = function() return nil; end, itemTooltip = nop,
+                       ownedList = function() return {}; end, haveInBags = function() return true; end };
+        local rok, rerr = pcall(cui.render, deps, 400);
+        check('S139bb render runs against the stub (zone selected)', rok, true);
+        if not rok then print('   chocoui render error: ' .. tostring(rerr)); end
+        check('S139cc BeginCombo/EndCombo balanced',   depth.combo, 0);
+        check('S139dd BeginTabBar/EndTabBar balanced', depth.bar, 0);
+        check('S139ee BeginTabItem/EndTabItem balanced', depth.item, 0);
+    end
+    -- restore the real modules for any later section
+    package.loaded['imgui'] = nil;
+    package.loaded['dlac\\ui\\craftbar'] = nil;
+    package.loaded['dlac\\feature\\chocowatch'] = nil;
+    package.loaded['dlac\\ui\\chocoui'] = nil;
+    require('dlac\\ui\\chocoui');
 end)();
 
 -- ---------------------------------------------------------------------------

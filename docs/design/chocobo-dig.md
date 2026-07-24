@@ -161,7 +161,51 @@ by-area tabs will call for every row.
 `vanamoon.phase(timestamp().day)`), each through a guarded call that degrades to
 nil — so a failed weather scan shows "unavailable" and the rest of the header
 still renders (issue #97: "graceful when weather is unavailable"). Moon and day
-are pure time functions; weather is client-observed.
+are pure time functions; weather is client-observed. Since #98 it also carries
+`doubleWeather` (the `"<Element> x2"` weather names → the cluster, not the crystal).
+
+## The By-area tab (issue #98)
+
+> The FIRST of the two guide tabs — a searchable zone dropdown → everything
+> diggable in that zone, grouped by pool, with rank + live odds, plus the
+> conditional crystal/rock/ore drops flagged against the live clock. It
+> establishes the row/odds rendering the by-item tab (#99) reuses.
+
+### Pure seams (headless-testable, above the imgui guard)
+
+| Function | Role |
+|---|---|
+| `digcalc.zones()` | The zone-picker source: `{ { id, n }, ... }` for the 26 enabled zones, sorted by name. Fail-soft empty when the table is ungenerated. |
+| `digcalc.conditionalDrops(zoneId, rank, clock)` | Resolves the conditional Regular-pool drops against the live clock: the current weather's crystal (or **cluster** on double weather), the current day's rock, and — **in an elemental-ore zone only** — the day's ore under the full gate. Each row carries `clockActive` (the weather/day/moon condition met), `rankOk`, and `active` (both). PURE — the clock is passed in, never read here. |
+| `chocoui.zoneList()` | Thin wrapper over `digcalc.zones()`. |
+| `chocoui.areaRows(zoneId, rankState, clock)` | The whole composed view: pools in server-grant order, each item **sorted by ② per-dig descending** and stamped with `digrank.gate`'s grey-out verdict + the requirement's rank label, then the conditional rows. nil when the zone is unknown (fail soft). |
+
+### Element-name normalisation
+
+The live clock (`nativedata`) names the lightning element **`Thunder`**; the
+conditional maps (`digdata cond.*.byElement`) key it **`Lightning`**.
+`digcalc._normElement` bridges them (and maps the non-elemental weathers
+`None`/`Clear` → nil), so `conditionalDrops` resolves either spelling and never
+mis-keys the Thunder crystal/rock/ore.
+
+### Grey-out (the "never lie" rule, rendered)
+
+Every row's `gate` (`'ok'` / `'locked'` / `'dimmed'`, from `digrank.gate`) drives
+the colour: `ok` renders plainly; both `locked` (over a **measured** rank — a
+hard grey) and `dimmed` (over an **estimate**) dim the row, but only the estimate
+spells out *"needs X, you're at least Y"*. Conditional rows grey the same way on
+their `minRank` (crystals rank 0, rocks ≥ Novice, ores ≥ Craftsman).
+
+### Tests
+
+`run_tests.lua` §CHOCOBO BY-AREA (`BA1`–`BA26`): `zones()` shape + sort, the
+`_normElement` alias, and `conditionalDrops` across an ore zone (full gate),
+rank-gating, the Thunder alias, non-ore zones (no ore row), double weather
+(cluster), the ore moon/weather sub-gates, no-elemental-weather, and fail-soft.
+`smoke_ui.lua` `S139t`–`S139y` cover the composed `zoneList`/`areaRows` seams
+against the shipped data, and `S139aa`–`S139ee` drive `chocoui.render` under a
+stub imgui with a zone selected, asserting the new `BeginCombo`/`BeginTabBar`/
+`BeginTabItem` stacks all balance (the floatgear-crash lesson).
 
 ### Open / flagged
 
@@ -170,7 +214,10 @@ are pure time functions; weather is client-observed.
   percent must be server-EXACT, the linear illumination curve should be replaced
   by the 84-entry LSB moon table — a single data swap, isolated in `vanamoon`.
 - **Player-facing strings** (the rank ladder labels, the source labels
-  `manual` / `>= from digs` / `reported by server`, the header/note wording) are
-  proposed — pending the maintainer's row-by-row sign-off.
-- The **by-item** and **by-area** tabs, the **conditional-drop active/inactive**
-  markers, and the **timing auto-detect** are the remaining PRD #93 slices.
+  `manual` / `>= from digs` / `reported by server`, the header/note wording, and
+  the new by-area labels — the tab names `By area`/`By item`, the `hit`/`dig`
+  odds wording, `active now` / `needs X` flags, the `<Element> Crystal`/`Cluster`
+  and ore/rock condition text) are proposed — pending the maintainer's
+  row-by-row sign-off.
+- The **by-item** tab (#99) and the **timing auto-detect** are the remaining
+  PRD #93 slices.
