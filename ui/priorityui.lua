@@ -189,7 +189,10 @@ local X_NAME, X_STATUS, X_HINT = 66, 190, 460;
 -- controls OR by dragging its row, both committing through arbwatch.setOrder --
 -- the engine hot-reloads arbstate on its next dispatch, no Reload LAC.
 -- ---------------------------------------------------------------------------
-function M.render(deps)
+-- opts.embedded: the caller (the Automations tab) draws a "Claim Priority"
+-- CollapsingHeader as the title, so skip our own inline bold title -- but keep
+-- the one-line hint under it. Standalone callers (none today) get both.
+function M.render(deps, opts)
     if not hasImgui then return; end
     if not hasArb then
         imgui.TextColored(COL_DIM, 'Claim priority unavailable (arbwatch failed to load).');
@@ -202,8 +205,10 @@ function M.render(deps)
     end
     local live = M.gatherLive(deps);
 
-    imgui.TextColored(COL_HEADER, 'Claim priority');
-    imgui.SameLine(0, 10);
+    if not (type(opts) == 'table' and opts.embedded) then
+        imgui.TextColored(COL_HEADER, 'Claim priority');
+        imgui.SameLine(0, 10);
+    end
     imgui.TextColored(COL_DIM, 'top wins -- drag a claimant (or use the arrows) to decide who dresses a contested slot.');
     imgui.Spacing();
 
