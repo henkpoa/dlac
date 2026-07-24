@@ -5307,3 +5307,44 @@ New `feature/idleexcl.lua`, `ui/idlefloat.lua`, `ui/hobbybar.lua` (all on the
 source-scan roster); `craftbar`/`helmbar`/`fishbar` reduced to `renderContent`.
 `addon.version` 2026.07.24m; `run_tests` 3081 + `smoke_ui` 296 green (Windows lua
 5.4.6 + WSL lua5.4). IE\* (lock/HELM-auto) + HB\* (render balance) checks.
+
+## weatherMatch trigger condition (2026-07-24, ADR 0018, engine v121)
+
+**Theme:** a new trigger flag `weatherMatch` — true when the action's element equals
+the **current weather** element — built grill-with-docs, the first feature under the
+new branch model (`feature/weather-match-condition` off `dev` off `main`).
+
+**Landed:** `weatherMatch` (Precast + Midcast, tier 30, true/false polarity).
+`weatherMatchesAction` (dispatch.lua) reads `gData.GetEnvironment().WeatherElement`
+(cached on `ctx.wel`); nil action-element / Non-Elemental / unreadable weather matches
+NEITHER polarity. **DISTINCT from `dayWeatherBonus`** (the obi's signed day+weather net
+WITH opposition) — this is plain weather equality, no day, no opposition. The env read
+is **storm-aware**: `GetEnvironment().WeatherElement` already overrides zone weather with
+the player's own storm buffs (`nativedata.lua`, storm ids 178-185 single / 589-596
+double → all 8 elements), so a Scholar's own Firestorm→Fire nuke trips it for free. The
+buff gate (e.g. Celerity/Alacrity, whose cast-time bonus is **weather-only** — no day,
+no opposition) is left to the player to compose via existing `buff` conditions. WM1-21
+green Win + WSL.
+
+## Release: idle-hobby + weatherMatch promoted to main; first full `feature → dev → main` cycle (2026-07-24)
+
+**Theme:** the branch model ([[HANDOFF]] hard rules) went live end-to-end. Two
+field-confirmed features rode the chain to a stable `main`, and origin was cleaned up.
+
+**Landed:**
+- **idle-hobby** merged `feature/idle-hobby-exclusion → dev` (PR #123, merge `3465d68`),
+  then `dev → main` (ff) at Henrik's go-ahead after in-game confirmation.
+- **weatherMatch** was still only on its own branch (never on `dev`). Merged
+  `feature/weather-match-condition → dev` (merge `5379884`) — one conflict, the
+  `dlac.lua` version line (`m` idle-hobby / `n` weatherMatch) **resolved to `2026.07.24o`**
+  so the combined build is identifiable — then `dev → main` (ff).
+- **Result:** `origin/main` == `origin/dev` == **`5379884`**, `addon.version`
+  **2026.07.24o**, combined **3102 run_tests + 296 smoke_ui** green (Windows + WSL).
+- **Git cleanup:** 14 merged-PR remote branches pruned (the chocobo/dig/ebox #101-#121
+  set + idle-hobby #123); origin now holds exactly `main` + `dev`. Local parked branches
+  `feature/autoacc` (GM pending) and `feature/storage-move` kept, never merged.
+
+**Durable lesson:** the model's promotions are Henrik's call, one at a time, each after a
+field check. A feature that "should be on dev" may not be — verify with
+`git log dev..feature/x` before assuming `dev → main` carries it (weatherMatch was NOT on
+dev when its `dev == main` looked done).
