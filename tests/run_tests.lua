@@ -10802,8 +10802,9 @@ end)();
     -- Every row icon must exist as assets\<name>.png. filetex returns nil for a
     -- missing file and the row just draws a blank cell of the right width -- correct
     -- behaviour, but it means a typo or a rename is INVISIBLE in game. Pin it here.
+    -- Six row icons + the header button + the Developer section heading.
     local icons = mn._menuIcons();
-    check('SET42 every row names an icon', #icons, 6);
+    check('SET42 every icon slot is named', #icons, 8);
     local missing = {};
     for _, name in ipairs(icons) do
         local f = io.open('assets/' .. name .. '.png', 'rb');
@@ -10816,6 +10817,26 @@ end)();
         for _, n in ipairs(icons) do if n == 'teleports' then return true; end end
         return false;
     end)(), true);
+    -- The header button and the Developer heading are covered by the same guard --
+    -- they are the two icons that are NOT row icons, so they are the easiest to
+    -- forget when the roster changes.
+    check('SET45 header button icon is guarded', (function()
+        for _, n in ipairs(icons) do if n == mn._MENU_ICON then return true; end end
+        return false;
+    end)(), true);
+    check('SET46 developer heading icon is guarded', (function()
+        for _, n in ipairs(icons) do if n == mn._DEBUG_ICON then return true; end end
+        return false;
+    end)(), true);
+
+    -- headerButton adapts to whether the art loaded. Headless, filetex has no
+    -- texture, so it MUST fall back to the labelled wide text button -- a failed
+    -- texture load must never leave a mystery 26px square.
+    local hb = mn.headerButton();
+    check('SET47 no art -> labelled text button', hb.l, 'Menu');
+    check('SET48 no art -> the wide width', hb.w, mn._MENU_W);
+    check('SET49 no art -> declarative (no render fn)', hb.render, nil);
+    check('SET50 fallback still carries the tooltip', type(hb.tip), 'string');
 end)();
 
 -- ---------------------------------------------------------------------------

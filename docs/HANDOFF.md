@@ -214,7 +214,7 @@ agent; the per-repo setup lives in `docs/agents/`.
 
 ## Current state (as of 2026-07-24, end of day)
 
-- **HEADER MENU + SETTINGS — BUILT 2026-07-24 (`ui/menuui.lua`, addon `2026.07.24q`),
+- **HEADER MENU + SETTINGS — BUILT 2026-07-24 (`ui/menuui.lua`, addon `2026.07.24r`),
   awaiting Henrik's field test.** The header was eight right-aligned buttons; it is now
   **Profiles** (left, unchanged) and **Menu · Migrate** (right). Everything that used to
   sit left of "Reload LAC" — Lockstyle, Macro book, Hobby bar, Teleports, Level override
@@ -245,9 +245,17 @@ agent; the per-repo setup lives in `docs/agents/`.
     `settings.png` (gears). The **floating** Teleports button now uses the SAME
     `teleports.png` instead of borrowing the in-game Warp Ring item icon (a different
     visual language); the item icon remains as its fallback.
-  - **`SET42-44` pin the icon wiring**: a missing or misspelled asset name fails
-    *silently* at runtime (blank cell, right width), so the suite asserts every row
-    icon exists on disk — mutation-verified by removing `teleports.png`.
+  - **`menu.png` (book) and `debug.png` (question mark) followed.** The Menu header
+    button is a **26px icon button when the art loads and the labelled wide text button
+    when it does not** — a failed texture must leave an obvious labelled button, never a
+    mystery 26px square, and the declared `w` has to match what is drawn because gearui
+    right-aligns the row by summing `b.w`. The four developer rows share **one** question
+    mark on their *Developer* heading rather than repeating it down the column.
+  - **`SET42-50` / `MN27-35` pin the icon wiring**: a missing or misspelled asset name
+    fails *silently* at runtime (blank cell, right width), so the suite asserts all
+    **eight** names (six rows + header button + Developer heading) exist on disk, and
+    that `headerButton()` returns the right shape in BOTH the art and no-art cases —
+    mutation-verified by removing `teleports.png`.
   - **Why a new module:** hard rule 1. Everything arrives by `M.configure(deps)`
     injection, so gearui gained **zero** chunk locals and the whole thing is headless.
     `dumpAugs` is *passed*, not required — GRD5 forbids a `ui/` module requiring

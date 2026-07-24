@@ -113,14 +113,23 @@ function M._menuRows(debugOn)
     return out;
 end
 
--- PURE SEAM: the asset basenames the rows ask filetex for. A missing or misspelled
--- name fails SILENTLY at runtime (blank cell, correct width), so the headless suite
--- asserts each one exists on disk instead -- the only way a rename gets caught.
+-- The two icons that are not row icons: the header button itself, and the Developer
+-- section header. (The four debug rows share ONE question mark on their section
+-- heading rather than repeating it four times down the column.)
+M._MENU_ICON  = 'menu';
+M._DEBUG_ICON = 'debug';
+
+-- PURE SEAM: EVERY asset basename this module can ask filetex for. A missing or
+-- misspelled name fails SILENTLY at runtime (blank cell, correct width), so the
+-- headless suite asserts each one exists on disk instead -- the only way a rename
+-- gets caught.
 function M._menuIcons()
     local out = {};
     for _, r in ipairs(ROWS) do
         if r.icon ~= nil then out[#out + 1] = r.icon; end
     end
+    out[#out + 1] = M._MENU_ICON;
+    out[#out + 1] = M._DEBUG_ICON;
     return out;
 end
 
@@ -188,14 +197,19 @@ end
 -- filetex.handle and nowhere else -- it retains the texture OBJECT, and storing only
 -- the numeric handle lets Lua GC it, D3D free it, and imgui draw a dangling pointer
 -- (that was the original header-icon crash).
+local function iconHandle(name)
+    local h = nil;
+    if name ~= nil then
+        pcall(function() h = require('dlac\\ui\\filetex').handle(name); end);
+    end
+    return h;
+end
+
 local function iconCell(name)
     local drew = false;
-    if name ~= nil then
-        local h = nil;
-        pcall(function() h = require('dlac\\ui\\filetex').handle(name); end);
-        if h ~= nil then
-            pcall(function() imgui.Image(h, { M._ICON_W, M._ICON_W }); drew = true; end);
-        end
+    local h = iconHandle(name);
+    if h ~= nil then
+        pcall(function() imgui.Image(h, { M._ICON_W, M._ICON_W }); drew = true; end);
     end
     if not drew then imgui.Dummy({ M._ICON_W, M._ICON_W }); end
 end
@@ -410,10 +424,29 @@ end
 -- The header button entry. gearui's btns loop draws it like any other declarative
 -- entry -- this just keeps the label, width and tooltip next to the menu they open.
 -- ---------------------------------------------------------------------------
+M._TIP = 'Lockstyle, Macro book, Hobby bar, Teleports, the level override --\nand Settings. (Developer tools appear here under /dl debug on.)';
+
 function M.headerButton()
-    return { l = 'Menu', w = M._MENU_W,
-        tip = 'Lockstyle, Macro book, Hobby bar, Teleports, the level override --\nand Settings. (Developer tools appear here under /dl debug on.)',
-        fn = function() if D ~= nil then D.ui._menuOpen = true; end end };
+    local function arm() if D ~= nil then D.ui._menuOpen = true; end end
+    -- With the art present this is a 26px icon button, matching the visual language
+    -- of the row it replaced. Without it, the wide TEXT button -- so a failed texture
+    -- load leaves a labelled, obvious button rather than a mystery 26px square. The
+    -- declared width has to match what is actually drawn: gearui right-aligns the row
+    -- by summing b.w.
+    if iconHandle(M._MENU_ICON) == nil then
+        return { l = 'Menu', w = M._MENU_W, tip = M._TIP, fn = arm };
+    end
+    return { w = 26, tip = M._TIP,
+        render = function()
+            local clicked = false;
+            local h = iconHandle(M._MENU_ICON);
+            if h ~= nil then
+                pcall(function() clicked = imgui.ImageButton(h, { 16, 16 }); end);
+            else
+                clicked = imgui.Button('Menu##hdrmn', { 26, 22 });
+            end
+            if clicked then arm(); end
+        end };
 end
 
 -- ---------------------------------------------------------------------------
@@ -452,6 +485,12 @@ function M.renderPopups()
         end
         if debugOn then
             imgui.Separator();
+            -- The section heading carries the debug icon once, in the same reserved
+            -- column as the rows above it, instead of repeating it on all four.
+            imgui.Dummy({ 6, M._ICON_W });
+            imgui.SameLine(6);
+            iconCell(M._DEBUG_ICON);
+            imgui.SameLine(M._LABEL_X);
             imgui.TextColored(COL.DIM, 'Developer');
             for _, r in ipairs(DEBUG_ROWS) do
                 if menuRow(r, COL.DIM) then

@@ -1475,7 +1475,7 @@ end)();
 -- ---------------------------------------------------------------------------
 ;(function()
     local depth = { popup = 0, col = 0, win = 0 };
-    local drew  = { dummy = 0, image = 0, selectable = 0, checkbox = 0, input = 0 };
+    local drew  = { dummy = 0, image = 0, selectable = 0, checkbox = 0, input = 0, imagebutton = 0 };
     local popupOpen = false;
     local function nop() end
     local IM = setmetatable({}, { __index = function() return nop; end });
@@ -1488,6 +1488,7 @@ end)();
     IM.Selectable     = function() drew.selectable = drew.selectable + 1; return false; end
     IM.Dummy          = function() drew.dummy = drew.dummy + 1; end
     IM.Image          = function() drew.image = drew.image + 1; end
+    IM.ImageButton    = function() drew.imagebutton = drew.imagebutton + 1; return false; end
     IM.Button         = function() return false; end
     IM.SmallButton    = function() return false; end
     IM.Checkbox       = function() drew.checkbox = drew.checkbox + 1; return false; end
@@ -1563,12 +1564,35 @@ end)();
         check('MN21 settings row arms the settings popup',
             (function() mn.activate('settings'); return ui._setOpen; end)(), true);
 
-        -- the header button entry gearui's btns loop consumes
+        -- the header button entry gearui's btns loop consumes. With filetex handing
+        -- back nil (the headless case) it is the labelled wide text button.
         local hb = mn.headerButton();
         check('MN22 header button is declarative', type(hb.fn), 'function');
         check('MN23 header button is labelled Menu', hb.l, 'Menu');
         check('MN24 header button click arms the menu',
             (function() hb.fn(); return ui._menuOpen; end)(), true);
+
+        -- ...and with art present it becomes a 26px SELF-DRAWN icon button. The
+        -- declared width must match what is actually drawn: gearui right-aligns the
+        -- header by summing b.w, so a lying width shifts the whole row.
+        package.loaded['dlac\\ui\\filetex'] = { handle = function() return 4242; end };
+        local hbi = mn.headerButton();
+        check('MN27 art present -> self-drawn entry', type(hbi.render), 'function');
+        check('MN28 art present -> icon width', hbi.w, 26);
+        check('MN29 art present -> no text label', hbi.l, nil);
+        check('MN30 icon entry still carries the tooltip', type(hbi.tip), 'string');
+        drew.imagebutton = 0;
+        check('MN31 icon entry renders', pcall(hbi.render), true);
+        check('MN32 icon entry drew an ImageButton', drew.imagebutton, 1);
+        -- the Developer heading draws its icon once, not once per row
+        ui._openMode = 'never';
+        flags.debug = true;
+        drew.image = 0;
+        check('MN33 renders debug section with art', pcall(mn.renderPopups), true);
+        check('MN34 debug heading drew one icon per row + one heading', drew.image, 7);
+        check('MN35 debug section: popup stack balanced', depth.popup, 0);
+        flags.debug = false;
+        package.loaded['dlac\\ui\\filetex'] = { handle = function() return nil; end };
 
         -- auto-open: fires once for 'login', and drives gearui's visibility
         local opened = 0;
