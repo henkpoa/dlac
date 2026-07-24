@@ -1612,6 +1612,66 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- 7e. Mode library section RENDER (ADR 0019, 2026-07-25).
+--
+-- This section exists because of a bug it would have caught: the first draft called
+-- a helper `helpLine()` that does not exist anywhere in the repo. Loading the module
+-- proves nothing about that -- an undefined global is only an error when the line
+-- actually RUNS -- and S1 merely requires triggersui. So drive the real render path
+-- against a stub imgui and assert it completes AND leaves every stack balanced.
+-- ---------------------------------------------------------------------------
+;(function()
+    local depth = { popup = 0, col = 0, win = 0, child = 0 };
+    local function nop() end
+    local IM = setmetatable({}, { __index = function() return nop; end });
+    IM.BeginPopup     = function() return false; end     -- popups shut: the common frame
+    IM.EndPopup       = function() depth.popup = depth.popup - 1; end
+    IM.PushStyleColor = function() depth.col = depth.col + 1; end
+    IM.PopStyleColor  = function(n) depth.col = depth.col - (tonumber(n) or 1); end
+    IM.Begin          = function() depth.win = depth.win + 1; return true; end
+    IM['End']         = function() depth.win = depth.win - 1; end
+    IM.BeginChild     = function() depth.child = depth.child + 1; return true; end
+    IM.EndChild       = function() depth.child = depth.child - 1; end
+    IM.Button         = function() return false; end
+    IM.SmallButton    = function() return false; end
+    IM.Selectable     = function() return false; end
+    IM.IsItemHovered  = function() return false; end
+    IM.InputText      = function() return false; end
+    IM.InputTextMultiline = function() return false; end
+    IM.GetContentRegionAvail = function() return 700, 400; end
+    IM.CalcTextSize   = function() return 60, 14; end
+
+    local NAMES = { 'dlac\\ui\\triggersui', 'dlac\\gear\\modeslibrary', 'imgui' };
+    local saved = {};
+    for _, k in ipairs(NAMES) do saved[k] = package.loaded[k]; end
+
+    package.loaded['imgui'] = IM;
+    package.loaded['dlac\\ui\\triggersui'] = nil;
+    local ok, tg = pcall(require, 'dlac\\ui\\triggersui');
+    check('MLU1 triggersui re-requires against a stub imgui', ok and type(tg), 'table');
+    if ok then
+        check('MLU2 the Mode library section is exposed', type(tg.renderModeLibrary), 'function');
+        -- Unconfigured: no deps, no character, no library file. It must still render
+        -- (the empty-library case) rather than error -- this is the exact call that
+        -- caught the undefined helper.
+        local rok, rerr = pcall(tg.renderModeLibrary, 'WAR', 75);
+        check('MLU3 renders with no deps and no library', rok, true);
+        if not rok then
+            check('MLU3a ...error was', tostring(rerr), '(none)');
+        end
+        check('MLU4 colour stack balanced', depth.col, 0);
+        check('MLU5 Begin/End balanced',    depth.win, 0);
+        check('MLU6 child stack balanced',  depth.child, 0);
+        -- Twice in a row: the second pass exercises the cached-library path.
+        check('MLU7 renders again (cached path)', pcall(tg.renderModeLibrary, 'WAR', 75), true);
+        check('MLU8 still balanced', depth.col + depth.win + depth.child, 0);
+    end
+
+    for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end
+    package.loaded['imgui'] = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures > 0 then

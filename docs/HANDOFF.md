@@ -214,6 +214,43 @@ agent; the per-repo setup lives in `docs/agents/`.
 
 ## Current state (as of 2026-07-24, end of day)
 
+- **MODE LIBRARY — BUILT 2026-07-25 (ADR 0019), awaiting Henrik's field test.**
+  Triggers tab → new **Mode library** section (beside Blueprints). Per-character
+  `<char>\dlac\modes.lua`, outside Profiles, addon-state only; **stamp** an entry onto
+  whichever job you are on; share/import as text (the library format IS the share
+  format). Pure core `gear/modeslibrary.lua`, UI in `ui/triggersui.lua`.
+  - **`stamp` = Append** (merge values, nothing removed) — the plain button, because it
+    can never strand a reference. **`replace` = Overwrite** — always routed through the
+    **pre-commit reference window** (deliberately the same movable window a mode Delete
+    opens) listing every trigger rule and every set entry it will edit, with an
+    "Append instead" escape hatch. Nothing is changed until the player confirms.
+  - **Two corrections to ADR 0019, both found by recon and both load-bearing** — see the
+    ADR: (1) the cascade needs **two** ref-walkers, since set-entry gates are a separate
+    store from trigger conditions and a dead gate on the Sets tab is *visually identical*
+    to a live-but-inactive one; (2) a stranded value does **not** make the engine complain
+    per dispatch — it fails **silently**, and a cycle re-seats itself on the commit's
+    trigger reload, so only a **demotion to toggle** needs the explicit `/dl mode X off`.
+  - **`modeSetRefs`'s decision logic moved out of gearui** into
+    `modeslibrary.gateRefsInSet` (tests **MG1-26**). It is the half that DELETES gear
+    rows and had no headless coverage while it was a gearui chunk-local. gearui keeps
+    the impure rim and now **bails entirely** if the walker is unavailable — a half-run
+    cascade (triggers stripped, sets not) is the worst outcome.
+  - Engine-owned implicit mode names (`maxmp`, `craft`, `craftgoal`) are refused at
+    capture, rename and import. On a name collision the **existing spelling wins** and a
+    differently-cased duplicate key is dropped (the Modes section is keyed by name).
+  - **Tests: 3279 run_tests (ML\* core, MG\* gate walk) + 341 smoke_ui (MLU\* drives the
+    real render path).** Green Windows + WSL. **MLU exists because of a bug it catches:**
+    the first draft called a `helpLine()` that does not exist. A *load* test proves
+    nothing about that — an undefined global only errors when the line RUNS — so the
+    section drives `renderModeLibrary` against a stub imgui. Mutation-verified.
+  - **STILL OPEN (recon-found, not yet built):** there is **no `[missing mode]`
+    surfacing anywhere** — no marker on rule boxes, no banner, and on the Sets tab a dead
+    `@Weapon:Caster` gate renders identically to a live-but-inactive one. Blueprints
+    claim "the warning appears when you Stamp", but `bpStamp` only checks for an
+    identical rule and never inspects mode refs. That gap is why the cascade is
+    deliberately confined to the two job-scoped stores and does **not** touch the
+    Blueprint library (a value dead on this job may be alive on eight others).
+
 - **HEADER MENU + SETTINGS — BUILT 2026-07-24 (`ui/menuui.lua`, addon `2026.07.24u`),
   awaiting Henrik's field test.** The header was eight right-aligned buttons; it is now
   **Profiles** (left, unchanged) and **Menu · Migrate** (right). Everything that used to
