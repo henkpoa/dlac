@@ -1657,87 +1657,41 @@ local function renderHeaderButtons()
     -- choice, not a warning state). setupui.needsSetup encapsulates both.
     local needSetup = setup.needsSetup();
 
-    -- Reload-LAC watcher: the engine stamps a LAC-load generation into
-    -- modestate.lua (__loadstamp -- constant across mode changes and engine
-    -- self-swaps, new on every real LAC load). When something marked a reload
-    -- as needed (ui._lacReloadNeed + the stamp it saw), the Reload LAC button
-    -- turns red until the stamp MOVES -- however the reload happens, button or
-    -- a command the user types. Throttled to ~1 read/second.
-    local function lacLoadStamp()
-        local now = os.time();
-        if ui._lacStampAt == now then return ui._lacStamp; end
-        ui._lacStampAt = now;
-        local v = nil;
-        pcall(function()
-            local base = dataDir();
-            if base == nil then return; end
-            local chunk = loadfile(base .. 'modestate.lua');
-            if chunk == nil then return; end
-            local ok, t = pcall(chunk);
-            if ok and type(t) == 'table' and type(t.__loadstamp) == 'string' then v = t.__loadstamp; end
-        end);
-        ui._lacStamp = v;
-        return v;
-    end
-    local _lacSt = lacLoadStamp();   -- keep the cache warm (marks capture it)
-    if ui._lacReloadNeed == true and _lacSt ~= nil and _lacSt ~= ui._lacReloadStamp0 then
-        ui._lacReloadNeed, ui._lacReloadStamp0 = nil, nil;
-        if type(_augStatus) == 'string' and _augStatus:find('Reload', 1, true) ~= nil then
-            _augStatus = 'LuaAshitacast reloaded -- you are live. Build sets in the Sets tab; triggers in the Triggers tab.';
-        end
-        pcall(function() print('[dlac] LuaAshitacast reload detected -- changes are live.'); end);
-    end
+    -- (The Reload-LAC watcher lived here until 2026-07-24. It existed only to turn
+    -- the "Reload LAC" button red, and that button is gone: legacy LuaAshitacast is
+    -- no longer a design consideration, and under the native engine the red state
+    -- could never arm -- both of its arm sites are legacy-only setupui paths.)
 
     local btns = {};
-    do   -- lockstyle window toggle (Henrik's armor icon; left of the Macro book)
-        btns[#btns+1] = { w = 26,
-          render = function()
-              local h = nil; pcall(function() h = require('dlac\\ui\\filetex').handle('lockstyle'); end);
-              local clicked = false;
-              if h ~= nil then pcall(function() clicked = imgui.ImageButton(h, { 16, 16 }); end);
-              else clicked = imgui.Button('LS##hdrls', { 26, 22 }); end
-              if imgui.IsItemHovered() then
-                  imgui.SetTooltip('Lockstyle boxes -- 30 saved looks PER JOB, applied through LuaAshitacast.\nSave the marked box, import old static lockstyle sets, and\n"OnLoad Lockstyle" re-applies it on every login / job change.');
-              end
-              if clicked then pcall(function() require('dlac\\feature\\lockstyle').open(); end); end
-          end };
+    do   -- THE MENU (2026-07-24). Stands exactly where "Reload LAC" stood. Everything
+         -- that used to sit LEFT of it -- Lockstyle, Macro book, Hobby bar, Teleports,
+         -- the level override -- now lives inside it, along with Settings and the
+         -- debug-only developer rows. Profiles and Migrate deliberately stay outside.
+         -- The rows, their popups and the Settings panel all live in ui\menuui.lua
+         -- (hard rule 1: new UI is a module, gearui gains no chunk locals).
+        -- Guarded: renderHeaderButtons runs UNGUARDED inside imgui.Begin, so a module
+        -- that failed to load must cost its own button, never the whole frame.
+        local mn = nil;
+        pcall(function() mn = require('dlac\\ui\\menuui'); end);
+        if mn ~= nil and type(mn.headerButton) == 'function' then
+            btns[#btns+1] = mn.headerButton();
+        end
     end
-    if macrob ~= nil then
-        btns[#btns+1] = { w = 26,   -- small book icon (matches the warp button size)
-          render = function()
-              local h = nil; pcall(function() h = require('dlac\\ui\\filetex').handle('macrobook'); end);
-              local clicked = false;
-              if h ~= nil then pcall(function() clicked = imgui.ImageButton(h, { 16, 16 }); end);
-              else clicked = imgui.Button(macrob.label() .. '##hdrmb', { 26, 22 }); end
-              if imgui.IsItemHovered() then
-                  imgui.SetTooltip(macrob.label() .. '\n\nMacro book & set for the CURRENT job -- saved per job and applied\nautomatically on login and every job change (replaces the /macro lines\npeople put in profile OnLoad). Jobs you don\'t manage are never touched.');
-              end
-              if clicked then macrob.open(); end
-          end };
-    end
-    do   -- hobby bar toggle (small helmet icon, warp-button size)
-        btns[#btns+1] = { w = 26,
-          render = function()
-              local h = nil; pcall(function() h = require('dlac\\ui\\filetex').handle('craftbar'); end);
-              local clicked = false;
-              if h ~= nil then pcall(function() clicked = imgui.ImageButton(h, { 16, 16 }); end);
-              else clicked = imgui.Button('Cft##hdrcb', { 26, 22 }); end
-              if imgui.IsItemHovered() then
-                  imgui.SetTooltip('Hobby bar -- one shared window for Craft / HELM / Fishing / Chocobo:\npick controls and switch a hobby on (idle only). Toggle it here or /dl <hobby> bar.');
-              end
-              if clicked then
-                  pcall(function() require('dlac\\ui\\hobbybar').toggleVisible(); end);
-              end
-          end };
-    end
+    -- Lockstyle / Macro book / Hobby bar / Teleports / Level override moved INTO the
+    -- Menu on 2026-07-24, and so did the debug quartet (Scan/Stage/Commit/Augs).
+    -- "Reload LAC" was deleted outright with them.
+    --
+    -- The ONE thing that stays out here is the in-flight ABORT: while a teleport /
+    -- ring use is pending, the header grows a red STOP button. That is transient
+    -- STATE, and state must not hide behind a click -- the same reasoning that
+    -- killed Reload LAC keeps this visible. It costs nothing when idle: no pending
+    -- use, no button.
     if useit ~= nil then
-        btns[#btns+1] = { w = 26,
-          render = function()   -- FFXI-themed: the Warp Ring icon IS the button --
-              -- and while a use is IN FLIGHT it becomes the STOP button: one click
-              -- aborts via the same '/dl w|p|t off' the chat hint names.
-              local pend = nil;
-              pcall(function() pend = (type(useit.pending) == 'function') and useit.pending() or nil; end);
-              if pend ~= nil then
+        local pend = nil;
+        pcall(function() pend = (type(useit.pending) == 'function') and useit.pending() or nil; end);
+        if pend ~= nil then
+            btns[#btns+1] = { w = 26,
+              render = function()
                   local clicked = imgui.Button('##hdrtpstop', { 26, 22 });
                   pcall(function()
                       local x, y = imgui.GetItemRectMin();
@@ -1752,54 +1706,8 @@ local function renderHeaderButtons()
                   if clicked and pend.cancel ~= nil then
                       pcall(function() AshitaCore:GetChatManager():QueueCommand(1, pend.cancel); end);
                   end
-                  return;
-              end
-              local clicked = false;
-              local rec = lookupByName('Warp Ring');
-              local id = rec and rec.Id or nil;
-              local h = icons.handleOf(id);
-              if h ~= nil then
-                  -- 16px icon + ImageButton frame padding lands at the 22px row height
-                  pcall(function() clicked = imgui.ImageButton(h, { 16, 16 }); end);
-              else
-                  clicked = imgui.Button('Tele##hdrtp', { 26, 22 });   -- no texture: text fallback
-              end
-              if imgui.IsItemHovered() then
-                  imgui.SetTooltip('Teleports: Instant Warp / Instant Retrace scrolls (used on the spot, no\nequip), Warp / Provenance Ring, Chocobo Whistle, Nexus Cape (to your\nparty leader), Shadow Lord Shirt, the Teleport Earrings / Teleport Rings\nsubmenus, plus your exp rings -- click one to equip it and use it the\nmoment the game says ready (the /dl iw, ir, w, p, c, nexus, shirt, t, xp\ncommands, clickable). Lit = ready, amber = recharging, red = stored,\ndim = not owned. Below the travel tiers: the Automations, HELM and\nFishing quick menus (switch overlays, pick a gathering category, check\nrod/bait -- left-click a row to open its full panel).');
-              end
-              if clicked then ui._tpOpen = true; end
-          end };
-    end
-    do   -- MAIN-level override for testing/preparing: previews AND the engine follow it
-        local _, lvNow = getPlayerInfo();
-        local ovr = rawget(_G, 'staticMainLevel');
-        local on = (type(ovr) == 'number' and ovr > 0);
-        btns[#btns+1] = { l = 'Lv ' .. tostring(lvNow) .. (on and '*' or ''), w = 56,
-          tip = 'Preview / test at another MAIN level: the pickers, set previews and the\nlive set flattening all follow it (the engine via /dl set level main).\n* = override active -- gear picks are NOT for your real level right now.',
-          fn = function() ui._lvlOpen = true; end };
-    end
-    btns[#btns+1] =
-        { l = 'Reload LAC', w = 104, red = (ui._lacReloadNeed == true),
-          tip = 'Reload LuaAshitacast. LAC caches your sets when the profile loads, so after you\ncommit/edit a set (or run Setup) you must reload LAC for the change to take effect.\n\nRED = a change is waiting for a reload. It clears by itself once the reload\nlands -- this button or a command you type, either works.',
-          fn = function()
-              _augStatus = nil;      -- "Reload LuaAshitacast to apply" is fulfilled by this click
-              ui.setsStatus = '';    -- ...and so is the Sets tab's 'replaced "<set>" for <JOB>' line
-              refreshOwnedCounts();
-              pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/addon reload luashitacast'); end);
-          end };
-    if sf.flags.debug then
-        btns[#btns+1] = { l = 'Scan', w = 52,
-            tip = 'Scan your equipment + bags (from the game\'s memory) and print what you own,\nflagging anything not yet in gear.lua. Read-only -- writes nothing. Also refreshes\nthe owned markers shown in these lists.',
-            fn = function() callImport('scanAndReport'); refreshOwnedCounts(); end };
-        btns[#btns+1] = { l = 'Stage', w = 58,
-            tip = 'Scan, then write the items you own that AREN\'T in gear.lua yet to a staging file\n(gear_staging.lua) for review. Your gear.lua is left untouched -- check the staged\nentries first, then Commit them.',
-            fn = function() callImport('stage'); end };
-        btns[#btns+1] = { l = 'Commit', w = 64,
-            tip = 'Merge the staged new items (from Stage) into your gear.lua. Aborts and leaves\ngear.lua untouched if the staging file or the merged result would not parse.',
-            fn = function() callImport('commit'); refreshGear(); end };
-        btns[#btns+1] = { l = 'Augs', w = 52,
-            tip = 'Dump every augmented item you own (name, id, and decoded augment stats) to\naugdump.txt in your dlac folder -- handy for sharing or identifying unknown\naugment ids.',
-            fn = function() dumpAugs(); end };
+              end };
+        end
     end
     if needSetup or sf.flags.debug then
         -- 'Migrate', not 'Setup' (Henrik's ruling, 07-23): the button only ever
@@ -1873,33 +1781,12 @@ local function renderHeaderButtons()
         if ui._tpOpen then imgui.OpenPopup('##dlac_teleports'); ui._tpOpen = nil; end
         pcall(renderTeleportsPopup);
     end
-    if ui._lvlOpen then imgui.OpenPopup('##dlac_lvlovr'); ui._lvlOpen = nil; end
-    if imgui.BeginPopup('##dlac_lvlovr') then
-        local ovr = rawget(_G, 'staticMainLevel');
-        local on = (type(ovr) == 'number' and ovr > 0);
-        local live = 0;
-        pcall(function() live = gData.GetPlayer().MainJobSync or 0; end);
-        local cur = on and ovr or live;
-        imgui.TextColored(COL.HEADER, 'Main level override');
-        imgui.TextColored(COL.DIM, string.format('live: %d%s', live, on and ('   testing as: ' .. ovr) or '   (no override)'));
-        -- sets the ADDON-state global (previews follow instantly) AND queues the
-        -- utils command so the LAC-state engine re-flattens at the same level
-        local function setLvl(n)
-            local v = (n ~= nil) and math.max(1, math.min(75, n)) or 0;
-            rawset(_G, 'staticMainLevel', v);
-            pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl set level main ' .. v); end);
-        end
-        if imgui.SmallButton('-5##lvm5') then setLvl(cur - 5); end
-        imgui.SameLine(0, 4);
-        if imgui.SmallButton('-1##lvm1') then setLvl(cur - 1); end
-        imgui.SameLine(0, 10); imgui.TextColored(COL.USABLE, string.format('%2d', cur)); imgui.SameLine(0, 10);
-        if imgui.SmallButton('+1##lvp1') then setLvl(cur + 1); end
-        imgui.SameLine(0, 4);
-        if imgui.SmallButton('+5##lvp5') then setLvl(cur + 5); end
-        imgui.SameLine(0, 14);
-        if imgui.SmallButton('back to live##lv0') then setLvl(nil); end
-        imgui.EndPopup();
-    end
+    -- The Menu itself, the level override (now a TYPED number, committed once) and
+    -- the Settings panel. All three are ordinary window-scope popups drawn by
+    -- ui\menuui.lua; picking a Menu row CLOSES the menu and arms its target, so no
+    -- popup is ever nested inside another (the Teleports cascade below would tear
+    -- down the whole chain if it were).
+    pcall(function() require('dlac\\ui\\menuui').renderPopups(); end);
 
     -- Setup plan popup: what WILL happen, in plain words; nothing runs until
     -- Commit at the bottom. (BeginPopup, not Modal: clicking outside cancels.)
@@ -2616,44 +2503,26 @@ end
 -- commit path: an entry gated ONLY on this mode is deleted (it existed for it);
 -- a list gate just loses the dead name. The Sets-tab working state is borrowed
 -- for the scan and restored, so an in-progress edit survives.
+-- The gate WALK itself now lives in gear\modeslibrary (M.gateRefsInSet) so the half
+-- that DELETES gear rows is headless-testable; everything left here is the impure rim
+-- -- loading each set, committing the rewrite, and putting the builder back exactly as
+-- it was. Behaviour is unchanged (tests MG* pin the walk, and it produces the same
+-- refs/gone shape this function always returned).
 local function modeSetRefs(modeName, strip)
     local out = { refs = {}, touched = {} };
     local target = string.lower(tostring(modeName or ''));
     if target == '' then return out; end
-    local function matches(m)
-        local s = string.lower(tostring(m));
-        return s == target or string.sub(s, 1, #target + 1) == (target .. ':');
-    end
+    local mlib = nil;
+    pcall(function() mlib = require('dlac\\gear\\modeslibrary'); end);
+    if mlib == nil then return out; end       -- no walker, no strip: never a partial cascade
     local _, job = jobFile();
     local keepW, keepN, keepSel, keepDirty = M.working, M.workingSetName, ui.setSelected, _setDirty;
     pcall(function()
         for _, setName in ipairs(profsets.dynamicSetNames()) do
             loadSet(setName);
-            local changed = false;
-            for lbl, list in pairs(M.working) do
-                for i = #list, 1, -1 do
-                    local it = list[i];
-                    if it.mode ~= nil then
-                        local gates = (type(it.mode) == 'table') and it.mode or { it.mode };
-                        local kept, hit = {}, false;
-                        for _, m in ipairs(gates) do
-                            if matches(m) then hit = true; else kept[#kept + 1] = m; end
-                        end
-                        if hit then
-                            out.refs[#out.refs + 1] = {
-                                set = setName, slot = lbl,
-                                item = (it.rec ~= nil and it.rec.Name) or '?',
-                                gone = (#kept == 0),
-                            };
-                            if strip then
-                                if #kept == 0 then table.remove(list, i);
-                                else it.mode = (#kept == 1) and kept[1] or kept; end
-                                changed = true;
-                            end
-                        end
-                    end
-                end
-            end
+            local r = mlib.gateRefsInSet(setName, M.working, target, strip);
+            for _, ref in ipairs(r.refs) do out.refs[#out.refs + 1] = ref; end
+            local changed = r.changed;
             if strip and changed and job ~= nil and has.setmgr then
                 local ok = nil;
                 pcall(function() ok = setmgr.commitSet(job, setName, buildCommitSlots()); end);
@@ -4538,11 +4407,8 @@ local function drawWindow()
         imgui.TextColored(COL.HEADER, jobHeader());
         imgui.SameLine();
         imgui.TextColored(COL.DIM, string.format('|  %d owned%s', #owned, has.optim and '' or '  |  optimizer OFF'));
-        imgui.SameLine(0, 12);
-        imgui.Checkbox('Show all', ui.showAll);
-        if imgui.IsItemHovered() then
-            imgui.SetTooltip('Will show all equips, even if you don\'t have them.\nOff (default): the All Equipment tab lists only gear you own (gear.lua).\nOn: it lists the full CatsEyeXI catalog.');
-        end
+        -- ("Show all" moved to Menu > Settings on 2026-07-24 -- it is a preference,
+        -- and it was the only checkbox squatting in the header.)
         renderHeaderButtons();
         if _augStatus ~= nil and _augStatus ~= '' then
             fmt.textWrapped(COL.SCORE, fmt.esc(_augStatus));
@@ -4623,6 +4489,25 @@ sf.configure({
     end,
 });
 
+-- The header Menu + Settings panel (ui\menuui.lua). Dependency injection, not
+-- requires: the module never reaches into this chunk, and everything it can DO to
+-- the addon arrives through this one table -- which is also what makes it drivable
+-- headlessly. Note dumpAugs is passed rather than required: GRD5 forbids a ui\
+-- module from requiring feature\augments.
+pcall(function()
+    require('dlac\\ui\\menuui').configure({
+        ui = ui, COL = COL, sf = sf, optim = has.optim and optim or nil,
+        callImport = callImport, dumpAugs = dumpAugs,
+        refreshGear = refreshGear, refreshOwnedCounts = refreshOwnedCounts,
+        setVisible = function(v) M.visible = (v == true); end,
+        mainJob = function()
+            local j = nil;
+            pcall(function() j = AshitaCore:GetMemoryManager():GetPlayer():GetMainJob(); end);
+            return j;
+        end,
+    });
+end);
+
 -- Any inventory-changing packet (loot, buy, trade, move -- 0x020 item update /
 -- 0x01D inventory finish) schedules the debounced sync (see syncflags.lua).
 ashita.events.register('packet_in', 'dlac-gearui-invdirty', function(e)
@@ -4638,6 +4523,11 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
     pcall(sf.loadUiFlags);
     if ui._flagsDirty then ui._flagsDirty = nil; pcall(sf.saveUiFlags); end
     pcall(sf.tick);
+    -- "Open the dlac window" (Menu > Settings). There is no shared login/job-change
+    -- event in this addon -- every feature polls off this same handler -- so this is
+    -- one more poller. It runs AFTER loadUiFlags, because the setting it reads only
+    -- exists once the character is known and uiflags have landed.
+    pcall(function() require('dlac\\ui\\menuui').autoOpenTick(); end);
     if macrob ~= nil then pcall(macrob.pump); end   -- per-job macro book/set (login + job change)
     pcall(function() require('dlac\\feature\\lockstyle').pump(); end);   -- OnLoad lockstyle (login + job change)
     -- Pins are session-only, and the clear has to reach DISK: the engine reads
@@ -4664,18 +4554,30 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
             ui._tpOpenT = ui._tpOpenT or { true };
             ui._tpOpenT[1] = true;
             if imgui.Begin('##dlac_tpfloat', ui._tpOpenT, fl) then
+                -- ONE size drives BOTH states. The window is AlwaysAutoResize, so if the
+                -- abort button and the icon button differed the float would visibly jump
+                -- size the moment a use went in flight. The abort's hand-drawn circle and
+                -- bar therefore DERIVE from it instead of carrying magic numbers -- the
+                -- ratios below reproduce the original 26px artwork exactly (radius 10,
+                -- a 10x4 bar), so this stays correct at any size.
+                -- Henrik 2026-07-24: 20px art was too small out on the screen -> 30.
+                local TPF_ICON = 30;
+                local TPF_PAD  = 3;
+                local TPF_BTN  = TPF_ICON + TPF_PAD * 2;
                 local pend = nil;
                 pcall(function() pend = (type(useit.pending) == 'function') and useit.pending() or nil; end);
                 local clicked = false;
                 if pend ~= nil then
                     -- a use is in flight: the button IS the abort now
-                    clicked = imgui.Button('##tpflstop', { 26, 26 });
+                    clicked = imgui.Button('##tpflstop', { TPF_BTN, TPF_BTN });
                     pcall(function()
                         local x, y = imgui.GetItemRectMin();
                         if type(x) == 'table' then y = (x[2] or x.y); x = (x[1] or x.x); end
                         local dl = imgui.GetWindowDrawList();
-                        dl:AddCircleFilled({ x + 13, y + 13 }, 10, imgui.GetColorU32({ 0.85, 0.20, 0.20, 1.0 }), 12);
-                        dl:AddRectFilled({ x + 8, y + 11 }, { x + 18, y + 15 }, imgui.GetColorU32({ 1, 1, 1, 0.95 }));
+                        local cx, cy = x + TPF_BTN / 2, y + TPF_BTN / 2;
+                        local bw, bh = TPF_BTN * 0.192, TPF_BTN * 0.077;
+                        dl:AddCircleFilled({ cx, cy }, TPF_BTN * 0.385, imgui.GetColorU32({ 0.85, 0.20, 0.20, 1.0 }), 12);
+                        dl:AddRectFilled({ cx - bw, cy - bh }, { cx + bw, cy + bh }, imgui.GetColorU32({ 1, 1, 1, 0.95 }));
                     end);
                     if imgui.IsItemHovered() then
                         imgui.SetTooltip(string.format('ABORT %s  (%s)', tostring(pend.name), tostring(pend.cancel)));
@@ -4685,20 +4587,29 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
                         clicked = false;
                     end
                 else
-                    -- The ring ICON, on an explicit OPAQUE dark backing (same one the
-                    -- slot grid uses). The earlier "always red" was never the art: the
-                    -- window rendered unthemed, and its semi-transparent button let
+                    -- The Teleports ICON, on an explicit OPAQUE dark backing (same one
+                    -- the slot grid uses). The earlier "always red" was never the art:
+                    -- the window rendered unthemed, and its semi-transparent button let
                     -- the game world bleed through the icon.
-                    local rec = lookupByName('Warp Ring');
-                    local id = rec and rec.Id or nil;
-                    local h = icons.handleOf(id);
+                    -- 2026-07-24: this used to borrow the in-game Warp Ring ITEM icon,
+                    -- which was a different visual language from the hand-drawn set.
+                    -- It now uses the same assets\teleports.png the Menu row does, and
+                    -- falls back to the old item icon if the PNG ever fails to load.
+                    local h = nil;
+                    pcall(function() h = require('dlac\\ui\\filetex').handle('teleports'); end);
+                    if h == nil then
+                        local rec = lookupByName('Warp Ring');
+                        h = icons.handleOf(rec and rec.Id or nil);
+                    end
                     if h ~= nil then
                         pcall(function()
-                            clicked = imgui.ImageButton(h, { 20, 20 },
-                                { 0, 0 }, { 1, 1 }, 3, { 0.10, 0.10, 0.13, 1.0 }, { 1, 1, 1, 1 });
+                            clicked = imgui.ImageButton(h, { TPF_ICON, TPF_ICON },
+                                { 0, 0 }, { 1, 1 }, TPF_PAD, { 0.10, 0.10, 0.13, 1.0 }, { 1, 1, 1, 1 });
                         end);
                     else
-                        clicked = imgui.Button('Tele##tpfl', { 36, 26 });
+                        -- Text fallback (both the PNG and the item icon failed). Width per
+                        -- the themed-font law: ~9.5px/char + 16 padding, or 'Tele' clips.
+                        clicked = imgui.Button('Tele##tpfl', { 54, TPF_BTN });
                     end
                     if imgui.IsItemHovered() then
                         imgui.SetTooltip('Teleports  --  drag the edge to move; unpin from the menu.');

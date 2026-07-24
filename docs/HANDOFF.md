@@ -83,9 +83,11 @@ handshake).
   handler's **WHITELIST**, not just given a branch (v46 printed nothing for exactly that,
   and looked like the command did not exist); and a changed seeded file at an **unmoved
   `M.VERSION`** never loads at all (hard rule 4).
-- **Git:** work on `main`; `feature/storage-move` is **local-only** (never push it)
-  pending GM approval. Multi-line commit messages: write to a file and `git commit -F`
-  (PowerShell 5.1 mangles embedded quotes in `-m`). Do not push without being asked.
+- **Git:** work on `dev` — **directly, no feature branch** (hard rule, see "Branch model"
+  below); `feature/storage-move` and `feature/autoacc` are **parked local-only archives**
+  (never push, never merge, never check out). Multi-line commit messages: write to a file
+  and `git commit -F` (PowerShell 5.1 mangles embedded quotes in `-m`). Do not push
+  without being asked.
 - **Merging a branch that predates the folder move: use `-X find-renames=20%`.** Branches
   older than the layout commit still edit the flat root paths. Git's default 50% rename
   threshold silently fails where main also grew the file a lot since the branch forked —
@@ -210,16 +212,159 @@ agent; the per-repo setup lives in `docs/agents/`.
 - A GM is currently evaluating the addon for server approval — polish requests from
   that channel (like the word-wrap fix) take priority.
 
+## What's left (open work, as of 2026-07-25)
+
+Nothing below is half-built — these are deliberate stopping points, each with its
+research already recorded. In rough priority order:
+
+1. **FIELD TEST the 07-25 release.** Henrik approved the Menu/Settings **visuals**, but
+   the **Mode library has not been driven in-game at all**. Everything in it is
+   headless-tested only; the suites stub imgui by design, so popup behaviour, the
+   pre-commit window and the stamp→commit round-trip are unverified against the live
+   client. Start here.
+2. **`[missing mode]` surfacing does not exist** (found during the ADR 0019 recon; the
+   single most valuable follow-up). There is no marker on rule boxes, no banner, and on
+   the Sets tab a **dead `@Weapon:Caster` gate renders byte-identical to a live-but-
+   inactive one** — the player cannot tell them apart. Blueprints' import popup claims
+   "the warning appears when you Stamp", but `bpStamp` only checks for an identical rule
+   and never inspects mode refs. Build the twin of `groupDefined`/`[missing group]`
+   (`ui/triggersui.lua:885`) plus a dead-gate tint on the Sets tab. **This gap is why the
+   Overwrite cascade is deliberately confined to the two job-scoped stores and never
+   touches the Blueprint library** — a value dead on this job may be alive on eight others.
+3. **NIN shuriken: Daken / Sange / Yoru Shuriken** — designed, NOT built, waiting on a
+   real NIN. Full record in `docs/design/auto-ammo.md` §8, including the **two live bugs
+   on main** it uncovered (the WS-ammo leak at Preshot; Special-vs-trigger having no safe
+   configuration) and the five-step field test that unblocks it.
+4. **Debug output → files** (Henrik's stated direction, 2026-07-24): rework `/dl debug` so
+   output lands in `<dataDir>\debug\` txt files instead of chat. Explicitly deferred
+   ("we can leave it as it is for now"), but it is the intended end state.
+5. **Icon polish, optional:** the four developer rows share one question mark on their
+   section heading rather than each carrying one. Trivial to change if it reads wrong.
+
 ## Current state (as of 2026-07-24, end of day)
 
-- **BRANCH MODEL IS LIVE — `main → dev → feature/<slug>`.** Henrik's 2026-07-24 hard
-  rule: stop committing/pushing directly to `main`; every feature branches off `dev`,
-  merges to `dev`, and `dev` promotes to `main` **only on Henrik's explicit go-ahead**
-  (a release he considers stable). `dev` now exists; **`origin/main` == `origin/dev` ==
-  `5379884`, `addon.version` 2026.07.24o.** Origin holds exactly two branches now
-  (`main`, `dev`); local-only parked branches `feature/autoacc` (GM pending) and
-  `feature/storage-move` are kept, never merged. NEXT feature branches off `dev`. (This
-  supersedes the "main is the one development line / origin holds exactly one branch"
+- **MODE LIBRARY — BUILT 2026-07-25 (ADR 0019), awaiting Henrik's field test.**
+  Triggers tab → new **Mode library** section (beside Blueprints). Per-character
+  `<char>\dlac\modes.lua`, outside Profiles, addon-state only; **stamp** an entry onto
+  whichever job you are on; share/import as text (the library format IS the share
+  format). Pure core `gear/modeslibrary.lua`, UI in `ui/triggersui.lua`.
+  - Per-mode **`lib`** button on every mode box saves THAT one mode (the section-level
+    "Save this job's modes..." takes all of them); a name already in the library arms a
+    gold **`replace?`** second click rather than silently overwriting shared text.
+  - **`stamp` = Append** (merge values, nothing removed) — the plain button, because it
+    can never strand a reference. **`replace` = Overwrite** — always routed through the
+    **pre-commit reference window** (deliberately the same movable window a mode Delete
+    opens) listing every trigger rule and every set entry it will edit, with an
+    "Append instead" escape hatch. Nothing is changed until the player confirms.
+  - **Two corrections to ADR 0019, both found by recon and both load-bearing** — see the
+    ADR: (1) the cascade needs **two** ref-walkers, since set-entry gates are a separate
+    store from trigger conditions and a dead gate on the Sets tab is *visually identical*
+    to a live-but-inactive one; (2) a stranded value does **not** make the engine complain
+    per dispatch — it fails **silently**, and a cycle re-seats itself on the commit's
+    trigger reload, so only a **demotion to toggle** needs the explicit `/dl mode X off`.
+  - **`modeSetRefs`'s decision logic moved out of gearui** into
+    `modeslibrary.gateRefsInSet` (tests **MG1-26**). It is the half that DELETES gear
+    rows and had no headless coverage while it was a gearui chunk-local. gearui keeps
+    the impure rim and now **bails entirely** if the walker is unavailable — a half-run
+    cascade (triggers stripped, sets not) is the worst outcome.
+  - Engine-owned implicit mode names (`maxmp`, `craft`, `craftgoal`) are refused at
+    capture, rename and import. On a name collision the **existing spelling wins** and a
+    differently-cased duplicate key is dropped (the Modes section is keyed by name).
+  - **Tests: 3279 run_tests (ML\* core, MG\* gate walk) + 341 smoke_ui (MLU\* drives the
+    real render path).** Green Windows + WSL. **MLU exists because of a bug it catches:**
+    the first draft called a `helpLine()` that does not exist. A *load* test proves
+    nothing about that — an undefined global only errors when the line RUNS — so the
+    section drives `renderModeLibrary` against a stub imgui. Mutation-verified.
+  - **STILL OPEN (recon-found, not yet built):** there is **no `[missing mode]`
+    surfacing anywhere** — no marker on rule boxes, no banner, and on the Sets tab a dead
+    `@Weapon:Caster` gate renders identically to a live-but-inactive one. Blueprints
+    claim "the warning appears when you Stamp", but `bpStamp` only checks for an
+    identical rule and never inspects mode refs. That gap is why the cascade is
+    deliberately confined to the two job-scoped stores and does **not** touch the
+    Blueprint library (a value dead on this job may be alive on eight others).
+
+- **HEADER MENU + SETTINGS — BUILT 2026-07-24 (`ui/menuui.lua`, addon `2026.07.24u`),
+  awaiting Henrik's field test.** The header was eight right-aligned buttons; it is now
+  **Profiles** (left, unchanged) and **Menu · Migrate** (right). Everything that used to
+  sit left of "Reload LAC" — Lockstyle, Macro book, Hobby bar, Teleports, Level override
+  — plus **Settings** and a debug-only developer section (Scan/Stage/Commit/Augs) now
+  live inside the Menu popup.
+  - **"Reload LAC" is DELETED, not relocated.** Legacy LAC is no longer a design
+    consideration; both of its red-arm sites in `ui/setupui.lua` were legacy-only, so
+    under the native engine it was dead weight. Those two sites are now comments.
+  - **The one thing kept OUT of the menu: the in-flight ABORT.** While a teleport/ring
+    use is pending the header grows a red STOP button. Transient state must not hide
+    behind a click — the same reasoning that killed Reload LAC keeps this visible. No
+    pending use, no button.
+  - **Settings** (Menu > Settings) is the one place every **Setting** (CONTEXT.md term)
+    is reachable: *Open the dlac window* (**new**, 3 values — Never / On login / On login
+    + job change), Show all (moved out of the header **and now remembered**), Auto-sync,
+    Show item IDs, Debug mode — plus mirrors of Build as lv.75, Floating equipment
+    window, Teleports floating button and Trigger monitor. The mirrors rebuild from the
+    live source field every frame, so they cannot drift from their contextual checkboxes.
+  - **Level override is a TYPED number now** (Henrik: the ± buttons "spam level changes,
+    it's tedious"). Each ± click used to queue its own `/dl set level main N`; the box
+    commits **once**, on Enter or the Set button, clamped 1–75, 0 = back to live.
+  - **Icon column is always reserved** (`M._ICON_W`), Dummy'd when a PNG is missing or
+    fails to load, so art can land later without shifting layout. **All six icons
+    shipped same-day** (Henrik's art, 64×64 transparent, drawn at 16×16):
+    `assets\teleports.png` (beacon), `hobbybar.png` (axe — **renamed from
+    `craftbar.png`**, which was the asset's only reference; the *module* `ui/craftbar`
+    is untouched), `lockstyle.png` (masks), `macrobook.png` (book), `level.png`,
+    `settings.png` (gears). The **floating** Teleports button now uses the SAME
+    `teleports.png` instead of borrowing the in-game Warp Ring item icon (a different
+    visual language); the item icon remains as its fallback. Drawn at **30px** (`t`) —
+    and the in-flight ABORT button **derives** its size and its hand-drawn circle/bar
+    geometry from that one constant, because the float is `AlwaysAutoResize` and would
+    visibly jump size mid-use if the two states disagreed. (The derived ratios
+    reproduce the original 26px artwork exactly: radius 10, a 10×4 bar.)
+  - **`menu.png` (book) and `debug.png` (question mark) followed.** The Menu header
+    button is a **26px icon button when the art loads and the labelled wide text button
+    when it does not** — a failed texture must leave an obvious labelled button, never a
+    mystery 26px square, and the declared `w` has to match what is drawn because gearui
+    right-aligns the row by summing `b.w`. The four developer rows share **one** question
+    mark on their *Developer* heading rather than repeating it down the column.
+  - **Sized up after Henrik's visual pass** (`s`): row icons **16 → 24**, label column
+    30 → 38, header-button icon **16 → 24** (declared width 26 → 34, matching the row icons exactly — SET54). The row's
+    `Selectable` now takes an **explicit height** (`_ROW_H`) — without it the click
+    target stays text-height and the bottom of every taller row goes dead. `SET51-53`
+    pin the layout invariant (`_LABEL_X >= _ICON_GAP + _ICON_W`, `_ROW_H >= _ICON_W`,
+    button width > its icon); mutation-verified by bumping `_ICON_W` alone, which is
+    precisely how labels would start printing over the art.
+  - **`SET42-53` / `MN27-35` pin the icon wiring**: a missing or misspelled asset name
+    fails *silently* at runtime (blank cell, right width), so the suite asserts all
+    **eight** names (six rows + header button + Developer heading) exist on disk, and
+    that `headerButton()` returns the right shape in BOTH the art and no-art cases —
+    mutation-verified by removing `teleports.png`.
+  - **Why a new module:** hard rule 1. Everything arrives by `M.configure(deps)`
+    injection, so gearui gained **zero** chunk locals and the whole thing is headless.
+    `dumpAugs` is *passed*, not required — GRD5 forbids a `ui/` module requiring
+    `feature/augments`.
+  - **Tests: 3164 run_tests (+62: `SET*` menuui cores, `UIF*` the uiflags round-trip —
+    `gear/syncflags.lua` had NO behavioural test before) + 324 smoke_ui (+28: `MN*`
+    render-stack balance, icon-column reservation, auto-open). Green on Windows AND
+    WSL.** The popup bodies run guarded and now print the error LOUDLY (gearui's
+    tabGuard rule) instead of swallowing it; `MN12a/MN12b` count what each body draws so
+    a dead body fails the suite instead of shipping as a blank panel — mutation-verified.
+
+- **BRANCH MODEL — `main → dev`, and ALL work commits on `dev` DIRECTLY.** Henrik's
+  2026-07-24 (evening) revision of that morning's rule: **no local feature branches at
+  all.** A branch checked out in this working tree cannot be checked out anywhere else,
+  and several Claude sessions plus Henrik share ONE checkout — feature branches made the
+  sessions fight over the tree. So: every session commits on `dev`, and `dev` promotes to
+  `main` **only on Henrik's explicit go-ahead** (a release he considers stable).
+  **`origin/main` == `origin/dev` == `e15f806`, `addon.version` 2026.07.24o.** Origin
+  holds exactly two branches (`main`, `dev`); local-only parked branches
+  `feature/autoacc` (GM pending) and `feature/storage-move` are archives — kept, never
+  merged, never checked out.
+  - **The accepted cost (Henrik's explicit call):** `dev` promotes **as a whole or not at
+    all**. A half-finished feature on `dev` blocks promoting an unrelated finished one.
+    That is the price of never fighting over the checkout — do not "solve" it by
+    reintroducing feature branches.
+  - **The one carve-out: GitHub agent runs.** Cloud agents clone their own workspace, so
+    their branch can never collide with this checkout — the label-dispatch pipeline keeps
+    opening `<slug>` branches and PRs, and those PRs merge into **`dev`** (never `main`).
+  (This supersedes the "main is the one development line / origin holds exactly one branch"
   wording in the graduation block below.)
 
 - **Idle hobbies — SHIPPED + field-confirmed 2026-07-24 (ADR 0017).** Craft / HELM /

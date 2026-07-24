@@ -1667,6 +1667,31 @@ local function renderModeBox(m, def, cur, colX)
     imgui.SameLine(0, 12);
     if imgui.SmallButton('edit##trgmedit_' .. m) then openModeEditor(m, def); end
     if imgui.IsItemHovered() then imgui.SetTooltip('Edit this mode (values / keybind / delete).'); end
+    -- Save THIS ONE mode to the Mode library (Henrik 2026-07-25). The section-level
+    -- "Save this job's modes..." takes all of them; this is the per-mode twin, and the
+    -- sibling of the Blueprints "save this rule" button. A name already in the library
+    -- arms a gold "replace?" second click rather than silently updating it -- the
+    -- library is shared text, so overwriting an entry is never a one-click accident.
+    imgui.SameLine(0, 6);
+    if trig._modeCapArm == m then
+        local gold = (ImGuiCol_Button ~= nil);
+        if gold then imgui.PushStyleColor(ImGuiCol_Button, { 0.55, 0.45, 0.15, 1.0 }); end
+        if imgui.SmallButton('replace?##trgmlib_' .. m) then
+            trig._modeCapArm = nil;
+            M.captureModeToLibrary(m, true);
+        end
+        if gold then imgui.PopStyleColor(1); end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Overwrite the library entry of this name with THIS job\'s version.');
+        end
+    else
+        if imgui.SmallButton('lib##trgmlib_' .. m) then
+            if M.captureModeToLibrary(m, false) == 'exists' then trig._modeCapArm = m; end
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Save this mode to your Mode library, so you can stamp it onto any other job.\nAlready in the library? The button turns into a "replace?" confirm.');
+        end
+    end
     -- x: delete without opening the editor (Henrik 2026-07-20). Same flow as
     -- the editor's Delete mode -- unreferenced deletes (and commits) at once,
     -- references open the cleanup window -- behind the red second-click
@@ -2963,6 +2988,424 @@ local function renderBlueprintBox(i, e, ruleText, boxH)
     imgui.EndChild();
 end
 
+-- ===========================================================================
+-- MODE LIBRARY (ADR 0019) -- the Blueprints sibling for Modes.
+--
+-- Modes live PER JOB ENTRY and this tab only ever sees the CURRENT job's trigger
+-- file, so reusing one toggle across ten jobs meant retyping it ten times. The
+-- library is per CHARACTER, outside Profiles (<char>\dlac\modes.lua), addon-state
+-- only -- the engine never reads it -- and you STAMP an entry into whichever job
+-- you happen to be on.
+--
+-- The dangerous half is stamping onto a name that already exists: a Modes section
+-- is a MAP KEYED BY NAME, so it is an overwrite, not a duplicate. Append (default)
+-- merges values and can never strand a reference; Overwrite replaces them and
+-- strands every reference to a value that disappeared -- in the triggers AND in the
+-- set-entry mode gates, which are a separate file. So Overwrite never applies
+-- directly: it opens the same reference window a mode Delete opens, listing every
+-- rule and every set entry it will edit, first.
+-- ===========================================================================
+local mlUI = {
+    lib = nil, path = nil, err = nil,
+    status = '', statusErr = false, statusAt = 0,
+    renaming = nil, renameBuf = { '' }, _openRename = false,
+    delArm = nil,
+    viewIdx = nil, viewText = '', viewBuf = { '' }, _openView = false,
+    importText = { '' }, importPlan = nil, importParsedLen = -1, _openImport = false,
+    stamp = nil,   -- a pending Overwrite awaiting confirmation (the pre-commit list)
+};
+local _mlok, mlib = pcall(require, "dlac\\gear\\modeslibrary");
+local hasModeLib = _mlok and type(mlib) == 'table';
+
+local function mlSetStatus(msg, isErr)
+    mlUI.status = msg or ''; mlUI.statusErr = (isErr == true); mlUI.statusAt = os.clock();
+end
+
+local function mlFilePath()
+    local base = dlacDataDir();
+    if base == nil then return nil; end
+    return base .. 'modes.lua';
+end
+
+local function mlLoad(force)
+    local path = mlFilePath();
+    if path == nil then return; end
+    if not force and mlUI.lib ~= nil and mlUI.path == path then return; end
+    mlUI.path, mlUI.err = path, nil;
+    if not hasModeLib then mlUI.lib = {}; mlUI.err = 'modeslibrary module unavailable'; return; end
+    local text = readFileText(path);
+    if text == nil then mlUI.lib = {}; return; end          -- no library yet
+    local list, perr = mlib.parse(text);
+    if list == nil then mlUI.lib = {}; mlUI.err = perr; return; end
+    mlUI.lib = list;
+end
+
+-- Same safe-replace ladder the Blueprints library uses: timestamped backup, then
+-- backup -> temp -> parse-validate -> atomic swap, with a guarded plain write only
+-- when lib\safewrite is unreachable.
+local function mlSave()
+    local path = mlFilePath();
+    if path == nil or mlUI.lib == nil then mlSetStatus('Not logged in -- cannot save the Mode library.', true); return false; end
+    local text;
+    local ok = pcall(function() text = mlib.serialize(mlUI.lib); end);
+    if not ok or type(text) ~= 'string' then mlSetStatus('Serialize failed.', true); return false; end
+    local base = (deps and type(deps.charRoot) == 'function') and deps.charRoot() or deps.charBase();
+    local prev = readFileText(path);
+    local swok, sw = pcall(require, 'dlac\\lib\\safewrite');
+    if swok and type(sw) == 'table' and type(sw.replaceLua) == 'function' then
+        if prev ~= nil then
+            pcall(function() sw.timestampBackup(base .. 'backups\\', 'modes-', prev); end);
+        end
+        local rok, rerr = sw.replaceLua(path, text, {
+            origText = prev,
+            validate = function(chunk)
+                local vok, ret = pcall(chunk);
+                return vok and type(ret) == 'table', 'library did not return a table';
+            end,
+        });
+        if rok ~= true then mlSetStatus('Could not save the Mode library: ' .. tostring(rerr), true); return false; end
+        return true;
+    end
+    pcall(function()
+        if ashita and ashita.fs and ashita.fs.create_directory then
+            ashita.fs.create_directory(dlacDataDir());
+        end
+    end);
+    if not writeFileText(path, text) then mlSetStatus('Could not write ' .. path, true); return false; end
+    return true;
+end
+
+-- Capture ONE of the current job's modes into the library (replace = overwrite the
+-- library entry of the same name; the library is keyed by name too).
+-- Returns 'added' | 'exists' | 'error' so a caller can offer a replace confirmation
+-- instead of just reporting failure.
+local function mlCapture(name, replace)
+    if not hasModeLib then mlSetStatus('Mode library unavailable.', true); return 'error'; end
+    mlLoad(false);
+    if mlUI.lib == nil then mlSetStatus('Log in before saving to the library.', true); return 'error'; end
+    local def = (trig.data ~= nil and trig.data.Modes ~= nil) and trig.data.Modes[name] or nil;
+    local entry, err = mlib.captureOne(name, def);
+    if entry == nil then mlSetStatus('Could not save: ' .. tostring(err), true); return 'error'; end
+    local existed = (mlib.findEntryCI(mlUI.lib, entry.name) ~= nil);
+    local okA, errA = mlib.add(mlUI.lib, entry, replace);
+    if not okA then
+        if existed then return 'exists'; end            -- caller offers "replace?"
+        mlSetStatus(tostring(errA), true);
+        return 'error';
+    end
+    if mlSave() then
+        mlSetStatus(string.format('%s "%s" %s your Mode library.',
+            existed and 'Updated' or 'Saved', entry.name, existed and 'in' or 'to'), false);
+        return 'added';
+    end
+    mlLoad(true);                                       -- write failed: drop the phantom
+    return 'error';
+end
+
+-- Exposed on M because renderModeBox is defined ABOVE this point in the chunk: a
+-- direct call to the local would resolve to a nil GLOBAL instead (Lua scoping), which
+-- is silent until the button is actually pressed. Going through M sidesteps that
+-- entirely, and the arm state rides `trig` (declared near the top) for the same reason.
+function M.captureModeToLibrary(name, replace)
+    return mlCapture(name, replace);
+end
+
+-- Perform the stamp. Dead values are stripped FIRST, while the rules and gates still
+-- name them; only then does the new definition land.
+local function mlStampNow(entry, how)
+    local newMap, plan = mlib.applyStamp(entry, (trig.data ~= nil and trig.data.Modes) or {}, how);
+    local dead = mlib.deadTargets(plan);
+    local rulesRemoved, rulesEdited, touched = 0, 0, {};
+    for _, target in ipairs(dead) do
+        local rr = modeCondRefs(trig.data, target, true);
+        rulesRemoved = rulesRemoved + (rr.removedRules or 0);
+        rulesEdited  = rulesEdited  + (rr.editedRules  or 0);
+        if deps ~= nil and type(deps.modeSetRefs) == 'function' then
+            local sr = deps.modeSetRefs(target, true);
+            for _, s in ipairs(sr.touched or {}) do touched[#touched + 1] = s; end
+        end
+    end
+    trig.data.Modes = newMap;
+    trig.dirty = true;
+    trigCommit();
+    -- The live flag. A CYCLE re-seats itself: the commit's trigger reload runs the
+    -- engine's stale-cycle purge, which resets it to values[1]. Only a DEMOTION to a
+    -- toggle leaves the engine holding a string value that no longer means anything,
+    -- so that is the one case worth an explicit clear. (ADR 0019, corrected.)
+    if plan.kind == 'toggle' and plan.collides then
+        pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl mode ' .. plan.name .. ' off'); end);
+    end
+    local bits = { string.format('Stamped "%s" onto this job', plan.name) };
+    if #dead > 0 then
+        bits[#bits + 1] = string.format('%d value(s) dropped, %d rule(s) removed, %d trimmed',
+            #dead, rulesRemoved, rulesEdited);
+    end
+    if #touched > 0 then
+        bits[#bits + 1] = 'sets rewritten: ' .. table.concat(touched, ', ') .. ' -- Reload LAC to apply those';
+    end
+    mlSetStatus(table.concat(bits, '; ') .. '.', false);
+    mlUI.stamp = nil;
+end
+
+-- Stamp with a plan first. Nothing that strands a reference is ever applied straight:
+-- if values would die, build the FULL reference list and hand it to the confirmation
+-- window instead.
+local function mlStamp(entry, how)
+    if not hasModeLib or trig.data == nil then return; end
+    trig.data.Modes = trig.data.Modes or {};
+    local plan = mlib.stampPlan(entry, trig.data.Modes, how);
+    if plan == nil then mlSetStatus('Could not stamp that entry.', true); return; end
+    local dead = mlib.deadTargets(plan);
+    if #dead == 0 then mlStampNow(entry, how); return; end
+    local rules, sets = {}, {};
+    for _, target in ipairs(dead) do
+        local rr = modeCondRefs(trig.data, target, false);
+        for _, s in ipairs(rr.rules or {}) do rules[#rules + 1] = s; end
+        if deps ~= nil and type(deps.modeSetRefs) == 'function' then
+            local sr = deps.modeSetRefs(target, false);
+            for _, r in ipairs(sr.refs or {}) do sets[#sets + 1] = r; end
+        end
+    end
+    mlUI.stamp = { entry = entry, how = how, plan = plan, rules = rules, sets = sets, dead = dead };
+end
+
+-- The pre-commit list. Deliberately the same movable window a mode Delete opens, so
+-- "something is about to be deleted" always looks the same. Nothing has happened yet
+-- when this is on screen.
+local function renderModeStampWindow()
+    if mlUI.stamp == nil then return; end
+    local s = mlUI.stamp;
+    local open = { true };
+    if imgui.Begin('Stamp mode: ' .. tostring(s.plan.name) .. '###dlacmodestamp', open, ImGuiWindowFlags_AlwaysAutoResize or 0) then
+        imgui.TextColored(COL_ERR, string.format('Overwriting "%s" drops %d value(s): %s',
+            tostring(s.plan.name), #s.dead, esc(table.concat(s.plan.dead, ', '))));
+        imgui.TextColored(COL_DIM, 'Nothing has been changed yet.');
+        if #s.rules == 0 and #s.sets == 0 then
+            imgui.TextColored(COL_DIM, 'Nothing references those values.');
+        end
+        if #s.rules > 0 then
+            imgui.TextColored(COL_HEADER, string.format('Trigger rules (%d)', #s.rules));
+            for _, t in ipairs(s.rules) do imgui.TextColored(COL_DIM, '  ' .. esc(t)); end
+        end
+        if #s.sets > 0 then
+            imgui.TextColored(COL_HEADER, string.format('Set entries (%d)', #s.sets));
+            for _, r in ipairs(s.sets) do
+                imgui.TextColored(COL_DIM, string.format('  %s / %s / %s%s',
+                    esc(tostring(r.set)), esc(tostring(r.slot)), esc(tostring(r.item)),
+                    r.gone and '' or '  (list gate: keeps its other modes)'));
+            end
+        end
+        imgui.Spacing();
+        if imgui.Button('Overwrite + clean up references##mlstampgo', { 0, 22 }) then
+            mlStampNow(s.entry, 'overwrite');
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Rules gated only on a dropped value are removed; a mode-list rule just loses it.\nSet entries gated only on it are deleted; list gates keep their other modes.\nTrigger changes are live immediately; set changes need Reload LAC.');
+        end
+        imgui.SameLine(0, 8);
+        if imgui.Button('Append instead (keep everything)##mlstampapp', { 0, 22 }) then
+            mlStampNow(s.entry, 'append');
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Merge the values instead of replacing them. Nothing is dropped, so nothing\nis referenced-and-dead afterwards.');
+        end
+        imgui.SameLine(0, 8);
+        if imgui.Button('Cancel##mlstampno', { 0, 22 }) then mlUI.stamp = nil; end
+    end
+    imgui.End();
+    if not open[1] then mlUI.stamp = nil; end
+end
+
+function M.renderModeLibrary(job, level)
+    if not hasModeLib then
+        imgui.TextColored(COL_ERR, 'modeslibrary module unavailable.');
+        return;
+    end
+    mlLoad(false);
+    imgui.TextColored(COL_HEADER, 'Mode library');
+    -- Panel-text standard: the key phrase carries the explanation in a HOVER rather
+    -- than an inline paragraph (uistyle.helpLabel takes the caller's imgui handle, so
+    -- it needs no import here; it degrades to plain text if unavailable).
+    local _usok, ust = pcall(require, 'dlac\\ui\\uistyle');
+    local mlTip = 'Modes are stored per job, and this tab only ever sees the job you are on.\nThe library is per CHARACTER: save a mode once, then stamp it onto whichever\njob you happen to be playing. Shareable as text, like Blueprints.';
+    if _usok and type(ust) == 'table' and type(ust.helpLabel) == 'function' then
+        ust.helpLabel(imgui, 'Saved modes you can stamp onto ANY job', mlTip, COL_DIM);
+    else
+        imgui.TextColored(COL_DIM, 'Saved modes you can stamp onto ANY job');
+        if imgui.IsItemHovered() then imgui.SetTooltip(mlTip); end
+    end
+    if mlUI.err ~= nil then
+        imgui.TextColored(COL_ERR, 'Library problem: ' .. esc(tostring(mlUI.err)));
+    end
+
+    -- Top row: capture from this job + share/import.
+    if imgui.Button('Save this job\'s modes...##mlsaveall', { 0, 22 }) then
+        local caps, refused = mlib.captureAll((trig.data ~= nil and trig.data.Modes) or {});
+        local added, skipped = 0, 0;
+        mlLoad(false);
+        for _, e in ipairs(caps) do
+            if mlib.add(mlUI.lib, e, false) then added = added + 1; else skipped = skipped + 1; end
+        end
+        if added > 0 then mlSave(); end
+        mlSetStatus(string.format('Saved %d mode(s); %d already in the library%s.', added, skipped,
+            (#refused > 0) and string.format(', %d reserved name(s) skipped', #refused) or ''), false);
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Copy every mode defined on THIS job into your library.\nModes already in the library are left alone -- use Replace on a row to update one.');
+    end
+    imgui.SameLine(0, 6);
+    if imgui.Button('Copy all##mlcopyall', { 0, 22 }) then
+        mlUI.viewIdx = 'all';
+        mlUI.viewText = mlib.serialize(mlUI.lib or {});
+        mlUI.viewBuf[1] = mlUI.viewText;
+        mlUI._openView = true;
+    end
+    imgui.SameLine(0, 6);
+    if imgui.Button('Import...##mlimport', { 0, 22 }) then
+        mlUI.importText[1] = ''; mlUI.importPlan = nil; mlUI.importParsedLen = -1;
+        mlUI._openImport = true;
+    end
+
+    if mlUI.status ~= '' then
+        imgui.TextColored(mlUI.statusErr and COL_ERR or COL_DIM, esc(mlUI.status));
+    end
+    imgui.Separator();
+
+    local lib = mlUI.lib or {};
+    if #lib == 0 then
+        imgui.TextColored(COL_DIM, '(empty -- save a mode from this job, or import someone else\'s)');
+    end
+    for i, e in ipairs(lib) do
+        imgui.PushID('mlrow_' .. tostring(i));
+        imgui.TextColored(COND_COLORS.mode or COL_HEADER, esc(e.name));
+        imgui.SameLine(0, 8);
+        if e.kind == 'cycle' then
+            imgui.TextColored(COL_DIM, string.format('cycle: %s', esc(table.concat(e.values, ' > '))));
+        else
+            imgui.TextColored(COL_DIM, 'toggle');
+        end
+        if e.bind ~= nil then
+            imgui.SameLine(0, 8);
+            imgui.TextColored(COL_DIM, 'bind: ' .. esc(e.bind));
+        end
+        -- Stamp. Append is the plain button because it can never strand anything;
+        -- Overwrite always goes through the reference list.
+        if imgui.SmallButton('stamp##mlst') then mlStamp(e, 'append'); end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Add this mode to the CURRENT job.\nIf the job already has a mode of this name, its values are MERGED --\nnothing you already had is removed.');
+        end
+        imgui.SameLine(0, 6);
+        if imgui.SmallButton('replace##mlrep') then mlStamp(e, 'overwrite'); end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Replace this job\'s mode of the same name outright.\nIf that drops values, you get a list of every rule and set entry that\nreferences them BEFORE anything changes.');
+        end
+        imgui.SameLine(0, 6);
+        if imgui.SmallButton('text##mlview') then
+            mlUI.viewIdx = i;
+            mlUI.viewText = mlib.serializeOne(e);
+            mlUI.viewBuf[1] = mlUI.viewText;
+            mlUI._openView = true;
+        end
+        imgui.SameLine(0, 6);
+        if imgui.SmallButton('rename##mlren') then
+            mlUI.renaming = i; mlUI.renameBuf[1] = e.name; mlUI._openRename = true;
+        end
+        imgui.SameLine(0, 6);
+        if mlUI.delArm == i then
+            imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 });
+            if imgui.SmallButton('sure?##mldel') then
+                mlib.remove(mlUI.lib, i); mlSave(); mlUI.delArm = nil;
+                mlSetStatus('Removed from the library (this job keeps its mode).', false);
+            end
+            imgui.PopStyleColor(1);
+        else
+            if imgui.SmallButton('x##mldel') then mlUI.delArm = i; end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Remove it from the LIBRARY. Jobs you already stamped it onto keep theirs.');
+            end
+        end
+        imgui.PopID();
+    end
+
+    -- rename popup
+    if mlUI._openRename then imgui.OpenPopup('##dlac_mlrename'); mlUI._openRename = false; end
+    if imgui.BeginPopup('##dlac_mlrename') then
+        imgui.TextColored(COL_HEADER, 'Rename library mode');
+        imgui.PushItemWidth(220);
+        imgui.InputText('##mlrenbuf', mlUI.renameBuf, 24);
+        imgui.PopItemWidth();
+        if imgui.Button('Rename##mlrengo', { 0, 22 }) then
+            local ok, err = mlib.rename(mlUI.lib, mlUI.renaming, mlUI.renameBuf[1]);
+            if ok then mlSave(); mlSetStatus('Renamed.', false); else mlSetStatus(tostring(err), true); end
+            mlUI.renaming = nil; imgui.CloseCurrentPopup();
+        end
+        imgui.EndPopup();
+    end
+
+    -- view/share popup
+    if mlUI._openView then imgui.OpenPopup('##dlac_mlview'); mlUI._openView = false; end
+    if imgui.BeginPopup('##dlac_mlview') then
+        imgui.TextColored(COL_HEADER, (mlUI.viewIdx == 'all') and 'Your whole Mode library' or 'Share this mode');
+        imgui.TextColored(COL_DIM, 'Select the text and copy it. Paste it into someone else\'s Import box.');
+        if hasMultiline then
+            imgui.InputTextMultiline('##mlviewtext', mlUI.viewBuf, 16384, { 520, 220 });
+        else
+            imgui.InputText('##mlviewtext1', mlUI.viewBuf, 16384);
+        end
+        if imgui.Button('Close##mlviewclose', { 0, 22 }) then imgui.CloseCurrentPopup(); end
+        imgui.EndPopup();
+    end
+
+    -- import popup: live preview, then an explicit overwrite confirmation
+    if mlUI._openImport then imgui.OpenPopup('##dlac_mlimport'); mlUI._openImport = false; end
+    if imgui.BeginPopup('##dlac_mlimport') then
+        imgui.TextColored(COL_HEADER, 'Import modes');
+        imgui.TextColored(COL_DIM, 'Paste a Mode library blob. This only fills your LIBRARY --\nnothing reaches a job until you stamp it.');
+        if hasMultiline then
+            imgui.InputTextMultiline('##mlimptext', mlUI.importText, 16384, { 520, 160 });
+        else
+            imgui.InputText('##mlimptext1', mlUI.importText, 16384);
+        end
+        local txt = mlUI.importText[1] or '';
+        if #txt ~= mlUI.importParsedLen then           -- re-parse only when the text changed
+            mlUI.importParsedLen = #txt;
+            mlUI.importPlan = nil;
+            if txt ~= '' then
+                local prev, perr = mlib.previewImport(txt, mlUI.lib or {});
+                mlUI.importPlan = prev or { err = perr };
+            end
+        end
+        local plan = mlUI.importPlan;
+        if plan ~= nil and plan.err ~= nil then
+            imgui.TextColored(COL_ERR, 'Cannot read that: ' .. esc(tostring(plan.err)));
+        elseif plan ~= nil then
+            imgui.TextColored(COL_DIM, string.format('%d new, %d already in your library',
+                #plan.created, #plan.collided));
+            if #plan.collided > 0 then
+                imgui.TextColored(COL_ERR, 'Would overwrite: ' .. esc(table.concat(plan.collided, ', ')));
+            end
+            if imgui.Button('Import new only##mlimpnew', { 0, 22 }) then
+                local r = mlib.applyImport(mlUI.lib, plan.entries, false);
+                mlSave();
+                mlSetStatus(string.format('Imported %d; skipped %d.', r.created, r.refused), false);
+                imgui.CloseCurrentPopup();
+            end
+            if #plan.collided > 0 then
+                imgui.SameLine(0, 8);
+                if imgui.Button('Overwrite + import##mlimpall', { 0, 22 }) then
+                    local r = mlib.applyImport(mlUI.lib, plan.entries, true);
+                    mlSave();
+                    mlSetStatus(string.format('Imported %d, updated %d.', r.created, r.updated), false);
+                    imgui.CloseCurrentPopup();
+                end
+            end
+        end
+        imgui.SameLine(0, 8);
+        if imgui.Button('Cancel##mlimpno', { 0, 22 }) then imgui.CloseCurrentPopup(); end
+        imgui.EndPopup();
+    end
+end
+
 function M.renderBlueprints(job, level)
     if not hasImgui then return; end
     if deps == nil then
@@ -3072,6 +3515,9 @@ function M.render(job, level)
     end
     trigLoad(false);
     renderModeDeleteWindow();   -- its own movable window; independent of any section state
+    -- The stamp pre-commit list, same shape and same independence: it must survive the
+    -- player navigating away from the Mode library section while deciding.
+    pcall(renderModeStampWindow);
 
     -- Floating Trigger Monitor toggle (engine v55): live modes + the last 5
     -- fired rules. Visibility persists via uiflags; the window itself
@@ -3249,6 +3695,10 @@ function M.render(job, level)
     navItem('Modes', string.format('Modes (%d)', #modes));
     navItem('Groups', string.format('Groups (%d)', groupCount));
     if hasBlueprints then navItem('Blueprints', string.format('Blueprints (%d)', bpCount)); end
+    if hasModeLib then
+        mlLoad(false);
+        navItem('Mode library', string.format('Mode library (%d)', #(mlUI.lib or {})));
+    end
     for _, h in ipairs(TRIG_HANDLERS) do
         navItem(h, string.format('%s (%d)', h, #(trig.data[h] or {})));
     end
@@ -3263,6 +3713,8 @@ function M.render(job, level)
         M.renderGroups(job, level);
     elseif trig.section == 'Blueprints' then
         M.renderBlueprints(job, level);
+    elseif trig.section == 'Mode library' then
+        M.renderModeLibrary(job, level);
     elseif trig.section == 'Warnings' then
         pcall(renderGearWarnings, true);
     else

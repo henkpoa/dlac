@@ -63,6 +63,10 @@ _Avoid_: tag, category, spell set (a set is gear)
 A job-independent saved Trigger kept in a per-character library outside Profiles; adding one to a job stamps an ordinary Trigger into that job entry. Detached both ways — editing a Blueprint never retro-edits stamped Triggers, and vice versa. Shareable as text.
 _Avoid_: favourite, template, preset, saved rule
 
+**Mode library**:
+The Blueprint idea applied to **Modes**: a per-character store of job-independent Mode definitions (`<char>\dlac\modes.lua`, outside Profiles, addon-state only), where adding one to a job **stamps** an ordinary Mode into that job entry. Shareable as text — the library file format IS the share format. It exists because Modes live per job entry and the GUI only ever sees the current job's, so without it the same toggle is retyped once per job. Stamping onto a name that already exists is an **overwrite**, not a duplicate (a `Modes` section is keyed by name): a cycle Mode offers *Append* (merge values, nothing deleted) or *Overwrite* (replace values, and strip references to values that no longer exist) — ADR 0019.
+_Avoid_: mode preset, mode blueprint (a Blueprint is a Trigger; these are siblings, not the same thing)
+
 **Overlay**:
 The combining rule for matching Triggers: all of them apply, ascending priority, later winning per slot. A full-16-slot set acts as a replacement; a partial set layers onto whatever came before.
 _Avoid_: merge, stack
@@ -143,6 +147,10 @@ _Avoid_: LAC engine (LAC is LuaAshitacast; the Engine is dlac's code, whichever 
 **Statefile**:
 A per-character `return {...}` mirror crossing the two Lua states (craftstate, helmstate, fishstate, pinstate, accstate, arbstate, the autogear manifest): a watcher/GUI writes it, the engine hot-reloads it on a ~1s throttle through ONE reader (`ensureStateFile`, engine v70) with one policy — a torn/corrupt write DROPS that state until the next good write self-heals it. The trigger file is deliberately NOT a Statefile (hand-editable: it keeps the previous rules and says so). Addon-side path truth: `lib\statefile.charDir`.
 _Avoid_: config file, settings file
+
+**Setting**:
+A player preference the GUI remembers for a character, held in `<char>\dlac\uiflags.lua` and owned by `gear\syncflags.lua` (the one loader/writer). Addon-state only: the Engine never reads it — a Setting changes what the GUI *shows or does*, never what gets equipped. That is the whole line between a Setting and a **Statefile** (which exists to cross into the Engine). Every Setting is reachable from the Menu's **Settings** panel; some also keep a shortcut checkbox where they're used.
+_Avoid_: config, option, flag (the file is called uiflags for history, but "flag" also means the Engine flag — say Setting)
 
 **Set bonus**:
 A server-applied stat package for wearing N+ pieces of a gear set (`data\gearsets.lua`, 126 sets). Tiers are value-AT-count replacements (`tiers[min(count, max)]`, nil below `min`), counting is per SLOT (two copies count twice) and level-gated. Evaluated by `gear\geareffects.lua`; the game applies the real thing at equip time — dlac only plans, displays and scores it.

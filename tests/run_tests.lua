@@ -220,11 +220,11 @@ end)();
     -- (data/catalog, fishdb, spells, ...) carry no gear-fetch logic and are excluded.
     local ROOT_FILES = { 'utils.lua', 'dispatch.lua', 'chatfmt.lua', 'profiles.lua', 'gear.lua', 'dlac.lua' };
     local UI = { 'ammoui','automationsui','craftbar','equippedui','filetex','fishbar','fishui',
-                 'floatgear','gearui','helmbar','helmui','hobbybar','idlefloat','itemicons','priorityui','profilesmenu',
+                 'floatgear','gearui','helmbar','helmui','hobbybar','idlefloat','itemicons','menuui','priorityui','profilesmenu',
                  'restockui','setupui','triggersui','uihost','uistyle','weightsui' };
     local GEAR = { 'actionpicker','blueprintsmodel','catalogindex','gearcheck','geareffects','gearexport',
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
-                   'groupsmodel','jobgate','ownedcache','profileexport','profilesets','setimport',
+                   'groupsmodel','jobgate','modeslibrary','ownedcache','profileexport','profilesets','setimport',
                    'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
     local FEATURE = { 'ammowatch','arbwatch','augments','check','chocowatch','craftwatch','debug','digcalc','digrank',
                       'eboxammo','eboxclient','fishcalc','fishwatch','gamemode','helmwatch','idleexcl','location','lockstyle','lookpreview',
@@ -10726,6 +10726,483 @@ end)();
     dc._setDb(dofile('data/digdata.lua'));
     check('BI27 nil entry -> itemSources nil', dc.itemSources(nil, 8, 1, {}), nil);
     dc._setDb(nil);   -- restore lazy load
+end)();
+
+-- ---------------------------------------------------------------------------
+-- ML. modeslibrary -- the Mode library pure core (ADR 0019, 2026-07-24).
+-- Own function scope (a do-block's locals share the chunk's 200 budget).
+-- ---------------------------------------------------------------------------
+;(function()
+    local ml = dofile('gear/modeslibrary.lua');
+    -- A broken plan can hand back nil where a list is expected. table.concat would
+    -- then CRASH the whole suite and hide every later check, so render nil instead --
+    -- a regression must fail loudly and locally, not take the run down with it.
+    local function join(t)
+        if type(t) ~= 'table' then return '(nil)'; end
+        return table.concat(t, ',');
+    end
+    check('ML1 module loads headless', type(ml), 'table');
+
+    -- Entry construction. kind is DERIVED from the values, never trusted, because
+    -- `def.values ~= nil` is the sole cycle test everywhere else in dlac.
+    local tog = ml.makeEntry('DT', nil, 'F9');
+    check('ML2 no values -> toggle',    tog.kind, 'toggle');
+    check('ML3 toggle keeps its bind',  tog.bind, 'F9');
+    local cyc = ml.makeEntry('Weapon', { 'Melee', 'Ranged', 'Caster' }, '^F3');
+    check('ML4 values -> cycle',        cyc.kind, 'cycle');
+    check('ML5 cycle keeps order',      join(cyc.values), 'Melee,Ranged,Caster');
+    check('ML6 blank name refused',     (select(2, ml.makeEntry('  ', nil, nil))), 'A mode needs a name.');
+    check('ML7 one-value cycle refused',(select(2, ml.makeEntry('X', { 'Only' }, nil))), 'A cycle needs at least two values.');
+    check('ML8 values dedupe case-insensitively',
+        join(ml.makeEntry('W', { 'Melee', 'melee', 'Ranged' }).values), 'Melee,Ranged');
+    check('ML9 blank values dropped',
+        join(ml.makeEntry('W', { 'A', '', '  ', 'B' }).values), 'A,B');
+
+    -- Engine-owned names must never become library entries.
+    check('ML10 maxmp is reserved',     ml.isReserved('maxmp'), true);
+    check('ML11 craft is reserved',     ml.isReserved('CRAFT'), true);
+    check('ML12 craftgoal is reserved', ml.isReserved('craftgoal'), true);
+    check('ML13 ordinary name is not',  ml.isReserved('Weapon'), false);
+    check('ML14 reserved name refused at capture',
+        (ml.makeEntry('maxmp', nil, nil) == nil), true);
+
+    -- toDef: a bare toggle MUST serialize as {} and not nil -- an empty definition is
+    -- load-bearing (it is what keeps a plain toggle listed across a commit round-trip).
+    local d = ml.toDef(ml.makeEntry('DT'));
+    check('ML15 bare toggle def is a table', type(d), 'table');
+    check('ML16 bare toggle def is empty',   next(d), nil);
+
+    -- ---- THE STAMP ----
+    local job = {
+        Weapon = { values = { 'Melee', 'Ranged', 'Caster' }, bind = '^F3' },
+        DT = {},
+    };
+
+    -- create
+    local p = ml.stampPlan(ml.makeEntry('TH', nil, nil), job, 'append');
+    check('ML17 new name is a create', p.action, 'create');
+    check('ML18 create collides with nothing', p.collides, false);
+    check('ML19 create strands nothing', #p.dead, 0);
+
+    -- append merges and NEVER drops
+    p = ml.stampPlan(ml.makeEntry('Weapon', { 'Ranged', 'Tank' }), job, 'append');
+    check('ML20 append action',            p.action, 'append');
+    check('ML21 append keeps every old value', join(p.after), 'Melee,Ranged,Caster,Tank');
+    check('ML22 append strands nothing',   #p.dead, 0);
+    check('ML23 append reports what is new', join(p.added), 'Tank');
+    check('ML24 append keeps the existing bind', p.bindTo, '^F3');
+
+    -- overwrite drops, and names exactly what died
+    p = ml.stampPlan(ml.makeEntry('Weapon', { 'Melee', 'Tank' }), job, 'overwrite');
+    check('ML25 overwrite action',       p.action, 'overwrite');
+    check('ML26 overwrite replaces',     join(p.after), 'Melee,Tank');
+    check('ML27 overwrite names the dead', join(p.dead), 'Ranged,Caster');
+    check('ML28 dead targets are Name:Value',
+        table.concat(ml.deadTargets(p), ' '), 'Weapon:Ranged Weapon:Caster');
+    -- (Every cycle below needs >= 2 values or makeEntry refuses it and stampPlan gets
+    -- a nil -- which would make these pass for the wrong reason. ML29a proves the
+    -- plan actually exists before ML29 trusts its emptiness.)
+    local appendPlan = ml.stampPlan(ml.makeEntry('Weapon', { 'Tank', 'Melee' }), job, 'append');
+    check('ML29a append plan really exists', type(appendPlan), 'table');
+    check('ML29 append produces no strip targets', #ml.deadTargets(appendPlan), 0);
+
+    -- THE REGRESSION THIS EXISTS FOR: a TOGGLE stamped onto a CYCLE. Under Append the
+    -- cycle must KEEP its values -- demoting it would silently kill every Name:Value
+    -- reference, which is the exact thing Append promises not to do. Overwrite is how
+    -- you demote on purpose, and then every value is correctly reported dead.
+    p = ml.stampPlan(ml.makeEntry('Weapon', nil, nil), job, 'append');
+    check('ML30 append refuses to demote a cycle', p.kind, 'cycle');
+    check('ML31 append demote strands nothing',    #p.dead, 0);
+    check('ML32 append demote keeps values', join(p.after), 'Melee,Ranged,Caster');
+    p = ml.stampPlan(ml.makeEntry('Weapon', nil, nil), job, 'overwrite');
+    check('ML33 overwrite CAN demote a cycle', p.kind, 'toggle');
+    check('ML34 demotion kills every value',
+        join(p.dead), 'Melee,Ranged,Caster');
+
+    -- adding values to an existing TOGGLE deletes nothing
+    p = ml.stampPlan(ml.makeEntry('DT', { 'Low', 'High' }), job, 'append');
+    check('ML35 toggle -> cycle is not destructive', #p.dead, 0);
+    check('ML36 toggle -> cycle takes the values', join(p.after), 'Low,High');
+
+    -- the EXISTING spelling wins, so references keep pointing at the same key
+    p = ml.stampPlan(ml.makeEntry('weapon', { 'Melee', 'Ranged' }), job, 'append');
+    check('ML37 collision keeps the stored spelling', p.name, 'Weapon');
+
+    -- a stamp that changes literally nothing says so
+    p = ml.stampPlan(ml.makeEntry('Weapon', { 'Melee', 'Ranged', 'Caster' }, '^F3'), job, 'append');
+    check('ML38 no-op stamp is flagged', p.action, 'rebind');
+
+    -- applyStamp never mutates the caller's map (so a plan can be abandoned)
+    local before = ml.stampPlan(ml.makeEntry('Weapon', { 'Zzz', 'Yyy' }), job, 'overwrite');
+    local newMap = ml.applyStamp(ml.makeEntry('Weapon', { 'Zzz', 'Yyy' }), job, 'overwrite');
+    check('ML39 original map untouched',
+        join(job.Weapon.values), 'Melee,Ranged,Caster');
+    check('ML40 new map has the new values',
+        join(newMap.Weapon.values), 'Zzz,Yyy');
+    check('ML41 untouched modes survive', type(newMap.DT), 'table');
+    check('ML42 plan and apply agree', before.action, 'overwrite');
+    -- a differently-cased duplicate key must not survive the write
+    local dup = ml.applyStamp(ml.makeEntry('weapon', { 'A', 'B' }), { Weapon = { values = { 'A' } } }, 'overwrite');
+    check('ML43 no duplicate-cased key', (dup['weapon'] == nil), true);
+    check('ML44 canonical key kept',     type(dup['Weapon']), 'table');
+
+    -- ---- capture from a job ----
+    local caps, refused = ml.captureAll({ Weapon = { values = { 'A', 'B' } }, DT = {}, maxmp = {} });
+    check('ML45 captures both real modes', #caps, 2);
+    check('ML46 sorted by name',           caps[1].name, 'DT');
+    check('ML47 reserved name refused, not dropped silently', #refused, 1);
+    check('ML48 refusal names the mode',   refused[1].name, 'maxmp');
+
+    -- ---- round-trip ----
+    local lib = {};
+    ml.add(lib, ml.makeEntry('Weapon', { 'Melee', 'Ranged' }, '^F3'));
+    ml.add(lib, ml.makeEntry('DT', nil, 'F9'));
+    local text = ml.serialize(lib);
+    local back, perr = ml.parse(text);
+    check('ML49 serialize/parse round-trips', perr, nil);
+    check('ML50 count survives',   #back, 2);
+    check('ML51 values survive',   join(back[1].values), 'Melee,Ranged');
+    check('ML52 bind survives',    back[2].bind, 'F9');
+    check('ML53 kind survives',    back[2].kind, 'toggle');
+    check('ML54 deterministic',    ml.serialize(back), text);
+
+    -- hostile / torn input is reported, never executed
+    check('ML55 empty input refused', (select(2, ml.parse(''))), 'empty input');
+    check('ML56 garbage refused',     (ml.parse('this is not lua') == nil), true);
+    check('ML57 non-table refused',   (select(2, ml.parse('return 5'))), 'did not return a table');
+    check('ML58 sandbox blocks os.exit', (function()
+        local r, e = ml.parse('os.exit(1) return {}');
+        return r == nil and e ~= nil;
+    end)(), true);
+    check('ML59 sandbox blocks io', (function()
+        local r = ml.parse('return { modes = { { name = io.open("x") } } }');
+        return r == nil or #r == 0;
+    end)(), true);
+    check('ML60 quotes/newlines survive a round-trip', (function()
+        local l = { ml.makeEntry('We"ird\nName', { 'A', 'B' }) };
+        local rt = ml.parse(ml.serialize(l));
+        return rt ~= nil and rt[1] ~= nil and rt[1].name;
+    end)(), 'We"ird\nName');
+
+    -- ---- library CRUD + import ----
+    check('ML61 duplicate add refused', (ml.add(lib, ml.makeEntry('DT'))), false);
+    check('ML62 replace add allowed',   (ml.add(lib, ml.makeEntry('DT', nil, 'F10'), true)), true);
+    check('ML63 replace took effect',   lib[ml.findEntryCI(lib, 'DT')].bind, 'F10');
+    check('ML64 rename to a taken name refused', (ml.rename(lib, 1, 'DT')), false);
+    check('ML65 rename to reserved refused',     (ml.rename(lib, 1, 'craft')), false);
+    check('ML66 rename works',                   (ml.rename(lib, 1, 'Arms')), true);
+
+    local created, collided = ml.classifyImport(
+        { ml.makeEntry('Arms', { 'X', 'Y' }), ml.makeEntry('Brand New') }, lib);
+    check('ML67 collision detected', table.concat(collided, ','), 'Arms');
+    check('ML68 new entry detected', table.concat(created, ','), 'Brand New');
+
+    local res = ml.applyImport(lib, { ml.makeEntry('Arms', { 'X', 'Y' }) }, false);
+    check('ML69 collision refused without confirmation', res.refused, 1);
+    check('ML70 ...and nothing changed', join(lib[1].values), 'Melee,Ranged');
+    res = ml.applyImport(lib, { ml.makeEntry('Arms', { 'X', 'Y' }) }, true);
+    check('ML71 confirmed overwrite updates', res.updated, 1);
+    check('ML72 ...and the values changed', join(lib[1].values), 'X,Y');
+    res = ml.applyImport(lib, { { name = 'maxmp' } }, true);
+    check('ML73 import cannot smuggle in a reserved name', res.refused, 1);
+
+    -- ---- MG. set-entry gate walk (lifted out of gearui so it can be tested) ----
+    -- This is the half of the cascade that DELETES gear rows. It had no headless
+    -- coverage at all while it lived as a gearui chunk-local.
+    check('MG1 exact value hits itself',  ml.gateMatches('Weapon:Caster', 'Weapon:Caster'), true);
+    check('MG2 whole mode hits a value',  ml.gateMatches('Weapon:Caster', 'Weapon'), true);
+    check('MG3 whole mode hits the bare gate', ml.gateMatches('Weapon', 'Weapon'), true);
+    check('MG4 exact value MISSES the bare gate', ml.gateMatches('Weapon', 'Weapon:Caster'), false);
+    check('MG5 case-insensitive',         ml.gateMatches('weapon:caster', 'Weapon:Caster'), true);
+    check('MG6 near-name is not a prefix hit', ml.gateMatches('WeaponX:A', 'Weapon'), false);
+    check('MG7 empty target hits nothing', ml.gateMatches('Weapon', ''), false);
+
+    local function mkWorking()
+        return {
+            Main = {
+                { mode = 'Weapon:Caster', rec = { Name = 'Staff' } },      -- only gate -> row dies
+                { mode = { 'Weapon:Caster', 'DT' }, rec = { Name = 'Club' } }, -- keeps DT
+                { mode = 'Weapon', rec = { Name = 'Bare' } },              -- bare: NEVER touched
+                { rec = { Name = 'Plain' } },                              -- ungated
+            },
+        };
+    end
+
+    -- preview (strip = false) must report without changing anything
+    local w = mkWorking();
+    local r = ml.gateRefsInSet('TP', w, 'Weapon:Caster', false);
+    check('MG8 preview finds both gated rows', #r.refs, 2);
+    check('MG9 preview changes nothing',       r.changed, false);
+    check('MG10 preview left the rows in place', #w.Main, 4);
+    check('MG11 sole-gate row flagged gone',   (function()
+        for _, x in ipairs(r.refs) do if x.item == 'Staff' then return x.gone; end end
+    end)(), true);
+    check('MG12 multi-gate row NOT flagged gone', (function()
+        for _, x in ipairs(r.refs) do if x.item == 'Club' then return x.gone; end end
+    end)(), false);
+    check('MG13 preview names the set',  r.refs[1].set, 'TP');
+    check('MG14 preview names the slot', r.refs[1].slot, 'Main');
+
+    -- strip = true: the sole-gate row is REMOVED, the multi-gate row is TRIMMED,
+    -- and the bare `mode = 'Weapon'` gate survives untouched (the ADR's rule).
+    w = mkWorking();
+    r = ml.gateRefsInSet('TP', w, 'Weapon:Caster', true);
+    check('MG15 strip reports changed', r.changed, true);
+    check('MG16 one row removed',       #w.Main, 3);
+    check('MG17 remaining names', (function()
+        local n = {}; for _, it in ipairs(w.Main) do n[#n + 1] = it.rec.Name; end
+        return table.concat(n, ',');
+    end)(), 'Club,Bare,Plain');
+    check('MG18 multi-gate row trimmed to its survivor', (function()
+        for _, it in ipairs(w.Main) do if it.rec.Name == 'Club' then return it.mode; end end
+    end)(), 'DT');
+    check('MG19 bare mode gate untouched', (function()
+        for _, it in ipairs(w.Main) do if it.rec.Name == 'Bare' then return it.mode; end end
+    end)(), 'Weapon');
+    check('MG20 ungated row untouched', (function()
+        for _, it in ipairs(w.Main) do if it.rec.Name == 'Plain' then return it.mode; end end
+    end)(), nil);
+
+    -- targeting the WHOLE mode takes the bare gate too (that is the delete path,
+    -- not the cascade -- the cascade always passes Name:Value)
+    w = mkWorking();
+    r = ml.gateRefsInSet('TP', w, 'Weapon', true);
+    check('MG21 whole-mode target hits all three gated rows', #r.refs, 3);
+    -- NOT one survivor: the multi-gate row keeps its OTHER gate (DT) and stays. Only
+    -- rows whose every gate died are removed -- losing a gate is not losing the piece.
+    check('MG22 rows keeping another gate survive', #w.Main, 2);
+    check('MG22a ...and it is the trimmed one plus the ungated one', (function()
+        local n = {}; for _, it in ipairs(w.Main) do n[#n + 1] = it.rec.Name; end
+        return table.concat(n, ',');
+    end)(), 'Club,Plain');
+    check('MG22b the survivor kept its other gate', (function()
+        for _, it in ipairs(w.Main) do if it.rec.Name == 'Club' then return it.mode; end end
+    end)(), 'DT');
+
+    -- a target nothing matches must not report or change anything
+    w = mkWorking();
+    r = ml.gateRefsInSet('TP', w, 'Weapon:Nonexistent', true);
+    check('MG23 unmatched target finds nothing', #r.refs, 0);
+    check('MG24 unmatched target changes nothing', r.changed, false);
+    check('MG25 unmatched target keeps every row', #w.Main, 4);
+    check('MG26 nil working table is safe', #ml.gateRefsInSet('TP', nil, 'X', true).refs, 0);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- SET. menuui -- the header Menu + Settings pure cores (2026-07-24).
+-- Own function scope: a do-block's locals share the chunk's 200 budget.
+-- ---------------------------------------------------------------------------
+;(function()
+    local mn = dofile('ui/menuui.lua');
+    check('SET1 module loads headless', type(mn), 'table');
+
+    -- The 3-value open setting. Anything unrecognised must read as 'never' --
+    -- uiflags.lua is a plain Lua file a player may hand-edit, and the surprising
+    -- failure mode is a window that pops up uninvited.
+    check('SET2 never normalizes',        mn._normalizeOpenMode('never'), 'never');
+    check('SET3 login normalizes',        mn._normalizeOpenMode('login'), 'login');
+    check('SET4 job normalizes',          mn._normalizeOpenMode('job'),   'job');
+    check('SET5 case-insensitive',        mn._normalizeOpenMode('LOGIN'), 'login');
+    check('SET6 nil -> never',            mn._normalizeOpenMode(nil),     'never');
+    check('SET7 garbage -> never',        mn._normalizeOpenMode('yes please'), 'never');
+    check('SET8 number -> never',         mn._normalizeOpenMode(3),       'never');
+    check('SET9 true -> never',           mn._normalizeOpenMode(true),    'never');
+
+    -- Auto-open. 'never' never fires; nothing fires before a real job exists
+    -- (job nil/0 = not logged in); 'login' fires exactly once per session;
+    -- 'job' fires again only when the job actually CHANGES, so a manual close
+    -- is never fought frame after frame.
+    check('SET10 never mode never opens',      mn._shouldAutoOpen('never', 5, nil, false), false);
+    check('SET11 no job yet -> hold',          mn._shouldAutoOpen('login', nil, nil, false), false);
+    check('SET12 job 0 -> hold',               mn._shouldAutoOpen('login', 0, nil, false),   false);
+    check('SET13 login fires once',            mn._shouldAutoOpen('login', 5, nil, false),   true);
+    check('SET14 login does not re-fire',      mn._shouldAutoOpen('login', 5, 5, true),      false);
+    check('SET15 login ignores a job change',  mn._shouldAutoOpen('login', 7, 5, true),      false);
+    check('SET16 job mode fires at login',     mn._shouldAutoOpen('job', 5, nil, false),     true);
+    check('SET17 job mode re-fires on change', mn._shouldAutoOpen('job', 7, 5, true),        true);
+    check('SET18 job mode holds on same job',  mn._shouldAutoOpen('job', 5, 5, true),        false);
+    check('SET19 garbage mode never opens',    mn._shouldAutoOpen('sometimes', 5, nil, false), false);
+
+    -- The typed level override. nil = "not a number, do nothing", so a half-typed
+    -- box never commits; 0 = back to live; everything else clamps into 1..75.
+    check('SET20 plain number',        mn._parseLevel('37'),   37);
+    check('SET21 whitespace tolerated',mn._parseLevel('  60 '),60);
+    check('SET22 clamps above 75',     mn._parseLevel('120'),  75);
+    check('SET23 zero = back to live', mn._parseLevel('0'),    0);
+    check('SET24 negative = live',     mn._parseLevel('-4'),   0);
+    check('SET25 empty -> nil',        mn._parseLevel(''),     nil);
+    check('SET26 nil -> nil',          mn._parseLevel(nil),    nil);
+    check('SET27 letters -> nil',      mn._parseLevel('abc'),  nil);
+    check('SET28 partial -> nil',      mn._parseLevel('7x'),   nil);
+    check('SET29 decimal -> nil',      mn._parseLevel('37.5'), nil);
+    check('SET30 lower bound kept',    mn._parseLevel('1'),    1);
+    check('SET31 upper bound kept',    mn._parseLevel('75'),   75);
+
+    -- The row roster: order is stable, and the developer quartet exists ONLY
+    -- under /dl debug on.
+    local plain = mn._menuRows(false);
+    local dbg   = mn._menuRows(true);
+    check('SET32 six rows when not debugging', #plain, 6);
+    check('SET33 first row is lockstyle',      plain[1], 'lockstyle');
+    check('SET34 settings is the last plain row', plain[#plain], 'settings');
+    check('SET35 debug adds exactly four',     #dbg - #plain, 4);
+    check('SET36 augs only under debug',       dbg[#dbg], 'augs');
+    check('SET37 no augs row when not debugging',
+        (function() for _, k in ipairs(plain) do if k == 'augs' then return true; end end return false; end)(), false);
+
+    -- The icon column is reserved whether or not a PNG exists -- that is what lets
+    -- Henrik drop art in later without shifting the layout.
+    check('SET38 icon column width exported', type(mn._ICON_W), 'number');
+    check('SET39 label x clears the icon',    mn._LABEL_X > mn._ICON_W, true);
+    -- The layout invariant: the label column must clear the icon GUTTER, not merely
+    -- the icon width. Bump _ICON_W on its own and labels print over the art -- which
+    -- is exactly what nearly happened growing the icons from 16 to 24.
+    check('SET51 label clears the whole icon gutter',
+        mn._LABEL_X >= mn._ICON_GAP + mn._ICON_W, true);
+    -- The taller row needs a taller HIT AREA, or the bottom of every row goes dead.
+    check('SET52 row height covers the icon', mn._ROW_H >= mn._ICON_W, true);
+    -- The header button's declared width must actually fit its icon: gearui
+    -- right-aligns the header by summing b.w, so a lying width shifts the whole row.
+    check('SET53 header button width fits its icon',
+        mn._MENU_BTN_W > mn._MENU_ICON_W, true);
+    -- Henrik's call: the entry-point button wears the art at the SAME size the rows
+    -- do, so it reads identically in both places. Pinned so a later row-icon bump
+    -- does not silently leave the header behind.
+    check('SET54 header icon matches the row icon size', mn._MENU_ICON_W, mn._ICON_W);
+
+    -- activate() is inert until configure() runs: no deps, no action, no crash.
+    check('SET40 activate inert unconfigured', mn.activate('lockstyle'), false);
+    check('SET41 unknown key refused',         mn.activate('nonsense'),  false);
+
+    -- Every row icon must exist as assets\<name>.png. filetex returns nil for a
+    -- missing file and the row just draws a blank cell of the right width -- correct
+    -- behaviour, but it means a typo or a rename is INVISIBLE in game. Pin it here.
+    -- Six row icons + the header button + the Developer section heading.
+    local icons = mn._menuIcons();
+    check('SET42 every icon slot is named', #icons, 8);
+    local missing = {};
+    for _, name in ipairs(icons) do
+        local f = io.open('assets/' .. name .. '.png', 'rb');
+        if f == nil then missing[#missing + 1] = name; else f:close(); end
+    end
+    check('SET43 every row icon exists on disk', table.concat(missing, ','), '');
+    -- The floating Teleports button shares the Menu row's art (Henrik: "replace the
+    -- ring floating icon with this as well"), so it is the same one file.
+    check('SET44 teleports art is the shared one', (function()
+        for _, n in ipairs(icons) do if n == 'teleports' then return true; end end
+        return false;
+    end)(), true);
+    -- The header button and the Developer heading are covered by the same guard --
+    -- they are the two icons that are NOT row icons, so they are the easiest to
+    -- forget when the roster changes.
+    check('SET45 header button icon is guarded', (function()
+        for _, n in ipairs(icons) do if n == mn._MENU_ICON then return true; end end
+        return false;
+    end)(), true);
+    check('SET46 developer heading icon is guarded', (function()
+        for _, n in ipairs(icons) do if n == mn._DEBUG_ICON then return true; end end
+        return false;
+    end)(), true);
+
+    -- headerButton adapts to whether the art loaded. Headless, filetex has no
+    -- texture, so it MUST fall back to the labelled wide text button -- a failed
+    -- texture load must never leave a mystery 26px square.
+    local hb = mn.headerButton();
+    check('SET47 no art -> labelled text button', hb.l, 'Menu');
+    check('SET48 no art -> the wide width', hb.w, mn._MENU_W);
+    check('SET49 no art -> declarative (no render fn)', hb.render, nil);
+    check('SET50 fallback still carries the tooltip', type(hb.tip), 'string');
+end)();
+
+-- ---------------------------------------------------------------------------
+-- UIF. gear/syncflags -- the uiflags.lua round-trip. This file had NO behavioural
+-- test before 2026-07-24: a dropped key would have shipped silently.
+-- ---------------------------------------------------------------------------
+;(function()
+    package.loaded['dlac\\lib\\cmdqueue'] = { enqueue = function() end, frame = function() return 0; end };
+    local sf = dofile('gear/syncflags.lua');
+    check('UIF1 module loads headless', type(sf), 'table');
+
+    local wrote = {};
+    local ui = { showAll = { false }, _openMode = 'job', _tgMon = true, _gfScale = 1.25 };
+    sf.configure({
+        dataDir = function() return 'X:\\char\\dlac\\'; end,
+        charBase = function() return 'X:\\char\\'; end,
+        writeFileText = function(p, t) wrote.path, wrote.text = p, t; return true; end,
+        refreshGear = function() end,
+        ui = ui,
+    });
+    sf.flags.debug, sf.flags.autosync, sf.flags.viewids = true, false, true;
+    sf.saveUiFlags();
+    check('UIF2 wrote to the mode-aware home', wrote.path, 'X:\\char\\dlac\\uiflags.lua');
+    check('UIF3 emitted text parses', (function()
+        local f = (loadstring or load)(wrote.text); return f ~= nil;
+    end)(), true);
+
+    local t = (loadstring or load)(wrote.text)();
+    check('UIF4 debug round-trips',    t.debug,    true);
+    check('UIF5 autosync round-trips', t.autosync, false);
+    check('UIF6 viewids round-trips',  t.viewids,  true);
+    check('UIF7 openui round-trips',   t.openui,   'job');
+    check('UIF8 openui is a STRING',   type(t.openui), 'string');
+    check('UIF9 showall round-trips',  t.showall,  false);
+    check('UIF10 tgmon round-trips',   t.tgmon,    true);
+    check('UIF11 gfscale round-trips', t.gfscale,  1.25);
+
+    -- A hand-edited openui must not be able to inject Lua: %q quotes and escapes it.
+    ui._openMode = 'ne"ver\nrm -rf';
+    sf.saveUiFlags();
+    check('UIF12 hostile openui still parses', (function()
+        local f = (loadstring or load)(wrote.text); return f ~= nil;
+    end)(), true);
+    check('UIF13 hostile openui reads back verbatim',
+        ((loadstring or load)(wrote.text)()).openui, 'ne"ver\nrm -rf');
+    check('UIF14 ...and menuui normalizes it away',
+        dofile('ui/menuui.lua')._normalizeOpenMode(((loadstring or load)(wrote.text)()).openui), 'never');
+
+    -- The reader. loadUiFlags is a one-shot latch, so this needs a FRESH instance
+    -- (dofile returns one) with _G.loadfile stubbed to hand back our table.
+    local sf2 = dofile('gear/syncflags.lua');
+    local ui2 = { showAll = { false } };
+    local realLoadfile = loadfile;
+    _G.loadfile = function() return function()
+        return { debug = false, autosync = true, viewids = false,
+                 openui = 'login', showall = true, gfscale = 2.0 };
+    end; end
+    sf2.configure({
+        dataDir = function() return 'X:\\char\\dlac\\'; end,
+        charBase = function() return 'X:\\char\\'; end,
+        writeFileText = function() return true; end,
+        refreshGear = function() end,
+        ui = ui2,
+    });
+    sf2.loadUiFlags();
+    _G.loadfile = realLoadfile;
+    check('UIF15 openui loads',   ui2._openMode, 'login');
+    check('UIF16 showall loads',  ui2.showAll[1], true);
+    check('UIF17 autosync loads', sf2.flags.autosync, true);
+    check('UIF18 viewids loads',  sf2.flags.viewids,  false);
+
+    -- Absent keys keep their defaults -- an old uiflags.lua written before this
+    -- slice must not start opening windows or flipping Show all.
+    local sf3 = dofile('gear/syncflags.lua');
+    local ui3 = { showAll = { false } };
+    _G.loadfile = function() return function() return { debug = true }; end; end
+    sf3.configure({
+        dataDir = function() return 'X:\\char\\dlac\\'; end,
+        charBase = function() return 'X:\\char\\'; end,
+        writeFileText = function() return true; end,
+        refreshGear = function() end,
+        ui = ui3,
+    });
+    sf3.loadUiFlags();
+    _G.loadfile = realLoadfile;
+    check('UIF19 absent openui stays nil',  ui3._openMode, nil);
+    check('UIF20 ...which normalizes to never',
+        dofile('ui/menuui.lua')._normalizeOpenMode(ui3._openMode), 'never');
+    check('UIF21 absent showall stays off', ui3.showAll[1], false);
+
+    package.loaded['dlac\\lib\\cmdqueue'] = nil;
 end)();
 
 -- ---------------------------------------------------------------------------
