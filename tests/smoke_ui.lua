@@ -735,6 +735,17 @@ end)();
         end)(), true);
         check('CW-T4 a maxed char stops detecting', cw2.recordDigTiming(15), false);
         cw2.rankFloor = 0;   -- leave module state clean for any later reader
+        -- Risk-3 gate: the timing read only trusts a REAL dig this zone visit
+        -- (0x063), never a foreign chat line that merely matches a dig phrase.
+        if type(cw2._digGateOpen) == 'function' then
+            cw2._zoneInAt, cw2._digThisZone = nil, false;
+            check('CW-T5 gate shut with no zone-in', cw2._digGateOpen(), false);
+            cw2._zoneInAt = 1;   -- zoned in, but no dig yet (foreign chat scenario)
+            check('CW-T6 gate shut on zone-in without a dig', cw2._digGateOpen(), false);
+            cw2._digThisZone = true;   -- a real 0x063 dig completed this visit
+            check('CW-T7 gate opens only after a real dig', cw2._digGateOpen(), true);
+            cw2._zoneInAt, cw2._digThisZone = nil, false;   -- clean up
+        end
     end
 end)();
 

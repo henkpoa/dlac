@@ -25,7 +25,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.07.24c';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.07.24d';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
 addon.desc    = 'Build gear sets and view live stats with level scaling (for LuaAshitacast).';
 
@@ -220,6 +220,17 @@ end
 maintainStorage();
 local _seedAt = 0;
 ashita.events.register('d3d_present', 'dlac-seed-watch', function()
+    -- Session-only reset for the bar-LESS Chocobo sibling: the craft/helm/fish
+    -- switches get reset for free because their floating bar calls isEnabled()
+    -- (-> loadState) every frame; chocoui has no bar, so a stale enabled=true from
+    -- last session would let the ENGINE glue riding gear on at login before any
+    -- loadState runs. Force it here (idempotent -- self-limits via chocowatch's
+    -- _stateLoaded once charDir() is available), OUTSIDE the 5s throttle so it
+    -- lands on the first post-login frame, before the engine's first Default read.
+    pcall(function()
+        local cw = require('dlac\\feature\\chocowatch');
+        if type(cw) == 'table' and type(cw.loadState) == 'function' then cw.loadState(); end
+    end);
     if os.clock() < _seedAt then return; end
     _seedAt = os.clock() + 5.0;
     maintainStorage();

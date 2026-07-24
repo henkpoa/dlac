@@ -340,7 +340,7 @@ local function renderDigRow(deps, it, rs)
     imgui.SameLine(0, 8);
     imgui.TextColored(COL_DIM, string.format('[%s]', it.reqLabel or ('rank ' .. tostring(it.rank))));
     imgui.SameLine(0, 8);
-    imgui.TextColored(col, string.format('hit %s  dig %s', pct(it.onHit), pct(it.perDig)));
+    imgui.TextColored(col, esc(string.format('hit %s  dig %s', pct(it.onHit), pct(it.perDig))));
     if it.gate == 'locked' then
         imgui.SameLine(0, 8);
         imgui.TextColored(COL_DIM, string.format('-- locked: needs %s', it.reqLabel or '?'));
@@ -366,7 +366,7 @@ local function renderCondRow(deps, c, rs)
         if rec ~= nil and type(deps.itemTooltip) == 'function' then pcall(deps.itemTooltip, rec); end
     end
     imgui.SameLine(0, 8);
-    imgui.TextColored(COL_DIM, string.format('~%d%%', tonumber(c.chance) or 0));
+    imgui.TextColored(COL_DIM, esc(string.format('~%d%%', tonumber(c.chance) or 0)));
     imgui.SameLine(0, 8);
     imgui.TextColored(COL_DIM, esc('when ' .. tostring(c.condition or '')));
     imgui.SameLine(0, 8);
@@ -430,7 +430,7 @@ function M.renderByArea(deps, rs, clk)
     if type(rows.success) == 'number' then
         imgui.TextColored(COL_HEADER, 'A dig here yields something:');
         imgui.SameLine(0, 6);
-        imgui.TextColored(COL_GOLD, pct(rows.success));
+        imgui.TextColored(COL_GOLD, esc(pct(rows.success)));
         imgui.SameLine(0, 6);
         imgui.TextColored(COL_DIM, string.format('(at %s + this moon)', (rs and rs.label) or 'your rank'));
     end
@@ -439,7 +439,7 @@ function M.renderByArea(deps, rs, clk)
     for _, pe in ipairs(rows.pools) do
         imgui.TextColored(COL_HEADER, string.format('%s pool', tostring(pe.pool)));
         imgui.SameLine(0, 8);
-        imgui.TextColored(COL_DIM, string.format('(yields something %s)', pct(pe.S)));
+        imgui.TextColored(COL_DIM, esc(string.format('(yields something %s)', pct(pe.S))));
         if #pe.items == 0 then
             imgui.TextColored(COL_DIM, '  (nothing diggable here)');
         end
@@ -473,7 +473,7 @@ local function renderItemPoolRow(deps, s, rs)
     imgui.SameLine(0, 8);
     imgui.TextColored(COL_DIM, string.format('[%s]', s.reqLabel or ('rank ' .. tostring(s.req))));
     imgui.SameLine(0, 8);
-    imgui.TextColored(col, string.format('hit %s  dig %s', pct(s.onHit), pct(s.perDig)));
+    imgui.TextColored(col, esc(string.format('hit %s  dig %s', pct(s.onHit), pct(s.perDig))));
     if s.gate == 'locked' then
         imgui.SameLine(0, 8);
         imgui.TextColored(COL_DIM, string.format('-- locked: needs %s', s.reqLabel or '?'));
@@ -560,8 +560,8 @@ function M.renderByItem(deps, rs, clk)
         -- flagged active/inactive against the live clock, greyed by the rank gate.
         imgui.TextColored(COL_HEADER, 'Conditional drop');
         imgui.SameLine(0, 8);
-        imgui.TextColored(COL_DIM, string.format('~%d%% when %s',
-            tonumber(view.chance) or 0, tostring(view.condition)));
+        imgui.TextColored(COL_DIM, esc(string.format('~%d%% when %s',
+            tonumber(view.chance) or 0, tostring(view.condition))));
         imgui.SameLine(0, 8);
         if view.active then
             imgui.TextColored(GREEN_OWNED, '[active now]');
@@ -746,7 +746,7 @@ function M.render(deps, availW)
     imgui.TextColored(COL_DIM, '  Moon');
     imgui.SameLine(0, 6);
     if type(clk.moon) == 'table' and clk.moon.name ~= nil then
-        imgui.TextColored(COL_TEXT, string.format('%s (%d%%)', clk.moon.name, clk.moon.percent or 0));
+        imgui.TextColored(COL_TEXT, esc(string.format('%s (%d%%)', clk.moon.name, clk.moon.percent or 0)));
     else
         imgui.TextColored(COL_DIM, 'unavailable');
     end
@@ -776,7 +776,7 @@ function M.render(deps, availW)
     imgui.TextColored(COL_HEADER, 'General dig success:');
     imgui.SameLine(0, 6);
     if avg ~= nil then
-        imgui.TextColored(COL_GOLD, string.format('%.0f%%', avg * 100));
+        imgui.TextColored(COL_GOLD, esc(string.format('%.0f%%', avg * 100)));
         imgui.SameLine(0, 6);
         imgui.TextColored(COL_DIM, string.format('(typical of a hit across %d zone%s, at %s + this moon)',
             nZones or 0, (nZones == 1) and '' or 's', rs.label or ('rank ' .. (rs.rank or 0))));
