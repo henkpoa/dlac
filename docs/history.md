@@ -5230,7 +5230,11 @@ field-confirmed working in-game.** Known gap: conditional crystals/rocks/ores ar
 `addon.version` 2026.07.24j; `run_tests` 3044 + `smoke_ui` 284 green (Windows lua 5.4.6 + WSL
 lua5.4).
 
-## Idle hobbies made mutually exclusive, with a floating badge (2026-07-24, ADR 0017)
+## Idle hobbies: one shared bar, one active at a time, one Auto HELM switch (2026-07-24, ADR 0017)
+
+**FIELD-CONFIRMED 2026-07-24 (Henrik), merged to `dev` (PR #123).** In-game: the
+shared hobby bar and its selector, the active-tab mark + lock-while-active, the
+floating badge, and Auto-HELM-as-the-one-switch all work as intended.
 
 **The ask (Henrik):** only one of **Craft / HELM / Fishing / Chocobo** idle should
 run at a time; arming one should stand the others down; a floating point should
