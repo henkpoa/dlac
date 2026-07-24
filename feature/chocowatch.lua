@@ -77,10 +77,33 @@ M._zoneInAt = nil;         -- os.clock() at the last zone-in (nil = none yet)
 -- on 0x00A.
 M._digThisZone = false;
 
+-- The dig-obtained line is a messageSpecial (0x02A TALKNUMWORK) that carries the
+-- ITEM ID, NOT a chat line the text_in hook sees -- so the item ratchet reads the
+-- packet. The 0x02A handler (network thread) only STASHES ids here during the
+-- short window after a real dig (0x063); the MAIN-THREAD pump (M.pumpObtains, from
+-- dlac's seed-watch) does the ratchet + save + chat announce, so nothing chat/IO
+-- ever runs on the packet thread (the crash rule).
+M._digResultUntil = 0;     -- os.clock() until which an incoming 0x02A is a dig result
+M._obtainQueue    = {};    -- item ids awaiting the main-thread pump
+
 -- The timing read only fires when we have a zone-in baseline AND a real dig
 -- happened this visit. Exposed so the gate is headless-testable.
 function M._digGateOpen()
     return M._zoneInAt ~= nil and M._digThisZone == true;
+end
+
+-- Extract the dig-obtained item id from a 0x02A (TALKNUMWORK) packet body:
+-- messageSpecial(msg, itemId) pushes GP_SERV_COMMAND_TALKNUMWORK with the itemId
+-- as param0 = `num[0]`, the little-endian u16 at struct offset 0x04 -> raw offset
+-- 0x08 (the struct follows the 4-byte header; server
+-- src/map/packets/s2c/0x02a_talknumwork.h + lua_baseentity.cpp messageSpecial).
+-- nil if the packet is too short. Pure/testable seam for the packet handler.
+function M._obtainIdFromPacket(data)
+    if type(data) ~= 'string' then return nil; end
+    local lo = string.byte(data, 0x09);   -- offset 0x08 (0-based) -> byte 0x09 (1-based)
+    local hi = string.byte(data, 0x0A);
+    if lo == nil or hi == nil then return nil; end
+    return lo + hi * 256;
 end
 
 local function statePath()
@@ -195,6 +218,49 @@ function M.recordObtained(name)
     return false;
 end
 
+-- Record a dug item BY ITEM ID (the 0x02A dig-obtained packet carries the id, not
+-- a name text_in can see). Prefers the requirement in `zoneId` (you dug it here).
+-- Ratchets the one-way floor; returns true when it actually rose. Non-diggable id
+-- (or nil) is a no-op. Called from the MAIN-thread pump, so save is safe.
+function M.recordObtainedById(id, zoneId)
+    if not _drok then return false; end
+    M.loadState();
+    local req = digrank.itemRequirementById(id, digDb(), zoneId);
+    if req == nil then return false; end
+    local newFloor = digrank.ratchet(M.rankFloor, req);
+    if newFloor > M.rankFloor then
+        M.rankFloor = newFloor;
+        saveState();
+        return true;
+    end
+    return false;
+end
+
+-- Drain the dig-obtained queue that the 0x02A packet handler filled on the
+-- network thread (ids only -- no work there). Runs on the MAIN thread (dlac's
+-- d3d_present seed-watch) so the ratchet's save + the chat announce are safe.
+-- Looks the requirement up in the CURRENT zone (you dug it there). Idempotent:
+-- an empty queue is a cheap no-op every frame.
+function M.pumpObtains()
+    if not _drok or type(M._obtainQueue) ~= 'table' or #M._obtainQueue == 0 then return; end
+    local q = M._obtainQueue;
+    M._obtainQueue = {};
+    local zid = nil;
+    pcall(function() zid = AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0); end);
+    for _, id in ipairs(q) do
+        if M.recordObtainedById(id, zid) then
+            local rs = M.rankState();
+            local nm = nil;
+            pcall(function()
+                local r = AshitaCore:GetResourceManager():GetItemById(id);
+                nm = (type(r) == 'table' and type(r.Name) == 'table') and r.Name[1] or nil;
+            end);
+            say(string.format('dig rank raised to %s (>= from digging %s).',
+                rs.label or ('rank ' .. rs.rank), nm or ('item #' .. tostring(id))));
+        end
+    end
+end
+
 -- The permanent max-latch (issue #100, Henrik's rule): skill can't derank, so
 -- once the floor reaches the top of the ladder the rank is fixed and timing
 -- detection switches off for good. rankFloor persists, so this survives relog --
@@ -231,10 +297,12 @@ end
 -- Backs the secret `/dl choco reset` (undocumented -- testing only).
 function M.resetRank()
     M.loadState();
-    M.rankManual   = 0;
-    M.rankFloor    = 0;
-    M._zoneInAt    = nil;
-    M._digThisZone = false;
+    M.rankManual      = 0;
+    M.rankFloor       = 0;
+    M._zoneInAt       = nil;
+    M._digThisZone    = false;
+    M._digResultUntil = 0;
+    M._obtainQueue    = {};
     saveState();
 end
 
@@ -322,7 +390,27 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
     -- passer-by's chat that merely matches a dig phrase. Bare flag -- no chat/IO,
     -- safe on the packet (network) thread.
     ashita.events.register('packet_out', 'dlac-chocowatch-digdone', function(e)
-        if e.id == 0x063 then M._digThisZone = true; end
+        if e.id == 0x063 then
+            M._digThisZone     = true;
+            M._digResultUntil  = os.clock() + 3;   -- the 0x02A item results follow within a moment
+        end
+    end);
+
+    -- Dig-obtained ITEMS: the server sends messageSpecial (0x02A TALKNUMWORK) with
+    -- the item id in param0 (num[0], a u32 at packet offset 0x08). text_in never
+    -- sees these (they are message-work packets, not chat), which is why the
+    -- name-parsing item ratchet was deaf to a dug item. Read the id off the packet
+    -- instead, ONLY within the window after a real dig (0x063), and only STASH it
+    -- -- the ratchet/save/announce runs on the MAIN thread (pumpObtains). A wrong
+    -- read FAILS SAFE: a non-diggable id never ratchets (itemRequirementById ->
+    -- nil). Bare read + append, packet-thread safe.
+    ashita.events.register('packet_in', 'dlac-chocowatch-obtain', function(e)
+        if e.id ~= 0x02A then return; end
+        if os.clock() >= (M._digResultUntil or 0) then return; end
+        local id = M._obtainIdFromPacket(e.data);
+        if id ~= nil and id > 0 and type(M._obtainQueue) == 'table' then
+            M._obtainQueue[#M._obtainQueue + 1] = id;
+        end
     end);
 
     -- Dig chat -> rank knowledge. Two one-way inputs, BOTH feeding the persisted

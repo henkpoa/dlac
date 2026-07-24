@@ -157,6 +157,31 @@ function M.itemRequirement(name, db)
     return best;
 end
 
+-- Like itemRequirement but keys on the item ID -- the dig-obtained line is a
+-- messageSpecial (0x02D) that carries the item ID, not a parseable name, so the
+-- robust ratchet reads the id straight off the packet. Prefers the requirement
+-- in the zone you dug it IN (`zoneId`; a stronger "you can dig it HERE" lower
+-- bound -- an item can need a higher rank in one zone than another) and falls
+-- back to the cheapest zone when the zone is unknown/absent. nil = not a
+-- diggable item, so a stray obtain never ratchets. Pure (db passed in).
+function M.itemRequirementById(id, db, zoneId)
+    local want = tonumber(id);
+    if want == nil or db == nil or type(db.zones) ~= 'table' then return nil; end
+    local best, inZone = nil, nil;
+    for zid, z in pairs(db.zones) do
+        for _, list in pairs((type(z) == 'table' and z.pools) or {}) do
+            for _, it in ipairs(list) do
+                if tonumber(it.id) == want then
+                    local req = M.clamp(it.rank);
+                    if best == nil or req < best then best = req; end
+                    if zid == zoneId and (inZone == nil or req < inZone) then inZone = req; end
+                end
+            end
+        end
+    end
+    return inZone or best;
+end
+
 -- Resolve the effective rank from the three stacked sources. `server` is the
 -- exact rank (nil unless a build unmasked it); `floor` is the ratchet floor;
 -- `manual` is the player's dropdown seed. Precedence: server (exact) beats a
