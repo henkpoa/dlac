@@ -304,25 +304,42 @@ local function help(text, tip, col)
     end
 end
 
--- By-area tab state (issue #98): the zone-search buffer + the picked zone.
--- Session-only, panel-local -- selecting a zone is a view choice, not persisted.
-local area = { q = { '' }, zoneId = nil };
+-- The dig search: two floating windows opened by the top buttons (Henrik 07-24 --
+-- item search was buried at the bottom of the panel, forcing a scroll). Each
+-- window is INDEPENDENT (rendered from gearui's d3d_present via M.renderSearch),
+-- so opening a search never scrolls the panel. `open` is a {bool} for the
+-- imgui.Begin close box; session-only, panel-local.
+local search = {
+    area = { open = { false }, zoneId = nil, q = { '' }, fromItem = false },
+    item = { open = { false }, q = { '' }, sel = nil },
+};
+local area   = search.area;   -- alias: renderByArea reads area.zoneId / area.q
+local byitem = search.item;   -- alias: renderByItem reads byitem.q / byitem.sel
+M._search = search;           -- test seam (open a window headlessly)
 
--- By-item tab state (issue #99): the item-search buffer + the selected index
--- entry. Session-only, panel-local like the by-area state above.
-local byitem = { q = { '' }, sel = nil };
+-- The player's current zone id IF it is an enabled dig zone, else nil -- so the
+-- Area button can open straight to where you are standing.
+local function currentDigZone()
+    local zid = nil;
+    pcall(function() zid = AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0); end);
+    if type(zid) ~= 'number' then return nil; end
+    local ok = false;
+    local dcok, dc = pcall(require, 'dlac\\feature\\digcalc');
+    if dcok and type(dc) == 'table' and type(dc.zoneOdds) == 'function' then
+        pcall(function() ok = dc.zoneOdds(zid, 0, 1) ~= nil; end);
+    end
+    return ok and zid or nil;
+end
 
--- The cross-link one-shot (issue #99): a zone clicked in the By item results
--- focuses the By area tab on it. `focusArea` is consumed by the next tab-bar
--- pass (the uihost.selectTab idiom, applied to this panel's own tab bar).
-local guide = { focusArea = false };
-
--- Jump to the By area view focused on `zoneId`: point the by-area state at it,
--- clear its search so the picked zone shows, and request the tab switch.
+-- Item -> Area cross-link: point the Area window at `zoneId`, clear its search,
+-- open it, close the Item window, and remember we came from Item so the Area
+-- window shows a Back button.
 local function jumpToArea(zoneId)
-    area.zoneId = zoneId;
-    area.q[1] = '';
-    guide.focusArea = true;
+    area.zoneId    = zoneId;
+    area.q[1]      = '';
+    area.fromItem  = true;
+    area.open[1]   = true;
+    byitem.open[1] = false;
 end
 
 -- A probability as a compact percent: more decimals for the tiny per-dig odds so
@@ -439,7 +456,7 @@ function M.renderByArea(deps, rs, clk)
     end
 
     imgui.Spacing();
-    imgui.TextColored(COL_DIM, 'hit = share of a successful pull;  dig = absolute chance per attempt.');
+    help('hit / dig', 'hit = share of a successful pull;  dig = absolute chance per attempt.', COL_DIM);
     if type(rows.success) == 'number' then
         imgui.TextColored(COL_HEADER, 'A dig here yields something:');
         imgui.SameLine(0, 6);
@@ -461,9 +478,7 @@ function M.renderByArea(deps, rs, clk)
     end
 
     -- conditional crystal/rock/ore drops -- their own clearly marked group.
-    imgui.TextColored(COL_HEADER, 'Conditional drops');
-    imgui.SameLine(0, 8);
-    imgui.TextColored(COL_DIM, '(weather crystals, day rocks, elemental ores -- the Regular pool mixes these in)');
+    help('Conditional drops', 'Weather crystals, day rocks and elemental ores -- the Regular pool mixes these in when the clock is right.', COL_HEADER);
     if #rows.conditionals == 0 then
         imgui.TextColored(COL_DIM, '  (none listed for this zone)');
     end
@@ -480,7 +495,7 @@ local function renderItemPoolRow(deps, s, rs)
                     tostring(s.zoneId), tostring(s.pool))) then
         jumpToArea(s.zoneId);
     end
-    if imgui.IsItemHovered() then imgui.SetTooltip('Jump to this zone in the By area tab.'); end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Jump to this zone in the By area window.'); end
     imgui.SameLine(0, 8);
     imgui.TextColored(COL_HEADER, string.format('%s pool', tostring(s.pool)));
     imgui.SameLine(0, 8);
@@ -508,13 +523,11 @@ function M.renderByItem(deps, rs, clk)
         return;
     end
 
-    imgui.TextColored(COL_TEXT, 'Item:');
+    help('Item:', 'Type part of a name -- crystals, rocks and ores are in here too.', COL_TEXT);
     imgui.SameLine(0, 6);
     imgui.PushItemWidth(240);
     imgui.InputText('##chocoitemsearch', byitem.q, 48);
     imgui.PopItemWidth();
-    imgui.SameLine(0, 8);
-    imgui.TextColored(COL_DIM, 'type part of a name -- crystals, rocks and ores are in here too.');
 
     -- the match list: items whose name contains the needle. Shown only while
     -- searching; capped so a one-letter needle never floods the panel.
@@ -564,8 +577,7 @@ function M.renderByItem(deps, rs, clk)
     imgui.SameLine(0, 8);
     imgui.TextColored(COL_DIM, string.format('needs %s', view.reqLabel or ('rank ' .. tostring(view.minRank))));
     imgui.Spacing();
-    imgui.TextColored(COL_DIM, 'hit = share of a successful pull;  dig = absolute chance per attempt.');
-    imgui.TextColored(COL_DIM, 'Click a zone to jump to its By area view.');
+    help('hit / dig', 'hit = share of a successful pull;  dig = absolute chance per attempt.  Click a zone to jump to its By area window.', COL_DIM);
     imgui.Spacing();
 
     if view.kind == 'conditional' then
@@ -612,18 +624,6 @@ function M.renderByItem(deps, rs, clk)
         imgui.TextColored(COL_DIM, '  (not found in any zone pool)');
     end
     for _, s in ipairs(view.sources) do renderItemPoolRow(deps, s, rs); end
-end
-
--- Begin one of this panel's guide tabs, forcing selection when the cross-link
--- asked for it (the uihost.selectTab idiom). Probe-don't-assume (hard rule 2):
--- a binding without the 3-arg BeginTabItem / the flag global just renders
--- normally -- the jump is dropped, never a crash.
-local function beginGuideTab(label, forceSel)
-    if forceSel then
-        local ok, o = pcall(imgui.BeginTabItem, label, nil, ImGuiTabItemFlags_SetSelected or 2);
-        if ok then return o == true; end
-    end
-    return imgui.BeginTabItem(label);
 end
 
 function M.render(deps, availW)
@@ -790,30 +790,76 @@ function M.render(deps, availW)
     imgui.Spacing();
 
     -- =======================================================================
-    -- The two guide tabs. By area (issue #98) is live; By item (issue #99)
-    -- lands next and reuses the row/odds rendering above. Guard the tab
-    -- bindings (probe-don't-assume, hard rule 2) and fall back to By area.
+    -- Dig search: two buttons open independent FLOATING windows (M.renderSearch,
+    -- driven from gearui's d3d_present -- the floatgear/nudge pattern), so item
+    -- search is never buried at the bottom of the panel forcing a scroll (Henrik
+    -- 07-24). Area opens on your current zone when you are standing in a dig area.
     -- =======================================================================
-    local hasTabs = type(imgui.BeginTabBar) == 'function'
-        and type(imgui.BeginTabItem) == 'function'
-        and type(imgui.EndTabItem) == 'function'
-        and type(imgui.EndTabBar) == 'function';
-    if not hasTabs then
-        M.renderByArea(deps, rs, clk);
-        return;
+    help('Search:', 'Opens a floating window, so you never scroll the panel to search.', COL_HEADER);
+    imgui.SameLine(0, 8);
+    if imgui.Button('Area##chocosearcharea') then
+        local cur = currentDigZone();
+        if cur ~= nil then area.zoneId = cur; end   -- land where you're standing
+        area.fromItem  = false;
+        area.open[1]   = true;
+        byitem.open[1] = false;
     end
-    if imgui.BeginTabBar('##chocoguidetabs') then
-        -- the cross-link one-shot: a zone clicked in By item focuses By area on it.
-        local forceArea = guide.focusArea; guide.focusArea = false;
-        if beginGuideTab('By area', forceArea) then
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Everything diggable in a zone, priced for your rank + moon.\nOpens on your current zone if you are standing in a digging area.');
+    end
+    imgui.SameLine(0, 6);
+    if imgui.Button('Item##chocosearchitem') then
+        byitem.open[1] = true;
+        area.open[1]   = false;
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Search an item -> every zone + pool it drops from.\nClick a zone there to jump to its Area window (with a Back button).');
+    end
+end
+
+-- ---------------------------------------------------------------------------
+-- The two floating dig-search windows (Henrik 07-24). Rendered INDEPENDENTLY of
+-- the main panel from gearui's d3d_present hook (the floatgear / restock-nudge
+-- pattern), so opening a search never scrolls the panel. Only draws when a
+-- window is open. Guarded: no imgui window API -> nothing drawn. `End` is source-
+-- paired with each `Begin` (floatgear's rule); if a body errors mid-frame ImGui
+-- recovers the skipped End at frame end, and gearui's pcall keeps the style stack
+-- clean (same exposure as the shipped floatgear -- no style vars pushed here).
+-- ---------------------------------------------------------------------------
+function M.renderSearch(deps)
+    if type(imgui.Begin) ~= 'function' or type(imgui.End) ~= 'function' then return; end
+    if not (area.open[1] or byitem.open[1]) then return; end
+    local rs  = M.rankState();
+    local clk = M.clock();
+    local FL  = (ImGuiWindowFlags_NoCollapse or 0);
+
+    if area.open[1] then
+        if type(imgui.SetNextWindowSize) == 'function' then
+            imgui.SetNextWindowSize({ 480, 440 }, (ImGuiCond_FirstUseEver or 0));
+        end
+        local shown = imgui.Begin('Chocobo Dig -- Area###dlac_dig_area', area.open, FL);
+        if shown then
+            if area.fromItem and type(imgui.Button) == 'function' then
+                if imgui.Button('< Back to item search##chocodigback') then
+                    byitem.open[1] = true;
+                    area.open[1]   = false;
+                end
+                imgui.Separator();
+            end
             M.renderByArea(deps, rs, clk);
-            imgui.EndTabItem();
         end
-        if beginGuideTab('By item', false) then
+        imgui.End();
+    end
+
+    if byitem.open[1] then
+        if type(imgui.SetNextWindowSize) == 'function' then
+            imgui.SetNextWindowSize({ 480, 440 }, (ImGuiCond_FirstUseEver or 0));
+        end
+        local shown = imgui.Begin('Chocobo Dig -- Item###dlac_dig_item', byitem.open, FL);
+        if shown then
             M.renderByItem(deps, rs, clk);
-            imgui.EndTabItem();
         end
-        imgui.EndTabBar();
+        imgui.End();
     end
 end
 
