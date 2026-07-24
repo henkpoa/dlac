@@ -291,6 +291,19 @@ local GREEN_OWNED = { 0.45, 0.90, 0.45, 1.0 };
 
 local function esc(s) return (tostring(s):gsub('%%', '%%%%')); end
 
+-- The panel-text standard: an underlined key label whose explanation lives in a
+-- hover, not an inline paragraph (uistyle.helpLabel; Henrik 2026-07-24). Thin
+-- wrapper so we pass THIS module's imgui; falls back to plain text if uistyle
+-- is unavailable so the label always renders.
+local _usok, uistyle = pcall(require, 'dlac\\ui\\uistyle');
+local function help(text, tip, col)
+    if _usok and type(uistyle) == 'table' and type(uistyle.helpLabel) == 'function' then
+        uistyle.helpLabel(imgui, text, tip, col or COL_TEXT);
+    else
+        imgui.TextColored(col or COL_TEXT, text);
+    end
+end
+
 -- By-area tab state (issue #98): the zone-search buffer + the picked zone.
 -- Session-only, panel-local -- selecting a zone is a view choice, not persisted.
 local area = { q = { '' }, zoneId = nil };
@@ -617,20 +630,19 @@ function M.render(deps, availW)
     local cwok, cw = pcall(require, 'dlac\\feature\\chocowatch');
     cwok = cwok and type(cw) == 'table';
 
-    imgui.TextColored(COL_HEADER, 'Chocobo');
-    imgui.SameLine(0, 10);
-    imgui.TextColored(COL_TEXT, 'wears your best riding-time gear ON IDLE ONLY -- equip it before you whistle.');
+    help('Chocobo', 'Wears your best riding-time gear on idle only.', COL_HEADER);
 
     -- The on/off switch: session-only OFF at login (the craftstate rule). Reuse
-    -- craftbar's pill (the helmui precedent) so every switch looks the same.
+    -- craftbar's pill (the helmui precedent) so every switch looks the same. The
+    -- session-only note lives on the "Set Chocobo Idle" label's hover now.
     local on = cwok and cw.isEnabled();
-    imgui.TextColored(COL_TEXT, 'Set Chocobo Idle:');
+    help('Set Chocobo Idle:', 'Session-only -- turns OFF after a relog.', COL_TEXT);
     imgui.SameLine(0, 6);
     local cbok, craftbar = pcall(require, 'dlac\\ui\\craftbar');
     local pill = (cbok and type(craftbar) == 'table' and type(craftbar.onOffSwitch) == 'function')
         and craftbar.onOffSwitch or nil;
-    local IDLE_ON  = 'Chocobo idle set is ON -- your riding gear stays on while idle.\nStarts OFF each session; click to turn off.';
-    local IDLE_OFF = 'Wears your best riding-time gear whenever you are idle, until turned off.\nStarts OFF each session (off after relog).';
+    local IDLE_ON  = 'ON -- your riding gear stays on while idle. Click to turn off.';
+    local IDLE_OFF = 'Wears your best riding-time gear whenever you are idle, until turned off.';
     if pill ~= nil then
         if pill(on, 'chocoidle', IDLE_ON, IDLE_OFF) and cwok then cw.setEnabled(not on); end
     else
@@ -642,13 +654,11 @@ function M.render(deps, availW)
 
     -- Top section: total riding time.
     local minutes, slots, best = M.totalMinutes(deps);
-    imgui.TextColored(COL_HEADER, 'Total riding time:');
+    help('Total riding time:', 'Every point of Chocobo riding time adds 1 minute.', COL_HEADER);
     imgui.SameLine(0, 6);
     imgui.TextColored(COL_GOLD, string.format('%d minutes', minutes));
     imgui.SameLine(0, 6);
     imgui.TextColored(COL_DIM, string.format('(30 base + %d from gear)', minutes - M.BASE_MINUTES));
-    imgui.TextColored(COL_DIM, 'The server computes ride duration as 1800 + mod*60 seconds at whistle time,');
-    imgui.TextColored(COL_DIM, 'so every point of Chocobo riding time is one more minute in the saddle.');
     imgui.Spacing();
 
     -- Equipped pieces (best per slot). Each row: icon + name + the +ride tag.
@@ -675,12 +685,6 @@ function M.render(deps, availW)
     imgui.Spacing();
     imgui.TextColored(COL_DIM, string.format('%d of %d slots covered.', slots, #M.SLOT_ORDER));
     imgui.Spacing();
-
-    -- The Wand / weapon-slot + whistle-timing note (issue #95, verbatim intent).
-    imgui.TextColored(COL_TEXT, 'Note: includes the Chocobo Wand -- takes your weapon slot; equip the set');
-    imgui.TextColored(COL_TEXT, 'before you whistle.');
-    imgui.Spacing();
-    imgui.TextColored(COL_DIM, 'The switch is session-only: it turns OFF after a relog.');
 
     -- =======================================================================
     -- Dig guide (scaffold) -- issue #97. The dig rank + its source, the live

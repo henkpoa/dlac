@@ -759,6 +759,43 @@ end)();
     end
 end)();
 
+-- uistyle.helpLabel: the underline+hover panel-text standard (Henrik 2026-07-24)
+-- -- an underlined key label that reveals its explanation on hover instead of an
+-- inline paragraph. Driven by a recording mock imgui (the caller's imgui is a
+-- parameter, so the helper is binding-agnostic and headless-testable).
+(function()
+    local usok, us = pcall(require, 'dlac\\ui\\uistyle');
+    if not usok or type(us) ~= 'table' or type(us.helpLabel) ~= 'function' then
+        check('US0 uistyle.helpLabel exists', false, true);
+        return;
+    end
+    local rec = { text = nil, tip = nil, line = false };
+    local dl = { AddLine = function() rec.line = true; end };
+    local IM = {
+        TextColored       = function(_, t) rec.text = t; end,
+        GetItemRectMin    = function() return 0, 0; end,
+        GetItemRectMax    = function() return 20, 10; end,
+        GetWindowDrawList = function() return dl; end,
+        GetColorU32       = function() return 0xFFFFFFFF; end,
+        IsItemHovered     = function() return true; end,
+        SetTooltip        = function(t) rec.tip = t; end,
+    };
+    us.helpLabel(IM, 'Total riding time:', 'Every point adds 1 minute.', { 1, 1, 1, 1 });
+    check('US1 helpLabel renders the label text', rec.text, 'Total riding time:');
+    check('US2 helpLabel draws the underline',    rec.line, true);
+    check('US3 helpLabel shows the tip on hover',  rec.tip, 'Every point adds 1 minute.');
+    -- not hovered -> no tooltip
+    rec.tip = nil; IM.IsItemHovered = function() return false; end;
+    us.helpLabel(IM, 'x', 'hidden', { 1, 1, 1, 1 });
+    check('US4 no tooltip when not hovered', rec.tip, nil);
+    -- crash-safe on a minimal binding (only TextColored -- no draw-list/hover)
+    check('US5 helpLabel is crash-safe on a minimal binding',
+        pcall(us.helpLabel, { TextColored = function() end }, 'y', 'z'), true);
+    -- crash-safe on a nil/garbage imgui handle
+    check('US6 helpLabel no-ops on a bad imgui handle',
+        pcall(us.helpLabel, nil, 'y', 'z'), true);
+end)();
+
 -- ---------------------------------------------------------------------------
 -- 7b. chocoui RENDER stack balance (issue #98) -- the by-area tab introduces
 --     new BeginCombo/BeginTabBar/BeginTabItem pairs, exactly the class of
