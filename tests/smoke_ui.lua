@@ -746,6 +746,16 @@ end)();
             check('CW-T7 gate opens only after a real dig', cw2._digGateOpen(), true);
             cw2._zoneInAt, cw2._digThisZone = nil, false;   -- clean up
         end
+        -- resetRank (the secret /dl choco reset): wipes manual + floor + gate.
+        if type(cw2.resetRank) == 'function' then
+            cw2.rankManual, cw2.rankFloor = 7, 10;   -- pretend a detected/maxed state
+            cw2._zoneInAt, cw2._digThisZone = 5, true;
+            cw2.resetRank();
+            check('CW-T8 reset wipes manual+floor and un-latches', (function()
+                return cw2.rankManual == 0 and cw2.rankFloor == 0
+                    and cw2._rankMaxed() == false and cw2._digGateOpen() == false;
+            end)(), true);
+        end
     end
 end)();
 

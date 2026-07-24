@@ -698,7 +698,12 @@ function M.render(deps, availW)
     -- ---- Dig rank (manual pick + source label) ----
     local rs = M.rankState();
     local ladder = M.rankLadder();
-    local seed = (cwok and tonumber(cw.rankManual)) or 0;
+    -- Seed the picker from the RESOLVED rank (not just the manual pick), so a
+    -- timing/ratchet detection shows in the dropdown the moment you open the panel
+    -- -- otherwise the picker sat on your old manual pick while only the "Current
+    -- dig rank" line moved (Henrik, field 2026-07-24). Picking still sets the
+    -- manual seed; you can't drop below a detected floor (resolve takes max).
+    local seed = tonumber(rs.rank) or (cwok and tonumber(cw.rankManual)) or 0;
 
     imgui.TextColored(COL_TEXT, 'Set your dig rank:');
     imgui.SameLine(0, 6);

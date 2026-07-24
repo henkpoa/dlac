@@ -243,17 +243,21 @@ function M.isCompletedDig(tag)
 end
 
 -- Invert a first-dig delay (seconds from zone-in to the first COMPLETED dig)
--- into the dig rank: rank = round((60 - threshold) / 5), clamped to the ladder.
--- The first completed dig is the tightest upper bound on the cooldown, so it
--- gives the highest (best) read; a dig long after zoning simply reads a low rank
--- and, being a ratchet input, never lowers anything. Client timing is ~1s noisy
--- against the server's integer-second cooldown -- comfortably inside the 5s per
--- rung -- so a threshold of 10s (or faster) reads Expert (10), the 10s floor.
--- nil for a non-number / non-positive threshold.
+-- into the dig rank. The server gates the first dig until clamp(60 - 5*rank, 10,
+-- 60)s, and network lag + spam-reaction only ever make the OBSERVED dig LATER
+-- than the true cooldown, never earlier. So FLOOR the delay into its 5s rung
+-- (rank = the largest rung <= threshold) -- never ROUND, which would drop a
+-- lagged Expert into Veteran (Henrik, field 2026-07-24: 10s Expert measured
+-- ~13s rounded down to Veteran). Brackets: 10-14.99s -> Expert(10), 15-19.99 ->
+-- Veteran(9), 20-24.99 -> Adept(8) ... 55-59.99 -> Recruit(1), 60+ -> Amateur(0).
+-- rank = 12 - floor(t/5), clamped: a sub-10s read (rare, low lag) still floors to
+-- Expert; a very late dig reads a low rank and, being a ratchet input, never
+-- lowers anything. The only failure mode is under-reading by one rung per full
+-- 5s of lag -- harmless (never over-claims). nil for a non-number / <=0 delay.
 function M.rankFromZoneTiming(threshold)
     local t = tonumber(threshold);
     if t == nil or t <= 0 then return nil; end
-    return M.clamp((60 - t) / 5);
+    return M.clamp(12 - math.floor(t / 5));
 end
 
 return M;
