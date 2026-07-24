@@ -219,5 +219,62 @@ stub imgui with a zone selected, asserting the new `BeginCombo`/`BeginTabBar`/
   odds wording, `active now` / `needs X` flags, the `<Element> Crystal`/`Cluster`
   and ore/rock condition text) are proposed — pending the maintainer's
   row-by-row sign-off.
-- The **by-item** tab (#99) and the **timing auto-detect** are the remaining
-  PRD #93 slices.
+
+## The By-item tab (issue #99)
+
+> The SECOND guide tab — a fuzzy item search → the matching diggable items
+> (the conditional crystals/rocks/ores included) → the selected item's every
+> zone + pool with rank + the two live odds, greyed by the same rank gate the
+> by-area tab uses, plus the item ↔ area cross-link. It REUSES the by-area
+> row/odds rendering and grey-out; it adds no new odds math.
+
+### Pure seams (headless-testable, above the imgui guard)
+
+| Function | Role |
+|---|---|
+| `digcalc.itemIndex()` | The fuzzy-search source: every UNIQUE diggable item as `{ key, id, n, minRank, kind, condKind, element }`, sorted by name. Pool items are deduped by id (`minRank` = the LOWEST requirement across the zones it drops in); the conditional crystals/clusters/rocks/ores are **synthesised** from the `cond` rule tables (8 each = 32 entries) so "Fire Crystal" / "Chunk of Fire Ore" are searchable even though they live in no static pool. Fail-soft empty when the table is ungenerated. |
+| `digcalc.itemSources(entry, rank, mu, clock)` | Every zone + pool a selected item drops from. A **pool** item's rows carry `{ zoneId, zoneName, pool, req, onHit, perDig, locked }`, sorted by ② per-dig descending (matching the by-area order). A **conditional** item's rows carry the per-zone `{ zoneId, zoneName, condKind, chance, minRank, condition, clockActive, rankOk, active }`: crystals/clusters/rocks span EVERY enabled zone (`allZones = true`), ores span only the 9 elemental-ore zones. The clock gate is zone-independent, so it is also reported at the item level. PURE — the clock is passed in. |
+| `chocoui.itemList()` | Thin wrapper over `digcalc.itemIndex()`. |
+| `chocoui.itemRows(entry, rankState, clock)` | The composed view: `itemSources` with every row stamped by `digrank.gate`'s grey-out verdict + the requirement's rank label — the SAME "never lie" grey-out as by-area. nil when the item/db is unresolvable (fail soft). |
+
+### Name collisions are real (and honest)
+
+An item can be BOTH a static pool drop AND a weather/day conditional — e.g. **Fire
+Crystal** is listed in some zones' pools *and* is the Fire-weather conditional. The
+index therefore carries a DISTINCT entry for each (`pool:4096` and `crystal:Fire`),
+so a search for "Fire Crystal" surfaces both: the pool entry prices the specific
+zones it is listed in; the conditional entry explains the weather rule. Keyed by
+`condKind:element` (conditionals) / `pool:<id>` (pool), never by name.
+
+### The item ↔ area cross-link
+
+Clicking a zone in the By-item results jumps to the By-area view focused on that
+zone. The zone is a clickable button; the click sets the by-area state's `zoneId`,
+clears its search, and requests a one-shot forced selection of the `By area` tab on
+the next render — the **`uihost.selectTab` idiom applied to this panel's own tab
+bar** (`ImGuiTabItemFlags_SetSelected` via a probe-guarded 3-arg `BeginTabItem`,
+hard rule 2: a binding without it just drops the jump, never crashes). All-zone
+conditionals (crystals/rocks) show a note instead of 26 identical rows — there is no
+single zone to jump to; ore drops list their 9 specific zones as cross-link buttons.
+
+### Tests
+
+`run_tests.lua` §CHOCOBO BY-ITEM (`BI1`–`BI27`): `itemIndex` shape + sort + the 32
+synthesised conditionals + the pool-item dedup, and `itemSources` across a
+many-zone pool item (source count, the two odds, per-dig sort), a crystal (all-zone,
+the double-weather/cluster split, the Thunder alias), a cluster, an ore (ore-zone
+set, the full gate, the rank sub-gate, the moon window), an over-rank locked pool
+item, and fail-soft (absent db / nil entry). `smoke_ui.lua` `S139z`–`S139aa4` cover
+the composed `itemList`/`itemRows` seams against the shipped data; the render
+section (`S139aa`–`S139ee`) now drives the By-item tab with the search filled and an
+item selected, asserting the added `Selectable`/`Button` rows keep every
+`BeginTabBar`/`BeginTabItem`/`BeginCombo` stack balanced.
+
+### Open / flagged
+
+- **Player-facing strings** for this tab (the `By item` tab name, the `Item:` /
+  `needs X` / `Conditional drop` / `Diggable in …` labels, the `hit`/`dig` odds
+  wording inherited from by-area) are proposed — pending the maintainer's
+  row-by-row sign-off, together with the by-area strings above.
+- The **timing auto-detect** (gated on the `/probe dig` calibration from #96) is
+  the remaining PRD #93 slice.
