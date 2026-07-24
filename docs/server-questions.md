@@ -154,3 +154,25 @@ rule — `floor(maxmp × 50/100)`, boundary inclusive (`dispatch.lua` v67, the o
 
 **On an answer:** if 75 is intent and the DB gets fixed, flip that line back to 75
 (tests AO1–AO4 pin the numbers to re-aim).
+
+---
+
+## 7. The E-Box (Ephemeral Box) has no per-item deposit action — OPEN (feature dependency)
+
+The trove `0x1A4` protocol — the E-Box wire protocol dlac's `eboxclient` speaks (the
+authoritative source is the `trove` Ashita addon, `trove/utils/packet.lua`) — has a
+per-item **withdraw** (`WITHDRAW` = 2) plus queries (`GET_SUMMARY` = 4 / `GET_CATEGORY`
+= 5 / `SEARCH` = 6) for the field Ephemeral Box, but **no per-item deposit** for it. The
+only `DEPOSIT` in the whole protocol is `VAULT_DEPOSIT` = 16 — the **town Mog Vault**
+(city zones only; `trove/plugins/vault.lua` `TOWN_ZONES`), a different store. Depositing
+to the field E-Box today is only via a **trade** to the box or the **`!box store`**
+command, neither of which is a clean per-item packet an addon can drive the way Fetch
+drives a withdraw.
+
+**Question / ask:** could a C2S per-item **deposit** action be added to the E-Box
+protocol, mirroring `WITHDRAW` = 2 (item id + quantity, from an inventory slot)?
+
+**What dlac does meanwhile:** nothing — the planned E-Box Restock **"Dump" button**
+(one-click deposit of job consumables back to the box after an outing, before switching
+jobs) is **PARKED** until such an action exists (Henrik, 2026-07-24). No workaround
+carried; delete this entry and build the button once deposit lands.
