@@ -10185,8 +10185,8 @@ end)();
     -- the M2 fix end-to-end: a colour-coded name still resolves its requirement
     -- (norm strips codes on BOTH sides), so the ratchet fires instead of missing.
     check('DR26a colour-coded name still resolves', dr.itemRequirement('\30\06Copper Ore\30\01', SYNTH), 2);
-    -- itemRequirementById: the 0x02D packet carries the id; prefer the CURRENT
-    -- zone's requirement (you dug it here), else the cheapest zone.
+    -- itemRequirementById: the fail-safe 0x02A packet carries the id; prefer the
+    -- CURRENT zone's requirement (you dug it here), else the cheapest zone.
     check('DR26b by-id = cheapest zone when no zone given', dr.itemRequirementById(1, SYNTH), 2);
     check('DR26c by-id prefers the CURRENT zone (harder here)', dr.itemRequirementById(1, SYNTH, 101), 5);
     check('DR26d by-id current zone (cheaper here)', dr.itemRequirementById(1, SYNTH, 100), 2);
@@ -10194,6 +10194,48 @@ end)();
     check('DR26f unknown id -> nil (no ratchet)', dr.itemRequirementById(999, SYNTH), nil);
     check('DR26g nil id -> nil', dr.itemRequirementById(nil, SYNTH), nil);
     check('DR26h nil db -> nil (fail soft)', dr.itemRequirementById(1, nil), nil);
+    -- ---- conditional (weather/day-gated) drops: crystals / rocks / ores ----
+    -- These live in db.cond, NOT the zone pools, so the ratchet must scan them or a
+    -- dug rock/ore raises no floor (the field gap). crystals gate at 0 (they are
+    -- also rank-0 pool drops), day rocks at Novice(3), elemental ores at Craftsman(6).
+    local COND = {
+        zones = {
+            [100] = { n = 'A', pools = {
+                Regular = { { id = 4096, n = 'Fire Crystal', w = 50, rank = 0 } },      -- crystal: pool(0) + cond(0)
+            } },
+            [101] = { n = 'B', pools = {
+                -- pretend Red Rock is ALSO a hard pool drop here (rank 8) to prove the
+                -- ratchet takes the SAFE MIN with its rank-3 conditional, not the pool.
+                Treasure = { { id = 769, n = 'Red Rock', w = 5, rank = 8 } },
+            } },
+        },
+        cond = {
+            crystals = { minRank = 0, byElement = { Fire = { crystal = 4096, cluster = 4104 } } },
+            rocks    = { minRank = 3, byElement = { Fire = { id = 769,  n = 'Red Rock' } } },
+            ores     = { minRank = 6, byElement = { Fire = { id = 1255, n = 'Chunk of Fire Ore' } } },
+        },
+    };
+    check('DR26i cond by name: rock -> Novice(3)',   dr.condRequirement(COND, nil, 'Red Rock'), 3);
+    check('DR26j cond by name: ore -> Craftsman(6)', dr.condRequirement(COND, nil, 'Chunk of Fire Ore'), 6);
+    check('DR26k cond by id: rock',                  dr.condRequirement(COND, 769), 3);
+    check('DR26l cond by id: ore',                   dr.condRequirement(COND, 1255), 6);
+    check('DR26m cond by id: crystal -> 0',          dr.condRequirement(COND, 4096), 0);
+    check('DR26n cond by id: cluster -> 0',          dr.condRequirement(COND, 4104), 0);
+    check('DR26o crystal has no cond name -> nil',   dr.condRequirement(COND, nil, 'Fire Crystal'), nil);
+    check('DR26p cond unknown id -> nil',            dr.condRequirement(COND, 999), nil);
+    check('DR26q cond nil db -> nil (fail soft)',    dr.condRequirement(nil, 769), nil);
+    -- THE GAP FIX: a conditional-ONLY ore now ratchets (returned nil before)
+    check('DR26r ore ratchets by NAME (was nil)',    dr.itemRequirement('Chunk of Fire Ore', COND), 6);
+    check('DR26s ore ratchets by ID (was nil)',      dr.itemRequirementById(1255, COND), 6);
+    -- Red Rock is BOTH a rank-3 conditional and a (harder) rank-8 pool drop: the
+    -- ratchet takes the SAFE MIN, and the zone-aware tighten must NOT over-claim the
+    -- pool rank even when you dug it in that very zone.
+    check('DR26t rock name = MIN(pool 8, cond 3)',      dr.itemRequirement('Red Rock', COND), 3);
+    check('DR26u rock id = MIN(pool 8, cond 3)',        dr.itemRequirementById(769, COND), 3);
+    check('DR26v rock id: cond beats the zone tighten', dr.itemRequirementById(769, COND, 101), 3);
+    -- crystal is a rank-0 pool drop AND a rank-0 conditional -> 0 (never a floor)
+    check('DR26w crystal by id = 0',                 dr.itemRequirementById(4096, COND, 100), 0);
+    check('DR26x crystal by name = 0 (via pool)',    dr.itemRequirement('Fire Crystal', COND), 0);
 
     -- ---- resolve: precedence + honest exact flag ----
     local ranks = { [0]='Amateur',[1]='Recruit',[2]='Initiate',[3]='Novice',[4]='Apprentice',

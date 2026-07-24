@@ -333,9 +333,16 @@ Two field regressions were fixed here (Henrik reset → dug items → rank didn'
 reverse-engineering, READ IT before theorising from the server source — hgather
 answered in one grep what two packet guesses did not.
 
-**Known gap:** the conditional crystals/rocks/ores are synthesised (they live in
-no static pool), so digging a conditional does not ratchet by name/id yet — a
-harmless under-claim, left as a follow-up.
+**Conditional drops now ratchet too.** The weather crystals / day rocks / elemental
+ores are rule tables in `db.cond`, not pool rows, so the original by-name/by-id
+lookup was blind to them — a dug rock or ore raised no floor. `digrank.condRequirement`
+scans `db.cond` (matching by id via the `id`/`crystal`/`cluster` fields, or by name
+via `n`), and both `itemRequirement`/`itemRequirementById` fold it in: a dug day rock
+proves ≥ **Novice**(3), an elemental ore ≥ **Craftsman**(6); crystals/clusters gate at
+0 (moot — they are rank-0 pool drops anyway). When an item is BOTH a pool drop and a
+conditional, the ratchet takes the **safe MIN** across sources and the zone-aware pool
+tighten is dropped (it could have come the cheaper conditional way). (`DR26i`–`DR26x`;
+confirmed against the real 26-zone data.)
 
 ## Open / flagged
 
