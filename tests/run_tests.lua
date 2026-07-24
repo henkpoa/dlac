@@ -10905,6 +10905,87 @@ end)();
     check('ML72 ...and the values changed', join(lib[1].values), 'X,Y');
     res = ml.applyImport(lib, { { name = 'maxmp' } }, true);
     check('ML73 import cannot smuggle in a reserved name', res.refused, 1);
+
+    -- ---- MG. set-entry gate walk (lifted out of gearui so it can be tested) ----
+    -- This is the half of the cascade that DELETES gear rows. It had no headless
+    -- coverage at all while it lived as a gearui chunk-local.
+    check('MG1 exact value hits itself',  ml.gateMatches('Weapon:Caster', 'Weapon:Caster'), true);
+    check('MG2 whole mode hits a value',  ml.gateMatches('Weapon:Caster', 'Weapon'), true);
+    check('MG3 whole mode hits the bare gate', ml.gateMatches('Weapon', 'Weapon'), true);
+    check('MG4 exact value MISSES the bare gate', ml.gateMatches('Weapon', 'Weapon:Caster'), false);
+    check('MG5 case-insensitive',         ml.gateMatches('weapon:caster', 'Weapon:Caster'), true);
+    check('MG6 near-name is not a prefix hit', ml.gateMatches('WeaponX:A', 'Weapon'), false);
+    check('MG7 empty target hits nothing', ml.gateMatches('Weapon', ''), false);
+
+    local function mkWorking()
+        return {
+            Main = {
+                { mode = 'Weapon:Caster', rec = { Name = 'Staff' } },      -- only gate -> row dies
+                { mode = { 'Weapon:Caster', 'DT' }, rec = { Name = 'Club' } }, -- keeps DT
+                { mode = 'Weapon', rec = { Name = 'Bare' } },              -- bare: NEVER touched
+                { rec = { Name = 'Plain' } },                              -- ungated
+            },
+        };
+    end
+
+    -- preview (strip = false) must report without changing anything
+    local w = mkWorking();
+    local r = ml.gateRefsInSet('TP', w, 'Weapon:Caster', false);
+    check('MG8 preview finds both gated rows', #r.refs, 2);
+    check('MG9 preview changes nothing',       r.changed, false);
+    check('MG10 preview left the rows in place', #w.Main, 4);
+    check('MG11 sole-gate row flagged gone',   (function()
+        for _, x in ipairs(r.refs) do if x.item == 'Staff' then return x.gone; end end
+    end)(), true);
+    check('MG12 multi-gate row NOT flagged gone', (function()
+        for _, x in ipairs(r.refs) do if x.item == 'Club' then return x.gone; end end
+    end)(), false);
+    check('MG13 preview names the set',  r.refs[1].set, 'TP');
+    check('MG14 preview names the slot', r.refs[1].slot, 'Main');
+
+    -- strip = true: the sole-gate row is REMOVED, the multi-gate row is TRIMMED,
+    -- and the bare `mode = 'Weapon'` gate survives untouched (the ADR's rule).
+    w = mkWorking();
+    r = ml.gateRefsInSet('TP', w, 'Weapon:Caster', true);
+    check('MG15 strip reports changed', r.changed, true);
+    check('MG16 one row removed',       #w.Main, 3);
+    check('MG17 remaining names', (function()
+        local n = {}; for _, it in ipairs(w.Main) do n[#n + 1] = it.rec.Name; end
+        return table.concat(n, ',');
+    end)(), 'Club,Bare,Plain');
+    check('MG18 multi-gate row trimmed to its survivor', (function()
+        for _, it in ipairs(w.Main) do if it.rec.Name == 'Club' then return it.mode; end end
+    end)(), 'DT');
+    check('MG19 bare mode gate untouched', (function()
+        for _, it in ipairs(w.Main) do if it.rec.Name == 'Bare' then return it.mode; end end
+    end)(), 'Weapon');
+    check('MG20 ungated row untouched', (function()
+        for _, it in ipairs(w.Main) do if it.rec.Name == 'Plain' then return it.mode; end end
+    end)(), nil);
+
+    -- targeting the WHOLE mode takes the bare gate too (that is the delete path,
+    -- not the cascade -- the cascade always passes Name:Value)
+    w = mkWorking();
+    r = ml.gateRefsInSet('TP', w, 'Weapon', true);
+    check('MG21 whole-mode target hits all three gated rows', #r.refs, 3);
+    -- NOT one survivor: the multi-gate row keeps its OTHER gate (DT) and stays. Only
+    -- rows whose every gate died are removed -- losing a gate is not losing the piece.
+    check('MG22 rows keeping another gate survive', #w.Main, 2);
+    check('MG22a ...and it is the trimmed one plus the ungated one', (function()
+        local n = {}; for _, it in ipairs(w.Main) do n[#n + 1] = it.rec.Name; end
+        return table.concat(n, ',');
+    end)(), 'Club,Plain');
+    check('MG22b the survivor kept its other gate', (function()
+        for _, it in ipairs(w.Main) do if it.rec.Name == 'Club' then return it.mode; end end
+    end)(), 'DT');
+
+    -- a target nothing matches must not report or change anything
+    w = mkWorking();
+    r = ml.gateRefsInSet('TP', w, 'Weapon:Nonexistent', true);
+    check('MG23 unmatched target finds nothing', #r.refs, 0);
+    check('MG24 unmatched target changes nothing', r.changed, false);
+    check('MG25 unmatched target keeps every row', #w.Main, 4);
+    check('MG26 nil working table is safe', #ml.gateRefsInSet('TP', nil, 'X', true).refs, 0);
 end)();
 
 -- ---------------------------------------------------------------------------

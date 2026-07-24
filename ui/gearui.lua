@@ -2503,44 +2503,26 @@ end
 -- commit path: an entry gated ONLY on this mode is deleted (it existed for it);
 -- a list gate just loses the dead name. The Sets-tab working state is borrowed
 -- for the scan and restored, so an in-progress edit survives.
+-- The gate WALK itself now lives in gear\modeslibrary (M.gateRefsInSet) so the half
+-- that DELETES gear rows is headless-testable; everything left here is the impure rim
+-- -- loading each set, committing the rewrite, and putting the builder back exactly as
+-- it was. Behaviour is unchanged (tests MG* pin the walk, and it produces the same
+-- refs/gone shape this function always returned).
 local function modeSetRefs(modeName, strip)
     local out = { refs = {}, touched = {} };
     local target = string.lower(tostring(modeName or ''));
     if target == '' then return out; end
-    local function matches(m)
-        local s = string.lower(tostring(m));
-        return s == target or string.sub(s, 1, #target + 1) == (target .. ':');
-    end
+    local mlib = nil;
+    pcall(function() mlib = require('dlac\\gear\\modeslibrary'); end);
+    if mlib == nil then return out; end       -- no walker, no strip: never a partial cascade
     local _, job = jobFile();
     local keepW, keepN, keepSel, keepDirty = M.working, M.workingSetName, ui.setSelected, _setDirty;
     pcall(function()
         for _, setName in ipairs(profsets.dynamicSetNames()) do
             loadSet(setName);
-            local changed = false;
-            for lbl, list in pairs(M.working) do
-                for i = #list, 1, -1 do
-                    local it = list[i];
-                    if it.mode ~= nil then
-                        local gates = (type(it.mode) == 'table') and it.mode or { it.mode };
-                        local kept, hit = {}, false;
-                        for _, m in ipairs(gates) do
-                            if matches(m) then hit = true; else kept[#kept + 1] = m; end
-                        end
-                        if hit then
-                            out.refs[#out.refs + 1] = {
-                                set = setName, slot = lbl,
-                                item = (it.rec ~= nil and it.rec.Name) or '?',
-                                gone = (#kept == 0),
-                            };
-                            if strip then
-                                if #kept == 0 then table.remove(list, i);
-                                else it.mode = (#kept == 1) and kept[1] or kept; end
-                                changed = true;
-                            end
-                        end
-                    end
-                end
-            end
+            local r = mlib.gateRefsInSet(setName, M.working, target, strip);
+            for _, ref in ipairs(r.refs) do out.refs[#out.refs + 1] = ref; end
+            local changed = r.changed;
             if strip and changed and job ~= nil and has.setmgr then
                 local ok = nil;
                 pcall(function() ok = setmgr.commitSet(job, setName, buildCommitSlots()); end);

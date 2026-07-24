@@ -359,6 +359,66 @@ function M.deadTargets(plan)
 end
 
 -- ---------------------------------------------------------------------------
+-- SET-ENTRY MODE GATES -- the second store the Overwrite cascade must reach.
+--
+-- Trigger references are handled by triggersui's modeCondRefs. Set-entry gates live in
+-- a DIFFERENT file with a DIFFERENT serializer, and were reachable only through
+-- gearui's `modeSetRefs` -- a chunk-local needing live AshitaCore/profilesets/setmanager,
+-- with no headless test at all. Since this is the half that DELETES gear rows, the
+-- decision logic is lifted here where it can be pinned; gearui keeps the impure rim
+-- (loadSet / commitSet / restore-the-builder) and delegates the walk.
+--
+-- Gate semantics, identical to modeCondRefs and to the engine's own matcher: a target
+-- of 'Weapon' hits the whole mode ('Weapon' and every 'Weapon:Value'); a target of
+-- 'Weapon:Caster' hits that one value only. The cascade always passes the exact-value
+-- form, which is what keeps a bare `mode = 'Weapon'` untouched (ADR 0019).
+-- ---------------------------------------------------------------------------
+function M.gateMatches(gate, target)
+    local s = string.lower(tostring(gate or ''));
+    local t = string.lower(tostring(target or ''));
+    if t == '' then return false; end
+    return s == t or string.sub(s, 1, #t + 1) == (t .. ':');
+end
+
+-- Walk ONE set's slotLabel -> entries map. `entries` are the builder's wrappers
+-- ({ mode = string|list, rec = { Name = ... } }). Returns { refs = {...}, changed }.
+--
+-- strip=true edits IN PLACE, and the two outcomes differ in a way the pre-commit list
+-- must show: an entry whose ONLY gate died is REMOVED from the set (`gone = true`);
+-- an entry that keeps other gates just loses this one from its list.
+function M.gateRefsInSet(setName, working, target, strip)
+    local out = { refs = {}, changed = false };
+    if type(working) ~= 'table' then return out; end
+    for lbl, list in pairs(working) do
+        if type(list) == 'table' then
+            for i = #list, 1, -1 do
+                local it = list[i];
+                if type(it) == 'table' and it.mode ~= nil then
+                    local gates = (type(it.mode) == 'table') and it.mode or { it.mode };
+                    local kept, hit = {}, false;
+                    for _, m in ipairs(gates) do
+                        if M.gateMatches(m, target) then hit = true; else kept[#kept + 1] = m; end
+                    end
+                    if hit then
+                        out.refs[#out.refs + 1] = {
+                            set = setName, slot = lbl,
+                            item = (type(it.rec) == 'table' and it.rec.Name) or '?',
+                            gone = (#kept == 0),
+                        };
+                        if strip then
+                            if #kept == 0 then table.remove(list, i);
+                            else it.mode = (#kept == 1) and kept[1] or kept; end
+                            out.changed = true;
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return out;
+end
+
+-- ---------------------------------------------------------------------------
 -- Serialize / parse. Deterministic (stable diffs); parse is SANDBOXED (the
 -- blueprintsmodel / groupimport pattern: empty environment, text-only load), so a torn
 -- or hostile file yields an error, never a crash or code execution.
