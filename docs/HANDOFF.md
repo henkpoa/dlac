@@ -196,9 +196,15 @@ agent; the per-repo setup lives in `docs/agents/`.
 ## Working with Henrik
 
 - Edit addon files freely; recommend + reason instead of presenting option menus.
-- **User-facing naming needs his row-by-row sign-off** (stat names especially — "if
-  there is ANYTHING people will complain about, it is this"). Don't extrapolate
-  approval from silence.
+- **You are the maintainer; Henrik has the vision and field-tests** (his words,
+  2026-07-24). Execution decisions — including **user-facing naming/wording** — are
+  YOURS to make and sign off; don't punt a wording menu to him or wait on his
+  approval to ship strings. Name with care anyway: it's the thing players notice and
+  complain about most ("if there is ANYTHING people will complain about, it is this"),
+  so match existing conventions and keep it clear and honest. His lane is **vision**
+  (what to build, design rulings) + **field test** (he'll flag anything that reads
+  wrong in-game). Bring him direction forks and things only live testing can settle;
+  decide the rest. Don't extrapolate a design *direction* from silence.
 - Examples in docs/UI use generic names, never his personal set names.
 - He tests live and reports fast; expect mid-session scope shifts and parallel edits.
 - A GM is currently evaluating the addon for server approval — polish requests from

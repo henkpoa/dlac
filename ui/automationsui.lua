@@ -122,7 +122,7 @@ local UNIVERSAL = {
 -- Manifest schema version: bump when autoCommit writes NEW fields. An on-disk
 -- manifest with an older fmtver self-heals (renderAutomations triggers a rescan)
 -- so a dlac update never needs a manual "Rescan owned gear" click.
-local AUTO_FMT = 14;   -- 14: mv map (name -> MovementSpeed) + the mpMoveYield setting (movement gear may override batteries while moving);   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked; 5: craft ladders; 6: skill-up fillers in hq/nq; 7: helm ladders + hat map; 8: fish ladders; 9: oneiros grip + mpMerits; 10: universals ladder; 11: Refresh rides mp/mpBest (rf map + rung rf); 12: AUGMENTS counted -- MP and Refresh deltas from your actual bag copies fold into mp/rf; 13: PAIR HOMES -- ear/ring ladders re-home to the IDLE SET's declared positions (Default rule matching status=Idle; the MaxMP panel picker ALWAYS overrides detection) so the engine never relocates a piece across its pair
+local AUTO_FMT = 15;   -- 15: choco ladders (slotKey -> best-first rungs scored by ChocoboRidingTime; Main/Neck/Body/Hands/Legs/Feet -- the Chocobo Wand rides Main) for the Chocobo riding-gear automation (issue #95, engine dlac:AutoChoco);   -- 14: mv map (name -> MovementSpeed) + the mpMoveYield setting (movement gear may override batteries while moving);   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked; 5: craft ladders; 6: skill-up fillers in hq/nq; 7: helm ladders + hat map; 8: fish ladders; 9: oneiros grip + mpMerits; 10: universals ladder; 11: Refresh rides mp/mpBest (rf map + rung rf); 12: AUGMENTS counted -- MP and Refresh deltas from your actual bag copies fold into mp/rf; 13: PAIR HOMES -- ear/ring ladders re-home to the IDLE SET's declared positions (Default rule matching status=Idle; the MaxMP panel picker ALWAYS overrides detection) so the engine never relocates a piece across its pair
 
 local auto = { data = nil, loadedFor = nil, status = '' };
 
@@ -625,6 +625,46 @@ local function autoCommit()
             end
         end
     end);
+    -- Chocobo riding-gear ladders (docs/design/chocobo-gear.md): per SLOT, a
+    -- best-first ladder of owned+in-bags gear carrying the catalog's
+    -- ChocoboRidingTime (minutes added to the 30-minute base whistle). Slots
+    -- Main/Neck/Body/Hands/Legs/Feet ONLY (issue #95) -- the Chocobo Wand is a
+    -- Main-slot club and IS included even though it takes the weapon slot.
+    -- Stat-driven like the craft/HELM/fish ladders: new server gear lands on the
+    -- next rescan, no table to edit.
+    local CHOCO_SLOTS = { Main = true, Neck = true, Body = true,
+                          Hands = true, Legs = true, Feet = true };
+    local chocoBest = {};
+    pcall(function()
+        if type(deps.ownedList) ~= 'function' then return; end
+        local lvl = mainLevel();
+        local CHLADDER = 4;
+        local bySlot = {};   -- slot -> { {name, score, level, ride}, ... }
+        for _, rec in ipairs(deps.ownedList() or {}) do
+            local st = gearOracle.stats(rec, { level = lvl });
+            local sl = tostring(rec.Slot or '');
+            if type(st) == 'table' and rec.Name ~= nil and CHOCO_SLOTS[sl] == true
+               and (not hasDispatch or type(dsp.canWear) ~= 'function' or dsp.canWear(rec, job, 99))
+               and (type(deps.haveInBags) ~= 'function' or deps.haveInBags(rec)) then
+                local ride = tonumber(st.ChocoboRidingTime) or 0;
+                if ride > 0 then
+                    bySlot[sl] = bySlot[sl] or {};
+                    local lad = bySlot[sl];
+                    lad[#lad + 1] = { name = rec.Name, score = ride,
+                                      level = rec.Level or 0, ride = ride };
+                end
+            end
+        end
+        for sl, lad in pairs(bySlot) do
+            table.sort(lad, function(a, b)
+                if a.score ~= b.score then return a.score > b.score; end
+                return a.name < b.name;
+            end);
+            local l = {};
+            for i = 1, math.min(#lad, CHLADDER) do l[i] = lad[i]; end
+            chocoBest[string.lower(sl)] = l;
+        end
+    end);
     -- The crafting GOAL persisted for the trigger-set path (the manual overlay
     -- reads craftstate.lua instead). Read it from craftwatch -- NOT from
     -- CRAFT_UI, which is declared LATER in this file: referencing it here made
@@ -794,6 +834,21 @@ local function autoCommit()
         for _, c in ipairs(fishBest[k]) do
             rungs[#rungs + 1] = string.format('{ name = %q, score = %d, level = %d, fish = %d }',
                 c.name, c.score, c.level, c.fish);
+        end
+        L[#L + 1] = string.format('        %s = { %s },', k, table.concat(rungs, ', '));
+    end
+    L[#L + 1] = '    },';
+    -- choco ladders: slotKey -> best-first rungs by ChocoboRidingTime (engine:
+    -- dlac:AutoChoco; Main/Neck/Body/Hands/Legs/Feet, the Chocobo Wand in Main).
+    L[#L + 1] = '    choco = {';
+    local chbKeys = {};
+    for k in pairs(chocoBest) do chbKeys[#chbKeys + 1] = k; end
+    table.sort(chbKeys);
+    for _, k in ipairs(chbKeys) do
+        local rungs = {};
+        for _, c in ipairs(chocoBest[k]) do
+            rungs[#rungs + 1] = string.format('{ name = %q, score = %d, level = %d, ride = %d }',
+                c.name, c.score, c.level, c.ride);
         end
         L[#L + 1] = string.format('        %s = { %s },', k, table.concat(rungs, ', '));
     end
@@ -1148,6 +1203,10 @@ local function buildAutoRows()
           level = 0,                  max = 4, txt = nil },
         { key = 'fish',        name = 'Auto Fish Set',   kind = 'fishing-gear helper (idle only)',
           level = 0,                  max = 4, txt = nil },
+        -- Chocobo sits AFTER fish (index 7): rows[5]/rows[6] stay helm/fish, and
+        -- its own status is patched by KEY below (chocoui), never by index.
+        { key = 'choco',       name = 'Chocobo',         kind = 'riding-gear helper (idle only)',
+          level = 0,                  max = 3, txt = nil },
         -- AutoAmmo is appended LAST on purpose: rows[5]/rows[6] are read by
         -- index below (helm/fish) -- keep every existing index stable. (The
         -- combo branch appends its AutoAcc row before this one; the status
@@ -1188,6 +1247,17 @@ local function buildAutoRows()
         local fishui = require('dlac\\ui\\fishui');
         rows[6].max = fishui.maxLevel or 4;
         rows[6].level, rows[6].txt = fishui.status(deps);
+    end);
+    -- Chocobo coverage lives in chocoui (same pattern; found by KEY like ammo).
+    pcall(function()
+        local chocoui = require('dlac\\ui\\chocoui');
+        for _, r in ipairs(rows) do
+            if r.key == 'choco' then
+                r.max = chocoui.maxLevel or 3;
+                r.level, r.txt = chocoui.status(deps);
+                break;
+            end
+        end
     end);
     -- AutoAmmo status lives in ammoui (same pattern; found by key, not index --
     -- the row sits at a different index on main vs the combo branch).
@@ -1232,7 +1302,7 @@ M.levelColor = levelColor;
 -- left-click = open the panel; gearui shows the window + selects the tab).
 -- An unknown key lands on the list view instead of a blank detail.
 local DETAIL_KEYS = { iridescence = true, obi = true, oneiros = true, craft = true,
-                      helm = true, fish = true, ammo = true, maxmp = true, restock = true };
+                      helm = true, fish = true, choco = true, ammo = true, maxmp = true, restock = true };
 function M.openDetail(key)
     auto.view = (DETAIL_KEYS[key] == true) and key or nil;
 end
@@ -1486,6 +1556,14 @@ local function renderAutomations()
                 pcall(fishui.render, deps, availW);
             else
                 imgui.TextColored(COL_ERR, 'fishui failed to load.');
+            end
+        elseif auto.view == 'choco' then
+            -- Same pattern: the whole panel lives in ui/chocoui.lua.
+            local chok, chocoui = pcall(require, 'dlac\\ui\\chocoui');
+            if chok and type(chocoui) == 'table' and type(chocoui.render) == 'function' then
+                pcall(chocoui.render, deps, availW);
+            else
+                imgui.TextColored(COL_ERR, 'chocoui failed to load.');
             end
         elseif auto.view == 'ammo' then
             -- Same pattern: the whole panel lives in ui/ammoui.lua.

@@ -5071,3 +5071,109 @@ between branches — a `git checkout` round-trip briefly showed pre-fold content
 the "modified on disk" reminders (a false "everything reverted" scare, resolved by reading
 the reflog: all commits were safe on main). Lesson reaffirmed: on a shared checkout,
 `git status` / `git branch` before every edit, stage ONLY your own paths, and commit promptly.
+## Chocobo: the fourth idle-gear sibling (2026-07-23, issue #95, engine v120)
+
+**The gear half of the Chocobo automation** (parent PRD #93; docs/design/chocobo-gear.md),
+built as a fourth sibling to craft/HELM/fishing but the SIMPLEST of the four: no target, no
+category, no packet protocol, no proximity, no bar. Turning it on equips your best
+**riding-time gear** (idle-only) and the panel reports the total riding time = `30 + summed
+ChocoboRidingTime` minutes (the server computes duration as `1800 + mod*60` seconds at whistle
+time). The set is the six slots **Main/Neck/Body/Hands/Legs/Feet**, scored per-slot best-first
+by the catalog's `ChocoboRidingTime` (already a shipped stat -- no data table, no generator);
+the **Chocobo Wand is included in Main** even though it takes the weapon slot, with a panel note
+to equip the set before whistling. Same shape as the siblings: `feature/chocowatch.lua` writes
+`<char>\dlac\chocostate.lua { enabled, at }` (session-only `enabled`, off at login); the engine
+overlays `dlac:AutoChoco` on Default only, standing aside Engaged/Dead; the manifest gained a
+`choco` block (AUTO_FMT 14 -> 15) and `dispatch.M.VERSION` moved 119 -> 120.
+
+**The floor-invariant bug it surfaced.** Chocobo registers a `Chocobo` Arbiter claim (default
+rank below Fishing, above the Triggers floor). Adding a NEW known row to `ARB_ORDER_DEFAULT`
+exposed a latent bug in `M.arbOrder`: the append-missing pass walked an existing arbstate file's
+rows first (which end in `Triggers`, the floor) and then appended the missing known row --
+landing Chocobo AFTER `Triggers`. A claimant below the floor never wins a slot the idle set
+already dresses, so every existing player's Chocobo would have equipped nothing. Fixed by
+pinning the `Triggers` floor LAST unconditionally in `arbOrder` (and the arbwatch fallback) --
+a floor invariant that is correct regardless and lets any future claimant be added cleanly.
+Tests AR/AB updated for the 9-row order; the `rank 8` -> `rank 9` /dl-why lines followed.
+New tests CH1-15 (engine overlay), S139e-n (chocoui/chocowatch load + the reference-set 84-min
+total), S179b-d (the manifest choco block); the autogear golden gained the `choco` block +
+fmtver 15 (regenerated, reviewed). 2757 + 238 green both loops. **Player-facing names ("Chocobo",
+"Total riding time", the note) are the issue's own wording, pending the maintainer's sign-off.**
+
+## Chocobo: dig rank + guide scaffold (2026-07-23, issue #97)
+
+**The dig half's foundation** (parent PRD #93; docs/design/chocobo-dig.md "The rank
+model + guide scaffold"): the dig-rank model both search tabs will read, plus the guide
+panel scaffold — the live moon/day/weather header and the general dig-success line — hung
+below the existing riding-gear section. Not the tabs themselves, and not the timing
+auto-detect (that later slice is gated on the `/probe dig` calibration from #96).
+
+**The rank is masked, so it is assembled from three stacked sources, only one exact.**
+`GetCraftSkill(11)` returns the server's `0xFFFF` sentinel forever (confirmed by `/probe
+dig`), so `feature/digrank.lua` (a PURE, headless-tested brain) resolves the rank from:
+a **manual** dropdown seed; a one-way **ratchet** floor (`>= from digs`) raised whenever an
+`Obtained: <item>` chat line maps — via the shipped `digdata` — to a dig-rank requirement
+above it, never lowered; and a live **server** read that stays silent under the mask but
+would win, labelled `reported by server`, if a build ever unmasks index 59. Only the server
+source carries `exact = true`. `chocowatch` owns the glue — the persisted `rankManual` /
+`rankFloor` in `chocostate.lua` (they survive relog, unlike the session-only `enabled`), the
+throttled skill read, and an always-on `text_in` hook (the rank baseline is independent of
+the riding-gear toggle).
+
+**The "never lie" rule got its one home.** `digrank.gate(req, rankState)` returns `ok` /
+`locked` / `dimmed`: an over-rank item is HARD-locked only against an EXACT rank, and merely
+DIMMED against a manual/ratchet estimate. That is the single seam the by-item / by-area tabs
+will call for every row, and the reason a scaffold shipped before real zone data can be
+trusted not to mislead.
+
+**The scaffold degrades honestly.** `feature/vanamoon.lua` computes moon phase from the
+Vana'diel day (84-day cycle, illumination 0 New → 100 Full); `chocoui.clock()` reads day +
+weather from `nativedata` and the moon from vanamoon, each guarded so a failed weather scan
+shows "unavailable" without taking the header down. The general dig-success line uses a new
+`digcalc.averageSuccess` (mean combined success across enabled zones) — nil while `zones` is
+empty, so the panel says "run gen_digdata.py" rather than print a fake 0. No `dispatch.M.VERSION`
+bump: the engine reads only `enabled`/`at` from `chocostate.lua`, and the added rank fields do
+not change seeded-file behaviour. New tests DR1–44 + gate DR40a–f + VM1–10 (digrank/vanamoon
+pure math), DR41–44 (averageSuccess), S139o–s (the headless scaffold seams). 2878 + 243 green.
+
+**Flagged for the maintainer.** (1) `vanamoon.OFFSET` (the community-standard epoch 26) wants
+a one-time field cross-check against the in-game moon; if the ore-gate percent must be
+server-exact, swap the linear curve for the 84-entry LSB moon table (isolated in vanamoon).
+(2) Every new player-facing string — the rank ladder labels, the source labels, the header /
+note wording — is proposed, pending row-by-row sign-off.
+
+## Chocobo: By-item tab (2026-07-24, issue #99)
+
+**The second dig-guide tab** (parent PRD #93; docs/design/chocobo-dig.md "The By-item tab"):
+a fuzzy item search → the matching diggable items → the selected item's every zone + pool
+with rank + the two live odds, greyed by the SAME `digrank.gate` rule the by-area tab uses,
+plus the item ↔ area cross-link. It reuses the by-area row/odds rendering and adds **no new
+odds math** — two pure `digcalc` seams feed it.
+
+`digcalc.itemIndex()` is the fuzzy-search source: every unique pool item (deduped by id, its
+`minRank` the lowest requirement across the zones it drops in) PLUS the conditional
+crystals/clusters/rocks/ores **synthesised** from the `cond` rule tables (8 each = 32 entries)
+so "Fire Crystal" / "Chunk of Fire Ore" are searchable even though they live in no static
+pool. `digcalc.itemSources(entry, rank, mu, clock)` prices the selected item's every source:
+a pool item's rows carry `{ zoneId, zoneName, pool, req, onHit, perDig, locked }` (sorted by
+② per-dig descending, the by-area order); a conditional item's rows carry the per-zone
+`{ condKind, chance, minRank, condition, clockActive, rankOk, active }` — crystals/rocks span
+every enabled zone (`allZones`), ores only the 9 ore zones. Both are PURE (the clock is
+passed in) and fail soft. `chocoui.itemList`/`itemRows` wrap them and stamp `digrank.gate`.
+
+**Two things worth remembering.** (1) An item can be BOTH a static pool drop AND a conditional
+— Fire Crystal is listed in some zones' pools *and* is the Fire-weather conditional — so the
+index carries a DISTINCT entry for each, keyed `pool:<id>` vs `condKind:element`, never by name
+(a name-keyed lookup collided in the first test pass and masked the conditional entry). (2) The
+cross-link reuses the `uihost.selectTab` idiom on this panel's OWN tab bar: a zone click sets
+the by-area state and requests a one-shot forced `By area` selection via a probe-guarded 3-arg
+`BeginTabItem` (`ImGuiTabItemFlags_SetSelected`), so a binding without the flag just drops the
+jump instead of crashing (hard rule 2). All-zone conditionals show a note rather than 26
+identical clickable rows; ores list their 9 specific zones as cross-link buttons.
+
+No `dispatch.M.VERSION` bump (digcalc/chocoui are addon-state only; the engine reads just
+`enabled`/`at` from `chocostate.lua`). New tests BI1–BI27 (the two pure seams) + S139z–S139aa4
+(the composed seams) + the render-balance section now driving the By-item tab with the search
+filled. 2937 + 259 green. **Flagged:** the new player-facing strings (the `By item` tab name,
+the `Item:` / `needs X` / `Conditional drop` / `Diggable in …` labels) are proposed, pending
+the maintainer's row-by-row sign-off with the rest of the guide's wording.

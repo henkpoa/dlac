@@ -226,9 +226,9 @@ end)();
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
                    'groupsmodel','jobgate','ownedcache','profileexport','profilesets','setimport',
                    'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
-    local FEATURE = { 'ammowatch','arbwatch','augments','check','craftwatch','debug','eboxammo','eboxclient','fishcalc','fishwatch',
-                      'gamemode','helmwatch','location','lockstyle','lookpreview','macrobook','meritwatch',
-                      'mpbands','pinwatch','restockwatch','useitem' };
+    local FEATURE = { 'ammowatch','arbwatch','augments','check','chocowatch','craftwatch','debug','digcalc','digrank',
+                      'eboxammo','eboxclient','fishcalc','fishwatch','gamemode','helmwatch','location','lockstyle','lookpreview',
+                      'macrobook','meritwatch','mpbands','pinwatch','restockwatch','useitem','vanamoon' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
 
     local ALL = {};
@@ -5153,7 +5153,7 @@ end)();
     local def = dispatchM._arbDefaultOrder;
     check('AR1 default order exported', type(def), 'table');
     check('AR1b exact default rank', table.concat(def, '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers');
+        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     -- AR1c: the ADR 0012 laws the order encodes, checked as adjacency (not prose)
     local rank = {}; for i, n in ipairs(def) do rank[n] = i; end
     check('AR1d Pins outrank everything',    rank['Pins'], 1);
@@ -5166,18 +5166,18 @@ end)();
     -- AR2: arbOrder sanitizes. Missing/torn -> default; unknown dropped, missing
     -- known rows appended; a valid reorder is preserved.
     check('AR2 nil -> default', table.concat(dispatchM.arbOrder(nil), '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers');
+        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AR2b no order field -> default', table.concat(dispatchM.arbOrder({ foo = 1 }), '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers');
+        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AR2c a valid reorder is preserved',
         table.concat(dispatchM.arbOrder({ order = { 'MaxMP', 'AutoAmmo', 'Pins', 'Locks', 'Craft', 'HELM', 'Fishing', 'Triggers' } }), '>'),
-        'MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Triggers');
+        'MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AR2d unknown rows dropped, missing known rows appended in default order',
         table.concat(dispatchM.arbOrder({ order = { 'Fishing', 'Nonsense', 'Pins' } }), '>'),
-        'Fishing>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Triggers');
+        'Fishing>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Chocobo>Triggers');
     check('AR2e duplicates collapse',
         table.concat(dispatchM.arbOrder({ order = { 'Pins', 'Pins', 'AutoAmmo' } }), '>'),
-        'Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Triggers');
+        'Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
 
     -- AR3: the PURE resolve core -- claims + rank + floor -> winners + by.
     local order = dispatchM.arbOrder(nil);
@@ -5234,12 +5234,12 @@ end)();
     put('tests\\arbstate.lua', 'return { order = { "MaxMP", "AutoAmmo", "Pins", "Locks", "Craft", "HELM", "Fishing", "Triggers" } }');
     check('AR7 hand-edited reorder is read + sanitized',
         table.concat(dispatchM.arbOrder(esf(cache, 'arbstate.lua')), '>'),
-        'MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Triggers');
+        'MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>Triggers');
     cache.lastCheck = -1;
     put('tests\\arbstate.lua', 'return { order = {');   -- torn write
     check('AR7b torn write drops to default',
         table.concat(dispatchM.arbOrder(esf(cache, 'arbstate.lua')), '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers');
+        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     os.remove('tests\\arbstate.lua');
     dispatchM._charDirOverride = nil;
 
@@ -5327,7 +5327,7 @@ end)();
 --      Locks', floor-only slots 'Triggers (floor)', in canonical LAC order.
 -- ---------------------------------------------------------------------------
 (function()
-    local ord = dispatchM.arbOrder(nil);  -- Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers
+    local ord = dispatchM.arbOrder(nil);  -- Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers
     -- The whole claim path in one resolve. MaxMP is a proper CLAIM now (step 4):
     -- its battery targets a claim table, ranked below AutoAmmo (the deliberate
     -- cede) and above Craft (batteries over craft armor).
@@ -5377,11 +5377,11 @@ end)();
     check('AR12 the Ammo contest line names winner over runner-up (the issue example)',
         joined:find('Ammo: AutoAmmo (rank 3)  over MaxMP (rank 4)', 1, true) ~= nil, true);
     check('AR12b a MaxMP-only slot reads MaxMP over the floor',
-        joined:find('Ring1: MaxMP (rank 4)  over Triggers (rank 8)', 1, true) ~= nil, true);
+        joined:find('Ring1: MaxMP (rank 4)  over Triggers (rank 9)', 1, true) ~= nil, true);
     check('AR12c a veto slot reads stopped by Locks (even from a lowercase key)',
         joined:find('Legs: stopped by Locks (rank 2)', 1, true) ~= nil, true);
     check('AR12d floor-only slots collapse into one named Triggers-floor summary',
-        joined:find('Triggers floor (rank 8, uncontested):', 1, true) ~= nil
+        joined:find('Triggers floor (rank 9, uncontested):', 1, true) ~= nil
         and joined:find('Body', 1, true) ~= nil, true);
     -- Contested slots emit individually in canonical LAC order (ammo 4 < hands 10
     -- < ring1 11), BEFORE the trailing floor summary.
@@ -5453,7 +5453,7 @@ end)();
     check('LV0b arbLockClaim accepts an array of slot keys',
         dispatchM.arbLockClaim({ 'Head', 'Ring1' }).Ring1, dispatchM.LOCK_HELD);
 
-    local order = dispatchM.arbOrder(nil);  -- Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers
+    local order = dispatchM.arbOrder(nil);  -- Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers
     local floor = { Head = 'Idle Hat', Ring1 = 'Idle Ring' };
     local locked = dispatchM.arbLockClaim({ 'Head', 'Ring1' });  -- both slots locked
 
@@ -5548,15 +5548,15 @@ end)();
     -- Default + sanitize delegate to the engine (one vocabulary, no drift).
     check('AB1 default order matches the engine default',
         table.concat(aw.defaultOrder(), '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers');
+        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AB1b defaultOrder is a fresh copy (mutating it does not stick)',
         (function() local d = aw.defaultOrder(); d[1] = 'X'; return aw.defaultOrder()[1]; end)(), 'Pins');
     check('AB2 sanitize nil -> default',
         table.concat(aw.sanitize(nil), '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers');
+        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AB2b sanitize drops unknown, appends missing',
         table.concat(aw.sanitize({ order = { 'Fishing', 'Nonsense', 'Pins' } }), '>'),
-        'Fishing>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Triggers');
+        'Fishing>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Chocobo>Triggers');
 
     -- serialize -> the engine's file shape; round-trips through arbOrder.
     local txt = aw.serialize({ 'MaxMP', 'AutoAmmo', 'Pins', 'Locks', 'Craft', 'HELM', 'Fishing', 'Triggers' });
@@ -5567,7 +5567,7 @@ end)();
     local roundtrip = dispatchM.arbOrder(chunk());
     check('AB3c serialize -> arbOrder round-trips a valid reorder',
         table.concat(roundtrip, '>'),
-        'MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Triggers');
+        'MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AB3d serialize skips non-string / empty entries',
         aw.serialize({ 'Pins', '', 42, 'Triggers' }), 'return { order = { "Pins", "Triggers" } }\n');
 
@@ -5575,25 +5575,25 @@ end)();
     local def = aw.defaultOrder();   -- Pins Locks AutoAmmo MaxMP Craft HELM Fishing Triggers
     check('AB4 a claimant moves up one (AutoAmmo #3 -> #2, crossing the Locks veto)',
         table.concat(aw.moveClaimant(def, 3, -1), '>'),
-        'Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Triggers');
+        'Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AB4b a claimant moves down one (AutoAmmo #3 -> #4)',
         table.concat(aw.moveClaimant(def, 3, 1), '>'),
-        'Pins>Locks>MaxMP>AutoAmmo>Craft>HELM>Fishing>Triggers');
+        'Pins>Locks>MaxMP>AutoAmmo>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AB4c the input order is not mutated', table.concat(def, '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers');
+        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     -- Step 3: the Locks veto row now DRAGS (only the Triggers floor is fixed).
     check('AB5 Locks drags down one (#2 -> #3, under AutoAmmo)',
         table.concat(aw.moveClaimant(def, 2, 1), '>'),
-        'Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Triggers');
+        'Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AB5a Locks drags up one to the top (absolute veto, over Pins)',
         table.concat(aw.moveClaimant(def, 2, -1), '>'),
-        'Locks>Pins>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers');
-    check('AB5b Triggers refuses the drag (the floor)', aw.moveClaimant(def, 8, -1), nil);
-    check('AB6 Fishing cannot move down into the Triggers floor (stays last)',
-        aw.moveClaimant(def, 7, 1), nil);
+        'Locks>Pins>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+    check('AB5b Triggers refuses the drag (the floor)', aw.moveClaimant(def, 9, -1), nil);
+    check('AB6 the floor-adjacent claimant (Chocobo #8) cannot move down into the Triggers floor (stays last)',
+        aw.moveClaimant(def, 8, 1), nil);
     check('AB6b Fishing CAN move up (HELM #6 <-> Fishing #7)',
         table.concat(aw.moveClaimant(def, 7, -1), '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>Fishing>HELM>Triggers');
+        'Pins>Locks>AutoAmmo>MaxMP>Craft>Fishing>HELM>Chocobo>Triggers');
     check('AB7 out-of-range / bad args are nil, never a throw',
         aw.moveClaimant(def, 1, -1) == nil and aw.moveClaimant(def, 0, 1) == nil
         and aw.moveClaimant(def, 3, 0) == nil and aw.moveClaimant(nil, 1, 1) == nil, true);
@@ -6911,6 +6911,50 @@ end)();
     check('F84 wornFishTotal: best body + doubled ring, rod excluded',
         fcalc.wornFishTotal({ [1] = 1, [2] = 1, [3] = 2, [4] = 1 }), 4);
     fcalc._setDb(realDb);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- CHOCOBO riding-gear overlay (issue #95, engine v120 -- docs/design/chocobo-
+-- gear.md). The fourth idle-only sibling: chocoStateActive is enabled-only;
+-- chocoOverlayFor resolves the manifest `choco` block through dlac:AutoChoco
+-- for Main/Neck/Body/Hands/Legs/Feet (the Chocobo Wand rides Main), stands
+-- aside Engaged/Dead, and level-gates each rung like HELM/Fishing.
+-- ---------------------------------------------------------------------------
+(function()
+    local act = dispatchM._chocoStateActive;
+    check('CH1 enabled state active',   act({ enabled = true }), true);
+    check('CH2 disabled state inactive', act({ enabled = false }), false);
+    check('CH3 nil state inactive',     act(nil), false);
+
+    dispatchM._autoOverride = { choco = {
+        main = { { name = 'Chocobo Wand', score = 30, level = 1, ride = 30 } },
+        neck = { { name = 'Chocobo Torque', score = 4, level = 1, ride = 4 } },
+        body = { { name = 'Orange Race Silks', score = 10, level = 1, ride = 10 } },
+        legs = { { name = 'Riders Hose', score = 4, level = 55, ride = 4 } },
+    } };
+    local cs = { enabled = true, at = 1 };
+    local cov = dispatchM._chocoOverlayFor(cs, { player = { MainJobSync = 75, Status = 'Idle' } });
+    check('CH4 Main is the Chocobo Wand (weapon slot included)', cov and cov.Main, 'Chocobo Wand');
+    check('CH5 Neck resolves',  cov and cov.Neck, 'Chocobo Torque');
+    check('CH6 Body resolves',  cov and cov.Body, 'Orange Race Silks');
+    check('CH7 Legs usable at 75', cov and cov.Legs, 'Riders Hose');
+    -- slots the ladder has no gear for are simply absent from the overlay.
+    check('CH8 Hands with no owned rung -> slot absent', cov and cov.Hands, nil);
+    local covLow = dispatchM._chocoOverlayFor(cs, { player = { MainJobSync = 10, Status = 'Idle' } });
+    check('CH9 underlevel Legs rung -> slot empty', covLow and covLow.Legs, nil);
+    check('CH10 low-level Main still resolves',      covLow and covLow.Main, 'Chocobo Wand');
+    -- idle-only: Engaged/Dead stand the whole overlay down.
+    check('CH11 engaged -> stands aside',
+        dispatchM._chocoOverlayFor(cs, { player = { MainJobSync = 75, Status = 'Engaged' } }), nil);
+    check('CH12 dead -> stands aside',
+        dispatchM._chocoOverlayFor(cs, { player = { MainJobSync = 75, Status = 'Dead' } }), nil);
+    check('CH13 disabled -> no overlay',
+        dispatchM._chocoOverlayFor({ enabled = false }, { player = { MainJobSync = 75, Status = 'Idle' } }), nil);
+    check('CH14 resolveVirtual dlac:AutoChoco Main', dispatchM._resolveVirtual('dlac:AutoChoco',
+        { player = { MainJobSync = 75 } }, 'Main'), 'Chocobo Wand');
+    check('CH15 resolveVirtual unclaimed choco slot -> nil', dispatchM._resolveVirtual('dlac:AutoChoco',
+        { player = { MainJobSync = 75 } }, 'Ring1'), nil);
+    dispatchM._autoOverride = nil;
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -9891,6 +9935,580 @@ end)();
     local pp = eng.parse0x28Pet(pkt);
     check('NEB5 pet actionId decodes', pp.actionId, 900);
     check('NEB6 pet mobskill message decodes', pp.message, 43);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- CHOCOBO DIGGING: digcalc odds math (hand-computed pools) + digdata shape +
+-- fail-soft loading -- PRD #93 / issue #94, docs/design/chocobo-dig.md. The
+-- odds are derived BY HAND from the PRD formula:
+--   mu   = 1.5 - |moonPhase - 50| / 50
+--   q_i  = min(1, weight_i / (1000 * mu))   (0 if rank < requirement_i)
+--   S    = 1 - PROD_i (1 - q_i)
+--   P_i  = q_i * INT_0^1 PROD_{j!=i}(1 - q_j + q_j*t) dt
+--   (1) On a hit = P_i / S   (sums to ~1 within a pool)
+--   (2) Per dig  = P_i       (sums to S)
+-- If a port edit moves one of these numbers, re-derive from the formula before
+-- touching the test. The math tests use SYNTHETIC pools (no digdata), mirroring
+-- fishcalc's F1-F14; the shape/fail-soft tests exercise the shipped table.
+-- ---------------------------------------------------------------------------
+(function()
+    local dc = dofile('feature/digcalc.lua');
+    package.loaded['dlac\\feature\\digcalc'] = dc;
+    local function r6(x) return math.floor((tonumber(x) or 0) * 1e6 + 0.5) / 1e6; end
+
+    -- moon multiplier: best (0.5) at new/full, worst (1.5) at half; clamps.
+    check('DC1 moon new  -> 0.5', dc.moonMult(0), 0.5);
+    check('DC2 moon full -> 0.5', dc.moonMult(100), 0.5);
+    check('DC3 moon half -> 1.5', dc.moonMult(50), 1.5);
+    check('DC4 moon clamps below 0',  dc.moonMult(-40), 0.5);
+    check('DC5 moon clamps above 100', dc.moonMult(140), 0.5);
+    check('DC6 moon default (nil) = half', dc.moonMult(nil), 1.5);
+
+    -- qualify probability q = min(1, w/(1000*mu)); best moon lifts a mid weight
+    -- to certainty, worst moon thins it.
+    check('DC7 qualify neutral', dc.qualify(500, 1), 0.5);
+    check('DC8 qualify caps at 1', dc.qualify(1000, 1), 1);
+    check('DC9 qualify best moon caps a 500-weight', dc.qualify(500, 0.5), 1);
+    check('DC10 qualify worst moon thins to 1/3', r6(dc.qualify(500, 1.5)), r6(1/3));
+    check('DC11 qualify zero weight -> 0', dc.qualify(0, 1), 0);
+
+    -- two-item pool {500, 1000} at mu=1: q1=0.5, q2=1 -> S=1, P1=0.25, P2=0.75.
+    local two = dc.poolOdds({ { id = 1, n = 'a', w = 500, rank = 0 },
+                              { id = 2, n = 'b', w = 1000, rank = 0 } }, 8, 1);
+    check('DC12 pool success S = 1', two.S, 1);
+    check('DC13 P1 (per dig) = 0.25', r6(two.items[1].perDig), 0.25);
+    check('DC14 P2 (per dig) = 0.75', r6(two.items[2].perDig), 0.75);
+    check('DC15 on-a-hit share 1', r6(two.items[1].onHit), 0.25);
+    check('DC16 on-a-hit share 2', r6(two.items[2].onHit), 0.75);
+    local sPerDig = two.items[1].perDig + two.items[2].perDig;
+    local sOnHit  = two.items[1].onHit + two.items[2].onHit;
+    check('DC17 (2) per-dig sums to S',   r6(sPerDig), r6(two.S));
+    check('DC18 (1) on-a-hit sums to ~1', r6(sOnHit), 1);
+
+    -- symmetric three-item pool, w=100 each, mu=1: q=0.1, S=1-0.9^3=0.271,
+    -- P_i=0.1*INT(0.9+0.1t)^2 = 0.0903333..., on-a-hit = 1/3 each.
+    local three = dc.poolOdds({ { id = 1, n = 'a', w = 100, rank = 0 },
+                                { id = 2, n = 'b', w = 100, rank = 0 },
+                                { id = 3, n = 'c', w = 100, rank = 0 } }, 8, 1);
+    check('DC19 three-item S = 0.271', r6(three.S), 0.271);
+    check('DC20 three-item P_i', r6(three.items[1].P), r6(0.0903333333));
+    check('DC21 three-item on-a-hit = 1/3', r6(three.items[2].onHit), r6(1/3));
+    local t3 = three.items[1].P + three.items[2].P + three.items[3].P;
+    check('DC22 three-item per-dig sums to S', r6(t3), r6(three.S));
+
+    -- rank-gating: item 2 needs rank 5, player is rank 3 -> locked, q2=0, it
+    -- drops out and reshapes the surviving share to 100%.
+    local gated = dc.poolOdds({ { id = 1, n = 'a', w = 500, rank = 0 },
+                                { id = 2, n = 'b', w = 1000, rank = 5 } }, 3, 1);
+    check('DC23 over-rank item is locked', gated.items[2].locked, true);
+    check('DC24 locked item q = 0',        gated.items[2].q, 0);
+    check('DC25 locked item per-dig = 0',  gated.items[2].perDig, 0);
+    check('DC26 surviving S = 0.5',        r6(gated.S), 0.5);
+    check('DC27 surviving on-a-hit reshaped to 1', r6(gated.items[1].onHit), 1);
+    check('DC28 active-item count drops to 1', gated.n, 1);
+
+    -- moon applied correctly: a single 500-weight item is a certainty at best
+    -- moon (S=1) and thins to 1/3 at worst.
+    local mBest  = dc.poolOdds({ { id = 1, n = 'a', w = 500, rank = 0 } }, 8, dc.moonMult(0));
+    local mWorst = dc.poolOdds({ { id = 1, n = 'a', w = 500, rank = 0 } }, 8, dc.moonMult(50));
+    check('DC29 best moon -> S = 1',        r6(mBest.S), 1);
+    check('DC30 worst moon -> S = 1/3',     r6(mWorst.S), r6(1/3));
+    check('DC31 best moon beats worst',     mBest.S > mWorst.S, true);
+
+    -- an asymmetric four-item pool at an off-neutral moon: the sum invariants
+    -- must still hold exactly (the identity SUM P_i = S).
+    local four = dc.poolOdds({ { id = 1, n = 'a', w = 300, rank = 0 },
+                               { id = 2, n = 'b', w = 700, rank = 0 },
+                               { id = 3, n = 'c', w = 250, rank = 0 },
+                               { id = 4, n = 'd', w = 900, rank = 0 } }, 8, 1.2);
+    local fp, fh = 0, 0;
+    for _, it in ipairs(four.items) do fp = fp + it.perDig; fh = fh + it.onHit; end
+    check('DC32 asymmetric per-dig sums to S', r6(fp), r6(four.S));
+    check('DC33 asymmetric on-a-hit sums to 1', r6(fh), 1);
+
+    -- digSuccess combines independent pools: two pools each with S=0.5 ->
+    -- 1 - 0.5*0.5 = 0.75.
+    local half = { { id = 1, n = 'x', w = 500, rank = 0 } };   -- S = 0.5 at mu=1
+    check('DC34 general dig-success across pools', r6(dc.digSuccess({ half, half }, 8, 1)), 0.75);
+
+    -- empty pool: S = 0, no items, no divide-by-zero.
+    local empty = dc.poolOdds({}, 8, 1);
+    check('DC35 empty pool S = 0', empty.S, 0);
+    check('DC36 empty pool no items', #empty.items, 0);
+
+    -- ---- digdata shape (the shipped table the guide trusts) ----
+    dc._setDb(dofile('data/digdata.lua'));
+    local db = dc.db();
+    check('DC37 digdata loads', db ~= nil, true);
+    check('DC38 rank ladder is 0..10', db.ranks and #db.ranks, 10);   -- [0]..[10] -> #=10
+    check('DC38b Expert is rank 10',  db.ranks[10], 'Expert');
+    check('DC39 Novice is rank 3',    db.ranks[3], 'Novice');
+    check('DC40 Craftsman is rank 6', db.ranks[6], 'Craftsman');
+    check('DC41 zones is a table',    type(db.zones), 'table');
+    -- conditional rule tables: maps + gates, well-formed.
+    local cond = dc.conditionals();
+    check('DC42 conditionals present', type(cond), 'table');
+    check('DC43 crystal gate ~10%, no rank', cond.crystals.chance == 10 and cond.crystals.minRank == 0, true);
+    local nEl = 0; for _ in pairs(cond.crystals.byElement) do nEl = nEl + 1; end
+    check('DC44 crystals cover 8 elements', nEl, 8);
+    check('DC45 Fire crystal/cluster ids', cond.crystals.byElement.Fire.crystal == 4096
+        and cond.crystals.byElement.Fire.cluster == 4104, true);
+    check('DC46 Dark crystal/cluster ids', cond.crystals.byElement.Dark.crystal == 4103
+        and cond.crystals.byElement.Dark.cluster == 4111, true);
+    check('DC47 rock gate ~5% >= Novice', cond.rocks.chance == 5 and cond.rocks.minRank == 3, true);
+    check('DC48 rock day->element map (Firesday=Fire)', cond.rocks.byDay.Firesday, 'Fire');
+    local nDay = 0; for _ in pairs(cond.rocks.byDay) do nDay = nDay + 1; end
+    check('DC49 rock day map has 8 days', nDay, 8);
+    check('DC50 ore gate ~10% >= Craftsman', cond.ores.chance == 10 and cond.ores.minRank == 6, true);
+    check('DC51 ore needs elemental weather', cond.ores.requiresElementalWeather, true);
+    check('DC52 ore moon-phase window 7..21', cond.ores.moonPhaseWindow.min == 7 and cond.ores.moonPhaseWindow.max == 21, true);
+    check('DC53 ore day->element map (Darksday=Dark)', cond.ores.byDay.Darksday, 'Dark');
+    check('DC54 ore has a zone set', type(cond.ores.zones), 'table');
+
+    -- every zone entry that IS present is well-formed (positive weights, valid
+    -- pools, ranks in 0..8) -- guards a bad regeneration; passes vacuously while
+    -- `zones` is empty pending the maintainer regen (see digdata's DATA STATUS).
+    local VALID_POOL = { Treasure = true, Regular = true, Bore = true, Burrow = true };
+    local zoneCount, badZone = 0, nil;
+    for zid, z in pairs(db.zones) do
+        zoneCount = zoneCount + 1;
+        if type(z.n) ~= 'string' or type(z.pools) ~= 'table' then badZone = badZone or zid; end
+        for pool, list in pairs(z.pools or {}) do
+            if not VALID_POOL[pool] then badZone = badZone or ('pool:' .. tostring(pool)); end
+            for _, it in ipairs(list) do
+                if type(it.id) ~= 'number' or (tonumber(it.w) or 0) <= 0
+                   or (tonumber(it.rank) or -1) < 0 or (tonumber(it.rank) or 99) > 8 then
+                    badZone = badZone or ('item@' .. tostring(zid));
+                end
+            end
+        end
+    end
+    check('DC55 every present zone is well-formed', badZone, nil);
+    -- Once regenerated the table must hold exactly the 26 enabled zones; until
+    -- then it is empty and the guide's by-zone queries fail soft. This asserts
+    -- the invariant is one of those two honest states, never a partial mess.
+    check('DC56 zone count is 0 (pending regen) or exactly 26', zoneCount == 0 or zoneCount == 26, true);
+
+    -- ---- fail-soft: absent table disables data queries, never errors ----
+    dc._setDb(false);
+    check('DC57 absent db -> db() nil',        dc.db(), nil);
+    check('DC58 absent db -> zoneIds empty',   #dc.zoneIds(), 0);
+    check('DC59 absent db -> zoneOdds nil',    dc.zoneOdds(100, 8, 1), nil);
+    check('DC60 absent db -> conditionals nil', dc.conditionals(), nil);
+    -- pure math still works with no db (it never touches it)
+    check('DC61 math works without a db', dc.poolOdds({ { id = 1, n = 'a', w = 500, rank = 0 } }, 8, 1).S, 0.5);
+    dc._setDb(nil);   -- restore lazy load for any later section
+end)();
+
+-- ---------------------------------------------------------------------------
+-- CHOCOBO DIG RANK + guide scaffold (issue #97, PRD #93): the pure rank
+-- estimator (digrank -- ratchet / server-read decode / effective-rank resolve /
+-- Obtained parse / item->rank lookup), the pure moon math (vanamoon), and
+-- digcalc.averageSuccess for the general dig-success figure. All headless.
+-- ---------------------------------------------------------------------------
+(function()
+    local dr = dofile('feature/digrank.lua');
+    local vm = dofile('feature/vanamoon.lua');
+    local dc = dofile('feature/digcalc.lua');
+    local function r6(x) return math.floor((tonumber(x) or 0) * 1e6 + 0.5) / 1e6; end
+
+    -- ---- digrank.clamp: snaps into 0..10, floors garbage to 0 ----
+    check('DR1 clamp keeps in-range', dr.clamp(4), 4);
+    check('DR2 clamp floors below 0', dr.clamp(-3), 0);
+    check('DR3 clamp caps above 10',  dr.clamp(50), 10);
+    check('DR3b MAX_RANK is Expert (10)', dr.MAX_RANK, 10);
+    check('DR3c ladder labels Veteran + Expert', tostring(dr.RANKS[9]) .. '/' .. tostring(dr.RANKS[10]), 'Veteran/Expert');
+    check('DR4 clamp rounds',         dr.clamp(3.6), 4);
+    check('DR5 clamp nil -> 0',       dr.clamp(nil), 0);
+
+    -- ---- ratchet: one-way, never lowers ----
+    check('DR6 ratchet raises to a higher requirement', dr.ratchet(2, 5), 5);
+    check('DR7 ratchet ignores a lower requirement',    dr.ratchet(5, 2), 5);
+    check('DR8 ratchet equal stays',                    dr.ratchet(4, 4), 4);
+    check('DR9 ratchet nil req leaves floor',           dr.ratchet(3, nil), 3);
+    check('DR10 ratchet clamps a wild requirement',     dr.ratchet(0, 99), 10);
+    -- monotonic across a sequence of digs (never dips)
+    local floor, mono = 0, true;
+    for _, req in ipairs({ 1, 3, 2, 6, 4, 5, 8, 7 }) do
+        local nf = dr.ratchet(floor, req);
+        if nf < floor then mono = false; end
+        floor = nf;
+    end
+    check('DR11 ratchet is monotonic over a dig sequence', mono and floor, 8);
+
+    -- ---- serverRank: masked read -> nil; real in-range -> rank ----
+    check('DR12 masked 0xFFFF -> nil',        dr.serverRank(0xFFFF), nil);
+    check('DR13 rank 31 (masked decode) -> nil', dr.serverRank(31), nil);
+    check('DR14 a real rank 4 word -> 4',     dr.serverRank(4), 4);
+    check('DR15 rank word 8 (Adept) -> 8',    dr.serverRank(8), 8);
+    check('DR15b rank word 9 (Veteran) -> 9', dr.serverRank(9), 9);
+    check('DR15c rank word 10 (Expert) -> 10', dr.serverRank(10), 10);
+    check('DR16 out-of-ladder word 11 -> nil', dr.serverRank(11), nil);
+    check('DR17 nil word -> nil',             dr.serverRank(nil), nil);
+
+    -- ---- parseObtained: the dig "Obtained: <item>" line ----
+    check('DR18 parses a plain Obtained line', dr.parseObtained('Obtained: Wind Crystal.'), 'Wind Crystal');
+    check('DR19 tolerates no trailing period', dr.parseObtained('Obtained: Handful of Sand'), 'Handful of Sand');
+    check('DR20 non-Obtained line -> nil',     dr.parseObtained('You dig and you dig...but find nothing.'), nil);
+    check('DR21 nil line -> nil',              dr.parseObtained(nil), nil);
+
+    -- ---- itemRequirement: min rank across every source, fail-soft ----
+    local SYNTH = { zones = {
+        [100] = { n = 'A', pools = {
+            Bore   = { { id = 1, n = 'Copper Ore', w = 500, rank = 2 } },
+            Burrow = { { id = 2, n = 'Bird Egg',   w = 300, rank = 0 } },
+        } },
+        [101] = { n = 'B', pools = {
+            Treasure = { { id = 1, n = 'Copper Ore', w = 400, rank = 5 } },   -- same item, harder here
+        } },
+    } };
+    check('DR22 requirement = the MIN across sources', dr.itemRequirement('Copper Ore', SYNTH), 2);
+    check('DR23 requirement is name-insensitive',      dr.itemRequirement('copper ORE.', SYNTH), 2);
+    check('DR24 a rank-0 item',                        dr.itemRequirement('Bird Egg', SYNTH), 0);
+    check('DR25 unknown item -> nil (no ratchet)',     dr.itemRequirement('Adaman Ore', SYNTH), nil);
+    check('DR26 nil db -> nil (fail soft)',            dr.itemRequirement('Copper Ore', nil), nil);
+
+    -- ---- resolve: precedence + honest exact flag ----
+    local ranks = { [0]='Amateur',[1]='Recruit',[2]='Initiate',[3]='Novice',[4]='Apprentice',
+                    [5]='Journeyman',[6]='Craftsman',[7]='Artisan',[8]='Adept' };
+    local rManual = dr.resolve(3, 0, nil, ranks);
+    check('DR27 manual seed drives the rank',   rManual.rank, 3);
+    check('DR28 manual source labelled',        rManual.source, 'manual');
+    check('DR29 manual is NOT exact',           rManual.exact, false);
+    check('DR30 rank label resolved',           rManual.label, 'Novice');
+    local rRatchet = dr.resolve(2, 5, nil, ranks);
+    check('DR31 a floor above the pick wins',   rRatchet.rank, 5);
+    check('DR32 ratchet source labelled',       rRatchet.source, 'ratchet');
+    check('DR33 ratchet source label text',     rRatchet.sourceLabel, '>= from digs');
+    check('DR34 ratchet is an estimate',        rRatchet.exact, false);
+    local rBelow = dr.resolve(6, 3, nil, ranks);
+    check('DR35 a floor below the pick is ignored', rBelow.rank, 6);
+    check('DR36 ...and stays manual',               rBelow.source, 'manual');
+    local rServer = dr.resolve(2, 4, 7, ranks);
+    check('DR37 a server read beats both estimates', rServer.rank, 7);
+    check('DR38 server source labelled',             rServer.source, 'server');
+    check('DR39 server read IS exact',               rServer.exact, true);
+    check('DR40 server source label text',           rServer.sourceLabel, 'reported by server');
+
+    -- ---- gate: the grey-out verdict, where "never lie" lives ----
+    check('DR40a reachable item is ok',            dr.gate(3, rManual), 'ok');   -- req 3 <= rank 3
+    check('DR40b over an ESTIMATE -> dimmed',      dr.gate(5, rManual), 'dimmed');
+    check('DR40c over an EXACT rank -> locked',    dr.gate(8, rServer), 'locked');  -- req 8 > exact 7
+    check('DR40d exact but reachable -> ok',       dr.gate(7, rServer), 'ok');
+    check('DR40e a bare rank number works too',    dr.gate(5, 2), 'dimmed');   -- no state = estimate
+    check('DR40f a nil requirement is never gated', dr.gate(nil, rServer), 'ok');
+
+    -- ---- timing rank detection (issue #100): classify + invert the first-dig
+    --      zone cooldown clamp(60 - 5*rank, 10, 60) ----
+    check('DT1 obtained line -> tag + item', (function()
+        local t, i = dr.classifyDigLine('Obtained: Wind Crystal.'); return t .. '/' .. tostring(i);
+    end)(), 'obtained/Wind Crystal');
+    check('DT2 free reject -> wait',        dr.classifyDigLine('You must wait a little while longer.'), 'wait');
+    check('DT3 "wait longer" phrasing -> wait', dr.classifyDigLine('You must wait longer to perform that action.'), 'wait');
+    check('DT4 nothing-found -> nothing',   dr.classifyDigLine('You dig and you dig...but find nothing.'), 'nothing');
+    check('DT5 with-ease -> ease',          dr.classifyDigLine('The chocobo digs with ease.'), 'ease');
+    check('DT6 a non-dig line -> nil',      dr.classifyDigLine('Someone casts Fire.'), nil);
+    check('DT7 nil line -> nil',            dr.classifyDigLine(nil), nil);
+    -- completed-dig predicate (only these carry a usable first-dig timing)
+    check('DT8 obtained is a completed dig', dr.isCompletedDig('obtained'), true);
+    check('DT9 nothing is a completed dig',  dr.isCompletedDig('nothing'), true);
+    check('DT10 ease is a completed dig',    dr.isCompletedDig('ease'), true);
+    check('DT11 a reject is NOT a completed dig', dr.isCompletedDig('wait'), false);
+    -- invert the cooldown: threshold seconds -> rank (round to the 5s rung)
+    check('DT12 60s -> Amateur (0)',   dr.rankFromZoneTiming(60), 0);
+    check('DT13 20s -> Adept (8)',     dr.rankFromZoneTiming(20), 8);
+    check('DT14 15s -> Veteran (9)',   dr.rankFromZoneTiming(15), 9);
+    check('DT15 10s -> Expert (10)',   dr.rankFromZoneTiming(10), 10);
+    check('DT16 Henrik: 11s -> Expert (10)', dr.rankFromZoneTiming(11), 10);   -- field data
+    check('DT17 sub-floor (<10s) still Expert', dr.rankFromZoneTiming(4), 10);  -- 10s clamp floor
+    check('DT18 a late dig reads a low rank (never negative)', dr.rankFromZoneTiming(300), 0);
+    check('DT19 rounds to the nearest rung (17s -> 9)', dr.rankFromZoneTiming(17), 9);
+    check('DT20 non-number threshold -> nil', dr.rankFromZoneTiming('soon'), nil);
+    check('DT21 non-positive threshold -> nil', dr.rankFromZoneTiming(0), nil);
+
+    -- ---- vanamoon: pure moon math ----
+    check('VM1 percent in 0..100 across the whole cycle', (function()
+        for d = 0, 200 do local p = vm.percent(d); if type(p) ~= 'number' or p < 0 or p > 100 then return false; end end
+        return true;
+    end)(), true);
+    -- symmetric around the Full midpoint: age a and (CYCLE-a) share a percent.
+    check('VM2 illumination is symmetric about Full', (function()
+        for a = 1, 41 do
+            local dayLow  = a - vm.OFFSET;              -- age a
+            local dayHigh = (vm.CYCLE - a) - vm.OFFSET; -- age CYCLE-a
+            if vm.percent(dayLow) ~= vm.percent(dayHigh) then return false; end
+        end
+        return true;
+    end)(), true);
+    check('VM3 New Moon (age 0) is 0%',  vm.percent(0 - vm.OFFSET), 0);
+    check('VM4 Full Moon (age 42) is 100%', vm.percent(42 - vm.OFFSET), 100);
+    check('VM5 waxing before Full', vm.waxing(10 - vm.OFFSET), true);
+    check('VM6 waning after Full',  vm.waxing(60 - vm.OFFSET), false);
+    check('VM7 New Moon named',  vm.name(0 - vm.OFFSET),  'New Moon');
+    check('VM8 Full Moon named', vm.name(42 - vm.OFFSET), 'Full Moon');
+    check('VM9 phase() bundles the fields', (function()
+        local ph = vm.phase(42 - vm.OFFSET);
+        return type(ph) == 'table' and ph.percent == 100 and ph.name == 'Full Moon';
+    end)(), true);
+    check('VM10 bad day -> nil (graceful)', vm.phase(nil), nil);
+    -- SERVER-CONVENTION pins (absolute day numbers, NOT relative to OFFSET) --
+    -- these lock vanamoon to moon::get_phase in src/common/vana_time.h, where
+    -- daysmod=(day+26)%84: daysmod 0 (day 58) = 100% Full, daysmod 42 (day 16)
+    -- = 0% New, daysmod<42 waning, daysmod>42 waxing. VM1-VM10 only test the
+    -- internal curve shape and never caught the epoch being half a cycle off.
+    check('VM11 day 58 (daysmod 0) is 100% Full', vm.percent(58), 100);
+    check('VM12 day 58 named Full Moon',          vm.name(58),    'Full Moon');
+    check('VM13 day 16 (daysmod 42) is 0% New',   vm.percent(16), 0);
+    check('VM14 day 16 named New Moon',            vm.name(16),    'New Moon');
+    check('VM15 day 79 (daysmod 21) is waning',   vm.waxing(79),  false);
+    check('VM16 day 37 (daysmod 63) is waxing',   vm.waxing(37),  true);
+
+    -- ---- digcalc.averageSuccess: the general dig-success figure ----
+    dc._setDb(false);
+    check('DR41 averageSuccess nil when no data', dc.averageSuccess(8, 1), nil);
+    dc._setDb({ zones = {
+        [1] = { n = 'X', pools = { Bore = { { id = 1, n = 'a', w = 500, rank = 0 } } } },   -- S = 0.5 at mu=1
+        [2] = { n = 'Y', pools = { Bore = { { id = 2, n = 'b', w = 1000, rank = 0 } } } },  -- S = 1   at mu=1
+    } });
+    local avg, nz = dc.averageSuccess(8, 1);
+    check('DR42 averageSuccess = mean of zone S', r6(avg), r6((0.5 + 1) / 2));
+    check('DR43 averageSuccess reports zone count', nz, 2);
+    -- rank-gating flows through: an over-rank pool zeroes out -> success 0.
+    dc._setDb({ zones = { [1] = { n = 'X', pools = { Bore = { { id = 1, n = 'a', w = 500, rank = 5 } } } } } });
+    check('DR44 averageSuccess honours rank-gating', r6((dc.averageSuccess(0, 1))), 0);
+    dc._setDb(nil);   -- restore lazy load
+end)();
+
+-- ---------------------------------------------------------------------------
+-- CHOCOBO BY-AREA: the pure data seams the by-area tab composes (issue #98,
+-- PRD #93) -- digcalc.zones (the zone-picker source) and digcalc.conditionalDrops
+-- (weather crystal / day rock / elemental ore resolved against the live clock,
+-- flagged active/inactive). Uses the SHIPPED digdata (26 zones + the FFXI-standard
+-- cond tables); the odds math itself is covered by DC1-61. All headless.
+-- ---------------------------------------------------------------------------
+(function()
+    local dc = dofile('feature/digcalc.lua');
+    package.loaded['dlac\\feature\\digcalc'] = dc;
+    dc._setDb(dofile('data/digdata.lua'));
+
+    -- ---- zones(): the sorted { id, n } zone-picker source ----
+    local zl = dc.zones();
+    check('BA1 zones() lists the 26 enabled zones', #zl, 26);
+    check('BA2 zones() is sorted by name', (function()
+        for i = 2, #zl do if tostring(zl[i - 1].n) > tostring(zl[i].n) then return false; end end
+        return true;
+    end)(), true);
+    check('BA3 each zone entry has id + name', (function()
+        for _, z in ipairs(zl) do
+            if type(z.id) ~= 'number' or type(z.n) ~= 'string' then return false; end
+        end
+        return true;
+    end)(), true);
+
+    -- ---- _normElement: the Thunder/Lightning + non-elemental normalisation ----
+    check('BA4 Thunder normalises to Lightning', dc._normElement('Thunder'), 'Lightning');
+    check('BA5 an ordinary element passes through', dc._normElement('Fire'), 'Fire');
+    check('BA6 None/Clear/empty -> nil (no elemental weather)',
+        dc._normElement('None') == nil and dc._normElement('Clear') == nil and dc._normElement('') == nil, true);
+
+    -- ---- conditionalDrops on an ORE zone under a fully-satisfied clock ----
+    -- Zone 104 (Jugner Forest) is one of the 9 elemental-ore zones. Firesday +
+    -- Fire weather + moon 14% + rank 8 satisfies every gate.
+    local clkFull = { dayElement = 'Fire', weatherElement = 'Fire', doubleWeather = false, moonPercent = 14 };
+    local cd = dc.conditionalDrops(104, 8, clkFull);
+    check('BA7 ore zone lists crystal + rock + ore', #cd, 3);
+    local byKind = {}; for _, r in ipairs(cd) do byKind[r.kind] = r; end
+    check('BA8 crystal is the Fire Crystal (id + name)',
+        byKind.crystal and byKind.crystal.id == 4096 and byKind.crystal.n, 'Fire Crystal');
+    check('BA9 crystal active under Fire weather', byKind.crystal.active, true);
+    check('BA10 rock is the Fire day rock', byKind.rock and byKind.rock.id == 769 and byKind.rock.n, 'Red Rock');
+    check('BA11 rock active at rank 8 (>= Novice)', byKind.rock.active, true);
+    check('BA12 ore is the Fire ore', byKind.ore and byKind.ore.id == 1255 and byKind.ore.n, 'Chunk of Fire Ore');
+    check('BA13 ore active under the full gate', byKind.ore.active, true);
+
+    -- ---- rank-gating flows through (active is clockActive AND rankOk) ----
+    local cdLow = dc.conditionalDrops(104, 0, clkFull);
+    local lowByKind = {}; for _, r in ipairs(cdLow) do lowByKind[r.kind] = r; end
+    check('BA14 crystal still active at rank 0 (no rank gate)', lowByKind.crystal.active, true);
+    check('BA15 rock inactive at rank 0 but the clock condition IS met',
+        lowByKind.rock.active == false and lowByKind.rock.clockActive == true, true);
+    check('BA16 ore inactive at rank 0 (Craftsman gate) though the clock is met',
+        lowByKind.ore.active == false and lowByKind.ore.clockActive == true, true);
+
+    -- ---- the Thunder alias resolves the live weather to the Lightning crystal ----
+    local cdThunder = dc.conditionalDrops(2, 8, { dayElement = 'Lightning', weatherElement = 'Thunder', moonPercent = 50 });
+    local thByKind = {}; for _, r in ipairs(cdThunder) do thByKind[r.kind] = r; end
+    check('BA17 Thunder weather -> Lightning Crystal id 4100',
+        thByKind.crystal and thByKind.crystal.id, 4100);
+
+    -- ---- a NON-ore zone omits the ore row entirely ----
+    local cdNoOre = dc.conditionalDrops(2, 8, clkFull);   -- zone 2 is not an ore zone
+    check('BA18 non-ore zone lists only crystal + rock', #cdNoOre, 2);
+    check('BA19 ...and no ore row', (function()
+        for _, r in ipairs(cdNoOre) do if r.kind == 'ore' then return 'ore present'; end end
+        return true;
+    end)(), true);
+
+    -- ---- double weather yields the cluster, not the crystal ----
+    local cdDbl = dc.conditionalDrops(2, 8, { dayElement = 'Fire', weatherElement = 'Fire', doubleWeather = true, moonPercent = 50 });
+    local dblByKind = {}; for _, r in ipairs(cdDbl) do dblByKind[r.kind] = r; end
+    check('BA20 double Fire weather -> Fire Cluster (id 4104)',
+        dblByKind.crystal and dblByKind.crystal.id == 4104 and dblByKind.crystal.n, 'Fire Cluster');
+
+    -- ---- the ore gate: weather must match the day, moon must be in-window ----
+    local cdMoon = dc.conditionalDrops(104, 8, { dayElement = 'Fire', weatherElement = 'Fire', moonPercent = 50 });
+    local moonByKind = {}; for _, r in ipairs(cdMoon) do moonByKind[r.kind] = r; end
+    check('BA21 ore inactive when the moon is out of the 7-21% window',
+        moonByKind.ore.active == false and moonByKind.ore.clockActive == false, true);
+    local cdWeather = dc.conditionalDrops(104, 8, { dayElement = 'Fire', weatherElement = 'Ice', moonPercent = 14 });
+    local wByKind = {}; for _, r in ipairs(cdWeather) do wByKind[r.kind] = r; end
+    check('BA22 ore inactive when the weather does not match the day', wByKind.ore.clockActive, false);
+    check('BA23 ...but that same off-element Ice weather lights the Ice crystal',
+        wByKind.crystal and wByKind.crystal.id, 4097);
+
+    -- ---- no elemental weather: the crystal row is inactive, never errors ----
+    local cdClear = dc.conditionalDrops(2, 8, { dayElement = 'Fire', weatherElement = 'None', moonPercent = 14 });
+    local clByKind = {}; for _, r in ipairs(cdClear) do clByKind[r.kind] = r; end
+    check('BA24 no elemental weather -> crystal inactive, no concrete id',
+        clByKind.crystal.clockActive == false and clByKind.crystal.id == nil, true);
+
+    -- ---- fail soft: no db -> empty results, never an error ----
+    dc._setDb(false);
+    check('BA25 absent db -> zones() empty', #dc.zones(), 0);
+    check('BA26 absent db -> conditionalDrops() empty', #dc.conditionalDrops(104, 8, clkFull), 0);
+    dc._setDb(nil);   -- restore lazy load
+end)();
+
+-- ---------------------------------------------------------------------------
+-- CHOCOBO BY-ITEM: the pure data seams the by-item tab composes (issue #99,
+-- PRD #93) -- digcalc.itemIndex (the fuzzy-search source, pool items PLUS the
+-- synthesised conditional crystals/rocks/ores) and digcalc.itemSources (every
+-- zone + pool a selected item drops from, priced + flagged). Uses the SHIPPED
+-- digdata; the odds math itself is DC1-61. All headless, PURE (clock passed in).
+-- ---------------------------------------------------------------------------
+(function()
+    local dc = dofile('feature/digcalc.lua');
+    package.loaded['dlac\\feature\\digcalc'] = dc;
+    dc._setDb(dofile('data/digdata.lua'));
+
+    -- ---- itemIndex(): the searchable diggable-item index ----
+    local idx = dc.itemIndex();
+    check('BI1 itemIndex is non-empty (120 pool items + 32 conditionals)', #idx, 152);
+    check('BI2 itemIndex is sorted by name', (function()
+        for i = 2, #idx do if tostring(idx[i - 1].n) > tostring(idx[i].n) then return false; end end
+        return true;
+    end)(), true);
+    local byKey = {}; for _, e in ipairs(idx) do byKey[e.key] = e; end
+    -- the conditional crystals / clusters / rocks / ores are keyed by condKind:el
+    -- (a conditional item can SHARE a name with a static pool drop -- Fire Crystal
+    -- is both a weather conditional AND a listed pool item in some zones -- so the
+    -- index carries a distinct entry for each; assert by key, not by name).
+    check('BI3 Fire Crystal (conditional) is in the index, id 4096',
+        byKey['crystal:Fire'] and byKey['crystal:Fire'].id == 4096
+        and byKey['crystal:Fire'].n == 'Fire Crystal'
+        and byKey['crystal:Fire'].kind == 'conditional'
+        and byKey['crystal:Fire'].condKind, 'crystal');
+    check('BI4 Fire Cluster is in the index (conditional cluster, id 4104)',
+        byKey['cluster:Fire'] and byKey['cluster:Fire'].id == 4104
+        and byKey['cluster:Fire'].n == 'Fire Cluster'
+        and byKey['cluster:Fire'].condKind, 'cluster');
+    check('BI5 Chunk of Fire Ore is in the index (ore, minRank 6)',
+        byKey['ore:Fire'] and byKey['ore:Fire'].id == 1255
+        and byKey['ore:Fire'].n == 'Chunk of Fire Ore'
+        and byKey['ore:Fire'].condKind == 'ore'
+        and byKey['ore:Fire'].minRank, 6);
+    check('BI6 Red Rock is in the index (rock, minRank 3 = Novice)',
+        byKey['rock:Fire'] and byKey['rock:Fire'].n == 'Red Rock'
+        and byKey['rock:Fire'].condKind == 'rock'
+        and byKey['rock:Fire'].minRank, 3);
+    check('BI7 exactly 32 conditional entries (8 each: crystal/cluster/rock/ore)', (function()
+        local c = 0; for _, e in ipairs(idx) do if e.kind == 'conditional' then c = c + 1; end end
+        return c;
+    end)(), 32);
+    check('BI8 a pool entry carries a pool key + kind', (function()
+        local e = byKey['pool:3509'];   -- Plate of Heavy Metal
+        return e and e.kind == 'pool' and e.n or false;
+    end)(), 'Plate of Heavy Metal');
+
+    -- ---- itemSources() on a POOL item present in many zones ----
+    -- Plate of Heavy Metal (3509) drops in 22 zones; price at rank 8, neutral moon.
+    local plate = byKey['pool:3509'];
+    local ps = dc.itemSources(plate, 8, dc.moonMult(50), {});
+    check('BI9 pool itemSources returns a pool view', type(ps) == 'table'
+        and ps.kind == 'pool' and ps.allZones == false, true);
+    check('BI10 pool sources cover the 22 zones it drops in', #ps.sources, 22);
+    check('BI11 each pool source carries zone + pool + the two odds', (function()
+        for _, s in ipairs(ps.sources) do
+            if type(s.zoneId) ~= 'number' or type(s.zoneName) ~= 'string'
+               or type(s.pool) ~= 'string' or type(s.onHit) ~= 'number'
+               or type(s.perDig) ~= 'number' then return false; end
+        end
+        return true;
+    end)(), true);
+    check('BI12 pool sources are sorted by per-dig descending', (function()
+        for i = 2, #ps.sources do
+            if (ps.sources[i - 1].perDig or 0) < (ps.sources[i].perDig or 0) then return false; end
+        end
+        return true;
+    end)(), true);
+
+    -- ---- itemSources() on a CONDITIONAL crystal: EVERY digging zone ----
+    -- Fire Crystal under Fire weather (single) is active in all 26 zones.
+    local fc = byKey['crystal:Fire'];
+    local cs = dc.itemSources(fc, 8, dc.moonMult(50),
+        { weatherElement = 'Fire', dayElement = 'Ice', doubleWeather = false, moonPercent = 50 });
+    check('BI13 crystal itemSources spans every enabled zone (allZones)', cs.allZones == true and #cs.sources, 26);
+    check('BI14 crystal active now under matching single weather', cs.active, true);
+    check('BI15 crystal condition is spelled out', cs.condition, 'Fire weather up');
+    -- double Fire weather yields the CLUSTER, so the single crystal is inactive.
+    local csDbl = dc.itemSources(fc, 8, dc.moonMult(50),
+        { weatherElement = 'Fire', doubleWeather = true, moonPercent = 50 });
+    check('BI16 single crystal inactive under DOUBLE weather (that is the cluster)', csDbl.active, false);
+    -- the Thunder/Lightning alias resolves the live weather to the Lightning crystal.
+    local lc = byKey['crystal:Lightning'];
+    local ls = dc.itemSources(lc, 8, dc.moonMult(50), { weatherElement = 'Thunder', moonPercent = 50 });
+    check('BI17 Thunder weather activates the Lightning Crystal', ls.active, true);
+
+    -- ---- itemSources() on the CLUSTER: active only under double weather ----
+    local fcl = byKey['cluster:Fire'];
+    local cls = dc.itemSources(fcl, 8, dc.moonMult(50), { weatherElement = 'Fire', doubleWeather = true, moonPercent = 50 });
+    check('BI18 cluster active under double weather', cls.active, true);
+    check('BI19 cluster condition names the double weather', cls.condition, 'double Fire weather');
+
+    -- ---- itemSources() on an ORE: only the 9 elemental-ore zones ----
+    local ore = byKey['ore:Fire'];
+    local os = dc.itemSources(ore, 8, dc.moonMult(14),
+        { dayElement = 'Fire', weatherElement = 'Fire', moonPercent = 14 });
+    check('BI20 ore itemSources spans only the ore zones (not all-zone)', os.allZones == false and #os.sources, 9);
+    check('BI21 ore active under the full gate (rank 8, Fire day+weather, moon 14%)', os.active, true);
+    -- rank gate: below Craftsman the ore is not reachable though the clock is met.
+    local osLow = dc.itemSources(ore, 0, dc.moonMult(14),
+        { dayElement = 'Fire', weatherElement = 'Fire', moonPercent = 14 });
+    check('BI22 ore rankOk false at rank 0 though the clock is met',
+        osLow.rankOk == false and osLow.clockActive == true and osLow.active == false, true);
+    -- moon out of window closes the clock gate.
+    local osMoon = dc.itemSources(ore, 8, dc.moonMult(50),
+        { dayElement = 'Fire', weatherElement = 'Fire', moonPercent = 50 });
+    check('BI23 ore clock closes when the moon is out of the 7-21% window', osMoon.clockActive, false);
+
+    -- ---- a locked pool item over-rank: the row carries the locked flag ----
+    -- King Truffle (Carpenters Landing Treasure) needs rank 8; at rank 0 it locks.
+    local kt = byKey['pool:4386'];
+    if kt ~= nil then
+        local kts = dc.itemSources(kt, 0, dc.moonMult(50), {});
+        check('BI24 an over-rank pool item marks its source locked', (function()
+            for _, s in ipairs(kts.sources) do if s.locked ~= true then return false; end end
+            return #kts.sources > 0;
+        end)(), true);
+    end
+
+    -- ---- fail soft: no db / nil entry -> empty index, nil sources ----
+    dc._setDb(false);
+    check('BI25 absent db -> itemIndex empty', #dc.itemIndex(), 0);
+    check('BI26 absent db -> itemSources nil', dc.itemSources(plate, 8, 1, {}), nil);
+    dc._setDb(dofile('data/digdata.lua'));
+    check('BI27 nil entry -> itemSources nil', dc.itemSources(nil, 8, 1, {}), nil);
+    dc._setDb(nil);   -- restore lazy load
 end)();
 
 -- ---------------------------------------------------------------------------

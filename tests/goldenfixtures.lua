@@ -150,6 +150,9 @@ local INV = {
     -- Fishing ladders -------------------------------------------------------
     { Name = 'Fishermans Tunica', Id = 90040, Level = 1,  Slot = 'Body',  Jobs = { 'All' }, Stats = { FishingSkill = 1 } },
     { Name = 'Halieutica',        Id = 90041, Level = 49, Slot = 'Main',  Jobs = { 'All' }, Stats = { FishingSkill = 2 } },   -- fishing weapon rides the Main fish ladder
+    -- Chocobo riding-time ladders (issue #95) -------------------------------
+    { Name = 'Chocobo Wand',      Id = 90060, Level = 1,  Slot = 'Main',  Jobs = { 'All' }, Stats = { ChocoboRidingTime = 30 } }, -- the Wand rides the Main choco ladder
+    { Name = 'Chocobo Torque',    Id = 90061, Level = 1,  Slot = 'Neck',  Jobs = { 'All' }, Stats = { ChocoboRidingTime = 4 } },
     -- ONE item across MULTIPLE ladders --------------------------------------
     { Name = 'Survey Sash',       Id = 90050, Level = 50, Slot = 'Waist', Jobs = { 'All' }, Stats = { MP = 8, Surveyor = 1, FishingSkill = 1 } }, -- mpBest.waist + helm.waist + fish.waist
     -- Staves / obis / universals (Iridescence tiering) ----------------------
