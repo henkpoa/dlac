@@ -69,15 +69,15 @@ M._ICON_W  = 16;    -- icon box, drawn or Dummy'd -- the column is ALWAYS this w
 M._LABEL_X = 30;    -- absolute x for the row label, so labels line up regardless
 M._MENU_W  = 104;   -- header button width (themed font: ~9.5px/char + 16 padding)
 
--- The menu roster. `icon` names an assets\<name>.png; the ones that do not exist yet
--- (teleports/level/settings) simply fall through to the Dummy path, which is the
--- whole point of reserving the column -- dropping the art in later shifts nothing.
+-- The menu roster. `icon` names an assets\<name>.png. All six shipped 2026-07-24
+-- (Henrik's art, 64x64 transparent, drawn at 16x16); any that is missing or fails to
+-- load falls through to the Dummy path, so the column stays the same width either way.
 local ROWS = {
     { key = 'lockstyle', icon = 'lockstyle', label = 'Lockstyle',
       tip = 'Lockstyle boxes -- 30 saved looks PER JOB.\nSave the marked box, import old static lockstyle sets, and\n"OnLoad Lockstyle" re-applies it on every login / job change.' },
     { key = 'macrobook', icon = 'macrobook', label = 'Macro book',
       tip = 'Macro book & set for the CURRENT job -- saved per job and applied\nautomatically on login and every job change. Jobs you don\'t manage\nare never touched.' },
-    { key = 'hobbybar',  icon = 'craftbar',  label = 'Hobby bar',
+    { key = 'hobbybar',  icon = 'hobbybar',  label = 'Hobby bar',
       tip = 'One shared window for Craft / HELM / Fishing / Chocobo:\npick controls and switch a hobby on (idle only).' },
     { key = 'teleports', icon = 'teleports', label = 'Teleports',
       tip = 'Warp / Retrace scrolls, rings, Chocobo Whistle, Nexus Cape and your\nexp rings -- plus the Automations, HELM and Fishing quick menus.' },
@@ -109,6 +109,17 @@ function M._menuRows(debugOn)
     for _, r in ipairs(ROWS) do out[#out + 1] = r.key; end
     if debugOn == true then
         for _, r in ipairs(DEBUG_ROWS) do out[#out + 1] = r.key; end
+    end
+    return out;
+end
+
+-- PURE SEAM: the asset basenames the rows ask filetex for. A missing or misspelled
+-- name fails SILENTLY at runtime (blank cell, correct width), so the headless suite
+-- asserts each one exists on disk instead -- the only way a rename gets caught.
+function M._menuIcons()
+    local out = {};
+    for _, r in ipairs(ROWS) do
+        if r.icon ~= nil then out[#out + 1] = r.icon; end
     end
     return out;
 end

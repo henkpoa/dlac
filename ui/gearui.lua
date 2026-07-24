@@ -4593,13 +4593,20 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
                         clicked = false;
                     end
                 else
-                    -- The ring ICON, on an explicit OPAQUE dark backing (same one the
-                    -- slot grid uses). The earlier "always red" was never the art: the
-                    -- window rendered unthemed, and its semi-transparent button let
+                    -- The Teleports ICON, on an explicit OPAQUE dark backing (same one
+                    -- the slot grid uses). The earlier "always red" was never the art:
+                    -- the window rendered unthemed, and its semi-transparent button let
                     -- the game world bleed through the icon.
-                    local rec = lookupByName('Warp Ring');
-                    local id = rec and rec.Id or nil;
-                    local h = icons.handleOf(id);
+                    -- 2026-07-24: this used to borrow the in-game Warp Ring ITEM icon,
+                    -- which was a different visual language from the hand-drawn set.
+                    -- It now uses the same assets\teleports.png the Menu row does, and
+                    -- falls back to the old item icon if the PNG ever fails to load.
+                    local h = nil;
+                    pcall(function() h = require('dlac\\ui\\filetex').handle('teleports'); end);
+                    if h == nil then
+                        local rec = lookupByName('Warp Ring');
+                        h = icons.handleOf(rec and rec.Id or nil);
+                    end
                     if h ~= nil then
                         pcall(function()
                             clicked = imgui.ImageButton(h, { 20, 20 },

@@ -214,7 +214,7 @@ agent; the per-repo setup lives in `docs/agents/`.
 
 ## Current state (as of 2026-07-24, end of day)
 
-- **HEADER MENU + SETTINGS — BUILT 2026-07-24 (`ui/menuui.lua`, addon `2026.07.24p`),
+- **HEADER MENU + SETTINGS — BUILT 2026-07-24 (`ui/menuui.lua`, addon `2026.07.24q`),
   awaiting Henrik's field test.** The header was eight right-aligned buttons; it is now
   **Profiles** (left, unchanged) and **Menu · Migrate** (right). Everything that used to
   sit left of "Reload LAC" — Lockstyle, Macro book, Hobby bar, Teleports, Level override
@@ -236,11 +236,18 @@ agent; the per-repo setup lives in `docs/agents/`.
   - **Level override is a TYPED number now** (Henrik: the ± buttons "spam level changes,
     it's tedious"). Each ± click used to queue its own `/dl set level main N`; the box
     commits **once**, on Enter or the Set button, clamped 1–75, 0 = back to live.
-  - **Icon column is always reserved** (`M._ICON_W`), Dummy'd when no PNG exists, so
-    dropping art in later shifts no layout. **Henrik still owes five assets** (square,
-    transparent, 64×64, drawn at 16×16): `menu.png`, `level.png`, `settings.png`,
-    `debug.png`, `teleports.png` (Teleports currently borrows the in-game Warp Ring icon
-    — the fallback stays, so it degrades cleanly).
+  - **Icon column is always reserved** (`M._ICON_W`), Dummy'd when a PNG is missing or
+    fails to load, so art can land later without shifting layout. **All six icons
+    shipped same-day** (Henrik's art, 64×64 transparent, drawn at 16×16):
+    `assets\teleports.png` (beacon), `hobbybar.png` (axe — **renamed from
+    `craftbar.png`**, which was the asset's only reference; the *module* `ui/craftbar`
+    is untouched), `lockstyle.png` (masks), `macrobook.png` (book), `level.png`,
+    `settings.png` (gears). The **floating** Teleports button now uses the SAME
+    `teleports.png` instead of borrowing the in-game Warp Ring item icon (a different
+    visual language); the item icon remains as its fallback.
+  - **`SET42-44` pin the icon wiring**: a missing or misspelled asset name fails
+    *silently* at runtime (blank cell, right width), so the suite asserts every row
+    icon exists on disk — mutation-verified by removing `teleports.png`.
   - **Why a new module:** hard rule 1. Everything arrives by `M.configure(deps)`
     injection, so gearui gained **zero** chunk locals and the whole thing is headless.
     `dumpAugs` is *passed*, not required — GRD5 forbids a `ui/` module requiring

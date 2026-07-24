@@ -10798,6 +10798,24 @@ end)();
     -- activate() is inert until configure() runs: no deps, no action, no crash.
     check('SET40 activate inert unconfigured', mn.activate('lockstyle'), false);
     check('SET41 unknown key refused',         mn.activate('nonsense'),  false);
+
+    -- Every row icon must exist as assets\<name>.png. filetex returns nil for a
+    -- missing file and the row just draws a blank cell of the right width -- correct
+    -- behaviour, but it means a typo or a rename is INVISIBLE in game. Pin it here.
+    local icons = mn._menuIcons();
+    check('SET42 every row names an icon', #icons, 6);
+    local missing = {};
+    for _, name in ipairs(icons) do
+        local f = io.open('assets/' .. name .. '.png', 'rb');
+        if f == nil then missing[#missing + 1] = name; else f:close(); end
+    end
+    check('SET43 every row icon exists on disk', table.concat(missing, ','), '');
+    -- The floating Teleports button shares the Menu row's art (Henrik: "replace the
+    -- ring floating icon with this as well"), so it is the same one file.
+    check('SET44 teleports art is the shared one', (function()
+        for _, n in ipairs(icons) do if n == 'teleports' then return true; end end
+        return false;
+    end)(), true);
 end)();
 
 -- ---------------------------------------------------------------------------
