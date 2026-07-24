@@ -10151,6 +10151,13 @@ end)();
     check('DR19 tolerates no trailing period', dr.parseObtained('Obtained: Handful of Sand'), 'Handful of Sand');
     check('DR20 non-Obtained line -> nil',     dr.parseObtained('You dig and you dig...but find nothing.'), nil);
     check('DR21 nil line -> nil',              dr.parseObtained(nil), nil);
+    -- inline chat colour/control codes (0x1E/0x1F + palette byte, stray controls)
+    -- must not survive into the name -- else the ratchet lookup silently misses.
+    check('DR21a strips a colour tag + param', dr._stripCodes('\30\06Wind Crystal\30\01'), 'Wind Crystal');
+    check('DR21b strips a stray control byte', dr._stripCodes('Bird\1 Egg'), 'Bird Egg');
+    check('DR21c clean text is untouched',     dr._stripCodes('Copper Ore'), 'Copper Ore');
+    check('DR21d parse: name wrapped in colour codes', dr.parseObtained('Obtained: \30\06Wind Crystal\30\01.'), 'Wind Crystal');
+    check('DR21e parse: a code AFTER the period', dr.parseObtained('Obtained: Maple Log.\31\02'), 'Maple Log');
 
     -- ---- itemRequirement: min rank across every source, fail-soft ----
     local SYNTH = { zones = {
@@ -10167,6 +10174,9 @@ end)();
     check('DR24 a rank-0 item',                        dr.itemRequirement('Bird Egg', SYNTH), 0);
     check('DR25 unknown item -> nil (no ratchet)',     dr.itemRequirement('Adaman Ore', SYNTH), nil);
     check('DR26 nil db -> nil (fail soft)',            dr.itemRequirement('Copper Ore', nil), nil);
+    -- the M2 fix end-to-end: a colour-coded name still resolves its requirement
+    -- (norm strips codes on BOTH sides), so the ratchet fires instead of missing.
+    check('DR26a colour-coded name still resolves', dr.itemRequirement('\30\06Copper Ore\30\01', SYNTH), 2);
 
     -- ---- resolve: precedence + honest exact flag ----
     local ranks = { [0]='Amateur',[1]='Recruit',[2]='Initiate',[3]='Novice',[4]='Apprentice',

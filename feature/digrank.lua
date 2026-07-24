@@ -95,20 +95,39 @@ function M.serverRank(rawWord)
     return rank;
 end
 
+-- Strip FFXI inline chat control/colour codes from a chat string. A live dig
+-- line can wrap the item in colour tags -- 0x1E / 0x1F followed by a one-byte
+-- palette index -- or carry stray control bytes; the shipped data names are
+-- plain ASCII, so a code-laden capture would BOTH fail the rank lookup (the
+-- ratchet silently never fires) and print garbage in the "raised by digging X"
+-- line. Remove the 2-byte colour tags first, then any residual control byte
+-- (incl. a lone 0x7F). LuaJIT/5.1-compatible patterns.
+local function stripCodes(s)
+    if type(s) ~= 'string' then return s; end
+    s = s:gsub('[\30\31].', '');   -- colour tag (0x1E/0x1F) + its 1-byte param
+    s = s:gsub('%c', '');          -- any other control byte
+    return s;
+end
+M._stripCodes = stripCodes;   -- test seam
+
 -- Normalise an item name for a case/space/period-insensitive compare (the chat
--- line may arrive as "Obtained: Handful of Wind Crystals." with the period).
+-- line may arrive as "Obtained: Handful of Wind Crystals." with the period, and
+-- may carry inline colour codes -- stripped here so the compare is code-blind).
 local function norm(s)
     if type(s) ~= 'string' then return ''; end
-    s = s:lower():gsub('%.%s*$', ''):gsub('^%s+', ''):gsub('%s+$', '');
+    s = stripCodes(s):lower():gsub('%.%s*$', ''):gsub('^%s+', ''):gsub('%s+$', '');
     return s;
 end
 M._norm = norm;   -- test seam
 
 -- Parse a dig "Obtained: <item>" chat line -> the item name (trimmed of a
--- trailing period), or nil for any other line. Same shape the probe and the
--- hgather addon key off (issue #97: "the same channel hgather uses").
+-- trailing period), or nil for any other line. Colour/control codes are stripped
+-- off the whole line FIRST so the name is clean wherever the codes sit (around
+-- the name or after the period). Same shape the probe and the hgather addon key
+-- off (issue #97: "the same channel hgather uses").
 function M.parseObtained(line)
     if type(line) ~= 'string' then return nil; end
+    line = stripCodes(line);
     local item = line:match('[Oo]btained:%s*(.-)%.?%s*$');
     if item == nil or item == '' then return nil; end
     return item;
