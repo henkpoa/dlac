@@ -225,6 +225,19 @@ function M.recordDigTiming(elapsed)
     return false;
 end
 
+-- Wipe the assembled dig rank (manual pick + one-way ratchet floor) back to
+-- Amateur and clear the session detection flags, so the timing detector can be
+-- re-tested from scratch. Un-latches (_rankMaxed reads rankFloor). Persisted.
+-- Backs the secret `/dl choco reset` (undocumented -- testing only).
+function M.resetRank()
+    M.loadState();
+    M.rankManual   = 0;
+    M.rankFloor    = 0;
+    M._zoneInAt    = nil;
+    M._digThisZone = false;
+    saveState();
+end
+
 -- The live server dig-rank read, throttled (~2s). GetCraftSkill(11) returns the
 -- 0xFFFF mask forever on the current server, so this is nil in practice; if a
 -- build ever unmasks it, digrank.serverRank decodes the exact rank and it wins.
@@ -276,6 +289,13 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
             if b == 'on' or b == 'off' then
                 M.setEnabled(b == 'on');
                 say('Chocobo idle set ' .. (M.enabled and 'ON' or 'OFF') .. '.');
+                return;
+            end
+            if b == 'reset' then
+                -- SECRET (undocumented, testing): wipe the assembled dig rank back
+                -- to Amateur so the timing detector can be re-verified from scratch.
+                M.resetRank();
+                say('dig rank reset to Amateur (testing) -- zone in and dig to re-detect.');
                 return;
             end
             -- bare /dl choco: status, now with the resolved dig rank + source.

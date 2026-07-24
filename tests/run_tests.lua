@@ -10232,7 +10232,14 @@ end)();
     check('DT16 Henrik: 11s -> Expert (10)', dr.rankFromZoneTiming(11), 10);   -- field data
     check('DT17 sub-floor (<10s) still Expert', dr.rankFromZoneTiming(4), 10);  -- 10s clamp floor
     check('DT18 a late dig reads a low rank (never negative)', dr.rankFromZoneTiming(300), 0);
-    check('DT19 rounds to the nearest rung (17s -> 9)', dr.rankFromZoneTiming(17), 9);
+    -- FLOOR into the 5s rung, never ROUND: lag only ever pushes the observed
+    -- delay LATER, so each rank is a [C, C+5) bracket (Henrik field 2026-07-24).
+    check('DT19 13s (lagged Expert) FLOORS to Expert, not Veteran', dr.rankFromZoneTiming(13), 10);  -- round gave 9
+    check('DT19a 14.9s (top of the Expert bracket) -> Expert', dr.rankFromZoneTiming(14.9), 10);
+    check('DT19b 15s (next bracket) -> Veteran',      dr.rankFromZoneTiming(15), 9);
+    check('DT19c 17s stays within Veteran',           dr.rankFromZoneTiming(17), 9);
+    check('DT19d 19.9s (top of Veteran) -> Veteran',  dr.rankFromZoneTiming(19.9), 9);
+    check('DT19e 24.9s (top of Adept) -> Adept',      dr.rankFromZoneTiming(24.9), 8);
     check('DT20 non-number threshold -> nil', dr.rankFromZoneTiming('soon'), nil);
     check('DT21 non-positive threshold -> nil', dr.rankFromZoneTiming(0), nil);
 
