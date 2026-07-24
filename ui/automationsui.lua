@@ -1313,6 +1313,53 @@ end
 -- reference to a later local is a silent nil global).
 local _gpSectionSeen = nil;
 
+-- Collapsible SECTIONS for the list view (2026-07-24, Henrik: "the tab is
+-- getting bloated -- sectionize it"). Display-only grouping: buildAutoRows'
+-- order/indexing is owned by the quick menu and the index patches inside it, so
+-- we never touch that list -- we GROUP its rows by key at render time. A section
+-- lists the row KEYS it owns; the render loop pulls whichever exist this frame.
+-- Crystal Warrior self-hides for everyone else: the restock row is only in
+-- buildAutoRows' output for CW characters, so its section renders zero rows (and
+-- is skipped) off-mode. Any row a section doesn't claim still shows under
+-- "Other" (a future automation added to buildAutoRows never silently vanishes).
+-- A key listed here that buildAutoRows does NOT emit is simply ignored (byKey
+-- miss) -- so 'autoacc' is pre-placed in Battle for the feature/autoacc merge
+-- (that branch appends the AutoAcc row); on main it is an inert no-op, not Other.
+local AUTO_SECTIONS = {
+    { title = 'Battle',          id = 'battle',  keys = { 'iridescence', 'obi', 'oneiros', 'ammo', 'autoacc', 'maxmp' } },
+    { title = 'Hobbies',         id = 'hobbies', keys = { 'craft', 'helm', 'fish', 'choco' } },
+    { title = 'Crystal Warrior', id = 'cw',      keys = { 'restock' } },
+};
+
+-- The list-view column header row (same fixed offsets as the rows below).
+-- Offsets widened 2026-07-17 (field report: the HELM row's Kind ran into
+-- Status): Name 190->215, Kind 470->580 (~30% more -- the themed font runs
+-- ~9.5px/char and "gathering-gear helper (idle only)" is 33 chars). Drawn once
+-- inside each open section so the columns line up under their own header.
+local function autoColHeader()
+    imgui.Dummy({ 0, 0 });
+    imgui.SameLine(8);   imgui.TextColored(COL_HEADER, 'Name');
+    imgui.SameLine(215); imgui.TextColored(COL_HEADER, 'Kind');
+    imgui.SameLine(580); imgui.TextColored(COL_HEADER, 'Status');
+    imgui.Separator();
+end
+
+-- One automation row (click opens its detail view). Module-level so it stays out
+-- of renderAutomations' local budget (the 200-local chunk cap, this file's whole
+-- reason for existing).
+local function autoRow(r)
+    local col = levelColor(r.level, r.max);
+    imgui.PushID('autorow_' .. r.key);
+    if imgui.Selectable('##sel', false, ImGuiSelectableFlags_None, { 0, 20 }) then auto.view = r.key; end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Click for details. Slot automations go INSIDE a set (add the dlac: entry\nto the slot via + Add); set automations apply everywhere via their mode.');
+    end
+    imgui.SameLine(8);   imgui.TextColored(col, r.name);
+    imgui.SameLine(215); imgui.TextColored(COL_DIM, r.kind);
+    imgui.SameLine(580); imgui.TextColored(col, r.txt or '');
+    imgui.PopID();
+end
+
 local function renderAutomations()
     autoLoad();
     -- Self-heal: an outdated-schema manifest (older dlac wrote it) regenerates
@@ -1726,32 +1773,41 @@ local function renderAutomations()
         return;
     end
 
-    -- LIST view: the automation table FIRST, no explanations above it (field
-    -- request) -- how-it-works lives in the tooltips and detail views. The
-    -- rescan shove + status sit small under the table. Rows come from the
-    -- shared builder (buildAutoRows -- gearui's Teleports quick menu shows
-    -- the same list).
+    -- LIST view: the automation table, now grouped into COLLAPSIBLE sections
+    -- (Henrik 2026-07-24 -- the flat list had grown to a dozen rows). Rows come
+    -- from the shared builder (buildAutoRows -- gearui's Teleports quick menu
+    -- shows the SAME flat list); we only group them by key for display. How-it-
+    -- works still lives in the per-row tooltips and detail views.
     local rows = buildAutoRows();
-    -- Column headers, same fixed offsets as the rows.
-    -- Offsets widened 2026-07-17 (field report: the HELM row's Kind ran into
-    -- Status): Name 190->215, Kind 470->580 (~30% more -- the themed font
-    -- runs ~9.5px/char and "gathering-gear helper (idle only)" is 33 chars).
-    imgui.Dummy({ 0, 0 });
-    imgui.SameLine(8);   imgui.TextColored(COL_HEADER, 'Name');
-    imgui.SameLine(215); imgui.TextColored(COL_HEADER, 'Kind');
-    imgui.SameLine(580); imgui.TextColored(COL_HEADER, 'Status');
-    imgui.Separator();
-    for _, r in ipairs(rows) do
-        local col = levelColor(r.level, r.max);
-        imgui.PushID('autorow_' .. r.key);
-        if imgui.Selectable('##sel', false, ImGuiSelectableFlags_None, { 0, 20 }) then auto.view = r.key; end
-        if imgui.IsItemHovered() then
-            imgui.SetTooltip('Click for details. Slot automations go INSIDE a set (add the dlac: entry\nto the slot via + Add); set automations apply everywhere via their mode.');
+    local byKey = {};
+    for _, r in ipairs(rows) do byKey[r.key] = r; end
+    -- Sections default OPEN: first appearance shows everything (nothing hidden
+    -- by surprise); imgui remembers each header's collapsed state per its ###id.
+    local DEFOPEN = (ImGuiTreeNodeFlags_DefaultOpen ~= nil) and ImGuiTreeNodeFlags_DefaultOpen or 0;
+    local shown = {};
+    for _, sec in ipairs(AUTO_SECTIONS) do
+        -- This section's rows that actually exist this frame (the CW gate: the
+        -- restock row is only present for Crystal Warriors, so the Crystal
+        -- Warrior section renders nothing -- and is skipped -- off-mode).
+        local secRows = {};
+        for _, k in ipairs(sec.keys) do
+            local r = byKey[k];
+            if r ~= nil then secRows[#secRows + 1] = r; shown[k] = true; end
         end
-        imgui.SameLine(8);  imgui.TextColored(col, r.name);
-        imgui.SameLine(215); imgui.TextColored(COL_DIM, r.kind);
-        imgui.SameLine(580); imgui.TextColored(col, r.txt or '');
-        imgui.PopID();
+        if #secRows > 0 and imgui.CollapsingHeader(sec.title .. '###autosec_' .. sec.id, DEFOPEN) then
+            autoColHeader();
+            for _, r in ipairs(secRows) do autoRow(r); end
+            imgui.Spacing();
+        end
+    end
+    -- Any automation no section claimed still shows (defensive: a future row
+    -- added to buildAutoRows without a section home lands here, never vanishes).
+    local orphan = {};
+    for _, r in ipairs(rows) do if not shown[r.key] then orphan[#orphan + 1] = r; end end
+    if #orphan > 0 and imgui.CollapsingHeader('Other###autosec_other', DEFOPEN) then
+        autoColHeader();
+        for _, r in ipairs(orphan) do autoRow(r); end
+        imgui.Spacing();
     end
     -- No rescan button, no status line: the scan runs itself (login, job
     -- change, any inventory change, schema self-heal) and each row already
@@ -1761,13 +1817,15 @@ local function renderAutomations()
     -- draggable list, top wins, reading + writing the arbstate Statefile. Its
     -- own module (the helmui/fishui pattern -- keeps this chunk's local budget
     -- clear); render-time pcall-require so a load knot only dims the section.
+    -- Its own collapsible section too (Henrik's "Claim Priority"); the header IS
+    -- the title, so render() drops its inline one (embedded) but keeps the hint.
     imgui.Spacing();
-    imgui.Separator();
-    imgui.Spacing();
-    pcall(function()
-        local priorityui = require('dlac\\ui\\priorityui');
-        priorityui.render(deps);
-    end);
+    if imgui.CollapsingHeader('Claim Priority###autosec_priority', DEFOPEN) then
+        pcall(function()
+            local priorityui = require('dlac\\ui\\priorityui');
+            priorityui.render(deps, { embedded = true });
+        end);
+    end
 end
 
 -- The Automations MAIN-tab entry point: gearui registers the tab and calls this.
