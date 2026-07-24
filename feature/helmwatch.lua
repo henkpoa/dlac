@@ -213,30 +213,34 @@ local function ensureManifestFresh()
     end);
 end
 
--- The on/off switch (bar + panel). Craft/HELM/Fishing CO-CLAIM now (ADR 0012
--- amendment, engine v98): arming HELM no longer stands the craft switch down --
--- all armed activities claim and the Arbiter's rank settles every overlapping
--- slot per slot. Walking from the bench to the pond means disarming Craft
--- yourself; arming is no longer a mode switch. (Was: enabling HELM turned the
--- craft switch off; the cross-require is gone.)
+-- The on/off switch (bar + panel). The four idle hobbies (Craft/HELM/Fishing/
+-- Chocobo) are MUTUALLY EXCLUSIVE at this toggle: arming HELM stands the other
+-- three down via idleexcl.onActivated, and the armed one shows in the floating
+-- badge (ui/idlefloat.lua). This is an ENABLE-layer radio (ADR 0017), NOT the old
+-- claim-side newest-armed exclusivity history.md records as a dead end -- the
+-- engine's co-claim/Arbiter is untouched; only one hobby is ever armed.
 function M.setEnabled(on)
     M.loadState();
     M.enabled = (on == true);
     if M.enabled then
         M._enabledAt = os.time();
         ensureManifestFresh();
+        pcall(function() require('dlac\\feature\\idleexcl').onActivated('helm'); end);
     end
     saveState();
 end
 
 -- "Auto HELM": arm/disarm the detection overlay. Session-only (like the idle
 -- switch); disarming ends a running hold at once AND tears the entity
--- watches down (an idle session costs entwatch zero work).
+-- watches down (an idle session costs entwatch zero work). Arming it is also a
+-- HELM activation for the idle-hobby radio (ADR 0017): it stands Craft/Fishing/
+-- Chocobo down, and arming any peer later clears BOTH HELM switches.
 function M.setAutoHelm(on)
     M.loadState();
     M.autoHelm = (on == true);
     if M.autoHelm then
         ensureManifestFresh();
+        pcall(function() require('dlac\\feature\\idleexcl').onActivated('helm'); end);
     else
         M._autoUntil = 0;
         M._proxHold = false;

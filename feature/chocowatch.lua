@@ -173,15 +173,19 @@ end
 
 function M.isEnabled() M.loadState(); return M.enabled == true; end
 
--- The on/off switch (panel). Craft/HELM/Fishing/Chocobo CO-CLAIM (ADR 0012
--- amendment): arming Chocobo stands nothing else down -- all armed activities
--- claim and the Arbiter's rank settles every overlapping slot per slot.
+-- The on/off switch (panel + /dl choco on|off). The four idle hobbies (Craft/
+-- HELM/Fishing/Chocobo) are MUTUALLY EXCLUSIVE at this toggle: arming Chocobo
+-- stands the other three down via idleexcl.onActivated, and the armed one shows
+-- in the floating badge (ui/idlefloat.lua). This is an ENABLE-layer radio
+-- (ADR 0017), NOT the old claim-side exclusivity history.md records as a dead end
+-- -- the engine's co-claim/Arbiter is untouched; only one hobby is ever armed.
 function M.setEnabled(on)
     M.loadState();
     M.enabled = (on == true);
     if M.enabled then
         M._enabledAt = os.time();
         ensureManifestFresh();
+        pcall(function() require('dlac\\feature\\idleexcl').onActivated('choco'); end);
     end
     saveState();
 end

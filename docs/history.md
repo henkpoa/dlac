@@ -3753,6 +3753,12 @@ off the board. The Arbiter's rank is the single settling law now -- claimants
 decide WHETHER to claim, the rank decides WHO WINS each slot, and never again does
 a claimant reach across and silence a peer wholesale.
 
+> **2026-07-24 (ADR 0017):** one-at-a-time returned for the four idle hobbies --
+> but as an **enable-layer radio** (`feature/idleexcl.lua`), not this claim-side
+> rule. Arming one hobby stands the others' *switches* down, so only one is ever
+> armed and the engine's co-claim never sees a conflict. This claim-side dead end
+> stays dead; the new seam never reaches the claim layer. See the entry below.
+
 ## The Arbiter, step 3: locks become the draggable veto row (2026-07-21, engine v99)
 
 **Theme:** locks were the last piece of gear-precedence encoded OUTSIDE the rank
@@ -5223,3 +5229,64 @@ field-confirmed working in-game.** Known gap: conditional crystals/rocks/ores ar
 (no static pool row) so a dug conditional doesn't ratchet yet — a harmless under-claim, follow-up.
 `addon.version` 2026.07.24j; `run_tests` 3044 + `smoke_ui` 284 green (Windows lua 5.4.6 + WSL
 lua5.4).
+
+## Idle hobbies made mutually exclusive, with a floating badge (2026-07-24, ADR 0017)
+
+**The ask (Henrik):** only one of **Craft / HELM / Fishing / Chocobo** idle should
+run at a time; arming one should stand the others down; a floating point should
+name the active one and offer to turn it off; when nothing is armed, the badge
+disappears.
+
+**The tension, surfaced before building.** These four *co-claim* by deliberate
+design — ADR 0012's Amendment (step 1.5, above) removed the pre-Arbiter
+"newest-armed exclusivity" and recorded it as a **dead end**. So the request looked
+like a reversal of a documented ruling. It is not — the dead end was a **claim-side**
+rule that reached into `M.dispatch` and silenced a peer's *slots* at dispatch time
+(the AR10 PUP case: arming HELM yanked the fishing rod out of Range). What Henrik
+asked for sits at a different seam entirely.
+
+**The seam (why it is not the dead end).** Exclusivity lives at the **enable
+toggle**, not the claim. A tiny coordinator, `feature/idleexcl.lua`, is called from
+each watcher's `setEnabled(true)` (and helm's `setAutoHelm(true)`) via
+`onActivated(key)`, which stands the other three down through their own
+`setEnabled(false)`. Because only one hobby is ever *armed*, the Arbiter never sees
+a conflict among the four — the engine is untouched, and AR8/AR9/AR10 (which stub
+state files and never call `setEnabled`) stay green unchanged. The enable seam is
+the one choke point every surface funnels through — bar, panel pill, Automations
+row, Teleports quick-menu flip, `/dl` command — so hooking it there caught all of
+them without touching a single UI file. HELM counts **both** its switches (manual
+idle + Auto HELM): arming a peer clears both, so a background Auto HELM can't dress
+alongside Craft.
+
+**The badge.** `ui/idlefloat.lua`, a float on the `floatgear`/TP-button pattern
+(rendered straight from gearui's `d3d_present`, own theme bracket, stays up while
+you play — not a uihost window). It **self-gates on `idleexcl.getActive()`**: draws
+a small draggable chip naming the armed hobby (with craft / gather category /
+fishing target, an "(auto)" tag for Auto-only HELM) and an **Off** button, and
+draws nothing when none is armed. So it appears the instant a hobby is activated and
+vanishes the instant it is turned off — no visibility flag to manage; position
+persists (`ui._idlePos` → uiflags `ifx/ify`), visibility never does because it is
+derived.
+
+**Consequence, taken deliberately.** The AR10 combination — HELM's armor *and* a
+fishing rod in Range at once — is no longer expressible, because Fishing and HELM
+can't both be armed. That is the point: these are competing hobbies now, and the
+badge makes the one-at-a-time transparent (the missing piece that made the old
+auto-switching feel silent). The claim-side dead end stays dead; this revises only
+the UX convenience ADR 0012 had accepted ("disarm Craft yourself").
+
+**Key decision / durable lesson:** re-introducing a removed behaviour is safe when
+it lands at a *different seam* than the one that failed — here, the enable toggle
+(features decide what's armed) vs. the claim layer (the engine decides who wears
+each slot). Name the old dead end, prove the new seam doesn't touch it, and the
+record stays coherent. Also: the per-feature `setEnabled` writer is the single
+choke point for "is this hobby on" across every UI surface and command — hook there,
+touch nothing else.
+
+**Stale comments corrected** (they described the removed co-claim as current): the
+four watchers' `setEnabled` headers and the gearui quick-menu `SWITCH` note now
+describe the enable-layer radio and point at ADR 0017.
+
+New `feature/idleexcl.lua` + `ui/idlefloat.lua` (both added to the source-scan
+roster). `addon.version` 2026.07.24m; `run_tests` 3077 + `smoke_ui` 284 green
+(Windows lua 5.4.6 + WSL lua5.4). 17 new **IE\*** checks.

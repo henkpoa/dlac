@@ -450,10 +450,18 @@ end
 
 -- The on/off switch (bar + panel). Writing enabled -> the engine picks it up
 -- within a dispatch (~0.4s tick) and overlays / stops overlaying the craft gear.
+-- The four idle hobbies (Craft/HELM/Fishing/Chocobo) are MUTUALLY EXCLUSIVE at
+-- this toggle: arming one stands the other three down via idleexcl.onActivated,
+-- and the armed one shows in the floating badge (ui/idlefloat.lua). This is an
+-- ENABLE-layer radio (ADR 0017), NOT the old claim-side exclusivity history.md
+-- records as a dead end -- the engine's co-claim/Arbiter is untouched.
 function M.setEnabled(on)
     M.loadCraftState();
     M.enabled = (on == true);
-    if M.enabled then M._enabledAt = os.time(); ensureManifestFresh(); end
+    if M.enabled then
+        M._enabledAt = os.time(); ensureManifestFresh();
+        pcall(function() require('dlac\\feature\\idleexcl').onActivated('craft'); end);
+    end
     saveCraftState();
     -- No chat line either way (removed 2026-07-13, Henrik: too chatty) -- the
     -- craft bar's switch state IS the announcement.

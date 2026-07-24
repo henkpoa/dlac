@@ -340,12 +340,12 @@ end
 function M.rodPinned() M.loadState(); return M.rodPin == true; end
 function M.baitPinned() M.loadState(); return M.baitPin == true; end
 
--- The pill (bar + panel). Craft/HELM/Fishing CO-CLAIM now (ADR 0012 amendment,
--- engine v98): arming fishing no longer stands the craft or HELM switches down --
--- all armed activities claim and the Arbiter's rank settles every overlapping
--- slot per slot. Disarming a peer is the player's own act now; arming is no
--- longer a mode switch. (Was: enabling fishing turned craft AND helm off; both
--- cross-requires are gone.)
+-- The pill (bar + panel). The four idle hobbies (Craft/HELM/Fishing/Chocobo) are
+-- MUTUALLY EXCLUSIVE at this toggle: arming fishing stands the other three down
+-- via idleexcl.onActivated, and the armed one shows in the floating badge
+-- (ui/idlefloat.lua). This is an ENABLE-layer radio (ADR 0017), NOT the old
+-- claim-side exclusivity history.md records as a dead end -- the engine's
+-- co-claim/Arbiter is untouched; only one hobby is ever armed.
 function M.setEnabled(on)
     M.loadState();
     M.enabled = (on == true);
@@ -353,6 +353,7 @@ function M.setEnabled(on)
         M._enabledAt = os.time();
         ensureManifestFresh();
         M.autoPick(true);
+        pcall(function() require('dlac\\feature\\idleexcl').onActivated('fish'); end);
     end
     saveState();
 end

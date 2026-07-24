@@ -220,14 +220,14 @@ end)();
     -- (data/catalog, fishdb, spells, ...) carry no gear-fetch logic and are excluded.
     local ROOT_FILES = { 'utils.lua', 'dispatch.lua', 'chatfmt.lua', 'profiles.lua', 'gear.lua', 'dlac.lua' };
     local UI = { 'ammoui','automationsui','craftbar','equippedui','filetex','fishbar','fishui',
-                 'floatgear','gearui','helmbar','helmui','itemicons','priorityui','profilesmenu',
+                 'floatgear','gearui','helmbar','helmui','idlefloat','itemicons','priorityui','profilesmenu',
                  'restockui','setupui','triggersui','uihost','uistyle','weightsui' };
     local GEAR = { 'actionpicker','blueprintsmodel','catalogindex','gearcheck','geareffects','gearexport',
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
                    'groupsmodel','jobgate','ownedcache','profileexport','profilesets','setimport',
                    'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
     local FEATURE = { 'ammowatch','arbwatch','augments','check','chocowatch','craftwatch','debug','digcalc','digrank',
-                      'eboxammo','eboxclient','fishcalc','fishwatch','gamemode','helmwatch','location','lockstyle','lookpreview',
+                      'eboxammo','eboxclient','fishcalc','fishwatch','gamemode','helmwatch','idleexcl','location','lockstyle','lookpreview',
                       'macrobook','meritwatch','mpbands','pinwatch','restockwatch','useitem','vanamoon' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
 
@@ -1674,6 +1674,83 @@ check('T33 gpReady', craftwatch.gpReady(), true);
 local curT = craftwatch.onSynth(4096, { 1165, 1165 }, 40);
 check('T34 current keeps crystal', curT.crystal, 4096);
 check('T35 current keeps ings order', curT.ings[1] == 1165 and #curT.ings == 2, true);
+
+-- ---------------------------------------------------------------------------
+-- IE. idleexcl -- the four idle hobbies (Craft/HELM/Fishing/Chocobo) are MUTUALLY
+--     EXCLUSIVE at the enable toggle (ADR 0017): arming one stands the other three
+--     down, getActive() names the armed one, deactivate() stands it down (the
+--     float's Off button). This is the ENABLE-layer radio, NOT the claim-side
+--     co-claim engine -- AR8/AR9/AR10 stub state files and never call setEnabled,
+--     so they are untouched by this.
+-- (Wrapped in an IIFE so its locals stay OFF the test file's 200-local main-chunk
+-- ceiling -- the same hard rule the addon's own modules follow.)
+-- ---------------------------------------------------------------------------
+;(function()
+    -- Fresh watcher instances; preload so idleexcl.onActivated can require() its
+    -- peers (in the addon dlac.lua's package.path does this; the harness doesn't).
+    local IE_cw = dofile('feature/craftwatch.lua');
+    local IE_hw = dofile('feature/helmwatch.lua');
+    local IE_fw = dofile('feature/fishwatch.lua');
+    local IE_ch = dofile('feature/chocowatch.lua');
+    local savedLoaded = {};
+    for _, k in ipairs({ 'craftwatch', 'helmwatch', 'fishwatch', 'chocowatch', 'idleexcl' }) do
+        savedLoaded['dlac\\feature\\' .. k] = package.loaded['dlac\\feature\\' .. k];
+    end
+    package.loaded['dlac\\feature\\craftwatch'] = IE_cw;
+    package.loaded['dlac\\feature\\helmwatch']  = IE_hw;
+    package.loaded['dlac\\feature\\fishwatch']  = IE_fw;
+    package.loaded['dlac\\feature\\chocowatch'] = IE_ch;
+    local idleexcl = dofile('feature/idleexcl.lua');
+    package.loaded['dlac\\feature\\idleexcl'] = idleexcl;
+
+    local function armedCount()
+        return (IE_cw.isEnabled() and 1 or 0)
+             + ((IE_hw.isEnabled() or IE_hw.isAutoHelm()) and 1 or 0)
+             + (IE_fw.isEnabled() and 1 or 0)
+             + (IE_ch.isEnabled() and 1 or 0);
+    end
+
+    -- clean slate
+    IE_cw.setEnabled(false); IE_hw.setEnabled(false); IE_hw.setAutoHelm(false);
+    IE_fw.setEnabled(false); IE_ch.setEnabled(false);
+    check('IE0 nothing armed -> getActive nil', idleexcl.getActive(), nil);
+
+    IE_cw.setEnabled(true);
+    check('IE1 craft armed -> active is craft',     (idleexcl.getActive() or {}).key, 'craft');
+    check('IE1b craft detail = the picked craft',   (idleexcl.getActive() or {}).detail, IE_cw.getCraft());
+
+    IE_hw.setEnabled(true);
+    check('IE2 arming HELM disarms craft',          IE_cw.isEnabled(), false);
+    check('IE2b HELM is now the active one',        (idleexcl.getActive() or {}).key, 'helm');
+
+    IE_hw.setAutoHelm(true);   -- Auto HELM is a second HELM-activation path
+    check('IE3 auto-HELM keeps HELM active',        (idleexcl.getActive() or {}).key, 'helm');
+
+    IE_fw.setEnabled(true);
+    check('IE4 arming Fishing disarms HELM idle',   IE_hw.isEnabled(), false);
+    check('IE4b arming Fishing disarms Auto HELM',  IE_hw.isAutoHelm(), false);
+    check('IE4c Fishing is the active one',         (idleexcl.getActive() or {}).key, 'fish');
+
+    IE_ch.setEnabled(true);
+    check('IE5 arming Chocobo disarms Fishing',     IE_fw.isEnabled(), false);
+    check('IE5b Chocobo is the active one',         (idleexcl.getActive() or {}).key, 'choco');
+    check('IE5c exactly one hobby armed at a time', armedCount(), 1);
+
+    check('IE6 deactivate returns the armed key',   idleexcl.deactivate(), 'choco');
+    check('IE6b none armed after deactivate',       idleexcl.getActive(), nil);
+    check('IE6c isActive false when none armed',    idleexcl.isActive(), false);
+
+    -- Auto-only HELM (idle switch off) still drives the badge, flagged "(auto)".
+    IE_hw.setEnabled(false); IE_hw.setAutoHelm(true);
+    check('IE7 auto-only HELM shows in badge',      (idleexcl.getActive() or {}).key, 'helm');
+    local d7 = (idleexcl.getActive() or {}).detail;
+    check('IE7b auto detail flags "(auto)"',        type(d7) == 'string' and d7:find('auto') ~= nil, true);
+
+    -- Restore: stand HELM down and put package.loaded back so later blocks are
+    -- unaffected (a later fishwatch.setEnabled must NOT reach these peers).
+    IE_hw.setEnabled(false); IE_hw.setAutoHelm(false);
+    for k, v in pairs(savedLoaded) do package.loaded[k] = v; end
+end)();
 
 -- ---------------------------------------------------------------------------
 -- U. Set-entry name resolution -- case-insensitive fallback + quiet-once warn.

@@ -1324,11 +1324,13 @@ local function renderAutomationsQuick()
         return;
     end
     -- The live switches, keyed like the rows: state() -> (text, on) for the
-    -- second column, flip() = the same call the bars/panels make. Mutual
-    -- exclusion between the craft/HELM/fish overlays lives inside the
-    -- watchers, never here. Only rows with a switch render at all (Henrik,
-    -- 07-20 round 2): the set-driven trio (Iridescence / Obi / Oneiros) has
-    -- nothing to flip -- their panels live on the Automations tab itself.
+    -- second column, flip() = the same call the bars/panels make. The four idle
+    -- hobbies (Craft/HELM/Fishing/Chocobo) are mutually exclusive -- that lives
+    -- inside the watchers (idleexcl, ADR 0017), never here, so flipping one on
+    -- from this menu disarms the rest just like anywhere else. Only rows with a
+    -- switch render at all (Henrik, 07-20 round 2): the set-driven trio
+    -- (Iridescence / Obi / Oneiros) has nothing to flip -- their panels live on
+    -- the Automations tab itself.
     local SWITCH = {
         craft = {
             tip = 'Craft overlay: wears the selected craft\'s gear while ON (idle only).\nPick craft + goal on the craft bar (/dl craft bar) or the Automations tab.',
@@ -4794,6 +4796,19 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
             local cuThemed = style ~= nil and style.push();
             pcall(cuMod.renderSearch, M._deps);
             if cuThemed then style.pop(); end
+        end
+    end
+    -- The idle-hobby badge: INDEPENDENT of the main box (it names the one armed
+    -- hobby -- Craft / HELM / Fishing / Chocobo -- while you play). Self-gates on
+    -- idleexcl.getActive(), so it draws nothing when none is armed and appears the
+    -- instant one is (ADR 0017). Own theme bracket, function-scoped require.
+    if has.imgui then
+        local ifMod = nil;
+        pcall(function() ifMod = require('dlac\\ui\\idlefloat'); end);
+        if ifMod ~= nil and type(ifMod.render) == 'function' then
+            local ifThemed = style ~= nil and style.push();
+            pcall(ifMod.render);
+            if ifThemed then style.pop(); end
         end
     end
     if not M.visible or not has.imgui then return; end
