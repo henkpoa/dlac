@@ -9821,7 +9821,8 @@ end)();
     dc._setDb(dofile('data/digdata.lua'));
     local db = dc.db();
     check('DC37 digdata loads', db ~= nil, true);
-    check('DC38 rank ladder is 0..8', db.ranks and #db.ranks, 8);   -- [0]..[8] -> #=8
+    check('DC38 rank ladder is 0..10', db.ranks and #db.ranks, 10);   -- [0]..[10] -> #=10
+    check('DC38b Expert is rank 10',  db.ranks[10], 'Expert');
     check('DC39 Novice is rank 3',    db.ranks[3], 'Novice');
     check('DC40 Craftsman is rank 6', db.ranks[6], 'Craftsman');
     check('DC41 zones is a table',    type(db.zones), 'table');
@@ -9892,10 +9893,12 @@ end)();
     local dc = dofile('feature/digcalc.lua');
     local function r6(x) return math.floor((tonumber(x) or 0) * 1e6 + 0.5) / 1e6; end
 
-    -- ---- digrank.clamp: snaps into 0..8, floors garbage to 0 ----
+    -- ---- digrank.clamp: snaps into 0..10, floors garbage to 0 ----
     check('DR1 clamp keeps in-range', dr.clamp(4), 4);
     check('DR2 clamp floors below 0', dr.clamp(-3), 0);
-    check('DR3 clamp caps above 8',   dr.clamp(50), 8);
+    check('DR3 clamp caps above 10',  dr.clamp(50), 10);
+    check('DR3b MAX_RANK is Expert (10)', dr.MAX_RANK, 10);
+    check('DR3c ladder labels Veteran + Expert', tostring(dr.RANKS[9]) .. '/' .. tostring(dr.RANKS[10]), 'Veteran/Expert');
     check('DR4 clamp rounds',         dr.clamp(3.6), 4);
     check('DR5 clamp nil -> 0',       dr.clamp(nil), 0);
 
@@ -9904,7 +9907,7 @@ end)();
     check('DR7 ratchet ignores a lower requirement',    dr.ratchet(5, 2), 5);
     check('DR8 ratchet equal stays',                    dr.ratchet(4, 4), 4);
     check('DR9 ratchet nil req leaves floor',           dr.ratchet(3, nil), 3);
-    check('DR10 ratchet clamps a wild requirement',     dr.ratchet(0, 99), 8);
+    check('DR10 ratchet clamps a wild requirement',     dr.ratchet(0, 99), 10);
     -- monotonic across a sequence of digs (never dips)
     local floor, mono = 0, true;
     for _, req in ipairs({ 1, 3, 2, 6, 4, 5, 8, 7 }) do
@@ -9919,7 +9922,9 @@ end)();
     check('DR13 rank 31 (masked decode) -> nil', dr.serverRank(31), nil);
     check('DR14 a real rank 4 word -> 4',     dr.serverRank(4), 4);
     check('DR15 rank word 8 (Adept) -> 8',    dr.serverRank(8), 8);
-    check('DR16 out-of-ladder word 9 -> nil', dr.serverRank(9), nil);
+    check('DR15b rank word 9 (Veteran) -> 9', dr.serverRank(9), 9);
+    check('DR15c rank word 10 (Expert) -> 10', dr.serverRank(10), 10);
+    check('DR16 out-of-ladder word 11 -> nil', dr.serverRank(11), nil);
     check('DR17 nil word -> nil',             dr.serverRank(nil), nil);
 
     -- ---- parseObtained: the dig "Obtained: <item>" line ----
@@ -9973,6 +9978,34 @@ end)();
     check('DR40d exact but reachable -> ok',       dr.gate(7, rServer), 'ok');
     check('DR40e a bare rank number works too',    dr.gate(5, 2), 'dimmed');   -- no state = estimate
     check('DR40f a nil requirement is never gated', dr.gate(nil, rServer), 'ok');
+
+    -- ---- timing rank detection (issue #100): classify + invert the first-dig
+    --      zone cooldown clamp(60 - 5*rank, 10, 60) ----
+    check('DT1 obtained line -> tag + item', (function()
+        local t, i = dr.classifyDigLine('Obtained: Wind Crystal.'); return t .. '/' .. tostring(i);
+    end)(), 'obtained/Wind Crystal');
+    check('DT2 free reject -> wait',        dr.classifyDigLine('You must wait a little while longer.'), 'wait');
+    check('DT3 "wait longer" phrasing -> wait', dr.classifyDigLine('You must wait longer to perform that action.'), 'wait');
+    check('DT4 nothing-found -> nothing',   dr.classifyDigLine('You dig and you dig...but find nothing.'), 'nothing');
+    check('DT5 with-ease -> ease',          dr.classifyDigLine('The chocobo digs with ease.'), 'ease');
+    check('DT6 a non-dig line -> nil',      dr.classifyDigLine('Someone casts Fire.'), nil);
+    check('DT7 nil line -> nil',            dr.classifyDigLine(nil), nil);
+    -- completed-dig predicate (only these carry a usable first-dig timing)
+    check('DT8 obtained is a completed dig', dr.isCompletedDig('obtained'), true);
+    check('DT9 nothing is a completed dig',  dr.isCompletedDig('nothing'), true);
+    check('DT10 ease is a completed dig',    dr.isCompletedDig('ease'), true);
+    check('DT11 a reject is NOT a completed dig', dr.isCompletedDig('wait'), false);
+    -- invert the cooldown: threshold seconds -> rank (round to the 5s rung)
+    check('DT12 60s -> Amateur (0)',   dr.rankFromZoneTiming(60), 0);
+    check('DT13 20s -> Adept (8)',     dr.rankFromZoneTiming(20), 8);
+    check('DT14 15s -> Veteran (9)',   dr.rankFromZoneTiming(15), 9);
+    check('DT15 10s -> Expert (10)',   dr.rankFromZoneTiming(10), 10);
+    check('DT16 Henrik: 11s -> Expert (10)', dr.rankFromZoneTiming(11), 10);   -- field data
+    check('DT17 sub-floor (<10s) still Expert', dr.rankFromZoneTiming(4), 10);  -- 10s clamp floor
+    check('DT18 a late dig reads a low rank (never negative)', dr.rankFromZoneTiming(300), 0);
+    check('DT19 rounds to the nearest rung (17s -> 9)', dr.rankFromZoneTiming(17), 9);
+    check('DT20 non-number threshold -> nil', dr.rankFromZoneTiming('soon'), nil);
+    check('DT21 non-positive threshold -> nil', dr.rankFromZoneTiming(0), nil);
 
     -- ---- vanamoon: pure moon math ----
     check('VM1 percent in 0..100 across the whole cycle', (function()

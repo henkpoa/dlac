@@ -25,15 +25,17 @@
 
 local M = {};
 
--- The dig-rank ladder is 0..8 (Amateur .. Adept), matching the server's
--- first-dig timing bracket (60 - 5*rank seconds). The authoritative labels live
--- in data/digdata.lua `ranks`; this is the fail-soft fallback for when that
--- table is absent. PROPOSED player-facing names -- pending maintainer sign-off.
-M.MIN_RANK, M.MAX_RANK = 0, 8;
+-- The dig-rank ladder is 0..10 (Amateur .. Expert -- the CatsEye craftRank range
+-- for Digging), matching the server's first-dig zone cooldown
+-- clamp(60 - 5*rank, 10, 60) seconds: Amateur(0)=60s .. Adept(8)=20s,
+-- Veteran(9)=15s, Expert(10)=10s (the 10s floor makes rank 10 the effective
+-- max). The authoritative labels live in data/digdata.lua `ranks`; this is the
+-- fail-soft fallback for when that table is absent.
+M.MIN_RANK, M.MAX_RANK = 0, 10;
 M.RANKS = {
     [0] = 'Amateur', [1] = 'Recruit', [2] = 'Initiate', [3] = 'Novice',
     [4] = 'Apprentice', [5] = 'Journeyman', [6] = 'Craftsman', [7] = 'Artisan',
-    [8] = 'Adept',
+    [8] = 'Adept', [9] = 'Veteran', [10] = 'Expert',
 };
 
 -- The server's mask sentinel: GetCraftSkill(11) returns 0xFFFF for the blanked
@@ -48,7 +50,7 @@ M.SOURCE_LABEL = {
     server  = 'reported by server',
 };
 
--- Clamp any value to the 0..8 ladder; a nil / non-number floors to Amateur (0).
+-- Clamp any value to the 0..10 ladder; a nil / non-number floors to Amateur (0).
 function M.clamp(r)
     local v = tonumber(r);
     if v == nil then return M.MIN_RANK; end
@@ -142,7 +144,7 @@ end
 -- ratchet floor above the manual pick beats the manual pick.
 --
 -- Returns { rank, source, exact, label, sourceLabel }:
---   rank        -- the 0..8 effective rank the guide uses.
+--   rank        -- the 0..10 effective rank the guide uses.
 --   source      -- 'server' | 'ratchet' | 'manual'.
 --   exact       -- true ONLY for a server (measured) rank; false for estimates.
 --   label       -- the rank's ladder label (via ranks).
@@ -181,6 +183,58 @@ function M.gate(req, rankState)
     if r == nil or r <= rank then return 'ok'; end
     local exact = (type(rankState) == 'table') and (rankState.exact == true);
     return exact and 'locked' or 'dimmed';
+end
+
+-- ---------------------------------------------------------------------------
+-- Timing-based rank detection (issue #100). The rank is masked, but the server
+-- gates the FIRST dig after a zone-in until clamp(60 - 5*rank, 10, 60) seconds
+-- (logic.lua checkDiggingCooldowns), so the delay from the zone-in to the first
+-- COMPLETED dig reveals the exact rank. Cooldown-rejected digs cost no Gysahl
+-- Green, so it is observable for free. dlac watches it passively (chocowatch);
+-- these are the pure helpers. Skill never deranks, so the caller feeds the read
+-- into the one-way ratchet floor and stops once it reaches MAX_RANK.
+-- ---------------------------------------------------------------------------
+
+-- Classify a dig chat line -> (tag, item), tag one of
+-- 'obtained' | 'nothing' | 'ease' | 'wait', or nil for a non-dig line.
+--   obtained -> a completed dig that yielded an item (item name captured)
+--   nothing  -> a completed dig that found nothing (the cooldown HAD elapsed)
+--   ease     -> a completed dig phrased "with ease"
+--   wait     -> a free cooldown reject (dug too soon; no green spent)
+-- 'obtained'/'nothing'/'ease' are COMPLETED digs (see M.isCompletedDig) -- their
+-- delay since zone-in feeds the timing read. Mirrors the field-proven probe
+-- classifier (dlacprobe/dig.lua P.classifyDigText, issue #96).
+function M.classifyDigLine(line)
+    if type(line) ~= 'string' then return nil; end
+    local s = line:lower();
+    if s:find('wait', 1, true) and (s:find('longer', 1, true) or s:find('little while', 1, true)) then
+        return 'wait';
+    end
+    local item = M.parseObtained(line);
+    if item ~= nil then return 'obtained', item; end
+    if s:find('with ease', 1, true) then return 'ease'; end
+    if s:find('find nothing', 1, true) then return 'nothing'; end
+    return nil;
+end
+
+-- Is this tag a completed dig (the cooldown had elapsed) vs a free reject / non-
+-- dig line? Only completed digs carry a usable first-dig timing.
+function M.isCompletedDig(tag)
+    return tag == 'obtained' or tag == 'nothing' or tag == 'ease';
+end
+
+-- Invert a first-dig delay (seconds from zone-in to the first COMPLETED dig)
+-- into the dig rank: rank = round((60 - threshold) / 5), clamped to the ladder.
+-- The first completed dig is the tightest upper bound on the cooldown, so it
+-- gives the highest (best) read; a dig long after zoning simply reads a low rank
+-- and, being a ratchet input, never lowers anything. Client timing is ~1s noisy
+-- against the server's integer-second cooldown -- comfortably inside the 5s per
+-- rung -- so a threshold of 10s (or faster) reads Expert (10), the 10s floor.
+-- nil for a non-number / non-positive threshold.
+function M.rankFromZoneTiming(threshold)
+    local t = tonumber(threshold);
+    if t == nil or t <= 0 then return nil; end
+    return M.clamp((60 - t) / 5);
 end
 
 return M;

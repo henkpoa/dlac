@@ -59,9 +59,16 @@ M._rescanned = false;      -- manifest freshness ensured once this session?
 -- The dig rank is masked out of the client, so dlac assembles it (issue #97).
 -- Unlike `enabled`, these PERSIST across sessions -- a manual pick and a ratchet
 -- floor are knowledge, not a session toggle.
-M.rankManual = 0;          -- the player's dropdown seed (0..8); default Amateur
+M.rankManual = 0;          -- the player's dropdown seed (0..10); default Amateur
 M.rankFloor  = 0;          -- the one-way ratchet floor (highest dug requirement)
 local _stateLoaded = false;
+
+-- Timing rank detection (issue #100): the server gates the first dig after a
+-- zone-in until clamp(60 - 5*rank, 10, 60)s, so the delay to the first completed
+-- dig reveals the rank. Session-only baseline; the learned rank lands in the
+-- PERSISTED rankFloor (one-way), and rankFloor at MAX is the permanent latch --
+-- skill never deranks, so detection then stops for good (Henrik's rule).
+M._zoneInAt = nil;         -- os.clock() at the last zone-in (nil = none yet)
 
 local function statePath()
     local dir = charDir();
@@ -149,7 +156,7 @@ end
 -- digrank does the pure logic; this owns persistence + the Ashita reads.
 -- ---------------------------------------------------------------------------
 
--- Set the manual rank seed (the guide's dropdown). Clamped to 0..8, persisted.
+-- Set the manual rank seed (the guide's dropdown). Clamped to 0..10, persisted.
 function M.setManualRank(rank)
     M.loadState();
     M.rankManual = _drok and digrank.clamp(rank) or (tonumber(rank) or 0);
@@ -167,6 +174,36 @@ function M.recordObtained(name)
     local req = digrank.itemRequirement(name, digDb());
     if req == nil then return false; end
     local newFloor = digrank.ratchet(M.rankFloor, req);
+    if newFloor > M.rankFloor then
+        M.rankFloor = newFloor;
+        saveState();
+        return true;
+    end
+    return false;
+end
+
+-- The permanent max-latch (issue #100, Henrik's rule): skill can't derank, so
+-- once the floor reaches the top of the ladder the rank is fixed and timing
+-- detection switches off for good. rankFloor persists, so this survives relog --
+-- a maxed character never runs the zone-timing read again.
+function M._rankMaxed()
+    if not _drok then return false; end
+    return (M.rankFloor or 0) >= digrank.MAX_RANK;
+end
+
+-- Record a COMPLETED dig for the timing rank read (issue #100). `elapsed` is the
+-- seconds from the zone-in to this dig; digrank inverts the first-dig cooldown
+-- (60 - 5*rank, floored at 10s) into a rank and the one-way ratchet raises the
+-- floor if it is higher. Returns true when the floor actually rose. No-op once
+-- maxed (the latch) or before any zone-in stamp. The first completed dig of a
+-- visit is the tightest (highest) read; later, slower digs read lower and, being
+-- a ratchet input, never lower the floor.
+function M.recordDigTiming(elapsed)
+    if not _drok or M._rankMaxed() then return false; end
+    M.loadState();
+    local rank = digrank.rankFromZoneTiming(elapsed);
+    if rank == nil then return false; end
+    local newFloor = digrank.ratchet(M.rankFloor, rank);
     if newFloor > M.rankFloor then
         M.rankFloor = newFloor;
         saveState();
@@ -237,22 +274,47 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
         end);
     end);
 
-    -- The auto-ratchet: every "Obtained: <item>" dig line (the same channel the
-    -- hgather addon reads) is mapped to its dig-rank requirement and raises the
-    -- assumed rank if it exceeds the floor. Runs ALWAYS, not just while the idle
-    -- set is on -- the rank is the always-available baseline beneath the guide,
-    -- independent of the riding-gear toggle. A non-diggable obtain is a no-op.
-    ashita.events.register('text_in', 'dlac-chocowatch-obtained', function(e)
+    -- Zone-in timing baseline (issue #100): the server measures the first-dig
+    -- cooldown from the zone entry, so stamp os.clock() on every 0x00A. A BARE
+    -- timestamp -- no chat, no IO -- so it is safe on the packet (network)
+    -- thread; the dlacprobe crash was per-line chat prints from a packet handler,
+    -- which this deliberately does none of.
+    ashita.events.register('packet_in', 'dlac-chocowatch-zonein', function(e)
+        if e.id == 0x00A then M._zoneInAt = os.clock(); end
+    end);
+
+    -- Dig chat -> rank knowledge. Two one-way inputs, BOTH feeding the persisted
+    -- floor and running always (independent of the riding-gear toggle -- the rank
+    -- is the baseline beneath the guide):
+    --   (1) an "Obtained: <item>" line ratchets to that item's rank requirement
+    --       (the hgather channel); a non-diggable obtain is a no-op.
+    --   (2) a COMPLETED dig's delay since the zone-in reveals the exact rank via
+    --       the first-dig cooldown (issue #100), until the max latch stops it.
+    -- Main-thread text only -- no packets, no per-line spam.
+    ashita.events.register('text_in', 'dlac-chocowatch-dig', function(e)
         pcall(function()
             if not _drok then return; end
             local msg = e.message;
-            if type(msg) ~= 'string' or not msg:find('btained:', 1, true) then return; end
-            local item = digrank.parseObtained(msg);
-            if item == nil then return; end
-            if M.recordObtained(item) then
+            if type(msg) ~= 'string' then return; end
+            local tag, item = digrank.classifyDigLine(msg);
+            if tag == nil then return; end
+
+            local raised, why = false, nil;
+            -- (1) item ratchet on an obtained line (unchanged behaviour).
+            if tag == 'obtained' and item ~= nil and M.recordObtained(item) then
+                raised, why = true, '>= from digging ' .. item;
+            end
+            -- (2) timing read on any completed dig, off the zone-in baseline.
+            if digrank.isCompletedDig(tag) and M._zoneInAt ~= nil then
+                if M.recordDigTiming(os.clock() - M._zoneInAt) then
+                    raised, why = true, 'measured from your first-dig timing';
+                end
+            end
+
+            if raised then
                 local rs = M.rankState();
-                say(string.format('dig rank raised to %s (>= from digging %s).',
-                    rs.label or ('rank ' .. rs.rank), item));
+                say(string.format('dig rank raised to %s (%s).',
+                    rs.label or ('rank ' .. rs.rank), why));
             end
         end);
     end);
