@@ -346,3 +346,123 @@ the live Range/Ammo picks — lands AutoAmmo entirely on the state-file side.
   the rescan cache-bust. All the entity-array idioms live there now.
   `eboxammo.boxDistance` = a three-line consumer (#1); gearmove's moogle
   scans migrate whenever that (GM-frozen) branch is next touched. Tests EW*.
+
+## 8. PARKED — NIN shuriken: Daken / Sange / Yoru Shuriken (grill 2026-07-24)
+
+**Status: PINNED, NOT BUILT.** Henrik's call at the end of the grill: *"We need to
+test this properly before we put this into main branch. Let's leave this for now
+until we get our ninjas up and can test properly."* Nothing below is implemented.
+The research and the agreed design are recorded so the next session starts here
+instead of re-deriving it.
+
+### 8.1 What the server actually does (base code, local `stable` clone)
+
+Trust ladder as always: live memory > this > nothing. The private override modules
+(`modules/catseyexi`, `src/map/cexi`) are NOT in the checkout, and §8.2 proves they
+matter here.
+
+- **Daken** (`src/map/attackround.cpp` `CreateDakenAttack`, ~:529) requires a
+  **shuriken worn** — `CItemWeapon::isShuriken()` = Throwing skill AND
+  `subskill == SUBSKILL_SHURIKEN` (`src/map/items/item_weapon.cpp:96`) — rolls
+  `Mod::DAKEN` and adds **one extra THROW swing per attack round**, weapon slot
+  `SLOT_AMMO` (`attack.cpp:270`).
+- Trait: NIN **main job only**, `traits.sql:692-696` → 20/25/30/35/40 % at
+  Lv 25/40/55/70/95. Plus gear (`item_mods` 23142 → DAKEN 5), augment id 251
+  ("Daken +1"), and job-point gifts (+2..+5).
+- **The Daken throw consumes NOTHING in the base code.** The one and only
+  consumption site is `src/map/entities/battleentity.cpp:3072` — a DAKEN swing
+  removes 1 shuriken **only while `EFFECT_SANGE` (352) is up**.
+- **Sange**: NIN Lv75 merit ability, 3 min recast, **1 min duration**;
+  `scripts/effects/sange.lua` adds `DAKEN 100`. Its own header comment:
+  *"Daken will always activate but consumes shuriken while active."*
+- This CONTRADICTS retail (where Daken consumes per proc). Do not treat the
+  no-consumption reading as truth until it is watched in the field.
+
+### 8.2 Yoru Shuriken — the motivating item
+
+**Id 22999**, Lv75, NIN, `AmmoType = "Throwing"`, DMG 85, Delay 192, Accuracy +8,
+Ranged Accuracy +8, Magic Accuracy +8, Dark Resistance +10. It IS in the shipped
+catalog; it is **NOT anywhere in the public server repo** — a CatsEyeXI private
+custom. Henrik: it **does not consume during Sange**.
+
+**The consequence that shapes the whole design: that property is server-side and
+totally invisible to dlac.** No packet, no stat, no catalog field carries it. It can
+only ever be *declared by the player*, never inferred. Its passive stats are also
+the best of any shuriken, so the player wants it worn essentially always — which is
+exactly what makes an accidental throw expensive.
+
+### 8.3 The two real bugs this uncovered (both live on main today)
+
+1. **The WS-ammo leak.** In `dispatch.lua`'s `resolveAmmoPlan`, Preshot/Midshot
+   branch: with no ranged-enabled ammo in stock, the slot is emptied **only if the
+   worn ammo is flagged Special**; otherwise it returns *hold*. So a **WS-only**
+   ammo left worn from the last weapon skill, with the ranged stack exhausted,
+   **stays in the slot and gets fired.** Henrik's words for the requirement:
+   *"it shouldn't equip, and will empty the ammo slot if the target ammo for normal
+   ranged attacks has been all consumed — to avoid accidentally using WS ammo or
+   special-case ammo."*
+2. **Special vs. a trigger, with no winning move.** The motivating setup is a
+   trigger rule (`Has(De)Buff = Sange`) planning Yoru from the TP/Engaged set. Mark
+   Yoru **Special** → the Default sweep runs *before* the yield-to-sets check, so
+   AutoAmmo rips Yoru out **during** Sange, fighting the trigger every tick. Don't
+   mark it → AutoAmmo yields, but nothing protects Yoru once the cheap stack is
+   empty. **Neither configuration is safe today.**
+
+### 8.4 The agreed design (to build after field testing)
+
+- **`Sange` becomes a Special sub-behaviour** — the exact mirror of Unlimited Shot:
+  wear it while effect **352** is up, sweep it the moment the buff drops. Read with
+  the existing one-liner idiom, `buffActive(ctx, 352)`. This replaces the trigger
+  rule entirely; the player stops hand-rolling it.
+- **Widen the emptying mandate from "Special" to "not valid for this context"**, and
+  scope it by what can actually be *lost*: **empty the slot when the worn item is a
+  shootable ammo** (`AmmoType` ∈ Marksmanship / Archery / Throwing) that is not
+  enabled for the current context — **whether or not it is on the player's list**.
+  **Trinkets are left alone**: they are set-managed, they cannot be consumed, and the
+  server refuses the shot anyway. (Implementation risk to check FIRST: the engine
+  deliberately never loads the Catalog, so confirm `AmmoType` is already on the
+  `gear.lua` stamp — if not, that stamp needs one field.)
+- **No NIN hardcode.** AutoAmmo config is already per-job; choosing to flag shuriken
+  under NIN IS the gate.
+- A **`Melee` flag** (third sibling of Ranged / WS — "may be worn while engaged, for
+  Daken") is the shape if passive Daken turns out to consume nothing. It is NOT
+  settled: build it only once §8.5 answers the consumption question.
+- **Player-facing text is part of the spec, not polish** (Henrik, verbatim intent):
+  enabling the Sange behaviour must **clearly state that a second shuriken flagged
+  Ranged + WS is required**, or the shot is blocked instead; and when AutoAmmo pulls
+  the item, a **red chat line naming the item and the reason** —
+  *"Yoru Shuriken removed — no shuriken enabled for Ranged/WS in your bags."*
+  OPEN: whether that line repeats on a throttle while the condition holds (an empty
+  Ammo slot also means zero Daken procs, i.e. silent damage loss) or fires once.
+
+### 8.5 Timing truths worth keeping (verified in `feature/equipengine.lua`)
+
+- **Preshot is the ONLY real seam for Ammo.** Ranged attack is outgoing 0x01A
+  category **0x10** (`M.ACTION_ROUTES`, :127). `handleAction` (:536) **blocks** the
+  packet, fires **Preshot — the equip goes out here** — and only then re-injects.
+  The throw never leaves the client until dlac has dressed the slot, so there is no
+  race and no reaction time involved.
+- **`Midshot` fires AFTER the re-inject** (:551), i.e. mid-shot. Henrik field-tested
+  the equivalent by hand (dlac unloaded, throw animating, manual unequip) and **the
+  game refused it** — the server already owned the shot. So **any Midshot ammo plan
+  is probably a silent no-op.** Verify before relying on one.
+- **Daken procs are not action packets.** They resolve server-side inside the melee
+  attack round; dlac never sees one and can never dress the slot per proc. The only
+  levers are *when the item goes in* and *when it comes out*.
+
+### 8.6 The field test that unblocks all of it
+
+Needs a real NIN (Henrik: *"until we get our ninjas up"*).
+
+1. Passive Daken, Sange DOWN: melee a few hundred rounds with a counted stack of
+   cheap shuriken. **Does the count drop?** If it does not, §8.1 holds and a
+   Special item is safe to wear for melee. If it does, retail behaviour wins and
+   nothing Special may ever sit in the slot while engaged.
+2. Sange UP with a cheap shuriken: confirm ~1 consumed per attack round.
+3. Sange UP with **Yoru**: confirm the count does NOT drop (the custom property).
+4. Sange expiring while Yoru is worn: confirm nothing is consumed in the gap before
+   the next Default tick (~0.4 s).
+5. Optional, and it makes step 1 self-answering: AutoAmmo already re-counts bags on
+   every action event, so a **shuriken count that drops while engaged with no shot
+   and no WS fired is proof Daken consumes** — the same self-teaching shape as the
+   MP merit watcher. Offered, not yet chosen.
