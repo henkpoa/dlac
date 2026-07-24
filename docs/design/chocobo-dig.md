@@ -104,8 +104,8 @@ FFXI-standard and complete; the generator's Lua emitter is complete and the
 server-parse seam is marked for confirmation against the live layout.
 
 The dig-rank ladder labels (Amateur … Expert, with Novice/Craftsman as the
-rock/ore gates) are **proposed, pending maintainer sign-off** (player-facing
-names) — they ship as data only; nothing renders them in this slice.
+rock/ore gates) are **maintainer signed-off** — they mirror the server's craftRank
+names, so they need no invention.
 
 ## The rank model + guide scaffold (issue #97)
 
@@ -301,12 +301,13 @@ per-line chat. Tests: `run_tests` `DT1`–`DT21` (classify + invert), the update
   one-time **field cross-check** against the in-game moon display. If the ore-gate
   percent must be server-EXACT, the linear illumination curve should be replaced
   by the 84-entry LSB moon table — a single data swap, isolated in `vanamoon`.
-- **Player-facing strings** across the guide (the rank ladder labels incl. the new
+- **Player-facing strings** across the guide (the rank ladder labels incl.
   Veteran/Expert, the source labels `manual` / `>= from digs` / `reported by
   server`, the by-area tab strings — `By area`/`By item`, `hit`/`dig`, `active now`
   / `needs X`, the `<Element> Crystal`/`Cluster` + rock/ore condition text — and the
-  by-item strings — `Item:` / `Conditional drop` / `Diggable in …`) are proposed,
-  pending the maintainer's row-by-row sign-off.
+  by-item strings — `Item:` / `Conditional drop` / `Diggable in …`) are **maintainer
+  signed-off (2026-07-24)** — clear, honest, consistent with the sibling guides.
+  Henrik field-tests and flags anything that reads wrong in-game.
 - **All PRD #93 slices (#94–#100) are now shipped:** the odds engine + data, the
   riding-gear automation, the rank model (manual + ratchet + timing auto-detect,
   #100), and both guide tabs (by-area #98, by-item #99).
