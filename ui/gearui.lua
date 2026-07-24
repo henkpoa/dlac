@@ -4572,18 +4572,30 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
             ui._tpOpenT = ui._tpOpenT or { true };
             ui._tpOpenT[1] = true;
             if imgui.Begin('##dlac_tpfloat', ui._tpOpenT, fl) then
+                -- ONE size drives BOTH states. The window is AlwaysAutoResize, so if the
+                -- abort button and the icon button differed the float would visibly jump
+                -- size the moment a use went in flight. The abort's hand-drawn circle and
+                -- bar therefore DERIVE from it instead of carrying magic numbers -- the
+                -- ratios below reproduce the original 26px artwork exactly (radius 10,
+                -- a 10x4 bar), so this stays correct at any size.
+                -- Henrik 2026-07-24: 20px art was too small out on the screen -> 30.
+                local TPF_ICON = 30;
+                local TPF_PAD  = 3;
+                local TPF_BTN  = TPF_ICON + TPF_PAD * 2;
                 local pend = nil;
                 pcall(function() pend = (type(useit.pending) == 'function') and useit.pending() or nil; end);
                 local clicked = false;
                 if pend ~= nil then
                     -- a use is in flight: the button IS the abort now
-                    clicked = imgui.Button('##tpflstop', { 26, 26 });
+                    clicked = imgui.Button('##tpflstop', { TPF_BTN, TPF_BTN });
                     pcall(function()
                         local x, y = imgui.GetItemRectMin();
                         if type(x) == 'table' then y = (x[2] or x.y); x = (x[1] or x.x); end
                         local dl = imgui.GetWindowDrawList();
-                        dl:AddCircleFilled({ x + 13, y + 13 }, 10, imgui.GetColorU32({ 0.85, 0.20, 0.20, 1.0 }), 12);
-                        dl:AddRectFilled({ x + 8, y + 11 }, { x + 18, y + 15 }, imgui.GetColorU32({ 1, 1, 1, 0.95 }));
+                        local cx, cy = x + TPF_BTN / 2, y + TPF_BTN / 2;
+                        local bw, bh = TPF_BTN * 0.192, TPF_BTN * 0.077;
+                        dl:AddCircleFilled({ cx, cy }, TPF_BTN * 0.385, imgui.GetColorU32({ 0.85, 0.20, 0.20, 1.0 }), 12);
+                        dl:AddRectFilled({ cx - bw, cy - bh }, { cx + bw, cy + bh }, imgui.GetColorU32({ 1, 1, 1, 0.95 }));
                     end);
                     if imgui.IsItemHovered() then
                         imgui.SetTooltip(string.format('ABORT %s  (%s)', tostring(pend.name), tostring(pend.cancel)));
@@ -4609,11 +4621,13 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
                     end
                     if h ~= nil then
                         pcall(function()
-                            clicked = imgui.ImageButton(h, { 20, 20 },
-                                { 0, 0 }, { 1, 1 }, 3, { 0.10, 0.10, 0.13, 1.0 }, { 1, 1, 1, 1 });
+                            clicked = imgui.ImageButton(h, { TPF_ICON, TPF_ICON },
+                                { 0, 0 }, { 1, 1 }, TPF_PAD, { 0.10, 0.10, 0.13, 1.0 }, { 1, 1, 1, 1 });
                         end);
                     else
-                        clicked = imgui.Button('Tele##tpfl', { 36, 26 });
+                        -- Text fallback (both the PNG and the item icon failed). Width per
+                        -- the themed-font law: ~9.5px/char + 16 padding, or 'Tele' clips.
+                        clicked = imgui.Button('Tele##tpfl', { 54, TPF_BTN });
                     end
                     if imgui.IsItemHovered() then
                         imgui.SetTooltip('Teleports  --  drag the edge to move; unpin from the menu.');

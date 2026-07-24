@@ -214,7 +214,7 @@ agent; the per-repo setup lives in `docs/agents/`.
 
 ## Current state (as of 2026-07-24, end of day)
 
-- **HEADER MENU + SETTINGS — BUILT 2026-07-24 (`ui/menuui.lua`, addon `2026.07.24t`),
+- **HEADER MENU + SETTINGS — BUILT 2026-07-24 (`ui/menuui.lua`, addon `2026.07.24u`),
   awaiting Henrik's field test.** The header was eight right-aligned buttons; it is now
   **Profiles** (left, unchanged) and **Menu · Migrate** (right). Everything that used to
   sit left of "Reload LAC" — Lockstyle, Macro book, Hobby bar, Teleports, Level override
@@ -244,7 +244,11 @@ agent; the per-repo setup lives in `docs/agents/`.
     is untouched), `lockstyle.png` (masks), `macrobook.png` (book), `level.png`,
     `settings.png` (gears). The **floating** Teleports button now uses the SAME
     `teleports.png` instead of borrowing the in-game Warp Ring item icon (a different
-    visual language); the item icon remains as its fallback.
+    visual language); the item icon remains as its fallback. Drawn at **30px** (`t`) —
+    and the in-flight ABORT button **derives** its size and its hand-drawn circle/bar
+    geometry from that one constant, because the float is `AlwaysAutoResize` and would
+    visibly jump size mid-use if the two states disagreed. (The derived ratios
+    reproduce the original 26px artwork exactly: radius 10, a 10×4 bar.)
   - **`menu.png` (book) and `debug.png` (question mark) followed.** The Menu header
     button is a **26px icon button when the art loads and the labelled wide text button
     when it does not** — a failed texture must leave an obvious labelled button, never a
