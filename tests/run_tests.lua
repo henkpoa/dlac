@@ -224,7 +224,7 @@ end)();
                  'restockui','setupui','triggersui','uihost','uistyle','weightsui' };
     local GEAR = { 'actionpicker','blueprintsmodel','catalogindex','gearcheck','geareffects','gearexport',
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
-                   'groupsmodel','jobgate','ownedcache','profileexport','profilesets','setimport',
+                   'groupsmodel','jobgate','modeslibrary','ownedcache','profileexport','profilesets','setimport',
                    'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
     local FEATURE = { 'ammowatch','arbwatch','augments','check','chocowatch','craftwatch','debug','digcalc','digrank',
                       'eboxammo','eboxclient','fishcalc','fishwatch','gamemode','helmwatch','idleexcl','location','lockstyle','lookpreview',
@@ -10726,6 +10726,185 @@ end)();
     dc._setDb(dofile('data/digdata.lua'));
     check('BI27 nil entry -> itemSources nil', dc.itemSources(nil, 8, 1, {}), nil);
     dc._setDb(nil);   -- restore lazy load
+end)();
+
+-- ---------------------------------------------------------------------------
+-- ML. modeslibrary -- the Mode library pure core (ADR 0019, 2026-07-24).
+-- Own function scope (a do-block's locals share the chunk's 200 budget).
+-- ---------------------------------------------------------------------------
+;(function()
+    local ml = dofile('gear/modeslibrary.lua');
+    -- A broken plan can hand back nil where a list is expected. table.concat would
+    -- then CRASH the whole suite and hide every later check, so render nil instead --
+    -- a regression must fail loudly and locally, not take the run down with it.
+    local function join(t)
+        if type(t) ~= 'table' then return '(nil)'; end
+        return table.concat(t, ',');
+    end
+    check('ML1 module loads headless', type(ml), 'table');
+
+    -- Entry construction. kind is DERIVED from the values, never trusted, because
+    -- `def.values ~= nil` is the sole cycle test everywhere else in dlac.
+    local tog = ml.makeEntry('DT', nil, 'F9');
+    check('ML2 no values -> toggle',    tog.kind, 'toggle');
+    check('ML3 toggle keeps its bind',  tog.bind, 'F9');
+    local cyc = ml.makeEntry('Weapon', { 'Melee', 'Ranged', 'Caster' }, '^F3');
+    check('ML4 values -> cycle',        cyc.kind, 'cycle');
+    check('ML5 cycle keeps order',      join(cyc.values), 'Melee,Ranged,Caster');
+    check('ML6 blank name refused',     (select(2, ml.makeEntry('  ', nil, nil))), 'A mode needs a name.');
+    check('ML7 one-value cycle refused',(select(2, ml.makeEntry('X', { 'Only' }, nil))), 'A cycle needs at least two values.');
+    check('ML8 values dedupe case-insensitively',
+        join(ml.makeEntry('W', { 'Melee', 'melee', 'Ranged' }).values), 'Melee,Ranged');
+    check('ML9 blank values dropped',
+        join(ml.makeEntry('W', { 'A', '', '  ', 'B' }).values), 'A,B');
+
+    -- Engine-owned names must never become library entries.
+    check('ML10 maxmp is reserved',     ml.isReserved('maxmp'), true);
+    check('ML11 craft is reserved',     ml.isReserved('CRAFT'), true);
+    check('ML12 craftgoal is reserved', ml.isReserved('craftgoal'), true);
+    check('ML13 ordinary name is not',  ml.isReserved('Weapon'), false);
+    check('ML14 reserved name refused at capture',
+        (ml.makeEntry('maxmp', nil, nil) == nil), true);
+
+    -- toDef: a bare toggle MUST serialize as {} and not nil -- an empty definition is
+    -- load-bearing (it is what keeps a plain toggle listed across a commit round-trip).
+    local d = ml.toDef(ml.makeEntry('DT'));
+    check('ML15 bare toggle def is a table', type(d), 'table');
+    check('ML16 bare toggle def is empty',   next(d), nil);
+
+    -- ---- THE STAMP ----
+    local job = {
+        Weapon = { values = { 'Melee', 'Ranged', 'Caster' }, bind = '^F3' },
+        DT = {},
+    };
+
+    -- create
+    local p = ml.stampPlan(ml.makeEntry('TH', nil, nil), job, 'append');
+    check('ML17 new name is a create', p.action, 'create');
+    check('ML18 create collides with nothing', p.collides, false);
+    check('ML19 create strands nothing', #p.dead, 0);
+
+    -- append merges and NEVER drops
+    p = ml.stampPlan(ml.makeEntry('Weapon', { 'Ranged', 'Tank' }), job, 'append');
+    check('ML20 append action',            p.action, 'append');
+    check('ML21 append keeps every old value', join(p.after), 'Melee,Ranged,Caster,Tank');
+    check('ML22 append strands nothing',   #p.dead, 0);
+    check('ML23 append reports what is new', join(p.added), 'Tank');
+    check('ML24 append keeps the existing bind', p.bindTo, '^F3');
+
+    -- overwrite drops, and names exactly what died
+    p = ml.stampPlan(ml.makeEntry('Weapon', { 'Melee', 'Tank' }), job, 'overwrite');
+    check('ML25 overwrite action',       p.action, 'overwrite');
+    check('ML26 overwrite replaces',     join(p.after), 'Melee,Tank');
+    check('ML27 overwrite names the dead', join(p.dead), 'Ranged,Caster');
+    check('ML28 dead targets are Name:Value',
+        table.concat(ml.deadTargets(p), ' '), 'Weapon:Ranged Weapon:Caster');
+    -- (Every cycle below needs >= 2 values or makeEntry refuses it and stampPlan gets
+    -- a nil -- which would make these pass for the wrong reason. ML29a proves the
+    -- plan actually exists before ML29 trusts its emptiness.)
+    local appendPlan = ml.stampPlan(ml.makeEntry('Weapon', { 'Tank', 'Melee' }), job, 'append');
+    check('ML29a append plan really exists', type(appendPlan), 'table');
+    check('ML29 append produces no strip targets', #ml.deadTargets(appendPlan), 0);
+
+    -- THE REGRESSION THIS EXISTS FOR: a TOGGLE stamped onto a CYCLE. Under Append the
+    -- cycle must KEEP its values -- demoting it would silently kill every Name:Value
+    -- reference, which is the exact thing Append promises not to do. Overwrite is how
+    -- you demote on purpose, and then every value is correctly reported dead.
+    p = ml.stampPlan(ml.makeEntry('Weapon', nil, nil), job, 'append');
+    check('ML30 append refuses to demote a cycle', p.kind, 'cycle');
+    check('ML31 append demote strands nothing',    #p.dead, 0);
+    check('ML32 append demote keeps values', join(p.after), 'Melee,Ranged,Caster');
+    p = ml.stampPlan(ml.makeEntry('Weapon', nil, nil), job, 'overwrite');
+    check('ML33 overwrite CAN demote a cycle', p.kind, 'toggle');
+    check('ML34 demotion kills every value',
+        join(p.dead), 'Melee,Ranged,Caster');
+
+    -- adding values to an existing TOGGLE deletes nothing
+    p = ml.stampPlan(ml.makeEntry('DT', { 'Low', 'High' }), job, 'append');
+    check('ML35 toggle -> cycle is not destructive', #p.dead, 0);
+    check('ML36 toggle -> cycle takes the values', join(p.after), 'Low,High');
+
+    -- the EXISTING spelling wins, so references keep pointing at the same key
+    p = ml.stampPlan(ml.makeEntry('weapon', { 'Melee', 'Ranged' }), job, 'append');
+    check('ML37 collision keeps the stored spelling', p.name, 'Weapon');
+
+    -- a stamp that changes literally nothing says so
+    p = ml.stampPlan(ml.makeEntry('Weapon', { 'Melee', 'Ranged', 'Caster' }, '^F3'), job, 'append');
+    check('ML38 no-op stamp is flagged', p.action, 'rebind');
+
+    -- applyStamp never mutates the caller's map (so a plan can be abandoned)
+    local before = ml.stampPlan(ml.makeEntry('Weapon', { 'Zzz', 'Yyy' }), job, 'overwrite');
+    local newMap = ml.applyStamp(ml.makeEntry('Weapon', { 'Zzz', 'Yyy' }), job, 'overwrite');
+    check('ML39 original map untouched',
+        join(job.Weapon.values), 'Melee,Ranged,Caster');
+    check('ML40 new map has the new values',
+        join(newMap.Weapon.values), 'Zzz,Yyy');
+    check('ML41 untouched modes survive', type(newMap.DT), 'table');
+    check('ML42 plan and apply agree', before.action, 'overwrite');
+    -- a differently-cased duplicate key must not survive the write
+    local dup = ml.applyStamp(ml.makeEntry('weapon', { 'A', 'B' }), { Weapon = { values = { 'A' } } }, 'overwrite');
+    check('ML43 no duplicate-cased key', (dup['weapon'] == nil), true);
+    check('ML44 canonical key kept',     type(dup['Weapon']), 'table');
+
+    -- ---- capture from a job ----
+    local caps, refused = ml.captureAll({ Weapon = { values = { 'A', 'B' } }, DT = {}, maxmp = {} });
+    check('ML45 captures both real modes', #caps, 2);
+    check('ML46 sorted by name',           caps[1].name, 'DT');
+    check('ML47 reserved name refused, not dropped silently', #refused, 1);
+    check('ML48 refusal names the mode',   refused[1].name, 'maxmp');
+
+    -- ---- round-trip ----
+    local lib = {};
+    ml.add(lib, ml.makeEntry('Weapon', { 'Melee', 'Ranged' }, '^F3'));
+    ml.add(lib, ml.makeEntry('DT', nil, 'F9'));
+    local text = ml.serialize(lib);
+    local back, perr = ml.parse(text);
+    check('ML49 serialize/parse round-trips', perr, nil);
+    check('ML50 count survives',   #back, 2);
+    check('ML51 values survive',   join(back[1].values), 'Melee,Ranged');
+    check('ML52 bind survives',    back[2].bind, 'F9');
+    check('ML53 kind survives',    back[2].kind, 'toggle');
+    check('ML54 deterministic',    ml.serialize(back), text);
+
+    -- hostile / torn input is reported, never executed
+    check('ML55 empty input refused', (select(2, ml.parse(''))), 'empty input');
+    check('ML56 garbage refused',     (ml.parse('this is not lua') == nil), true);
+    check('ML57 non-table refused',   (select(2, ml.parse('return 5'))), 'did not return a table');
+    check('ML58 sandbox blocks os.exit', (function()
+        local r, e = ml.parse('os.exit(1) return {}');
+        return r == nil and e ~= nil;
+    end)(), true);
+    check('ML59 sandbox blocks io', (function()
+        local r = ml.parse('return { modes = { { name = io.open("x") } } }');
+        return r == nil or #r == 0;
+    end)(), true);
+    check('ML60 quotes/newlines survive a round-trip', (function()
+        local l = { ml.makeEntry('We"ird\nName', { 'A', 'B' }) };
+        local rt = ml.parse(ml.serialize(l));
+        return rt ~= nil and rt[1] ~= nil and rt[1].name;
+    end)(), 'We"ird\nName');
+
+    -- ---- library CRUD + import ----
+    check('ML61 duplicate add refused', (ml.add(lib, ml.makeEntry('DT'))), false);
+    check('ML62 replace add allowed',   (ml.add(lib, ml.makeEntry('DT', nil, 'F10'), true)), true);
+    check('ML63 replace took effect',   lib[ml.findEntryCI(lib, 'DT')].bind, 'F10');
+    check('ML64 rename to a taken name refused', (ml.rename(lib, 1, 'DT')), false);
+    check('ML65 rename to reserved refused',     (ml.rename(lib, 1, 'craft')), false);
+    check('ML66 rename works',                   (ml.rename(lib, 1, 'Arms')), true);
+
+    local created, collided = ml.classifyImport(
+        { ml.makeEntry('Arms', { 'X', 'Y' }), ml.makeEntry('Brand New') }, lib);
+    check('ML67 collision detected', table.concat(collided, ','), 'Arms');
+    check('ML68 new entry detected', table.concat(created, ','), 'Brand New');
+
+    local res = ml.applyImport(lib, { ml.makeEntry('Arms', { 'X', 'Y' }) }, false);
+    check('ML69 collision refused without confirmation', res.refused, 1);
+    check('ML70 ...and nothing changed', join(lib[1].values), 'Melee,Ranged');
+    res = ml.applyImport(lib, { ml.makeEntry('Arms', { 'X', 'Y' }) }, true);
+    check('ML71 confirmed overwrite updates', res.updated, 1);
+    check('ML72 ...and the values changed', join(lib[1].values), 'X,Y');
+    res = ml.applyImport(lib, { { name = 'maxmp' } }, true);
+    check('ML73 import cannot smuggle in a reserved name', res.refused, 1);
 end)();
 
 -- ---------------------------------------------------------------------------

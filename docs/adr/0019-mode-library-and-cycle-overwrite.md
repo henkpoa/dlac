@@ -21,17 +21,35 @@ in set-entry mode gates. So:
   reference can break.
 - **Overwrite is opt-in and cascades.** Values are replaced wholesale, and references
   to values that **no longer exist** are stripped from triggers and from set-entry
-  mode gates — via the machinery the Mode *delete* path already has
-  (`modeCondRefs(data, 'X:Value', strip)`).
+  mode gates — via the machinery the Mode *delete* path already has. That is **two**
+  functions, not one: `modeCondRefs` (`ui/triggersui.lua:586`) covers trigger `when.mode`
+  and `whenAny[].mode`; **set-entry gates are a separate store** reached only through
+  `deps.modeSetRefs` (`ui/gearui.lua:2506`), with its own file and serializer. A cascade
+  that reuses only the first silently leaves dead gates on gear entries — and on the Sets
+  tab a dead gate renders *byte-identical* to a live-but-inactive one, so nobody would
+  ever notice.
 - **The cascade is scoped to dead values only.** A bare `mode = 'Weapon'` matches any
   value and keeps working, so it is never touched. Killing it would delete working
   rules for no reason.
 - **The warning is a pre-commit list**, not a sentence: every trigger and every set
   entry that will be edited, named, before the player presses anything.
-- Replacing a Mode also **clears its live flag** when the replacement drops the value
-  currently active — transient runtime state, not saved data, and leaving it stranded
-  makes the engine complain about a cycle value its job no longer defines on every
-  dispatch (`dispatch.lua:4850`).
+- Replacing a Mode also settles its **live flag** when the replacement drops the value
+  currently active — transient runtime state, not saved data.
+
+  **Correction (2026-07-24, verified against the engine after this ADR was written):**
+  the original wording here claimed a stranded value "makes the engine complain … on
+  every dispatch (`dispatch.lua:4850`)". That is wrong on both counts. That line lives
+  inside `M.setMode`, reached from the `/dl mode` command handler (and therefore a
+  keybind press) — **not from dispatch**. The real per-dispatch consequence of a
+  stranded value is **silence**: `modeActive` simply returns false and the gated rules
+  and gear entries stop firing with no message at all. Which makes settling it *more*
+  important, not less — the failure is invisible, not noisy.
+
+  The mechanism is also cheaper than assumed: a commit queues `/dl triggers reload`, and
+  the loader's stale-cycle purge (`dispatch.lua:1046-1057`) **re-seats a cycle to
+  `values[1]`** when its current value is no longer defined. So a stamp that writes the
+  definition before committing gets the re-seat for free. Only a **toggle** needs the
+  explicit `/dl mode <name> off`.
 
 **Consequences.** This is the only place in dlac where importing data deletes other
 data the player authored. That is deliberate — Henrik's ruling was that a replaced
