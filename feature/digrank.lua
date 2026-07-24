@@ -127,8 +127,18 @@ M._norm = norm;   -- test seam
 -- off (issue #97: "the same channel hgather uses").
 function M.parseObtained(line)
     if type(line) ~= 'string' then return nil; end
-    line = stripCodes(line);
-    local item = line:match('[Oo]btained:%s*(.-)%.?%s*$');
+    local clean = stripCodes(line);
+    -- Match "obtained:" CASE-INSENSITIVELY. The server dig-obtained line reaches
+    -- text_in (proven by the hgather addon, which reads it the same way -- after a
+    -- string.lower), but its casing / leading prefix vary, so a fixed-case pattern
+    -- silently misses it -- and then the dig classifies as neither obtained NOR a
+    -- completed dig, so BOTH the item ratchet and the timing read go deaf on any
+    -- item-yielding dig. () captures the byte offset of the tag in a lowered copy;
+    -- the item name is sliced back out of the ORIGINAL string so display case survives.
+    local at = clean:lower():match('()obtained:');
+    if at == nil then return nil; end
+    local after = clean:sub(at + #'obtained:');
+    local item = after:match('^%s*(.-)%.?%s*$');
     if item == nil or item == '' then return nil; end
     return item;
 end
