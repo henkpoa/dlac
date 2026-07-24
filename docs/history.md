@@ -5177,3 +5177,49 @@ No `dispatch.M.VERSION` bump (digcalc/chocoui are addon-state only; the engine r
 filled. 2937 + 259 green. **Flagged:** the new player-facing strings (the `By item` tab name,
 the `Item:` / `needs X` / `Conditional drop` / `Diggable in …` labels) are proposed, pending
 the maintainer's row-by-row sign-off with the rest of the guide's wording.
+
+## Chocobo: dig feature field-hardening — GUI polish + the item-ratchet fix (2026-07-24, PRs #112–#119)
+
+The whole PRD #93 was shipped; this block is Henrik field-testing it and me hardening what
+broke in-game. Three threads:
+
+**Timing auto-detect — round → floor.** The first pass inverted the zone-in→first-dig delay
+with `round`, but lag only ever makes a dig land LATER, never earlier. A lagged Expert dig at
+11–14s rounded DOWN to Veteran. Fixed to a **floor bracket** `clamp(12 − floor(t/5))`: each 5s
+rung reads as its FASTEST rank (10–14.9s → Expert). Henrik confirmed by reset + dig. A secret
+`/dl choco reset` (rank back to Amateur) exists for exactly this re-testing.
+
+**GUI polish → the panel-text standard.** Henrik: the panels have "WAY too much text, hard to
+use." New house rule (now `docs`-wide as panels are touched): **underline the key label and put
+the explanation in a HOVER**, never an inline paragraph; cut obvious mechanics entirely. Built
+`uistyle.helpLabel(im, text, tip, col)` (PR #115) — an underlined "link" (guarded draw-list)
+whose tip shows on hover, taking the caller's imgui so it stays binding-agnostic + headless
+(US1–6). The riding-gear + dig-guide panels were rebuilt onto it; the search moved to the TOP
+as two buttons (**Area** / **Item**) opening their own windows (in an applicable digging zone
+Area opens on your current zone), with item→area cross-nav and a back step — scrolling to search
+at the bottom was the complaint.
+
+**The item ratchet was deaf (the long one).** Henrik: reset, dug items above Amateur, rank
+didn't move. Two wrong cuts before the fix:
+- I assumed the dig-obtained line doesn't reach `text_in` and hooked a **packet** —
+  `messageSpecial` → `0x02A` TALKNUMWORK, item id at raw offset `0x08` (a first draft even had
+  the wrong packet, `0x02D`; an adversarial review caught it). It didn't fix it (PR #118).
+- Henrik pointed at the **hgather** digging addon (`Ashita/addons/hgather`, working). It reads
+  dug items straight off `text_in` after `string.lower()`:
+  `string.match(message, "obtained: (.*).")` — so the line **is** ordinary chat; the packet hunt
+  was the wrong channel. Our `parseObtained` matched `[Oo]btained:` (only the leading `O`
+  case-flexed), so the real line's casing/prefix slipped past — and an unclassified dig is
+  neither `obtained` NOR a completed dig, so ONE miss silenced BOTH the ratchet and the timing
+  read on every item dig. Fixed to match `obtained:` **case-insensitively**, name sliced from the
+  original for display case (PR #119, `DR21f`–`DR21i`). The names were never wrong — the data
+  holds the full forms ("Chunk of Gold Ore"/737 etc.); Henrik's "gold ore" was shorthand. The
+  packet path stays as a gated, fail-safe, idempotent second source.
+
+**Key decision / durable lesson:** when a working addon already handles the event you're
+reverse-engineering, read it before theorising from server source — hgather answered in one grep
+what two packet guesses did not. And match chat-tag text case-insensitively (lower a copy);
+a fixed-case Lua pattern silently misses real messages. **All PRD #93 slices are now
+field-confirmed working in-game.** Known gap: conditional crystals/rocks/ores are synthesised
+(no static pool row) so a dug conditional doesn't ratchet yet — a harmless under-claim, follow-up.
+`addon.version` 2026.07.24j; `run_tests` 3044 + `smoke_ui` 284 green (Windows lua 5.4.6 + WSL
+lua5.4).

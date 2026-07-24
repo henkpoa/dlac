@@ -124,11 +124,11 @@ from **three stacked sources, each honestly labelled**, and only ONE of them is
 exact:
 
 - **manual** — a rank dropdown (Amateur → Expert) the player sets; the seed.
-- **`>= from digs`** — a one-way **ratchet** floor. Every `Obtained: <item>` dig
-  line is mapped to that item's dig-rank requirement (the MINIMUM across every
-  zone/pool it drops from — a pull proves at least the easiest source's rank) and
-  raises the floor if it exceeds it. Never lowers (a lucky low find is not
-  evidence of a lower rank).
+- **`>= from digs`** — a one-way **ratchet** floor. Every dig-obtained line
+  (matched **case-insensitively** — see *Obtained-item detection* below) is mapped
+  to that item's dig-rank requirement (the MINIMUM across every zone/pool it drops
+  from — a pull proves at least the easiest source's rank) and raises the floor if
+  it exceeds it. Never lowers (a lucky low find is not evidence of a lower rank).
 - **`reported by server`** — a live `GetCraftSkill(11)` read. Masked → nil, so
   this is silent today; if a build ever unmasks index 59, the decoded rank wins
   and is the one **exact** source.
@@ -280,12 +280,13 @@ zone-in to the first *completed* dig inverts to the exact rank:
   per-line chat *prints* from a packet handler, which this does none of).
 - The always-on `text_in` hook classifies each dig line (`digrank.classifyDigLine`
   → `obtained`/`nothing`/`ease`/`wait`). On any **completed** dig it computes
-  `rank = round((60 − elapsed)/5)` (`digrank.rankFromZoneTiming`) and feeds it to
-  the **same one-way `rankFloor` ratchet** the obtained-item path uses. The first
+  `rank = clamp(12 − floor(elapsed / 5))` (`digrank.rankFromZoneTiming`) and feeds
+  it to the **same one-way `rankFloor` ratchet** the obtained-item path uses. The
+  **floor** bracket (not round) is deliberate: lag only ever makes a dig land
+  LATER, never earlier, so each 5s rung `[5k, 5k+5)` reads as its FASTEST possible
+  rank `12 − k` — 10–14.9s all read Expert, 15–19.9s Veteran, and so on. The first
   completed dig of a visit is the tightest (highest) read; later, slower digs read
-  lower and never lower the floor. Client timing is ~1s noisy vs the server's
-  integer-second cooldown — comfortably inside the 5s rung — so 10s (or faster)
-  reads Expert (the 10s floor). Field-confirmed: Henrik (Expert) rejects through
+  lower and never lower the floor. Field-confirmed: Henrik (Expert) rejects through
   t+10.2s, first success t+11.0s → Expert.
 - **Permanent max-latch** (Henrik's rule — skill never deranks): once `rankFloor`
   reaches `MAX_RANK`, `_rankMaxed()` is true and the timing read stops for good.
@@ -294,6 +295,47 @@ zone-in to the first *completed* dig inverts to the exact rank:
 All main-thread text + one packet-thread timestamp — no packets decoded, no
 per-line chat. Tests: `run_tests` `DT1`–`DT21` (classify + invert), the updated
 `DR*` ladder checks; `smoke_ui` `CW-T1`–`CW-T4` (floor raise, one-way, latch).
+
+## Obtained-item detection — the channel (field-fixed 07-24)
+
+The ratchet (§#97) maps a dug item to its rank requirement, but first it has to
+SEE the dig. The dig-obtained line reaches the client as **ordinary chat the
+`text_in` hook sees** — ground truth from the **hgather** digging addon
+(`Ashita/addons/hgather`, a working session tracker Henrik uses), which reads dug
+items the same way: `string.lower(message)` then
+`string.match(message, "obtained: (.*).")`. (hgather also confirms the *attempt*
+is `packet_out` `0x01A` with sub-command `0x1104` at offset `0x0A`, and offsets in
+Ashita `e.data` are absolute — they include the 4-byte header. dlac instead gates
+timing on the dig-COMPLETE C2S `0x063`.)
+
+Two field regressions were fixed here (Henrik reset → dug items → rank didn't move):
+
+1. **`parseObtained` matched a fixed case** (`[Oo]btained:` — only the leading `O`
+   flexed). The real line's casing / a leading prefix slipped past it, and an
+   unclassified dig is neither `obtained` NOR a completed dig — so a single miss
+   silenced **both** the item ratchet *and* the timing read on every item-yielding
+   dig. It now matches `obtained:` **case-insensitively** (lower a copy to find the
+   tag offset, slice the name out of the ORIGINAL string so display case survives),
+   exactly as hgather does. (`DR21f`–`DR21i`.) The item names were never the
+   problem — the data already holds the full forms ("Chunk of Gold Ore"/737,
+   "Chunk of Platinum Ore"/738, "Bag of Fruit Seeds"/574).
+
+2. A prior detour hooked a **packet** for the item id (`messageSpecial` → `0x02A`
+   TALKNUMWORK, id = `param0`/`num[0]` at raw offset `0x08`) on the theory that
+   `text_in` didn't see the line. hgather disproved that theory. The packet path
+   survives as a **harmless, gated, fail-safe second source** — it stashes the id
+   on the network thread within the 3s window a real dig (`0x063`) opens, and a
+   MAIN-thread pump (`pumpObtains`, from dlac's `d3d_present` seed-watch) does the
+   ratchet + save + announce — idempotent with the text ratchet (whichever fires
+   first raises the floor; the other no-ops). (`CW-T9`–`CW-T14`.)
+
+**Lesson (durable):** when a working addon already handles the event you're
+reverse-engineering, READ IT before theorising from the server source — hgather
+answered in one grep what two packet guesses did not.
+
+**Known gap:** the conditional crystals/rocks/ores are synthesised (they live in
+no static pool), so digging a conditional does not ratchet by name/id yet — a
+harmless under-claim, left as a follow-up.
 
 ## Open / flagged
 
@@ -308,6 +350,8 @@ per-line chat. Tests: `run_tests` `DT1`–`DT21` (classify + invert), the update
   by-item strings — `Item:` / `Conditional drop` / `Diggable in …`) are **maintainer
   signed-off (2026-07-24)** — clear, honest, consistent with the sibling guides.
   Henrik field-tests and flags anything that reads wrong in-game.
-- **All PRD #93 slices (#94–#100) are now shipped:** the odds engine + data, the
-  riding-gear automation, the rank model (manual + ratchet + timing auto-detect,
-  #100), and both guide tabs (by-area #98, by-item #99).
+- **All PRD #93 slices (#94–#100) are shipped and field-confirmed (07-24):** the
+  odds engine + data, the riding-gear automation, the rank model (manual + ratchet
+  + timing auto-detect, #100), and both guide tabs (by-area #98, by-item #99).
+  Timing auto-detect and the obtained-item ratchet are both confirmed working
+  in-game (the ratchet after the case-fix above).
