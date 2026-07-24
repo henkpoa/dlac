@@ -114,8 +114,8 @@ function M.rankState()
     return { rank = 0, source = 'manual', exact = false, label = 'Amateur', sourceLabel = 'manual' };
 end
 
--- The dig-rank ladder labels (0..8) -- the shipped data wins, digrank's fallback
--- covers a missing table. Returns a 0-indexed table.
+-- The dig-rank ladder labels (0..10, Amateur..Expert) -- the shipped data wins,
+-- digrank's fallback covers a missing table. Returns a 0-indexed table.
 function M.rankLadder()
     local dcok, dc = pcall(require, 'dlac\\feature\\digcalc');
     if dcok and type(dc) == 'table' and type(dc.db) == 'function' then
@@ -492,8 +492,15 @@ function M.render(deps, availW)
     imgui.SameLine(0, 6);
     imgui.PushItemWidth(160);
     local seedLabel = (ladder[seed] ~= nil) and tostring(ladder[seed]) or ('rank ' .. seed);
+    -- Walk 0..max(ladder) so the picker auto-covers the full 0..10 ladder
+    -- (Amateur .. Expert) without a magic number -- extend the ladder, the
+    -- picker follows.
+    local maxRank = 0;
+    for k in pairs(ladder) do
+        if type(k) == 'number' and k > maxRank then maxRank = k; end
+    end
     if imgui.BeginCombo('##chocorank', seedLabel) then
-        for i = 0, 8 do
+        for i = 0, maxRank do
             local lbl = (ladder[i] ~= nil) and tostring(ladder[i]) or ('rank ' .. i);
             if imgui.Selectable(string.format('%s##rank%d', lbl, i), i == seed) and cwok then
                 cw.setManualRank(i);

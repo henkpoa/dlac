@@ -25,14 +25,16 @@
 --       w    = dig weight (higher = more likely; digcalc: q = min(1, w/(1000*mu)))
 --       rank = dig-rank requirement, index into `ranks` below (0 = Amateur)
 --   cond = the conditional Regular-pool rule tables (maps + gates), below.
---   ranks = the 0..8 dig-rank ladder (index = rank number).
+--   ranks = the 0..10 dig-rank ladder (index = rank number).
 
 return {
 
--- The dig-rank ladder (0..8), matching the server's first-dig timing bracket
--- (60 - 5*rank seconds). PROPOSED player-facing labels -- pending maintainer
--- sign-off (issue #94 PR); the data foundation only needs the numeric ladder,
--- rock/ore gates reference it by index (Novice = 3, Craftsman = 6).
+-- The dig-rank ladder (0..10 = the CatsEye craftRank range for Digging),
+-- matching the server's first-dig zone cooldown clamp(60 - 5*rank, 10, 60)s:
+-- Amateur(0)=60s .. Adept(8)=20s, Veteran(9)=15s, Expert(10)=10s (the 10s floor
+-- makes rank 10 the effective max). Rock/ore gates reference it by index
+-- (Novice = 3, Craftsman = 6). Loot rankReq itself never exceeds Adept(8), so
+-- ranks 9/10 only sharpen the rank LABEL + the timing detection (issue #100).
 ranks = {
   [0] = "Amateur",
   [1] = "Recruit",
@@ -43,6 +45,8 @@ ranks = {
   [6] = "Craftsman",
   [7] = "Artisan",
   [8] = "Adept",
+  [9] = "Veteran",
+  [10] = "Expert",
 },
 
 -- The enabled digging zones + their loot pools. GENERATED (see DATA STATUS
