@@ -1402,12 +1402,13 @@ local function renderAutomations()
                 if imgui.Button((on and 'ON' or 'OFF') .. '##craftpanelonoff', { 46, 22 }) and cwok then cw.setEnabled(not on); end
             end
             imgui.SameLine(0, 10);
-            local barOn = cwok and (cw.barVisible == true);
-            if imgui.Button((barOn and 'Hide bar' or 'Show bar') .. '##craftbartoggle', { 78, 22 }) and cwok then
-                cw.barVisible = not barOn;
+            local barShown = false;
+            pcall(function() barShown = require('dlac\\ui\\hobbybar').isShown('craft'); end);
+            if imgui.Button((barShown and 'Hide bar' or 'Show bar') .. '##craftbartoggle', { 78, 22 }) then
+                pcall(function() require('dlac\\ui\\hobbybar').toggle('craft'); end);
             end
             if imgui.IsItemHovered() then
-                imgui.SetTooltip('The floating craft bar: on/off, the craft glyphs, and the goal.\nAlso /dl craft bar.');
+                imgui.SetTooltip('The shared hobby bar, on Craft: on/off, the craft glyphs, and the goal.\nAlso /dl craft bar.');
             end
         end
         imgui.Spacing();

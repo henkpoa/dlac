@@ -266,11 +266,13 @@ function M.render(deps, availW)
     -- row below carries Make target now and needs its width)
     if _fwok then
         imgui.SameLine(0, 16);
-        if imgui.Button(fw.barVisible and 'Hide bar##fishbar' or 'Fish bar##fishbar') then
-            fw.barVisible = not fw.barVisible;
+        local barShown = false;
+        pcall(function() barShown = require('dlac\\ui\\hobbybar').isShown('fish'); end);
+        if imgui.Button(barShown and 'Hide bar##fishbar' or 'Fish bar##fishbar') then
+            pcall(function() require('dlac\\ui\\hobbybar').toggle('fish'); end);
         end
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('The floating fishing bar (also: /dl fish bar).');
+            imgui.SetTooltip('The shared hobby bar, on Fishing (also: /dl fish bar).');
         end
     end
     imgui.Spacing();

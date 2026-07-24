@@ -1324,11 +1324,13 @@ local function renderAutomationsQuick()
         return;
     end
     -- The live switches, keyed like the rows: state() -> (text, on) for the
-    -- second column, flip() = the same call the bars/panels make. Mutual
-    -- exclusion between the craft/HELM/fish overlays lives inside the
-    -- watchers, never here. Only rows with a switch render at all (Henrik,
-    -- 07-20 round 2): the set-driven trio (Iridescence / Obi / Oneiros) has
-    -- nothing to flip -- their panels live on the Automations tab itself.
+    -- second column, flip() = the same call the bars/panels make. The four idle
+    -- hobbies (Craft/HELM/Fishing/Chocobo) are mutually exclusive -- that lives
+    -- inside the watchers (idleexcl, ADR 0017), never here, so flipping one on
+    -- from this menu disarms the rest just like anywhere else. Only rows with a
+    -- switch render at all (Henrik, 07-20 round 2): the set-driven trio
+    -- (Iridescence / Obi / Oneiros) has nothing to flip -- their panels live on
+    -- the Automations tab itself.
     local SWITCH = {
         craft = {
             tip = 'Craft overlay: wears the selected craft\'s gear while ON (idle only).\nPick craft + goal on the craft bar (/dl craft bar) or the Automations tab.',
@@ -1343,15 +1345,15 @@ local function renderAutomationsQuick()
             end,
         },
         helm = {
-            tip = 'HELM idle set: wears the active category\'s gathering gear while ON (idle\nonly). Pick the category in the HELM menu below.',
+            tip = 'Auto HELM: equips the active category\'s gathering gear when you\'re near a\n<category> Point (idle only). Pick the category in the HELM menu below.',
             state = function()
                 local hw = require('dlac\\feature\\helmwatch');
-                if not hw.isEnabled() then return 'off', false; end
+                if not hw.isAutoHelm() then return 'off', false; end
                 return 'ON -- ' .. tostring(hw.getGather() or 'no category'), true;
             end,
             flip = function()
                 local hw = require('dlac\\feature\\helmwatch');
-                hw.setEnabled(not hw.isEnabled());
+                hw.setAutoHelm(not hw.isAutoHelm());
             end,
         },
         fish = {
@@ -1439,15 +1441,15 @@ local function renderHelmQuick()
         imgui.TextColored(COL.ERR, 'helmwatch unavailable.');
         return;
     end
-    local sel, on, armed;
-    pcall(function() sel = hw.getGather(); on = hw.isEnabled(); armed = hw.isAutoHelm(); end);
+    local sel, armed;
+    pcall(function() sel = hw.getGather(); armed = hw.isAutoHelm(); end);
     -- Top row (Henrik, 07-20 round 2): jump to the full HELM panel -- the
     -- GUI behind this quick menu (Automations tab detail view).
     imgui.Dummy({ 18, 18 });
     imgui.SameLine(0, 6);
     if imgui.Selectable('##tpqhmenu', false, TPQ_KEEP) then tpqOpenPanel('helm'); end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Open the HELM panel (Automations tab): ratings, hats, gear ladders and\nboth switches in full.');
+        imgui.SetTooltip('Open the HELM panel (Automations tab): ratings, hats, gear ladders and\nthe Auto HELM switch in full.');
     end
     imgui.SameLine(30);
     imgui.TextColored(COL.HEADER, 'HELM menu');
@@ -1475,7 +1477,7 @@ local function renderHelmQuick()
             local helm, surv, bp = 0, 0, false;
             pcall(function() helm, surv, bp = hw.rating(g); end);
             imgui.SetTooltip(string.format(
-                '%s -- click to make this the active category (worn while the idle set is ON).\nBreak rating %d%s, Surveyor +%d.',
+                '%s -- click to make this the active category (worn when Auto HELM is on and near a Point).\nBreak rating %d%s, Surveyor +%d.',
                 g, helm, bp and ' -- BREAK-PROOF' or '/5', surv));
         end
         imgui.SameLine(30);
@@ -1487,22 +1489,9 @@ local function renderHelmQuick()
             'VP ' .. (vp ~= nil and tostring(vp) or '?'));
     end
     imgui.Separator();
-    -- The idle switch -- the thing that actually WEARS the gear.
-    imgui.Dummy({ 18, 18 });
-    imgui.SameLine(0, 6);
-    if imgui.Selectable('##tpqhon', false, TPQ_KEEP) then
-        pcall(function() hw.setEnabled(not on); end);
-    end
-    if imgui.IsItemHovered() then
-        imgui.SetTooltip(on
-            and 'HELM idle set is ON -- gathering gear stays on while idle. Click to turn off.'
-            or  'Set HELM Idle: wears your best gathering gear whenever idle, until turned off.\nStarts off each session.');
-    end
-    imgui.SameLine(30);
-    imgui.TextColored(COL.DIM, 'Idle set');
-    imgui.SameLine(170);
-    imgui.TextColored(on and TPQ_GREEN or COL.DIM, on and 'ON' or 'off');
-    -- Auto HELM: the detection-armed overlay (swings / targeting a Point).
+    -- The ONE HELM switch: Auto HELM (Henrik -- two toggles was confusing, Auto
+    -- works best). Gathering gear equips when you're near a <category> Point (or
+    -- after a swing), never "always on regardless of location".
     imgui.Dummy({ 18, 18 });
     imgui.SameLine(0, 6);
     if imgui.Selectable('##tpqhauto', false, TPQ_KEEP) then
@@ -1510,8 +1499,8 @@ local function renderHelmQuick()
     end
     if imgui.IsItemHovered() then
         imgui.SetTooltip(armed
-            and 'Auto HELM is armed -- targeting a Point (or swinging) auto-equips that\ncategory\'s gear; normal gear returns after you leave. Click to disarm.'
-            or  'Auto HELM: arms detection -- targeting a Point (or swinging) auto-equips\nthat category\'s gear; normal gear returns after you leave.');
+            and 'Auto HELM is ON -- near a Point (or on a swing) it equips that category\'s\ngear; normal gear returns after you leave. Click to turn off.'
+            or  'Auto HELM: equips your best gathering gear when you\'re near a <category>\nPoint (or after a swing). Starts off each session.');
     end
     imgui.SameLine(30);
     imgui.TextColored(COL.DIM, 'Auto HELM');
@@ -1726,7 +1715,7 @@ local function renderHeaderButtons()
               if clicked then macrob.open(); end
           end };
     end
-    do   -- craft bar toggle (small helmet icon, warp-button size)
+    do   -- hobby bar toggle (small helmet icon, warp-button size)
         btns[#btns+1] = { w = 26,
           render = function()
               local h = nil; pcall(function() h = require('dlac\\ui\\filetex').handle('craftbar'); end);
@@ -1734,10 +1723,10 @@ local function renderHeaderButtons()
               if h ~= nil then pcall(function() clicked = imgui.ImageButton(h, { 16, 16 }); end);
               else clicked = imgui.Button('Cft##hdrcb', { 26, 22 }); end
               if imgui.IsItemHovered() then
-                  imgui.SetTooltip('Craft bar -- pick a craft + goal and switch it on to wear that craft\'s\ngear (skill / HQ / NQ). Toggle this floating bar; also /dl craft bar.');
+                  imgui.SetTooltip('Hobby bar -- one shared window for Craft / HELM / Fishing / Chocobo:\npick controls and switch a hobby on (idle only). Toggle it here or /dl <hobby> bar.');
               end
               if clicked then
-                  pcall(function() local cw = require('dlac\\feature\\craftwatch'); cw.barVisible = not (cw.barVisible == true); end);
+                  pcall(function() require('dlac\\ui\\hobbybar').toggleVisible(); end);
               end
           end };
     end
@@ -4794,6 +4783,32 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
             local cuThemed = style ~= nil and style.push();
             pcall(cuMod.renderSearch, M._deps);
             if cuThemed then style.pop(); end
+        end
+    end
+    -- The shared hobby bar: ONE window for Craft / HELM / Fishing / Chocobo, with a
+    -- selector that marks the active hobby and locks while it runs (ADR 0017). It
+    -- replaced the three separate craft/helm/fish bar windows; self-gates on
+    -- ui._hobbyBar. Own theme bracket, function-scoped require.
+    if has.imgui then
+        local hbMod = nil;
+        pcall(function() hbMod = require('dlac\\ui\\hobbybar'); end);
+        if hbMod ~= nil and type(hbMod.render) == 'function' then
+            local hbThemed = style ~= nil and style.push();
+            pcall(hbMod.render);
+            if hbThemed then style.pop(); end
+        end
+    end
+    -- The idle-hobby badge: INDEPENDENT of the main box (it names the one armed
+    -- hobby -- Craft / HELM / Fishing / Chocobo -- while you play). Self-gates on
+    -- idleexcl.getActive(), so it draws nothing when none is armed and appears the
+    -- instant one is (ADR 0017). Own theme bracket, function-scoped require.
+    if has.imgui then
+        local ifMod = nil;
+        pcall(function() ifMod = require('dlac\\ui\\idlefloat'); end);
+        if ifMod ~= nil and type(ifMod.render) == 'function' then
+            local ifThemed = style ~= nil and style.push();
+            pcall(ifMod.render);
+            if ifThemed then style.pop(); end
         end
     end
     if not M.visible or not has.imgui then return; end

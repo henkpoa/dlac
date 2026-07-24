@@ -77,12 +77,18 @@ sf.saveUiFlags = function()
         if type(ui._gfPos) == 'table' then
             gfx, gfy = tonumber(ui._gfPos[1]) or 0, tonumber(ui._gfPos[2]) or 0;
         end
-        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, viewids = %s, buildmax = %s, tgmon = %s, tpfloat = %s, tpx = %d, tpy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f }\n',
+        -- The idle-hobby badge (ui/idlefloat.lua) remembers only WHERE it sat --
+        -- its visibility is driven by which hobby is armed, not a stored flag.
+        local ifx, ify = 0, 0;
+        if type(ui._idlePos) == 'table' then
+            ifx, ify = tonumber(ui._idlePos[1]) or 0, tonumber(ui._idlePos[2]) or 0;
+        end
+        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, viewids = %s, buildmax = %s, tgmon = %s, tpfloat = %s, tpx = %d, tpy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f, ifx = %d, ify = %d }\n',
             tostring(sf.flags.debug), tostring(sf.flags.autosync), tostring(sf.flags.viewids), tostring(bm),
             tostring(ui._tgMon == true),
             tostring(ui._tpFloat == true), tpx, tpy,
             tostring(ui._gearFloat == true), gfx, gfy,
-            tonumber(ui._gfScale) or 1.0));
+            tonumber(ui._gfScale) or 1.0, ifx, ify));
     end);
 end
 
@@ -125,6 +131,10 @@ sf.loadUiFlags = function()
             -- Stored raw; floatgear.scale() clamps on read, so a hand-edited 0 or
             -- a negative here cannot collapse the window past rescuing.
             if type(t.gfscale) == 'number' then ui._gfScale = t.gfscale; end
+            -- The idle-hobby badge's remembered position (visibility is not stored).
+            if type(t.ifx) == 'number' and type(t.ify) == 'number' and (t.ifx ~= 0 or t.ify ~= 0) then
+                ui._idlePos = { t.ifx, t.ify };
+            end
         end
     end);
 end

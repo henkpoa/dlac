@@ -215,30 +215,19 @@ function M.render(deps, availW)
 
     imgui.TextColored(COL_HEADER, 'Auto HELM Set');
     imgui.SameLine(0, 10);
-    imgui.TextColored(COL_TEXT, 'pick a category (on the floating bar) -> wears your best gathering gear ON IDLE ONLY.');
-    -- The two switches (Henrik's split): "Set HELM Idle" = the manual pin,
-    -- session-only OFF at login; "Auto HELM" = detection-armed temporary
-    -- overlay, PERSISTED until turned off.
-    local on = hwok and hw.isEnabled();
-    imgui.TextColored(COL_TEXT, 'Set HELM Idle:');
-    imgui.SameLine(0, 6);
+    imgui.TextColored(COL_TEXT, 'pick a category (on the hobby bar) -> Auto HELM wears your best gathering gear near a Point, IDLE ONLY.');
+    -- ONE switch now: Auto HELM (Henrik -- two toggles was confusing, and Auto
+    -- works best). Gathering gear equips when you're near a <category> Point (or on
+    -- a swing); there is no separate always-on manual idle set anymore.
     local cbok, craftbar = pcall(require, 'dlac\\ui\\craftbar');
     local pill = (cbok and type(craftbar) == 'table' and type(craftbar.onOffSwitch) == 'function')
         and craftbar.onOffSwitch or nil;
-    local IDLE_ON  = 'HELM idle set is ON -- your gathering gear stays on while idle.\nStarts OFF each session; click to turn off.';
-    local IDLE_OFF = 'Wears your best gathering gear whenever you are idle, until turned off.\nStarts OFF each session.';
-    if pill ~= nil then
-        if pill(on, 'helmidle', IDLE_ON, IDLE_OFF) and hwok then hw.setEnabled(not on); end
-    else
-        if imgui.Button((on and 'ON' or 'OFF') .. '##helmpanelonoff', { 46, 22 }) and hwok then hw.setEnabled(not on); end
-    end
-    imgui.SameLine(0, 14);
     local autoOn = hwok and hw.isAutoHelm();
     imgui.TextColored(COL_TEXT, 'Auto HELM:');
     imgui.SameLine(0, 6);
     local rangeY = (hwok and type(hw.proxEnter) == 'function') and hw.proxEnter() or 10;
     local AUTO_ON  = string.format('Auto HELM is ON: come within %d yalms of a gathering Point and that\ncategory\'s gear equips itself -- no targeting needed; it stays on while ANY\nPoint is near (stacked respawns included) and your normal gear returns\nmoments after you walk away. Starts OFF each session.\nClick to turn off.', rangeY);
-    local AUTO_OFF = string.format('Come within %d yalms of a gathering Point and Auto HELM equips that\ncategory\'s gear -- no targeting needed; it stays on while ANY Point is near\nand your normal gear returns moments after you leave. Starts OFF each\nsession (armed, merely walking past a Point re-dresses you).', rangeY);
+    local AUTO_OFF = string.format('Come within %d yalms of a gathering Point and Auto HELM equips that\ncategory\'s gear -- no targeting needed; it stays on while ANY Point is near\nand your normal gear returns moments after you leave. This is the ONE HELM\nswitch now -- there is no separate always-on manual idle set. Starts OFF\neach session.', rangeY);
     if pill ~= nil then
         if pill(autoOn, 'helmauto', AUTO_ON, AUTO_OFF) and hwok then hw.setAutoHelm(not autoOn); end
     else
@@ -261,12 +250,13 @@ function M.render(deps, availW)
         imgui.SetTooltip('Auto HELM detect range in yalms (3-20, default 10): how close a gathering\nPoint must be before the gear equips -- no targeting needed. Raise it if lag\nor macro spam makes your swings land from further out; the keep-wearing\nleash is +2y. Remembered per character.');
     end
     imgui.SameLine(0, 10);
-    local barOn = hwok and (hw.barVisible == true);
-    if imgui.Button((barOn and 'Hide bar' or 'Show bar') .. '##helmbartoggle', { 78, 22 }) and hwok then
-        hw.barVisible = not barOn;
+    local barShown = false;
+    pcall(function() barShown = require('dlac\\ui\\hobbybar').isShown('helm'); end);
+    if imgui.Button((barShown and 'Hide bar' or 'Show bar') .. '##helmbartoggle', { 78, 22 }) then
+        pcall(function() require('dlac\\ui\\hobbybar').toggle('helm'); end);
     end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('The floating HELM bar: category glyphs, the switches, points and rating.\nAlso /dl helm bar.');
+        imgui.SetTooltip('The shared hobby bar, on HELM: category glyphs, the Auto HELM switch, points\nand rating. Also /dl helm bar.');
     end
     imgui.SameLine(0, 14);
     local activeG = hwok and hw.getGather() or nil;

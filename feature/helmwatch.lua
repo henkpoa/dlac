@@ -213,14 +213,18 @@ local function ensureManifestFresh()
     end);
 end
 
--- The on/off switch (bar + panel). Craft/HELM/Fishing CO-CLAIM now (ADR 0012
--- amendment, engine v98): arming HELM no longer stands the craft switch down --
--- all armed activities claim and the Arbiter's rank settles every overlapping
--- slot per slot. Walking from the bench to the pond means disarming Craft
--- yourself; arming is no longer a mode switch. (Was: enabling HELM turned the
--- craft switch off; the cross-require is gone.)
+-- The manual idle switch. HISTORICAL: Auto HELM (setAutoHelm below) is now the ONE
+-- user-facing HELM switch (Henrik: two toggles was confusing, Auto works best), so
+-- this manual path is no longer wired to any UI -- it stays as the engine's
+-- always-on primitive. It still honours the idle-hobby lock (ADR 0017): arming
+-- while another hobby is active is refused.
 function M.setEnabled(on)
     M.loadState();
+    if on == true then
+        local allowed = true;
+        pcall(function() allowed = require('dlac\\feature\\idleexcl').guardActivate('helm'); end);
+        if not allowed then return; end
+    end
     M.enabled = (on == true);
     if M.enabled then
         M._enabledAt = os.time();
@@ -229,11 +233,19 @@ function M.setEnabled(on)
     saveState();
 end
 
--- "Auto HELM": arm/disarm the detection overlay. Session-only (like the idle
--- switch); disarming ends a running hold at once AND tears the entity
--- watches down (an idle session costs entwatch zero work).
+-- "Auto HELM": the ONE HELM switch now (Henrik). Arm/disarm the detection overlay
+-- -- gathering gear equips when you're near a <Category> Point (or after a swing),
+-- never "always on regardless of location". Session-only; disarming ends a running
+-- hold at once AND tears the entity watches down (an idle session costs entwatch
+-- zero work). It honours the idle-hobby lock (ADR 0017): arming while another hobby
+-- is active is refused -- turn that one off first.
 function M.setAutoHelm(on)
     M.loadState();
+    if on == true then
+        local allowed = true;
+        pcall(function() allowed = require('dlac\\feature\\idleexcl').guardActivate('helm'); end);
+        if not allowed then return; end
+    end
     M.autoHelm = (on == true);
     if M.autoHelm then
         ensureManifestFresh();
@@ -823,8 +835,12 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
             if a ~= 'helm' then return; end
             e.blocked = true;
             if b == 'bar' then
-                M.barVisible = not M.barVisible;
-                say('HELM bar ' .. (M.barVisible and 'shown' or 'hidden') .. '.');
+                local shown = false;
+                pcall(function()
+                    local hbb = require('dlac\\ui\\hobbybar');
+                    hbb.toggle('helm'); shown = hbb.isShown('helm');
+                end);
+                say('hobby bar ' .. (shown and 'shown (HELM)' or 'hidden') .. '.');
                 return;
             end
             if VALID[b] ~= nil then

@@ -1393,6 +1393,75 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- 7c. hobbybar RENDER stack balance (ADR 0017) -- the shared hobby window's
+--     selector does PushStyleColor/PopStyleColor per tab (active = Button colour,
+--     locked = Text colour) plus the always-paired Begin/End. A mismatch is the
+--     floatgear S50 crash class: native UB inside ImGui, no Lua error, whole
+--     client down. Stub imgui + idleexcl, drive M.render for each selected tab in
+--     BOTH the idle and the active-lock branch, and assert every stack returns to 0.
+-- ---------------------------------------------------------------------------
+;(function()
+    local depth = { win = 0, col = 0 };
+    local function nop() end
+    local IM = {};
+    for _, n in ipairs({ 'SetNextWindowSize', 'Separator', 'Text', 'TextColored', 'SameLine',
+        'Dummy', 'SetTooltip', 'Spacing' }) do IM[n] = nop; end
+    IM.Begin          = function() depth.win = depth.win + 1; return true; end
+    IM['End']         = function() depth.win = depth.win - 1; end
+    IM.PushStyleColor = function() depth.col = depth.col + 1; end
+    IM.PopStyleColor  = function(n) depth.col = depth.col - (tonumber(n) or 1); end
+    IM.Button         = function() return false; end
+    IM.IsItemHovered  = function() return false; end
+    IM.GetContentRegionAvail = function() return 400, 400; end
+
+    -- save what we stub, so later smoke sections see the real modules
+    local NAMES = { 'dlac\\ui\\craftbar', 'dlac\\ui\\helmbar', 'dlac\\ui\\fishbar',
+                    'dlac\\ui\\hobbybar', 'dlac\\feature\\chocowatch',
+                    'dlac\\feature\\idleexcl', 'imgui' };
+    local saved = {};
+    for _, k in ipairs(NAMES) do saved[k] = package.loaded[k]; end
+
+    package.loaded['imgui'] = IM;
+    for _, m in ipairs({ 'craftbar', 'helmbar', 'fishbar' }) do
+        package.loaded['dlac\\ui\\' .. m] = { renderContent = nop, onOffSwitch = function() return false; end };
+    end
+    package.loaded['dlac\\feature\\chocowatch'] = { isEnabled = function() return false; end, setEnabled = nop };
+    local activeStub = nil;   -- nil = idle; a table = that hobby is armed (lock branch)
+    package.loaded['dlac\\feature\\idleexcl'] = { getActive = function() return activeStub; end };
+
+    package.loaded['dlac\\ui\\hobbybar'] = nil;
+    local ok, hb = pcall(require, 'dlac\\ui\\hobbybar');
+    check('HB1 hobbybar re-requires against a stub imgui', ok and type(hb.render), 'function');
+    if ok then
+        local ui = host.services.ui;
+
+        ui._hobbyBar = false;                       -- closed: draws nothing
+        pcall(hb.render);
+        check('HB2 closed hobby bar opens no window', depth.win, 0);
+
+        ui._hobbyBar = true;
+        activeStub = nil;                           -- idle: every tab selectable
+        for _, k in ipairs({ 'craft', 'helm', 'fish', 'choco' }) do
+            ui._hobbySel = k;
+            check('HB3.' .. k .. ' renders selection ' .. k, pcall(hb.render), true);
+        end
+        check('HB4 idle: Begin/End balanced',   depth.win, 0);
+        check('HB5 idle: colour stack balanced', depth.col, 0);
+
+        activeStub = { key = 'helm', name = 'HELM' };   -- lock: HELM active
+        ui._hobbySel = 'craft';                          -- render must force-select the active one
+        check('HB6 renders with an active hobby (lock branch)', pcall(hb.render), true);
+        check('HB7 active: Begin/End balanced',   depth.win, 0);
+        check('HB8 active: colour stack balanced', depth.col, 0);
+        check('HB9 render force-selected the active hobby', ui._hobbySel, 'helm');
+
+        ui._hobbyBar = false;
+    end
+
+    for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures > 0 then

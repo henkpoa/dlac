@@ -220,14 +220,14 @@ end)();
     -- (data/catalog, fishdb, spells, ...) carry no gear-fetch logic and are excluded.
     local ROOT_FILES = { 'utils.lua', 'dispatch.lua', 'chatfmt.lua', 'profiles.lua', 'gear.lua', 'dlac.lua' };
     local UI = { 'ammoui','automationsui','craftbar','equippedui','filetex','fishbar','fishui',
-                 'floatgear','gearui','helmbar','helmui','itemicons','priorityui','profilesmenu',
+                 'floatgear','gearui','helmbar','helmui','hobbybar','idlefloat','itemicons','priorityui','profilesmenu',
                  'restockui','setupui','triggersui','uihost','uistyle','weightsui' };
     local GEAR = { 'actionpicker','blueprintsmodel','catalogindex','gearcheck','geareffects','gearexport',
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
                    'groupsmodel','jobgate','ownedcache','profileexport','profilesets','setimport',
                    'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
     local FEATURE = { 'ammowatch','arbwatch','augments','check','chocowatch','craftwatch','debug','digcalc','digrank',
-                      'eboxammo','eboxclient','fishcalc','fishwatch','gamemode','helmwatch','location','lockstyle','lookpreview',
+                      'eboxammo','eboxclient','fishcalc','fishwatch','gamemode','helmwatch','idleexcl','location','lockstyle','lookpreview',
                       'macrobook','meritwatch','mpbands','pinwatch','restockwatch','useitem','vanamoon' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
 
@@ -1674,6 +1674,91 @@ check('T33 gpReady', craftwatch.gpReady(), true);
 local curT = craftwatch.onSynth(4096, { 1165, 1165 }, 40);
 check('T34 current keeps crystal', curT.crystal, 4096);
 check('T35 current keeps ings order', curT.ings[1] == 1165 and #curT.ings == 2, true);
+
+-- ---------------------------------------------------------------------------
+-- IE. idleexcl -- the four idle hobbies (Craft/HELM/Fishing/Chocobo) are MUTUALLY
+--     EXCLUSIVE at the enable toggle (ADR 0017): arming one stands the other three
+--     down, getActive() names the armed one, deactivate() stands it down (the
+--     float's Off button). This is the ENABLE-layer radio, NOT the claim-side
+--     co-claim engine -- AR8/AR9/AR10 stub state files and never call setEnabled,
+--     so they are untouched by this.
+-- (Wrapped in an IIFE so its locals stay OFF the test file's 200-local main-chunk
+-- ceiling -- the same hard rule the addon's own modules follow.)
+-- ---------------------------------------------------------------------------
+;(function()
+    -- Fresh watcher instances; preload so idleexcl.onActivated can require() its
+    -- peers (in the addon dlac.lua's package.path does this; the harness doesn't).
+    local IE_cw = dofile('feature/craftwatch.lua');
+    local IE_hw = dofile('feature/helmwatch.lua');
+    local IE_fw = dofile('feature/fishwatch.lua');
+    local IE_ch = dofile('feature/chocowatch.lua');
+    local savedLoaded = {};
+    for _, k in ipairs({ 'craftwatch', 'helmwatch', 'fishwatch', 'chocowatch', 'idleexcl' }) do
+        savedLoaded['dlac\\feature\\' .. k] = package.loaded['dlac\\feature\\' .. k];
+    end
+    package.loaded['dlac\\feature\\craftwatch'] = IE_cw;
+    package.loaded['dlac\\feature\\helmwatch']  = IE_hw;
+    package.loaded['dlac\\feature\\fishwatch']  = IE_fw;
+    package.loaded['dlac\\feature\\chocowatch'] = IE_ch;
+    local idleexcl = dofile('feature/idleexcl.lua');
+    package.loaded['dlac\\feature\\idleexcl'] = idleexcl;
+
+    -- HELM's ONE switch is Auto HELM now (manual idle is unwired from the UI).
+    local function armedCount()
+        return (IE_cw.isEnabled() and 1 or 0)
+             + (IE_hw.isAutoHelm() and 1 or 0)
+             + (IE_fw.isEnabled() and 1 or 0)
+             + (IE_ch.isEnabled() and 1 or 0);
+    end
+
+    -- clean slate
+    IE_cw.setEnabled(false); IE_hw.setEnabled(false); IE_hw.setAutoHelm(false);
+    IE_fw.setEnabled(false); IE_ch.setEnabled(false);
+    check('IE0 nothing armed -> getActive nil',     idleexcl.getActive(), nil);
+    check('IE0b canActivate any when idle',         idleexcl.canActivate('fish'), true);
+
+    -- Arm Craft.
+    IE_cw.setEnabled(true);
+    check('IE1 craft armed -> active is craft',     (idleexcl.getActive() or {}).key, 'craft');
+    check('IE1b craft detail = the picked craft',   (idleexcl.getActive() or {}).detail, IE_cw.getCraft());
+
+    -- LOCK-while-active: arming another hobby is REFUSED (no auto-disarm).
+    check('IE2 canActivate helm false vs active craft', idleexcl.canActivate('helm'), false);
+    IE_hw.setAutoHelm(true);
+    check('IE2b arming HELM refused -> HELM stays off',  IE_hw.isAutoHelm(), false);
+    check('IE2c craft is still the active one',          (idleexcl.getActive() or {}).key, 'craft');
+    check('IE2d still exactly one armed',                armedCount(), 1);
+
+    IE_fw.setEnabled(true);
+    check('IE3 arming Fishing refused vs active craft',  IE_fw.isEnabled(), false);
+    check('IE3b craft still active',                     (idleexcl.getActive() or {}).key, 'craft');
+
+    -- SWITCH: turn Craft off, THEN arm HELM (Auto).
+    IE_cw.setEnabled(false);
+    check('IE4 craft off -> nothing active',        idleexcl.getActive(), nil);
+    IE_hw.setAutoHelm(true);
+    check('IE4b HELM (auto) now arms',              IE_hw.isAutoHelm(), true);
+    check('IE4c HELM is the active one',            (idleexcl.getActive() or {}).key, 'helm');
+    check('IE4d HELM detail = gather category',     (idleexcl.getActive() or {}).detail, IE_hw.getGather());
+    check('IE4e re-arming the SAME hobby is allowed', idleexcl.canActivate('helm'), true);
+
+    -- deactivate() stands the armed one down (badge Off) -> clears BOTH HELM switches.
+    check('IE5 deactivate returns the armed key',   idleexcl.deactivate(), 'helm');
+    check('IE5b HELM auto cleared by deactivate',   IE_hw.isAutoHelm(), false);
+    check('IE5c none armed after deactivate',       idleexcl.getActive(), nil);
+    check('IE5d isActive false when none armed',    idleexcl.isActive(), false);
+
+    -- With nothing active, any hobby can arm; Chocobo works.
+    IE_ch.setEnabled(true);
+    check('IE6 chocobo arms when idle',             (idleexcl.getActive() or {}).key, 'choco');
+    check('IE6b exactly one armed',                 armedCount(), 1);
+
+    -- Restore: stand everything down and put package.loaded back so later blocks
+    -- are unaffected (a later fishwatch.setEnabled must NOT reach these peers).
+    IE_ch.setEnabled(false);
+    IE_hw.setEnabled(false); IE_hw.setAutoHelm(false);
+    for k, v in pairs(savedLoaded) do package.loaded[k] = v; end
+end)();
 
 -- ---------------------------------------------------------------------------
 -- U. Set-entry name resolution -- case-insensitive fallback + quiet-once warn.

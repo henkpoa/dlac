@@ -450,8 +450,18 @@ end
 
 -- The on/off switch (bar + panel). Writing enabled -> the engine picks it up
 -- within a dispatch (~0.4s tick) and overlays / stops overlaying the craft gear.
+-- The four idle hobbies (Craft/HELM/Fishing/Chocobo) are MUTUALLY EXCLUSIVE at
+-- this toggle (lock-while-active, ADR 0017): arming one while another is active is
+-- REFUSED by idleexcl.guardActivate -- you turn the running one off first. This is
+-- an ENABLE-layer guard, NOT the old claim-side exclusivity history.md records as
+-- a dead end; the engine's co-claim/Arbiter is untouched.
 function M.setEnabled(on)
     M.loadCraftState();
+    if on == true then
+        local allowed = true;
+        pcall(function() allowed = require('dlac\\feature\\idleexcl').guardActivate('craft'); end);
+        if not allowed then return; end   -- another idle hobby is active; leave craft off
+    end
     M.enabled = (on == true);
     if M.enabled then M._enabledAt = os.time(); ensureManifestFresh(); end
     saveCraftState();
@@ -643,8 +653,12 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
                 leathercraft = 'Leathercraft', bonecraft = 'Bonecraft',
                 alchemy = 'Alchemy', cooking = 'Cooking' };
             if b == 'bar' then
-                M.barVisible = not M.barVisible;
-                say('craft bar ' .. (M.barVisible and 'shown' or 'hidden') .. '.');
+                local shown = false;
+                pcall(function()
+                    local hbb = require('dlac\\ui\\hobbybar');
+                    hbb.toggle('craft'); shown = hbb.isShown('craft');
+                end);
+                say('hobby bar ' .. (shown and 'shown (Craft)' or 'hidden') .. '.');
                 return;
             end
             if b == 'goal' then

@@ -181,81 +181,66 @@ end
 local isOpen = { true };
 local BAR_MIN_W = 280;
 
-function M.render()
-    if not fw.barVisible then return; end
-    local pushed = _uok and uistyle.push();
-    pcall(function()
-        imgui.SetNextWindowSize({ 0, 0 }, ImGuiCond_Always or 0);
-        isOpen[1] = true;
-        if imgui.Begin('dlac Fishing##dlac_fishbar', isOpen, ImGuiWindowFlags_AlwaysAutoResize or 0) then
-            local on = fw.isEnabled();
-            local _, tname = fw.getTarget();
-            local rodId, rodName = fw.getRod();
-            local baitId, baitName = fw.getBait();
-            -- Row 1: pill + target.
-            if onOffSwitch(on, 'fishbar',
-                'Fishing idle set is ON -- rod, bait and fishing gear stay on while idle. Click to turn off.',
-                'Set Fish Idle: wears your best fishing kit whenever idle, until turned off.\nRod and bait follow the target fish (Automations > Auto Fish Set).')
-            then fw.setEnabled(not on); end
-            imgui.SameLine(0, 10);
-            if tname ~= nil then
-                imgui.TextColored(COL_GOLD, tostring(tname));
-                if imgui.IsItemHovered() then
-                    imgui.SetTooltip('Target fish. Change it in Automations > Auto Fish Set\n(or /dl fish target <name>).');
-                end
-            else
-                imgui.TextColored(COL_DIM, 'no target fish');
-                if imgui.IsItemHovered() then
-                    imgui.SetTooltip('Pick a target in Automations > Auto Fish Set -- rod and bait\nfollow it. Without one you still get gear + your best rod.');
-                end
-            end
-            imgui.Separator();
-            -- Row 2: rod + bait, icons first (the identity); the names are
-            -- BUTTONS now -- click for the manual-override dropdown (* marks
-            -- a manual pick holding the slot).
-            if _icok then icons.renderIcon(rodId, 18); end
-            local rodLbl = (rodName ~= nil and tostring(rodName) or 'no rod picked')
-                           .. (fw.rodPinned() and ' *' or '');
-            if imgui.SmallButton(rodLbl .. '##fbrodbtn') then imgui.OpenPopup('##fbrodpop'); end
-            if imgui.IsItemHovered() then
-                imgui.SetTooltip('Click: pick the rod yourself. A manual pick (*) beats auto\nuntil the target changes or the rod leaves your bags.');
-            end
-            rodPopup();
-            imgui.SameLine(0, 12);
-            if _icok and baitId ~= nil then icons.renderIcon(baitId, 18); end
-            local n = baitCount(baitId);
-            local baitLbl = (baitName ~= nil
-                    and (tostring(baitName) .. (n ~= nil and (' x' .. n) or ''))
-                    or 'no bait')
-                    .. (fw.baitPinned() and ' *' or '');
-            if imgui.SmallButton(baitLbl .. '##fbbaitbtn') then imgui.OpenPopup('##fbbaitpop'); end
-            if imgui.IsItemHovered() then
-                imgui.SetTooltip('Bait in your equippable bags -- a used-up stack re-equips\nitself; the LAST one gone auto-switches (chat line says so).\nClick: pick the bait yourself. A manual pick (*) beats auto\nwhile its stack lasts.');
-            end
-            baitPopup();
-            -- Row 3: skill + VP breadcrumb.
-            local sk = fw.playerFishSkill();
-            local vp = fw.venturePoints();
-            if sk ~= nil or vp ~= nil then
-                imgui.TextColored(COL_DIM, string.format('skill %s   VP %s',
-                    sk ~= nil and tostring(sk) or '?', vp ~= nil and tostring(vp) or '?'));
-            end
-            if on then
-                imgui.SameLine(0, 10);
-                imgui.TextColored(COL_GREEN, 'dressed while idle');
-            end
-            imgui.Dummy({ BAR_MIN_W, 1 });   -- enforces the min width under AlwaysAutoResize
+-- The fishing bar's CONTENT (no window chrome). Drawn by ui/hobbybar.lua inside the
+-- one shared hobby window. (Was M.render + its own d3d_present window until the bars
+-- were unified into hobbybar, ADR 0017.)
+function M.renderContent(availW)
+    local on = fw.isEnabled();
+    local _, tname = fw.getTarget();
+    local rodId, rodName = fw.getRod();
+    local baitId, baitName = fw.getBait();
+    -- Row 1: pill + target.
+    if onOffSwitch(on, 'fishbar',
+        'Fishing idle set is ON -- rod, bait and fishing gear stay on while idle. Click to turn off.',
+        'Set Fish Idle: wears your best fishing kit whenever idle, until turned off.\nRod and bait follow the target fish (Automations > Auto Fish Set).')
+    then fw.setEnabled(not on); end
+    imgui.SameLine(0, 10);
+    if tname ~= nil then
+        imgui.TextColored(COL_GOLD, tostring(tname));
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Target fish. Change it in Automations > Auto Fish Set\n(or /dl fish target <name>).');
         end
-        imgui.End();
-        if isOpen[1] == false then fw.barVisible = false; end
-    end);
-    if pushed then uistyle.pop(); end
-end
-
-if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'function' then
-    ashita.events.register('d3d_present', 'dlac-fishbar-render', function()
-        pcall(M.render);
-    end);
+    else
+        imgui.TextColored(COL_DIM, 'no target fish');
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Pick a target in Automations > Auto Fish Set -- rod and bait\nfollow it. Without one you still get gear + your best rod.');
+        end
+    end
+    imgui.Separator();
+    -- Row 2: rod + bait, icons first (the identity); the names are BUTTONS --
+    -- click for the manual-override dropdown (* marks a manual pick holding the slot).
+    if _icok then icons.renderIcon(rodId, 18); end
+    local rodLbl = (rodName ~= nil and tostring(rodName) or 'no rod picked')
+                   .. (fw.rodPinned() and ' *' or '');
+    if imgui.SmallButton(rodLbl .. '##fbrodbtn') then imgui.OpenPopup('##fbrodpop'); end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Click: pick the rod yourself. A manual pick (*) beats auto\nuntil the target changes or the rod leaves your bags.');
+    end
+    rodPopup();
+    imgui.SameLine(0, 12);
+    if _icok and baitId ~= nil then icons.renderIcon(baitId, 18); end
+    local n = baitCount(baitId);
+    local baitLbl = (baitName ~= nil
+            and (tostring(baitName) .. (n ~= nil and (' x' .. n) or ''))
+            or 'no bait')
+            .. (fw.baitPinned() and ' *' or '');
+    if imgui.SmallButton(baitLbl .. '##fbbaitbtn') then imgui.OpenPopup('##fbbaitpop'); end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Bait in your equippable bags -- a used-up stack re-equips\nitself; the LAST one gone auto-switches (chat line says so).\nClick: pick the bait yourself. A manual pick (*) beats auto\nwhile its stack lasts.');
+    end
+    baitPopup();
+    -- Row 3: skill + VP breadcrumb.
+    local sk = fw.playerFishSkill();
+    local vp = fw.venturePoints();
+    if sk ~= nil or vp ~= nil then
+        imgui.TextColored(COL_DIM, string.format('skill %s   VP %s',
+            sk ~= nil and tostring(sk) or '?', vp ~= nil and tostring(vp) or '?'));
+    end
+    if on then
+        imgui.SameLine(0, 10);
+        imgui.TextColored(COL_GREEN, 'dressed while idle');
+    end
+    imgui.Dummy({ BAR_MIN_W, 1 });   -- enforces the min width under AlwaysAutoResize
 end
 
 return M;

@@ -173,11 +173,19 @@ end
 
 function M.isEnabled() M.loadState(); return M.enabled == true; end
 
--- The on/off switch (panel). Craft/HELM/Fishing/Chocobo CO-CLAIM (ADR 0012
--- amendment): arming Chocobo stands nothing else down -- all armed activities
--- claim and the Arbiter's rank settles every overlapping slot per slot.
+-- The on/off switch (panel + bar + /dl choco on|off). The four idle hobbies (Craft/
+-- HELM/Fishing/Chocobo) are MUTUALLY EXCLUSIVE at this toggle (lock-while-active,
+-- ADR 0017): arming Chocobo while another hobby is active is REFUSED by
+-- idleexcl.guardActivate -- you turn the running one off first. This is an
+-- ENABLE-layer guard, NOT the old claim-side exclusivity history.md records as a
+-- dead end; the engine's co-claim/Arbiter is untouched.
 function M.setEnabled(on)
     M.loadState();
+    if on == true then
+        local allowed = true;
+        pcall(function() allowed = require('dlac\\feature\\idleexcl').guardActivate('choco'); end);
+        if not allowed then return; end   -- another idle hobby is active; leave chocobo off
+    end
     M.enabled = (on == true);
     if M.enabled then
         M._enabledAt = os.time();
@@ -357,6 +365,15 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
             if b == 'on' or b == 'off' then
                 M.setEnabled(b == 'on');
                 say('Chocobo idle set ' .. (M.enabled and 'ON' or 'OFF') .. '.');
+                return;
+            end
+            if b == 'bar' then
+                local shown = false;
+                pcall(function()
+                    local hbb = require('dlac\\ui\\hobbybar');
+                    hbb.toggle('choco'); shown = hbb.isShown('choco');
+                end);
+                say('hobby bar ' .. (shown and 'shown (Chocobo)' or 'hidden') .. '.');
                 return;
             end
             if b == 'reset' then

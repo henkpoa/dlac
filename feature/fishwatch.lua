@@ -340,14 +340,19 @@ end
 function M.rodPinned() M.loadState(); return M.rodPin == true; end
 function M.baitPinned() M.loadState(); return M.baitPin == true; end
 
--- The pill (bar + panel). Craft/HELM/Fishing CO-CLAIM now (ADR 0012 amendment,
--- engine v98): arming fishing no longer stands the craft or HELM switches down --
--- all armed activities claim and the Arbiter's rank settles every overlapping
--- slot per slot. Disarming a peer is the player's own act now; arming is no
--- longer a mode switch. (Was: enabling fishing turned craft AND helm off; both
--- cross-requires are gone.)
+-- The pill (bar + panel). The four idle hobbies (Craft/HELM/Fishing/Chocobo) are
+-- MUTUALLY EXCLUSIVE at this toggle (lock-while-active, ADR 0017): arming fishing
+-- while another hobby is active is REFUSED by idleexcl.guardActivate -- you turn the
+-- running one off first. This is an ENABLE-layer guard, NOT the old claim-side
+-- exclusivity history.md records as a dead end; the engine's co-claim/Arbiter is
+-- untouched.
 function M.setEnabled(on)
     M.loadState();
+    if on == true then
+        local allowed = true;
+        pcall(function() allowed = require('dlac\\feature\\idleexcl').guardActivate('fish'); end);
+        if not allowed then return; end   -- another idle hobby is active; leave fishing off
+    end
     M.enabled = (on == true);
     if M.enabled then
         M._enabledAt = os.time();
@@ -586,8 +591,12 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
             e.blocked = true;
             local b = rest:match('^(%S*)') or '';
             if b == 'bar' then
-                M.barVisible = not M.barVisible;
-                say('fish bar ' .. (M.barVisible and 'shown' or 'hidden') .. '.');
+                local shown = false;
+                pcall(function()
+                    local hbb = require('dlac\\ui\\hobbybar');
+                    hbb.toggle('fish'); shown = hbb.isShown('fish');
+                end);
+                say('hobby bar ' .. (shown and 'shown (Fishing)' or 'hidden') .. '.');
             elseif b == 'on' or b == 'off' then
                 M.setEnabled(b == 'on');
                 say('Set Fish Idle ' .. (M.enabled and 'ON' or 'OFF') .. '.');
