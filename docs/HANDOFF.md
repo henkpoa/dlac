@@ -235,6 +235,29 @@ agent; the per-repo setup lives in `docs/agents/`.
   `feature/autoacc` (GM approval pending) — never delete, never push. The two blocks
   below are the build-up story, kept as history.
 
+- **E-Box Restock — SHIPPED + field-confirmed 2026-07-24 (grill-with-docs → build).** A
+  Crystal-Warrior-ONLY Automations feature — **invisible and inert off-CW at every surface**
+  (row, panel, nudge, status, and the `/dl restock` command all gate on `gamemode.get() == 'CW'`).
+  A per-item **Target** list where the effective set on a job = **Character list ∪ current-Job
+  list** (a same-item Job Target overrides the character baseline); Restock fetches the
+  **Shortfall** from the Ephemeral Box on your click — never silently. The load-bearing rule is
+  **slot-loss safety** (Henrik's field law, in the pure `feature/restockwatch.plan`): each
+  withdrawn stack lands in a *fresh* Inventory slot, so a fetch costs `⌈fetch/stackSize⌉` slots
+  and must **never over-draw** (24 fire crystal @ stack 12 = 2 slots; too few slots = lost
+  items). On-hand = the field bags {Inventory 0, Satchel 5, Sack 6, Case 7}; room = free
+  Inventory(0) slots. A floating **Restock nudge** (Henrik's crate icon, `assets/ebox.png`)
+  pops up near a box: hover = the fetch plan, left-click = Fetch all, right-click = open the
+  panel. Field-confirmed working (panel, planner, Fetch all, E-Box detection, nudge).
+  **↳ REUSE THE E-BOX CLIENT:** ALL E-Box traffic goes through the ONE client
+  **`feature/eboxclient.lua`** (**ADR 0016**; it's in architecture.md's Central-services table
+  with the full API) — every E-Box feature is a thin CONSUMER (AutoAmmo's `eboxammo` = a
+  category-15 adapter; `ui/restockui` = Restock). **NEVER open a second 0x1A4 client** — it's a
+  party line; two clients race and double the traffic. The client owns the protocol, a shared
+  multi-category counts cache, entwatch proximity (`BOX_RANGE = 5`), and the server-load
+  throttle (one-in-flight, global min-gap, near-box gate, per-category coalesced). Full spec:
+  [design/ebox-restock.md](design/ebox-restock.md). Commits `975896a..b2fab33` on main;
+  addon.version 2026.07.24b.
+
 - **THE LOCKSTYLE PIVOT — lockstyle is addon-resident; the Engine equips gear only
   (07-23, PRD #80, RULED — code lands slice by slice).** After the week-long
   silent-apply saga (docs/history.md "the silent apply", "the rest of the travel

@@ -1296,13 +1296,19 @@ local TPQ_GREEN = { 0.45, 0.90, 0.45, 1.0 };
 -- Automations tab (uihost), land on the detail view, close the popup chain.
 -- automationsui is pcall-required, not captured (the autoui local is declared
 -- far below -- hard rule 8).
-local function tpqOpenPanel(key)
+-- Open one automation's panel from ANYWHERE (the quick menu, /dl restock, the
+-- restock nudge): show the window, one-shot select the Automations tab, land on
+-- the detail view. tpqOpenPanel adds the popup close for the quick-menu caller.
+function M.openAutomation(key)
     pcall(function()
         local au = require('dlac\\ui\\automationsui');
         if type(au.openDetail) == 'function' then au.openDetail(key); end
     end);
     pcall(host.selectTab, 'Automations');
     M.visible = true;
+end
+local function tpqOpenPanel(key)
+    M.openAutomation(key);
     imgui.CloseCurrentPopup();
 end
 
@@ -2398,6 +2404,7 @@ do
         itemTooltip = renderItemTooltip,                          -- hover cards on automation gear lines
         setsRoot = profsets.getSetsRoot,                          -- gearcheck: set contents for the audit
     };
+    M._deps = d;   -- exposed for the restock nudge (the d3d_present hook is outside this do-block)
     local ok, m = pcall(require, "dlac\\ui\\triggersui");
     if ok and type(m) == 'table' then
         trigui = m;
@@ -4761,6 +4768,19 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
             local fgThemed = style ~= nil and style.push();
             pcall(fgMod.render);
             if fgThemed then style.pop(); end
+        end
+    end
+    -- The E-Box Restock nudge: also INDEPENDENT of the main box (it pops up near
+    -- an Ephemeral Box while you play, so it cannot go through the window
+    -- contract). Self-gates on CW + master + Show-nudge + proximity, so it costs
+    -- nothing away from a box; passed gearui's deps for the current job.
+    if has.imgui then
+        local rnMod = nil;
+        pcall(function() rnMod = require('dlac\\ui\\restockui'); end);
+        if rnMod ~= nil and type(rnMod.nudge) == 'function' then
+            local rnThemed = style ~= nil and style.push();
+            pcall(rnMod.nudge, M._deps);
+            if rnThemed then style.pop(); end
         end
     end
     if not M.visible or not has.imgui then return; end

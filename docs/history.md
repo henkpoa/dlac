@@ -5022,6 +5022,55 @@ never delete/push) plus storage-move + hidden-features (superseded,
 Henrik's to delete). Confirmed in passing: the whole maxmp boot saga
 (v112-v119) rode the graduation -- main's dispatch reads M.VERSION = 119.
 
+## Session "E-Box Restock — the reusable E-Box client" (07-23 → 07-24)
+
+**Theme:** a grill-with-docs feature for Henrik — keep chosen items topped up from the
+Crystal-Warrior **Ephemeral Box**, near a box, on a click — and, on Henrik's call, carve
+out a REUSABLE E-Box client FIRST ("we will probably make many more, good idea").
+
+**Design (grilled, R1-R11):** two lists that combine — a **Character** list (staples:
+food, silent oil, prism powder, tools) ∪ the **current-Job** list (job consumables:
+RNG/COR ammo, DRG angons); a same-item Job **Target** OVERRIDES the character baseline
+(specificity). Per-item Target ("keep N"); fetch the **Shortfall** = Target − on-hand.
+On-hand = the FIELD bags {Inventory 0, Satchel 5, Sack 6, Case 7} (Henrik: "usable in the
+field"); room = free Inventory(0) slots. **The load-bearing ruling — slot-loss safety:**
+the E-Box withdraw lands each stack in a FRESH inventory slot (per item AND per stack —
+24 fire crystal @ stack 12 = 2 slots), never merging into an existing partial on arrival,
+and the box does NOT protect you: too few slots = LOST items. So a fetch costs
+⌈fetch/stackSize⌉ slots and must NEVER over-draw; under space pressure => greedy partial,
+job-first, remainder reported. A floating nudge near a box (hover = plan, left = Fetch all,
+right = open panel). 100% CW-only — invisible AND inert off-CW at every surface.
+
+**Architecture (ADR 0016):** exactly ONE 0x1A4 client, `feature/eboxclient.lua`, because
+0x1A4 is a party line and the server-load NFR (Henrik: operators care) needs coalescing +
+throttle to be STRUCTURAL, not per-feature — a shared multi-category counts cache,
+one-request-in-flight, a global min-gap, per-category stale windows, a near-box gate (query
+ONLY near a box). The shipped AutoAmmo E-Box code (`eboxammo`) was FOLDED onto the client as
+a thin category-15 adapter (public surface unchanged, so `ammoui` needed no edit; its own
+packet handler removed so the two features never race). Every future E-Box feature is a
+CONSUMER, never a second client — it's in architecture.md's Central-services table.
+
+**Landed (main `975896a..b2fab33`, addon.version 2026.07.24b):** `feature/eboxclient` (EBC*
+tests) · `feature/restockwatch` (config + the pure `_merge` union/override + `plan`
+slot-budget; RS* tests) · the `eboxammo` fold (EB* reworked to adapter-parity) ·
+`ui/restockui` panel wired into `ui/automationsui` (CW-gated row + detail arm) · a GUI
+layout pass (wider number columns for 10000+, "keep"→"Target", type-only input, no clipping)
+· the floating nudge (`M.nudge` + a gearui d3d_present hook + `gearui.openAutomation` +
+`/dl restock`) using Henrik's crate art (`assets/ebox.png`) · the CW-gate closed on the
+command too. Design doc `docs/design/ebox-restock.md`, ADR 0016, CONTEXT.md glossary
+(E-Box / E-Box client / E-Box Restock). 2801 headless checks green (Windows lua + WSL lua5.4).
+
+**Field-confirmed (Henrik, 07-24):** AutoAmmo parity after the fold ("Works"); the panel +
+planner + Fetch all + E-Box detection ("fetch all also works, as well as the E-box
+detection"); the nudge ("Works perfectly and looks awesome"). One field-test-only assumption
+stands: withdrawals land in Inventory(0).
+
+**Ops note (the parallel-session hazard, lived):** built entirely alongside a parallel
+chocobo-digging session (`feature/probe-dig`) that repeatedly FLIPPED the shared checkout
+between branches — a `git checkout` round-trip briefly showed pre-fold content and tripped
+the "modified on disk" reminders (a false "everything reverted" scare, resolved by reading
+the reflog: all commits were safe on main). Lesson reaffirmed: on a shared checkout,
+`git status` / `git branch` before every edit, stage ONLY your own paths, and commit promptly.
 ## Chocobo: the fourth idle-gear sibling (2026-07-23, issue #95, engine v120)
 
 **The gear half of the Chocobo automation** (parent PRD #93; docs/design/chocobo-gear.md),

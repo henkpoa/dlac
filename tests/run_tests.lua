@@ -221,14 +221,14 @@ end)();
     local ROOT_FILES = { 'utils.lua', 'dispatch.lua', 'chatfmt.lua', 'profiles.lua', 'gear.lua', 'dlac.lua' };
     local UI = { 'ammoui','automationsui','craftbar','equippedui','filetex','fishbar','fishui',
                  'floatgear','gearui','helmbar','helmui','itemicons','priorityui','profilesmenu',
-                 'setupui','triggersui','uihost','uistyle','weightsui' };
+                 'restockui','setupui','triggersui','uihost','uistyle','weightsui' };
     local GEAR = { 'actionpicker','blueprintsmodel','catalogindex','gearcheck','geareffects','gearexport',
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
                    'groupsmodel','jobgate','ownedcache','profileexport','profilesets','setimport',
                    'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
     local FEATURE = { 'ammowatch','arbwatch','augments','check','chocowatch','craftwatch','debug','digcalc','digrank',
-                      'eboxammo','fishcalc','fishwatch','gamemode','helmwatch','location','lockstyle','lookpreview',
-                      'macrobook','meritwatch','mpbands','pinwatch','useitem','vanamoon' };
+                      'eboxammo','eboxclient','fishcalc','fishwatch','gamemode','helmwatch','location','lockstyle','lookpreview',
+                      'macrobook','meritwatch','mpbands','pinwatch','restockwatch','useitem','vanamoon' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
 
     local ALL = {};
@@ -8339,10 +8339,15 @@ end)();
     aw.removeAmmo(1);
     check('AW15 removeAmmo', #aw.list == 1 and aw.list[1].name == 'Iron Bullet', true);
 
-    -- EB. eboxammo -- the E-Box 0x1A4 client (trove's wire format, reimplemented;
-    -- Crystal-Warrior-only consumer of gamemode.get). Parsing is string.byte so
-    -- the whole wire path runs here; packets are built as synthetic strings.
-    local eb = dofile('feature/eboxammo.lua');
+    -- EB. eboxammo -- now a THIN ADAPTER over the one client (ADR 0016). The
+    -- wire itself is tested on the client (EBC*); these checks pin the ADAPTER:
+    -- delegation + the cat-15 mirror ui/ammoui reads. A fresh client is injected
+    -- (require fails headless) and driven THROUGH the adapter. pk/msgAt build the
+    -- synthetic packets (also used by EBC/RS below).
+    local eb  = dofile('feature/eboxammo.lua');
+    local ebc = dofile('feature/eboxclient.lua');
+    eb._setClient(ebc);
+    ebc._now = function() return 4000; end
     local function pk(bytes)
         local t = {};
         for off = 0, 63 do t[off + 1] = string.char(bytes[off] or 0); end
@@ -8357,26 +8362,28 @@ end)();
     check('EB1c junk qty -> 0', eb._clampQty('x', 5), 0);
     check('EB1d floors fractions', eb._clampQty(3.7, 5), 3);
 
-    check('EB2 ITEM outside our stream is not ours (trove\'s traffic)',
+    check('EB2 ITEM outside our stream is not ours (party line)',
         eb._onPacket(pk({ [0x04] = 1, [0x08] = 10 })), false);
-    eb._beginStream();
+    eb._beginStream();   -- delegates to the client's cat-15 request
     check('EB3 CLEAR consumed while pending', eb._onPacket(pk({ [0x04] = 0 })), true);
     eb._onPacket(pk({ [0x04] = 1, [0x08] = 0x36, [0x09] = 0x53, [0x0C] = 200 }));   -- id 21302 x200
     eb._onPacket(pk({ [0x04] = 1, [0x08] = 0x56, [0x09] = 0x53, [0x0C] = 1 }));     -- id 21334 x1
     check('EB3b END_LIST from another source does not commit',
         eb._onPacket(pk({ [0x04] = 2, [0x05] = 3 })), false);
     check('EB3c END_LIST source 0 commits', eb._onPacket(pk({ [0x04] = 2, [0x05] = 0 })), true);
-    check('EB3d counts committed', eb.counts[21302] == 200 and eb.counts[21334] == 1, true);
+    check('EB3d counts mirror the committed cat-15 stream',
+        eb.counts ~= nil and eb.counts[21302] == 200 and eb.counts[21334] == 1, true);
     check('EB4 stream closed: a late ITEM is not ours',
         eb._onPacket(pk({ [0x04] = 1, [0x08] = 10 })), false);
 
-    eb.busy = true;
+    -- withdraw ACK: stage the batch on the client, drive it through the adapter
+    ebc._beginBatch(1);
     check('EB5 ACK for someone else\'s action is not ours',
         eb._onPacket(pk({ [0x04] = 3, [0x05] = 15, [0x06] = 1 })), false);
-    check('EB5b withdraw ACK success clears busy',
-        eb._onPacket(pk({ [0x04] = 3, [0x05] = 2, [0x06] = 1 })), true);
-    check('EB5c success status is not an error', eb.busy == false and eb.statusErr == false, true);
-    eb.busy = true;
+    check('EB5b withdraw ACK success consumed + busy mirror clears',
+        eb._onPacket(pk({ [0x04] = 3, [0x05] = 2, [0x06] = 1 })) == true and eb.busy == false, true);
+    check('EB5c success status is not an error', eb.statusErr, false);
+    ebc._beginBatch(1);
     eb._onPacket(pk(msgAt({ [0x04] = 3, [0x05] = 2, [0x06] = 0 }, 0x10, 'Inventory full.')));
     check('EB5d refusal carries the server\'s words', eb.status, 'Inventory full.');
     check('EB5e refusal is an error', eb.statusErr, true);
@@ -8388,11 +8395,11 @@ end)();
     eb._beginStream();
     eb._onPacket(pk({ [0x04] = 4, [0x05] = 1 }));
     check('EB6b LOCKED reason 1 while pending = not a Crystal Warrior', eb.lockedReason, 'cw');
-    eb.lockedReason = nil;
+    ebc.lockedReason = nil; eb._sync();
     eb._beginStream();
     eb._onPacket(pk(msgAt({ [0x04] = 4, [0x05] = 2 }, 0x10, 'Locked.')));
     check('EB6c LOCKED reason 2 = box not unlocked', eb.lockedReason == 'locked' and eb.lockedMsg == 'Locked.', true);
-    eb.lockedReason = nil;
+    ebc.lockedReason = nil; eb._sync();
 
     check('EB7 refresh refuses headless (not CW -- the affirmative-only gate)', eb.refresh(), false);
     check('EB7b withdraw refuses headless too', eb.withdraw(21334, 1), false);
@@ -8456,6 +8463,218 @@ end)();
 
     check('EB9 box range is FIELD-PINNED at 5 yalms (Henrik 2026-07-20)', eb.BOX_RANGE, 5);
     check('EB10 boxDistance is headless-safe through the watcher', eb.boxDistance(), nil);
+
+    -- EBC. eboxclient -- THE one 0x1A4 client (ADR 0016). Same wire as eboxammo,
+    -- reimplemented with a MULTI-category shared counts cache + batch withdraw +
+    -- search + throttle; every future E-Box feature consumes this, never a second
+    -- speaker. Injected clock; the pk/msgAt helpers above build synthetic packets.
+    local ec = dofile('feature/eboxclient.lua');
+    ec._now = function() return 5000; end
+
+    check('EBC1 clamp: none in box -> 0', ec._clampQty(99, 0), 0);
+    check('EBC1b clamp to what the box holds', ec._clampQty(99, 12), 12);
+    check('EBC1c junk qty -> 0', ec._clampQty('x', 5), 0);
+    check('EBC1d floors fractions', ec._clampQty(3.7, 5), 3);
+
+    check('EBC2 ITEM outside our stream is not ours (party line)',
+        ec._onPacket(pk({ [0x04] = 1, [0x08] = 10 })), false);
+
+    -- a category stream: CLEAR -> ITEM* -> END_LIST(source 0)
+    ec._beginRequest('category', 15);
+    check('EBC3 CLEAR consumed while pending', ec._onPacket(pk({ [0x04] = 0 })), true);
+    ec._onPacket(pk({ [0x04] = 1, [0x08] = 0x36, [0x09] = 0x53, [0x0A] = 15, [0x0C] = 200 }));  -- 21302 x200
+    ec._onPacket(pk({ [0x04] = 1, [0x08] = 0x56, [0x09] = 0x53, [0x0A] = 15, [0x0C] = 1 }));    -- 21334 x1
+    check('EBC3b END_LIST from another source does not commit',
+        ec._onPacket(pk({ [0x04] = 2, [0x05] = 3 })), false);
+    check('EBC3c END_LIST source 0 commits', ec._onPacket(pk({ [0x04] = 2, [0x05] = 0 })), true);
+    check('EBC3d category counts committed (narrowed to the ahCat)',
+        ec.boxCount(21302, 15) == 200 and ec.boxCount(21334, 15) == 1, true);
+    check('EBC3e flat merged view reads without an ahCat', ec.boxCount(21302), 200);
+    check('EBC3f the fetched category is fresh', ec.categoryFresh(15, 20), true);
+
+    -- a SECOND category merges into the flat view (both categories coexist)
+    ec._beginRequest('category', 6);
+    ec._onPacket(pk({ [0x04] = 0 }));
+    ec._onPacket(pk({ [0x04] = 1, [0x08] = 0x34, [0x09] = 0x10, [0x0A] = 6, [0x0C] = 30 }));    -- 4148 x30
+    ec._onPacket(pk({ [0x04] = 2, [0x05] = 0 }));
+    check('EBC4 flat view holds both categories at once',
+        ec.boxCount(21302) == 200 and ec.boxCount(4148) == 30, true);
+
+    -- re-fetching category 15 REPLACES only its own rows (a drained item drops)
+    ec._beginRequest('category', 15);
+    ec._onPacket(pk({ [0x04] = 0 }));
+    ec._onPacket(pk({ [0x04] = 1, [0x08] = 0x36, [0x09] = 0x53, [0x0A] = 15, [0x0C] = 150 }));  -- 21302 now 150
+    ec._onPacket(pk({ [0x04] = 2, [0x05] = 0 }));
+    check('EBC4b re-fetch replaces cat 15 (21334 drained), cat 6 untouched',
+        ec.boxCount(21334, 15) == 0 and ec.boxCount(21302) == 150 and ec.boxCount(4148) == 30, true);
+    check('EBC4c a late ITEM after the stream closed is not ours',
+        ec._onPacket(pk({ [0x04] = 1, [0x08] = 10 })), false);
+
+    -- SEARCH stream: rows carry id/qty/ahCat/name; must NOT touch the counts cache
+    ec._beginRequest('search');
+    ec._onPacket(pk({ [0x04] = 0 }));
+    ec._onPacket(pk(msgAt({ [0x04] = 1, [0x08] = 0x36, [0x09] = 0x53, [0x0A] = 15, [0x0C] = 5 }, 0x10, 'Bronze Bullet')));
+    ec._onPacket(pk({ [0x04] = 2, [0x05] = 0 }));
+    check('EBC5 search results captured (id/ahCat/name/qty)',
+        ec.searchResults ~= nil and #ec.searchResults == 1
+        and ec.searchResults[1].id == 21302 and ec.searchResults[1].ahCat == 15
+        and ec.searchResults[1].name == 'Bronze Bullet' and ec.searchResults[1].qty == 5, true);
+    check('EBC5b search did not pollute the counts cache', ec.boxCount(21302, 15), 150);
+
+    -- batch withdraw ACK counting (the seam stages N in-flight ACKs)
+    ec._beginBatch(2);
+    check('EBC6 ACK for someone else\'s action is not ours',
+        ec._onPacket(pk({ [0x04] = 3, [0x05] = 15, [0x06] = 1 })), false);
+    check('EBC6b first withdraw ACK consumed, still busy (1 left)',
+        ec._onPacket(pk({ [0x04] = 3, [0x05] = 2, [0x06] = 1 })) == true and ec.isBusy() == true, true);
+    check('EBC6c second ACK completes the batch (busy clears)',
+        ec._onPacket(pk({ [0x04] = 3, [0x05] = 2, [0x06] = 1 })) == true and ec.isBusy() == false, true);
+    check('EBC6d completing a batch stales the counts (the box changed)', ec.categoryFresh(15, 20), false);
+    check('EBC6e ACK with nothing in flight is not ours',
+        ec._onPacket(pk({ [0x04] = 3, [0x05] = 2, [0x06] = 1 })), false);
+    ec._beginBatch(1);
+    ec._onPacket(pk(msgAt({ [0x04] = 3, [0x05] = 2, [0x06] = 0 }, 0x10, 'Inventory full.')));
+    check('EBC6f refusal carries the server\'s words',
+        ec.status == 'Inventory full.' and ec.statusErr == true, true);
+
+    -- LOCKED gates
+    check('EBC7 unsolicited LOCKED is not ours (nothing pending)',
+        ec._onPacket(pk({ [0x04] = 4, [0x05] = 1 })), false);
+    ec._beginRequest('category', 15);
+    ec._onPacket(pk({ [0x04] = 4, [0x05] = 1 }));
+    check('EBC7b LOCKED reason 1 while pending = not a Crystal Warrior', ec.lockedReason, 'cw');
+    ec.lockedReason = nil;
+    ec._beginRequest('search');
+    ec._onPacket(pk(msgAt({ [0x04] = 4, [0x05] = 2 }, 0x10, 'Locked.')));
+    check('EBC7c LOCKED reason 2 = box not unlocked',
+        ec.lockedReason == 'locked' and ec.lockedMsg == 'Locked.', true);
+    ec.lockedReason = nil;
+
+    -- SUMMARY (single packet, not a stream): entryCount@0x05, 7-byte rows @0x08
+    ec._beginRequest('summary');
+    check('EBC8 SUMMARY parsed into per-category totals',
+        ec._onPacket(pk({ [0x04] = 5, [0x05] = 1, [0x08] = 15, [0x09] = 2, [0x0B] = 3 })) == true
+        and ec.summary ~= nil and #ec.summary == 1
+        and ec.summary[1].ahCat == 15 and ec.summary[1].count == 2 and ec.summary[1].qty == 3, true);
+
+    -- headless gates: no CW -> every request refuses, nothing hits the wire
+    check('EBC9 ensureCategory refuses headless (affirmative-only CW gate)', ec.ensureCategory(15), false);
+    check('EBC9b search refuses headless', ec.search('bullet'), false);
+    check('EBC9c withdraw refuses headless', ec.withdraw(21302, 1), false);
+    check('EBC9d withdrawBatch refuses headless', ec.withdrawBatch({ { id = 21302, qty = 1 } }), 0);
+
+    -- proximity (headless-safe through the watcher)
+    check('EBC10 box range is FIELD-PINNED at 5 yalms', ec.BOX_RANGE, 5);
+    check('EBC10b boxDistance headless -> nil, nearBox -> false',
+        ec.boxDistance() == nil and ec.nearBox() == false, true);
+
+    -- RS. restockwatch -- E-Box Restock config + the two PURE cores (ADR 0016;
+    -- docs/design/ebox-restock.md). No packets/engine: the union+override and the
+    -- slot-safety planner are arithmetic, so the panel and the nudge share ONE answer.
+    local rs = dofile('feature/restockwatch.lua');
+
+    -- _fromTable defaults: settings default TRUE; only an explicit false turns off
+    local rsd = rs._fromTable(nil);
+    check('RS1 defaults: master/showNudge/onlyWhenNeeded ON, empty lists',
+        rsd.master == true and rsd.showNudge == true and rsd.onlyWhenNeeded == true
+        and #rsd.character == 0, true);
+    local rsd2 = rs._fromTable({ master = false, character = {
+        { id = 4148, name = 'Echo Drops', ahCat = 8, stack = 12, target = 12 } } });
+    check('RS1b explicit master=false honored; others still default ON',
+        rsd2.master == false and rsd2.showNudge == true and #rsd2.character == 1
+        and rsd2.character[1].id == 4148, true);
+    check('RS1c junk entries dropped (needs id AND name)',
+        #rs._readList({ { name = 'x' }, { id = 5 }, { id = 9, name = 'ok' } }), 1);
+
+    -- _merge: job overrides character on the same id; job entries come first
+    local rsChar = { { id = 1, name = 'Food', ahCat = 6, stack = 12, target = 12 },
+                     { id = 2, name = 'Oil',  ahCat = 8, stack = 12, target = 12 } };
+    local rsRng  = { { id = 2, name = 'Oil',  ahCat = 8,  stack = 12, target = 30 },
+                     { id = 3, name = 'Arrow', ahCat = 15, stack = 99, target = 99 } };
+    local rsEff = rs._merge(rsChar, rsRng);
+    check('RS2 effective set = job entries first, then unshadowed character',
+        #rsEff == 3 and rsEff[1].id == 2 and rsEff[2].id == 3 and rsEff[3].id == 1, true);
+    check('RS2b job entry overrides the character target', rsEff[1].target, 30);
+    check('RS2c the override records the shadowed baseline', rsEff[1].shadow, 12);
+    check('RS2d the shadowed character entry is not listed twice',
+        rsEff[3].id == 1 and rsEff[3].scope == 'character', true);
+    check('RS2e job with no list = plain character set', #rs._merge(rsChar, nil), 2);
+    check('RS2f categoriesOf dedupes ahCats', #rs.categoriesOf(rsEff), 3);   -- 8, 15, 6
+
+    -- plan: the worked example from the design doc (3 free Inventory slots)
+    local rsOn  = { [10] = 0,  [11] = 4,  [12] = 0 };
+    local rsBox = { [10] = 40, [11] = 12, [12] = 99 };
+    local rsCtx = { freeSlots = 3,
+        onHand  = function(id) return rsOn[id]  or 0; end,
+        inBox   = function(id) return rsBox[id] or 0; end,
+        stackOf = function()   return 12; end };
+    local rsEntries = { { id = 10, name = 'Fire Crystal', target = 24, stack = 12 },
+                        { id = 11, name = 'Sole Sushi',   target = 12, stack = 12 },
+                        { id = 12, name = 'Silent Oil',   target = 24, stack = 12 } };
+    local rp = rs.plan(rsEntries, rsCtx);
+    check('RS3 greedy fill: two items fetched, third deferred',
+        #rp.fetches == 2 and #rp.remainder == 1, true);
+    check('RS3b Fire Crystal: 24 fetched = 2 stacks/slots',
+        rp.fetches[1].qty == 24 and rp.fetches[1].slots == 2, true);
+    check('RS3c Sole Sushi: shortfall 8 fetched = 1 slot',
+        rp.fetches[2].qty == 8 and rp.fetches[2].slots == 1, true);
+    check('RS3d Silent Oil deferred whole (no room left)',
+        rp.remainder[1].id == 12 and rp.remainder[1].want == 24, true);
+    check('RS3e all 3 slots consumed', rp.freeLeft, 0);
+    check('RS3f badge counts every box-fillable shortfall (space-independent)', rp.badge, 3);
+    check('RS3g pulls split into <= stack packets (12, 12, 8)',
+        #rp.pulls == 3 and rp.pulls[1].qty == 12 and rp.pulls[2].qty == 12 and rp.pulls[3].qty == 8, true);
+
+    -- plan: single-item partial fill ("space for 2 -> fetch 2, no more")
+    local rp2 = rs.plan({ { id = 10, name = 'Fire Crystal', target = 24, stack = 12 } },
+        { freeSlots = 1, onHand = function() return 0; end,
+          inBox = function() return 40; end, stackOf = function() return 12; end });
+    check('RS4 one free slot -> one stack fetched, remainder reported',
+        rp2.fetches[1].qty == 12 and rp2.remainder[1].want == 12, true);
+
+    -- plan: multi-stack split (150 of a stack-99 item -> 99 + 51 = 2 slots)
+    local rp3 = rs.plan({ { id = 20, name = 'Arrow', target = 150, stack = 99 } },
+        { freeSlots = 10, onHand = function() return 0; end,
+          inBox = function() return 200; end, stackOf = function() return 99; end });
+    check('RS5 150 @ stack 99 = 2 slots, packets 99 + 51',
+        rp3.fetches[1].slots == 2 and #rp3.pulls == 2
+        and rp3.pulls[1].qty == 99 and rp3.pulls[2].qty == 51, true);
+
+    -- plan: nothing to do (at target, or box empty) -> no fetch, no badge
+    local rp4 = rs.plan({ { id = 10, name = 'x', target = 5, stack = 12 } },
+        { freeSlots = 9, onHand = function() return 5; end,
+          inBox = function() return 40; end, stackOf = function() return 12; end });
+    check('RS6 at target -> no fetch, badge 0', #rp4.fetches == 0 and rp4.badge == 0, true);
+    check('RS6b box empty -> no fetch (nothing box-fillable)',
+        rs.needsFetch({ { id = 10, target = 12 } },
+            { freeSlots = 9, onHand = function() return 0; end,
+              inBox = function() return 0; end, stackOf = function() return 12; end }), false);
+
+    -- serialize round-trips settings + both lists
+    local rsCfg = { master = false, showNudge = true, onlyWhenNeeded = false,
+        character = { { id = 1, name = 'Food', ahCat = 6, stack = 12, target = 12 } },
+        jobs = { RNG = { { id = 3, name = 'Arrow', ahCat = 15, stack = 99, target = 99 } } } };
+    local rsBack = assert((loadstring or load)(rs._serialize(rsCfg)))();
+    local rsRt = rs._fromTable(rsBack);
+    check('RS7 serialize round-trips settings + lists',
+        rsRt.master == false and rsRt.onlyWhenNeeded == false and rsRt.showNudge == true
+        and #rsRt.character == 1 and rsRt.character[1].name == 'Food'
+        and rsRt.jobs.RNG ~= nil and rsRt.jobs.RNG[1].target == 99, true);
+
+    -- mutators (saveState no-ops headless: statePath nil pre-login)
+    rs.character = {}; rs.jobs = {};
+    check('RS8 addItem to the character list', rs.addItem('character', nil,
+        { id = 1, name = 'Food', ahCat = 6, stack = 12 }), true);
+    check('RS8b addItem defaults target to one stack', rs.character[1].target, 12);
+    check('RS8c addItem dedupes by id',
+        rs.addItem('character', nil, { id = 1, name = 'Food', ahCat = 6, stack = 12 }), false);
+    check('RS8d addItem to a job list creates the section',
+        rs.addItem('job', 'RNG', { id = 3, name = 'Arrow', ahCat = 15, stack = 99, target = 50 })
+        and rs.jobs.RNG[1].target == 50, true);
+    check('RS8e setTarget updates',
+        rs.setTarget('character', nil, 1, 24) and rs.character[1].target == 24, true);
+    check('RS8f removeItem drops it',
+        rs.removeItem('job', 'RNG', 3) and #rs.jobs.RNG == 0, true);
 
     -- level: persisted per entry (GUI sort data; the engine ignores it --
     -- the fmt-2 round-trip above pins the serializer side)

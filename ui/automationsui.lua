@@ -1271,6 +1271,20 @@ local function buildAutoRows()
             end
         end
     end);
+    -- E-Box Restock: CW-ONLY. Appended last AND only for Crystal Warriors, so a
+    -- non-CW character never sees the row at all (Henrik: 100% CW-only). Status
+    -- via restockui (same by-key pattern). Placed after every rows[#rows] read
+    -- above (the maxmp block) so those indices stay valid.
+    if hasGmode and gmode.get() == 'CW' then
+        local r = { key = 'restock', name = 'E-Box Restock', kind = 'restock helper (Ephemeral Box, CW)',
+                    level = 0, max = 1, txt = nil };
+        rows[#rows + 1] = r;
+        pcall(function()
+            local restockui = require('dlac\\ui\\restockui');
+            r.max = restockui.maxLevel or 1;
+            r.level, r.txt = restockui.status(deps);
+        end);
+    end
     return rows;
 end
 
@@ -1288,7 +1302,7 @@ M.levelColor = levelColor;
 -- left-click = open the panel; gearui shows the window + selects the tab).
 -- An unknown key lands on the list view instead of a blank detail.
 local DETAIL_KEYS = { iridescence = true, obi = true, oneiros = true, craft = true,
-                      helm = true, fish = true, choco = true, ammo = true, maxmp = true };
+                      helm = true, fish = true, choco = true, ammo = true, maxmp = true, restock = true };
 function M.openDetail(key)
     auto.view = (DETAIL_KEYS[key] == true) and key or nil;
 end
@@ -1558,6 +1572,14 @@ local function renderAutomations()
                 pcall(ammoui.render, deps, availW);
             else
                 imgui.TextColored(COL_ERR, 'ammoui failed to load.');
+            end
+        elseif auto.view == 'restock' then
+            -- Same pattern: the whole panel lives in ui/restockui.lua (CW-only).
+            local rok, restockui = pcall(require, 'dlac\\ui\\restockui');
+            if rok and type(restockui) == 'table' and type(restockui.render) == 'function' then
+                pcall(restockui.render, deps, availW);
+            else
+                imgui.TextColored(COL_ERR, 'restockui failed to load.');
             end
         elseif auto.view == 'oneiros' then
             imgui.TextColored(COL_HEADER, 'Auto Oneiros Grip');
