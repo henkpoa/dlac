@@ -207,6 +207,56 @@ against the shipped data, and `S139aa`–`S139ee` drive `chocoui.render` under a
 stub imgui with a zone selected, asserting the new `BeginCombo`/`BeginTabBar`/
 `BeginTabItem` stacks all balance (the floatgear-crash lesson).
 
+## The By-item tab (issue #99)
+
+> The SECOND guide tab — a fuzzy item search → the matching diggable items
+> (the conditional crystals/rocks/ores included) → the selected item's every
+> zone + pool with rank + the two live odds, greyed by the same rank gate the
+> by-area tab uses, plus the item ↔ area cross-link. It REUSES the by-area
+> row/odds rendering and grey-out; it adds no new odds math.
+
+### Pure seams (headless-testable, above the imgui guard)
+
+| Function | Role |
+|---|---|
+| `digcalc.itemIndex()` | The fuzzy-search source: every UNIQUE diggable item as `{ key, id, n, minRank, kind, condKind, element }`, sorted by name. Pool items are deduped by id (`minRank` = the LOWEST requirement across the zones it drops in); the conditional crystals/clusters/rocks/ores are **synthesised** from the `cond` rule tables (8 each = 32 entries) so "Fire Crystal" / "Chunk of Fire Ore" are searchable even though they live in no static pool. Fail-soft empty when the table is ungenerated. |
+| `digcalc.itemSources(entry, rank, mu, clock)` | Every zone + pool a selected item drops from. A **pool** item's rows carry `{ zoneId, zoneName, pool, req, onHit, perDig, locked }`, sorted by ② per-dig descending (matching the by-area order). A **conditional** item's rows carry the per-zone `{ zoneId, zoneName, condKind, chance, minRank, condition, clockActive, rankOk, active }`: crystals/clusters/rocks span EVERY enabled zone (`allZones = true`), ores span only the 9 elemental-ore zones. The clock gate is zone-independent, so it is also reported at the item level. PURE — the clock is passed in. |
+| `chocoui.itemList()` | Thin wrapper over `digcalc.itemIndex()`. |
+| `chocoui.itemRows(entry, rankState, clock)` | The composed view: `itemSources` with every row stamped by `digrank.gate`'s grey-out verdict + the requirement's rank label — the SAME "never lie" grey-out as by-area. nil when the item/db is unresolvable (fail soft). |
+
+### Name collisions are real (and honest)
+
+An item can be BOTH a static pool drop AND a weather/day conditional — e.g. **Fire
+Crystal** is listed in some zones' pools *and* is the Fire-weather conditional. The
+index therefore carries a DISTINCT entry for each (`pool:4096` and `crystal:Fire`),
+so a search for "Fire Crystal" surfaces both: the pool entry prices the specific
+zones it is listed in; the conditional entry explains the weather rule. Keyed by
+`condKind:element` (conditionals) / `pool:<id>` (pool), never by name.
+
+### The item ↔ area cross-link
+
+Clicking a zone in the By-item results jumps to the By-area view focused on that
+zone. The zone is a clickable button; the click sets the by-area state's `zoneId`,
+clears its search, and requests a one-shot forced selection of the `By area` tab on
+the next render — the **`uihost.selectTab` idiom applied to this panel's own tab
+bar** (`ImGuiTabItemFlags_SetSelected` via a probe-guarded 3-arg `BeginTabItem`,
+hard rule 2: a binding without it just drops the jump, never crashes). All-zone
+conditionals (crystals/rocks) show a note instead of 26 identical rows — there is no
+single zone to jump to; ore drops list their 9 specific zones as cross-link buttons.
+
+### Tests
+
+`run_tests.lua` §CHOCOBO BY-ITEM (`BI1`–`BI27`): `itemIndex` shape + sort + the 32
+synthesised conditionals + the pool-item dedup, and `itemSources` across a
+many-zone pool item (source count, the two odds, per-dig sort), a crystal (all-zone,
+the double-weather/cluster split, the Thunder alias), a cluster, an ore (ore-zone
+set, the full gate, the rank sub-gate, the moon window), an over-rank locked pool
+item, and fail-soft (absent db / nil entry). `smoke_ui.lua` `S139z`–`S139aa4` cover
+the composed `itemList`/`itemRows` seams against the shipped data; the render
+section (`S139aa`–`S139ee`) now drives the By-item tab with the search filled and an
+item selected, asserting the added `Selectable`/`Button` rows keep every
+`BeginTabBar`/`BeginTabItem`/`BeginCombo` stack balanced.
+
 ## The rank ladder + timing auto-detect (issue #100)
 
 Two corrections/additions from the `/probe dig` field session (07-24), grounded in
@@ -245,17 +295,18 @@ All main-thread text + one packet-thread timestamp — no packets decoded, no
 per-line chat. Tests: `run_tests` `DT1`–`DT21` (classify + invert), the updated
 `DR*` ladder checks; `smoke_ui` `CW-T1`–`CW-T4` (floor raise, one-way, latch).
 
-### Open / flagged
+## Open / flagged
 
 - **The moon epoch OFFSET** (`vanamoon.OFFSET`, the community-standard 26) wants a
   one-time **field cross-check** against the in-game moon display. If the ore-gate
   percent must be server-EXACT, the linear illumination curve should be replaced
   by the 84-entry LSB moon table — a single data swap, isolated in `vanamoon`.
-- **Player-facing strings** (the rank ladder labels, the source labels
-  `manual` / `>= from digs` / `reported by server`, the header/note wording, and
-  the new by-area labels — the tab names `By area`/`By item`, the `hit`/`dig`
-  odds wording, `active now` / `needs X` flags, the `<Element> Crystal`/`Cluster`
-  and ore/rock condition text) are proposed — pending the maintainer's
-  row-by-row sign-off.
-- The **by-item** tab (#99) is the last remaining PRD #93 slice (the timing
-  auto-detect landed above; #100).
+- **Player-facing strings** across the guide (the rank ladder labels incl. the new
+  Veteran/Expert, the source labels `manual` / `>= from digs` / `reported by
+  server`, the by-area tab strings — `By area`/`By item`, `hit`/`dig`, `active now`
+  / `needs X`, the `<Element> Crystal`/`Cluster` + rock/ore condition text — and the
+  by-item strings — `Item:` / `Conditional drop` / `Diggable in …`) are proposed,
+  pending the maintainer's row-by-row sign-off.
+- **All PRD #93 slices (#94–#100) are now shipped:** the odds engine + data, the
+  riding-gear automation, the rank model (manual + ratchet + timing auto-detect,
+  #100), and both guide tabs (by-area #98, by-item #99).

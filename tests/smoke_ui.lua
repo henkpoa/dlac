@@ -690,6 +690,31 @@ end)();
         end)(), true);
         -- an unknown zone id fails soft to nil, never errors.
         check('S139y areaRows on an unknown zone -> nil', chocoui.areaRows(99999, rs, clk), nil);
+
+        -- By-item tab seams (issue #99): the searchable item index + the composed
+        -- per-item sources sit above the imgui guard too, exercised against the
+        -- shipped digdata (pool items PLUS the synthesised conditionals).
+        local il = chocoui.itemList();
+        check('S139z itemList carries pool items + the 32 conditionals', #il, 152);
+        local ilByKey = {}; for _, e in ipairs(il) do ilByKey[e.key] = e; end
+        -- a pool item resolves to its zone/pool sources, priced + gated.
+        local plate = ilByKey['pool:3509'];   -- Plate of Heavy Metal, 22 zones
+        local iv = chocoui.itemRows(plate, rs, clk);
+        check('S139aa1 itemRows returns a composed pool view with sources', type(iv) == 'table'
+            and iv.kind == 'pool' and type(iv.sources) == 'table' and #iv.sources > 0, true);
+        check('S139aa2 every by-item source carries a grey-out gate verdict', (function()
+            for _, s in ipairs(iv.sources) do
+                if s.gate ~= 'ok' and s.gate ~= 'locked' and s.gate ~= 'dimmed' then return false; end
+            end
+            return true;
+        end)(), true);
+        -- a conditional crystal resolves to an all-zone view, flagged against the clock.
+        local fc = ilByKey['crystal:Fire'];
+        local cv = chocoui.itemRows(fc, rs, clk);
+        check('S139aa3 conditional itemRows is all-zone + active under matching weather',
+            cv and cv.kind == 'conditional' and cv.allZones == true and cv.active, true);
+        -- a nil selection fails soft to nil, never errors.
+        check('S139aa4 itemRows(nil) -> nil', chocoui.itemRows(nil, rs, clk), nil);
     end
     -- Timing rank detection (issue #100): chocowatch inverts the first-dig zone
     -- cooldown into a rank and raises the PERSISTED one-way floor, latching at
@@ -719,7 +744,9 @@ end)();
 --     imgui-stack imbalance that crashes the client with no Lua error (the
 --     floatgear S50 lesson). Stub imgui, re-require chocoui against it, drive
 --     M.render with a zone SELECTED (Selectable returns true) so the pool +
---     conditional rows actually render, and assert every stack came back to 0.
+--     conditional rows actually render -- AND the By item tab's item search
+--     filled (issue #99) so its source rows + cross-link buttons render too --
+--     and assert every stack came back to 0.
 -- ---------------------------------------------------------------------------
 ;(function()
     local depth = { combo = 0, bar = 0, item = 0 };
@@ -739,8 +766,13 @@ end)();
     local realBeginCombo = IM.BeginCombo;
     IM.BeginCombo = function(...) depth.combo = depth.combo + 1; return realBeginCombo(...); end
     IM.Button    = function() return false; end
-    IM.Selectable = function() return true; end          -- pick a zone / rank each frame
+    IM.Selectable = function() return true; end          -- pick a zone / rank / item each frame
     IM.IsItemHovered = function() return false; end
+    -- fill the By item search buffer (only that field) so the match list yields
+    -- a selection and the per-item source rows + cross-link buttons render.
+    IM.InputText = function(label, buf)
+        if label == '##chocoitemsearch' and type(buf) == 'table' then buf[1] = 'a'; end
+    end
 
     package.loaded['imgui'] = IM;
     -- stub the two optional collaborators so render never touches files/real imgui

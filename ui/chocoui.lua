@@ -237,6 +237,45 @@ function M.areaRows(zoneId, rankState, clock)
     return out;
 end
 
+-- The by-item search source (issue #99): every diggable item (pool items PLUS
+-- the conditional crystals/rocks/ores) as digcalc.itemIndex rows, sorted by
+-- name. Empty when the per-zone data is not yet generated (the panel says so).
+function M.itemList()
+    local dcok, dc = pcall(require, 'dlac\\feature\\digcalc');
+    if not dcok or type(dc) ~= 'table' or type(dc.itemIndex) ~= 'function' then return {}; end
+    local ok, list = pcall(dc.itemIndex);
+    return (ok and type(list) == 'table') and list or {};
+end
+
+-- The whole by-item view for one selected item (issue #99): every zone + pool it
+-- drops from, priced for the current rank + moon, each row stamped with
+-- digrank.gate's grey-out verdict + the requirement's rank label -- the SAME
+-- grey-out the by-area tab uses (the "never lie" rule). `entry` is an itemList
+-- row. nil when the item/db is unresolvable (fail soft).
+function M.itemRows(entry, rankState, clock)
+    local dcok, dc = pcall(require, 'dlac\\feature\\digcalc');
+    if not dcok or type(dc) ~= 'table' or type(dc.itemSources) ~= 'function' then return nil; end
+    local drok, dr = pcall(require, 'dlac\\feature\\digrank');
+    if not drok or type(dr) ~= 'table' then dr = nil; end
+    clock = clock or {};
+    local moonPct = (type(clock.moon) == 'table') and clock.moon.percent or clock.moonPercent;
+    local rank = rankOf(rankState);
+    local mu = dc.moonMult(moonPct);
+    local view = dc.itemSources(entry, rank, mu, clock);
+    if type(view) ~= 'table' then return nil; end
+    local ladder = M.rankLadder();
+    local function gate(req) return dr and dr.gate(req, rankState) or 'ok'; end
+    local function reqLabel(req) return dr and dr.label(req, ladder) or ('rank ' .. tostring(req)); end
+    for _, s in ipairs(view.sources or {}) do
+        local req = (s.req ~= nil) and s.req or s.minRank;
+        s.gate = gate(req);
+        s.reqLabel = reqLabel(req);
+    end
+    view.reqLabel = reqLabel(view.minRank);
+    view.gate = gate(view.minRank);
+    return view;
+end
+
 -- ---------------------------------------------------------------------------
 -- The detail view (automationsui: auto.view == 'choco'). Everything below the
 -- imgui guard: headless require returns the pure stub above.
@@ -255,6 +294,23 @@ local function esc(s) return (tostring(s):gsub('%%', '%%%%')); end
 -- By-area tab state (issue #98): the zone-search buffer + the picked zone.
 -- Session-only, panel-local -- selecting a zone is a view choice, not persisted.
 local area = { q = { '' }, zoneId = nil };
+
+-- By-item tab state (issue #99): the item-search buffer + the selected index
+-- entry. Session-only, panel-local like the by-area state above.
+local byitem = { q = { '' }, sel = nil };
+
+-- The cross-link one-shot (issue #99): a zone clicked in the By item results
+-- focuses the By area tab on it. `focusArea` is consumed by the next tab-bar
+-- pass (the uihost.selectTab idiom, applied to this panel's own tab bar).
+local guide = { focusArea = false };
+
+-- Jump to the By area view focused on `zoneId`: point the by-area state at it,
+-- clear its search so the picked zone shows, and request the tab switch.
+local function jumpToArea(zoneId)
+    area.zoneId = zoneId;
+    area.q[1] = '';
+    guide.focusArea = true;
+end
 
 -- A probability as a compact percent: more decimals for the tiny per-dig odds so
 -- a rare item never reads as a flat "0%".
@@ -399,6 +455,162 @@ function M.renderByArea(deps, rs, clk)
         imgui.TextColored(COL_DIM, '  (none listed for this zone)');
     end
     for _, c in ipairs(rows.conditionals) do renderCondRow(deps, c, rs); end
+end
+
+-- One by-item POOL source row: a clickable zone (the cross-link), the pool, the
+-- rank requirement + the two odds, greyed by the rank gate exactly like a by-area
+-- row. Clicking the zone jumps to the By area view focused on it (issue #99 AC).
+local function renderItemPoolRow(deps, s, rs)
+    local col = (s.gate == 'ok') and COL_TEXT or COL_DIM;
+    imgui.Dummy({ 6, 0 }); imgui.SameLine(0, 0);
+    if imgui.Button(string.format('%s##bisrc%s_%s', esc(tostring(s.zoneName or '?')),
+                    tostring(s.zoneId), tostring(s.pool))) then
+        jumpToArea(s.zoneId);
+    end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Jump to this zone in the By area tab.'); end
+    imgui.SameLine(0, 8);
+    imgui.TextColored(COL_HEADER, string.format('%s pool', tostring(s.pool)));
+    imgui.SameLine(0, 8);
+    imgui.TextColored(COL_DIM, string.format('[%s]', s.reqLabel or ('rank ' .. tostring(s.req))));
+    imgui.SameLine(0, 8);
+    imgui.TextColored(col, string.format('hit %s  dig %s', pct(s.onHit), pct(s.perDig)));
+    if s.gate == 'locked' then
+        imgui.SameLine(0, 8);
+        imgui.TextColored(COL_DIM, string.format('-- locked: needs %s', s.reqLabel or '?'));
+    elseif s.gate == 'dimmed' then
+        imgui.SameLine(0, 8);
+        imgui.TextColored(COL_DIM, string.format("-- needs %s, you're at least %s",
+            s.reqLabel or '?', (rs and rs.label) or '?'));
+    end
+end
+
+-- The By-item tab (issue #99): a fuzzy item search -> the matching diggable
+-- items (crystals/rocks/ores included) -> the selected item's every zone + pool
+-- with rank + the two odds, greyed by the rank gate, plus the item<->area
+-- cross-link. rs = the resolved rank state, clk = the live clock.
+function M.renderByItem(deps, rs, clk)
+    local index = M.itemList();
+    if #index == 0 then
+        imgui.TextColored(COL_DIM, 'no per-zone dig data yet -- run gen_digdata.py (maintainer) to light this up.');
+        return;
+    end
+
+    imgui.TextColored(COL_TEXT, 'Item:');
+    imgui.SameLine(0, 6);
+    imgui.PushItemWidth(240);
+    imgui.InputText('##chocoitemsearch', byitem.q, 48);
+    imgui.PopItemWidth();
+    imgui.SameLine(0, 8);
+    imgui.TextColored(COL_DIM, 'type part of a name -- crystals, rocks and ores are in here too.');
+
+    -- the match list: items whose name contains the needle. Shown only while
+    -- searching; capped so a one-letter needle never floods the panel.
+    local needle = tostring(byitem.q[1] or ''):lower();
+    if needle ~= '' then
+        local shown, CAP = 0, 40;
+        for _, e in ipairs(index) do
+            if tostring(e.n):lower():find(needle, 1, true) then
+                shown = shown + 1;
+                if shown <= CAP then
+                    local sel = (byitem.sel ~= nil and byitem.sel.key == e.key);
+                    if imgui.Selectable(string.format('%s##bi_%s', esc(tostring(e.n)), tostring(e.key)), sel) then
+                        byitem.sel = e;
+                    end
+                end
+            end
+        end
+        if shown == 0 then
+            imgui.TextColored(COL_DIM, '  (no diggable item matches)');
+        elseif shown > CAP then
+            imgui.TextColored(COL_DIM, string.format('  (+%d more -- refine the search)', shown - CAP));
+        end
+        imgui.Spacing();
+    end
+
+    if byitem.sel == nil then
+        imgui.TextColored(COL_DIM, 'Search an item, then pick it to see every zone + pool it drops from.');
+        return;
+    end
+
+    local view = M.itemRows(byitem.sel, rs, clk);
+    if type(view) ~= 'table' then
+        imgui.TextColored(COL_DIM, 'no dig data for that item.');
+        return;
+    end
+
+    -- the selected item header: icon + name + its rank requirement.
+    imgui.Spacing();
+    if view.id ~= nil and deps ~= nil and type(deps.renderIcon) == 'function' then
+        deps.renderIcon(view.id, 18); imgui.SameLine(0, 6);
+    end
+    imgui.TextColored(COL_GOLD, esc(tostring(view.n or '?')));
+    if imgui.IsItemHovered() and view.id ~= nil and deps ~= nil and type(deps.lookupById) == 'function' then
+        local rec = deps.lookupById(view.id);
+        if rec ~= nil and type(deps.itemTooltip) == 'function' then pcall(deps.itemTooltip, rec); end
+    end
+    imgui.SameLine(0, 8);
+    imgui.TextColored(COL_DIM, string.format('needs %s', view.reqLabel or ('rank ' .. tostring(view.minRank))));
+    imgui.Spacing();
+    imgui.TextColored(COL_DIM, 'hit = share of a successful pull;  dig = absolute chance per attempt.');
+    imgui.TextColored(COL_DIM, 'Click a zone to jump to its By area view.');
+    imgui.Spacing();
+
+    if view.kind == 'conditional' then
+        -- the shared condition line (weather crystal / day rock / elemental ore),
+        -- flagged active/inactive against the live clock, greyed by the rank gate.
+        imgui.TextColored(COL_HEADER, 'Conditional drop');
+        imgui.SameLine(0, 8);
+        imgui.TextColored(COL_DIM, string.format('~%d%% when %s',
+            tonumber(view.chance) or 0, tostring(view.condition)));
+        imgui.SameLine(0, 8);
+        if view.active then
+            imgui.TextColored(GREEN_OWNED, '[active now]');
+        elseif not view.clockActive then
+            imgui.TextColored(COL_DIM, '[inactive: condition not met]');
+        elseif view.gate == 'locked' then
+            imgui.TextColored(COL_DIM, string.format('[needs %s]', view.reqLabel or '?'));
+        else
+            imgui.TextColored(COL_DIM, string.format("[needs %s, you're at least %s]",
+                view.reqLabel or '?', (rs and rs.label) or '?'));
+        end
+        imgui.Spacing();
+
+        if view.allZones then
+            -- crystals / rocks drop in EVERY digging zone -- a note beats 26
+            -- identical clickable rows; the By area tab prices any single zone.
+            imgui.TextColored(COL_TEXT, string.format(
+                'Diggable in any of the %d digging zones -- open By area to price a specific one.',
+                #view.sources));
+        else
+            -- ores are a specific 9-zone set -- list them as cross-link buttons.
+            imgui.TextColored(COL_TEXT, 'Diggable in these elemental-ore zones (click to jump):');
+            for _, s in ipairs(view.sources) do
+                imgui.Dummy({ 6, 0 }); imgui.SameLine(0, 0);
+                if imgui.Button(string.format('%s##biore%s', esc(tostring(s.zoneName or '?')), tostring(s.zoneId))) then
+                    jumpToArea(s.zoneId);
+                end
+            end
+        end
+        return;
+    end
+
+    -- a pool item: every zone + pool it drops from, best per-dig first.
+    if #view.sources == 0 then
+        imgui.TextColored(COL_DIM, '  (not found in any zone pool)');
+    end
+    for _, s in ipairs(view.sources) do renderItemPoolRow(deps, s, rs); end
+end
+
+-- Begin one of this panel's guide tabs, forcing selection when the cross-link
+-- asked for it (the uihost.selectTab idiom). Probe-don't-assume (hard rule 2):
+-- a binding without the 3-arg BeginTabItem / the flag global just renders
+-- normally -- the jump is dropped, never a crash.
+local function beginGuideTab(label, forceSel)
+    if forceSel then
+        local ok, o = pcall(imgui.BeginTabItem, label, nil, ImGuiTabItemFlags_SetSelected or 2);
+        if ok then return o == true; end
+    end
+    return imgui.BeginTabItem(label);
 end
 
 function M.render(deps, availW)
@@ -592,12 +804,14 @@ function M.render(deps, availW)
         return;
     end
     if imgui.BeginTabBar('##chocoguidetabs') then
-        if imgui.BeginTabItem('By area') then
+        -- the cross-link one-shot: a zone clicked in By item focuses By area on it.
+        local forceArea = guide.focusArea; guide.focusArea = false;
+        if beginGuideTab('By area', forceArea) then
             M.renderByArea(deps, rs, clk);
             imgui.EndTabItem();
         end
-        if imgui.BeginTabItem('By item') then
-            imgui.TextColored(COL_DIM, 'Search an item to see every zone + pool it drops from -- coming next.');
+        if beginGuideTab('By item', false) then
+            M.renderByItem(deps, rs, clk);
             imgui.EndTabItem();
         end
         imgui.EndTabBar();

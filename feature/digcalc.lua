@@ -329,4 +329,223 @@ function M.conditionalDrops(zoneId, playerRank, clock)
     return out;
 end
 
+-- ---------------------------------------------------------------------------
+-- The BY-ITEM seams (issue #99). A fuzzy-searchable index of every diggable
+-- item, and -- for a selected item -- every zone + pool it drops from, priced.
+-- Both fail soft (empty / nil when digdata is absent) and are PURE (the clock is
+-- passed in, never read here) so they are headless-testable like conditionalDrops.
+-- ---------------------------------------------------------------------------
+
+-- Build the searchable diggable-item index: every UNIQUE item across all
+-- zones/pools, PLUS the conditional crystals/clusters/rocks/ores synthesised
+-- from the cond rule tables (so the by-item search finds "Fire Crystal" and
+-- "Chunk of Fire Ore" even though they live in no static pool). Pool items are
+-- deduped by id (minRank = the LOWEST requirement across the zones it drops in);
+-- conditionals get one entry each. Sorted by name (key as the stable tiebreak).
+-- Each row: { key, id, n, minRank, kind, condKind, element }
+--   kind     = 'pool' | 'conditional'
+--   condKind = 'crystal' | 'cluster' | 'rock' | 'ore'  (conditionals only)
+--   element  = the FFXI element (conditionals only)
+-- Fail soft: no db -> empty list.
+function M.itemIndex()
+    local db = M.db(); if db == nil then return {}; end
+
+    -- pool items, deduped by id (keep the minimum rank requirement seen).
+    local byId = {};
+    for _, z in pairs(db.zones or {}) do
+        for _, list in pairs((type(z) == 'table' and z.pools) or {}) do
+            for _, it in ipairs(list) do
+                local id = it.id;
+                local req = tonumber(it.rank) or 0;
+                local e = byId[id];
+                if e == nil then
+                    byId[id] = { key = 'pool:' .. tostring(id), id = id, n = it.n,
+                                 minRank = req, kind = 'pool' };
+                elseif req < e.minRank then
+                    e.minRank = req;
+                end
+            end
+        end
+    end
+    local out = {};
+    for _, e in pairs(byId) do out[#out + 1] = e; end
+
+    -- conditionals: one entry per element per kind, from the cond rule tables.
+    local cond = db.cond;
+    if type(cond) == 'table' then
+        local cr = cond.crystals;
+        if type(cr) == 'table' and type(cr.byElement) == 'table' then
+            local minRank = tonumber(cr.minRank) or 0;
+            for el, m in pairs(cr.byElement) do
+                if type(m) == 'table' and m.crystal ~= nil then
+                    out[#out + 1] = { key = 'crystal:' .. el, id = m.crystal,
+                        n = el .. ' Crystal', minRank = minRank,
+                        kind = 'conditional', condKind = 'crystal', element = el };
+                end
+                if type(m) == 'table' and m.cluster ~= nil then
+                    out[#out + 1] = { key = 'cluster:' .. el, id = m.cluster,
+                        n = el .. ' Cluster', minRank = minRank,
+                        kind = 'conditional', condKind = 'cluster', element = el };
+                end
+            end
+        end
+        local rk = cond.rocks;
+        if type(rk) == 'table' and type(rk.byElement) == 'table' then
+            local minRank = tonumber(rk.minRank) or 0;
+            for el, m in pairs(rk.byElement) do
+                if type(m) == 'table' and m.id ~= nil then
+                    out[#out + 1] = { key = 'rock:' .. el, id = m.id, n = m.n or (el .. ' rock'),
+                        minRank = minRank, kind = 'conditional', condKind = 'rock', element = el };
+                end
+            end
+        end
+        local or_ = cond.ores;
+        if type(or_) == 'table' and type(or_.byElement) == 'table' then
+            local minRank = tonumber(or_.minRank) or 0;
+            for el, m in pairs(or_.byElement) do
+                if type(m) == 'table' and m.id ~= nil then
+                    out[#out + 1] = { key = 'ore:' .. el, id = m.id, n = m.n or (el .. ' ore'),
+                        minRank = minRank, kind = 'conditional', condKind = 'ore', element = el };
+                end
+            end
+        end
+    end
+
+    table.sort(out, function(a, b)
+        if tostring(a.n) ~= tostring(b.n) then return tostring(a.n) < tostring(b.n); end
+        return tostring(a.key) < tostring(b.key);
+    end);
+    return out;
+end
+
+-- Every zone + pool a selected item drops from, priced for a rank + moon. `entry`
+-- is an itemIndex row (carries kind/id/condKind/element/minRank); `mu` the moon
+-- multiplier; `clock` the live-clock table (any field may be nil). Returns:
+--   { n, id, kind, minRank, allZones, sources = { <row>, ... },
+--     -- conditionals only (the gate is zone-independent):
+--     condKind, element, chance, condition, clockActive, rankOk, active }
+-- A POOL item's rows -- { zoneId, zoneName, pool, req, onHit, perDig, locked } --
+--   are sorted by (2) PER DIG descending (zone/pool tiebreak), matching by-area.
+-- A CONDITIONAL item's rows -- { zoneId, zoneName, condKind, chance, minRank,
+--   condition, clockActive, rankOk, active } -- are sorted by zone name.
+--   crystals/clusters/rocks span EVERY enabled zone (allZones = true); ores span
+--   only the elemental-ore zone set. The clock gate is identical across the rows
+--   (it is zone-independent), so it is also reported at the item level.
+-- nil when entry/db is absent (fail soft). PURE -- the clock is passed in.
+function M.itemSources(entry, playerRank, mu, clock)
+    local db = M.db(); if db == nil or type(entry) ~= 'table' then return nil; end
+    local rank = tonumber(playerRank) or 0;
+    clock = clock or {};
+
+    -- ---- POOL item: locate it in every zone/pool and price that pool ----
+    if entry.kind ~= 'conditional' then
+        local m = tonumber(mu); if m == nil then m = 1; end
+        local sources = {};
+        local minReq = nil;
+        for zoneId, z in pairs(db.zones or {}) do
+            if type(z) == 'table' then
+                for _, name in ipairs(M.POOLS) do
+                    local list = (z.pools or {})[name];
+                    if type(list) == 'table' then
+                        local odds = nil;
+                        for _, it in ipairs(list) do
+                            if it.id == entry.id then
+                                odds = odds or M.poolOdds(list, rank, m);
+                                break;
+                            end
+                        end
+                        if odds ~= nil then
+                            for _, row in ipairs(odds.items) do
+                                if row.id == entry.id then
+                                    sources[#sources + 1] = {
+                                        zoneId = zoneId, zoneName = z.n, pool = name,
+                                        req = row.rank, onHit = row.onHit,
+                                        perDig = row.perDig, locked = row.locked,
+                                    };
+                                    if minReq == nil or row.rank < minReq then minReq = row.rank; end
+                                    break;
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        table.sort(sources, function(a, b)
+            if (a.perDig or 0) ~= (b.perDig or 0) then return (a.perDig or 0) > (b.perDig or 0); end
+            if tostring(a.zoneName) ~= tostring(b.zoneName) then return tostring(a.zoneName) < tostring(b.zoneName); end
+            return tostring(a.pool) < tostring(b.pool);
+        end);
+        return { n = entry.n, id = entry.id, kind = 'pool',
+                 minRank = minReq or entry.minRank, allZones = false, sources = sources };
+    end
+
+    -- ---- CONDITIONAL item: the applicable zone set + the clock gate ----
+    local cond = db.cond or {};
+    local ck = entry.condKind;
+    local el = entry.element;
+    local minRank = tonumber(entry.minRank) or 0;
+    local rankOk = (rank >= minRank);
+    local chance, condition, clockActive;
+    if ck == 'crystal' or ck == 'cluster' then
+        local cr = cond.crystals or {};
+        chance = cr.chance;
+        local wel = normElement(clock.weatherElement);
+        local dbl = (clock.doubleWeather == true);
+        if ck == 'cluster' then
+            condition = 'double ' .. tostring(el) .. ' weather';
+            clockActive = (wel == el) and dbl;
+        else
+            condition = tostring(el) .. ' weather up';
+            clockActive = (wel == el) and (not dbl);
+        end
+    elseif ck == 'rock' then
+        local rk = cond.rocks or {};
+        chance = rk.chance;
+        condition = tostring(el) .. "'s day";
+        clockActive = (normElement(clock.dayElement) == el);
+    else   -- ore
+        local or_ = cond.ores or {};
+        chance = or_.chance;
+        local win = (type(or_.moonPhaseWindow) == 'table') and or_.moonPhaseWindow or {};
+        local del = normElement(clock.dayElement);
+        local wel = normElement(clock.weatherElement);
+        local mp = tonumber(clock.moonPercent);
+        local weatherOK = (not or_.requiresElementalWeather) or (del ~= nil and wel == del);
+        local moonOK = (mp ~= nil and win.min ~= nil and win.max ~= nil and mp >= win.min and mp <= win.max);
+        condition = string.format('%s day + matching weather, moon %s-%s%%',
+            tostring(el), tostring(win.min or 0), tostring(win.max or 0));
+        clockActive = (del == el) and weatherOK and moonOK;
+    end
+
+    -- the applicable zones: crystals/clusters/rocks -> every enabled zone; ores
+    -- -> only the elemental-ore zone set (the same zones conditionalDrops gates).
+    local allZones = (ck ~= 'ore');
+    local zoneIds = {};
+    if ck == 'ore' then
+        local zt = (cond.ores or {}).zones or {};
+        for zid, on in pairs(zt) do if on == true then zoneIds[#zoneIds + 1] = zid; end end
+    else
+        for zid in pairs(db.zones or {}) do zoneIds[#zoneIds + 1] = zid; end
+    end
+    local sources = {};
+    for _, zid in ipairs(zoneIds) do
+        local z = (db.zones or {})[zid];
+        if type(z) == 'table' then
+            sources[#sources + 1] = {
+                zoneId = zid, zoneName = z.n, condKind = ck,
+                chance = chance, minRank = minRank, condition = condition,
+                clockActive = clockActive, rankOk = rankOk,
+                active = clockActive and rankOk,
+            };
+        end
+    end
+    table.sort(sources, function(a, b) return tostring(a.zoneName) < tostring(b.zoneName); end);
+    return { n = entry.n, id = entry.id, kind = 'conditional', condKind = ck,
+             element = el, minRank = minRank, allZones = allZones,
+             chance = chance, condition = condition,
+             clockActive = clockActive, rankOk = rankOk,
+             active = clockActive and rankOk, sources = sources };
+end
+
 return M;

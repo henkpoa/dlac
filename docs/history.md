@@ -5092,3 +5092,39 @@ a one-time field cross-check against the in-game moon; if the ore-gate percent m
 server-exact, swap the linear curve for the 84-entry LSB moon table (isolated in vanamoon).
 (2) Every new player-facing string — the rank ladder labels, the source labels, the header /
 note wording — is proposed, pending row-by-row sign-off.
+
+## Chocobo: By-item tab (2026-07-24, issue #99)
+
+**The second dig-guide tab** (parent PRD #93; docs/design/chocobo-dig.md "The By-item tab"):
+a fuzzy item search → the matching diggable items → the selected item's every zone + pool
+with rank + the two live odds, greyed by the SAME `digrank.gate` rule the by-area tab uses,
+plus the item ↔ area cross-link. It reuses the by-area row/odds rendering and adds **no new
+odds math** — two pure `digcalc` seams feed it.
+
+`digcalc.itemIndex()` is the fuzzy-search source: every unique pool item (deduped by id, its
+`minRank` the lowest requirement across the zones it drops in) PLUS the conditional
+crystals/clusters/rocks/ores **synthesised** from the `cond` rule tables (8 each = 32 entries)
+so "Fire Crystal" / "Chunk of Fire Ore" are searchable even though they live in no static
+pool. `digcalc.itemSources(entry, rank, mu, clock)` prices the selected item's every source:
+a pool item's rows carry `{ zoneId, zoneName, pool, req, onHit, perDig, locked }` (sorted by
+② per-dig descending, the by-area order); a conditional item's rows carry the per-zone
+`{ condKind, chance, minRank, condition, clockActive, rankOk, active }` — crystals/rocks span
+every enabled zone (`allZones`), ores only the 9 ore zones. Both are PURE (the clock is
+passed in) and fail soft. `chocoui.itemList`/`itemRows` wrap them and stamp `digrank.gate`.
+
+**Two things worth remembering.** (1) An item can be BOTH a static pool drop AND a conditional
+— Fire Crystal is listed in some zones' pools *and* is the Fire-weather conditional — so the
+index carries a DISTINCT entry for each, keyed `pool:<id>` vs `condKind:element`, never by name
+(a name-keyed lookup collided in the first test pass and masked the conditional entry). (2) The
+cross-link reuses the `uihost.selectTab` idiom on this panel's OWN tab bar: a zone click sets
+the by-area state and requests a one-shot forced `By area` selection via a probe-guarded 3-arg
+`BeginTabItem` (`ImGuiTabItemFlags_SetSelected`), so a binding without the flag just drops the
+jump instead of crashing (hard rule 2). All-zone conditionals show a note rather than 26
+identical clickable rows; ores list their 9 specific zones as cross-link buttons.
+
+No `dispatch.M.VERSION` bump (digcalc/chocoui are addon-state only; the engine reads just
+`enabled`/`at` from `chocostate.lua`). New tests BI1–BI27 (the two pure seams) + S139z–S139aa4
+(the composed seams) + the render-balance section now driving the By-item tab with the search
+filled. 2937 + 259 green. **Flagged:** the new player-facing strings (the `By item` tab name,
+the `Item:` / `needs X` / `Conditional drop` / `Diggable in …` labels) are proposed, pending
+the maintainer's row-by-row sign-off with the rest of the guide's wording.

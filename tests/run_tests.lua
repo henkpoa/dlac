@@ -10161,6 +10161,138 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- CHOCOBO BY-ITEM: the pure data seams the by-item tab composes (issue #99,
+-- PRD #93) -- digcalc.itemIndex (the fuzzy-search source, pool items PLUS the
+-- synthesised conditional crystals/rocks/ores) and digcalc.itemSources (every
+-- zone + pool a selected item drops from, priced + flagged). Uses the SHIPPED
+-- digdata; the odds math itself is DC1-61. All headless, PURE (clock passed in).
+-- ---------------------------------------------------------------------------
+(function()
+    local dc = dofile('feature/digcalc.lua');
+    package.loaded['dlac\\feature\\digcalc'] = dc;
+    dc._setDb(dofile('data/digdata.lua'));
+
+    -- ---- itemIndex(): the searchable diggable-item index ----
+    local idx = dc.itemIndex();
+    check('BI1 itemIndex is non-empty (120 pool items + 32 conditionals)', #idx, 152);
+    check('BI2 itemIndex is sorted by name', (function()
+        for i = 2, #idx do if tostring(idx[i - 1].n) > tostring(idx[i].n) then return false; end end
+        return true;
+    end)(), true);
+    local byKey = {}; for _, e in ipairs(idx) do byKey[e.key] = e; end
+    -- the conditional crystals / clusters / rocks / ores are keyed by condKind:el
+    -- (a conditional item can SHARE a name with a static pool drop -- Fire Crystal
+    -- is both a weather conditional AND a listed pool item in some zones -- so the
+    -- index carries a distinct entry for each; assert by key, not by name).
+    check('BI3 Fire Crystal (conditional) is in the index, id 4096',
+        byKey['crystal:Fire'] and byKey['crystal:Fire'].id == 4096
+        and byKey['crystal:Fire'].n == 'Fire Crystal'
+        and byKey['crystal:Fire'].kind == 'conditional'
+        and byKey['crystal:Fire'].condKind, 'crystal');
+    check('BI4 Fire Cluster is in the index (conditional cluster, id 4104)',
+        byKey['cluster:Fire'] and byKey['cluster:Fire'].id == 4104
+        and byKey['cluster:Fire'].n == 'Fire Cluster'
+        and byKey['cluster:Fire'].condKind, 'cluster');
+    check('BI5 Chunk of Fire Ore is in the index (ore, minRank 6)',
+        byKey['ore:Fire'] and byKey['ore:Fire'].id == 1255
+        and byKey['ore:Fire'].n == 'Chunk of Fire Ore'
+        and byKey['ore:Fire'].condKind == 'ore'
+        and byKey['ore:Fire'].minRank, 6);
+    check('BI6 Red Rock is in the index (rock, minRank 3 = Novice)',
+        byKey['rock:Fire'] and byKey['rock:Fire'].n == 'Red Rock'
+        and byKey['rock:Fire'].condKind == 'rock'
+        and byKey['rock:Fire'].minRank, 3);
+    check('BI7 exactly 32 conditional entries (8 each: crystal/cluster/rock/ore)', (function()
+        local c = 0; for _, e in ipairs(idx) do if e.kind == 'conditional' then c = c + 1; end end
+        return c;
+    end)(), 32);
+    check('BI8 a pool entry carries a pool key + kind', (function()
+        local e = byKey['pool:3509'];   -- Plate of Heavy Metal
+        return e and e.kind == 'pool' and e.n or false;
+    end)(), 'Plate of Heavy Metal');
+
+    -- ---- itemSources() on a POOL item present in many zones ----
+    -- Plate of Heavy Metal (3509) drops in 22 zones; price at rank 8, neutral moon.
+    local plate = byKey['pool:3509'];
+    local ps = dc.itemSources(plate, 8, dc.moonMult(50), {});
+    check('BI9 pool itemSources returns a pool view', type(ps) == 'table'
+        and ps.kind == 'pool' and ps.allZones == false, true);
+    check('BI10 pool sources cover the 22 zones it drops in', #ps.sources, 22);
+    check('BI11 each pool source carries zone + pool + the two odds', (function()
+        for _, s in ipairs(ps.sources) do
+            if type(s.zoneId) ~= 'number' or type(s.zoneName) ~= 'string'
+               or type(s.pool) ~= 'string' or type(s.onHit) ~= 'number'
+               or type(s.perDig) ~= 'number' then return false; end
+        end
+        return true;
+    end)(), true);
+    check('BI12 pool sources are sorted by per-dig descending', (function()
+        for i = 2, #ps.sources do
+            if (ps.sources[i - 1].perDig or 0) < (ps.sources[i].perDig or 0) then return false; end
+        end
+        return true;
+    end)(), true);
+
+    -- ---- itemSources() on a CONDITIONAL crystal: EVERY digging zone ----
+    -- Fire Crystal under Fire weather (single) is active in all 26 zones.
+    local fc = byKey['crystal:Fire'];
+    local cs = dc.itemSources(fc, 8, dc.moonMult(50),
+        { weatherElement = 'Fire', dayElement = 'Ice', doubleWeather = false, moonPercent = 50 });
+    check('BI13 crystal itemSources spans every enabled zone (allZones)', cs.allZones == true and #cs.sources, 26);
+    check('BI14 crystal active now under matching single weather', cs.active, true);
+    check('BI15 crystal condition is spelled out', cs.condition, 'Fire weather up');
+    -- double Fire weather yields the CLUSTER, so the single crystal is inactive.
+    local csDbl = dc.itemSources(fc, 8, dc.moonMult(50),
+        { weatherElement = 'Fire', doubleWeather = true, moonPercent = 50 });
+    check('BI16 single crystal inactive under DOUBLE weather (that is the cluster)', csDbl.active, false);
+    -- the Thunder/Lightning alias resolves the live weather to the Lightning crystal.
+    local lc = byKey['crystal:Lightning'];
+    local ls = dc.itemSources(lc, 8, dc.moonMult(50), { weatherElement = 'Thunder', moonPercent = 50 });
+    check('BI17 Thunder weather activates the Lightning Crystal', ls.active, true);
+
+    -- ---- itemSources() on the CLUSTER: active only under double weather ----
+    local fcl = byKey['cluster:Fire'];
+    local cls = dc.itemSources(fcl, 8, dc.moonMult(50), { weatherElement = 'Fire', doubleWeather = true, moonPercent = 50 });
+    check('BI18 cluster active under double weather', cls.active, true);
+    check('BI19 cluster condition names the double weather', cls.condition, 'double Fire weather');
+
+    -- ---- itemSources() on an ORE: only the 9 elemental-ore zones ----
+    local ore = byKey['ore:Fire'];
+    local os = dc.itemSources(ore, 8, dc.moonMult(14),
+        { dayElement = 'Fire', weatherElement = 'Fire', moonPercent = 14 });
+    check('BI20 ore itemSources spans only the ore zones (not all-zone)', os.allZones == false and #os.sources, 9);
+    check('BI21 ore active under the full gate (rank 8, Fire day+weather, moon 14%)', os.active, true);
+    -- rank gate: below Craftsman the ore is not reachable though the clock is met.
+    local osLow = dc.itemSources(ore, 0, dc.moonMult(14),
+        { dayElement = 'Fire', weatherElement = 'Fire', moonPercent = 14 });
+    check('BI22 ore rankOk false at rank 0 though the clock is met',
+        osLow.rankOk == false and osLow.clockActive == true and osLow.active == false, true);
+    -- moon out of window closes the clock gate.
+    local osMoon = dc.itemSources(ore, 8, dc.moonMult(50),
+        { dayElement = 'Fire', weatherElement = 'Fire', moonPercent = 50 });
+    check('BI23 ore clock closes when the moon is out of the 7-21% window', osMoon.clockActive, false);
+
+    -- ---- a locked pool item over-rank: the row carries the locked flag ----
+    -- King Truffle (Carpenters Landing Treasure) needs rank 8; at rank 0 it locks.
+    local kt = byKey['pool:4386'];
+    if kt ~= nil then
+        local kts = dc.itemSources(kt, 0, dc.moonMult(50), {});
+        check('BI24 an over-rank pool item marks its source locked', (function()
+            for _, s in ipairs(kts.sources) do if s.locked ~= true then return false; end end
+            return #kts.sources > 0;
+        end)(), true);
+    end
+
+    -- ---- fail soft: no db / nil entry -> empty index, nil sources ----
+    dc._setDb(false);
+    check('BI25 absent db -> itemIndex empty', #dc.itemIndex(), 0);
+    check('BI26 absent db -> itemSources nil', dc.itemSources(plate, 8, 1, {}), nil);
+    dc._setDb(dofile('data/digdata.lua'));
+    check('BI27 nil entry -> itemSources nil', dc.itemSources(nil, 8, 1, {}), nil);
+    dc._setDb(nil);   -- restore lazy load
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then
