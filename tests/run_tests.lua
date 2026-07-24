@@ -10158,6 +10158,14 @@ end)();
     check('DR21c clean text is untouched',     dr._stripCodes('Copper Ore'), 'Copper Ore');
     check('DR21d parse: name wrapped in colour codes', dr.parseObtained('Obtained: \30\06Wind Crystal\30\01.'), 'Wind Crystal');
     check('DR21e parse: a code AFTER the period', dr.parseObtained('Obtained: Maple Log.\31\02'), 'Maple Log');
+    -- CASE-INSENSITIVE + prefix (the field bug: an item dig moved no rank because
+    -- the tag casing / a leading prefix slipped past the old fixed-case pattern).
+    -- The name must come back in its ORIGINAL case (the ratchet norm()s, but the
+    -- announce shows it verbatim). Modeled on hgather's string.lower().match().
+    check('DR21f ALL-CAPS tag still parses',    dr.parseObtained('OBTAINED: Chunk of Gold Ore.'), 'Chunk of Gold Ore');
+    check('DR21g a leading prefix before tag',  dr.parseObtained('You dig and dig! Obtained: Bag of Fruit Seeds.'), 'Bag of Fruit Seeds');
+    check('DR21h keeps original display case',  dr.parseObtained('obtained: Chunk of Platinum Ore.'), 'Chunk of Platinum Ore');
+    check('DR21i classify ALL-CAPS -> obtained', ({dr.classifyDigLine('OBTAINED: Chunk of Gold Ore.')})[1], 'obtained');
 
     -- ---- itemRequirement: min rank across every source, fail-soft ----
     local SYNTH = { zones = {
