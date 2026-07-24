@@ -4783,6 +4783,19 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
             if rnThemed then style.pop(); end
         end
     end
+    -- The Chocobo dig-search windows: also INDEPENDENT of the main box (the Area /
+    -- Item buttons in the Chocobo panel open floating windows so item search is
+    -- never buried at the bottom). Self-gates -- renderSearch draws nothing unless
+    -- a window is open.
+    if has.imgui then
+        local cuMod = nil;
+        pcall(function() cuMod = require('dlac\\ui\\chocoui'); end);
+        if cuMod ~= nil and type(cuMod.renderSearch) == 'function' then
+            local cuThemed = style ~= nil and style.push();
+            pcall(cuMod.renderSearch, M._deps);
+            if cuThemed then style.pop(); end
+        end
+    end
     if not M.visible or not has.imgui then return; end
     -- Theme push/pop brackets the pcall so an imgui error mid-draw can never
     -- leak the style stack (that would corrupt every OTHER addon's UI too).

@@ -807,7 +807,7 @@ end)();
 --     and assert every stack came back to 0.
 -- ---------------------------------------------------------------------------
 ;(function()
-    local depth = { combo = 0, bar = 0, item = 0 };
+    local depth = { combo = 0, bar = 0, item = 0, win = 0 };
     local function nop() end
     local IM = {};
     for _, n in ipairs({ 'TextColored', 'Text', 'TextWrapped', 'SameLine', 'Spacing', 'Separator',
@@ -831,6 +831,10 @@ end)();
     IM.InputText = function(label, buf)
         if label == '##chocoitemsearch' and type(buf) == 'table' then buf[1] = 'a'; end
     end
+    -- floating-window API for renderSearch (the Area / Item windows)
+    IM.Begin             = function() depth.win = depth.win + 1; return true; end
+    IM.End               = function() depth.win = depth.win - 1; end
+    IM.SetNextWindowSize = nop;
 
     package.loaded['imgui'] = IM;
     -- stub the two optional collaborators so render never touches files/real imgui
@@ -854,6 +858,27 @@ end)();
         check('S139cc BeginCombo/EndCombo balanced',   depth.combo, 0);
         check('S139dd BeginTabBar/EndTabBar balanced', depth.bar, 0);
         check('S139ee BeginTabItem/EndTabItem balanced', depth.item, 0);
+        -- The floating search windows (Henrik 07-24): Area + Item open as separate
+        -- imgui.Begin windows; every Begin must pair with an End (the floatgear
+        -- rule), and both by-area/by-item content renders inside without crashing.
+        if type(cui.renderSearch) == 'function' and type(cui._search) == 'table' then
+            cui._search.area.open[1] = true;   -- Area window, real zone -> rows render
+            cui._search.area.zoneId  = 2;      -- Carpenters' Landing
+            cui._search.area.fromItem = true;  -- exercise the Back button too
+            local sok1 = pcall(cui.renderSearch, deps);
+            check('S139ff renderSearch runs the Area window', sok1, true);
+            check('S139gg Area window Begin/End balanced', depth.win, 0);
+            cui._search.area.open[1] = false;
+            cui._search.item.open[1] = true;   -- Item window, search filled -> sources render
+            cui._search.item.q[1]    = 'a';
+            local sok2 = pcall(cui.renderSearch, deps);
+            check('S139hh renderSearch runs the Item window', sok2, true);
+            check('S139ii Item window Begin/End balanced', depth.win, 0);
+            cui._search.item.open[1] = false;
+            check('S139jj closed windows draw nothing (Begin count 0)', (function()
+                depth.win = 0; pcall(cui.renderSearch, deps); return depth.win;
+            end)(), 0);
+        end
     end
     -- restore the real modules for any later section
     package.loaded['imgui'] = nil;
