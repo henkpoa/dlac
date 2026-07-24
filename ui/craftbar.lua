@@ -119,89 +119,74 @@ local function centerNext(availW, rowW)
     if indent > 0 then imgui.Dummy({ 0, 0 }); imgui.SameLine(indent); end
 end
 
-function M.render()
-    if not cw.barVisible then return; end
-    local pushed = _uok and uistyle.push();
+-- The craft bar's CONTENT (no window chrome). Drawn by ui/hobbybar.lua inside the
+-- one shared hobby window; availW is that window's content-region width. The same
+-- craft/goal controls also live on the Automations panel -- both drive the single
+-- craftwatch state. (Was M.render + its own d3d_present window until the bars were
+-- unified into hobbybar, ADR 0017.)
+function M.renderContent(availW)
+    if type(availW) ~= 'number' or availW < BAR_MIN_W then availW = BAR_MIN_W; end
+    local sel = cw.getCraft();
+    local on = cw.isEnabled();
+    -- Row 1, centered: the 8 craft glyphs + the on/off switch.
+    centerNext(availW, 8 * 30 + 7 * 6 + 6 + 46);
+    for i, cr in ipairs(ORDER) do
+        if M.craftButton(cr, sel == cr, 30) then cw.selectCraft(cr); end
+        imgui.SameLine(0, 6);
+    end
+    if M.onOffSwitch(on, 'bar') then cw.setEnabled(not on); end
+    imgui.Separator();
+    -- Row 2, centered: goal toggles + the Last Synth action (an ACTION, not a
+    -- goal -- extra gap + no green-active state).
+    local ls = (type(cw.lastSynth) == 'function') and cw.lastSynth() or nil;
+    local goalW = 34;
     pcall(function()
-        imgui.SetNextWindowSize({ 0, 0 }, ImGuiCond_Always or 0);
-        isOpen[1] = true;
-        if imgui.Begin('dlac Craft##dlac_craftbar', isOpen, ImGuiWindowFlags_AlwaysAutoResize or 0) then
-            local availW = imgui.GetContentRegionAvail();
-            if type(availW) ~= 'number' or availW < BAR_MIN_W then availW = BAR_MIN_W; end
-            local sel = cw.getCraft();
-            local on = cw.isEnabled();
-            -- Row 1, centered: the 8 craft glyphs + the on/off switch.
-            centerNext(availW, 8 * 30 + 7 * 6 + 6 + 46);
-            for i, cr in ipairs(ORDER) do
-                if M.craftButton(cr, sel == cr, 30) then cw.selectCraft(cr); end
-                imgui.SameLine(0, 6);
-            end
-            if M.onOffSwitch(on, 'bar') then cw.setEnabled(not on); end
-            imgui.Separator();
-            -- Row 2, centered: goal toggles + the Last Synth action (an
-            -- ACTION, not a goal -- extra gap + no green-active state).
-            local ls = (type(cw.lastSynth) == 'function') and cw.lastSynth() or nil;
-            local goalW = 34;
-            pcall(function()
-                local w = imgui.CalcTextSize('Goal:');
-                if type(w) == 'number' then goalW = w; end
-            end);
-            -- Last Synth is MEASURED, not hardcoded: 86 (the Skill-Up width)
-            -- clipped the trailing 'h' (Henrik). Text + padding, never narrower
-            -- than the goal buttons' look.
-            local lastW = 100;
-            pcall(function()
-                local w = imgui.CalcTextSize('Last Synth');
-                if type(w) == 'number' then lastW = math.max(96, math.floor(w) + 18); end
-            end);
-            centerNext(availW, goalW + 6 + 62 + 4 + 62 + 4 + 86 + 12 + lastW);
-            local goal = cw.getGoal();
-            imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, 'Goal:'); imgui.SameLine(0, 6);
-            for i, gd in ipairs(GOALS) do
-                local gon = (goal == gd[1]);
-                if gon then imgui.PushStyleColor(ImGuiCol_Button, { 0.16, 0.55, 0.24, 1 }); end
-                if imgui.Button(gd[2] .. '##cbgoal' .. gd[1], { gd[3], 20 }) then cw.setGoal(gd[1]); end
-                if gon then imgui.PopStyleColor(1); end
-                if i < #GOALS then imgui.SameLine(0, 4); end
-            end
-            imgui.SameLine(0, 12);
-            -- The button just TYPES the game's own /lastsynth (retail-native
-            -- text command; Henrik: dlac must never intercept or wrap it --
-            -- the client does the repeat, its own messages included).
-            if imgui.Button('Last Synth##cblast', { lastW, 20 }) then
-                pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/lastsynth'); end);
-            end
-            if imgui.IsItemHovered() then
-                imgui.SetTooltip('Issues the game\'s own /lastsynth -- repeats your most recent synthesis.'
-                    .. ((ls ~= nil and ls.name ~= nil) and ('\nLast seen: ' .. ls.name) or '')
-                    .. '\nAlso works typed or in a macro: /lastsynth (and /lastsynth check).');
-            end
-            -- Status line: WHAT the Last Synth button would make (Henrik: so
-            -- you know what it will do before clicking).
-            imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, 'Last synth:');
-            imgui.SameLine(0, 6);
-            if ls == nil then
-                imgui.TextColored({ 0.50, 0.50, 0.50, 1 }, '(none on record -- synth once via the menu)');
-            else
-                imgui.TextColored({ 0.95, 0.85, 0.45, 1 }, ls.name or 'unknown recipe');
-                if ls.skill ~= nil and ls.skill ~= 'unknown' then
-                    imgui.SameLine(0, 0);
-                    imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, string.format('  (%s%s%s)',
-                        ls.skill, ls.lv and (' ' .. ls.lv) or '', ls.desynth and ', desynth' or ''));
-                end
-            end
-            imgui.Dummy({ BAR_MIN_W, 1 });   -- enforces the min width under AlwaysAutoResize
+        local w = imgui.CalcTextSize('Goal:');
+        if type(w) == 'number' then goalW = w; end
+    end);
+    -- Last Synth is MEASURED, not hardcoded: 86 (the Skill-Up width) clipped the
+    -- trailing 'h' (Henrik). Text + padding, never narrower than the goal buttons.
+    local lastW = 100;
+    pcall(function()
+        local w = imgui.CalcTextSize('Last Synth');
+        if type(w) == 'number' then lastW = math.max(96, math.floor(w) + 18); end
+    end);
+    centerNext(availW, goalW + 6 + 62 + 4 + 62 + 4 + 86 + 12 + lastW);
+    local goal = cw.getGoal();
+    imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, 'Goal:'); imgui.SameLine(0, 6);
+    for i, gd in ipairs(GOALS) do
+        local gon = (goal == gd[1]);
+        if gon then imgui.PushStyleColor(ImGuiCol_Button, { 0.16, 0.55, 0.24, 1 }); end
+        if imgui.Button(gd[2] .. '##cbgoal' .. gd[1], { gd[3], 20 }) then cw.setGoal(gd[1]); end
+        if gon then imgui.PopStyleColor(1); end
+        if i < #GOALS then imgui.SameLine(0, 4); end
+    end
+    imgui.SameLine(0, 12);
+    -- The button just TYPES the game's own /lastsynth (retail-native text command;
+    -- Henrik: dlac must never intercept or wrap it -- the client does the repeat).
+    if imgui.Button('Last Synth##cblast', { lastW, 20 }) then
+        pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/lastsynth'); end);
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Issues the game\'s own /lastsynth -- repeats your most recent synthesis.'
+            .. ((ls ~= nil and ls.name ~= nil) and ('\nLast seen: ' .. ls.name) or '')
+            .. '\nAlso works typed or in a macro: /lastsynth (and /lastsynth check).');
+    end
+    -- Status line: WHAT the Last Synth button would make (Henrik: so you know what
+    -- it will do before clicking).
+    imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, 'Last synth:');
+    imgui.SameLine(0, 6);
+    if ls == nil then
+        imgui.TextColored({ 0.50, 0.50, 0.50, 1 }, '(none on record -- synth once via the menu)');
+    else
+        imgui.TextColored({ 0.95, 0.85, 0.45, 1 }, ls.name or 'unknown recipe');
+        if ls.skill ~= nil and ls.skill ~= 'unknown' then
+            imgui.SameLine(0, 0);
+            imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, string.format('  (%s%s%s)',
+                ls.skill, ls.lv and (' ' .. ls.lv) or '', ls.desynth and ', desynth' or ''));
         end
-        imgui.End();
-        if isOpen[1] == false then cw.barVisible = false; end
-    end);
-    if pushed then uistyle.pop(); end
-end
-
-if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'function' then
-    ashita.events.register('d3d_present', 'dlac-craftbar-render', function()
-        pcall(M.render);
-    end);
+    end
+    imgui.Dummy({ BAR_MIN_W, 1 });   -- enforces the min width under AlwaysAutoResize
 end
 
 return M;

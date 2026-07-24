@@ -213,34 +213,42 @@ local function ensureManifestFresh()
     end);
 end
 
--- The on/off switch (bar + panel). The four idle hobbies (Craft/HELM/Fishing/
--- Chocobo) are MUTUALLY EXCLUSIVE at this toggle: arming HELM stands the other
--- three down via idleexcl.onActivated, and the armed one shows in the floating
--- badge (ui/idlefloat.lua). This is an ENABLE-layer radio (ADR 0017), NOT the old
--- claim-side newest-armed exclusivity history.md records as a dead end -- the
--- engine's co-claim/Arbiter is untouched; only one hobby is ever armed.
+-- The manual idle switch. HISTORICAL: Auto HELM (setAutoHelm below) is now the ONE
+-- user-facing HELM switch (Henrik: two toggles was confusing, Auto works best), so
+-- this manual path is no longer wired to any UI -- it stays as the engine's
+-- always-on primitive. It still honours the idle-hobby lock (ADR 0017): arming
+-- while another hobby is active is refused.
 function M.setEnabled(on)
     M.loadState();
+    if on == true then
+        local allowed = true;
+        pcall(function() allowed = require('dlac\\feature\\idleexcl').guardActivate('helm'); end);
+        if not allowed then return; end
+    end
     M.enabled = (on == true);
     if M.enabled then
         M._enabledAt = os.time();
         ensureManifestFresh();
-        pcall(function() require('dlac\\feature\\idleexcl').onActivated('helm'); end);
     end
     saveState();
 end
 
--- "Auto HELM": arm/disarm the detection overlay. Session-only (like the idle
--- switch); disarming ends a running hold at once AND tears the entity
--- watches down (an idle session costs entwatch zero work). Arming it is also a
--- HELM activation for the idle-hobby radio (ADR 0017): it stands Craft/Fishing/
--- Chocobo down, and arming any peer later clears BOTH HELM switches.
+-- "Auto HELM": the ONE HELM switch now (Henrik). Arm/disarm the detection overlay
+-- -- gathering gear equips when you're near a <Category> Point (or after a swing),
+-- never "always on regardless of location". Session-only; disarming ends a running
+-- hold at once AND tears the entity watches down (an idle session costs entwatch
+-- zero work). It honours the idle-hobby lock (ADR 0017): arming while another hobby
+-- is active is refused -- turn that one off first.
 function M.setAutoHelm(on)
     M.loadState();
+    if on == true then
+        local allowed = true;
+        pcall(function() allowed = require('dlac\\feature\\idleexcl').guardActivate('helm'); end);
+        if not allowed then return; end
+    end
     M.autoHelm = (on == true);
     if M.autoHelm then
         ensureManifestFresh();
-        pcall(function() require('dlac\\feature\\idleexcl').onActivated('helm'); end);
     else
         M._autoUntil = 0;
         M._proxHold = false;
@@ -827,8 +835,12 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
             if a ~= 'helm' then return; end
             e.blocked = true;
             if b == 'bar' then
-                M.barVisible = not M.barVisible;
-                say('HELM bar ' .. (M.barVisible and 'shown' or 'hidden') .. '.');
+                local shown = false;
+                pcall(function()
+                    local hbb = require('dlac\\ui\\hobbybar');
+                    hbb.toggle('helm'); shown = hbb.isShown('helm');
+                end);
+                say('hobby bar ' .. (shown and 'shown (HELM)' or 'hidden') .. '.');
                 return;
             end
             if VALID[b] ~= nil then

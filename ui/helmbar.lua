@@ -67,81 +67,69 @@ local function centerNext(availW, rowW)
     if indent > 0 then imgui.Dummy({ 0, 0 }); imgui.SameLine(indent); end
 end
 
-function M.render()
-    if not hw.barVisible then return; end
-    local pushed = _uok and uistyle.push();
-    pcall(function()
-        imgui.SetNextWindowSize({ 0, 0 }, ImGuiCond_Always or 0);
-        isOpen[1] = true;
-        if imgui.Begin('dlac HELM##dlac_helmbar', isOpen, ImGuiWindowFlags_AlwaysAutoResize or 0) then
-            local availW = imgui.GetContentRegionAvail();
-            if type(availW) ~= 'number' or availW < BAR_MIN_W then availW = BAR_MIN_W; end
-            local sel = hw.getGather();
-            local on = hw.isEnabled();
-            -- Row 1, centered: the four category glyphs + the on/off switch.
-            centerNext(availW, 4 * 30 + 3 * 6 + 6 + 46);
-            for _, g in ipairs(ORDER) do
-                if gatherButton(g, sel == g, 30) then hw.selectGather(g); end
-                imgui.SameLine(0, 6);
-            end
-            if onOffSwitch(on, 'helmbar',
-                'HELM idle set is ON -- gathering gear stays on while idle. Click to turn off.',
-                'Set HELM Idle: wears your best gathering gear whenever idle, until turned off.\n(Auto HELM -- swing-detected auto-equip -- lives in the Automations panel or /dl helm auto.)')
-            then hw.setEnabled(not on); end
-            imgui.Separator();
-            -- Status line: points + rating + surveyor for the selected category.
-            if sel == nil then
-                imgui.TextColored({ 0.55, 0.55, 0.55, 1 }, 'Pick a category to gear for.');
-            else
-                local vp = nil;
-                pcall(function() vp = hw.pointsFor(sel); end);
-                local helm, surv, bp = 0, 0, false;
-                pcall(function() helm, surv, bp = hw.rating(sel); end);
-                imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, sel .. ' VP:');
-                imgui.SameLine(0, 6);
-                imgui.TextColored(vp ~= nil and { 0.95, 0.85, 0.45, 1 } or { 0.55, 0.55, 0.55, 1 },
-                    vp ~= nil and tostring(vp) or '?');
-                imgui.SameLine(0, 14);
-                imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, 'Rating:');
-                imgui.SameLine(0, 6);
-                if sel == 'Excavation' then
-                    imgui.TextColored({ 0.55, 0.55, 0.55, 1 }, string.format('%d (tools break anyway -- SE\'s little joke)', helm));
-                elseif bp then
-                    imgui.TextColored({ 0.45, 0.90, 0.45, 1 }, string.format('%d -- BREAK-PROOF', helm));
-                else
-                    imgui.TextColored({ 0.85, 0.80, 0.35, 1 }, string.format('%d/5', helm));
-                end
-                if surv > 0 then
-                    imgui.SameLine(0, 14);
-                    imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, string.format('Surveyor +%d', surv));
-                end
-            end
-            -- Auto-detect breadcrumb + the Auto HELM hold state.
-            if hw.isAutoHelm() then
-                if hw.autoActive() then
-                    imgui.TextColored({ 0.45, 0.90, 0.45, 1 },
-                        string.format('AUTO: wearing %s gear', tostring(hw.getGather() or '?')));
-                else
-                    local ry = (type(hw.proxEnter) == 'function') and hw.proxEnter() or 10;
-                    imgui.TextColored({ 0.55, 0.55, 0.55, 1 },
-                        string.format('Auto HELM armed -- gear equips within %dy of a Point', ry));
-                end
-            elseif hw.lastDetect ~= nil and (os.clock() - (hw.lastDetect.at or 0)) < 120 then
-                imgui.TextColored({ 0.55, 0.55, 0.55, 1 },
-                    string.format('Detected: %s', hw.lastDetect.gather));
-            end
-            imgui.Dummy({ BAR_MIN_W, 1 });   -- enforces the min width under AlwaysAutoResize
+-- The HELM bar's CONTENT (no window chrome). Drawn by ui/hobbybar.lua inside the
+-- one shared hobby window. The ONE HELM switch is Auto HELM now (Henrik: two
+-- toggles was confusing, Auto works best) -- gathering gear equips when you're near
+-- a <category> Point, so the on/off pill toggles hw.setAutoHelm. (Was M.render +
+-- its own d3d_present window until the bars were unified into hobbybar, ADR 0017.)
+function M.renderContent(availW)
+    if type(availW) ~= 'number' or availW < BAR_MIN_W then availW = BAR_MIN_W; end
+    local sel = hw.getGather();
+    local on = hw.isAutoHelm();
+    -- Row 1, centered: the four category glyphs + the Auto HELM on/off switch.
+    centerNext(availW, 4 * 30 + 3 * 6 + 6 + 46);
+    for _, g in ipairs(ORDER) do
+        if gatherButton(g, sel == g, 30) then hw.selectGather(g); end
+        imgui.SameLine(0, 6);
+    end
+    if onOffSwitch(on, 'helmbar',
+        'Auto HELM is ON -- gathering gear equips when you\'re near a '
+            .. tostring(sel or 'gathering') .. ' Point. Click to turn off.',
+        'Auto HELM: equips your best gathering gear when you\'re near a <category> Point\n(or right after a swing) -- not "always on regardless of location". Pick the\ncategory with the glyphs.')
+    then hw.setAutoHelm(not on); end
+    imgui.Separator();
+    -- Status line: points + rating + surveyor for the selected category.
+    if sel == nil then
+        imgui.TextColored({ 0.55, 0.55, 0.55, 1 }, 'Pick a category to gear for.');
+    else
+        local vp = nil;
+        pcall(function() vp = hw.pointsFor(sel); end);
+        local helm, surv, bp = 0, 0, false;
+        pcall(function() helm, surv, bp = hw.rating(sel); end);
+        imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, sel .. ' VP:');
+        imgui.SameLine(0, 6);
+        imgui.TextColored(vp ~= nil and { 0.95, 0.85, 0.45, 1 } or { 0.55, 0.55, 0.55, 1 },
+            vp ~= nil and tostring(vp) or '?');
+        imgui.SameLine(0, 14);
+        imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, 'Rating:');
+        imgui.SameLine(0, 6);
+        if sel == 'Excavation' then
+            imgui.TextColored({ 0.55, 0.55, 0.55, 1 }, string.format('%d (tools break anyway -- SE\'s little joke)', helm));
+        elseif bp then
+            imgui.TextColored({ 0.45, 0.90, 0.45, 1 }, string.format('%d -- BREAK-PROOF', helm));
+        else
+            imgui.TextColored({ 0.85, 0.80, 0.35, 1 }, string.format('%d/5', helm));
         end
-        imgui.End();
-        if isOpen[1] == false then hw.barVisible = false; end
-    end);
-    if pushed then uistyle.pop(); end
-end
-
-if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'function' then
-    ashita.events.register('d3d_present', 'dlac-helmbar-render', function()
-        pcall(M.render);
-    end);
+        if surv > 0 then
+            imgui.SameLine(0, 14);
+            imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, string.format('Surveyor +%d', surv));
+        end
+    end
+    -- Auto HELM hold state: dressing now, or armed-and-waiting-for-a-Point.
+    if hw.isAutoHelm() then
+        if hw.autoActive() then
+            imgui.TextColored({ 0.45, 0.90, 0.45, 1 },
+                string.format('AUTO: wearing %s gear', tostring(hw.getGather() or '?')));
+        else
+            local ry = (type(hw.proxEnter) == 'function') and hw.proxEnter() or 10;
+            imgui.TextColored({ 0.55, 0.55, 0.55, 1 },
+                string.format('Auto HELM armed -- gear equips within %dy of a Point', ry));
+        end
+    elseif hw.lastDetect ~= nil and (os.clock() - (hw.lastDetect.at or 0)) < 120 then
+        imgui.TextColored({ 0.55, 0.55, 0.55, 1 },
+            string.format('Detected: %s', hw.lastDetect.gather));
+    end
+    imgui.Dummy({ BAR_MIN_W, 1 });   -- enforces the min width under AlwaysAutoResize
 end
 
 return M;

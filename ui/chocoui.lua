@@ -648,6 +648,15 @@ function M.render(deps, availW)
     else
         if imgui.Button((on and 'ON' or 'OFF') .. '##chocopanelonoff', { 46, 22 }) and cwok then cw.setEnabled(not on); end
     end
+    imgui.SameLine(0, 10);
+    local barShown = false;
+    pcall(function() barShown = require('dlac\\ui\\hobbybar').isShown('choco'); end);
+    if imgui.Button((barShown and 'Hide bar' or 'Show bar') .. '##chocobartoggle', { 78, 22 }) then
+        pcall(function() require('dlac\\ui\\hobbybar').toggle('choco'); end);
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('The shared hobby bar, on Chocobo: the idle switch (also: /dl choco bar).');
+    end
     imgui.Spacing();
     imgui.Separator();
     imgui.Spacing();

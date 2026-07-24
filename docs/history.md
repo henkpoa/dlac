@@ -3754,10 +3754,10 @@ decide WHETHER to claim, the rank decides WHO WINS each slot, and never again do
 a claimant reach across and silence a peer wholesale.
 
 > **2026-07-24 (ADR 0017):** one-at-a-time returned for the four idle hobbies --
-> but as an **enable-layer radio** (`feature/idleexcl.lua`), not this claim-side
-> rule. Arming one hobby stands the others' *switches* down, so only one is ever
-> armed and the engine's co-claim never sees a conflict. This claim-side dead end
-> stays dead; the new seam never reaches the claim layer. See the entry below.
+> but at the **enable toggle** (`feature/idleexcl.lua`), not this claim-side rule.
+> Arming a hobby while another is active is *refused* (lock-while-active), so only
+> one is ever armed and the engine's co-claim never sees a conflict. This claim-side
+> dead end stays dead; the new seam never reaches the claim layer. See the entry below.
 
 ## The Arbiter, step 3: locks become the draggable veto row (2026-07-21, engine v99)
 
@@ -5247,46 +5247,59 @@ asked for sits at a different seam entirely.
 
 **The seam (why it is not the dead end).** Exclusivity lives at the **enable
 toggle**, not the claim. A tiny coordinator, `feature/idleexcl.lua`, is called from
-each watcher's `setEnabled(true)` (and helm's `setAutoHelm(true)`) via
-`onActivated(key)`, which stands the other three down through their own
-`setEnabled(false)`. Because only one hobby is ever *armed*, the Arbiter never sees
-a conflict among the four — the engine is untouched, and AR8/AR9/AR10 (which stub
-state files and never call `setEnabled`) stay green unchanged. The enable seam is
-the one choke point every surface funnels through — bar, panel pill, Automations
-row, Teleports quick-menu flip, `/dl` command — so hooking it there caught all of
-them without touching a single UI file. HELM counts **both** its switches (manual
-idle + Auto HELM): arming a peer clears both, so a background Auto HELM can't dress
-alongside Craft.
+each watcher's `setEnabled(true)` (and helm's `setAutoHelm(true)`). Because only one
+hobby is ever *armed*, the Arbiter never sees a conflict among the four — the engine
+is untouched, and AR8/AR9/AR10 (which stub state files and never call `setEnabled`)
+stay green unchanged. The enable seam is the one choke point every surface funnels
+through — bar, panel pill, Automations row, quick-menu flip, `/dl` command — so
+hooking it there caught all of them without touching a single UI file.
 
-**The badge.** `ui/idlefloat.lua`, a float on the `floatgear`/TP-button pattern
-(rendered straight from gearui's `d3d_present`, own theme bracket, stays up while
-you play — not a uihost window). It **self-gates on `idleexcl.getActive()`**: draws
-a small draggable chip naming the armed hobby (with craft / gather category /
-fishing target, an "(auto)" tag for Auto-only HELM) and an **Off** button, and
-draws nothing when none is armed. So it appears the instant a hobby is activated and
-vanishes the instant it is turned off — no visibility flag to manage; position
-persists (`ui._idlePos` → uiflags `ifx/ify`), visibility never does because it is
-derived.
+**Two rounds, and the model Henrik settled on: lock-while-active, not auto-disarm.**
+Round 1 shipped auto-disarm (arming one stood the others down). Henrik refined it to
+**lock-while-active**: arming a second hobby while one is active is **refused**
+(`guardActivate` returns false + a one-line hint), never a silent takeover. You turn
+the running hobby off, then arm the next. `idleexcl` went from `onActivated` (disarm
+the peers) to `canActivate`/`guardActivate` (refuse the arm).
+
+**One shared hobby bar (`ui/hobbybar.lua`).** Round 1 kept the three separate bar
+windows; round 2 unified them (Henrik: "the same window shared between them all, so
+you can easily switch"). The three bar bodies were extracted verbatim into
+`<bar>.renderContent(availW)` (their own `d3d_present` windows deleted); one window
+with a `Craft | HELM | Fishing | Chocobo` selector draws the selected one. Chocobo —
+which never had a bar — got a minimal tab. The **active hobby's tab is marked** (green
++ trailing `*`, Henrik's ask) and while a hobby runs the selector **locks** to it
+(other tabs dim, un-clickable) — the UI mirror of the enable-layer refusal. A pure
+`toggleVisible` on the header button (vs the hobby-specific `toggle`) so the bar can
+always be dismissed even while locked.
+
+**One HELM switch: Auto HELM.** HELM had two toggles — manual "Set HELM Idle"
+(always-on while idle) and "Auto HELM" (equips near a Point). Henrik: "confusing to
+have two, and Auto works best." Manual idle was removed from every surface (panel,
+quick menu, bar); Auto HELM is the sole switch and `idleexcl`'s HELM member keys on
+`isAutoHelm`. The manual `setEnabled` primitive stays in the engine (unwired) so
+nothing downstream breaks. Trade taken deliberately: HELM gear now equips only near a
+gathering Point, never "always on regardless of location".
+
+**The badge (`ui/idlefloat.lua`) stays** — names the one active hobby with an Off
+button when the bar is closed; self-gates on `idleexcl.getActive()`, so visibility is
+derived (position persists via uiflags `ifx/ify`, visibility never does).
 
 **Consequence, taken deliberately.** The AR10 combination — HELM's armor *and* a
 fishing rod in Range at once — is no longer expressible, because Fishing and HELM
-can't both be armed. That is the point: these are competing hobbies now, and the
-badge makes the one-at-a-time transparent (the missing piece that made the old
-auto-switching feel silent). The claim-side dead end stays dead; this revises only
-the UX convenience ADR 0012 had accepted ("disarm Craft yourself").
+can't both be armed. That is the point: these are competing hobbies now, made
+transparent by the bar's active mark and the badge. The claim-side dead end stays
+dead; this revises only the UX convenience ADR 0012 had accepted.
 
-**Key decision / durable lesson:** re-introducing a removed behaviour is safe when
-it lands at a *different seam* than the one that failed — here, the enable toggle
-(features decide what's armed) vs. the claim layer (the engine decides who wears
-each slot). Name the old dead end, prove the new seam doesn't touch it, and the
-record stays coherent. Also: the per-feature `setEnabled` writer is the single
-choke point for "is this hobby on" across every UI surface and command — hook there,
-touch nothing else.
+**Key decision / durable lesson:** re-introducing a removed behaviour is safe when it
+lands at a *different seam* than the one that failed — here the enable toggle
+(features decide what's armed) vs. the claim layer (the engine decides who wears each
+slot). Also: unify sibling windows by extracting each one's body to
+`renderContent(availW)` and giving one shell the chrome + a selector — the shared
+`onOffSwitch` pill already proved the bars were the same shape. And the new
+`hobbybar` got an `HB*` render-stack-balance smoke (the floatgear S50 lesson: a
+selector's PushStyleColor/PopStyleColor mismatch is a silent client crash).
 
-**Stale comments corrected** (they described the removed co-claim as current): the
-four watchers' `setEnabled` headers and the gearui quick-menu `SWITCH` note now
-describe the enable-layer radio and point at ADR 0017.
-
-New `feature/idleexcl.lua` + `ui/idlefloat.lua` (both added to the source-scan
-roster). `addon.version` 2026.07.24m; `run_tests` 3077 + `smoke_ui` 284 green
-(Windows lua 5.4.6 + WSL lua5.4). 17 new **IE\*** checks.
+New `feature/idleexcl.lua`, `ui/idlefloat.lua`, `ui/hobbybar.lua` (all on the
+source-scan roster); `craftbar`/`helmbar`/`fishbar` reduced to `renderContent`.
+`addon.version` 2026.07.24m; `run_tests` 3081 + `smoke_ui` 296 green (Windows lua
+5.4.6 + WSL lua5.4). IE\* (lock/HELM-auto) + HB\* (render balance) checks.

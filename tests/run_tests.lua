@@ -220,7 +220,7 @@ end)();
     -- (data/catalog, fishdb, spells, ...) carry no gear-fetch logic and are excluded.
     local ROOT_FILES = { 'utils.lua', 'dispatch.lua', 'chatfmt.lua', 'profiles.lua', 'gear.lua', 'dlac.lua' };
     local UI = { 'ammoui','automationsui','craftbar','equippedui','filetex','fishbar','fishui',
-                 'floatgear','gearui','helmbar','helmui','idlefloat','itemicons','priorityui','profilesmenu',
+                 'floatgear','gearui','helmbar','helmui','hobbybar','idlefloat','itemicons','priorityui','profilesmenu',
                  'restockui','setupui','triggersui','uihost','uistyle','weightsui' };
     local GEAR = { 'actionpicker','blueprintsmodel','catalogindex','gearcheck','geareffects','gearexport',
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
@@ -1703,9 +1703,10 @@ check('T35 current keeps ings order', curT.ings[1] == 1165 and #curT.ings == 2, 
     local idleexcl = dofile('feature/idleexcl.lua');
     package.loaded['dlac\\feature\\idleexcl'] = idleexcl;
 
+    -- HELM's ONE switch is Auto HELM now (manual idle is unwired from the UI).
     local function armedCount()
         return (IE_cw.isEnabled() and 1 or 0)
-             + ((IE_hw.isEnabled() or IE_hw.isAutoHelm()) and 1 or 0)
+             + (IE_hw.isAutoHelm() and 1 or 0)
              + (IE_fw.isEnabled() and 1 or 0)
              + (IE_ch.isEnabled() and 1 or 0);
     end
@@ -1713,41 +1714,48 @@ check('T35 current keeps ings order', curT.ings[1] == 1165 and #curT.ings == 2, 
     -- clean slate
     IE_cw.setEnabled(false); IE_hw.setEnabled(false); IE_hw.setAutoHelm(false);
     IE_fw.setEnabled(false); IE_ch.setEnabled(false);
-    check('IE0 nothing armed -> getActive nil', idleexcl.getActive(), nil);
+    check('IE0 nothing armed -> getActive nil',     idleexcl.getActive(), nil);
+    check('IE0b canActivate any when idle',         idleexcl.canActivate('fish'), true);
 
+    -- Arm Craft.
     IE_cw.setEnabled(true);
     check('IE1 craft armed -> active is craft',     (idleexcl.getActive() or {}).key, 'craft');
     check('IE1b craft detail = the picked craft',   (idleexcl.getActive() or {}).detail, IE_cw.getCraft());
 
-    IE_hw.setEnabled(true);
-    check('IE2 arming HELM disarms craft',          IE_cw.isEnabled(), false);
-    check('IE2b HELM is now the active one',        (idleexcl.getActive() or {}).key, 'helm');
-
-    IE_hw.setAutoHelm(true);   -- Auto HELM is a second HELM-activation path
-    check('IE3 auto-HELM keeps HELM active',        (idleexcl.getActive() or {}).key, 'helm');
+    -- LOCK-while-active: arming another hobby is REFUSED (no auto-disarm).
+    check('IE2 canActivate helm false vs active craft', idleexcl.canActivate('helm'), false);
+    IE_hw.setAutoHelm(true);
+    check('IE2b arming HELM refused -> HELM stays off',  IE_hw.isAutoHelm(), false);
+    check('IE2c craft is still the active one',          (idleexcl.getActive() or {}).key, 'craft');
+    check('IE2d still exactly one armed',                armedCount(), 1);
 
     IE_fw.setEnabled(true);
-    check('IE4 arming Fishing disarms HELM idle',   IE_hw.isEnabled(), false);
-    check('IE4b arming Fishing disarms Auto HELM',  IE_hw.isAutoHelm(), false);
-    check('IE4c Fishing is the active one',         (idleexcl.getActive() or {}).key, 'fish');
+    check('IE3 arming Fishing refused vs active craft',  IE_fw.isEnabled(), false);
+    check('IE3b craft still active',                     (idleexcl.getActive() or {}).key, 'craft');
 
+    -- SWITCH: turn Craft off, THEN arm HELM (Auto).
+    IE_cw.setEnabled(false);
+    check('IE4 craft off -> nothing active',        idleexcl.getActive(), nil);
+    IE_hw.setAutoHelm(true);
+    check('IE4b HELM (auto) now arms',              IE_hw.isAutoHelm(), true);
+    check('IE4c HELM is the active one',            (idleexcl.getActive() or {}).key, 'helm');
+    check('IE4d HELM detail = gather category',     (idleexcl.getActive() or {}).detail, IE_hw.getGather());
+    check('IE4e re-arming the SAME hobby is allowed', idleexcl.canActivate('helm'), true);
+
+    -- deactivate() stands the armed one down (badge Off) -> clears BOTH HELM switches.
+    check('IE5 deactivate returns the armed key',   idleexcl.deactivate(), 'helm');
+    check('IE5b HELM auto cleared by deactivate',   IE_hw.isAutoHelm(), false);
+    check('IE5c none armed after deactivate',       idleexcl.getActive(), nil);
+    check('IE5d isActive false when none armed',    idleexcl.isActive(), false);
+
+    -- With nothing active, any hobby can arm; Chocobo works.
     IE_ch.setEnabled(true);
-    check('IE5 arming Chocobo disarms Fishing',     IE_fw.isEnabled(), false);
-    check('IE5b Chocobo is the active one',         (idleexcl.getActive() or {}).key, 'choco');
-    check('IE5c exactly one hobby armed at a time', armedCount(), 1);
+    check('IE6 chocobo arms when idle',             (idleexcl.getActive() or {}).key, 'choco');
+    check('IE6b exactly one armed',                 armedCount(), 1);
 
-    check('IE6 deactivate returns the armed key',   idleexcl.deactivate(), 'choco');
-    check('IE6b none armed after deactivate',       idleexcl.getActive(), nil);
-    check('IE6c isActive false when none armed',    idleexcl.isActive(), false);
-
-    -- Auto-only HELM (idle switch off) still drives the badge, flagged "(auto)".
-    IE_hw.setEnabled(false); IE_hw.setAutoHelm(true);
-    check('IE7 auto-only HELM shows in badge',      (idleexcl.getActive() or {}).key, 'helm');
-    local d7 = (idleexcl.getActive() or {}).detail;
-    check('IE7b auto detail flags "(auto)"',        type(d7) == 'string' and d7:find('auto') ~= nil, true);
-
-    -- Restore: stand HELM down and put package.loaded back so later blocks are
-    -- unaffected (a later fishwatch.setEnabled must NOT reach these peers).
+    -- Restore: stand everything down and put package.loaded back so later blocks
+    -- are unaffected (a later fishwatch.setEnabled must NOT reach these peers).
+    IE_ch.setEnabled(false);
     IE_hw.setEnabled(false); IE_hw.setAutoHelm(false);
     for k, v in pairs(savedLoaded) do package.loaded[k] = v; end
 end)();
