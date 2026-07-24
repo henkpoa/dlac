@@ -756,6 +756,33 @@ end)();
                     and cw2._rankMaxed() == false and cw2._digGateOpen() == false;
             end)(), true);
         end
+        -- Packet-based item ratchet: the 0x02D dig-obtained packet stashes an item
+        -- id; the main-thread pump ratchets it against the shipped data by id (the
+        -- fix for "dug an item, rank didn't move" -- text_in never saw the line).
+        if type(cw2.pumpObtains) == 'function' and type(cw2.recordObtainedById) == 'function' then
+            cw2.rankManual, cw2.rankFloor = 0, 0;
+            -- Bag of Fruit Seeds (id 574) is diggable (rank 2 cheapest / 4 in-zone).
+            check('CW-T9 recordObtainedById raises off a diggable id', (function()
+                return cw2.recordObtainedById(574) and cw2.rankFloor >= 2;
+            end)(), true);
+            cw2.rankFloor = 0;
+            check('CW-T10 a non-diggable id never ratchets', cw2.recordObtainedById(999999), false);
+            -- the pump drains the queue the packet handler fills and applies it
+            cw2.rankFloor = 0; cw2._obtainQueue = { 574 };
+            cw2.pumpObtains();
+            check('CW-T11 pumpObtains drains the queue and ratchets', (function()
+                return cw2.rankFloor >= 2 and #cw2._obtainQueue == 0;
+            end)(), true);
+            cw2.rankManual, cw2.rankFloor = 0, 0;
+        end
+        -- the packet offset: item id (param0 = num[0]) = LE u16 at 0x08 (1-based
+        -- 0x09/0x0A) of a 0x02A TALKNUMWORK body; id 574 must decode back to 574.
+        if type(cw2._obtainIdFromPacket) == 'function' then
+            local pkt = string.rep('\0', 0x08) .. string.char(574 % 256, math.floor(574 / 256));
+            check('CW-T12 _obtainIdFromPacket reads param0 @ 0x08', cw2._obtainIdFromPacket(pkt), 574);
+            check('CW-T13 a too-short packet -> nil', cw2._obtainIdFromPacket('\0\0'), nil);
+            check('CW-T14 non-string -> nil', cw2._obtainIdFromPacket(nil), nil);
+        end
     end
 end)();
 

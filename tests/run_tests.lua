@@ -10177,6 +10177,15 @@ end)();
     -- the M2 fix end-to-end: a colour-coded name still resolves its requirement
     -- (norm strips codes on BOTH sides), so the ratchet fires instead of missing.
     check('DR26a colour-coded name still resolves', dr.itemRequirement('\30\06Copper Ore\30\01', SYNTH), 2);
+    -- itemRequirementById: the 0x02D packet carries the id; prefer the CURRENT
+    -- zone's requirement (you dug it here), else the cheapest zone.
+    check('DR26b by-id = cheapest zone when no zone given', dr.itemRequirementById(1, SYNTH), 2);
+    check('DR26c by-id prefers the CURRENT zone (harder here)', dr.itemRequirementById(1, SYNTH, 101), 5);
+    check('DR26d by-id current zone (cheaper here)', dr.itemRequirementById(1, SYNTH, 100), 2);
+    check('DR26e by-id a rank-0 item', dr.itemRequirementById(2, SYNTH), 0);
+    check('DR26f unknown id -> nil (no ratchet)', dr.itemRequirementById(999, SYNTH), nil);
+    check('DR26g nil id -> nil', dr.itemRequirementById(nil, SYNTH), nil);
+    check('DR26h nil db -> nil (fail soft)', dr.itemRequirementById(1, nil), nil);
 
     -- ---- resolve: precedence + honest exact flag ----
     local ranks = { [0]='Amateur',[1]='Recruit',[2]='Initiate',[3]='Novice',[4]='Apprentice',

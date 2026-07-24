@@ -25,7 +25,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.07.24h';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.07.24i';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
 addon.desc    = 'Build gear sets and view live stats with level scaling (for LuaAshitacast).';
 
@@ -229,7 +229,11 @@ ashita.events.register('d3d_present', 'dlac-seed-watch', function()
     -- lands on the first post-login frame, before the engine's first Default read.
     pcall(function()
         local cw = require('dlac\\feature\\chocowatch');
-        if type(cw) == 'table' and type(cw.loadState) == 'function' then cw.loadState(); end
+        if type(cw) ~= 'table' then return; end
+        if type(cw.loadState) == 'function' then cw.loadState(); end
+        -- Drain any dig-obtained item ids the 0x02D packet handler stashed on the
+        -- network thread -- ratchet + save + announce here on the MAIN thread.
+        if type(cw.pumpObtains) == 'function' then cw.pumpObtains(); end
     end);
     if os.clock() < _seedAt then return; end
     _seedAt = os.clock() + 5.0;
