@@ -1578,7 +1578,7 @@ end)();
         package.loaded['dlac\\ui\\filetex'] = { handle = function() return 4242; end };
         local hbi = mn.headerButton();
         check('MN27 art present -> self-drawn entry', type(hbi.render), 'function');
-        check('MN28 art present -> icon width', hbi.w, 26);
+        check('MN28 art present -> icon width', hbi.w, mn._MENU_BTN_W);
         check('MN29 art present -> no text label', hbi.l, nil);
         check('MN30 icon entry still carries the tooltip', type(hbi.tip), 'string');
         drew.imagebutton = 0;

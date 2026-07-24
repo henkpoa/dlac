@@ -10794,6 +10794,17 @@ end)();
     -- Henrik drop art in later without shifting the layout.
     check('SET38 icon column width exported', type(mn._ICON_W), 'number');
     check('SET39 label x clears the icon',    mn._LABEL_X > mn._ICON_W, true);
+    -- The layout invariant: the label column must clear the icon GUTTER, not merely
+    -- the icon width. Bump _ICON_W on its own and labels print over the art -- which
+    -- is exactly what nearly happened growing the icons from 16 to 24.
+    check('SET51 label clears the whole icon gutter',
+        mn._LABEL_X >= mn._ICON_GAP + mn._ICON_W, true);
+    -- The taller row needs a taller HIT AREA, or the bottom of every row goes dead.
+    check('SET52 row height covers the icon', mn._ROW_H >= mn._ICON_W, true);
+    -- The header button's declared width must actually fit its icon: gearui
+    -- right-aligns the header by summing b.w, so a lying width shifts the whole row.
+    check('SET53 header button width fits its icon',
+        mn._MENU_BTN_W > mn._MENU_ICON_W, true);
 
     -- activate() is inert until configure() runs: no deps, no action, no crash.
     check('SET40 activate inert unconfigured', mn.activate('lockstyle'), false);

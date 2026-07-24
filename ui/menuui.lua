@@ -65,9 +65,25 @@ end
 -- Layout constants -- exported so a headless test can assert the icon column is
 -- reserved even when no PNG exists (the floatgear._HOVER_FLAGS precedent).
 -- ---------------------------------------------------------------------------
-M._ICON_W  = 16;    -- icon box, drawn or Dummy'd -- the column is ALWAYS this wide
-M._LABEL_X = 30;    -- absolute x for the row label, so labels line up regardless
-M._MENU_W  = 104;   -- header button width (themed font: ~9.5px/char + 16 padding)
+-- Sizes (Henrik 2026-07-24, after the first visual pass: "make the menu item just
+-- slightly bigger for visibility" + "wouldn't mind making the whole menu a bit bigger
+-- overall as well, to show off the icons").
+--
+-- The INVARIANT that binds these three, pinned by SET39/SET51: the label column must
+-- clear the icon gutter, i.e. _LABEL_X >= _ICON_GAP + _ICON_W + a gap. Bump _ICON_W
+-- alone and labels start printing over the art.
+M._ICON_W  = 24;    -- icon box, drawn or Dummy'd -- the column is ALWAYS this wide
+M._ICON_GAP = 6;    -- left inset before the icon
+M._ROW_H   = 26;    -- explicit Selectable height, so the HIT AREA matches the taller
+                    -- row. Without it the click target stays text-height and the
+                    -- bottom of every row goes dead.
+M._LABEL_X = 38;    -- absolute x for the row label, so labels line up regardless
+M._MENU_W  = 104;   -- header button width when there is no art (themed font law:
+                    -- ~9.5px/char + 16 padding, or the label clips)
+M._MENU_ICON_W = 20;-- header button icon (was 16) -- it is the entry point to
+                    -- everything now, so it earns the extra pixels
+M._MENU_BTN_W  = 32;-- ...and the declared width must grow with it: gearui
+                    -- right-aligns the header row by summing b.w
 
 -- The menu roster. `icon` names an assets\<name>.png. All six shipped 2026-07-24
 -- (Henrik's art, 64x64 transparent, drawn at 16x16); any that is missing or fails to
@@ -217,9 +233,19 @@ end
 -- One menu row: a full-width Selectable for the hit area, then the reserved icon
 -- column, then the label at a fixed x so every label lines up. Returns true on click.
 local function menuRow(r, col)
-    local hit = imgui.Selectable('##dlacmn_' .. r.key);
+    -- Explicit row height so the hit area covers the whole taller row. The 4-arg
+    -- Selectable is the proven overload in this repo (automationsui), but per hard
+    -- rule 2 a binding that lacks it must degrade rather than crash: fall back to the
+    -- auto-sized 1-arg form, which is just the old, shorter click target.
+    local hit, sized = false, false;
+    pcall(function()
+        hit = imgui.Selectable('##dlacmn_' .. r.key, false,
+                               (ImGuiSelectableFlags_None or 0), { 0, M._ROW_H });
+        sized = true;
+    end);
+    if not sized then hit = imgui.Selectable('##dlacmn_' .. r.key); end
     if r.tip ~= nil and imgui.IsItemHovered() then imgui.SetTooltip(r.tip); end
-    imgui.SameLine(6);
+    imgui.SameLine(M._ICON_GAP);
     iconCell(r.icon);
     imgui.SameLine(M._LABEL_X);
     imgui.TextColored(col, r.label);
@@ -436,14 +462,16 @@ function M.headerButton()
     if iconHandle(M._MENU_ICON) == nil then
         return { l = 'Menu', w = M._MENU_W, tip = M._TIP, fn = arm };
     end
-    return { w = 26, tip = M._TIP,
+    return { w = M._MENU_BTN_W, tip = M._TIP,
         render = function()
             local clicked = false;
             local h = iconHandle(M._MENU_ICON);
             if h ~= nil then
-                pcall(function() clicked = imgui.ImageButton(h, { 16, 16 }); end);
+                pcall(function()
+                    clicked = imgui.ImageButton(h, { M._MENU_ICON_W, M._MENU_ICON_W });
+                end);
             else
-                clicked = imgui.Button('Menu##hdrmn', { 26, 22 });
+                clicked = imgui.Button('Menu##hdrmn', { M._MENU_BTN_W, 22 });
             end
             if clicked then arm(); end
         end };
@@ -487,8 +515,8 @@ function M.renderPopups()
             imgui.Separator();
             -- The section heading carries the debug icon once, in the same reserved
             -- column as the rows above it, instead of repeating it on all four.
-            imgui.Dummy({ 6, M._ICON_W });
-            imgui.SameLine(6);
+            imgui.Dummy({ M._ICON_GAP, M._ICON_W });
+            imgui.SameLine(M._ICON_GAP);
             iconCell(M._DEBUG_ICON);
             imgui.SameLine(M._LABEL_X);
             imgui.TextColored(COL.DIM, 'Developer');
