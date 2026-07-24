@@ -210,7 +210,35 @@ agent; the per-repo setup lives in `docs/agents/`.
 - A GM is currently evaluating the addon for server approval — polish requests from
   that channel (like the word-wrap fix) take priority.
 
-## Current state (as of 2026-07-23, end of day)
+## Current state (as of 2026-07-24, end of day)
+
+- **BRANCH MODEL IS LIVE — `main → dev → feature/<slug>`.** Henrik's 2026-07-24 hard
+  rule: stop committing/pushing directly to `main`; every feature branches off `dev`,
+  merges to `dev`, and `dev` promotes to `main` **only on Henrik's explicit go-ahead**
+  (a release he considers stable). `dev` now exists; **`origin/main` == `origin/dev` ==
+  `5379884`, `addon.version` 2026.07.24o.** Origin holds exactly two branches now
+  (`main`, `dev`); local-only parked branches `feature/autoacc` (GM pending) and
+  `feature/storage-move` are kept, never merged. NEXT feature branches off `dev`. (This
+  supersedes the "main is the one development line / origin holds exactly one branch"
+  wording in the graduation block below.)
+
+- **Idle hobbies — SHIPPED + field-confirmed 2026-07-24 (ADR 0017).** Craft / HELM /
+  Fishing / Chocobo idle are now competing hobbies: **one shared "hobby bar"**
+  (`ui/hobbybar.lua`, a `Craft|HELM|Fishing|Chocobo` selector that marks the active
+  tab and **locks** to it while it runs), **one active at a time** (lock-while-active —
+  `feature/idleexcl.lua` `guardActivate` REFUSES arming a second, no auto-disarm), and
+  **one HELM switch** (Auto HELM; the manual "Set HELM Idle" is gone from every surface).
+  The floating badge (`ui/idlefloat.lua`) names the active hobby with an Off button. NOT
+  the ADR 0012 claim-side dead end — the engine's co-claim is untouched (AR8/9/10 green).
+  The three old craft/helm/fish bar windows were unified: each bar body is now
+  `<bar>.renderContent(availW)` drawn by `hobbybar`.
+
+- **weatherMatch trigger condition — SHIPPED 2026-07-24 (ADR 0018).** New trigger flag
+  `weatherMatch` (Precast+Midcast, tier 30): true when the action's element == the
+  CURRENT weather element (`gData.GetEnvironment().WeatherElement`, storm-aware).
+  DISTINCT from `dayWeatherBonus` (the obi's signed day+weather net). Engine handshake
+  v121. Both this and idle-hobby went `feature → dev → main`; combined **3102 run_tests +
+  296 smoke_ui green (Windows + WSL)**.
 
 - **🎓 GRADUATED — main IS the native era.** `feature/native-engine` fast-forwarded
   onto main (`d0736a0..4ae8665`, record `77b4c7e`) after Henrik field-verified every
