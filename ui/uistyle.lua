@@ -80,4 +80,44 @@ function M.pop()
     imgui.PopStyleColor(#STYLES);
 end
 
+-- ---------------------------------------------------------------------------
+-- The panel-text STANDARD (Henrik 2026-07-24): instead of an inline explanatory
+-- paragraph, render the key label as an underlined "link" and move the
+-- explanation into a hover tooltip -- keeps panels short and scannable. Apply it
+-- to any label that had a paragraph hanging off it.
+--
+--   uistyle.helpLabel(imgui, 'Total riding time:', 'Every point adds 1 minute.')
+--
+-- `im` is the CALLER's imgui handle (so it renders under whatever binding/stub
+-- the caller holds -- a shared module requiring its own imgui would get the
+-- wrong instance in tests). `tip` may be multi-line ("\n"); pass nil for none.
+-- `col` is the label colour ({r,g,b,a}). Renders exactly one item (SameLine
+-- after it as usual). FULLY GUARDED: a binding missing the draw-list just shows
+-- plain coloured text -- the underline is cosmetic, never load-bearing, and the
+-- draw is wrapped so it can never take the frame down.
+-- ---------------------------------------------------------------------------
+function M.helpLabel(im, text, tip, col)
+    if type(im) ~= 'table' or type(im.TextColored) ~= 'function' then return; end
+    col = col or { 0.90, 0.90, 0.90, 1.00 };
+    im.TextColored(col, text);
+    -- underline: a line along the item's bottom edge (guarded draw-list).
+    if type(im.GetItemRectMin) == 'function' and type(im.GetItemRectMax) == 'function'
+       and type(im.GetWindowDrawList) == 'function' then
+        pcall(function()
+            local x1 = im.GetItemRectMin();
+            local x2, y2 = im.GetItemRectMax();
+            local dl = im.GetWindowDrawList();
+            if dl ~= nil and type(dl.AddLine) == 'function' then
+                local u = (type(im.GetColorU32) == 'function') and im.GetColorU32(col) or 0xFFFFFFFF;
+                dl:AddLine({ x1, y2 }, { x2, y2 }, u, 1.0);
+            end
+        end);
+    end
+    -- the explanation, on hover.
+    if tip ~= nil and type(im.IsItemHovered) == 'function' and im.IsItemHovered()
+       and type(im.SetTooltip) == 'function' then
+        im.SetTooltip(tip);
+    end
+end
+
 return M;
