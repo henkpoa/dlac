@@ -650,8 +650,9 @@ end)();
         check('S139o rankState is a well-formed table', type(rs) == 'table'
             and type(rs.rank) == 'number' and type(rs.exact) == 'boolean', true);
         check('S139p a fresh char reads as a manual estimate', rs.source == 'manual' and rs.exact, false);
-        check('S139q rankLadder covers 0..8', (function()
-            local l = chocoui.rankLadder(); return l[0] ~= nil and l[8] ~= nil;
+        check('S139q rankLadder covers 0..10 (Amateur..Expert)', (function()
+            local l = chocoui.rankLadder();
+            return l[0] ~= nil and l[8] ~= nil and tostring(l[9]) == 'Veteran' and tostring(l[10]) == 'Expert';
         end)(), true);
         -- clock/generalSuccess must not error headless (no client memory).
         check('S139r clock() answers a table headless', type(chocoui.clock()), 'table');
@@ -714,6 +715,26 @@ end)();
             cv and cv.kind == 'conditional' and cv.allZones == true and cv.active, true);
         -- a nil selection fails soft to nil, never errors.
         check('S139aa4 itemRows(nil) -> nil', chocoui.itemRows(nil, rs, clk), nil);
+    end
+    -- Timing rank detection (issue #100): chocowatch inverts the first-dig zone
+    -- cooldown into a rank and raises the PERSISTED one-way floor, latching at
+    -- max. charDir() is nil headless, so loadState/saveState are inert no-ops (the
+    -- existing S139o rankState path proves that), and these exercise the wiring on
+    -- the in-memory floor.
+    local cwok2, cw2 = pcall(require, 'dlac\\feature\\chocowatch');
+    if cwok2 and type(cw2) == 'table' and type(cw2.recordDigTiming) == 'function' then
+        cw2.rankFloor = 0;
+        check('CW-T1 a 20s first dig reads Adept and raises the floor',
+            cw2.recordDigTiming(20) and cw2.rankFloor, 8);
+        check('CW-T2 a slower (45s) dig never lowers the floor', (function()
+            local r = cw2.recordDigTiming(45); return (r == false) and cw2.rankFloor;
+        end)(), 8);
+        check('CW-T3 reaching Expert (10s) latches max', (function()
+            local r = cw2.recordDigTiming(10);
+            return r == true and cw2.rankFloor == 10 and cw2._rankMaxed() == true;
+        end)(), true);
+        check('CW-T4 a maxed char stops detecting', cw2.recordDigTiming(15), false);
+        cw2.rankFloor = 0;   -- leave module state clean for any later reader
     end
 end)();
 

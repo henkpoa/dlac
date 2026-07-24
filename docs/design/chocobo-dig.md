@@ -24,7 +24,7 @@ zones[zoneId] = { n = "Zone Name", pools = { <Pool> = { <item>, ... } } }
   <item> = { id = <itemId>, n = "English Name", w = <weight>, rank = <req> }
     w    = dig weight (higher = more likely; q = min(1, w/(1000*mu)))
     rank = dig-rank requirement, index into `ranks` (0 = Amateur)
-ranks[0..8] = the dig-rank ladder (Amateur … Adept)
+ranks[0..10] = the dig-rank ladder (Amateur … Expert; loot rankReq itself tops out at Adept=8)
 cond = the conditional Regular-pool rule tables (below)
 ```
 
@@ -103,7 +103,7 @@ proven by the hand-computed synthetic tests. The `cond` rule tables are
 FFXI-standard and complete; the generator's Lua emitter is complete and the
 server-parse seam is marked for confirmation against the live layout.
 
-The dig-rank ladder labels (Amateur … Adept, with Novice/Craftsman as the
+The dig-rank ladder labels (Amateur … Expert, with Novice/Craftsman as the
 rock/ore gates) are **proposed, pending maintainer sign-off** (player-facing
 names) — they ship as data only; nothing renders them in this slice.
 
@@ -123,7 +123,7 @@ the sentinel forever (confirmed by `/probe dig`, #96). dlac assembles the rank
 from **three stacked sources, each honestly labelled**, and only ONE of them is
 exact:
 
-- **manual** — a rank dropdown (Amateur → Adept) the player sets; the seed.
+- **manual** — a rank dropdown (Amateur → Expert) the player sets; the seed.
 - **`>= from digs`** — a one-way **ratchet** floor. Every `Obtained: <item>` dig
   line is mapped to that item's dig-rank requirement (the MINIMUM across every
   zone/pool it drops from — a pull proves at least the easiest source's rank) and
@@ -143,7 +143,7 @@ grey-out honest (below).
 |---|---|
 | `feature/digrank.lua` | PURE brain: `clamp` / `ratchet` / `serverRank` (0xFFFF-aware decode, low-5-bit rank matching the probe) / `parseObtained` / `itemRequirement(name, db)` / `resolve(manual, floor, server, ranks)` / `gate(req, rankState)` / `RANKS` fallback ladder. No Ashita, headless-tested (DR*). |
 | `feature/vanamoon.lua` | PURE Vana'diel moon math from the absolute day number: `age`/`percent`/`waxing`/`name`/`phase`. 84-day cycle, illumination 0 (New) → 100 (Full) → 0. **The epoch `OFFSET` is a single named constant flagged for field confirmation.** Tested (VM*). |
-| `feature/chocowatch.lua` | +rank persistence (`rankManual`/`rankFloor` in `chocostate.lua` — they PERSIST, unlike the session-only `enabled`), `setManualRank` / `recordObtained` (ratchet) / `serverRankLive` (throttled read) / `rankState`, and a `text_in` hook that ratchets off every `Obtained:` line (always on — the rank baseline is independent of the riding-gear toggle). |
+| `feature/chocowatch.lua` | +rank persistence (`rankManual`/`rankFloor` in `chocostate.lua` — they PERSIST, unlike the session-only `enabled`), `setManualRank` / `recordObtained` (ratchet) / `recordDigTiming` (issue #100) / `_rankMaxed` (the latch) / `serverRankLive` (throttled read) / `rankState`, a `packet_in` 0x00A stamp (the zone-in timing baseline), and a `text_in` hook that ratchets off every `Obtained:` line AND reads the first-dig timing (always on — the rank baseline is independent of the riding-gear toggle). |
 | `feature/digcalc.lua` | +`averageSuccess(rank, mu)` — the general dig-success figure: the mean combined dig-success across the enabled zones, or nil when `zones` is empty (so the panel says "pending data", never a fake 0). |
 | `ui/chocoui.lua` | +the **dig guide** panel section below the riding-gear block: the rank dropdown + resolved rank + source label, the live moon/day/weather header, and the general dig-success line. Pure seams above the imgui guard (`rankState` / `rankLadder` / `clock` / `generalSuccess`) so the tab views can read the rank for grey-out headless. |
 
@@ -207,19 +207,6 @@ against the shipped data, and `S139aa`–`S139ee` drive `chocoui.render` under a
 stub imgui with a zone selected, asserting the new `BeginCombo`/`BeginTabBar`/
 `BeginTabItem` stacks all balance (the floatgear-crash lesson).
 
-### Open / flagged
-
-- **The moon epoch OFFSET** (`vanamoon.OFFSET`, the community-standard 26) wants a
-  one-time **field cross-check** against the in-game moon display. If the ore-gate
-  percent must be server-EXACT, the linear illumination curve should be replaced
-  by the 84-entry LSB moon table — a single data swap, isolated in `vanamoon`.
-- **Player-facing strings** (the rank ladder labels, the source labels
-  `manual` / `>= from digs` / `reported by server`, the header/note wording, and
-  the new by-area labels — the tab names `By area`/`By item`, the `hit`/`dig`
-  odds wording, `active now` / `needs X` flags, the `<Element> Crystal`/`Cluster`
-  and ore/rock condition text) are proposed — pending the maintainer's
-  row-by-row sign-off.
-
 ## The By-item tab (issue #99)
 
 > The SECOND guide tab — a fuzzy item search → the matching diggable items
@@ -270,11 +257,56 @@ section (`S139aa`–`S139ee`) now drives the By-item tab with the search filled 
 item selected, asserting the added `Selectable`/`Button` rows keep every
 `BeginTabBar`/`BeginTabItem`/`BeginCombo` stack balanced.
 
-### Open / flagged
+## The rank ladder + timing auto-detect (issue #100)
 
-- **Player-facing strings** for this tab (the `By item` tab name, the `Item:` /
-  `needs X` / `Conditional drop` / `Diggable in …` labels, the `hit`/`dig` odds
-  wording inherited from by-area) are proposed — pending the maintainer's
-  row-by-row sign-off, together with the by-area strings above.
-- The **timing auto-detect** (gated on the `/probe dig` calibration from #96) is
-  the remaining PRD #93 slice.
+Two corrections/additions from the `/probe dig` field session (07-24), grounded in
+the server source (`scripts/globals/hobbies/chocobo_digging/logic.lua`):
+
+**The ladder is 0..10, not 0..8.** CatsEye's Digging craftRank runs Amateur(0) …
+**Expert(10)** — the earlier `0..8` (Adept) was wrong and could not represent a
+Veteran/Expert digger. `digrank.MAX_RANK` is now 10 (`RANKS[9]='Veteran'`,
+`[10]='Expert'`; `digdata.ranks` mirrors it) and the picker walks `0..max(ladder)`.
+Loot `rankReq` itself never exceeds Adept(8), so the odds/gating are unchanged by
+the extension — ranks 9/10 only sharpen the displayed rank and drive the timing
+latch below.
+
+**Timing detection.** The rank is masked, but the server gates the FIRST dig after
+a zone-in until `clamp(60 - 5*rank, 10, 60)` seconds (a second `clamp(15 - 5*rank,
+3, 16)`s between-digs cooldown is not a rank discriminator). So the delay from
+zone-in to the first *completed* dig inverts to the exact rank:
+
+- `chocowatch` stamps `os.clock()` on every `0x00A` zone-in (a **bare timestamp**
+  on the packet thread — no chat, no IO; the earlier `dlacprobe/dig.lua` crash was
+  per-line chat *prints* from a packet handler, which this does none of).
+- The always-on `text_in` hook classifies each dig line (`digrank.classifyDigLine`
+  → `obtained`/`nothing`/`ease`/`wait`). On any **completed** dig it computes
+  `rank = round((60 − elapsed)/5)` (`digrank.rankFromZoneTiming`) and feeds it to
+  the **same one-way `rankFloor` ratchet** the obtained-item path uses. The first
+  completed dig of a visit is the tightest (highest) read; later, slower digs read
+  lower and never lower the floor. Client timing is ~1s noisy vs the server's
+  integer-second cooldown — comfortably inside the 5s rung — so 10s (or faster)
+  reads Expert (the 10s floor). Field-confirmed: Henrik (Expert) rejects through
+  t+10.2s, first success t+11.0s → Expert.
+- **Permanent max-latch** (Henrik's rule — skill never deranks): once `rankFloor`
+  reaches `MAX_RANK`, `_rankMaxed()` is true and the timing read stops for good.
+  `rankFloor` persists, so a maxed character never runs detection again.
+
+All main-thread text + one packet-thread timestamp — no packets decoded, no
+per-line chat. Tests: `run_tests` `DT1`–`DT21` (classify + invert), the updated
+`DR*` ladder checks; `smoke_ui` `CW-T1`–`CW-T4` (floor raise, one-way, latch).
+
+## Open / flagged
+
+- **The moon epoch OFFSET** (`vanamoon.OFFSET`, the community-standard 26) wants a
+  one-time **field cross-check** against the in-game moon display. If the ore-gate
+  percent must be server-EXACT, the linear illumination curve should be replaced
+  by the 84-entry LSB moon table — a single data swap, isolated in `vanamoon`.
+- **Player-facing strings** across the guide (the rank ladder labels incl. the new
+  Veteran/Expert, the source labels `manual` / `>= from digs` / `reported by
+  server`, the by-area tab strings — `By area`/`By item`, `hit`/`dig`, `active now`
+  / `needs X`, the `<Element> Crystal`/`Cluster` + rock/ore condition text — and the
+  by-item strings — `Item:` / `Conditional drop` / `Diggable in …`) are proposed,
+  pending the maintainer's row-by-row sign-off.
+- **All PRD #93 slices (#94–#100) are now shipped:** the odds engine + data, the
+  riding-gear automation, the rank model (manual + ratchet + timing auto-detect,
+  #100), and both guide tabs (by-area #98, by-item #99).
