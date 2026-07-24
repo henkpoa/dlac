@@ -83,12 +83,21 @@ sf.saveUiFlags = function()
         if type(ui._idlePos) == 'table' then
             ifx, ify = tonumber(ui._idlePos[1]) or 0, tonumber(ui._idlePos[2]) or 0;
         end
-        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, viewids = %s, buildmax = %s, tgmon = %s, tpfloat = %s, tpx = %d, tpy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f, ifx = %d, ify = %d }\n',
+        -- "Open the dlac window" (Menu > Settings): the one Setting that is a STRING,
+        -- not a boolean -- never / login / job. %q quotes and escapes it, so a
+        -- hand-edited garbage value still parses (and reads back as 'never', the
+        -- conservative end: a window that pops up uninvited is the surprising failure).
+        local openui = tostring(ui._openMode or 'never');
+        -- "Show all" became a Setting when it moved out of the header, so it is
+        -- remembered now like every other one.
+        local showall = (type(ui.showAll) == 'table' and ui.showAll[1] == true);
+        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, viewids = %s, buildmax = %s, tgmon = %s, tpfloat = %s, tpx = %d, tpy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f, ifx = %d, ify = %d, openui = %q, showall = %s }\n',
             tostring(sf.flags.debug), tostring(sf.flags.autosync), tostring(sf.flags.viewids), tostring(bm),
             tostring(ui._tgMon == true),
             tostring(ui._tpFloat == true), tpx, tpy,
             tostring(ui._gearFloat == true), gfx, gfy,
-            tonumber(ui._gfScale) or 1.0, ifx, ify));
+            tonumber(ui._gfScale) or 1.0, ifx, ify,
+            openui, tostring(showall)));
     end);
 end
 
@@ -134,6 +143,14 @@ sf.loadUiFlags = function()
             -- The idle-hobby badge's remembered position (visibility is not stored).
             if type(t.ifx) == 'number' and type(t.ify) == 'number' and (t.ifx ~= 0 or t.ify ~= 0) then
                 ui._idlePos = { t.ifx, t.ify };
+            end
+            -- "Open the dlac window": absent key = 'never' (the ON-by-default rule
+            -- would be wrong here -- nobody's install should start popping windows
+            -- because they updated). menuui normalizes anything unrecognised.
+            if type(t.openui) == 'string' then ui._openMode = t.openui; end
+            -- "Show all" -- absent key = OFF, its long-standing default.
+            if type(t.showall) == 'boolean' and type(ui.showAll) == 'table' then
+                ui.showAll[1] = t.showall;
             end
         end
     end);

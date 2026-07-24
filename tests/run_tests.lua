@@ -220,7 +220,7 @@ end)();
     -- (data/catalog, fishdb, spells, ...) carry no gear-fetch logic and are excluded.
     local ROOT_FILES = { 'utils.lua', 'dispatch.lua', 'chatfmt.lua', 'profiles.lua', 'gear.lua', 'dlac.lua' };
     local UI = { 'ammoui','automationsui','craftbar','equippedui','filetex','fishbar','fishui',
-                 'floatgear','gearui','helmbar','helmui','hobbybar','idlefloat','itemicons','priorityui','profilesmenu',
+                 'floatgear','gearui','helmbar','helmui','hobbybar','idlefloat','itemicons','menuui','priorityui','profilesmenu',
                  'restockui','setupui','triggersui','uihost','uistyle','weightsui' };
     local GEAR = { 'actionpicker','blueprintsmodel','catalogindex','gearcheck','geareffects','gearexport',
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
@@ -10726,6 +10726,169 @@ end)();
     dc._setDb(dofile('data/digdata.lua'));
     check('BI27 nil entry -> itemSources nil', dc.itemSources(nil, 8, 1, {}), nil);
     dc._setDb(nil);   -- restore lazy load
+end)();
+
+-- ---------------------------------------------------------------------------
+-- SET. menuui -- the header Menu + Settings pure cores (2026-07-24).
+-- Own function scope: a do-block's locals share the chunk's 200 budget.
+-- ---------------------------------------------------------------------------
+;(function()
+    local mn = dofile('ui/menuui.lua');
+    check('SET1 module loads headless', type(mn), 'table');
+
+    -- The 3-value open setting. Anything unrecognised must read as 'never' --
+    -- uiflags.lua is a plain Lua file a player may hand-edit, and the surprising
+    -- failure mode is a window that pops up uninvited.
+    check('SET2 never normalizes',        mn._normalizeOpenMode('never'), 'never');
+    check('SET3 login normalizes',        mn._normalizeOpenMode('login'), 'login');
+    check('SET4 job normalizes',          mn._normalizeOpenMode('job'),   'job');
+    check('SET5 case-insensitive',        mn._normalizeOpenMode('LOGIN'), 'login');
+    check('SET6 nil -> never',            mn._normalizeOpenMode(nil),     'never');
+    check('SET7 garbage -> never',        mn._normalizeOpenMode('yes please'), 'never');
+    check('SET8 number -> never',         mn._normalizeOpenMode(3),       'never');
+    check('SET9 true -> never',           mn._normalizeOpenMode(true),    'never');
+
+    -- Auto-open. 'never' never fires; nothing fires before a real job exists
+    -- (job nil/0 = not logged in); 'login' fires exactly once per session;
+    -- 'job' fires again only when the job actually CHANGES, so a manual close
+    -- is never fought frame after frame.
+    check('SET10 never mode never opens',      mn._shouldAutoOpen('never', 5, nil, false), false);
+    check('SET11 no job yet -> hold',          mn._shouldAutoOpen('login', nil, nil, false), false);
+    check('SET12 job 0 -> hold',               mn._shouldAutoOpen('login', 0, nil, false),   false);
+    check('SET13 login fires once',            mn._shouldAutoOpen('login', 5, nil, false),   true);
+    check('SET14 login does not re-fire',      mn._shouldAutoOpen('login', 5, 5, true),      false);
+    check('SET15 login ignores a job change',  mn._shouldAutoOpen('login', 7, 5, true),      false);
+    check('SET16 job mode fires at login',     mn._shouldAutoOpen('job', 5, nil, false),     true);
+    check('SET17 job mode re-fires on change', mn._shouldAutoOpen('job', 7, 5, true),        true);
+    check('SET18 job mode holds on same job',  mn._shouldAutoOpen('job', 5, 5, true),        false);
+    check('SET19 garbage mode never opens',    mn._shouldAutoOpen('sometimes', 5, nil, false), false);
+
+    -- The typed level override. nil = "not a number, do nothing", so a half-typed
+    -- box never commits; 0 = back to live; everything else clamps into 1..75.
+    check('SET20 plain number',        mn._parseLevel('37'),   37);
+    check('SET21 whitespace tolerated',mn._parseLevel('  60 '),60);
+    check('SET22 clamps above 75',     mn._parseLevel('120'),  75);
+    check('SET23 zero = back to live', mn._parseLevel('0'),    0);
+    check('SET24 negative = live',     mn._parseLevel('-4'),   0);
+    check('SET25 empty -> nil',        mn._parseLevel(''),     nil);
+    check('SET26 nil -> nil',          mn._parseLevel(nil),    nil);
+    check('SET27 letters -> nil',      mn._parseLevel('abc'),  nil);
+    check('SET28 partial -> nil',      mn._parseLevel('7x'),   nil);
+    check('SET29 decimal -> nil',      mn._parseLevel('37.5'), nil);
+    check('SET30 lower bound kept',    mn._parseLevel('1'),    1);
+    check('SET31 upper bound kept',    mn._parseLevel('75'),   75);
+
+    -- The row roster: order is stable, and the developer quartet exists ONLY
+    -- under /dl debug on.
+    local plain = mn._menuRows(false);
+    local dbg   = mn._menuRows(true);
+    check('SET32 six rows when not debugging', #plain, 6);
+    check('SET33 first row is lockstyle',      plain[1], 'lockstyle');
+    check('SET34 settings is the last plain row', plain[#plain], 'settings');
+    check('SET35 debug adds exactly four',     #dbg - #plain, 4);
+    check('SET36 augs only under debug',       dbg[#dbg], 'augs');
+    check('SET37 no augs row when not debugging',
+        (function() for _, k in ipairs(plain) do if k == 'augs' then return true; end end return false; end)(), false);
+
+    -- The icon column is reserved whether or not a PNG exists -- that is what lets
+    -- Henrik drop art in later without shifting the layout.
+    check('SET38 icon column width exported', type(mn._ICON_W), 'number');
+    check('SET39 label x clears the icon',    mn._LABEL_X > mn._ICON_W, true);
+
+    -- activate() is inert until configure() runs: no deps, no action, no crash.
+    check('SET40 activate inert unconfigured', mn.activate('lockstyle'), false);
+    check('SET41 unknown key refused',         mn.activate('nonsense'),  false);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- UIF. gear/syncflags -- the uiflags.lua round-trip. This file had NO behavioural
+-- test before 2026-07-24: a dropped key would have shipped silently.
+-- ---------------------------------------------------------------------------
+;(function()
+    package.loaded['dlac\\lib\\cmdqueue'] = { enqueue = function() end, frame = function() return 0; end };
+    local sf = dofile('gear/syncflags.lua');
+    check('UIF1 module loads headless', type(sf), 'table');
+
+    local wrote = {};
+    local ui = { showAll = { false }, _openMode = 'job', _tgMon = true, _gfScale = 1.25 };
+    sf.configure({
+        dataDir = function() return 'X:\\char\\dlac\\'; end,
+        charBase = function() return 'X:\\char\\'; end,
+        writeFileText = function(p, t) wrote.path, wrote.text = p, t; return true; end,
+        refreshGear = function() end,
+        ui = ui,
+    });
+    sf.flags.debug, sf.flags.autosync, sf.flags.viewids = true, false, true;
+    sf.saveUiFlags();
+    check('UIF2 wrote to the mode-aware home', wrote.path, 'X:\\char\\dlac\\uiflags.lua');
+    check('UIF3 emitted text parses', (function()
+        local f = (loadstring or load)(wrote.text); return f ~= nil;
+    end)(), true);
+
+    local t = (loadstring or load)(wrote.text)();
+    check('UIF4 debug round-trips',    t.debug,    true);
+    check('UIF5 autosync round-trips', t.autosync, false);
+    check('UIF6 viewids round-trips',  t.viewids,  true);
+    check('UIF7 openui round-trips',   t.openui,   'job');
+    check('UIF8 openui is a STRING',   type(t.openui), 'string');
+    check('UIF9 showall round-trips',  t.showall,  false);
+    check('UIF10 tgmon round-trips',   t.tgmon,    true);
+    check('UIF11 gfscale round-trips', t.gfscale,  1.25);
+
+    -- A hand-edited openui must not be able to inject Lua: %q quotes and escapes it.
+    ui._openMode = 'ne"ver\nrm -rf';
+    sf.saveUiFlags();
+    check('UIF12 hostile openui still parses', (function()
+        local f = (loadstring or load)(wrote.text); return f ~= nil;
+    end)(), true);
+    check('UIF13 hostile openui reads back verbatim',
+        ((loadstring or load)(wrote.text)()).openui, 'ne"ver\nrm -rf');
+    check('UIF14 ...and menuui normalizes it away',
+        dofile('ui/menuui.lua')._normalizeOpenMode(((loadstring or load)(wrote.text)()).openui), 'never');
+
+    -- The reader. loadUiFlags is a one-shot latch, so this needs a FRESH instance
+    -- (dofile returns one) with _G.loadfile stubbed to hand back our table.
+    local sf2 = dofile('gear/syncflags.lua');
+    local ui2 = { showAll = { false } };
+    local realLoadfile = loadfile;
+    _G.loadfile = function() return function()
+        return { debug = false, autosync = true, viewids = false,
+                 openui = 'login', showall = true, gfscale = 2.0 };
+    end; end
+    sf2.configure({
+        dataDir = function() return 'X:\\char\\dlac\\'; end,
+        charBase = function() return 'X:\\char\\'; end,
+        writeFileText = function() return true; end,
+        refreshGear = function() end,
+        ui = ui2,
+    });
+    sf2.loadUiFlags();
+    _G.loadfile = realLoadfile;
+    check('UIF15 openui loads',   ui2._openMode, 'login');
+    check('UIF16 showall loads',  ui2.showAll[1], true);
+    check('UIF17 autosync loads', sf2.flags.autosync, true);
+    check('UIF18 viewids loads',  sf2.flags.viewids,  false);
+
+    -- Absent keys keep their defaults -- an old uiflags.lua written before this
+    -- slice must not start opening windows or flipping Show all.
+    local sf3 = dofile('gear/syncflags.lua');
+    local ui3 = { showAll = { false } };
+    _G.loadfile = function() return function() return { debug = true }; end; end
+    sf3.configure({
+        dataDir = function() return 'X:\\char\\dlac\\'; end,
+        charBase = function() return 'X:\\char\\'; end,
+        writeFileText = function() return true; end,
+        refreshGear = function() end,
+        ui = ui3,
+    });
+    sf3.loadUiFlags();
+    _G.loadfile = realLoadfile;
+    check('UIF19 absent openui stays nil',  ui3._openMode, nil);
+    check('UIF20 ...which normalizes to never',
+        dofile('ui/menuui.lua')._normalizeOpenMode(ui3._openMode), 'never');
+    check('UIF21 absent showall stays off', ui3.showAll[1], false);
+
+    package.loaded['dlac\\lib\\cmdqueue'] = nil;
 end)();
 
 -- ---------------------------------------------------------------------------

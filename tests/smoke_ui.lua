@@ -1462,6 +1462,132 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- 7d. menuui RENDER stack balance (2026-07-24) -- the header Menu, the level
+--     override and the Settings panel are three window-scope popups drawn in one
+--     pass, and Settings pushes a style colour for the SELECTED open-mode button.
+--     Same crash class as HB/S50: an unpaired EndPopup or PopStyleColor is native
+--     UB inside ImGui that no pcall catches. Drive renderPopups with every popup
+--     shut AND with them open, and assert every stack returns to 0.
+--
+--     Also pins the thing the icon column exists for: with filetex handing back nil
+--     (which is exactly what it does headlessly -- no d3d, no ffi), every row must
+--     STILL reserve its icon cell, so dropping the PNGs in later shifts nothing.
+-- ---------------------------------------------------------------------------
+;(function()
+    local depth = { popup = 0, col = 0, win = 0 };
+    local drew  = { dummy = 0, image = 0, selectable = 0, checkbox = 0, input = 0 };
+    local popupOpen = false;
+    local function nop() end
+    local IM = setmetatable({}, { __index = function() return nop; end });
+    IM.BeginPopup     = function() if popupOpen then depth.popup = depth.popup + 1; end return popupOpen; end
+    IM.EndPopup       = function() depth.popup = depth.popup - 1; end
+    IM.PushStyleColor = function() depth.col = depth.col + 1; end
+    IM.PopStyleColor  = function(n) depth.col = depth.col - (tonumber(n) or 1); end
+    IM.Begin          = function() depth.win = depth.win + 1; return true; end
+    IM['End']         = function() depth.win = depth.win - 1; end
+    IM.Selectable     = function() drew.selectable = drew.selectable + 1; return false; end
+    IM.Dummy          = function() drew.dummy = drew.dummy + 1; end
+    IM.Image          = function() drew.image = drew.image + 1; end
+    IM.Button         = function() return false; end
+    IM.SmallButton    = function() return false; end
+    IM.Checkbox       = function() drew.checkbox = drew.checkbox + 1; return false; end
+    IM.InputText      = function() drew.input = drew.input + 1; return false; end
+    IM.IsItemHovered  = function() return false; end
+    IM.GetWindowWidth = function() return 900; end
+
+    local NAMES = { 'dlac\\ui\\menuui', 'dlac\\ui\\filetex', 'dlac\\ui\\uistyle', 'imgui' };
+    local saved = {};
+    for _, k in ipairs(NAMES) do saved[k] = package.loaded[k]; end
+
+    package.loaded['imgui'] = IM;
+    -- filetex returns nil headless anyway; stubbing it makes that explicit and keeps
+    -- the section honest if the real one ever gains a headless path.
+    package.loaded['dlac\\ui\\filetex'] = { handle = function() return nil; end };
+    package.loaded['dlac\\ui\\menuui'] = nil;
+    local ok, mn = pcall(require, 'dlac\\ui\\menuui');
+    check('MN1 menuui re-requires against a stub imgui', ok and type(mn.renderPopups), 'function');
+    if ok then
+        local ui = { showAll = { false } };
+        local flags = { debug = false, autosync = true, viewids = false };
+        mn.configure({
+            ui = ui, COL = host.services.COL, sf = { flags = flags },
+            optim = { buildAtMaxLevel = true },
+            callImport = nop, dumpAugs = nop, refreshGear = nop, refreshOwnedCounts = nop,
+            setVisible = nop, mainJob = function() return 5; end,
+        });
+
+        -- every popup shut: the common frame
+        popupOpen = false;
+        check('MN2 renders with every popup shut', pcall(mn.renderPopups), true);
+        check('MN3 shut: popup stack balanced', depth.popup, 0);
+        check('MN4 shut: colour stack balanced', depth.col, 0);
+        check('MN5 shut: no rows drawn', drew.selectable, 0);
+
+        -- popups open, not debugging: 6 rows, each reserving an icon cell
+        popupOpen = true;
+        drew.selectable, drew.dummy, drew.image = 0, 0, 0;
+        check('MN6 renders with popups open', pcall(mn.renderPopups), true);
+        check('MN7 open: popup stack balanced', depth.popup, 0);
+        check('MN8 open: colour stack balanced', depth.col, 0);
+        check('MN9 open: Begin/End balanced',   depth.win, 0);
+        check('MN10 six menu rows drawn', drew.selectable, 6);
+        check('MN11 every row reserved an icon cell (no PNG -> Dummy)', drew.dummy >= 6, true);
+        check('MN12 no texture drawn when filetex has none', drew.image, 0);
+        -- The bodies run GUARDED, so an exception inside one would otherwise be
+        -- invisible to this section and ship as a blank panel. Count what each body
+        -- draws LAST-ish and assert it: the Settings panel owns 8 checkboxes, the
+        -- level panel owns the typed-number InputText. If either body dies early,
+        -- these drop and the section fails instead of lying.
+        check('MN12a Settings body ran to completion (8 checkboxes)', drew.checkbox, 8);
+        check('MN12b level body drew its typed-number box', drew.input, 1);
+
+        -- debug on: the developer quartet appears
+        flags.debug = true;
+        drew.selectable = 0;
+        check('MN13 renders under debug', pcall(mn.renderPopups), true);
+        check('MN14 debug adds the four developer rows', drew.selectable, 10);
+        check('MN15 debug: popup stack balanced', depth.popup, 0);
+        check('MN16 debug: colour stack balanced', depth.col, 0);
+        flags.debug = false;
+
+        -- the Settings open-mode row tints the SELECTED button: push must be popped
+        ui._openMode = 'job';
+        check('MN17 renders with an open-mode selected', pcall(mn.renderPopups), true);
+        check('MN18 selected-mode tint balanced', depth.col, 0);
+
+        -- activate() routes without imgui, and arms popups by flag (never nests)
+        check('MN19 teleports row arms the existing popup',
+            (function() mn.activate('teleports'); return ui._tpOpen; end)(), true);
+        check('MN20 level row arms the level popup',
+            (function() mn.activate('level'); return ui._lvlOpen; end)(), true);
+        check('MN21 settings row arms the settings popup',
+            (function() mn.activate('settings'); return ui._setOpen; end)(), true);
+
+        -- the header button entry gearui's btns loop consumes
+        local hb = mn.headerButton();
+        check('MN22 header button is declarative', type(hb.fn), 'function');
+        check('MN23 header button is labelled Menu', hb.l, 'Menu');
+        check('MN24 header button click arms the menu',
+            (function() hb.fn(); return ui._menuOpen; end)(), true);
+
+        -- auto-open: fires once for 'login', and drives gearui's visibility
+        local opened = 0;
+        mn.configure({
+            ui = ui, COL = host.services.COL, sf = { flags = flags },
+            setVisible = function(v) if v then opened = opened + 1; end end,
+            mainJob = function() return 5; end,
+        });
+        ui._openMode, ui._autoOpened, ui._autoOpenJob = 'login', nil, nil;
+        mn.autoOpenTick(); mn.autoOpenTick(); mn.autoOpenTick();
+        check('MN25 login mode opens exactly once', opened, 1);
+        check('MN26 auto-open remembered the job', ui._autoOpenJob, 5);
+    end
+
+    for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end
+    package.loaded['imgui'] = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures > 0 then

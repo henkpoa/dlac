@@ -214,6 +214,44 @@ agent; the per-repo setup lives in `docs/agents/`.
 
 ## Current state (as of 2026-07-24, end of day)
 
+- **HEADER MENU + SETTINGS — BUILT 2026-07-24 (`ui/menuui.lua`, addon `2026.07.24p`),
+  awaiting Henrik's field test.** The header was eight right-aligned buttons; it is now
+  **Profiles** (left, unchanged) and **Menu · Migrate** (right). Everything that used to
+  sit left of "Reload LAC" — Lockstyle, Macro book, Hobby bar, Teleports, Level override
+  — plus **Settings** and a debug-only developer section (Scan/Stage/Commit/Augs) now
+  live inside the Menu popup.
+  - **"Reload LAC" is DELETED, not relocated.** Legacy LAC is no longer a design
+    consideration; both of its red-arm sites in `ui/setupui.lua` were legacy-only, so
+    under the native engine it was dead weight. Those two sites are now comments.
+  - **The one thing kept OUT of the menu: the in-flight ABORT.** While a teleport/ring
+    use is pending the header grows a red STOP button. Transient state must not hide
+    behind a click — the same reasoning that killed Reload LAC keeps this visible. No
+    pending use, no button.
+  - **Settings** (Menu > Settings) is the one place every **Setting** (CONTEXT.md term)
+    is reachable: *Open the dlac window* (**new**, 3 values — Never / On login / On login
+    + job change), Show all (moved out of the header **and now remembered**), Auto-sync,
+    Show item IDs, Debug mode — plus mirrors of Build as lv.75, Floating equipment
+    window, Teleports floating button and Trigger monitor. The mirrors rebuild from the
+    live source field every frame, so they cannot drift from their contextual checkboxes.
+  - **Level override is a TYPED number now** (Henrik: the ± buttons "spam level changes,
+    it's tedious"). Each ± click used to queue its own `/dl set level main N`; the box
+    commits **once**, on Enter or the Set button, clamped 1–75, 0 = back to live.
+  - **Icon column is always reserved** (`M._ICON_W`), Dummy'd when no PNG exists, so
+    dropping art in later shifts no layout. **Henrik still owes five assets** (square,
+    transparent, 64×64, drawn at 16×16): `menu.png`, `level.png`, `settings.png`,
+    `debug.png`, `teleports.png` (Teleports currently borrows the in-game Warp Ring icon
+    — the fallback stays, so it degrades cleanly).
+  - **Why a new module:** hard rule 1. Everything arrives by `M.configure(deps)`
+    injection, so gearui gained **zero** chunk locals and the whole thing is headless.
+    `dumpAugs` is *passed*, not required — GRD5 forbids a `ui/` module requiring
+    `feature/augments`.
+  - **Tests: 3164 run_tests (+62: `SET*` menuui cores, `UIF*` the uiflags round-trip —
+    `gear/syncflags.lua` had NO behavioural test before) + 324 smoke_ui (+28: `MN*`
+    render-stack balance, icon-column reservation, auto-open). Green on Windows AND
+    WSL.** The popup bodies run guarded and now print the error LOUDLY (gearui's
+    tabGuard rule) instead of swallowing it; `MN12a/MN12b` count what each body draws so
+    a dead body fails the suite instead of shipping as a blank panel — mutation-verified.
+
 - **BRANCH MODEL — `main → dev`, and ALL work commits on `dev` DIRECTLY.** Henrik's
   2026-07-24 (evening) revision of that morning's rule: **no local feature branches at
   all.** A branch checked out in this working tree cannot be checked out anywhere else,

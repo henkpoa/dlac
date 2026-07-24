@@ -259,7 +259,9 @@ setup.migrateToCleanProfiles = function()
         local msg = string.format('Moved %d job file(s) to the clean dlac standard -- originals in backups\\pre-profiles\\ (details in chat). Old sets: Sets tab "Copy from". Old group tables: Triggers tab, Groups, "Scan my Lua". Reloading LuaAshitacast...', done);
         D.status(msg);
         pcall(function() print('[dlac] ' .. msg); end);
-        ui._lacReloadNeed, ui._lacReloadStamp0 = true, ui._lacStamp;   -- red until the auto-reload lands
+        -- (Used to arm the red "Reload LAC" header button; that button was deleted
+        -- 2026-07-24 -- legacy LAC is not a design consideration. The reload is
+        -- queued right here anyway, so nothing is lost.)
         pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/addon reload luashitacast'); end);
     else
         D.status('Setup: nothing to migrate -- every job file is already the clean shim.');
@@ -492,7 +494,8 @@ setup.migrateCurrentJob = function()
         _setupState = nil;
         local msg = string.format('Initialized a dlac %s.lua. Reload LuaAshitacast, then build sets and triggers in the GUI.', abbr);
         D.status(msg);
-        ui._lacReloadNeed, ui._lacReloadStamp0 = true, ui._lacStamp;   -- red until the reload lands
+        -- (Used to arm the red "Reload LAC" header button -- deleted 2026-07-24.
+        -- The status line above still says to reload, which is the whole signal.)
         pcall(function() print('[dlac] ' .. msg); end);
     else
         D.status('Setup: could not write ' .. jf);
