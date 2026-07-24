@@ -143,23 +143,37 @@ function M.parseObtained(line)
     return item;
 end
 
--- Look an obtained item up in the shipped dig data and return its dig-rank
--- REQUIREMENT -- the MINIMUM requirement across every zone/pool it drops from
--- (the easiest source gates the ratchet: a pull proves you can dig it where it
--- is cheapest). nil = the item is not diggable in the data, so it never
--- ratchets. Fail-soft: a nil db (data absent) yields nil. `db` is passed in
--- (never required) so this stays pure.
-function M.itemRequirement(name, db)
-    if db == nil or type(db.zones) ~= 'table' then return nil; end
-    local want = norm(name);
-    if want == '' then return nil; end
+-- The conditional (weather/day-gated) drops -- weather crystals/clusters, day
+-- rocks, elemental ores -- live OUTSIDE the static zone pools (they are rule
+-- tables in db.cond, synthesised into the guide by digcalc, never listed as pool
+-- rows). Without scanning them the ratchet is BLIND to a dug rock or ore and
+-- raises no floor. Returns the matching conditional's minRank -- crystals/clusters
+-- gate at 0 (moot for a floor; they are also rank-0 pool drops), day rocks at
+-- cond.rocks.minRank (Novice), elemental ores at cond.ores.minRank (Craftsman) --
+-- or nil if the item is not a conditional. Matches by id (checking the id /
+-- crystal / cluster fields) when `id` is given, else by normalised name. crystals
+-- carry ids only (no `n`), so the NAME path resolves rocks/ores only -- fine,
+-- crystals gate at 0. Pure (db passed in), fail-soft on a missing cond table.
+function M.condRequirement(db, id, name)
+    if type(db) ~= 'table' or type(db.cond) ~= 'table' then return nil; end
+    local wantId = tonumber(id);
+    local wantName = (wantId == nil) and norm(name) or nil;
+    if wantId == nil and (wantName == nil or wantName == '') then return nil; end
     local best = nil;
-    for _, z in pairs(db.zones) do
-        for _, list in pairs((type(z) == 'table' and z.pools) or {}) do
-            for _, it in ipairs(list) do
-                if norm(it.n) == want then
-                    local req = M.clamp(it.rank);
-                    if best == nil or req < best then best = req; end
+    for _, rule in pairs(db.cond) do
+        if type(rule) == 'table' and type(rule.byElement) == 'table' then
+            local rank = M.clamp(rule.minRank);
+            for _, ent in pairs(rule.byElement) do
+                if type(ent) == 'table' then
+                    local hit;
+                    if wantId ~= nil then
+                        hit = tonumber(ent.id) == wantId
+                           or tonumber(ent.crystal) == wantId
+                           or tonumber(ent.cluster) == wantId;
+                    else
+                        hit = ent.n ~= nil and norm(ent.n) == wantName;
+                    end
+                    if hit and (best == nil or rank < best) then best = rank; end
                 end
             end
         end
@@ -167,27 +181,66 @@ function M.itemRequirement(name, db)
     return best;
 end
 
--- Like itemRequirement but keys on the item ID -- the dig-obtained line is a
--- messageSpecial (0x02D) that carries the item ID, not a parseable name, so the
--- robust ratchet reads the id straight off the packet. Prefers the requirement
--- in the zone you dug it IN (`zoneId`; a stronger "you can dig it HERE" lower
--- bound -- an item can need a higher rank in one zone than another) and falls
--- back to the cheapest zone when the zone is unknown/absent. nil = not a
--- diggable item, so a stray obtain never ratchets. Pure (db passed in).
-function M.itemRequirementById(id, db, zoneId)
-    local want = tonumber(id);
-    if want == nil or db == nil or type(db.zones) ~= 'table' then return nil; end
-    local best, inZone = nil, nil;
-    for zid, z in pairs(db.zones) do
-        for _, list in pairs((type(z) == 'table' and z.pools) or {}) do
-            for _, it in ipairs(list) do
-                if tonumber(it.id) == want then
-                    local req = M.clamp(it.rank);
-                    if best == nil or req < best then best = req; end
-                    if zid == zoneId and (inZone == nil or req < inZone) then inZone = req; end
+-- Look an obtained item up in the shipped dig data and return its dig-rank
+-- REQUIREMENT -- the MINIMUM requirement across every source it drops from (the
+-- easiest source gates the ratchet: a pull proves you can dig it where it is
+-- cheapest), across BOTH the static zone pools AND the conditional rule tables.
+-- nil = the item is not diggable in the data, so it never ratchets. Fail-soft: a
+-- nil db (data absent) yields nil. `db` is passed in (never required) -> pure.
+function M.itemRequirement(name, db)
+    if db == nil then return nil; end
+    local want = norm(name);
+    if want == '' then return nil; end
+    local best = nil;
+    if type(db.zones) == 'table' then
+        for _, z in pairs(db.zones) do
+            for _, list in pairs((type(z) == 'table' and z.pools) or {}) do
+                for _, it in ipairs(list) do
+                    if norm(it.n) == want then
+                        local req = M.clamp(it.rank);
+                        if best == nil or req < best then best = req; end
+                    end
                 end
             end
         end
+    end
+    -- conditional drops (day rocks / elemental ores) are not in any pool
+    local cond = M.condRequirement(db, nil, name);
+    if cond ~= nil and (best == nil or cond < best) then best = cond; end
+    return best;
+end
+
+-- Like itemRequirement but keys on the item ID -- the fail-safe packet path reads
+-- the id straight off the dig-obtained 0x02A packet (no parseable name there).
+-- Prefers the requirement in the zone you dug it IN (`zoneId`; a stronger "you can
+-- dig it HERE" lower bound -- an item can need a higher rank in one zone than
+-- another), falling back to the cheapest zone when the zone is unknown/absent.
+-- nil = not a diggable item, so a stray obtain never ratchets. Pure (db passed in).
+function M.itemRequirementById(id, db, zoneId)
+    local want = tonumber(id);
+    if want == nil or db == nil then return nil; end
+    local best, inZone = nil, nil;
+    if type(db.zones) == 'table' then
+        for zid, z in pairs(db.zones) do
+            for _, list in pairs((type(z) == 'table' and z.pools) or {}) do
+                for _, it in ipairs(list) do
+                    if tonumber(it.id) == want then
+                        local req = M.clamp(it.rank);
+                        if best == nil or req < best then best = req; end
+                        if zid == zoneId and (inZone == nil or req < inZone) then inZone = req; end
+                    end
+                end
+            end
+        end
+    end
+    -- Conditional drops are not in any pool. When an item can ALSO come from a
+    -- conditional it may have been obtained that (cheaper) way, so the safe lower
+    -- bound is min(conditional gate, cheapest pool) and the zone-aware pool tighten
+    -- no longer holds. A pool-only item (no conditional) keeps the zone tighten.
+    local cond = M.condRequirement(db, want, nil);
+    if cond ~= nil then
+        if best ~= nil and best < cond then return best; end
+        return cond;
     end
     return inZone or best;
 end
