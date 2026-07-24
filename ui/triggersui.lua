@@ -1667,6 +1667,31 @@ local function renderModeBox(m, def, cur, colX)
     imgui.SameLine(0, 12);
     if imgui.SmallButton('edit##trgmedit_' .. m) then openModeEditor(m, def); end
     if imgui.IsItemHovered() then imgui.SetTooltip('Edit this mode (values / keybind / delete).'); end
+    -- Save THIS ONE mode to the Mode library (Henrik 2026-07-25). The section-level
+    -- "Save this job's modes..." takes all of them; this is the per-mode twin, and the
+    -- sibling of the Blueprints "save this rule" button. A name already in the library
+    -- arms a gold "replace?" second click rather than silently updating it -- the
+    -- library is shared text, so overwriting an entry is never a one-click accident.
+    imgui.SameLine(0, 6);
+    if trig._modeCapArm == m then
+        local gold = (ImGuiCol_Button ~= nil);
+        if gold then imgui.PushStyleColor(ImGuiCol_Button, { 0.55, 0.45, 0.15, 1.0 }); end
+        if imgui.SmallButton('replace?##trgmlib_' .. m) then
+            trig._modeCapArm = nil;
+            M.captureModeToLibrary(m, true);
+        end
+        if gold then imgui.PopStyleColor(1); end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Overwrite the library entry of this name with THIS job\'s version.');
+        end
+    else
+        if imgui.SmallButton('lib##trgmlib_' .. m) then
+            if M.captureModeToLibrary(m, false) == 'exists' then trig._modeCapArm = m; end
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Save this mode to your Mode library, so you can stamp it onto any other job.\nAlready in the library? The button turns into a "replace?" confirm.');
+        end
+    end
     -- x: delete without opening the editor (Henrik 2026-07-20). Same flow as
     -- the editor's Delete mode -- unreferenced deletes (and commits) at once,
     -- references open the cleanup window -- behind the red second-click
@@ -3052,20 +3077,37 @@ end
 
 -- Capture ONE of the current job's modes into the library (replace = overwrite the
 -- library entry of the same name; the library is keyed by name too).
+-- Returns 'added' | 'exists' | 'error' so a caller can offer a replace confirmation
+-- instead of just reporting failure.
 local function mlCapture(name, replace)
-    if not hasModeLib then mlSetStatus('Mode library unavailable.', true); return; end
+    if not hasModeLib then mlSetStatus('Mode library unavailable.', true); return 'error'; end
     mlLoad(false);
-    if mlUI.lib == nil then mlSetStatus('Log in before saving to the library.', true); return; end
+    if mlUI.lib == nil then mlSetStatus('Log in before saving to the library.', true); return 'error'; end
     local def = (trig.data ~= nil and trig.data.Modes ~= nil) and trig.data.Modes[name] or nil;
     local entry, err = mlib.captureOne(name, def);
-    if entry == nil then mlSetStatus('Could not save: ' .. tostring(err), true); return; end
+    if entry == nil then mlSetStatus('Could not save: ' .. tostring(err), true); return 'error'; end
+    local existed = (mlib.findEntryCI(mlUI.lib, entry.name) ~= nil);
     local okA, errA = mlib.add(mlUI.lib, entry, replace);
-    if not okA then mlSetStatus(tostring(errA) .. '  (use Replace to update it)', true); return; end
-    if mlSave() then
-        mlSetStatus(string.format('Saved "%s" to your Mode library.', entry.name), false);
-    else
-        mlLoad(true);                                   -- write failed: drop the phantom
+    if not okA then
+        if existed then return 'exists'; end            -- caller offers "replace?"
+        mlSetStatus(tostring(errA), true);
+        return 'error';
     end
+    if mlSave() then
+        mlSetStatus(string.format('%s "%s" %s your Mode library.',
+            existed and 'Updated' or 'Saved', entry.name, existed and 'in' or 'to'), false);
+        return 'added';
+    end
+    mlLoad(true);                                       -- write failed: drop the phantom
+    return 'error';
+end
+
+-- Exposed on M because renderModeBox is defined ABOVE this point in the chunk: a
+-- direct call to the local would resolve to a nil GLOBAL instead (Lua scoping), which
+-- is silent until the button is actually pressed. Going through M sidesteps that
+-- entirely, and the arm state rides `trig` (declared near the top) for the same reason.
+function M.captureModeToLibrary(name, replace)
+    return mlCapture(name, replace);
 end
 
 -- Perform the stamp. Dead values are stripped FIRST, while the rules and gates still

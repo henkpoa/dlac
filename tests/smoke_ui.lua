@@ -1665,6 +1665,18 @@ end)();
         -- Twice in a row: the second pass exercises the cached-library path.
         check('MLU7 renders again (cached path)', pcall(tg.renderModeLibrary, 'WAR', 75), true);
         check('MLU8 still balanced', depth.col + depth.win + depth.child, 0);
+
+        -- The per-mode "save to library" entry point. It is exposed on M ON PURPOSE:
+        -- renderModeBox is defined ABOVE the library code in the chunk, so calling the
+        -- local directly would resolve to a nil GLOBAL -- silent until the button is
+        -- pressed. Pinning that it exists on M is pinning the fix.
+        check('MLU9 per-mode capture is reachable from the mode box',
+            type(tg.captureModeToLibrary), 'function');
+        -- Unconfigured (no character, no data dir) it must REPORT, not throw: the mode
+        -- box calls it straight from a click handler inside the render pass.
+        local cok, cres = pcall(tg.captureModeToLibrary, 'DT', false);
+        check('MLU10 capture never throws unconfigured', cok, true);
+        check('MLU11 ...it returns a status instead', (cres == 'error' or cres == 'exists' or cres == 'added'), true);
     end
 
     for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end

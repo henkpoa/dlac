@@ -219,6 +219,9 @@ agent; the per-repo setup lives in `docs/agents/`.
   `<char>\dlac\modes.lua`, outside Profiles, addon-state only; **stamp** an entry onto
   whichever job you are on; share/import as text (the library format IS the share
   format). Pure core `gear/modeslibrary.lua`, UI in `ui/triggersui.lua`.
+  - Per-mode **`lib`** button on every mode box saves THAT one mode (the section-level
+    "Save this job's modes..." takes all of them); a name already in the library arms a
+    gold **`replace?`** second click rather than silently overwriting shared text.
   - **`stamp` = Append** (merge values, nothing removed) — the plain button, because it
     can never strand a reference. **`replace` = Overwrite** — always routed through the
     **pre-commit reference window** (deliberately the same movable window a mode Delete
