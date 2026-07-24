@@ -709,7 +709,7 @@ function M.render(deps, availW)
     -- manual seed; you can't drop below a detected floor (resolve takes max).
     local seed = tonumber(rs.rank) or (cwok and tonumber(cw.rankManual)) or 0;
 
-    imgui.TextColored(COL_TEXT, 'Set your dig rank:');
+    help('Set your dig rank:', 'Masked from the client -- pick your best guess. Digging (a dug item or the first-dig timing) auto-raises it.', COL_TEXT);
     imgui.SameLine(0, 6);
     imgui.PushItemWidth(160);
     local seedLabel = (ladder[seed] ~= nil) and tostring(ladder[seed]) or ('rank ' .. seed);
@@ -730,13 +730,10 @@ function M.render(deps, availW)
         imgui.EndCombo();
     end
     imgui.PopItemWidth();
-    if imgui.IsItemHovered() then
-        imgui.SetTooltip('The dig rank is masked out of the client, so pick your best guess here.\nIt only seeds the guide -- digging an item above it auto-raises the rank.');
-    end
 
-    -- The resolved rank + its honest source label. exact (server-reported) shows
-    -- plainly; an estimate says so, so the grey-out never lies.
-    imgui.TextColored(COL_TEXT, 'Current dig rank:');
+    -- The resolved rank + its honest source tag (the source key + "estimate"
+    -- meaning live in the label's hover). exact (server-reported) shows in green.
+    help('Current dig rank:', 'The rank is masked from the client, so dlac assembles it:\n  manual = your pick\n  >= from digs = raised by a dug item or the first-dig timing\n  reported by server = exact (rare)\n"estimate" = not yet server-confirmed.', COL_TEXT);
     imgui.SameLine(0, 6);
     imgui.TextColored(COL_GOLD, tostring(rs.label or ('rank ' .. (rs.rank or 0))));
     imgui.SameLine(0, 6);
@@ -745,7 +742,6 @@ function M.render(deps, availW)
     else
         imgui.TextColored(COL_DIM, string.format('(%s -- estimate)', rs.sourceLabel or rs.source or 'manual'));
     end
-    imgui.TextColored(COL_DIM, 'manual = your pick;  >= from digs = raised by an item you dug;  reported by server = exact.');
     imgui.Spacing();
 
     -- ---- Live Vana'diel clock header (moon / day / weather) ----
@@ -782,21 +778,15 @@ function M.render(deps, availW)
     -- ---- General dig-success figure (current rank + moon) ----
     local moonPct = (type(clk.moon) == 'table') and clk.moon.percent or nil;
     local avg, nZones = M.generalSuccess(rs.rank or 0, moonPct);
-    imgui.TextColored(COL_HEADER, 'General dig success:');
+    help('General dig success:', 'Typical chance a dig yields something, averaged across the enabled dig zones at your current rank + the live moon.\nBest on a New or Full moon, worst at the half moons.\nv1 assumes standard gear (it ignores the dig-rare weight bonus).', COL_HEADER);
     imgui.SameLine(0, 6);
     if avg ~= nil then
         imgui.TextColored(COL_GOLD, esc(string.format('%.0f%%', avg * 100)));
-        imgui.SameLine(0, 6);
-        imgui.TextColored(COL_DIM, string.format('(typical of a hit across %d zone%s, at %s + this moon)',
-            nZones or 0, (nZones == 1) and '' or 's', rs.label or ('rank ' .. (rs.rank or 0))));
     elseif moonPct == nil then
-        imgui.TextColored(COL_DIM, 'waiting on the Vana\'diel clock (moon unavailable).');
+        imgui.TextColored(COL_DIM, 'waiting on the clock');
     else
-        imgui.TextColored(COL_DIM, 'no per-zone dig data yet -- run gen_digdata.py (maintainer) to light this up.');
+        imgui.TextColored(COL_DIM, 'no zone data yet');
     end
-    imgui.TextColored(COL_DIM, 'Odds are best on a New or Full moon, worst at the half moons.');
-    imgui.Spacing();
-    imgui.TextColored(COL_DIM, 'v1 assumes standard gear (it ignores the dig-rare weight bonus).');
     imgui.Spacing();
 
     -- =======================================================================
