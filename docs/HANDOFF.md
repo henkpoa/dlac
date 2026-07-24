@@ -83,9 +83,11 @@ handshake).
   handler's **WHITELIST**, not just given a branch (v46 printed nothing for exactly that,
   and looked like the command did not exist); and a changed seeded file at an **unmoved
   `M.VERSION`** never loads at all (hard rule 4).
-- **Git:** work on `main`; `feature/storage-move` is **local-only** (never push it)
-  pending GM approval. Multi-line commit messages: write to a file and `git commit -F`
-  (PowerShell 5.1 mangles embedded quotes in `-m`). Do not push without being asked.
+- **Git:** work on `dev` — **directly, no feature branch** (hard rule, see "Branch model"
+  below); `feature/storage-move` and `feature/autoacc` are **parked local-only archives**
+  (never push, never merge, never check out). Multi-line commit messages: write to a file
+  and `git commit -F` (PowerShell 5.1 mangles embedded quotes in `-m`). Do not push
+  without being asked.
 - **Merging a branch that predates the folder move: use `-X find-renames=20%`.** Branches
   older than the layout commit still edit the flat root paths. Git's default 50% rename
   threshold silently fails where main also grew the file a lot since the branch forked —
@@ -212,14 +214,24 @@ agent; the per-repo setup lives in `docs/agents/`.
 
 ## Current state (as of 2026-07-24, end of day)
 
-- **BRANCH MODEL IS LIVE — `main → dev → feature/<slug>`.** Henrik's 2026-07-24 hard
-  rule: stop committing/pushing directly to `main`; every feature branches off `dev`,
-  merges to `dev`, and `dev` promotes to `main` **only on Henrik's explicit go-ahead**
-  (a release he considers stable). `dev` now exists; **`origin/main` == `origin/dev` ==
-  `5379884`, `addon.version` 2026.07.24o.** Origin holds exactly two branches now
-  (`main`, `dev`); local-only parked branches `feature/autoacc` (GM pending) and
-  `feature/storage-move` are kept, never merged. NEXT feature branches off `dev`. (This
-  supersedes the "main is the one development line / origin holds exactly one branch"
+- **BRANCH MODEL — `main → dev`, and ALL work commits on `dev` DIRECTLY.** Henrik's
+  2026-07-24 (evening) revision of that morning's rule: **no local feature branches at
+  all.** A branch checked out in this working tree cannot be checked out anywhere else,
+  and several Claude sessions plus Henrik share ONE checkout — feature branches made the
+  sessions fight over the tree. So: every session commits on `dev`, and `dev` promotes to
+  `main` **only on Henrik's explicit go-ahead** (a release he considers stable).
+  **`origin/main` == `origin/dev` == `e15f806`, `addon.version` 2026.07.24o.** Origin
+  holds exactly two branches (`main`, `dev`); local-only parked branches
+  `feature/autoacc` (GM pending) and `feature/storage-move` are archives — kept, never
+  merged, never checked out.
+  - **The accepted cost (Henrik's explicit call):** `dev` promotes **as a whole or not at
+    all**. A half-finished feature on `dev` blocks promoting an unrelated finished one.
+    That is the price of never fighting over the checkout — do not "solve" it by
+    reintroducing feature branches.
+  - **The one carve-out: GitHub agent runs.** Cloud agents clone their own workspace, so
+    their branch can never collide with this checkout — the label-dispatch pipeline keeps
+    opening `<slug>` branches and PRs, and those PRs merge into **`dev`** (never `main`).
+  (This supersedes the "main is the one development line / origin holds exactly one branch"
   wording in the graduation block below.)
 
 - **Idle hobbies — SHIPPED + field-confirmed 2026-07-24 (ADR 0017).** Craft / HELM /
