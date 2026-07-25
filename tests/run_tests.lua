@@ -12821,6 +12821,130 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- TRC. THE TRACE MUST NOT OUTLIVE THE WORLD IT DESCRIBED (field, 2026-07-26).
+--
+-- Mindie's boot: the install latch refused for ~2s (world not settled), the
+-- Default dispatch built its trace lines against the EMPTY store -- "[NOT
+-- FOUND in profile Sets]", true at that moment -- then the install landed,
+-- equips worked, and /dl why kept printing the stale NOT FOUND lines with a
+-- FRESH timestamp for the rest of the session. Cause: the retrace gate's sig
+-- carries rules, locks and every overlay, but nothing about the SETS STORE,
+-- and installSets' own re-dispatch therefore found the sig unchanged.
+-- The law already exists as v118's "THE INSTALL INVALIDATES THE BELIEF";
+-- M.modesRev is bumped by every install and re-flatten -- it belongs in the
+-- sig. This section drives the real handler + dispatch exactly like CMD.
+-- ---------------------------------------------------------------------------
+(function()
+    local SEP  = string.char(92);
+    local prof = package.loaded['dlac\\profiles'];
+    local eng  = package.loaded['dlac\\feature\\equipengine'];
+    if type(prof) ~= 'table' or type(eng) ~= 'table' then return; end
+
+    local saved = {
+        nativeMode = prof.nativeMode,        dataDir = prof.dataDir,
+        dispatch   = package.loaded['dlac\\dispatch'],
+        chatfmt    = package.loaded['dlac\\chatfmt'],
+        gFunc      = rawget(_G, 'gFunc'),    gState  = rawget(_G, 'gState'),
+        gProfile   = rawget(_G, 'gProfile'),
+        reg        = ashita.events.register, unreg   = ashita.events.unregister,
+        player     = TEST_PLAYER,
+        onEvent    = eng.onEvent,            tripped = eng.state.tripped,
+    };
+
+    local said = {};
+    local function capture(...)
+        local parts = {};
+        for i = 1, select('#', ...) do parts[#parts + 1] = tostring((select(i, ...))); end
+        said[#said + 1] = table.concat(parts, ' ');
+    end
+    package.loaded['dlac\\chatfmt'] = { print = capture, warn = capture, err = capture };
+
+    -- The world: WHM idle, native armed, no LAC state, no stray gProfile.
+    prof.nativeMode = function() return true; end
+    prof.dataDir    = function() return 'tests' .. SEP; end
+    _G.gFunc, _G.gState, _G.gProfile = nil, nil, nil;
+    eng.state.tripped = false;
+    TEST_PLAYER = { MainJob = 'WHM', MainJobLevel = 75, SubJob = 'BLM', SubJobLevel = 37,
+                    MainJobSync = 75, SubJobSync = 37, Status = 'Idle', IsMoving = false };
+
+    -- One Default rule aimed at a set that does not exist yet: the exact boot
+    -- shape (rules load before the install latch lands).
+    local trigDir  = 'tests' .. SEP .. 'triggers';
+    local trigPath = trigDir .. SEP .. 'WHM.lua';
+    pcall(function() os.execute('mkdir "' .. trigDir .. '" 2>nul'); end);
+    local tf = io.open(trigPath, 'w');
+    if tf ~= nil then
+        tf:write("return { Default = { { when = { status = 'Idle' }, set = 'Idle' } } };\n");
+        tf:close();
+    end
+
+    local handlers = {};
+    ashita.events.register   = function(ev, nm, fn) handlers[ev] = fn; end
+    ashita.events.unregister = function() end
+    local okLoad, D = pcall(dofile, 'dispatch.lua');
+    ashita.events.register, ashita.events.unregister = saved.reg, saved.unreg;
+
+    check('TRC0 dispatch loads native-armed', okLoad, true);
+    if okLoad and type(handlers['command']) == 'function' then
+        local function run(line)
+            said = {};
+            local e = { command = line, blocked = false };
+            local ok, err = pcall(handlers['command'], e);
+            if not ok then said[#said + 1] = 'ERROR: ' .. tostring(err); end
+            return e, ok;
+        end
+        local function saidHas(frag)
+            for _, l in ipairs(said) do
+                if string.find(l, frag, 1, true) ~= nil then return true; end
+            end
+            return false;
+        end
+
+        -- Boot window: empty store. The NOT FOUND line is TRUE here.
+        D._nativeSets = nil;
+        pcall(D.dispatch, 'Default');
+        run('/dl why');
+        check('TRC1 empty store: the trace says NOT FOUND (true today)',
+              saidHas('NOT FOUND in profile Sets'), true);
+        check('TRC1b ...for the rule that matched', saidHas('set Idle'), true);
+
+        -- The install lands: the store is swapped and modesRev bumped -- the
+        -- two things EVERY installSets branch does (5668/5714). The next
+        -- dispatch must rebuild the trace against the new world.
+        D._nativeSets = { Dynamic = { Idle = { Body = 'Test Robe' } },
+                          Idle    = { Body = 'Test Robe' } };
+        D.modesRev = (D.modesRev or 0) + 1;
+        pcall(D.dispatch, 'Default');
+        run('/dl why');
+        check('TRC2 after the install, the trace tells the truth',
+              saidHas('NOT FOUND in profile Sets'), false);
+        check('TRC2b ...still tracing the same rule', saidHas('set Idle'), true);
+
+        -- And the reverse: the store DIES (a refused install empties it --
+        -- 5689 -- after bumping modesRev at 5668). The trace must go stale
+        -- honestly: NOT FOUND returns.
+        D._nativeSets = nil;
+        D.modesRev = (D.modesRev or 0) + 1;
+        pcall(D.dispatch, 'Default');
+        run('/dl why');
+        check('TRC3 a dying store un-tells it too',
+              saidHas('NOT FOUND in profile Sets'), true);
+    end
+
+    -- put every shared thing back exactly as it was
+    prof.nativeMode, prof.dataDir    = saved.nativeMode, saved.dataDir;
+    package.loaded['dlac\\dispatch'] = saved.dispatch;
+    package.loaded['dlac\\chatfmt']  = saved.chatfmt;
+    _G.gFunc, _G.gState              = saved.gFunc, saved.gState;
+    _G.gProfile                      = saved.gProfile;
+    eng.onEvent, eng.state.tripped   = saved.onEvent, saved.tripped;
+    TEST_PLAYER                      = saved.player;
+    os.remove(trigPath);
+    os.remove('tests' .. SEP .. 'modestate.lua');
+    os.remove('tests' .. SEP .. 'arbstate.lua');
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then
