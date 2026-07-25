@@ -4395,6 +4395,46 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- MC. Trigger CASES, read-side (issue #125, slice 1/5). matchedCase names the
+--     winning case for /dl why over the EXISTING schema: the together-block (the
+--     `&` leg), a "standalone" (single-condition `|` entry), or a "case"
+--     (multi-condition `|` entry). It mirrors matches() EXACTLY -- same MATCHERS,
+--     together-block first (only when NON-empty and fully true -- the OR-only
+--     law), else the first `|` entry that holds in file order.
+-- ---------------------------------------------------------------------------
+(function()
+    local mc = dispatchM.matchedCase;
+    local mt = dispatchM._matches;
+    local ctx  = { player = { HPP = 90 }, buffs = { sleep = true } };  -- hpbelow is a percent alias
+    local ctxL = { player = { HPP = 40 }, buffs = { sleep = true } };
+
+    check('MC1 no whenAny -> names nothing (reads as before)',
+        mc({ when = { hpbelow = 50 } }, ctx), nil);
+    check('MC2 together-block holds -> together-block',
+        mc({ when = { hpbelow = 95 }, whenAny = { { buff = 'Lullaby' } } }, ctx), 'together-block');
+    check('MC3 together-block misses, standalone hits',
+        mc({ when = { hpbelow = 50 }, whenAny = { { buff = 'Sleep' } } }, ctx), 'standalone buff=Sleep');
+    check('MC4 OR-only rule names its standalone, never the empty together-block',
+        mc({ when = {}, whenAny = { { buff = 'Sleep' } } }, ctx), 'standalone buff=Sleep');
+    check('MC5 multi-condition entry that holds -> case (AND-within-OR, sorted)',
+        mc({ when = { hpbelow = 30 }, whenAny = { { buff = 'Sleep', hpbelow = 50 } } }, ctxL),
+        'case buff=Sleep & hpbelow=50');
+    check('MC6 multi-condition entry with one miss does NOT name it',
+        mc({ when = { hpbelow = 30 }, whenAny = { { buff = 'Sleep', hpbelow = 30 } } }, ctxL), nil);
+    check('MC7 together-block wins when BOTH legs hold (checked first, like the engine)',
+        mc({ when = { hpbelow = 95 }, whenAny = { { buff = 'Sleep' } } }, ctx), 'together-block');
+    check('MC8 first standalone that holds wins (file order)',
+        mc({ when = {}, whenAny = { { buff = 'Haste' }, { buff = 'Sleep' } } }, ctx), 'standalone buff=Sleep');
+    -- consistency: a case-bearing rule names a case IFF matches() fires.
+    local rhit  = { when = { hpbelow = 50 }, whenAny = { { buff = 'Sleep' } } };
+    local rmiss = { when = { hpbelow = 50 }, whenAny = { { buff = 'Haste' } } };
+    check('MC9 names a case exactly when matches() fires (hit)',
+        (mc(rhit, ctx) ~= nil) == mt(rhit, ctx) and mt(rhit, ctx), true);
+    check('MC10 names nothing exactly when matches() misses',
+        mc(rmiss, ctx) == nil and mt(rmiss, ctx) == false, true);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- PT. Pet conditions (engine v63): pet / petStatus / petName off ctx.pet
 --     (gData.GetPet() -- nil petless AND at pet HPP 0, so a dead pet reads as
 --     NO pet: pet=false fires). petStatus/petName IMPLY existence -- they must

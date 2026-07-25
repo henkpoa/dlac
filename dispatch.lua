@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 122;  -- 122: /dl naked + /dl dress (ADR 0021) -- the strip is a CLAIM, not a lock. A new 'Naked' Arbiter row, FIRST by default, claims all 16 slots with the 'remove' literal both engines already speak (LAC MakeItemTable -> Index 0; equipcore normalizeEntry/planSet), so it is recomputed and re-applied on EVERY dispatch instead of stripping once and fencing: nothing re-dresses you, and a strip the server refuses (dead, cutscene, mid-ranged-attack, level-sync settle) lands on the next pass instead of leaking a dressed slot forever. Explicitly NOT the /dl lock route -- a lock only WITHHOLDS (it cannot take a piece off), it is wiped by every engine self-swap, Pins punch through it, and three unrelated buttons release it; arming it would also destroy the player's own locks. Total nudity is the default and the rank list is the exception mechanism: drag Pins or Locks above Naked for "naked except those". Flag is M.nakedArmed, carried across a self-swap by the M._loadStamp idiom and gone in a fresh Lua state, so a git pull cannot re-dress you. A relog does NOT make a fresh Lua state (an Ashita addon survives a logout -- pinwatch's header records it -- and LAC never clears package.loaded), so nakedWorldWatch disarms on the character-select read, and on a JOB CHANGE too (Henrik's ruling; main job only, announced); mirrored to modestate as __naked (display only, never restored). arbOrder now restores a MISSING known row AT ITS DEFAULT POSITION instead of appending -- appended, Naked would have shipped at rank 9 for every character with an existing arbstate file and lost every slot it exists to win. The naked layer voids ctx.pinReserved when it outranks Pins (a reserver about to be stripped must not keep a neighbour dressed) via save/nil/restore, never a ctx copy. /dl ls apply is refused while naked (unnamed slots would be styled permanently EMPTY). Tests NK1-NK26, NKU1-NKU4.
+M.VERSION = 123;  -- 123: trigger CASES, read-side (issue #125, slice 1/5) -- /dl why now NAMES the matched case of a case-bearing rule ('[via together-block]' / '[via standalone ...]' / '[via case a & b]'), mirroring matches() with the engine's own MATCHERS. Display only: a case-less rule (no `|` leg) traces byte-for-byte as before, so this is invisible to the 99%. Seeded-file bump because the trace is built engine-side during dispatch (hard rule 4). No schema change, no equip change. Tests MC1-MC10.
+-- 122: /dl naked + /dl dress (ADR 0021) -- the strip is a CLAIM, not a lock. A new 'Naked' Arbiter row, FIRST by default, claims all 16 slots with the 'remove' literal both engines already speak (LAC MakeItemTable -> Index 0; equipcore normalizeEntry/planSet), so it is recomputed and re-applied on EVERY dispatch instead of stripping once and fencing: nothing re-dresses you, and a strip the server refuses (dead, cutscene, mid-ranged-attack, level-sync settle) lands on the next pass instead of leaking a dressed slot forever. Explicitly NOT the /dl lock route -- a lock only WITHHOLDS (it cannot take a piece off), it is wiped by every engine self-swap, Pins punch through it, and three unrelated buttons release it; arming it would also destroy the player's own locks. Total nudity is the default and the rank list is the exception mechanism: drag Pins or Locks above Naked for "naked except those". Flag is M.nakedArmed, carried across a self-swap by the M._loadStamp idiom and gone in a fresh Lua state, so a git pull cannot re-dress you. A relog does NOT make a fresh Lua state (an Ashita addon survives a logout -- pinwatch's header records it -- and LAC never clears package.loaded), so nakedWorldWatch disarms on the character-select read, and on a JOB CHANGE too (Henrik's ruling; main job only, announced); mirrored to modestate as __naked (display only, never restored). arbOrder now restores a MISSING known row AT ITS DEFAULT POSITION instead of appending -- appended, Naked would have shipped at rank 9 for every character with an existing arbstate file and lost every slot it exists to win. The naked layer voids ctx.pinReserved when it outranks Pins (a reserver about to be stripped must not keep a neighbour dressed) via save/nil/restore, never a ctx copy. /dl ls apply is refused while naked (unnamed slots would be styled permanently EMPTY). Tests NK1-NK26, NKU1-NKU4.
                   -- 121: weatherMatch trigger condition (feature/weather-match-condition, grill-with-docs 07-24) -- a spell-handler flag, true when the CURRENT weather's element equals the action's element. weatherMatchesAction reads the SAME gData.GetEnvironment().WeatherElement the obi uses (storm-aware: a Scholar's own Firestorm etc. overrides zone weather, so it counts). DISTINCT from dayWeatherBonus (the signed day+weather net with opposition): weatherMatch is a plain weather-element equality -- no day, no opposition -- verified as CatsEyeXI's ALACRITY_CELERITY_EFFECT (Celerity/Alacrity cast-time) gate. Precast+Midcast, tier 30, true/false polarity; unreadable weather or no action element matches NEITHER (never fires blind). Tests WM1-WM21.
                   -- 120: Chocobo riding-gear automation (issue #95, docs/design/chocobo-gear.md) -- a fourth idle-only sibling: ensureChocoState/chocoStateActive/chocoOverlayFor, the dlac:AutoChoco resolveVirtual branch (manifest `choco` per-slot best-first ladders, Main/Neck/Body/Hands/Legs/Feet, scored by ChocoboRidingTime, the Chocobo Wand included in Main), a 'Chocobo' Arbiter claim row (default rank below Fishing, above the Triggers floor), and arbOrder now pins the Triggers floor last so a new claimant appended to an existing arbstate file never sinks below it.
                   -- 119: field-CONFIRMED close of the maxmp boot saga (Henrik's trace showed the designed boot: 12 install refusals holding the door ~4.5s of hollow flattens, then the REAL world's first appearance earns the first-ever belief -- no wrong ladder was ever displayable) + Henrik's debug-folder rule: per-char debug artifacts live in <data home>\debug\ (the warm trace moves to debug\mpwarm.txt and sweeps its old root-level file; the LAC-bridge handoff files stay put -- paired-reader protocol, leaving with LAC).
@@ -3414,6 +3415,52 @@ local function matches(rule, ctx)
 end
 M._matches = matches;   -- headless test seam (the _matchers idiom)
 
+-- Trigger cases (issue #125): the display vocabulary over the EXISTING schema.
+-- The rule body is CASE 1 -- the "together-block" (its `&` leg). Each whenAny
+-- entry is a "standalone alternative": a single-condition entry is a plain `|`
+-- condition; a multi-condition entry (AND-within-OR) is a "| case". No schema
+-- change -- these are just names for what the engine already evaluates.
+--
+-- caseDesc: the /dl why name for a matched whenAny entry. One condition reads
+-- 'standalone <k=v>'; several read 'case <a & b>' (the AND-within-OR shape).
+-- Keys are already lowercased by normalize; condVal serializes list values by
+-- value (the ruleLabel rule) so the name is stable across states.
+local function caseDesc(entry)
+    local parts = {};
+    for k, v in pairs(entry) do
+        parts[#parts + 1] = string.lower(tostring(k)) .. ((v == true) and '' or ('=' .. condVal(v)));
+    end
+    table.sort(parts);
+    if #parts <= 1 then return 'standalone ' .. (parts[1] or '?'); end
+    return 'case ' .. table.concat(parts, ' & ');
+end
+
+-- Which case carried a (possibly multi-case) rule -- for /dl why. Returns nil
+-- when the rule has no `|` leg (a single-case rule names nothing: /dl why reads
+-- byte-for-byte as before). Otherwise mirrors matches() EXACTLY -- the same
+-- MATCHERS, never a re-implementation: the together-block wins when it holds (a
+-- NON-empty `&` leg with every condition true -- the OR-only law), else the
+-- FIRST standalone / `| case` entry that holds (file order, the engine's order).
+function M.matchedCase(rule, ctx)
+    if rule.whenAny == nil then return nil; end
+    local andOk, nAnd = true, 0;
+    for lk, cv in pairs(rule.when) do
+        nAnd = nAnd + 1;
+        local f = MATCHERS[lk];
+        if f == nil or not f(cv, ctx) then andOk = false; break; end
+    end
+    if nAnd > 0 and andOk then return 'together-block'; end
+    for _, entry in ipairs(rule.whenAny) do
+        local ok = true;
+        for lk, cv in pairs(entry) do
+            local f = MATCHERS[lk];
+            if f == nil or not f(cv, ctx) then ok = false; break; end
+        end
+        if ok then return caseDesc(entry); end
+    end
+    return nil;
+end
+
 -- One-line description of the acted-on thing, for /dl why.
 local function actionLabel(ctx)
     local a = ctx.action;
@@ -4556,7 +4603,16 @@ function M.dispatch(event)
         -- Equip every hit. Trace strings are rebuilt only when the matched-rule
         -- signature changes (Default dispatches per frame -- keep the GC quiet).
         local sig = {};
-        for _, r in ipairs(hits) do sig[#sig + 1] = r.ord; end
+        -- Which case each hit matched (issue #125): folded into the retrace
+        -- signature so a rule that stays a hit but switches cases (together-block
+        -- one dispatch, a `| case` the next) re-traces and /dl why re-names it.
+        -- nil for a case-less rule -> sig is byte-identical to before.
+        local hitCase = {};
+        for hi, r in ipairs(hits) do
+            local mc = M.matchedCase(r, ctx);
+            hitCase[hi] = mc;
+            sig[#sig + 1] = mc and (tostring(r.ord) .. '@' .. mc) or tostring(r.ord);
+        end
         local lk = {};
         for s in pairs(M.locks) do lk[#lk + 1] = s; end   -- lock changes must retrace too
         table.sort(lk);
@@ -4650,7 +4706,12 @@ function M.dispatch(event)
         -- attribution below (ADR 0012, step 4).
         local slotSrc = retrace and {} or nil;
         local floorTbl = retrace and {} or nil;
-        for _, r in ipairs(hits) do
+        for hi, r in ipairs(hits) do
+            -- The winning case, named for /dl why (issue #125): '[via <case>]'
+            -- rides right after the rule label. A case-less rule has no `|` leg,
+            -- so mc is nil and the line reads exactly as before.
+            local mc = hitCase[hi];
+            local via = mc and (' [via ' .. mc .. ']') or '';
             if r.sets ~= nil then
                 -- A rule may wear SEVERAL sets: applied IN ORDER, later overlaying
                 -- earlier per slot -- the same law as between rules ("cast Madrigal
@@ -4658,8 +4719,8 @@ function M.dispatch(event)
                 for si, sn in ipairs(r.sets) do
                     local found, note, tbl = equipSetByName(sn, ctx);
                     if retrace then
-                        lines[#lines + 1] = string.format('%s  ->  set %s%s  (prio %d)%s%s',
-                            r.label, sn, (#r.sets > 1) and string.format(' [%d/%d]', si, #r.sets) or '',
+                        lines[#lines + 1] = string.format('%s%s  ->  set %s%s  (prio %d)%s%s',
+                            r.label, via, sn, (#r.sets > 1) and string.format(' [%d/%d]', si, #r.sets) or '',
                             r.prio, found and '' or '  [NOT FOUND in profile Sets]', note or '');
                         if type(tbl) == 'table' then
                             for slot, item in pairs(tbl) do
@@ -4673,8 +4734,8 @@ function M.dispatch(event)
             elseif r.equip ~= nil then
                 local note, tbl = equipResolved(r.equip, ctx);
                 if retrace then
-                    lines[#lines + 1] = string.format('%s  ->  equip { %s }  (prio %d)%s',
-                        r.label, inlineSummary(r.equip), r.prio, note or '');
+                    lines[#lines + 1] = string.format('%s%s  ->  equip { %s }  (prio %d)%s',
+                        r.label, via, inlineSummary(r.equip), r.prio, note or '');
                     if type(tbl) == 'table' then
                         for slot, item in pairs(tbl) do
                             if string.sub(tostring(slot), 1, 2) ~= '__' then

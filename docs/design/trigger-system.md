@@ -89,6 +89,31 @@ exactly as before, so existing pin scope keys keep matching); the default priori
 both legs. Field case: Toxin Earring poison-wakeup — `whenAny` of Sleep OR Lullaby → the
 WakeMeUp set.
 
+**Trigger cases — read-side (engine v123, issue #125, slice 1/5 of PRD #124).** The
+display vocabulary over the *existing* `whenAny` schema — no schema change, no editor
+change. The rule body is **case 1**, the **together-block** (its `&` leg). Each `whenAny`
+entry is a **standalone alternative**: a *single-condition* entry is a plain standalone `|`
+condition, a *multi-condition* entry (AND-within-OR) is a **`| case`**. The read surfaces
+became case-aware:
+- **Rule list** (`ui/triggersui.lua`, `caseSplit`): single-condition entries render as `|`
+  lines exactly as before; each multi-condition entry renders as a bordered, indented
+  `| case` box with the together-block `& ` prefix on its 2nd+ conditions. A rule with no
+  multi-condition entry renders pixel-identical to today (zero new chrome for the 99%). A
+  case box carries one live `[on now]`/`[off now]` — the whole case ANDed — but only when
+  every condition is a player-state gate (`caseLiveHolds`; an action condition can't be
+  judged at idle, so it shows no marker rather than a wrong one).
+- **`/dl why`** (`dispatch.matchedCase`): the winning rule's line names its matched case —
+  `[via together-block]`, `[via standalone <k=v>]`, or `[via case <a & b>]`. Mirrors
+  `matches()` with the engine's own MATCHERS (together-block first, then the first `|` entry
+  that holds in file order); folded into the retrace signature so a rule that switches cases
+  re-names. A case-less rule names nothing — `/dl why` reads byte-for-byte as before.
+- **Priority chip**: now passes `whenAny` to `defaultPriority` (both legs), matching the
+  engine — a rule whose highest tier lives on the `|` leg no longer displays low.
+Vocabulary: **case**, **together-block**, **standalone alternative** — never "group" (spell
+groups own that word). The editor still flattens a multi-condition entry on edit-save (the
+existing corruption); its fix, the schema's `cases` list, and the ADR land with later slices.
+Tests: engine `MC1-MC10`, render `TC1-TC10`.
+
 v2 candidates (matcher is an open table; additive): day/weather/moon beyond the obi rule,
 subjob. (`area` landed in v84 as `inTown`, off the server-derived `data/zones.lua` town set;
 more zone predicates — a specific-zone match, `IN_DYNAMIS` — reuse the same file. Target

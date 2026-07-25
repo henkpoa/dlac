@@ -1916,6 +1916,43 @@ end)();
         local cok, cres = pcall(tg.captureModeToLibrary, 'DT', false);
         check('MLU10 capture never throws unconfigured', cok, true);
         check('MLU11 ...it returns a status instead', (cres == 'error' or cres == 'exists' or cres == 'added'), true);
+
+        -- TC. Trigger CASES, read-side (issue #125, slice 1/5). The rule list is
+        -- now case-aware over the EXISTING schema: a multi-condition `|` entry
+        -- renders as a bordered `| case` box, single-condition entries stay
+        -- standalone `|` lines, and a rule with neither renders as before.
+        check('TC1 caseSplit is exposed', type(tg.caseSplit), 'function');
+        if type(tg.caseSplit) == 'function' then
+            local singles, cases = tg.caseSplit({ { buff = 'Sleep' }, { buff = 'Lullaby' } });
+            check('TC2 single-condition entries are standalones, zero cases',
+                #singles == 2 and #cases == 0, true);
+            local s2, c2 = tg.caseSplit({ { buff = 'Sleep' }, { buff = 'Burst', tpabove = 1000 } });
+            check('TC3 a multi-condition entry becomes a | case',
+                #s2 == 1 and #c2 == 1, true);
+            check('TC4 keys are lowercased for standalones',
+                tg.caseSplit({ { Buff = 'Sleep' } })[1].key, 'buff');
+            local a0, b0 = tg.caseSplit(nil);
+            check('TC5 no whenAny -> no singles, no cases', #a0 == 0 and #b0 == 0, true);
+        end
+        -- Drive the REAL rule-box render: the case path only RUNS on a
+        -- multi-condition rule, so a load test would never catch a nil helper.
+        check('TC6 renderTrigRuleBox is exposed', type(tg.renderTrigRuleBox), 'function');
+        if type(tg.renderTrigRuleBox) == 'function' then
+            check('TC7 renders a case-less rule (the old path)',
+                pcall(tg.renderTrigRuleBox, 'Precast', 1,
+                    { when = { name = 'Cure IV' }, set = 'CureSet' }, { 'CureSet' }, 190), true);
+            check('TC8 renders a rule with a standalone | condition',
+                pcall(tg.renderTrigRuleBox, 'Precast', 2,
+                    { when = { status = 'Engaged' }, whenAny = { { tpabove = 1000 } }, set = 'TpSet' },
+                    { 'TpSet' }, 190), true);
+            check('TC9 renders a rule bearing a | case box',
+                pcall(tg.renderTrigRuleBox, 'Precast', 3,
+                    { when = { status = 'Engaged' },
+                      whenAny = { { buff = 'Burst', tpabove = 1000 }, { buff = 'Sleep' } },
+                      set = 'CaseSet' }, { 'CaseSet' }, 190), true);
+            check('TC10 stacks stay balanced through the case boxes',
+                depth.col + depth.win + depth.child, 0);
+        end
     end
 
     for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end
