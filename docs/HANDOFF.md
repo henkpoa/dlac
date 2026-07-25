@@ -732,6 +732,11 @@ research already recorded. In rough priority order:
     report line at the end: green `chatfmt.good` only for a full run, yellow
     for an early stop, white for your own Stop. HQ needs no special case -- the
     game names HQ items `... +1`.
+    **NOT FIELD-TESTED (as of 07-25). Test plan + full write-up:
+    `docs/design/repeat-last-synth-fieldtest.md`** -- read it before touching
+    this feature again. Two questions only the field can answer: does the
+    client's `/lastsynth` memory survive a ZONE, and does a 20s wait drop
+    synths in a frame-heavy zone.
   - **Verify-then-automate — DONE (2026-07-13):** guild-points self-request (c2s
     `0x10F`) turn-in-verified; now auto-fires once on login + on AutoCraft panel
     open (debounced). `/dl craft gp` remains the manual check.
