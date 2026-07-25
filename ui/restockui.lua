@@ -11,15 +11,31 @@
     field bags {Inventory 0, Satchel 5, Sack 6, Case 7} / Inventory (0). Nothing
     here equips or touches the dispatch engine.
 
-    Layout: master ON/OFF + the two nudge settings; a proximity line + Rescan;
-    two sections sharing fixed columns -- "Always (every job)" (the character
-    list) and "<JOB> only" (the job list, whose target overrides the character
-    baseline for the same item); a Fetch all; the slot-safety footer. Every fetch
-    is pre-clamped by the planner to min(shortfall, in-box, room), so a click can
-    never over-draw or lose items.
+    Layout: ONE header line (the label hovers its own explanation -- no prose on
+    the panel), master ON/OFF + the two nudge settings; a proximity line +
+    Rescan; Fetch all RIGHT THERE under the switch, so the add-picker can never
+    push it down; then the two sections sharing fixed columns -- "Always (every
+    job)" (the character list) and "<JOB> only" (the job list, whose target
+    overrides the character baseline for the same item). Every fetch is
+    pre-clamped by the planner to min(shortfall, in-box, room), so a click can
+    never over-draw -- and the wiki is explicit that over-drawn items fall to the
+    floor and are gone for good.
 
-    The floating Restock nudge is a SEPARATE surface (M.nudge, hooked from
-    gearui's d3d_present); not in this file yet.
+    The add-picker searches on a BUTTON, never on typing (v2 grill B1): one
+    click = one packet, results are correlated to the string they answer for,
+    rows already on the list are hidden, and adding keeps the picker open
+    because you usually add several things from one search.
+
+    The floating nudge (M.nudge, hooked from gearui's d3d_present) is a stack of
+    up to three icons near a box:
+      * GREEN  -- fetch the shortfall, counting every field bag as on-hand;
+      * YELLOW -- only when Inventory alone is short while another field bag
+                  holds some: tops INVENTORY up from the box, reporting where
+                  the other copies are. (Moving them out of the Mog Case would
+                  be better and costs no box stock, but dlac may not move items
+                  between containers yet -- deferred, see the v2 grill C2.)
+      * RED    -- `!box store`, always present near a box, arm-then-confirm
+                  because it instantly deposits every storable item you carry.
 ]]--
 
 local M = {};
@@ -31,8 +47,10 @@ local _ecok, ec = pcall(require, 'dlac\\feature\\eboxclient');
 _ecok = _ecok and type(ec) == 'table';
 local _gmok, gm = pcall(require, 'dlac\\feature\\gamemode');
 _gmok = _gmok and type(gm) == 'table';
-local _ftok, filetex = pcall(require, 'dlac\\ui\\filetex');   -- the crate icon (assets/ebox.png)
+local _ftok, filetex = pcall(require, 'dlac\\ui\\filetex');   -- the crate icons (assets/ebox*.png)
 _ftok = _ftok and type(filetex) == 'table';
+local _usok, uistyle = pcall(require, 'dlac\\ui\\uistyle');   -- helpLabel: underline + hover
+_usok = _usok and type(uistyle) == 'table' and type(uistyle.helpLabel) == 'function';
 
 local COL_HEADER = { 0.60, 0.75, 1.00, 1.00 };
 local COL_DIM    = { 0.55, 0.55, 0.55, 1.00 };
@@ -73,10 +91,29 @@ end
 -- Live bag reads (AshitaCore; pcall-guarded, headless-safe).
 -- ---------------------------------------------------------------------------
 local FIELD_BAGS = { 0, 5, 6, 7 };   -- Inventory, Satchel, Sack, Case (useitem BAG_NAMES)
+local OTHER_BAGS = { 5, 6, 7 };      -- the three that are NOT where you use things from
+local BAG_NAMES  = { [0] = 'Inventory', [5] = 'Mog Satchel', [6] = 'Mog Sack', [7] = 'Mog Case' };
 
--- On-hand across the FIELD bags, one pass -> { id -> count }.
-local function fieldCounts()
-    local m = {};
+-- Quiver/pouch -> ammo, generated from the server's own item scripts
+-- (tools/gen_ammocontainers.py). `!box ammo` hands back CONTAINERS: a Blind Bolt
+-- withdrawal arrives as a Blind Bolt Quiver, stack 12, each one 99 bolts -- so a
+-- single Inventory slot holds 1188 and NONE of it is visible as "Blind Bolt".
+-- Without this, on-hand read 0 and Restock kept offering to fetch more.
+local _acok, AMMO_BOX = pcall(require, 'dlac\\data\\ammocontainers');
+_acok = _acok and type(AMMO_BOX) == 'table';
+
+-- On-hand across the FIELD bags, ONE pass. Returns:
+--   all   { id -> count }            LOOSE items only
+--   per   { id -> { [bag] = count } } the same, per bag (the yellow icon's report)
+--   boxed { ammoId -> { qty, n, name } } what your quivers/pouches are worth
+--
+-- Containers are kept SEPARATE on purpose. They count toward "do I have enough"
+-- (so we stop fetching bolts you already own 1188 of), but they are NOT loose
+-- ammo: you cannot shoot a quiver, and the fix for an empty Inventory is to open
+-- one, not to withdraw from the box. Folding them into `per` would make the
+-- yellow icon offer a box withdrawal for ammo already in your bags.
+local function bagScan()
+    local all, per, boxed = {}, {}, {};
     pcall(function()
         local inv = AshitaCore:GetMemoryManager():GetInventory();
         for _, bag in ipairs(FIELD_BAGS) do
@@ -84,12 +121,43 @@ local function fieldCounts()
             for i = 1, max do
                 local it = inv:GetContainerItem(bag, i);
                 if it ~= nil and (it.Id or 0) > 0 and (it.Count or 0) > 0 then
-                    m[it.Id] = (m[it.Id] or 0) + it.Count;
+                    all[it.Id] = (all[it.Id] or 0) + it.Count;
+                    local p = per[it.Id];
+                    if p == nil then p = {}; per[it.Id] = p; end
+                    p[bag] = (p[bag] or 0) + it.Count;
+                    local c = _acok and AMMO_BOX[it.Id] or nil;
+                    if c ~= nil then
+                        local b = boxed[c.id];
+                        if b == nil then b = { qty = 0, n = 0, name = c.name }; boxed[c.id] = b; end
+                        b.qty = b.qty + it.Count * c.qty;
+                        b.n   = b.n + it.Count;
+                    end
                 end
             end
         end
     end);
-    return m;
+    return all, per, boxed;
+end
+
+-- What "do I have enough?" should count: loose + what your containers hold.
+local function stockOf(all, boxed, id)
+    local n = (all or {})[id] or 0;
+    local b = (boxed or {})[id];
+    return n + ((b ~= nil) and (tonumber(b.qty) or 0) or 0);
+end
+M._stockOf = stockOf;   -- test seam (AC*), above the imgui guard
+
+-- "1 in Mog Case, 4 in Mog Sack" -- where the non-Inventory copies actually are.
+local function whereText(p)
+    if type(p) ~= 'table' then return ''; end
+    local parts = {};
+    for _, bag in ipairs(OTHER_BAGS) do
+        local n = p[bag];
+        if n ~= nil and n > 0 then
+            parts[#parts + 1] = string.format('%d in %s', n, BAG_NAMES[bag] or ('bag ' .. tostring(bag)));
+        end
+    end
+    return table.concat(parts, ', ');
 end
 
 -- Free slots in Inventory (container 0) -- where withdrawals land (the room gate).
@@ -137,11 +205,18 @@ if not _iok then return M; end   -- headless: the pure half above is the module
 -- ---------------------------------------------------------------------------
 -- Add-picker state (one active at a time; search the box by name).
 -- ---------------------------------------------------------------------------
+-- The picker searches ONLY when the Search button is clicked (v2 grill B1): a
+-- query costs a packet, and typing is not a request. Nothing is remembered
+-- between openings -- eboxclient owns the correlation (searchFor) and we clear
+-- it on open and on close, so stale hits can never answer a new question.
 local _add = nil;          -- nil | { scope = 'character'|'job', job = <JOB>|nil }
 local _addBuf = { '' };
-local _addAt, _addLast = 0, nil;
 local _tgtBuf = {};   -- per-row target input strings (type-only, no +/- steppers)
-local function closeAdd() _add = nil; _addBuf[1] = ''; _addLast = nil; _addAt = 0; end
+local function resetSearch()
+    _addBuf[1] = '';
+    if _ecok then pcall(ec.clearSearch); end
+end
+local function closeAdd() _add = nil; resetSearch(); end
 
 -- A SmallButton that visibly refuses (ammoui's offable pattern): dim red (out of
 -- range) or grey (nothing / busy), the click swallowed.
@@ -164,9 +239,17 @@ function M.render(deps, availW)
     rw.loadState();
     local job = (deps ~= nil and type(deps.playerJob) == 'function') and deps.playerJob() or nil;
 
-    imgui.TextColored(COL_HEADER, 'E-Box Restock');
-    imgui.SameLine(0, 10);
-    imgui.TextColored(COL_TEXT, 'keep chosen items topped up from the Ephemeral Box.');
+    -- ONE header line: the label carries its own explanation in a hover
+    -- (panel-text standard) instead of a second line of prose beside it.
+    local TIP_WHAT =
+        'Keeps chosen items topped up from the Ephemeral Box.\n\n'
+     .. 'Near a box it counts what you already have across Inventory, Mog Satchel,\n'
+     .. 'Sack and Case, then fetches only the shortfall -- never more than the box\n'
+     .. 'holds, and never more than your Inventory has room for.\n'
+     .. 'Box counts are read once and then tracked by arithmetic, so standing here\n'
+     .. 'crafting costs no server traffic.';
+    if _usok then uistyle.helpLabel(imgui, 'E-Box Restock', TIP_WHAT, COL_HEADER);
+    else imgui.TextColored(COL_HEADER, 'E-Box Restock'); end
 
     if not cwOK() then
         imgui.Separator();
@@ -176,8 +259,7 @@ function M.render(deps, availW)
 
     -- Master ON/OFF pill (the craftbar switch, like ammoui).
     local master = (rw.master == true);
-    imgui.TextColored(COL_TEXT, 'E-Box Restock:');
-    imgui.SameLine(0, 6);
+    imgui.SameLine(0, 10);
     local cbok, craftbar = pcall(require, 'dlac\\ui\\craftbar');
     local pill = (cbok and type(craftbar) == 'table' and type(craftbar.onOffSwitch) == 'function')
         and craftbar.onOffSwitch or nil;
@@ -213,10 +295,10 @@ function M.render(deps, availW)
         if e.scope == 'job' and e.shadow ~= nil then shadowed[e.id] = true; end
     end
     for _, e in ipairs(rw.character) do charTgt[e.id] = e.target; end
-    local onHand = fieldCounts();
+    local onHand, _onPer, boxed = bagScan();
     local ctx = {
         freeSlots = freeInvSlots(),
-        onHand  = function(id) return onHand[id] or 0; end,
+        onHand  = function(id) return stockOf(onHand, boxed, id); end,
         inBox   = function(id) return ec.boxCount(id); end,
         stackOf = stackOf,
     };
@@ -227,7 +309,11 @@ function M.render(deps, availW)
     if master then
         dist = ec.boxDistance();
         nearOK = (dist ~= nil and dist <= ec.BOX_RANGE);
-        if nearOK then ec.ensureCategories(rw.categoriesOf(entries), 25); end
+        -- VERIFY, not poll: this sends only while a tracked category is unknown
+        -- or something dirtied it (a refused withdraw, any `!box ...`, zoning).
+        -- Once counted, standing at the box is free -- calling it every frame is
+        -- a table walk. See feature/eboxclient's header for the whole model.
+        if nearOK then ec.verifyCategories(rw.categoriesOf(entries)); end
         if ec.lockedReason == 'locked' then
             imgui.TextColored(COL_DIM, 'E-Box: '
                 .. ((ec.lockedMsg ~= nil and ec.lockedMsg ~= '') and esc(ec.lockedMsg) or 'not unlocked yet'));
@@ -243,6 +329,44 @@ function M.render(deps, availW)
         if imgui.IsItemHovered() then imgui.SetTooltip('Force a fresh box scan + count refresh now.'); end
     else
         imgui.TextColored(COL_DIM, 'OFF -- turn on to track and fetch. Lists below stay editable.');
+    end
+
+    -- Fetch all, HERE -- directly under the switch, so opening the add-picker
+    -- below can never push the button that actually does the work off-screen
+    -- (Henrik, v2 grill B5). Its explanation is in the hover, not on the panel.
+    local plan = rw.plan(entries, ctx);
+    do
+        local busy = ec.isBusy();
+        local canAll = master and nearOK and (not busy) and #plan.pulls > 0;
+        local offCol = (not nearOK) and BTN_RED_OFF or BTN_GREY_OFF;
+        if canAll then
+            if imgui.Button('Fetch all##rsall', { 0, 24 }) then ec.withdrawBatch(plan.pulls); end
+        else
+            imgui.PushStyleColor(ImGuiCol_Button, offCol);
+            imgui.PushStyleColor(ImGuiCol_ButtonHovered, offCol);
+            imgui.PushStyleColor(ImGuiCol_ButtonActive, offCol);
+            imgui.Button((busy and 'Fetching...' or 'Fetch all') .. '##rsall', { 0, 24 });
+            imgui.PopStyleColor(3);
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Fetch every tracked item\'s shortfall in one go.\n'
+                .. 'Never withdraws more than your Inventory can hold, so nothing is\n'
+                .. 'ever dropped and lost; anything that does not fit is reported and\n'
+                .. 'waits for you to free a slot.');
+        end
+        if master and nearOK then
+            imgui.SameLine(0, 10);
+            local nFetch, nSlots = #plan.fetches, 0;
+            for _, f in ipairs(plan.fetches) do nSlots = nSlots + f.slots; end
+            local line = string.format('%d free Inventory slots -- this fetches %d item%s (%d slot%s)',
+                ctx.freeSlots, nFetch, nFetch == 1 and '' or 's', nSlots, nSlots == 1 and '' or 's');
+            if #plan.remainder > 0 then line = line .. string.format('; %d deferred (free slots, then re-click)', #plan.remainder); end
+            imgui.TextColored(COL_DIM, line);
+        end
+        if ec.status ~= nil and (os.clock() - (ec.statusAt or 0)) < 8 then
+            imgui.Dummy({ 0, 0 }); imgui.SameLine(NAME_X);
+            imgui.TextColored(ec.statusErr and COL_ERR or COL_GREEN, 'E-Box: ' .. esc(ec.status));
+        end
     end
 
     -- Fetch a single item up to its effective target (planner-clamped).
@@ -262,7 +386,7 @@ function M.render(deps, availW)
         imgui.Dummy({ 0, 0 }); imgui.SameLine(NAME_X);
         local rec = (deps ~= nil and type(deps.lookupById) == 'function') and deps.lookupById(e.id) or nil;
         if deps ~= nil and type(deps.renderIcon) == 'function' then deps.renderIcon(e.id, 18); end
-        local have = onHand[e.id] or 0;
+        local have = stockOf(onHand, boxed, e.id);
         local tgt = effT[e.id] or e.target;
         imgui.TextColored((have >= tgt) and COL_TEXT or COL_GOLD, esc(clip(e.name, NAME_MAX)));
         if imgui.IsItemHovered() then
@@ -275,7 +399,17 @@ function M.render(deps, availW)
             imgui.SameLine(0, 6); imgui.TextColored(COL_DIM, string.format('(overrides %d)', charTgt[e.id]));
         end
         imgui.SameLine(HAVE_X);
-        imgui.TextColored((have >= tgt) and COL_DIM or COL_ERR, 'have x' .. tostring(have));
+        local bx = boxed[e.id];
+        imgui.TextColored((have >= tgt) and COL_DIM or COL_ERR,
+            'have x' .. tostring(have) .. ((bx ~= nil) and '*' or ''));
+        if bx ~= nil and imgui.IsItemHovered() then
+            -- The star, explained: most of that count is not loose ammo, and you
+            -- cannot shoot it until you open one.
+            imgui.SetTooltip(string.format(
+                '%d loose, plus %d %s worth %d more.\nRestock counts them so it stops fetching'
+                .. ' what you already own --\nbut you must open one before you can use it.',
+                onHand[e.id] or 0, bx.n, esc(bx.name), bx.qty));
+        end
         imgui.SameLine(BOX_X);
         local fetched = (select(1, ec.categoryCounts(e.ahCat)) ~= nil);
         local box = ec.boxCount(e.id);
@@ -327,7 +461,7 @@ function M.render(deps, availW)
                 or ('+ Add to ' .. tostring(job or '?') .. '##rsaddj');
             if imgui.SmallButton(addLabel) then
                 _add = { scope = scope, job = (scope == 'job') and job or nil };
-                _addBuf[1] = ''; _addLast = nil; _addAt = 0;
+                resetSearch();   -- a fresh question: never reopen onto old hits
             end
         end
     end
@@ -345,79 +479,87 @@ function M.render(deps, availW)
             and 'Add to Always (every job):' or ('Add to ' .. tostring(_add.job or '?') .. ':'));
         imgui.SameLine(0, 8);
         if imgui.SmallButton('close##rsaddclose') then closeAdd(); end
+        -- closeAdd() nils _add, and everything below dereferences it. This block
+        -- is the last thing render draws, so bail out rather than nest the rest.
+        -- (Anything appended to render() after this point must move ABOVE it.)
+        if _add == nil then return; end
         if not nearOK then
             imgui.TextColored(COL_DIM, 'Stand near an Ephemeral Box to search its contents.');
         else
             imgui.PushItemWidth(260);
             imgui.InputText('##rssearch', _addBuf, 64);
             imgui.PopItemWidth();
-            if imgui.IsItemHovered() then imgui.SetTooltip('Type part of an item name to search the box.'); end
-            local buf = _addBuf[1] or '';
-            if buf ~= _addLast then
-                if _addAt == 0 then _addAt = os.clock(); end
-                if (os.clock() - _addAt) >= 0.3 then
-                    _addLast = buf; _addAt = 0;
-                    if #buf > 0 then ec.search(buf); end
-                end
-            else
-                _addAt = 0;
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Part of an item name. Nothing is sent until you click Search.');
             end
-            local res = ec.searchResults;
-            if type(res) == 'table' and #res > 0 then
+            local buf = _addBuf[1] or '';
+            local searching = ec.searchBusy();
+
+            -- THE button. One click = one query; no typing ever reaches the wire,
+            -- and a refused click is visibly refused instead of silently dropped
+            -- (the old debounce marked the text as "asked" before the throttle
+            -- had accepted it, so the search never went out at all).
+            imgui.SameLine(0, GAP);
+            local canSearch = (#buf > 0) and (not searching) and ec.canQuery();
+            if offableButton((searching and 'searching...' or 'Search') .. '##rsdosearch',
+                             canSearch, BTN_GREY_OFF) then
+                ec.search(buf);
+            end
+            if imgui.IsItemHovered() then
+                if searching then imgui.SetTooltip('Waiting for the box to answer.');
+                elseif #buf == 0 then imgui.SetTooltip('Type part of an item name first.');
+                elseif not canSearch then imgui.SetTooltip('One box query at a time -- try again in a moment.');
+                else imgui.SetTooltip('Ask the box what it holds matching this name.'); end
+            end
+
+            -- Already-tracked ids in the list we are adding TO: those rows are
+            -- hidden, so searching "bolt" twice shows only what is left to add.
+            local intoList = (_add.scope == 'character') and rw.character
+                or ((_add.job ~= nil) and (rw.jobs[_add.job] or {}) or {});
+            local tracked = {};
+            for _, e in ipairs(intoList) do tracked[e.id] = true; end
+
+            -- Results answer ONE string. If the box came back for "bolt" and the
+            -- text now reads "bolts", we show nothing rather than last question's
+            -- hits (which is what made the old picker feel like it was lying).
+            local answered = (ec.searchFor ~= nil and ec.searchFor == buf);
+            local res = answered and ec.searchResults or nil;
+            if searching then
+                imgui.TextColored(COL_DIM, 'searching the box...');
+            elseif type(res) == 'table' then
+                local shown = 0;
                 for _, r in ipairs(res) do
-                    imgui.PushID('rsres_' .. tostring(r.id));
-                    imgui.Dummy({ 0, 0 }); imgui.SameLine(NAME_X);
-                    if deps ~= nil and type(deps.renderIcon) == 'function' then deps.renderIcon(r.id, 18); end
-                    imgui.TextColored(COL_TEXT, esc(clip(r.name or ('#' .. tostring(r.id)), NAME_MAX)));
-                    if imgui.IsItemHovered() and r.name ~= nil then imgui.SetTooltip(esc(r.name)); end
-                    imgui.SameLine(BOX_X);
-                    imgui.TextColored(COL_DIM, 'box x' .. tostring(r.qty or 0));
-                    imgui.SameLine(0, GAP);
-                    if imgui.SmallButton('+ track##rsadd' .. tostring(r.id)) then
-                        rw.addItem(_add.scope, _add.job, {
-                            id = r.id, name = r.name, ahCat = r.ahCat, stack = stackOf(r.id),
-                        });
-                        closeAdd();
+                    if not tracked[r.id] then
+                        shown = shown + 1;
+                        imgui.PushID('rsres_' .. tostring(r.id));
+                        imgui.Dummy({ 0, 0 }); imgui.SameLine(NAME_X);
+                        if deps ~= nil and type(deps.renderIcon) == 'function' then deps.renderIcon(r.id, 18); end
+                        imgui.TextColored(COL_TEXT, esc(clip(r.name or ('#' .. tostring(r.id)), NAME_MAX)));
+                        if imgui.IsItemHovered() and r.name ~= nil then imgui.SetTooltip(esc(r.name)); end
+                        imgui.SameLine(BOX_X);
+                        imgui.TextColored(COL_DIM, 'box x' .. tostring(r.qty or 0));
+                        imgui.SameLine(0, GAP);
+                        -- Adding does NOT close the picker: you usually add several
+                        -- (every bolt) from one search. The row simply disappears.
+                        if imgui.SmallButton('+ track##rsadd' .. tostring(r.id)) then
+                            rw.addItem(_add.scope, _add.job, {
+                                id = r.id, name = r.name, ahCat = r.ahCat, stack = stackOf(r.id),
+                            });
+                        end
+                        imgui.PopID();
                     end
-                    imgui.PopID();
+                end
+                if shown == 0 then
+                    imgui.TextColored(COL_DIM, (#res > 0)
+                        and 'every match is already on this list.'
+                        or  'no matches in the box (try a shorter name).');
                 end
             elseif #buf > 0 then
-                imgui.TextColored(COL_DIM, 'no matches in the box (type more, or it holds none).');
+                imgui.TextColored(COL_DIM, 'press Search to look in the box.');
             end
         end
     end
 
-    -- Fetch all + footer.
-    imgui.Separator();
-    do
-        local plan = rw.plan(entries, ctx);
-        local busy = ec.isBusy();
-        local canAll = master and nearOK and (not busy) and #plan.pulls > 0;
-        local offCol = (not nearOK) and BTN_RED_OFF or BTN_GREY_OFF;
-        if canAll then
-            if imgui.Button('Fetch all##rsall', { 0, 24 }) then ec.withdrawBatch(plan.pulls); end
-        else
-            imgui.PushStyleColor(ImGuiCol_Button, offCol);
-            imgui.PushStyleColor(ImGuiCol_ButtonHovered, offCol);
-            imgui.PushStyleColor(ImGuiCol_ButtonActive, offCol);
-            imgui.Button((busy and 'Fetching...' or 'Fetch all') .. '##rsall', { 0, 24 });
-            imgui.PopStyleColor(3);
-        end
-        imgui.SameLine(0, 10);
-        if master and nearOK then
-            local nFetch, nSlots = #plan.fetches, 0;
-            for _, f in ipairs(plan.fetches) do nSlots = nSlots + f.slots; end
-            local line = string.format('%d free Inventory slots -- this fetches %d item%s (%d slot%s)',
-                ctx.freeSlots, nFetch, nFetch == 1 and '' or 's', nSlots, nSlots == 1 and '' or 's');
-            if #plan.remainder > 0 then line = line .. string.format('; %d deferred (free slots, then re-click)', #plan.remainder); end
-            imgui.TextColored(COL_DIM, line);
-        end
-        if ec.status ~= nil and (os.clock() - (ec.statusAt or 0)) < 8 then
-            imgui.Dummy({ 0, 0 }); imgui.SameLine(NAME_X);
-            imgui.TextColored(ec.statusErr and COL_ERR or COL_GREEN, 'E-Box: ' .. esc(ec.status));
-        end
-    end
-    imgui.TextColored(COL_DIM, 'Never withdraws more than your Inventory can hold -- nothing is lost.');
 end
 
 -- ---------------------------------------------------------------------------
@@ -430,23 +572,74 @@ end
 -- floatgear pattern) -- deps is gearui's table, for the current job.
 -- ---------------------------------------------------------------------------
 local _nudgeOpen = { true };
+local _redArmAt = 0;     -- arm-then-confirm clock for the deposit icon
+local RED_ARM   = 3;     -- seconds an armed deposit stays armed
+local NUDGE_SZ  = 40;
+local TIP_MAX   = 12;    -- rows before a tooltip starts saying "+N more"
+
+local function openPanel()
+    pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl restock'); end);
+end
+
+-- One icon button. A missing PNG falls back to a labelled button -- an asset
+-- that failed to load must never leave the surface unclickable.
+local function iconButton(tex, fallback, id)
+    local clicked = false;
+    imgui.PushID(id);
+    local h = _ftok and filetex.handle(tex) or nil;
+    if h ~= nil then
+        pcall(function() clicked = imgui.ImageButton(h, { NUDGE_SZ, NUDGE_SZ }); end);
+    else
+        clicked = imgui.Button(fallback, { NUDGE_SZ + 8, NUDGE_SZ });
+    end
+    local right   = imgui.IsItemClicked(1);
+    local hovered = imgui.IsItemHovered();
+    imgui.PopID();
+    return clicked, right, hovered;
+end
+
 function M.nudge(deps)
-    if not _rwok or not _ecok then return; end
+    -- Every early return DISARMS the deposit icon. The arm is a 3s timer that is
+    -- otherwise only cleared by a not-hovered frame inside the drawing block --
+    -- so arming it, then stepping out of range (or toggling the nudge off) and
+    -- back within 3s, would leave a single click firing `!box store`. That guard
+    -- is the only thing between a stray click and depositing everything you carry.
+    if not _rwok or not _ecok then _redArmAt = 0; return; end
     rw.loadState();
-    if not (rw.master and rw.showNudge) then return; end
-    if not cwOK() then return; end
+    if not (rw.master and rw.showNudge) then _redArmAt = 0; return; end
+    if not cwOK() then _redArmAt = 0; return; end
     local dist = ec.boxDistance();
-    if dist == nil or dist > ec.BOX_RANGE then return; end        -- only near a box
+    if dist == nil or dist > ec.BOX_RANGE then _redArmAt = 0; return; end   -- only near a box
     local job = (deps ~= nil and type(deps.playerJob) == 'function') and deps.playerJob() or nil;
     local entries = rw.effectiveList(job);
-    ec.ensureCategories(rw.categoriesOf(entries), 25);
-    local onHand = fieldCounts();
-    local ctx = { freeSlots = freeInvSlots(),
-        onHand  = function(id) return onHand[id] or 0; end,
-        inBox   = function(id) return ec.boxCount(id); end,
-        stackOf = stackOf };
-    local plan = rw.plan(entries, ctx);
-    if rw.onlyWhenNeeded and plan.badge == 0 then return; end     -- quiet mode: hide when nothing
+    ec.verifyCategories(rw.categoriesOf(entries));
+
+    local all, per, boxed = bagScan();
+    local free = freeInvSlots();
+    local function invOf(id)   local p = per[id]; return (p ~= nil and p[0]) or 0; end
+    local function otherOf(id) return math.max(0, (all[id] or 0) - invOf(id)); end
+    local function inBox(id)   return ec.boxCount(id); end
+
+    -- GREEN: on-hand = every field bag (a Mog Case copy counts, which is right)
+    -- PLUS what your quivers/pouches hold, so it stops offering to fetch bolts
+    -- you are already carrying 1188 of. Yellow deliberately does NOT count them:
+    -- a quiver is not ammo in your Inventory, and the fix for that is to open it.
+    local plan = rw.plan(entries, { freeSlots = free,
+        onHand = function(id) return stockOf(all, boxed, id); end, inBox = inBox, stackOf = stackOf });
+
+    -- YELLOW: on-hand = Inventory ONLY. Shown only when that makes a DIFFERENT
+    -- plan from green's -- i.e. something you own is sitting in another field
+    -- bag while Inventory is short. Equal plans would mean a second icon that
+    -- does the first icon's job.
+    local need  = rw.otherBagNeed(entries, { inv = invOf, other = otherOf });
+    local yplan = (#need > 0)
+        and rw.plan(entries, { freeSlots = free, onHand = invOf, inBox = inBox, stackOf = stackOf })
+        or nil;
+
+    -- "Only when needed" governs the GREEN crate. The deposit icon ignores it:
+    -- Henrik's rule is that it is always there near a box, and there is nothing
+    -- to detect -- we never track whether you have anything worth storing.
+    local showGreen = not (rw.onlyWhenNeeded and plan.badge == 0);
 
     local FL = (ImGuiWindowFlags_NoTitleBar or 0) + (ImGuiWindowFlags_NoResize or 0)
              + (ImGuiWindowFlags_NoScrollbar or 0) + (ImGuiWindowFlags_NoCollapse or 0)
@@ -456,48 +649,123 @@ function M.nudge(deps)
     _nudgeOpen[1] = true;   -- forced-true table (floatgear's shape); no title bar = no close
     if imgui.Begin('##dlac_restock_nudge', _nudgeOpen, FL) then
         local busy = ec.isBusy();
-        local canFetch = (#plan.pulls > 0) and not busy;
-        local clicked, SZ = false, 40;
-        local h = _ftok and filetex.handle('ebox') or nil;
-        if h ~= nil then
-            pcall(function() clicked = imgui.ImageButton(h, { SZ, SZ }); end);
-        else
-            clicked = imgui.Button('E-Box##rsnudge', { SZ + 8, SZ });   -- fallback if the texture is missing
-        end
-        local rightClicked = imgui.IsItemClicked(1);
-        local hovered = imgui.IsItemHovered();
-        if plan.badge > 0 then
-            imgui.SameLine(0, 6);
-            imgui.TextColored(canFetch and COL_GOLD or COL_DIM, 'x' .. tostring(plan.badge));
-        end
-        if clicked and canFetch then ec.withdrawBatch(plan.pulls); end
-        if rightClicked then
-            pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl restock'); end);
-        end
-        if hovered then
-            imgui.BeginTooltip();
-            imgui.TextColored(COL_HEADER, 'E-Box Restock');
-            if #plan.fetches == 0 then
-                imgui.TextColored(COL_DIM, (plan.badge > 0) and 'Inventory full -- free a slot.' or 'Nothing to fetch right now.');
-            else
-                imgui.TextColored(COL_TEXT, 'Left-click fetches:');
-                local shown = 0;
-                for _, f in ipairs(plan.fetches) do
-                    if shown < 12 then
-                        imgui.TextColored(COL_TEXT, string.format('   %s  x%d', esc(f.name or ('#' .. tostring(f.id))), f.qty));
-                        shown = shown + 1;
+
+        if showGreen then
+            local canFetch = (#plan.pulls > 0) and not busy;
+            local clicked, rightClicked, hovered = iconButton('ebox', 'E-Box', 'rsnudge_green');
+            if plan.badge > 0 then
+                imgui.SameLine(0, 6);
+                imgui.TextColored(canFetch and COL_GOLD or COL_DIM, 'x' .. tostring(plan.badge));
+            end
+            if clicked and canFetch then ec.withdrawBatch(plan.pulls); end
+            if rightClicked then openPanel(); end
+            if hovered then
+                imgui.BeginTooltip();
+                imgui.TextColored(COL_HEADER, 'E-Box Restock');
+                if #plan.fetches == 0 then
+                    imgui.TextColored(COL_DIM, (plan.badge > 0) and 'Inventory full -- free a slot.' or 'Nothing to fetch right now.');
+                else
+                    imgui.TextColored(COL_TEXT, 'Left-click fetches:');
+                    local shown = 0;
+                    for _, f in ipairs(plan.fetches) do
+                        if shown < TIP_MAX then
+                            imgui.TextColored(COL_TEXT, string.format('   %s  x%d', esc(f.name or ('#' .. tostring(f.id))), f.qty));
+                            shown = shown + 1;
+                        end
+                    end
+                    if #plan.fetches > shown then
+                        imgui.TextColored(COL_DIM, string.format('   +%d more', #plan.fetches - shown));
                     end
                 end
-                if #plan.fetches > shown then
-                    imgui.TextColored(COL_DIM, string.format('   +%d more', #plan.fetches - shown));
+                if #plan.remainder > 0 then
+                    imgui.TextColored(COL_DIM, string.format('%d deferred -- free slots, then click again.', #plan.remainder));
                 end
+                imgui.Separator();
+                imgui.TextColored(COL_DIM, 'Left-click: fetch all    Right-click: open panel');
+                imgui.EndTooltip();
             end
-            if #plan.remainder > 0 then
-                imgui.TextColored(COL_DIM, string.format('%d deferred -- free slots, then click again.', #plan.remainder));
+        end
+
+        if yplan ~= nil then
+            local canY = (#yplan.pulls > 0) and not busy;
+            local clicked, rightClicked, hovered = iconButton('ebox_yellow', 'In bags', 'rsnudge_yellow');
+            imgui.SameLine(0, 6);
+            imgui.TextColored(canY and COL_GOLD or COL_DIM, 'x' .. tostring(#need));
+            if clicked and canY then ec.withdrawBatch(yplan.pulls); end
+            if rightClicked then openPanel(); end
+            if hovered then
+                imgui.BeginTooltip();
+                imgui.TextColored(COL_HEADER, 'You own these -- just not in Inventory');
+                -- What the click will ACTUALLY pull, per item: otherBagNeed's
+                -- `want` is the raw Inventory shortfall and knows nothing about
+                -- box stock or free slots, so quoting it would contradict the
+                -- planner's own list a few lines below in the same tooltip.
+                local yq = {};
+                for _, f in ipairs(yplan.fetches) do yq[f.id] = (yq[f.id] or 0) + f.qty; end
+                for i, n in ipairs(need) do
+                    if i <= TIP_MAX then
+                        -- ...and what clicking would leave you holding, so the
+                        -- deliberate over-draw is a number and not a warning.
+                        local got = yq[n.id] or 0;
+                        imgui.TextColored(COL_TEXT, string.format('   %s  --  x%d in Inventory, %s  ->  %s (%d total)',
+                            esc(n.name or ('#' .. tostring(n.id))), n.inv, whereText(per[n.id]),
+                            (got < n.want) and string.format('pull %d of %d', got, n.want)
+                                            or string.format('pull %d', got),
+                            n.inv + got + n.other));
+                    end
+                end
+                if #need > TIP_MAX then
+                    imgui.TextColored(COL_DIM, string.format('   +%d more', #need - TIP_MAX));
+                end
+                imgui.Separator();
+                if #yplan.fetches > 0 then
+                    imgui.TextColored(COL_TEXT, 'Left-click tops up INVENTORY from the box:');
+                    local shown = 0;
+                    for _, f in ipairs(yplan.fetches) do
+                        if shown < TIP_MAX then
+                            imgui.TextColored(COL_TEXT, string.format('   %s  x%d', esc(f.name or ('#' .. tostring(f.id))), f.qty));
+                            shown = shown + 1;
+                        end
+                    end
+                    imgui.TextColored(COL_DIM, 'The copies in your other bags stay where they are, so this');
+                    imgui.TextColored(COL_DIM, 'spends box stock and puts you over target on purpose.');
+                else
+                    imgui.TextColored(COL_DIM, busy and 'A fetch is already in flight.'
+                        or 'The box cannot add any of these right now.');
+                end
+                imgui.Separator();
+                imgui.TextColored(COL_DIM, 'Left-click: fetch to Inventory    Right-click: open panel');
+                imgui.EndTooltip();
             end
-            imgui.Separator();
-            imgui.TextColored(COL_DIM, 'Left-click: fetch all    Right-click: open panel');
-            imgui.EndTooltip();
+        end
+
+        do
+            -- DEPOSIT (always near a box). `!box store` is instant and stores
+            -- EVERY storable item in Inventory -- including what Restock just
+            -- fetched -- so it arms on the first click and fires on the second.
+            local armed = (_redArmAt > 0) and ((os.clock() - _redArmAt) < RED_ARM);
+            local clicked, _rc, hovered = iconButton('ebox_red_icon-64', 'Store', 'rsnudge_red');
+            if clicked then
+                if armed then ec.boxStore(); _redArmAt = 0; armed = false;
+                else _redArmAt = os.clock(); armed = true; end
+            elseif not hovered then
+                _redArmAt = 0; armed = false;    -- moving away disarms it
+            end
+            if armed then
+                imgui.SameLine(0, 6);
+                imgui.TextColored(COL_ERR, 'sure?');
+            end
+            if hovered then
+                imgui.BeginTooltip();
+                imgui.TextColored(COL_HEADER, 'Store All   (!box store)');
+                imgui.TextColored(COL_TEXT, 'Instantly deposits EVERY storable item in your Inventory:');
+                imgui.TextColored(COL_TEXT, 'crafting materials, food, ninjutsu tools, ammo, oils.');
+                imgui.TextColored(COL_DIM,  'That includes anything Restock just fetched.');
+                imgui.Separator();
+                imgui.TextColored(armed and COL_ERR or COL_DIM,
+                    armed and 'Armed -- click again to store.' or 'Click once to arm, again to store.');
+                imgui.EndTooltip();
+            end
         end
     end
     imgui.End();

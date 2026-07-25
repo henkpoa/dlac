@@ -44,7 +44,7 @@ end
 
 -- alias -> canonical topic. Aliases are free; a canonical topic needs a
 -- PRINTERS entry below (and an engine branch when the feature has one).
-M.ALIAS = { ls = 'ls', lockstyle = 'ls' };
+M.ALIAS = { ls = 'ls', lockstyle = 'ls', ebox = 'ebox', box = 'ebox' };
 
 -- Pure (headless-tested, DBT*): first word after 'debug' -> canonical topic
 -- or nil (unknown/absent -> the usage line).
@@ -55,7 +55,29 @@ end
 function M._usage()
     return 'debug topics: ls [seconds] (alias: lockstyle) -- snapshot, then a 30-120s capture window'
         .. ' (default 45): do the failing thing DURING it; the report lands in addons\\dlac\\debug\\'
-        .. ' as a sendable .txt when it closes. Wiring health: /dl check.';
+        .. ' as a sendable .txt when it closes.'
+        .. ' | ebox [on|off|reset] (alias: box) -- E-Box packet traffic: what was sent, when, and'
+        .. ' what caused it; on = echo every send live. Wiring health: /dl check.';
+end
+
+-- Everything after 'debug' in a '/dl debug ...' / '/dlac debug ...' command, or
+-- nil when this is not that command. '' means the bare form. Pure (DBT*).
+--
+-- This used to be `raw:match('^/dlac?%s+debug...')`, which reads like "/dl or
+-- /dlac" and is not: `c?` makes the C optional, so the literal prefix is "/dla".
+-- Plain `/dl debug <topic>` therefore never matched, and this whole addon-side
+-- router was unreachable from the prefix everyone types -- silently, because a
+-- handler that does not fire looks exactly like a command that does nothing.
+-- (Found 2026-07-25 the only way it could be: Henrik typed /dl debug ebox and
+-- nothing happened.) The two prefixes are spelled out now.
+function M._afterDebug(raw)
+    raw = tostring(raw or '');
+    for _, p in ipairs({ '^/dl%s+debug', '^/dlac%s+debug' }) do
+        if raw:match(p .. '%s*$') ~= nil then return ''; end
+        local rest = raw:match(p .. '%s+(.*)$');
+        if rest ~= nil then return rest; end
+    end
+    return nil;
 end
 
 -- The capture-window length (pure, tests DBT*): seconds arg clamped 30-120,
@@ -377,16 +399,24 @@ local PRINTERS = {
         M.requestEngine('ls ' .. dur);
         lsRun(dur);
     end,
+    -- E-Box traffic. Addon-state only (the one 0x1A4 client lives here), so no
+    -- engine request: the LAC half returns silently for any topic but 'ls'.
+    -- Required lazily, so this debug surface costs nothing until it is asked for.
+    ebox = function(rest)
+        local t = try('dlac\\feature\\eboxtrace');
+        if t == nil or type(t.run) ~= 'function' then
+            print('[dlac] eboxtrace failed to load.');
+            return;
+        end
+        t.run(rest);
+    end,
 };
 
 -- '/dl debug [topic]' in the ADDON state. e.blocked only quiets the game
 -- parser -- the LAC state's dispatch handler still sees the command (the
 -- /dl ls apply precedent) and adds its engine half for known topics.
 ashita.events.register('command', 'dlac-debug', function(e)
-    local raw = string.lower(e.command);
-    local rest = nil;
-    if raw:match('^/dlac?%s+debug%s*$') ~= nil then rest = '';
-    else rest = raw:match('^/dlac?%s+debug%s+(.*)$'); end
+    local rest = M._afterDebug(string.lower(e.command));
     if rest == nil then return; end
     -- Bare '/dl debug' (and on/off) belongs to gearui's dev-buttons toggle,
     -- the namespace's ORIGINAL tenant (07-23 collision) -- pass untouched.

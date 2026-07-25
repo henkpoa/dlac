@@ -227,7 +227,7 @@ end)();
                    'groupsmodel','jobgate','modeslibrary','ownedcache','profileexport','profilesets','setimport',
                    'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
     local FEATURE = { 'ammowatch','arbwatch','augments','check','chocowatch','craftwatch','debug','digcalc','digrank',
-                      'eboxammo','eboxclient','fishcalc','fishwatch','gamemode','helmwatch','idleexcl','location','lockstyle','lookpreview',
+                      'eboxammo','eboxclient','eboxtrace','fishcalc','fishwatch','gamemode','helmwatch','idleexcl','location','lockstyle','lookpreview',
                       'macrobook','meritwatch','mpbands','pinwatch','restockwatch','synthrun','useitem','vanamoon' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
 
@@ -8850,7 +8850,11 @@ end)();
         ec._onPacket(pk({ [0x04] = 3, [0x05] = 2, [0x06] = 1 })) == true and ec.isBusy() == true, true);
     check('EBC6c second ACK completes the batch (busy clears)',
         ec._onPacket(pk({ [0x04] = 3, [0x05] = 2, [0x06] = 1 })) == true and ec.isBusy() == false, true);
-    check('EBC6d completing a batch stales the counts (the box changed)', ec.categoryFresh(15, 20), false);
+    -- v2 (2026-07-25): completing a batch NO LONGER re-counts. We debited what we
+    -- asked for at send time, so re-asking would be exactly the poll that model
+    -- deleted. Only a REFUSAL (below, EBC13) says our number was wrong.
+    check('EBC6d a completed batch leaves the counts believed (arithmetic did it)',
+        ec.categoryFresh(15, 20), true);
     check('EBC6e ACK with nothing in flight is not ours',
         ec._onPacket(pk({ [0x04] = 3, [0x05] = 2, [0x06] = 1 })), false);
     ec._beginBatch(1);
@@ -8888,6 +8892,415 @@ end)();
     check('EBC10 box range is FIELD-PINNED at 5 yalms', ec.BOX_RANGE, 5);
     check('EBC10b boxDistance headless -> nil, nearBox -> false',
         ec.boxDistance() == nil and ec.nearBox() == false, true);
+
+    -- EBC11-16. THE v2 MODEL (grill 2026-07-25, docs/design/ebox-restock-v2-grill-
+    -- 2026-07-25.md): the box is a number we already know. Verify once, DEBIT our
+    -- own withdraws, and re-count only when something we cannot see changed it --
+    -- so crafting next to a box costs zero packets.
+    local function ecCount(cat, id, qty)          -- commit one category by hand
+        ec._beginRequest('category', cat);
+        ec._onPacket(pk({ [0x04] = 0 }));
+        ec._onPacket(pk({ [0x04] = 1, [0x08] = id % 256, [0x09] = math.floor(id / 256),
+                          [0x0A] = cat, [0x0C] = qty }));
+        ec._onPacket(pk({ [0x04] = 2, [0x05] = 0 }));
+    end
+
+    ecCount(15, 21302, 40);
+    check('EBC11 a counted category is believed at ANY window (no clock)',
+        ec.categoryFresh(15, math.huge), true);
+    ec.markDirty(15);
+    check('EBC11b a dirty category is fresh at NO window', ec.categoryFresh(15, math.huge), false);
+    ecCount(15, 21302, 40);
+    check('EBC11c re-counting believes it again', ec.categoryFresh(15, math.huge), true);
+    ec.markDirty(99);
+    check('EBC11d marking a category we never counted is a no-op (already unfresh)',
+        ec.dirty[99] == nil and ec.categoryFresh(99, math.huge) == false, true);
+    ec.markAllDirty();
+    check('EBC11e markAllDirty stops believing every counted category',
+        ec.categoryFresh(15, math.huge) == false and ec.categoryFresh(6, math.huge) == false, true);
+    check('EBC11f verifyCategories is just "no clock" -- headless it still refuses',
+        ec.verifyCategories({ 15 }), false);
+    check('EBC11g categoriesVerified is false while anything is dirty',
+        ec.categoriesVerified({ 15, 6 }), false);
+
+    -- the debit: we sent it, so we know what is left. No packet involved.
+    ecCount(15, 21302, 40);
+    ec._debit(21302, 12);
+    check('EBC12 debit subtracts what we asked for (40 - 12)', ec.boxCount(21302, 15), 28);
+    check('EBC12b the flat merged view follows the debit', ec.boxCount(21302), 28);
+    ec._debit(21302, 999);
+    check('EBC12c debit floors at zero, never negative', ec.boxCount(21302), 0);
+    check('EBC12d debiting an item the box never held is a no-op', ec._debit(4242, 5), nil);
+    check('EBC12e a debit does NOT dirty the category (that is the whole point)',
+        ec.categoryFresh(15, math.huge), true);
+
+    -- the ONE repair arithmetic cannot do itself: the server refused us
+    ecCount(15, 21302, 40);
+    ec._beginBatch(1, { [15] = true });
+    ec._onPacket(pk(msgAt({ [0x04] = 3, [0x05] = 2, [0x06] = 0 }, 0x10, 'Inventory full.')));
+    check('EBC13 a REFUSED withdraw stops us believing exactly that category',
+        ec.categoryFresh(15, math.huge) == false and ec.statusErr == true, true);
+    ecCount(15, 21302, 40);
+    ec._beginBatch(1, { [15] = true });
+    ec._onPacket(pk({ [0x04] = 3, [0x05] = 2, [0x06] = 1 }));
+    check('EBC13b a SUCCESSFUL withdraw leaves the belief intact',
+        ec.categoryFresh(15, math.huge), true);
+    ec.rescan();
+    check('EBC13c Rescan is the manual repair -- nothing believed',
+        ec.categoryFresh(15, math.huge), false);
+
+    -- search: one question at a time, and the answer knows what it answers
+    ec.clearSearch();
+    check('EBC14 clearSearch forgets the hits AND the question',
+        ec.searchResults == nil and ec.searchFor == nil, true);
+    ec._beginRequest('search');
+    check('EBC14b searchBusy while our search is on the wire', ec.searchBusy(), true);
+    ec._onPacket(pk({ [0x04] = 0 }));
+    ec._onPacket(pk(msgAt({ [0x04] = 1, [0x08] = 0x36, [0x09] = 0x53, [0x0A] = 15, [0x0C] = 5 }, 0x10, 'Bronze Bullet')));
+    ec._onPacket(pk({ [0x04] = 2, [0x05] = 0 }));
+    check('EBC14c the answer clears searchBusy',
+        ec.searchBusy() == false and #ec.searchResults == 1, true);
+    check('EBC14d a category request is not a search', (function()
+        ec._beginRequest('category', 15); return ec.searchBusy();
+    end)(), false);
+
+    -- headless gates for the new doors
+    check('EBC15 boxStore refuses headless (the CW gate, before any command)', ec.boxStore(), false);
+    check('EBC15b canQuery is public and headless-false', ec.canQuery(), false);
+
+    -- the lost-answer timeout: ONE dropped reply must not wedge every future
+    -- query. Under the dirty-only discipline there is no poll to paper over it.
+    local ecNow = 5000;
+    ec._now = function() return ecNow; end
+    ec._beginRequest('search');
+    check('EBC16 a request in flight holds the one-at-a-time slot', ec.searchBusy(), true);
+    ecNow = ecNow + ec.PEND_HOLD + 1;
+    check('EBC16b PEND_HOLD releases a request whose answer never came',
+        ec.searchBusy(), false);
+
+    -- EBC17-22. What the timeout in EBC16 costs if left naive, and the three
+    -- other holes a poll used to hide. All five found by the adversarial review
+    -- of this build (2026-07-25) -- every one of them permanent under the
+    -- dirty-only discipline, because there is no longer a clock to age it out.
+
+    -- A late answer the timeout gave up on must NOT commit under whichever
+    -- request took the slot next. The wire has no request id; a row's own ahCat
+    -- is the only correlator there is.
+    ec.cat, ec.counts, ec.dirty = {}, {}, {};
+    ecNow = ecNow + 100;
+    ecCount(15, 21302, 40);
+    ec._beginRequest('category', 6);        -- a NEW request takes the slot...
+    ec._onPacket(pk({ [0x04] = 0 }));
+    ec._onPacket(pk({ [0x04] = 1, [0x08] = 0x36, [0x09] = 0x53, [0x0A] = 15, [0x0C] = 99 }));  -- ...cat-15 rows arrive
+    check('EBC17 a stream whose rows name another category is consumed, NOT committed',
+        ec._onPacket(pk({ [0x04] = 2, [0x05] = 0 })) == true
+        and ec.cat[6] == nil and ec.categoryFresh(6, math.huge) == false, true);
+    check('EBC17b ...and the category those rows really belong to is left alone',
+        ec.boxCount(21302, 15), 40);
+    ec._beginRequest('category', 6);
+    ec._onPacket(pk({ [0x04] = 0 }));
+    ec._onPacket(pk({ [0x04] = 1, [0x08] = 0x34, [0x09] = 0x10, [0x0A] = 0, [0x0C] = 30 }));
+    ec._onPacket(pk({ [0x04] = 2, [0x05] = 0 }));
+    check('EBC17c a row that names no category is still accepted (never re-ask forever)',
+        ec.boxCount(4148, 6), 30);
+
+    -- A long list streams for a while: each row is progress, so the deadline
+    -- moves. Otherwise a big category is abandoned MID-stream, forever.
+    ec._beginRequest('category', 15);
+    ecNow = ecNow + (ec.PEND_HOLD - 2);
+    ec._onPacket(pk({ [0x04] = 1, [0x08] = 0x36, [0x09] = 0x53, [0x0A] = 15, [0x0C] = 7 }));
+    ecNow = ecNow + (ec.PEND_HOLD - 2);
+    ec.searchBusy();     -- the render thread polls: THIS is what applies the timeout
+    ec._onPacket(pk({ [0x04] = 2, [0x05] = 0 }));
+    check('EBC18 rows refresh the deadline -- a slow stream still commits',
+        ec.boxCount(21302, 15), 7);
+
+    -- A dirty mark raised while an answer is in flight must survive that
+    -- answer's commit: the server computed it BEFORE the box changed.
+    ec.dirty = {};
+    ec._beginRequest('category', 15);
+    ec._onPacket(pk({ [0x04] = 0 }));
+    ec._onPacket(pk({ [0x04] = 1, [0x08] = 0x36, [0x09] = 0x53, [0x0A] = 15, [0x0C] = 40 }));
+    ec.markAllDirty();                      -- e.g. a `!box store` lands right here
+    ec._onPacket(pk({ [0x04] = 2, [0x05] = 0 }));
+    check('EBC19 a mark landing mid-flight is not wiped by the pre-change answer',
+        ec.categoryFresh(15, math.huge), false);
+
+    -- EBC24. THE PARTY LINE. trove speaks the same protocol on the same opcode,
+    -- and the wire has no request id -- so a foreign stream landing while our
+    -- GET_CATEGORY is out is consumed as OUR answer. A zero-match search in
+    -- trove's Box tab therefore writes "this category is empty" over real counts,
+    -- and the ahCat guard cannot see it: an empty stream has no rows to check.
+    -- It cannot be PREVENTED. It has to be self-correcting, because v2 deleted
+    -- the clock that used to age a wrong number out.
+    ec.cat, ec.counts, ec.dirty = {}, {}, {};
+    ecNow = ecNow + 100;
+    ecCount(15, 21302, 40);
+    ec._beginRequest('category', 15);               -- our verify goes out...
+    ec._onPacket(pk({ [0x04] = 0 }));               -- ...and a FOREIGN empty stream lands
+    ec._onPacket(pk({ [0x04] = 2, [0x05] = 0 }));
+    check('EBC24 a zero-row stream does commit -- we cannot tell it from our own',
+        ec.boxCount(21302, 15), 0);
+    check('EBC24b ...but the next unsolicited stream is the TELL, and repairs it',
+        ec._onPacket(pk({ [0x04] = 0 })) == false
+        and ec.categoryFresh(15, math.huge) == false, true);
+    ec.dirty = {};
+    check('EBC24c the repair is one-shot per commit, not once per foreign packet',
+        ec._onPacket(pk({ [0x04] = 0 })) == false
+        and ec.categoryFresh(15, math.huge) == true, true);
+
+    -- ...and the interleaved case, which IS detectable: two CLEARs inside one
+    -- request means two streams, so the answer is taken but not believed.
+    ecCount(15, 21302, 40);
+    ec.dirty = {};
+    ec._beginRequest('category', 15);
+    ec._onPacket(pk({ [0x04] = 0 }));
+    ec._onPacket(pk({ [0x04] = 1, [0x08] = 0x36, [0x09] = 0x53, [0x0A] = 15, [0x0C] = 5 }));
+    ec._onPacket(pk({ [0x04] = 0 }));               -- a SECOND CLEAR: not one stream
+    ec._onPacket(pk({ [0x04] = 1, [0x08] = 0x36, [0x09] = 0x53, [0x0A] = 15, [0x0C] = 9 }));
+    ec._onPacket(pk({ [0x04] = 2, [0x05] = 0 }));
+    check('EBC24d two interleaved streams: the answer is taken but NOT believed',
+        ec.boxCount(21302, 15) == 9 and ec.categoryFresh(15, math.huge) == false, true);
+
+    -- EBC25. THE MENU RULE (Henrik, field 2026-07-25). `!box ammo` does not
+    -- withdraw -- it opens a MENU. He may browse for a minute, take one thing,
+    -- take several, or cancel. So the command dirties nothing; it ARMS, and
+    -- inventory movement inside that window is the proof. Cancel it and the
+    -- whole episode costs zero packets.
+    local ecCW3 = ec.isCW;
+    ec.isCW = function() return true; end
+    ec.lockedReason = nil;
+    ec.cat, ec.counts, ec.dirty = {}, {}, {};
+    ecNow = ecNow + 200;
+    ecCount(15, 21302, 40);
+    ec.dirty = {};
+    ec._armMenu();
+    check('EBC25 the command alone dirties NOTHING -- a menu is not a withdrawal',
+        ec.categoryFresh(15, math.huge) == true and ec.menuOpen() == true, true);
+    ec.markDirty(15, 'test');
+    check('EBC25b while the menu is open we stay OFF the wire, dirty or not (its own\n'
+       .. '      list traffic would answer our request)', ec.ensureCategory(15, math.huge), false);
+    ecNow = ecNow + ec.MENU_ARM + 1;
+    check('EBC25c once the menu is forgotten, the re-count goes out',
+        ec.ensureCategory(15, math.huge), true);
+    ecCount(15, 21302, 40);
+    ec.dirty = {};
+    ec._armMenu();
+    check('EBC25d items actually moving is the proof we act on',
+        ec._onInventoryChange() == true and ec.categoryFresh(15, math.huge) == false, true);
+    -- One withdrawal is SEVERAL inventory packets (field log: two marks either
+    -- side of a single "You obtain" line). A burst must read as one event --
+    -- and as exactly one, not zero: the mark still has to happen.
+    ecNow = ecNow + 100;               -- clear of the settle EBC25d opened
+    ecCount(15, 21302, 40);
+    ec.dirty = {};
+    ec._armMenu();
+    ec.traceReset();
+    ec._onInventoryChange();
+    ec._onInventoryChange();
+    ec._onInventoryChange();
+    local ecMarks = 0;
+    for _, e in ipairs(ec.trace) do
+        if e.what:find('items moved after', 1, true) ~= nil then ecMarks = ecMarks + 1; end
+    end
+    check('EBC25d2 a burst of inventory packets is ONE mark, not one per packet',
+        ecMarks == 1 and ec.categoryFresh(15, math.huge) == false, true);
+    ecCount(15, 21302, 40);
+    ec.dirty = {};
+    ec._armMenu();
+    ecNow = ecNow + ec.MENU_ARM + 1;
+    check('EBC25e a CANCELLED menu just expires, having dirtied nothing',
+        ec.categoryFresh(15, math.huge) == true and ec.menuOpen() == false, true);
+    check('EBC25f an inventory change with no menu armed is not our business at all',
+        ec._onInventoryChange() == false and ec.categoryFresh(15, math.huge) == true, true);
+    ec._armMenu();
+    ec.rescan();
+    check('EBC25g Rescan outranks an open menu', ec.menuOpen(), false);
+
+    -- EBC26. The party-line repair, BRAKED. The field log showed it firing about
+    -- once a second in a loop: repair -> re-count -> overlapped again -> repair.
+    -- A menu being open explains the traffic, and outside that one repair per
+    -- REPAIR_GAP is enough -- a repair loop is the spam this design exists to avoid.
+    ec.cat, ec.counts, ec.dirty = {}, {}, {};
+    ecNow = ecNow + 200;
+    ecCount(15, 21302, 40);
+    ec._armMenu();
+    ec._onPacket(pk({ [0x04] = 0 }));                  -- foreign stream, menu open
+    check('EBC26 no repair while a menu is open: that traffic is the menu, not a thief',
+        ec.categoryFresh(15, math.huge), true);
+    ecNow = ecNow + ec.MENU_ARM + 1;
+    ecCount(15, 21302, 40);
+    ec.dirty = {};
+    ec._onPacket(pk({ [0x04] = 0 }));
+    check('EBC26b outside a menu, a foreign stream repairs the commit it may have stolen',
+        ec.categoryFresh(15, math.huge), false);
+    ecCount(15, 21302, 40);
+    ec.dirty = {};
+    ec._onPacket(pk({ [0x04] = 0 }));
+    check('EBC26c ...but at most once per REPAIR_GAP', ec.categoryFresh(15, math.huge), true);
+    ecNow = ecNow + ec.REPAIR_GAP + 1;
+    ecCount(15, 21302, 40);
+    ec.dirty = {};
+    ec._onPacket(pk({ [0x04] = 0 }));
+    check('EBC26d after the gap it protects again', ec.categoryFresh(15, math.huge), false);
+    ec.traceReset();
+    ec._onPacket(pk({ [0x04] = 0 }));
+    ec._onPacket(pk({ [0x04] = 1, [0x08] = 0x36, [0x09] = 0x53, [0x0A] = 15, [0x0C] = 5 }));
+    ec._onPacket(pk({ [0x04] = 2, [0x05] = 0 }));
+    check('EBC26e a foreign stream is NAMED in the log -- rows + source, so the next\n'
+       .. '      field run can identify whose it is', (function()
+            for _, e in ipairs(ec.trace) do
+                if e.what:find('^foreign list ended: rows=1 source=0') ~= nil then return true; end
+            end
+            return false;
+        end)(), true);
+    ec.isCW = ecCW3;
+
+    -- The gates, with the CW door propped open. Headless has no AshitaCore, so
+    -- the send is a guarded no-op -- these pin the DECISION, not the wire.
+    local ecCW = ec.isCW;
+    ec.isCW = function() return true; end
+    ec.lockedReason = nil;
+    ec.cat, ec.counts, ec.dirty = {}, {}, {};
+    ecNow = ecNow + 100;
+    ecCount(15, 21302, 40);
+    ecNow = ecNow + 100;
+    check('EBC20 a believed category is not re-asked', ec.ensureCategory(15, math.huge), false);
+    ec.markAllDirty(ec.SETTLE);
+    check('EBC20b dirty, but the settle window holds the re-count back until the\n'
+       .. '      `!box ...` we just saw can reach the server',
+        ec.ensureCategory(15, math.huge), false);
+    ecNow = ecNow + ec.SETTLE + 0.1;
+    check('EBC20c once it has had time to land, the re-count goes out',
+        ec.ensureCategory(15, math.huge), true);
+    ecCount(15, 21302, 40);
+    ecNow = ecNow + 100;
+    ec.markAllDirty(ec.SETTLE);
+    ec.rescan();
+    check('EBC20d Rescan outranks the settle window (a click means count NOW)',
+        ec.ensureCategory(15, math.huge), true);
+
+    -- The ACK is the ONLY repair for a send-time debit. If it never comes, we
+    -- must stop believing what we debited rather than keep a number we cannot
+    -- defend. (Crafting fires no withdraws, so this costs nothing there.)
+    ecCount(15, 21302, 40);
+    ec.dirty = {};
+    -- Driven through the REAL withdraw (not the _beginBatch seam): the categories
+    -- a repair dirties are the ones the send-time debit filled in, so the fill
+    -- has to be on the tested path too.
+    check('EBC21pre a real withdraw fires and debits (40 - 5)',
+        ec.withdraw(21302, 5) == true and ec.boxCount(21302, 15) == 35, true);
+    ecNow = ecNow + ec.BUSY_HOLD + 1;
+    check('EBC21 a batch that never ACKed stops believing the categories it debited',
+        ec.isBusy() == false and ec.categoryFresh(15, math.huge) == false, true);
+    ecCount(15, 21302, 40);
+    ec.dirty = {};
+    check('EBC21b withdrawBatch fires and debits the same way',
+        ec.withdrawBatch({ { id = 21302, qty = 5 } }) == 1 and ec.boxCount(21302, 15) == 35, true);
+    ecNow = ecNow + ec.BUSY_HOLD + 1;
+    check('EBC21c a lost ACK repairs what the BATCH debited',
+        ec.isBusy() == false and ec.categoryFresh(15, math.huge) == false, true);
+    ec.isCW = ecCW;
+
+    -- Source shape, because no runtime check can see this one: a local declared
+    -- AFTER its use compiles to a nil GLOBAL read, silently. M.rescan uses the
+    -- entwatch handle, so the require must come first -- it did not, and the box
+    -- re-sweep half of Rescan had never run.
+    local ecFh = io.open('feature/eboxclient.lua', 'r');
+    local ecSrc = ecFh:read('*a'); ecFh:close();
+    check('EBC22 entwatch is required BEFORE M.rescan reaches for it',
+        (ecSrc:find('local _ewok, _ew = pcall%(require') or math.huge)
+            < (ecSrc:find('function M%.rescan') or 0), true);
+
+    -- EBC23. The traffic trace (/dl debug ebox). A design whose whole claim is
+    -- "this barely sends anything" needs to be watchable, or the claim is a
+    -- hope. RECORDING is all the packet thread may do; printing is eboxtrace's.
+    ec.traceReset();
+    for i = 1, ec.TRACE_MAX + 5 do ec._trace('>', 'GET_CATEGORY cat=' .. i); end
+    check('EBC23 the ring is bounded -- a long session cannot grow it forever',
+        #ec.trace, ec.TRACE_MAX);
+    check('EBC23b the OLDEST lines fall off the front', ec.trace[1].what, 'GET_CATEGORY cat=6');
+    check('EBC23c sends are counted, and split by kind',
+        ec.stats.out == ec.TRACE_MAX + 5
+        and ec.stats.byKind.GET_CATEGORY == ec.TRACE_MAX + 5, true);
+    ec._trace('<', 'LIST cat=15 rows=3');
+    ec._trace('*', 'dirty ALL (zone-in 0x00A)');
+    check('EBC23d receives count separately; an event is neither',
+        ec.stats.inn == 1 and ec.stats.out == ec.TRACE_MAX + 5, true);
+    ec.traceReset();
+    check('EBC23e reset clears the log AND the counters',
+        #ec.trace == 0 and ec.stats.out == 0 and ec.stats.inn == 0
+        and next(ec.stats.byKind) == nil, true);
+
+    -- The PRODUCTION call sites, not just the _trace seam. Everything above
+    -- drives _trace by hand, so it pins the arithmetic and nothing else: every
+    -- M._trace in eboxclient could be deleted and this suite would still be
+    -- green. That matters more here than usual, because the readout IS the E5-2
+    -- field test -- "synth at a box, confirm zero traffic" PASSES by showing an
+    -- empty log, which is exactly what a silently dead instrument shows.
+    local function ecTraced(dir, pat)
+        for _, e in ipairs(ec.trace) do
+            if e.dir == dir and e.what:find(pat) then return true; end
+        end
+        return false;
+    end
+    local ecCW2 = ec.isCW;
+    ec.isCW = function() return true; end
+    ec.lockedReason = nil;
+    ec.cat, ec.counts, ec.dirty = {}, {}, {};
+    ecNow = ecNow + 100;
+    ec.traceReset();
+    check('EBC23f a real GET_CATEGORY goes out', ec.ensureCategory(15, math.huge), true);
+    ecCount(15, 21302, 40);          -- a real CLEAR -> ITEM -> END_LIST commit
+    ec.withdraw(21302, 5);           -- a real WITHDRAW
+    ec.markDirty(15, 'EBC23g');      -- a real dirty event
+    ec.isCW = ecCW2;
+    check('EBC23g every production trace point records: send, inbound, dirty',
+        ecTraced('>', '^GET_CATEGORY cat=15') and ecTraced('<', '^LIST cat=15')
+        and ecTraced('>', '^WITHDRAW id=21302 x5') and ecTraced('*', '^dirty cat=15')
+        and ec.stats.byKind.GET_CATEGORY == 1 and ec.stats.byKind.WITHDRAW == 1
+        and ec.stats.inn >= 1, true);
+
+    -- EBT. eboxtrace -- the readout itself. Pure over a stand-in client, so the
+    -- shape of what Henrik reads in the field is pinned without a game.
+    local et = dofile('feature/eboxtrace.lua');
+    check('EBT1 ages read as time, not float noise',
+        et._dur(0.4) .. '/' .. et._dur(12.34) .. '/' .. et._dur(124) .. '/' .. et._dur(3725),
+        '0.4s/12.3s/2m04s/1h02m');
+    check('EBT2 the argument is the SECOND word (the first is the topic name)',
+        et._word('ebox on') .. '|' .. et._word('EBOX Reset') .. '|'
+            .. et._word('ebox') .. '|' .. et._word(nil), 'on|reset||');
+
+    local etFake = {
+        _now        = function() return 1000; end,
+        BOX_RANGE   = 5,
+        busy        = false,
+        isCW        = function() return true; end,
+        boxDistance = function() return 3.25; end,
+        searchBusy  = function() return false; end,
+        cat   = { [15] = {}, [6] = {} },
+        dirty = { [6] = true },
+        stats = { out = 3, inn = 2, byKind = { GET_CATEGORY = 2, WITHDRAW = 1 },
+                  since = 940, lastOutAt = 985 },
+        trace = { { at = 985, dir = '>', what = 'GET_CATEGORY cat=15 (verify)' },
+                  { at = 986, dir = '<', what = 'LIST cat=15 rows=7' } },
+        echo  = false,
+    };
+    local etL = table.concat(et.lines(etFake), '\n');
+    check('EBT3 the headline is how much, over how long',
+        etL:find('3 packets sent, 2 received, over 1m00s', 1, true) ~= nil, true);
+    check('EBT4 split by kind, so "what is it sending" is answerable',
+        etL:find('GET_CATEGORY x2', 1, true) ~= nil and etL:find('WITHDRAW x1', 1, true) ~= nil, true);
+    check('EBT5 the gates line answers "why is it quiet"',
+        etL:find('Crystal Warrior', 1, true) ~= nil
+        and etL:find('IN RANGE', 1, true) ~= nil
+        and etL:find('last sent 15.0s ago', 1, true) ~= nil, true);
+    check('EBT6 believed vs dirty = what the next verify will spend a packet on',
+        etL:find('believed 15 | dirty, will re-count: 6', 1, true) ~= nil, true);
+    check('EBT7 the log carries age and direction',
+        etL:find('15.0s ago  > GET_CATEGORY cat=15 (verify)', 1, true) ~= nil, true);
+    check('EBT8 a client that failed to load says so rather than erroring',
+        et.lines(nil)[1]:find('failed to load', 1, true) ~= nil, true);
 
     -- RS. restockwatch -- E-Box Restock config + the two PURE cores (ADR 0016;
     -- docs/design/ebox-restock.md). No packets/engine: the union+override and the
@@ -8996,6 +9409,83 @@ end)();
         rs.setTarget('character', nil, 1, 24) and rs.character[1].target == 24, true);
     check('RS8f removeItem drops it',
         rs.removeItem('job', 'RNG', 3) and #rs.jobs.RNG == 0, true);
+
+    -- RS9. otherBagNeed -- the YELLOW icon's question (v2 grill C2): which
+    -- tracked items do you already own, but not where you can use them? It
+    -- qualifies only when Inventory alone is short AND another field bag holds
+    -- some, which is exactly when the Inventory-only plan differs from the
+    -- field-bag plan. Equal plans would mean a second icon doing the first's job.
+    local rsInv   = { [1] = 1,  [2] = 12, [3] = 0 };
+    local rsOther = { [1] = 11, [2] = 0,  [3] = 0 };
+    local rsYCtx  = { inv   = function(id) return rsInv[id]   or 0; end,
+                      other = function(id) return rsOther[id] or 0; end };
+    local rsYEnt  = { { id = 1, name = 'Grape Daifuku', target = 12 },
+                      { id = 2, name = 'Silent Oil',    target = 12 },
+                      { id = 3, name = 'Echo Drops',    target = 12 } };
+    local rsYn = rs.otherBagNeed(rsYEnt, rsYCtx);
+    check('RS9 only the item short in Inventory AND held in another bag', #rsYn, 1);
+    check('RS9b it reports where it is and what the box must cover',
+        rsYn[1].id == 1 and rsYn[1].inv == 1 and rsYn[1].other == 11 and rsYn[1].want == 11, true);
+    check('RS9c at target in Inventory -> nothing to do',
+        rs.needsOtherBag({ rsYEnt[2] }, rsYCtx), false);
+    check('RS9d short but nothing in the other bags -> the green icon covers it',
+        rs.needsOtherBag({ rsYEnt[3] }, rsYCtx), false);
+    check('RS9e the divergence itself: field-bag plan fetches nothing, Inventory-only plan fetches 11',
+        (function()
+            local box = function() return 99; end;
+            local st  = function() return 12;  end;
+            local green = rs.plan({ rsYEnt[1] }, { freeSlots = 9, inBox = box, stackOf = st,
+                onHand = function(id) return (rsInv[id] or 0) + (rsOther[id] or 0); end });
+            local yellow = rs.plan({ rsYEnt[1] }, { freeSlots = 9, inBox = box, stackOf = st,
+                onHand = function(id) return rsInv[id] or 0; end });
+            return #green.fetches == 0 and yellow.fetches[1].qty == 11;
+        end)(), true);
+    check('RS9f no ctx = no claims (never invent a reason to show the icon)',
+        #rs.otherBagNeed(rsYEnt, nil), 0);
+
+    -- AC. data/ammocontainers -- the quiver/pouch pairing (Henrik, field
+    -- 2026-07-25). `!box ammo` hands back CONTAINERS: a Blind Bolt withdrawal
+    -- arrives as a Blind Bolt Quiver, stack 12, each worth 99 bolts -- so one
+    -- Inventory slot holds 1188 and NONE of it reads as "Blind Bolt". Restock
+    -- saw on-hand 0 and kept offering to fetch more. Generated from the server's
+    -- own item scripts, because the naming is irregular ("Beetle Arrow" ->
+    -- "Beetle Quiver" drops the word, "Blind Bolt" -> "Blind Bolt Quiver"
+    -- appends it) and the catalog abbreviates the containers on top of that.
+    local ac = dofile('data/ammocontainers.lua');
+    local acN = 0; for _ in pairs(ac) do acN = acN + 1; end
+    check('AC1 the generated pairing table loads with rows', acN > 50, true);
+    check('AC2 a bolt quiver names its ammo and its multiplier',
+        ac[5334] ~= nil and ac[5334].id == 18150 and ac[5334].qty == 99, true);
+    check('AC3 an arrow quiver too -- whose name DROPS the word "Arrow"',
+        ac[4221] ~= nil and ac[4221].name == 'Beetle Quiver' and ac[4221].qty == 99, true);
+    check('AC4 bullets use pouches, and dweomer/oberon are distinct ids -- the\n'
+       .. '      oberon script header claims 5822 (dweomer\'s); item_basic.sql is the authority',
+        ac[5822] ~= nil and ac[5823] ~= nil
+        and ac[5822].id == 19198 and ac[5823].id == 19199, true);
+    check('AC5 every row is usable: real container id, real ammo id, positive qty, a name',
+        (function()
+            for cid, r in pairs(ac) do
+                if type(cid) ~= 'number' or cid <= 0 then return 'bad container id'; end
+                if type(r) ~= 'table' or (tonumber(r.id) or 0) <= 0
+                   or (tonumber(r.qty) or 0) <= 0
+                   or type(r.name) ~= 'string' or r.name == '' then
+                    return 'bad row for container ' .. tostring(cid);
+                end
+            end
+            return true;
+        end)(), true);
+
+    -- ...and the arithmetic the panel and the nudge share. Containers count
+    -- toward "do I have enough", never toward "is it in my Inventory" -- you
+    -- cannot shoot a quiver, so the yellow icon must not treat one as ammo.
+    local rui = dofile('ui/restockui.lua');
+    check('AC6 stock = loose + what the containers hold',
+        rui._stockOf({ [18150] = 12 }, { [18150] = { qty = 198, n = 2 } }, 18150), 210);
+    check('AC6b no containers -> just the loose count',
+        rui._stockOf({ [18150] = 12 }, {}, 18150), 12);
+    check('AC6c containers only -> the whole stock is boxed',
+        rui._stockOf({}, { [18150] = { qty = 1188, n = 12 } }, 18150), 1188);
+    check('AC6d nothing at all -> 0', rui._stockOf({}, {}, 18150), 0);
 
     -- level: persisted per entry (GUI sort data; the engine ignores it --
     -- the fmt-2 round-trip above pins the serializer side)
@@ -9341,6 +9831,24 @@ end)();
     check('DBT0 debug router loads headless', type(dbg), 'table');
     check('DBT1 ls is canonical', dbg._topic('ls'), 'ls');
     check('DBT2 lockstyle aliases to ls', dbg._topic('lockstyle'), 'ls');
+    check('DBT2b ebox is a topic (alias: box) -- E-Box traffic readout',
+        dbg._topic('ebox') == 'ebox' and dbg._topic('BOX') == 'ebox', true);
+
+    -- DBT2c-2h. THE PREFIX. '^/dlac?' is "/dla with an optional c", not "/dl or
+    -- /dlac" -- so `/dl debug <topic>` never reached this router at all, and a
+    -- handler that does not fire is indistinguishable from a command that does
+    -- nothing. Field-found 07-25 (`/dl debug ebox` printed nothing). Pin BOTH
+    -- prefixes, and pin that the bare/on/off forms still fall through to
+    -- gearui's dev-buttons toggle, the namespace's original tenant.
+    check('DBT2c /dl debug <topic> reaches the router', dbg._afterDebug('/dl debug ebox'), 'ebox');
+    check('DBT2d /dlac debug <topic> too', dbg._afterDebug('/dlac debug ebox'), 'ebox');
+    check('DBT2e arguments ride along', dbg._afterDebug('/dl debug ebox on'), 'ebox on');
+    check('DBT2f the bare form is "" (not nil): gearui still owns it',
+        dbg._afterDebug('/dl debug') == '' and dbg._afterDebug('/dlac debug  ') == '', true);
+    check('DBT2g another command is not ours',
+        dbg._afterDebug('/dl check') == nil and dbg._afterDebug('/dldebug ebox') == nil, true);
+    check('DBT2h and neither is a longer prefix that merely starts the same way',
+        dbg._afterDebug('/dlacx debug ebox'), nil);
     check('DBT3 case-insensitive', dbg._topic('LOCKSTYLE'), 'ls');
     check('DBT4 unknown topic is nil (usage)', dbg._topic('fish'), nil);
     check('DBT5 absent topic is nil (usage)', dbg._topic(nil), nil);

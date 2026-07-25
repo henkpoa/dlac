@@ -241,6 +241,29 @@ research already recorded. In rough priority order:
 5. **Icon polish, optional:** the four developer rows share one question mark on their
    section heading rather than each carrying one. Trivial to change if it reads wrong.
 
+## Current state (as of 2026-07-25, end of day)
+
+- **E-BOX RESTOCK v2 — BUILT + PARTLY FIELD-TESTED 2026-07-25, on `dev` only**
+  (`2026.07.25e`). The box's contents are no longer polled: they are verified once on
+  approach, **debited locally** on our own withdraws, and re-counted only on the few
+  events arithmetic cannot see. **Crafting at an E-Box now costs zero packets** (it used
+  to cost 200-300 a session). Also: an explicit **Search** button in the add-picker, a
+  three-icon nudge (fetch / other-bags / `!box store` with arm-then-confirm), quiver and
+  pouch contents counted toward tracked ammo, and **`/dl debug ebox`** — a live readout of
+  every packet sent, when, and what caused it.
+  - **Start here: [design/ebox-v2-handoff-2026-07-25.md](design/ebox-v2-handoff-2026-07-25.md)**
+    — what is verified, the five field tests still owed, and the landmines. The full
+    decision record (nine locked decisions, three adversarial review rounds, two field
+    rounds) is [design/ebox-restock-v2-grill-2026-07-25.md](design/ebox-restock-v2-grill-2026-07-25.md).
+  - Two facts that will bite anyone touching this area: **0x1A4 is a party line with no
+    request id** (trove speaks it too, so a foreign stream can be consumed as our answer —
+    it cannot be prevented, only made self-correcting), and **a `!box ...` command opens a
+    MENU rather than changing anything**, so it arms and waits for inventory movement as
+    proof instead of re-counting on a timer.
+  - **`/dl debug <topic>` had never worked from the `/dl` prefix** — the router matched
+    `'^/dlac?%s+debug'`, and `c?` makes the *C* optional, so the literal prefix was `/dla`.
+    Fixed; `/dl debug ls` works now too.
+
 ## Current state (as of 2026-07-24, end of day)
 
 - **MODE LIBRARY — BUILT 2026-07-25 (ADR 0019), awaiting Henrik's field test.**
