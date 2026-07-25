@@ -27,6 +27,17 @@ local ORDER = { 'Woodworking', 'Smithing', 'Goldsmithing', 'Clothcraft',
                 'Leathercraft', 'Bonecraft', 'Alchemy', 'Cooking' };
 local GOALS = { { 'hq', 'HQ', 62 }, { 'nq', 'NQ', 62 }, { 'skillup', 'Skill-Up', 86 } };
 
+-- Repeat-synth row. SIX is the cap because six is what a macro bar holds
+-- (Henrik) -- these buttons save you the six clicks, they do not craft for you.
+-- The run itself lives in feature/synthrun; this file only draws it. Guarded
+-- require: a missing/broken synthrun must degrade to the plain Last Synth bar,
+-- not take the whole hobby window down with it.
+local REPEATS    = { 2, 3, 4, 5, 6 };
+local WAIT_BOX_W = 96;
+local _srok, sr = pcall(require, 'dlac\\feature\\synthrun');
+if not _srok or type(sr) ~= 'table' then sr = nil; end
+local _waitBuf, _waitSeen = nil, nil;
+
 -- Craft glyph textures (assets/craft/<Craft>.png), lazy-loaded via D3DX.
 local _tex = {};
 local function texture(cr)
@@ -128,6 +139,15 @@ function M.renderContent(availW)
     if type(availW) ~= 'number' or availW < BAR_MIN_W then availW = BAR_MIN_W; end
     local sel = cw.getCraft();
     local on = cw.isEnabled();
+    -- Wait-timer buffer. Seeded once, then the BUFFER is what you are typing
+    -- into; it is re-seeded only when the stored value changes underneath us
+    -- (the per-char craftstate.lua landing after login, where charDir() was nil
+    -- on the first frames and getSynthWait() was still answering the default).
+    local waitSecs = (type(cw.getSynthWait) == 'function') and cw.getSynthWait() or 30;
+    local waitMin  = tonumber(cw.WAIT_MIN) or 20;
+    local waitMax  = tonumber(cw.WAIT_MAX) or 120;
+    if _waitBuf == nil or (_waitSeen ~= nil and _waitSeen ~= waitSecs) then _waitBuf = { waitSecs }; end
+    _waitSeen = waitSecs;
     -- Row 1, centered: the 8 craft glyphs + the on/off switch.
     centerNext(availW, 8 * 30 + 7 * 6 + 6 + 46);
     for i, cr in ipairs(ORDER) do
@@ -162,28 +182,123 @@ function M.renderContent(availW)
         if i < #GOALS then imgui.SameLine(0, 4); end
     end
     imgui.SameLine(0, 12);
-    -- The button just TYPES the game's own /lastsynth (retail-native text command;
-    -- Henrik: dlac must never intercept or wrap it -- the client does the repeat).
-    if imgui.Button('Last Synth##cblast', { lastW, 20 }) then
-        pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/lastsynth'); end);
-    end
-    if imgui.IsItemHovered() then
-        imgui.SetTooltip('Issues the game\'s own /lastsynth -- repeats your most recent synthesis.'
-            .. ((ls ~= nil and ls.name ~= nil) and ('\nLast seen: ' .. ls.name) or '')
-            .. '\nAlso works typed or in a macro: /lastsynth (and /lastsynth check).');
-    end
-    -- Status line: WHAT the Last Synth button would make (Henrik: so you know what
-    -- it will do before clicking).
-    imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, 'Last synth:');
-    imgui.SameLine(0, 6);
-    if ls == nil then
-        imgui.TextColored({ 0.50, 0.50, 0.50, 1 }, '(none on record -- synth once via the menu)');
+    -- Last Synth / Stop, IN PLACE. While a batch runs this same button is the
+    -- brake (Henrik): the biggest target on the bar, and having no live "fire
+    -- one now" button means a second batch cannot be started on top of the
+    -- first, nor the count desynced.
+    local st = (sr ~= nil and type(sr.status) == 'function') and sr.status() or nil;
+    if st ~= nil then
+        imgui.PushStyleColor(ImGuiCol_Button, { 0.62, 0.18, 0.18, 1 });
+        local label = string.format('Stop  %d/%d##cblast', st.done, st.total);
+        if imgui.Button(label, { lastW, 20 }) then sr.stop(); end
+        imgui.PopStyleColor(1);
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Stop the run. The synth already in progress finishes;\nno further /lastsynth is issued.');
+        end
     else
-        imgui.TextColored({ 0.95, 0.85, 0.45, 1 }, ls.name or 'unknown recipe');
-        if ls.skill ~= nil and ls.skill ~= 'unknown' then
-            imgui.SameLine(0, 0);
-            imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, string.format('  (%s%s%s)',
-                ls.skill, ls.lv and (' ' .. ls.lv) or '', ls.desynth and ', desynth' or ''));
+        -- The button just TYPES the game's own /lastsynth (retail-native text command;
+        -- Henrik: dlac must never intercept or wrap it -- the client does the repeat).
+        if imgui.Button('Last Synth##cblast', { lastW, 20 }) then
+            pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/lastsynth'); end);
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Issues the game\'s own /lastsynth -- repeats your most recent synthesis.'
+                .. ((ls ~= nil and ls.name ~= nil) and ('\nLast seen: ' .. ls.name) or '')
+                .. '\nAlso works typed or in a macro: /lastsynth (and /lastsynth check).');
+        end
+    end
+
+    -- Row 3, centered: repeat counts + the wait timer. Six is the cap because
+    -- six is what a macro bar holds (Henrik) -- this saves the clicks, it does
+    -- not craft for you.
+    local numW = 26;
+    pcall(function()
+        local w = imgui.CalcTextSize('6');
+        if type(w) == 'number' then numW = math.max(24, math.floor(w) + 18); end
+    end);
+    local waitLabW = 30;
+    pcall(function()
+        local w = imgui.CalcTextSize('Wait');
+        if type(w) == 'number' then waitLabW = math.floor(w); end
+    end);
+    centerNext(availW, #REPEATS * numW + (#REPEATS - 1) * 4 + 14 + waitLabW + 6 + WAIT_BOX_W + 16);
+    local running = (st ~= nil);
+    for i, n in ipairs(REPEATS) do
+        if running then
+            imgui.PushStyleColor(ImGuiCol_Button, { 0.22, 0.22, 0.22, 1 });
+            imgui.PushStyleColor(ImGuiCol_Text,   { 0.45, 0.45, 0.45, 1 });
+        end
+        -- Locked, not merely discouraged: the click is DROPPED while a batch
+        -- runs, so a double-click can never stack two runs (Henrik).
+        if imgui.Button(tostring(n) .. '##cbrep' .. n, { numW, 20 }) and not running then
+            if sr ~= nil then sr.start(n); end
+        end
+        if running then imgui.PopStyleColor(2); end
+        if imgui.IsItemHovered() then
+            if running then
+                imgui.SetTooltip('A run is in progress -- Stop it first.');
+            else
+                imgui.SetTooltip(string.format(
+                    'Synth the last recipe %d times, %ds apart.\nOne /lastsynth at a time; stops early if a synth does not start.', n, waitSecs));
+            end
+        end
+        if i < #REPEATS then imgui.SameLine(0, 4); end
+    end
+    imgui.SameLine(0, 14);
+    imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, 'Wait'); imgui.SameLine(0, 6);
+    if running then
+        imgui.TextColored({ 0.50, 0.50, 0.50, 1 }, string.format('%ds', waitSecs));
+    else
+        imgui.PushItemWidth(WAIT_BOX_W);
+        if imgui.InputInt('s##cbwait', _waitBuf) then
+            local v = math.floor(tonumber(_waitBuf[1]) or waitSecs);
+            -- Clamp the TOP on every keystroke, the BOTTOM only on blur --
+            -- clamping low mid-type makes "45" unreachable (you'd pass 4).
+            if v > waitMax then v = waitMax; _waitBuf[1] = v; end
+            if v >= waitMin then cw.setSynthWait(v); end
+        end
+        imgui.PopItemWidth();
+        local editing = false;
+        pcall(function() editing = imgui.IsItemActive(); end);
+        if not editing then
+            local v = math.floor(tonumber(_waitBuf[1]) or waitSecs);
+            if v < waitMin then _waitBuf[1] = waitMin; cw.setSynthWait(waitMin); end
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip(string.format(
+                'Seconds between synths (%d-%d, remembered for this character).\n'
+                .. 'About %ds is the real floor in a quiet zone. The synth animation is\n'
+                .. 'frame-tied, so a busy zone like Lower Jeuno needs more -- if synths\n'
+                .. 'get skipped, raise this.', waitMin, waitMax, 22));
+        end
+    end
+
+    -- Status line: WHAT the Last Synth button would make (Henrik: so you know what
+    -- it will do before clicking) -- or, mid-run, where the batch has got to.
+    if st ~= nil then
+        imgui.TextColored({ 0.95, 0.85, 0.45, 1 }, string.format('Synth %d of %d', st.done, st.total));
+        imgui.SameLine(0, 6);
+        if st.stage == 'finish' then
+            imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, '-- finishing...');
+        elseif st.nextIn ~= nil then
+            imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, string.format('-- next in %ds', st.nextIn));
+        elseif st.retrying then
+            imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, '-- no synth started, retrying');
+        else
+            imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, '-- synthing');
+        end
+    else
+        imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, 'Last synth:');
+        imgui.SameLine(0, 6);
+        if ls == nil then
+            imgui.TextColored({ 0.50, 0.50, 0.50, 1 }, '(none on record -- synth once via the menu)');
+        else
+            imgui.TextColored({ 0.95, 0.85, 0.45, 1 }, ls.name or 'unknown recipe');
+            if ls.skill ~= nil and ls.skill ~= 'unknown' then
+                imgui.SameLine(0, 0);
+                imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, string.format('  (%s%s%s)',
+                    ls.skill, ls.lv and (' ' .. ls.lv) or '', ls.desynth and ', desynth' or ''));
+            end
         end
     end
     imgui.Dummy({ BAR_MIN_W, 1 });   -- enforces the min width under AlwaysAutoResize

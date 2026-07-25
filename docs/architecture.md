@@ -36,7 +36,8 @@ gear/      the gear pipeline: gearoptim, gearimport, gearexport, gearcheck, gear
            equip-bag door)
 feature/   self-contained features: lockstyle, macrobook, useitem, craftwatch, augments,
            pinwatch, helmwatch, fishwatch, fishcalc (pure fishing math -- headless),
-           ammowatch (AutoAmmo config state)
+           ammowatch (AutoAmmo config state), synthrun (repeat-Last-Synth batches:
+           types /lastsynth N times, verifies each on s2c 0x030, reports on 0x06F)
 lib/       generic helpers: cmdqueue, statefile, entwatch (the central entity
            watcher: subscription registry + one shared scan, all the
            entity-array idioms in one place)
@@ -96,7 +97,7 @@ Key points: `package.path` shim (dlac.lua:27-29); per-char `gear.lua` preload in
 shim (job/level from AshitaCore) (82-107); module load loop (111-119).
 Requires `common` and `chatfmt`, then loads a folder-qualified list — `gear`,
 `feature\augments`, `gear\gearoptim`, `gear\gearimport`, `gear\gearexport`,
-`feature\useitem`, `feature\craftwatch`, `ui\craftbar`, `feature\helmwatch`,
+`feature\useitem`, `feature\craftwatch`, `feature\synthrun`, `ui\craftbar`, `feature\helmwatch`,
 `ui\helmbar`, `feature\fishwatch`, `ui\fishbar`, `feature\lockstyle`, `ui\gearui`;
 everything else (`utils`, `dispatch`, `gear\setmanager`, `ui\triggersui`,
 `ui\automationsui`, `gear\profilesets`, `gear\gearcheck`) loads transitively. That list is built by string

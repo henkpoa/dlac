@@ -1448,14 +1448,161 @@ end)();
         check('HB4 idle: Begin/End balanced',   depth.win, 0);
         check('HB5 idle: colour stack balanced', depth.col, 0);
 
-        activeStub = { key = 'helm', name = 'HELM' };   -- lock: HELM active
-        ui._hobbySel = 'craft';                          -- render must force-select the active one
-        check('HB6 renders with an active hobby (lock branch)', pcall(hb.render), true);
+        activeStub = { key = 'helm', name = 'HELM' };   -- HELM armed...
+        ui._hobbySel = 'craft';                        -- ...and we are LOOKING at Craft
+        check('HB6 renders with an active hobby', pcall(hb.render), true);
         check('HB7 active: Begin/End balanced',   depth.win, 0);
         check('HB8 active: colour stack balanced', depth.col, 0);
-        check('HB9 render force-selected the active hobby', ui._hobbySel, 'helm');
+        -- REGRESSION GUARD (2026-07-25). render used to pin the selector to the
+        -- armed hobby EVERY FRAME and grey out the rest, so with Auto HELM or
+        -- Chocobo on -- both persist across relogs -- the Craft tab was never
+        -- drawn and the Last Synth button did not exist on screen. Exclusivity
+        -- is an ARMING rule (idleexcl.guardActivate), never a LOOKING rule.
+        check('HB9 render leaves the selection alone while another hobby is armed', ui._hobbySel, 'craft');
+        check('HB10 isShown reports the tab you are on, not the armed one', hb.isShown('craft'), true);
+        check('HB11 isShown is false for an armed-but-unviewed hobby', hb.isShown('helm'), false);
+        -- The escape hatches (/dl craft bar, Automations "Show bar") route
+        -- through the same seam: they used to be unable to close the bar, and
+        -- craftwatch printed a false "hobby bar hidden." while opening it.
+        hb.toggle('craft');
+        check('HB12 toggle closes the bar it is already showing', ui._hobbyBar, false);
+        hb.toggle('craft');
+        check('HB13 toggle re-opens onto craft while HELM is armed', ui._hobbyBar and ui._hobbySel, 'craft');
 
         ui._hobbyBar = false;
+    end
+
+    for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end
+end)();
+
+-- ---------------------------------------------------------------------------
+-- 7d. craftbar RENDER for real (the repeat-synth row, 2026-07-25). Every other
+--     suite STUBS craftbar.renderContent with a no-op -- including 7c above --
+--     so nothing has ever executed this file's body. That is the bit-three
+--     trap: an unknown Lua name is a silent nil GLOBAL, and a load-only test
+--     cannot see it. So: stub imgui + craftwatch + synthrun, drive the REAL
+--     renderContent in both the idle and the running branch, and assert both
+--     the stack balance and that the buttons reach synthrun.
+-- ---------------------------------------------------------------------------
+;(function()
+    local depth = { col = 0, item = 0 };
+    local function nop() end
+    local IM = {};
+    for _, n in ipairs({ 'Separator', 'Text', 'TextColored', 'SameLine', 'Dummy',
+        'SetTooltip', 'Spacing', 'Image', 'InvisibleButton' }) do IM[n] = nop; end
+    IM.PushStyleColor = function() depth.col = depth.col + 1; end
+    IM.PopStyleColor  = function(n) depth.col = depth.col - (tonumber(n) or 1); end
+    IM.PushItemWidth  = function() depth.item = depth.item + 1; end
+    IM.PopItemWidth   = function() depth.item = depth.item - 1; end
+    IM.CalcTextSize   = function(s) return #tostring(s) * 8; end
+    IM.IsItemHovered  = function() return true; end        -- exercise every tooltip
+    IM.IsItemClicked  = function() return false; end
+    IM.GetCursorScreenPos  = function() return 0, 0; end
+    IM.GetWindowDrawList   = function()
+        return { AddRectFilled = nop, AddCircleFilled = nop };
+    end
+
+    local clickId, editId, editVal, itemActive = nil, nil, nil, false;
+    IM.Button       = function(label) return clickId ~= nil and label:find(clickId, 1, true) ~= nil; end
+    IM.IsItemActive = function() return itemActive; end
+    IM.InputInt     = function(label, buf)
+        if editId ~= nil and label:find(editId, 1, true) ~= nil then buf[1] = editVal; return true; end
+        return false;
+    end
+
+    -- craftwatch stand-in: records what the bar writes back.
+    local waitVal, wrote = 30, {};
+    local CW = {
+        WAIT_MIN = 20, WAIT_MAX = 120,
+        getCraft = function() return 'Alchemy'; end,
+        isEnabled = function() return false; end,
+        setEnabled = function(v) wrote.enabled = v; end,
+        selectCraft = function(c) wrote.craft = c; end,
+        getGoal = function() return 'hq'; end,
+        setGoal = function(g) wrote.goal = g; end,
+        getSynthWait = function() return waitVal; end,
+        setSynthWait = function(n) waitVal = n; wrote.wait = n; return n; end,
+        lastSynth = function() return { name = 'Bronze Ingot', skill = 'Smithing', lv = 8 }; end,
+    };
+    -- synthrun stand-in: status drives the branch, start/stop record the click.
+    local runStatus, calls = nil, {};
+    local SR = {
+        status = function() return runStatus; end,
+        start  = function(n) calls[#calls + 1] = 'start:' .. tostring(n); return true; end,
+        stop   = function() calls[#calls + 1] = 'stop'; return true; end,
+    };
+
+    local NAMES = { 'imgui', 'dlac\\feature\\craftwatch', 'dlac\\feature\\synthrun', 'dlac\\ui\\craftbar' };
+    local saved = {};
+    for _, k in ipairs(NAMES) do saved[k] = package.loaded[k]; end
+    package.loaded['imgui'] = IM;
+    package.loaded['dlac\\feature\\craftwatch'] = CW;
+    package.loaded['dlac\\feature\\synthrun'] = SR;
+    package.loaded['dlac\\ui\\craftbar'] = nil;
+
+    local ok, cb = pcall(require, 'dlac\\ui\\craftbar');
+    check('CB1 craftbar re-requires against a stub imgui', ok and type(cb.renderContent), 'function');
+    if ok then
+        -- IDLE. This single call is the whole point of the section: it executes
+        -- every line of the new row, so a typo'd imgui name or a nil global
+        -- fails HERE instead of in the field.
+        local ran, err = pcall(cb.renderContent, 460);
+        check('CB2 idle renderContent runs clean', ran, true);
+        if not ran then print('  CB2 error: ' .. tostring(err)); end
+        check('CB3 idle: colour stack balanced', depth.col, 0);
+        check('CB4 idle: item-width stack balanced', depth.item, 0);
+
+        -- The repeat buttons reach synthrun with the right count.
+        calls = {}; clickId = '##cbrep3';
+        pcall(cb.renderContent, 460);
+        check('CB5 the 3 button starts a batch of 3', calls[1], 'start:3');
+        calls = {}; clickId = '##cbrep6';
+        pcall(cb.renderContent, 460);
+        check('CB6 the 6 button starts a batch of 6', calls[1], 'start:6');
+        clickId = nil;
+
+        -- RUNNING: Last Synth becomes Stop, and the number buttons go dead.
+        runStatus = { done = 2, total = 6, stage = 'cool', nextIn = 12 };
+        depth.col, depth.item = 0, 0;
+        local ran2 = pcall(cb.renderContent, 460);
+        check('CB7 running renderContent runs clean', ran2, true);
+        check('CB8 running: colour stack balanced', depth.col, 0);
+        check('CB9 running: item-width stack balanced', depth.item, 0);
+
+        calls = {}; clickId = '##cblast';
+        pcall(cb.renderContent, 460);
+        check('CB10 Last Synth is the Stop button mid-run', calls[1], 'stop');
+
+        -- Locked, not merely discouraged: the click is DROPPED, so a double
+        -- click can never stack a second batch on the first (Henrik).
+        calls = {}; clickId = '##cbrep4';
+        pcall(cb.renderContent, 460);
+        check('CB11 number buttons are dead while a batch runs', #calls, 0);
+        clickId = nil;
+
+        -- The wait box is not editable mid-run either.
+        wrote.wait = nil; editId = '##cbwait'; editVal = 55;
+        pcall(cb.renderContent, 460);
+        check('CB12 the wait box is not editable mid-run', wrote.wait, nil);
+
+        -- IDLE again: editing commits through craftwatch.
+        runStatus = nil;
+        pcall(cb.renderContent, 460);
+        check('CB13 editing the wait box persists it', wrote.wait, 55);
+
+        -- Top clamps on every keystroke; the FLOOR only on blur, or typing "45"
+        -- would be unreachable (you would pass 4 on the way).
+        wrote.wait = nil; editVal = 999;
+        pcall(cb.renderContent, 460);
+        check('CB14 an over-range wait clamps to the ceiling', wrote.wait, 120);
+        editId = nil; itemActive = true; waitVal = 120;
+        -- simulate a half-typed value sitting in the buffer while still focused
+        editId = '##cbwait'; editVal = 4; wrote.wait = nil;
+        pcall(cb.renderContent, 460);
+        check('CB15 a low value is NOT clamped while you are still typing', wrote.wait, nil);
+        editId = nil; itemActive = false;
+        pcall(cb.renderContent, 460);
+        check('CB16 ...and clamps up to the floor on blur', wrote.wait, 20);
     end
 
     for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end

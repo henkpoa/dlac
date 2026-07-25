@@ -713,6 +713,25 @@ research already recorded. In rough priority order:
     c38c2ff if the packet knowledge is ever needed. **RULE (Henrik, 07-13):
     probing/diagnostic tools never ship in dlac -- they go in the dlacprobe
     addon** (`/probe synth` captures a synth on the wire).
+  - **Repeat Last Synth (07-25, `feature/synthrun.lua`, ADR 0020).** The `2 3 4
+    5 6` buttons under Last Synth run the same native command N times -- six
+    because six is a macro bar's capacity. Still only TYPES it. Verification is
+    passive: s2c **`0x030`** (synthesis animation, ~130ms, result type at
+    `@0x0C`, actor at `@0x08`) proves the shot landed; s2c **`0x06F`**
+    (synthesis results, ~17s, result `@0x04` / quantity `@0x06` / item id
+    `@0x08`) names what came out. Offsets are Ashita's stock `craftmon` addon's,
+    matched to the CatsEyeXI server structs. **The wait floor is FIELD TRUTH,
+    not source math**: the server allows ~17s (15s cooldown + a 16s AI state)
+    but the client's synth animation is FRAME-TIED, so the real interval is
+    **~22s** in a quiet zone and more in a busy one (Henrik) -- hence default
+    30, range 20-120, per character in `craftstate.lua` (craftwatch owns that
+    file; do not add a second writer). A shot that draws no `0x030` is retried
+    ONCE after 2s, then the run aborts -- inventory-full and out-of-materials
+    are permanent and both present as that same silence, because the CLIENT
+    refuses to send `0x096` and says `Unable to execute that command.` One
+    report line at the end: green `chatfmt.good` only for a full run, yellow
+    for an early stop, white for your own Stop. HQ needs no special case -- the
+    game names HQ items `... +1`.
   - **Verify-then-automate — DONE (2026-07-13):** guild-points self-request (c2s
     `0x10F`) turn-in-verified; now auto-fires once on login + on AutoCraft panel
     open (debounced). `/dl craft gp` remains the manual check.

@@ -228,7 +228,7 @@ end)();
                    'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
     local FEATURE = { 'ammowatch','arbwatch','augments','check','chocowatch','craftwatch','debug','digcalc','digrank',
                       'eboxammo','eboxclient','fishcalc','fishwatch','gamemode','helmwatch','idleexcl','location','lockstyle','lookpreview',
-                      'macrobook','meritwatch','mpbands','pinwatch','restockwatch','useitem','vanamoon' };
+                      'macrobook','meritwatch','mpbands','pinwatch','restockwatch','synthrun','useitem','vanamoon' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
 
     local ALL = {};
@@ -1618,6 +1618,186 @@ check('T23 disabled -> no overlay',   ovOff, nil);
 local ovNoCraft = dispatchM._craftOverlayFor({ craft = '', goal = 'hq', enabled = true }, { player = { MainJobSync = 75 } });
 check('T24 no craft -> no overlay',   ovNoCraft, nil);
 dispatchM._autoOverride = nil;
+
+-- Repeat-synth wait (a SETTING living in craftstate.lua, which craftwatch owns).
+-- The 20s floor is FIELD TRUTH, not source math: the server would allow ~17s,
+-- but the client's synthesis animation is frame-tied, so ~22s is the real
+-- interval in a quiet zone (Henrik, 07-25).
+check('T24b wait defaults to 30',          craftwatch.getSynthWait(), 30);
+check('T24c wait clamps up to the floor',  craftwatch._clampWait(5), 20);
+check('T24d wait clamps to the ceiling',   craftwatch._clampWait(999), 120);
+check('T24e garbage falls back to default', craftwatch._clampWait('x'), 30);
+check('T24f a sane value is kept',         craftwatch.setSynthWait(45), 45);
+check('T24g setSynthWait clamps too',      craftwatch.setSynthWait(1), 20);
+craftwatch.setSynthWait(30);
+
+-- ---------------------------------------------------------------------------
+-- U. synthrun -- the 2..6 repeat-synth batch runner (feature/synthrun.lua).
+-- Drives the whole state machine headless on an injected clock, a recording
+-- AshitaCore and a stub chatfmt, so the colour of each report is assertable.
+-- Wrapped in an IIFE (the smoke_ui idiom): the main chunk is at Lua's 200-local
+-- ceiling, and a scope of its own also keeps the stubs from leaking downstream.
+-- ---------------------------------------------------------------------------
+(function()
+local _savedChatfmt = package.loaded['dlac\\chatfmt'];
+local chatlog = {};
+package.loaded['dlac\\chatfmt'] = {
+    good = function(s) chatlog[#chatlog + 1] = { 'good', s }; end,
+    warn = function(s) chatlog[#chatlog + 1] = { 'warn', s }; end,
+    msg  = function(s) chatlog[#chatlog + 1] = { 'msg',  s }; end,
+};
+local function clearLog() for i = #chatlog, 1, -1 do chatlog[i] = nil; end end
+
+local synthrun = dofile('feature/synthrun.lua');
+
+-- s2c 0x030 synthesis animation: TargetIndex u16 @0x08, result type i8 @0x0C.
+local function animPkt(idx, typ)
+    return string.rep('\0', 8) .. u16le(idx) .. string.rep('\0', 2)
+        .. string.char(typ) .. string.rep('\0', 8);
+end
+-- s2c 0x06F synthesis results: Result @0x04, Count @0x06, ItemNo u16 @0x08.
+local function resPkt(code, count, id)
+    return string.rep('\0', 4) .. string.char(code) .. '\0' .. string.char(count)
+        .. '\0' .. u16le(id) .. string.rep('\0', 8);
+end
+
+local aIdx, aTyp = synthrun.decodeAnim(animPkt(0x1234, 2));
+check('U1 anim decodes the actor index',  aIdx, 0x1234);
+check('U2 anim decodes the result type',  aTyp, 2);
+check('U3 short anim packet -> nil',      synthrun.decodeAnim('xx'), nil);
+local rCode, rCount, rId = synthrun.decodeResult(resPkt(0x00, 4, 640));
+check('U4 result decodes the code',       rCode, 0);
+check('U5 result decodes the quantity',   rCount, 4);
+check('U6 result decodes the item id',    rId, 640);
+check('U7 short result packet -> nil',    synthrun.decodeResult('x'), nil);
+
+-- Tally. HQ needs NO special case: the game names HQ items "... +1", so they
+-- separate on their own (crafts.lua only stores the NQ result id).
+synthrun._itemName = function(id)
+    return ({ [640] = 'Bronze Ingot', [641] = 'Bronze Ingot +1' })[id] or ('item #' .. tostring(id));
+end
+local tMade, tBroke, tItems = synthrun.tally({
+    { code = 0x00, count = 2, id = 640 },
+    { code = 0x01, count = 0, id = 0   },   -- break
+    { code = 0x00, count = 2, id = 640 },
+    { code = 0x00, count = 1, id = 641 },   -- HQ
+});
+check('U8 tally counts successes',        tMade, 3);
+check('U9 tally counts breaks',           tBroke, 1);
+check('U10 tally groups by item, HQ apart', tItems, '4x Bronze Ingot, 1x Bronze Ingot +1');
+
+-- --- the state machine -------------------------------------------------------
+local sent = {};
+local _savedAC = rawget(_G, 'AshitaCore');
+local _savedGPE = rawget(_G, 'GetPlayerEntity');
+_G.AshitaCore = { GetChatManager = function()
+    return { QueueCommand = function(_, mode, cmd) sent[#sent + 1] = { mode = mode, cmd = cmd }; end };
+end };
+_G.GetPlayerEntity = function() return { TargetIndex = 100 }; end
+local T = 0;
+synthrun._now = function() return T; end
+synthrun.getWait = function() return 25; end
+
+check('U11 start refuses 0',                  synthrun.start(0), false);
+check('U12 start refuses 7 (macro-bar cap)',  synthrun.start(7), false);
+check('U13 start fires immediately',          synthrun.start(3) and #sent, 1);
+check('U14 it TYPES the game\'s own command', sent[1].cmd, '/lastsynth');
+check('U15 ...in Typed mode (Ashita CommandMode 1)', sent[1].mode, 1);
+check('U16 a second batch is refused',        synthrun.start(2), false);
+
+synthrun.onPacket(0x030, animPkt(999, 0));    -- a BYSTANDER's synth
+synthrun.tick();
+check('U17 a bystander\'s animation is ignored', synthrun.status().done, 0);
+synthrun.onPacket(0x030, animPkt(100, 0));    -- ours
+synthrun.tick();
+check('U18 our animation counts the synth',   synthrun.status().done, 1);
+check('U19 the next shot waits out the timer', synthrun.status().nextIn, 25);
+T = T + 24; synthrun.tick();
+check('U20 nothing fires before the wait elapses', #sent, 1);
+T = T + 2;  synthrun.tick();
+check('U21 the next synth fires after the wait', #sent, 2);
+
+-- Shot 2 never lands. ONE retry (frame hitches are transient), then abort --
+-- "out of materials" and "inventory full" are permanent, so the retry costs
+-- ~2s at the end of a run that was over anyway (Henrik, 07-25).
+T = T + 1.9; synthrun.tick();
+check('U22 no retry inside the 2s detect window', #sent, 2);
+T = T + 0.2; synthrun.tick();
+check('U23 a missed shot is retried once',    #sent, 3);
+check('U24 status surfaces the retry',        synthrun.status().retrying, true);
+clearLog();
+T = T + 2.1; synthrun.tick();
+check('U25 a second miss aborts the batch',   synthrun.status(), nil);
+check('U26 an early stop reports in YELLOW',  chatlog[1] and chatlog[1][1], 'warn');
+check('U27 ...and says how far it got',       (chatlog[1] and chatlog[1][2] or ''):sub(1, 29),
+                                              'Crafting stopped after 1 of 3');
+
+-- A clean run: the report waits for the LAST 0x06F, so it can name what came out.
+T = 1000; sent = {}; clearLog();
+synthrun.start(2);
+synthrun.onPacket(0x030, animPkt(100, 0)); synthrun.tick();
+synthrun.onPacket(0x06F, resPkt(0x00, 2, 640)); synthrun.tick();
+T = T + 25; synthrun.tick();
+check('U28 the second synth fires',           #sent, 2);
+synthrun.onPacket(0x030, animPkt(100, 2)); synthrun.tick();
+check('U29 the last synth is not reported until its result lands', #chatlog, 0);
+synthrun.onPacket(0x06F, resPkt(0x00, 1, 641)); synthrun.tick();
+check('U30 the batch completes',              synthrun.status(), nil);
+check('U31 a full run reports in GREEN',      chatlog[1] and chatlog[1][1], 'good');
+check('U32 the report names what was made',   chatlog[1] and chatlog[1][2],
+      'Crafting complete -- 2 synths: 2x Bronze Ingot, 1x Bronze Ingot +1.');
+
+-- Breaks are counted, and they change the wording but not the colour.
+T = 2000; sent = {}; clearLog();
+synthrun.start(2);
+synthrun.onPacket(0x030, animPkt(100, 0)); synthrun.tick();
+synthrun.onPacket(0x06F, resPkt(0x01, 0, 0)); synthrun.tick();   -- break
+T = T + 25; synthrun.tick();
+synthrun.onPacket(0x030, animPkt(100, 0)); synthrun.tick();
+synthrun.onPacket(0x06F, resPkt(0x00, 3, 640)); synthrun.tick();
+check('U33 a run with a break still reports made/broke', chatlog[1] and chatlog[1][2],
+      'Crafting complete -- 2 synths (1 made, 1 broke): 3x Bronze Ingot.');
+
+-- The final result never arrives (bad zone): report anyway once the grace ends.
+T = 3000; sent = {}; clearLog();
+synthrun.start(1);
+synthrun.onPacket(0x030, animPkt(100, 0)); synthrun.tick();
+T = T + 31; synthrun.tick();
+check('U34 a missing final result still reports after the grace', synthrun.status(), nil);
+check('U35 ...still green (the synths did run)', chatlog[1] and chatlog[1][1], 'good');
+
+-- A 0x06F cancel code arrives with NO animation -- stop at once and name it.
+T = 4000; sent = {}; clearLog();
+synthrun.start(3);
+synthrun.onPacket(0x06F, resPkt(0x06, 0, 0)); synthrun.tick();   -- CancelSkillTooLow
+check('U36 a cancel code stops the batch at once', synthrun.status(), nil);
+check('U37 cancel reports in YELLOW',         chatlog[1] and chatlog[1][1], 'warn');
+check('U38 cancel names the real reason',
+      (chatlog[1] and chatlog[1][2] or ''):find('craft skill is too low', 1, true) ~= nil, true);
+
+-- Zoning voids every assumption (and on this server it destroys the materials).
+T = 5000; sent = {}; clearLog();
+synthrun.start(3);
+synthrun.onPacket(0x030, animPkt(100, 0)); synthrun.tick();
+synthrun.onPacket(0x00A, ''); synthrun.tick();
+check('U39 zoning aborts the batch',          synthrun.status(), nil);
+
+-- Your own Stop is not an alarm: white, not yellow.
+T = 6000; sent = {}; clearLog();
+synthrun.start(3);
+synthrun.onPacket(0x030, animPkt(100, 0)); synthrun.tick();
+synthrun.stop();
+check('U40 stop ends the batch',              synthrun.status(), nil);
+check('U41 your own stop is not an alarm',    chatlog[1] and chatlog[1][1], 'msg');
+check('U42 stop says how far it got',         chatlog[1] and chatlog[1][2],
+      'Crafting stopped -- 1 of 3 done.');
+check('U43 stop is a no-op when idle',        synthrun.stop(), false);
+check('U44 status is nil when idle',          synthrun.status(), nil);
+
+_G.AshitaCore = _savedAC;
+_G.GetPlayerEntity = _savedGPE;
+package.loaded['dlac\\chatfmt'] = _savedChatfmt;
+end)();
 
 -- 0x055 key item tracker (the SDK HasKeyItem memory read is dead on this
 -- client -- craftwatch keeps its own bitfield from the packet stream).

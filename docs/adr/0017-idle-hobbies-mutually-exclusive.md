@@ -43,11 +43,19 @@ which never had a bar — gets a minimal section here. It is a float on the
 `floatgear`/`idlefloat` pattern (rendered from gearui's `d3d_present`, stays up while
 you play); visibility is `ui._hobbyBar`, selection `ui._hobbySel`.
 
-**3. The selector marks the active hobby and locks while it runs.** The active
-hobby's tab is green with a trailing `*`; while a hobby is active the selector is
-pinned to it and the other tabs are locked (dim, un-clickable) — you can only switch
-once the current hobby is off. That mirrors the enable-layer rule at the UI: the bar
-never lets you reach a second hobby's arm button while one runs.
+**3. The selector marks the active hobby and locks while it runs.**
+> **SUPERSEDED 2026-07-25 by [ADR 0020](0020-repeat-last-synth.md) point 1.** The
+> lock was wrong: exclusivity is an *arming* rule, not a *looking* rule. Pinning
+> `ui._hobbySel` to the armed hobby every frame meant that with Auto HELM or Chocobo
+> on — both persist across relogs — the Craft tab was never drawn and the Last Synth
+> button did not exist on screen. Every tab is now always reachable; the green `*`
+> and the on/off pill (which is where `idleexcl.guardActivate` actually refuses)
+> carry the rule. Point 1 below is unchanged and remains the real guard.
+
+~~The active hobby's tab is green with a trailing `*`; while a hobby is active the
+selector is pinned to it and the other tabs are locked (dim, un-clickable) — you can
+only switch once the current hobby is off. That mirrors the enable-layer rule at the
+UI: the bar never lets you reach a second hobby's arm button while one runs.~~
 
 **4. One HELM switch: Auto HELM.** The manual "Set HELM Idle" toggle is removed from
 every UI surface (panel, quick menu, bar) — two toggles was confusing and Auto HELM
@@ -81,10 +89,11 @@ watchers, but only inside function bodies (lazy `try`).
 - **IE\* headless tests** pin the lock at the enable seam: arming one hobby refuses
   the others (`canActivate`/`guardActivate`), `getActive` names the armed one,
   `deactivate` stands it down, HELM is Auto-only.
-- **HB\* smoke tests** drive `hobbybar.render` against a stub imgui in the idle and
-  active-lock branches and assert the Begin/End and PushStyleColor/PopStyleColor
-  stacks return to 0 — the floatgear S50 crash class (a push/pop imbalance is native
-  UB, no Lua error).
+- **HB\* smoke tests** drive `hobbybar.render` against a stub imgui with and without
+  an armed hobby, and assert the Begin/End and PushStyleColor/PopStyleColor stacks
+  return to 0 — the floatgear S50 crash class (a push/pop imbalance is native UB, no
+  Lua error). HB9–HB13 additionally guard the point-3 regression: render must leave
+  the selection alone while another hobby is armed (see ADR 0020).
 - **AR8/AR9/AR10 stay green, unchanged** — the co-claim engine is untouched.
 - `idleexcl` / `idlefloat` / `hobbybar` are on the source-scan roster.
 
