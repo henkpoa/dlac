@@ -322,11 +322,16 @@ research already recorded. In rough priority order:
     `set-current` switch.
   - Tests `LS1`–`LS20`, `CMD10`–`CMD15`, `LSU1`–`LSU4`. Suites at **3620** and **417**,
     green on Windows and WSL.
-  - **Field tests owed**: (1) native mode, `/dl lock set <name>` at an Incursion T3
-    entrance — does the set land and stay; (2) the missing-piece report, with something
-    deliberately left in a Satchel; (3) `set-loose` — do the unnamed slots really keep
-    swapping; (4) `/dl lock all off` releasing both halves; (5) the Equipped tab's
-    `Lock gear` switch and its LOCKED readout.
+  - **Field-CONFIRMED 2026-07-26 (Henrik, WHM):** locking a named set (`DT`) lands it,
+    and releasing it lets go — verified after a false alarm that is worth remembering.
+    It first read as "he doesn't release it": the cause was **a leftover test trigger on
+    idle that re-equipped DT**, not the lock. When a hold *looks* stuck, check the
+    Triggers tab before the lock — `/dl why` names the winner.
+  - **Field tests still owed**: (1) the same thing at an actual Incursion T3 entrance —
+    does the set survive the server-side lock; (2) the missing-piece report, with
+    something deliberately left in a Satchel; (3) `set-loose` — do the unnamed slots
+    really keep swapping; (4) `/dl lock all off` releasing both halves at once;
+    (5) the Equipped tab's `Lock gear` switch and its LOCKED readout.
 
 - **`/dl` COMMANDS ARE TESTABLE NOW — 2026-07-26 on `dev`** (`7906cd4`, tests only).
   Every `/dl` subcommand used to be tested by *searching `dispatch.lua` for its own
