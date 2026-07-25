@@ -302,6 +302,8 @@ local trig = {
     _condDrill = false,   -- no-BeginMenu fallback: which drill-down is open --
                           -- false closed, 'player' or 'pet' (truthy = open)
     addValText = { '' }, addValNum = { 0 }, addSet = nil, addPrio = { 0 }, _openAdd = false,
+    addNote = nil, addSwap = nil,   -- "the & leg replaced X with Y" + the swap behind it,
+                                    -- so the replace is never silent (see pushCond)
     editIdx = nil, _editEquip = nil,   -- rule-builder edit mode (replace in place)
     _bpEdit = nil,   -- when set, the rule builder edits Blueprint library entry #_bpEdit
                      -- (Save writes back to the library, not trig.data) -- issue #65
@@ -1772,6 +1774,62 @@ local function renderModesSection(defs, modes)
     end
 end
 
+-- Adding ONE condition to the pending list -- the pure rule behind the two
+-- [+ &] / [+ |] buttons, lifted out so it can be tested without imgui.
+--
+-- The & leg is a MAP (`when = { k = v }`): one value per condition type. So a
+-- repeat of the same type cannot stack -- and stacking would be meaningless
+-- anyway (name = "test" AND name = "testar" can never both hold; the engine's
+-- `ci` matcher compares ONE string). It therefore replaces.
+--
+-- Replacing is right when you are correcting a value and wrong when you meant
+-- "either" -- Henrik's field case: name = test, then name = testar silently ate
+-- the first with no word said. So the replace now REPORTS: it returns the note
+-- to show and the swap that produced it, and the caller offers the one-click
+-- move of BOTH values into the | leg (orBothToAny below).
+--
+-- The | leg stacks freely: duplicates there are the whole point.
+-- Returns note (string|nil), swap ({ key, prev, cur }|nil). Mutates `conds`.
+local function pushCond(conds, key, val, isOr)
+    if type(conds) ~= 'table' or key == nil or val == nil then return nil, nil; end
+    -- Same-type test is CASE-INSENSITIVE: the pickers spell a key as the def does
+    -- (magicType, playerHPBelow) while an edited rule loads its keys lowercased off
+    -- the file, and saving lowercases both. A case-sensitive test let an edit stack
+    -- two rows of one type, of which the save kept exactly one -- silently.
+    local lkey = string.lower(tostring(key));
+    if not isOr then
+        for _, c in ipairs(conds) do
+            if string.lower(tostring(c.key)) == lkey and not c.any then
+                local prev = c.value;
+                c.value = val;
+                if tostring(prev) == tostring(val) then return nil, nil; end   -- same value: nothing happened
+                local pretty = trigPrettyKey(lkey);
+                return string.format('%s replaced: %s -> %s. The & leg holds ONE value per condition type.',
+                    pretty, tostring(prev), tostring(val)), { key = key, prev = prev, cur = val };
+            end
+        end
+    end
+    conds[#conds + 1] = { key = key, value = val, any = isOr or nil };
+    return nil, nil;
+end
+M._pushCond = pushCond;   -- headless test seam (the _modeCondRefs idiom)
+
+-- The escape hatch offered beside a replace note: "I meant either, not both".
+-- Drops every & row of that condition type and puts BOTH values in the | leg,
+-- so the rule fires on either one. Returns true when it changed something.
+local function orBothToAny(conds, swap)
+    if type(conds) ~= 'table' or type(swap) ~= 'table' or swap.key == nil then return false; end
+    local lkey = string.lower(tostring(swap.key));
+    for i = #conds, 1, -1 do
+        local c = conds[i];
+        if string.lower(tostring(c.key)) == lkey and not c.any then table.remove(conds, i); end
+    end
+    conds[#conds + 1] = { key = swap.key, value = swap.prev, any = true };
+    conds[#conds + 1] = { key = swap.key, value = swap.cur,  any = true };
+    return true;
+end
+M._orBothToAny = orBothToAny;   -- headless test seam
+
 -- Add-rule popup: build conditions (type + value, [+ condition] to AND more), pick the
 -- target set, optional priority, Add.
 local function renderTrigAddPopup()
@@ -1843,12 +1901,16 @@ local function renderTrigAddPopup()
         table.remove(trig.addConds, ci);
     end
     local function condRowButtons(ci)
-        if imgui.SmallButton('e##trgce' .. ci) then editCond(ci); end
+        if imgui.SmallButton('e##trgce' .. ci) then
+            editCond(ci); trig.addNote, trig.addSwap = nil, nil;   -- the rows moved: a stale swap no longer applies
+        end
         if imgui.IsItemHovered() then
             imgui.SetTooltip('Edit: loads this condition back into the pickers --\nadjust it, then re-add with + & or + |.');
         end
         imgui.SameLine(0, 4);
-        if imgui.SmallButton('x##trgcx' .. ci) then table.remove(trig.addConds, ci); end
+        if imgui.SmallButton('x##trgcx' .. ci) then
+            table.remove(trig.addConds, ci); trig.addNote, trig.addSwap = nil, nil;
+        end
     end
 
     -- Pending conditions, GROUPED: the & leg first, then the | leg (Henrik:
@@ -2063,22 +2125,40 @@ local function renderTrigAddPopup()
                 val = ((tonumber(trig.addValNum[1]) or 0) > 0) and trig.addValNum[1] or nil;
             else val = true; end
             if val == nil then return; end
-            if not isOr then
-                -- & leg: one value per key (the map shape) -- re-adding replaces.
-                for _, c in ipairs(trig.addConds) do
-                    if c.key == ckey and not c.any then c.value = val; return; end
-                end
-            end
-            -- | leg: duplicates are THE POINT (buff = Sleep | buff = Lullaby).
-            trig.addConds[#trig.addConds + 1] = { key = ckey, value = val, any = isOr or nil };
+            -- The & leg is a map (one value per type, so a repeat replaces) and the
+            -- | leg stacks -- pushCond owns that rule and hands back what to say.
+            trig.addNote, trig.addSwap = pushCond(trig.addConds, ckey, val, isOr);
             trig.addValText[1] = ''; trig._addValSel = nil;
         end
         imgui.SameLine(0, 6);
         if imgui.Button('+ & condition##trgac', { 0, 0 }) then addCond(false); end
-        if imgui.IsItemHovered() then imgui.SetTooltip('AND condition, all AND conditions must be true to be a match.'); end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('AND condition, all AND conditions must be true to be a match.\n'
+                .. 'ONE value per condition type: adding the same type again replaces it\n'
+                .. '(two names can never both be true) -- use [+ |] to match either.');
+        end
         imgui.SameLine(0, 4);
         if imgui.Button('+ | condition##trgoc', { 0, 0 }) then addCond(true); end
         if imgui.IsItemHovered() then imgui.SetTooltip('OR condition, if ANY OR condition is true, it will be a match.'); end
+    end
+
+    -- A replaced & condition is never silent (Henrik's field case: name = test then
+    -- name = testar overwrote with no word said). Say what was swapped, and offer the
+    -- one-click "I meant either" -- both values move to the | leg.
+    if trig.addNote ~= nil then
+        imgui.TextColored(COL_SCORE, esc(tostring(trig.addNote)));
+        if trig.addSwap ~= nil then
+            if imgui.SmallButton('Match either instead##trgorboth') then
+                orBothToAny(trig.addConds, trig.addSwap);
+                trig.addNote, trig.addSwap = nil, nil;
+            end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Moves BOTH values into the | leg, so the rule fires on either one.\n'
+                    .. 'To keep the replacement instead, just carry on.');
+            end
+            imgui.SameLine(0, 6);
+            if imgui.SmallButton('dismiss##trgordismiss') then trig.addNote, trig.addSwap = nil, nil; end
+        end
     end
 
     imgui.Separator();
@@ -2128,6 +2208,7 @@ local function renderTrigAddPopup()
             trig.dirty = true;
         end
         trig.addConds = {}; trig.addSet = nil; trig.addPrio[1] = 0;
+        trig.addNote, trig.addSwap = nil, nil;
         trig.editIdx, trig._editEquip, trig._bpEdit = nil, nil, nil;
         trig._prioBuf = {};                            -- rule objects changed; rebuild priority buffers
         imgui.CloseCurrentPopup();
@@ -2730,6 +2811,7 @@ local function bpEdit(index)
     end
     trig.addSet = (type(e.rule.set) == 'table') and e.rule.set[1] or e.rule.set;
     trig.addPrio[1] = e.rule.priority or 0;
+    trig.addNote, trig.addSwap = nil, nil;
     trig._addDef = 1; trig.addValText[1] = ''; trig._addValSel = nil;
     trig._addPlayer = 1; trig._addPet = 1; trig.addValNum[1] = 0;
     trig._openAdd = true;
@@ -3777,12 +3859,14 @@ function M.render(job, level)
             end
             trig.addSet = (type(r.set) == 'table') and r.set[1] or r.set;   -- builder edits ONE set; extras stay on the rule
             trig.addPrio[1] = r.priority or 0;
+            trig.addNote, trig.addSwap = nil, nil;
             trig._addDef = 1; trig.addValText[1] = ''; trig._addValSel = nil;
             trig._addPlayer = 1; trig._addPet = 1; trig.addValNum[1] = 0;
             trig._openAdd = true;
         end
         if imgui.Button('+ Add rule##trgadd_' .. h, { 0, 28 }) then
             trig.addFor = h; trig.addConds = {}; trig._addDef = 1;
+            trig.addNote, trig.addSwap = nil, nil;
             trig.addValText[1] = ''; trig._addValSel = nil; trig.addSet = nil; trig.addPrio[1] = 0;
             trig._addPlayer = 1; trig._addPet = 1; trig.addValNum[1] = 0;
             trig.editIdx, trig._editEquip, trig._bpEdit = nil, nil, nil;   -- fresh add, not an edit

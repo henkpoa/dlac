@@ -89,6 +89,21 @@ exactly as before, so existing pin scope keys keep matching); the default priori
 both legs. Field case: Toxin Earring poison-wakeup — `whenAny` of Sleep OR Lullaby → the
 WakeMeUp set.
 
+**One value per condition type on the & leg.** `when` is a Lua *map*, so a condition type
+appears at most once — and stacking two would be meaningless anyway (`name = "test"` AND
+`name = "testar"` can never both hold; every matcher compares ONE value, `mode` alone reading
+a list, as OR). The rule builder therefore *replaces* when you add a type that is already on
+the & leg. That is right when you are correcting a value and wrong when you meant "either",
+so since v2026.07.25h it is never silent: the popup names the swap it made
+(`name replaced: test -> testar`) and offers **Match either instead**, which moves BOTH values
+to the | leg. Field case (Henrik, 07-25): Item rule, `name = test` then `name = testar` — the
+second ate the first with nothing said, and it read as "I cannot add & conditions any more".
+The same-type test is case-insensitive: the pickers spell keys as the defs do (`magicType`),
+an edited rule loads them lowercased off the file, and the save lowercases both — a
+case-sensitive test let an edit stack two rows of one type, of which the save kept one.
+`triggersui._pushCond` / `._orBothToAny` are the pure seams; tests TB1–TB32 (`smoke_ui`) cover
+them and drive the real popup frame by frame.
+
 v2 candidates (matcher is an open table; additive): day/weather/moon beyond the obi rule,
 subjob. (`area` landed in v84 as `inTown`, off the server-derived `data/zones.lua` town set;
 more zone predicates — a specific-zone match, `IN_DYNAMIS` — reuse the same file. Target

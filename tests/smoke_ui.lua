@@ -1923,6 +1923,156 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- Trigger rule builder: the & leg never eats a value in silence.
+--
+-- Field case (Henrik, 2026-07-25): Item rule -> name = test [+ &] -> name =
+-- testar [+ &]. The second REPLACED the first with nothing said, which reads as
+-- "I cannot add & conditions any more, only |". The & leg is a MAP -- one value
+-- per condition type -- and two names can never both hold, so the replace is
+-- right; being silent about it was not. It now reports, and offers the one-click
+-- move of BOTH values into the | leg (which is the rule he actually wanted).
+--
+-- Both halves are covered: the pure seams, AND the real popup driven frame by
+-- frame (the craftbar lesson -- a render path no test executes is a render path
+-- nobody has proven; an undefined name in it stays a silent nil global).
+-- ---------------------------------------------------------------------------
+;(function()
+    local depth = { popup = 0, col = 0 };
+    local CLICK, REC = nil, {};
+    local function nop() end
+    local IM = setmetatable({}, { __index = function() return nop; end });
+    IM.BeginPopup = function(id)
+        if tostring(id) == '##dlac_trigadd' then depth.popup = depth.popup + 1; return true; end
+        return false;
+    end
+    IM.EndPopup   = function() depth.popup = depth.popup - 1; end
+    IM.PushStyleColor = function() depth.col = depth.col + 1; end
+    IM.PopStyleColor  = function(n) depth.col = depth.col - (tonumber(n) or 1); end
+    IM.Begin      = function() return true; end
+    IM['End']     = nop;
+    IM.BeginChild = function() return true; end
+    IM.EndChild   = nop;
+    IM.BeginCombo = function() return false; end
+    IM.BeginMenu  = function() return false; end
+    IM.Button      = function(l) REC[#REC + 1] = tostring(l); return tostring(l) == CLICK; end
+    IM.SmallButton = function(l) REC[#REC + 1] = tostring(l); return tostring(l) == CLICK; end
+    IM.Selectable  = function(l) REC[#REC + 1] = tostring(l); return tostring(l) == CLICK; end
+    IM.Text        = function(t) REC[#REC + 1] = tostring(t); end
+    IM.TextColored = function(_, t) REC[#REC + 1] = tostring(t); end
+    IM.IsItemHovered = function() return false; end
+    IM.InputText   = function() return false; end
+    IM.InputInt    = function() return false; end
+    IM.GetContentRegionAvail = function() return 700, 400; end
+    IM.CalcTextSize = function() return 60, 14; end
+
+    local NAMES = { 'dlac\\ui\\triggersui', 'imgui' };
+    local saved = {};
+    for _, k in ipairs(NAMES) do saved[k] = package.loaded[k]; end
+    package.loaded['imgui'] = IM;
+    package.loaded['dlac\\ui\\triggersui'] = nil;
+    local ok, tg = pcall(require, 'dlac\\ui\\triggersui');
+    check('TB1 triggersui re-requires against a stub imgui', ok and type(tg), 'table');
+    if ok then
+        check('TB2 the condition-push core is exposed', type(tg._pushCond), 'function');
+        check('TB3 the OR escape is exposed',           type(tg._orBothToAny), 'function');
+
+        local conds = {};
+        check('TB4 the first & condition lands', (function()
+            local note = tg._pushCond(conds, 'name', 'test', false);
+            return tostring(#conds) .. '/' .. tostring(note);
+        end)(), '1/nil');
+        local note = tg._pushCond(conds, 'name', 'testar', false);
+        check('TB5 a second value of the same type replaces (the map shape)', #conds, 1);
+        check('TB6 ...and never in silence', type(note), 'string');
+        check('TB7 ...naming the swap it made', note:find('test -> testar', 1, true) ~= nil, true);
+        check('TB8 ...keeping the newest value', conds[1].value, 'testar');
+
+        -- Re-adding the SAME value is a no-op, not an alarm.
+        local same = { { key = 'name', value = 'test' } };
+        check('TB9 re-adding an identical value says nothing', tg._pushCond(same, 'name', 'test', false), nil);
+
+        -- An EDITED rule loads its keys lowercased off the file while the pickers
+        -- spell them as the def does; the save lowercases both. A case-sensitive
+        -- test let two rows of one type stack, of which the save kept one -- silently.
+        local drift = { { key = 'magictype', value = 'White Magic' } };
+        tg._pushCond(drift, 'magicType', 'Black Magic', false);
+        check('TB10 a case-drifted key is the SAME condition type', #drift, 1);
+
+        local ors = {};
+        tg._pushCond(ors, 'buff', 'Sleep', true);
+        tg._pushCond(ors, 'buff', 'Lullaby', true);
+        check('TB11 the | leg still stacks duplicates', #ors, 2);
+
+        local swapped = { { key = 'name', value = 'testar' } };
+        check('TB12 the OR escape reports the move',
+            tg._orBothToAny(swapped, { key = 'name', prev = 'test', cur = 'testar' }), true);
+        check('TB13 ...both values survive it', #swapped, 2);
+        check('TB14 ...on the | leg, in order',
+            string.format('%s%s/%s%s', tostring(swapped[1].value), swapped[1].any and '|' or '&',
+                                       tostring(swapped[2].value), swapped[2].any and '|' or '&'),
+            'test|/testar|');
+        check('TB15 a junk swap is refused', tg._orBothToAny({}, nil), false);
+
+        -- ---- the REAL popup, frame by frame ----
+        local UP = {};
+        for i = 1, 250 do
+            local n, v = debug.getupvalue(tg.render, i);
+            if n == nil then break; end
+            UP[n] = v;
+        end
+        local trig, popup = UP.trig, UP.renderTrigAddPopup;
+        check('TB16 the builder state and its popup are reachable',
+            (type(trig) == 'table') and type(popup), 'function');
+        if type(trig) == 'table' and type(popup) == 'function' then
+            local function frame(click)
+                CLICK, REC = click, {};
+                local fok, ferr = pcall(popup);
+                if not fok then print('   (TB popup error: ' .. tostring(ferr) .. ')'); end
+                return fok;
+            end
+            trig.data = {};                    -- a loaded model, as M.render guarantees
+            trig.addFor, trig.addConds, trig._addDef = 'Item', {}, 1;
+            trig.addValText[1] = ''; trig._addValSel = nil; trig.addValNum[1] = 0;
+            trig.addSet, trig.addPrio[1] = 'Bait', 0;
+            trig.addNote, trig.addSwap = nil, nil;
+            trig.editIdx, trig._editEquip, trig._bpEdit = nil, nil, nil;
+
+            trig.addValText[1] = 'test';
+            check('TB17 the popup renders and the & click lands', frame('+ & condition##trgac'), true);
+            check('TB18 ...one pending condition', #trig.addConds, 1);
+            trig.addValText[1] = 'testar';
+            check('TB19 the second & click renders', frame('+ & condition##trgac'), true);
+            check('TB20 ...still one (replaced, not stacked)', #trig.addConds, 1);
+            check('TB21 ...carrying a note to show', type(trig.addNote), 'string');
+
+            check('TB22 the note frame renders', frame(nil), true);
+            local sawNote, sawSwap = false, false;
+            for _, l in ipairs(REC) do
+                if l:find('replaced', 1, true) then sawNote = true; end
+                if l:find('trgorboth', 1, true) then sawSwap = true; end
+            end
+            check('TB23 ...the note is on screen', sawNote, true);
+            check('TB24 ...beside its escape button', sawSwap, true);
+
+            check('TB25 the escape click renders', frame('Match either instead##trgorboth'), true);
+            check('TB26 ...both values move to the | leg', #trig.addConds, 2);
+            check('TB27 ...and the note is spent', trig.addNote, nil);
+
+            frame('Add rule###trgaddgo');
+            local r = trig.data.Item and trig.data.Item[1];
+            check('TB28 Save writes the rule',        type(r), 'table');
+            check('TB29 ...as an either-name rule',   (type(r) == 'table') and #(r.whenAny or {}), 2);
+            check('TB30 ...with an empty & leg',      (type(r) == 'table') and next(r.when or {}), nil);
+            check('TB31 the popup stack stayed balanced', depth.popup, 0);
+            check('TB32 the colour stack stayed balanced', depth.col, 0);
+        end
+    end
+
+    for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end
+    package.loaded['imgui'] = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures > 0 then
