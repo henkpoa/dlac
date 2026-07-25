@@ -204,6 +204,11 @@ for _, k in ipairs({
     'getEquippedId', 'equipToSlot', 'engineLocks', 'lacSlot', 'lockMirrorDirty',
     'wornSetTotals', 'renderStatsPanel', 'renderSlotGrid', 'renderSortCombo',
     'renderItemTooltip', 'setLabelOf',
+    -- ADR 0021. Needed here and not only in NKU*: those checks install their OWN
+    -- stubs onto host.services, so deleting these three from gearui's provide{}
+    -- would leave both suites green while the Equipped tab's Naked switch (which
+    -- guards on S.engineNaked ~= nil) silently vanished.
+    'engineNaked', 'setEngineNaked', 'isNative',
 }) do
     check('S12 service ' .. k, S[k] ~= nil, true);
 end
@@ -1169,9 +1174,11 @@ end)();
     -- render lives BELOW the imgui guard (nil headless, like fishui/ammoui); the
     -- pure display seams above it are what the smoke can exercise.
     check('S191 priorityui exposes the pure display seams', type(pui.buildRows), 'function');
-    -- source/control hints exist for all six claimants + the two special rows.
+    -- source/control hints exist for EVERY row the engine can rank -- driven off
+    -- the real default order, so a new claimant cannot ship with a blank hover.
+    local aw = require('dlac\\feature\\arbwatch');
     check('S192 every row has a source/control hint', (function()
-        for _, n in ipairs({ 'Pins', 'Locks', 'AutoAmmo', 'MaxMP', 'Craft', 'HELM', 'Fishing', 'Triggers' }) do
+        for _, n in ipairs(aw.defaultOrder()) do
             if type(pui.SOURCE[n]) ~= 'string' or pui.SOURCE[n] == '' then return n; end
             if type(pui.HINT[n]) ~= 'string' or pui.HINT[n] == '' then return n .. ' (hint)'; end
         end
@@ -1185,9 +1192,19 @@ end)();
     -- buildRows: only the Triggers floor is non-draggable now (step 3 folded the
     -- Locks veto into the list). Locks drags but stays a SPECIAL row (distinct
     -- color); the six claimants drag.
-    local aw = require('dlac\\feature\\arbwatch');
     local rows = pui.buildRows(aw.defaultOrder(), {});
-    check('S196 buildRows yields all nine rows in order', #rows, 9);
+    check('S196 buildRows yields a row per rank', #rows, #aw.defaultOrder());
+    -- Naked (ADR 0021) is an ordinary draggable row: "naked except my pins" is a
+    -- drag, so the day it becomes fixed the feature loses its escape hatch.
+    check('S196b Naked leads and drags', (function()
+        return rows[1].name == 'Naked' and rows[1].draggable == true;
+    end)(), true);
+    check('S196c the Naked row reports its live state', (function()
+        local on  = pui.buildRows({ 'Naked' }, { naked = true })[1];
+        local off = pui.buildRows({ 'Naked' }, { naked = false })[1];
+        return on.active == true and off.active == false
+           and on.status ~= off.status and on.status ~= '?' and off.status ~= '?';
+    end)(), true);
     check('S197 Locks is a draggable veto row; only Triggers is fixed', (function()
         local byName = {};
         for _, r in ipairs(rows) do byName[r.name] = r; end
@@ -1197,17 +1214,28 @@ end)();
     end)(), true);
     -- arbwatch loads under the ui tree and its pure move rule holds headless.
     check('S198 arbwatch loads headless', type(aw), 'table');
+    -- Indices follow the live default order, so they move when a row is added --
+    -- find the floor rather than hardcode its position.
+    local function idxOf(name)
+        for i, n in ipairs(aw.defaultOrder()) do if n == name then return i; end end
+    end
     check('S199 arbwatch.moveClaimant refuses to drag the Triggers floor',
-        aw.moveClaimant(aw.defaultOrder(), 9, -1), nil);
-    -- S199b: the Locks veto now drags -- raising it one step swaps it above Pins
-    -- (the absolute-veto position), and it never displaces the floor.
+        aw.moveClaimant(aw.defaultOrder(), idxOf('Triggers'), -1), nil);
+    -- S199b: the Locks veto drags -- raising it one step swaps it above Pins, and
+    -- it never displaces the floor. (Naked sits above both since v122.)
     check('S199b Locks drags up past Pins', (function()
-        local moved = aw.moveClaimant(aw.defaultOrder(), 2, -1);
-        return moved ~= nil and moved[1] == 'Locks' and moved[2] == 'Pins';
+        local moved = aw.moveClaimant(aw.defaultOrder(), idxOf('Locks'), -1);
+        if moved == nil then return false; end
+        local li, pi;
+        for i, n in ipairs(moved) do if n == 'Locks' then li = i; elseif n == 'Pins' then pi = i; end end
+        return li == pi - 1;
     end)(), true);
     check('S199c Locks drags down under AutoAmmo', (function()
-        local moved = aw.moveClaimant(aw.defaultOrder(), 2, 1);
-        return moved ~= nil and moved[2] == 'AutoAmmo' and moved[3] == 'Locks';
+        local moved = aw.moveClaimant(aw.defaultOrder(), idxOf('Locks'), 1);
+        if moved == nil then return false; end
+        local li, ai;
+        for i, n in ipairs(moved) do if n == 'Locks' then li = i; elseif n == 'AutoAmmo' then ai = i; end end
+        return li == ai + 1;
     end)(), true);
 end)();
 
@@ -1272,6 +1300,13 @@ end)();
     -- replaces in place -- tab order is untouched). Stub the services its render
     -- touches (the real ones captured the nil imgui at load).
     package.loaded['imgui'] = IM;
+    -- gearfmt captured an EARLIER section's stub (a fixed field list), so its
+    -- wrapped-text helper dies mid-render on a name that list never had -- and the
+    -- pcall'd drives below would swallow it. Re-require gearfmt against THIS
+    -- block's catch-all stub so the render runs to completion; without that, an
+    -- "ok" assertion on the render can never be true and the NKU* checks below
+    -- (the only thing that catches a nil global in the toolbar) are untestable.
+    package.loaded['dlac\\gear\\gearfmt'] = nil;
     package.loaded['dlac\\ui\\equippedui'] = nil;
     local eqOk = pcall(require, 'dlac\\ui\\equippedui');
     check('S205 equippedui re-requires against a stub imgui', eqOk, true);
@@ -1330,6 +1365,61 @@ end)();
         check('S211 unlock queues /lac enable <slot> (the legacy heal)',
             string.find(ujoin, '/lac enable head', 1, true) ~= nil, true);
 
+        -- NKU. The Naked switch (ADR 0021), driven through the REAL render.
+        -- This is the only thing that catches an unknown Lua name in that block:
+        -- an unknown name is a silent nil GLOBAL, invisible to a load test, and
+        -- the renders above are pcall'd -- so these assert the pcall RESULT.
+        local keptN = { Sx.engineNaked, Sx.setEngineNaked, Sx.isNative };
+        local nakedState, setCalls = false, {};
+        Sx.engineNaked    = function() return nakedState; end
+        Sx.setEngineNaked = function(on) setCalls[#setCalls + 1] = (on == true); end
+        Sx.isNative       = function() return false; end
+        u.eqSelected = nil;
+        u.freeEquip = { false };  u._freePrev = false;
+        u.lockEquipped = { false };  u._lockPrev = false;
+
+        local okN = pcall(render, 'WHM', 75);
+        check('NKU1 the Equipped toolbar renders with the Naked switch present', okN, true);
+
+        nakedState = true;                                  -- armed: the red state line draws
+        local reds = 0;
+        local keptTC = IM.TextColored;
+        IM.TextColored = function(_, t)
+            if type(t) == 'string' and string.find(t, 'NAKED', 1, true) then reds = reds + 1; end
+        end
+        local okN2 = pcall(render, 'WHM', 75);
+        check('NKU2 it renders while ARMED too', okN2, true);
+        check('NKU2b and says so on the toolbar', reds >= 1, true);
+
+        -- Clicking it calls the ONE door (only the naked checkbox reports a click,
+        -- so Free equip and Floating equipment are not disturbed).
+        local keptCb = IM.Checkbox;
+        IM.Checkbox = function(label, t)
+            if type(label) == 'string' and string.find(label, 'eqnaked', 1, true) then
+                t[1] = false; return true;                  -- unchecking an armed switch
+            end
+            return false;
+        end
+        setCalls = {};
+        local okN3 = pcall(render, 'WHM', 75);
+        check('NKU3 clicking the switch renders cleanly', okN3, true);
+        check('NKU3b and calls setEngineNaked(false)',
+            #setCalls == 1 and setCalls[1] == false, true);
+
+        -- Free equip ON in LEGACY mode is the one state where stripping would
+        -- silently do nothing (LAC refuses to unequip a Disabled slot), so the
+        -- switch must not be clickable there.
+        setCalls = {};
+        u.freeEquip = { true };  u._freePrev = true;        -- ON, no edge (no /lac requeue)
+        local okN4 = pcall(render, 'WHM', 75);
+        check('NKU4 Free equip ON renders the switch as unavailable', okN4, true);
+        check('NKU4b and it cannot be clicked into a silent no-op', #setCalls, 0);
+
+        IM.Checkbox = keptCb;  IM.TextColored = keptTC;
+        Sx.engineNaked, Sx.setEngineNaked, Sx.isNative = keptN[1], keptN[2], keptN[3];
+        u.freeEquip = { false };  u._freePrev = false;
+        nakedState = false;
+
         AshitaCore = realAshita;
         for i, f in ipairs({ 'renderSlotGrid', 'renderStatsPanel', 'renderSortCombo',
             'candidatesForSlot', 'sortForDisplay', 'getEquippedId', 'displayName',
@@ -1341,7 +1431,9 @@ end)();
 
     -- restore the real (nil) imgui binding for anything downstream
     package.loaded['imgui'] = nil;
+    package.loaded['dlac\\gear\\gearfmt'] = nil;
     package.loaded['dlac\\ui\\equippedui'] = nil;
+    pcall(require, 'dlac\\gear\\gearfmt');
     pcall(require, 'dlac\\ui\\equippedui');
 end)();
 

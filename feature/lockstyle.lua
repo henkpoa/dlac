@@ -1275,7 +1275,54 @@ end
 -- state, the Engine uninvolved (field-verifiable with LAC not loaded at all).
 -- No queueCmd, no request-file write on this path: exactly one apply, and both
 -- absences are grep-provable. box = the marked box the caller resolved.
+-- Is the strip armed (ADR 0021)? Both states, because this file runs in the
+-- ADDON state in both modes: native shares the engine's Lua state, so ask the
+-- module; legacy's engine lives in LuaAshitacast's state, so read the __naked
+-- mirror it writes to modestate.lua (the same file gearui and priorityui parse).
+-- Fails CLOSED to "not naked" -- an unreadable mirror must not block a normal
+-- apply.
+local function nakedArmed()
+    local on = false;
+    if nativeArmed() then
+        pcall(function()
+            local d = require('dlac\\dispatch');
+            on = (type(d) == 'table' and type(d.nakedOn) == 'function' and d.nakedOn() == true);
+        end);
+        return on;
+    end
+    pcall(function()
+        local dir = dataDir();
+        if dir == nil then return; end
+        local chunk = loadfile(dir .. 'modestate.lua');
+        if chunk == nil then return; end
+        local ok, t = pcall(chunk);
+        on = (ok and type(t) == 'table' and t.__naked == true);
+    end);
+    return on;
+end
+-- Published on M, and CALLED through M below rather than as the local -- that is
+-- what makes it a real seam (a local call cannot be stubbed, and the refusal is
+-- otherwise unreachable headless: it needs either a live dispatch or a mirror on
+-- disk). Tests NK29.
+M._nakedArmed = nakedArmed;
+
 function M._applyDirect(box)
+    -- REFUSED WHILE NAKED (ADR 0021 ruling 10), and it has to be HERE rather than
+    -- only in the engine's apply half: this is the addon-resident executor every
+    -- other door funnels into -- the GUI Apply button, the native typed handler,
+    -- and every SCRIPTED apply (town transitions, OnLoad restore, keep-on-subjob).
+    -- Those last three fire with no user action at all, so a naked player zoning
+    -- into town would otherwise have nudity written into their lockstyle by
+    -- itself. lockstyleapply freezes every slot the box does not name to the WORN
+    -- id, which is 0 while stripped, and style 0 renders a slot EMPTY -- and the
+    -- server keeps styles per slot, so it outlives /dl dress. Because a style
+    -- survives having no armor, the player cannot even see it happen.
+    if M._nakedArmed() then
+        print('[dlac] lockstyle: refused -- you are NAKED. Slots your box does not name would be'
+            .. ' styled EMPTY permanently (the server keeps a style per slot). /dl dress first.');
+        M._capNote('apply refused: naked');
+        return;
+    end
     -- nil box = the MARKED one (the same resolution the engine's apply used;
     -- the native queueCmd funnel passes nil for a bare '/dl ls apply').
     if box == nil then

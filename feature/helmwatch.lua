@@ -130,8 +130,17 @@ M.AUTO_HOLD_S = 4;         -- hold tail after each swing's result. TIMING TRUTH
                            -- 0x034 result is our first signal, so the swing
                            -- that opens the hold is never dressed; the hold
                            -- exists so every FOLLOWING swing is. 4s is
-                           -- Henrik's ruling (was 20): near-instant snap back
-                           -- to the normal set. CONSEQUENCE: re-trade within
+                           -- Henrik's ruling (20 -> 4, then 6/5/4 on 07-25):
+                           -- a quick snap back to the normal set -- long idle
+                           -- holds cost movement-speed gear between points.
+                           -- The 07-25 fix was NOT this number, it was making
+                           -- the 4s WHOLE every pass (see proximityStep): it
+                           -- used to decay 4..1 between refreshes, so a point
+                           -- despawning left you the sawtooth leftover, often
+                           -- ~1s. os.time() is whole seconds, so a fractional
+                           -- value here is meaningless (n and n+0.5 expire on
+                           -- the same tick) and %d in saveState would drop it.
+                           -- CONSEQUENCE: re-trade within
                            -- 4s of a result or that swing rolls undressed
                            -- (its own result re-opens the hold) -- watch the
                            -- bar's AUTO line when judging break tests.
@@ -601,8 +610,8 @@ end
 
 -- One proximity pass. `probe` abstracts the watcher for tests:
 --   { nearest = fn('<Category> Point') -> distance in YALMS, or nil }
--- Returns true while any point holds us (and keeps the engine hold alive,
--- with sparse state writes -- roughly one per 2s, not one per frame).
+-- Returns true while any point holds us (and keeps the engine hold alive at
+-- its full length, with sparse state writes -- one per second, not per frame).
 function M.proximityStep(probe)
     if not M.isAutoHelm() then M._proxHold = false; return false; end
     local enter = M.proxEnter();
@@ -628,8 +637,17 @@ function M.proximityStep(probe)
     if pick == nil then M._proxHold = false; return false; end
     M._proxHold = true;
     if M.activeGather ~= pick then M.selectGather(pick); end
+    -- Keep the hold at its FULL length every pass (Henrik 07-25: "there's
+    -- really no point in having lowering durations"). This used to only
+    -- re-arm once the hold had decayed under 2s, so what you actually got
+    -- when a point despawned was the leftover of a 4..1 sawtooth, not 4.
+    -- os.time() is whole seconds, so `<` fires at most ONCE PER SECOND, not
+    -- per frame -- and the engine re-reads the state file once per second
+    -- too (dispatch ensureStateFile), so this writes exactly as often as
+    -- anything can read it. `<` also means a longer hold set elsewhere is
+    -- never shortened here.
     local now = os.time();
-    if (M._autoUntil or 0) < now + 2 then
+    if (M._autoUntil or 0) < now + M.AUTO_HOLD_S then
         M._autoUntil = now + M.AUTO_HOLD_S;
         M._enabledAt = now;
         saveState();

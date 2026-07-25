@@ -5474,10 +5474,13 @@ end)();
     local def = dispatchM._arbDefaultOrder;
     check('AR1 default order exported', type(def), 'table');
     check('AR1b exact default rank', table.concat(def, '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     -- AR1c: the ADR 0012 laws the order encodes, checked as adjacency (not prose)
     local rank = {}; for i, n in ipairs(def) do rank[n] = i; end
-    check('AR1d Pins outrank everything',    rank['Pins'], 1);
+    -- Naked (ADR 0021) is the ONE row above Pins: "naked" must mean naked, and a
+    -- player who wants "naked except my pins" drags Pins over it. Do not "fix"
+    -- this back to Pins == 1.
+    check('AR1d Naked outranks everything, Pins everything else', rank['Naked'] == 1 and rank['Pins'] == 2, true);
     check('AR1e Locks veto sits under Pins', rank['Locks'] == rank['Pins'] + 1, true);
     check('AR1f AutoAmmo outranks MaxMP (the deliberate change)', rank['AutoAmmo'] < rank['MaxMP'], true);
     check('AR1g MaxMP outranks Craft/HELM/Fishing (batteries over their armor)',
@@ -5485,20 +5488,25 @@ end)();
     check('AR1h Triggers is the floor (last)', rank['Triggers'], #def);
 
     -- AR2: arbOrder sanitizes. Missing/torn -> default; unknown dropped, missing
-    -- known rows appended; a valid reorder is preserved.
+    -- known rows restored AT THEIR DEFAULT POSITION (v122 -- see NK8/NK9; the old
+    -- law appended them, which is right only for a row that belongs last); a valid
+    -- reorder is preserved.
     check('AR2 nil -> default', table.concat(dispatchM.arbOrder(nil), '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AR2b no order field -> default', table.concat(dispatchM.arbOrder({ foo = 1 }), '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AR2c a valid reorder is preserved',
         table.concat(dispatchM.arbOrder({ order = { 'MaxMP', 'AutoAmmo', 'Pins', 'Locks', 'Craft', 'HELM', 'Fishing', 'Triggers' } }), '>'),
-        'MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>Triggers');
-    check('AR2d unknown rows dropped, missing known rows appended in default order',
+        'Naked>MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>Triggers');
+    -- Listed rows keep the user's order absolutely (Fishing still above Pins);
+    -- every unlisted row lands where it sits by default RELATIVE to them --
+    -- Naked before Fishing, Chocobo after Pins because nothing outranks it.
+    check('AR2d unknown rows dropped, missing known rows restored at their default position',
         table.concat(dispatchM.arbOrder({ order = { 'Fishing', 'Nonsense', 'Pins' } }), '>'),
-        'Fishing>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Chocobo>Triggers');
+        'Naked>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Pins>Chocobo>Triggers');
     check('AR2e duplicates collapse',
         table.concat(dispatchM.arbOrder({ order = { 'Pins', 'Pins', 'AutoAmmo' } }), '>'),
-        'Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
 
     -- AR3: the PURE resolve core -- claims + rank + floor -> winners + by.
     local order = dispatchM.arbOrder(nil);
@@ -5555,12 +5563,12 @@ end)();
     put('tests\\arbstate.lua', 'return { order = { "MaxMP", "AutoAmmo", "Pins", "Locks", "Craft", "HELM", "Fishing", "Triggers" } }');
     check('AR7 hand-edited reorder is read + sanitized',
         table.concat(dispatchM.arbOrder(esf(cache, 'arbstate.lua')), '>'),
-        'MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Naked>MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>Triggers');
     cache.lastCheck = -1;
     put('tests\\arbstate.lua', 'return { order = {');   -- torn write
     check('AR7b torn write drops to default',
         table.concat(dispatchM.arbOrder(esf(cache, 'arbstate.lua')), '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     os.remove('tests\\arbstate.lua');
     dispatchM._charDirOverride = nil;
 
@@ -5648,7 +5656,7 @@ end)();
 --      Locks', floor-only slots 'Triggers (floor)', in canonical LAC order.
 -- ---------------------------------------------------------------------------
 (function()
-    local ord = dispatchM.arbOrder(nil);  -- Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers
+    local ord = dispatchM.arbOrder(nil);  -- Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers
     -- The whole claim path in one resolve. MaxMP is a proper CLAIM now (step 4):
     -- its battery targets a claim table, ranked below AutoAmmo (the deliberate
     -- cede) and above Craft (batteries over craft armor).
@@ -5662,12 +5670,12 @@ end)();
     local floor = { Head = 'Idle Hat', Ammo = 'Idle Ammo', Ring1 = 'Idle Ring',
                     Hands = 'Idle Hands', Legs = 'Idle Legs', Body = 'Idle Body' };
     local ex = dispatchM.arbExplain(claims, ord, floor);
-    -- Ammo: AutoAmmo(3) > MaxMP(4) > Triggers(8) -- the issue's headline contest.
+    -- Ammo: AutoAmmo(4) > MaxMP(5) > Triggers(10) -- the issue's headline contest.
     check('AR11 Ammo winner is AutoAmmo',            ex.Ammo[1].name, 'AutoAmmo');
-    check('AR11b Ammo winner rank is 3',             ex.Ammo[1].rank, 3);
+    check('AR11b Ammo winner rank is 4 (Naked took rank 1)', ex.Ammo[1].rank, 4);
     check('AR11c Ammo runner-up is the MaxMP battery (the deliberate cede)', ex.Ammo[2].name, 'MaxMP');
     check('AR11d Ammo third is the floor',           ex.Ammo[3].name, 'Triggers');
-    -- Head: Pins(1) > MaxMP(4) > Craft(5) > Triggers(8).
+    -- Head: Pins(2) > MaxMP(5) > Craft(6) > Triggers(10).
     check('AR11e Head winner is the pin',            ex.Head[1].name, 'Pins');
     check('AR11f Head second is MaxMP (battery over craft armor)', ex.Head[2].name, 'MaxMP');
     check('AR11g Head third is Craft',               ex.Head[3].name, 'Craft');
@@ -5676,7 +5684,7 @@ end)();
     check('AR11i Ring1 second is the floor',         ex.Ring1[2].name, 'Triggers');
     -- Hands: only Craft claims it.
     check('AR11j Hands winner is Craft',             ex.Hands[1].name, 'Craft');
-    -- Legs: the Locks veto (rank 2) wins; nothing claims above it.
+    -- Legs: the Locks veto (rank 3) wins; nothing claims above it.
     check('AR11k Legs winner is the Locks veto',     ex.Legs[1].name, 'Locks');
     check('AR11l Legs veto held off the floor',      ex.Legs[2].name, 'Triggers');
     -- Body: floor-only.
@@ -5696,13 +5704,13 @@ end)();
                     Legs = 'Idle Legs', Body = 'Idle Body' };
     local joined = table.concat(dispatchM.arbWhyLines(claims, ord, floor), '\n');
     check('AR12 the Ammo contest line names winner over runner-up (the issue example)',
-        joined:find('Ammo: AutoAmmo (rank 3)  over MaxMP (rank 4)', 1, true) ~= nil, true);
+        joined:find('Ammo: AutoAmmo (rank 4)  over MaxMP (rank 5)', 1, true) ~= nil, true);
     check('AR12b a MaxMP-only slot reads MaxMP over the floor',
-        joined:find('Ring1: MaxMP (rank 4)  over Triggers (rank 9)', 1, true) ~= nil, true);
+        joined:find('Ring1: MaxMP (rank 5)  over Triggers (rank 10)', 1, true) ~= nil, true);
     check('AR12c a veto slot reads stopped by Locks (even from a lowercase key)',
-        joined:find('Legs: stopped by Locks (rank 2)', 1, true) ~= nil, true);
+        joined:find('Legs: stopped by Locks (rank 3)', 1, true) ~= nil, true);
     check('AR12d floor-only slots collapse into one named Triggers-floor summary',
-        joined:find('Triggers floor (rank 9, uncontested):', 1, true) ~= nil
+        joined:find('Triggers floor (rank 10, uncontested):', 1, true) ~= nil
         and joined:find('Body', 1, true) ~= nil, true);
     -- Contested slots emit individually in canonical LAC order (ammo 4 < hands 10
     -- < ring1 11), BEFORE the trailing floor summary.
@@ -5774,7 +5782,7 @@ end)();
     check('LV0b arbLockClaim accepts an array of slot keys',
         dispatchM.arbLockClaim({ 'Head', 'Ring1' }).Ring1, dispatchM.LOCK_HELD);
 
-    local order = dispatchM.arbOrder(nil);  -- Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers
+    local order = dispatchM.arbOrder(nil);  -- Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers
     local floor = { Head = 'Idle Hat', Ring1 = 'Idle Ring' };
     local locked = dispatchM.arbLockClaim({ 'Head', 'Ring1' });  -- both slots locked
 
@@ -5855,6 +5863,337 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- NK. NAKED (ADR 0021) -- /dl naked strips every slot and HOLDS it empty, as an
+--     ordinary Arbiter claimant ranked first, not as a lock.
+--
+--     Why a claim: a lock only WITHHOLDS (it deletes a slot from a layer's plan
+--     -- it cannot take a piece off), it is wiped by every engine self-swap,
+--     Pins punch through it by default, and three unrelated buttons release it.
+--     A claim is recomputed every dispatch, so a strip the server refuses heals
+--     itself -- and precedence becomes the player's, for free.
+--
+--     The two traps these pin, both of which would ship silently:
+--       NK3  the claim must use PROPER-CASE slot keys. equipcore.SLOT_ID is
+--            case-sensitive and LuaAshitacast's is not, so a lowercase claim
+--            works in LAC and strips NOTHING natively -- broken only in the
+--            mode that actually ships.
+--       NK8  a row missing from an existing arbstate file must land at its
+--            DEFAULT position, not the bottom. Appended, Naked would rank under
+--            Locks for every character who ever opened the Priority list.
+-- ---------------------------------------------------------------------------
+(function()
+    local canon = dispatchM._lacSlotsCanon;
+    check('NK1 the canonical slot list is the 16', type(canon) == 'table' and #canon, 16);
+    -- The equip vocabulary and the /dl lock vocabulary must name the SAME slots.
+    -- Compared as SETS, not concatenated: gear\equipcore.lua's SLOT_NAMES is a
+    -- third order again, so order equality would be a lie that happens to hold.
+    check('NK1b lowercasing the equip vocabulary yields the lock vocabulary', (function()
+        for _, s in ipairs(canon) do
+            if dispatchM.setLock(string.lower(s), false) == nil then return 'missing ' .. s; end
+        end
+        return true;
+    end)(), true);
+
+    local claim = dispatchM.nakedClaim();
+    local n, allRemove = 0, true;
+    for _, v in pairs(claim) do n = n + 1; if v ~= 'remove' then allRemove = false; end end
+    check('NK2 the claim names all 16 slots', n, 16);
+    check('NK2b every value is the unequip literal', allRemove, true);
+    check('NK3 keys are PROPER case (a lowercase key is dropped by the native engine)',
+        claim.Main == 'remove' and claim.main == nil and claim.Ring1 == 'remove', true);
+    claim.Main = 'mutated';
+    check('NK4 each call returns a fresh table', dispatchM.nakedClaim().Main, 'remove');
+
+    -- The flag. setNaked is the ONE door; nakedOn the ONE reader.
+    dispatchM.nakedArmed = false;
+    check('NK5 off by default', dispatchM.nakedOn(), false);
+    check('NK5b setNaked(true) returns the new state', dispatchM.setNaked(true), true);
+    check('NK5c and arms the flag', dispatchM.nakedOn(), true);
+    check('NK5d arming twice is idempotent', dispatchM.setNaked(true), true);
+    dispatchM.nakedArmed = 'yes';                     -- a truthy non-true must not count
+    check('NK5e only a literal true is armed', dispatchM.nakedOn(), false);
+    dispatchM.setNaked(false);
+    check('NK5f setNaked(false) disarms', dispatchM.nakedOn(), false);
+
+    -- The rank row.
+    local def = dispatchM._arbDefaultOrder;
+    local rank = {}; for i, nm in ipairs(def) do rank[nm] = i; end
+    check('NK6 exact default rank', table.concat(def, '>'),
+        'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+    check('NK7 Naked outranks Pins, which outranks Locks',
+        rank['Naked'] < rank['Pins'] and rank['Pins'] < rank['Locks'], true);
+
+    -- TRAP: every arbstate file written before v122 lists nine rows and no Naked.
+    check('NK8 a pre-v122 file gets Naked at the TOP, not the bottom',
+        dispatchM.arbOrder({ order = { 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
+                                       'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' } })[1], 'Naked');
+    check('NK9 a file that places Naked LOW keeps it there (the user has spoken)',
+        table.concat(dispatchM.arbOrder({ order = { 'Pins', 'Locks', 'Naked', 'Triggers' } }), '>'),
+        'Pins>Locks>Naked>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+    check('NK10 the restore never duplicates a row', (function()
+        local seen = 0;
+        for _, nm in ipairs(dispatchM.arbOrder(nil)) do if nm == 'Naked' then seen = seen + 1; end end
+        return seen;
+    end)(), 1);
+    -- The same law from the other end: Chocobo still lands LAST (it did when it
+    -- was the new row), so the positional rule did not regress the append case.
+    check('NK10b a missing bottom row still lands just above the floor',
+        table.concat(dispatchM.arbOrder({ order = { 'Naked', 'Pins', 'Locks', 'AutoAmmo',
+                                                    'MaxMP', 'Craft', 'HELM', 'Fishing', 'Triggers' } }), '>'),
+        'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+
+    -- The pure resolve: Naked beats everything, and the rank list is the ONLY
+    -- exception mechanism (this is the "naked except my pins" contract).
+    local ord = dispatchM.arbOrder(nil);
+    local floor = { Head = 'Idle Hat', Body = 'Idle Robe' };
+    local wN, byN = dispatchM.arbResolve(
+        { Naked = dispatchM.nakedClaim(), Pins = { Head = 'Pinned Crown' } }, ord, floor);
+    check('NK11 Naked wins a pinned slot',       wN.Head, 'remove');
+    check('NK11b attributed to Naked',           byN.Head, 'Naked');
+    check('NK11c and a floor-only slot',         wN.Body, 'remove');
+    local pinTop = dispatchM.arbOrder({ order = { 'Pins', 'Naked', 'Locks', 'AutoAmmo', 'MaxMP',
+                                                  'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' } });
+    local wP, byP = dispatchM.arbResolve(
+        { Naked = dispatchM.nakedClaim(), Pins = { Head = 'Pinned Crown' } }, pinTop, floor);
+    check('NK12 drag Pins above Naked -> naked EXCEPT the pin', wP.Head, 'Pinned Crown');
+    check('NK12b attributed to Pins',                           byP.Head, 'Pins');
+    check('NK12c every other slot is still stripped',           wP.Body, 'remove');
+    local lockTop = dispatchM.arbOrder({ order = { 'Locks', 'Naked', 'Pins', 'AutoAmmo', 'MaxMP',
+                                                   'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' } });
+    local wL = dispatchM.arbResolve(
+        { Naked = dispatchM.nakedClaim(), Locks = dispatchM.arbLockClaim({ 'Head' }) }, lockTop, floor);
+    check('NK13 drag Locks above Naked -> a locked slot keeps what it wears',
+        wL.Head, dispatchM.LOCK_HELD);
+
+    -- Woven MaxMP stands down for free: registering the claim is the whole fix.
+    local ceded = dispatchM.arbCededAbove({ Naked = dispatchM.nakedClaim() }, ord, 'MaxMP');
+    local nCede = 0;
+    for _, who in pairs(ceded) do if who == 'Naked' then nCede = nCede + 1; end end
+    check('NK14 MaxMP cedes all 16 slots to Naked (lowercase keys)', nCede, 16);
+    check('NK14b including the Ammo slot it would otherwise battery', ceded['ammo'], 'Naked');
+
+    -- The pinReserved void. A hold placed on behalf of a claimant Naked outranks
+    -- is void; one placed on behalf of a claimant that outranks Naked stands.
+    check('NK15 Naked above Pins voids the pin reservation',
+        dispatchM.nakedVoidsPinReserve({ Naked = 1, Pins = 2 }), true);
+    check('NK16 Pins above Naked keeps it',
+        dispatchM.nakedVoidsPinReserve({ Naked = 3, Pins = 1 }), false);
+    check('NK17 no Naked row -> nothing is voided',
+        dispatchM.nakedVoidsPinReserve({ Pins = 1 }), false);
+    check('NK17b a bad rank table never throws',
+        dispatchM.nakedVoidsPinReserve(nil), false);
+
+    -- THE LIVE EQUIP LAYER. The claim has to survive equipResolved's five post
+    -- passes intact -- an all-'remove' table is an input none of them were
+    -- written for.
+    local savedAC = AshitaCore;
+    AshitaCore = nil;                                   -- wornItemName -> nil
+    for k in pairs(dispatchM.locks) do dispatchM.locks[k] = nil; end
+    local _, wNak = dispatchM._equipResolved(dispatchM.nakedClaim(), {});
+    local kept = 0;
+    for _, v in pairs(wNak) do if v == 'remove' then kept = kept + 1; end end
+    check('NK18 all 16 removes survive the post-passes', kept, 16);
+    -- Locked + punching through (Naked ranks above Locks by default).
+    dispatchM.setLock('all', true);
+    local _, wPunch = dispatchM._equipResolved(dispatchM.nakedClaim(), {}, false);
+    local kept2 = 0;
+    for _, v in pairs(wPunch) do if v == 'remove' then kept2 = kept2 + 1; end end
+    check('NK19 punch-through keeps all 16 even with every slot locked', kept2, 16);
+    -- ...and respecting locks (the "drag Locks above Naked" composition) strips them.
+    local _, wStop = dispatchM._equipResolved(dispatchM.nakedClaim(), {}, true);
+    check('NK20 respecting locks, a locked slot is left alone', wStop.Head, nil);
+    for k in pairs(dispatchM.locks) do dispatchM.locks[k] = nil; end
+
+    -- The craft Sub-vs-Main guard DOES run over the naked table (it rides the
+    -- shared ctx, which carries craftMainGuard whenever craft is armed). It is
+    -- harmless only because 'remove' resolves to no gear record -- so pin that,
+    -- or the day the guard learns the literal, naked silently stops taking your
+    -- weapon off while a craft Sub is armed.
+    local askedWith = nil;
+    local _, wGuard = dispatchM._equipResolved(dispatchM.nakedClaim(),
+        { craftMainGuard = function(mainName) askedWith = mainName; return true; end });
+    check('NK21 the guard IS consulted on the naked table', askedWith, 'remove');
+    check('NK21b and a guard that holds would keep the weapon on', wGuard.Main, nil);
+    -- What actually saves us is that 'remove' is not a gear record, so the real
+    -- guard's early-out fires. Pin the fact itself, not the accident.
+    check('NK21c "remove" resolves to no gear record (why the real guard returns false)',
+        type(utils.resolveGearName('remove')) == 'table', false);
+    local _, wGuard2 = dispatchM._equipResolved(dispatchM.nakedClaim(),
+        { craftMainGuard = function(mainName)
+              return type(utils.resolveGearName(mainName)) == 'table';   -- the real guard's early-out
+          end });
+    check('NK21d so Main comes off even with a craft Sub armed', wGuard2.Main, 'remove');
+    AshitaCore = savedAC;
+
+    -- /dl why: sixteen identical winner lines would bury everything else it says,
+    -- so a whole-sweep Naked collapses to one line -- naming who it beat.
+    local why = table.concat(dispatchM.arbWhyLines(
+        { Naked = dispatchM.nakedClaim(), Pins = { Head = 'Pinned Crown' } }, ord, floor), '\n');
+    check('NK22 /dl why collapses the sweep into ONE line',
+        select(2, why:gsub('NAKED %(rank 1%)', '')), 1);
+    check('NK22b it counts the slots',   why:find('holds 16 slots empty', 1, true) ~= nil, true);
+    check('NK22c and names who it beat', why:find('over Pins (rank 2)', 1, true) ~= nil, true);
+    check('NK22d no per-slot Naked line survives', why:find('Head: Naked', 1, true), nil);
+
+    -- The command tokens. dispatch's handler only registers inside engineActive(),
+    -- which is false headlessly, so the whitelist cannot be driven -- pin it as
+    -- SOURCE instead (the v46 trap: a subcommand missing from the whitelist
+    -- returns in silence and looks like the command does not exist).
+    local src = (function() local f = io.open('dispatch.lua', 'r'); local d = f:read('*a'); f:close(); return d; end)();
+    local wl = src:match("\n%s*if sub ~= 'mode'[^\n]*\n");
+    check('NK23 the command whitelist is findable', wl ~= nil, true);
+    check('NK23b naked is whitelisted', wl and wl:find("sub ~= 'naked'", 1, true) ~= nil, true);
+    check('NK23c dress is whitelisted',  wl and wl:find("sub ~= 'dress'", 1, true) ~= nil, true);
+    check('NK24 the strip flag is carried across a self-swap, not reset',
+        src:find('M.nakedArmed = (M.nakedArmed == true);', 1, true) ~= nil, true);
+
+    -- arbwatch's headless fallback is DEAD whenever dispatch loads -- which is
+    -- both Lua states and every other AB check -- so a drifting mirror ships
+    -- green. Force the branch by hiding dispatch from the require.
+    local savedDsp = package.loaded['dlac\\dispatch'];
+    package.loaded['dlac\\dispatch'] = nil;
+    local awNo = dofile('feature/arbwatch.lua');
+    package.loaded['dlac\\dispatch'] = savedDsp;
+    check('NK25 the no-dispatch fallback agrees on the default order',
+        table.concat(awNo.defaultOrder(), '>'), table.concat(def, '>'));
+    check('NK25b and on the positional restore',
+        table.concat(awNo.sanitize({ order = { 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
+                                               'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' } }), '>'),
+        table.concat(dispatchM.arbOrder({ order = { 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
+                                               'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' } }), '>'));
+
+    -- NK26. END TO END through the REAL M.dispatch.
+    --
+    -- Worth its own note: until this check, M.dispatch was called ZERO times by
+    -- the suite -- every other test drives a pure seam under it. So the wiring
+    -- BETWEEN the seams (the bail guard, the claims table, the rank walk, the
+    -- apply closure) was covered by nothing, and a local that fell out of scope
+    -- would not be an error in Lua -- it would silently become a nil GLOBAL and
+    -- the strip would just not happen. Naked is the cheapest possible driver for
+    -- it: with the flag on and NOTHING else armed -- no triggers, no pins, no
+    -- hobby, no ammo -- a bare dispatch must still produce all 16 removes, which
+    -- is exactly the path the bail guard has to let through.
+    local savedPlayer, savedFunc, savedState = TEST_PLAYER, rawget(_G, 'gFunc'), rawget(_G, 'gState');
+    TEST_PLAYER = { MainJob = 'WHM', MainJobLevel = 75, SubJob = 'BLM', SubJobLevel = 37,
+                    MainJobSync = 75, SubJobSync = 37, Status = 'Idle', IsMoving = false };
+    local wrote = {};
+    _G.gFunc  = { EquipSet = function(t) for k, v in pairs(t or {}) do wrote[k] = v; end end };
+    _G.gState = { CurrentCall = 'N/A', Disabled = {} };
+    dispatchM.nakedArmed = true;
+    local okDisp, dispErr = pcall(dispatchM.dispatch, 'Default');
+    check('NK26 a bare Default dispatch with only naked armed does not throw', okDisp, true);
+    if not okDisp then print('NK26 error: ' .. tostring(dispErr)); end
+    local nWrote, allRm = 0, true;
+    for _, v in pairs(wrote) do nWrote = nWrote + 1; if v ~= 'remove' then allRm = false; end end
+    check('NK26b it reaches the equip door with all 16 slots', nWrote, 16);
+    check('NK26c every one of them is an unequip', allRm, true);
+    check('NK26d proper case survives the whole path', wrote.Ring1, 'remove');
+    -- A local that escaped its block would show up here as a nil-valued global
+    -- turned real -- the failure mode the check above cannot see on its own.
+    local leaked = nil;
+    for _, nm in ipairs({ 'nakedOn', 'nEquip', 'nSig', 'rankOf', 'claims', 'nakedSlots' }) do
+        if rawget(_G, nm) ~= nil then leaked = nm; break; end
+    end
+    check('NK26e no dispatch local leaked to the globals', leaked, nil);
+    -- ...and with the flag OFF the same bare dispatch writes nothing at all.
+    dispatchM.nakedArmed = false;
+    wrote = {};
+    pcall(dispatchM.dispatch, 'Default');
+    check('NK26f released, a bare dispatch writes nothing', next(wrote), nil);
+
+    -- NK27. The __naked mirror, through the REAL saveModeState onto disk. It must
+    -- be written even when nothing changed: an early return there strands a stale
+    -- mirror -- quit the client while naked and the next launch is genuinely
+    -- dressed, but the file still says true, so the GUI draws the red NAKED button
+    -- and clicking it (setNaked(false) on an already-false flag) would write
+    -- nothing and never clear it.
+    dispatchM._charDirOverride = 'tests' .. string.char(92);
+    local function readMirror()
+        local f = io.open('tests' .. string.char(92) .. 'modestate.lua', 'r');
+        if f == nil then return nil; end
+        local d = f:read('*a'); f:close(); return d;
+    end
+    os.remove('tests' .. string.char(92) .. 'modestate.lua');
+    dispatchM.nakedArmed = false;
+    dispatchM.setNaked(false);                                  -- no change at all
+    local m0 = readMirror();
+    check('NK27 setNaked writes the mirror even when nothing changed', m0 ~= nil, true);
+    check('NK27b and it reads false', m0 and m0:find('["__naked"] = false', 1, true) ~= nil, true);
+    dispatchM.setNaked(true);
+    check('NK27c arming flips it to true',
+        (readMirror() or ''):find('["__naked"] = true', 1, true) ~= nil, true);
+    check('NK27d the flag lives OUTSIDE M.modes (no collision with a user Mode)',
+        dispatchM.modes['naked'], nil);
+
+    -- NK28. THE DISARM WATCH -- the relog guard the ADR calls the worst possible
+    -- outcome to get wrong, plus the job-change drop (Henrik, 07-25). M.nakedArmed
+    -- rides across a relog on its own (an Ashita addon survives a logout, and LAC
+    -- never clears package.loaded), so this watch is what actually clears it.
+    check('NK28 same job, in the world -> stays armed', dispatchM.nakedWorldWatch(7, 7), nil);
+    check('NK28b and the flag is untouched',    dispatchM.nakedOn(), true);
+    check('NK28c job 0 (character select) disarms', dispatchM.nakedWorldWatch(0, 7), 'world');
+    check('NK28d you come back dressed',        dispatchM.nakedOn(), false);
+    check('NK28e the mirror follows it down',
+        (readMirror() or ''):find('["__naked"] = false', 1, true) ~= nil, true);
+    dispatchM.setNaked(true);
+    check('NK28f a nil job read disarms too',   dispatchM.nakedWorldWatch(nil, 7), 'world');
+    dispatchM.setNaked(true);
+    check('NK28g a JOB CHANGE disarms',         dispatchM.nakedWorldWatch(3, 7), 'job');
+    check('NK28h ...and dresses you',           dispatchM.nakedOn(), false);
+    -- The first in-world read of a session has no previous job to compare
+    -- against; latching it must not read as a change and strip you at login.
+    dispatchM.setNaked(true);
+    check('NK28i the first job latch is not a change', dispatchM.nakedWorldWatch(7, nil), nil);
+    check('NK28j nor is coming back from character select',
+        dispatchM.nakedWorldWatch(7, 0), nil);
+    check('NK28k still armed through both',     dispatchM.nakedOn(), true);
+    check('NK28l it only ever CLEARS, never arms', (function()
+        dispatchM.nakedWorldWatch(0, 7);                     -- disarm
+        return dispatchM.nakedWorldWatch(0, 7) == nil and dispatchM.nakedOn() == false;
+    end)(), true);
+    -- NK29. THE LOCKSTYLE REFUSAL, on the door that actually runs.
+    --
+    -- lockstyleapply freezes every slot the box does not name to the WORN id --
+    -- which is 0 while stripped, and style 0 renders the slot EMPTY. The server
+    -- keeps styles per slot, so that outlives /dl dress, and because a style
+    -- survives having no armor the player never sees it happen.
+    --
+    -- The refusal must sit in feature/lockstyle._applyDirect, NOT only in the
+    -- engine's apply half: _applyDirect is the addon-resident executor that the
+    -- GUI Apply button, the native typed handler and every SCRIPTED apply (town
+    -- transitions, OnLoad restore, keep-on-subjob) funnel into -- and those last
+    -- three fire with NO user action, so a naked player zoning into town would
+    -- otherwise style themselves permanently bare.
+    (function()
+        local lsN = dofile('feature/lockstyle.lua');
+        check('NK29 lockstyle exposes the naked read', type(lsN._nakedArmed), 'function');
+        local applied = 0;
+        local savedCap = lsN._capNote;
+        local notes = {};
+        lsN._capNote = function(t) notes[#notes + 1] = tostring(t); end
+        -- Stand in for the naked read (the real one asks dispatch natively, or the
+        -- __naked mirror in legacy -- neither is reachable headless).
+        local armed = true;
+        lsN._nakedArmed = function() return armed; end
+        -- Re-point the module's own reference so _applyDirect sees the stub: the
+        -- upvalue is a file-local, so the test drives the exported seam instead.
+        local okRefuse = pcall(lsN._applyDirect, 1);
+        check('NK29b applying while naked does not throw', okRefuse, true);
+        local refused = false;
+        for _, n in ipairs(notes) do if n:find('naked', 1, true) then refused = true; end end
+        check('NK29c ...and is recorded as a refusal', refused, true);
+        lsN._capNote = savedCap;
+    end)();
+
+    os.remove('tests' .. string.char(92) .. 'modestate.lua');
+    dispatchM._charDirOverride = nil;
+
+    TEST_PLAYER = savedPlayer;
+    _G.gFunc, _G.gState = savedFunc, savedState;
+    dispatchM.nakedArmed = false;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- AB. arbwatch -- the ADDON-SIDE writer of the arbstate rank Statefile (ADR
 --     0012, step 2 / issue #49). The engine's read side is AR* above; these pin
 --     the WRITER's pure seams: the default/sanitize reuse the engine's one
@@ -5868,16 +6207,14 @@ end)();
 
     -- Default + sanitize delegate to the engine (one vocabulary, no drift).
     check('AB1 default order matches the engine default',
-        table.concat(aw.defaultOrder(), '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        table.concat(aw.defaultOrder(), '>'), 'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AB1b defaultOrder is a fresh copy (mutating it does not stick)',
-        (function() local d = aw.defaultOrder(); d[1] = 'X'; return aw.defaultOrder()[1]; end)(), 'Pins');
+        (function() local d = aw.defaultOrder(); d[1] = 'X'; return aw.defaultOrder()[1]; end)(), 'Naked');
     check('AB2 sanitize nil -> default',
-        table.concat(aw.sanitize(nil), '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
-    check('AB2b sanitize drops unknown, appends missing',
+        table.concat(aw.sanitize(nil), '>'), 'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+    check('AB2b sanitize drops unknown, restores missing at its default position',
         table.concat(aw.sanitize({ order = { 'Fishing', 'Nonsense', 'Pins' } }), '>'),
-        'Fishing>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Chocobo>Triggers');
+        'Naked>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Pins>Chocobo>Triggers');
 
     -- serialize -> the engine's file shape; round-trips through arbOrder.
     local txt = aw.serialize({ 'MaxMP', 'AutoAmmo', 'Pins', 'Locks', 'Craft', 'HELM', 'Fishing', 'Triggers' });
@@ -5888,33 +6225,40 @@ end)();
     local roundtrip = dispatchM.arbOrder(chunk());
     check('AB3c serialize -> arbOrder round-trips a valid reorder',
         table.concat(roundtrip, '>'),
-        'MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Naked>MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AB3d serialize skips non-string / empty entries',
         aw.serialize({ 'Pins', '', 42, 'Triggers' }), 'return { order = { "Pins", "Triggers" } }\n');
 
     -- moveClaimant: the step-2 drag rules, pure.
-    local def = aw.defaultOrder();   -- Pins Locks AutoAmmo MaxMP Craft HELM Fishing Triggers
-    check('AB4 a claimant moves up one (AutoAmmo #3 -> #2, crossing the Locks veto)',
-        table.concat(aw.moveClaimant(def, 3, -1), '>'),
-        'Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
-    check('AB4b a claimant moves down one (AutoAmmo #3 -> #4)',
-        table.concat(aw.moveClaimant(def, 3, 1), '>'),
-        'Pins>Locks>MaxMP>AutoAmmo>Craft>HELM>Fishing>Chocobo>Triggers');
-    check('AB4c the input order is not mutated', table.concat(def, '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+    -- Indices are 1-based over the default order, which since v122 (ADR 0021)
+    -- opens with Naked: Naked Pins Locks AutoAmmo MaxMP Craft HELM Fishing Chocobo Triggers.
+    local def = aw.defaultOrder();
+    check('AB4 a claimant moves up one (AutoAmmo #4 -> #3, crossing the Locks veto)',
+        table.concat(aw.moveClaimant(def, 4, -1), '>'),
+        'Naked>Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+    check('AB4b a claimant moves down one (AutoAmmo #4 -> #5)',
+        table.concat(aw.moveClaimant(def, 4, 1), '>'),
+        'Naked>Pins>Locks>MaxMP>AutoAmmo>Craft>HELM>Fishing>Chocobo>Triggers');
+    check('AB4c the input order is not mutated', table.concat(def, '>'), 'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     -- Step 3: the Locks veto row now DRAGS (only the Triggers floor is fixed).
-    check('AB5 Locks drags down one (#2 -> #3, under AutoAmmo)',
-        table.concat(aw.moveClaimant(def, 2, 1), '>'),
-        'Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
-    check('AB5a Locks drags up one to the top (absolute veto, over Pins)',
-        table.concat(aw.moveClaimant(def, 2, -1), '>'),
-        'Locks>Pins>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
-    check('AB5b Triggers refuses the drag (the floor)', aw.moveClaimant(def, 9, -1), nil);
-    check('AB6 the floor-adjacent claimant (Chocobo #8) cannot move down into the Triggers floor (stays last)',
-        aw.moveClaimant(def, 8, 1), nil);
-    check('AB6b Fishing CAN move up (HELM #6 <-> Fishing #7)',
-        table.concat(aw.moveClaimant(def, 7, -1), '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>Fishing>HELM>Chocobo>Triggers');
+    check('AB5 Locks drags down one (#3 -> #4, under AutoAmmo)',
+        table.concat(aw.moveClaimant(def, 3, 1), '>'),
+        'Naked>Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+    check('AB5a Locks drags up one, over Pins (Naked still above it)',
+        table.concat(aw.moveClaimant(def, 3, -1), '>'),
+        'Naked>Locks>Pins>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+    check('AB5b Triggers refuses the drag (the floor)', aw.moveClaimant(def, 10, -1), nil);
+    check('AB6 the floor-adjacent claimant (Chocobo #9) cannot move down into the Triggers floor (stays last)',
+        aw.moveClaimant(def, 9, 1), nil);
+    check('AB6b Fishing CAN move up (HELM #7 <-> Fishing #8)',
+        table.concat(aw.moveClaimant(def, 8, -1), '>'),
+        'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>Fishing>HELM>Chocobo>Triggers');
+    -- Naked is an ORDINARY draggable row: "naked except my pins" is a drag, not
+    -- a code path, so the day it becomes fixed the feature loses its escape hatch.
+    check('AB6c Naked drags down (Pins takes the top -- naked except pins)',
+        table.concat(aw.moveClaimant(def, 1, 1), '>'),
+        'Pins>Naked>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+    check('AB6d Naked is not a FIXED row', aw.FIXED['Naked'], nil);
     check('AB7 out-of-range / bad args are nil, never a throw',
         aw.moveClaimant(def, 1, -1) == nil and aw.moveClaimant(def, 0, 1) == nil
         and aw.moveClaimant(def, 3, 0) == nil and aw.moveClaimant(nil, 1, 1) == nil, true);

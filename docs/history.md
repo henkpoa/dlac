@@ -5407,3 +5407,120 @@ half-running if the walker is unavailable.
 (`docs/design/auto-ammo.md` §8) — Henrik's call, it needs a real NIN to field test. It uncovered
 two live bugs on main in the process (the WS-ammo leak at Preshot, and Special-vs-trigger having
 no safe configuration), both documented there rather than fixed blind.
+
+## Session "/dl naked" (2026-07-25, on `dev` — engine v122, addon 2026.07.25f)
+
+**Theme:** Henrik asked for LuaAshitacast's `/lac naked` — *"Be sure to use the claim arbiter,
+maybe use locks?"*. The arbiter half was right; the locks half was the interesting question,
+and the answer is no. Recorded as [ADR 0021](adr/0021-naked-is-a-claim.md).
+
+**The argument against locks was already in the codebase, written for pins.** `pinOverlay`'s
+header explains why a pin is an overlay and not a `/dl lock`: *a lock only makes the engine
+ignore the slot, so anything else that strips the piece wins — and the state leaks when a
+session ends abnormally.* Naked is that argument with the sign flipped. Concretely, a lock
+**cannot undress you** — `equipResolved`'s lock branch writes `W()[slot] = nil`, never a value,
+so it only ever *withholds*. A lock-based naked is therefore strip-once-plus-fence, and the
+fence is the weak half: `M.locks = {}` is re-executed by every engine **self-swap** (the 2s
+content check that carries a `git pull` into the running engine), Pins outrank Locks and punch
+straight through, and three unrelated buttons release it. Arming it would also destroy the
+player's own locks — the Incursion-T3 state `/dl lock set` exists for.
+
+**So naked is a Claim, and the payoff is bigger than avoiding those bugs.** Because the claim
+is recomputed every dispatch, every way the server can refuse a strip — dead or in a cutscene,
+mid-ranged-attack, the level-sync settle holding the weapon slots — **heals on the next pass**
+instead of leaking a dressed slot forever. And precedence becomes the player's for free: at
+rank 1 it beats everything, and *"naked except my pins"* is a **drag** in Claim Priority, not a
+code path. That is ADR 0012's promise (a new claimant = one rank row + one claim table) actually
+paying out; nothing in the engine grew an arm.
+
+**Two traps, both of which would have shipped silently.**
+
+1. **A new rank row must not be APPENDED.** `arbOrder` restored missing rows at the bottom,
+   which is correct only for a row that belongs there (Chocobo, v120). Every character who has
+   ever opened the Priority section has an `arbstate.lua` listing the rows that existed *then*,
+   so **every** new claimant arrives missing from real files — and appended, Naked would have
+   ranked 9th, under Locks, losing every slot it exists to win, for everyone except a fresh
+   character. Fixed with one positional law (insert before the first present row that outranks
+   it) that subsumes the old append, the Chocobo case and the Triggers-last floor pin, rather
+   than the per-row exception table this was heading toward.
+2. **The claim must use PROPER-CASE slot keys.** `equipcore.SLOT_ID` is case-sensitive and
+   LuaAshitacast's `GetEquipSlot` is not — so a lowercase claim works in LAC and strips
+   *nothing* natively. Broken only in the mode that actually ships.
+
+**The optimization that is actually a correctness bug:** claiming only the slots that currently
+hold something. It looks free (it would also stop LAC re-scanning the bags every pass, since
+`FlagEquippedItems` can never mark a set containing a `remove` as satisfied). But the apply loop
+walks rank **low to high**, so an unclaimed slot keeps whatever a *lower*-ranked layer wrote into
+the buffer that pass — drop the empty slots and a MaxMP battery lands in every slot the previous
+dispatch just cleared. The claim is always all 16.
+
+**Lifetime turned out to be one line plus a guard, and the obvious homes were both wrong.**
+`M.nakedArmed = (M.nakedArmed == true)` — the `M._loadStamp` idiom — because `M` is `rawget(_G,
+'__dlacEngineRoot') or {}`: the same table across a self-swap, a fresh one in a new Lua state.
+So the flag survives a `git pull` and dies at Reload LAC. **It does NOT die at a relog**, which
+the first draft of the ADR asserted it did: an Ashita addon survives a logout (pinwatch's header
+already says so, which is why pins re-key on the character dir) and LAC never clears
+`package.loaded` either, so neither engine gets a new state when you change characters — and
+re-keying on charDir would not help, since a same-character relog gives the same dir. The tick
+disarms on the character-select read (`GetMainJob()` nil/0) instead — and on a **job change**
+too, once Henrik ruled it should not survive one (main job only, the same signal the maxmp drop
+already used). Worth remembering as a general trap: **"a fresh Lua state" and "a new session"
+are not the same event in Ashita** — an addon survives a logout, so any module-level flag needs
+an explicit disarm rather than relying on state teardown.
+
+**Henrik's rulings on the behaviour, after the build:** no persistence through a logout, no
+persistence through a job change, and the TP wipe is *acceptable* because the command is
+deliberate — so nothing is built around it. He also noted, fairly, that these were his calls to
+make and should have been asked before the build rather than presented after it. The rejected homes are worth remembering: `M.modes` would collide with a
+user-defined Mode named `naked`, re-gate their Dynamic sets on every toggle, and inherit
+`loadModeState`'s restore window — whose only relog protection is the documented
+`GetMainJob() == 0` race, i.e. a coin flip on whether you log in naked. A Statefile would have
+been strictly worse (it persists across everything).
+
+**No dispatch is kicked on arm/release.** The 0.4s tick is the only Default entry point carrying
+the zoning, player-action, pet-action and sync-settle gates; a command-path dispatch would fire
+a full re-equip inside a cast or mid-zone to save 400ms, against a claim that is standing anyway.
+
+**M.dispatch had been called ZERO times by the test suite** — every existing test drives a pure
+seam beneath it, so the wiring *between* the seams was covered by nothing, and an out-of-scope
+local in Lua is not an error but a silent nil global. Naked is the cheapest possible driver for
+it (flag on, nothing else armed → all 16 removes must still reach the equip door), so NK26 now
+executes the real `M.dispatch` end to end and asserts no local leaked to `_G`. Mutation-verified
+both ways.
+
+**The smoke harness was lying about the Equipped tab.** Its `renderEquippedTab` drives are
+`pcall`'d without checking the result, and the render had been dying partway through on a
+`gearfmt` helper whose captured imgui stub lacked `PushTextWrapPos` — the earlier checks passed
+because they only read side effects from *before* the throw. Fixed so the render completes, and
+the new `NKU*` checks assert the pcall result, which is the only thing that catches the
+nil-global class in that file (mutation-verified: renaming `S.setEngineNaked` fails NKU3/NKU3b).
+
+**Three field notes that are the server's doing, not dlac's:** unequipping a weapon **zeroes
+your TP** and drops Aftermath (Main/Sub/Range with no incoming item; the instrument exemption
+cannot apply to an unequip); **Free equip / `/lac disable` silently defeats naked in legacy
+mode**, because LAC's `PrepareEquip` drops the unequip for any `gState.Disabled` slot — hence
+the warning and the disabled switch; and a **lockstyle applied while naked bakes permanent
+nudity** into every unnamed visual slot (unnamed slots freeze to `equippedId`, which is 0, and
+style 0 renders empty), so `/dl ls apply` is refused while stripped.
+
+**Found, deliberately NOT fixed** (so a regression has one suspect, per ADR 0012's own migration
+ruling): `/dl lock set` is broken in **native** mode. Its `rawget(_G,'gEquip')` bracket is nil in
+the addon state, so the equip falls through to the unbracketed path and writes into
+`equipengine`'s buffer — which only `fireEvent` flushes, and `fireEvent` opens by clearing it.
+The set evaporates on the next tick. Its own commit.
+
+**Implementation review found two more that would have shipped.** (1) The lockstyle refusal was
+written into the *engine's* apply half — which `dispatch.lua`'s `/dl ls` branch pins behind
+`if not inLac() then return; end`, i.e. **dead code in native mode**, the mode that ships. The
+door that actually runs is the addon-resident `lockstyle._applyDirect`, which every scripted
+apply funnels into — town transitions, OnLoad restore, keep-on-subjob, all with no user action.
+(2) The relog gap above. Both were found by reading the *callers* of the guarded function rather
+than the function; the lesson is the same one twice — **guarding the door you happened to be
+looking at is not guarding the feature.**
+
+**Two testing notes worth carrying forward.** `M.dispatch` had never been executed by the suite,
+and naked is the cheapest possible driver for it (flag on, nothing else armed → all 16 removes
+must still reach the equip door), so NK26 now runs it end to end and asserts no local leaked to
+`_G`. And a "test seam" that the production code calls as a **file-local** is not a seam at all:
+`_applyDirect` had to be changed to call `M._nakedArmed()` before NK29 could stub it —
+mutation-verified in both directions, which is the only way to know a new test can fail.

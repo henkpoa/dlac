@@ -243,6 +243,52 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-25, end of day)
 
+- **`/dl naked` — BUILT 2026-07-25, on `dev`, NOT FIELD-TESTED** (engine v122,
+  addon `2026.07.25f`, [ADR 0021](adr/0021-naked-is-a-claim.md)). Henrik asked for
+  LuaAshitacast's `/lac naked` ("be sure to use the claim arbiter, maybe use locks?").
+  The answer to the locks half is **no**, and the ADR records why: a lock only
+  *withholds* — it cannot take a piece off — it is wiped by every engine self-swap,
+  Pins punch through it, three unrelated buttons release it, and arming it would
+  destroy the player's own locks. So naked is an ordinary **Arbiter claimant**, ranked
+  first, claiming all 16 slots with the `'remove'` literal both engines already speak.
+  - `/dl naked [on|off|toggle]`, `/dl dress`, an Equipped-tab switch, and a transient
+    red **NAKED** header button. Bare `/dl naked` always arms — typing "naked" must
+    never be the thing that dresses you.
+  - **"Naked except my pins" is a drag, not a code path**: drag Pins (or Locks) above
+    Naked in Automations → Claim Priority. That falls out of the rank list for free and
+    is the reason Naked must stay a *draggable* row.
+  - **Lifetime is one line** — `M.nakedArmed = (M.nakedArmed == true)`, the
+    `M._loadStamp` idiom. Survives an engine self-swap (a `git pull` mid-session must
+    not re-dress you); a fresh Lua state starts dressed, so there is no path by which
+    you log in naked — **but a relog is not a fresh Lua state** (an Ashita addon survives
+    a logout; `pinwatch.lua:89` records the fact), so the tick disarms on the
+    character-select read, and on a **job change** (main job only, announced). Mirrored to
+    `modestate.lua` as `__naked` for the GUI only.
+  - **`arbOrder` changed for everyone**: a rank row missing from the character's
+    `arbstate` file is now restored at its *default position* instead of appended.
+    Appended, Naked would have shipped at rank 9 for every character who had ever
+    opened the Priority section, and lost every slot it exists to win.
+  - Tests `NK1`–`NK29` + `NKU1`–`NKU4`; suites at **3495** and **376**, green on
+    Windows and WSL. `NKU*` drives the real Equipped-tab render, because the failure
+    it exists for (an unknown Lua name = a silent nil global) is invisible to a load
+    test — and the pre-existing drives in that harness `pcall` the render without
+    checking, so they never noticed it was dying halfway through on a stub gap.
+  - **Henrik's rulings, 07-25**: must not persist through a logout (done); must not persist
+    through a job change (done); the TP wipe is **acceptable** because the command is
+    deliberate, so nothing is built around it.
+  - **Two things to watch in the field**: (1) unequipping a weapon **zeroes your TP**
+    and drops Aftermath — accepted, stated in the chat line;
+    (2) **Free equip / `/lac disable` silently defeats naked in legacy mode** (LAC
+    refuses to unequip a `Disabled` slot) — the command warns and the switch renders as
+    unavailable, but confirm that reads right; (3) `/dl dress` brings back only what
+    your sets *name* — anything hand-equipped you re-equip yourself (exact `/lac naked`
+    parity; snapshot-and-restore is an open follow-up).
+  - **Adjacent bug found, NOT fixed** (kept out so a regression has one suspect):
+    `/dl lock set` is broken in **native** mode. Its `rawget(_G,'gEquip')` bracket is
+    nil in the addon state, so the equip falls to the unbracketed path and writes into
+    `equipengine`'s buffer — which only `fireEvent` flushes, and `fireEvent` opens by
+    clearing it. The set evaporates on the next tick. Worth its own commit.
+
 - **E-BOX RESTOCK v2 — BUILT + PARTLY FIELD-TESTED 2026-07-25, on `dev` only**
   (`2026.07.25e`). The box's contents are no longer polled: they are verified once on
   approach, **debited locally** on our own withdraws, and re-counted only on the few
