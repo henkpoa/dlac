@@ -230,6 +230,33 @@ that performs the promotion **empties this section in the same commit as the mer
 entry left standing here after a merge is how "is this on main?" becomes unanswerable —
 see hard rule 14, which this section exists to serve.
 
+- **A locked set is a frozen claim (`/dl lock set …`)** — `7906cd4`, `30aede2`, `9475698`,
+  `613b681`, `fa43cac`; engine **v124**, addon **`2026.07.26c`**,
+  [ADR 0022](adr/0022-locked-set-is-a-claim.md). **PARTLY field-confirmed** — see the caveat
+  below before promoting. Fixes a bug that could not be seen: `/dl lock set` was **inert in
+  native mode**, because its `rawget(_G,'gEquip')` bracket is nil in the addon state, so the
+  equip landed in `equipengine`'s buffer and the next `fireEvent`'s `bufferClear` wiped it —
+  then it locked all 16 slots onto whatever you were wearing and printed success. It is now
+  an Arbiter claim applied *inside* `M.dispatch`, which the native engine already brackets,
+  so the whole class of mistake is deleted rather than patched. Four command words
+  (`set` / `set-loose` / `set-snapshot` / `set-current`) build **one** frozen claim shape,
+  riding the **existing Locks row** — no new rank row and no new word, so precedence is
+  unchanged: Naked and Pins punch through a lock, nothing else does. Also here: slot locks
+  survive an engine self-swap (a `git pull` used to silently unlock all 16), and **one
+  lifetime rule** — locks, naked and a locked set all end on a main job change or on leaving
+  the world, and none is written to disk. Tests `LS1`–`LS20`, `LS14k`–`LS14s`, `X6`/`X7`,
+  `CMD*`, `LSU*`, `LSP*`.
+  - **Promotion caveat, read this first.** Henrik confirmed **lock + release of a named set
+    on WHM** (2026-07-26). Four field tests are still owed and are listed in the Current
+    state section: an actual **Incursion T3 entrance**, the **missing-piece report**,
+    **`set-loose`**, and **`/dl lock all off` releasing both halves**. The **Strict/Loose
+    popup has never been seen rendering** — the Sets tab has no smoke drive. Promote when
+    Henrik says so, not because this entry exists.
+  - Carries the `/dl` **command test harness** (`7906cd4`), which is the reason the original
+    bug was invisible: every `/dl` subcommand used to be tested by grepping `dispatch.lua`
+    for its own name. Independently valuable — `/dl naked`, `/dl mode`, `/dl prio` and
+    everything future are now drivable with the game closed.
+
 - **Trigger builder: the `&` leg never eats a value in silence** — `0f6f2e6`,
   addon `2026.07.25h`, **FIELD-CONFIRMED by Henrik 2026-07-25**. `when` is a Lua map, so a
   repeat of one condition type replaces rather than stacks — and stacking would be
@@ -317,9 +344,23 @@ research already recorded. In rough priority order:
     `__held` all sit in the reserved `__` namespace `loadModeState` skips.
   - Release: `/dl lock all off` **and** `/dl lock set off`. `/dl lock` with no args
     prints state plus every variant.
-  - **GUI**: Sets tab's `Equip & Lock` is now a plain action (nothing locks 16 slots, so
-    its toggle had no counter left to read); the **Equipped tab owns the state** and the
-    `set-current` switch.
+  - **GUI**: the Sets tab's `Equip & Lock` opens a two-option popup — **Strict** fires
+    `/dl lock set`, **Loose** fires `/dl lock set-loose` (which had no GUI home before).
+    It is no longer a toggle: nothing locks 16 slots any more, so the old
+    "16 locked ⇒ show Unlock" flip test had no counter left to read. The **Equipped tab
+    owns the state** — the `LOCKED:` readout and the `Lock gear` switch (`set-current`).
+    `set-snapshot` stays command-only.
+  - **The hovers are three lines each, and that is deliberate** (Henrik, 2026-07-26:
+    *"there is TOOOOO much text… this is minimalistic and every word matters"*). What
+    outranks a lock lives in Claim Priority, how to release lives on the Equipped tab,
+    and which pieces were missing is said in chat at the moment it matters. Do not
+    re-import the explanation into the tooltip; it has homes.
+  - **The Sets tab render has NO smoke drive** — `S9` checks its tab label and nothing
+    else — so the popup is the least-covered thing here. `LSP1`–`LSP10` pin it as
+    *source*, because the failure is silent: an `OpenPopup` id that does not match its
+    `BeginPopup` id registers the click, opens nothing, and logs nothing. `LSP9` asks
+    dispatch's own `LOCKSET_MODES` rather than trusting a string, so a renamed command
+    word fails there instead of in the field.
   - Tests `LS1`–`LS20`, `CMD10`–`CMD15`, `LSU1`–`LSU4`. Suites at **3620** and **417**,
     green on Windows and WSL.
   - **Field-CONFIRMED 2026-07-26 (Henrik, WHM):** locking a named set (`DT`) lands it,

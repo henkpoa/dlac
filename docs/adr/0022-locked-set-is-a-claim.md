@@ -162,8 +162,17 @@ Supersedes nothing.
   tab**, which is where what you are wearing is already shown — the Sets tab builds sets (Henrik:
   *"Set tab is only to build sets that may or may not be equipped by trigger level of claimant
   arbiter"*). That tab also gets the `set-current` switch, the one variant with no set to pick.
-- **`set-loose` and `set-snapshot` are commands only** this pass. They are refinements of a thing the
-  player has to understand first; a mode dropdown can follow a field run.
+- **The Sets tab button offers Strict or Loose on click** (amended 2026-07-26 the same day, on
+  Henrik's read of the first draft). It opens a two-option popup rather than firing strict blind,
+  which gives `set-loose` a GUI home; `set-snapshot` stays command-only, being the one variant whose
+  meaning is hard to state in two words. The hover is three lines and stays three lines — *"there is
+  TOOOOO much text… this is minimalistic and every word matters"*. Everything cut from it had a home
+  already: precedence is Claim Priority, release is the Equipped tab, and the missing-piece list is
+  said in chat at the moment it matters.
+- **The popup is the least-tested thing in this change.** The Sets tab render has no smoke drive, so
+  `LSP1`–`LSP10` pin it as source. That is honest about its limit: a source pin cannot tell you the
+  popup renders, only that its `OpenPopup`/`BeginPopup` ids agree — the failure that would otherwise
+  register a click, open nothing, and log nothing.
 - **Unchecking "Free equip" releases the hold**, because `equippedui` fires `/dl lock all off` when
   leaving free-equip and that is now the universal release. Left as-is: leaving free-equip is a
   "hand control back to the engine" gesture, and narrowing it would mean inventing a slot-locks-only
