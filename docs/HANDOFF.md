@@ -306,8 +306,17 @@ research already recorded. In rough priority order:
   - **Slot locks coexist** — arming no longer destroys them. `layerRespectsLocks('Locks')`
     is false on its own row, so the hold punches through `M.locks`; a stale lock can
     never sabotage it, and it's still set on release.
-  - Lifetime shares `nakedWorldWatch`. Release: `/dl lock all off` **and**
-    `/dl lock set off`. `/dl lock` with no args prints state plus every variant.
+  - **ONE LIFETIME RULE for all three** (v124, Henrik: *"I don't want locks to outlive
+    a relog, it should not outlive a main job change nor a log… same with naked"*).
+    `M.nakedWorldWatch` → **`M.worldWatch`** (old name kept as an alias — the seeded
+    LAC-side engine calls it), and it now drops **slot locks** as well as the strip and
+    a locked set, on a main job change or the character-select read. Slot locks were the
+    odd one out only by accident: nothing watched them, so they rode through character
+    select, and the pre-v123 self-swap wipe *looked* like a lifetime rule while really
+    being a bug. **None of the three is written to disk** — `__locks` / `__naked` /
+    `__held` all sit in the reserved `__` namespace `loadModeState` skips.
+  - Release: `/dl lock all off` **and** `/dl lock set off`. `/dl lock` with no args
+    prints state plus every variant.
   - **GUI**: Sets tab's `Equip & Lock` is now a plain action (nothing locks 16 slots, so
     its toggle had no counter left to read); the **Equipped tab owns the state** and the
     `set-current` switch.

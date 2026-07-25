@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 123;  -- 123: `/dl lock set ...` is a FROZEN CLAIM on the Locks row (ADR 0022), not equip-once-then-lock-16-slots. The old command was broken in NATIVE mode and could not be seen: its rawget(_G,'gEquip') bracket is nil in the addon state, so the resolved set fell to the unbracketed path, landed in equipengine's buffer, and the next fireEvent's bufferClear wiped it -- then setLock('all', true) locked all 16 slots onto whatever you were wearing and printed success. As a Claim there is no command-path equip left to bracket wrongly: M.dispatch is already bracketed by the native engine, and the claim re-applies every dispatch so anything the server refused heals on the next pass (ADR 0021 rule 3). FOUR command words, ONE claim shape, differing only in what fills a slot the set does not name: /dl lock set (held EMPTY), set-loose (left available), set-snapshot (held as worn), set-current (all 16 as worn, no set name). M.buildLockedClaim is the pure builder; the three impure seams (resolve/locate/wornOf) are injected, so every branch is driven headless. FROZEN AT ARM: dlac: markers are collapsed to concrete entries once, so a locked obi cannot follow the weather -- but the names are re-LOCATED in your bags every dispatch, because freezing container+index would strand the hold on the first bag shuffle. A named piece that is not on you leaves THAT SLOT LOOSE (available) rather than empty, and is reported by name and container from a live all-bags scan. It rides the EXISTING Locks row -- no new rank row, no new player concept -- so precedence is unchanged: Naked and Pins punch through a lock, nothing else does. Arming no longer clears the player's own locks: layerRespectsLocks('Locks') is false on its own row, so the hold punches through M.locks and a stale lock can never strip a slot out of it. Both dispatch bail guards now let a lone hold through (the NK26 lesson). Lifetime shares nakedWorldWatch -- self-swap survives, job change and logout drop it, never written to disk. Released by /dl lock all off AND /dl lock set off; /dl lock with no arguments prints state plus every variant. Mirrored to modestate as __held. Sets tab's Equip & Lock is now a plain action (nothing locks 16 slots, so its toggle had no counter left); the Equipped tab owns the state and the set-current switch. Tests LS1-LS20, CMD10-CMD15, LSU1-LSU4.
+M.VERSION = 124;  -- 124: ONE LIFETIME RULE for every way of deliberately holding gear still (Henrik, 2026-07-26: "I don't want locks to outlive a relog, it should not outlive a main job change nor a log"). M.nakedWorldWatch is now M.worldWatch (old name kept as an alias -- the seeded LAC-side engine and NK28 call it) and clears SLOT LOCKS as well as the strip and a locked set: main job change, or the character-select read. Slot locks were the odd one out only by accident -- nothing ever watched them, so they rode through character select (an Ashita addon survives a logout and LAC never clears package.loaded), and the pre-v123 self-swap wipe LOOKED like a lifetime rule while really being a bug (a git pull unlocking your gear mid-Incursion). Fixing that accident left the real gap plain. None of the three is written to disk: all are mirrored to modestate (__locks / __naked / __held) inside the reserved __ namespace loadModeState skips, so a mirror can never restore one. The job-change drop is announced per kind; leaving the world stays silent. Tests LS14k-LS14s.
+                  -- 123: `/dl lock set ...` is a FROZEN CLAIM on the Locks row (ADR 0022), not equip-once-then-lock-16-slots. The old command was broken in NATIVE mode and could not be seen: its rawget(_G,'gEquip') bracket is nil in the addon state, so the resolved set fell to the unbracketed path, landed in equipengine's buffer, and the next fireEvent's bufferClear wiped it -- then setLock('all', true) locked all 16 slots onto whatever you were wearing and printed success. As a Claim there is no command-path equip left to bracket wrongly: M.dispatch is already bracketed by the native engine, and the claim re-applies every dispatch so anything the server refused heals on the next pass (ADR 0021 rule 3). FOUR command words, ONE claim shape, differing only in what fills a slot the set does not name: /dl lock set (held EMPTY), set-loose (left available), set-snapshot (held as worn), set-current (all 16 as worn, no set name). M.buildLockedClaim is the pure builder; the three impure seams (resolve/locate/wornOf) are injected, so every branch is driven headless. FROZEN AT ARM: dlac: markers are collapsed to concrete entries once, so a locked obi cannot follow the weather -- but the names are re-LOCATED in your bags every dispatch, because freezing container+index would strand the hold on the first bag shuffle. A named piece that is not on you leaves THAT SLOT LOOSE (available) rather than empty, and is reported by name and container from a live all-bags scan. It rides the EXISTING Locks row -- no new rank row, no new player concept -- so precedence is unchanged: Naked and Pins punch through a lock, nothing else does. Arming no longer clears the player's own locks: layerRespectsLocks('Locks') is false on its own row, so the hold punches through M.locks and a stale lock can never strip a slot out of it. Both dispatch bail guards now let a lone hold through (the NK26 lesson). Lifetime shares nakedWorldWatch -- self-swap survives, job change and logout drop it, never written to disk. Released by /dl lock all off AND /dl lock set off; /dl lock with no arguments prints state plus every variant. Mirrored to modestate as __held. Sets tab's Equip & Lock is now a plain action (nothing locks 16 slots, so its toggle had no counter left); the Equipped tab owns the state and the set-current switch. Tests LS1-LS20, CMD10-CMD15, LSU1-LSU4.
                   -- 122: /dl naked + /dl dress (ADR 0021) -- the strip is a CLAIM, not a lock. A new 'Naked' Arbiter row, FIRST by default, claims all 16 slots with the 'remove' literal both engines already speak (LAC MakeItemTable -> Index 0; equipcore normalizeEntry/planSet), so it is recomputed and re-applied on EVERY dispatch instead of stripping once and fencing: nothing re-dresses you, and a strip the server refuses (dead, cutscene, mid-ranged-attack, level-sync settle) lands on the next pass instead of leaking a dressed slot forever. Explicitly NOT the /dl lock route -- a lock only WITHHOLDS (it cannot take a piece off), it is wiped by every engine self-swap, Pins punch through it, and three unrelated buttons release it; arming it would also destroy the player's own locks. Total nudity is the default and the rank list is the exception mechanism: drag Pins or Locks above Naked for "naked except those". Flag is M.nakedArmed, carried across a self-swap by the M._loadStamp idiom and gone in a fresh Lua state, so a git pull cannot re-dress you. A relog does NOT make a fresh Lua state (an Ashita addon survives a logout -- pinwatch's header records it -- and LAC never clears package.loaded), so nakedWorldWatch disarms on the character-select read, and on a JOB CHANGE too (Henrik's ruling; main job only, announced); mirrored to modestate as __naked (display only, never restored). arbOrder now restores a MISSING known row AT ITS DEFAULT POSITION instead of appending -- appended, Naked would have shipped at rank 9 for every character with an existing arbstate file and lost every slot it exists to win. The naked layer voids ctx.pinReserved when it outranks Pins (a reserver about to be stripped must not keep a neighbour dressed) via save/nil/restore, never a ctx copy. /dl ls apply is refused while naked (unnamed slots would be styled permanently EMPTY). Tests NK1-NK26, NKU1-NKU4.
                   -- 121: weatherMatch trigger condition (feature/weather-match-condition, grill-with-docs 07-24) -- a spell-handler flag, true when the CURRENT weather's element equals the action's element. weatherMatchesAction reads the SAME gData.GetEnvironment().WeatherElement the obi uses (storm-aware: a Scholar's own Firestorm etc. overrides zone weather, so it counts). DISTINCT from dayWeatherBonus (the signed day+weather net with opposition): weatherMatch is a plain weather-element equality -- no day, no opposition -- verified as CatsEyeXI's ALACRITY_CELERITY_EFFECT (Celerity/Alacrity cast-time) gate. Precast+Midcast, tier 30, true/false polarity; unreadable weather or no action element matches NEITHER (never fires blind). Tests WM1-WM21.
                   -- 120: Chocobo riding-gear automation (issue #95, docs/design/chocobo-gear.md) -- a fourth idle-only sibling: ensureChocoState/chocoStateActive/chocoOverlayFor, the dlac:AutoChoco resolveVirtual branch (manifest `choco` per-slot best-first ladders, Main/Neck/Body/Hands/Legs/Feet, scored by ChocoboRidingTime, the Chocobo Wand included in Main), a 'Chocobo' Arbiter claim row (default rank below Fishing, above the Triggers floor), and arbOrder now pins the Triggers floor last so a new claimant appended to an existing arbstate file never sinks below it.
@@ -199,6 +200,12 @@ M.modesRev = 0; -- bumped on every mode change: utils.rebuildSets re-flattens th
 -- A LAC reload still clears them: that is a fresh Lua state, so M itself is new and
 -- the field is nil. Locks remain session-only and are still never read back from
 -- the mirror.
+--
+-- WHAT DOES end them (v124, Henrik: "I don't want locks to outlive a relog, it
+-- should not outlive a main job change nor a log"): M.worldWatch, the same watch
+-- that drops the strip and a locked set. Removing the self-swap wipe above took
+-- away an accident that LOOKED like a lifetime rule; this is the real one, and it
+-- is now the same rule for all three ways of deliberately holding gear still.
 M.locks = M.locks or {};
 
 -- NAKED (ADR 0021): the strip flag. `= (M.nakedArmed == true)` -- the M._loadStamp
@@ -2818,24 +2825,44 @@ end
 -- This only ever CLEARS, never arms. Returns 'world' | 'job' | nil -- what
 -- cleared it, so the caller can say so (tests NK28).
 --
--- ADR 0022 SHARES THIS WATCH. A locked set has the identical lifetime and the
--- identical worst case: logging in silently locked to last night's set is the
--- relog failure again, and arguably meaner -- a naked player knows instantly,
--- a locked one just finds their gear mysteriously stuck. Second return value
--- names what was dropped so the caller can say the right sentence; the first
--- return stays 'world' | 'job' | nil exactly as NK28 pins it.
-function M.nakedWorldWatch(job, prevJob)
-    if not M.nakedArmed and not M.lockedSetOn() then return nil; end
+-- ADR 0022 SHARES THIS WATCH, and v124 gives it ALL THREE ways the player can
+-- deliberately hold gear still: the strip, a locked set, and plain slot locks.
+-- One lifetime rule, Henrik's (2026-07-26): "I don't want locks to outlive a
+-- relog, it should not outlive a main job change nor a log."
+--
+-- Slot locks were the odd one out, and only by accident. Nothing ever watched
+-- them, so they rode straight through character select -- an Ashita addon
+-- survives a logout and LuaAshitacast never clears package.loaded, so the module
+-- table lives on. Before v123 an engine self-swap happened to wipe them, which
+-- looked like a lifetime rule and was really a bug (a git pull unlocking your
+-- gear mid-Incursion); fixing that removed the accident and left the gap plain.
+--
+-- None of the three is written to disk. All three are mirrored to modestate for
+-- the GUI (__locks / __naked / __held) inside the reserved __ namespace that
+-- loadModeState skips, so a mirror can never restore one.
+--
+-- This only ever CLEARS, never arms. Second return value names what was dropped
+-- so the caller can say the right sentence; the first return stays
+-- 'world' | 'job' | nil exactly as NK28 pins it.
+function M.worldWatch(job, prevJob)
+    local nLocks = 0;
+    for _ in pairs(M.locks) do nLocks = nLocks + 1; end
+    if not M.nakedArmed and not M.lockedSetOn() and nLocks == 0 then return nil; end
     local why = nil;
     if job == nil or job == 0 then why = 'world';
     elseif prevJob ~= nil and prevJob ~= 0 and job ~= prevJob then why = 'job'; end
     if why == nil then return nil; end
-    local dropped = { naked = (M.nakedArmed == true), locked = M.lockedSetLabel() };
+    local dropped = { naked = (M.nakedArmed == true), locked = M.lockedSetLabel(), locks = nLocks };
+    -- In place, never `M.locks = {}`: the table's identity is held elsewhere.
+    for k in pairs(M.locks) do M.locks[k] = nil; end
     M.lockedSet  = nil;
     M.nakedArmed = false;
     if saveModeState ~= nil then pcall(saveModeState); end
     return why, dropped;
 end
+-- The pre-v124 name, kept because it is what the seeded LAC-side engine and the
+-- NK28 checks call. Same function, wider job.
+M.nakedWorldWatch = M.worldWatch;
 
 -- Arm/disarm the strip. The ONE door: the command branch and the GUI both come
 -- through here. No dispatch is kicked -- the 0.4s tick is the only Default entry
@@ -6048,17 +6075,21 @@ if engineActive() then
             pcall(function() j = AshitaCore:GetMemoryManager():GetPlayer():GetMainJob(); end);
             -- Leaving the world OR changing job disarms the strip (ADR 0021).
             -- Reads _tickJob BEFORE the block below advances it.
-            local _wwWhy, _wwDropped = M.nakedWorldWatch(j, _tickJob);
+            local _wwWhy, _wwDropped = M.worldWatch(j, _tickJob);
             if _wwWhy == 'job' and _wwDropped ~= nil then
                 -- Announced on a JOB change only: leaving the world is silent
                 -- because nobody is there to read it (ADR 0021, and 0022 shares
-                -- the watch). Both can drop in the same pass.
+                -- the watch). All three can drop in the same pass.
                 if _wwDropped.naked then
                     print('[dlac] naked: off (job changed) -- your gear comes back on the next pass.');
                 end
                 if _wwDropped.locked ~= nil then
                     print(string.format('[dlac] lock set: released "%s" (job changed) -- a locked set belongs to the job that locked it.',
                         tostring(_wwDropped.locked)));
+                end
+                if (_wwDropped.locks or 0) > 0 then
+                    print(string.format('[dlac] slot locks: released %d (job changed) -- a lock belongs to the job that set it.',
+                        _wwDropped.locks));
                 end
             end
             if j ~= nil and j ~= 0 then

@@ -134,8 +134,25 @@ mid-Incursion silently unlocked all sixteen slots.
     overwrites all sixteen. It tries and is blocked, every pass; `/dl dress` and it wins 0.4s later,
     behind Pins. No refusal, no auto-disarm, no code.
 
+13. **AMENDED 2026-07-26, engine v124 — one lifetime rule for all three.** Henrik: *"I don't want
+    locks to outlive a relog, it should not outlive a main job change nor a log. It should not be
+    saved. Same with naked."* Plain **slot locks** now share the watch too, so every way of
+    deliberately holding gear still — the strip, a locked set, a slot lock — ends on a main job
+    change or on leaving the world, and none of the three is written to disk.
+
+    Slot locks were the odd one out only by accident. Nothing ever watched them, so they rode
+    straight through character select (an Ashita addon survives a logout and LuaAshitacast never
+    clears `package.loaded`). Before v123 an engine self-swap happened to wipe them, which *looked*
+    like a lifetime rule and was really a bug — a `git pull` unlocking your gear mid-Incursion.
+    Fixing that accident is what left the real gap visible.
+
+    `M.nakedWorldWatch` is renamed `M.worldWatch`, with the old name kept as an alias because the
+    seeded LAC-side engine and the `NK28` checks call it. The job-change drop is announced per kind;
+    leaving the world stays silent, because nobody is there to read it. Tests `LS14k`–`LS14s`.
+
 Extends ADR 0012 (the Locks row gains an `applyClaim` and a positive claim table) and ADR 0021
-(shares its watch and its freeze-the-instruction rule). Supersedes nothing.
+(shares its watch and its freeze-the-instruction rule; decision 13 widens that watch to slot locks).
+Supersedes nothing.
 
 ## Consequences
 
@@ -157,11 +174,10 @@ Extends ADR 0012 (the Locks row gains an `applyClaim` and a positive claim table
   with a bag closed freezes a worse answer than a second later would have given, with no
   self-correction. That is the cost of "constant", accepted deliberately. Naked has no equivalent
   exposure because `remove` cannot be resolved wrong.
-- **`M.locks` is still wiped by every engine self-swap in LAC.** The two halves of the Locks row
-  therefore have different lifetimes: a locked set survives a `git pull`, plain slot locks do not.
-  That is correct rather than merely inconsistent — the hold is a deliberate typed state, a lock is
-  an incidental "right now" one — but the wipe is a real bug of its own and is fixed in its own
-  commit, not hidden inside this feature.
+- **Both halves of the Locks row now have one lifetime** (decision 13). A `git pull` mid-session no
+  longer releases either — the self-swap wipe of `M.locks` was fixed in its own commit — and a main
+  job change or a logout releases both. Changing a job therefore drops slot locks that used to
+  persist; that is the intended behaviour, not a side effect.
 - **`/dl why` attributes a held slot to `Locks`**, with the set named in the layer line. The retrace
   merges the two kinds of opinion rather than assigning, or whichever was written second would erase
   the other.

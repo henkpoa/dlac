@@ -12442,6 +12442,30 @@ end)();
     check('LS14i both drop together',
         (drop14c and drop14c.naked == true and drop14c.locked == 'Incursion T3'), true);
     check('LS14j ...and neither is re-armed', D.nakedOn() == false and D.lockedSetOn() == false, true);
+    -- LS14k. SLOT LOCKS SHARE IT TOO (v124, Henrik: "I don't want locks to
+    -- outlive a relog, it should not outlive a main job change nor a log").
+    -- Nothing used to watch them, so they rode straight through character select
+    -- -- an Ashita addon survives a logout. Before v123 the engine self-swap
+    -- happened to wipe them, which looked like a lifetime rule and was really a
+    -- bug; removing that accident left the real gap visible.
+    D.nakedArmed = false;
+    D.lockedSet  = nil;
+    D.locks['head'], D.locks['ammo'] = true, true;
+    check('LS14k a lock alone is enough to arm the watch', D.worldWatch(7, 7), nil);
+    check('LS14l ...and it survives standing still',       D.locks['head'], true);
+    local why14d, drop14d = D.worldWatch(3, 7);
+    check('LS14m a JOB CHANGE releases slot locks',        why14d, 'job');
+    check('LS14n ...all of them',                          next(D.locks), nil);
+    check('LS14o ...counted for the chat line',            drop14d and drop14d.locks, 2);
+    D.locks['head'] = true;
+    check('LS14p leaving the world releases them too',     D.worldWatch(0, 7), 'world');
+    check('LS14q ...leaving nothing behind',               next(D.locks), nil);
+    -- ...and with nothing held at all the watch stays silent, so the tick does
+    -- not write the mirror on every frame of character select.
+    check('LS14r nothing held -> the watch does nothing',  D.worldWatch(0, 7), nil);
+    check('LS14s the pre-v124 name is the same function',
+        rawequal(D.nakedWorldWatch, D.worldWatch), true);
+
     D.nakedArmed = savedNaked;
     D.lockedSet  = savedLocked;
 
