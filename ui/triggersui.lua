@@ -1400,6 +1400,62 @@ local function pstateHolds(key, v)
     return res == true;
 end
 
+-- Trigger CASES, read-side (issue #125). Over the EXISTING schema the `|` leg
+-- (whenAny) already carries two shapes: a SINGLE-condition entry is a plain
+-- standalone `|` condition (renders one line, exactly as today), and a
+-- MULTI-condition entry (AND-within-OR) is a `| case` -- its own bordered box.
+-- Splitting them here is the whole feature: a rule whose `|` leg holds only
+-- single-condition entries yields ZERO cases and renders pixel-identical to
+-- before (no new chrome for the 99%). Keys arrive lowercased from the model;
+-- lowercased again defensively so a hand-written file loads the same.
+local function caseSplit(whenAny)
+    local singles, cases = {}, {};
+    for _, e in ipairs(whenAny or {}) do
+        local n, onlyKey, onlyVal = 0, nil, nil;
+        for k, v in pairs(e) do n = n + 1; onlyKey, onlyVal = k, v; end
+        if n == 1 then
+            singles[#singles + 1] = { key = string.lower(tostring(onlyKey)), val = onlyVal };
+        elseif n >= 2 then
+            cases[#cases + 1] = e;
+        end
+    end
+    return singles, cases;
+end
+M.caseSplit = caseSplit;   -- headless render-test seam (smoke_ui TC*)
+
+-- Does a whole `| case` hold RIGHT NOW? A case is the AND of its conditions, so
+-- it holds iff every condition does -- computed with the engine's own matcher
+-- per condition (pstateHolds, never a re-implementation), the same path the
+-- standalone `|` markers use. nil (no marker) unless EVERY condition is a
+-- live-evaluable player-state gate: an action-based condition (element, name,
+-- ...) needs a real cast, so a case that mixes one in cannot be judged at idle
+-- and must show nothing rather than a wrong [off now].
+local function caseLiveHolds(case)
+    local allTrue = true;
+    for k, v in pairs(case) do
+        local lk = string.lower(tostring(k));
+        if PSTATE_KEYS[lk] == nil then return nil; end
+        local h = pstateHolds(lk, v);
+        if h == nil then return nil; end
+        if h == false then allTrue = false; end
+    end
+    return allTrue;
+end
+
+-- The display lines for one `| case` box: its conditions sorted, ANDed. The
+-- first reads plain; the rest carry the '& ' together-block prefix so the
+-- AND-within-OR shape is legible at a glance (the editor will reuse this).
+local function caseCondLines(case)
+    local out = {};
+    for k, v in pairs(case) do
+        local lk = string.lower(tostring(k));
+        out[#out + 1] = { key = lk,
+            text = trigPrettyKey(lk) .. ((v == true) and '' or (' = ' .. tostring(v))) };
+    end
+    table.sort(out, function(a, b) return a.key < b.key; end);
+    return out;
+end
+
 -- One rule box. colX = the section's aligned controls column. Returns 'remove'/'edit'/nil.
 -- Bordered content boxes must never grow their own scrollbar: we size them to
 -- their content and suppress the bar (a 1px estimate miss otherwise shows an
@@ -1421,14 +1477,15 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
     local id = h .. '_' .. tostring(i);
     local act = nil;
     local lines = condLines(r.when);
-    -- | leg (v54): one display line per OR condition, grouped under the & leg.
+    -- | leg: split into standalone `|` conditions (single-condition entries --
+    -- one line each, exactly as v54) and `| case` boxes (multi-condition
+    -- entries -- rendered below). Only single-condition entries become orLines,
+    -- so a rule with no multi-condition entries is byte-identical to before.
+    local singles, cases = caseSplit(r.whenAny);
     local orLines = {};
-    for _, e in ipairs(r.whenAny or {}) do
-        for k, v in pairs(e) do
-            local lk = string.lower(tostring(k));
-            orLines[#orLines + 1] = { key = lk, val = v,
-                text = '| ' .. trigPrettyKey(lk) .. ((v == true) and '' or (' = ' .. tostring(v))) };
-        end
+    for _, s in ipairs(singles) do
+        orLines[#orLines + 1] = { key = s.key, val = s.val,
+            text = '| ' .. trigPrettyKey(s.key) .. ((s.val == true) and '' or (' = ' .. tostring(s.val))) };
     end
     -- The box takes exactly the height its TALLER column needs: conditions on the
     -- left; on the right the target (an inline equip payload gets one line per
@@ -1450,11 +1507,25 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
         local nsets = (type(r.set) == 'table') and #r.set or ((r.set ~= nil) and 1 or 0);
         rightH = nsets * 22 + 26 + 30;
     end
-    local boxH = math.max(leftH, rightH, 56) + 18;
+    -- `| case` boxes stack below the together-block/target row, full width. Each
+    -- box is a header line + one line per condition + border padding; the outer
+    -- rule box grows to hold them (nothing is clipped -- the lineH() lesson).
+    local caseH = {};
+    local casesH = 0;
+    for ci, case in ipairs(cases) do
+        local nc = 0;
+        for _ in pairs(case) do nc = nc + 1; end
+        local hh = (1 + nc) * lh + 14;
+        caseH[ci] = hh;
+        casesH = casesH + hh + 4;                      -- +4 spacing between boxes
+    end
+    local boxH = math.max(leftH, rightH, 56) + 18 + casesH;
     imgui.BeginChild('##trgbox' .. id, { -1, boxH }, true, BOX_FLAGS);
 
     imgui.BeginGroup();                                -- left column: the methods
-    local andPrefix = (#orLines > 0) and '& ' or '';   -- prefixes only when both legs exist
+    -- The together-block carries the '& ' prefix whenever a `|` leg exists at
+    -- all -- standalone conditions OR `| case` boxes (issue #125).
+    local andPrefix = (#orLines > 0 or #cases > 0) and '& ' or '';
     for _, ln in ipairs(lines) do
         imgui.TextColored(COND_COLORS[ln.key] or COL_USABLE, esc(andPrefix .. ln.text));
         -- Stale group reference: a rule pointing at a missing / renamed group
@@ -1576,7 +1647,11 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
     end
 
     -- controls row: prio (dim = automatic, gold = custom) + edit + remove.
-    local defP = (hasDispatch and type(dsp.defaultPriority) == 'function') and dsp.defaultPriority(r.when) or 10;
+    -- The auto-priority chip must show the number the ENGINE derives: it scans
+    -- BOTH legs (`when` AND `whenAny`), so a rule whose highest-tier condition
+    -- lives on the `|` leg (or in a `| case`) displayed a lower number than the
+    -- engine assigned. Pass whenAny too (issue #125 priority-chip fix).
+    local defP = (hasDispatch and type(dsp.defaultPriority) == 'function') and dsp.defaultPriority(r.when, r.whenAny) or 10;
     local isAuto = (r.priority == nil);
     local eff = r.priority or defP;
     imgui.TextColored(isAuto and COL_DIM or COL_SCORE, isAuto and 'prio (auto)' or 'prio');
@@ -1611,9 +1686,45 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
     if imgui.IsItemHovered() then imgui.SetTooltip('Remove this rule.'); end
     imgui.EndGroup();
 
+    -- `| case` boxes (issue #125): each multi-condition `|` entry as its own
+    -- bordered, indented box below the rule body -- the AND-within-OR shape made
+    -- visible. This is the visual language the editor slice will reuse. A live
+    -- [on now]/[off now] rides the header when EVERY condition is player-state
+    -- (the whole case ANDed); a case mixing in an action condition shows no
+    -- marker (it cannot be judged at idle -- caseLiveHolds returns nil).
+    if #cases > 0 then
+        imgui.Indent(12);
+        for ci, case in ipairs(cases) do
+            imgui.BeginChild('##trgcase' .. id .. '_' .. ci, { -1, caseH[ci] }, true, BOX_FLAGS);
+            imgui.TextColored(COL_HEADER, '| case');
+            local holds = caseLiveHolds(case);
+            if holds ~= nil then
+                imgui.SameLine(0, 8);
+                imgui.TextColored(holds and COL_USABLE or COL_DIM,
+                    holds and '[on now]' or '[off now]');
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('The whole case holds only when ALL its conditions do (checked against your\nCURRENT state every second with the engine\'s own matcher). The engine\nre-evaluates at every dispatch.');
+                end
+            end
+            local first = true;
+            for _, cl in ipairs(caseCondLines(case)) do
+                imgui.TextColored(COND_COLORS[cl.key] or COL_USABLE,
+                    esc((first and '' or '& ') .. cl.text));
+                first = false;
+            end
+            imgui.EndChild();
+        end
+        imgui.Unindent(12);
+    end
+
     imgui.EndChild();
     return act;
 end
+-- Exposed as a headless render-test seam ON PURPOSE (the captureModeToLibrary
+-- precedent): the `| case` path -- caseLiveHolds / caseCondLines / the indented
+-- case BeginChild boxes -- only RUNS when a multi-condition rule renders, so a
+-- load test proves nothing about it. smoke_ui TC* drives it against a stub imgui.
+M.renderTrigRuleBox = renderTrigRuleBox;
 
 -- One mode box (rule-box language, content-fit height): identity + cycle values
 -- on the left (current value highlighted), live button + bind + edit on the right.
@@ -3815,14 +3926,14 @@ function M.render(job, level)
                 if PSTATE_KEYS[ln.key] ~= nil then w = w + markW(); end
                 if w > colX then colX = w; end
             end
-            for _, e in ipairs(r.whenAny or {}) do
-                for k, v in pairs(e) do
-                    local lk = string.lower(tostring(k));
-                    local w = textW('| ' .. trigPrettyKey(lk)
-                        .. ((v == true) and '' or (' = ' .. tostring(v)))) + 28;
-                    if PSTATE_KEYS[lk] ~= nil then w = w + markW(); end
-                    if w > colX then colX = w; end
-                end
+            -- Only standalone `|` conditions ride the aligned controls column;
+            -- `| case` boxes are full-width below the row and never widen it
+            -- (issue #125). Multi-condition entries drop out of caseSplit here.
+            for _, s in ipairs((caseSplit(r.whenAny))) do
+                local w = textW('| ' .. trigPrettyKey(s.key)
+                    .. ((s.val == true) and '' or (' = ' .. tostring(s.val)))) + 28;
+                if PSTATE_KEYS[s.key] ~= nil then w = w + markW(); end
+                if w > colX then colX = w; end
             end
         end
         local availW = imgui.GetContentRegionAvail();
