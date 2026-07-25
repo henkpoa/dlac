@@ -180,13 +180,26 @@ M.modes = {};   -- mode state: lower(name) -> true (toggle) or 'Value' (cycle).
                 -- Lua-state lifetimes. maxmp drops itself on a job change (tick).
 M.modesRev = 0; -- bumped on every mode change: utils.rebuildSets re-flattens the
                 -- Dynamic sets when it moves (mode-gated entries pick differently).
-M.locks = {};   -- session-only SLOT LOCKS: lower(lac slot name) -> true. Locks are the
-                -- draggable VETO ROW in the Arbiter rank (ADR 0012, step 3): a locked slot
-                -- is stripped from every layer ranked BELOW the Locks row (the Triggers
-                -- floor + any claimant under it), while a claimant ranked ABOVE it (Pins,
-                -- by default) punches through. /dl lock drives it; the Equipped tab's
-                -- "Lock when equipped" sends that command. Mirrored to modestate.lua
-                -- (__locks) for GUI display; reset on LAC reload like modes.
+-- Session-only SLOT LOCKS: lower(lac slot name) -> true. Locks are the draggable
+-- VETO ROW in the Arbiter rank (ADR 0012, step 3): a locked slot is stripped from
+-- every layer ranked BELOW the Locks row (the Triggers floor + any claimant under
+-- it), while a claimant ranked ABOVE it (Pins, by default) punches through.
+-- /dl lock drives it; the Equipped tab's "Lock when equipped" sends that command.
+-- Mirrored to modestate.lua (__locks) for GUI display, never restored from disk.
+--
+-- `or {}`, NOT `= {}`. This used to be a plain reset, which made an engine
+-- SELF-SWAP -- the 2s content check that carries a `git pull` or a reseed into the
+-- running engine -- silently unlock all sixteen slots mid-session. Nobody asked for
+-- it and nothing announced it beyond a parenthetical in the swap line. ADR 0021
+-- called the leak out while rejecting a lock-based naked ("M.locks is wiped by
+-- every engine self-swap... a background reseed would silently re-dress you"), and
+-- ADR 0022 put a LOCKED SET on this same row -- so half the row surviving a reseed
+-- while the other half evaporated was the last reason to leave it.
+--
+-- A LAC reload still clears them: that is a fresh Lua state, so M itself is new and
+-- the field is nil. Locks remain session-only and are still never read back from
+-- the mirror.
+M.locks = M.locks or {};
 
 -- NAKED (ADR 0021): the strip flag. `= (M.nakedArmed == true)` -- the M._loadStamp
 -- idiom at the top of this file, and deliberately NOT `M.nakedArmed = false` the way
@@ -5742,7 +5755,8 @@ if engineActive() then
     -- M.defaultGateHold and swaps live regardless), and re-runs loadModeState
     -- + saveModeState -- a swap inherits Reload-LAC semantics exactly: modes
     -- survive via the modestate mirror (whose re-stamp also clears the GUI
-    -- banner), slot locks reset.
+    -- banner); modes, slot locks and any locked set are KEPT (they live on the module
+    -- table the swap hands over, so a git pull cannot quietly undo them).
     -- The BASELINE initializes from the first readable tick (the engine and
     -- the seeded file are the same bytes at load in every ordinary sequence)
     -- and self-heals through the version compare if a reseed ever lands in
@@ -5789,9 +5803,9 @@ if engineActive() then
         M._swapFailedRaw = nil;
         M._swapSourceRaw = raw;
         if v == old then
-            print(string.format('[dlac] engine hot-swapped v%d (same-version content change) -- no Reload LAC needed (modes kept, slot locks reset).', v));
+            print(string.format('[dlac] engine hot-swapped v%d (same-version content change) -- no Reload LAC needed (modes, locks and any locked set kept).', v));
         else
-            print(string.format('[dlac] engine hot-swapped v%d -> v%d -- no Reload LAC needed (modes kept, slot locks reset).',
+            print(string.format('[dlac] engine hot-swapped v%d -> v%d -- no Reload LAC needed (modes, locks and any locked set kept).',
                 old, v));
         end
     end

@@ -2068,6 +2068,40 @@ local rawSrc = fh:read('*a'); fh:close();
 check('X5 swapper version-parse finds the assignment',
     tonumber(string.match(rawSrc, 'M%.VERSION%s*=%s*(%d+)')), dispatchM.VERSION);
 
+-- X6. WHAT SURVIVES A SELF-SWAP. The swap re-executes the file against the SAME
+-- module table (rawset __dlacEngineRoot -> run chunk), so every `M.x = {}` at file
+-- scope is a silent reset of live session state every time a `git pull` lands.
+-- M.locks used to be exactly that: all sixteen slots quietly unlocked mid-session,
+-- announced only by a parenthetical in the swap line. ADR 0021 named the leak while
+-- rejecting a lock-based naked; ADR 0022 then put a LOCKED SET on the same row, so
+-- half the row surviving a reseed while the other half evaporated was the last
+-- reason to leave it. Modelled here exactly as trySelfSwap does it.
+(function()
+    local live = { VERSION = -1 };
+    _G.__dlacEngineRoot = live;
+    dofile('dispatch.lua');                       -- first load: fills the table
+    live.locks['head'] = true;                    -- the player locks a slot...
+    live.modes['testmode'] = true;                -- ...and sets a mode
+    live.lockedSet = { name = 'Incursion T3', mode = 'set', claim = { Head = 'X' }, n = 1 };
+    dofile('dispatch.lua');                       -- ...then a git pull lands
+    _G.__dlacEngineRoot = nil;
+    check('X6 a self-swap KEEPS the player\'s slot locks', live.locks['head'], true);
+    check('X6b ...and a locked set (ADR 0022)',            live.lockedSet ~= nil, true);
+    -- Modes are still reset by the same re-execution, and that is correct: they
+    -- have a disk mirror the engine reads BACK on load (loadModeState), so they
+    -- heal. Locks never could -- __locks is display-only and deliberately never
+    -- restored, because a lock is a "right now" decision -- which is exactly why
+    -- the fix for them had to live on the table instead of in the mirror.
+    check('X6c modes still reset -- they heal from the modestate mirror, locks cannot',
+        live.modes['testmode'], nil);
+    check('X6d ...the swap line no longer promises otherwise',
+        rawSrc:find('slot locks reset', 1, true), nil);
+end)();
+-- A FRESH Lua state still starts clean: no handshake table, so M is new and every
+-- `or {}` above takes its empty branch. This is the LAC-reload path.
+check('X7 a fresh load starts with no locks',    next(dofile('dispatch.lua').locks), nil);
+check('X7b ...and nothing locked',               dofile('dispatch.lua').lockedSet, nil);
+
 -- ---------------------------------------------------------------------------
 -- Y. profile storage layer (profiles.lua, v33): the pure text machinery, and
 --    headless safety (every fs/Ashita touch is call-time + guarded, so nil
