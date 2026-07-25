@@ -33,6 +33,13 @@ local M = {};
 
 M.VERSION = 1;   -- library file format version (blueprints v1)
 
+-- The trigger-cases version guard key (issue #126). A serialization artifact of
+-- dispatch's serializer (stamped into the body of any rule with a `cases` list so
+-- older engines drop it) -- never a real condition, so it is stripped on load and
+-- re-stamped on emit, exactly as dispatch does. Kept as a bare local so this pure
+-- module still drags in nothing from the engine.
+local CASES_GUARD = 'hascases';
+
 -- Canonical LuaAshitacast handlers a Blueprint's rule may target (dispatch's EVENTS).
 local HANDLERS = { 'Default', 'Precast', 'Midcast', 'Ability', 'Item', 'Weaponskill', 'Preshot', 'Midshot', 'PetAction' };
 local HANDLER_SET = {};
@@ -62,18 +69,50 @@ M.deepcopy = deepcopy;
 -- string or ordered list, an inline `equip` map, an optional numeric priority. Returns nil
 -- when the rule has no conditions or no action (it would be garbage). whenAny entries are
 -- single- or multi-key maps, order preserved (an OR list).
-local function sanitizeRule(r)
-    if type(r) ~= 'table' or type(r.when) ~= 'table' then return nil; end
-    local when = {};
-    for ck, cv in pairs(r.when) do when[string.lower(tostring(ck))] = cv; end
-    local whenAny = nil;
-    local rawAny = r.whenAny or r.whenany;
+local function sanitizeCondMap(map)
+    local out = {};
+    for ck, cv in pairs(map or {}) do
+        local lk = string.lower(tostring(ck));
+        if lk ~= CASES_GUARD then out[lk] = cv; end   -- guard is engine-managed, stripped
+    end
+    return out;
+end
+
+-- whenAny (list of condition maps) -> sanitized list, empties dropped.
+local function sanitizeAny(rawAny)
+    local out = nil;
     if type(rawAny) == 'table' then
         for _, e in ipairs(rawAny) do
             if type(e) == 'table' then
-                local ne = {};
-                for ck, cv in pairs(e) do ne[string.lower(tostring(ck))] = cv; end
-                if next(ne) ~= nil then whenAny = whenAny or {}; whenAny[#whenAny + 1] = ne; end
+                local ne = sanitizeCondMap(e);
+                if next(ne) ~= nil then out = out or {}; out[#out + 1] = ne; end
+            end
+        end
+    end
+    return out;
+end
+
+local function sanitizeRule(r)
+    if type(r) ~= 'table' or type(r.when) ~= 'table' then return nil; end
+    local when = sanitizeCondMap(r.when);
+    local whenAny = sanitizeAny(r.whenAny or r.whenany);
+    -- cases (issue #126): { op = '&'/'|', when = {...}, whenAny = {...}? }. Carried
+    -- VERBATIM so a case-bearing rule travels as a Blueprint like any other rule;
+    -- empty cases and bad operators are dropped, mirroring dispatch's normalize.
+    local cases = nil;
+    if type(r.cases) == 'table' then
+        for _, c in ipairs(r.cases) do
+            if type(c) == 'table' then
+                local op = (c.op == '|' or c.operator == '|') and '|'
+                        or ((c.op == '&' or c.operator == '&') and '&' or nil);
+                if op ~= nil then
+                    local cw = sanitizeCondMap(c.when);
+                    local cwAny = sanitizeAny(c.whenAny or c.whenany);
+                    if next(cw) ~= nil or (cwAny ~= nil and #cwAny > 0) then
+                        cases = cases or {};
+                        cases[#cases + 1] = { op = op, when = cw, whenAny = cwAny };
+                    end
+                end
             end
         end
     end
@@ -97,6 +136,7 @@ local function sanitizeRule(r)
     if sv == nil and equip == nil then return nil; end       -- no action -> not a real rule
     local rule = { when = when };
     if whenAny ~= nil then rule.whenAny = whenAny; end
+    if cases ~= nil then rule.cases = cases; end
     if sv ~= nil then rule.set = sv; else rule.equip = equip; end
     if tonumber(r.priority) ~= nil then rule.priority = tonumber(r.priority); end
     return rule;
@@ -121,27 +161,65 @@ end
 -- equip slots sorted, priority only when set. `prettyKey` (dispatch.PRETTY_KEY, optional) maps
 -- a lowercased key to its display case; without it the raw key is used. This ONE form is the
 -- canonical spelling for the file, the identical-rule test, and the shareable text.
+-- One condition map -> sorted "prettyKey = literal" list; skips the guard ALWAYS
+-- (re-stamped by the caller). Byte-identical to dispatch's serCondList.
+local function emitCondList(map, prettyKey)
+    local c = {};
+    for k, v in pairs(map or {}) do
+        local lk = string.lower(tostring(k));
+        if lk ~= CASES_GUARD then
+            c[#c + 1] = (prettyKey[lk] or tostring(k)) .. ' = ' .. condLiteral(v);
+        end
+    end
+    table.sort(c);
+    return c;
+end
+
 function M.emitRule(rule, prettyKey)
     prettyKey = (type(prettyKey) == 'table') and prettyKey or {};
-    local conds = {};
-    for k, v in pairs(rule.when or {}) do
-        local lk = string.lower(tostring(k));
-        conds[#conds + 1] = (prettyKey[lk] or tostring(k)) .. ' = ' .. condLiteral(v);
+    -- Oldest-form-first split (issue #126), byte-identical to dispatch.splitCases:
+    -- a `| case` with only `&` conditions serializes as a whenAny multi-entry; only
+    -- `&` cases and `| cases` with an internal `|` leg use the cases list, and any
+    -- rule carrying that list gets the version guard stamped in its body.
+    local anyEntries = {};
+    for _, e in ipairs(rule.whenAny or {}) do anyEntries[#anyEntries + 1] = e; end
+    local caseList = {};
+    for _, c in ipairs(rule.cases or {}) do
+        if type(c) == 'table' then
+            if c.op == '|' and (c.whenAny == nil or #c.whenAny == 0) then
+                anyEntries[#anyEntries + 1] = c.when or {};
+            else
+                caseList[#caseList + 1] = c;
+            end
+        end
     end
+    local conds = emitCondList(rule.when, prettyKey);
+    if #caseList > 0 then conds[#conds + 1] = (prettyKey[CASES_GUARD] or 'hasCases') .. ' = true'; end
     table.sort(conds);
     local anyStr = '';
-    if type(rule.whenAny) == 'table' and #rule.whenAny > 0 then
+    if #anyEntries > 0 then
         local groups = {};
-        for _, entry in ipairs(rule.whenAny) do
-            local ec = {};
-            for k, v in pairs(entry) do
-                local lk = string.lower(tostring(k));
-                ec[#ec + 1] = (prettyKey[lk] or tostring(k)) .. ' = ' .. condLiteral(v);
-            end
-            table.sort(ec);
-            groups[#groups + 1] = '{ ' .. table.concat(ec, ', ') .. ' }';
+        for _, entry in ipairs(anyEntries) do
+            groups[#groups + 1] = '{ ' .. table.concat(emitCondList(entry, prettyKey), ', ') .. ' }';
         end
         anyStr = ', whenAny = { ' .. table.concat(groups, ', ') .. ' }';
+    end
+    local casesStr = '';
+    if #caseList > 0 then
+        local cs = {};
+        for _, c in ipairs(caseList) do
+            local cAny = '';
+            if type(c.whenAny) == 'table' and #c.whenAny > 0 then
+                local g = {};
+                for _, e in ipairs(c.whenAny) do
+                    g[#g + 1] = '{ ' .. table.concat(emitCondList(e, prettyKey), ', ') .. ' }';
+                end
+                cAny = ', whenAny = { ' .. table.concat(g, ', ') .. ' }';
+            end
+            cs[#cs + 1] = string.format('{ op = %q, when = { %s }%s }',
+                tostring(c.op), table.concat(emitCondList(c.when, prettyKey), ', '), cAny);
+        end
+        casesStr = ', cases = { ' .. table.concat(cs, ', ') .. ' }';
     end
     local action;
     if type(rule.set) == 'table' then
@@ -159,7 +237,7 @@ function M.emitRule(rule, prettyKey)
         action = 'equip = { ' .. table.concat(slots, ', ') .. ' }';
     end
     local prio = (tonumber(rule.priority) ~= nil) and (', priority = ' .. tostring(rule.priority)) or '';
-    return string.format('when = { %s }%s, %s%s', table.concat(conds, ', '), anyStr, action, prio);
+    return string.format('when = { %s }%s%s, %s%s', table.concat(conds, ', '), anyStr, casesStr, action, prio);
 end
 
 -- Two rules are IDENTICAL when their canonical emitted form matches -- same conditions

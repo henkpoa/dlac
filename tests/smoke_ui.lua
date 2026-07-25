@@ -2022,6 +2022,27 @@ end)();
                       set = 'CaseSet' }, { 'CaseSet' }, 190), true);
             check('TC10 stacks stay balanced through the case boxes',
                 depth.col + depth.win + depth.child, 0);
+            -- issue #126: the read-side display extends to `cases`-list rules --
+            -- an `& case` (together-block member) and a `| case` with an internal
+            -- OR leg, both rendered with the same bordered-box visual language.
+            check('TC11 renders a rule bearing an & case (internal OR rows)',
+                pcall(tg.renderTrigRuleBox, 'Precast', 4,
+                    { when = { magictype = 'Black Magic' },
+                      cases = { { op = '&', when = {}, whenAny = { { element = 'Fire' }, { element = 'Ice' } } } },
+                      set = 'NukeSet' }, { 'NukeSet' }, 190), true);
+            check('TC12 renders a | case that carries an internal OR leg',
+                pcall(tg.renderTrigRuleBox, 'Precast', 5,
+                    { when = { status = 'Engaged' },
+                      cases = { { op = '|', when = { magictype = 'Black Magic' }, whenAny = { { element = 'Fire' } } } },
+                      set = 'MixSet' }, { 'MixSet' }, 190), true);
+            check('TC13 renders body + | leg + & case + | case all at once',
+                pcall(tg.renderTrigRuleBox, 'Precast', 6,
+                    { when = { magictype = 'Black Magic' }, whenAny = { { buff = 'Sleep' } },
+                      cases = { { op = '&', when = {}, whenAny = { { element = 'Fire' } } },
+                                { op = '|', when = { status = 'Engaged', tpabove = 1000 } } },
+                      set = 'MaxSet' }, { 'MaxSet' }, 190), true);
+            check('TC14 stacks stay balanced through the cases-list boxes',
+                depth.col + depth.win + depth.child, 0);
         end
     end
 

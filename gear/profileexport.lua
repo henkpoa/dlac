@@ -139,11 +139,20 @@ local function ruleRefs(r, refs)
             elseif lk == 'group' then refs.groups = true; end
         end
     end
-    scan(r.when);
-    local anyList = r.whenAny or r.whenany;
-    if type(anyList) == 'table' then
-        for _, e in ipairs(anyList) do
-            if type(e) == 'table' then scan(e); end
+    local function scanLeg(when, whenAny)
+        scan(when);
+        if type(whenAny) == 'table' then
+            for _, e in ipairs(whenAny) do
+                if type(e) == 'table' then scan(e); end
+            end
+        end
+    end
+    scanLeg(r.when, r.whenAny or r.whenany);
+    -- cases (issue #126): a mode/group reference can live inside a case too, so
+    -- an export dependency scan must walk every case's legs.
+    if type(r.cases) == 'table' then
+        for _, c in ipairs(r.cases) do
+            if type(c) == 'table' then scanLeg(c.when, c.whenAny or c.whenany); end
         end
     end
     if r.set ~= nil then refs.sets = true; end   -- a named-set action (inline equip carries no set dep)

@@ -49,7 +49,7 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 125;  -- 125: trigger CASES, read-side (issue #125, slice 1/5) -- /dl why now NAMES the matched case of a case-bearing rule ('[via together-block]' / '[via standalone ...]' / '[via case a & b]'), mirroring matches() with the engine's own MATCHERS. Display only: a case-less rule (no `|` leg) traces byte-for-byte as before, so this is invisible to the 99%. Seeded-file bump because the trace is built engine-side during dispatch (hard rule 4). No schema change, no equip change. Tests CS1-CS10 (the PR shipped these as MC1-MC10 off a stale origin/dev; renamed at merge -- the dead-mode sweep suite owns the MC range, and 123/124 were taken by the lock-lifetime work).
+M.VERSION = 126;  -- 126: trigger CASES, the schema backbone (issue #126, slice 2/5; ADR 0023) -- rules gain an optional `cases` list (a second `&`/`|` tier: op + the same two legs a body has), evaluated by matches()/matchedCase() over a factored legMatches so both tiers share one code path; normalize validates + drops empty cases + strips the always-true `hasCases` version guard; auto-priority + ruleLabel span every leg of every case (case-LESS rules match/label/serialize byte-for-byte as before -- pinned). serializeTriggers is oldest-form-first (a `| case` of only `&` rows -> a whenAny multi-entry; only `&` cases and `| cases` with internal OR use the new list) and stamps the guard so OLDER engines drop the rule with the standard warn instead of misreading it. Seeded-file bump: normalize + matches run engine-side (hard rule 4). Tests CX1-CX35, MC19-23. -- 125: trigger CASES, read-side (issue #125, slice 1/5) -- /dl why now NAMES the matched case of a case-bearing rule ('[via together-block]' / '[via standalone ...]' / '[via case a & b]'), mirroring matches() with the engine's own MATCHERS. Display only: a case-less rule (no `|` leg) traces byte-for-byte as before, so this is invisible to the 99%. Seeded-file bump because the trace is built engine-side during dispatch (hard rule 4). No schema change, no equip change. Tests CS1-CS10 (the PR shipped these as MC1-MC10 off a stale origin/dev; renamed at merge -- the dead-mode sweep suite owns the MC range, and 123/124 were taken by the lock-lifetime work).
                   -- 124: ONE LIFETIME RULE for every way of deliberately holding gear still (Henrik, 2026-07-26: "I don't want locks to outlive a relog, it should not outlive a main job change nor a log"). M.nakedWorldWatch is now M.worldWatch (old name kept as an alias -- the seeded LAC-side engine and NK28 call it) and clears SLOT LOCKS as well as the strip and a locked set: main job change, or the character-select read. Slot locks were the odd one out only by accident -- nothing ever watched them, so they rode through character select (an Ashita addon survives a logout and LAC never clears package.loaded), and the pre-v123 self-swap wipe LOOKED like a lifetime rule while really being a bug (a git pull unlocking your gear mid-Incursion). Fixing that accident left the real gap plain. None of the three is written to disk: all are mirrored to modestate (__locks / __naked / __held) inside the reserved __ namespace loadModeState skips, so a mirror can never restore one. The job-change drop is announced per kind; leaving the world stays silent. Tests LS14k-LS14s.
                   -- 123: `/dl lock set ...` is a FROZEN CLAIM on the Locks row (ADR 0022), not equip-once-then-lock-16-slots. The old command was broken in NATIVE mode and could not be seen: its rawget(_G,'gEquip') bracket is nil in the addon state, so the resolved set fell to the unbracketed path, landed in equipengine's buffer, and the next fireEvent's bufferClear wiped it -- then setLock('all', true) locked all 16 slots onto whatever you were wearing and printed success. As a Claim there is no command-path equip left to bracket wrongly: M.dispatch is already bracketed by the native engine, and the claim re-applies every dispatch so anything the server refused heals on the next pass (ADR 0021 rule 3). FOUR command words, ONE claim shape, differing only in what fills a slot the set does not name: /dl lock set (held EMPTY), set-loose (left available), set-snapshot (held as worn), set-current (all 16 as worn, no set name). M.buildLockedClaim is the pure builder; the three impure seams (resolve/locate/wornOf) are injected, so every branch is driven headless. FROZEN AT ARM: dlac: markers are collapsed to concrete entries once, so a locked obi cannot follow the weather -- but the names are re-LOCATED in your bags every dispatch, because freezing container+index would strand the hold on the first bag shuffle. A named piece that is not on you leaves THAT SLOT LOOSE (available) rather than empty, and is reported by name and container from a live all-bags scan. It rides the EXISTING Locks row -- no new rank row, no new player concept -- so precedence is unchanged: Naked and Pins punch through a lock, nothing else does. Arming no longer clears the player's own locks: layerRespectsLocks('Locks') is false on its own row, so the hold punches through M.locks and a stale lock can never strip a slot out of it. Both dispatch bail guards now let a lone hold through (the NK26 lesson). Lifetime shares nakedWorldWatch -- self-swap survives, job change and logout drop it, never written to disk. Released by /dl lock all off AND /dl lock set off; /dl lock with no arguments prints state plus every variant. Mirrored to modestate as __held. Sets tab's Equip & Lock is now a plain action (nothing locks 16 slots, so its toggle had no counter left); the Equipped tab owns the state and the set-current switch. Tests LS1-LS20, CMD10-CMD15, LSU1-LSU4.
                   -- 122: /dl naked + /dl dress (ADR 0021) -- the strip is a CLAIM, not a lock. A new 'Naked' Arbiter row, FIRST by default, claims all 16 slots with the 'remove' literal both engines already speak (LAC MakeItemTable -> Index 0; equipcore normalizeEntry/planSet), so it is recomputed and re-applied on EVERY dispatch instead of stripping once and fencing: nothing re-dresses you, and a strip the server refuses (dead, cutscene, mid-ranged-attack, level-sync settle) lands on the next pass instead of leaking a dressed slot forever. Explicitly NOT the /dl lock route -- a lock only WITHHOLDS (it cannot take a piece off), it is wiped by every engine self-swap, Pins punch through it, and three unrelated buttons release it; arming it would also destroy the player's own locks. Total nudity is the default and the rank list is the exception mechanism: drag Pins or Locks above Naked for "naked except those". Flag is M.nakedArmed, carried across a self-swap by the M._loadStamp idiom and gone in a fresh Lua state, so a git pull cannot re-dress you. A relog does NOT make a fresh Lua state (an Ashita addon survives a logout -- pinwatch's header records it -- and LAC never clears package.loaded), so nakedWorldWatch disarms on the character-select read, and on a JOB CHANGE too (Henrik's ruling; main job only, announced); mirrored to modestate as __naked (display only, never restored). arbOrder now restores a MISSING known row AT ITS DEFAULT POSITION instead of appending -- appended, Naked would have shipped at rank 9 for every character with an existing arbstate file and lost every slot it exists to win. The naked layer voids ctx.pinReserved when it outranks Pins (a reserver about to be stripped must not keep a neighbour dressed) via save/nil/restore, never a ctx copy. /dl ls apply is refused while naked (unnamed slots would be styled permanently EMPTY). Tests NK1-NK26, NKU1-NKU4.
@@ -818,8 +818,23 @@ local MATCHERS = {
         if z == nil then return false; end
         return (TOWN[z] == true) == (v == true);
     end,
+    -- Trigger-cases version guard (issue #126): stamped into the BODY of any rule
+    -- serialized WITH a `cases` list. Always true, bottom tier -- it never changes
+    -- whether a rule fires or what priority it gets. Its whole job is that an
+    -- OLDER engine (git-pull skew, a shared file) sees an unknown condition key
+    -- and drops the entire rule with the standard chat warn, instead of silently
+    -- evaluating case 1 alone (the project law: refuse a rule you can't fully
+    -- evaluate). This engine knows the key, so normalize STRIPS it on load -- it
+    -- is a serialization artifact, never a real body condition.
+    hascases = function() return true; end,
 };
 M._matchers = MATCHERS;   -- headless test seam (the _autoOverride idiom)
+
+-- The lowercased guard key + its pretty spelling. One definition so normalize,
+-- the serializer and the label all agree. PLAYER-VISIBLE (it lands in the
+-- hand-editable trigger file) -- flagged in the PR for the maintainer's sign-off.
+local CASES_GUARD = 'hascases';
+M.CASES_GUARD = CASES_GUARD;
 
 -- Specificity tier per condition -> the DEFAULT priority when a rule sets none
 -- (ADR 0003). A rule's default is the MAX tier among its conditions ("the most
@@ -855,6 +870,11 @@ local TIER = {
     -- explicit mode still wins. Same 95 band.
     intown = 95,
     mode = 100,
+    -- The cases guard sits at the BOTTOM tier (the specificity floor is 10, so a
+    -- value at/under it can never become a rule's max) -- "the guard never moves
+    -- auto-priority" (issue #126). It is stripped on load anyway; the tier only
+    -- has to exist so normalize accepts the key instead of dropping the rule.
+    hascases = 10,
 };
 
 -- Display-case spelling per (lowercased) condition key -- what the serializer writes
@@ -875,12 +895,17 @@ local PRETTY_KEY = {
     playerhppercentbelow = 'playerHPPercentBelow', playerhppercentabove = 'playerHPPercentAbove',
     playermpbelow = 'playerMPBelow', playermpabove = 'playerMPAbove',
     playermppercentbelow = 'playerMPPercentBelow', playermppercentabove = 'playerMPPercentAbove',
+    hascases = 'hasCases',
 };
 M.PRETTY_KEY = PRETTY_KEY;
 
 -- The default priority a rule with this `when` would get (specificity, ADR 0003).
 -- Exposed so the GUI can show the effective number next to an "auto" priority.
-function M.defaultPriority(when, whenAny)
+-- cases (issue #126): the optional second tier. Each case is
+-- { op = '&' | '|', when = { &-leg }, whenAny = { { |-entry }, ... } } -- the
+-- SAME two legs a rule body has. Auto-priority is the max tier over EVERY leg of
+-- EVERY case (the guard, tier 10, never wins).
+function M.defaultPriority(when, whenAny, cases)
     local p = 10;
     local function scan(t)
         for k in pairs(t or {}) do
@@ -891,6 +916,14 @@ function M.defaultPriority(when, whenAny)
     if type(when) == 'table' then scan(when); end
     for _, e in ipairs(whenAny or {}) do
         if type(e) == 'table' then scan(e); end
+    end
+    for _, c in ipairs(cases or {}) do
+        if type(c) == 'table' then
+            scan(c.when);
+            for _, e in ipairs(c.whenAny or {}) do
+                if type(e) == 'table' then scan(e); end
+            end
+        end
     end
     return p;
 end
@@ -913,7 +946,10 @@ local function condVal(v)
     table.sort(parts);
     return table.concat(parts, ',');
 end
-function M.ruleLabel(when, whenAny)
+-- One tier's label: the `&` leg (sorted, joined '+', or 'any') then the `|` leg
+-- entries (each sorted, joined '+') after '|', sorted. This IS the historical
+-- ruleLabel over one { when, whenAny } pair -- factored so a case reuses it.
+local function legLabel(when, whenAny)
     local parts = {};
     for k, v in pairs(when or {}) do
         parts[#parts + 1] = string.lower(tostring(k)) .. '=' .. condVal(v);
@@ -933,6 +969,22 @@ function M.ruleLabel(when, whenAny)
     table.sort(ors);
     if #ors > 0 then base = base .. '|' .. table.concat(ors, '|'); end
     return base;
+end
+function M.ruleLabel(when, whenAny, cases)
+    local s = legLabel(when, whenAny);
+    -- Cases (issue #126) extend the label deterministically: each case as
+    -- '<op>(<its leg label>)', sorted. A case-LESS rule (cases nil/empty) skips
+    -- this entirely, so its label is BYTE-FOR-BYTE what it was before -- existing
+    -- pin scope keys keep matching (PRD story 19).
+    if type(cases) == 'table' and #cases > 0 then
+        local cls = {};
+        for _, c in ipairs(cases) do
+            cls[#cls + 1] = tostring(c.op) .. '(' .. legLabel(c.when, c.whenAny) .. ')';
+        end
+        table.sort(cls);
+        s = s .. '#' .. table.concat(cls, '#');
+    end
+    return s;
 end
 
 local function normalize(t)
@@ -955,12 +1007,17 @@ local function normalize(t)
                     local when, dead = {}, false;
                     for ck, cv in pairs(r.when) do
                         local lk = string.lower(tostring(ck));
-                        if TIER[lk] == nil then
+                        if lk == CASES_GUARD then
+                            -- the cases version guard: known, engine-managed, NOT a
+                            -- real body condition -- stripped so it never pollutes the
+                            -- label or the /dl why trace (issue #126).
+                        elseif TIER[lk] == nil then
                             warns[#warns + 1] = string.format('%s rule %d: unknown condition %q — rule dropped', ev, i, tostring(ck));
                             dead = true;
                             break;
+                        else
+                            when[lk] = cv;
                         end
-                        when[lk] = cv;
                     end
                     -- v54 OR group: whenAny = { { cond = val, ... }, ... } -- ANY
                     -- entry whose conditions ALL hold matches the rule, independent
@@ -990,19 +1047,69 @@ local function normalize(t)
                             end
                         end
                     end
-                    if not dead then
-                        local prio = tonumber(r.priority);
-                        if prio == nil then
-                            prio = 10;
-                            for lk in pairs(when) do
-                                if TIER[lk] > prio then prio = TIER[lk]; end
+                    -- Cases (issue #126): the optional second tier. Each entry is
+                    -- { op = '&' | '|', when = { &-leg }, whenAny = { |-entries } }
+                    -- -- the SAME two legs a body has, validated by the SAME
+                    -- registry gate (an unknown key anywhere kills the whole rule,
+                    -- exactly as a body leg does). Cases cannot contain cases (hard
+                    -- one-tier cap): a nested `cases` field is simply ignored. Empty
+                    -- cases are dropped.
+                    local cases = nil;
+                    if not dead and type(r.cases) == 'table' then
+                        for ci, c in ipairs(r.cases) do
+                            if type(c) ~= 'table' then
+                                warns[#warns + 1] = string.format('%s rule %d: case %d is not a table — rule dropped', ev, i, ci);
+                                dead = true; break;
                             end
-                            for _, e in ipairs(whenAny or {}) do
-                                for lk in pairs(e) do
-                                    if TIER[lk] > prio then prio = TIER[lk]; end
+                            local op = (c.op == '|' or c.operator == '|') and '|'
+                                    or ((c.op == '&' or c.operator == '&') and '&' or nil);
+                            if op == nil then
+                                warns[#warns + 1] = string.format("%s rule %d: case %d needs op = '&' or '|' — rule dropped", ev, i, ci);
+                                dead = true; break;
+                            end
+                            local cw = {};
+                            for ck, cv in pairs(c.when or {}) do
+                                local lk = string.lower(tostring(ck));
+                                if lk == CASES_GUARD then       -- stray guard inside a case: ignore
+                                elseif TIER[lk] == nil then
+                                    warns[#warns + 1] = string.format('%s rule %d: unknown condition %q in a case — rule dropped', ev, i, tostring(ck));
+                                    dead = true; break;
+                                else cw[lk] = cv; end
+                            end
+                            if dead then break; end
+                            local cwAny = nil;
+                            if type(c.whenAny or c.whenany) == 'table' then
+                                for ei, entry in ipairs(c.whenAny or c.whenany) do
+                                    if type(entry) ~= 'table' then
+                                        warns[#warns + 1] = string.format('%s rule %d: case %d whenAny entry %d is not a table — rule dropped', ev, i, ci, ei);
+                                        dead = true; break;
+                                    end
+                                    local ne = {};
+                                    for ck, cv in pairs(entry) do
+                                        local lk = string.lower(tostring(ck));
+                                        if lk == CASES_GUARD then
+                                        elseif TIER[lk] == nil then
+                                            warns[#warns + 1] = string.format('%s rule %d: unknown condition %q in a case — rule dropped', ev, i, tostring(ck));
+                                            dead = true; break;
+                                        else ne[lk] = cv; end
+                                    end
+                                    if dead then break; end
+                                    if next(ne) ~= nil then cwAny = cwAny or {}; cwAny[#cwAny + 1] = ne; end
                                 end
+                                if dead then break; end
+                            end
+                            -- an emptied case is dropped (no & leg and no | leg)
+                            if next(cw) ~= nil or (cwAny ~= nil and #cwAny > 0) then
+                                cases = cases or {};
+                                cases[#cases + 1] = { op = op, when = cw, whenAny = cwAny };
                             end
                         end
+                    end
+                    if not dead then
+                        -- auto-priority = max tier over EVERY leg of EVERY case (the
+                        -- guard, tier 10, never wins). One source of truth with the
+                        -- editor's chip: both call M.defaultPriority.
+                        local prio = tonumber(r.priority) or M.defaultPriority(when, whenAny, cases);
                         -- set = 'Name' or an ORDERED list { 'Base', 'Overlay' } --
                         -- normalized to a `sets` array either way.
                         local sets = nil;
@@ -1019,11 +1126,12 @@ local function normalize(t)
                         list[#list + 1] = {
                             when    = when,
                             whenAny = whenAny,
+                            cases   = cases,
                             sets    = sets,
                             equip   = (type(r.equip) == 'table') and r.equip or nil,
                             prio    = prio,
                             ord     = #list + 1,
-                            label   = M.ruleLabel(when, whenAny),
+                            label   = M.ruleLabel(when, whenAny, cases),
                         };
                     end
                 end
@@ -3628,28 +3736,66 @@ local function buildCtx(event)
     return ctx;
 end
 
-local function matches(rule, ctx)
-    -- & leg: every `when` condition must hold. A rule with NO whenAny keeps
-    -- the original semantics exactly (empty when = match -- the 'any' shape).
+-- ONE tier's evaluation: (ALL of `when`) OR (ANY whenAny entry) -- the historical
+-- rule matcher over a single { when, whenAny } pair. The sentence at tier 1. An
+-- empty `when` with NO whenAny is the trivial 'any' match (returns andOk = true);
+-- an OR-only leg (empty `when` WITH whenAny) is NOT always-on -- only the | side
+-- counts. Factored out so a body AND every case reuse the exact same code path.
+local function legMatches(when, whenAny, ctx)
     local andOk, nAnd = true, 0;
-    for lk, cv in pairs(rule.when) do
+    for lk, cv in pairs(when or {}) do
         nAnd = nAnd + 1;
         local f = MATCHERS[lk];
         if f == nil or not f(cv, ctx) then andOk = false; break; end
     end
-    local anyList = rule.whenAny;
-    if anyList == nil then return andOk; end
-    -- | leg (v54): ANY entry whose conditions all hold matches the rule,
-    -- independent of the & leg ("ALL of & OR ANY of |" -- Henrik's spec). An
-    -- OR-only rule (zero & conditions) is NOT always-on: only the | leg counts.
+    if whenAny == nil then return andOk; end
     if nAnd > 0 and andOk then return true; end
-    for _, entry in ipairs(anyList) do
+    for _, entry in ipairs(whenAny) do
         local ok = true;
         for lk, cv in pairs(entry) do
             local f = MATCHERS[lk];
             if f == nil or not f(cv, ctx) then ok = false; break; end
         end
         if ok then return true; end
+    end
+    return false;
+end
+M._legMatches = legMatches;   -- headless test seam
+
+local function matches(rule, ctx)
+    -- A case-LESS rule keeps the original semantics EXACTLY -- one legMatches over
+    -- the body, byte-for-byte the pre-cases path (pinned invariant, issue #126).
+    if rule.cases == nil then return legMatches(rule.when, rule.whenAny, ctx); end
+    -- Tier 2 (issue #126). ONE sentence, true at both tiers: `&` things bind into
+    -- one together-block; each `|` thing stands alone; fire if the together-block
+    -- holds, or any `|` thing does. At the rule tier the `&` members are the
+    -- body's `&` leg + every `& case`; the standalone `|` things are the body's
+    -- whenAny entries + every `| case`. The empty-together-block law generalizes:
+    -- with NO `&` member (empty body leg and no `& case`) the together-block is
+    -- never a hit -- only the `|` things count (OR-only is never always-on).
+    local andOk, nAnd = true, 0;
+    for lk, cv in pairs(rule.when or {}) do
+        nAnd = nAnd + 1;
+        local f = MATCHERS[lk];
+        if f == nil or not f(cv, ctx) then andOk = false; break; end
+    end
+    for _, c in ipairs(rule.cases) do
+        if c.op == '&' then
+            nAnd = nAnd + 1;
+            if andOk and not legMatches(c.when, c.whenAny, ctx) then andOk = false; end
+        end
+    end
+    if nAnd > 0 and andOk then return true; end
+    for _, entry in ipairs(rule.whenAny or {}) do
+        local ok = true;
+        for lk, cv in pairs(entry) do
+            local f = MATCHERS[lk];
+            if f == nil or not f(cv, ctx) then ok = false; break; end
+        end
+        if ok then return true; end
+    end
+    for _, c in ipairs(rule.cases) do
+        if c.op == '|' and legMatches(c.when, c.whenAny, ctx) then return true; end
     end
     return false;
 end
@@ -3675,28 +3821,59 @@ local function caseDesc(entry)
     return 'case ' .. table.concat(parts, ' & ');
 end
 
+-- The /dl why name for a whole `| case` from the cases list (issue #126): its
+-- `&` leg conditions, then its internal `|` alternatives in parentheses --
+-- 'case a & b' or 'case a & (x | y)'. Deterministic (sorted) and stable across
+-- Lua states (condVal serializes list values by value, the ruleLabel rule).
+local function caseLegDesc(c)
+    local parts = {};
+    for k, v in pairs(c.when or {}) do
+        parts[#parts + 1] = string.lower(tostring(k)) .. ((v == true) and '' or ('=' .. condVal(v)));
+    end
+    table.sort(parts);
+    local ors = {};
+    for _, e in ipairs(c.whenAny or {}) do
+        local ep = {};
+        for k, v in pairs(e) do ep[#ep + 1] = string.lower(tostring(k)) .. ((v == true) and '' or ('=' .. condVal(v))); end
+        table.sort(ep);
+        if #ep > 0 then ors[#ors + 1] = (#ep > 1) and ('(' .. table.concat(ep, ' & ') .. ')') or ep[1]; end
+    end
+    table.sort(ors);
+    if #ors > 0 then parts[#parts + 1] = '(' .. table.concat(ors, ' | ') .. ')'; end
+    return 'case ' .. table.concat(parts, ' & ');
+end
+
 -- Which case carried a (possibly multi-case) rule -- for /dl why. Returns nil
--- when the rule has no `|` leg (a single-case rule names nothing: /dl why reads
--- byte-for-byte as before). Otherwise mirrors matches() EXACTLY -- the same
--- MATCHERS, never a re-implementation: the together-block wins when it holds (a
--- NON-empty `&` leg with every condition true -- the OR-only law), else the
--- FIRST standalone / `| case` entry that holds (file order, the engine's order).
+-- when the rule has NO `|` leg AND no cases (a single-case rule names nothing:
+-- /dl why reads byte-for-byte as before). Otherwise mirrors matches() EXACTLY --
+-- the same MATCHERS, never a re-implementation: the together-block wins when it
+-- holds (a NON-empty `&` member set, every one true -- the OR-only law), else the
+-- FIRST standalone / `| case` that holds (file order, the engine's order).
 function M.matchedCase(rule, ctx)
-    if rule.whenAny == nil then return nil; end
+    if rule.whenAny == nil and (rule.cases == nil or #rule.cases == 0) then return nil; end
     local andOk, nAnd = true, 0;
-    for lk, cv in pairs(rule.when) do
+    for lk, cv in pairs(rule.when or {}) do
         nAnd = nAnd + 1;
         local f = MATCHERS[lk];
         if f == nil or not f(cv, ctx) then andOk = false; break; end
     end
+    for _, c in ipairs(rule.cases or {}) do
+        if c.op == '&' then
+            nAnd = nAnd + 1;
+            if andOk and not legMatches(c.when, c.whenAny, ctx) then andOk = false; end
+        end
+    end
     if nAnd > 0 and andOk then return 'together-block'; end
-    for _, entry in ipairs(rule.whenAny) do
+    for _, entry in ipairs(rule.whenAny or {}) do
         local ok = true;
         for lk, cv in pairs(entry) do
             local f = MATCHERS[lk];
             if f == nil or not f(cv, ctx) then ok = false; break; end
         end
         if ok then return caseDesc(entry); end
+    end
+    for _, c in ipairs(rule.cases or {}) do
+        if c.op == '|' and legMatches(c.when, c.whenAny, ctx) then return caseLegDesc(c); end
     end
     return nil;
 end
@@ -5262,6 +5439,45 @@ local function condLiteral(v)
     return '{ ' .. table.concat(q, ', ') .. ' }';
 end
 
+-- One condition map -> a sorted "prettyKey = literal" list. Skips the cases
+-- guard ALWAYS (it is re-stamped by the caller, never doubled). Shared by every
+-- leg the trigger serializer emits (body, whenAny entries, cases). Mirrored in
+-- blueprintsmodel.emitRule -- the two are a parity-pinned pair (issue #126).
+local function serCondList(map)
+    local c = {};
+    for k, v in pairs(map or {}) do
+        local lk = string.lower(tostring(k));
+        if lk ~= CASES_GUARD then
+            c[#c + 1] = (PRETTY_KEY[lk] or tostring(k)) .. ' = ' .. condLiteral(v);
+        end
+    end
+    table.sort(c);
+    return c;
+end
+
+-- The canonical `whenAny`/`cases` split for a rule (issue #126, "oldest-form-
+-- first"): a `| case` whose ONLY content is `&` conditions serializes as a plain
+-- multi-condition `whenAny` entry -- the EXISTING schema, so every addon version
+-- ever shipped evaluates it. Only `&` cases and `| cases` with an internal `|`
+-- leg use the new `cases` list. Returns (anyEntries, caseList): anyEntries are
+-- condition MAPS (the body's whenAny + downgraded | cases); caseList are the
+-- surviving { op, when, whenAny } cases. Mirrored in blueprintsmodel.
+local function splitCases(r)
+    local anyEntries = {};
+    for _, e in ipairs(r.whenAny or {}) do anyEntries[#anyEntries + 1] = e; end
+    local caseList = {};
+    for _, c in ipairs(r.cases or {}) do
+        if type(c) == 'table' then
+            if c.op == '|' and (c.whenAny == nil or #c.whenAny == 0) then
+                anyEntries[#anyEntries + 1] = c.when or {};
+            else
+                caseList[#caseList + 1] = c;
+            end
+        end
+    end
+    return anyEntries, caseList;
+end
+
 -- data = { [Handler] = { { when = {k=v}, set='X' | equip={Slot='Item'}, priority=n? }, ... } }
 -- Handlers emit in canonical order; conditions in sorted display-case spelling.
 -- Deterministic output -> clean diffs; comments are NOT preserved (GUI-owned file).
@@ -5278,27 +5494,41 @@ function M.serializeTriggers(data)
         if type(list) == 'table' and #list > 0 then
             L[#L + 1] = '    ' .. ev .. ' = {';
             for _, r in ipairs(list) do
-                local conds = {};
-                for k, v in pairs(r.when or {}) do
-                    local lk = string.lower(tostring(k));
-                    conds[#conds + 1] = (PRETTY_KEY[lk] or tostring(k)) .. ' = ' .. condLiteral(v);
-                end
+                -- Cases (issue #126): a `| case` with only `&` conditions folds
+                -- back into the whenAny leg (oldest form); `&` cases and `| cases`
+                -- with internal `|` stay in the cases list. A non-empty cases list
+                -- means the rule gets the version guard stamped in its body.
+                local anyEntries, caseList = splitCases(r);
+                local conds = serCondList(r.when);
+                if #caseList > 0 then conds[#conds + 1] = (PRETTY_KEY[CASES_GUARD] or 'hasCases') .. ' = true'; end
                 table.sort(conds);
                 -- v54 OR group: entry order preserved as authored (a list, not a
                 -- map), each entry's own conditions sorted like `when`.
                 local anyStr = '';
-                if type(r.whenAny) == 'table' and #r.whenAny > 0 then
+                if #anyEntries > 0 then
                     local groups = {};
-                    for _, entry in ipairs(r.whenAny) do
-                        local ec = {};
-                        for k, v in pairs(entry) do
-                            local lk = string.lower(tostring(k));
-                            ec[#ec + 1] = (PRETTY_KEY[lk] or tostring(k)) .. ' = ' .. condLiteral(v);
-                        end
-                        table.sort(ec);
-                        groups[#groups + 1] = '{ ' .. table.concat(ec, ', ') .. ' }';
+                    for _, entry in ipairs(anyEntries) do
+                        groups[#groups + 1] = '{ ' .. table.concat(serCondList(entry), ', ') .. ' }';
                     end
                     anyStr = ', whenAny = { ' .. table.concat(groups, ', ') .. ' }';
+                end
+                -- cases list: each { op = "&"/"|", when = {...}, whenAny = {...}? }
+                local casesStr = '';
+                if #caseList > 0 then
+                    local cs = {};
+                    for _, c in ipairs(caseList) do
+                        local cAny = '';
+                        if type(c.whenAny) == 'table' and #c.whenAny > 0 then
+                            local g = {};
+                            for _, e in ipairs(c.whenAny) do
+                                g[#g + 1] = '{ ' .. table.concat(serCondList(e), ', ') .. ' }';
+                            end
+                            cAny = ', whenAny = { ' .. table.concat(g, ', ') .. ' }';
+                        end
+                        cs[#cs + 1] = string.format('{ op = %q, when = { %s }%s }',
+                            tostring(c.op), table.concat(serCondList(c.when), ', '), cAny);
+                    end
+                    casesStr = ', cases = { ' .. table.concat(cs, ', ') .. ' }';
                 end
                 local action;
                 if type(r.set) == 'table' then          -- ordered multi-set rule
@@ -5316,8 +5546,8 @@ function M.serializeTriggers(data)
                     action = 'equip = { ' .. table.concat(slots, ', ') .. ' }';
                 end
                 local prio = (tonumber(r.priority) ~= nil) and (', priority = ' .. tostring(r.priority)) or '';
-                L[#L + 1] = string.format('        { when = { %s }%s, %s%s },',
-                    table.concat(conds, ', '), anyStr, action, prio);
+                L[#L + 1] = string.format('        { when = { %s }%s%s, %s%s },',
+                    table.concat(conds, ', '), anyStr, casesStr, action, prio);
             end
             L[#L + 1] = '    },';
         end

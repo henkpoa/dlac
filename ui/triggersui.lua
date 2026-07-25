@@ -602,6 +602,46 @@ local function modeCondRefs(data, name, strip)
         end
         return hit, kept;
     end
+    -- Walk a `|` leg (a whenAny list): narrow a dead-name mode list, drop an
+    -- entry whose mode list empties -- only when strip. Returns anyHit, hitCount.
+    -- Shared by the body and by every case (issue #126).
+    local function sweepAny(whenAny)
+        local hit, hitCount = false, 0;
+        if type(whenAny) == 'table' then
+            for j = #whenAny, 1, -1 do
+                local e = whenAny[j];
+                local eHit, eKept = split((type(e) == 'table') and e.mode or nil);
+                if eHit then
+                    hit = true; hitCount = hitCount + 1;
+                    if strip then
+                        if #eKept == 0 then table.remove(whenAny, j);
+                        else e.mode = (#eKept == 1) and eKept[1] or eKept; end
+                    end
+                end
+            end
+        end
+        return hit, hitCount;
+    end
+    -- Apply the & leg / | leg / remove ladder to ONE case (mirrors the body):
+    -- returns hit (referenced the dead mode) and dead (no live leg left, so the
+    -- caller removes the case). Only mutates when strip.
+    local function sweepCase(c)
+        local whenHit, whenKept = split(c.when and c.when.mode);
+        local anyHit = sweepAny(c.whenAny);
+        if not (whenHit or anyHit) then return false, false; end
+        if not strip then return true, false; end
+        local hadAny = (type(c.whenAny) == 'table');
+        local anyLeft = hadAny and #c.whenAny or 0;
+        local whenLegDead = whenHit and #whenKept == 0;
+        local orOnly = (not whenHit) and (c.when == nil or next(c.when) == nil) and hadAny;
+        if (whenLegDead and (not hadAny or anyLeft == 0)) or (orOnly and anyLeft == 0) then
+            return true, true;                              -- case has no live leg -> drop it
+        end
+        if whenLegDead then c.when = {};
+        elseif whenHit then c.when.mode = (#whenKept == 1) and whenKept[1] or whenKept; end
+        if hadAny and anyLeft == 0 then c.whenAny = nil; end
+        return true, false;
+    end
     for _, sec in ipairs(TRIG_HANDLERS) do
         local list = data[sec];
         if type(list) == 'table' then
@@ -609,26 +649,34 @@ local function modeCondRefs(data, name, strip)
                 local r = list[i];
                 if type(r) == 'table' and type(r.when) == 'table' then
                     local whenHit, whenKept = split(r.when.mode);
-                    local anyHit, hitEntries = false, 0;
-                    if type(r.whenAny) == 'table' then
-                        for j = #r.whenAny, 1, -1 do
-                            local e = r.whenAny[j];
-                            local eHit, eKept = split((type(e) == 'table') and e.mode or nil);
-                            if eHit then
-                                anyHit = true; hitEntries = hitEntries + 1;
-                                if strip then
-                                    if #eKept == 0 then table.remove(r.whenAny, j);
-                                    else e.mode = (#eKept == 1) and eKept[1] or eKept; end
+                    local anyHit, hitEntries = sweepAny(r.whenAny);
+                    -- Cases (issue #126): the same narrow/empty/remove ladder walks
+                    -- every case; an emptied case is removed here, and the rule's
+                    -- own removal below then factors whether ANY case survives.
+                    local caseHit, caseHitCount = false, 0;
+                    if type(r.cases) == 'table' then
+                        for cj = #r.cases, 1, -1 do
+                            local c = r.cases[cj];
+                            if type(c) == 'table' then
+                                local cHit, cDead = sweepCase(c);
+                                if cHit then
+                                    caseHit = true; caseHitCount = caseHitCount + 1;
+                                    if cDead then table.remove(r.cases, cj); end
                                 end
                             end
                         end
+                        if strip and #r.cases == 0 then r.cases = nil; end
                     end
-                    if whenHit or anyHit then
-                        local what = {};   -- described BEFORE any narrowing below
+                    if whenHit or anyHit or caseHit then
+                        local what = {};   -- described BEFORE the body narrowing below
                         if whenHit then what[#what + 1] = 'mode ' .. modeCondText(r.when.mode); end
                         if anyHit then
                             what[#what + 1] = string.format('%d OR-group entr%s',
                                 hitEntries, (hitEntries == 1) and 'y' or 'ies');
+                        end
+                        if caseHit then
+                            what[#what + 1] = string.format('%d case%s',
+                                caseHitCount, (caseHitCount == 1) and '' or 's');
                         end
                         out.rules[#out.rules + 1] = string.format('%s:  %s  ->  %s',
                             sec, table.concat(what, ' + '),
@@ -638,18 +686,20 @@ local function modeCondRefs(data, name, strip)
                             local hadAny = (type(r.whenAny) == 'table');
                             local anyLeft = hadAny and #r.whenAny or 0;
                             local whenLegDead = whenHit and #whenKept == 0;
-                            -- OR-only shape: the & leg carried no conditions at all
-                            local orOnly = (not whenHit) and next(r.when) == nil and hadAny;
-                            if (whenLegDead and (not hadAny or anyLeft == 0))
-                               or (orOnly and anyLeft == 0) then
-                                table.remove(list, i);          -- no live leg left
+                            if whenLegDead then r.when = {};        -- & leg's mode was load-bearing -> collapse it
+                            elseif whenHit then
+                                r.when.mode = (#whenKept == 1) and whenKept[1] or whenKept;
+                            end
+                            if hadAny and anyLeft == 0 then r.whenAny = nil; end
+                            -- A rule with NOTHING left is removed; a surviving case
+                            -- (or | leg, or & leg) keeps it alive (the OR-only law).
+                            local alive = (next(r.when) ~= nil)
+                                or (type(r.whenAny) == 'table' and #r.whenAny > 0)
+                                or (type(r.cases) == 'table' and #r.cases > 0);
+                            if not alive then
+                                table.remove(list, i);
                                 out.removedRules = out.removedRules + 1;
                             else
-                                if whenLegDead then r.when = {};    -- collapses to OR-only
-                                elseif whenHit then
-                                    r.when.mode = (#whenKept == 1) and whenKept[1] or whenKept;
-                                end
-                                if hadAny and anyLeft == 0 then r.whenAny = nil; end
                                 out.editedRules = out.editedRules + 1;
                             end
                             trig.dirty = true;
@@ -1423,37 +1473,67 @@ local function caseSplit(whenAny)
 end
 M.caseSplit = caseSplit;   -- headless render-test seam (smoke_ui TC*)
 
--- Does a whole `| case` hold RIGHT NOW? A case is the AND of its conditions, so
--- it holds iff every condition does -- computed with the engine's own matcher
--- per condition (pstateHolds, never a re-implementation), the same path the
--- standalone `|` markers use. nil (no marker) unless EVERY condition is a
--- live-evaluable player-state gate: an action-based condition (element, name,
--- ...) needs a real cast, so a case that mixes one in cannot be judged at idle
--- and must show nothing rather than a wrong [off now].
-local function caseLiveHolds(case)
-    local allTrue = true;
-    for k, v in pairs(case) do
+-- The display lines for a full case leg (issue #126): its `&` conditions (first
+-- plain, the rest prefixed '& '), then each internal `|` alternative as a '| ...'
+-- line (a multi-condition alternative reads 'x & y'). This is the same visual
+-- language the slice-1 whenAny `| case` boxes used (conditions sorted, first
+-- plain, the rest '& '-prefixed), now the ONE renderer for every case box --
+-- extended to `& cases` and `| cases` that carry an internal OR.
+local function caseLegLines(when, whenAny)
+    local lines = {};
+    local andCls = {};
+    for k, v in pairs(when or {}) do
         local lk = string.lower(tostring(k));
-        if PSTATE_KEYS[lk] == nil then return nil; end
-        local h = pstateHolds(lk, v);
-        if h == nil then return nil; end
-        if h == false then allTrue = false; end
-    end
-    return allTrue;
-end
-
--- The display lines for one `| case` box: its conditions sorted, ANDed. The
--- first reads plain; the rest carry the '& ' together-block prefix so the
--- AND-within-OR shape is legible at a glance (the editor will reuse this).
-local function caseCondLines(case)
-    local out = {};
-    for k, v in pairs(case) do
-        local lk = string.lower(tostring(k));
-        out[#out + 1] = { key = lk,
+        andCls[#andCls + 1] = { key = lk,
             text = trigPrettyKey(lk) .. ((v == true) and '' or (' = ' .. tostring(v))) };
     end
-    table.sort(out, function(a, b) return a.key < b.key; end);
-    return out;
+    table.sort(andCls, function(a, b) return a.key < b.key; end);
+    for i, cl in ipairs(andCls) do
+        lines[#lines + 1] = { key = cl.key, text = ((i == 1) and '' or '& ') .. cl.text };
+    end
+    for _, e in ipairs(whenAny or {}) do
+        local ep = {};
+        for k, v in pairs(e) do
+            local lk = string.lower(tostring(k));
+            ep[#ep + 1] = { key = lk,
+                text = trigPrettyKey(lk) .. ((v == true) and '' or (' = ' .. tostring(v))) };
+        end
+        table.sort(ep, function(a, b) return a.key < b.key; end);
+        local txts = {};
+        for _, x in ipairs(ep) do txts[#txts + 1] = x.text; end
+        lines[#lines + 1] = { key = ep[1] and ep[1].key or 'any', text = '| ' .. table.concat(txts, ' & ') };
+    end
+    return lines;
+end
+
+-- Does a whole case leg hold RIGHT NOW? (ALL of `&`) OR (ANY internal `|`),
+-- computed with the engine's own matcher per condition: nil (no marker) unless
+-- EVERY condition is a live-evaluable player-state gate, since an action
+-- condition cannot be judged at idle (it needs a real cast).
+local function caseLegHolds(when, whenAny)
+    local andAll, nAnd = true, 0;
+    for k, v in pairs(when or {}) do
+        local lk = string.lower(tostring(k));
+        if PSTATE_KEYS[lk] == nil then return nil; end
+        nAnd = nAnd + 1;
+        local h = pstateHolds(lk, v);
+        if h == nil then return nil; end
+        if h == false then andAll = false; end
+    end
+    if whenAny == nil or #whenAny == 0 then return (nAnd > 0) and andAll or nil; end
+    if nAnd > 0 and andAll then return true; end
+    for _, e in ipairs(whenAny) do
+        local ok = true;
+        for k, v in pairs(e) do
+            local lk = string.lower(tostring(k));
+            if PSTATE_KEYS[lk] == nil then return nil; end
+            local h = pstateHolds(lk, v);
+            if h == nil then return nil; end
+            if h == false then ok = false; end
+        end
+        if ok then return true; end
+    end
+    return false;
 end
 
 -- One rule box. colX = the section's aligned controls column. Returns 'remove'/'edit'/nil.
@@ -1487,6 +1567,28 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
         orLines[#orLines + 1] = { key = s.key, val = s.val,
             text = '| ' .. trigPrettyKey(s.key) .. ((s.val == true) and '' or (' = ' .. tostring(s.val))) };
     end
+    -- Unified case boxes (issue #126): the together-block `& cases` first, then
+    -- the standalone `| cases` -- BOTH the new-schema cases (r.cases) and the
+    -- multi-condition whenAny entries (which ARE `| cases` with only `&` rows,
+    -- from slice 1). Each descriptor carries pre-built display lines and a live
+    -- marker; a rule with none of these renders pixel-identical to before.
+    local caseBoxes = {};
+    for _, c in ipairs(r.cases or {}) do
+        if c.op == '&' then
+            caseBoxes[#caseBoxes + 1] = { op = '& case',
+                lines = caseLegLines(c.when, c.whenAny), holds = caseLegHolds(c.when, c.whenAny) };
+        end
+    end
+    for _, case in ipairs(cases) do
+        caseBoxes[#caseBoxes + 1] = { op = '| case',
+            lines = caseLegLines(case, nil), holds = caseLegHolds(case, nil) };
+    end
+    for _, c in ipairs(r.cases or {}) do
+        if c.op == '|' then
+            caseBoxes[#caseBoxes + 1] = { op = '| case',
+                lines = caseLegLines(c.when, c.whenAny), holds = caseLegHolds(c.when, c.whenAny) };
+        end
+    end
     -- The box takes exactly the height its TALLER column needs: conditions on the
     -- left; on the right the target (an inline equip payload gets one line per
     -- slot) plus the controls row. Nothing is clipped to a cap anymore.
@@ -1512,10 +1614,8 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
     -- rule box grows to hold them (nothing is clipped -- the lineH() lesson).
     local caseH = {};
     local casesH = 0;
-    for ci, case in ipairs(cases) do
-        local nc = 0;
-        for _ in pairs(case) do nc = nc + 1; end
-        local hh = (1 + nc) * lh + 14;
+    for ci, box in ipairs(caseBoxes) do
+        local hh = (1 + #box.lines) * lh + 14;         -- header + one line per row
         caseH[ci] = hh;
         casesH = casesH + hh + 4;                      -- +4 spacing between boxes
     end
@@ -1525,7 +1625,7 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
     imgui.BeginGroup();                                -- left column: the methods
     -- The together-block carries the '& ' prefix whenever a `|` leg exists at
     -- all -- standalone conditions OR `| case` boxes (issue #125).
-    local andPrefix = (#orLines > 0 or #cases > 0) and '& ' or '';
+    local andPrefix = (#orLines > 0 or #caseBoxes > 0) and '& ' or '';
     for _, ln in ipairs(lines) do
         imgui.TextColored(COND_COLORS[ln.key] or COL_USABLE, esc(andPrefix .. ln.text));
         -- Stale group reference: a rule pointing at a missing / renamed group
@@ -1651,7 +1751,7 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
     -- BOTH legs (`when` AND `whenAny`), so a rule whose highest-tier condition
     -- lives on the `|` leg (or in a `| case`) displayed a lower number than the
     -- engine assigned. Pass whenAny too (issue #125 priority-chip fix).
-    local defP = (hasDispatch and type(dsp.defaultPriority) == 'function') and dsp.defaultPriority(r.when, r.whenAny) or 10;
+    local defP = (hasDispatch and type(dsp.defaultPriority) == 'function') and dsp.defaultPriority(r.when, r.whenAny, r.cases) or 10;
     local isAuto = (r.priority == nil);
     local eff = r.priority or defP;
     imgui.TextColored(isAuto and COL_DIM or COL_SCORE, isAuto and 'prio (auto)' or 'prio');
@@ -1686,31 +1786,27 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
     if imgui.IsItemHovered() then imgui.SetTooltip('Remove this rule.'); end
     imgui.EndGroup();
 
-    -- `| case` boxes (issue #125): each multi-condition `|` entry as its own
-    -- bordered, indented box below the rule body -- the AND-within-OR shape made
-    -- visible. This is the visual language the editor slice will reuse. A live
-    -- [on now]/[off now] rides the header when EVERY condition is player-state
-    -- (the whole case ANDed); a case mixing in an action condition shows no
-    -- marker (it cannot be judged at idle -- caseLiveHolds returns nil).
-    if #cases > 0 then
+    -- Case boxes: the together-block `& cases` then the standalone `| cases`
+    -- (issue #126), plus the slice-1 multi-condition whenAny `| cases` -- each a
+    -- bordered, indented box below the rule body, the same visual language the
+    -- editor slice will reuse. A live [on now]/[off now] rides the header when the
+    -- whole leg is player-state-evaluable; a case with an action condition shows
+    -- no marker (it cannot be judged at idle -- caseLegHolds returns nil).
+    if #caseBoxes > 0 then
         imgui.Indent(12);
-        for ci, case in ipairs(cases) do
+        for ci, box in ipairs(caseBoxes) do
             imgui.BeginChild('##trgcase' .. id .. '_' .. ci, { -1, caseH[ci] }, true, BOX_FLAGS);
-            imgui.TextColored(COL_HEADER, '| case');
-            local holds = caseLiveHolds(case);
-            if holds ~= nil then
+            imgui.TextColored(COL_HEADER, box.op);      -- '& case' or '| case'
+            if box.holds ~= nil then
                 imgui.SameLine(0, 8);
-                imgui.TextColored(holds and COL_USABLE or COL_DIM,
-                    holds and '[on now]' or '[off now]');
+                imgui.TextColored(box.holds and COL_USABLE or COL_DIM,
+                    box.holds and '[on now]' or '[off now]');
                 if imgui.IsItemHovered() then
                     imgui.SetTooltip('The whole case holds only when ALL its conditions do (checked against your\nCURRENT state every second with the engine\'s own matcher). The engine\nre-evaluates at every dispatch.');
                 end
             end
-            local first = true;
-            for _, cl in ipairs(caseCondLines(case)) do
-                imgui.TextColored(COND_COLORS[cl.key] or COL_USABLE,
-                    esc((first and '' or '& ') .. cl.text));
-                first = false;
+            for _, cl in ipairs(box.lines) do
+                imgui.TextColored(COND_COLORS[cl.key] or COL_USABLE, esc(cl.text));
             end
             imgui.EndChild();
         end
@@ -1721,9 +1817,9 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
     return act;
 end
 -- Exposed as a headless render-test seam ON PURPOSE (the captureModeToLibrary
--- precedent): the `| case` path -- caseLiveHolds / caseCondLines / the indented
--- case BeginChild boxes -- only RUNS when a multi-condition rule renders, so a
--- load test proves nothing about it. smoke_ui TC* drives it against a stub imgui.
+-- precedent): the case path -- caseLegLines / caseLegHolds / the indented case
+-- BeginChild boxes -- only RUNS when a case-bearing rule renders, so a load test
+-- proves nothing about it. smoke_ui TC* drives it against a stub imgui.
 M.renderTrigRuleBox = renderTrigRuleBox;
 
 -- One mode box (rule-box language, content-fit height): identity + cycle values

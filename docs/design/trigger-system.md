@@ -89,6 +89,27 @@ exactly as before, so existing pin scope keys keep matching); the default priori
 both legs. Field case: Toxin Earring poison-wakeup — `whenAny` of Sleep OR Lullaby → the
 WakeMeUp set.
 
+**Cases (v126, PRD #124, ADR 0023).** A second `&`/`|` tier. A rule gains an optional
+`cases = { { op = '&'|'|', when = {...}, whenAny = {...}? }, ... }` — each case carries an
+operator plus the **same two legs a body has**, and matches internally by the same one
+sentence: *`&` things bind into one together-block; each `|` thing stands alone; fire if the
+together-block holds, or any `|` thing does.* At the rule tier the `&` members are the body's
+`&` leg + every `& case`; the standalone `|` things are the body's `whenAny` entries + every
+`| case`. The empty-together-block law generalizes — no `&` member (empty body leg, no `& case`)
+is never always-on. Cases cannot contain cases (hard one-tier cap).
+- **Canonical serialization is oldest-form-first.** A `| case` with only `&` conditions
+  serializes as a multi-condition `whenAny` entry in the *existing* schema, so `(A & B) | (C & D)`
+  is evaluated by every addon version ever shipped. Only `&` cases and `| cases` with an internal
+  `|` leg use the new `cases` list.
+- **Version guard.** Any rule serialized with a surviving `cases` list also gets
+  `hasCases = true` stamped in its body — this engine registers it as an always-true matcher at
+  the bottom tier and strips it on load; an older engine sees an unknown key and drops the rule
+  with the standard warn (warn, never misread). Auto-priority spans every leg of every case; the
+  guard (tier 10, the floor) never moves it. `ruleLabel` extends over cases deterministically
+  while case-less rules label byte-for-byte as before. `/dl why` names the winning case
+  (together-block / a standalone / `case a & (x | y)`). No UI emits cases yet — that is the
+  editor slice; the rule list and `/dl why` render/name cases-list rules today.
+
 **One value per condition type on the & leg.** `when` is a Lua *map*, so a condition type
 appears at most once — and stacking two would be meaningless anyway (`name = "test"` AND
 `name = "testar"` can never both hold; every matcher compares ONE value, `mode` alone reading
