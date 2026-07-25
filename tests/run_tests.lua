@@ -12238,6 +12238,178 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- CMD. THE /dl COMMAND SURFACE, DRIVEN FOR REAL (2026-07-26).
+--
+-- Until this section every /dl subcommand was tested by SEARCHING dispatch.lua
+-- for its own name. NK23 records why: "dispatch's handler only registers inside
+-- engineActive(), which is false headlessly, so the whitelist cannot be driven
+-- -- pin it as SOURCE instead." A source pin proves a command is spelled right
+-- and sits in the whitelist. It cannot see what the command DOES -- which is
+-- exactly how `/dl lock set` shipped present, correctly spelled, whitelisted,
+-- and INERT in native mode: its rawget(_G,'gEquip') bracket is nil in the addon
+-- state, so the equip fell to the unbracketed path, landed in equipengine's
+-- buffer, and the next fireEvent's bufferClear wiped it before it could send.
+--
+-- engineActive() is `inLac() or nativeEngine() ~= nil`, so the ADDON-state copy
+-- of the engine -- inert since v1 -- becomes the LIVE one when the native flag
+-- is on (the arming rule NEB1 pins). Arm it, re-load dispatch, and the real
+-- command handler registers and is callable.
+--
+-- THIS LOADS A SECOND dispatch MODULE into a suite whose other checks hold a
+-- reference to the first, so every shared thing it touches is saved and put
+-- back: package.loaded (dispatch + chatfmt), gFunc/gState, profiles.nativeMode
+-- and profiles.dataDir, ashita.events, equipengine's onEvent and tripwire.
+-- dataDir is redirected to tests\ because the engineActive block runs
+-- loadModeState/saveModeState AT LOAD -- unredirected, a plain test run would
+-- write modestate.lua into a real character's folder.
+--
+-- chatfmt is stubbed BEFORE the load, never after: dispatch.lua:139 binds its
+-- shadowed `print` once at load time, so a later _G.print override is not seen.
+-- ---------------------------------------------------------------------------
+(function()
+    local SEP  = string.char(92);
+    local prof = package.loaded['dlac\\profiles'];
+    local eng  = package.loaded['dlac\\feature\\equipengine'];
+    check('CMD0 profiles is loaded',     type(prof), 'table');
+    check('CMD0b equipengine is loaded', type(eng),  'table');
+    if type(prof) ~= 'table' or type(eng) ~= 'table' then return; end
+
+    local saved = {
+        nativeMode = prof.nativeMode,        dataDir = prof.dataDir,
+        dispatch   = package.loaded['dlac\\dispatch'],
+        chatfmt    = package.loaded['dlac\\chatfmt'],
+        gFunc      = rawget(_G, 'gFunc'),    gState  = rawget(_G, 'gState'),
+        reg        = ashita.events.register, unreg   = ashita.events.unregister,
+        player     = TEST_PLAYER,
+        onEvent    = eng.onEvent,            tripped = eng.state.tripped,
+    };
+
+    -- Captured chat. `said` is REASSIGNED per command and the stub closes over
+    -- the variable rather than the table, so each run reads only its own lines.
+    local said = {};
+    local function capture(...)
+        local parts = {};
+        for i = 1, select('#', ...) do parts[#parts + 1] = tostring((select(i, ...))); end
+        said[#said + 1] = table.concat(parts, ' ');
+    end
+    package.loaded['dlac\\chatfmt'] = { print = capture, warn = capture, err = capture };
+
+    -- Arm the native engine: addon state (no gFunc) + flag on + tripwire clear.
+    prof.nativeMode = function() return true; end
+    prof.dataDir    = function() return 'tests' .. SEP; end
+    _G.gFunc, _G.gState = nil, nil;
+    eng.state.tripped = false;
+
+    local handlers = {};
+    ashita.events.register   = function(ev, nm, fn) handlers[ev] = fn; end
+    ashita.events.unregister = function() end
+    local okLoad, D = pcall(dofile, 'dispatch.lua');
+    ashita.events.register, ashita.events.unregister = saved.reg, saved.unreg;
+
+    check('CMD1 dispatch re-loads with the native engine armed', okLoad, true);
+    if not okLoad then print('CMD1 error: ' .. tostring(D)); end
+    check('CMD2 ...and the command handler registers for real',
+          okLoad and type(handlers['command']), 'function');
+    check('CMD2b ...alongside the frame tick',
+          okLoad and type(handlers['d3d_present']), 'function');
+
+    if okLoad and type(handlers['command']) == 'function' then
+        TEST_PLAYER = { MainJob = 'WHM', MainJobLevel = 75, SubJob = 'BLM', SubJobLevel = 37,
+                        MainJobSync = 75, SubJobSync = 37, Status = 'Idle', IsMoving = false };
+
+        -- One /dl line, driven exactly as Ashita delivers it: an event table
+        -- whose `blocked` field the handler sets when it owns the command.
+        local function run(line)
+            said = {};
+            local e = { command = line, blocked = false };
+            local ok, err = pcall(handlers['command'], e);
+            if not ok then said[#said + 1] = 'ERROR: ' .. tostring(err); end
+            return e, ok;
+        end
+        local function saidHas(frag)
+            for _, l in ipairs(said) do
+                if string.find(l, frag, 1, true) ~= nil then return true; end
+            end
+            return false;
+        end
+        local function saidText() return table.concat(said, ' | '); end
+
+        -- This is the fact the whole section rests on: the command answered
+        -- with NO gFunc in the state, so it is the addon-side native engine
+        -- replying, not LuaAshitacast's copy.
+        check('CMD3 no gFunc present -- this is the addon-state engine',
+              rawget(_G, 'gFunc'), nil);
+
+        -- The whitelist, driven instead of grepped (the v46 trap NK23 pins as
+        -- source): an unknown subcommand must fall through UNBLOCKED and silent,
+        -- or it looks like the command does not exist.
+        local e4 = run('/dl bogus');
+        check('CMD4 an unknown subcommand is not blocked', e4.blocked, false);
+        check('CMD4b ...and prints nothing',               #said, 0);
+
+        local e5 = run('/dl lock');
+        check('CMD5 /dl lock is owned (blocked)',   e5.blocked, true);
+        check('CMD5b ...and reports the lock state', saidHas('locked slots:'), true);
+
+        -- slot locks, round trip through the REAL command
+        run('/dl lock head on');
+        check('CMD6 /dl lock head on sets the lock', D.locks['head'], true);
+        check('CMD6b ...and says so',                saidHas('lock head ON'), true);
+        run('/dl lock head off');
+        check('CMD6c /dl lock head off releases it', D.locks['head'], nil);
+        run('/dl lock all on');
+        local nAll = 0;
+        for _ in pairs(D.locks) do nAll = nAll + 1; end
+        check('CMD6d /dl lock all on locks all 16',  nAll, 16);
+        run('/dl lock all off');
+        check('CMD6e /dl lock all off clears them',  next(D.locks), nil);
+        local e6 = run('/dl lock nosuchslot');
+        check('CMD6f an unknown slot is named back', saidHas('unknown slot: nosuchslot'), true);
+        check('CMD6g ...and still owns the command', e6.blocked, true);
+
+        -- the strip (ADR 0021), through the command rather than the flag
+        run('/dl naked');
+        check('CMD7 /dl naked arms the strip',        D.nakedOn(), true);
+        check('CMD7b ...and states the TP wipe once', saidHas('zeroes your TP'), true);
+        run('/dl naked');
+        check('CMD7c a second /dl naked never dresses you', D.nakedOn(), true);
+        check('CMD7d ...it says you already are',     saidHas('already naked'), true);
+        run('/dl dress');
+        check('CMD7e /dl dress releases it',          D.nakedOn(), false);
+        run('/dl naked');
+        run('/dl naked off');
+        check('CMD7f /dl naked off releases it too',  D.nakedOn(), false);
+
+        -- /dl lock set: the name check, which must refuse BEFORE it touches
+        -- anything (a failed name that had already cleared the locks would
+        -- leave the player half-unlocked with nothing equipped).
+        run('/dl lock head on');
+        local e8 = run('/dl lock set NoSuchSetName');
+        check('CMD8 /dl lock set owns the command',   e8.blocked, true);
+        check('CMD8b an unknown set is refused by name',
+              saidHas('no committed set named'), true);
+        check('CMD8c ...and the refusal leaves existing locks alone',
+              D.locks['head'], true);
+        run('/dl lock all off');
+        run('/dl lock set');
+        check('CMD9 /dl lock set with no name prints usage',
+              saidHas('usage: /dl lock set'), true);
+
+        if not saidHas('usage: /dl lock set') then print('CMD9 said: ' .. saidText()); end
+    end
+
+    -- put every shared thing back exactly as it was
+    prof.nativeMode, prof.dataDir   = saved.nativeMode, saved.dataDir;
+    package.loaded['dlac\\dispatch'] = saved.dispatch;
+    package.loaded['dlac\\chatfmt']  = saved.chatfmt;
+    _G.gFunc, _G.gState             = saved.gFunc, saved.gState;
+    eng.onEvent, eng.state.tripped  = saved.onEvent, saved.tripped;
+    TEST_PLAYER                     = saved.player;
+    os.remove('tests' .. SEP .. 'modestate.lua');
+    os.remove('tests' .. SEP .. 'arbstate.lua');
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then
