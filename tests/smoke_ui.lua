@@ -2180,6 +2180,45 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- LSP. The Sets tab's Equip & Lock popup (Strict / Loose), pinned as SOURCE.
+--
+-- The Sets tab render has no smoke drive -- only its tab LABEL is checked (S9) --
+-- so this block is the one thing standing between a typo and a button that opens
+-- nothing in the field. An OpenPopup id that does not match its BeginPopup id
+-- fails SILENTLY: the click registers, no menu appears, and nothing is logged.
+-- A source pin cannot tell you the popup renders; it can tell you the two ids
+-- agree and that both variants are still wired to a real command word.
+-- ---------------------------------------------------------------------------
+(function()
+    local f = io.open('ui/gearui.lua', 'r');
+    check('LSP0 gearui is readable', f ~= nil, true);
+    if f == nil then return; end
+    local src = f:read('*a'); f:close();
+
+    local opened = src:match("OpenPopup%('(##dlac_lockmode[%w_]*)'%)");
+    local begun  = src:match("BeginPopup%('(##dlac_lockmode[%w_]*)'%)");
+    check('LSP1 Equip & Lock opens a popup',        opened ~= nil, true);
+    check('LSP2 ...and something begins it',        begun ~= nil, true);
+    check('LSP3 ...under the SAME id (a mismatch opens nothing, silently)', opened, begun);
+    check('LSP4 the popup is closed',               src:find('imgui.EndPopup();', 1, true) ~= nil, true);
+
+    -- Both variants, and the exact command words the engine whitelists. A
+    -- renamed word here would queue a command /dl lock falls through in silence.
+    check('LSP5 Strict is offered', src:find("Selectable('Strict##lockstrict')", 1, true) ~= nil, true);
+    check('LSP6 Loose is offered',  src:find("Selectable('Loose##lockloose')", 1, true) ~= nil, true);
+    check('LSP7 Strict fires the strict word', src:find("lockAs('set', 'strict')", 1, true) ~= nil, true);
+    check('LSP8 Loose fires the loose word',   src:find("lockAs('set-loose', 'loose')", 1, true) ~= nil, true);
+    local D = require('dlac\\dispatch');
+    check('LSP9 ...and both words are real lock-set modes',
+        D._lockSetModes['set'] ~= nil and D._lockSetModes['set-loose'] ~= nil, true);
+
+    -- The hover is three lines and stays three lines (Henrik, 2026-07-26: "there
+    -- is TOOOOO much text... this is minimalistic and every word matters").
+    local tip = src:match("SetTooltip%('(Locks current set[^\n]-)'%s*%.%.");
+    check('LSP10 the hover opens with the one-line what-it-does', tip ~= nil, true);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures > 0 then

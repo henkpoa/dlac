@@ -4020,29 +4020,42 @@ local function renderSetsTab(job, level)
     -- The held STATE and its release live on the Equipped tab, where what you
     -- are wearing is already shown; this tab BUILDS sets (Henrik, 2026-07-26:
     -- "Set tab is only to build sets that may or may not be equipped").
+    -- Strict or Loose, on click. The two differ only in what happens to the slots
+    -- the set does not name, which is the one thing the hover has to say -- the
+    -- rest (what outranks a lock, how to release, what happens to a piece you
+    -- don't have) is either in Claim Priority, on the Equipped tab, or in chat at
+    -- the moment it matters. OpenPopup/BeginPopup/Selectable, the field-proven
+    -- trio this binding uses for the Teleports cascades.
     imgui.SameLine();
     if imgui.Button('Equip & Lock##seteqlock', { 0, 22 }) then
         if M.workingSetName == nil or M.workingSetName == '' then
-            setStatus('Pick a set first -- Equip & Lock wears the committed set and holds it there.', true);
+            setStatus('Pick a set first.', true);
         else
-            pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl lock set ' .. M.workingSetName); end);
-            _lockMirror.at = -1;
-            if _setDirty then
-                setStatus(string.format('"%s" locked -- NOTE: your uncommitted edits are NOT in it (Commit, then Equip & Lock again).', M.workingSetName), true);
-            else
-                setStatus(string.format('"%s" locked -- held on every dispatch. Release on the Equipped tab, or /dl lock set off.', M.workingSetName));
-            end
+            imgui.OpenPopup('##dlac_lockmode');
         end
     end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Wears the COMMITTED version of the selected set and LOCKS it there, on every\n'
-            .. 'dispatch, until you release it. For Incursion T3, where the server refuses\n'
-            .. 'gear changes on entry.\n\n'
-            .. 'Slots the set does not name are held EMPTY. A piece that is not on you leaves\n'
-            .. 'that one slot free instead, and chat says which pieces and where they are.\n'
-            .. 'Naked and pinned pieces still outrank a lock.\n\n'
-            .. 'Release: the Equipped tab, /dl lock set off, or /dl lock all off.\n'
-            .. 'Type /dl lock for the looser variants.');
+        imgui.SetTooltip('Locks current set so most things cannot override it (see Claim Priority under Automation Tab).\n'
+            .. 'Strict: Lock all 16 slots, empty slots will be empty.\n'
+            .. 'Loose: Lock only the populated slots.');
+    end
+    if imgui.BeginPopup('##dlac_lockmode') then
+        local function lockAs(word, label)
+            local nm = M.workingSetName;
+            if nm == nil or nm == '' then return; end
+            pcall(function()
+                AshitaCore:GetChatManager():QueueCommand(1, '/dl lock ' .. word .. ' ' .. nm);
+            end);
+            _lockMirror.at = -1;
+            if _setDirty then
+                setStatus(string.format('"%s" locked (%s) -- your uncommitted edits are NOT in it.', nm, label), true);
+            else
+                setStatus(string.format('"%s" locked (%s).', nm, label));
+            end
+        end
+        if imgui.Selectable('Strict##lockstrict') then lockAs('set', 'strict'); end
+        if imgui.Selectable('Loose##lockloose')  then lockAs('set-loose', 'loose'); end
+        imgui.EndPopup();
     end
 
     -- Automation is a SLOT entry now (ADR 0004, 4th revision): + Add on the Main slot

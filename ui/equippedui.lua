@@ -309,26 +309,16 @@ local function renderEquippedTab(job, level)
             if S.lockMirrorDirty ~= nil then S.lockMirrorDirty(); end
         end
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('Locks exactly what you are wearing right now -- all 16 slots, empty ones\n'
-                .. 'included -- and holds it on every dispatch until you release it.\n'
-                .. 'For Incursion T3, where the server refuses gear changes on entry.\n\n'
-                .. 'Naked and pinned pieces still outrank a lock. Your own slot locks are left\n'
-                .. 'alone: outranked while this is held, and still set afterwards.\n\n'
-                .. 'To lock a NAMED set, use Equip & Lock on the Sets tab. /dl lock lists the\n'
-                .. 'looser variants. Release: uncheck this, or /dl lock set off.');
+            imgui.SetTooltip('Locks what you are wearing right now -- all 16 slots, empty stays empty.\n'
+                .. 'Most things cannot override it (see Claim Priority under Automation Tab).\n'
+                .. 'To lock a named set instead, use Equip & Lock on the Sets tab.');
         end
         if held ~= nil then
             imgui.SameLine(0, 10);
             local n = tonumber(held.n) or 0;
-            local tip = string.format('%d of 16 slots are held, re-applied on every dispatch.\n', n)
-                .. 'Locked by: ' .. tostring(held.mode) .. '\n\n'
-                .. ((n < 16)
-                    and ('The other ' .. tostring(16 - n) .. ' are LOOSE -- normal gear swaps continue\n'
-                      .. 'there. Either the set did not name them, or the piece was not on you\n'
-                      .. 'when you locked (chat listed which, and where each one was).\n\n')
-                    or  'Every slot is held, empty ones included.\n\n')
-                .. 'Naked and pinned pieces still outrank it.\n'
-                .. 'Release: uncheck Lock gear, /dl lock set off, or /dl lock all off.';
+            local tip = string.format('%d of 16 slots locked, re-applied every dispatch.\n', n)
+                .. ((n < 16) and ('The other ' .. tostring(16 - n) .. ' are free -- unnamed, or the piece was not on you.\n') or '')
+                .. 'Uncheck to release.';
             if uistyle ~= nil and type(uistyle.helpLabel) == 'function' then
                 uistyle.helpLabel(imgui, string.format('LOCKED: %s', tostring(held.name)), tip, COL.ERR);
             else
