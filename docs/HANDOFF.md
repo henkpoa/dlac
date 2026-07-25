@@ -194,6 +194,16 @@ agent; the per-repo setup lives in `docs/agents/`.
     `dlac\craftstate`, `dlac\gearweights`, `dlac\profiles\<name>\` are per-character DATA.
     Watch the near-misses: module `lockstyle` vs data `lockstyles`; `macrobook` vs
     `macrobooks`; `crafts` vs `craftstate`. See architecture.md "Repository layout".
+14. **Branch state lives in git, never in prose.** Before telling anyone — Henrik included —
+    what is or is not on main, run **`git log --oneline main..dev`**. That command is the
+    authority; this file is not, and neither is the Claude memory dir. Status lines rot at
+    *merge* time because whoever merges is never whoever wrote them: on 2026-07-25 the
+    `/dl naked` entry below, plus memory entries for E-Box v2 and repeat Last Synth, all
+    still read "on `dev`, NOT on main" for work that had been on main since `7231143` — and
+    a session repeated that to Henrik, who had to correct it. Two duties follow. **Writing:**
+    a finished, field-confirmed commit goes in the **Ready to merge** section above, never
+    only in a per-day "Current state" bullet. **Merging:** empty that section in the same
+    commit as the merge, and fix any "on `dev`" claim the merge just falsified.
 
 ## Working with Henrik
 
@@ -211,6 +221,28 @@ agent; the per-repo setup lives in `docs/agents/`.
 - He tests live and reports fast; expect mid-session scope shifts and parallel edits.
 - A GM is currently evaluating the addon for server approval — polish requests from
   that channel (like the word-wrap fix) take priority.
+
+## Ready to merge (dev → main)
+
+**A queue, not a record.** Everything listed here is committed on `dev`, green on both
+suites, and field-confirmed by Henrik — it waits only on his go-ahead to promote. The agent
+that performs the promotion **empties this section in the same commit as the merge**. An
+entry left standing here after a merge is how "is this on main?" becomes unanswerable —
+see hard rule 14, which this section exists to serve.
+
+- **Trigger builder: the `&` leg never eats a value in silence** — `0f6f2e6`,
+  addon `2026.07.25h`, **FIELD-CONFIRMED by Henrik 2026-07-25**. `when` is a Lua map, so a
+  repeat of one condition type replaces rather than stacks — and stacking would be
+  meaningless (`name = "test"` AND `name = "testar"` can never both hold; `mode` is the only
+  list-valued matcher, read as OR). The replace was right; its silence was the bug, and it
+  read to Henrik as "I cannot add `&` conditions any more, only `|`". It now names the swap
+  (`name replaced: test -> testar`) and offers **Match either instead**, which moves BOTH
+  values to the `|` leg — the rule he was actually reaching for. Also fixes a **case-
+  sensitive** same-type test that let an *edited* rule stack two rows of one type, of which
+  the save silently kept exactly one. Pure seams `triggersui._pushCond` / `._orBothToAny`;
+  tests **TB1–TB32** cover them and drive the real add-rule popup frame by frame. Detail:
+  [design/trigger-system.md](design/trigger-system.md) §"One value per condition type".
+  **Not pushed either** — `origin/dev` sits one commit behind at `4f26e40`.
 
 ## What's left (open work, as of 2026-07-25)
 
@@ -243,7 +275,7 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-25, end of day)
 
-- **`/dl naked` — BUILT 2026-07-25, on `dev`, NOT FIELD-TESTED** (engine v122,
+- **`/dl naked` — BUILT 2026-07-25, ON MAIN since `7231143`, NOT FIELD-TESTED** (engine v122,
   addon `2026.07.25f`, [ADR 0021](adr/0021-naked-is-a-claim.md)). Henrik asked for
   LuaAshitacast's `/lac naked` ("be sure to use the claim arbiter, maybe use locks?").
   The answer to the locks half is **no**, and the ADR records why: a lock only
@@ -289,7 +321,7 @@ research already recorded. In rough priority order:
     `equipengine`'s buffer — which only `fireEvent` flushes, and `fireEvent` opens by
     clearing it. The set evaporates on the next tick. Worth its own commit.
 
-- **E-BOX RESTOCK v2 — BUILT + PARTLY FIELD-TESTED 2026-07-25, on `dev` only**
+- **E-BOX RESTOCK v2 — BUILT + PARTLY FIELD-TESTED 2026-07-25, ON MAIN since `7231143`**
   (`2026.07.25e`). The box's contents are no longer polled: they are verified once on
   approach, **debited locally** on our own withdraws, and re-counted only on the few
   events arithmetic cannot see. **Crafting at an E-Box now costs zero packets** (it used
