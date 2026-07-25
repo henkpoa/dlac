@@ -241,6 +241,75 @@ research already recorded. In rough priority order:
 5. **Icon polish, optional:** the four developer rows share one question mark on their
    section heading rather than each carrying one. Trivial to change if it reads wrong.
 
+## Current state (as of 2026-07-25, end of day)
+
+- **`/dl naked` — BUILT 2026-07-25, on `dev`, NOT FIELD-TESTED** (engine v122,
+  addon `2026.07.25f`, [ADR 0021](adr/0021-naked-is-a-claim.md)). Henrik asked for
+  LuaAshitacast's `/lac naked` ("be sure to use the claim arbiter, maybe use locks?").
+  The answer to the locks half is **no**, and the ADR records why: a lock only
+  *withholds* — it cannot take a piece off — it is wiped by every engine self-swap,
+  Pins punch through it, three unrelated buttons release it, and arming it would
+  destroy the player's own locks. So naked is an ordinary **Arbiter claimant**, ranked
+  first, claiming all 16 slots with the `'remove'` literal both engines already speak.
+  - `/dl naked [on|off|toggle]`, `/dl dress`, an Equipped-tab switch, and a transient
+    red **NAKED** header button. Bare `/dl naked` always arms — typing "naked" must
+    never be the thing that dresses you.
+  - **"Naked except my pins" is a drag, not a code path**: drag Pins (or Locks) above
+    Naked in Automations → Claim Priority. That falls out of the rank list for free and
+    is the reason Naked must stay a *draggable* row.
+  - **Lifetime is one line** — `M.nakedArmed = (M.nakedArmed == true)`, the
+    `M._loadStamp` idiom. Survives an engine self-swap (a `git pull` mid-session must
+    not re-dress you); a fresh Lua state starts dressed, so there is no path by which
+    you log in naked — **but a relog is not a fresh Lua state** (an Ashita addon survives
+    a logout; `pinwatch.lua:89` records the fact), so the tick disarms on the
+    character-select read, and on a **job change** (main job only, announced). Mirrored to
+    `modestate.lua` as `__naked` for the GUI only.
+  - **`arbOrder` changed for everyone**: a rank row missing from the character's
+    `arbstate` file is now restored at its *default position* instead of appended.
+    Appended, Naked would have shipped at rank 9 for every character who had ever
+    opened the Priority section, and lost every slot it exists to win.
+  - Tests `NK1`–`NK29` + `NKU1`–`NKU4`; suites at **3495** and **376**, green on
+    Windows and WSL. `NKU*` drives the real Equipped-tab render, because the failure
+    it exists for (an unknown Lua name = a silent nil global) is invisible to a load
+    test — and the pre-existing drives in that harness `pcall` the render without
+    checking, so they never noticed it was dying halfway through on a stub gap.
+  - **Henrik's rulings, 07-25**: must not persist through a logout (done); must not persist
+    through a job change (done); the TP wipe is **acceptable** because the command is
+    deliberate, so nothing is built around it.
+  - **Two things to watch in the field**: (1) unequipping a weapon **zeroes your TP**
+    and drops Aftermath — accepted, stated in the chat line;
+    (2) **Free equip / `/lac disable` silently defeats naked in legacy mode** (LAC
+    refuses to unequip a `Disabled` slot) — the command warns and the switch renders as
+    unavailable, but confirm that reads right; (3) `/dl dress` brings back only what
+    your sets *name* — anything hand-equipped you re-equip yourself (exact `/lac naked`
+    parity; snapshot-and-restore is an open follow-up).
+  - **Adjacent bug found, NOT fixed** (kept out so a regression has one suspect):
+    `/dl lock set` is broken in **native** mode. Its `rawget(_G,'gEquip')` bracket is
+    nil in the addon state, so the equip falls to the unbracketed path and writes into
+    `equipengine`'s buffer — which only `fireEvent` flushes, and `fireEvent` opens by
+    clearing it. The set evaporates on the next tick. Worth its own commit.
+
+- **E-BOX RESTOCK v2 — BUILT + PARTLY FIELD-TESTED 2026-07-25, on `dev` only**
+  (`2026.07.25e`). The box's contents are no longer polled: they are verified once on
+  approach, **debited locally** on our own withdraws, and re-counted only on the few
+  events arithmetic cannot see. **Crafting at an E-Box now costs zero packets** (it used
+  to cost 200-300 a session). Also: an explicit **Search** button in the add-picker, a
+  three-icon nudge (fetch / other-bags / `!box store` with arm-then-confirm), quiver and
+  pouch contents counted toward tracked ammo, and **`/dl debug ebox`** — a live readout of
+  every packet sent, when, and what caused it.
+  - **Start here: [design/ebox-v2-handoff-2026-07-25.md](design/ebox-v2-handoff-2026-07-25.md)**
+    — what is verified, the five field tests still owed, and the landmines. The full
+    decision record (nine locked decisions, three adversarial review rounds, two field
+    rounds) is [design/ebox-restock-v2-grill-2026-07-25.md](design/ebox-restock-v2-grill-2026-07-25.md).
+  - Two facts that will bite anyone touching this area: **0x1A4 is a party line with no
+    request id** (trove speaks it too, so a foreign stream can be consumed as our answer —
+    it cannot be prevented, only made self-correcting), and **a `!box ...` command opens a
+    MENU rather than changing anything**, so it arms and waits for inventory movement as
+    proof instead of re-counting on a timer.
+  - **`/dl debug <topic>` had never worked from the `/dl` prefix** — the router matched
+    `'^/dlac?%s+debug'`, and `c?` makes the *C* optional, so the literal prefix was `/dla`.
+    Fixed; `/dl debug ls` works now too.
+
 ## Current state (as of 2026-07-24, end of day)
 
 - **MODE LIBRARY — BUILT 2026-07-25 (ADR 0019), awaiting Henrik's field test.**
@@ -713,6 +782,30 @@ research already recorded. In rough priority order:
     c38c2ff if the packet knowledge is ever needed. **RULE (Henrik, 07-13):
     probing/diagnostic tools never ship in dlac -- they go in the dlacprobe
     addon** (`/probe synth` captures a synth on the wire).
+  - **Repeat Last Synth (07-25, `feature/synthrun.lua`, ADR 0020).** The `2 3 4
+    5 6` buttons under Last Synth run the same native command N times -- six
+    because six is a macro bar's capacity. Still only TYPES it. Verification is
+    passive: s2c **`0x030`** (synthesis animation, ~130ms, result type at
+    `@0x0C`, actor at `@0x08`) proves the shot landed; s2c **`0x06F`**
+    (synthesis results, ~17s, result `@0x04` / quantity `@0x06` / item id
+    `@0x08`) names what came out. Offsets are Ashita's stock `craftmon` addon's,
+    matched to the CatsEyeXI server structs. **The wait floor is FIELD TRUTH,
+    not source math**: the server allows ~17s (15s cooldown + a 16s AI state)
+    but the client's synth animation is FRAME-TIED, so the real interval is
+    **~22s** in a quiet zone and more in a busy one (Henrik) -- hence default
+    30, range 20-120, per character in `craftstate.lua` (craftwatch owns that
+    file; do not add a second writer). A shot that draws no `0x030` is retried
+    ONCE after 2s, then the run aborts -- inventory-full and out-of-materials
+    are permanent and both present as that same silence, because the CLIENT
+    refuses to send `0x096` and says `Unable to execute that command.` One
+    report line at the end: green `chatfmt.good` only for a full run, yellow
+    for an early stop, white for your own Stop. HQ needs no special case -- the
+    game names HQ items `... +1`.
+    **NOT FIELD-TESTED (as of 07-25). Test plan + full write-up:
+    `docs/design/repeat-last-synth-fieldtest.md`** -- read it before touching
+    this feature again. Two questions only the field can answer: does the
+    client's `/lastsynth` memory survive a ZONE, and does a 20s wait drop
+    synths in a frame-heavy zone.
   - **Verify-then-automate — DONE (2026-07-13):** guild-points self-request (c2s
     `0x10F`) turn-in-verified; now auto-fires once on login + on AutoCraft panel
     open (debounced). `/dl craft gp` remains the manual check.

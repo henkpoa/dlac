@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 121;  -- 121: weatherMatch trigger condition (feature/weather-match-condition, grill-with-docs 07-24) -- a spell-handler flag, true when the CURRENT weather's element equals the action's element. weatherMatchesAction reads the SAME gData.GetEnvironment().WeatherElement the obi uses (storm-aware: a Scholar's own Firestorm etc. overrides zone weather, so it counts). DISTINCT from dayWeatherBonus (the signed day+weather net with opposition): weatherMatch is a plain weather-element equality -- no day, no opposition -- verified as CatsEyeXI's ALACRITY_CELERITY_EFFECT (Celerity/Alacrity cast-time) gate. Precast+Midcast, tier 30, true/false polarity; unreadable weather or no action element matches NEITHER (never fires blind). Tests WM1-WM21.
+M.VERSION = 122;  -- 122: /dl naked + /dl dress (ADR 0021) -- the strip is a CLAIM, not a lock. A new 'Naked' Arbiter row, FIRST by default, claims all 16 slots with the 'remove' literal both engines already speak (LAC MakeItemTable -> Index 0; equipcore normalizeEntry/planSet), so it is recomputed and re-applied on EVERY dispatch instead of stripping once and fencing: nothing re-dresses you, and a strip the server refuses (dead, cutscene, mid-ranged-attack, level-sync settle) lands on the next pass instead of leaking a dressed slot forever. Explicitly NOT the /dl lock route -- a lock only WITHHOLDS (it cannot take a piece off), it is wiped by every engine self-swap, Pins punch through it, and three unrelated buttons release it; arming it would also destroy the player's own locks. Total nudity is the default and the rank list is the exception mechanism: drag Pins or Locks above Naked for "naked except those". Flag is M.nakedArmed, carried across a self-swap by the M._loadStamp idiom and gone in a fresh Lua state, so a git pull cannot re-dress you. A relog does NOT make a fresh Lua state (an Ashita addon survives a logout -- pinwatch's header records it -- and LAC never clears package.loaded), so nakedWorldWatch disarms on the character-select read, and on a JOB CHANGE too (Henrik's ruling; main job only, announced); mirrored to modestate as __naked (display only, never restored). arbOrder now restores a MISSING known row AT ITS DEFAULT POSITION instead of appending -- appended, Naked would have shipped at rank 9 for every character with an existing arbstate file and lost every slot it exists to win. The naked layer voids ctx.pinReserved when it outranks Pins (a reserver about to be stripped must not keep a neighbour dressed) via save/nil/restore, never a ctx copy. /dl ls apply is refused while naked (unnamed slots would be styled permanently EMPTY). Tests NK1-NK26, NKU1-NKU4.
+                  -- 121: weatherMatch trigger condition (feature/weather-match-condition, grill-with-docs 07-24) -- a spell-handler flag, true when the CURRENT weather's element equals the action's element. weatherMatchesAction reads the SAME gData.GetEnvironment().WeatherElement the obi uses (storm-aware: a Scholar's own Firestorm etc. overrides zone weather, so it counts). DISTINCT from dayWeatherBonus (the signed day+weather net with opposition): weatherMatch is a plain weather-element equality -- no day, no opposition -- verified as CatsEyeXI's ALACRITY_CELERITY_EFFECT (Celerity/Alacrity cast-time) gate. Precast+Midcast, tier 30, true/false polarity; unreadable weather or no action element matches NEITHER (never fires blind). Tests WM1-WM21.
                   -- 120: Chocobo riding-gear automation (issue #95, docs/design/chocobo-gear.md) -- a fourth idle-only sibling: ensureChocoState/chocoStateActive/chocoOverlayFor, the dlac:AutoChoco resolveVirtual branch (manifest `choco` per-slot best-first ladders, Main/Neck/Body/Hands/Legs/Feet, scored by ChocoboRidingTime, the Chocobo Wand included in Main), a 'Chocobo' Arbiter claim row (default rank below Fishing, above the Triggers floor), and arbOrder now pins the Triggers floor last so a new claimant appended to an existing arbstate file never sinks below it.
                   -- 119: field-CONFIRMED close of the maxmp boot saga (Henrik's trace showed the designed boot: 12 install refusals holding the door ~4.5s of hollow flattens, then the REAL world's first appearance earns the first-ever belief -- no wrong ladder was ever displayable) + Henrik's debug-folder rule: per-char debug artifacts live in <data home>\debug\ (the warm trace moves to debug\mpwarm.txt and sweeps its old root-level file; the LAC-bridge handoff files stay put -- paired-reader protocol, leaving with LAC).
                   -- 118: A HOLLOW INSTALL IS NOT AN INSTALL + the install invalidates the belief (round 5b -- the warm trace's first catch, one reload after shipping). Henrik's debug-mpwarm.txt line 16: 'BELIEVED setN=0 flat=0' at :12 behind a '20 set(s) installed' print at :10 -- the install-time flatten yielded ZERO sets (the fresh utils state's first level read wasn't settled), that hollow-but-stable world earned belief, and the belief CACHE (keyed by time, not world) survived the real store arriving at ~:14 -- serving the :16/:18/:21 bad plans until the 10s TTL expired at :22. Three closures: (1) installSets refuses a flatten that yields 0 sets when the raw Dynamic has real entries -- store left absent, latch retries next tick (genuinely empty starter profiles still pass: their zero is the truth); (2) BOTH install branches wipe the LOW-map cache + earned signature -- a belief can never outlive the world it was earned against; (3) the flatten counts ride the signature (f/h fields), so store identity changes can never share a sig. The trace stays -- it earned its keep in one reload.
@@ -185,6 +186,28 @@ M.locks = {};   -- session-only SLOT LOCKS: lower(lac slot name) -> true. Locks 
                 -- by default) punches through. /dl lock drives it; the Equipped tab's
                 -- "Lock when equipped" sends that command. Mirrored to modestate.lua
                 -- (__locks) for GUI display; reset on LAC reload like modes.
+
+-- NAKED (ADR 0021): the strip flag. `= (M.nakedArmed == true)` -- the M._loadStamp
+-- idiom at the top of this file, and deliberately NOT `M.nakedArmed = false` the way
+-- M.locks is wiped above. The difference IS the feature: an engine SELF-SWAP (the 2s
+-- content check -- a git pull, a reseed) re-executes this file against the SAME module
+-- table, so the flag reads itself back and survives. A background reseed silently
+-- re-dressing you is the hazard that rules out every other home for this state.
+--
+-- A FRESH LUA STATE (Reload LAC, /addon reload) starts you dressed, because M is new
+-- and the field is nil. A RELOG DOES NOT -- an Ashita addon survives a logout (see
+-- pinwatch.loadPinState's header, which re-keys pins on the character dir for exactly
+-- this reason) and LuaAshitacast never clears package.loaded either, so neither engine
+-- gets a new state when you change characters. That gap is closed by the tick, which
+-- disarms on the character-select read (GetMainJob() == 0) -- the one place that sees
+-- you leave the world. Logging in naked is the worst outcome this feature has; it is
+-- handled there, not here.
+--
+-- Mirrored to modestate.lua as __naked for the GUI (the __locks contract: display
+-- only, in the reserved __ namespace loadModeState skips, so it is never restored
+-- from disk and can never collide with a user-defined Mode named "naked").
+M.nakedArmed = (M.nakedArmed == true);
+
 local saveModeState;   -- defined in the mode section below; used by the trigger loader
 
 -- The 16 lac slot names (also the /dl lock vocabulary; 'all' fans out to every one).
@@ -192,6 +215,17 @@ local LAC_SLOTS = { 'main', 'sub', 'range', 'ammo', 'head', 'neck', 'ear1', 'ear
                     'body', 'hands', 'ring1', 'ring2', 'back', 'waist', 'legs', 'feet' };
 local LAC_SLOT_OK = {};
 for _, s in ipairs(LAC_SLOTS) do LAC_SLOT_OK[s] = true; end
+
+-- The same 16 in the EQUIP vocabulary's proper case. Not interchangeable with
+-- LAC_SLOTS above: gear\equipcore.lua's SLOT_ID map is case-SENSITIVE (the native
+-- engine's equipSet and planSet both key through it), while LuaAshitacast's
+-- gData.GetEquipSlot is case-insensitive. A claim written in lock-case would
+-- therefore work in LAC and silently strip NOTHING natively -- the worst kind of
+-- divergence, because the mode that ships today is the one that breaks. Test NK3
+-- pins the case; NK1 pins the two lists to the same 16 slots.
+local LAC_SLOTS_CANON = { 'Main', 'Sub', 'Range', 'Ammo', 'Head', 'Neck', 'Ear1', 'Ear2',
+                          'Body', 'Hands', 'Ring1', 'Ring2', 'Back', 'Waist', 'Legs', 'Feet' };
+M._lacSlotsCanon = LAC_SLOTS_CANON;
 
 -- PetAction is DLAC-SYNTHESIZED. No LuaAshitacast version calls a pet handler:
 -- the upstream tutorial's HandlePetAction is a DIY pattern ("this function will
@@ -2587,36 +2621,58 @@ M._postPassOrder = POST_ORDER;
 -- exactly ONE deliberate change: AutoAmmo's named projectile now beats a MaxMP
 -- battery in Ammo (it ranks above MaxMP, so Ammo is ceded to it).
 -- ---------------------------------------------------------------------------
-local ARB_ORDER_DEFAULT = { 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
+local ARB_ORDER_DEFAULT = { 'Naked', 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
                             'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' };
 M._arbDefaultOrder = ARB_ORDER_DEFAULT;
 
 -- The live rank order: arbstate's `order` array sanitized against the KNOWN
--- rows -- unknown names dropped, missing known rows appended in default order,
--- so a partial or hand-mangled (but still parseable) file yields a COMPLETE
--- strict order. A torn/missing file (ensureStateFile drops it to nil) reads as
--- the built-in default. Pure so tests can drive it directly.
+-- rows -- unknown names dropped, missing known rows restored AT THEIR DEFAULT
+-- POSITION, so a partial or hand-mangled (but still parseable) file yields a
+-- COMPLETE strict order. A torn/missing file (ensureStateFile drops it to nil)
+-- reads as the built-in default. Pure so tests can drive it directly.
+--
+-- WHERE A MISSING ROW LANDS IS THE WHOLE PROBLEM. Every character who has ever
+-- opened the Priority section has an arbstate.lua on disk listing the rows that
+-- existed THEN, so every new claimant arrives missing from real files. This used
+-- to be a plain APPEND, which is right only for a row that belongs at the bottom
+-- (Chocobo, v120) and silently wrong for one that belongs anywhere else: Naked
+-- (ADR 0021) appended would ship at rank 9 -- under Locks, under everything --
+-- and lose every slot it exists to win, for everyone except a fresh character.
+-- The bug would be invisible in test and near-invisible in the field.
+--
+-- So: insert each missing row BEFORE the first present row that IT OUTRANKS in
+-- ARB_ORDER_DEFAULT -- i.e. the first one with a LARGER default index; append
+-- when there is none. (Mind the direction: a larger index is a LOWER rank, so
+-- the comparison below is `>`. Write `<` and Naked, which outranks everything,
+-- finds no row above it and sinks to the bottom -- the exact regression this
+-- replaced.) That is one law covering all three
+-- cases -- Naked prepends, Chocobo appends, and a future middle row lands in the
+-- middle -- with no per-row table to keep in sync. Rows the file DOES list keep
+-- the user's order absolutely; this only ever places rows the user has never
+-- seen, and once the file names a row this never touches it again.
+--
+-- The Triggers floor stays a separate hard invariant on top: the claims dress
+-- OVER it, so it is always last no matter where a hand-mangled or older file put
+-- it. Both passes skip it and it is appended once at the end.
 function M.arbOrder(st)
     local given = (type(st) == 'table' and type(st.order) == 'table') and st.order or nil;
     local out, seen = {}, {};
-    -- The Triggers floor is a FLOOR INVARIANT: the claims dress OVER it, so it
-    -- is always last, no matter where a (possibly hand-mangled, or simply older)
-    -- file placed it. Both loops skip it here and it is appended once at the
-    -- end. This is what lets a NEW claimant row (Chocobo, 2026) be added to
-    -- ARB_ORDER_DEFAULT without sinking below the floor when an existing
-    -- arbstate file -- which already lists Triggers -- gets the missing row
-    -- appended after it (the append-missing pass would otherwise land the new
-    -- name AFTER Triggers, and a claimant below the floor never wins a slot the
-    -- idle set already dresses).
-    local known = {};
-    for _, n in ipairs(ARB_ORDER_DEFAULT) do known[n] = true; end
+    local known, defIdx = {}, {};
+    for i, n in ipairs(ARB_ORDER_DEFAULT) do known[n] = true; defIdx[n] = i; end
     if given ~= nil then
         for _, n in ipairs(given) do
             if known[n] and not seen[n] and n ~= 'Triggers' then out[#out + 1] = n; seen[n] = true; end
         end
     end
     for _, n in ipairs(ARB_ORDER_DEFAULT) do
-        if not seen[n] and n ~= 'Triggers' then out[#out + 1] = n; seen[n] = true; end
+        if not seen[n] and n ~= 'Triggers' then
+            local at = #out + 1;                       -- default: the bottom
+            for i, have in ipairs(out) do
+                if (defIdx[have] or 0) > defIdx[n] then at = i; break; end
+            end
+            table.insert(out, at, n);
+            seen[n] = true;
+        end
     end
     out[#out + 1] = 'Triggers';
     return out;
@@ -2642,6 +2698,127 @@ function M.arbLockClaim(locked)
         for s, on in pairs(locked) do if on then out[s] = M.LOCK_HELD; end end
     end
     return out;
+end
+
+-- ---------------------------------------------------------------------------
+-- NAKED (ADR 0021) -- the strip, expressed as an ordinary Claim.
+--
+-- /lac naked is `for i=1,16 do gEquip.UnequipSlot(i); gState.Disabled[i]=true end`:
+-- strip once, then fence the slots below the engine. dlac does the opposite --
+-- it CLAIMS every slot with LAC's own unequip literal and lets the Arbiter apply
+-- that claim on every dispatch. The difference is not stylistic:
+--
+--   * a lock (or a Disabled fence) only WITHHOLDS -- it deletes the slot from a
+--     layer's plan (see the strip in equipResolved). It cannot take a piece OFF.
+--     A lock-based naked is therefore strip-once + fence, and the fence is the
+--     weak half: M.locks is wiped by every engine self-swap, Pins outrank Locks
+--     by default and punch straight through, and three unrelated buttons
+--     (/dl lock all off, the Sets tab's Unlock, unchecking Free equip) release
+--     it. Worse, arming it would destroy the player's OWN locks. This is the
+--     pinwatch argument (see pinOverlay's header) with the sign flipped;
+--   * a claim is recomputed and re-applied EVERY dispatch, so every way the
+--     server can refuse a strip -- dead or in a cutscene (the packet handler's
+--     isNormalStatus gate), mid-ranged-attack (Range/Ammo silently ignored),
+--     the level-sync settle holding the weapon slots -- heals itself on the next
+--     pass instead of leaking a dressed slot forever;
+--   * and precedence becomes the player's, for free. At rank 1 Naked outranks
+--     everything, pins included. Drag Pins (or Locks) above it in Automations >
+--     Claim Priority and you get "naked EXCEPT those" with no code at all.
+--
+-- The claim value is the literal 'remove', which BOTH engines already speak:
+-- LuaAshitacast's MakeItemTable maps it to Index 0, and gear\equipcore.lua's
+-- normalizeEntry/planSet do the same for the native engine. One table, one code
+-- path, no per-mode arm.
+-- ---------------------------------------------------------------------------
+
+-- Is the strip armed? The ONE reader -- M.dispatch, /dl prio, /dl why, the
+-- command branch and the GUI mirror all ask here, so "what naked means" is
+-- never spelled twice.
+function M.nakedOn() return M.nakedArmed == true; end
+
+-- The Naked claim: every slot, emptied. A FRESH table per call -- the caller
+-- hands it to the Arbiter, which keeps it for /dl why attribution.
+--
+-- Always all 16, even when you are already bare. The tempting optimization --
+-- claim only the slots that currently hold something -- is a correctness bug:
+-- the apply loop walks rank LOW to HIGH, so an unclaimed slot keeps whatever a
+-- LOWER-ranked layer wrote into the buffer this pass. Drop the empty slots and a
+-- MaxMP battery (or a pin, or the idle set) lands in every slot the previous
+-- dispatch just cleared, one layer below a claimant that was supposed to own it.
+function M.nakedClaim()
+    local out = {};
+    for _, s in ipairs(LAC_SLOTS_CANON) do out[s] = 'remove'; end
+    return out;
+end
+
+-- Does the naked layer void ctx.pinReserved? A pinned piece whose RSlot covers
+-- neighbouring slots holds those slots as-worn (pinReservedSlots) so the set and
+-- the server cannot flap over them. That hold is placed ON BEHALF OF Pins -- so
+-- when Naked outranks Pins, the reserving piece is itself about to be stripped
+-- and its reservation must not leave a hat on. Pins ranked ABOVE Naked keep the
+-- hold: the player asked for "naked except my pins" and the pins still reserve.
+-- Pure (NK15-NK17); the caller does the save/nil/restore so ctx keeps its
+-- identity and its lazily-memoized reads (buffs, target, pet).
+function M.nakedVoidsPinReserve(rankOf)
+    if type(rankOf) ~= 'table' then return false; end
+    local rn = rankOf['Naked'];
+    if rn == nil then return false; end
+    local rp = rankOf['Pins'];
+    return rp == nil or rp > rn;
+end
+
+-- LEAVING THE WORLD DISARMS THE STRIP. Driven from the tick's job read, every
+-- frame. This is the guard that makes "you can never log in naked" true, and it
+-- has to exist because the flag's home does NOT die on a relog:
+--
+--   an Ashita addon SURVIVES A LOGOUT -- pinwatch's loadPinState header states it
+--   as a known fact, and re-keying pins on the character dir is its answer. So in
+--   native mode the addon state (and its require-cached dispatch) rides straight
+--   through character select; in legacy mode LuaAshitacast never clears
+--   package.loaded either. Neither engine gets a fresh Lua state. And pinwatch's
+--   charDir re-key would not close it here anyway: a SAME-character relog yields
+--   the same dir.
+--
+-- `job` nil or 0 is the character-select read -- the same "not in the world"
+-- signal loadModeState already refuses to restore across. The login settle also
+-- reads 0 for its first ~6s (the documented GetMainJob race), which is harmless:
+-- clearing spuriously leaves you DRESSED, and at login that is what we want.
+--
+-- A JOB CHANGE ALSO DISARMS (Henrik, 2026-07-25), the maxmp drop's rule right
+-- below this in the tick: changing job is a fresh loadout, and standing there
+-- naked on the new job with nothing on screen to explain it is the same bad
+-- outcome as the relog case. Main job only -- GetMainJob is what the tick reads,
+-- so a SUBJOB swap does not drop it (identical to maxmp).
+--
+-- This only ever CLEARS, never arms. Returns 'world' | 'job' | nil -- what
+-- cleared it, so the caller can say so (tests NK28).
+function M.nakedWorldWatch(job, prevJob)
+    if not M.nakedArmed then return nil; end
+    local why = nil;
+    if job == nil or job == 0 then why = 'world';
+    elseif prevJob ~= nil and prevJob ~= 0 and job ~= prevJob then why = 'job'; end
+    if why == nil then return nil; end
+    M.nakedArmed = false;
+    if saveModeState ~= nil then pcall(saveModeState); end
+    return why;
+end
+
+-- Arm/disarm the strip. The ONE door: the command branch and the GUI both come
+-- through here. No dispatch is kicked -- the 0.4s tick is the only Default entry
+-- point that carries the zoning / player-action / pet-action / sync-settle gates,
+-- and a command-path dispatch that skipped them would fire a full re-equip inside
+-- a cast or mid-zone for the sake of 400ms. The claim is standing; it lands on the
+-- next pass by construction. Returns the new state.
+function M.setNaked(on)
+    on = (on == true);
+    M.nakedArmed = on;
+    -- Mirror __naked for the GUI UNCONDITIONALLY, even when nothing changed. An
+    -- early return here would strand a stale mirror: quit the client while naked
+    -- and the next launch is genuinely dressed, but the file still says true, so
+    -- the GUI draws the red NAKED button and clicking it -- setNaked(false) on an
+    -- already-false flag -- would write nothing and never clear it.
+    if saveModeState ~= nil then pcall(saveModeState); end
+    return on;
 end
 
 -- The Arbiter's pure RESOLVE CORE (the seam the acceptance criteria pin): given
@@ -2781,12 +2958,26 @@ function M.arbWhyLines(claims, order, floor)
     -- uncontested collapse into ONE trailing summary (a floor-only slot wins only
     -- when NO claim touched it -- #ops == 1 -- so nothing is lost, and idle /dl
     -- why is not buried under a dozen 'Triggers (floor)' lines).
+    -- Naked collapses the same way, and for a sharper reason: it claims ALL 16, so
+    -- without this every other thing /dl why exists to tell you sits under sixteen
+    -- identical 'Naked (rank 1)' rows -- and /dl why is exactly what a confused
+    -- naked player runs. Who it beat is still reported, deduped across the sweep.
     local lines, floorOnly, floorRank = {}, {}, nil;
+    local nakedSlots, nakedRank, nakedBeat, nakedSeen = {}, nil, {}, {};
     for _, r in ipairs(rows) do
         local ops, win = r.ops, r.ops[1];
         if win.name == 'Triggers' then
             floorOnly[#floorOnly + 1] = tostring(r.slot);
             floorRank = win.rank;
+        elseif win.name == 'Naked' then
+            nakedSlots[#nakedSlots + 1] = tostring(r.slot);
+            nakedRank = win.rank;
+            for i = 2, #ops do
+                if not nakedSeen[ops[i].name] then
+                    nakedSeen[ops[i].name] = true;
+                    nakedBeat[#nakedBeat + 1] = string.format('%s (rank %d)', ops[i].name, ops[i].rank or 0);
+                end
+            end
         else
             local rest = {};
             for i = 2, #ops do rest[#rest + 1] = string.format('%s (rank %d)', ops[i].name, ops[i].rank or 0); end
@@ -2801,6 +2992,12 @@ function M.arbWhyLines(claims, order, floor)
                     (#rest > 0) and ('  over ' .. restStr) or '');
             end
         end
+    end
+    if #nakedSlots > 0 then
+        table.insert(lines, 1, string.format('NAKED (rank %d) holds %d slot%s empty: %s%s',
+            nakedRank or 0, #nakedSlots, (#nakedSlots == 1) and '' or 's',
+            table.concat(nakedSlots, ', '),
+            (#nakedBeat > 0) and ('  over ' .. table.concat(nakedBeat, ', ')) or ''));
     end
     if #floorOnly > 0 then
         lines[#lines + 1] = 'Triggers floor (rank ' .. tostring(floorRank or 0) .. ', uncontested): '
@@ -4209,6 +4406,10 @@ function M.dispatch(event)
         -- anywhere else (craft/HELM exclude it by design).
         local ammoState  = ensureAmmoState();
         local ammoOn     = ammoStateOn(ammoState);
+        -- NAKED (ADR 0021) claims on EVERY event, like Pins: a strip that let go
+        -- during a cast would not be a strip. Read before the bail below -- naked
+        -- with no triggers, no pins and nothing armed is the whole point.
+        local nakedOn    = M.nakedOn();
         -- Craft/HELM/Fishing CO-CLAIM (ADR 0012 amendment, step 1.5). Each armed
         -- activity claims whenever its own gates hold -- all three may claim in
         -- one dispatch -- and the Arbiter's rank order settles every contested
@@ -4219,7 +4420,7 @@ function M.dispatch(event)
         -- HELM must not pull a fishing rod out of Range that HELM never claims).
         -- Each feature's own gates are untouched (idle-only stand-asides,
         -- Default-only application); arming no longer switches activities.
-        if not hasRules and not hasPins and not craftOn and not helmOn and not fishOn and not chocoOn and not ammoOn then return; end
+        if not hasRules and not hasPins and not craftOn and not helmOn and not fishOn and not chocoOn and not ammoOn and not nakedOn then return; end
 
         local ctx = buildCtx(event);
         -- Level-sync settle (v56): computed ONCE per dispatch and ridden by every
@@ -4301,6 +4502,12 @@ function M.dispatch(event)
         -- and /dl why attribution live here.
         local arbOrder = M.arbOrder(ensureArbState());
         local claims = {};
+        -- Naked registers like any other claimant -- one rank row, one claim
+        -- table, no new arm (the shape documented at arbExplain). Registered
+        -- HERE, above the mpCeded computation, so woven MaxMP cedes all 16 slots
+        -- to it for free instead of needing a naked-shaped special case.
+        local nEquip = nakedOn and M.nakedClaim() or nil;
+        if nEquip ~= nil then claims['Naked']    = nEquip; end
         if pEquip ~= nil then claims['Pins']     = pEquip; end
         if aEquip ~= nil then claims['AutoAmmo']  = aEquip; end
         if cEquip ~= nil then claims['Craft']     = cEquip; end
@@ -4336,7 +4543,7 @@ function M.dispatch(event)
         if mpClaim ~= nil then claims['MaxMP'] = mpClaim; end
         ctx.mpCeded = M.arbCededAbove(claims, arbOrder, 'MaxMP');
 
-        if #hits == 0 and cEquip == nil and hEquip == nil and fEquip == nil and chEquip == nil and pEquip == nil and aEquip == nil then
+        if #hits == 0 and cEquip == nil and hEquip == nil and fEquip == nil and chEquip == nil and pEquip == nil and aEquip == nil and nEquip == nil then
             if event ~= 'Default' then   -- Default runs every frame; only action events trace a miss
                 _trace[event] = { time = os.date('%H:%M:%S'), action = actionLabel(ctx),
                                   sig = '', lines = { '(no trigger matched)' } };
@@ -4397,8 +4604,10 @@ function M.dispatch(event)
             table.sort(mk);
             mSig = table.concat(mk, ',');
         end
+        local nSig = nakedOn and 'NAKED' or '';       -- arming/releasing must retrace too
         sig = event .. ':' .. table.concat(sig, ',') .. '|' .. table.concat(lk, ',')
-              .. '|' .. cSig .. '|' .. pSig .. '|' .. hSig .. '|' .. fSig .. '|' .. chSig .. '|' .. aSig .. '|' .. mSig;
+              .. '|' .. cSig .. '|' .. pSig .. '|' .. hSig .. '|' .. fSig .. '|' .. chSig .. '|' .. aSig .. '|' .. mSig
+              .. '|' .. nSig;
         local old = _trace[event];
         local retrace = (old == nil) or (old.sig ~= sig) or (event ~= 'Default');
         local lines = retrace and {} or old.lines;
@@ -4537,6 +4746,22 @@ function M.dispatch(event)
                     for slot, item in pairs(pEquip) do ks[#ks + 1] = tostring(slot) .. '=' .. tostring(item); end
                     table.sort(ks);
                     lines[#lines + 1] = 'PINNED  ->  ' .. table.concat(ks, ', ');
+                end
+            end,
+            ['Naked'] = function()
+                -- ctx.pinReserved is a hold placed on behalf of Pins. When Naked
+                -- outranks Pins the reserving piece is being stripped in this very
+                -- call, so its reservation must not keep a neighbour dressed --
+                -- nil it for the duration and put it back, rather than handing
+                -- equipResolved a copy (ctx memoizes buffs/target/pet lazily, and
+                -- a copy would silently drop those for this layer only).
+                local saved, void = ctx.pinReserved, M.nakedVoidsPinReserve(rankOf);
+                if void then ctx.pinReserved = nil; end
+                equipResolved(nEquip, ctx, layerRespectsLocks('Naked'));
+                if void then ctx.pinReserved = saved; end
+                if retrace then
+                    lines[#lines + 1] = 'NAKED  ->  all 16 slots emptied'
+                        .. (void and '' or '  (pins reserve theirs)');
                 end
             end,
         };
@@ -4760,6 +4985,7 @@ saveModeState = function()
         for s in pairs(M.locks) do lk[#lk + 1] = string.format('[%q] = true,', s); end
         table.sort(lk);
         parts[#parts + 1] = '["__locks"] = { ' .. table.concat(lk, ' ') .. ' },';   -- slot locks
+        parts[#parts + 1] = string.format('["__naked"] = %s,', tostring(M.nakedArmed == true));   -- the strip (ADR 0021), display only
         for m, v in pairs(M.modes) do
             if v == true then parts[#parts + 1] = string.format('[%q] = true,', m);
             elseif type(v) == 'string' then parts[#parts + 1] = string.format('[%q] = %q,', m, v); end
@@ -5326,6 +5552,18 @@ if engineActive() then
     -- player feature whose trigger crossed the command bus).
     local function engineApplyHalf(boxArg)
         M._lsDbgNote('apply received' .. ((boxArg ~= nil) and (' (box ' .. tostring(boxArg) .. ')') or ' (marked box)'));
+        -- REFUSED WHILE NAKED (ADR 0021). _lockstylePacket freezes every slot the
+        -- box does not name to equippedId(slot) -- which is 0 for an empty slot,
+        -- and style 0 renders the slot EMPTY. Applying a style with nothing worn
+        -- would therefore write PERMANENT nudity into every unnamed visual slot,
+        -- server-side and persistent, long after /dl dress. Worse, styles survive
+        -- having no armor, so the player cannot see it happen.
+        if M.nakedOn() then
+            print('[dlac] lockstyle: refused -- you are NAKED. Unnamed slots would be styled EMPTY permanently'
+                .. ' (the server keeps styles per slot). Run /dl dress first, then apply.');
+            M._lsDbgNote('refused: naked (would bake empty slots into the style)');
+            return;
+        end
         local dir = charDir();
         if dir == nil then print('[dlac] lockstyle: not logged in.'); M._lsDbgNote('refused: not logged in'); return; end
         -- boxes are per JOB ENTRY (v41): resolve the current job's file --
@@ -5466,6 +5704,11 @@ if engineActive() then
             end
             local j = nil;
             pcall(function() j = AshitaCore:GetMemoryManager():GetPlayer():GetMainJob(); end);
+            -- Leaving the world OR changing job disarms the strip (ADR 0021).
+            -- Reads _tickJob BEFORE the block below advances it.
+            if M.nakedWorldWatch(j, _tickJob) == 'job' then
+                print('[dlac] naked: off (job changed) -- your gear comes back on the next pass.');
+            end
             if j ~= nil and j ~= 0 then
                 if _tickJob ~= nil and j ~= _tickJob and M.modes['maxmp'] ~= nil then
                     M.modes['maxmp'] = nil;
@@ -5698,7 +5941,7 @@ if engineActive() then
         -- WHITELIST FIRST, branch second: a new subcommand needs adding HERE as well as
         -- below, or it returns in silence and looks like the command does not exist
         -- (v46's /dl instdiag, an hour lost to exactly this).
-        if sub ~= 'mode' and sub ~= 'why' and sub ~= 'triggers' and sub ~= 'env' and sub ~= 'lock' and sub ~= 'sets' and sub ~= 'profile' and sub ~= 'ls' and sub ~= 'plan' and sub ~= 'prio' and sub ~= 'check' and sub ~= 'debug' then return; end
+        if sub ~= 'mode' and sub ~= 'why' and sub ~= 'triggers' and sub ~= 'env' and sub ~= 'lock' and sub ~= 'sets' and sub ~= 'profile' and sub ~= 'ls' and sub ~= 'plan' and sub ~= 'prio' and sub ~= 'check' and sub ~= 'debug' and sub ~= 'naked' and sub ~= 'dress' then return; end
         e.blocked = true;
 
         if sub == 'debug' then
@@ -5766,6 +6009,7 @@ if engineActive() then
             local maxmpOn = (M.modes['maxmp'] ~= nil);
             local anyLock = (next(M.locks) ~= nil);
             local status = {
+                Naked    = M.nakedOn() and 'ON (claims ALL 16 slots empty -- /dl dress releases)' or 'off',
                 Pins     = hasPins and 'ON (armed)' or 'off',
                 Locks    = anyLock and 'ON (veto -- claims above punch through, below stop)'
                                    or 'off (veto -- no slots locked)',
@@ -5914,6 +6158,76 @@ if engineActive() then
             end
 
             print('[dlac] usage: /dl profile [status] | use <name> | new <name> | clone <newname> | migrate [go]');
+            return;
+        end
+
+        if sub == 'naked' or sub == 'dress' then   -- the strip (ADR 0021): a Claim, not a lock
+            local a2 = args[2] and string.lower(args[2]) or nil;
+            local want;
+            -- Bare '/dl naked' ARMS. Never a toggle: typing the word "naked" must
+            -- not be the thing that dresses you.
+            if sub == 'dress' then want = false;
+            elseif a2 == 'off' then want = false;
+            elseif a2 == 'toggle' then want = not M.nakedOn();
+            else want = true; end
+            local was = M.nakedOn();
+            M.setNaked(want);
+            if want and was then
+                print('[dlac] already naked.  Release: /dl dress  (or /dl naked off)');
+                return;
+            end
+            if not want then
+                if not was then
+                    print('[dlac] not naked -- nothing to undo.   (/dl naked strips every slot)');
+                else
+                    print('[dlac] dressed -- your triggers and automations own your gear again.');
+                    print('[dlac]   Only the slots your sets and automations actually NAME come back; anything you');
+                    print('[dlac]   had put on by hand (a ring, a trinket in Ammo) you re-equip yourself.');
+                end
+                return;
+            end
+            print('[dlac] NAKED -- every slot emptied and HELD empty, on every dispatch.');
+            print('[dlac]   Release: /dl dress (or /dl naked off, or the Equipped tab).');
+            print('[dlac]   Drops by itself on a job change, a logout, or a Reload LAC.');
+            -- Taking a weapon off is a server-side TP wipe. Say it once, up front:
+            -- discovering it after a WS window is a bad way to learn.
+            print('[dlac]   Taking a weapon off zeroes your TP and drops Aftermath -- that is the server, not dlac.');
+            -- Anything ranked ABOVE Naked keeps its slots. Name it rather than let
+            -- the player wonder why a pinned ring is still on.
+            local ord = M.arbOrder(ensureArbState());
+            local above = {};
+            for _, n in ipairs(ord) do
+                if n == 'Naked' then break; end
+                -- MaxMP is the one row that CANNOT except itself. Every other
+                -- claimant has an applyClaim closure, so a higher rank simply
+                -- applies later and wins; MaxMP's equip stays WOVEN inside
+                -- equipResolved, and both of its write points skip a 'remove'
+                -- entry outright -- so dragging it above Naked cedes the slots
+                -- but still equips nothing. Naming it here would promise an
+                -- exception that does not happen.
+                if n ~= 'Triggers' and n ~= 'MaxMP' then above[#above + 1] = n; end
+            end
+            if #above > 0 then
+                print(string.format('[dlac]   %s rank ABOVE Naked, so their slots stay dressed. Automations > Claim Priority reorders them.',
+                    table.concat(above, ', ')));
+            end
+            -- THE ONE WAY NAKED SILENTLY DOES NOTHING. LuaAshitacast's own
+            -- /lac disable (the Equipped tab's "Free equip") sets gState.Disabled,
+            -- and LAC's PrepareEquip drops every UNEQUIP for a disabled slot -- so
+            -- a fully armed strip produces zero packets and zero complaints. Two
+            -- switches that both read as "stop my gear moving", one silently
+            -- beating the other, is worth a line every time.
+            local nDis = 0;
+            pcall(function()
+                local st = rawget(_G, 'gState');
+                if st == nil or type(st.Disabled) ~= 'table' then return; end
+                for i = 1, 16 do if st.Disabled[i] == true then nDis = nDis + 1; end end
+            end);
+            if nDis > 0 then
+                print(string.format('[dlac]   WARNING: %d slot(s) are DISABLED in LuaAshitacast (/lac disable -- the Equipped tab\'s'
+                    .. ' "Free equip"). LAC refuses to unequip a disabled slot, so those will NOT come off.'
+                    .. ' Run /lac enable (or uncheck Free equip) first.', nDis));
+            end
             return;
         end
 

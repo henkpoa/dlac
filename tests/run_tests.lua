@@ -227,8 +227,8 @@ end)();
                    'groupsmodel','jobgate','modeslibrary','ownedcache','profileexport','profilesets','setimport',
                    'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
     local FEATURE = { 'ammowatch','arbwatch','augments','check','chocowatch','craftwatch','debug','digcalc','digrank',
-                      'eboxammo','eboxclient','fishcalc','fishwatch','gamemode','helmwatch','idleexcl','location','lockstyle','lookpreview',
-                      'macrobook','meritwatch','mpbands','pinwatch','restockwatch','useitem','vanamoon' };
+                      'eboxammo','eboxclient','eboxtrace','fishcalc','fishwatch','gamemode','helmwatch','idleexcl','location','lockstyle','lookpreview',
+                      'macrobook','meritwatch','mpbands','pinwatch','restockwatch','synthrun','useitem','vanamoon' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
 
     local ALL = {};
@@ -1618,6 +1618,186 @@ check('T23 disabled -> no overlay',   ovOff, nil);
 local ovNoCraft = dispatchM._craftOverlayFor({ craft = '', goal = 'hq', enabled = true }, { player = { MainJobSync = 75 } });
 check('T24 no craft -> no overlay',   ovNoCraft, nil);
 dispatchM._autoOverride = nil;
+
+-- Repeat-synth wait (a SETTING living in craftstate.lua, which craftwatch owns).
+-- The 20s floor is FIELD TRUTH, not source math: the server would allow ~17s,
+-- but the client's synthesis animation is frame-tied, so ~22s is the real
+-- interval in a quiet zone (Henrik, 07-25).
+check('T24b wait defaults to 30',          craftwatch.getSynthWait(), 30);
+check('T24c wait clamps up to the floor',  craftwatch._clampWait(5), 20);
+check('T24d wait clamps to the ceiling',   craftwatch._clampWait(999), 120);
+check('T24e garbage falls back to default', craftwatch._clampWait('x'), 30);
+check('T24f a sane value is kept',         craftwatch.setSynthWait(45), 45);
+check('T24g setSynthWait clamps too',      craftwatch.setSynthWait(1), 20);
+craftwatch.setSynthWait(30);
+
+-- ---------------------------------------------------------------------------
+-- U. synthrun -- the 2..6 repeat-synth batch runner (feature/synthrun.lua).
+-- Drives the whole state machine headless on an injected clock, a recording
+-- AshitaCore and a stub chatfmt, so the colour of each report is assertable.
+-- Wrapped in an IIFE (the smoke_ui idiom): the main chunk is at Lua's 200-local
+-- ceiling, and a scope of its own also keeps the stubs from leaking downstream.
+-- ---------------------------------------------------------------------------
+(function()
+local _savedChatfmt = package.loaded['dlac\\chatfmt'];
+local chatlog = {};
+package.loaded['dlac\\chatfmt'] = {
+    good = function(s) chatlog[#chatlog + 1] = { 'good', s }; end,
+    warn = function(s) chatlog[#chatlog + 1] = { 'warn', s }; end,
+    msg  = function(s) chatlog[#chatlog + 1] = { 'msg',  s }; end,
+};
+local function clearLog() for i = #chatlog, 1, -1 do chatlog[i] = nil; end end
+
+local synthrun = dofile('feature/synthrun.lua');
+
+-- s2c 0x030 synthesis animation: TargetIndex u16 @0x08, result type i8 @0x0C.
+local function animPkt(idx, typ)
+    return string.rep('\0', 8) .. u16le(idx) .. string.rep('\0', 2)
+        .. string.char(typ) .. string.rep('\0', 8);
+end
+-- s2c 0x06F synthesis results: Result @0x04, Count @0x06, ItemNo u16 @0x08.
+local function resPkt(code, count, id)
+    return string.rep('\0', 4) .. string.char(code) .. '\0' .. string.char(count)
+        .. '\0' .. u16le(id) .. string.rep('\0', 8);
+end
+
+local aIdx, aTyp = synthrun.decodeAnim(animPkt(0x1234, 2));
+check('U1 anim decodes the actor index',  aIdx, 0x1234);
+check('U2 anim decodes the result type',  aTyp, 2);
+check('U3 short anim packet -> nil',      synthrun.decodeAnim('xx'), nil);
+local rCode, rCount, rId = synthrun.decodeResult(resPkt(0x00, 4, 640));
+check('U4 result decodes the code',       rCode, 0);
+check('U5 result decodes the quantity',   rCount, 4);
+check('U6 result decodes the item id',    rId, 640);
+check('U7 short result packet -> nil',    synthrun.decodeResult('x'), nil);
+
+-- Tally. HQ needs NO special case: the game names HQ items "... +1", so they
+-- separate on their own (crafts.lua only stores the NQ result id).
+synthrun._itemName = function(id)
+    return ({ [640] = 'Bronze Ingot', [641] = 'Bronze Ingot +1' })[id] or ('item #' .. tostring(id));
+end
+local tMade, tBroke, tItems = synthrun.tally({
+    { code = 0x00, count = 2, id = 640 },
+    { code = 0x01, count = 0, id = 0   },   -- break
+    { code = 0x00, count = 2, id = 640 },
+    { code = 0x00, count = 1, id = 641 },   -- HQ
+});
+check('U8 tally counts successes',        tMade, 3);
+check('U9 tally counts breaks',           tBroke, 1);
+check('U10 tally groups by item, HQ apart', tItems, '4x Bronze Ingot, 1x Bronze Ingot +1');
+
+-- --- the state machine -------------------------------------------------------
+local sent = {};
+local _savedAC = rawget(_G, 'AshitaCore');
+local _savedGPE = rawget(_G, 'GetPlayerEntity');
+_G.AshitaCore = { GetChatManager = function()
+    return { QueueCommand = function(_, mode, cmd) sent[#sent + 1] = { mode = mode, cmd = cmd }; end };
+end };
+_G.GetPlayerEntity = function() return { TargetIndex = 100 }; end
+local T = 0;
+synthrun._now = function() return T; end
+synthrun.getWait = function() return 25; end
+
+check('U11 start refuses 0',                  synthrun.start(0), false);
+check('U12 start refuses 7 (macro-bar cap)',  synthrun.start(7), false);
+check('U13 start fires immediately',          synthrun.start(3) and #sent, 1);
+check('U14 it TYPES the game\'s own command', sent[1].cmd, '/lastsynth');
+check('U15 ...in Typed mode (Ashita CommandMode 1)', sent[1].mode, 1);
+check('U16 a second batch is refused',        synthrun.start(2), false);
+
+synthrun.onPacket(0x030, animPkt(999, 0));    -- a BYSTANDER's synth
+synthrun.tick();
+check('U17 a bystander\'s animation is ignored', synthrun.status().done, 0);
+synthrun.onPacket(0x030, animPkt(100, 0));    -- ours
+synthrun.tick();
+check('U18 our animation counts the synth',   synthrun.status().done, 1);
+check('U19 the next shot waits out the timer', synthrun.status().nextIn, 25);
+T = T + 24; synthrun.tick();
+check('U20 nothing fires before the wait elapses', #sent, 1);
+T = T + 2;  synthrun.tick();
+check('U21 the next synth fires after the wait', #sent, 2);
+
+-- Shot 2 never lands. ONE retry (frame hitches are transient), then abort --
+-- "out of materials" and "inventory full" are permanent, so the retry costs
+-- ~2s at the end of a run that was over anyway (Henrik, 07-25).
+T = T + 1.9; synthrun.tick();
+check('U22 no retry inside the 2s detect window', #sent, 2);
+T = T + 0.2; synthrun.tick();
+check('U23 a missed shot is retried once',    #sent, 3);
+check('U24 status surfaces the retry',        synthrun.status().retrying, true);
+clearLog();
+T = T + 2.1; synthrun.tick();
+check('U25 a second miss aborts the batch',   synthrun.status(), nil);
+check('U26 an early stop reports in YELLOW',  chatlog[1] and chatlog[1][1], 'warn');
+check('U27 ...and says how far it got',       (chatlog[1] and chatlog[1][2] or ''):sub(1, 29),
+                                              'Crafting stopped after 1 of 3');
+
+-- A clean run: the report waits for the LAST 0x06F, so it can name what came out.
+T = 1000; sent = {}; clearLog();
+synthrun.start(2);
+synthrun.onPacket(0x030, animPkt(100, 0)); synthrun.tick();
+synthrun.onPacket(0x06F, resPkt(0x00, 2, 640)); synthrun.tick();
+T = T + 25; synthrun.tick();
+check('U28 the second synth fires',           #sent, 2);
+synthrun.onPacket(0x030, animPkt(100, 2)); synthrun.tick();
+check('U29 the last synth is not reported until its result lands', #chatlog, 0);
+synthrun.onPacket(0x06F, resPkt(0x00, 1, 641)); synthrun.tick();
+check('U30 the batch completes',              synthrun.status(), nil);
+check('U31 a full run reports in GREEN',      chatlog[1] and chatlog[1][1], 'good');
+check('U32 the report names what was made',   chatlog[1] and chatlog[1][2],
+      'Crafting complete -- 2 synths: 2x Bronze Ingot, 1x Bronze Ingot +1.');
+
+-- Breaks are counted, and they change the wording but not the colour.
+T = 2000; sent = {}; clearLog();
+synthrun.start(2);
+synthrun.onPacket(0x030, animPkt(100, 0)); synthrun.tick();
+synthrun.onPacket(0x06F, resPkt(0x01, 0, 0)); synthrun.tick();   -- break
+T = T + 25; synthrun.tick();
+synthrun.onPacket(0x030, animPkt(100, 0)); synthrun.tick();
+synthrun.onPacket(0x06F, resPkt(0x00, 3, 640)); synthrun.tick();
+check('U33 a run with a break still reports made/broke', chatlog[1] and chatlog[1][2],
+      'Crafting complete -- 2 synths (1 made, 1 broke): 3x Bronze Ingot.');
+
+-- The final result never arrives (bad zone): report anyway once the grace ends.
+T = 3000; sent = {}; clearLog();
+synthrun.start(1);
+synthrun.onPacket(0x030, animPkt(100, 0)); synthrun.tick();
+T = T + 31; synthrun.tick();
+check('U34 a missing final result still reports after the grace', synthrun.status(), nil);
+check('U35 ...still green (the synths did run)', chatlog[1] and chatlog[1][1], 'good');
+
+-- A 0x06F cancel code arrives with NO animation -- stop at once and name it.
+T = 4000; sent = {}; clearLog();
+synthrun.start(3);
+synthrun.onPacket(0x06F, resPkt(0x06, 0, 0)); synthrun.tick();   -- CancelSkillTooLow
+check('U36 a cancel code stops the batch at once', synthrun.status(), nil);
+check('U37 cancel reports in YELLOW',         chatlog[1] and chatlog[1][1], 'warn');
+check('U38 cancel names the real reason',
+      (chatlog[1] and chatlog[1][2] or ''):find('craft skill is too low', 1, true) ~= nil, true);
+
+-- Zoning voids every assumption (and on this server it destroys the materials).
+T = 5000; sent = {}; clearLog();
+synthrun.start(3);
+synthrun.onPacket(0x030, animPkt(100, 0)); synthrun.tick();
+synthrun.onPacket(0x00A, ''); synthrun.tick();
+check('U39 zoning aborts the batch',          synthrun.status(), nil);
+
+-- Your own Stop is not an alarm: white, not yellow.
+T = 6000; sent = {}; clearLog();
+synthrun.start(3);
+synthrun.onPacket(0x030, animPkt(100, 0)); synthrun.tick();
+synthrun.stop();
+check('U40 stop ends the batch',              synthrun.status(), nil);
+check('U41 your own stop is not an alarm',    chatlog[1] and chatlog[1][1], 'msg');
+check('U42 stop says how far it got',         chatlog[1] and chatlog[1][2],
+      'Crafting stopped -- 1 of 3 done.');
+check('U43 stop is a no-op when idle',        synthrun.stop(), false);
+check('U44 status is nil when idle',          synthrun.status(), nil);
+
+_G.AshitaCore = _savedAC;
+_G.GetPlayerEntity = _savedGPE;
+package.loaded['dlac\\chatfmt'] = _savedChatfmt;
+end)();
 
 -- 0x055 key item tracker (the SDK HasKeyItem memory read is dead on this
 -- client -- craftwatch keeps its own bitfield from the packet stream).
@@ -5294,10 +5474,13 @@ end)();
     local def = dispatchM._arbDefaultOrder;
     check('AR1 default order exported', type(def), 'table');
     check('AR1b exact default rank', table.concat(def, '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     -- AR1c: the ADR 0012 laws the order encodes, checked as adjacency (not prose)
     local rank = {}; for i, n in ipairs(def) do rank[n] = i; end
-    check('AR1d Pins outrank everything',    rank['Pins'], 1);
+    -- Naked (ADR 0021) is the ONE row above Pins: "naked" must mean naked, and a
+    -- player who wants "naked except my pins" drags Pins over it. Do not "fix"
+    -- this back to Pins == 1.
+    check('AR1d Naked outranks everything, Pins everything else', rank['Naked'] == 1 and rank['Pins'] == 2, true);
     check('AR1e Locks veto sits under Pins', rank['Locks'] == rank['Pins'] + 1, true);
     check('AR1f AutoAmmo outranks MaxMP (the deliberate change)', rank['AutoAmmo'] < rank['MaxMP'], true);
     check('AR1g MaxMP outranks Craft/HELM/Fishing (batteries over their armor)',
@@ -5305,20 +5488,25 @@ end)();
     check('AR1h Triggers is the floor (last)', rank['Triggers'], #def);
 
     -- AR2: arbOrder sanitizes. Missing/torn -> default; unknown dropped, missing
-    -- known rows appended; a valid reorder is preserved.
+    -- known rows restored AT THEIR DEFAULT POSITION (v122 -- see NK8/NK9; the old
+    -- law appended them, which is right only for a row that belongs last); a valid
+    -- reorder is preserved.
     check('AR2 nil -> default', table.concat(dispatchM.arbOrder(nil), '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AR2b no order field -> default', table.concat(dispatchM.arbOrder({ foo = 1 }), '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AR2c a valid reorder is preserved',
         table.concat(dispatchM.arbOrder({ order = { 'MaxMP', 'AutoAmmo', 'Pins', 'Locks', 'Craft', 'HELM', 'Fishing', 'Triggers' } }), '>'),
-        'MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>Triggers');
-    check('AR2d unknown rows dropped, missing known rows appended in default order',
+        'Naked>MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>Triggers');
+    -- Listed rows keep the user's order absolutely (Fishing still above Pins);
+    -- every unlisted row lands where it sits by default RELATIVE to them --
+    -- Naked before Fishing, Chocobo after Pins because nothing outranks it.
+    check('AR2d unknown rows dropped, missing known rows restored at their default position',
         table.concat(dispatchM.arbOrder({ order = { 'Fishing', 'Nonsense', 'Pins' } }), '>'),
-        'Fishing>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Chocobo>Triggers');
+        'Naked>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Pins>Chocobo>Triggers');
     check('AR2e duplicates collapse',
         table.concat(dispatchM.arbOrder({ order = { 'Pins', 'Pins', 'AutoAmmo' } }), '>'),
-        'Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
 
     -- AR3: the PURE resolve core -- claims + rank + floor -> winners + by.
     local order = dispatchM.arbOrder(nil);
@@ -5375,12 +5563,12 @@ end)();
     put('tests\\arbstate.lua', 'return { order = { "MaxMP", "AutoAmmo", "Pins", "Locks", "Craft", "HELM", "Fishing", "Triggers" } }');
     check('AR7 hand-edited reorder is read + sanitized',
         table.concat(dispatchM.arbOrder(esf(cache, 'arbstate.lua')), '>'),
-        'MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Naked>MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>Triggers');
     cache.lastCheck = -1;
     put('tests\\arbstate.lua', 'return { order = {');   -- torn write
     check('AR7b torn write drops to default',
         table.concat(dispatchM.arbOrder(esf(cache, 'arbstate.lua')), '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     os.remove('tests\\arbstate.lua');
     dispatchM._charDirOverride = nil;
 
@@ -5468,7 +5656,7 @@ end)();
 --      Locks', floor-only slots 'Triggers (floor)', in canonical LAC order.
 -- ---------------------------------------------------------------------------
 (function()
-    local ord = dispatchM.arbOrder(nil);  -- Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers
+    local ord = dispatchM.arbOrder(nil);  -- Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers
     -- The whole claim path in one resolve. MaxMP is a proper CLAIM now (step 4):
     -- its battery targets a claim table, ranked below AutoAmmo (the deliberate
     -- cede) and above Craft (batteries over craft armor).
@@ -5482,12 +5670,12 @@ end)();
     local floor = { Head = 'Idle Hat', Ammo = 'Idle Ammo', Ring1 = 'Idle Ring',
                     Hands = 'Idle Hands', Legs = 'Idle Legs', Body = 'Idle Body' };
     local ex = dispatchM.arbExplain(claims, ord, floor);
-    -- Ammo: AutoAmmo(3) > MaxMP(4) > Triggers(8) -- the issue's headline contest.
+    -- Ammo: AutoAmmo(4) > MaxMP(5) > Triggers(10) -- the issue's headline contest.
     check('AR11 Ammo winner is AutoAmmo',            ex.Ammo[1].name, 'AutoAmmo');
-    check('AR11b Ammo winner rank is 3',             ex.Ammo[1].rank, 3);
+    check('AR11b Ammo winner rank is 4 (Naked took rank 1)', ex.Ammo[1].rank, 4);
     check('AR11c Ammo runner-up is the MaxMP battery (the deliberate cede)', ex.Ammo[2].name, 'MaxMP');
     check('AR11d Ammo third is the floor',           ex.Ammo[3].name, 'Triggers');
-    -- Head: Pins(1) > MaxMP(4) > Craft(5) > Triggers(8).
+    -- Head: Pins(2) > MaxMP(5) > Craft(6) > Triggers(10).
     check('AR11e Head winner is the pin',            ex.Head[1].name, 'Pins');
     check('AR11f Head second is MaxMP (battery over craft armor)', ex.Head[2].name, 'MaxMP');
     check('AR11g Head third is Craft',               ex.Head[3].name, 'Craft');
@@ -5496,7 +5684,7 @@ end)();
     check('AR11i Ring1 second is the floor',         ex.Ring1[2].name, 'Triggers');
     -- Hands: only Craft claims it.
     check('AR11j Hands winner is Craft',             ex.Hands[1].name, 'Craft');
-    -- Legs: the Locks veto (rank 2) wins; nothing claims above it.
+    -- Legs: the Locks veto (rank 3) wins; nothing claims above it.
     check('AR11k Legs winner is the Locks veto',     ex.Legs[1].name, 'Locks');
     check('AR11l Legs veto held off the floor',      ex.Legs[2].name, 'Triggers');
     -- Body: floor-only.
@@ -5516,13 +5704,13 @@ end)();
                     Legs = 'Idle Legs', Body = 'Idle Body' };
     local joined = table.concat(dispatchM.arbWhyLines(claims, ord, floor), '\n');
     check('AR12 the Ammo contest line names winner over runner-up (the issue example)',
-        joined:find('Ammo: AutoAmmo (rank 3)  over MaxMP (rank 4)', 1, true) ~= nil, true);
+        joined:find('Ammo: AutoAmmo (rank 4)  over MaxMP (rank 5)', 1, true) ~= nil, true);
     check('AR12b a MaxMP-only slot reads MaxMP over the floor',
-        joined:find('Ring1: MaxMP (rank 4)  over Triggers (rank 9)', 1, true) ~= nil, true);
+        joined:find('Ring1: MaxMP (rank 5)  over Triggers (rank 10)', 1, true) ~= nil, true);
     check('AR12c a veto slot reads stopped by Locks (even from a lowercase key)',
-        joined:find('Legs: stopped by Locks (rank 2)', 1, true) ~= nil, true);
+        joined:find('Legs: stopped by Locks (rank 3)', 1, true) ~= nil, true);
     check('AR12d floor-only slots collapse into one named Triggers-floor summary',
-        joined:find('Triggers floor (rank 9, uncontested):', 1, true) ~= nil
+        joined:find('Triggers floor (rank 10, uncontested):', 1, true) ~= nil
         and joined:find('Body', 1, true) ~= nil, true);
     -- Contested slots emit individually in canonical LAC order (ammo 4 < hands 10
     -- < ring1 11), BEFORE the trailing floor summary.
@@ -5594,7 +5782,7 @@ end)();
     check('LV0b arbLockClaim accepts an array of slot keys',
         dispatchM.arbLockClaim({ 'Head', 'Ring1' }).Ring1, dispatchM.LOCK_HELD);
 
-    local order = dispatchM.arbOrder(nil);  -- Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers
+    local order = dispatchM.arbOrder(nil);  -- Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers
     local floor = { Head = 'Idle Hat', Ring1 = 'Idle Ring' };
     local locked = dispatchM.arbLockClaim({ 'Head', 'Ring1' });  -- both slots locked
 
@@ -5675,6 +5863,337 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- NK. NAKED (ADR 0021) -- /dl naked strips every slot and HOLDS it empty, as an
+--     ordinary Arbiter claimant ranked first, not as a lock.
+--
+--     Why a claim: a lock only WITHHOLDS (it deletes a slot from a layer's plan
+--     -- it cannot take a piece off), it is wiped by every engine self-swap,
+--     Pins punch through it by default, and three unrelated buttons release it.
+--     A claim is recomputed every dispatch, so a strip the server refuses heals
+--     itself -- and precedence becomes the player's, for free.
+--
+--     The two traps these pin, both of which would ship silently:
+--       NK3  the claim must use PROPER-CASE slot keys. equipcore.SLOT_ID is
+--            case-sensitive and LuaAshitacast's is not, so a lowercase claim
+--            works in LAC and strips NOTHING natively -- broken only in the
+--            mode that actually ships.
+--       NK8  a row missing from an existing arbstate file must land at its
+--            DEFAULT position, not the bottom. Appended, Naked would rank under
+--            Locks for every character who ever opened the Priority list.
+-- ---------------------------------------------------------------------------
+(function()
+    local canon = dispatchM._lacSlotsCanon;
+    check('NK1 the canonical slot list is the 16', type(canon) == 'table' and #canon, 16);
+    -- The equip vocabulary and the /dl lock vocabulary must name the SAME slots.
+    -- Compared as SETS, not concatenated: gear\equipcore.lua's SLOT_NAMES is a
+    -- third order again, so order equality would be a lie that happens to hold.
+    check('NK1b lowercasing the equip vocabulary yields the lock vocabulary', (function()
+        for _, s in ipairs(canon) do
+            if dispatchM.setLock(string.lower(s), false) == nil then return 'missing ' .. s; end
+        end
+        return true;
+    end)(), true);
+
+    local claim = dispatchM.nakedClaim();
+    local n, allRemove = 0, true;
+    for _, v in pairs(claim) do n = n + 1; if v ~= 'remove' then allRemove = false; end end
+    check('NK2 the claim names all 16 slots', n, 16);
+    check('NK2b every value is the unequip literal', allRemove, true);
+    check('NK3 keys are PROPER case (a lowercase key is dropped by the native engine)',
+        claim.Main == 'remove' and claim.main == nil and claim.Ring1 == 'remove', true);
+    claim.Main = 'mutated';
+    check('NK4 each call returns a fresh table', dispatchM.nakedClaim().Main, 'remove');
+
+    -- The flag. setNaked is the ONE door; nakedOn the ONE reader.
+    dispatchM.nakedArmed = false;
+    check('NK5 off by default', dispatchM.nakedOn(), false);
+    check('NK5b setNaked(true) returns the new state', dispatchM.setNaked(true), true);
+    check('NK5c and arms the flag', dispatchM.nakedOn(), true);
+    check('NK5d arming twice is idempotent', dispatchM.setNaked(true), true);
+    dispatchM.nakedArmed = 'yes';                     -- a truthy non-true must not count
+    check('NK5e only a literal true is armed', dispatchM.nakedOn(), false);
+    dispatchM.setNaked(false);
+    check('NK5f setNaked(false) disarms', dispatchM.nakedOn(), false);
+
+    -- The rank row.
+    local def = dispatchM._arbDefaultOrder;
+    local rank = {}; for i, nm in ipairs(def) do rank[nm] = i; end
+    check('NK6 exact default rank', table.concat(def, '>'),
+        'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+    check('NK7 Naked outranks Pins, which outranks Locks',
+        rank['Naked'] < rank['Pins'] and rank['Pins'] < rank['Locks'], true);
+
+    -- TRAP: every arbstate file written before v122 lists nine rows and no Naked.
+    check('NK8 a pre-v122 file gets Naked at the TOP, not the bottom',
+        dispatchM.arbOrder({ order = { 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
+                                       'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' } })[1], 'Naked');
+    check('NK9 a file that places Naked LOW keeps it there (the user has spoken)',
+        table.concat(dispatchM.arbOrder({ order = { 'Pins', 'Locks', 'Naked', 'Triggers' } }), '>'),
+        'Pins>Locks>Naked>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+    check('NK10 the restore never duplicates a row', (function()
+        local seen = 0;
+        for _, nm in ipairs(dispatchM.arbOrder(nil)) do if nm == 'Naked' then seen = seen + 1; end end
+        return seen;
+    end)(), 1);
+    -- The same law from the other end: Chocobo still lands LAST (it did when it
+    -- was the new row), so the positional rule did not regress the append case.
+    check('NK10b a missing bottom row still lands just above the floor',
+        table.concat(dispatchM.arbOrder({ order = { 'Naked', 'Pins', 'Locks', 'AutoAmmo',
+                                                    'MaxMP', 'Craft', 'HELM', 'Fishing', 'Triggers' } }), '>'),
+        'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+
+    -- The pure resolve: Naked beats everything, and the rank list is the ONLY
+    -- exception mechanism (this is the "naked except my pins" contract).
+    local ord = dispatchM.arbOrder(nil);
+    local floor = { Head = 'Idle Hat', Body = 'Idle Robe' };
+    local wN, byN = dispatchM.arbResolve(
+        { Naked = dispatchM.nakedClaim(), Pins = { Head = 'Pinned Crown' } }, ord, floor);
+    check('NK11 Naked wins a pinned slot',       wN.Head, 'remove');
+    check('NK11b attributed to Naked',           byN.Head, 'Naked');
+    check('NK11c and a floor-only slot',         wN.Body, 'remove');
+    local pinTop = dispatchM.arbOrder({ order = { 'Pins', 'Naked', 'Locks', 'AutoAmmo', 'MaxMP',
+                                                  'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' } });
+    local wP, byP = dispatchM.arbResolve(
+        { Naked = dispatchM.nakedClaim(), Pins = { Head = 'Pinned Crown' } }, pinTop, floor);
+    check('NK12 drag Pins above Naked -> naked EXCEPT the pin', wP.Head, 'Pinned Crown');
+    check('NK12b attributed to Pins',                           byP.Head, 'Pins');
+    check('NK12c every other slot is still stripped',           wP.Body, 'remove');
+    local lockTop = dispatchM.arbOrder({ order = { 'Locks', 'Naked', 'Pins', 'AutoAmmo', 'MaxMP',
+                                                   'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' } });
+    local wL = dispatchM.arbResolve(
+        { Naked = dispatchM.nakedClaim(), Locks = dispatchM.arbLockClaim({ 'Head' }) }, lockTop, floor);
+    check('NK13 drag Locks above Naked -> a locked slot keeps what it wears',
+        wL.Head, dispatchM.LOCK_HELD);
+
+    -- Woven MaxMP stands down for free: registering the claim is the whole fix.
+    local ceded = dispatchM.arbCededAbove({ Naked = dispatchM.nakedClaim() }, ord, 'MaxMP');
+    local nCede = 0;
+    for _, who in pairs(ceded) do if who == 'Naked' then nCede = nCede + 1; end end
+    check('NK14 MaxMP cedes all 16 slots to Naked (lowercase keys)', nCede, 16);
+    check('NK14b including the Ammo slot it would otherwise battery', ceded['ammo'], 'Naked');
+
+    -- The pinReserved void. A hold placed on behalf of a claimant Naked outranks
+    -- is void; one placed on behalf of a claimant that outranks Naked stands.
+    check('NK15 Naked above Pins voids the pin reservation',
+        dispatchM.nakedVoidsPinReserve({ Naked = 1, Pins = 2 }), true);
+    check('NK16 Pins above Naked keeps it',
+        dispatchM.nakedVoidsPinReserve({ Naked = 3, Pins = 1 }), false);
+    check('NK17 no Naked row -> nothing is voided',
+        dispatchM.nakedVoidsPinReserve({ Pins = 1 }), false);
+    check('NK17b a bad rank table never throws',
+        dispatchM.nakedVoidsPinReserve(nil), false);
+
+    -- THE LIVE EQUIP LAYER. The claim has to survive equipResolved's five post
+    -- passes intact -- an all-'remove' table is an input none of them were
+    -- written for.
+    local savedAC = AshitaCore;
+    AshitaCore = nil;                                   -- wornItemName -> nil
+    for k in pairs(dispatchM.locks) do dispatchM.locks[k] = nil; end
+    local _, wNak = dispatchM._equipResolved(dispatchM.nakedClaim(), {});
+    local kept = 0;
+    for _, v in pairs(wNak) do if v == 'remove' then kept = kept + 1; end end
+    check('NK18 all 16 removes survive the post-passes', kept, 16);
+    -- Locked + punching through (Naked ranks above Locks by default).
+    dispatchM.setLock('all', true);
+    local _, wPunch = dispatchM._equipResolved(dispatchM.nakedClaim(), {}, false);
+    local kept2 = 0;
+    for _, v in pairs(wPunch) do if v == 'remove' then kept2 = kept2 + 1; end end
+    check('NK19 punch-through keeps all 16 even with every slot locked', kept2, 16);
+    -- ...and respecting locks (the "drag Locks above Naked" composition) strips them.
+    local _, wStop = dispatchM._equipResolved(dispatchM.nakedClaim(), {}, true);
+    check('NK20 respecting locks, a locked slot is left alone', wStop.Head, nil);
+    for k in pairs(dispatchM.locks) do dispatchM.locks[k] = nil; end
+
+    -- The craft Sub-vs-Main guard DOES run over the naked table (it rides the
+    -- shared ctx, which carries craftMainGuard whenever craft is armed). It is
+    -- harmless only because 'remove' resolves to no gear record -- so pin that,
+    -- or the day the guard learns the literal, naked silently stops taking your
+    -- weapon off while a craft Sub is armed.
+    local askedWith = nil;
+    local _, wGuard = dispatchM._equipResolved(dispatchM.nakedClaim(),
+        { craftMainGuard = function(mainName) askedWith = mainName; return true; end });
+    check('NK21 the guard IS consulted on the naked table', askedWith, 'remove');
+    check('NK21b and a guard that holds would keep the weapon on', wGuard.Main, nil);
+    -- What actually saves us is that 'remove' is not a gear record, so the real
+    -- guard's early-out fires. Pin the fact itself, not the accident.
+    check('NK21c "remove" resolves to no gear record (why the real guard returns false)',
+        type(utils.resolveGearName('remove')) == 'table', false);
+    local _, wGuard2 = dispatchM._equipResolved(dispatchM.nakedClaim(),
+        { craftMainGuard = function(mainName)
+              return type(utils.resolveGearName(mainName)) == 'table';   -- the real guard's early-out
+          end });
+    check('NK21d so Main comes off even with a craft Sub armed', wGuard2.Main, 'remove');
+    AshitaCore = savedAC;
+
+    -- /dl why: sixteen identical winner lines would bury everything else it says,
+    -- so a whole-sweep Naked collapses to one line -- naming who it beat.
+    local why = table.concat(dispatchM.arbWhyLines(
+        { Naked = dispatchM.nakedClaim(), Pins = { Head = 'Pinned Crown' } }, ord, floor), '\n');
+    check('NK22 /dl why collapses the sweep into ONE line',
+        select(2, why:gsub('NAKED %(rank 1%)', '')), 1);
+    check('NK22b it counts the slots',   why:find('holds 16 slots empty', 1, true) ~= nil, true);
+    check('NK22c and names who it beat', why:find('over Pins (rank 2)', 1, true) ~= nil, true);
+    check('NK22d no per-slot Naked line survives', why:find('Head: Naked', 1, true), nil);
+
+    -- The command tokens. dispatch's handler only registers inside engineActive(),
+    -- which is false headlessly, so the whitelist cannot be driven -- pin it as
+    -- SOURCE instead (the v46 trap: a subcommand missing from the whitelist
+    -- returns in silence and looks like the command does not exist).
+    local src = (function() local f = io.open('dispatch.lua', 'r'); local d = f:read('*a'); f:close(); return d; end)();
+    local wl = src:match("\n%s*if sub ~= 'mode'[^\n]*\n");
+    check('NK23 the command whitelist is findable', wl ~= nil, true);
+    check('NK23b naked is whitelisted', wl and wl:find("sub ~= 'naked'", 1, true) ~= nil, true);
+    check('NK23c dress is whitelisted',  wl and wl:find("sub ~= 'dress'", 1, true) ~= nil, true);
+    check('NK24 the strip flag is carried across a self-swap, not reset',
+        src:find('M.nakedArmed = (M.nakedArmed == true);', 1, true) ~= nil, true);
+
+    -- arbwatch's headless fallback is DEAD whenever dispatch loads -- which is
+    -- both Lua states and every other AB check -- so a drifting mirror ships
+    -- green. Force the branch by hiding dispatch from the require.
+    local savedDsp = package.loaded['dlac\\dispatch'];
+    package.loaded['dlac\\dispatch'] = nil;
+    local awNo = dofile('feature/arbwatch.lua');
+    package.loaded['dlac\\dispatch'] = savedDsp;
+    check('NK25 the no-dispatch fallback agrees on the default order',
+        table.concat(awNo.defaultOrder(), '>'), table.concat(def, '>'));
+    check('NK25b and on the positional restore',
+        table.concat(awNo.sanitize({ order = { 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
+                                               'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' } }), '>'),
+        table.concat(dispatchM.arbOrder({ order = { 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
+                                               'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' } }), '>'));
+
+    -- NK26. END TO END through the REAL M.dispatch.
+    --
+    -- Worth its own note: until this check, M.dispatch was called ZERO times by
+    -- the suite -- every other test drives a pure seam under it. So the wiring
+    -- BETWEEN the seams (the bail guard, the claims table, the rank walk, the
+    -- apply closure) was covered by nothing, and a local that fell out of scope
+    -- would not be an error in Lua -- it would silently become a nil GLOBAL and
+    -- the strip would just not happen. Naked is the cheapest possible driver for
+    -- it: with the flag on and NOTHING else armed -- no triggers, no pins, no
+    -- hobby, no ammo -- a bare dispatch must still produce all 16 removes, which
+    -- is exactly the path the bail guard has to let through.
+    local savedPlayer, savedFunc, savedState = TEST_PLAYER, rawget(_G, 'gFunc'), rawget(_G, 'gState');
+    TEST_PLAYER = { MainJob = 'WHM', MainJobLevel = 75, SubJob = 'BLM', SubJobLevel = 37,
+                    MainJobSync = 75, SubJobSync = 37, Status = 'Idle', IsMoving = false };
+    local wrote = {};
+    _G.gFunc  = { EquipSet = function(t) for k, v in pairs(t or {}) do wrote[k] = v; end end };
+    _G.gState = { CurrentCall = 'N/A', Disabled = {} };
+    dispatchM.nakedArmed = true;
+    local okDisp, dispErr = pcall(dispatchM.dispatch, 'Default');
+    check('NK26 a bare Default dispatch with only naked armed does not throw', okDisp, true);
+    if not okDisp then print('NK26 error: ' .. tostring(dispErr)); end
+    local nWrote, allRm = 0, true;
+    for _, v in pairs(wrote) do nWrote = nWrote + 1; if v ~= 'remove' then allRm = false; end end
+    check('NK26b it reaches the equip door with all 16 slots', nWrote, 16);
+    check('NK26c every one of them is an unequip', allRm, true);
+    check('NK26d proper case survives the whole path', wrote.Ring1, 'remove');
+    -- A local that escaped its block would show up here as a nil-valued global
+    -- turned real -- the failure mode the check above cannot see on its own.
+    local leaked = nil;
+    for _, nm in ipairs({ 'nakedOn', 'nEquip', 'nSig', 'rankOf', 'claims', 'nakedSlots' }) do
+        if rawget(_G, nm) ~= nil then leaked = nm; break; end
+    end
+    check('NK26e no dispatch local leaked to the globals', leaked, nil);
+    -- ...and with the flag OFF the same bare dispatch writes nothing at all.
+    dispatchM.nakedArmed = false;
+    wrote = {};
+    pcall(dispatchM.dispatch, 'Default');
+    check('NK26f released, a bare dispatch writes nothing', next(wrote), nil);
+
+    -- NK27. The __naked mirror, through the REAL saveModeState onto disk. It must
+    -- be written even when nothing changed: an early return there strands a stale
+    -- mirror -- quit the client while naked and the next launch is genuinely
+    -- dressed, but the file still says true, so the GUI draws the red NAKED button
+    -- and clicking it (setNaked(false) on an already-false flag) would write
+    -- nothing and never clear it.
+    dispatchM._charDirOverride = 'tests' .. string.char(92);
+    local function readMirror()
+        local f = io.open('tests' .. string.char(92) .. 'modestate.lua', 'r');
+        if f == nil then return nil; end
+        local d = f:read('*a'); f:close(); return d;
+    end
+    os.remove('tests' .. string.char(92) .. 'modestate.lua');
+    dispatchM.nakedArmed = false;
+    dispatchM.setNaked(false);                                  -- no change at all
+    local m0 = readMirror();
+    check('NK27 setNaked writes the mirror even when nothing changed', m0 ~= nil, true);
+    check('NK27b and it reads false', m0 and m0:find('["__naked"] = false', 1, true) ~= nil, true);
+    dispatchM.setNaked(true);
+    check('NK27c arming flips it to true',
+        (readMirror() or ''):find('["__naked"] = true', 1, true) ~= nil, true);
+    check('NK27d the flag lives OUTSIDE M.modes (no collision with a user Mode)',
+        dispatchM.modes['naked'], nil);
+
+    -- NK28. THE DISARM WATCH -- the relog guard the ADR calls the worst possible
+    -- outcome to get wrong, plus the job-change drop (Henrik, 07-25). M.nakedArmed
+    -- rides across a relog on its own (an Ashita addon survives a logout, and LAC
+    -- never clears package.loaded), so this watch is what actually clears it.
+    check('NK28 same job, in the world -> stays armed', dispatchM.nakedWorldWatch(7, 7), nil);
+    check('NK28b and the flag is untouched',    dispatchM.nakedOn(), true);
+    check('NK28c job 0 (character select) disarms', dispatchM.nakedWorldWatch(0, 7), 'world');
+    check('NK28d you come back dressed',        dispatchM.nakedOn(), false);
+    check('NK28e the mirror follows it down',
+        (readMirror() or ''):find('["__naked"] = false', 1, true) ~= nil, true);
+    dispatchM.setNaked(true);
+    check('NK28f a nil job read disarms too',   dispatchM.nakedWorldWatch(nil, 7), 'world');
+    dispatchM.setNaked(true);
+    check('NK28g a JOB CHANGE disarms',         dispatchM.nakedWorldWatch(3, 7), 'job');
+    check('NK28h ...and dresses you',           dispatchM.nakedOn(), false);
+    -- The first in-world read of a session has no previous job to compare
+    -- against; latching it must not read as a change and strip you at login.
+    dispatchM.setNaked(true);
+    check('NK28i the first job latch is not a change', dispatchM.nakedWorldWatch(7, nil), nil);
+    check('NK28j nor is coming back from character select',
+        dispatchM.nakedWorldWatch(7, 0), nil);
+    check('NK28k still armed through both',     dispatchM.nakedOn(), true);
+    check('NK28l it only ever CLEARS, never arms', (function()
+        dispatchM.nakedWorldWatch(0, 7);                     -- disarm
+        return dispatchM.nakedWorldWatch(0, 7) == nil and dispatchM.nakedOn() == false;
+    end)(), true);
+    -- NK29. THE LOCKSTYLE REFUSAL, on the door that actually runs.
+    --
+    -- lockstyleapply freezes every slot the box does not name to the WORN id --
+    -- which is 0 while stripped, and style 0 renders the slot EMPTY. The server
+    -- keeps styles per slot, so that outlives /dl dress, and because a style
+    -- survives having no armor the player never sees it happen.
+    --
+    -- The refusal must sit in feature/lockstyle._applyDirect, NOT only in the
+    -- engine's apply half: _applyDirect is the addon-resident executor that the
+    -- GUI Apply button, the native typed handler and every SCRIPTED apply (town
+    -- transitions, OnLoad restore, keep-on-subjob) funnel into -- and those last
+    -- three fire with NO user action, so a naked player zoning into town would
+    -- otherwise style themselves permanently bare.
+    (function()
+        local lsN = dofile('feature/lockstyle.lua');
+        check('NK29 lockstyle exposes the naked read', type(lsN._nakedArmed), 'function');
+        local applied = 0;
+        local savedCap = lsN._capNote;
+        local notes = {};
+        lsN._capNote = function(t) notes[#notes + 1] = tostring(t); end
+        -- Stand in for the naked read (the real one asks dispatch natively, or the
+        -- __naked mirror in legacy -- neither is reachable headless).
+        local armed = true;
+        lsN._nakedArmed = function() return armed; end
+        -- Re-point the module's own reference so _applyDirect sees the stub: the
+        -- upvalue is a file-local, so the test drives the exported seam instead.
+        local okRefuse = pcall(lsN._applyDirect, 1);
+        check('NK29b applying while naked does not throw', okRefuse, true);
+        local refused = false;
+        for _, n in ipairs(notes) do if n:find('naked', 1, true) then refused = true; end end
+        check('NK29c ...and is recorded as a refusal', refused, true);
+        lsN._capNote = savedCap;
+    end)();
+
+    os.remove('tests' .. string.char(92) .. 'modestate.lua');
+    dispatchM._charDirOverride = nil;
+
+    TEST_PLAYER = savedPlayer;
+    _G.gFunc, _G.gState = savedFunc, savedState;
+    dispatchM.nakedArmed = false;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- AB. arbwatch -- the ADDON-SIDE writer of the arbstate rank Statefile (ADR
 --     0012, step 2 / issue #49). The engine's read side is AR* above; these pin
 --     the WRITER's pure seams: the default/sanitize reuse the engine's one
@@ -5688,16 +6207,14 @@ end)();
 
     -- Default + sanitize delegate to the engine (one vocabulary, no drift).
     check('AB1 default order matches the engine default',
-        table.concat(aw.defaultOrder(), '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        table.concat(aw.defaultOrder(), '>'), 'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AB1b defaultOrder is a fresh copy (mutating it does not stick)',
-        (function() local d = aw.defaultOrder(); d[1] = 'X'; return aw.defaultOrder()[1]; end)(), 'Pins');
+        (function() local d = aw.defaultOrder(); d[1] = 'X'; return aw.defaultOrder()[1]; end)(), 'Naked');
     check('AB2 sanitize nil -> default',
-        table.concat(aw.sanitize(nil), '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
-    check('AB2b sanitize drops unknown, appends missing',
+        table.concat(aw.sanitize(nil), '>'), 'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+    check('AB2b sanitize drops unknown, restores missing at its default position',
         table.concat(aw.sanitize({ order = { 'Fishing', 'Nonsense', 'Pins' } }), '>'),
-        'Fishing>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Chocobo>Triggers');
+        'Naked>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Pins>Chocobo>Triggers');
 
     -- serialize -> the engine's file shape; round-trips through arbOrder.
     local txt = aw.serialize({ 'MaxMP', 'AutoAmmo', 'Pins', 'Locks', 'Craft', 'HELM', 'Fishing', 'Triggers' });
@@ -5708,33 +6225,40 @@ end)();
     local roundtrip = dispatchM.arbOrder(chunk());
     check('AB3c serialize -> arbOrder round-trips a valid reorder',
         table.concat(roundtrip, '>'),
-        'MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Naked>MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AB3d serialize skips non-string / empty entries',
         aw.serialize({ 'Pins', '', 42, 'Triggers' }), 'return { order = { "Pins", "Triggers" } }\n');
 
     -- moveClaimant: the step-2 drag rules, pure.
-    local def = aw.defaultOrder();   -- Pins Locks AutoAmmo MaxMP Craft HELM Fishing Triggers
-    check('AB4 a claimant moves up one (AutoAmmo #3 -> #2, crossing the Locks veto)',
-        table.concat(aw.moveClaimant(def, 3, -1), '>'),
-        'Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
-    check('AB4b a claimant moves down one (AutoAmmo #3 -> #4)',
-        table.concat(aw.moveClaimant(def, 3, 1), '>'),
-        'Pins>Locks>MaxMP>AutoAmmo>Craft>HELM>Fishing>Chocobo>Triggers');
-    check('AB4c the input order is not mutated', table.concat(def, '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+    -- Indices are 1-based over the default order, which since v122 (ADR 0021)
+    -- opens with Naked: Naked Pins Locks AutoAmmo MaxMP Craft HELM Fishing Chocobo Triggers.
+    local def = aw.defaultOrder();
+    check('AB4 a claimant moves up one (AutoAmmo #4 -> #3, crossing the Locks veto)',
+        table.concat(aw.moveClaimant(def, 4, -1), '>'),
+        'Naked>Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+    check('AB4b a claimant moves down one (AutoAmmo #4 -> #5)',
+        table.concat(aw.moveClaimant(def, 4, 1), '>'),
+        'Naked>Pins>Locks>MaxMP>AutoAmmo>Craft>HELM>Fishing>Chocobo>Triggers');
+    check('AB4c the input order is not mutated', table.concat(def, '>'), 'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     -- Step 3: the Locks veto row now DRAGS (only the Triggers floor is fixed).
-    check('AB5 Locks drags down one (#2 -> #3, under AutoAmmo)',
-        table.concat(aw.moveClaimant(def, 2, 1), '>'),
-        'Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
-    check('AB5a Locks drags up one to the top (absolute veto, over Pins)',
-        table.concat(aw.moveClaimant(def, 2, -1), '>'),
-        'Locks>Pins>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
-    check('AB5b Triggers refuses the drag (the floor)', aw.moveClaimant(def, 9, -1), nil);
-    check('AB6 the floor-adjacent claimant (Chocobo #8) cannot move down into the Triggers floor (stays last)',
-        aw.moveClaimant(def, 8, 1), nil);
-    check('AB6b Fishing CAN move up (HELM #6 <-> Fishing #7)',
-        table.concat(aw.moveClaimant(def, 7, -1), '>'),
-        'Pins>Locks>AutoAmmo>MaxMP>Craft>Fishing>HELM>Chocobo>Triggers');
+    check('AB5 Locks drags down one (#3 -> #4, under AutoAmmo)',
+        table.concat(aw.moveClaimant(def, 3, 1), '>'),
+        'Naked>Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+    check('AB5a Locks drags up one, over Pins (Naked still above it)',
+        table.concat(aw.moveClaimant(def, 3, -1), '>'),
+        'Naked>Locks>Pins>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+    check('AB5b Triggers refuses the drag (the floor)', aw.moveClaimant(def, 10, -1), nil);
+    check('AB6 the floor-adjacent claimant (Chocobo #9) cannot move down into the Triggers floor (stays last)',
+        aw.moveClaimant(def, 9, 1), nil);
+    check('AB6b Fishing CAN move up (HELM #7 <-> Fishing #8)',
+        table.concat(aw.moveClaimant(def, 8, -1), '>'),
+        'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>Fishing>HELM>Chocobo>Triggers');
+    -- Naked is an ORDINARY draggable row: "naked except my pins" is a drag, not
+    -- a code path, so the day it becomes fixed the feature loses its escape hatch.
+    check('AB6c Naked drags down (Pins takes the top -- naked except pins)',
+        table.concat(aw.moveClaimant(def, 1, 1), '>'),
+        'Pins>Naked>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+    check('AB6d Naked is not a FIXED row', aw.FIXED['Naked'], nil);
     check('AB7 out-of-range / bad args are nil, never a throw',
         aw.moveClaimant(def, 1, -1) == nil and aw.moveClaimant(def, 0, 1) == nil
         and aw.moveClaimant(def, 3, 0) == nil and aw.moveClaimant(nil, 1, 1) == nil, true);
@@ -8670,7 +9194,11 @@ end)();
         ec._onPacket(pk({ [0x04] = 3, [0x05] = 2, [0x06] = 1 })) == true and ec.isBusy() == true, true);
     check('EBC6c second ACK completes the batch (busy clears)',
         ec._onPacket(pk({ [0x04] = 3, [0x05] = 2, [0x06] = 1 })) == true and ec.isBusy() == false, true);
-    check('EBC6d completing a batch stales the counts (the box changed)', ec.categoryFresh(15, 20), false);
+    -- v2 (2026-07-25): completing a batch NO LONGER re-counts. We debited what we
+    -- asked for at send time, so re-asking would be exactly the poll that model
+    -- deleted. Only a REFUSAL (below, EBC13) says our number was wrong.
+    check('EBC6d a completed batch leaves the counts believed (arithmetic did it)',
+        ec.categoryFresh(15, 20), true);
     check('EBC6e ACK with nothing in flight is not ours',
         ec._onPacket(pk({ [0x04] = 3, [0x05] = 2, [0x06] = 1 })), false);
     ec._beginBatch(1);
@@ -8708,6 +9236,415 @@ end)();
     check('EBC10 box range is FIELD-PINNED at 5 yalms', ec.BOX_RANGE, 5);
     check('EBC10b boxDistance headless -> nil, nearBox -> false',
         ec.boxDistance() == nil and ec.nearBox() == false, true);
+
+    -- EBC11-16. THE v2 MODEL (grill 2026-07-25, docs/design/ebox-restock-v2-grill-
+    -- 2026-07-25.md): the box is a number we already know. Verify once, DEBIT our
+    -- own withdraws, and re-count only when something we cannot see changed it --
+    -- so crafting next to a box costs zero packets.
+    local function ecCount(cat, id, qty)          -- commit one category by hand
+        ec._beginRequest('category', cat);
+        ec._onPacket(pk({ [0x04] = 0 }));
+        ec._onPacket(pk({ [0x04] = 1, [0x08] = id % 256, [0x09] = math.floor(id / 256),
+                          [0x0A] = cat, [0x0C] = qty }));
+        ec._onPacket(pk({ [0x04] = 2, [0x05] = 0 }));
+    end
+
+    ecCount(15, 21302, 40);
+    check('EBC11 a counted category is believed at ANY window (no clock)',
+        ec.categoryFresh(15, math.huge), true);
+    ec.markDirty(15);
+    check('EBC11b a dirty category is fresh at NO window', ec.categoryFresh(15, math.huge), false);
+    ecCount(15, 21302, 40);
+    check('EBC11c re-counting believes it again', ec.categoryFresh(15, math.huge), true);
+    ec.markDirty(99);
+    check('EBC11d marking a category we never counted is a no-op (already unfresh)',
+        ec.dirty[99] == nil and ec.categoryFresh(99, math.huge) == false, true);
+    ec.markAllDirty();
+    check('EBC11e markAllDirty stops believing every counted category',
+        ec.categoryFresh(15, math.huge) == false and ec.categoryFresh(6, math.huge) == false, true);
+    check('EBC11f verifyCategories is just "no clock" -- headless it still refuses',
+        ec.verifyCategories({ 15 }), false);
+    check('EBC11g categoriesVerified is false while anything is dirty',
+        ec.categoriesVerified({ 15, 6 }), false);
+
+    -- the debit: we sent it, so we know what is left. No packet involved.
+    ecCount(15, 21302, 40);
+    ec._debit(21302, 12);
+    check('EBC12 debit subtracts what we asked for (40 - 12)', ec.boxCount(21302, 15), 28);
+    check('EBC12b the flat merged view follows the debit', ec.boxCount(21302), 28);
+    ec._debit(21302, 999);
+    check('EBC12c debit floors at zero, never negative', ec.boxCount(21302), 0);
+    check('EBC12d debiting an item the box never held is a no-op', ec._debit(4242, 5), nil);
+    check('EBC12e a debit does NOT dirty the category (that is the whole point)',
+        ec.categoryFresh(15, math.huge), true);
+
+    -- the ONE repair arithmetic cannot do itself: the server refused us
+    ecCount(15, 21302, 40);
+    ec._beginBatch(1, { [15] = true });
+    ec._onPacket(pk(msgAt({ [0x04] = 3, [0x05] = 2, [0x06] = 0 }, 0x10, 'Inventory full.')));
+    check('EBC13 a REFUSED withdraw stops us believing exactly that category',
+        ec.categoryFresh(15, math.huge) == false and ec.statusErr == true, true);
+    ecCount(15, 21302, 40);
+    ec._beginBatch(1, { [15] = true });
+    ec._onPacket(pk({ [0x04] = 3, [0x05] = 2, [0x06] = 1 }));
+    check('EBC13b a SUCCESSFUL withdraw leaves the belief intact',
+        ec.categoryFresh(15, math.huge), true);
+    ec.rescan();
+    check('EBC13c Rescan is the manual repair -- nothing believed',
+        ec.categoryFresh(15, math.huge), false);
+
+    -- search: one question at a time, and the answer knows what it answers
+    ec.clearSearch();
+    check('EBC14 clearSearch forgets the hits AND the question',
+        ec.searchResults == nil and ec.searchFor == nil, true);
+    ec._beginRequest('search');
+    check('EBC14b searchBusy while our search is on the wire', ec.searchBusy(), true);
+    ec._onPacket(pk({ [0x04] = 0 }));
+    ec._onPacket(pk(msgAt({ [0x04] = 1, [0x08] = 0x36, [0x09] = 0x53, [0x0A] = 15, [0x0C] = 5 }, 0x10, 'Bronze Bullet')));
+    ec._onPacket(pk({ [0x04] = 2, [0x05] = 0 }));
+    check('EBC14c the answer clears searchBusy',
+        ec.searchBusy() == false and #ec.searchResults == 1, true);
+    check('EBC14d a category request is not a search', (function()
+        ec._beginRequest('category', 15); return ec.searchBusy();
+    end)(), false);
+
+    -- headless gates for the new doors
+    check('EBC15 boxStore refuses headless (the CW gate, before any command)', ec.boxStore(), false);
+    check('EBC15b canQuery is public and headless-false', ec.canQuery(), false);
+
+    -- the lost-answer timeout: ONE dropped reply must not wedge every future
+    -- query. Under the dirty-only discipline there is no poll to paper over it.
+    local ecNow = 5000;
+    ec._now = function() return ecNow; end
+    ec._beginRequest('search');
+    check('EBC16 a request in flight holds the one-at-a-time slot', ec.searchBusy(), true);
+    ecNow = ecNow + ec.PEND_HOLD + 1;
+    check('EBC16b PEND_HOLD releases a request whose answer never came',
+        ec.searchBusy(), false);
+
+    -- EBC17-22. What the timeout in EBC16 costs if left naive, and the three
+    -- other holes a poll used to hide. All five found by the adversarial review
+    -- of this build (2026-07-25) -- every one of them permanent under the
+    -- dirty-only discipline, because there is no longer a clock to age it out.
+
+    -- A late answer the timeout gave up on must NOT commit under whichever
+    -- request took the slot next. The wire has no request id; a row's own ahCat
+    -- is the only correlator there is.
+    ec.cat, ec.counts, ec.dirty = {}, {}, {};
+    ecNow = ecNow + 100;
+    ecCount(15, 21302, 40);
+    ec._beginRequest('category', 6);        -- a NEW request takes the slot...
+    ec._onPacket(pk({ [0x04] = 0 }));
+    ec._onPacket(pk({ [0x04] = 1, [0x08] = 0x36, [0x09] = 0x53, [0x0A] = 15, [0x0C] = 99 }));  -- ...cat-15 rows arrive
+    check('EBC17 a stream whose rows name another category is consumed, NOT committed',
+        ec._onPacket(pk({ [0x04] = 2, [0x05] = 0 })) == true
+        and ec.cat[6] == nil and ec.categoryFresh(6, math.huge) == false, true);
+    check('EBC17b ...and the category those rows really belong to is left alone',
+        ec.boxCount(21302, 15), 40);
+    ec._beginRequest('category', 6);
+    ec._onPacket(pk({ [0x04] = 0 }));
+    ec._onPacket(pk({ [0x04] = 1, [0x08] = 0x34, [0x09] = 0x10, [0x0A] = 0, [0x0C] = 30 }));
+    ec._onPacket(pk({ [0x04] = 2, [0x05] = 0 }));
+    check('EBC17c a row that names no category is still accepted (never re-ask forever)',
+        ec.boxCount(4148, 6), 30);
+
+    -- A long list streams for a while: each row is progress, so the deadline
+    -- moves. Otherwise a big category is abandoned MID-stream, forever.
+    ec._beginRequest('category', 15);
+    ecNow = ecNow + (ec.PEND_HOLD - 2);
+    ec._onPacket(pk({ [0x04] = 1, [0x08] = 0x36, [0x09] = 0x53, [0x0A] = 15, [0x0C] = 7 }));
+    ecNow = ecNow + (ec.PEND_HOLD - 2);
+    ec.searchBusy();     -- the render thread polls: THIS is what applies the timeout
+    ec._onPacket(pk({ [0x04] = 2, [0x05] = 0 }));
+    check('EBC18 rows refresh the deadline -- a slow stream still commits',
+        ec.boxCount(21302, 15), 7);
+
+    -- A dirty mark raised while an answer is in flight must survive that
+    -- answer's commit: the server computed it BEFORE the box changed.
+    ec.dirty = {};
+    ec._beginRequest('category', 15);
+    ec._onPacket(pk({ [0x04] = 0 }));
+    ec._onPacket(pk({ [0x04] = 1, [0x08] = 0x36, [0x09] = 0x53, [0x0A] = 15, [0x0C] = 40 }));
+    ec.markAllDirty();                      -- e.g. a `!box store` lands right here
+    ec._onPacket(pk({ [0x04] = 2, [0x05] = 0 }));
+    check('EBC19 a mark landing mid-flight is not wiped by the pre-change answer',
+        ec.categoryFresh(15, math.huge), false);
+
+    -- EBC24. THE PARTY LINE. trove speaks the same protocol on the same opcode,
+    -- and the wire has no request id -- so a foreign stream landing while our
+    -- GET_CATEGORY is out is consumed as OUR answer. A zero-match search in
+    -- trove's Box tab therefore writes "this category is empty" over real counts,
+    -- and the ahCat guard cannot see it: an empty stream has no rows to check.
+    -- It cannot be PREVENTED. It has to be self-correcting, because v2 deleted
+    -- the clock that used to age a wrong number out.
+    ec.cat, ec.counts, ec.dirty = {}, {}, {};
+    ecNow = ecNow + 100;
+    ecCount(15, 21302, 40);
+    ec._beginRequest('category', 15);               -- our verify goes out...
+    ec._onPacket(pk({ [0x04] = 0 }));               -- ...and a FOREIGN empty stream lands
+    ec._onPacket(pk({ [0x04] = 2, [0x05] = 0 }));
+    check('EBC24 a zero-row stream does commit -- we cannot tell it from our own',
+        ec.boxCount(21302, 15), 0);
+    check('EBC24b ...but the next unsolicited stream is the TELL, and repairs it',
+        ec._onPacket(pk({ [0x04] = 0 })) == false
+        and ec.categoryFresh(15, math.huge) == false, true);
+    ec.dirty = {};
+    check('EBC24c the repair is one-shot per commit, not once per foreign packet',
+        ec._onPacket(pk({ [0x04] = 0 })) == false
+        and ec.categoryFresh(15, math.huge) == true, true);
+
+    -- ...and the interleaved case, which IS detectable: two CLEARs inside one
+    -- request means two streams, so the answer is taken but not believed.
+    ecCount(15, 21302, 40);
+    ec.dirty = {};
+    ec._beginRequest('category', 15);
+    ec._onPacket(pk({ [0x04] = 0 }));
+    ec._onPacket(pk({ [0x04] = 1, [0x08] = 0x36, [0x09] = 0x53, [0x0A] = 15, [0x0C] = 5 }));
+    ec._onPacket(pk({ [0x04] = 0 }));               -- a SECOND CLEAR: not one stream
+    ec._onPacket(pk({ [0x04] = 1, [0x08] = 0x36, [0x09] = 0x53, [0x0A] = 15, [0x0C] = 9 }));
+    ec._onPacket(pk({ [0x04] = 2, [0x05] = 0 }));
+    check('EBC24d two interleaved streams: the answer is taken but NOT believed',
+        ec.boxCount(21302, 15) == 9 and ec.categoryFresh(15, math.huge) == false, true);
+
+    -- EBC25. THE MENU RULE (Henrik, field 2026-07-25). `!box ammo` does not
+    -- withdraw -- it opens a MENU. He may browse for a minute, take one thing,
+    -- take several, or cancel. So the command dirties nothing; it ARMS, and
+    -- inventory movement inside that window is the proof. Cancel it and the
+    -- whole episode costs zero packets.
+    local ecCW3 = ec.isCW;
+    ec.isCW = function() return true; end
+    ec.lockedReason = nil;
+    ec.cat, ec.counts, ec.dirty = {}, {}, {};
+    ecNow = ecNow + 200;
+    ecCount(15, 21302, 40);
+    ec.dirty = {};
+    ec._armMenu();
+    check('EBC25 the command alone dirties NOTHING -- a menu is not a withdrawal',
+        ec.categoryFresh(15, math.huge) == true and ec.menuOpen() == true, true);
+    ec.markDirty(15, 'test');
+    check('EBC25b while the menu is open we stay OFF the wire, dirty or not (its own\n'
+       .. '      list traffic would answer our request)', ec.ensureCategory(15, math.huge), false);
+    ecNow = ecNow + ec.MENU_ARM + 1;
+    check('EBC25c once the menu is forgotten, the re-count goes out',
+        ec.ensureCategory(15, math.huge), true);
+    ecCount(15, 21302, 40);
+    ec.dirty = {};
+    ec._armMenu();
+    check('EBC25d items actually moving is the proof we act on',
+        ec._onInventoryChange() == true and ec.categoryFresh(15, math.huge) == false, true);
+    -- One withdrawal is SEVERAL inventory packets (field log: two marks either
+    -- side of a single "You obtain" line). A burst must read as one event --
+    -- and as exactly one, not zero: the mark still has to happen.
+    ecNow = ecNow + 100;               -- clear of the settle EBC25d opened
+    ecCount(15, 21302, 40);
+    ec.dirty = {};
+    ec._armMenu();
+    ec.traceReset();
+    ec._onInventoryChange();
+    ec._onInventoryChange();
+    ec._onInventoryChange();
+    local ecMarks = 0;
+    for _, e in ipairs(ec.trace) do
+        if e.what:find('items moved after', 1, true) ~= nil then ecMarks = ecMarks + 1; end
+    end
+    check('EBC25d2 a burst of inventory packets is ONE mark, not one per packet',
+        ecMarks == 1 and ec.categoryFresh(15, math.huge) == false, true);
+    ecCount(15, 21302, 40);
+    ec.dirty = {};
+    ec._armMenu();
+    ecNow = ecNow + ec.MENU_ARM + 1;
+    check('EBC25e a CANCELLED menu just expires, having dirtied nothing',
+        ec.categoryFresh(15, math.huge) == true and ec.menuOpen() == false, true);
+    check('EBC25f an inventory change with no menu armed is not our business at all',
+        ec._onInventoryChange() == false and ec.categoryFresh(15, math.huge) == true, true);
+    ec._armMenu();
+    ec.rescan();
+    check('EBC25g Rescan outranks an open menu', ec.menuOpen(), false);
+
+    -- EBC26. The party-line repair, BRAKED. The field log showed it firing about
+    -- once a second in a loop: repair -> re-count -> overlapped again -> repair.
+    -- A menu being open explains the traffic, and outside that one repair per
+    -- REPAIR_GAP is enough -- a repair loop is the spam this design exists to avoid.
+    ec.cat, ec.counts, ec.dirty = {}, {}, {};
+    ecNow = ecNow + 200;
+    ecCount(15, 21302, 40);
+    ec._armMenu();
+    ec._onPacket(pk({ [0x04] = 0 }));                  -- foreign stream, menu open
+    check('EBC26 no repair while a menu is open: that traffic is the menu, not a thief',
+        ec.categoryFresh(15, math.huge), true);
+    ecNow = ecNow + ec.MENU_ARM + 1;
+    ecCount(15, 21302, 40);
+    ec.dirty = {};
+    ec._onPacket(pk({ [0x04] = 0 }));
+    check('EBC26b outside a menu, a foreign stream repairs the commit it may have stolen',
+        ec.categoryFresh(15, math.huge), false);
+    ecCount(15, 21302, 40);
+    ec.dirty = {};
+    ec._onPacket(pk({ [0x04] = 0 }));
+    check('EBC26c ...but at most once per REPAIR_GAP', ec.categoryFresh(15, math.huge), true);
+    ecNow = ecNow + ec.REPAIR_GAP + 1;
+    ecCount(15, 21302, 40);
+    ec.dirty = {};
+    ec._onPacket(pk({ [0x04] = 0 }));
+    check('EBC26d after the gap it protects again', ec.categoryFresh(15, math.huge), false);
+    ec.traceReset();
+    ec._onPacket(pk({ [0x04] = 0 }));
+    ec._onPacket(pk({ [0x04] = 1, [0x08] = 0x36, [0x09] = 0x53, [0x0A] = 15, [0x0C] = 5 }));
+    ec._onPacket(pk({ [0x04] = 2, [0x05] = 0 }));
+    check('EBC26e a foreign stream is NAMED in the log -- rows + source, so the next\n'
+       .. '      field run can identify whose it is', (function()
+            for _, e in ipairs(ec.trace) do
+                if e.what:find('^foreign list ended: rows=1 source=0') ~= nil then return true; end
+            end
+            return false;
+        end)(), true);
+    ec.isCW = ecCW3;
+
+    -- The gates, with the CW door propped open. Headless has no AshitaCore, so
+    -- the send is a guarded no-op -- these pin the DECISION, not the wire.
+    local ecCW = ec.isCW;
+    ec.isCW = function() return true; end
+    ec.lockedReason = nil;
+    ec.cat, ec.counts, ec.dirty = {}, {}, {};
+    ecNow = ecNow + 100;
+    ecCount(15, 21302, 40);
+    ecNow = ecNow + 100;
+    check('EBC20 a believed category is not re-asked', ec.ensureCategory(15, math.huge), false);
+    ec.markAllDirty(ec.SETTLE);
+    check('EBC20b dirty, but the settle window holds the re-count back until the\n'
+       .. '      `!box ...` we just saw can reach the server',
+        ec.ensureCategory(15, math.huge), false);
+    ecNow = ecNow + ec.SETTLE + 0.1;
+    check('EBC20c once it has had time to land, the re-count goes out',
+        ec.ensureCategory(15, math.huge), true);
+    ecCount(15, 21302, 40);
+    ecNow = ecNow + 100;
+    ec.markAllDirty(ec.SETTLE);
+    ec.rescan();
+    check('EBC20d Rescan outranks the settle window (a click means count NOW)',
+        ec.ensureCategory(15, math.huge), true);
+
+    -- The ACK is the ONLY repair for a send-time debit. If it never comes, we
+    -- must stop believing what we debited rather than keep a number we cannot
+    -- defend. (Crafting fires no withdraws, so this costs nothing there.)
+    ecCount(15, 21302, 40);
+    ec.dirty = {};
+    -- Driven through the REAL withdraw (not the _beginBatch seam): the categories
+    -- a repair dirties are the ones the send-time debit filled in, so the fill
+    -- has to be on the tested path too.
+    check('EBC21pre a real withdraw fires and debits (40 - 5)',
+        ec.withdraw(21302, 5) == true and ec.boxCount(21302, 15) == 35, true);
+    ecNow = ecNow + ec.BUSY_HOLD + 1;
+    check('EBC21 a batch that never ACKed stops believing the categories it debited',
+        ec.isBusy() == false and ec.categoryFresh(15, math.huge) == false, true);
+    ecCount(15, 21302, 40);
+    ec.dirty = {};
+    check('EBC21b withdrawBatch fires and debits the same way',
+        ec.withdrawBatch({ { id = 21302, qty = 5 } }) == 1 and ec.boxCount(21302, 15) == 35, true);
+    ecNow = ecNow + ec.BUSY_HOLD + 1;
+    check('EBC21c a lost ACK repairs what the BATCH debited',
+        ec.isBusy() == false and ec.categoryFresh(15, math.huge) == false, true);
+    ec.isCW = ecCW;
+
+    -- Source shape, because no runtime check can see this one: a local declared
+    -- AFTER its use compiles to a nil GLOBAL read, silently. M.rescan uses the
+    -- entwatch handle, so the require must come first -- it did not, and the box
+    -- re-sweep half of Rescan had never run.
+    local ecFh = io.open('feature/eboxclient.lua', 'r');
+    local ecSrc = ecFh:read('*a'); ecFh:close();
+    check('EBC22 entwatch is required BEFORE M.rescan reaches for it',
+        (ecSrc:find('local _ewok, _ew = pcall%(require') or math.huge)
+            < (ecSrc:find('function M%.rescan') or 0), true);
+
+    -- EBC23. The traffic trace (/dl debug ebox). A design whose whole claim is
+    -- "this barely sends anything" needs to be watchable, or the claim is a
+    -- hope. RECORDING is all the packet thread may do; printing is eboxtrace's.
+    ec.traceReset();
+    for i = 1, ec.TRACE_MAX + 5 do ec._trace('>', 'GET_CATEGORY cat=' .. i); end
+    check('EBC23 the ring is bounded -- a long session cannot grow it forever',
+        #ec.trace, ec.TRACE_MAX);
+    check('EBC23b the OLDEST lines fall off the front', ec.trace[1].what, 'GET_CATEGORY cat=6');
+    check('EBC23c sends are counted, and split by kind',
+        ec.stats.out == ec.TRACE_MAX + 5
+        and ec.stats.byKind.GET_CATEGORY == ec.TRACE_MAX + 5, true);
+    ec._trace('<', 'LIST cat=15 rows=3');
+    ec._trace('*', 'dirty ALL (zone-in 0x00A)');
+    check('EBC23d receives count separately; an event is neither',
+        ec.stats.inn == 1 and ec.stats.out == ec.TRACE_MAX + 5, true);
+    ec.traceReset();
+    check('EBC23e reset clears the log AND the counters',
+        #ec.trace == 0 and ec.stats.out == 0 and ec.stats.inn == 0
+        and next(ec.stats.byKind) == nil, true);
+
+    -- The PRODUCTION call sites, not just the _trace seam. Everything above
+    -- drives _trace by hand, so it pins the arithmetic and nothing else: every
+    -- M._trace in eboxclient could be deleted and this suite would still be
+    -- green. That matters more here than usual, because the readout IS the E5-2
+    -- field test -- "synth at a box, confirm zero traffic" PASSES by showing an
+    -- empty log, which is exactly what a silently dead instrument shows.
+    local function ecTraced(dir, pat)
+        for _, e in ipairs(ec.trace) do
+            if e.dir == dir and e.what:find(pat) then return true; end
+        end
+        return false;
+    end
+    local ecCW2 = ec.isCW;
+    ec.isCW = function() return true; end
+    ec.lockedReason = nil;
+    ec.cat, ec.counts, ec.dirty = {}, {}, {};
+    ecNow = ecNow + 100;
+    ec.traceReset();
+    check('EBC23f a real GET_CATEGORY goes out', ec.ensureCategory(15, math.huge), true);
+    ecCount(15, 21302, 40);          -- a real CLEAR -> ITEM -> END_LIST commit
+    ec.withdraw(21302, 5);           -- a real WITHDRAW
+    ec.markDirty(15, 'EBC23g');      -- a real dirty event
+    ec.isCW = ecCW2;
+    check('EBC23g every production trace point records: send, inbound, dirty',
+        ecTraced('>', '^GET_CATEGORY cat=15') and ecTraced('<', '^LIST cat=15')
+        and ecTraced('>', '^WITHDRAW id=21302 x5') and ecTraced('*', '^dirty cat=15')
+        and ec.stats.byKind.GET_CATEGORY == 1 and ec.stats.byKind.WITHDRAW == 1
+        and ec.stats.inn >= 1, true);
+
+    -- EBT. eboxtrace -- the readout itself. Pure over a stand-in client, so the
+    -- shape of what Henrik reads in the field is pinned without a game.
+    local et = dofile('feature/eboxtrace.lua');
+    check('EBT1 ages read as time, not float noise',
+        et._dur(0.4) .. '/' .. et._dur(12.34) .. '/' .. et._dur(124) .. '/' .. et._dur(3725),
+        '0.4s/12.3s/2m04s/1h02m');
+    check('EBT2 the argument is the SECOND word (the first is the topic name)',
+        et._word('ebox on') .. '|' .. et._word('EBOX Reset') .. '|'
+            .. et._word('ebox') .. '|' .. et._word(nil), 'on|reset||');
+
+    local etFake = {
+        _now        = function() return 1000; end,
+        BOX_RANGE   = 5,
+        busy        = false,
+        isCW        = function() return true; end,
+        boxDistance = function() return 3.25; end,
+        searchBusy  = function() return false; end,
+        cat   = { [15] = {}, [6] = {} },
+        dirty = { [6] = true },
+        stats = { out = 3, inn = 2, byKind = { GET_CATEGORY = 2, WITHDRAW = 1 },
+                  since = 940, lastOutAt = 985 },
+        trace = { { at = 985, dir = '>', what = 'GET_CATEGORY cat=15 (verify)' },
+                  { at = 986, dir = '<', what = 'LIST cat=15 rows=7' } },
+        echo  = false,
+    };
+    local etL = table.concat(et.lines(etFake), '\n');
+    check('EBT3 the headline is how much, over how long',
+        etL:find('3 packets sent, 2 received, over 1m00s', 1, true) ~= nil, true);
+    check('EBT4 split by kind, so "what is it sending" is answerable',
+        etL:find('GET_CATEGORY x2', 1, true) ~= nil and etL:find('WITHDRAW x1', 1, true) ~= nil, true);
+    check('EBT5 the gates line answers "why is it quiet"',
+        etL:find('Crystal Warrior', 1, true) ~= nil
+        and etL:find('IN RANGE', 1, true) ~= nil
+        and etL:find('last sent 15.0s ago', 1, true) ~= nil, true);
+    check('EBT6 believed vs dirty = what the next verify will spend a packet on',
+        etL:find('believed 15 | dirty, will re-count: 6', 1, true) ~= nil, true);
+    check('EBT7 the log carries age and direction',
+        etL:find('15.0s ago  > GET_CATEGORY cat=15 (verify)', 1, true) ~= nil, true);
+    check('EBT8 a client that failed to load says so rather than erroring',
+        et.lines(nil)[1]:find('failed to load', 1, true) ~= nil, true);
 
     -- RS. restockwatch -- E-Box Restock config + the two PURE cores (ADR 0016;
     -- docs/design/ebox-restock.md). No packets/engine: the union+override and the
@@ -8816,6 +9753,83 @@ end)();
         rs.setTarget('character', nil, 1, 24) and rs.character[1].target == 24, true);
     check('RS8f removeItem drops it',
         rs.removeItem('job', 'RNG', 3) and #rs.jobs.RNG == 0, true);
+
+    -- RS9. otherBagNeed -- the YELLOW icon's question (v2 grill C2): which
+    -- tracked items do you already own, but not where you can use them? It
+    -- qualifies only when Inventory alone is short AND another field bag holds
+    -- some, which is exactly when the Inventory-only plan differs from the
+    -- field-bag plan. Equal plans would mean a second icon doing the first's job.
+    local rsInv   = { [1] = 1,  [2] = 12, [3] = 0 };
+    local rsOther = { [1] = 11, [2] = 0,  [3] = 0 };
+    local rsYCtx  = { inv   = function(id) return rsInv[id]   or 0; end,
+                      other = function(id) return rsOther[id] or 0; end };
+    local rsYEnt  = { { id = 1, name = 'Grape Daifuku', target = 12 },
+                      { id = 2, name = 'Silent Oil',    target = 12 },
+                      { id = 3, name = 'Echo Drops',    target = 12 } };
+    local rsYn = rs.otherBagNeed(rsYEnt, rsYCtx);
+    check('RS9 only the item short in Inventory AND held in another bag', #rsYn, 1);
+    check('RS9b it reports where it is and what the box must cover',
+        rsYn[1].id == 1 and rsYn[1].inv == 1 and rsYn[1].other == 11 and rsYn[1].want == 11, true);
+    check('RS9c at target in Inventory -> nothing to do',
+        rs.needsOtherBag({ rsYEnt[2] }, rsYCtx), false);
+    check('RS9d short but nothing in the other bags -> the green icon covers it',
+        rs.needsOtherBag({ rsYEnt[3] }, rsYCtx), false);
+    check('RS9e the divergence itself: field-bag plan fetches nothing, Inventory-only plan fetches 11',
+        (function()
+            local box = function() return 99; end;
+            local st  = function() return 12;  end;
+            local green = rs.plan({ rsYEnt[1] }, { freeSlots = 9, inBox = box, stackOf = st,
+                onHand = function(id) return (rsInv[id] or 0) + (rsOther[id] or 0); end });
+            local yellow = rs.plan({ rsYEnt[1] }, { freeSlots = 9, inBox = box, stackOf = st,
+                onHand = function(id) return rsInv[id] or 0; end });
+            return #green.fetches == 0 and yellow.fetches[1].qty == 11;
+        end)(), true);
+    check('RS9f no ctx = no claims (never invent a reason to show the icon)',
+        #rs.otherBagNeed(rsYEnt, nil), 0);
+
+    -- AC. data/ammocontainers -- the quiver/pouch pairing (Henrik, field
+    -- 2026-07-25). `!box ammo` hands back CONTAINERS: a Blind Bolt withdrawal
+    -- arrives as a Blind Bolt Quiver, stack 12, each worth 99 bolts -- so one
+    -- Inventory slot holds 1188 and NONE of it reads as "Blind Bolt". Restock
+    -- saw on-hand 0 and kept offering to fetch more. Generated from the server's
+    -- own item scripts, because the naming is irregular ("Beetle Arrow" ->
+    -- "Beetle Quiver" drops the word, "Blind Bolt" -> "Blind Bolt Quiver"
+    -- appends it) and the catalog abbreviates the containers on top of that.
+    local ac = dofile('data/ammocontainers.lua');
+    local acN = 0; for _ in pairs(ac) do acN = acN + 1; end
+    check('AC1 the generated pairing table loads with rows', acN > 50, true);
+    check('AC2 a bolt quiver names its ammo and its multiplier',
+        ac[5334] ~= nil and ac[5334].id == 18150 and ac[5334].qty == 99, true);
+    check('AC3 an arrow quiver too -- whose name DROPS the word "Arrow"',
+        ac[4221] ~= nil and ac[4221].name == 'Beetle Quiver' and ac[4221].qty == 99, true);
+    check('AC4 bullets use pouches, and dweomer/oberon are distinct ids -- the\n'
+       .. '      oberon script header claims 5822 (dweomer\'s); item_basic.sql is the authority',
+        ac[5822] ~= nil and ac[5823] ~= nil
+        and ac[5822].id == 19198 and ac[5823].id == 19199, true);
+    check('AC5 every row is usable: real container id, real ammo id, positive qty, a name',
+        (function()
+            for cid, r in pairs(ac) do
+                if type(cid) ~= 'number' or cid <= 0 then return 'bad container id'; end
+                if type(r) ~= 'table' or (tonumber(r.id) or 0) <= 0
+                   or (tonumber(r.qty) or 0) <= 0
+                   or type(r.name) ~= 'string' or r.name == '' then
+                    return 'bad row for container ' .. tostring(cid);
+                end
+            end
+            return true;
+        end)(), true);
+
+    -- ...and the arithmetic the panel and the nudge share. Containers count
+    -- toward "do I have enough", never toward "is it in my Inventory" -- you
+    -- cannot shoot a quiver, so the yellow icon must not treat one as ammo.
+    local rui = dofile('ui/restockui.lua');
+    check('AC6 stock = loose + what the containers hold',
+        rui._stockOf({ [18150] = 12 }, { [18150] = { qty = 198, n = 2 } }, 18150), 210);
+    check('AC6b no containers -> just the loose count',
+        rui._stockOf({ [18150] = 12 }, {}, 18150), 12);
+    check('AC6c containers only -> the whole stock is boxed',
+        rui._stockOf({}, { [18150] = { qty = 1188, n = 12 } }, 18150), 1188);
+    check('AC6d nothing at all -> 0', rui._stockOf({}, {}, 18150), 0);
 
     -- level: persisted per entry (GUI sort data; the engine ignores it --
     -- the fmt-2 round-trip above pins the serializer side)
@@ -9161,6 +10175,24 @@ end)();
     check('DBT0 debug router loads headless', type(dbg), 'table');
     check('DBT1 ls is canonical', dbg._topic('ls'), 'ls');
     check('DBT2 lockstyle aliases to ls', dbg._topic('lockstyle'), 'ls');
+    check('DBT2b ebox is a topic (alias: box) -- E-Box traffic readout',
+        dbg._topic('ebox') == 'ebox' and dbg._topic('BOX') == 'ebox', true);
+
+    -- DBT2c-2h. THE PREFIX. '^/dlac?' is "/dla with an optional c", not "/dl or
+    -- /dlac" -- so `/dl debug <topic>` never reached this router at all, and a
+    -- handler that does not fire is indistinguishable from a command that does
+    -- nothing. Field-found 07-25 (`/dl debug ebox` printed nothing). Pin BOTH
+    -- prefixes, and pin that the bare/on/off forms still fall through to
+    -- gearui's dev-buttons toggle, the namespace's original tenant.
+    check('DBT2c /dl debug <topic> reaches the router', dbg._afterDebug('/dl debug ebox'), 'ebox');
+    check('DBT2d /dlac debug <topic> too', dbg._afterDebug('/dlac debug ebox'), 'ebox');
+    check('DBT2e arguments ride along', dbg._afterDebug('/dl debug ebox on'), 'ebox on');
+    check('DBT2f the bare form is "" (not nil): gearui still owns it',
+        dbg._afterDebug('/dl debug') == '' and dbg._afterDebug('/dlac debug  ') == '', true);
+    check('DBT2g another command is not ours',
+        dbg._afterDebug('/dl check') == nil and dbg._afterDebug('/dldebug ebox') == nil, true);
+    check('DBT2h and neither is a longer prefix that merely starts the same way',
+        dbg._afterDebug('/dlacx debug ebox'), nil);
     check('DBT3 case-insensitive', dbg._topic('LOCKSTYLE'), 'ls');
     check('DBT4 unknown topic is nil (usage)', dbg._topic('fish'), nil);
     check('DBT5 absent topic is nil (usage)', dbg._topic(nil), nil);

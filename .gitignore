@@ -11,6 +11,11 @@ debug/
 # catalog.lua (shipped) is what users need. Files stay on disk; this only stops tracking.
 tools/
 
+# Hand-off bundles built for people outside the project (share/mob-stats = the mob
+# EVA/ACC calculator + its write-up). Self-contained copies, meant to be zipped and
+# sent, never tracked -- the canonical source stays where it lives in the repo.
+share/
+
 # Python bytecode (from running the tools locally)
 __pycache__/
 *.pyc

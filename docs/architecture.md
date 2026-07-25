@@ -36,7 +36,8 @@ gear/      the gear pipeline: gearoptim, gearimport, gearexport, gearcheck, gear
            equip-bag door)
 feature/   self-contained features: lockstyle, macrobook, useitem, craftwatch, augments,
            pinwatch, helmwatch, fishwatch, fishcalc (pure fishing math -- headless),
-           ammowatch (AutoAmmo config state)
+           ammowatch (AutoAmmo config state), synthrun (repeat-Last-Synth batches:
+           types /lastsynth N times, verifies each on s2c 0x030, reports on 0x06F)
 lib/       generic helpers: cmdqueue, statefile, entwatch (the central entity
            watcher: subscription registry + one shared scan, all the
            entity-array idioms in one place)
@@ -96,7 +97,7 @@ Key points: `package.path` shim (dlac.lua:27-29); per-char `gear.lua` preload in
 shim (job/level from AshitaCore) (82-107); module load loop (111-119).
 Requires `common` and `chatfmt`, then loads a folder-qualified list — `gear`,
 `feature\augments`, `gear\gearoptim`, `gear\gearimport`, `gear\gearexport`,
-`feature\useitem`, `feature\craftwatch`, `ui\craftbar`, `feature\helmwatch`,
+`feature\useitem`, `feature\craftwatch`, `feature\synthrun`, `ui\craftbar`, `feature\helmwatch`,
 `ui\helmbar`, `feature\fishwatch`, `ui\fishbar`, `feature\lockstyle`, `ui\gearui`;
 everything else (`utils`, `dispatch`, `gear\setmanager`, `ui\triggersui`,
 `ui\automationsui`, `gear\profilesets`, `gear\gearcheck`) loads transitively. That list is built by string
@@ -236,8 +237,13 @@ Every feature that wants a slot registers a **Claim** with the Arbiter instead o
 directly; per slot the Arbiter walks a strict, draggable rank list top-down and the first
 claimant with an opinion wins. The rank is one per character, persisted as the `arbstate`
 Statefile (writer: `feature/arbwatch.lua`; reader/default/sanitize: `dispatch.arbOrder`,
-one vocabulary). Default order **Pins > Locks (veto) > AutoAmmo > MaxMP > Craft > HELM >
-Fishing > Triggers (floor)**.
+one vocabulary). Default order **Naked > Pins > Locks (veto) > AutoAmmo > MaxMP > Craft >
+HELM > Fishing > Chocobo > Triggers (floor)**.
+
+A rank row the character's `arbstate` file does **not** list is restored at its *default
+position*, not appended (v122) -- every existing file predates every new claimant, and
+appending would have shipped `Naked` below `Locks` for everyone who had ever opened the
+Priority section. That one positional law subsumes the old append and the Triggers-last pin.
 
 **The Claim record shape** — deliberately tiny, because a new claimant must be *one
 registry entry + one rank row, never a new engine arm*. (**AutoAcc is NOT a future
@@ -248,6 +254,9 @@ the Arbiter. Its effect is part of whatever the floor or a claimant resolves.)
 - A **Claim** is just `{ [SlotKey] = itemName }` — the slots a feature wants to dress, one
   item per slot. The Locks veto is a Claim whose values are the `M.LOCK_HELD` sentinel
   ("keep what is worn"); the Triggers floor is the merged trigger-overlay table.
+- **Naked** (ADR 0021) is the worked example of the shape: a Claim of `'remove'` on all 16
+  slots, ranked first. Because it is an ordinary draggable row, "naked except my pins" is a
+  drag rather than a code path -- put Pins (or Locks) above it.
 - To join the Arbiter a claimant adds exactly two things: **(1)** its name to
   `ARB_ORDER_DEFAULT` (+ the arbwatch UI list), and **(2)** in `M.dispatch`,
   `claims['<Name>'] = <its slot→item table>` plus — if it applies a discrete overlay —
@@ -696,7 +705,10 @@ typed use — the deafness bugs came from BOTH states claiming `/dl`.
 
 ## The `/dl` (= `/dlac`) command surface
 
-Registered across six handlers; each blocks only its own subcommands.
+Registered across ~20 handlers (one per feature module, plus the engine's); each blocks only
+its own subcommands. A new engine subcommand must be added to the **whitelist** at the top of
+`dispatch.lua`'s command handler as well as its branch, or it returns in silence and looks
+like the command does not exist.
 
 | Command | Module | Does |
 |---|---|---|
@@ -707,6 +719,7 @@ Registered across six handlers; each blocks only its own subcommands.
 | `/dl view_ids [on\|off]` | gearui | Add item id + model id to every equipment tooltip |
 | `/dl mode <name> [on\|off\|toggle\|<value>]` | dispatch | Flip a mode (no arg: list) |
 | `/dl lock <slot\|all> [on\|off\|toggle]` | dispatch | Engine-owned slot locks |
+| `/dl naked [on\|off\|toggle]` / `/dl dress` | dispatch | Strip every slot and hold it empty -- an Arbiter Claim ranked first, **not** a lock (ADR 0021). Bare `/dl naked` always arms; `/dl dress` releases. Dies on a Reload LAC, survives an engine self-swap |
 | `/dl why` | dispatch | Last-dispatch trace + per-slot **claimant** attribution (winner + rank, "stopped by Locks", "Triggers" floor) |
 | `/dl prio` | dispatch | The Arbiter's live rank + per-claimant claim status (ADR 0012) |
 | `/dl env` | dispatch | Day/weather + per-element obi math |

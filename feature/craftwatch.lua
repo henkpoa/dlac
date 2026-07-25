@@ -380,6 +380,26 @@ M._enabledAt = 0;         -- os.time() of the last enable -- the engine's craft-
                           -- arbitration key (v59: both switches on -> newer stamp wins)
 local _stateLoaded = false;
 
+-- Seconds between synths for the bar's 2..6 repeat buttons (feature/synthrun).
+-- A SETTING, not state: it persists in full, unlike `enabled`. Lives here
+-- because craftwatch owns craftstate.lua -- a second writer would clobber it.
+-- 30 is Henrik's default. The floor is 20 and it is field truth, not source
+-- math: the server would allow ~17s, but the client's synthesis animation is
+-- FRAME-TIED, so the real interval is ~22s in a quiet zone and longer in a
+-- frame-heavy one like Lower Jeuno. Below the floor the client silently
+-- refuses to send and synths vanish.
+M.synthWait = 30;
+local WAIT_DEFAULT, WAIT_MIN, WAIT_MAX = 30, 20, 120;
+M.WAIT_MIN, M.WAIT_MAX = WAIT_MIN, WAIT_MAX;
+
+local function clampWait(n)
+    n = math.floor(tonumber(n) or WAIT_DEFAULT);
+    if n < WAIT_MIN then return WAIT_MIN; end
+    if n > WAIT_MAX then return WAIT_MAX; end
+    return n;
+end
+M._clampWait = clampWait;   -- test seam
+
 local function craftStatePath()
     local dir = kiCharDir();
     return dir and (dir .. 'craftstate.lua') or nil;
@@ -389,9 +409,9 @@ local function saveCraftState()
         local p = craftStatePath();
         if p == nil then return; end
         local f = io.open(p, 'wb'); if f == nil then return; end
-        f:write(string.format('return { craft = %q, goal = %q, enabled = %s, at = %d }\n',
+        f:write(string.format('return { craft = %q, goal = %q, enabled = %s, at = %d, wait = %d }\n',
             tostring(M.activeCraft or ''), tostring(M.goal or 'hq'), tostring(M.enabled == true),
-            M._enabledAt or 0));
+            M._enabledAt or 0, clampWait(M.synthWait)));
         f:close();
     end);
 end
@@ -411,8 +431,12 @@ function M.loadCraftState()
                     M.goal = t.goal;
                 end
                 if type(t.craft) == 'string' and t.craft ~= '' then M.activeCraft = t.craft; end
+                -- The repeat-synth wait. Absent on a state file written before
+                -- this build -> the default stands, which is what a fresh
+                -- character gets too.
+                if tonumber(t.wait) ~= nil then M.synthWait = clampWait(t.wait); end
                 -- `enabled` is NOT restored: the switch starts OFF each session
-                -- (no craft gear glued on at login). craft+goal DO persist.
+                -- (no craft gear glued on at login). craft+goal+wait DO persist.
             end
         end
     end);
@@ -423,6 +447,18 @@ end
 function M.getGoal() M.loadCraftState(); return M.goal or 'hq'; end
 function M.getCraft() M.loadCraftState(); return M.activeCraft; end
 function M.isEnabled() M.loadCraftState(); return M.enabled == true; end
+
+-- Repeat-synth wait, in seconds (feature/synthrun reads this every cooldown, so
+-- editing the box mid-batch takes effect on the NEXT gap, not retroactively).
+function M.getSynthWait() M.loadCraftState(); return clampWait(M.synthWait); end
+function M.setSynthWait(n)
+    M.loadCraftState();
+    local v = clampWait(n);
+    if v == M.synthWait then return v; end
+    M.synthWait = v;
+    saveCraftState();
+    return v;
+end
 
 -- Ensure the manifest's craft ladders are current. Regenerate when the on-disk
 -- schema is older than this build (a fmtver-5 manifest lacks the fmtver-6

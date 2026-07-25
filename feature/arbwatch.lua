@@ -15,8 +15,13 @@
     So M.order reads the file as-is and it is never cleared.
 
     File format (read by dispatch.ensureArbState / M.arbOrder):
-        return { order = { "Pins", "Locks", "AutoAmmo", "MaxMP",
-                           "Craft", "HELM", "Fishing", "Triggers" } }
+        return { order = { "Naked", "Pins", "Locks", "AutoAmmo", "MaxMP",
+                           "Craft", "HELM", "Fishing", "Chocobo", "Triggers" } }
+
+    A row the file does not list is restored at its DEFAULT position, not appended
+    (v122) -- so every existing file, written before a new claimant existed, still
+    ranks that claimant where it belongs. Naked is why: appended it would land
+    under Locks and lose every slot it exists to win.
 
     Pure at load (no Ashita/file touches until called), so both Lua states and the
     headless suite can require it (tests AB*).
@@ -31,7 +36,7 @@ local M = {};
 -- default and reimplements the same drop-unknown/append-missing policy.
 local _dpok, dsp = pcall(require, 'dlac\\dispatch');
 local hasDispatch = _dpok and type(dsp) == 'table';
-local FALLBACK_DEFAULT = { 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
+local FALLBACK_DEFAULT = { 'Naked', 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
                            'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' };
 
 -- Rows a player CANNOT pick up: only the Triggers floor (always last -- the
@@ -49,24 +54,36 @@ function M.defaultOrder()
 end
 
 -- Sanitize a raw { order = ... } table to a COMPLETE strict order: unknown rows
--- dropped, duplicates collapsed, missing known rows appended in default order.
--- Delegates to the engine's arbOrder when present (one truth); the fallback is
--- the same policy so headless tests still exercise the shape.
+-- dropped, duplicates collapsed, missing known rows restored AT THEIR DEFAULT
+-- POSITION. Delegates to the engine's arbOrder when present (one truth); the
+-- fallback below is the same policy, for a load where dispatch is absent.
+--
+-- KEEP THE TWO IN STEP. This branch is dead whenever dispatch loads -- which is
+-- both Lua states and the whole AB* suite -- so a drifting mirror ships GREEN
+-- and only shows up on a broken install. Test NK25 forces this path by hiding
+-- dispatch from package.loaded; if you change dispatch.arbOrder, change this too.
 function M.sanitize(st)
     if hasDispatch and type(dsp.arbOrder) == 'function' then
         return dsp.arbOrder(st);
     end
     local given = (type(st) == 'table' and type(st.order) == 'table') and st.order or nil;
     local out, seen = {}, {};
-    local known = {};
-    for _, n in ipairs(FALLBACK_DEFAULT) do known[n] = true; end
+    local known, defIdx = {}, {};
+    for i, n in ipairs(FALLBACK_DEFAULT) do known[n] = true; defIdx[n] = i; end
     -- Triggers floor pinned last (the dispatch.arbOrder invariant, mirrored so
     -- the headless-without-dispatch fallback agrees).
     for _, n in ipairs(given or {}) do
         if known[n] and not seen[n] and n ~= 'Triggers' then out[#out + 1] = n; seen[n] = true; end
     end
     for _, n in ipairs(FALLBACK_DEFAULT) do
-        if not seen[n] and n ~= 'Triggers' then out[#out + 1] = n; seen[n] = true; end
+        if not seen[n] and n ~= 'Triggers' then
+            local at = #out + 1;
+            for i, have in ipairs(out) do
+                if (defIdx[have] or 0) > defIdx[n] then at = i; break; end
+            end
+            table.insert(out, at, n);
+            seen[n] = true;
+        end
     end
     out[#out + 1] = 'Triggers';
     return out;

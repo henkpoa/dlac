@@ -204,6 +204,11 @@ for _, k in ipairs({
     'getEquippedId', 'equipToSlot', 'engineLocks', 'lacSlot', 'lockMirrorDirty',
     'wornSetTotals', 'renderStatsPanel', 'renderSlotGrid', 'renderSortCombo',
     'renderItemTooltip', 'setLabelOf',
+    -- ADR 0021. Needed here and not only in NKU*: those checks install their OWN
+    -- stubs onto host.services, so deleting these three from gearui's provide{}
+    -- would leave both suites green while the Equipped tab's Naked switch (which
+    -- guards on S.engineNaked ~= nil) silently vanished.
+    'engineNaked', 'setEngineNaked', 'isNative',
 }) do
     check('S12 service ' .. k, S[k] ~= nil, true);
 end
@@ -1169,9 +1174,11 @@ end)();
     -- render lives BELOW the imgui guard (nil headless, like fishui/ammoui); the
     -- pure display seams above it are what the smoke can exercise.
     check('S191 priorityui exposes the pure display seams', type(pui.buildRows), 'function');
-    -- source/control hints exist for all six claimants + the two special rows.
+    -- source/control hints exist for EVERY row the engine can rank -- driven off
+    -- the real default order, so a new claimant cannot ship with a blank hover.
+    local aw = require('dlac\\feature\\arbwatch');
     check('S192 every row has a source/control hint', (function()
-        for _, n in ipairs({ 'Pins', 'Locks', 'AutoAmmo', 'MaxMP', 'Craft', 'HELM', 'Fishing', 'Triggers' }) do
+        for _, n in ipairs(aw.defaultOrder()) do
             if type(pui.SOURCE[n]) ~= 'string' or pui.SOURCE[n] == '' then return n; end
             if type(pui.HINT[n]) ~= 'string' or pui.HINT[n] == '' then return n .. ' (hint)'; end
         end
@@ -1185,9 +1192,19 @@ end)();
     -- buildRows: only the Triggers floor is non-draggable now (step 3 folded the
     -- Locks veto into the list). Locks drags but stays a SPECIAL row (distinct
     -- color); the six claimants drag.
-    local aw = require('dlac\\feature\\arbwatch');
     local rows = pui.buildRows(aw.defaultOrder(), {});
-    check('S196 buildRows yields all nine rows in order', #rows, 9);
+    check('S196 buildRows yields a row per rank', #rows, #aw.defaultOrder());
+    -- Naked (ADR 0021) is an ordinary draggable row: "naked except my pins" is a
+    -- drag, so the day it becomes fixed the feature loses its escape hatch.
+    check('S196b Naked leads and drags', (function()
+        return rows[1].name == 'Naked' and rows[1].draggable == true;
+    end)(), true);
+    check('S196c the Naked row reports its live state', (function()
+        local on  = pui.buildRows({ 'Naked' }, { naked = true })[1];
+        local off = pui.buildRows({ 'Naked' }, { naked = false })[1];
+        return on.active == true and off.active == false
+           and on.status ~= off.status and on.status ~= '?' and off.status ~= '?';
+    end)(), true);
     check('S197 Locks is a draggable veto row; only Triggers is fixed', (function()
         local byName = {};
         for _, r in ipairs(rows) do byName[r.name] = r; end
@@ -1197,17 +1214,28 @@ end)();
     end)(), true);
     -- arbwatch loads under the ui tree and its pure move rule holds headless.
     check('S198 arbwatch loads headless', type(aw), 'table');
+    -- Indices follow the live default order, so they move when a row is added --
+    -- find the floor rather than hardcode its position.
+    local function idxOf(name)
+        for i, n in ipairs(aw.defaultOrder()) do if n == name then return i; end end
+    end
     check('S199 arbwatch.moveClaimant refuses to drag the Triggers floor',
-        aw.moveClaimant(aw.defaultOrder(), 9, -1), nil);
-    -- S199b: the Locks veto now drags -- raising it one step swaps it above Pins
-    -- (the absolute-veto position), and it never displaces the floor.
+        aw.moveClaimant(aw.defaultOrder(), idxOf('Triggers'), -1), nil);
+    -- S199b: the Locks veto drags -- raising it one step swaps it above Pins, and
+    -- it never displaces the floor. (Naked sits above both since v122.)
     check('S199b Locks drags up past Pins', (function()
-        local moved = aw.moveClaimant(aw.defaultOrder(), 2, -1);
-        return moved ~= nil and moved[1] == 'Locks' and moved[2] == 'Pins';
+        local moved = aw.moveClaimant(aw.defaultOrder(), idxOf('Locks'), -1);
+        if moved == nil then return false; end
+        local li, pi;
+        for i, n in ipairs(moved) do if n == 'Locks' then li = i; elseif n == 'Pins' then pi = i; end end
+        return li == pi - 1;
     end)(), true);
     check('S199c Locks drags down under AutoAmmo', (function()
-        local moved = aw.moveClaimant(aw.defaultOrder(), 2, 1);
-        return moved ~= nil and moved[2] == 'AutoAmmo' and moved[3] == 'Locks';
+        local moved = aw.moveClaimant(aw.defaultOrder(), idxOf('Locks'), 1);
+        if moved == nil then return false; end
+        local li, ai;
+        for i, n in ipairs(moved) do if n == 'Locks' then li = i; elseif n == 'AutoAmmo' then ai = i; end end
+        return li == ai + 1;
     end)(), true);
 end)();
 
@@ -1272,6 +1300,13 @@ end)();
     -- replaces in place -- tab order is untouched). Stub the services its render
     -- touches (the real ones captured the nil imgui at load).
     package.loaded['imgui'] = IM;
+    -- gearfmt captured an EARLIER section's stub (a fixed field list), so its
+    -- wrapped-text helper dies mid-render on a name that list never had -- and the
+    -- pcall'd drives below would swallow it. Re-require gearfmt against THIS
+    -- block's catch-all stub so the render runs to completion; without that, an
+    -- "ok" assertion on the render can never be true and the NKU* checks below
+    -- (the only thing that catches a nil global in the toolbar) are untestable.
+    package.loaded['dlac\\gear\\gearfmt'] = nil;
     package.loaded['dlac\\ui\\equippedui'] = nil;
     local eqOk = pcall(require, 'dlac\\ui\\equippedui');
     check('S205 equippedui re-requires against a stub imgui', eqOk, true);
@@ -1330,6 +1365,61 @@ end)();
         check('S211 unlock queues /lac enable <slot> (the legacy heal)',
             string.find(ujoin, '/lac enable head', 1, true) ~= nil, true);
 
+        -- NKU. The Naked switch (ADR 0021), driven through the REAL render.
+        -- This is the only thing that catches an unknown Lua name in that block:
+        -- an unknown name is a silent nil GLOBAL, invisible to a load test, and
+        -- the renders above are pcall'd -- so these assert the pcall RESULT.
+        local keptN = { Sx.engineNaked, Sx.setEngineNaked, Sx.isNative };
+        local nakedState, setCalls = false, {};
+        Sx.engineNaked    = function() return nakedState; end
+        Sx.setEngineNaked = function(on) setCalls[#setCalls + 1] = (on == true); end
+        Sx.isNative       = function() return false; end
+        u.eqSelected = nil;
+        u.freeEquip = { false };  u._freePrev = false;
+        u.lockEquipped = { false };  u._lockPrev = false;
+
+        local okN = pcall(render, 'WHM', 75);
+        check('NKU1 the Equipped toolbar renders with the Naked switch present', okN, true);
+
+        nakedState = true;                                  -- armed: the red state line draws
+        local reds = 0;
+        local keptTC = IM.TextColored;
+        IM.TextColored = function(_, t)
+            if type(t) == 'string' and string.find(t, 'NAKED', 1, true) then reds = reds + 1; end
+        end
+        local okN2 = pcall(render, 'WHM', 75);
+        check('NKU2 it renders while ARMED too', okN2, true);
+        check('NKU2b and says so on the toolbar', reds >= 1, true);
+
+        -- Clicking it calls the ONE door (only the naked checkbox reports a click,
+        -- so Free equip and Floating equipment are not disturbed).
+        local keptCb = IM.Checkbox;
+        IM.Checkbox = function(label, t)
+            if type(label) == 'string' and string.find(label, 'eqnaked', 1, true) then
+                t[1] = false; return true;                  -- unchecking an armed switch
+            end
+            return false;
+        end
+        setCalls = {};
+        local okN3 = pcall(render, 'WHM', 75);
+        check('NKU3 clicking the switch renders cleanly', okN3, true);
+        check('NKU3b and calls setEngineNaked(false)',
+            #setCalls == 1 and setCalls[1] == false, true);
+
+        -- Free equip ON in LEGACY mode is the one state where stripping would
+        -- silently do nothing (LAC refuses to unequip a Disabled slot), so the
+        -- switch must not be clickable there.
+        setCalls = {};
+        u.freeEquip = { true };  u._freePrev = true;        -- ON, no edge (no /lac requeue)
+        local okN4 = pcall(render, 'WHM', 75);
+        check('NKU4 Free equip ON renders the switch as unavailable', okN4, true);
+        check('NKU4b and it cannot be clicked into a silent no-op', #setCalls, 0);
+
+        IM.Checkbox = keptCb;  IM.TextColored = keptTC;
+        Sx.engineNaked, Sx.setEngineNaked, Sx.isNative = keptN[1], keptN[2], keptN[3];
+        u.freeEquip = { false };  u._freePrev = false;
+        nakedState = false;
+
         AshitaCore = realAshita;
         for i, f in ipairs({ 'renderSlotGrid', 'renderStatsPanel', 'renderSortCombo',
             'candidatesForSlot', 'sortForDisplay', 'getEquippedId', 'displayName',
@@ -1341,7 +1431,9 @@ end)();
 
     -- restore the real (nil) imgui binding for anything downstream
     package.loaded['imgui'] = nil;
+    package.loaded['dlac\\gear\\gearfmt'] = nil;
     package.loaded['dlac\\ui\\equippedui'] = nil;
+    pcall(require, 'dlac\\gear\\gearfmt');
     pcall(require, 'dlac\\ui\\equippedui');
 end)();
 
@@ -1448,14 +1540,161 @@ end)();
         check('HB4 idle: Begin/End balanced',   depth.win, 0);
         check('HB5 idle: colour stack balanced', depth.col, 0);
 
-        activeStub = { key = 'helm', name = 'HELM' };   -- lock: HELM active
-        ui._hobbySel = 'craft';                          -- render must force-select the active one
-        check('HB6 renders with an active hobby (lock branch)', pcall(hb.render), true);
+        activeStub = { key = 'helm', name = 'HELM' };   -- HELM armed...
+        ui._hobbySel = 'craft';                        -- ...and we are LOOKING at Craft
+        check('HB6 renders with an active hobby', pcall(hb.render), true);
         check('HB7 active: Begin/End balanced',   depth.win, 0);
         check('HB8 active: colour stack balanced', depth.col, 0);
-        check('HB9 render force-selected the active hobby', ui._hobbySel, 'helm');
+        -- REGRESSION GUARD (2026-07-25). render used to pin the selector to the
+        -- armed hobby EVERY FRAME and grey out the rest, so with Auto HELM or
+        -- Chocobo on -- both persist across relogs -- the Craft tab was never
+        -- drawn and the Last Synth button did not exist on screen. Exclusivity
+        -- is an ARMING rule (idleexcl.guardActivate), never a LOOKING rule.
+        check('HB9 render leaves the selection alone while another hobby is armed', ui._hobbySel, 'craft');
+        check('HB10 isShown reports the tab you are on, not the armed one', hb.isShown('craft'), true);
+        check('HB11 isShown is false for an armed-but-unviewed hobby', hb.isShown('helm'), false);
+        -- The escape hatches (/dl craft bar, Automations "Show bar") route
+        -- through the same seam: they used to be unable to close the bar, and
+        -- craftwatch printed a false "hobby bar hidden." while opening it.
+        hb.toggle('craft');
+        check('HB12 toggle closes the bar it is already showing', ui._hobbyBar, false);
+        hb.toggle('craft');
+        check('HB13 toggle re-opens onto craft while HELM is armed', ui._hobbyBar and ui._hobbySel, 'craft');
 
         ui._hobbyBar = false;
+    end
+
+    for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end
+end)();
+
+-- ---------------------------------------------------------------------------
+-- 7d. craftbar RENDER for real (the repeat-synth row, 2026-07-25). Every other
+--     suite STUBS craftbar.renderContent with a no-op -- including 7c above --
+--     so nothing has ever executed this file's body. That is the bit-three
+--     trap: an unknown Lua name is a silent nil GLOBAL, and a load-only test
+--     cannot see it. So: stub imgui + craftwatch + synthrun, drive the REAL
+--     renderContent in both the idle and the running branch, and assert both
+--     the stack balance and that the buttons reach synthrun.
+-- ---------------------------------------------------------------------------
+;(function()
+    local depth = { col = 0, item = 0 };
+    local function nop() end
+    local IM = {};
+    for _, n in ipairs({ 'Separator', 'Text', 'TextColored', 'SameLine', 'Dummy',
+        'SetTooltip', 'Spacing', 'Image', 'InvisibleButton' }) do IM[n] = nop; end
+    IM.PushStyleColor = function() depth.col = depth.col + 1; end
+    IM.PopStyleColor  = function(n) depth.col = depth.col - (tonumber(n) or 1); end
+    IM.PushItemWidth  = function() depth.item = depth.item + 1; end
+    IM.PopItemWidth   = function() depth.item = depth.item - 1; end
+    IM.CalcTextSize   = function(s) return #tostring(s) * 8; end
+    IM.IsItemHovered  = function() return true; end        -- exercise every tooltip
+    IM.IsItemClicked  = function() return false; end
+    IM.GetCursorScreenPos  = function() return 0, 0; end
+    IM.GetWindowDrawList   = function()
+        return { AddRectFilled = nop, AddCircleFilled = nop };
+    end
+
+    local clickId, editId, editVal, itemActive = nil, nil, nil, false;
+    IM.Button       = function(label) return clickId ~= nil and label:find(clickId, 1, true) ~= nil; end
+    IM.IsItemActive = function() return itemActive; end
+    IM.InputInt     = function(label, buf)
+        if editId ~= nil and label:find(editId, 1, true) ~= nil then buf[1] = editVal; return true; end
+        return false;
+    end
+
+    -- craftwatch stand-in: records what the bar writes back.
+    local waitVal, wrote = 30, {};
+    local CW = {
+        WAIT_MIN = 20, WAIT_MAX = 120,
+        getCraft = function() return 'Alchemy'; end,
+        isEnabled = function() return false; end,
+        setEnabled = function(v) wrote.enabled = v; end,
+        selectCraft = function(c) wrote.craft = c; end,
+        getGoal = function() return 'hq'; end,
+        setGoal = function(g) wrote.goal = g; end,
+        getSynthWait = function() return waitVal; end,
+        setSynthWait = function(n) waitVal = n; wrote.wait = n; return n; end,
+        lastSynth = function() return { name = 'Bronze Ingot', skill = 'Smithing', lv = 8 }; end,
+    };
+    -- synthrun stand-in: status drives the branch, start/stop record the click.
+    local runStatus, calls = nil, {};
+    local SR = {
+        status = function() return runStatus; end,
+        start  = function(n) calls[#calls + 1] = 'start:' .. tostring(n); return true; end,
+        stop   = function() calls[#calls + 1] = 'stop'; return true; end,
+    };
+
+    local NAMES = { 'imgui', 'dlac\\feature\\craftwatch', 'dlac\\feature\\synthrun', 'dlac\\ui\\craftbar' };
+    local saved = {};
+    for _, k in ipairs(NAMES) do saved[k] = package.loaded[k]; end
+    package.loaded['imgui'] = IM;
+    package.loaded['dlac\\feature\\craftwatch'] = CW;
+    package.loaded['dlac\\feature\\synthrun'] = SR;
+    package.loaded['dlac\\ui\\craftbar'] = nil;
+
+    local ok, cb = pcall(require, 'dlac\\ui\\craftbar');
+    check('CB1 craftbar re-requires against a stub imgui', ok and type(cb.renderContent), 'function');
+    if ok then
+        -- IDLE. This single call is the whole point of the section: it executes
+        -- every line of the new row, so a typo'd imgui name or a nil global
+        -- fails HERE instead of in the field.
+        local ran, err = pcall(cb.renderContent, 460);
+        check('CB2 idle renderContent runs clean', ran, true);
+        if not ran then print('  CB2 error: ' .. tostring(err)); end
+        check('CB3 idle: colour stack balanced', depth.col, 0);
+        check('CB4 idle: item-width stack balanced', depth.item, 0);
+
+        -- The repeat buttons reach synthrun with the right count.
+        calls = {}; clickId = '##cbrep3';
+        pcall(cb.renderContent, 460);
+        check('CB5 the 3 button starts a batch of 3', calls[1], 'start:3');
+        calls = {}; clickId = '##cbrep6';
+        pcall(cb.renderContent, 460);
+        check('CB6 the 6 button starts a batch of 6', calls[1], 'start:6');
+        clickId = nil;
+
+        -- RUNNING: Last Synth becomes Stop, and the number buttons go dead.
+        runStatus = { done = 2, total = 6, stage = 'cool', nextIn = 12 };
+        depth.col, depth.item = 0, 0;
+        local ran2 = pcall(cb.renderContent, 460);
+        check('CB7 running renderContent runs clean', ran2, true);
+        check('CB8 running: colour stack balanced', depth.col, 0);
+        check('CB9 running: item-width stack balanced', depth.item, 0);
+
+        calls = {}; clickId = '##cblast';
+        pcall(cb.renderContent, 460);
+        check('CB10 Last Synth is the Stop button mid-run', calls[1], 'stop');
+
+        -- Locked, not merely discouraged: the click is DROPPED, so a double
+        -- click can never stack a second batch on the first (Henrik).
+        calls = {}; clickId = '##cbrep4';
+        pcall(cb.renderContent, 460);
+        check('CB11 number buttons are dead while a batch runs', #calls, 0);
+        clickId = nil;
+
+        -- The wait box is not editable mid-run either.
+        wrote.wait = nil; editId = '##cbwait'; editVal = 55;
+        pcall(cb.renderContent, 460);
+        check('CB12 the wait box is not editable mid-run', wrote.wait, nil);
+
+        -- IDLE again: editing commits through craftwatch.
+        runStatus = nil;
+        pcall(cb.renderContent, 460);
+        check('CB13 editing the wait box persists it', wrote.wait, 55);
+
+        -- Top clamps on every keystroke; the FLOOR only on blur, or typing "45"
+        -- would be unreachable (you would pass 4 on the way).
+        wrote.wait = nil; editVal = 999;
+        pcall(cb.renderContent, 460);
+        check('CB14 an over-range wait clamps to the ceiling', wrote.wait, 120);
+        editId = nil; itemActive = true; waitVal = 120;
+        -- simulate a half-typed value sitting in the buffer while still focused
+        editId = '##cbwait'; editVal = 4; wrote.wait = nil;
+        pcall(cb.renderContent, 460);
+        check('CB15 a low value is NOT clamped while you are still typing', wrote.wait, nil);
+        editId = nil; itemActive = false;
+        pcall(cb.renderContent, 460);
+        check('CB16 ...and clamps up to the floor on blur', wrote.wait, 20);
     end
 
     for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end

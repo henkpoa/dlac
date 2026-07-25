@@ -6,12 +6,18 @@
     window with a selector across the top -- open any hobby's bar and it is this
     window, focused on that hobby, so switching between them is one click.
 
-    LOCK-WHILE-ACTIVE: the four idle hobbies are mutually exclusive (idleexcl). The
-    active hobby's tab is MARKED (green, trailing *), and while a hobby is active you
-    can only stay on it -- the other tabs are locked until you turn the current one
-    off. That mirrors the enable-layer rule: arming a second hobby while one runs is
-    refused. So the flow is: turn the current hobby off (its pill, or the floating
-    badge's Off), then switch tabs and arm the next.
+    LOCK-WHILE-ACTIVE, AND WHAT IT IS NOT (fixed 2026-07-25). The four idle hobbies
+    are mutually exclusive (idleexcl): arming a second while one runs is REFUSED by
+    idleexcl.guardActivate, at the enable layer. That rule is about ARMING. This
+    window used to enforce it as a rule about LOOKING -- it pinned ui._hobbySel to
+    the armed hobby every frame and greyed out the other tabs -- which meant that
+    with Auto HELM or Chocobo on (both of which persist across relogs), the Craft
+    tab was never drawn and the Last Synth button did not exist on screen. That is
+    the "after the hobby menu was changed, Last Synth doesn't work" report.
+
+    So: every tab is always reachable, and switching tabs arms nothing. The armed
+    hobby is MARKED (green, trailing *) and its on/off pill is the thing that
+    refuses -- exactly where the real guard lives.
 
     Each hobby's controls are the SAME code the standalone bars drew, now exposed as
     <bar>.renderContent(availW) (craftbar / helmbar / fishbar) plus a small inline
@@ -51,12 +57,12 @@ local isOpen = { true };
 -- ---- open / close API (called by the /dl commands, header button, panels) ----
 local function uiTable() return host.services and host.services.ui or nil; end
 
--- The hobby the window is EFFECTIVELY showing: while one is active the selector is
--- locked to it (see M.render), so that wins over the stored selection.
+-- The hobby the window is showing. Just the stored selection: the armed hobby
+-- used to override it, which made this function unable to return 'craft' while
+-- anything else was on -- so M.toggle('craft') never matched, M.isShown('craft')
+-- was permanently false, and both /dl craft bar and the Automations "Show bar"
+-- button read the wrong state (they reported "hidden" while opening it).
 local function effectiveSel(ui)
-    local excl = try('dlac\\feature\\idleexcl');
-    local a = excl ~= nil and excl.getActive() or nil;
-    if a ~= nil and VALIDSEL[a.key] then return a.key; end
     if VALIDSEL[ui._hobbySel] then return ui._hobbySel; end
     return 'craft';
 end
@@ -81,8 +87,7 @@ function M.toggleVisible()
 end
 
 -- Hobby-specific toggle (/dl <hobby> bar, a panel's Show/Hide bar): show the bar
--- on `key`, or hide it if it is already EFFECTIVELY showing `key`. (While a hobby
--- is active the bar is locked to it, so opening a peer's bar shows the active one.)
+-- on `key`, or hide it if it is already showing `key`.
 function M.toggle(key)
     local ui = uiTable(); if ui == nil then return; end
     if ui._hobbyBar == true and effectiveSel(ui) == key then
@@ -128,38 +133,36 @@ function M.render()
     if ui == nil or ui._hobbyBar ~= true then return; end
     if not VALIDSEL[ui._hobbySel] then ui._hobbySel = 'craft'; end
 
-    -- LOCK: while a hobby is active the selector is pinned to it.
+    -- Which hobby is armed -- for the green * only. It does NOT move the
+    -- selector: see the LOCK note in the header. (Was: the selector was pinned
+    -- to the armed hobby every frame, which hid every other tab's controls.)
     local excl = try('dlac\\feature\\idleexcl');
     local active = excl ~= nil and excl.getActive() or nil;
     local activeKey = active and active.key or nil;
-    if activeKey ~= nil then ui._hobbySel = activeKey; end
 
     imgui.SetNextWindowSize({ 0, 0 }, ImGuiCond_Always or 0);
     isOpen[1] = true;
     if imgui.Begin('dlac Hobbies##dlac_hobbybar', isOpen, ImGuiWindowFlags_AlwaysAutoResize or 0) then
-        -- Selector row: mark the active hobby (green + *), lock the rest while active.
+        -- Selector row: every tab is always reachable; the armed one is marked
+        -- green with a trailing *.
         for i, t in ipairs(TABS) do
             local isSel    = (ui._hobbySel == t.k);
             local isActive = (activeKey == t.k);
-            local locked   = (activeKey ~= nil and activeKey ~= t.k);
             local pushed = 0;
             if isActive then
                 imgui.PushStyleColor(ImGuiCol_Button, COL_ACTIVE); pushed = pushed + 1;
             elseif isSel then
                 imgui.PushStyleColor(ImGuiCol_Button, COL_SELECTED); pushed = pushed + 1;
             end
-            if locked then imgui.PushStyleColor(ImGuiCol_Text, COL_LOCKED); pushed = pushed + 1; end
             local label = t.n .. (isActive and ' *' or '') .. '##hbtab' .. t.k;
-            if imgui.Button(label, { 0, 0 }) then
-                if not locked then M.open(t.k); end
-            end
+            if imgui.Button(label, { 0, 0 }) then M.open(t.k); end
             if pushed > 0 then imgui.PopStyleColor(pushed); end
             if imgui.IsItemHovered() then
-                if locked then
-                    imgui.SetTooltip(string.format('%s is active -- turn it off to switch to %s.',
-                        tostring(active.name), t.n));
-                elseif isActive then
+                if isActive then
                     imgui.SetTooltip(t.n .. ' is active now.');
+                elseif activeKey ~= nil then
+                    imgui.SetTooltip(string.format('Show %s.  (%s is active -- turn it off before arming %s.)',
+                        t.n, tostring(active.name), t.n));
                 else
                     imgui.SetTooltip('Show ' .. t.n .. '.');
                 end

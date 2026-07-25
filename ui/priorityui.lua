@@ -34,6 +34,7 @@ local COL_FLOOR  = { 0.80, 0.72, 0.45, 1.00 };   -- the Triggers floor / veto (s
 
 -- Short, always-visible "controlled from" label (the source hint inline).
 M.HINT = {
+    Naked    = '/dl naked | Equipped tab',
     Pins     = 'floating gear pin menu',
     Locks    = '/dl lock | Equipped tab | Sets tab',
     AutoAmmo = 'AutoAmmo row',
@@ -48,6 +49,11 @@ M.HINT = {
 -- The full source/control sentence (hover tooltip) -- exactly where each feature
 -- is set, per issue #49.
 M.SOURCE = {
+    -- The drag lives HERE, so the "naked except ..." trick is explained HERE and
+    -- nowhere else (the panel-text standard: one home per idea, in a hover).
+    Naked    = 'Set by /dl naked (release: /dl dress), or the Equipped tab\'s Naked switch.\n'
+            .. 'Claims every slot EMPTY and keeps it that way. At the top it beats everything, pins '
+            .. 'included -- drag Pins or Locks above it to stay naked EXCEPT those.',
     Pins     = 'Set from the floating gear window\'s PIN menu (right-click a slot to pin/unpin).',
     Locks    = 'Set by /dl lock, the Equipped tab\'s "Lock when equipped", or the Sets tab\'s "Equip & Lock".\n'
             .. 'This is the VETO row -- a claim ranked ABOVE it punches through a locked slot; a claim below it stops. '
@@ -71,6 +77,8 @@ function M.statusText(name, live)
     live = live or {};
     if name == 'Triggers' then
         return 'floor -- always on';
+    elseif name == 'Naked' then
+        return live.naked and 'ON -- claiming all 16 slots EMPTY' or 'off';
     elseif name == 'Pins' then
         local n = tonumber(live.pins) or 0;
         return n > 0 and string.format('claiming %d pinned slot%s', n, n == 1 and '' or 's') or 'idle';
@@ -101,6 +109,7 @@ end
 local function rowActive(name, live)
     live = live or {};
     if name == 'Triggers' then return true; end
+    if name == 'Naked'    then return live.naked == true; end
     if name == 'Pins'     then return (tonumber(live.pins)  or 0) > 0; end
     if name == 'Locks'    then return (tonumber(live.locks) or 0) > 0; end
     if name == 'AutoAmmo' then return (live.ammo or {}).on == true and not live.fishing; end
@@ -139,7 +148,8 @@ if not hasImgui then return M; end   -- headless: the pure half above is the mod
 -- ---------------------------------------------------------------------------
 function M.gatherLive(deps)
     local live = { pins = 0, locks = 0, maxmp = false, craft = false, helm = false,
-                   fishing = false, chocobo = false, ammo = { on = false, job = nil } };
+                   fishing = false, chocobo = false, naked = false,
+                   ammo = { on = false, job = nil } };
     local job = (deps ~= nil and type(deps.playerJob) == 'function') and deps.playerJob() or nil;
 
     pcall(function() live.pins = require('dlac\\feature\\pinwatch').count() or 0; end);
@@ -168,6 +178,7 @@ function M.gatherLive(deps)
         local ok, t = pcall(chunk);
         if not ok or type(t) ~= 'table' then return; end
         live.maxmp = (t.maxmp == true);
+        live.naked = (t.__naked == true);
         if type(t.__locks) == 'table' then
             local n = 0;
             for _, v in pairs(t.__locks) do if v == true then n = n + 1; end end

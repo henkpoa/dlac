@@ -90,6 +90,10 @@ _Avoid_: pin (the floatgear feature — one claimant among many), override, hija
 The single decision point that gathers every Claim and decides, per slot, which claimant wins, by user-visible priority. The Triggers' overlay result is the floor that Claims dress over; the Arbiter can list every claimant and why each slot went the way it did.
 _Avoid_: pinning system, priority manager
 
+**Naked**:
+A Claim that dresses every slot with *nothing* (`/dl naked`; `/dl dress` releases). Ranked first by default, so it beats every other claimant — a player who wants "naked except my pins" drags Pins above it in Claim Priority. It is a standing claim re-applied every dispatch, which is what makes it survive a strip the server refuses.
+_Avoid_: strip, unequip all, disable (that is `/lac naked`'s mechanism — a one-shot strip plus a below-the-engine fence, which dlac deliberately does not use)
+
 **Profile**:
 A character's named bundle of dlac data (e.g. `Default`) — the unit the PROFILES menu switches, clones, and imports. Exactly one is active per character; changing jobs never changes the Profile.
 _Avoid_: character profile (redundant — a Profile is always per character), LAC profile

@@ -1,0 +1,661 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Architecture review — dlac</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose" });
+    </script>
+    <style>
+      .seam { stroke-dasharray: 4 4; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .deep { background: linear-gradient(135deg, #0f172a, #1e293b); }
+      .tick { position: absolute; left: 0; right: 0; height: 3px; }
+      .lbl { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+      article { scroll-margin-top: 1rem; }
+    </style>
+  </head>
+  <body class="bg-stone-50 text-slate-900 font-sans antialiased">
+    <main class="max-w-5xl mx-auto px-6 py-12 space-y-12">
+
+      <!-- ============ HEADER ============ -->
+      <header class="border-b border-slate-300 pb-8">
+        <h1 class="font-serif text-4xl tracking-tight">Architecture review — <span class="mono text-3xl">dlac</span></h1>
+        <p class="mt-2 text-sm text-slate-600">2026-07-25 · main @ 2332088 · 64,790 Lua lines outside <span class="mono">data/</span> · 7 candidates</p>
+
+        <div class="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-600">
+          <span class="flex items-center gap-2"><span class="inline-block w-6 h-4 border-2 border-slate-400 bg-white"></span> module</span>
+          <span class="flex items-center gap-2"><svg width="26" height="10"><line x1="0" y1="5" x2="26" y2="5" stroke="#64748b" stroke-width="2" class="seam"/></svg> seam</span>
+          <span class="flex items-center gap-2"><svg width="26" height="10"><line x1="0" y1="5" x2="22" y2="5" stroke="#dc2626" stroke-width="2"/><path d="M22 1 L26 5 L22 9 Z" fill="#dc2626"/></svg> leakage</span>
+          <span class="flex items-center gap-2"><span class="inline-block w-6 h-4 deep border-2 border-slate-900"></span> deep module</span>
+        </div>
+
+        <nav class="mt-6 text-sm grid sm:grid-cols-2 gap-x-8 gap-y-1">
+          <a href="#c1" class="text-slate-700 hover:text-emerald-700">1 · Make a claimant a row, like a condition is</a>
+          <a href="#c2" class="text-slate-700 hover:text-emerald-700">2 · Give the Statefile seam its write half</a>
+          <a href="#c3" class="text-slate-700 hover:text-emerald-700">3 · Split the optimizer from the weights store</a>
+          <a href="#c4" class="text-slate-700 hover:text-emerald-700">4 · One storage-home authority</a>
+          <a href="#c5" class="text-slate-700 hover:text-emerald-700">5 · A registry for the floating windows</a>
+          <a href="#c6" class="text-slate-700 hover:text-emerald-700">6 · Split the shared <span class="mono">ui</span> table</a>
+          <a href="#c7" class="text-slate-700 hover:text-emerald-700">7 · Collapse the hobby plumbing ring</a>
+        </nav>
+      </header>
+
+      <!-- ============ FRAMING ============ -->
+      <section class="border-l-4 border-emerald-600 pl-5 py-1">
+        <h2 class="font-serif text-xl">The pattern under all seven</h2>
+        <p class="mt-2 text-slate-700 leading-relaxed">dlac's <em>leaves</em> are deep and well tested — <span class="mono text-sm">arbResolve</span>, <span class="mono text-sm">resolveAmmoPlan</span>, <span class="mono text-sm">restockwatch.plan</span>, <span class="mono text-sm">digrank</span>, <span class="mono text-sm">fishcalc</span>, <span class="mono text-sm">equipcore.planSet</span>, <span class="mono text-sm">safewrite</span>, <span class="mono text-sm">idleexcl</span>. The <em>compositions</em> that call them are shallow, hand-rolled, repetitive, and untested.</p>
+        <p class="mt-3 text-slate-700 leading-relaxed">The project has felt this and responded by widening interfaces instead of deepening modules: <strong>105 <span class="mono text-sm">M._</span> exports across 23 files</strong>, <strong>67 source comments that literally say "test seam"</strong>, and 69 of <span class="mono text-sm">dispatch.lua</span>'s 111 exports that exist only so tests can reach <em>underneath</em> the composition. <span class="mono text-sm">M.dispatch</span> — the function every trigger flows through — is called <strong>zero</strong> times by either test file.</p>
+        <p class="mt-3 text-slate-700 leading-relaxed">The counter-example is already in the repo. <span class="mono text-sm">equipcore.planSet(set, snapshot)</span> takes a plain-table world and returns a plan; it needs no seams, and its tests are the least-stubbed in the suite. Each candidate below moves one composition toward that shape.</p>
+      </section>
+
+      <section id="candidates" class="space-y-14">
+
+        <!-- ============ CANDIDATE 1 ============ -->
+        <article id="c1" class="border border-slate-200 rounded-xl bg-white p-7 shadow-sm">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="px-2 py-0.5 rounded text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">Strong</span>
+            <span class="px-2 py-0.5 rounded text-xs bg-slate-100 text-slate-700 border border-slate-300">in-process</span>
+            <span class="px-2 py-0.5 rounded text-xs bg-slate-100 text-slate-700 border border-slate-300">engine VERSION bump</span>
+          </div>
+          <h2 class="font-serif text-2xl mt-3">1 · Make a claimant a row, like a condition already is</h2>
+
+          <p class="mt-2 text-sm mono text-slate-600">dispatch.lua — M.dispatch 4148-4579 · ARB_ORDER_DEFAULT 2590 · overlay blocks 3281-3467 · resolveVirtual 1221-1388 · /dl prio 5759</p>
+
+          <!-- BEFORE / AFTER: file cross-section -->
+          <div class="mt-6 grid md:grid-cols-2 gap-5">
+            <!-- before -->
+            <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+              <div class="lbl text-slate-500 mb-3">Before — adding a claimant (Chocobo, v120)</div>
+              <div class="flex gap-3">
+                <div class="relative w-16 h-72 bg-white border-2 border-slate-400 rounded-sm overflow-hidden shrink-0">
+                  <!-- ticks positioned by real line number / 6115 -->
+                  <div class="tick bg-red-600" style="top:0.8%"></div>
+                  <div class="tick bg-red-600" style="top:21.8%"></div>
+                  <div class="tick bg-red-600" style="top:42.4%"></div>
+                  <div class="tick bg-red-600" style="top:43.5%"></div>
+                  <div class="tick bg-red-600" style="top:56.2%"></div>
+                  <div class="tick bg-red-600" style="top:68.7%"></div>
+                  <div class="tick bg-red-600" style="top:69.4%"></div>
+                  <div class="tick bg-red-600" style="top:69.5%"></div>
+                  <div class="tick bg-red-600" style="top:70.4%"></div>
+                  <div class="tick bg-red-600" style="top:70.9%"></div>
+                  <div class="tick bg-red-600" style="top:71.6%"></div>
+                  <div class="tick bg-red-600" style="top:71.8%"></div>
+                  <div class="tick bg-red-600" style="top:73.9%"></div>
+                  <div class="tick bg-red-600" style="top:94.2%"></div>
+                  <div class="absolute inset-x-0 bottom-0 text-[9px] text-center text-slate-400 pb-0.5">6115</div>
+                  <div class="absolute inset-x-0 top-0 text-[9px] text-center text-slate-400 pt-0.5">1</div>
+                </div>
+                <ul class="text-[11px] leading-[1.45] text-slate-700 space-y-0.5">
+                  <li><span class="mono text-red-700">52</span> VERSION + changelog</li>
+                  <li><span class="mono text-red-700">1330</span> resolveVirtual branch</li>
+                  <li><span class="mono text-red-700">2590</span> ARB_ORDER_DEFAULT row</li>
+                  <li><span class="mono text-red-700">2599</span> arbOrder fix</li>
+                  <li><span class="mono text-red-700">3435</span> cache + ensure + overlayFor</li>
+                  <li><span class="mono text-red-700">4203</span> ensure call</li>
+                  <li><span class="mono text-red-700">4222</span> <b>bail #1</b></li>
+                  <li><span class="mono text-red-700">4254</span> build equip table</li>
+                  <li><span class="mono text-red-700">4309</span> claims[…] row</li>
+                  <li><span class="mono text-red-700">4339</span> <b>bail #2</b></li>
+                  <li><span class="mono text-red-700">4384</span> Sig block</li>
+                  <li><span class="mono text-red-700">4400</span> <b>sig concat</b></li>
+                  <li><span class="mono text-red-700">4517</span> applyClaim closure</li>
+                  <li><span class="mono text-red-700">5759</span> /dl prio ×2</li>
+                </ul>
+              </div>
+              <p class="mt-3 text-xs text-slate-600"><b>15 diff hunks, +108 lines, 6 non-adjacent regions</b> <span class="text-slate-400">(measured: <span class="mono">git show 3e95959 -- dispatch.lua</span>)</span>. Bold ones fail <em>silently</em> — a missed bail is a claimant that never applies; a missed concat is a stale trace.</p>
+            </div>
+            <!-- after -->
+            <div class="rounded-lg border-2 border-slate-900 bg-white p-4">
+              <div class="lbl text-slate-500 mb-3">Same file — adding a <em>condition</em> (weatherMatch, v121)</div>
+              <div class="flex gap-3">
+                <div class="relative w-16 h-72 bg-white border-2 border-slate-900 rounded-sm overflow-hidden shrink-0">
+                  <div class="tick bg-emerald-600" style="top:0.8%"></div>
+                  <div class="tick bg-emerald-600" style="top:8.2%"></div>
+                  <div class="tick bg-emerald-600" style="top:11.3%"></div>
+                  <div class="tick bg-emerald-600" style="top:12.6%"></div>
+                  <div class="tick bg-emerald-600" style="top:13.1%"></div>
+                  <div class="absolute inset-x-0 bottom-0 text-[9px] text-center text-slate-400 pb-0.5">6115</div>
+                  <div class="absolute inset-x-0 top-0 text-[9px] text-center text-slate-400 pt-0.5">1</div>
+                </div>
+                <ul class="text-[11px] leading-[1.45] text-slate-700 space-y-0.5">
+                  <li><span class="mono text-emerald-700">52</span> VERSION</li>
+                  <li><span class="mono text-emerald-700">496</span> one helper fn</li>
+                  <li><span class="mono text-emerald-700">690</span> <b>MATCHERS</b> row</li>
+                  <li><span class="mono text-emerald-700">771</span> <b>TIER</b> row</li>
+                  <li><span class="mono text-emerald-700">800</span> <b>PRETTY_KEY</b> row</li>
+                </ul>
+              </div>
+              <p class="mt-3 text-xs text-slate-600"><b>5 hunks, +39 lines, 3 of them registry rows</b> <span class="text-slate-400">(measured: <span class="mono">git show a7b350a</span>)</span>. The condition axis is deep — three parallel keyed tables absorb the whole feature. <b>The proof the fix works is in the same file.</b></p>
+            </div>
+          </div>
+
+          <dl class="mt-6 space-y-3 text-slate-800">
+            <div><dt class="lbl text-slate-500">Problem</dt><dd class="mt-1">A claimant is spread across 6 regions of a 6,115-line module, and four of those edits fail silently when forgotten.</dd></div>
+            <div><dt class="lbl text-slate-500">Solution</dt><dd class="mt-1">One <span class="mono text-sm">CLAIMANTS</span> table — <span class="mono text-sm">{ name, stateFile, active(st), overlayFor(st, ctx), slots }</span> — that the ensure loop, both bails, the claims map, the retrace signature and the applyClaim walk all iterate, exactly as <span class="mono text-sm">MATCHERS</span>/<span class="mono text-sm">TIER</span>/<span class="mono text-sm">PRETTY_KEY</span> already do for conditions.</dd></div>
+            <div><dt class="lbl text-slate-500">Wins</dt><dd class="mt-1">
+              <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm">
+                <li>leverage: 14 hunks → 1 row</li>
+                <li>locality: precedence in one table</li>
+                <li>Six copied shapes deleted</li>
+                <li>Silent-bail class ends</li>
+                <li>M.dispatch becomes drivable in tests</li>
+                <li>Interface shrinks; 7 <span class="mono">_overlayFor</span> seams retire</li>
+              </ul>
+            </dd></div>
+          </dl>
+
+          <div class="mt-5 rounded-md bg-emerald-50 border border-emerald-300 p-3 text-sm">
+            <b>Delivers ADR 0012, doesn't contradict it.</b> The registry comment at <span class="mono">dispatch.lua:2718-2722</span> already promises a new claimant costs "exactly TWO things and NO new arm". Reality is 14 hunks — the Arbiter part <em>is</em> 3 edits; the other 11 are the surrounding bookkeeping this candidate absorbs.
+          </div>
+          <div class="mt-3 rounded-md bg-amber-50 border border-amber-300 p-3 text-sm">
+            <b>One real leak to fix on the way:</b> <span class="mono">dispatch.lua:4271-4283</span> does hardcoded Pins-beats-Craft Sub arbitration <em>before</em> the rank walk, contradicting the "single precedence authority" claim 1,700 lines above it.
+          </div>
+        </article>
+
+        <!-- ============ CANDIDATE 2 ============ -->
+        <article id="c2" class="border-2 border-emerald-600 rounded-xl bg-white p-7 shadow-sm">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="px-2 py-0.5 rounded text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">Strong</span>
+            <span class="px-2 py-0.5 rounded text-xs bg-slate-100 text-slate-700 border border-slate-300">local-substitutable</span>
+            <span class="px-2 py-0.5 rounded text-xs bg-emerald-600 text-white">top recommendation</span>
+          </div>
+          <h2 class="font-serif text-2xl mt-3">2 · Give the Statefile seam its write half</h2>
+
+          <p class="mt-2 text-sm mono text-slate-600">lib/statefile.lua (44 lines) · lib/safewrite.lua · craftwatch · helmwatch · fishwatch · chocowatch · ammowatch · pinwatch · arbwatch · restockwatch</p>
+
+          <div class="mt-6 grid md:grid-cols-2 gap-5">
+            <!-- before -->
+            <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+              <div class="lbl text-slate-500 mb-3">Before</div>
+              <svg viewBox="0 0 320 300" class="w-full h-72">
+                <!-- READ side: funnel -->
+                <text x="8" y="14" class="lbl" fill="#64748b" font-size="9">READ — deep</text>
+                <rect x="6" y="22" width="126" height="76" fill="none" stroke="#cbd5e1"/>
+                <text x="12" y="36" font-size="8" fill="#475569" font-family="monospace">9 call sites</text>
+                <g stroke="#94a3b8" stroke-width="1">
+                  <line x1="20" y1="46" x2="66" y2="112"/><line x1="40" y1="46" x2="66" y2="112"/>
+                  <line x1="60" y1="46" x2="66" y2="112"/><line x1="80" y1="46" x2="66" y2="112"/>
+                  <line x1="100" y1="46" x2="66" y2="112"/><line x1="118" y1="46" x2="66" y2="112"/>
+                </g>
+                <rect x="10" y="112" width="112" height="30" fill="#0f172a" stroke="#0f172a"/>
+                <text x="20" y="131" font-size="8.5" fill="#fff" font-family="monospace">ensureStateFile</text>
+                <text x="14" y="156" font-size="8" fill="#475569">17 LOC · 1 policy · 10 tests</text>
+                <line x1="66" y1="142" x2="66" y2="176" stroke="#94a3b8" stroke-width="1"/>
+                <rect x="30" y="176" width="72" height="22" fill="#fff" stroke="#64748b"/>
+                <text x="52" y="191" font-size="8.5" fill="#334155" font-family="monospace">disk</text>
+
+                <!-- divider -->
+                <line x1="152" y1="18" x2="152" y2="288" stroke="#cbd5e1" class="seam"/>
+
+                <!-- WRITE side: fan -->
+                <text x="172" y="14" class="lbl" fill="#dc2626" font-size="9">WRITE — no module</text>
+                <rect x="170" y="22" width="142" height="76" fill="none" stroke="#cbd5e1"/>
+                <text x="176" y="36" font-size="8" fill="#475569" font-family="monospace">8 watchers</text>
+                <g stroke="#dc2626" stroke-width="1.1">
+                  <line x1="178" y1="46" x2="176" y2="176"/><line x1="188" y1="46" x2="188" y2="176"/>
+                  <line x1="198" y1="46" x2="200" y2="176"/><line x1="210" y1="46" x2="212" y2="176"/>
+                  <line x1="222" y1="46" x2="224" y2="176"/><line x1="234" y1="46" x2="236" y2="176"/>
+                  <line x1="246" y1="46" x2="248" y2="176"/><line x1="258" y1="46" x2="260" y2="176"/>
+                  <line x1="270" y1="46" x2="272" y2="176"/><line x1="282" y1="46" x2="284" y2="176"/>
+                  <line x1="292" y1="46" x2="294" y2="176"/><line x1="302" y1="46" x2="304" y2="176"/>
+                  <line x1="308" y1="46" x2="309" y2="176"/>
+                </g>
+                <text x="176" y="120" font-size="8" fill="#dc2626" font-weight="bold">13 hand-rolled</text>
+                <text x="176" y="132" font-size="8" fill="#dc2626">io.open(p,'wb')</text>
+                <text x="176" y="150" font-size="8" fill="#dc2626">0 tests · 1 uses</text>
+                <text x="176" y="161" font-size="8" fill="#dc2626">safewrite</text>
+                <rect x="200" y="176" width="72" height="22" fill="#fff" stroke="#64748b"/>
+                <text x="222" y="191" font-size="8.5" fill="#334155" font-family="monospace">disk</text>
+
+                <!-- statefile.lua sitting to the side -->
+                <rect x="60" y="228" width="200" height="40" fill="#fff" stroke="#94a3b8" stroke-dasharray="3 3"/>
+                <text x="70" y="244" font-size="8.5" font-family="monospace" fill="#475569">lib/statefile.lua — 44 lines</text>
+                <text x="70" y="258" font-size="8" fill="#dc2626">one fn: charDir(). No read. No write.</text>
+              </svg>
+              <p class="mt-1 text-xs text-slate-600">The module <em>named</em> after the seam owns only the string concatenation nobody argued about.</p>
+            </div>
+            <!-- after -->
+            <div class="rounded-lg border-2 border-slate-900 bg-white p-4">
+              <div class="lbl text-slate-500 mb-3">After</div>
+              <svg viewBox="0 0 320 300" class="w-full h-72">
+                <text x="8" y="14" class="lbl" fill="#64748b" font-size="9">READ — unchanged</text>
+                <rect x="6" y="22" width="126" height="60" fill="none" stroke="#cbd5e1"/>
+                <text x="12" y="36" font-size="8" fill="#475569" font-family="monospace">9 call sites</text>
+                <g stroke="#94a3b8" stroke-width="1">
+                  <line x1="26" y1="46" x2="66" y2="100"/><line x1="52" y1="46" x2="66" y2="100"/>
+                  <line x1="80" y1="46" x2="66" y2="100"/><line x1="110" y1="46" x2="66" y2="100"/>
+                </g>
+                <rect x="10" y="100" width="112" height="28" fill="#0f172a"/>
+                <text x="18" y="118" font-size="8.5" fill="#fff" font-family="monospace">ensureStateFile</text>
+
+                <line x1="152" y1="18" x2="152" y2="288" stroke="#cbd5e1" class="seam"/>
+
+                <text x="172" y="14" class="lbl" fill="#059669" font-size="9">WRITE — deep</text>
+                <rect x="170" y="22" width="142" height="60" fill="none" stroke="#cbd5e1"/>
+                <text x="176" y="36" font-size="8" fill="#475569" font-family="monospace">8 watchers</text>
+                <g stroke="#94a3b8" stroke-width="1">
+                  <line x1="190" y1="46" x2="240" y2="100"/><line x1="215" y1="46" x2="240" y2="100"/>
+                  <line x1="255" y1="46" x2="240" y2="100"/><line x1="290" y1="46" x2="240" y2="100"/>
+                </g>
+                <rect x="182" y="100" width="118" height="28" fill="#0f172a"/>
+                <text x="190" y="118" font-size="8.5" fill="#fff" font-family="monospace">handle.write(t)</text>
+
+                <!-- the one deep module -->
+                <rect x="40" y="152" width="240" height="76" fill="#0f172a" stroke="#0f172a"/>
+                <text x="52" y="172" font-size="10" fill="#fff" font-family="monospace">statefile.open(name)</text>
+                <text x="52" y="188" font-size="8" fill="#94a3b8">→ { read(), write(tbl) }</text>
+                <line x1="52" y1="196" x2="268" y2="196" stroke="#334155"/>
+                <text x="52" y="209" font-size="8" fill="#cbd5e1">one path · one serializer (%q)</text>
+                <text x="52" y="221" font-size="8" fill="#cbd5e1">safewrite ladder · injectable fs</text>
+
+                <line x1="160" y1="228" x2="160" y2="252" stroke="#94a3b8"/>
+                <rect x="124" y="252" width="72" height="22" fill="#fff" stroke="#64748b"/>
+                <text x="146" y="267" font-size="8.5" fill="#334155" font-family="monospace">disk</text>
+              </svg>
+              <p class="mt-1 text-xs text-slate-600">The same collapse <span class="mono">ensureStateFile</span> already performed on the read side — its own docstring records that it replaced six drifted clones.</p>
+            </div>
+          </div>
+
+          <dl class="mt-6 space-y-3 text-slate-800">
+            <div><dt class="lbl text-slate-500">Problem</dt><dd class="mt-1">The engine defends against torn writes with a drop-on-corrupt policy; nothing defends against <em>producing</em> them — 13 writers open the live file directly, and not one has a test.</dd></div>
+            <div><dt class="lbl text-slate-500">Solution</dt><dd class="mt-1"><span class="mono text-sm">statefile.open(name)</span> returns a handle owning the path, the serializer and the <span class="mono text-sm">safewrite</span> ladder. Watchers stop knowing what a file is.</dd></div>
+            <div><dt class="lbl text-slate-500">Wins</dt><dd class="mt-1">
+              <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm">
+                <li>13 writers → 1 implementation</li>
+                <li>13 path composers deleted</li>
+                <li>Torn-write hazard closed</li>
+                <li>Write paths testable for the first time</li>
+                <li>locality: one durability guarantee</li>
+                <li>8 guarded-require preambles deleted</li>
+              </ul>
+            </dd></div>
+            <div><dt class="lbl text-slate-500">Deletion test</dt><dd class="mt-1">Delete <span class="mono text-sm">lib/statefile.lua</span> <em>today</em> and 30 lines merely <b>move</b> back to 8 callers — three modules (<span class="mono text-sm">gearui</span>, <span class="mono text-sm">lockstyle</span>, <span class="mono text-sm">macrobook</span>) already bypass it and hand-roll the same answer. Delete the <em>deepened</em> one and 13 writers scatter again. That flip is the whole case.</dd></div>
+          </dl>
+        </article>
+
+        <!-- ============ CANDIDATE 3 ============ -->
+        <article id="c3" class="border border-slate-200 rounded-xl bg-white p-7 shadow-sm">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="px-2 py-0.5 rounded text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">Strong</span>
+            <span class="px-2 py-0.5 rounded text-xs bg-slate-100 text-slate-700 border border-slate-300">in-process</span>
+          </div>
+          <h2 class="font-serif text-2xl mt-3">3 · Split the optimizer from the weights store</h2>
+          <p class="mt-2 text-sm mono text-slate-600">gear/gearoptim.lua (2,918 lines) → gear/gearoptim.lua + gear/gearweights.lua</p>
+
+          <div class="mt-6 grid md:grid-cols-2 gap-5">
+            <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+              <div class="lbl text-slate-500 mb-3">Before — two concerns interleaved</div>
+              <div class="space-y-0.5 text-[10px] mono">
+                <div class="flex"><span class="w-20 text-slate-400 text-right pr-2">60-220</span><span class="flex-1 bg-slate-700 text-white px-2 py-1">stat vocabulary</span></div>
+                <div class="flex"><span class="w-20 text-slate-400 text-right pr-2">221-377</span><span class="flex-1 bg-slate-700 text-white px-2 py-1">MP swap advice</span></div>
+                <div class="flex"><span class="w-20 text-slate-400 text-right pr-2">378-824</span><span class="flex-1 bg-amber-500 text-white px-2 py-1">weights STORE — singleton</span></div>
+                <div class="flex"><span class="w-20 text-slate-400 text-right pr-2">825-1084</span><span class="flex-1 bg-amber-500 text-white px-2 py-1">priority-mode store</span></div>
+                <div class="flex"><span class="w-20 text-slate-400 text-right pr-2">1084-1320</span><span class="flex-1 bg-slate-700 text-white px-2 py-1">scoring · reads gear global</span></div>
+                <div class="flex"><span class="w-20 text-slate-400 text-right pr-2">1320-1689</span><span class="flex-1 bg-emerald-700 text-white px-2 py-1">optimizePicks — PURE</span></div>
+                <div class="flex"><span class="w-20 text-slate-400 text-right pr-2">1689-2129</span><span class="flex-1 bg-emerald-700 text-white px-2 py-1">ladders — PURE</span></div>
+                <div class="flex"><span class="w-20 text-slate-400 text-right pr-2">2138-2260</span><span class="flex-1 bg-slate-700 text-white px-2 py-1">buildBestSet</span></div>
+                <div class="flex"><span class="w-20 text-slate-400 text-right pr-2">2260-2592</span><span class="flex-1 bg-amber-500 text-white px-2 py-1">file IO · loadfile · io.open</span></div>
+                <div class="flex"><span class="w-20 text-slate-400 text-right pr-2">2592-2732</span><span class="flex-1 bg-amber-500 text-white px-2 py-1">weights export/import</span></div>
+                <div class="flex"><span class="w-20 text-slate-400 text-right pr-2">2733-2918</span><span class="flex-1 bg-slate-700 text-white px-2 py-1">/dl command router</span></div>
+              </div>
+              <p class="mt-3 text-xs text-slate-600"><span class="inline-block w-3 h-3 bg-amber-500 align-middle"></span> 1,175 lines (40%) of persisted player preference &nbsp; <span class="inline-block w-3 h-3 bg-emerald-700 align-middle"></span> ~800 lines of already-pure optimizer</p>
+            </div>
+            <div class="rounded-lg border-2 border-slate-900 bg-white p-4">
+              <div class="lbl text-slate-500 mb-3">After — two modules, disjoint interfaces</div>
+              <div class="space-y-3">
+                <div class="border-2 border-slate-900 rounded">
+                  <div class="deep text-white px-3 py-1.5 mono text-[11px]">gearoptim.lua — scoring math</div>
+                  <div class="px-3 py-2 text-[11px] text-slate-700">
+                    <div class="mono text-[10px] text-slate-500">score(rec, weights, ctx)</div>
+                    <div class="mono text-[10px] text-slate-500">optimizePicks(pools, weights, opts)</div>
+                    <div class="mono text-[10px] text-slate-500">pairLadders · levelLadder</div>
+                    <div class="mt-1 text-emerald-700"><b>weights becomes a required argument</b></div>
+                    <div class="text-slate-500">no globals · no files · ~1,740 lines</div>
+                  </div>
+                </div>
+                <div class="text-center text-xs text-slate-400">▲ takes its input from ▼</div>
+                <div class="border-2 border-slate-900 rounded">
+                  <div class="deep text-white px-3 py-1.5 mono text-[11px]">gearweights.lua — persisted preference</div>
+                  <div class="px-3 py-2 text-[11px] text-slate-700">
+                    <div class="mono text-[10px] text-slate-500">getWeights() · setWeight()</div>
+                    <div class="mono text-[10px] text-slate-500">bindSetWeights() · save() · load()</div>
+                    <div class="mt-1 text-slate-500">owns points-vs-priority, the per-set store,<br/>gearweights.lua IO · ~1,175 lines</div>
+                  </div>
+                </div>
+              </div>
+              <p class="mt-3 text-xs text-slate-600">The seam already exists: <span class="mono">weights or activeWeights()</span> at <span class="mono">:1347</span>. Making it required is the whole change.</p>
+            </div>
+          </div>
+
+          <dl class="mt-6 space-y-3 text-slate-800">
+            <div><dt class="lbl text-slate-500">Problem</dt><dd class="mt-1">A pure optimizer and a mutable preference singleton share one file, so <span class="mono text-sm">M.getWeights()</span> can hit the disk — <span class="mono text-sm">ensureWeightsLoaded()</span> is called from <b>46 sites</b>, including plain accessors — and the tests must monkey-patch <span class="mono text-sm">optim.weightsPath</span> and write real files into the repo root.</dd></div>
+            <div><dt class="lbl text-slate-500">Solution</dt><dd class="mt-1">Move the store and its persistence out; make <span class="mono text-sm">weights</span> a required argument to the scorer. The two halves already share nothing but <span class="mono text-sm">canonStat</span> and a key format.</dd></div>
+            <div><dt class="lbl text-slate-500">Wins</dt><dd class="mt-1">
+              <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm">
+                <li>A getter stops doing file IO</li>
+                <li>Order-dependent AE/AS/AW tests end</li>
+                <li>No more repo-root test artifacts</li>
+                <li>locality: preference in one module</li>
+                <li>Optimizer already pure — tests unchanged</li>
+              </ul>
+            </dd></div>
+          </dl>
+        </article>
+
+        <!-- ============ CANDIDATE 4 ============ -->
+        <article id="c4" class="border border-slate-200 rounded-xl bg-white p-7 shadow-sm">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="px-2 py-0.5 rounded text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">Strong</span>
+            <span class="px-2 py-0.5 rounded text-xs bg-red-100 text-red-800 border border-red-300">two live divergences</span>
+          </div>
+          <h2 class="font-serif text-2xl mt-3">4 · One storage-home authority — the doc already claims it</h2>
+          <p class="mt-2 text-sm mono text-slate-600">profiles.lua · setmanager.lua:42 · debug.lua:153 · check.lua:168 · macrobook · lockstyle · augments · gearexport · gearui:756 · statefile · dispatch:320</p>
+
+          <div class="mt-6 grid md:grid-cols-2 gap-5">
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <div class="lbl text-slate-500 mb-2">Before</div>
+              <pre class="mermaid">
+flowchart TD
+  A["profiles.dataDir()<br/>mode-aware authority"] --> N["config/addons/dlac/&lt;char&gt;/<br/>NATIVE home"]
+  A --> L["…/luashitacast/&lt;char&gt;/dlac/<br/>LEGACY home"]
+  T1["9 modules:<br/>ask, then compose a fallback"] -.-> A
+  T2["setmanager.lua:42<br/>never asks"] --> L
+  T3["debug.lua:153<br/>never asks"] --> L
+  T4["check · macrobook · lockstyle<br/>augments · gearexport · gearui"] --> L
+  classDef leak stroke:#dc2626,stroke-width:2px,color:#7f1d1d;
+  class T2,T3,T4 leak
+              </pre>
+              <p class="mt-2 text-xs text-slate-600">Grep finds <b>38 <span class="mono">GetInstallPath</span> sites in 22 files.</b> The one seam is really ten seams that happen to agree — until native mode, where they don't.</p>
+            </div>
+            <div class="rounded-lg border-2 border-slate-900 bg-white p-4">
+              <div class="lbl text-slate-500 mb-2">After</div>
+              <pre class="mermaid">
+flowchart TD
+  M["every module<br/>asks, or retries on nil"] --> A["profiles<br/>dataDir · charRoot · storageRoot<br/>addonDir · assetPath"]
+  A --> N["NATIVE home"]
+  A --> L["LEGACY home"]
+  classDef deep fill:#0f172a,color:#fff,stroke:#0f172a,stroke-width:2px;
+  class A deep
+              </pre>
+              <p class="mt-2 text-xs text-slate-600">The fallbacks are what turn one seam into ten. <span class="mono">nil</span> means "not logged in yet, retry" — the discipline <span class="mono">statefile.charDir</span> and <span class="mono">gearimport</span> already follow.</p>
+            </div>
+          </div>
+
+          <div class="mt-5 rounded-md bg-red-50 border border-red-300 p-4 text-sm space-y-2">
+            <p class="font-semibold text-red-900">Two divergences verified against the source, not inferred:</p>
+            <p><span class="mono text-xs">gear/setmanager.lua:42-56</span> composes the legacy path with <em>no</em> <span class="mono text-xs">profiles</span> delegation at all, while its sibling <span class="mono text-xs">gear/gearimport.lua:993-997</span> asks <span class="mono text-xs">prof.charRoot()</span> first. Under the Native engine, <b>set backups land in the legacy tree and gear backups in the native tree.</b> Line 505 also does <span class="mono text-xs">profileDir() .. 'backups\\'</span> with no nil guard — that throws pre-login where every sibling returns nil-and-retry.</p>
+            <p><span class="mono text-xs">feature/debug.lua:153-162</span> hardcodes the legacy home; <span class="mono text-xs">dispatch.lua:302</span> <span class="mono text-xs">charDir()</span> prefers the mode-aware <span class="mono text-xs">dataDir()</span>. <span class="mono text-xs">/dl check</span> at <span class="mono text-xs">dispatch.lua:5731</span> is <em>not</em> <span class="mono text-xs">inLac()</span>-pinned, so in native mode the engine writes its half to the native home while the addon-side watcher reads the legacy one.</p>
+          </div>
+
+          <dl class="mt-5 space-y-3 text-slate-800">
+            <div><dt class="lbl text-slate-500">Wins</dt><dd class="mt-1">
+              <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm">
+                <li>Two native-mode divergences closed</li>
+                <li>One place knows <span class="mono">'config\addons\'</span></li>
+                <li>A future layout change is 1 edit, not 10</li>
+                <li>Adds <span class="mono">addonDir</span>/<span class="mono">assetPath</span> (6 more copies)</li>
+                <li>A GRD guard can then hold the line</li>
+              </ul>
+            </dd></div>
+          </dl>
+          <div class="mt-3 rounded-md bg-amber-50 border border-amber-300 p-3 text-sm">
+            <b>Adjacent:</b> <span class="mono">dispatch.lua:4935</span> does <span class="mono">string.sub(dir, 1, #dir - 5)</span> to "strip the trailing <span class="mono">dlac\</span>" — a path <em>de</em>composer hard-coding a shape the native home does not have.
+          </div>
+        </article>
+
+        <!-- ============ CANDIDATE 5 ============ -->
+        <article id="c5" class="border border-slate-200 rounded-xl bg-white p-7 shadow-sm">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300">Worth exploring</span>
+            <span class="px-2 py-0.5 rounded text-xs bg-slate-100 text-slate-700 border border-slate-300">in-process</span>
+          </div>
+          <h2 class="font-serif text-2xl mt-3">5 · A registry for the windows that outlive the main box</h2>
+          <p class="mt-2 text-sm mono text-slate-600">ui/gearui.lua:4546-4724 (8 hand-rolled blocks) · ui/uihost.lua:107-113</p>
+
+          <div class="mt-6 grid md:grid-cols-2 gap-5">
+            <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+              <div class="lbl text-slate-500 mb-3">Before — call-graph, 8 copies</div>
+              <div class="border-2 border-slate-400 rounded p-2 bg-white">
+                <div class="mono text-[10px] text-slate-500 mb-1">gearui d3d_present (213 lines)</div>
+                <div class="space-y-1">
+                  <div class="border border-red-300 bg-red-50 rounded px-2 py-1 mono text-[9.5px] text-red-900">pcall(require) → style.push → pcall(render) → style.pop &nbsp;<span class="text-red-500">tp float</span></div>
+                  <div class="border border-red-300 bg-red-50 rounded px-2 py-1 mono text-[9.5px] text-red-900">pcall(require) → style.push → pcall(render) → style.pop &nbsp;<span class="text-red-500">_tgMon</span></div>
+                  <div class="border border-red-300 bg-red-50 rounded px-2 py-1 mono text-[9.5px] text-red-900">pcall(require) → style.push → pcall(render) → style.pop &nbsp;<span class="text-red-500">lockstyle</span></div>
+                  <div class="border border-red-300 bg-red-50 rounded px-2 py-1 mono text-[9.5px] text-red-900">pcall(require) → style.push → pcall(render) → style.pop &nbsp;<span class="text-red-500">floatgear</span></div>
+                  <div class="border border-red-300 bg-red-50 rounded px-2 py-1 mono text-[9.5px] text-red-900">pcall(require) → style.push → pcall(render) → style.pop &nbsp;<span class="text-red-500">restock</span></div>
+                  <div class="border border-red-300 bg-red-50 rounded px-2 py-1 mono text-[9.5px] text-red-900">pcall(require) → style.push → pcall(render) → style.pop &nbsp;<span class="text-red-500">choco</span></div>
+                  <div class="border border-red-300 bg-red-50 rounded px-2 py-1 mono text-[9.5px] text-red-900">pcall(require) → style.push → pcall(render) → style.pop &nbsp;<span class="text-red-500">hobbybar</span></div>
+                  <div class="border border-red-300 bg-red-50 rounded px-2 py-1 mono text-[9.5px] text-red-900">pcall(require) → style.push → pcall(render) → style.pop &nbsp;<span class="text-red-500">idlefloat</span></div>
+                </div>
+              </div>
+              <div class="mt-2 border border-slate-300 rounded p-2 bg-white opacity-50">
+                <div class="mono text-[10px] text-slate-500">uihost.renderWindows — exists, unreachable</div>
+                <div class="text-[10px] text-slate-500">called inside drawWindow, which early-returns when the box is shut</div>
+              </div>
+            </div>
+            <div class="rounded-lg border-2 border-slate-900 bg-white p-4">
+              <div class="lbl text-slate-500 mb-3">After — collapsed</div>
+              <div class="border-2 border-slate-900 rounded p-2 bg-white">
+                <div class="mono text-[10px] text-slate-500 mb-1">gearui d3d_present</div>
+                <div class="deep text-white rounded px-3 py-3 mono text-[11px]">
+                  host.renderFloats()
+                </div>
+                <div class="mt-2 pl-3 border-l-2 border-slate-300 space-y-0.5 opacity-45">
+                  <div class="mono text-[9px] text-slate-500">↳ tp float</div>
+                  <div class="mono text-[9px] text-slate-500">↳ _tgMon</div>
+                  <div class="mono text-[9px] text-slate-500">↳ lockstyle</div>
+                  <div class="mono text-[9px] text-slate-500">↳ floatgear</div>
+                  <div class="mono text-[9px] text-slate-500">↳ restock · choco · hobbybar · idlefloat</div>
+                  <div class="mono text-[9px] text-slate-500 pt-1">now internal · one push/pop bracket · one guard</div>
+                </div>
+              </div>
+              <p class="mt-3 text-xs text-slate-600">Modules self-register a <span class="mono">float</span> the way they already self-register a <span class="mono">tab</span>. <span class="mono">uihost</span> is the deepest module in the layer — it just needs a second registry.</p>
+            </div>
+          </div>
+
+          <dl class="mt-6 space-y-3 text-slate-800">
+            <div><dt class="lbl text-slate-500">Problem</dt><dd class="mt-1">Eight floating windows are wired by hand in an Ashita hook because the existing window registry sits behind the main box's early-return.</dd></div>
+            <div><dt class="lbl text-slate-500">Solution</dt><dd class="mt-1"><span class="mono text-sm">host.registerFloat{name, render}</span> + <span class="mono text-sm">host.renderFloats()</span> called <em>outside</em> <span class="mono text-sm">drawWindow</span>.</dd></div>
+            <div><dt class="lbl text-slate-500">Wins</dt><dd class="mt-1">
+              <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm">
+                <li>8 blocks → 1 loop</li>
+                <li>One push/pop bracket to get right</li>
+                <li>A stack tear can't reach the next float</li>
+                <li>Floats become smoke-testable as a set</li>
+                <li>New float = 1 registration, not 1 hook edit</li>
+              </ul>
+            </dd></div>
+          </dl>
+          <div class="mt-3 rounded-md bg-amber-50 border border-amber-300 p-3 text-sm">
+            <b>Why it matters now:</b> <span class="mono">ui/idlefloat.lua</span> is a floating window with a position write-back and <em>zero</em> stack-balance test — the exact crash class the <span class="mono">S50</span> and <span class="mono">HB1-HB8</span> tests exist for (one extra <span class="mono">PopStyleVar</span> shipped an <span class="mono">EXCEPTION_ACCESS_VIOLATION</span> no <span class="mono">pcall</span> catches).
+          </div>
+        </article>
+
+        <!-- ============ CANDIDATE 6 ============ -->
+        <article id="c6" class="border border-slate-200 rounded-xl bg-white p-7 shadow-sm">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300">Worth exploring</span>
+            <span class="px-2 py-0.5 rounded text-xs bg-slate-100 text-slate-700 border border-slate-300">in-process</span>
+          </div>
+          <h2 class="font-serif text-2xl mt-3">6 · Split the shared <span class="mono">ui</span> table — two tables fused into one</h2>
+          <p class="mt-2 text-sm mono text-slate-600">ui/gearui.lua:107-134 (21 declared) · 94 keys in use · 10 writing modules · gear/syncflags.lua:73-153</p>
+
+          <div class="mt-6 grid md:grid-cols-2 gap-5">
+            <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+              <div class="lbl text-slate-500 mb-3">Before — one table, ten writers</div>
+              <svg viewBox="0 0 320 250" class="w-full h-64">
+                <ellipse cx="160" cy="140" rx="104" ry="62" fill="#fee2e2" stroke="#dc2626" stroke-width="2"/>
+                <text x="160" y="132" font-size="11" text-anchor="middle" font-family="monospace" fill="#7f1d1d">ui</text>
+                <text x="160" y="148" font-size="9" text-anchor="middle" fill="#7f1d1d">94 keys · 21 declared</text>
+                <text x="160" y="162" font-size="8" text-anchor="middle" fill="#991b1b">78% created by outside mutation</text>
+                <g font-size="8" font-family="monospace" fill="#334155" text-anchor="middle">
+                  <text x="30" y="20">gearui 47</text><text x="105" y="16">equippedui 17</text>
+                  <text x="185" y="16">menuui 15</text><text x="272" y="20">profilesmenu 7</text>
+                  <text x="22" y="52">floatgear 6</text><text x="292" y="52">syncflags 9</text>
+                  <text x="20" y="232">weightsui 4</text><text x="102" y="240">idlefloat 4</text>
+                  <text x="188" y="240">triggersui 2</text><text x="278" y="232">hobbybar 2</text>
+                </g>
+                <g stroke="#dc2626" stroke-width="1" opacity="0.75">
+                  <line x1="34" y1="26" x2="92" y2="96"/><line x1="105" y1="22" x2="130" y2="80"/>
+                  <line x1="185" y1="22" x2="188" y2="80"/><line x1="268" y1="26" x2="225" y2="96"/>
+                  <line x1="30" y1="58" x2="66" y2="112"/><line x1="288" y1="58" x2="252" y2="112"/>
+                  <line x1="32" y1="226" x2="76" y2="182"/><line x1="104" y1="232" x2="128" y2="198"/>
+                  <line x1="188" y1="232" x2="192" y2="198"/><line x1="272" y1="226" x2="244" y2="182"/>
+                </g>
+              </svg>
+              <p class="mt-1 text-xs text-slate-600"><span class="mono">_flagsDirty</span> alone has <b>11 write sites across 7 modules, and 1 reader</b> — any module can trigger a <span class="mono">uiflags.lua</span> disk write by setting a boolean. There is no <span class="mono">markDirty()</span>.</p>
+            </div>
+            <div class="rounded-lg border-2 border-slate-900 bg-white p-4">
+              <div class="lbl text-slate-500 mb-3">After — the split is already enumerated</div>
+              <div class="space-y-3">
+                <div class="border-2 border-slate-900 rounded overflow-hidden">
+                  <div class="deep text-white px-3 py-1.5 mono text-[11px]">settings — ~15 persisted keys</div>
+                  <div class="px-3 py-2 text-[11px] text-slate-700">
+                    <span class="mono text-[10px] text-slate-500">get(k) · set(k, v)</span><br/>
+                    <span class="text-slate-500">owns the dirty flag and the write. The exact set is already listed at <span class="mono">syncflags.lua:73-153</span>.</span>
+                  </div>
+                </div>
+                <div class="border-2 border-slate-400 rounded overflow-hidden">
+                  <div class="bg-slate-200 px-3 py-1.5 mono text-[11px] text-slate-700">per-frame scratch — ~79 keys</div>
+                  <div class="px-3 py-2 text-[11px] text-slate-700">
+                    <span class="text-slate-500">popup-open flags, edit buffers, hover caches — these move <b>into the module that draws the widget</b>. Not shared at all.</span>
+                  </div>
+                </div>
+              </div>
+              <p class="mt-3 text-xs text-slate-600">Mostly mechanical: the persisted half is already a written-down list, and the scratch half has exactly one legitimate owner each.</p>
+            </div>
+          </div>
+
+          <dl class="mt-6 space-y-3 text-slate-800">
+            <div><dt class="lbl text-slate-500">Problem</dt><dd class="mt-1">One table fuses a persisted preference set with a per-frame scratchpad, so ten modules mutate each other's state and <span class="mono text-sm">render</span> is not idempotent (<span class="mono text-sm">hobbybar.lua:135</span> writes the selection from inside the draw call).</dd></div>
+            <div><dt class="lbl text-slate-500">Wins</dt><dd class="mt-1">
+              <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm">
+                <li>locality: widget state lives with its widget</li>
+                <li>Disk writes get one door</li>
+                <li>Tests stop poking a global to reach a clamp</li>
+                <li>Ownerless keys get owners</li>
+              </ul>
+            </dd></div>
+          </dl>
+          <div class="mt-3 rounded-md bg-amber-50 border border-amber-300 p-3 text-sm">
+            <b>Related budget:</b> the 200-local cap is the strongest force in this layer and it works — but it governs <em>where code lives</em>, not <em>what depends on what</em>. Every extraction relieved the local count while widening the bundle: <span class="mono">deps</span> is now 20 keys (no consumer uses more than 60%), <span class="mono">host.services</span> 38 (one dead, three unpinned). A companion budget on key count would stop the next extraction widening them again.
+          </div>
+        </article>
+
+        <!-- ============ CANDIDATE 7 ============ -->
+        <article id="c7" class="border border-slate-200 rounded-xl bg-white p-7 shadow-sm">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300">Worth exploring</span>
+            <span class="px-2 py-0.5 rounded text-xs bg-slate-100 text-slate-700 border border-slate-300">in-process</span>
+          </div>
+          <h2 class="font-serif text-2xl mt-3">7 · Collapse the hobby plumbing ring</h2>
+          <p class="mt-2 text-sm mono text-slate-600">craftwatch · helmwatch · fishwatch · chocowatch · idleexcl · hobbybar · automationsui · gearui · priorityui</p>
+
+          <div class="mt-6 grid md:grid-cols-2 gap-5">
+            <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+              <div class="lbl text-slate-500 mb-3">Before — five rosters of the same four things</div>
+              <div class="grid grid-cols-5 gap-1.5">
+                <div class="text-center"><div class="mono text-[8px] text-slate-500 h-8 leading-tight pt-1">idleexcl<br/>MEMBERS</div></div>
+                <div class="text-center"><div class="mono text-[8px] text-slate-500 h-8 leading-tight pt-1">hobbybar<br/>TABS</div></div>
+                <div class="text-center"><div class="mono text-[8px] text-slate-500 h-8 leading-tight pt-1">automations<br/>keys</div></div>
+                <div class="text-center"><div class="mono text-[8px] text-slate-500 h-8 leading-tight pt-1">gearui<br/>SWITCH</div></div>
+                <div class="text-center"><div class="mono text-[8px] text-slate-500 h-8 leading-tight pt-1">priorityui<br/>live.*</div></div>
+              </div>
+              <div class="grid grid-cols-5 gap-1.5 mt-1">
+                <template></template>
+              </div>
+              <div class="space-y-1 mt-1">
+                <div class="grid grid-cols-5 gap-1.5">
+                  <div class="bg-red-100 border border-red-300 text-red-900 mono text-[9px] text-center py-1">craft</div>
+                  <div class="bg-red-100 border border-red-300 text-red-900 mono text-[9px] text-center py-1">craft</div>
+                  <div class="bg-red-100 border border-red-300 text-red-900 mono text-[9px] text-center py-1">craft</div>
+                  <div class="bg-red-100 border border-red-300 text-red-900 mono text-[9px] text-center py-1">craft</div>
+                  <div class="bg-red-100 border border-red-300 text-red-900 mono text-[9px] text-center py-1">craft</div>
+                </div>
+                <div class="grid grid-cols-5 gap-1.5">
+                  <div class="bg-red-100 border border-red-300 text-red-900 mono text-[9px] text-center py-1">helm</div>
+                  <div class="bg-red-100 border border-red-300 text-red-900 mono text-[9px] text-center py-1">helm</div>
+                  <div class="bg-red-100 border border-red-300 text-red-900 mono text-[9px] text-center py-1">helm</div>
+                  <div class="bg-red-100 border border-red-300 text-red-900 mono text-[9px] text-center py-1">helm</div>
+                  <div class="bg-red-100 border border-red-300 text-red-900 mono text-[9px] text-center py-1">helm</div>
+                </div>
+                <div class="grid grid-cols-5 gap-1.5">
+                  <div class="bg-red-100 border border-red-300 text-red-900 mono text-[9px] text-center py-1">fish</div>
+                  <div class="bg-red-100 border border-red-300 text-red-900 mono text-[9px] text-center py-1">fish</div>
+                  <div class="bg-red-100 border border-red-300 text-red-900 mono text-[9px] text-center py-1">fish</div>
+                  <div class="bg-red-100 border border-red-300 text-red-900 mono text-[9px] text-center py-1">fish</div>
+                  <div class="bg-red-100 border border-red-300 text-red-900 mono text-[9px] text-center py-1">fish</div>
+                </div>
+                <div class="grid grid-cols-5 gap-1.5">
+                  <div class="bg-red-100 border border-red-300 text-red-900 mono text-[9px] text-center py-1">choco</div>
+                  <div class="bg-red-100 border border-red-300 text-red-900 mono text-[9px] text-center py-1">choco</div>
+                  <div class="bg-red-100 border border-red-300 text-red-900 mono text-[9px] text-center py-1">choco</div>
+                  <div class="bg-red-100 border border-red-300 text-red-900 mono text-[9px] text-center py-1">choco</div>
+                  <div class="bg-red-100 border border-red-300 text-red-900 mono text-[9px] text-center py-1">choco</div>
+                </div>
+              </div>
+              <p class="mt-3 text-xs text-slate-600"><span class="mono">hobbybar.lua:37</span> says <em>"Tab order = idleexcl.MEMBERS order"</em> — a comment where a loop would do. A fifth hobby touches <b>23 sites across 9 files.</b></p>
+              <p class="mt-2 text-xs text-slate-600">Plus <span class="mono">ensureManifestFresh</span>, cloned <b>verbatim four times</b> — and the code says so: <em>"craftwatch clone" → "helmwatch clone" → "fishwatch clone"</em>.</p>
+            </div>
+            <div class="rounded-lg border-2 border-slate-900 bg-white p-4">
+              <div class="lbl text-slate-500 mb-3">After — watchers join, instead of being described</div>
+              <div class="border-2 border-slate-900 rounded overflow-hidden">
+                <div class="deep text-white px-3 py-2 mono text-[11px]">idleexcl.register{ key, name, watcher }</div>
+                <div class="px-3 py-2 text-[11px] text-slate-600 space-y-1">
+                  <div>returns the arm/disarm wrapper — the guard becomes <b>unforgeable</b> instead of opt-in</div>
+                  <div>owns the roster; the other four lists read it</div>
+                </div>
+              </div>
+              <div class="mt-2 pl-4 space-y-1">
+                <div class="border border-slate-300 rounded px-2 py-1 mono text-[9px] text-slate-600">hobbybar TABS &nbsp;←&nbsp; ipairs(MEMBERS)</div>
+                <div class="border border-slate-300 rounded px-2 py-1 mono text-[9px] text-slate-600">automations keys &nbsp;←&nbsp; ipairs(MEMBERS)</div>
+                <div class="border border-slate-300 rounded px-2 py-1 mono text-[9px] text-slate-600">gearui SWITCH &nbsp;←&nbsp; ipairs(MEMBERS)</div>
+                <div class="border border-slate-300 rounded px-2 py-1 mono text-[9px] text-slate-600">priorityui live &nbsp;←&nbsp; ipairs(MEMBERS)</div>
+              </div>
+              <p class="mt-3 text-xs text-slate-600">The domain math stays exactly where it is — <span class="mono">fishcalc</span>, <span class="mono">digcalc</span>, <span class="mono">digrank</span>, <span class="mono">proximityStep</span>, <span class="mono">bindingCraft</span> are deep and correct and none of them is duplicated.</p>
+            </div>
+          </div>
+
+          <dl class="mt-6 space-y-3 text-slate-800">
+            <div><dt class="lbl text-slate-500">Problem</dt><dd class="mt-1">Each hobby is ~20-30% real domain math wrapped in ~150 lines of identical plumbing, and the family roster is maintained by hand in five places.</dd></div>
+            <div><dt class="lbl text-slate-500">Solution</dt><dd class="mt-1">Invert <span class="mono text-sm">idleexcl</span>: watchers <em>register</em> rather than being described by a <span class="mono text-sm">MEMBERS</span> table that re-states their policy. Everything ordered by hobby reads that one roster.</dd></div>
+            <div><dt class="lbl text-slate-500">Wins</dt><dd class="mt-1">
+              <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm">
+                <li>5 rosters → 1</li>
+                <li>The exclusion guard becomes unforgeable</li>
+                <li>4 <span class="mono">ensureManifestFresh</span> clones → 1</li>
+                <li>A 5th hobby: 23 sites → a handful</li>
+              </ul>
+            </dd></div>
+          </dl>
+          <div class="mt-3 rounded-md bg-emerald-50 border border-emerald-300 p-3 text-sm">
+            <b>Doesn't reopen ADR 0017.</b> The decision (one shared bar, one active at a time, lock-while-active) stands unchanged — this is about who owns the list, not what the list means. <span class="mono">idleexcl</span> is already a genuinely deep module; it is pointed the wrong way round.
+          </div>
+        </article>
+
+      </section>
+
+      <!-- ============ TOP RECOMMENDATION ============ -->
+      <section id="top-recommendation" class="rounded-xl deep text-white p-8">
+        <div class="lbl text-emerald-300">Tackle first</div>
+        <h2 class="font-serif text-3xl mt-2">2 · Give the Statefile seam its write half</h2>
+        <p class="mt-4 text-slate-200 leading-relaxed max-w-3xl">Because the project has already proved this exact collapse works, on the other side of the same seam. <span class="mono text-sm text-emerald-300">dispatch._ensureStateFile</span> is 17 lines that absorbed six drifted readers behind <span class="mono text-sm text-emerald-300">(cache, filename)</span> and carries ten tests; its docstring records the field lesson. The write half never got the same treatment, so 13 hand-rolled <span class="mono text-sm">io.open</span> calls produce the very torn files the reader was hardened to survive — and none of them can be tested, because there is no filesystem to fake.</p>
+        <p class="mt-3 text-slate-200 leading-relaxed max-w-3xl">It is also the smallest blast radius of the seven: addon-state only, no engine <span class="mono text-sm">VERSION</span> bump, no ADR touched, and the deletion test flips cleanly — deleting <span class="mono text-sm">lib/statefile.lua</span> today just moves 30 lines, deleting the deepened one scatters 13 writers.</p>
+        <p class="mt-5 text-slate-300 text-sm max-w-3xl"><b>The bigger prize is candidate 1.</b> Its payoff recurs on every feature you ship, and the proof it works sits in the same file — but it touches <span class="mono text-sm">M.dispatch</span>, needs a version bump and a field round, so it wants a clear run rather than a first step.</p>
+        <p class="mt-5 text-sm"><a href="#c2" class="text-emerald-300 underline">→ candidate 2</a> &nbsp;·&nbsp; <a href="#c1" class="text-emerald-300 underline">→ candidate 1</a></p>
+      </section>
+
+      <footer class="text-xs text-slate-500 pt-4 border-t border-slate-300">
+        Line anchors are as of main @ 2332088 and will drift — treat them as anchors, not gospel.
+        Directly measured against the source: both divergences in candidate 4; the hunk counts in candidate 1 (<span class="mono">git show</span>); <span class="mono">statefile.lua</span> = 44 lines and <span class="mono">arbwatch</span> as the sole <span class="mono">safewrite</span> user in candidate 2; the <span class="mono">weights or activeWeights()</span> seam and the 46 <span class="mono">ensureWeightsLoaded</span> sites in candidate 3; all four <span class="mono">ensureManifestFresh</span> clones and their comment chain in candidate 7; the 11 <span class="mono">_flagsDirty</span> writers in candidate 6.
+        Everything else is reported from a full read of the named files.
+      </footer>
+
+    </main>
+  </body>
+</html>

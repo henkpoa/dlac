@@ -257,6 +257,40 @@ local function renderEquippedTab(job, level)
         imgui.TextColored(COL.ERR, 'LAC OFF -- gear will not auto-swap');
     end
 
+    -- Naked (ADR 0021). Deliberately next to Free equip: the two read alike and
+    -- one BEATS the other -- /lac disable makes LuaAshitacast refuse to unequip a
+    -- disabled slot, so with Free equip on the strip lands nothing and says
+    -- nothing. Both hovers name it, and the checkbox is disabled while it applies
+    -- rather than silently doing nothing.
+    if S.engineNaked ~= nil then
+        imgui.SameLine(0, 12);
+        local blocked = (ui.freeEquip[1] == true) and not (S.isNative ~= nil and S.isNative());
+        local nk = { S.engineNaked() == true };
+        if blocked then
+            imgui.TextColored(COL.DIM, 'Naked');
+        elseif imgui.Checkbox('Naked##eqnaked', nk) then
+            S.setEngineNaked(nk[1]);
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip(blocked and
+                ('Unavailable while Free equip is on: /lac disable makes LuaAshitacast refuse to\n'
+              .. 'unequip a disabled slot, so stripping would silently do nothing.\n'
+              .. 'Uncheck Free equip first.')
+             or ('Takes EVERY piece off and keeps it off -- a standing claim, not a one-off strip,\n'
+              .. 'so your triggers and every automation ranked below it stay off your gear.\n'
+              .. 'It sits at the top of Automations > Claim Priority and beats everything, pins\n'
+              .. 'included; drag Pins above it there to stay naked EXCEPT your pinned pieces.\n\n'
+              .. 'Taking a weapon off zeroes your TP and drops Aftermath -- that is the server.\n'
+              .. 'Getting dressed brings back what your sets NAME; anything you had put on by\n'
+              .. 'hand you re-equip yourself.\n\n'
+              .. 'Release: uncheck this, /dl dress, or a Reload LAC. Also /dl naked.'));
+        end
+        if nk[1] and not blocked then
+            imgui.SameLine(0, 10);
+            imgui.TextColored(COL.ERR, 'NAKED -- all slots held empty');
+        end
+    end
+
     -- The floating equipment window (floatgear owns the window; this is just its
     -- switch, kept next to the other Equipped-tab toggles).
     imgui.SameLine(0, 12);

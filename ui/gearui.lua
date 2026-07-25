@@ -1135,23 +1135,31 @@ end
 -- the source of truth -- its session resets on LAC reload, so this view (unlike the
 -- old addon-side _disabledSlots table, which outlived LAC reloads and made "Lock when
 -- equipped" silently skip re-locking) can never go stale. Throttled to ~1 read/second.
-local _lockMirror = { at = -1, locks = {} };
-local function engineLocks()
+-- ONE parse of the mirror per second, shared by every engine-owned display flag
+-- it carries (__locks, and __naked since v122). Widened rather than copied: this
+-- file is already the third reader of modestate.lua (priorityui and the engine's
+-- own loadModeState are the others) and a fourth would be one throttle too many.
+local _lockMirror = { at = -1, locks = {}, naked = false };
+local function engineModestate()
     local now = os.time();
-    if now == _lockMirror.at then return _lockMirror.locks; end
+    if now == _lockMirror.at then return _lockMirror; end
     _lockMirror.at = now;
-    local locks = {};
+    local locks, naked = {}, false;
     pcall(function()
         local base = dataDir();
         if base == nil then return; end
         local chunk = loadfile(base .. 'modestate.lua');
         if chunk == nil then return; end
         local ok, t = pcall(chunk);
-        if ok and type(t) == 'table' and type(t.__locks) == 'table' then locks = t.__locks; end
+        if not ok or type(t) ~= 'table' then return; end
+        if type(t.__locks) == 'table' then locks = t.__locks; end
+        naked = (t.__naked == true);
     end);
-    _lockMirror.locks = locks;
-    return locks;
+    _lockMirror.locks, _lockMirror.naked = locks, naked;
+    return _lockMirror;
 end
+local function engineLocks() return engineModestate().locks; end
+local function engineNaked() return engineModestate().naked; end
 
 -- Current main job's <JOB>.lua path + its abbr (or nil, nil).
 local function jobFile()
@@ -1173,6 +1181,27 @@ setup.configure({
     ui = ui,
     status = function(s) _augStatus = s; end,   -- the header status line
 });
+
+-- Arm/disarm the strip from the GUI (ADR 0021). Defined HERE, below the `setup`
+-- local it calls -- placed any earlier it would capture a nil GLOBAL of that
+-- name and throw inside the render path, the one failure a load test cannot see.
+--
+-- WHICH STATE OWNS THE ENGINE decides how it is sent: under the native flag the
+-- engine lives in THIS Lua state, and a state never hears its own QueueCommand'd
+-- commands -- a queued '/dl naked' would reach nobody. So call the module
+-- directly there, and ONLY there: in legacy mode this state's dispatch copy is an
+-- inert duplicate, and its saveModeState would clobber the LIVE engine's mirror
+-- with an empty one.
+local function setEngineNaked(on)
+    if setup.isNative() then
+        pcall(function() require('dlac\\dispatch').setNaked(on == true); end);
+    else
+        pcall(function()
+            AshitaCore:GetChatManager():QueueCommand(1, (on == true) and '/dl naked' or '/dl dress');
+        end);
+    end
+    _lockMirror.at = -1;                               -- re-read the mirror on the next frame
+end
 
 -- Reload LAC / Scan / Stage / Commit / Augs / Setup, right-aligned on the header row.
 
@@ -1708,6 +1737,17 @@ local function renderHeaderButtons()
                   end
               end };
         end
+    end
+    -- Same law as the ABORT above, and a stronger case for it: while naked you
+    -- are wearing nothing and may not be able to SEE it -- the server keeps a
+    -- lockstyle per slot and styles survive having no armor, so a styled
+    -- character looks fully dressed while stripped. A standing claim you cannot
+    -- see and did not remember arming is how you lose a fight. Costs nothing when
+    -- off: not naked, no button.
+    if engineNaked() then
+        btns[#btns+1] = { l = 'NAKED', w = 74, red = true,
+            tip = 'Every slot is being held EMPTY (/dl naked). Click to get dressed.',
+            fn = function() setEngineNaked(false); end };
     end
     if needSetup or sf.flags.debug then
         -- 'Migrate', not 'Setup' (Henrik's ruling, 07-23): the button only ever
@@ -4340,6 +4380,8 @@ host.provide({
     getPlayerInfo = getPlayerInfo,
     getEquippedId = getEquippedId, equipToSlot = equipToSlot,
     engineLocks = engineLocks, lacSlot = lacSlot,
+    engineNaked = engineNaked, setEngineNaked = setEngineNaked,
+    isNative = setup.isNative,                 -- native => no LuaAshitacast, so no /lac disable fence
     lockMirrorDirty = function() _lockMirror.at = -1; end,
     wornSetTotals = wornSetTotals, setLabelOf = setLabelOf,
     -- shared render helpers
