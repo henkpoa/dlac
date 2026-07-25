@@ -12238,6 +12238,263 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- LS. THE LOCKED SET (ADR 0022) -- `/dl lock set ...` as a frozen Claim.
+--
+-- Four commands that differ ONLY in which slots they freeze. That difference is
+-- invisible to a source pin and costs four Incursion runs to check by hand, so
+-- it is pinned here through the pure builder, and end-to-end through the real
+-- M.dispatch below (the NK26 pattern -- the wiring BETWEEN the seams is what
+-- has no other coverage).
+-- ---------------------------------------------------------------------------
+(function()
+    local D = dispatchM;
+    local B = D.buildLockedClaim;
+
+    -- the injected seams: no Ashita, no bags, no game
+    local WORN = { Main = 'Worn Sword', Head = 'Worn Hat', Ammo = nil, Ring1 = 'Worn Ring' };
+    local function wornOf(slot) return WORN[slot]; end
+    local BAGS = { ['set sword'] = 1, ['set hat'] = 1, ['worn sword'] = 1,
+                   ['worn hat'] = 1, ['worn ring'] = 1, ['karin obi'] = 1 };
+    local function locate(entry)
+        local nm = D._setEntryName(entry);
+        if nm == nil then return false, nil; end
+        if BAGS[string.lower(nm)] then return true, nil; end
+        if string.lower(nm) == 'parked hat' then return false, 'Mog Satchel'; end
+        return false, nil;                      -- nowhere this character can see
+    end
+    local function resolve(v)                   -- the dlac: marker collapser
+        local nm = string.lower(D._setEntryName(v) or '');
+        if nm == 'dlac:autoobi' then return 'Karin Obi'; end
+        return nil;                             -- everything else: no answer today
+    end
+    local function count(t) local n = 0; for _ in pairs(t) do n = n + 1; end return n; end
+
+    -- LS1. the four words are DATA -- the command branch, the /dl lock help and
+    -- these checks all read one table, so a fifth variant cannot drift.
+    check('LS1 four lock-set words, in help order',
+        table.concat(D._lockSetOrder, ','), 'set,set-loose,set-snapshot,set-current');
+    check('LS1b strict fills unnamed slots with remove', D._lockSetModes['set'].fill, 'remove');
+    check('LS1c loose fills nothing',                    D._lockSetModes['set-loose'].fill, nil);
+    check('LS1d snapshot fills from what is worn',       D._lockSetModes['set-snapshot'].fill, 'worn');
+    check('LS1e set-current is the only one needing no name',
+        D._lockSetModes['set-current'].needsName, false);
+
+    local SET = { Main = 'Set Sword', Head = 'Set Hat' };
+
+    -- LS2. STRICT: "hard reserve EVERYTHING, even empty slots" (Henrik).
+    local c2, m2, n2 = B(SET, 'remove', resolve, locate, wornOf);
+    check('LS2 strict claims all 16 slots',        n2, 16);
+    check('LS2b ...the set is what it names',      c2.Main, 'Set Sword');
+    check('LS2c ...and every other slot is EMPTIED', c2.Ammo, 'remove');
+    check('LS2d ...nothing is reported missing',   #m2, 0);
+    -- The NK3 lesson, on a new producer: a lowercase key is dropped by the
+    -- native engine's SLOT_ID map, so it would work in LAC and hold NOTHING
+    -- natively -- the divergence that ships broken in the mode people run.
+    check('LS2e keys are PROPER case',             c2.main, nil);
+
+    -- LS3. LOOSE: "reserve ONLY the slots that have anything on them, the rest
+    -- gets free use for any other claimants."
+    local c3, m3, n3 = B(SET, nil, resolve, locate, wornOf);
+    check('LS3 loose claims only the named slots', n3, 2);
+    check('LS3b ...and leaves the rest available', c3.Ammo, nil);
+    check('LS3c ...still holding what it named',   c3.Head, 'Set Hat');
+    check('LS3d ...with nothing missing',          #m3, 0);
+
+    -- LS4. SNAPSHOT: the set, plus what is worn everywhere else.
+    local c4, _, n4 = B(SET, 'worn', resolve, locate, wornOf);
+    check('LS4 snapshot claims all 16',            n4, 16);
+    check('LS4b the set still wins its own slots', c4.Main, 'Set Sword');
+    check('LS4c an unnamed slot takes what is worn', c4.Ring1, 'Worn Ring');
+    check('LS4d an unnamed EMPTY slot is held empty', c4.Ammo, 'remove');
+
+    -- LS5. set-current: no set at all, every slot from what is worn, strictly.
+    local c5, m5, n5 = B(nil, 'worn', resolve, locate, wornOf);
+    check('LS5 set-current claims all 16',         n5, 16);
+    check('LS5b ...from what is worn',             c5.Head, 'Worn Hat');
+    check('LS5c ...empty stays empty',             c5.Ammo, 'remove');
+    check('LS5d ...and it can never report a miss', #m5, 0);
+
+    -- LS6. sets are authored in any case; the claim is not.
+    local c6 = B({ main = 'Set Sword', HEAD = 'Set Hat' }, nil, resolve, locate, wornOf);
+    check('LS6 a lowercase set key is matched',    c6.Main, 'Set Sword');
+    check('LS6b ...and an uppercase one',          c6.Head, 'Set Hat');
+
+    -- LS7. dlac: markers are COLLAPSED at arm -- the reason a locked obi cannot
+    -- follow the weather any more (Henrik: "Once you lock, it shall be constant").
+    local c7 = B({ Waist = 'dlac:AutoObi' }, nil, resolve, locate, wornOf);
+    check('LS7 a virtual is frozen to its answer', c7.Waist, 'Karin Obi');
+
+    -- LS8. a marker with NO answer right now: the slot goes loose, and the
+    -- marker is named rather than silently dropped.
+    local c8, m8 = B({ Main = 'dlac:AutoStaff' }, 'remove', resolve, locate, wornOf);
+    check('LS8 an unresolvable marker is not held', c8.Main, nil);
+    check('LS8b ...it is reported',                 #m8, 1);
+    check('LS8c ...by marker name',                 m8[1] and m8[1].item, 'dlac:AutoStaff');
+    check('LS8d ...and strict does NOT empty it instead', c8.Main, nil);
+
+    -- LS9. THE INCURSION CASE: a named piece that is not on you. The slot goes
+    -- LOOSE (available), and we say where the gear actually is.
+    local c9, m9, n9 = B({ Main = 'Set Sword', Head = 'Parked Hat', Body = 'Gone Forever' },
+                         'remove', resolve, locate, wornOf);
+    check('LS9 the piece we have is held',          c9.Main, 'Set Sword');
+    check('LS9b a parked piece is NOT held',        c9.Head, nil);
+    check('LS9c ...and is not emptied either -- it is LOOSE', c9.Head, nil);
+    check('LS9d two pieces are reported',           #m9, 2);
+    check('LS9e ...one located',                    m9[1] and m9[1].where, 'Mog Satchel');
+    check('LS9f ...one nowhere to be found',        m9[2] and m9[2].where, nil);
+    check('LS9g and the other 13 slots still emptied strictly', n9, 14);
+
+    -- LS10. 'remove' and 'displaced' are equip LITERALS, not item names: they
+    -- can never be missing from your bags, so they skip the locate check.
+    local c10, m10 = B({ Ammo = 'remove', Range = 'displaced' }, nil, resolve, locate, wornOf);
+    check('LS10 a remove entry is held as written', c10.Ammo, 'remove');
+    check('LS10b displaced too',                    c10.Range, 'displaced');
+    check('LS10c neither counts as missing',        #m10, 0);
+
+    -- LS11. 'ignore' is the set author saying "not mine": leave the slot alone,
+    -- and do NOT report it -- nothing is missing.
+    local c11, m11 = B({ Ammo = 'ignore' }, nil, resolve, locate, wornOf);
+    check('LS11 an ignore entry is not claimed',    c11.Ammo, nil);
+    check('LS11b ...and is not reported missing',   #m11, 0);
+
+    -- LS12. an entry TABLE (augment / Bag spec) survives whole -- freezing to a
+    -- bare name would let planSet pick the wrong copy of a ring you own twice.
+    local aug = { Name = 'Set Sword', Augment = { 'Attack+5' } };
+    local c12 = B({ Main = aug }, nil, resolve, locate, wornOf);
+    check('LS12 an augment spec is frozen intact',  c12.Main, aug);
+
+    -- LS13. the stored record + its accessors
+    local savedLocked = D.lockedSet;
+    check('LS13 nothing locked to begin with',      D.lockedSetOn(), false);
+    check('LS13b ...so there is no claim',          D.lockedSetClaim(), nil);
+    check('LS13c ...and no label',                  D.lockedSetLabel(), nil);
+    D.setLockedSet({ name = 'Incursion T3', mode = 'set', claim = { Head = 'Set Hat' }, n = 1 });
+    check('LS13d armed',                            D.lockedSetOn(), true);
+    check('LS13e ...labelled by set name',          D.lockedSetLabel(), 'Incursion T3');
+    local claimA = D.lockedSetClaim();
+    claimA.Head = 'TAMPERED';
+    check('LS13f the claim is a COPY -- the apply path cannot reach the frozen one',
+        D.lockedSetClaim().Head, 'Set Hat');
+    D.setLockedSet({ name = nil, mode = 'set-current', claim = { Head = 'Worn Hat' }, n = 1 });
+    check('LS13g set-current has no set name, so it says what it is',
+        D.lockedSetLabel(), 'your gear as it was');
+    check('LS13h releasing hands back the label',   D.clearLockedSet(), 'your gear as it was');
+    check('LS13i ...and it is gone',                D.lockedSetOn(), false);
+    check('LS13j releasing nothing returns nothing', D.clearLockedSet(), nil);
+
+    -- LS14. LIFETIME -- it shares nakedWorldWatch (ADR 0022). Logging in locked
+    -- to last night's set is the relog failure ADR 0021 calls the worst outcome,
+    -- wearing different clothes: a naked player knows instantly, a locked one
+    -- just finds their gear mysteriously stuck.
+    local savedNaked = D.nakedArmed;
+    D.nakedArmed = false;
+    D.setLockedSet({ name = 'Incursion T3', mode = 'set', claim = { Head = 'Set Hat' }, n = 1 });
+    check('LS14 same job, in the world -> stays locked', D.nakedWorldWatch(7, 7), nil);
+    check('LS14b ...and it is still armed',              D.lockedSetOn(), true);
+    local why14, drop14 = D.nakedWorldWatch(0, 7);
+    check('LS14c character select releases it',          why14, 'world');
+    check('LS14d ...and it is gone',                     D.lockedSetOn(), false);
+    check('LS14e ...the caller is told what dropped',    drop14 and drop14.locked, 'Incursion T3');
+    check('LS14f ...and that naked was not part of it',  drop14 and drop14.naked, false);
+    D.setLockedSet({ name = 'Incursion T3', mode = 'set', claim = { Head = 'Set Hat' }, n = 1 });
+    local why14b, drop14b = D.nakedWorldWatch(3, 7);
+    check('LS14g a JOB CHANGE releases it too',          why14b, 'job');
+    check('LS14h ...naming it, because someone is there to read the line',
+        drop14b and drop14b.locked, 'Incursion T3');
+    -- both can drop in one pass, and the watch only ever CLEARS
+    D.setLockedSet({ name = 'Incursion T3', mode = 'set', claim = { Head = 'Set Hat' }, n = 1 });
+    D.nakedArmed = true;
+    local _, drop14c = D.nakedWorldWatch(0, 7);
+    check('LS14i both drop together',
+        (drop14c and drop14c.naked == true and drop14c.locked == 'Incursion T3'), true);
+    check('LS14j ...and neither is re-armed', D.nakedOn() == false and D.lockedSetOn() == false, true);
+    D.nakedArmed = savedNaked;
+    D.lockedSet  = savedLocked;
+
+    -- LS15. PRECEDENCE, from the one authority. The locked set rides the EXISTING
+    -- Locks row, so "a locked slot moves for Naked and Pins, nothing else" is a
+    -- statement about the default rank order -- not about new code.
+    local def = D._arbDefaultOrder;
+    local rank = {};
+    for i, n in ipairs(def) do rank[n] = i; end
+    check('LS15 Naked outranks a lock', rank['Naked'] < rank['Locks'], true);
+    check('LS15b Pins outrank a lock (on demand, universally understood)',
+        rank['Pins'] < rank['Locks'], true);
+    check('LS15c nothing else does', (function()
+        for _, n in ipairs(def) do
+            if n == 'Locks' then return true; end
+            if n ~= 'Naked' and n ~= 'Pins' then return n; end
+        end
+        return 'Locks row missing';
+    end)(), true);
+    check('LS15d no new row was added', #def, 10);
+
+    -- LS16. END TO END through the REAL M.dispatch (the NK26 pattern). A locked
+    -- set with NOTHING else armed -- no triggers, no pins, no hobby, no ammo --
+    -- must still reach the equip door, which is the path BOTH bail guards have to
+    -- let through. This is the check that would have caught the original bug.
+    local savedPlayer, savedFunc, savedState = TEST_PLAYER, rawget(_G, 'gFunc'), rawget(_G, 'gState');
+    TEST_PLAYER = { MainJob = 'WHM', MainJobLevel = 75, SubJob = 'BLM', SubJobLevel = 37,
+                    MainJobSync = 75, SubJobSync = 37, Status = 'Idle', IsMoving = false };
+    local wrote = {};
+    _G.gFunc  = { EquipSet = function(t) for k, v in pairs(t or {}) do wrote[k] = v; end end };
+    _G.gState = { CurrentCall = 'N/A', Disabled = {} };
+
+    local strictClaim = B({ Main = 'Set Sword', Head = 'Set Hat' }, 'remove', resolve, locate, wornOf);
+    D.setLockedSet({ name = 'Incursion T3', mode = 'set', claim = strictClaim, n = 16 });
+    local okD, errD = pcall(D.dispatch, 'Default');
+    check('LS16 a bare Default with only a locked set does not throw', okD, true);
+    if not okD then print('LS16 error: ' .. tostring(errD)); end
+    check('LS16b it reaches the equip door with all 16 slots', count(wrote), 16);
+    check('LS16c the set holds its own slots',                 wrote.Main, 'Set Sword');
+    check('LS16d ...and strict empties the rest',              wrote.Ammo, 'remove');
+
+    -- LS17. A plain slot lock can never sabotage the hold. layerRespectsLocks
+    -- asks `rank > lockRank` about the Locks row ITSELF, which is false -- so the
+    -- hold punches through M.locks. That is exactly why arming no longer has to
+    -- destroy the player's own locks first (ADR 0021 listed doing so as a defect).
+    wrote = {};
+    D.locks['head'] = true;
+    pcall(D.dispatch, 'Default');
+    check('LS17 a stale lock does not strip the slot out of the hold', wrote.Head, 'Set Hat');
+    check('LS17b ...and the player keeps their lock',                  D.locks['head'], true);
+    D.locks['head'] = nil;
+
+    -- LS18. LOOSE really is available: the slots the hold left alone are simply
+    -- not written by this layer.
+    wrote = {};
+    local looseClaim = B({ Main = 'Set Sword', Head = 'Set Hat' }, nil, resolve, locate, wornOf);
+    D.setLockedSet({ name = 'Incursion T3', mode = 'set-loose', claim = looseClaim, n = 2 });
+    pcall(D.dispatch, 'Default');
+    check('LS18 loose writes only the slots it holds', count(wrote), 2);
+    check('LS18b ...and nothing lands in the rest',    wrote.Ammo, nil);
+
+    -- LS19. NAKED OUTRANKS IT (Henrik: "Naked means naked, whatever everyone
+    -- else thinks"). The hold genuinely tries and the Arbiter genuinely blocks
+    -- it -- Locks applies first, Naked overwrites all 16 -- so releasing the
+    -- strip hands the slots straight back on the next pass.
+    wrote = {};
+    D.nakedArmed = true;
+    pcall(D.dispatch, 'Default');
+    check('LS19 naked beats the locked set in every slot', count(wrote), 16);
+    check('LS19b ...including one the hold named',         wrote.Main, 'remove');
+    D.nakedArmed = false;
+    wrote = {};
+    pcall(D.dispatch, 'Default');
+    check('LS19c dressed again, the hold takes its slots back', wrote.Main, 'Set Sword');
+
+    D.setLockedSet(nil);
+    wrote = {};
+    pcall(D.dispatch, 'Default');
+    check('LS20 released, a bare dispatch writes nothing at all', next(wrote), nil);
+
+    TEST_PLAYER = savedPlayer;
+    _G.gFunc, _G.gState = savedFunc, savedState;
+    D.nakedArmed = savedNaked;
+    D.lockedSet  = savedLocked;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- CMD. THE /dl COMMAND SURFACE, DRIVEN FOR REAL (2026-07-26).
 --
 -- Until this section every /dl subcommand was tested by SEARCHING dispatch.lua
@@ -12396,6 +12653,62 @@ end)();
               saidHas('usage: /dl lock set'), true);
 
         if not saidHas('usage: /dl lock set') then print('CMD9 said: ' .. saidText()); end
+
+        -- THE LOCKED SET (ADR 0022), through the real commands. Headless there
+        -- is no AshitaCore, so wornItemName answers nil for every slot and
+        -- set-current freezes sixteen empties -- which is still the whole arm ->
+        -- claim -> release path, and the only one that proves the four command
+        -- words reach the builder at all.
+        run('/dl lock set-current');
+        check('CMD10 /dl lock set-current arms a hold', D.lockedSetOn(), true);
+        check('CMD10b ...strictly, all 16 slots',       D.lockedSet.n, 16);
+        check('CMD10c ...and says what it locked',      saidHas('LOCKED to'), true);
+        check('CMD10d ...naming the release door',      saidHas('/dl lock set off'), true);
+
+        -- The state readout + the four-variant help Henrik asked for by name.
+        run('/dl lock');
+        check('CMD11 /dl lock reports the held set',    saidHas('locked set:'), true);
+        local allFour = true;
+        for _, w in ipairs(D._lockSetOrder) do
+            if not saidHas('/dl lock ' .. w) then allFour = false; end
+        end
+        check('CMD11b ...and lists every variant',      allFour, true);
+        check('CMD11c ...with the slot-lock line too',  saidHas('/dl lock <slot|all>'), true);
+
+        -- The narrow door.
+        run('/dl lock set off');
+        check('CMD12 /dl lock set off releases it',     D.lockedSetOn(), false);
+        check('CMD12b ...and says which set it was',    saidHas('released'), true);
+        run('/dl lock set off');
+        check('CMD12c releasing nothing is not an error', saidHas('no set is locked'), true);
+
+        -- COEXISTENCE (Henrik, 2026-07-26): arming must no longer destroy the
+        -- player's own locks. Today's code cleared them because they would strip
+        -- slots out of the one-shot equip; a claim outranks them instead, so the
+        -- lock is merely outranked while held and is still there on release.
+        run('/dl lock ammo on');
+        run('/dl lock set-current');
+        check('CMD13 arming a hold leaves plain locks alone', D.locks['ammo'], true);
+        check('CMD13b ...and the hold is armed anyway',       D.lockedSetOn(), true);
+
+        -- The universal door: "/dl lock all off" is one word to the player, so
+        -- it lets go of everything that word covers -- and says so.
+        run('/dl lock all off');
+        check('CMD14 /dl lock all off clears the slot locks', next(D.locks), nil);
+        check('CMD14b ...and releases the held set too',      D.lockedSetOn(), false);
+        check('CMD14c ...saying it did',                      saidHas('released the locked set'), true);
+
+        -- Every variant refuses an unknown set BY NAME, before touching state.
+        run('/dl lock ring1 on');
+        local e15 = run('/dl lock set-loose NoSuchSetName');
+        check('CMD15 set-loose owns the command',        e15.blocked, true);
+        check('CMD15b ...refuses an unknown name',       saidHas('no committed set named'), true);
+        check('CMD15c ...arms nothing',                  D.lockedSetOn(), false);
+        check('CMD15d ...and leaves existing locks alone', D.locks['ring1'], true);
+        run('/dl lock snapshot');   -- not a word: falls through to the slot branch
+        check('CMD15e a near-miss word is an unknown SLOT, not a silent no-op',
+              saidHas('unknown slot: snapshot'), true);
+        run('/dl lock all off');
     end
 
     -- put every shared thing back exactly as it was

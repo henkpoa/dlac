@@ -209,6 +209,10 @@ for _, k in ipairs({
     -- would leave both suites green while the Equipped tab's Naked switch (which
     -- guards on S.engineNaked ~= nil) silently vanished.
     'engineNaked', 'setEngineNaked', 'isNative',
+    -- ADR 0022, same reasoning one row down: the Equipped tab's Lock gear switch
+    -- and its LOCKED readout both guard on S.engineHeld ~= nil, so dropping it
+    -- from gearui's provide{} would make them vanish in silence.
+    'engineHeld',
 }) do
     check('S12 service ' .. k, S[k] ~= nil, true);
 end
@@ -1419,6 +1423,72 @@ end)();
         Sx.engineNaked, Sx.setEngineNaked, Sx.isNative = keptN[1], keptN[2], keptN[3];
         u.freeEquip = { false };  u._freePrev = false;
         nakedState = false;
+
+        -- LSU. The Lock gear switch + LOCKED readout (ADR 0022), driven through
+        -- the REAL render for the same reason NKU* exists: an unknown Lua name in
+        -- that block is a silent nil GLOBAL that no load test can see, and every
+        -- render above is pcall'd, so these assert the pcall RESULT.
+        local keptHeld = Sx.engineHeld;
+        local heldState = nil;
+        Sx.engineHeld = function() return heldState; end
+        u.eqSelected = nil;
+        u.freeEquip = { false };  u._freePrev = false;
+        u.lockEquipped = { false };  u._lockPrev = false;
+
+        local okL = pcall(render, 'WHM', 75);
+        check('LSU1 the toolbar renders with nothing locked', okL, true);
+
+        -- Held: the readout draws. It goes through uistyle.helpLabel (underline +
+        -- hover), which falls back to TextColored when the binding has no
+        -- draw-list -- as this stub does -- so counting TextColored catches both.
+        heldState = { name = 'Incursion T3', mode = 'set', n = 13 };
+        local lockedLines = 0;
+        local keptTC2 = IM.TextColored;
+        IM.TextColored = function(_, t)
+            if type(t) == 'string' and string.find(t, 'LOCKED:', 1, true) then
+                lockedLines = lockedLines + 1;
+            end
+        end
+        local okL2 = pcall(render, 'WHM', 75);
+        IM.TextColored = keptTC2;
+        check('LSU2 it renders while a set is LOCKED', okL2, true);
+        check('LSU2b and names the set on the toolbar', lockedLines >= 1, true);
+
+        -- Clicking it: armed -> release goes through the narrow door, NOT
+        -- /dl lock all off (which would take the player's slot locks with it).
+        local keptCb2 = IM.Checkbox;
+        IM.Checkbox = function(label, t)
+            if type(label) == 'string' and string.find(label, 'eqheld', 1, true) then
+                t[1] = false; return true;                  -- unchecking a held switch
+            end
+            return false;
+        end
+        queued = {};
+        local okL3 = pcall(render, 'WHM', 75);
+        local ljoin = table.concat(queued, ' | ');
+        check('LSU3 unchecking Lock gear renders cleanly', okL3, true);
+        check('LSU3b ...and releases only the set',
+            string.find(ljoin, '/dl lock set off', 1, true) ~= nil, true);
+        check('LSU3c ...never taking the slot locks with it',
+            string.find(ljoin, '/dl lock all off', 1, true), nil);
+
+        -- Unheld -> checking it locks what you are wearing right now.
+        heldState = nil;
+        IM.Checkbox = function(label, t)
+            if type(label) == 'string' and string.find(label, 'eqheld', 1, true) then
+                t[1] = true; return true;
+            end
+            return false;
+        end
+        queued = {};
+        local okL4 = pcall(render, 'WHM', 75);
+        check('LSU4 checking it renders cleanly', okL4, true);
+        check('LSU4b ...and queues set-current',
+            string.find(table.concat(queued, ' | '), '/dl lock set-current', 1, true) ~= nil, true);
+
+        IM.Checkbox = keptCb2;
+        Sx.engineHeld = keptHeld;
+        heldState = nil;
 
         AshitaCore = realAshita;
         for i, f in ipairs({ 'renderSlotGrid', 'renderStatsPanel', 'renderSortCombo',

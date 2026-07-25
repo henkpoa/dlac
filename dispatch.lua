@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 122;  -- 122: /dl naked + /dl dress (ADR 0021) -- the strip is a CLAIM, not a lock. A new 'Naked' Arbiter row, FIRST by default, claims all 16 slots with the 'remove' literal both engines already speak (LAC MakeItemTable -> Index 0; equipcore normalizeEntry/planSet), so it is recomputed and re-applied on EVERY dispatch instead of stripping once and fencing: nothing re-dresses you, and a strip the server refuses (dead, cutscene, mid-ranged-attack, level-sync settle) lands on the next pass instead of leaking a dressed slot forever. Explicitly NOT the /dl lock route -- a lock only WITHHOLDS (it cannot take a piece off), it is wiped by every engine self-swap, Pins punch through it, and three unrelated buttons release it; arming it would also destroy the player's own locks. Total nudity is the default and the rank list is the exception mechanism: drag Pins or Locks above Naked for "naked except those". Flag is M.nakedArmed, carried across a self-swap by the M._loadStamp idiom and gone in a fresh Lua state, so a git pull cannot re-dress you. A relog does NOT make a fresh Lua state (an Ashita addon survives a logout -- pinwatch's header records it -- and LAC never clears package.loaded), so nakedWorldWatch disarms on the character-select read, and on a JOB CHANGE too (Henrik's ruling; main job only, announced); mirrored to modestate as __naked (display only, never restored). arbOrder now restores a MISSING known row AT ITS DEFAULT POSITION instead of appending -- appended, Naked would have shipped at rank 9 for every character with an existing arbstate file and lost every slot it exists to win. The naked layer voids ctx.pinReserved when it outranks Pins (a reserver about to be stripped must not keep a neighbour dressed) via save/nil/restore, never a ctx copy. /dl ls apply is refused while naked (unnamed slots would be styled permanently EMPTY). Tests NK1-NK26, NKU1-NKU4.
+M.VERSION = 123;  -- 123: `/dl lock set ...` is a FROZEN CLAIM on the Locks row (ADR 0022), not equip-once-then-lock-16-slots. The old command was broken in NATIVE mode and could not be seen: its rawget(_G,'gEquip') bracket is nil in the addon state, so the resolved set fell to the unbracketed path, landed in equipengine's buffer, and the next fireEvent's bufferClear wiped it -- then setLock('all', true) locked all 16 slots onto whatever you were wearing and printed success. As a Claim there is no command-path equip left to bracket wrongly: M.dispatch is already bracketed by the native engine, and the claim re-applies every dispatch so anything the server refused heals on the next pass (ADR 0021 rule 3). FOUR command words, ONE claim shape, differing only in what fills a slot the set does not name: /dl lock set (held EMPTY), set-loose (left available), set-snapshot (held as worn), set-current (all 16 as worn, no set name). M.buildLockedClaim is the pure builder; the three impure seams (resolve/locate/wornOf) are injected, so every branch is driven headless. FROZEN AT ARM: dlac: markers are collapsed to concrete entries once, so a locked obi cannot follow the weather -- but the names are re-LOCATED in your bags every dispatch, because freezing container+index would strand the hold on the first bag shuffle. A named piece that is not on you leaves THAT SLOT LOOSE (available) rather than empty, and is reported by name and container from a live all-bags scan. It rides the EXISTING Locks row -- no new rank row, no new player concept -- so precedence is unchanged: Naked and Pins punch through a lock, nothing else does. Arming no longer clears the player's own locks: layerRespectsLocks('Locks') is false on its own row, so the hold punches through M.locks and a stale lock can never strip a slot out of it. Both dispatch bail guards now let a lone hold through (the NK26 lesson). Lifetime shares nakedWorldWatch -- self-swap survives, job change and logout drop it, never written to disk. Released by /dl lock all off AND /dl lock set off; /dl lock with no arguments prints state plus every variant. Mirrored to modestate as __held. Sets tab's Equip & Lock is now a plain action (nothing locks 16 slots, so its toggle had no counter left); the Equipped tab owns the state and the set-current switch. Tests LS1-LS20, CMD10-CMD15, LSU1-LSU4.
+                  -- 122: /dl naked + /dl dress (ADR 0021) -- the strip is a CLAIM, not a lock. A new 'Naked' Arbiter row, FIRST by default, claims all 16 slots with the 'remove' literal both engines already speak (LAC MakeItemTable -> Index 0; equipcore normalizeEntry/planSet), so it is recomputed and re-applied on EVERY dispatch instead of stripping once and fencing: nothing re-dresses you, and a strip the server refuses (dead, cutscene, mid-ranged-attack, level-sync settle) lands on the next pass instead of leaking a dressed slot forever. Explicitly NOT the /dl lock route -- a lock only WITHHOLDS (it cannot take a piece off), it is wiped by every engine self-swap, Pins punch through it, and three unrelated buttons release it; arming it would also destroy the player's own locks. Total nudity is the default and the rank list is the exception mechanism: drag Pins or Locks above Naked for "naked except those". Flag is M.nakedArmed, carried across a self-swap by the M._loadStamp idiom and gone in a fresh Lua state, so a git pull cannot re-dress you. A relog does NOT make a fresh Lua state (an Ashita addon survives a logout -- pinwatch's header records it -- and LAC never clears package.loaded), so nakedWorldWatch disarms on the character-select read, and on a JOB CHANGE too (Henrik's ruling; main job only, announced); mirrored to modestate as __naked (display only, never restored). arbOrder now restores a MISSING known row AT ITS DEFAULT POSITION instead of appending -- appended, Naked would have shipped at rank 9 for every character with an existing arbstate file and lost every slot it exists to win. The naked layer voids ctx.pinReserved when it outranks Pins (a reserver about to be stripped must not keep a neighbour dressed) via save/nil/restore, never a ctx copy. /dl ls apply is refused while naked (unnamed slots would be styled permanently EMPTY). Tests NK1-NK26, NKU1-NKU4.
                   -- 121: weatherMatch trigger condition (feature/weather-match-condition, grill-with-docs 07-24) -- a spell-handler flag, true when the CURRENT weather's element equals the action's element. weatherMatchesAction reads the SAME gData.GetEnvironment().WeatherElement the obi uses (storm-aware: a Scholar's own Firestorm etc. overrides zone weather, so it counts). DISTINCT from dayWeatherBonus (the signed day+weather net with opposition): weatherMatch is a plain weather-element equality -- no day, no opposition -- verified as CatsEyeXI's ALACRITY_CELERITY_EFFECT (Celerity/Alacrity cast-time) gate. Precast+Midcast, tier 30, true/false polarity; unreadable weather or no action element matches NEITHER (never fires blind). Tests WM1-WM21.
                   -- 120: Chocobo riding-gear automation (issue #95, docs/design/chocobo-gear.md) -- a fourth idle-only sibling: ensureChocoState/chocoStateActive/chocoOverlayFor, the dlac:AutoChoco resolveVirtual branch (manifest `choco` per-slot best-first ladders, Main/Neck/Body/Hands/Legs/Feet, scored by ChocoboRidingTime, the Chocobo Wand included in Main), a 'Chocobo' Arbiter claim row (default rank below Fishing, above the Triggers floor), and arbOrder now pins the Triggers floor last so a new claimant appended to an existing arbstate file never sinks below it.
                   -- 119: field-CONFIRMED close of the maxmp boot saga (Henrik's trace showed the designed boot: 12 install refusals holding the door ~4.5s of hollow flattens, then the REAL world's first appearance earns the first-ever belief -- no wrong ladder was ever displayable) + Henrik's debug-folder rule: per-char debug artifacts live in <data home>\debug\ (the warm trace moves to debug\mpwarm.txt and sweeps its old root-level file; the LAC-bridge handoff files stay put -- paired-reader protocol, leaving with LAC).
@@ -207,6 +208,17 @@ M.locks = {};   -- session-only SLOT LOCKS: lower(lac slot name) -> true. Locks 
 -- only, in the reserved __ namespace loadModeState skips, so it is never restored
 -- from disk and can never collide with a user-defined Mode named "naked").
 M.nakedArmed = (M.nakedArmed == true);
+
+-- LOCKED SET (ADR 0022): what `/dl lock set ...` froze, or nil. Self-swap
+-- survival is the same idiom as nakedArmed above and the reason is one step more
+-- urgent: a git pull firing the 2s content check mid-Incursion must not hand
+-- your gear back. Deliberately NOT reset the way M.locks is wiped two blocks up
+-- -- the two halves of the Locks row have different lifetimes ON PURPOSE, a
+-- lock being an incidental "right now" decision and a locked set a deliberate
+-- typed one. A fresh Lua state starts unlocked (M is new, the field is nil); a
+-- RELOG does not, so nakedWorldWatch drops it on the character-select read for
+-- exactly the reasons it drops the strip. Mirrored to modestate as __held.
+M.lockedSet = M.lockedSet;
 
 local saveModeState;   -- defined in the mode section below; used by the trigger loader
 
@@ -2792,15 +2804,24 @@ end
 --
 -- This only ever CLEARS, never arms. Returns 'world' | 'job' | nil -- what
 -- cleared it, so the caller can say so (tests NK28).
+--
+-- ADR 0022 SHARES THIS WATCH. A locked set has the identical lifetime and the
+-- identical worst case: logging in silently locked to last night's set is the
+-- relog failure again, and arguably meaner -- a naked player knows instantly,
+-- a locked one just finds their gear mysteriously stuck. Second return value
+-- names what was dropped so the caller can say the right sentence; the first
+-- return stays 'world' | 'job' | nil exactly as NK28 pins it.
 function M.nakedWorldWatch(job, prevJob)
-    if not M.nakedArmed then return nil; end
+    if not M.nakedArmed and not M.lockedSetOn() then return nil; end
     local why = nil;
     if job == nil or job == 0 then why = 'world';
     elseif prevJob ~= nil and prevJob ~= 0 and job ~= prevJob then why = 'job'; end
     if why == nil then return nil; end
+    local dropped = { naked = (M.nakedArmed == true), locked = M.lockedSetLabel() };
+    M.lockedSet  = nil;
     M.nakedArmed = false;
     if saveModeState ~= nil then pcall(saveModeState); end
-    return why;
+    return why, dropped;
 end
 
 -- Arm/disarm the strip. The ONE door: the command branch and the GUI both come
@@ -2819,6 +2840,185 @@ function M.setNaked(on)
     -- already-false flag -- would write nothing and never clear it.
     if saveModeState ~= nil then pcall(saveModeState); end
     return on;
+end
+
+-- ---------------------------------------------------------------------------
+-- LOCKED SET (ADR 0022) -- `/dl lock set ...` as a FROZEN Claim on the Locks row.
+--
+-- It used to be `equip once, then M.setLock('all', true)`. Three things were
+-- wrong with that, and the first one shipped broken:
+--
+--   * the one-shot equip was bracketed with rawget(_G,'gEquip'), which is nil in
+--     the ADDON state -- so in NATIVE mode the resolved set fell to the
+--     unbracketed path, landed in equipengine's buffer, and the next fireEvent's
+--     bufferClear wiped it. The command then locked all 16 slots onto whatever
+--     you happened to be wearing and printed success;
+--   * locking all 16 destroyed the player's OWN locks (it had to clear them
+--     first, or they would strip slots out of that very equip) -- ADR 0021
+--     already listed this as a rejected alternative, naming this command as the
+--     state it would damage;
+--   * and a lock CANNOT PUT GEAR ON. It only deletes a slot from a layer's plan
+--     (the strip in equipResolved). So the equip half had no way to retry.
+--
+-- As a Claim all three vanish: the claim is applied INSIDE M.dispatch, which the
+-- native engine already brackets, so there is no command-path equip left to get
+-- wrong; the player's locks are untouched and merely outranked while held; and
+-- the claim is re-applied every dispatch, so anything the server refused heals
+-- on the next pass -- ADR 0021 rule 3, which is the whole reason Naked works.
+--
+-- It rides the EXISTING Locks row rather than adding one (Henrik, 2026-07-26:
+-- "conveying it as one layer in the claimant arbiter but then having it use
+-- /dl lock as the lock layer does in the arbiter is confusing"). One word, one
+-- row, one drag target. arbResolve already returns "slot -> item OR LOCK_HELD",
+-- so the row carries real item names for held slots and the veto sentinel for
+-- plainly-locked ones. Precedence is unchanged: Naked and Pins punch through a
+-- locked slot, nothing else does.
+--
+-- FROZEN AT ARM, not live (Henrik: "Once you lock, it shall be constant, like
+-- with naked. Even if you lock a set then change it, it should not change what
+-- you wear"). Frozen means the INSTRUCTION, never the outcome: dlac: markers are
+-- collapsed to concrete names once, here, so a weather change cannot swap your
+-- obi while locked -- but the claim still re-LOCATES those names in your bags
+-- every dispatch, because freezing container+index would strand the hold the
+-- first time a bag shuffled, which is strip-once with no retry again.
+-- ---------------------------------------------------------------------------
+
+-- 'remove' and 'displaced' are the equip vocabulary's LITERALS, not item names:
+-- both engines map them to an index (0 and -1), so they can never be "missing
+-- from your bags" and must skip the locate check below.
+local EQUIP_LITERAL = { remove = true, displaced = true };
+
+-- The name of a set entry -- a plain string, or a table with .Name (an augment
+-- or Bag spec). nil for anything else.
+local function setEntryName(v)
+    if type(v) == 'string' then return v; end
+    if type(v) == 'table' and type(v.Name) == 'string' then return v.Name; end
+    return nil;
+end
+M._setEntryName = setEntryName;
+
+-- Build the frozen claim. ONE shape for all four commands -- they differ only in
+-- `fill`, which decides what happens to a slot the set does NOT name:
+--
+--   'remove' -> held EMPTY   (/dl lock set          -- strict)
+--    nil     -> left alone   (/dl lock set-loose    -- available to other claimants)
+--   'worn'   -> held as worn (/dl lock set-snapshot, and /dl lock set-current
+--                             with no set at all)
+--
+-- Henrik's words for the two: "Strict = hard reserve EVERYTHING, even empty
+-- slots. Loose = reserve ONLY the slots that have anything on them, the rest
+-- gets free use for any other claimants."
+--
+-- A slot the set DOES name but that we cannot fill right now -- the piece is in
+-- a Satchel or on a mule, or a dlac: marker will not answer -- is NOT held. It
+-- goes loose and is reported by name and location ("that's better than an empty
+-- slot"). It stays loose: the claim is frozen, so moving the item into your bags
+-- mid-run does not re-join it to the hold. Lock again to pick it up.
+--
+-- Pure. `resolve`, `locate` and `wornOf` are injected, so the tests drive every
+-- branch with no Ashita, no bags and no game.
+function M.buildLockedClaim(setTbl, fill, resolve, locate, wornOf)
+    local claim, missing, n = {}, {}, 0;
+    for _, slot in ipairs(LAC_SLOTS_CANON) do
+        local named = nil;
+        if type(setTbl) == 'table' then
+            named = setTbl[slot];
+            if named == nil then                      -- sets may be authored in any case
+                local want = string.lower(slot);
+                for k, v in pairs(setTbl) do
+                    if type(k) == 'string' and string.lower(k) == want then named = v; break; end
+                end
+            end
+        end
+        if named ~= nil then
+            local nm    = setEntryName(named);
+            local entry = named;
+            if type(nm) == 'string' and string.sub(string.lower(nm), 1, 5) == 'dlac:' then
+                entry = (resolve ~= nil) and resolve(named, slot) or nil;   -- collapse the virtual
+            end
+            local en = setEntryName(entry);
+            if entry == nil or en == nil then
+                -- a marker with no answer at this moment (no manifest yet, craft
+                -- mode off, an obi whose element is not up): name the marker.
+                missing[#missing + 1] = { slot = slot, item = nm or '?', where = nil };
+            elseif string.lower(en) == 'ignore' then
+                -- 'ignore' is the set author saying "this slot is not mine".
+                -- Leave it available -- and do NOT report it: nothing is missing.
+            elseif EQUIP_LITERAL[string.lower(en)] then
+                claim[slot] = entry; n = n + 1;
+            else
+                local here, where = true, nil;
+                if locate ~= nil then here, where = locate(entry, slot); end
+                if here then
+                    claim[slot] = entry; n = n + 1;
+                else
+                    missing[#missing + 1] = { slot = slot, item = en, where = where };
+                end
+            end
+        elseif fill == 'worn' then
+            -- An empty slot snapshots as EMPTY: "locks whatever you have on you
+            -- for the moment, STRICTLY" -- and what you have there is nothing.
+            local w = (wornOf ~= nil) and wornOf(slot) or nil;
+            claim[slot] = (w ~= nil) and w or 'remove';
+            n = n + 1;
+        elseif fill == 'remove' then
+            claim[slot] = 'remove';
+            n = n + 1;
+        end
+    end
+    return claim, missing, n;
+end
+
+-- The four command words -> the fill they mean. Data, so the command branch,
+-- the no-argument help and the tests all read the same list (LS1 pins it).
+local LOCKSET_MODES = {
+    ['set']          = { fill = 'remove', needsName = true,
+                         blurb = 'wear that set and LOCK it. Slots it does not name are held EMPTY.' },
+    ['set-loose']    = { fill = nil,      needsName = true,
+                         blurb = 'wear and lock it; slots it does not name stay available to everything else' },
+    ['set-snapshot'] = { fill = 'worn',   needsName = true,
+                         blurb = 'wear and lock it; slots it does not name are held exactly as worn RIGHT NOW' },
+    ['set-current']  = { fill = 'worn',   needsName = false,
+                         blurb = 'lock exactly what you are wearing right now, all 16 slots' },
+};
+M._lockSetModes = LOCKSET_MODES;
+local LOCKSET_ORDER = { 'set', 'set-loose', 'set-snapshot', 'set-current' };
+M._lockSetOrder = LOCKSET_ORDER;
+
+-- Is a set locked? The ONE reader -- M.dispatch, /dl why, /dl prio, the command
+-- branch and the GUI mirror all ask here.
+function M.lockedSetOn() return type(M.lockedSet) == 'table' and type(M.lockedSet.claim) == 'table'; end
+
+-- What to call it in chat and in the GUI. set-current has no set name.
+function M.lockedSetLabel()
+    if not M.lockedSetOn() then return nil; end
+    return M.lockedSet.name or 'your gear as it was';
+end
+
+-- The claim the Arbiter applies. A FRESH copy per call: the Arbiter keeps the
+-- table for /dl why attribution, and the apply path is free to write into what
+-- it is handed -- neither may reach back into what the player locked.
+function M.lockedSetClaim()
+    if not M.lockedSetOn() then return nil; end
+    local out = {};
+    for k, v in pairs(M.lockedSet.claim) do out[k] = v; end
+    if next(out) == nil then return nil; end
+    return out;
+end
+
+function M.setLockedSet(rec)
+    M.lockedSet = (type(rec) == 'table') and rec or nil;
+    if saveModeState ~= nil then pcall(saveModeState); end
+    return M.lockedSet;
+end
+
+-- Release. Returns the label that WAS held (nil if nothing was), so every caller
+-- says the same thing without asking twice.
+function M.clearLockedSet()
+    local had = M.lockedSetLabel();
+    M.lockedSet = nil;
+    if had ~= nil and saveModeState ~= nil then pcall(saveModeState); end
+    return had;
 end
 
 -- The Arbiter's pure RESOLVE CORE (the seam the acceptance criteria pin): given
@@ -3800,6 +4000,79 @@ local function bagCounts(fresh)
     return _bagCache.byId, _bagCache.byName;
 end
 
+-- ---------------------------------------------------------------------------
+-- LOCKED SET, the live half (ADR 0022): the three impure seams
+-- M.buildLockedClaim takes. This runs ONCE, when you type the command -- never
+-- per dispatch. Everything after arming is table lookups.
+-- ---------------------------------------------------------------------------
+
+-- Container id -> display name, so a missing piece can be reported as "in your
+-- Mog Satchel" rather than just "not on you". A TWIN of the list ui\fishui.lua
+-- draws: ADR 0002 keeps the engine from requiring an addon module, and the
+-- addon's own answer to this question (ownedcache.whereText) is a CACHE, so it
+-- can be stale at the one moment this has to be right -- the Incursion entrance.
+local CONTAINER_NAMES = { [0] = 'Inventory', 'Mog Safe', 'Storage', 'Temporary',
+                          'Mog Locker', 'Mog Satchel', 'Mog Sack', 'Mog Case',
+                          'Wardrobe', 'Mog Safe 2', 'Wardrobe 2', 'Wardrobe 3',
+                          'Wardrobe 4', 'Wardrobe 5', 'Wardrobe 6', 'Wardrobe 7',
+                          'Wardrobe 8' };
+M._containerNames = CONTAINER_NAMES;
+
+-- Where is it parked? Searches only the containers you CANNOT equip out of --
+-- the equip-eligible ones (AMMO_BAGS) were already checked and came back empty.
+-- nil means nowhere this character can see it: a mule, or sold.
+local function lockedWhereIs(lowerName)
+    local where = nil;
+    pcall(function()
+        local inv  = AshitaCore:GetMemoryManager():GetInventory();
+        local resx = AshitaCore:GetResourceManager();
+        local skip = {};
+        for _, cid in ipairs(AMMO_BAGS) do skip[cid] = true; end
+        for cid = 0, 16 do
+            if not skip[cid] then
+                local max = inv:GetContainerCountMax(cid) or 0;
+                for idx = 1, max do
+                    local it = inv:GetContainerItem(cid, idx);
+                    if it ~= nil and it.Id ~= nil and it.Id > 0 and it.Id ~= 65535 then
+                        local res = resx:GetItemById(it.Id);
+                        local nm  = (res ~= nil and res.Name ~= nil) and res.Name[1] or nil;
+                        if type(nm) == 'string' and string.lower(nm) == lowerName then
+                            where = CONTAINER_NAMES[cid] or ('container ' .. tostring(cid));
+                            return;
+                        end
+                    end
+                end
+            end
+        end
+    end);
+    return where;
+end
+
+-- Arm: resolve the set ONCE -- dlac: markers collapsed to concrete names,
+-- missing pieces found and located -- and freeze the result. `name` is nil for
+-- set-current. Returns the stored record.
+local function armLockedSet(setTbl, mode, name)
+    local spec = LOCKSET_MODES[mode];
+    if spec == nil then return nil; end
+    local ctx = buildCtx('Default');
+    ctx.syncHold = M.syncSettleHold();
+    local _, byName = bagCounts(true);   -- fresh: a deliberate command, once
+    local function resolve(v, slot)
+        local nm = nil;
+        pcall(function() nm = resolveVirtual(setEntryName(v), ctx, slot); end);
+        return nm;
+    end
+    local function locate(entry)
+        local nm = setEntryName(entry);
+        if nm == nil then return false, nil; end
+        local low = string.lower(nm);
+        if byName ~= nil and (byName[low] or 0) > 0 then return true, nil; end
+        return false, lockedWhereIs(low);
+    end
+    local claim, missing, n = M.buildLockedClaim(setTbl, spec.fill, resolve, locate, wornItemName);
+    return M.setLockedSet({ name = name, mode = mode, claim = claim, n = n, missing = missing });
+end
+
 -- The PURE decision (tests AM*): everything read from `cfg` (the state file
 -- table) and `f` (the facts the impure wrapper gathered). Returns
 -- name | 'remove' | nil(hold), why. STRICTNESS RULES, in the scope guard's
@@ -4410,6 +4683,12 @@ function M.dispatch(event)
         -- during a cast would not be a strip. Read before the bail below -- naked
         -- with no triggers, no pins and nothing armed is the whole point.
         local nakedOn    = M.nakedOn();
+        -- LOCKED SET (ADR 0022) claims on EVERY event too, and for the same
+        -- reason: a hold that let go during a cast would not be a hold. Read
+        -- here, above the bail -- a locked set with no triggers, no pins and
+        -- nothing else armed is the Incursion case the command exists for, and
+        -- bailing past it is exactly how NK26 found the strip could not fire.
+        local lockedOn   = M.lockedSetOn();
         -- Craft/HELM/Fishing CO-CLAIM (ADR 0012 amendment, step 1.5). Each armed
         -- activity claims whenever its own gates hold -- all three may claim in
         -- one dispatch -- and the Arbiter's rank order settles every contested
@@ -4420,7 +4699,7 @@ function M.dispatch(event)
         -- HELM must not pull a fishing rod out of Range that HELM never claims).
         -- Each feature's own gates are untouched (idle-only stand-asides,
         -- Default-only application); arming no longer switches activities.
-        if not hasRules and not hasPins and not craftOn and not helmOn and not fishOn and not chocoOn and not ammoOn and not nakedOn then return; end
+        if not hasRules and not hasPins and not craftOn and not helmOn and not fishOn and not chocoOn and not ammoOn and not nakedOn and not lockedOn then return; end
 
         local ctx = buildCtx(event);
         -- Level-sync settle (v56): computed ONCE per dispatch and ridden by every
@@ -4514,6 +4793,15 @@ function M.dispatch(event)
         if hEquip ~= nil then claims['HELM']      = hEquip; end
         if fEquip ~= nil then claims['Fishing']   = fEquip; end
         if chEquip ~= nil then claims['Chocobo']  = chEquip; end
+        -- THE LOCKED SET rides the Locks row (ADR 0022) rather than adding a
+        -- row of its own: to the player "lock" is one word and one drag target.
+        -- The row therefore carries BOTH kinds of opinion -- real item names for
+        -- slots a locked set holds, and the M.LOCK_HELD veto sentinel for slots
+        -- a plain /dl lock froze (merged into whyClaims for /dl why, below).
+        -- Registered HERE, above the mpCeded computation, so woven MaxMP cedes
+        -- every held slot for free instead of needing a locked-set special case.
+        local lkEquip = lockedOn and M.lockedSetClaim() or nil;
+        if lkEquip ~= nil then claims['Locks']    = lkEquip; end
         -- LOCKS ARE THE VETO ROW (ADR 0012, step 3). Locks sit at a rank; a
         -- claimant ABOVE the row punches through a locked slot, one BELOW stops.
         -- rankOf indexes the live order; layerRespectsLocks answers per claimant
@@ -4543,7 +4831,7 @@ function M.dispatch(event)
         if mpClaim ~= nil then claims['MaxMP'] = mpClaim; end
         ctx.mpCeded = M.arbCededAbove(claims, arbOrder, 'MaxMP');
 
-        if #hits == 0 and cEquip == nil and hEquip == nil and fEquip == nil and chEquip == nil and pEquip == nil and aEquip == nil and nEquip == nil then
+        if #hits == 0 and cEquip == nil and hEquip == nil and fEquip == nil and chEquip == nil and pEquip == nil and aEquip == nil and nEquip == nil and lkEquip == nil then
             if event ~= 'Default' then   -- Default runs every frame; only action events trace a miss
                 _trace[event] = { time = os.date('%H:%M:%S'), action = actionLabel(ctx),
                                   sig = '', lines = { '(no trigger matched)' } };
@@ -4748,6 +5036,21 @@ function M.dispatch(event)
                     lines[#lines + 1] = 'PINNED  ->  ' .. table.concat(ks, ', ');
                 end
             end,
+            ['Locks'] = function()
+                -- THE LOCKED SET (ADR 0022). layerRespectsLocks('Locks') asks
+                -- `rank > lockRank` about its OWN row, so it is false and the
+                -- hold punches through M.locks. That is precisely why arming no
+                -- longer has to clear the player's locks first: a stale lock can
+                -- never strip a slot out of the hold that outranks it, and it is
+                -- still sitting there untouched when the hold is released.
+                equipResolved(lkEquip, ctx, layerRespectsLocks('Locks'));
+                if retrace then
+                    local nHeld = 0;
+                    for _ in pairs(lkEquip) do nHeld = nHeld + 1; end
+                    lines[#lines + 1] = string.format('LOCKED SET "%s"  ->  %d slot(s) held',
+                        tostring(M.lockedSetLabel() or '?'), nHeld);
+                end
+            end,
             ['Naked'] = function()
                 -- ctx.pinReserved is a hold placed on behalf of Pins. When Naked
                 -- outranks Pins the reserving piece is being stripped in this very
@@ -4790,8 +5093,25 @@ function M.dispatch(event)
         if retrace then
             local whyClaims = {};
             for k, v in pairs(claims) do whyClaims[k] = v; end
+            -- The Locks ROW carries two kinds of opinion since ADR 0022: real
+            -- item names from a locked set, and the LOCK_HELD veto sentinel for
+            -- slots a plain /dl lock froze. MERGE rather than assign -- assigning
+            -- would erase whichever of the two /dl why was asked about second.
+            -- The held entries go in first and keep their proper case (which is
+            -- what arbExplain prefers for display); a sentinel is added only for
+            -- a slot the hold does not already name.
             local lockClaim = M.arbLockClaim(M.locks);
-            if next(lockClaim) ~= nil then whyClaims['Locks'] = lockClaim; end
+            if next(lockClaim) ~= nil or whyClaims['Locks'] ~= nil then
+                local merged, seenLower = {}, {};
+                for slot, v in pairs(whyClaims['Locks'] or {}) do
+                    merged[slot] = v;
+                    seenLower[string.lower(tostring(slot))] = true;
+                end
+                for slot, v in pairs(lockClaim) do
+                    if not seenLower[string.lower(tostring(slot))] then merged[slot] = v; end
+                end
+                whyClaims['Locks'] = merged;
+            end
             local why = M.arbWhyLines(whyClaims, arbOrder, floorTbl or {});
             if #why > 0 then
                 lines[#lines + 1] = 'claimants (rank order, highest wins):';
@@ -4986,6 +5306,14 @@ saveModeState = function()
         table.sort(lk);
         parts[#parts + 1] = '["__locks"] = { ' .. table.concat(lk, ' ') .. ' },';   -- slot locks
         parts[#parts + 1] = string.format('["__naked"] = %s,', tostring(M.nakedArmed == true));   -- the strip (ADR 0021), display only
+        -- The locked set (ADR 0022), display only on the same __ contract. The
+        -- Equipped tab owns the state readout; the Sets tab's Equip & Lock button
+        -- reads it too, because there is no longer any lock COUNT for it to test
+        -- (it used to flip to Unlock at 16 locked slots -- nothing locks 16 now).
+        if M.lockedSetOn() then
+            parts[#parts + 1] = string.format('["__held"] = { name = %q, mode = %q, n = %d },',
+                tostring(M.lockedSetLabel()), tostring(M.lockedSet.mode), tonumber(M.lockedSet.n) or 0);
+        end
         for m, v in pairs(M.modes) do
             if v == true then parts[#parts + 1] = string.format('[%q] = true,', m);
             elseif type(v) == 'string' then parts[#parts + 1] = string.format('[%q] = %q,', m, v); end
@@ -5706,8 +6034,18 @@ if engineActive() then
             pcall(function() j = AshitaCore:GetMemoryManager():GetPlayer():GetMainJob(); end);
             -- Leaving the world OR changing job disarms the strip (ADR 0021).
             -- Reads _tickJob BEFORE the block below advances it.
-            if M.nakedWorldWatch(j, _tickJob) == 'job' then
-                print('[dlac] naked: off (job changed) -- your gear comes back on the next pass.');
+            local _wwWhy, _wwDropped = M.nakedWorldWatch(j, _tickJob);
+            if _wwWhy == 'job' and _wwDropped ~= nil then
+                -- Announced on a JOB change only: leaving the world is silent
+                -- because nobody is there to read it (ADR 0021, and 0022 shares
+                -- the watch). Both can drop in the same pass.
+                if _wwDropped.naked then
+                    print('[dlac] naked: off (job changed) -- your gear comes back on the next pass.');
+                end
+                if _wwDropped.locked ~= nil then
+                    print(string.format('[dlac] lock set: released "%s" (job changed) -- a locked set belongs to the job that locked it.',
+                        tostring(_wwDropped.locked)));
+                end
             end
             if j ~= nil and j ~= 0 then
                 if _tickJob ~= nil and j ~= _tickJob and M.modes['maxmp'] ~= nil then
@@ -6189,6 +6527,13 @@ if engineActive() then
             print('[dlac] NAKED -- every slot emptied and HELD empty, on every dispatch.');
             print('[dlac]   Release: /dl dress (or /dl naked off, or the Equipped tab).');
             print('[dlac]   Drops by itself on a job change, a logout, or a Reload LAC.');
+            -- The other half of ADR 0022's "arm freely in either order": the hold
+            -- stays armed underneath and genuinely tries every pass -- the
+            -- Arbiter is what blocks it -- so it resumes the moment you dress.
+            if M.lockedSetOn() then
+                print(string.format('[dlac]   A set is LOCKED ("%s") -- it stays locked and resumes when you /dl dress.',
+                    tostring(M.lockedSetLabel())));
+            end
             -- Taking a weapon off is a server-side TP wipe. Say it once, up front:
             -- discovering it after a WS window is a bad way to learn.
             print('[dlac]   Taking a weapon off zeroes your TP and drops Aftermath -- that is the server, not dlac.');
@@ -6231,73 +6576,132 @@ if engineActive() then
             return;
         end
 
-        if sub == 'lock' then   -- slot locks: the engine stops equipping into them
+        if sub == 'lock' then   -- slot locks (the veto) + the locked set (ADR 0022)
             local slot = args[2] and string.lower(args[2]) or nil;
             if slot == nil then
+                -- Both halves of the row, then every variant and what it does.
+                -- Henrik asked for this print by name: four commands that differ
+                -- only in which slots they freeze are unguessable otherwise.
                 local out = {};
                 for s in pairs(M.locks) do out[#out + 1] = s; end
                 table.sort(out);
-                print('[dlac] locked slots: ' .. ((#out > 0) and table.concat(out, ', ') or '(none)')
-                    .. '   (/dl lock <slot|all> [on|off|toggle] | /dl lock set <name>)');
+                print('[dlac] locked slots: ' .. ((#out > 0) and table.concat(out, ', ') or '(none)'));
+                if M.lockedSetOn() then
+                    print(string.format('[dlac] locked set:   "%s" (%s) -- %d slot(s) held, re-applied every dispatch',
+                        tostring(M.lockedSetLabel()), tostring(M.lockedSet.mode), tonumber(M.lockedSet.n) or 0));
+                else
+                    print('[dlac] locked set:   (none)');
+                end
+                print(string.format('[dlac] %-32s -- %s', '/dl lock <slot|all> [on|off]',
+                    'the engine stops equipping into that slot; it keeps whatever is worn'));
+                for _, w in ipairs(LOCKSET_ORDER) do
+                    local spec = LOCKSET_MODES[w];
+                    print(string.format('[dlac] %-32s -- %s',
+                        '/dl lock ' .. w .. (spec.needsName and ' <set>' or ''), spec.blurb));
+                end
+                print(string.format('[dlac] %-32s -- %s', '/dl lock set off',
+                    'release the locked set   (/dl lock all off releases the slot locks with it)'));
                 return;
             end
-            if slot == 'set' then
-                -- Equip & Lock (the Sets tab button). Incursion T3 locks your equipment
-                -- server-side on entry: wear the committed set FIRST, then lock every
-                -- slot so the engine stops proposing swaps the server would refuse.
-                local nm = (args[3] ~= nil) and table.concat(args, ' ', 3) or nil;
-                if nm == nil then
-                    print('[dlac] usage: /dl lock set <name> -- equips that committed set, then locks every slot. Release: /dl lock all off.');
-                    return;
-                end
-                local s;
-                pcall(function()
-                    local prof = rawget(_G, 'gProfile');
-                    if type(prof) == 'table' and type(prof.Sets) == 'table' then s = prof.Sets[nm]; end
-                    if type(s) ~= 'table' and type(M._nativeSets) == 'table' then s = M._nativeSets[nm]; end   -- native store (v111)
-                end);
-                if type(s) ~= 'table' then
-                    print(string.format('[dlac] lock set: no committed set named "%s" for this job (names are case-sensitive; Commit it in the Sets tab first).', nm));
-                    return;
-                end
-                -- Existing locks would STRIP their slots out of this very equip (that is
-                -- their job), so they go first; setLock('all') below re-locks and writes
-                -- the mirror once, so a failed name above never half-clears the state.
-                for k in pairs(M.locks) do M.locks[k] = nil; end
-                local ctx = buildCtx('Default');
-                ctx.syncHold = M.syncSettleHold();
-                local note = '';
-                -- The PetAction tick's lesson: gFunc.EquipSet only LANDS when LAC
-                -- brackets the call with ClearBuffer/ProcessBuffer -- a bare command-
-                -- handler equip sits in the buffer and evaporates.
-                pcall(function()
-                    local eq = rawget(_G, 'gEquip');
-                    local st = rawget(_G, 'gState');
-                    if eq ~= nil and type(eq.ClearBuffer) == 'function' and type(eq.ProcessBuffer) == 'function' then
-                        eq.ClearBuffer();
-                        local cc = (st ~= nil) and st.CurrentCall or nil;
-                        if st ~= nil then st.CurrentCall = 'LockSet'; end
-                        pcall(function() note = select(1, equipResolved(s, ctx)) or ''; end);
-                        if st ~= nil then st.CurrentCall = cc or 'N/A'; end
-                        eq.ProcessBuffer('auto');
+
+            -- THE LOCKED SET (ADR 0022). Four command words, one claim: they
+            -- differ only in LOCKSET_MODES[word].fill -- what happens to a slot
+            -- the set does not name. Nothing here equips: arming freezes a claim
+            -- and the Arbiter applies it on the next dispatch, ~0.4s away. That
+            -- is the whole fix for the native bug this replaced -- there is no
+            -- command-path equip left to bracket wrongly.
+            local spec = LOCKSET_MODES[slot];
+            if spec ~= nil then
+                local a3 = args[3] and string.lower(args[3]) or nil;
+                if a3 == 'off' then          -- 'off' beats a set literally named "off"
+                    local had = M.clearLockedSet();
+                    if had == nil then
+                        print('[dlac] no set is locked -- nothing to release.   (/dl lock lists every variant)');
                     else
-                        note = select(1, equipResolved(s, ctx)) or '';
+                        print(string.format('[dlac] lock set: released "%s" -- your triggers and automations own those slots again.', had));
                     end
-                end);
-                M.setLock('all', true);
-                print(string.format('[dlac] "%s" equipped -- ALL slots locked; the engine will not change gear until /dl lock all off (or the Sets tab\'s Unlock).%s', nm, note));
+                    return;
+                end
+                local nm, s = nil, nil;
+                if spec.needsName then
+                    nm = (args[3] ~= nil) and table.concat(args, ' ', 3) or nil;
+                    if nm == nil then
+                        print(string.format('[dlac] usage: /dl lock %s <name> -- %s', slot, spec.blurb));
+                        print('[dlac]   Release: /dl lock set off (or /dl lock all off).  /dl lock lists every variant.');
+                        return;
+                    end
+                    pcall(function()
+                        local prof = rawget(_G, 'gProfile');
+                        if type(prof) == 'table' and type(prof.Sets) == 'table' then s = prof.Sets[nm]; end
+                        if type(s) ~= 'table' and type(M._nativeSets) == 'table' then s = M._nativeSets[nm]; end   -- native store (v111)
+                    end);
+                    -- Refuse BEFORE touching anything: a failed name must not
+                    -- leave the player half-locked with nothing equipped.
+                    if type(s) ~= 'table' then
+                        print(string.format('[dlac] lock set: no committed set named "%s" for this job (names are case-sensitive; Commit it in the Sets tab first).', nm));
+                        return;
+                    end
+                end
+                local rec = armLockedSet(s, slot, nm);
+                if rec == nil then
+                    print('[dlac] lock set: could not read your gear just now -- try again in a moment.');
+                    return;
+                end
+                print(string.format('[dlac] LOCKED to "%s" -- %d slot(s) held, re-applied on every dispatch.',
+                    tostring(M.lockedSetLabel()), tonumber(rec.n) or 0));
+                local miss = rec.missing or {};
+                if #miss > 0 then
+                    -- Henrik's ruling: lock to the best of our abilities, then say
+                    -- which pieces were not on you AND where they are -- those
+                    -- slots go LOOSE (available), because an available slot beats
+                    -- an empty one. This is the last moment the player can fix it.
+                    print(string.format('[dlac]   %d piece(s) are NOT on you -- those slots are LOOSE (normal gear swaps continue there):', #miss));
+                    for _, m in ipairs(miss) do
+                        print(string.format('[dlac]     %-6s %-26s %s', tostring(m.slot), tostring(m.item),
+                            (m.where ~= nil) and ('-- in your ' .. m.where) or '-- not found anywhere'));
+                    end
+                    print('[dlac]   Move them to Inventory or a Wardrobe and lock again to hold those slots too.');
+                end
+                print('[dlac]   Release: /dl lock set off  (or /dl lock all off).');
+                -- Anything ranked ABOVE the Locks row can still move its slots.
+                -- Same courtesy /dl naked pays; MaxMP is omitted for the same
+                -- reason it is there (its equip is woven, so it cedes but never
+                -- dresses). Naked gets its own line below when it is actually on.
+                local ord, above = M.arbOrder(ensureArbState()), {};
+                for _, n in ipairs(ord) do
+                    if n == 'Locks' then break; end
+                    if n ~= 'Triggers' and n ~= 'MaxMP' and n ~= 'Naked' then above[#above + 1] = n; end
+                end
+                if #above > 0 then
+                    print(string.format('[dlac]   %s rank ABOVE a lock, so they can still change their slots. Automations > Claim Priority reorders them.',
+                        table.concat(above, ', ')));
+                end
+                if M.nakedOn() then
+                    print('[dlac]   NAKED outranks a locked set -- nothing will be worn until you /dl dress.');
+                end
                 return;
             end
+
             local a3 = args[3] and string.lower(args[3]) or nil;
             local state = nil;                       -- default: toggle
             if a3 == 'on' then state = true; elseif a3 == 'off' then state = false; end
             local res = M.setLock(slot, state);
             if res == nil then
                 print('[dlac] unknown slot: ' .. slot .. '  (main/sub/range/ammo/head/neck/ear1/ear2/body/hands/ring1/ring2/back/waist/legs/feet or all)');
-            else
-                print(string.format('[dlac] lock %s %s -- the engine %s equip into %s',
-                    slot, res and 'ON' or 'OFF', res and 'will NOT' or 'may again',
-                    (slot == 'all') and 'any slot' or ('the ' .. slot .. ' slot')));
+                return;
+            end
+            print(string.format('[dlac] lock %s %s -- the engine %s equip into %s',
+                slot, res and 'ON' or 'OFF', res and 'will NOT' or 'may again',
+                (slot == 'all') and 'any slot' or ('the ' .. slot .. ' slot')));
+            -- `/dl lock all off` is the UNIVERSAL release (Henrik, 2026-07-26:
+            -- from the player's side "lock" is one word, so turning it all off
+            -- must let go of everything the word covers). /dl lock set off stays
+            -- the narrow door for releasing only the set.
+            if slot == 'all' and res == false then
+                local had = M.clearLockedSet();
+                if had ~= nil then
+                    print(string.format('[dlac]   ...and released the locked set "%s".', had));
+                end
             end
             return;
         end

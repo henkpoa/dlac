@@ -28,6 +28,7 @@ local imgui    = try('imgui');
 -- requires the augment decoder itself (the GRD5 rule is absolute since #74).
 local gearOracle = require("dlac\\gear\\gearoracle");
 local statdefs = try("dlac\\data\\statdefs");
+local uistyle  = try("dlac\\ui\\uistyle");   -- helpLabel: underline + hover, the panel-text standard
 
 local S = host.services;
 -- Stable shared tables/constants, captured once (gearui provides before it
@@ -288,6 +289,52 @@ local function renderEquippedTab(job, level)
         if nk[1] and not blocked then
             imgui.SameLine(0, 10);
             imgui.TextColored(COL.ERR, 'NAKED -- all slots held empty');
+        end
+    end
+
+    -- LOCKED SET (ADR 0022). This tab owns the STATE: the Sets tab fires the
+    -- command for a named set, but what is currently held belongs where what you
+    -- are WEARING is already shown. The switch here is set-current -- "lock
+    -- exactly what I have on" -- the one variant with no set to pick, and the
+    -- one an Incursion run actually reaches for at the entrance.
+    if S.engineHeld ~= nil then
+        local held = S.engineHeld();
+        imgui.SameLine(0, 12);
+        local hk = { held ~= nil };
+        if imgui.Checkbox('Lock gear##eqheld', hk) then
+            pcall(function()
+                AshitaCore:GetChatManager():QueueCommand(1,
+                    hk[1] and '/dl lock set-current' or '/dl lock set off');
+            end);
+            if S.lockMirrorDirty ~= nil then S.lockMirrorDirty(); end
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Locks exactly what you are wearing right now -- all 16 slots, empty ones\n'
+                .. 'included -- and holds it on every dispatch until you release it.\n'
+                .. 'For Incursion T3, where the server refuses gear changes on entry.\n\n'
+                .. 'Naked and pinned pieces still outrank a lock. Your own slot locks are left\n'
+                .. 'alone: outranked while this is held, and still set afterwards.\n\n'
+                .. 'To lock a NAMED set, use Equip & Lock on the Sets tab. /dl lock lists the\n'
+                .. 'looser variants. Release: uncheck this, or /dl lock set off.');
+        end
+        if held ~= nil then
+            imgui.SameLine(0, 10);
+            local n = tonumber(held.n) or 0;
+            local tip = string.format('%d of 16 slots are held, re-applied on every dispatch.\n', n)
+                .. 'Locked by: ' .. tostring(held.mode) .. '\n\n'
+                .. ((n < 16)
+                    and ('The other ' .. tostring(16 - n) .. ' are LOOSE -- normal gear swaps continue\n'
+                      .. 'there. Either the set did not name them, or the piece was not on you\n'
+                      .. 'when you locked (chat listed which, and where each one was).\n\n')
+                    or  'Every slot is held, empty ones included.\n\n')
+                .. 'Naked and pinned pieces still outrank it.\n'
+                .. 'Release: uncheck Lock gear, /dl lock set off, or /dl lock all off.';
+            if uistyle ~= nil and type(uistyle.helpLabel) == 'function' then
+                uistyle.helpLabel(imgui, string.format('LOCKED: %s', tostring(held.name)), tip, COL.ERR);
+            else
+                imgui.TextColored(COL.ERR, string.format('LOCKED: %s', tostring(held.name)));
+                if imgui.IsItemHovered() then imgui.SetTooltip(tip); end
+            end
         end
     end
 

@@ -55,9 +55,12 @@ M.SOURCE = {
             .. 'Claims every slot EMPTY and keeps it that way. At the top it beats everything, pins '
             .. 'included -- drag Pins or Locks above it to stay naked EXCEPT those.',
     Pins     = 'Set from the floating gear window\'s PIN menu (right-click a slot to pin/unpin).',
-    Locks    = 'Set by /dl lock, the Equipped tab\'s "Lock when equipped", or the Sets tab\'s "Equip & Lock".\n'
-            .. 'This is the VETO row -- a claim ranked ABOVE it punches through a locked slot; a claim below it stops. '
-            .. 'Drag it to choose which claimants the lock stops: at the top it vetoes everyone (pins included); '
+    Locks    = 'Set by /dl lock, the Equipped tab\'s "Lock when equipped" and "Lock gear", or the Sets tab\'s "Equip & Lock".\n'
+            .. 'This row carries BOTH kinds of lock: a plain slot lock, which only WITHHOLDS a slot (it keeps whatever '
+            .. 'is worn there), and a LOCKED SET (/dl lock set ...), which holds specific gear in specific slots and '
+            .. 're-applies it every dispatch.\n'
+            .. 'A claim ranked ABOVE this row punches through both; a claim below it stops. '
+            .. 'Drag it to choose which claimants a lock stops: at the top it vetoes everyone (pins included); '
             .. 'lower, everyone above it punches through.',
     AutoAmmo = 'Set on the AutoAmmo row above (click it for the per-job ammo panel).',
     MaxMP    = 'Set on the MaxMP row above (click it for the band panel), or /dl mode maxmp.',

@@ -273,7 +273,64 @@ research already recorded. In rough priority order:
 5. **Icon polish, optional:** the four developer rows share one question mark on their
    section heading rather than each carrying one. Trivial to change if it reads wrong.
 
-## Current state (as of 2026-07-25, end of day)
+## Current state (as of 2026-07-26)
+
+- **`/dl lock set …` IS A FROZEN CLAIM — BUILT 2026-07-26 on `dev`, NOT FIELD-TESTED**
+  (engine v123, addon `2026.07.26`, [ADR 0022](adr/0022-locked-set-is-a-claim.md)).
+  This closes the "adjacent bug found, NOT fixed" note left by the naked work, and it
+  closes it by **deleting the code** rather than repairing it. Henrik's steer:
+  *"take inspiration from how we locked everything \[in naked]… only difference is we
+  want this locked to what a specific set holds, instead of no gear."*
+  - **What was wrong**: `rawget(_G,'gEquip')` is nil in the addon state, so in native
+    mode the one-shot equip landed in `equipengine`'s buffer and the next `fireEvent`'s
+    `bufferClear` wiped it — then `setLock('all', true)` locked all 16 slots onto
+    whatever you were wearing and printed success. **Why it hid**: three *other*
+    unbracketed `M.dispatch('Default')` calls have the same flaw and are harmless,
+    because Default re-fires every 0.4s and heals them. `/dl lock set` is the one site
+    where that is impossible — the locks it installs are exactly what stops the next
+    dispatch from equipping.
+  - **A claim is applied inside `M.dispatch`**, which the native engine already
+    brackets, so there is no command-path equip left to get wrong.
+  - **Four commands, one claim shape** — they differ only in what fills a slot the set
+    does not name: `/dl lock set` (held EMPTY), `set-loose` (left available),
+    `set-snapshot` (held as worn), `set-current` (all 16 as worn, no set name).
+  - **It rides the EXISTING `Locks` row.** No new rank row and no new word — to the
+    player, *lock* is one thing. `ARB_ORDER_DEFAULT` is untouched, so **a locked slot
+    moves for Naked and Pins and nothing else**, exactly as it does today.
+  - **Frozen at arm means the INSTRUCTION, not the outcome**: `dlac:` markers collapse
+    to concrete entries once (a locked obi can't follow the weather), but the names are
+    re-*located* in your bags every dispatch — freezing container+index would strand the
+    hold on the first bag shuffle.
+  - **A piece you don't have leaves that slot LOOSE, not empty** ("that's better than an
+    empty slot, is it not?"), reported by name and container from a live all-bags scan.
+  - **Slot locks coexist** — arming no longer destroys them. `layerRespectsLocks('Locks')`
+    is false on its own row, so the hold punches through `M.locks`; a stale lock can
+    never sabotage it, and it's still set on release.
+  - Lifetime shares `nakedWorldWatch`. Release: `/dl lock all off` **and**
+    `/dl lock set off`. `/dl lock` with no args prints state plus every variant.
+  - **GUI**: Sets tab's `Equip & Lock` is now a plain action (nothing locks 16 slots, so
+    its toggle had no counter left to read); the **Equipped tab owns the state** and the
+    `set-current` switch.
+  - Tests `LS1`–`LS20`, `CMD10`–`CMD15`, `LSU1`–`LSU4`. Suites at **3620** and **417**,
+    green on Windows and WSL.
+  - **Field tests owed**: (1) native mode, `/dl lock set <name>` at an Incursion T3
+    entrance — does the set land and stay; (2) the missing-piece report, with something
+    deliberately left in a Satchel; (3) `set-loose` — do the unnamed slots really keep
+    swapping; (4) `/dl lock all off` releasing both halves; (5) the Equipped tab's
+    `Lock gear` switch and its LOCKED readout.
+
+- **`/dl` COMMANDS ARE TESTABLE NOW — 2026-07-26 on `dev`** (`7906cd4`, tests only).
+  Every `/dl` subcommand used to be tested by *searching `dispatch.lua` for its own
+  name* — `NK23`: *"the handler only registers inside `engineActive()`, which is false
+  headlessly, so the whitelist cannot be driven — pin it as SOURCE instead."* That is
+  precisely how the lock-set bug shipped: present, spelled right, whitelisted, inert.
+  The harness arms the native flag, re-loads dispatch so the real handler registers, and
+  calls commands with the game closed. It loads a **second** dispatch module, so it
+  saves and restores `package.loaded` (dispatch + chatfmt), `gFunc`/`gState`,
+  `profiles.nativeMode`/`dataDir`, `ashita.events` and equipengine's `onEvent`/tripwire —
+  and redirects `dataDir` to `tests\`, because the `engineActive` block runs
+  `loadModeState`/`saveModeState` **at load**. `chatfmt` must be stubbed *before* the
+  load: `dispatch.lua:139` binds its shadowed `print` once, at load time.
 
 - **`/dl naked` — BUILT 2026-07-25, ON MAIN since `7231143`, NOT FIELD-TESTED** (engine v122,
   addon `2026.07.25f`, [ADR 0021](adr/0021-naked-is-a-claim.md)). Henrik asked for
@@ -315,11 +372,12 @@ research already recorded. In rough priority order:
     unavailable, but confirm that reads right; (3) `/dl dress` brings back only what
     your sets *name* — anything hand-equipped you re-equip yourself (exact `/lac naked`
     parity; snapshot-and-restore is an open follow-up).
-  - **Adjacent bug found, NOT fixed** (kept out so a regression has one suspect):
-    `/dl lock set` is broken in **native** mode. Its `rawget(_G,'gEquip')` bracket is
-    nil in the addon state, so the equip falls to the unbracketed path and writes into
-    `equipengine`'s buffer — which only `fireEvent` flushes, and `fireEvent` opens by
-    clearing it. The set evaporates on the next tick. Worth its own commit.
+  - **Adjacent bug found here, FIXED 2026-07-26** in [ADR 0022](adr/0022-locked-set-is-a-claim.md):
+    `/dl lock set` was broken in **native** mode — its `rawget(_G,'gEquip')` bracket is
+    nil in the addon state, so the equip fell to the unbracketed path, landed in
+    `equipengine`'s buffer, and the next `fireEvent`'s `bufferClear` wiped it. It is now
+    a frozen claim on the Locks row, so there is no command-path equip left to bracket.
+    See the top of this section.
 
 - **E-BOX RESTOCK v2 — BUILT + PARTLY FIELD-TESTED 2026-07-25, ON MAIN since `7231143`**
   (`2026.07.25e`). The box's contents are no longer polled: they are verified once on
