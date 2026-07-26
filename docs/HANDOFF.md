@@ -269,7 +269,18 @@ see hard rule 14, which this section exists to serve.
   the save silently kept exactly one. Pure seams `triggersui._pushCond` / `._orBothToAny`;
   tests **TB1–TB32** cover them and drive the real add-rule popup frame by frame. Detail:
   [design/trigger-system.md](design/trigger-system.md) §"One value per condition type".
-  **Not pushed either** — `origin/dev` sits one commit behind at `4f26e40`.
+  (Pushed to `origin/dev` 2026-07-26; `dev` now tracks `origin/dev`.)
+
+- **`/dl why` cannot outlive the sets store it described** — `97f1edc`, engine **v126**,
+  addon `2026.07.26d`, **FIELD-CONFIRMED by Henrik 2026-07-26 (~02:00, Mindie WHM)**.
+  Field bug: after a reload, `/dl why` printed `[NOT FOUND in profile Sets]` for sets that
+  exist, with fresh timestamps, all session — while equips worked fine. The lines were TRUE
+  when built (the ~2s designed boot window of install refusals holds an empty store) and the
+  retrace sig carried nothing about the sets store, so `installSets`' own re-dispatch found
+  the sig unchanged and kept the stale lines forever. Fix: the store revision (`M.modesRev`,
+  bumped by every install and re-flatten) joined the sig — the v118 law ("THE INSTALL
+  INVALIDATES THE BELIEF") applied to the trace. Tests **TRC0–TRC3** drive the real command
+  handler + dispatch (CMD-harness style); TRC2 was red on the field symptom pre-fix.
 
 ## What's left (open work, as of 2026-07-25)
 
@@ -301,6 +312,38 @@ research already recorded. In rough priority order:
    section heading rather than each carrying one. Trivial to change if it reads wrong.
 
 ## Current state (as of 2026-07-26)
+
+- **TRIGGER CASES — the live pipeline. START HERE.** A second tier of `&`/`|` logic for
+  trigger rules: every rule body is **case 1**; `+ & case` / `+ | case` add cases, each
+  built exactly like the body. One sentence at both tiers: *`&` things bind into one
+  together-block, each `|` thing stands alone; fire if the together-block holds or any
+  `|` thing does.* Full record: **PRD #124** (grilled 07-26; the design is Henrik's own —
+  do not re-litigate; "case"/"together-block", never "group").
+  [ADR 0023](adr/0023-trigger-cases-schema.md) records the schema.
+  - **Merged on dev**: slice 1 display (#125 → PR #130, `da67194`, engine v125 — rule list
+    + `/dl why` case-aware, priority-chip fix) and slice 2 schema backbone (#126 → PR #132,
+    `09f398b`, engine **v127**, addon **`2026.07.26e`** — `cases` list, oldest-form-first
+    serialization, `hasCases` version guard, both serializers in lockstep, dead-mode sweep).
+    **Hand-written trigger files only — the GUI cannot build a case yet.** Neither slice
+    field-tested (a case rule must be hand-written to even see them). The current editor
+    still FLATTENS a hand-written multi-condition `|` entry on edit-save; the fix rides
+    slice 3 — warn Henrik off editing such rules until then.
+  - **In flight**: slice 3, the editor skeleton (**#127**, cloud agent dispatched
+    2026-07-26 ~02:10) — `+ & case` / `+ | case` buttons, case boxes, the flatten fix.
+    **Shepherd its PR next** (review per the PR-shepherd routine; collision watchlist:
+    engine version 127 and addon `26e` are taken, so next free are 128/`26f`; test ranges
+    CS/TC/TRC/MC/TB/LS*/CMD/NK*/LSP are all taken). After it merges, **Henrik clicks the
+    case boxes and reacts BEFORE polish** — that is the whole point of the skeleton/polish
+    split. #128 (polish) and #129 (blueprints) stay unlabeled until #127 merges; toggle
+    `ready-for-agent` one at a time.
+  - **Open Henrik decisions**: (1) the `hasCases` guard token is player-visible in
+    hand-edited trigger files — naming sign-off still open, rename is one line NOW and a
+    migration later; (2) the slice-1 player-visible strings (`[via together-block]` /
+    `[via standalone …]`, the `| case` box header) await his field read.
+  - Also from this session: the `/dl why` frozen-trace field bug — diagnosed, fixed
+    (v126, `97f1edc`), **field-confirmed**; see Ready-to-merge. `/dl check` turned out
+    **native-era-blind** (three false alarms on a healthy native setup) — filed as **#131**,
+    unlabeled, independent of the cases pipeline.
 
 - **`/dl lock set …` IS A FROZEN CLAIM — BUILT 2026-07-26 on `dev`, NOT FIELD-TESTED**
   (engine v123, addon `2026.07.26`, [ADR 0022](adr/0022-locked-set-is-a-claim.md)).
