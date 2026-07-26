@@ -124,24 +124,25 @@ M.autoHelm = false;        -- "Auto HELM": detection-armed temporary overlay;
                            -- merely coming NEAR a Point re-dresses you)
 M._autoUntil = 0;          -- os.time() the auto hold runs to; each swing's
                            -- 0x034 result refreshes it (0 = not holding)
-M.AUTO_HOLD_S = 4;         -- hold tail after each swing's result. TIMING TRUTH
+M.AUTO_HOLD_S = 5;         -- hold tail after each swing's result. TIMING TRUTH
                            -- (same law as craft's first synth): the server
                            -- rolls a swing WHEN IT PROCESSES THE TRADE -- the
                            -- 0x034 result is our first signal, so the swing
                            -- that opens the hold is never dressed; the hold
-                           -- exists so every FOLLOWING swing is. 4s is
-                           -- Henrik's ruling (20 -> 4, then 6/5/4 on 07-25):
-                           -- a quick snap back to the normal set -- long idle
-                           -- holds cost movement-speed gear between points.
+                           -- exists so every FOLLOWING swing is. 5s is
+                           -- Henrik's ruling (20 -> 4 on 07-25, 4 -> 5 on
+                           -- 07-26): a quick snap back to the normal set --
+                           -- long idle holds cost movement-speed gear between
+                           -- points, but 4s clipped briskly-paced chains.
                            -- The 07-25 fix was NOT this number, it was making
-                           -- the 4s WHOLE every pass (see proximityStep): it
-                           -- used to decay 4..1 between refreshes, so a point
+                           -- the hold WHOLE every pass (see proximityStep): it
+                           -- used to decay 5..1 between refreshes, so a point
                            -- despawning left you the sawtooth leftover, often
                            -- ~1s. os.time() is whole seconds, so a fractional
                            -- value here is meaningless (n and n+0.5 expire on
                            -- the same tick) and %d in saveState would drop it.
                            -- CONSEQUENCE: re-trade within
-                           -- 4s of a result or that swing rolls undressed
+                           -- 5s of a result or that swing rolls undressed
                            -- (its own result re-opens the hold) -- watch the
                            -- bar's AUTO line when judging break tests.
 M._enabledAt = 0;          -- os.time() of the last enable (state-file `at`)
@@ -640,7 +641,7 @@ function M.proximityStep(probe)
     -- Keep the hold at its FULL length every pass (Henrik 07-25: "there's
     -- really no point in having lowering durations"). This used to only
     -- re-arm once the hold had decayed under 2s, so what you actually got
-    -- when a point despawned was the leftover of a 4..1 sawtooth, not 4.
+    -- when a point despawned was the leftover of a 5..1 sawtooth, not 5.
     -- os.time() is whole seconds, so `<` fires at most ONCE PER SECOND, not
     -- per frame -- and the engine re-reads the state file once per second
     -- too (dispatch ensureStateFile), so this writes exactly as often as

@@ -230,6 +230,23 @@ that performs the promotion **empties this section in the same commit as the mer
 entry left standing here after a merge is how "is this on main?" becomes unanswerable —
 see hard rule 14, which this section exists to serve.
 
+- **Auto HELM hold tail 4s → 5s. DONE 2026-07-26, on `dev`** (addon `2026.07.26u`).
+  Henrik's ruling from the field: the gear was snapping back to idle a beat too early
+  between points. One constant — `M.AUTO_HOLD_S` in `feature/helmwatch.lua` — read by
+  both arming sites (`proximityStep` and the 0x034 result handler), so the number moves
+  once and the whole hold moves with it. No test asserts the value (the H5x/H6x
+  proximity tests assert hold/no-hold, not the tail length), so both suites stay green
+  unchanged. **Not field-confirmed yet** — it wants a live gathering run to say whether
+  5s covers a brisk re-trade pace without costing movement gear between points; promote
+  with the rest or hold it back, but that is the one open question on it.
+  - The 07-25 sawtooth fix is what makes this a real 5s: `proximityStep` re-arms the
+    hold to its FULL length every pass, so a despawning point leaves 5s, not the ~1s
+    leftover of a decaying tail. Comment blocks and `docs/design/helm-gear.md` §3 now
+    quote 5s so the next reader doesn't chase a stale number.
+  - `os.time()` is whole seconds — a fractional tail here would be meaningless (n and
+    n+0.5 expire on the same tick) and `%d` in `saveState` would drop it. 5 is the
+    next value the clock can actually express.
+
 - **Changing main job clears the Sets-tab selection. DONE + FIELD-CONFIRMED 2026-07-26,
   on `dev`** (addon `2026.07.26t`). Henrik ran it and signed it off: *"sets are being not
   selected when changing jobs"*. Nothing outstanding. His ask, verbatim: *"all I want is
