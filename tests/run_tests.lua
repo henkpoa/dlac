@@ -4469,6 +4469,168 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- CX. Trigger CASES, the schema backbone (issue #126, slice 2/5). The `cases`
+--     tier in the engine + BOTH serializers. One sentence, both tiers: `&`
+--     things bind into one together-block; each `|` thing stands alone; fire if
+--     the together-block holds, or any `|` thing does. Canonical serialization
+--     is oldest-form-first (a `| case` with only `&` rows is a whenAny multi-
+--     entry); any rule with a cases list carries the always-true version guard.
+-- ---------------------------------------------------------------------------
+(function()
+    local mt = dispatchM._matches;
+    local mc = dispatchM.matchedCase;
+    local bp = dofile('gear/blueprintsmodel.lua');
+    package.loaded['dlac\\gear\\groupsmodel'] = package.loaded['dlac\\gear\\groupsmodel'] or dofile('gear/groupsmodel.lua');
+    local tmodel = dofile('gear/triggermodel.lua');
+    local ctx = { action = { Name = 'Fire IV', Type = 'Black Magic', Element = 'Fire' },
+                  player = { Status = 'Engaged', HPP = 90, TP = 1500 }, buffs = { sleep = true } };
+
+    -- ---- Match seam ----
+    -- (A) `& case` GATES the body: BlackMagic AND (Fire|Ice|Thunder). Together-
+    -- block holds only when the & case's internal | leg does too.
+    local rGate = { when = { magictype = 'Black Magic' }, cases = {
+        { op = '&', when = {}, whenAny = { { element = 'Fire' }, { element = 'Ice' } } } } };
+    check('CX1 & case gates: body + case both hold -> fire', mt(rGate, ctx), true);
+    local ctxThunder = { action = { Name = 'Thunder', Type = 'Black Magic', Element = 'Thunder' } };
+    check('CX2 & case gates: case fails -> no fire', mt(rGate, ctxThunder), false);
+    local ctxWhite = { action = { Name = 'Cure', Type = 'White Magic', Element = 'Light' } };
+    check('CX3 & case gates: body fails -> no fire', mt(rGate, ctxWhite), false);
+
+    -- (B) `| case` fires INDEPENDENTLY of the body (OR of ANDs).
+    local rOr = { when = { status = 'Engaged', tpabove = 1000 }, cases = {
+        { op = '|', when = { magictype = 'Black Magic' }, whenAny = { { element = 'Fire' } } } } };
+    check('CX4 | case fires alone (body misses, case hits)',
+        mt(rOr, { action = { Type = 'Black Magic', Element = 'Fire' }, player = { Status = 'Idle', TP = 0 } }), true);
+    check('CX5 together-block fires alone (case misses, body hits)',
+        mt(rOr, { player = { Status = 'Engaged', TP = 1500 } }), true);
+    check('CX6 both miss -> no fire',
+        mt(rOr, { player = { Status = 'Idle', TP = 0 } }), false);
+
+    -- (C) empty-together-block law at BOTH tiers: OR-only is never always-on.
+    local rOrOnly = { when = {}, cases = { { op = '|', when = { buff = 'Sleep' } } } };
+    check('CX7 tier-2 OR-only fires on its hit', mt(rOrOnly, ctx), true);
+    check('CX8 tier-2 OR-only is NOT always-on',
+        mt(rOrOnly, { buffs = {} }), false);
+    -- internal legs match by the same sentence: an & case that is OR-only inside
+    -- needs one internal | to hold (tier-1 law inside a tier-2 member).
+    local rInner = { when = { magictype = 'Black Magic' }, cases = {
+        { op = '&', when = {}, whenAny = { { element = 'Fire' }, { element = 'Ice' } } } } };
+    check('CX9 internal OR-only case: no internal hit -> no fire',
+        mt(rInner, { action = { Type = 'Black Magic', Element = 'Wind' } }), false);
+
+    -- ---- matchedCase for /dl why ----
+    check('CX10 & case in the together-block names together-block', mc(rGate, ctx), 'together-block');
+    check('CX11 | case names its full leg',
+        mc(rOr, { action = { Type = 'Black Magic', Element = 'Fire' }, player = { Status = 'Idle', TP = 0 } }),
+        'case magictype=Black Magic & (element=Fire)');
+    check('CX12 case-less rule still names nothing', mc({ when = { status = 'Engaged' } }, ctx), nil);
+
+    -- ---- Auto-priority = max tier over EVERY leg of EVERY case ----
+    -- body magicType(30) + an & case whose | leg holds `mode`(100): prio 100.
+    local pRule = { when = { magictype = 'Black Magic' }, cases = {
+        { op = '&', when = {}, whenAny = { { mode = 'Burst' } } } } };
+    check('CX13 auto-priority spans cases', dispatchM.defaultPriority(pRule.when, pRule.whenAny, pRule.cases), 100);
+    check('CX14 the guard never moves priority',
+        dispatchM.defaultPriority({ any = true, hascases = true }, nil, nil), 10);
+
+    -- ---- Labels: case-less byte-identical; case-bearing deterministic ----
+    check('CX15 case-less label byte-identical to today',
+        dispatchM.ruleLabel({ status = 'Engaged' }, { { buff = 'Sleep' } }, nil),
+        'status=Engaged|buff=Sleep');
+    -- case order irrelevant -> stable label (sorted), never a table address.
+    local casesA = { { op = '|', when = { buff = 'Sleep' } }, { op = '&', when = { element = 'Fire' } } };
+    local casesB = { { op = '&', when = { element = 'Fire' } }, { op = '|', when = { buff = 'Sleep' } } };
+    check('CX16 case-bearing label is order-stable',
+        dispatchM.ruleLabel({ status = 'Engaged' }, nil, casesA)
+        == dispatchM.ruleLabel({ status = 'Engaged' }, nil, casesB), true);
+
+    -- ---- normalize: validate legs, drop-with-warn, empty-drop, guard-strip ----
+    local nOut, nWarn = dispatchM._normalize({ Midcast = { {
+        when = { magictype = 'Black Magic', hascases = true }, cases = {
+            { op = '&', when = {}, whenAny = { { element = 'Fire' } } } }, set = 'Nuke' } } });
+    local nr = nOut.Midcast[1];
+    check('CX17 normalize keeps the cases', nr.cases and #nr.cases, 1);
+    check('CX18 normalize STRIPS the guard from the body', nr.when.hascases, nil);
+    check('CX19 normalize priority spans cases (element 30)', nr.prio, 30);
+    local badCase = select(2, dispatchM._normalize({ Midcast = { {
+        when = { any = true }, cases = { { op = '&', when = { nosuchcond = 1 } } }, set = 'X' } } }));
+    check('CX20 unknown key in a case drops the rule with a warn', #badCase >= 1, true);
+    local badOp = select(2, dispatchM._normalize({ Midcast = { {
+        when = { any = true }, cases = { { when = { element = 'Fire' } } }, set = 'X' } } }));
+    check('CX21 a case with no operator drops the rule', #badOp >= 1, true);
+    local emptyCase = dispatchM._normalize({ Midcast = { {
+        when = { status = 'Engaged' }, cases = { { op = '&', when = {} } }, set = 'X' } } });
+    check('CX22 an empty case is dropped at normalization', emptyCase.Midcast[1].cases, nil);
+
+    -- ---- Serializer: case-less byte-identical (PINNED invariant) ----
+    local caselessData = { Midcast = {
+        { when = { name = 'Slow II' }, whenAny = { { mode = 'DT' }, { hpbelow = 50 } }, set = 'X' },
+        { when = { status = 'Engaged' }, set = { 'A', 'B' }, priority = 40 },
+    } };
+    local caseless = dispatchM.serializeTriggers(caselessData);
+    check('CX23 case-less rules never emit a cases list', caseless:find('cases', 1, true), nil);
+    check('CX24 case-less rules never emit the guard', caseless:find('hasCases', 1, true), nil);
+
+    -- ---- Oldest-form-first: a | case with only & conditions -> whenAny entry ----
+    local oldForm = dispatchM.serializeTriggers({ Midcast = { {
+        when = {}, cases = { { op = '|', when = { status = 'Engaged', tpabove = 1000 } } }, set = 'X' } } });
+    check('CX25 | case (only &) serializes as a whenAny multi-entry',
+        oldForm:find('whenAny = { { status = "Engaged", tpAbove = 1000 } }', 1, true) ~= nil, true);
+    check('CX26 ...and NOT as a cases list (no guard needed either)',
+        oldForm:find('cases', 1, true) == nil and oldForm:find('hasCases', 1, true) == nil, true);
+
+    -- ---- Guard: present iff a real cases list survives; always-true, bottom tier ----
+    local withGuard = dispatchM.serializeTriggers({ Midcast = { {
+        when = { magictype = 'Black Magic' }, cases = {
+            { op = '&', when = {}, whenAny = { { element = 'Fire' } } } }, set = 'X' } } });
+    check('CX27 a rule with a cases list carries the guard',
+        withGuard:find('hasCases = true', 1, true) ~= nil, true);
+    check('CX28 the guard is an always-true matcher', dispatchM._matchers.hascases(true, {}), true);
+
+    -- ---- The MAXIMAL fixture: every construct at once, byte-stable through BOTH
+    --      serializers, and the two serializers are byte-parity mirrors. ----
+    local maximal = { when = { magictype = 'Black Magic' },        -- body & leg
+                      whenAny = { { buff = 'Sleep' } },            -- body | leg
+                      cases = {
+                          { op = '&', when = {}, whenAny = { { element = 'Fire' }, { element = 'Ice' } } },  -- & case, internal |
+                          { op = '|', when = { status = 'Engaged', tpabove = 1000 } },                       -- | case, only & -> oldest form
+                      },
+                      set = 'Nuke' };
+    local maxText = dispatchM.serializeTriggers({ Midcast = { maximal } });
+    local maxRaw  = (loadstring or load)(maxText)();
+    check('CX29 maximal fixture round-trips byte-stable (trigger serializer)',
+        dispatchM.serializeTriggers(maxRaw) == maxText, true);
+    -- through the model (the Commit path) -- the wipe contract, extended to cases.
+    local maxModel = tmodel.fromRaw(maxRaw, dispatchM.canonEvent);
+    check('CX30 maximal fixture round-trips byte-stable through the model',
+        dispatchM.serializeTriggers(maxModel) == maxText, true);
+    -- through the blueprints emitter -- the parity-pinned MIRROR: its per-rule body
+    -- is byte-identical to what the trigger serializer writes.
+    local bpBody = bp.emitRule(maximal, dispatchM.PRETTY_KEY);
+    check('CX31 blueprint emitter is byte-parity with the trigger serializer',
+        maxText:find(bpBody, 1, true) ~= nil, true);
+    -- a case-bearing blueprint round-trips byte-stably through its own library format.
+    local lib = {}; bp.add(lib, 'Midcast', maximal);
+    local libText = bp.serialize(lib, dispatchM.PRETTY_KEY);
+    local libBack = bp.parse(libText);
+    check('CX32 blueprint library round-trip byte-stable with cases',
+        bp.serialize(libBack, dispatchM.PRETTY_KEY) == libText, true);
+    check('CX33 blueprint kept the & case', libBack[1].rule.cases[1].op, '&');
+
+    -- ---- The version-guard contract, THIS engine's half: it knows `hasCases`, so
+    --      the guarded maximal rule normalizes cleanly (no warn, rule kept) and
+    --      still fires exactly as authored. An OLDER engine lacks the key, so its
+    --      normalize would drop the rule with the standard unknown-condition warn
+    --      (the "warn, never misread" law) -- the same drop PN18 pins for any
+    --      unknown key. Here we pin our half: we do NOT drop it. ----
+    local guNorm, guWarn = dispatchM._normalize({ Midcast = { maxRaw.Midcast[1] } });
+    check('CX34 this engine accepts the guarded rule (no warn, rule kept)',
+        #guWarn == 0 and guNorm.Midcast and #guNorm.Midcast, 1);
+    check('CX35 the reloaded guarded rule still fires as authored',
+        dispatchM._matches(guNorm.Midcast[1], ctx), true);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- PT. Pet conditions (engine v63): pet / petStatus / petName off ctx.pet
 --     (gData.GetPet() -- nil petless AND at pet HPP 0, so a dead pet reads as
 --     NO pet: pet=false fires). petStatus/petName IMPLY existence -- they must
@@ -8206,6 +8368,35 @@ end)();
     check('MC17 report mutates nothing', #d.Default == 2 and d.Default[1].when.mode .. '/' .. tostring(d.Default[2].whenAny[1].mode), 'X/X');
     check('MC18 near-name mode never matches (Incog vs Inc)',
         #f({ Default = { { when = { mode = 'Incog' }, set = 'A' } } }, 'Inc', false).rules, 0);
+
+    -- issue #126: the sweep extends into CASES with the SAME narrow/empty/remove
+    -- ladder -- a case's mode list narrows, a case whose load-bearing leg empties
+    -- is removed whole, and a rule with nothing left (body + all cases gone) goes.
+    d = { Default = {
+        -- (1) an & case's mode list narrows, keeping the sibling; rule survives
+        { when = { magictype = 'Black Magic' }, cases = { { op = '&', when = { mode = { 'X', 'DT' } } } }, set = 'A' },
+        -- (2) an & case whose ONLY content is the dead mode -> case removed; body
+        --     (magicType) keeps the rule alive
+        { when = { magictype = 'Black Magic' }, cases = { { op = '&', when = { mode = 'X' } } }, set = 'B' },
+        -- (3) body IS the dead mode + the only case dies too -> rule removed whole
+        { when = { mode = 'X' }, cases = { { op = '|', when = { mode = 'X' } } }, set = 'C' },
+        -- (4) empty body, a single | case on the dead mode -> nothing left -> removed
+        { when = {}, cases = { { op = '|', when = { mode = 'X' } } }, set = 'D' },
+    } };
+    r = f(d, 'X', true);
+    check('MC19 case sweep: removed 2 (C,D), edited 2 (A,B)', r.removedRules .. '/' .. r.editedRules, '2/2');
+    check('MC20 & case mode list narrows to the sibling', d.Default[1].cases[1].when.mode, 'DT');
+    check('MC21 emptied case dropped, body keeps the rule',
+        d.Default[2].cases == nil and d.Default[2].set, 'B');
+    check('MC22 the survivors are exactly A and B', (function()
+        for _, rule in ipairs(d.Default) do if rule.set == 'C' or rule.set == 'D' then return rule.set; end end
+        return #d.Default;
+    end)(), 2);
+
+    -- report mode counts a case reference without mutating it
+    local rc = f({ Default = { { when = { magictype = 'Black Magic' },
+        cases = { { op = '|', when = { mode = 'X' }, whenAny = { { element = 'Fire' } } } }, set = 'Z' } } }, 'X', false);
+    check('MC23 report mode names a case reference', #rc.rules, 1);
 
     -- RS: set-rename reference rewrite (2026-07-20, the Sets tab Rename).
     -- EXACT match only; string and multi-set list actions; every handler
