@@ -19,7 +19,7 @@
     hobby is MARKED (green) and its on/off pill is the thing that refuses --
     exactly where the real guard lives.
 
-    TAB ART (2026-07-27). A tab with `assets\hobby\<Name>.png` draws as a 30px
+    TAB ART (2026-07-27). A tab with `assets\hobby\<Name>.png` draws as a 64px
     icon; one without keeps its text button, so the four convert one at a time as
     art arrives. See the iconTab block below for why selection rides brightness
     and armed rides a frame, rather than both riding colour.
@@ -65,13 +65,18 @@ local isOpen = { true };
 -- four tabs can gain art ONE AT A TIME (drop Craft.png / HELM.png / Fishing.png
 -- in beside Chocobo.png and they convert themselves, no code change), and a
 -- texture that fails to load leaves a labelled button rather than a mystery
--- 30px hole -- menuui.headerButton's rule, for the same reason.
+-- hole -- menuui.headerButton's rule, for the same reason.
+--
+-- SIZE: 64, up from the first cut's 30 (Henrik: "I want the icons bigger, at
+-- least twice as big"). The art ships at 128 so that drawing it here lands on
+-- mip level 1 -- a clean 2:1 box filter, i.e. as sharp as shipping 64 -- and so
+-- the tabs can grow again without regenerating every file.
 --
 -- Loading goes through filetex, which RETAINS the texture object; caching only
 -- the numeric handle lets Lua GC it, D3D free it, and imgui draw a dangling
 -- pointer -- that was the header-icon crash.
 -- ---------------------------------------------------------------------------
-local ICON_W = 30;
+local ICON_W = 64;
 
 local function iconHandle(name)
     local h = nil;
@@ -267,7 +272,10 @@ function M.render()
                     imgui.SetTooltip('Show ' .. t.n .. '.');
                 end
             end
-            if i < #TABS then imgui.SameLine(0, 4); end
+            -- 6px, not the old 4: at 64px the icons crowd each other, and the
+            -- armed frame is drawn 2px OUTSIDE the icon, so a 4px gap would put
+            -- a frame edge almost touching its neighbour's art.
+            if i < #TABS then imgui.SameLine(0, 6); end
         end
         imgui.Separator();
 

@@ -241,7 +241,7 @@ see hard rule 14, which this section exists to serve.
   - The invariant it rests on is in architecture.md; CONTEXT.md gained
     **Floating window / Panel / Hobby bar**.
   - **Riding with it** (dev promotes whole-or-not-at-all): **hobby-bar tab ART**,
-    `2026.07.27b`. A tab with `assets\hobby\<Name>.png` draws as a 30px icon; one
+    `2026.07.27c`. A tab with `assets\hobby\<Name>.png` draws as a 64px icon; one
     without keeps its text button. Only `Chocobo.png` exists — Henrik is making the
     other three and wanted to see one first. **Deliberately partial and safe to
     promote**: the text fallback is the design, not a gap, so three text tabs beside

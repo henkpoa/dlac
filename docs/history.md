@@ -5694,7 +5694,7 @@ you have art for one tab of four*. His call: **new art for all four, one at a ti
 other tabs later once I see."*
 
 So the mechanism is built to accept art incrementally: a tab with
-`assets\hobby\<Name>.png` draws as a 30px icon, a tab without keeps its **text button**.
+`assets\hobby\<Name>.png` draws as a 64px icon, a tab without keeps its **text button**.
 Dropping `Craft.png` / `HELM.png` / `Fishing.png` in beside `Chocobo.png` converts them
 with no code change. That fallback is also the old menuui rule — a texture that fails to
 load must leave a labelled button, never a mystery 30px hole.
@@ -5709,8 +5709,12 @@ order the binding packs, so the armed marker cannot come out red on a different 
 **The asset.** 1408×768 RGBA with a genuinely transparent background, art occupying
 551×634; styled as pixel art but gradient-shaded inside the blocks, so it downsamples
 smoothly rather than going to mush. Cropped to the art, centred in a square with a 6%
-margin (never distorted), LANCZOS to **64×64** — the house size for UI icons, where the
-craft/HELM glyphs are 40×40 and draw at 30.
+margin (never distorted), LANCZOS to **128×128**, drawn at 64. Shipping double the draw
+size puts the GPU on mip level 1 — a clean 2:1 box filter, as sharp as shipping 64 — and
+leaves headroom to grow the tabs again without regenerating every file. (The first cut was
+64 drawn at 30, matching the 40×40 craft/HELM glyphs; Henrik wanted them at least twice as
+big, so both numbers doubled -- and the tab gap went 4px → 6px, because the armed frame is
+drawn 2px outside the icon and would otherwise nearly touch its neighbour's art.)
 
 **Testing note.** Headless there is no d3d, so `filetex.handle` always returns nil and every
 tab takes the text path — the icon branch would have shipped with zero coverage while the
