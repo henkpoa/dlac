@@ -2591,11 +2591,38 @@ function M.reservedDrops(set, lookup, worn)
     return dropped;
 end
 
--- A stat-stick TRINKET (an Ammo item whose RSlot reserves the Range slot) and a ranged weapon
--- cannot coexist -- the server clears one the moment both are worn, so keeping both flaps forever.
--- Keep the HIGHER-LEVEL of the two and drop the other (Henrik): deterministic, so it settles.
--- rslotFn(name) / levelFn(name) are injected (they read the gear manifest; tests drive them).
--- Returns (droppedSlotKey, keptName) or nil when there is no trinket/ranged conflict in the set.
+-- A Range/Ammo pair the server will not let coexist -- it clears one the moment both are
+-- worn, so keeping both flaps forever and re-sends an equip every dispatch. Henrik,
+-- 2026-07-26, on why that matters beyond the wrong gear: "that would be good, so we don't
+-- spam the server."
+--
+-- TWO kinds of conflict, and they resolve DIFFERENTLY:
+--
+--  1. A stat-stick TRINKET (the Ammo item's RSlot reserves the Range slot). Henrik's
+--     original rule, ADR 0010, unchanged: keep the HIGHER-LEVEL of the two and drop the
+--     other. It is a real trade -- the stick is worn FOR its stats and the server forces
+--     Range empty while it sits -- so the better piece deserves to win, and deciding by
+--     Level is deterministic, which is what makes it settle instead of oscillate.
+--
+--  2. A plain PAIRING mismatch between two real pieces -- a bolt in a set with a bow.
+--     Here the ammo ALWAYS yields and Range is always kept, whatever the Levels say,
+--     because Henrik's rule for the Range slot is absolute: "It should NEVER force
+--     ranged off, that is HANDS OFF." Keeping the higher Level here would do exactly
+--     that -- a Lv25 Venom Bolt would drop a Lv5 Longbow and leave you holding ammo and
+--     no weapon. The weapon is the choice; the ammo follows it. Same principle AutoAmmo
+--     runs on: "That is 100 % decided on what gets put in ranged."
+--
+-- Which one applies is decided by the RSlot bit, and the LAW (M.pairsWith) decides
+-- whether there is a conflict at all -- three-valued, so it can both CANCEL a drop the
+-- stamp would have made (a compatible pair is never in conflict, whatever the stamp
+-- says) and CAUSE one the stamp would have missed (case 2, which had no stamp to catch
+-- it). Unknown pair data falls back to the bit alone: an old manifest behaves exactly
+-- as it did before.
+--
+-- rslotFn(name) / levelFn(name) / pairFn(name) are injected (they read the gear
+-- manifest; tests drive them).
+-- Returns (droppedSlotKey, keptName, why) -- why is 'trinket' or 'mismatch', for the
+-- caller's trace line -- or nil when the pair is fine.
 function M.trinketRangeDrop(set, rslotFn, levelFn, pairFn)
     if type(set) ~= 'table' then return nil; end
     local rangeKey, rangeName, ammoKey, ammoName;
@@ -2607,25 +2634,27 @@ function M.trinketRangeDrop(set, rslotFn, levelFn, pairFn)
         end
     end
     if rangeName == nil or ammoName == nil then return nil; end
-    local mask = tonumber(rslotFn(ammoName)) or 0;
-    if not hasBit(mask, 0x0004) then return nil; end          -- the Ammo item does not reserve Range
-    -- ...but the RSlot bit is a per-item STAMP, and the real conflict is a per-PAIR
-    -- fact. "Ammo with no AmmoType reserves Range" is an approximation that is right
-    -- for a stat stick beside a bow and WRONG for the skill-0 families that pair with
-    -- their own Range piece: Automaton Oil + Animator (0:10), and Blank Soulplate /
-    -- H.S. Soul Plate + Soultrapper (0:0). Those got stamped Range-reserving and were
-    -- then dropped or displaced out of a slot the server was perfectly happy with --
-    -- the 2026-07-22 oil field bug, which ANIMATOR_FED patched by id for the four
-    -- oils only. Ask the LAW instead, and only to CANCEL a drop: a proven-compatible
-    -- pair is never in conflict, whatever the stamp says. Unknown (nil) changes
-    -- nothing, so an old manifest behaves exactly as before.
-    if pairFn ~= nil and M.pairsWith(pairFn(rangeName), pairFn(ammoName)) == true then
-        return nil;
+    -- The RSlot bit is a per-ITEM stamp; the conflict is a per-PAIR fact. The stamp
+    -- gets the stat sticks right and is wrong twice over: it marks the skill-0 families
+    -- that pair with their own Range piece (Automaton Oil + Animator 0:10, Blank
+    -- Soulplate / H.S. Soul Plate + Soultrapper 0:0 -- the 2026-07-22 oil field bug,
+    -- patched by id for the four oils only), and it cannot see a mismatch between two
+    -- items that both look like ordinary gear (a bolt and a bow).
+    local reserves = hasBit(tonumber(rslotFn(ammoName)) or 0, 0x0004);
+    -- NOT the `x and f() or nil` idiom: pairsWith returns FALSE for a proven mismatch,
+    -- and `and false or nil` collapses it to nil -- which read as "unknown" and made
+    -- every mismatch silently do nothing. Three-valued results need a real if.
+    local compat = nil;
+    if pairFn ~= nil then compat = M.pairsWith(pairFn(rangeName), pairFn(ammoName)); end
+    if compat == true then return nil; end                    -- proven fine: never a conflict
+    if compat ~= false and not reserves then return nil; end  -- unknown + no stamp: as before
+    if reserves then
+        local la = tonumber(levelFn(ammoName)) or 0;
+        local lr = tonumber(levelFn(rangeName)) or 0;
+        if lr > la then return ammoKey, rangeName, 'trinket'; end   -- weapon higher -> drop the stick
+        return rangeKey, ammoName, 'trinket';                       -- stick higher-or-equal -> drop the weapon
     end
-    local la = tonumber(levelFn(ammoName)) or 0;
-    local lr = tonumber(levelFn(rangeName)) or 0;
-    if lr > la then return ammoKey, rangeName; end            -- ranged weapon is higher -> drop the trinket
-    return rangeKey, ammoName;                                -- trinket is higher-or-equal -> drop the ranged weapon
+    return ammoKey, rangeName, 'mismatch';                    -- two real pieces: the ammo yields
 end
 
 -- Scope ruling (2026-07-20, Henrik): the keep-higher-Level contest above is a
@@ -2651,14 +2680,19 @@ function M.trinketWornDisplace(plan, wornAmmo, rslotFn, pairFn)
         if ls == 'range' and type(v) == 'string' and v ~= 'remove' then rangeName = v; end
     end
     if rangeName == nil then return nil; end                  -- nothing incoming to protect
-    if not hasBit(tonumber(rslotFn(wornAmmo)) or 0, 0x0004) then return nil; end
-    -- Same cancel as trinketRangeDrop: a worn ammo the incoming Range piece can
-    -- actually fire is not a trinket standing in its way, whatever its RSlot stamp
-    -- says. This is what stops a worn Blank Soulplate being 'remove'd the moment a
-    -- Soultrapper is planned, and it makes ANIMATOR_FED's id list redundant here.
-    if pairFn ~= nil and M.pairsWith(pairFn(rangeName), pairFn(wornAmmo)) == true then
-        return nil;
-    end
+    -- Same two-sided law as trinketRangeDrop. CANCEL: a worn ammo the incoming Range
+    -- piece can actually fire is not standing in its way, whatever its RSlot stamp says
+    -- (this is what stops a worn Blank Soulplate being 'remove'd the moment a
+    -- Soultrapper is planned, and it makes ANIMATOR_FED's id list redundant here).
+    -- CAUSE: a worn ammo the incoming weapon CANNOT fire has to go even with no stamp --
+    -- a worn bolt would otherwise take the incoming bow straight back off. No Level
+    -- contest on this side ever: the plan's Range piece is the player's choice, and the
+    -- worn ammo is just what happened to be there.
+    local reserves = hasBit(tonumber(rslotFn(wornAmmo)) or 0, 0x0004);
+    local compat = nil;   -- a real if: see trinketRangeDrop on `and false or nil`
+    if pairFn ~= nil then compat = M.pairsWith(pairFn(rangeName), pairFn(wornAmmo)); end
+    if compat == true then return nil; end
+    if compat ~= false and not reserves then return nil; end
     return 'Ammo', rangeName;
 end
 
@@ -3765,10 +3799,18 @@ local function equipResolved(s, ctx, respectLocks)
         -- one and drop the other. BEFORE reserved-drops (POST_ORDER adjacency),
         -- so the loser can't go on to reserve anything and it settles.
         ['trinket-vs-ranged'] = function()
-            local tdKey, tdWinner = M.trinketRangeDrop(out or s, rslotOf, levelOf, pairOf);
+            local tdKey, tdWinner, tdWhy = M.trinketRangeDrop(out or s, rslotOf, levelOf, pairOf);
             if tdKey ~= nil then
                 W()[tdKey] = nil;
-                note('%s=dropped (stat stick vs ranged weapon; kept %s)', tostring(tdKey), tostring(tdWinner));
+                -- Name the REASON: "stat stick vs ranged weapon" was the only conflict
+                -- this pass could find before v128, and reading it over a bolt-vs-bow
+                -- drop would send the next reader hunting for a trinket that is not there.
+                if tdWhy == 'mismatch' then
+                    note('%s=dropped (%s cannot be fired by %s -- the server would strip a slot)',
+                        tostring(tdKey), tostring((out or s)[tdKey]), tostring(tdWinner));
+                else
+                    note('%s=dropped (stat stick vs ranged weapon; kept %s)', tostring(tdKey), tostring(tdWinner));
+                end
             end
             -- Scope ruling: the Level contest above is WITHIN-SET only. A worn
             -- trinket the plan never named must not keep the set's ranged piece

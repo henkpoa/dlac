@@ -5455,6 +5455,53 @@ end)();
           dispatchM.trinketWornDisplace({ Range = 'Longbow' }, 'Cinderstone',
                                         rsTB, pairOfTB), 'Ammo');
 
+    -- TB13+. The law also CAUSES a drop the RSlot stamp could never see: two ordinary
+    -- pieces that simply cannot fire each other (Henrik 2026-07-26: "that would be
+    -- good, so we don't spam the server"). Nothing here reserves Range -- rs0 -- so
+    -- before v128 this pair sailed through and the SERVER stripped a slot, forever.
+    local function rs0(_) return 0; end
+    local function pairMix(n)
+        return ({ ['Longbow'] = '25:4', ['Venom Bolt'] = '26:0', ['Beetle Arrow'] = '25:0',
+                  ['Hexagun'] = '26:1', ['Iron Bullet'] = '26:1',
+                  ['Ebisu Fishing Rod'] = '48:0', ['Sardine Ball'] = '48:0',
+                  ['Maple Harp'] = '41:0' })[n];
+    end
+    -- The ammo ALWAYS yields: "It should NEVER force ranged off, that is HANDS OFF."
+    local mk, mkeep, mwhy = dispatchM.trinketRangeDrop(
+        { Range = 'Longbow', Ammo = 'Venom Bolt' }, rs0, lvTB, pairMix);
+    check('TB13 a bolt in a set with a bow is now dropped', mk, 'Ammo');
+    check('TB13b ...the BOW is what is kept', mkeep, 'Longbow');
+    check('TB13c ...and the reason is a mismatch, not a stat stick', mwhy, 'mismatch');
+    -- Level must NOT flip this one. A Lv25 bolt outranking a Lv5 bow would drop the
+    -- bow and leave the player holding ammo and no weapon -- the exact thing Henrik
+    -- forbade. (The trinket contest above still decides by Level; this one never does.)
+    local hk, hkeep = dispatchM.trinketRangeDrop(
+        { Range = 'Longbow', Ammo = 'Venom Bolt' }, rs0,
+        function(n) return (n == 'Venom Bolt') and 99 or 1; end, pairMix);
+    check('TB13d a higher-Level bolt STILL yields -- Range is never forced off', hk, 'Ammo');
+    check('TB13e ...the low-level bow survives it', hkeep, 'Longbow');
+    -- Compatible pairs must stay untouched by the new firing path.
+    check('TB14 bow + arrow: no drop (25:4 fires 25:0)',
+          dispatchM.trinketRangeDrop({ Range = 'Longbow', Ammo = 'Beetle Arrow' }, rs0, lvTB, pairMix), nil);
+    check('TB14b gun + bullet: no drop',
+          dispatchM.trinketRangeDrop({ Range = 'Hexagun', Ammo = 'Iron Bullet' }, rs0, lvTB, pairMix), nil);
+    check('TB14c rod + bait: no drop (48:0 -- fishing must not regress)',
+          dispatchM.trinketRangeDrop({ Range = 'Ebisu Fishing Rod', Ammo = 'Sardine Ball' }, rs0, lvTB, pairMix), nil);
+    check('TB14d a harp fires nothing -- the arrow yields',
+          dispatchM.trinketRangeDrop({ Range = 'Maple Harp', Ammo = 'Beetle Arrow' }, rs0, lvTB, pairMix), 'Ammo');
+    -- Unknown pair data + no stamp = silence, exactly as before v128.
+    check('TB15 unknown pair and no RSlot bit -> nothing happens (old manifest)',
+          dispatchM.trinketRangeDrop({ Range = 'Mystery Bow', Ammo = 'Mystery Ammo' }, rs0, lvTB, pairMix), nil);
+    check('TB15b no pairFn at all -> nothing happens either',
+          dispatchM.trinketRangeDrop({ Range = 'Longbow', Ammo = 'Venom Bolt' }, rs0, lvTB), nil);
+    -- The worn-side twin fires too: a worn bolt would take the incoming bow back off.
+    check('TB16 a worn bolt yields to an incoming bow, with no stamp involved',
+          dispatchM.trinketWornDisplace({ Range = 'Longbow' }, 'Venom Bolt', rs0, pairMix), 'Ammo');
+    check('TB16b a worn arrow stays put under that same bow',
+          dispatchM.trinketWornDisplace({ Range = 'Longbow' }, 'Beetle Arrow', rs0, pairMix), nil);
+    check('TB16c worn bait survives an incoming rod',
+          dispatchM.trinketWornDisplace({ Range = 'Ebisu Fishing Rod' }, 'Sardine Ball', rs0, pairMix), nil);
+
     AshitaCore = savedAC;
     gearTB.NameToObject['Rimestone'] = nil;
     gearTB.NameToObject['Rouser'] = nil;
