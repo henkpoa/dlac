@@ -176,3 +176,45 @@ protocol, mirroring `WITHDRAW` = 2 (item id + quantity, from an inventory slot)?
 (one-click deposit of job consumables back to the box after an outing, before switching
 jobs) is **PARKED** until such an action exists (Henrik, 2026-07-24). No workaround
 carried; delete this entry and build the button once deposit lands.
+
+---
+
+## 8. `!box` is the only `!` command that cares how it was typed — OPEN (server engine)
+
+Field-tested by Henrik, 2026-07-26, after a player reported `!box` dead while defaulted to
+party chat. Three findings, all reproduced in-game:
+
+1. **`!box` must be typed bare.** `/say !box store` does **not** work. Nothing may precede it.
+2. **With party as the default chat mode, `!box` does not work at all** — prefix or none.
+3. **No other `!` command behaves this way.** `!ventures` and friends work in either chat
+   mode, including when prefixed with `/say`. `!box` is the outlier.
+
+**Why this is strange.** The server clone (`stable`) says all three are impossible:
+`src/map/packets/c2s/0x0b5_chat_std.cpp:126` tests `firstChar == '!'` and calls the
+chat-blind `CCommandHandler::call` **before** the switch on chat kind, so say / shout /
+**party** / linkshell / yell / emote should be indistinguishable (only a *tell* differs —
+`0x0b6_chat_name.cpp` has no `!` branch at all). And `/say !box store` should emit a packet
+byte-identical to typing it bare in say mode. Both predictions fail in the field, so
+whatever handles `!box` live is **not** that code path. It is not a client-side
+interception either — that was checked: across every installed Ashita addon only `dlac` and
+`trove` mention `!box`, neither blocks it, and trove's sole `command` block is `/trove`
+itself (`trove.lua:962`). `modules/catseyexi` is a private submodule and empty in the
+clone, so `!box`'s real implementation is not readable from here.
+
+**Question:** is `!box` handled outside the normal `!` command path — and can it be made
+chat-kind agnostic like every other `!` command? Henrik's guess is that the box is special
+because it is the only command gated on **proximity to an entity**.
+
+**What dlac does meanwhile:** sends it **bare**, exactly as trove does, and never prefixes
+it (`feature/eboxclient.lua`, `M.boxStore` — which carries a DO-NOT-"FIX"-THIS-FROM-SOURCE
+comment, because reading the clone leads you straight back to the wrong conclusion). The
+accepted cost, Henrik's call 2026-07-26 — *"this is a server engine issue, we'll keep it as
+is"*: for a player whose default chat is party, dlac's **Store All** button and all four of
+trove's `!box` buttons silently do nothing. Not worked around, not surfaced in the UI.
+
+**History, so nobody repeats it:** the obvious hardening — pin the chat kind with `/say !box
+store` — was built and shipped (`567e7f2`) on the strength of the server source alone, then
+falsified by one in-game test and reverted (`594927c`).
+
+**On an answer:** nothing to delete on our side — we already send the bare form. If the
+command becomes chat-kind agnostic, the party-chat dead spot closes on its own.

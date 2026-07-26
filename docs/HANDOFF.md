@@ -230,7 +230,10 @@ that performs the promotion **empties this section in the same commit as the mer
 entry left standing here after a merge is how "is this on main?" becomes unanswerable —
 see hard rule 14, which this section exists to serve.
 
-*(Empty. Last promotion: 2026-07-26 — trigger cases slices 1–3, AutoAmmo Range law, the locked set, the `&` leg and `/dl why` fixes. The record is the merge commit on `main`.)*
+*(Empty. Last promotion: 2026-07-26 evening — the `/dl disable` free-equip ceiling
+(ADR 0024, engine v129) and the `/dl reload` → dlac fix, both field-confirmed by Henrik;
+plus the `!box` chat-mode finding as server-question #8 and the "do not fix this again"
+note it left in `eboxclient`. The record is the merge commit on `main`.)*
 
 ## What's left (open work, as of 2026-07-25)
 
@@ -422,7 +425,7 @@ research already recorded. In rough priority order:
     really keep swapping; (4) `/dl lock all off` releasing both halves at once;
     (5) the Equipped tab's `Lock gear` switch and its LOCKED readout.
 
-- **`/dl` COMMANDS ARE TESTABLE NOW — 2026-07-26 on `dev`** (`7906cd4`, tests only).
+- **`/dl` COMMANDS ARE TESTABLE NOW — 2026-07-26, ON MAIN** (`7906cd4`, tests only).
   Every `/dl` subcommand used to be tested by *searching `dispatch.lua` for its own
   name* — `NK23`: *"the handler only registers inside `engineActive()`, which is false
   headlessly, so the whitelist cannot be driven — pin it as SOURCE instead."* That is

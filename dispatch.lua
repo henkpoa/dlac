@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 128;  -- 128: AutoAmmo asks what is in RANGE before it picks (field, Henrik 2026-07-26: "AutoAmmo does NOT dictate if it's bolt, arrows or what not that gets equipped. That is 100% decided on what gets put in ranged"). resolveAmmoPlan was type-BLIND -- it took the first `ranged`-flagged entry with stock, so a bolt above your arrows won with a bow equipped -- and the panel's Bullets/Bolts/Arrows selector never constrained it (categoryOf is a VIEW, stored nowhere). The cost was not a wasted swap: charutils.cpp EquipItem STRIPS THE OTHER SLOT on an incompatible Range/Ammo pair, so the bolt took the bow off, the trigger re-equipped it, and the two flapped forever -- ADR 0010's failure through the skill/subskill door instead of the rslot one. New pure M.pairsWith over a "<skill>:<subskill>" key (26:1 gun/bullet, 26:0 crossbow/bolt, 26:2 culverin/shell, 27:0 boomerang/pebble, 27:3 shuriken, 0:10 Animator/oil), three-valued so an unknown pair degrades to today's behaviour instead of switching AutoAmmo off; ARCHERY is exempt from the subskill half exactly as the server writes it (Shortbow 25:0 and Longbow 25:4 share arrows). Range is never written -- AutoAmmo only ever READS it. Two rulings, both Henrik's: no ranged weapon worn = do nothing at all (safe -- with Range empty the server refuses the shot, so nothing can be consumed), and a weapon worn with nothing in the list able to pair = hold, never force a mismatch in. THROWING with an empty Range (a NIN's shuriken, CanUseRangedAttack's `|| PAmmo->isThrowing()`) is the ONE known exception and stays parked behind the §8 NIN field tests. The key rides the manifest like RSlot (gearimport stamps Pair from the catalog's new field); worn Range falls back to the client resource's Skill when the manifest predates it, so the update alone separates bow/gun/throwing for everyone and a manifest refresh upgrades it to gun-vs-crossbow. Tests PW1-PW14, AM40-AM58.
+M.VERSION = 129;  -- 129: /dl disable -- free equip, the native-era answer to /lac disable (Henrik 2026-07-26: "make it claim the slot / slots, then don't do anything at all with it, so people can free equip all they want without DLAC intervention"). Not a lock (a lock is a veto INSIDE the rank walk -- four rows punch through it) and not a claim to dress (every other row wins a slot in order to put something there; this one wins it to write nothing). It is the CEILING: pinned first in ARB_ORDER_DEFAULT, undraggable like the Triggers floor, and enforced at engineEquipSet -- the one write seam -- rather than in equipResolved's per-slot chain, because the whole-table post-passes that run after that chain write slots the set never named (mp-stage's battery, trinket-vs-ranged's worn-Ammo displace) and would put a slot straight back. Registered as a claim ONLY for attribution, so /dl why and the Priority panel can name it and woven MaxMP cedes it for free. Shares M.worldWatch with naked / locked set / slot locks (v124's one lifetime rule): drops on a main job change and on leaving the world, never written to disk. The Equipped tab's "Free equip" switch now drives THIS instead of /lac disable, which under the native engine talked to a LuaAshitacast that no longer does the equipping and therefore did nothing at all. ADR 0024; tests DS1-DS30.
+                  -- 128: 128: AutoAmmo asks what is in RANGE before it picks (field, Henrik 2026-07-26: "AutoAmmo does NOT dictate if it's bolt, arrows or what not that gets equipped. That is 100% decided on what gets put in ranged"). resolveAmmoPlan was type-BLIND -- it took the first `ranged`-flagged entry with stock, so a bolt above your arrows won with a bow equipped -- and the panel's Bullets/Bolts/Arrows selector never constrained it (categoryOf is a VIEW, stored nowhere). The cost was not a wasted swap: charutils.cpp EquipItem STRIPS THE OTHER SLOT on an incompatible Range/Ammo pair, so the bolt took the bow off, the trigger re-equipped it, and the two flapped forever -- ADR 0010's failure through the skill/subskill door instead of the rslot one. New pure M.pairsWith over a "<skill>:<subskill>" key (26:1 gun/bullet, 26:0 crossbow/bolt, 26:2 culverin/shell, 27:0 boomerang/pebble, 27:3 shuriken, 0:10 Animator/oil), three-valued so an unknown pair degrades to today's behaviour instead of switching AutoAmmo off; ARCHERY is exempt from the subskill half exactly as the server writes it (Shortbow 25:0 and Longbow 25:4 share arrows). Range is never written -- AutoAmmo only ever READS it. Two rulings, both Henrik's: no ranged weapon worn = do nothing at all (safe -- with Range empty the server refuses the shot, so nothing can be consumed), and a weapon worn with nothing in the list able to pair = hold, never force a mismatch in. THROWING with an empty Range (a NIN's shuriken, CanUseRangedAttack's `|| PAmmo->isThrowing()`) is the ONE known exception and stays parked behind the §8 NIN field tests. The key rides the manifest like RSlot (gearimport stamps Pair from the catalog's new field); worn Range falls back to the client resource's Skill when the manifest predates it, so the update alone separates bow/gun/throwing for everyone and a manifest refresh upgrades it to gun-vs-crossbow. Tests PW1-PW14, AM40-AM58.
                   -- 127: trigger CASES, the schema backbone (issue #126, slice 2/5; ADR 0023) -- rules gain an optional `cases` list (a second `&`/`|` tier: op + the same two legs a body has), evaluated by matches()/matchedCase() over a factored legMatches so both tiers share one code path; normalize validates + drops empty cases + strips the always-true `hasCases` version guard; auto-priority + ruleLabel span every leg of every case (case-LESS rules match/label/serialize byte-for-byte as before -- pinned). serializeTriggers is oldest-form-first (a `| case` of only `&` rows -> a whenAny multi-entry; only `&` cases and `| cases` with internal OR use the new list) and stamps the guard so OLDER engines drop the rule with the standard warn instead of misreading it. Seeded-file bump: normalize + matches run engine-side (hard rule 4). Tests CX1-CX35, MC19-23. (PR #132 shipped as v126/2026.07.26c off a pre-97f1edc dev; renumbered at merge.)
                   -- 126: the /dl why trace can no longer outlive the sets store it described (field, Mindie 2026-07-26 01:31): the retrace sig now carries the store REVISION (M.modesRev -- bumped by every install and re-flatten, 5668/5714), so lines built against the empty boot-window store ("[NOT FOUND in profile Sets]", true for ~2s of designed install refusals) die the moment the install lands, instead of printing with a fresh timestamp for the rest of the session while equips worked fine. The v118 law applied to the trace: THE INSTALL INVALIDATES THE BELIEF. Display only, no equip change. Tests TRC0-TRC3 (the trace-vs-store contract, driven through the real command handler + dispatch like CMD).
                   -- 125: trigger CASES, read-side (issue #125, slice 1/5) -- /dl why now NAMES the matched case of a case-bearing rule ('[via together-block]' / '[via standalone ...]' / '[via case a & b]'), mirroring matches() with the engine's own MATCHERS. Display only: a case-less rule (no `|` leg) traces byte-for-byte as before, so this is invisible to the 99%. Seeded-file bump because the trace is built engine-side during dispatch (hard rule 4). No schema change, no equip change. Tests CS1-CS10 (the PR shipped these as MC1-MC10 off a stale origin/dev; renamed at merge -- the dead-mode sweep suite owns the MC range, and 123/124 were taken by the lock-lifetime work).
@@ -212,6 +213,22 @@ M.modesRev = 0; -- bumped on every mode change: utils.rebuildSets re-flattens th
 -- is now the same rule for all three ways of deliberately holding gear still.
 M.locks = M.locks or {};
 
+-- DISABLED SLOTS (ADR 0024) -- "dlac, hands off". `/dl disable <slot|all>`, the
+-- native-era answer to /lac disable. NOT a lock and NOT a claim to dress: a lock
+-- is a VETO INSIDE the rank walk (a claimant above it punches through), and this
+-- has to hold against every rank there is, the strip included. So it is the
+-- CEILING -- the mirror of the Triggers floor -- and it is enforced at the write
+-- seam rather than in the walk: engineEquipSet drops these slots from every set
+-- that leaves, so no layer, no post-pass and no future caller can reach them.
+--
+-- `or {}`, not `= {}`, for M.locks's reason one step stronger: an engine
+-- SELF-SWAP (the 2s content check -- a git pull, a reseed) must not silently hand
+-- your slots back to the engine while you are mid-swap in the gear menu. A fresh
+-- Lua state starts enabled (M is new). Lifetime is otherwise M.worldWatch's, the
+-- one Henrik gave all three holds on 2026-07-26: a main job change or leaving the
+-- world releases it, and it is never written to disk.
+M.disabledSlots = M.disabledSlots or {};
+
 -- NAKED (ADR 0021): the strip flag. `= (M.nakedArmed == true)` -- the M._loadStamp
 -- idiom at the top of this file, and deliberately NOT `M.nakedArmed = false` the way
 -- M.locks is wiped above. The difference IS the feature: an engine SELF-SWAP (the 2s
@@ -336,10 +353,49 @@ end
 -- command printers all gate on this instead of inLac().
 local function engineActive() return inLac() or nativeEngine() ~= nil; end
 
+-- Drop every DISABLED slot from a resolved set (ADR 0024). Returns the set
+-- unchanged when nothing is disabled -- the overwhelmingly common case pays one
+-- `next()` -- and a filtered COPY otherwise, so a caller's table is never mutated
+-- (the dispatch hands the same tables to /dl why attribution afterwards).
+--
+-- Case-insensitive on purpose: the vocabulary arrives in BOTH cases here. Sets
+-- and claims are canonical ('Main'), /dl lock and this command speak lac-case
+-- ('main'), and gear\equipcore's SLOT_ID map is case-SENSITIVE -- so comparing
+-- raw keys would disable a slot in one engine and silently miss it in the other,
+-- which is exactly the divergence NK3 exists to catch. Keys starting `__` are
+-- set metadata, never slots, and pass through untouched.
+local function stripDisabled(set)
+    if type(set) ~= 'table' then return set; end
+    if next(M.disabledSlots) == nil then return set; end
+    local out, hit = nil, false;
+    for k in pairs(set) do
+        local ks = tostring(k);
+        if string.sub(ks, 1, 2) ~= '__' and M.disabledSlots[string.lower(ks)] == true then
+            if not hit then
+                hit, out = true, {};
+                for k2, v2 in pairs(set) do out[k2] = v2; end
+            end
+            out[k] = nil;
+        end
+    end
+    return hit and out or set;
+end
+M._stripDisabled = stripDisabled;   -- test seam (DS*)
+
 -- The one equip write seam: LAC state -> gFunc.EquipSet; native -> the
 -- equipengine buffer (flushed by its fireEvent, ClearBuffer/ProcessBuffer
 -- parity). Every resolved set leaves through here.
+--
+-- AND SO THE DISABLED FILTER LIVES HERE (ADR 0024), not in the rank walk. Putting
+-- it in equipResolved's per-slot chain would have been the obvious home and is
+-- not enough: the whole-table post-passes that run AFTER that chain write slots
+-- the set never named (mp-stage's battery, trinket-vs-ranged's worn-Ammo
+-- displace), so a disabled slot nil'd early can be put straight back a few lines
+-- later. One filter on the way out covers the chain, every post-pass, and any
+-- caller this seam grows later -- which is what "dlac does not touch that slot"
+-- has to mean to be worth typing.
 local function engineEquipSet(set)
+    set = stripDisabled(set);
     local eng = nativeEngine();
     if eng ~= nil then
         pcall(eng.equipSet, set);
@@ -2919,9 +2975,20 @@ M._postPassOrder = POST_ORDER;
 -- exactly ONE deliberate change: AutoAmmo's named projectile now beats a MaxMP
 -- battery in Ammo (it ranks above MaxMP, so Ammo is ceded to it).
 -- ---------------------------------------------------------------------------
-local ARB_ORDER_DEFAULT = { 'Naked', 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
+-- 'Disabled' is the CEILING (ADR 0024) -- the mirror of the Triggers floor, and
+-- the second fixed row. Both ends of this list are now invariants rather than
+-- rankings: the claims dress OVER Triggers, and NOTHING dresses THROUGH Disabled.
+-- It is listed here so the Priority panel can show it (a player has to be able to
+-- see why a slot is inert), never so it can be dragged.
+local ARB_ORDER_DEFAULT = { 'Disabled', 'Naked', 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
                             'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' };
 M._arbDefaultOrder = ARB_ORDER_DEFAULT;
+
+-- The rows a player can never pick up, and that arbOrder places itself: the
+-- Disabled ceiling (first) and the Triggers floor (last). arbwatch.FIXED is the
+-- GUI's copy of this same set -- keep them in step.
+local ARB_PINNED = { Disabled = true, Triggers = true };
+M._arbPinnedRows = ARB_PINNED;
 
 -- The live rank order: arbstate's `order` array sanitized against the KNOWN
 -- rows -- unknown names dropped, missing known rows restored AT THEIR DEFAULT
@@ -2959,11 +3026,11 @@ function M.arbOrder(st)
     for i, n in ipairs(ARB_ORDER_DEFAULT) do known[n] = true; defIdx[n] = i; end
     if given ~= nil then
         for _, n in ipairs(given) do
-            if known[n] and not seen[n] and n ~= 'Triggers' then out[#out + 1] = n; seen[n] = true; end
+            if known[n] and not seen[n] and not ARB_PINNED[n] then out[#out + 1] = n; seen[n] = true; end
         end
     end
     for _, n in ipairs(ARB_ORDER_DEFAULT) do
-        if not seen[n] and n ~= 'Triggers' then
+        if not seen[n] and not ARB_PINNED[n] then
             local at = #out + 1;                       -- default: the bottom
             for i, have in ipairs(out) do
                 if (defIdx[have] or 0) > defIdx[n] then at = i; break; end
@@ -2972,6 +3039,11 @@ function M.arbOrder(st)
             seen[n] = true;
         end
     end
+    -- The two PINNED rows, put back at the ends. Both passes above skip them, so
+    -- a hand-mangled (or merely older) file cannot move either one -- which is
+    -- the whole point of Disabled: "over EVERYTHING" has to survive a file that
+    -- lists it in the middle, or it is a default rather than a ceiling.
+    table.insert(out, 1, 'Disabled');
     out[#out + 1] = 'Triggers';
     return out;
 end
@@ -2996,6 +3068,105 @@ function M.arbLockClaim(locked)
         for s, on in pairs(locked) do if on then out[s] = M.LOCK_HELD; end end
     end
     return out;
+end
+
+-- ---------------------------------------------------------------------------
+-- DISABLED SLOTS (ADR 0024) -- `/dl disable`, the ceiling.
+--
+-- What /lac disable is for, in the native era: hand a slot back to the player so
+-- they can equip by hand and have it STAY. dlac had no equivalent -- the Equipped
+-- tab's "Free equip" fires /lac disable, which under the native engine talks to a
+-- LuaAshitacast that is no longer doing the equipping, so it did nothing at all.
+--
+-- Three things it deliberately is NOT:
+--
+--   * not a LOCK. A lock is a veto INSIDE the rank walk: a claimant ranked above
+--     Locks punches straight through it (that punch-through is the Priority
+--     list's whole promise, ADR 0012 step 3). "Do not touch this slot" cannot be
+--     expressed by a thing that four other rows are allowed to overrule.
+--   * not a CLAIM to dress. Every other row wins a slot in order to PUT SOMETHING
+--     THERE -- even Naked, whose 'remove' is an instruction to strip. This one
+--     wins a slot in order to write nothing, so it has no applyClaim equip and
+--     could not have one: there is no item, and no unequip either.
+--   * not gState.Disabled. That is LAC-only and sits BELOW the engine (issue #58,
+--     a standing dlac ruling). This lives at dlac's own write seam, so it works
+--     identically in both engines and nothing underneath it is fenced off.
+--
+-- So it is the CEILING: pinned above every row, undraggable, enforced in
+-- engineEquipSet. It is registered as a claim ONLY so /dl why and the Priority
+-- panel can name it -- a slot that silently stops responding, with nothing
+-- anywhere to say why, is the failure this surface must not have.
+-- ---------------------------------------------------------------------------
+
+-- The claim value for a disabled slot -- "dlac writes nothing here". Distinct
+-- from M.LOCK_HELD on purpose: a lock says "keep what is worn" and can be
+-- overruled by rank; this says "not mine" and cannot.
+M.DISABLED_FREE = setmetatable({}, { __tostring = function() return 'FREE-EQUIP'; end });
+
+-- Is any slot disabled? (any == nil) -- or is THIS one? Slot names are lac-case.
+function M.disabledOn(slot)
+    if slot == nil then return next(M.disabledSlots) ~= nil; end
+    return M.disabledSlots[string.lower(tostring(slot))] == true;
+end
+
+-- 'hands' -> 'Hands' for a chat line. The canon list is the display vocabulary
+-- (Ring1, Ear2), so this is a lookup rather than a first-letter upper.
+local SLOT_LABEL = {};
+for i, s in ipairs(LAC_SLOTS) do SLOT_LABEL[s] = LAC_SLOTS_CANON[i]; end
+function M.slotLabel(slot)
+    slot = string.lower(tostring(slot or ''));
+    return SLOT_LABEL[slot] or slot;
+end
+
+-- The disabled slots, sorted, in canonical LAC order (the /dl why + chat lists).
+function M.disabledList()
+    local out = {};
+    for _, s in ipairs(LAC_SLOTS) do
+        if M.disabledSlots[s] == true then out[#out + 1] = s; end
+    end
+    return out;
+end
+
+-- The Disabled claim for the Arbiter: { [Slot] = DISABLED_FREE } in the equip
+-- vocabulary's proper case (what arbExplain displays), or nil when none. Unlike
+-- Naked this claims ONLY the disabled slots -- claiming all 16 would be a lie in
+-- /dl why, and there is no apply loop here for it to matter to.
+function M.disabledClaim()
+    if next(M.disabledSlots) == nil then return nil; end
+    local out = nil;
+    for i, s in ipairs(LAC_SLOTS) do
+        if M.disabledSlots[s] == true then
+            out = out or {};
+            out[LAC_SLOTS_CANON[i]] = M.DISABLED_FREE;
+        end
+    end
+    return out;
+end
+
+-- Flip a slot's disable. slot: one of LAC_SLOTS or 'all'; state nil = toggle.
+-- Deliberately shaped like M.setLock -- same vocabulary, same 'all' fan-out, same
+-- nil-for-unknown-slot -- because to a player these are two settings on one row
+-- of the same gear menu, and a surface that behaves differently for no reason is
+-- a bug even when every branch is correct. Returns the new state (for 'all': the
+-- state applied), or nil for an unknown slot name.
+--
+-- No dispatch is kicked, for ADR 0021's reason: the 0.4s tick is the only Default
+-- entry point carrying the zoning / player-action / sync-settle gates. Disabling
+-- needs no pass at all (it only ever withholds), and ENabling lands on the next
+-- one.
+function M.setDisabled(slot, state)
+    slot = string.lower(tostring(slot or ''));
+    if slot == 'all' then
+        if state == nil then state = (next(M.disabledSlots) == nil); end   -- toggle: all on if none on
+        for _, s in ipairs(LAC_SLOTS) do M.disabledSlots[s] = (state == true) or nil; end
+        if saveModeState ~= nil then pcall(saveModeState); end
+        return state == true;
+    end
+    if not LAC_SLOT_OK[slot] then return nil; end
+    if state == nil then state = not (M.disabledSlots[slot] == true); end
+    M.disabledSlots[slot] = (state == true) or nil;
+    if saveModeState ~= nil then pcall(saveModeState); end
+    return M.disabledSlots[slot] == true;
 end
 
 -- ---------------------------------------------------------------------------
@@ -3111,16 +3282,25 @@ end
 -- so the caller can say the right sentence; the first return stays
 -- 'world' | 'job' | nil exactly as NK28 pins it.
 function M.worldWatch(job, prevJob)
-    local nLocks = 0;
+    local nLocks, nDis = 0, 0;
     for _ in pairs(M.locks) do nLocks = nLocks + 1; end
-    if not M.nakedArmed and not M.lockedSetOn() and nLocks == 0 then return nil; end
+    -- DISABLED SLOTS ride the same watch (ADR 0024). Same rule for the same
+    -- reason: a slot dlac has stopped equipping into, on a job whose loadout you
+    -- never disabled anything on, with nothing on screen to explain it, is the
+    -- relog failure in a smaller box -- and it is meaner here than for the strip,
+    -- because a naked player knows instantly and this one just finds one slot
+    -- quietly not swapping.
+    for _ in pairs(M.disabledSlots) do nDis = nDis + 1; end
+    if not M.nakedArmed and not M.lockedSetOn() and nLocks == 0 and nDis == 0 then return nil; end
     local why = nil;
     if job == nil or job == 0 then why = 'world';
     elseif prevJob ~= nil and prevJob ~= 0 and job ~= prevJob then why = 'job'; end
     if why == nil then return nil; end
-    local dropped = { naked = (M.nakedArmed == true), locked = M.lockedSetLabel(), locks = nLocks };
+    local dropped = { naked = (M.nakedArmed == true), locked = M.lockedSetLabel(),
+                      locks = nLocks, disabled = nDis };
     -- In place, never `M.locks = {}`: the table's identity is held elsewhere.
     for k in pairs(M.locks) do M.locks[k] = nil; end
+    for k in pairs(M.disabledSlots) do M.disabledSlots[k] = nil; end
     M.lockedSet  = nil;
     M.nakedArmed = false;
     if saveModeState ~= nil then pcall(saveModeState); end
@@ -3470,11 +3650,25 @@ function M.arbWhyLines(claims, order, floor)
     -- naked player runs. Who it beat is still reported, deduped across the sweep.
     local lines, floorOnly, floorRank = {}, {}, nil;
     local nakedSlots, nakedRank, nakedBeat, nakedSeen = {}, nil, {}, {};
+    -- Disabled (ADR 0024) collapses like Naked, and for the same reason: it can
+    -- claim up to sixteen slots and /dl why is exactly what someone runs when a
+    -- slot has stopped moving. It goes FIRST in the output, because when it is on
+    -- it is the answer to the question that was asked.
+    local disSlots, disRank, disBeat, disSeen = {}, nil, {}, {};
     for _, r in ipairs(rows) do
         local ops, win = r.ops, r.ops[1];
         if win.name == 'Triggers' then
             floorOnly[#floorOnly + 1] = tostring(r.slot);
             floorRank = win.rank;
+        elseif win.name == 'Disabled' then
+            disSlots[#disSlots + 1] = tostring(r.slot);
+            disRank = win.rank;
+            for i = 2, #ops do
+                if not disSeen[ops[i].name] then
+                    disSeen[ops[i].name] = true;
+                    disBeat[#disBeat + 1] = string.format('%s (rank %d)', ops[i].name, ops[i].rank or 0);
+                end
+            end
         elseif win.name == 'Naked' then
             nakedSlots[#nakedSlots + 1] = tostring(r.slot);
             nakedRank = win.rank;
@@ -3504,6 +3698,12 @@ function M.arbWhyLines(claims, order, floor)
             nakedRank or 0, #nakedSlots, (#nakedSlots == 1) and '' or 's',
             table.concat(nakedSlots, ', '),
             (#nakedBeat > 0) and ('  over ' .. table.concat(nakedBeat, ', ')) or ''));
+    end
+    if #disSlots > 0 then
+        table.insert(lines, 1, string.format('FREE EQUIP (ceiling, rank %d) -- dlac writes nothing to %d slot%s: %s%s',
+            disRank or 0, #disSlots, (#disSlots == 1) and '' or 's',
+            table.concat(disSlots, ', '),
+            (#disBeat > 0) and ('  over ' .. table.concat(disBeat, ', ')) or ''));
     end
     if #floorOnly > 0 then
         lines[#lines + 1] = 'Triggers floor (rank ' .. tostring(floorRank or 0) .. ', uncontested): '
@@ -5273,6 +5473,15 @@ function M.dispatch(event)
         -- to it for free instead of needing a naked-shaped special case.
         local nEquip = nakedOn and M.nakedClaim() or nil;
         if nEquip ~= nil then claims['Naked']    = nEquip; end
+        -- The DISABLED ceiling (ADR 0024) registers for ATTRIBUTION ONLY. It has
+        -- no applyClaim and cannot have one -- it withholds, and withholding is
+        -- done at the write seam (engineEquipSet), above every post-pass. What it
+        -- buys by being here is that /dl why and ctx.mpCeded see it: registered
+        -- above the mpCeded computation, woven MaxMP cedes a disabled slot for
+        -- free, so the battery does not spend its pass planning a slot that will
+        -- be dropped on the way out.
+        local dzEquip = M.disabledClaim();
+        if dzEquip ~= nil then claims['Disabled'] = dzEquip; end
         if pEquip ~= nil then claims['Pins']     = pEquip; end
         if aEquip ~= nil then claims['AutoAmmo']  = aEquip; end
         if cEquip ~= nil then claims['Craft']     = cEquip; end
@@ -5343,6 +5552,14 @@ function M.dispatch(event)
         local lk = {};
         for s in pairs(M.locks) do lk[#lk + 1] = s; end   -- lock changes must retrace too
         table.sort(lk);
+        -- Disabling or re-enabling a slot changes the answer /dl why gives, so it
+        -- has to move the signature -- prefixed, so it can never collide with a
+        -- lock on the same slot name (both lists are lac-case).
+        local dzSig = '';
+        do
+            local dk = M.disabledList();
+            if #dk > 0 then dzSig = 'off:' .. table.concat(dk, ','); end
+        end
         local cSig = '';                                  -- craft overlay changes must retrace too
         if cEquip ~= nil then
             local ck = {};
@@ -5396,7 +5613,7 @@ function M.dispatch(event)
         -- to the trace: THE INSTALL INVALIDATES THE BELIEF. Tests TRC1-TRC3.
         sig = event .. ':' .. table.concat(sig, ',') .. '|' .. table.concat(lk, ',')
               .. '|' .. cSig .. '|' .. pSig .. '|' .. hSig .. '|' .. fSig .. '|' .. chSig .. '|' .. aSig .. '|' .. mSig
-              .. '|' .. nSig .. '|sr' .. tostring(M.modesRev or 0);
+              .. '|' .. nSig .. '|' .. dzSig .. '|sr' .. tostring(M.modesRev or 0);
         local old = _trace[event];
         local retrace = (old == nil) or (old.sig ~= sig) or (event ~= 'Default');
         local lines = retrace and {} or old.lines;
@@ -5571,6 +5788,18 @@ function M.dispatch(event)
                 if retrace then
                     lines[#lines + 1] = 'NAKED  ->  all 16 slots emptied'
                         .. (void and '' or '  (pins reserve theirs)');
+                end
+            end,
+            ['Disabled'] = function()
+                -- THE ONE CLAIMANT THAT EQUIPS NOTHING (ADR 0024). No
+                -- equipResolved call, deliberately: the ceiling withholds, and it
+                -- withholds at engineEquipSet where it also covers the post-passes
+                -- and the trigger floor already written this pass. This closure
+                -- exists only so the trace says so -- an inert slot with no line
+                -- anywhere explaining it is the failure mode this feature has.
+                if retrace then
+                    lines[#lines + 1] = 'FREE EQUIP  ->  ' .. table.concat(M.disabledList(), ', ')
+                        .. '  (dlac writes nothing to these; equip them yourself)';
                 end
             end,
         };
@@ -5864,6 +6093,14 @@ saveModeState = function()
         for s in pairs(M.locks) do lk[#lk + 1] = string.format('[%q] = true,', s); end
         table.sort(lk);
         parts[#parts + 1] = '["__locks"] = { ' .. table.concat(lk, ' ') .. ' },';   -- slot locks
+        -- Disabled slots (ADR 0024), display only on the same __ contract. The
+        -- Equipped tab's Free equip switch and the Priority panel's ceiling row
+        -- both read it; loadModeState skips the __ namespace, so it can never be
+        -- restored from disk -- logging in with three slots silently inert is
+        -- this feature's version of ADR 0021's worst outcome.
+        local dz = {};
+        for _, s in ipairs(M.disabledList()) do dz[#dz + 1] = string.format('[%q] = true,', s); end
+        parts[#parts + 1] = '["__disabled"] = { ' .. table.concat(dz, ' ') .. ' },';
         parts[#parts + 1] = string.format('["__naked"] = %s,', tostring(M.nakedArmed == true));   -- the strip (ADR 0021), display only
         -- The locked set (ADR 0022), display only on the same __ contract. The
         -- Equipped tab owns the state readout; the Sets tab's Equip & Lock button
@@ -6610,6 +6847,10 @@ if engineActive() then
                     print(string.format('[dlac] slot locks: released %d (job changed) -- a lock belongs to the job that set it.',
                         _wwDropped.locks));
                 end
+                if (_wwDropped.disabled or 0) > 0 then
+                    print(string.format('[dlac] free equip: off, %d slot(s) re-enabled (job changed) -- dlac is dressing them again.',
+                        _wwDropped.disabled));
+                end
             end
             if j ~= nil and j ~= 0 then
                 if _tickJob ~= nil and j ~= _tickJob and M.modes['maxmp'] ~= nil then
@@ -6843,7 +7084,7 @@ if engineActive() then
         -- WHITELIST FIRST, branch second: a new subcommand needs adding HERE as well as
         -- below, or it returns in silence and looks like the command does not exist
         -- (v46's /dl instdiag, an hour lost to exactly this).
-        if sub ~= 'mode' and sub ~= 'why' and sub ~= 'triggers' and sub ~= 'env' and sub ~= 'lock' and sub ~= 'sets' and sub ~= 'profile' and sub ~= 'ls' and sub ~= 'plan' and sub ~= 'prio' and sub ~= 'check' and sub ~= 'debug' and sub ~= 'naked' and sub ~= 'dress' then return; end
+        if sub ~= 'mode' and sub ~= 'why' and sub ~= 'triggers' and sub ~= 'env' and sub ~= 'lock' and sub ~= 'sets' and sub ~= 'profile' and sub ~= 'ls' and sub ~= 'plan' and sub ~= 'prio' and sub ~= 'check' and sub ~= 'debug' and sub ~= 'naked' and sub ~= 'dress' and sub ~= 'disable' and sub ~= 'enable' then return; end
         e.blocked = true;
 
         if sub == 'debug' then
@@ -6910,7 +7151,12 @@ if engineActive() then
             local ammoOn = ammoStateOn(ensureAmmoState());
             local maxmpOn = (M.modes['maxmp'] ~= nil);
             local anyLock = (next(M.locks) ~= nil);
+            local dzList = M.disabledList();
             local status = {
+                Disabled = (#dzList > 0)
+                    and string.format('ON (ceiling -- dlac writes nothing to %s; /dl enable all releases)',
+                        table.concat(dzList, ', '))
+                    or 'off (ceiling -- no slots disabled)',
                 Naked    = M.nakedOn() and 'ON (claims ALL 16 slots empty -- /dl dress releases)' or 'off',
                 Pins     = hasPins and 'ON (armed)' or 'off',
                 Locks    = anyLock and 'ON (veto -- claims above punch through, below stop)'
@@ -7063,6 +7309,47 @@ if engineActive() then
             return;
         end
 
+        if sub == 'disable' or sub == 'enable' then   -- free equip (ADR 0024): the ceiling
+            -- /lac disable's grammar, deliberately: bare = all 16, a slot name =
+            -- that one, and `enable` is the release. Never a toggle -- typing
+            -- "disable" must not be the thing that re-enables a slot, which is
+            -- /dl naked's rule and the same trap.
+            local a2 = args[2] and string.lower(args[2]) or nil;
+            local a3 = args[3] and string.lower(args[3]) or nil;
+            local want, target = (sub == 'disable'), a2;
+            if sub == 'disable' and a2 == 'off' then     -- /dl disable off == /dl enable all
+                want, target = false, a3;
+            elseif a3 == 'off' then                      -- /dl disable head off
+                want = false;
+            elseif a3 == 'on' then
+                want = true;
+            end
+            target = target or 'all';
+            if target ~= 'all' and not LAC_SLOT_OK[target] then
+                print(string.format('[dlac] "%s" is not a slot', tostring(target)));
+                return;
+            end
+            -- ONE LINE, always (Henrik, 2026-07-26: "please remove all the text").
+            -- Everything the paragraph used to say has a better home: precedence
+            -- is Claim Priority, the state readout is /dl prio, and what actually
+            -- happened to a slot is /dl why. A chat line is for the ACK.
+            local before = #M.disabledList();
+            M.setDisabled(target, want);
+            local now = M.disabledList();
+            local label = (target == 'all') and 'All slots' or M.slotLabel(target);
+            if want then
+                print(string.format('[dlac] %s disabled - enable by /dlac enable%s',
+                    label, (target == 'all') and '' or (' ' .. target)));
+            elseif before == 0 then
+                print('[dlac] Nothing was disabled');
+            elseif #now == 0 then
+                print(string.format('[dlac] %s enabled', label));
+            else
+                print(string.format('[dlac] %s enabled - still disabled: %s', label, table.concat(now, ', ')));
+            end
+            return;
+        end
+
         if sub == 'naked' or sub == 'dress' then   -- the strip (ADR 0021): a Claim, not a lock
             local a2 = args[2] and string.lower(args[2]) or nil;
             local want;
@@ -7114,11 +7401,23 @@ if engineActive() then
                 -- entry outright -- so dragging it above Naked cedes the slots
                 -- but still equips nothing. Naming it here would promise an
                 -- exception that does not happen.
-                if n ~= 'Triggers' and n ~= 'MaxMP' then above[#above + 1] = n; end
+                -- 'Disabled' is skipped for a different reason than MaxMP's: it
+                -- is not a rank the player can reorder, so listing it under
+                -- "Claim Priority reorders them" would point at a drag that does
+                -- not exist. It gets its own line below, and only when it is ON.
+                if n ~= 'Triggers' and n ~= 'MaxMP' and n ~= 'Disabled' then above[#above + 1] = n; end
             end
             if #above > 0 then
                 print(string.format('[dlac]   %s rank ABOVE Naked, so their slots stay dressed. Automations > Claim Priority reorders them.',
                     table.concat(above, ', ')));
+            end
+            -- Free equip (ADR 0024) is the ceiling, so a disabled slot keeps its
+            -- piece on through the strip. One line -- "I went naked and my hands
+            -- are still on" otherwise costs a /dl why to answer.
+            local dzNow = M.disabledList();
+            if #dzNow > 0 then
+                print(string.format('[dlac]   Free equip is on - %s stay dressed (/dlac enable all)',
+                    table.concat(dzNow, ', ')));
             end
             -- THE ONE WAY NAKED SILENTLY DOES NOTHING. LuaAshitacast's own
             -- /lac disable (the Equipped tab's "Free equip") sets gState.Disabled,

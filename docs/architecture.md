@@ -720,6 +720,7 @@ like the command does not exist.
 | `/dl mode <name> [on\|off\|toggle\|<value>]` | dispatch | Flip a mode (no arg: list) |
 | `/dl lock <slot\|all> [on\|off\|toggle]` | dispatch | Engine-owned slot locks |
 | `/dl naked [on\|off\|toggle]` / `/dl dress` | dispatch | Strip every slot and hold it empty -- an Arbiter Claim ranked first, **not** a lock (ADR 0021). Bare `/dl naked` always arms; `/dl dress` releases. Dies on a Reload LAC, survives an engine self-swap |
+| `/dl disable [slot\|all]` / `/dl enable [slot\|all]` | dispatch | **Free equip** -- dlac writes nothing to those slots, no equip and no unequip, so hand-equipped gear stays put (ADR 0024). The **ceiling**: pinned above every rank row and undraggable, so triggers, pins, a locked set and even `/dl naked` all stop at it. Enforced at the one write seam, not in the rank walk. Bare `/dl disable` takes all 16; also `/dl disable off` and `/dl disable <slot> off`. Same lifetime as the strip and the locks (job change / logout / Reload LAC), never saved |
 | `/dl why` | dispatch | Last-dispatch trace + per-slot **claimant** attribution (winner + rank, "stopped by Locks", "Triggers" floor) |
 | `/dl prio` | dispatch | The Arbiter's live rank + per-claimant claim status (ADR 0012) |
 | `/dl env` | dispatch | Day/weather + per-element obi math |

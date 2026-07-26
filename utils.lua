@@ -683,7 +683,11 @@ ashita.events.register('command', 'dlac', function (e)
     elseif sub_command == "test" then
         M.Test();
     elseif sub_command == "reload" or sub_command == "r" then
-        AshitaCore:GetChatManager():QueueCommand(1, '/addon reload luashitacast');
+        -- Reloads DLAC (Henrik, 2026-07-26). This queued '/addon reload
+        -- luashitacast' from the LAC-hosted era; on a migrated (native) install
+        -- that RESURRECTED LuaAshitacast and fired the coexistence tripwire,
+        -- which disarms the native engine for the rest of the session.
+        AshitaCore:GetChatManager():QueueCommand(1, '/addon reload dlac');
     end
 end);
 

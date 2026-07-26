@@ -591,6 +591,23 @@ end
 -- i.e. what Restock just fetched. Callers must confirm before calling this.
 -- We mark dirty HERE because a state never hears its own QueueCommand (the
 -- `!box` watch below will not fire for us) -- bookkeep at the queue site.
+--
+-- SEND IT BARE. DO NOT "FIX" THIS FROM THE SERVER SOURCE (field 2026-07-26).
+-- QueueCommand mode 1 is Typed, so this rides the player's DEFAULT CHAT MODE,
+-- and a player reported `!box` dead while defaulted to party. The obvious
+-- hardening -- pin the chat kind with `/say !box store` -- was built, shipped,
+-- field-tested by Henrik and REVERTED: `/say !box …` does not work at all. It
+-- has to go out with nothing in front of it. And with party as the default chat,
+-- `!box` does not work either, prefix or none.
+--
+-- Read that against the server clone and it makes no sense, which is the point:
+-- `0x0b5_chat_std.cpp:126` tests `firstChar == '!'` and calls the (chat-blind)
+-- CCommandHandler BEFORE the switch on chat kind, so say/party/linkshell should
+-- be identical, and `/say !box store` should produce the very same packet as
+-- typing it bare in say mode. The field says otherwise on both counts, so the
+-- live interception is NOT the code in that clone. The field verdict wins; the
+-- source reading was wrong. Henrik's call: it is a server-side limitation, not
+-- ours to work around -- "it is what it is".
 function M.boxStore()
     if not M.isCW() then return false; end
     local ok = pcall(function()
