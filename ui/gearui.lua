@@ -2374,6 +2374,11 @@ end
 -- Commit button in renderSetsTab.
 local _setDirty = false;
 
+-- Main job the gear window was last drawn for. A set belongs to the job that
+-- built it, so when this moves the Sets-tab selection is dropped -- see the latch
+-- in drawWindow.
+local _setsJob = nil;
+
 -- Load a dynamic set into the working model (by our 16 slot labels).
 local function loadSet(setName)
     M.working = {};
@@ -4477,6 +4482,22 @@ local function drawWindow()
     local owned = buildOwned();
     buildAllEquip();   -- populate catalog indexes for tooltips / worn-set totals
     local job, level = getPlayerInfo();
+
+    -- A set belongs to the job that built it. The picker's LIST already follows
+    -- main job (profilesets caches on the job file), but the SELECTION is only a
+    -- name and the working copy is only a table -- neither moved, so changing job
+    -- left the previous job's set selected, on screen, and still editable. Drop it
+    -- here rather than inside renderSetsTab: this is the one point above every tab
+    -- AND the Weights window, and both the tab and that window bind per-set weights
+    -- off the name (bindSetWeights mints a blank NEWJOB|OldSetName record for a
+    -- name the new job never had). Nil/empty job = zoning or character select, not
+    -- a change: latch only what we can trust, so the drop lands on the real switch.
+    if job ~= nil and job ~= '' then
+        if _setsJob ~= nil and _setsJob ~= job then
+            M.working = {}; M.workingSetName = nil; ui.setSelected = nil; _setDirty = false;
+        end
+        _setsJob = job;
+    end
 
     imgui.SetNextWindowSize({ 940, 680 }, ImGuiCond_FirstUseEver);
     imgui.SetNextWindowSizeConstraints({ 480, 340 }, { 1300, 1300 });

@@ -230,10 +230,26 @@ that performs the promotion **empties this section in the same commit as the mer
 entry left standing here after a merge is how "is this on main?" becomes unanswerable —
 see hard rule 14, which this section exists to serve.
 
-*(Empty. Last promotion: 2026-07-26 evening — the `/dl disable` free-equip ceiling
-(ADR 0024, engine v129) and the `/dl reload` → dlac fix, both field-confirmed by Henrik;
-plus the `!box` chat-mode finding as server-question #8 and the "do not fix this again"
-note it left in `eboxclient`. The record is the merge commit on `main`.)*
+- **Changing main job clears the Sets-tab selection. DONE + FIELD-CONFIRMED 2026-07-26,
+  on `dev`** (addon `2026.07.26t`). Henrik ran it and signed it off: *"sets are being not
+  selected when changing jobs"*. Nothing outstanding. His ask, verbatim: *"all I want is
+  when you change jobs, have no set selected."* The picker's **list** already followed main
+  job (`profilesets` caches per job file), but the **selection** was only a name and the
+  working copy only a table — neither moved, so a job change left the previous job's set
+  named, on screen, and editable, and a Commit wrote it into the new job's file.
+  - The latch (`_setsJob`) lives at the top of `drawWindow` in `ui/gearui.lua`, **not**
+    inside `renderSetsTab`: that is the one point above every tab *and* the Weights window,
+    and both bind per-set weights off the name — `bindSetWeights` would otherwise mint a
+    blank `NEWJOB|OldSetName` record for a name the new job never had.
+  - The drop is the same four-assignment idiom the delete/rename paths already use
+    (`M.working`, `M.workingSetName`, `ui.setSelected`, `_setDirty`). A nil/empty job —
+    zoning, character select — is *not* treated as a change: it latches only what it can
+    trust, so the drop lands on the real switch (hard rule 11).
+  - **Coverage gap, stated plainly:** `drawWindow` is a file-local reached only from the
+    `d3d_present` hook, and no suite drives it — this is the same untested render path as
+    the "Sets tab render has NO smoke drive" note below, so the change rests on Henrik's
+    field run, not on a test. Both suites are green around it (3864 `run_tests` Windows +
+    WSL, 549 `smoke_ui`).
 
 ## What's left (open work, as of 2026-07-25)
 
