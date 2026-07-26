@@ -300,29 +300,6 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
-- **E-Box Store All now pins its chat kind — ON `dev`, AWAITING FIELD TEST.** Addon
-  **`2026.07.26o`**, `feature/eboxclient.lua`. A player report said `!box` "doesn't work
-  in a party (as default chat)". Both dlac and trove send it the same way —
-  `QueueCommand(1, '!box …')`, mode 1 = `Typed`, i.e. a bare string that rides whatever
-  the **default chat mode** is (`trove/plugins/ebox.lua:628,641,649,594` vs our single
-  send). Reading the server settles most of it:
-  - `src/map/packets/c2s/0x0b5_chat_std.cpp:126` handles `!` **before** the switch on
-    chat kind, and `CCommandHandler::call` is chat-blind — so say, shout, **party**,
-    linkshell, yell and emote all work. The party claim is not explained by the source.
-  - A **tell is a different packet** (`0x0b6_chat_name.cpp`) with **no `!` branch at
-    all** — there the command is whispered at a player and the box never hears it. Tab
-    in the chat box walks Say → Shout → Party → Linkshell → **Tell**, so it is one
-    keypress from "party", which is the likeliest reading of the report.
-  - Fix: `M.CHAT_PIN = '/say '` and `M.boxCommand(sub)` build the one wire string, so
-    Store All sends `/say !box store`. `M._isBoxCommand` (the arm watch) now hears both
-    the bare and the pinned form, because **trove still sends bare** on its four buttons.
-    Tests EBC15c–e hold the exact string; `CHAT_PIN = ''` restores the old behaviour.
-  - **What field test must answer:** if `/say !box store` works but the bare form failed
-    in a party, the live server is not the code above and it is a server-side ask. Note
-    the cross-addon cost either way: trove's `!box` passthrough matches `args[1] ==
-    '!box'`, so it will **not** see our pinned send and won't auto-refresh its panel
-    after our Store All.
-
 - **AutoAmmo is Range-aware — DONE, field-confirmed, QUEUED for main.** Engine **v128**,
   addon **`2026.07.26j`**. The promotion write-up (what it fixes, why it is safe, what it
   deliberately does not fix) lives in **Ready to merge** above; the design record is

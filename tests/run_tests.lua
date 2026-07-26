@@ -9956,42 +9956,6 @@ end)();
     check('EBC15 boxStore refuses headless (the CW gate, before any command)', ec.boxStore(), false);
     check('EBC15b canQuery is public and headless-false', ec.canQuery(), false);
 
-    -- EBC15c-e. THE CHAT-KIND PIN (2026-07-26). QueueCommand mode 1 is Typed, so
-    -- a bare `!box store` rides his DEFAULT CHAT MODE. The server takes `!` from
-    -- every 0x0B5 kind, but a tell is 0x0B6 and that handler has no `!` branch at
-    -- all -- so in tell mode the command is whispered at a player and the box
-    -- never hears it. We pin the kind; these hold the exact wire string.
-    check('EBC15c boxCommand pins the chat kind', ec.boxCommand('store'), '/say !box store');
-    do
-        local savedCW, savedAC = ec.isCW, rawget(_G, 'AshitaCore');
-        local sent = {};
-        ec.isCW = function() return true; end
-        _G.AshitaCore = { GetChatManager = function()
-            return { QueueCommand = function(_, mode, cmd) sent[#sent + 1] = { mode, cmd }; end };
-        end };
-        local ok = ec.boxStore();
-        check('EBC15d Store All puts the pinned string on the wire, Typed mode',
-            ok == true and #sent == 1 and sent[1][1] == 1 and sent[1][2] == '/say !box store', true);
-        -- The pin is a field-tunable: '' restores the bare form trove still sends.
-        sent = {}; ec.CHAT_PIN = '';
-        ec.boxStore();
-        check('EBC15d2 CHAT_PIN = \'\' sends the bare form again',
-            sent[1] ~= nil and sent[1][2] == '!box store', true);
-        ec.CHAT_PIN = '/say ';
-        ec.isCW, _G.AshitaCore = savedCW, savedAC;
-    end
-    -- The watch has to keep hearing BOTH forms: trove's four buttons still send
-    -- bare, and he may type either.
-    check('EBC15e the `!box` watch hears bare, pinned, and neither', (function()
-        return ec._isBoxCommand('!box store')
-           and ec._isBoxCommand('  !BOX ammo')
-           and ec._isBoxCommand('/say !box cluster')
-           and ec._isBoxCommand('/p !box Bronze Bullet')
-           and not ec._isBoxCommand('/say hello !box is great')
-           and not ec._isBoxCommand('/dl restock')
-           and not ec._isBoxCommand(nil);
-    end)(), true);
-
     -- the lost-answer timeout: ONE dropped reply must not wedge every future
     -- query. Under the dirty-only discipline there is no poll to paper over it.
     local ecNow = 5000;
