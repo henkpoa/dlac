@@ -2596,7 +2596,7 @@ end
 -- Keep the HIGHER-LEVEL of the two and drop the other (Henrik): deterministic, so it settles.
 -- rslotFn(name) / levelFn(name) are injected (they read the gear manifest; tests drive them).
 -- Returns (droppedSlotKey, keptName) or nil when there is no trinket/ranged conflict in the set.
-function M.trinketRangeDrop(set, rslotFn, levelFn)
+function M.trinketRangeDrop(set, rslotFn, levelFn, pairFn)
     if type(set) ~= 'table' then return nil; end
     local rangeKey, rangeName, ammoKey, ammoName;
     for slot, v in pairs(set) do
@@ -2609,6 +2609,19 @@ function M.trinketRangeDrop(set, rslotFn, levelFn)
     if rangeName == nil or ammoName == nil then return nil; end
     local mask = tonumber(rslotFn(ammoName)) or 0;
     if not hasBit(mask, 0x0004) then return nil; end          -- the Ammo item does not reserve Range
+    -- ...but the RSlot bit is a per-item STAMP, and the real conflict is a per-PAIR
+    -- fact. "Ammo with no AmmoType reserves Range" is an approximation that is right
+    -- for a stat stick beside a bow and WRONG for the skill-0 families that pair with
+    -- their own Range piece: Automaton Oil + Animator (0:10), and Blank Soulplate /
+    -- H.S. Soul Plate + Soultrapper (0:0). Those got stamped Range-reserving and were
+    -- then dropped or displaced out of a slot the server was perfectly happy with --
+    -- the 2026-07-22 oil field bug, which ANIMATOR_FED patched by id for the four
+    -- oils only. Ask the LAW instead, and only to CANCEL a drop: a proven-compatible
+    -- pair is never in conflict, whatever the stamp says. Unknown (nil) changes
+    -- nothing, so an old manifest behaves exactly as before.
+    if pairFn ~= nil and M.pairsWith(pairFn(rangeName), pairFn(ammoName)) == true then
+        return nil;
+    end
     local la = tonumber(levelFn(ammoName)) or 0;
     local lr = tonumber(levelFn(rangeName)) or 0;
     if lr > la then return ammoKey, rangeName; end            -- ranged weapon is higher -> drop the trinket
@@ -2629,7 +2642,7 @@ end
 --   wornAmmo -- the name worn in Ammo right now, or nil.
 -- Returns ('Ammo', incomingRangeName) when the plan must add Ammo='remove',
 -- else nil.
-function M.trinketWornDisplace(plan, wornAmmo, rslotFn)
+function M.trinketWornDisplace(plan, wornAmmo, rslotFn, pairFn)
     if type(plan) ~= 'table' or type(wornAmmo) ~= 'string' then return nil; end
     local rangeName = nil;
     for slot, v in pairs(plan) do
@@ -2639,6 +2652,13 @@ function M.trinketWornDisplace(plan, wornAmmo, rslotFn)
     end
     if rangeName == nil then return nil; end                  -- nothing incoming to protect
     if not hasBit(tonumber(rslotFn(wornAmmo)) or 0, 0x0004) then return nil; end
+    -- Same cancel as trinketRangeDrop: a worn ammo the incoming Range piece can
+    -- actually fire is not a trinket standing in its way, whatever its RSlot stamp
+    -- says. This is what stops a worn Blank Soulplate being 'remove'd the moment a
+    -- Soultrapper is planned, and it makes ANIMATOR_FED's id list redundant here.
+    if pairFn ~= nil and M.pairsWith(pairFn(rangeName), pairFn(wornAmmo)) == true then
+        return nil;
+    end
     return 'Ammo', rangeName;
 end
 
@@ -3745,7 +3765,7 @@ local function equipResolved(s, ctx, respectLocks)
         -- one and drop the other. BEFORE reserved-drops (POST_ORDER adjacency),
         -- so the loser can't go on to reserve anything and it settles.
         ['trinket-vs-ranged'] = function()
-            local tdKey, tdWinner = M.trinketRangeDrop(out or s, rslotOf, levelOf);
+            local tdKey, tdWinner = M.trinketRangeDrop(out or s, rslotOf, levelOf, pairOf);
             if tdKey ~= nil then
                 W()[tdKey] = nil;
                 note('%s=dropped (stat stick vs ranged weapon; kept %s)', tostring(tdKey), tostring(tdWinner));
@@ -3757,7 +3777,7 @@ local function equipResolved(s, ctx, respectLocks)
             -- pin-reserved Ammo stays the user's explicit word, so no displace.
             if M.locks['ammo'] ~= true and (pinRes == nil or pinRes['ammo'] == nil) then
                 local wornAmmo = wornItemName('Ammo');
-                local dk, incoming = M.trinketWornDisplace(out or s, wornAmmo, rslotOf);
+                local dk, incoming = M.trinketWornDisplace(out or s, wornAmmo, rslotOf, pairOf);
                 if dk ~= nil then
                     W()[dk] = 'remove';
                     note('%s=remove (worn %s yields Range to the set\'s %s)',

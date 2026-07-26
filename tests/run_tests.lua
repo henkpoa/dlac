@@ -5403,6 +5403,58 @@ end)();
     gearTB.NameToObject['Automat. Oil +2'] = nil;
     gearTB.NameToObject['Animator'] = nil;
 
+    -- TB9+. The trinket rule asks the PAIRING LAW before it drops (v128, Henrik
+    -- 2026-07-26: "Soultrapper and Soultrapper 2000 should pair with: Blank Soul
+    -- Plate and Blank High-speed Soul Plate"). The RSlot bit is a per-ITEM stamp;
+    -- the conflict is a per-PAIR fact. "Ammo with no AmmoType reserves Range" is
+    -- right for a stat stick beside a bow and WRONG for the skill-0 families that
+    -- pair with their own Range piece -- which is how the soul plates ended up
+    -- stamped Range-reserving and dropped from a combination the server allows.
+    -- Cancel-only: a proven-compatible pair is never in conflict; unknown changes
+    -- nothing.
+    local function pairOfTB(n)
+        return ({ ['Soultrapper'] = '0:0', ['Soultrapper 2000'] = '0:0',
+                  ['Blank Soulplate'] = '0:0', ['H.S. Soul Plate'] = '0:0',
+                  ['Animator'] = '0:10', ['Automaton Oil'] = '0:10',
+                  ['Animator P Ii'] = '0:11',
+                  ['Cinderstone'] = '0:0', ['Coiste Bodhar'] = '1:0',
+                  ['Longbow'] = '25:4' })[n];
+    end
+    local function rsTB(_) return 4; end          -- everything stamped Range-reserving
+    local function lvTB(n) return (n == 'Blank Soulplate') and 1 or 50; end
+    local function drop(range, ammo)
+        return dispatchM.trinketRangeDrop(
+            { Range = range, Ammo = ammo }, rsTB, lvTB, pairOfTB);
+    end
+    check('TB9 Soultrapper + Blank Soulplate: no drop, they pair',
+          drop('Soultrapper', 'Blank Soulplate'), nil);
+    check('TB9b Soultrapper 2000 + H.S. Soul Plate: no drop either',
+          drop('Soultrapper 2000', 'H.S. Soul Plate'), nil);
+    check('TB9c Animator + Automaton Oil: no drop (ANIMATOR_FED by law, not by id)',
+          drop('Animator', 'Automaton Oil'), nil);
+    -- The ones that MUST still drop -- Henrik: "Coiste Bodhar is a trinket, so
+    -- categorize it as a trinket like cinderstone".
+    check('TB10 Longbow + Cinderstone still conflicts (0:0 vs 25:4)',
+          drop('Longbow', 'Cinderstone') ~= nil, true);
+    check('TB10b Longbow + Coiste Bodhar too (1:0 matches no Range piece, ever)',
+          drop('Longbow', 'Coiste Bodhar') ~= nil, true);
+    check('TB10c Animator P II + Automaton Oil conflicts (0:11 vs 0:10)',
+          drop('Animator P Ii', 'Automaton Oil') ~= nil, true);
+    -- Unknown pair data must change NOTHING: an old manifest behaves as before.
+    check('TB11 no pairFn at all -> the RSlot stamp decides, exactly as before',
+          dispatchM.trinketRangeDrop({ Range = 'Longbow', Ammo = 'Cinderstone' },
+                                     rsTB, lvTB) ~= nil, true);
+    check('TB11b an unknown pair does not cancel a drop',
+          dispatchM.trinketRangeDrop({ Range = 'Mystery Bow', Ammo = 'Cinderstone' },
+                                     rsTB, lvTB, pairOfTB) ~= nil, true);
+    -- The worn-side twin: a worn plate must survive an incoming Soultrapper.
+    check('TB12 worn Blank Soulplate survives an incoming Soultrapper',
+          dispatchM.trinketWornDisplace({ Range = 'Soultrapper' }, 'Blank Soulplate',
+                                        rsTB, pairOfTB), nil);
+    check('TB12b worn Cinderstone still yields Range to an incoming Longbow',
+          dispatchM.trinketWornDisplace({ Range = 'Longbow' }, 'Cinderstone',
+                                        rsTB, pairOfTB), 'Ammo');
+
     AshitaCore = savedAC;
     gearTB.NameToObject['Rimestone'] = nil;
     gearTB.NameToObject['Rouser'] = nil;
