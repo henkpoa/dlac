@@ -231,7 +231,8 @@ entry left standing here after a merge is how "is this on main?" becomes unanswe
 see hard rule 14, which this section exists to serve.
 
 - **AutoAmmo asks what is in RANGE before it picks** — `9d8e520`, `6ab3b98`, `2f2d4d9`,
-  `98f7624`, `2fe7105`, `35e2872`; engine **v128**, addon **`2026.07.26l`**. Full record:
+  `98f7624`, `2fe7105`, `35e2872`, `0455e2d`; engine **v128**, addon **`2026.07.26n`**.
+  Full record:
   [auto-ammo.md §9](design/auto-ammo.md). **FIELD-CONFIRMED by Henrik 2026-07-26**
   ("After reload it works now, perfect") — read the promotion notes below, they are
   short and two of them matter.
@@ -299,17 +300,26 @@ see hard rule 14, which this section exists to serve.
      vs `25:4` do not pair) — Coiste Bodhar by derivation now, since no Range item in
      the game is `1:0`.
 
-  **Two things this does NOT fix, both deliberate:**
+  **One thing this does NOT fix, deliberately:**
   - **Throwing with an empty Range slot.** A NIN's shuriken is `27:3`, has no Range
     partner, and IS firable with Range empty — so the "no ranged weapon = do nothing"
     gate shuts AutoAmmo off for it. Henrik: *"throwing may be an exception, but we still
     need field tests for that."* Parked with the §8 NIN work. **Do not widen that gate on
     reasoning alone.**
-  - **A SET naming a mismatched ammo.** The trinket rule now *cancels* on a compatible
-    pair (note 5) but still only ever FIRES on the `RSlot` bit, so a set naming a bolt
-    with a bow equipped sails through it and the server strips a slot. Making it fire on
-    a proven-incompatible pair is a **widening** rather than a narrowing, so it was
-    deliberately left out — **still Henrik's open call.**
+  - ~~**A SET naming a mismatched ammo.**~~ **DONE** (`0455e2d`) — Henrik approved the
+    widening: *"that would be good, so we don't spam the server."* A set naming a bolt
+    beside a bow used to sail through unexamined; the server stripped a slot, dlac
+    re-proposed both next dispatch, and the two flapped forever — a wasted equip packet
+    every pass. The law fires there now. **The two conflicts resolve differently, and
+    that distinction is the substance:** a stat-stick trinket keeps the ADR 0010
+    higher-**Level** contest, but a plain mismatch between two ordinary pieces **always**
+    drops the ammo and keeps Range, whatever the Levels say. Reusing the Level contest
+    would let a Lv25 Venom Bolt drop a Lv5 Longbow and leave the player holding ammo and
+    no weapon — precisely the *"never force ranged off"* rule it exists to serve.
+    `TB13d`/`TB13e` pin it. **This is the one genuinely WIDENING change in the batch**
+    (everything else only narrows), so it is the one to look at first if anything odd
+    turns up in the field: a set that has quietly held an unfirable pair for months will
+    now visibly lose the ammo.
 
   **What was actually confirmed, and the one re-check worth doing.** Henrik confirmed the
   behaviour in the field after a reload. The three delivery fixes in `98f7624` (catalog
