@@ -230,6 +230,75 @@ that performs the promotion **empties this section in the same commit as the mer
 entry left standing here after a merge is how "is this on main?" becomes unanswerable —
 see hard rule 14, which this section exists to serve.
 
+- **AutoAmmo asks what is in RANGE before it picks** — `9d8e520`, `6ab3b98`, `2f2d4d9`,
+  `98f7624`; engine **v128**, addon **`2026.07.26j`**. Full record:
+  [auto-ammo.md §9](design/auto-ammo.md). **FIELD-CONFIRMED by Henrik 2026-07-26**
+  ("After reload it works now, perfect") — read the promotion notes below, they are
+  short and two of them matter.
+
+  **What it fixes.** `resolveAmmoPlan` was type-BLIND: it took the first
+  `ranged`-flagged entry with stock, whatever weapon you were holding, and the panel's
+  type selector never constrained it (`categoryOf` is a VIEW, stored nowhere). The cost
+  was not a wasted swap — **`charutils.cpp EquipItem` does not refuse an incompatible
+  Range/Ammo pair, it unequips the OTHER slot** — so a bolt took your bow off, the
+  trigger put it back, and the two flapped forever. That is ADR 0010's failure mode
+  arriving through the skill/subskill door instead of the rslot one, which is why
+  something that never writes Range was seen forcing Range off.
+
+  **Why it is safe to promote.**
+  - **It only ever narrows what AutoAmmo picks, and only for a PROVEN mismatch.**
+    `M.pairsWith` is three-valued and unknown is `nil`, never `false`; both sides fall
+    back (manifest `Pair` → client resource `Skill` → nil) so missing data constrains
+    nothing. There is no configuration that starts doing something new — only ones that
+    stop doing something wrong.
+  - **Range is never written.** The claim table is `{ Ammo = ... }` and nothing else, as
+    before. No Arbiter row was added or reordered.
+  - **Every pre-existing AM test passes unchanged** once the fixture states the premise
+    it always silently assumed (a COR shooting bullets is holding a gun). That is the
+    evidence the old contract is preserved wherever the weapon does pair.
+  - Suites **3768** + **544**, green Windows and WSL. New: `PW1`–`PW18` (the law, the
+    Archery exemption, unknown-is-not-false, and the impure rim), `AM40`–`AM50d`,
+    `AW21h`–`AW21z`, `E22`–`E26b`, and `AU1`–`AU10`.
+
+  **Notes for whoever merges — the two that matter:**
+  1. **`tools/` is gitignored, so the generator change that emits `Pair` does not ship.**
+     It lives only on Henrik's machine. Anyone who regenerates `data/catalog.lua` on main
+     without that copy of `apicrawl.py` silently drops the field from 1,151 records and
+     quietly reverts this feature to skill-only. Do not regenerate the catalog as part of
+     the promotion.
+  2. **`9d8e520` is a catalog regenerate, not part of the feature** — 419 rows of
+     `OneHanded = true → false` on hand-to-hand weapons. That is the 2026-07-22 generator
+     fix which the catalog was never rebuilt for (`apicrawl.py:218` records it as
+     knowingly stale). It is committed separately *so it can be reviewed as itself*; no
+     behaviour change is expected, because `subSlotAllowed` already refuses a Sub on an
+     H2H main via `Type`. It has to travel with the feature — the `Pair` catalog data was
+     generated on top of it.
+  3. `ADR 0010`'s trinket rule and `ANIMATOR_FED`'s id-pinned oil list are **untouched**
+     but are now provably special cases of the same law (a stat stick is `0:0`/`1:0` and
+     matches nothing; Animator+oil is `0:10`). A later cleanup could retire them; this
+     promotion does not.
+
+  **Two things this does NOT fix, both deliberate:**
+  - **Throwing with an empty Range slot.** A NIN's shuriken is `27:3`, has no Range
+    partner, and IS firable with Range empty — so the "no ranged weapon = do nothing"
+    gate shuts AutoAmmo off for it. Henrik: *"throwing may be an exception, but we still
+    need field tests for that."* Parked with the §8 NIN work. **Do not widen that gate on
+    reasoning alone.**
+  - **A SET naming a mismatched ammo.** `trinketRangeDrop` still arbitrates only trinkets
+    (items whose `RSlot` reserves Range), so a set that names a bolt with a bow equipped
+    sails through it and the server strips a slot. Same incompleteness, different code
+    path, not in scope here — flagged to Henrik, undecided.
+
+  **What was actually confirmed, and the one re-check worth doing.** Henrik confirmed the
+  behaviour in the field after a reload. The three delivery fixes in `98f7624` (catalog
+  `flatten` carrying `Pair`, the `/dl fix` manifest backfill, and the config backfill for
+  pre-v128 lists) landed **after** that confirmation and are green headless but unseen in
+  the field. Until those, the fallback separated a bow from a gun but not a **bolt from a
+  bullet**, so the highest-value re-check is exactly that: a crossbow and a gun over a
+  list holding both, expecting the pick to follow the weapon. The rest of the field list
+  is auto-ammo.md §9.8; #3 (a Shortbow **and** a Longbow both accepting the same arrows)
+  and #7 (PUP Animator + oils) are the regression risks.
+
 - **A locked set is a frozen claim (`/dl lock set …`)** — `7906cd4`, `30aede2`, `9475698`,
   `613b681`, `fa43cac`; engine **v124**, addon **`2026.07.26c`**,
   [ADR 0022](adr/0022-locked-set-is-a-claim.md). **PARTLY field-confirmed** — see the caveat
@@ -313,44 +382,25 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
-- **AutoAmmo now asks what is in RANGE before it picks — BUILT, NOT FIELD-TESTED.**
-  Engine **v128**, addon **`2026.07.26i`**, direct on dev. Full record:
-  [docs/design/auto-ammo.md §9](design/auto-ammo.md) — read that before touching this.
-  Henrik's report: a trigger holding a bow while AutoAmmo forced a bolt into Ammo.
-  `resolveAmmoPlan` was **type-blind** (first `ranged`-flagged entry with stock won,
-  whatever you were holding), and the panel's type selector never constrained it —
-  `categoryOf` is a VIEW, stored nowhere. The cost was not a wasted swap:
-  **`charutils.cpp EquipItem` strips the OTHER slot** on an incompatible pair, so the
-  bolt took the bow off and the two flapped forever — ADR 0010's failure through the
-  skill/subskill door. New pure `M.pairsWith` over a `"<skill>:<subskill>"` key,
-  three-valued so unknown degrades to old behaviour; **Archery is exempt from the
-  subskill half** (Shortbow 25:0 + Longbow 25:4 share arrows — the thing that would
-  break loudest if someone "simplifies" it). Range is still never written. Henrik's
-  two rulings: no ranged weapon worn = do nothing at all; weapon worn with nothing in
-  the list able to pair = hold, never force a mismatch. Panel: the type combo is gone,
-  replaced by tabs whose **live one lights green** (what your equipped weapon fires).
-  - **THROWING with an empty Range is the known, deliberate gap** — a NIN's shuriken
-    (27:3) has no Range partner and IS firable with Range empty, so the no-weapon gate
-    shuts AutoAmmo off for it. Henrik: *"throwing may be an exception, but we still
-    need field tests for that."* Parked with §8's NIN work. **Do not widen the gate on
-    reasoning alone.**
-  - Carries a **catalog regenerate** in its own commit first: the working catalog was
-    419 rows stale against its generator (the 2026-07-22 H2H `OneHanded` fix, knowingly
-    left — `apicrawl.py:218`). Reviewed separately so the feature diff is only `Pair`.
-  - **`tools/apicrawl.py` is gitignored**, so the generator change that emits `Pair`
-    lives only on Henrik's machine. Anyone regenerating `catalog.lua` elsewhere would
-    drop the field.
-  - Two **pre-existing** bugs found and deliberately NOT fixed here: `apicrawl.py:490`
-    filters out the `None` category bucket, so all 22 skill-0 Range items (Animators,
-    Soultrappers) are silently absent from `catalog.lua`; and **Hauksbok Bullet (22295)
-    is server subskill 0 — a bolt despite its name** (upstream LSB data, not CatsEye —
-    one for `docs/server-questions.md`).
-  - Field tests owed: **auto-ammo.md §9.8**, seven of them. #3 (a Shortbow and a
-    Longbow both accepting the same arrows) and #7 (PUP Animator + oils) are the
-    regression risks.
-  - `AU1`–`AU10` are new smoke: **the AutoAmmo panel's render had never been executed
-    by any test** — the craftbar trap again. Suites **3752** + **544**, green Windows
-    + WSL.
+- **AutoAmmo is Range-aware — DONE, field-confirmed, QUEUED for main.** Engine **v128**,
+  addon **`2026.07.26j`**. The promotion write-up (what it fixes, why it is safe, what it
+  deliberately does not fix) lives in **Ready to merge** above; the design record is
+  [auto-ammo.md §9](design/auto-ammo.md). Only the loose ends live here:
+  - Two **pre-existing** bugs found on the way and deliberately NOT fixed:
+    `apicrawl.py` (~:490) filters out the `None` category bucket, so all 22 skill-0
+    Range items (Animators, Soultrappers) are silently absent from `catalog.lua`
+    entirely; and **Hauksbok Bullet (22295) is server subskill 0 — a bolt despite its
+    name** (upstream LSB data, not a CatsEye divergence — one for
+    `docs/server-questions.md`).
+  - **Open question for Henrik, undecided:** should the within-set rule
+    (`trinketRangeDrop`) use the full pairing law instead of only the trinket `RSlot`
+    bit? Today a SET naming a bolt with a bow equipped is not arbitrated at all, and
+    the server strips a slot. It is the same incompleteness AutoAmmo had.
+  - **A field-debug lesson worth not repeating:** the live per-character home is
+    `config\addons\dlac\<Char>\` in native mode, NOT
+    `config\addons\luashitacast\<Char>\dlac\`. The legacy path still exists with stale
+    files in it, and reading it produced a confident, completely wrong "your edits are
+    not saving" diagnosis. Resolve through `profiles.dataDir()`, or check mtimes.
 
 - **TRIGGER CASES — the live pipeline. START HERE.** A second tier of `&`/`|` logic for
   trigger rules: every rule body is **case 1**; `+ & case` / `+ | case` add cases, each
