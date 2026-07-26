@@ -231,7 +231,7 @@ entry left standing here after a merge is how "is this on main?" becomes unanswe
 see hard rule 14, which this section exists to serve.
 
 - **AutoAmmo asks what is in RANGE before it picks** — `9d8e520`, `6ab3b98`, `2f2d4d9`,
-  `98f7624`; engine **v128**, addon **`2026.07.26j`**. Full record:
+  `98f7624`, `2fe7105`; engine **v128**, addon **`2026.07.26k`**. Full record:
   [auto-ammo.md §9](design/auto-ammo.md). **FIELD-CONFIRMED by Henrik 2026-07-26**
   ("After reload it works now, perfect") — read the promotion notes below, they are
   short and two of them matter.
@@ -277,6 +277,14 @@ see hard rule 14, which this section exists to serve.
      but are now provably special cases of the same law (a stat stick is `0:0`/`1:0` and
      matches nothing; Animator+oil is `0:10`). A later cleanup could retire them; this
      promotion does not.
+  4. **`2fe7105` recovers 22 items the catalog had been silently deleting** — every
+     Animator, Animator P II and Soultrapper. apicrawl nests Main/Range by weapon
+     category and filtered out the bucket for items whose skill is not one (skill 0), so
+     they were built and discarded. A PUP could only see an Animator by OWNING one
+     (it arrives via the manifest scan, un-enriched: `Type = "PUP"`, `Level = 1`,
+     `Jobs = All`, empty `Stats`). Purely additive, 258 lines. It is what makes
+     **Animator `0:10` + Automaton Oil `0:10` pair, while Animator P II `0:11` refuses
+     the same oil** — server-enforced and previously invisible to dlac in any form.
 
   **Two things this does NOT fix, both deliberate:**
   - **Throwing with an empty Range slot.** A NIN's shuriken is `27:3`, has no Range
@@ -386,12 +394,19 @@ research already recorded. In rough priority order:
   addon **`2026.07.26j`**. The promotion write-up (what it fixes, why it is safe, what it
   deliberately does not fix) lives in **Ready to merge** above; the design record is
   [auto-ammo.md §9](design/auto-ammo.md). Only the loose ends live here:
-  - Two **pre-existing** bugs found on the way and deliberately NOT fixed:
-    `apicrawl.py` (~:490) filters out the `None` category bucket, so all 22 skill-0
-    Range items (Animators, Soultrappers) are silently absent from `catalog.lua`
-    entirely; and **Hauksbok Bullet (22295) is server subskill 0 — a bolt despite its
-    name** (upstream LSB data, not a CatsEye divergence — one for
-    `docs/server-questions.md`).
+  - **Hauksbok Bullet (22295) is server subskill 0 — a BOLT despite its name.** Upstream
+    LSB data, not a CatsEye divergence, and the server enforces it, so dlac follows it.
+    One for `docs/server-questions.md`. (It is also why the name-based Bullets/Bolts
+    split can never be the authority, and why `Almogavar Bow` / `Staurobow` — skill 26
+    subskill 0, i.e. crossbows named "bow" — made the weapon side undecidable by name.)
+  - The Animator/Soultrapper catalog gap found alongside it **is fixed** (`2fe7105`,
+    in the queue entry above), not carried.
+  - **`tools/` stays gitignored by Henrik's ruling (2026-07-26):** the crawler is not
+    shipped, so nobody can spam the server with it. He keeps his own backup. The live
+    consequence to remember: `refresh_all.py` → `apicrawl.py` is the only thing that can
+    emit `Pair`, and a rebuild from a copy of the tools that predates 2026-07-26 would
+    silently drop the field from ~1,173 records and revert AutoAmmo to skill-only with
+    no error and green tests.
   - **Open question for Henrik, undecided:** should the within-set rule
     (`trinketRangeDrop`) use the full pairing law instead of only the trinket `RSlot`
     bit? Today a SET naming a bolt with a bow equipped is not arbitrated at all, and

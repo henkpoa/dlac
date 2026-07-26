@@ -574,7 +574,11 @@ it on reasoning alone.**
 
 `apicrawl` emits `Pair` on every Range/Ammo record (the API's `weapon.subskill` was
 always there — 1,173 such items cached, all with it, customs like Yoru Shuriken
-included). From there it rides exactly the path `RSlot` already rides:
+included). The first pass emitted only 1,151 of them: the missing 22 were the
+skill-0 Range families (Animators, Soultrappers), which apicrawl's category-nesting
+walk had been discarding from `catalog.lua` outright. Fixed in `2fe7105` — that gap
+is what kept an Animator from ever carrying the `0:10` key that pairs it with
+Automaton Oil. From there it rides exactly the path `RSlot` already rides:
 catalog -> `gearrecord.enrich` -> `gearimport` stamps it into `gear.lua` -> the
 engine reads the raw file (`pairOf`, the twin of `rslotOf`). The GUI stores it on
 each configured entry; `ammowatch._serialize` round-trips it.
