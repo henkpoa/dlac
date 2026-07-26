@@ -230,53 +230,10 @@ that performs the promotion **empties this section in the same commit as the mer
 entry left standing here after a merge is how "is this on main?" becomes unanswerable —
 see hard rule 14, which this section exists to serve.
 
-- **`/dl reload` now reloads DLAC, not LuaAshitacast. DONE + FIELD-CONFIRMED 2026-07-26,
-  on `dev`** (`ad935d6`, `2026.07.26q`). Henrik ran it and signed it off: *"Works, please
-  set this as completed and document this as ready to be merged to main once a merge
-  occurs."* Nothing outstanding. His call, off the migration-limbo diagnosis: the
-  branch in `utils.lua` queued `/addon reload luashitacast` from the LAC-hosted era — on a
-  migrated install that RESURRECTED LAC and fired the coexistence tripwire, disarming the
-  native engine for the rest of the session. `/dl reload` / `/dl r` now queue
-  `/addon reload dlac`. gearimport's four "run `/dl r` to load." hints get *more* correct
-  (a dlac reload picks the import up natively; the old behavior revived LAC instead).
-  Tests RLD1–5 drive the real handler. The other diagnosed LAC-resurrection surfaces
-  (`/dl profile migrate go` ungated, the native-blind `/dl check` + report file + Triggers
-  banner advice, the missing autoload step in `feature/engine.lua`'s checklist, the
-  lost-flag→legacy `firstRunAction` demotion) are **deliberately untouched** — separate
-  calls for Henrik.
-
-- **`/dl disable` — free equip, the ceiling. DONE + FIELD-CONFIRMED 2026-07-26, on `dev`**
-  (`f6450d3` + `74edfc2`, engine v129, addon `2026.07.26s`, ADR 0024). Henrik ran it, then
-  signed it off: *"Works, please set this as completed, ready to be merged to main whenever
-  a merge happens."* Nothing outstanding. Henrik's ask: *"simply make it claim the slot /
-  slots, then don't do anything at all with it, so people can free equip all they want
-  without DLAC intervention… over EVERYTHING, even /dl naked."*
-  - `/dl disable [slot|all]` / `/dl enable [slot|all]`; bare = all 16; also `/dl disable off`
-    and `/dl disable <slot> off`. `/dlac` works as the prefix too.
-  - **Not a lock and not a claim.** A lock is a veto *inside* the rank walk — four rows punch
-    through it. This is the **ceiling**: pinned first in `ARB_ORDER_DEFAULT`, undraggable
-    (`arbwatch.FIXED`, both directions), enforced in **`engineEquipSet`** — the one write
-    seam — rather than in `equipResolved`'s per-slot chain, because the whole-table
-    post-passes that run after that chain write slots the set never named and would put a
-    disabled slot straight back. `POST_ORDER` untouched.
-  - It **fills a hole that had opened silently**: the Equipped tab's *Free equip* checkbox
-    fired `/lac disable`, which under the native engine talks to a LuaAshitacast that no
-    longer equips you — the switch had been inert in the mode we ship, with no code change
-    to blame. It now drives `/dl disable all` and is **drawn from the engine mirror**, so a
-    chat command and the job-change release both move it.
-  - Lifetime is `M.worldWatch`'s (Henrik confirmed the recommendation): main job change,
-    logout, Reload LAC; never written to disk. Mirrored as `__disabled`.
-  - **Chat is ONE LINE** (`74edfc2`, Henrik on the first run: *"please remove all the
-    text"*) — `Hands disabled - enable by /dlac enable hands`, `All slots enabled`,
-    `Head enabled - still disabled: ammo`. The release door is the only thing that
-    survived the cut; everything else the paragraph said lives in Claim Priority,
-    `/dl prio` or `/dl why`. The lines say **`/dlac`**, the prefix Henrik reaches for —
-    `argStart` has always taken both, and `CMD17c`–`CMD17f` drive `/dlac` end to end.
-  - Tests: **DS1–DS14** end-to-end through the real `M.dispatch` (DS2 is the one that
-    matters — `/dl naked` cannot strip a disabled slot; DS3 — all 16 disabled writes
-    nothing whatsoever), **CMD16–CMD22c** driven through the real command handler
-    (exact strings **and** the line count, so prose cannot creep back),
-    **S196b2/S207–S209/NKU4** in the smoke. 3864 + 549 green, Windows and WSL.
+*(Empty. Last promotion: 2026-07-26 evening — the `/dl disable` free-equip ceiling
+(ADR 0024, engine v129) and the `/dl reload` → dlac fix, both field-confirmed by Henrik;
+plus the `!box` chat-mode finding as server-question #8 and the "do not fix this again"
+note it left in `eboxclient`. The record is the merge commit on `main`.)*
 
 ## What's left (open work, as of 2026-07-25)
 
@@ -468,7 +425,7 @@ research already recorded. In rough priority order:
     really keep swapping; (4) `/dl lock all off` releasing both halves at once;
     (5) the Equipped tab's `Lock gear` switch and its LOCKED readout.
 
-- **`/dl` COMMANDS ARE TESTABLE NOW — 2026-07-26 on `dev`** (`7906cd4`, tests only).
+- **`/dl` COMMANDS ARE TESTABLE NOW — 2026-07-26, ON MAIN** (`7906cd4`, tests only).
   Every `/dl` subcommand used to be tested by *searching `dispatch.lua` for its own
   name* — `NK23`: *"the handler only registers inside `engineActive()`, which is false
   headlessly, so the whitelist cannot be driven — pin it as SOURCE instead."* That is
