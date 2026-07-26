@@ -230,6 +230,29 @@ that performs the promotion **empties this section in the same commit as the mer
 entry left standing here after a merge is how "is this on main?" becomes unanswerable —
 see hard rule 14, which this section exists to serve.
 
+- **Trigger cases, slices 1–3 + two field rounds** — slice 1 `23b46f8`/`da67194`
+  (engine v125), slice 2 `803949a`/`09f398b` (engine **v127**,
+  [ADR 0023](adr/0023-trigger-cases-schema.md)), slice 3 `cb5199f`/`1988519` + `1408ce2`,
+  field iteration 1 `44a7c13`, field round 2 `192f85e`; addon through **`2026.07.26m`**;
+  PRD **#124**. **FIELD-CONFIRMED by Henrik 2026-07-26**: both case types built in the
+  GUI and firing, `/dl why` case-naming witnessed live. The second `&`/`|` tier — every
+  rule body is case 1; `+ & case` / `+ | case` add cases built exactly like the body,
+  each box with a top-right AND/OR selection. Also **fixes a live corruption bug main
+  still has**: main's editor FLATTENS a hand-written multi-condition `|` entry on
+  edit-save; the cases editor loads it as a `| case` box and round-trips byte-identically.
+  - **Safe to promote**: the schema is additive with zero migration; a case-less rule
+    matches, labels and serializes **byte-for-byte** as before (pinned, CS/TC suites); an
+    OLD engine reading a case rule drops it with a warn via the `hasCases` guard — never
+    misreads it. The Blueprint model carries cases in lockstep (`blueprintsmodel.lua`),
+    so nothing is lost through the library.
+  - **Naming, signed off (maintainer)**: the guard token stays **`hasCases`** — camelCase
+    like every other condition key, self-describing in a hand-edited file. After main it
+    is in player files and a rename means a migration; it was weighed today and kept.
+    The `/dl why` strings (`[via case …]` / `standalone …`) are field-witnessed.
+  - **Not in this batch**: #128 (editor completion/polish — agent in flight, lands on
+    `dev` and queues separately) and #129 (blueprints UX). Tests `CS*`, `TC*`,
+    `TE1`–`TE56`; suites **3784** + **547**, green Windows + WSL.
+
 - **AutoAmmo asks what is in RANGE before it picks** — `9d8e520`, `6ab3b98`, `2f2d4d9`,
   `98f7624`, `2fe7105`, `35e2872`, `0455e2d`; engine **v128**, addon **`2026.07.26n`**.
   Full record:
@@ -487,10 +510,12 @@ research already recorded. In rough priority order:
     Collision watchlist: engine **v128 is TAKEN** (AutoAmmo Range-awareness, same day) and
     addon is at **`26m`** → next free **v129** / **`26n`**; test ranges
     CS/TC/TE/TRC/MC/TB/LS*/CMD/NK*/LSP are all taken (TE runs through TE56).
-  - **Open Henrik decisions**: (1) the `hasCases` guard token is player-visible in
-    hand-edited trigger files — naming sign-off still open, rename is one line NOW and a
-    migration later; (2) the slice-1 player-visible strings (`[via together-block]` /
-    `[via standalone …]`, the `| case` box header) await his field read.
+  - **Both naming decisions CLOSED 2026-07-26**: (1) the `hasCases` guard token stays —
+    maintainer sign-off (camelCase like every condition key; a post-main rename would
+    need a player-file migration, so it was decided before promotion, deliberately);
+    (2) the slice-1 `/dl why` strings were field-witnessed in Henrik's screenshot and
+    survive as designed (`standalone <k=v>` for a lone condition — field round 2's
+    canonical legs made that the shape simple rules actually take).
   - Also from this session: the `/dl why` frozen-trace field bug — diagnosed, fixed
     (v126, `97f1edc`), **field-confirmed**; see Ready-to-merge. `/dl check` turned out
     **native-era-blind** (three false alarms on a healthy native setup) — filed as **#131**,
