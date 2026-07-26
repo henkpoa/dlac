@@ -321,21 +321,26 @@ research already recorded. In rough priority order:
   do not re-litigate; "case"/"together-block", never "group").
   [ADR 0023](adr/0023-trigger-cases-schema.md) records the schema.
   - **Merged on dev**: slice 1 display (#125 → PR #130, `da67194`, engine v125 — rule list
-    + `/dl why` case-aware, priority-chip fix) and slice 2 schema backbone (#126 → PR #132,
-    `09f398b`, engine **v127**, addon **`2026.07.26e`** — `cases` list, oldest-form-first
-    serialization, `hasCases` version guard, both serializers in lockstep, dead-mode sweep).
-    **Hand-written trigger files only — the GUI cannot build a case yet.** Neither slice
-    field-tested (a case rule must be hand-written to even see them). The current editor
-    still FLATTENS a hand-written multi-condition `|` entry on edit-save; the fix rides
-    slice 3 — warn Henrik off editing such rules until then.
-  - **In flight**: slice 3, the editor skeleton (**#127**, cloud agent dispatched
-    2026-07-26 ~02:10) — `+ & case` / `+ | case` buttons, case boxes, the flatten fix.
-    **Shepherd its PR next** (review per the PR-shepherd routine; collision watchlist:
-    engine version 127 and addon `26e` are taken, so next free are 128/`26f`; test ranges
-    CS/TC/TRC/MC/TB/LS*/CMD/NK*/LSP are all taken). After it merges, **Henrik clicks the
-    case boxes and reacts BEFORE polish** — that is the whole point of the skeleton/polish
-    split. #128 (polish) and #129 (blueprints) stay unlabeled until #127 merges; toggle
-    `ready-for-agent` one at a time.
+    + `/dl why` case-aware, priority-chip fix); slice 2 schema backbone (#126 → PR #132,
+    `09f398b`, engine **v127**, addon `2026.07.26e` — `cases` list, oldest-form-first
+    serialization, `hasCases` version guard, both serializers in lockstep, dead-mode sweep);
+    and slice 3 the **editor skeleton** (#127 → PR #133, merged 2026-07-26, addon
+    **`2026.07.26f`** + follow-up `1408ce2` **`26g`** — `+ & case` / `+ | case` buttons, case
+    boxes hosting the identical picker flow, pure seams `_loadCases`/`_buildLegs`/`_buildCases`,
+    and **the editor flatten fix is IN**: a hand-written multi-condition `|` entry loads as a
+    `| case` box and round-trips byte-identically, so editing such rules is safe now). The
+    `26g` follow-up (shepherd review finding): a combined `|` entry *inside* a case — engine
+    honors it as AND-within-OR, a depth the editor can't represent — splits to standalone
+    rows **with a note on the case box, never silently** (the `&` leg's law one tier down).
+    Tests TE1–TE44; suites **3691** + **486**, green Windows + WSL. No engine bump in slice 3
+    (addon-state UI only).
+  - **NEXT: Henrik clicks the case boxes and reacts BEFORE polish** — that is the whole
+    point of the skeleton/polish split, and it is also the first field contact for slices
+    1+2 (build a case rule in the GUI, save, `/dl why` it). #128 (polish, folds in his
+    reactions) and #129 (blueprints) stay unlabeled until his read lands; then toggle
+    `ready-for-agent` one at a time. Collision watchlist for #128: engine v127 and addon
+    `26g` taken → next free **v128** / **`26h`**; test ranges CS/TC/TE/TRC/MC/TB/LS*/CMD/
+    NK*/LSP are all taken.
   - **Open Henrik decisions**: (1) the `hasCases` guard token is player-visible in
     hand-edited trigger files — naming sign-off still open, rename is one line NOW and a
     migration later; (2) the slice-1 player-visible strings (`[via together-block]` /
