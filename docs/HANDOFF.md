@@ -230,7 +230,24 @@ that performs the promotion **empties this section in the same commit as the mer
 entry left standing here after a merge is how "is this on main?" becomes unanswerable —
 see hard rule 14, which this section exists to serve.
 
-*(Empty. Last promotion: 2026-07-26 night — the **Teleports floating menu rework**
+- **The hobby bar reaches the searches** — `96b49be`, addon **`2026.07.27a`**, queued
+  2026-07-27 on Henrik's call: *"I love it… document this as a merge ready to main."*
+  Green on both suites, Windows and WSL. Full detail in the Current state bullet below
+  and in [history.md](history.md) ("the hobby bar reaches the searches").
+  - Fishing's `TARGET FISH` section became a **Floating window**
+    (`fishui.renderSearch` → `renderTargetBody`); on the bar the target NAME opens it.
+    Chocobo's tab got the panel's own Area/Item buttons via new `chocoui` openers. Both
+    tabs gained a `Panel` button. `/dl fish find [name]`, `/dl choco dig [item]`.
+  - The invariant it rests on is in architecture.md; CONTEXT.md gained
+    **Floating window / Panel / Hobby bar**.
+  - **Queued on approval of the work, not on a reported field run** — the Auto HELM
+    4s→5s precedent below. Two questions ride to main with it: whether the window's
+    default 760×520 gives the spot list enough room (its bait column sits at
+    `availW * 0.55`, ~50px tighter than the panel gave it), and whether three pills —
+    bar, window, panel — read as convenient or as clutter. Neither is a blocker; both
+    are one-line changes once the field answers.
+
+*(Last promotion: 2026-07-26 night — the **Teleports floating menu rework**
 (`2026.07.26v`; Nexus Cape + Shadow Lord Shirt into "Other Teleports", the
 Automations/HELM/Fishing cascades deleted, Hobby bar + Lockstyle rows added —
 field-confirmed by Henrik: *"Looks good and works great"*), the **Sets-tab selection
@@ -271,8 +288,9 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
-- **The hobby bar reaches the searches — BUILT 2026-07-27, on `dev`, NOT field-tested**
-  (`2026.07.27a`). Henrik: *"most things are available just fine in the hobby bar, except
+- **The hobby bar reaches the searches — QUEUED for main** (`96b49be`, `2026.07.27a`; see
+  the **Ready to merge** section above, which is the authority on its status — this bullet
+  is the detail, not the queue). Henrik: *"most things are available just fine in the hobby bar, except
   for fishing, but we don't want to overdo it."* Two hobby tabs could only point at the
   Automations tab in grey text; now they open the real thing.
   - **Fishing.** The `TARGET FISH` section moved out of the panel (`fishui.lua`, ~180
@@ -300,10 +318,11 @@ research already recorded. In rough priority order:
     had never been executed by any test — the craftbar lesson of 7d), plus `HB14` and
     `S139kk-mm` for the openers. `HB3.choco` caught the first version of this work: the
     7c stub had no `SmallButton`.
-  - **What field-testing needs to answer:** does the target window's default 760×520 give
-    the spot list enough room (it places its bait column at `availW * 0.55`, ~50px tighter
-    than the panel gave it), and does three pills — bar, window, panel — read as redundant
-    or as convenient?
+  - **What field-testing needs to answer** — these RIDE TO MAIN with it, they do not block
+    it: does the target window's default 760×520 give the spot list enough room (it places
+    its bait column at `availW * 0.55`, ~50px tighter than the panel gave it), and does
+    three pills — bar, window, panel — read as redundant or as convenient? Both are
+    one-line changes; neither can dress you wrong, since the window only picks a target.
 
 - **AutoAmmo is Range-aware — DONE, field-confirmed, ON MAIN** (promoted 2026-07-26 in
   `03d25e1`; this bullet said "QUEUED for main" until the 07-26 night promotion, pointing
