@@ -759,6 +759,27 @@ do
         check('E26 flatten carries Pair through to the panel records',
               flat[1] and flat[1].Pair, '26:1');
         check('E26b ...alongside the AmmoType it refines', flat[1] and flat[1].AmmoType, 'Marksmanship');
+        -- Main/Range are normally nested by weapon category, but the skill-0 families
+        -- (Animators, Soultrappers) have no category to nest under and are emitted
+        -- FLAT at the slot level. apicrawl used to drop that bucket entirely, which
+        -- deleted every Animator from the catalog -- and with it the Animator/oil
+        -- pairing the server enforces. Pin BOTH depths so a tidy-up of either side
+        -- cannot quietly lose them again.
+        local mixed, mixedById = cx.flatten({ Range = {
+            Marksmanship = { Hexagun = { Name = 'Hexagun', Id = 17222, Type = 'Marksmanship', Pair = '26:1' } },
+            Animator = { Name = 'Animator', Id = 17859, Type = 'Range', Pair = '0:10' },
+        } });
+        check('E27 a categorised Range item still indexes', mixedById[17222] and mixedById[17222].Pair, '26:1');
+        check('E27b an UNCATEGORISED Range item indexes too (the Animator case)',
+              mixedById[17859] and mixedById[17859].Pair, '0:10');
+        check('E27c ...and lands in the Range slot, not a category named after it',
+              mixedById[17859] and mixedById[17859].Slot, 'Range');
+        check('E27d both depths reach the flat list', #mixed, 2);
+        -- The pairing these exist to express, through the real law.
+        check('E28 Animator + Automaton Oil pair (0:10)',
+              dispatchM.pairsWith('0:10', '0:10'), true);
+        check('E28b Animator P II refuses the same oil (0:11 vs 0:10)',
+              dispatchM.pairsWith('0:11', '0:10'), false);
     end
 end
 end

@@ -68715,6 +68715,264 @@ return {
                 }
             },
         },
+        Alternator = {
+            Name = "Alternator",
+            Level = 99,
+            Id = 21455,
+            Jobs = {"PUP"},
+            Type = "Range",
+            Pair = "0:10",
+            Stats = {
+                AutomatonLevel = 14,
+            }
+        },
+        Animator = {
+            Name = "Animator",
+            Level = 1,
+            Id = 17859,
+            Jobs = {"All"},
+            Type = "Range",
+            Pair = "0:10",
+            Stats = {
+                Delay = 240,
+            }
+        },
+        AnimatorP = {
+            Name = "Animator P",
+            Level = 99,
+            Id = 21456,
+            Jobs = {"PUP"},
+            Type = "Range",
+            Pair = "0:10",
+            Stats = {
+                AutomatonLevel = 20,
+            }
+        },
+        AnimatorPIi = {
+            Name = "Animator P Ii",
+            Level = 99,
+            Id = 21458,
+            Jobs = {"PUP"},
+            Type = "Range",
+            Pair = "0:11",
+            Stats = {
+                AutomatonLevel = 20,
+            }
+        },
+        AnimatorPIi_1 = {
+            Name = "Animator P Ii +1",
+            Level = 99,
+            Id = 21459,
+            Jobs = {"PUP"},
+            Type = "Range",
+            Pair = "0:11",
+            Stats = {
+                AutomatonLevel = 20,
+            }
+        },
+        AnimatorP_1 = {
+            Name = "Animator P +1",
+            Level = 99,
+            Id = 21457,
+            Jobs = {"PUP"},
+            Type = "Range",
+            Pair = "0:10",
+            Stats = {
+                AutomatonLevel = 20,
+            }
+        },
+        AnimatorZ = {
+            Name = "Animator Z",
+            Level = 99,
+            Id = 21392,
+            Jobs = {"PUP"},
+            Type = "Range",
+            Pair = "0:10",
+            Stats = {
+                Delay = 999,
+                AutomatonLevel = 20,
+            }
+        },
+        Animator_1 = {
+            Name = "Animator +1",
+            Level = 71,
+            Id = 17857,
+            Jobs = {"PUP"},
+            Type = "Range",
+            Pair = "0:10",
+            Stats = {
+                Delay = 240,
+                DEX = 4,
+            }
+        },
+        DeluxeAnimator = {
+            Name = "Deluxe Animator",
+            Level = 87,
+            Id = 17923,
+            Jobs = {"PUP"},
+            Type = "Range",
+            Pair = "0:10",
+            Stats = {
+                DMG = 1,
+                Delay = 2232,
+            }
+        },
+        Divinator = {
+            Name = "Divinator",
+            Level = 99,
+            Id = 21452,
+            Jobs = {"PUP"},
+            Type = "Range",
+            Pair = "0:10",
+            Stats = {
+                AutomatonLevel = 20,
+            }
+        },
+        DivinatorIi = {
+            Name = "Divinator Ii",
+            Level = 99,
+            Id = 22261,
+            Jobs = {"PUP"},
+            Type = "Range",
+            Pair = "0:11",
+            Stats = {
+                Delay = 240,
+                AutomatonLevel = 20,
+            }
+        },
+        EAnimatorIi = {
+            Name = "E. Animator Ii",
+            Level = 99,
+            Id = 22260,
+            Jobs = {"PUP"},
+            Type = "Range",
+            Pair = "0:11",
+            Stats = {
+                Delay = 240,
+                AutomatonLevel = 16,
+            }
+        },
+        EmAnimator = {
+            Name = "Em. Animator",
+            Level = 99,
+            Id = 21453,
+            Jobs = {"PUP"},
+            Type = "Range",
+            Pair = "0:10",
+            Stats = {
+                AutomatonLevel = 16,
+            }
+        },
+        FAnimator = {
+            Name = "F. Animator",
+            Level = 99,
+            Id = 21454,
+            Jobs = {"PUP"},
+            Type = "Range",
+            Pair = "0:10",
+            Stats = {
+                Delay = 759,
+                AutomatonLevel = 7,
+            }
+        },
+        Fiendtrapper = {
+            Name = "Fiendtrapper",
+            Level = 1,
+            Id = 19204,
+            Jobs = {"All"},
+            Type = "Range",
+            Pair = "0:0",
+            Stats = {
+                DMG = 10,
+                Delay = 23045,
+            }
+        },
+        Magneto = {
+            Name = "Magneto",
+            Level = 99,
+            Id = 21375,
+            Jobs = {"PUP"},
+            Type = "Range",
+            Pair = "0:10",
+            Stats = {
+                Delay = 999,
+                AutomatonLevel = 18,
+            }
+        },
+        MarvelousCheer = {
+            Name = "Marvelous Cheer",
+            Level = 1,
+            Id = 22283,
+            Model = 136,
+            Jobs = {"All"},
+            Type = "Range",
+            Pair = "0:0",
+            Stats = {
+                Delay = 240,
+            }
+        },
+        NeoAnimator = {
+            Name = "Neo Animator",
+            Level = 99,
+            Id = 21433,
+            Jobs = {"PUP"},
+            Type = "Range",
+            Pair = "0:10",
+            Stats = {
+                Delay = 999,
+                Accuracy = 10,
+                WeaponSkillDamageFirstHit = 5,
+                AutomatonLevel = 20,
+            }
+        },
+        SoulgaugerSgr_1 = {
+            Name = "Soulgauger Sgr-1",
+            Level = 1,
+            Id = 18679,
+            Jobs = {"All"},
+            Type = "Range",
+            Pair = "0:0",
+            Stats = {
+                DMG = 10,
+                Delay = 240,
+            }
+        },
+        Soultrapper = {
+            Name = "Soultrapper",
+            Level = 1,
+            Id = 18721,
+            Jobs = {"All"},
+            Type = "Range",
+            Pair = "0:0",
+            Stats = {
+                DMG = 10,
+                Delay = 24320,
+            }
+        },
+        Soultrapper2000 = {
+            Name = "Soultrapper 2000",
+            Level = 1,
+            Id = 18724,
+            Jobs = {"All"},
+            Type = "Range",
+            Pair = "0:0",
+            Stats = {
+                DMG = 10,
+                Delay = 23045,
+            }
+        },
+        TurboAnimator = {
+            Name = "Turbo Animator",
+            Level = 40,
+            Id = 17858,
+            Jobs = {"PUP"},
+            Type = "Range",
+            Pair = "0:10",
+            Stats = {
+                Delay = 240,
+                DEX = 2,
+            }
+        },
     },
     Ammo = {
         AbdhaljsTome = {
