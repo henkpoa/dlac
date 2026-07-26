@@ -2240,6 +2240,218 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- TE. Trigger CASES, edit-side (issue #127, slice 3/5). The rule builder gains
+-- two buttons (+ & case / + | case) and renders added cases as bordered boxes,
+-- each hosting the IDENTICAL picker flow. Two halves, both proven: the pure
+-- model seams (loadCases / buildLegs / buildCases -- the flatten-fix and the
+-- oldest-form round-trip), AND the real popup driven frame by frame (add a case,
+-- add conditions inside it, save, assert widget labels + stack balance -- the
+-- craftbar lesson: an unrun render path is an unproven one).
+-- ---------------------------------------------------------------------------
+;(function()
+    local depth = { popup = 0, col = 0, child = 0, win = 0 };
+    local CLICK, REC = nil, {};
+    local function nop() end
+    local IM = setmetatable({}, { __index = function() return nop; end });
+    IM.BeginPopup = function(id)
+        if tostring(id) == '##dlac_trigadd' then depth.popup = depth.popup + 1; return true; end
+        return false;
+    end
+    IM.EndPopup   = function() depth.popup = depth.popup - 1; end
+    IM.PushStyleColor = function() depth.col = depth.col + 1; end
+    IM.PopStyleColor  = function(n) depth.col = depth.col - (tonumber(n) or 1); end
+    IM.Begin      = function() depth.win = depth.win + 1; return true; end
+    IM['End']     = function() depth.win = depth.win - 1; end
+    IM.BeginChild = function() depth.child = depth.child + 1; return true; end
+    IM.EndChild   = function() depth.child = depth.child - 1; end
+    IM.BeginCombo = function() return false; end
+    IM.BeginMenu  = function() return false; end
+    IM.Button      = function(l) REC[#REC + 1] = tostring(l); return tostring(l) == CLICK; end
+    IM.SmallButton = function(l) REC[#REC + 1] = tostring(l); return tostring(l) == CLICK; end
+    IM.Selectable  = function(l) REC[#REC + 1] = tostring(l); return tostring(l) == CLICK; end
+    IM.Text        = function(t) REC[#REC + 1] = tostring(t); end
+    IM.TextColored = function(_, t) REC[#REC + 1] = tostring(t); end
+    IM.IsItemHovered = function() return false; end
+    IM.InputText   = function() return false; end
+    IM.InputInt    = function() return false; end
+    IM.GetContentRegionAvail = function() return 700, 400; end
+    IM.CalcTextSize = function() return 60, 14; end
+
+    local NAMES = { 'dlac\\ui\\triggersui', 'imgui' };
+    local saved = {};
+    for _, k in ipairs(NAMES) do saved[k] = package.loaded[k]; end
+    package.loaded['imgui'] = IM;
+    package.loaded['dlac\\ui\\triggersui'] = nil;
+    local ok, tg = pcall(require, 'dlac\\ui\\triggersui');
+    check('TE1 triggersui re-requires against a stub imgui', ok and type(tg), 'table');
+    local D = require('dlac\\dispatch');
+    if ok then
+        check('TE2 the load seam is exposed',  type(tg._loadCases),  'function');
+        check('TE3 the leg builder is exposed', type(tg._buildLegs),  'function');
+        check('TE4 the case builder is exposed', type(tg._buildCases), 'function');
+        check('TE5 the empty-case guard is exposed', type(tg._hasEmptyCase), 'function');
+
+        -- ---- LOAD: the flatten-corruption fix ----
+        -- A single-condition | entry stays a body | row; a MULTI-condition entry
+        -- (AND-within-OR) loads as a `| case` box instead of flattening.
+        local conds, cases = tg._loadCases({
+            when = { name = 'Slow' },
+            whenAny = { { mode = 'DT' }, { mode = 'Refresh', hpbelow = 50 } } });
+        check('TE6 the & body condition loads', #conds, 2);   -- name + single-| DT row
+        local sawSingle = false;
+        for _, c in ipairs(conds) do if c.any and c.key == 'mode' and c.value == 'DT' then sawSingle = true; end end
+        check('TE7 a single-condition | entry stays a body | row', sawSingle, true);
+        check('TE8 a multi-condition | entry becomes ONE | case (not two flat rows)',
+            #cases == 1 and cases[1].op, '|');
+        check('TE9 ...carrying BOTH its conditions as & rows', #cases[1].conds, 2);
+
+        -- ---- BUILD + SERIALIZE: byte-identical round-trip (the flatten fix) ----
+        -- A hand-written multi-condition | rule, loaded then rebuilt through the
+        -- editor's seams, must re-serialize byte-for-byte (oldest-form-first: the
+        -- | case of only & rows folds back to a whenAny multi-entry, no guard).
+        local orig = { Item = { { when = { name = 'Slow' },
+            whenAny = { { mode = 'DT', hpbelow = 50 } }, set = 'X' } } };
+        local text0 = D.serializeTriggers(orig);
+        local c2, cs2 = tg._loadCases(orig.Item[1]);
+        local when2, wa2 = tg._buildLegs(c2);
+        local rebuilt = { Item = { { when = when2, whenAny = wa2,
+            cases = tg._buildCases(cs2), set = 'X' } } };
+        local text1 = D.serializeTriggers(rebuilt);
+        check('TE10 a multi-condition | rule re-saves BYTE-IDENTICALLY (flatten fix)', text1, text0);
+        check('TE11 ...still the oldest form -- no cases list, no guard',
+            text1:find('cases', 1, true) == nil and text1:find('hasCases', 1, true) == nil, true);
+
+        -- ---- BUILD: (A & B) | (C & D) fires per the semantics ----
+        -- Body = case 1 = (Engaged & TP>1000); a | case = (BlackMagic & Fire).
+        local when3, wa3 = tg._buildLegs({ { key = 'status', value = 'Engaged' },
+                                           { key = 'tpabove', value = 1000 } });
+        local rule3 = { when = when3, whenAny = wa3, cases = tg._buildCases({
+            { op = '|', conds = { { key = 'magictype', value = 'Black Magic' },
+                                  { key = 'element', value = 'Fire' } } } }) };
+        check('TE12 (A&B)|(C&D): body leg fires alone',
+            D._matches(rule3, { player = { Status = 'Engaged', TP = 1500 } }), true);
+        check('TE13 ...the | case fires alone',
+            D._matches(rule3, { action = { Type = 'Black Magic', Element = 'Fire' },
+                                player = { Status = 'Idle', TP = 0 } }), true);
+        check('TE14 ...neither -> no fire',
+            D._matches(rule3, { action = { Type = 'Black Magic', Element = 'Ice' },
+                                player = { Status = 'Idle', TP = 0 } }), false);
+
+        -- ---- BUILD: (A | B) & (C | D) gates per the semantics ----
+        -- BlackMagic & (Fire|Ice) & (Sleep|Lullaby): two & cases, each internal OR.
+        local when4, wa4 = tg._buildLegs({ { key = 'magictype', value = 'Black Magic' } });
+        local rule4 = { when = when4, whenAny = wa4, cases = tg._buildCases({
+            { op = '&', conds = { { key = 'element', value = 'Fire', any = true },
+                                  { key = 'element', value = 'Ice', any = true } } },
+            { op = '&', conds = { { key = 'buff', value = 'Sleep', any = true },
+                                  { key = 'buff', value = 'Lullaby', any = true } } } }) };
+        check('TE15 (A|B)&(C|D): all three groups hold -> fire',
+            D._matches(rule4, { action = { Type = 'Black Magic', Element = 'Fire' },
+                                buffs = { sleep = true } }), true);
+        check('TE16 ...one & case misses -> no fire (AND gates)',
+            D._matches(rule4, { action = { Type = 'Black Magic', Element = 'Fire' },
+                                buffs = {} }), false);
+
+        -- ---- the empty-case guard (never saved silently) ----
+        check('TE17 an empty case is flagged', tg._hasEmptyCase({ { op = '&', conds = {} } }), true);
+        check('TE18 a filled case is not', tg._hasEmptyCase({ { op = '&', conds = { { key = 'x', value = 1 } } } }), false);
+        check('TE19 buildCases drops an empty case as a last defense',
+            tg._buildCases({ { op = '|', conds = {} } }), nil);
+
+        -- ---- the REAL popup, frame by frame ----
+        local UP = {};
+        for i = 1, 250 do
+            local n, v = debug.getupvalue(tg.render, i);
+            if n == nil then break; end
+            UP[n] = v;
+        end
+        local trig, popup = UP.trig, UP.renderTrigAddPopup;
+        check('TE20 the builder state and its popup are reachable',
+            (type(trig) == 'table') and type(popup), 'function');
+        if type(trig) == 'table' and type(popup) == 'function' then
+            local function frame(click)
+                CLICK, REC = click, {};
+                local fok, ferr = pcall(popup);
+                if not fok then print('   (TE popup error: ' .. tostring(ferr) .. ')'); end
+                return fok, REC;
+            end
+            local function fresh()
+                trig.data = {};
+                trig.addFor, trig.addConds, trig.addCases, trig._addDef = 'Item', {}, {}, 1;
+                trig.addValText[1] = ''; trig._addValSel = nil; trig.addValNum[1] = 0;
+                trig.addSet, trig.addPrio[1] = 'Bait', 0;
+                trig.addNote, trig.addSwap = nil, nil;
+                trig.editIdx, trig._editEquip, trig._bpEdit = nil, nil, nil;
+            end
+            local function sawIn(rec, needle)
+                for _, l in ipairs(rec) do if l:find(needle, 1, true) then return true; end end
+                return false;
+            end
+
+            -- Scenario A: build a | case with an internal OR, end to end.
+            fresh();
+            trig.addValText[1] = 'test';
+            check('TE21 the popup renders; the body & click lands', (frame('+ & condition##trgac')), true);
+            check('TE22 ...one body condition', #trig.addConds, 1);
+            local _, rec2 = frame(nil);
+            check('TE23 both case buttons are on screen', sawIn(rec2, '+ & case##trgaddandcase') and sawIn(rec2, '+ | case##trgaddorcase'), true);
+            frame('+ | case##trgaddorcase');
+            check('TE24 + | case creates a box', #trig.addCases, 1);
+            check('TE25 ...of the right kind', trig.addCases[1].op, '|');
+            local _, rec3 = frame(nil);
+            check('TE26 the case box header + delete render', sawIn(rec3, '| case') and sawIn(rec3, 'x##trgdelcase1'), true);
+            trig.addValText[1] = 'alpha';
+            frame('+ & condition##trgaccase1');
+            check('TE27 a condition adds INSIDE the case', #trig.addCases[1].conds, 1);
+            trig.addValText[1] = 'beta';
+            frame('+ | condition##trgoccase1');
+            check('TE28 ...and stacks a second on the | leg', #trig.addCases[1].conds, 2);
+            frame('Add rule###trgaddgo');
+            local r = trig.data.Item and trig.data.Item[1];
+            check('TE29 Save writes the rule',        type(r), 'table');
+            check('TE30 ...body & leg is the together-block', (type(r) == 'table') and r.when.name, 'test');
+            check('TE31 ...with one case', (type(r) == 'table') and r.cases and #r.cases, 1);
+            check('TE32 ...a | case carrying an internal OR',
+                (type(r) == 'table' and r.cases) and (r.cases[1].op == '|'
+                    and r.cases[1].when.name == 'alpha' and #(r.cases[1].whenAny or {}) == 1), true);
+
+            -- Scenario B: an empty case is refused, then saved once filled.
+            fresh();
+            trig.addValText[1] = 'anchor'; frame('+ & condition##trgac');
+            frame('+ & case##trgaddandcase');
+            check('TE33 an empty & case exists', #trig.addCases, 1);
+            local _, recB = frame('Add rule###trgaddgo');
+            check('TE34 Save is refused while a case is empty', trig.data.Item, nil);
+            check('TE35 ...with a notice, not silence', sawIn(recB, 'A case has no conditions'), true);
+            trig.addValText[1] = 'filled'; frame('+ & condition##trgaccase1');
+            frame('Add rule###trgaddgo');
+            check('TE36 ...once filled, it saves', (trig.data.Item and #trig.data.Item), 1);
+
+            -- Scenario C: delete removes the box; deleting the last clears all chrome.
+            fresh();
+            trig.addValText[1] = 'anchor'; frame('+ & condition##trgac');
+            frame('+ | case##trgaddorcase');
+            check('TE37 a case exists to delete', #trig.addCases, 1);
+            frame('x##trgdelcase1');
+            check('TE38 delete removes the case', #trig.addCases, 0);
+            local _, recC = frame(nil);
+            -- The per-box delete affordance exists ONLY inside a case box, so its
+            -- absence proves the box chrome is gone (the two add buttons remain,
+            -- and their labels contain "| case" -- which is why we test the delete).
+            check('TE39 ...and all case chrome is gone (only the two buttons remain)',
+                sawIn(recC, 'x##trgdelcase') == false, true);
+
+            check('TE40 the popup stack stayed balanced', depth.popup, 0);
+            check('TE41 the colour stack stayed balanced', depth.col, 0);
+            check('TE42 the child stack stayed balanced', depth.child, 0);
+        end
+    end
+
+    for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end
+    package.loaded['imgui'] = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures > 0 then

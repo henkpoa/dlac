@@ -107,8 +107,8 @@ is never always-on. Cases cannot contain cases (hard one-tier cap).
   with the standard warn (warn, never misread). Auto-priority spans every leg of every case; the
   guard (tier 10, the floor) never moves it. `ruleLabel` extends over cases deterministically
   while case-less rules label byte-for-byte as before. `/dl why` names the winning case
-  (together-block / a standalone / `case a & (x | y)`). No UI emits cases yet — that is the
-  editor slice; the rule list and `/dl why` render/name cases-list rules today.
+  (together-block / a standalone / `case a & (x | y)`). The rule builder emits cases as of
+  the editor slice (below); the rule list and `/dl why` render/name cases-list rules today.
 
 **One value per condition type on the & leg.** `when` is a Lua *map*, so a condition type
 appears at most once — and stacking two would be meaningless anyway (`name = "test"` AND
@@ -146,9 +146,28 @@ became case-aware:
 - **Priority chip**: now passes `whenAny` to `defaultPriority` (both legs), matching the
   engine — a rule whose highest tier lives on the `|` leg no longer displays low.
 Vocabulary: **case**, **together-block**, **standalone alternative** — never "group" (spell
-groups own that word). The editor still flattens a multi-condition entry on edit-save (the
-existing corruption); its fix, the schema's `cases` list, and the ADR land with later slices.
-Tests: engine `CS1-CS10`, render `TC1-TC10`.
+groups own that word). Tests: engine `CS1-CS10`, render `TC1-TC10`.
+
+**Trigger cases — edit-side (addon v2026.07.26f, issue #127, slice 3/5 of PRD #124).** The
+rule builder gains exactly two buttons — **+ & case** and **+ | case** — and renders added
+cases as bordered boxes below the rule body: together-block (`&`) cases first, an `-- or --`
+divider, then standalone (`|`) cases. **A rule with no added cases renders as before, plus
+only the two buttons** (box chrome exists only while cases exist). Each box hosts the
+*identical* condition flow the body uses — the same shared picker, the same
+`+ & condition` / `+ | condition` buttons, the same repeat-replaces contract (`pushCond`) and
+the same **Match either instead** escape — so there is nothing new to learn inside a case.
+- **Loading** (`triggersui._loadCases`): the flatten-corruption fix. A body `whenAny`
+  *single-condition* entry stays a body `|` row (as before); a *multi-condition* entry loads
+  as a `| case` box instead of flattening to separate `|` rows; each `cases`-list entry loads
+  as its box. A multi-condition `|` rule now round-trips **byte-identically** (test TE10).
+- **Saving** (`_buildLegs` + `_buildCases`): the body legs and each case's legs are rebuilt
+  and handed to `dispatch.serializeTriggers`, which owns canonicalization — a `| case` of only
+  `&` rows folds back to the oldest `whenAny` form (no guard); only `&` cases and `| cases`
+  with an internal `|` use the new list and carry the guard. **An empty case is never saved
+  silently**: the popup refuses Save while one exists and says so.
+- Deferred to the completion slice (not built here): copy-case, "Match either instead" between
+  cases, hover help beyond the button tooltips, chrome polish. Tests: pure seams + real-popup
+  frame drive `TE1-TE42` (`smoke_ui`).
 
 v2 candidates (matcher is an open table; additive): day/weather/moon beyond the obi rule,
 subjob. (`area` landed in v84 as `inTown`, off the server-derived `data/zones.lua` town set;
