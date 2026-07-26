@@ -450,13 +450,24 @@ research already recorded. In rough priority order:
     Tests TE45–TE53. Detail: trigger-system.md §"Field iteration 1". Still unwitnessed:
     `/dl why` naming the matched case on a live fire (slice 1's strings) — worth one look
     next session.
-  - **In flight: #128 (polish) — `ready-for-agent` toggled 2026-07-26 after the field
-    read landed.** Shepherd its PR next. The agent must NOT regress field iteration 1
-    (TE45–TE53 pin it; the layout reactions on #128/#127 override the skeleton's own
-    choices). #129 (blueprints) stays unlabeled until #128 merges — one at a time.
-    Collision watchlist: engine **v128 is TAKEN** (AutoAmmo Range-awareness, same day) and
-    addon is at **`26k`** → next free **v129** / **`26l`**; test ranges
-    CS/TC/TE/TRC/MC/TB/LS*/CMD/NK*/LSP are all taken (TE runs through TE53).
+  - **Completion slice #128 — BUILT on `dev`, addon `2026.07.26l`, NOT FIELD-TESTED
+    as a whole.** Copy case (per-box `copy` affordance; case 1 = the body box, so
+    "copy the rule body into a new case" falls straight out — pure seam `_copyConds`,
+    deep-copy so the duplicate is independent), "Match either instead" + the
+    repeat-replaces note working INSIDE a case (field iteration 1's `renderBox`
+    already carried it; #128 pins it under test), box-header **hover help** via the
+    panel-text standard (`uistyle.helpLabel` — underlined `& case`/`| case` label,
+    one-sentence semantics in the hover), and the empty-case save refusal (incl. an
+    empty case 1). No engine bump — pure addon-state UI (hard rule 4). Tests
+    **TE54–TE63**. **Field-test gate:**
+    [design/trigger-cases-fieldtest.md](design/trigger-cases-fieldtest.md) — the
+    dev→main acceptance list (old rules byte-identical, `| case` fires independently,
+    `& case` gates, `/dl why` names the case, old-version drop-with-warn). Did NOT
+    regress field iteration 1 (TE45–TE53 still green). #129 (blueprints) stays
+    unlabeled until #128 merges — one at a time.
+    Collision watchlist: engine **v128 is TAKEN** (AutoAmmo Range-awareness, same day);
+    addon now **`26l`** → next free **v129** / **`26m`**; test ranges
+    CS/TC/TE/TRC/MC/TB/LS*/CMD/NK*/LSP are all taken (TE runs through **TE63**).
   - **Open Henrik decisions**: (1) the `hasCases` guard token is player-visible in
     hand-edited trigger files — naming sign-off still open, rename is one line NOW and a
     migration later; (2) the slice-1 player-visible strings (`[via together-block]` /

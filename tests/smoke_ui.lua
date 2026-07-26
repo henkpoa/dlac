@@ -2404,6 +2404,20 @@ end)();
                 { action = { Type = 'Black Magic', Element = 'Fire' },
                   player = { Status = 'Idle', TP = 0 } }), false);
 
+        -- copyConds (issue #128): an EDITABLE duplicate. Editing the copy must
+        -- never reach back into the original -- rows AND a table value (mode list)
+        -- are both cloned.
+        local src = { { key = 'name', value = 'test' },
+                      { key = 'element', value = 'Fire', any = true },
+                      { key = 'mode', value = { 'DT', 'Idle' } } };
+        local dup = tg._copyConds(src);
+        check('TE54 copyConds duplicates every row, op flags and all',
+            (#dup == 3) and dup[1].key == 'name' and dup[1].value == 'test'
+            and dup[2].any == true and dup[3].key == 'mode', true);
+        dup[1].value = 'CHANGED'; dup[3].value[1] = 'GONE';
+        check('TE55 the duplicate is independent -- editing it never touches the original',
+            (src[1].value == 'test') and (src[3].value[1] == 'DT'), true);
+
         -- ---- the REAL popup, frame by frame ----
         local UP = {};
         for i = 1, 250 do
@@ -2539,6 +2553,74 @@ end)();
             check('TE53 deleting case 1 promotes the next case into the seat, op and all',
                 (#trig.addCases == 0) and (#trig.addConds == 1)
                 and (trig.addConds[1].value == 'alt') and trig.addBodyOp, '|');
+
+            -- Scenario G: copy case (issue #128). In box mode the body is case 1
+            -- with its own copy affordance, so "copy the rule body into a new
+            -- case" is just copying case 1; copying an added case duplicates it.
+            fresh();
+            trig.addValText[1] = 'anchor'; frame('+ & condition##trgac');
+            frame('+ | case##trgaddorcase');            -- body becomes case 1 (a box)
+            trig.addValText[1] = 'alt'; frame('+ & condition##trgaccase1');
+            local _, recG = frame(nil);
+            check('TE56 every box has a copy affordance, case 1 (the body) included',
+                sawIn(recG, 'copy##trgcopybody') and sawIn(recG, 'copy##trgcopycase1'), true);
+            frame('copy##trgcopybody');                  -- copy the rule body into a new case
+            local dupB = trig.addCases[2];
+            check('TE57 copying case 1 appends a new case duplicating the body',
+                (#trig.addCases == 2) and (dupB ~= nil) and (dupB.op == '&')
+                and (type(dupB.conds) == 'table') and (#dupB.conds == 1)
+                and (dupB.conds[1].value == 'anchor'), true);
+            trig.addConds[1].value = 'edited';           -- mutate the body...
+            check('TE58 the duplicate is independent of the body it was copied from',
+                (dupB and dupB.conds and dupB.conds[1] and dupB.conds[1].value) or nil, 'anchor');
+            frame('copy##trgcopycase1');                 -- copy an added case
+            local dupC = trig.addCases[3];
+            check('TE59 copying an added case appends a duplicate of the right kind',
+                (#trig.addCases == 3) and (dupC ~= nil) and (dupC.op == '|')
+                and (type(dupC.conds) == 'table') and (dupC.conds[1] ~= nil)
+                and (dupC.conds[1].value == 'alt'), true);
+
+            -- Scenario H: the repeat-replaces note and "Match either instead"
+            -- escape behave INSIDE a case exactly as in the body (issue #128).
+            fresh();
+            trig.addValText[1] = 'anchor'; frame('+ & condition##trgac');
+            frame('+ & case##trgaddandcase');            -- body -> case 1; a fresh & case
+            trig.addValText[1] = 'foo'; frame('+ & condition##trgaccase1');
+            trig.addValText[1] = 'bar'; frame('+ & condition##trgaccase1');   -- same type: replaces
+            check('TE60 a repeated & type inside a case replaces, and says so (not silent)',
+                (#trig.addCases[1].conds == 1) and (trig.addCases[1].conds[1].value == 'bar')
+                and (trig.addCases[1].note ~= nil) and (trig.addCases[1].swap ~= nil), true);
+            local _, recH = frame(nil);
+            check('TE61 the "Match either instead" escape renders on the case box',
+                sawIn(recH, 'Match either instead##trgorbothcase1'), true);
+            frame('Match either instead##trgorbothcase1');
+            local hc = trig.addCases[1];
+            check('TE62 the escape moves BOTH values to the case | leg, note cleared',
+                (hc ~= nil) and (#hc.conds == 2) and hc.conds[1].any
+                and hc.conds[2].any and (hc.note == nil), true);
+
+            -- Scenario I: a case-bearing rule captured as a Blueprint carries its
+            -- cases verbatim (issue #128 edge case: blueprint capture from the
+            -- editor's case-bearing state). Build the rule, then round-trip its
+            -- saved shape through loadCases -> buildRuleShape and byte-compare the
+            -- serialized form -- the path a Blueprint stamp/share takes.
+            fresh();
+            trig.addValText[1] = 'body'; frame('+ & condition##trgac');
+            frame('+ & case##trgaddandcase');
+            trig.addValText[1] = 'inside'; frame('+ | condition##trgoccase1');
+            trig.addValText[1] = 'more';   frame('+ | condition##trgoccase1');
+            frame('Add rule###trgaddgo');
+            local rI = trig.data.Item and trig.data.Item[1];
+            check('TE63a the case-bearing rule saved (a Blueprint would capture this shape)',
+                (type(rI) == 'table') and (type(rI.cases) == 'table') and (#rI.cases == 1), true);
+            if type(rI) == 'table' then
+                local before = D.serializeTriggers({ Item = { rI } });
+                local cI, csI, opI = tg._loadCases(rI);
+                local wI, aI, clI = tg._buildRuleShape(cI, opI, csI);
+                local rebuilt = { when = wI, whenAny = aI, cases = clI, set = rI.set };
+                check('TE63 a case-bearing rule round-trips byte-identically (the Blueprint path)',
+                    D.serializeTriggers({ Item = { rebuilt } }), before);
+            end
 
             check('TE40 the popup stack stayed balanced', depth.popup, 0);
             check('TE41 the colour stack stayed balanced', depth.col, 0);
