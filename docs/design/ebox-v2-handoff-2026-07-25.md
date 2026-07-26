@@ -1,6 +1,6 @@
 # E-Box Restock v2 — handoff (2026-07-25 evening)
 
-**Pick this up here.** Built, committed on `dev`, **partly field-tested**, not on `main`.
+**Pick this up here.** Built, **partly field-tested**, on `main` since the `7231143` merge.
 `addon.version 2026.07.25e`. 3420 checks green on Windows lua **and** WSL lua5.4.
 
 - The design + the whole decision record: **`docs/design/ebox-restock-v2-grill-2026-07-25.md`**

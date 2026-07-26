@@ -145,6 +145,10 @@ function M.enrich(rec, c)
     -- Pairing metadata (Range/Ammo rule). Absent stays absent -- nil is
     -- meaningful: it marks an unfirable stat stick that forces Range empty.
     if rec.AmmoType == nil then rec.AmmoType = c.AmmoType; end
+    -- The SAME pairing rule read exactly: "<skill>:<subskill>". AmmoType above is its
+    -- coarse half and cannot separate a gun from a crossbow. Absent stays absent --
+    -- a record with no Pair means "unknown", never "pairs with nothing".
+    if rec.Pair == nil then rec.Pair = c.Pair; end
     -- Appearance model id (lockstyle look preview). Absent stays absent.
     if rec.Model == nil then rec.Model = c.Model; end
     if type(c.Stats) == 'table' and next(c.Stats) ~= nil then

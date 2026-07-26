@@ -43,6 +43,27 @@ local COL_TEXT   = { 0.70, 0.70, 0.70, 1.00 };
 local COL_ERR    = { 0.95, 0.45, 0.40, 1.00 };
 local COL_GOLD   = { 0.95, 0.85, 0.45, 1.00 };
 local COL_GREEN  = { 0.45, 0.90, 0.45, 1.00 };
+-- Type-tab backgrounds, the hobbybar strip's colours (one idiom for "tabs made of
+-- buttons" across the GUI): green = the type your equipped ranged weapon actually
+-- fires, blue = the one you are editing.
+local COL_LIVE     = { 0.16, 0.55, 0.24, 1.0 };
+local COL_SELECTED = { 0.20, 0.35, 0.60, 1.0 };
+
+-- What is in the Range slot, and therefore which ammo category can be loaded at all.
+-- Straight through gearoracle (THE one worn-item door, ADR 0013) -- its record is the
+-- CATALOG record, so Pair is exact here with no manifest refresh needed. Equip slot 2
+-- is Range. nil = nothing worn, or an item the catalog cannot place.
+local function liveRangeCategory()
+    local cat, nm = nil, nil;
+    pcall(function()
+        local go = require('dlac\\gear\\gearoracle');
+        local w = go.wornItem(2);
+        if w == nil or type(w.rec) ~= 'table' then return; end
+        nm  = w.rec.Name;
+        cat = aw.categoryForPair(w.rec.Pair);
+    end);
+    return cat, nm;
+end
 
 local function esc(s) return (tostring(s):gsub('%%', '%%%%')); end
 
@@ -116,6 +137,13 @@ function M.level(deps) return (select(1, M.status(deps))); end
 
 if not _iok then return M; end   -- imgui-less (headless): the pure half above is the module
 
+-- Test seams for the category selection (a session-only module local). smoke drives
+-- the real render once per worn-weapon branch and has to read the landing tab and
+-- clear it between cases; kept explicit rather than one overloaded accessor, because
+-- "reset to nil" and "read" cannot be told apart through a single nil argument.
+function M._catSel() return CAT_SEL; end
+function M._resetCatSel() CAT_SEL = nil; end
+
 -- ---------------------------------------------------------------------------
 -- The detail view (automationsui: auto.view == 'ammo').
 -- ---------------------------------------------------------------------------
@@ -126,6 +154,18 @@ function M.render(deps, availW)
     end
     local job = (deps ~= nil and type(deps.playerJob) == 'function') and deps.playerJob() or nil;
     aw.selectJob(job);   -- fmt 2: everything below edits THIS job's own section
+    -- Teach old entries their pair key (v128). Opening the panel is the one moment
+    -- the catalog and the config are both in hand; after the first sweep nothing is
+    -- missing and this costs a loop over a handful of rows. Without it a list built
+    -- before v128 keeps falling back to AmmoType, which cannot separate a bolt from
+    -- a bullet -- i.e. the reported bug would survive the fix that addressed it.
+    pcall(function()
+        local cx = require('dlac\\gear\\catalogindex');
+        aw.backfillPairs(function(id)
+            local r = cx.rawById(id);
+            return (type(r) == 'table') and r.Pair or nil;
+        end);
+    end);
     -- Crystal Warriors ONLY (affirmative gamemode 'CW' -- unknown shows
     -- nothing); a server LOCKED reason 'cw' shuts it again from the other end.
     local cwBox = _ebok and eb.isCW() and eb.lockedReason ~= 'cw';
@@ -183,44 +223,79 @@ function M.render(deps, availW)
     for _, e in ipairs(aw.list) do inList[string.lower(e.name)] = true; end
     local catCfg, catOwn = {}, {};
     for _, e in ipairs(aw.list) do
-        local c = aw.categoryOf(e.name, e.type);
+        local c = aw.categoryOf(e.name, e.type, e.pair);
         catCfg[c] = (catCfg[c] or 0) + 1;
     end
     for _, rec in ipairs(ownedAll) do
         if not inList[string.lower(rec.Name)] then
-            local c = aw.categoryOf(rec.Name, rec.AmmoType);
+            local c = aw.categoryOf(rec.Name, rec.AmmoType, rec.Pair);
             catOwn[c] = (catOwn[c] or 0) + 1;
         end
     end
-    if CAT_SEL == nil then   -- first open: land on the first type this job configured
-        for _, c in ipairs(aw.CATEGORIES) do
-            if (catCfg[c] or 0) > 0 then CAT_SEL = c; break; end
+    local liveCat, liveWeapon = liveRangeCategory();
+    if CAT_SEL == nil then
+        -- First open lands on what you are actually holding -- that is the type you
+        -- came here to edit. Only when nothing is equipped does it fall back to the
+        -- first type this job configured. NEVER auto-switches after that: once you
+        -- have clicked a tab it is yours, and swapping weapons mid-edit must not
+        -- yank the list out from under you (the green tab already says what changed).
+        CAT_SEL = liveCat;
+        if CAT_SEL == nil then
+            for _, c in ipairs(aw.CATEGORIES) do
+                if (catCfg[c] or 0) > 0 then CAT_SEL = c; break; end
+            end
         end
         CAT_SEL = CAT_SEL or 'Bullets';
     end
-    imgui.TextColored(COL_TEXT, 'Ammo type:');
-    imgui.SameLine(0, 6);
-    imgui.PushItemWidth(220);
-    if imgui.BeginCombo('##ammocat', string.format('%s  (%d set up, %d more owned)',
-            CAT_SEL, catCfg[CAT_SEL] or 0, catOwn[CAT_SEL] or 0)) then
-        for _, c in ipairs(aw.CATEGORIES) do
-            local nCfg, nOwn = catCfg[c] or 0, catOwn[c] or 0;
-            if c ~= 'Other' or (nCfg + nOwn) > 0 then   -- Other only when it exists
-                local label = string.format('%s  (%d set up, %d more owned)##ammocat_%s', c, nCfg, nOwn, c);
-                if imgui.Selectable(label, c == CAT_SEL) then CAT_SEL = c; end
+    -- TABS, one per type (Henrik, 2026-07-26 -- the combo and its "Ammo type:" label
+    -- are gone; the strip says what the label used to). The tab whose ammo your
+    -- EQUIPPED ranged weapon actually fires lights GREEN, so the panel answers "what
+    -- can I even load right now" at a glance instead of making you know that a
+    -- Staurobow is a crossbow. Buttons-as-tabs is the hobbybar idiom -- ImGuiCol_Button
+    -- is the one style enum proven in the field here, so the two channels are kept
+    -- apart by MEANING, not by fighting over one colour: green = what fires, blue =
+    -- what you are editing, and the Priority list header below names the selection so
+    -- it stays readable even when green wins the same tab.
+    for _, c in ipairs(aw.CATEGORIES) do
+        local nCfg, nOwn = catCfg[c] or 0, catOwn[c] or 0;
+        -- 'Other' still only appears when something is in it; a LIVE type always
+        -- appears, or a culverin would light nothing at all.
+        if c ~= 'Other' or (nCfg + nOwn) > 0 or c == liveCat then
+            local isLive = (c == liveCat);
+            local pushed = 0;
+            if isLive then
+                imgui.PushStyleColor(ImGuiCol_Button, COL_LIVE); pushed = pushed + 1;
+            elseif c == CAT_SEL then
+                imgui.PushStyleColor(ImGuiCol_Button, COL_SELECTED); pushed = pushed + 1;
             end
+            if imgui.Button(string.format('%s (%d)##ammocat_%s', c, nCfg, c), { 0, 0 }) then
+                CAT_SEL = c;
+            end
+            if pushed > 0 then imgui.PopStyleColor(pushed); end
+            if imgui.IsItemHovered() then
+                local t = string.format('%s -- %d set up, %d more owned.', c, nCfg, nOwn);
+                if isLive then
+                    t = t .. string.format('\n\nGREEN: your %s fires this type, so this is what\nAutoAmmo can load right now.',
+                        esc(tostring(liveWeapon or 'ranged weapon')));
+                elseif liveCat ~= nil then
+                    t = t .. string.format('\n\nYour %s cannot fire these -- AutoAmmo will not load\nthem while it is equipped. (%s is green.)',
+                        esc(tostring(liveWeapon or 'ranged weapon')), liveCat);
+                elseif liveWeapon == nil then
+                    t = t .. '\n\nNothing in your Range slot -- with no ranged weapon\nequipped AutoAmmo does nothing at all.';
+                end
+                imgui.SetTooltip(t);
+            end
+            imgui.SameLine(0, 4);
         end
-        imgui.EndCombo();
     end
-    imgui.PopItemWidth();
-    if imgui.IsItemHovered() then
-        imgui.SetTooltip('Which ammo type you are editing -- both lists below show only that\ntype. The job\'s priority order still spans all types underneath.');
-    end
+    imgui.Dummy({ 0, 0 });   -- close the SameLine run
 
     -- ------------------------------------------------------------------
     -- Priority list. Order IS the engine's fallback order.
     -- ------------------------------------------------------------------
-    imgui.TextColored(COL_HEADER, 'Priority list');
+    -- The header carries the selection, so the tab strip's green can mean ONE thing
+    -- (what your weapon fires) without also having to say which tab you are on.
+    imgui.TextColored(COL_HEADER, 'Priority list -- ' .. esc(tostring(CAT_SEL)));
     imgui.SameLine(0, 8);
     imgui.TextColored(COL_DIM, '(top loads first)');
     imgui.SameLine(0, 10);
@@ -280,7 +355,7 @@ function M.render(deps, availW)
     -- (which need not be adjacent in the underlying all-types list).
     local vis = {};
     for i, e in ipairs(aw.list) do
-        if aw.categoryOf(e.name, e.type) == CAT_SEL then vis[#vis + 1] = i; end
+        if aw.categoryOf(e.name, e.type, e.pair) == CAT_SEL then vis[#vis + 1] = i; end
     end
     if #aw.list > 0 and #vis == 0 then
         imgui.TextColored(COL_DIM, string.format(
@@ -435,7 +510,7 @@ function M.render(deps, availW)
     local shown = 0;
     for _, rec in ipairs(ownedAll) do
         if not inList[string.lower(rec.Name)]
-           and aw.categoryOf(rec.Name, rec.AmmoType) == CAT_SEL then
+           and aw.categoryOf(rec.Name, rec.AmmoType, rec.Pair) == CAT_SEL then
             shown = shown + 1;
             imgui.PushID('ammoown_' .. tostring(rec.Id));
             imgui.Dummy({ 0, 0 });

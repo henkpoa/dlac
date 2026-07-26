@@ -27,6 +27,36 @@ local M = {};
 local _gmok, gm = pcall(require, 'dlac\\gear\\groupsmodel');
 local hasGroups = _gmok and type(gm) == 'table';
 
+-- The trigger-cases version guard key (issue #126): a serialization artifact
+-- (dispatch stamps it into the body of any rule with a `cases` list). Stripped on
+-- load so it never re-emits stale, then re-stamped by the serializer when cases
+-- are present. Bare local -- this pure module drags in nothing from the engine.
+local CASES_GUARD = 'hascases';
+
+-- One raw condition map -> lowercased-key copy, guard stripped.
+local function condMap(map)
+    local out = {};
+    for ck, cv in pairs(map or {}) do
+        local lk = string.lower(tostring(ck));
+        if lk ~= CASES_GUARD then out[lk] = cv; end
+    end
+    return out;
+end
+
+-- Raw whenAny -> list of lowercased condition maps, empties dropped.
+local function anyList(raw)
+    local out = nil;
+    if type(raw) == 'table' then
+        for _, e in ipairs(raw) do
+            if type(e) == 'table' then
+                local ne = condMap(e);
+                if next(ne) ~= nil then out = out or {}; out[#out + 1] = ne; end
+            end
+        end
+    end
+    return out;
+end
+
 -- Raw trigger-file table -> edit model. `canonEvent` maps a file key to the canonical
 -- handler name (dispatch.canonEvent) or nil; without it the handler sections are
 -- unreachable (dropped), but Modes/Groups still carry -- same degraded behavior the
@@ -42,18 +72,28 @@ function M.fromRaw(raw, canonEvent)
             for _, r in ipairs(v) do
                 if type(r) == 'table' and type(r.when) == 'table'
                    and (r.set ~= nil or type(r.equip) == 'table') then
-                    local when = {};
-                    for ck, cv in pairs(r.when) do when[string.lower(tostring(ck))] = cv; end
+                    local when = condMap(r.when);
                     -- v54 OR group: carried through the model or Commit WIPES it
                     -- (the SetOptions/Modes lesson).
-                    local whenAny = nil;
-                    local rawAny = r.whenAny or r.whenany;
-                    if type(rawAny) == 'table' then
-                        for _, e in ipairs(rawAny) do
-                            if type(e) == 'table' then
-                                local ne = {};
-                                for ck, cv in pairs(e) do ne[string.lower(tostring(ck))] = cv; end
-                                if next(ne) ~= nil then whenAny = whenAny or {}; whenAny[#whenAny + 1] = ne; end
+                    local whenAny = anyList(r.whenAny or r.whenany);
+                    -- cases (issue #126): the second tier, carried VERBATIM or
+                    -- Commit WIPES it (the same SetOptions/Modes wipe lesson). The
+                    -- engine's normalize is the validator; the model just mirrors
+                    -- the file's shape so a round-trip preserves it.
+                    local cases = nil;
+                    if type(r.cases) == 'table' then
+                        for _, c in ipairs(r.cases) do
+                            if type(c) == 'table' then
+                                local op = (c.op == '|' or c.operator == '|') and '|'
+                                        or ((c.op == '&' or c.operator == '&') and '&' or nil);
+                                if op ~= nil then
+                                    local cw = condMap(c.when);
+                                    local cwAny = anyList(c.whenAny or c.whenany);
+                                    if next(cw) ~= nil or (cwAny ~= nil and #cwAny > 0) then
+                                        cases = cases or {};
+                                        cases[#cases + 1] = { op = op, when = cw, whenAny = cwAny };
+                                    end
+                                end
                             end
                         end
                     end
@@ -71,6 +111,7 @@ function M.fromRaw(raw, canonEvent)
                     list[#list + 1] = {
                         when = when,
                         whenAny = whenAny,
+                        cases = cases,
                         set = sv,
                         equip = (type(r.equip) == 'table') and r.equip or nil,
                         priority = tonumber(r.priority),

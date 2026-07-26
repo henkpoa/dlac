@@ -89,6 +89,126 @@ exactly as before, so existing pin scope keys keep matching); the default priori
 both legs. Field case: Toxin Earring poison-wakeup — `whenAny` of Sleep OR Lullaby → the
 WakeMeUp set.
 
+**Cases (v127, PRD #124, ADR 0023).** A second `&`/`|` tier. A rule gains an optional
+`cases = { { op = '&'|'|', when = {...}, whenAny = {...}? }, ... }` — each case carries an
+operator plus the **same two legs a body has**, and matches internally by the same one
+sentence: *`&` things bind into one together-block; each `|` thing stands alone; fire if the
+together-block holds, or any `|` thing does.* At the rule tier the `&` members are the body's
+`&` leg + every `& case`; the standalone `|` things are the body's `whenAny` entries + every
+`| case`. The empty-together-block law generalizes — no `&` member (empty body leg, no `& case`)
+is never always-on. Cases cannot contain cases (hard one-tier cap).
+- **Canonical serialization is oldest-form-first.** A `| case` with only `&` conditions
+  serializes as a multi-condition `whenAny` entry in the *existing* schema, so `(A & B) | (C & D)`
+  is evaluated by every addon version ever shipped. Only `&` cases and `| cases` with an internal
+  `|` leg use the new `cases` list.
+- **Version guard.** Any rule serialized with a surviving `cases` list also gets
+  `hasCases = true` stamped in its body — this engine registers it as an always-true matcher at
+  the bottom tier and strips it on load; an older engine sees an unknown key and drops the rule
+  with the standard warn (warn, never misread). Auto-priority spans every leg of every case; the
+  guard (tier 10, the floor) never moves it. `ruleLabel` extends over cases deterministically
+  while case-less rules label byte-for-byte as before. `/dl why` names the winning case
+  (together-block / a standalone / `case a & (x | y)`). The rule builder emits cases as of
+  the editor slice (below); the rule list and `/dl why` render/name cases-list rules today.
+
+**One value per condition type on the & leg.** `when` is a Lua *map*, so a condition type
+appears at most once — and stacking two would be meaningless anyway (`name = "test"` AND
+`name = "testar"` can never both hold; every matcher compares ONE value, `mode` alone reading
+a list, as OR). The rule builder therefore *replaces* when you add a type that is already on
+the & leg. That is right when you are correcting a value and wrong when you meant "either",
+so since v2026.07.25h it is never silent: the popup names the swap it made
+(`name replaced: test -> testar`) and offers **Match either instead**, which moves BOTH values
+to the | leg. Field case (Henrik, 07-25): Item rule, `name = test` then `name = testar` — the
+second ate the first with nothing said, and it read as "I cannot add & conditions any more".
+The same-type test is case-insensitive: the pickers spell keys as the defs do (`magicType`),
+an edited rule loads them lowercased off the file, and the save lowercases both — a
+case-sensitive test let an edit stack two rows of one type, of which the save kept one.
+`triggersui._pushCond` / `._orBothToAny` are the pure seams; tests TB1–TB32 (`smoke_ui`) cover
+them and drive the real popup frame by frame.
+
+**Trigger cases — read-side (engine v125, issue #125, slice 1/5 of PRD #124).** The
+display vocabulary over the *existing* `whenAny` schema — no schema change, no editor
+change. The rule body is **case 1**, the **together-block** (its `&` leg). Each `whenAny`
+entry is a **standalone alternative**: a *single-condition* entry is a plain standalone `|`
+condition, a *multi-condition* entry (AND-within-OR) is a **`| case`**. The read surfaces
+became case-aware:
+- **Rule list** (`ui/triggersui.lua`, `caseSplit`): single-condition entries render as `|`
+  lines exactly as before; each multi-condition entry renders as a bordered, indented
+  `| case` box with the together-block `& ` prefix on its 2nd+ conditions. A rule with no
+  multi-condition entry renders pixel-identical to today (zero new chrome for the 99%). A
+  case box carries one live `[on now]`/`[off now]` — the whole case ANDed — but only when
+  every condition is a player-state gate (`caseLiveHolds`; an action condition can't be
+  judged at idle, so it shows no marker rather than a wrong one).
+- **`/dl why`** (`dispatch.matchedCase`): the winning rule's line names its matched case —
+  `[via together-block]`, `[via standalone <k=v>]`, or `[via case <a & b>]`. Mirrors
+  `matches()` with the engine's own MATCHERS (together-block first, then the first `|` entry
+  that holds in file order); folded into the retrace signature so a rule that switches cases
+  re-names. A case-less rule names nothing — `/dl why` reads byte-for-byte as before.
+- **Priority chip**: now passes `whenAny` to `defaultPriority` (both legs), matching the
+  engine — a rule whose highest tier lives on the `|` leg no longer displays low.
+Vocabulary: **case**, **together-block**, **standalone alternative** — never "group" (spell
+groups own that word). Tests: engine `CS1-CS10`, render `TC1-TC10`.
+
+**Trigger cases — edit-side (addon v2026.07.26f, issue #127, slice 3/5 of PRD #124).** The
+rule builder gains exactly two buttons — **+ & case** and **+ | case** — and renders added
+cases as bordered boxes below the rule body: together-block (`&`) cases first, an `-- or --`
+divider, then standalone (`|`) cases. **A rule with no added cases renders as before, plus
+only the two buttons** (box chrome exists only while cases exist). Each box hosts the
+*identical* condition flow the body uses — the same shared picker, the same
+`+ & condition` / `+ | condition` buttons, the same repeat-replaces contract (`pushCond`) and
+the same **Match either instead** escape — so there is nothing new to learn inside a case.
+- **Loading** (`triggersui._loadCases`): the flatten-corruption fix. A body `whenAny`
+  *single-condition* entry stays a body `|` row (as before); a *multi-condition* entry loads
+  as a `| case` box instead of flattening to separate `|` rows; each `cases`-list entry loads
+  as its box. A multi-condition `|` rule now round-trips **byte-identically** (test TE10).
+  One depth the editor cannot represent (one-tier cap): a hand-written *combined* `|` entry
+  **inside** a case, which the engine honors as AND-within-OR. It splits to standalone `|`
+  rows on load — **with a note on the case box, never silently** (v2026.07.26g; the `&` leg's
+  law one tier down), and Cancel keeps the file as written.
+- **Saving** (`_buildLegs` + `_buildCases`): the body legs and each case's legs are rebuilt
+  and handed to `dispatch.serializeTriggers`, which owns canonicalization — a `| case` of only
+  `&` rows folds back to the oldest `whenAny` form (no guard); only `&` cases and `| cases`
+  with an internal `|` use the new list and carry the guard. **An empty case is never saved
+  silently**: the popup refuses Save while one exists and says so.
+- Deferred to the completion slice (not built here): copy-case, "Match either instead" between
+  cases, hover help beyond the button tooltips, chrome polish. Tests: pure seams + real-popup
+  frame drive `TE1-TE53` (`smoke_ui`).
+
+**Field iteration 1 (addon v2026.07.26h, Henrik's first click-through, 2026-07-26).** Two
+reads, both structural:
+- **The shared picker sits at the TOP of the popup, outside every container.** Rendered
+  between the body rows and the case boxes it read as owned by case 1 forever. Now:
+  `condition:` picker row first, a separator, then the containers — and every container
+  (the body included) carries its own `+ & condition` / `+ | condition` buttons below its
+  rows, the same rows-then-buttons shape throughout. (TE49)
+- **Case 1 is a real case.** With no added cases the body renders flat, exactly as before
+  (the 99% see nothing new). Once a case exists the body renders as **case 1** — a box like
+  every other, with the same **top-right AND/OR selection** every box has; it used to be the
+  one case whose type only the system could set. Flipping any box moves it across the
+  `-- or --` divider on the fly. (TE50–TE51)
+  - **Case 1 = OR saves an empty body**: its rows ride the cases list as the leading
+    `| case` (`_buildRuleShape`); the engine's OR-only law (`matches()`: `nAnd > 0`) keeps
+    such a rule from ever being always-on (TE48, TE52), and the serializer still folds
+    oldest-form when it can — a pure-OR rule round-trips byte-identically through the
+    case-1 seat (TE47).
+  - **An empty-body rule seats its first case as case 1 on load** (op and split-note ride
+    along), so the editor never shows an empty un-savable body box (TE45); deleting case 1
+    promotes the next case into the seat (TE53).
+
+**Field round 2 (addon v2026.07.26m, 2026-07-26).** Henrik's `/dl why` screenshot witnessed
+the case-naming live — and showed a rule labeled `any#|(any|status=Engaged)#|(any|status=
+Resting)`: both conditions were added with `+ |`, so each case saved as
+`{ when = {}, whenAny = { {..} } }` — an empty `&` leg plus a one-entry `|` leg, which the
+serializer's oldest-form fold cannot reach (it only folds cases with no internal `|`), so
+the rule also carried a `hasCases` guard it did not need. **Canonical case legs**
+(`triggersui` `foldLoneAny`, applied in `_buildCases` and to case 1 in `_buildRuleShape`):
+a case whose `&` leg is empty and whose `|` leg holds exactly ONE entry folds that entry
+into the `&` leg — identical semantics (with one lone entry the two legs say the same
+thing), and the whole chain then collapses: Henrik's exact rule re-saves as the OLD pure-OR
+form (`whenAny` two entries, no cases list, no guard) and `/dl why` names the winner
+`standalone status=Resting` instead of `case (status=Resting)`. The BODY never folds —
+case-less labels stay byte-for-byte stable. Already-saved noisy rules canonicalize on
+their next edit-save. (TE54–TE56)
+
 v2 candidates (matcher is an open table; additive): day/weather/moon beyond the obi rule,
 subjob. (`area` landed in v84 as `inTown`, off the server-derived `data/zones.lua` town set;
 more zone predicates — a specific-zone match, `IN_DYNAMIS` — reuse the same file. Target

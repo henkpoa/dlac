@@ -215,9 +215,11 @@ local function triggerChoices()
         if type(list) == 'table' then
             for _, r in ipairs(list) do
                 if type(r) == 'table' and type(r.when) == 'table' then
-                    -- whenAny (v54) is part of the label: both states must
-                    -- spell an OR rule's scope key identically.
-                    local label = dsp.ruleLabel(r.when, r.whenAny);
+                    -- whenAny (v54) and cases (issue #126) are part of the label:
+                    -- both states must spell an OR / case rule's scope key
+                    -- identically, and a case-LESS rule keys byte-for-byte as
+                    -- before so existing pins survive untouched (PRD story 19).
+                    local label = dsp.ruleLabel(r.when, r.whenAny, r.cases);
                     local parts = {};
                     for k, v in pairs(r.when) do
                         local pk = (type(dsp.PRETTY_KEY) == 'table' and dsp.PRETTY_KEY[k]) or k;

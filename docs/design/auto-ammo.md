@@ -121,7 +121,10 @@ Layout, top to bottom:
   summarizes the other jobs' sections. The engine resolves against the main
   job's section only — no section, or its switch off, means do nothing.
 - **Ammo type selector** (field round 5: "list is gonna become super
-  bloated") — a combo (Bullets / Bolts / Arrows / Throwing, + Other only when
+  bloated") — **SUPERSEDED by the green type TABS in §9.6 (v128); the combo and
+  its "Ammo type:" label are gone, and the split is now driven by the exact
+  subskill rather than the item name.** As built it was a combo
+  (Bullets / Bolts / Arrows / Throwing, + Other only when
   it exists) filtering BOTH lists below; each entry shows "(n set up, m more
   owned)". Category is a VIEW, derived per item (`ammowatch.categoryOf`:
   Archery→Arrows, Throwing→Throwing, Marksmanship split by NAME into
@@ -329,9 +332,15 @@ the live Range/Ammo picks — lands AutoAmmo entirely on the state-file side.
   by the field tests above; log any divergence in docs/server-questions.md.
 - Barrage (multi-hit consumption) — counts re-read live so logic holds, but
   worth one observation pass with a small stack.
-- Whether ranged ammo ↔ ranged weapon skill-type mismatch (arrows in a gun)
+- ~~Whether ranged ammo ↔ ranged weapon skill-type mismatch (arrows in a gun)
   needs a UI hint; the server gate only checks "a weapon-type ammo exists".
-  Deferred — users enable sensible ammo.
+  Deferred — users enable sensible ammo.~~ **ANSWERED THE HARD WAY — see §9.**
+  It was never a hint question, and "the server gate only checks a weapon-type
+  ammo exists" was true of the wrong gate. `CanUseRangedAttack` is lax;
+  `charutils.cpp EquipItem` is not, and it does not refuse the equip — it
+  **strips the other slot**. "Users enable sensible ammo" was the assumption
+  that made the bug: a sensible ammo for your gun is nonsense for your bow, and
+  the engine picked from one flat list without ever looking at either.
 - ~~Does the server enforce Ephemeral-Box PROXIMITY, and at what range?~~
   **ANSWERED (field round 2, Henrik): the box range is 5 yalms** —
   `BOX_RANGE = 5`, pinned by test EB9; the fetch buttons go dead-red beyond it.
@@ -466,3 +475,170 @@ Needs a real NIN (Henrik: *"until we get our ninjas up"*).
    every action event, so a **shuriken count that drops while engaged with no shot
    and no WS fired is proof Daken consumes** — the same self-teaching shape as the
    MP merit watcher. Offered, not yet chosen.
+
+## 9. The Range slot decides the type (v128, 2026-07-26)
+
+**Status: BUILT on dev, NOT field-tested.** Henrik's report: *"If my trigger rule
+says 'Have this ranged bow equipped' while AutoAmmo was forcing a bolt into ammo
+slot... AutoAmmo does NOT dictate if it's bolt, arrows or what not that gets
+equipped. That is 100 % decided on what gets put in ranged. It should NEVER force
+ranged off, that is HANDS OFF."*
+
+### 9.1 What was actually wrong
+
+`resolveAmmoPlan` was **type-blind**. It read the list order, the
+Ranged/WS/Special flags, the live bag counts and the event — and nothing else. The
+only type-aware line in the whole feature was Quick Draw's
+`firstSpecial('quickdraw', 'Marksmanship')`. So the first `ranged`-flagged entry
+with stock won, whatever it was, whatever you were holding.
+
+The panel's Bullets/Bolts/Arrows/Throwing selector did **not** constrain it either
+and never had: `categoryOf` is derived per render and stored nowhere (§2, "category
+is a VIEW"). Picking Bolts in the GUI changed what you saw, not what loaded.
+
+### 9.2 Why the cost was a flap, not a wasted swap
+
+`src/map/utils/charutils.cpp` `EquipItem`, the SLOT_AMMO arm:
+
+```cpp
+// If the subtype of the ammo is not compatible with the ranged weapon, unequip it,
+// except for Archery where Longbow and Shortbow both use arrows
+if (PItem->getSkillType() != weapon->getSkillType() ||
+    (weapon->getSkillType() != SKILL_ARCHERY &&
+     PItem->getSubSkillType() != weapon->getSubSkillType()))
+{
+    UnequipItem(PChar, SLOT_RANGED, false);
+}
+```
+
+The SLOT_RANGED arm is the mirror and strips SLOT_AMMO. **The server does not
+refuse the equip — it takes the other slot off.** So AutoAmmo's bolt removed the
+bow, the trigger put the bow back, the server dropped the ammo, AutoAmmo re-planned
+the bolt. That is ADR 0010's "keeping both flaps forever" arriving through the
+skill/subskill door instead of the rslot one — and it is why Henrik saw Range being
+forced off by something that never writes Range.
+
+### 9.3 The law, and the three special cases it absorbs
+
+> compatible <=> same `skill` AND (`skill` is Archery OR same `subskill`)
+
+Pair key = `"<skill>:<subskill>"`, from `item_weapon`. Surveyed over every
+Range/Ammo item the API knows:
+
+| key | Range | Ammo |
+|---|---|---|
+| 25:0 / 25:4 | shortbows (58) / longbows (133) | arrows (60) — **subskill EXEMPT, every bow fires every arrow** |
+| 26:1 | guns (166) | bullets (39) |
+| 26:0 | crossbows (83) | bolts (44) |
+| 26:2 | culverins (2) | shells (2) |
+| 27:0 | boomerangs, chakrams (47) | pebbles, tathlums, coins (34) |
+| 27:3 | *(none)* | shuriken (19) — thrown with **Range empty** |
+| 0:10 | Animators (13) | Automaton Oils (4) |
+| 48:0 | fishing rods (20) | bait (39) |
+
+Archery being exempt is not a nicety: a Longbow is 25:4 and a Shortbow 25:0, so a
+uniform subskill match would break every bow in the game.
+
+Three things previously hardcoded fall out of this one field: `ANIMATOR_FED`'s
+id-pinned oil list is just 0:10 == 0:10 (and Animator P II is 0:11, which is why it
+refuses the same oil); the Rimestone-class stat sticks are 0:0 / 1:0 and match no
+real ranged weapon, which is the ADR 0010 trinket rule; and rod+bait is 48:0.
+
+Two data quirks worth knowing, both upstream LSB, not CatsEyeXI:
+**Hauksbok Bullet (22295) is subskill 0 — a BOLT** despite its name, which is why
+the name-based Bullets/Bolts split can never be the authority. And
+`Almogavar Bow` / `Staurobow` are skill 26 subskill 0 — **crossbows named "bow"**,
+which is why the weapon side could never be name-derived at all.
+
+### 9.4 The rules, in Henrik's words
+
+- **Range is HANDS OFF.** AutoAmmo reads the slot; it has never written it and
+  still does not. Its claim table is `{ Ammo = ... }` and nothing else.
+- **No ranged weapon worn -> do nothing, on every event.** Safe because with Range
+  empty the server refuses the shot, ranged WS need a weapon and Quick Draw needs a
+  Marksmanship one — so nothing can be consumed and there is nothing to protect.
+- **A weapon worn but nothing in the list pairs with it -> hold.** *"then autoammo
+  should ignore it"* — never force a mismatch in, and never empty the slot over it.
+- The protection sweep now also asks whether the worn special can be fired by the
+  equipped weapon. One it cannot fire is in no danger, so removing it would be pure
+  churn.
+
+**THE PARKED EXCEPTION:** throwing ammo IS firable with Range empty
+(`CanUseRangedAttack`'s `|| PAmmo->isThrowing()`) — that is how a NIN throws
+shuriken, and 27:3 has no Range partner at all. Henrik: *"throwing may be an
+exception, but we still need field tests for that."* The no-weapon gate therefore
+stays shut for Throwing too until §8.6 is answered by a real ninja. **Do not widen
+it on reasoning alone.**
+
+### 9.5 Where the key comes from, and why it degrades instead of breaking
+
+`apicrawl` emits `Pair` on every Range/Ammo record (the API's `weapon.subskill` was
+always there — 1,173 such items cached, all with it, customs like Yoru Shuriken
+included). The first pass emitted only 1,151 of them: the missing 22 were the
+skill-0 Range families (Animators, Soultrappers), which apicrawl's category-nesting
+walk had been discarding from `catalog.lua` outright. Fixed in `2fe7105` — that gap
+is what kept an Animator from ever carrying the `0:10` key that pairs it with
+Automaton Oil. From there it rides exactly the path `RSlot` already rides:
+catalog -> `gearrecord.enrich` -> `gearimport` stamps it into `gear.lua` -> the
+engine reads the raw file (`pairOf`, the twin of `rslotOf`). The GUI stores it on
+each configured entry; `ammowatch._serialize` round-trips it.
+
+`M.pairsWith` is **three-valued — true / false / nil** — and nil must never be read
+as false. Both sides fall back rather than fail:
+
+| side | best | fallback | worst |
+|---|---|---|---|
+| worn Range | manifest `Pair` (exact) | client resource `Skill` -> `"26"` | nil |
+| list entry | stamped `pair` (exact) | `AMMO_TYPE_SKILL[entry.type]` | nil |
+
+A skill-only key still separates a bow from a gun from a throwing weapon — the
+headline bug — so **the update alone fixes it for every existing manifest and
+ammostate file**; a manifest refresh upgrades it to telling a gun from a crossbow.
+An unknown pair constrains nothing, because a missing data field must never read as
+"AutoAmmo stopped working".
+
+### 9.6 UI — type tabs, and the live one is green
+
+Henrik's call, replacing the combo: *"Remove the text 'Ammo Type'... add tabs for
+each type you can select, and have the tab that currently has a type active turn
+green. For example, if a bow has been equipped, then Arrows tab lights up green."*
+
+Buttons-as-tabs (the hobbybar strip idiom — `ImGuiCol_Button` is the one style enum
+proven in the field in this file). The two signals are kept on separate channels so
+they never fight over one colour: **green background = what your equipped weapon
+fires**, blue = the tab you are editing, and the `Priority list -- <type>` header
+carries the selection so it stays readable when green wins the same tab. The live
+category comes from `gearoracle.wornItem(2)` — the catalog record, so it is exact in
+the panel with no manifest refresh at all. `Other` still only appears when it has
+contents *or* is the live type, so a culverin lights something.
+
+First open lands on the type you are holding; after that the selection is yours and
+a weapon swap never yanks it (the green tab reports the change instead).
+
+### 9.7 Tests
+
+`PW1-PW14c` pin the law itself (including the Archery exemption, the Animator
+0:10-vs-0:11 pair, and unknown-is-nil-not-false). `AM40-AM50d` drive
+`resolveAmmoPlan`: the no-weapon gate on every event, hold-when-nothing-pairs, the
+exact field case (an arrow above a bullet with a gun equipped), crossbow-vs-gun
+separation, both fallback ladders, and specials filtered by weapon.
+`AW21h-AW21v` cover the category split and the serializer round-trip.
+`AU1-AU10` are new: **the ammo panel's render had never been executed by any
+test** — only its headless status half — so the tab strip is now driven for real
+once per weapon branch with stack-balance assertions (the S50 crash class).
+
+### 9.8 Field tests this needs
+
+1. COR with a gun: bullets load, and an arrow sitting ABOVE them in the priority
+   list is skipped instead of winning.
+2. Swap gun -> crossbow with both bolts and bullets configured: the pick follows the
+   weapon on the next dispatch, with no manual change.
+3. RNG with a bow: arrows load; confirm a **Shortbow and a Longbow both** accept the
+   same arrows (the Archery exemption — the one that would break loudest).
+4. The original report: a trigger holding a bow, AutoAmmo on, bolts configured —
+   the bow must STAY ON and nothing may flap.
+5. Unequip the ranged weapon entirely: AutoAmmo goes quiet, touches nothing.
+6. The panel: the tab matching your equipped weapon is green; swapping weapons moves
+   the green without moving your selected tab.
+7. PUP: an Animator with oils still behaves (0:10 pairs) — this is the regression
+   risk from retiring nothing but touching the same law.

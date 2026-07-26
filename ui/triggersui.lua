@@ -302,6 +302,14 @@ local trig = {
     _condDrill = false,   -- no-BeginMenu fallback: which drill-down is open --
                           -- false closed, 'player' or 'pet' (truthy = open)
     addValText = { '' }, addValNum = { 0 }, addSet = nil, addPrio = { 0 }, _openAdd = false,
+    addNote = nil, addSwap = nil,   -- "the & leg replaced X with Y" + the swap behind it,
+                                    -- so the replace is never silent (see pushCond)
+    addCases = {},   -- the rule builder's second tier (issue #127): a list of
+                     -- { op = '&'|'|', conds = { {key,value,any}, ... }, note, swap }.
+                     -- Empty for the 99% -- a rule with none renders as before.
+    addBodyOp = '&', -- case 1's own op (field iteration 07-26): '&' = the body
+                     -- anchors the together-block (the classic rule); '|' = case 1
+                     -- stands alone and the saved body empties (buildRuleShape).
     editIdx = nil, _editEquip = nil,   -- rule-builder edit mode (replace in place)
     _bpEdit = nil,   -- when set, the rule builder edits Blueprint library entry #_bpEdit
                      -- (Save writes back to the library, not trig.data) -- issue #65
@@ -600,6 +608,46 @@ local function modeCondRefs(data, name, strip)
         end
         return hit, kept;
     end
+    -- Walk a `|` leg (a whenAny list): narrow a dead-name mode list, drop an
+    -- entry whose mode list empties -- only when strip. Returns anyHit, hitCount.
+    -- Shared by the body and by every case (issue #126).
+    local function sweepAny(whenAny)
+        local hit, hitCount = false, 0;
+        if type(whenAny) == 'table' then
+            for j = #whenAny, 1, -1 do
+                local e = whenAny[j];
+                local eHit, eKept = split((type(e) == 'table') and e.mode or nil);
+                if eHit then
+                    hit = true; hitCount = hitCount + 1;
+                    if strip then
+                        if #eKept == 0 then table.remove(whenAny, j);
+                        else e.mode = (#eKept == 1) and eKept[1] or eKept; end
+                    end
+                end
+            end
+        end
+        return hit, hitCount;
+    end
+    -- Apply the & leg / | leg / remove ladder to ONE case (mirrors the body):
+    -- returns hit (referenced the dead mode) and dead (no live leg left, so the
+    -- caller removes the case). Only mutates when strip.
+    local function sweepCase(c)
+        local whenHit, whenKept = split(c.when and c.when.mode);
+        local anyHit = sweepAny(c.whenAny);
+        if not (whenHit or anyHit) then return false, false; end
+        if not strip then return true, false; end
+        local hadAny = (type(c.whenAny) == 'table');
+        local anyLeft = hadAny and #c.whenAny or 0;
+        local whenLegDead = whenHit and #whenKept == 0;
+        local orOnly = (not whenHit) and (c.when == nil or next(c.when) == nil) and hadAny;
+        if (whenLegDead and (not hadAny or anyLeft == 0)) or (orOnly and anyLeft == 0) then
+            return true, true;                              -- case has no live leg -> drop it
+        end
+        if whenLegDead then c.when = {};
+        elseif whenHit then c.when.mode = (#whenKept == 1) and whenKept[1] or whenKept; end
+        if hadAny and anyLeft == 0 then c.whenAny = nil; end
+        return true, false;
+    end
     for _, sec in ipairs(TRIG_HANDLERS) do
         local list = data[sec];
         if type(list) == 'table' then
@@ -607,26 +655,34 @@ local function modeCondRefs(data, name, strip)
                 local r = list[i];
                 if type(r) == 'table' and type(r.when) == 'table' then
                     local whenHit, whenKept = split(r.when.mode);
-                    local anyHit, hitEntries = false, 0;
-                    if type(r.whenAny) == 'table' then
-                        for j = #r.whenAny, 1, -1 do
-                            local e = r.whenAny[j];
-                            local eHit, eKept = split((type(e) == 'table') and e.mode or nil);
-                            if eHit then
-                                anyHit = true; hitEntries = hitEntries + 1;
-                                if strip then
-                                    if #eKept == 0 then table.remove(r.whenAny, j);
-                                    else e.mode = (#eKept == 1) and eKept[1] or eKept; end
+                    local anyHit, hitEntries = sweepAny(r.whenAny);
+                    -- Cases (issue #126): the same narrow/empty/remove ladder walks
+                    -- every case; an emptied case is removed here, and the rule's
+                    -- own removal below then factors whether ANY case survives.
+                    local caseHit, caseHitCount = false, 0;
+                    if type(r.cases) == 'table' then
+                        for cj = #r.cases, 1, -1 do
+                            local c = r.cases[cj];
+                            if type(c) == 'table' then
+                                local cHit, cDead = sweepCase(c);
+                                if cHit then
+                                    caseHit = true; caseHitCount = caseHitCount + 1;
+                                    if cDead then table.remove(r.cases, cj); end
                                 end
                             end
                         end
+                        if strip and #r.cases == 0 then r.cases = nil; end
                     end
-                    if whenHit or anyHit then
-                        local what = {};   -- described BEFORE any narrowing below
+                    if whenHit or anyHit or caseHit then
+                        local what = {};   -- described BEFORE the body narrowing below
                         if whenHit then what[#what + 1] = 'mode ' .. modeCondText(r.when.mode); end
                         if anyHit then
                             what[#what + 1] = string.format('%d OR-group entr%s',
                                 hitEntries, (hitEntries == 1) and 'y' or 'ies');
+                        end
+                        if caseHit then
+                            what[#what + 1] = string.format('%d case%s',
+                                caseHitCount, (caseHitCount == 1) and '' or 's');
                         end
                         out.rules[#out.rules + 1] = string.format('%s:  %s  ->  %s',
                             sec, table.concat(what, ' + '),
@@ -636,18 +692,20 @@ local function modeCondRefs(data, name, strip)
                             local hadAny = (type(r.whenAny) == 'table');
                             local anyLeft = hadAny and #r.whenAny or 0;
                             local whenLegDead = whenHit and #whenKept == 0;
-                            -- OR-only shape: the & leg carried no conditions at all
-                            local orOnly = (not whenHit) and next(r.when) == nil and hadAny;
-                            if (whenLegDead and (not hadAny or anyLeft == 0))
-                               or (orOnly and anyLeft == 0) then
-                                table.remove(list, i);          -- no live leg left
+                            if whenLegDead then r.when = {};        -- & leg's mode was load-bearing -> collapse it
+                            elseif whenHit then
+                                r.when.mode = (#whenKept == 1) and whenKept[1] or whenKept;
+                            end
+                            if hadAny and anyLeft == 0 then r.whenAny = nil; end
+                            -- A rule with NOTHING left is removed; a surviving case
+                            -- (or | leg, or & leg) keeps it alive (the OR-only law).
+                            local alive = (next(r.when) ~= nil)
+                                or (type(r.whenAny) == 'table' and #r.whenAny > 0)
+                                or (type(r.cases) == 'table' and #r.cases > 0);
+                            if not alive then
+                                table.remove(list, i);
                                 out.removedRules = out.removedRules + 1;
                             else
-                                if whenLegDead then r.when = {};    -- collapses to OR-only
-                                elseif whenHit then
-                                    r.when.mode = (#whenKept == 1) and whenKept[1] or whenKept;
-                                end
-                                if hadAny and anyLeft == 0 then r.whenAny = nil; end
                                 out.editedRules = out.editedRules + 1;
                             end
                             trig.dirty = true;
@@ -1398,6 +1456,98 @@ local function pstateHolds(key, v)
     return res == true;
 end
 
+-- Trigger CASES, read-side (issue #125). Over the EXISTING schema the `|` leg
+-- (whenAny) already carries two shapes: a SINGLE-condition entry is a plain
+-- standalone `|` condition (renders one line, exactly as today), and a
+-- MULTI-condition entry (AND-within-OR) is a `| case` -- its own bordered box.
+-- Splitting them here is the whole feature: a rule whose `|` leg holds only
+-- single-condition entries yields ZERO cases and renders pixel-identical to
+-- before (no new chrome for the 99%). Keys arrive lowercased from the model;
+-- lowercased again defensively so a hand-written file loads the same.
+local function caseSplit(whenAny)
+    local singles, cases = {}, {};
+    for _, e in ipairs(whenAny or {}) do
+        local n, onlyKey, onlyVal = 0, nil, nil;
+        for k, v in pairs(e) do n = n + 1; onlyKey, onlyVal = k, v; end
+        if n == 1 then
+            singles[#singles + 1] = { key = string.lower(tostring(onlyKey)), val = onlyVal };
+        elseif n >= 2 then
+            cases[#cases + 1] = e;
+        end
+    end
+    return singles, cases;
+end
+M.caseSplit = caseSplit;   -- headless render-test seam (smoke_ui TC*)
+
+-- The display lines for a full case leg (issue #126): its `&` conditions (first
+-- plain, the rest prefixed '& '), then each internal `|` alternative as a '| ...'
+-- line (a multi-condition alternative reads 'x & y'). This is the same visual
+-- language the slice-1 whenAny `| case` boxes used (conditions sorted, first
+-- plain, the rest '& '-prefixed), now the ONE renderer for every case box --
+-- extended to `& cases` and `| cases` that carry an internal OR.
+local function caseLegLines(when, whenAny)
+    local lines = {};
+    local andCls = {};
+    for k, v in pairs(when or {}) do
+        local lk = string.lower(tostring(k));
+        andCls[#andCls + 1] = { key = lk,
+            text = trigPrettyKey(lk) .. ((v == true) and '' or (' = ' .. tostring(v))) };
+    end
+    table.sort(andCls, function(a, b) return a.key < b.key; end);
+    for i, cl in ipairs(andCls) do
+        lines[#lines + 1] = { key = cl.key, text = ((i == 1) and '' or '& ') .. cl.text };
+    end
+    for _, e in ipairs(whenAny or {}) do
+        local ep = {};
+        for k, v in pairs(e) do
+            local lk = string.lower(tostring(k));
+            ep[#ep + 1] = { key = lk,
+                text = trigPrettyKey(lk) .. ((v == true) and '' or (' = ' .. tostring(v))) };
+        end
+        table.sort(ep, function(a, b) return a.key < b.key; end);
+        local txts = {};
+        for _, x in ipairs(ep) do txts[#txts + 1] = x.text; end
+        lines[#lines + 1] = { key = ep[1] and ep[1].key or 'any', text = '| ' .. table.concat(txts, ' & ') };
+    end
+    return lines;
+end
+
+-- Does a whole case leg hold RIGHT NOW? (ALL of `&`) OR (ANY internal `|`),
+-- computed with the engine's own matcher per condition: nil (no marker) unless
+-- EVERY condition is a live-evaluable player-state gate, since an action
+-- condition cannot be judged at idle (it needs a real cast).
+local function caseLegHolds(when, whenAny)
+    local andAll, nAnd = true, 0;
+    for k, v in pairs(when or {}) do
+        local lk = string.lower(tostring(k));
+        if PSTATE_KEYS[lk] == nil then return nil; end
+        nAnd = nAnd + 1;
+        local h = pstateHolds(lk, v);
+        if h == nil then return nil; end
+        if h == false then andAll = false; end
+    end
+    if whenAny == nil or #whenAny == 0 then
+        -- NOT `(nAnd > 0) and andAll or nil`: with andAll == false that Lua
+        -- ternary collapses to nil and [off now] would never show (maintainer
+        -- fix at merge). nil is only for an EMPTY leg.
+        if nAnd == 0 then return nil; end
+        return andAll;
+    end
+    if nAnd > 0 and andAll then return true; end
+    for _, e in ipairs(whenAny) do
+        local ok = true;
+        for k, v in pairs(e) do
+            local lk = string.lower(tostring(k));
+            if PSTATE_KEYS[lk] == nil then return nil; end
+            local h = pstateHolds(lk, v);
+            if h == nil then return nil; end
+            if h == false then ok = false; end
+        end
+        if ok then return true; end
+    end
+    return false;
+end
+
 -- One rule box. colX = the section's aligned controls column. Returns 'remove'/'edit'/nil.
 -- Bordered content boxes must never grow their own scrollbar: we size them to
 -- their content and suppress the bar (a 1px estimate miss otherwise shows an
@@ -1419,13 +1569,36 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
     local id = h .. '_' .. tostring(i);
     local act = nil;
     local lines = condLines(r.when);
-    -- | leg (v54): one display line per OR condition, grouped under the & leg.
+    -- | leg: split into standalone `|` conditions (single-condition entries --
+    -- one line each, exactly as v54) and `| case` boxes (multi-condition
+    -- entries -- rendered below). Only single-condition entries become orLines,
+    -- so a rule with no multi-condition entries is byte-identical to before.
+    local singles, cases = caseSplit(r.whenAny);
     local orLines = {};
-    for _, e in ipairs(r.whenAny or {}) do
-        for k, v in pairs(e) do
-            local lk = string.lower(tostring(k));
-            orLines[#orLines + 1] = { key = lk, val = v,
-                text = '| ' .. trigPrettyKey(lk) .. ((v == true) and '' or (' = ' .. tostring(v))) };
+    for _, s in ipairs(singles) do
+        orLines[#orLines + 1] = { key = s.key, val = s.val,
+            text = '| ' .. trigPrettyKey(s.key) .. ((s.val == true) and '' or (' = ' .. tostring(s.val))) };
+    end
+    -- Unified case boxes (issue #126): the together-block `& cases` first, then
+    -- the standalone `| cases` -- BOTH the new-schema cases (r.cases) and the
+    -- multi-condition whenAny entries (which ARE `| cases` with only `&` rows,
+    -- from slice 1). Each descriptor carries pre-built display lines and a live
+    -- marker; a rule with none of these renders pixel-identical to before.
+    local caseBoxes = {};
+    for _, c in ipairs(r.cases or {}) do
+        if c.op == '&' then
+            caseBoxes[#caseBoxes + 1] = { op = '& case',
+                lines = caseLegLines(c.when, c.whenAny), holds = caseLegHolds(c.when, c.whenAny) };
+        end
+    end
+    for _, case in ipairs(cases) do
+        caseBoxes[#caseBoxes + 1] = { op = '| case',
+            lines = caseLegLines(case, nil), holds = caseLegHolds(case, nil) };
+    end
+    for _, c in ipairs(r.cases or {}) do
+        if c.op == '|' then
+            caseBoxes[#caseBoxes + 1] = { op = '| case',
+                lines = caseLegLines(c.when, c.whenAny), holds = caseLegHolds(c.when, c.whenAny) };
         end
     end
     -- The box takes exactly the height its TALLER column needs: conditions on the
@@ -1448,11 +1621,23 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
         local nsets = (type(r.set) == 'table') and #r.set or ((r.set ~= nil) and 1 or 0);
         rightH = nsets * 22 + 26 + 30;
     end
-    local boxH = math.max(leftH, rightH, 56) + 18;
+    -- `| case` boxes stack below the together-block/target row, full width. Each
+    -- box is a header line + one line per condition + border padding; the outer
+    -- rule box grows to hold them (nothing is clipped -- the lineH() lesson).
+    local caseH = {};
+    local casesH = 0;
+    for ci, box in ipairs(caseBoxes) do
+        local hh = (1 + #box.lines) * lh + 14;         -- header + one line per row
+        caseH[ci] = hh;
+        casesH = casesH + hh + 4;                      -- +4 spacing between boxes
+    end
+    local boxH = math.max(leftH, rightH, 56) + 18 + casesH;
     imgui.BeginChild('##trgbox' .. id, { -1, boxH }, true, BOX_FLAGS);
 
     imgui.BeginGroup();                                -- left column: the methods
-    local andPrefix = (#orLines > 0) and '& ' or '';   -- prefixes only when both legs exist
+    -- The together-block carries the '& ' prefix whenever a `|` leg exists at
+    -- all -- standalone conditions OR `| case` boxes (issue #125).
+    local andPrefix = (#orLines > 0 or #caseBoxes > 0) and '& ' or '';
     for _, ln in ipairs(lines) do
         imgui.TextColored(COND_COLORS[ln.key] or COL_USABLE, esc(andPrefix .. ln.text));
         -- Stale group reference: a rule pointing at a missing / renamed group
@@ -1574,7 +1759,11 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
     end
 
     -- controls row: prio (dim = automatic, gold = custom) + edit + remove.
-    local defP = (hasDispatch and type(dsp.defaultPriority) == 'function') and dsp.defaultPriority(r.when) or 10;
+    -- The auto-priority chip must show the number the ENGINE derives: it scans
+    -- BOTH legs (`when` AND `whenAny`), so a rule whose highest-tier condition
+    -- lives on the `|` leg (or in a `| case`) displayed a lower number than the
+    -- engine assigned. Pass whenAny too (issue #125 priority-chip fix).
+    local defP = (hasDispatch and type(dsp.defaultPriority) == 'function') and dsp.defaultPriority(r.when, r.whenAny, r.cases) or 10;
     local isAuto = (r.priority == nil);
     local eff = r.priority or defP;
     imgui.TextColored(isAuto and COL_DIM or COL_SCORE, isAuto and 'prio (auto)' or 'prio');
@@ -1609,9 +1798,41 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
     if imgui.IsItemHovered() then imgui.SetTooltip('Remove this rule.'); end
     imgui.EndGroup();
 
+    -- Case boxes: the together-block `& cases` then the standalone `| cases`
+    -- (issue #126), plus the slice-1 multi-condition whenAny `| cases` -- each a
+    -- bordered, indented box below the rule body, the same visual language the
+    -- editor slice will reuse. A live [on now]/[off now] rides the header when the
+    -- whole leg is player-state-evaluable; a case with an action condition shows
+    -- no marker (it cannot be judged at idle -- caseLegHolds returns nil).
+    if #caseBoxes > 0 then
+        imgui.Indent(12);
+        for ci, box in ipairs(caseBoxes) do
+            imgui.BeginChild('##trgcase' .. id .. '_' .. ci, { -1, caseH[ci] }, true, BOX_FLAGS);
+            imgui.TextColored(COL_HEADER, box.op);      -- '& case' or '| case'
+            if box.holds ~= nil then
+                imgui.SameLine(0, 8);
+                imgui.TextColored(box.holds and COL_USABLE or COL_DIM,
+                    box.holds and '[on now]' or '[off now]');
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('The whole case holds only when ALL its conditions do (checked against your\nCURRENT state every second with the engine\'s own matcher). The engine\nre-evaluates at every dispatch.');
+                end
+            end
+            for _, cl in ipairs(box.lines) do
+                imgui.TextColored(COND_COLORS[cl.key] or COL_USABLE, esc(cl.text));
+            end
+            imgui.EndChild();
+        end
+        imgui.Unindent(12);
+    end
+
     imgui.EndChild();
     return act;
 end
+-- Exposed as a headless render-test seam ON PURPOSE (the captureModeToLibrary
+-- precedent): the case path -- caseLegLines / caseLegHolds / the indented case
+-- BeginChild boxes -- only RUNS when a case-bearing rule renders, so a load test
+-- proves nothing about it. smoke_ui TC* drives it against a stub imgui.
+M.renderTrigRuleBox = renderTrigRuleBox;
 
 -- One mode box (rule-box language, content-fit height): identity + cycle values
 -- on the left (current value highlighted), live button + bind + edit on the right.
@@ -1772,6 +1993,224 @@ local function renderModesSection(defs, modes)
     end
 end
 
+-- Adding ONE condition to the pending list -- the pure rule behind the two
+-- [+ &] / [+ |] buttons, lifted out so it can be tested without imgui.
+--
+-- The & leg is a MAP (`when = { k = v }`): one value per condition type. So a
+-- repeat of the same type cannot stack -- and stacking would be meaningless
+-- anyway (name = "test" AND name = "testar" can never both hold; the engine's
+-- `ci` matcher compares ONE string). It therefore replaces.
+--
+-- Replacing is right when you are correcting a value and wrong when you meant
+-- "either" -- Henrik's field case: name = test, then name = testar silently ate
+-- the first with no word said. So the replace now REPORTS: it returns the note
+-- to show and the swap that produced it, and the caller offers the one-click
+-- move of BOTH values into the | leg (orBothToAny below).
+--
+-- The | leg stacks freely: duplicates there are the whole point.
+-- Returns note (string|nil), swap ({ key, prev, cur }|nil). Mutates `conds`.
+local function pushCond(conds, key, val, isOr)
+    if type(conds) ~= 'table' or key == nil or val == nil then return nil, nil; end
+    -- Same-type test is CASE-INSENSITIVE: the pickers spell a key as the def does
+    -- (magicType, playerHPBelow) while an edited rule loads its keys lowercased off
+    -- the file, and saving lowercases both. A case-sensitive test let an edit stack
+    -- two rows of one type, of which the save kept exactly one -- silently.
+    local lkey = string.lower(tostring(key));
+    if not isOr then
+        for _, c in ipairs(conds) do
+            if string.lower(tostring(c.key)) == lkey and not c.any then
+                local prev = c.value;
+                c.value = val;
+                if tostring(prev) == tostring(val) then return nil, nil; end   -- same value: nothing happened
+                local pretty = trigPrettyKey(lkey);
+                return string.format('%s replaced: %s -> %s. The & leg holds ONE value per condition type.',
+                    pretty, tostring(prev), tostring(val)), { key = key, prev = prev, cur = val };
+            end
+        end
+    end
+    conds[#conds + 1] = { key = key, value = val, any = isOr or nil };
+    return nil, nil;
+end
+M._pushCond = pushCond;   -- headless test seam (the _modeCondRefs idiom)
+
+-- The escape hatch offered beside a replace note: "I meant either, not both".
+-- Drops every & row of that condition type and puts BOTH values in the | leg,
+-- so the rule fires on either one. Returns true when it changed something.
+local function orBothToAny(conds, swap)
+    if type(conds) ~= 'table' or type(swap) ~= 'table' or swap.key == nil then return false; end
+    local lkey = string.lower(tostring(swap.key));
+    for i = #conds, 1, -1 do
+        local c = conds[i];
+        if string.lower(tostring(c.key)) == lkey and not c.any then table.remove(conds, i); end
+    end
+    conds[#conds + 1] = { key = swap.key, value = swap.prev, any = true };
+    conds[#conds + 1] = { key = swap.key, value = swap.cur,  any = true };
+    return true;
+end
+M._orBothToAny = orBothToAny;   -- headless test seam
+
+-- ---------------------------------------------------------------------------
+-- Trigger CASES, edit-side (issue #127). The rule builder gains a second tier:
+-- besides the body (case 1), a rule may carry extra `& cases` and `| cases`,
+-- each built with the IDENTICAL flat-rows shape the body uses. These three pure
+-- seams own the model translation both directions and are tested headless
+-- (smoke_ui) -- the render code below only wires the picker into them.
+-- ---------------------------------------------------------------------------
+
+-- One condition MAP -> sorted `&` builder rows ({ key, value }). Shared by the
+-- body & leg and by every case's & leg on load.
+local function condRowsAnd(map)
+    local rows = {};
+    for k, v in pairs(map or {}) do rows[#rows + 1] = { key = k, value = v }; end
+    table.sort(rows, function(a, b) return tostring(a.key) < tostring(b.key); end);
+    return rows;
+end
+
+-- Load a rule into the builder's flat shape (issue #127). The body & leg and the
+-- SINGLE-condition `|` entries become addConds rows exactly as before; a
+-- MULTI-condition `|` entry (AND-within-OR) loads as a `| case` box instead of
+-- flattening into separate `|` rows -- THE fix for the editor's flatten
+-- corruption. Each `cases`-list entry loads as its own box. Returns
+-- (conds, cases): conds are body rows, cases are { op, conds } builder cases.
+local function loadCases(rule)
+    local conds, cases = {}, {};
+    if type(rule) ~= 'table' then return conds, cases; end
+    for _, row in ipairs(condRowsAnd(rule.when)) do conds[#conds + 1] = row; end
+    for _, e in ipairs(rule.whenAny or {}) do
+        if type(e) == 'table' then
+            local n, ok, ov = 0, nil, nil;
+            for k, v in pairs(e) do n = n + 1; ok, ov = k, v; end
+            if n == 1 then
+                conds[#conds + 1] = { key = ok, value = ov, any = true };
+            elseif n >= 2 then
+                cases[#cases + 1] = { op = '|', conds = condRowsAnd(e) };
+            end
+        end
+    end
+    for _, c in ipairs(rule.cases or {}) do
+        if type(c) == 'table' and (c.op == '&' or c.op == '|') then
+            local cc = condRowsAnd(c.when);
+            -- A case's own `|` leg loads as its `|` rows. A hand-written
+            -- multi-condition internal alternative -- a depth the editor cannot
+            -- represent (one-tier cap) but the ENGINE honors as AND-within-OR --
+            -- splits to standalone singles here, and the split is SAID on the
+            -- case box (the & leg's law, both tiers: the change was right, the
+            -- silence was the bug). Cancel keeps the file as written.
+            local split = false;
+            for _, e in ipairs(c.whenAny or {}) do
+                if type(e) == 'table' then
+                    local n = 0;
+                    for k, v in pairs(e) do
+                        n = n + 1;
+                        cc[#cc + 1] = { key = k, value = v, any = true };
+                    end
+                    if n >= 2 then split = true; end
+                end
+            end
+            cases[#cases + 1] = { op = c.op, conds = cc,
+                note = split and 'combined | entry split: each condition now stands alone (Save keeps the split)' or nil };
+        end
+    end
+    -- Case 1's op (field iteration 2026-07-26). A rule with a body is anchored
+    -- by it: case 1 = the body, op '&'. A rule whose body is EMPTY (a pure-OR
+    -- rule -- when = {} with cases, or the old whenAny-only form) promotes its
+    -- first case into the case-1 seat, op and all, so the editor never shows
+    -- an empty un-savable body box.
+    local bodyOp, bodyNote = '&', nil;
+    if #conds == 0 and #cases > 0 then
+        local nb = table.remove(cases, 1);
+        conds, bodyOp, bodyNote = nb.conds, nb.op, nb.note;   -- a split note rides along
+    end
+    return conds, cases, bodyOp, bodyNote;
+end
+M._loadCases = loadCases;   -- headless test seam
+
+-- Flat builder rows -> (when map, whenAny list). The & leg is a map (one value
+-- per type); the | leg is a list of single-condition entries. Keys lowercased,
+-- exactly as the body save has always written them.
+local function buildLegs(conds)
+    local when, whenAny = {}, nil;
+    for _, c in ipairs(conds or {}) do
+        if c.any then
+            whenAny = whenAny or {};
+            whenAny[#whenAny + 1] = { [string.lower(tostring(c.key))] = c.value };
+        else
+            when[string.lower(tostring(c.key))] = c.value;
+        end
+    end
+    return when, whenAny;
+end
+M._buildLegs = buildLegs;   -- headless test seam
+
+-- CANONICAL case legs (field round 2, 2026-07-26 -- Henrik's /dl why screen).
+-- A case whose `&` leg is EMPTY and whose `|` leg holds exactly ONE entry means
+-- just that entry -- fold it into the `&` leg. Identical semantics (a case holds
+-- iff its & leg holds or any | entry does; with one lone entry the two legs say
+-- the same thing), but without the fold a lone `+ |` click inside a case saves
+-- { when = {}, whenAny = { {..} } }: the label grows an 'any|', the /dl why name
+-- reads 'case (x)' instead of 'standalone x', and the serializer's oldest-form
+-- fold misses it -- stamping the version guard on a rule the old schema can
+-- express. The BODY never folds (case-less labels stay byte-for-byte stable).
+local function foldLoneAny(when, whenAny)
+    if next(when) == nil and whenAny ~= nil and #whenAny == 1 then
+        return whenAny[1], nil;
+    end
+    return when, whenAny;
+end
+
+-- Builder cases -> the rule's `cases` list (issue #127). Each case's flat rows
+-- become its own { op, when, whenAny }; an EMPTY case (no live leg) is dropped
+-- here as a last defense -- the popup already refuses to save while one exists,
+-- so nothing is lost silently. Canonical form is the SERIALIZER's job: a `| case`
+-- of only `&` rows folds back to a whenAny multi-entry (oldest-form-first), so a
+-- hand-written AND-within-OR re-saves byte-identically. Returns the list or nil.
+local function buildCases(addCases)
+    local cases = nil;
+    for _, cs in ipairs(addCases or {}) do
+        if type(cs) == 'table' and (cs.op == '&' or cs.op == '|') then
+            local when, whenAny = buildLegs(cs.conds);
+            when, whenAny = foldLoneAny(when, whenAny);
+            if next(when) ~= nil or (whenAny ~= nil and #whenAny > 0) then
+                cases = cases or {};
+                cases[#cases + 1] = { op = cs.op, when = when, whenAny = whenAny };
+            end
+        end
+    end
+    return cases;
+end
+M._buildCases = buildCases;   -- headless test seam
+
+-- The whole rule shape from the builder's three fields (field iteration
+-- 2026-07-26). Case 1 anchored ('&', the default) saves exactly as always:
+-- its rows are the body. Case 1 flipped to OR ('|') stands alone -- its rows
+-- ride the cases list as a leading | case and the saved body EMPTIES; the
+-- engine's OR-only law (matches(): nAnd > 0) keeps such a rule from being
+-- always-on, and the serializer folds it oldest-form when it can (a plain
+-- | case becomes a whenAny entry -- no cases list, no guard).
+local function buildRuleShape(conds, bodyOp, addCases)
+    local when, whenAny = buildLegs(conds);
+    local cases = buildCases(addCases);
+    if bodyOp == '|' and (next(when) ~= nil or whenAny ~= nil) then
+        -- Case 1 rides the cases list, so it takes the canonical case legs too.
+        when, whenAny = foldLoneAny(when, whenAny);
+        local list = { { op = '|', when = when, whenAny = whenAny } };
+        for _, c in ipairs(cases or {}) do list[#list + 1] = c; end
+        when, whenAny, cases = {}, nil, list;
+    end
+    return when, whenAny, cases;
+end
+M._buildRuleShape = buildRuleShape;   -- headless test seam
+
+-- Is there a case with no conditions at all? The popup refuses to save while one
+-- exists (an empty case is never saved silently -- acceptance criterion).
+local function hasEmptyCase(addCases)
+    for _, cs in ipairs(addCases or {}) do
+        if type(cs) == 'table' and (type(cs.conds) ~= 'table' or #cs.conds == 0) then return true; end
+    end
+    return false;
+end
+M._hasEmptyCase = hasEmptyCase;   -- headless test seam
+
 -- Add-rule popup: build conditions (type + value, [+ condition] to AND more), pick the
 -- target set, optional priority, Add.
 local function renderTrigAddPopup()
@@ -1793,8 +2232,12 @@ local function renderTrigAddPopup()
     -- motion. v53 alias spellings edit into their canonical percent params.
     local PARAM_OF = nil;
     local PET_OF = nil;
-    local function editCond(ci)
-        local c = trig.addConds[ci];
+    -- editCond/condRowButtons/renderCondList take the target `conds` list so the
+    -- body AND every case reuse the IDENTICAL flow (issue #127): the picker is
+    -- shared, the +&/+| buttons and the pending-row edit/x route to whichever
+    -- container owns them.
+    local function editCond(conds, ci)
+        local c = conds[ci];
         if c == nil or type(c.value) == 'table' then return; end   -- list values: delete + re-add
         local key = string.lower(tostring(c.key));
         if PARAM_OF == nil then
@@ -1840,41 +2283,58 @@ local function renderTrigAddPopup()
         elseif kind == 'text' then trig.addValText[1] = tostring(c.value);
         elseif kind == 'list' or kind == 'group' or kind == 'buff' then trig._addValSel = c.value;
         end
-        table.remove(trig.addConds, ci);
+        table.remove(conds, ci);
     end
-    local function condRowButtons(ci)
-        if imgui.SmallButton('e##trgce' .. ci) then editCond(ci); end
+    local function condRowButtons(conds, ci, idsfx, clearNote)
+        if imgui.SmallButton('e##trgce' .. idsfx .. ci) then
+            editCond(conds, ci); clearNote();   -- the rows moved: a stale swap no longer applies
+        end
         if imgui.IsItemHovered() then
             imgui.SetTooltip('Edit: loads this condition back into the pickers --\nadjust it, then re-add with + & or + |.');
         end
         imgui.SameLine(0, 4);
-        if imgui.SmallButton('x##trgcx' .. ci) then table.remove(trig.addConds, ci); end
+        if imgui.SmallButton('x##trgcx' .. idsfx .. ci) then
+            table.remove(conds, ci); clearNote();
+        end
     end
 
     -- Pending conditions, GROUPED: the & leg first, then the | leg (Henrik:
     -- keep them visibly separate). Prefixes only appear once both legs exist.
-    local nOr = 0;
-    for _, c in ipairs(trig.addConds) do if c.any then nOr = nOr + 1; end end
-    for ci, c in ipairs(trig.addConds) do
-        if not c.any then
-            local txt = ((nOr > 0) and '& ' or '')
-                .. trigPrettyKey(string.lower(c.key)) .. ((c.value == true) and '' or (' = ' .. tostring(c.value)));
-            imgui.TextColored(COL_USABLE, esc(txt));
-            imgui.SameLine(0, 6);
-            condRowButtons(ci);
+    -- Reused verbatim by the body and by every case box (issue #127).
+    local function renderCondList(conds, idsfx, clearNote)
+        local nOr = 0;
+        for _, c in ipairs(conds) do if c.any then nOr = nOr + 1; end end
+        for ci, c in ipairs(conds) do
+            if not c.any then
+                local txt = ((nOr > 0) and '& ' or '')
+                    .. trigPrettyKey(string.lower(c.key)) .. ((c.value == true) and '' or (' = ' .. tostring(c.value)));
+                imgui.TextColored(COL_USABLE, esc(txt));
+                imgui.SameLine(0, 6);
+                condRowButtons(conds, ci, idsfx, clearNote);
+            end
+        end
+        for ci, c in ipairs(conds) do
+            if c.any then
+                local txt = '| ' .. trigPrettyKey(string.lower(c.key)) .. ((c.value == true) and '' or (' = ' .. tostring(c.value)));
+                imgui.TextColored({ 0.85, 0.65, 1.00, 1.0 }, esc(txt));
+                imgui.SameLine(0, 6);
+                condRowButtons(conds, ci, idsfx, clearNote);
+            end
         end
     end
-    for ci, c in ipairs(trig.addConds) do
-        if c.any then
-            local txt = '| ' .. trigPrettyKey(string.lower(c.key)) .. ((c.value == true) and '' or (' = ' .. tostring(c.value)));
-            imgui.TextColored({ 0.85, 0.65, 1.00, 1.0 }, esc(txt));
-            imgui.SameLine(0, 6);
-            condRowButtons(ci);
-        end
-    end
+    local function clearBodyNote() trig.addNote, trig.addSwap = nil, nil; end
 
+    -- The shared condition picker lives at the TOP, outside every container
+    -- (Henrik's field read of the case skeleton, 2026-07-26: sitting between
+    -- the body rows and the case boxes it read as owned by case 1 forever).
+    -- Pick a type + value here once; each container below -- the body AND
+    -- every case box -- owns the + & / + | buttons that pull the selection in.
     if trig._addDef > #defs then trig._addDef = 1; end
     local cur = defs[trig._addDef];
+    -- Forward-declared so the CASE boxes below (rendered after the picker block)
+    -- can push the shared picker's current selection into their own leg -- the
+    -- identical +&/+| flow the body uses (issue #127).
+    local addCond = nil;
     -- ONE cascading condition chooser (Henrik: like the floating equipment
     -- window's pin menu, not two boxes): a 200px button opens a popup menu;
     -- the Player row CASCADES into the parameter list -- BeginMenu when the
@@ -1892,6 +2352,7 @@ local function renderTrigAddPopup()
     else
         curLabel = (cur and (cur.label or trigPrettyKey(string.lower(cur.key)))) or '?';
     end
+    imgui.TextColored(COL_DIM, 'condition:'); imgui.SameLine(0, 4);
     if imgui.Button(curLabel .. '###trgcondbtn', { 200, 0 }) then
         trig._condDrill = false;
         imgui.OpenPopup('##trgcondmenu');
@@ -2043,8 +2504,12 @@ local function renderTrigAddPopup()
             imgui.TextColored(COL_DIM, '(flag)');
         end
         -- Capture the current widget's key + value; the Player cascade resolves
-        -- to the SELECTED parameter's key and widget kind.
-        local function addCond(isOr)
+        -- to the SELECTED parameter's key and widget kind. `conds` is the target
+        -- leg (the body's or a case's) and `applyNote(note, swap)` stores the
+        -- replace report on that same container -- the picker is shared, the
+        -- destination is not (issue #127).
+        addCond = function(isOr, conds, applyNote)
+            if cur == nil then return; end
             local ckey, ck = cur.key, cur.kind;
             local fixedVal = nil;
             if ck == 'player' then
@@ -2063,22 +2528,170 @@ local function renderTrigAddPopup()
                 val = ((tonumber(trig.addValNum[1]) or 0) > 0) and trig.addValNum[1] or nil;
             else val = true; end
             if val == nil then return; end
-            if not isOr then
-                -- & leg: one value per key (the map shape) -- re-adding replaces.
-                for _, c in ipairs(trig.addConds) do
-                    if c.key == ckey and not c.any then c.value = val; return; end
-                end
-            end
-            -- | leg: duplicates are THE POINT (buff = Sleep | buff = Lullaby).
-            trig.addConds[#trig.addConds + 1] = { key = ckey, value = val, any = isOr or nil };
+            -- The & leg is a map (one value per type, so a repeat replaces) and the
+            -- | leg stacks -- pushCond owns that rule and hands back what to say.
+            applyNote(pushCond(conds, ckey, val, isOr));
             trig.addValText[1] = ''; trig._addValSel = nil;
         end
-        imgui.SameLine(0, 6);
-        if imgui.Button('+ & condition##trgac', { 0, 0 }) then addCond(false); end
-        if imgui.IsItemHovered() then imgui.SetTooltip('AND condition, all AND conditions must be true to be a match.'); end
+    end
+    imgui.Separator();
+
+    -- Cases (issue #127, field-iterated 2026-07-26): the rule's second tier.
+    -- The shared picker above is the only selection surface; every container
+    -- below owns the + & / + | buttons that pull the selection in. With NO
+    -- added cases the body renders flat -- the 99% see nothing new. Once a
+    -- case exists, the body renders as CASE 1: a box like every other, with
+    -- the same top-right AND/OR selection (Henrik's field read -- case 1 used
+    -- to be the one case whose type only the system could set). Together-block
+    -- (AND) boxes first, an "-- or --" divider, then standalone (OR) boxes.
+    local delCase, delBody = nil, false;
+    local caseLh = lineH();
+    local bop = (trig.addBodyOp == '|') and '|' or '&';
+    -- ONE renderer for every box -- case 1 and added cases alike; only where
+    -- the values live differs, so callers hand in the accessors.
+    local function renderBox(cs, sfx, setOp, delSelf, clearNote, applyNote)
+        -- content-fit height: header + one line per condition + the button row +
+        -- an optional note (and its escape row) -- nothing clips (lineH lesson).
+        local nLines = 2 + #(cs.conds or {});
+        if cs.note ~= nil then nLines = nLines + ((cs.swap ~= nil) and 2 or 1); end
+        imgui.BeginChild('##trg' .. sfx, { -1, nLines * caseLh + 20 }, true, BOX_FLAGS);
+        local availW = imgui.GetContentRegionAvail();
+        imgui.TextColored(COL_HEADER, (cs.op == '&') and '& case' or '| case');
+        -- The AND/OR selection, top right on EVERY box -- flip a case's type on
+        -- the fly; the box moves across the "-- or --" divider as it changes.
+        imgui.SameLine(availW - 96);
+        imgui.PushItemWidth(64);
+        if imgui.BeginCombo('##trgcaseop' .. sfx, (cs.op == '&') and 'AND' or 'OR') then
+            if imgui.Selectable('AND##trgcopa' .. sfx, cs.op == '&') then setOp('&'); end
+            if imgui.Selectable('OR##trgcopo' .. sfx, cs.op == '|') then setOp('|'); end
+            imgui.EndCombo();
+        end
+        imgui.PopItemWidth();
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('AND: binds into the together-block -- every AND case must hold together.\n'
+                .. 'OR: stands alone -- the rule fires if this case holds by itself.');
+        end
         imgui.SameLine(0, 4);
-        if imgui.Button('+ | condition##trgoc', { 0, 0 }) then addCond(true); end
+        if imgui.SmallButton('x##trgdel' .. sfx) then delSelf(); end
+        if imgui.IsItemHovered() then imgui.SetTooltip('Delete this case.'); end
+        renderCondList(cs.conds, sfx, clearNote);
+        if imgui.Button('+ & condition##trgac' .. sfx, { 0, 0 }) then
+            if addCond then addCond(false, cs.conds, applyNote); end
+        end
+        if imgui.IsItemHovered() then imgui.SetTooltip('AND condition inside this case (all bind together).'); end
+        imgui.SameLine(0, 4);
+        if imgui.Button('+ | condition##trgoc' .. sfx, { 0, 0 }) then
+            if addCond then addCond(true, cs.conds, applyNote); end
+        end
+        if imgui.IsItemHovered() then imgui.SetTooltip('OR condition inside this case (any one stands alone).'); end
+        -- The replace report, per case (Henrik's "never silent" rule, both tiers).
+        if cs.note ~= nil then
+            imgui.TextColored(COL_SCORE, esc(tostring(cs.note)));
+            if cs.swap ~= nil then
+                if imgui.SmallButton('Match either instead##trgorboth' .. sfx) then
+                    orBothToAny(cs.conds, cs.swap); clearNote();
+                end
+                imgui.SameLine(0, 6);
+                if imgui.SmallButton('dismiss##trgordismiss' .. sfx) then clearNote(); end
+            end
+        end
+        imgui.EndChild();
+    end
+    local function renderBodyBox()
+        -- Case 1's rows live in trig.addConds (same table, shared reference) --
+        -- the proxy only carries the accessors renderBox needs.
+        renderBox({ op = bop, conds = trig.addConds, note = trig.addNote, swap = trig.addSwap },
+            'body',
+            function(o) trig.addBodyOp = o; end,
+            function() delBody = true; end,
+            clearBodyNote,
+            function(n, s) trig.addNote, trig.addSwap = n, s; end);
+    end
+    local function renderCaseBox(idx)
+        local cs = trig.addCases[idx];
+        if type(cs) ~= 'table' then return; end
+        renderBox(cs, 'case' .. idx,
+            function(o) cs.op = o; end,
+            function() delCase = idx; end,
+            function() cs.note, cs.swap = nil, nil; end,
+            function(n, s) cs.note, cs.swap = n, s; end);
+    end
+    if #trig.addCases == 0 then
+        -- Flat body, exactly as before cases existed -- rows, then ITS buttons.
+        renderCondList(trig.addConds, '', clearBodyNote);
+        if imgui.Button('+ & condition##trgac', { 0, 0 }) then
+            if addCond then addCond(false, trig.addConds, function(n, s) trig.addNote, trig.addSwap = n, s; end); end
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('AND condition, all AND conditions must be true to be a match.\n'
+                .. 'ONE value per condition type: adding the same type again replaces it\n'
+                .. '(two names can never both be true) -- use [+ |] to match either.');
+        end
+        imgui.SameLine(0, 4);
+        if imgui.Button('+ | condition##trgoc', { 0, 0 }) then
+            if addCond then addCond(true, trig.addConds, function(n, s) trig.addNote, trig.addSwap = n, s; end); end
+        end
         if imgui.IsItemHovered() then imgui.SetTooltip('OR condition, if ANY OR condition is true, it will be a match.'); end
+        -- A replaced & condition is never silent (Henrik's field case: name = test
+        -- then name = testar overwrote with no word said). Say what was swapped, and
+        -- offer the one-click "I meant either" -- both values move to the | leg.
+        if trig.addNote ~= nil then
+            imgui.TextColored(COL_SCORE, esc(tostring(trig.addNote)));
+            if trig.addSwap ~= nil then
+                if imgui.SmallButton('Match either instead##trgorboth') then
+                    orBothToAny(trig.addConds, trig.addSwap);
+                    trig.addNote, trig.addSwap = nil, nil;
+                end
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('Moves BOTH values into the | leg, so the rule fires on either one.\n'
+                        .. 'To keep the replacement instead, just carry on.');
+                end
+                imgui.SameLine(0, 6);
+                if imgui.SmallButton('dismiss##trgordismiss') then trig.addNote, trig.addSwap = nil, nil; end
+            end
+        end
+    else
+        local hasAnd, hasOr = (bop == '&'), (bop == '|');
+        for _, cs in ipairs(trig.addCases) do
+            if cs.op == '&' then hasAnd = true; else hasOr = true; end
+        end
+        if bop == '&' then renderBodyBox(); end
+        for idx, cs in ipairs(trig.addCases) do
+            if cs.op == '&' then renderCaseBox(idx); end
+        end
+        if hasAnd and hasOr then imgui.TextColored(COL_DIM, '-- or --'); end
+        if bop == '|' then renderBodyBox(); end
+        for idx, cs in ipairs(trig.addCases) do
+            if cs.op == '|' then renderCaseBox(idx); end
+        end
+    end
+    if delBody then
+        -- Deleting case 1 promotes the next case into its place -- the boxes
+        -- stay symmetric; there is no un-deletable one.
+        local nb = table.remove(trig.addCases, 1);
+        if nb ~= nil then
+            trig.addConds, trig.addBodyOp = nb.conds, nb.op;
+            trig.addNote, trig.addSwap = nb.note, nb.swap;
+        end
+    elseif delCase ~= nil then
+        table.remove(trig.addCases, delCase);
+    end
+    -- The two new buttons -- the ONLY new chrome a case-less rule shows.
+    if imgui.Button('+ & case##trgaddandcase', { 0, 0 }) then
+        trig.addCases[#trig.addCases + 1] = { op = '&', conds = {} };
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Add an & case -- a together-block that must ALSO hold.\n'
+            .. 'The rule fires when the body holds AND this case holds. Build it with\n'
+            .. 'the same picker: its & conditions all bind, its | conditions stand alone.');
+    end
+    imgui.SameLine(0, 6);
+    if imgui.Button('+ | case##trgaddorcase', { 0, 0 }) then
+        trig.addCases[#trig.addCases + 1] = { op = '|', conds = {} };
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Add a | case -- a standalone alternative.\n'
+            .. 'The rule fires when the body holds, OR this case holds on its own.');
     end
 
     imgui.Separator();
@@ -2094,19 +2707,17 @@ local function renderTrigAddPopup()
     imgui.SameLine(0, 8); imgui.TextColored(COL_DIM, 'prio (0 = auto)'); imgui.SameLine(0, 3);
     imgui.PushItemWidth(52); imgui.InputInt('##trgaddprio', trig.addPrio, 0); imgui.PopItemWidth();
     imgui.SameLine(0, 8);
-    local can = (#trig.addConds > 0) and (trig.addSet ~= nil or trig._editEquip ~= nil);
+    -- An empty case is never saved silently (acceptance criterion): the Save is
+    -- refused while one exists, and the notice below says which blocker it is.
+    -- Case 1 counts: in box mode an empty body box is an empty case like any other.
+    local emptyCase = hasEmptyCase(trig.addCases)
+        or (#trig.addCases > 0 and #trig.addConds == 0);
+    local can = (#trig.addConds > 0) and (trig.addSet ~= nil or trig._editEquip ~= nil) and not emptyCase;
     if imgui.Button((editing and 'Save rule' or 'Add rule') .. '###trgaddgo', { 0, 0 }) and can then
-        local when, whenAny = {}, nil;
-        for _, c in ipairs(trig.addConds) do
-            if c.any then
-                whenAny = whenAny or {};
-                whenAny[#whenAny + 1] = { [string.lower(c.key)] = c.value };
-            else
-                when[string.lower(c.key)] = c.value;
-            end
-        end
-        local rule = { when = when };
+        local when, whenAny, cases = buildRuleShape(trig.addConds, trig.addBodyOp, trig.addCases);
+        local rule = { when = when };                   -- serializer canonicalizes (oldest-form-first + guard)
         if whenAny ~= nil then rule.whenAny = whenAny; end
+        if cases ~= nil then rule.cases = cases; end
         if trig.addSet ~= nil then rule.set = trig.addSet;
         else rule.equip = trig._editEquip; end         -- editing an inline-equip rule: keep its payload
         if (tonumber(trig.addPrio[1]) or 0) > 0 then rule.priority = trig.addPrio[1]; end
@@ -2127,12 +2738,19 @@ local function renderTrigAddPopup()
             end
             trig.dirty = true;
         end
-        trig.addConds = {}; trig.addSet = nil; trig.addPrio[1] = 0;
+        trig.addConds = {}; trig.addCases = {}; trig.addBodyOp = '&'; trig.addSet = nil; trig.addPrio[1] = 0;
+        trig.addNote, trig.addSwap = nil, nil;
         trig.editIdx, trig._editEquip, trig._bpEdit = nil, nil, nil;
         trig._prioBuf = {};                            -- rule objects changed; rebuild priority buffers
         imgui.CloseCurrentPopup();
     end
-    if not can then imgui.TextColored(COL_DIM, 'Add at least one condition and pick a set.'); end
+    if not can then
+        if emptyCase then
+            imgui.TextColored(COL_DIM, 'A case has no conditions yet -- add one, or delete the case.');
+        else
+            imgui.TextColored(COL_DIM, 'Add at least one condition and pick a set.');
+        end
+    end
     imgui.EndPopup();
 end
 
@@ -2718,18 +3336,14 @@ local function bpEdit(index)
     local e = bpUI.lib and bpUI.lib[index] or nil;
     if e == nil then return; end
     trig.addFor, trig._bpEdit, trig.editIdx, trig._editEquip = e.handler, index, nil, e.rule.equip;
-    trig.addConds = {};
-    for k, v in pairs(e.rule.when or {}) do
-        trig.addConds[#trig.addConds + 1] = { key = k, value = v };
-    end
-    table.sort(trig.addConds, function(a, b) return tostring(a.key) < tostring(b.key); end);
-    for _, entry in ipairs(e.rule.whenAny or {}) do
-        for k, v in pairs(entry) do
-            trig.addConds[#trig.addConds + 1] = { key = k, value = v, any = true };
-        end
-    end
+    -- loadCases splits the | leg: single-condition entries stay body rows, a
+    -- multi-condition entry loads as a `| case` box, and the cases list loads as
+    -- boxes -- the flatten-corruption fix (issue #127). 4th return = a promoted
+    -- case's split note (an empty-body rule seats its first case as case 1).
+    trig.addConds, trig.addCases, trig.addBodyOp, trig.addNote = loadCases(e.rule);
     trig.addSet = (type(e.rule.set) == 'table') and e.rule.set[1] or e.rule.set;
     trig.addPrio[1] = e.rule.priority or 0;
+    trig.addSwap = nil;
     trig._addDef = 1; trig.addValText[1] = ''; trig._addValSel = nil;
     trig._addPlayer = 1; trig._addPet = 1; trig.addValNum[1] = 0;
     trig._openAdd = true;
@@ -3733,14 +4347,14 @@ function M.render(job, level)
                 if PSTATE_KEYS[ln.key] ~= nil then w = w + markW(); end
                 if w > colX then colX = w; end
             end
-            for _, e in ipairs(r.whenAny or {}) do
-                for k, v in pairs(e) do
-                    local lk = string.lower(tostring(k));
-                    local w = textW('| ' .. trigPrettyKey(lk)
-                        .. ((v == true) and '' or (' = ' .. tostring(v)))) + 28;
-                    if PSTATE_KEYS[lk] ~= nil then w = w + markW(); end
-                    if w > colX then colX = w; end
-                end
+            -- Only standalone `|` conditions ride the aligned controls column;
+            -- `| case` boxes are full-width below the row and never widen it
+            -- (issue #125). Multi-condition entries drop out of caseSplit here.
+            for _, s in ipairs((caseSplit(r.whenAny))) do
+                local w = textW('| ' .. trigPrettyKey(s.key)
+                    .. ((s.val == true) and '' or (' = ' .. tostring(s.val)))) + 28;
+                if PSTATE_KEYS[s.key] ~= nil then w = w + markW(); end
+                if w > colX then colX = w; end
             end
         end
         local availW = imgui.GetContentRegionAvail();
@@ -3762,27 +4376,22 @@ function M.render(job, level)
             -- Pre-load the rule builder with this rule and open it in edit mode.
             local r = list[editAt];
             trig.addFor, trig.editIdx, trig._editEquip, trig._bpEdit = h, editAt, r.equip, nil;
-            trig.addConds = {};
-            for k, v in pairs(r.when or {}) do
-                trig.addConds[#trig.addConds + 1] = { key = k, value = v };
-            end
-            table.sort(trig.addConds, function(a, b) return tostring(a.key) < tostring(b.key); end);
-            -- | leg: one builder row per OR entry. A hand-written multi-key
-            -- entry (AND-within-OR) flattens to its keys here; saving from the
-            -- builder rewrites them as single-key entries.
-            for _, e in ipairs(r.whenAny or {}) do
-                for k, v in pairs(e) do
-                    trig.addConds[#trig.addConds + 1] = { key = k, value = v, any = true };
-                end
-            end
+            -- loadCases splits the | leg: single-condition entries stay body
+            -- rows, a MULTI-condition entry (AND-within-OR) loads as a `| case`
+            -- box instead of flattening to single-key rows -- THE flatten-
+            -- corruption fix -- and the cases list loads as boxes (issue #127).
+            -- 4th return = a promoted case's split note (empty-body rules).
+            trig.addConds, trig.addCases, trig.addBodyOp, trig.addNote = loadCases(r);
             trig.addSet = (type(r.set) == 'table') and r.set[1] or r.set;   -- builder edits ONE set; extras stay on the rule
             trig.addPrio[1] = r.priority or 0;
+            trig.addSwap = nil;
             trig._addDef = 1; trig.addValText[1] = ''; trig._addValSel = nil;
             trig._addPlayer = 1; trig._addPet = 1; trig.addValNum[1] = 0;
             trig._openAdd = true;
         end
         if imgui.Button('+ Add rule##trgadd_' .. h, { 0, 28 }) then
-            trig.addFor = h; trig.addConds = {}; trig._addDef = 1;
+            trig.addFor = h; trig.addConds = {}; trig.addCases = {}; trig.addBodyOp = '&'; trig._addDef = 1;
+            trig.addNote, trig.addSwap = nil, nil;
             trig.addValText[1] = ''; trig._addValSel = nil; trig.addSet = nil; trig.addPrio[1] = 0;
             trig._addPlayer = 1; trig._addPet = 1; trig.addValNum[1] = 0;
             trig.editIdx, trig._editEquip, trig._bpEdit = nil, nil, nil;   -- fresh add, not an edit

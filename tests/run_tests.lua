@@ -710,6 +710,77 @@ do
     check('E20 H2H fix result still parses', (loadstring or load)(ehText) ~= nil, true);
     local _, ehRep2 = gearimport.computeFixes(ehText, {}, ehMeta);
     check('E21 H2H OneHanded fix idempotent', #ehRep2.fixed, 0);
+
+    -- E22+. Range/Ammo Pair backfill (v128). EVERY gear.lua predates this field,
+    -- and without it the engine sees a gun and a crossbow as the same
+    -- "Marksmanship" -- so AutoAmmo can keep a bolt out of a bow but not out of a
+    -- gun. Insert-only: a pair key is a fixed server fact, not a rule we derive.
+    local epGear = table.concat({
+        'gear = {',
+        '    Range = {',
+        '        Marksmanship = {',
+        '            Hexagun = {',
+        '                Name = "Hexagun",',
+        '                Level = 65,',
+        '                Id = 17222,',
+        '                Type = "Marksmanship",',
+        '            },',
+        '            Crossbow = {',
+        '                Name = "Crossbow",',
+        '                Level = 12,',
+        '                Id = 17217,',
+        '                Type = "Marksmanship",',
+        '                Pair = "26:0",',
+        '            },',
+        '        },',
+        '    },',
+        '};',
+    }, '\n');
+    local epMeta = {
+        [17222] = { Type = 'Marksmanship', Pair = '26:1' },
+        [17217] = { Type = 'Marksmanship', Pair = '26:0' },
+    };
+    local epText, epRep = gearimport.computeFixes(epGear, {}, epMeta);
+    check('E22 a missing Pair is backfilled from the catalog',
+          epText:find('Pair = "26:1"', 1, true) ~= nil, true);
+    check('E23 an existing Pair is left alone (one insert, not two)', #epRep.fixed, 1);
+    check('E24 Pair backfill result still parses', (loadstring or load)(epText) ~= nil, true);
+    local _, epRep2 = gearimport.computeFixes(epText, {}, epMeta);
+    check('E25 Pair backfill is idempotent', #epRep2.fixed, 0);
+    -- The whitelist bug that shipped on v128 day: catalogindex.flatten builds
+    -- records field-by-field, so a field missing there is silently absent
+    -- everywhere downstream -- which is why AutoAmmo's "+ Add" stamped no pair.
+    do
+        local cx = require('dlac\\gear\\catalogindex');
+        local flat = cx.flatten({ Ammo = {
+            GoldBullet = { Name = 'Gold Bullet', Id = 12, Level = 40,
+                           Type = 'Ammo', AmmoType = 'Marksmanship', Pair = '26:1' },
+        } });
+        check('E26 flatten carries Pair through to the panel records',
+              flat[1] and flat[1].Pair, '26:1');
+        check('E26b ...alongside the AmmoType it refines', flat[1] and flat[1].AmmoType, 'Marksmanship');
+        -- Main/Range are normally nested by weapon category, but the skill-0 families
+        -- (Animators, Soultrappers) have no category to nest under and are emitted
+        -- FLAT at the slot level. apicrawl used to drop that bucket entirely, which
+        -- deleted every Animator from the catalog -- and with it the Animator/oil
+        -- pairing the server enforces. Pin BOTH depths so a tidy-up of either side
+        -- cannot quietly lose them again.
+        local mixed, mixedById = cx.flatten({ Range = {
+            Marksmanship = { Hexagun = { Name = 'Hexagun', Id = 17222, Type = 'Marksmanship', Pair = '26:1' } },
+            Animator = { Name = 'Animator', Id = 17859, Type = 'Range', Pair = '0:10' },
+        } });
+        check('E27 a categorised Range item still indexes', mixedById[17222] and mixedById[17222].Pair, '26:1');
+        check('E27b an UNCATEGORISED Range item indexes too (the Animator case)',
+              mixedById[17859] and mixedById[17859].Pair, '0:10');
+        check('E27c ...and lands in the Range slot, not a category named after it',
+              mixedById[17859] and mixedById[17859].Slot, 'Range');
+        check('E27d both depths reach the flat list', #mixed, 2);
+        -- The pairing these exist to express, through the real law.
+        check('E28 Animator + Automaton Oil pair (0:10)',
+              dispatchM.pairsWith('0:10', '0:10'), true);
+        check('E28b Animator P II refuses the same oil (0:11 vs 0:10)',
+              dispatchM.pairsWith('0:11', '0:10'), false);
+    end
 end
 end
 
@@ -2067,6 +2138,40 @@ local fh = io.open('dispatch.lua', 'r');
 local rawSrc = fh:read('*a'); fh:close();
 check('X5 swapper version-parse finds the assignment',
     tonumber(string.match(rawSrc, 'M%.VERSION%s*=%s*(%d+)')), dispatchM.VERSION);
+
+-- X6. WHAT SURVIVES A SELF-SWAP. The swap re-executes the file against the SAME
+-- module table (rawset __dlacEngineRoot -> run chunk), so every `M.x = {}` at file
+-- scope is a silent reset of live session state every time a `git pull` lands.
+-- M.locks used to be exactly that: all sixteen slots quietly unlocked mid-session,
+-- announced only by a parenthetical in the swap line. ADR 0021 named the leak while
+-- rejecting a lock-based naked; ADR 0022 then put a LOCKED SET on the same row, so
+-- half the row surviving a reseed while the other half evaporated was the last
+-- reason to leave it. Modelled here exactly as trySelfSwap does it.
+(function()
+    local live = { VERSION = -1 };
+    _G.__dlacEngineRoot = live;
+    dofile('dispatch.lua');                       -- first load: fills the table
+    live.locks['head'] = true;                    -- the player locks a slot...
+    live.modes['testmode'] = true;                -- ...and sets a mode
+    live.lockedSet = { name = 'Incursion T3', mode = 'set', claim = { Head = 'X' }, n = 1 };
+    dofile('dispatch.lua');                       -- ...then a git pull lands
+    _G.__dlacEngineRoot = nil;
+    check('X6 a self-swap KEEPS the player\'s slot locks', live.locks['head'], true);
+    check('X6b ...and a locked set (ADR 0022)',            live.lockedSet ~= nil, true);
+    -- Modes are still reset by the same re-execution, and that is correct: they
+    -- have a disk mirror the engine reads BACK on load (loadModeState), so they
+    -- heal. Locks never could -- __locks is display-only and deliberately never
+    -- restored, because a lock is a "right now" decision -- which is exactly why
+    -- the fix for them had to live on the table instead of in the mirror.
+    check('X6c modes still reset -- they heal from the modestate mirror, locks cannot',
+        live.modes['testmode'], nil);
+    check('X6d ...the swap line no longer promises otherwise',
+        rawSrc:find('slot locks reset', 1, true), nil);
+end)();
+-- A FRESH Lua state still starts clean: no handshake table, so M is new and every
+-- `or {}` above takes its empty branch. This is the LAC-reload path.
+check('X7 a fresh load starts with no locks',    next(dofile('dispatch.lua').locks), nil);
+check('X7b ...and nothing locked',               dofile('dispatch.lua').lockedSet, nil);
 
 -- ---------------------------------------------------------------------------
 -- Y. profile storage layer (profiles.lua, v33): the pure text machinery, and
@@ -4395,6 +4500,208 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- CS. Trigger CASES, read-side (issue #125, slice 1/5). matchedCase names the
+--     winning case for /dl why over the EXISTING schema: the together-block (the
+--     `&` leg), a "standalone" (single-condition `|` entry), or a "case"
+--     (multi-condition `|` entry). It mirrors matches() EXACTLY -- same MATCHERS,
+--     together-block first (only when NON-empty and fully true -- the OR-only
+--     law), else the first `|` entry that holds in file order.
+-- ---------------------------------------------------------------------------
+(function()
+    local mc = dispatchM.matchedCase;
+    local mt = dispatchM._matches;
+    local ctx  = { player = { HPP = 90 }, buffs = { sleep = true } };  -- hpbelow is a percent alias
+    local ctxL = { player = { HPP = 40 }, buffs = { sleep = true } };
+
+    check('CS1 no whenAny -> names nothing (reads as before)',
+        mc({ when = { hpbelow = 50 } }, ctx), nil);
+    check('CS2 together-block holds -> together-block',
+        mc({ when = { hpbelow = 95 }, whenAny = { { buff = 'Lullaby' } } }, ctx), 'together-block');
+    check('CS3 together-block misses, standalone hits',
+        mc({ when = { hpbelow = 50 }, whenAny = { { buff = 'Sleep' } } }, ctx), 'standalone buff=Sleep');
+    check('CS4 OR-only rule names its standalone, never the empty together-block',
+        mc({ when = {}, whenAny = { { buff = 'Sleep' } } }, ctx), 'standalone buff=Sleep');
+    check('CS5 multi-condition entry that holds -> case (AND-within-OR, sorted)',
+        mc({ when = { hpbelow = 30 }, whenAny = { { buff = 'Sleep', hpbelow = 50 } } }, ctxL),
+        'case buff=Sleep & hpbelow=50');
+    check('CS6 multi-condition entry with one miss does NOT name it',
+        mc({ when = { hpbelow = 30 }, whenAny = { { buff = 'Sleep', hpbelow = 30 } } }, ctxL), nil);
+    check('CS7 together-block wins when BOTH legs hold (checked first, like the engine)',
+        mc({ when = { hpbelow = 95 }, whenAny = { { buff = 'Sleep' } } }, ctx), 'together-block');
+    check('CS8 first standalone that holds wins (file order)',
+        mc({ when = {}, whenAny = { { buff = 'Haste' }, { buff = 'Sleep' } } }, ctx), 'standalone buff=Sleep');
+    -- consistency: a case-bearing rule names a case IFF matches() fires.
+    local rhit  = { when = { hpbelow = 50 }, whenAny = { { buff = 'Sleep' } } };
+    local rmiss = { when = { hpbelow = 50 }, whenAny = { { buff = 'Haste' } } };
+    check('CS9 names a case exactly when matches() fires (hit)',
+        (mc(rhit, ctx) ~= nil) == mt(rhit, ctx) and mt(rhit, ctx), true);
+    check('CS10 names nothing exactly when matches() misses',
+        mc(rmiss, ctx) == nil and mt(rmiss, ctx) == false, true);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- CX. Trigger CASES, the schema backbone (issue #126, slice 2/5). The `cases`
+--     tier in the engine + BOTH serializers. One sentence, both tiers: `&`
+--     things bind into one together-block; each `|` thing stands alone; fire if
+--     the together-block holds, or any `|` thing does. Canonical serialization
+--     is oldest-form-first (a `| case` with only `&` rows is a whenAny multi-
+--     entry); any rule with a cases list carries the always-true version guard.
+-- ---------------------------------------------------------------------------
+(function()
+    local mt = dispatchM._matches;
+    local mc = dispatchM.matchedCase;
+    local bp = dofile('gear/blueprintsmodel.lua');
+    package.loaded['dlac\\gear\\groupsmodel'] = package.loaded['dlac\\gear\\groupsmodel'] or dofile('gear/groupsmodel.lua');
+    local tmodel = dofile('gear/triggermodel.lua');
+    local ctx = { action = { Name = 'Fire IV', Type = 'Black Magic', Element = 'Fire' },
+                  player = { Status = 'Engaged', HPP = 90, TP = 1500 }, buffs = { sleep = true } };
+
+    -- ---- Match seam ----
+    -- (A) `& case` GATES the body: BlackMagic AND (Fire|Ice|Thunder). Together-
+    -- block holds only when the & case's internal | leg does too.
+    local rGate = { when = { magictype = 'Black Magic' }, cases = {
+        { op = '&', when = {}, whenAny = { { element = 'Fire' }, { element = 'Ice' } } } } };
+    check('CX1 & case gates: body + case both hold -> fire', mt(rGate, ctx), true);
+    local ctxThunder = { action = { Name = 'Thunder', Type = 'Black Magic', Element = 'Thunder' } };
+    check('CX2 & case gates: case fails -> no fire', mt(rGate, ctxThunder), false);
+    local ctxWhite = { action = { Name = 'Cure', Type = 'White Magic', Element = 'Light' } };
+    check('CX3 & case gates: body fails -> no fire', mt(rGate, ctxWhite), false);
+
+    -- (B) `| case` fires INDEPENDENTLY of the body (OR of ANDs).
+    local rOr = { when = { status = 'Engaged', tpabove = 1000 }, cases = {
+        { op = '|', when = { magictype = 'Black Magic' }, whenAny = { { element = 'Fire' } } } } };
+    check('CX4 | case fires alone (body misses, case hits)',
+        mt(rOr, { action = { Type = 'Black Magic', Element = 'Fire' }, player = { Status = 'Idle', TP = 0 } }), true);
+    check('CX5 together-block fires alone (case misses, body hits)',
+        mt(rOr, { player = { Status = 'Engaged', TP = 1500 } }), true);
+    check('CX6 both miss -> no fire',
+        mt(rOr, { player = { Status = 'Idle', TP = 0 } }), false);
+
+    -- (C) empty-together-block law at BOTH tiers: OR-only is never always-on.
+    local rOrOnly = { when = {}, cases = { { op = '|', when = { buff = 'Sleep' } } } };
+    check('CX7 tier-2 OR-only fires on its hit', mt(rOrOnly, ctx), true);
+    check('CX8 tier-2 OR-only is NOT always-on',
+        mt(rOrOnly, { buffs = {} }), false);
+    -- internal legs match by the same sentence: an & case that is OR-only inside
+    -- needs one internal | to hold (tier-1 law inside a tier-2 member).
+    local rInner = { when = { magictype = 'Black Magic' }, cases = {
+        { op = '&', when = {}, whenAny = { { element = 'Fire' }, { element = 'Ice' } } } } };
+    check('CX9 internal OR-only case: no internal hit -> no fire',
+        mt(rInner, { action = { Type = 'Black Magic', Element = 'Wind' } }), false);
+
+    -- ---- matchedCase for /dl why ----
+    check('CX10 & case in the together-block names together-block', mc(rGate, ctx), 'together-block');
+    check('CX11 | case names its full leg',
+        mc(rOr, { action = { Type = 'Black Magic', Element = 'Fire' }, player = { Status = 'Idle', TP = 0 } }),
+        'case magictype=Black Magic & (element=Fire)');
+    check('CX12 case-less rule still names nothing', mc({ when = { status = 'Engaged' } }, ctx), nil);
+
+    -- ---- Auto-priority = max tier over EVERY leg of EVERY case ----
+    -- body magicType(30) + an & case whose | leg holds `mode`(100): prio 100.
+    local pRule = { when = { magictype = 'Black Magic' }, cases = {
+        { op = '&', when = {}, whenAny = { { mode = 'Burst' } } } } };
+    check('CX13 auto-priority spans cases', dispatchM.defaultPriority(pRule.when, pRule.whenAny, pRule.cases), 100);
+    check('CX14 the guard never moves priority',
+        dispatchM.defaultPriority({ any = true, hascases = true }, nil, nil), 10);
+
+    -- ---- Labels: case-less byte-identical; case-bearing deterministic ----
+    check('CX15 case-less label byte-identical to today',
+        dispatchM.ruleLabel({ status = 'Engaged' }, { { buff = 'Sleep' } }, nil),
+        'status=Engaged|buff=Sleep');
+    -- case order irrelevant -> stable label (sorted), never a table address.
+    local casesA = { { op = '|', when = { buff = 'Sleep' } }, { op = '&', when = { element = 'Fire' } } };
+    local casesB = { { op = '&', when = { element = 'Fire' } }, { op = '|', when = { buff = 'Sleep' } } };
+    check('CX16 case-bearing label is order-stable',
+        dispatchM.ruleLabel({ status = 'Engaged' }, nil, casesA)
+        == dispatchM.ruleLabel({ status = 'Engaged' }, nil, casesB), true);
+
+    -- ---- normalize: validate legs, drop-with-warn, empty-drop, guard-strip ----
+    local nOut, nWarn = dispatchM._normalize({ Midcast = { {
+        when = { magictype = 'Black Magic', hascases = true }, cases = {
+            { op = '&', when = {}, whenAny = { { element = 'Fire' } } } }, set = 'Nuke' } } });
+    local nr = nOut.Midcast[1];
+    check('CX17 normalize keeps the cases', nr.cases and #nr.cases, 1);
+    check('CX18 normalize STRIPS the guard from the body', nr.when.hascases, nil);
+    check('CX19 normalize priority spans cases (element 30)', nr.prio, 30);
+    local badCase = select(2, dispatchM._normalize({ Midcast = { {
+        when = { any = true }, cases = { { op = '&', when = { nosuchcond = 1 } } }, set = 'X' } } }));
+    check('CX20 unknown key in a case drops the rule with a warn', #badCase >= 1, true);
+    local badOp = select(2, dispatchM._normalize({ Midcast = { {
+        when = { any = true }, cases = { { when = { element = 'Fire' } } }, set = 'X' } } }));
+    check('CX21 a case with no operator drops the rule', #badOp >= 1, true);
+    local emptyCase = dispatchM._normalize({ Midcast = { {
+        when = { status = 'Engaged' }, cases = { { op = '&', when = {} } }, set = 'X' } } });
+    check('CX22 an empty case is dropped at normalization', emptyCase.Midcast[1].cases, nil);
+
+    -- ---- Serializer: case-less byte-identical (PINNED invariant) ----
+    local caselessData = { Midcast = {
+        { when = { name = 'Slow II' }, whenAny = { { mode = 'DT' }, { hpbelow = 50 } }, set = 'X' },
+        { when = { status = 'Engaged' }, set = { 'A', 'B' }, priority = 40 },
+    } };
+    local caseless = dispatchM.serializeTriggers(caselessData);
+    check('CX23 case-less rules never emit a cases list', caseless:find('cases', 1, true), nil);
+    check('CX24 case-less rules never emit the guard', caseless:find('hasCases', 1, true), nil);
+
+    -- ---- Oldest-form-first: a | case with only & conditions -> whenAny entry ----
+    local oldForm = dispatchM.serializeTriggers({ Midcast = { {
+        when = {}, cases = { { op = '|', when = { status = 'Engaged', tpabove = 1000 } } }, set = 'X' } } });
+    check('CX25 | case (only &) serializes as a whenAny multi-entry',
+        oldForm:find('whenAny = { { status = "Engaged", tpAbove = 1000 } }', 1, true) ~= nil, true);
+    check('CX26 ...and NOT as a cases list (no guard needed either)',
+        oldForm:find('cases', 1, true) == nil and oldForm:find('hasCases', 1, true) == nil, true);
+
+    -- ---- Guard: present iff a real cases list survives; always-true, bottom tier ----
+    local withGuard = dispatchM.serializeTriggers({ Midcast = { {
+        when = { magictype = 'Black Magic' }, cases = {
+            { op = '&', when = {}, whenAny = { { element = 'Fire' } } } }, set = 'X' } } });
+    check('CX27 a rule with a cases list carries the guard',
+        withGuard:find('hasCases = true', 1, true) ~= nil, true);
+    check('CX28 the guard is an always-true matcher', dispatchM._matchers.hascases(true, {}), true);
+
+    -- ---- The MAXIMAL fixture: every construct at once, byte-stable through BOTH
+    --      serializers, and the two serializers are byte-parity mirrors. ----
+    local maximal = { when = { magictype = 'Black Magic' },        -- body & leg
+                      whenAny = { { buff = 'Sleep' } },            -- body | leg
+                      cases = {
+                          { op = '&', when = {}, whenAny = { { element = 'Fire' }, { element = 'Ice' } } },  -- & case, internal |
+                          { op = '|', when = { status = 'Engaged', tpabove = 1000 } },                       -- | case, only & -> oldest form
+                      },
+                      set = 'Nuke' };
+    local maxText = dispatchM.serializeTriggers({ Midcast = { maximal } });
+    local maxRaw  = (loadstring or load)(maxText)();
+    check('CX29 maximal fixture round-trips byte-stable (trigger serializer)',
+        dispatchM.serializeTriggers(maxRaw) == maxText, true);
+    -- through the model (the Commit path) -- the wipe contract, extended to cases.
+    local maxModel = tmodel.fromRaw(maxRaw, dispatchM.canonEvent);
+    check('CX30 maximal fixture round-trips byte-stable through the model',
+        dispatchM.serializeTriggers(maxModel) == maxText, true);
+    -- through the blueprints emitter -- the parity-pinned MIRROR: its per-rule body
+    -- is byte-identical to what the trigger serializer writes.
+    local bpBody = bp.emitRule(maximal, dispatchM.PRETTY_KEY);
+    check('CX31 blueprint emitter is byte-parity with the trigger serializer',
+        maxText:find(bpBody, 1, true) ~= nil, true);
+    -- a case-bearing blueprint round-trips byte-stably through its own library format.
+    local lib = {}; bp.add(lib, 'Midcast', maximal);
+    local libText = bp.serialize(lib, dispatchM.PRETTY_KEY);
+    local libBack = bp.parse(libText);
+    check('CX32 blueprint library round-trip byte-stable with cases',
+        bp.serialize(libBack, dispatchM.PRETTY_KEY) == libText, true);
+    check('CX33 blueprint kept the & case', libBack[1].rule.cases[1].op, '&');
+
+    -- ---- The version-guard contract, THIS engine's half: it knows `hasCases`, so
+    --      the guarded maximal rule normalizes cleanly (no warn, rule kept) and
+    --      still fires exactly as authored. An OLDER engine lacks the key, so its
+    --      normalize would drop the rule with the standard unknown-condition warn
+    --      (the "warn, never misread" law) -- the same drop PN18 pins for any
+    --      unknown key. Here we pin our half: we do NOT drop it. ----
+    local guNorm, guWarn = dispatchM._normalize({ Midcast = { maxRaw.Midcast[1] } });
+    check('CX34 this engine accepts the guarded rule (no warn, rule kept)',
+        #guWarn == 0 and guNorm.Midcast and #guNorm.Midcast, 1);
+    check('CX35 the reloaded guarded rule still fires as authored',
+        dispatchM._matches(guNorm.Midcast[1], ctx), true);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- PT. Pet conditions (engine v63): pet / petStatus / petName off ctx.pet
 --     (gData.GetPet() -- nil petless AND at pet HPP 0, so a dead pet reads as
 --     NO pet: pet=false fires). petStatus/petName IMPLY existence -- they must
@@ -5095,6 +5402,105 @@ end)();
     check('TB8b the Animator still lands',           tbOil.Range, 'Animator');
     gearTB.NameToObject['Automat. Oil +2'] = nil;
     gearTB.NameToObject['Animator'] = nil;
+
+    -- TB9+. The trinket rule asks the PAIRING LAW before it drops (v128, Henrik
+    -- 2026-07-26: "Soultrapper and Soultrapper 2000 should pair with: Blank Soul
+    -- Plate and Blank High-speed Soul Plate"). The RSlot bit is a per-ITEM stamp;
+    -- the conflict is a per-PAIR fact. "Ammo with no AmmoType reserves Range" is
+    -- right for a stat stick beside a bow and WRONG for the skill-0 families that
+    -- pair with their own Range piece -- which is how the soul plates ended up
+    -- stamped Range-reserving and dropped from a combination the server allows.
+    -- Cancel-only: a proven-compatible pair is never in conflict; unknown changes
+    -- nothing.
+    local function pairOfTB(n)
+        return ({ ['Soultrapper'] = '0:0', ['Soultrapper 2000'] = '0:0',
+                  ['Blank Soulplate'] = '0:0', ['H.S. Soul Plate'] = '0:0',
+                  ['Animator'] = '0:10', ['Automaton Oil'] = '0:10',
+                  ['Animator P Ii'] = '0:11',
+                  ['Cinderstone'] = '0:0', ['Coiste Bodhar'] = '1:0',
+                  ['Longbow'] = '25:4' })[n];
+    end
+    local function rsTB(_) return 4; end          -- everything stamped Range-reserving
+    local function lvTB(n) return (n == 'Blank Soulplate') and 1 or 50; end
+    local function drop(range, ammo)
+        return dispatchM.trinketRangeDrop(
+            { Range = range, Ammo = ammo }, rsTB, lvTB, pairOfTB);
+    end
+    check('TB9 Soultrapper + Blank Soulplate: no drop, they pair',
+          drop('Soultrapper', 'Blank Soulplate'), nil);
+    check('TB9b Soultrapper 2000 + H.S. Soul Plate: no drop either',
+          drop('Soultrapper 2000', 'H.S. Soul Plate'), nil);
+    check('TB9c Animator + Automaton Oil: no drop (ANIMATOR_FED by law, not by id)',
+          drop('Animator', 'Automaton Oil'), nil);
+    -- The ones that MUST still drop -- Henrik: "Coiste Bodhar is a trinket, so
+    -- categorize it as a trinket like cinderstone".
+    check('TB10 Longbow + Cinderstone still conflicts (0:0 vs 25:4)',
+          drop('Longbow', 'Cinderstone') ~= nil, true);
+    check('TB10b Longbow + Coiste Bodhar too (1:0 matches no Range piece, ever)',
+          drop('Longbow', 'Coiste Bodhar') ~= nil, true);
+    check('TB10c Animator P II + Automaton Oil conflicts (0:11 vs 0:10)',
+          drop('Animator P Ii', 'Automaton Oil') ~= nil, true);
+    -- Unknown pair data must change NOTHING: an old manifest behaves as before.
+    check('TB11 no pairFn at all -> the RSlot stamp decides, exactly as before',
+          dispatchM.trinketRangeDrop({ Range = 'Longbow', Ammo = 'Cinderstone' },
+                                     rsTB, lvTB) ~= nil, true);
+    check('TB11b an unknown pair does not cancel a drop',
+          dispatchM.trinketRangeDrop({ Range = 'Mystery Bow', Ammo = 'Cinderstone' },
+                                     rsTB, lvTB, pairOfTB) ~= nil, true);
+    -- The worn-side twin: a worn plate must survive an incoming Soultrapper.
+    check('TB12 worn Blank Soulplate survives an incoming Soultrapper',
+          dispatchM.trinketWornDisplace({ Range = 'Soultrapper' }, 'Blank Soulplate',
+                                        rsTB, pairOfTB), nil);
+    check('TB12b worn Cinderstone still yields Range to an incoming Longbow',
+          dispatchM.trinketWornDisplace({ Range = 'Longbow' }, 'Cinderstone',
+                                        rsTB, pairOfTB), 'Ammo');
+
+    -- TB13+. The law also CAUSES a drop the RSlot stamp could never see: two ordinary
+    -- pieces that simply cannot fire each other (Henrik 2026-07-26: "that would be
+    -- good, so we don't spam the server"). Nothing here reserves Range -- rs0 -- so
+    -- before v128 this pair sailed through and the SERVER stripped a slot, forever.
+    local function rs0(_) return 0; end
+    local function pairMix(n)
+        return ({ ['Longbow'] = '25:4', ['Venom Bolt'] = '26:0', ['Beetle Arrow'] = '25:0',
+                  ['Hexagun'] = '26:1', ['Iron Bullet'] = '26:1',
+                  ['Ebisu Fishing Rod'] = '48:0', ['Sardine Ball'] = '48:0',
+                  ['Maple Harp'] = '41:0' })[n];
+    end
+    -- The ammo ALWAYS yields: "It should NEVER force ranged off, that is HANDS OFF."
+    local mk, mkeep, mwhy = dispatchM.trinketRangeDrop(
+        { Range = 'Longbow', Ammo = 'Venom Bolt' }, rs0, lvTB, pairMix);
+    check('TB13 a bolt in a set with a bow is now dropped', mk, 'Ammo');
+    check('TB13b ...the BOW is what is kept', mkeep, 'Longbow');
+    check('TB13c ...and the reason is a mismatch, not a stat stick', mwhy, 'mismatch');
+    -- Level must NOT flip this one. A Lv25 bolt outranking a Lv5 bow would drop the
+    -- bow and leave the player holding ammo and no weapon -- the exact thing Henrik
+    -- forbade. (The trinket contest above still decides by Level; this one never does.)
+    local hk, hkeep = dispatchM.trinketRangeDrop(
+        { Range = 'Longbow', Ammo = 'Venom Bolt' }, rs0,
+        function(n) return (n == 'Venom Bolt') and 99 or 1; end, pairMix);
+    check('TB13d a higher-Level bolt STILL yields -- Range is never forced off', hk, 'Ammo');
+    check('TB13e ...the low-level bow survives it', hkeep, 'Longbow');
+    -- Compatible pairs must stay untouched by the new firing path.
+    check('TB14 bow + arrow: no drop (25:4 fires 25:0)',
+          dispatchM.trinketRangeDrop({ Range = 'Longbow', Ammo = 'Beetle Arrow' }, rs0, lvTB, pairMix), nil);
+    check('TB14b gun + bullet: no drop',
+          dispatchM.trinketRangeDrop({ Range = 'Hexagun', Ammo = 'Iron Bullet' }, rs0, lvTB, pairMix), nil);
+    check('TB14c rod + bait: no drop (48:0 -- fishing must not regress)',
+          dispatchM.trinketRangeDrop({ Range = 'Ebisu Fishing Rod', Ammo = 'Sardine Ball' }, rs0, lvTB, pairMix), nil);
+    check('TB14d a harp fires nothing -- the arrow yields',
+          dispatchM.trinketRangeDrop({ Range = 'Maple Harp', Ammo = 'Beetle Arrow' }, rs0, lvTB, pairMix), 'Ammo');
+    -- Unknown pair data + no stamp = silence, exactly as before v128.
+    check('TB15 unknown pair and no RSlot bit -> nothing happens (old manifest)',
+          dispatchM.trinketRangeDrop({ Range = 'Mystery Bow', Ammo = 'Mystery Ammo' }, rs0, lvTB, pairMix), nil);
+    check('TB15b no pairFn at all -> nothing happens either',
+          dispatchM.trinketRangeDrop({ Range = 'Longbow', Ammo = 'Venom Bolt' }, rs0, lvTB), nil);
+    -- The worn-side twin fires too: a worn bolt would take the incoming bow back off.
+    check('TB16 a worn bolt yields to an incoming bow, with no stamp involved',
+          dispatchM.trinketWornDisplace({ Range = 'Longbow' }, 'Venom Bolt', rs0, pairMix), 'Ammo');
+    check('TB16b a worn arrow stays put under that same bow',
+          dispatchM.trinketWornDisplace({ Range = 'Longbow' }, 'Beetle Arrow', rs0, pairMix), nil);
+    check('TB16c worn bait survives an incoming rod',
+          dispatchM.trinketWornDisplace({ Range = 'Ebisu Fishing Rod' }, 'Sardine Ball', rs0, pairMix), nil);
 
     AshitaCore = savedAC;
     gearTB.NameToObject['Rimestone'] = nil;
@@ -8133,6 +8539,35 @@ end)();
     check('MC18 near-name mode never matches (Incog vs Inc)',
         #f({ Default = { { when = { mode = 'Incog' }, set = 'A' } } }, 'Inc', false).rules, 0);
 
+    -- issue #126: the sweep extends into CASES with the SAME narrow/empty/remove
+    -- ladder -- a case's mode list narrows, a case whose load-bearing leg empties
+    -- is removed whole, and a rule with nothing left (body + all cases gone) goes.
+    d = { Default = {
+        -- (1) an & case's mode list narrows, keeping the sibling; rule survives
+        { when = { magictype = 'Black Magic' }, cases = { { op = '&', when = { mode = { 'X', 'DT' } } } }, set = 'A' },
+        -- (2) an & case whose ONLY content is the dead mode -> case removed; body
+        --     (magicType) keeps the rule alive
+        { when = { magictype = 'Black Magic' }, cases = { { op = '&', when = { mode = 'X' } } }, set = 'B' },
+        -- (3) body IS the dead mode + the only case dies too -> rule removed whole
+        { when = { mode = 'X' }, cases = { { op = '|', when = { mode = 'X' } } }, set = 'C' },
+        -- (4) empty body, a single | case on the dead mode -> nothing left -> removed
+        { when = {}, cases = { { op = '|', when = { mode = 'X' } } }, set = 'D' },
+    } };
+    r = f(d, 'X', true);
+    check('MC19 case sweep: removed 2 (C,D), edited 2 (A,B)', r.removedRules .. '/' .. r.editedRules, '2/2');
+    check('MC20 & case mode list narrows to the sibling', d.Default[1].cases[1].when.mode, 'DT');
+    check('MC21 emptied case dropped, body keeps the rule',
+        d.Default[2].cases == nil and d.Default[2].set, 'B');
+    check('MC22 the survivors are exactly A and B', (function()
+        for _, rule in ipairs(d.Default) do if rule.set == 'C' or rule.set == 'D' then return rule.set; end end
+        return #d.Default;
+    end)(), 2);
+
+    -- report mode counts a case reference without mutating it
+    local rc = f({ Default = { { when = { magictype = 'Black Magic' },
+        cases = { { op = '|', when = { mode = 'X' }, whenAny = { { element = 'Fire' } } } }, set = 'Z' } } }, 'X', false);
+    check('MC23 report mode names a case reference', #rc.rules, 1);
+
     -- RS: set-rename reference rewrite (2026-07-20, the Sets tab Rename).
     -- EXACT match only; string and multi-set list actions; every handler
     -- section including Default's mode overlays; equip rules untouched.
@@ -8796,11 +9231,19 @@ end)();
               special = { unlimited = true, quickdraw = true, freews = true } },
         },
     };
-    -- facts builder: stock is id -> count; everything else overridable
+    -- `nil` in an override table is not a value, it is an ABSENT KEY -- so a plain
+    -- { rangeWorn = nil } cannot clear a default. NONE is the explicit eraser.
+    local NONE = setmetatable({}, { __tostring = function() return 'NONE'; end });
+    -- facts builder: stock is id -> count; everything else overridable.
+    -- A GUN is worn by default (v128): this COR's whole list is Marksmanship, and
+    -- AutoAmmo now does nothing at all with an empty Range slot -- so "a gun is
+    -- equipped" is the premise every one of these cases always silently assumed.
+    -- 26:1 pairs with every bullet below; override rangeWorn/rangePair to vary it.
     local function F(over, stock)
         local f = { event = 'Preshot', job = 'COR',
+                    rangeWorn = 'Hexagun', rangePair = '26:1',
                     count = function(e) return (stock or { [1] = 12, [2] = 12, [3] = 1 })[e.id] or 0; end };
-        for k, v in pairs(over or {}) do f[k] = v; end
+        for k, v in pairs(over or {}) do f[k] = (v ~= NONE) and v or nil; end
         return f;
     end
 
@@ -8908,6 +9351,203 @@ end)();
         dispatchM._ammoStateOn({ enabled = true, ammo = CFG.ammo }), true);
     check('AM23b enabled with no list is OFF',
         dispatchM._ammoStateOn({ enabled = true, ammo = {} }), false);
+
+    -- -----------------------------------------------------------------------
+    -- AM40+. THE RANGE SLOT DECIDES THE TYPE (v128; Henrik 2026-07-26). The
+    -- field bug: list order alone chose the ammo, so a bolt above your arrows
+    -- won with a bow equipped -- and the server answered by stripping the bow.
+    -- -----------------------------------------------------------------------
+    -- No ranged weapon = do nothing at all, on every event. Nothing can be
+    -- consumed with Range empty, so there is nothing to dress for or protect.
+    check('AM40 no ranged weapon worn -> hold (Preshot)',
+        rap(CFG, F({ rangeWorn = NONE, rangePair = NONE })), nil);
+    check('AM41 no ranged weapon worn -> the Default sweep does not fire either',
+        rap(CFG, F({ event = 'Default', rangeWorn = NONE, rangePair = NONE,
+                     worn = 'Animikii Bullet' })), nil);
+    check('AM42 no ranged weapon: even an open Unlimited Shot window stays shut',
+        rap(CFG, F({ rangeWorn = NONE, rangePair = NONE, unlimited = true })), nil);
+    check('AM43 no ranged weapon: a consuming WS plans nothing',
+        rap(CFG, F({ event = 'Weaponskill', wsId = 221,
+                     rangeWorn = NONE, rangePair = NONE })), nil);
+
+    -- A BOW over a bullets-only list: nothing pairs, so AutoAmmo ignores it
+    -- ("Hold, if no matching ammo for the range type" -- Henrik). Critically it
+    -- does NOT fall through to 'remove' and empty the slot.
+    check('AM44 bow worn, list is all bullets -> hold, never a mismatch',
+        rap(CFG, F({ rangeWorn = 'Longbow', rangePair = '25:4' })), nil);
+    check('AM44b bow worn, bullets-only, special worn -> still no forced remove',
+        rap(CFG, F({ rangeWorn = 'Longbow', rangePair = '25:4',
+                     worn = 'Animikii Bullet' })), nil);
+
+    -- The exact field case: an arrow sits ABOVE the bullet in priority order and
+    -- a GUN is equipped. Before v128 list order won and the gun came off.
+    local MIX = { enabled = true, jobs = { COR = true }, ammo = {
+        { name = 'Gold Arrow',   id = 10, type = 'Archery',      pair = '25:0', ranged = true, ws = false, special = false },
+        { name = 'Rusty Bolt',   id = 11, type = 'Marksmanship', pair = '26:0', ranged = true, ws = false, special = false },
+        { name = 'Gold Bullet',  id = 12, type = 'Marksmanship', pair = '26:1', ranged = true, ws = true,  special = false },
+    } };
+    local function FM(over)
+        local f = { event = 'Preshot', job = 'COR', rangeWorn = 'Hexagun', rangePair = '26:1',
+                    count = function() return 99; end };
+        for k, v in pairs(over or {}) do f[k] = (v ~= NONE) and v or nil; end
+        return f;
+    end
+    check('AM45 gun worn: the arrow ABOVE it in priority is skipped for the bullet',
+        rap(MIX, FM()), 'Gold Bullet');
+    check('AM45b crossbow worn: the same list yields the BOLT, not the bullet',
+        rap(MIX, FM({ rangeWorn = 'Crossbow', rangePair = '26:0' })), 'Rusty Bolt');
+    check('AM45c bow worn: the arrow wins even though two Marksmanship rows outrank nothing',
+        rap(MIX, FM({ rangeWorn = 'Longbow', rangePair = '25:4' })), 'Gold Arrow');
+    check('AM45d culverin worn: nothing in the list is 26:2 -> hold',
+        rap(MIX, FM({ rangeWorn = 'Culverin', rangePair = '26:2' })), nil);
+    check('AM46 a consuming WS respects the weapon too',
+        rap(MIX, FM({ event = 'Weaponskill', wsId = 221 })), 'Gold Bullet');
+
+    -- Graceful degradation: an UNKNOWN pair on either side never constrains, or a
+    -- missing data field would read as "AutoAmmo stopped working".
+    check('AM47 unknown weapon pair -> unconstrained (pre-Pair manifest)',
+        rap(MIX, FM({ rangePair = NONE })), 'Gold Arrow');
+    local NOPAIR = { enabled = true, jobs = { COR = true }, ammo = {
+        { name = 'Gold Arrow',  id = 10, type = 'Archery',      ranged = true, ws = false, special = false },
+        { name = 'Gold Bullet', id = 12, type = 'Marksmanship', ranged = true, ws = false, special = false },
+    } };
+    check('AM48 entry with no Pair falls back to its AmmoType skill (arrow vs gun)',
+        rap(NOPAIR, FM()), 'Gold Bullet');
+    check('AM48b ...and to the bow the other way round',
+        rap(NOPAIR, FM({ rangeWorn = 'Longbow', rangePair = '25:4' })), 'Gold Arrow');
+    check('AM48c AmmoType alone cannot split bolt from bullet -- both pair with a gun',
+        rap({ enabled = true, jobs = { COR = true }, ammo = {
+            { name = 'Rusty Bolt', id = 11, type = 'Marksmanship', ranged = true, ws = false, special = false },
+        } }, FM()), 'Rusty Bolt');
+    check('AM48d ...but a stamped Pair does split them',
+        rap({ enabled = true, jobs = { COR = true }, ammo = {
+            { name = 'Rusty Bolt', id = 11, type = 'Marksmanship', pair = '26:0', ranged = true, ws = false, special = false },
+        } }, FM()), nil);
+
+    -- Skill-only weapon key ("26" -- the client resource's Skill, no subskill):
+    -- separates a bow from a gun, cannot separate gun from crossbow.
+    check('AM49 skill-only weapon key still keeps arrows out of a gun',
+        rap(MIX, FM({ rangePair = '26' })), 'Rusty Bolt');
+    check('AM49b skill-only weapon key still admits the arrow to a bow',
+        rap(MIX, FM({ rangePair = '25' })), 'Gold Arrow');
+
+    -- Special behaviours are filtered by the weapon exactly like the plain picks.
+    local SPEC = { enabled = true, jobs = { COR = true }, ammo = {
+        { name = 'Yoru Shuriken',   id = 20, type = 'Throwing',     pair = '27:3',
+          ranged = false, ws = false, special = { unlimited = true, quickdraw = true, freews = true } },
+        { name = 'Animikii Bullet', id = 21, type = 'Marksmanship', pair = '26:1',
+          ranged = false, ws = false, special = { unlimited = true, quickdraw = true, freews = true } },
+    } };
+    check('AM50 Unlimited Shot window skips the special that cannot pair',
+        rap(SPEC, FM({ unlimited = true })), 'Animikii Bullet');
+    check('AM50b free WS likewise',
+        rap(SPEC, FM({ event = 'Weaponskill', wsId = 218 })), 'Animikii Bullet');
+    check('AM50c Quick Draw likewise (and QD still demands Marksmanship)',
+        rap(SPEC, FM({ event = 'Ability', abilityType = 'Quick Draw' })), 'Animikii Bullet');
+    check('AM50d a bow opens NEITHER special -> hold',
+        rap(SPEC, FM({ rangeWorn = 'Longbow', rangePair = '25:4', unlimited = true })), nil);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- PW. M.pairsWith -- the Range/Ammo compatibility law, exactly as the server
+--     writes it (charutils.cpp EquipItem): same skill, and -- for every skill
+--     but ARCHERY -- the same subskill, or it UNEQUIPS THE OTHER SLOT. Three-
+--     valued: true / false / nil(unknown), and nil must never read as false.
+-- ---------------------------------------------------------------------------
+(function()
+    local pw = dispatchM.pairsWith;
+    check('PW1 gun + bullet pair', pw('26:1', '26:1'), true);
+    check('PW2 gun + BOLT do not -- the field bug that stripped the gun', pw('26:1', '26:0'), false);
+    check('PW3 crossbow + bolt pair', pw('26:0', '26:0'), true);
+    check('PW4 culverin + shell pair', pw('26:2', '26:2'), true);
+    check('PW4b culverin + bullet do not', pw('26:2', '26:1'), false);
+    -- THE exemption. A Longbow is 25:4 and a Shortbow 25:0, yet both fire every
+    -- arrow -- the server writes this case out by hand. Matching subskill here
+    -- would break every bow in the game.
+    check('PW5 longbow + a shortbow-class arrow STILL pair (Archery exemption)', pw('25:4', '25:0'), true);
+    check('PW5b shortbow + arrow pair', pw('25:0', '25:0'), true);
+    check('PW6 bow + bullet do not (different skill)', pw('25:4', '26:1'), false);
+    check('PW7 boomerang + pebble pair', pw('27:0', '27:0'), true);
+    check('PW8 boomerang + SHURIKEN do not (Throwing is subskill-checked)', pw('27:0', '27:3'), false);
+    -- The three standing special cases, all falling out of the one rule.
+    check('PW9 Animator + Automaton Oil pair (0:10 -- the ANIMATOR_FED case)', pw('0:10', '0:10'), true);
+    check('PW9b Animator P II refuses the same oil (0:11 vs 0:10)', pw('0:11', '0:10'), false);
+    check('PW10 a stat stick matches no real ranged weapon', pw('0:0', '26:1'), false);
+    check('PW10b ...nor a Coiste-class 1:0 one', pw('1:0', '25:4'), false);
+    check('PW11 fishing rod + bait pair', pw('48:0', '48:0'), true);
+    -- Unknown is nil, NOT false: every pre-Pair manifest and uncrawled custom
+    -- lands here, and constraining on it would switch AutoAmmo off for them.
+    check('PW12 unknown on the left is nil', pw(nil, '26:1'), nil);
+    check('PW12b unknown on the right is nil', pw('26:1', nil), nil);
+    check('PW12c garbage is nil, never false', pw('gun', '26:1'), nil);
+    -- Skill-only keys ("26"): the client resource carries Skill but no subskill.
+    check('PW13 skill-only vs full: same skill cannot PROVE a mismatch', pw('26', '26:0'), true);
+    check('PW13b skill-only vs full: a different skill still proves one', pw('26', '25:0'), false);
+    check('PW13c skill-only both sides', pw('27', '27'), true);
+    local sk, ss = dispatchM._splitPair('26:1');
+    check('PW14 splitPair reads both halves', tostring(sk) .. '/' .. tostring(ss), '26/1');
+    local sk2, ss2 = dispatchM._splitPair('26');
+    check('PW14b skill-only leaves the subskill nil', tostring(sk2) .. '/' .. tostring(ss2), '26/nil');
+    check('PW14c Archery is the exempt skill id', dispatchM.SKILL_ARCHERY, 25);
+
+    -- -----------------------------------------------------------------------
+    -- The IMPURE RIM. resolveAmmoPlan is pinned to death above, but it is
+    -- ammoOverlayFor that gathers rangeWorn/rangePair -- and if that wiring
+    -- ever breaks, f.rangeWorn is nil, the gate shuts, and AutoAmmo silently
+    -- does NOTHING FOREVER with no error anywhere. Drive the real rim against
+    -- a stub client so the wiring itself is a test, not an assumption.
+    -- -----------------------------------------------------------------------
+    local savedAshita = AshitaCore;
+    -- equip slot 2 = Range, 3 = Ammo; Index packs container*256 + slot.
+    local RANGE_ID, AMMO_ID = 17222, 12;   -- Hexagun (a gun), Gold Bullet
+    local RES = {
+        [17222] = { Name = { 'Hexagun' },     Skill = 26 },
+        [17160] = { Name = { 'Longbow' },     Skill = 25 },
+        [12]    = { Name = { 'Gold Bullet' }, Skill = 26 },
+    };
+    RES[10] = { Name = { 'Gold Arrow' }, Skill = 25 };
+    -- Ammo slot EMPTY on purpose: with the planned bullet already worn the rim
+    -- correctly holds, which would make this whole section pass for the wrong
+    -- reason. Both ammos sit in the bag so the counter can find them.
+    local bag = { [1] = { Id = RANGE_ID, Count = 1 },
+                  [2] = { Id = AMMO_ID,  Count = 40 },
+                  [3] = { Id = 10,       Count = 99 } };
+    AshitaCore = {
+        GetMemoryManager = function() return { GetInventory = function() return {
+            GetEquippedItem = function(_, slot)
+                if slot == 2 and RANGE_ID ~= nil then return { Index = 1 }; end
+                return { Index = 0 };   -- Ammo (3) and everything else: empty
+            end,
+            GetContainerItem = function(_, cid, idx) return (cid == 0) and bag[idx] or nil; end,
+            GetContainerCountMax = function(_, cid) return (cid == 0) and 3 or 0; end,
+        }; end }; end,
+        GetResourceManager = function() return { GetItemById = function(_, id) return RES[id]; end }; end,
+    };
+    local AS = { fmt = 2, jobs = { COR = { enabled = true, at = 0, ammo = {
+        { name = 'Gold Arrow',  id = 10, type = 'Archery',      pair = '25:0', ranged = true, ws = false, special = false },
+        { name = 'Gold Bullet', id = 12, type = 'Marksmanship', pair = '26:1', ranged = true, ws = false, special = false },
+    } } } };
+    local ctx = { player = { MainJob = 'COR' } };
+
+    local pair, nm = dispatchM._wornPair('range');
+    check('PW15 wornPair reads the Range slot through the client', nm, 'Hexagun');
+    check('PW15b ...and falls back to the resource Skill with no manifest Pair', pair, '26');
+    local eq = dispatchM._ammoOverlayFor(AS, ctx, 'Preshot', nil, false);
+    check('PW16 the rim reaches a plan at all (the silent-death guard)',
+        type(eq) == 'table' and eq.Ammo or nil, 'Gold Bullet');
+    -- The arrow is FIRST in the list and in stock; only the gun keeps it out.
+    check('PW16b ...and it is the weapon, not the order, that chose it',
+        (type(eq) == 'table' and eq.Ammo) ~= 'Gold Arrow', true);
+
+    RANGE_ID = nil; bag[1] = nil;   -- unequip the gun
+    check('PW17 no ranged weapon -> the rim plans nothing',
+        dispatchM._ammoOverlayFor(AS, ctx, 'Preshot', nil, false), nil);
+
+    RANGE_ID = 17160; bag[1] = { Id = 17160, Count = 1 };   -- a bow instead
+    local eq2 = dispatchM._ammoOverlayFor(AS, ctx, 'Preshot', nil, false);
+    check('PW18 swapping to a bow re-aims the pick with no config change',
+        type(eq2) == 'table' and eq2.Ammo or nil, 'Gold Arrow');
+    AshitaCore = savedAshita;
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -9864,6 +10504,61 @@ end)();
     check('AW21e throwing keeps its own bucket', aw.categoryOf('Fuma Shuriken', 'Throwing'), 'Throwing');
     check('AW21f unmatched marksmanship falls to Other', aw.categoryOf('Gold Quarrel', 'Marksmanship'), 'Other');
     check('AW21g trinket-ish types fall to Other', aw.categoryOf('Tiphia Sting', ''), 'Other');
+    -- v128: the EXACT split, from the server's own subskill, with the name kept only
+    -- as the fallback for entries added before Pair existed.
+    check('AW21h pair beats the name split -- bullets', aw.categoryOf('Whatsit', 'Marksmanship', '26:1'), 'Bullets');
+    check('AW21i pair beats the name split -- bolts',   aw.categoryOf('Whatsit', 'Marksmanship', '26:0'), 'Bolts');
+    -- The real datum that proves the name heuristic was never enough: Hauksbok
+    -- Bullet is server skill 26 SUBSKILL 0, i.e. a bolt. The name says Bullets and
+    -- is wrong; a crossbow is what actually fires it.
+    check('AW21j Hauksbok Bullet is a BOLT by subskill, whatever its name says',
+        aw.categoryOf('Hauksbok Bullet', 'Marksmanship', '26:0'), 'Bolts');
+    check('AW21k ...and the name alone still gets it wrong (why Pair wins)',
+        aw.categoryOf('Hauksbok Bullet', 'Marksmanship'), 'Bullets');
+    check('AW21l culverin shells have no tab of their own', aw.categoryOf('Cannon Shell', 'Marksmanship', '26:2'), 'Other');
+    -- categoryForPair answers for the RANGE weapon too -- one key space, both sides.
+    check('AW21m a gun fires Bullets',      aw.categoryForPair('26:1'), 'Bullets');
+    check('AW21n a crossbow fires Bolts',   aw.categoryForPair('26:0'), 'Bolts');
+    check('AW21o a longbow fires Arrows',   aw.categoryForPair('25:4'), 'Arrows');
+    check('AW21p a shortbow fires Arrows',  aw.categoryForPair('25:0'), 'Arrows');
+    check('AW21q a boomerang fires Throwing', aw.categoryForPair('27:0'), 'Throwing');
+    check('AW21r a harp fires nothing we tab', aw.categoryForPair('41:0'), nil);
+    check('AW21s a skill-only key cannot pick gun-vs-crossbow', aw.categoryForPair('26'), nil);
+    check('AW21t no key at all is nil, never a guess', aw.categoryForPair(nil), nil);
+    -- The pair must survive the file: it is what the engine pairs against Range.
+    do
+        local round = (loadstring or load)(aw._serialize({ COR = { enabled = true, at = 7, ammo = {
+            { name = 'Gold Bullet', id = 12, type = 'Marksmanship', pair = '26:1',
+              level = 40, ranged = true, ws = false, special = false },
+            { name = 'Old Entry',   id = 13, type = 'Marksmanship',
+              level = 1,  ranged = true, ws = false, special = false },
+        } } }))();
+        -- backfillPairs: the GUI teaching pre-v128 entries their key, across EVERY job.
+    do
+        local savedJobs, savedJob = aw.jobsData, aw.job;
+        aw.jobsData = {
+            RNG = { enabled = true, at = 0, ammo = {
+                { name = 'Iron Bullet', id = 17312, type = 'Marksmanship', ranged = true,  ws = false, special = false },
+                { name = 'Venom Bolt',  id = 18152, type = 'Marksmanship', ranged = false, ws = false, special = false },
+            } },
+            COR = { enabled = false, at = 0, ammo = {
+                { name = 'Gold Bullet', id = 12, type = 'Marksmanship', pair = '26:1', ranged = true, ws = false, special = false },
+            } },
+        };
+        local KEY = { [17312] = '26:1', [18152] = '26:0', [12] = '26:1' };
+        local n = aw.backfillPairs(function(id) return KEY[id]; end);
+        check('AW21w backfill stamps every job, not just the selected one', n, 2);
+        check('AW21x the bullet learns 26:1', aw.jobsData.RNG.ammo[1].pair, '26:1');
+        check('AW21y ...and the bolt learns 26:0, which is the whole point',
+              aw.jobsData.RNG.ammo[2].pair, '26:0');
+        check('AW21z a second sweep finds nothing (insert-only, idempotent)',
+              aw.backfillPairs(function(id) return KEY[id]; end), 0);
+        aw.jobsData, aw.job = savedJobs, savedJob;
+    end
+    check('AW21u serialize/load round-trips the pair', round.jobs.COR.ammo[1].pair, '26:1');
+        check('AW21v an entry with no pair stays without one (never invented)',
+            round.jobs.COR.ammo[2].pair, nil);
+    end
 
     -- swapAmmo: the filtered view's move (non-adjacent underneath)
     aw.jobsData.COR.ammo = {
@@ -12235,6 +12930,639 @@ end)();
     check('UIF21 absent showall stays off', ui3.showAll[1], false);
 
     package.loaded['dlac\\lib\\cmdqueue'] = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- LS. THE LOCKED SET (ADR 0022) -- `/dl lock set ...` as a frozen Claim.
+--
+-- Four commands that differ ONLY in which slots they freeze. That difference is
+-- invisible to a source pin and costs four Incursion runs to check by hand, so
+-- it is pinned here through the pure builder, and end-to-end through the real
+-- M.dispatch below (the NK26 pattern -- the wiring BETWEEN the seams is what
+-- has no other coverage).
+-- ---------------------------------------------------------------------------
+(function()
+    local D = dispatchM;
+    local B = D.buildLockedClaim;
+
+    -- the injected seams: no Ashita, no bags, no game
+    local WORN = { Main = 'Worn Sword', Head = 'Worn Hat', Ammo = nil, Ring1 = 'Worn Ring' };
+    local function wornOf(slot) return WORN[slot]; end
+    local BAGS = { ['set sword'] = 1, ['set hat'] = 1, ['worn sword'] = 1,
+                   ['worn hat'] = 1, ['worn ring'] = 1, ['karin obi'] = 1 };
+    local function locate(entry)
+        local nm = D._setEntryName(entry);
+        if nm == nil then return false, nil; end
+        if BAGS[string.lower(nm)] then return true, nil; end
+        if string.lower(nm) == 'parked hat' then return false, 'Mog Satchel'; end
+        return false, nil;                      -- nowhere this character can see
+    end
+    local function resolve(v)                   -- the dlac: marker collapser
+        local nm = string.lower(D._setEntryName(v) or '');
+        if nm == 'dlac:autoobi' then return 'Karin Obi'; end
+        return nil;                             -- everything else: no answer today
+    end
+    local function count(t) local n = 0; for _ in pairs(t) do n = n + 1; end return n; end
+
+    -- LS1. the four words are DATA -- the command branch, the /dl lock help and
+    -- these checks all read one table, so a fifth variant cannot drift.
+    check('LS1 four lock-set words, in help order',
+        table.concat(D._lockSetOrder, ','), 'set,set-loose,set-snapshot,set-current');
+    check('LS1b strict fills unnamed slots with remove', D._lockSetModes['set'].fill, 'remove');
+    check('LS1c loose fills nothing',                    D._lockSetModes['set-loose'].fill, nil);
+    check('LS1d snapshot fills from what is worn',       D._lockSetModes['set-snapshot'].fill, 'worn');
+    check('LS1e set-current is the only one needing no name',
+        D._lockSetModes['set-current'].needsName, false);
+
+    local SET = { Main = 'Set Sword', Head = 'Set Hat' };
+
+    -- LS2. STRICT: "hard reserve EVERYTHING, even empty slots" (Henrik).
+    local c2, m2, n2 = B(SET, 'remove', resolve, locate, wornOf);
+    check('LS2 strict claims all 16 slots',        n2, 16);
+    check('LS2b ...the set is what it names',      c2.Main, 'Set Sword');
+    check('LS2c ...and every other slot is EMPTIED', c2.Ammo, 'remove');
+    check('LS2d ...nothing is reported missing',   #m2, 0);
+    -- The NK3 lesson, on a new producer: a lowercase key is dropped by the
+    -- native engine's SLOT_ID map, so it would work in LAC and hold NOTHING
+    -- natively -- the divergence that ships broken in the mode people run.
+    check('LS2e keys are PROPER case',             c2.main, nil);
+
+    -- LS3. LOOSE: "reserve ONLY the slots that have anything on them, the rest
+    -- gets free use for any other claimants."
+    local c3, m3, n3 = B(SET, nil, resolve, locate, wornOf);
+    check('LS3 loose claims only the named slots', n3, 2);
+    check('LS3b ...and leaves the rest available', c3.Ammo, nil);
+    check('LS3c ...still holding what it named',   c3.Head, 'Set Hat');
+    check('LS3d ...with nothing missing',          #m3, 0);
+
+    -- LS4. SNAPSHOT: the set, plus what is worn everywhere else.
+    local c4, _, n4 = B(SET, 'worn', resolve, locate, wornOf);
+    check('LS4 snapshot claims all 16',            n4, 16);
+    check('LS4b the set still wins its own slots', c4.Main, 'Set Sword');
+    check('LS4c an unnamed slot takes what is worn', c4.Ring1, 'Worn Ring');
+    check('LS4d an unnamed EMPTY slot is held empty', c4.Ammo, 'remove');
+
+    -- LS5. set-current: no set at all, every slot from what is worn, strictly.
+    local c5, m5, n5 = B(nil, 'worn', resolve, locate, wornOf);
+    check('LS5 set-current claims all 16',         n5, 16);
+    check('LS5b ...from what is worn',             c5.Head, 'Worn Hat');
+    check('LS5c ...empty stays empty',             c5.Ammo, 'remove');
+    check('LS5d ...and it can never report a miss', #m5, 0);
+
+    -- LS6. sets are authored in any case; the claim is not.
+    local c6 = B({ main = 'Set Sword', HEAD = 'Set Hat' }, nil, resolve, locate, wornOf);
+    check('LS6 a lowercase set key is matched',    c6.Main, 'Set Sword');
+    check('LS6b ...and an uppercase one',          c6.Head, 'Set Hat');
+
+    -- LS7. dlac: markers are COLLAPSED at arm -- the reason a locked obi cannot
+    -- follow the weather any more (Henrik: "Once you lock, it shall be constant").
+    local c7 = B({ Waist = 'dlac:AutoObi' }, nil, resolve, locate, wornOf);
+    check('LS7 a virtual is frozen to its answer', c7.Waist, 'Karin Obi');
+
+    -- LS8. a marker with NO answer right now: the slot goes loose, and the
+    -- marker is named rather than silently dropped.
+    local c8, m8 = B({ Main = 'dlac:AutoStaff' }, 'remove', resolve, locate, wornOf);
+    check('LS8 an unresolvable marker is not held', c8.Main, nil);
+    check('LS8b ...it is reported',                 #m8, 1);
+    check('LS8c ...by marker name',                 m8[1] and m8[1].item, 'dlac:AutoStaff');
+    check('LS8d ...and strict does NOT empty it instead', c8.Main, nil);
+
+    -- LS9. THE INCURSION CASE: a named piece that is not on you. The slot goes
+    -- LOOSE (available), and we say where the gear actually is.
+    local c9, m9, n9 = B({ Main = 'Set Sword', Head = 'Parked Hat', Body = 'Gone Forever' },
+                         'remove', resolve, locate, wornOf);
+    check('LS9 the piece we have is held',          c9.Main, 'Set Sword');
+    check('LS9b a parked piece is NOT held',        c9.Head, nil);
+    check('LS9c ...and is not emptied either -- it is LOOSE', c9.Head, nil);
+    check('LS9d two pieces are reported',           #m9, 2);
+    check('LS9e ...one located',                    m9[1] and m9[1].where, 'Mog Satchel');
+    check('LS9f ...one nowhere to be found',        m9[2] and m9[2].where, nil);
+    check('LS9g and the other 13 slots still emptied strictly', n9, 14);
+
+    -- LS10. 'remove' and 'displaced' are equip LITERALS, not item names: they
+    -- can never be missing from your bags, so they skip the locate check.
+    local c10, m10 = B({ Ammo = 'remove', Range = 'displaced' }, nil, resolve, locate, wornOf);
+    check('LS10 a remove entry is held as written', c10.Ammo, 'remove');
+    check('LS10b displaced too',                    c10.Range, 'displaced');
+    check('LS10c neither counts as missing',        #m10, 0);
+
+    -- LS11. 'ignore' is the set author saying "not mine": leave the slot alone,
+    -- and do NOT report it -- nothing is missing.
+    local c11, m11 = B({ Ammo = 'ignore' }, nil, resolve, locate, wornOf);
+    check('LS11 an ignore entry is not claimed',    c11.Ammo, nil);
+    check('LS11b ...and is not reported missing',   #m11, 0);
+
+    -- LS12. an entry TABLE (augment / Bag spec) survives whole -- freezing to a
+    -- bare name would let planSet pick the wrong copy of a ring you own twice.
+    local aug = { Name = 'Set Sword', Augment = { 'Attack+5' } };
+    local c12 = B({ Main = aug }, nil, resolve, locate, wornOf);
+    check('LS12 an augment spec is frozen intact',  c12.Main, aug);
+
+    -- LS13. the stored record + its accessors
+    local savedLocked = D.lockedSet;
+    check('LS13 nothing locked to begin with',      D.lockedSetOn(), false);
+    check('LS13b ...so there is no claim',          D.lockedSetClaim(), nil);
+    check('LS13c ...and no label',                  D.lockedSetLabel(), nil);
+    D.setLockedSet({ name = 'Incursion T3', mode = 'set', claim = { Head = 'Set Hat' }, n = 1 });
+    check('LS13d armed',                            D.lockedSetOn(), true);
+    check('LS13e ...labelled by set name',          D.lockedSetLabel(), 'Incursion T3');
+    local claimA = D.lockedSetClaim();
+    claimA.Head = 'TAMPERED';
+    check('LS13f the claim is a COPY -- the apply path cannot reach the frozen one',
+        D.lockedSetClaim().Head, 'Set Hat');
+    D.setLockedSet({ name = nil, mode = 'set-current', claim = { Head = 'Worn Hat' }, n = 1 });
+    check('LS13g set-current has no set name, so it says what it is',
+        D.lockedSetLabel(), 'your gear as it was');
+    check('LS13h releasing hands back the label',   D.clearLockedSet(), 'your gear as it was');
+    check('LS13i ...and it is gone',                D.lockedSetOn(), false);
+    check('LS13j releasing nothing returns nothing', D.clearLockedSet(), nil);
+
+    -- LS14. LIFETIME -- it shares nakedWorldWatch (ADR 0022). Logging in locked
+    -- to last night's set is the relog failure ADR 0021 calls the worst outcome,
+    -- wearing different clothes: a naked player knows instantly, a locked one
+    -- just finds their gear mysteriously stuck.
+    local savedNaked = D.nakedArmed;
+    D.nakedArmed = false;
+    D.setLockedSet({ name = 'Incursion T3', mode = 'set', claim = { Head = 'Set Hat' }, n = 1 });
+    check('LS14 same job, in the world -> stays locked', D.nakedWorldWatch(7, 7), nil);
+    check('LS14b ...and it is still armed',              D.lockedSetOn(), true);
+    local why14, drop14 = D.nakedWorldWatch(0, 7);
+    check('LS14c character select releases it',          why14, 'world');
+    check('LS14d ...and it is gone',                     D.lockedSetOn(), false);
+    check('LS14e ...the caller is told what dropped',    drop14 and drop14.locked, 'Incursion T3');
+    check('LS14f ...and that naked was not part of it',  drop14 and drop14.naked, false);
+    D.setLockedSet({ name = 'Incursion T3', mode = 'set', claim = { Head = 'Set Hat' }, n = 1 });
+    local why14b, drop14b = D.nakedWorldWatch(3, 7);
+    check('LS14g a JOB CHANGE releases it too',          why14b, 'job');
+    check('LS14h ...naming it, because someone is there to read the line',
+        drop14b and drop14b.locked, 'Incursion T3');
+    -- both can drop in one pass, and the watch only ever CLEARS
+    D.setLockedSet({ name = 'Incursion T3', mode = 'set', claim = { Head = 'Set Hat' }, n = 1 });
+    D.nakedArmed = true;
+    local _, drop14c = D.nakedWorldWatch(0, 7);
+    check('LS14i both drop together',
+        (drop14c and drop14c.naked == true and drop14c.locked == 'Incursion T3'), true);
+    check('LS14j ...and neither is re-armed', D.nakedOn() == false and D.lockedSetOn() == false, true);
+    -- LS14k. SLOT LOCKS SHARE IT TOO (v124, Henrik: "I don't want locks to
+    -- outlive a relog, it should not outlive a main job change nor a log").
+    -- Nothing used to watch them, so they rode straight through character select
+    -- -- an Ashita addon survives a logout. Before v123 the engine self-swap
+    -- happened to wipe them, which looked like a lifetime rule and was really a
+    -- bug; removing that accident left the real gap visible.
+    D.nakedArmed = false;
+    D.lockedSet  = nil;
+    D.locks['head'], D.locks['ammo'] = true, true;
+    check('LS14k a lock alone is enough to arm the watch', D.worldWatch(7, 7), nil);
+    check('LS14l ...and it survives standing still',       D.locks['head'], true);
+    local why14d, drop14d = D.worldWatch(3, 7);
+    check('LS14m a JOB CHANGE releases slot locks',        why14d, 'job');
+    check('LS14n ...all of them',                          next(D.locks), nil);
+    check('LS14o ...counted for the chat line',            drop14d and drop14d.locks, 2);
+    D.locks['head'] = true;
+    check('LS14p leaving the world releases them too',     D.worldWatch(0, 7), 'world');
+    check('LS14q ...leaving nothing behind',               next(D.locks), nil);
+    -- ...and with nothing held at all the watch stays silent, so the tick does
+    -- not write the mirror on every frame of character select.
+    check('LS14r nothing held -> the watch does nothing',  D.worldWatch(0, 7), nil);
+    check('LS14s the pre-v124 name is the same function',
+        rawequal(D.nakedWorldWatch, D.worldWatch), true);
+
+    D.nakedArmed = savedNaked;
+    D.lockedSet  = savedLocked;
+
+    -- LS15. PRECEDENCE, from the one authority. The locked set rides the EXISTING
+    -- Locks row, so "a locked slot moves for Naked and Pins, nothing else" is a
+    -- statement about the default rank order -- not about new code.
+    local def = D._arbDefaultOrder;
+    local rank = {};
+    for i, n in ipairs(def) do rank[n] = i; end
+    check('LS15 Naked outranks a lock', rank['Naked'] < rank['Locks'], true);
+    check('LS15b Pins outrank a lock (on demand, universally understood)',
+        rank['Pins'] < rank['Locks'], true);
+    check('LS15c nothing else does', (function()
+        for _, n in ipairs(def) do
+            if n == 'Locks' then return true; end
+            if n ~= 'Naked' and n ~= 'Pins' then return n; end
+        end
+        return 'Locks row missing';
+    end)(), true);
+    check('LS15d no new row was added', #def, 10);
+
+    -- LS16. END TO END through the REAL M.dispatch (the NK26 pattern). A locked
+    -- set with NOTHING else armed -- no triggers, no pins, no hobby, no ammo --
+    -- must still reach the equip door, which is the path BOTH bail guards have to
+    -- let through. This is the check that would have caught the original bug.
+    local savedPlayer, savedFunc, savedState = TEST_PLAYER, rawget(_G, 'gFunc'), rawget(_G, 'gState');
+    TEST_PLAYER = { MainJob = 'WHM', MainJobLevel = 75, SubJob = 'BLM', SubJobLevel = 37,
+                    MainJobSync = 75, SubJobSync = 37, Status = 'Idle', IsMoving = false };
+    local wrote = {};
+    _G.gFunc  = { EquipSet = function(t) for k, v in pairs(t or {}) do wrote[k] = v; end end };
+    _G.gState = { CurrentCall = 'N/A', Disabled = {} };
+
+    local strictClaim = B({ Main = 'Set Sword', Head = 'Set Hat' }, 'remove', resolve, locate, wornOf);
+    D.setLockedSet({ name = 'Incursion T3', mode = 'set', claim = strictClaim, n = 16 });
+    local okD, errD = pcall(D.dispatch, 'Default');
+    check('LS16 a bare Default with only a locked set does not throw', okD, true);
+    if not okD then print('LS16 error: ' .. tostring(errD)); end
+    check('LS16b it reaches the equip door with all 16 slots', count(wrote), 16);
+    check('LS16c the set holds its own slots',                 wrote.Main, 'Set Sword');
+    check('LS16d ...and strict empties the rest',              wrote.Ammo, 'remove');
+
+    -- LS17. A plain slot lock can never sabotage the hold. layerRespectsLocks
+    -- asks `rank > lockRank` about the Locks row ITSELF, which is false -- so the
+    -- hold punches through M.locks. That is exactly why arming no longer has to
+    -- destroy the player's own locks first (ADR 0021 listed doing so as a defect).
+    wrote = {};
+    D.locks['head'] = true;
+    pcall(D.dispatch, 'Default');
+    check('LS17 a stale lock does not strip the slot out of the hold', wrote.Head, 'Set Hat');
+    check('LS17b ...and the player keeps their lock',                  D.locks['head'], true);
+    D.locks['head'] = nil;
+
+    -- LS18. LOOSE really is available: the slots the hold left alone are simply
+    -- not written by this layer.
+    wrote = {};
+    local looseClaim = B({ Main = 'Set Sword', Head = 'Set Hat' }, nil, resolve, locate, wornOf);
+    D.setLockedSet({ name = 'Incursion T3', mode = 'set-loose', claim = looseClaim, n = 2 });
+    pcall(D.dispatch, 'Default');
+    check('LS18 loose writes only the slots it holds', count(wrote), 2);
+    check('LS18b ...and nothing lands in the rest',    wrote.Ammo, nil);
+
+    -- LS19. NAKED OUTRANKS IT (Henrik: "Naked means naked, whatever everyone
+    -- else thinks"). The hold genuinely tries and the Arbiter genuinely blocks
+    -- it -- Locks applies first, Naked overwrites all 16 -- so releasing the
+    -- strip hands the slots straight back on the next pass.
+    wrote = {};
+    D.nakedArmed = true;
+    pcall(D.dispatch, 'Default');
+    check('LS19 naked beats the locked set in every slot', count(wrote), 16);
+    check('LS19b ...including one the hold named',         wrote.Main, 'remove');
+    D.nakedArmed = false;
+    wrote = {};
+    pcall(D.dispatch, 'Default');
+    check('LS19c dressed again, the hold takes its slots back', wrote.Main, 'Set Sword');
+
+    D.setLockedSet(nil);
+    wrote = {};
+    pcall(D.dispatch, 'Default');
+    check('LS20 released, a bare dispatch writes nothing at all', next(wrote), nil);
+
+    TEST_PLAYER = savedPlayer;
+    _G.gFunc, _G.gState = savedFunc, savedState;
+    D.nakedArmed = savedNaked;
+    D.lockedSet  = savedLocked;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- CMD. THE /dl COMMAND SURFACE, DRIVEN FOR REAL (2026-07-26).
+--
+-- Until this section every /dl subcommand was tested by SEARCHING dispatch.lua
+-- for its own name. NK23 records why: "dispatch's handler only registers inside
+-- engineActive(), which is false headlessly, so the whitelist cannot be driven
+-- -- pin it as SOURCE instead." A source pin proves a command is spelled right
+-- and sits in the whitelist. It cannot see what the command DOES -- which is
+-- exactly how `/dl lock set` shipped present, correctly spelled, whitelisted,
+-- and INERT in native mode: its rawget(_G,'gEquip') bracket is nil in the addon
+-- state, so the equip fell to the unbracketed path, landed in equipengine's
+-- buffer, and the next fireEvent's bufferClear wiped it before it could send.
+--
+-- engineActive() is `inLac() or nativeEngine() ~= nil`, so the ADDON-state copy
+-- of the engine -- inert since v1 -- becomes the LIVE one when the native flag
+-- is on (the arming rule NEB1 pins). Arm it, re-load dispatch, and the real
+-- command handler registers and is callable.
+--
+-- THIS LOADS A SECOND dispatch MODULE into a suite whose other checks hold a
+-- reference to the first, so every shared thing it touches is saved and put
+-- back: package.loaded (dispatch + chatfmt), gFunc/gState, profiles.nativeMode
+-- and profiles.dataDir, ashita.events, equipengine's onEvent and tripwire.
+-- dataDir is redirected to tests\ because the engineActive block runs
+-- loadModeState/saveModeState AT LOAD -- unredirected, a plain test run would
+-- write modestate.lua into a real character's folder.
+--
+-- chatfmt is stubbed BEFORE the load, never after: dispatch.lua:139 binds its
+-- shadowed `print` once at load time, so a later _G.print override is not seen.
+-- ---------------------------------------------------------------------------
+(function()
+    local SEP  = string.char(92);
+    local prof = package.loaded['dlac\\profiles'];
+    local eng  = package.loaded['dlac\\feature\\equipengine'];
+    check('CMD0 profiles is loaded',     type(prof), 'table');
+    check('CMD0b equipengine is loaded', type(eng),  'table');
+    if type(prof) ~= 'table' or type(eng) ~= 'table' then return; end
+
+    local saved = {
+        nativeMode = prof.nativeMode,        dataDir = prof.dataDir,
+        dispatch   = package.loaded['dlac\\dispatch'],
+        chatfmt    = package.loaded['dlac\\chatfmt'],
+        gFunc      = rawget(_G, 'gFunc'),    gState  = rawget(_G, 'gState'),
+        reg        = ashita.events.register, unreg   = ashita.events.unregister,
+        player     = TEST_PLAYER,
+        onEvent    = eng.onEvent,            tripped = eng.state.tripped,
+    };
+
+    -- Captured chat. `said` is REASSIGNED per command and the stub closes over
+    -- the variable rather than the table, so each run reads only its own lines.
+    local said = {};
+    local function capture(...)
+        local parts = {};
+        for i = 1, select('#', ...) do parts[#parts + 1] = tostring((select(i, ...))); end
+        said[#said + 1] = table.concat(parts, ' ');
+    end
+    package.loaded['dlac\\chatfmt'] = { print = capture, warn = capture, err = capture };
+
+    -- Arm the native engine: addon state (no gFunc) + flag on + tripwire clear.
+    prof.nativeMode = function() return true; end
+    prof.dataDir    = function() return 'tests' .. SEP; end
+    _G.gFunc, _G.gState = nil, nil;
+    eng.state.tripped = false;
+
+    local handlers = {};
+    ashita.events.register   = function(ev, nm, fn) handlers[ev] = fn; end
+    ashita.events.unregister = function() end
+    local okLoad, D = pcall(dofile, 'dispatch.lua');
+    ashita.events.register, ashita.events.unregister = saved.reg, saved.unreg;
+
+    check('CMD1 dispatch re-loads with the native engine armed', okLoad, true);
+    if not okLoad then print('CMD1 error: ' .. tostring(D)); end
+    check('CMD2 ...and the command handler registers for real',
+          okLoad and type(handlers['command']), 'function');
+    check('CMD2b ...alongside the frame tick',
+          okLoad and type(handlers['d3d_present']), 'function');
+
+    if okLoad and type(handlers['command']) == 'function' then
+        TEST_PLAYER = { MainJob = 'WHM', MainJobLevel = 75, SubJob = 'BLM', SubJobLevel = 37,
+                        MainJobSync = 75, SubJobSync = 37, Status = 'Idle', IsMoving = false };
+
+        -- One /dl line, driven exactly as Ashita delivers it: an event table
+        -- whose `blocked` field the handler sets when it owns the command.
+        local function run(line)
+            said = {};
+            local e = { command = line, blocked = false };
+            local ok, err = pcall(handlers['command'], e);
+            if not ok then said[#said + 1] = 'ERROR: ' .. tostring(err); end
+            return e, ok;
+        end
+        local function saidHas(frag)
+            for _, l in ipairs(said) do
+                if string.find(l, frag, 1, true) ~= nil then return true; end
+            end
+            return false;
+        end
+        local function saidText() return table.concat(said, ' | '); end
+
+        -- This is the fact the whole section rests on: the command answered
+        -- with NO gFunc in the state, so it is the addon-side native engine
+        -- replying, not LuaAshitacast's copy.
+        check('CMD3 no gFunc present -- this is the addon-state engine',
+              rawget(_G, 'gFunc'), nil);
+
+        -- The whitelist, driven instead of grepped (the v46 trap NK23 pins as
+        -- source): an unknown subcommand must fall through UNBLOCKED and silent,
+        -- or it looks like the command does not exist.
+        local e4 = run('/dl bogus');
+        check('CMD4 an unknown subcommand is not blocked', e4.blocked, false);
+        check('CMD4b ...and prints nothing',               #said, 0);
+
+        local e5 = run('/dl lock');
+        check('CMD5 /dl lock is owned (blocked)',   e5.blocked, true);
+        check('CMD5b ...and reports the lock state', saidHas('locked slots:'), true);
+
+        -- slot locks, round trip through the REAL command
+        run('/dl lock head on');
+        check('CMD6 /dl lock head on sets the lock', D.locks['head'], true);
+        check('CMD6b ...and says so',                saidHas('lock head ON'), true);
+        run('/dl lock head off');
+        check('CMD6c /dl lock head off releases it', D.locks['head'], nil);
+        run('/dl lock all on');
+        local nAll = 0;
+        for _ in pairs(D.locks) do nAll = nAll + 1; end
+        check('CMD6d /dl lock all on locks all 16',  nAll, 16);
+        run('/dl lock all off');
+        check('CMD6e /dl lock all off clears them',  next(D.locks), nil);
+        local e6 = run('/dl lock nosuchslot');
+        check('CMD6f an unknown slot is named back', saidHas('unknown slot: nosuchslot'), true);
+        check('CMD6g ...and still owns the command', e6.blocked, true);
+
+        -- the strip (ADR 0021), through the command rather than the flag
+        run('/dl naked');
+        check('CMD7 /dl naked arms the strip',        D.nakedOn(), true);
+        check('CMD7b ...and states the TP wipe once', saidHas('zeroes your TP'), true);
+        run('/dl naked');
+        check('CMD7c a second /dl naked never dresses you', D.nakedOn(), true);
+        check('CMD7d ...it says you already are',     saidHas('already naked'), true);
+        run('/dl dress');
+        check('CMD7e /dl dress releases it',          D.nakedOn(), false);
+        run('/dl naked');
+        run('/dl naked off');
+        check('CMD7f /dl naked off releases it too',  D.nakedOn(), false);
+
+        -- /dl lock set: the name check, which must refuse BEFORE it touches
+        -- anything (a failed name that had already cleared the locks would
+        -- leave the player half-unlocked with nothing equipped).
+        run('/dl lock head on');
+        local e8 = run('/dl lock set NoSuchSetName');
+        check('CMD8 /dl lock set owns the command',   e8.blocked, true);
+        check('CMD8b an unknown set is refused by name',
+              saidHas('no committed set named'), true);
+        check('CMD8c ...and the refusal leaves existing locks alone',
+              D.locks['head'], true);
+        run('/dl lock all off');
+        run('/dl lock set');
+        check('CMD9 /dl lock set with no name prints usage',
+              saidHas('usage: /dl lock set'), true);
+
+        if not saidHas('usage: /dl lock set') then print('CMD9 said: ' .. saidText()); end
+
+        -- THE LOCKED SET (ADR 0022), through the real commands. Headless there
+        -- is no AshitaCore, so wornItemName answers nil for every slot and
+        -- set-current freezes sixteen empties -- which is still the whole arm ->
+        -- claim -> release path, and the only one that proves the four command
+        -- words reach the builder at all.
+        run('/dl lock set-current');
+        check('CMD10 /dl lock set-current arms a hold', D.lockedSetOn(), true);
+        check('CMD10b ...strictly, all 16 slots',       D.lockedSet.n, 16);
+        check('CMD10c ...and says what it locked',      saidHas('LOCKED to'), true);
+        check('CMD10d ...naming the release door',      saidHas('/dl lock set off'), true);
+
+        -- The state readout + the four-variant help Henrik asked for by name.
+        run('/dl lock');
+        check('CMD11 /dl lock reports the held set',    saidHas('locked set:'), true);
+        local allFour = true;
+        for _, w in ipairs(D._lockSetOrder) do
+            if not saidHas('/dl lock ' .. w) then allFour = false; end
+        end
+        check('CMD11b ...and lists every variant',      allFour, true);
+        check('CMD11c ...with the slot-lock line too',  saidHas('/dl lock <slot|all>'), true);
+
+        -- The narrow door.
+        run('/dl lock set off');
+        check('CMD12 /dl lock set off releases it',     D.lockedSetOn(), false);
+        check('CMD12b ...and says which set it was',    saidHas('released'), true);
+        run('/dl lock set off');
+        check('CMD12c releasing nothing is not an error', saidHas('no set is locked'), true);
+
+        -- COEXISTENCE (Henrik, 2026-07-26): arming must no longer destroy the
+        -- player's own locks. Today's code cleared them because they would strip
+        -- slots out of the one-shot equip; a claim outranks them instead, so the
+        -- lock is merely outranked while held and is still there on release.
+        run('/dl lock ammo on');
+        run('/dl lock set-current');
+        check('CMD13 arming a hold leaves plain locks alone', D.locks['ammo'], true);
+        check('CMD13b ...and the hold is armed anyway',       D.lockedSetOn(), true);
+
+        -- The universal door: "/dl lock all off" is one word to the player, so
+        -- it lets go of everything that word covers -- and says so.
+        run('/dl lock all off');
+        check('CMD14 /dl lock all off clears the slot locks', next(D.locks), nil);
+        check('CMD14b ...and releases the held set too',      D.lockedSetOn(), false);
+        check('CMD14c ...saying it did',                      saidHas('released the locked set'), true);
+
+        -- Every variant refuses an unknown set BY NAME, before touching state.
+        run('/dl lock ring1 on');
+        local e15 = run('/dl lock set-loose NoSuchSetName');
+        check('CMD15 set-loose owns the command',        e15.blocked, true);
+        check('CMD15b ...refuses an unknown name',       saidHas('no committed set named'), true);
+        check('CMD15c ...arms nothing',                  D.lockedSetOn(), false);
+        check('CMD15d ...and leaves existing locks alone', D.locks['ring1'], true);
+        run('/dl lock snapshot');   -- not a word: falls through to the slot branch
+        check('CMD15e a near-miss word is an unknown SLOT, not a silent no-op',
+              saidHas('unknown slot: snapshot'), true);
+        run('/dl lock all off');
+    end
+
+    -- put every shared thing back exactly as it was
+    prof.nativeMode, prof.dataDir   = saved.nativeMode, saved.dataDir;
+    package.loaded['dlac\\dispatch'] = saved.dispatch;
+    package.loaded['dlac\\chatfmt']  = saved.chatfmt;
+    _G.gFunc, _G.gState             = saved.gFunc, saved.gState;
+    eng.onEvent, eng.state.tripped  = saved.onEvent, saved.tripped;
+    TEST_PLAYER                     = saved.player;
+    os.remove('tests' .. SEP .. 'modestate.lua');
+    os.remove('tests' .. SEP .. 'arbstate.lua');
+end)();
+
+-- ---------------------------------------------------------------------------
+-- TRC. THE TRACE MUST NOT OUTLIVE THE WORLD IT DESCRIBED (field, 2026-07-26).
+--
+-- Mindie's boot: the install latch refused for ~2s (world not settled), the
+-- Default dispatch built its trace lines against the EMPTY store -- "[NOT
+-- FOUND in profile Sets]", true at that moment -- then the install landed,
+-- equips worked, and /dl why kept printing the stale NOT FOUND lines with a
+-- FRESH timestamp for the rest of the session. Cause: the retrace gate's sig
+-- carries rules, locks and every overlay, but nothing about the SETS STORE,
+-- and installSets' own re-dispatch therefore found the sig unchanged.
+-- The law already exists as v118's "THE INSTALL INVALIDATES THE BELIEF";
+-- M.modesRev is bumped by every install and re-flatten -- it belongs in the
+-- sig. This section drives the real handler + dispatch exactly like CMD.
+-- ---------------------------------------------------------------------------
+(function()
+    local SEP  = string.char(92);
+    local prof = package.loaded['dlac\\profiles'];
+    local eng  = package.loaded['dlac\\feature\\equipengine'];
+    if type(prof) ~= 'table' or type(eng) ~= 'table' then return; end
+
+    local saved = {
+        nativeMode = prof.nativeMode,        dataDir = prof.dataDir,
+        dispatch   = package.loaded['dlac\\dispatch'],
+        chatfmt    = package.loaded['dlac\\chatfmt'],
+        gFunc      = rawget(_G, 'gFunc'),    gState  = rawget(_G, 'gState'),
+        gProfile   = rawget(_G, 'gProfile'),
+        reg        = ashita.events.register, unreg   = ashita.events.unregister,
+        player     = TEST_PLAYER,
+        onEvent    = eng.onEvent,            tripped = eng.state.tripped,
+    };
+
+    local said = {};
+    local function capture(...)
+        local parts = {};
+        for i = 1, select('#', ...) do parts[#parts + 1] = tostring((select(i, ...))); end
+        said[#said + 1] = table.concat(parts, ' ');
+    end
+    package.loaded['dlac\\chatfmt'] = { print = capture, warn = capture, err = capture };
+
+    -- The world: WHM idle, native armed, no LAC state, no stray gProfile.
+    prof.nativeMode = function() return true; end
+    prof.dataDir    = function() return 'tests' .. SEP; end
+    _G.gFunc, _G.gState, _G.gProfile = nil, nil, nil;
+    eng.state.tripped = false;
+    TEST_PLAYER = { MainJob = 'WHM', MainJobLevel = 75, SubJob = 'BLM', SubJobLevel = 37,
+                    MainJobSync = 75, SubJobSync = 37, Status = 'Idle', IsMoving = false };
+
+    -- One Default rule aimed at a set that does not exist yet: the exact boot
+    -- shape (rules load before the install latch lands).
+    local trigDir  = 'tests' .. SEP .. 'triggers';
+    local trigPath = trigDir .. SEP .. 'WHM.lua';
+    pcall(function() os.execute('mkdir "' .. trigDir .. '" 2>nul'); end);
+    local tf = io.open(trigPath, 'w');
+    if tf ~= nil then
+        tf:write("return { Default = { { when = { status = 'Idle' }, set = 'Idle' } } };\n");
+        tf:close();
+    end
+
+    local handlers = {};
+    ashita.events.register   = function(ev, nm, fn) handlers[ev] = fn; end
+    ashita.events.unregister = function() end
+    local okLoad, D = pcall(dofile, 'dispatch.lua');
+    ashita.events.register, ashita.events.unregister = saved.reg, saved.unreg;
+
+    check('TRC0 dispatch loads native-armed', okLoad, true);
+    if okLoad and type(handlers['command']) == 'function' then
+        local function run(line)
+            said = {};
+            local e = { command = line, blocked = false };
+            local ok, err = pcall(handlers['command'], e);
+            if not ok then said[#said + 1] = 'ERROR: ' .. tostring(err); end
+            return e, ok;
+        end
+        local function saidHas(frag)
+            for _, l in ipairs(said) do
+                if string.find(l, frag, 1, true) ~= nil then return true; end
+            end
+            return false;
+        end
+
+        -- Boot window: empty store. The NOT FOUND line is TRUE here.
+        D._nativeSets = nil;
+        pcall(D.dispatch, 'Default');
+        run('/dl why');
+        check('TRC1 empty store: the trace says NOT FOUND (true today)',
+              saidHas('NOT FOUND in profile Sets'), true);
+        check('TRC1b ...for the rule that matched', saidHas('set Idle'), true);
+
+        -- The install lands: the store is swapped and modesRev bumped -- the
+        -- two things EVERY installSets branch does (5668/5714). The next
+        -- dispatch must rebuild the trace against the new world.
+        D._nativeSets = { Dynamic = { Idle = { Body = 'Test Robe' } },
+                          Idle    = { Body = 'Test Robe' } };
+        D.modesRev = (D.modesRev or 0) + 1;
+        pcall(D.dispatch, 'Default');
+        run('/dl why');
+        check('TRC2 after the install, the trace tells the truth',
+              saidHas('NOT FOUND in profile Sets'), false);
+        check('TRC2b ...still tracing the same rule', saidHas('set Idle'), true);
+
+        -- And the reverse: the store DIES (a refused install empties it --
+        -- 5689 -- after bumping modesRev at 5668). The trace must go stale
+        -- honestly: NOT FOUND returns.
+        D._nativeSets = nil;
+        D.modesRev = (D.modesRev or 0) + 1;
+        pcall(D.dispatch, 'Default');
+        run('/dl why');
+        check('TRC3 a dying store un-tells it too',
+              saidHas('NOT FOUND in profile Sets'), true);
+    end
+
+    -- put every shared thing back exactly as it was
+    prof.nativeMode, prof.dataDir    = saved.nativeMode, saved.dataDir;
+    package.loaded['dlac\\dispatch'] = saved.dispatch;
+    package.loaded['dlac\\chatfmt']  = saved.chatfmt;
+    _G.gFunc, _G.gState              = saved.gFunc, saved.gState;
+    _G.gProfile                      = saved.gProfile;
+    eng.onEvent, eng.state.tripped   = saved.onEvent, saved.tripped;
+    TEST_PLAYER                      = saved.player;
+    os.remove(trigPath);
+    os.remove('tests' .. SEP .. 'modestate.lua');
+    os.remove('tests' .. SEP .. 'arbstate.lua');
 end)();
 
 -- ---------------------------------------------------------------------------

@@ -5524,3 +5524,96 @@ must still reach the equip door), so NK26 now runs it end to end and asserts no 
 `_G`. And a "test seam" that the production code calls as a **file-local** is not a seam at all:
 `_applyDirect` had to be changed to call `M._nakedArmed()` before NK29 could stub it —
 mutation-verified in both directions, which is the only way to know a new test can fail.
+
+## Session "a locked set is a claim" (2026-07-26, on `dev` — engine v124, addon 2026.07.26c)
+
+**Theme:** the bug the naked session found and deliberately left ("its own commit") turned out
+not to want a fix. It wanted deleting. Recorded as
+[ADR 0022](adr/0022-locked-set-is-a-claim.md).
+
+**Why it was invisible, which matters more than the bug.** `/dl lock set` was inert in native
+mode: `rawget(_G,'gEquip')` is nil in the addon state, so the equip fell to the unbracketed path
+and `equipengine`'s next `bufferClear` wiped it — then it locked all 16 slots onto whatever you
+were wearing and printed success. Two things hid it. First, **three other unbracketed
+`M.dispatch('Default')` calls in the same file have the identical flaw and are harmless** —
+`installSets` twice and `/dl mode` — because Default is idempotent and re-fires every 0.4s, so
+the next tick heals them. `/dl lock set` was the one site where that is structurally impossible:
+the locks it installed were exactly what stopped the next dispatch from equipping. Second,
+**every `/dl` subcommand was tested by grepping `dispatch.lua` for its own name** (NK23 says so
+outright: the handler only registers inside `engineActive()`, false headlessly, "so the whitelist
+cannot be driven — pin it as SOURCE instead"). The command was present, spelled right, and
+whitelisted. So the first commit was a test harness, not a fix: arm the native flag, re-load
+dispatch, capture the registered handler, and call `/dl` commands with the game closed.
+
+**The design was Henrik's, and it went somewhere I did not propose.** I offered a new `Held`
+Arbiter row at rank 2. He pushed back on the premise — *"I am personally also a bit confused to
+why we aren't simply using lock when it would do what we needed, why we must create new
+categories for every function"* — and he was right: to a player "lock" is one word, and the
+Priority panel's tooltip already described `/dl lock`, the Equipped tab and the Sets tab as one
+row. So it rides the **existing Locks row**. `arbResolve` already returned "slot → item **or**
+LOCK_HELD", so the row carries real item names for held slots and the veto sentinel for plainly
+locked ones; the only new machinery is an `applyClaim['Locks']` closure, which a veto never
+needed. **One thing genuinely cannot be a lock and is worth not re-deriving**: a lock cannot put
+gear on. `equipResolved` writes `W()[slot] = nil` and never a value. That is why the old command
+had to equip first, and why the hold has to be a claim internally even though it is a lock to the
+player.
+
+**I then proposed moving `Locks` above `Pins` and was overruled, correctly.** Henrik had said
+"whatever happens, that slot is locked (besides naked)", which is not what the default order
+does — `layerRespectsLocks` is false for Pins too. His ruling: *"Pins needs to be above locks,
+cause pins are always on demand and is universally understood to be there when needed."* So
+`ARB_ORDER_DEFAULT` is untouched, and this change alters no precedence at all — which also
+avoided a split rollout, since `arbOrder` keeps the user's order for any row their `arbstate.lua`
+already lists, so a new default would only have reached players who never opened that panel.
+
+**Frozen at arm, and the distinction that makes it safe.** *"Once you lock, it shall be constant,
+like with naked. Even if you lock a set then change it, it should not change what you wear."*
+Freezing means the **instruction**, never the outcome: `dlac:` markers collapse to concrete
+entries once, so a locked obi cannot follow the weather — but the claim still re-**locates** those
+names in your bags every dispatch, because freezing container+index would strand the hold the
+first time a bag shuffled, which is strip-once-with-no-retry again. His ruling also deleted three
+consequences I had listed for a live re-read (no store lookup per dispatch, no "the set stopped
+resolving" drop path, no live-edit surprise) and collapsed the fill policy out of the hot path
+entirely: all four commands became four *builders* producing one identical claim shape.
+
+**A missing piece leaves its slot LOOSE, not empty.** *"That's better than an empty slot, is it
+not?"* — yes, and it corrected a sloppy claim of mine in the same breath: I had said a loose slot
+means the engine fights the server, which is wrong. Inside Incursion the server refuses every
+equip regardless; outside it refuses none. What is true is narrower and pre-existing: any equip
+the server silently drops is re-proposed next dispatch, because `planSet` compares against what is
+*worn*.
+
+**One lifetime rule, added after the fact.** *"I don't want locks to outlive a relog, it should
+not outlive a main job change nor a log. It should not be saved. Same with naked."* Naked and a
+locked set already behaved that way; plain slot locks did not, **and only by accident** — nothing
+ever watched them, so they rode straight through character select. Before this session an engine
+self-swap happened to wipe them, which *looked* like a lifetime rule and was really a bug (a
+`git pull` unlocking your gear mid-Incursion). Fixing that accident in its own commit is what left
+the real gap visible. `M.nakedWorldWatch` became `M.worldWatch` (old name kept as an alias — the
+seeded LAC-side engine calls it) and now drops all three.
+
+**A field report that was not a bug, worth carrying.** *"I can lock the DT set on Mindie, on WHM,
+but doesn't feel like he releases it."* Cause: a leftover test trigger on idle re-equipping DT.
+The generic lesson is that **a hold that looks stuck is indistinguishable from a trigger
+re-equipping the same gear** — check the Triggers tab before the lock; `/dl why` names the winner.
+The diagnosis question that would have split it in one line was "does the Sets tab button say
+`Unlock` or `Equip & Lock`?", because in native mode there is no hot-swap (`trySelfSwap` is
+`inLac()`-gated), so stale code was the other live hypothesis.
+
+**And the tooltips were wrong in a way worth naming.** *"There is TOOOOO much text and description
+straight out of this conversation… this is minimalistic and every word matters."* Correct: I had
+pasted the design reasoning into the hover. Everything cut had a home already — precedence is
+Claim Priority, release is the Equipped tab, the missing-piece list is said in chat at the moment
+it matters. The Sets tab button also became a **Strict / Loose** popup rather than firing strict
+blind, which gave `set-loose` its first GUI home. That popup is the least-covered thing in the
+change: the Sets tab render has no smoke drive, so `LSP*` pins it as *source*, which can only
+prove the `OpenPopup`/`BeginPopup` ids agree — the failure that would otherwise register a click,
+open nothing, and log nothing.
+
+**Testing note worth carrying forward.** Every new check in this session was mutation-verified in
+both directions, and it paid twice: reverting the dispatch bail guard fails six checks (the NK26
+lesson — a lone claim with no triggers is exactly the path a bail guard swallows), and one of my
+own assertions was simply wrong. I claimed modes survive a self-swap on the module table; they do
+not. They are reset by the same re-execution and heal from the `modestate` mirror on load. Locks
+never could — `__locks` is display-only and deliberately never restored — which is precisely why
+their fix had to live on the table instead of in the mirror.

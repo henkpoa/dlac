@@ -1139,12 +1139,12 @@ end
 -- it carries (__locks, and __naked since v122). Widened rather than copied: this
 -- file is already the third reader of modestate.lua (priorityui and the engine's
 -- own loadModeState are the others) and a fourth would be one throttle too many.
-local _lockMirror = { at = -1, locks = {}, naked = false };
+local _lockMirror = { at = -1, locks = {}, naked = false, held = nil };
 local function engineModestate()
     local now = os.time();
     if now == _lockMirror.at then return _lockMirror; end
     _lockMirror.at = now;
-    local locks, naked = {}, false;
+    local locks, naked, held = {}, false, nil;
     pcall(function()
         local base = dataDir();
         if base == nil then return; end
@@ -1154,12 +1154,17 @@ local function engineModestate()
         if not ok or type(t) ~= 'table' then return; end
         if type(t.__locks) == 'table' then locks = t.__locks; end
         naked = (t.__naked == true);
+        -- __held: the locked set (ADR 0022). Present only while one is held, so
+        -- nil IS the "nothing locked" answer -- there is no lock COUNT to read
+        -- any more, which is why the Sets tab button stopped being a toggle.
+        if type(t.__held) == 'table' and type(t.__held.name) == 'string' then held = t.__held; end
     end);
-    _lockMirror.locks, _lockMirror.naked = locks, naked;
+    _lockMirror.locks, _lockMirror.naked, _lockMirror.held = locks, naked, held;
     return _lockMirror;
 end
 local function engineLocks() return engineModestate().locks; end
 local function engineNaked() return engineModestate().naked; end
+local function engineHeld()  return engineModestate().held;  end
 
 -- Current main job's <JOB>.lua path + its abbr (or nil, nil).
 local function jobFile()
@@ -4004,41 +4009,53 @@ local function renderSetsTab(job, level)
         imgui.SetTooltip('Will auto-build all gear-sets with stat weights set.');
     end
 
-    -- Equip & Lock / Unlock (Henrik, 07-20: Incursion T3 locks your equipment
-    -- server-side on entry -- land a set first, then stop the engine from fighting
-    -- the server lock). ONE engine command ('/dl lock set <name>') wears the
-    -- COMMITTED set and locks all 16 slots; the button reads the engine's lock
-    -- mirror, so it flips to Unlock (and back) within the mirror's ~1s throttle.
-    -- All-16 is the flip test: partial locks (Equipped tab) keep Equip & Lock up.
+    -- Equip & Lock (Henrik, 07-20: Incursion T3 locks your equipment server-side
+    -- on entry -- land a set, then stop the engine fighting the server lock).
+    -- ONE engine command, '/dl lock set <name>'.
+    --
+    -- A PLAIN ACTION since ADR 0022, no longer a toggle. It used to flip to
+    -- "Unlock" when the mirror showed 16 locked slots -- but the command stopped
+    -- locking slots at all (it freezes a Claim instead), so that counter is
+    -- permanently 0 and the toggle would have jammed on "Equip & Lock" forever.
+    -- The held STATE and its release live on the Equipped tab, where what you
+    -- are wearing is already shown; this tab BUILDS sets (Henrik, 2026-07-26:
+    -- "Set tab is only to build sets that may or may not be equipped").
+    -- Strict or Loose, on click. The two differ only in what happens to the slots
+    -- the set does not name, which is the one thing the hover has to say -- the
+    -- rest (what outranks a lock, how to release, what happens to a piece you
+    -- don't have) is either in Claim Priority, on the Equipped tab, or in chat at
+    -- the moment it matters. OpenPopup/BeginPopup/Selectable, the field-proven
+    -- trio this binding uses for the Teleports cascades.
     imgui.SameLine();
-    local elLocks, elN = engineLocks(), 0;
-    for _ in pairs(elLocks) do elN = elN + 1; end
-    if elN >= 16 then
-        if imgui.Button('Unlock##seteqlock', { 0, 22 }) then
-            pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl lock all off'); end);
+    if imgui.Button('Equip & Lock##seteqlock', { 0, 22 }) then
+        if M.workingSetName == nil or M.workingSetName == '' then
+            setStatus('Pick a set first.', true);
+        else
+            imgui.OpenPopup('##dlac_lockmode');
+        end
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Locks current set so most things cannot override it (see Claim Priority under Automation Tab).\n'
+            .. 'Strict: Lock all 16 slots, empty slots will be empty.\n'
+            .. 'Loose: Lock only the populated slots.');
+    end
+    if imgui.BeginPopup('##dlac_lockmode') then
+        local function lockAs(word, label)
+            local nm = M.workingSetName;
+            if nm == nil or nm == '' then return; end
+            pcall(function()
+                AshitaCore:GetChatManager():QueueCommand(1, '/dl lock ' .. word .. ' ' .. nm);
+            end);
             _lockMirror.at = -1;
-            setStatus('Slot locks released -- the engine may swap gear again.');
-        end
-        if imgui.IsItemHovered() then
-            imgui.SetTooltip('Every slot is locked (Equip & Lock). Click to release them all --\nthe engine resumes normal gear swaps.  (/dl lock all off)');
-        end
-    else
-        if imgui.Button('Equip & Lock##seteqlock', { 0, 22 }) then
-            if M.workingSetName == nil or M.workingSetName == '' then
-                setStatus('Pick a set first -- Equip & Lock wears the committed set, then locks every slot.', true);
+            if _setDirty then
+                setStatus(string.format('"%s" locked (%s) -- your uncommitted edits are NOT in it.', nm, label), true);
             else
-                pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl lock set ' .. M.workingSetName); end);
-                _lockMirror.at = -1;
-                if _setDirty then
-                    setStatus(string.format('"%s" equipped & locked -- NOTE: your uncommitted edits are NOT in it (Commit, then Equip & Lock again).', M.workingSetName), true);
-                else
-                    setStatus(string.format('"%s" equipped & all slots locked -- the engine will not change gear until you Unlock.', M.workingSetName));
-                end
+                setStatus(string.format('"%s" locked (%s).', nm, label));
             end
         end
-        if imgui.IsItemHovered() then
-            imgui.SetTooltip('Incursion T3 locks your equipment on entry: this equips the COMMITTED version\nof the selected set, then locks every slot so the engine stops changing gear.\nThe button becomes Unlock; locks also release on /dl lock all off or Reload LAC.');
-        end
+        if imgui.Selectable('Strict##lockstrict') then lockAs('set', 'strict'); end
+        if imgui.Selectable('Loose##lockloose')  then lockAs('set-loose', 'loose'); end
+        imgui.EndPopup();
     end
 
     -- Automation is a SLOT entry now (ADR 0004, 4th revision): + Add on the Main slot
@@ -4381,6 +4398,7 @@ host.provide({
     getEquippedId = getEquippedId, equipToSlot = equipToSlot,
     engineLocks = engineLocks, lacSlot = lacSlot,
     engineNaked = engineNaked, setEngineNaked = setEngineNaked,
+    engineHeld = engineHeld,                   -- the locked set (ADR 0022); Equipped tab owns its state
     isNative = setup.isNative,                 -- native => no LuaAshitacast, so no /lac disable fence
     lockMirrorDirty = function() _lockMirror.at = -1; end,
     wornSetTotals = wornSetTotals, setLabelOf = setLabelOf,

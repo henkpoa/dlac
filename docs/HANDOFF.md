@@ -194,6 +194,16 @@ agent; the per-repo setup lives in `docs/agents/`.
     `dlac\craftstate`, `dlac\gearweights`, `dlac\profiles\<name>\` are per-character DATA.
     Watch the near-misses: module `lockstyle` vs data `lockstyles`; `macrobook` vs
     `macrobooks`; `crafts` vs `craftstate`. See architecture.md "Repository layout".
+14. **Branch state lives in git, never in prose.** Before telling anyone — Henrik included —
+    what is or is not on main, run **`git log --oneline main..dev`**. That command is the
+    authority; this file is not, and neither is the Claude memory dir. Status lines rot at
+    *merge* time because whoever merges is never whoever wrote them: on 2026-07-25 the
+    `/dl naked` entry below, plus memory entries for E-Box v2 and repeat Last Synth, all
+    still read "on `dev`, NOT on main" for work that had been on main since `7231143` — and
+    a session repeated that to Henrik, who had to correct it. Two duties follow. **Writing:**
+    a finished, field-confirmed commit goes in the **Ready to merge** section above, never
+    only in a per-day "Current state" bullet. **Merging:** empty that section in the same
+    commit as the merge, and fix any "on `dev`" claim the merge just falsified.
 
 ## Working with Henrik
 
@@ -211,6 +221,16 @@ agent; the per-repo setup lives in `docs/agents/`.
 - He tests live and reports fast; expect mid-session scope shifts and parallel edits.
 - A GM is currently evaluating the addon for server approval — polish requests from
   that channel (like the word-wrap fix) take priority.
+
+## Ready to merge (dev → main)
+
+**A queue, not a record.** Everything listed here is committed on `dev`, green on both
+suites, and field-confirmed by Henrik — it waits only on his go-ahead to promote. The agent
+that performs the promotion **empties this section in the same commit as the merge**. An
+entry left standing here after a merge is how "is this on main?" becomes unanswerable —
+see hard rule 14, which this section exists to serve.
+
+*(Empty. Last promotion: 2026-07-26 — trigger cases slices 1–3, AutoAmmo Range law, the locked set, the `&` leg and `/dl why` fixes. The record is the merge commit on `main`.)*
 
 ## What's left (open work, as of 2026-07-25)
 
@@ -241,9 +261,181 @@ research already recorded. In rough priority order:
 5. **Icon polish, optional:** the four developer rows share one question mark on their
    section heading rather than each carrying one. Trivial to change if it reads wrong.
 
-## Current state (as of 2026-07-25, end of day)
+## Current state (as of 2026-07-26)
 
-- **`/dl naked` — BUILT 2026-07-25, on `dev`, NOT FIELD-TESTED** (engine v122,
+- **AutoAmmo is Range-aware — DONE, field-confirmed, QUEUED for main.** Engine **v128**,
+  addon **`2026.07.26j`**. The promotion write-up (what it fixes, why it is safe, what it
+  deliberately does not fix) lives in **Ready to merge** above; the design record is
+  [auto-ammo.md §9](design/auto-ammo.md). Only the loose ends live here:
+  - **Hauksbok Bullet (22295) is server subskill 0 — a BOLT despite its name.** Upstream
+    LSB data, not a CatsEye divergence, and the server enforces it, so dlac follows it.
+    One for `docs/server-questions.md`. (It is also why the name-based Bullets/Bolts
+    split can never be the authority, and why `Almogavar Bow` / `Staurobow` — skill 26
+    subskill 0, i.e. crossbows named "bow" — made the weapon side undecidable by name.)
+  - The Animator/Soultrapper catalog gap found alongside it **is fixed** (`2fe7105`,
+    in the queue entry above), not carried.
+  - **`tools/` stays gitignored by Henrik's ruling (2026-07-26):** the crawler is not
+    shipped, so nobody can spam the server with it. He keeps his own backup. The live
+    consequence to remember: `refresh_all.py` → `apicrawl.py` is the only thing that can
+    emit `Pair`, and a rebuild from a copy of the tools that predates 2026-07-26 would
+    silently drop the field from ~1,173 records and revert AutoAmmo to skill-only with
+    no error and green tests.
+  - **Open question for Henrik, undecided:** should the within-set rule
+    (`trinketRangeDrop`) use the full pairing law instead of only the trinket `RSlot`
+    bit? Today a SET naming a bolt with a bow equipped is not arbitrated at all, and
+    the server strips a slot. It is the same incompleteness AutoAmmo had.
+  - **A field-debug lesson worth not repeating:** the live per-character home is
+    `config\addons\dlac\<Char>\` in native mode, NOT
+    `config\addons\luashitacast\<Char>\dlac\`. The legacy path still exists with stale
+    files in it, and reading it produced a confident, completely wrong "your edits are
+    not saving" diagnosis. Resolve through `profiles.dataDir()`, or check mtimes.
+
+- **TRIGGER CASES — the live pipeline. START HERE.** A second tier of `&`/`|` logic for
+  trigger rules: every rule body is **case 1**; `+ & case` / `+ | case` add cases, each
+  built exactly like the body. One sentence at both tiers: *`&` things bind into one
+  together-block, each `|` thing stands alone; fire if the together-block holds or any
+  `|` thing does.* Full record: **PRD #124** (grilled 07-26; the design is Henrik's own —
+  do not re-litigate; "case"/"together-block", never "group").
+  [ADR 0023](adr/0023-trigger-cases-schema.md) records the schema.
+  - **ON MAIN since the 2026-07-26 promotion.** Merged: slice 1 display (#125 → PR #130, `da67194`, engine v125 — rule list
+    + `/dl why` case-aware, priority-chip fix); slice 2 schema backbone (#126 → PR #132,
+    `09f398b`, engine **v127**, addon `2026.07.26e` — `cases` list, oldest-form-first
+    serialization, `hasCases` version guard, both serializers in lockstep, dead-mode sweep);
+    and slice 3 the **editor skeleton** (#127 → PR #133, merged 2026-07-26, addon
+    **`2026.07.26f`** + follow-up `1408ce2` **`26g`** — `+ & case` / `+ | case` buttons, case
+    boxes hosting the identical picker flow, pure seams `_loadCases`/`_buildLegs`/`_buildCases`,
+    and **the editor flatten fix is IN**: a hand-written multi-condition `|` entry loads as a
+    `| case` box and round-trips byte-identically, so editing such rules is safe now). The
+    `26g` follow-up (shepherd review finding): a combined `|` entry *inside* a case — engine
+    honors it as AND-within-OR, a depth the editor can't represent — splits to standalone
+    rows **with a note on the case box, never silently** (the `&` leg's law one tier down).
+    Tests TE1–TE44; suites **3691** + **486**, green Windows + WSL. No engine bump in slice 3
+    (addon-state UI only).
+  - **FIELD-CONFIRMED 2026-07-26 (Henrik): both case types built in the GUI and firing.**
+    His click-through produced **field iteration 1** (addon **`2026.07.26h`**, direct on
+    dev, same session): (1) the shared condition picker moved to the TOP of the popup,
+    outside every container — between the body rows and the boxes it read as owned by
+    case 1 forever; every container (body included) now owns its `+ &`/`+ |` buttons;
+    (2) **case 1 is a real case** — once boxes exist the body renders as a box with the
+    same top-right **AND/OR selection** every box has (it was the one case whose type only
+    the system could set); case 1 = OR saves an empty body riding the `|` tier, safe under
+    the engine's OR-only law (`matches()` `nAnd > 0`), byte-identical round-trip pinned.
+    Tests TE45–TE53. Detail: trigger-system.md §"Field iteration 1".
+    **Field round 2 (same day, addon `26m`): `/dl why` case-naming WITNESSED live** — and
+    the screenshot exposed a shape bug: a lone `+ |` condition inside a case saved an
+    empty-`&`-leg case (`any|` label noise, `case (x)` naming, an unneeded `hasCases`
+    guard). Fixed by **canonical case legs** (`foldLoneAny`: an empty `&` leg + exactly one
+    `|` entry folds into the `&` leg; the BODY never folds). Henrik's exact rule now
+    re-saves as the old pure-OR form, named `standalone status=Resting`. Already-saved
+    noisy rules canonicalize on their next edit-save. TE54–TE56;
+    trigger-system.md §"Field round 2".
+  - **In flight: #128 (polish) — `ready-for-agent` toggled 2026-07-26 after the field
+    read landed.** Shepherd its PR next. The agent must NOT regress field iteration 1
+    (TE45–TE53 pin it; the layout reactions on #128/#127 override the skeleton's own
+    choices). #129 (blueprints) stays unlabeled until #128 merges — one at a time.
+    Collision watchlist: engine **v128 is TAKEN** (AutoAmmo Range-awareness, same day) and
+    addon is at **`26m`** → next free **v129** / **`26n`**; test ranges
+    CS/TC/TE/TRC/MC/TB/LS*/CMD/NK*/LSP are all taken (TE runs through TE56).
+  - **Both naming decisions CLOSED 2026-07-26**: (1) the `hasCases` guard token stays —
+    maintainer sign-off (camelCase like every condition key; a post-main rename would
+    need a player-file migration, so it was decided before promotion, deliberately);
+    (2) the slice-1 `/dl why` strings were field-witnessed in Henrik's screenshot and
+    survive as designed (`standalone <k=v>` for a lone condition — field round 2's
+    canonical legs made that the shape simple rules actually take).
+  - Also from this session: the `/dl why` frozen-trace field bug — diagnosed, fixed
+    (v126, `97f1edc`), **field-confirmed**; see Ready-to-merge. `/dl check` turned out
+    **native-era-blind** (three false alarms on a healthy native setup) — filed as **#131**,
+    unlabeled, independent of the cases pipeline.
+
+- **`/dl lock set …` IS A FROZEN CLAIM — ON MAIN since the 2026-07-26 promotion, PARTLY
+  field-confirmed** (lock + release of a named set, WHM). Henrik waived the remaining
+  field tests as the promotion gate ("I see that the locks worked, and that is enough");
+  the owed list at the bottom of this block stays as the post-main checklist.
+  (Engine v123→v124, addon `2026.07.26`–`26c`, [ADR 0022](adr/0022-locked-set-is-a-claim.md)).
+  This closes the "adjacent bug found, NOT fixed" note left by the naked work, and it
+  closes it by **deleting the code** rather than repairing it. Henrik's steer:
+  *"take inspiration from how we locked everything \[in naked]… only difference is we
+  want this locked to what a specific set holds, instead of no gear."*
+  - **What was wrong**: `rawget(_G,'gEquip')` is nil in the addon state, so in native
+    mode the one-shot equip landed in `equipengine`'s buffer and the next `fireEvent`'s
+    `bufferClear` wiped it — then `setLock('all', true)` locked all 16 slots onto
+    whatever you were wearing and printed success. **Why it hid**: three *other*
+    unbracketed `M.dispatch('Default')` calls have the same flaw and are harmless,
+    because Default re-fires every 0.4s and heals them. `/dl lock set` is the one site
+    where that is impossible — the locks it installs are exactly what stops the next
+    dispatch from equipping.
+  - **A claim is applied inside `M.dispatch`**, which the native engine already
+    brackets, so there is no command-path equip left to get wrong.
+  - **Four commands, one claim shape** — they differ only in what fills a slot the set
+    does not name: `/dl lock set` (held EMPTY), `set-loose` (left available),
+    `set-snapshot` (held as worn), `set-current` (all 16 as worn, no set name).
+  - **It rides the EXISTING `Locks` row.** No new rank row and no new word — to the
+    player, *lock* is one thing. `ARB_ORDER_DEFAULT` is untouched, so **a locked slot
+    moves for Naked and Pins and nothing else**, exactly as it does today.
+  - **Frozen at arm means the INSTRUCTION, not the outcome**: `dlac:` markers collapse
+    to concrete entries once (a locked obi can't follow the weather), but the names are
+    re-*located* in your bags every dispatch — freezing container+index would strand the
+    hold on the first bag shuffle.
+  - **A piece you don't have leaves that slot LOOSE, not empty** ("that's better than an
+    empty slot, is it not?"), reported by name and container from a live all-bags scan.
+  - **Slot locks coexist** — arming no longer destroys them. `layerRespectsLocks('Locks')`
+    is false on its own row, so the hold punches through `M.locks`; a stale lock can
+    never sabotage it, and it's still set on release.
+  - **ONE LIFETIME RULE for all three** (v124, Henrik: *"I don't want locks to outlive
+    a relog, it should not outlive a main job change nor a log… same with naked"*).
+    `M.nakedWorldWatch` → **`M.worldWatch`** (old name kept as an alias — the seeded
+    LAC-side engine calls it), and it now drops **slot locks** as well as the strip and
+    a locked set, on a main job change or the character-select read. Slot locks were the
+    odd one out only by accident: nothing watched them, so they rode through character
+    select, and the pre-v123 self-swap wipe *looked* like a lifetime rule while really
+    being a bug. **None of the three is written to disk** — `__locks` / `__naked` /
+    `__held` all sit in the reserved `__` namespace `loadModeState` skips.
+  - Release: `/dl lock all off` **and** `/dl lock set off`. `/dl lock` with no args
+    prints state plus every variant.
+  - **GUI**: the Sets tab's `Equip & Lock` opens a two-option popup — **Strict** fires
+    `/dl lock set`, **Loose** fires `/dl lock set-loose` (which had no GUI home before).
+    It is no longer a toggle: nothing locks 16 slots any more, so the old
+    "16 locked ⇒ show Unlock" flip test had no counter left to read. The **Equipped tab
+    owns the state** — the `LOCKED:` readout and the `Lock gear` switch (`set-current`).
+    `set-snapshot` stays command-only.
+  - **The hovers are three lines each, and that is deliberate** (Henrik, 2026-07-26:
+    *"there is TOOOOO much text… this is minimalistic and every word matters"*). What
+    outranks a lock lives in Claim Priority, how to release lives on the Equipped tab,
+    and which pieces were missing is said in chat at the moment it matters. Do not
+    re-import the explanation into the tooltip; it has homes.
+  - **The Sets tab render has NO smoke drive** — `S9` checks its tab label and nothing
+    else — so the popup is the least-covered thing here. `LSP1`–`LSP10` pin it as
+    *source*, because the failure is silent: an `OpenPopup` id that does not match its
+    `BeginPopup` id registers the click, opens nothing, and logs nothing. `LSP9` asks
+    dispatch's own `LOCKSET_MODES` rather than trusting a string, so a renamed command
+    word fails there instead of in the field.
+  - Tests `LS1`–`LS20`, `CMD10`–`CMD15`, `LSU1`–`LSU4`. Suites at **3620** and **417**,
+    green on Windows and WSL.
+  - **Field-CONFIRMED 2026-07-26 (Henrik, WHM):** locking a named set (`DT`) lands it,
+    and releasing it lets go — verified after a false alarm that is worth remembering.
+    It first read as "he doesn't release it": the cause was **a leftover test trigger on
+    idle that re-equipped DT**, not the lock. When a hold *looks* stuck, check the
+    Triggers tab before the lock — `/dl why` names the winner.
+  - **Field tests still owed**: (1) the same thing at an actual Incursion T3 entrance —
+    does the set survive the server-side lock; (2) the missing-piece report, with
+    something deliberately left in a Satchel; (3) `set-loose` — do the unnamed slots
+    really keep swapping; (4) `/dl lock all off` releasing both halves at once;
+    (5) the Equipped tab's `Lock gear` switch and its LOCKED readout.
+
+- **`/dl` COMMANDS ARE TESTABLE NOW — 2026-07-26 on `dev`** (`7906cd4`, tests only).
+  Every `/dl` subcommand used to be tested by *searching `dispatch.lua` for its own
+  name* — `NK23`: *"the handler only registers inside `engineActive()`, which is false
+  headlessly, so the whitelist cannot be driven — pin it as SOURCE instead."* That is
+  precisely how the lock-set bug shipped: present, spelled right, whitelisted, inert.
+  The harness arms the native flag, re-loads dispatch so the real handler registers, and
+  calls commands with the game closed. It loads a **second** dispatch module, so it
+  saves and restores `package.loaded` (dispatch + chatfmt), `gFunc`/`gState`,
+  `profiles.nativeMode`/`dataDir`, `ashita.events` and equipengine's `onEvent`/tripwire —
+  and redirects `dataDir` to `tests\`, because the `engineActive` block runs
+  `loadModeState`/`saveModeState` **at load**. `chatfmt` must be stubbed *before* the
+  load: `dispatch.lua:139` binds its shadowed `print` once, at load time.
+
+- **`/dl naked` — BUILT 2026-07-25, ON MAIN since `7231143`, NOT FIELD-TESTED** (engine v122,
   addon `2026.07.25f`, [ADR 0021](adr/0021-naked-is-a-claim.md)). Henrik asked for
   LuaAshitacast's `/lac naked` ("be sure to use the claim arbiter, maybe use locks?").
   The answer to the locks half is **no**, and the ADR records why: a lock only
@@ -283,13 +475,14 @@ research already recorded. In rough priority order:
     unavailable, but confirm that reads right; (3) `/dl dress` brings back only what
     your sets *name* — anything hand-equipped you re-equip yourself (exact `/lac naked`
     parity; snapshot-and-restore is an open follow-up).
-  - **Adjacent bug found, NOT fixed** (kept out so a regression has one suspect):
-    `/dl lock set` is broken in **native** mode. Its `rawget(_G,'gEquip')` bracket is
-    nil in the addon state, so the equip falls to the unbracketed path and writes into
-    `equipengine`'s buffer — which only `fireEvent` flushes, and `fireEvent` opens by
-    clearing it. The set evaporates on the next tick. Worth its own commit.
+  - **Adjacent bug found here, FIXED 2026-07-26** in [ADR 0022](adr/0022-locked-set-is-a-claim.md):
+    `/dl lock set` was broken in **native** mode — its `rawget(_G,'gEquip')` bracket is
+    nil in the addon state, so the equip fell to the unbracketed path, landed in
+    `equipengine`'s buffer, and the next `fireEvent`'s `bufferClear` wiped it. It is now
+    a frozen claim on the Locks row, so there is no command-path equip left to bracket.
+    See the top of this section.
 
-- **E-BOX RESTOCK v2 — BUILT + PARTLY FIELD-TESTED 2026-07-25, on `dev` only**
+- **E-BOX RESTOCK v2 — BUILT + PARTLY FIELD-TESTED 2026-07-25, ON MAIN since `7231143`**
   (`2026.07.25e`). The box's contents are no longer polled: they are verified once on
   approach, **debited locally** on our own withdraws, and re-counted only on the few
   events arithmetic cannot see. **Crafting at an E-Box now costs zero packets** (it used
@@ -422,7 +615,8 @@ research already recorded. In rough priority order:
   and several Claude sessions plus Henrik share ONE checkout — feature branches made the
   sessions fight over the tree. So: every session commits on `dev`, and `dev` promotes to
   `main` **only on Henrik's explicit go-ahead** (a release he considers stable).
-  **`origin/main` == `origin/dev` == `e15f806`, `addon.version` 2026.07.24o.** Origin
+  **Last promotion: 2026-07-26 (`main` == `dev` at the merge, `addon.version`
+  2026.07.26n).** Origin
   holds exactly two branches (`main`, `dev`); local-only parked branches
   `feature/autoacc` (GM pending) and `feature/storage-move` are archives — kept, never
   merged, never checked out.

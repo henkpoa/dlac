@@ -121,6 +121,26 @@ local function rslotFor(id)
     return _rslotById[id];
 end
 
+-- Range/Ammo pairing key ("<skill>:<subskill>") by item id, from the catalog. Same
+-- shape and same reason as rslotFor above: the CLIENT resource carries Skill but has
+-- NO subskill field (Ashita's IItem stops at Skill), and subskill is exactly what
+-- separates a gun (26:1) from a crossbow (26:0). So it can only come from the API
+-- crawl, and it has to be stamped to disk for the engine, which reads gear.lua raw
+-- with no catalog. Built once, lazily, guarded -- no catalog (headless tests) means
+-- every lookup is nil, and every consumer treats nil as "unknown, don't constrain".
+local _pairById = nil;
+local function pairFor(id)
+    if _pairById == nil then
+        _pairById = {};
+        pcall(function()
+            for cid, rec in pairs(ci.rawIndex()) do
+                if type(rec.Pair) == 'string' and rec.Pair ~= '' then _pairById[cid] = rec.Pair; end
+            end
+        end);
+    end
+    return _pairById[id];
+end
+
 -- Weapon skill id -> the category key used under gear.Main / gear.Range / gear.Ammo.
 -- (Instruments and a few exotic ranged types get refined in Piece #2.)
 local WEAPON_CATEGORY = {
@@ -197,6 +217,7 @@ local function resolveItem(entry)
         Jobs     = res.Jobs,
         Flags    = res.Flags,
         RSlot    = rslotFor(entry.Id),   -- slots this piece takes away while worn
+        Pair     = pairFor(entry.Id),    -- Range/Ammo skill:subskill (nil = not a Range/Ammo item)
         Count    = 1,
     };
 
@@ -677,6 +698,12 @@ local function renderEntry(rec)
     if (tonumber(rec.RSlot) or 0) ~= 0 then
         add(string.format('    RSlot = %d,', rec.RSlot));
     end
+    -- Range/Ammo pairing key (server item_weapon skill:subskill). Same disk-or-nothing
+    -- reason as RSlot: the engine decides Ammo from the raw file. Only Range and Ammo
+    -- items carry one; every other slot omits the field.
+    if type(rec.Pair) == 'string' and rec.Pair ~= '' then
+        add(string.format('    Pair = %q,', rec.Pair));
+    end
 
     -- No Stats block on purpose (Phase 2): item stats -- including weapon DMG/Delay -- come
     -- from the global catalog (catalog.lua) by Id, which carries them for every item. gear.lua
@@ -1091,6 +1118,7 @@ local function parseGearEntries(lines)
             if e.Type == nil then local v = L:match('^%s+Type = "([^"]*)"'); if v then e.Type = v; e.TypeLine = j; end end
             if e.OneHanded == nil then local v = L:match('^%s+OneHanded = (%a+)'); if v then e.OneHanded = (v == 'true'); e.OneHandedLine = j; end end
             if e.RSlot == nil then local v = L:match('^%s+RSlot = (%d+)'); if v then e.RSlot = tonumber(v); e.RSlotLine = j; end end
+            if e.Pair == nil then local v = L:match('^%s+Pair = "([^"]*)"'); if v then e.Pair = v; e.PairLine = j; end end
             j = j + 1;
         end
         e.endLine = j;
@@ -1235,6 +1263,17 @@ function M.computeFixes(gearText, ownedItems, metaById)
                 elseif e.RSlot ~= nil and e.RSlotLine ~= nil and e.RSlot ~= effRS then
                     replace[e.RSlotLine] = lines[e.RSlotLine]:gsub('RSlot = %d+', 'RSlot = ' .. tostring(effRS), 1);
                     report.fixed[#report.fixed + 1] = string.format('%s: RSlot %d -> %d', e.key, e.RSlot, effRS);
+                end
+                -- Range/Ammo pair key (v128). Same reason as RSlot above: EVERY gear.lua
+                -- written before this existed lacks it, the engine cannot see the
+                -- catalog, and without it a gun and a crossbow are both just
+                -- "Marksmanship" -- so AutoAmmo can keep a bolt out of a bow but not out
+                -- of a gun. Insert-only, unlike RSlot: a pair key is a fixed server fact
+                -- about the item (item_weapon skill/subskill), not a rule we derive, so
+                -- there is nothing to retract and a differing stamp is not ours to
+                -- second-guess.
+                if e.Pair == nil and type(c.Pair) == 'string' and c.Pair ~= '' then
+                    ins(string.format('Pair = %q,', c.Pair), string.format('+Pair %s', c.Pair));
                 end
             end
         end

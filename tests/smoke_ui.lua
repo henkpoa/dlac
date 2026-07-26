@@ -209,6 +209,10 @@ for _, k in ipairs({
     -- would leave both suites green while the Equipped tab's Naked switch (which
     -- guards on S.engineNaked ~= nil) silently vanished.
     'engineNaked', 'setEngineNaked', 'isNative',
+    -- ADR 0022, same reasoning one row down: the Equipped tab's Lock gear switch
+    -- and its LOCKED readout both guard on S.engineHeld ~= nil, so dropping it
+    -- from gearui's provide{} would make them vanish in silence.
+    'engineHeld',
 }) do
     check('S12 service ' .. k, S[k] ~= nil, true);
 end
@@ -1420,6 +1424,72 @@ end)();
         u.freeEquip = { false };  u._freePrev = false;
         nakedState = false;
 
+        -- LSU. The Lock gear switch + LOCKED readout (ADR 0022), driven through
+        -- the REAL render for the same reason NKU* exists: an unknown Lua name in
+        -- that block is a silent nil GLOBAL that no load test can see, and every
+        -- render above is pcall'd, so these assert the pcall RESULT.
+        local keptHeld = Sx.engineHeld;
+        local heldState = nil;
+        Sx.engineHeld = function() return heldState; end
+        u.eqSelected = nil;
+        u.freeEquip = { false };  u._freePrev = false;
+        u.lockEquipped = { false };  u._lockPrev = false;
+
+        local okL = pcall(render, 'WHM', 75);
+        check('LSU1 the toolbar renders with nothing locked', okL, true);
+
+        -- Held: the readout draws. It goes through uistyle.helpLabel (underline +
+        -- hover), which falls back to TextColored when the binding has no
+        -- draw-list -- as this stub does -- so counting TextColored catches both.
+        heldState = { name = 'Incursion T3', mode = 'set', n = 13 };
+        local lockedLines = 0;
+        local keptTC2 = IM.TextColored;
+        IM.TextColored = function(_, t)
+            if type(t) == 'string' and string.find(t, 'LOCKED:', 1, true) then
+                lockedLines = lockedLines + 1;
+            end
+        end
+        local okL2 = pcall(render, 'WHM', 75);
+        IM.TextColored = keptTC2;
+        check('LSU2 it renders while a set is LOCKED', okL2, true);
+        check('LSU2b and names the set on the toolbar', lockedLines >= 1, true);
+
+        -- Clicking it: armed -> release goes through the narrow door, NOT
+        -- /dl lock all off (which would take the player's slot locks with it).
+        local keptCb2 = IM.Checkbox;
+        IM.Checkbox = function(label, t)
+            if type(label) == 'string' and string.find(label, 'eqheld', 1, true) then
+                t[1] = false; return true;                  -- unchecking a held switch
+            end
+            return false;
+        end
+        queued = {};
+        local okL3 = pcall(render, 'WHM', 75);
+        local ljoin = table.concat(queued, ' | ');
+        check('LSU3 unchecking Lock gear renders cleanly', okL3, true);
+        check('LSU3b ...and releases only the set',
+            string.find(ljoin, '/dl lock set off', 1, true) ~= nil, true);
+        check('LSU3c ...never taking the slot locks with it',
+            string.find(ljoin, '/dl lock all off', 1, true), nil);
+
+        -- Unheld -> checking it locks what you are wearing right now.
+        heldState = nil;
+        IM.Checkbox = function(label, t)
+            if type(label) == 'string' and string.find(label, 'eqheld', 1, true) then
+                t[1] = true; return true;
+            end
+            return false;
+        end
+        queued = {};
+        local okL4 = pcall(render, 'WHM', 75);
+        check('LSU4 checking it renders cleanly', okL4, true);
+        check('LSU4b ...and queues set-current',
+            string.find(table.concat(queued, ' | '), '/dl lock set-current', 1, true) ~= nil, true);
+
+        IM.Checkbox = keptCb2;
+        Sx.engineHeld = keptHeld;
+        heldState = nil;
+
         AshitaCore = realAshita;
         for i, f in ipairs({ 'renderSlotGrid', 'renderStatsPanel', 'renderSortCombo',
             'candidatesForSlot', 'sortForDisplay', 'getEquippedId', 'displayName',
@@ -1916,6 +1986,700 @@ end)();
         local cok, cres = pcall(tg.captureModeToLibrary, 'DT', false);
         check('MLU10 capture never throws unconfigured', cok, true);
         check('MLU11 ...it returns a status instead', (cres == 'error' or cres == 'exists' or cres == 'added'), true);
+
+        -- TC. Trigger CASES, read-side (issue #125, slice 1/5). The rule list is
+        -- now case-aware over the EXISTING schema: a multi-condition `|` entry
+        -- renders as a bordered `| case` box, single-condition entries stay
+        -- standalone `|` lines, and a rule with neither renders as before.
+        check('TC1 caseSplit is exposed', type(tg.caseSplit), 'function');
+        if type(tg.caseSplit) == 'function' then
+            local singles, cases = tg.caseSplit({ { buff = 'Sleep' }, { buff = 'Lullaby' } });
+            check('TC2 single-condition entries are standalones, zero cases',
+                #singles == 2 and #cases == 0, true);
+            local s2, c2 = tg.caseSplit({ { buff = 'Sleep' }, { buff = 'Burst', tpabove = 1000 } });
+            check('TC3 a multi-condition entry becomes a | case',
+                #s2 == 1 and #c2 == 1, true);
+            check('TC4 keys are lowercased for standalones',
+                tg.caseSplit({ { Buff = 'Sleep' } })[1].key, 'buff');
+            local a0, b0 = tg.caseSplit(nil);
+            check('TC5 no whenAny -> no singles, no cases', #a0 == 0 and #b0 == 0, true);
+        end
+        -- Drive the REAL rule-box render: the case path only RUNS on a
+        -- multi-condition rule, so a load test would never catch a nil helper.
+        check('TC6 renderTrigRuleBox is exposed', type(tg.renderTrigRuleBox), 'function');
+        if type(tg.renderTrigRuleBox) == 'function' then
+            check('TC7 renders a case-less rule (the old path)',
+                pcall(tg.renderTrigRuleBox, 'Precast', 1,
+                    { when = { name = 'Cure IV' }, set = 'CureSet' }, { 'CureSet' }, 190), true);
+            check('TC8 renders a rule with a standalone | condition',
+                pcall(tg.renderTrigRuleBox, 'Precast', 2,
+                    { when = { status = 'Engaged' }, whenAny = { { tpabove = 1000 } }, set = 'TpSet' },
+                    { 'TpSet' }, 190), true);
+            check('TC9 renders a rule bearing a | case box',
+                pcall(tg.renderTrigRuleBox, 'Precast', 3,
+                    { when = { status = 'Engaged' },
+                      whenAny = { { buff = 'Burst', tpabove = 1000 }, { buff = 'Sleep' } },
+                      set = 'CaseSet' }, { 'CaseSet' }, 190), true);
+            check('TC10 stacks stay balanced through the case boxes',
+                depth.col + depth.win + depth.child, 0);
+            -- issue #126: the read-side display extends to `cases`-list rules --
+            -- an `& case` (together-block member) and a `| case` with an internal
+            -- OR leg, both rendered with the same bordered-box visual language.
+            check('TC11 renders a rule bearing an & case (internal OR rows)',
+                pcall(tg.renderTrigRuleBox, 'Precast', 4,
+                    { when = { magictype = 'Black Magic' },
+                      cases = { { op = '&', when = {}, whenAny = { { element = 'Fire' }, { element = 'Ice' } } } },
+                      set = 'NukeSet' }, { 'NukeSet' }, 190), true);
+            check('TC12 renders a | case that carries an internal OR leg',
+                pcall(tg.renderTrigRuleBox, 'Precast', 5,
+                    { when = { status = 'Engaged' },
+                      cases = { { op = '|', when = { magictype = 'Black Magic' }, whenAny = { { element = 'Fire' } } } },
+                      set = 'MixSet' }, { 'MixSet' }, 190), true);
+            check('TC13 renders body + | leg + & case + | case all at once',
+                pcall(tg.renderTrigRuleBox, 'Precast', 6,
+                    { when = { magictype = 'Black Magic' }, whenAny = { { buff = 'Sleep' } },
+                      cases = { { op = '&', when = {}, whenAny = { { element = 'Fire' } } },
+                                { op = '|', when = { status = 'Engaged', tpabove = 1000 } } },
+                      set = 'MaxSet' }, { 'MaxSet' }, 190), true);
+            check('TC14 stacks stay balanced through the cases-list boxes',
+                depth.col + depth.win + depth.child, 0);
+        end
+    end
+
+    for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end
+    package.loaded['imgui'] = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- Trigger rule builder: the & leg never eats a value in silence.
+--
+-- Field case (Henrik, 2026-07-25): Item rule -> name = test [+ &] -> name =
+-- testar [+ &]. The second REPLACED the first with nothing said, which reads as
+-- "I cannot add & conditions any more, only |". The & leg is a MAP -- one value
+-- per condition type -- and two names can never both hold, so the replace is
+-- right; being silent about it was not. It now reports, and offers the one-click
+-- move of BOTH values into the | leg (which is the rule he actually wanted).
+--
+-- Both halves are covered: the pure seams, AND the real popup driven frame by
+-- frame (the craftbar lesson -- a render path no test executes is a render path
+-- nobody has proven; an undefined name in it stays a silent nil global).
+-- ---------------------------------------------------------------------------
+;(function()
+    local depth = { popup = 0, col = 0 };
+    local CLICK, REC = nil, {};
+    local function nop() end
+    local IM = setmetatable({}, { __index = function() return nop; end });
+    IM.BeginPopup = function(id)
+        if tostring(id) == '##dlac_trigadd' then depth.popup = depth.popup + 1; return true; end
+        return false;
+    end
+    IM.EndPopup   = function() depth.popup = depth.popup - 1; end
+    IM.PushStyleColor = function() depth.col = depth.col + 1; end
+    IM.PopStyleColor  = function(n) depth.col = depth.col - (tonumber(n) or 1); end
+    IM.Begin      = function() return true; end
+    IM['End']     = nop;
+    IM.BeginChild = function() return true; end
+    IM.EndChild   = nop;
+    IM.BeginCombo = function() return false; end
+    IM.BeginMenu  = function() return false; end
+    IM.Button      = function(l) REC[#REC + 1] = tostring(l); return tostring(l) == CLICK; end
+    IM.SmallButton = function(l) REC[#REC + 1] = tostring(l); return tostring(l) == CLICK; end
+    IM.Selectable  = function(l) REC[#REC + 1] = tostring(l); return tostring(l) == CLICK; end
+    IM.Text        = function(t) REC[#REC + 1] = tostring(t); end
+    IM.TextColored = function(_, t) REC[#REC + 1] = tostring(t); end
+    IM.IsItemHovered = function() return false; end
+    IM.InputText   = function() return false; end
+    IM.InputInt    = function() return false; end
+    IM.GetContentRegionAvail = function() return 700, 400; end
+    IM.CalcTextSize = function() return 60, 14; end
+
+    local NAMES = { 'dlac\\ui\\triggersui', 'imgui' };
+    local saved = {};
+    for _, k in ipairs(NAMES) do saved[k] = package.loaded[k]; end
+    package.loaded['imgui'] = IM;
+    package.loaded['dlac\\ui\\triggersui'] = nil;
+    local ok, tg = pcall(require, 'dlac\\ui\\triggersui');
+    check('TB1 triggersui re-requires against a stub imgui', ok and type(tg), 'table');
+    if ok then
+        check('TB2 the condition-push core is exposed', type(tg._pushCond), 'function');
+        check('TB3 the OR escape is exposed',           type(tg._orBothToAny), 'function');
+
+        local conds = {};
+        check('TB4 the first & condition lands', (function()
+            local note = tg._pushCond(conds, 'name', 'test', false);
+            return tostring(#conds) .. '/' .. tostring(note);
+        end)(), '1/nil');
+        local note = tg._pushCond(conds, 'name', 'testar', false);
+        check('TB5 a second value of the same type replaces (the map shape)', #conds, 1);
+        check('TB6 ...and never in silence', type(note), 'string');
+        check('TB7 ...naming the swap it made', note:find('test -> testar', 1, true) ~= nil, true);
+        check('TB8 ...keeping the newest value', conds[1].value, 'testar');
+
+        -- Re-adding the SAME value is a no-op, not an alarm.
+        local same = { { key = 'name', value = 'test' } };
+        check('TB9 re-adding an identical value says nothing', tg._pushCond(same, 'name', 'test', false), nil);
+
+        -- An EDITED rule loads its keys lowercased off the file while the pickers
+        -- spell them as the def does; the save lowercases both. A case-sensitive
+        -- test let two rows of one type stack, of which the save kept one -- silently.
+        local drift = { { key = 'magictype', value = 'White Magic' } };
+        tg._pushCond(drift, 'magicType', 'Black Magic', false);
+        check('TB10 a case-drifted key is the SAME condition type', #drift, 1);
+
+        local ors = {};
+        tg._pushCond(ors, 'buff', 'Sleep', true);
+        tg._pushCond(ors, 'buff', 'Lullaby', true);
+        check('TB11 the | leg still stacks duplicates', #ors, 2);
+
+        local swapped = { { key = 'name', value = 'testar' } };
+        check('TB12 the OR escape reports the move',
+            tg._orBothToAny(swapped, { key = 'name', prev = 'test', cur = 'testar' }), true);
+        check('TB13 ...both values survive it', #swapped, 2);
+        check('TB14 ...on the | leg, in order',
+            string.format('%s%s/%s%s', tostring(swapped[1].value), swapped[1].any and '|' or '&',
+                                       tostring(swapped[2].value), swapped[2].any and '|' or '&'),
+            'test|/testar|');
+        check('TB15 a junk swap is refused', tg._orBothToAny({}, nil), false);
+
+        -- ---- the REAL popup, frame by frame ----
+        local UP = {};
+        for i = 1, 250 do
+            local n, v = debug.getupvalue(tg.render, i);
+            if n == nil then break; end
+            UP[n] = v;
+        end
+        local trig, popup = UP.trig, UP.renderTrigAddPopup;
+        check('TB16 the builder state and its popup are reachable',
+            (type(trig) == 'table') and type(popup), 'function');
+        if type(trig) == 'table' and type(popup) == 'function' then
+            local function frame(click)
+                CLICK, REC = click, {};
+                local fok, ferr = pcall(popup);
+                if not fok then print('   (TB popup error: ' .. tostring(ferr) .. ')'); end
+                return fok;
+            end
+            trig.data = {};                    -- a loaded model, as M.render guarantees
+            trig.addFor, trig.addConds, trig._addDef = 'Item', {}, 1;
+            trig.addValText[1] = ''; trig._addValSel = nil; trig.addValNum[1] = 0;
+            trig.addSet, trig.addPrio[1] = 'Bait', 0;
+            trig.addNote, trig.addSwap = nil, nil;
+            trig.editIdx, trig._editEquip, trig._bpEdit = nil, nil, nil;
+
+            trig.addValText[1] = 'test';
+            check('TB17 the popup renders and the & click lands', frame('+ & condition##trgac'), true);
+            check('TB18 ...one pending condition', #trig.addConds, 1);
+            trig.addValText[1] = 'testar';
+            check('TB19 the second & click renders', frame('+ & condition##trgac'), true);
+            check('TB20 ...still one (replaced, not stacked)', #trig.addConds, 1);
+            check('TB21 ...carrying a note to show', type(trig.addNote), 'string');
+
+            check('TB22 the note frame renders', frame(nil), true);
+            local sawNote, sawSwap = false, false;
+            for _, l in ipairs(REC) do
+                if l:find('replaced', 1, true) then sawNote = true; end
+                if l:find('trgorboth', 1, true) then sawSwap = true; end
+            end
+            check('TB23 ...the note is on screen', sawNote, true);
+            check('TB24 ...beside its escape button', sawSwap, true);
+
+            check('TB25 the escape click renders', frame('Match either instead##trgorboth'), true);
+            check('TB26 ...both values move to the | leg', #trig.addConds, 2);
+            check('TB27 ...and the note is spent', trig.addNote, nil);
+
+            frame('Add rule###trgaddgo');
+            local r = trig.data.Item and trig.data.Item[1];
+            check('TB28 Save writes the rule',        type(r), 'table');
+            check('TB29 ...as an either-name rule',   (type(r) == 'table') and #(r.whenAny or {}), 2);
+            check('TB30 ...with an empty & leg',      (type(r) == 'table') and next(r.when or {}), nil);
+            check('TB31 the popup stack stayed balanced', depth.popup, 0);
+            check('TB32 the colour stack stayed balanced', depth.col, 0);
+        end
+    end
+
+    for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end
+    package.loaded['imgui'] = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- LSP. The Sets tab's Equip & Lock popup (Strict / Loose), pinned as SOURCE.
+--
+-- The Sets tab render has no smoke drive -- only its tab LABEL is checked (S9) --
+-- so this block is the one thing standing between a typo and a button that opens
+-- nothing in the field. An OpenPopup id that does not match its BeginPopup id
+-- fails SILENTLY: the click registers, no menu appears, and nothing is logged.
+-- A source pin cannot tell you the popup renders; it can tell you the two ids
+-- agree and that both variants are still wired to a real command word.
+-- ---------------------------------------------------------------------------
+(function()
+    local f = io.open('ui/gearui.lua', 'r');
+    check('LSP0 gearui is readable', f ~= nil, true);
+    if f == nil then return; end
+    local src = f:read('*a'); f:close();
+
+    local opened = src:match("OpenPopup%('(##dlac_lockmode[%w_]*)'%)");
+    local begun  = src:match("BeginPopup%('(##dlac_lockmode[%w_]*)'%)");
+    check('LSP1 Equip & Lock opens a popup',        opened ~= nil, true);
+    check('LSP2 ...and something begins it',        begun ~= nil, true);
+    check('LSP3 ...under the SAME id (a mismatch opens nothing, silently)', opened, begun);
+    check('LSP4 the popup is closed',               src:find('imgui.EndPopup();', 1, true) ~= nil, true);
+
+    -- Both variants, and the exact command words the engine whitelists. A
+    -- renamed word here would queue a command /dl lock falls through in silence.
+    check('LSP5 Strict is offered', src:find("Selectable('Strict##lockstrict')", 1, true) ~= nil, true);
+    check('LSP6 Loose is offered',  src:find("Selectable('Loose##lockloose')", 1, true) ~= nil, true);
+    check('LSP7 Strict fires the strict word', src:find("lockAs('set', 'strict')", 1, true) ~= nil, true);
+    check('LSP8 Loose fires the loose word',   src:find("lockAs('set-loose', 'loose')", 1, true) ~= nil, true);
+    local D = require('dlac\\dispatch');
+    check('LSP9 ...and both words are real lock-set modes',
+        D._lockSetModes['set'] ~= nil and D._lockSetModes['set-loose'] ~= nil, true);
+
+    -- The hover is three lines and stays three lines (Henrik, 2026-07-26: "there
+    -- is TOOOOO much text... this is minimalistic and every word matters").
+    local tip = src:match("SetTooltip%('(Locks current set[^\n]-)'%s*%.%.");
+    check('LSP10 the hover opens with the one-line what-it-does', tip ~= nil, true);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- TE. Trigger CASES, edit-side (issue #127, slice 3/5). The rule builder gains
+-- two buttons (+ & case / + | case) and renders added cases as bordered boxes,
+-- each hosting the IDENTICAL picker flow. Two halves, both proven: the pure
+-- model seams (loadCases / buildLegs / buildCases -- the flatten-fix and the
+-- oldest-form round-trip), AND the real popup driven frame by frame (add a case,
+-- add conditions inside it, save, assert widget labels + stack balance -- the
+-- craftbar lesson: an unrun render path is an unproven one).
+-- ---------------------------------------------------------------------------
+;(function()
+    local depth = { popup = 0, col = 0, child = 0, win = 0 };
+    local CLICK, REC = nil, {};
+    local function nop() end
+    local IM = setmetatable({}, { __index = function() return nop; end });
+    IM.BeginPopup = function(id)
+        if tostring(id) == '##dlac_trigadd' then depth.popup = depth.popup + 1; return true; end
+        return false;
+    end
+    IM.EndPopup   = function() depth.popup = depth.popup - 1; end
+    IM.PushStyleColor = function() depth.col = depth.col + 1; end
+    IM.PopStyleColor  = function(n) depth.col = depth.col - (tonumber(n) or 1); end
+    IM.Begin      = function() depth.win = depth.win + 1; return true; end
+    IM['End']     = function() depth.win = depth.win - 1; end
+    IM.BeginChild = function() depth.child = depth.child + 1; return true; end
+    IM.EndChild   = function() depth.child = depth.child - 1; end
+    IM.BeginCombo = function(l) REC[#REC + 1] = tostring(l); return false; end
+    IM.BeginMenu  = function() return false; end
+    IM.Button      = function(l) REC[#REC + 1] = tostring(l); return tostring(l) == CLICK; end
+    IM.SmallButton = function(l) REC[#REC + 1] = tostring(l); return tostring(l) == CLICK; end
+    IM.Selectable  = function(l) REC[#REC + 1] = tostring(l); return tostring(l) == CLICK; end
+    IM.Text        = function(t) REC[#REC + 1] = tostring(t); end
+    IM.TextColored = function(_, t) REC[#REC + 1] = tostring(t); end
+    IM.IsItemHovered = function() return false; end
+    IM.InputText   = function() return false; end
+    IM.InputInt    = function() return false; end
+    IM.GetContentRegionAvail = function() return 700, 400; end
+    IM.CalcTextSize = function() return 60, 14; end
+
+    local NAMES = { 'dlac\\ui\\triggersui', 'imgui' };
+    local saved = {};
+    for _, k in ipairs(NAMES) do saved[k] = package.loaded[k]; end
+    package.loaded['imgui'] = IM;
+    package.loaded['dlac\\ui\\triggersui'] = nil;
+    local ok, tg = pcall(require, 'dlac\\ui\\triggersui');
+    check('TE1 triggersui re-requires against a stub imgui', ok and type(tg), 'table');
+    local D = require('dlac\\dispatch');
+    if ok then
+        check('TE2 the load seam is exposed',  type(tg._loadCases),  'function');
+        check('TE3 the leg builder is exposed', type(tg._buildLegs),  'function');
+        check('TE4 the case builder is exposed', type(tg._buildCases), 'function');
+        check('TE5 the empty-case guard is exposed', type(tg._hasEmptyCase), 'function');
+
+        -- ---- LOAD: the flatten-corruption fix ----
+        -- A single-condition | entry stays a body | row; a MULTI-condition entry
+        -- (AND-within-OR) loads as a `| case` box instead of flattening.
+        local conds, cases = tg._loadCases({
+            when = { name = 'Slow' },
+            whenAny = { { mode = 'DT' }, { mode = 'Refresh', hpbelow = 50 } } });
+        check('TE6 the & body condition loads', #conds, 2);   -- name + single-| DT row
+        local sawSingle = false;
+        for _, c in ipairs(conds) do if c.any and c.key == 'mode' and c.value == 'DT' then sawSingle = true; end end
+        check('TE7 a single-condition | entry stays a body | row', sawSingle, true);
+        check('TE8 a multi-condition | entry becomes ONE | case (not two flat rows)',
+            #cases == 1 and cases[1].op, '|');
+        check('TE9 ...carrying BOTH its conditions as & rows', #cases[1].conds, 2);
+
+        -- ---- BUILD + SERIALIZE: byte-identical round-trip (the flatten fix) ----
+        -- A hand-written multi-condition | rule, loaded then rebuilt through the
+        -- editor's seams, must re-serialize byte-for-byte (oldest-form-first: the
+        -- | case of only & rows folds back to a whenAny multi-entry, no guard).
+        local orig = { Item = { { when = { name = 'Slow' },
+            whenAny = { { mode = 'DT', hpbelow = 50 } }, set = 'X' } } };
+        local text0 = D.serializeTriggers(orig);
+        local c2, cs2 = tg._loadCases(orig.Item[1]);
+        local when2, wa2 = tg._buildLegs(c2);
+        local rebuilt = { Item = { { when = when2, whenAny = wa2,
+            cases = tg._buildCases(cs2), set = 'X' } } };
+        local text1 = D.serializeTriggers(rebuilt);
+        check('TE10 a multi-condition | rule re-saves BYTE-IDENTICALLY (flatten fix)', text1, text0);
+        check('TE11 ...still the oldest form -- no cases list, no guard',
+            text1:find('cases', 1, true) == nil and text1:find('hasCases', 1, true) == nil, true);
+
+        -- ---- BUILD: (A & B) | (C & D) fires per the semantics ----
+        -- Body = case 1 = (Engaged & TP>1000); a | case = (BlackMagic & Fire).
+        local when3, wa3 = tg._buildLegs({ { key = 'status', value = 'Engaged' },
+                                           { key = 'tpabove', value = 1000 } });
+        local rule3 = { when = when3, whenAny = wa3, cases = tg._buildCases({
+            { op = '|', conds = { { key = 'magictype', value = 'Black Magic' },
+                                  { key = 'element', value = 'Fire' } } } }) };
+        check('TE12 (A&B)|(C&D): body leg fires alone',
+            D._matches(rule3, { player = { Status = 'Engaged', TP = 1500 } }), true);
+        check('TE13 ...the | case fires alone',
+            D._matches(rule3, { action = { Type = 'Black Magic', Element = 'Fire' },
+                                player = { Status = 'Idle', TP = 0 } }), true);
+        check('TE14 ...neither -> no fire',
+            D._matches(rule3, { action = { Type = 'Black Magic', Element = 'Ice' },
+                                player = { Status = 'Idle', TP = 0 } }), false);
+
+        -- ---- BUILD: (A | B) & (C | D) gates per the semantics ----
+        -- BlackMagic & (Fire|Ice) & (Sleep|Lullaby): two & cases, each internal OR.
+        local when4, wa4 = tg._buildLegs({ { key = 'magictype', value = 'Black Magic' } });
+        local rule4 = { when = when4, whenAny = wa4, cases = tg._buildCases({
+            { op = '&', conds = { { key = 'element', value = 'Fire', any = true },
+                                  { key = 'element', value = 'Ice', any = true } } },
+            { op = '&', conds = { { key = 'buff', value = 'Sleep', any = true },
+                                  { key = 'buff', value = 'Lullaby', any = true } } } }) };
+        check('TE15 (A|B)&(C|D): all three groups hold -> fire',
+            D._matches(rule4, { action = { Type = 'Black Magic', Element = 'Fire' },
+                                buffs = { sleep = true } }), true);
+        check('TE16 ...one & case misses -> no fire (AND gates)',
+            D._matches(rule4, { action = { Type = 'Black Magic', Element = 'Fire' },
+                                buffs = {} }), false);
+
+        -- ---- the empty-case guard (never saved silently) ----
+        check('TE17 an empty case is flagged', tg._hasEmptyCase({ { op = '&', conds = {} } }), true);
+        check('TE18 a filled case is not', tg._hasEmptyCase({ { op = '&', conds = { { key = 'x', value = 1 } } } }), false);
+        check('TE19 buildCases drops an empty case as a last defense',
+            tg._buildCases({ { op = '|', conds = {} } }), nil);
+
+        -- ---- a combined | entry INSIDE a case splits LOUDLY ----
+        -- The engine honors { whenAny = { { a, b } } } inside a case as
+        -- AND-within-OR; the editor cannot represent that depth (one-tier cap)
+        -- and splits it to standalone singles -- which WIDENS the rule. The & leg's
+        -- law applies one tier down: the split is fine, silence would be the bug.
+        local c4, cs4 = tg._loadCases({ when = { name = 'X' },
+            cases = { { op = '&', whenAny = { { buff = 'Sleep', hpbelow = 25 } } } } });
+        check('TE43 the combined entry splits to standalone | rows', (#cs4 == 1) and #cs4[1].conds, 2);
+        check('TE44 ...and the case carries a note, never silence',
+            (#cs4 == 1) and (cs4[1].note ~= nil) and (c4 ~= nil), true);
+
+        -- ---- case 1's own op (Henrik's field read 2026-07-26) ----
+        -- An empty-body rule (pure-OR) seats its first case as case 1, op and
+        -- all, so the editor never shows an empty un-savable body box.
+        local c5, cs5, op5 = tg._loadCases({ when = {},
+            cases = { { op = '|', when = { name = 'a', hpbelow = 10 } },
+                      { op = '&', when = { status = 'Engaged' } } } });
+        check('TE45 an empty-body rule seats its first case as case 1 (op rides along)',
+            (op5 == '|') and (#c5 == 2) and (#cs5 == 1) and cs5[1].op, '&');
+
+        -- buildRuleShape: case 1 flipped to OR saves an EMPTY body, its rows
+        -- riding the cases list as the leading | case.
+        local w6, a6, cl6 = tg._buildRuleShape(
+            { { key = 'name', value = 'x' }, { key = 'element', value = 'Fire', any = true } }, '|',
+            { { op = '&', conds = { { key = 'status', value = 'Engaged' } } } });
+        check('TE46 case 1 = OR: the saved body empties and case 1 leads the list',
+            (next(w6) == nil) and (a6 == nil) and (#cl6 == 2) and cl6[1].op == '|'
+            and cl6[1].when.name == 'x' and (#(cl6[1].whenAny or {}) == 1) and cl6[2].op, '&');
+
+        -- A pure-OR rule (old whenAny-only form) must survive the case-1 seat
+        -- byte-for-byte: promoted on load, re-folded oldest-form on save.
+        local orig2 = { Item = { { when = {}, whenAny = { { mode = 'DT', hpbelow = 50 } }, set = 'X' } } };
+        local t0 = D.serializeTriggers(orig2);
+        local c7, cs7, op7 = tg._loadCases(orig2.Item[1]);
+        local w7, a7, cl7 = tg._buildRuleShape(c7, op7, cs7);
+        local rb7 = { Item = { { when = w7, whenAny = a7, cases = cl7, set = 'X' } } };
+        check('TE47 a pure-OR rule round-trips BYTE-IDENTICALLY through the case-1 seat',
+            D.serializeTriggers(rb7), t0);
+
+        -- The engine law the OR-flip leans on: an empty together-block never
+        -- fires the rule (OR-only is never always-on) -- matches() nAnd gate.
+        check('TE48 the OR-only law: an empty together-block never fires the rule',
+            D._matches({ when = {}, cases = { { op = '|', when = { name = 'zzz' } } } },
+                { action = { Type = 'Black Magic', Element = 'Fire' },
+                  player = { Status = 'Idle', TP = 0 } }), false);
+
+        -- ---- canonical case legs (field round 2 -- Henrik's /dl why screen) ----
+        -- A lone `+ |` condition inside a case must not save an empty-&-leg case
+        -- ({ when = {}, whenAny = { {..} } }): identical meaning, noisier label
+        -- ('any|'), a 'case (x)' /dl why name instead of 'standalone x', and a
+        -- version guard the rule does not need.
+        local clF = tg._buildCases({ { op = '|',
+            conds = { { key = 'status', value = 'Resting', any = true } } } });
+        check('TE54 a lone | condition folds into the case & leg',
+            (#clF == 1) and (clF[1].whenAny == nil) and clF[1].when.status, 'Resting');
+        -- Henrik's exact field rule: case 1 = OR (status=Engaged via + |), plus
+        -- a | case (status=Resting via + |). Must serialize as the OLD pure-OR
+        -- form -- no cases list, no guard.
+        local wH, aH, clH = tg._buildRuleShape(
+            { { key = 'status', value = 'Engaged', any = true } }, '|',
+            { { op = '|', conds = { { key = 'status', value = 'Resting', any = true } } } });
+        local tH = D.serializeTriggers({ Item = { { when = wH, whenAny = aH, cases = clH, set = 'T' } } });
+        local tCanon = D.serializeTriggers({ Item = { { when = {},
+            whenAny = { { status = 'Engaged' }, { status = 'Resting' } }, set = 'T' } } });
+        check('TE55 the field rule (both conds via + |) folds to the old pure-OR form', tH, tCanon);
+        check('TE56 ...and carries no version guard', tH:find('hasCases', 1, true) == nil, true);
+
+        -- ---- the REAL popup, frame by frame ----
+        local UP = {};
+        for i = 1, 250 do
+            local n, v = debug.getupvalue(tg.render, i);
+            if n == nil then break; end
+            UP[n] = v;
+        end
+        local trig, popup = UP.trig, UP.renderTrigAddPopup;
+        check('TE20 the builder state and its popup are reachable',
+            (type(trig) == 'table') and type(popup), 'function');
+        if type(trig) == 'table' and type(popup) == 'function' then
+            local function frame(click)
+                CLICK, REC = click, {};
+                local fok, ferr = pcall(popup);
+                if not fok then print('   (TE popup error: ' .. tostring(ferr) .. ')'); end
+                return fok, REC;
+            end
+            local function fresh()
+                trig.data = {};
+                trig.addFor, trig.addConds, trig.addCases, trig._addDef = 'Item', {}, {}, 1;
+                trig.addBodyOp = '&';
+                trig.addValText[1] = ''; trig._addValSel = nil; trig.addValNum[1] = 0;
+                trig.addSet, trig.addPrio[1] = 'Bait', 0;
+                trig.addNote, trig.addSwap = nil, nil;
+                trig.editIdx, trig._editEquip, trig._bpEdit = nil, nil, nil;
+            end
+            local function sawIn(rec, needle)
+                for _, l in ipairs(rec) do if l:find(needle, 1, true) then return true; end end
+                return false;
+            end
+
+            -- Scenario A: build a | case with an internal OR, end to end.
+            fresh();
+            trig.addValText[1] = 'test';
+            check('TE21 the popup renders; the body & click lands', (frame('+ & condition##trgac')), true);
+            check('TE22 ...one body condition', #trig.addConds, 1);
+            local _, rec2 = frame(nil);
+            check('TE23 both case buttons are on screen', sawIn(rec2, '+ & case##trgaddandcase') and sawIn(rec2, '+ | case##trgaddorcase'), true);
+            frame('+ | case##trgaddorcase');
+            check('TE24 + | case creates a box', #trig.addCases, 1);
+            check('TE25 ...of the right kind', trig.addCases[1].op, '|');
+            local _, rec3 = frame(nil);
+            check('TE26 the case box header + delete render', sawIn(rec3, '| case') and sawIn(rec3, 'x##trgdelcase1'), true);
+            trig.addValText[1] = 'alpha';
+            frame('+ & condition##trgaccase1');
+            check('TE27 a condition adds INSIDE the case', #trig.addCases[1].conds, 1);
+            trig.addValText[1] = 'beta';
+            frame('+ | condition##trgoccase1');
+            check('TE28 ...and stacks a second on the | leg', #trig.addCases[1].conds, 2);
+            frame('Add rule###trgaddgo');
+            local r = trig.data.Item and trig.data.Item[1];
+            check('TE29 Save writes the rule',        type(r), 'table');
+            check('TE30 ...body & leg is the together-block', (type(r) == 'table') and r.when.name, 'test');
+            check('TE31 ...with one case', (type(r) == 'table') and r.cases and #r.cases, 1);
+            check('TE32 ...a | case carrying an internal OR',
+                (type(r) == 'table' and r.cases) and (r.cases[1].op == '|'
+                    and r.cases[1].when.name == 'alpha' and #(r.cases[1].whenAny or {}) == 1), true);
+
+            -- Scenario B: an empty case is refused, then saved once filled.
+            fresh();
+            trig.addValText[1] = 'anchor'; frame('+ & condition##trgac');
+            frame('+ & case##trgaddandcase');
+            check('TE33 an empty & case exists', #trig.addCases, 1);
+            local _, recB = frame('Add rule###trgaddgo');
+            check('TE34 Save is refused while a case is empty', trig.data.Item, nil);
+            check('TE35 ...with a notice, not silence', sawIn(recB, 'A case has no conditions'), true);
+            trig.addValText[1] = 'filled'; frame('+ & condition##trgaccase1');
+            frame('Add rule###trgaddgo');
+            check('TE36 ...once filled, it saves', (trig.data.Item and #trig.data.Item), 1);
+
+            -- Scenario C: delete removes the box; deleting the last clears all chrome.
+            fresh();
+            trig.addValText[1] = 'anchor'; frame('+ & condition##trgac');
+            frame('+ | case##trgaddorcase');
+            check('TE37 a case exists to delete', #trig.addCases, 1);
+            frame('x##trgdelcase1');
+            check('TE38 delete removes the case', #trig.addCases, 0);
+            local _, recC = frame(nil);
+            -- The per-box delete affordance exists ONLY inside a case box, so its
+            -- absence proves the box chrome is gone (the two add buttons remain,
+            -- and their labels contain "| case" -- which is why we test the delete).
+            check('TE39 ...and all case chrome is gone (only the two buttons remain)',
+                sawIn(recC, 'x##trgdelcase') == false, true);
+
+            -- Scenario D: the shared picker sits at the TOP, outside every
+            -- container (Henrik's field read 2026-07-26: rendered between the
+            -- body rows and the boxes it read as owned by case 1 forever) --
+            -- picker first, then the body rows, then the body's own buttons.
+            local function idxOf(rec, needle)
+                for i, l in ipairs(rec) do if l:find(needle, 1, true) then return i; end end
+                return nil;
+            end
+            fresh();
+            trig.addValText[1] = 'anchor'; frame('+ & condition##trgac');
+            local _, recD = frame(nil);
+            local iPick = idxOf(recD, '###trgcondbtn');
+            local iRow  = idxOf(recD, '= anchor');
+            local iBtn  = idxOf(recD, '+ & condition##trgac');
+            check('TE49 the picker renders on top, body rows next, the body buttons after',
+                (iPick ~= nil and iRow ~= nil and iBtn ~= nil)
+                and (iPick < iRow) and (iRow < iBtn), true);
+
+            -- Scenario E: once boxes exist the body renders as CASE 1 -- a box
+            -- with the same top-right AND/OR selection every case has -- and
+            -- flipping case 1 to OR saves an empty body (the engine's OR-only
+            -- law keeps it from being always-on). The stub's combos never open,
+            -- so the flip itself is driven by setting the state the combo sets.
+            fresh();
+            trig.addValText[1] = 'anchor'; frame('+ & condition##trgac');
+            frame('+ & case##trgaddandcase');
+            trig.addValText[1] = 'other'; frame('+ & condition##trgaccase1');
+            local _, recE = frame(nil);
+            check('TE50 every box carries the AND/OR selection, case 1 included',
+                sawIn(recE, '##trgcaseopbody') and sawIn(recE, '##trgcaseopcase1'), true);
+            local flatBtn = false;
+            for _, l in ipairs(recE) do if l == '+ & condition##trgac' then flatBtn = true; end end
+            check('TE51 the flat body chrome is gone in box mode (case 1 owns its buttons)',
+                (not flatBtn) and sawIn(recE, '+ & condition##trgacbody'), true);
+            trig.addBodyOp = '|';
+            frame('Add rule###trgaddgo');
+            local rE = trig.data.Item and trig.data.Item[1];
+            check('TE52 case 1 = OR saves an EMPTY body with case 1 riding the | tier',
+                (type(rE) == 'table') and (next(rE.when or { x = 1 }) == nil)
+                and rE.cases and #rE.cases == 2 and rE.cases[1].op == '|'
+                and rE.cases[1].when.name == 'anchor' and rE.cases[2].op, '&');
+
+            -- Scenario F: deleting case 1 promotes the next case into the seat.
+            fresh();
+            trig.addValText[1] = 'anchor'; frame('+ & condition##trgac');
+            frame('+ | case##trgaddorcase');
+            trig.addValText[1] = 'alt'; frame('+ & condition##trgaccase1');
+            frame('x##trgdelbody');
+            check('TE53 deleting case 1 promotes the next case into the seat, op and all',
+                (#trig.addCases == 0) and (#trig.addConds == 1)
+                and (trig.addConds[1].value == 'alt') and trig.addBodyOp, '|');
+
+            check('TE40 the popup stack stayed balanced', depth.popup, 0);
+            check('TE41 the colour stack stayed balanced', depth.col, 0);
+            check('TE42 the child stack stayed balanced', depth.child, 0);
+        end
+    end
+
+    for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end
+    package.loaded['imgui'] = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- AU. ammoui RENDER for real (the Range-aware type tabs, v128). Until now this
+--     file's render half had NEVER been executed by any test -- S135-S137 only
+--     touch the headless status contract above the imgui guard -- which is the
+--     craftbar/bit-three trap exactly: an unknown Lua name is a silent nil
+--     GLOBAL and a load-only test cannot see it. The tab strip pushes a style
+--     colour INSIDE a loop, the S50 crash class (unbalanced push = native UB in
+--     ImGui, no Lua error, whole client down), so drive the real render once per
+--     weapon branch and assert every stack lands back on zero.
+-- ---------------------------------------------------------------------------
+;(function()
+    local depth = { col = 0, id = 0, width = 0 };
+    local function nop() end
+    local IM = {};
+    for _, n in ipairs({ 'Separator', 'Text', 'TextColored', 'SameLine', 'Dummy',
+        'SetTooltip', 'Spacing', 'Image', 'InvisibleButton' }) do IM[n] = nop; end
+    IM.PushStyleColor  = function() depth.col = depth.col + 1; end
+    IM.PopStyleColor   = function(n) depth.col = depth.col - (tonumber(n) or 1); end
+    IM.PushID          = function() depth.id = depth.id + 1; end
+    IM.PopID           = function() depth.id = depth.id - 1; end
+    IM.PushItemWidth   = function() depth.width = depth.width + 1; end
+    IM.PopItemWidth    = function() depth.width = depth.width - 1; end
+    local btns = {};   -- every Button label this render drew
+    IM.Button          = function(l) btns[#btns + 1] = tostring(l); return false; end
+    IM.SmallButton     = function(l) btns[#btns + 1] = tostring(l); return false; end
+    IM.Checkbox        = function(_, v) return false, v; end
+    IM.InputInt        = function(_, v) return false, v; end
+    IM.IsItemHovered   = function() return true; end   -- ALWAYS hovered: forces every
+                                                       -- tooltip string to be built
+    local function drewTab(c)
+        for _, l in ipairs(btns) do
+            if l:find('##ammocat_' .. c, 1, true) ~= nil then return true; end
+        end
+        return false;
+    end
+
+    local NAMES = { 'dlac\\ui\\ammoui', 'dlac\\gear\\gearoracle', 'imgui' };
+    local saved = {};
+    for _, k in ipairs(NAMES) do saved[k] = package.loaded[k]; end
+
+    -- The worn ranged weapon is the ONE input the tab strip's green depends on.
+    local worn = nil;   -- nil = empty Range slot
+    package.loaded['dlac\\gear\\gearoracle'] = {
+        wornItem = function(slot) return (slot == 2) and worn or nil; end,
+    };
+    package.loaded['imgui'] = IM;
+    package.loaded['dlac\\ui\\ammoui'] = nil;
+    local ok, aui = pcall(require, 'dlac\\ui\\ammoui');
+    check('AU1 ammoui re-requires against a stub imgui', ok and type(aui.render), 'function');
+
+    local amw = require('dlac\\feature\\ammowatch');
+    if ok then
+        -- A list spanning three types, so every tab is populated and the filter
+        -- has something to include AND something to exclude in each branch.
+        amw.jobsData = { COR = { enabled = true, at = 0, ammo = {
+            { name = 'Gold Arrow',  id = 10, type = 'Archery',      pair = '25:0', ranged = true, ws = false, special = false },
+            { name = 'Rusty Bolt',  id = 11, type = 'Marksmanship', pair = '26:0', ranged = true, ws = false, special = false },
+            { name = 'Gold Bullet', id = 12, type = 'Marksmanship', pair = '26:1', ranged = true, ws = false,
+              special = false },
+            { name = 'Yoru Shuriken', id = 13, type = 'Throwing',   pair = '27:3', ranged = false, ws = false,
+              special = { unlimited = true, quickdraw = false, freews = false } },
+        } } };
+        amw.selectJob('COR');
+        local deps = { playerJob = function() return 'COR'; end,
+                       ownedCounts = function() return { [10] = 99, [11] = 99, [12] = 99, [13] = 1 }; end,
+                       renderIcon = nop, itemTooltip = nop,
+                       lookupByName = function() return nil; end };
+
+        local CASES = {
+            { what = 'nothing equipped',      rec = nil,                                          want = nil },
+            { what = 'a gun',                 rec = { Name = 'Hexagun',   Pair = '26:1' },        want = 'Bullets' },
+            { what = 'a crossbow',            rec = { Name = 'Crossbow',  Pair = '26:0' },        want = 'Bolts' },
+            { what = 'a bow',                 rec = { Name = 'Longbow',   Pair = '25:4' },        want = 'Arrows' },
+            { what = 'a culverin',            rec = { Name = 'Culverin',  Pair = '26:2' },        want = 'Other' },
+            { what = 'a harp (fires nothing)',rec = { Name = 'Maple Harp',Pair = '41:0' },        want = nil },
+            { what = 'a pre-Pair manifest',   rec = { Name = 'Hexagun' },                          want = nil },
+        };
+        for _, c in ipairs(CASES) do
+            worn = (c.rec ~= nil) and { id = 1, rec = c.rec } or nil;
+            aui._resetCatSel();   -- re-derive the default selection per case
+            btns = {};
+            check('AU2 render survives ' .. c.what, pcall(aui.render, deps, 700), true);
+            check('AU3 colour stack balanced with ' .. c.what, depth.col, 0);
+            check('AU4 id stack balanced with ' .. c.what,     depth.id, 0);
+            check('AU5 width stack balanced with ' .. c.what,  depth.width, 0);
+            check('AU6 live tab for ' .. c.what, amw.categoryForPair(c.rec and c.rec.Pair), c.want);
+            -- Proof the STRIP actually drew -- a pcall that merely returns true
+            -- would also pass if render bailed before reaching the tabs at all.
+            check('AU9 the three populated tabs drew with ' .. c.what,
+                drewTab('Bullets') and drewTab('Bolts') and drewTab('Arrows'), true);
+            -- A live type is always offered, even 'Other', or a culverin user would
+            -- see no green tab anywhere.
+            if c.want ~= nil then
+                check('AU10 the live tab is on screen with ' .. c.what, drewTab(c.want), true);
+            end
+        end
+
+        -- First open lands on what you are holding; after that the choice is YOURS
+        -- even when the weapon changes (the green tab reports the change instead).
+        worn = { id = 1, rec = { Name = 'Longbow', Pair = '25:4' } };
+        aui._resetCatSel();
+        pcall(aui.render, deps, 700);
+        check('AU7 first open selects the type the worn weapon fires', aui._catSel(), 'Arrows');
+        worn = { id = 1, rec = { Name = 'Hexagun', Pair = '26:1' } };
+        pcall(aui.render, deps, 700);
+        check('AU8 swapping weapons does NOT yank the selection', aui._catSel(), 'Arrows');
+
+        amw.jobsData = {};
+        amw.selectJob('COR');
     end
 
     for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end
