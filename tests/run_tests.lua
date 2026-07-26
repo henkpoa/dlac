@@ -9319,6 +9319,65 @@ end)();
     local sk2, ss2 = dispatchM._splitPair('26');
     check('PW14b skill-only leaves the subskill nil', tostring(sk2) .. '/' .. tostring(ss2), '26/nil');
     check('PW14c Archery is the exempt skill id', dispatchM.SKILL_ARCHERY, 25);
+
+    -- -----------------------------------------------------------------------
+    -- The IMPURE RIM. resolveAmmoPlan is pinned to death above, but it is
+    -- ammoOverlayFor that gathers rangeWorn/rangePair -- and if that wiring
+    -- ever breaks, f.rangeWorn is nil, the gate shuts, and AutoAmmo silently
+    -- does NOTHING FOREVER with no error anywhere. Drive the real rim against
+    -- a stub client so the wiring itself is a test, not an assumption.
+    -- -----------------------------------------------------------------------
+    local savedAshita = AshitaCore;
+    -- equip slot 2 = Range, 3 = Ammo; Index packs container*256 + slot.
+    local RANGE_ID, AMMO_ID = 17222, 12;   -- Hexagun (a gun), Gold Bullet
+    local RES = {
+        [17222] = { Name = { 'Hexagun' },     Skill = 26 },
+        [17160] = { Name = { 'Longbow' },     Skill = 25 },
+        [12]    = { Name = { 'Gold Bullet' }, Skill = 26 },
+    };
+    RES[10] = { Name = { 'Gold Arrow' }, Skill = 25 };
+    -- Ammo slot EMPTY on purpose: with the planned bullet already worn the rim
+    -- correctly holds, which would make this whole section pass for the wrong
+    -- reason. Both ammos sit in the bag so the counter can find them.
+    local bag = { [1] = { Id = RANGE_ID, Count = 1 },
+                  [2] = { Id = AMMO_ID,  Count = 40 },
+                  [3] = { Id = 10,       Count = 99 } };
+    AshitaCore = {
+        GetMemoryManager = function() return { GetInventory = function() return {
+            GetEquippedItem = function(_, slot)
+                if slot == 2 and RANGE_ID ~= nil then return { Index = 1 }; end
+                return { Index = 0 };   -- Ammo (3) and everything else: empty
+            end,
+            GetContainerItem = function(_, cid, idx) return (cid == 0) and bag[idx] or nil; end,
+            GetContainerCountMax = function(_, cid) return (cid == 0) and 3 or 0; end,
+        }; end }; end,
+        GetResourceManager = function() return { GetItemById = function(_, id) return RES[id]; end }; end,
+    };
+    local AS = { fmt = 2, jobs = { COR = { enabled = true, at = 0, ammo = {
+        { name = 'Gold Arrow',  id = 10, type = 'Archery',      pair = '25:0', ranged = true, ws = false, special = false },
+        { name = 'Gold Bullet', id = 12, type = 'Marksmanship', pair = '26:1', ranged = true, ws = false, special = false },
+    } } } };
+    local ctx = { player = { MainJob = 'COR' } };
+
+    local pair, nm = dispatchM._wornPair('range');
+    check('PW15 wornPair reads the Range slot through the client', nm, 'Hexagun');
+    check('PW15b ...and falls back to the resource Skill with no manifest Pair', pair, '26');
+    local eq = dispatchM._ammoOverlayFor(AS, ctx, 'Preshot', nil, false);
+    check('PW16 the rim reaches a plan at all (the silent-death guard)',
+        type(eq) == 'table' and eq.Ammo or nil, 'Gold Bullet');
+    -- The arrow is FIRST in the list and in stock; only the gun keeps it out.
+    check('PW16b ...and it is the weapon, not the order, that chose it',
+        (type(eq) == 'table' and eq.Ammo) ~= 'Gold Arrow', true);
+
+    RANGE_ID = nil; bag[1] = nil;   -- unequip the gun
+    check('PW17 no ranged weapon -> the rim plans nothing',
+        dispatchM._ammoOverlayFor(AS, ctx, 'Preshot', nil, false), nil);
+
+    RANGE_ID = 17160; bag[1] = { Id = 17160, Count = 1 };   -- a bow instead
+    local eq2 = dispatchM._ammoOverlayFor(AS, ctx, 'Preshot', nil, false);
+    check('PW18 swapping to a bow re-aims the pick with no config change',
+        type(eq2) == 'table' and eq2.Ammo or nil, 'Gold Arrow');
+    AshitaCore = savedAshita;
 end)();
 
 -- ---------------------------------------------------------------------------
