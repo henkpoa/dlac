@@ -1241,7 +1241,9 @@ end
 -- rest), then "Teleport Earrings" / "Teleport Rings" cascading submenus (every
 -- destination listed, dim when unowned), then "Other Teleports" (the utility
 -- family, 2026-07-23 -- owned rows only, so the cascade hides itself until
--- you have one), then the exp rings. Fixed columns
+-- you have one; Nexus Cape and the Shadow Lord Shirt joined it 2026-07-26,
+-- leaving only the instant options up top), then the exp rings, then the two
+-- quick windows (Hobby bar / Lockstyle). Fixed columns
 -- (destination / item / charges / state) so the rows line up; colors follow
 -- the house rules -- lit = equippable now, red = owned but stored, dim = not
 -- owned -- plus an amber countdown while the enchant recharges (out of
@@ -1339,26 +1341,11 @@ local function renderTeleportGroup(title, list, key)
     end
 end
 
--- Quick controls (Henrik, 2026-07-20): the popup doubles as the floating
--- quick menu, so two more cascading groups ride under the travel tiers --
--- "Automations" (the Automations-tab list: same rows, same coverage colors;
--- the four with a live switch toggle on click) and "HELM" (the four
--- gathering categories + the idle/auto switches). Toggle and category rows
--- keep the popup OPEN (DontClosePopups) so "pick Mining, flip the idle set
--- ON" is one visit; a binding without the flag closes per click -- degraded,
--- not broken. Modules are pcall-required per frame, NOT captured: the autoui
--- local is declared far BELOW these functions (hard rule 8 -- a forward
--- reference here would be a silent nil global).
-local TPQ_KEEP  = ImGuiSelectableFlags_DontClosePopups or 0;
-local TPQ_GREEN = { 0.45, 0.90, 0.45, 1.0 };
-
--- Jump to one automation's panel: show the main window, one-shot select the
--- Automations tab (uihost), land on the detail view, close the popup chain.
--- automationsui is pcall-required, not captured (the autoui local is declared
--- far below -- hard rule 8).
--- Open one automation's panel from ANYWHERE (the quick menu, /dl restock, the
--- restock nudge): show the window, one-shot select the Automations tab, land on
--- the detail view. tpqOpenPanel adds the popup close for the quick-menu caller.
+-- Open one automation's panel from ANYWHERE (/dl restock, the restock nudge):
+-- show the window, one-shot select the Automations tab (uihost), land on the
+-- detail view. automationsui is pcall-required, not captured (the autoui local
+-- is declared far below -- hard rule 8: a forward reference here would be a
+-- silent nil global).
 function M.openAutomation(key)
     pcall(function()
         local au = require('dlac\\ui\\automationsui');
@@ -1367,268 +1354,43 @@ function M.openAutomation(key)
     pcall(host.selectTab, 'Automations');
     M.visible = true;
 end
-local function tpqOpenPanel(key)
-    M.openAutomation(key);
-    imgui.CloseCurrentPopup();
-end
 
-local function renderAutomationsQuick()
-    local aok, au = pcall(require, 'dlac\\ui\\automationsui');
-    if not aok or type(au) ~= 'table' or type(au.listRows) ~= 'function' then
-        imgui.TextColored(COL.ERR, 'automations unavailable.');
-        return;
-    end
-    local rows = au.listRows();
-    if #rows == 0 then
-        imgui.TextColored(COL.DIM, 'log in to see automations.');
-        return;
-    end
-    -- The live switches, keyed like the rows: state() -> (text, on) for the
-    -- second column, flip() = the same call the bars/panels make. The four idle
-    -- hobbies (Craft/HELM/Fishing/Chocobo) are mutually exclusive -- that lives
-    -- inside the watchers (idleexcl, ADR 0017), never here, so flipping one on
-    -- from this menu disarms the rest just like anywhere else. Only rows with a
-    -- switch render at all (Henrik, 07-20 round 2): the set-driven trio
-    -- (Iridescence / Obi / Oneiros) has nothing to flip -- their panels live on
-    -- the Automations tab itself.
-    local SWITCH = {
-        craft = {
-            tip = 'Craft overlay: wears the selected craft\'s gear while ON (idle only).\nPick craft + goal on the craft bar (/dl craft bar) or the Automations tab.',
-            state = function()
-                local cw = require('dlac\\feature\\craftwatch');
-                if not cw.isEnabled() then return 'off', false; end
-                return string.format('ON -- %s (%s)', cw.getCraft() or 'no craft picked', cw.getGoal()), true;
-            end,
-            flip = function()
-                local cw = require('dlac\\feature\\craftwatch');
-                cw.setEnabled(not cw.isEnabled());
-            end,
-        },
-        helm = {
-            tip = 'Auto HELM: equips the active category\'s gathering gear when you\'re near a\n<category> Point (idle only). Pick the category in the HELM menu below.',
-            state = function()
-                local hw = require('dlac\\feature\\helmwatch');
-                if not hw.isAutoHelm() then return 'off', false; end
-                return 'ON -- ' .. tostring(hw.getGather() or 'no category'), true;
-            end,
-            flip = function()
-                local hw = require('dlac\\feature\\helmwatch');
-                hw.setAutoHelm(not hw.isAutoHelm());
-            end,
-        },
-        fish = {
-            tip = 'Fishing set: rod, bait and fishing gear while ON (idle only). Pin a rod\nor bait on the fish bar (/dl fish bar).',
-            state = function()
-                local fw = require('dlac\\feature\\fishwatch');
-                if not fw.isEnabled() then return 'off', false; end
-                return 'ON', true;
-            end,
-            flip = function()
-                local fw = require('dlac\\feature\\fishwatch');
-                fw.setEnabled(not fw.isEnabled());
-            end,
-        },
-        ammo = {
-            tip = 'AutoAmmo for the current job: loads enabled ammo for shots and guards\nspecial ammo. Manage the list on its panel.',
-            state = function()
-                -- Bare ON/off like the rest (Henrik, 07-20 round 2) -- the
-                -- job + ammo count still ride the tooltip's Coverage line.
-                local aw = require('dlac\\feature\\ammowatch');
-                if aw.enabled ~= true then return 'off', false; end
-                return 'ON', true;
-            end,
-            flip = function()
-                local aw = require('dlac\\feature\\ammowatch');
-                aw.setEnabled(not aw.enabled, select(2, jobFile()));
-            end,
-        },
-        maxmp = {
-            tip = 'MaxMP: the banded battery ladder -- max-MP gear follows the precomputed\nplan (/dl plan). Auto-disables on job change; re-enable per job.',
-            state = function()
-                return (au.maxmpMode() and 'ON' or 'off'), au.maxmpMode();
-            end,
-            flip = function()
-                au.maxmpToggle();
-            end,
-        },
-    };
-    for _, r in ipairs(rows) do
-        local sw = SWITCH[r.key];
-        if sw ~= nil then
-            local col = (type(au.levelColor) == 'function') and au.levelColor(r.level, r.max) or COL.DIM;
-            -- LEFT-click (Henrik, 2026-07-20): open this automation's panel;
-            -- the whole popup chain closes (CloseCurrentPopup from inside a
-            -- child menu walks the chain).
-            if imgui.Selectable('##tpqa' .. r.key, false, TPQ_KEEP) then
-                tpqOpenPanel(r.key);
-            end
-            -- RIGHT-click: a small on/off context menu. Manual
-            -- OpenPopup/BeginPopup (both field-proven in this binding) rather
-            -- than the unprobed BeginPopupContextItem. The context popup is a
-            -- plain popup, not a child menu, so its CloseCurrentPopup closes
-            -- ONLY itself -- the Automations menu stays open showing the flip.
-            if imgui.IsItemClicked(1) then
-                imgui.OpenPopup('##tpqactx' .. r.key);
-            end
-            if imgui.IsItemHovered() then
-                imgui.SetTooltip(sw.tip
-                    .. '\nLeft-click: open its panel. Right-click: turn it on/off.\nCoverage: '
-                    .. tostring(r.txt or ''));
-            end
-            local txt, on = nil, nil;
-            pcall(function() txt, on = sw.state(); end);
-            if imgui.BeginPopup('##tpqactx' .. r.key) then
-                imgui.TextColored(COL.HEADER, fmt.esc(r.name));
-                imgui.Separator();
-                if imgui.Selectable((on and 'Turn off' or 'Turn ON') .. '##tpqactxgo' .. r.key,
-                                    false, TPQ_KEEP) then
-                    pcall(sw.flip);
-                    imgui.CloseCurrentPopup();
-                end
-                imgui.EndPopup();
-            end
-            imgui.SameLine(8);
-            imgui.TextColored(col, fmt.esc(r.name));
-            imgui.SameLine(190);
-            imgui.TextColored(on and TPQ_GREEN or COL.DIM, fmt.esc(txt or 'off'));
-        end
-    end
-end
-
-local function renderHelmQuick()
-    local hok, hw = pcall(require, 'dlac\\feature\\helmwatch');
-    if not hok or type(hw) ~= 'table' then
-        imgui.TextColored(COL.ERR, 'helmwatch unavailable.');
-        return;
-    end
-    local sel, armed;
-    pcall(function() sel = hw.getGather(); armed = hw.isAutoHelm(); end);
-    -- Top row (Henrik, 07-20 round 2): jump to the full HELM panel -- the
-    -- GUI behind this quick menu (Automations tab detail view).
-    imgui.Dummy({ 18, 18 });
-    imgui.SameLine(0, 6);
-    if imgui.Selectable('##tpqhmenu', false, TPQ_KEEP) then tpqOpenPanel('helm'); end
-    if imgui.IsItemHovered() then
-        imgui.SetTooltip('Open the HELM panel (Automations tab): ratings, hats, gear ladders and\nthe Auto HELM switch in full.');
-    end
-    imgui.SameLine(30);
-    imgui.TextColored(COL.HEADER, 'HELM menu');
-    imgui.Separator();
-    for i, g in ipairs({ 'Harvesting', 'Excavation', 'Logging', 'Mining' }) do
-        -- Category glyph (helmbar's Image pattern -- these are not item icons);
-        -- bright = selected, like the bar. Dummy keeps the columns when the
-        -- texture is missing.
-        local drew = false;
-        pcall(function()
-            local hui = require('dlac\\ui\\helmui');
-            local tex = (type(hui.texture) == 'function') and hui.texture(g) or nil;
-            if tex == nil then return; end
-            local ffi = require('ffi');
-            imgui.Image(tonumber(ffi.cast('uint32_t', tex)), { 18, 18 },
-                { 0, 0 }, { 1, 1 }, (sel == g) and { 1, 1, 1, 1 } or { 1, 1, 1, 0.5 });
-            drew = true;
-        end);
-        if not drew then imgui.Dummy({ 18, 18 }); end
-        imgui.SameLine(0, 6);
-        if imgui.Selectable('##tpqh' .. i, false, TPQ_KEEP) then
-            pcall(function() hw.selectGather(g); end);
-        end
-        if imgui.IsItemHovered() then
-            local helm, surv, bp = 0, 0, false;
-            pcall(function() helm, surv, bp = hw.rating(g); end);
-            imgui.SetTooltip(string.format(
-                '%s -- click to make this the active category (worn when Auto HELM is on and near a Point).\nBreak rating %d%s, Surveyor +%d.',
-                g, helm, bp and ' -- BREAK-PROOF' or '/5', surv));
-        end
-        imgui.SameLine(30);
-        imgui.TextColored((sel == g) and COL.USABLE or COL.DIM, g);
-        local vp = nil;
-        pcall(function() vp = hw.pointsFor(g); end);
-        imgui.SameLine(170);
-        imgui.TextColored(vp ~= nil and COL.SCORE or COL.DIM,
-            'VP ' .. (vp ~= nil and tostring(vp) or '?'));
-    end
-    imgui.Separator();
-    -- The ONE HELM switch: Auto HELM (Henrik -- two toggles was confusing, Auto
-    -- works best). Gathering gear equips when you're near a <category> Point (or
-    -- after a swing), never "always on regardless of location".
-    imgui.Dummy({ 18, 18 });
-    imgui.SameLine(0, 6);
-    if imgui.Selectable('##tpqhauto', false, TPQ_KEEP) then
-        pcall(function() hw.setAutoHelm(not armed); end);
-    end
-    if imgui.IsItemHovered() then
-        imgui.SetTooltip(armed
-            and 'Auto HELM is ON -- near a Point (or on a swing) it equips that category\'s\ngear; normal gear returns after you leave. Click to turn off.'
-            or  'Auto HELM: equips your best gathering gear when you\'re near a <category>\nPoint (or after a swing). Starts off each session.');
-    end
-    imgui.SameLine(30);
-    imgui.TextColored(COL.DIM, 'Auto HELM');
-    imgui.SameLine(170);
-    local holding = false;
-    pcall(function() holding = hw.autoActive(); end);
-    imgui.TextColored(armed and TPQ_GREEN or COL.DIM,
-        armed and (holding and 'ON -- holding' or 'ON -- armed') or 'off');
-end
-
--- Fishing quick menu (Henrik, 07-20 round 2): panel jump + the idle switch +
--- the current rod/bait/target at a glance. STREAMLINING ONLY -- the fishing
--- scope guard binds here too: no casting, no bite reads, nothing automated.
--- Rod/bait rows are read-only (picking/pinning lives on the fish bar and the
--- panel); '*' marks a manual pin, same glyph as the bar.
-local function renderFishQuick()
-    local fok, fw = pcall(require, 'dlac\\feature\\fishwatch');
-    if not fok or type(fw) ~= 'table' then
-        imgui.TextColored(COL.ERR, 'fishwatch unavailable.');
-        return;
-    end
-    -- Top row: the full fishing panel (Automations tab detail view).
-    if imgui.Selectable('##tpqfmenu', false, TPQ_KEEP) then tpqOpenPanel('fish'); end
-    if imgui.IsItemHovered() then
-        imgui.SetTooltip('Open the Fishing panel (Automations tab): target fish, rod risk, gear\nladders and the switch in full.');
-    end
-    imgui.SameLine(8);
-    imgui.TextColored(COL.HEADER, 'Fishing menu');
-    imgui.Separator();
-    -- The idle switch (fishwatch: enabling turns the craft/HELM overlays off).
-    local on = false;
-    pcall(function() on = fw.isEnabled(); end);
-    if imgui.Selectable('##tpqfon', false, TPQ_KEEP) then
-        pcall(function() fw.setEnabled(not on); end);
-    end
-    if imgui.IsItemHovered() then
-        imgui.SetTooltip(on
-            and 'Fishing set is ON -- rod, bait and fishing gear stay on while idle. Click to\nturn off.'
-            or  'Fishing set: wears your rod, bait and best fishing gear while idle, until\nturned off. Turning it on turns the craft/HELM overlays off.');
-    end
-    imgui.SameLine(8);
-    imgui.TextColored(COL.DIM, 'Idle set');
-    imgui.SameLine(90);
-    imgui.TextColored(on and TPQ_GREEN or COL.DIM, on and 'ON' or 'off');
-    -- Read-only state rows: rod / bait (with the bar's pin glyph) + target.
-    local PICK_TIP = 'Picked by the heartbeat (best owned, re-ranked ~2s). Pick and pin by hand\non the fish bar (/dl fish bar) or the panel.';
-    local PIN_TIP  = 'Pinned by hand (the * ) -- unpinned when it vanishes or the target changes.\nPick and pin on the fish bar (/dl fish bar) or the panel.';
-    local rows = {};
+-- Quick WINDOWS (Henrik, 2026-07-26). The popup doubles as the floating quick
+-- menu, so under the travel tiers ride the two windows worth reaching for
+-- mid-play: the Hobby bar and Lockstyle. One row each -- click opens the window
+-- and closes the popup.
+--
+-- WHAT WAS HERE (2026-07-20 -> 2026-07-26): "Automations", "HELM" and "Fishing"
+-- cascades -- the automations list with right-click toggles, the four gathering
+-- categories, the fishing rod/bait readout. Removed on Henrik's call. The hobby
+-- bar IS Craft/HELM/Fishing/Chocobo in one window (ADR 0017), so two of those
+-- three cascades were a second drawing of controls that already live one click
+-- away, and the third belongs on the Automations tab it linked to.
+--
+-- Rows, not cascades: there is nothing to fold: the window is the content. The
+-- ACTION goes through menuui.activate -- the same seam the Menu rows use -- so
+-- "what the Lockstyle row does" has exactly one definition (menuui is configured
+-- at gearui load, and the call is pcall'd, so a headless frame just no-ops).
+local function renderQuickWindowRow(key, label, tip)
+    -- The Menu's own art, at teleport-row size, through filetex.handle (it
+    -- retains the texture OBJECT -- storing a bare handle is the dangling-pointer
+    -- crash). Missing PNG -> a Dummy of the same size, so the label column holds.
+    local drew = false;
     pcall(function()
-        local _, rod = fw.getRod();
-        local rp = fw.rodPinned();
-        rows[#rows + 1] = { 'Rod', rod, rp, rp and PIN_TIP or PICK_TIP };
-        local _, bait = fw.getBait();
-        local bp = fw.baitPinned();
-        rows[#rows + 1] = { 'Bait', bait, bp, bp and PIN_TIP or PICK_TIP };
-        local _, tgt = fw.getTarget();
-        rows[#rows + 1] = { 'Target', tgt, false,
-            'The fish the rod/bait picks aim at. Choose it on the fishing panel\n(or the fish bar).' };
+        local h = require('dlac\\ui\\filetex').handle(key);
+        if h == nil then return; end
+        imgui.Image(h, { 18, 18 });
+        drew = true;
     end);
-    for i, s in ipairs(rows) do
-        imgui.Dummy({ 0, 0 });
-        imgui.SameLine(8);
-        imgui.TextColored(COL.DIM, s[1]);
-        if imgui.IsItemHovered() then imgui.SetTooltip(s[4]); end
-        imgui.SameLine(90);
-        imgui.TextColored(s[2] ~= nil and COL.USABLE or COL.DIM,
-            fmt.esc(tostring(s[2] or '(none)')) .. (s[3] and ' *' or ''));
+    if not drew then imgui.Dummy({ 18, 18 }); end
+    imgui.SameLine(0, 6);
+    if imgui.Selectable('##tpqw' .. key) then
+        pcall(function() require('dlac\\ui\\menuui').activate(key); end);
+        imgui.CloseCurrentPopup();
     end
+    if imgui.IsItemHovered() then imgui.SetTooltip(tip); end
+    imgui.SameLine(30);
+    imgui.TextColored(COL.USABLE, label);
 end
 
 local function renderTeleportsPopup()
@@ -1663,32 +1425,15 @@ local function renderTeleportsPopup()
         imgui.TextColored(COL.HEADER, 'Exp rings');
         for i, r in ipairs(xps) do renderTeleportRow(r, 'x' .. i); end
     end
-    -- Quick controls (Henrik, 2026-07-20): Automations + HELM ride along as
-    -- cascading groups -- the popup is the floating quick menu, not just
-    -- travel. Same fallback rule as the teleport groups: no BeginMenu
-    -- binding -> flat sections under dim headers.
+    -- Quick windows (Henrik, 2026-07-26): the popup is the floating quick menu,
+    -- not just travel, so the Hobby bar and Lockstyle ride under the travel
+    -- tiers. No cascade and no BeginMenu fallback to think about -- these are
+    -- plain rows that open a window and close the popup.
     imgui.Separator();
-    if tpHasMenu then
-        if imgui.BeginMenu('Automations##tpqa') then
-            pcall(renderAutomationsQuick);
-            imgui.EndMenu();
-        end
-        if imgui.BeginMenu('HELM##tpqh') then
-            pcall(renderHelmQuick);
-            imgui.EndMenu();
-        end
-        if imgui.BeginMenu('Fishing##tpqf') then
-            pcall(renderFishQuick);
-            imgui.EndMenu();
-        end
-    else
-        imgui.TextColored(COL.HEADER, 'Automations');
-        pcall(renderAutomationsQuick);
-        imgui.TextColored(COL.HEADER, 'HELM');
-        pcall(renderHelmQuick);
-        imgui.TextColored(COL.HEADER, 'Fishing');
-        pcall(renderFishQuick);
-    end
+    renderQuickWindowRow('hobbybar', 'Hobby bar',
+        'Show/hide the hobby bar -- Craft, HELM, Fishing and Chocobo controls in\none window (one hobby active at a time).');
+    renderQuickWindowRow('lockstyle', 'Lockstyle',
+        'Open the Lockstyle window -- your 30 saved looks for this job: apply one,\nsave the marked box, set the town style.');
     -- Footer: pin/unpin the PF-style floating button. The same menu renders from
     -- the floating button itself, so it is removable from EITHER place.
     imgui.Separator();
@@ -2373,6 +2118,11 @@ end
 -- (re)loaded from the saved list, deleted, or a fresh New set is started. Drives the red
 -- Commit button in renderSetsTab.
 local _setDirty = false;
+
+-- Main job the gear window was last drawn for. A set belongs to the job that
+-- built it, so when this moves the Sets-tab selection is dropped -- see the latch
+-- in drawWindow.
+local _setsJob = nil;
 
 -- Load a dynamic set into the working model (by our 16 slot labels).
 local function loadSet(setName)
@@ -4477,6 +4227,22 @@ local function drawWindow()
     local owned = buildOwned();
     buildAllEquip();   -- populate catalog indexes for tooltips / worn-set totals
     local job, level = getPlayerInfo();
+
+    -- A set belongs to the job that built it. The picker's LIST already follows
+    -- main job (profilesets caches on the job file), but the SELECTION is only a
+    -- name and the working copy is only a table -- neither moved, so changing job
+    -- left the previous job's set selected, on screen, and still editable. Drop it
+    -- here rather than inside renderSetsTab: this is the one point above every tab
+    -- AND the Weights window, and both the tab and that window bind per-set weights
+    -- off the name (bindSetWeights mints a blank NEWJOB|OldSetName record for a
+    -- name the new job never had). Nil/empty job = zoning or character select, not
+    -- a change: latch only what we can trust, so the drop lands on the real switch.
+    if job ~= nil and job ~= '' then
+        if _setsJob ~= nil and _setsJob ~= job then
+            M.working = {}; M.workingSetName = nil; ui.setSelected = nil; _setDirty = false;
+        end
+        _setsJob = job;
+    end
 
     imgui.SetNextWindowSize({ 940, 680 }, ImGuiCond_FirstUseEver);
     imgui.SetNextWindowSizeConstraints({ 480, 340 }, { 1300, 1300 });

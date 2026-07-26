@@ -98,7 +98,7 @@ local ROWS = {
     { key = 'hobbybar',  icon = 'hobbybar',  label = 'Hobby bar',
       tip = 'One shared window for Craft / HELM / Fishing / Chocobo:\npick controls and switch a hobby on (idle only).' },
     { key = 'teleports', icon = 'teleports', label = 'Teleports',
-      tip = 'Warp / Retrace scrolls, rings, Chocobo Whistle, Nexus Cape and your\nexp rings -- plus the Automations, HELM and Fishing quick menus.' },
+      tip = 'Warp / Retrace scrolls, teleport earrings and rings, the Chocobo Whistle,\nevery other travel enchant you own and your exp rings -- plus quick rows\nfor the Hobby bar and Lockstyle.' },
     { key = 'level',     icon = 'level',     label = 'Level override',
       tip = 'Preview / test at another MAIN level: the pickers, set previews and\nthe live set flattening all follow it.' },
     { key = 'settings',  icon = 'settings',  label = 'Settings',

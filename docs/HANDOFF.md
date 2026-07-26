@@ -230,10 +230,15 @@ that performs the promotion **empties this section in the same commit as the mer
 entry left standing here after a merge is how "is this on main?" becomes unanswerable —
 see hard rule 14, which this section exists to serve.
 
-*(Empty. Last promotion: 2026-07-26 evening — the `/dl disable` free-equip ceiling
-(ADR 0024, engine v129) and the `/dl reload` → dlac fix, both field-confirmed by Henrik;
-plus the `!box` chat-mode finding as server-question #8 and the "do not fix this again"
-note it left in `eboxclient`. The record is the merge commit on `main`.)*
+*(Empty. Last promotion: 2026-07-26 night — the **Teleports floating menu rework**
+(`2026.07.26v`; Nexus Cape + Shadow Lord Shirt into "Other Teleports", the
+Automations/HELM/Fishing cascades deleted, Hobby bar + Lockstyle rows added —
+field-confirmed by Henrik: *"Looks good and works great"*), the **Sets-tab selection
+drop on job change** (`2026.07.26t`, field-confirmed), the **WSL `nul`-file test fix**,
+and the **Auto HELM hold tail 4s → 5s** (`2026.07.26u`) — the one entry that went out
+WITHOUT its own field run, on Henrik's promote-the-queue call and the whole-or-not-at-all
+rule. Its open question rides to main with it: whether 5s covers a brisk re-trade pace
+without costing movement gear between points. The record is the merge commit on `main`.)*
 
 ## What's left (open work, as of 2026-07-25)
 
@@ -266,9 +271,10 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
-- **AutoAmmo is Range-aware — DONE, field-confirmed, QUEUED for main.** Engine **v128**,
-  addon **`2026.07.26j`**. The promotion write-up (what it fixes, why it is safe, what it
-  deliberately does not fix) lives in **Ready to merge** above; the design record is
+- **AutoAmmo is Range-aware — DONE, field-confirmed, ON MAIN** (promoted 2026-07-26 in
+  `03d25e1`; this bullet said "QUEUED for main" until the 07-26 night promotion, pointing
+  at a queue entry that had already been emptied — hard rule 14's other half). Engine
+  **v128**, addon **`2026.07.26j`**. The design record is
   [auto-ammo.md §9](design/auto-ammo.md). Only the loose ends live here:
   - **Hauksbok Bullet (22295) is server subskill 0 — a BOLT despite its name.** Upstream
     LSB data, not a CatsEye divergence, and the server enforces it, so dlac follows it.

@@ -103,10 +103,10 @@ Henrik's SVGs — DONE), order Harvesting/Excavation/Logging/Mining. Per selecte
 - **Set HELM Idle** — the manual pin: gear stays on while idle until turned off.
   Session-only, ALWAYS starts OFF at login (the craftstate rule).
 - **Auto HELM** — detection-armed: a swing's 0x034 Point result auto-selects the
-  category AND opens a temporary hold (`AUTO_HOLD_S` = 4s — Henrik's ruling, was
-  60 → 20 → 4; re-armed by every swing); the engine wears the gear only while the
-  hold runs, so normal idle gear returns ~4s after each result with no file write
-  (expiry checked live per dispatch). At 4s, re-trading briskly is what keeps the
+  category AND opens a temporary hold (`AUTO_HOLD_S` = 5s — Henrik's ruling, was
+  60 → 20 → 4 → 5; re-armed by every swing); the engine wears the gear only while the
+  hold runs, so normal idle gear returns ~5s after each result with no file write
+  (expiry checked live per dispatch). At 5s, re-trading briskly is what keeps the
   chain dressed — a slower pace rolls undressed swings between holds.
   **Timing truth (first-synth law):** the server rolls a swing when it processes the
   trade — the 0x034 result is the first client signal, so a result-driven hold can
