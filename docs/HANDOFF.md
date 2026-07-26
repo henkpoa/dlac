@@ -438,9 +438,8 @@ research already recorded. In rough priority order:
     rows **with a note on the case box, never silently** (the `&` leg's law one tier down).
     Tests TE1–TE44; suites **3691** + **486**, green Windows + WSL. No engine bump in slice 3
     (addon-state UI only).
-  - **NEXT: Henrik's click-through is IN PROGRESS (started 2026-07-26 morning)** — it is
-    also the first field contact for slices 1+2 (build a case rule in the GUI, save,
-    `/dl why` it). **Field iteration 1 already landed** (addon **`2026.07.26h`**, direct on
+  - **FIELD-CONFIRMED 2026-07-26 (Henrik): both case types built in the GUI and firing.**
+    His click-through produced **field iteration 1** (addon **`2026.07.26h`**, direct on
     dev, same session): (1) the shared condition picker moved to the TOP of the popup,
     outside every container — between the body rows and the boxes it read as owned by
     case 1 forever; every container (body included) now owns its `+ &`/`+ |` buttons;
@@ -448,11 +447,16 @@ research already recorded. In rough priority order:
     same top-right **AND/OR selection** every box has (it was the one case whose type only
     the system could set); case 1 = OR saves an empty body riding the `|` tier, safe under
     the engine's OR-only law (`matches()` `nAnd > 0`), byte-identical round-trip pinned.
-    Tests TE45–TE53; suites **3691** + **495**. Detail: trigger-system.md §"Field
-    iteration 1". #128 (polish, folds in his remaining reactions) and #129 (blueprints)
-    stay unlabeled until his read lands; then toggle `ready-for-agent` one at a time.
-    Collision watchlist for #128: engine v127 and addon `26h` taken → next free **v128** /
-    **`26i`**; test ranges CS/TC/TE/TRC/MC/TB/LS*/CMD/NK*/LSP are all taken.
+    Tests TE45–TE53. Detail: trigger-system.md §"Field iteration 1". Still unwitnessed:
+    `/dl why` naming the matched case on a live fire (slice 1's strings) — worth one look
+    next session.
+  - **In flight: #128 (polish) — `ready-for-agent` toggled 2026-07-26 after the field
+    read landed.** Shepherd its PR next. The agent must NOT regress field iteration 1
+    (TE45–TE53 pin it; the layout reactions on #128/#127 override the skeleton's own
+    choices). #129 (blueprints) stays unlabeled until #128 merges — one at a time.
+    Collision watchlist: engine **v128 is TAKEN** (AutoAmmo Range-awareness, same day) and
+    addon is at **`26k`** → next free **v129** / **`26l`**; test ranges
+    CS/TC/TE/TRC/MC/TB/LS*/CMD/NK*/LSP are all taken (TE runs through TE53).
   - **Open Henrik decisions**: (1) the `hasCases` guard token is player-visible in
     hand-edited trigger files — naming sign-off still open, rename is one line NOW and a
     migration later; (2) the slice-1 player-visible strings (`[via together-block]` /
