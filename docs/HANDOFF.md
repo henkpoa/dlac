@@ -230,66 +230,15 @@ that performs the promotion **empties this section in the same commit as the mer
 entry left standing here after a merge is how "is this on main?" becomes unanswerable —
 see hard rule 14, which this section exists to serve.
 
-- **Teleports floating menu rework. DONE 2026-07-26, on `dev`** (addon `2026.07.26v`).
-  Henrik's call, verbatim: *"Move Nexus and zvahl keep (shadow lort shirt) to other
-  teleports. Keep the exp rings as they are, it's awesome. Remove Automations, HELM and
-  Fishing. Add: Hobbybar, Lockstyle."* **Not field-confirmed yet.**
-  - **The move** is one `grp = 'util'` tag per row in `feature/useitem.lua`'s `MENU`
-    (`Nexus Cape`, `Shadow Lord Shirt`) — the popup tiers itself off that tag, so no GUI
-    code moved. They lead the cascade (it follows `MENU` order). Nexus' label became the
-    *destination* (`Party leader`), because in that cascade the first column is where you
-    land, not what the item is called — the item name sits right beside it. `/dl nexus`
-    and `/dl shirt` are untouched. The top strip is now purely the instant/panic options.
-  - **The removal** deleted `renderAutomationsQuick` / `renderHelmQuick` /
-    `renderFishQuick` outright (~259 lines, 6 chunk locals returned to gearui's 200-local
-    budget). No behaviour lived only there: every switch they carried is on the
-    Automations tab or the hobby bar.
-  - **The additions** are two plain rows, not cascades — the window IS the content. Both
-    route through `menuui.activate(key)`, the same seam the Menu rows use, so "what the
-    Lockstyle row does" has exactly one definition, and they wear the Menu's own art via
-    `filetex.handle(key)`.
-  - Both those lookups fail **silently** (renamed key → dead row; renamed asset → blank
-    cell), so `SET55-58` parse the row keys out of `ui/gearui.lua` and pin them against
-    `menuui._menuRows` and `assets\`. `UT1c-e` pin the move. Suites: 3871 + 549 green,
-    Windows and WSL.
-
-- **Auto HELM hold tail 4s → 5s. DONE 2026-07-26, on `dev`** (addon `2026.07.26u`).
-  Henrik's ruling from the field: the gear was snapping back to idle a beat too early
-  between points. One constant — `M.AUTO_HOLD_S` in `feature/helmwatch.lua` — read by
-  both arming sites (`proximityStep` and the 0x034 result handler), so the number moves
-  once and the whole hold moves with it. No test asserts the value (the H5x/H6x
-  proximity tests assert hold/no-hold, not the tail length), so both suites stay green
-  unchanged. **Not field-confirmed yet** — it wants a live gathering run to say whether
-  5s covers a brisk re-trade pace without costing movement gear between points; promote
-  with the rest or hold it back, but that is the one open question on it.
-  - The 07-25 sawtooth fix is what makes this a real 5s: `proximityStep` re-arms the
-    hold to its FULL length every pass, so a despawning point leaves 5s, not the ~1s
-    leftover of a decaying tail. Comment blocks and `docs/design/helm-gear.md` §3 now
-    quote 5s so the next reader doesn't chase a stale number.
-  - `os.time()` is whole seconds — a fractional tail here would be meaningless (n and
-    n+0.5 expire on the same tick) and `%d` in `saveState` would drop it. 5 is the
-    next value the clock can actually express.
-
-- **Changing main job clears the Sets-tab selection. DONE + FIELD-CONFIRMED 2026-07-26,
-  on `dev`** (addon `2026.07.26t`). Henrik ran it and signed it off: *"sets are being not
-  selected when changing jobs"*. Nothing outstanding. His ask, verbatim: *"all I want is
-  when you change jobs, have no set selected."* The picker's **list** already followed main
-  job (`profilesets` caches per job file), but the **selection** was only a name and the
-  working copy only a table — neither moved, so a job change left the previous job's set
-  named, on screen, and editable, and a Commit wrote it into the new job's file.
-  - The latch (`_setsJob`) lives at the top of `drawWindow` in `ui/gearui.lua`, **not**
-    inside `renderSetsTab`: that is the one point above every tab *and* the Weights window,
-    and both bind per-set weights off the name — `bindSetWeights` would otherwise mint a
-    blank `NEWJOB|OldSetName` record for a name the new job never had.
-  - The drop is the same four-assignment idiom the delete/rename paths already use
-    (`M.working`, `M.workingSetName`, `ui.setSelected`, `_setDirty`). A nil/empty job —
-    zoning, character select — is *not* treated as a change: it latches only what it can
-    trust, so the drop lands on the real switch (hard rule 11).
-  - **Coverage gap, stated plainly:** `drawWindow` is a file-local reached only from the
-    `d3d_present` hook, and no suite drives it — this is the same untested render path as
-    the "Sets tab render has NO smoke drive" note below, so the change rests on Henrik's
-    field run, not on a test. Both suites are green around it (3864 `run_tests` Windows +
-    WSL, 549 `smoke_ui`).
+*(Empty. Last promotion: 2026-07-26 night — the **Teleports floating menu rework**
+(`2026.07.26v`; Nexus Cape + Shadow Lord Shirt into "Other Teleports", the
+Automations/HELM/Fishing cascades deleted, Hobby bar + Lockstyle rows added —
+field-confirmed by Henrik: *"Looks good and works great"*), the **Sets-tab selection
+drop on job change** (`2026.07.26t`, field-confirmed), the **WSL `nul`-file test fix**,
+and the **Auto HELM hold tail 4s → 5s** (`2026.07.26u`) — the one entry that went out
+WITHOUT its own field run, on Henrik's promote-the-queue call and the whole-or-not-at-all
+rule. Its open question rides to main with it: whether 5s covers a brisk re-trade pace
+without costing movement gear between points. The record is the merge commit on `main`.)*
 
 ## What's left (open work, as of 2026-07-25)
 
@@ -322,9 +271,10 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
-- **AutoAmmo is Range-aware — DONE, field-confirmed, QUEUED for main.** Engine **v128**,
-  addon **`2026.07.26j`**. The promotion write-up (what it fixes, why it is safe, what it
-  deliberately does not fix) lives in **Ready to merge** above; the design record is
+- **AutoAmmo is Range-aware — DONE, field-confirmed, ON MAIN** (promoted 2026-07-26 in
+  `03d25e1`; this bullet said "QUEUED for main" until the 07-26 night promotion, pointing
+  at a queue entry that had already been emptied — hard rule 14's other half). Engine
+  **v128**, addon **`2026.07.26j`**. The design record is
   [auto-ammo.md §9](design/auto-ammo.md). Only the loose ends live here:
   - **Hauksbok Bullet (22295) is server subskill 0 — a BOLT despite its name.** Upstream
     LSB data, not a CatsEye divergence, and the server enforces it, so dlac follows it.
