@@ -171,7 +171,28 @@ the same **Match either instead** escape — so there is nothing new to learn in
   silently**: the popup refuses Save while one exists and says so.
 - Deferred to the completion slice (not built here): copy-case, "Match either instead" between
   cases, hover help beyond the button tooltips, chrome polish. Tests: pure seams + real-popup
-  frame drive `TE1-TE44` (`smoke_ui`).
+  frame drive `TE1-TE53` (`smoke_ui`).
+
+**Field iteration 1 (addon v2026.07.26h, Henrik's first click-through, 2026-07-26).** Two
+reads, both structural:
+- **The shared picker sits at the TOP of the popup, outside every container.** Rendered
+  between the body rows and the case boxes it read as owned by case 1 forever. Now:
+  `condition:` picker row first, a separator, then the containers — and every container
+  (the body included) carries its own `+ & condition` / `+ | condition` buttons below its
+  rows, the same rows-then-buttons shape throughout. (TE49)
+- **Case 1 is a real case.** With no added cases the body renders flat, exactly as before
+  (the 99% see nothing new). Once a case exists the body renders as **case 1** — a box like
+  every other, with the same **top-right AND/OR selection** every box has; it used to be the
+  one case whose type only the system could set. Flipping any box moves it across the
+  `-- or --` divider on the fly. (TE50–TE51)
+  - **Case 1 = OR saves an empty body**: its rows ride the cases list as the leading
+    `| case` (`_buildRuleShape`); the engine's OR-only law (`matches()`: `nAnd > 0`) keeps
+    such a rule from ever being always-on (TE48, TE52), and the serializer still folds
+    oldest-form when it can — a pure-OR rule round-trips byte-identically through the
+    case-1 seat (TE47).
+  - **An empty-body rule seats its first case as case 1 on load** (op and split-note ride
+    along), so the editor never shows an empty un-savable body box (TE45); deleting case 1
+    promotes the next case into the seat (TE53).
 
 v2 candidates (matcher is an open table; additive): day/weather/moon beyond the obi rule,
 subjob. (`area` landed in v84 as `inTown`, off the server-derived `data/zones.lua` town set;

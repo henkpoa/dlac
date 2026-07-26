@@ -307,6 +307,9 @@ local trig = {
     addCases = {},   -- the rule builder's second tier (issue #127): a list of
                      -- { op = '&'|'|', conds = { {key,value,any}, ... }, note, swap }.
                      -- Empty for the 99% -- a rule with none renders as before.
+    addBodyOp = '&', -- case 1's own op (field iteration 07-26): '&' = the body
+                     -- anchors the together-block (the classic rule); '|' = case 1
+                     -- stands alone and the saved body empties (buildRuleShape).
     editIdx = nil, _editEquip = nil,   -- rule-builder edit mode (replace in place)
     _bpEdit = nil,   -- when set, the rule builder edits Blueprint library entry #_bpEdit
                      -- (Save writes back to the library, not trig.data) -- issue #65
@@ -2108,7 +2111,17 @@ local function loadCases(rule)
                 note = split and 'combined | entry split: each condition now stands alone (Save keeps the split)' or nil };
         end
     end
-    return conds, cases;
+    -- Case 1's op (field iteration 2026-07-26). A rule with a body is anchored
+    -- by it: case 1 = the body, op '&'. A rule whose body is EMPTY (a pure-OR
+    -- rule -- when = {} with cases, or the old whenAny-only form) promotes its
+    -- first case into the case-1 seat, op and all, so the editor never shows
+    -- an empty un-savable body box.
+    local bodyOp, bodyNote = '&', nil;
+    if #conds == 0 and #cases > 0 then
+        local nb = table.remove(cases, 1);
+        conds, bodyOp, bodyNote = nb.conds, nb.op, nb.note;   -- a split note rides along
+    end
+    return conds, cases, bodyOp, bodyNote;
 end
 M._loadCases = loadCases;   -- headless test seam
 
@@ -2149,6 +2162,25 @@ local function buildCases(addCases)
     return cases;
 end
 M._buildCases = buildCases;   -- headless test seam
+
+-- The whole rule shape from the builder's three fields (field iteration
+-- 2026-07-26). Case 1 anchored ('&', the default) saves exactly as always:
+-- its rows are the body. Case 1 flipped to OR ('|') stands alone -- its rows
+-- ride the cases list as a leading | case and the saved body EMPTIES; the
+-- engine's OR-only law (matches(): nAnd > 0) keeps such a rule from being
+-- always-on, and the serializer folds it oldest-form when it can (a plain
+-- | case becomes a whenAny entry -- no cases list, no guard).
+local function buildRuleShape(conds, bodyOp, addCases)
+    local when, whenAny = buildLegs(conds);
+    local cases = buildCases(addCases);
+    if bodyOp == '|' and (next(when) ~= nil or whenAny ~= nil) then
+        local list = { { op = '|', when = when, whenAny = whenAny } };
+        for _, c in ipairs(cases or {}) do list[#list + 1] = c; end
+        when, whenAny, cases = {}, nil, list;
+    end
+    return when, whenAny, cases;
+end
+M._buildRuleShape = buildRuleShape;   -- headless test seam
 
 -- Is there a case with no conditions at all? The popup refuses to save while one
 -- exists (an empty case is never saved silently -- acceptance criterion).
@@ -2272,8 +2304,12 @@ local function renderTrigAddPopup()
         end
     end
     local function clearBodyNote() trig.addNote, trig.addSwap = nil, nil; end
-    renderCondList(trig.addConds, '', clearBodyNote);
 
+    -- The shared condition picker lives at the TOP, outside every container
+    -- (Henrik's field read of the case skeleton, 2026-07-26: sitting between
+    -- the body rows and the case boxes it read as owned by case 1 forever).
+    -- Pick a type + value here once; each container below -- the body AND
+    -- every case box -- owns the + & / + | buttons that pull the selection in.
     if trig._addDef > #defs then trig._addDef = 1; end
     local cur = defs[trig._addDef];
     -- Forward-declared so the CASE boxes below (rendered after the picker block)
@@ -2297,6 +2333,7 @@ local function renderTrigAddPopup()
     else
         curLabel = (cur and (cur.label or trigPrettyKey(string.lower(cur.key)))) or '?';
     end
+    imgui.TextColored(COL_DIM, 'condition:'); imgui.SameLine(0, 4);
     if imgui.Button(curLabel .. '###trgcondbtn', { 200, 0 }) then
         trig._condDrill = false;
         imgui.OpenPopup('##trgcondmenu');
@@ -2477,9 +2514,94 @@ local function renderTrigAddPopup()
             applyNote(pushCond(conds, ckey, val, isOr));
             trig.addValText[1] = ''; trig._addValSel = nil;
         end
-        imgui.SameLine(0, 6);
+    end
+    imgui.Separator();
+
+    -- Cases (issue #127, field-iterated 2026-07-26): the rule's second tier.
+    -- The shared picker above is the only selection surface; every container
+    -- below owns the + & / + | buttons that pull the selection in. With NO
+    -- added cases the body renders flat -- the 99% see nothing new. Once a
+    -- case exists, the body renders as CASE 1: a box like every other, with
+    -- the same top-right AND/OR selection (Henrik's field read -- case 1 used
+    -- to be the one case whose type only the system could set). Together-block
+    -- (AND) boxes first, an "-- or --" divider, then standalone (OR) boxes.
+    local delCase, delBody = nil, false;
+    local caseLh = lineH();
+    local bop = (trig.addBodyOp == '|') and '|' or '&';
+    -- ONE renderer for every box -- case 1 and added cases alike; only where
+    -- the values live differs, so callers hand in the accessors.
+    local function renderBox(cs, sfx, setOp, delSelf, clearNote, applyNote)
+        -- content-fit height: header + one line per condition + the button row +
+        -- an optional note (and its escape row) -- nothing clips (lineH lesson).
+        local nLines = 2 + #(cs.conds or {});
+        if cs.note ~= nil then nLines = nLines + ((cs.swap ~= nil) and 2 or 1); end
+        imgui.BeginChild('##trg' .. sfx, { -1, nLines * caseLh + 20 }, true, BOX_FLAGS);
+        local availW = imgui.GetContentRegionAvail();
+        imgui.TextColored(COL_HEADER, (cs.op == '&') and '& case' or '| case');
+        -- The AND/OR selection, top right on EVERY box -- flip a case's type on
+        -- the fly; the box moves across the "-- or --" divider as it changes.
+        imgui.SameLine(availW - 96);
+        imgui.PushItemWidth(64);
+        if imgui.BeginCombo('##trgcaseop' .. sfx, (cs.op == '&') and 'AND' or 'OR') then
+            if imgui.Selectable('AND##trgcopa' .. sfx, cs.op == '&') then setOp('&'); end
+            if imgui.Selectable('OR##trgcopo' .. sfx, cs.op == '|') then setOp('|'); end
+            imgui.EndCombo();
+        end
+        imgui.PopItemWidth();
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('AND: binds into the together-block -- every AND case must hold together.\n'
+                .. 'OR: stands alone -- the rule fires if this case holds by itself.');
+        end
+        imgui.SameLine(0, 4);
+        if imgui.SmallButton('x##trgdel' .. sfx) then delSelf(); end
+        if imgui.IsItemHovered() then imgui.SetTooltip('Delete this case.'); end
+        renderCondList(cs.conds, sfx, clearNote);
+        if imgui.Button('+ & condition##trgac' .. sfx, { 0, 0 }) then
+            if addCond then addCond(false, cs.conds, applyNote); end
+        end
+        if imgui.IsItemHovered() then imgui.SetTooltip('AND condition inside this case (all bind together).'); end
+        imgui.SameLine(0, 4);
+        if imgui.Button('+ | condition##trgoc' .. sfx, { 0, 0 }) then
+            if addCond then addCond(true, cs.conds, applyNote); end
+        end
+        if imgui.IsItemHovered() then imgui.SetTooltip('OR condition inside this case (any one stands alone).'); end
+        -- The replace report, per case (Henrik's "never silent" rule, both tiers).
+        if cs.note ~= nil then
+            imgui.TextColored(COL_SCORE, esc(tostring(cs.note)));
+            if cs.swap ~= nil then
+                if imgui.SmallButton('Match either instead##trgorboth' .. sfx) then
+                    orBothToAny(cs.conds, cs.swap); clearNote();
+                end
+                imgui.SameLine(0, 6);
+                if imgui.SmallButton('dismiss##trgordismiss' .. sfx) then clearNote(); end
+            end
+        end
+        imgui.EndChild();
+    end
+    local function renderBodyBox()
+        -- Case 1's rows live in trig.addConds (same table, shared reference) --
+        -- the proxy only carries the accessors renderBox needs.
+        renderBox({ op = bop, conds = trig.addConds, note = trig.addNote, swap = trig.addSwap },
+            'body',
+            function(o) trig.addBodyOp = o; end,
+            function() delBody = true; end,
+            clearBodyNote,
+            function(n, s) trig.addNote, trig.addSwap = n, s; end);
+    end
+    local function renderCaseBox(idx)
+        local cs = trig.addCases[idx];
+        if type(cs) ~= 'table' then return; end
+        renderBox(cs, 'case' .. idx,
+            function(o) cs.op = o; end,
+            function() delCase = idx; end,
+            function() cs.note, cs.swap = nil, nil; end,
+            function(n, s) cs.note, cs.swap = n, s; end);
+    end
+    if #trig.addCases == 0 then
+        -- Flat body, exactly as before cases existed -- rows, then ITS buttons.
+        renderCondList(trig.addConds, '', clearBodyNote);
         if imgui.Button('+ & condition##trgac', { 0, 0 }) then
-            addCond(false, trig.addConds, function(n, s) trig.addNote, trig.addSwap = n, s; end);
+            if addCond then addCond(false, trig.addConds, function(n, s) trig.addNote, trig.addSwap = n, s; end); end
         end
         if imgui.IsItemHovered() then
             imgui.SetTooltip('AND condition, all AND conditions must be true to be a match.\n'
@@ -2488,88 +2610,53 @@ local function renderTrigAddPopup()
         end
         imgui.SameLine(0, 4);
         if imgui.Button('+ | condition##trgoc', { 0, 0 }) then
-            addCond(true, trig.addConds, function(n, s) trig.addNote, trig.addSwap = n, s; end);
+            if addCond then addCond(true, trig.addConds, function(n, s) trig.addNote, trig.addSwap = n, s; end); end
         end
         if imgui.IsItemHovered() then imgui.SetTooltip('OR condition, if ANY OR condition is true, it will be a match.'); end
-    end
-
-    -- A replaced & condition is never silent (Henrik's field case: name = test then
-    -- name = testar overwrote with no word said). Say what was swapped, and offer the
-    -- one-click "I meant either" -- both values move to the | leg.
-    if trig.addNote ~= nil then
-        imgui.TextColored(COL_SCORE, esc(tostring(trig.addNote)));
-        if trig.addSwap ~= nil then
-            if imgui.SmallButton('Match either instead##trgorboth') then
-                orBothToAny(trig.addConds, trig.addSwap);
-                trig.addNote, trig.addSwap = nil, nil;
-            end
-            if imgui.IsItemHovered() then
-                imgui.SetTooltip('Moves BOTH values into the | leg, so the rule fires on either one.\n'
-                    .. 'To keep the replacement instead, just carry on.');
-            end
-            imgui.SameLine(0, 6);
-            if imgui.SmallButton('dismiss##trgordismiss') then trig.addNote, trig.addSwap = nil, nil; end
-        end
-    end
-
-    -- Cases (issue #127): the rule's second tier. Together-block `& cases` first,
-    -- an "-- or --" divider, then standalone `| cases`. Each box hosts the
-    -- IDENTICAL picker flow -- its own +&/+| buttons push the shared picker's
-    -- current selection into that case's leg, with the same repeat-replaces
-    -- contract (pushCond) and the same "Match either" escape. A rule with no
-    -- added cases shows only the two buttons below (no box chrome) -- the 99%
-    -- see nothing new.
-    local delCase = nil;
-    local caseLh = lineH();
-    local function renderCaseBox(idx)
-        local cs = trig.addCases[idx];
-        if type(cs) ~= 'table' then return; end
-        local sfx = 'case' .. idx;
-        -- content-fit height: header + one line per condition + the button row +
-        -- an optional note (and its escape row) -- nothing clips (lineH lesson).
-        local nLines = 2 + #(cs.conds or {});
-        if cs.note ~= nil then nLines = nLines + ((cs.swap ~= nil) and 2 or 1); end
-        imgui.BeginChild('##trg' .. sfx, { -1, nLines * caseLh + 14 }, true, BOX_FLAGS);
-        imgui.TextColored(COL_HEADER, (cs.op == '&') and '& case' or '| case');
-        imgui.SameLine(0, 8);
-        if imgui.SmallButton('x##trgdel' .. sfx) then delCase = idx; end
-        if imgui.IsItemHovered() then imgui.SetTooltip('Delete this case.'); end
-        local function clearCaseNote() cs.note, cs.swap = nil, nil; end
-        renderCondList(cs.conds, sfx, clearCaseNote);
-        if imgui.Button('+ & condition##trgac' .. sfx, { 0, 0 }) then
-            if addCond then addCond(false, cs.conds, function(n, s) cs.note, cs.swap = n, s; end); end
-        end
-        if imgui.IsItemHovered() then imgui.SetTooltip('AND condition inside this case (all bind together).'); end
-        imgui.SameLine(0, 4);
-        if imgui.Button('+ | condition##trgoc' .. sfx, { 0, 0 }) then
-            if addCond then addCond(true, cs.conds, function(n, s) cs.note, cs.swap = n, s; end); end
-        end
-        if imgui.IsItemHovered() then imgui.SetTooltip('OR condition inside this case (any one stands alone).'); end
-        -- The replace report, per case (Henrik's "never silent" rule, both tiers).
-        if cs.note ~= nil then
-            imgui.TextColored(COL_SCORE, esc(tostring(cs.note)));
-            if cs.swap ~= nil then
-                if imgui.SmallButton('Match either instead##trgorboth' .. sfx) then
-                    orBothToAny(cs.conds, cs.swap); cs.note, cs.swap = nil, nil;
+        -- A replaced & condition is never silent (Henrik's field case: name = test
+        -- then name = testar overwrote with no word said). Say what was swapped, and
+        -- offer the one-click "I meant either" -- both values move to the | leg.
+        if trig.addNote ~= nil then
+            imgui.TextColored(COL_SCORE, esc(tostring(trig.addNote)));
+            if trig.addSwap ~= nil then
+                if imgui.SmallButton('Match either instead##trgorboth') then
+                    orBothToAny(trig.addConds, trig.addSwap);
+                    trig.addNote, trig.addSwap = nil, nil;
+                end
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('Moves BOTH values into the | leg, so the rule fires on either one.\n'
+                        .. 'To keep the replacement instead, just carry on.');
                 end
                 imgui.SameLine(0, 6);
-                if imgui.SmallButton('dismiss##trgordismiss' .. sfx) then cs.note, cs.swap = nil, nil; end
+                if imgui.SmallButton('dismiss##trgordismiss') then trig.addNote, trig.addSwap = nil, nil; end
             end
         end
-        imgui.EndChild();
+    else
+        local hasAnd, hasOr = (bop == '&'), (bop == '|');
+        for _, cs in ipairs(trig.addCases) do
+            if cs.op == '&' then hasAnd = true; else hasOr = true; end
+        end
+        if bop == '&' then renderBodyBox(); end
+        for idx, cs in ipairs(trig.addCases) do
+            if cs.op == '&' then renderCaseBox(idx); end
+        end
+        if hasAnd and hasOr then imgui.TextColored(COL_DIM, '-- or --'); end
+        if bop == '|' then renderBodyBox(); end
+        for idx, cs in ipairs(trig.addCases) do
+            if cs.op == '|' then renderCaseBox(idx); end
+        end
     end
-    local hasAnd, hasOr = false, false;
-    for _, cs in ipairs(trig.addCases) do
-        if cs.op == '&' then hasAnd = true; elseif cs.op == '|' then hasOr = true; end
+    if delBody then
+        -- Deleting case 1 promotes the next case into its place -- the boxes
+        -- stay symmetric; there is no un-deletable one.
+        local nb = table.remove(trig.addCases, 1);
+        if nb ~= nil then
+            trig.addConds, trig.addBodyOp = nb.conds, nb.op;
+            trig.addNote, trig.addSwap = nb.note, nb.swap;
+        end
+    elseif delCase ~= nil then
+        table.remove(trig.addCases, delCase);
     end
-    for idx, cs in ipairs(trig.addCases) do
-        if cs.op == '&' then renderCaseBox(idx); end
-    end
-    if hasAnd and hasOr then imgui.TextColored(COL_DIM, '-- or --'); end
-    for idx, cs in ipairs(trig.addCases) do
-        if cs.op == '|' then renderCaseBox(idx); end
-    end
-    if delCase ~= nil then table.remove(trig.addCases, delCase); end
     -- The two new buttons -- the ONLY new chrome a case-less rule shows.
     if imgui.Button('+ & case##trgaddandcase', { 0, 0 }) then
         trig.addCases[#trig.addCases + 1] = { op = '&', conds = {} };
@@ -2603,13 +2690,14 @@ local function renderTrigAddPopup()
     imgui.SameLine(0, 8);
     -- An empty case is never saved silently (acceptance criterion): the Save is
     -- refused while one exists, and the notice below says which blocker it is.
-    local emptyCase = hasEmptyCase(trig.addCases);
+    -- Case 1 counts: in box mode an empty body box is an empty case like any other.
+    local emptyCase = hasEmptyCase(trig.addCases)
+        or (#trig.addCases > 0 and #trig.addConds == 0);
     local can = (#trig.addConds > 0) and (trig.addSet ~= nil or trig._editEquip ~= nil) and not emptyCase;
     if imgui.Button((editing and 'Save rule' or 'Add rule') .. '###trgaddgo', { 0, 0 }) and can then
-        local when, whenAny = buildLegs(trig.addConds);
-        local rule = { when = when };
+        local when, whenAny, cases = buildRuleShape(trig.addConds, trig.addBodyOp, trig.addCases);
+        local rule = { when = when };                   -- serializer canonicalizes (oldest-form-first + guard)
         if whenAny ~= nil then rule.whenAny = whenAny; end
-        local cases = buildCases(trig.addCases);        -- serializer canonicalizes (oldest-form-first + guard)
         if cases ~= nil then rule.cases = cases; end
         if trig.addSet ~= nil then rule.set = trig.addSet;
         else rule.equip = trig._editEquip; end         -- editing an inline-equip rule: keep its payload
@@ -2631,7 +2719,7 @@ local function renderTrigAddPopup()
             end
             trig.dirty = true;
         end
-        trig.addConds = {}; trig.addCases = {}; trig.addSet = nil; trig.addPrio[1] = 0;
+        trig.addConds = {}; trig.addCases = {}; trig.addBodyOp = '&'; trig.addSet = nil; trig.addPrio[1] = 0;
         trig.addNote, trig.addSwap = nil, nil;
         trig.editIdx, trig._editEquip, trig._bpEdit = nil, nil, nil;
         trig._prioBuf = {};                            -- rule objects changed; rebuild priority buffers
@@ -3231,11 +3319,12 @@ local function bpEdit(index)
     trig.addFor, trig._bpEdit, trig.editIdx, trig._editEquip = e.handler, index, nil, e.rule.equip;
     -- loadCases splits the | leg: single-condition entries stay body rows, a
     -- multi-condition entry loads as a `| case` box, and the cases list loads as
-    -- boxes -- the flatten-corruption fix (issue #127).
-    trig.addConds, trig.addCases = loadCases(e.rule);
+    -- boxes -- the flatten-corruption fix (issue #127). 4th return = a promoted
+    -- case's split note (an empty-body rule seats its first case as case 1).
+    trig.addConds, trig.addCases, trig.addBodyOp, trig.addNote = loadCases(e.rule);
     trig.addSet = (type(e.rule.set) == 'table') and e.rule.set[1] or e.rule.set;
     trig.addPrio[1] = e.rule.priority or 0;
-    trig.addNote, trig.addSwap = nil, nil;
+    trig.addSwap = nil;
     trig._addDef = 1; trig.addValText[1] = ''; trig._addValSel = nil;
     trig._addPlayer = 1; trig._addPet = 1; trig.addValNum[1] = 0;
     trig._openAdd = true;
@@ -4272,16 +4361,17 @@ function M.render(job, level)
             -- rows, a MULTI-condition entry (AND-within-OR) loads as a `| case`
             -- box instead of flattening to single-key rows -- THE flatten-
             -- corruption fix -- and the cases list loads as boxes (issue #127).
-            trig.addConds, trig.addCases = loadCases(r);
+            -- 4th return = a promoted case's split note (empty-body rules).
+            trig.addConds, trig.addCases, trig.addBodyOp, trig.addNote = loadCases(r);
             trig.addSet = (type(r.set) == 'table') and r.set[1] or r.set;   -- builder edits ONE set; extras stay on the rule
             trig.addPrio[1] = r.priority or 0;
-            trig.addNote, trig.addSwap = nil, nil;
+            trig.addSwap = nil;
             trig._addDef = 1; trig.addValText[1] = ''; trig._addValSel = nil;
             trig._addPlayer = 1; trig._addPet = 1; trig.addValNum[1] = 0;
             trig._openAdd = true;
         end
         if imgui.Button('+ Add rule##trgadd_' .. h, { 0, 28 }) then
-            trig.addFor = h; trig.addConds = {}; trig.addCases = {}; trig._addDef = 1;
+            trig.addFor = h; trig.addConds = {}; trig.addCases = {}; trig.addBodyOp = '&'; trig._addDef = 1;
             trig.addNote, trig.addSwap = nil, nil;
             trig.addValText[1] = ''; trig._addValSel = nil; trig.addSet = nil; trig.addPrio[1] = 0;
             trig._addPlayer = 1; trig._addPet = 1; trig.addValNum[1] = 0;

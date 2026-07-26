@@ -2264,7 +2264,7 @@ end)();
     IM['End']     = function() depth.win = depth.win - 1; end
     IM.BeginChild = function() depth.child = depth.child + 1; return true; end
     IM.EndChild   = function() depth.child = depth.child - 1; end
-    IM.BeginCombo = function() return false; end
+    IM.BeginCombo = function(l) REC[#REC + 1] = tostring(l); return false; end
     IM.BeginMenu  = function() return false; end
     IM.Button      = function(l) REC[#REC + 1] = tostring(l); return tostring(l) == CLICK; end
     IM.SmallButton = function(l) REC[#REC + 1] = tostring(l); return tostring(l) == CLICK; end
@@ -2369,6 +2369,41 @@ end)();
         check('TE44 ...and the case carries a note, never silence',
             (#cs4 == 1) and (cs4[1].note ~= nil) and (c4 ~= nil), true);
 
+        -- ---- case 1's own op (Henrik's field read 2026-07-26) ----
+        -- An empty-body rule (pure-OR) seats its first case as case 1, op and
+        -- all, so the editor never shows an empty un-savable body box.
+        local c5, cs5, op5 = tg._loadCases({ when = {},
+            cases = { { op = '|', when = { name = 'a', hpbelow = 10 } },
+                      { op = '&', when = { status = 'Engaged' } } } });
+        check('TE45 an empty-body rule seats its first case as case 1 (op rides along)',
+            (op5 == '|') and (#c5 == 2) and (#cs5 == 1) and cs5[1].op, '&');
+
+        -- buildRuleShape: case 1 flipped to OR saves an EMPTY body, its rows
+        -- riding the cases list as the leading | case.
+        local w6, a6, cl6 = tg._buildRuleShape(
+            { { key = 'name', value = 'x' }, { key = 'element', value = 'Fire', any = true } }, '|',
+            { { op = '&', conds = { { key = 'status', value = 'Engaged' } } } });
+        check('TE46 case 1 = OR: the saved body empties and case 1 leads the list',
+            (next(w6) == nil) and (a6 == nil) and (#cl6 == 2) and cl6[1].op == '|'
+            and cl6[1].when.name == 'x' and (#(cl6[1].whenAny or {}) == 1) and cl6[2].op, '&');
+
+        -- A pure-OR rule (old whenAny-only form) must survive the case-1 seat
+        -- byte-for-byte: promoted on load, re-folded oldest-form on save.
+        local orig2 = { Item = { { when = {}, whenAny = { { mode = 'DT', hpbelow = 50 } }, set = 'X' } } };
+        local t0 = D.serializeTriggers(orig2);
+        local c7, cs7, op7 = tg._loadCases(orig2.Item[1]);
+        local w7, a7, cl7 = tg._buildRuleShape(c7, op7, cs7);
+        local rb7 = { Item = { { when = w7, whenAny = a7, cases = cl7, set = 'X' } } };
+        check('TE47 a pure-OR rule round-trips BYTE-IDENTICALLY through the case-1 seat',
+            D.serializeTriggers(rb7), t0);
+
+        -- The engine law the OR-flip leans on: an empty together-block never
+        -- fires the rule (OR-only is never always-on) -- matches() nAnd gate.
+        check('TE48 the OR-only law: an empty together-block never fires the rule',
+            D._matches({ when = {}, cases = { { op = '|', when = { name = 'zzz' } } } },
+                { action = { Type = 'Black Magic', Element = 'Fire' },
+                  player = { Status = 'Idle', TP = 0 } }), false);
+
         -- ---- the REAL popup, frame by frame ----
         local UP = {};
         for i = 1, 250 do
@@ -2389,6 +2424,7 @@ end)();
             local function fresh()
                 trig.data = {};
                 trig.addFor, trig.addConds, trig.addCases, trig._addDef = 'Item', {}, {}, 1;
+                trig.addBodyOp = '&';
                 trig.addValText[1] = ''; trig._addValSel = nil; trig.addValNum[1] = 0;
                 trig.addSet, trig.addPrio[1] = 'Bait', 0;
                 trig.addNote, trig.addSwap = nil, nil;
@@ -2451,6 +2487,58 @@ end)();
             -- and their labels contain "| case" -- which is why we test the delete).
             check('TE39 ...and all case chrome is gone (only the two buttons remain)',
                 sawIn(recC, 'x##trgdelcase') == false, true);
+
+            -- Scenario D: the shared picker sits at the TOP, outside every
+            -- container (Henrik's field read 2026-07-26: rendered between the
+            -- body rows and the boxes it read as owned by case 1 forever) --
+            -- picker first, then the body rows, then the body's own buttons.
+            local function idxOf(rec, needle)
+                for i, l in ipairs(rec) do if l:find(needle, 1, true) then return i; end end
+                return nil;
+            end
+            fresh();
+            trig.addValText[1] = 'anchor'; frame('+ & condition##trgac');
+            local _, recD = frame(nil);
+            local iPick = idxOf(recD, '###trgcondbtn');
+            local iRow  = idxOf(recD, '= anchor');
+            local iBtn  = idxOf(recD, '+ & condition##trgac');
+            check('TE49 the picker renders on top, body rows next, the body buttons after',
+                (iPick ~= nil and iRow ~= nil and iBtn ~= nil)
+                and (iPick < iRow) and (iRow < iBtn), true);
+
+            -- Scenario E: once boxes exist the body renders as CASE 1 -- a box
+            -- with the same top-right AND/OR selection every case has -- and
+            -- flipping case 1 to OR saves an empty body (the engine's OR-only
+            -- law keeps it from being always-on). The stub's combos never open,
+            -- so the flip itself is driven by setting the state the combo sets.
+            fresh();
+            trig.addValText[1] = 'anchor'; frame('+ & condition##trgac');
+            frame('+ & case##trgaddandcase');
+            trig.addValText[1] = 'other'; frame('+ & condition##trgaccase1');
+            local _, recE = frame(nil);
+            check('TE50 every box carries the AND/OR selection, case 1 included',
+                sawIn(recE, '##trgcaseopbody') and sawIn(recE, '##trgcaseopcase1'), true);
+            local flatBtn = false;
+            for _, l in ipairs(recE) do if l == '+ & condition##trgac' then flatBtn = true; end end
+            check('TE51 the flat body chrome is gone in box mode (case 1 owns its buttons)',
+                (not flatBtn) and sawIn(recE, '+ & condition##trgacbody'), true);
+            trig.addBodyOp = '|';
+            frame('Add rule###trgaddgo');
+            local rE = trig.data.Item and trig.data.Item[1];
+            check('TE52 case 1 = OR saves an EMPTY body with case 1 riding the | tier',
+                (type(rE) == 'table') and (next(rE.when or { x = 1 }) == nil)
+                and rE.cases and #rE.cases == 2 and rE.cases[1].op == '|'
+                and rE.cases[1].when.name == 'anchor' and rE.cases[2].op, '&');
+
+            -- Scenario F: deleting case 1 promotes the next case into the seat.
+            fresh();
+            trig.addValText[1] = 'anchor'; frame('+ & condition##trgac');
+            frame('+ | case##trgaddorcase');
+            trig.addValText[1] = 'alt'; frame('+ & condition##trgaccase1');
+            frame('x##trgdelbody');
+            check('TE53 deleting case 1 promotes the next case into the seat, op and all',
+                (#trig.addCases == 0) and (#trig.addConds == 1)
+                and (trig.addConds[1].value == 'alt') and trig.addBodyOp, '|');
 
             check('TE40 the popup stack stayed balanced', depth.popup, 0);
             check('TE41 the colour stack stayed balanced', depth.col, 0);
