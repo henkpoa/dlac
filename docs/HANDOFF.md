@@ -230,8 +230,10 @@ that performs the promotion **empties this section in the same commit as the mer
 entry left standing here after a merge is how "is this on main?" becomes unanswerable —
 see hard rule 14, which this section exists to serve.
 
-- **`/dl reload` now reloads DLAC, not LuaAshitacast. BUILT 2026-07-26, on `dev`, NOT
-  FIELD-TESTED** (`2026.07.26q`). Henrik's call, off the migration-limbo diagnosis: the
+- **`/dl reload` now reloads DLAC, not LuaAshitacast. DONE + FIELD-CONFIRMED 2026-07-26,
+  on `dev`** (`ad935d6`, `2026.07.26q`). Henrik ran it and signed it off: *"Works, please
+  set this as completed and document this as ready to be merged to main once a merge
+  occurs."* Nothing outstanding. His call, off the migration-limbo diagnosis: the
   branch in `utils.lua` queued `/addon reload luashitacast` from the LAC-hosted era — on a
   migrated install that RESURRECTED LAC and fired the coexistence tripwire, disarming the
   native engine for the rest of the session. `/dl reload` / `/dl r` now queue
@@ -243,10 +245,12 @@ see hard rule 14, which this section exists to serve.
   lost-flag→legacy `firstRunAction` demotion) are **deliberately untouched** — separate
   calls for Henrik.
 
-- **`/dl disable` — free equip, the ceiling. BUILT 2026-07-26, on `dev`, NOT FIELD-TESTED**
-  (engine v129, ADR 0024). Henrik: *"simply make it claim the slot / slots, then don't do
-  anything at all with it, so people can free equip all they want without DLAC
-  intervention… over EVERYTHING, even /dl naked."*
+- **`/dl disable` — free equip, the ceiling. DONE + FIELD-CONFIRMED 2026-07-26, on `dev`**
+  (`f6450d3` + `74edfc2`, engine v129, addon `2026.07.26s`, ADR 0024). Henrik ran it, then
+  signed it off: *"Works, please set this as completed, ready to be merged to main whenever
+  a merge happens."* Nothing outstanding. Henrik's ask: *"simply make it claim the slot /
+  slots, then don't do anything at all with it, so people can free equip all they want
+  without DLAC intervention… over EVERYTHING, even /dl naked."*
   - `/dl disable [slot|all]` / `/dl enable [slot|all]`; bare = all 16; also `/dl disable off`
     and `/dl disable <slot> off`. `/dlac` works as the prefix too.
   - **Not a lock and not a claim.** A lock is a veto *inside* the rank walk — four rows punch
@@ -262,12 +266,17 @@ see hard rule 14, which this section exists to serve.
     chat command and the job-change release both move it.
   - Lifetime is `M.worldWatch`'s (Henrik confirmed the recommendation): main job change,
     logout, Reload LAC; never written to disk. Mirrored as `__disabled`.
+  - **Chat is ONE LINE** (`74edfc2`, Henrik on the first run: *"please remove all the
+    text"*) — `Hands disabled - enable by /dlac enable hands`, `All slots enabled`,
+    `Head enabled - still disabled: ammo`. The release door is the only thing that
+    survived the cut; everything else the paragraph said lives in Claim Priority,
+    `/dl prio` or `/dl why`. The lines say **`/dlac`**, the prefix Henrik reaches for —
+    `argStart` has always taken both, and `CMD17c`–`CMD17f` drive `/dlac` end to end.
   - Tests: **DS1–DS14** end-to-end through the real `M.dispatch` (DS2 is the one that
     matters — `/dl naked` cannot strip a disabled slot; DS3 — all 16 disabled writes
-    nothing whatsoever), **CMD16–CMD22c** driven through the real command handler,
-    **S196b2/S207–S209/NKU4** in the smoke. 3856 + 549 green, Windows and WSL.
-  - **Field test wanted:** `/dl disable main` then swap weapons by hand mid-fight; the
-    Equipped-tab checkbox in native mode; `/dl why` while a slot is disabled.
+    nothing whatsoever), **CMD16–CMD22c** driven through the real command handler
+    (exact strings **and** the line count, so prose cannot creep back),
+    **S196b2/S207–S209/NKU4** in the smoke. 3864 + 549 green, Windows and WSL.
 
 ## What's left (open work, as of 2026-07-25)
 
