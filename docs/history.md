@@ -5724,3 +5724,20 @@ mutation-verified: disabling the icon path fails three checks, removing only the
 frame fails exactly one. The stub's own first cut had the classic bug it exists to catch —
 `btns` captured by a closure declared above it, a silent nil global — and it failed
 loudly rather than hiding.
+
+**Craft.png, and the alpha lesson (`2026.07.27d`).** The second piece of art arrived on a
+white page rather than a transparent one — *"I haven't cleaned it up as much but I think you
+may be able to do it?"* The naive fix, keying out white, would have **punched holes in the
+eyes**: this chocobo has white sclera and white highlights on its metal, and a colour key
+cannot tell those from the page. So the background is removed by a **flood fill from the
+image borders** — only white *connected to the edge* is background, and anything the dark
+outline encloses survives. 812,033 pixels went; 3,700 near-white pixels were kept because
+they were enclosed. The fill threshold is deliberately generous (bright AND unsaturated), so
+the anti-aliased fringe between page and outline goes with it: at 128px a hair of erosion is
+invisible, whereas a white halo on the bar's dark background is not.
+
+Worth a number for next time: measuring the mean min-channel of the partial-alpha edge
+pixels catches a halo objectively — the chocobo reads 22.6, the smith 88.3, and the
+difference is genuine light-grey metal (hammer, chainmail, anvil) rather than a fringe, which
+the zoomed composite on a dark background confirmed. Do both: the number tells you where to
+look, the composite tells you whether it matters.

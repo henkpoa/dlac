@@ -1702,8 +1702,10 @@ end)();
         -- ART TABS (2026-07-27). Headless there is no d3d, so filetex.handle is
         -- always nil and every tab takes the TEXT path -- meaning the icon branch
         -- would ship with zero coverage. Stub the loader so exactly ONE tab has
-        -- art, which is also the real shipping state (only Chocobo.png exists)
-        -- and the mixed row is the thing most likely to break.
+        -- art: the MIXED row is the thing most likely to break, and it stays the
+        -- shipping state until all four have art (Chocobo + Craft so far). Which
+        -- tab the stub hands art to is deliberately independent of what is on
+        -- disk -- this asserts the branch, not the asset list.
         do
             package.loaded['dlac\\ui\\filetex'] = {
                 handle = function(n) return (n == 'hobby\\Chocobo') and 4242 or nil; end,
