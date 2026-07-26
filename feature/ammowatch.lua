@@ -59,6 +59,10 @@ local function copyEntry(e)
     return {
         name = e.name, id = tonumber(e.id) or 0,
         type = tostring(e.type or ''), level = tonumber(e.level) or 0,
+        -- "<skill>:<subskill>" -- what the engine pairs against the Range slot.
+        -- Absent on entries added before v128; the engine falls back to the skill
+        -- implied by `type`, which still keeps arrows out of a gun.
+        pair = (type(e.pair) == 'string' and e.pair ~= '') and e.pair or nil,
         ranged = (e.ranged == true), ws = (e.ws == true),
         special = (type(e.special) == 'table') and {
             unlimited = (e.special.unlimited == true),
@@ -99,9 +103,11 @@ function M._serialize(jobsData)
                     end
                     sp = '{ ' .. table.concat(bits, ', ') .. ' }';
                 end
+                local pr = (type(e.pair) == 'string' and e.pair ~= '')
+                    and string.format(' pair = %q,', e.pair) or '';
                 L[#L + 1] = string.format(
-                    '                { name = %q, id = %d, type = %q, level = %d, ranged = %s, ws = %s, special = %s },',
-                    e.name, tonumber(e.id) or 0, tostring(e.type or ''), tonumber(e.level) or 0,
+                    '                { name = %q, id = %d, type = %q,%s level = %d, ranged = %s, ws = %s, special = %s },',
+                    e.name, tonumber(e.id) or 0, tostring(e.type or ''), pr, tonumber(e.level) or 0,
                     tostring(e.ranged == true), tostring(e.ws == true), sp);
             end
         end
@@ -261,6 +267,7 @@ function M.addAmmo(rec)
     end
     s.ammo[#s.ammo + 1] = { name = rec.Name, id = tonumber(rec.Id) or 0,
                             type = tostring(rec.AmmoType or ''),
+                            pair = (type(rec.Pair) == 'string' and rec.Pair ~= '') and rec.Pair or nil,
                             level = tonumber(rec.Level) or 0,
                             ranged = false, ws = false, special = false };
     saveState();
@@ -298,7 +305,36 @@ end
 -- unmatched lands in 'Other' (shown only when it exists). Pure (tests AW*).
 -- ---------------------------------------------------------------------------
 M.CATEGORIES = { 'Bullets', 'Bolts', 'Arrows', 'Throwing', 'Other' };
-function M.categoryOf(name, ammoType)
+
+-- skill:subskill -> the category that key belongs to, for AMMO and for the RANGE
+-- weapon alike (that is the point: both sides of a pair share one key space, so the
+-- same function answers "which tab is this ammo in" and "which tab does the weapon
+-- I am holding shoot"). nil = cannot say -- a skill-only key like "26" knows it is
+-- Marksmanship but not whether that is a gun or a crossbow, and guessing there is
+-- exactly the blindness this whole change exists to remove.
+function M.categoryForPair(pair)
+    if type(pair) ~= 'string' then return nil; end
+    local sk, ss = string.match(pair, '^(%d+):(%d+)$');
+    sk, ss = tonumber(sk), tonumber(ss);
+    if sk == nil then return nil; end
+    if sk == 25 then return 'Arrows'; end        -- every bow, both subskills
+    if sk == 27 then return 'Throwing'; end
+    if sk == 26 then
+        if ss == 0 then return 'Bolts'; end
+        if ss == 1 then return 'Bullets'; end
+        if ss == 2 then return 'Other'; end      -- culverins + shells: 4 items, no tab of their own
+    end
+    return nil;
+end
+
+-- The catalog's AmmoType lumps bullets AND bolts under Marksmanship, so the split
+-- rides the exact subskill when we have it and falls back to the NAME when we do not
+-- (entries added before v128). The name heuristic is good but not perfect -- Hauksbok
+-- Bullet is server subskill 0, i.e. a BOLT despite its name -- which is why the pair
+-- wins whenever it exists. Pure (tests AW*).
+function M.categoryOf(name, ammoType, pair)
+    local byPair = M.categoryForPair(pair);
+    if byPair ~= nil then return byPair; end
     if ammoType == 'Archery' then return 'Arrows'; end
     if ammoType == 'Throwing' then return 'Throwing'; end
     if ammoType == 'Marksmanship' then

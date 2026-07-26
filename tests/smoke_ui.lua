@@ -2551,6 +2551,121 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- AU. ammoui RENDER for real (the Range-aware type tabs, v128). Until now this
+--     file's render half had NEVER been executed by any test -- S135-S137 only
+--     touch the headless status contract above the imgui guard -- which is the
+--     craftbar/bit-three trap exactly: an unknown Lua name is a silent nil
+--     GLOBAL and a load-only test cannot see it. The tab strip pushes a style
+--     colour INSIDE a loop, the S50 crash class (unbalanced push = native UB in
+--     ImGui, no Lua error, whole client down), so drive the real render once per
+--     weapon branch and assert every stack lands back on zero.
+-- ---------------------------------------------------------------------------
+;(function()
+    local depth = { col = 0, id = 0, width = 0 };
+    local function nop() end
+    local IM = {};
+    for _, n in ipairs({ 'Separator', 'Text', 'TextColored', 'SameLine', 'Dummy',
+        'SetTooltip', 'Spacing', 'Image', 'InvisibleButton' }) do IM[n] = nop; end
+    IM.PushStyleColor  = function() depth.col = depth.col + 1; end
+    IM.PopStyleColor   = function(n) depth.col = depth.col - (tonumber(n) or 1); end
+    IM.PushID          = function() depth.id = depth.id + 1; end
+    IM.PopID           = function() depth.id = depth.id - 1; end
+    IM.PushItemWidth   = function() depth.width = depth.width + 1; end
+    IM.PopItemWidth    = function() depth.width = depth.width - 1; end
+    local btns = {};   -- every Button label this render drew
+    IM.Button          = function(l) btns[#btns + 1] = tostring(l); return false; end
+    IM.SmallButton     = function(l) btns[#btns + 1] = tostring(l); return false; end
+    IM.Checkbox        = function(_, v) return false, v; end
+    IM.InputInt        = function(_, v) return false, v; end
+    IM.IsItemHovered   = function() return true; end   -- ALWAYS hovered: forces every
+                                                       -- tooltip string to be built
+    local function drewTab(c)
+        for _, l in ipairs(btns) do
+            if l:find('##ammocat_' .. c, 1, true) ~= nil then return true; end
+        end
+        return false;
+    end
+
+    local NAMES = { 'dlac\\ui\\ammoui', 'dlac\\gear\\gearoracle', 'imgui' };
+    local saved = {};
+    for _, k in ipairs(NAMES) do saved[k] = package.loaded[k]; end
+
+    -- The worn ranged weapon is the ONE input the tab strip's green depends on.
+    local worn = nil;   -- nil = empty Range slot
+    package.loaded['dlac\\gear\\gearoracle'] = {
+        wornItem = function(slot) return (slot == 2) and worn or nil; end,
+    };
+    package.loaded['imgui'] = IM;
+    package.loaded['dlac\\ui\\ammoui'] = nil;
+    local ok, aui = pcall(require, 'dlac\\ui\\ammoui');
+    check('AU1 ammoui re-requires against a stub imgui', ok and type(aui.render), 'function');
+
+    local amw = require('dlac\\feature\\ammowatch');
+    if ok then
+        -- A list spanning three types, so every tab is populated and the filter
+        -- has something to include AND something to exclude in each branch.
+        amw.jobsData = { COR = { enabled = true, at = 0, ammo = {
+            { name = 'Gold Arrow',  id = 10, type = 'Archery',      pair = '25:0', ranged = true, ws = false, special = false },
+            { name = 'Rusty Bolt',  id = 11, type = 'Marksmanship', pair = '26:0', ranged = true, ws = false, special = false },
+            { name = 'Gold Bullet', id = 12, type = 'Marksmanship', pair = '26:1', ranged = true, ws = false,
+              special = false },
+            { name = 'Yoru Shuriken', id = 13, type = 'Throwing',   pair = '27:3', ranged = false, ws = false,
+              special = { unlimited = true, quickdraw = false, freews = false } },
+        } } };
+        amw.selectJob('COR');
+        local deps = { playerJob = function() return 'COR'; end,
+                       ownedCounts = function() return { [10] = 99, [11] = 99, [12] = 99, [13] = 1 }; end,
+                       renderIcon = nop, itemTooltip = nop,
+                       lookupByName = function() return nil; end };
+
+        local CASES = {
+            { what = 'nothing equipped',      rec = nil,                                          want = nil },
+            { what = 'a gun',                 rec = { Name = 'Hexagun',   Pair = '26:1' },        want = 'Bullets' },
+            { what = 'a crossbow',            rec = { Name = 'Crossbow',  Pair = '26:0' },        want = 'Bolts' },
+            { what = 'a bow',                 rec = { Name = 'Longbow',   Pair = '25:4' },        want = 'Arrows' },
+            { what = 'a culverin',            rec = { Name = 'Culverin',  Pair = '26:2' },        want = 'Other' },
+            { what = 'a harp (fires nothing)',rec = { Name = 'Maple Harp',Pair = '41:0' },        want = nil },
+            { what = 'a pre-Pair manifest',   rec = { Name = 'Hexagun' },                          want = nil },
+        };
+        for _, c in ipairs(CASES) do
+            worn = (c.rec ~= nil) and { id = 1, rec = c.rec } or nil;
+            aui._resetCatSel();   -- re-derive the default selection per case
+            btns = {};
+            check('AU2 render survives ' .. c.what, pcall(aui.render, deps, 700), true);
+            check('AU3 colour stack balanced with ' .. c.what, depth.col, 0);
+            check('AU4 id stack balanced with ' .. c.what,     depth.id, 0);
+            check('AU5 width stack balanced with ' .. c.what,  depth.width, 0);
+            check('AU6 live tab for ' .. c.what, amw.categoryForPair(c.rec and c.rec.Pair), c.want);
+            -- Proof the STRIP actually drew -- a pcall that merely returns true
+            -- would also pass if render bailed before reaching the tabs at all.
+            check('AU9 the three populated tabs drew with ' .. c.what,
+                drewTab('Bullets') and drewTab('Bolts') and drewTab('Arrows'), true);
+            -- A live type is always offered, even 'Other', or a culverin user would
+            -- see no green tab anywhere.
+            if c.want ~= nil then
+                check('AU10 the live tab is on screen with ' .. c.what, drewTab(c.want), true);
+            end
+        end
+
+        -- First open lands on what you are holding; after that the choice is YOURS
+        -- even when the weapon changes (the green tab reports the change instead).
+        worn = { id = 1, rec = { Name = 'Longbow', Pair = '25:4' } };
+        aui._resetCatSel();
+        pcall(aui.render, deps, 700);
+        check('AU7 first open selects the type the worn weapon fires', aui._catSel(), 'Arrows');
+        worn = { id = 1, rec = { Name = 'Hexagun', Pair = '26:1' } };
+        pcall(aui.render, deps, 700);
+        check('AU8 swapping weapons does NOT yank the selection', aui._catSel(), 'Arrows');
+
+        amw.jobsData = {};
+        amw.selectJob('COR');
+    end
+
+    for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end
+    package.loaded['imgui'] = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures > 0 then

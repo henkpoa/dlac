@@ -121,6 +121,26 @@ local function rslotFor(id)
     return _rslotById[id];
 end
 
+-- Range/Ammo pairing key ("<skill>:<subskill>") by item id, from the catalog. Same
+-- shape and same reason as rslotFor above: the CLIENT resource carries Skill but has
+-- NO subskill field (Ashita's IItem stops at Skill), and subskill is exactly what
+-- separates a gun (26:1) from a crossbow (26:0). So it can only come from the API
+-- crawl, and it has to be stamped to disk for the engine, which reads gear.lua raw
+-- with no catalog. Built once, lazily, guarded -- no catalog (headless tests) means
+-- every lookup is nil, and every consumer treats nil as "unknown, don't constrain".
+local _pairById = nil;
+local function pairFor(id)
+    if _pairById == nil then
+        _pairById = {};
+        pcall(function()
+            for cid, rec in pairs(ci.rawIndex()) do
+                if type(rec.Pair) == 'string' and rec.Pair ~= '' then _pairById[cid] = rec.Pair; end
+            end
+        end);
+    end
+    return _pairById[id];
+end
+
 -- Weapon skill id -> the category key used under gear.Main / gear.Range / gear.Ammo.
 -- (Instruments and a few exotic ranged types get refined in Piece #2.)
 local WEAPON_CATEGORY = {
@@ -197,6 +217,7 @@ local function resolveItem(entry)
         Jobs     = res.Jobs,
         Flags    = res.Flags,
         RSlot    = rslotFor(entry.Id),   -- slots this piece takes away while worn
+        Pair     = pairFor(entry.Id),    -- Range/Ammo skill:subskill (nil = not a Range/Ammo item)
         Count    = 1,
     };
 
@@ -676,6 +697,12 @@ local function renderEntry(rec)
     -- in the game reserve anything; everything else omits the field.
     if (tonumber(rec.RSlot) or 0) ~= 0 then
         add(string.format('    RSlot = %d,', rec.RSlot));
+    end
+    -- Range/Ammo pairing key (server item_weapon skill:subskill). Same disk-or-nothing
+    -- reason as RSlot: the engine decides Ammo from the raw file. Only Range and Ammo
+    -- items carry one; every other slot omits the field.
+    if type(rec.Pair) == 'string' and rec.Pair ~= '' then
+        add(string.format('    Pair = %q,', rec.Pair));
     end
 
     -- No Stats block on purpose (Phase 2): item stats -- including weapon DMG/Delay -- come

@@ -49,7 +49,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 127;  -- 127: trigger CASES, the schema backbone (issue #126, slice 2/5; ADR 0023) -- rules gain an optional `cases` list (a second `&`/`|` tier: op + the same two legs a body has), evaluated by matches()/matchedCase() over a factored legMatches so both tiers share one code path; normalize validates + drops empty cases + strips the always-true `hasCases` version guard; auto-priority + ruleLabel span every leg of every case (case-LESS rules match/label/serialize byte-for-byte as before -- pinned). serializeTriggers is oldest-form-first (a `| case` of only `&` rows -> a whenAny multi-entry; only `&` cases and `| cases` with internal OR use the new list) and stamps the guard so OLDER engines drop the rule with the standard warn instead of misreading it. Seeded-file bump: normalize + matches run engine-side (hard rule 4). Tests CX1-CX35, MC19-23. (PR #132 shipped as v126/2026.07.26c off a pre-97f1edc dev; renumbered at merge.)
+M.VERSION = 128;  -- 128: AutoAmmo asks what is in RANGE before it picks (field, Henrik 2026-07-26: "AutoAmmo does NOT dictate if it's bolt, arrows or what not that gets equipped. That is 100% decided on what gets put in ranged"). resolveAmmoPlan was type-BLIND -- it took the first `ranged`-flagged entry with stock, so a bolt above your arrows won with a bow equipped -- and the panel's Bullets/Bolts/Arrows selector never constrained it (categoryOf is a VIEW, stored nowhere). The cost was not a wasted swap: charutils.cpp EquipItem STRIPS THE OTHER SLOT on an incompatible Range/Ammo pair, so the bolt took the bow off, the trigger re-equipped it, and the two flapped forever -- ADR 0010's failure through the skill/subskill door instead of the rslot one. New pure M.pairsWith over a "<skill>:<subskill>" key (26:1 gun/bullet, 26:0 crossbow/bolt, 26:2 culverin/shell, 27:0 boomerang/pebble, 27:3 shuriken, 0:10 Animator/oil), three-valued so an unknown pair degrades to today's behaviour instead of switching AutoAmmo off; ARCHERY is exempt from the subskill half exactly as the server writes it (Shortbow 25:0 and Longbow 25:4 share arrows). Range is never written -- AutoAmmo only ever READS it. Two rulings, both Henrik's: no ranged weapon worn = do nothing at all (safe -- with Range empty the server refuses the shot, so nothing can be consumed), and a weapon worn with nothing in the list able to pair = hold, never force a mismatch in. THROWING with an empty Range (a NIN's shuriken, CanUseRangedAttack's `|| PAmmo->isThrowing()`) is the ONE known exception and stays parked behind the §8 NIN field tests. The key rides the manifest like RSlot (gearimport stamps Pair from the catalog's new field); worn Range falls back to the client resource's Skill when the manifest predates it, so the update alone separates bow/gun/throwing for everyone and a manifest refresh upgrades it to gun-vs-crossbow. Tests PW1-PW14, AM40-AM58.
+                  -- 127: trigger CASES, the schema backbone (issue #126, slice 2/5; ADR 0023) -- rules gain an optional `cases` list (a second `&`/`|` tier: op + the same two legs a body has), evaluated by matches()/matchedCase() over a factored legMatches so both tiers share one code path; normalize validates + drops empty cases + strips the always-true `hasCases` version guard; auto-priority + ruleLabel span every leg of every case (case-LESS rules match/label/serialize byte-for-byte as before -- pinned). serializeTriggers is oldest-form-first (a `| case` of only `&` rows -> a whenAny multi-entry; only `&` cases and `| cases` with internal OR use the new list) and stamps the guard so OLDER engines drop the rule with the standard warn instead of misreading it. Seeded-file bump: normalize + matches run engine-side (hard rule 4). Tests CX1-CX35, MC19-23. (PR #132 shipped as v126/2026.07.26c off a pre-97f1edc dev; renumbered at merge.)
                   -- 126: the /dl why trace can no longer outlive the sets store it described (field, Mindie 2026-07-26 01:31): the retrace sig now carries the store REVISION (M.modesRev -- bumped by every install and re-flatten, 5668/5714), so lines built against the empty boot-window store ("[NOT FOUND in profile Sets]", true for ~2s of designed install refusals) die the moment the install lands, instead of printing with a fresh timestamp for the rest of the session while equips worked fine. The v118 law applied to the trace: THE INSTALL INVALIDATES THE BELIEF. Display only, no equip change. Tests TRC0-TRC3 (the trace-vs-store contract, driven through the real command handler + dispatch like CMD).
                   -- 125: trigger CASES, read-side (issue #125, slice 1/5) -- /dl why now NAMES the matched case of a case-bearing rule ('[via together-block]' / '[via standalone ...]' / '[via case a & b]'), mirroring matches() with the engine's own MATCHERS. Display only: a case-less rule (no `|` leg) traces byte-for-byte as before, so this is invisible to the 99%. Seeded-file bump because the trace is built engine-side during dispatch (hard rule 4). No schema change, no equip change. Tests CS1-CS10 (the PR shipped these as MC1-MC10 off a stale origin/dev; renamed at merge -- the dead-mode sweep suite owns the MC range, and 123/124 were taken by the lock-lifetime work).
                   -- 124: ONE LIFETIME RULE for every way of deliberately holding gear still (Henrik, 2026-07-26: "I don't want locks to outlive a relog, it should not outlive a main job change nor a log"). M.nakedWorldWatch is now M.worldWatch (old name kept as an alias -- the seeded LAC-side engine and NK28 call it) and clears SLOT LOCKS as well as the strip and a locked set: main job change, or the character-select read. Slot locks were the odd one out only by accident -- nothing ever watched them, so they rode through character select (an Ashita addon survives a logout and LAC never clears package.loaded), and the pre-v123 self-swap wipe LOOKED like a lifetime rule while really being a bug (a git pull unlocking your gear mid-Incursion). Fixing that accident left the real gap plain. None of the three is written to disk: all are mirrored to modestate (__locks / __naked / __held) inside the reserved __ namespace loadModeState skips, so a mirror can never restore one. The job-change drop is announced per kind; leaving the world stays silent. Tests LS14k-LS14s.
@@ -2641,6 +2642,53 @@ function M.trinketWornDisplace(plan, wornAmmo, rslotFn)
     return 'Ammo', rangeName;
 end
 
+-- THE Range/Ammo compatibility law, exactly as the server writes it
+-- (charutils.cpp EquipItem, SLOT_RANGED and SLOT_AMMO arms):
+--
+--     if (a->getSkillType() != b->getSkillType() ||
+--         (b->getSkillType() != SKILL_ARCHERY &&
+--          a->getSubSkillType() != b->getSubSkillType()))
+--         UnequipItem(<the OTHER slot>);
+--
+-- Read that consequence twice: the server does not refuse the equip, it STRIPS THE
+-- OTHER SLOT. Push a bolt into Ammo while a gun is worn and the GUN comes off -- and
+-- since dlac re-proposes both every dispatch, the pair then flaps forever. It is the
+-- ADR 0010 failure arriving through the skill/subskill door instead of the rslot one.
+--
+-- A pair key is "<skill>:<subskill>" (26:1 = gun/bullet, 26:0 = crossbow/bolt,
+-- 26:2 = culverin/shell, 27:0 = boomerang/pebble, 27:3 = shuriken, 0:10 = Animator/oil).
+-- The subskill half may be ABSENT ("26"): the client resource carries Skill but no
+-- subskill, so that is what a manifest written before Pair existed can still answer.
+--
+-- Three-valued ON PURPOSE -- true / false / nil(unknown) -- because the honest answers
+-- are three. Callers must not read nil as false: an unknown pair is the fallback every
+-- pre-Pair manifest and every uncrawled custom lands on, and constraining on it would
+-- silently switch AutoAmmo off for those players instead of degrading to today's
+-- behaviour. Pure (tests PW*).
+local function splitPair(p)
+    if type(p) ~= 'string' then return nil, nil; end
+    local sk, ss = string.match(p, '^(%d+):(%d+)$');
+    if sk ~= nil then return tonumber(sk), tonumber(ss); end
+    sk = string.match(p, '^(%d+)$');
+    if sk ~= nil then return tonumber(sk), nil; end   -- skill known, subskill unknown
+    return nil, nil;
+end
+M._splitPair = splitPair;   -- test seam
+
+M.SKILL_ARCHERY = 25;   -- the one skill the server exempts from the subskill check
+
+function M.pairsWith(a, b)
+    local ska, ssa = splitPair(a);
+    local skb, ssb = splitPair(b);
+    if ska == nil or skb == nil then return nil; end   -- unknown on either side
+    if ska ~= skb then return false; end               -- different skill: never pairs
+    -- Archery is the exemption the server writes out by hand: a Shortbow (25:0) and a
+    -- Longbow (25:4) fire the same arrows. Matching subskill here would break bows.
+    if ska == M.SKILL_ARCHERY then return true; end
+    if ssa == nil or ssb == nil then return true; end  -- cannot PROVE a mismatch
+    return ssa == ssb;
+end
+
 -- The same scope ruling from the OTHER side: MP-EQUIP is an outside-the-set
 -- writer, so a battery whose RSlot reserves an OCCUPIED slot never stages (a
 -- Rimestone landing in Ammo makes the server strip the planned or worn
@@ -2713,6 +2761,59 @@ local function rslotOf(name)
     end);
     return m;
 end
+
+-- Range/Ammo pair key by item name, from the same gear manifest. Guarded like rslotOf.
+-- nil means "this manifest cannot answer" -- an old file written before Pair existed,
+-- an uncrawled custom, or a slot that has no pairing at all. Never "pairs with nothing".
+local function pairOf(name)
+    if _gearMod == nil then
+        _gearMod = false;
+        pcall(function() _gearMod = require('dlac\\gear') or false; end);
+    end
+    local p = nil;
+    pcall(function()
+        local rec = _gearMod and _gearMod.NameToObject and _gearMod.NameToObject[name] or nil;
+        if rec ~= nil and type(rec.Pair) == 'string' and rec.Pair ~= '' then p = rec.Pair; end
+    end);
+    return p;
+end
+M._pairOf = pairOf;   -- test seam
+
+-- The pair key of what is WORN in a slot, best available answer:
+--   1. the manifest's Pair       -- exact, carries subskill
+--   2. the client resource Skill -- "26", subskill unknown (pairsWith reads that as
+--                                   "cannot prove a mismatch", i.e. skill-level only)
+--   3. nil                       -- nothing worn, or nothing known
+-- Step 2 is what makes this fix reach EVERY player on the update alone: a manifest
+-- written before Pair existed still separates a bow from a gun from a throwing weapon,
+-- which is the whole headline bug. Refreshing the manifest upgrades it to telling a
+-- gun from a crossbow. Returns (pair, name) -- callers want both and this decodes once.
+local function wornPair(slotKey)
+    local nm, pair = nil, nil;
+    pcall(function()
+        local id = SLOT_EQUIP_ID[string.lower(tostring(slotKey))];
+        if id == nil then return; end
+        local inv = AshitaCore:GetMemoryManager():GetInventory();
+        local eitem = inv:GetEquippedItem(id);
+        if eitem == nil or eitem.Index == 0 then return; end
+        local item = inv:GetContainerItem(M.decodeEquipIndex(eitem.Index));
+        if item == nil or item.Id == nil or item.Id == 0 then return; end
+        local res = AshitaCore:GetResourceManager():GetItemById(item.Id);
+        if res == nil then return; end
+        if res.Name ~= nil then nm = res.Name[1]; end
+        if nm ~= nil then pair = pairOf(nm); end
+        if pair == nil then
+            local sk = tonumber(res.Skill);
+            -- Skill 0 is "no weapon skill" (pet food, stat sticks, Animators): it is a
+            -- real value the manifest can pair on, but as a RESOURCE fallback it is
+            -- indistinguishable from "this resource has no skill field", so it stays
+            -- unknown rather than asserting a 0:? match.
+            if sk ~= nil and sk > 0 then pair = tostring(sk); end
+        end
+    end);
+    return pair, nm;
+end
+M._wornPair = wornPair;   -- test seam
 
 -- Item Level by name, from the same gear manifest -- the tiebreak for the trinket/ranged
 -- conflict. Guarded like rslotOf; a missing manifest reads as nil (-> 0 at the call site).
@@ -4188,6 +4289,15 @@ local AMMO_QD_NAMES = { ['fire shot'] = true, ['ice shot'] = true, ['wind shot']
                         ['light shot'] = true, ['dark shot'] = true };
 M._ammoWs = { free = AMMO_WS_FREE, consume = AMMO_WS_CONSUME, qd = AMMO_QD_NAMES };   -- test seam
 
+-- Catalog AmmoType -> server weapon skill. The coarse half of a pair key, and the
+-- fallback when an ammostate entry predates the Pair stamp: it still separates arrows
+-- (25) from bolts-and-bullets (26) from throwables (27), which is most of the bug.
+-- It CANNOT separate a bolt from a bullet -- both are Marksmanship -- so an entry that
+-- lands here pairs with any 26 weapon until the GUI restamps it. Deliberately the same
+-- vocabulary apicrawl's AMMO_SKILL emits.
+local AMMO_TYPE_SKILL = { Archery = 25, Marksmanship = 26, Throwing = 27, FishingRod = 48 };
+M._ammoTypeSkill = AMMO_TYPE_SKILL;   -- test seam
+
 local _ammoSt = { raw = nil, data = nil, lastCheck = -1 };
 local function ensureAmmoState() return ensureStateFile(_ammoSt, 'ammostate.lua'); end
 
@@ -4349,8 +4459,19 @@ end
 --
 --   f = { event, job, wsId, abilityType, abilityName, unlimited,
 --         worn (name|nil), count = function(entry) -> n,
+--         rangeWorn (name|nil: what is in the Range slot right now),
+--         rangePair (string|nil: its "<skill>:<subskill>" key -- see M.pairsWith),
 --         plannedAmmo (bool: this dispatch's rules planned an ammo they own),
 --         fishing (bool) }
+--
+-- THE RANGE SLOT DECIDES THE AMMO TYPE (Henrik, 2026-07-26). AutoAmmo never writes
+-- Range -- that slot belongs to your sets and triggers, full stop -- it only ever asks
+-- what is in it and offers ammo that can actually pair. Two rules fall out, both his
+-- words: with no ranged weapon worn AutoAmmo "waits and does nothing", and with one
+-- worn but nothing in the list able to pair with it, AutoAmmo "should ignore it"
+-- rather than force a mismatch in. Before this the picks were type-BLIND, so a bolt
+-- sitting above your arrows won with a bow equipped -- and the server answered that by
+-- stripping the bow (M.pairsWith).
 function M.resolveAmmoPlan(cfg, f)
     if type(cfg) ~= 'table' or cfg.enabled ~= true
        or type(cfg.ammo) ~= 'table' or #cfg.ammo == 0 then
@@ -4363,6 +4484,16 @@ function M.resolveAmmoPlan(cfg, f)
     if type(cfg.jobs) == 'table' then
         if f.job == nil or cfg.jobs[f.job] ~= true then return nil; end
     end
+    -- No ranged weapon worn => do nothing at all, on every event. Henrik's ruling, and
+    -- the server agrees it is safe: with Range empty a bullet, bolt or arrow cannot be
+    -- fired (range_state.cpp CanUseRangedAttack needs a ranged weapon), ranged WS and
+    -- Quick Draw both need one too -- so there is no shot to dress for and nothing to
+    -- protect a special from. THE ONE EXCEPTION, deliberately not built: THROWING ammo
+    -- IS firable with Range empty (CanUseRangedAttack's `|| PAmmo->isThrowing()`), which
+    -- is how a NIN throws shuriken. That is the "throwing may be an exception" Henrik
+    -- flagged, and it stays parked behind the §8 NIN field tests -- do not widen this
+    -- gate until a real ninja has answered them.
+    if f.rangeWorn == nil then return nil; end
     local list = cfg.ammo;
     local wornL = (type(f.worn) == 'string') and string.lower(f.worn) or nil;
     local wornE = nil;
@@ -4372,30 +4503,51 @@ function M.resolveAmmoPlan(cfg, f)
                and string.lower(e.name) == wornL then wornE = e; break; end
         end
     end
-    local wornSpecial = (wornE ~= nil and type(wornE.special) == 'table');
     local function stocked(e)
         if type(f.count) ~= 'function' then return false; end   -- no counter = no picks (protection still runs)
         local ok, n = pcall(f.count, e);
         return ok and (tonumber(n) or 0) >= 1;
     end
+    -- CAN this entry pair with what is in Range? The same graceful ladder the worn side
+    -- uses (wornPair): the entry's own Pair when the GUI stamped one, else the skill
+    -- implied by its AmmoType -- so an ammostate.lua written before Pair existed still
+    -- keeps arrows out of a gun without the player re-adding a thing.
+    local function entryPair(e)
+        if type(e.pair) == 'string' and e.pair ~= '' then return e.pair; end
+        local sk = AMMO_TYPE_SKILL[tostring(e.type or '')];
+        return (sk ~= nil) and tostring(sk) or nil;
+    end
+    -- Only a PROVEN mismatch disqualifies (pairsWith nil = unknown = keep). An unknown
+    -- pair must never silently empty someone's list -- that would turn a missing data
+    -- field into "AutoAmmo stopped working".
+    local function fits(e)
+        if f.rangePair == nil then return true; end
+        return M.pairsWith(f.rangePair, entryPair(e)) ~= false;
+    end
+    -- The protection sweep answers ONE question: could the next shot eat this? A
+    -- special the equipped weapon cannot even fire is in no danger -- the server has
+    -- already stripped one of the two -- so emptying the slot for it would be pure
+    -- churn AND would break the "nothing in the list pairs, so ignore it" ruling.
+    -- An UNKNOWN pair still protects: never weaken a safeguard on missing data.
+    local wornSpecial = (wornE ~= nil and type(wornE.special) == 'table' and fits(wornE));
     local function firstRanged()
         for _, e in ipairs(list) do
             if type(e) == 'table' and e.ranged == true and type(e.special) ~= 'table'
-               and stocked(e) then return e; end
+               and fits(e) and stocked(e) then return e; end
         end
         return nil;
     end
     local function firstWs()
         for _, e in ipairs(list) do
             if type(e) == 'table' and e.ws == true and type(e.special) ~= 'table'
-               and stocked(e) then return e; end
+               and fits(e) and stocked(e) then return e; end
         end
         return nil;
     end
     local function firstSpecial(beh, needType)
         for _, e in ipairs(list) do
             if type(e) == 'table' and type(e.special) == 'table' and e.special[beh] == true
-               and (needType == nil or e.type == needType) and stocked(e) then return e; end
+               and (needType == nil or e.type == needType) and fits(e) and stocked(e) then return e; end
         end
         return nil;
     end
@@ -4535,10 +4687,16 @@ local function ammoOverlayFor(as, ctx, event, hits, fishOn)
     -- Fresh bag scan on action events (see bagCounts); cached on Default.
     local isAction = (event ~= 'Default');
     local byId, byName = bagCounts(isAction);
+    -- What is in Range decides which ammo may be offered at all. Read LIVE, every
+    -- dispatch: the whole point is that swapping your bow for a gun re-aims AutoAmmo
+    -- on the next pass with nobody touching a setting.
+    local rangePair, rangeWorn = wornPair('Range');
     local f = {
         event   = event,
         job     = job,
         worn    = wornItemName('Ammo'),
+        rangeWorn = rangeWorn,
+        rangePair = rangePair,
         fishing = (fishOn == true),
         unlimited = buffActive(ctx, 115),   -- EFFECT_UNLIMITED_SHOT
         count   = function(e)

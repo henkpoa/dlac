@@ -9061,11 +9061,19 @@ end)();
               special = { unlimited = true, quickdraw = true, freews = true } },
         },
     };
-    -- facts builder: stock is id -> count; everything else overridable
+    -- `nil` in an override table is not a value, it is an ABSENT KEY -- so a plain
+    -- { rangeWorn = nil } cannot clear a default. NONE is the explicit eraser.
+    local NONE = setmetatable({}, { __tostring = function() return 'NONE'; end });
+    -- facts builder: stock is id -> count; everything else overridable.
+    -- A GUN is worn by default (v128): this COR's whole list is Marksmanship, and
+    -- AutoAmmo now does nothing at all with an empty Range slot -- so "a gun is
+    -- equipped" is the premise every one of these cases always silently assumed.
+    -- 26:1 pairs with every bullet below; override rangeWorn/rangePair to vary it.
     local function F(over, stock)
         local f = { event = 'Preshot', job = 'COR',
+                    rangeWorn = 'Hexagun', rangePair = '26:1',
                     count = function(e) return (stock or { [1] = 12, [2] = 12, [3] = 1 })[e.id] or 0; end };
-        for k, v in pairs(over or {}) do f[k] = v; end
+        for k, v in pairs(over or {}) do f[k] = (v ~= NONE) and v or nil; end
         return f;
     end
 
@@ -9173,6 +9181,144 @@ end)();
         dispatchM._ammoStateOn({ enabled = true, ammo = CFG.ammo }), true);
     check('AM23b enabled with no list is OFF',
         dispatchM._ammoStateOn({ enabled = true, ammo = {} }), false);
+
+    -- -----------------------------------------------------------------------
+    -- AM40+. THE RANGE SLOT DECIDES THE TYPE (v128; Henrik 2026-07-26). The
+    -- field bug: list order alone chose the ammo, so a bolt above your arrows
+    -- won with a bow equipped -- and the server answered by stripping the bow.
+    -- -----------------------------------------------------------------------
+    -- No ranged weapon = do nothing at all, on every event. Nothing can be
+    -- consumed with Range empty, so there is nothing to dress for or protect.
+    check('AM40 no ranged weapon worn -> hold (Preshot)',
+        rap(CFG, F({ rangeWorn = NONE, rangePair = NONE })), nil);
+    check('AM41 no ranged weapon worn -> the Default sweep does not fire either',
+        rap(CFG, F({ event = 'Default', rangeWorn = NONE, rangePair = NONE,
+                     worn = 'Animikii Bullet' })), nil);
+    check('AM42 no ranged weapon: even an open Unlimited Shot window stays shut',
+        rap(CFG, F({ rangeWorn = NONE, rangePair = NONE, unlimited = true })), nil);
+    check('AM43 no ranged weapon: a consuming WS plans nothing',
+        rap(CFG, F({ event = 'Weaponskill', wsId = 221,
+                     rangeWorn = NONE, rangePair = NONE })), nil);
+
+    -- A BOW over a bullets-only list: nothing pairs, so AutoAmmo ignores it
+    -- ("Hold, if no matching ammo for the range type" -- Henrik). Critically it
+    -- does NOT fall through to 'remove' and empty the slot.
+    check('AM44 bow worn, list is all bullets -> hold, never a mismatch',
+        rap(CFG, F({ rangeWorn = 'Longbow', rangePair = '25:4' })), nil);
+    check('AM44b bow worn, bullets-only, special worn -> still no forced remove',
+        rap(CFG, F({ rangeWorn = 'Longbow', rangePair = '25:4',
+                     worn = 'Animikii Bullet' })), nil);
+
+    -- The exact field case: an arrow sits ABOVE the bullet in priority order and
+    -- a GUN is equipped. Before v128 list order won and the gun came off.
+    local MIX = { enabled = true, jobs = { COR = true }, ammo = {
+        { name = 'Gold Arrow',   id = 10, type = 'Archery',      pair = '25:0', ranged = true, ws = false, special = false },
+        { name = 'Rusty Bolt',   id = 11, type = 'Marksmanship', pair = '26:0', ranged = true, ws = false, special = false },
+        { name = 'Gold Bullet',  id = 12, type = 'Marksmanship', pair = '26:1', ranged = true, ws = true,  special = false },
+    } };
+    local function FM(over)
+        local f = { event = 'Preshot', job = 'COR', rangeWorn = 'Hexagun', rangePair = '26:1',
+                    count = function() return 99; end };
+        for k, v in pairs(over or {}) do f[k] = (v ~= NONE) and v or nil; end
+        return f;
+    end
+    check('AM45 gun worn: the arrow ABOVE it in priority is skipped for the bullet',
+        rap(MIX, FM()), 'Gold Bullet');
+    check('AM45b crossbow worn: the same list yields the BOLT, not the bullet',
+        rap(MIX, FM({ rangeWorn = 'Crossbow', rangePair = '26:0' })), 'Rusty Bolt');
+    check('AM45c bow worn: the arrow wins even though two Marksmanship rows outrank nothing',
+        rap(MIX, FM({ rangeWorn = 'Longbow', rangePair = '25:4' })), 'Gold Arrow');
+    check('AM45d culverin worn: nothing in the list is 26:2 -> hold',
+        rap(MIX, FM({ rangeWorn = 'Culverin', rangePair = '26:2' })), nil);
+    check('AM46 a consuming WS respects the weapon too',
+        rap(MIX, FM({ event = 'Weaponskill', wsId = 221 })), 'Gold Bullet');
+
+    -- Graceful degradation: an UNKNOWN pair on either side never constrains, or a
+    -- missing data field would read as "AutoAmmo stopped working".
+    check('AM47 unknown weapon pair -> unconstrained (pre-Pair manifest)',
+        rap(MIX, FM({ rangePair = NONE })), 'Gold Arrow');
+    local NOPAIR = { enabled = true, jobs = { COR = true }, ammo = {
+        { name = 'Gold Arrow',  id = 10, type = 'Archery',      ranged = true, ws = false, special = false },
+        { name = 'Gold Bullet', id = 12, type = 'Marksmanship', ranged = true, ws = false, special = false },
+    } };
+    check('AM48 entry with no Pair falls back to its AmmoType skill (arrow vs gun)',
+        rap(NOPAIR, FM()), 'Gold Bullet');
+    check('AM48b ...and to the bow the other way round',
+        rap(NOPAIR, FM({ rangeWorn = 'Longbow', rangePair = '25:4' })), 'Gold Arrow');
+    check('AM48c AmmoType alone cannot split bolt from bullet -- both pair with a gun',
+        rap({ enabled = true, jobs = { COR = true }, ammo = {
+            { name = 'Rusty Bolt', id = 11, type = 'Marksmanship', ranged = true, ws = false, special = false },
+        } }, FM()), 'Rusty Bolt');
+    check('AM48d ...but a stamped Pair does split them',
+        rap({ enabled = true, jobs = { COR = true }, ammo = {
+            { name = 'Rusty Bolt', id = 11, type = 'Marksmanship', pair = '26:0', ranged = true, ws = false, special = false },
+        } }, FM()), nil);
+
+    -- Skill-only weapon key ("26" -- the client resource's Skill, no subskill):
+    -- separates a bow from a gun, cannot separate gun from crossbow.
+    check('AM49 skill-only weapon key still keeps arrows out of a gun',
+        rap(MIX, FM({ rangePair = '26' })), 'Rusty Bolt');
+    check('AM49b skill-only weapon key still admits the arrow to a bow',
+        rap(MIX, FM({ rangePair = '25' })), 'Gold Arrow');
+
+    -- Special behaviours are filtered by the weapon exactly like the plain picks.
+    local SPEC = { enabled = true, jobs = { COR = true }, ammo = {
+        { name = 'Yoru Shuriken',   id = 20, type = 'Throwing',     pair = '27:3',
+          ranged = false, ws = false, special = { unlimited = true, quickdraw = true, freews = true } },
+        { name = 'Animikii Bullet', id = 21, type = 'Marksmanship', pair = '26:1',
+          ranged = false, ws = false, special = { unlimited = true, quickdraw = true, freews = true } },
+    } };
+    check('AM50 Unlimited Shot window skips the special that cannot pair',
+        rap(SPEC, FM({ unlimited = true })), 'Animikii Bullet');
+    check('AM50b free WS likewise',
+        rap(SPEC, FM({ event = 'Weaponskill', wsId = 218 })), 'Animikii Bullet');
+    check('AM50c Quick Draw likewise (and QD still demands Marksmanship)',
+        rap(SPEC, FM({ event = 'Ability', abilityType = 'Quick Draw' })), 'Animikii Bullet');
+    check('AM50d a bow opens NEITHER special -> hold',
+        rap(SPEC, FM({ rangeWorn = 'Longbow', rangePair = '25:4', unlimited = true })), nil);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- PW. M.pairsWith -- the Range/Ammo compatibility law, exactly as the server
+--     writes it (charutils.cpp EquipItem): same skill, and -- for every skill
+--     but ARCHERY -- the same subskill, or it UNEQUIPS THE OTHER SLOT. Three-
+--     valued: true / false / nil(unknown), and nil must never read as false.
+-- ---------------------------------------------------------------------------
+(function()
+    local pw = dispatchM.pairsWith;
+    check('PW1 gun + bullet pair', pw('26:1', '26:1'), true);
+    check('PW2 gun + BOLT do not -- the field bug that stripped the gun', pw('26:1', '26:0'), false);
+    check('PW3 crossbow + bolt pair', pw('26:0', '26:0'), true);
+    check('PW4 culverin + shell pair', pw('26:2', '26:2'), true);
+    check('PW4b culverin + bullet do not', pw('26:2', '26:1'), false);
+    -- THE exemption. A Longbow is 25:4 and a Shortbow 25:0, yet both fire every
+    -- arrow -- the server writes this case out by hand. Matching subskill here
+    -- would break every bow in the game.
+    check('PW5 longbow + a shortbow-class arrow STILL pair (Archery exemption)', pw('25:4', '25:0'), true);
+    check('PW5b shortbow + arrow pair', pw('25:0', '25:0'), true);
+    check('PW6 bow + bullet do not (different skill)', pw('25:4', '26:1'), false);
+    check('PW7 boomerang + pebble pair', pw('27:0', '27:0'), true);
+    check('PW8 boomerang + SHURIKEN do not (Throwing is subskill-checked)', pw('27:0', '27:3'), false);
+    -- The three standing special cases, all falling out of the one rule.
+    check('PW9 Animator + Automaton Oil pair (0:10 -- the ANIMATOR_FED case)', pw('0:10', '0:10'), true);
+    check('PW9b Animator P II refuses the same oil (0:11 vs 0:10)', pw('0:11', '0:10'), false);
+    check('PW10 a stat stick matches no real ranged weapon', pw('0:0', '26:1'), false);
+    check('PW10b ...nor a Coiste-class 1:0 one', pw('1:0', '25:4'), false);
+    check('PW11 fishing rod + bait pair', pw('48:0', '48:0'), true);
+    -- Unknown is nil, NOT false: every pre-Pair manifest and uncrawled custom
+    -- lands here, and constraining on it would switch AutoAmmo off for them.
+    check('PW12 unknown on the left is nil', pw(nil, '26:1'), nil);
+    check('PW12b unknown on the right is nil', pw('26:1', nil), nil);
+    check('PW12c garbage is nil, never false', pw('gun', '26:1'), nil);
+    -- Skill-only keys ("26"): the client resource carries Skill but no subskill.
+    check('PW13 skill-only vs full: same skill cannot PROVE a mismatch', pw('26', '26:0'), true);
+    check('PW13b skill-only vs full: a different skill still proves one', pw('26', '25:0'), false);
+    check('PW13c skill-only both sides', pw('27', '27'), true);
+    local sk, ss = dispatchM._splitPair('26:1');
+    check('PW14 splitPair reads both halves', tostring(sk) .. '/' .. tostring(ss), '26/1');
+    local sk2, ss2 = dispatchM._splitPair('26');
+    check('PW14b skill-only leaves the subskill nil', tostring(sk2) .. '/' .. tostring(ss2), '26/nil');
+    check('PW14c Archery is the exempt skill id', dispatchM.SKILL_ARCHERY, 25);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -10129,6 +10275,39 @@ end)();
     check('AW21e throwing keeps its own bucket', aw.categoryOf('Fuma Shuriken', 'Throwing'), 'Throwing');
     check('AW21f unmatched marksmanship falls to Other', aw.categoryOf('Gold Quarrel', 'Marksmanship'), 'Other');
     check('AW21g trinket-ish types fall to Other', aw.categoryOf('Tiphia Sting', ''), 'Other');
+    -- v128: the EXACT split, from the server's own subskill, with the name kept only
+    -- as the fallback for entries added before Pair existed.
+    check('AW21h pair beats the name split -- bullets', aw.categoryOf('Whatsit', 'Marksmanship', '26:1'), 'Bullets');
+    check('AW21i pair beats the name split -- bolts',   aw.categoryOf('Whatsit', 'Marksmanship', '26:0'), 'Bolts');
+    -- The real datum that proves the name heuristic was never enough: Hauksbok
+    -- Bullet is server skill 26 SUBSKILL 0, i.e. a bolt. The name says Bullets and
+    -- is wrong; a crossbow is what actually fires it.
+    check('AW21j Hauksbok Bullet is a BOLT by subskill, whatever its name says',
+        aw.categoryOf('Hauksbok Bullet', 'Marksmanship', '26:0'), 'Bolts');
+    check('AW21k ...and the name alone still gets it wrong (why Pair wins)',
+        aw.categoryOf('Hauksbok Bullet', 'Marksmanship'), 'Bullets');
+    check('AW21l culverin shells have no tab of their own', aw.categoryOf('Cannon Shell', 'Marksmanship', '26:2'), 'Other');
+    -- categoryForPair answers for the RANGE weapon too -- one key space, both sides.
+    check('AW21m a gun fires Bullets',      aw.categoryForPair('26:1'), 'Bullets');
+    check('AW21n a crossbow fires Bolts',   aw.categoryForPair('26:0'), 'Bolts');
+    check('AW21o a longbow fires Arrows',   aw.categoryForPair('25:4'), 'Arrows');
+    check('AW21p a shortbow fires Arrows',  aw.categoryForPair('25:0'), 'Arrows');
+    check('AW21q a boomerang fires Throwing', aw.categoryForPair('27:0'), 'Throwing');
+    check('AW21r a harp fires nothing we tab', aw.categoryForPair('41:0'), nil);
+    check('AW21s a skill-only key cannot pick gun-vs-crossbow', aw.categoryForPair('26'), nil);
+    check('AW21t no key at all is nil, never a guess', aw.categoryForPair(nil), nil);
+    -- The pair must survive the file: it is what the engine pairs against Range.
+    do
+        local round = (loadstring or load)(aw._serialize({ COR = { enabled = true, at = 7, ammo = {
+            { name = 'Gold Bullet', id = 12, type = 'Marksmanship', pair = '26:1',
+              level = 40, ranged = true, ws = false, special = false },
+            { name = 'Old Entry',   id = 13, type = 'Marksmanship',
+              level = 1,  ranged = true, ws = false, special = false },
+        } } }))();
+        check('AW21u serialize/load round-trips the pair', round.jobs.COR.ammo[1].pair, '26:1');
+        check('AW21v an entry with no pair stays without one (never invented)',
+            round.jobs.COR.ammo[2].pair, nil);
+    end
 
     -- swapAmmo: the filtered view's move (non-adjacent underneath)
     aw.jobsData.COR.ammo = {

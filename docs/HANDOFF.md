@@ -313,6 +313,45 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
+- **AutoAmmo now asks what is in RANGE before it picks — BUILT, NOT FIELD-TESTED.**
+  Engine **v128**, addon **`2026.07.26i`**, direct on dev. Full record:
+  [docs/design/auto-ammo.md §9](design/auto-ammo.md) — read that before touching this.
+  Henrik's report: a trigger holding a bow while AutoAmmo forced a bolt into Ammo.
+  `resolveAmmoPlan` was **type-blind** (first `ranged`-flagged entry with stock won,
+  whatever you were holding), and the panel's type selector never constrained it —
+  `categoryOf` is a VIEW, stored nowhere. The cost was not a wasted swap:
+  **`charutils.cpp EquipItem` strips the OTHER slot** on an incompatible pair, so the
+  bolt took the bow off and the two flapped forever — ADR 0010's failure through the
+  skill/subskill door. New pure `M.pairsWith` over a `"<skill>:<subskill>"` key,
+  three-valued so unknown degrades to old behaviour; **Archery is exempt from the
+  subskill half** (Shortbow 25:0 + Longbow 25:4 share arrows — the thing that would
+  break loudest if someone "simplifies" it). Range is still never written. Henrik's
+  two rulings: no ranged weapon worn = do nothing at all; weapon worn with nothing in
+  the list able to pair = hold, never force a mismatch. Panel: the type combo is gone,
+  replaced by tabs whose **live one lights green** (what your equipped weapon fires).
+  - **THROWING with an empty Range is the known, deliberate gap** — a NIN's shuriken
+    (27:3) has no Range partner and IS firable with Range empty, so the no-weapon gate
+    shuts AutoAmmo off for it. Henrik: *"throwing may be an exception, but we still
+    need field tests for that."* Parked with §8's NIN work. **Do not widen the gate on
+    reasoning alone.**
+  - Carries a **catalog regenerate** in its own commit first: the working catalog was
+    419 rows stale against its generator (the 2026-07-22 H2H `OneHanded` fix, knowingly
+    left — `apicrawl.py:218`). Reviewed separately so the feature diff is only `Pair`.
+  - **`tools/apicrawl.py` is gitignored**, so the generator change that emits `Pair`
+    lives only on Henrik's machine. Anyone regenerating `catalog.lua` elsewhere would
+    drop the field.
+  - Two **pre-existing** bugs found and deliberately NOT fixed here: `apicrawl.py:490`
+    filters out the `None` category bucket, so all 22 skill-0 Range items (Animators,
+    Soultrappers) are silently absent from `catalog.lua`; and **Hauksbok Bullet (22295)
+    is server subskill 0 — a bolt despite its name** (upstream LSB data, not CatsEye —
+    one for `docs/server-questions.md`).
+  - Field tests owed: **auto-ammo.md §9.8**, seven of them. #3 (a Shortbow and a
+    Longbow both accepting the same arrows) and #7 (PUP Animator + oils) are the
+    regression risks.
+  - `AU1`–`AU10` are new smoke: **the AutoAmmo panel's render had never been executed
+    by any test** — the craftbar trap again. Suites **3752** + **544**, green Windows
+    + WSL.
+
 - **TRIGGER CASES — the live pipeline. START HERE.** A second tier of `&`/`|` logic for
   trigger rules: every rule body is **case 1**; `+ & case` / `+ | case` add cases, each
   built exactly like the body. One sentence at both tiers: *`&` things bind into one

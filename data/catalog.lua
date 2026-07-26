@@ -59926,6 +59926,7 @@ return {
                 Model = 37,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 94,
                     Delay = 524,
@@ -59938,6 +59939,7 @@ return {
                 Model = 35,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 103,
                     Delay = 540,
@@ -59955,6 +59957,7 @@ return {
                 Model = 35,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 104,
                     Delay = 524,
@@ -59972,6 +59975,7 @@ return {
                 Model = 37,
                 Jobs = {"RDM", "RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 79,
                     Delay = 540,
@@ -59989,6 +59993,7 @@ return {
                 Model = 38,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 147,
                     Delay = 360,
@@ -60003,6 +60008,7 @@ return {
                 Model = 119,
                 Jobs = {"RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 76,
                     Delay = 540,
@@ -60021,6 +60027,7 @@ return {
                 Model = 31,
                 Jobs = {"RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 69,
                     Delay = 524,
@@ -60034,6 +60041,7 @@ return {
                 Model = 32,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 79,
                     Delay = 600,
@@ -60048,6 +60056,7 @@ return {
                 Model = 32,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 80,
                     Delay = 582,
@@ -60063,6 +60072,7 @@ return {
                 Model = 32,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 226,
                     Delay = 540,
@@ -60080,6 +60090,7 @@ return {
                 Model = 32,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 227,
                     Delay = 524,
@@ -60097,6 +60108,7 @@ return {
                 Model = 48,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 28,
                     Delay = 300,
@@ -60111,6 +60123,7 @@ return {
                 Model = 138,
                 Jobs = {"All"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 1,
                     Delay = 360,
@@ -60123,6 +60136,7 @@ return {
                 Model = 138,
                 Jobs = {"All"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 2,
                     Delay = 351,
@@ -60135,6 +60149,7 @@ return {
                 Model = 138,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 276,
                     Delay = 540,
@@ -60147,6 +60162,7 @@ return {
                 Model = 43,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 21,
                     Delay = 330,
@@ -60161,6 +60177,7 @@ return {
                 Model = 35,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 67,
                     Delay = 524,
@@ -60173,6 +60190,7 @@ return {
                 Model = 34,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 80,
                     Delay = 524,
@@ -60185,6 +60203,7 @@ return {
                 Model = 34,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 85,
                     Delay = 524,
@@ -60197,6 +60216,7 @@ return {
                 Model = 34,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 96,
                     Delay = 524,
@@ -60209,6 +60229,7 @@ return {
                 Model = 34,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 104,
                     Delay = 524,
@@ -60221,6 +60242,7 @@ return {
                 Model = 35,
                 Jobs = {"WAR", "PLD", "DRK", "RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 54,
                     Delay = 540,
@@ -60233,6 +60255,7 @@ return {
                 Model = 35,
                 Jobs = {"WAR", "PLD", "DRK", "RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 55,
                     Delay = 524,
@@ -60247,6 +60270,7 @@ return {
                 Model = 33,
                 Jobs = {"WAR", "PLD", "DRK", "RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 89,
                     Delay = 600,
@@ -60261,6 +60285,7 @@ return {
                 Model = 33,
                 Jobs = {"WAR", "PLD", "DRK", "RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 90,
                     Delay = 582,
@@ -60275,6 +60300,7 @@ return {
                 Model = 129,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 265,
                     Delay = 540,
@@ -60288,6 +60314,7 @@ return {
                 Model = 129,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 266,
                     Delay = 524,
@@ -60301,6 +60328,7 @@ return {
                 Model = 101,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 121,
                     Delay = 540,
@@ -60313,6 +60341,7 @@ return {
                 Model = 101,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 181,
                     Delay = 540,
@@ -60325,6 +60354,7 @@ return {
                 Model = 101,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 216,
                     Delay = 540,
@@ -60337,6 +60367,7 @@ return {
                 Model = 50,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 39,
                     Delay = 360,
@@ -60352,6 +60383,7 @@ return {
                 Model = 50,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 261,
                     Delay = 600,
@@ -60370,6 +60402,7 @@ return {
                 Model = 118,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 159,
                     Delay = 540,
@@ -60382,6 +60415,7 @@ return {
                 Model = 32,
                 Jobs = {"WAR", "PLD", "DRK", "RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 72,
                     Delay = 600,
@@ -60397,6 +60431,7 @@ return {
                 Model = 32,
                 Jobs = {"WAR", "PLD", "DRK", "RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 73,
                     Delay = 582,
@@ -60413,6 +60448,7 @@ return {
                 Model = 34,
                 Jobs = {"RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 261,
                     Delay = 600,
@@ -60427,6 +60463,7 @@ return {
                 Model = 32,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 116,
                     Delay = 524,
@@ -60439,6 +60476,7 @@ return {
                 Model = 32,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 110,
                     Delay = 524,
@@ -60451,6 +60489,7 @@ return {
                 Model = 115,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 102,
                     Delay = 540,
@@ -60463,6 +60502,7 @@ return {
                 Model = 35,
                 Jobs = {"WAR", "PLD", "DRK", "RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 77,
                     Delay = 524,
@@ -60477,6 +60517,7 @@ return {
                 Model = 48,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 36,
                     Delay = 450,
@@ -60489,6 +60530,7 @@ return {
                 Model = 48,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 37,
                     Delay = 441,
@@ -60502,6 +60544,7 @@ return {
                 Model = 40,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 37,
                     Delay = 540,
@@ -60514,6 +60557,7 @@ return {
                 Model = 40,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 39,
                     Delay = 540,
@@ -60526,6 +60570,7 @@ return {
                 Model = 40,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 39,
                     Delay = 540,
@@ -60538,6 +60583,7 @@ return {
                 Model = 40,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 42,
                     Delay = 540,
@@ -60550,6 +60596,7 @@ return {
                 Model = 35,
                 Jobs = {"RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 68,
                     Delay = 540,
@@ -60562,6 +60609,7 @@ return {
                 Model = 32,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 248,
                     Delay = 600,
@@ -60575,6 +60623,7 @@ return {
                 Model = 32,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 249,
                     Delay = 582,
@@ -60588,6 +60637,7 @@ return {
                 Model = 51,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 157,
                     Delay = 360,
@@ -60603,6 +60653,7 @@ return {
                 Model = 37,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 38,
                     Delay = 540,
@@ -60618,6 +60669,7 @@ return {
                 Model = 37,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 74,
                     Delay = 540,
@@ -60634,6 +60686,7 @@ return {
                 Model = 37,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 263,
                     Delay = 720,
@@ -60646,6 +60699,7 @@ return {
                 Model = 33,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 71,
                     Delay = 490,
@@ -60662,6 +60716,7 @@ return {
                 Model = 41,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 48,
                     Delay = 360,
@@ -60679,6 +60734,7 @@ return {
                 Model = 41,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 49,
                     Delay = 351,
@@ -60696,6 +60752,7 @@ return {
                 Model = 45,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 26,
                     Delay = 360,
@@ -60709,6 +60766,7 @@ return {
                 Model = 133,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 330,
                     Delay = 600,
@@ -60725,6 +60783,7 @@ return {
                 Model = 133,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 330,
                     Delay = 600,
@@ -60741,6 +60800,7 @@ return {
                 Model = 82,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 72,
                     Delay = 582,
@@ -60756,6 +60816,7 @@ return {
                 Model = 119,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 243,
                     Delay = 540,
@@ -60771,6 +60832,7 @@ return {
                 Model = 48,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 72,
                     Delay = 540,
@@ -60783,6 +60845,7 @@ return {
                 Model = 43,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 14,
                     Delay = 340,
@@ -60796,6 +60859,7 @@ return {
                 Model = 34,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 126,
                     Delay = 540,
@@ -60809,6 +60873,7 @@ return {
                 Model = 44,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 12,
                     Delay = 360,
@@ -60821,6 +60886,7 @@ return {
                 Model = 82,
                 Jobs = {"RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 81,
                     Delay = 540,
@@ -60833,6 +60899,7 @@ return {
                 Model = 98,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 89,
                     Delay = 490,
@@ -60845,6 +60912,7 @@ return {
                 Model = 108,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 286,
                     Delay = 490,
@@ -60858,6 +60926,7 @@ return {
                 Model = 98,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 95,
                     Delay = 490,
@@ -60871,6 +60940,7 @@ return {
                 Model = 98,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 103,
                     Delay = 490,
@@ -60884,6 +60954,7 @@ return {
                 Model = 98,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 110,
                     Delay = 490,
@@ -60897,6 +60968,7 @@ return {
                 Model = 98,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 117,
                     Delay = 490,
@@ -60910,6 +60982,7 @@ return {
                 Model = 108,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 117,
                     Delay = 490,
@@ -60923,6 +60996,7 @@ return {
                 Model = 98,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 206,
                     Delay = 490,
@@ -60936,6 +61010,7 @@ return {
                 Model = 108,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 206,
                     Delay = 490,
@@ -60949,6 +61024,7 @@ return {
                 Model = 108,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 286,
                     Delay = 490,
@@ -60962,6 +61038,7 @@ return {
                 Model = 31,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 76,
                     Delay = 600,
@@ -60975,6 +61052,7 @@ return {
                 Model = 31,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 77,
                     Delay = 582,
@@ -60989,6 +61067,7 @@ return {
                 Model = 40,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 39,
                     Delay = 512,
@@ -61001,6 +61080,7 @@ return {
                 Model = 34,
                 Jobs = {"WAR", "PLD", "DRK", "RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 43,
                     Delay = 540,
@@ -61013,6 +61093,7 @@ return {
                 Model = 34,
                 Jobs = {"WAR", "PLD", "DRK", "RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 44,
                     Delay = 524,
@@ -61027,6 +61108,7 @@ return {
                 Model = 40,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 44,
                     Delay = 540,
@@ -61039,6 +61121,7 @@ return {
                 Model = 47,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 55,
                     Delay = 540,
@@ -61051,6 +61134,7 @@ return {
                 Model = 82,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 43,
                     Delay = 524,
@@ -61063,6 +61147,7 @@ return {
                 Model = 86,
                 Jobs = {"RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 251,
                     Delay = 600,
@@ -61078,6 +61163,7 @@ return {
                 Model = 35,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 84,
                     Delay = 524,
@@ -61090,6 +61176,7 @@ return {
                 Model = 35,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 91,
                     Delay = 524,
@@ -61102,6 +61189,7 @@ return {
                 Model = 35,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 100,
                     Delay = 524,
@@ -61114,6 +61202,7 @@ return {
                 Model = 35,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 108,
                     Delay = 524,
@@ -61126,6 +61215,7 @@ return {
                 Model = 47,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 27,
                     Delay = 490,
@@ -61142,6 +61232,7 @@ return {
                 Model = 46,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 40,
                     Delay = 360,
@@ -61156,6 +61247,7 @@ return {
                 Model = 33,
                 Jobs = {"WAR", "PLD", "DRK", "RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 75,
                     Delay = 540,
@@ -61168,6 +61260,7 @@ return {
                 Model = 91,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 38,
                     Delay = 360,
@@ -61180,6 +61273,7 @@ return {
                 Model = 40,
                 Jobs = {"All"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 100,
                     Delay = 540,
@@ -61192,6 +61286,7 @@ return {
                 Model = 144,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 164,
                     Delay = 360,
@@ -61210,6 +61305,7 @@ return {
                 Model = 41,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 32,
                     Delay = 360,
@@ -61222,6 +61318,7 @@ return {
                 Model = 41,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 33,
                     Delay = 350,
@@ -61235,6 +61332,7 @@ return {
                 Model = 86,
                 Jobs = {"RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 78,
                     Delay = 524,
@@ -61252,6 +61350,7 @@ return {
                 Model = 36,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 57,
                     Delay = 524,
@@ -61264,6 +61363,7 @@ return {
                 Model = 41,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 39,
                     Delay = 296,
@@ -61292,6 +61392,7 @@ return {
                 Model = 37,
                 Jobs = {"WAR", "PLD", "DRK", "RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 26,
                     Delay = 508,
@@ -61305,6 +61406,7 @@ return {
                 Model = 91,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 19,
                     Delay = 270,
@@ -61319,6 +61421,7 @@ return {
                 Model = 91,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 20,
                     Delay = 261,
@@ -61334,6 +61437,7 @@ return {
                 Model = 91,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 10,
                     Delay = 540,
@@ -61347,6 +61451,7 @@ return {
                 Model = 46,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 40,
                     Delay = 270,
@@ -61361,6 +61466,7 @@ return {
                 Model = 46,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 41,
                     Delay = 261,
@@ -61375,6 +61481,7 @@ return {
                 Model = 41,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 35,
                     Delay = 360,
@@ -61389,6 +61496,7 @@ return {
                 Model = 41,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 36,
                     Delay = 352,
@@ -61404,6 +61512,7 @@ return {
                 Model = 37,
                 Jobs = {"WAR", "PLD", "DRK", "RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 17,
                     Delay = 540,
@@ -61416,6 +61525,7 @@ return {
                 Model = 37,
                 Jobs = {"WAR", "PLD", "DRK", "RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 18,
                     Delay = 524,
@@ -61430,6 +61540,7 @@ return {
                 Model = 32,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 12,
                     Delay = 120,
@@ -61443,6 +61554,7 @@ return {
                 Model = 36,
                 Jobs = {"WAR", "PLD", "DRK", "RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 67,
                     Delay = 540,
@@ -61456,6 +61568,7 @@ return {
                 Model = 48,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 147,
                     Delay = 300,
@@ -61468,6 +61581,7 @@ return {
                 Model = 48,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 148,
                     Delay = 291,
@@ -61480,6 +61594,7 @@ return {
                 Model = 46,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 53,
                     Delay = 450,
@@ -61493,6 +61608,7 @@ return {
                 Model = 140,
                 Jobs = {"All"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 1,
                     Delay = 524,
@@ -61505,6 +61621,7 @@ return {
                 Model = 40,
                 Jobs = {"WAR", "PLD", "DRK", "RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 77,
                     Delay = 540,
@@ -61518,6 +61635,7 @@ return {
                 Model = 86,
                 Jobs = {"RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 91,
                     Delay = 524,
@@ -61530,6 +61648,7 @@ return {
                 Model = 126,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 274,
                     Delay = 600,
@@ -61542,6 +61661,7 @@ return {
                 Model = 82,
                 Jobs = {"RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 76,
                     Delay = 600,
@@ -61558,6 +61678,7 @@ return {
                 Model = 82,
                 Jobs = {"RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 77,
                     Delay = 582,
@@ -61574,6 +61695,7 @@ return {
                 Model = 33,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 219,
                     Delay = 490,
@@ -61586,6 +61708,7 @@ return {
                 Model = 33,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 220,
                     Delay = 480,
@@ -61603,6 +61726,7 @@ return {
                 Model = 51,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 93,
                     Delay = 540,
@@ -61618,6 +61742,7 @@ return {
                 Model = 40,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 38,
                     Delay = 360,
@@ -61630,6 +61755,7 @@ return {
                 Model = 122,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 90,
                     Delay = 540,
@@ -61650,6 +61776,7 @@ return {
                 Model = 48,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 36,
                     Delay = 360,
@@ -61662,6 +61789,7 @@ return {
                 Model = 38,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 126,
                     Delay = 360,
@@ -61674,6 +61802,7 @@ return {
                 Model = 40,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 15,
                     Delay = 360,
@@ -61686,6 +61815,7 @@ return {
                 Model = 36,
                 Jobs = {"WAR", "PLD", "DRK", "RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 30,
                     Delay = 540,
@@ -61698,6 +61828,7 @@ return {
                 Model = 36,
                 Jobs = {"WAR", "PLD", "DRK", "RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 31,
                     Delay = 524,
@@ -61712,6 +61843,7 @@ return {
                 Model = 51,
                 Jobs = {"WAR", "BLM", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "RNG", "SAM", "NIN", "SMN", "BLU", "SCH"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 210,
                     Delay = 360,
@@ -61728,6 +61860,7 @@ return {
                 Model = 51,
                 Jobs = {"WAR", "BLM", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "RNG", "SAM", "NIN", "SMN", "BLU", "SCH"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 211,
                     Delay = 351,
@@ -61744,6 +61877,7 @@ return {
                 Model = 38,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 37,
                     Delay = 360,
@@ -61756,6 +61890,7 @@ return {
                 Model = 38,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 38,
                     Delay = 350,
@@ -61769,6 +61904,7 @@ return {
                 Model = 35,
                 Jobs = {"RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 1,
                     Delay = 999,
@@ -61781,6 +61917,7 @@ return {
                 Model = 38,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 38,
                     Delay = 360,
@@ -61795,6 +61932,7 @@ return {
                 Model = 38,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 39,
                     Delay = 350,
@@ -61810,6 +61948,7 @@ return {
                 Model = 51,
                 Jobs = {"WAR", "BLM", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "RNG", "SAM", "NIN", "SMN", "BLU", "SCH"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 38,
                     Delay = 360,
@@ -61822,6 +61961,7 @@ return {
                 Model = 37,
                 Jobs = {"WAR", "PLD", "DRK", "RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 24,
                     Delay = 540,
@@ -61834,6 +61974,7 @@ return {
                 Model = 38,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 34,
                     Delay = 330,
@@ -61848,6 +61989,7 @@ return {
                 Model = 37,
                 Jobs = {"WAR", "PLD", "DRK", "RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 25,
                     Delay = 524,
@@ -61861,6 +62003,7 @@ return {
                 Model = 32,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 72,
                     Delay = 720,
@@ -61876,6 +62019,7 @@ return {
                 Model = 36,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 72,
                     Delay = 540,
@@ -61889,6 +62033,7 @@ return {
                 Model = 40,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 14,
                     Delay = 450,
@@ -61901,6 +62046,7 @@ return {
                 Model = 40,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 15,
                     Delay = 441,
@@ -61914,6 +62060,7 @@ return {
                 Model = 43,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 24,
                     Delay = 330,
@@ -61928,6 +62075,7 @@ return {
                 Model = 43,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 25,
                     Delay = 320,
@@ -61942,6 +62090,7 @@ return {
                 Model = 82,
                 Jobs = {"RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 75,
                     Delay = 600,
@@ -61955,6 +62104,7 @@ return {
                 Model = 82,
                 Jobs = {"RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 76,
                     Delay = 582,
@@ -61968,6 +62118,7 @@ return {
                 Model = 36,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 54,
                     Delay = 540,
@@ -61982,6 +62133,7 @@ return {
                 Model = 50,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 5,
                     Delay = 360,
@@ -61994,6 +62146,7 @@ return {
                 Model = 50,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 6,
                     Delay = 351,
@@ -62007,6 +62160,7 @@ return {
                 Model = 101,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 83,
                     Delay = 540,
@@ -62022,6 +62176,7 @@ return {
                 Model = 43,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 27,
                     Delay = 360,
@@ -62035,6 +62190,7 @@ return {
                 Model = 37,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 50,
                     Delay = 524,
@@ -62047,6 +62203,7 @@ return {
                 Model = 37,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 60,
                     Delay = 524,
@@ -62059,6 +62216,7 @@ return {
                 Model = 37,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 82,
                     Delay = 524,
@@ -62071,6 +62229,7 @@ return {
                 Model = 37,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 82,
                     Delay = 524,
@@ -62083,6 +62242,7 @@ return {
                 Model = 37,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 88,
                     Delay = 524,
@@ -62095,6 +62255,7 @@ return {
                 Model = 46,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 25,
                     Delay = 324,
@@ -62107,6 +62268,7 @@ return {
                 Model = 86,
                 Jobs = {"RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 221,
                     Delay = 600,
@@ -62119,6 +62281,7 @@ return {
                 Model = 51,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 290,
                     Delay = 600,
@@ -62135,6 +62298,7 @@ return {
                 Model = 32,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 270,
                     Delay = 600,
@@ -62151,6 +62315,7 @@ return {
                 Model = 33,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 111,
                     Delay = 524,
@@ -62163,6 +62328,7 @@ return {
                 Model = 41,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 136,
                     Delay = 360,
@@ -62175,6 +62341,7 @@ return {
                 Model = 140,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 83,
                     Delay = 540,
@@ -62193,6 +62360,7 @@ return {
                 Model = 32,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 74,
                     Delay = 490,
@@ -62210,6 +62378,7 @@ return {
                 Model = 37,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 77,
                     Delay = 480,
@@ -62227,6 +62396,7 @@ return {
                 Model = 33,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 71,
                     Delay = 490,
@@ -62243,6 +62413,7 @@ return {
                 Model = 132,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 243,
                     Delay = 600,
@@ -62255,6 +62426,7 @@ return {
                 Model = 33,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 258,
                     Delay = 540,
@@ -62267,6 +62439,7 @@ return {
                 Model = 32,
                 Jobs = {"RNG"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 97,
                     Delay = 524,
@@ -62281,6 +62454,7 @@ return {
                 Model = 33,
                 Jobs = {"WAR", "PLD", "DRK", "RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 65,
                     Delay = 540,
@@ -62293,6 +62467,7 @@ return {
                 Model = 33,
                 Jobs = {"WAR", "PLD", "DRK", "RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 66,
                     Delay = 524,
@@ -62307,6 +62482,7 @@ return {
                 Model = 43,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 13,
                     Delay = 350,
@@ -62320,6 +62496,7 @@ return {
                 Model = 35,
                 Jobs = {"RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 1,
                     Delay = 540,
@@ -62332,6 +62509,7 @@ return {
                 Model = 43,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 19,
                     Delay = 360,
@@ -62344,6 +62522,7 @@ return {
                 Model = 43,
                 Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 20,
                     Delay = 351,
@@ -62357,6 +62536,7 @@ return {
                 Model = 34,
                 Jobs = {"WAR", "PLD", "DRK", "RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 35,
                     Delay = 540,
@@ -62370,6 +62550,7 @@ return {
                 Model = 86,
                 Jobs = {"RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 81,
                     Delay = 524,
@@ -62384,6 +62565,7 @@ return {
                 Model = 104,
                 Jobs = {"RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 303,
                     Delay = 524,
@@ -62398,6 +62580,7 @@ return {
                 Model = 104,
                 Jobs = {"RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 303,
                     Delay = 524,
@@ -62412,6 +62595,7 @@ return {
                 Model = 86,
                 Jobs = {"RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 96,
                     Delay = 524,
@@ -62426,6 +62610,7 @@ return {
                 Model = 86,
                 Jobs = {"RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 102,
                     Delay = 524,
@@ -62440,6 +62625,7 @@ return {
                 Model = 86,
                 Jobs = {"RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 111,
                     Delay = 524,
@@ -62454,6 +62640,7 @@ return {
                 Model = 86,
                 Jobs = {"RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 118,
                     Delay = 524,
@@ -62468,6 +62655,7 @@ return {
                 Model = 86,
                 Jobs = {"RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:0",
                 Stats = {
                     DMG = 126,
                     Delay = 524,
@@ -62482,6 +62670,7 @@ return {
                 Model = 104,
                 Jobs = {"RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 126,
                     Delay = 524,
@@ -62496,6 +62685,7 @@ return {
                 Model = 86,
                 Jobs = {"RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 223,
                     Delay = 524,
@@ -62510,6 +62700,7 @@ return {
                 Model = 104,
                 Jobs = {"RNG", "SAM"},
                 Type = "Archery",
+                Pair = "25:4",
                 Stats = {
                     DMG = 223,
                     Delay = 524,
@@ -62526,6 +62717,7 @@ return {
                 Model = 60,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 21,
                     Delay = 660,
@@ -62538,6 +62730,7 @@ return {
                 Model = 53,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 15,
                     Delay = 288,
@@ -62551,6 +62744,7 @@ return {
                 Model = 58,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 38,
                     Delay = 600,
@@ -62563,6 +62757,7 @@ return {
                 Model = 58,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 49,
                     Delay = 600,
@@ -62575,6 +62770,7 @@ return {
                 Model = 58,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 49,
                     Delay = 600,
@@ -62587,6 +62783,7 @@ return {
                 Model = 58,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 51,
                     Delay = 600,
@@ -62599,6 +62796,7 @@ return {
                 Model = 85,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 47,
                     Delay = 582,
@@ -62613,6 +62811,7 @@ return {
                 Model = 103,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 143,
                     Delay = 582,
@@ -62628,6 +62827,7 @@ return {
                 Model = 103,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 143,
                     Delay = 582,
@@ -62643,6 +62843,7 @@ return {
                 Model = 85,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 59,
                     Delay = 582,
@@ -62657,6 +62858,7 @@ return {
                 Model = 85,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 62,
                     Delay = 582,
@@ -62671,6 +62873,7 @@ return {
                 Model = 85,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 65,
                     Delay = 582,
@@ -62685,6 +62888,7 @@ return {
                 Model = 85,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 71,
                     Delay = 582,
@@ -62699,6 +62903,7 @@ return {
                 Model = 85,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 76,
                     Delay = 582,
@@ -62713,6 +62918,7 @@ return {
                 Model = 103,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 76,
                     Delay = 582,
@@ -62727,6 +62933,7 @@ return {
                 Model = 85,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 105,
                     Delay = 582,
@@ -62741,6 +62948,7 @@ return {
                 Model = 103,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 105,
                     Delay = 582,
@@ -62755,6 +62963,7 @@ return {
                 Model = 58,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 107,
                     Delay = 600,
@@ -62772,6 +62981,7 @@ return {
                 Model = 58,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 108,
                     Delay = 582,
@@ -62789,6 +62999,7 @@ return {
                 Model = 54,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 29,
                     Delay = 288,
@@ -62801,6 +63012,7 @@ return {
                 Model = 54,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 30,
                     Delay = 280,
@@ -62814,6 +63026,7 @@ return {
                 Model = 52,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 32,
                     Delay = 288,
@@ -62830,6 +63043,7 @@ return {
                 Model = 52,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 127,
                     Delay = 280,
@@ -62847,6 +63061,7 @@ return {
                 Model = 99,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 58,
                     Delay = 582,
@@ -62859,6 +63074,7 @@ return {
                 Model = 109,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 143,
                     Delay = 582,
@@ -62873,6 +63089,7 @@ return {
                 Model = 99,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 61,
                     Delay = 582,
@@ -62886,6 +63103,7 @@ return {
                 Model = 99,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 64,
                     Delay = 582,
@@ -62899,6 +63117,7 @@ return {
                 Model = 99,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 70,
                     Delay = 582,
@@ -62912,6 +63131,7 @@ return {
                 Model = 99,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 76,
                     Delay = 582,
@@ -62925,6 +63145,7 @@ return {
                 Model = 109,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 76,
                     Delay = 582,
@@ -62938,6 +63159,7 @@ return {
                 Model = 99,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 103,
                     Delay = 582,
@@ -62951,6 +63173,7 @@ return {
                 Model = 109,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 103,
                     Delay = 582,
@@ -62964,6 +63187,7 @@ return {
                 Model = 109,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 143,
                     Delay = 582,
@@ -62978,6 +63202,7 @@ return {
                 Model = 62,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 34,
                     Delay = 288,
@@ -62992,6 +63217,7 @@ return {
                 Model = 59,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 18,
                     Delay = 600,
@@ -63004,6 +63230,7 @@ return {
                 Model = 59,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 19,
                     Delay = 582,
@@ -63016,6 +63243,7 @@ return {
                 Model = 58,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 53,
                     Delay = 600,
@@ -63028,6 +63256,7 @@ return {
                 Model = 61,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 69,
                     Delay = 130,
@@ -63040,6 +63269,7 @@ return {
                 Model = 114,
                 Jobs = {"THF", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 48,
                     Delay = 432,
@@ -63060,6 +63290,7 @@ return {
                 Model = 94,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 5,
                     Delay = 210,
@@ -63072,6 +63303,7 @@ return {
                 Model = 57,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 64,
                     Delay = 600,
@@ -63084,6 +63316,7 @@ return {
                 Model = 57,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 65,
                     Delay = 582,
@@ -63096,6 +63329,7 @@ return {
                 Model = 60,
                 Jobs = {"THF", "RNG", "NIN", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 14,
                     Delay = 600,
@@ -63108,6 +63342,7 @@ return {
                 Model = 60,
                 Jobs = {"THF", "RNG", "NIN", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 15,
                     Delay = 582,
@@ -63120,6 +63355,7 @@ return {
                 Model = 56,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 11,
                     Delay = 280,
@@ -63133,6 +63369,7 @@ return {
                 Model = 58,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 39,
                     Delay = 582,
@@ -63146,6 +63383,7 @@ return {
                 Model = 57,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 51,
                     Delay = 600,
@@ -63158,6 +63396,7 @@ return {
                 Model = 57,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 54,
                     Delay = 600,
@@ -63170,6 +63409,7 @@ return {
                 Model = 57,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 57,
                     Delay = 600,
@@ -63182,6 +63422,7 @@ return {
                 Model = 57,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 60,
                     Delay = 600,
@@ -63194,6 +63435,7 @@ return {
                 Model = 60,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 33,
                     Delay = 600,
@@ -63206,6 +63448,7 @@ return {
                 Model = 58,
                 Jobs = {"THF", "RNG", "NIN", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 37,
                     Delay = 600,
@@ -63219,6 +63462,7 @@ return {
                 Model = 58,
                 Jobs = {"THF", "RNG", "NIN", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 38,
                     Delay = 582,
@@ -63232,6 +63476,7 @@ return {
                 Model = 130,
                 Jobs = {"THF", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 43,
                     Delay = 288,
@@ -63248,6 +63493,7 @@ return {
                 Model = 130,
                 Jobs = {"THF", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 44,
                     Delay = 280,
@@ -63265,6 +63511,7 @@ return {
                 Model = 53,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 90,
                     Delay = 432,
@@ -63277,6 +63524,7 @@ return {
                 Model = 58,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 75,
                     Delay = 600,
@@ -63289,6 +63537,7 @@ return {
                 Model = 60,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 47,
                     Delay = 582,
@@ -63303,6 +63552,7 @@ return {
                 Model = 60,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 46,
                     Delay = 600,
@@ -63317,6 +63567,7 @@ return {
                 Model = 83,
                 Jobs = {"THF", "RNG", "NIN", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 27,
                     Delay = 600,
@@ -63329,6 +63580,7 @@ return {
                 Id = 21482,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 89,
                     Delay = 480,
@@ -63342,6 +63594,7 @@ return {
                 Model = 60,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 41,
                     Delay = 600,
@@ -63354,6 +63607,7 @@ return {
                 Model = 60,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 42,
                     Delay = 582,
@@ -63366,6 +63620,7 @@ return {
                 Model = 53,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 12,
                     Delay = 288,
@@ -63378,6 +63633,7 @@ return {
                 Model = 53,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 13,
                     Delay = 280,
@@ -63391,6 +63647,7 @@ return {
                 Model = 63,
                 Jobs = {"THF", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:2",
                 Stats = {
                     DMG = 50,
                     Delay = 760,
@@ -63405,6 +63662,7 @@ return {
                 Model = 63,
                 Jobs = {"THF", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:2",
                 Stats = {
                     DMG = 51,
                     Delay = 737,
@@ -63419,6 +63677,7 @@ return {
                 Model = 92,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 25,
                     Delay = 480,
@@ -63432,6 +63691,7 @@ return {
                 Model = 52,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 40,
                     Delay = 288,
@@ -63446,6 +63706,7 @@ return {
                 Model = 52,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 41,
                     Delay = 280,
@@ -63461,6 +63722,7 @@ return {
                 Model = 95,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 40,
                     Delay = 480,
@@ -63473,6 +63735,7 @@ return {
                 Model = 107,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 83,
                     Delay = 480,
@@ -63487,6 +63750,7 @@ return {
                 Model = 107,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 101,
                     Delay = 480,
@@ -63502,6 +63766,7 @@ return {
                 Model = 107,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 101,
                     Delay = 480,
@@ -63517,6 +63782,7 @@ return {
                 Model = 95,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 40,
                     Delay = 480,
@@ -63531,6 +63797,7 @@ return {
                 Model = 95,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 50,
                     Delay = 480,
@@ -63545,6 +63812,7 @@ return {
                 Model = 95,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 52,
                     Delay = 480,
@@ -63559,6 +63827,7 @@ return {
                 Model = 95,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 54,
                     Delay = 480,
@@ -63573,6 +63842,7 @@ return {
                 Model = 95,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 59,
                     Delay = 480,
@@ -63587,6 +63857,7 @@ return {
                 Model = 95,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 64,
                     Delay = 480,
@@ -63601,6 +63872,7 @@ return {
                 Model = 107,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 64,
                     Delay = 480,
@@ -63615,6 +63887,7 @@ return {
                 Model = 95,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 83,
                     Delay = 480,
@@ -63629,6 +63902,7 @@ return {
                 Model = 93,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 35,
                     Delay = 480,
@@ -63650,6 +63924,7 @@ return {
                 Model = 120,
                 Jobs = {"All"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 1,
                     Delay = 600,
@@ -63662,6 +63937,7 @@ return {
                 Model = 58,
                 Jobs = {"THF", "RNG", "NIN", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 32,
                     Delay = 600,
@@ -63674,6 +63950,7 @@ return {
                 Model = 57,
                 Jobs = {"THF", "RNG", "NIN", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 103,
                     Delay = 548,
@@ -63692,6 +63969,7 @@ return {
                 Model = 60,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 107,
                     Delay = 600,
@@ -63704,6 +63982,7 @@ return {
                 Model = 60,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 108,
                     Delay = 582,
@@ -63716,6 +63995,7 @@ return {
                 Model = 123,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 56,
                     Delay = 600,
@@ -63737,6 +64017,7 @@ return {
                 Model = 60,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 11,
                     Delay = 590,
@@ -63749,6 +64030,7 @@ return {
                 Model = 92,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 26,
                     Delay = 466,
@@ -63762,6 +64044,7 @@ return {
                 Model = 58,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 39,
                     Delay = 600,
@@ -63774,6 +64057,7 @@ return {
                 Model = 53,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 88,
                     Delay = 288,
@@ -63786,6 +64070,7 @@ return {
                 Model = 57,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 97,
                     Delay = 600,
@@ -63798,6 +64083,7 @@ return {
                 Model = 59,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 57,
                     Delay = 582,
@@ -63810,6 +64096,7 @@ return {
                 Model = 62,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 34,
                     Delay = 232,
@@ -63826,6 +64113,7 @@ return {
                 Model = 62,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 35,
                     Delay = 227,
@@ -63842,6 +64130,7 @@ return {
                 Model = 58,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 52,
                     Delay = 582,
@@ -63854,6 +64143,7 @@ return {
                 Model = 92,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 28,
                     Delay = 480,
@@ -63866,6 +64156,7 @@ return {
                 Model = 58,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 47,
                     Delay = 600,
@@ -63878,6 +64169,7 @@ return {
                 Model = 59,
                 Jobs = {"THF", "RNG", "NIN", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 11,
                     Delay = 600,
@@ -63891,6 +64183,7 @@ return {
                 Model = 52,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 34,
                     Delay = 288,
@@ -63903,6 +64196,7 @@ return {
                 Model = 61,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 20,
                     Delay = 188,
@@ -63915,6 +64209,7 @@ return {
                 Id = 21485,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 167,
                     Delay = 600,
@@ -63929,6 +64224,7 @@ return {
                 Model = 134,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 167,
                     Delay = 600,
@@ -63945,6 +64241,7 @@ return {
                 Model = 117,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 72,
                     Delay = 432,
@@ -63958,6 +64255,7 @@ return {
                 Model = 57,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 60,
                     Delay = 600,
@@ -63971,6 +64269,7 @@ return {
                 Model = 59,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 37,
                     Delay = 582,
@@ -63985,6 +64284,7 @@ return {
                 Model = 96,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 39,
                     Delay = 288,
@@ -63997,6 +64297,7 @@ return {
                 Model = 106,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 93,
                     Delay = 432,
@@ -64011,6 +64312,7 @@ return {
                 Model = 106,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 176,
                     Delay = 432,
@@ -64026,6 +64328,7 @@ return {
                 Model = 106,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 176,
                     Delay = 432,
@@ -64042,6 +64345,7 @@ return {
                 Model = 96,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 51,
                     Delay = 432,
@@ -64056,6 +64360,7 @@ return {
                 Model = 96,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 56,
                     Delay = 432,
@@ -64070,6 +64375,7 @@ return {
                 Model = 96,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 62,
                     Delay = 432,
@@ -64084,6 +64390,7 @@ return {
                 Model = 96,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 67,
                     Delay = 432,
@@ -64098,6 +64405,7 @@ return {
                 Model = 96,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 73,
                     Delay = 432,
@@ -64112,6 +64420,7 @@ return {
                 Model = 96,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 80,
                     Delay = 432,
@@ -64126,6 +64435,7 @@ return {
                 Model = 106,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 80,
                     Delay = 432,
@@ -64140,6 +64450,7 @@ return {
                 Model = 96,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 93,
                     Delay = 432,
@@ -64154,6 +64465,7 @@ return {
                 Model = 54,
                 Jobs = {"WAR", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 38,
                     Delay = 288,
@@ -64167,6 +64479,7 @@ return {
                 Model = 94,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 34,
                     Delay = 466,
@@ -64180,6 +64493,7 @@ return {
                 Model = 56,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 40,
                     Delay = 320,
@@ -64195,6 +64509,7 @@ return {
                 Model = 52,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 30,
                     Delay = 216,
@@ -64212,6 +64527,7 @@ return {
                 Model = 59,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 39,
                     Delay = 600,
@@ -64227,6 +64543,7 @@ return {
                 Model = 59,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 9,
                     Delay = 600,
@@ -64240,6 +64557,7 @@ return {
                 Model = 60,
                 Jobs = {"THF", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 47,
                     Delay = 600,
@@ -64254,6 +64572,7 @@ return {
                 Model = 60,
                 Jobs = {"THF", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 48,
                     Delay = 582,
@@ -64268,6 +64587,7 @@ return {
                 Model = 52,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 34,
                     Delay = 288,
@@ -64280,6 +64600,7 @@ return {
                 Model = 52,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 35,
                     Delay = 280,
@@ -64293,6 +64614,7 @@ return {
                 Model = 58,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 41,
                     Delay = 660,
@@ -64307,6 +64629,7 @@ return {
                 Model = 58,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 42,
                     Delay = 640,
@@ -64321,6 +64644,7 @@ return {
                 Model = 90,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 30,
                     Delay = 480,
@@ -64334,6 +64658,7 @@ return {
                 Model = 90,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 31,
                     Delay = 466,
@@ -64347,6 +64672,7 @@ return {
                 Model = 83,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 70,
                     Delay = 660,
@@ -64359,6 +64685,7 @@ return {
                 Model = 83,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 95,
                     Delay = 660,
@@ -64371,6 +64698,7 @@ return {
                 Model = 83,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 113,
                     Delay = 660,
@@ -64383,6 +64711,7 @@ return {
                 Model = 59,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 107,
                     Delay = 600,
@@ -64400,6 +64729,7 @@ return {
                 Model = 117,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 135,
                     Delay = 432,
@@ -64412,6 +64742,7 @@ return {
                 Model = 59,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 28,
                     Delay = 600,
@@ -64424,6 +64755,7 @@ return {
                 Model = 114,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 135,
                     Delay = 432,
@@ -64440,6 +64772,7 @@ return {
                 Model = 62,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 145,
                     Delay = 432,
@@ -64457,6 +64790,7 @@ return {
                 Model = 62,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 146,
                     Delay = 424,
@@ -64474,6 +64808,7 @@ return {
                 Model = 83,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 40,
                     Delay = 600,
@@ -64486,6 +64821,7 @@ return {
                 Model = 57,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 20,
                     Delay = 600,
@@ -64502,6 +64838,7 @@ return {
                 Model = 57,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 38,
                     Delay = 600,
@@ -64519,6 +64856,7 @@ return {
                 Model = 52,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 36,
                     Delay = 288,
@@ -64531,6 +64869,7 @@ return {
                 Model = 52,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 24,
                     Delay = 288,
@@ -64543,6 +64882,7 @@ return {
                 Model = 54,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 27,
                     Delay = 232,
@@ -64555,6 +64895,7 @@ return {
                 Model = 54,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 27,
                     Delay = 204,
@@ -64567,6 +64908,7 @@ return {
                 Model = 56,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 10,
                     Delay = 288,
@@ -64579,6 +64921,7 @@ return {
                 Model = 60,
                 Jobs = {"THF", "RNG", "NIN", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 35,
                     Delay = 548,
@@ -64594,6 +64937,7 @@ return {
                 Model = 56,
                 Jobs = {"WAR", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 6,
                     Delay = 288,
@@ -64606,6 +64950,7 @@ return {
                 Model = 56,
                 Jobs = {"WAR", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 7,
                     Delay = 280,
@@ -64619,6 +64964,7 @@ return {
                 Model = 54,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 27,
                     Delay = 260,
@@ -64631,6 +64977,7 @@ return {
                 Model = 59,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 42,
                     Delay = 600,
@@ -64650,6 +64997,7 @@ return {
                 Model = 62,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 19,
                     Delay = 144,
@@ -64662,6 +65010,7 @@ return {
                 Model = 94,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 34,
                     Delay = 480,
@@ -64674,6 +65023,7 @@ return {
                 Model = 61,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 18,
                     Delay = 130,
@@ -64687,6 +65037,7 @@ return {
                 Model = 57,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 35,
                     Delay = 600,
@@ -64699,6 +65050,7 @@ return {
                 Model = 60,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 38,
                     Delay = 600,
@@ -64711,6 +65063,7 @@ return {
                 Model = 52,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 45,
                     Delay = 288,
@@ -64723,6 +65076,7 @@ return {
                 Model = 52,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 46,
                     Delay = 280,
@@ -64734,6 +65088,7 @@ return {
                 Id = 21483,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 92,
                     Delay = 480,
@@ -64745,6 +65100,7 @@ return {
                 Id = 21484,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 93,
                     Delay = 466,
@@ -64757,6 +65113,7 @@ return {
                 Model = 58,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 1,
                     Delay = 600,
@@ -64769,6 +65126,7 @@ return {
                 Model = 93,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 22,
                     Delay = 480,
@@ -64782,6 +65140,7 @@ return {
                 Model = 93,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 23,
                     Delay = 466,
@@ -64795,6 +65154,7 @@ return {
                 Model = 59,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 39,
                     Delay = 612,
@@ -64808,6 +65168,7 @@ return {
                 Model = 57,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 36,
                     Delay = 600,
@@ -64820,6 +65181,7 @@ return {
                 Model = 57,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 37,
                     Delay = 582,
@@ -64832,6 +65194,7 @@ return {
                 Model = 59,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 45,
                     Delay = 582,
@@ -64844,6 +65207,7 @@ return {
                 Model = 59,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 48,
                     Delay = 582,
@@ -64856,6 +65220,7 @@ return {
                 Model = 59,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 51,
                     Delay = 582,
@@ -64868,6 +65233,7 @@ return {
                 Model = 59,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 54,
                     Delay = 582,
@@ -64880,6 +65246,7 @@ return {
                 Model = 57,
                 Jobs = {"THF", "RNG", "NIN", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 23,
                     Delay = 548,
@@ -64893,6 +65260,7 @@ return {
                 Model = 59,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 48,
                     Delay = 582,
@@ -64907,6 +65275,7 @@ return {
                 Model = 57,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 63,
                     Delay = 600,
@@ -64919,6 +65288,7 @@ return {
                 Model = 57,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 59,
                     Delay = 600,
@@ -64931,6 +65301,7 @@ return {
                 Model = 97,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 103,
                     Delay = 480,
@@ -64947,6 +65318,7 @@ return {
                 Model = 62,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 131,
                     Delay = 432,
@@ -64959,6 +65331,7 @@ return {
                 Model = 62,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 68,
                     Delay = 432,
@@ -64973,6 +65346,7 @@ return {
                 Model = 57,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 38,
                     Delay = 600,
@@ -64986,6 +65360,7 @@ return {
                 Model = 57,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 34,
                     Delay = 582,
@@ -64999,6 +65374,7 @@ return {
                 Model = 57,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 35,
                     Delay = 565,
@@ -65012,6 +65388,7 @@ return {
                 Model = 57,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 36,
                     Delay = 548,
@@ -65025,6 +65402,7 @@ return {
                 Model = 59,
                 Jobs = {"THF", "RNG", "NIN", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 9,
                     Delay = 600,
@@ -65037,6 +65415,7 @@ return {
                 Model = 59,
                 Jobs = {"THF", "RNG", "NIN", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 10,
                     Delay = 582,
@@ -65049,6 +65428,7 @@ return {
                 Model = 57,
                 Jobs = {"RNG", "NIN"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 28,
                     Delay = 600,
@@ -65061,6 +65441,7 @@ return {
                 Model = 57,
                 Jobs = {"RNG", "NIN"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 29,
                     Delay = 582,
@@ -65073,6 +65454,7 @@ return {
                 Model = 127,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 119,
                     Delay = 600,
@@ -65085,6 +65467,7 @@ return {
                 Model = 56,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 20,
                     Delay = 288,
@@ -65098,6 +65481,7 @@ return {
                 Model = 56,
                 Jobs = {"THF", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 24,
                     Delay = 194,
@@ -65111,6 +65495,7 @@ return {
                 Model = 61,
                 Jobs = {"THF", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 60,
                     Delay = 216,
@@ -65124,6 +65509,7 @@ return {
                 Model = 58,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 38,
                     Delay = 600,
@@ -65141,6 +65527,7 @@ return {
                 Model = 58,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 39,
                     Delay = 582,
@@ -65158,6 +65545,7 @@ return {
                 Model = 62,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 54,
                     Delay = 432,
@@ -65171,6 +65559,7 @@ return {
                 Model = 58,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 13,
                     Delay = 270,
@@ -65185,6 +65574,7 @@ return {
                 Model = 53,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 35,
                     Delay = 288,
@@ -65197,6 +65587,7 @@ return {
                 Model = 58,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 49,
                     Delay = 600,
@@ -65211,6 +65602,7 @@ return {
                 Model = 60,
                 Jobs = {"THF", "RNG", "NIN", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 20,
                     Delay = 600,
@@ -65225,6 +65617,7 @@ return {
                 Model = 60,
                 Jobs = {"THF", "RNG", "NIN", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 21,
                     Delay = 582,
@@ -65241,6 +65634,7 @@ return {
                 Model = 59,
                 Jobs = {"THF", "RNG", "NIN", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 15,
                     Delay = 600,
@@ -65253,6 +65647,7 @@ return {
                 Model = 62,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 17,
                     Delay = 288,
@@ -65266,6 +65661,7 @@ return {
                 Model = 58,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 108,
                     Delay = 600,
@@ -65280,6 +65676,7 @@ return {
                 Model = 92,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 50,
                     Delay = 480,
@@ -65292,6 +65689,7 @@ return {
                 Model = 92,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 31,
                     Delay = 480,
@@ -65304,6 +65702,7 @@ return {
                 Model = 58,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 1,
                     Delay = 999,
@@ -65316,6 +65715,7 @@ return {
                 Model = 56,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 12,
                     Delay = 272,
@@ -65329,6 +65729,7 @@ return {
                 Model = 62,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 25,
                     Delay = 280,
@@ -65346,6 +65747,7 @@ return {
                 Model = 58,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 42,
                     Delay = 600,
@@ -65360,6 +65762,7 @@ return {
                 Model = 58,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 43,
                     Delay = 582,
@@ -65374,6 +65777,7 @@ return {
                 Model = 53,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 24,
                     Delay = 288,
@@ -65388,6 +65792,7 @@ return {
                 Model = 61,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 17,
                     Delay = 144,
@@ -65400,6 +65805,7 @@ return {
                 Model = 52,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 126,
                     Delay = 288,
@@ -65417,6 +65823,7 @@ return {
                 Model = 60,
                 Jobs = {"THF", "RNG", "NIN", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 25,
                     Delay = 600,
@@ -65429,6 +65836,7 @@ return {
                 Model = 60,
                 Jobs = {"THF", "RNG", "NIN", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 26,
                     Delay = 582,
@@ -65442,6 +65850,7 @@ return {
                 Model = 60,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 25,
                     Delay = 660,
@@ -65456,6 +65865,7 @@ return {
                 Model = 60,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 63,
                     Delay = 600,
@@ -65468,6 +65878,7 @@ return {
                 Model = 142,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 128,
                     Delay = 280,
@@ -65485,6 +65896,7 @@ return {
                 Model = 57,
                 Jobs = {"THF", "RNG", "NIN", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 39,
                     Delay = 582,
@@ -65498,6 +65910,7 @@ return {
                 Model = 94,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 33,
                     Delay = 480,
@@ -65511,6 +65924,7 @@ return {
                 Model = 139,
                 Jobs = {"All"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 1,
                     Delay = 600,
@@ -65523,6 +65937,7 @@ return {
                 Model = 139,
                 Jobs = {"All"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 2,
                     Delay = 582,
@@ -65537,6 +65952,7 @@ return {
                 Model = 60,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 15,
                     Delay = 660,
@@ -65549,6 +65965,7 @@ return {
                 Model = 60,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 17,
                     Delay = 660,
@@ -65561,6 +65978,7 @@ return {
                 Model = 60,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 17,
                     Delay = 660,
@@ -65573,6 +65991,7 @@ return {
                 Model = 60,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 19,
                     Delay = 660,
@@ -65585,6 +66004,7 @@ return {
                 Model = 62,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 36,
                     Delay = 288,
@@ -65599,6 +66019,7 @@ return {
                 Model = 62,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 37,
                     Delay = 280,
@@ -65614,6 +66035,7 @@ return {
                 Model = 94,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 55,
                     Delay = 480,
@@ -65627,6 +66049,7 @@ return {
                 Model = 55,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 36,
                     Delay = 288,
@@ -65639,6 +66062,7 @@ return {
                 Model = 60,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 51,
                     Delay = 582,
@@ -65653,6 +66077,7 @@ return {
                 Model = 59,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 96,
                     Delay = 600,
@@ -65665,6 +66090,7 @@ return {
                 Model = 59,
                 Jobs = {"RNG", "NIN"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 15,
                     Delay = 600,
@@ -65677,6 +66103,7 @@ return {
                 Model = 59,
                 Jobs = {"RNG", "NIN"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 16,
                     Delay = 582,
@@ -65689,6 +66116,7 @@ return {
                 Model = 53,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 23,
                     Delay = 260,
@@ -65701,6 +66129,7 @@ return {
                 Model = 52,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 24,
                     Delay = 288,
@@ -65715,6 +66144,7 @@ return {
                 Model = 59,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 25,
                     Delay = 600,
@@ -65727,6 +66157,7 @@ return {
                 Model = 53,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 26,
                     Delay = 288,
@@ -65741,6 +66172,7 @@ return {
                 Model = 53,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 27,
                     Delay = 280,
@@ -65755,6 +66187,7 @@ return {
                 Model = 143,
                 Jobs = {"All"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 1,
                     Delay = 600,
@@ -65767,6 +66200,7 @@ return {
                 Model = 90,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 28,
                     Delay = 480,
@@ -65781,6 +66215,7 @@ return {
                 Model = 60,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 113,
                     Delay = 600,
@@ -65795,6 +66230,7 @@ return {
                 Model = 52,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 26,
                     Delay = 216,
@@ -65808,6 +66244,7 @@ return {
                 Model = 52,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 27,
                     Delay = 210,
@@ -65822,6 +66259,7 @@ return {
                 Model = 90,
                 Jobs = {"COR"},
                 Type = "Marksmanship",
+                Pair = "26:1",
                 Stats = {
                     DMG = 35,
                     Delay = 480,
@@ -65838,6 +66276,7 @@ return {
                 Model = 62,
                 Jobs = {"RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 60,
                     Delay = 436,
@@ -65852,6 +66291,7 @@ return {
                 Model = 55,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 19,
                     Delay = 288,
@@ -65864,6 +66304,7 @@ return {
                 Model = 55,
                 Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 20,
                     Delay = 280,
@@ -65877,6 +66318,7 @@ return {
                 Model = 61,
                 Jobs = {"THF", "RNG"},
                 Type = "Marksmanship",
+                Pair = "26:0",
                 Stats = {
                     DMG = 28,
                     Delay = 216,
@@ -65892,6 +66334,7 @@ return {
                 Model = 27,
                 Jobs = {"THF", "NIN", "BLU", "DNC"},
                 Type = "Throwing",
+                Pair = "27:0",
                 Stats = {
                     DMG = 66,
                     Delay = 240,
@@ -65904,6 +66347,7 @@ return {
                 Model = 26,
                 Jobs = {"THF", "NIN", "BLU", "DNC"},
                 Type = "Throwing",
+                Pair = "27:0",
                 Stats = {
                     DMG = 35,
                     Delay = 286,
@@ -65919,6 +66363,7 @@ return {
                 Model = 24,
                 Jobs = {"WAR", "THF", "RNG"},
                 Type = "Throwing",
+                Pair = "27:0",
                 Stats = {
                     DMG = 70,
                     Delay = 265,
@@ -65937,6 +66382,7 @@ return {
                 Model = 24,
                 Jobs = {"WAR", "THF", "RNG"},
                 Type = "Throwing",
+                Pair = "27:0",
                 Stats = {
                     DMG = 71,
                     Delay = 252,
@@ -65955,6 +66401,7 @@ return {
                 Model = 26,
                 Jobs = {"All"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 28,
@@ -65969,6 +66416,7 @@ return {
                 Model = 27,
                 Jobs = {"THF", "NIN", "BLU", "DNC"},
                 Type = "Throwing",
+                Pair = "27:0",
                 Stats = {
                     DMG = 65,
                     Delay = 286,
@@ -65981,6 +66429,7 @@ return {
                 Model = 25,
                 Jobs = {"WAR", "THF", "RNG"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 11,
@@ -65994,6 +66443,7 @@ return {
                 Model = 25,
                 Jobs = {"WAR", "THF", "RNG"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 12,
@@ -66007,6 +66457,7 @@ return {
                 Model = 27,
                 Jobs = {"THF", "NIN", "BLU", "DNC"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 16,
@@ -66020,6 +66471,7 @@ return {
                 Model = 27,
                 Jobs = {"THF", "NIN", "BLU", "DNC"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 17,
@@ -66033,6 +66485,7 @@ return {
                 Model = 24,
                 Jobs = {"WAR", "THF", "RNG"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 21,
@@ -66046,6 +66499,7 @@ return {
                 Model = 24,
                 Jobs = {"WAR", "THF", "RNG"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 22,
@@ -66059,6 +66513,7 @@ return {
                 Model = 24,
                 Jobs = {"WAR", "THF", "RNG"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 23,
@@ -66072,6 +66527,7 @@ return {
                 Model = 25,
                 Jobs = {"WAR", "THF", "RNG"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 6,
@@ -66085,6 +66541,7 @@ return {
                 Model = 24,
                 Jobs = {"WAR", "THF", "RNG"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 26,
@@ -66104,6 +66561,7 @@ return {
                 Model = 27,
                 Jobs = {"BLU"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 28,
@@ -66117,6 +66575,7 @@ return {
                 Model = 24,
                 Jobs = {"WAR", "THF", "RNG"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 13,
@@ -66131,6 +66590,7 @@ return {
                 Model = 89,
                 Jobs = {"DNC"},
                 Type = "Throwing",
+                Pair = "27:0",
                 Stats = {
                     DMG = 16,
                     Delay = 286,
@@ -66147,6 +66607,7 @@ return {
                 Model = 137,
                 Jobs = {"All"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 1,
@@ -66160,6 +66621,7 @@ return {
                 Model = 26,
                 Jobs = {"All"},
                 Type = "Throwing",
+                Pair = "27:0",
                 Stats = {
                     DMG = 30,
                     Delay = 286,
@@ -66174,6 +66636,7 @@ return {
                 Model = 28,
                 Jobs = {"THF", "NIN", "BLU", "DNC"},
                 Type = "Throwing",
+                Pair = "27:0",
                 Stats = {
                     DMG = 24,
                     Delay = 196,
@@ -66187,6 +66650,7 @@ return {
                 Model = 27,
                 Jobs = {"THF", "NIN", "BLU", "DNC"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 23,
@@ -66202,6 +66666,7 @@ return {
                 Model = 27,
                 Jobs = {"THF", "NIN", "BLU", "DNC"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 24,
@@ -66217,6 +66682,7 @@ return {
                 Model = 27,
                 Jobs = {"THF", "NIN", "BLU", "DNC"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 25,
@@ -66232,6 +66698,7 @@ return {
                 Model = 27,
                 Jobs = {"All"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 1,
@@ -66245,6 +66712,7 @@ return {
                 Model = 25,
                 Jobs = {"WAR", "THF", "RNG"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 28,
@@ -66260,6 +66728,7 @@ return {
                 Model = 25,
                 Jobs = {"WAR", "THF", "RNG"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 18,
@@ -66274,6 +66743,7 @@ return {
                 Model = 27,
                 Jobs = {"All"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 1,
@@ -66287,6 +66757,7 @@ return {
                 Model = 28,
                 Jobs = {"THF", "NIN", "BLU", "DNC"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 27,
@@ -66300,6 +66771,7 @@ return {
                 Model = 28,
                 Jobs = {"THF", "NIN", "BLU", "DNC"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 28,
@@ -66313,6 +66785,7 @@ return {
                 Model = 25,
                 Jobs = {"WAR", "THF", "RNG"},
                 Type = "Throwing",
+                Pair = "27:0",
                 Stats = {
                     DMG = 30,
                     Delay = 286,
@@ -66327,6 +66800,7 @@ return {
                 Model = 27,
                 Jobs = {"THF", "NIN", "BLU", "DNC"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 11,
@@ -66340,6 +66814,7 @@ return {
                 Model = 24,
                 Jobs = {"THF", "RNG"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 13,
@@ -66353,6 +66828,7 @@ return {
                 Model = 24,
                 Jobs = {"THF"},
                 Type = "Throwing",
+                Pair = "27:0",
                 Stats = {
                     DMG = 43,
                     Delay = 286,
@@ -66367,6 +66843,7 @@ return {
                 Model = 26,
                 Jobs = {"THF", "NIN", "BLU", "DNC"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 30,
@@ -66380,6 +66857,7 @@ return {
                 Model = 26,
                 Jobs = {"THF", "NIN", "BLU", "DNC"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 31,
@@ -66394,6 +66872,7 @@ return {
                 Model = 28,
                 Jobs = {"THF", "NIN", "BLU", "DNC"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 9,
@@ -66408,6 +66887,7 @@ return {
                 Model = 24,
                 Jobs = {"WAR", "THF", "RNG"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 31,
@@ -66422,6 +66902,7 @@ return {
                 Model = 24,
                 Jobs = {"WAR", "THF", "RNG"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 32,
@@ -66436,6 +66917,7 @@ return {
                 Model = 27,
                 Jobs = {"All"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 1,
@@ -66449,6 +66931,7 @@ return {
                 Model = 25,
                 Jobs = {"THF", "NIN"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 30,
@@ -66466,6 +66949,7 @@ return {
                 Model = 26,
                 Jobs = {"DNC"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 21,
@@ -66480,6 +66964,7 @@ return {
                 Model = 24,
                 Jobs = {"THF", "NIN"},
                 Type = "Throwing",
+                Pair = "27:0",
                 Stats = {
                     DMG = 64,
                     Delay = 294,
@@ -66492,6 +66977,7 @@ return {
                 Model = 24,
                 Jobs = {"THF", "NIN"},
                 Type = "Throwing",
+                Pair = "27:0",
                 Stats = {
                     DMG = 65,
                     Delay = 286,
@@ -66508,6 +66994,7 @@ return {
                 Model = 24,
                 Jobs = {"THF", "NIN"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 15,
@@ -66521,6 +67008,7 @@ return {
                 Model = 24,
                 Jobs = {"THF", "NIN"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 16,
@@ -66534,6 +67022,7 @@ return {
                 Model = 25,
                 Jobs = {"WAR", "THF", "RNG"},
                 Type = "Throwing",
+                Pair = "27:0",
                 RSlot = 8,
                 Stats = {
                     DMG = 24,
@@ -66549,6 +67038,7 @@ return {
                 Model = 76,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                     Haste = 2,
@@ -66562,6 +67052,7 @@ return {
                 Model = 131,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                     LullabyEffect = 2,
@@ -66576,6 +67067,7 @@ return {
                 Model = 131,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                     LullabyEffect = 2,
@@ -66591,6 +67083,7 @@ return {
                 Model = 81,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -66602,6 +67095,7 @@ return {
                 Model = 81,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                     BalladEffect = 1,
@@ -66614,6 +67108,7 @@ return {
                 Model = 81,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                     CHR = 3,
@@ -66628,6 +67123,7 @@ return {
                 Model = 81,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                     CHR = 2,
@@ -66642,6 +67138,7 @@ return {
                 Model = 100,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                     SingingSkill = 20,
@@ -66657,6 +67154,7 @@ return {
                 Model = 100,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                     SingingSkill = 5,
@@ -66670,6 +67168,7 @@ return {
                 Model = 100,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                     SingingSkill = 20,
@@ -66685,6 +67184,7 @@ return {
                 Model = 100,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                     SingingSkill = 20,
@@ -66700,6 +67200,7 @@ return {
                 Model = 110,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                     SingingSkill = 20,
@@ -66715,6 +67216,7 @@ return {
                 Model = 72,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                     PaeonEffect = 1,
@@ -66727,6 +67229,7 @@ return {
                 Model = 72,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                     PaeonEffect = 2,
@@ -66739,6 +67242,7 @@ return {
                 Model = 72,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                     Accuracy = 1,
@@ -66752,6 +67256,7 @@ return {
                 Model = 78,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                     MinneEffect = 1,
@@ -66764,6 +67269,7 @@ return {
                 Model = 78,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                     MinneEffect = 2,
@@ -66776,6 +67282,7 @@ return {
                 Model = 74,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -66787,6 +67294,7 @@ return {
                 Model = 76,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                     EtudeEffect = 3,
@@ -66800,6 +67308,7 @@ return {
                 Model = 75,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -66811,6 +67320,7 @@ return {
                 Model = 75,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                     MinneEffect = 1,
@@ -66823,6 +67333,7 @@ return {
                 Model = 74,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                     FinaleEffect = 2,
@@ -66835,6 +67346,7 @@ return {
                 Model = 77,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                     DarkResistance = 15,
@@ -66848,6 +67360,7 @@ return {
                 Model = 77,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                     DarkResistance = 20,
@@ -66861,6 +67374,7 @@ return {
                 Model = 128,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -66872,6 +67386,7 @@ return {
                 Model = 76,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                     LullabyEffect = 2,
@@ -66884,6 +67399,7 @@ return {
                 Model = 80,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                     Regen = 1,
@@ -66897,6 +67413,7 @@ return {
                 Model = 78,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                     StringInstrumentSkill = 1,
@@ -66909,6 +67426,7 @@ return {
                 Model = 79,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                     EtudeEffect = 1,
@@ -66921,6 +67439,7 @@ return {
                 Model = 79,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                     EtudeEffect = 2,
@@ -66933,6 +67452,7 @@ return {
                 Model = 80,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                     ThrenodyEffect = 3,
@@ -66945,6 +67465,7 @@ return {
                 Model = 80,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 999,
                     HP = 15,
@@ -66962,6 +67483,7 @@ return {
                 Model = 78,
                 Jobs = {"BRD"},
                 Type = "StringInstrument",
+                Pair = "41:0",
                 Stats = {
                     Delay = 240,
                     MamboEffect = 3,
@@ -66977,6 +67499,7 @@ return {
                 Model = 67,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     PreludeEffect = 1,
@@ -66989,6 +67512,7 @@ return {
                 Model = 67,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     PreludeEffect = 2,
@@ -67001,6 +67525,7 @@ return {
                 Model = 64,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     MinuetEffect = 3,
@@ -67013,6 +67538,7 @@ return {
                 Model = 68,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     HP = 5,
@@ -67028,6 +67554,7 @@ return {
                 Model = 68,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     HP = 8,
@@ -67043,6 +67570,7 @@ return {
                 Model = 68,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     MadrigalEffect = 3,
@@ -67056,6 +67584,7 @@ return {
                 Model = 69,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     MinuetEffect = 1,
@@ -67068,6 +67597,7 @@ return {
                 Model = 69,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     MinuetEffect = 2,
@@ -67080,6 +67610,7 @@ return {
                 Model = 69,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     AGI = 1,
@@ -67093,6 +67624,7 @@ return {
                 Model = 69,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     CHR = 1,
@@ -67106,6 +67638,7 @@ return {
                 Model = 70,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     CarolEffect = 1,
@@ -67118,6 +67651,7 @@ return {
                 Model = 70,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     CarolEffect = 2,
@@ -67130,6 +67664,7 @@ return {
                 Model = 70,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     INT = 1,
@@ -67143,6 +67678,7 @@ return {
                 Model = 70,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -67154,6 +67690,7 @@ return {
                 Model = 67,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     DMG = 3,
                     Delay = 240,
@@ -67167,6 +67704,7 @@ return {
                 Model = 67,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     MarchEffect = 2,
@@ -67179,6 +67717,7 @@ return {
                 Model = 65,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -67190,6 +67729,7 @@ return {
                 Model = 65,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     RequiemEffect = 1,
@@ -67202,6 +67742,7 @@ return {
                 Model = 65,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     HP = 5,
@@ -67215,6 +67756,7 @@ return {
                 Model = 116,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 999,
                     WindInstrumentSkill = 10,
@@ -67227,6 +67769,7 @@ return {
                 Model = 64,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     STR = 2,
@@ -67241,6 +67784,7 @@ return {
                 Model = 71,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     MamboEffect = 1,
@@ -67253,6 +67797,7 @@ return {
                 Model = 71,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     MamboEffect = 2,
@@ -67265,6 +67810,7 @@ return {
                 Model = 84,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     CHR = 4,
@@ -67280,6 +67826,7 @@ return {
                 Model = 84,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     CHR = 10,
@@ -67295,6 +67842,7 @@ return {
                 Model = 84,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     AllSongsEffect = 2,
@@ -67307,6 +67855,7 @@ return {
                 Model = 84,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     AllSongsEffect = 2,
@@ -67319,6 +67868,7 @@ return {
                 Model = 84,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     AllSongsEffect = 3,
@@ -67331,6 +67881,7 @@ return {
                 Model = 84,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     AllSongsEffect = 3,
@@ -67343,6 +67894,7 @@ return {
                 Model = 105,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     CHR = 10,
@@ -67358,6 +67910,7 @@ return {
                 Model = 64,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     CHR = 2,
@@ -67372,6 +67925,7 @@ return {
                 Model = 68,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     MazurkaEffect = 2,
@@ -67384,6 +67938,7 @@ return {
                 Model = 70,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     Attack = 3,
@@ -67398,6 +67953,7 @@ return {
                 Model = 70,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     Attack = 4,
@@ -67412,6 +67968,7 @@ return {
                 Model = 68,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     ElegyEffect = 1,
@@ -67424,6 +67981,7 @@ return {
                 Model = 68,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     ElegyEffect = 2,
@@ -67436,6 +67994,7 @@ return {
                 Model = 71,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     CHR = 4,
@@ -67449,6 +68008,7 @@ return {
                 Model = 71,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     HP = 4,
@@ -67464,6 +68024,7 @@ return {
                 Model = 124,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     MPP = 10,
@@ -67486,6 +68047,7 @@ return {
                 Model = 135,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     DMG = 3,
                     Delay = 240,
@@ -67499,6 +68061,7 @@ return {
                 Model = 68,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     LullabyEffect = 1,
@@ -67511,6 +68074,7 @@ return {
                 Model = 111,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     HymnusEffect = 3,
@@ -67524,6 +68088,7 @@ return {
                 Model = 70,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -67535,6 +68100,7 @@ return {
                 Model = 68,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -67546,6 +68112,7 @@ return {
                 Model = 67,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     LightResistance = 5,
@@ -67559,6 +68126,7 @@ return {
                 Model = 70,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     Accuracy = 3,
@@ -67572,6 +68140,7 @@ return {
                 Model = 68,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     CHR = 3,
@@ -67586,6 +68155,7 @@ return {
                 Model = 66,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     ThrenodyEffect = 1,
@@ -67598,6 +68168,7 @@ return {
                 Model = 66,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     ThrenodyEffect = 2,
@@ -67610,6 +68181,7 @@ return {
                 Model = 70,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -67621,6 +68193,7 @@ return {
                 Model = 70,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -67632,6 +68205,7 @@ return {
                 Model = 65,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     RequiemEffect = 4,
@@ -67644,6 +68218,7 @@ return {
                 Model = 65,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     DEX = 3,
@@ -67660,6 +68235,7 @@ return {
                 Model = 65,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     MPP = 10,
@@ -67679,6 +68255,7 @@ return {
                 Model = 71,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     CHR = 3,
@@ -67692,6 +68269,7 @@ return {
                 Model = 71,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     HP = 3,
@@ -67707,6 +68285,7 @@ return {
                 Model = 70,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     HP = 15,
@@ -67720,6 +68299,7 @@ return {
                 Model = 70,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     HP = 20,
@@ -67733,6 +68313,7 @@ return {
                 Model = 64,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     RequiemEffect = 2,
@@ -67745,6 +68326,7 @@ return {
                 Model = 67,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -67756,6 +68338,7 @@ return {
                 Model = 65,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     MinneEffect = 3,
@@ -67769,6 +68352,7 @@ return {
                 Model = 64,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     MadrigalEffect = 1,
@@ -67781,6 +68365,7 @@ return {
                 Model = 64,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     MadrigalEffect = 2,
@@ -67793,6 +68378,7 @@ return {
                 Model = 64,
                 Jobs = {"BRD"},
                 Type = "WindInstrument",
+                Pair = "42:0",
                 Stats = {
                     Delay = 240,
                     MP = 10,
@@ -67808,6 +68394,7 @@ return {
                 Model = 121,
                 Jobs = {"GEO"},
                 Type = "Handbell",
+                Pair = "45:0",
                 Stats = {
                     Delay = 999,
                     MP = 25,
@@ -67823,6 +68410,7 @@ return {
                 Model = 113,
                 Jobs = {"GEO"},
                 Type = "Handbell",
+                Pair = "45:0",
                 Stats = {
                     Delay = 999,
                     GeomancyBonus = 3,
@@ -67835,6 +68423,7 @@ return {
                 Model = 113,
                 Jobs = {"GEO"},
                 Type = "Handbell",
+                Pair = "45:0",
                 Stats = {
                     Delay = 999,
                     MP = 15,
@@ -67848,6 +68437,7 @@ return {
                 Model = 113,
                 Jobs = {"GEO"},
                 Type = "Handbell",
+                Pair = "45:0",
                 Stats = {
                     Delay = 999,
                     MP = 5,
@@ -67860,6 +68450,7 @@ return {
                 Model = 113,
                 Jobs = {"GEO"},
                 Type = "Handbell",
+                Pair = "45:0",
                 Stats = {
                     Delay = 999,
                     MP = 20,
@@ -67874,6 +68465,7 @@ return {
                 Model = 121,
                 Jobs = {"GEO"},
                 Type = "Handbell",
+                Pair = "45:0",
                 Stats = {
                     Delay = 999,
                     MP = 15,
@@ -67890,6 +68482,7 @@ return {
                 Model = 7,
                 Jobs = {"All"},
                 Type = "FishingRod",
+                Pair = "48:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -67901,6 +68494,7 @@ return {
                 Model = 4,
                 Jobs = {"All"},
                 Type = "FishingRod",
+                Pair = "48:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -67912,6 +68506,7 @@ return {
                 Model = 3,
                 Jobs = {"All"},
                 Type = "FishingRod",
+                Pair = "48:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -67923,6 +68518,7 @@ return {
                 Model = 1,
                 Jobs = {"All"},
                 Type = "FishingRod",
+                Pair = "48:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -67934,6 +68530,7 @@ return {
                 Model = 32783,
                 Jobs = {"All"},
                 Type = "FishingRod",
+                Pair = "48:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -67945,6 +68542,7 @@ return {
                 Model = 13,
                 Jobs = {"All"},
                 Type = "FishingRod",
+                Pair = "48:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -67956,6 +68554,7 @@ return {
                 Model = 8,
                 Jobs = {"All"},
                 Type = "FishingRod",
+                Pair = "48:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -67967,6 +68566,7 @@ return {
                 Model = 5,
                 Jobs = {"All"},
                 Type = "FishingRod",
+                Pair = "48:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -67978,6 +68578,7 @@ return {
                 Model = 12,
                 Jobs = {"All"},
                 Type = "FishingRod",
+                Pair = "48:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -67989,6 +68590,7 @@ return {
                 Model = 1,
                 Jobs = {"All"},
                 Type = "FishingRod",
+                Pair = "48:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -68000,6 +68602,7 @@ return {
                 Model = 8,
                 Jobs = {"All"},
                 Type = "FishingRod",
+                Pair = "48:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -68011,6 +68614,7 @@ return {
                 Model = 11,
                 Jobs = {"All"},
                 Type = "FishingRod",
+                Pair = "48:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -68022,6 +68626,7 @@ return {
                 Model = 32782,
                 Jobs = {"All"},
                 Type = "FishingRod",
+                Pair = "48:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -68033,6 +68638,7 @@ return {
                 Model = 11,
                 Jobs = {"All"},
                 Type = "FishingRod",
+                Pair = "48:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -68043,6 +68649,7 @@ return {
                 Id = 17380,
                 Jobs = {"All"},
                 Type = "FishingRod",
+                Pair = "48:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -68054,6 +68661,7 @@ return {
                 Model = 1,
                 Jobs = {"All"},
                 Type = "FishingRod",
+                Pair = "48:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -68065,6 +68673,7 @@ return {
                 Model = 2,
                 Jobs = {"All"},
                 Type = "FishingRod",
+                Pair = "48:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -68076,6 +68685,7 @@ return {
                 Model = 6,
                 Jobs = {"All"},
                 Type = "FishingRod",
+                Pair = "48:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -68087,6 +68697,7 @@ return {
                 Model = 10,
                 Jobs = {"All"},
                 Type = "FishingRod",
+                Pair = "48:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -68098,6 +68709,7 @@ return {
                 Model = 9,
                 Jobs = {"All"},
                 Type = "FishingRod",
+                Pair = "48:0",
                 Stats = {
                     Delay = 240,
                 }
@@ -68111,6 +68723,7 @@ return {
             Id = 22284,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
             }
         },
@@ -68121,6 +68734,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 110,
                 Delay = 192,
@@ -68133,6 +68747,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 87,
                 Delay = 90,
@@ -68147,6 +68762,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 124,
                 Delay = 192,
@@ -68161,6 +68777,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 253,
                 Delay = 240,
@@ -68175,6 +68792,7 @@ return {
             Jobs = {"WAR", "THF", "DRK", "RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 21,
                 Delay = 192,
@@ -68187,6 +68805,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 81,
                 Delay = 192,
@@ -68200,6 +68819,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 127,
                 Delay = 240,
@@ -68212,6 +68832,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 74,
                 Delay = 90,
@@ -68225,6 +68846,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 105,
                 Delay = 192,
@@ -68238,6 +68860,7 @@ return {
             Jobs = {"RNG", "COR"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 214,
                 Delay = 240,
@@ -68251,6 +68874,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 46,
                 Delay = 90,
@@ -68262,6 +68886,7 @@ return {
             Id = 21490,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:77",
             Stats = {
                 DMG = 257,
                 Delay = 2295,
@@ -68274,6 +68899,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "DRK", "NIN", "COR", "RUN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             RSlot = 4,
             Stats = {
                 DMG = 23,
@@ -68287,6 +68913,7 @@ return {
             Id = 21446,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 7231,
             }
@@ -68297,6 +68924,7 @@ return {
             Id = 17882,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:25",
             RSlot = 4,
             Stats = {
                 DMG = 1303,
@@ -68309,6 +68937,7 @@ return {
             Id = 22262,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 STR = 2,
@@ -68323,6 +68952,7 @@ return {
             Id = 19760,
             Jobs = {"DRK", "NIN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 Attack = 2,
@@ -68336,6 +68966,7 @@ return {
             Id = 19774,
             Jobs = {"WAR", "PLD"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 PDT = -2,
@@ -68349,6 +68980,7 @@ return {
             Model = 88,
             Jobs = {"DRG"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 3,
@@ -68361,6 +68993,7 @@ return {
             Jobs = {"RNG", "COR"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 80,
                 Delay = 240,
@@ -68377,6 +69010,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             RSlot = 4,
             Stats = {
                 DMG = 250,
@@ -68389,6 +69023,7 @@ return {
             Id = 17891,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:34",
             RSlot = 4,
             Stats = {
                 DMG = 3616,
@@ -68402,6 +69037,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 42,
                 Delay = 249,
@@ -68415,6 +69051,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 41,
                 Delay = 90,
@@ -68427,6 +69064,7 @@ return {
             Id = 18478,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 MND = 2,
@@ -68440,6 +69078,7 @@ return {
             Id = 21393,
             Jobs = {"SMN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 AvatarLevel = 20,
@@ -68453,6 +69092,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             RSlot = 4,
             Stats = {
                 DMG = 250,
@@ -68466,6 +69106,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 101,
                 Delay = 90,
@@ -68481,6 +69122,7 @@ return {
             Jobs = {"WAR", "MNK", "WHM", "BLM", "THF", "DRK", "BST", "BRD", "RNG", "NIN", "DRG", "SMN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             RSlot = 4,
             Stats = {
                 DMG = 32,
@@ -68493,6 +69135,7 @@ return {
             Id = 18243,
             Jobs = {"SMN"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -68504,6 +69147,7 @@ return {
             Id = 19239,
             Jobs = {"MNK", "RDM", "THF", "BST", "RNG", "DRG", "DNC", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -68518,6 +69162,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 61,
                 Delay = 249,
@@ -68530,6 +69175,7 @@ return {
             Id = 19223,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -68543,6 +69189,7 @@ return {
             Id = 18250,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -68555,6 +69202,7 @@ return {
             Id = 19240,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 Enmity = 1,
@@ -68566,6 +69214,7 @@ return {
             Id = 19242,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 Enmity = 2,
@@ -68577,6 +69226,7 @@ return {
             Id = 22297,
             Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "RNG", "SAM", "NIN", "DRG", "BLU", "COR", "DNC", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
             }
@@ -68587,6 +69237,7 @@ return {
             Id = 22298,
             Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "RNG", "SAM", "NIN", "DRG", "BLU", "COR", "DNC", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 STR = 7,
@@ -68602,6 +69253,7 @@ return {
             Id = 17906,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:68",
             Stats = {
                 DMG = 7215,
                 Delay = 2249,
@@ -68613,6 +69265,7 @@ return {
             Id = 18732,
             Jobs = {"PUP"},
             Type = "Ammo",
+            Pair = "0:10",
             Stats = {
                 DMG = 542,
                 Delay = 84,
@@ -68624,6 +69277,7 @@ return {
             Id = 18733,
             Jobs = {"PUP"},
             Type = "Ammo",
+            Pair = "0:10",
             Stats = {
                 DMG = 557,
                 Delay = 84,
@@ -68635,6 +69289,7 @@ return {
             Id = 19185,
             Jobs = {"PUP"},
             Type = "Ammo",
+            Pair = "0:10",
             Stats = {
                 DMG = 572,
                 Delay = 84,
@@ -68646,6 +69301,7 @@ return {
             Id = 18731,
             Jobs = {"PUP"},
             Type = "Ammo",
+            Pair = "0:10",
             Stats = {
                 DMG = 527,
                 Delay = 84,
@@ -68657,6 +69313,7 @@ return {
             Id = 17897,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:59",
             Stats = {
                 DMG = 1062,
                 Delay = 2258,
@@ -68668,6 +69325,7 @@ return {
             Id = 17901,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:63",
             Stats = {
                 DMG = 5930,
                 Delay = 2255,
@@ -68679,6 +69337,7 @@ return {
             Id = 18680,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 240,
             }
@@ -68689,6 +69348,7 @@ return {
             Id = 18138,
             Jobs = {"NIN"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -68702,6 +69362,7 @@ return {
             Id = 18247,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -68715,6 +69376,7 @@ return {
             Id = 22269,
             Jobs = {"WAR", "THF", "DRK", "NIN", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 AGI = 4,
@@ -68729,6 +69391,7 @@ return {
             Id = 18228,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 DMG = 25,
@@ -68742,6 +69405,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 12,
                 Delay = 90,
@@ -68755,6 +69419,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 77,
                 Delay = 90,
@@ -68767,6 +69432,7 @@ return {
             Jobs = {"WAR", "THF", "DRK", "RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 108,
                 Delay = 192,
@@ -68779,6 +69445,7 @@ return {
             Id = 18257,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -68794,6 +69461,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 105,
                 Delay = 192,
@@ -68808,6 +69476,7 @@ return {
             Jobs = {"RNG", "COR"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 88,
                 Delay = 240,
@@ -68822,6 +69491,7 @@ return {
             Jobs = {"WAR", "DRK", "RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 45,
                 Delay = 192,
@@ -68833,6 +69503,7 @@ return {
             Id = 19212,
             Jobs = {"MNK", "THF", "SAM", "DRG", "PUP", "DNC", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 DEX = 1,
@@ -68846,6 +69517,7 @@ return {
             Id = 17922,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 8517,
                 Delay = 2227,
@@ -68857,6 +69529,7 @@ return {
             Id = 19205,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 15,
@@ -68868,6 +69541,7 @@ return {
             Id = 18722,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 15,
             }
@@ -68879,6 +69553,7 @@ return {
             Jobs = {"WAR", "THF", "DRK", "RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 18,
                 Delay = 192,
@@ -68890,6 +69565,7 @@ return {
             Id = 17889,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:35",
             RSlot = 4,
             Stats = {
                 DMG = 3358,
@@ -68903,6 +69579,7 @@ return {
             Jobs = {"WAR", "THF", "DRK", "RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 1,
                 Delay = 240,
@@ -68915,6 +69592,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 28,
                 Delay = 90,
@@ -68929,6 +69607,7 @@ return {
             Jobs = {"WAR", "THF", "DRK", "NIN", "RUN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             RSlot = 4,
             Stats = {
                 DMG = 6,
@@ -68941,6 +69620,7 @@ return {
             Id = 18139,
             Jobs = {"WAR", "THF", "DRK", "NIN", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -68955,6 +69635,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             Stats = {
                 DMG = 1,
                 Delay = 168,
@@ -68967,6 +69648,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 9,
                 Delay = 120,
@@ -68978,6 +69660,7 @@ return {
             Id = 18475,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 AGI = 2,
@@ -68991,6 +69674,7 @@ return {
             Id = 18471,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 DEF = 15,
@@ -69003,6 +69687,7 @@ return {
             Id = 17904,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:66",
             Stats = {
                 DMG = 6701,
                 Delay = 2252,
@@ -69014,6 +69699,7 @@ return {
             Id = 19243,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 MP = 3,
@@ -69027,6 +69713,7 @@ return {
             Jobs = {"WAR", "DRK", "RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 10,
                 Delay = 192,
@@ -69039,6 +69726,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 3,
                 Delay = 240,
@@ -69050,6 +69738,7 @@ return {
             Id = 17862,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:31",
             RSlot = 4,
             Stats = {
                 DMG = 515,
@@ -69062,6 +69751,7 @@ return {
             Id = 21451,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 8263,
             }
@@ -69073,6 +69763,7 @@ return {
             Jobs = {"THF", "RNG", "NIN", "COR"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 46,
                 Delay = 240,
@@ -69084,6 +69775,7 @@ return {
             Id = 17890,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:44",
             RSlot = 4,
             Stats = {
                 DMG = 3359,
@@ -69096,6 +69788,7 @@ return {
             Id = 17867,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:40",
             RSlot = 4,
             Stats = {
                 DMG = 1032,
@@ -69108,6 +69801,7 @@ return {
             Id = 17898,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:60",
             Stats = {
                 DMG = 2855,
                 Delay = 2259,
@@ -69119,6 +69813,7 @@ return {
             Id = 22286,
             Jobs = {"THF", "NIN", "DNC", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 DEX = 10,
@@ -69132,6 +69827,7 @@ return {
             Id = 17879,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:52",
             RSlot = 4,
             Stats = {
                 DMG = 4884,
@@ -69145,6 +69841,7 @@ return {
             Jobs = {"THF", "RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:2",
             Stats = {
                 DMG = 90,
                 Delay = 300,
@@ -69156,6 +69853,7 @@ return {
             Id = 17866,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:30",
             RSlot = 4,
             Stats = {
                 DMG = 1031,
@@ -69168,6 +69866,7 @@ return {
             Id = 17860,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:22",
             RSlot = 4,
             Stats = {
                 DMG = 257,
@@ -69181,6 +69880,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 48,
                 Delay = 90,
@@ -69193,6 +69893,7 @@ return {
             Id = 19256,
             Jobs = {"DNC"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 DEX = 5,
@@ -69205,6 +69906,7 @@ return {
             Id = 21347,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 HP = 25,
@@ -69218,6 +69920,7 @@ return {
             Id = 18470,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 STR = 3,
@@ -69230,6 +69933,7 @@ return {
             Id = 20965,
             Jobs = {"WAR", "PLD", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 HP = 15,
@@ -69244,6 +69948,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 110,
                 Delay = 90,
@@ -69256,6 +69961,7 @@ return {
             Jobs = {"RNG", "COR"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 300,
                 Delay = 240,
@@ -69269,6 +69975,7 @@ return {
             Id = 21385,
             Jobs = {"WAR", "MNK", "THF", "DRK", "NIN", "DRG", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 HP = 20,
@@ -69283,6 +69990,7 @@ return {
             Id = 18252,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -69296,6 +70004,7 @@ return {
             Id = 17900,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:62",
             Stats = {
                 DMG = 5673,
                 Delay = 2254,
@@ -69307,6 +70016,7 @@ return {
             Id = 19259,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "SCH", "GEO"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 ConserveMP = 3,
@@ -69321,6 +70031,7 @@ return {
             Jobs = {"WAR", "THF", "DRK", "NIN", "RUN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             RSlot = 4,
             Stats = {
                 DMG = 7,
@@ -69334,6 +70045,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 40,
                 Delay = 120,
@@ -69347,6 +70059,7 @@ return {
             Id = 17874,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:49",
             RSlot = 4,
             Stats = {
                 DMG = 3855,
@@ -69359,6 +70072,7 @@ return {
             Id = 21431,
             Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "RNG", "SAM", "NIN", "DRG", "BLU", "COR", "DNC", "RUN"},
             Type = "Ammo",
+            Pair = "1:0",
             Stats = {
                 DMG = 1,
                 Delay = 999,
@@ -69372,6 +70086,7 @@ return {
             Id = 21387,
             Jobs = {"SMN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 AvatarLevel = 7,
@@ -69384,6 +70099,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 38,
                 Delay = 240,
@@ -69396,6 +70112,7 @@ return {
             Jobs = {"COR"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 57,
                 Delay = 240,
@@ -69408,6 +70125,7 @@ return {
             Id = 21498,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 3412,
                 Delay = 2217,
@@ -69420,6 +70138,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -69430,6 +70149,7 @@ return {
             Id = 21499,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 3669,
                 Delay = 2218,
@@ -69441,6 +70161,7 @@ return {
             Id = 22300,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 STR = 3,
@@ -69455,6 +70176,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 10,
                 Delay = 192,
@@ -69467,6 +70189,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 7,
                 Delay = 126,
@@ -69480,6 +70203,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 12,
                 Delay = 126,
@@ -69493,6 +70217,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 14,
                 Delay = 126,
@@ -69506,6 +70231,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 15,
                 Delay = 126,
@@ -69519,6 +70245,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 20,
                 Delay = 126,
@@ -69532,6 +70259,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 23,
                 Delay = 126,
@@ -69545,6 +70273,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 26,
                 Delay = 126,
@@ -69558,6 +70287,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 30,
                 Delay = 126,
@@ -69570,6 +70300,7 @@ return {
             Id = 21447,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 2368,
             }
@@ -69580,6 +70311,7 @@ return {
             Id = 17895,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:57",
             Stats = {
                 DMG = 804,
                 Delay = 2262,
@@ -69592,6 +70324,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 94,
                 Delay = 192,
@@ -69604,6 +70337,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 145,
                 Delay = 240,
@@ -69616,6 +70350,7 @@ return {
             Jobs = {"WAR", "DRK", "RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 47,
                 Delay = 192,
@@ -69628,6 +70363,7 @@ return {
             Jobs = {"WAR", "DRK", "RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 50,
                 Delay = 192,
@@ -69641,6 +70377,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "DRK", "NIN", "COR", "RUN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             RSlot = 4,
             Stats = {
                 DMG = 6,
@@ -69655,6 +70392,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "DRK", "NIN", "COR", "RUN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             RSlot = 4,
             Stats = {
                 DMG = 21,
@@ -69667,6 +70405,7 @@ return {
             Id = 21388,
             Jobs = {"SMN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 AvatarLevel = 14,
@@ -69679,6 +70418,7 @@ return {
             Jobs = {"NIN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             Stats = {
                 DMG = 125,
                 Delay = 192,
@@ -69690,6 +70430,7 @@ return {
             Id = 21470,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
             }
         },
@@ -69700,6 +70441,7 @@ return {
             Jobs = {"THF", "RNG", "NIN", "COR"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 220,
                 Delay = 240,
@@ -69711,6 +70453,7 @@ return {
             Id = 17881,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:53",
             Stats = {
                 DMG = 2326,
                 Delay = 2275,
@@ -69722,6 +70465,7 @@ return {
             Id = 21493,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 6735,
                 Delay = 2212,
@@ -69734,6 +70478,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 34,
                 Delay = 90,
@@ -69745,6 +70490,7 @@ return {
             Id = 19764,
             Jobs = {"MNK", "RDM", "THF", "BST", "RNG", "NIN", "DRG", "COR", "PUP", "DNC", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 DEX = 2,
@@ -69756,6 +70502,7 @@ return {
             Id = 19765,
             Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "RNG", "SAM", "NIN", "DRG", "BLU", "COR", "DNC", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 MP = 15,
@@ -69769,6 +70516,7 @@ return {
             Jobs = {"RNG", "COR"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 277,
                 Delay = 240,
@@ -69782,6 +70530,7 @@ return {
             Id = 21449,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 5698,
             }
@@ -69793,6 +70542,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 120,
                 Delay = 192,
@@ -69805,6 +70555,7 @@ return {
             Jobs = {"RNG", "COR"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 250,
                 Delay = 240,
@@ -69818,6 +70569,7 @@ return {
             Jobs = {"WAR", "THF", "DRK", "NIN", "RUN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             RSlot = 4,
             Stats = {
                 DMG = 8,
@@ -69831,6 +70583,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 16,
                 Delay = 200,
@@ -69844,6 +70597,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 18,
                 Delay = 200,
@@ -69857,6 +70611,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 25,
                 Delay = 200,
@@ -69870,6 +70625,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 28,
                 Delay = 200,
@@ -69883,6 +70639,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 36,
                 Delay = 200,
@@ -69896,6 +70653,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 45,
                 Delay = 200,
@@ -69908,6 +70666,7 @@ return {
             Id = 21382,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 MDMG = 13,
@@ -69920,6 +70679,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -69931,6 +70691,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -69942,6 +70703,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 67,
                 Delay = 192,
@@ -69954,6 +70716,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 105,
                 Delay = 240,
@@ -69966,6 +70729,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -69977,6 +70741,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 90,
                 Delay = 240,
@@ -69989,6 +70754,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 27,
                 Delay = 90,
@@ -70002,6 +70768,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             RSlot = 4,
             Stats = {
                 DMG = 250,
@@ -70014,6 +70781,7 @@ return {
             Id = 19768,
             Jobs = {"THF", "PLD", "DRK", "DRG", "BLU"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 HP = 45,
@@ -70026,6 +70794,7 @@ return {
             Id = 21450,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 8262,
             }
@@ -70037,6 +70806,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 51,
                 Delay = 240,
@@ -70048,6 +70818,7 @@ return {
             Id = 22265,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "SCH", "GEO"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 MP = 30,
@@ -70062,6 +70833,7 @@ return {
             Id = 19781,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 DT = 2,
@@ -70075,6 +70847,7 @@ return {
             Jobs = {"RNG", "SAM"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 79,
                 Delay = 90,
@@ -70087,6 +70860,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 113,
                 Delay = 192,
@@ -70099,6 +70873,7 @@ return {
             Jobs = {"RNG", "COR"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 238,
                 Delay = 240,
@@ -70110,6 +70885,7 @@ return {
             Id = 21383,
             Jobs = {"SMN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 BloodPactDelayII = 3,
@@ -70122,6 +70898,7 @@ return {
             Id = 21426,
             Jobs = {"SCH"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 MP = 15,
@@ -70136,6 +70913,7 @@ return {
             Id = 21432,
             Jobs = {"SMN"},
             Type = "Ammo",
+            Pair = "1:0",
             Stats = {
                 DMG = 1,
                 Delay = 999,
@@ -70150,6 +70928,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 289,
                 Delay = 240,
@@ -70163,6 +70942,7 @@ return {
             Id = 21342,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 MagicAttackBonus = 3,
@@ -70175,6 +70955,7 @@ return {
             Id = 19772,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "SCH", "GEO"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 MagicAttackBonus = 1,
@@ -70187,6 +70968,7 @@ return {
             Id = 21361,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "SCH", "GEO"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 ElementalSiphonBonus = 20,
@@ -70198,6 +70980,7 @@ return {
             Id = 22270,
             Jobs = {"MNK", "THF", "RNG", "NIN", "BLU", "COR", "DNC", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 DEX = 4,
@@ -70211,6 +70994,7 @@ return {
             Id = 17892,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:46",
             RSlot = 4,
             Stats = {
                 DMG = 3617,
@@ -70223,6 +71007,7 @@ return {
             Id = 17861,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:37",
             RSlot = 4,
             Stats = {
                 DMG = 258,
@@ -70235,6 +71020,7 @@ return {
             Id = 22253,
             Jobs = {"MNK", "THF", "RNG", "BLU", "COR", "PUP", "DNC", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 HP = 10,
@@ -70249,6 +71035,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 15,
                 Delay = 90,
@@ -70261,6 +71048,7 @@ return {
             Id = 18530,
             Jobs = {"SCH"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -70274,6 +71062,7 @@ return {
             Id = 21473,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
             }
         },
@@ -70283,6 +71072,7 @@ return {
             Id = 18165,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -70294,6 +71084,7 @@ return {
             Id = 17916,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 2105,
                 Delay = 2239,
@@ -70306,6 +71097,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 29,
                 Delay = 120,
@@ -70317,6 +71109,7 @@ return {
             Id = 18707,
             Jobs = {"WAR", "THF", "DRK", "NIN", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -70331,6 +71124,7 @@ return {
             Id = 17876,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:23",
             RSlot = 4,
             Stats = {
                 DMG = 2065,
@@ -70343,6 +71137,7 @@ return {
             Id = 17877,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:24",
             RSlot = 4,
             Stats = {
                 DMG = 2066,
@@ -70355,6 +71150,7 @@ return {
             Id = 17912,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 7989,
                 Delay = 2243,
@@ -70366,6 +71162,7 @@ return {
             Id = 18473,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 STR = 2,
@@ -70379,6 +71176,7 @@ return {
             Id = 21366,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 STR = 3,
@@ -70393,6 +71191,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -70403,6 +71202,7 @@ return {
             Id = 21345,
             Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "RNG", "SAM", "NIN", "DRG", "BLU", "COR", "DNC", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 Accuracy = -10,
@@ -70416,6 +71216,7 @@ return {
             Id = 18167,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -70429,6 +71230,7 @@ return {
             Id = 19766,
             Jobs = {"WAR", "THF", "DRK", "NIN", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 STR = 5,
@@ -70441,6 +71243,7 @@ return {
             Id = 21466,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
             }
         },
@@ -70451,6 +71254,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -70462,6 +71266,7 @@ return {
             Jobs = {"PLD", "RNG", "SAM"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 40,
                 Delay = 90,
@@ -70474,6 +71279,7 @@ return {
             Id = 19214,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -70487,6 +71293,7 @@ return {
             Jobs = {"NIN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:3",
             RSlot = 4,
             Stats = {
                 DMG = 72,
@@ -70499,6 +71306,7 @@ return {
             Id = 17917,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:100",
             Stats = {
                 DMG = 7482,
                 Delay = 2238,
@@ -70510,6 +71318,7 @@ return {
             Id = 21496,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 3154,
                 Delay = 2215,
@@ -70522,6 +71331,7 @@ return {
             Model = 87,
             Jobs = {"WAR"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -70537,6 +71347,7 @@ return {
             Jobs = {"WAR", "DRK", "RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 57,
                 Delay = 192,
@@ -70549,6 +71360,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 51,
                 Delay = 90,
@@ -70562,6 +71374,7 @@ return {
             Jobs = {"WAR", "THF", "DRK", "RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 100,
                 Delay = 192,
@@ -70573,6 +71386,7 @@ return {
             Id = 21469,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
             }
         },
@@ -70583,6 +71397,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             Stats = {
                 DMG = 300,
                 Delay = 276,
@@ -70595,6 +71410,7 @@ return {
             Id = 21343,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 MP = 30,
@@ -70607,6 +71423,7 @@ return {
             Id = 21344,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 MP = 35,
@@ -70620,6 +71437,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -70630,6 +71448,7 @@ return {
             Id = 21371,
             Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "RNG", "SAM", "NIN", "DRG", "BLU", "COR", "DNC", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 Accuracy = 5,
@@ -70643,6 +71462,7 @@ return {
             Id = 21441,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 9035,
             }
@@ -70654,6 +71474,7 @@ return {
             Jobs = {"WAR", "DRK", "RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 60,
                 Delay = 140,
@@ -70668,6 +71489,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 10,
                 Delay = 50,
@@ -70681,6 +71503,7 @@ return {
             Id = 17896,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:58",
             Stats = {
                 DMG = 549,
                 Delay = 2257,
@@ -70692,6 +71515,7 @@ return {
             Id = 21370,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
             }
@@ -70702,6 +71526,7 @@ return {
             Id = 19220,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 Accuracy = 2,
@@ -70714,6 +71539,7 @@ return {
             Id = 18180,
             Jobs = {"WAR", "THF", "DRK", "NIN", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -70727,6 +71553,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 17,
                 Delay = 93,
@@ -70740,6 +71567,7 @@ return {
             Jobs = {"THF", "RNG", "NIN"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 46,
                 Delay = 247,
@@ -70753,6 +71581,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -70763,6 +71592,7 @@ return {
             Id = 17885,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:26",
             RSlot = 4,
             Stats = {
                 DMG = 2842,
@@ -70777,6 +71607,7 @@ return {
             Jobs = {"WAR", "THF", "DRK", "NIN", "RUN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             RSlot = 4,
             Stats = {
                 DMG = 13,
@@ -70789,6 +71620,7 @@ return {
             Id = 22251,
             Jobs = {"WAR", "THF", "DRK", "NIN", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 Attack = 13,
@@ -70801,6 +71633,7 @@ return {
             Id = 18725,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 15,
             }
@@ -70812,6 +71645,7 @@ return {
             Jobs = {"NIN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:3",
             Stats = {
                 DMG = 90,
                 Delay = 192,
@@ -70823,6 +71657,7 @@ return {
             Id = 19773,
             Jobs = {"MNK", "THF", "DRK", "BST", "SAM", "DRG", "DNC", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 Attack = 3,
@@ -70836,6 +71671,7 @@ return {
             Jobs = {"NIN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:3",
             Stats = {
                 DMG = 98,
                 Delay = 192,
@@ -70852,6 +71688,7 @@ return {
             Jobs = {"NIN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:3",
             Stats = {
                 DMG = 99,
                 Delay = 188,
@@ -70867,6 +71704,7 @@ return {
             Id = 18166,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -70880,6 +71718,7 @@ return {
             Id = 19778,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 Haste = 1,
@@ -70892,6 +71731,7 @@ return {
             Id = 21363,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
             }
@@ -70903,6 +71743,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 110,
                 Delay = 90,
@@ -70918,6 +71759,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 156,
                 Delay = 192,
@@ -70930,6 +71772,7 @@ return {
             Jobs = {"RNG", "COR"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 300,
                 Delay = 240,
@@ -70943,6 +71786,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "DRK", "NIN", "COR", "RUN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             RSlot = 4,
             Stats = {
                 DMG = 9,
@@ -70955,6 +71799,7 @@ return {
             Id = 18239,
             Jobs = {"WHM"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -70966,6 +71811,7 @@ return {
             Id = 21495,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 9553,
                 Delay = 2214,
@@ -70978,6 +71824,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:2",
             Stats = {
                 DMG = 99,
                 Delay = 360,
@@ -70991,6 +71838,7 @@ return {
             Id = 17277,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -71004,6 +71852,7 @@ return {
             Id = 17864,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:21",
             RSlot = 4,
             Stats = {
                 DMG = 773,
@@ -71016,6 +71865,7 @@ return {
             Id = 21430,
             Jobs = {"BST", "DRG", "SMN", "PUP"},
             Type = "Ammo",
+            Pair = "1:0",
             Stats = {
                 DMG = 1,
                 Delay = 999,
@@ -71030,6 +71880,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 89,
                 Delay = 240,
@@ -71042,6 +71893,7 @@ return {
             Id = 18137,
             Jobs = {"WHM"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -71056,6 +71908,7 @@ return {
             Jobs = {"WAR", "DRK", "RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 32,
                 Delay = 192,
@@ -71067,6 +71920,7 @@ return {
             Id = 22268,
             Jobs = {"WHM", "RDM", "PLD", "SCH", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 Refresh = 1,
@@ -71078,6 +71932,7 @@ return {
             Id = 21389,
             Jobs = {"MNK", "THF", "RNG", "BLU", "COR", "PUP", "DNC", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 Accuracy = 15,
@@ -71090,6 +71945,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 17,
                 Delay = 90,
@@ -71102,6 +71958,7 @@ return {
             Id = 17868,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:28",
             RSlot = 4,
             Stats = {
                 DMG = 1289,
@@ -71114,6 +71971,7 @@ return {
             Id = 18232,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 DMG = 25,
@@ -71126,6 +71984,7 @@ return {
             Id = 22263,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 MP = 20,
@@ -71141,6 +72000,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "DRK", "NIN", "COR", "RUN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             RSlot = 4,
             Stats = {
                 DMG = 15,
@@ -71154,6 +72014,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 29,
                 Delay = 120,
@@ -71165,6 +72026,7 @@ return {
             Id = 21377,
             Jobs = {"SMN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 BloodPactDelayII = 4,
@@ -71179,6 +72041,7 @@ return {
             Jobs = {"NIN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:3",
             Stats = {
                 DMG = 80,
                 Delay = 192,
@@ -71192,6 +72055,7 @@ return {
             Jobs = {"RNG", "COR"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 80,
                 Delay = 240,
@@ -71204,6 +72068,7 @@ return {
             Id = 19761,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 SpellInterruptionRateDown = 10,
@@ -71215,6 +72080,7 @@ return {
             Id = 18691,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -71227,6 +72093,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             RSlot = 4,
             Stats = {
                 DMG = 99,
@@ -71242,6 +72109,7 @@ return {
             Id = 19257,
             Jobs = {"WHM", "PLD", "SCH"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 MP = 10,
@@ -71254,6 +72122,7 @@ return {
             Id = 21376,
             Jobs = {"MNK", "THF", "RNG", "BLU", "COR", "PUP", "DNC", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 DEF = 10,
@@ -71267,6 +72136,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -71277,6 +72147,7 @@ return {
             Id = 21492,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 6734,
                 Delay = 2211,
@@ -71289,6 +72160,7 @@ return {
             Jobs = {"WAR", "DRK", "RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 60,
                 Delay = 140,
@@ -71303,6 +72175,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 14,
                 Delay = 120,
@@ -71315,6 +72188,7 @@ return {
             Jobs = {"THF", "RNG", "NIN", "COR"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 55,
                 Delay = 240,
@@ -71326,6 +72200,7 @@ return {
             Id = 19782,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 VIT = 5,
@@ -71339,6 +72214,7 @@ return {
             Id = 39057,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 MP = 20,
@@ -71350,6 +72226,7 @@ return {
             Id = 19219,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 HP = 10,
@@ -71362,6 +72239,7 @@ return {
             Id = 19238,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -71375,6 +72253,7 @@ return {
             Id = 19245,
             Jobs = {"WHM", "BLM", "RDM", "SMN", "BLU", "SCH", "GEO"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 HP = -15,
@@ -71388,6 +72267,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             Stats = {
                 DMG = 300,
                 Delay = 276,
@@ -71401,6 +72281,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -71412,6 +72293,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -71423,6 +72305,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 100,
                 Delay = 120,
@@ -71435,6 +72318,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -71447,6 +72331,7 @@ return {
             Jobs = {"NIN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:3",
             RSlot = 4,
             Stats = {
                 DMG = 41,
@@ -71460,6 +72345,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 38,
                 Delay = 90,
@@ -71472,6 +72358,7 @@ return {
             Id = 18177,
             Jobs = {"DRG"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -71485,6 +72372,7 @@ return {
             Id = 18229,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 DMG = 50,
@@ -71497,6 +72385,7 @@ return {
             Id = 18237,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 DMG = 50,
@@ -71509,6 +72398,7 @@ return {
             Id = 18233,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 DMG = 50,
@@ -71522,6 +72412,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             Stats = {
                 DMG = 300,
                 Delay = 276,
@@ -71536,6 +72427,7 @@ return {
             Jobs = {"NIN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:3",
             RSlot = 4,
             Stats = {
                 DMG = 88,
@@ -71549,6 +72441,7 @@ return {
             Id = 17878,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:51",
             RSlot = 4,
             Stats = {
                 DMG = 4115,
@@ -71561,6 +72454,7 @@ return {
             Id = 17888,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:43",
             RSlot = 4,
             Stats = {
                 DMG = 3101,
@@ -71574,6 +72468,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -71585,6 +72480,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             Stats = {
                 DMG = 1,
                 Delay = 168,
@@ -71596,6 +72492,7 @@ return {
             Id = 19269,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "SCH", "GEO"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 Evasion = -7,
@@ -71608,6 +72505,7 @@ return {
             Id = 21360,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "SCH", "GEO"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
             }
@@ -71618,6 +72516,7 @@ return {
             Id = 18479,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 CHR = 2,
@@ -71632,6 +72531,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 29,
                 Delay = 120,
@@ -71644,6 +72544,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -71654,6 +72555,7 @@ return {
             Id = 21444,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 1085,
             }
@@ -71665,6 +72567,7 @@ return {
             Jobs = {"COR"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 77,
                 Delay = 240,
@@ -71679,6 +72582,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -71689,6 +72593,7 @@ return {
             Id = 17902,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:64",
             Stats = {
                 DMG = 6187,
                 Delay = 2250,
@@ -71700,6 +72605,7 @@ return {
             Id = 19248,
             Jobs = {"MNK", "THF", "NIN", "PUP", "DNC", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
             }
@@ -71711,6 +72617,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -71722,6 +72629,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -71732,6 +72640,7 @@ return {
             Id = 21445,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 830,
             }
@@ -71743,6 +72652,7 @@ return {
             Jobs = {"NIN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:3",
             Stats = {
                 DMG = 80,
                 Delay = 192,
@@ -71756,6 +72666,7 @@ return {
             Id = 19262,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 5,
             }
@@ -71766,6 +72677,7 @@ return {
             Id = 19780,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "SCH", "GEO"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 MP = 15,
@@ -71779,6 +72691,7 @@ return {
             Id = 22288,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
             }
@@ -71791,6 +72704,7 @@ return {
             Jobs = {"NIN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:3",
             RSlot = 4,
             Stats = {
                 DMG = 63,
@@ -71804,6 +72718,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 63,
                 Delay = 90,
@@ -71816,6 +72731,7 @@ return {
             Id = 19769,
             Jobs = {"MNK", "THF", "RNG", "BLU", "COR", "PUP", "DNC", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 Accuracy = 10,
@@ -71829,6 +72745,7 @@ return {
             Id = 22264,
             Jobs = {"MNK", "THF", "RNG", "BLU", "COR", "PUP", "DNC", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 STR = 3,
@@ -71842,6 +72759,7 @@ return {
             Id = 18174,
             Jobs = {"WHM", "BLM", "RDM", "SMN", "BLU", "SCH", "GEO"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -71855,6 +72773,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 36,
                 Delay = 90,
@@ -71866,6 +72785,7 @@ return {
             Id = 19255,
             Jobs = {"BLU"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 BlueMagicSkill = 5,
@@ -71877,6 +72797,7 @@ return {
             Id = 17870,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:27",
             RSlot = 4,
             Stats = {
                 DMG = 1547,
@@ -71890,6 +72811,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -71900,6 +72822,7 @@ return {
             Id = 17920,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 1603,
                 Delay = 2228,
@@ -71911,6 +72834,7 @@ return {
             Id = 18230,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 DMG = 75,
@@ -71923,6 +72847,7 @@ return {
             Id = 18238,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 DMG = 75,
@@ -71935,6 +72860,7 @@ return {
             Id = 18234,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 DMG = 75,
@@ -71947,6 +72873,7 @@ return {
             Id = 19775,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "SCH", "GEO"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 MagicAccuracy = 2,
@@ -71959,6 +72886,7 @@ return {
             Id = 18690,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -71971,6 +72899,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 75,
                 Delay = 192,
@@ -71983,6 +72912,7 @@ return {
             Jobs = {"RNG", "COR"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 115,
                 Delay = 240,
@@ -71994,6 +72924,7 @@ return {
             Id = 18248,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -72008,6 +72939,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -72018,6 +72950,7 @@ return {
             Id = 17883,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:54",
             RSlot = 4,
             Stats = {
                 DMG = 5144,
@@ -72031,6 +72964,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -72041,6 +72975,7 @@ return {
             Id = 21369,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
             }
@@ -72051,6 +72986,7 @@ return {
             Id = 19246,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
             }
@@ -72061,6 +72997,7 @@ return {
             Id = 19776,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
             }
@@ -72071,6 +73008,7 @@ return {
             Id = 17887,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:29",
             RSlot = 4,
             Stats = {
                 DMG = 3100,
@@ -72083,6 +73021,7 @@ return {
             Id = 18469,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
             }
@@ -72093,6 +73032,7 @@ return {
             Id = 19181,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
             }
@@ -72103,6 +73043,7 @@ return {
             Id = 18136,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -72116,6 +73057,7 @@ return {
             Id = 17921,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 4420,
                 Delay = 2229,
@@ -72127,6 +73069,7 @@ return {
             Id = 18253,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -72140,6 +73083,7 @@ return {
             Jobs = {"WAR", "DRK", "RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 40,
                 Delay = 192,
@@ -72151,6 +73095,7 @@ return {
             Id = 17886,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:42",
             RSlot = 4,
             Stats = {
                 DMG = 2843,
@@ -72163,6 +73108,7 @@ return {
             Id = 18176,
             Jobs = {"WHM", "BLM", "BRD", "SMN", "PUP", "SCH", "GEO"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -72179,6 +73125,7 @@ return {
             Jobs = {"NIN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:3",
             RSlot = 4,
             Stats = {
                 DMG = 85,
@@ -72193,6 +73140,7 @@ return {
             Id = 20643,
             Jobs = {"WAR", "PLD", "NIN", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 AGI = 5,
@@ -72207,6 +73155,7 @@ return {
             Jobs = {"RNG", "COR"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 77,
                 Delay = 240,
@@ -72220,6 +73169,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 30,
                 Delay = 90,
@@ -72232,6 +73182,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 4,
                 Delay = 126,
@@ -72244,6 +73195,7 @@ return {
             Id = 18249,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -72256,6 +73208,7 @@ return {
             Id = 19777,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 INT = 4,
@@ -72268,6 +73221,7 @@ return {
             Id = 21362,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
             }
@@ -72279,6 +73233,7 @@ return {
             Jobs = {"COR"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 89,
                 Delay = 240,
@@ -72290,6 +73245,7 @@ return {
             Id = 19763,
             Jobs = {"THF", "BST", "RNG", "DNC", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 Attack = -3,
@@ -72302,6 +73258,7 @@ return {
             Id = 19767,
             Jobs = {"WAR", "RDM", "PLD", "BST", "SAM", "DRG", "BLU", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 VIT = 3,
@@ -72314,6 +73271,7 @@ return {
             Id = 19762,
             Jobs = {"WAR", "DRK", "BST", "RNG", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 AxeSkill = 2,
@@ -72326,6 +73284,7 @@ return {
             Id = 18175,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -72338,6 +73297,7 @@ return {
             Id = 21341,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "SCH", "GEO"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 MND = 4,
@@ -72351,6 +73311,7 @@ return {
             Jobs = {"RNG", "COR"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 89,
                 Delay = 240,
@@ -72363,6 +73324,7 @@ return {
             Id = 18256,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -72376,6 +73338,7 @@ return {
             Jobs = {"WAR", "THF", "DRK", "RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 45,
                 Delay = 192,
@@ -72387,6 +73350,7 @@ return {
             Id = 21374,
             Jobs = {"WAR", "RDM", "PLD", "BST", "SAM"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 Enmity = 2,
@@ -72400,6 +73364,7 @@ return {
             Jobs = {"THF", "RNG", "NIN", "COR"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 50,
                 Delay = 240,
@@ -72411,6 +73376,7 @@ return {
             Id = 21448,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 1857,
             }
@@ -72422,6 +73388,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             Stats = {
                 DMG = 1,
                 Delay = 800,
@@ -72434,6 +73401,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 1,
                 Delay = 90,
@@ -72447,6 +73415,7 @@ return {
             Jobs = {"WAR", "MNK", "WHM", "BLM", "THF", "DRK", "BST", "BRD", "RNG", "NIN", "DRG", "SMN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             RSlot = 4,
             Stats = {
                 DMG = 5,
@@ -72460,6 +73429,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -72471,6 +73441,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -72482,6 +73453,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "DRK", "NIN", "COR", "RUN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             RSlot = 4,
             Stats = {
                 DMG = 15,
@@ -72496,6 +73468,7 @@ return {
             Id = 22271,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 INT = 4,
@@ -72510,6 +73483,7 @@ return {
             Id = 22299,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 TreasureHunter = 1,
@@ -72521,6 +73495,7 @@ return {
             Id = 17020,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 DMG = 700,
@@ -72533,6 +73508,7 @@ return {
             Id = 17018,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 DMG = 300,
@@ -72545,6 +73521,7 @@ return {
             Id = 17016,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 DMG = 50,
@@ -72557,6 +73534,7 @@ return {
             Id = 17017,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 DMG = 150,
@@ -72569,6 +73547,7 @@ return {
             Id = 17019,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 DMG = 500,
@@ -72581,6 +73560,7 @@ return {
             Id = 17022,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 DMG = 1200,
@@ -72593,6 +73573,7 @@ return {
             Id = 17023,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 DMG = 1600,
@@ -72605,6 +73586,7 @@ return {
             Id = 17021,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 DMG = 900,
@@ -72617,6 +73599,7 @@ return {
             Id = 19252,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "255:0",
             Stats = {
                 DMG = 6,
                 Delay = 84,
@@ -72628,6 +73611,7 @@ return {
             Id = 19251,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "255:0",
             RSlot = 4,
             Stats = {
                 Delay = 84,
@@ -72639,6 +73623,7 @@ return {
             Id = 18140,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -72654,6 +73639,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "DRK", "NIN", "COR", "RUN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             RSlot = 4,
             Stats = {
                 DMG = 12,
@@ -72667,6 +73653,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 20,
                 Delay = 93,
@@ -72680,6 +73667,7 @@ return {
             Jobs = {"THF", "RNG", "NIN"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 46,
                 Delay = 249,
@@ -72692,6 +73680,7 @@ return {
             Id = 21358,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 HP = 15,
@@ -72706,6 +73695,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 16,
                 Delay = 120,
@@ -72717,6 +73707,7 @@ return {
             Id = 21438,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 8776,
             }
@@ -72728,6 +73719,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 80,
                 Delay = 90,
@@ -72739,6 +73731,7 @@ return {
             Id = 19779,
             Jobs = {"MNK", "THF", "SAM", "DRG", "PUP", "DNC", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 Attack = 5,
@@ -72751,6 +73744,7 @@ return {
             Id = 21488,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "1:0",
             Stats = {
                 DMG = 1,
                 Delay = 999,
@@ -72762,6 +73756,7 @@ return {
             Id = 18472,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 HP = 15,
@@ -72776,6 +73771,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 40,
                 Delay = 120,
@@ -72789,6 +73785,7 @@ return {
             Id = 21465,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
             }
         },
@@ -72798,6 +73795,7 @@ return {
             Id = 21471,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
             }
         },
@@ -72807,6 +73805,7 @@ return {
             Id = 17863,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:41",
             RSlot = 4,
             Stats = {
                 DMG = 516,
@@ -72819,6 +73818,7 @@ return {
             Id = 19258,
             Jobs = {"THF", "NIN", "DNC", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 Attack = 3,
@@ -72833,6 +73833,7 @@ return {
             Jobs = {"WAR", "THF", "DRK", "NIN", "RUN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             RSlot = 4,
             Stats = {
                 DMG = 18,
@@ -72845,6 +73846,7 @@ return {
             Id = 21359,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
             }
@@ -72856,6 +73858,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 64,
                 Delay = 192,
@@ -72873,6 +73876,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 74,
                 Delay = 90,
@@ -72886,6 +73890,7 @@ return {
             Jobs = {"WAR", "BLM", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "RNG", "SAM", "NIN", "SMN", "BLU", "SCH"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 80,
                 Delay = 90,
@@ -72898,6 +73903,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 78,
                 Delay = 90,
@@ -72910,6 +73916,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 112,
                 Delay = 192,
@@ -72922,6 +73929,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 237,
                 Delay = 240,
@@ -72933,6 +73941,7 @@ return {
             Id = 21464,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
             }
         },
@@ -72942,6 +73951,7 @@ return {
             Id = 21497,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 5203,
                 Delay = 2216,
@@ -72953,6 +73963,7 @@ return {
             Id = 19253,
             Jobs = {"WAR"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 STR = 4,
@@ -72965,6 +73976,7 @@ return {
             Id = 19211,
             Jobs = {"NIN"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -72977,6 +73989,7 @@ return {
             Id = 18241,
             Jobs = {"PLD"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -72989,6 +74002,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -72999,6 +74013,7 @@ return {
             Id = 21396,
             Jobs = {"RDM"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 MND = 7,
@@ -73012,6 +74027,7 @@ return {
             Id = 17869,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:38",
             RSlot = 4,
             Stats = {
                 DMG = 1290,
@@ -73025,6 +74041,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 55,
                 Delay = 192,
@@ -73036,6 +74053,7 @@ return {
             Id = 21384,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "SCH", "GEO"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 MP = 20,
@@ -73051,6 +74069,7 @@ return {
             Jobs = {"WAR", "THF", "DRK", "NIN", "RUN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             RSlot = 4,
             Stats = {
                 DMG = 21,
@@ -73064,6 +74083,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -73075,6 +74095,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -73086,6 +74107,7 @@ return {
             Jobs = {"NIN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:3",
             Stats = {
                 DMG = 71,
                 Delay = 192,
@@ -73098,6 +74120,7 @@ return {
             Jobs = {"NIN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:3",
             Stats = {
                 DMG = 72,
                 Delay = 188,
@@ -73110,6 +74133,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -73121,6 +74145,7 @@ return {
             Jobs = {"WAR", "BLM", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "RNG", "SAM", "NIN", "SMN", "BLU", "SCH"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 32,
                 Delay = 120,
@@ -73133,6 +74158,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 9,
                 Delay = 200,
@@ -73146,6 +74172,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 46,
                 Delay = 90,
@@ -73157,6 +74184,7 @@ return {
             Id = 17875,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:50",
             RSlot = 4,
             Stats = {
                 DMG = 5392,
@@ -73169,6 +74197,7 @@ return {
             Id = 17865,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:36",
             RSlot = 4,
             Stats = {
                 DMG = 774,
@@ -73182,6 +74211,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -73192,6 +74222,7 @@ return {
             Id = 17913,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 4662,
                 Delay = 2241,
@@ -73203,6 +74234,7 @@ return {
             Id = 17911,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 7732,
                 Delay = 2242,
@@ -73214,6 +74246,7 @@ return {
             Id = 21394,
             Jobs = {"SMN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 BloodPactDelay = 6,
@@ -73225,6 +74258,7 @@ return {
             Id = 21395,
             Jobs = {"SMN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 BloodPactDelay = 7,
@@ -73236,6 +74270,7 @@ return {
             Id = 22252,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 Enmity = 2,
@@ -73248,6 +74283,7 @@ return {
             Id = 39056,
             Jobs = {"BLU"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 MND = 3,
@@ -73261,6 +74297,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -73272,6 +74309,7 @@ return {
             Jobs = {"NIN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:3",
             Stats = {
                 DMG = 99,
                 Delay = 192,
@@ -73285,6 +74323,7 @@ return {
             Jobs = {"NIN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:3",
             Stats = {
                 DMG = 100,
                 Delay = 188,
@@ -73297,6 +74336,7 @@ return {
             Id = 20891,
             Jobs = {"WAR", "DRK", "SAM", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 STR = 2,
@@ -73310,6 +74350,7 @@ return {
             Id = 19247,
             Jobs = {"SCH"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 EnhancingMagicSkill = 4,
@@ -73323,6 +74364,7 @@ return {
             Id = 17873,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:45",
             RSlot = 4,
             Stats = {
                 DMG = 1806,
@@ -73336,6 +74378,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 24,
                 Delay = 90,
@@ -73349,6 +74392,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 156,
                 Delay = 192,
@@ -73364,6 +74408,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -73374,6 +74419,7 @@ return {
             Id = 17880,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:32",
             RSlot = 4,
             Stats = {
                 DMG = 2325,
@@ -73386,6 +74432,7 @@ return {
             Id = 22255,
             Jobs = {"WAR", "THF", "DRK", "NIN", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 Accuracy = 13,
@@ -73399,6 +74446,7 @@ return {
             Id = 22254,
             Jobs = {"WAR", "THF", "DRK", "NIN", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 Accuracy = 12,
@@ -73414,6 +74462,7 @@ return {
             Jobs = {"NIN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:3",
             RSlot = 4,
             Stats = {
                 DMG = 82,
@@ -73430,6 +74479,7 @@ return {
             Id = 22250,
             Jobs = {"WHM", "BLM", "SMN", "PUP", "SCH", "GEO"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 INT = 3,
@@ -73443,6 +74493,7 @@ return {
             Id = 18480,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 MP = 20,
@@ -73456,6 +74507,7 @@ return {
             Id = 17903,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:65",
             Stats = {
                 DMG = 6444,
                 Delay = 2251,
@@ -73468,6 +74520,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -73478,6 +74531,7 @@ return {
             Id = 17908,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 2097,
                 Delay = 2246,
@@ -73490,6 +74544,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -73501,6 +74556,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             Stats = {
                 DMG = 300,
                 Delay = 276,
@@ -73515,6 +74571,7 @@ return {
             Jobs = {"NIN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:3",
             RSlot = 4,
             Stats = {
                 DMG = 29,
@@ -73527,6 +74584,7 @@ return {
             Id = 21373,
             Jobs = {"WAR", "MNK", "WHM", "BLM", "THF", "DRK", "BST", "BRD", "RNG", "NIN", "DRG", "SMN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 MP = 15,
@@ -73540,6 +74598,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 19,
                 Delay = 120,
@@ -73552,6 +74611,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 81,
                 Delay = 240,
@@ -73564,6 +74624,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -73575,6 +74636,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 1,
                 Delay = 90,
@@ -73587,6 +74649,7 @@ return {
             Jobs = {"WAR", "THF", "DRK", "RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 1,
                 Delay = 288,
@@ -73599,6 +74662,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -73610,6 +74674,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -73621,6 +74686,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -73632,6 +74698,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -73642,6 +74709,7 @@ return {
             Id = 19237,
             Jobs = {"WAR", "THF", "DRK", "NIN", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -73654,6 +74722,7 @@ return {
             Id = 21443,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 9293,
             }
@@ -73666,6 +74735,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             RSlot = 4,
             Stats = {
                 DMG = 42,
@@ -73682,6 +74752,7 @@ return {
             Jobs = {"WAR", "THF", "DRK", "NIN", "RUN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             RSlot = 4,
             Stats = {
                 DMG = 7,
@@ -73694,6 +74765,7 @@ return {
             Id = 18474,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 INT = 2,
@@ -73707,6 +74779,7 @@ return {
             Id = 18476,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 VIT = 2,
@@ -73720,6 +74793,7 @@ return {
             Id = 18735,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -73732,6 +74806,7 @@ return {
             Id = 21381,
             Jobs = {"SMN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 MP = 40,
@@ -73747,6 +74822,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 1,
                 Delay = 240,
@@ -73758,6 +74834,7 @@ return {
             Id = 17909,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 7474,
                 Delay = 2245,
@@ -73769,6 +74846,7 @@ return {
             Id = 18240,
             Jobs = {"BLM"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -73780,6 +74858,7 @@ return {
             Id = 21386,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 MP = 10,
@@ -73793,6 +74872,7 @@ return {
             Id = 21467,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
             }
         },
@@ -73802,6 +74882,7 @@ return {
             Id = 22301,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "1:0",
             RSlot = 4,
             Stats = {
                 DMG = 1,
@@ -73817,6 +74898,7 @@ return {
             Id = 22278,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 SpellInterruptionRateDown = 10,
                 DT = -2,
@@ -73829,6 +74911,7 @@ return {
             Id = 22279,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 SpellInterruptionRateDown = 11,
                 DT = -3,
@@ -73842,6 +74925,7 @@ return {
             Jobs = {"RNG", "COR"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 70,
                 Delay = 240,
@@ -73853,6 +74937,7 @@ return {
             Id = 21442,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 9292,
             }
@@ -73864,6 +74949,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 254,
                 Delay = 249,
@@ -73876,6 +74962,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 5,
                 Delay = 120,
@@ -73887,6 +74974,7 @@ return {
             Id = 19771,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 MP = 45,
@@ -73899,6 +74987,7 @@ return {
             Id = 18734,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -73913,6 +75002,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             RSlot = 4,
             Stats = {
                 DMG = 21,
@@ -73926,6 +75016,7 @@ return {
             Id = 21440,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 9034,
             }
@@ -73936,6 +75027,7 @@ return {
             Id = 17884,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:47",
             RSlot = 4,
             Stats = {
                 DMG = 2585,
@@ -73949,6 +75041,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -73960,6 +75053,7 @@ return {
             Jobs = {"NIN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:3",
             Stats = {
                 DMG = 92,
                 Delay = 192,
@@ -73971,6 +75065,7 @@ return {
             Id = 17899,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:61",
             Stats = {
                 DMG = 3112,
                 Delay = 2256,
@@ -73982,6 +75077,7 @@ return {
             Id = 18251,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -73994,6 +75090,7 @@ return {
             Id = 17907,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 304,
                 Delay = 2247,
@@ -74006,6 +75103,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 10,
                 Delay = 50,
@@ -74019,6 +75117,7 @@ return {
             Id = 21489,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "1:0",
             Stats = {
                 DMG = 1,
                 Delay = 999,
@@ -74030,6 +75129,7 @@ return {
             Id = 19270,
             Jobs = {"WHM", "BLM", "SMN", "BLU", "SCH", "GEO"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 MP = 15,
@@ -74043,6 +75143,7 @@ return {
             Id = 17919,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 7996,
                 Delay = 2237,
@@ -74054,6 +75155,7 @@ return {
             Id = 19254,
             Jobs = {"MNK"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 STR = 4,
@@ -74068,6 +75170,7 @@ return {
             Jobs = {"WAR", "MNK", "WHM", "BLM", "THF", "DRK", "BST", "BRD", "RNG", "NIN", "DRG", "SMN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             RSlot = 4,
             Stats = {
                 DMG = 24,
@@ -74080,6 +75183,7 @@ return {
             Id = 21367,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 AGI = 3,
@@ -74092,6 +75196,7 @@ return {
             Id = 19249,
             Jobs = {"MNK", "THF", "SAM", "DRG", "PUP", "DNC", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 STR = 2,
@@ -74105,6 +75210,7 @@ return {
             Model = 87,
             Jobs = {"WAR"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 3,
@@ -74117,6 +75223,7 @@ return {
             Jobs = {"SAM"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             RSlot = 4,
             Stats = {
                 DMG = 16,
@@ -74130,6 +75237,7 @@ return {
             Jobs = {"THF", "DRK", "RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 45,
                 Delay = 102,
@@ -74142,6 +75250,7 @@ return {
             Id = 18477,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 DEX = 2,
@@ -74156,6 +75265,7 @@ return {
             Jobs = {"THF", "RNG", "NIN", "COR"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 32,
                 Delay = 240,
@@ -74167,6 +75277,7 @@ return {
             Id = 19186,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 HP = 3,
@@ -74179,6 +75290,7 @@ return {
             Id = 18254,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -74195,6 +75307,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 96,
                 Delay = 192,
@@ -74209,6 +75322,7 @@ return {
             Jobs = {"RNG", "COR"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:1",
             Stats = {
                 DMG = 175,
                 Delay = 240,
@@ -74223,6 +75337,7 @@ return {
             Jobs = {"NIN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:3",
             Stats = {
                 DMG = 104,
                 Delay = 192,
@@ -74234,6 +75349,7 @@ return {
             Id = 17910,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 2099,
                 Delay = 2248,
@@ -74245,6 +75361,7 @@ return {
             Id = 17872,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:33",
             RSlot = 4,
             Stats = {
                 DMG = 1805,
@@ -74258,6 +75375,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -74269,6 +75387,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             RSlot = 4,
             Stats = {
                 DMG = 100,
@@ -74285,6 +75404,7 @@ return {
             Jobs = {"RNG", "SAM"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 65,
                 Delay = 90,
@@ -74298,6 +75418,7 @@ return {
             Id = 21472,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
             }
         },
@@ -74307,6 +75428,7 @@ return {
             Id = 21380,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 MP = 20,
@@ -74321,6 +75443,7 @@ return {
             Jobs = {"WAR", "THF", "DRK", "RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 29,
                 Delay = 192,
@@ -74332,6 +75455,7 @@ return {
             Id = 21439,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 8777,
             }
@@ -74342,6 +75466,7 @@ return {
             Id = 17894,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:56",
             Stats = {
                 DMG = 4643,
                 Delay = 2261,
@@ -74354,6 +75479,7 @@ return {
             Jobs = {"RNG"},
             Type = "Ammo",
             AmmoType = "Marksmanship",
+            Pair = "26:0",
             Stats = {
                 DMG = 68,
                 Delay = 144,
@@ -74367,6 +75493,7 @@ return {
             Id = 19244,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 HP = 30,
@@ -74381,6 +75508,7 @@ return {
             Model = 88,
             Jobs = {"DRG"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 1,
                 Delay = 999,
@@ -74392,6 +75520,7 @@ return {
             Id = 18244,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 DMG = 1,
@@ -74404,6 +75533,7 @@ return {
             Id = 17915,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 312,
                 Delay = 2240,
@@ -74415,6 +75545,7 @@ return {
             Id = 18689,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -74426,6 +75557,7 @@ return {
             Id = 17871,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:39",
             RSlot = 4,
             Stats = {
                 DMG = 1548,
@@ -74439,6 +75571,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 27,
                 Delay = 90,
@@ -74450,6 +75583,7 @@ return {
             Id = 21494,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 9552,
                 Delay = 2213,
@@ -74461,6 +75595,7 @@ return {
             Id = 19213,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 HP = 15,
@@ -74476,6 +75611,7 @@ return {
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 27,
                 Delay = 90,
@@ -74487,6 +75623,7 @@ return {
             Id = 18236,
             Jobs = {"All"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 DMG = 25,
@@ -74499,6 +75636,7 @@ return {
             Id = 17918,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 7739,
                 Delay = 2236,
@@ -74510,6 +75648,7 @@ return {
             Id = 17914,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 DMG = 6967,
                 Delay = 2244,
@@ -74521,6 +75660,7 @@ return {
             Id = 19250,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "SCH", "GEO"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 MagicAttackBonus = 2,
@@ -74533,6 +75673,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 5,
                 Delay = 120,
@@ -74544,6 +75685,7 @@ return {
             Id = 17893,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:55",
             Stats = {
                 DMG = 4386,
                 Delay = 2260,
@@ -74556,6 +75698,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "FishingRod",
+            Pair = "48:0",
             Stats = {
                 Delay = 240,
             }
@@ -74566,6 +75709,7 @@ return {
             Id = 17905,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:67",
             Stats = {
                 DMG = 6958,
                 Delay = 2253,
@@ -74577,6 +75721,7 @@ return {
             Id = 18242,
             Jobs = {"DRG"},
             Type = "Ammo",
+            Pair = "0:0",
             RSlot = 4,
             Stats = {
                 Delay = 999,
@@ -74588,6 +75733,7 @@ return {
             Id = 21378,
             Jobs = {"RDM", "THF", "NIN", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 DEX = 1,
@@ -74601,6 +75747,7 @@ return {
             Id = 21379,
             Jobs = {"RDM", "THF", "NIN", "RUN"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
                 Delay = 999,
                 DEX = 2,
@@ -74615,6 +75762,7 @@ return {
             Jobs = {"RNG", "SAM"},
             Type = "Ammo",
             AmmoType = "Archery",
+            Pair = "25:0",
             Stats = {
                 DMG = 89,
                 Delay = 90,
@@ -74630,6 +75778,7 @@ return {
             Jobs = {"NIN"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:3",
             RSlot = 4,
             Stats = {
                 DMG = 85,
@@ -74648,6 +75797,7 @@ return {
             Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "Throwing",
+            Pair = "27:0",
             RSlot = 4,
             Stats = {
                 DMG = 250,
@@ -74660,6 +75810,7 @@ return {
             Id = 21468,
             Jobs = {"BST"},
             Type = "Ammo",
+            Pair = "0:0",
             Stats = {
             }
         },
