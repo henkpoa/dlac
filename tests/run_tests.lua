@@ -10655,11 +10655,15 @@ end)();
         [15194] = "Maat's Cap",              -- head, keepInPicker
         [11274] = 'Custom Top +1',           -- body, one of the 8 Purgonorgo suits
         [13180] = 'Republic Stables Medal',  -- neck, one of 4 'stables' dests
+        [11538] = 'Nexus Cape',              -- moved off the top strip 2026-07-26
+        [26517] = 'Shadow Lord Shirt',       -- ditto
     };
     local bag0 = {
         { Id = 15194, Count = 1, Extra = '' },
         { Id = 11274, Count = 1, Extra = '' },
         { Id = 13180, Count = 1, Extra = '' },
+        { Id = 11538, Count = 1, Extra = '' },
+        { Id = 26517, Count = 1, Extra = '' },
     };
     local inv = {
         GetContainerCountMax = function(self, bag) return (bag == 0) and #bag0 or 0; end,
@@ -10679,16 +10683,29 @@ end)();
     local useitem = dofile('feature/useitem.lua');
     ashita.events.register = savedReg;
 
-    -- menu shape: util rows are owned-only -- exactly the three stubbed items
-    local util, earNames = {}, {};
+    -- menu shape: util rows are owned-only -- exactly the five stubbed items
+    local util, earNames, topNames = {}, {}, {};
     for _, row in ipairs(useitem.menu()) do
         if row.grp == 'util' then util[#util + 1] = row; end
         if row.grp == 'ear' then earNames[#earNames + 1] = row.name; end
+        if row.grp == nil then topNames[#topNames + 1] = row.name; end
     end
-    check('UT1 util tier is owned-only (3 rows)', #util, 3);
+    check('UT1 util tier is owned-only (5 rows)', #util, 5);
     local haveMaat = false;
     for _, r in ipairs(util) do if r.name == "Maat's Cap" then haveMaat = true; end end
     check('UT1b Maat\'s Cap surfaced', haveMaat, true);
+    -- Nexus Cape + Shadow Lord Shirt moved OFF the instant/panic strip into the
+    -- "Other Teleports" cascade (Henrik, 2026-07-26) -- they are 30s enchants to a
+    -- fixed destination, not instant options. They LEAD the cascade (MENU order).
+    check('UT1c Nexus Cape leads the util tier',   util[1] and util[1].name, 'Nexus Cape');
+    check('UT1d Shadow Lord Shirt follows it',     util[2] and util[2].name, 'Shadow Lord Shirt');
+    check('UT1e neither is left on the top strip',
+        (function()
+            for _, n in ipairs(topNames) do
+                if n == 'Nexus Cape' or n == 'Shadow Lord Shirt' then return n; end
+            end
+            return '';
+        end)(), '');
     -- Kazham Earring: a dim not-owned row INSIDE the ear cascade, after Norg
     local kazhamAt, norgAt = nil, nil;
     for i, n in ipairs(earNames) do
@@ -12897,6 +12914,33 @@ end)();
     check('SET48 no art -> the wide width', hb.w, mn._MENU_W);
     check('SET49 no art -> declarative (no render fn)', hb.render, nil);
     check('SET50 fallback still carries the tooltip', type(hb.tip), 'string');
+
+    -- SET55-58: the Teleports popup's QUICK WINDOW rows (Henrik, 2026-07-26 --
+    -- Hobby bar + Lockstyle, replacing the Automations/HELM/Fishing cascades).
+    -- Each row hands its key to menuui.activate and asks filetex for assets\<key>.png,
+    -- and BOTH lookups fail SILENTLY: a renamed row key makes the row a no-op, a
+    -- renamed asset makes it a blank cell. Neither is visible from a load test, so
+    -- the source is parsed and both halves pinned here.
+    local gsrc = nil;
+    do
+        local f = io.open('ui/gearui.lua', 'r');
+        if f ~= nil then gsrc = f:read('*a'); f:close(); end
+    end
+    check('SET55 gearui is readable', gsrc ~= nil, true);
+    local qkeys = {};
+    for k in tostring(gsrc or ''):gmatch("renderQuickWindowRow%('([%w_]+)'") do
+        qkeys[#qkeys + 1] = k;
+    end
+    check('SET56 two quick-window rows', table.concat(qkeys, ','), 'hobbybar,lockstyle');
+    local known, badKey, badArt = {}, {}, {};
+    for _, k in ipairs(mn._menuRows(true)) do known[k] = true; end
+    for _, k in ipairs(qkeys) do
+        if not known[k] then badKey[#badKey + 1] = k; end
+        local f = io.open('assets/' .. k .. '.png', 'rb');
+        if f == nil then badArt[#badArt + 1] = k; else f:close(); end
+    end
+    check('SET57 every quick row is a real Menu row key', table.concat(badKey, ','), '');
+    check('SET58 every quick row has its art on disk',    table.concat(badArt, ','), '');
 end)();
 
 -- ---------------------------------------------------------------------------

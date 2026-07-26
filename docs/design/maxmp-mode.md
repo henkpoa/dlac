@@ -143,7 +143,8 @@ their precedence in the per-slot chain.
 - **Automations tab → MaxMP** (graduated 2026-07-21; the hidden ruling
   rescinded): ON/OFF switch reflecting the live mode (modestate mirror,
   1s re-read; toggles via the explicit command), battery grid, idle-set
-  picker. The Teleports quick menu carries the same switch.
+  picker. (The Teleports quick menu carried the same switch until
+  2026-07-26; that cascade is gone — the tab is the one surface now.)
 
 ### Data flow
 

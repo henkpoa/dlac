@@ -436,9 +436,14 @@ local MENU = {
     { name = 'Warp Ring',         label = 'Warp',         cmd = '/dl w',     ownedOnly = true },
     { name = 'Provenance Ring',   label = 'Provenance',   cmd = '/dl p',     ownedOnly = true },
     { name = 'Chocobo Whistle',   label = 'Chocobo',      cmd = '/dl c',     ownedOnly = true },
-    -- Under the Whistle (Henrik, 2026-07-20): teleport to the party leader.
-    { name = 'Nexus Cape',        label = 'Nexus',        cmd = '/dl nexus', ownedOnly = true },
-    { name = 'Shadow Lord Shirt', label = 'Zvahl Keep',   cmd = '/dl shirt', ownedOnly = true },
+    -- Nexus Cape and Shadow Lord Shirt moved OFF the top strip into the "Other
+    -- Teleports" cascade (Henrik, 2026-07-26). The top strip is the instant/panic
+    -- row -- warp out, call the chocobo -- and these two are ordinary 30s enchant
+    -- teleports to a fixed destination, i.e. exactly what that cascade is. They
+    -- lead it (grp order follows this table) because they are the two you actually
+    -- reach for. Still ownedOnly, still /dl nexus and /dl shirt.
+    { name = 'Nexus Cape',        label = 'Party leader', cmd = '/dl nexus', ownedOnly = true, grp = 'util' },
+    { name = 'Shadow Lord Shirt', label = 'Zvahl Keep',   cmd = '/dl shirt', ownedOnly = true, grp = 'util' },
     { name = SCROLLS.ir.name,     label = 'Retrace',      cmd = '/dl ir',    ownedOnly = true },
 };
 -- Earrings, rings and the utility family carry their grp through to the rows:

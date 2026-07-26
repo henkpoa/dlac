@@ -230,6 +230,29 @@ that performs the promotion **empties this section in the same commit as the mer
 entry left standing here after a merge is how "is this on main?" becomes unanswerable —
 see hard rule 14, which this section exists to serve.
 
+- **Teleports floating menu rework. DONE 2026-07-26, on `dev`** (addon `2026.07.26v`).
+  Henrik's call, verbatim: *"Move Nexus and zvahl keep (shadow lort shirt) to other
+  teleports. Keep the exp rings as they are, it's awesome. Remove Automations, HELM and
+  Fishing. Add: Hobbybar, Lockstyle."* **Not field-confirmed yet.**
+  - **The move** is one `grp = 'util'` tag per row in `feature/useitem.lua`'s `MENU`
+    (`Nexus Cape`, `Shadow Lord Shirt`) — the popup tiers itself off that tag, so no GUI
+    code moved. They lead the cascade (it follows `MENU` order). Nexus' label became the
+    *destination* (`Party leader`), because in that cascade the first column is where you
+    land, not what the item is called — the item name sits right beside it. `/dl nexus`
+    and `/dl shirt` are untouched. The top strip is now purely the instant/panic options.
+  - **The removal** deleted `renderAutomationsQuick` / `renderHelmQuick` /
+    `renderFishQuick` outright (~259 lines, 6 chunk locals returned to gearui's 200-local
+    budget). No behaviour lived only there: every switch they carried is on the
+    Automations tab or the hobby bar.
+  - **The additions** are two plain rows, not cascades — the window IS the content. Both
+    route through `menuui.activate(key)`, the same seam the Menu rows use, so "what the
+    Lockstyle row does" has exactly one definition, and they wear the Menu's own art via
+    `filetex.handle(key)`.
+  - Both those lookups fail **silently** (renamed key → dead row; renamed asset → blank
+    cell), so `SET55-58` parse the row keys out of `ui/gearui.lua` and pin them against
+    `menuui._menuRows` and `assets\`. `UT1c-e` pin the move. Suites: 3871 + 549 green,
+    Windows and WSL.
+
 - **Auto HELM hold tail 4s → 5s. DONE 2026-07-26, on `dev`** (addon `2026.07.26u`).
   Henrik's ruling from the field: the gear was snapping back to idle a beat too early
   between points. One constant — `M.AUTO_HOLD_S` in `feature/helmwatch.lua` — read by
