@@ -84,6 +84,20 @@ A row that wins a slot in order to write *nothing* is a different kind of thing.
    survives as a per-frame copy for one job: while free equip is on, clicking an alternative goes
    out as the game's native `/equip`.
 
+9. **AMENDED 2026-07-26, same day, on Henrik's first field run — the chat output is ONE LINE.**
+   (*"Works, but please remove all the text. Just say stuff like 'Hands disabled - enable by
+   /dlac enable hands'."*) The five-line arm message stated precedence, lifetime, both release
+   doors and what "no equip and no unequip" means. Every one of those has a better home that
+   already existed — precedence is the Claim Priority panel, the live state is `/dl prio`, and
+   what actually happened to a slot is `/dl why`. A chat line is for the **acknowledgement**.
+
+   What survives the cut is the release door, because an ack you cannot undo is worse than a
+   paragraph: `Hands disabled - enable by /dlac enable hands`. The lines say **`/dlac`**, the
+   long prefix, because it is the form Henrik reaches for and `argStart` has always accepted
+   both — `CMD17c`–`CMD17f` drive `/dlac` end to end so that stays true. The tests pin the
+   exact strings *and* the line COUNT (`CMD16c`, `CMD18f`): terse is the requirement, and a
+   count is the only thing that can catch prose creeping back in.
+
 Extends ADR 0012 (a second pinned row, and the first claim with no apply) and ADR 0021 (shares its
 watch; inverts its claim-all-sixteen rule, with the reason). Supersedes nothing.
 

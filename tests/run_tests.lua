@@ -13607,11 +13607,29 @@ end)();
         local e16 = run('/dl disable');
         check('CMD16 /dl disable is owned (whitelisted, not silently dropped)', e16.blocked, true);
         check('CMD16b bare /dl disable takes all 16',  #D.disabledList(), 16);
-        check('CMD16c ...and names the release door',  saidHas('/dl enable all'), true);
-        check('CMD16d ...and its own lifetime',        saidHas('job change'), true);
+        -- ONE LINE (Henrik, 2026-07-26: "please remove all the text"). It still
+        -- has to carry the release door -- an ack you cannot undo is worse than
+        -- a paragraph -- so that is what is pinned, plus the line COUNT, because
+        -- "terse" is the requirement and only a count can regress silently.
+        check('CMD16c ...in one line',                 #said, 1);
+        check('CMD16d ...naming the release door',     saidHas('/dlac enable'), true);
+        check('CMD16e ...and reading as Henrik asked', said[1], '[dlac] All slots disabled - enable by /dlac enable');
         local e17 = run('/dl enable');
         check('CMD17 /dl enable is owned too',         e17.blocked, true);
         check('CMD17b ...and releases everything',     D.disabledOn(), false);
+
+        -- THE LONG PREFIX IS REAL (Henrik, 2026-07-26: "do we have /dlac enable
+        -- and such as well? If so, we need it"). argStart accepts both, and the
+        -- chat lines say /dlac, so a player who copies what they are told back
+        -- into the box must land somewhere. Driven, not read off argStart.
+        local e17c = run('/dlac disable feet');
+        check('CMD17c /dlac disable <slot> works', e17c.blocked and D.disabledOn('feet'), true);
+        local e17d = run('/dlac enable feet');
+        check('CMD17d /dlac enable <slot> works',  e17d.blocked and not D.disabledOn('feet'), true);
+        run('/dlac disable');
+        check('CMD17e /dlac disable bare works',   #D.disabledList(), 16);
+        run('/dlac enable');
+        check('CMD17f /dlac enable bare works',    D.disabledOn(), false);
 
         run('/dl disable head');
         check('CMD18 a single slot disables alone',    D.disabledList()[1], 'head');
@@ -13620,8 +13638,10 @@ end)();
         check('CMD18c a second slot joins it',         #D.disabledList(), 2);
         run('/dl enable head');
         check('CMD18d ...and one can be released alone', D.disabledList()[1], 'ammo');
-        check('CMD18e ...with the rest still named back', saidHas('Still hands-off: ammo'), true);
+        check('CMD18e ...with the rest still named back', said[1], '[dlac] Head enabled - still disabled: ammo');
+        check('CMD18f ...still one line',                 #said, 1);
         run('/dl enable all');
+        check('CMD18g the all-clear is one line too', said[1], '[dlac] All slots enabled');
 
         -- The two off-forms, so nobody has to guess which release word works.
         run('/dl disable all');
@@ -13632,7 +13652,7 @@ end)();
         check('CMD19b /dl disable <slot> off releases that slot', D.disabledOn('legs'), false);
 
         local e20 = run('/dl disable nosuchslot');
-        check('CMD20 an unknown slot is named back',    saidHas('is not a slot name'), true);
+        check('CMD20 an unknown slot is named back',    said[1], '[dlac] "nosuchslot" is not a slot');
         check('CMD20b ...and still owns the command',   e20.blocked, true);
         check('CMD20c ...having disabled nothing',      D.disabledOn(), false);
 
@@ -13640,8 +13660,8 @@ end)();
         -- other, is worth a line every time (the /lac disable precedent).
         run('/dl disable hands');
         run('/dl naked');
-        check('CMD21 /dl naked warns that free equip outranks it', saidHas('FREE EQUIP is on'), true);
-        check('CMD21b ...naming the slot it cannot strip',         saidHas('hands'), true);
+        check('CMD21 /dl naked warns that free equip outranks it', saidHas('Free equip is on'), true);
+        check('CMD21b ...naming the slot it cannot strip',         saidHas('hands stay dressed'), true);
         run('/dl dress');
         run('/dl enable all');
 

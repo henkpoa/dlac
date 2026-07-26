@@ -3109,6 +3109,15 @@ function M.disabledOn(slot)
     return M.disabledSlots[string.lower(tostring(slot))] == true;
 end
 
+-- 'hands' -> 'Hands' for a chat line. The canon list is the display vocabulary
+-- (Ring1, Ear2), so this is a lookup rather than a first-letter upper.
+local SLOT_LABEL = {};
+for i, s in ipairs(LAC_SLOTS) do SLOT_LABEL[s] = LAC_SLOTS_CANON[i]; end
+function M.slotLabel(slot)
+    slot = string.lower(tostring(slot or ''));
+    return SLOT_LABEL[slot] or slot;
+end
+
 -- The disabled slots, sorted, in canonical LAC order (the /dl why + chat lists).
 function M.disabledList()
     local out = {};
@@ -7317,34 +7326,27 @@ if engineActive() then
             end
             target = target or 'all';
             if target ~= 'all' and not LAC_SLOT_OK[target] then
-                print(string.format('[dlac] %s: "%s" is not a slot name.', sub, tostring(target)));
-                print('[dlac]   Slots: ' .. table.concat(LAC_SLOTS, ', ') .. ' -- or "all".');
+                print(string.format('[dlac] "%s" is not a slot', tostring(target)));
                 return;
             end
+            -- ONE LINE, always (Henrik, 2026-07-26: "please remove all the text").
+            -- Everything the paragraph used to say has a better home: precedence
+            -- is Claim Priority, the state readout is /dl prio, and what actually
+            -- happened to a slot is /dl why. A chat line is for the ACK.
             local before = #M.disabledList();
             M.setDisabled(target, want);
             local now = M.disabledList();
-            if #now == 0 then
-                if before == 0 then
-                    print('[dlac] free equip is already off -- dlac is dressing all 16 slots.');
-                    print('[dlac]   /dl disable [slot|all] hands a slot back to you; dlac then writes nothing to it.');
-                else
-                    print('[dlac] free equip: OFF -- dlac owns all 16 slots again. Your sets land on the next pass.');
-                end
-                return;
+            local label = (target == 'all') and 'All slots' or M.slotLabel(target);
+            if want then
+                print(string.format('[dlac] %s disabled - enable by /dlac enable%s',
+                    label, (target == 'all') and '' or (' ' .. target)));
+            elseif before == 0 then
+                print('[dlac] Nothing was disabled');
+            elseif #now == 0 then
+                print(string.format('[dlac] %s enabled', label));
+            else
+                print(string.format('[dlac] %s enabled - still disabled: %s', label, table.concat(now, ', ')));
             end
-            if not want then
-                print(string.format('[dlac] free equip: %s re-enabled -- dlac dresses it again on the next pass.', target));
-                print('[dlac]   Still hands-off: ' .. table.concat(now, ', ') .. '   (/dl enable all releases the rest)');
-                return;
-            end
-            print(string.format('[dlac] FREE EQUIP -- dlac will not touch %d slot(s): %s',
-                #now, table.concat(now, ', ')));
-            print('[dlac]   No equip and no unequip. Triggers, pins, automations, a locked set and even /dl naked');
-            print('[dlac]   all stop here -- equip these by hand and they stay put.');
-            print(string.format('[dlac]   Release: /dl enable %s   (or /dl enable all)',
-                (target == 'all') and 'all' or target));
-            print('[dlac]   Drops by itself on a job change, a logout, or a Reload LAC.');
             return;
         end
 
@@ -7410,13 +7412,12 @@ if engineActive() then
                     table.concat(above, ', ')));
             end
             -- Free equip (ADR 0024) is the ceiling, so a disabled slot keeps its
-            -- piece on through the strip. Say which -- "I went naked and my hands
-            -- are still on" is a one-line answer that costs a /dl why otherwise.
+            -- piece on through the strip. One line -- "I went naked and my hands
+            -- are still on" otherwise costs a /dl why to answer.
             local dzNow = M.disabledList();
             if #dzNow > 0 then
-                print(string.format('[dlac]   FREE EQUIP is on for %s -- those stay dressed (dlac cannot unequip them either).',
+                print(string.format('[dlac]   Free equip is on - %s stay dressed (/dlac enable all)',
                     table.concat(dzNow, ', ')));
-                print('[dlac]   /dl enable all first if you want everything off.');
             end
             -- THE ONE WAY NAKED SILENTLY DOES NOTHING. LuaAshitacast's own
             -- /lac disable (the Equipped tab's "Free equip") sets gState.Disabled,
