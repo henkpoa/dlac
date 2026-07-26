@@ -108,6 +108,23 @@ M.REPAIR_GAP = 30;    -- circuit breaker on the party-line repair (below): a bus
 M.BOX_NAME   = 'Ephemeral Box';
 M.BOX_RANGE  = 5;     -- yalms -- FIELD-PINNED (Henrik 2026-07-20; eboxammo EB9)
 
+-- CHAT MODE IS NOT OURS TO ASSUME (2026-07-26). QueueCommand mode 1 is Typed:
+-- the string goes out exactly as if he had typed it, so a BARE `!box store`
+-- rides whatever his DEFAULT CHAT MODE happens to be. The server takes `!` from
+-- any 0x0B5 chat kind -- say, shout, party, linkshell, yell, emote alike,
+-- because the `!` branch in 0x0b5_chat_std.cpp returns BEFORE the kind switch --
+-- but a TELL is a different packet (0x0B6, chat_name), and that handler has no
+-- `!` branch at all. In tell mode `!box store` is therefore whispered at a
+-- player and the box never hears it. Tab-cycling the chat box walks
+-- Say -> Shout -> Party -> Linkshell -> Tell, so that is one keypress away, and
+-- easy to misremember as "it broke when I joined a party".
+--
+-- Pinning the kind costs nothing and deletes the whole class. The trade: if the
+-- command is ever NOT recognised (renamed, or the E-Box goes away) the raw text
+-- leaks into /say instead of into his party. Set to '' to send the bare form
+-- again -- which is what trove still sends (trove/plugins/ebox.lua:628).
+M.CHAT_PIN   = '/say ';
+
 -- ---------------------------------------------------------------------------
 -- State
 -- ---------------------------------------------------------------------------
@@ -591,17 +608,24 @@ end
 -- i.e. what Restock just fetched. Callers must confirm before calling this.
 -- We mark dirty HERE because a state never hears its own QueueCommand (the
 -- `!box` watch below will not fire for us) -- bookkeep at the queue site.
+-- The exact string that goes on the wire, built in one place so the chat-kind
+-- pin (M.CHAT_PIN, above) cannot drift away from what the tests assert.
+function M.boxCommand(sub)
+    return (M.CHAT_PIN or '') .. '!box ' .. tostring(sub);
+end
+
 function M.boxStore()
     if not M.isCW() then return false; end
+    local cmd = M.boxCommand('store');
     local ok = pcall(function()
-        AshitaCore:GetChatManager():QueueCommand(1, '!box store');
+        AshitaCore:GetChatManager():QueueCommand(1, cmd);
     end);
     -- Arm, exactly as if we had seen someone else type it (a state never hears
     -- its own QueueCommand, so the `!box` watch will not fire for us). Store is
     -- instant rather than a menu, but the rule is the same and strictly better:
     -- if nothing storable was in your bags, nothing moves and we count nothing.
     M._armMenu();
-    M._trace('*', 'sent chat command: !box store -- waiting for items to move');
+    M._trace('*', 'sent chat command: ' .. cmd .. ' -- waiting for items to move');
     return ok == true;
 end
 
@@ -883,10 +907,23 @@ end);
 -- `!box ammo`, and `!box <item name>`, which is a WITHDRAW BY NAME we would
 -- otherwise never see (our arithmetic would drift low, silently). So we watch
 -- the PREFIX, not one subcommand. Never blocked: it is the server's command.
+--
+-- Both forms count. BARE `!box ...` is what trove's four buttons send and what
+-- he types by reflex; CHAT-PINNED `/say !box ...` is what we send now
+-- (M.CHAT_PIN) and what he will type once he knows the trick. So strip at most
+-- one leading /command and re-test. A false arm costs nothing -- arming spends
+-- zero packets and expires on its own -- so a loose match is the cheap side to
+-- err on. Split out from the handler so the tests can drive it (EBC15e).
+function M._isBoxCommand(raw)
+    local s = string.lower(tostring(raw or ''));
+    local body = s:match('^%s*/%a+%s+(.*)$') or s;
+    return body:match('^%s*!box') ~= nil;
+end
+
 pcall(function()
     ashita.events.register('command', 'dlac_eboxclient_boxwatch', function(e)
         local raw = string.lower(e.command or '');
-        if raw:match('^%s*!box') ~= nil then
+        if M._isBoxCommand(raw) then
             -- Do NOT dirty here. The command opens a menu; nothing has changed
             -- yet, and it may never (he can cancel). Arm, and wait for items to
             -- actually move -- see M._onInventoryChange.
