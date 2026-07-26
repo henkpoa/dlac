@@ -194,6 +194,21 @@ reads, both structural:
     along), so the editor never shows an empty un-savable body box (TE45); deleting case 1
     promotes the next case into the seat (TE53).
 
+**Field round 2 (addon v2026.07.26m, 2026-07-26).** Henrik's `/dl why` screenshot witnessed
+the case-naming live — and showed a rule labeled `any#|(any|status=Engaged)#|(any|status=
+Resting)`: both conditions were added with `+ |`, so each case saved as
+`{ when = {}, whenAny = { {..} } }` — an empty `&` leg plus a one-entry `|` leg, which the
+serializer's oldest-form fold cannot reach (it only folds cases with no internal `|`), so
+the rule also carried a `hasCases` guard it did not need. **Canonical case legs**
+(`triggersui` `foldLoneAny`, applied in `_buildCases` and to case 1 in `_buildRuleShape`):
+a case whose `&` leg is empty and whose `|` leg holds exactly ONE entry folds that entry
+into the `&` leg — identical semantics (with one lone entry the two legs say the same
+thing), and the whole chain then collapses: Henrik's exact rule re-saves as the OLD pure-OR
+form (`whenAny` two entries, no cases list, no guard) and `/dl why` names the winner
+`standalone status=Resting` instead of `case (status=Resting)`. The BODY never folds —
+case-less labels stay byte-for-byte stable. Already-saved noisy rules canonicalize on
+their next edit-save. (TE54–TE56)
+
 v2 candidates (matcher is an open table; additive): day/weather/moon beyond the obi rule,
 subjob. (`area` landed in v84 as `inTown`, off the server-derived `data/zones.lua` town set;
 more zone predicates — a specific-zone match, `IN_DYNAMIS` — reuse the same file. Target

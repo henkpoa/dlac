@@ -2404,6 +2404,27 @@ end)();
                 { action = { Type = 'Black Magic', Element = 'Fire' },
                   player = { Status = 'Idle', TP = 0 } }), false);
 
+        -- ---- canonical case legs (field round 2 -- Henrik's /dl why screen) ----
+        -- A lone `+ |` condition inside a case must not save an empty-&-leg case
+        -- ({ when = {}, whenAny = { {..} } }): identical meaning, noisier label
+        -- ('any|'), a 'case (x)' /dl why name instead of 'standalone x', and a
+        -- version guard the rule does not need.
+        local clF = tg._buildCases({ { op = '|',
+            conds = { { key = 'status', value = 'Resting', any = true } } } });
+        check('TE54 a lone | condition folds into the case & leg',
+            (#clF == 1) and (clF[1].whenAny == nil) and clF[1].when.status, 'Resting');
+        -- Henrik's exact field rule: case 1 = OR (status=Engaged via + |), plus
+        -- a | case (status=Resting via + |). Must serialize as the OLD pure-OR
+        -- form -- no cases list, no guard.
+        local wH, aH, clH = tg._buildRuleShape(
+            { { key = 'status', value = 'Engaged', any = true } }, '|',
+            { { op = '|', conds = { { key = 'status', value = 'Resting', any = true } } } });
+        local tH = D.serializeTriggers({ Item = { { when = wH, whenAny = aH, cases = clH, set = 'T' } } });
+        local tCanon = D.serializeTriggers({ Item = { { when = {},
+            whenAny = { { status = 'Engaged' }, { status = 'Resting' } }, set = 'T' } } });
+        check('TE55 the field rule (both conds via + |) folds to the old pure-OR form', tH, tCanon);
+        check('TE56 ...and carries no version guard', tH:find('hasCases', 1, true) == nil, true);
+
         -- ---- the REAL popup, frame by frame ----
         local UP = {};
         for i = 1, 250 do

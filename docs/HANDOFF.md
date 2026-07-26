@@ -461,16 +461,22 @@ research already recorded. In rough priority order:
     same top-right **AND/OR selection** every box has (it was the one case whose type only
     the system could set); case 1 = OR saves an empty body riding the `|` tier, safe under
     the engine's OR-only law (`matches()` `nAnd > 0`), byte-identical round-trip pinned.
-    Tests TE45–TE53. Detail: trigger-system.md §"Field iteration 1". Still unwitnessed:
-    `/dl why` naming the matched case on a live fire (slice 1's strings) — worth one look
-    next session.
+    Tests TE45–TE53. Detail: trigger-system.md §"Field iteration 1".
+    **Field round 2 (same day, addon `26m`): `/dl why` case-naming WITNESSED live** — and
+    the screenshot exposed a shape bug: a lone `+ |` condition inside a case saved an
+    empty-`&`-leg case (`any|` label noise, `case (x)` naming, an unneeded `hasCases`
+    guard). Fixed by **canonical case legs** (`foldLoneAny`: an empty `&` leg + exactly one
+    `|` entry folds into the `&` leg; the BODY never folds). Henrik's exact rule now
+    re-saves as the old pure-OR form, named `standalone status=Resting`. Already-saved
+    noisy rules canonicalize on their next edit-save. TE54–TE56;
+    trigger-system.md §"Field round 2".
   - **In flight: #128 (polish) — `ready-for-agent` toggled 2026-07-26 after the field
     read landed.** Shepherd its PR next. The agent must NOT regress field iteration 1
     (TE45–TE53 pin it; the layout reactions on #128/#127 override the skeleton's own
     choices). #129 (blueprints) stays unlabeled until #128 merges — one at a time.
     Collision watchlist: engine **v128 is TAKEN** (AutoAmmo Range-awareness, same day) and
-    addon is at **`26k`** → next free **v129** / **`26l`**; test ranges
-    CS/TC/TE/TRC/MC/TB/LS*/CMD/NK*/LSP are all taken (TE runs through TE53).
+    addon is at **`26m`** → next free **v129** / **`26n`**; test ranges
+    CS/TC/TE/TRC/MC/TB/LS*/CMD/NK*/LSP are all taken (TE runs through TE56).
   - **Open Henrik decisions**: (1) the `hasCases` guard token is player-visible in
     hand-edited trigger files — naming sign-off still open, rename is one line NOW and a
     migration later; (2) the slice-1 player-visible strings (`[via together-block]` /

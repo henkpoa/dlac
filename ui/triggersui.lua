@@ -2142,6 +2142,22 @@ local function buildLegs(conds)
 end
 M._buildLegs = buildLegs;   -- headless test seam
 
+-- CANONICAL case legs (field round 2, 2026-07-26 -- Henrik's /dl why screen).
+-- A case whose `&` leg is EMPTY and whose `|` leg holds exactly ONE entry means
+-- just that entry -- fold it into the `&` leg. Identical semantics (a case holds
+-- iff its & leg holds or any | entry does; with one lone entry the two legs say
+-- the same thing), but without the fold a lone `+ |` click inside a case saves
+-- { when = {}, whenAny = { {..} } }: the label grows an 'any|', the /dl why name
+-- reads 'case (x)' instead of 'standalone x', and the serializer's oldest-form
+-- fold misses it -- stamping the version guard on a rule the old schema can
+-- express. The BODY never folds (case-less labels stay byte-for-byte stable).
+local function foldLoneAny(when, whenAny)
+    if next(when) == nil and whenAny ~= nil and #whenAny == 1 then
+        return whenAny[1], nil;
+    end
+    return when, whenAny;
+end
+
 -- Builder cases -> the rule's `cases` list (issue #127). Each case's flat rows
 -- become its own { op, when, whenAny }; an EMPTY case (no live leg) is dropped
 -- here as a last defense -- the popup already refuses to save while one exists,
@@ -2153,6 +2169,7 @@ local function buildCases(addCases)
     for _, cs in ipairs(addCases or {}) do
         if type(cs) == 'table' and (cs.op == '&' or cs.op == '|') then
             local when, whenAny = buildLegs(cs.conds);
+            when, whenAny = foldLoneAny(when, whenAny);
             if next(when) ~= nil or (whenAny ~= nil and #whenAny > 0) then
                 cases = cases or {};
                 cases[#cases + 1] = { op = cs.op, when = when, whenAny = whenAny };
@@ -2174,6 +2191,8 @@ local function buildRuleShape(conds, bodyOp, addCases)
     local when, whenAny = buildLegs(conds);
     local cases = buildCases(addCases);
     if bodyOp == '|' and (next(when) ~= nil or whenAny ~= nil) then
+        -- Case 1 rides the cases list, so it takes the canonical case legs too.
+        when, whenAny = foldLoneAny(when, whenAny);
         local list = { { op = '|', when = when, whenAny = whenAny } };
         for _, c in ipairs(cases or {}) do list[#list + 1] = c; end
         when, whenAny, cases = {}, nil, list;
