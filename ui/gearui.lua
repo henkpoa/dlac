@@ -113,8 +113,10 @@ local ui = {
     -- Equipped tab
     eqSelected  = nil,        -- selected slot label
     lockEquipped = { false }, -- "Lock when equipped" toggle
-    freeEquip    = { false },  -- "Free equip": /lac disable + native /equip so manual swaps stick
-    _freePrev    = nil,        -- edge-detect for the freeEquip toggle
+    freeEquip    = { false },  -- "Free equip" (ADR 0024): mirrors the engine's disabled slots each
+                               -- frame; read by the equip path to send native /equip. NOT the state.
+    _freePrev    = nil,        -- (retired with ADR 0024's mirror-driven checkbox; the engine can drop
+                               -- free equip on its own, so a remembered previous value went stale)
     -- Shared (Equipped + Sets)
     showStats = false,        -- left "Diablo-style" stats panel toggle
     sortMode  = 'Level',      -- gear-list sort: 'Name' | 'Level' (Level default -- Henrik:
@@ -1139,12 +1141,12 @@ end
 -- it carries (__locks, and __naked since v122). Widened rather than copied: this
 -- file is already the third reader of modestate.lua (priorityui and the engine's
 -- own loadModeState are the others) and a fourth would be one throttle too many.
-local _lockMirror = { at = -1, locks = {}, naked = false, held = nil };
+local _lockMirror = { at = -1, locks = {}, disabled = {}, naked = false, held = nil };
 local function engineModestate()
     local now = os.time();
     if now == _lockMirror.at then return _lockMirror; end
     _lockMirror.at = now;
-    local locks, naked, held = {}, false, nil;
+    local locks, disabled, naked, held = {}, {}, false, nil;
     pcall(function()
         local base = dataDir();
         if base == nil then return; end
@@ -1153,16 +1155,21 @@ local function engineModestate()
         local ok, t = pcall(chunk);
         if not ok or type(t) ~= 'table' then return; end
         if type(t.__locks) == 'table' then locks = t.__locks; end
+        -- __disabled: free equip (ADR 0024). Same display-only contract as
+        -- __locks -- the ENGINE owns the state, this is only a view of it.
+        if type(t.__disabled) == 'table' then disabled = t.__disabled; end
         naked = (t.__naked == true);
         -- __held: the locked set (ADR 0022). Present only while one is held, so
         -- nil IS the "nothing locked" answer -- there is no lock COUNT to read
         -- any more, which is why the Sets tab button stopped being a toggle.
         if type(t.__held) == 'table' and type(t.__held.name) == 'string' then held = t.__held; end
     end);
-    _lockMirror.locks, _lockMirror.naked, _lockMirror.held = locks, naked, held;
+    _lockMirror.locks, _lockMirror.disabled = locks, disabled;
+    _lockMirror.naked, _lockMirror.held = naked, held;
     return _lockMirror;
 end
 local function engineLocks() return engineModestate().locks; end
+local function engineDisabled() return engineModestate().disabled; end
 local function engineNaked() return engineModestate().naked; end
 local function engineHeld()  return engineModestate().held;  end
 
@@ -1203,6 +1210,25 @@ local function setEngineNaked(on)
     else
         pcall(function()
             AshitaCore:GetChatManager():QueueCommand(1, (on == true) and '/dl naked' or '/dl dress');
+        end);
+    end
+    _lockMirror.at = -1;                               -- re-read the mirror on the next frame
+end
+
+-- Free equip (ADR 0024) -- the Equipped tab's switch, all 16 slots. Same
+-- which-state-owns-the-engine split as setEngineNaked directly above, and for
+-- the same hard reason: a state never hears its OWN QueueCommand'd commands, so
+-- under the native flag a queued '/dl disable' would reach nobody.
+--
+-- This REPLACED '/lac disable' on that checkbox. The old wiring was not merely
+-- redundant: under the native engine LuaAshitacast is not the thing equipping
+-- you, so the switch that says "stop auto-swapping my gear" did nothing at all.
+local function setEngineFreeEquip(on)
+    if setup.isNative() then
+        pcall(function() require('dlac\\dispatch').setDisabled('all', on == true); end);
+    else
+        pcall(function()
+            AshitaCore:GetChatManager():QueueCommand(1, (on == true) and '/dl disable all' or '/dl enable all');
         end);
     end
     _lockMirror.at = -1;                               -- re-read the mirror on the next frame
@@ -4398,6 +4424,8 @@ host.provide({
     getEquippedId = getEquippedId, equipToSlot = equipToSlot,
     engineLocks = engineLocks, lacSlot = lacSlot,
     engineNaked = engineNaked, setEngineNaked = setEngineNaked,
+    engineDisabled = engineDisabled,           -- free equip (ADR 0024): the disabled-slot set
+    setEngineFreeEquip = setEngineFreeEquip,
     engineHeld = engineHeld,                   -- the locked set (ADR 0022); Equipped tab owns its state
     isNative = setup.isNative,                 -- native => no LuaAshitacast, so no /lac disable fence
     lockMirrorDirty = function() _lockMirror.at = -1; end,

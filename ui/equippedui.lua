@@ -238,34 +238,54 @@ local function renderEquippedTab(job, level)
         ui.showStats = not ui.showStats;
     end
 
-    -- Free equip: disable LAC globally so it stops auto-swapping and manual equips stick.
-    -- While on, clicking an alternative uses the game's native /equip (bypasses LAC).
+    -- FREE EQUIP (ADR 0024). This used to fire /lac disable, which under the
+    -- native engine talks to a LuaAshitacast that is no longer doing the
+    -- equipping -- the switch that says "stop auto-swapping my gear" did nothing
+    -- at all in the mode we ship. It now drives dlac's own ceiling
+    -- (/dl disable all), which works identically in both engines.
+    --
+    -- The ENGINE owns the state, so the box is drawn from the mirror rather than
+    -- from a remembered addon-side flag: /dl disable from chat, and the job-change
+    -- / logout release, both have to move this checkbox. That is also why the old
+    -- ui._freePrev edge-detect is gone -- Checkbox's return value IS the edge, and
+    -- a remembered previous value is exactly what goes stale when the engine
+    -- drops the state on its own.
     imgui.SameLine(0, 12);
-    imgui.Checkbox('Free equip', ui.freeEquip);
-    if imgui.IsItemHovered() then
-        imgui.SetTooltip('Runs /lac disable so LAC stops auto-swapping and your manual equips stay put --\nhandy for fiddling with gear. While on, clicking an alternative equips via the\ngame\'s native /equip (outside LAC). Uncheck to /lac enable and hand control back.');
-    end
-    if ui._freePrev ~= nil and ui._freePrev ~= ui.freeEquip[1] then
-        local cmd = (ui.freeEquip[1] == true) and '/lac disable' or '/lac enable';
-        pcall(function() AshitaCore:GetChatManager():QueueCommand(1, cmd); end);
-        if ui.freeEquip[1] == false then               -- leaving free-equip clears engine locks too
+    local dzMap = (S.engineDisabled ~= nil) and S.engineDisabled() or {};
+    local nDis = 0;
+    for _, v in pairs(dzMap) do if v == true then nDis = nDis + 1; end end
+    local fe = { nDis > 0 };
+    if imgui.Checkbox('Free equip', fe) and S.setEngineFreeEquip ~= nil then
+        S.setEngineFreeEquip(fe[1]);
+        if not fe[1] then                              -- leaving free-equip clears engine locks too
             pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl lock all off'); end);
         end
     end
-    ui._freePrev = ui.freeEquip[1];
-    if ui.freeEquip[1] == true then
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Hands all 16 slots back to you: dlac writes nothing to them -- no equip, no\n'
+            .. 'unequip -- so what you put on stays on. Triggers, pins, automations, a locked\n'
+            .. 'set and even Naked all stop here; it is the one thing nothing outranks.\n\n'
+            .. 'While on, clicking an alternative equips via the game\'s native /equip.\n'
+            .. 'Also /dl disable <slot> for a single slot. Uncheck to hand control back.');
+    end
+    -- Keep the shared flag in step for the equip path below (a free-equip click
+    -- goes out as the game's native /equip, not /lac equip).
+    ui.freeEquip[1] = fe[1];
+    if fe[1] then
         imgui.SameLine(0, 10);
-        imgui.TextColored(COL.ERR, 'LAC OFF -- gear will not auto-swap');
+        imgui.TextColored(COL.ERR, (nDis >= 16) and 'FREE EQUIP -- dlac is off your gear'
+            or string.format('FREE EQUIP -- %d slot(s) are yours', nDis));
     end
 
     -- Naked (ADR 0021). Deliberately next to Free equip: the two read alike and
-    -- one BEATS the other -- /lac disable makes LuaAshitacast refuse to unequip a
-    -- disabled slot, so with Free equip on the strip lands nothing and says
-    -- nothing. Both hovers name it, and the checkbox is disabled while it applies
-    -- rather than silently doing nothing.
+    -- one BEATS the other. That used to be an accident of LuaAshitacast (its
+    -- PrepareEquip refuses to unequip a Disabled slot, so the strip landed
+    -- nothing and said nothing, in LAC mode only); since ADR 0024 it is the
+    -- stated rule in both engines -- the ceiling outranks the strip. The checkbox
+    -- is drawn unavailable rather than clickable-and-inert.
     if S.engineNaked ~= nil then
         imgui.SameLine(0, 12);
-        local blocked = (ui.freeEquip[1] == true) and not (S.isNative ~= nil and S.isNative());
+        local blocked = (nDis >= 16);
         local nk = { S.engineNaked() == true };
         if blocked then
             imgui.TextColored(COL.DIM, 'Naked');
@@ -274,8 +294,8 @@ local function renderEquippedTab(job, level)
         end
         if imgui.IsItemHovered() then
             imgui.SetTooltip(blocked and
-                ('Unavailable while Free equip is on: /lac disable makes LuaAshitacast refuse to\n'
-              .. 'unequip a disabled slot, so stripping would silently do nothing.\n'
+                ('Unavailable while Free equip owns all 16 slots: dlac cannot unequip a slot it\n'
+              .. 'has been told not to touch, so stripping would silently do nothing.\n'
               .. 'Uncheck Free equip first.')
              or ('Takes EVERY piece off and keeps it off -- a standing claim, not a one-off strip,\n'
               .. 'so your triggers and every automation ranked below it stay off your gear.\n'

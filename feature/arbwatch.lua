@@ -15,8 +15,13 @@
     So M.order reads the file as-is and it is never cleared.
 
     File format (read by dispatch.ensureArbState / M.arbOrder):
-        return { order = { "Naked", "Pins", "Locks", "AutoAmmo", "MaxMP",
+        return { order = { "Disabled", "Naked", "Pins", "Locks", "AutoAmmo", "MaxMP",
                            "Craft", "HELM", "Fishing", "Chocobo", "Triggers" } }
+
+    The two END rows are PINNED, not ranked: sanitize places "Disabled" first and
+    "Triggers" last no matter where the file puts them (ADR 0024 / ADR 0012). A
+    file that lists Disabled in the middle -- and every file written before v129
+    omits it entirely -- still gets a ceiling.
 
     A row the file does not list is restored at its DEFAULT position, not appended
     (v122) -- so every existing file, written before a new claimant existed, still
@@ -36,13 +41,17 @@ local M = {};
 -- default and reimplements the same drop-unknown/append-missing policy.
 local _dpok, dsp = pcall(require, 'dlac\\dispatch');
 local hasDispatch = _dpok and type(dsp) == 'table';
-local FALLBACK_DEFAULT = { 'Naked', 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
+local FALLBACK_DEFAULT = { 'Disabled', 'Naked', 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
                            'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' };
 
--- Rows a player CANNOT pick up: only the Triggers floor (always last -- the
--- claims dress over it). Locks became a draggable VETO row in step 3 (ADR 0012):
--- a claimant dragged above it punches through a locked slot, one below it stops.
-M.FIXED = { Triggers = true };
+-- Rows a player CANNOT pick up -- the two ENDS of the list, both invariants
+-- rather than rankings: the Triggers floor (always last -- the claims dress over
+-- it) and the Disabled ceiling (always first -- nothing dresses through it,
+-- ADR 0024). Locks became a draggable VETO row in step 3 (ADR 0012): a claimant
+-- dragged above it punches through a locked slot, one below it stops.
+--
+-- Keep in step with dispatch._arbPinnedRows, which is what arbOrder enforces.
+M.FIXED = { Disabled = true, Triggers = true };
 
 -- The built-in default rank (a fresh copy each call -- callers may keep it).
 function M.defaultOrder()
@@ -70,13 +79,14 @@ function M.sanitize(st)
     local out, seen = {}, {};
     local known, defIdx = {}, {};
     for i, n in ipairs(FALLBACK_DEFAULT) do known[n] = true; defIdx[n] = i; end
-    -- Triggers floor pinned last (the dispatch.arbOrder invariant, mirrored so
-    -- the headless-without-dispatch fallback agrees).
+    -- Disabled ceiling pinned first, Triggers floor pinned last (the
+    -- dispatch.arbOrder invariants, mirrored so the headless-without-dispatch
+    -- fallback agrees).
     for _, n in ipairs(given or {}) do
-        if known[n] and not seen[n] and n ~= 'Triggers' then out[#out + 1] = n; seen[n] = true; end
+        if known[n] and not seen[n] and not M.FIXED[n] then out[#out + 1] = n; seen[n] = true; end
     end
     for _, n in ipairs(FALLBACK_DEFAULT) do
-        if not seen[n] and n ~= 'Triggers' then
+        if not seen[n] and not M.FIXED[n] then
             local at = #out + 1;
             for i, have in ipairs(out) do
                 if (defIdx[have] or 0) > defIdx[n] then at = i; break; end
@@ -85,6 +95,7 @@ function M.sanitize(st)
             seen[n] = true;
         end
     end
+    table.insert(out, 1, 'Disabled');
     out[#out + 1] = 'Triggers';
     return out;
 end
@@ -176,10 +187,13 @@ function M.moveClaimant(order, fromIdx, dir)
     local n = #order;
     if type(fromIdx) ~= 'number' or fromIdx < 1 or fromIdx > n then return nil; end
     if dir ~= 1 and dir ~= -1 then return nil; end
-    if M.FIXED[order[fromIdx]] then return nil; end          -- Locks / Triggers refuse the drag
+    if M.FIXED[order[fromIdx]] then return nil; end          -- the ceiling / the floor refuse the drag
     local toIdx = fromIdx + dir;
     if toIdx < 1 or toIdx > n then return nil; end
+    -- Refusing to PICK UP a pinned row is only half of it: this is a SWAP, so a
+    -- neighbour dragged onto one would displace it just the same. Both ends.
     if order[toIdx] == 'Triggers' then return nil; end        -- never push the floor off last
+    if order[toIdx] == 'Disabled' then return nil; end        -- never push the ceiling off first
     local out = {};
     for i, v in ipairs(order) do out[i] = v; end
     out[fromIdx], out[toIdx] = out[toIdx], out[fromIdx];

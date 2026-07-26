@@ -154,6 +154,8 @@ anything *any* of your jobs can wear at its current level.
 | `/dl ui` | Open/close the GUI (also bound to **CTRL+K**) |
 | `/dl mode <name> [on\|off\|toggle]` | Flip a mode (no name: list active modes) |
 | `/dl lock <slot\|all> [on\|off\|toggle]` | Lock a slot: the engine stops equipping into it (no arg: list locks) |
+| `/dl disable [slot\|all]` / `/dl enable [slot\|all]` | **Free equip** — hand slots back to yourself. dlac writes nothing to them (no equip, no unequip), so what you put on stays on. Beats everything, including `/dl naked`. Bare `/dl disable` takes all 16; releases on a job change or logout |
+| `/dl naked` / `/dl dress` | Take everything off and hold it off; `/dl dress` gives your gear back to the triggers |
 | `/dl why` | Explain the last dispatch per handler — what matched, what equipped, which claimant won each contested slot and at what rank |
 | `/dl prio` | The live claim-priority ladder (Pins / Locks veto / automations / Triggers floor) with per-claimant status |
 | `/dl plan` | The MaxMP battery ladder: release order, thresholds, live state per band |

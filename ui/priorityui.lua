@@ -34,6 +34,7 @@ local COL_FLOOR  = { 0.80, 0.72, 0.45, 1.00 };   -- the Triggers floor / veto (s
 
 -- Short, always-visible "controlled from" label (the source hint inline).
 M.HINT = {
+    Disabled = '/dl disable | Equipped tab',
     Naked    = '/dl naked | Equipped tab',
     Pins     = 'floating gear pin menu',
     Locks    = '/dl lock | Equipped tab | Sets tab',
@@ -49,6 +50,13 @@ M.HINT = {
 -- The full source/control sentence (hover tooltip) -- exactly where each feature
 -- is set, per issue #49.
 M.SOURCE = {
+    -- The CEILING (ADR 0024). It is on this list so a player can SEE why a slot
+    -- stopped responding; it is not on it to be dragged, and the hover says so
+    -- rather than leaving them hunting for a handle that is not there.
+    Disabled = 'Set by /dl disable <slot|all> (release: /dl enable), or the Equipped tab\'s "Free equip" switch.\n'
+            .. 'A disabled slot is YOURS: dlac writes nothing to it -- no equip, no unequip -- so what you put '
+            .. 'on by hand stays on. Triggers, pins, a locked set and even Naked all stop here.\n'
+            .. 'This row cannot be moved. Every other row is a ranking; this one is a boundary.',
     -- The drag lives HERE, so the "naked except ..." trick is explained HERE and
     -- nowhere else (the panel-text standard: one home per idea, in a hover).
     Naked    = 'Set by /dl naked (release: /dl dress), or the Equipped tab\'s Naked switch.\n'
@@ -78,7 +86,11 @@ M.SOURCE = {
 -- winner attribution is /dl why's job (step 4).
 function M.statusText(name, live)
     live = live or {};
-    if name == 'Triggers' then
+    if name == 'Disabled' then
+        local n = tonumber(live.disabled) or 0;
+        return n > 0 and string.format('ON -- %d slot%s hands-off', n, n == 1 and '' or 's')
+                      or 'off -- no slots disabled';
+    elseif name == 'Triggers' then
         return 'floor -- always on';
     elseif name == 'Naked' then
         return live.naked and 'ON -- claiming all 16 slots EMPTY' or 'off';
@@ -112,6 +124,7 @@ end
 local function rowActive(name, live)
     live = live or {};
     if name == 'Triggers' then return true; end
+    if name == 'Disabled' then return (tonumber(live.disabled) or 0) > 0; end
     if name == 'Naked'    then return live.naked == true; end
     if name == 'Pins'     then return (tonumber(live.pins)  or 0) > 0; end
     if name == 'Locks'    then return (tonumber(live.locks) or 0) > 0; end
@@ -136,7 +149,7 @@ function M.buildRows(order, live)
             source    = M.SOURCE[name] or '',
             status    = M.statusText(name, live),
             active    = rowActive(name, live),
-            special   = (name == 'Locks' or name == 'Triggers'),
+            special   = (name == 'Locks' or name == 'Triggers' or name == 'Disabled'),
             draggable = (fixed[name] ~= true),
         };
     end
@@ -150,8 +163,8 @@ if not hasImgui then return M; end   -- headless: the pure half above is the mod
 -- failed to load, or a pre-login state, just leaves that row reading "off/idle".
 -- ---------------------------------------------------------------------------
 function M.gatherLive(deps)
-    local live = { pins = 0, locks = 0, maxmp = false, craft = false, helm = false,
-                   fishing = false, chocobo = false, naked = false,
+    local live = { pins = 0, locks = 0, disabled = 0, maxmp = false, craft = false,
+                   helm = false, fishing = false, chocobo = false, naked = false,
                    ammo = { on = false, job = nil } };
     local job = (deps ~= nil and type(deps.playerJob) == 'function') and deps.playerJob() or nil;
 
@@ -186,6 +199,11 @@ function M.gatherLive(deps)
             local n = 0;
             for _, v in pairs(t.__locks) do if v == true then n = n + 1; end end
             live.locks = n;
+        end
+        if type(t.__disabled) == 'table' then
+            local n = 0;
+            for _, v in pairs(t.__disabled) do if v == true then n = n + 1; end end
+            live.disabled = n;
         end
     end);
     return live;
@@ -287,7 +305,7 @@ function M.render(deps, opts)
     end
 
     imgui.Spacing();
-    imgui.TextColored(COL_DIM, 'The Triggers floor is pinned last. The Locks veto drags like any row: a claimant above it punches through a locked slot, one below it stops.');
+    imgui.TextColored(COL_DIM, 'Free equip is pinned first and the Triggers floor last -- neither moves. The Locks veto drags like any row: a claimant above it punches through a locked slot, one below it stops.');
 end
 
 return M;

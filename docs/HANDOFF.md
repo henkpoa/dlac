@@ -230,7 +230,31 @@ that performs the promotion **empties this section in the same commit as the mer
 entry left standing here after a merge is how "is this on main?" becomes unanswerable —
 see hard rule 14, which this section exists to serve.
 
-*(Empty. Last promotion: 2026-07-26 — trigger cases slices 1–3, AutoAmmo Range law, the locked set, the `&` leg and `/dl why` fixes. The record is the merge commit on `main`.)*
+- **`/dl disable` — free equip, the ceiling. BUILT 2026-07-26, on `dev`, NOT FIELD-TESTED**
+  (engine v129, ADR 0024). Henrik: *"simply make it claim the slot / slots, then don't do
+  anything at all with it, so people can free equip all they want without DLAC
+  intervention… over EVERYTHING, even /dl naked."*
+  - `/dl disable [slot|all]` / `/dl enable [slot|all]`; bare = all 16; also `/dl disable off`
+    and `/dl disable <slot> off`. `/dlac` works as the prefix too.
+  - **Not a lock and not a claim.** A lock is a veto *inside* the rank walk — four rows punch
+    through it. This is the **ceiling**: pinned first in `ARB_ORDER_DEFAULT`, undraggable
+    (`arbwatch.FIXED`, both directions), enforced in **`engineEquipSet`** — the one write
+    seam — rather than in `equipResolved`'s per-slot chain, because the whole-table
+    post-passes that run after that chain write slots the set never named and would put a
+    disabled slot straight back. `POST_ORDER` untouched.
+  - It **fills a hole that had opened silently**: the Equipped tab's *Free equip* checkbox
+    fired `/lac disable`, which under the native engine talks to a LuaAshitacast that no
+    longer equips you — the switch had been inert in the mode we ship, with no code change
+    to blame. It now drives `/dl disable all` and is **drawn from the engine mirror**, so a
+    chat command and the job-change release both move it.
+  - Lifetime is `M.worldWatch`'s (Henrik confirmed the recommendation): main job change,
+    logout, Reload LAC; never written to disk. Mirrored as `__disabled`.
+  - Tests: **DS1–DS14** end-to-end through the real `M.dispatch` (DS2 is the one that
+    matters — `/dl naked` cannot strip a disabled slot; DS3 — all 16 disabled writes
+    nothing whatsoever), **CMD16–CMD22c** driven through the real command handler,
+    **S196b2/S207–S209/NKU4** in the smoke. 3856 + 549 green, Windows and WSL.
+  - **Field test wanted:** `/dl disable main` then swap weapons by hand mid-fight; the
+    Equipped-tab checkbox in native mode; `/dl why` while a slot is disabled.
 
 ## What's left (open work, as of 2026-07-25)
 

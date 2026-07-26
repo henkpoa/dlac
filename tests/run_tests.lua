@@ -5880,13 +5880,14 @@ end)();
     local def = dispatchM._arbDefaultOrder;
     check('AR1 default order exported', type(def), 'table');
     check('AR1b exact default rank', table.concat(def, '>'),
-        'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     -- AR1c: the ADR 0012 laws the order encodes, checked as adjacency (not prose)
     local rank = {}; for i, n in ipairs(def) do rank[n] = i; end
     -- Naked (ADR 0021) is the ONE row above Pins: "naked" must mean naked, and a
     -- player who wants "naked except my pins" drags Pins over it. Do not "fix"
     -- this back to Pins == 1.
-    check('AR1d Naked outranks everything, Pins everything else', rank['Naked'] == 1 and rank['Pins'] == 2, true);
+    check('AR1d Naked outranks every RANKED row (the Disabled ceiling is not one -- ADR 0024)',
+        rank['Disabled'] == 1 and rank['Naked'] == 2 and rank['Pins'] == 3, true);
     check('AR1e Locks veto sits under Pins', rank['Locks'] == rank['Pins'] + 1, true);
     check('AR1f AutoAmmo outranks MaxMP (the deliberate change)', rank['AutoAmmo'] < rank['MaxMP'], true);
     check('AR1g MaxMP outranks Craft/HELM/Fishing (batteries over their armor)',
@@ -5898,21 +5899,21 @@ end)();
     -- law appended them, which is right only for a row that belongs last); a valid
     -- reorder is preserved.
     check('AR2 nil -> default', table.concat(dispatchM.arbOrder(nil), '>'),
-        'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AR2b no order field -> default', table.concat(dispatchM.arbOrder({ foo = 1 }), '>'),
-        'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AR2c a valid reorder is preserved',
         table.concat(dispatchM.arbOrder({ order = { 'MaxMP', 'AutoAmmo', 'Pins', 'Locks', 'Craft', 'HELM', 'Fishing', 'Triggers' } }), '>'),
-        'Naked>MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Disabled>Naked>MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>Triggers');
     -- Listed rows keep the user's order absolutely (Fishing still above Pins);
     -- every unlisted row lands where it sits by default RELATIVE to them --
     -- Naked before Fishing, Chocobo after Pins because nothing outranks it.
     check('AR2d unknown rows dropped, missing known rows restored at their default position',
         table.concat(dispatchM.arbOrder({ order = { 'Fishing', 'Nonsense', 'Pins' } }), '>'),
-        'Naked>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Pins>Chocobo>Triggers');
+        'Disabled>Naked>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Pins>Chocobo>Triggers');
     check('AR2e duplicates collapse',
         table.concat(dispatchM.arbOrder({ order = { 'Pins', 'Pins', 'AutoAmmo' } }), '>'),
-        'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
 
     -- AR3: the PURE resolve core -- claims + rank + floor -> winners + by.
     local order = dispatchM.arbOrder(nil);
@@ -5969,12 +5970,12 @@ end)();
     put('tests\\arbstate.lua', 'return { order = { "MaxMP", "AutoAmmo", "Pins", "Locks", "Craft", "HELM", "Fishing", "Triggers" } }');
     check('AR7 hand-edited reorder is read + sanitized',
         table.concat(dispatchM.arbOrder(esf(cache, 'arbstate.lua')), '>'),
-        'Naked>MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Disabled>Naked>MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>Triggers');
     cache.lastCheck = -1;
     put('tests\\arbstate.lua', 'return { order = {');   -- torn write
     check('AR7b torn write drops to default',
         table.concat(dispatchM.arbOrder(esf(cache, 'arbstate.lua')), '>'),
-        'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     os.remove('tests\\arbstate.lua');
     dispatchM._charDirOverride = nil;
 
@@ -6078,7 +6079,7 @@ end)();
     local ex = dispatchM.arbExplain(claims, ord, floor);
     -- Ammo: AutoAmmo(4) > MaxMP(5) > Triggers(10) -- the issue's headline contest.
     check('AR11 Ammo winner is AutoAmmo',            ex.Ammo[1].name, 'AutoAmmo');
-    check('AR11b Ammo winner rank is 4 (Naked took rank 1)', ex.Ammo[1].rank, 4);
+    check('AR11b Ammo winner rank is 5 (the Disabled ceiling took 1, Naked 2)', ex.Ammo[1].rank, 5);
     check('AR11c Ammo runner-up is the MaxMP battery (the deliberate cede)', ex.Ammo[2].name, 'MaxMP');
     check('AR11d Ammo third is the floor',           ex.Ammo[3].name, 'Triggers');
     -- Head: Pins(2) > MaxMP(5) > Craft(6) > Triggers(10).
@@ -6110,13 +6111,13 @@ end)();
                     Legs = 'Idle Legs', Body = 'Idle Body' };
     local joined = table.concat(dispatchM.arbWhyLines(claims, ord, floor), '\n');
     check('AR12 the Ammo contest line names winner over runner-up (the issue example)',
-        joined:find('Ammo: AutoAmmo (rank 4)  over MaxMP (rank 5)', 1, true) ~= nil, true);
+        joined:find('Ammo: AutoAmmo (rank 5)  over MaxMP (rank 6)', 1, true) ~= nil, true);
     check('AR12b a MaxMP-only slot reads MaxMP over the floor',
-        joined:find('Ring1: MaxMP (rank 5)  over Triggers (rank 10)', 1, true) ~= nil, true);
+        joined:find('Ring1: MaxMP (rank 6)  over Triggers (rank 11)', 1, true) ~= nil, true);
     check('AR12c a veto slot reads stopped by Locks (even from a lowercase key)',
-        joined:find('Legs: stopped by Locks (rank 3)', 1, true) ~= nil, true);
+        joined:find('Legs: stopped by Locks (rank 4)', 1, true) ~= nil, true);
     check('AR12d floor-only slots collapse into one named Triggers-floor summary',
-        joined:find('Triggers floor (rank 10, uncontested):', 1, true) ~= nil
+        joined:find('Triggers floor (rank 11, uncontested):', 1, true) ~= nil
         and joined:find('Body', 1, true) ~= nil, true);
     -- Contested slots emit individually in canonical LAC order (ammo 4 < hands 10
     -- < ring1 11), BEFORE the trailing floor summary.
@@ -6325,17 +6326,19 @@ end)();
     local def = dispatchM._arbDefaultOrder;
     local rank = {}; for i, nm in ipairs(def) do rank[nm] = i; end
     check('NK6 exact default rank', table.concat(def, '>'),
-        'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     check('NK7 Naked outranks Pins, which outranks Locks',
         rank['Naked'] < rank['Pins'] and rank['Pins'] < rank['Locks'], true);
 
     -- TRAP: every arbstate file written before v122 lists nine rows and no Naked.
+    -- Index 2, not 1: the Disabled ceiling is pinned above every RANKED row
+    -- (ADR 0024), so "the top" for a claimant means directly under it.
     check('NK8 a pre-v122 file gets Naked at the TOP, not the bottom',
         dispatchM.arbOrder({ order = { 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
-                                       'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' } })[1], 'Naked');
+                                       'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' } })[2], 'Naked');
     check('NK9 a file that places Naked LOW keeps it there (the user has spoken)',
         table.concat(dispatchM.arbOrder({ order = { 'Pins', 'Locks', 'Naked', 'Triggers' } }), '>'),
-        'Pins>Locks>Naked>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Disabled>Pins>Locks>Naked>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     check('NK10 the restore never duplicates a row', (function()
         local seen = 0;
         for _, nm in ipairs(dispatchM.arbOrder(nil)) do if nm == 'Naked' then seen = seen + 1; end end
@@ -6346,7 +6349,7 @@ end)();
     check('NK10b a missing bottom row still lands just above the floor',
         table.concat(dispatchM.arbOrder({ order = { 'Naked', 'Pins', 'Locks', 'AutoAmmo',
                                                     'MaxMP', 'Craft', 'HELM', 'Fishing', 'Triggers' } }), '>'),
-        'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
 
     -- The pure resolve: Naked beats everything, and the rank list is the ONLY
     -- exception mechanism (this is the "naked except my pins" contract).
@@ -6436,9 +6439,9 @@ end)();
     local why = table.concat(dispatchM.arbWhyLines(
         { Naked = dispatchM.nakedClaim(), Pins = { Head = 'Pinned Crown' } }, ord, floor), '\n');
     check('NK22 /dl why collapses the sweep into ONE line',
-        select(2, why:gsub('NAKED %(rank 1%)', '')), 1);
+        select(2, why:gsub('NAKED %(rank 2%)', '')), 1);
     check('NK22b it counts the slots',   why:find('holds 16 slots empty', 1, true) ~= nil, true);
-    check('NK22c and names who it beat', why:find('over Pins (rank 2)', 1, true) ~= nil, true);
+    check('NK22c and names who it beat', why:find('over Pins (rank 3)', 1, true) ~= nil, true);
     check('NK22d no per-slot Naked line survives', why:find('Head: Naked', 1, true), nil);
 
     -- The command tokens. dispatch's handler only registers inside engineActive(),
@@ -6613,14 +6616,14 @@ end)();
 
     -- Default + sanitize delegate to the engine (one vocabulary, no drift).
     check('AB1 default order matches the engine default',
-        table.concat(aw.defaultOrder(), '>'), 'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        table.concat(aw.defaultOrder(), '>'), 'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AB1b defaultOrder is a fresh copy (mutating it does not stick)',
-        (function() local d = aw.defaultOrder(); d[1] = 'X'; return aw.defaultOrder()[1]; end)(), 'Naked');
+        (function() local d = aw.defaultOrder(); d[1] = 'X'; return aw.defaultOrder()[1]; end)(), 'Disabled');
     check('AB2 sanitize nil -> default',
-        table.concat(aw.sanitize(nil), '>'), 'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        table.concat(aw.sanitize(nil), '>'), 'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AB2b sanitize drops unknown, restores missing at its default position',
         table.concat(aw.sanitize({ order = { 'Fishing', 'Nonsense', 'Pins' } }), '>'),
-        'Naked>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Pins>Chocobo>Triggers');
+        'Disabled>Naked>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Pins>Chocobo>Triggers');
 
     -- serialize -> the engine's file shape; round-trips through arbOrder.
     local txt = aw.serialize({ 'MaxMP', 'AutoAmmo', 'Pins', 'Locks', 'Craft', 'HELM', 'Fishing', 'Triggers' });
@@ -6631,39 +6634,40 @@ end)();
     local roundtrip = dispatchM.arbOrder(chunk());
     check('AB3c serialize -> arbOrder round-trips a valid reorder',
         table.concat(roundtrip, '>'),
-        'Naked>MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Disabled>Naked>MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AB3d serialize skips non-string / empty entries',
         aw.serialize({ 'Pins', '', 42, 'Triggers' }), 'return { order = { "Pins", "Triggers" } }\n');
 
     -- moveClaimant: the step-2 drag rules, pure.
-    -- Indices are 1-based over the default order, which since v122 (ADR 0021)
-    -- opens with Naked: Naked Pins Locks AutoAmmo MaxMP Craft HELM Fishing Chocobo Triggers.
+    -- Indices are 1-based over the default order, which since v129 (ADR 0024)
+    -- opens with the Disabled ceiling: Disabled Naked Pins Locks AutoAmmo MaxMP
+    -- Craft HELM Fishing Chocobo Triggers.
     local def = aw.defaultOrder();
-    check('AB4 a claimant moves up one (AutoAmmo #4 -> #3, crossing the Locks veto)',
-        table.concat(aw.moveClaimant(def, 4, -1), '>'),
-        'Naked>Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
-    check('AB4b a claimant moves down one (AutoAmmo #4 -> #5)',
-        table.concat(aw.moveClaimant(def, 4, 1), '>'),
-        'Naked>Pins>Locks>MaxMP>AutoAmmo>Craft>HELM>Fishing>Chocobo>Triggers');
-    check('AB4c the input order is not mutated', table.concat(def, '>'), 'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+    check('AB4 a claimant moves up one (AutoAmmo #5 -> #4, crossing the Locks veto)',
+        table.concat(aw.moveClaimant(def, 5, -1), '>'),
+        'Disabled>Naked>Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+    check('AB4b a claimant moves down one (AutoAmmo #5 -> #6)',
+        table.concat(aw.moveClaimant(def, 5, 1), '>'),
+        'Disabled>Naked>Pins>Locks>MaxMP>AutoAmmo>Craft>HELM>Fishing>Chocobo>Triggers');
+    check('AB4c the input order is not mutated', table.concat(def, '>'), 'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     -- Step 3: the Locks veto row now DRAGS (only the Triggers floor is fixed).
-    check('AB5 Locks drags down one (#3 -> #4, under AutoAmmo)',
-        table.concat(aw.moveClaimant(def, 3, 1), '>'),
-        'Naked>Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+    check('AB5 Locks drags down one (#4 -> #5, under AutoAmmo)',
+        table.concat(aw.moveClaimant(def, 4, 1), '>'),
+        'Disabled>Naked>Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AB5a Locks drags up one, over Pins (Naked still above it)',
-        table.concat(aw.moveClaimant(def, 3, -1), '>'),
-        'Naked>Locks>Pins>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
-    check('AB5b Triggers refuses the drag (the floor)', aw.moveClaimant(def, 10, -1), nil);
-    check('AB6 the floor-adjacent claimant (Chocobo #9) cannot move down into the Triggers floor (stays last)',
-        aw.moveClaimant(def, 9, 1), nil);
-    check('AB6b Fishing CAN move up (HELM #7 <-> Fishing #8)',
-        table.concat(aw.moveClaimant(def, 8, -1), '>'),
-        'Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>Fishing>HELM>Chocobo>Triggers');
+        table.concat(aw.moveClaimant(def, 4, -1), '>'),
+        'Disabled>Naked>Locks>Pins>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+    check('AB5b Triggers refuses the drag (the floor)', aw.moveClaimant(def, 11, -1), nil);
+    check('AB6 the floor-adjacent claimant (Chocobo #10) cannot move down into the Triggers floor (stays last)',
+        aw.moveClaimant(def, 10, 1), nil);
+    check('AB6b Fishing CAN move up (HELM #8 <-> Fishing #9)',
+        table.concat(aw.moveClaimant(def, 9, -1), '>'),
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>Fishing>HELM>Chocobo>Triggers');
     -- Naked is an ORDINARY draggable row: "naked except my pins" is a drag, not
     -- a code path, so the day it becomes fixed the feature loses its escape hatch.
     check('AB6c Naked drags down (Pins takes the top -- naked except pins)',
-        table.concat(aw.moveClaimant(def, 1, 1), '>'),
-        'Pins>Naked>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        table.concat(aw.moveClaimant(def, 2, 1), '>'),
+        'Disabled>Pins>Naked>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
     check('AB6d Naked is not a FIXED row', aw.FIXED['Naked'], nil);
     check('AB7 out-of-range / bad args are nil, never a throw',
         aw.moveClaimant(def, 1, -1) == nil and aw.moveClaimant(def, 0, 1) == nil
@@ -13175,14 +13179,18 @@ end)();
     check('LS15 Naked outranks a lock', rank['Naked'] < rank['Locks'], true);
     check('LS15b Pins outrank a lock (on demand, universally understood)',
         rank['Pins'] < rank['Locks'], true);
-    check('LS15c nothing else does', (function()
+    check('LS15c no CLAIMANT else does', (function()
         for _, n in ipairs(def) do
             if n == 'Locks' then return true; end
-            if n ~= 'Naked' and n ~= 'Pins' then return n; end
+            -- Disabled (ADR 0024) is above Locks and always will be: it is the
+            -- CEILING, not a claimant -- it dresses nothing and cannot be dragged.
+            -- The law this pins is about claimants, so it is named, not counted.
+            if n ~= 'Naked' and n ~= 'Pins' and n ~= 'Disabled' then return n; end
         end
         return 'Locks row missing';
     end)(), true);
-    check('LS15d no new row was added', #def, 10);
+    check('LS15d no new CLAIMANT row was added (11 = the 10 ranked rows + the ADR 0024 ceiling)',
+        #def, 11);
 
     -- LS16. END TO END through the REAL M.dispatch (the NK26 pattern). A locked
     -- set with NOTHING else armed -- no triggers, no pins, no hobby, no ammo --
@@ -13243,6 +13251,115 @@ end)();
     pcall(D.dispatch, 'Default');
     check('LS20 released, a bare dispatch writes nothing at all', next(wrote), nil);
 
+    -- -----------------------------------------------------------------------
+    -- DS. FREE EQUIP -- the DISABLED CEILING (ADR 0024), end to end through the
+    --     REAL M.dispatch on the harness LS16 built. These are the checks that
+    --     matter: everything else about this feature is a chat line.
+    --
+    --     The point of doing it here rather than at a pure seam is that the
+    --     ceiling is enforced at engineEquipSet, BELOW equipResolved and below
+    --     every whole-table post-pass -- so only a real dispatch can show that a
+    --     disabled slot produces no write no matter who claimed it.
+    -- -----------------------------------------------------------------------
+    D.setLockedSet({ name = 'Incursion T3', mode = 'set', claim = strictClaim, n = 16 });
+
+    wrote = {};
+    D.setDisabled('main', true);
+    pcall(D.dispatch, 'Default');
+    check('DS1 a disabled slot is not written at all',   wrote.Main, nil);
+    check('DS1b ...and the other 15 still are',          count(wrote), 15);
+    check('DS1c ...specifically the ones the hold named', wrote.Head, 'Set Hat');
+
+    -- THE ONE THAT MATTERS: the ceiling outranks the strip. A lock cannot do
+    -- this -- Naked ranks above Locks and punches straight through it.
+    wrote = {};
+    D.nakedArmed = true;
+    pcall(D.dispatch, 'Default');
+    check('DS2 NAKED cannot strip a disabled slot',      wrote.Main, nil);
+    check('DS2b ...and still strips every other one',    wrote.Head, 'remove');
+    D.nakedArmed = false;
+
+    wrote = {};
+    D.setDisabled('all', true);
+    pcall(D.dispatch, 'Default');
+    check('DS3 all 16 disabled -> dlac writes nothing whatsoever', next(wrote), nil);
+
+    wrote = {};
+    D.setDisabled('all', false);
+    pcall(D.dispatch, 'Default');
+    check('DS4 re-enabled, the very next pass dresses them again', count(wrote), 16);
+    check('DS4b ...with the held set back in Main',      wrote.Main, 'Set Sword');
+
+    -- setDisabled's vocabulary, shaped exactly like setLock's.
+    check('DS5 an unknown slot name is nil, never a throw', D.setDisabled('nosuchslot', true), nil);
+    check('DS5b ...and disables nothing',                D.disabledOn(), false);
+    check('DS6 nil state toggles a single slot',         D.setDisabled('ammo'), true);
+    check('DS6b ...and toggles it back',                 D.setDisabled('ammo'), false);
+    check('DS6c disabledOn(slot) answers per slot', (function()
+        D.setDisabled('ear1', true);
+        local a, b = D.disabledOn('ear1'), D.disabledOn('ear2');
+        D.setDisabled('ear1', false);
+        return a == true and b == false;
+    end)(), true);
+    check('DS7 disabledList is in canonical LAC order, not hash order', (function()
+        D.setDisabled('feet', true); D.setDisabled('main', true); D.setDisabled('head', true);
+        local l = table.concat(D.disabledList(), ',');
+        D.setDisabled('all', false);
+        return l;
+    end)(), 'main,head,feet');
+
+    -- stripDisabled: the seam itself. Case-insensitive on purpose -- claims are
+    -- canonical ('Main'), the command vocabulary is lac-case ('main'), and
+    -- equipcore's SLOT_ID map is case-SENSITIVE, so a case-blind compare would
+    -- work in one engine and silently miss in the other.
+    D.setDisabled('main', true);
+    local src = { Main = 'A', Head = 'B', main = 'C', __meta = 'keep' };
+    local out = D._stripDisabled(src);
+    check('DS8 the canonical key is stripped',           out.Main, nil);
+    check('DS8b the lac-case key is stripped too',       out.main, nil);
+    check('DS8c an unrelated slot survives',             out.Head, 'B');
+    check('DS8d __ metadata is never treated as a slot', out.__meta, 'keep');
+    check('DS8e the caller\'s table is not mutated',     src.Main, 'A');
+    D.setDisabled('all', false);
+    local same = { Main = 'A' };
+    check('DS9 with nothing disabled the set passes through by IDENTITY',
+        D._stripDisabled(same) == same, true);
+
+    -- Attribution. The claim exists ONLY so /dl why and the panel can name it.
+    check('DS10 no claim when nothing is disabled',      D.disabledClaim(), nil);
+    D.setDisabled('head', true);
+    local dzc = D.disabledClaim();
+    check('DS10b the claim is keyed CANONICALLY',        dzc and dzc.Head, D.DISABLED_FREE);
+    check('DS10c ...and claims only the disabled slots', (function()
+        local n = 0; for _ in pairs(dzc or {}) do n = n + 1; end; return n;
+    end)(), 1);
+    local dzWhy = table.concat(D.arbWhyLines(
+        { Disabled = dzc, Naked = D.nakedClaim() }, D.arbOrder(nil), {}), '\n');
+    check('DS11 /dl why collapses the ceiling into ONE line',
+        select(2, dzWhy:gsub('FREE EQUIP %(ceiling', '')), 1);
+    check('DS11b ...naming the slot',                    dzWhy:find('Head', 1, true) ~= nil, true);
+    check('DS11c ...and who it beat',                    dzWhy:find('over Naked', 1, true) ~= nil, true);
+    -- Woven MaxMP cedes a disabled slot for free -- that is what registering the
+    -- claim above the mpCeded computation buys.
+    local dzCede = D.arbCededAbove({ Disabled = dzc }, D.arbOrder(nil), 'MaxMP');
+    check('DS12 MaxMP cedes a disabled slot',            dzCede['head'], 'Disabled');
+    D.setDisabled('all', false);
+
+    -- LIFETIME (Henrik, 2026-07-26): the same watch as the strip, a locked set
+    -- and slot locks. A job change or leaving the world releases it; nothing
+    -- persists it. Standing on a new job with a slot silently not swapping, and
+    -- nothing on screen to explain it, is the failure this closes.
+    D.setDisabled('back', true);
+    check('DS13 free equip alone is enough to arm the watch', D.worldWatch(7, 7), nil);
+    local dzWhy2, dzDrop = D.worldWatch(1, 7);
+    check('DS13b a main job change releases it',         dzWhy2, 'job');
+    check('DS13c ...and reports how many slots',         dzDrop and dzDrop.disabled, 1);
+    check('DS13d ...leaving nothing behind',             D.disabledOn(), false);
+    D.setDisabled('waist', true);
+    check('DS14 leaving the world releases it too',      (D.worldWatch(nil, 7)), 'world');
+    check('DS14b ...and it is gone',                     D.disabledOn(), false);
+
+    D.setLockedSet(nil);
     TEST_PLAYER = savedPlayer;
     _G.gFunc, _G.gState = savedFunc, savedState;
     D.nakedArmed = savedNaked;
@@ -13464,6 +13581,66 @@ end)();
         check('CMD15e a near-miss word is an unknown SLOT, not a silent no-op',
               saidHas('unknown slot: snapshot'), true);
         run('/dl lock all off');
+
+        -- FREE EQUIP (ADR 0024), through the REAL command handler. The whitelist
+        -- half is the v46 trap NK23 records: a subcommand missing from it returns
+        -- in SILENCE and looks like the command does not exist -- so `blocked` is
+        -- checked on every one of these, not just the output.
+        local e16 = run('/dl disable');
+        check('CMD16 /dl disable is owned (whitelisted, not silently dropped)', e16.blocked, true);
+        check('CMD16b bare /dl disable takes all 16',  #D.disabledList(), 16);
+        check('CMD16c ...and names the release door',  saidHas('/dl enable all'), true);
+        check('CMD16d ...and its own lifetime',        saidHas('job change'), true);
+        local e17 = run('/dl enable');
+        check('CMD17 /dl enable is owned too',         e17.blocked, true);
+        check('CMD17b ...and releases everything',     D.disabledOn(), false);
+
+        run('/dl disable head');
+        check('CMD18 a single slot disables alone',    D.disabledList()[1], 'head');
+        check('CMD18b ...only that one',               #D.disabledList(), 1);
+        run('/dl disable ammo');
+        check('CMD18c a second slot joins it',         #D.disabledList(), 2);
+        run('/dl enable head');
+        check('CMD18d ...and one can be released alone', D.disabledList()[1], 'ammo');
+        check('CMD18e ...with the rest still named back', saidHas('Still hands-off: ammo'), true);
+        run('/dl enable all');
+
+        -- The two off-forms, so nobody has to guess which release word works.
+        run('/dl disable all');
+        run('/dl disable off');
+        check('CMD19 /dl disable off means enable all', D.disabledOn(), false);
+        run('/dl disable legs');
+        run('/dl disable legs off');
+        check('CMD19b /dl disable <slot> off releases that slot', D.disabledOn('legs'), false);
+
+        local e20 = run('/dl disable nosuchslot');
+        check('CMD20 an unknown slot is named back',    saidHas('is not a slot name'), true);
+        check('CMD20b ...and still owns the command',   e20.blocked, true);
+        check('CMD20c ...having disabled nothing',      D.disabledOn(), false);
+
+        -- Two switches that both read as "stop moving my gear", one beating the
+        -- other, is worth a line every time (the /lac disable precedent).
+        run('/dl disable hands');
+        run('/dl naked');
+        check('CMD21 /dl naked warns that free equip outranks it', saidHas('FREE EQUIP is on'), true);
+        check('CMD21b ...naming the slot it cannot strip',         saidHas('hands'), true);
+        run('/dl dress');
+        run('/dl enable all');
+
+        -- The GUI is a DIFFERENT Lua state and reads the engine's state through
+        -- modestate's reserved __ namespace. No mirror = a checkbox that never
+        -- moves, and no way to see free equip at all outside chat.
+        run('/dl disable back');
+        local ms = nil;
+        pcall(function() ms = dofile('tests' .. SEP .. 'modestate.lua'); end);
+        check('CMD22 the mirror carries __disabled',
+              type(ms) == 'table' and type(ms.__disabled) == 'table', true);
+        check('CMD22b ...naming the slot', ms and ms.__disabled and ms.__disabled.back, true);
+        run('/dl enable all');
+        ms = nil;
+        pcall(function() ms = dofile('tests' .. SEP .. 'modestate.lua'); end);
+        check('CMD22c ...and empties on release',
+              ms and ms.__disabled and next(ms.__disabled), nil);
     end
 
     -- put every shared thing back exactly as it was

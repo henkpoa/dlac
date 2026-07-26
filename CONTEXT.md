@@ -91,8 +91,12 @@ The single decision point that gathers every Claim and decides, per slot, which 
 _Avoid_: pinning system, priority manager
 
 **Naked**:
-A Claim that dresses every slot with *nothing* (`/dl naked`; `/dl dress` releases). Ranked first by default, so it beats every other claimant — a player who wants "naked except my pins" drags Pins above it in Claim Priority. It is a standing claim re-applied every dispatch, which is what makes it survive a strip the server refuses.
-_Avoid_: strip, unequip all, disable (that is `/lac naked`'s mechanism — a one-shot strip plus a below-the-engine fence, which dlac deliberately does not use)
+A Claim that dresses every slot with *nothing* (`/dl naked`; `/dl dress` releases). Ranked first among the *claimants*, so it beats every other one — a player who wants "naked except my pins" drags Pins above it in Claim Priority. It is a standing claim re-applied every dispatch, which is what makes it survive a strip the server refuses. Free equip outranks it and is not draggable.
+_Avoid_: strip, unequip all, disable (that is `/lac naked`'s mechanism — a one-shot strip plus a below-the-engine fence, which dlac deliberately does not use; and "disable" now means Free equip)
+
+**Free equip**:
+The **ceiling** — the slots dlac has been told to keep its hands off (`/dl disable <slot|all>`; `/dl enable` releases; the Equipped tab's *Free equip* switch does all 16). dlac writes nothing to them, no equip and no unequip, so gear you put on by hand stays on. Not a Claim and not a lock: a lock is a veto *inside* the rank walk that claimants above it punch through, whereas this is pinned above every row, cannot be dragged, and is enforced at the one write seam. It is the mirror of the Triggers floor — the claims dress *over* the floor, nothing dresses *through* the ceiling (ADR 0024).
+_Avoid_: disabled slots (as a state name — the row is `Disabled`, the feature is Free equip), lock, `/lac disable` (LuaAshitacast's own fence, which sits below the engine and is inert in native mode)
 
 **Profile**:
 A character's named bundle of dlac data (e.g. `Default`) — the unit the PROFILES menu switches, clones, and imports. Exactly one is active per character; changing jobs never changes the Profile.

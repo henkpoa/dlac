@@ -1200,8 +1200,17 @@ end)();
     check('S196 buildRows yields a row per rank', #rows, #aw.defaultOrder());
     -- Naked (ADR 0021) is an ordinary draggable row: "naked except my pins" is a
     -- drag, so the day it becomes fixed the feature loses its escape hatch.
-    check('S196b Naked leads and drags', (function()
-        return rows[1].name == 'Naked' and rows[1].draggable == true;
+    check('S196b Naked leads the CLAIMANTS and drags (row 1 is the ADR 0024 ceiling)', (function()
+        return rows[1].name == 'Disabled' and rows[1].draggable == false
+           and rows[2].name == 'Naked' and rows[2].draggable == true;
+    end)(), true);
+    -- The ceiling: a fixed, special row that reports how many slots it holds.
+    check('S196b2 the Disabled ceiling is fixed, special, and reports its count', (function()
+        local off = pui.buildRows({ 'Disabled' }, { disabled = 0 })[1];
+        local on  = pui.buildRows({ 'Disabled' }, { disabled = 3 })[1];
+        return off.active == false and on.active == true
+           and on.special == true and on.draggable == false
+           and on.status ~= off.status and on.status ~= '?' and off.status ~= '?';
     end)(), true);
     check('S196c the Naked row reports its live state', (function()
         local on  = pui.buildRows({ 'Naked' }, { naked = true })[1];
@@ -1336,25 +1345,40 @@ end)();
         local u = Sx.ui;
         u.showStats = false;  u._gearFloat = false;  u.altSearch = { '' };
 
-        -- FREE EQUIP on: the global /lac disable pair (a DIFFERENT feature -- must
-        -- stay exactly as before). eqSelected nil keeps the drive on the top block.
+        -- FREE EQUIP (ADR 0024). It used to fire the global /lac disable, which
+        -- under the NATIVE engine talks to a LuaAshitacast that is no longer
+        -- doing the equipping -- the switch did nothing at all in the mode we
+        -- ship. It now drives dlac's own ceiling through S.setEngineFreeEquip,
+        -- and the box is drawn from the ENGINE MIRROR, so these drive a click
+        -- rather than the retired ui._freePrev edge.
+        local keptFE = { Sx.engineDisabled, Sx.setEngineFreeEquip };
+        local dzState, feCalls = {}, {};
+        Sx.engineDisabled     = function() return dzState; end
+        Sx.setEngineFreeEquip = function(on) feCalls[#feCalls + 1] = (on == true); end
+        local keptCb0 = IM.Checkbox;
+        IM.Checkbox = function(label, t)
+            if label == 'Free equip' then t[1] = not t[1]; return true; end
+            return false;
+        end
         u.eqSelected = nil;
-        u.freeEquip = { true };  u._freePrev = false;
         u.lockEquipped = { false };  u._lockPrev = false;
-        queued = {};
-        pcall(render, 'WHM', 75);
-        local fjoin = table.concat(queued, ' | ');
-        check('S207 Free equip ON still queues the GLOBAL /lac disable (scope boundary held)',
-            string.find(fjoin, '/lac disable', 1, true) ~= nil
-              and string.find(fjoin, '/lac disable %S') == nil, true);   -- global: no slot argument
+        queued, feCalls = {}, {};
+        local okFE = pcall(render, 'WHM', 75);          -- nothing disabled -> the click ARMS
+        check('S207 Free equip ON arms dlac\'s own ceiling', okFE and #feCalls == 1 and feCalls[1] == true, true);
+        check('S207b and no /lac disable goes out any more (it was inert in native mode)',
+            string.find(table.concat(queued, ' | '), '/lac disable', 1, true), nil);
 
-        -- FREE EQUIP off: /lac enable + release engine locks (unchanged).
-        u.freeEquip = { false };  u._freePrev = true;
-        queued = {};
+        -- FREE EQUIP off: releases the ceiling AND the engine locks (unchanged).
+        dzState = { main = true, head = true };         -- armed -> the box draws checked
+        queued, feCalls = {}, {};
         pcall(render, 'WHM', 75);
-        local fjoin2 = table.concat(queued, ' | ');
-        check('S208 Free equip OFF still queues /lac enable', string.find(fjoin2, '/lac enable', 1, true) ~= nil, true);
-        check('S209 Free equip OFF releases engine locks', string.find(fjoin2, '/dl lock all off', 1, true) ~= nil, true);
+        check('S208 Free equip OFF releases it', #feCalls == 1 and feCalls[1] == false, true);
+        check('S209 Free equip OFF releases engine locks',
+            string.find(table.concat(queued, ' | '), '/dl lock all off', 1, true) ~= nil, true);
+
+        IM.Checkbox = keptCb0;
+        dzState = {};
+        Sx.engineDisabled, Sx.setEngineFreeEquip = keptFE[1], keptFE[2];
 
         -- THE UNLOCK ACTION: unchecking "Lock when equipped" queues the engine
         -- unlock AND the legacy /lac enable heal (a no-op for clean users, a
@@ -1410,14 +1434,25 @@ end)();
         check('NKU3b and calls setEngineNaked(false)',
             #setCalls == 1 and setCalls[1] == false, true);
 
-        -- Free equip ON in LEGACY mode is the one state where stripping would
-        -- silently do nothing (LAC refuses to unequip a Disabled slot), so the
-        -- switch must not be clickable there.
+        -- Free equip owning ALL SIXTEEN slots is the state where stripping would
+        -- silently do nothing -- dlac cannot unequip a slot it has been told not
+        -- to touch -- so the switch must not be clickable there. Since ADR 0024
+        -- this is a stated rule in BOTH engines, not LuaAshitacast's accident, and
+        -- it is read from the engine mirror rather than an addon-side flag.
         setCalls = {};
-        u.freeEquip = { true };  u._freePrev = true;        -- ON, no edge (no /lac requeue)
+        local keptDz = Sx.engineDisabled;
+        Sx.engineDisabled = function()
+            local all = {};
+            for _, s in ipairs({ 'main', 'sub', 'range', 'ammo', 'head', 'neck', 'ear1', 'ear2',
+                                 'body', 'hands', 'ring1', 'ring2', 'back', 'waist', 'legs', 'feet' }) do
+                all[s] = true;
+            end
+            return all;
+        end
         local okN4 = pcall(render, 'WHM', 75);
-        check('NKU4 Free equip ON renders the switch as unavailable', okN4, true);
+        check('NKU4 Free equip owning all 16 renders the switch as unavailable', okN4, true);
         check('NKU4b and it cannot be clicked into a silent no-op', #setCalls, 0);
+        Sx.engineDisabled = keptDz;
 
         IM.Checkbox = keptCb;  IM.TextColored = keptTC;
         Sx.engineNaked, Sx.setEngineNaked, Sx.isNative = keptN[1], keptN[2], keptN[3];
