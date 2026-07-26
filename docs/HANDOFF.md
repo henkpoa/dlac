@@ -271,6 +271,40 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
+- **The hobby bar reaches the searches — BUILT 2026-07-27, on `dev`, NOT field-tested**
+  (`2026.07.27a`). Henrik: *"most things are available just fine in the hobby bar, except
+  for fishing, but we don't want to overdo it."* Two hobby tabs could only point at the
+  Automations tab in grey text; now they open the real thing.
+  - **Fishing.** The `TARGET FISH` section moved out of the panel (`fishui.lua`, ~180
+    lines) into a **Floating window** — `fishui.renderSearch` → `renderTargetBody`,
+    `Fishing -- Target fish###dlac_fish_target`. On the bar, the **target name IS the
+    button** (the rod and bait names beside it have worked that way since field round 5);
+    the panel keeps a `Target: <fish>` button on its status row and finally gets the
+    shared pill, the crowded row that forced its one-off text button having left.
+  - **Chocobo.** No new window: the Area/Item dig searches were already floating windows,
+    so the tab got the panel's own two buttons routed through new `chocoui.openAreaSearch`
+    / `openItemSearch` openers. The grey "go to Automations > Chocobo" sentence is gone.
+    Both tabs also got a `Panel` button — on Chocobo it matters, because every odds figure
+    in those windows is computed from the dig RANK, which only the panel can set.
+  - `/dl fish find [name]` (deliberately not `target`: that one picks the top match, and
+    bare it *clears*) and `/dl choco dig [item]`.
+  - **The rule this is built on** is now written down in architecture.md and CONTEXT.md:
+    *any surface may OPEN a floating window; exactly one place may DRAW it* (gearui's
+    `d3d_present`). Two `Begin()`s on one window name silently append into the same
+    window — content twice, ids colliding. Openers set flags; they never render.
+  - CONTEXT.md gained **Floating window / Panel / Hobby bar** — it had no UI vocabulary at
+    all, which is why this task's first sentence ("the hobby menu", "the fish automation")
+    needed three rounds of grilling to pin down.
+  - Coverage that did not exist before: smoke `FS1-FS19` drive the REAL target window and
+    the REAL `fishbar.renderContent` (7c stubs it with a no-op, so those ~180 moved lines
+    had never been executed by any test — the craftbar lesson of 7d), plus `HB14` and
+    `S139kk-mm` for the openers. `HB3.choco` caught the first version of this work: the
+    7c stub had no `SmallButton`.
+  - **What field-testing needs to answer:** does the target window's default 760×520 give
+    the spot list enough room (it places its bait column at `availW * 0.55`, ~50px tighter
+    than the panel gave it), and does three pills — bar, window, panel — read as redundant
+    or as convenient?
+
 - **AutoAmmo is Range-aware — DONE, field-confirmed, ON MAIN** (promoted 2026-07-26 in
   `03d25e1`; this bullet said "QUEUED for main" until the 07-26 night promotion, pointing
   at a queue entry that had already been emptied — hard rule 14's other half). Engine

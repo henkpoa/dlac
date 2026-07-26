@@ -122,7 +122,39 @@ local function renderChocoContent()
     if toggled then cw.setEnabled(not on); end
     imgui.SameLine(0, 10);
     imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, 'Chocobo riding gear (idle only)');
-    imgui.TextColored(COL_LOCKED, 'Dig rank, guide and by-item search: Automations > Chocobo.');
+    -- Dig search, straight from the bar (2026-07-27). Was a grey sentence telling
+    -- you to go to Automations > Chocobo; these are the panel's OWN two buttons,
+    -- routed through chocoui's openers so the two surfaces cannot drift (Area
+    -- still lands on the zone you are standing in, and each closes the other).
+    -- The windows themselves are drawn from ONE place, gearui's d3d_present.
+    imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, 'Dig:');
+    imgui.SameLine(0, 8);
+    if imgui.SmallButton('Area##hbchocoarea') then
+        pcall(function() require('dlac\\ui\\chocoui').openAreaSearch(); end);
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Everything diggable in a zone, priced for your rank + moon.\nOpens on your current zone if you are standing in a digging area.');
+    end
+    imgui.SameLine(0, 6);
+    if imgui.SmallButton('Item##hbchocoitem') then
+        pcall(function() require('dlac\\ui\\chocoui').openItemSearch(); end);
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Search an item -> every zone + pool it drops from.\nClick a zone there to jump to its Area window.');
+    end
+    imgui.SameLine(0, 12);
+    -- The panel owns the DIG RANK picker, and every odds figure in both search
+    -- windows is computed from that rank -- so the moment a search looks wrong,
+    -- this is where you go.
+    if imgui.SmallButton('Panel##hbchocopanel') then
+        pcall(function()
+            local g = require('dlac\\ui\\gearui');
+            if type(g.openAutomation) == 'function' then g.openAutomation('choco'); end
+        end);
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Open Automations > Chocobo: the dig rank picker, riding-time\ngear and the live moon/day/weather odds.');
+    end
     imgui.Dummy({ 300, 1 });
 end
 

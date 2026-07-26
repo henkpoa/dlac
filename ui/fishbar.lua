@@ -6,8 +6,9 @@
     engine wears the fishing kit while idle, combat gear always wins), the
     target fish, and the resolved rod + bait with the bait count left. No
     category glyphs -- fishing is one activity; the rod's own item icon is
-    the identity (itemicons -- zero new assets). Target picking lives in the
-    Automations panel (Auto Fish Set).
+    the identity (itemicons -- zero new assets). Clicking the target name opens
+    the floating target window (fishui.renderSearch) -- picking a fish no longer
+    means a trip to the Automations panel (2026-07-27).
 
     Toggle: /dl fish bar  (or the button in the Automations panel).
 ]]--
@@ -195,16 +196,36 @@ function M.renderContent(availW)
         'Set Fish Idle: wears your best fishing kit whenever idle, until turned off.\nRod and bait follow the target fish (Automations > Auto Fish Set).')
     then fw.setEnabled(not on); end
     imgui.SameLine(0, 10);
-    if tname ~= nil then
-        imgui.TextColored(COL_GOLD, tostring(tname));
-        if imgui.IsItemHovered() then
-            imgui.SetTooltip('Target fish. Change it in Automations > Auto Fish Set\n(or /dl fish target <name>).');
-        end
-    else
-        imgui.TextColored(COL_DIM, 'no target fish');
-        if imgui.IsItemHovered() then
-            imgui.SetTooltip('Pick a target in Automations > Auto Fish Set -- rod and bait\nfollow it. Without one you still get gear + your best rod.');
-        end
+    -- The target name IS the picker (2026-07-27). Both names on row 2 have worked
+    -- this way since field round 5 -- click the thing to change the thing -- while
+    -- this one was a LABEL whose tooltip told you to go to the Automations panel.
+    -- Now it opens the floating target window: search, rod verdicts, spots+baits.
+    -- Kept gold (or dim when unset) so the row reads exactly as it did.
+    local tgtPushed = false;
+    if ImGuiCol_Text ~= nil then
+        imgui.PushStyleColor(ImGuiCol_Text, (tname ~= nil) and COL_GOLD or COL_DIM);
+        tgtPushed = true;
+    end
+    if imgui.SmallButton((tname ~= nil and tostring(tname) or 'no target fish') .. '##fbtgtbtn') then
+        pcall(function() require('dlac\\ui\\fishui').openTarget(); end);
+    end
+    if tgtPushed then imgui.PopStyleColor(1); end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip(tname ~= nil
+            and 'Target fish -- rod and bait follow it.\nClick: search, rod verdicts, spots + baits (also /dl fish find).'
+            or 'No target fish. Click to search one -- rod and bait then follow it.\nWithout one you still get the gear and your best rod.');
+    end
+    imgui.SameLine(0, 12);
+    -- The panel is still the home of everything this bar deliberately does not
+    -- carry: the gear matrix, today's ventures, the guild corner.
+    if imgui.SmallButton('Panel##fbpanel') then
+        pcall(function()
+            local g = require('dlac\\ui\\gearui');
+            if type(g.openAutomation) == 'function' then g.openAutomation('fish'); end
+        end);
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Open Automations > Auto Fish Set: the fishing gear matrix,\ntoday\'s ventures and the guild corner.');
     end
     imgui.Separator();
     -- Row 2: rod + bait, icons first (the identity); the names are BUTTONS --

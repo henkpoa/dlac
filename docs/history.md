@@ -5617,3 +5617,68 @@ own assertions was simply wrong. I claimed modes survive a self-swap on the modu
 not. They are reset by the same re-execution and heal from the `modestate` mirror on load. Locks
 never could — `__locks` is display-only and deliberately never restored — which is precisely why
 their fix had to live on the table instead of in the mirror.
+
+## Session "the hobby bar reaches the searches" (2026-07-27, on `dev` — addon 2026.07.27a)
+
+**The ask, and what it actually was.** Henrik, pasting a note he could no longer see:
+*"In the hobby bar, the fishing menu… most things are available just fine in the hobby bar,
+except for fishing, but we don't want to overdo it. Please add a button to open the fish
+automation directly from the fish tab in hobby. Please do the same with fishing."* Fishing
+twice — the second was Chocobo, which the code could have guessed: those are exactly the two
+tabs whose bodies admitted the real controls lived elsewhere (Chocobo printed *"Dig rank,
+guide and by-item search: Automations > Chocobo"* in grey; Fishing's target line was a label
+whose tooltip said to go to the panel). Craft and HELM are self-sufficient in the bar.
+
+Then the ask grew, and the growth was the interesting part: *"technically if we could open up
+a menu to search for target fish from the hobby bar, reuse that search body window… maybe
+problematic to use same windows that spawn from different places?"*
+
+**The answer to that worry, which is now a written invariant.** It lands on the *draw*, never
+the *opener*:
+
+> Any surface may OPEN a floating window; exactly one place may DRAW it.
+
+Two `imgui.Begin()` calls on one window name in a frame do not error — ImGui **appends** the
+second body into the same window. Content renders twice, ids collide, a shared InputText
+buffer gets written twice a frame. Silent, and it looks like a UI bug rather than a crash
+(the floatgear S50 class). So openers set a module-owned flag and never render; gearui's
+`d3d_present` is the single draw site, sitting *above* its `M.visible` return so every one of
+these windows outlives the main box. Written into architecture.md; **Floating window**,
+**Panel** and **Hobby bar** went into CONTEXT.md, which had no UI vocabulary at all — which
+is precisely why the request needed three rounds of grilling to pin down.
+
+**Chocobo cost almost nothing** because 07-24 had already done the hard part: the Area/Item
+dig searches were floating windows, opened by two panel buttons that did nothing but set
+flags. Those bodies became `chocoui.openAreaSearch` / `openItemSearch`, the panel now calls
+them, and so does the bar — one behaviour for both surfaces rather than a copy-paste of "land
+on the zone you're standing in, and close the other window".
+
+**Fishing was a real extraction.** `TARGET FISH` was ~180 lines inline at line 376 of a
+663-line panel — buried in exactly the way the Chocobo search had been fixed for. It moved to
+`fishui.renderTargetBody`, wrapped by `fishui.renderSearch`
+(`Fishing -- Target fish###dlac_fish_target`, 760×520). The extraction was clean because
+`sel` — the query buffer, the viewed fish, the expanded-spots flag — was referenced *only*
+inside that block; nothing above or below it touched the picker's state. The body re-derives
+db / owned counts / skill / worn Fish+ instead of inheriting the panel's locals, so it has one
+contract for every caller.
+
+**Three design calls worth keeping.** The bar's target name **is** the button rather than
+gaining a labelled one beside it — the rod and bait names one row below have worked that way
+since field round 5, so the tab gained zero widgets, which is the least "overdone" reading of
+the request. The panel's section was **replaced**, not duplicated: two live copies would have
+put one `sel.q` buffer behind two InputTexts. And the fish panel finally uses the shared
+`craftbar.onOffSwitch` pill — it was the only one of six panels with a hand-rolled text
+switch, and the comment above it named the reason (*"label shortened so the row survives Make
+target + target + Clear"*), a workaround for the very row that just left.
+
+**What the tests caught, and what they now cover.** The first build failed `HB3.choco` —
+7c's stub imgui had no `SmallButton`, which is the section doing its job. More importantly,
+`fishbar.renderContent` and the whole target body had **never been executed by any test**: 7c
+stubs the bar with a no-op and section 7 only reaches fishui's pure status half. That is the
+craftbar lesson of 7d, repeated on a second file. New smoke `FS1-FS19` drive the real window
+and the real bar — including the wire that matters, that clicking the target name reaches the
+opener, and that `no target fish` is clickable too (or a fresh character has no way in).
+
+**Not field-tested.** Two things only live play can answer: whether 760×520 gives the spot
+list enough room (its bait column sits at `availW * 0.55`, ~50px tighter than the panel gave
+it), and whether three pills — bar, window, panel — read as convenient or as clutter.

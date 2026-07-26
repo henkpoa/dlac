@@ -914,6 +914,24 @@ end)();
             check('S139jj closed windows draw nothing (Begin count 0)', (function()
                 depth.win = 0; pcall(cui.renderSearch, deps); return depth.win;
             end)(), 0);
+            -- The OPENERS (2026-07-27). Public because the hobby bar's Chocobo tab
+            -- opens these windows too -- one behaviour for both surfaces, so a
+            -- bar-opened search cannot differ from a panel-opened one. The
+            -- mutual exclusion is the part worth pinning: opening one search
+            -- closes the other, or you get two dig windows arguing on screen.
+            check('S139kk openAreaSearch opens Area', (function()
+                cui._search.item.open[1] = true;
+                cui.openAreaSearch();
+                return cui._search.area.open[1] and not cui._search.item.open[1];
+            end)(), true);
+            check('S139ll openAreaSearch clears the from-Item back button',
+                cui._search.area.fromItem, false);
+            check('S139mm openItemSearch opens Item and closes Area', (function()
+                cui.openItemSearch();
+                return cui._search.item.open[1] and not cui._search.area.open[1];
+            end)(), true);
+            cui._search.item.open[1] = false;
+            cui._search.area.open[1] = false;
         end
     end
     -- restore the real modules for any later section
@@ -1608,6 +1626,10 @@ end)();
     IM.PushStyleColor = function() depth.col = depth.col + 1; end
     IM.PopStyleColor  = function(n) depth.col = depth.col - (tonumber(n) or 1); end
     IM.Button         = function() return false; end
+    -- The Chocobo tab's dig/panel buttons (2026-07-27) are SmallButtons; every
+    -- label drawn this frame is recorded so HB14 can prove they reach the tab.
+    local smalls = {};
+    IM.SmallButton    = function(l) smalls[#smalls + 1] = tostring(l); return false; end
     IM.IsItemHovered  = function() return false; end
     IM.GetContentRegionAvail = function() return 400, 400; end
 
@@ -1640,7 +1662,20 @@ end)();
         activeStub = nil;                           -- idle: every tab selectable
         for _, k in ipairs({ 'craft', 'helm', 'fish', 'choco' }) do
             ui._hobbySel = k;
+            smalls = {};
             check('HB3.' .. k .. ' renders selection ' .. k, pcall(hb.render), true);
+            if k == 'choco' then
+                -- 2026-07-27: the Chocobo tab used to end in a grey sentence
+                -- telling you to go to Automations > Chocobo. These three buttons
+                -- replaced the sentence -- Area/Item open chocoui's floating dig
+                -- searches, Panel opens the detail view that owns the dig RANK
+                -- every odds figure in those windows is computed from.
+                local seen = table.concat(smalls, ' ');
+                check('HB14 choco tab offers Area / Item / Panel',
+                    (seen:find('Area##', 1, true) ~= nil)
+                    and (seen:find('Item##', 1, true) ~= nil)
+                    and (seen:find('Panel##', 1, true) ~= nil), true);
+            end
         end
         check('HB4 idle: Begin/End balanced',   depth.win, 0);
         check('HB5 idle: colour stack balanced', depth.col, 0);
@@ -2715,6 +2750,163 @@ end)();
 
         amw.jobsData = {};
         amw.selectJob('COR');
+    end
+
+    for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end
+    package.loaded['imgui'] = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- 7f. FISHING RENDER for real (2026-07-27). The target picker moved out of the
+--     fish panel into a floating window (fishui.renderSearch -> renderTargetBody)
+--     and the hobby bar's Fishing tab became one of its openers -- the target
+--     NAME is the button now. Neither body had ever been EXECUTED by a test: 7c
+--     stubs fishbar.renderContent with a no-op and section 7 only reaches
+--     fishui's pure status half, so ~180 moved lines had no coverage at all.
+--     That is precisely the craftbar lesson of 7d. Stub imgui + fishwatch, drive
+--     the REAL window and the REAL bar content, and assert the stacks balance
+--     and that clicking the target name reaches the opener.
+-- ---------------------------------------------------------------------------
+;(function()
+    local depth = { win = 0, col = 0, item = 0, id = 0, pop = 0 };
+    local function nop() end
+    local IM = {};
+    for _, n in ipairs({ 'TextColored', 'Text', 'TextWrapped', 'SameLine', 'Spacing',
+        'Separator', 'Dummy', 'Image', 'SetTooltip', 'InvisibleButton', 'TextDisabled',
+        'OpenPopup' }) do IM[n] = nop; end
+    -- The bar's rod/bait override popups: opened so their bodies run too (they
+    -- read fishcalc's rod ranking, which is where a rename would go unnoticed).
+    IM.BeginPopup = function() depth.pop = depth.pop + 1; return true; end
+    IM.EndPopup   = function() depth.pop = depth.pop - 1; end
+    IM.Begin             = function() depth.win = depth.win + 1; return true; end
+    IM['End']            = function() depth.win = depth.win - 1; end
+    IM.SetNextWindowSize = nop;
+    IM.PushStyleColor    = function() depth.col = depth.col + 1; end
+    IM.PopStyleColor     = function(n) depth.col = depth.col - (tonumber(n) or 1); end
+    IM.PushItemWidth     = function() depth.item = depth.item + 1; end
+    IM.PopItemWidth      = function() depth.item = depth.item - 1; end
+    IM.PushID            = function() depth.id = depth.id + 1; end
+    IM.PopID             = function() depth.id = depth.id - 1; end
+    IM.CalcTextSize      = function(s) return #tostring(s) * 8; end
+    IM.GetContentRegionAvail = function() return 720, 400; end
+    IM.CollapsingHeader  = function() return true; end
+    IM.Selectable        = function() return true; end     -- pick a match / a spot each frame
+    IM.IsItemHovered     = function() return true; end     -- exercise every tooltip
+    IM.Button            = function() return false; end
+    local smalls, clickLabel = {}, nil;
+    IM.SmallButton = function(l)
+        smalls[#smalls + 1] = tostring(l);
+        return clickLabel ~= nil and tostring(l) == clickLabel;
+    end
+    -- Record what the search box was handed, THEN drive it, so the seeded query
+    -- from openTarget('carp') is observable.
+    local seenQuery = nil;
+    IM.InputText = function(label, buf)
+        if label == '##fishsearch' and type(buf) == 'table' then
+            seenQuery = buf[1];
+            buf[1] = 'carp';
+        end
+    end
+
+    local NAMES = { 'imgui', 'dlac\\ui\\fishui', 'dlac\\ui\\fishbar', 'dlac\\ui\\craftbar',
+                    'dlac\\ui\\itemicons', 'dlac\\gear\\ownedcache',
+                    'dlac\\feature\\fishwatch' };
+    local saved = {};
+    for _, k in ipairs(NAMES) do saved[k] = package.loaded[k]; end
+
+    local fwTarget, fwEnabled = nil, false;
+    package.loaded['imgui'] = IM;
+    package.loaded['dlac\\ui\\craftbar'] = {};          -- no onOffSwitch -> Button fallback
+    package.loaded['dlac\\ui\\itemicons'] = { renderIcon = nop };
+    package.loaded['dlac\\gear\\ownedcache'] = { counts = function() return {}; end };
+    package.loaded['dlac\\feature\\fishwatch'] = {
+        isEnabled = function() return fwEnabled; end,
+        setEnabled = function(v) fwEnabled = v; end,
+        getTarget = function() return fwTarget, fwTarget and 'Moat Carp' or nil; end,
+        setTarget = function(id) fwTarget = id; end,
+        getRod  = function() return 17386, "Lu Shang's Fishing Rod"; end,
+        getBait = function() return 17403, 'Little Worm'; end,
+        rodPinned = function() return false; end, baitPinned = function() return false; end,
+        playerFishSkill = function() return 40; end, playerFishRank = function() return 3; end,
+        venturePoints = function() return 120; end, guildPoints = function() return 500; end,
+        requestPoints = nop, requestGuildPoints = nop, openCapture = nop,
+        setRod = nop, setBait = nop,
+        venturesFor = function() return nil, false, nil; end,
+        _clientName = function() return nil; end,
+    };
+    package.loaded['dlac\\ui\\fishui'] = nil;
+    local ok, fui = pcall(require, 'dlac\\ui\\fishui');
+    check('FS1 fishui re-requires against a stub imgui', ok and type(fui.renderSearch), 'function');
+    if ok and type(fui._target) == 'table' then
+        local deps = { ownedCounts = function() return { [17386] = 1, [17403] = 12 }; end,
+                       renderIcon = nop, itemTooltip = nop,
+                       lookupByName = function() return nil; end };
+
+        check('FS2 a closed target window draws nothing', (function()
+            depth.win = 0; pcall(fui.renderSearch, deps); return depth.win;
+        end)(), 0);
+
+        fui.openTarget('carp');
+        check('FS3 openTarget opens the window', fui._target.open[1], true);
+        local sok, serr = pcall(fui.renderSearch, deps);
+        check('FS4 renderSearch runs the real target body', sok, true);
+        if not sok then print('   fishui.renderSearch error: ' .. tostring(serr)); end
+        check('FS5 target window Begin/End balanced', depth.win, 0);
+        check('FS6 openTarget seeded the search box', seenQuery, 'carp');
+        check('FS7 target window id stack balanced', depth.id, 0);
+        check('FS8 target window item-width stack balanced', depth.item, 0);
+
+        -- Second pass with a target set: the "current target" line, the rod
+        -- verdicts and the ISOLATION rows are a different branch entirely.
+        fwTarget = 4434;   -- Moat Carp
+        local sok2 = pcall(fui.renderSearch, deps);
+        check('FS9 renderSearch runs with an active target', sok2, true);
+        check('FS10 stacks still balanced with a target', depth.win + depth.id + depth.item, 0);
+
+        -- The PANEL keeps "what I own" and must no longer draw the picker.
+        depth.win = 0;
+        local pok, perr = pcall(fui.render, deps, 800);
+        check('FS11 the panel still renders without the target section', pok, true);
+        if not pok then print('   fishui.render error: ' .. tostring(perr)); end
+        check('FS12 the panel opens no window of its own', depth.win, 0);
+
+        fui._target.open[1] = false;
+    end
+
+    -- The BAR: the target name IS the opener (2026-07-27). Every other suite
+    -- no-ops fishbar.renderContent, so this is the first execution of its body.
+    local opened = false;
+    package.loaded['dlac\\ui\\fishui'] = { openTarget = function() opened = true; end };
+    package.loaded['dlac\\ui\\fishbar'] = nil;
+    local bok, fbar = pcall(require, 'dlac\\ui\\fishbar');
+    check('FS13 fishbar re-requires against a stub imgui', bok and type(fbar.renderContent), 'function');
+    if bok then
+        fwTarget = 4434;
+        smalls, clickLabel = {}, nil;
+        local rok, rerr = pcall(fbar.renderContent, 400);
+        check('FS14 fishbar renderContent runs for real', rok, true);
+        if not rok then print('   fishbar.renderContent error: ' .. tostring(rerr)); end
+        check('FS15 colour stack balanced (the gold target button pushes one)', depth.col, 0);
+        check('FS15b rod/bait popup stack balanced', depth.pop, 0);
+        local seen = table.concat(smalls, ' ');
+        check('FS16 the target NAME is a button, not a label',
+            seen:find('Moat Carp##fbtgtbtn', 1, true) ~= nil, true);
+        check('FS17 the bar offers the panel jump', seen:find('Panel##fbpanel', 1, true) ~= nil, true);
+        -- The wire that matters: clicking the name reaches the opener. Without
+        -- this the name is just a button that does nothing -- which is what the
+        -- label it replaced effectively was.
+        clickLabel = 'Moat Carp##fbtgtbtn';
+        pcall(fbar.renderContent, 400);
+        check('FS18 clicking the target name opens the target window', opened, true);
+        clickLabel = nil;
+
+        -- No target: the placeholder must be clickable too, or a fresh character
+        -- has no way in from the bar at all.
+        fwTarget = nil;
+        smalls = {};
+        pcall(fbar.renderContent, 400);
+        check('FS19 "no target fish" is clickable as well',
+            table.concat(smalls, ' '):find('no target fish##fbtgtbtn', 1, true) ~= nil, true);
     end
 
     for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end

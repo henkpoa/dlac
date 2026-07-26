@@ -352,7 +352,7 @@ end
 -- Ashita glue
 -- ---------------------------------------------------------------------------
 if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'function' then
-    -- /dl choco [on | off | status]. The subject (an on/off riding-gear switch)
+    -- /dl choco [on | off | bar | dig [item] | status]. The subject (an on/off riding-gear switch)
     -- lives in the addon state, so the command does too (the helm/fish
     -- precedent) -- its own blocked registration, never the dispatch whitelist.
     ashita.events.register('command', 'dlac-chocowatch-cmd', function(e)
@@ -374,6 +374,24 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
                     hbb.toggle('choco'); shown = hbb.isShown('choco');
                 end);
                 say('hobby bar ' .. (shown and 'shown (Chocobo)' or 'hidden') .. '.');
+                return;
+            end
+            if b == 'dig' then
+                -- /dl choco dig [item] -- opens a floating dig-search window.
+                -- Bare = Area, on the zone you are standing in. This only sets
+                -- the flag through chocoui's openers (one behaviour for the bar,
+                -- the panel and this); gearui's d3d_present draws the window.
+                local third = raw:match('^/dl%s+%S+%s+%S+%s+(%S+)')
+                           or raw:match('^/dlac%s+%S+%s+%S+%s+(%S+)');
+                local wantItem = (third == 'item');
+                local opened = false;
+                pcall(function()
+                    local cu = require('dlac\\ui\\chocoui');
+                    local fn = wantItem and cu.openItemSearch or cu.openAreaSearch;
+                    if type(fn) == 'function' then fn(); opened = true; end
+                end);
+                say(opened and ('dig search open (' .. (wantItem and 'item' or 'area') .. ').')
+                    or 'dig search unavailable (GUI not loaded).');
                 return;
             end
             if b == 'reset' then

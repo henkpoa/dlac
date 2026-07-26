@@ -215,6 +215,29 @@ table), **floatgear.lua** (the floating 4x4 equipment window + the PIN menu — 
 are literally the Equipped tab's and cannot drift). `tests\smoke_ui.lua` headless-loads
 the whole chunk: 200-cap breaches, registration order, services contract.
 
+### Floating windows — many openers, ONE draw site
+A **Floating window** (CONTEXT.md) is *not* a `host.register` window: those render inside
+`drawWindow`, which returns early when the main box is shut. A floating window is drawn
+from gearui's `d3d_present` **above** its `if not M.visible then return`, so it survives
+the main window closing — which is the entire point of every one of them (lockstyle,
+floatgear, the Trigger Monitor, the restock nudge, the two Chocobo dig searches, the
+Hobby bar, idlefloat, the fishing target window).
+
+The invariant, and the only thing that makes them safe to open from several places:
+
+> **Any surface may OPEN a floating window; exactly one place may DRAW it.**
+
+Openers set a module-owned `open` flag (`chocoui.openAreaSearch`, `fishui.openTarget`) —
+they never call the window's own render. Two `imgui.Begin()` calls on one window name in a
+frame do not error: ImGui *appends* the second body into the same window, so the content
+renders twice, widget ids collide, and any shared buffer is written twice per frame. That
+failure is silent and looks like a UI bug, not a crash — the floatgear S50 class.
+
+Two consequences worth stating: the render call site is where `deps` comes from
+(`M._deps`, built once at gearui load), so an opener never needs it; and the window body
+must re-derive its own data rather than take it from whatever panel used to hold it —
+`fishui.renderTargetBody` re-reads db/owned counts/skill for exactly this reason.
+
 ### Pins — floatgear.lua + feature/pinwatch.lua + dispatch v44
 "Equip item, lock slot so nothing removes equipped item" (Henrik), built as an OVERLAY
 rather than a lock — the same shape as the craft overlay, for the same reason (a lock

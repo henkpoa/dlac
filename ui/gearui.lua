@@ -4550,6 +4550,20 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
             if cuThemed then style.pop(); end
         end
     end
+    -- The fishing target window: chocoui's twin (2026-07-27). The TARGET FISH
+    -- section moved out of the fish panel into a floating window so the hobby bar
+    -- could reach it -- this is its ONE draw site, and every surface that "opens"
+    -- it only sets a flag via fishui.openTarget. Self-gates: renderSearch draws
+    -- nothing unless the window is open.
+    if has.imgui then
+        local fuMod = nil;
+        pcall(function() fuMod = require('dlac\\ui\\fishui'); end);
+        if fuMod ~= nil and type(fuMod.renderSearch) == 'function' then
+            local fuThemed = style ~= nil and style.push();
+            pcall(fuMod.renderSearch, M._deps);
+            if fuThemed then style.pop(); end
+        end
+    end
     -- The shared hobby bar: ONE window for Craft / HELM / Fishing / Chocobo, with a
     -- selector that marks the active hobby and locks while it runs (ADR 0017). It
     -- replaced the three separate craft/helm/fish bar windows; self-gates on
