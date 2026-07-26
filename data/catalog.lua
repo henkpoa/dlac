@@ -9,7 +9,7 @@ return {
                 Id = 18761,
                 Model = 509,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 18,
@@ -23,7 +23,7 @@ return {
                 Id = 16430,
                 Model = 124,
                 Jobs = {"THF", "DRK", "NIN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 9,
@@ -36,7 +36,7 @@ return {
                 Id = 21568,
                 Model = 615,
                 Jobs = {"THF", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -62,7 +62,7 @@ return {
                 Id = 18745,
                 Model = 506,
                 Jobs = {"PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 18,
@@ -77,7 +77,7 @@ return {
                 Id = 18353,
                 Model = 510,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 10,
@@ -92,7 +92,7 @@ return {
                 Id = 18354,
                 Model = 510,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 11,
@@ -107,7 +107,7 @@ return {
                 Id = 22048,
                 Model = 540,
                 Jobs = {"All"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -120,7 +120,7 @@ return {
                 Id = 16428,
                 Model = 499,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 22,
@@ -135,7 +135,7 @@ return {
                 Id = 21724,
                 Model = 882,
                 Jobs = {"BST"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -148,7 +148,7 @@ return {
                 Id = 21675,
                 Model = 881,
                 Jobs = {"WAR", "PLD", "DRK", "RUN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -161,7 +161,7 @@ return {
                 Id = 21516,
                 Model = 135,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 136,
@@ -176,7 +176,7 @@ return {
                 Id = 20551,
                 Model = 508,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 35,
@@ -193,7 +193,7 @@ return {
                 Id = 20552,
                 Model = 508,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 36,
@@ -210,7 +210,7 @@ return {
                 Id = 20514,
                 Model = 483,
                 Jobs = {"All"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -223,7 +223,7 @@ return {
                 Id = 22043,
                 Model = 897,
                 Jobs = {"All"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -236,7 +236,7 @@ return {
                 Id = 21504,
                 Model = 506,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 107,
@@ -253,7 +253,7 @@ return {
                 Id = 21505,
                 Model = 506,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 108,
@@ -270,7 +270,7 @@ return {
                 Id = 16426,
                 Model = 117,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 18,
@@ -285,7 +285,7 @@ return {
                 Id = 16406,
                 Model = 142,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 6,
@@ -298,7 +298,7 @@ return {
                 Id = 16444,
                 Model = 142,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 7,
@@ -311,7 +311,7 @@ return {
                 Id = 19415,
                 Model = 140,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 14,
@@ -324,7 +324,7 @@ return {
                 Id = 19473,
                 Model = 140,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 23,
@@ -337,7 +337,7 @@ return {
                 Id = 19551,
                 Model = 140,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 23,
@@ -350,7 +350,7 @@ return {
                 Id = 19649,
                 Model = 140,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 24,
@@ -363,7 +363,7 @@ return {
                 Id = 17499,
                 Model = 131,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 5,
@@ -380,7 +380,7 @@ return {
                 Id = 17478,
                 Model = 127,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 4,
@@ -396,7 +396,7 @@ return {
                 Id = 17479,
                 Model = 128,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 8,
@@ -411,7 +411,7 @@ return {
                 Id = 16397,
                 Model = 128,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 7,
@@ -426,7 +426,7 @@ return {
                 Id = 20537,
                 Model = 504,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 96,
@@ -440,7 +440,7 @@ return {
                 Id = 20538,
                 Model = 504,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 97,
@@ -454,7 +454,7 @@ return {
                 Id = 18767,
                 Model = 119,
                 Jobs = {"WAR", "MNK", "RDM", "DRK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 14,
@@ -467,7 +467,7 @@ return {
                 Id = 18750,
                 Model = 505,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 13,
@@ -482,7 +482,7 @@ return {
                 Id = 18751,
                 Model = 505,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 14,
@@ -497,7 +497,7 @@ return {
                 Id = 20525,
                 Model = 486,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 18,
@@ -513,7 +513,7 @@ return {
                 Id = 20526,
                 Model = 486,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 19,
@@ -530,7 +530,7 @@ return {
                 Id = 18794,
                 Model = 493,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 43,
@@ -545,7 +545,7 @@ return {
                 Id = 18793,
                 Model = 493,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 42,
@@ -560,7 +560,7 @@ return {
                 Id = 16420,
                 Model = 139,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 16,
@@ -573,7 +573,7 @@ return {
                 Id = 17477,
                 Model = 139,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 17,
@@ -586,7 +586,7 @@ return {
                 Id = 18359,
                 Model = 128,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 6,
@@ -599,7 +599,7 @@ return {
                 Id = 16407,
                 Model = 141,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 4,
@@ -612,7 +612,7 @@ return {
                 Id = 16391,
                 Model = 131,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 4,
@@ -626,7 +626,7 @@ return {
                 Id = 16689,
                 Model = 131,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 5,
@@ -640,7 +640,7 @@ return {
                 Id = 21676,
                 Model = 792,
                 Jobs = {"PLD", "DRK", "RUN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -653,7 +653,7 @@ return {
                 Id = 18788,
                 Model = 505,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 35,
@@ -670,7 +670,7 @@ return {
                 Id = 16390,
                 Model = 130,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 2,
@@ -684,7 +684,7 @@ return {
                 Id = 16441,
                 Model = 141,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 5,
@@ -697,7 +697,7 @@ return {
                 Id = 16440,
                 Model = 130,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 3,
@@ -711,7 +711,7 @@ return {
                 Id = 21780,
                 Model = 885,
                 Jobs = {"WAR"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -724,7 +724,7 @@ return {
                 Id = 22041,
                 Model = 884,
                 Jobs = {"WHM", "BLM", "RDM", "SMN", "BLU", "SCH", "GEO"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -737,7 +737,7 @@ return {
                 Id = 18780,
                 Model = 509,
                 Jobs = {"PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 29,
@@ -752,7 +752,7 @@ return {
                 Id = 16398,
                 Model = 127,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 3,
@@ -766,7 +766,7 @@ return {
                 Id = 18753,
                 Model = 134,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 16,
@@ -779,7 +779,7 @@ return {
                 Id = 18791,
                 Model = 509,
                 Jobs = {"PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 18,
@@ -793,7 +793,7 @@ return {
                 Id = 18792,
                 Model = 509,
                 Jobs = {"PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 19,
@@ -807,7 +807,7 @@ return {
                 Id = 18263,
                 Model = 135,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 23,
@@ -820,7 +820,7 @@ return {
                 Id = 21643,
                 Model = 545,
                 Jobs = {"RDM", "PLD", "BLU"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -833,7 +833,7 @@ return {
                 Id = 21644,
                 Model = 545,
                 Jobs = {"RDM", "PLD", "BLU"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -846,7 +846,7 @@ return {
                 Id = 21645,
                 Model = 545,
                 Jobs = {"RDM", "PLD", "BLU"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -859,7 +859,7 @@ return {
                 Id = 21646,
                 Model = 545,
                 Jobs = {"RDM", "PLD", "BLU"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -872,7 +872,7 @@ return {
                 Id = 20529,
                 Model = 125,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 114,
@@ -890,7 +890,7 @@ return {
                 Id = 20545,
                 Model = 129,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 74,
@@ -905,7 +905,7 @@ return {
                 Id = 16405,
                 Model = 140,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 2,
@@ -918,7 +918,7 @@ return {
                 Id = 17476,
                 Model = 140,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 3,
@@ -931,7 +931,7 @@ return {
                 Id = 19331,
                 Model = 125,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 10,
@@ -944,7 +944,7 @@ return {
                 Id = 16414,
                 Model = 125,
                 Jobs = {"WAR", "MNK", "DRK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 11,
@@ -957,7 +957,7 @@ return {
                 Id = 17488,
                 Model = 125,
                 Jobs = {"WAR", "MNK", "DRK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 12,
@@ -970,7 +970,7 @@ return {
                 Id = 16385,
                 Model = 126,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -984,7 +984,7 @@ return {
                 Id = 16690,
                 Model = 126,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 2,
@@ -998,7 +998,7 @@ return {
                 Id = 22050,
                 Model = 723,
                 Jobs = {"All"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -1011,7 +1011,7 @@ return {
                 Id = 20523,
                 Model = 498,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 148,
@@ -1028,7 +1028,7 @@ return {
                 Id = 22049,
                 Model = 865,
                 Jobs = {"All"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -1041,7 +1041,7 @@ return {
                 Id = 16411,
                 Model = 123,
                 Jobs = {"WAR", "MNK", "DRK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 7,
@@ -1054,7 +1054,7 @@ return {
                 Id = 16445,
                 Model = 123,
                 Jobs = {"WAR", "MNK", "DRK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 8,
@@ -1067,7 +1067,7 @@ return {
                 Id = 18756,
                 Model = 142,
                 Jobs = {"WAR", "MNK", "DRK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 15,
@@ -1082,7 +1082,7 @@ return {
                 Id = 16389,
                 Model = 126,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 5,
@@ -1098,7 +1098,7 @@ return {
                 Id = 20507,
                 Model = 501,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 162,
@@ -1114,7 +1114,7 @@ return {
                 Id = 20508,
                 Model = 501,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 163,
@@ -1130,7 +1130,7 @@ return {
                 Id = 20505,
                 Model = 510,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 135,
@@ -1146,7 +1146,7 @@ return {
                 Id = 17487,
                 Model = 124,
                 Jobs = {"THF", "DRK", "NIN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 10,
@@ -1159,7 +1159,7 @@ return {
                 Id = 16702,
                 Model = 141,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 6,
@@ -1173,7 +1173,7 @@ return {
                 Id = 18566,
                 Model = 526,
                 Jobs = {"DRK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -1193,7 +1193,7 @@ return {
                 Id = 17472,
                 Model = 129,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 19,
@@ -1209,7 +1209,7 @@ return {
                 Id = 18762,
                 Model = 505,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 4,
@@ -1222,7 +1222,7 @@ return {
                 Id = 16413,
                 Model = 122,
                 Jobs = {"WAR", "MNK", "DRK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 11,
@@ -1235,7 +1235,7 @@ return {
                 Id = 16400,
                 Model = 118,
                 Jobs = {"WAR", "MNK", "RDM", "DRK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 13,
@@ -1248,7 +1248,7 @@ return {
                 Id = 18743,
                 Model = 508,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 12,
@@ -1263,7 +1263,7 @@ return {
                 Id = 20516,
                 Model = 485,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 165,
@@ -1279,7 +1279,7 @@ return {
                 Id = 17509,
                 Model = 127,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 5,
@@ -1292,7 +1292,7 @@ return {
                 Id = 16395,
                 Model = 135,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 17,
@@ -1307,7 +1307,7 @@ return {
                 Id = 17480,
                 Model = 135,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 18,
@@ -1322,7 +1322,7 @@ return {
                 Id = 21929,
                 Model = 551,
                 Jobs = {"NIN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -1335,7 +1335,7 @@ return {
                 Id = 21930,
                 Model = 551,
                 Jobs = {"NIN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -1348,7 +1348,7 @@ return {
                 Id = 21931,
                 Model = 551,
                 Jobs = {"NIN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -1361,7 +1361,7 @@ return {
                 Id = 21932,
                 Model = 551,
                 Jobs = {"NIN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -1374,7 +1374,7 @@ return {
                 Id = 16416,
                 Model = 125,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 13,
@@ -1388,7 +1388,7 @@ return {
                 Id = 17485,
                 Model = 125,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 14,
@@ -1402,7 +1402,7 @@ return {
                 Id = 21528,
                 Model = 482,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 188,
@@ -1417,7 +1417,7 @@ return {
                 Id = 16697,
                 Model = 122,
                 Jobs = {"WAR", "MNK", "DRK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 12,
@@ -1430,7 +1430,7 @@ return {
                 Id = 17475,
                 Model = 118,
                 Jobs = {"WAR", "MNK", "RDM", "DRK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 14,
@@ -1443,7 +1443,7 @@ return {
                 Id = 16394,
                 Model = 129,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 12,
@@ -1457,7 +1457,7 @@ return {
                 Id = 16698,
                 Model = 129,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 13,
@@ -1471,7 +1471,7 @@ return {
                 Id = 18744,
                 Model = 508,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 13,
@@ -1486,7 +1486,7 @@ return {
                 Id = 19867,
                 Model = 508,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 36,
@@ -1499,7 +1499,7 @@ return {
                 Id = 20544,
                 Model = 508,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 23,
@@ -1512,7 +1512,7 @@ return {
                 Id = 18262,
                 Model = 135,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 16,
@@ -1525,7 +1525,7 @@ return {
                 Id = 21517,
                 Model = 134,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 151,
@@ -1541,7 +1541,7 @@ return {
                 Id = 20540,
                 Model = 142,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 87,
@@ -1557,7 +1557,7 @@ return {
                 Id = 20521,
                 Model = 117,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 146,
@@ -1574,7 +1574,7 @@ return {
                 Id = 20522,
                 Model = 117,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 147,
@@ -1591,7 +1591,7 @@ return {
                 Id = 20518,
                 Model = 493,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 154,
@@ -1610,7 +1610,7 @@ return {
                 Id = 17503,
                 Model = 121,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 10,
@@ -1626,7 +1626,7 @@ return {
                 Id = 18782,
                 Model = 140,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 23,
@@ -1641,7 +1641,7 @@ return {
                 Id = 18783,
                 Model = 140,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 24,
@@ -1656,7 +1656,7 @@ return {
                 Id = 18360,
                 Model = 143,
                 Jobs = {"MNK", "NIN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 9,
@@ -1670,7 +1670,7 @@ return {
                 Id = 17498,
                 Model = 140,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 5,
@@ -1684,7 +1684,7 @@ return {
                 Id = 22045,
                 Model = 835,
                 Jobs = {"All"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -1697,7 +1697,7 @@ return {
                 Id = 22046,
                 Model = 835,
                 Jobs = {"All"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -1710,7 +1710,7 @@ return {
                 Id = 17490,
                 Model = 139,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 19,
@@ -1723,7 +1723,7 @@ return {
                 Id = 20527,
                 Model = 129,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 142,
@@ -1739,7 +1739,7 @@ return {
                 Id = 20528,
                 Model = 129,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 143,
@@ -1755,7 +1755,7 @@ return {
                 Id = 21834,
                 Model = 550,
                 Jobs = {"DRK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -1768,7 +1768,7 @@ return {
                 Id = 21835,
                 Model = 550,
                 Jobs = {"DRK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -1781,7 +1781,7 @@ return {
                 Id = 21836,
                 Model = 550,
                 Jobs = {"DRK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -1794,7 +1794,7 @@ return {
                 Id = 21837,
                 Model = 550,
                 Jobs = {"DRK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -1807,7 +1807,7 @@ return {
                 Id = 20547,
                 Model = 491,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 52,
@@ -1822,7 +1822,7 @@ return {
                 Id = 16443,
                 Model = 126,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     Delay = 520,
@@ -1835,7 +1835,7 @@ return {
                 Id = 16442,
                 Model = 140,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 3,
@@ -1848,7 +1848,7 @@ return {
                 Id = 18781,
                 Model = 127,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 22,
@@ -1863,7 +1863,7 @@ return {
                 Id = 21888,
                 Model = 549,
                 Jobs = {"DRG"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -1876,7 +1876,7 @@ return {
                 Id = 21889,
                 Model = 549,
                 Jobs = {"DRG"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -1889,7 +1889,7 @@ return {
                 Id = 21890,
                 Model = 549,
                 Jobs = {"DRG"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -1902,7 +1902,7 @@ return {
                 Id = 21891,
                 Model = 549,
                 Jobs = {"DRG"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -1915,7 +1915,7 @@ return {
                 Id = 21856,
                 Model = 405,
                 Jobs = {"DRG"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -1928,7 +1928,7 @@ return {
                 Id = 21979,
                 Model = 878,
                 Jobs = {"SAM"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -1941,7 +1941,7 @@ return {
                 Id = 18746,
                 Model = 506,
                 Jobs = {"PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 19,
@@ -1956,7 +1956,7 @@ return {
                 Id = 21928,
                 Model = 314,
                 Jobs = {"NIN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -1969,7 +1969,7 @@ return {
                 Id = 21982,
                 Model = 148,
                 Jobs = {"SAM"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -1982,7 +1982,7 @@ return {
                 Id = 18786,
                 Model = 498,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 35,
@@ -1998,7 +1998,7 @@ return {
                 Id = 18972,
                 Model = 502,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 20,
@@ -2011,7 +2011,7 @@ return {
                 Id = 20483,
                 Model = 496,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 130,
@@ -2024,7 +2024,7 @@ return {
                 Id = 20510,
                 Model = 496,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 170,
@@ -2037,7 +2037,7 @@ return {
                 Id = 18992,
                 Model = 502,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 20,
@@ -2050,7 +2050,7 @@ return {
                 Id = 19061,
                 Model = 502,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 32,
@@ -2063,7 +2063,7 @@ return {
                 Id = 19081,
                 Model = 502,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 38,
@@ -2076,7 +2076,7 @@ return {
                 Id = 19613,
                 Model = 502,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 42,
@@ -2089,7 +2089,7 @@ return {
                 Id = 19711,
                 Model = 502,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 47,
@@ -2102,7 +2102,7 @@ return {
                 Id = 19820,
                 Model = 502,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 51,
@@ -2115,7 +2115,7 @@ return {
                 Id = 19949,
                 Model = 496,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 51,
@@ -2128,7 +2128,7 @@ return {
                 Id = 20482,
                 Model = 502,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 130,
@@ -2141,7 +2141,7 @@ return {
                 Id = 20542,
                 Model = 510,
                 Jobs = {"PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 50,
@@ -2154,7 +2154,7 @@ return {
                 Id = 18757,
                 Model = 504,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 11,
@@ -2167,7 +2167,7 @@ return {
                 Id = 18758,
                 Model = 504,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 12,
@@ -2180,7 +2180,7 @@ return {
                 Id = 20515,
                 Model = 484,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 197,
@@ -2196,7 +2196,7 @@ return {
                 Id = 16421,
                 Model = 137,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 18,
@@ -2209,7 +2209,7 @@ return {
                 Id = 17489,
                 Model = 137,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 19,
@@ -2222,7 +2222,7 @@ return {
                 Id = 21680,
                 Model = 868,
                 Jobs = {"All"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -2235,7 +2235,7 @@ return {
                 Id = 18785,
                 Model = 128,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 20,
@@ -2249,7 +2249,7 @@ return {
                 Id = 18748,
                 Model = 507,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 18,
@@ -2266,7 +2266,7 @@ return {
                 Id = 18749,
                 Model = 507,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 19,
@@ -2283,7 +2283,7 @@ return {
                 Id = 20519,
                 Model = 501,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 115,
@@ -2301,7 +2301,7 @@ return {
                 Id = 21885,
                 Model = 786,
                 Jobs = {"DRG"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -2314,7 +2314,7 @@ return {
                 Id = 21649,
                 Model = 546,
                 Jobs = {"WAR", "PLD", "DRK", "RUN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -2327,7 +2327,7 @@ return {
                 Id = 21651,
                 Model = 546,
                 Jobs = {"WAR", "PLD", "DRK", "RUN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -2340,7 +2340,7 @@ return {
                 Id = 21652,
                 Model = 546,
                 Jobs = {"WAR", "PLD", "DRK", "RUN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -2353,7 +2353,7 @@ return {
                 Id = 21653,
                 Model = 546,
                 Jobs = {"WAR", "PLD", "DRK", "RUN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -2366,7 +2366,7 @@ return {
                 Id = 18776,
                 Model = 135,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 30,
@@ -2379,7 +2379,7 @@ return {
                 Id = 21511,
                 Model = 141,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 21,
@@ -2396,7 +2396,7 @@ return {
                 Id = 21512,
                 Model = 141,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 22,
@@ -2413,7 +2413,7 @@ return {
                 Id = 21522,
                 Model = 121,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 191,
@@ -2430,7 +2430,7 @@ return {
                 Id = 16388,
                 Model = 127,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 4,
@@ -2444,7 +2444,7 @@ return {
                 Id = 16699,
                 Model = 127,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 5,
@@ -2458,7 +2458,7 @@ return {
                 Id = 18355,
                 Model = 141,
                 Jobs = {"THF", "DRK", "NIN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 5,
@@ -2471,7 +2471,7 @@ return {
                 Id = 17513,
                 Model = 141,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 5,
@@ -2484,7 +2484,7 @@ return {
                 Id = 17512,
                 Model = 141,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 4,
@@ -2497,7 +2497,7 @@ return {
                 Id = 17514,
                 Model = 123,
                 Jobs = {"WAR", "MNK", "DRK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 7,
@@ -2510,7 +2510,7 @@ return {
                 Id = 17515,
                 Model = 123,
                 Jobs = {"WAR", "MNK", "DRK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 8,
@@ -2523,7 +2523,7 @@ return {
                 Id = 17516,
                 Model = 139,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 16,
@@ -2536,7 +2536,7 @@ return {
                 Id = 17517,
                 Model = 139,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 17,
@@ -2549,7 +2549,7 @@ return {
                 Id = 21723,
                 Model = 874,
                 Jobs = {"WAR", "BST"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -2562,7 +2562,7 @@ return {
                 Id = 21884,
                 Model = 875,
                 Jobs = {"DRG"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -2575,7 +2575,7 @@ return {
                 Id = 16703,
                 Model = 130,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 8,
@@ -2590,7 +2590,7 @@ return {
                 Id = 17511,
                 Model = 120,
                 Jobs = {"WAR", "MNK", "RDM", "DRK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 19,
@@ -2604,7 +2604,7 @@ return {
                 Id = 18754,
                 Model = 508,
                 Jobs = {"PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 15,
@@ -2617,7 +2617,7 @@ return {
                 Id = 16401,
                 Model = 120,
                 Jobs = {"WAR", "MNK", "RDM", "DRK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 14,
@@ -2630,7 +2630,7 @@ return {
                 Id = 17482,
                 Model = 120,
                 Jobs = {"WAR", "MNK", "RDM", "DRK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 15,
@@ -2643,7 +2643,7 @@ return {
                 Id = 21506,
                 Model = 129,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 180,
@@ -2660,7 +2660,7 @@ return {
                 Id = 21507,
                 Model = 129,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 181,
@@ -2677,7 +2677,7 @@ return {
                 Id = 17481,
                 Model = 134,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 20,
@@ -2692,7 +2692,7 @@ return {
                 Id = 21518,
                 Model = 479,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 165,
@@ -2711,7 +2711,7 @@ return {
                 Id = 21519,
                 Model = 478,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 28,
@@ -2729,7 +2729,7 @@ return {
                 Id = 16399,
                 Model = 119,
                 Jobs = {"WAR", "MNK", "RDM", "DRK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 8,
@@ -2742,7 +2742,7 @@ return {
                 Id = 16695,
                 Model = 119,
                 Jobs = {"WAR", "MNK", "RDM", "DRK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 9,
@@ -2755,7 +2755,7 @@ return {
                 Id = 18988,
                 Model = 503,
                 Jobs = {"PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 17,
@@ -2768,7 +2768,7 @@ return {
                 Id = 20485,
                 Model = 495,
                 Jobs = {"PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 107,
@@ -2783,7 +2783,7 @@ return {
                 Id = 20511,
                 Model = 495,
                 Jobs = {"PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 144,
@@ -2798,7 +2798,7 @@ return {
                 Id = 19008,
                 Model = 503,
                 Jobs = {"PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 17,
@@ -2813,7 +2813,7 @@ return {
                 Id = 19077,
                 Model = 503,
                 Jobs = {"PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 26,
@@ -2828,7 +2828,7 @@ return {
                 Id = 19097,
                 Model = 503,
                 Jobs = {"PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 32,
@@ -2843,7 +2843,7 @@ return {
                 Id = 19629,
                 Model = 503,
                 Jobs = {"PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 35,
@@ -2858,7 +2858,7 @@ return {
                 Id = 19727,
                 Model = 503,
                 Jobs = {"PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 39,
@@ -2873,7 +2873,7 @@ return {
                 Id = 19836,
                 Model = 503,
                 Jobs = {"PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 41,
@@ -2888,7 +2888,7 @@ return {
                 Id = 19965,
                 Model = 495,
                 Jobs = {"PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 41,
@@ -2903,7 +2903,7 @@ return {
                 Id = 20484,
                 Model = 503,
                 Jobs = {"PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 107,
@@ -2918,7 +2918,7 @@ return {
                 Id = 17496,
                 Model = 126,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 4,
@@ -2934,7 +2934,7 @@ return {
                 Id = 17507,
                 Model = 130,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 16,
@@ -2950,7 +2950,7 @@ return {
                 Id = 16396,
                 Model = 134,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 19,
@@ -2965,7 +2965,7 @@ return {
                 Id = 22047,
                 Model = 539,
                 Jobs = {"All"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -2978,7 +2978,7 @@ return {
                 Id = 21925,
                 Model = 876,
                 Jobs = {"NIN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -2991,7 +2991,7 @@ return {
                 Id = 21983,
                 Model = 514,
                 Jobs = {"SAM"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -3004,7 +3004,7 @@ return {
                 Id = 21984,
                 Model = 514,
                 Jobs = {"SAM"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -3017,7 +3017,7 @@ return {
                 Id = 21985,
                 Model = 514,
                 Jobs = {"SAM"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -3030,7 +3030,7 @@ return {
                 Id = 21986,
                 Model = 514,
                 Jobs = {"SAM"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -3043,7 +3043,7 @@ return {
                 Id = 21782,
                 Model = 548,
                 Jobs = {"WAR"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -3056,7 +3056,7 @@ return {
                 Id = 21783,
                 Model = 548,
                 Jobs = {"WAR"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -3069,7 +3069,7 @@ return {
                 Id = 21784,
                 Model = 548,
                 Jobs = {"WAR"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -3082,7 +3082,7 @@ return {
                 Id = 21785,
                 Model = 548,
                 Jobs = {"WAR"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -3095,7 +3095,7 @@ return {
                 Id = 16433,
                 Model = 131,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 4,
@@ -3110,7 +3110,7 @@ return {
                 Id = 21831,
                 Model = 759,
                 Jobs = {"WAR", "BLM", "DRK", "BST"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -3123,7 +3123,7 @@ return {
                 Id = 16386,
                 Model = 127,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 2,
@@ -3137,7 +3137,7 @@ return {
                 Id = 21998,
                 Model = 553,
                 Jobs = {"WHM", "GEO"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -3150,7 +3150,7 @@ return {
                 Id = 22000,
                 Model = 553,
                 Jobs = {"WHM", "GEO"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -3163,7 +3163,7 @@ return {
                 Id = 22001,
                 Model = 553,
                 Jobs = {"WHM", "GEO"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -3176,7 +3176,7 @@ return {
                 Id = 22002,
                 Model = 553,
                 Jobs = {"WHM", "GEO"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -3189,7 +3189,7 @@ return {
                 Id = 16427,
                 Model = 117,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 26,
@@ -3203,7 +3203,7 @@ return {
                 Id = 22051,
                 Model = 540,
                 Jobs = {"All"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -3216,7 +3216,7 @@ return {
                 Id = 18771,
                 Model = 504,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 18,
@@ -3229,7 +3229,7 @@ return {
                 Id = 16409,
                 Model = 140,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 6,
@@ -3242,7 +3242,7 @@ return {
                 Id = 18777,
                 Model = 506,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 10,
@@ -3256,7 +3256,7 @@ return {
                 Id = 16423,
                 Model = 136,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 20,
@@ -3270,7 +3270,7 @@ return {
                 Id = 17518,
                 Model = 136,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 21,
@@ -3284,7 +3284,7 @@ return {
                 Id = 19329,
                 Model = 509,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 12,
@@ -3297,7 +3297,7 @@ return {
                 Id = 20543,
                 Model = 492,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 18,
@@ -3318,7 +3318,7 @@ return {
                 Id = 18789,
                 Model = 142,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 17,
@@ -3335,7 +3335,7 @@ return {
                 Id = 18778,
                 Model = 121,
                 Jobs = {"PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 22,
@@ -3349,7 +3349,7 @@ return {
                 Id = 18356,
                 Model = 132,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 16,
@@ -3363,7 +3363,7 @@ return {
                 Id = 21521,
                 Model = 121,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 190,
@@ -3380,7 +3380,7 @@ return {
                 Id = 18357,
                 Model = 124,
                 Jobs = {"THF", "DRK", "NIN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 9,
@@ -3393,7 +3393,7 @@ return {
                 Id = 16392,
                 Model = 132,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 6,
@@ -3407,7 +3407,7 @@ return {
                 Id = 16437,
                 Model = 132,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 7,
@@ -3421,7 +3421,7 @@ return {
                 Id = 18784,
                 Model = 118,
                 Jobs = {"WAR", "MNK", "RDM", "DRK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 17,
@@ -3435,7 +3435,7 @@ return {
                 Id = 18351,
                 Model = 128,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 8,
@@ -3451,7 +3451,7 @@ return {
                 Id = 20520,
                 Model = 505,
                 Jobs = {"PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 119,
@@ -3468,7 +3468,7 @@ return {
                 Id = 18352,
                 Model = 139,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 17,
@@ -3482,7 +3482,7 @@ return {
                 Id = 18261,
                 Model = 135,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -3495,7 +3495,7 @@ return {
                 Id = 17508,
                 Model = 142,
                 Jobs = {"WAR", "MNK", "DRK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 15,
@@ -3509,7 +3509,7 @@ return {
                 Id = 16446,
                 Model = 133,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 10,
@@ -3523,7 +3523,7 @@ return {
                 Id = 21981,
                 Model = 791,
                 Jobs = {"SAM"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -3536,7 +3536,7 @@ return {
                 Id = 21978,
                 Model = 791,
                 Jobs = {"All"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -3549,7 +3549,7 @@ return {
                 Id = 16412,
                 Model = 124,
                 Jobs = {"WAR", "MNK", "DRK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 9,
@@ -3562,7 +3562,7 @@ return {
                 Id = 16688,
                 Model = 124,
                 Jobs = {"WAR", "MNK", "DRK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 10,
@@ -3575,7 +3575,7 @@ return {
                 Id = 16393,
                 Model = 133,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 9,
@@ -3589,7 +3589,7 @@ return {
                 Id = 17505,
                 Model = 126,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 6,
@@ -3606,7 +3606,7 @@ return {
                 Id = 20524,
                 Model = 487,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 124,
@@ -3624,7 +3624,7 @@ return {
                 Id = 20553,
                 Model = 507,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 28,
@@ -3637,7 +3637,7 @@ return {
                 Id = 20546,
                 Model = 507,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 76,
@@ -3650,7 +3650,7 @@ return {
                 Id = 20539,
                 Model = 507,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 104,
@@ -3663,7 +3663,7 @@ return {
                 Id = 18755,
                 Model = 127,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 4,
@@ -3677,7 +3677,7 @@ return {
                 Id = 20534,
                 Model = 501,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 20,
@@ -3698,7 +3698,7 @@ return {
                 Id = 20548,
                 Model = 492,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 141,
@@ -3715,7 +3715,7 @@ return {
                 Id = 18764,
                 Model = 134,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 18,
@@ -3728,7 +3728,7 @@ return {
                 Id = 18765,
                 Model = 508,
                 Jobs = {"PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 15,
@@ -3741,7 +3741,7 @@ return {
                 Id = 20530,
                 Model = 506,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 30,
@@ -3759,7 +3759,7 @@ return {
                 Id = 20535,
                 Model = 505,
                 Jobs = {"PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 20,
@@ -3778,7 +3778,7 @@ return {
                 Id = 22103,
                 Model = 554,
                 Jobs = {"BLM", "SMN", "SCH"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -3791,7 +3791,7 @@ return {
                 Id = 22104,
                 Model = 554,
                 Jobs = {"BLM", "SMN", "SCH"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -3804,7 +3804,7 @@ return {
                 Id = 22105,
                 Model = 554,
                 Jobs = {"BLM", "SMN", "SCH"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -3817,7 +3817,7 @@ return {
                 Id = 22106,
                 Model = 554,
                 Jobs = {"BLM", "SMN", "SCH"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -3830,7 +3830,7 @@ return {
                 Id = 19869,
                 Model = 122,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 34,
@@ -3843,7 +3843,7 @@ return {
                 Id = 17504,
                 Model = 133,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 14,
@@ -3859,7 +3859,7 @@ return {
                 Id = 18364,
                 Model = 118,
                 Jobs = {"WAR", "MNK", "RDM", "DRK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 16,
@@ -3872,7 +3872,7 @@ return {
                 Id = 18365,
                 Model = 139,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 17,
@@ -3885,7 +3885,7 @@ return {
                 Id = 21524,
                 Model = 121,
                 Jobs = {"PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 190,
@@ -3901,7 +3901,7 @@ return {
                 Id = 16419,
                 Model = 138,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 14,
@@ -3914,7 +3914,7 @@ return {
                 Id = 16696,
                 Model = 138,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 15,
@@ -3927,7 +3927,7 @@ return {
                 Id = 21510,
                 Model = 131,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 12,
@@ -3943,7 +3943,7 @@ return {
                 Id = 20531,
                 Model = 131,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 20,
@@ -3960,7 +3960,7 @@ return {
                 Id = 20541,
                 Model = 127,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 52,
@@ -3975,7 +3975,7 @@ return {
                 Id = 21525,
                 Model = 121,
                 Jobs = {"PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 191,
@@ -3991,7 +3991,7 @@ return {
                 Id = 17519,
                 Model = 127,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 4,
@@ -4004,7 +4004,7 @@ return {
                 Id = 16387,
                 Model = 128,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 3,
@@ -4018,7 +4018,7 @@ return {
                 Id = 16700,
                 Model = 128,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 4,
@@ -4032,7 +4032,7 @@ return {
                 Id = 16417,
                 Model = 123,
                 Jobs = {"THF", "DRK", "NIN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 8,
@@ -4045,7 +4045,7 @@ return {
                 Id = 16439,
                 Model = 123,
                 Jobs = {"THF", "DRK", "NIN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 9,
@@ -4058,7 +4058,7 @@ return {
                 Id = 16403,
                 Model = 119,
                 Jobs = {"THF", "DRK", "NIN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 9,
@@ -4071,7 +4071,7 @@ return {
                 Id = 16693,
                 Model = 119,
                 Jobs = {"THF", "DRK", "NIN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 10,
@@ -4084,7 +4084,7 @@ return {
                 Id = 18361,
                 Model = 136,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 20,
@@ -4098,7 +4098,7 @@ return {
                 Id = 18768,
                 Model = 119,
                 Jobs = {"WAR", "MNK", "RDM", "DRK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 17,
@@ -4111,7 +4111,7 @@ return {
                 Id = 21529,
                 Model = 481,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 172,
@@ -4126,7 +4126,7 @@ return {
                 Id = 21509,
                 Model = 481,
                 Jobs = {"All"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -4139,7 +4139,7 @@ return {
                 Id = 21650,
                 Model = 65,
                 Jobs = {"WAR", "PLD", "DRK", "RUN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -4152,7 +4152,7 @@ return {
                 Id = 21531,
                 Model = 134,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 181,
@@ -4165,7 +4165,7 @@ return {
                 Id = 21781,
                 Model = 434,
                 Jobs = {"WAR"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -4178,7 +4178,7 @@ return {
                 Id = 21887,
                 Model = 209,
                 Jobs = {"DRG"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -4191,7 +4191,7 @@ return {
                 Id = 21999,
                 Model = 112,
                 Jobs = {"WHM", "GEO"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -4204,7 +4204,7 @@ return {
                 Id = 21726,
                 Model = 87,
                 Jobs = {"BST"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -4217,7 +4217,7 @@ return {
                 Id = 21833,
                 Model = 194,
                 Jobs = {"DRK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -4230,7 +4230,7 @@ return {
                 Id = 22102,
                 Model = 303,
                 Jobs = {"BLM", "SMN", "SCH"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -4243,7 +4243,7 @@ return {
                 Id = 21642,
                 Model = 267,
                 Jobs = {"RDM", "PLD", "BLU"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -4256,7 +4256,7 @@ return {
                 Id = 22071,
                 Model = 872,
                 Jobs = {"All"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -4269,7 +4269,7 @@ return {
                 Id = 16410,
                 Model = 142,
                 Jobs = {"THF", "DRK", "NIN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 7,
@@ -4282,7 +4282,7 @@ return {
                 Id = 16692,
                 Model = 142,
                 Jobs = {"THF", "DRK", "NIN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 8,
@@ -4295,7 +4295,7 @@ return {
                 Id = 19327,
                 Model = 130,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 9,
@@ -4308,7 +4308,7 @@ return {
                 Id = 18742,
                 Model = 124,
                 Jobs = {"WAR", "MNK", "DRK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 12,
@@ -4322,7 +4322,7 @@ return {
                 Id = 18770,
                 Model = 506,
                 Jobs = {"PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 16,
@@ -4337,7 +4337,7 @@ return {
                 Id = 21514,
                 Model = 143,
                 Jobs = {"WAR", "MNK", "BLM", "RDM", "THF", "DRK", "BST", "BRD", "NIN", "SMN", "BLU", "PUP", "DNC", "SCH"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 161,
@@ -4354,7 +4354,7 @@ return {
                 Id = 21513,
                 Model = 143,
                 Jobs = {"WAR", "MNK", "BLM", "RDM", "THF", "DRK", "BST", "BRD", "NIN", "SMN", "BLU", "PUP", "DNC", "SCH"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 160,
@@ -4371,7 +4371,7 @@ return {
                 Id = 18260,
                 Model = 135,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -4384,7 +4384,7 @@ return {
                 Id = 17500,
                 Model = 131,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 6,
@@ -4401,7 +4401,7 @@ return {
                 Id = 18752,
                 Model = 129,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 19,
@@ -4417,7 +4417,7 @@ return {
                 Id = 19412,
                 Model = 509,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 23,
@@ -4430,7 +4430,7 @@ return {
                 Id = 19470,
                 Model = 509,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 28,
@@ -4443,7 +4443,7 @@ return {
                 Id = 19548,
                 Model = 509,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 31,
@@ -4456,7 +4456,7 @@ return {
                 Id = 19646,
                 Model = 509,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 34,
@@ -4469,7 +4469,7 @@ return {
                 Id = 20549,
                 Model = 143,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 90,
@@ -4482,7 +4482,7 @@ return {
                 Id = 16408,
                 Model = 143,
                 Jobs = {"WAR", "MNK", "BLM", "RDM", "THF", "DRK", "BST", "BRD", "NIN", "SMN", "BLU", "PUP", "DNC", "SCH"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 13,
@@ -4495,7 +4495,7 @@ return {
                 Id = 16691,
                 Model = 126,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 2,
@@ -4510,7 +4510,7 @@ return {
                 Id = 21523,
                 Model = 480,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 192,
@@ -4527,7 +4527,7 @@ return {
                 Id = 18362,
                 Model = 509,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 10,
@@ -4542,7 +4542,7 @@ return {
                 Id = 18363,
                 Model = 509,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 11,
@@ -4557,7 +4557,7 @@ return {
                 Id = 21527,
                 Model = 477,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 165,
@@ -4580,7 +4580,7 @@ return {
                 Id = 17495,
                 Model = 126,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 3,
@@ -4596,7 +4596,7 @@ return {
                 Id = 18774,
                 Model = 506,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 19,
@@ -4611,7 +4611,7 @@ return {
                 Id = 18775,
                 Model = 506,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 20,
@@ -4626,7 +4626,7 @@ return {
                 Id = 21641,
                 Model = 790,
                 Jobs = {"PLD"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -4639,7 +4639,7 @@ return {
                 Id = 18741,
                 Model = 133,
                 Jobs = {"PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 15,
@@ -4653,7 +4653,7 @@ return {
                 Id = 18769,
                 Model = 123,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 15,
@@ -4668,7 +4668,7 @@ return {
                 Id = 18773,
                 Model = 123,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 16,
@@ -4683,7 +4683,7 @@ return {
                 Id = 18787,
                 Model = 134,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 34,
@@ -4699,7 +4699,7 @@ return {
                 Id = 18790,
                 Model = 142,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 18,
@@ -4716,7 +4716,7 @@ return {
                 Id = 17492,
                 Model = 125,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 11,
@@ -4731,7 +4731,7 @@ return {
                 Id = 18759,
                 Model = 501,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 21,
@@ -4748,7 +4748,7 @@ return {
                 Id = 19328,
                 Model = 129,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 12,
@@ -4761,7 +4761,7 @@ return {
                 Id = 16429,
                 Model = 141,
                 Jobs = {"THF", "DRK", "NIN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 5,
@@ -4774,7 +4774,7 @@ return {
                 Id = 16438,
                 Model = 141,
                 Jobs = {"THF", "DRK", "NIN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 6,
@@ -4787,7 +4787,7 @@ return {
                 Id = 18747,
                 Model = 127,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 2,
@@ -4801,7 +4801,7 @@ return {
                 Id = 16434,
                 Model = 129,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 6,
@@ -4815,7 +4815,7 @@ return {
                 Id = 21727,
                 Model = 547,
                 Jobs = {"BST"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -4828,7 +4828,7 @@ return {
                 Id = 21728,
                 Model = 547,
                 Jobs = {"BST"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -4841,7 +4841,7 @@ return {
                 Id = 21729,
                 Model = 547,
                 Jobs = {"BST"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -4854,7 +4854,7 @@ return {
                 Id = 21730,
                 Model = 547,
                 Jobs = {"BST"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -4867,7 +4867,7 @@ return {
                 Id = 17491,
                 Model = 128,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 20,
@@ -4881,7 +4881,7 @@ return {
                 Id = 18264,
                 Model = 511,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 23,
@@ -4896,7 +4896,7 @@ return {
                 Id = 20509,
                 Model = 497,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 182,
@@ -4911,7 +4911,7 @@ return {
                 Id = 18265,
                 Model = 511,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 34,
@@ -4926,7 +4926,7 @@ return {
                 Id = 18637,
                 Model = 511,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 40,
@@ -4941,7 +4941,7 @@ return {
                 Id = 18651,
                 Model = 511,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 44,
@@ -4956,7 +4956,7 @@ return {
                 Id = 18665,
                 Model = 511,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 48,
@@ -4971,7 +4971,7 @@ return {
                 Id = 19746,
                 Model = 511,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 52,
@@ -4986,7 +4986,7 @@ return {
                 Id = 19839,
                 Model = 497,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 52,
@@ -5001,7 +5001,7 @@ return {
                 Id = 20480,
                 Model = 511,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 130,
@@ -5016,7 +5016,7 @@ return {
                 Id = 20481,
                 Model = 497,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 130,
@@ -5031,7 +5031,7 @@ return {
                 Id = 19870,
                 Model = 141,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 26,
@@ -5044,7 +5044,7 @@ return {
                 Id = 20554,
                 Model = 135,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 24,
@@ -5064,7 +5064,7 @@ return {
                 Id = 16701,
                 Model = 140,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 5,
@@ -5078,7 +5078,7 @@ return {
                 Id = 16431,
                 Model = 125,
                 Jobs = {"THF", "DRK", "NIN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 12,
@@ -5091,7 +5091,7 @@ return {
                 Id = 17486,
                 Model = 125,
                 Jobs = {"THF", "DRK", "NIN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 13,
@@ -5104,7 +5104,7 @@ return {
                 Id = 16432,
                 Model = 120,
                 Jobs = {"WAR", "MNK", "RDM", "DRK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 15,
@@ -5117,7 +5117,7 @@ return {
                 Id = 17484,
                 Model = 120,
                 Jobs = {"THF", "DRK", "NIN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 16,
@@ -5130,7 +5130,7 @@ return {
                 Id = 22052,
                 Model = 798,
                 Jobs = {"All"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -5143,7 +5143,7 @@ return {
                 Id = 20506,
                 Model = 499,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 185,
@@ -5161,7 +5161,7 @@ return {
                 Id = 17501,
                 Model = 139,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 15,
@@ -5176,7 +5176,7 @@ return {
                 Id = 17502,
                 Model = 139,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 16,
@@ -5191,7 +5191,7 @@ return {
                 Id = 19414,
                 Model = 125,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 22,
@@ -5204,7 +5204,7 @@ return {
                 Id = 19472,
                 Model = 125,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 26,
@@ -5217,7 +5217,7 @@ return {
                 Id = 19550,
                 Model = 125,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 29,
@@ -5230,7 +5230,7 @@ return {
                 Id = 19648,
                 Model = 125,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 32,
@@ -5243,7 +5243,7 @@ return {
                 Id = 18779,
                 Model = 126,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 28,
@@ -5259,7 +5259,7 @@ return {
                 Id = 16694,
                 Model = 139,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 15,
@@ -5274,7 +5274,7 @@ return {
                 Id = 22044,
                 Model = 899,
                 Jobs = {"All"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -5287,7 +5287,7 @@ return {
                 Id = 20517,
                 Model = 122,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 18,
@@ -5303,7 +5303,7 @@ return {
                 Id = 22032,
                 Model = 896,
                 Jobs = {"All"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -5316,7 +5316,7 @@ return {
                 Id = 16422,
                 Model = 139,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 18,
@@ -5329,7 +5329,7 @@ return {
                 Id = 20536,
                 Model = 134,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 136,
@@ -5344,7 +5344,7 @@ return {
                 Id = 21515,
                 Model = 129,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 121,
@@ -5357,7 +5357,7 @@ return {
                 Id = 21530,
                 Model = 476,
                 Jobs = {"All"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -5370,7 +5370,7 @@ return {
                 Id = 17473,
                 Model = 126,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 6,
@@ -5386,7 +5386,7 @@ return {
                 Id = 18350,
                 Model = 137,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 11,
@@ -5400,7 +5400,7 @@ return {
                 Id = 18763,
                 Model = 119,
                 Jobs = {"All"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -5413,7 +5413,7 @@ return {
                 Id = 17493,
                 Model = 126,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -5427,7 +5427,7 @@ return {
                 Id = 17494,
                 Model = 126,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 2,
@@ -5441,7 +5441,7 @@ return {
                 Id = 21926,
                 Model = 312,
                 Jobs = {"NIN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -5465,7 +5465,7 @@ return {
                 Id = 18766,
                 Model = 119,
                 Jobs = {"WAR", "MNK", "RDM", "DRK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 6,
@@ -5478,7 +5478,7 @@ return {
                 Id = 18772,
                 Model = 119,
                 Jobs = {"WAR", "MNK", "RDM", "DRK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 7,
@@ -5491,7 +5491,7 @@ return {
                 Id = 19868,
                 Model = 118,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 2,
@@ -5504,7 +5504,7 @@ return {
                 Id = 19413,
                 Model = 119,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     Delay = 566,
@@ -5516,7 +5516,7 @@ return {
                 Id = 19471,
                 Model = 119,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     Delay = 566,
@@ -5528,7 +5528,7 @@ return {
                 Id = 19549,
                 Model = 119,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     Delay = 566,
@@ -5540,7 +5540,7 @@ return {
                 Id = 19647,
                 Model = 119,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -5553,7 +5553,7 @@ return {
                 Id = 18760,
                 Model = 128,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 8,
@@ -5567,7 +5567,7 @@ return {
                 Id = 17510,
                 Model = 122,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 8,
@@ -5580,7 +5580,7 @@ return {
                 Id = 21532,
                 Model = 475,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 181,
@@ -5593,7 +5593,7 @@ return {
                 Id = 21533,
                 Model = 475,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 192,
@@ -5611,7 +5611,7 @@ return {
                 Id = 21534,
                 Model = 475,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 202,
@@ -5629,7 +5629,7 @@ return {
                 Id = 21535,
                 Model = 474,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 213,
@@ -5647,7 +5647,7 @@ return {
                 Id = 16418,
                 Model = 122,
                 Jobs = {"THF", "DRK", "NIN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 12,
@@ -5660,7 +5660,7 @@ return {
                 Id = 16425,
                 Model = 122,
                 Jobs = {"THF", "DRK", "NIN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 13,
@@ -5673,7 +5673,7 @@ return {
                 Id = 16404,
                 Model = 118,
                 Jobs = {"THF", "DRK", "NIN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 14,
@@ -5686,7 +5686,7 @@ return {
                 Id = 17483,
                 Model = 118,
                 Jobs = {"THF", "DRK", "NIN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 15,
@@ -5699,7 +5699,7 @@ return {
                 Id = 19397,
                 Model = 500,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 27,
@@ -5712,7 +5712,7 @@ return {
                 Id = 19456,
                 Model = 500,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 32,
@@ -5726,7 +5726,7 @@ return {
                 Id = 19534,
                 Model = 500,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 35,
@@ -5740,7 +5740,7 @@ return {
                 Id = 19632,
                 Model = 500,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 39,
@@ -5754,7 +5754,7 @@ return {
                 Id = 19805,
                 Model = 500,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 42,
@@ -5768,7 +5768,7 @@ return {
                 Id = 19853,
                 Model = 494,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 42,
@@ -5782,7 +5782,7 @@ return {
                 Id = 20486,
                 Model = 500,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 111,
@@ -5796,7 +5796,7 @@ return {
                 Id = 20487,
                 Model = 494,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 111,
@@ -5810,7 +5810,7 @@ return {
                 Id = 20512,
                 Model = 494,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 158,
@@ -5824,7 +5824,7 @@ return {
                 Id = 20550,
                 Model = 127,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 32,
@@ -5838,7 +5838,7 @@ return {
                 Id = 17506,
                 Model = 126,
                 Jobs = {"MNK"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 7,
@@ -5855,7 +5855,7 @@ return {
                 Id = 18358,
                 Model = 142,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 13,
@@ -5868,7 +5868,7 @@ return {
                 Id = 19330,
                 Model = 119,
                 Jobs = {"MNK", "PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     Delay = 555,
@@ -5880,7 +5880,7 @@ return {
                 Id = 17497,
                 Model = 140,
                 Jobs = {"WAR", "MNK", "RDM", "THF", "DRK", "BST", "NIN", "PUP", "DNC"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 4,
@@ -5894,7 +5894,7 @@ return {
                 Id = 20532,
                 Model = 489,
                 Jobs = {"All"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -5907,7 +5907,7 @@ return {
                 Id = 20533,
                 Model = 489,
                 Jobs = {"All"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 2,
@@ -5920,7 +5920,7 @@ return {
                 Id = 21526,
                 Model = 480,
                 Jobs = {"PUP"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 192,
@@ -5936,7 +5936,7 @@ return {
                 Id = 21927,
                 Model = 789,
                 Jobs = {"NIN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -5949,7 +5949,7 @@ return {
                 Id = 21980,
                 Model = 788,
                 Jobs = {"SAM"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
@@ -5962,7 +5962,7 @@ return {
                 Id = 21664,
                 Model = 809,
                 Jobs = {"PLD", "DRK", "RUN"},
-                OneHanded = true,
+                OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
                     DMG = 1,
