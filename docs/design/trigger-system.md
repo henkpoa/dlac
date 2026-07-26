@@ -160,6 +160,10 @@ the same **Match either instead** escape — so there is nothing new to learn in
   *single-condition* entry stays a body `|` row (as before); a *multi-condition* entry loads
   as a `| case` box instead of flattening to separate `|` rows; each `cases`-list entry loads
   as its box. A multi-condition `|` rule now round-trips **byte-identically** (test TE10).
+  One depth the editor cannot represent (one-tier cap): a hand-written *combined* `|` entry
+  **inside** a case, which the engine honors as AND-within-OR. It splits to standalone `|`
+  rows on load — **with a note on the case box, never silently** (v2026.07.26g; the `&` leg's
+  law one tier down), and Cancel keeps the file as written.
 - **Saving** (`_buildLegs` + `_buildCases`): the body legs and each case's legs are rebuilt
   and handed to `dispatch.serializeTriggers`, which owns canonicalization — a `| case` of only
   `&` rows folds back to the oldest `whenAny` form (no guard); only `&` cases and `| cases`
@@ -167,7 +171,7 @@ the same **Match either instead** escape — so there is nothing new to learn in
   silently**: the popup refuses Save while one exists and says so.
 - Deferred to the completion slice (not built here): copy-case, "Match either instead" between
   cases, hover help beyond the button tooltips, chrome polish. Tests: pure seams + real-popup
-  frame drive `TE1-TE42` (`smoke_ui`).
+  frame drive `TE1-TE44` (`smoke_ui`).
 
 v2 candidates (matcher is an open table; additive): day/weather/moon beyond the obi rule,
 subjob. (`area` landed in v84 as `inTown`, off the server-derived `data/zones.lua` town set;

@@ -2358,6 +2358,17 @@ end)();
         check('TE19 buildCases drops an empty case as a last defense',
             tg._buildCases({ { op = '|', conds = {} } }), nil);
 
+        -- ---- a combined | entry INSIDE a case splits LOUDLY ----
+        -- The engine honors { whenAny = { { a, b } } } inside a case as
+        -- AND-within-OR; the editor cannot represent that depth (one-tier cap)
+        -- and splits it to standalone singles -- which WIDENS the rule. The & leg's
+        -- law applies one tier down: the split is fine, silence would be the bug.
+        local c4, cs4 = tg._loadCases({ when = { name = 'X' },
+            cases = { { op = '&', whenAny = { { buff = 'Sleep', hpbelow = 25 } } } } });
+        check('TE43 the combined entry splits to standalone | rows', (#cs4 == 1) and #cs4[1].conds, 2);
+        check('TE44 ...and the case carries a note, never silence',
+            (#cs4 == 1) and (cs4[1].note ~= nil) and (c4 ~= nil), true);
+
         -- ---- the REAL popup, frame by frame ----
         local UP = {};
         for i = 1, 250 do

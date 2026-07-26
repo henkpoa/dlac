@@ -2087,16 +2087,25 @@ local function loadCases(rule)
     for _, c in ipairs(rule.cases or {}) do
         if type(c) == 'table' and (c.op == '&' or c.op == '|') then
             local cc = condRowsAnd(c.when);
-            -- A case's own `|` leg loads as its `|` rows. (A hand-written
-            -- multi-condition internal alternative -- a would-be third tier the
-            -- design hard-caps against -- flattens to singles here; the editor
-            -- never builds one.)
+            -- A case's own `|` leg loads as its `|` rows. A hand-written
+            -- multi-condition internal alternative -- a depth the editor cannot
+            -- represent (one-tier cap) but the ENGINE honors as AND-within-OR --
+            -- splits to standalone singles here, and the split is SAID on the
+            -- case box (the & leg's law, both tiers: the change was right, the
+            -- silence was the bug). Cancel keeps the file as written.
+            local split = false;
             for _, e in ipairs(c.whenAny or {}) do
                 if type(e) == 'table' then
-                    for k, v in pairs(e) do cc[#cc + 1] = { key = k, value = v, any = true }; end
+                    local n = 0;
+                    for k, v in pairs(e) do
+                        n = n + 1;
+                        cc[#cc + 1] = { key = k, value = v, any = true };
+                    end
+                    if n >= 2 then split = true; end
                 end
             end
-            cases[#cases + 1] = { op = c.op, conds = cc };
+            cases[#cases + 1] = { op = c.op, conds = cc,
+                note = split and 'combined | entry split: each condition now stands alone (Save keeps the split)' or nil };
         end
     end
     return conds, cases;
