@@ -10763,6 +10763,60 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- RLD. /dl reload targets DLAC (Henrik, 2026-07-26): utils.lua's reload
+--      branch queued '/addon reload luashitacast' from the LAC-hosted era --
+--      on a migrated (native) install that RESURRECTED LuaAshitacast and
+--      fired the coexistence tripwire (the field limbo of 2026-07-26). It now
+--      reloads dlac itself. Drive the REAL /dl handler utils.lua registers at
+--      load; a recording chat manager proves what got queued. Heavy deps are
+--      pre-seeded (and restored) so the re-load exercises only the handler --
+--      pcall'd requires resolving from disk with '\\' paths would break the
+--      WSL parity run.
+-- ---------------------------------------------------------------------------
+(function()
+    local savedReg = ashita.events.register;
+    local cmdHandler = nil;
+    ashita.events.register = function(evt, name, fn)
+        if evt == 'command' and name == 'dlac' then cmdHandler = fn; end
+    end;
+    local savedLoaded = {
+        ['dlac\\gear']     = package.loaded['dlac\\gear'],
+        ['dlac\\chatfmt']  = package.loaded['dlac\\chatfmt'],
+        ['dlac\\dispatch'] = package.loaded['dlac\\dispatch'],
+    };
+    package.loaded['dlac\\gear']     = savedLoaded['dlac\\gear'] or {};
+    package.loaded['dlac\\chatfmt']  = { print = function() end };
+    package.loaded['dlac\\dispatch'] = { dispatch = function() end };
+
+    local sent = {};
+    local savedCore = AshitaCore;
+    AshitaCore = {
+        GetChatManager = function(self)
+            return { QueueCommand = function(_, mode, cmd) sent[#sent + 1] = cmd; end };
+        end,
+    };
+
+    dofile('utils.lua');
+    ashita.events.register = savedReg;
+    for k, v in pairs(savedLoaded) do package.loaded[k] = v; end
+
+    check('RLD1 /dl command handler registered', type(cmdHandler), 'function');
+    if cmdHandler ~= nil then
+        cmdHandler({ command = '/dl reload' });
+        check('RLD2 /dl reload queues a dlac reload', sent[#sent], '/addon reload dlac');
+        cmdHandler({ command = '/dl r' });
+        check('RLD3 /dl r is the same reload', sent[#sent], '/addon reload dlac');
+        check('RLD4 nothing queued touches luashitacast',
+              table.concat(sent, ' | '):find('luashitacast', 1, true), nil);
+        local n = #sent;
+        cmdHandler({ command = '/dl why' });   -- an unrelated /dl word queues nothing here
+        check('RLD5 other subcommands queue nothing', #sent, n);
+    end
+
+    AshitaCore = savedCore;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- FW. GUI content-follow (2026-07-22): a Profiles-menu import rewrites the
 --     ACTIVE profile's files for the CURRENT job -- same cache keys, new
 --     bytes. The engine already follows (queued reloads + its own content

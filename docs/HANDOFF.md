@@ -230,6 +230,19 @@ that performs the promotion **empties this section in the same commit as the mer
 entry left standing here after a merge is how "is this on main?" becomes unanswerable —
 see hard rule 14, which this section exists to serve.
 
+- **`/dl reload` now reloads DLAC, not LuaAshitacast. BUILT 2026-07-26, on `dev`, NOT
+  FIELD-TESTED** (`2026.07.26q`). Henrik's call, off the migration-limbo diagnosis: the
+  branch in `utils.lua` queued `/addon reload luashitacast` from the LAC-hosted era — on a
+  migrated install that RESURRECTED LAC and fired the coexistence tripwire, disarming the
+  native engine for the rest of the session. `/dl reload` / `/dl r` now queue
+  `/addon reload dlac`. gearimport's four "run `/dl r` to load." hints get *more* correct
+  (a dlac reload picks the import up natively; the old behavior revived LAC instead).
+  Tests RLD1–5 drive the real handler. The other diagnosed LAC-resurrection surfaces
+  (`/dl profile migrate go` ungated, the native-blind `/dl check` + report file + Triggers
+  banner advice, the missing autoload step in `feature/engine.lua`'s checklist, the
+  lost-flag→legacy `firstRunAction` demotion) are **deliberately untouched** — separate
+  calls for Henrik.
+
 - **`/dl disable` — free equip, the ceiling. BUILT 2026-07-26, on `dev`, NOT FIELD-TESTED**
   (engine v129, ADR 0024). Henrik: *"simply make it claim the slot / slots, then don't do
   anything at all with it, so people can free equip all they want without DLAC
