@@ -231,7 +231,7 @@ entry left standing here after a merge is how "is this on main?" becomes unanswe
 see hard rule 14, which this section exists to serve.
 
 - **AutoAmmo asks what is in RANGE before it picks** — `9d8e520`, `6ab3b98`, `2f2d4d9`,
-  `98f7624`, `2fe7105`; engine **v128**, addon **`2026.07.26k`**. Full record:
+  `98f7624`, `2fe7105`, `35e2872`; engine **v128**, addon **`2026.07.26l`**. Full record:
   [auto-ammo.md §9](design/auto-ammo.md). **FIELD-CONFIRMED by Henrik 2026-07-26**
   ("After reload it works now, perfect") — read the promotion notes below, they are
   short and two of them matter.
@@ -286,16 +286,30 @@ see hard rule 14, which this section exists to serve.
      **Animator `0:10` + Automaton Oil `0:10` pair, while Animator P II `0:11` refuses
      the same oil** — server-enforced and previously invisible to dlac in any form.
 
+  5. **`35e2872` makes the trinket rule consult the law, CANCEL-ONLY.** The RSlot bit is
+     a per-ITEM stamp; the conflict is a per-PAIR fact, and no per-item value can say
+     "conflicts with a bow but not with a Soultrapper". `gearrecord`'s completion
+     ("Ammo with no AmmoType reserves Range") had stamped **Blank Soulplate** and
+     **H.S. Soul Plate** Range-reserving, so a set naming a Soultrapper plus a plate
+     would have had one of the two dropped, and a worn plate `remove`d — the 2026-07-22
+     oil bug again, for a family `ANIMATOR_FED`'s id list does not cover.
+     `trinketRangeDrop` / `trinketWornDisplace` now ask `M.pairsWith` and use it **only
+     to cancel a drop**: nothing new is ever dropped, and an unknown pair changes
+     nothing. Cinderstone and Coiste Bodhar still yield Range to a bow (`0:0` and `1:0`
+     vs `25:4` do not pair) — Coiste Bodhar by derivation now, since no Range item in
+     the game is `1:0`.
+
   **Two things this does NOT fix, both deliberate:**
   - **Throwing with an empty Range slot.** A NIN's shuriken is `27:3`, has no Range
     partner, and IS firable with Range empty — so the "no ranged weapon = do nothing"
     gate shuts AutoAmmo off for it. Henrik: *"throwing may be an exception, but we still
     need field tests for that."* Parked with the §8 NIN work. **Do not widen that gate on
     reasoning alone.**
-  - **A SET naming a mismatched ammo.** `trinketRangeDrop` still arbitrates only trinkets
-    (items whose `RSlot` reserves Range), so a set that names a bolt with a bow equipped
-    sails through it and the server strips a slot. Same incompleteness, different code
-    path, not in scope here — flagged to Henrik, undecided.
+  - **A SET naming a mismatched ammo.** The trinket rule now *cancels* on a compatible
+    pair (note 5) but still only ever FIRES on the `RSlot` bit, so a set naming a bolt
+    with a bow equipped sails through it and the server strips a slot. Making it fire on
+    a proven-incompatible pair is a **widening** rather than a narrowing, so it was
+    deliberately left out — **still Henrik's open call.**
 
   **What was actually confirmed, and the one re-check worth doing.** Henrik confirmed the
   behaviour in the field after a reload. The three delivery fixes in `98f7624` (catalog
