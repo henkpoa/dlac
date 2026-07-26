@@ -5682,3 +5682,41 @@ opener, and that `no target fish` is clickable too (or a fresh character has no 
 **Not field-tested.** Two things only live play can answer: whether 760×520 gives the spot
 list enough room (its bait column sits at `availW * 0.55`, ~50px tighter than the panel gave
 it), and whether three pills — bar, window, panel — read as convenient or as clutter.
+
+### Addendum, same day — tab art (`2026.07.27b`)
+
+Henrik: *"Are you able to remove the text for all the tab titles, so we can replace them
+with 30x30 pixel icons instead? Are you able to use this picture for chocobo digging?"* —
+with one chocobo image attached. `assets/` had eight craft glyphs and four HELM glyphs but
+no single Craft, HELM or Fishing icon, so the honest answer was *yes, and here is the gap:
+you have art for one tab of four*. His call: **new art for all four, one at a time** —
+*"I just want to see how one of them would look with that art, I'll give you more for the
+other tabs later once I see."*
+
+So the mechanism is built to accept art incrementally: a tab with
+`assets\hobby\<Name>.png` draws as a 30px icon, a tab without keeps its **text button**.
+Dropping `Craft.png` / `HELM.png` / `Fishing.png` in beside `Chocobo.png` converts them
+with no code change. That fallback is also the old menuui rule — a texture that fails to
+load must leave a labelled button, never a mystery 30px hole.
+
+**Two things colour cannot do once a tab is art.** The text tabs carry both *selected* and
+*armed* in the button colour; tinting art recolours the art (a green wash turns a yellow
+chocobo olive), and recognising the icon is the entire point. So selection rides
+**brightness** — the craft-glyph idiom — and armed rides a literal **green frame** drawn on
+the window draw list. The frame colour is `0xFF00CC00`, which reads green whichever byte
+order the binding packs, so the armed marker cannot come out red on a different imgui build.
+
+**The asset.** 1408×768 RGBA with a genuinely transparent background, art occupying
+551×634; styled as pixel art but gradient-shaded inside the blocks, so it downsamples
+smoothly rather than going to mush. Cropped to the art, centred in a square with a 6%
+margin (never distorted), LANCZOS to **64×64** — the house size for UI icons, where the
+craft/HELM glyphs are 40×40 and draw at 30.
+
+**Testing note.** Headless there is no d3d, so `filetex.handle` always returns nil and every
+tab takes the text path — the icon branch would have shipped with zero coverage while the
+suite stayed green. `HB15-HB19` stub the loader so exactly ONE tab has art, which is both
+the real shipping state and the mixed row most likely to break. Both new behaviours were
+mutation-verified: disabling the icon path fails three checks, removing only the armed
+frame fails exactly one. The stub's own first cut had the classic bug it exists to catch —
+`btns` captured by a closure declared above it, a silent nil global — and it failed
+loudly rather than hiding.

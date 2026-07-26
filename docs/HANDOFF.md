@@ -240,6 +240,14 @@ see hard rule 14, which this section exists to serve.
     tabs gained a `Panel` button. `/dl fish find [name]`, `/dl choco dig [item]`.
   - The invariant it rests on is in architecture.md; CONTEXT.md gained
     **Floating window / Panel / Hobby bar**.
+  - **Riding with it** (dev promotes whole-or-not-at-all): **hobby-bar tab ART**,
+    `2026.07.27b`. A tab with `assets\hobby\<Name>.png` draws as a 30px icon; one
+    without keeps its text button. Only `Chocobo.png` exists — Henrik is making the
+    other three and wanted to see one first. **Deliberately partial and safe to
+    promote**: the text fallback is the design, not a gap, so three text tabs beside
+    one icon is a valid shipping state, not a half-built one. His verdict on the look
+    (and on the armed marker becoming a green *frame*, since tinting art recolours
+    the art) is still outstanding.
   - **Queued on approval of the work, not on a reported field run** — the Auto HELM
     4s→5s precedent below. Two questions ride to main with it: whether the window's
     default 760×520 gives the spot list enough room (its bait column sits at

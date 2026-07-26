@@ -16,8 +16,13 @@
     the "after the hobby menu was changed, Last Synth doesn't work" report.
 
     So: every tab is always reachable, and switching tabs arms nothing. The armed
-    hobby is MARKED (green, trailing *) and its on/off pill is the thing that
-    refuses -- exactly where the real guard lives.
+    hobby is MARKED (green) and its on/off pill is the thing that refuses --
+    exactly where the real guard lives.
+
+    TAB ART (2026-07-27). A tab with `assets\hobby\<Name>.png` draws as a 30px
+    icon; one without keeps its text button, so the four convert one at a time as
+    art arrives. See the iconTab block below for why selection rides brightness
+    and armed rides a frame, rather than both riding colour.
 
     Each hobby's controls are the SAME code the standalone bars drew, now exposed as
     <bar>.renderContent(availW) (craftbar / helmbar / fishbar) plus a small inline
@@ -53,6 +58,59 @@ local COL_ACTIVE   = { 0.16, 0.55, 0.24, 1.0 };   -- this hobby is armed
 local COL_LOCKED   = { 0.50, 0.50, 0.50, 1.0 };   -- can't switch here right now
 
 local isOpen = { true };
+
+-- ---------------------------------------------------------------------------
+-- Tab ART (2026-07-27). `assets\hobby\<Name>.png` drawn at ICON_W; a tab with no
+-- PNG keeps its TEXT button. That fallback is the feature, not a safety net: the
+-- four tabs can gain art ONE AT A TIME (drop Craft.png / HELM.png / Fishing.png
+-- in beside Chocobo.png and they convert themselves, no code change), and a
+-- texture that fails to load leaves a labelled button rather than a mystery
+-- 30px hole -- menuui.headerButton's rule, for the same reason.
+--
+-- Loading goes through filetex, which RETAINS the texture object; caching only
+-- the numeric handle lets Lua GC it, D3D free it, and imgui draw a dangling
+-- pointer -- that was the header-icon crash.
+-- ---------------------------------------------------------------------------
+local ICON_W = 30;
+
+local function iconHandle(name)
+    local h = nil;
+    pcall(function() h = require('dlac\\ui\\filetex').handle('hobby\\' .. name); end);
+    return h;
+end
+
+-- Draws one tab as art. Returns (drew, clicked) -- `drew == false` means the
+-- caller should fall back to the text button.
+--
+-- Colour is deliberately NOT the state channel here. The text tabs carry
+-- selection and armed-ness in the BUTTON colour, but tinting art recolours the
+-- art itself (a green wash turns a yellow chocobo olive), and the whole point of
+-- the icon is that you recognise it. So: brightness carries selection -- the
+-- craft-glyph idiom -- and ARMED gets a literal green frame around the icon.
+local function iconTab(t, isSel, isActive)
+    local h = iconHandle(t.n);
+    if h == nil then return false, false; end
+    local x, y = imgui.GetCursorScreenPos();
+    local tint = isSel and { 1, 1, 1, 1 } or { 1, 1, 1, 0.45 };
+    local drew = pcall(function()
+        imgui.Image(h, { ICON_W, ICON_W }, { 0, 0 }, { 1, 1 }, tint);
+    end);
+    if not drew then                      -- binding without the tint overload
+        drew = pcall(function() imgui.Image(h, { ICON_W, ICON_W }); end);
+    end
+    if not drew then return false, false; end
+    local clicked = imgui.IsItemClicked();
+    if isActive and type(x) == 'number' and type(y) == 'number' then
+        -- 0x00CC00 reads green whichever byte order the binding packs, so the
+        -- armed marker cannot come out red on a different imgui build.
+        pcall(function()
+            local dl = imgui.GetWindowDrawList();
+            dl:AddRect({ x - 2, y - 2 }, { x + ICON_W + 2, y + ICON_W + 2 },
+                       0xFF00CC00, 4, ImDrawCornerFlags_All or 0, 2);
+        end);
+    end
+    return true, clicked;
+end
 
 -- ---- open / close API (called by the /dl commands, header button, panels) ----
 local function uiTable() return host.services and host.services.ui or nil; end
@@ -165,7 +223,8 @@ function M.render()
     if ui == nil or ui._hobbyBar ~= true then return; end
     if not VALIDSEL[ui._hobbySel] then ui._hobbySel = 'craft'; end
 
-    -- Which hobby is armed -- for the green * only. It does NOT move the
+    -- Which hobby is armed -- for the ARMED MARK only (a green button + trailing
+    -- * on a text tab, a green frame on an icon one). It does NOT move the
     -- selector: see the LOCK note in the header. (Was: the selector was pinned
     -- to the armed hobby every frame, which hid every other tab's controls.)
     local excl = try('dlac\\feature\\idleexcl');
@@ -176,19 +235,28 @@ function M.render()
     isOpen[1] = true;
     if imgui.Begin('dlac Hobbies##dlac_hobbybar', isOpen, ImGuiWindowFlags_AlwaysAutoResize or 0) then
         -- Selector row: every tab is always reachable; the armed one is marked
-        -- green with a trailing *.
+        -- green (a trailing * on text, a frame on art).
         for i, t in ipairs(TABS) do
             local isSel    = (ui._hobbySel == t.k);
             local isActive = (activeKey == t.k);
-            local pushed = 0;
-            if isActive then
-                imgui.PushStyleColor(ImGuiCol_Button, COL_ACTIVE); pushed = pushed + 1;
-            elseif isSel then
-                imgui.PushStyleColor(ImGuiCol_Button, COL_SELECTED); pushed = pushed + 1;
+            -- Art if this tab has any, else the text button unchanged. Both end
+            -- with the SAME hover contract below -- with the label gone, the
+            -- tooltip is the only thing naming an icon tab, so it must not be
+            -- inside either branch.
+            local drewIcon, iconClicked = iconTab(t, isSel, isActive);
+            if drewIcon then
+                if iconClicked then M.open(t.k); end
+            else
+                local pushed = 0;
+                if isActive then
+                    imgui.PushStyleColor(ImGuiCol_Button, COL_ACTIVE); pushed = pushed + 1;
+                elseif isSel then
+                    imgui.PushStyleColor(ImGuiCol_Button, COL_SELECTED); pushed = pushed + 1;
+                end
+                local label = t.n .. (isActive and ' *' or '') .. '##hbtab' .. t.k;
+                if imgui.Button(label, { 0, 0 }) then M.open(t.k); end
+                if pushed > 0 then imgui.PopStyleColor(pushed); end
             end
-            local label = t.n .. (isActive and ' *' or '') .. '##hbtab' .. t.k;
-            if imgui.Button(label, { 0, 0 }) then M.open(t.k); end
-            if pushed > 0 then imgui.PopStyleColor(pushed); end
             if imgui.IsItemHovered() then
                 if isActive then
                     imgui.SetTooltip(t.n .. ' is active now.');

@@ -1617,6 +1617,8 @@ end)();
 -- ---------------------------------------------------------------------------
 ;(function()
     local depth = { win = 0, col = 0 };
+    local btns, smalls, imgs = {}, {}, {};
+    local frames = 0;   -- armed-marker rects drawn by iconTab
     local function nop() end
     local IM = {};
     for _, n in ipairs({ 'SetNextWindowSize', 'Separator', 'Text', 'TextColored', 'SameLine',
@@ -1625,18 +1627,23 @@ end)();
     IM['End']         = function() depth.win = depth.win - 1; end
     IM.PushStyleColor = function() depth.col = depth.col + 1; end
     IM.PopStyleColor  = function(n) depth.col = depth.col - (tonumber(n) or 1); end
-    IM.Button         = function() return false; end
+    IM.Button         = function(l) btns[#btns + 1] = tostring(l); return false; end
     -- The Chocobo tab's dig/panel buttons (2026-07-27) are SmallButtons; every
     -- label drawn this frame is recorded so HB14 can prove they reach the tab.
-    local smalls = {};
     IM.SmallButton    = function(l) smalls[#smalls + 1] = tostring(l); return false; end
+    -- The icon path (2026-07-27): an ART tab draws an Image INSTEAD of a text
+    -- Button, and the armed one gets a draw-list frame rather than a colour.
+    IM.Image          = function(h) imgs[#imgs + 1] = h; end
+    IM.IsItemClicked  = function() return false; end
+    IM.GetCursorScreenPos = function() return 10, 20; end
+    IM.GetWindowDrawList  = function() return { AddRect = function() frames = frames + 1; end }; end
     IM.IsItemHovered  = function() return false; end
     IM.GetContentRegionAvail = function() return 400, 400; end
 
     -- save what we stub, so later smoke sections see the real modules
     local NAMES = { 'dlac\\ui\\craftbar', 'dlac\\ui\\helmbar', 'dlac\\ui\\fishbar',
                     'dlac\\ui\\hobbybar', 'dlac\\feature\\chocowatch',
-                    'dlac\\feature\\idleexcl', 'imgui' };
+                    'dlac\\feature\\idleexcl', 'dlac\\ui\\filetex', 'imgui' };
     local saved = {};
     for _, k in ipairs(NAMES) do saved[k] = package.loaded[k]; end
 
@@ -1692,6 +1699,41 @@ end)();
         -- is an ARMING rule (idleexcl.guardActivate), never a LOOKING rule.
         check('HB9 render leaves the selection alone while another hobby is armed', ui._hobbySel, 'craft');
         check('HB10 isShown reports the tab you are on, not the armed one', hb.isShown('craft'), true);
+        -- ART TABS (2026-07-27). Headless there is no d3d, so filetex.handle is
+        -- always nil and every tab takes the TEXT path -- meaning the icon branch
+        -- would ship with zero coverage. Stub the loader so exactly ONE tab has
+        -- art, which is also the real shipping state (only Chocobo.png exists)
+        -- and the mixed row is the thing most likely to break.
+        do
+            package.loaded['dlac\\ui\\filetex'] = {
+                handle = function(n) return (n == 'hobby\\Chocobo') and 4242 or nil; end,
+            };
+            activeStub = nil;
+            ui._hobbySel = 'choco';
+            btns, imgs, frames = {}, {}, 0;
+            check('HB15 an art tab renders', pcall(hb.render), true);
+            check('HB15b art tab draws its icon', imgs[1], 4242);
+            local labels = table.concat(btns, ' ');
+            check('HB16 the art tab draws NO text button',
+                labels:find('##hbtabchoco', 1, true), nil);
+            check('HB16b the three artless tabs keep theirs', (labels:find('##hbtabcraft', 1, true) ~= nil)
+                and (labels:find('##hbtabhelm', 1, true) ~= nil)
+                and (labels:find('##hbtabfish', 1, true) ~= nil), true);
+            check('HB17 an unarmed art tab draws no armed frame', frames, 0);
+            -- Armed-ness cannot ride the button colour on an art tab (tinting art
+            -- recolours the art), so it is a draw-list frame. If this stops being
+            -- drawn, the armed hobby becomes invisible -- which is the one thing
+            -- ADR 0017's selector exists to say.
+            activeStub = { key = 'choco', name = 'Chocobo' };
+            frames = 0;
+            check('HB18 an ARMED art tab renders', pcall(hb.render), true);
+            check('HB18b armed art tab draws its green frame', frames, 1);
+            check('HB19 stacks still balanced through the icon path',
+                depth.win + depth.col, 0);
+            package.loaded['dlac\\ui\\filetex'] = nil;
+            activeStub = { key = 'helm', name = 'HELM' };
+            ui._hobbySel = 'craft';
+        end
         check('HB11 isShown is false for an armed-but-unviewed hobby', hb.isShown('helm'), false);
         -- The escape hatches (/dl craft bar, Automations "Show bar") route
         -- through the same seam: they used to be unable to close the bar, and
