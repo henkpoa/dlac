@@ -154,6 +154,18 @@ function M.render(deps, availW)
     end
     local job = (deps ~= nil and type(deps.playerJob) == 'function') and deps.playerJob() or nil;
     aw.selectJob(job);   -- fmt 2: everything below edits THIS job's own section
+    -- Teach old entries their pair key (v128). Opening the panel is the one moment
+    -- the catalog and the config are both in hand; after the first sweep nothing is
+    -- missing and this costs a loop over a handful of rows. Without it a list built
+    -- before v128 keeps falling back to AmmoType, which cannot separate a bolt from
+    -- a bullet -- i.e. the reported bug would survive the fix that addressed it.
+    pcall(function()
+        local cx = require('dlac\\gear\\catalogindex');
+        aw.backfillPairs(function(id)
+            local r = cx.rawById(id);
+            return (type(r) == 'table') and r.Pair or nil;
+        end);
+    end);
     -- Crystal Warriors ONLY (affirmative gamemode 'CW' -- unknown shows
     -- nothing); a server LOCKED reason 'cw' shuts it again from the other end.
     local cwBox = _ebok and eb.isCW() and eb.lockedReason ~= 'cw';

@@ -710,6 +710,56 @@ do
     check('E20 H2H fix result still parses', (loadstring or load)(ehText) ~= nil, true);
     local _, ehRep2 = gearimport.computeFixes(ehText, {}, ehMeta);
     check('E21 H2H OneHanded fix idempotent', #ehRep2.fixed, 0);
+
+    -- E22+. Range/Ammo Pair backfill (v128). EVERY gear.lua predates this field,
+    -- and without it the engine sees a gun and a crossbow as the same
+    -- "Marksmanship" -- so AutoAmmo can keep a bolt out of a bow but not out of a
+    -- gun. Insert-only: a pair key is a fixed server fact, not a rule we derive.
+    local epGear = table.concat({
+        'gear = {',
+        '    Range = {',
+        '        Marksmanship = {',
+        '            Hexagun = {',
+        '                Name = "Hexagun",',
+        '                Level = 65,',
+        '                Id = 17222,',
+        '                Type = "Marksmanship",',
+        '            },',
+        '            Crossbow = {',
+        '                Name = "Crossbow",',
+        '                Level = 12,',
+        '                Id = 17217,',
+        '                Type = "Marksmanship",',
+        '                Pair = "26:0",',
+        '            },',
+        '        },',
+        '    },',
+        '};',
+    }, '\n');
+    local epMeta = {
+        [17222] = { Type = 'Marksmanship', Pair = '26:1' },
+        [17217] = { Type = 'Marksmanship', Pair = '26:0' },
+    };
+    local epText, epRep = gearimport.computeFixes(epGear, {}, epMeta);
+    check('E22 a missing Pair is backfilled from the catalog',
+          epText:find('Pair = "26:1"', 1, true) ~= nil, true);
+    check('E23 an existing Pair is left alone (one insert, not two)', #epRep.fixed, 1);
+    check('E24 Pair backfill result still parses', (loadstring or load)(epText) ~= nil, true);
+    local _, epRep2 = gearimport.computeFixes(epText, {}, epMeta);
+    check('E25 Pair backfill is idempotent', #epRep2.fixed, 0);
+    -- The whitelist bug that shipped on v128 day: catalogindex.flatten builds
+    -- records field-by-field, so a field missing there is silently absent
+    -- everywhere downstream -- which is why AutoAmmo's "+ Add" stamped no pair.
+    do
+        local cx = require('dlac\\gear\\catalogindex');
+        local flat = cx.flatten({ Ammo = {
+            GoldBullet = { Name = 'Gold Bullet', Id = 12, Level = 40,
+                           Type = 'Ammo', AmmoType = 'Marksmanship', Pair = '26:1' },
+        } });
+        check('E26 flatten carries Pair through to the panel records',
+              flat[1] and flat[1].Pair, '26:1');
+        check('E26b ...alongside the AmmoType it refines', flat[1] and flat[1].AmmoType, 'Marksmanship');
+    end
 end
 end
 
@@ -10363,7 +10413,29 @@ end)();
             { name = 'Old Entry',   id = 13, type = 'Marksmanship',
               level = 1,  ranged = true, ws = false, special = false },
         } } }))();
-        check('AW21u serialize/load round-trips the pair', round.jobs.COR.ammo[1].pair, '26:1');
+        -- backfillPairs: the GUI teaching pre-v128 entries their key, across EVERY job.
+    do
+        local savedJobs, savedJob = aw.jobsData, aw.job;
+        aw.jobsData = {
+            RNG = { enabled = true, at = 0, ammo = {
+                { name = 'Iron Bullet', id = 17312, type = 'Marksmanship', ranged = true,  ws = false, special = false },
+                { name = 'Venom Bolt',  id = 18152, type = 'Marksmanship', ranged = false, ws = false, special = false },
+            } },
+            COR = { enabled = false, at = 0, ammo = {
+                { name = 'Gold Bullet', id = 12, type = 'Marksmanship', pair = '26:1', ranged = true, ws = false, special = false },
+            } },
+        };
+        local KEY = { [17312] = '26:1', [18152] = '26:0', [12] = '26:1' };
+        local n = aw.backfillPairs(function(id) return KEY[id]; end);
+        check('AW21w backfill stamps every job, not just the selected one', n, 2);
+        check('AW21x the bullet learns 26:1', aw.jobsData.RNG.ammo[1].pair, '26:1');
+        check('AW21y ...and the bolt learns 26:0, which is the whole point',
+              aw.jobsData.RNG.ammo[2].pair, '26:0');
+        check('AW21z a second sweep finds nothing (insert-only, idempotent)',
+              aw.backfillPairs(function(id) return KEY[id]; end), 0);
+        aw.jobsData, aw.job = savedJobs, savedJob;
+    end
+    check('AW21u serialize/load round-trips the pair', round.jobs.COR.ammo[1].pair, '26:1');
         check('AW21v an entry with no pair stays without one (never invented)',
             round.jobs.COR.ammo[2].pair, nil);
     end

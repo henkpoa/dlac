@@ -83,6 +83,12 @@ function M.flatten(src)
             OneHanded = e.OneHanded,       -- weapon 1H vs 2H (Sub-slot pairing rules)
             AmmoType = e.AmmoType,         -- what a Range weapon fires this ammo AS (Ammo-slot
                                            -- weapon-type filter, #17); absent = Trinket
+            Pair = e.Pair,                 -- "<skill>:<subskill>" -- the EXACT Range/Ammo pairing
+                                           -- key AmmoType above can only approximate (it cannot
+                                           -- tell a gun from a crossbow). This whitelist is why
+                                           -- AutoAmmo's "+ Add" stamped no pair on v128 day: a
+                                           -- field missing HERE is silently absent everywhere
+                                           -- downstream, with nothing to notice it
             Count = e.Count,   -- scanned copy count (>= 2 = same-weapon dual-wield)
             Model = e.Model,   -- appearance model id (catalog) -- the lockstyle look
                                -- preview resolves through THESE records (catalogById /

@@ -345,6 +345,29 @@ function M.categoryOf(name, ammoType, pair)
     return 'Other';
 end
 
+-- Backfill the Range/Ammo pair key onto entries saved before it existed (v128),
+-- across EVERY job's section, not just the selected one. The GUI is the only half
+-- that can do this -- it has the catalog, the engine deliberately does not -- and
+-- without it a list configured yesterday keeps resolving through the coarse
+-- AmmoType fallback forever, which cannot tell a bolt from a bullet. The exact
+-- twin of `/dl fix`'s Pair backfill on the manifest, and insert-only for the same
+-- reason: a pair key is a fixed server fact, never a rule we re-derive.
+-- pairFor(id) -> "<skill>:<subskill>" | nil. One save for the whole sweep.
+function M.backfillPairs(pairFor)
+    if type(pairFor) ~= 'function' then return 0; end
+    local n = 0;
+    for _, s in pairs(M.jobsData) do
+        for _, e in ipairs((type(s) == 'table' and s.ammo) or {}) do
+            if type(e) == 'table' and type(e.pair) ~= 'string' and tonumber(e.id) then
+                local ok, p = pcall(pairFor, tonumber(e.id));
+                if ok and type(p) == 'string' and p ~= '' then e.pair = p; n = n + 1; end
+            end
+        end
+    end
+    if n > 0 then saveState(); end
+    return n;
+end
+
 -- flag: 'ranged' | 'ws'. Refused on a special entry (exclusivity).
 function M.setFlag(i, flag, on)
     if not validIdx(i) then return; end
