@@ -13743,7 +13743,15 @@ end)();
     -- shape (rules load before the install latch lands).
     local trigDir  = 'tests' .. SEP .. 'triggers';
     local trigPath = trigDir .. SEP .. 'WHM.lua';
-    pcall(function() os.execute('mkdir "' .. trigDir .. '" 2>nul'); end);
+    -- Windows needs the directory made; on Linux `tests\triggers\WHM.lua` is ONE
+    -- filename (backslash is an ordinary character there), so there is nothing to
+    -- make. Guard the SHELL, not just the path: `2>nul` is cmd.exe's null device,
+    -- but under sh -- the WSL CI-parity run -- it is a literal FILE named `nul`,
+    -- dropped in the repo root every run (it broke a `git add`). Same guarded shape
+    -- goldenfixtures and smoke_ui already use.
+    if package.config:sub(1, 1) == '\\' then
+        pcall(function() os.execute('mkdir "' .. trigDir .. '" >nul 2>&1'); end);
+    end
     local tf = io.open(trigPath, 'w');
     if tf ~= nil then
         tf:write("return { Default = { { when = { status = 'Idle' }, set = 'Idle' } } };\n");
