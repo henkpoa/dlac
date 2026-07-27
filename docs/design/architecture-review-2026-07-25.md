@@ -14,11 +14,12 @@
 > early-binding diagnosis behind it and a staging sketch are recorded **inside candidate #1** —
 > read that block before grilling #1, and treat the old #1 text as the floor, not the goal.
 >
-> **2026-07-27, later — the dedicated look exists.** Henrik asked for it the same day
-> ("take a hard look… old decisions and rules may be open for debate"), and the full design —
-> diagnosis, contract, rule-by-rule debate, staging — is **`docs/design/two-way-arbiter.md`**.
-> It absorbs and supersedes the staging sketch inside candidate #1. Still a PROPOSAL:
-> no stage starts without Henrik's ruling on that document's §10.
+> **2026-07-27, later — the dedicated look exists and is RATIFIED.** Henrik asked for it the
+> same day ("take a hard look… old decisions and rules may be open for debate"); the full design —
+> diagnosis, contract, rule-by-rule debate, staging — is **`docs/design/two-way-arbiter.md`**,
+> it absorbs and supersedes the staging sketch inside candidate #1, and its §10 was ruled
+> item by item the same day (**ADR 0027** records the contract). **Stage 0 still starts only
+> on Henrik's explicit go.**
 
 Base: `main` @ 2332088, addon v2026.07.25b. Line anchors are as of that commit — treat them as
 anchors, not gospel (the repo moves fast; `docs/architecture.md` carries the same warning).
@@ -430,8 +431,8 @@ Independent of which candidate is picked:
 2. **Ask Henrik which candidate to explore.** Recommendation: **#2**, then **#1** — but note the
    2026-07-27 block inside #1: Henrik has already named #1's territory as the thing he wants thought
    through properly, so it may now outrank #2 on his own priorities. Ask; do not assume.
-   **#1's full design now exists — `docs/design/two-way-arbiter.md` (2026-07-27): grilling #1
-   means grilling that document; its §10 holds the open questions awaiting Henrik's ruling.**
+   **#1's full design now exists and is RATIFIED — `docs/design/two-way-arbiter.md` + ADR 0027
+   (2026-07-27): its §10 rulings are all in; what remains for #1 is Henrik's go on stage 0.**
 3. Run `/grilling` on the chosen candidate — constraints, dependencies, the shape of the deepened
    module, what sits behind the seam, which tests survive.
 4. Side effects inline as decisions crystallize (`/domain-modeling`):

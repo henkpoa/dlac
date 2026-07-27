@@ -1,13 +1,14 @@
 # The two-way Arbiter — late binding, ladders, one arbitration per dispatch
 
-> **Status: PROPOSAL (2026-07-27) — nothing here is built.** This is the dedicated hard
-> look Henrik parked on 07-27 (*"too central and too big of a decision to just be made on
-> a whim"*) and then asked for: *"take a hard look and see if we can in a scalable way
-> move away from this legacy, where things talk to each other much better… check in with
-> the Arbiter more often in a more open communication… to scale up the decision process
-> considerably."* He has explicitly opened old decisions and rules for debate (§6).
-> **No stage in §7 starts without his ruling.** When he rules, the contract in §4 should
-> be recorded as an ADR (next free number: 0027).
+> **Status: RATIFIED 2026-07-27 — the design is ruled; nothing is built.** This is the
+> dedicated hard look Henrik parked on 07-27 (*"too central and too big of a decision to
+> just be made on a whim"*) and then asked for: *"take a hard look and see if we can in a
+> scalable way move away from this legacy, where things talk to each other much better…
+> check in with the Arbiter more often in a more open communication… to scale up the
+> decision process considerably."* He explicitly opened old decisions and rules for
+> debate (§6), and all four §10 items were then discussed one at a time and **ratified
+> the same day**; the contract is recorded as **ADR 0027**.
+> **Stage 0 (§7) still starts only on Henrik's explicit go.**
 >
 > Companion: candidate #1 in `docs/design/architecture-review-2026-07-25.md` — this
 > document absorbs and supersedes the staging sketch parked inside that block (the
@@ -417,7 +418,7 @@ code is deleted only after its replacement is field-confirmed.
 - **Scope creep.** The one-state unlock (§2.6) invites collapsing every twin and every
   string seam at once. Staged deliberately; each stage ships alone.
 
-## 10. Open questions for Henrik
+## 10. The four rulings — ALL RATIFIED 2026-07-27 (discussed one at a time)
 
 1. **Vocabulary — RATIFIED 2026-07-27** (discussed item by item, this session):
    **ladder** generalized (rungs; gates only remove) · **Claim widened** to carry whole
@@ -453,5 +454,14 @@ code is deleted only after its replacement is field-confirmed.
    holds because liveness (current MP, moving) enters as session inputs sampled once
    per dispatch — same session in, same plan out. Migration is the LAST stage
    (§7 stage 6), gated as written there.
-4. **`/dl why` verbosity** — refusal reasons make the output richer; is the current
-   one-screen budget a constraint, or may contested slots grow a line each?
+4. **`/dl why` verbosity — RATIFIED 2026-07-27: depth on demand** (the chat form of the
+   panel-text hover rule). Bare `/dl why` keeps today's one-screen budget — one line per
+   contested slot with any fall folded inline and short
+   (`Body: Gold Harness — Triggers Movement@25  [Royal Cloak fell: reserved Head]`);
+   the uncontested-floor, Naked and Free-equip collapses are unchanged. The new
+   **`/dl why <slot>`** prints the full contest for that one slot: every claim in
+   strength order, every rung's verdict with its reason
+   (`Royal Cloak (Idle@20) — fell: ineligible (reserves Head; Head owned by Craft,
+   rank 4)`). "Inform by printing as little as possible" holds for the bare command;
+   the arbitration's full conversation prints only when asked, about the slot being
+   stared at.
