@@ -6297,3 +6297,78 @@ Mutation-verified: re-add the line and HB21 fails.
 accepted fix and put it as an accepted part of the dev → main merge in the future."* The
 next dev → main merge carries it without a fresh go-ahead (HANDOFF's queue marks it ✅).
 Suites 3901 + 693, green on Windows lua and WSL lua5.4.
+
+## Session "an import should be able to land verbatim" (2026-07-27w)
+
+**Theme:** the first feature dlac has taken from a **second player's** field report — and
+a behavior that was correct-by-design in only half the cases it ran in.
+
+**Reported**, by a friend of Henrik's who runs dlac and had been round-tripping his own
+profiles to compare them against what dlac would pick: *"I'm importing dlac how I want
+them, and it's just changing it every time."* With a theory attached, and a good one:
+*"If I'm on the job, and profile that I am importing it to, it will auto refresh stats
+based on weight. If I'm not on the job it doesn't."* That is exactly the shape of
+`gearui`'s `afterImport` hook — it refuses when the import lands outside the current
+character's active profile, or under a job you are not on, because the candidate pools
+(owned gear, job/level usability) are the current job's. He had reverse-engineered the
+guard from the outside, from behavior alone.
+
+He also arrived with a **patch**, written with his own Claude: `sf.flags.autoBuildOnImport`
++ `/dl autobuildimport`, defaulted on, persisted through `uiflags.lua`. The reasoning and
+the seams were right and are what shipped. The two files themselves were not usable —
+his gearui.lua is a **pre-purge** copy (it still calls `/lac equip`, still composes the
+legacy `luashitacast\<Char>_<id>\` path by hand, and predates the Wishlist and the
+reserved-slot work), so applying them would have reverted five sessions. Ported by hand
+onto current `dev` instead. *Worth stating plainly: the patch was read, not run.*
+
+**Why he was right, in dlac's own terms.** The hook exists because an export ships sets
+as **EMPTY shells** — names, no gear — on the theory that gear rarely aligns between
+characters, so the receiver's own gear should fill them. But the export form has had a
+**"Set equipment"** tick since the selective export landed (07-19): when it is on, the
+exact gear ladders travel verbatim. In that case the post-import re-solve overwrites
+precisely what the exporter chose to send, and no amount of re-exporting can show you
+what you actually shipped. The premise in the hook's own comment ("the exported shells
+are EMPTY on purpose") is simply false for that path.
+
+**Landed:**
+- **`sf.flags.autobuildimport`** in `gear/syncflags.lua`, saved and loaded with the rest
+  of `uiflags.lua`. **Default on**, and an **absent key reads as on** — every uiflags.lua
+  written before today lacks it, and those installs must not have their imports change
+  behavior because they updated. Read everywhere as `~= false` for the same reason.
+- **The gate in `afterImport`**, checked **last** — after the wrong-profile and wrong-job
+  guards. Order is deliberate: turning the setting off must never change *which* reason
+  you are told, or "it didn't build" stops being diagnosable.
+- **Two surfaces, one flag:** `/dl autobuildimport [on|off]` (bare = toggle, the
+  `/dl autosync` shape) and **Menu > Settings > "Auto-build sets on import"**. The
+  Settings checkbox is the house surface for a Setting (ADR 0019); the command is what
+  the reporter was told to type, so it works.
+- **The status line says which happened.** Off, the import reports that the sets landed
+  exactly as exported and points at Auto-Build All on the Sets tab.
+- **Tests:** `UIF6a` / `UIF18a` round-trip and load the key, `UIF21a` pins the absent-key
+  default at **on** (the one that would silently change everyone's behavior if it broke),
+  and `UIF21b/21c` pin at the SOURCE that the hook reads the flag and reads it before it
+  builds — the hook needs imgui and a logged-in character, so a source pin is the honest
+  alternative to no coverage at all. `MN12a` counts nine Settings checkboxes.
+
+**Worth carrying:**
+- **A default is only as good as the premise under it.** This one was written for the
+  empty-shell path and then ran on every path, including the one it destroys. The tick
+  that made it wrong shipped eight days later than the hook and nothing connected them.
+- **Second-hand field reports arrive with the guard already reverse-engineered.** He
+  named the exact two conditions the hook checks without ever seeing it. When a report
+  describes behavior that precisely, spend the time to find the code it describes.
+- **A patch from another install is EVIDENCE, not a diff.** Version-drift makes an
+  attractive-looking file a revert in disguise; read it for reasoning and re-derive.
+
+**Left open — a real product question, deliberately not decided here.** dlac knows, at
+import time, whether the payload's sets carry gear or are shells. The case for making
+that the *default* discriminator — re-solve shells, respect gear that travelled — is
+strong, and would fix the reporter's complaint with no setting to find. The case against
+is that the tick was the **exporter's** choice, and a receiver who owns none of that gear
+is better served by the re-solve. That is a behavior call for Henrik, and the setting
+delivers his friend's ask either way.
+
+**Status:** on `dev`, addon `27u` → **`27w`** (`27v` belongs to a parallel session's
+uncommitted engine work in this shared checkout), engine unchanged. Suites **3906 + 693**,
+green on Windows lua and WSL lua5.4. **Awaiting field test** — by the reporter, who has
+the round-trip that found it.

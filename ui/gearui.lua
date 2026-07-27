@@ -3180,6 +3180,14 @@ pmenu.configure({ afterImport = function(dstChar, dstProf, jobName)
         return string.format('  (sets not auto-built: you are on %s and the import is %s -- switch job and click Auto-Build All on the Sets tab)',
             tostring(job or '?'), tostring(jobName));
     end
+    -- The opt-out (Menu > Settings > "Auto-build sets on import", /dl
+    -- autobuildimport). Checked LAST, after the two "we couldn't anyway"
+    -- gates, so turning it off never changes which reason you are told.
+    -- Off = the import lands verbatim: an export that carried its gear keeps
+    -- that gear, which is the whole point of ticking "Set equipment".
+    if sf.flags.autobuildimport == false then
+        return '  (sets not auto-built: "Auto-build sets on import" is off -- they landed exactly as exported. Auto-Build All on the Sets tab re-solves them with your own gear.)';
+    end
     local built, _, empty, failed = autoBuildAll(job, level);
     return string.format('  Auto-built %d imported set%s from their stat weights with YOUR gear%s%s.',
         built, (built == 1) and '' or 's',
@@ -4866,7 +4874,7 @@ ashita.events.register('command', 'dlac-ui', function(e)
     -- claims only its own three forms and lets topics pass untouched.
     if sub == 'debug' and args[2] ~= nil and args[2] ~= 'on' and args[2] ~= 'off' then return; end
     if sub ~= 'ui' and sub ~= 'sync' and sub ~= 'autosync' and sub ~= 'debug'
-       and sub ~= 'metrics' and sub ~= 'view_ids' then return; end
+       and sub ~= 'metrics' and sub ~= 'view_ids' and sub ~= 'autobuildimport' then return; end
     e.blocked = true;
 
     if sub == 'metrics' then        -- imgui metrics window: names the window under the
@@ -4899,6 +4907,16 @@ ashita.events.register('command', 'dlac-ui', function(e)
         print('[dlac] view_ids ' .. (sf.flags.viewids
             and 'ON -- hover any equipment: the tooltip now ends with its item id and its model id (the model is what a lockstyle shows).'
             or  'OFF -- ids hidden again.  (/dl view_ids on)'));
+        return;
+    end
+    if sub == 'autobuildimport' then   -- re-solve an imported job's weighted sets, or land it verbatim
+        if     args[2] == 'off' then sf.flags.autobuildimport = false;
+        elseif args[2] == 'on'  then sf.flags.autobuildimport = true;
+        else                         sf.flags.autobuildimport = (sf.flags.autobuildimport == false); end
+        sf.saveUiFlags();              -- persist; command wins over the on-disk value
+        print('[dlac] auto-build on import ' .. ((sf.flags.autobuildimport ~= false)
+            and 'ON -- importing a job with stat weights rebuilds its sets from YOUR gear straight away.'
+            or  'OFF -- an import lands exactly as exported; use Auto-Build All on the Sets tab when you want the re-solve.  (/dl autobuildimport on)'));
         return;
     end
     if sub == 'debug' then          -- reveal/hide the dev-only Scan/Stage/Commit/Augs buttons

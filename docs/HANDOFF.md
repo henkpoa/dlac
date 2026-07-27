@@ -469,6 +469,25 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
+- **2026-07-27: an import can land verbatim — ON `dev`, awaiting field test**
+  (`2026.07.27w`). The first feature dlac has taken from **a second player's field
+  report** — a friend of Henrik's, who round-trips his own profiles to compare them:
+  *"I'm importing dlac how I want them, and it's just changing it every time."* He was
+  right, and about a behavior that was correct-by-design in only half its cases: the
+  `afterImport` hook re-solves every weighted set from the importer's own gear because
+  an export ships **empty shells** — but the export form has a **"Set equipment"** tick,
+  and when that gear travels on purpose the re-solve overwrites exactly what was sent.
+  New Setting **"Auto-build sets on import"** (Menu > Settings) / `/dl autobuildimport
+  [on|off]`, persisted in `uiflags.lua`, **default on** — an absent key reads as on, so
+  no existing install changes behavior. Off makes an import land byte-for-byte as
+  exported; **Auto-Build All** on the Sets tab still does the re-solve on demand, and the
+  import status line says which of the two happened. The gate is checked **after** the
+  two "we couldn't build anyway" guards (wrong profile / wrong job), so the opt-out never
+  masks their diagnosis. `UIF6a/18a/21a` pin the round-trip, the load and the
+  absent-key default; `UIF21b/21c` pin at the source that the hook reads the flag and
+  reads it *before* it builds. Suites **3906 + 693**, Windows and WSL lua5.4.
+  Still open: whether **default** behavior should also skip the re-solve when the payload
+  carried gear — see the note at the end of history.md's entry.
 - **2026-07-27: reserved slots stop being invisible — ON `dev`, awaiting field test**
   (`2026.07.27p`). Henrik: *"if we equip a tunic that takes up the headslot, it ignores
   to equip the headslot… there are more items like this. How do we keep track of all
@@ -884,7 +903,8 @@ research already recorded. In rough priority order:
   - **Settings** (Menu > Settings) is the one place every **Setting** (CONTEXT.md term)
     is reachable: *Open the dlac window* (**new**, 3 values — Never / On login / On login
     + job change), Show all (moved out of the header **and now remembered**), Auto-sync,
-    Show item IDs, Debug mode — plus mirrors of Build as lv.75, Floating equipment
+    Show item IDs, Auto-build sets on import (**added 07-27**), Debug mode — plus mirrors
+    of Build as lv.75, Floating equipment
     window, Teleports floating button and Trigger monitor. The mirrors rebuild from the
     live source field every frame, so they cannot drift from their contextual checkboxes.
   - **Level override is a TYPED number now** (Henrik: the ± buttons "spam level changes,

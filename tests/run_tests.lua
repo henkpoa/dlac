@@ -13157,6 +13157,7 @@ end)();
         ui = ui,
     });
     sf.flags.debug, sf.flags.autosync, sf.flags.viewids = true, false, true;
+    sf.flags.autobuildimport = false;      -- the 2026-07-27 opt-out
     sf.saveUiFlags();
     check('UIF2 wrote to the mode-aware home', wrote.path, 'X:\\char\\dlac\\uiflags.lua');
     check('UIF3 emitted text parses', (function()
@@ -13167,6 +13168,7 @@ end)();
     check('UIF4 debug round-trips',    t.debug,    true);
     check('UIF5 autosync round-trips', t.autosync, false);
     check('UIF6 viewids round-trips',  t.viewids,  true);
+    check('UIF6a autobuildimport round-trips', t.autobuildimport, false);
     check('UIF7 openui round-trips',   t.openui,   'job');
     check('UIF8 openui is a STRING',   type(t.openui), 'string');
     check('UIF9 showall round-trips',  t.showall,  false);
@@ -13191,7 +13193,8 @@ end)();
     local realLoadfile = loadfile;
     _G.loadfile = function() return function()
         return { debug = false, autosync = true, viewids = false,
-                 openui = 'login', showall = true, gfscale = 2.0 };
+                 openui = 'login', showall = true, gfscale = 2.0,
+                 autobuildimport = false };
     end; end
     sf2.configure({
         dataDir = function() return 'X:\\char\\dlac\\'; end,
@@ -13206,6 +13209,7 @@ end)();
     check('UIF16 showall loads',  ui2.showAll[1], true);
     check('UIF17 autosync loads', sf2.flags.autosync, true);
     check('UIF18 viewids loads',  sf2.flags.viewids,  false);
+    check('UIF18a autobuildimport loads', sf2.flags.autobuildimport, false);
 
     -- Absent keys keep their defaults -- an old uiflags.lua written before this
     -- slice must not start opening windows or flipping Show all.
@@ -13225,6 +13229,25 @@ end)();
     check('UIF20 ...which normalizes to never',
         dofile('ui/menuui.lua')._normalizeOpenMode(ui3._openMode), 'never');
     check('UIF21 absent showall stays off', ui3.showAll[1], false);
+    -- Every uiflags.lua written before 2026-07-27 lacks the key. Those installs
+    -- must keep auto-building on import, or a dlac update would silently change
+    -- what an import does to everybody who never asked for the opt-out.
+    check('UIF21a absent autobuildimport stays ON', sf3.flags.autobuildimport, true);
+
+    -- The gate itself lives in gearui's afterImport hook, which needs imgui and a
+    -- logged-in character to reach. Pin it at the source instead of not at all:
+    -- the flag must be READ there, and read AFTER the two "we couldn't build
+    -- anyway" gates, so the opt-out never steals their diagnosis.
+    do
+        local src = nil;
+        local f = io.open('ui/gearui.lua', 'r');
+        if f ~= nil then src = f:read('*a'); f:close(); end
+        local hook = tostring(src or ''):match('afterImport = function.-\nend %}%);') or '';
+        check('UIF21b afterImport reads the flag',
+            hook:find('sf%.flags%.autobuildimport') ~= nil, true);
+        check('UIF21c ...and only then auto-builds',
+            (hook:find('sf%.flags%.autobuildimport') or 0) < (hook:find('autoBuildAll') or 0), true);
+    end
 
     package.loaded['dlac\\lib\\cmdqueue'] = nil;
 end)();

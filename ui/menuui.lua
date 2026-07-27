@@ -326,6 +326,11 @@ local function renderSettingsBody()
             function() return sf.flags.viewids == true; end,
             function(v) sf.flags.viewids = v; end);
 
+        settingCheck('autobuildimport', 'Auto-build sets on import',
+            'On (default): importing a job that carries stat weights rebuilds its sets\nfrom YOUR gear the moment it lands -- the point of the empty shells an\nexport ships by default.\nOff: the import lands exactly as exported, gear and all. Auto-Build All on\nthe Sets tab still does the re-solve on demand. (Same switch as\n/dl autobuildimport.)',
+            function() return sf.flags.autobuildimport ~= false; end,
+            function(v) sf.flags.autobuildimport = v; end);
+
         settingCheck('debug', 'Debug mode',
             'Reveal the developer tools: the Scan / Stage / Commit / Augs rows in this\nmenu, plus extra chat output. (Same switch as /dl debug.)',
             function() return sf.flags.debug == true; end,

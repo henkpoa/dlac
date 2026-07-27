@@ -780,6 +780,7 @@ like the command does not exist.
 | `/dl autosync [on\|off]` | gearui | Toggle on-job-change sync |
 | `/dl debug [on\|off]` | gearui | Reveal dev header buttons |
 | `/dl view_ids [on\|off]` | gearui | Add item id + model id to every equipment tooltip |
+| `/dl autobuildimport [on\|off]` | gearui | Whether importing a weights-bearing job re-solves its sets from YOUR gear (default on) or lands verbatim |
 | `/dl mode <name> [on\|off\|toggle\|<value>]` | dispatch | Flip a mode (no arg: list) |
 | `/dl lock <slot\|all> [on\|off\|toggle]` | dispatch | Engine-owned slot locks |
 | `/dl naked [on\|off\|toggle]` / `/dl dress` | dispatch | Strip every slot and hold it empty -- an Arbiter Claim ranked first, **not** a lock (ADR 0021). Bare `/dl naked` always arms; `/dl dress` releases. Dies on a Reload LAC, survives an engine self-swap |
