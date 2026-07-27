@@ -232,16 +232,18 @@ that performs the promotion **empties this section in the same commit as the mer
 entry left standing here after a merge is how "is this on main?" becomes unanswerable —
 see hard rule 14, which this section exists to serve.
 
-- **THE LUASHITACAST PURGE, all five phases** (`e478817`..`bd1eb83`, addon
-  `2026.07.27j` → **`27l`**, engine v131 → **v133**; docs/design/lac-purge-plan.md is
-  the per-phase log). Field-confirmed by Henrik on Mindie 2026-07-27 11:48: the first
-  ever clean `/dl check` on a native install — stamp v133 matching file v133 from the
-  NATIVE home (#131 closed), no seeded/shim lines, "NO ISSUES" verdict, engine ARMED,
-  new `/dl engine` wording — plus normal play on `27j`→`27l` all morning. Still nice
-  to have before or after promotion: the three-way import round (static / group /
-  Copy-from-static). Waits only on Henrik's go-ahead.
+*(Empty. Last promotion: 2026-07-27 — **THE LUASHITACAST PURGE, all five phases**,
+`e478817`..`489e677`, addon `2026.07.27j` → **`27l`**, engine v131 → **v133**, on
+Henrik's go-ahead: *"go ahead."* Field-confirmed on Mindie 11:48 — the first ever
+clean `/dl check` on a native install: stamp v133 matching file v133 from the NATIVE
+home (#131 closed), no seeded/shim lines, "NO ISSUES" verdict, engine ARMED. One Lua
+state, one engine, one storage home; luashitacast\ is read-only import territory
+(keep-list intact + PRG1/2 allowlist guard). Per-phase log:
+docs/design/lac-purge-plan.md. Still open, post-promotion: the three-way import field
+round (static / group / Copy-from-static) — guard-tested, not yet field-driven. The
+record is the merge commit on `main`.)*
 
-*(Last promotion: 2026-07-27 evening — **the Xvs engine-era batch**,
+*(Previous promotion: 2026-07-27 evening — **the Xvs engine-era batch**,
 `0f1ae6e`..`c074da9`, addon `2026.07.27f` → **`2026.07.27i`**, engine **v130**, ADR 0025 —
 on Henrik's go-ahead: *"Everything is working perfectly now. … Regardless, push to main."*
 Field-confirmed on Xvs's live installs, the boxes the bugs owned: **the native flatten no
@@ -314,9 +316,9 @@ research already recorded. In rough priority order:
    module-local legacy fallbacks dead, PRG1/2 allowlist guard), P5 docs. One state,
    one engine, one home; luashitacast\ is read-only import territory (the keep-list:
    static/group/whole-block imports + the migrate carriers, all intact).
-   **AWAITING: Henrik's field beat on `27l`** (boot, equips, a commit, `/dl check`,
-   `/dl engine`, and the Phase-4 field round: import a static set, a marked group,
-   and "Copy from static" from a pre-profiles backup) — then promotion, his call.
+   **ON MAIN since 2026-07-27** (field-confirmed on Mindie, promoted on Henrik's
+   "go ahead"). Only open thread: the three-way import field round (static / group /
+   Copy-from-static) — guard-tested, not yet field-driven.
 1. **FIELD TEST the 07-25 release.** Henrik approved the Menu/Settings **visuals**, but
    the **Mode library has not been driven in-game at all**. Everything in it is
    headless-tested only; the suites stub imgui by design, so popup behaviour, the
