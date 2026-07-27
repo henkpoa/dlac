@@ -7271,6 +7271,106 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- ARK. DOMINANCE ACROSS RANK (ADR 0027 item 2 + stage 4, first slice). The
+--      verdict's entries now carry `row` (the Arbiter rank index -- smaller
+--      is stronger): across rows RANK wins outright, within a row trigger
+--      priority decides, ties favor the reserver, ord is excluded, and WORN
+--      pieces are not claims (they simply are not entries). Henrik's craft
+--      bench is the acceptance: the floor's Royal Cloak vs the Craft claim's
+--      Midras's Helm +1.
+-- ---------------------------------------------------------------------------
+(function()
+    local HEAD = 0x0010;
+    local function look(masks) return function(n) return masks[n] or 0; end end
+    local cloakLook = look({ ['Royal Cloak'] = HEAD });
+    local function ladders(map)
+        return function(src, slot)
+            local names = map[src] and map[src][slot] or nil;
+            if names == nil then return nil; end
+            local items = {};
+            for _, n in ipairs(names) do items[#items + 1] = { name = n }; end
+            return { items = items };
+        end
+    end
+    local idleLad = ladders({ IdleSet = { Body = { 'Royal Cloak', 'Scorpion Harness +1' } } });
+
+    -- ARK1: THE CRAFT BENCH. Floor cloak (Triggers row 11, prio 20) reserves
+    -- Head; the Craft claim (row 7) owns Head. Rank beats priority outright:
+    -- the cloak is ineligible and FALLS down Idle's ladder; the helm stands.
+    local sup, inel, rep = dispatchM.reserveResolve({
+        { prio = 20, row = 11, set = { Body = 'Royal Cloak' }, src = 'IdleSet' },
+        { prio = 0,  row = 7,  set = { Head = 'Midras Helm +1' } },
+    }, cloakLook, idleLad);
+    check('ARK1 a claim-row slot beats a floor reserver outright', inel, nil);
+    check('ARK1b the cloak fell down its ladder', rep.Body.to, 'Scorpion Harness +1');
+    check('ARK1c the trace names the contested slot', rep.Body.by, 'Head');
+    check('ARK1d nothing is suppressed', sup, nil);
+
+    -- ARK2: within one row, priority still decides -- the v135/AKF behavior,
+    -- byte-for-byte (rows equal cancel out of the compare).
+    sup, inel, rep = dispatchM.reserveResolve({
+        { prio = 20, row = 11, set = { Body = 'Royal Cloak' }, src = 'IdleSet' },
+        { prio = 25, row = 11, set = { Head = 'Genbu Kabuto' } },
+    }, cloakLook, idleLad);
+    check('ARK2 same row -> priority decides, the fall lands', rep.Body.to, 'Scorpion Harness +1');
+    sup, inel, rep = dispatchM.reserveResolve({
+        { prio = 25, row = 11, set = { Body = 'Royal Cloak' }, src = 'IdleSet' },
+        { prio = 20, row = 11, set = { Head = 'Silver Hairpin' } },
+    }, cloakLook, idleLad);
+    check('ARK2b same row, reserver stronger -> it claims the slot empty', sup.Head, 'Royal Cloak');
+    check('ARK2c and nothing falls', rep, nil);
+
+    -- ARK3: an exact strength tie favors the reserver (ratified: ord is not
+    -- in the dominance compare, so a file reorder can never flip this).
+    sup, inel, rep = dispatchM.reserveResolve({
+        { prio = 20, row = 11, set = { Body = 'Royal Cloak' }, src = 'IdleSet' },
+        { prio = 20, row = 11, set = { Head = 'Silver Hairpin' } },
+    }, cloakLook, idleLad);
+    check('ARK3 a strength tie keeps the reserver dominant', sup.Head, 'Royal Cloak');
+
+    -- ARK4: a CLAIM-row reserver dominant over a floor slot suppresses it --
+    -- the general rule pins' bespoke hold has always special-cased.
+    sup, inel, rep = dispatchM.reserveResolve({
+        { prio = 20, row = 11, set = { Head = 'Silver Hairpin' }, src = 'IdleSet' },
+        { prio = 0,  row = 3,  set = { Body = 'Royal Cloak' } },
+    }, cloakLook, ladders({ IdleSet = { Head = { 'Silver Hairpin' } } }));
+    check('ARK4 a dominant claim reserver claims the floor slot empty', sup.Head, 'Royal Cloak');
+    check('ARK4b the floor piece does not read as ineligible', inel, nil);
+
+    -- ARK5: a claim reserver BEATEN by a higher row is ineligible, and with
+    -- no ladder (claim pieces carry none in this slice) its slot is killed --
+    -- v135's law at claim altitude.
+    sup, inel, rep = dispatchM.reserveResolve({
+        { prio = 0, row = 8, set = { Body = 'Royal Cloak' } },
+        { prio = 0, row = 3, set = { Head = 'Pinned Crown' } },
+    }, cloakLook, idleLad);
+    check('ARK5 a beaten claim reserver is ineligible', inel.Body, 'Head');
+    check('ARK5b and cannot fall without a ladder', rep, nil);
+
+    -- ARK6: the merged winner is the strongest WRITER -- a claim overwriting
+    -- the reserver's own slot moots the reservation entirely (apply order:
+    -- claims appended after the floor, strongest last).
+    sup, inel, rep = dispatchM.reserveResolve({
+        { prio = 20, row = 11, set = { Body = 'Royal Cloak' }, src = 'IdleSet' },
+        { prio = 0,  row = 7,  set = { Body = 'Weaver Apron' } },
+    }, cloakLook, idleLad);
+    check('ARK6 a claim overwriting the reserver moots the reservation',
+        (sup == nil and inel == nil and rep == nil), true);
+
+    -- ARK7: the GLOBAL flag retires the worn arm for dispatch passes. The
+    -- same table that the single-set fallback WOULD prune (AK: the Tunic
+    -- takes Head within one plan) passes through untouched when the dispatch
+    -- verdict is the one authority and its maps are empty...
+    dispatchM.setLock('all', false);
+    local _, gt = dispatchM._equipResolved({ Body = 'Ryl.Ftm. Tunic', Head = 'Silver Hairpin' },
+        { reserveGlobal = true });
+    check('ARK7 with the global verdict, the per-pass fallback is silent', gt.Head, 'Silver Hairpin');
+    -- ...while a DIRECT caller (no flag) keeps the pre-v135 judgement whole.
+    local _, dt = dispatchM._equipResolved({ Body = 'Ryl.Ftm. Tunic', Head = 'Silver Hairpin' }, {});
+    check('ARK7b a direct caller still gets the single-set judgement', dt.Head, nil);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- AB. arbwatch -- the ADDON-SIDE writer of the arbstate rank Statefile (ADR
 --     0012, step 2 / issue #49). The engine's read side is AR* above; these pin
 --     the WRITER's pure seams: the default/sanitize reuse the engine's one

@@ -148,10 +148,15 @@ end
 --                   rung to fall to, its slot is not written at all (v135).
 
 -- The merged floor: entries in APPLY order (lowest priority first, exactly the
--- order the overlay writes them), last-writer-wins, each slot tagged with the
--- priority that won it -- and, since stage 2, with `src` (the entry's set
--- name, when it has one): the FALL needs to know whose ladder to ask. Pure.
--- `__`-prefixed keys are metadata, never slots.
+-- order the overlay writes them; since stage 4, claim entries follow in rank
+-- order, lowest row last-but-strongest), last-writer-wins, each slot tagged
+-- with the priority that won it -- and, since stage 2, with `src` (the
+-- entry's set name, when it has one): the FALL needs to know whose ladder to
+-- ask. Since stage 4 an entry may carry `row` (its Arbiter rank index --
+-- SMALLER is stronger); entries without one compare as equals, so every
+-- pre-stage-4 caller keeps its exact behavior. Pure. `__`-prefixed keys are
+-- metadata, never slots; non-string values (the LOCK_HELD / DISABLED_FREE
+-- sentinels) are not merge candidates and pass through untouched.
 function M.reserveFloor(entries)
     local floor = {};
     for _, e in ipairs(entries or {}) do
@@ -159,12 +164,28 @@ function M.reserveFloor(entries)
             local p = tonumber(e.prio) or 0;
             for slot, item in pairs(e.set) do
                 if type(item) == 'string' and string.sub(tostring(slot), 1, 2) ~= '__' then
-                    floor[slot] = { name = item, prio = p, src = e.src };
+                    floor[slot] = { name = item, prio = p, src = e.src, row = e.row };
                 end
             end
         end
     end
     return floor;
+end
+
+-- The STRENGTH compare (ADR 0027 item 2, ratified 2026-07-27): across rows,
+-- RANK wins outright -- the same ordering the slot contest uses, asked about
+-- the reserved slots; within a row, trigger priority (ADR 0003); ties favor
+-- the reserver (the caller asks "does a beat b", and an equal-strength answer
+-- is NO). `ord` is deliberately excluded: reordering rules in the trigger
+-- file must never silently flip a reservation. Entries without a row compare
+-- as equals -- the pre-stage-4 floor-only behavior, byte-for-byte.
+local function stronger(a, b)
+    local ra, rb = tonumber(a.row), tonumber(b.row);
+    if ra ~= nil or rb ~= nil then
+        ra, rb = ra or math.huge, rb or math.huge;
+        if ra ~= rb then return ra < rb; end   -- smaller rank index = stronger
+    end
+    return (tonumber(a.prio) or 0) > (tonumber(b.prio) or 0);
 end
 
 -- The verdict over a merged floor. Two maps, both keyed by the floor's own slot
@@ -199,7 +220,7 @@ function M.reserveVerdict(floor, lookup)
                 for _, re in ipairs(RSLOT_ORDER) do
                     local rk = keyOf[string.lower(re[2])];
                     if rk ~= nil and rk ~= sk and hasBit(mask, re[1])
-                       and (tonumber(floor[rk].prio) or 0) > (tonumber(ent.prio) or 0) then
+                       and stronger(floor[rk], ent) then
                         beatenBy = rk;
                         break;
                     end
@@ -282,7 +303,7 @@ function M.reserveResolve(entries, lookup, ladderOf)
                 end
                 if nxt ~= nil then
                     tried[slot][nxt] = true;
-                    floor[slot] = { name = nxt, prio = e.prio, src = e.src };
+                    floor[slot] = { name = nxt, prio = e.prio, src = e.src, row = e.row };
                     replaced = replaced or {};
                     replaced[slot] = { from = from, to = nxt, by = by };
                     changed = true;
