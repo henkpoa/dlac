@@ -379,6 +379,21 @@ build (`:5978-5994`): an `ineligible` slot re-proposes its source set's next can
 the rounds. The Royal Cloak falls to the next Body piece. Floor-scoped exactly like
 v135; small diff; immediately field-testable by the two 07-27 cases.
 
+> **Stage 2 status: SHIPPED on dev 2026-07-27, commit `ad7ab30` (engine v139, addon
+> `27za`) — Henrik's go, same session, spec'd by his own Mindie BRD test.** One
+> implementation deviation: provenance rides `reserveFloor` itself (`entries[].src` →
+> `floor[slot].src`) rather than `slotSrc`, and the fall is the pure
+> `M.reserveResolve(entries, lookup, ladderOf)` — verdict → ladder walk → re-verdict,
+> fixed point capped at three re-runs, replacements delivered via `ctx.reserveReplace`
+> into the refused piece's own writer pass (`Body=Royal Cloak fell -> Scorpion Harness
+> +1 (reserves Head -- owned above)` in `/dl why`). A rung that reserves a dominated
+> slot suppresses it like any dominant reserver; a rung beaten the same way falls
+> again; a dry ladder or an inline equip keeps v135's INELIGIBLE behavior; **a
+> reserved slot never falls** (AKF8 pins the asymmetry law). Tests AKF1–AKF10; suites
+> 3997 + 693 on Windows Lua and WSL lua5.4. **Awaiting field confirmation — the
+> acceptance test is Henrik's exact setup: Kabuto on Head, Scorpion Harness +1 on
+> Body.** Stage 3 (extract `gear/arbiter.lua`) on his go after.
+
 **Stage 3 — extract `gear/arbiter.lua` and make it the decider.** Pure module; migrate
 constraints one at a time in POST_ORDER's own order, each pinned by the tests that
 already exist (AK*, AKD*, TR*, TB*, AM*, PL*, LS*, AR*, LV*): reservation first (it is
