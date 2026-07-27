@@ -7368,6 +7368,37 @@ end)();
     -- ...while a DIRECT caller (no flag) keeps the pre-v135 judgement whole.
     local _, dt = dispatchM._equipResolved({ Body = 'Ryl.Ftm. Tunic', Head = 'Silver Hairpin' }, {});
     check('ARK7b a direct caller still gets the single-set judgement', dt.Head, nil);
+
+    -- ARK8: SENTINEL DEFENSE ROWS (stage 4, slice 2). A '(locked)'
+    -- placeholder at the Locks row defends its slot: the floor reserver is
+    -- beaten by rank and FALLS -- a reserver can no longer bulldoze a locked
+    -- slot. The placeholder itself never reserves (mask 0 -> inert).
+    sup, inel, rep = dispatchM.reserveResolve({
+        { prio = 20, row = 11, set = { Body = 'Royal Cloak' }, src = 'IdleSet' },
+        { prio = 0,  row = 4,  set = { Head = '(locked)' } },
+    }, cloakLook, idleLad);
+    check('ARK8 a locked slot defends against a reserver', rep.Body.to, 'Scorpion Harness +1');
+    check('ARK8b the placeholder reserves nothing', sup, nil);
+
+    -- ARK9: punch-through preserved -- a claim ABOVE Locks overwrites the
+    -- placeholder in the merge, and the contest is judged against ITS row.
+    -- (Pins row 3 over Locks row 4: the reserver still loses, but to Pins.)
+    sup, inel, rep = dispatchM.reserveResolve({
+        { prio = 20, row = 11, set = { Body = 'Royal Cloak' }, src = 'IdleSet' },
+        { prio = 0,  row = 4,  set = { Head = '(locked)' } },
+        { prio = 0,  row = 3,  set = { Head = 'Pinned Crown' } },
+    }, cloakLook, idleLad);
+    check('ARK9 a punch-through claim takes over the defense', rep.Body.by, 'Head');
+    check('ARK9b and the fall still lands', rep.Body.to, 'Scorpion Harness +1');
+
+    -- ARK10: the ceiling defends the same way at row 1 -- free-equip slots
+    -- cannot be emptied by a reserver landing next door.
+    sup, inel, rep = dispatchM.reserveResolve({
+        { prio = 20, row = 11, set = { Body = 'Royal Cloak' } },
+        { prio = 0,  row = 1,  set = { Head = '(free equip)' } },
+    }, cloakLook, idleLad);
+    check('ARK10 a free-equip slot defends against a reserver', inel.Body, 'Head');
+    check('ARK10b with no ladder the reserver dies v135-style', rep, nil);
 end)();
 
 -- ---------------------------------------------------------------------------
