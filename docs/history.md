@@ -6239,3 +6239,55 @@ retires it right after the trigger loop.
 **Status:** on `dev`, **FIELD-CONFIRMED** by Henrik the same day — *"It works now."* — and
 queued for promotion. Suites 3901 + 692, green on Windows lua and WSL lua5.4. Both real cases also driven end-to-end
 against the actual `gear.lua` files of both characters.
+
+## Session "minimizing the hobby bar ate the other windows" (2026-07-27u)
+
+**Theme:** a one-line ImGui misuse, four days old, that only showed itself when Henrik
+finally minimized the window it lived in.
+
+**Reported:** *"if I open the Hobby Bar, then minimize it, our floating icon for DLAC /
+Teleports disappear when I click it… the moment I unminimize the hobby bar, I can see the
+menu flash up and disappear real quick."* Then, unprompted: `/dl ui` was **also** up and
+invisible, and something invisible was refusing his clicks on the hobby bar's title bar.
+
+**The discriminators, all from Henrik in one message.** Minimizing the main window,
+Lockstyle or the Wishlist does nothing. **Closing** the hobby bar does nothing. Expanding
+it brings everything back with no further click. So: not popups, not window order, not
+the float — the *collapsed hobby bar* specifically. His `/dl metrics` screenshots pinned
+the rest: ImGui **1.81**, `Popups (0)` after the click (so `OpenPopup` never even ran),
+`NavWindow: '##dlac_tpfloat'` with a live `NavId` (so the mouse-**down** registered and
+the mouse-**up** frame never drew the button), and `11 active windows (10 visible)` in
+every shot while ~48 vertices vanished — a window still active, still counted as
+rendered, drawing nothing.
+
+**Root cause — the LAW, worth carrying.** `ui/hobbybar.lua` opened with
+`imgui.SetNextWindowSize({0,0}, ImGuiCond_Always)` every frame, right before an
+`AlwaysAutoResize` `Begin`. A zero component makes ImGui's `SetWindowSize` set
+`AutoFitFramesX/Y = 2` — *"submit the body anyway, I still need to measure it"* — and
+`ImGuiCond_Always` re-armed those counters on every single frame, so they never reached
+zero. ImGui's own rule is
+
+    skip_items = (Collapsed or not Active or Hidden) and AutoFitFrames <= 0
+
+so a **collapsed** hobby bar kept returning `true` from `Begin()` and kept drawing its
+whole body into a title-bar-sized window, forever. Every other dlac window collapses
+normally, which is exactly why this one was the only trigger. Focus decided *who* got
+eaten: `FocusWindow` moves a window's draw list to the display front — i.e. **behind**
+this one in emission order — so clicking the Teleports float, or opening `/dl ui`, put it
+there. Closing the bar was always safe: a window that is never begun cannot leak.
+
+**Fix:** delete the line. `AlwaysAutoResize` already sizes the window to its content
+every frame; the call was redundant from the day the bar shipped (`92e1fb2`, 07-24).
+`HB21` pins it — the smoke stub records every size requested and asserts none is zero.
+Mutation-verified: re-add the line and HB21 fails.
+
+**Worth carrying:**
+- **`SetNextWindowSize` with a zero component is not "auto-size", it is "keep measuring".**
+  With `ImGuiCond_Always` it is a permanent instruction, and it silently defeats *collapse*
+  — a state most windows are never tested in.
+- **Two symptoms, one window.** "The float dies" and "`/dl ui` is invisible" looked like
+  two bugs and named one cause. The second report is what killed every theory built around
+  the Teleports popup.
+- **The metrics window is the artifact.** `active` vs `visible` counts plus the vertex
+  delta said *active, rendered, drawing nothing* — which no amount of reading the addon's
+  own Lua could have said.

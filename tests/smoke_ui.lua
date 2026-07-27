@@ -1962,8 +1962,15 @@ end)();
     local frames = 0;   -- armed-marker rects drawn by iconTab
     local function nop() end
     local IM = {};
-    for _, n in ipairs({ 'SetNextWindowSize', 'Separator', 'Text', 'TextColored', 'SameLine',
+    for _, n in ipairs({ 'Separator', 'Text', 'TextColored', 'SameLine',
         'Dummy', 'SetTooltip', 'Spacing' }) do IM[n] = nop; end
+    -- Every size this window asks for, so HB21 can prove it never asks for a
+    -- ZERO one. See the LAW in hobbybar.render: a zero component re-arms ImGui's
+    -- AutoFitFrames counters every frame, which keeps Begin() returning true
+    -- while the window is COLLAPSED -- the minimize bug that ate the Teleports
+    -- float and the main window. AlwaysAutoResize already does the sizing.
+    local sizes = {};
+    IM.SetNextWindowSize = function(sz) sizes[#sizes + 1] = sz; end
     IM.Begin          = function() depth.win = depth.win + 1; return true; end
     IM['End']         = function() depth.win = depth.win - 1; end
     IM.PushStyleColor = function() depth.col = depth.col + 1; end
@@ -2027,6 +2034,20 @@ end)();
         end
         check('HB4 idle: Begin/End balanced',   depth.win, 0);
         check('HB5 idle: colour stack balanced', depth.col, 0);
+
+        -- HB21: the MINIMIZE law. A zero size here (any component) re-arms
+        -- ImGui's AutoFitFrames every frame, so a COLLAPSED hobby bar keeps
+        -- returning true from Begin() and keeps drawing its body -- which is
+        -- what made minimizing this one window swallow the Teleports float and
+        -- the main /dl window. The window is AlwaysAutoResize; it needs no size
+        -- request at all, and a zero one is never correct.
+        local zero = false;
+        for _, sz in ipairs(sizes) do
+            if type(sz) == 'table' and ((tonumber(sz[1]) or 1) <= 0 or (tonumber(sz[2]) or 1) <= 0) then
+                zero = true;
+            end
+        end
+        check('HB21 hobby bar never requests a zero window size', zero, false);
 
         activeStub = { key = 'helm', name = 'HELM' };   -- HELM armed...
         ui._hobbySel = 'craft';                        -- ...and we are LOOKING at Craft
