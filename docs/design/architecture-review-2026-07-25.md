@@ -13,6 +13,12 @@
 > central and too big of a decision to just be made on a whim."* The upgraded scope, the
 > early-binding diagnosis behind it and a staging sketch are recorded **inside candidate #1** —
 > read that block before grilling #1, and treat the old #1 text as the floor, not the goal.
+>
+> **2026-07-27, later — the dedicated look exists.** Henrik asked for it the same day
+> ("take a hard look… old decisions and rules may be open for debate"), and the full design —
+> diagnosis, contract, rule-by-rule debate, staging — is **`docs/design/two-way-arbiter.md`**.
+> It absorbs and supersedes the staging sketch inside candidate #1. Still a PROPOSAL:
+> no stage starts without Henrik's ruling on that document's §10.
 
 Base: `main` @ 2332088, addon v2026.07.25b. Line anchors are as of that commit — treat them as
 anchors, not gospel (the repo moves fast; `docs/architecture.md` carries the same warning).
@@ -179,6 +185,11 @@ already promises a new claimant costs "exactly TWO things and NO new arm". The A
 > Nothing above is built. Stages 1–2 were offered on 07-27 and Henrik declined to start them yet:
 > *"this is too central and too big of a decision to just be made on a whim."* **Do not begin any
 > stage without his pick.**
+>
+> **Superseded 2026-07-27 (later the same day): the sketch above graduated into a full design —
+> `docs/design/two-way-arbiter.md`** (contract, rule debate, refined staging: the registry refactor
+> moves to stage 0, "carry the ladder additively" is replaced by ladders-on-demand because
+> `store.Dynamic` already holds them). Grill THAT document, not this block.
 
 **Fix on the way:** `dispatch.lua:4271-4283` does hardcoded Pins-beats-Craft Sub arbitration *before*
 the rank walk, contradicting the "single precedence authority" claim 1,700 lines above it.
@@ -419,6 +430,8 @@ Independent of which candidate is picked:
 2. **Ask Henrik which candidate to explore.** Recommendation: **#2**, then **#1** — but note the
    2026-07-27 block inside #1: Henrik has already named #1's territory as the thing he wants thought
    through properly, so it may now outrank #2 on his own priorities. Ask; do not assume.
+   **#1's full design now exists — `docs/design/two-way-arbiter.md` (2026-07-27): grilling #1
+   means grilling that document; its §10 holds the open questions awaiting Henrik's ruling.**
 3. Run `/grilling` on the chosen candidate — constraints, dependencies, the shape of the deepened
    module, what sits behind the seam, which tests survive.
 4. Side effects inline as decisions crystallize (`/domain-modeling`):
