@@ -2555,6 +2555,21 @@ local RSLOT_ORDER = {
 };
 local function hasBit(mask, b) return math.floor(mask / b) % 2 == 1; end
 
+-- A mask as slot names, in the order above: 16 -> 'Head', 448 -> 'Hands, Legs,
+-- Feet', 0/nil -> nil. The engine owns the vocabulary because the engine owns the
+-- behaviour -- the GUI prints reservations but must never keep its own copy of
+-- which bit is which slot (the twin that drifts is the one nobody re-reads).
+function M.rslotText(mask)
+    mask = tonumber(mask) or 0;
+    if mask <= 0 then return nil; end
+    local out = {};
+    for _, e in ipairs(RSLOT_ORDER) do
+        if hasBit(mask, e[1]) then out[#out + 1] = e[2]; end
+    end
+    if #out == 0 then return nil; end
+    return table.concat(out, ', ');
+end
+
 -- Which slots of a RESOLVED set are reserved out from under it.
 --   set    -- the resolved slot->name plan; ONLY these slots can be dropped
 --   lookup -- itemName -> RSlot mask or nil (injected; tests drive it directly)

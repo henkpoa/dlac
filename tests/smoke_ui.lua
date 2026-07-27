@@ -234,6 +234,52 @@ check('S15 owned item resolves a model via the catalog by Id',
 check('S16 unknown item resolves to nil, no error', lockstyle._modelOf('No Such Thing'), nil);
 
 -- ---------------------------------------------------------------------------
+-- 4b. Reserved slots (RSlot) in the GUI, through the FULL live chain: the REAL
+--     catalog -> gearimport.rslotFor -> dispatch.reservedDrops, called exactly
+--     the way renderSetBuilder calls it. Same reasoning as S14-16 -- gearui runs
+--     this inside a pcall on the render path, so a mis-referenced upvalue would
+--     not crash: the builder would just quietly stop warning, which is the one
+--     failure mode nobody would ever notice by playing.
+--
+--     Field cases, all four confirmed against the server's item_equipment.rslot:
+--     Vermillion Cloak (Body) takes Head, Decennial Coat (Body) takes Hands,
+--     Kupo Suit (Body) takes Legs, Decennial Hose (Legs) takes Feet.
+-- ---------------------------------------------------------------------------
+S.buildAllEquip();
+check('S16a rsv service provided', type(S.rsv) == 'table' and type(S.rsv.dropsIn), 'function');
+
+check('S16b Vermillion Cloak reserves Head', S.rsv.byName('Vermillion Cloak'), 16);
+check('S16c Decennial Coat reserves Hands',  S.rsv.byName('Decennial Coat'), 64);
+check('S16d Kupo Suit reserves Legs',        S.rsv.byName('Kupo Suit'), 128);
+check('S16e Decennial Hose reserves Feet',   S.rsv.byName('Decennial Hose'), 256);
+check('S16f an ordinary piece reserves nothing', S.rsv.byName('Silver Hairpin'), 0);
+check('S16g an unknown name reserves nothing',   S.rsv.byName('No Such Thing'), 0);
+
+-- the names the tooltip prints, resolved through dispatch (not a local copy)
+check('S16h mask -> slot name',  S.rsv.text(16), 'Head');
+check('S16i no reservation -> nil, so no line is drawn', S.rsv.text(0), nil);
+
+-- and the builder's own call shape: pick(label) -> item name, drops keyed by slot.
+local function drives(plan)
+    return S.rsv.dropsIn(function(label) return plan[label]; end) or {};
+end
+check('S16j the reported bug: Cloak + hat -> Head is dropped',
+    drives({ Body = 'Vermillion Cloak', Head = 'Silver Hairpin' }).Head, 'Vermillion Cloak');
+check('S16k ... and the reserver itself still equips',
+    drives({ Body = 'Vermillion Cloak', Head = 'Silver Hairpin' }).Body, nil);
+check('S16l Decennial Coat takes the Hands piece',
+    drives({ Body = 'Decennial Coat', Hands = 'Cotton Gloves' }).Hands, 'Decennial Coat');
+check('S16m Kupo Suit takes the Legs piece',
+    drives({ Body = 'Kupo Suit', Legs = 'Leather Trousers' }).Legs, 'Kupo Suit');
+check('S16n Decennial Hose takes the Feet piece',
+    drives({ Legs = 'Decennial Hose', Feet = 'Bronze Leggings' }).Feet, 'Decennial Hose');
+-- an EMPTY reserved slot is not a conflict: nothing is being taken away.
+check('S16o Cloak with no hat -> nothing to report',
+    next(drives({ Body = 'Vermillion Cloak' })), nil);
+check('S16p an ordinary set -> nothing to report',
+    next(drives({ Head = 'Silver Hairpin', Hands = 'Cotton Gloves' })), nil);
+
+-- ---------------------------------------------------------------------------
 -- 5. lockstyle "Show gear I don't own" -- the two wires, through the REAL
 --    gearui + REAL catalog. Same reason as S14-16: gearui hands these over
 --    inside a pcall that prints NOTHING on failure, so a mis-referenced upvalue

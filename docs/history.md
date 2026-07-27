@@ -5983,3 +5983,66 @@ speaks in colour**, the craftbar trap in a new costume.
 
 **Status:** field-confirmed by Henrik the same day — *"it works now"* — and queued for
 promotion. Suites 3821 + 593, green on both interpreters.
+
+## Session "the slot that was never missing" (2026-07-27, on `dev` — addon 2026.07.27o → p)
+
+**Theme:** Henrik asked a bookkeeping question — *"we have a feature where if we equip a
+tunic that takes up the headslot, it ignores to equip the headslot… there are more items
+like this, for different slots. How do you propose we keep track of all of these
+different iterations of 'uses two slots'? Kupo suit, decennial coat, decennial hose."*
+The answer turned out to be **there is nothing to keep track of**, and the work was
+proving that and then fixing the two things that actually were missing.
+
+**The diagnosis.** `RSlot` is the server's `item_equipment.rslot` — a 16-bit "removed
+slot" mask — mirrored per item in `catalog.lua` since v43, stamped into `gear.lua` by the
+scan, backfilled by `/dl fix`, and consumed **generically** by `dispatch.reservedDrops`.
+Vermillion Cloak is not special-cased anywhere; it carries `RSlot = 16` and the engine
+does the rest. So the premise of the question — a growing list of hand-maintained special
+cases — never existed.
+
+Verified instead of asserted: `catalog.lua` diffed by id against the local server clone's
+`sql/item_equipment.sql` gave **383 items with a non-zero rslot, 383 present in the
+catalog with the identical value, 0 missing, 0 mismatched, 0 absent entirely**. The only
+four divergences are Ammo trinkets/shuriken, which is `effectiveRSlot`'s deliberate ADR
+0010 completion. All three items Henrik named were already right: Kupo Suit → Legs
+(`128`), Decennial Coat → Hands (`64`), Decennial Hose → Feet (`256`). And the space is
+much smaller than "all these different iterations" suggests — **nine distinct masks**:
+Range 131, Hands 74, Feet 71, Head 52, Ammo 35, Legs 11, Hands+Feet 4, Hands+Legs+Feet 3,
+Head+Hands 2. `reservedDrops` has walked arbitrary multi-bit masks in a fixed slot order
+since v43, so nothing about a suit that eats three slots is new work.
+
+**Landed (the two real gaps).** *Visibility:* the drop was completely silent — which is
+precisely why a correct feature reads as a bug. `renderItemTooltip` now prints *"Takes
+Head — that slot stays empty while this is worn"* on the ONE hover card every equipment
+surface shares, and the Sets builder previews the conflict before dispatch ever runs it:
+the reserved tile goes dark red, its hover names the reserver, and a single line under
+the grid lists the slots. Two new seams exist so the GUI owns **neither** rule —
+`dispatch.rslotText` (bit → slot name, because the engine owns the vocabulary it owns the
+behaviour of) and `gearimport.rslotFor` (the mask by id, the *same* resolver the scan
+stamps `gear.lua` with, ADR 0010 completion included). The preview itself calls
+`reservedDrops`, the equip-time pass, with no `worn` argument: the builder shows the SET,
+not the character. *Drift:* `apicrawl.py` now prints an **RSlot audit** on every rebuild
+(`--rslot-audit` reports without writing), naming each item that gained, lost or changed
+a reservation.
+
+**Worth carrying:**
+- **`rslotlook` is not `rslot`.** A Kupo Suit *looks* like it covers hands, legs and feet
+  (`rslotlook=448`) but only **Legs** is actually blocked (`rslot=128`). Anyone "fixing"
+  this class of item by eye from the in-game model would stamp the wrong mask on the
+  whole family. We mirror `rslot` and ignore `rslotlook` — deliberately.
+- **A silent safety warning is the worst failure mode there is.** `rsv.dropsIn` runs
+  inside a render `pcall` (a warning must never crash a frame), so a typo in it fails
+  *quietly* and the builder simply stops warning — invisible by definition, because the
+  feature's normal state is "says nothing". That is why `rsv` is exported through
+  `host.provide` rather than kept private: smoke drives it against the real catalog
+  (S16a–p), so a dead resolver is a red test instead of a permanent quiet nothing.
+- **The audit direction that matters is the LOSS.** An item *gaining* a reservation is
+  loud in play. An item *losing* one is silent, and `/dl fix` will dutifully retract that
+  stamp from every player's `gear.lua`. The audit prints the retraction consequence on
+  that line for exactly this reason.
+- The question was bookkeeping; the answer was arithmetic already in the repo. **Check
+  what the data says before designing a registry for it** — the diff took minutes and
+  deleted the entire proposed feature.
+
+**Status:** on `dev`, **not** in the merge queue — Henrik has not field-tested it yet.
+Suites 3836 + 609 (AK23–33, TR4c–e, S16a–p added), green on Windows lua and WSL lua5.4.

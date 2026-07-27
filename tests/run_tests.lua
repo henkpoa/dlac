@@ -3361,6 +3361,26 @@ do
     check('AK21 the reserver still equips',               akTbl2.Body, 'Ryl.Ftm. Tunic');
     check('AK22 the drop is traced for /dl why',
         string.find(akNote, 'RESERVED', 1, true) ~= nil, true);
+
+    -- AK23+. dispatch.rslotText -- the mask as slot NAMES, for the GUI. The engine
+    -- owns this vocabulary because it owns the behaviour: gearui prints reservations
+    -- ("Takes Head") and marks the builder's reserved tiles, and a private bit->slot
+    -- table over there is exactly the twin that drifts unnoticed. Order follows
+    -- RSLOT_ORDER, not the mask's numeric order, so 448 always reads Hands, Legs, Feet.
+    check('AK23 rslotText exported',        type(dispatchM.rslotText), 'function');
+    check('AK24 single bit -> slot name',   dispatchM.rslotText(0x0010), 'Head');
+    check('AK25 Hands',                     dispatchM.rslotText(0x0040), 'Hands');
+    check('AK26 Legs (Kupo Suit)',          dispatchM.rslotText(0x0080), 'Legs');
+    check('AK27 Feet (Decennial Hose)',     dispatchM.rslotText(0x0100), 'Feet');
+    check('AK28 multi-bit in slot order',   dispatchM.rslotText(0x01C0), 'Hands, Legs, Feet');
+    check('AK29 Head+Hands (the real 80)',  dispatchM.rslotText(0x0050), 'Head, Hands');
+    check('AK29b Hands+Feet (the real 320)', dispatchM.rslotText(0x0140), 'Hands, Feet');
+    check('AK30 Range (trinket, ADR 0010)', dispatchM.rslotText(0x0004), 'Range');
+    -- nil, not '': every caller tests the return for nil to decide whether to draw
+    -- the line at all, and an empty string would draw an empty warning row.
+    check('AK31 zero -> nil',               dispatchM.rslotText(0), nil);
+    check('AK32 nil -> nil',                dispatchM.rslotText(nil), nil);
+    check('AK33 garbage -> nil',            dispatchM.rslotText('x'), nil);
 end
 
 -- ---------------------------------------------------------------------------
@@ -5243,6 +5263,14 @@ end)();
     -- Range-reserving (field case 2026-07-22: a manually equipped Automat. Oil +2
     -- was displaced every Default dispatch).
     check('TR4b Animator-fed oil exempt -> nil',           gimp.effectiveRSlot({ Type = 'Ammo', Id = 18733 }), nil);
+    -- TR4c. rslotFor: the catalog-sourced mask BY ID -- the value the scan stamps
+    -- into gear.lua, and (since the builder's reserved-tile preview) what the GUI
+    -- reads too. Exported so those two can never answer differently; headless it
+    -- returns nil for everything (no catalog), which every caller reads as "no
+    -- reservation", so the absence of a catalog can only under-warn, never misfire.
+    check('TR4c rslotFor exported',        type(gimp.rslotFor), 'function');
+    check('TR4d rslotFor(nil) is safe',    gimp.rslotFor(nil), nil);
+    check('TR4e unknown id -> nil',        gimp.rslotFor(999999), nil);
 
     -- the level tiebreak (dispatchM.trinketRangeDrop). rslot: only the stat sticks reserve Range.
     local rslot = function(n) return ({ Cinderstone = 4, Morion = 4 })[n]; end

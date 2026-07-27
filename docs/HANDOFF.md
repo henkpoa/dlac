@@ -374,6 +374,36 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
+- **2026-07-27: reserved slots stop being invisible — ON `dev`, awaiting field test**
+  (`2026.07.27p`). Henrik: *"if we equip a tunic that takes up the headslot, it ignores
+  to equip the headslot… there are more items like this. How do we keep track of all
+  of these?"* **Answer: we already do, and there is nothing to keep.** `RSlot` (the
+  server's `item_equipment.rslot`) has been mirrored per item since v43 and resolved
+  generically by `dispatch.reservedDrops` — Vermillion Cloak is not special-cased
+  anywhere, it just carries `RSlot = 16`. Verified rather than assumed: catalog.lua
+  diffed against the server clone's `sql/item_equipment.sql` = **383 reserving items,
+  383 present, 0 missing, 0 mismatched, 0 absent**. The three he named were already
+  correct (Kupo Suit → Legs `128`, Decennial Coat → Hands `64`, Decennial Hose → Feet
+  `256`), and the whole space is only **9 distinct masks** (Range 131, Hands 74, Feet
+  71, Head 52, Ammo 35, Legs 11, Hands+Feet 4, Hands+Legs+Feet 3, Head+Hands 2).
+  So the two real gaps were **visibility** and **drift**, and both are now closed:
+  1) **The GUI says it out loud.** `renderItemTooltip` prints *"Takes Head — that slot
+  stays empty while this is worn"* on every hover card (Equipped / All Equipment / Sets
+  / floatgear / lockstyle all share it), and the Sets builder previews the conflict
+  *before* dispatch eats it: the reserved tile goes dark red, the hover names the
+  reserver (*"Head is RESERVED by Vermillion Cloak — this piece will NOT be equipped"*),
+  and one line under the grid lists the slots. New seams `dispatch.rslotText` and
+  `gearimport.rslotFor`, so the UI owns **neither** rule — a builder warning that
+  disagreed with the engine would be worse than no warning at all. `rsv` is exported
+  through `host.provide` on purpose: it runs inside a render pcall, so smoke drives it
+  directly rather than letting a dead resolver fail silently forever.
+  2) **`apicrawl.py` audits RSlot on every rebuild** (`--rslot-audit` = report only,
+  no write), naming every item that gained, lost or changed a reservation. Cosmetic-armour
+  batches are exactly this drift class (the clone's last item commit is literally
+  "Cosmetic Armor Update"), and a *lost* reservation is the quiet one — `/dl fix` will
+  retract that stamp from every player's gear.lua.
+  Tests AK23–33 / TR4c–e / smoke S16a–p (3836 + 609, Windows **and** WSL lua5.4).
+  Not in the merge queue: Henrik has not field-tested it yet.
 - **2026-07-27: the Xvs field day — THREE engine-era fixes, ON MAIN, FIELD-CONFIRMED**
   (`0f1ae6e` v130/`2026.07.27g`, `67edec8` `2026.07.27h`, `c074da9` `2026.07.27i`/ADR
   0025; promoted the same evening on Henrik's go-ahead after Xvs confirmed:
@@ -1122,6 +1152,22 @@ research already recorded. In rough priority order:
   touching it: build-time stripping (what ffxi-lac did, and what dlac had ported as
   dead code in utils.lua) is WRONG under overlay. Worn pieces reserve too. Tests: AK,
   E7–E11. history.md "Reserved slots" has the data scan + the two traps.
+  **Visible since `2026.07.27p`:** the drop used to happen in silence, which is exactly
+  why it reads as a bug ("it ignores the head slot"). Every hover card now says *"Takes
+  Head — that slot stays empty while this is worn"*, and the Sets builder marks a
+  reserved tile dark red with a one-line summary under the grid. The GUI keeps **no**
+  copy of either rule: masks come from `gearimport.rslotFor` (the resolver the scan
+  stamps gear.lua with) and slot names from `dispatch.rslotText`; the preview itself is
+  `dispatch.reservedDrops`, the same pass that runs at equip time. Tests: AK23–33,
+  TR4c–e, smoke S16a–p (the full live chain against the real catalog).
+  **Coverage is not a list to maintain** — the catalog carries all 383 reserving items,
+  diffed byte-exact against the server's `item_equipment.rslot` on 2026-07-27. Drift is
+  guarded at the source: `apicrawl.py` prints an **RSlot audit** on every rebuild
+  (`--rslot-audit` = report only, no write) naming every item that gained, lost or
+  changed a reservation. A LOST reservation is the loud one — `/dl fix` will retract
+  that stamp from every player's gear.lua. Note `rslotlook` is appearance-only and is
+  deliberately NOT mirrored: a Kupo Suit *looks* like it covers hands/legs/feet
+  (`rslotlook=448`) but only **Legs** is actually blocked (`rslot=128`).
 - **`/dl view_ids` + lockstyle "Show gear I don't own" — new this session (07-15).**
   `/dl view_ids [on|off]` appends **item id + model id** to `renderItemTooltip`, which is
   the ONE hover card every equipment surface shares (Equipped / All Equipment / Sets /
