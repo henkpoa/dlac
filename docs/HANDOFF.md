@@ -250,14 +250,13 @@ to main, Henrik answered two later the same day: **three pills — bar, window, 
 right** (*"Perfection"*), and the **armed green frame reads fine** (*"Looks great"*), so
 that pair is settled and neither needs revisiting.
 
-**Still open, and still unseen:** whether the target window's 760×520 default gives the
-spot list enough room — its bait column sits at `availW * 0.55`, ~50px tighter than the
-panel used to give it, so long zone names (*"Western Altepa Desert -- Hidden Oasis"*) are
-where it would show. Asked once and answered about the ICONS instead (*"if you're talking
-about the icons, looks great"*), which is the honest state of it: the window itself has
-still not been opened in game. The check is ten seconds — hobby bar → Fishing tab → click
-the target name → search a fish with a long zone name. A one-line fix either way (a wider
-default, or a fixed floor for that column). The record is the merge commit on `main`.)*
+**All three are answered now.** The target window was opened and approved — *"very
+satisfied with how it opens a new window and search for the fish, instead of having to do
+it solely WITHIN the fish automation menu"* — and its 760×520 default drew no complaint, so
+the column-width worry closes unchanged. That run surfaced one fault instead, and an older
+one than anything in this promotion: only the bait CELL was clickable in the spot list.
+Fixed on `dev` in **`2026.07.27f`**, which is NOT part of this merge. The record is the
+merge commit on `main`.)*
 
 *(Previous promotion: 2026-07-26 night — the **Teleports floating menu rework**
 (`2026.07.26v`; Nexus Cape + Shadow Lord Shirt into "Other Teleports", the
