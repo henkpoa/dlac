@@ -47,7 +47,7 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 135;  -- 135: MULTI-SLOT DOMINANCE (Henrik's ruling 2026-07-27, two field cases the same afternoon). A piece that reserves other slots is a CANDIDATE only while the claim wanting it is dominant over every slot it takes -- dominant, it wins its slot AND claims the reserved ones (left EMPTY; the server clears them itself); beaten, it is INELIGIBLE and its own slot goes unwritten. The gap was structural: the overlay applies each matching rule's set through its OWN equipResolved, so reservedDrops never saw more than one rule at a time and priority never got a vote. Hunklor SAM -- Movement(25) Body=Kupo Suit (reserves Legs) over Idle(20) Legs=Amir Dirs: Idle wrote the legs, Movement wrote the suit, the server stripped the legs, repeat every ~0.4s with moving=true throughout. Mindie SCH -- Idle(20) Body=Royal Cloak (reserves Head) under Movement(25) Head: reservedDrops' `worn` arm made it WORSE, the cloak already on his back reserving Head out from under the rule that OUTRANKED it ("This is the wrong logic"). Both are the one rule pulling opposite ways. M.reserveFloor merges every matching rule's set in APPLY order (last-writer-wins, each slot tagged with the priority that won it) and M.reserveVerdict judges it in RSLOT_ORDER -- dominance resolved BEFORE anything is suppressed, so a piece never reserves on its way out, and a claimed slot cannot itself claim (Body takes Legs, so the Legs piece cannot go on to take Feet). The engine builds the floor BEFORE the first write and retires it right after the trigger loop: Claim layers keep the single-set + worn judgement they were field-tested with, because this floor describes the TRIGGER contest ("on a trigger level") and a rank contest is not a priority number. NOT YET: "go for the next available piece" -- utils.BuildDynamicSets collapses each slot's list to ONE name before the engine sees it (the AutoAmmo rung-2 trap), so an ineligible piece leaves its slot unwritten rather than falling to the next rung; carrying per-slot alternates is the follow-up. Tests AKD1-26. 134: AutoAmmo's ladder learns the LEVEL (field report 2026-07-27, Henrik's DRK: a list of Acid Bolt 15 / Blind Bolt 10 / Crossbow Bolt 1, sorted best-first by the panel's own button, loaded nothing at level 8 and nothing at 10 -- "when I make the slot empty, it still tries to auto equip acid bolts"). resolveAmmoPlan asked three questions per entry (flag, pair since v128, stock) and never asked the fourth, so the top entry won whatever the player's level was, and the overlay COLLAPSES A LADDER TO ONE NAME before the equip layer sees it -- there is no rung 2 to fall to, unlike a set slot, which is why the failure was total and silent. Now a fourth gate (M.resolveAmmoPlan's `wearable`, mirroring gear\equipcore checkUsable: level < Level, Jobs & 2^job) reads f.gate -> itemGate(id), the live client resource for an item already counted in the bags, with the entry's stored level as fallback; UNKNOWN NEVER DISQUALIFIES (the pairsWith three-valued law). The level is playerLevel(ctx) -- so `/dl set level main N` wins, exactly as it does in the set flatten and the virtual slot entries; reading MainJobSync straight would have left AutoAmmo the last picker in dlac that ignores the override. The Default arm now RE-JUDGES what is worn (empty slot, or the worn ammo is over-level, or it is one of OURS and no longer the best rung) instead of only reloading an empty slot -- the other half of the report, "I had acid bolts on me already but didn't change" -- while anything worn that is NOT on the list stays untouchable (a Midshot set's trinket must survive every idle tick; owning the slot outright is ADR 0010's flap through a third door). Default also holds while ctx.syncHold is up, since the level is now an input; an OVERRIDE never arms that hold and must not. resolveAmmoPlan returns four values (plan, why, code, chat): stock-outs print edge-triggered on a change of cause, level-driven rung changes print nothing at all (Henrik). docs/design/auto-ammo.md Section 10; tests AM51-AM68. 133: the purge, Phase 3-4 -- native-aware surfaces + the allowlist. /dl check reads the NATIVE home (stamp, sets file) and the seeded-copies/shim lines died (#131 CLOSED); debug.lua's handoff reads follow (handoffDir = profiles.dataDir) and requestEngine is a no-op; charDir has NO legacy fallback; '/dl profile migrate go' no longer reloads anything; every 'Reload LAC' user string became /dl reload or died; gearui equip-now uses the game's native /equip; legacy job files are READ-ONLY (the delete-static writer refuses); the module-local legacy path fallbacks (gearimport x2, gearexport, augments, debug) are gone. Tests PRG1-2 pin the allowlist: a uashitacast string literal may exist only in the keep-list readers. 132: the purge, Phase 2 -- LEGACY MODE DIES WHOLE. inLac(), the gProfile/gFunc world, the LAC-hosted engine path, readJobSets + the legacy sets fallback, warnShadowedStatics, the HandleEquipEvent wrap, the LAC tick half, the request-file bridge and both lockstyle engine halves are DELETED; nativeMode() is constant true, the engine flag is retired in place, /dl engine is status-only. One state, one engine, one sets store. 131: the LuaShitacast purge, Phase 1 (docs/design/lac-purge-plan.md). The engine SELF-SWAP died whole -- M.swapWanted, trySelfSwap, the __dlacEngineRoot handshake, tests SW* -- because the LAC seeder that fed it died in dlac.lua the same day: with seeds frozen forever, the watch could only ever DOWNGRADE a running engine to stale bytes. profiles.migrate step 4 (rewrite the job file as a clean shim) died too: originals now stay in place, inert and importable (the keep-list promise), and the shim WRITER (shimFileText/SHIM_BODY/BOOT_LINE) went with it -- only the recognizers (SHIM_MARKER, isCleanShim) remain for files already on disk. Setup writes NO job files anymore (MIGRATE_BOOT/STARTER_PROFILE deleted; storage + base sets + starter triggers ARE the setup). The LAC-alive polite ask (lacAlive/shouldAskUnloadLac) is gone; the coexistence tripwire remains the backstop. Nothing in dlac writes under config\addons\luashitacast\ anymore -- that tree is read-only import/migration territory. 130: the native flatten no longer waits for the GUI (Xvs field case 2026-07-27). Every utils lookup assumed "loaded first in the LAC state" -- the job shim's first require -- but the NATIVE state has no shim and NOTHING loaded utils at boot: package.loaded read nil, installSets skipped the flatten, and every install refused "flatten produced no sets (world not settled)" every 0.4s until a GUI picker's own lazy pcall(require, 'dlac\\utils') happened to run (gearui's isDualWieldAvailable / subCandidateOk -- the accidental medic; that's why it read as per-JOB in the field: the healed session's job "worked", a reload broke it). utilsModule() now requires lazily at call time -- cycle-safe, see its comment. Tests RQU0-RQU2. 129: /dl disable -- free equip, the native-era answer to /lac disable (Henrik 2026-07-26: "make it claim the slot / slots, then don't do anything at all with it, so people can free equip all they want without DLAC intervention"). Not a lock (a lock is a veto INSIDE the rank walk -- four rows punch through it) and not a claim to dress (every other row wins a slot in order to put something there; this one wins it to write nothing). It is the CEILING: pinned first in ARB_ORDER_DEFAULT, undraggable like the Triggers floor, and enforced at engineEquipSet -- the one write seam -- rather than in equipResolved's per-slot chain, because the whole-table post-passes that run after that chain write slots the set never named (mp-stage's battery, trinket-vs-ranged's worn-Ammo displace) and would put a slot straight back. Registered as a claim ONLY for attribution, so /dl why and the Priority panel can name it and woven MaxMP cedes it for free. Shares M.worldWatch with naked / locked set / slot locks (v124's one lifetime rule): drops on a main job change and on leaving the world, never written to disk. The Equipped tab's "Free equip" switch now drives THIS instead of /lac disable, which under the native engine talked to a LuaAshitacast that no longer does the equipping and therefore did nothing at all. ADR 0024; tests DS1-DS30.
+M.VERSION = 136;  -- 136: THE CLAIMANT REGISTRY (ADR 0027, stage 0 -- docs/design/two-way-arbiter.md section 7; zero behavior change by construction). One CLAIMANTS table, one row per rank row except the Triggers floor, and M.dispatch's six hand-copied per-claimant shapes now ITERATE it: the ensure/active pass, both bail guards, the claims map, the retrace-signature legs (CLAIMANT_SIG_ORDER pins the old byte order, so a live session does not retrace once on upgrade), the rank-walk applies and /dl prio's status lines. The 2026-07-25 architecture review measured adding a claimant at 15 hunks across 6 non-adjacent regions, three of which failed SILENTLY when forgotten (a missed bail term was a claimant that never dispatched; a missed signature leg was a stale /dl why); a new claimant is now ONE row + one ARB_ORDER_DEFAULT entry. MaxMP stays the one inline-built claim (order-coupled to mpRespectLocks/mpCeded; its equip stays woven until ADR 0027 stage 6) and Disabled/MaxMP stay out of both bails by design (free equip or a bare mode is not a reason to dispatch). Tests CR* pin the registry's shape as data; NK26 drives the rewired body end to end. 135: MULTI-SLOT DOMINANCE (Henrik's ruling 2026-07-27, two field cases the same afternoon). A piece that reserves other slots is a CANDIDATE only while the claim wanting it is dominant over every slot it takes -- dominant, it wins its slot AND claims the reserved ones (left EMPTY; the server clears them itself); beaten, it is INELIGIBLE and its own slot goes unwritten. The gap was structural: the overlay applies each matching rule's set through its OWN equipResolved, so reservedDrops never saw more than one rule at a time and priority never got a vote. Hunklor SAM -- Movement(25) Body=Kupo Suit (reserves Legs) over Idle(20) Legs=Amir Dirs: Idle wrote the legs, Movement wrote the suit, the server stripped the legs, repeat every ~0.4s with moving=true throughout. Mindie SCH -- Idle(20) Body=Royal Cloak (reserves Head) under Movement(25) Head: reservedDrops' `worn` arm made it WORSE, the cloak already on his back reserving Head out from under the rule that OUTRANKED it ("This is the wrong logic"). Both are the one rule pulling opposite ways. M.reserveFloor merges every matching rule's set in APPLY order (last-writer-wins, each slot tagged with the priority that won it) and M.reserveVerdict judges it in RSLOT_ORDER -- dominance resolved BEFORE anything is suppressed, so a piece never reserves on its way out, and a claimed slot cannot itself claim (Body takes Legs, so the Legs piece cannot go on to take Feet). The engine builds the floor BEFORE the first write and retires it right after the trigger loop: Claim layers keep the single-set + worn judgement they were field-tested with, because this floor describes the TRIGGER contest ("on a trigger level") and a rank contest is not a priority number. NOT YET: "go for the next available piece" -- utils.BuildDynamicSets collapses each slot's list to ONE name before the engine sees it (the AutoAmmo rung-2 trap), so an ineligible piece leaves its slot unwritten rather than falling to the next rung; carrying per-slot alternates is the follow-up. Tests AKD1-26. 134: AutoAmmo's ladder learns the LEVEL (field report 2026-07-27, Henrik's DRK: a list of Acid Bolt 15 / Blind Bolt 10 / Crossbow Bolt 1, sorted best-first by the panel's own button, loaded nothing at level 8 and nothing at 10 -- "when I make the slot empty, it still tries to auto equip acid bolts"). resolveAmmoPlan asked three questions per entry (flag, pair since v128, stock) and never asked the fourth, so the top entry won whatever the player's level was, and the overlay COLLAPSES A LADDER TO ONE NAME before the equip layer sees it -- there is no rung 2 to fall to, unlike a set slot, which is why the failure was total and silent. Now a fourth gate (M.resolveAmmoPlan's `wearable`, mirroring gear\equipcore checkUsable: level < Level, Jobs & 2^job) reads f.gate -> itemGate(id), the live client resource for an item already counted in the bags, with the entry's stored level as fallback; UNKNOWN NEVER DISQUALIFIES (the pairsWith three-valued law). The level is playerLevel(ctx) -- so `/dl set level main N` wins, exactly as it does in the set flatten and the virtual slot entries; reading MainJobSync straight would have left AutoAmmo the last picker in dlac that ignores the override. The Default arm now RE-JUDGES what is worn (empty slot, or the worn ammo is over-level, or it is one of OURS and no longer the best rung) instead of only reloading an empty slot -- the other half of the report, "I had acid bolts on me already but didn't change" -- while anything worn that is NOT on the list stays untouchable (a Midshot set's trinket must survive every idle tick; owning the slot outright is ADR 0010's flap through a third door). Default also holds while ctx.syncHold is up, since the level is now an input; an OVERRIDE never arms that hold and must not. resolveAmmoPlan returns four values (plan, why, code, chat): stock-outs print edge-triggered on a change of cause, level-driven rung changes print nothing at all (Henrik). docs/design/auto-ammo.md Section 10; tests AM51-AM68. 133: the purge, Phase 3-4 -- native-aware surfaces + the allowlist. /dl check reads the NATIVE home (stamp, sets file) and the seeded-copies/shim lines died (#131 CLOSED); debug.lua's handoff reads follow (handoffDir = profiles.dataDir) and requestEngine is a no-op; charDir has NO legacy fallback; '/dl profile migrate go' no longer reloads anything; every 'Reload LAC' user string became /dl reload or died; gearui equip-now uses the game's native /equip; legacy job files are READ-ONLY (the delete-static writer refuses); the module-local legacy path fallbacks (gearimport x2, gearexport, augments, debug) are gone. Tests PRG1-2 pin the allowlist: a uashitacast string literal may exist only in the keep-list readers. 132: the purge, Phase 2 -- LEGACY MODE DIES WHOLE. inLac(), the gProfile/gFunc world, the LAC-hosted engine path, readJobSets + the legacy sets fallback, warnShadowedStatics, the HandleEquipEvent wrap, the LAC tick half, the request-file bridge and both lockstyle engine halves are DELETED; nativeMode() is constant true, the engine flag is retired in place, /dl engine is status-only. One state, one engine, one sets store. 131: the LuaShitacast purge, Phase 1 (docs/design/lac-purge-plan.md). The engine SELF-SWAP died whole -- M.swapWanted, trySelfSwap, the __dlacEngineRoot handshake, tests SW* -- because the LAC seeder that fed it died in dlac.lua the same day: with seeds frozen forever, the watch could only ever DOWNGRADE a running engine to stale bytes. profiles.migrate step 4 (rewrite the job file as a clean shim) died too: originals now stay in place, inert and importable (the keep-list promise), and the shim WRITER (shimFileText/SHIM_BODY/BOOT_LINE) went with it -- only the recognizers (SHIM_MARKER, isCleanShim) remain for files already on disk. Setup writes NO job files anymore (MIGRATE_BOOT/STARTER_PROFILE deleted; storage + base sets + starter triggers ARE the setup). The LAC-alive polite ask (lacAlive/shouldAskUnloadLac) is gone; the coexistence tripwire remains the backstop. Nothing in dlac writes under config\addons\luashitacast\ anymore -- that tree is read-only import/migration territory. 130: the native flatten no longer waits for the GUI (Xvs field case 2026-07-27). Every utils lookup assumed "loaded first in the LAC state" -- the job shim's first require -- but the NATIVE state has no shim and NOTHING loaded utils at boot: package.loaded read nil, installSets skipped the flatten, and every install refused "flatten produced no sets (world not settled)" every 0.4s until a GUI picker's own lazy pcall(require, 'dlac\\utils') happened to run (gearui's isDualWieldAvailable / subCandidateOk -- the accidental medic; that's why it read as per-JOB in the field: the healed session's job "worked", a reload broke it). utilsModule() now requires lazily at call time -- cycle-safe, see its comment. Tests RQU0-RQU2. 129: /dl disable -- free equip, the native-era answer to /lac disable (Henrik 2026-07-26: "make it claim the slot / slots, then don't do anything at all with it, so people can free equip all they want without DLAC intervention"). Not a lock (a lock is a veto INSIDE the rank walk -- four rows punch through it) and not a claim to dress (every other row wins a slot in order to put something there; this one wins it to write nothing). It is the CEILING: pinned first in ARB_ORDER_DEFAULT, undraggable like the Triggers floor, and enforced at engineEquipSet -- the one write seam -- rather than in equipResolved's per-slot chain, because the whole-table post-passes that run after that chain write slots the set never named (mp-stage's battery, trinket-vs-ranged's worn-Ammo displace) and would put a slot straight back. Registered as a claim ONLY for attribution, so /dl why and the Priority panel can name it and woven MaxMP cedes it for free. Shares M.worldWatch with naked / locked set / slot locks (v124's one lifetime rule): drops on a main job change and on leaving the world, never written to disk. The Equipped tab's "Free equip" switch now drives THIS instead of /lac disable, which under the native engine talked to a LuaAshitacast that no longer does the equipping and therefore did nothing at all. ADR 0024; tests DS1-DS30.
                   -- 128: 128: AutoAmmo asks what is in RANGE before it picks (field, Henrik 2026-07-26: "AutoAmmo does NOT dictate if it's bolt, arrows or what not that gets equipped. That is 100% decided on what gets put in ranged"). resolveAmmoPlan was type-BLIND -- it took the first `ranged`-flagged entry with stock, so a bolt above your arrows won with a bow equipped -- and the panel's Bullets/Bolts/Arrows selector never constrained it (categoryOf is a VIEW, stored nowhere). The cost was not a wasted swap: charutils.cpp EquipItem STRIPS THE OTHER SLOT on an incompatible Range/Ammo pair, so the bolt took the bow off, the trigger re-equipped it, and the two flapped forever -- ADR 0010's failure through the skill/subskill door instead of the rslot one. New pure M.pairsWith over a "<skill>:<subskill>" key (26:1 gun/bullet, 26:0 crossbow/bolt, 26:2 culverin/shell, 27:0 boomerang/pebble, 27:3 shuriken, 0:10 Animator/oil), three-valued so an unknown pair degrades to today's behaviour instead of switching AutoAmmo off; ARCHERY is exempt from the subskill half exactly as the server writes it (Shortbow 25:0 and Longbow 25:4 share arrows). Range is never written -- AutoAmmo only ever READS it. Two rulings, both Henrik's: no ranged weapon worn = do nothing at all (safe -- with Range empty the server refuses the shot, so nothing can be consumed), and a weapon worn with nothing in the list able to pair = hold, never force a mismatch in. THROWING with an empty Range (a NIN's shuriken, CanUseRangedAttack's `|| PAmmo->isThrowing()`) is the ONE known exception and stays parked behind the §8 NIN field tests. The key rides the manifest like RSlot (gearimport stamps Pair from the catalog's new field); worn Range falls back to the client resource's Skill when the manifest predates it, so the update alone separates bow/gun/throwing for everyone and a manifest refresh upgrades it to gun-vs-crossbow. Tests PW1-PW14, AM40-AM58.
                   -- 127: trigger CASES, the schema backbone (issue #126, slice 2/5; ADR 0023) -- rules gain an optional `cases` list (a second `&`/`|` tier: op + the same two legs a body has), evaluated by matches()/matchedCase() over a factored legMatches so both tiers share one code path; normalize validates + drops empty cases + strips the always-true `hasCases` version guard; auto-priority + ruleLabel span every leg of every case (case-LESS rules match/label/serialize byte-for-byte as before -- pinned). serializeTriggers is oldest-form-first (a `| case` of only `&` rows -> a whenAny multi-entry; only `&` cases and `| cases` with internal OR use the new list) and stamps the guard so OLDER engines drop the rule with the standard warn instead of misreading it. Seeded-file bump: normalize + matches run engine-side (hard rule 4). Tests CX1-CX35, MC19-23. (PR #132 shipped as v126/2026.07.26c off a pre-97f1edc dev; renumbered at merge.)
                   -- 126: the /dl why trace can no longer outlive the sets store it described (field, Mindie 2026-07-26 01:31): the retrace sig now carries the store REVISION (M.modesRev -- bumped by every install and re-flatten, 5668/5714), so lines built against the empty boot-window store ("[NOT FOUND in profile Sets]", true for ~2s of designed install refusals) die the moment the install lands, instead of printing with a fresh timestamp for the rest of the session while equips worked fine. The v118 law applied to the trace: THE INSTALL INVALIDATES THE BELIEF. Display only, no equip change. Tests TRC0-TRC3 (the trace-vs-store contract, driven through the real command handler + dispatch like CMD).
@@ -3657,9 +3657,9 @@ end
 -- dress, one item per slot (or the M.LOCK_HELD sentinel for the veto). A new
 -- claimant joins the Arbiter with exactly TWO things and NO new arm:
 --   1. one rank row  -- add its name to ARB_ORDER_DEFAULT (and arbwatch's UI);
---   2. one claim table -- register `claims['<Name>'] = <its slot->item table>`
---      in M.dispatch, and (if it applies a discrete overlay) one applyClaim
---      closure keyed by the same name.
+--   2. one CLAIMANTS row (the registry above M.dispatch -- ADR 0027 stage 0):
+--      ensure/active/claim/sig/apply/prioStatus in one place; the dispatch
+--      loops, both bail guards, the signature legs and /dl prio iterate it.
 -- Everything else -- who wins each contested slot, ceding, the Locks veto,
 -- /dl why attribution -- falls out of the rank list automatically. MaxMP is the
 -- worked example: it registers a claim (mpClaimFor) yet keeps its equip WOVEN,
@@ -5608,6 +5608,274 @@ function M._lsDebugReport(t, n, resolveId, equippedId, gateFail)
     return L;
 end
 
+-- ---------------------------------------------------------------------------
+-- THE CLAIMANT REGISTRY (ADR 0027, stage 0 -- v136). One row per Arbiter rank
+-- row except the Triggers floor. M.dispatch's ensure/active pass, both bail
+-- guards, the claims map, the retrace-signature legs, the rank-walk applies
+-- and /dl prio's status lines all ITERATE THIS TABLE -- the six hand-copied
+-- shapes they replace were the "15 hunks per claimant" the 2026-07-25
+-- architecture review measured, three of which failed SILENTLY when forgotten
+-- (a missed bail term was a claimant that never dispatched; a missed
+-- signature leg was a stale /dl why). Zero behavior change: every row body is
+-- the old inline block moved verbatim behind a field, and tests CR* pin the
+-- registry's shape as data.
+--
+-- The row contract (a NEW claimant = one row here + one ARB_ORDER_DEFAULT
+-- rank row + the arbwatch UI list; the recipe at arbExplain agrees):
+--   name         -- the rank-row name (ADR 0012 vocabulary)
+--   ensure(ev)   -- the state read, event gating baked in; nil = stateless
+--   active(st)   -- claims this dispatch? (feeds bail #1 where bail1 = true)
+--   claim(st, on, env) -> equip[, extra]
+--                -- the claim table; env = { ctx, event, hits, fishOn }.
+--                   nil = M.dispatch builds it inline (MaxMP only: its build
+--                   is ORDER-COUPLED to mpRespectLocks/mpCeded -- stage 6
+--                   migrates it).
+--   bail1/bail2  -- participates in the two bail guards. Disabled and MaxMP
+--                   are ABSENT by design: free equip or a bare mode is not a
+--                   reason to dispatch.
+--   sig(equip, on) -> string  -- the retrace-signature leg ('' = quiet).
+--                   Locks has NONE (pre-registry parity: the locked set never
+--                   had a leg; the lock LIST is hashed separately upstream).
+--   apply(env)   -- the rank-walk application + its /dl why line; nil =
+--                   registered for attribution/ceding only (MaxMP: the equip
+--                   stays WOVEN in equipResolved until stage 6).
+--   prioStatus() -> string    -- the /dl prio row text, self-ensuring (the
+--                   same reads M.dispatch does, now in one place).
+-- ---------------------------------------------------------------------------
+local function claimantSigLeg(equip)   -- the generic leg: sorted slot=item
+    if equip == nil then return ''; end
+    local ks = {};
+    for slot, item in pairs(equip) do ks[#ks + 1] = tostring(slot) .. '=' .. tostring(item); end
+    table.sort(ks);
+    return table.concat(ks, ',');
+end
+
+-- craft/HELM/fishing/chocobo share one apply shape: resolve the overlay at the
+-- row's lock-respect, then trace the SLOT LIST (not the items -- pre-registry
+-- parity, the four hand-built closures printed keys only).
+local function overlayApply(name, label)
+    return function(env)
+        equipResolved(env.built[name], env.ctx, env.respect(name));
+        if env.retrace then
+            local ks = {};
+            for slot in pairs(env.built[name]) do ks[#ks + 1] = tostring(slot); end
+            table.sort(ks);
+            env.lines[#env.lines + 1] = label .. table.concat(ks, ', ');
+        end
+    end
+end
+
+local function pinStateOn(ps) return type(ps) == 'table' and next(ps) ~= nil; end
+local function craftStateOn(cs)
+    return type(cs) == 'table' and cs.enabled == true
+       and type(cs.craft) == 'string' and cs.craft ~= '';
+end
+
+local CLAIMANTS = {
+    -- Pins apply on EVERY event (a pin that lost its slot mid-cast would not
+    -- be a pin). The claim is built even when the state is empty -- scoped
+    -- pins decide inside pinOverlayFor against the dispatch's hits.
+    { name = 'Pins',
+      ensure = function() return ensurePinState(); end,
+      active = pinStateOn,
+      bail1 = true, bail2 = true,
+      claim = function(st, on, env) return pinOverlayFor(st, env.hits, env.event); end,
+      sig = claimantSigLeg,
+      apply = function(env)
+          equipResolved(env.built['Pins'], env.ctx, env.respect('Pins'));
+          if env.retrace then
+              local ks = {};
+              for slot, item in pairs(env.built['Pins']) do ks[#ks + 1] = tostring(slot) .. '=' .. tostring(item); end
+              table.sort(ks);
+              env.lines[#env.lines + 1] = 'PINNED  ->  ' .. table.concat(ks, ', ');
+          end
+      end,
+      prioStatus = function() return pinStateOn(ensurePinState()) and 'ON (armed)' or 'off'; end },
+    -- Craft overlay applies on Default even with NO trigger match ("a plain
+    -- profile still gets craft gear") -- one Claim among the co-claiming
+    -- activities (ADR 0012 amendment, step 1.5): every armed activity claims
+    -- whenever its own gates hold -- all of them may claim in one dispatch --
+    -- and the Arbiter's rank settles every contested slot, per slot. The
+    -- newest-armed (`at` stamp) exclusivity that stood the others down WHOLE
+    -- is retired: it was the pre-Arbiter conflict resolver, redundant once
+    -- rank arbitrates and actively defeating per-slot composition (the PUP
+    -- field case: arming HELM must not pull a fishing rod out of Range that
+    -- HELM never claims). Each feature's own gates are untouched (idle-only
+    -- stand-asides, Default-only application); arming never switches
+    -- activities.
+    { name = 'Craft',
+      ensure = function(ev) return (ev == 'Default') and ensureCraftState() or nil; end,
+      active = craftStateOn,
+      bail1 = true, bail2 = true,
+      claim = function(st, on, env) return on and craftOverlayFor(st, env.ctx) or nil; end,
+      sig = claimantSigLeg,
+      apply = overlayApply('Craft', 'craft gear (overlay)  ->  '),
+      prioStatus = function() return craftStateOn(ensureCraftState()) and 'ON (armed)' or 'off'; end },
+    -- HELM overlay: same law, its own Claim (co-claims since step 1.5).
+    { name = 'HELM',
+      ensure = function(ev) return (ev == 'Default') and ensureHelmState() or nil; end,
+      active = helmStateActive,
+      bail1 = true, bail2 = true,
+      claim = function(st, on, env) return on and helmOverlayFor(st, env.ctx) or nil; end,
+      sig = claimantSigLeg,
+      apply = overlayApply('HELM', 'HELM gear (overlay)  ->  '),
+      prioStatus = function() return helmStateActive(ensureHelmState()) and 'ON (armed)' or 'off'; end },
+    -- Fishing overlay: same law, its own Claim (v64; co-claims since step 1.5).
+    { name = 'Fishing',
+      ensure = function(ev) return (ev == 'Default') and ensureFishState() or nil; end,
+      active = fishStateActive,
+      bail1 = true, bail2 = true,
+      claim = function(st, on, env) return on and fishOverlayFor(st, env.ctx) or nil; end,
+      sig = claimantSigLeg,
+      apply = overlayApply('Fishing', 'fishing gear (overlay)  ->  '),
+      prioStatus = function() return fishStateActive(ensureFishState()) and 'ON (armed)' or 'off'; end },
+    -- Chocobo overlay: same law, its own Claim (v120; co-claims with the rest).
+    { name = 'Chocobo',
+      ensure = function(ev) return (ev == 'Default') and ensureChocoState() or nil; end,
+      active = chocoStateActive,
+      bail1 = true, bail2 = true,
+      claim = function(st, on, env) return on and chocoOverlayFor(st, env.ctx) or nil; end,
+      sig = claimantSigLeg,
+      apply = overlayApply('Chocobo', 'chocobo gear (overlay)  ->  '),
+      prioStatus = function() return chocoStateActive(ensureChocoState()) and 'ON (armed)' or 'off'; end },
+    -- AutoAmmo is NOT Default-gated: it owns the Ammo slot on the shooting
+    -- events and only sweeps on Default. Its Default arm stands down whenever
+    -- the fishing overlay is live (bait owns the slot -- env.fishOn), and none
+    -- of craft/HELM/fish touch Ammo anywhere else (excluded by design). The
+    -- claim is applied below the pin, above everything else naming Ammo (v73).
+    { name = 'AutoAmmo',
+      ensure = function() return ensureAmmoState(); end,
+      active = ammoStateOn,
+      bail1 = true, bail2 = true,
+      claim = function(st, on, env)
+          if not on then return nil; end
+          return ammoOverlayFor(st, env.ctx, env.event, env.hits, env.fishOn);
+      end,
+      sig = function(equip) return (equip ~= nil) and ('Ammo=' .. tostring(equip.Ammo)) or ''; end,
+      apply = function(env)
+          equipResolved(env.built['AutoAmmo'], env.ctx, env.respect('AutoAmmo'));
+          if env.retrace then
+              env.lines[#env.lines + 1] = string.format('AutoAmmo  ->  Ammo=%s  (%s)',
+                  tostring(env.built['AutoAmmo'].Ammo), tostring(env.bx['AutoAmmo']));
+          end
+      end,
+      prioStatus = function() return ammoStateOn(ensureAmmoState()) and 'ON (claims Ammo on shooting events)' or 'off'; end },
+    -- NAKED (ADR 0021) claims on EVERY event, like Pins: a strip that let go
+    -- during a cast would not be a strip. Naked with no triggers, no pins and
+    -- nothing armed is the whole point -- hence bail1. Registered like any
+    -- other claimant (one rank row, one claim table, no new arm), so woven
+    -- MaxMP cedes all 16 slots to it for free.
+    { name = 'Naked',
+      active = function() return M.nakedOn(); end,
+      bail1 = true, bail2 = true,
+      claim = function(st, on)
+          if not on then return nil; end
+          return M.nakedClaim();
+      end,
+      sig = function(_, on) return on and 'NAKED' or ''; end,
+      apply = function(env)
+          -- ctx.pinReserved is a hold placed on behalf of Pins. When Naked
+          -- outranks Pins the reserving piece is being stripped in this very
+          -- call, so its reservation must not keep a neighbour dressed --
+          -- nil it for the duration and put it back, rather than handing
+          -- equipResolved a copy (ctx memoizes buffs/target/pet lazily, and
+          -- a copy would silently drop those for this layer only).
+          local saved, void = env.ctx.pinReserved, M.nakedVoidsPinReserve(env.rankOf);
+          if void then env.ctx.pinReserved = nil; end
+          equipResolved(env.built['Naked'], env.ctx, env.respect('Naked'));
+          if void then env.ctx.pinReserved = saved; end
+          if env.retrace then
+              env.lines[#env.lines + 1] = 'NAKED  ->  all 16 slots emptied'
+                  .. (void and '' or '  (pins reserve theirs)');
+          end
+      end,
+      prioStatus = function() return M.nakedOn() and 'ON (claims ALL 16 slots empty -- /dl dress releases)' or 'off'; end },
+    -- THE LOCKED SET rides the Locks row (ADR 0022) rather than adding a row
+    -- of its own: to the player "lock" is one word and one drag target. The
+    -- row carries BOTH kinds of opinion -- real item names for slots a locked
+    -- set holds (this claim), and the M.LOCK_HELD veto sentinel for slots a
+    -- plain /dl lock froze (merged into whyClaims at attribution time). It
+    -- claims on EVERY event, for Naked's reason: a hold that let go during a
+    -- cast would not be a hold (the Incursion case the command exists for).
+    { name = 'Locks',
+      active = function() return M.lockedSetOn(); end,
+      bail1 = true, bail2 = true,
+      claim = function(st, on)
+          if not on then return nil; end
+          return M.lockedSetClaim();
+      end,
+      -- sig: NONE (pre-registry parity -- the locked set never had a leg).
+      apply = function(env)
+          -- env.respect('Locks') asks `rank > lockRank` about its OWN row, so
+          -- it is false and the hold punches through M.locks. That is why
+          -- arming no longer has to clear the player's locks first: a stale
+          -- lock can never strip a slot out of the hold that outranks it, and
+          -- it is still sitting there untouched when the hold is released.
+          equipResolved(env.built['Locks'], env.ctx, env.respect('Locks'));
+          if env.retrace then
+              local nHeld = 0;
+              for _ in pairs(env.built['Locks']) do nHeld = nHeld + 1; end
+              env.lines[#env.lines + 1] = string.format('LOCKED SET "%s"  ->  %d slot(s) held',
+                  tostring(M.lockedSetLabel() or '?'), nHeld);
+          end
+      end,
+      -- The /dl prio line reports the lock VETO (M.locks), not the locked set
+      -- -- the row's other opinion; both die on job change/logout (v124).
+      prioStatus = function()
+          return (next(M.locks) ~= nil) and 'ON (veto -- claims above punch through, below stop)'
+                                        or 'off (veto -- no slots locked)';
+      end },
+    -- The DISABLED ceiling (ADR 0024) registers for ATTRIBUTION ONLY -- the
+    -- one claimant that equips nothing. Its apply carries NO equipResolved
+    -- call, deliberately: the ceiling withholds, and withholding is done at
+    -- the write seam (engineEquipSet), above every post-pass. Registering
+    -- buys that /dl why and ctx.mpCeded see it (woven MaxMP cedes a disabled
+    -- slot for free instead of planning a slot dropped on the way out), and
+    -- the trace-only apply exists because an inert slot with no line anywhere
+    -- explaining it is this feature's whole failure mode.
+    { name = 'Disabled',
+      claim = function() return M.disabledClaim(); end,
+      -- Disabling or re-enabling a slot changes the answer /dl why gives, so
+      -- it has to move the signature -- 'off:'-prefixed, so it can never
+      -- collide with a lock on the same slot name (both lists are lac-case).
+      sig = function()
+          local dk = M.disabledList();
+          return (#dk > 0) and ('off:' .. table.concat(dk, ',')) or '';
+      end,
+      apply = function(env)
+          if env.retrace then
+              env.lines[#env.lines + 1] = 'FREE EQUIP  ->  ' .. table.concat(M.disabledList(), ', ')
+                  .. '  (dlac writes nothing to these; equip them yourself)';
+          end
+      end,
+      prioStatus = function()
+          local dzList = M.disabledList();
+          return (#dzList > 0)
+              and string.format('ON (ceiling -- dlac writes nothing to %s; /dl enable all releases)',
+                  table.concat(dzList, ', '))
+              or 'off (ceiling -- no slots disabled)';
+      end },
+    -- MaxMP is the ONE claim the registry does not build: mpClaimFor is
+    -- ORDER-COUPLED to the rank walk (ctx.mpRespectLocks must be set before
+    -- it, ctx.mpCeded computed from the finished claims map after it), so
+    -- M.dispatch builds it inline at exactly the old spot. Its equip stays
+    -- WOVEN in equipResolved (ADR 0012; ADR 0027 stage 6 migrates both).
+    { name = 'MaxMP',
+      sig = claimantSigLeg,
+      prioStatus = function() return (M.modes['maxmp'] ~= nil) and 'ON (claims batteries; slots won above it stand down)' or 'off'; end },
+};
+
+-- The retrace-signature leg order: the exact byte order of the hand-built
+-- concat this replaces (c|p|h|f|ch|a|m|n|dz), so a live session does not
+-- retrace once on upgrade. Reordering is harmless but must be done ON PURPOSE
+-- -- CR2 pins it.
+local CLAIMANT_SIG_ORDER = { 'Craft', 'Pins', 'HELM', 'Fishing', 'Chocobo',
+                             'AutoAmmo', 'MaxMP', 'Naked', 'Disabled' };
+local CLAIMANT_BY = {};
+for _, row in ipairs(CLAIMANTS) do CLAIMANT_BY[row.name] = row; end
+M._claimants = CLAIMANTS;                    -- test seams (CR*)
+M._claimantSigOrder = CLAIMANT_SIG_ORDER;
+
 function M.dispatch(event)
     if not engineActive() then return; end
     pcall(function()
@@ -5646,53 +5914,33 @@ function M.dispatch(event)
         local list = rules and rules[event] or nil;
         local hasRules = (list ~= nil and #list > 0);
 
-        -- Bail only when there is genuinely NOTHING to do. This used to return on
-        -- the rule list alone -- which quietly made BOTH overlays dead on any
-        -- event the profile has no rules for, including the "a plain profile
-        -- still gets craft gear" case the craft overlay's own comment promised.
-        -- An "All" pin has to hold on a profile with no triggers at all, so the
-        -- overlays must be consulted HERE, ahead of the early return. Both reads
-        -- are the 1/sec-throttled cached ones, so this stays cheap on the Default
-        -- dispatch that runs every frame.
-        local pinState   = ensurePinState();
-        local hasPins    = (type(pinState) == 'table' and next(pinState) ~= nil);
-        local craftState = (event == 'Default') and ensureCraftState() or nil;
-        local craftOn    = (type(craftState) == 'table' and craftState.enabled == true
-                            and type(craftState.craft) == 'string' and craftState.craft ~= '');
-        local helmState  = (event == 'Default') and ensureHelmState() or nil;
-        local helmOn     = helmStateActive(helmState);
-        local fishState  = (event == 'Default') and ensureFishState() or nil;
-        local fishOn     = fishStateActive(fishState);
-        local chocoState = (event == 'Default') and ensureChocoState() or nil;
-        local chocoOn    = chocoStateActive(chocoState);
-        -- AutoAmmo is NOT Default-gated: it owns the Ammo slot on the shooting
-        -- events and only sweeps on Default. It never joins the craft/helm/fish
-        -- arbitration -- its Default arm stands down whenever the fish overlay
-        -- is live (bait owns the slot), and none of the three touch Ammo
-        -- anywhere else (craft/HELM exclude it by design).
-        local ammoState  = ensureAmmoState();
-        local ammoOn     = ammoStateOn(ammoState);
-        -- NAKED (ADR 0021) claims on EVERY event, like Pins: a strip that let go
-        -- during a cast would not be a strip. Read before the bail below -- naked
-        -- with no triggers, no pins and nothing armed is the whole point.
-        local nakedOn    = M.nakedOn();
-        -- LOCKED SET (ADR 0022) claims on EVERY event too, and for the same
-        -- reason: a hold that let go during a cast would not be a hold. Read
-        -- here, above the bail -- a locked set with no triggers, no pins and
-        -- nothing else armed is the Incursion case the command exists for, and
-        -- bailing past it is exactly how NK26 found the strip could not fire.
-        local lockedOn   = M.lockedSetOn();
-        -- Craft/HELM/Fishing CO-CLAIM (ADR 0012 amendment, step 1.5). Each armed
-        -- activity claims whenever its own gates hold -- all three may claim in
-        -- one dispatch -- and the Arbiter's rank order settles every contested
-        -- slot, per slot (the apply loop below). The newest-armed (`at` stamp)
-        -- exclusivity that stood the others down WHOLE is retired: it was the
-        -- pre-Arbiter conflict resolver, redundant once rank arbitrates and
-        -- actively defeating per-slot composition (the PUP field case: arming
-        -- HELM must not pull a fishing rod out of Range that HELM never claims).
-        -- Each feature's own gates are untouched (idle-only stand-asides,
-        -- Default-only application); arming no longer switches activities.
-        if not hasRules and not hasPins and not craftOn and not helmOn and not fishOn and not chocoOn and not ammoOn and not nakedOn and not lockedOn then return; end
+        -- THE CLAIMANT REGISTRY PASS (ADR 0027, stage 0). One ensure/active
+        -- walk over CLAIMANTS replaces the eight hand-wired state blocks; each
+        -- row's event gating (craft/HELM/fish/choco are Default-only; Pins,
+        -- AutoAmmo, Naked and the locked set claim on EVERY event) is baked
+        -- into its ensure/active fields, comments included. Reads stay the
+        -- 1/sec-throttled cached ones, so this is as cheap as the blocks it
+        -- replaced on the Default dispatch that runs every frame.
+        --
+        -- Bail only when there is genuinely NOTHING to do. This used to return
+        -- on the rule list alone -- which quietly made the overlays dead on any
+        -- event the profile has no rules for ("a plain profile still gets craft
+        -- gear"; an "All" pin has to hold on a profile with no triggers at all;
+        -- naked/locked with nothing else armed is the whole point, and bailing
+        -- past the hold is exactly how NK26 found the strip could not fire) --
+        -- so every bail1 row is consulted HERE, ahead of the early return.
+        -- Disabled and MaxMP carry no bail1 BY DESIGN: free equip or a bare
+        -- mode alone is not a reason to dispatch.
+        local cState, cOn = {}, {};
+        for _, row in ipairs(CLAIMANTS) do
+            if row.ensure ~= nil then cState[row.name] = row.ensure(event); end
+            cOn[row.name] = (row.active ~= nil) and (row.active(cState[row.name]) == true) or false;
+        end
+        local anyClaimant = false;
+        for _, row in ipairs(CLAIMANTS) do
+            if row.bail1 == true and cOn[row.name] then anyClaimant = true; break; end
+        end
+        if not hasRules and not anyClaimant then return; end
 
         local ctx = buildCtx(event);
         -- Level-sync settle (v56): computed ONCE per dispatch and ridden by every
@@ -5714,23 +5962,22 @@ function M.dispatch(event)
             return a.ord < b.ord;
         end);
 
-        -- Craft overlay applies on Default even with NO trigger match. It is one
-        -- Claim among the co-claiming activities; the Arbiter's rank settles any
-        -- slot it shares with HELM/Fishing below.
-        local cEquip = craftOn and craftOverlayFor(craftState, ctx) or nil;
-        -- HELM overlay: same law, its own Claim (co-claims with craft/fish now;
-        -- step 1.5 dropped the newest-armed exclusivity, so all armed activities
-        -- claim and rank settles each overlapping slot).
-        local hEquip = helmOn and helmOverlayFor(helmState, ctx) or nil;
-        -- Fishing overlay: same law, its own Claim (v64; co-claims since step 1.5).
-        local fEquip = fishOn and fishOverlayFor(fishState, ctx) or nil;
-        -- Chocobo overlay: same law, its own Claim (v120; co-claims with the rest).
-        local chEquip = chocoOn and chocoOverlayFor(chocoState, ctx) or nil;
-
-        -- Pins apply on EVERY event (a pin that lost its slot mid-cast would not
-        -- be a pin). Scoped pins need `hits` to know whether their trigger fired,
-        -- so this reads it above.
-        local pEquip = pinOverlayFor(pinState, hits, event);
+        -- THE CLAIM BUILD PASS (ADR 0027, stage 0): every row's claim table in
+        -- one registry walk -- craft/HELM/fish/choco overlays, the pin table
+        -- (scoped pins read `hits`, sorted above), AutoAmmo's plan (its row
+        -- reads env.fishOn -- bait owns the slot), naked, the locked set and
+        -- the disabled ceiling. Build order between rows is free (each builder
+        -- reads only its own state + env; verified for stage 0) -- but the
+        -- INTER-claim wiring below stays after the whole pass, exactly where
+        -- it ran before.
+        local built, bx = {}, {};   -- claim tables + builder extras (AutoAmmo's why)
+        local benv = { ctx = ctx, event = event, hits = hits, fishOn = cOn['Fishing'] };
+        for _, row in ipairs(CLAIMANTS) do
+            if row.claim ~= nil then
+                built[row.name], bx[row.name] = row.claim(cState[row.name], cOn[row.name], benv);
+            end
+        end
+        local cEquip, pEquip = built['Craft'], built['Pins'];
 
         -- A pinned piece that takes a slot away has to stop everything BELOW it
         -- from equipping into that slot (see pinReservedSlots -- otherwise the
@@ -5755,55 +6002,26 @@ function M.dispatch(event)
                          and pEquip or cEquip;
         ctx.craftMainGuard = (guardSrc ~= nil) and craftMainGuard(guardSrc) or nil;
 
-        -- AutoAmmo overlay (v73): every event; applied below the pin, above
-        -- everything else that names the Ammo slot.
-        local aEquip, aWhy;
-        if ammoOn then
-            aEquip, aWhy = ammoOverlayFor(ammoState, ctx, event, hits, fishOn);
-        end
-
         -- THE ARBITER (ADR 0012, steps 1 + 4). One data-driven registry orders
-        -- every Claim's application: the discrete overlays are collected as claims,
+        -- every Claim's application: the built claims are collected as a map,
         -- the live rank order is read from arbstate, and the whole thing is
         -- applied below in RANK order -- the hardcoded craft/HELM/fish/ammo/pin
-        -- sequence is gone. MaxMP now REGISTERS a claim too (step 4, below), so
-        -- ctx.mpCeded derives from the one registry: MaxMP never contests a slot
-        -- won by a claimant ranked above it, computed ONCE here so every
-        -- equipResolved call below (floor included) sees the same ceded set. Its
-        -- battery EQUIP stays woven (holds are within-set); only its precedence
-        -- and /dl why attribution live here.
+        -- sequence is gone. Registration is the registry loop (ADR 0027 stage
+        -- 0): every claim the build pass produced joins, which keeps the old
+        -- per-claimant guarantees -- Naked, Disabled and the locked set all
+        -- register ABOVE the mpCeded computation, so woven MaxMP cedes their
+        -- slots for free instead of needing shaped special cases. MaxMP itself
+        -- REGISTERS a claim too (step 4, below), so ctx.mpCeded derives from
+        -- the one registry: MaxMP never contests a slot won by a claimant
+        -- ranked above it, computed ONCE here so every equipResolved call
+        -- below (floor included) sees the same ceded set. Its battery EQUIP
+        -- stays woven (holds are within-set); only its precedence and /dl why
+        -- attribution live here.
         local arbOrder = M.arbOrder(ensureArbState());
         local claims = {};
-        -- Naked registers like any other claimant -- one rank row, one claim
-        -- table, no new arm (the shape documented at arbExplain). Registered
-        -- HERE, above the mpCeded computation, so woven MaxMP cedes all 16 slots
-        -- to it for free instead of needing a naked-shaped special case.
-        local nEquip = nakedOn and M.nakedClaim() or nil;
-        if nEquip ~= nil then claims['Naked']    = nEquip; end
-        -- The DISABLED ceiling (ADR 0024) registers for ATTRIBUTION ONLY. It has
-        -- no applyClaim and cannot have one -- it withholds, and withholding is
-        -- done at the write seam (engineEquipSet), above every post-pass. What it
-        -- buys by being here is that /dl why and ctx.mpCeded see it: registered
-        -- above the mpCeded computation, woven MaxMP cedes a disabled slot for
-        -- free, so the battery does not spend its pass planning a slot that will
-        -- be dropped on the way out.
-        local dzEquip = M.disabledClaim();
-        if dzEquip ~= nil then claims['Disabled'] = dzEquip; end
-        if pEquip ~= nil then claims['Pins']     = pEquip; end
-        if aEquip ~= nil then claims['AutoAmmo']  = aEquip; end
-        if cEquip ~= nil then claims['Craft']     = cEquip; end
-        if hEquip ~= nil then claims['HELM']      = hEquip; end
-        if fEquip ~= nil then claims['Fishing']   = fEquip; end
-        if chEquip ~= nil then claims['Chocobo']  = chEquip; end
-        -- THE LOCKED SET rides the Locks row (ADR 0022) rather than adding a
-        -- row of its own: to the player "lock" is one word and one drag target.
-        -- The row therefore carries BOTH kinds of opinion -- real item names for
-        -- slots a locked set holds, and the M.LOCK_HELD veto sentinel for slots
-        -- a plain /dl lock froze (merged into whyClaims for /dl why, below).
-        -- Registered HERE, above the mpCeded computation, so woven MaxMP cedes
-        -- every held slot for free instead of needing a locked-set special case.
-        local lkEquip = lockedOn and M.lockedSetClaim() or nil;
-        if lkEquip ~= nil then claims['Locks']    = lkEquip; end
+        for _, row in ipairs(CLAIMANTS) do
+            if built[row.name] ~= nil then claims[row.name] = built[row.name]; end
+        end
         -- LOCKS ARE THE VETO ROW (ADR 0012, step 3). Locks sit at a rank; a
         -- claimant ABOVE the row punches through a locked slot, one BELOW stops.
         -- rankOf indexes the live order; layerRespectsLocks answers per claimant
@@ -5828,12 +6046,22 @@ function M.dispatch(event)
         -- (arbCededAbove excludes MaxMP's own row, so the ceded set is unchanged),
         -- and /dl why can name the battery in a contest. The battery EQUIP stays
         -- woven inside equipResolved: hold/release/upgrade/sticky/movement-yield
-        -- are within-set resolution, deliberately outside the Arbiter.
+        -- are within-set resolution, deliberately outside the Arbiter (ADR 0027
+        -- stage 6 migrates it). This is the ONE claim built inline rather than
+        -- by the registry pass -- order-coupled: ctx.mpRespectLocks above it,
+        -- ctx.mpCeded from the finished map after it (its row says so too).
         local mpClaim = mpClaimFor(ctx);
-        if mpClaim ~= nil then claims['MaxMP'] = mpClaim; end
+        if mpClaim ~= nil then claims['MaxMP'] = mpClaim; built['MaxMP'] = mpClaim; end
         ctx.mpCeded = M.arbCededAbove(claims, arbOrder, 'MaxMP');
 
-        if #hits == 0 and cEquip == nil and hEquip == nil and fEquip == nil and chEquip == nil and pEquip == nil and aEquip == nil and nEquip == nil and lkEquip == nil then
+        -- Nothing matched and nothing built: the second bail, registry-driven
+        -- (bail2 rows only -- Disabled and MaxMP deliberately keep out of it,
+        -- exactly as they keep out of bail #1).
+        local anyBuilt = false;
+        for _, row in ipairs(CLAIMANTS) do
+            if row.bail2 == true and built[row.name] ~= nil then anyBuilt = true; break; end
+        end
+        if #hits == 0 and not anyBuilt then
             if event ~= 'Default' then   -- Default runs every frame; only action events trace a miss
                 _trace[event] = { time = os.date('%H:%M:%S'), action = actionLabel(ctx),
                                   sig = '', lines = { '(no trigger matched)' } };
@@ -5859,59 +6087,16 @@ function M.dispatch(event)
         local lk = {};
         for s in pairs(M.locks) do lk[#lk + 1] = s; end   -- lock changes must retrace too
         table.sort(lk);
-        -- Disabling or re-enabling a slot changes the answer /dl why gives, so it
-        -- has to move the signature -- prefixed, so it can never collide with a
-        -- lock on the same slot name (both lists are lac-case).
-        local dzSig = '';
-        do
-            local dk = M.disabledList();
-            if #dk > 0 then dzSig = 'off:' .. table.concat(dk, ','); end
+        -- Claimant retrace legs (ADR 0027, stage 0): one row.sig each, joined
+        -- in CLAIMANT_SIG_ORDER -- the exact byte order of the nine hand-built
+        -- legs this replaces (craft|pins|HELM|fishing|chocobo|ammo|mp|naked|
+        -- disabled), so a live session does not retrace once on upgrade. Any
+        -- claim's change must retrace: that is what a leg IS.
+        local legs = {};
+        for _, lnm in ipairs(CLAIMANT_SIG_ORDER) do
+            local lrow = CLAIMANT_BY[lnm];
+            legs[#legs + 1] = (lrow ~= nil and lrow.sig ~= nil) and lrow.sig(built[lnm], cOn[lnm]) or '';
         end
-        local cSig = '';                                  -- craft overlay changes must retrace too
-        if cEquip ~= nil then
-            local ck = {};
-            for slot, item in pairs(cEquip) do ck[#ck + 1] = slot .. '=' .. item; end
-            table.sort(ck);
-            cSig = table.concat(ck, ',');
-        end
-        local pSig = '';                                  -- pin changes must retrace too
-        if pEquip ~= nil then
-            local pk = {};
-            for slot, item in pairs(pEquip) do pk[#pk + 1] = slot .. '=' .. item; end
-            table.sort(pk);
-            pSig = table.concat(pk, ',');
-        end
-        local hSig = '';                                  -- helm overlay changes must retrace too
-        if hEquip ~= nil then
-            local hk = {};
-            for slot, item in pairs(hEquip) do hk[#hk + 1] = slot .. '=' .. item; end
-            table.sort(hk);
-            hSig = table.concat(hk, ',');
-        end
-        local fSig = '';                                  -- fishing overlay changes must retrace too
-        if fEquip ~= nil then
-            local fk = {};
-            for slot, item in pairs(fEquip) do fk[#fk + 1] = slot .. '=' .. item; end
-            table.sort(fk);
-            fSig = table.concat(fk, ',');
-        end
-        local chSig = '';                                 -- chocobo overlay changes must retrace too
-        if chEquip ~= nil then
-            local chk = {};
-            for slot, item in pairs(chEquip) do chk[#chk + 1] = slot .. '=' .. item; end
-            table.sort(chk);
-            chSig = table.concat(chk, ',');
-        end
-        local aSig = '';                                  -- AutoAmmo decision changes must retrace too
-        if aEquip ~= nil then aSig = 'Ammo=' .. tostring(aEquip.Ammo); end
-        local mSig = '';                                  -- MaxMP battery target changes must retrace (/dl why attribution)
-        if mpClaim ~= nil then
-            local mk = {};
-            for slot, item in pairs(mpClaim) do mk[#mk + 1] = slot .. '=' .. item; end
-            table.sort(mk);
-            mSig = table.concat(mk, ',');
-        end
-        local nSig = nakedOn and 'NAKED' or '';       -- arming/releasing must retrace too
         -- The SETS-STORE REVISION must retrace too (field, 2026-07-26): every
         -- install and re-flatten bumps M.modesRev, and trace lines resolve set
         -- names against that store -- lines built against an empty boot-window
@@ -5919,8 +6104,7 @@ function M.dispatch(event)
         -- for a whole session after the install landed. The v118 law, applied
         -- to the trace: THE INSTALL INVALIDATES THE BELIEF. Tests TRC1-TRC3.
         sig = event .. ':' .. table.concat(sig, ',') .. '|' .. table.concat(lk, ',')
-              .. '|' .. cSig .. '|' .. pSig .. '|' .. hSig .. '|' .. fSig .. '|' .. chSig .. '|' .. aSig .. '|' .. mSig
-              .. '|' .. nSig .. '|' .. dzSig .. '|sr' .. tostring(M.modesRev or 0);
+              .. '|' .. table.concat(legs, '|') .. '|sr' .. tostring(M.modesRev or 0);
         local old = _trace[event];
         local retrace = (old == nil) or (old.sig ~= sig) or (event ~= 'Default');
         local lines = retrace and {} or old.lines;
@@ -6050,106 +6234,13 @@ function M.dispatch(event)
         -- each claim layer is told whether to respect the lock (rank below Locks)
         -- or punch through it (above) via layerRespectsLocks -- no discrete Locks
         -- overlay here. Each claimant keeps its own trace line for /dl why.
-        local applyClaim = {
-            ['Craft'] = function()
-                equipResolved(cEquip, ctx, layerRespectsLocks('Craft'));
-                if retrace then
-                    local ks = {};
-                    for slot in pairs(cEquip) do ks[#ks + 1] = tostring(slot); end
-                    table.sort(ks);
-                    lines[#lines + 1] = 'craft gear (overlay)  ->  ' .. table.concat(ks, ', ');
-                end
-            end,
-            ['HELM'] = function()
-                equipResolved(hEquip, ctx, layerRespectsLocks('HELM'));
-                if retrace then
-                    local ks = {};
-                    for slot in pairs(hEquip) do ks[#ks + 1] = tostring(slot); end
-                    table.sort(ks);
-                    lines[#lines + 1] = 'HELM gear (overlay)  ->  ' .. table.concat(ks, ', ');
-                end
-            end,
-            ['Fishing'] = function()
-                equipResolved(fEquip, ctx, layerRespectsLocks('Fishing'));
-                if retrace then
-                    local ks = {};
-                    for slot in pairs(fEquip) do ks[#ks + 1] = tostring(slot); end
-                    table.sort(ks);
-                    lines[#lines + 1] = 'fishing gear (overlay)  ->  ' .. table.concat(ks, ', ');
-                end
-            end,
-            ['Chocobo'] = function()
-                equipResolved(chEquip, ctx, layerRespectsLocks('Chocobo'));
-                if retrace then
-                    local ks = {};
-                    for slot in pairs(chEquip) do ks[#ks + 1] = tostring(slot); end
-                    table.sort(ks);
-                    lines[#lines + 1] = 'chocobo gear (overlay)  ->  ' .. table.concat(ks, ', ');
-                end
-            end,
-            ['AutoAmmo'] = function()
-                equipResolved(aEquip, ctx, layerRespectsLocks('AutoAmmo'));
-                if retrace then
-                    lines[#lines + 1] = string.format('AutoAmmo  ->  Ammo=%s  (%s)',
-                        tostring(aEquip.Ammo), tostring(aWhy));
-                end
-            end,
-            ['Pins'] = function()
-                equipResolved(pEquip, ctx, layerRespectsLocks('Pins'));
-                if retrace then
-                    local ks = {};
-                    for slot, item in pairs(pEquip) do ks[#ks + 1] = tostring(slot) .. '=' .. tostring(item); end
-                    table.sort(ks);
-                    lines[#lines + 1] = 'PINNED  ->  ' .. table.concat(ks, ', ');
-                end
-            end,
-            ['Locks'] = function()
-                -- THE LOCKED SET (ADR 0022). layerRespectsLocks('Locks') asks
-                -- `rank > lockRank` about its OWN row, so it is false and the
-                -- hold punches through M.locks. That is precisely why arming no
-                -- longer has to clear the player's locks first: a stale lock can
-                -- never strip a slot out of the hold that outranks it, and it is
-                -- still sitting there untouched when the hold is released.
-                equipResolved(lkEquip, ctx, layerRespectsLocks('Locks'));
-                if retrace then
-                    local nHeld = 0;
-                    for _ in pairs(lkEquip) do nHeld = nHeld + 1; end
-                    lines[#lines + 1] = string.format('LOCKED SET "%s"  ->  %d slot(s) held',
-                        tostring(M.lockedSetLabel() or '?'), nHeld);
-                end
-            end,
-            ['Naked'] = function()
-                -- ctx.pinReserved is a hold placed on behalf of Pins. When Naked
-                -- outranks Pins the reserving piece is being stripped in this very
-                -- call, so its reservation must not keep a neighbour dressed --
-                -- nil it for the duration and put it back, rather than handing
-                -- equipResolved a copy (ctx memoizes buffs/target/pet lazily, and
-                -- a copy would silently drop those for this layer only).
-                local saved, void = ctx.pinReserved, M.nakedVoidsPinReserve(rankOf);
-                if void then ctx.pinReserved = nil; end
-                equipResolved(nEquip, ctx, layerRespectsLocks('Naked'));
-                if void then ctx.pinReserved = saved; end
-                if retrace then
-                    lines[#lines + 1] = 'NAKED  ->  all 16 slots emptied'
-                        .. (void and '' or '  (pins reserve theirs)');
-                end
-            end,
-            ['Disabled'] = function()
-                -- THE ONE CLAIMANT THAT EQUIPS NOTHING (ADR 0024). No
-                -- equipResolved call, deliberately: the ceiling withholds, and it
-                -- withholds at engineEquipSet where it also covers the post-passes
-                -- and the trigger floor already written this pass. This closure
-                -- exists only so the trace says so -- an inert slot with no line
-                -- anywhere explaining it is the failure mode this feature has.
-                if retrace then
-                    lines[#lines + 1] = 'FREE EQUIP  ->  ' .. table.concat(M.disabledList(), ', ')
-                        .. '  (dlac writes nothing to these; equip them yourself)';
-                end
-            end,
-        };
+        -- (ADR 0027 stage 0: the apply bodies live on the CLAIMANTS rows; this
+        -- walk just calls them in rank order.)
+        local aenv = { built = built, bx = bx, ctx = ctx, retrace = retrace,
+                       lines = lines, respect = layerRespectsLocks, rankOf = rankOf };
         for i = #arbOrder, 1, -1 do
-            local name = arbOrder[i];
-            if claims[name] ~= nil and applyClaim[name] ~= nil then applyClaim[name](); end
+            local row = CLAIMANT_BY[arbOrder[i]];
+            if row ~= nil and claims[row.name] ~= nil and row.apply ~= nil then row.apply(aenv); end
         end
 
         if retrace and #hits > 1 then                    -- who won each slot (overlap visibility)
@@ -6966,41 +7057,16 @@ if engineActive() then
             -- states never print twice: native arms only with LAC absent).
             if not engineActive() then return; end
             local order = M.arbOrder(ensureArbState());
-            -- Live claim status per claimant (the same reads M.dispatch does).
-            local craftState = ensureCraftState();
-            local craftOn = (type(craftState) == 'table' and craftState.enabled == true
-                             and type(craftState.craft) == 'string' and craftState.craft ~= '');
-            local helmState = ensureHelmState();
-            local helmOn = helmStateActive(helmState);
-            local fishState = ensureFishState();
-            local fishOn = fishStateActive(fishState);
-            local chocoOn = chocoStateActive(ensureChocoState());
-            -- Co-claim (ADR 0012 amendment): every armed activity claims; rank
-            -- settles overlapping slots. No newest-armed exclusivity -- the
-            -- status below shows all concurrent claimants ON.
-            local pinState = ensurePinState();
-            local hasPins = (type(pinState) == 'table' and next(pinState) ~= nil);
-            local ammoOn = ammoStateOn(ensureAmmoState());
-            local maxmpOn = (M.modes['maxmp'] ~= nil);
-            local anyLock = (next(M.locks) ~= nil);
-            local dzList = M.disabledList();
-            local status = {
-                Disabled = (#dzList > 0)
-                    and string.format('ON (ceiling -- dlac writes nothing to %s; /dl enable all releases)',
-                        table.concat(dzList, ', '))
-                    or 'off (ceiling -- no slots disabled)',
-                Naked    = M.nakedOn() and 'ON (claims ALL 16 slots empty -- /dl dress releases)' or 'off',
-                Pins     = hasPins and 'ON (armed)' or 'off',
-                Locks    = anyLock and 'ON (veto -- claims above punch through, below stop)'
-                                   or 'off (veto -- no slots locked)',
-                AutoAmmo = ammoOn and 'ON (claims Ammo on shooting events)' or 'off',
-                MaxMP    = maxmpOn and 'ON (claims batteries; slots won above it stand down)' or 'off',
-                Craft    = craftOn and 'ON (armed)' or 'off',
-                HELM     = helmOn and 'ON (armed)' or 'off',
-                Fishing  = fishOn and 'ON (armed)' or 'off',
-                Chocobo  = chocoOn and 'ON (armed)' or 'off',
-                Triggers = 'floor (always on)',
-            };
+            -- Live claim status per claimant: the registry rows' own
+            -- prioStatus (ADR 0027 stage 0 -- the same reads M.dispatch does,
+            -- no longer a hand-kept twin of them). Co-claim (ADR 0012
+            -- amendment): every armed activity claims; rank settles
+            -- overlapping slots -- the status shows all concurrent claimants
+            -- ON, no newest-armed exclusivity.
+            local status = { Triggers = 'floor (always on)' };
+            for _, row in ipairs(CLAIMANTS) do
+                if row.prioStatus ~= nil then status[row.name] = row.prioStatus(); end
+            end
             print('[dlac] Claim priority (arbstate rank, highest first):');
             for i, name in ipairs(order) do
                 print(string.format('    %d. %-9s %s', i, name, status[name] or '?'));
@@ -7208,8 +7274,8 @@ if engineActive() then
             for _, n in ipairs(ord) do
                 if n == 'Naked' then break; end
                 -- MaxMP is the one row that CANNOT except itself. Every other
-                -- claimant has an applyClaim closure, so a higher rank simply
-                -- applies later and wins; MaxMP's equip stays WOVEN inside
+                -- claimant has an apply on its CLAIMANTS row, so a higher rank
+                -- simply applies later and wins; MaxMP's equip stays WOVEN inside
                 -- equipResolved, and both of its write points skip a 'remove'
                 -- entry outright -- so dragging it above Naked cedes the slots
                 -- but still equips nothing. Naming it here would promise an
