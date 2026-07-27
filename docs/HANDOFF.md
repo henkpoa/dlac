@@ -240,6 +240,22 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
+### Stage 3 complete: pair law home + HELM ladder + one plan, one send — `e864d8e` + `33d3e63` (2026-07-27)
+
+Engine v148 → **v150**, addon `27zj` → **`27zl`**. Suites **4050 + 693**, Windows and WSL
+lua5.4. **FIELD-CONFIRMED 2026-07-27** by Henrik — *"what I tried seem to work"*. Waits
+only on the go-ahead. The pair-law family lives in `gear/arbiter.lua`; every dispatch
+sends ONE merged plan (OS1 pins exactly-one-send; the map is identical by construction).
+
+**NEXT SESSION'S STANDING ORDER (Henrik, 2026-07-27 night): stage 6 — the MaxMP fold.**
+His words: *"you had some good terms what to call everything, you can go over the code
+and see if there's anything to fix while you integrate it into the arbiter as well."*
+So: a REVIEW PASS over the MaxMP code with the ratified vocabulary (batteries → ladder
+claims with band-threshold gates; MP-hold → a named constraint; movement yield + sticky
+pairs → view-reading gates) plus the fold itself — under the ratified gates: READ
+docs/design/maxmp-mode.md FIRST (rulings ledger + failure museum), band-parity tests,
+goldens, its own field campaign. Stage 5 (collapse retirement) follows after.
+
 ### Claim-side ladders + the belts come off — `acc26c9` + `60ef4fa` (2026-07-27)
 
 Engine v146 → **v148**, addon `27zh` → **`27zj`**. Suites **4047 + 693**, Windows and WSL
