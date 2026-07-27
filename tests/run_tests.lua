@@ -7400,6 +7400,19 @@ end)();
     check('ARK10 a free-equip slot defends against a reserver', inel.Body, 'Head');
     check('ARK10b with no ladder the reserver dies v135-style', rep, nil);
 
+    -- ARK11: the EMPTY-LOCK WAIVER (Henrik's field refinement, 2026-07-27):
+    -- a lock on an empty slot does not defend -- freezing "empty" is exactly
+    -- what a reservation preserves. The waiver lives at the BUILD site (the
+    -- worn read is engine state, unreachable headless), so it is pinned as
+    -- source, the NK23 idiom: the '(locked)' placeholder must be gated on a
+    -- worn read, and the ceiling's placeholder must NOT be (free equip
+    -- defends the FUTURE hand-equip, empty or not).
+    local dsrc = (function() local f = io.open('dispatch.lua', 'r'); local d = f:read('*a'); f:close(); return d; end)();
+    check('ARK11 the lock defense is gated on a worn read',
+        dsrc:find("if wornItemName(canon) ~= nil then", 1, true) ~= nil, true);
+    check('ARK11b the ceiling defense is not',
+        dsrc:find("free[CANON_OF[ls] or ls] = '(free equip)'", 1, true) ~= nil, true);
+
     -- WY1: the contest stash (/dl why <slot>, ADR 0027 item 4). NK26's real
     -- dispatch above ran the stash path; its Default trace must carry the
     -- structured contest the drill-down renders -- the same object that
