@@ -7399,6 +7399,17 @@ end)();
     }, cloakLook, idleLad);
     check('ARK10 a free-equip slot defends against a reserver', inel.Body, 'Head');
     check('ARK10b with no ladder the reserver dies v135-style', rep, nil);
+
+    -- WY1: the contest stash (/dl why <slot>, ADR 0027 item 4). NK26's real
+    -- dispatch above ran the stash path; its Default trace must carry the
+    -- structured contest the drill-down renders -- the same object that
+    -- decided, never a re-derivation.
+    local wtr = dispatchM.getTrace()['Default'];
+    check('WY1 the trace stashes the contest', wtr ~= nil and type(wtr.contest) == 'table', true);
+    check('WY1b it carries the rank-ordered explain',
+        wtr ~= nil and type(wtr.contest) == 'table' and type(wtr.contest.explain) == 'table', true);
+    check('WY1c and the order it decided with',
+        wtr ~= nil and type(wtr.contest) == 'table' and type(wtr.contest.order) == 'table', true);
 end)();
 
 -- ---------------------------------------------------------------------------
