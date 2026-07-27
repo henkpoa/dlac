@@ -1,6 +1,7 @@
 # The two-way Arbiter — late binding, ladders, one arbitration per dispatch
 
-> **Status: RATIFIED 2026-07-27 — the design is ruled; nothing is built.** This is the
+> **Status: RATIFIED 2026-07-27; stages 0–4 + 6 SHIPPED on dev the same day (engine
+> v136 → v151) — stage 5 (collapse retirement) is the one stage left.** This is the
 > dedicated hard look Henrik parked on 07-27 (*"too central and too big of a decision to
 > just be made on a whim"*) and then asked for: *"take a hard look and see if we can in a
 > scalable way move away from this legacy, where things talk to each other much better…
@@ -8,7 +9,7 @@
 > decision process considerably."* He explicitly opened old decisions and rules for
 > debate (§6), and all four §10 items were then discussed one at a time and **ratified
 > the same day**; the contract is recorded as **ADR 0027**.
-> **Stage 0 (§7) still starts only on Henrik's explicit go.**
+> Every stage started only on Henrik's explicit go (and did); per-stage status blocks in §7.
 >
 > Companion: candidate #1 in `docs/design/architecture-review-2026-07-25.md` — this
 > document absorbs and supersedes the staging sketch parked inside that block (the
@@ -458,6 +459,23 @@ named constraint; movement yield and sticky pairs become view-reading gates;
 `ctx.mpCeded`/`ctx.mpRespectLocks` — the last ctx-thread — die with the weave. Gated
 behind band-behavior parity tests + goldens + a dedicated field campaign; the woven
 code is deleted only after its replacement is field-confirmed.
+
+> **Stage 6 status: SHIPPED on dev 2026-07-27 (engine v151, addon `27zm`) — code-complete,
+> FIELD CAMPAIGN PENDING (the ratified gate).** The woven per-slot MP branch + the mp-stage
+> post-pass are DELETED; MaxMP claims and applies through its registry row: band targets →
+> the claim (`mpClaimFor` as the row's `claim`), and the apply runs the four gates —
+> remove-respect (v91), movement yield (v96), sticky pairs (v93/v94, museum #7), RSlot
+> eligibility (v78) — against the **same-dispatch view** (`ctx.planOut` for rows already
+> applied + the strongest **unapplied above-rank claim** per slot, museum #9), then dresses
+> via `equipResolved` at its rank. Ceding = apply order; lock-respect = the ordinary
+> `respect('MaxMP')`; `ctx.mpCeded`/`ctx.mpRespectLocks` retired. The **mp-hold constraint**
+> survives at the head of `POST_ORDER`: a worn no-band battery holds against an MP-lighter
+> incoming piece unless the asking claimant (`who`) ranks at or above MaxMP. Supporting:
+> the rank order HOISTS above the claim build (ranks exist before anyone claims —
+> `ctx.rankOf`), `mpBands` reads it for the lock consult (a locked slot's rungs leave the
+> threshold math, band parity kept), and `mpBands` memoizes per dispatch (one sample, one
+> moment — the purity ruling). Bands + resolver family untouched. 4059 checks, Windows +
+> WSL lua5.4. Execution log: `docs/design/maxmp-fold-plan.md`.
 
 ## 8. Performance & determinism
 

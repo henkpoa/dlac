@@ -7,6 +7,16 @@ heuristic to a precomputed plan. This document is the definitive reference:
 the final architecture, the rulings that shaped it, and the failure museum
 (kept deliberately — the dead ends teach more than the survivor).
 
+> **DELIVERY FOLDED 2026-07-27 (engine v151, ADR 0027 stage 6 — field campaign
+> pending).** The bands still decide WHEN (`mpbands.lua`, untouched) and the
+> resolvers WHAT (`mpRungs`/`mpBestPick`/`mpStickyPairs`/`mpStageEligible`,
+> untouched); the woven per-slot branch + mp-stage pass that DELIVERED them are
+> gone. Batteries now arrive as the MaxMP registry row's CLAIM (ranked by the
+> arbiter, gated in its apply against the same-dispatch view), ceding is apply
+> order, and the no-band worn-protect lives on as the `mp-hold` constraint in
+> `POST_ORDER`. Every ruling and museum exhibit below still binds — only the
+> delivery vehicle changed. See `docs/design/maxmp-fold-plan.md`.
+
 Henrik's original spec (2026-07-11): *"Find the piece with the highest MP,
 keep that piece active until you have spent enough MP for any potential
 pieces that would be equipped."* Weapons (Main/Sub/Range) always exempt —

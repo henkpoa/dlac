@@ -247,14 +247,21 @@ lua5.4. **FIELD-CONFIRMED 2026-07-27** by Henrik — *"what I tried seem to work
 only on the go-ahead. The pair-law family lives in `gear/arbiter.lua`; every dispatch
 sends ONE merged plan (OS1 pins exactly-one-send; the map is identical by construction).
 
-**NEXT SESSION'S STANDING ORDER (Henrik, 2026-07-27 night): stage 6 — the MaxMP fold.**
-His words: *"you had some good terms what to call everything, you can go over the code
-and see if there's anything to fix while you integrate it into the arbiter as well."*
-So: a REVIEW PASS over the MaxMP code with the ratified vocabulary (batteries → ladder
-claims with band-threshold gates; MP-hold → a named constraint; movement yield + sticky
-pairs → view-reading gates) plus the fold itself — under the ratified gates: READ
-docs/design/maxmp-mode.md FIRST (rulings ledger + failure museum), band-parity tests,
-goldens, its own field campaign. Stage 5 (collapse retirement) follows after.
+### Stage 6: the MaxMP fold — 2026-07-27, NOT YET FIELD-CONFIRMED
+
+Engine v150 → **v151**, addon `27zl` → **`27zm`**. Suites **4059 + 693**, Windows and
+WSL lua5.4. **Executed on Henrik's order** (*"Go for the MaxMP fold"* + the standing
+order's *"see if there's anything to fix while you integrate it into the arbiter"*).
+The woven per-slot MP branch + mp-stage pass are DELETED; MaxMP claims and applies
+through its registry row (band targets → claim; remove-respect / movement-yield /
+sticky-pairs / RSlot-eligibility gates against the same-dispatch view — `ctx.planOut`
+plus unapplied above-rank claims); ceding is apply order; lock-respect is the ordinary
+`respect('MaxMP')`; the `mp-hold` constraint heads `POST_ORDER` (rank-guarded via
+`who`/`ctx.rankOf`); `mpBands` memoizes per dispatch. Bands + resolvers untouched.
+**Not in the merge queue proper until Henrik's MP field campaign passes** (the ratified
+gate): band thresholds unchanged in `/dl plan`, batteries stage/hold/release as before,
+movement yield + sticky pairs + locks above/below + AutoAmmo-over-battery unchanged.
+Execution log: `docs/design/maxmp-fold-plan.md`. Stage 5 (collapse retirement) follows.
 
 ### Claim-side ladders + the belts come off — `acc26c9` + `60ef4fa` (2026-07-27)
 
