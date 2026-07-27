@@ -442,6 +442,40 @@ local function slotOf(entry, rec)
     return (rec ~= nil and rec.Slot) or '?';
 end
 
+-- MEASURE, never guess. The themed font is wide (~9.5px/char), so every fixed
+-- pixel column in this window was a clipping bug waiting for a longer name --
+-- and the first field report was exactly that: "SAM / Tp_Default" ran straight
+-- through the status text at a hardcoded SameLine(140). Columns are derived from
+-- the widest string that will actually be drawn in them.
+local function textW(s)
+    -- The nil check is NOT redundant with the pcall: `imgui.CalcTextSize` on a nil
+    -- imgui throws while EVALUATING the argument, before pcall ever runs.
+    if imgui ~= nil then
+        local ok, w = pcall(imgui.CalcTextSize, tostring(s or ''));
+        if ok and type(w) == 'number' then return w; end
+    end
+    return #tostring(s or '') * 10;                -- themed-font fallback, deliberately generous
+end
+
+-- A link's label -- 'WHM / Idle' or bare 'WHM'. One definition, because the
+-- column width and the text drawn in it must never be computed differently.
+local function linkLabel(l)
+    return tostring(l.job) .. ((l.set ~= nil and l.set ~= '') and (' / ' .. tostring(l.set)) or '');
+end
+M._linkLabel = linkLabel;   -- test seam
+
+-- The label column for ONE entry's link rows: the widest label it will draw,
+-- floored so short lists still line up with the rest of the editor.
+local function linkColW(facts)
+    local w = 90;
+    for _, f in ipairs(facts or {}) do
+        local tw = textW(linkLabel(f)) + 18;
+        if tw > w then w = tw; end
+    end
+    return w;
+end
+M._linkColW = linkColW;   -- test seam
+
 -- Owned first, then by slot in equipment order, then by name. Owned-first
 -- because a piece that just landed is the one you came here to act on.
 local SLOT_RANK = {};
@@ -460,10 +494,9 @@ local function sortRows(rows)
 end
 M._sortRows = sortRows;   -- test seam
 
-local function renderLinkRow(entry, f, i)
-    local label = f.job .. (f.set and (' / ' .. f.set) or '');
-    imgui.TextColored(COL.JOBS, fmt.esc(label));
-    imgui.SameLine(140);
+local function renderLinkRow(entry, f, i, colW)
+    imgui.TextColored(COL.JOBS, fmt.esc(linkLabel(f)));
+    imgui.SameLine(colW or 140);
     if f.set == nil then
         imgui.TextColored(COL.DIM, '(job only -- no set picked)');
     elseif f.gone then
@@ -539,13 +572,14 @@ local function renderEditor(entry)
     if #facts == 0 then
         imgui.TextColored(COL.DIM, 'No jobs or sets linked yet -- add one below.');
     else
-        for i, f in ipairs(facts) do renderLinkRow(entry, f, i); end
+        local colW = linkColW(facts);
+        for i, f in ipairs(facts) do renderLinkRow(entry, f, i, colW); end
     end
 
     -- Add a link, any job (the window is where cross-job tagging lives).
     imgui.TextColored(COL.DIM, 'Link to:');
     imgui.SameLine(0, 6);
-    imgui.PushItemWidth(70);
+    imgui.PushItemWidth(textW('job') + 34);
     if imgui.BeginCombo('##wladdjob', _applyFor and _applyFor.job or 'job') then
         for _, j in ipairs(M.jobsWithSets()) do
             if imgui.Selectable(j .. '##wlaj' .. j, _applyFor and _applyFor.job == j) then
@@ -557,7 +591,14 @@ local function renderEditor(entry)
     imgui.PopItemWidth();
     if _applyFor ~= nil and _applyFor.job ~= nil then
         imgui.SameLine(0, 6);
-        imgui.PushItemWidth(140);
+        -- Sized to the widest set name this job actually has, not a guess:
+        -- set names are player-chosen and can be long ("Midcast_STR-VIT").
+        local setW = textW('(job only)');
+        for _, sn in ipairs(M.setNames(_applyFor.job)) do
+            local tw = textW(sn);
+            if tw > setW then setW = tw; end
+        end
+        imgui.PushItemWidth(math.min(setW + 34, 260));
         if imgui.BeginCombo('##wladdset', _applyFor.set or '(job only)') then
             if imgui.Selectable('(job only)##wlas_none', _applyFor.set == nil) then _applyFor.set = nil; end
             for _, sn in ipairs(M.setNames(_applyFor.job)) do
@@ -605,7 +646,9 @@ function M.render()
 
     -- Filter row -- the same shape as the All Equipment filter row on purpose:
     -- this reads as a sibling surface, not a new idiom.
-    imgui.PushItemWidth(80);
+    -- Widths measured off the widest preview each combo can show, + the arrow.
+    -- "All jo▼" / "All slo▼" was the first thing wrong in the field.
+    imgui.PushItemWidth(textW('All jobs') + 34);
     if imgui.BeginCombo('##wlfjob', _jobF or 'All jobs') then
         if imgui.Selectable('All jobs', _jobF == nil) then _jobF = nil; end
         for _, j in ipairs(M.jobsWithSets()) do
@@ -615,7 +658,7 @@ function M.render()
     end
     imgui.PopItemWidth();
     imgui.SameLine(0, 8);
-    imgui.PushItemWidth(90);
+    imgui.PushItemWidth(textW('All slots') + 34);
     if imgui.BeginCombo('##wlfslot', _slotF or 'All slots') then
         if imgui.Selectable('All slots', _slotF == nil) then _slotF = nil; end
         for _, s in ipairs(S.SLOT_ORDER or {}) do
@@ -676,10 +719,24 @@ function M.render()
             imgui.TextColored(COL.DIM, 'Nothing matches the filters.');
         end
     end
+    -- Column stops, measured off what is ACTUALLY in the list this frame (plus
+    -- the widest slot name, so the Lv->slot gap never collapses on 'Ranged').
+    local NAME_X = 26;
+    local nameW  = 120;
+    for _, r in ipairs(rows) do
+        local tw = textW(r.entry.name) + 18;
+        if tw > nameW then nameW = tw; end
+    end
+    nameW = math.min(nameW, 300);
+    local LV_X   = NAME_X + nameW;
+    local SLOT_X = LV_X + textW('Lv99') + 16;
+    local TAG_X  = SLOT_X + textW('Ranged') + 16;
+    local NOTE_X = TAG_X + textW('in 9 set(s)') + 16;
+
     for i, r in ipairs(rows) do
         local e = r.entry;
         icons.renderIcon(e.id, 18);
-        imgui.SameLine(26);
+        imgui.SameLine(NAME_X);
         local sel = (_sel == e.id);
         if imgui.Selectable('##wlrow' .. i, sel) then
             if sel then
@@ -690,13 +747,13 @@ function M.render()
                 _applyFor = nil;
             end
         end
-        imgui.SameLine(26);
+        imgui.SameLine(NAME_X);
         imgui.TextColored(r.own and COL.HAVE or COL.WANT, fmt.esc(e.name or '?'));
-        imgui.SameLine(240);
-        imgui.TextColored(COL.LEVEL, string.format('Lv%2d', (r.rec and r.rec.Level) or 0));
-        imgui.SameLine(290);
+        imgui.SameLine(LV_X);
+        imgui.TextColored(COL.LEVEL, string.format('Lv%d', (r.rec and r.rec.Level) or 0));
+        imgui.SameLine(SLOT_X);
         imgui.TextColored(COL.DIM, fmt.esc(r.slot));
-        imgui.SameLine(350);
+        imgui.SameLine(TAG_X);
         if r.own then
             imgui.TextColored(COL.HAVE, 'OWNED');
         else
@@ -705,8 +762,9 @@ function M.render()
             imgui.TextColored(COL.DIM, (n > 0) and string.format('in %d set(s)', n) or '');
         end
         if (e.note or '') ~= '' and not sel then
-            imgui.SameLine(430);
-            imgui.TextColored(COL.STATS, fmt.esc(fmt.truncate(e.note, 20)));
+            imgui.SameLine(NOTE_X);
+            imgui.TextColored(COL.STATS, fmt.esc(fmt.truncate(e.note, 28)));
+            if imgui.IsItemHovered() then imgui.SetTooltip(fmt.esc(e.note)); end
         end
         if sel then renderEditor(e); end
     end

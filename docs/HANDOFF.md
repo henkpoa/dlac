@@ -374,7 +374,7 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
-- **2026-07-27: the Wishlist — ON `dev`, awaiting field test** (`2026.07.27q`, ADR 0026).
+- **2026-07-27: the Wishlist — ON `dev`, PARTLY FIELD-CONFIRMED** (`2026.07.27r`, ADR 0026).
   Henrik: *"add 'Show gear I don't own' like with lockstyle in all equipment… right click
   and add pieces to wish list… also have this when building sets, so you can add stuff you
   don't have (it won't try to use em, but if you get it, it's preemptively there, right?)"*
@@ -417,9 +417,16 @@ research already recorded. In rough priority order:
     Apply works for **any** job (`setmanager.commitSet` already takes one) and refuses
     while the Sets tab holds uncommitted edits to that exact set; rings and ears cascade
     one level to Ring1/Ring2, showing what already sits in each.
-  - **Watch in the field:** the `Wishlist ▸ → Add for ▸ → row` cascade is **one level
-    deeper than anything proven in this binding** (floatgear proved one). `hasMenu` is
-    probed and there is a flat drill-down fallback, but this wants eyes in-game.
+  - **FIELD ROUND 1 (2026-07-27), Henrik:** *"The extra level worked cascade menu wise…
+    It looks great! I can also add the stuff to sets if I press add, also works!"* So the
+    **2-deep cascade IS supported in this binding** (a new fact — floatgear had only ever
+    proven one level) and the apply path works end to end. He flagged layout: `SAM /
+    Tp_Default` printed straight through the status beside it, and both filter combos
+    clipped to `All jo▼` / `All slo▼`. All of it was **hardcoded pixel columns** in a
+    window whose content is player-named — every column is now measured from the widest
+    string it will actually draw (`textW`), including the link column, the row columns and
+    the set combo. `textW` also had to survive a nil imgui: `imgui.CalcTextSize` on a nil
+    imgui throws while EVALUATING the argument, *before* the pcall runs.
   - Green on both suites (3875 + 679), Windows and WSL lua5.4. New tests WL1–WL34, U4–U7,
     S60–S95 and the render-balance section S150–S163.
 

@@ -287,6 +287,21 @@ check('S92d nil refused',            wlMod._validSlot(nil),     false);
 check('S92e applyToSet refuses a bogus slot',
     select(1, wlMod.applyToSet({ id = 1, name = 'X' }, 'WHM', 'Idle', '?')), false);
 
+-- Column widths are MEASURED, not hardcoded. First field report on this window
+-- was "SAM / Tp_Default" printing straight through the status text beside it,
+-- from a fixed SameLine(140). The label and the column that holds it must be
+-- computed from the same string, and the column must grow with it.
+check('S92f link label, job+set',  wlMod._linkLabel({ job = 'SAM', set = 'Tp_Default' }), 'SAM / Tp_Default');
+check('S92g link label, job only', wlMod._linkLabel({ job = 'RDM' }), 'RDM');
+check('S92h empty set reads as job-only', wlMod._linkLabel({ job = 'RDM', set = '' }), 'RDM');
+local wideW  = wlMod._linkColW({ { job = 'SAM', set = 'Tp_Default' } });
+local shortW = wlMod._linkColW({ { job = 'WHM' } });
+check('S92i a long label widens the column past the old fixed 140', wideW > 140, true);
+check('S92j ...and past a short one',      wideW > shortW, true);
+check('S92k short labels keep the floor',  shortW, 90);
+check('S92l the column clears its own label',
+    wideW > (#'SAM / Tp_Default' * 10), true);
+
 -- Display order: owned first (the piece that just landed is what you came for),
 -- then equipment-model slot order, then name.
 local rows = wlMod._sortRows({
@@ -794,7 +809,11 @@ end)();
     IM.GetCursorScreenPos = function() return 0, 0; end
     IM.GetItemRectMin     = function() return 0, 0; end
     IM.GetColorU32        = function() return 0; end
-    IM.CalcTextSize       = function() return 10, 10; end
+    -- PROPORTIONAL, unlike the other sections' constant: this window derives every
+    -- column from CalcTextSize, and a stub that answers 10 for everything cannot
+    -- tell a working measurement from a hardcoded one. ~10px/char is the themed
+    -- font's real order of magnitude.
+    IM.CalcTextSize       = function(s) return #tostring(s or '') * 10, 14; end
     IM.GetContentRegionAvail        = function() return 400, 400; end
     IM.GetTextLineHeightWithSpacing = function() return 14; end
     IM.GetWindowDrawList  = function()
