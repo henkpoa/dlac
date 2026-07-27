@@ -637,6 +637,158 @@ function M.arbWhyLines(claims, order, floor)
     return lines;
 end
 
+-- THE Range/Ammo compatibility law, exactly as the server writes it
+-- (charutils.cpp EquipItem, SLOT_RANGED and SLOT_AMMO arms):
+--
+--     if (a->getSkillType() != b->getSkillType() ||
+--         (b->getSkillType() != SKILL_ARCHERY &&
+--          a->getSubSkillType() != b->getSubSkillType()))
+--         UnequipItem(<the OTHER slot>);
+--
+-- Read that consequence twice: the server does not refuse the equip, it STRIPS THE
+-- OTHER SLOT. Push a bolt into Ammo while a gun is worn and the GUN comes off -- and
+-- since dlac re-proposes both every dispatch, the pair then flaps forever. It is the
+-- ADR 0010 failure arriving through the skill/subskill door instead of the rslot one.
+--
+-- A pair key is "<skill>:<subskill>" (26:1 = gun/bullet, 26:0 = crossbow/bolt,
+-- 26:2 = culverin/shell, 27:0 = boomerang/pebble, 27:3 = shuriken, 0:10 = Animator/oil).
+-- The subskill half may be ABSENT ("26"): the client resource carries Skill but no
+-- subskill, so that is what a manifest written before Pair existed can still answer.
+--
+-- Three-valued ON PURPOSE -- true / false / nil(unknown) -- because the honest answers
+-- are three. Callers must not read nil as false: an unknown pair is the fallback every
+-- pre-Pair manifest and every uncrawled custom lands on, and constraining on it would
+-- silently switch AutoAmmo off for those players instead of degrading to today's
+-- behaviour. Pure (tests PW*).
+local function splitPair(p)
+    if type(p) ~= 'string' then return nil, nil; end
+    local sk, ss = string.match(p, '^(%d+):(%d+)$');
+    if sk ~= nil then return tonumber(sk), tonumber(ss); end
+    sk = string.match(p, '^(%d+)$');
+    if sk ~= nil then return tonumber(sk), nil; end   -- skill known, subskill unknown
+    return nil, nil;
+end
+M._splitPair = splitPair;   -- test seam
+
+M.SKILL_ARCHERY = 25;   -- the one skill the server exempts from the subskill check
+
+function M.pairsWith(a, b)
+    local ska, ssa = splitPair(a);
+    local skb, ssb = splitPair(b);
+    if ska == nil or skb == nil then return nil; end   -- unknown on either side
+    if ska ~= skb then return false; end               -- different skill: never pairs
+    -- Archery is the exemption the server writes out by hand: a Shortbow (25:0) and a
+    -- Longbow (25:4) fire the same arrows. Matching subskill here would break bows.
+    if ska == M.SKILL_ARCHERY then return true; end
+    if ssa == nil or ssb == nil then return true; end  -- cannot PROVE a mismatch
+    return ssa == ssb;
+end
+
+-- A Range/Ammo pair the server will not let coexist -- it clears one the moment both are
+-- worn, so keeping both flaps forever and re-sends an equip every dispatch. Henrik,
+-- 2026-07-26, on why that matters beyond the wrong gear: "that would be good, so we don't
+-- spam the server."
+--
+-- TWO kinds of conflict, and they resolve DIFFERENTLY:
+--
+--  1. A stat-stick TRINKET (the Ammo item's RSlot reserves the Range slot). Henrik's
+--     original rule, ADR 0010, unchanged: keep the HIGHER-LEVEL of the two and drop the
+--     other. It is a real trade -- the stick is worn FOR its stats and the server forces
+--     Range empty while it sits -- so the better piece deserves to win, and deciding by
+--     Level is deterministic, which is what makes it settle instead of oscillate.
+--
+--  2. A plain PAIRING mismatch between two real pieces -- a bolt in a set with a bow.
+--     Here the ammo ALWAYS yields and Range is always kept, whatever the Levels say,
+--     because Henrik's rule for the Range slot is absolute: "It should NEVER force
+--     ranged off, that is HANDS OFF." Keeping the higher Level here would do exactly
+--     that -- a Lv25 Venom Bolt would drop a Lv5 Longbow and leave you holding ammo and
+--     no weapon. The weapon is the choice; the ammo follows it. Same principle AutoAmmo
+--     runs on: "That is 100 % decided on what gets put in ranged."
+--
+-- Which one applies is decided by the RSlot bit, and the LAW (M.pairsWith) decides
+-- whether there is a conflict at all -- three-valued, so it can both CANCEL a drop the
+-- stamp would have made (a compatible pair is never in conflict, whatever the stamp
+-- says) and CAUSE one the stamp would have missed (case 2, which had no stamp to catch
+-- it). Unknown pair data falls back to the bit alone: an old manifest behaves exactly
+-- as it did before.
+--
+-- rslotFn(name) / levelFn(name) / pairFn(name) are injected (they read the gear
+-- manifest; tests drive them).
+-- Returns (droppedSlotKey, keptName, why) -- why is 'trinket' or 'mismatch', for the
+-- caller's trace line -- or nil when the pair is fine.
+function M.trinketRangeDrop(set, rslotFn, levelFn, pairFn)
+    if type(set) ~= 'table' then return nil; end
+    local rangeKey, rangeName, ammoKey, ammoName;
+    for slot, v in pairs(set) do
+        if type(v) == 'string' then
+            local ls = string.lower(tostring(slot));
+            if ls == 'range' then rangeKey, rangeName = slot, v;
+            elseif ls == 'ammo' then ammoKey, ammoName = slot, v; end
+        end
+    end
+    if rangeName == nil or ammoName == nil then return nil; end
+    -- The RSlot bit is a per-ITEM stamp; the conflict is a per-PAIR fact. The stamp
+    -- gets the stat sticks right and is wrong twice over: it marks the skill-0 families
+    -- that pair with their own Range piece (Automaton Oil + Animator 0:10, Blank
+    -- Soulplate / H.S. Soul Plate + Soultrapper 0:0 -- the 2026-07-22 oil field bug,
+    -- patched by id for the four oils only), and it cannot see a mismatch between two
+    -- items that both look like ordinary gear (a bolt and a bow).
+    local reserves = hasBit(tonumber(rslotFn(ammoName)) or 0, 0x0004);
+    -- NOT the `x and f() or nil` idiom: pairsWith returns FALSE for a proven mismatch,
+    -- and `and false or nil` collapses it to nil -- which read as "unknown" and made
+    -- every mismatch silently do nothing. Three-valued results need a real if.
+    local compat = nil;
+    if pairFn ~= nil then compat = M.pairsWith(pairFn(rangeName), pairFn(ammoName)); end
+    if compat == true then return nil; end                    -- proven fine: never a conflict
+    if compat ~= false and not reserves then return nil; end  -- unknown + no stamp: as before
+    if reserves then
+        local la = tonumber(levelFn(ammoName)) or 0;
+        local lr = tonumber(levelFn(rangeName)) or 0;
+        if lr > la then return ammoKey, rangeName, 'trinket'; end   -- weapon higher -> drop the stick
+        return rangeKey, ammoName, 'trinket';                       -- stick higher-or-equal -> drop the weapon
+    end
+    return ammoKey, rangeName, 'mismatch';                    -- two real pieces: the ammo yields
+end
+
+-- Scope ruling (2026-07-20, Henrik): the keep-higher-Level contest above is a
+-- WITHIN-SET rule -- it arbitrates two pieces the plan itself names. A trinket
+-- that is merely WORN (yesterday's MP battery, a manual equip) must not defend
+-- the Range slot from OUTSIDE the plan: the set's ranged piece wins, whatever
+-- the Levels (field case: worn Rimestone Lv60 kept a Lv20 Rouser out of Range
+-- forever). And because the server keeps Range CLEAR while such ammo is worn
+-- (equipping the weapon alone would just be stripped back -- the ADR 0010
+-- flap), winning means DISPLACING the trinket: plan Ammo = 'remove', LAC's
+-- native unequip. Pure; the caller guards locks/pins and writes the plan.
+--   plan     -- the resolved slot->name table. ANY Ammo entry means the plan
+--               speaks for the slot itself (equip or 'remove') -- no displace.
+--   wornAmmo -- the name worn in Ammo right now, or nil.
+-- Returns ('Ammo', incomingRangeName) when the plan must add Ammo='remove',
+-- else nil.
+function M.trinketWornDisplace(plan, wornAmmo, rslotFn, pairFn)
+    if type(plan) ~= 'table' or type(wornAmmo) ~= 'string' then return nil; end
+    local rangeName = nil;
+    for slot, v in pairs(plan) do
+        local ls = string.lower(tostring(slot));
+        if ls == 'ammo' then return nil; end
+        if ls == 'range' and type(v) == 'string' and v ~= 'remove' then rangeName = v; end
+    end
+    if rangeName == nil then return nil; end                  -- nothing incoming to protect
+    -- Same two-sided law as trinketRangeDrop. CANCEL: a worn ammo the incoming Range
+    -- piece can actually fire is not standing in its way, whatever its RSlot stamp says
+    -- (this is what stops a worn Blank Soulplate being 'remove'd the moment a
+    -- Soultrapper is planned, and it makes ANIMATOR_FED's id list redundant here).
+    -- CAUSE: a worn ammo the incoming weapon CANNOT fire has to go even with no stamp --
+    -- a worn bolt would otherwise take the incoming bow straight back off. No Level
+    -- contest on this side ever: the plan's Range piece is the player's choice, and the
+    -- worn ammo is just what happened to be there.
+    local reserves = hasBit(tonumber(rslotFn(wornAmmo)) or 0, 0x0004);
+    local compat = nil;   -- a real if: see trinketRangeDrop on `and false or nil`
+    if pairFn ~= nil then compat = M.pairsWith(pairFn(rangeName), pairFn(wornAmmo)); end
+    if compat == true then return nil; end
+    if compat ~= false and not reserves then return nil; end
+    return 'Ammo', rangeName;
+end
+
 -- ---------------------------------------------------------------------------
 -- ONE ARBITRATION PER DISPATCH (ADR 0027, stage 3 -- the first slice). The
 -- session so far carries the rank order and the built claims; the plan so far
