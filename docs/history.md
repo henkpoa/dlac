@@ -5770,3 +5770,44 @@ separates `n` (the player-facing word) from `img` (the asset basename) — the a
 digging chocobo, so `Chocobo.png` is the right file name while "Digging" is the right word.
 `HB20` pins the exact four strings, because that is the kind of text that grows a sentence
 back.
+
+**Field verdicts, and one question that only looked answered.** Two of the three open
+questions came back the same day: three pills — bar, window, panel — is *"Perfection"*,
+and the armed green frame *"Looks great"*, so the two calls that had no precedent to lean
+on (a switch on three surfaces; a frame instead of a colour, once colour belongs to the
+art) are both settled in favour of what shipped.
+
+The third did not, and the way it failed is the useful part. Asked whether the target
+window's 760×520 default gave the spot list enough room, the answer was *"if you're talking
+about the icons, looks great!"* — the icons were on screen, the window never had been. Three
+"looks great"s in a row is exactly the shape a false confirmation takes: the verdicts are
+genuine, but they answer the surface in front of the player, not the one in the question. So
+it stays recorded as UNSEEN rather than confirmed. A question that names a surface the
+player has not opened cannot be answered by looking at the one they have — and the fix is to
+say how to reach it, not to ask again.
+
+**The window landed, and the field found something older (`2026.07.27f`).** The target
+window came back approved — *"very satisfied with how it opens a new window and search for
+the fish, instead of having to do it solely WITHIN the fish automation menu"* — and the
+760×520 default drew no complaint, so the width worry closes unchanged. What the run
+surfaced was not in the new work at all: *"I cannot target the end result without clicking
+on the bait, I would like to be able to click on the whole row. But that has been there
+since start, I just haven't complained about it yet."*
+
+He was right. The spot row rendered `[ISOLATED] | place | bait` but only the **bait cell**
+was a Selectable — a ~6-character hit box at 55% across a row you read left-to-right, so
+the most natural click, on the place name, did nothing at all. It shipped that way with the
+original fishing feature and survived five field rounds unreported, because the person who
+built it knew where to click.
+
+The fix is the shape `automationsui.autoRow` has always used: a full-width Selectable
+FIRST, then every column drawn over it with an **absolute** `SameLine` — absolute because
+`SameLine(0)` means "after the previous item", which for a full-width Selectable is off the
+right edge. The three per-cell tooltips (rivals / bait+affinity / monster) merge into one
+row hover, since there is now one item to hover.
+
+Worth carrying: **a hit target smaller than the row it belongs to is invisible to whoever
+built it.** No test could have caught this one either — the old test clicked the bait
+Selectable and passed. `FS9b/FS9c` now assert the row's hit target is a bare `##isorow`
+and that no bait-labelled Selectable remains, which is a claim about the SHAPE of the
+interaction rather than about whether a click works.

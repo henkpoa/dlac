@@ -245,13 +245,25 @@ text button kept as the fallback for a missing or failed PNG.
 
 The ART was field-approved (*"This was sooo good"*, *"Looks great"*). The SEARCH windows
 went out **WITHOUT a field run of their own**, on the promote-the-queue call and the
-whole-or-not-at-all rule — the Auto HELM 4s→5s precedent. Three questions ride to main
-with it, none of them blockers and each a one-line change once the field answers: whether
-the target window's 760×520 default gives the spot list enough room (its bait column sits
-at `availW * 0.55`, ~50px tighter than the panel gave it); whether three pills — bar,
-window, panel — read as convenient or as clutter; and whether the armed green *frame*
-reads at a glance, now that colour cannot carry state on an art tab. The record is the
-merge commit on `main`.)*
+whole-or-not-at-all rule — the Auto HELM 4s→5s precedent. Of the three questions that rode
+to main, Henrik answered two later the same day: **three pills — bar, window, panel — is
+right** (*"Perfection"*), and the **armed green frame reads fine** (*"Looks great"*), so
+that pair is settled and neither needs revisiting.
+
+**All three are answered now.** The target window was opened and approved — *"very
+satisfied with how it opens a new window and search for the fish, instead of having to do
+it solely WITHIN the fish automation menu"* — and its 760×520 default drew no complaint, so
+the column-width worry closes unchanged.
+
+**Second promotion the same day (`2026.07.27f`)**, carrying what that field run surfaced —
+a fault older than anything above it: only the bait CELL was clickable in the spot list, a
+~6-character hit box at 55% across a row you read left-to-right, so the natural click on
+the place name did nothing. Present since the original fishing feature, through five field
+rounds, unreported. The whole row is the hit target now (a full-width Selectable first,
+columns drawn over it with an absolute SameLine — `automationsui.autoRow`'s shape), with
+the three per-cell tooltips merged into one row hover. `FS9b/FS9c` pin the SHAPE of the
+interaction rather than "does a click work", because the old test clicked the bait
+Selectable and passed. The record is the merge commits on `main`.)*
 
 *(Previous promotion: 2026-07-26 night — the **Teleports floating menu rework**
 (`2026.07.26v`; Nexus Cape + Shadow Lord Shirt into "Other Teleports", the
@@ -326,11 +338,19 @@ research already recorded. In rough priority order:
     had never been executed by any test — the craftbar lesson of 7d), plus `HB14` and
     `S139kk-mm` for the openers. `HB3.choco` caught the first version of this work: the
     7c stub had no `SmallButton`.
-  - **What field-testing needs to answer** — these RIDE TO MAIN with it, they do not block
-    it: does the target window's default 760×520 give the spot list enough room (it places
-    its bait column at `availW * 0.55`, ~50px tighter than the panel gave it), and does
-    three pills — bar, window, panel — read as redundant or as convenient? Both are
-    one-line changes; neither can dress you wrong, since the window only picks a target.
+  - **Field verdicts (2026-07-27, after the promotion).** Three pills — bar, window, panel
+    — are right: *"Perfection"*. The armed green frame reads at a glance: *"Looks great"*.
+    Both settled; don't reopen them.
+  - **The target window is FIELD-CONFIRMED** (2026-07-27, after the promotion): *"I was
+    very satisfied with how it opens a new window and search for the fish, instead of
+    having to do it solely WITHIN the fish automation menu."* The 760×520 default drew no
+    complaint, so the column-width worry is closed. What the field run DID surface was
+    older than this work: **only the bait cell was clickable** in the spot list — a
+    ~6-character hit box on a row you read left-to-right, so the natural click (on the
+    place) did nothing. Present since the feature began, never reported until now. Fixed in
+    `2026.07.27f`: the whole row is the hit target (automationsui.autoRow's shape — a
+    full-width Selectable first, columns drawn over it), and the three per-cell tooltips
+    merged into one row hover. `FS9b/FS9c` pin it, mutation-verified.
 
 - **AutoAmmo is Range-aware — DONE, field-confirmed, ON MAIN** (promoted 2026-07-26 in
   `03d25e1`; this bullet said "QUEUED for main" until the 07-26 night promotion, pointing
