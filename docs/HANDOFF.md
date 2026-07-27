@@ -330,6 +330,12 @@ they join the queue on his confirmation, not before):**
   free-equip ceiling stays unconditional (it promises the FUTURE hand-equip stays).
   Field check, both directions: locked EMPTY Head → the cloak equips and Head stays
   empty; locked Head with a hat WORN → the cloak falls/dies and the hat stays.
+- `e9f0c91` (v145, `27zg`) — **a lock-vetoed claim is no claim at all** (Henrik's
+  locked-empty-Head case, same evening): floor entries and respect-locks claim rows
+  strip locked slots before the verdict merge, so a claim the lock will veto cannot
+  evict a reserver on its way to not landing; punch-through rows keep theirs. Field
+  check: locked EMPTY Head + worn cloak + start moving → the cloak STAYS in Body and
+  Head stays empty (Movement's Kabuto is dead at the lock and no longer evicts it).
 - `740fc3a` (v143, `27ze`) — **`/dl why <slot>`** (ADR 0027 item 4): the contest
   drill-down — claimants in rank order, the verdict's word with its reason, the source
   ladder's rungs. Field check: after any dispatch, `/dl why body` should print the
