@@ -342,6 +342,31 @@ local function jumpToArea(zoneId)
     byitem.open[1] = false;
 end
 
+-- ---------------------------------------------------------------------------
+-- The two OPENERS. Public because more than one surface opens these windows now
+-- (this panel's buttons below, and the hobby bar's Chocobo tab) -- but the
+-- windows themselves are still DRAWN from exactly one place, M.renderSearch off
+-- gearui's d3d_present. That is the whole contract: any surface may open a
+-- floating window, only one may draw it. Two Begin() calls on one window name in
+-- a frame would append both bodies into it -- content twice, ids colliding.
+--
+-- Behaviour lives HERE rather than in each caller so the bar and the panel
+-- cannot drift: opening one search closes the other, and Area lands on the zone
+-- you are standing in when that zone is diggable.
+-- ---------------------------------------------------------------------------
+function M.openAreaSearch()
+    local cur = currentDigZone();
+    if cur ~= nil then area.zoneId = cur; end
+    area.fromItem  = false;   -- opened directly, so no "< Back to item search"
+    area.open[1]   = true;
+    byitem.open[1] = false;
+end
+
+function M.openItemSearch()
+    byitem.open[1] = true;
+    area.open[1]   = false;
+end
+
 -- A probability as a compact percent: more decimals for the tiny per-dig odds so
 -- a rare item never reads as a flat "0%".
 local function pct(x)
@@ -806,21 +831,12 @@ function M.render(deps, availW)
     -- =======================================================================
     help('Search:', 'Opens a floating window, so you never scroll the panel to search.', COL_HEADER);
     imgui.SameLine(0, 8);
-    if imgui.Button('Area##chocosearcharea') then
-        local cur = currentDigZone();
-        if cur ~= nil then area.zoneId = cur; end   -- land where you're standing
-        area.fromItem  = false;
-        area.open[1]   = true;
-        byitem.open[1] = false;
-    end
+    if imgui.Button('Area##chocosearcharea') then M.openAreaSearch(); end
     if imgui.IsItemHovered() then
         imgui.SetTooltip('Everything diggable in a zone, priced for your rank + moon.\nOpens on your current zone if you are standing in a digging area.');
     end
     imgui.SameLine(0, 6);
-    if imgui.Button('Item##chocosearchitem') then
-        byitem.open[1] = true;
-        area.open[1]   = false;
-    end
+    if imgui.Button('Item##chocosearchitem') then M.openItemSearch(); end
     if imgui.IsItemHovered() then
         imgui.SetTooltip('Search an item -> every zone + pool it drops from.\nClick a zone there to jump to its Area window (with a Back button).');
     end

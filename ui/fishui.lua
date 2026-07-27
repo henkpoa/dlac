@@ -4,11 +4,16 @@
 -- Coverage/status live ABOVE the imgui guard so the
 -- headless tests reach them (improvement over helmui, whose guard hides all).
 --
--- Sections: status line (skill / GP / VP) -> gear matrix (BASE / ANGLER'S /
--- GUILD / MARINERS -- the VP set, ids interleaved with HELM's Plain block) ->
--- rods (standard / legendary) -> target fish (search, ISOLATION rows, rod
--- verdicts from the server's own fail math) -> baits owned (per-container) ->
--- today's ventures (0x017 capture) -> guild corner (GP shop, rank ladder).
+-- TWO surfaces live here since 2026-07-27:
+--   * the PANEL (M.render) -- "what I own": status line (skill / GP / VP) ->
+--     gear matrix (BASE / ANGLER'S / GUILD / MARINERS -- the VP set, ids
+--     interleaved with HELM's Plain block) -> rods (standard / legendary) ->
+--     baits owned (per-container) -> today's ventures (0x017 capture) -> guild
+--     corner (GP shop, rank ladder).
+--   * the target WINDOW (M.renderSearch -> M.renderTargetBody) -- "what am I
+--     hunting": search, rod verdicts from the server's own fail math, ISOLATION
+--     rows. A floating window (chocoui's dig-search precedent), so the hobby bar
+--     can reach it and it is never buried at the bottom of the panel.
 
 local M = {};
 
@@ -216,162 +221,58 @@ local function expertNote(id)
         table.concat(parts, ', '));
 end
 
--- section state
+-- Target-picker state. Shared by every surface that opens the window, which is
+-- the point: open it from the hobby bar and you land on the same fish you were
+-- looking at when you opened it from the panel.
 local sel = { q = { '' }, id = nil, showAllIso = false };
 local _reqAt = 0;
 
+-- The target window's own open flag (chocoui's `search.area.open` precedent):
+-- a {bool} for imgui.Begin's close box, session-only -- it does not reopen
+-- after a relog.
+local target = { open = { false } };
+M._target = target;   -- test seam (open the window headlessly)
+
 -- ---------------------------------------------------------------------------
--- The panel.
+-- The OPENER. Public because three surfaces open this window -- the panel's
+-- Target button, the hobby bar's Fishing tab (the target name IS the button),
+-- and /dl fish find -- while the window is DRAWN from exactly one place
+-- (M.renderSearch off gearui's d3d_present). Any surface may open a floating
+-- window; only one may draw it. `q` (optional) seeds the search box, so
+-- `/dl fish find carp` opens with the matches already listed.
 -- ---------------------------------------------------------------------------
-function M.render(deps, availW)
+function M.openTarget(q)
+    if type(q) == 'string' and q ~= '' then
+        sel.q[1] = q;
+        sel.showAllIso = false;
+    end
+    target.open[1] = true;
+end
+
+-- ---------------------------------------------------------------------------
+-- The target picker -- the BODY of the floating "Fishing -- Target fish" window
+-- (M.renderSearch, at the bottom of this file). This lived INLINE in the panel
+-- until 2026-07-27, halfway down a long page: you scrolled past the gear matrix
+-- to change what you were fishing for, and the hobby bar could not reach it at
+-- all -- its target line was a label whose tooltip told you to go to the panel.
+-- Same treatment, and the same reason, as the Chocobo dig search on 07-24.
+--
+-- Everything it needs is re-derived here (db / owned counts / skill / worn Fish+
+-- total) instead of being passed down from the panel, so the body has ONE
+-- contract for every caller and the panel keeps none of its state.
+-- ---------------------------------------------------------------------------
+function M.renderTargetBody(deps, availW)
     if not _fcok or fcalc.db() == nil then
         imgui.TextColored(COL_ERR, 'fishdb missing -- rebuild data/fishdb.lua (tools/gen_fishdb.py).');
         return;
     end
     local db = fcalc.db();
     local oc = counts(deps);
-    availW = availW or 900;
-
-    -- Refresh the point streams on panel entry (>5s throttle, debounced again
-    -- inside the watchers).
-    if _fwok and os.clock() > _reqAt then
-        _reqAt = os.clock() + 5;
-        pcall(fw.requestPoints);
-        pcall(fw.requestGuildPoints);
-    end
-
-    -- ---- status line ------------------------------------------------------
     local skill = _fwok and fw.playerFishSkill() or nil;
-    local rank = _fwok and fw.playerFishRank() or nil;
     local ft = fishTotal(oc);
-    local parts = {};
-    if skill ~= nil then
-        local cap = (rank ~= nil) and ((rank + 1) * 10) or nil;
-        parts[#parts + 1] = string.format('Fishing skill %d%s%s', skill,
-            (ft > 0) and string.format(' (+%d gear)', ft) or '',
-            (cap ~= nil) and (' / cap ' .. cap) or '');
-        if rank ~= nil and db.guild ~= nil and db.guild.ranks ~= nil then
-            local rn = db.guild.ranks[rank + 1];
-            if rn ~= nil then parts[#parts + 1] = 'rank ' .. rn; end
-        end
-    else
-        parts[#parts + 1] = 'Fishing skill: (not read yet)';
-    end
-    local gp = _fwok and fw.guildPoints() or nil;
-    parts[#parts + 1] = 'GP ' .. (gp ~= nil and tostring(gp) or '?');
-    local vp = _fwok and fw.venturePoints() or nil;
-    parts[#parts + 1] = 'VP ' .. (vp ~= nil and tostring(vp) or '?');
-    imgui.TextColored(COL_GOLD, esc(table.concat(parts, '   |   ')));
-    -- the bar toggle is panel chrome, so it rides the status row (the target
-    -- row below carries Make target now and needs its width)
-    if _fwok then
-        imgui.SameLine(0, 16);
-        local barShown = false;
-        pcall(function() barShown = require('dlac\\ui\\hobbybar').isShown('fish'); end);
-        if imgui.Button(barShown and 'Hide bar##fishbar' or 'Fish bar##fishbar') then
-            pcall(function() require('dlac\\ui\\hobbybar').toggle('fish'); end);
-        end
-        if imgui.IsItemHovered() then
-            imgui.SetTooltip('The shared hobby bar, on Fishing (also: /dl fish bar).');
-        end
-    end
-    imgui.Spacing();
-
-    -- ---- gear matrix ------------------------------------------------------
-    local colW = math.max(190, math.floor(availW / 4));
-    imgui.TextColored(COL_HEADER, 'BASE SET');
-    imgui.SameLine(colW); imgui.TextColored(COL_HEADER, "ANGLER'S (+1)");
-    imgui.SameLine(colW * 2); imgui.TextColored(COL_HEADER, 'GUILD (GP)');
-    imgui.SameLine(colW * 3); imgui.TextColored(COL_HEADER, 'MARINERS (VP)');
-    imgui.Separator();
-    for i = 1, 6 do
-        -- column 1+2: the four paired slots, then Torque / Belt (no pair)
-        local baseId = BASE_SET[i];
-        if baseId ~= nil then
-            local bs, us = pairStates(oc, baseId, PAIR_UP[baseId]);
-            itemLine(deps, baseId, bs, bs == 'better' and BETTER_NOTE or nil);
-            imgui.SameLine(colW);
-            itemLine(deps, PAIR_UP[baseId], us);
-        else
-            local exId = EXTRAS[i - 4];
-            if exId ~= nil then
-                itemLine(deps, exId, owned(oc, exId) and 'owned' or 'dim');
-            else
-                imgui.Dummy({ 0, 18 });
-            end
-            imgui.SameLine(colW);
-            local hrId = HEAD_RING[i - 4];
-            if hrId ~= nil then itemLine(deps, hrId, owned(oc, hrId) and 'owned' or 'dim');
-            else imgui.Dummy({ 0, 1 }); end
-        end
-        -- column 3: guild GP gear (green when owned -- no glow, see Mariners)
-        imgui.SameLine(colW * 2);
-        local gId = GUILD_GEAR[i];
-        if gId ~= nil then itemLine(deps, gId, owned(oc, gId) and 'owned' or 'dim');
-        else imgui.Dummy({ 0, 1 }); end
-        -- column 4: the Mariners VP set -- the ONLY armor that glows (Henrik:
-        -- the real fishing end-game). Best owned tier shown; Expert Angler
-        -- rides the tooltip on the pieces that carry it (Tunica/Boots).
-        imgui.SameLine(colW * 3);
-        local mPair = MARINERS[i];
-        if mPair ~= nil then
-            local showId = owned(oc, mPair[2]) and mPair[2] or mPair[1];
-            itemLine(deps, showId, owned(oc, showId) and 'glow' or 'dim', expertNote(showId));
-        else
-            imgui.Dummy({ 0, 1 });
-        end
-    end
-    imgui.Spacing();
-
-    -- ---- rods -------------------------------------------------------------
-    imgui.TextColored(COL_HEADER, 'RODS');
-    imgui.SameLine(colW * 2); imgui.TextColored(COL_HEADER, 'LEGENDARY');
-    imgui.Separator();
-    local standard = {};
-    for id, r in pairs(db.rods) do
-        if (r.leg or 0) == 0 and not SPECIAL_RODS[id] then
-            standard[#standard + 1] = { id = id, r = r };
-        end
-    end
-    table.sort(standard, function(a, b)
-        if (a.r.rating or 0) ~= (b.r.rating or 0) then return (a.r.rating or 0) < (b.r.rating or 0); end
-        return nameOf(a.id) < nameOf(b.id);
-    end);
-    -- Owning a legendary rod greens the whole standard ladder ("you're
-    -- awesome" cascade -- Henrik 2026-07-18: Lu Shang's/Ebisu covers them all).
-    local legOwned = false;
-    for id in pairs(LEG_ANY) do if owned(oc, id) then legOwned = true; break; end end
-    local function rodNote(e, better)
-        return string.format('%s -- size %s, durability %d%s%s', nameOf(e.id),
-            (e.r.sz or 0) == 1 and 'LARGE' or 'small', e.r.maxR or 0,
-            (e.r.brk or 0) ~= 0 and ', breakable' or '',
-            better and '\nGreen via progression: your legendary rod covers this one.' or '');
-    end
-    local half = math.ceil(#standard / 2);
-    for i = 1, half do
-        local a = standard[i];
-        local aSt = owned(oc, a.id) and 'owned' or (legOwned and 'better' or 'dim');
-        itemLine(deps, a.id, aSt, rodNote(a, aSt == 'better'));
-        local b = standard[i + half];
-        if b ~= nil then
-            imgui.SameLine(colW);
-            local bSt = owned(oc, b.id) and 'owned' or (legOwned and 'better' or 'dim');
-            itemLine(deps, b.id, bSt, rodNote(b, bSt == 'better'));
-        end
-        local lId = LEGENDARY_RODS[i];
-        if lId ~= nil then
-            imgui.SameLine(colW * 2);
-            itemLine(deps, lId, owned(oc, lId) and 'glow' or 'dim',
-                (lId == 17011) and (nameOf(lId) .. ' -- NEVER breaks')
-                or (nameOf(lId) .. ' -- breakable (quest-restorable)'));
-        end
-    end
-    for id in pairs(SPECIAL_RODS) do
-        if owned(oc, id) then
-            itemLine(deps, id, 'owned', nameOf(id) .. ' -- special rod');
-        end
-    end
-    imgui.Spacing();
+    -- The spot list places its bait column at availW * 0.55, so a too-narrow
+    -- value crushes the zone names rather than wrapping them.
+    if type(availW) ~= 'number' or availW < 420 then availW = 740; end
 
     -- ---- target fish ------------------------------------------------------
     imgui.TextColored(COL_HEADER, 'TARGET FISH');
@@ -396,7 +297,7 @@ function M.render(deps, availW)
         imgui.SameLine(0, 10);
         if imgui.Button('Clear##fishtgt') and _fwok then
             fw.setTarget(nil);
-            sel.id = nil;             -- the panel's view too: a clean start
+            sel.id = nil;             -- this window's view too: a clean start
             sel.q[1] = '';
             sel.showAllIso = false;   -- collapsed spot list next time as well
             -- and the FRAME's copy: the adopt line below ran in this same
@@ -437,7 +338,7 @@ function M.render(deps, availW)
         end
         if #hits == 0 then imgui.TextColored(COL_DIM, 'no fish matches.'); end
     elseif sel.id == nil and tgtId ~= nil then
-        sel.id = tgtId;   -- panel opens on the active target
+        sel.id = tgtId;   -- the window opens on the active target
     end
 
     local fid = sel.id;
@@ -556,6 +457,185 @@ function M.render(deps, availW)
             imgui.TextColored(COL_DIM, 'Items can always bite (Smock/Apron reduce them); monsters only outside cities.');
         end
     end
+end
+
+-- ---------------------------------------------------------------------------
+-- The panel.
+-- ---------------------------------------------------------------------------
+function M.render(deps, availW)
+    if not _fcok or fcalc.db() == nil then
+        imgui.TextColored(COL_ERR, 'fishdb missing -- rebuild data/fishdb.lua (tools/gen_fishdb.py).');
+        return;
+    end
+    local db = fcalc.db();
+    local oc = counts(deps);
+    availW = availW or 900;
+
+    -- Refresh the point streams on panel entry (>5s throttle, debounced again
+    -- inside the watchers).
+    if _fwok and os.clock() > _reqAt then
+        _reqAt = os.clock() + 5;
+        pcall(fw.requestPoints);
+        pcall(fw.requestGuildPoints);
+    end
+
+    -- ---- status line ------------------------------------------------------
+    local skill = _fwok and fw.playerFishSkill() or nil;
+    local rank = _fwok and fw.playerFishRank() or nil;
+    local ft = fishTotal(oc);
+    local parts = {};
+    if skill ~= nil then
+        local cap = (rank ~= nil) and ((rank + 1) * 10) or nil;
+        parts[#parts + 1] = string.format('Fishing skill %d%s%s', skill,
+            (ft > 0) and string.format(' (+%d gear)', ft) or '',
+            (cap ~= nil) and (' / cap ' .. cap) or '');
+        if rank ~= nil and db.guild ~= nil and db.guild.ranks ~= nil then
+            local rn = db.guild.ranks[rank + 1];
+            if rn ~= nil then parts[#parts + 1] = 'rank ' .. rn; end
+        end
+    else
+        parts[#parts + 1] = 'Fishing skill: (not read yet)';
+    end
+    local gp = _fwok and fw.guildPoints() or nil;
+    parts[#parts + 1] = 'GP ' .. (gp ~= nil and tostring(gp) or '?');
+    local vp = _fwok and fw.venturePoints() or nil;
+    parts[#parts + 1] = 'VP ' .. (vp ~= nil and tostring(vp) or '?');
+    imgui.TextColored(COL_GOLD, esc(table.concat(parts, '   |   ')));
+    -- Panel chrome, all on the status row: the target picker, the idle pill and
+    -- the bar toggle. The TARGET FISH section that used to sit below is a
+    -- floating window now (M.renderSearch) -- this panel is "what I own", that
+    -- window is "what am I hunting".
+    if _fwok then
+        imgui.SameLine(0, 16);
+        local _, tName = fw.getTarget();
+        if imgui.Button((tName ~= nil and ('Target: ' .. tostring(tName)) or 'Target fish...')
+                .. '##fishtgtopen') then
+            M.openTarget();
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Search a fish, read the rod verdicts, pick a spot + bait.\nOpens a floating window, so it is never buried at the bottom of\nthis panel (also: /dl fish find).');
+        end
+        imgui.SameLine(0, 10);
+        -- The shared pill, at last. This row is no longer the crowded one that
+        -- forced a shortened text button here -- Make target / target / Clear
+        -- moved to the window -- so Fishing now matches Craft / HELM / Chocobo /
+        -- AutoAmmo / Restock instead of being the one panel with its own switch.
+        local pillOn = fw.isEnabled();
+        local cbok, craftbar = pcall(require, 'dlac\\ui\\craftbar');
+        if cbok and type(craftbar) == 'table' and type(craftbar.onOffSwitch) == 'function' then
+            if craftbar.onOffSwitch(pillOn, 'fishpanel',
+                'Fishing idle set is ON -- rod, bait and fishing gear stay on while idle. Click to turn off.',
+                'Set Fish Idle: wears your best fishing kit whenever idle, until turned off.\nRod and bait follow the target fish.')
+            then fw.setEnabled(not pillOn); end
+        elseif imgui.Button((pillOn and 'ON' or 'OFF') .. '##fishpanelonoff', { 46, 22 }) then
+            fw.setEnabled(not pillOn);
+        end
+        imgui.SameLine(0, 10);
+        local barShown = false;
+        pcall(function() barShown = require('dlac\\ui\\hobbybar').isShown('fish'); end);
+        if imgui.Button(barShown and 'Hide bar##fishbar' or 'Fish bar##fishbar') then
+            pcall(function() require('dlac\\ui\\hobbybar').toggle('fish'); end);
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('The shared hobby bar, on Fishing (also: /dl fish bar).');
+        end
+    end
+    imgui.Spacing();
+
+    -- ---- gear matrix ------------------------------------------------------
+    local colW = math.max(190, math.floor(availW / 4));
+    imgui.TextColored(COL_HEADER, 'BASE SET');
+    imgui.SameLine(colW); imgui.TextColored(COL_HEADER, "ANGLER'S (+1)");
+    imgui.SameLine(colW * 2); imgui.TextColored(COL_HEADER, 'GUILD (GP)');
+    imgui.SameLine(colW * 3); imgui.TextColored(COL_HEADER, 'MARINERS (VP)');
+    imgui.Separator();
+    for i = 1, 6 do
+        -- column 1+2: the four paired slots, then Torque / Belt (no pair)
+        local baseId = BASE_SET[i];
+        if baseId ~= nil then
+            local bs, us = pairStates(oc, baseId, PAIR_UP[baseId]);
+            itemLine(deps, baseId, bs, bs == 'better' and BETTER_NOTE or nil);
+            imgui.SameLine(colW);
+            itemLine(deps, PAIR_UP[baseId], us);
+        else
+            local exId = EXTRAS[i - 4];
+            if exId ~= nil then
+                itemLine(deps, exId, owned(oc, exId) and 'owned' or 'dim');
+            else
+                imgui.Dummy({ 0, 18 });
+            end
+            imgui.SameLine(colW);
+            local hrId = HEAD_RING[i - 4];
+            if hrId ~= nil then itemLine(deps, hrId, owned(oc, hrId) and 'owned' or 'dim');
+            else imgui.Dummy({ 0, 1 }); end
+        end
+        -- column 3: guild GP gear (green when owned -- no glow, see Mariners)
+        imgui.SameLine(colW * 2);
+        local gId = GUILD_GEAR[i];
+        if gId ~= nil then itemLine(deps, gId, owned(oc, gId) and 'owned' or 'dim');
+        else imgui.Dummy({ 0, 1 }); end
+        -- column 4: the Mariners VP set -- the ONLY armor that glows (Henrik:
+        -- the real fishing end-game). Best owned tier shown; Expert Angler
+        -- rides the tooltip on the pieces that carry it (Tunica/Boots).
+        imgui.SameLine(colW * 3);
+        local mPair = MARINERS[i];
+        if mPair ~= nil then
+            local showId = owned(oc, mPair[2]) and mPair[2] or mPair[1];
+            itemLine(deps, showId, owned(oc, showId) and 'glow' or 'dim', expertNote(showId));
+        else
+            imgui.Dummy({ 0, 1 });
+        end
+    end
+    imgui.Spacing();
+
+    -- ---- rods -------------------------------------------------------------
+    imgui.TextColored(COL_HEADER, 'RODS');
+    imgui.SameLine(colW * 2); imgui.TextColored(COL_HEADER, 'LEGENDARY');
+    imgui.Separator();
+    local standard = {};
+    for id, r in pairs(db.rods) do
+        if (r.leg or 0) == 0 and not SPECIAL_RODS[id] then
+            standard[#standard + 1] = { id = id, r = r };
+        end
+    end
+    table.sort(standard, function(a, b)
+        if (a.r.rating or 0) ~= (b.r.rating or 0) then return (a.r.rating or 0) < (b.r.rating or 0); end
+        return nameOf(a.id) < nameOf(b.id);
+    end);
+    -- Owning a legendary rod greens the whole standard ladder ("you're
+    -- awesome" cascade -- Henrik 2026-07-18: Lu Shang's/Ebisu covers them all).
+    local legOwned = false;
+    for id in pairs(LEG_ANY) do if owned(oc, id) then legOwned = true; break; end end
+    local function rodNote(e, better)
+        return string.format('%s -- size %s, durability %d%s%s', nameOf(e.id),
+            (e.r.sz or 0) == 1 and 'LARGE' or 'small', e.r.maxR or 0,
+            (e.r.brk or 0) ~= 0 and ', breakable' or '',
+            better and '\nGreen via progression: your legendary rod covers this one.' or '');
+    end
+    local half = math.ceil(#standard / 2);
+    for i = 1, half do
+        local a = standard[i];
+        local aSt = owned(oc, a.id) and 'owned' or (legOwned and 'better' or 'dim');
+        itemLine(deps, a.id, aSt, rodNote(a, aSt == 'better'));
+        local b = standard[i + half];
+        if b ~= nil then
+            imgui.SameLine(colW);
+            local bSt = owned(oc, b.id) and 'owned' or (legOwned and 'better' or 'dim');
+            itemLine(deps, b.id, bSt, rodNote(b, bSt == 'better'));
+        end
+        local lId = LEGENDARY_RODS[i];
+        if lId ~= nil then
+            imgui.SameLine(colW * 2);
+            itemLine(deps, lId, owned(oc, lId) and 'glow' or 'dim',
+                (lId == 17011) and (nameOf(lId) .. ' -- NEVER breaks')
+                or (nameOf(lId) .. ' -- breakable (quest-restorable)'));
+        end
+    end
+    for id in pairs(SPECIAL_RODS) do
+        if owned(oc, id) then
+            itemLine(deps, id, 'owned', nameOf(id) .. ' -- special rod');
+        end
+    end
     imgui.Spacing();
 
     -- ---- baits owned ------------------------------------------------------
@@ -658,6 +738,40 @@ function M.render(deps, availW)
             imgui.TextColored(COL_DIM, "Lu Shang's: 10,000 carp to Gallijaux/Joulet (Port San d'Oria) -- Moat Carp pay 10g, Forest Carp 15g.");
         end
     end
+end
+
+-- ---------------------------------------------------------------------------
+-- The floating target window (chocoui.renderSearch's twin, 2026-07-27). Rendered
+-- INDEPENDENTLY of the main box from gearui's d3d_present -- above its
+-- `M.visible` return -- so it is reachable with the main window shut, which is
+-- the whole point: the hobby bar opens it while you fish.
+--
+-- ONE draw site. Every other surface (the panel's Target button, the hobby bar's
+-- target name, /dl fish find) only sets `target.open[1]` through M.openTarget.
+-- A second Begin() on this window name in the same frame would append a second
+-- copy of the body into it -- the search drawn twice, ids colliding, the box
+-- fighting itself over one buffer.
+--
+-- `End` is source-paired with `Begin` (floatgear's rule); a body that errors
+-- mid-frame is recovered by ImGui at frame end, and gearui's pcall keeps the
+-- style stack clean. Guarded: no window API -> nothing drawn.
+-- ---------------------------------------------------------------------------
+function M.renderSearch(deps)
+    if type(imgui.Begin) ~= 'function' or type(imgui.End) ~= 'function' then return; end
+    if not target.open[1] then return; end
+    if type(imgui.SetNextWindowSize) == 'function' then
+        -- Wide enough that the spot list keeps roughly the column widths it had
+        -- in the panel; ImGui remembers a resize from here on (imgui.ini).
+        imgui.SetNextWindowSize({ 760, 520 }, (ImGuiCond_FirstUseEver or 0));
+    end
+    local shown = imgui.Begin('Fishing -- Target fish###dlac_fish_target', target.open,
+                              (ImGuiWindowFlags_NoCollapse or 0));
+    if shown then
+        local availW = imgui.GetContentRegionAvail();
+        if type(availW) ~= 'number' then availW = nil; end
+        M.renderTargetBody(deps, availW);
+    end
+    imgui.End();
 end
 
 return M;

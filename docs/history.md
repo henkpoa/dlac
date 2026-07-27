@@ -5617,3 +5617,156 @@ own assertions was simply wrong. I claimed modes survive a self-swap on the modu
 not. They are reset by the same re-execution and heal from the `modestate` mirror on load. Locks
 never could — `__locks` is display-only and deliberately never restored — which is precisely why
 their fix had to live on the table instead of in the mirror.
+
+## Session "the hobby bar reaches the searches" (2026-07-27, on `dev` — addon 2026.07.27a)
+
+**The ask, and what it actually was.** Henrik, pasting a note he could no longer see:
+*"In the hobby bar, the fishing menu… most things are available just fine in the hobby bar,
+except for fishing, but we don't want to overdo it. Please add a button to open the fish
+automation directly from the fish tab in hobby. Please do the same with fishing."* Fishing
+twice — the second was Chocobo, which the code could have guessed: those are exactly the two
+tabs whose bodies admitted the real controls lived elsewhere (Chocobo printed *"Dig rank,
+guide and by-item search: Automations > Chocobo"* in grey; Fishing's target line was a label
+whose tooltip said to go to the panel). Craft and HELM are self-sufficient in the bar.
+
+Then the ask grew, and the growth was the interesting part: *"technically if we could open up
+a menu to search for target fish from the hobby bar, reuse that search body window… maybe
+problematic to use same windows that spawn from different places?"*
+
+**The answer to that worry, which is now a written invariant.** It lands on the *draw*, never
+the *opener*:
+
+> Any surface may OPEN a floating window; exactly one place may DRAW it.
+
+Two `imgui.Begin()` calls on one window name in a frame do not error — ImGui **appends** the
+second body into the same window. Content renders twice, ids collide, a shared InputText
+buffer gets written twice a frame. Silent, and it looks like a UI bug rather than a crash
+(the floatgear S50 class). So openers set a module-owned flag and never render; gearui's
+`d3d_present` is the single draw site, sitting *above* its `M.visible` return so every one of
+these windows outlives the main box. Written into architecture.md; **Floating window**,
+**Panel** and **Hobby bar** went into CONTEXT.md, which had no UI vocabulary at all — which
+is precisely why the request needed three rounds of grilling to pin down.
+
+**Chocobo cost almost nothing** because 07-24 had already done the hard part: the Area/Item
+dig searches were floating windows, opened by two panel buttons that did nothing but set
+flags. Those bodies became `chocoui.openAreaSearch` / `openItemSearch`, the panel now calls
+them, and so does the bar — one behaviour for both surfaces rather than a copy-paste of "land
+on the zone you're standing in, and close the other window".
+
+**Fishing was a real extraction.** `TARGET FISH` was ~180 lines inline at line 376 of a
+663-line panel — buried in exactly the way the Chocobo search had been fixed for. It moved to
+`fishui.renderTargetBody`, wrapped by `fishui.renderSearch`
+(`Fishing -- Target fish###dlac_fish_target`, 760×520). The extraction was clean because
+`sel` — the query buffer, the viewed fish, the expanded-spots flag — was referenced *only*
+inside that block; nothing above or below it touched the picker's state. The body re-derives
+db / owned counts / skill / worn Fish+ instead of inheriting the panel's locals, so it has one
+contract for every caller.
+
+**Three design calls worth keeping.** The bar's target name **is** the button rather than
+gaining a labelled one beside it — the rod and bait names one row below have worked that way
+since field round 5, so the tab gained zero widgets, which is the least "overdone" reading of
+the request. The panel's section was **replaced**, not duplicated: two live copies would have
+put one `sel.q` buffer behind two InputTexts. And the fish panel finally uses the shared
+`craftbar.onOffSwitch` pill — it was the only one of six panels with a hand-rolled text
+switch, and the comment above it named the reason (*"label shortened so the row survives Make
+target + target + Clear"*), a workaround for the very row that just left.
+
+**What the tests caught, and what they now cover.** The first build failed `HB3.choco` —
+7c's stub imgui had no `SmallButton`, which is the section doing its job. More importantly,
+`fishbar.renderContent` and the whole target body had **never been executed by any test**: 7c
+stubs the bar with a no-op and section 7 only reaches fishui's pure status half. That is the
+craftbar lesson of 7d, repeated on a second file. New smoke `FS1-FS19` drive the real window
+and the real bar — including the wire that matters, that clicking the target name reaches the
+opener, and that `no target fish` is clickable too (or a fresh character has no way in).
+
+**Not field-tested.** Two things only live play can answer: whether 760×520 gives the spot
+list enough room (its bait column sits at `availW * 0.55`, ~50px tighter than the panel gave
+it), and whether three pills — bar, window, panel — read as convenient or as clutter.
+
+### Addendum, same day — tab art (`2026.07.27b`)
+
+Henrik: *"Are you able to remove the text for all the tab titles, so we can replace them
+with 30x30 pixel icons instead? Are you able to use this picture for chocobo digging?"* —
+with one chocobo image attached. `assets/` had eight craft glyphs and four HELM glyphs but
+no single Craft, HELM or Fishing icon, so the honest answer was *yes, and here is the gap:
+you have art for one tab of four*. His call: **new art for all four, one at a time** —
+*"I just want to see how one of them would look with that art, I'll give you more for the
+other tabs later once I see."*
+
+So the mechanism is built to accept art incrementally: a tab with
+`assets\hobby\<Name>.png` draws as a 64px icon, a tab without keeps its **text button**.
+Dropping `Craft.png` / `HELM.png` / `Fishing.png` in beside `Chocobo.png` converts them
+with no code change. That fallback is also the old menuui rule — a texture that fails to
+load must leave a labelled button, never a mystery 30px hole.
+
+**Two things colour cannot do once a tab is art.** The text tabs carry both *selected* and
+*armed* in the button colour; tinting art recolours the art (a green wash turns a yellow
+chocobo olive), and recognising the icon is the entire point. So selection rides
+**brightness** — the craft-glyph idiom — and armed rides a literal **green frame** drawn on
+the window draw list. The frame colour is `0xFF00CC00`, which reads green whichever byte
+order the binding packs, so the armed marker cannot come out red on a different imgui build.
+
+**The asset.** 1408×768 RGBA with a genuinely transparent background, art occupying
+551×634; styled as pixel art but gradient-shaded inside the blocks, so it downsamples
+smoothly rather than going to mush. Cropped to the art, centred in a square with a 6%
+margin (never distorted), LANCZOS to **128×128**, drawn at 64. Shipping double the draw
+size puts the GPU on mip level 1 — a clean 2:1 box filter, as sharp as shipping 64 — and
+leaves headroom to grow the tabs again without regenerating every file. (The first cut was
+64 drawn at 30, matching the 40×40 craft/HELM glyphs; Henrik wanted them at least twice as
+big, so both numbers doubled -- and the tab gap went 4px → 6px, because the armed frame is
+drawn 2px outside the icon and would otherwise nearly touch its neighbour's art.)
+
+**Testing note.** Headless there is no d3d, so `filetex.handle` always returns nil and every
+tab takes the text path — the icon branch would have shipped with zero coverage while the
+suite stayed green. `HB15-HB19` stub the loader so exactly ONE tab has art, which is both
+the real shipping state and the mixed row most likely to break. Both new behaviours were
+mutation-verified: disabling the icon path fails three checks, removing only the armed
+frame fails exactly one. The stub's own first cut had the classic bug it exists to catch —
+`btns` captured by a closure declared above it, a silent nil global — and it failed
+loudly rather than hiding.
+
+**Craft.png, and the alpha lesson (`2026.07.27d`).** The second piece of art arrived on a
+white page rather than a transparent one — *"I haven't cleaned it up as much but I think you
+may be able to do it?"* The naive fix, keying out white, would have **punched holes in the
+eyes**: this chocobo has white sclera and white highlights on its metal, and a colour key
+cannot tell those from the page. So the background is removed by a **flood fill from the
+image borders** — only white *connected to the edge* is background, and anything the dark
+outline encloses survives. 812,033 pixels went; 3,700 near-white pixels were kept because
+they were enclosed. The fill threshold is deliberately generous (bright AND unsaturated), so
+the anti-aliased fringe between page and outline goes with it: at 128px a hair of erosion is
+invisible, whereas a white halo on the bar's dark background is not.
+
+Worth a number for next time: measuring the mean min-channel of the partial-alpha edge
+pixels catches a halo objectively — the chocobo reads 22.6, the smith 88.3, and the
+difference is genuine light-grey metal (hammer, chainmail, anvil) rather than a fringe, which
+the zoomed composite on a dark background confirmed. Do both: the number tells you where to
+look, the composite tells you whether it matters.
+
+**The full set, and what a flattened preview costs (`2026.07.27e`).** The remaining three
+arrived twice: first as screenshots of a transparency preview — **checkerboard baked into
+the pixels**, alpha 255 everywhere — and then, after I said so, on white pages. Both were
+processed and compared at 128px on the bar's dark background, best-of-each kept.
+
+White won for **Fishing** and **Digging**: crisper line, hook and float, cleaner dirt
+specks. The checkerboard version won for **HELM**, and the reason is worth keeping. The
+miner's lamp beam was *semi-transparent* in the original, so on the checkerboard it carried
+the checker pattern straight through it — visibly mottled at zoom. But that same modulation
+is a **signal**: build the checker grid (period measured at 22px, tones 211/241), compare
+the two parities in a local window, and any pixel where they still differ is either
+background or something translucent over it. Opaque art modulates by ~0 whatever its colour,
+so the pickaxe, the eye whites and the fishing float were never at risk. Flood that from the
+borders and the beam comes off cleanly. On the white page the same beam is just an opaque
+cream blob no colour threshold could separate from the art — tried at four saturation
+windows, it survived all of them.
+
+So: **a flattened checkerboard preview is harder to key than a white page, but it encodes
+which pixels were translucent — and sometimes that is exactly what you need.**
+
+**Hover text.** Henrik: *"Just show simple terms. Crafting / HELM / Fishing / Digging."*
+The three-branch tooltip (which hobby is armed, which to turn off first) is gone: the green
+frame says the former, and the pill that actually refuses says the latter in chat at the
+moment you try it. A hover on a picture only has to answer "what is this?". `TABS` now
+separates `n` (the player-facing word) from `img` (the asset basename) — the art is a
+digging chocobo, so `Chocobo.png` is the right file name while "Digging" is the right word.
+`HB20` pins the exact four strings, because that is the kind of text that grows a sentence
+back.

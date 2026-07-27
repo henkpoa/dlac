@@ -230,7 +230,30 @@ that performs the promotion **empties this section in the same commit as the mer
 entry left standing here after a merge is how "is this on main?" becomes unanswerable —
 see hard rule 14, which this section exists to serve.
 
-*(Empty. Last promotion: 2026-07-26 night — the **Teleports floating menu rework**
+*(Empty. Last promotion: 2026-07-27 — **the hobby-bar day**, `96b49be`..`3446978`, addon
+`2026.07.27a` → **`2026.07.27e`**, on Henrik's go-ahead: *"merge dev into main and push
+both."* Two halves, promoted as one. **The searches came to the bar**: Fishing's
+`TARGET FISH` section became a Floating window (`fishui.renderSearch` →
+`renderTargetBody`) that the bar's target NAME opens, Chocobo's tab got the panel's own
+Area/Item buttons via new `chocoui` openers, both tabs gained a `Panel` button, plus
+`/dl fish find [name]` and `/dl choco dig [item]`; the invariant it rests on — any
+surface may OPEN a floating window, exactly one place may DRAW it — went into
+architecture.md, and CONTEXT.md gained **Floating window / Panel / Hobby bar**. **The
+tabs became art**: all four draw Henrik's chocobo set (smith, miner, angler, digger) at
+64px, hovers cut to one plain word each — Crafting / HELM / Fishing / Digging — with the
+text button kept as the fallback for a missing or failed PNG.
+
+The ART was field-approved (*"This was sooo good"*, *"Looks great"*). The SEARCH windows
+went out **WITHOUT a field run of their own**, on the promote-the-queue call and the
+whole-or-not-at-all rule — the Auto HELM 4s→5s precedent. Three questions ride to main
+with it, none of them blockers and each a one-line change once the field answers: whether
+the target window's 760×520 default gives the spot list enough room (its bait column sits
+at `availW * 0.55`, ~50px tighter than the panel gave it); whether three pills — bar,
+window, panel — read as convenient or as clutter; and whether the armed green *frame*
+reads at a glance, now that colour cannot carry state on an art tab. The record is the
+merge commit on `main`.)*
+
+*(Previous promotion: 2026-07-26 night — the **Teleports floating menu rework**
 (`2026.07.26v`; Nexus Cape + Shadow Lord Shirt into "Other Teleports", the
 Automations/HELM/Fishing cascades deleted, Hobby bar + Lockstyle rows added —
 field-confirmed by Henrik: *"Looks good and works great"*), the **Sets-tab selection
@@ -270,6 +293,44 @@ research already recorded. In rough priority order:
    section heading rather than each carrying one. Trivial to change if it reads wrong.
 
 ## Current state (as of 2026-07-26)
+
+- **The hobby-bar day — DONE, ON MAIN** (promoted 2026-07-27, `96b49be`..`3446978`,
+  `2026.07.27a`→`e`; the **Ready to merge** section above stays the authority on status —
+  this bullet is the detail, not the queue). Two halves, promoted as one: the searches, then the tab art
+  (all four tabs are Henrik's chocobo icons at 64px, hovers reduced to one plain word
+  each). Henrik: *"most things are available just fine in the hobby bar, except
+  for fishing, but we don't want to overdo it."* Two hobby tabs could only point at the
+  Automations tab in grey text; now they open the real thing.
+  - **Fishing.** The `TARGET FISH` section moved out of the panel (`fishui.lua`, ~180
+    lines) into a **Floating window** — `fishui.renderSearch` → `renderTargetBody`,
+    `Fishing -- Target fish###dlac_fish_target`. On the bar, the **target name IS the
+    button** (the rod and bait names beside it have worked that way since field round 5);
+    the panel keeps a `Target: <fish>` button on its status row and finally gets the
+    shared pill, the crowded row that forced its one-off text button having left.
+  - **Chocobo.** No new window: the Area/Item dig searches were already floating windows,
+    so the tab got the panel's own two buttons routed through new `chocoui.openAreaSearch`
+    / `openItemSearch` openers. The grey "go to Automations > Chocobo" sentence is gone.
+    Both tabs also got a `Panel` button — on Chocobo it matters, because every odds figure
+    in those windows is computed from the dig RANK, which only the panel can set.
+  - `/dl fish find [name]` (deliberately not `target`: that one picks the top match, and
+    bare it *clears*) and `/dl choco dig [item]`.
+  - **The rule this is built on** is now written down in architecture.md and CONTEXT.md:
+    *any surface may OPEN a floating window; exactly one place may DRAW it* (gearui's
+    `d3d_present`). Two `Begin()`s on one window name silently append into the same
+    window — content twice, ids colliding. Openers set flags; they never render.
+  - CONTEXT.md gained **Floating window / Panel / Hobby bar** — it had no UI vocabulary at
+    all, which is why this task's first sentence ("the hobby menu", "the fish automation")
+    needed three rounds of grilling to pin down.
+  - Coverage that did not exist before: smoke `FS1-FS19` drive the REAL target window and
+    the REAL `fishbar.renderContent` (7c stubs it with a no-op, so those ~180 moved lines
+    had never been executed by any test — the craftbar lesson of 7d), plus `HB14` and
+    `S139kk-mm` for the openers. `HB3.choco` caught the first version of this work: the
+    7c stub had no `SmallButton`.
+  - **What field-testing needs to answer** — these RIDE TO MAIN with it, they do not block
+    it: does the target window's default 760×520 give the spot list enough room (it places
+    its bait column at `availW * 0.55`, ~50px tighter than the panel gave it), and does
+    three pills — bar, window, panel — read as redundant or as convenient? Both are
+    one-line changes; neither can dress you wrong, since the window only picks a target.
 
 - **AutoAmmo is Range-aware — DONE, field-confirmed, ON MAIN** (promoted 2026-07-26 in
   `03d25e1`; this bullet said "QUEUED for main" until the 07-26 night promotion, pointing

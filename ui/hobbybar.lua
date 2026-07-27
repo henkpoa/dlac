@@ -16,8 +16,13 @@
     the "after the hobby menu was changed, Last Synth doesn't work" report.
 
     So: every tab is always reachable, and switching tabs arms nothing. The armed
-    hobby is MARKED (green, trailing *) and its on/off pill is the thing that
-    refuses -- exactly where the real guard lives.
+    hobby is MARKED (green) and its on/off pill is the thing that refuses --
+    exactly where the real guard lives.
+
+    TAB ART (2026-07-27). A tab with `assets\hobby\<Name>.png` draws as a 64px
+    icon; one without keeps its text button, so the four convert one at a time as
+    art arrives. See the iconTab block below for why selection rides brightness
+    and armed rides a frame, rather than both riding colour.
 
     Each hobby's controls are the SAME code the standalone bars drew, now exposed as
     <bar>.renderContent(availW) (craftbar / helmbar / fishbar) plus a small inline
@@ -40,11 +45,17 @@ local imgui = try('imgui');
 local M = {};
 
 -- Tab order = idleexcl.MEMBERS order.
+--
+-- `n` is what the PLAYER is told this tab is -- the hover word, and the label if
+-- the tab has no art (Henrik 2026-07-27: "just show simple terms"). `img` is the
+-- asset basename, kept separate because it names a FILE: the art is a digging
+-- chocobo, so `Chocobo.png` is the right file name while "Digging" is the right
+-- word. Renaming one must never silently rename the other.
 local TABS = {
-    { k = 'craft', n = 'Craft'   },
-    { k = 'helm',  n = 'HELM'    },
-    { k = 'fish',  n = 'Fishing' },
-    { k = 'choco', n = 'Chocobo' },
+    { k = 'craft', n = 'Crafting', img = 'Craft'   },
+    { k = 'helm',  n = 'HELM',     img = 'HELM'    },
+    { k = 'fish',  n = 'Fishing',  img = 'Fishing' },
+    { k = 'choco', n = 'Digging',  img = 'Chocobo' },
 };
 local VALIDSEL = { craft = true, helm = true, fish = true, choco = true };
 
@@ -53,6 +64,64 @@ local COL_ACTIVE   = { 0.16, 0.55, 0.24, 1.0 };   -- this hobby is armed
 local COL_LOCKED   = { 0.50, 0.50, 0.50, 1.0 };   -- can't switch here right now
 
 local isOpen = { true };
+
+-- ---------------------------------------------------------------------------
+-- Tab ART (2026-07-27). `assets\hobby\<Name>.png` drawn at ICON_W; a tab with no
+-- PNG keeps its TEXT button. That fallback is the feature, not a safety net: the
+-- four tabs can gain art ONE AT A TIME (drop Craft.png / HELM.png / Fishing.png
+-- in beside Chocobo.png and they convert themselves, no code change), and a
+-- texture that fails to load leaves a labelled button rather than a mystery
+-- hole -- menuui.headerButton's rule, for the same reason.
+--
+-- SIZE: 64, up from the first cut's 30 (Henrik: "I want the icons bigger, at
+-- least twice as big"). The art ships at 128 so that drawing it here lands on
+-- mip level 1 -- a clean 2:1 box filter, i.e. as sharp as shipping 64 -- and so
+-- the tabs can grow again without regenerating every file.
+--
+-- Loading goes through filetex, which RETAINS the texture object; caching only
+-- the numeric handle lets Lua GC it, D3D free it, and imgui draw a dangling
+-- pointer -- that was the header-icon crash.
+-- ---------------------------------------------------------------------------
+local ICON_W = 64;
+
+local function iconHandle(name)
+    local h = nil;
+    pcall(function() h = require('dlac\\ui\\filetex').handle('hobby\\' .. name); end);
+    return h;
+end
+
+-- Draws one tab as art. Returns (drew, clicked) -- `drew == false` means the
+-- caller should fall back to the text button.
+--
+-- Colour is deliberately NOT the state channel here. The text tabs carry
+-- selection and armed-ness in the BUTTON colour, but tinting art recolours the
+-- art itself (a green wash turns a yellow chocobo olive), and the whole point of
+-- the icon is that you recognise it. So: brightness carries selection -- the
+-- craft-glyph idiom -- and ARMED gets a literal green frame around the icon.
+local function iconTab(t, isSel, isActive)
+    local h = iconHandle(t.img or t.n);
+    if h == nil then return false, false; end
+    local x, y = imgui.GetCursorScreenPos();
+    local tint = isSel and { 1, 1, 1, 1 } or { 1, 1, 1, 0.45 };
+    local drew = pcall(function()
+        imgui.Image(h, { ICON_W, ICON_W }, { 0, 0 }, { 1, 1 }, tint);
+    end);
+    if not drew then                      -- binding without the tint overload
+        drew = pcall(function() imgui.Image(h, { ICON_W, ICON_W }); end);
+    end
+    if not drew then return false, false; end
+    local clicked = imgui.IsItemClicked();
+    if isActive and type(x) == 'number' and type(y) == 'number' then
+        -- 0x00CC00 reads green whichever byte order the binding packs, so the
+        -- armed marker cannot come out red on a different imgui build.
+        pcall(function()
+            local dl = imgui.GetWindowDrawList();
+            dl:AddRect({ x - 2, y - 2 }, { x + ICON_W + 2, y + ICON_W + 2 },
+                       0xFF00CC00, 4, ImDrawCornerFlags_All or 0, 2);
+        end);
+    end
+    return true, clicked;
+end
 
 -- ---- open / close API (called by the /dl commands, header button, panels) ----
 local function uiTable() return host.services and host.services.ui or nil; end
@@ -122,7 +191,39 @@ local function renderChocoContent()
     if toggled then cw.setEnabled(not on); end
     imgui.SameLine(0, 10);
     imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, 'Chocobo riding gear (idle only)');
-    imgui.TextColored(COL_LOCKED, 'Dig rank, guide and by-item search: Automations > Chocobo.');
+    -- Dig search, straight from the bar (2026-07-27). Was a grey sentence telling
+    -- you to go to Automations > Chocobo; these are the panel's OWN two buttons,
+    -- routed through chocoui's openers so the two surfaces cannot drift (Area
+    -- still lands on the zone you are standing in, and each closes the other).
+    -- The windows themselves are drawn from ONE place, gearui's d3d_present.
+    imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, 'Dig:');
+    imgui.SameLine(0, 8);
+    if imgui.SmallButton('Area##hbchocoarea') then
+        pcall(function() require('dlac\\ui\\chocoui').openAreaSearch(); end);
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Everything diggable in a zone, priced for your rank + moon.\nOpens on your current zone if you are standing in a digging area.');
+    end
+    imgui.SameLine(0, 6);
+    if imgui.SmallButton('Item##hbchocoitem') then
+        pcall(function() require('dlac\\ui\\chocoui').openItemSearch(); end);
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Search an item -> every zone + pool it drops from.\nClick a zone there to jump to its Area window.');
+    end
+    imgui.SameLine(0, 12);
+    -- The panel owns the DIG RANK picker, and every odds figure in both search
+    -- windows is computed from that rank -- so the moment a search looks wrong,
+    -- this is where you go.
+    if imgui.SmallButton('Panel##hbchocopanel') then
+        pcall(function()
+            local g = require('dlac\\ui\\gearui');
+            if type(g.openAutomation) == 'function' then g.openAutomation('choco'); end
+        end);
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Open Automations > Chocobo: the dig rank picker, riding-time\ngear and the live moon/day/weather odds.');
+    end
     imgui.Dummy({ 300, 1 });
 end
 
@@ -133,7 +234,8 @@ function M.render()
     if ui == nil or ui._hobbyBar ~= true then return; end
     if not VALIDSEL[ui._hobbySel] then ui._hobbySel = 'craft'; end
 
-    -- Which hobby is armed -- for the green * only. It does NOT move the
+    -- Which hobby is armed -- for the ARMED MARK only (a green button + trailing
+    -- * on a text tab, a green frame on an icon one). It does NOT move the
     -- selector: see the LOCK note in the header. (Was: the selector was pinned
     -- to the armed hobby every frame, which hid every other tab's controls.)
     local excl = try('dlac\\feature\\idleexcl');
@@ -144,30 +246,39 @@ function M.render()
     isOpen[1] = true;
     if imgui.Begin('dlac Hobbies##dlac_hobbybar', isOpen, ImGuiWindowFlags_AlwaysAutoResize or 0) then
         -- Selector row: every tab is always reachable; the armed one is marked
-        -- green with a trailing *.
+        -- green (a trailing * on text, a frame on art).
         for i, t in ipairs(TABS) do
             local isSel    = (ui._hobbySel == t.k);
             local isActive = (activeKey == t.k);
-            local pushed = 0;
-            if isActive then
-                imgui.PushStyleColor(ImGuiCol_Button, COL_ACTIVE); pushed = pushed + 1;
-            elseif isSel then
-                imgui.PushStyleColor(ImGuiCol_Button, COL_SELECTED); pushed = pushed + 1;
-            end
-            local label = t.n .. (isActive and ' *' or '') .. '##hbtab' .. t.k;
-            if imgui.Button(label, { 0, 0 }) then M.open(t.k); end
-            if pushed > 0 then imgui.PopStyleColor(pushed); end
-            if imgui.IsItemHovered() then
+            -- Art if this tab has any, else the text button unchanged. Both end
+            -- with the SAME hover contract below -- with the label gone, the
+            -- tooltip is the only thing naming an icon tab, so it must not be
+            -- inside either branch.
+            local drewIcon, iconClicked = iconTab(t, isSel, isActive);
+            if drewIcon then
+                if iconClicked then M.open(t.k); end
+            else
+                local pushed = 0;
                 if isActive then
-                    imgui.SetTooltip(t.n .. ' is active now.');
-                elseif activeKey ~= nil then
-                    imgui.SetTooltip(string.format('Show %s.  (%s is active -- turn it off before arming %s.)',
-                        t.n, tostring(active.name), t.n));
-                else
-                    imgui.SetTooltip('Show ' .. t.n .. '.');
+                    imgui.PushStyleColor(ImGuiCol_Button, COL_ACTIVE); pushed = pushed + 1;
+                elseif isSel then
+                    imgui.PushStyleColor(ImGuiCol_Button, COL_SELECTED); pushed = pushed + 1;
                 end
+                local label = t.n .. (isActive and ' *' or '') .. '##hbtab' .. t.k;
+                if imgui.Button(label, { 0, 0 }) then M.open(t.k); end
+                if pushed > 0 then imgui.PopStyleColor(pushed); end
             end
-            if i < #TABS then imgui.SameLine(0, 4); end
+            -- ONE WORD (Henrik 2026-07-27: "just show simple terms"). The three
+            -- branches this replaced said which hobby was armed and which one to
+            -- turn off first -- but the green frame already says the former, and
+            -- the latter is spoken by the pill that actually refuses
+            -- (idleexcl.guardActivate), in chat, at the moment you try it. A
+            -- hover on a picture only has to answer "what is this?".
+            if imgui.IsItemHovered() then imgui.SetTooltip(t.n); end
+            -- 6px, not the old 4: at 64px the icons crowd each other, and the
+            -- armed frame is drawn 2px OUTSIDE the icon, so a 4px gap would put
+            -- a frame edge almost touching its neighbour's art.
+            if i < #TABS then imgui.SameLine(0, 6); end
         end
         imgui.Separator();
 

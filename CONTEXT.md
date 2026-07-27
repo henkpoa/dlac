@@ -173,3 +173,15 @@ _Avoid_: summing per-item scores and calling it a set total
 
 **Set-seeded restart**:
 An optimizePicks restart from the converged baseline with a feasible gear set's pieces force-placed (least-loss slot choice, hard 6/12 seed caps), kept only on strict improvement. Exists because single-slot hill climbing can never enter a bonus whose pieces are each a solo loss. ADR 0011.
+
+**Floating window**:
+An ImGui window a UI module owns, gated on its own session-only open flag and drawn from exactly ONE call site — gearui's `d3d_present`, above its `M.visible` return — so it lives whether or not the main window is open. Any surface may OPEN one (a bar button, a panel button, a `/dl` command); only that one site may DRAW it. Today: lockstyle, floatgear, the Trigger Monitor, the restock nudge, the two Chocobo dig searches, the Hobby bar, idlefloat, the fishing target window.
+_Avoid_: popup (that is the Menu/Teleports kind, which closes on click-away and draws inline), dialog, panel
+
+**Panel**:
+One Automation's detail view inside the Automations tab, reached by clicking its list row. Has no chrome of its own and dies with the main window.
+_Avoid_: window (a Panel is not one — see Floating window); screen; "the <x> automation" when you mean its panel (an Automation is the feature; the Panel is where you configure it)
+
+**Hobby bar**:
+The one shared Floating window holding the Craft / HELM / Fishing / Chocobo tabs (ADR 0017). Switching tabs arms nothing; the armed hobby is merely marked.
+_Avoid_: hobby menu (that is the Menu popup's row that opens it), craft bar / fish bar / helm bar (the three separate windows it replaced — dead since ADR 0017)

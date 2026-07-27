@@ -581,7 +581,7 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
         end);
     end);
 
-    -- /dl fish [bar | on | off | target <name> | points | gp | capture | status]
+    -- /dl fish [bar | find [name] | on | off | target <name> | points | gp | capture | status]
     ashita.events.register('command', 'dlac-fishwatch-cmd', function(e)
         pcall(function()
             local raw = tostring(e.command or '');
@@ -614,6 +614,20 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
                             tostring(M.targetName), tostring(M.rod or '?'), tostring(M.bait or '?')));
                     end
                 end
+            elseif b == 'find' then
+                -- Opens the floating target window. Deliberately NOT `target`:
+                -- that one picks the top match outright (and bare, it CLEARS the
+                -- target). `find` shows you the search instead. This only sets
+                -- the flag -- gearui's d3d_present is what draws the window.
+                local q = rest:match('^%S+%s+(.+)$');
+                local opened = false;
+                pcall(function()
+                    local fu = require('dlac\\ui\\fishui');
+                    if type(fu.openTarget) == 'function' then fu.openTarget(q); opened = true; end
+                end);
+                say(opened
+                    and ('target window open' .. (q ~= nil and (' -- searching "' .. q .. '"') or '') .. '.')
+                    or 'target window unavailable (GUI not loaded).');
             elseif b == 'points' then
                 M.requestPoints(true);
                 local v = M.venturePoints();
