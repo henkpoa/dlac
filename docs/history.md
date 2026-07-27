@@ -6293,5 +6293,7 @@ Mutation-verified: re-add the line and HB21 fails.
   own Lua could have said.
 
 **Status:** on `dev` (`ad476ea`, addon `27u`), **FIELD-CONFIRMED** by Henrik the same day
-— *"it works now :)"* — and queued for promotion. Suites 3901 + 693, green on Windows lua
-and WSL lua5.4.
+— *"it works now :)"* — and then **ACCEPTED** by him for promotion: *"Document this as an
+accepted fix and put it as an accepted part of the dev → main merge in the future."* The
+next dev → main merge carries it without a fresh go-ahead (HANDOFF's queue marks it ✅).
+Suites 3901 + 693, green on Windows lua and WSL lua5.4.

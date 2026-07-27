@@ -205,7 +205,9 @@ agent; the per-repo setup lives in `docs/agents/`.
     a session repeated that to Henrik, who had to correct it. Two duties follow. **Writing:**
     a finished, field-confirmed commit goes in the **Ready to merge** section above, never
     only in a per-day "Current state" bullet. **Merging:** empty that section in the same
-    commit as the merge, and fix any "on `dev`" claim the merge just falsified.
+    commit as the merge, and fix any "on `dev`" claim the merge just falsified. An entry
+    marked **ACCEPTED** there already has Henrik's go-ahead — carry it and don't re-ask;
+    only he may add that marker.
 
 ## Working with Henrik
 
@@ -232,10 +234,18 @@ that performs the promotion **empties this section in the same commit as the mer
 entry left standing here after a merge is how "is this on main?" becomes unanswerable —
 see hard rule 14, which this section exists to serve.
 
-### Minimizing the hobby bar ate the other windows — `ad476ea` (2026-07-27)
+**Two states, and the difference matters.** *Field-confirmed* means it works on Henrik's
+machine; **ACCEPTED** means he has additionally said *promote it* — so the next dev → main
+merge carries it **without asking him again**. Only he can move an entry to ACCEPTED. Note
+this does not make an accepted entry mergeable *alone*: `dev` promotes
+**whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
+
+### ✅ ACCEPTED — Minimizing the hobby bar ate the other windows — `ad476ea` (2026-07-27)
 
 Addon `27t` → **`27u`**, engine unchanged. Suites **3901 + 693**, Windows and WSL lua5.4.
-**FIELD-CONFIRMED 2026-07-27** by Henrik — *"it works now :)"*. Waits only on the go-ahead.
+**FIELD-CONFIRMED 2026-07-27** by Henrik — *"it works now :)"* — and **ACCEPTED the same
+day**: *"Document this as an accepted fix and put it as an accepted part of the dev → main
+merge in the future."* **The next promotion carries this; do not re-ask.**
 
 - **One deleted line in `ui/hobbybar.lua`.** It opened with
   `imgui.SetNextWindowSize({0,0}, ImGuiCond_Always)` in front of an `AlwaysAutoResize`
