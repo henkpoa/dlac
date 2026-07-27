@@ -254,6 +254,47 @@ separate session's work with its own queue standing.)
   Fixed both field cases at once, in opposite directions. See history.md for the two wrong
   diagnoses that came first; the trace killed both.
 
+### The Wishlist — `d18c614`..`5e55cdf` (2026-07-27)
+
+Three commits, addon `2026.07.27p` → **`27s`**, ADR 0026. Green on both suites
+(**3875 + 692**), Windows and WSL lua5.4. **FIELD-CONFIRMED 2026-07-27** across two
+rounds — Henrik: *"The extra level worked cascade menu wise… It looks great! I can also
+add the stuff to sets if I press add, also works!"* then, after the layout pass,
+*"It looks good and works."* Waits only on the go-ahead.
+
+- **`d18c614` — the feature (ADR 0026).** A **Wishlist entry is an ENTITY** keyed by item
+  Id (`feature/wishlist.lua`, `<char>\dlac\wishlist.lua`), with one note and any number
+  of **links**. Henrik's correction to the first, derived design — *"add the item to the
+  wish list as its own entity… then connect the set / sets that want it"* — and the better
+  model: you can wishlist a piece **for** WHM/Idle without stuffing it into the set.
+  The law it produces: **the stored half is an intention, the computed half is a fact,
+  neither is derived from the other, and where they disagree is where Apply belongs.**
+  Links are never revoked by dlac; set membership and ownership are re-read every time.
+  Set files are UNCHANGED (his call, *"b, keep set files clean"*) — the engine asks
+  `wishlist.isWished(name)` to silence `warnMissingGear`, failing toward warning.
+  `resolveGearName` became apostrophe-blind as a **fallback layer** beneath the exact
+  index (the API drops possessives but keeps `San D'Orian`), without which the whole
+  feature would have failed silently on the day a piece was finally acquired.
+  Bug caught on the way: catalog records carry a `Key` exactly like owned ones, so
+  `recordPath` would have written `gear.Body.X` for an unowned piece — `nil` in the set
+  file, entry gone without a word. Unowned pieces serialize as a quoted **name**.
+- **`8564e9e` — every column is measured.** Field round 1 banked a durable fact: the
+  **2-deep imgui cascade IS supported in this binding** (floatgear had only ever proven
+  one), so `popup → BeginMenu → BeginMenu → MenuItem` is now known-good for any future
+  context menu. What broke was layout — hardcoded pixel columns in a window whose content
+  is player-named. Also: a nil check is **not** redundant with a pcall around an imgui
+  call (`imgui.CalcTextSize` throws while EVALUATING its argument), and smoke's stub
+  `CalcTextSize` now returns a proportional width, because a stub answering a constant
+  cannot tell a real measurement from a hardcoded one — which is why the suite was green
+  straight through the bug.
+- **`5e55cdf` — the link column reserves instead of fits.** Field round 2: fitting the
+  column to the current entry is the right width for that entry and the wrong one for the
+  next, so it shifts under you as you select rows and a longer set name has nowhere to go.
+  Now `2×` the widest label on a 180 floor, capped at 360.
+- **Docs:** ADR 0026, CONTEXT.md (**Wishlist entry** / **Wishlist link**), architecture.md
+  (the module + the intention/fact split), README + `docs/guide.html` (player-facing:
+  the tab tick, the window, and building sets ahead of the hunt), history.md.
+
 ### AutoAmmo: the level ladder + the CW removal — `41432db`..`4d6bb12` (2026-07-27)
 
 Three commits, addon `2026.07.27l` → **`27o`**, engine v133 → **v134**. Green on both
@@ -395,62 +436,6 @@ research already recorded. In rough priority order:
    section heading rather than each carrying one. Trivial to change if it reads wrong.
 
 ## Current state (as of 2026-07-26)
-
-- **2026-07-27: the Wishlist — ON `dev`, PARTLY FIELD-CONFIRMED** (`2026.07.27s`, ADR 0026).
-  Henrik: *"add 'Show gear I don't own' like with lockstyle in all equipment… right click
-  and add pieces to wish list… also have this when building sets, so you can add stuff you
-  don't have (it won't try to use em, but if you get it, it's preemptively there, right?)"*
-  Yes — and the engine already did the hard half. Grilled to a shared design first
-  (`/grill-with-docs`); the two rulings that shaped it are his.
-  - **A Wishlist entry is an ENTITY** (`feature/wishlist.lua`, `<char>\dlac\wishlist.lua`),
-    keyed by item **Id**, existing on its own with one free-text note and any number of
-    **links**. His correction to the first design, and the better model: you can wishlist
-    a piece *for* WHM/Idle without stuffing it into the set at all.
-  - **Links are intentions, ownership is a fact.** A link is stored and dlac never revokes
-    it; whether the piece is actually in that set is read fresh from the set files and
-    shown beside it (`in the set (Body)` / `not added yet`). Ownership is never stored
-    either — read from the bags by Id, so selling a piece returns it to wanted. Nothing
-    can go stale because nothing derived is cached. Where the two disagree is exactly
-    where the **Apply** button lives; dlac never edits a set on its own.
-  - **Set files did NOT change.** `BuildDynamicSets` already skips a name it cannot
-    resolve, so a wishlisted piece can never shadow gear you own and starts working by
-    itself the day you get it. The only problem was `warnMissingGear` calling it a typo
-    every commit — so the engine now asks `wishlist.isWished(name)` and stays quiet.
-    A missing name that is *not* wishlisted still warns. (Considered and rejected:
-    `{ gear = 'X', wish = true }` — self-describing, but it changes a format that is
-    shared, hand-edited and round-tripped.)
-  - **The apostrophe trap, closed at the root.** The API drops the possessive apostrophe
-    (`Arhats Gi` vs the client's `Arhat's Gi`) but *keeps* the one in `San D'Orian`, so
-    `utils.resolveGearName` now strips on **both sides** — added as a FALLBACK layer under
-    the exact-lowercase index, so nothing that resolves today can resolve differently.
-    Without it the whole feature would have failed silently at the one moment it exists
-    for. Tests U4–U7.
-  - **A real bug found on the way:** catalog records carry a `Key` just like owned ones,
-    so `recordPath` would have rendered `gear.Body.Dalmatica` for an unowned piece — an
-    expression that evaluates to `nil` in the set file and drops the entry without a word.
-    Unowned pieces now serialize as a quoted **name**, which is the form `resolveGearName`
-    resolves.
-  - **Surfaces:** the All Equipment tab gets the tick it should always have had (same
-    `ui.showAll` flag Menu > Settings drives — one setting, two surfaces, both now worded
-    *"Show gear I don't own"*), orange for unowned, and a right-click `Wishlist ▸` submenu
-    (`IsMouseClicked(1)` + `OpenPopup` after the tree's `EndChild`; **never**
-    `BeginPopupContextItem`). The + Add picker gets the same tick, and adding an unowned
-    piece there auto-wishlists **and** auto-links it. Set totals count only gear you own.
-    Apply works for **any** job (`setmanager.commitSet` already takes one) and refuses
-    while the Sets tab holds uncommitted edits to that exact set; rings and ears cascade
-    one level to Ring1/Ring2, showing what already sits in each.
-  - **FIELD ROUND 1 (2026-07-27), Henrik:** *"The extra level worked cascade menu wise…
-    It looks great! I can also add the stuff to sets if I press add, also works!"* So the
-    **2-deep cascade IS supported in this binding** (a new fact — floatgear had only ever
-    proven one level) and the apply path works end to end. He flagged layout: `SAM /
-    Tp_Default` printed straight through the status beside it, and both filter combos
-    clipped to `All jo▼` / `All slo▼`. All of it was **hardcoded pixel columns** in a
-    window whose content is player-named — every column is now measured from the widest
-    string it will actually draw (`textW`), including the link column, the row columns and
-    the set combo. `textW` also had to survive a nil imgui: `imgui.CalcTextSize` on a nil
-    imgui throws while EVALUATING the argument, *before* the pcall runs.
-  - Green on both suites (3875 + 679), Windows and WSL lua5.4. New tests WL1–WL34, U4–U7,
-    S60–S95 and the render-balance section S150–S163.
 
 - **2026-07-27: reserved slots stop being invisible — ON `dev`, awaiting field test**
   (`2026.07.27p`). Henrik: *"if we equip a tunic that takes up the headslot, it ignores

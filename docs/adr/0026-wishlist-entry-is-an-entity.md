@@ -1,6 +1,6 @@
 # The Wishlist entry is an entity; its links are intentions, its ownership is a fact
 
-Status: accepted (2026-07-27)
+Status: accepted (2026-07-27) — field-confirmed the same day
 
 A **Wishlist entry** records an item the player means to acquire. It is keyed by item **Id**
 and exists on its own — created from an All Equipment right-click, or as a side effect of

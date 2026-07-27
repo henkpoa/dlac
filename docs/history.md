@@ -6142,9 +6142,42 @@ form that keeps working forever once you own the thing.
 cascade proven in this binding (floatgear proved one, 07-15). `hasMenu` is probed and a
 flat drill-down fallback exists, but this one wants eyes in-game.
 
-**Status:** on `dev`, **not** in the merge queue — Henrik has not field-tested it yet.
-Suites 3875 + 679 (WL1–WL34, U4–U7, S60–S95, S150–S163 added), green on Windows lua and
-WSL lua5.4.
+### The field rounds
+
+**Round 1** answered the one thing the suite could not: *"The extra level worked cascade
+menu wise… It looks great! I can also add the stuff to sets if I press add, also works!"*
+So **two-level imgui cascades ARE supported in this binding** — floatgear had only ever
+proven one, which is why the drill-down fallback exists and why this was flagged as the
+open risk. `popup → BeginMenu → BeginMenu → MenuItem` is now a known-good shape for any
+future context menu, and the fallback stays as insurance rather than as a live path.
+
+What he flagged instead was layout, and it was one mistake made in five places: hardcoded
+pixel columns in a window whose content is **player-named**. `SAM / Tp_Default` printed
+straight through the status beside it (`SameLine(140)`), and both filter combos clipped to
+`All jo▼` / `All slo▼`. Every column now derives from the widest string it will actually
+draw — the link column off the *same* `linkLabel()` the row prints, so the width and the
+text can never be computed differently.
+
+**Round 2** — *"`<JOB>` / `<SET>` still need more space, give it twice the space as it
+has, so we can handle longer set names"* — is the more interesting correction, because
+measuring was already *correct*. A column fitted to the current entry is the right width
+for that entry and the wrong width for the next one: it moves under you every time you
+select a different row, and a set name longer than today's has nowhere to go. Reserving
+beats fitting when the content is not yours to predict. Now `2×` the widest label on a
+180 floor, capped at 360 so the status and its buttons cannot leave the window.
+
+- **A stub that answers a CONSTANT cannot test a measurement.** `smoke_ui` was green
+  straight through the column bug because its `CalcTextSize` returned 10 for every string.
+  Section 6b's stub is proportional (~10px/char) now, and S92f–S92m pin the label/column
+  pair against Henrik's exact reported string. Same shape as the `pcall(require)` trap
+  above: a stub too obliging to fail hides the thing it was added to guard.
+- **A nil check is NOT redundant with a pcall around an imgui call.**
+  `pcall(imgui.CalcTextSize, s)` on a nil `imgui` throws while *evaluating the argument*,
+  before pcall ever runs.
+
+**Status:** on `dev`, **FIELD-CONFIRMED** across both rounds (*"It looks good and
+works."*) and **in the merge queue**. Addon `27q` → `27s`. Suites 3875 + 692 (WL1–WL34,
+U4–U7, S60–S95, S150–S163 added), green on Windows lua and WSL lua5.4.
 
 ## Session "am I dominant in both pieces?" (2026-07-27, on `dev` — addon 2026.07.27t, engine v134 → v135)
 
