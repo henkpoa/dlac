@@ -601,5 +601,65 @@ under and over the grace window, job change **not** dropping it); and payload ro
   `petmods.lua`, `statdefs.lua`, `levelscaling.lua`, `latentstats.lua`.
 - **Does he want the `dispatch` kind?** It puts dlac's rule-matching trace on the wire —
   richer, and a bigger surface to keep stable. Section 5 argues he does.
-- **Join on label + `seq`, never on "current".** Section 6, contract 1. This is the one way
-  to get subtly wrong numbers that look right.
+- **Join on `actionId` + `seq`, never on "current".** Section 6, contract 1, and §5.1. This is
+  the one way to get subtly wrong numbers that look right.
+
+---
+
+## 13. RESUME HERE — handover, end of 2026-07-28
+
+**State: designed, nothing built.** No code, no tests, no `M.VERSION` change, no behaviour
+change anywhere. Three docs-only commits on `dev`, clean tree:
+
+| | |
+|---|---|
+| `07ce85a` | the design + the consumer guide + two CONTEXT.md terms (already pushed, riding the parallel session's `10acc88`) |
+| `124dceb` | one decision record, three renderers; the stale `architecture.md` monitor bullet corrected |
+| `6b1b496` | items-not-set-names, `ctx.modes`, `totals` back in v1, the real change trigger |
+
+**`dev` is 2 commits ahead of `origin/dev` (`124dceb`, `6b1b496`) — unpushed.** Not promoted
+to main, and deliberately **not** in the merge queue: docs for unbuilt work are not a
+field-confirmed change.
+
+### Tomorrow's first move — Henrik is managing this one
+
+**Build the Dispatch Monitor, not the wire.** Henrik, 2026-07-28: *"We will build the
+dispatcher tomorrow… this is something I wanna manage."* The Trigger Monitor stays
+**untouched** (§11 item 3 ruling — trigger level is worth seeing on its own). What the new
+window needs:
+
+1. **Publish the decision record.** It already exists: `_trace[event].contest`
+   (`{ explain = arbExplain(claims, order, floor), … }`, stashed at retrace, v143) plus
+   `ctx.planOut` (the final plan as a value, v150). The work is *exposing* those as one
+   read-only record — computing nothing new, changing nothing about how the engine decides.
+2. **Render the per-slot outcome:** the winning item, the claimant that won it, who it beat,
+   and the verdict's word where there was one (`fell → X`, `INELIGIBLE`, `held EMPTY:
+   reserved by Y`). `/dl why` and `/dl why <slot>` already print exactly this to chat, so the
+   window is a second **renderer**, never a second derivation (mpBands' law: *never render a
+   rival*).
+3. **Keep `by` in the record** even though the stream defers it (§5.2) — this window is what
+   needs it, and it is the honest proof the record is right before anything reaches the wire.
+
+Then §11's order: the probe → the observer + switch → the `worn` query → the remaining kinds
+→ the five queries.
+
+### Do not re-derive these — each one cost something today
+
+- **The Trigger Monitor is not broken.** Its `/dlacmonev` push genuinely cannot be heard in
+  one Lua state, but `firedstate.lua` + a 1 Hz re-read carries it (§11 item 3b). The old
+  `architecture.md` bullet described the dead half and read like a dead feature. Fixed — but
+  the standing lesson is **field observation beats a doc section**, most of all in a file
+  whose own header says it awaits a rewrite.
+- **A set name is not a composition** (§5.3). Any future export, monitor or log that says
+  "switched to set X" is reporting an intention, not an outcome.
+- **The change trigger is the plan's content, not the retrace signature** (§5.4) — and gear
+  can move with no dispatch at all.
+- **`plugin_event`'s receive-side payload field name is still unverified.** Probe before
+  building anything on it; the consumer may settle it first.
+
+### Open, not blocking
+
+- **Relay question:** does the parser author want the `dispatch` kind (the rule-match trace on
+  the wire)? §5 argues yes; it is a bigger surface to keep stable.
+- **The parked plugin folder** (§10) stays parked. Revive only for something genuinely
+  in-state: a tab inside dlac's own window, or a gear claimant.

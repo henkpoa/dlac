@@ -49,6 +49,9 @@ maintainer IMO, I am just the one with the creative vision."*
    design with its rulings (section 10), so neither gets re-derived.
    [reference/integration-guide.md](reference/integration-guide.md) is the consumer-facing
    spec written to be handed to a third-party addon author verbatim.
+   **Resuming this work: read §13 of the design doc first** — it holds the state, the
+   decision ledger, tomorrow's first move (the **Dispatch Monitor**, which Henrik is
+   managing), and the four things not to re-derive.
 
 There is also a cross-session memory dir (Claude-specific) at
 `~\.claude\projects\C--catseyexi-catseyexi-client-Ashita-addons-dlac\memory\` — it
