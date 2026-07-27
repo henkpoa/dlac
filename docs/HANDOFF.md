@@ -240,8 +240,10 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-*(Empty -- last emptied by the 2026-07-27 promotion of the two-way Arbiter train,
-v136-v146 + the day's features; ADR 0027 + docs/design/two-way-arbiter.md are the record.)*
+*(Empty -- last emptied by the 2026-07-28 promotion of the ADR 0027 completion train,
+v147-v151 + stage 5 (`acc26c9` .. `4ad0360`): claim-side ladders, the belts come off,
+the pair law home, one-plan-one-send, THE MAXMP FOLD, the collapse retirement -- every
+stage field-confirmed. ADR 0027 + docs/design/two-way-arbiter.md are the record.)*
 
 ## What's left (open work, as of 2026-07-25)
 

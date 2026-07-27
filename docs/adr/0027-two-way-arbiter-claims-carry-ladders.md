@@ -1,9 +1,11 @@
 # The two-way Arbiter: Claims carry ladders; one arbitration per dispatch
 
-Accepted 2026-07-27 — **as a design contract.** Nothing is implemented; the staged
-migration (stages 0–6) lives in `docs/design/two-way-arbiter.md` §7 and no stage starts
-without Henrik's explicit go. This ADR records the rulings so they cannot drift while
-the stages land. Ratified item by item in one session, each with worked examples.
+Accepted 2026-07-27 — **as a design contract.** The staged migration (stages 0–6)
+lives in `docs/design/two-way-arbiter.md` §7; every stage started on Henrik's explicit
+go, and **all seven stages are SHIPPED** (stages 0–4 + 6 on 2026-07-27, engine
+v136–v151; stage 5 on 2026-07-28, addon `2026.07.28a`) — per-stage status blocks and
+honest deviations in §7. This ADR records the rulings so they cannot drift. Ratified
+item by item in one session, each with worked examples.
 
 ## The decision
 

@@ -3,7 +3,7 @@
     Statefile <char>\dlac\arbstate.lua (ADR 0012, step 2).
 
     Step 1 (engine v97) gave the engine the claim registry and taught it to READ
-    arbstate on its 1s throttle (dispatch.arbOrder / arbResolve / arbCededAbove);
+    arbstate on its 1s throttle (dispatch.arbOrder / arbResolve);
     THIS module is the WRITER the Automations-tab Priority section
     (ui/priorityui.lua) drives. Same two-state contract as every other Statefile:
     the GUI writes the file, the engine hot-reloads it -- a drag applies to the

@@ -3765,36 +3765,13 @@ end)();
         check('AL24 a pinned reserver still drops the reserved slot', alTbl.Head, nil);
         check('AL25 the pinned reserver itself equips', alTbl.Body, 'Ryl.Ftm. Tunic');
 
-        -- THE FLAP, through the overlay. reservedDrops judges ONE table at a
-        -- time, and the pin lands in its OWN equipResolved -- so the SET's pass
-        -- never learns the pinned Tunic is about to reserve the Head it is
-        -- equipping, and the pin's pass cannot drop a Head its table never
-        -- names. Without the hold: set equips Head, pin equips Tunic, server
-        -- strips Head, forever ("it just flashes back and forth infinitely").
-        -- (Nested do: this file's main chunk has its own 200-local ceiling.)
+        -- (AL34-AL41 RETIRED, step-1 cleanup 2026-07-27: the pin-reserved
+        --  hold is the cross-rank verdict's one general rule now -- a
+        --  dominant pin reserver suppresses the floor slot, ARK4 -- and
+        --  pinReservedSlots/nakedVoidsPinReserve are gone whole.)
         do
-            local res = dispatchM._pinReservedSlots({ Body = 'Ryl.Ftm. Tunic' });
-            check('AL34 a pinned reserver reports its reserved slot',
-                (res or {}).head, 'Ryl.Ftm. Tunic');
-            check('AL35 it does not report slots it never reserves', (res or {}).legs, nil);
-            -- the hold applied to the SET's pass: Head must not be equipped at all
-            local nt, st = dispatchM._equipResolved(
-                { Head = 'Silver Hairpin', Body = 'Cotton Doublet' },
-                { pinReserved = res });
-            check('AL36 the set never equips a slot a PIN reserves', st.Head, nil);
-            check('AL37 the set keeps every other slot', st.Body, 'Cotton Doublet');
-            check('AL38 the hold is traced for /dl why',
-                string.find(nt or '', 'RESERVED by pinned', 1, true) ~= nil, true);
-        end
-        do
-            -- no pins -> no hold -> the slot dispatches normally (stateless:
-            -- unpin and Head comes straight back on the next pass)
-            check('AL39 no pins -> nothing reserved', dispatchM._pinReservedSlots(nil), nil);
             local _, fr = dispatchM._equipResolved({ Head = 'Silver Hairpin' }, {});
-            check('AL40 unpinned, the same Head equips again', fr.Head, 'Silver Hairpin');
-            -- a pin never reserves ANOTHER pin's slot: you asked for both, both land
-            local r2 = dispatchM._pinReservedSlots({ Body = 'Ryl.Ftm. Tunic', Head = 'Silver Hairpin' });
-            check('AL41 a pin does not reserve a slot another pin owns', (r2 or {}).head, nil);
+            check('AL40 a direct pass equips Head normally', fr.Head, 'Silver Hairpin');
         end
     end
 end)();
@@ -6088,7 +6065,7 @@ end)();
     local po = dispatchM._postPassOrder;
     check('PL1 order exported', type(po), 'table');
     check('PL2 exact order', table.concat(po, '>'),
-        'mp-stage>craft-sub-guard>sync-hold-ammo>trinket-vs-ranged>reserved-drops');
+        'mp-hold>craft-sub-guard>sync-hold-ammo>trinket-vs-ranged>reserved-drops');
     local ti, ri = nil, nil;
     for i, nm in ipairs(po) do
         if nm == 'trinket-vs-ranged' then ti = i; end
@@ -6173,10 +6150,11 @@ end)();
     }, reordered, floor);
     check('AR5 a reorder changes the winner (craft over pins)', w2.Head, 'Craft Cap');
 
-    -- AR6: arbCededAbove -- the slots woven MaxMP must not contest. At default
-    -- rank the ceded set is Pins' and AutoAmmo's slots; Craft/HELM/Fishing rank
-    -- BELOW MaxMP so their slots are never ceded (batteries keep overriding
-    -- their armor). Reorder MaxMP above AutoAmmo and Ammo is no longer ceded.
+    -- AR6: arbCededAbove -- the pure "which slots did rows above X win" query.
+    -- (The live consumer died with the FOLD, stage 6 -- ceding is apply order
+    -- now -- but the query stays part of the arbiter's model: at default rank
+    -- Pins' and AutoAmmo's slots read as ceded to them, Craft/HELM/Fishing
+    -- rank BELOW MaxMP so theirs never do, and a reorder moves the answer.)
     local ceded = dispatchM.arbCededAbove({
         Pins     = { Head = 'Pinned Crown' },
         AutoAmmo = { Ammo = 'Fire Bomblet' },
@@ -6360,46 +6338,60 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
--- ARE. The Arbiter's ONE deliberate change wired through equipResolved (v97):
---      with an ON battery band and an AutoAmmo plan both wanting Ammo, the
---      named projectile wins -- Ammo is ceded to AutoAmmo (ranked above MaxMP),
---      so woven MaxMP stands down on that slot. Stubs M.mpBands so the MP path
---      is reachable headless without the whole manifest (the mpbands core has
---      its own MB* tests); the ceding GUARD is what this exercises.
+-- ARE. CEDING IS APPLY ORDER (the FOLD, stage 6 -- was: the v97 ctx.mpCeded
+--      rank consult). The MaxMP row builds its claim like every other
+--      claimant and its apply writes batteries into the dispatch plan; a slot
+--      wanted by a claimant ranked ABOVE is simply overwritten when that row
+--      applies after it -- there is nothing to compute. These drive the row
+--      directly (claim + apply against a stubbed band context + a live plan).
 -- ---------------------------------------------------------------------------
 (function()
     local savedAC, savedBands = AshitaCore, dispatchM.mpBands;
     AshitaCore = nil;                                   -- wornItemName -> nil everywhere
     for k in pairs(dispatchM.locks) do dispatchM.locks[k] = nil; end
     dispatchM.modes['maxmp'] = true;
-    -- A band that WANTS a 20-MP battery in Ammo. mpBandFind reads .bands ({} ->
-    -- nil, harmless); mpStickyPairs reads .mpBest (nil-safe for ammo).
-    dispatchM.mpBands = function()
-        return {
-            mpMap = { ['mp bullet'] = 20, ['fire bomblet'] = 0 },
-            target = { ammo = 'MP Bullet' },
-            bands = {}, mpBest = {}, moveYield = false, moving = false, mvMap = {},
-        };
-    end;
+    local row;
+    for _, r in ipairs(dispatchM._claimants) do if r.name == 'MaxMP' then row = r; end end
+    check('ARE0 the MaxMP row carries claim + apply since the fold',
+        row ~= nil and type(row.claim) == 'function' and type(row.apply) == 'function', true);
 
-    -- No ceding: the battery band takes Ammo (today's behavior).
-    local _, wOn = dispatchM._equipResolved({ Ammo = 'Fire Bomblet' }, { mpCeded = {} });
-    check('ARE1 with no ceding the battery wins Ammo', wOn.Ammo, 'MP Bullet');
-    -- Ammo ceded to AutoAmmo (the default rank): the projectile survives.
-    local _, wCede = dispatchM._equipResolved({ Ammo = 'Fire Bomblet' },
-        { mpCeded = { ammo = 'AutoAmmo' } });
-    check('ARE2 Ammo ceded -> the named projectile wins', wCede.Ammo, 'Fire Bomblet');
-    -- A NON-ceded MP slot still gets its battery (ceding is per-slot, not global).
     dispatchM.mpBands = function()
-        return {
-            mpMap = { ['mp ring'] = 15, ['plain ring'] = 0 },
-            target = { ring1 = 'MP Ring' },
-            bands = {}, mpBest = {}, moveYield = false, moving = false, mvMap = {},
-        };
+        return { mpMap = { ['mp bullet'] = 20, ['fire bomblet'] = 0 },
+                 target = { ammo = 'MP Bullet' },
+                 bands = {}, mpBest = {}, moveYield = false, moving = false, mvMap = {} };
     end;
-    local _, wRing = dispatchM._equipResolved({ Ring1 = 'Plain Ring' },
-        { mpCeded = { ammo = 'AutoAmmo' } });
-    check('ARE3 an un-ceded slot still takes its battery', wRing.Ring1, 'MP Ring');
+    -- The claim IS the band target map, canonical slot casing.
+    local mc = row.claim(nil, false, { ctx = {} });
+    check('ARE1 the row claim is the band target map', mc ~= nil and mc.Ammo, 'MP Bullet');
+    -- The apply lands the battery over the already-merged floor piece.
+    local ctx2 = { planOut = { Ammo = 'Fire Bomblet' } };
+    row.apply({ built = { MaxMP = { Ammo = 'MP Bullet' } }, ctx = ctx2,
+                respect = function() return true; end });
+    check('ARE2 the apply lands the battery in the shared plan', ctx2.planOut.Ammo, 'MP Bullet');
+    -- Ceding is apply order: a stronger row (AutoAmmo, above MaxMP) applies
+    -- AFTER and overwrites -- the projectile wins Ammo with no consult at all.
+    dispatchM._equipResolved({ Ammo = 'Orichalc. Bullet' }, ctx2, false, 'AutoAmmo');
+    check('ARE3 a stronger row overwrites the battery -- ceding is apply order',
+        ctx2.planOut.Ammo, 'Orichalc. Bullet');
+    -- v91 gate: an explicit `remove` in the plan is never claimed over.
+    dispatchM.mpBands = function()
+        return { mpMap = { ['mp ring'] = 15 }, target = { ring1 = 'MP Ring' },
+                 bands = {}, mpBest = {}, moveYield = false, moving = false, mvMap = {} };
+    end;
+    local ctx4 = { planOut = { Ring1 = 'remove' } };
+    row.apply({ built = { MaxMP = { Ring1 = 'MP Ring' } }, ctx = ctx4,
+                respect = function() return true; end });
+    check('ARE4 the remove-respect gate: an explicit empty beats a battery',
+        ctx4.planOut.Ring1, 'remove');
+    -- Weave-parity sight: a row ABOVE MaxMP claiming the sibling ring with the
+    -- SAME piece vetoes the battery even though it has not applied yet (the
+    -- weave ran inside that row's equipResolved and saw its table live).
+    local ctx5 = { planOut = {}, rankOf = { Pins = 3, MaxMP = 6 } };
+    row.apply({ built = { MaxMP = { Ring1 = 'MP Ring' },
+                          Pins  = { Ring2 = 'MP Ring' } }, ctx = ctx5,
+                respect = function() return true; end });
+    check('ARE5 an unapplied above-claim on the sibling vetoes the duplicate battery',
+        ctx5.planOut.Ring1, nil);
 
     dispatchM.modes['maxmp'] = nil;
     dispatchM.mpBands = savedBands;
@@ -6411,8 +6403,8 @@ end)();
 --     pinned surfaces: (a) the PURE resolve model -- Locks passed to arbResolve
 --     as a veto claim (arbLockClaim -> the LOCK_HELD sentinel), so its rank
 --     decides who punches through and who stops; (b) the LIVE wiring -- the
---     per-layer respectLocks flag through equipResolved, and woven MaxMP's own
---     rank vs Locks via ctx.mpRespectLocks (band build + mp-stage placement).
+--     per-layer respectLocks flag through equipResolved; since the FOLD
+--     (stage 6) MaxMP rides the same flag via its row's respect('MaxMP').
 -- ---------------------------------------------------------------------------
 (function()
     -- (a) The pure resolve model. arbLockClaim builds the veto table.
@@ -6477,10 +6469,10 @@ end)();
     check('LV5b explicit respectLocks=true stops (== the default)',
         select(2, dispatchM._equipResolved({ Head = 'Some Hat' }, {}, true)).Head, nil);
 
-    -- (b) woven MaxMP vs Locks -- its OWN rank via ctx.mpRespectLocks. mp-stage
-    -- must not dress a locked UNCOVERED slot while MaxMP ranks below Locks, and
-    -- must punch through when it ranks above. Stub mpBands (the MB* tests own the
-    -- band core); the veto guard is what this exercises.
+    -- (b) MaxMP vs Locks since the FOLD (stage 6): the row's apply passes the
+    -- ordinary respect('MaxMP') into equipResolved -- below Locks the battery
+    -- stops at a locked slot, above it punches through. Stub mpBands (the MB*
+    -- tests own the band core); the veto guard is what this exercises.
     local savedBands = dispatchM.mpBands;
     dispatchM.modes['maxmp'] = true;
     for k in pairs(dispatchM.locks) do dispatchM.locks[k] = nil; end
@@ -6489,16 +6481,85 @@ end)();
         return { mpMap = { ['mp ring'] = 15 }, target = { ring1 = 'MP Ring' },
                  bands = {}, mpBest = {}, moveYield = false, moving = false, mvMap = {} };
     end;
-    local _, wRespMp = dispatchM._equipResolved({ Head = 'Idle Hat' },
-        { mpCeded = {}, mpRespectLocks = true });
-    check('LV6 MaxMP staging respects a locked slot while below Locks', wRespMp.Ring1, nil);
-    local _, wPunchMp = dispatchM._equipResolved({ Head = 'Idle Hat' },
-        { mpCeded = {}, mpRespectLocks = false });
-    check('LV7 MaxMP staging punches through a locked slot while above Locks', wPunchMp.Ring1, 'MP Ring');
+    local mrow;
+    for _, r in ipairs(dispatchM._claimants) do if r.name == 'MaxMP' then mrow = r; end end
+    local ctxA = { planOut = {} };
+    mrow.apply({ built = { MaxMP = { Ring1 = 'MP Ring' } }, ctx = ctxA,
+                 respect = function() return true; end });
+    check('LV6 the MaxMP row respects a locked slot while below Locks', ctxA.planOut.Ring1, nil);
+    local ctxB = { planOut = {} };
+    mrow.apply({ built = { MaxMP = { Ring1 = 'MP Ring' } }, ctx = ctxB,
+                 respect = function() return false; end });
+    check('LV7 the MaxMP row punches through the lock while above Locks', ctxB.planOut.Ring1, 'MP Ring');
 
     dispatchM.modes['maxmp'] = nil;
     dispatchM.mpBands = savedBands;
     for k in pairs(dispatchM.locks) do dispatchM.locks[k] = nil; end
+    AshitaCore = savedAC;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- MH. THE MP-HOLD CONSTRAINT (the FOLD, stage 6). The one piece of MaxMP that
+--     stays inside equipResolved: a worn battery in a slot the bands do NOT
+--     target holds against an MP-lighter incoming piece (the no-band protect),
+--     releases when the band says `false`, and stands down when the asking
+--     claimant ranks at or above MaxMP (`who` + ctx.rankOf). Worn state comes
+--     through the real wornItemName glue (AshitaCore stubbed, the TB idiom).
+-- ---------------------------------------------------------------------------
+(function()
+    local savedAC, savedBands = AshitaCore, dispatchM.mpBands;
+    -- Worn stub: 'MP Robe' sits in Body (equip id 5), every other slot empty.
+    AshitaCore = {
+        GetMemoryManager = function()
+            return { GetInventory = function()
+                return {
+                    GetEquippedItem = function(self, id)
+                        if id == 5 then return { Index = 1 }; end
+                        return { Index = 0 };
+                    end,
+                    GetContainerItem = function(self, c, i) return { Id = 9001 }; end,
+                };
+            end };
+        end,
+        GetResourceManager = function()
+            return { GetItemById = function(self, id) return { Name = { 'MP Robe' } }; end };
+        end,
+    };
+    for k in pairs(dispatchM.locks) do dispatchM.locks[k] = nil; end
+    dispatchM.modes['maxmp'] = true;
+    dispatchM.mpBands = function()
+        return { mpMap = { ['mp robe'] = 50, ['plain robe'] = 0 },
+                 target = {}, bands = {}, mpBest = {},
+                 moveYield = false, moving = false, mvMap = {} };
+    end;
+    -- No band target + worn MP-heavier: the incoming piece is held out.
+    local nHold, wHold = dispatchM._equipResolved({ Body = 'Plain Robe' }, {});
+    check('MH1 no-band worn battery holds the slot', wHold.Body, nil);
+    check('MH1b the hold is traced', string.find(nHold, 'MP-HOLD', 1, true) ~= nil, true);
+    -- Band target `false`: the set piece flows (release), and says so.
+    dispatchM.mpBands = function()
+        return { mpMap = { ['mp robe'] = 50, ['plain robe'] = 0 },
+                 target = { body = false }, bands = {}, mpBest = {},
+                 moveYield = false, moving = false, mvMap = {} };
+    end;
+    local nRel, wRel = dispatchM._equipResolved({ Body = 'Plain Robe' }, {});
+    check('MH2 a false band target releases: the set piece flows', wRel.Body, 'Plain Robe');
+    check('MH2b the release is traced', string.find(nRel, 'MP-RELEASE', 1, true) ~= nil, true);
+    -- The rank guard: a claimant AT or ABOVE MaxMP is never held -- its win is
+    -- the arbitration's answer, and the constraint yields to rank.
+    dispatchM.mpBands = function()
+        return { mpMap = { ['mp robe'] = 50, ['plain robe'] = 0 },
+                 target = {}, bands = {}, mpBest = {},
+                 moveYield = false, moving = false, mvMap = {} };
+    end;
+    local _, wPin = dispatchM._equipResolved({ Body = 'Plain Robe' },
+        { rankOf = { Pins = 3, MaxMP = 6 } }, false, 'Pins');
+    check('MH3 a claimant above MaxMP is never MP-held', wPin.Body, 'Plain Robe');
+    local _, wCr = dispatchM._equipResolved({ Body = 'Plain Robe' },
+        { rankOf = { Craft = 7, MaxMP = 6 } }, true, 'Craft');
+    check('MH3b a claimant below MaxMP is still held', wCr.Body, nil);
+    dispatchM.modes['maxmp'] = nil;
+    dispatchM.mpBands = savedBands;
     AshitaCore = savedAC;
 end)();
 
@@ -6614,16 +6675,8 @@ end)();
     check('NK14 MaxMP cedes all 16 slots to Naked (lowercase keys)', nCede, 16);
     check('NK14b including the Ammo slot it would otherwise battery', ceded['ammo'], 'Naked');
 
-    -- The pinReserved void. A hold placed on behalf of a claimant Naked outranks
-    -- is void; one placed on behalf of a claimant that outranks Naked stands.
-    check('NK15 Naked above Pins voids the pin reservation',
-        dispatchM.nakedVoidsPinReserve({ Naked = 1, Pins = 2 }), true);
-    check('NK16 Pins above Naked keeps it',
-        dispatchM.nakedVoidsPinReserve({ Naked = 3, Pins = 1 }), false);
-    check('NK17 no Naked row -> nothing is voided',
-        dispatchM.nakedVoidsPinReserve({ Pins = 1 }), false);
-    check('NK17b a bad rank table never throws',
-        dispatchM.nakedVoidsPinReserve(nil), false);
+    -- (NK15-NK17 RETIRED with nakedVoidsPinReserve, step-1 cleanup
+    --  2026-07-27: pins-vs-naked is the verdict's strength contest now.)
 
     -- THE LIVE EQUIP LAYER. The claim has to survive equipResolved's five post
     -- passes intact -- an all-'remove' table is an input none of them were
@@ -6903,9 +6956,9 @@ end)();
         table.concat(dispatchM._claimantSigOrder, '|'),
         'Craft|Pins|HELM|Fishing|Chocobo|AutoAmmo|MaxMP|Naked|Disabled');
 
-    -- The documented exceptions are EXACTLY the documented exceptions. MaxMP:
-    -- no claim builder (inline-built, order-coupled to mpRespectLocks/mpCeded)
-    -- and no apply (its equip stays WOVEN until ADR 0027 stage 6). Locks: no
+    -- The documented exceptions are EXACTLY the documented exceptions. Since
+    -- the FOLD (stage 6) EVERY row builds its claim and applies through the
+    -- registry -- MaxMP was the last exception and it is gone. Locks: no
     -- signature leg (pre-registry parity -- it never had one).
     local noClaim, noApply, noSig = {}, {}, {};
     for _, row in ipairs(reg) do
@@ -6913,8 +6966,8 @@ end)();
         if row.apply == nil then noApply[#noApply + 1] = row.name; end
         if row.sig == nil then noSig[#noSig + 1] = row.name; end
     end
-    check('CR3 MaxMP is the only row without a claim builder', table.concat(noClaim, ','), 'MaxMP');
-    check('CR3b MaxMP is the only row without an apply (woven)', table.concat(noApply, ','), 'MaxMP');
+    check('CR3 every row has a claim builder (the fold closed the MaxMP exception)', table.concat(noClaim, ','), '');
+    check('CR3b every row has an apply (the weave is dead)', table.concat(noApply, ','), '');
     check('CR3c Locks is the only row without a signature leg', table.concat(noSig, ','), 'Locks');
 
     -- The bail sets: Disabled and MaxMP sit out BOTH bails by design (free
@@ -7142,6 +7195,117 @@ end)();
     check('LD10d an unknown set is nil', dispatchM.candidatesFor('Nope', 'Body'), nil);
     dispatchM._nativeSets = savedNS;
     package.loaded['dlac\\utils'] = savedPkgU;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- LD11. THE WORKING-MODEL BRIDGE (ADR 0027, stage 5 -- utils.workingPick).
+--       The Sets tab's preview twin (gearui's hand-mirrored bestByLevel)
+--       retired into this: working entries are shaped into authored form and
+--       judged by slotLadder, so the preview obeys the SAME laws -- the
+--       comparator, virtual adoption (LD8's quirk included), Sub pairing --
+--       with the caller's own level and mode judge (cctx.modeOk).
+-- ---------------------------------------------------------------------------
+(function()
+    local cctx = { mjLevel = 50, isDW = false };
+    local W = utils.workingPick;
+
+    -- The comparator through the bridge; the winner is the WORKING entry itself.
+    local wl = { { rec = { Name = 'Druid Robe', Level = 50 } },
+                 { rec = { Name = 'Garrison Tunica', Level = 20 }, minLevel = 20, maxLevel = 51 } };
+    local pick, lad = W(wl, 'Body', nil, cctx);
+    check('LD11 the bridge answers with the evaluator comparator',
+        pick ~= nil and pick.rec.Name or '?', 'Garrison Tunica');
+    check('LD11b the winner is the working entry itself (identity)', rawequal(pick, wl[2]), true);
+    check('LD11c the ladder rides along (rung 2 = the fall)', lad.items[2].name, 'Druid Robe');
+
+    -- The caller's own mode judge (display truth), never the engine's.
+    local wm = { { rec = { Name = 'Plain Body', Level = 40 } },
+                 { rec = { Name = 'DT Body', Level = 10 }, mode = 'DT' } };
+    local pOn  = W(wm, 'Body', nil, { mjLevel = 50, modeOk = function(m) return m == 'DT' end });
+    local pOff = W(wm, 'Body', nil, { mjLevel = 50, modeOk = function() return false end });
+    check('LD11d cctx.modeOk active -> the gated entry outranks', pOn ~= nil and pOn.rec.Name or '?', 'DT Body');
+    check('LD11e cctx.modeOk inactive -> excluded outright', pOff ~= nil and pOff.rec.Name or '?', 'Plain Body');
+
+    -- Virtual adoption follows the ENGINE law and maps back to the marker entry.
+    local savedDM3 = utils.dispatchModule;
+    utils.dispatchModule = { virtualMinLevel = function() return 3 end };
+    local wv = { { rec = { Name = 'dlac:AutoObi', Level = 3, Virtual = true } },
+                 { rec = { Name = 'Corsette', Level = 40 } } };
+    local pv = W(wv, 'Waist', nil, cctx);
+    check('LD11f a virtual takes the slot and maps to its working entry', rawequal(pv, wv[1]), true);
+    utils.dispatchModule = savedDM3;
+
+    -- Sub pairing judges against the planned Main, exactly like the flatten.
+    local twoH2 = { Name = 'Heavy Great Axe', Type = 'Great Axe', OneHanded = false, Level = 1 };
+    local ws = { { rec = { Name = 'Kite Shield', Type = 'Shield', Level = 1 } },
+                 { rec = { Name = 'Dark Grip', Type = 'Sub', Level = 1 } } };
+    local ps = W(ws, 'Sub', twoH2, cctx);
+    check('LD11g Sub pairing gates the preview like the flatten', ps ~= nil and ps.rec.Name or '?', 'Dark Grip');
+
+    -- A rec-less entry is a HOLE (skipped cleanly); ord still maps back.
+    local wh = { { rec = nil }, { rec = { Name = 'Real Robe', Level = 10 } } };
+    check('LD11h a hole entry skips and ord still maps back',
+        rawequal((W(wh, 'Body', nil, cctx)), wh[2]), true);
+
+    -- AutoAcc fields ride the working entry into the pool split; the marker
+    -- composes over the fallback exactly as the flatten stores it.
+    local wa = { { rec = { Name = 'Plain Ring', Level = 40 } },
+                 { rec = { Name = 'Acc Ring', Level = 30 }, autoType = 'AutoAcc', removePrio = 2, acc = 15 } };
+    local pa, laa = W(wa, 'Ring1', nil, cctx);
+    check('LD11i the AutoAcc entry wins as the composed head (pool split)', rawequal(pa, wa[2]), true);
+    check('LD11j ...and its ladder still composes the flatten marker',
+        (utils.flattenHead(laa, 'Ring1')), 'dlac:AutoAcc:2:15:Acc Ring|Plain Ring');
+end)();
+
+-- ---------------------------------------------------------------------------
+-- GC. GEARCHECK THROUGH THE LADDER DOOR (ADR 0027, stage 5). With
+--     deps.candidatesFor wired, a named set audits each slot's HEAD rung --
+--     what the set will actually ask for -- so list-valued slots (silently
+--     skipped by the raw walk) are covered and deeper rungs are not false
+--     needs. Without the door, the raw degraded walk stands as before.
+-- ---------------------------------------------------------------------------
+(function()
+    local gcm = dofile('gear/gearcheck.lua');   -- fresh instance (the harness idiom)
+    local savedGI = package.loaded['dlac\\gear\\gearimport'];
+    package.loaded['dlac\\gear\\gearimport'] = {
+        ownedSplit = function()
+            return { avail = { [77] = 0, [88] = 1 }, total = { [77] = 1, [88] = 1 },
+                     where = { [77] = { [5] = 1 } } };
+        end,
+        containerName = function(cid) return 'Mog Safe'; end,
+    };
+    local lookup = { ['Head Robe'] = { Id = 77 }, ['Deep Robe'] = { Id = 88 } };
+    local base = {
+        setsRoot = function() return { Dynamic = { LadSet = { Body = { 'authored entry' } } } }; end,
+        lookupByName = function(nm) return lookup[nm]; end,
+        model = function() return { HandleDefault = { { set = 'LadSet' } } }; end,
+    };
+
+    -- The door answers: the audit reads the HEAD rung only.
+    base.candidatesFor = function(s, sl)
+        if s == 'LadSet' and sl == 'Body' then
+            return { items = { { name = 'Head Robe' }, { name = 'Deep Robe' } }, accs = {} };
+        end
+        return nil;
+    end;
+    gcm.configure(base);
+    local warns = gcm.audit();
+    check('GC1 the ladder-door audit warns on the head rung', #warns, 1);
+    check('GC1b ...as stored (owned, not equippable)', warns[1] ~= nil and warns[1].kind or '?', 'stored');
+    check('GC1c ...naming the head piece', warns[1] ~= nil and warns[1].item or '?', 'Head Robe');
+    check('GC1d ...with the retrieve-from location', warns[1] ~= nil and warns[1].where or '?', 'Mog Safe');
+    local deepNamed = false;
+    for _, w in ipairs(warns) do if w.item == 'Deep Robe' then deepNamed = true; end end
+    check('GC2 deeper rungs are alternatives, never false needs', deepNamed, false);
+
+    -- Without the door: the raw degraded walk (a list-valued slot is silently
+    -- skipped -- the pre-stage-5 hole, pinned here as WHY the door matters).
+    base.candidatesFor = nil;
+    gcm.configure(base);
+    check('GC3 the degraded raw walk still skips list-valued slots', #gcm.audit(), 0);
+
+    gcm.configure(nil);
+    package.loaded['dlac\\gear\\gearimport'] = savedGI;
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -7467,6 +7631,48 @@ end)();
     check('ARK13 the frozen cloak suppresses the floor Head claim', sup.Head, 'Royal Cloak');
     check('ARK13b nothing reads ineligible', inel, nil);
     check('ARK13c and nothing falls', rep, nil);
+
+    -- ARK14: CLAIM-SIDE LADDERS (stage 4, last slice -- future-proofing: no
+    -- hobby/craft item carries an RSlot today, but the day one does, a beaten
+    -- claim piece falls down its own resolver chain). The rows carry rladder;
+    -- the '\031'-src route is pinned as source; a ladder-less state answers
+    -- nil gracefully.
+    local byR = {};
+    for _, row in ipairs(dispatchM._claimants) do byR[row.name] = row; end
+    check('ARK14 Craft carries a claim-side ladder', type(byR['Craft'].rladder), 'function');
+    check('ARK14b Fishing and Chocobo too',
+        type(byR['Fishing'].rladder) == 'function' and type(byR['Chocobo'].rladder) == 'function', true);
+    check('ARK14c an off craft state has no ladder', byR['Craft'].rladder('head', { enabled = false }), nil);
+    check('ARK14d a headless chain answers nil, never throws',
+        (function() local ok, v = pcall(byR['Fishing'].rladder, 'body', nil, {}); return ok and v == nil; end)(), true);
+    check('ARK14e the claim src route is the control-char prefix (source pin)',
+        dsrc:find("('\\031' .. cn)", 1, true) ~= nil, true);
+
+    -- OS1: ONE PLAN, ONE SEND (stage 3's last slice). A full dispatch -- the
+    -- NK26 recipe with naked armed -- must reach the equip door EXACTLY once,
+    -- with the same 16-remove map the N sends used to accumulate.
+    local savedPlayerOS, savedStateOS = TEST_PLAYER, rawget(_G, 'gState');
+    TEST_PLAYER = { MainJob = 'WHM', MainJobLevel = 75, SubJob = 'BLM', SubJobLevel = 37,
+                    MainJobSync = 75, SubJobSync = 37, Status = 'Idle', IsMoving = false };
+    _G.gState = { CurrentCall = 'N/A', Disabled = {} };
+    local savedEngOS = package.loaded['dlac\\feature\\equipengine'];
+    local sends, wroteOS = 0, {};
+    package.loaded['dlac\\feature\\equipengine'] = {
+        nativeOn = function() return true; end,
+        equipSet = function(t) sends = sends + 1; for k, v in pairs(t or {}) do wroteOS[k] = v; end end,
+        state = { tripped = false },
+    };
+    dispatchM.nakedArmed = true;
+    local okOS = pcall(dispatchM.dispatch, 'Default');
+    check('OS1 the dispatch does not throw', okOS, true);
+    check('OS1b the equip door is reached EXACTLY once', sends, 1);
+    local nOS = 0;
+    for _, v in pairs(wroteOS) do nOS = nOS + 1; if v ~= 'remove' then nOS = -99; end end
+    check('OS1c and carries the whole 16-remove plan', nOS, 16);
+    dispatchM.nakedArmed = false;
+    package.loaded['dlac\\feature\\equipengine'] = savedEngOS;
+    TEST_PLAYER = savedPlayerOS;
+    _G.gState = savedStateOS;
 
     -- WY1: the contest stash (/dl why <slot>, ADR 0027 item 4). NK26's real
     -- dispatch above ran the stash path; its Default trace must carry the

@@ -2266,8 +2266,12 @@ local function loadSet(setName)
     end);
 end
 
--- The item LAC would wear from a slot's list at mainLevel (highest Level <= mainLevel,
--- honouring per-item min/maxLevel). Mirrors utils.BuildDynamicSets.
+-- The item LAC would wear from a slot's list at mainLevel -- answered by THE
+-- evaluator (utils.workingPick -> slotLadder; ADR 0027 stage 5). The preview
+-- and the flatten cannot drift: same comparator, same virtual-adoption law,
+-- same Sub pairing against this set's own planned Main. Mode gates keep the
+-- preview-side judge (entryModeOk -- display truth) via cctx.modeOk. The
+-- hand-mirrored comparator lived here until stage 5 retired it.
 
 -- Preview-side mode check for mode-gated entries: triggersui judges the condition
 -- against the LAC-state modestate mirror. Without triggersui, gated entries
@@ -2286,41 +2290,33 @@ local function modeTagText(m)
     return tostring(m);
 end
 
-local function bestByLevel(list, mainLevel)
-    if type(list) ~= 'table' then return nil; end
-    local best, bestLevel, bestRank = nil, -1, -1;
-    local ml = mainLevel or 0;
-    -- A virtual entry takes the slot outright -- once the character reaches its
-    -- ladder level (rec.Level = the lowest manifest item it resolves to, stamped
-    -- by resolveSetItem via virtualLevel; 0 = unknown = the old unconditional
-    -- take). Below that, the real items compete and the pick mirrors what
-    -- BuildDynamicSets now flattens (Henrik's field case: AutoIridescence at
-    -- "Lv0" shadowed the Pilgrim's Wand a leveling WHM actually wears).
-    for _, it in ipairs(list) do
-        if it.rec ~= nil and it.rec.Virtual == true
-           and (tonumber(it.rec.Level) or 0) <= ml then
-            return it;
+local function previewCctx(mainLevel)
+    local isDW = false;
+    pcall(function()
+        local utils = require("dlac\\utils");
+        local p = gData.GetPlayer();
+        local _, sjL = utils.determineLevels();
+        isDW = utils.isDualWieldAvailable(p.MainJob, tonumber(mainLevel) or 0, p.SubJob, sjL) == true;
+    end);
+    return { mjLevel = tonumber(mainLevel) or 0, isDW = isDW, modeOk = entryModeOk };
+end
+
+local function bestByLevel(list, mainLevel, slotName)
+    local ok, utils = pcall(require, "dlac\\utils");
+    if not ok or type(utils) ~= 'table' or type(utils.workingPick) ~= 'function' then return nil; end
+    local cctx = previewCctx(mainLevel);
+    local currentMain = nil;
+    if slotName == 'Sub' and type(M.working['Main']) == 'table' then
+        -- Sub pairs against this set's own planned Main, exactly as the
+        -- flatten walks Main first (a staff MARKER synthesizes its 2H object
+        -- through flattenHead, so the grip that belongs with it previews too).
+        local _, mlad = utils.workingPick(M.working['Main'], 'Main', nil, cctx);
+        if mlad ~= nil and type(utils.flattenHead) == 'function' then
+            local _, mo = utils.flattenHead(mlad, 'Main');
+            currentMain = mo;
         end
     end
-    for _, it in ipairs(list) do
-        local rec = it.rec;
-        if rec ~= nil and type(rec.Level) == 'number' then
-            local minL = it.minLevel or 0;
-            local maxL = it.maxLevel or 999;
-            -- rank mirrors the engine: active mode-gated entries beat everything;
-            -- then a RANGED entry live at this level beats unbounded ones (a range
-            -- owns its window); then plain best-by-level. Inactive gates excluded.
-            local rank = nil;
-            local ranged = (it.minLevel ~= nil or it.maxLevel ~= nil) and 1 or 0;
-            if it.mode == nil then rank = ranged;
-            elseif entryModeOk(it.mode) then rank = 2 + ranged; end
-            if rank ~= nil and rec.Level <= ml and ml >= minL and ml <= maxL
-               and (rank > bestRank or (rank == bestRank and rec.Level > bestLevel)) then
-                best = it; bestLevel = rec.Level; bestRank = rank;
-            end
-        end
-    end
-    return best;
+    return (utils.workingPick(list, slotName or 'Body', currentMain, cctx));
 end
 
 -- The PLANNED composition: best-by-level pick per slot (plan data only, nothing
@@ -2328,7 +2324,7 @@ end
 local function workingComposition(mainLevel)
     local comp = {};
     for _, sl in ipairs(EQUIP_SLOTS) do
-        local pick = bestByLevel(M.working[sl.label], mainLevel);
+        local pick = bestByLevel(M.working[sl.label], mainLevel, sl.label);
         if pick ~= nil and pick.rec ~= nil then comp[sl.label] = pick.rec; end
     end
     return comp;
@@ -2635,7 +2631,7 @@ local function autoBuild(job, level)
         -- with the Main we already built (Main precedes Sub). Equip-correct: the
         -- auto-build answers "best usable now", so the DW gate applies.
         if sl.gear == 'Sub' then
-            local mp = bestByLevel(built['Main'], useLevel);
+            local mp = bestByLevel(built['Main'], useLevel, 'Main');
             cands = subFilter(subCandidatePool(job, useLevel), mp and mp.rec or nil, job, useLevel);
             -- Joint marginal pick for Sub: everything already chosen is the fixed
             -- background, so a Sub that only re-adds capped stats stays home --
@@ -3629,24 +3625,24 @@ local function renderSetBuilder(job, level)
     -- warning the builder invents -- it is dispatch.reservedDrops, the same pass
     -- that runs at equip time, so what the grid marks is exactly what happens.
     local resvDrops = rsv.dropsIn(function(label)
-        local pick = bestByLevel(M.working[label], level);
+        local pick = bestByLevel(M.working[label], level, label);
         return pick and pick.rec and pick.rec.Name or nil;
     end) or {};
 
     renderSlotGrid('set', 182, ui.setSelected,
         function(sl)
-            local pick = bestByLevel(M.working[sl.label], level);
+            local pick = bestByLevel(M.working[sl.label], level, sl.label);
             return pick and pick.rec and pick.rec.Id or nil;
         end,
         function(sl)
             local list = M.working[sl.label];
-            local pick = bestByLevel(list, level);
+            local pick = bestByLevel(list, level, sl.label);
             local nm = (pick and pick.rec and pick.rec.Name) or '(empty)';
             return string.format('%s (%d)', fmt.truncate(nm, 12), (list and #list) or 0);
         end,
         function(labelKey) ui.setSelected = labelKey; end,
         function(sl)
-            local pick = bestByLevel(M.working[sl.label], level);
+            local pick = bestByLevel(M.working[sl.label], level, sl.label);
             return pick and pick.rec or nil;
         end,
         nil,
@@ -3692,7 +3688,7 @@ local function renderSetBuilder(job, level)
     imgui.SameLine(); if imgui.Button('+ Add##setadd', { 60, 0 }) then ui._openAddPopup = true; ui.addSearch = { '' }; ui.addTypeFilter = {}; ui._addGate = nil; end   -- weapon-type filter resets to "All" each open (F2a/F2b); no mode gate (that's the sections' Add more)
     imgui.SameLine(0, 8); renderSortCombo('setlist');
 
-    local pick = bestByLevel(list, level);
+    local pick = bestByLevel(list, level, ui.setSelected);
     local pickRec = pick and pick.rec or nil;
     local disp = sortItemsForDisplay(list);
 
