@@ -11132,6 +11132,10 @@ end)();
     };
 
     prof.nativeMode = function() return false; end
+    -- A DECIDED legacy world (flag on disk, value off): dataDir's native-first
+    -- hold (NO50) applies only to the undecided flag-ABSENT boot window.
+    local savedFlagStateNE = prof.engineFlagState;
+    prof.engineFlagState = function() return 'legacy'; end
     check('NE8 charFolder is <Name>_<Id>',    prof.charFolder(), 'Mindie_12345');
     check('NE9 legacy dataDir rides LAC tree', prof.dataDir(),
           'I:\\game\\config\\addons\\luashitacast\\Mindie_12345\\dlac\\');
@@ -11144,6 +11148,7 @@ end)();
     check('NE13 legacy cross-char data dir nests dlac\\', prof.charDataDirAt('Frieda_777'),
           'I:\\game\\config\\addons\\luashitacast\\Frieda_777\\dlac\\');
     check('NE14 legacy has no second exports home', prof.legacyExportsDir(), nil);
+    prof.engineFlagState = savedFlagStateNE;
 
     prof.nativeMode = function() return true; end
     check('NE15 native dataDir is dlac\'s own root, no dlac\\ level', prof.dataDir(),
@@ -11497,6 +11502,32 @@ end)();
     prof._legacyProbe = function() return true; end
     check('NO49 legacy resolves', prof.firstRunInit(), 'legacy');
     check('NO49b legacy resolution is silent', #lines, 0);
+
+    -- NO50. THE PATH AUTHORITY HOLDS WHILE UNDECIDED (field 2026-07-27, Xvs's
+    -- clean reinstall: config\addons\luashitacast AND config\addons\dlac both
+    -- deleted, and "migrate to native" still appeared). The 07-23 fix held
+    -- maintainStorage's OWN writers, but dataDir kept composing the LEGACY
+    -- home during the undecided window (flag absent -> nativeMode false), so
+    -- any login-time writer riding it -- the gear scan's commit above all --
+    -- could still plant gear.lua under luashitacast\, and the NEXT beat read
+    -- dlac's own file back as legacy evidence. dataDir now answers nil until
+    -- the decision latches: "not logged in yet", every writer holds.
+    local savedCharFolder = prof.charFolder;
+    prof.charFolder = function() return 'Testy_123'; end   -- charBase resolves
+    prof.invalidateNative();
+    prof._resetFirstRun();
+    prof.engineFlagState = function() return 'absent'; end
+    prof._listDirs = function() return nil; end             -- undecided world
+    check('NO50 dataDir holds while the first run is undecided', prof.dataDir(), nil);
+    -- A latched LEGACY verdict reopens the legacy home exactly as before.
+    prof._listDirs = function(p)
+        if p:find('luashitacast', 1, true) then return { 'Testy_123' }; end
+        return { 'luashitacast' };
+    end
+    prof._legacyProbe = function() return true; end
+    check('NO50b a latched legacy verdict reopens it',
+          prof.firstRunInit() == 'legacy' and type(prof.dataDir()) == 'string', true);
+    prof.charFolder = savedCharFolder;
 
     print = savedPrint;
     prof._listDirs, prof._legacyProbe = savedList, savedProbe;

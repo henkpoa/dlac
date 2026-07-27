@@ -200,8 +200,27 @@ end
 -- THE dlac data home: profiles\, profile.lua pointer, gear.lua, modestate,
 -- watcher state files, debug handoffs... -- everything dlac reads and writes
 -- about a character lives under this one directory.
+-- First-run latch (firstRunInit below owns it; declared here because dataDir
+-- reads it, and a Lua upvalue binds only to a local declared above).
+local _firstRun = { done = false, action = nil, warned = false };
 function M.dataDir()
     if M.nativeMode() then return M.nativeCharBase(); end
+    -- NATIVE-FIRST HOLD (field 2026-07-27, Xvs's clean reinstall: BOTH config
+    -- trees deleted, and "migrate to native" still appeared). While the engine
+    -- flag is absent and the first-run decision has not latched, NO caller may
+    -- compose the LEGACY home: the 07-23 fix held maintainStorage's own
+    -- writers, but the login gear scan rode THIS door during the undecided
+    -- window, wrote gear.lua under luashitacast\, and the next beat read
+    -- dlac's own file back as "existing legacy user" (manufactured evidence).
+    -- nil reads as "not logged in yet" everywhere, so every writer holds until
+    -- firstRunInit resolves -- seconds, at boot, once per install. The hold
+    -- applies only where the decision CAN resolve: the addon state runs
+    -- firstRunInit on the storage watch; the LuaAshitacast state never does,
+    -- and its very presence (gFunc, dispatch's own inLac signal) already IS
+    -- the legacy verdict -- holding there would starve a flag-less legacy
+    -- user's engine of its data home forever.
+    if not _firstRun.done and rawget(_G, 'gFunc') == nil
+       and M.engineFlagState() == 'absent' then return nil; end
     local b = charBase();
     return b and (b .. 'dlac\\') or nil;
 end
@@ -600,7 +619,8 @@ end
 -- self-manufactured-evidence bug). A RESOLVED decision is silent (the player
 -- is not told about first runs or engines); the two FAILURE modes warn once --
 -- silence has no author, and a broken boot should name its own domino.
-local _firstRun = { done = false, action = nil, warned = false };
+-- (_firstRun itself is declared up with the path authorities: dataDir's
+-- undecided hold reads it, and an upvalue must be declared above its reader.)
 function M.firstRunInit()
     if _firstRun.done then return _firstRun.action; end
     local flagState = M.engineFlagState();
