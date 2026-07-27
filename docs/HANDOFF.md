@@ -286,6 +286,22 @@ intact), craft and HELM work. Waits only on the go-ahead.
   MaxMP Cassandra's-over-Outlaw's earring pick is OLD weave behavior, untouched by both
   commits — one `/dl plan` while it is happening will name the rung and thresholds.)
 
+### The arbiter module — ADR 0027 stage 3, slice 1 — `86b3447` (2026-07-27)
+
+Engine v139 → **v140**, addon `27za` → **`27zb`**, zero behavior change. Suites **4011 +
+693**, Windows and WSL lua5.4. **FIELD-CONFIRMED 2026-07-27** by Henrik — *"Looks to work
+like before."* Waits only on the go-ahead.
+
+- `gear/arbiter.lua` is born: the PURE decision core (ARM1 loads it with no stubs) —
+  the slot + rank vocabulary, the reservation family (v135 verdict + the stage-2 fall)
+  and the resolve/explain family moved verbatim; every old dispatch seam is a
+  rawequal-pinned delegation (ARM2*, `LOCK_HELD` identity preserved);
+  `arbitrate(session)` owns the apply order and `M.dispatch` executes the plan.
+  dispatch.lua shed 547 net lines.
+- (Stage 4 slice 1 — `af37d01`, v141, `27zc`, dominance across rank — is on dev but
+  **NOT yet field-looked**; its acceptance is the craft bench. It joins the queue on
+  Henrik's confirmation, not before.)
+
 ### Ladders on demand + the fall — ADR 0027 stages 1–2 — `b26a1da` + `ad7ab30` (2026-07-27)
 
 Engine v137 → **v139**, addon `27z` → **`27za`**. Suites **3997 + 693**, Windows and WSL
