@@ -240,8 +240,20 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-*(Empty -- last emptied by the 2026-07-27 promotion of the two-way Arbiter train,
-v136-v146 + the day's features; ADR 0027 + docs/design/two-way-arbiter.md are the record.)*
+### Claim-side ladders + the belts come off — `acc26c9` + `60ef4fa` (2026-07-27)
+
+Engine v146 → **v148**, addon `27zh` → **`27zj`**. Suites **4047 + 693**, Windows and WSL
+lua5.4. **FIELD-CONFIRMED 2026-07-27** by Henrik — *"everything seems to be like before"*,
+plus the rank contest verified both ways: Naked above Pins → naked wins; Pins dragged
+above Naked → pins win. Waits only on the go-ahead.
+
+- `acc26c9` (v147) — claim-side ladders: a beaten CLAIM piece falls down its own resolver
+  chain (craft/fish/choco rows carry `rladder`; the chain walk gained a collect mode, one
+  code path). Field-inert by design until a reserving hobby item exists.
+- `60ef4fa` (v148) — `ctx.pinReserved`, `pinReservedSlots` and `nakedVoidsPinReserve`
+  DELETED whole (mechanisms #3 + #9 of the ADR 0027 inventory, closed): the cross-rank
+  verdict's one general rule carries the v43 flap guard and pins-vs-naked (ARK4);
+  AL34–41 + NK15–17 retired with their mechanisms. Net −104/+38 lines.
 
 ## What's left (open work, as of 2026-07-25)
 
