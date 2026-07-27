@@ -30,15 +30,7 @@ function M.charDir()
         local ok2, d = pcall(prof.dataDir);
         if ok2 and d ~= nil then return d; end
     end
-    local dir = nil;
-    pcall(function()
-        local party = AshitaCore:GetMemoryManager():GetParty();
-        local name, id = party:GetMemberName(0), party:GetMemberServerId(0);
-        if name == nil or name == '' or id == nil then return; end
-        dir = string.format('%sconfig\\addons\\luashitacast\\%s_%u\\dlac\\',
-            AshitaCore:GetInstallPath(), name, id);
-    end);
-    return dir;
+    return nil;   -- purge Phase 4: no legacy fallback composition
 end
 
 return M;

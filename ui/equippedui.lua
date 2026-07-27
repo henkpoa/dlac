@@ -304,7 +304,7 @@ local function renderEquippedTab(job, level)
               .. 'Taking a weapon off zeroes your TP and drops Aftermath -- that is the server.\n'
               .. 'Getting dressed brings back what your sets NAME; anything you had put on by\n'
               .. 'hand you re-equip yourself.\n\n'
-              .. 'Release: uncheck this, /dl dress, or a Reload LAC. Also /dl naked.'));
+              .. 'Release: uncheck this, /dl dress, or /dl reload. Also /dl naked.'));
         end
         if nk[1] and not blocked then
             imgui.SameLine(0, 10);
@@ -486,7 +486,6 @@ local function renderEquippedTab(job, level)
             local s = ui.eqSelected and S.lacSlot(ui.eqSelected) or 'all';
             pcall(function()
                 AshitaCore:GetChatManager():QueueCommand(1, '/dl lock ' .. s .. ' off');
-                AshitaCore:GetChatManager():QueueCommand(1, '/lac enable ' .. s);
             end);
             S.lockMirrorDirty();   -- re-read the engine mirror promptly
         end

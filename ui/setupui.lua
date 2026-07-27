@@ -73,63 +73,11 @@ setup.jobSetupState = function()
     return st;
 end
 
--- One-line bootstrap that puts the dlac addon library on the profile's package.path so
--- require("dlac\\utils") resolves to the addon. [[...]] keeps the backslashes literal.
-local MIGRATE_BOOT = [[package.path = package.path .. ';' .. AshitaCore:GetInstallPath() .. 'addons\\?.lua';  -- dlac: use the dlac addon library]];
-
--- Starter profile written when a job has no dlac profile yet. This mirrors LuaAshitacast's
--- own `/lac newlua` skeleton (OnLoad/AllowAddSet kept, so `/lac addset` works) and adds the
--- dlac wiring: the require, a Dynamic sets scaffold, `utils.rebuildSets(sets)` plus a
--- `utils.dispatch('<Handler>')` shim in every handler (ADR 0002). ALL equip logic is data
--- in <char>\dlac\triggers\<JOB>.lua -- Setup seeds it with the classic status rules
--- (Engaged/Resting/Movement/Idle) so a fresh profile behaves out of the box. Build sets in
--- the GUI (Sets tab); wire behavior in the Triggers tab (or edit the trigger file directly).
--- MIGRATE_BOOT is prepended when written so LAC can resolve require("dlac\\utils"). Inside
--- [[...]] the backslashes are literal on purpose.
-local STARTER_PROFILE = [[
-local profile = {};
-local utils = require("dlac\\utils");   -- everything comes through this one require
-local gear  = utils.gear;               -- the shared gear inventory
-local sets = {
-    Dynamic = {                         -- dlac: build these in the GUI (Sets tab); best-per-level is auto-picked
-        Idle       = {},
-        Tp_Default = {},
-        Resting    = {},
-        Movement   = {},
-    },
-};
-profile.Sets = sets;
-
-profile.Packer = {
-};
-
-profile.OnLoad = function()
-    gSettings.AllowAddSet = true;
-end
-
-profile.OnUnload = function()
-end
-
-profile.HandleCommand = function(args)
-end
-
--- All equip logic is data: utils.dispatch reads <char>\dlac\triggers\<JOB>.lua
--- (hot-reloaded -- edit triggers in the dlac GUI or the file; no /lac reload needed).
-profile.HandleDefault = function()
-    sets = utils.rebuildSets(sets);
-    utils.dispatch('Default');
-end
-
-profile.HandleAbility     = function() utils.dispatch('Ability');     end
-profile.HandleItem        = function() utils.dispatch('Item');        end
-profile.HandlePrecast     = function() utils.dispatch('Precast');     end
-profile.HandleMidcast     = function() utils.dispatch('Midcast');     end
-profile.HandlePreshot     = function() utils.dispatch('Preshot');     end
-profile.HandleMidshot     = function() utils.dispatch('Midshot');     end
-profile.HandleWeaponskill = function() utils.dispatch('Weaponskill'); end
-
-return profile;
-]];
+-- (MIGRATE_BOOT and STARTER_PROFILE -- the LAC job-file texts Setup used to
+-- write -- died in the purge, Phase 1. Setup writes NO job files anymore: the
+-- native engine never reads one, and nothing writes under luashitacast\. The
+-- starter content lives on as profile-store seeds: seedSetsFile's four base
+-- sets + seedTriggersFile's classic status rules below.)
 
 -- Seed <char>\dlac\triggers\<JOB>.lua with the classic status rules (never clobbers an
 -- existing file). The starter text lives in dispatch.lua (single source of truth); the
@@ -256,13 +204,9 @@ setup.migrateToCleanProfiles = function()
         return;
     end
     if (done or 0) > 0 then
-        local msg = string.format('Moved %d job file(s) to the clean dlac standard -- originals in backups\\pre-profiles\\ (details in chat). Old sets: Sets tab "Copy from". Old group tables: Triggers tab, Groups, "Scan my Lua". Reloading LuaAshitacast...', done);
+        local msg = string.format('Migrated %d job file(s) of data into the profile store -- originals untouched, backups in backups\\pre-profiles\\ (details in chat). Old sets: Sets tab "Copy from". Old group tables: Triggers tab, Groups, "Scan my Lua".', done);
         D.status(msg);
         pcall(function() print('[dlac] ' .. msg); end);
-        -- (Used to arm the red "Reload LAC" header button; that button was deleted
-        -- 2026-07-24 -- legacy LAC is not a design consideration. The reload is
-        -- queued right here anyway, so nothing is lost.)
-        pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/addon reload luashitacast'); end);
     else
         D.status('Setup: nothing to migrate -- every job file is already the clean shim.');
     end
@@ -331,12 +275,11 @@ end
 -- missing -- storage, gear inventory, the four base sets, starter triggers (the
 -- setupNative content, per job, idempotent, never clobbering) -- so a new player
 -- never touches Setup. Called on the login/job beat (dlac.lua maintainStorage).
--- HARD GATES: never in legacy mode; never for a not-ready job (D.jobFile()
--- returns nil until GetMainJob settles -- hard rule 11, so id-0 'NON' never
--- seeds); never before the caller has resolved firstRunInit (native mode being
--- ON is itself that resolution -- a fresh install writes the flag first, an
--- existing user is honored). A persistent disk failure NAMES itself once and is
--- retried next beat -- it is never ceremonialized into the Setup box.
+-- HARD GATES: never for a not-ready job (D.jobFile() returns nil until
+-- GetMainJob settles -- hard rule 11, so id-0 'NON' never seeds). A persistent
+-- disk failure NAMES itself once and is retried next beat -- it is never
+-- ceremonialized into the Setup box. (The legacy-mode and firstRunInit gates
+-- died in the purge, Phase 2: every boot is native and decided.)
 -- Returns 'seeded' | 'complete' | 'failed' | 'idle' (for the caller + tests).
 setup._autoWarned = {};   -- per-job failure-notice throttle (cleared on success)
 setup.autoSetupNative = function()
@@ -396,34 +339,13 @@ setup.hasDlacData = function()
     return false;
 end
 
--- THE MIGRATION COMMIT (issue #91): the GUI twin of `/dl engine native on`.
--- Copy-only storage migration (engineMigrateStorage -- nothing under
--- luashitacast\ is moved, changed, or deleted; existing native files win) then
--- write the Engine flag native = true, then print the unload/reload checklist.
--- Refuses under native (there is nothing to migrate). A flag-write failure after
--- a successful copy is reported without leaving the player mid-migration --
--- their legacy tree is byte-for-byte untouched, so they lost nothing.
+-- (THE MIGRATION COMMIT died in the purge, Phase 2: there is no engine flip
+-- left to commit. Storage migration is AUTOMATIC on login (engineAutoMigrate,
+-- copy-only) and `/dl engine migrate` re-runs the copy by hand -- both kept,
+-- Henrik's call. This stub answers any surface still wired to the old button.)
 setup.migrateToNative = function()
     if D == nil then return; end
-    if setup.isNative() then D.status('Migrate: the native engine is already on -- nothing to migrate.'); return; end
-    local prof = try('dlac\\profiles');
-    if prof == nil then D.status('Migrate: profiles module unavailable.'); return; end
-    local done, skipped, failed = prof.engineMigrateStorage();
-    if done == nil then D.status('Migrate: ' .. tostring(skipped)); return; end   -- second return = why (e.g. not logged in)
-    local ok, err = prof.setNativeMode(true);
-    if ok ~= true then
-        D.status('Migrate: copied your data but could NOT write the engine flag (' .. tostring(err)
-            .. ') -- nothing under luashitacast\\ was changed, so you are unharmed. Try again.');
-        return;
-    end
-    _setupState = nil;
-    local msg = string.format('Migrated to the native engine: %d file(s) copied to config\\addons\\dlac\\ '
-        .. '(%d already there, %d failed). Nothing under luashitacast\\ was touched -- flip back any time with '
-        .. '/dl engine native off. NOW:  1) /addon unload luashitacast  2) remove LuaAshitacast from your '
-        .. 'autoload  3) /addon reload dlac.  It is either LAC or DLAC -- never both at once.',
-        done, skipped, failed);
-    D.status(msg);
-    pcall(function() print('[dlac] ' .. msg); end);
+    D.status('Migration is automatic now: legacy data is copied to config\\addons\\dlac\\ at login (nothing under luashitacast\\ is ever changed). /dl engine migrate re-runs the copy by hand.');
 end
 
 -- Does this character still need the Migrate button (issue #91 -- needsSetup v2;
@@ -478,28 +400,15 @@ setup.migrateCurrentJob = function()
     setup.seedTriggersFile(base, abbr);
     pcall(function() require('dlac\\gear\\profilesets').invalidate(); end);
 
-    -- NEW players go profile-native from minute one -- the job file is the
-    -- managed shim, storage is created, and every set/trigger they ever build
-    -- lands under dlac\profiles\. They never own a legacy-style file at all.
-    -- Falls back to the embedded starter only if profiles.lua is unavailable.
-    local starter = MIGRATE_BOOT .. '\n' .. STARTER_PROFILE;
-    pcall(function()
-        local prof = require('dlac\\profiles');
-        if type(prof) == 'table' and type(prof.shimFileText) == 'function' then
-            starter = prof.shimFileText();
-            prof.ensureStorage();
-        end
-    end);
-    if D.writeFileText(jf, starter) then
-        _setupState = nil;
-        local msg = string.format('Initialized a dlac %s.lua. Reload LuaAshitacast, then build sets and triggers in the GUI.', abbr);
-        D.status(msg);
-        -- (Used to arm the red "Reload LAC" header button -- deleted 2026-07-24.
-        -- The status line above still says to reload, which is the whole signal.)
-        pcall(function() print('[dlac] ' .. msg); end);
-    else
-        D.status('Setup: could not write ' .. jf);
-    end
+    -- NEW players go profile-native from minute one -- storage created, base
+    -- sets + starter triggers seeded above, every set/trigger they ever build
+    -- lands under profiles\. NO job file is written (purge Phase 1: the native
+    -- engine never reads one, and nothing writes under luashitacast\ -- the
+    -- LAC-era Setup used to place the managed shim here).
+    _setupState = nil;
+    local msg = string.format('%s ready -- storage, base sets and starter triggers created.', abbr);
+    D.status(msg);
+    pcall(function() print('[dlac] ' .. msg); end);
 end
 
 return setup;

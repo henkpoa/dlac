@@ -2118,58 +2118,21 @@ check('W7 binding margin', bMg, 5);
 check('W8 no skills -> nil', (craftwatch.bindingCraft(nil, fakeSkill)), nil);
 
 -- ---------------------------------------------------------------------------
--- X. engine self-swap handshake (dispatch.lua hot-reload, v32). Re-executing
---    dispatch.lua with _G.__dlacEngineRoot set must populate THAT table --
---    identity preserved, so utils' captured reference and the profiles' shims
---    run the new code with no re-require -- and the swapper's version-parse
---    must find the real assignment (a reformat of the M.VERSION line would
---    kill the swap SILENTLY otherwise).
+-- X. (The engine self-swap handshake -- __dlacEngineRoot, v32-v130 -- died in
+--    the purge, Phase 1, with the seeder and trySelfSwap: every load is a
+--    plain require now, no handed-over module table, no file-scope state
+--    surviving a re-execution, no version-parse contract. X1-X6 went with it;
+--    X0 pins the NEW contract, X7 the fresh-state cleanliness that outlives
+--    the swap era.)
 -- ---------------------------------------------------------------------------
-local root = { VERSION = -1, dispatch = 'stale sentinel', leftover = 'kept' };
-_G.__dlacEngineRoot = root;
-local swapped = dofile('dispatch.lua');
-_G.__dlacEngineRoot = nil;
-check('X1 swap populates the handed-over root table', rawequal(swapped, root), true);
-check('X2 stale fields are overwritten with live code', type(root.dispatch), 'function');
-check('X3 version claimed on the root', root.VERSION, dispatchM.VERSION);
-local fresh = dofile('dispatch.lua');
-check('X4 normal load (no handshake) stays a fresh table', rawequal(fresh, root), false);
-local fh = io.open('dispatch.lua', 'r');
-local rawSrc = fh:read('*a'); fh:close();
-check('X5 swapper version-parse finds the assignment',
-    tonumber(string.match(rawSrc, 'M%.VERSION%s*=%s*(%d+)')), dispatchM.VERSION);
-
--- X6. WHAT SURVIVES A SELF-SWAP. The swap re-executes the file against the SAME
--- module table (rawset __dlacEngineRoot -> run chunk), so every `M.x = {}` at file
--- scope is a silent reset of live session state every time a `git pull` lands.
--- M.locks used to be exactly that: all sixteen slots quietly unlocked mid-session,
--- announced only by a parenthetical in the swap line. ADR 0021 named the leak while
--- rejecting a lock-based naked; ADR 0022 then put a LOCKED SET on the same row, so
--- half the row surviving a reseed while the other half evaporated was the last
--- reason to leave it. Modelled here exactly as trySelfSwap does it.
-(function()
-    local live = { VERSION = -1 };
-    _G.__dlacEngineRoot = live;
-    dofile('dispatch.lua');                       -- first load: fills the table
-    live.locks['head'] = true;                    -- the player locks a slot...
-    live.modes['testmode'] = true;                -- ...and sets a mode
-    live.lockedSet = { name = 'Incursion T3', mode = 'set', claim = { Head = 'X' }, n = 1 };
-    dofile('dispatch.lua');                       -- ...then a git pull lands
-    _G.__dlacEngineRoot = nil;
-    check('X6 a self-swap KEEPS the player\'s slot locks', live.locks['head'], true);
-    check('X6b ...and a locked set (ADR 0022)',            live.lockedSet ~= nil, true);
-    -- Modes are still reset by the same re-execution, and that is correct: they
-    -- have a disk mirror the engine reads BACK on load (loadModeState), so they
-    -- heal. Locks never could -- __locks is display-only and deliberately never
-    -- restored, because a lock is a "right now" decision -- which is exactly why
-    -- the fix for them had to live on the table instead of in the mirror.
-    check('X6c modes still reset -- they heal from the modestate mirror, locks cannot',
-        live.modes['testmode'], nil);
-    check('X6d ...the swap line no longer promises otherwise',
-        rawSrc:find('slot locks reset', 1, true), nil);
-end)();
--- A FRESH Lua state still starts clean: no handshake table, so M is new and every
--- `or {}` above takes its empty branch. This is the LAC-reload path.
+check('X0 a set __dlacEngineRoot is IGNORED: loads always build a fresh table',
+    (function()
+        local root = { VERSION = -1 };
+        _G.__dlacEngineRoot = root;
+        local swapped = dofile('dispatch.lua');
+        _G.__dlacEngineRoot = nil;
+        return rawequal(swapped, root);
+    end)(), false);
 check('X7 a fresh load starts with no locks',    next(dofile('dispatch.lua').locks), nil);
 check('X7b ...and nothing locked',               dofile('dispatch.lua').lockedSet, nil);
 
@@ -2267,9 +2230,12 @@ local dok, dsets = pcall(dchunk);
 check('Y22 delete removed only the target set', dok and dsets.Dynamic.Idle == nil
     and dsets.Dynamic.Tp_Default ~= nil and dsets.Dynamic.Resting ~= nil, true);
 
--- the clean shim
-check('Y23 shim parses', (loadstring or load)(profilesM.shimFileText()) ~= nil, true);
-check('Y24 shim recognized', profilesM.isCleanShim(profilesM.shimFileText()), true);
+-- the clean shim: the WRITER (shimFileText) died in the purge, Phase 1 -- the
+-- recognizer stays for migrated files already on disk. A literal fixture
+-- stands in for them (SHIM_MARKER-bearing, parseable).
+SHIMTEXT = '-- dlac profile shim (v1) -- managed by dlac.\nreturn {};\n';
+check('Y23 the shim writer is deleted with its machinery', profilesM.shimFileText, nil);
+check('Y24 shim recognized', profilesM.isCleanShim(SHIMTEXT), true);
 check('Y25 a real profile is NOT a shim', profilesM.isCleanShim(JOBFILE), false);
 
 -- the starter sets scaffold (fresh Setup + a migration that found no Dynamic
@@ -2292,11 +2258,11 @@ end
 -- by an import, and a first backup is never overwritten (reshim = stamped copy).
 local plan = profilesM.planMigration({
     { job = 'WAR', text = JOBFILE, hasBackup = false, hasProfileSets = false, hasLegacyTrig = true,  hasProfileTrig = false },
-    { job = 'WHM', text = profilesM.shimFileText(), hasBackup = false, hasProfileSets = false, hasLegacyTrig = false, hasProfileTrig = false },
+    { job = 'WHM', text = SHIMTEXT, hasBackup = false, hasProfileSets = false, hasLegacyTrig = false, hasProfileTrig = false },
     { job = 'BLM', text = JOBFILE, hasBackup = true,  hasProfileSets = false, hasLegacyTrig = false, hasProfileTrig = false },
     { job = 'RDM', text = 'local x = 1; return x;', hasBackup = false, hasProfileSets = false, hasLegacyTrig = false, hasProfileTrig = false },
     { job = 'THF', text = JOBFILE, hasBackup = false, hasProfileSets = true,  hasLegacyTrig = false, hasProfileTrig = false },
-    { job = 'PLD', text = profilesM.shimFileText(), hasBackup = true, hasProfileSets = true, hasLegacyTrig = false, hasProfileTrig = false },
+    { job = 'PLD', text = SHIMTEXT, hasBackup = true, hasProfileSets = true, hasLegacyTrig = false, hasProfileTrig = false },
 });
 check('Y26 plan: real profile migrates', plan[1].action, 'migrate');
 check('Y27 plan: Dynamic block travels verbatim', plan[1].dynText, dynText);
@@ -2311,7 +2277,7 @@ check('Y31b plan: a shim with a backup is left alone (nothing to do)', plan[6].a
 -- for a clean shim is equally load-bearing: migration must be idempotent.)
 do
     local inputs = {};
-    local texts = { JOBFILE, 'return {};', profilesM.shimFileText() };
+    local texts = { JOBFILE, 'return {};', SHIMTEXT };
     for t = 1, #texts do for a = 0, 1 do for b = 0, 1 do for c = 0, 1 do for d = 0, 1 do
         inputs[#inputs + 1] = { job = 'J' .. #inputs, text = texts[t],
             hasBackup = a == 1, hasProfileSets = b == 1, hasLegacyTrig = c == 1, hasProfileTrig = d == 1 };
@@ -5507,28 +5473,10 @@ end)();
     gearTB.NameToObject['Rouser'] = nil;
 end)();
 
--- ---------------------------------------------------------------------------
--- SW. Engine self-swap decision (v102): CONTENT is the key -- version-keying
---     alone went blind to same-version engine edits (field friction 2026-07-22:
---     mid-round fixes never swapped; a manual Reload LAC each time). The
---     version compare stays as a secondary trigger that heals a stale baseline.
--- ---------------------------------------------------------------------------
-(function()
-    local W = dispatchM.swapWanted;
-    check('SW0 exported',                        type(W), 'function');
-    check('SW1 unreadable file -> skip',         W(nil, 'old', nil, nil, 101), 'skip');
-    check('SW2 failed build remembered -> skip', W('bad', 'old', 'bad', 102, 101), 'skip');
-    check('SW3 no parseable version -> skip',    W('garbage', 'old', nil, nil, 101), 'skip');
-    check('SW4 version difference -> swap even on a stale baseline',
-                                                 W('new', 'new', nil, 102, 101), 'swap');
-    check('SW5 nil baseline -> init',            W('same', nil, nil, 101, 101), 'init');
-    check('SW6 same bytes -> skip',              W('same', 'same', nil, 101, 101), 'skip');
-    check('SW7 same-version content edit -> swap (the field case)',
-                                                 W('edited', 'orig', nil, 101, 101), 'swap');
-    check('SW8 an edited failed build gets its retry',
-                                                 W('bad2', 'old', 'bad', 101, 101), 'swap');
-    check('SW9 failed build blocks init too',    W('bad', nil, 'bad', 101, 101), 'skip');
-end)();
+-- (The SW section -- the engine self-swap decision, v102 -- died in the purge,
+-- Phase 1, with M.swapWanted itself: the seeder that fed the swap is gone and
+-- nothing writes under luashitacast\ anymore.)
+check('SW-gone the self-swap seam is deleted with its machinery', dispatchM.swapWanted, nil);
 
 -- ---------------------------------------------------------------------------
 -- REC. gearrecord -- the Owned-gear record rules, ONE home (Type canon + legacy
@@ -6486,7 +6434,14 @@ end)();
     TEST_PLAYER = { MainJob = 'WHM', MainJobLevel = 75, SubJob = 'BLM', SubJobLevel = 37,
                     MainJobSync = 75, SubJobSync = 37, Status = 'Idle', IsMoving = false };
     local wrote = {};
-    _G.gFunc  = { EquipSet = function(t) for k, v in pairs(t or {}) do wrote[k] = v; end end };
+    -- The NATIVE equip door (purge Phase 2: gFunc.EquipSet is gone) -- stub
+    -- equipengine so engineEquipSet routes the resolved set into `wrote`.
+    local savedEngNK = package.loaded['dlac\\feature\\equipengine'];
+    package.loaded['dlac\\feature\\equipengine'] = {
+        nativeOn = function() return true; end,
+        equipSet = function(t) for k, v in pairs(t or {}) do wrote[k] = v; end end,
+        state = { tripped = false },
+    };
     _G.gState = { CurrentCall = 'N/A', Disabled = {} };
     dispatchM.nakedArmed = true;
     local okDisp, dispErr = pcall(dispatchM.dispatch, 'Default');
@@ -6599,6 +6554,7 @@ end)();
 
     TEST_PLAYER = savedPlayer;
     _G.gFunc, _G.gState = savedFunc, savedState;
+    package.loaded['dlac\\feature\\equipengine'] = savedEngNK;
     dispatchM.nakedArmed = false;
 end)();
 
@@ -6855,34 +6811,10 @@ end)();
     check('LS29 gate: job change releases',       dispatchM.defaultGateHold(), false);
     _G.gState = nil;
 
-    -- The wrap SHELL, driven for real: a fresh engine load with gFunc + a stub
-    -- gState installs the thin shell (WRAP_GEN); HandleDefault is gated while
-    -- the fresh module's tracker is armed, Precast always flows. Also pins the
-    -- generational re-install: a v55-shaped pre-wrap (_dlacPetHold=true, no
-    -- _dlacWrapGen) must be wrapped OVER, not skipped -- the hot-swap gap.
-    local reached = nil;
-    local stStub = {
-        HandleEquipEvent = function(ev, style) reached = ev; end,
-        _dlacPetHold = true,                          -- the v55 boolean is already set
-    };
-    _G.gFunc, _G.gState = {}, stStub;
-    TEST_PLAYER = { MainJob = 'WAR', SubJob = 'NIN', MainJobSync = 75, SubJobSync = 37 };
-    local freshM = dofile('dispatch.lua');
-    check('LS30 shell installed OVER a v55-shaped wrap', stStub.HandleEquipEvent ~= nil
-        and type(stStub._dlacWrapGen) == 'number', true);
-    stStub.HandleEquipEvent('HandleDefault');         -- first pass adopts the level
-    check('LS31 stable level: Default flows',     reached, 'HandleDefault');
-    reached = nil;
-    TEST_PLAYER.MainJobSync = 60;                     -- a sync lands
-    stStub.HandleEquipEvent('HandleDefault');
-    check('LS32 settling: Default gated',         reached, nil);
-    stStub.HandleEquipEvent('HandlePrecast');
-    check('LS33 settling: action events flow',    reached, 'HandlePrecast');
-    freshM.SYNC_SETTLE_S = 0;                         -- release without sleeping
-    reached = nil;
-    TEST_PLAYER.MainJobSync = 50;                     -- re-arm under a 0s window
-    stStub.HandleEquipEvent('HandleDefault');
-    check('LS34 window over: Default flows again', reached, 'HandleDefault');
+    -- (LS30-LS34 -- the HandleEquipEvent wrap SHELL -- died in the purge,
+    -- Phase 2 with the wrap itself: there is no LAC entry point left to
+    -- gate. The gate LOGIC survives as M.defaultGateHold, pinned by LS26-29
+    -- above; the native engine consults the holds inside its own dispatch.)
     _G.gFunc, _G.gState = nil, nil;
     TEST_PLAYER = nil;
 end)();
@@ -10877,35 +10809,30 @@ end)();
 (function()
     local ck = dofile('feature/check.lua');
     check('CHK0 check loads headless', type(ck), 'table');
-    check('CHK1 seeded copies current', ck._seededState({
-        { name = 'utils.lua', addon = 'x', seeded = 'x' },
-        { name = 'dispatch.lua', addon = 'y', seeded = 'y' } }), 'current');
-    check('CHK2 stale + missing seeded copies are NAMED', ck._seededState({
-        { name = 'utils.lua', addon = 'x', seeded = 'y' },
-        { name = 'chatfmt.lua', addon = 'z', seeded = 'z' },
-        { name = 'dispatch.lua', addon = 'w', seeded = nil } }), 'STALE: utils.lua, dispatch.lua');
-    check('CHK3 unreadable tree copy counts stale', ck._seededState({
-        { name = 'utils.lua', addon = nil, seeded = 'x' } }), 'STALE: utils.lua');
-    check('CHK4 clean shim word', ck._shimWord('ok'), 'clean dlac shim');
-    check('CHK5 wired sends to Setup', ck._shimWord('wired'):find('Setup', 1, true) ~= nil, true);
-    check('CHK6 ffxilac sends to Setup', ck._shimWord('ffxilac'):find('Setup', 1, true) ~= nil, true);
-    check('CHK7 nofile sends to Setup', ck._shimWord('nofile'):find('Setup', 1, true) ~= nil, true);
-    local HEALTHY = { addonVer = '2026.07.23c', fileV = 104, seeded = 'current', shim = 'ok', stampV = 104,
+    -- (CHK1-CHK7 -- the seeded-copies compare and the shim words -- died in
+    -- the purge, Phase 3, with #131: no seeds, no shim-centric job file.)
+    check('CHK1 the seeded compare is deleted with the seeds', ck._seededState, nil);
+    check('CHK4 ...and the shim words with the shim model', ck._shimWord, nil);
+    local HEALTHY = { addonVer = '2026.07.23c', fileV = 104, stampV = 104,
+                      setsWord = 'I:\\game\\config\\addons\\dlac\\T_1\\profiles\\Default\\sets\\WHM.lua (present)',
                       modules = { total = 17, failed = {} }, catalogTried = true, catalogN = 14874,
                       gearN = 312, profName = 'Default' };
     local L = ck._lines(HEALTHY);
     check('CHK8 six addon lines', #L, 6);
     check('CHK9 versions on line 1', L[1]:find('2026.07.23c', 1, true) ~= nil and L[1]:find('v104', 1, true) ~= nil, true);
+    check('CHK9b line 2 is the sets file', L[2]:find('sets file', 1, true) ~= nil
+          and L[2]:find('(present)', 1, true) ~= nil, true);
     check('CHK10 the engine line is named verbatim', L[5]:find('[dlac] check (engine): alive', 1, true) ~= nil, true);
-    check('CHK11 absence = diagnosis is said', L[5]:find('not running the dlac engine', 1, true) ~= nil, true);
+    check('CHK11 absence = diagnosis is said (native words)', L[5]:find('not armed in this state', 1, true) ~= nil
+          and L[5]:find('/dl reload', 1, true) ~= nil, true);
     check('CHK12 stamp rides the engine line', L[5]:find('last stamped v104', 1, true) ~= nil, true);
     check('CHK13 modules line counts', L[3]:find('17/17 loaded', 1, true) ~= nil, true);
     check('CHK14 data line carries catalog/gear/profile', L[4]:find('14874 items', 1, true) ~= nil
           and L[4]:find('312 entries', 1, true) ~= nil and L[4]:find('"Default"', 1, true) ~= nil, true);
     check('CHK15 healthy = NO ISSUES verdict', L[6]:find('NO ISSUES', 1, true) ~= nil, true);
-    local L2 = ck._lines({ addonVer = 'x', fileV = nil, seeded = nil, shim = 'nojob', stampV = nil });
+    local L2 = ck._lines({ addonVer = 'x', fileV = nil, stampV = nil });
     check('CHK16 never-stamped is said', L2[5]:find('NEVER stamped', 1, true) ~= nil, true);
-    check('CHK17 pre-login degrades honestly, not as issues', L2[1]:find('not logged in', 1, true) ~= nil
+    check('CHK17 pre-login degrades honestly, not as issues', L2[2]:find('not logged in', 1, true) ~= nil
           and L2[6]:find('NO ISSUES', 1, true) ~= nil, true);
     -- the issue hunt (CHKI): each provable problem is NAMED in the verdict.
     -- override helper: `false` means "unset" (a literal nil never survives
@@ -10916,10 +10843,8 @@ end)();
         return ck._issues(base);
     end
     check('CHKI1 healthy hunts nothing', #ck._issues(HEALTHY), 0);
-    check('CHKI2 stale seeded is an issue', issuesOf({ seeded = 'STALE: dispatch.lua' })[1]
-          :find('STALE', 1, true) ~= nil, true);
-    check('CHKI3 stamp behind file -> Reload LAC', issuesOf({ stampV = 98 })[1]
-          :find('Reload LAC', 1, true) ~= nil, true);
+    check('CHKI3 stamp behind file -> /dl reload', issuesOf({ stampV = 98 })[1]
+          :find('/dl reload', 1, true) ~= nil, true);
     check('CHKI4 stamp ahead of file -> stale tree', issuesOf({ fileV = 98 })[1]
           :find('tree is stale', 1, true) ~= nil, true);
     check('CHKI5 module failures named', issuesOf({ modules = { total = 17,
@@ -10929,12 +10854,10 @@ end)();
           :find('UNREADABLE', 1, true) ~= nil, true);
     check('CHKI7 truncated catalog is an issue', issuesOf({ catalogN = 4200 })[1]
           :find('truncated', 1, true) ~= nil, true);
-    check('CHKI8 non-shim job file is an issue', issuesOf({ shim = 'wired' })[1]
-          :find('Setup', 1, true) ~= nil, true);
-    check('CHKI9 nojob is NOT an issue', #issuesOf({ shim = 'nojob' }), 0);
+    -- (CHKI8/9 -- shim-state issues -- died with the shim model, Phase 3.)
     check('CHKI10 verdict counts multiple issues', ck._lines({ addonVer = 'x', fileV = 104,
-          seeded = 'STALE: utils.lua', shim = 'wired', stampV = 98,
-          modules = { total = 17, failed = {} }, catalogTried = true, catalogN = 14874 })[6]
+          stampV = 98, modules = { total = 17, failed = { { mod = 'x', err = 'boom' } } },
+          catalogTried = true, catalogN = 4200 })[6]
           :find('3 ISSUES', 1, true) ~= nil, true);
 end)();
 
@@ -11036,32 +10959,12 @@ end)();
           'apply would refuse: lockstyle box 2 has no items');
     check('DBG6 no file refuses like apply', dispatchM._lsDebugReport(nil, nil, resolveId, equippedId, nil)[1],
           'apply would refuse: no lockstyle sets saved yet');
-    -- the capture-window flush (v106): snapshot + timeline -> handoff lines.
-    local F = dispatchM._lsDbgFlushLines({ 'alive v106' }, { 't+  1.0s  apply received' }, 45);
-    check('DBG7 flush = snapshot then timeline', F[1] == 'alive v106'
-          and F[2]:find('captured events, engine side (45s window)', 1, true) ~= nil
-          and F[3]:find('apply received', 1, true) ~= nil, true);
-    check('DBG8 empty window says so', dispatchM._lsDbgFlushLines({}, {}, 30)[2],
-          '(no lockstyle events reached this engine during the window)');
-
-    -- DBR. the engine's request watch (v108): twin of the addon's
-    --      _watchFire -- fires only on a NEW fresh stamp while the engine's
-    --      own command handlers sit idle (the friend's starvation direction).
-    local rnow = 1753300000;
-    check('DBR1 no stamp = keep', dispatchM._reqFire(nil, nil, rnow, true), 'keep');
-    check('DBR2 same stamp = keep', dispatchM._reqFire(rnow - 2, rnow - 2, rnow, true), 'keep');
-    check('DBR3 fresh + idle FIRES', dispatchM._reqFire(rnow - 2, nil, rnow, true), 'adopt-fire');
-    check('DBR4 fresh + commands alive stays quiet', dispatchM._reqFire(rnow - 2, nil, rnow, false), 'adopt-quiet');
-    check('DBR5 stale adopts quietly', dispatchM._reqFire(rnow - 300, nil, rnow, true), 'adopt-quiet');
-    -- the spec line parser (v109: apply joins check/ls on the request file)
-    check('DBR6 check spec', dispatchM._reqSpec('check'), 'check');
-    local k7, n7 = dispatchM._reqSpec('ls 60');
-    check('DBR7 ls spec carries dur', k7 == 'ls' and n7 == 60, true);
-    local k8, n8 = dispatchM._reqSpec('apply 3');
-    check('DBR8 apply spec carries box', k8 == 'apply' and n8 == 3, true);
-    local k9, n9 = dispatchM._reqSpec('apply');
-    check('DBR9 bare apply = marked box', k9 == 'apply' and n9 == nil, true);
-    check('DBR10 garbage spec is nil', dispatchM._reqSpec('frobnicate'), nil);
+    -- (DBG7-8 and DBR1-10 -- the capture-window flush and the engine's
+    -- request-file watch -- died in the purge, Phase 2, with the two-state
+    -- command bridge itself.)
+    check('DBG7 the flush seam is deleted with the bridge', dispatchM._lsDbgFlushLines, nil);
+    check('DBR1 the request watch seam too', dispatchM._reqFire, nil);
+    check('DBR2 ...and the spec parser', dispatchM._reqSpec, nil);
 end)();
 
 -- LGD. lockstyle.M.debugLines -- the '/dl debug ls' addon half exists and
@@ -11108,18 +11011,15 @@ end)();
 (function()
     local prof = package.loaded['dlac\\profiles'];
 
-    -- the flag parse: only a well-formed `return { native = true }` reads ON
-    check('NE1 flag: native=true is ON',         prof.parseEngineFlag('return { native = true };'), true);
-    check('NE2 flag: native=false is OFF',       prof.parseEngineFlag('return { native = false };'), false);
-    check('NE3 flag: absent text is OFF',        prof.parseEngineFlag(nil), false);
-    check('NE4 flag: damaged text is OFF',       prof.parseEngineFlag('return { native = '), false);
-    check('NE5 flag: non-table is OFF',          prof.parseEngineFlag('return 42;'), false);
-    check('NE6 flag: truthy-but-not-true is OFF', prof.parseEngineFlag('return { native = 1 };'), false);
-    check('NE7 flag: comments + writer shape parse', prof.parseEngineFlag(
-        '-- dlac engine flag -- written by /dl engine native on|off.\nreturn { native = true };\n'), true);
+    -- (NE1-NE7 pinned the engine-flag parse; NE8-NE14 pinned the legacy path
+    -- family. Both died in the purge, Phase 2: the flag is retired in place
+    -- and the native home is the ONLY home. charBase stays as the importers'
+    -- read-only door into the old tree.)
+    check('NE1 the flag parse is deleted with the flag', prof.parseEngineFlag, nil);
+    check('NE2 nativeMode has one answer now', prof.nativeMode(), true);
+    check('NE3 the flag state reader is gone too', prof.engineFlagState, nil);
+    check('NE4 ...and the flag writer', prof.setNativeMode, nil);
 
-    -- path authorities under both modes: stub the install + identity, flip
-    -- nativeMode by override (restored after -- the module is shared state).
     local savedAC, savedNative = AshitaCore, prof.nativeMode;
     AshitaCore = {
         GetInstallPath = function() return 'I:\\game\\'; end,
@@ -11131,26 +11031,9 @@ end)();
         }; end,
     };
 
-    prof.nativeMode = function() return false; end
-    -- A DECIDED legacy world (flag on disk, value off): dataDir's native-first
-    -- hold (NO50) applies only to the undecided flag-ABSENT boot window.
-    local savedFlagStateNE = prof.engineFlagState;
-    prof.engineFlagState = function() return 'legacy'; end
     check('NE8 charFolder is <Name>_<Id>',    prof.charFolder(), 'Mindie_12345');
-    check('NE9 legacy dataDir rides LAC tree', prof.dataDir(),
-          'I:\\game\\config\\addons\\luashitacast\\Mindie_12345\\dlac\\');
-    check('NE10 legacy charRoot is the LAC char base', prof.charRoot(),
+    check('NE9 charBase stays the importers\' read-only door', prof.charBase(),
           'I:\\game\\config\\addons\\luashitacast\\Mindie_12345\\');
-    check('NE11 legacy storageRoot is the LAC root', prof.storageRoot(),
-          'I:\\game\\config\\addons\\luashitacast\\');
-    check('NE12 legacy pointer under dataDir', prof.pointerPath(),
-          'I:\\game\\config\\addons\\luashitacast\\Mindie_12345\\dlac\\profile.lua');
-    check('NE13 legacy cross-char data dir nests dlac\\', prof.charDataDirAt('Frieda_777'),
-          'I:\\game\\config\\addons\\luashitacast\\Frieda_777\\dlac\\');
-    check('NE14 legacy has no second exports home', prof.legacyExportsDir(), nil);
-    prof.engineFlagState = savedFlagStateNE;
-
-    prof.nativeMode = function() return true; end
     check('NE15 native dataDir is dlac\'s own root, no dlac\\ level', prof.dataDir(),
           'I:\\game\\config\\addons\\dlac\\Mindie_12345\\');
     check('NE16 native charRoot equals the char home', prof.charRoot(),
@@ -11167,8 +11050,7 @@ end)();
           'I:\\game\\config\\addons\\luashitacast\\dlac-exports\\');
     check('NE22 native exports live under the dlac root', prof.exportsDir(),
           'I:\\game\\config\\addons\\dlac\\dlac-exports\\');
-    check('NE23 flag file sits at the native root', prof.engineFlagPath(),
-          'I:\\game\\config\\addons\\dlac\\engine.lua');
+    check('NE23 the flag path authority is gone', prof.engineFlagPath, nil);
     check('NE24 backups follow the native char home', prof.backupPath('WHM'),
           'I:\\game\\config\\addons\\dlac\\Mindie_12345\\backups\\pre-profiles\\WHM.lua');
     check('NE25 legacy trigger tier rides the data home too', prof.legacyTriggersPath('WHM'),
@@ -11200,26 +11082,14 @@ end)();
 (function()
     local prof = package.loaded['dlac\\profiles'];
 
-    -- The pure first-run decision. A flag on disk (either value) is ALWAYS
-    -- respected -- boot never rewrites it, never auto-flips an existing user.
-    check('NO1 flag native -> respect',        prof.firstRunAction('native', false), 'respect');
-    check('NO2 flag native + legacy -> respect', prof.firstRunAction('native', true), 'respect');
-    check('NO3 flag legacy -> respect',        prof.firstRunAction('legacy', false), 'respect');
-    check('NO4 flag legacy + data -> respect', prof.firstRunAction('legacy', true), 'respect');
-    -- No flag: legacy data present = existing user (stay legacy, write nothing);
-    -- no legacy data = fresh install (born native).
-    check('NO5 absent + legacy data -> STILL write-native (ADR 0025)', prof.firstRunAction('absent', true), 'write-native');
-    check('NO6 absent + no data -> write-native',  prof.firstRunAction('absent', false), 'write-native');
+    -- (NO1-NO6 -- the pure first-run decision matrix -- died in the purge,
+    -- Phase 2: no flag, no decision. ADR 0025's law is structural now.)
+    check('NO1 the first-run decision is deleted with the flag', prof.firstRunAction, nil);
 
-    -- The once-per-session ask gate: fires the FIRST time LAC is alive, then latches.
-    prof._resetAskGate();
-    check('NO7 ask gate: no LAC -> silent',    prof.shouldAskUnloadLac(false), false);
-    check('NO8 ask gate: LAC alive -> ask',    prof.shouldAskUnloadLac(true), true);
-    check('NO9 ask gate: latched after asking', prof.shouldAskUnloadLac(true), false);
-    check('NO10 ask gate: stays latched',       prof.shouldAskUnloadLac(true), false);
-    prof._resetAskGate();
-    check('NO11 ask gate: reset re-arms',       prof.shouldAskUnloadLac(true), true);
-    prof._resetAskGate();
+    -- (NO7-NO11 -- the once-per-session LAC-alive ask gate -- died in the
+    -- purge, Phase 1, with shouldAskUnloadLac/lacAlive; the coexistence
+    -- tripwire is the one remaining backstop.)
+    check('NO7 the ask gate is deleted with its machinery', prof.shouldAskUnloadLac, nil);
 
     -- The native Setup path. Stub the install + identity, force native mode, and
     -- capture every write: the ACCEPTANCE guarantee is zero <JOB>.lua / shim /
@@ -11275,15 +11145,17 @@ end)();
     check('NO16 native setup: no backup written', has('backups'), false);
     check('NO17 native setup lands under the dlac root', has('config\\addons\\dlac\\'), true);
 
-    -- LEGACY (contrast): the flag-off path still writes the <JOB>.lua shim.
+    -- LEGACY (purge Phase 1): even the flag-off path writes NO job file --
+    -- nothing in dlac writes under luashitacast\ anymore, whatever the mode.
+    -- Storage/base-set/trigger seeding above is the whole setup.
     prof.nativeMode = function() return false; end
     writes = {};
     setup.configure(mkDeps());
     check('NO18 setup reports legacy mode', setup.isNative(), false);
-    setup.migrateCurrentJob();   -- state 'nofile' (readFileText nil) -> write the shim
+    setup.migrateCurrentJob();   -- state 'nofile' (readFileText nil)
     local wroteShim = false;
     for _, p in ipairs(writes) do if p == jf then wroteShim = true; end end
-    check('NO19 legacy setup still writes the shim', wroteShim, true);
+    check('NO19 legacy setup writes NO job file either (purge Phase 1)', wroteShim, false);
 
     prof.nativeMode, prof.ensureStorage, prof.storageExists = savedNative, savedEnsure, savedExists;
     os.execute, AshitaCore = savedExec, savedAC;
@@ -11393,20 +11265,18 @@ end)();
         setup.configure(deps);
     end
 
-    -- --- the migration Commit: engineMigrateStorage -> setNativeMode(true) -> checklist ---
+    -- (NO39-NO42 -- the migration Commit's copy-then-flip sequence -- died in
+    -- the purge, Phase 2: there is no flag to flip. The stub only informs.)
     local seq = {};
     prof.engineMigrateStorage = function() seq[#seq + 1] = 'migrate'; return 7, 2, 0; end
-    prof.setNativeMode = function(on) seq[#seq + 1] = 'flag:' .. tostring(on); return true; end
-    prof.nativeMode = function() return false; end   -- legacy at Commit time
     local msg = nil; deps.status = function(s) msg = s; end
     setup.configure(deps);
     writes = {};
     setup.migrateToNative();
-    check('NO39 Commit copies THEN flips the flag',    table.concat(seq, ','), 'migrate,flag:true');
-    check('NO40 Commit is copy-only (no JOB.lua/backup write)', has('luashitacast') or has('backups'), false);
-    check('NO41 Commit prints the unload checklist',   type(msg) == 'string' and msg:find('unload luashitacast', 1, true) ~= nil, true);
-    check('NO42 Commit refuses under native',
-          (function() prof.nativeMode = function() return true; end; seq = {}; setup.migrateToNative(); prof.nativeMode = function() return false; end; return #seq; end)(), 0);
+    check('NO39 the Commit stub migrates nothing itself', #seq, 0);
+    check('NO40 ...writes nothing anywhere', #writes, 0);
+    check('NO41 ...and says migration is automatic now',
+          type(msg) == 'string' and msg:find('automatic', 1, true) ~= nil, true);
 
     prof.engineMigrateStorage, prof.setNativeMode = savedMig, savedSet;
     prof.nativeMode, prof.ensureStorage, prof.storageExists = savedNative, savedEnsure, savedExists;
@@ -11468,79 +11338,21 @@ end)();
     check('NO46 legacy data found', pr2 and sc2, true);
     check('NO46b ...with the char named as evidence', ev, 'Testy_123');
 
-    -- The scan is GONE from boot (ADR 0025): an unlistable world -- the old
-    -- "can't tell" limbo that stranded Xvs's clean reinstall -- resolves
-    -- write-native instantly, and silently.
-    local lines = {};
-    local savedPrint = print;
-    print = function(s) lines[#lines + 1] = tostring(s); end
-    prof.engineFlagState = function() return 'absent'; end
-    prof._listDirs = function() return nil; end   -- the old can't-tell shape
-    prof.setNativeMode = function() return true; end
-    prof._resetFirstRun();
-    check('NO47 absent + unlistable world -> write-native, no scan', prof.firstRunInit(), 'write-native');
-    check('NO47b ...silently', #lines, 0);
-    check('NO47c ...and latched', prof.firstRunInit(), 'write-native');
-
-    -- Fresh + flag write FAILS: nil + its own one-time warn; then the write
-    -- starts succeeding -> 'write-native' + the loud fresh line.
-    lines = {}; prof._resetFirstRun();
-    prof._listDirs = function(p)
-        if p:find('luashitacast', 1, true) then return nil; end
-        return { 'dlac' };   -- parent without luashitacast -> definite fresh
-    end
-    prof.setNativeMode = function() return nil, 'no dir'; end
-    check('NO48 write-fail returns nil', prof.firstRunInit(), nil);
-    check('NO48b ...named once', #lines == 1 and lines[1]:find('could not be', 1, true) ~= nil, true);
-    prof.setNativeMode = function() return true; end
-    check('NO48c write succeeding resolves write-native', prof.firstRunInit(), 'write-native');
-    -- A RESOLVED decision is SILENT (Henrik, post-field-confirm: no first-run /
-    -- engine narration for the player) -- only the fail warn above ever spoke.
-    check('NO48d resolution is silent', #lines, 1);
-
-    -- Legacy now comes ONLY from an explicit flag on disk (ADR 0025): data
-    -- under luashitacast\ no longer decides anything -- even with evidence
-    -- present and probing positive, an absent flag is born native.
-    lines = {}; prof._resetFirstRun();
-    prof._listDirs = function(p)
-        if p:find('luashitacast', 1, true) then return { 'Testy_123' }; end
-        return { 'luashitacast' };
-    end
-    prof._legacyProbe = function() return true; end
-    check('NO49 legacy data alone no longer decides', prof.firstRunInit(), 'write-native');
-    lines = {}; prof._resetFirstRun();
-    prof.engineFlagState = function() return 'legacy'; end
-    check('NO49b an explicit legacy flag is respected', prof.firstRunInit(), 'respect');
-    check('NO49c ...silently', #lines, 0);
-
-    -- NO50. THE PATH AUTHORITY HOLDS WHILE UNDECIDED (field 2026-07-27, Xvs's
-    -- clean reinstall: config\addons\luashitacast AND config\addons\dlac both
-    -- deleted, and "migrate to native" still appeared). The 07-23 fix held
-    -- maintainStorage's OWN writers, but dataDir kept composing the LEGACY
-    -- home during the undecided window (flag absent -> nativeMode false), so
-    -- any login-time writer riding it -- the gear scan's commit above all --
-    -- could still plant gear.lua under luashitacast\, and the NEXT beat read
-    -- dlac's own file back as legacy evidence. dataDir now answers nil until
-    -- the decision latches: "not logged in yet", every writer holds.
+    -- (NO47-NO50 -- firstRunInit's undecided contract, the flag-write retry
+    -- and dataDir's native-first hold -- died in the purge, Phase 2, with the
+    -- flag and the decision themselves. dataDir answers the native home,
+    -- unconditionally: the manufactured-evidence family is undecidable-by-
+    -- design now, not merely guarded.)
+    check('NO47 firstRunInit is deleted with the decision', prof.firstRunInit, nil);
     local savedCharFolder = prof.charFolder;
     prof.charFolder = function() return 'Testy_123'; end   -- charBase resolves
-    prof.invalidateNative();
-    prof._resetFirstRun();
-    prof.engineFlagState = function() return 'absent'; end
-    prof._listDirs = function() return nil; end             -- undecided world
-    check('NO50 dataDir holds while the first run is undecided', prof.dataDir(), nil);
-    -- A latched LEGACY verdict -- an explicit flag, the only legacy route
-    -- left (ADR 0025) -- reopens the legacy home exactly as before.
-    prof.engineFlagState = function() return 'legacy'; end
-    prof._resetFirstRun();
-    check('NO50b a latched legacy flag reopens it',
-          prof.firstRunInit() == 'respect' and type(prof.dataDir()) == 'string', true);
+    check('NO48 dataDir is the native home, nothing else',
+          prof.dataDir(), 'I:\\game\\config\\addons\\dlac\\Testy_123\\');
+    check('NO49 charRoot rides the same home', prof.charRoot(),
+          'I:\\game\\config\\addons\\dlac\\Testy_123\\');
     prof.charFolder = savedCharFolder;
 
-    print = savedPrint;
     prof._listDirs, prof._legacyProbe = savedList, savedProbe;
-    prof.engineFlagState, prof.setNativeMode = savedFlagState, savedSetNative;
-    prof._resetFirstRun();
     AshitaCore = savedAC;
 end)();
 
@@ -13301,7 +13113,13 @@ end)();
     TEST_PLAYER = { MainJob = 'WHM', MainJobLevel = 75, SubJob = 'BLM', SubJobLevel = 37,
                     MainJobSync = 75, SubJobSync = 37, Status = 'Idle', IsMoving = false };
     local wrote = {};
-    _G.gFunc  = { EquipSet = function(t) for k, v in pairs(t or {}) do wrote[k] = v; end end };
+    -- The NATIVE equip door (purge Phase 2: gFunc.EquipSet is gone).
+    local savedEngLS = package.loaded['dlac\\feature\\equipengine'];
+    package.loaded['dlac\\feature\\equipengine'] = {
+        nativeOn = function() return true; end,
+        equipSet = function(t) for k, v in pairs(t or {}) do wrote[k] = v; end end,
+        state = { tripped = false },
+    };
     _G.gState = { CurrentCall = 'N/A', Disabled = {} };
 
     local strictClaim = B({ Main = 'Set Sword', Head = 'Set Hat' }, 'remove', resolve, locate, wornOf);
@@ -13463,6 +13281,7 @@ end)();
     D.setLockedSet(nil);
     TEST_PLAYER = savedPlayer;
     _G.gFunc, _G.gState = savedFunc, savedState;
+    package.loaded['dlac\\feature\\equipengine'] = savedEngLS;
     D.nakedArmed = savedNaked;
     D.lockedSet  = savedLocked;
 end)();
@@ -14045,6 +13864,62 @@ end)();
     os.remove('tests' .. SEP .. 'modestate.lua');
     os.remove('tests' .. SEP .. 'arbstate.lua');
 end)();
+
+-- ---------------------------------------------------------------------------
+-- PRG. THE PURGE ALLOWLIST (Phase 4, Henrik's keep-list). A luashitacast PATH
+-- LITERAL in shipped code -- the two-backslash string form `\\luashitacast` --
+-- may exist ONLY in the sanctioned importer/migration READERS. Comments write
+-- the single-backslash form and never trip this. The roster below IS the
+-- coverage cap: a brand-new shipped file must be added here to be guarded
+-- (a named limitation, not a silent one).
+-- ---------------------------------------------------------------------------
+(function()
+    local SHIPPED = { 'dlac.lua','utils.lua','dispatch.lua','profiles.lua','chatfmt.lua','gear.lua',
+        'feature/augments.lua','feature/check.lua','feature/chocowatch.lua','feature/craftwatch.lua',
+        'feature/debug.lua','feature/eboxammo.lua','feature/eboxclient.lua','feature/engine.lua',
+        'feature/equipengine.lua','feature/fishwatch.lua','feature/helmwatch.lua','feature/lockstyle.lua',
+        'feature/lockstyleapply.lua','feature/location.lua','feature/macrobook.lua','feature/meritwatch.lua',
+        'feature/mpbands.lua','feature/nativedata.lua','feature/synthrun.lua','feature/useitem.lua',
+        'gear/catalogindex.lua','gear/equipcore.lua','gear/gearcheck.lua','gear/gearexport.lua',
+        'gear/gearfmt.lua','gear/gearimport.lua','gear/gearoptim.lua','gear/gearoracle.lua',
+        'gear/gearrecord.lua','gear/jobgate.lua','gear/ownedcache.lua','gear/profilesets.lua',
+        'gear/setimport.lua','gear/setmanager.lua','gear/weaponfilter.lua',
+        'lib/cmdqueue.lua','lib/safewrite.lua','lib/statefile.lua','lib/entwatch.lua',
+        'ui/automationsui.lua','ui/chocoui.lua','ui/craftbar.lua','ui/equippedui.lua','ui/fishbar.lua',
+        'ui/fishui.lua','ui/gearui.lua','ui/helmbar.lua','ui/menuui.lua','ui/priorityui.lua',
+        'ui/profilesmenu.lua','ui/restockui.lua','ui/setupui.lua','ui/triggersui.lua','ui/uihost.lua',
+        'ui/uistyle.lua','ui/itemicons.lua' };
+    local ALLOW = {   -- Henrik's keep-list: read-only doors into the old tree
+        ['profiles.lua'] = true,          -- charBase/lacRoot/legacyDataPresent/legacyExportsDir
+        ['gear/setmanager.lua'] = true,   -- the job-file scanner (whole-block import)
+        ['feature/lockstyle.lua'] = true, -- legacy boxes read-fallback tier
+        ['feature/macrobook.lua'] = true, -- legacy books read-fallback tier
+        ['gear/gearoptim.lua'] = true,    -- legacy weights read tier
+    };
+    local offenders = {};
+    for _, f in ipairs(SHIPPED) do
+        local fh = io.open(f, 'rb');
+        if fh ~= nil then
+            local raw = fh:read('*a'); fh:close();
+            if raw:find('\\\\luashitacast', 1, true) ~= nil and not ALLOW[f] then
+                offenders[#offenders + 1] = f;
+            end
+        end
+    end
+    check('PRG1 no legacy path literal outside the allowlist', table.concat(offenders, ','), '');
+    check('PRG2 the importer door itself still exists', (function()
+        local fh = io.open('profiles.lua', 'rb');
+        if fh == nil then return false; end
+        local raw = fh:read('*a'); fh:close();
+        return raw:find('\\\\luashitacast', 1, true) ~= nil;
+    end)(), true);
+end)();
+
+-- The warm-note artifact the dispatch-driving sections leave behind (dataDir
+-- stubbed 'tests\'): on Windows a real tests\debug\mpwarm.txt (gitignored via
+-- debug/), under WSL ONE backslash-bearing filename that drvfs PUA-mangles on
+-- NTFS -- which .gitignore cannot match. Same string removes it on both.
+pcall(os.remove, 'tests' .. string.char(92) .. 'debug' .. string.char(92) .. 'mpwarm.txt');
 
 -- ---------------------------------------------------------------------------
 -- verdict

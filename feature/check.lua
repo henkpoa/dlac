@@ -42,9 +42,8 @@ local function try(name)
     return (ok and type(m) == 'table') and m or nil;
 end
 
--- The four library files the seeder tracks (dlac.lua seedCharFolder): compare
--- addon-tree bytes against the seeded copy. gear.lua is user data, not listed.
-local SEEDED = { 'utils.lua', 'dispatch.lua', 'chatfmt.lua', 'profiles.lua' };
+-- (The seeded-copies comparison died in the purge, Phase 3 with #131: there
+-- are no seeds -- the addon folder is the one code home.)
 
 -- A healthy catalog carries ~14.9k items; far fewer means the file lost its
 -- tail (the classic interrupted-sync shape -- it still PARSES, so only a
@@ -55,27 +54,8 @@ local CATALOG_MIN = 10000;
 -- pure seams (headless-tested, CHK*)
 -- ---------------------------------------------------------------------------
 
--- files = { { name=, addon=bytes|nil, seeded=bytes|nil }, ... } -> 'current'
--- or 'STALE: a, b'. An unreadable tree copy or a missing seeded copy both
--- count stale -- either way the steady state ("seeded == tree") is broken.
-function M._seededState(files)
-    local bad = {};
-    for _, f in ipairs(files or {}) do
-        if f.addon == nil or f.addon ~= f.seeded then bad[#bad + 1] = f.name; end
-    end
-    if #bad == 0 then return 'current'; end
-    return 'STALE: ' .. table.concat(bad, ', ');
-end
-
--- setupui.jobSetupState() word -> what to say (and what to DO about it).
-function M._shimWord(st)
-    if st == 'ok'      then return 'clean dlac shim'; end
-    if st == 'wired'   then return 'NOT the clean shim (old dlac wiring) -> run Setup'; end
-    if st == 'ffxilac' then return 'an ffxi-lac profile -> run Setup (it migrates your sets)'; end
-    if st == 'none'    then return 'not dlac-wired -> run Setup (it migrates your sets)'; end
-    if st == 'nofile'  then return 'MISSING -> run Setup'; end
-    return 'unknown (no job / not logged in?)';
-end
+-- (M._seededState and M._shimWord died with the seeds and the shim-centric
+-- job-file model -- purge Phase 3. The sets truth is the PROFILE sets file.)
 
 -- The issue hunt (pure): everything the addon side can PROVE wrong. States it
 -- cannot distinguish from a fresh install (empty gear.lua, legacy storage,
@@ -83,16 +63,10 @@ end
 function M._issues(info)
     info = info or {};
     local I = {};
-    if type(info.seeded) == 'string' and info.seeded:find('STALE', 1, true) == 1 then
-        I[#I + 1] = 'seeded engine copies STALE -> /addon reload dlac (or restart the game)';
-    end
-    if info.shim ~= nil and info.shim ~= 'ok' and info.shim ~= 'nojob' then
-        I[#I + 1] = 'job file is not the clean dlac shim -> run Setup';
-    end
     local sv, fv = tonumber(info.stampV), tonumber(info.fileV);
     if sv ~= nil and fv ~= nil and sv ~= fv then
         if sv < fv then
-            I[#I + 1] = string.format('engine stamp v%d BEHIND engine file v%d -> Reload LAC', sv, fv);
+            I[#I + 1] = string.format('engine stamp v%d BEHIND engine file v%d -> /dl reload', sv, fv);
         else
             I[#I + 1] = string.format('engine stamp v%d AHEAD of engine file v%d -- the addon tree is stale -> update/sync dlac, then /addon reload dlac', sv, fv);
         end
@@ -118,6 +92,7 @@ function M._lines(info)
     info = info or {};
     local stampWord = (info.stampV ~= nil) and ('last stamped v' .. tostring(info.stampV))
                       or 'NEVER stamped in (no modestate)';
+    local setsWord = info.setsWord or 'unknown (no job / not logged in?)';
     local mods = info.modules;
     local modWord = '?';
     if type(mods) == 'table' and tonumber(mods.total) ~= nil then
@@ -147,16 +122,15 @@ function M._lines(info)
             table.concat(issues, '; '));
     end
     return {
-        string.format('check (addon): dlac %s -- engine file v%s -- seeded copies: %s',
-            tostring(info.addonVer or '?'), tostring(info.fileV or '?'),
-            tostring(info.seeded or 'unknown (not logged in?)')),
-        string.format('check (addon): job file: %s', M._shimWord(info.shim)),
+        string.format('check (addon): dlac %s -- engine file v%s',
+            tostring(info.addonVer or '?'), tostring(info.fileV or '?')),
+        string.format('check (addon): sets file: %s', setsWord),
         string.format('check (addon): modules: %s', modWord),
         string.format('check (addon): data: catalog %s -- gear.lua %s -- profile %s',
             catWord, gearWord, profWord),
         string.format('check (addon): engine %s -- a "[dlac] check (engine): alive" line must appear'
-            .. ' with this readout; if it is MISSING, LuaAshitacast is not running the dlac engine:'
-            .. ' run Setup (dlac header), then Reload LAC.', stampWord),
+            .. ' with this readout; if it is MISSING, the engine is not armed in this state'
+            .. ' (tripwire? /dl engine explains) -- /dl reload reloads dlac.', stampWord),
         verdict,
     };
 end
@@ -165,52 +139,36 @@ end
 -- live glue (Ashita only)
 -- ---------------------------------------------------------------------------
 
-local function charBase()
-    local base = nil;
-    pcall(function()
-        local party = AshitaCore:GetMemoryManager():GetParty();
-        local name  = party:GetMemberName(0);
-        local id    = party:GetMemberServerId(0);
-        if name == nil or name == '' or id == nil or id == 0 then return; end
-        base = string.format('%sconfig\\addons\\luashitacast\\%s_%u\\', AshitaCore:GetInstallPath(), name, id);
-    end);
-    return base;
-end
-
-local function slurp(p)
-    local f = io.open(p, 'rb'); if f == nil then return nil; end
-    local d = f:read('*a'); f:close(); return d;
-end
-
 function M.report()
     local info = {};
     pcall(function() info.addonVer = addon ~= nil and addon.version or nil; end);
     local dsp = try('dlac\\dispatch');
     info.fileV = (dsp ~= nil) and dsp.VERSION or nil;
-    local base = charBase();
-    if base ~= nil then
-        pcall(function()
-            local addonDir = AshitaCore:GetInstallPath() .. 'addons\\dlac\\';
-            local files = {};
-            for _, f in ipairs(SEEDED) do
-                files[#files + 1] = { name = f, addon = slurp(addonDir .. f), seeded = slurp(base .. 'dlac\\' .. f) };
-            end
-            info.seeded = M._seededState(files);
-        end);
-        -- The engine handshake: dispatch (LAC state) stamps __version into
-        -- modestate.lua on every load/self-swap (the Reload-LAC nag's source).
-        pcall(function()
-            local chunk = loadfile(base .. 'dlac\\modestate.lua');
-            if chunk == nil then return; end
-            local ok, t = pcall(chunk);
-            if ok and type(t) == 'table' then info.stampV = tonumber(t.__version); end
-        end);
-    end
-    local su = try('dlac\\ui\\setupui');
-    if su ~= nil and type(su.jobSetupState) == 'function' then
-        local ok, st = pcall(su.jobSetupState);
-        if ok then info.shim = st; end
-    end
+    -- The engine handshake: dispatch stamps __version into the NATIVE home's
+    -- modestate.lua on every load (purge Phase 3: the reader finally reads
+    -- where the writer writes -- #131's split, closed).
+    pcall(function()
+        local prof = try('dlac\\profiles');
+        local d = prof ~= nil and prof.dataDir() or nil;
+        if d == nil then return; end
+        local chunk = loadfile(d .. 'modestate.lua');
+        if chunk == nil then return; end
+        local ok, t = pcall(chunk);
+        if ok and type(t) == 'table' then info.stampV = tonumber(t.__version); end
+    end);
+    -- The sets truth: the ACTIVE profile's sets file for the current job.
+    pcall(function()
+        local prof = try('dlac\\profiles');
+        if prof == nil then return; end
+        local job = nil;
+        pcall(function() job = gData.GetPlayer().MainJob; end);
+        if type(job) ~= 'string' or job == '' or job == '?' then return; end
+        if prof.hasSetsFile(job) then
+            info.setsWord = tostring(prof.setsPath(job)) .. ' (present)';
+        else
+            info.setsWord = 'none yet for ' .. job .. ' (build sets in the Sets tab; auto-setup seeds the base four)';
+        end
+    end);
     -- The load ledger dlac.lua stashes under a virtual package name (the
     -- gear-preload precedent): every module require of the load loop, with
     -- the failures' errors.

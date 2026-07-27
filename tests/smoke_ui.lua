@@ -1408,8 +1408,8 @@ end)();
         pcall(render, 'WHM', 75);
         local ujoin = table.concat(queued, ' | ');
         check('S210 unlock queues the engine unlock', string.find(ujoin, '/dl lock head off', 1, true) ~= nil, true);
-        check('S211 unlock queues /lac enable <slot> (the legacy heal)',
-            string.find(ujoin, '/lac enable head', 1, true) ~= nil, true);
+        check('S211 unlock queues NO /lac command (the legacy heal died in the purge)',
+            string.find(ujoin, '/lac ', 1, true), nil);
 
         -- NKU. The Naked switch (ADR 0021), driven through the REAL render.
         -- This is the only thing that catches an unknown Lua name in that block:

@@ -172,18 +172,15 @@ end
 -- live glue (Ashita only)
 -- ---------------------------------------------------------------------------
 
-local function charBase()
-    local base = nil;
-    pcall(function()
-        local party = AshitaCore:GetMemoryManager():GetParty();
-        local name  = party:GetMemberName(0);
-        local id    = party:GetMemberServerId(0);
-        if name == nil or name == '' or id == nil or id == 0 then return; end
-        base = string.format('%sconfig\\addons\\luashitacast\\%s_%u\\', AshitaCore:GetInstallPath(), name, id);
-    end);
-    return base;
+-- The engine's handoff home: the NATIVE data dir (the engine writes its
+-- handoffs via charDir = profiles.dataDir; the luashitacast tree is dead --
+-- purge Phase 3, closes #131's reader/writer split).
+local function handoffDir()
+    local ok, prof = pcall(require, 'dlac\\profiles');
+    if not ok or type(prof) ~= 'table' then return nil; end
+    local ok2, d = pcall(prof.dataDir);
+    return (ok2 and d) or nil;
 end
-
 local function charName()
     local n = nil;
     pcall(function() n = AshitaCore:GetMemoryManager():GetParty():GetMemberName(0); end);
@@ -239,14 +236,9 @@ end
 -- engine writes handoffs we watch; WE write this request stamp the engine's
 -- tick watches (dispatch v108). spec = 'check' or 'ls <dur>'.
 function M.requestEngine(spec)
-    pcall(function()
-        local base = charBase();
-        if base == nil then return; end
-        local f = io.open(base .. 'dlac\\debug-request.txt', 'wb');
-        if f == nil then return; end
-        f:write(tostring(os.time()) .. '\n' .. tostring(spec) .. '\n');
-        f:close();
-    end);
+    -- (No-op since the purge, Phase 3: one Lua state -- the engine hears
+    -- every typed /dl directly; there is no starved second state left to
+    -- nudge via a request file. Kept because callers still invoke it.)
 end
 
 -- One pending delivery at a time (a re-run before the tick fires just
@@ -309,7 +301,7 @@ ashita.events.register('d3d_present', 'dlac-debug-deliver', function()
     if os.clock() >= _watchAt then
         _watchAt = os.clock() + 1.0;
         pcall(function()
-            local base = charBase();
+            local base = handoffDir();
             if base == nil then return; end
             local cmdIdle = (os.clock() - _cmdAt) > 8;
             local raw = readAll(base .. 'dlac\\debug-check-engine.txt');
@@ -345,7 +337,7 @@ ashita.events.register('d3d_present', 'dlac-debug-deliver', function()
     local engineRaw = nil;
     if p.handoff ~= nil then
         pcall(function()
-            local base = charBase();
+            local base = handoffDir();
             if base ~= nil then engineRaw = readAll(base .. 'dlac\\' .. p.handoff); end
         end);
     end

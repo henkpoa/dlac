@@ -50,15 +50,16 @@ holds working-preference notes; the repo docs are the durable record.
 
 ## The one-paragraph mental model
 
-Two Lua states share files. The **dlac addon** (this repo, loaded via `/addon load
-dlac`) is the GUI + writer: it scans bags, writes `gear.lua`, splices sets into
-`<JOB>.lua`, writes trigger files, and seeds a 4-file runtime
-(`utils/dispatch/chatfmt/gear`) into `<char>\dlac\`. **LuaAshitacast** requires that
-seeded runtime into *its* state; at every handler event the profile's one-line shim
-calls `utils.dispatch('<Handler>')`, and the engine overlays every matching trigger's
-flattened set, resolving virtual entries (auto staff/obi) per cast. Coordination
-between the states is by files only (`modestate.lua` mirror + `dispatch.M.VERSION`
-handshake).
+**One Lua state, one engine** (since the LuaShitacast purge, 2026-07-27). The dlac
+addon is GUI, writer AND engine: it scans bags, writes `gear.lua`, keeps sets and
+triggers in the profile store (`config\addons\dlac\<char>\profiles\<active>\`), and
+`feature\equipengine` + `dispatch.lua` equip via dlac's own authentic 0x050/0x051
+packets — at every handler event the engine overlays every matching trigger's
+flattened set, resolving virtual entries (auto staff/obi) per cast. Old
+`config\addons\luashitacast\` trees are read-only IMPORT territory: the Sets tab's
+static/group imports and the login auto-migration read them, nothing ever writes
+them. *(The pre-purge model — two Lua states sharing seeded files, LuaAshitacast
+hosting the engine — is history; see `docs/design/lac-purge-plan.md` and history.md.)*
 
 ## Environment & workflow
 
@@ -140,8 +141,9 @@ agent; the per-repo setup lives in `docs/agents/`.
    shipped two corruption bugs (`"dlac\triggersui"` → `\t` tab; a literal newline in a
    string). Keep code Lua-5.1/LuaJIT-compatible (tests run on 5.4 — write to the
    intersection).
-4. **Two Lua states.** Disk reseed ≠ hot swap; LAC picks up seeded files only on ITS
-   reload. Bump `dispatch.M.VERSION` whenever seeded-file behavior changes so the red
+4. **~~Two Lua states~~ ONE Lua state** (the purge, 2026-07-27 — seeding and the
+   self-swap are gone; `/dl reload` / `/addon reload dlac` is the one update hop).
+   Still bump `dispatch.M.VERSION` whenever engine behavior changes so the
    staleness banner fires (it watches dispatch.lua only — utils.lua changes still need
    a manual "Reload LAC" reminder).
 5. **Text-parsing Lua profiles must be comment-aware on BOTH find and walk** — a finder
@@ -230,7 +232,18 @@ that performs the promotion **empties this section in the same commit as the mer
 entry left standing here after a merge is how "is this on main?" becomes unanswerable —
 see hard rule 14, which this section exists to serve.
 
-*(Empty. Last promotion: 2026-07-27 evening — **the Xvs engine-era batch**,
+*(Empty. Last promotion: 2026-07-27 — **THE LUASHITACAST PURGE, all five phases**,
+`e478817`..`489e677`, addon `2026.07.27j` → **`27l`**, engine v131 → **v133**, on
+Henrik's go-ahead: *"go ahead."* Field-confirmed on Mindie 11:48 — the first ever
+clean `/dl check` on a native install: stamp v133 matching file v133 from the NATIVE
+home (#131 closed), no seeded/shim lines, "NO ISSUES" verdict, engine ARMED. One Lua
+state, one engine, one storage home; luashitacast\ is read-only import territory
+(keep-list intact + PRG1/2 allowlist guard). Per-phase log:
+docs/design/lac-purge-plan.md. Still open, post-promotion: the three-way import field
+round (static / group / Copy-from-static) — guard-tested, not yet field-driven. The
+record is the merge commit on `main`.)*
+
+*(Previous promotion: 2026-07-27 evening — **the Xvs engine-era batch**,
 `0f1ae6e`..`c074da9`, addon `2026.07.27f` → **`2026.07.27i`**, engine **v130**, ADR 0025 —
 on Henrik's go-ahead: *"Everything is working perfectly now. … Regardless, push to main."*
 Field-confirmed on Xvs's live installs, the boxes the bugs owned: **the native flatten no
@@ -293,6 +306,19 @@ without costing movement gear between points. The record is the merge commit on 
 Nothing below is half-built — these are deliberate stopping points, each with its
 research already recorded. In rough priority order:
 
+0. **THE LUASHITACAST PURGE — EXECUTED, ALL FIVE PHASES, 2026-07-27** on `dev`
+   (Henrik: *"Can't you just go all the way to phase 5, I really just want this to
+   die"*). Plan + per-phase execution log: `docs/design/lac-purge-plan.md`; the day:
+   `docs/history.md`. The batch, on top of the field-running `27j`:
+   `e478817` P1 (`27j`/v131, writers+self-swap), `8b5e8fd` P2 (`27k`/v132, legacy MODE
+   dies whole, −1063 lines), `58c75e0` P3+4 (`27l`/v133, native-aware check/debug —
+   **#131 closed** — every "Reload LAC" string gone, legacy job files READ-ONLY, all
+   module-local legacy fallbacks dead, PRG1/2 allowlist guard), P5 docs. One state,
+   one engine, one home; luashitacast\ is read-only import territory (the keep-list:
+   static/group/whole-block imports + the migrate carriers, all intact).
+   **ON MAIN since 2026-07-27** (field-confirmed on Mindie, promoted on Henrik's
+   "go ahead"). Only open thread: the three-way import field round (static / group /
+   Copy-from-static) — guard-tested, not yet field-driven.
 1. **FIELD TEST the 07-25 release.** Henrik approved the Menu/Settings **visuals**, but
    the **Mode library has not been driven in-game at all**. Everything in it is
    headless-tested only; the suites stub imgui by design, so popup behaviour, the

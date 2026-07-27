@@ -29,12 +29,10 @@
     manager can never take down a cast or profile loading (it just no-ops + reports).
 ]]--
 
--- HOT-SWAP HANDSHAKE: when the engine self-swap (see the LAC tick near the end
--- of this file) re-executes this file, it hands over the CANONICAL module table
--- -- the one require() gave utils and the profiles -- through _G.__dlacEngineRoot.
--- Populating that same table means every held reference runs the new code with
--- no re-require. On a normal require the global is absent: ordinary fresh table.
-local M = rawget(_G, '__dlacEngineRoot') or {};
+-- (The __dlacEngineRoot hot-swap handshake lived here until the purge, Phase 1
+-- -- it let the LAC-state self-swap re-execute this file into the same module
+-- table. The self-swap died with the seeder; a plain require owns the table.)
+local M = {};
 
 -- LAC-LOAD generation stamp: `or` keeps it across engine SELF-swaps (same module
 -- table, same Lua state) but a Reload LAC builds a fresh state -> fresh stamp.
@@ -49,7 +47,7 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 130;  -- 130: the native flatten no longer waits for the GUI (Xvs field case 2026-07-27). Every utils lookup assumed "loaded first in the LAC state" -- the job shim's first require -- but the NATIVE state has no shim and NOTHING loaded utils at boot: package.loaded read nil, installSets skipped the flatten, and every install refused "flatten produced no sets (world not settled)" every 0.4s until a GUI picker's own lazy pcall(require, 'dlac\\utils') happened to run (gearui's isDualWieldAvailable / subCandidateOk -- the accidental medic; that's why it read as per-JOB in the field: the healed session's job "worked", a reload broke it). utilsModule() now requires lazily at call time -- cycle-safe, see its comment. Tests RQU0-RQU2. 129: /dl disable -- free equip, the native-era answer to /lac disable (Henrik 2026-07-26: "make it claim the slot / slots, then don't do anything at all with it, so people can free equip all they want without DLAC intervention"). Not a lock (a lock is a veto INSIDE the rank walk -- four rows punch through it) and not a claim to dress (every other row wins a slot in order to put something there; this one wins it to write nothing). It is the CEILING: pinned first in ARB_ORDER_DEFAULT, undraggable like the Triggers floor, and enforced at engineEquipSet -- the one write seam -- rather than in equipResolved's per-slot chain, because the whole-table post-passes that run after that chain write slots the set never named (mp-stage's battery, trinket-vs-ranged's worn-Ammo displace) and would put a slot straight back. Registered as a claim ONLY for attribution, so /dl why and the Priority panel can name it and woven MaxMP cedes it for free. Shares M.worldWatch with naked / locked set / slot locks (v124's one lifetime rule): drops on a main job change and on leaving the world, never written to disk. The Equipped tab's "Free equip" switch now drives THIS instead of /lac disable, which under the native engine talked to a LuaAshitacast that no longer does the equipping and therefore did nothing at all. ADR 0024; tests DS1-DS30.
+M.VERSION = 133;  -- 133: the purge, Phase 3-4 -- native-aware surfaces + the allowlist. /dl check reads the NATIVE home (stamp, sets file) and the seeded-copies/shim lines died (#131 CLOSED); debug.lua's handoff reads follow (handoffDir = profiles.dataDir) and requestEngine is a no-op; charDir has NO legacy fallback; '/dl profile migrate go' no longer reloads anything; every 'Reload LAC' user string became /dl reload or died; gearui equip-now uses the game's native /equip; legacy job files are READ-ONLY (the delete-static writer refuses); the module-local legacy path fallbacks (gearimport x2, gearexport, augments, debug) are gone. Tests PRG1-2 pin the allowlist: a uashitacast string literal may exist only in the keep-list readers. 132: the purge, Phase 2 -- LEGACY MODE DIES WHOLE. inLac(), the gProfile/gFunc world, the LAC-hosted engine path, readJobSets + the legacy sets fallback, warnShadowedStatics, the HandleEquipEvent wrap, the LAC tick half, the request-file bridge and both lockstyle engine halves are DELETED; nativeMode() is constant true, the engine flag is retired in place, /dl engine is status-only. One state, one engine, one sets store. 131: the LuaShitacast purge, Phase 1 (docs/design/lac-purge-plan.md). The engine SELF-SWAP died whole -- M.swapWanted, trySelfSwap, the __dlacEngineRoot handshake, tests SW* -- because the LAC seeder that fed it died in dlac.lua the same day: with seeds frozen forever, the watch could only ever DOWNGRADE a running engine to stale bytes. profiles.migrate step 4 (rewrite the job file as a clean shim) died too: originals now stay in place, inert and importable (the keep-list promise), and the shim WRITER (shimFileText/SHIM_BODY/BOOT_LINE) went with it -- only the recognizers (SHIM_MARKER, isCleanShim) remain for files already on disk. Setup writes NO job files anymore (MIGRATE_BOOT/STARTER_PROFILE deleted; storage + base sets + starter triggers ARE the setup). The LAC-alive polite ask (lacAlive/shouldAskUnloadLac) is gone; the coexistence tripwire remains the backstop. Nothing in dlac writes under config\addons\luashitacast\ anymore -- that tree is read-only import/migration territory. 130: the native flatten no longer waits for the GUI (Xvs field case 2026-07-27). Every utils lookup assumed "loaded first in the LAC state" -- the job shim's first require -- but the NATIVE state has no shim and NOTHING loaded utils at boot: package.loaded read nil, installSets skipped the flatten, and every install refused "flatten produced no sets (world not settled)" every 0.4s until a GUI picker's own lazy pcall(require, 'dlac\\utils') happened to run (gearui's isDualWieldAvailable / subCandidateOk -- the accidental medic; that's why it read as per-JOB in the field: the healed session's job "worked", a reload broke it). utilsModule() now requires lazily at call time -- cycle-safe, see its comment. Tests RQU0-RQU2. 129: /dl disable -- free equip, the native-era answer to /lac disable (Henrik 2026-07-26: "make it claim the slot / slots, then don't do anything at all with it, so people can free equip all they want without DLAC intervention"). Not a lock (a lock is a veto INSIDE the rank walk -- four rows punch through it) and not a claim to dress (every other row wins a slot in order to put something there; this one wins it to write nothing). It is the CEILING: pinned first in ARB_ORDER_DEFAULT, undraggable like the Triggers floor, and enforced at engineEquipSet -- the one write seam -- rather than in equipResolved's per-slot chain, because the whole-table post-passes that run after that chain write slots the set never named (mp-stage's battery, trinket-vs-ranged's worn-Ammo displace) and would put a slot straight back. Registered as a claim ONLY for attribution, so /dl why and the Priority panel can name it and woven MaxMP cedes it for free. Shares M.worldWatch with naked / locked set / slot locks (v124's one lifetime rule): drops on a main job change and on leaving the world, never written to disk. The Equipped tab's "Free equip" switch now drives THIS instead of /lac disable, which under the native engine talked to a LuaAshitacast that no longer does the equipping and therefore did nothing at all. ADR 0024; tests DS1-DS30.
                   -- 128: 128: AutoAmmo asks what is in RANGE before it picks (field, Henrik 2026-07-26: "AutoAmmo does NOT dictate if it's bolt, arrows or what not that gets equipped. That is 100% decided on what gets put in ranged"). resolveAmmoPlan was type-BLIND -- it took the first `ranged`-flagged entry with stock, so a bolt above your arrows won with a bow equipped -- and the panel's Bullets/Bolts/Arrows selector never constrained it (categoryOf is a VIEW, stored nowhere). The cost was not a wasted swap: charutils.cpp EquipItem STRIPS THE OTHER SLOT on an incompatible Range/Ammo pair, so the bolt took the bow off, the trigger re-equipped it, and the two flapped forever -- ADR 0010's failure through the skill/subskill door instead of the rslot one. New pure M.pairsWith over a "<skill>:<subskill>" key (26:1 gun/bullet, 26:0 crossbow/bolt, 26:2 culverin/shell, 27:0 boomerang/pebble, 27:3 shuriken, 0:10 Animator/oil), three-valued so an unknown pair degrades to today's behaviour instead of switching AutoAmmo off; ARCHERY is exempt from the subskill half exactly as the server writes it (Shortbow 25:0 and Longbow 25:4 share arrows). Range is never written -- AutoAmmo only ever READS it. Two rulings, both Henrik's: no ranged weapon worn = do nothing at all (safe -- with Range empty the server refuses the shot, so nothing can be consumed), and a weapon worn with nothing in the list able to pair = hold, never force a mismatch in. THROWING with an empty Range (a NIN's shuriken, CanUseRangedAttack's `|| PAmmo->isThrowing()`) is the ONE known exception and stays parked behind the §8 NIN field tests. The key rides the manifest like RSlot (gearimport stamps Pair from the catalog's new field); worn Range falls back to the client resource's Skill when the manifest predates it, so the update alone separates bow/gun/throwing for everyone and a manifest refresh upgrades it to gun-vs-crossbow. Tests PW1-PW14, AM40-AM58.
                   -- 127: trigger CASES, the schema backbone (issue #126, slice 2/5; ADR 0023) -- rules gain an optional `cases` list (a second `&`/`|` tier: op + the same two legs a body has), evaluated by matches()/matchedCase() over a factored legMatches so both tiers share one code path; normalize validates + drops empty cases + strips the always-true `hasCases` version guard; auto-priority + ruleLabel span every leg of every case (case-LESS rules match/label/serialize byte-for-byte as before -- pinned). serializeTriggers is oldest-form-first (a `| case` of only `&` rows -> a whenAny multi-entry; only `&` cases and `| cases` with internal OR use the new list) and stamps the guard so OLDER engines drop the rule with the standard warn instead of misreading it. Seeded-file bump: normalize + matches run engine-side (hard rule 4). Tests CX1-CX35, MC19-23. (PR #132 shipped as v126/2026.07.26c off a pre-97f1edc dev; renumbered at merge.)
                   -- 126: the /dl why trace can no longer outlive the sets store it described (field, Mindie 2026-07-26 01:31): the retrace sig now carries the store REVISION (M.modesRev -- bumped by every install and re-flatten, 5668/5714), so lines built against the empty boot-window store ("[NOT FOUND in profile Sets]", true for ~2s of designed install refusals) die the moment the install lands, instead of printing with a fresh timestamp for the rest of the session while equips worked fine. The v118 law applied to the trace: THE INSTALL INVALIDATES THE BELIEF. Display only, no equip change. Tests TRC0-TRC3 (the trace-vs-store contract, driven through the real command handler + dispatch like CMD).
@@ -327,9 +325,8 @@ local _firedDirty = false;
 local _monQ = {};   -- fired lines awaiting the live stream -- drained ONE per frame (v58)
 local saveFiredState;   -- defined with the mode-state block below (needs charDir/writeFile)
 
--- Only the copy of this module living in LuaAshitacast's state may equip, own mode
--- state, or answer commands. The dlac addon state has no gFunc, so it stays inert.
-local function inLac() return rawget(_G, 'gFunc') ~= nil; end
+-- (inLac() died in the purge, Phase 2: there is no LuaAshitacast-hosted copy
+-- of this module anymore -- the addon state is the engine, the only one.)
 
 -- NATIVE ENGINE (feature/native-engine, v111): when the native flag is on,
 -- the ADDON-state copy of this module -- inert since v1 -- becomes the ACTIVE
@@ -340,7 +337,6 @@ local function inLac() return rawget(_G, 'gFunc') ~= nil; end
 -- (equipengine itself refuses there -- two interceptors is the hazard the
 -- tripwire exists for).
 local function nativeEngine()
-    if inLac() then return nil; end
     local ok, eng = pcall(require, 'dlac\\feature\\equipengine');
     if not ok or type(eng) ~= 'table' or type(eng.nativeOn) ~= 'function' then return nil; end
     local ok2, on = pcall(eng.nativeOn);
@@ -348,10 +344,10 @@ local function nativeEngine()
     return eng;
 end
 
--- "Is THIS copy the active engine?" -- LAC state always; addon state when
--- native mode is armed. The dispatch entry, the outer machinery block and the
--- command printers all gate on this instead of inLac().
-local function engineActive() return inLac() or nativeEngine() ~= nil; end
+-- "Is THIS copy the active engine?" -- when the native engine is armed (the
+-- tripwire can disarm it). The dispatch entry, the outer machinery block and
+-- the command printers all gate on this.
+local function engineActive() return nativeEngine() ~= nil; end
 
 -- Drop every DISABLED slot from a resolved set (ADR 0024). Returns the set
 -- unchanged when nothing is disabled -- the overwhelmingly common case pays one
@@ -399,9 +395,9 @@ local function engineEquipSet(set)
     local eng = nativeEngine();
     if eng ~= nil then
         pcall(eng.equipSet, set);
-    else
-        pcall(function() gFunc.EquipSet(set); end);
     end
+    -- (engine unarmed -- tripwire -- equips nothing: the gFunc.EquipSet route
+    -- died in the purge, Phase 2, with the LAC-hosted engine.)
 end
 
 -- ---------------------------------------------------------------------------
@@ -442,8 +438,9 @@ local function charDir()
             if name == '' then name = nil; end
         end);
     end
-    if name == nil or id == nil then return nil; end
-    return string.format('%sconfig\\addons\\luashitacast\\%s_%u\\dlac\\', AshitaCore:GetInstallPath(), name, id);
+    -- (purge Phase 3: no legacy-path fallback -- profiles.dataDir is the one
+    -- authority, and composing a luashitacast path here would resurrect it.)
+    return nil;
 end
 
 -- ---------------------------------------------------------------------------
@@ -471,52 +468,11 @@ end
 -- receipt/refusal/send into the timeline; the dispatch tick flushes the
 -- handoff at window end (snapshot + timeline), and the addon's merger reads
 -- it ~4s after that.
-M._lsDbg = nil;   -- { out, log, t0, untilAt, dur }
-
-function M._lsDbgNote(txt)
-    local d = M._lsDbg;
-    if d == nil or os.clock() > d.untilAt or #d.log >= 200 then return; end
-    d.log[#d.log + 1] = string.format('t+%5.1fs  %s', os.clock() - d.t0, txt);
-end
-
--- Twin of feature/debug.lua's M._watchFire (ADR 0002: the engine requires no
--- addon module -- twin constants, twin logic; tests DBR*): a NEW, FRESH
--- request stamp while THIS state's own command handlers sit idle means the
--- ADDON heard a typed /dl this state never received (e.blocked halts the
--- command at whichever state sits first in Ashita's chain -- the 07-23
--- starvation pair, both directions field-observed).
-function M._reqFire(stamp, seenStamp, nowEpoch, cmdIdle)
-    if stamp == nil or stamp == seenStamp then return 'keep'; end
-    if math.abs(nowEpoch - stamp) > 15 then return 'adopt-quiet'; end
-    return cmdIdle and 'adopt-fire' or 'adopt-quiet';
-end
-
--- Request-spec parser (pure, tests DBR6+): the second line of
--- debug-request.txt -> kind + optional number. 'check' | 'ls [dur]' |
--- 'apply [box]' (v109 -- the lockstyle apply rides the request file too:
--- it was the one player feature whose trigger crossed the command bus).
-function M._reqSpec(spec)
-    spec = tostring(spec or '');
-    if spec:match('^check') ~= nil then return 'check', nil; end
-    local d = spec:match('^ls%s+(%d+)');
-    if d ~= nil or spec:match('^ls') ~= nil then return 'ls', tonumber(d); end
-    local b = spec:match('^apply%s+(%d+)');
-    if b ~= nil or spec:match('^apply') ~= nil then return 'apply', tonumber(b); end
-    return nil, nil;
-end
-
--- Pure (tests DBG7-8): snapshot + timeline -> the handoff's line array.
-function M._lsDbgFlushLines(out, log, dur)
-    local L = {};
-    for _, l in ipairs(out or {}) do L[#L + 1] = l; end
-    L[#L + 1] = string.format('-- captured events, engine side (%ds window) --', tonumber(dur) or 0);
-    if log == nil or #log == 0 then
-        L[#L + 1] = '(no lockstyle events reached this engine during the window)';
-    else
-        for _, l in ipairs(log) do L[#L + 1] = l; end
-    end
-    return L;
-end
+-- (The two-state COMMAND BRIDGE died in the purge, Phase 2: M._lsDbg,
+-- _lsDbgNote, _reqFire, _reqSpec, _lsDbgFlushLines, the request-file watch
+-- and the engine lockstyle halves all existed to cross from the addon state
+-- into LuaAshitacast's -- one state now, one door. feature\lockstyleapply
+-- owns the native apply with its own byte-for-byte pure core.)
 
 -- ---------------------------------------------------------------------------
 -- Cached per-character state-file reader -- the ONE implementation behind the
@@ -2101,14 +2057,7 @@ local function mpLowMap(mpMap, rfMap)
     end
     pcall(function()
         local rules = ensureLoaded();
-        local prof = rawget(_G, 'gProfile');
-        local sets = (prof ~= nil and type(prof.Sets) == 'table') and prof.Sets or nil;
-        -- NATIVE (v112): no gProfile here -- the native store holds the same
-        -- flattened names. Without this, the LOW map saw only inline equips,
-        -- every named set's potency point read as absent, and the banded
-        -- ladder fired at nonsense thresholds (Henrik's first native field
-        -- round: "maxMP acting super weird").
-        if sets == nil then sets = M._nativeSets; end
+        local sets = M._nativeSets;   -- the one sets store (purge Phase 2)
         -- ready = the trigger WORLD resolved (rules loaded, or the path
         -- resolved and the file is legitimately absent -- a trigger-less job
         -- is ready with empty rules) AND a sets source existed.
@@ -2184,8 +2133,7 @@ local function mpLowMap(mpMap, rfMap)
     -- predecessor even when the scanned lows happen to match.
     local _flatN, _hollowN = 0, 0;
     pcall(function()
-        local prof = rawget(_G, 'gProfile');
-        local src = (prof ~= nil and type(prof.Sets) == 'table') and prof.Sets or M._nativeSets;
+        local src = M._nativeSets;
         if type(src) == 'table' then
             for k, v in pairs(src) do
                 if k ~= 'Dynamic' and type(v) == 'table' then
@@ -2290,7 +2238,7 @@ function M.mpBands(ctx)
     -- tick after load) -- Henrik's field note: the glimpse predates native,
     -- LAC mode raced identically all along.
     if not lowReady then return nil; end
-    if not inLac() then
+    do
         local s = M._nativeSets;
         local any = false;
         if type(s) == 'table' then
@@ -4276,12 +4224,8 @@ M._nativeSets = M._nativeSets or nil;
 
 local function equipSetByName(name, ctx)
     local s;
-    pcall(function()
-        local prof = rawget(_G, 'gProfile');
-        if type(prof) == 'table' and type(prof.Sets) == 'table' then s = prof.Sets[name]; end
-    end);
-    if type(s) ~= 'table' and type(M._nativeSets) == 'table' then
-        s = M._nativeSets[name];   -- the native store (flattened names live top-level)
+    if type(M._nativeSets) == 'table' then
+        s = M._nativeSets[name];   -- the sets store (flattened names live top-level)
     end
     if type(s) ~= 'table' then
         -- A trigger MATCHED but its target set is absent from this job's profile
@@ -4906,9 +4850,7 @@ local function ammoPlannedByHits(hits)
         elseif r.sets ~= nil then
             for _, sn in ipairs(r.sets) do
                 pcall(function()
-                    local prof = rawget(_G, 'gProfile');
-                    local sets = (type(prof) == 'table' and type(prof.Sets) == 'table')
-                                 and prof.Sets or M._nativeSets;   -- native store fallback (v111)
+                    local sets = M._nativeSets;   -- the one sets store
                     if type(sets) == 'table' and type(sets[sn]) == 'table' and sets[sn].Ammo ~= nil then
                         plan = sets[sn].Ammo;
                     end
@@ -5344,7 +5286,7 @@ function M.dispatch(event)
             -- every HandleDefault so level/subjob/mode changes re-pick ladder
             -- rungs; the native store rides the same cadence (cheap no-op when
             -- nothing changed -- checkRebuildNeeded's own latch).
-            if not inLac() and type(M._nativeSets) == 'table' then
+            if type(M._nativeSets) == 'table' then
                 pcall(function()
                     local u = utilsModule();
                     if u ~= nil and type(u.rebuildSets) == 'function' then
@@ -6297,66 +6239,22 @@ end
 -- stubbed -- re-running the profile must not equip, bind, queue or print.
 -- Gear refs resolve through the real require, so the fresh entries point into
 -- the same gear tables the old ones did.
-local function readJobSets()
-    local dir = charDir();
-    if dir == nil then return nil, 'not logged in'; end
-    local base = string.sub(dir, 1, #dir - 5);   -- strip the trailing 'dlac\'
-    local abbr = nil;
-    pcall(function()
-        local j = AshitaCore:GetMemoryManager():GetPlayer():GetMainJob();
-        if j ~= nil and j ~= 0 then abbr = AshitaCore:GetResourceManager():GetString('jobs.names_abbr', j); end
-    end);
-    if abbr == nil or abbr == '' then return nil, 'job unknown'; end
-    local chunk = loadfile(base .. abbr .. '.lua');
-    if chunk == nil then return nil, 'could not open ' .. abbr .. '.lua'; end
-    -- The stub also survives STRING-BUILDING: migrated profiles start with
-    -- package.path = package.path .. AshitaCore:GetInstallPath() .. '...' --
-    -- with AshitaCore stubbed that line must degrade to '', not error (field
-    -- case: 'attempt to concatenate a table value' at WHM.lua:1). `package`
-    -- is blocked too, so the sandboxed run can't append junk to the REAL path.
-    local STUB; STUB = setmetatable({}, {
-        __index = function() return STUB; end,
-        __call = function() return STUB; end,
-        __concat = function() return ''; end,
-        __tostring = function() return ''; end,
-    });
-    local BLOCK = { gFunc = true, gState = true, gEquip = true, gSetDisplay = true, gProfile = true,
-                    gSettings = true, AshitaCore = true, ashita = true, print = true, coroutine = true,
-                    package = true };
-    local env = setmetatable({}, {
-        __index = function(_, k)
-            if BLOCK[k] then return STUB; end
-            local g = rawget(_G, k);
-            if g ~= nil then return g; end
-            return STUB;
-        end,
-        __newindex = function(t, k, v) rawset(t, k, v); end,
-    });
-    if setfenv ~= nil then setfenv(chunk, env); end
-    local ok, ret = pcall(chunk);
-    local s = nil;
-    if ok and type(ret) == 'table' and type(ret.Sets) == 'table' then s = ret.Sets;
-    elseif type(rawget(env, 'sets')) == 'table' then s = rawget(env, 'sets'); end
-    if type(s) ~= 'table' then
-        return nil, 'no sets table' .. (ok and '' or (': ' .. tostring(ret)));
-    end
-    return s, nil;
-end
-
--- The sets source, profile-first: the active profile's sets\<JOB>.lua when it
--- exists, else the legacy job-file sandbox read above. Third return names the
--- source ('profile' / nil) for chat lines.
+-- The sets source: the active profile's sets\<JOB>.lua, the only source
+-- (purge Phase 2 -- the legacy job-file sandbox reader died; old <JOB>.lua
+-- files are the GUI importers' territory, and setmanager imports a job
+-- file's whole Dynamic block when the profile file is first created).
+-- Third return names the source for chat lines.
 local function readSetsSource()
-    if _pok then
-        local job = nil;
-        pcall(function() job = gData.GetPlayer().MainJob; end);
-        if type(job) == 'string' and job ~= '' and job ~= '?' and _prof.hasSetsFile(job) then
-            local dyn, derr = _prof.readSetsFile(job);
-            if dyn == nil then return nil, derr; end
-            return { Dynamic = dyn }, nil, 'profile';
-        end
+    if not _pok then return nil, 'profiles.lua unavailable'; end
+    local job = nil;
+    pcall(function() job = gData.GetPlayer().MainJob; end);
+    if type(job) ~= 'string' or job == '' or job == '?' then return nil, 'job unknown'; end
+    if not _prof.hasSetsFile(job) then
+        return nil, 'no profile sets file for ' .. job .. ' yet (build sets in the Sets tab)';
     end
-    return readJobSets();
+    local dyn, derr = _prof.readSetsFile(job);
+    if dyn == nil then return nil, derr; end
+    return { Dynamic = dyn }, nil, 'profile';
 end
 
 -- Install a fresh Sets table into the live gProfile -- the '/dl sets reload'
@@ -6365,12 +6263,11 @@ end
 -- place (gProfile.Sets is a live table in THIS state -- no LAC reload needed),
 -- re-flatten, re-dispatch Default. Returns true, setCount | false, why.
 local function installSets(fresh)
-    local prof = rawget(_G, 'gProfile');
-    if type(prof) ~= 'table' or type(prof.Sets) ~= 'table' then
-        -- NATIVE install (v111): no gProfile here -- the module-level store
-        -- plays its part. Same flow: drop dead flattened names, swap Dynamic,
-        -- re-flatten, re-dispatch.
-        if not inLac() and nativeEngine() ~= nil then
+    do
+        -- The module-level store (v111). Flow: drop dead flattened names,
+        -- swap Dynamic, re-flatten, re-dispatch. (The gProfile twin died in
+        -- the purge, Phase 2.)
+        if nativeEngine() ~= nil then
             local store = (type(M._nativeSets) == 'table') and M._nativeSets or { Dynamic = {} };
             if type(store.Dynamic) == 'table' then
                 for name in pairs(store.Dynamic) do
@@ -6416,42 +6313,13 @@ local function installSets(fresh)
             for _ in pairs(fresh.Dynamic) do n = n + 1; end
             return true, n;
         end
-        return false, 'no profile loaded';
+        return false, 'engine not armed (tripwire?)';
     end
-    if type(prof.Sets.Dynamic) == 'table' then
-        for name in pairs(prof.Sets.Dynamic) do
-            if fresh.Dynamic[name] == nil then prof.Sets[name] = nil; end
-        end
-    end
-    prof.Sets.Dynamic = fresh.Dynamic;
-    M.modesRev = (M.modesRev or 0) + 1;   -- the rebuild signal utils watches
-    pcall(function()
-        local u = utilsModule();
-        if u ~= nil and type(u.rebuildSets) == 'function' then u.rebuildSets(prof.Sets); end
-    end);
-    _mpLow.at, _mpLow.sig, _mpLow.sigAt = 0, nil, nil;   -- install invalidates the belief (v118)
-    pcall(function() M.dispatch('Default'); end);
-    local n = 0;
-    for _ in pairs(fresh.Dynamic) do n = n + 1; end
-    return true, n;
 end
 
--- Loud courtesy check before an install replaces file-authored sets: any name in
--- the incoming Dynamic that the loaded profile ALSO defines as a plain (static)
--- set gets silently shadowed by the flatten -- say so once per profile load.
-local function warnShadowedStatics(fresh)
-    local prof = rawget(_G, 'gProfile');
-    if type(prof) ~= 'table' or type(prof.Sets) ~= 'table' then return; end
-    local dynNow = (type(prof.Sets.Dynamic) == 'table') and prof.Sets.Dynamic or {};
-    local hit = {};
-    for name in pairs(fresh.Dynamic) do
-        if prof.Sets[name] ~= nil and dynNow[name] == nil then hit[#hit + 1] = tostring(name); end
-    end
-    if #hit == 0 then return; end
-    table.sort(hit);
-    printwarn('profile dynamic set(s) shadow static set(s) of the same name in your job file: '
-        .. table.concat(hit, ', ') .. ' -- the profile version wins; rename one to keep both.');
-end
+-- (warnShadowedStatics died in the purge, Phase 2: it compared the incoming
+-- Dynamic against gProfile's file-authored statics, and there is no loaded
+-- job-file profile anymore -- statics live in old files the importers read.)
 
 -- ---------------------------------------------------------------------------
 -- Commands: /dl mode | why | triggers | sets reload   (registered in the LAC
@@ -6463,33 +6331,16 @@ local function argStart(raw)
     return nil;
 end
 
--- The self-swap DECISION, pure (tests SW*): should the tick act on the seeded
--- file's bytes? Content is the key -- the version number alone went BLIND to
--- same-version engine edits (Henrik's field friction, 2026-07-22: mid-round
--- fixes under one vNN never swapped; only a manual Reload LAC picked them up).
---   raw       -- the seeded file's bytes (nil = unreadable).
---   sourceRaw -- the bytes the RUNNING engine was loaded from (nil = not yet known).
---   failedRaw -- the last build that failed to swap (retried only when edited).
---   fileV/runV -- parsed M.VERSION of the file / the running engine. A version
---                DIFFERENCE swaps even when sourceRaw is stale (the baseline
---                self-heals); an unparseable fileV is a torn or foreign file --
---                never execute one.
--- Returns 'swap' | 'init' (capture raw as the baseline) | 'skip'.
-function M.swapWanted(raw, sourceRaw, failedRaw, fileV, runV)
-    if raw == nil or raw == failedRaw then return 'skip'; end
-    if fileV == nil then return 'skip'; end
-    if runV ~= nil and fileV ~= runV then return 'swap'; end
-    if sourceRaw == nil then return 'init'; end
-    if raw ~= sourceRaw then return 'swap'; end
-    return 'skip';
-end
+-- (M.swapWanted -- the content-keyed self-swap decision, tests SW* -- died in
+-- the purge, Phase 1, together with trySelfSwap below: with the LAC seeder
+-- gone there is no seeded file to watch, and a leftover swap could only ever
+-- DOWNGRADE a running engine to frozen seed bytes.)
 
--- The engine machinery block: LAC state always; the ADDON state too when the
--- native engine is armed (feature/native-engine, v111) -- mode state, the
--- Default tick and the command surface are ENGINE features, not LAC features.
--- LAC-bridge machinery inside (self-swap, handoff/request files, the
--- HandleEquipEvent wrap, lockstyle engine halves) stays inLac()-pinned: it
--- exists to cross two Lua states, and native mode has one.
+-- The engine machinery block: mode state, the Default tick and the command
+-- surface -- live when the engine is armed. (The LAC-bridge machinery that
+-- used to live alongside -- self-swap, handoff/request files, the
+-- HandleEquipEvent wrap, lockstyle engine halves -- died in the purge,
+-- Phase 1-2: it existed to cross two Lua states, and there is one.)
 if engineActive() then
     loadModeState();        -- dlac-owned flags: restore (same job only) BEFORE the first mirror
     pcall(saveModeState);   -- then mirror whatever we start with for the GUI
@@ -6498,7 +6349,7 @@ if engineActive() then
     -- name it emits (ACTION_ROUTES rows + 'Default'/'Item') canonicalizes
     -- through EVENT_CANON exactly like a shim call would.
     do
-        local eng = (not inLac()) and nativeEngine() or nil;
+        local eng = nativeEngine();
         if eng ~= nil then
             eng.onEvent = function(name) M.dispatch(name); end
         end
@@ -6524,102 +6375,20 @@ if engineActive() then
     -- A pre-gen wrap hid its original, so it BECOMES the preserved original
     -- once -- its inner pet check is idempotent under the gate's, and wrap
     -- depth stops at 2 because _dlacOrigHEE is reused by every later gen.
-    local WRAP_GEN = 2;
-    pcall(function()
-        local st = rawget(_G, 'gState');
-        if st ~= nil and type(st.HandleEquipEvent) == 'function' and st._dlacWrapGen ~= WRAP_GEN then
-            st._dlacOrigHEE = st._dlacOrigHEE or st.HandleEquipEvent;
-            local orig = st._dlacOrigHEE;
-            st.HandleEquipEvent = function(ev, style)
-                if ev == 'HandleDefault' and M.defaultGateHold() then return; end
-                return orig(ev, style);
-            end;
-            st._dlacWrapGen = WRAP_GEN;
-            st._dlacPetHold = true;   -- a pre-gen engine run must not wrap over us again
-        end
-    end);
+    -- (The gState.HandleEquipEvent wrap -- WRAP_GEN, the LAC entry-point
+    -- gate -- died in the purge, Phase 2: the engine-side holds cover every
+    -- dispatch, and there is no LAC entry point left to wrap.)
 
-    -- ENGINE SELF-SWAP: hot-reload this file the way the trigger data reloads.
-    -- The addon's seeder refreshes <char>\dlac\dispatch.lua whenever the addon
-    -- copy changes (load-time + the 5s watch in dlac.lua), but LAC's require
-    -- cache keeps running the OLD code until a full Reload LAC -- the one
-    -- reload the version banner still asks for. Instead: every ~2s the tick
-    -- compares the seeded file's BYTES against the bytes this engine was
-    -- loaded from (M._swapSourceRaw; version-keying alone went blind to
-    -- same-version edits -- see M.swapWanted, the pure decision). On a
-    -- difference the file is re-executed INTO THIS SAME MODULE TABLE (the
-    -- __dlacEngineRoot handshake at the top of the file), so utils' captured
-    -- reference and the profiles' shims run the new code with no re-require.
-    -- The re-run re-registers both event handlers (unregister-first makes the
-    -- replace deterministic), skips the Default-gate wrap re-install when the
-    -- shell shape is unchanged (_dlacWrapGen guard -- the gate LOGIC lives on
-    -- M.defaultGateHold and swaps live regardless), and re-runs loadModeState
-    -- + saveModeState -- a swap inherits Reload-LAC semantics exactly: modes
-    -- survive via the modestate mirror (whose re-stamp also clears the GUI
-    -- banner); modes, slot locks and any locked set are KEPT (they live on the module
-    -- table the swap hands over, so a git pull cannot quietly undo them).
-    -- The BASELINE initializes from the first readable tick (the engine and
-    -- the seeded file are the same bytes at load in every ordinary sequence)
-    -- and self-heals through the version compare if a reseed ever lands in
-    -- the sub-second between require and the first tick.
-    -- Failure degrades to today's behavior: a syntax error is caught by
-    -- loadstring BEFORE anything executes; a runtime error mid-execution rolls
-    -- the version stamp back to the old one (the mixed state IS old-with-holes;
-    -- the banner must stay up) and the broken CONTENT is remembered on the
-    -- SHARED table (M._swapFailedRaw -- a half-swapped generation may already
-    -- be running the new tick), so a broken build is tried once per edit, not
-    -- every 2 seconds, and a fixed build -- same version or not -- always
-    -- differs from the remembered bytes and gets its retry.
-    local _swapAt = 0;
-    local function trySelfSwap()
-        if os.clock() < _swapAt then return; end
-        _swapAt = os.clock() + 2.0;
-        local dir = charDir();
-        if dir == nil then return; end
-        local path = dir .. 'dispatch.lua';
-        local raw = readFile(path);
-        local v = (raw ~= nil) and tonumber(string.match(raw, 'M%.VERSION%s*=%s*(%d+)')) or nil;
-        local want = M.swapWanted(raw, M._swapSourceRaw, M._swapFailedRaw, v, M.VERSION);
-        if want == 'init' then M._swapSourceRaw = raw; return; end
-        if want ~= 'swap' then return; end
-        local chunk, cerr = (loadstring or load)(raw, '@' .. path);
-        if chunk == nil then
-            M._swapFailedRaw = raw;
-            printerr(string.format('engine hot-swap: v%d does not parse (%s) -- staying on v%d.',
-                v, tostring(cerr), M.VERSION));
-            return;
-        end
-        local old = M.VERSION;
-        rawset(_G, '__dlacEngineRoot', M);
-        local ok, err = pcall(chunk);
-        rawset(_G, '__dlacEngineRoot', nil);
-        if not ok then
-            M._swapFailedRaw = raw;
-            M.VERSION = old;        -- the partial run may have claimed v already
-            pcall(saveModeState);   -- ...and stamped it: re-stamp old, keep the banner honest
-            printerr(string.format('engine hot-swap v%d -> v%d FAILED mid-load (%s) -- click Reload LAC.',
-                old, v, tostring(err)));
-            return;
-        end
-        M._swapFailedRaw = nil;
-        M._swapSourceRaw = raw;
-        if v == old then
-            print(string.format('[dlac] engine hot-swapped v%d (same-version content change) -- no Reload LAC needed (modes, locks and any locked set kept).', v));
-        else
-            print(string.format('[dlac] engine hot-swapped v%d -> v%d -- no Reload LAC needed (modes, locks and any locked set kept).',
-                old, v));
-        end
-    end
+    -- (The ENGINE SELF-SWAP -- trySelfSwap, the ~2s content watch that carried
+    -- a git pull through the seeded copy into LuaAshitacast's running state --
+    -- died in the purge, Phase 1, with the seeder that fed it. The addon state
+    -- requires this file from the addon folder; /dl reload or /addon reload
+    -- dlac is the one update hop left, and it is a real reload.)
 
-    -- A self-swap re-runs these registrations; unregister-first makes the
-    -- replace deterministic whatever Ashita's same-alias behavior is (pcall:
-    -- on the FIRST load there is nothing to unregister).
-    -- The debug/check ENGINE HALVES (v108): one implementation, two doors --
-    -- the command handler calls them when the typed /dl arrives HERE, and
-    -- the tick's request watch calls them when it arrived at the ADDON state
-    -- instead (debug-request.txt, written by feature/debug.lua). _dbgCmdAt
-    -- is the idle gate that keeps the watch quiet while commands work.
-    local _dbgCmdAt = -1e9;
+    -- Registrations are unregister-first: replace-deterministic whatever
+    -- Ashita's same-alias behavior is (pcall: on the FIRST load there is
+    -- nothing to unregister). The v108 request-file second door died in the
+    -- purge, Phase 2 -- the typed /dl arrives HERE, the one state.
     local function engineCheckHalf()
         local job, sj = '?', nil;
         pcall(function()
@@ -6636,163 +6405,14 @@ if engineActive() then
         print('[dlac] ' .. line);
         writeDebugHandoff('debug-check-engine.txt', { line });
     end
-    local function engineLsHalf(dur)
-        -- v107 marker: the addon synchronizes its capture window to ours off
-        -- this file (its own command event may never fire).
-        writeDebugHandoff('debug-ls-open.txt', { 'dur ' .. dur });
-        local out = {};
-        local function say(l) out[#out + 1] = l; print('[dlac] debug ls (engine): ' .. l); end
-        local dir = charDir();
-        if dir == nil then print(string.format('[dlac] debug ls (engine): alive v%d -- not logged in.', M.VERSION)); return; end
-        local job;
-        pcall(function() job = gData.GetPlayer().MainJob; end);
-        if type(job) ~= 'string' or job == '' or job == '?' then job = nil; end
-        local lsPath = (_pok and job ~= nil and _prof.readLockstylesPath(job) or nil) or (dir .. 'lockstyles.lua');
-        local raw = readFile(lsPath);
-        say(string.format('alive v%d, job %s -- boxes file: %s (%s)',
-            M.VERSION, tostring(job or '?'), tostring(lsPath),
-            (raw ~= nil) and (tostring(#raw) .. ' bytes') or 'MISSING'));
-        local t = nil;
-        if raw ~= nil then
-            local chunk = (loadstring or load)(raw, '@lockstyles.lua');
-            if chunk ~= nil then local okc, v = pcall(chunk); if okc then t = v; end end
-            if type(t) ~= 'table' then
-                say('boxes file does not PARSE -- corrupt or conflicted copy?');
-            end
-        end
-        local gr = nil;
-        pcall(function() gr = require('dlac\\gear'); end);
-        local resolveId, equippedId = M._lsResolvers(gr);
-        local lv = {};
-        pcall(function()
-            local pl = AshitaCore:GetMemoryManager():GetPlayer();
-            for i, ab in ipairs(M._LS_JOBS) do lv[ab] = tonumber(pl:GetJobLevel(i)) or 0; end
-        end);
-        local function gateFail(nm)
-            local rec = gr and gr.NameToObject and gr.NameToObject[nm] or nil;
-            return rec ~= nil and not M._lsStyleGate(rec, lv);
-        end
-        for _, l in ipairs(M._lsDebugReport(t, nil, resolveId, equippedId, gateFail)) do
-            say(l);
-        end
-        local snd = M._lsLastSend;
-        say((snd ~= nil)
-            and string.format('last REAL apply this engine session: box %d "%s" (%d slot%s) %ds ago',
-                snd.box, tostring(snd.name), snd.n, (snd.n == 1) and '' or 's',
-                math.max(0, math.floor(os.clock() - snd.at)))
-            or 'no REAL apply sent since this engine loaded');
-        -- Open the window; the handoff writes at its END (tick flush), so
-        -- the file carries what happened while the player did the thing.
-        M._lsDbg = { out = out, log = {}, t0 = os.clock(), untilAt = os.clock() + dur, dur = dur };
-        say(string.format('capturing lockstyle events for %ds -- click Apply NOW; the report writes itself after.', dur));
-    end
 
-    -- The lockstyle APPLY, same one-implementation-two-doors shape (v109):
-    -- the '/dl ls apply' command branch calls this when the command arrives
-    -- HERE, and the request watch calls it when the ADDON queued/heard the
-    -- apply but the command died in the chain (the friend's original
-    -- "preview works, apply silently doesn't" -- lockstyle apply was the ONE
-    -- player feature whose trigger crossed the command bus).
-    local function engineApplyHalf(boxArg)
-        M._lsDbgNote('apply received' .. ((boxArg ~= nil) and (' (box ' .. tostring(boxArg) .. ')') or ' (marked box)'));
-        -- REFUSED WHILE NAKED (ADR 0021). _lockstylePacket freezes every slot the
-        -- box does not name to equippedId(slot) -- which is 0 for an empty slot,
-        -- and style 0 renders the slot EMPTY. Applying a style with nothing worn
-        -- would therefore write PERMANENT nudity into every unnamed visual slot,
-        -- server-side and persistent, long after /dl dress. Worse, styles survive
-        -- having no armor, so the player cannot see it happen.
-        if M.nakedOn() then
-            print('[dlac] lockstyle: refused -- you are NAKED. Unnamed slots would be styled EMPTY permanently'
-                .. ' (the server keeps styles per slot). Run /dl dress first, then apply.');
-            M._lsDbgNote('refused: naked (would bake empty slots into the style)');
-            return;
-        end
-        local dir = charDir();
-        if dir == nil then print('[dlac] lockstyle: not logged in.'); M._lsDbgNote('refused: not logged in'); return; end
-        -- boxes are per JOB ENTRY (v41): resolve the current job's file --
-        -- the SAME resolver the GUI uses (profiles.lua), so both states
-        -- pick one file (falls back v40 per-profile file, then global)
-        local job;
-        pcall(function() job = gData.GetPlayer().MainJob; end);
-        if type(job) ~= 'string' or job == '' or job == '?' then job = nil; end
-        local lsPath = (_pok and job ~= nil and _prof.readLockstylesPath(job) or nil) or (dir .. 'lockstyles.lua');
-        local raw = readFile(lsPath);
-        if raw == nil then print('[dlac] lockstyle: no lockstyle sets saved yet (armor button in the dlac header).'); M._lsDbgNote('refused: no lockstyle sets saved yet'); return; end
-        local t = nil;
-        local chunk = (loadstring or load)(raw, '@lockstyles.lua');
-        if chunk ~= nil then local okc, v = pcall(chunk); if okc then t = v; end end
-        local set, why, box = M._lockstyleFrom(t, boxArg);
-        if set == nil then print('[dlac] lockstyle: ' .. tostring(why)); M._lsDbgNote('refused: ' .. tostring(why)); return; end
-        -- Build the 0x053 ourselves (v42). The LAC state's require resolves
-        -- dlac\gear to the char folder's REAL gear.lua -- names in the boxes
-        -- came from it, so NameToObject is the exact reverse map. The
-        -- resolvers are shared with '/dl debug ls' (M._lsResolvers, v104).
-        local gr = nil;
-        pcall(function() gr = require('dlac\\gear'); end);
-        local resolveId, equippedId = M._lsResolvers(gr);
-        local pkt, r = M._lockstylePacket(set, resolveId, equippedId);
-        -- Predict the server's SILENT job gate so "nothing changed" has a
-        -- name: a piece failing canEquipItemOnAnyJob leaves the OLD style
-        -- on that slot, with no message from the server at all.
-        local lv = {};
-        pcall(function()
-            local pl = AshitaCore:GetMemoryManager():GetPlayer();
-            for i, ab in ipairs(M._LS_JOBS) do lv[ab] = tonumber(pl:GetJobLevel(i)) or 0; end
-        end);
-        for slot, nm in pairs(r.sent) do
-            local rec = gr and gr.NameToObject and gr.NameToObject[nm] or nil;
-            if rec ~= nil and not M._lsStyleGate(rec, lv) then
-                print(string.format('[dlac] lockstyle: %s will KEEP ITS OLD LOOK -- "%s" needs %s Lv%d,'
-                    .. ' and no job of yours is there yet (server: one of YOUR jobs must be able to wear it).',
-                    slot, nm, table.concat(type(rec.Jobs) == 'table' and rec.Jobs or { '?' }, '/'),
-                    tonumber(rec.Level) or 0));
-            end
-        end
-        -- Weapon styles only take over the same category (hasValidStyle);
-        -- warn when the style's type visibly disagrees with what is worn.
-        for _, ws in ipairs({ 'Main', 'Range' }) do
-            local nm = r.sent[ws];
-            if nm ~= nil then
-                local st, et = nil, nil;
-                pcall(function()
-                    local srec = gr and gr.NameToObject and gr.NameToObject[nm] or nil;
-                    st = srec ~= nil and srec.Type or nil;
-                    local eq = gData.GetEquipment();
-                    local en = eq ~= nil and eq[ws] ~= nil and eq[ws].Name or nil;
-                    local erec = en ~= nil and gr and gr.NameToObject and gr.NameToObject[en] or nil;
-                    et = erec ~= nil and erec.Type or nil;
-                end);
-                if st ~= nil and et ~= nil and st ~= et then
-                    print(string.format('[dlac] lockstyle: %s style "%s" (%s) will NOT show over your'
-                        .. ' equipped %s -- weapon styles need the same category (server rule).',
-                        ws, nm, tostring(st), tostring(et)));
-                end
-            end
-        end
-        for _, nm in ipairs(r.missing) do
-            print(string.format('[dlac] lockstyle: "%s" did not resolve to an item id -- its slot will show EMPTY.', nm));
-        end
-        local oks = pcall(function() AshitaCore:GetPacketManager():AddOutgoingPacket(0x053, pkt); end);
-        if not oks then print('[dlac] lockstyle: packet send failed.'); M._lsDbgNote('0x053 injection FAILED'); return; end
-        local n = 0;
-        for _ in pairs(r.sent) do n = n + 1; end
-        -- Sender-side truth for '/dl debug ls' (v105): the last REAL apply
-        -- that reached AddOutgoingPacket this engine session.
-        M._lsLastSend = { at = os.clock(), box = box, n = n, name = why };
-        M._lsDbgNote(string.format('SENT box %d "%s" -- %d slot%s styled, %d name%s unresolved',
-            box, tostring(why), n, (n == 1) and '' or 's', #r.missing, (#r.missing == 1) and '' or 's'));
-        print(string.format('[dlac] lockstyle "%s" (box %d) sent -- %d styled slot%s; unnamed slots hold your'
-            .. ' current gear\'s look.', tostring(why), box, n, n == 1 and '' or 's'));
-    end
 
     pcall(function() ashita.events.unregister('d3d_present', 'dlac-dispatch-tick'); end);
     local _tickAt, _tickJob, _tickPet = 0, nil, nil;
-    local _natJob, _natAct = nil, nil;   -- NATIVE identity latch (v111): job + profile the native store answers for
-    local _reqAt, _reqSeen = 0, nil;
+    local _natJob, _natAct = nil, nil;   -- identity latch (v111): job + profile the sets store answers for
     -- The JOB is part of the identity -- see M.jobReady / ADR 0007. (v46-v49 carried
     -- a /dl instdiag dump and tick counters here; it is what found the bug and it is
     -- in git history -- cb2fbe2..40288e3 -- if this class of thing ever returns.)
-    local _instProf, _instAct, _instJob = nil, nil, nil;   -- gProfile identity + profile name + JOB we resolved for
     ashita.events.register('d3d_present', 'dlac-dispatch-tick', function()
         pcall(function()
             -- Monitor stream drain: ONE line per frame, AHEAD of the 0.4s
@@ -6805,46 +6425,9 @@ if engineActive() then
             end
             if os.clock() < _tickAt then return; end
             _tickAt = os.clock() + 0.4;
-            if inLac() then trySelfSwap(); end   -- engine hot-reload: LAC-state machinery
                                                  -- (the addon state reloads whole via /addon reload)
-            -- '/dl debug ls' window flush (v106): the capture ended -> write
-            -- the handoff (snapshot + timeline); the addon's merger reads it
-            -- ~4s after window end, well inside its freshness gate.
-            if inLac() and M._lsDbg ~= nil and os.clock() >= M._lsDbg.untilAt then
-                local d = M._lsDbg; M._lsDbg = nil;
-                writeDebugHandoff('debug-ls-engine.txt', M._lsDbgFlushLines(d.out, d.log, d.dur));
-                print('[dlac] debug ls (engine): capture window closed -- handoff written.');
-            end
-            -- v108: the addon's REQUEST file -- the mirror of its handoff
-            -- watch. Whichever state hears a typed /dl, the other completes
-            -- via file (e.blocked halts the command at whichever state sits
-            -- first in Ashita's chain -- the 07-23 starvation pair, seen in
-            -- BOTH directions in one day). Two-state machinery: inLac-pinned.
-            if inLac() and os.clock() >= _reqAt then
-                _reqAt = os.clock() + 1.0;
-                pcall(function()
-                    local dir = charDir();
-                    if dir == nil then return; end
-                    local raw = readFile(dir .. 'debug-request.txt');
-                    local st = (raw ~= nil) and tonumber(raw:match('^(%d+)')) or nil;
-                    local act = M._reqFire(st, _reqSeen, os.time(), (os.clock() - _dbgCmdAt) > 8);
-                    if act ~= 'keep' then _reqSeen = st; end
-                    if act == 'adopt-fire' then
-                        local kind, num = M._reqSpec(raw:match('\n(%S[^\n]*)'));
-                        if kind == 'check' then
-                            print('[dlac] check (engine): request file received (the command never arrived in this state) -- answering.');
-                            engineCheckHalf();
-                        elseif kind == 'ls' then
-                            print('[dlac] debug ls (engine): request file received (the command never arrived in this state) -- answering.');
-                            engineLsHalf((num ~= nil) and math.max(30, math.min(120, num)) or 45);
-                        elseif kind == 'apply' then
-                            -- No extra chat preamble: the apply's own lines are
-                            -- the player feedback, same as the command door.
-                            engineApplyHalf(num);
-                        end
-                    end
-                end);
-            end
+            -- (The v106/v108 window-flush + request-file watches died in the
+            -- purge, Phase 2 -- two-state machinery, one state left.)
             local j = nil;
             pcall(function() j = AshitaCore:GetMemoryManager():GetPlayer():GetMainJob(); end);
             -- Leaving the world OR changing job disarms the strip (ADR 0021).
@@ -6884,11 +6467,10 @@ if engineActive() then
             -- guard, same idle-only gate (equipengine's own chunk pump covers
             -- the packet-flow case; fireEvent dedupes nothing, dispatch's
             -- retrace gate keeps repeat parses cheap).
-            if not inLac() then
+            do
                 local eng = nativeEngine();
-                -- NATIVE identity latch: job or active-profile change reloads
-                -- the profile sets into the native store (the gProfile-install
-                -- twin below, one store instead of a live profile table).
+                -- Identity latch: job or active-profile change reloads the
+                -- profile sets into the store.
                 if eng ~= nil then
                     local job = nil;
                     pcall(function() job = gData.GetPlayer().MainJob; end);
@@ -6957,132 +6539,7 @@ if engineActive() then
                         eng.fireEvent('Default', 'auto');
                     end
                 end
-                return;   -- everything below is LAC-profile machinery
             end
-
-            local st = rawget(_G, 'gState');
-            if rawget(_G, 'gProfile') == nil or st == nil then return; end
-            if st.PlayerAction ~= nil or type(st.HandleEquipEvent) ~= 'function' then return; end
-            -- NEVER drive HandleDefault while ZONING: LAC's own flow pauses with
-            -- the packet stream, but this tick doesn't -- and a legacy profile
-            -- that equips unconditionally then dies inside LAC's equip.lua
-            -- ("attempt to index local 'equippedItem'": GetEquippedItem is nil
-            -- mid-zone; field case: BRD with hand-written HandleDefault).
-            local zoning = false;
-            pcall(function()
-                local pl = AshitaCore:GetMemoryManager():GetPlayer();
-                if pl ~= nil and pl.GetIsZoning ~= nil then
-                    local z = pl:GetIsZoning();
-                    if z == true or (type(z) == 'number' and z ~= 0) then zoning = true; end
-                end
-            end);
-            if not zoning then
-                -- belt + braces: probe the EXACT read that crashes equip.lua
-                local probe = nil;
-                pcall(function() probe = AshitaCore:GetMemoryManager():GetInventory():GetEquippedItem(0); end);
-                if probe == nil then zoning = true; end
-            end
-            if zoning then return; end
-            -- PROFILE AUTO-INSTALL: a fresh gProfile (LAC load / job change --
-            -- LAC builds a new profile table each load) or an active-pointer
-            -- flip means the live .Dynamic is not the active profile's data.
-            -- Install only when profile storage HAS a sets file for this job:
-            -- unmigrated characters keep LAC's file-loaded sets, exactly as
-            -- before. This is how "LAC picks the job file, dlac picks the
-            -- profile" composes: the job resolves the file INSIDE the profile.
-            local gprof = rawget(_G, 'gProfile');
-            local act = _pok and _prof.activeName() or nil;
-            -- The JOB is part of the identity, and leaving it out is the field bug
-            -- (Hunklor, 07-15: SAM/DNC logged in with Dynamic=0 and latched=YES,
-            -- while hasSetsFile('SAM') read true seconds later). gData's MainJob is
-            -- a MEMORY read and settles on its own schedule -- LAC picks gProfile
-            -- from the 0x0A packet's job instead, so at login the two disagree for
-            -- a moment. The tick would resolve for whatever job it saw FIRST, latch
-            -- on gProfile+profile-name alone, and never look again -- and gProfile
-            -- does not change when the job read merely catches up. A latch must
-            -- therefore remember WHICH JOB it answered for.
-            local job = nil;
-            if j ~= nil and j ~= 0 then
-                pcall(function() job = gData.GetPlayer().MainJob; end);
-            end
-            if M.jobReady(j, job) then
-                if gprof ~= _instProf or act ~= _instAct or job ~= _instJob then
-                    -- "Has this job a profile sets file?" is also UNANSWERABLE until
-                    -- the character dir resolves (charBase -> gState.PlayerName/
-                    -- PlayerId, else the party fallback): hasSetsFile then reads
-                    -- false meaning "can't tell yet", indistinguishable from "legacy
-                    -- job, nothing to install". Latching on THAT answer kills the
-                    -- install for the whole session -- only a fresh gProfile retries
-                    -- (Reload LAC or a job change), so a plain login and play-the-
-                    -- same-job silently runs on an empty .Dynamic, every trigger
-                    -- matching and equipping nothing, because equipSetByName skips a
-                    -- missing set in silence (v35). Latent since the storage move
-                    -- (v33), masked for two days by dev reload/job-flip habits.
-                    -- Latch only once the question was actually ANSWERED -- every
-                    -- other reader in this engine already retries; this was the sole
-                    -- latch.
-                    local answerable = (not _pok) or (_prof.setsPath(job) ~= nil);
-                    if _pok and _prof.hasSetsFile(job) then
-                        local dyn, derr = _prof.readSetsFile(job);
-                        if type(dyn) == 'table' then
-                            local fresh = { Dynamic = dyn };
-                            warnShadowedStatics(fresh);
-                            local okI, n = installSets(fresh);
-                            if okI then
-                                print(string.format('[dlac] profile "%s": %d dynamic set(s) installed for %s.',
-                                    tostring(act), n, job));
-                            end
-                        else
-                            printerr('profile sets not installed: ' .. tostring(derr));
-                        end
-                    end
-                    -- Answered: latch (legacy jobs too -- probe once per load, not per
-                    -- tick). Unanswerable: leave it, and the next tick (0.4s) retries.
-                    if answerable then _instProf, _instAct, _instJob = gprof, act, job; end
-                end
-            end
-            -- PET actions: synthesized here (see EVENTS) -- dispatch ONCE per
-            -- action start; the Default hold in M.dispatch keeps the pet gear
-            -- on until the action completes.
-            local pa = st.PetAction;
-            if pa ~= nil then
-                local key = tostring(pa.Id or '?') .. '@' .. tostring(pa.Completion or 0);
-                if key ~= _tickPet then
-                    _tickPet = key;
-                    -- gFunc.EquipSet only LANDS when LAC brackets the call with
-                    -- ClearBuffer/ProcessBuffer -- it does that around its own
-                    -- handler invocations, so the tick must bracket its own
-                    -- dispatch the same way or the equips sit in the buffer and
-                    -- evaporate (field case: /dl why showed the PetAction match,
-                    -- nothing swapped).
-                    pcall(function()
-                        local eq = rawget(_G, 'gEquip');
-                        if eq ~= nil and type(eq.ClearBuffer) == 'function' and type(eq.ProcessBuffer) == 'function' then
-                            eq.ClearBuffer();
-                            local cc = st.CurrentCall;
-                            st.CurrentCall = 'PetAction';   -- LAC's debug prints name the caller
-                            pcall(function() M.dispatch('PetAction'); end);
-                            st.CurrentCall = cc or 'N/A';
-                            eq.ProcessBuffer('auto');
-                        else
-                            M.dispatch('PetAction');
-                        end
-                    end);
-                end
-            else
-                _tickPet = nil;
-            end
-            -- Feed the recovery-tick measurement (banded ladder, v88): every
-            -- 0.4s reading of current MP; upward jumps are ticks, split by
-            -- standing/resting. Cheap, always on -- the margins are already
-            -- calibrated the moment maxmp gets enabled.
-            if _mpb ~= nil then
-                pcall(function()
-                    local p = gData.GetPlayer();
-                    _mpb.observe(tonumber(p.MP), p.Status == 'Resting');
-                end);
-            end
-            st.HandleEquipEvent('HandleDefault', 'auto');
             -- Coalesced trigger-monitor flush: whatever fired since the last
             -- pass lands in firedstate.lua as ONE write.
             if _firedDirty and saveFiredState ~= nil then
@@ -7105,41 +6562,14 @@ if engineActive() then
         if sub ~= 'mode' and sub ~= 'why' and sub ~= 'triggers' and sub ~= 'env' and sub ~= 'lock' and sub ~= 'sets' and sub ~= 'profile' and sub ~= 'ls' and sub ~= 'plan' and sub ~= 'prio' and sub ~= 'check' and sub ~= 'debug' and sub ~= 'naked' and sub ~= 'dress' and sub ~= 'disable' and sub ~= 'enable' then return; end
         e.blocked = true;
 
-        if sub == 'debug' then
-            -- The /dl debug section, ENGINE half (v104; feature/debug.lua owns
-            -- the addon half AND the topic list/usage -- an unknown topic
-            -- returns silently here so there is one printer for it). Topics
-            -- grow as field cases demand (Henrik's 07-23 ruling: state
-            -- readouts in dlac, packet capture in dlacprobe).
-            -- 'ls' (alias 'lockstyle'): the apply pipeline as a DRY RUN --
-            -- same file, same MARKED-box pick, same id resolution and
-            -- job-gate prediction, no send -- plus this session's last REAL
-            -- send (M._lsLastSend, stamped by the apply branch at its
-            -- AddOutgoingPacket: sender-side truth for "did a packet
-            -- actually leave"). Then the CAPTURE WINDOW opens (v106):
-            -- '/dl debug ls [seconds]', 30-120 clamped, default 45 -- the
-            -- player clicks Apply DURING it, the apply branch notes every
-            -- receipt/refusal/send, and the tick flushes the handoff at
-            -- window end.
-            local topic = string.lower(tostring(args[2] or ''));
-            if topic == 'lockstyle' then topic = 'ls'; end
-            if topic ~= 'ls' then return; end
-            if not inLac() then return; end   -- lockstyle engine half: LAC-pinned (see /dl ls)
-            local dur = tonumber(args[3]);
-            dur = (dur ~= nil) and math.max(30, math.min(120, dur)) or 45;
-            _dbgCmdAt = os.clock();   -- quiet the request watch: the command DID arrive here
-            engineLsHalf(dur);
-            return;
-        end
+        -- ('debug' stays whitelisted so feature\debug.lua -- the one printer
+        -- for topics and usage -- owns the whole surface; the LAC-pinned
+        -- engine half of '/dl debug ls' died in the purge, Phase 2.)
 
         if sub == 'check' then
             -- /dl check, engine half (v103; feature/check.lua owns the addon
-            -- half). The addon state prints the wiring readout and tells the
-            -- player THIS line must accompany it -- its ABSENCE is the
-            -- diagnosis (LAC not running the engine: old hand-written
-            -- profile, dead shim, stale seeded tree). Liveness + identity
-            -- only; deep state stays in dlacprobe (Henrik's 07-23 ruling).
-            _dbgCmdAt = os.clock();   -- quiet the request watch: the command DID arrive here
+            -- half). Liveness + identity only; deep state stays in dlacprobe
+            -- (Henrik's 07-23 ruling).
             engineCheckHalf();
             return;
         end
@@ -7207,24 +6637,9 @@ if engineActive() then
             return;
         end
 
-        if sub == 'ls' then
-            -- Lockstyle sets (v38; per-profile v40; JOB ENTRY v41; engine-built
-            -- packet v42): the GUI (lockstyle.lua, addon state) edits the boxes;
-            -- THIS side applies by building the 0x053 itself (_lockstylePacket
-            -- above -- gFunc.LockStyle is gone, see the note there). Pinned to
-            -- the LAC state EXPLICITLY (v111): native-mode lockstyle is the
-            -- #80 addon-residency move's territory, not this branch's.
-            if not inLac() then return; end
-            local lsSub = string.lower(tostring(args[2] or ''));
-            if lsSub == 'state' then return; end   -- the addon state's keep readout; not ours to answer (its usage line here read as "unknown command" in the field)
-            if lsSub ~= 'apply' then
-                print('[dlac] usage: /dl ls apply [box]   (GUI: the armor button in the dlac header)');
-                return;
-            end
-            _dbgCmdAt = os.clock();   -- quiet the request watch: the command DID arrive here
-            engineApplyHalf(tonumber(args[3]));
-            return;
-        end
+        -- ('ls' stays whitelisted so feature\lockstyle + lockstyleapply own
+        -- the whole surface; the LAC-pinned engine apply branch died in the
+        -- purge, Phase 2.)
 
         if sub == 'sets' then
             if string.lower(tostring(args[2] or '')) ~= 'reload' then
@@ -7238,13 +6653,12 @@ if engineActive() then
             -- file (or, legacy, <JOB>.lua); re-read and install (installSets).
             local fresh, ferr, src = readSetsSource();
             if fresh == nil or type(fresh.Dynamic) ~= 'table' then
-                print('[dlac] sets hot-swap failed (' .. tostring(ferr) .. ') -- click Reload LAC instead.');
+                print('[dlac] sets hot-swap failed (' .. tostring(ferr) .. ').');
                 return;
             end
             local okI, n = installSets(fresh);
             if okI ~= true then print('[dlac] sets reload: ' .. tostring(n)); return; end
-            _instProf, _instAct = rawget(_G, 'gProfile'), (_pok and _prof.activeName() or nil);
-            print(string.format('[dlac] sets hot-swapped (%d dynamic set(s)%s) -- live now, no LAC reload needed.',
+            print(string.format('[dlac] sets hot-swapped (%d dynamic set(s)%s) -- live now.',
                 n, (src == 'profile' and _pok) and (' from profile "' .. _prof.activeName() .. '"') or ''));
             return;
         end
@@ -7283,7 +6697,7 @@ if engineActive() then
                 M.reloadTriggers();   -- trigger path changed -> re-read now, not in 1s
                 local fresh = select(1, readSetsSource());
                 if fresh ~= nil and type(fresh.Dynamic) == 'table' then
-                    warnShadowedStatics(fresh);
+
                     local okI, n = installSets(fresh);
                     if okI == true then
                         print(string.format('[dlac] profile "%s" active -- %d dynamic set(s) installed, triggers reloaded. No LAC reload needed.', nm, n));
@@ -7293,7 +6707,6 @@ if engineActive() then
                 else
                     print(string.format('[dlac] profile "%s" active -- no sets for this job yet (build them in the Sets tab).', nm));
                 end
-                _instProf, _instAct = rawget(_G, 'gProfile'), _prof.activeName();
                 return;
             end
 
@@ -7315,11 +6728,9 @@ if engineActive() then
 
             if a2 == 'migrate' then
                 local go = args[3] ~= nil and string.lower(args[3]) == 'go';
-                local done = _prof.migrate(go, print);
-                if go and done ~= nil and done > 0 then
-                    print('[dlac] reloading LuaAshitacast so the clean shim takes over...');
-                    pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/addon reload luashitacast'); end);
-                end
+                _prof.migrate(go, print);
+                -- (No reload of anything: originals stay in place, the
+                -- profile store is live on the next dispatch -- purge P3.)
                 return;
             end
 
@@ -7512,9 +6923,7 @@ if engineActive() then
                         return;
                     end
                     pcall(function()
-                        local prof = rawget(_G, 'gProfile');
-                        if type(prof) == 'table' and type(prof.Sets) == 'table' then s = prof.Sets[nm]; end
-                        if type(s) ~= 'table' and type(M._nativeSets) == 'table' then s = M._nativeSets[nm]; end   -- native store (v111)
+                        if type(M._nativeSets) == 'table' then s = M._nativeSets[nm]; end   -- the one sets store
                     end);
                     -- Refuse BEFORE touching anything: a failed name must not
                     -- leave the player half-locked with nothing equipped.
@@ -7656,13 +7065,7 @@ if engineActive() then
                 pcall(function()
                     local u = utilsModule();
                     if u == nil or type(u.rebuildSets) ~= 'function' then return; end
-                    local prof = rawget(_G, 'gProfile');
-                    if prof ~= nil and type(prof.Sets) == 'table' then
-                        u.rebuildSets(prof.Sets);
-                    elseif type(M._nativeSets) == 'table' then
-                        -- NATIVE (v112): the native store re-flattens on a mode
-                        -- flip too, or mode-gated entries stay stale until the
-                        -- next level/subjob change.
+                    if type(M._nativeSets) == 'table' then
                         M._nativeSets = u.rebuildSets(M._nativeSets) or M._nativeSets;
                     end
                 end);

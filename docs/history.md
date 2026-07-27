@@ -5811,3 +5811,114 @@ built it.** No test could have caught this one either — the old test clicked t
 Selectable and passed. `FS9b/FS9c` now assert the row's hit target is a bare `##isorow`
 and that no bait-labelled Selectable remains, which is a claim about the SHAPE of the
 interaction rather than about whether a click works.
+
+## Session "the Xvs field day: three engine-era fixes, born-native, purge Phase 1" (2026-07-27, dev → main e6ea704, then dev — addon 2026.07.27g → j, engine v129 → v131)
+
+**Theme:** Henrik's friend (Xvs) updates dlac and *nothing equips at all* — the GUI sees
+every set, the engine sees none. One field day later: two ancient onboarding traps and a
+load-order contract from the LAC era are dead, users are born native unconditionally
+(ADR 0025), and the LuaShitacast purge (Henrik's ruling) has its plan and its first
+executed phase.
+
+**Landed (promoted to `main` the same evening, `e6ea704`, field-confirmed by Xvs —
+"Everything is working perfectly now"):**
+
+- **v130 — the native flatten no longer waits for the GUI.** Every dispatch utils lookup
+  read `package.loaded['dlac\utils']` bare ("loaded first in the LAC state" — the job
+  shim's first require). The native state has no shim and *nothing* loads utils at boot:
+  installs refused `flatten produced no sets (world not settled)` every 0.4s forever, the
+  refusal nil'd `M._nativeSets` (GUI fine — it reads files; `/dl lock set` finds nothing;
+  zero equips), and a session healed only when a gearui picker's own lazy
+  `pcall(require)` happened to run. Hence the field shape "DRK works, BLU/COR don't":
+  per-SESSION, not per-job — a reload broke DRK too. Mindie's own mpwarm.txt opens with
+  the same wall every boot, healed in ~1.6s by GUI habit — the "~2s of designed boot
+  refusals" lore was this bug all along. Fix: `utilsModule()` lazy require at all five
+  sites (cycle-safe both states). Tests RQU0-2 drive the real `/dl sets reload` through
+  the boot shape. Diagnosis method worth keeping: zip the user's whole char home and
+  replay the exact engine path headless with the run_tests stubs — clean run = the
+  runtime differs, not the data.
+- **2026.07.27h — dataDir holds while the first run is undecided.** Xvs's *clean*
+  reinstall (both config trees deleted) still got "migrate to native": the 07-23 fix held
+  maintainStorage's own writers, but `profiles.dataDir` kept composing the legacy home
+  during the undecided window, so the login gear scan planted `gear.lua` under
+  `luashitacast\` and the next beat read dlac's own file back as legacy evidence —
+  manufactured evidence, round two. dataDir now answers nil until firstRunInit latches
+  (addon state only: the LAC state's presence IS the legacy verdict).
+- **2026.07.27i — ADR 0025, born native, always.** Henrik: "users start in native mode by
+  default, regardless if there are dlac files under luashitacast conf." Flag absent →
+  `write-native` unconditionally; the boot never scans for legacy data (the can't-tell
+  limbo is unreachable); an explicit flag on disk stays honored — `/dl engine native off`
+  is the only road to legacy; flag-less legacy data becomes a migration source
+  (engineAutoMigrate carries it in). Supersedes ADR 0015's "never auto-flip" for
+  flag-less users.
+- **The WS-menu mystery closed as a side effect.** The 07-26 diagnosis stands (server
+  0x0AC rebuilds the ability/WS tables on Main/Sub/Range changes and latent flips; an
+  open menu dies in the rebuild) — what the sick engine changed was the COLLISION RATE:
+  store dying/reinstalling all session = full re-equip volleys at arbitrary moments.
+  Healthy engine, narrow swaps, no noticeable collisions. Field: gone.
+
+**Landed (on `dev`, addon 2026.07.27j / engine v131 — Henrik field-running it now):**
+
+- **The LuaShitacast purge: plan + Phase 1** (`docs/design/lac-purge-plan.md`; Henrik's
+  ruling with the keep-list "import from the job files, group (table) and static set
+  import"). Phase 1 executed: **nothing in dlac writes under
+  `config\addons\luashitacast\` anymore.** The 5s seeder, the shim writer (recognizers
+  stay), Setup's job-file writes (both modes), `PROFILE_TEMPLATE.lua`, the LAC-alive
+  polite ask, and the *entire* engine self-swap (`swapWanted`, `trySelfSwap`, the
+  `__dlacEngineRoot` handshake) are deleted. `M.migrate` (kept, Henrik's call) now leaves
+  originals in place — inert, importable, no shim rewrite, no mixed-tree write. The
+  "`M.x = {}` at file scope is wiped by every self-swap" hazard class is extinct; X0 pins
+  that a set `__dlacEngineRoot` is ignored.
+
+**Key decisions:** bare `package.loaded` lookups are load-order contracts — grep for them
+first when something "works in one state, dies in the other"; a per-job-looking field
+report can be per-session (ask "does a reload break the working job?"); legacy evidence
+demoted from verdict to migration source; Setup writes no job files in either mode;
+migrate carriers stay, `/dl engine` goes status-only in Phase 2, the engine flag retires
+in place in Phase 2.
+
+**Worth carrying:** dlac manufactured its own legacy evidence TWICE through two different
+doors (the seeder 07-23, the gear scan via dataDir 07-27) — when a verdict can be decided
+by files your own writers create, the verdict is wrong by construction; ADR 0025 removed
+the verdict rather than guarding a third door. And the accidental medic pattern: a lazy
+`pcall(require)` in a GUI picker was silently repairing every session that touched the
+right tab, which made a total engine failure look like a flaky per-job bug for days.
+
+**Pinned next (the coming days):** field-confirm + promote the Phase 1 batch (27j); then
+purge Phase 2 — legacy MODE dies (the dispatch diet: 16 `inLac` sites, 44
+`gProfile`/`gFunc` refs, `/dl engine` status-only, flag retired in place, dataDir loses
+its legacy branch) on its own quiet day; Phase 3 native-aware surfaces (#131 dies, every
+"Reload LAC" string dies); Phase 4 keep-list hardening (allowlist grep test + a field
+round importing all three ways); Phase 5 docs sweep. The full roadmap with per-phase
+detail lives in `docs/design/lac-purge-plan.md` and HANDOFF "What's left" item 0.
+
+## Session "the purge, all the way down" (2026-07-27 late, on `dev` — addon 2026.07.27j → l, engine v131 → v133)
+
+**Theme:** Henrik: *"Can't you just go all the way to phase 5, I really just want this
+to die."* All five purge phases executed in one sitting, suite-gated, phase-sized
+commits (`e478817`, `8b5e8fd`, `58c75e0` + docs).
+
+**Landed:** Phase 1 — the seeder, shim writer, Setup's job-file writes, the LAC-alive
+ask and the ENTIRE engine self-swap (with the `__dlacEngineRoot` handshake and the
+"`M.x = {}` wiped by self-swap" hazard class). Phase 2 — legacy MODE whole:
+`nativeMode()` constant true, flag retired in place, first-run machinery deleted,
+`inLac()` + the gProfile/gFunc world out of dispatch (−1063 lines), `/dl engine`
+status-only, end-to-end rigs re-pointed at the native equip door. Phase 3 — `/dl check`
+and debug.lua read the NATIVE home (**#131 closed**: the reader finally reads where the
+writer writes), every "Reload LAC" string became `/dl reload` or died, the last LAC
+resurrection (`/dl profile migrate go` queueing `/addon reload luashitacast`) died,
+legacy job files are READ-ONLY. Phase 4 — every module-local legacy path fallback died
+(gearimport ×2, gearexport, augments, statefile, gearui ×2, debug); the PRG1/2
+allowlist guard pins that a `\luashitacast` string literal exists ONLY in the
+keep-list readers (profiles, setmanager, lockstyle, macrobook, gearoptim) — it caught
+three stragglers on its first run. Phase 5 — dlac.lua's header, HANDOFF's mental model
+and hard rule 4, architecture.md's purge banner.
+
+**Worth carrying:** the literal-form discriminator — in source bytes a PATH STRING
+carries `\` while a comment carries `\`, so a guard scanning for `\luashitacast`
+polices code without tripping on history. And the guard-first payoff: write the
+allowlist test BEFORE declaring a sweep done; it found what three grep passes missed.
+
+**Awaiting:** Henrik's field beat on `27l` (equips, a commit, `/dl check`, `/dl engine`,
+and the three-way import round), then promotion. Suites at 3815 + 584, green on both
+interpreters, at every phase boundary.

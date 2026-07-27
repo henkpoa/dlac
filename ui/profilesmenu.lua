@@ -714,7 +714,7 @@ pm.render = function()
                 imgui.SetTooltip('Paste the CONTENTS of a dlac export (the text a friend sent you)\ninstead of saving it as a file in dlac-exports\\ first.');
             end
             imgui.SameLine(0, 8);
-            imgui.TextColored(COL.DIM, '(files: config\\addons\\luashitacast\\dlac-exports\\)');
+            imgui.TextColored(COL.DIM, '(files: config\\addons\\dlac\\dlac-exports\\)');
             if #(m.exports or {}) == 0 then
                 imgui.TextColored(COL.DIM, '  (no export files found -- or paste one via Import from text...)');
             end
