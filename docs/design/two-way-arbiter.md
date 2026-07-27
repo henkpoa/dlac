@@ -184,7 +184,10 @@ and let `/dl why` render the trace — the same object that decided.
 - **Strength** — the one comparable: `(row, prio, ord)`. `row` = the Arbiter rank index
   (Triggers is simply the bottom row); `prio`/`ord` = ADR 0003 within the Triggers row,
   `0` inside claim rows. This single ordering is what unlocks dominance across rank —
-  the deferred half of the v135 ruling (§10 item 2).
+  the deferred half of the v135 ruling. **The dominance comparison itself is RATIFIED
+  (§10 item 2, 2026-07-27): `(row, prio)` only — `ord` is excluded, so moving a rule
+  down the trigger file never silently flips a reservation; `ord` stays the
+  slot-contest tiebreak.**
 - **Constraint** — a named validator consulted during the walk: reservation/dominance,
   the Range↔Ammo pair law, Sub↔Main pairing, usability (level/job/owned), sync-hold,
   locks, ceiling. Each returns a **verdict**.
@@ -415,12 +418,22 @@ arbitration, the ADR 0002 twin collapse.
    ("settle" dropped: collides with the sync-settle hold) · **trace** as the returned
    decision record ("minutes" dropped as confusing; the existing `/dl why` trace deepens
    into it, "retrace" keeps its meaning).
-2. **Stage 4's comparison law.** Strength puts a prio-25 trigger *above* every claim row
-   below Triggers' rank only within its own row — across rows, rank wins outright, as
-   today. Dominance across rank therefore reads: *any* claim-row claim beats *any*
-   floor claim on a contested reservation (rank order), while floor-vs-floor keeps
-   priority. Confirm that is the ruling's intent ("am I dominant in both pieces
-   according to you?" — where "you" is now the whole rank list).
+2. **The cross-rank dominance law — RATIFIED 2026-07-27** (worked examples A–E were
+   presented and accepted, including the two that change lived behavior):
+   - **Across rows, rank wins outright** — the same ordering the slot contest already
+     uses, asked about the reserved slots. **Within Triggers, priority** (ADR 0003 —
+     v135's shipped behavior). **Ties favor the reserver** (v135's shipped law).
+   - **The dominance comparison is `(row, prio)` — `ord` excluded**, so reordering
+     rules in the file never flips a reservation.
+   - **Only claims defend slots; worn pieces are not claims** (the Mindie ruling,
+     generalized) — a beaten worn reserver is displaced by the server when the winner
+     lands. This fixes the live claim-level bug where a worn floor reserver silently
+     drops a higher row's claim (verified in the fallback `reservedDrops` worn arm).
+   - Consequences accepted: pins' bespoke `ctx.pinReserved` + the naked-voids case
+     retire into the general rule; a reserving piece can no longer bulldoze a locked
+     slot; the drag list is the dominance authority ("according to you" = the rank
+     list the player ordered). The pair law (ADR 0010) stays its own constraint —
+     item 2 governs RSlot reservation only.
 3. **MaxMP's end state** — fold in eventually, or woven permanently as the one blessed
    exception? (Recommendation: decide after stage 4, with the constraint vocabulary
    proven and the trace showing where the weave actually bites.)
