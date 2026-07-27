@@ -20,8 +20,12 @@ _Avoid_: level-scaling set, scaling set
 The plain slot→item table produced from a Dynamic Set by `rebuildSets` — what LuaAshitacast actually equips.
 
 **Ammo ladder**:
-AutoAmmo's per-job ordered list of ammo *plus the rule that reads it*: walk top-down and take the first entry that clears all four gates — the context flag (ranged / WS / a special's window), pairing with the ranged weapon actually worn, stock in the equippable bags, and what the current level and job can wear. The player's order is the priority; every gate only ever *removes* candidates, never reorders them. Kin to a **Dynamic Set**'s per-slot candidate list — the same "ordered candidates, best eligible for the current level" idea, applied to the one slot a set cannot safely own — and it is named for that kinship because the two looked alike while behaving differently until the level gate landed (2026-07-27).
+AutoAmmo's per-job ordered list of ammo *plus the rule that reads it*: walk top-down and take the first entry that clears all four gates — the context flag (ranged / WS / a special's window), pairing with the ranged weapon actually worn, stock in the equippable bags, and what the current level and job can wear. The player's order is the priority; every gate only ever *removes* candidates, never reorders them. Kin to a **Dynamic Set**'s per-slot candidate list — the same "ordered candidates, best eligible for the current level" idea, applied to the one slot a set cannot safely own — and it is named for that kinship because the two looked alike while behaving differently until the level gate landed (2026-07-27). An instance of the general **Ladder**.
 _Avoid_: priority list (that is the order alone; the gates are what make it a ladder), fallback list
+
+**Ladder**:
+The general term the Ammo ladder is one instance of (ratified 2026-07-27): an ordered candidate list *plus the rule that reads it* — walk top-down, take the first **rung** that clears every gate; gates only ever *remove* candidates, never reorder them. A Dynamic Set's per-slot lists, the automation manifest chains (craft / HELM / fishing / chocobo / staff / obi) and the Ammo ladder are all ladders. Today every ladder is collapsed to one name before the equip layer sees it; the two-way Arbiter design (`docs/design/two-way-arbiter.md` — vocabulary ratified, mechanics unbuilt) keeps ladders alive into the arbitration so a refused rung can *fall* to the next.
+_Avoid_: priority list, fallback list (the order alone; the gates make it a ladder)
 
 **Handler**:
 One of LuaAshitacast's profile event functions (`HandleDefault`, `HandlePrecast`, `HandleMidcast`, `HandleAbility`, `HandleItem`, `HandleWeaponskill`, ...). dlac's dispatch shim runs at the end of each. Under the Native engine the same handler names are dispatch points fired by dlac's own action pipeline — the vocabulary is engine-independent.
@@ -91,7 +95,7 @@ A feature's declared wish to dress one or more slots (wear this item, or keep wh
 _Avoid_: pin (the floatgear feature — one claimant among many), override, hijack
 
 **Arbiter**:
-The single decision point that gathers every Claim and decides, per slot, which claimant wins, by user-visible priority. The Triggers' overlay result is the floor that Claims dress over; the Arbiter can list every claimant and why each slot went the way it did.
+The single decision point that gathers every Claim and decides, per slot, which claimant wins, by user-visible priority. The Triggers' overlay result is the floor that Claims dress over; the Arbiter can list every claimant and why each slot went the way it did. A two-way deepening is designed and its vocabulary ratified (2026-07-27, mechanics unbuilt — `docs/design/two-way-arbiter.md`): Claims carry whole **Ladders** submitted up front, a Refusal either **falls** a rung or **holds** a slot, and one **arbitration** per dispatch (sixteen contests) produces the plan plus the **trace** `/dl why` renders.
 _Avoid_: pinning system, priority manager
 
 **Naked**:

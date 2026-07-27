@@ -1,4 +1,4 @@
-# The two-way Arbiter — late binding, ladders, one settle per dispatch
+# The two-way Arbiter — late binding, ladders, one arbitration per dispatch
 
 > **Status: PROPOSAL (2026-07-27) — nothing here is built.** This is the dedicated hard
 > look Henrik parked on 07-27 (*"too central and too big of a decision to just be made on
@@ -140,81 +140,97 @@ so the debate in §6 has a floor:
   flattener) decides before the engine can. The builder's plan becomes the whole ladder;
   the engine's decision becomes real.
 - **The sub-slot building freedom hard rule** (3× reverted). Building never gates on
-  live state. Ladders are built free; the *settle* gates. Nothing here touches the
+  live state. Ladders are built free; the *arbitration* gates. Nothing here touches the
   picker.
 - **Determinism laws.** `RSLOT_ORDER` walks, no `pairs()` in any decision, fixed tie
   rules (ties favor the reserver, `reserveVerdict` `:2704`), same-input-same-output.
 - **The rank list UX** — one draggable list, restore-at-default-position (v122), floor
   and ceiling pinned. The registry survives; only what a row *contains* deepens.
-- **ADR 0013** — the Oracle stays claim-blind: capability, never permission. The settle
+- **ADR 0013** — the Oracle stays claim-blind: capability, never permission. The arbitration
   asks "can this be worn / is it owned"; only the Arbiter decides precedence.
 - **ADR 0024's placement** — the Disabled filter stays at the write seam even after the
-  settle also models it: the seam covers every caller the seam grows later. Belt and
+  arbitration also models it: the seam covers every caller the seam grows later. Belt and
   braces, deliberately.
 - **`equipcore.planSet`** — the pure snapshot→plan resolver stays the executor exactly
   as is. It is the shape the whole redesign is aiming the *decision* layer at.
-- **The perf envelope.** Default dispatches every frame. Whatever settles must be
+- **The perf envelope.** Default dispatches every frame. Whatever arbitrates must be
   memoizable on a signature, like retrace already is.
 - **Engine-native over commands** — stateless holds, nothing persisted, everything
-  recomputed per dispatch. The settle is *more* of this, not less.
+  recomputed per dispatch. The arbitration is *more* of this, not less.
 
-## 4. The target — one settle per dispatch
+## 4. The target — one arbitration per dispatch
 
 ### 4.1 The one-sentence version
 
-**Promote the pure model from explaining to deciding:** collect *proposals* (with
-ladders) from every source, run *constraints* (with named refusal reasons) over one
-deterministic walk, produce **one plan** and **one record of the conversation**, write
-the plan **once**, and let `/dl why` print the record — the same object that decided.
+**Promote the pure model from explaining to deciding:** collect *Claims* (each carrying
+whole ladders) from every source, run *constraints* (with named refusal reasons) over
+one deterministic walk, produce **one plan** and **one trace**, write the plan **once**,
+and let `/dl why` render the trace — the same object that decided.
 
-### 4.2 Vocabulary (CONTEXT.md candidates, Henrik's call)
+### 4.2 Vocabulary — **RATIFIED by Henrik, 2026-07-27** (item 1 of the §10 discussion)
 
-- **Proposal** — one source's wish for one slot: `{ slot, ladder, strength, source }`.
-  The ladder is the ordered candidate list (often length 1); "the set changed on the
-  fly" = the ladder is consulted at settle time, against live context.
+- **Ladder** — generalized from the already-ratified *Ammo ladder* (CONTEXT.md): an
+  ordered candidate list plus the rule that reads it — walk top-down, take the first
+  **rung** that clears every gate; gates only ever *remove* candidates, never reorder.
+  A Dynamic Set slot's list, the automation manifest chains and the Ammo ladder are all
+  ladders. "The set changed on the fly" = the ladder is consulted at arbitration time,
+  against live context.
+- **Claim (widened — no new "Proposal" noun).** A Claim stays CONTEXT.md's "declared
+  wish to dress one or more slots"; its per-slot content deepens from one name to one
+  **ladder**, submitted whole, up front — the source speaks once, before the
+  arbitration starts, and its full preference order is in the room after it has gone
+  home. A reserving piece *claims the reserved slot with emptiness* — Henrik's original
+  ruling sentence ("it shall claim both slots"), now literal mechanics.
 - **Strength** — the one comparable: `(row, prio, ord)`. `row` = the Arbiter rank index
   (Triggers is simply the bottom row); `prio`/`ord` = ADR 0003 within the Triggers row,
   `0` inside claim rows. This single ordering is what unlocks dominance across rank —
-  the deferred half of the v135 ruling.
+  the deferred half of the v135 ruling (§10 item 2).
 - **Constraint** — a named validator consulted during the walk: reservation/dominance,
   the Range↔Ammo pair law, Sub↔Main pairing, usability (level/job/owned), sync-hold,
   locks, ceiling. Each returns a **verdict**.
-- **Verdicts** — the refusal taxonomy, and the heart of "talk back":
-  - `pass` — the candidate stands.
-  - `fall(reason)` — this candidate is refused, **the same proposal's next rung is
-    asked**. Reasons: `level`, `job`, `not-owned`, `ineligible` (reserves a slot a
-    stronger proposal owns), `pair` (bolt under a bow — the ammo falls to the next ammo).
+- **Refusal** — a constraint saying no *with a recorded reason*. Two flavors:
+  - `pass` — the rung stands.
+  - `fall(reason)` — this rung is refused, **the same claim's next rung is asked** —
+    inside the arbitration, no round-trip to the source. Reasons: `level`, `job`,
+    `not-owned`, `ineligible` (reserves a slot a stronger claim owns), `pair` (bolt
+    under a bow — the ammo falls to the next ammo rung).
   - `hold(reason)` — terminal for the slot: write nothing, keep worn. Reasons: `locked`,
     `sync-hold`, `mp-hold`, `reserved-by <piece>` (the server will empty it; see the
     asymmetry in §4.5).
   - Naked's `remove` and Locks' `LOCK_HELD` stop being special-cased arms — they are
-    ordinary proposals whose candidate is a sentinel, exactly as `arbResolve` already
-    models them. The special rows become unspecial.
-- **Settle** — the per-dispatch resolution: `settle(session) -> plan, minutes`.
-- **Minutes** — the decision record: per slot, who proposed what, who was refused and
-  why, who won at what strength. `/dl why` becomes a formatter over the minutes;
-  `arbExplain`'s parallel model retires into it.
+    ordinary claims whose rung is a sentinel, exactly as `arbResolve` already models
+    them. The special rows become unspecial.
+- **Contest** (existing, kept) — the per-slot decision ("slots are contested one by
+  one"). **Arbitration** — the per-dispatch whole: sixteen contests, one plan, one
+  write. `arbiter.arbitrate(session) -> plan, trace`. ("Settle" was considered and
+  dropped — it collides with the sync-*settle* hold already in dispatch and `/dl why`.)
+- **Trace** (existing, deepened — "minutes" was considered and dropped) — the decision
+  record the arbitration returns: per slot, who claimed what, who fell and why, who won
+  at what strength. Today's `_trace[event]` rendered-lines cache becomes a formatter
+  over this structured object; "retrace" keeps its meaning (re-render when the
+  signature moves). The trace that decided is the trace you read — `arbExplain`'s
+  parallel model retires into it.
 
 ### 4.3 The contract, concretely
 
 ```lua
--- gear/settle.lua -- PURE (equipcore's sibling): no AshitaCore, no io, no globals.
+-- gear/arbiter.lua -- PURE (equipcore's sibling): no AshitaCore, no io, no globals.
 -- session = {
 --   order   = arbOrder,                    -- the rank rows, as today
 --   rows    = {                            -- one per ACTIVE source (registry rows)
---     { name = 'Triggers', proposals = { { slot='Body', ladder={...}, prio=25, ord=3 }, ... } },
---     { name = 'AutoAmmo', proposals = { { slot='Ammo', ladder={rung1, rung2, ...} } } },
---     { name = 'Locks',    proposals = { { slot='Head', ladder={ SENTINEL_HELD } } } },
+--     { name = 'Triggers', claims = { { slot='Body', ladder={...}, prio=25, ord=3 }, ... } },
+--     { name = 'AutoAmmo', claims = { { slot='Ammo', ladder={rung1, rung2, ...} } } },
+--     { name = 'Locks',    claims = { { slot='Head', ladder={ SENTINEL_HELD } } } },
 --     ...
 --   },
 --   reads   = { rslotOf=f, pairOf=f, levelOf=f, usable=f, worn=f, level=n, ... },
 --   constraints = CONSTRAINTS,             -- ordered, named; data like POST_ORDER is today
 -- }
--- returns plan    = { [SlotKey] = name | 'remove' | nil }   -- nil = engine says nothing
---         minutes = { [SlotKey] = { winner={source,name,strength},
---                                   refused={ {source,name,why}, ... },
---                                   held=..., }, ... }
-function M.settle(session) ... end
+-- returns plan  = { [SlotKey] = name | 'remove' | nil }   -- nil = engine says nothing
+--         trace = { [SlotKey] = { winner={source,name,strength},
+--                                 fell={ {source,name,why}, ... },
+--                                 held=..., }, ... }
+function M.arbitrate(session) ... end
 ```
 
 - **Ladders are data by default, a function by escape hatch** (`ladder = f(view)`), for
@@ -224,40 +240,41 @@ function M.settle(session) ... end
   deterministic and the tests flat; the parked sketch's pure callback protocol
   (`propose/refuse` as the *only* interface) is rejected for the general case — a
   conversation of closures re-introduces "the answer depends on when you were asked,"
-  which is the `pairs()` bug wearing a nicer suit.
-- **The walk**: slots in `RSLOT_ORDER`; per slot, proposals sorted by strength; take the
-  strongest proposal's first rung; run constraints; `fall` → next rung, then next
-  proposal; `hold` → done, slot held. Reservation makes it a fixed point: a winner that
-  reserves other slots injects a synthetic `reserved-empty` proposal into each reserved
-  slot *at its own strength* — if something stronger already stands there, the reserver
-  is refused `ineligible` instead and **falls to its next rung** (v135's two directions,
-  now with the fallthrough v135 could not build). Refusals only accumulate, so the
-  worklist terminates; cap the re-walk (3 rounds) and log a cap hit as a bug signal.
-- **One write.** `M.dispatch` becomes: collect → settle → apply the one plan → one
+  which is the `pairs()` bug wearing a nicer suit. (Ratified with the vocabulary:
+  Henrik independently proposed "send the whole ladder" on 07-27.)
+- **The walk**: slots in `RSLOT_ORDER`; per slot, claims sorted by strength; take the
+  strongest claim's first rung; run constraints; `fall` → next rung, then next
+  claim; `hold` → done, slot held. Reservation makes it a fixed point: a winner that
+  reserves other slots claims each reserved slot *with emptiness, at its own strength*
+  — if something stronger already stands there, the reserver is refused `ineligible`
+  instead and **falls to its next rung** (v135's two directions, now with the
+  fallthrough v135 could not build). Refusals only accumulate, so the worklist
+  terminates; cap the re-walk (3 rounds) and log a cap hit as a bug signal.
+- **One write.** `M.dispatch` becomes: collect → arbitrate → apply the one plan → one
   `engineEquipSet`. The equipengine buffer stops being the hidden merger; `planSet`'s
   satisfied-check sees the whole intent at once (fewer packets, quieter server — the
   same "don't spam the server" Henrik ruling that shaped the pair law).
-- **Usability is a constraint, not a location failure.** Post-purge the settle can ask
-  the oracle/ownedcache (injected, claim-blind): a name the executor could never locate
-  is refused `not-owned`/`level` *during* the settle, where rung 2 is still alive —
-  today it silently dies in `planSet`'s bag scan.
+- **Usability is a constraint, not a location failure.** Post-purge the arbitration can
+  ask the oracle/ownedcache (injected, claim-blind): a name the executor could never
+  locate is refused `not-owned`/`level` *during* the arbitration, where rung 2 is still
+  alive — today it silently dies in `planSet`'s bag scan.
 
 ### 4.4 What each existing mechanism becomes
 
 | Today | Becomes |
 |---|---|
 | flatten's pick (`utils:554`) | the ladder order (comparator kept; truncation retired) |
-| `marker\|fallback` strings | virtuals are ladder *entries* resolved at settle (their manifest chains — `resolveVirtual`'s best-first walks — flow through instead of collapsing) |
+| `marker\|fallback` strings | virtuals are ladder *entries* resolved in the arbitration (their manifest chains — `resolveVirtual`'s best-first walks — flow through instead of collapsing) |
 | `reservedDrops` / v135 verdict + clear | the reservation constraint, all rows, strength-compared |
 | `trinket-vs-ranged` + `trinketWornDisplace` | the pair-law constraint (ADR 0010's decision rules intact; scope widens from within-set to within-plan) |
 | `craft-sub-guard` + pin-vs-craft special case | the pairing constraint (`subSlotAllowed` on the *plan's* Main, whoever proposed it) |
 | `sync-hold` + `sync-hold-ammo` | one hold constraint (weapon slots + Range-reserving ammo) |
 | `ctx.pinReserved`, naked-voids special case | gone — reservation is one constraint, Naked outranking Pins falls out of strength |
 | locks / naked / locked set / disabled arms | ordinary rows with sentinel ladders (ceiling keeps its seam filter too) |
-| `mpCeded`/`mpRespectLocks` weave | Phase 1: unchanged (see §6). End state: MaxMP proposals + an mp-hold constraint reading the `view` |
+| `mpCeded`/`mpRespectLocks` weave | Phase 1: unchanged (see §6). End state: MaxMP ladder claims + an mp-hold constraint reading the `view` |
 | `applyClaim` closures + reverse rank walk | gone — one plan application |
-| `arbResolve`/`arbExplain` under retrace | *the decider*; minutes replace the parallel model |
-| `/dl why` trace lines | a formatter over minutes — refusals finally get printed with reasons ("Body: Royal Cloak refused (reserves Head, owned by Movement@25) → fell to Gold Harness") |
+| `arbResolve`/`arbExplain` under retrace | *the decider*; the structured trace replaces the parallel model |
+| `/dl why` rendered lines | a formatter over the trace — refusals finally get printed with reasons ("Body: Royal Cloak refused (reserves Head, owned by Movement@25) → fell to Gold Harness") |
 
 ### 4.5 The multi-slot asymmetry, stated once
 
@@ -271,38 +288,39 @@ directions are one rule at one altitude, with fallthrough on exactly one side.
 
 ## 5. Why this scales
 
-- **Adding a claimant** = one registry row + one proposals function. It inherits
+- **Adding a claimant** = one registry row + one ladder-bearing claims function. It inherits
   reservation, pairing, usability, locks, ceiling, attribution — all nine §2.2
   mechanisms — without meeting any of them. N×M pairwise patches become N sources + M
   constraints.
 - **Adding a constraint** = one named validator with a reason string. It automatically
   applies to every source, with its refusals printed.
-- **"Check in with the Arbiter more often"** = every Default settles against live
+- **"Check in with the Arbiter more often"** = every Default re-arbitrates against live
   context (memoized when nothing moved), and the `view` channel lets a source's policy
   read the contest instead of being woven through `ctx`.
 - **Testability** — the review's headline finding was that `M.dispatch` is called zero
-  times by any test. `settle(session)` is the `equipcore.planSet(set, snapshot)` shape:
-  plain tables in, plain tables out. The path every feature rides becomes drivable
-  headless for the first time, and the minutes make every assertion self-explaining.
+  times by any test. `arbitrate(session)` is the `equipcore.planSet(set, snapshot)`
+  shape: plain tables in, plain tables out. The path every feature rides becomes
+  drivable headless for the first time, and the trace makes every assertion
+  self-explaining.
 - **Explainability is structural.** Today a silent nil is the failure mode (v134's
-  "total silent failure"). In the settle, *nothing* is dropped without a recorded
+  "total silent failure"). In the arbitration, *nothing* is dropped without a recorded
   reason — the bug class "a slot quietly stopped" becomes grep-able.
 
 ## 6. Old rules re-examined (the debate Henrik invited)
 
 | Rule | Verdict | Why |
 |---|---|---|
-| ADR 0006 "builder plans, engine decides" | **Keep, complete** | The flattener was a third actor deciding early. Retire its *pick*, keep its *filter/sort*. Addendum 2's "post-pass on the final names" doctrine retires with the post-passes: reservation declared as proposals replaces "each later EquipSet must declare what it takes away." |
+| ADR 0006 "builder plans, engine decides" | **Keep, complete** | The flattener was a third actor deciding early. Retire its *pick*, keep its *filter/sort*. Addendum 2's "post-pass on the final names" doctrine retires with the post-passes: reservation declared as claims replaces "each later EquipSet must declare what it takes away." |
 | ADR 0012 claim = `{slot->name}` | **Revise** | Becomes `{slot -> ladder}` (+ optional function). The recipe comment at `dispatch.lua:3652-3667` ("exactly TWO things and NO new arm") finally becomes true — today it is 2 things plus 11 hunks of bookkeeping (the review measured 15 hunks for Chocobo). |
-| "MaxMP stays woven" (ADR 0012) | **Keep for now, fold only with evidence** | The weave is the hardest, most field-tuned logic (bands, sticky pairs, movement yield — a rulings ledger of its own). The settle must not *require* folding it: MaxMP keeps its claim row for precedence and its woven equip until stages 0–4 prove the constraint vocabulary. Fold-in is a stage 5+ candidate, not a dependency. |
+| "MaxMP stays woven" (ADR 0012) | **Keep for now, fold only with evidence** | The weave is the hardest, most field-tuned logic (bands, sticky pairs, movement yield — a rulings ledger of its own). The arbitration must not *require* folding it: MaxMP keeps its claim row for precedence and its woven equip until stages 0–4 prove the constraint vocabulary. Fold-in is a stage 5+ candidate, not a dependency. |
 | ADR 0010 trinket contest "within-set only" | **Revise scope** | "Within-set" was the honest scope when only one table was visible at a time. With one plan, the natural scope is within-*plan* — same decision rules (higher level wins the trinket contest; Range is HANDS OFF), wider, and the worn-displace arm stays. |
 | The Triggers floor as a special phase | **Revise** | The floor becomes the bottom rank row with internal `(prio, ord)` strength. This is precisely what v135 lacked ("a priority number that never modelled it") — after unification, the clear at `:6041` and the "extend across rank later" caveat both retire. |
 | `marker\|fallback` strings | **Retire gradually** | A 2-rung ladder encoded for a state boundary that no longer exists. Authoring format can keep the strings (profiles on disk); the in-memory store expands them to ladder entries at install. |
 | Per-claim `equipResolved` + N sends | **Retire** | One plan, one send. All production callers are dispatch-internal (verified), so the consolidation is contained; `M._equipResolved` stays as a seam for the within-set passes' tests during migration. |
-| The attribution parallel model | **Retire into minutes** | One machine decides *and* explains. The AR*/LV* tests move to the settle with their assertions intact. |
-| Disabled at the write seam | **Keep** (also modeled in settle) | ADR 0024's argument — the seam covers callers the rank walk never sees — survives the redesign verbatim. |
+| The attribution parallel model | **Retire into the trace** | One machine decides *and* explains. The AR*/LV* tests move to the arbitration with their assertions intact. |
+| Disabled at the write seam | **Keep** (also modeled in the arbitration) | ADR 0024's argument — the seam covers callers the rank walk never sees — survives the redesign verbatim. |
 | Oracle twins in dispatch (ADR 0002) | **Flag for later** | "The engine has no catalog" died in the purge; the byte-identical twins (`decodeEquipIndex`, `AMMO_BAGS`) could collapse into the one door. Separate cleanup, not scoped here — noted so the review's GRD-parity pins are re-aimed deliberately, not by accident. |
-| AutoAcc stays within-set (Henrik 07-21) | **Keep** | It is a candidate *transform* inside a proposal's ladder, not a claimant. The settle changes nothing about it. |
+| AutoAcc stays within-set (Henrik 07-21) | **Keep** | It is a candidate *transform* inside a claim's ladder, not a claimant. The arbitration changes nothing about it. |
 
 ## 7. Staging — every stage ships whole, field-confirmed before the next
 
@@ -315,7 +333,7 @@ table — `{ name, ensure, active, overlayFor, slots, sig }` — that the ensure
 bails, the claims map, the signature and the applyClaim walk all iterate. Zero behavior
 change, pinned by AR*/LV* + goldens. ⚠ *Moved from the sketch's stage 4 to first:* it
 pays for itself standalone (15 hunks → 1 row, the silent-bail class dies), it shrinks
-`M.dispatch` before surgery, and the settle then lands against rows instead of eight
+`M.dispatch` before surgery, and the arbitration then lands against rows instead of eight
 locals. If everything after this stalls, stage 0 was still worth shipping.
 
 **Stage 1 — ladders on demand.** `candidatesFor(setName, slot)` — the `evalEntry` walk
@@ -331,16 +349,17 @@ build (`:5978-5994`): an `ineligible` slot re-proposes its source set's next can
 the rounds. The Royal Cloak falls to the next Body piece. Floor-scoped exactly like
 v135; small diff; immediately field-testable by the two 07-27 cases.
 
-**Stage 3 — extract `gear/settle.lua` and make it the decider.** Pure module; migrate
+**Stage 3 — extract `gear/arbiter.lua` and make it the decider.** Pure module; migrate
 constraints one at a time in POST_ORDER's own order, each pinned by the tests that
 already exist (AK*, AKD*, TR*, TB*, AM*, PL*, LS*, AR*, LV*): reservation first (it is
 already pure — `reserveFloor`/`reserveVerdict` *are* the seed), then pair law, then the
-guards, MP weave untouched. Dispatch's apply loop becomes collect → settle → one apply →
-one send. `/dl why` reads minutes (deliberate, reviewed text diff — the goldens gate
-moves with it). This is the stage where decide-and-explain become one machine.
+guards, MP weave untouched. Dispatch's apply loop becomes collect → arbitrate → one
+apply → one send. `/dl why` renders the trace (deliberate, reviewed text diff — the
+goldens gate moves with it). This is the stage where decide-and-explain become one
+machine.
 
-**Stage 4 — claimants propose ladders; dominance across rank.** Registry rows gain
-`proposals()`; AutoAmmo emits its level ladder (the v134 gap class ends), craft/HELM/
+**Stage 4 — claimants submit ladders; dominance across rank.** Registry rows gain
+`claims()`; AutoAmmo submits its level ladder (the v134 gap class ends), craft/HELM/
 fish/choco pass their manifest chains through instead of pre-resolving; pins/locks/
 naked/locked-set stay single-rung by nature. Strength `(row, prio, ord)` goes live —
 the deferred half of Henrik's ruling ("a Craft or AutoAmmo claim on a reserved slot
@@ -350,23 +369,23 @@ not a second copy.
 **Stage 5 — retire the collapse.** The flat top-level store becomes an explicit derived
 cache of ladder heads (GUI previews and `gearcheck` migrate to `candidatesFor`);
 `BuildDynamicSets` shrinks to filter+sort+normalize; marker strings expand at install.
-Follow-ons unlocked, not scoped: `settle.preview(proposal)` for GUI equip-now surfaces
-("would this land, or be fought?"), immediate-equip paths routing through the settle,
-the ADR 0002 twin collapse.
+Follow-ons unlocked, not scoped: `arbiter.preview(claim)` for GUI equip-now surfaces
+("would this land, or be fought?"), immediate-equip paths routing through the
+arbitration, the ADR 0002 twin collapse.
 
 ## 8. Performance & determinism
 
 - **Steady state gets cheaper, not dearer.** Today: N active layers × (16-slot chain +
   5 post-passes) + N buffer sends per dispatch. Target: one 16-slot walk + one send.
-- **The settle memoizes on the signature machinery that already exists** (the retrace
-  sig): unchanged inputs → the previous plan, no walk at all. Ladders memoize on the
-  rebuild latch. The fast path (uncontested slot, first rung passes) is the common case;
-  the loop only spins on refusal, which is rare and short (ladders are a handful of
-  rungs).
-- **Determinism invariants, test-pinned:** `RSLOT_ORDER` slot walk; proposals sorted by
+- **The arbitration memoizes on the signature machinery that already exists** (the
+  retrace sig): unchanged inputs → the previous plan, no walk at all. Ladders memoize on
+  the rebuild latch. The fast path (uncontested slot, first rung passes) is the common
+  case; the loop only spins on refusal, which is rare and short (ladders are a handful
+  of rungs).
+- **Determinism invariants, test-pinned:** `RSLOT_ORDER` slot walk; claims sorted by
   strength then row name then ord; no `pairs()` in any decision; ties favor the
   reserver (today's law, `:2704`); the fixed-point cap logged when hit.
-- **Level authority:** `candidatesFor` and the settle read the same level the v134
+- **Level authority:** `candidatesFor` and the arbitration read the same level the v134
   lesson pinned (`playerLevel`/`determineLevels`, override-aware) — one level, everywhere.
 
 ## 9. Risks, honestly
@@ -376,29 +395,34 @@ the ADR 0002 twin collapse.
 - **The weave.** If MaxMP's fold-in is ever attempted, it is its own field campaign with
   its own rulings ledger. The design deliberately does not depend on it.
 - **The fixed point.** Reservation chains (Body takes Legs takes nothing…) are bounded
-  and ordered today; the synthetic-proposal formulation must keep the "an ineligible
+  and ordered today; the claim-with-emptiness formulation must keep the "an ineligible
   piece reserves nothing" invariant (`:2680-2684`) or a piece could suppress on its way
   out. The v135 functions carry the tests for this; they migrate, not rewrite.
 - **GUI preview drift between stages 1–5.** The Sets tab shows flattened names until
   stage 5; after stage 4 the worn truth may legitimately be rung 2 while the tab shows
-  rung 1. Mitigation: the tab gains a "(fell to X — /dl why)" hint early, reading
-  minutes.
+  rung 1. Mitigation: the tab gains a "(fell to X — /dl why)" hint early, reading the
+  trace.
 - **Scope creep.** The one-state unlock (§2.6) invites collapsing every twin and every
   string seam at once. Staged deliberately; each stage ships alone.
 
 ## 10. Open questions for Henrik
 
-1. **Vocabulary.** Keep Claim/Arbiter/rank and add *ladder / refusal / settle /
-   minutes*? (CONTEXT.md entries ride the ruling. "Minutes" can be plain "decision log"
-   if it reads too cute in chat.)
+1. **Vocabulary — RATIFIED 2026-07-27** (discussed item by item, this session):
+   **ladder** generalized (rungs; gates only remove) · **Claim widened** to carry whole
+   ladders, submitted up front — no separate "Proposal" noun (Henrik independently
+   proposed ladder-up-front while reading the fall/hold taxonomy) · **Refusal** with
+   **fall**/**hold** · **contest** per slot (existing) + **arbitration** per dispatch
+   ("settle" dropped: collides with the sync-settle hold) · **trace** as the returned
+   decision record ("minutes" dropped as confusing; the existing `/dl why` trace deepens
+   into it, "retrace" keeps its meaning).
 2. **Stage 4's comparison law.** Strength puts a prio-25 trigger *above* every claim row
    below Triggers' rank only within its own row — across rows, rank wins outright, as
-   today. Dominance across rank therefore reads: *any* claim-row proposal beats *any*
-   floor proposal on a contested reservation (rank order), while floor-vs-floor keeps
+   today. Dominance across rank therefore reads: *any* claim-row claim beats *any*
+   floor claim on a contested reservation (rank order), while floor-vs-floor keeps
    priority. Confirm that is the ruling's intent ("am I dominant in both pieces
    according to you?" — where "you" is now the whole rank list).
 3. **MaxMP's end state** — fold in eventually, or woven permanently as the one blessed
    exception? (Recommendation: decide after stage 4, with the constraint vocabulary
-   proven and the minutes showing where the weave actually bites.)
-4. **`/dl why` verbosity** — refusal reasons make the trace richer; is the current
+   proven and the trace showing where the weave actually bites.)
+4. **`/dl why` verbosity** — refusal reasons make the output richer; is the current
    one-screen budget a constraint, or may contested slots grow a line each?
