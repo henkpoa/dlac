@@ -7121,6 +7121,113 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- AKF. THE FALL (ADR 0027, stage 2 -- M.reserveResolve + the FELL branch in
+--      equipResolved). The deferred half of the v135 ruling: an ineligible
+--      piece falls down its source ladder, each rung re-judged; a reserved
+--      slot never falls (the asymmetry law). Field case: Henrik's Mindie BRD
+--      -- Idle Body = Royal Cloak > Scorpion Harness +1 under Movement Head.
+-- ---------------------------------------------------------------------------
+(function()
+    local HEAD, LEGS = 0x0010, 0x0080;
+    local function look(masks) return function(n) return masks[n] or 0; end end
+    local function ladders(map)
+        return function(src, slot)
+            local bySlot = map[src];
+            local names = bySlot and bySlot[slot] or nil;
+            if names == nil then return nil; end
+            local items = {};
+            for _, n in ipairs(names) do items[#items + 1] = { name = n }; end
+            return { items = items };
+        end
+    end
+
+    -- AKF1: the floor carries its source set through.
+    local fl = dispatchM.reserveFloor({ { prio = 20, set = { Body = 'Royal Cloak' }, src = 'IdleSet' } });
+    check('AKF1 the floor remembers whose set won the slot', fl.Body.src, 'IdleSet');
+
+    -- AKF2: the Mindie case -- the cloak is beaten on Head and FALLS to the
+    -- harness; nothing ends ineligible or suppressed.
+    local mindie = {
+        { prio = 20, set = { Body = 'Royal Cloak' },   src = 'IdleSet' },
+        { prio = 25, set = { Head = 'Genbu Kabuto' },  src = 'MoveSet' },
+    };
+    local cloakLook = look({ ['Royal Cloak'] = HEAD });
+    local mindieLad = ladders({ IdleSet = { Body = { 'Royal Cloak', 'Scorpion Harness +1' } } });
+    local sup, inel, rep = dispatchM.reserveResolve(mindie, cloakLook, mindieLad);
+    check('AKF2 the fall resolves the contest', inel, nil);
+    check('AKF2b nothing is suppressed', sup, nil);
+    check('AKF2c the slot fell to the next rung', rep.Body.to, 'Scorpion Harness +1');
+    check('AKF2d the trace knows what fell', rep.Body.from, 'Royal Cloak');
+    check('AKF2e ...and who beat it', rep.Body.by, 'Head');
+
+    -- AKF3: a replacement that reserves DOMINATED slots suppresses them like
+    -- any dominant reserver (the re-run verdict is the same verdict).
+    local chain = {
+        { prio = 10, set = { Legs = 'Amir Dirs' },     src = 'LowSet' },
+        { prio = 20, set = { Body = 'Royal Cloak' },   src = 'IdleSet' },
+        { prio = 25, set = { Head = 'Genbu Kabuto' },  src = 'MoveSet' },
+    };
+    local suitLook = look({ ['Royal Cloak'] = HEAD, ['Party Suit'] = LEGS });
+    sup, inel, rep = dispatchM.reserveResolve(chain, suitLook,
+        ladders({ IdleSet = { Body = { 'Royal Cloak', 'Party Suit' } } }));
+    check('AKF3 the replacement lands', rep.Body.to, 'Party Suit');
+    check('AKF3b and its own reservation suppresses the dominated slot', sup.Legs, 'Party Suit');
+    check('AKF3c nothing ends ineligible', inel, nil);
+
+    -- AKF4: rung 2 fails the same test rung 1 did -> rung 3 wins (two rounds).
+    sup, inel, rep = dispatchM.reserveResolve(mindie,
+        look({ ['Royal Cloak'] = HEAD, ['Hat Eater'] = HEAD }),
+        ladders({ IdleSet = { Body = { 'Royal Cloak', 'Hat Eater', 'Scorpion Harness +1' } } }));
+    check('AKF4 a refused rung falls again', rep.Body.to, 'Scorpion Harness +1');
+    check('AKF4b and the trace still names the ORIGINAL piece', rep.Body.from, 'Royal Cloak');
+    check('AKF4c clean end state', inel, nil);
+
+    -- AKF5: a dry ladder keeps v135's behavior -- ineligible, no replacement.
+    sup, inel, rep = dispatchM.reserveResolve(mindie, cloakLook,
+        ladders({ IdleSet = { Body = { 'Royal Cloak' } } }));
+    check('AKF5 a dry ladder stays ineligible', inel.Body, 'Head');
+    check('AKF5b and nothing reads as replaced', rep, nil);
+
+    -- AKF6: an inline equip has no ladder (src nil) -- v135 behavior exactly.
+    sup, inel, rep = dispatchM.reserveResolve({
+        { prio = 20, set = { Body = 'Royal Cloak' } },
+        { prio = 25, set = { Head = 'Genbu Kabuto' }, src = 'MoveSet' },
+    }, cloakLook, mindieLad);
+    check('AKF6 an inline equip cannot fall', inel.Body, 'Head');
+    check('AKF6b no replacement invented for it', rep, nil);
+
+    -- AKF7: the cap -- a ladder of nothing but reservers exhausts three
+    -- re-runs and reads INELIGIBLE (visible, never silent), not replaced.
+    sup, inel, rep = dispatchM.reserveResolve(mindie,
+        look({ ['Royal Cloak'] = HEAD, ['R2'] = HEAD, ['R3'] = HEAD, ['R4'] = HEAD, ['R5'] = HEAD }),
+        ladders({ IdleSet = { Body = { 'Royal Cloak', 'R2', 'R3', 'R4', 'R5' } } }));
+    check('AKF7 an all-reserver ladder ends ineligible', inel.Body, 'Head');
+    check('AKF7b with no replacement record', rep, nil);
+
+    -- AKF8: the ASYMMETRY LAW -- a reserved slot never falls, ladder or not.
+    sup, inel, rep = dispatchM.reserveResolve({
+        { prio = 20, set = { Head = 'Silver Hairpin' }, src = 'IdleSet' },
+        { prio = 25, set = { Body = 'Royal Cloak' },    src = 'MoveSet' },
+    }, cloakLook, ladders({ IdleSet = { Head = { 'Silver Hairpin', 'Leather Bandana' } } }));
+    check('AKF8 the dominant reserver claims the slot empty', sup.Head, 'Royal Cloak');
+    check('AKF8b the reserved slot is NOT offered a rung', rep, nil);
+    check('AKF8c and nothing is ineligible', inel, nil);
+
+    -- AKF9/10: the FELL branch in the real equipResolved.
+    dispatchM.setLock('all', false);
+    local _, ft = dispatchM._equipResolved({ Body = 'Royal Cloak' },
+        { reserveReplace = { Body = { from = 'Royal Cloak', to = 'Scorpion Harness +1', by = 'Head' } } });
+    check('AKF9 the refused writer equips the rung that passed', ft.Body, 'Scorpion Harness +1');
+    local fn = dispatchM._equipResolved({ Body = 'Royal Cloak' },
+        { reserveReplace = { Body = { from = 'Royal Cloak', to = 'Scorpion Harness +1', by = 'Head' } } });
+    check('AKF9b and the note names the fall',
+        fn:find('Body=Royal Cloak fell -> Scorpion Harness +1', 1, true) ~= nil, true);
+    local _, bt = dispatchM._equipResolved({ Body = 'Bronze Harness' },
+        { reserveReplace = { Body = { from = 'Royal Cloak', to = 'Scorpion Harness +1', by = 'Head' } } });
+    check('AKF10 a different writer in the slot flows through untouched', bt.Body, 'Bronze Harness');
+end)();
+
+-- ---------------------------------------------------------------------------
 -- AB. arbwatch -- the ADDON-SIDE writer of the arbstate rank Statefile (ADR
 --     0012, step 2 / issue #49). The engine's read side is AR* above; these pin
 --     the WRITER's pure seams: the default/sanitize reuse the engine's one
