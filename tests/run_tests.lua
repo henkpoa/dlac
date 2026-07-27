@@ -6967,6 +6967,32 @@ end)();
         by['Locks'].prioStatus():find('veto', 1, true) ~= nil, true);
     check('CR9c prio: the ceiling names itself',
         by['Disabled'].prioStatus():find('ceiling', 1, true) ~= nil, true);
+
+    -- CR10. The AutoAmmo prio line is JOB-AWARE (v137 -- Henrik's stage-0
+    -- field report: the file-level read said ON on a job with no setup).
+    -- Driven through the pure seam: fmt-2 sections, the fmt-1 jobs gate
+    -- (resolveAmmoPlan's, mirrored), the who-has-it naming, and the nil-job
+    -- fallback to the file-level answer. ammoStateOn itself stays file-level
+    -- (it feeds the dispatch bail) -- CR10i pins that it did not move.
+    local ajl = dispatchM._ammoJobLine;
+    local AMMO_ON = 'ON (claims Ammo on shooting events)';
+    local fmt2 = { jobs = { DRK = { enabled = true,  ammo = { { name = 'Acid Bolt' } } },
+                            WAR = { enabled = false, ammo = { { name = 'Stone' } } } } };
+    check('CR10 fmt2: the set-up job reads ON', ajl(fmt2, 'DRK'), AMMO_ON);
+    check('CR10b fmt2: another job reads off AND names who has it',
+        ajl(fmt2, 'SCH'), 'off (this job -- set up on DRK)');
+    check('CR10c fmt2: a disabled section is not "set up"',
+        ajl(fmt2, 'WAR'), 'off (this job -- set up on DRK)');
+    check('CR10d a nil job falls back to the file-level answer', ajl(fmt2, nil), AMMO_ON);
+    local fmt1 = { enabled = true, ammo = { 'Iron Arrow' }, jobs = { RNG = true } };
+    check('CR10e fmt1: the gated-in job reads ON', ajl(fmt1, 'RNG'), AMMO_ON);
+    check('CR10f fmt1: a gated-out job reads off and names the gate',
+        ajl(fmt1, 'SCH'), 'off (this job -- set up on RNG)');
+    check('CR10g fmt1: no jobs map = every job',
+        ajl({ enabled = true, ammo = { 'X' } }, 'SCH'), AMMO_ON);
+    check('CR10h an absent state is off', ajl(nil, 'DRK'), 'off');
+    check('CR10i ammoStateOn stays file-level (the bail read is untouched)',
+        dispatchM._ammoStateOn(fmt2), true);
 end)();
 
 -- ---------------------------------------------------------------------------
