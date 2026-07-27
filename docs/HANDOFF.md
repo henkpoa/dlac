@@ -323,8 +323,13 @@ they join the queue on his confirmation, not before):**
 - `a02f295` (v142, `27zd`) — **sentinel defense rows** (stage 4 slice 2): '(locked)' /
   '(free equip)' placeholders stand at their rank rows in the verdict, so a reserving
   piece can no longer bulldoze a locked or free-equip slot; punch-through preserved
-  (ARK8–ARK10b). Field check: lock Head (`/dl lock head`), wear nothing there, arm a
-  Body-reserver set — the reserver must fall/die instead of emptying the locked slot.
+  (ARK8–ARK10b). **Refined by `7c1795a` (v144, `27zf`) on Henrik's first field pass —
+  THE EMPTY-LOCK WAIVER:** a lock on an EMPTY slot does not defend (freezing "empty" is
+  what a reservation preserves — his call: the locked, empty Head must not stop the
+  Royal Cloak); a lock on a WORN piece defends as before. Deliberate asymmetry: the
+  free-equip ceiling stays unconditional (it promises the FUTURE hand-equip stays).
+  Field check, both directions: locked EMPTY Head → the cloak equips and Head stays
+  empty; locked Head with a hat WORN → the cloak falls/dies and the hat stays.
 - `740fc3a` (v143, `27ze`) — **`/dl why <slot>`** (ADR 0027 item 4): the contest
   drill-down — claimants in rank order, the verdict's word with its reason, the source
   ladder's rungs. Field check: after any dispatch, `/dl why body` should print the
