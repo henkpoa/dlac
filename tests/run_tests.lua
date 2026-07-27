@@ -7468,6 +7468,22 @@ end)();
     check('ARK13b nothing reads ineligible', inel, nil);
     check('ARK13c and nothing falls', rep, nil);
 
+    -- ARK14: CLAIM-SIDE LADDERS (stage 4, last slice -- future-proofing: no
+    -- hobby/craft item carries an RSlot today, but the day one does, a beaten
+    -- claim piece falls down its own resolver chain). The rows carry rladder;
+    -- the '\031'-src route is pinned as source; a ladder-less state answers
+    -- nil gracefully.
+    local byR = {};
+    for _, row in ipairs(dispatchM._claimants) do byR[row.name] = row; end
+    check('ARK14 Craft carries a claim-side ladder', type(byR['Craft'].rladder), 'function');
+    check('ARK14b Fishing and Chocobo too',
+        type(byR['Fishing'].rladder) == 'function' and type(byR['Chocobo'].rladder) == 'function', true);
+    check('ARK14c an off craft state has no ladder', byR['Craft'].rladder('head', { enabled = false }), nil);
+    check('ARK14d a headless chain answers nil, never throws',
+        (function() local ok, v = pcall(byR['Fishing'].rladder, 'body', nil, {}); return ok and v == nil; end)(), true);
+    check('ARK14e the claim src route is the control-char prefix (source pin)',
+        dsrc:find("('\\031' .. cn)", 1, true) ~= nil, true);
+
     -- WY1: the contest stash (/dl why <slot>, ADR 0027 item 4). NK26's real
     -- dispatch above ran the stash path; its Default trace must carry the
     -- structured contest the drill-down renders -- the same object that
