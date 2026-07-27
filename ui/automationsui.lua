@@ -309,12 +309,17 @@ local function autoCommit()
                 end
             end
         end
-        -- Pair-position HOME map (fmt 13, Henrik's ruling): the IDLE SET --
-        -- the player's Default rule matching exactly `status = Idle`, or the
-        -- MaxMP panel's picker which ALWAYS overrides the detection -- says
-        -- which paired slot each ear/ring belongs to. A piece the idle set
-        -- lists under Ear2 is an ear2 piece, full stop: it joins ear2's
-        -- ladder below, so the engine can never plan it across the pair.
+        -- Pair-position HOME map (fmt 13, Henrik's ruling; re-ruled 2026-07-28
+        -- -- the Outlaws Earring round): the IDLE SET -- the player's Default
+        -- rule matching exactly `status = Idle`, or the MaxMP panel's picker
+        -- which ALWAYS overrides the detection -- says which paired slot each
+        -- ear/ring belongs to. Homes come from the set's CHOSEN pieces (the
+        -- FLATTENED slots, dispatch.flattenedSet), NOT every authored rung: a
+        -- leveling rung documented under Ear2 (Outlaws Lv50 below Loquacious
+        -- Lv75) is floating gear, not an ear2 piece -- homing it exiled it
+        -- from ear1's ladder while its own slot's band read diff 0 (the top
+        -- IS the potency point), so the battery could never equip ANYWHERE.
+        -- The chosen pieces still never plan across the pair.
         local override = (type(auto.data) == 'table')
             and (type(auto.data.mpPairIdleOverride) == 'string') and auto.data.mpPairIdleOverride or nil;
         mpPairIdle, mpPairIdleOverride = nil, override;
@@ -348,32 +353,27 @@ local function autoCommit()
                 end
             end
             if setName == nil then setName = 'Idle'; end   -- the convention fallback
-            local dyn = (type(prof.readSetsFile) == 'function') and prof.readSetsFile(job) or nil;
-            local s = (type(dyn) == 'table') and dyn[setName] or nil;
+            local s = (hasDispatch and type(dsp.flattenedSet) == 'function')
+                      and dsp.flattenedSet(setName) or nil;
+            -- Flatten not landed yet (boot warm-up): no homes this pass; the
+            -- constant rescans re-home within a beat of the store filling.
             if type(s) ~= 'table' then return; end
             mpPairIdle = setName;
             for _, slotKey in ipairs({ 'Ear1', 'Ear2', 'Ring1', 'Ring2' }) do
-                local lst = s[slotKey];
-                if type(lst) == 'table' then
-                    local entries = (lst.Name ~= nil or lst.gear ~= nil) and { lst } or lst;
-                    for _, e in ipairs(entries) do
-                        local nm = nil;
-                        if type(e) == 'string' then nm = e;
-                        elseif type(e) == 'table' then
-                            nm = e.Name;
-                            if nm == nil and type(e.gear) == 'table' then nm = e.gear.Name; end
-                        end
-                        if type(nm) == 'string' and string.lower(string.sub(nm, 1, 5)) ~= 'dlac:' then
-                            local k = string.lower(nm);
-                            if pairHome[k] == nil then pairHome[k] = string.lower(slotKey); end
-                        end
-                    end
+                local v = s[slotKey];
+                local nm = nil;
+                if type(v) == 'string' then nm = v;
+                elseif type(v) == 'table' and type(v.Name) == 'string' then nm = v.Name; end
+                if nm ~= nil and string.lower(string.sub(nm, 1, 5)) ~= 'dlac:' then
+                    local k = string.lower(nm);
+                    if pairHome[k] == nil then pairHome[k] = string.lower(slotKey); end
                 end
             end
         end);
         -- Ladders, best first. Ear/Ring split into two DISJOINT ladders so one
-        -- physical item can never be picked for both slots -- HOMED pieces go
-        -- to their idle-set slot, dup twins fill the other, the rest balance.
+        -- physical item can never be picked for both slots -- HOMED pieces
+        -- (the idle set's CHOSEN ear/ring picks) go to their idle-set slot,
+        -- dup twins fill the other, the rest balance.
         local LADDER = 4;
         for sl, list in pairs(bySlot) do
             table.sort(list, function(a, b)

@@ -3825,6 +3825,20 @@ function M.candidatesFor(setName, slotName)
     return lad;
 end
 
+-- A set's FLATTENED table by name -- the store's top-level entry, one CHOSEN
+-- piece per slot at the live level (statics included; they were born flat).
+-- nil until the flatten lands. Consumer: the manifest's pair-home harvest
+-- (field 2026-07-28, the Outlaws Earring round): homing every AUTHORED rung
+-- froze unchosen leveling rungs to their documented ear/ring and exiled them
+-- from the sibling's ladder -- a Lv50 rung under a Lv75 pick could never
+-- battery anywhere (its own slot's band read diff 0: the top IS the potency
+-- point). Only the flatten's picks anchor pair positions; the unchosen rungs
+-- float. Tests FS*.
+function M.flattenedSet(name)
+    local s = (type(M._nativeSets) == 'table') and M._nativeSets[name] or nil;
+    return (type(s) == 'table') and s or nil;
+end
+
 local function equipSetByName(name, ctx)
     local s;
     if type(M._nativeSets) == 'table' then

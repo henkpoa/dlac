@@ -6408,3 +6408,56 @@ code is documentation that nobody proofreads.
 
 **Status:** on `dev`, addon `27x` → **`27y`**, engine untouched. Suites **3947 + 693**,
 green on Windows lua and WSL lua5.4.
+
+## Session "the earring that could never equip" (2026-07-28, on `dev` — addon 2026.07.28a → b)
+
+Henrik came back with the MaxMP oddity he'd flagged during the stage 6 field round — the
+mode never equipped Outlaws Earring — and he came back with the diagnosis, not just the
+symptom. He had already run the experiment: remove Outlaws Earring from the idle set's
+Ear2 ladder, re-plan, and it equips fine. His read: the pair-position rule was treating
+**every earring documented in the idle set** as position-anchored, "even if they are not
+used" — and his ruling: only the **currently chosen** pair pieces should anchor; the rest
+are floating.
+
+The code agreed with him on every point. The fmt 13 pair-home harvest
+(`automationsui`'s manifest builder) read the **authored** sets file
+(`prof.readSetsFile`) and homed every entry of every Ear/Ring slot list. That was
+faithful to the original ruling ("a piece the idle set lists under Ear2 is an ear2
+piece, full stop") — but the ruling predates ADR 0027's slot LADDERS. Once a slot
+became a level-graded list, "lists under Ear2" started matching gear documented only
+as leveling rungs. Henrik's Ear2 ladder holds Loquacious (Lv75, MP 30) with Outlaws
+(Lv50, MP 15) as the rung to grow through — at 75 the flatten picks Loquacious and
+Outlaws is dead weight in the authored list.
+
+The kill chain was arithmetic, and it's worth spelling out because *nothing errored*:
+both earrings homed to ear2, so ear2's battery ladder was [Loquacious 30, Outlaws 15]
+and ear1's ladder had **no MP earrings at all** — no ear1 band can ever build. Ear2's
+band takes the ladder TOP (one band per slot, v92) — Loquacious — against the potency
+point, which is *also* Loquacious (it's the set's own pick, and `mpLowMap` reads the
+**flattened** store). Top mp − low = 0, and `mpbands.build` drops zero-diff bands. No
+band on ear2 either. Outlaws, mp 15 against a 30-MP potency point, was invisible from
+every direction. Remove the rung and it floats to the emptier ear1 ladder: top 15
+against a 0-MP ear1 potency point = a 15-MP band that fires. His experiment was the
+whole proof; the catalog stats matched it line for line.
+
+The asymmetry is the actual lesson: the LOW side of the band (potency point) always
+read the **flattened** set — the chosen pick at the live level — while the HOME side
+read the **authored** rungs. Two sides of the same band disagreeing about what "the
+set's piece" means. The fix makes both sides read the same world: a new
+`dispatch.flattenedSet(name)` accessor (the top-level store entry, one chosen piece
+per slot; statics included, they were born flat) and the harvest homes only those
+picks. Deliberately NOT `candidatesFor` + a head-pick — that would have been a fourth
+copy of "the pick" (the stage 5 lesson about the `bestByLevel` twin). The flatten
+already computed it; read it.
+
+What survives unchanged: the chosen pieces still never plan across the pair (Loquacious
+stays in ear2 — the churn rule that started all of this, v83/v93, is untouched), dup
+twins still ride both ladders, and the sticky apply veto still kills any transient
+tug. Boot warm-up degrades gracefully: no flatten yet → no homes this pass → the
+constant rescans (login, job change, any inventory change) re-home within a beat.
+
+**Status:** on `dev`, addon `2026.07.28a` → **`2026.07.28b`**, engine untouched (the
+manifest builder + one dispatch accessor). Tests `FS*` pin the seam. Suites **4078 +
+693**, green on Windows lua and WSL lua5.4. Field-pending: Henrik re-plans with the
+rung restored to the set — the point of the fix is that documenting leveling gear must
+cost nothing.

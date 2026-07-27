@@ -289,6 +289,18 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
+- **2026-07-28: MaxMP pair homes anchor CHOSEN picks only — ON `dev`, awaiting field
+  test** (`2026.07.28b`). Henrik's own diagnosis of the stage 6 field oddity (Outlaws
+  Earring never equipped), confirmed exactly: the fmt 13 pair-home harvest homed **every
+  authored rung** of the idle set's ear/ring ladders, so an unchosen leveling rung
+  (Outlaws Lv50 under Loquacious Lv75 in Ear2) was exiled from ear1's ladder while its
+  own slot's band read diff 0 — no band could ever build for it. The harvest now reads
+  the **flattened** set (new `dispatch.flattenedSet` accessor — the same world the
+  potency-point map always read): only the set's chosen picks anchor pair positions,
+  unchosen rungs float and balance like undocumented gear. Chosen pieces still never
+  plan across the pair. Tests FS*; full story in `docs/history.md` ("the earring that
+  could never equip") + the re-ruled section in `docs/design/maxmp-mode.md`. Field
+  check: restore Outlaws to the set's Ear2 ladder, `/dl plan` — it must band for ear1.
 - **2026-07-27: an import can land verbatim — ON `dev`, awaiting field test**
   (`2026.07.27w`). The first feature dlac has taken from **a second player's field
   report** — a friend of Henrik's, who round-trips his own profiles to compare them:

@@ -104,11 +104,20 @@ absolutes alone; never trust `GetMPMax` at all below full).
 
 ### Paired slots (ears/rings)
 
-- **Pair homes** (manifest fmt 13): the ear/ring battery ladders re-home to
-  the positions the player's IDLE SET declares — detected from the Default
-  trigger rule matching exactly `status = Idle`; the MaxMP panel's idle-set
-  picker ALWAYS overrides detection; a set literally named `Idle` is the
-  convention fallback. The idle set is used for pairing positions ONLY.
+- **Pair homes** (manifest fmt 13; re-ruled 2026-07-28, the Outlaws Earring
+  round): the ear/ring battery ladders re-home to the positions the player's
+  IDLE SET declares — detected from the Default trigger rule matching exactly
+  `status = Idle`; the MaxMP panel's idle-set picker ALWAYS overrides
+  detection; a set literally named `Idle` is the convention fallback. The
+  idle set is used for pairing positions ONLY. **Only the set's CHOSEN
+  pieces anchor** — the harvest reads the FLATTENED set
+  (`dispatch.flattenedSet`, the pick at the live level), never the authored
+  ladder rungs. The original harvest homed every rung, and an unchosen
+  leveling rung (Outlaws Lv50 documented under Ear2 below Loquacious Lv75)
+  was exiled from ear1's ladder while its own slot's band read diff 0 (its
+  ladder top was ear2's potency point itself) — the battery could never
+  equip anywhere. Unchosen rungs are floating gear: they balance across the
+  pair like undocumented pieces.
 - **Sticky pairs** (`M.mpStickyPairs`): at apply time, a candidate whose
   piece is claimed by the sibling slot — in THIS dispatch's resolved plan
   (which cannot lag) OR on the body — never writes. Genuine duplicates
