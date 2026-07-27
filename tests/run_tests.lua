@@ -6780,12 +6780,34 @@ end)();
     -- never clears package.loaded), so this watch is what actually clears it.
     check('NK28 same job, in the world -> stays armed', dispatchM.nakedWorldWatch(7, 7), nil);
     check('NK28b and the flag is untouched',    dispatchM.nakedOn(), true);
-    check('NK28c job 0 (character select) disarms', dispatchM.nakedWorldWatch(0, 7), 'world');
+    -- ZONES SURVIVE (Henrik, 2026-07-27): a zone load reads job 0/nil exactly
+    -- like character select, so absence alone HOLDS -- only outlasting a zone
+    -- (WORLD_GONE_S) or returning with a different job drops. `now` injected.
+    check('NK28c a world-gone read HOLDS (a zone load looks like char select)',
+        dispatchM.nakedWorldWatch(0, 7), nil);
+    check('NK28c2 still armed through the load', dispatchM.nakedOn(), true);
+    check('NK28c3 coming back the SAME job keeps it', dispatchM.nakedWorldWatch(7, 0), nil);
+    check('NK28c4 ...armed', dispatchM.nakedOn(), true);
+    dispatchM.nakedWorldWatch(0, 7);
+    check('NK28c5 outlasting a zone disarms', dispatchM.nakedWorldWatch(0, 7, 1e9), 'world');
     check('NK28d you come back dressed',        dispatchM.nakedOn(), false);
     check('NK28e the mirror follows it down',
         (readMirror() or ''):find('["__naked"] = false', 1, true) ~= nil, true);
     dispatchM.setNaked(true);
-    check('NK28f a nil job read disarms too',   dispatchM.nakedWorldWatch(nil, 7), 'world');
+    dispatchM.nakedWorldWatch(nil, 7);
+    check('NK28f a nil job read holds too, then times out the same way',
+        dispatchM.nakedWorldWatch(nil, 7, 1e9), 'world');
+    dispatchM.setNaked(true);
+    -- Returning from absence with a DIFFERENT job still disarms because the
+    -- tick's _tickJob latch only advances on LIVE reads (source-pinned
+    -- below), so the return is judged against the job you LEFT with.
+    check('NK28f2 returning from absence with a DIFFERENT job disarms',
+        (function() dispatchM.nakedWorldWatch(7, 7); dispatchM.nakedWorldWatch(0, 7);
+                    return dispatchM.nakedWorldWatch(3, 7); end)(), 'job');
+    check('NK28f3 the tick latches prevJob on LIVE reads only (source pin)',
+        (function() local f = io.open('dispatch.lua', 'r'); local d = f:read('*a'); f:close();
+            return d:find('if j ~= nil and j ~= 0 then', 1, true) ~= nil
+               and d:find('_tickJob = j;', 1, true) ~= nil; end)(), true);
     dispatchM.setNaked(true);
     check('NK28g a JOB CHANGE disarms',         dispatchM.nakedWorldWatch(3, 7), 'job');
     check('NK28h ...and dresses you',           dispatchM.nakedOn(), false);
@@ -6797,8 +6819,9 @@ end)();
         dispatchM.nakedWorldWatch(7, 0), nil);
     check('NK28k still armed through both',     dispatchM.nakedOn(), true);
     check('NK28l it only ever CLEARS, never arms', (function()
-        dispatchM.nakedWorldWatch(0, 7);                     -- disarm
-        return dispatchM.nakedWorldWatch(0, 7) == nil and dispatchM.nakedOn() == false;
+        dispatchM.nakedWorldWatch(0, 7);                     -- absence starts
+        dispatchM.nakedWorldWatch(0, 7, 1e9);                -- ...and times out (disarm)
+        return dispatchM.nakedWorldWatch(0, 7, 1e9) == nil and dispatchM.nakedOn() == false;
     end)(), true);
     -- NK29. THE LOCKSTYLE REFUSAL, on the door that actually runs.
     --
@@ -7408,8 +7431,9 @@ end)();
     -- worn read, and the ceiling's placeholder must NOT be (free equip
     -- defends the FUTURE hand-equip, empty or not).
     local dsrc = (function() local f = io.open('dispatch.lua', 'r'); local d = f:read('*a'); f:close(); return d; end)();
-    check('ARK11 the lock defense is gated on a worn read',
-        dsrc:find("if wornItemName(canon) ~= nil then", 1, true) ~= nil, true);
+    check('ARK11 the lock entry is the WORN piece, gated on the worn read',
+        dsrc:find("local wn = wornItemName(canon);", 1, true) ~= nil
+        and dsrc:find("held[canon] = wn;", 1, true) ~= nil, true);
     check('ARK11b the ceiling defense is not',
         dsrc:find("free[CANON_OF[ls] or ls] = '(free equip)'", 1, true) ~= nil, true);
 
@@ -7431,6 +7455,18 @@ end)();
     check('ARK12c with the dead claim gone, the reserver is dominant', inel, nil);
     check('ARK12d nothing contests, so nothing is even suppressed (the slot is not in the floor)', sup, nil);
     check('ARK12e and nothing falls -- the reserver is simply undisturbed', rep, nil);
+
+    -- ARK13: A LOCK-FROZEN RESERVER STILL RESERVES (Henrik's locked-cloak
+    -- case): locking Body with the Royal Cloak worn enters the CLOAK at the
+    -- Locks row -- so Idle's Head piece stays suppressed instead of landing
+    -- and having the server displace the very piece the lock froze.
+    sup, inel, rep = dispatchM.reserveResolve({
+        { prio = 20, row = 11, set = { Head = 'Choral Roundlet +1' }, src = 'IdleSet' },
+        { prio = 0,  row = 4,  set = { Body = 'Royal Cloak' } },
+    }, cloakLook, ladders({ IdleSet = { Head = { 'Choral Roundlet +1' } } }));
+    check('ARK13 the frozen cloak suppresses the floor Head claim', sup.Head, 'Royal Cloak');
+    check('ARK13b nothing reads ineligible', inel, nil);
+    check('ARK13c and nothing falls', rep, nil);
 
     -- WY1: the contest stash (/dl why <slot>, ADR 0027 item 4). NK26's real
     -- dispatch above ran the stash path; its Default trace must carry the
@@ -14023,8 +14059,10 @@ end)();
     D.setLockedSet({ name = 'Incursion T3', mode = 'set', claim = { Head = 'Set Hat' }, n = 1 });
     check('LS14 same job, in the world -> stays locked', D.nakedWorldWatch(7, 7), nil);
     check('LS14b ...and it is still armed',              D.lockedSetOn(), true);
-    local why14, drop14 = D.nakedWorldWatch(0, 7);
-    check('LS14c character select releases it',          why14, 'world');
+    -- Zones survive (Henrik, 2026-07-27): absence holds; outlasting drops.
+    check('LS14c0 a zone-length absence holds the locked set', D.nakedWorldWatch(0, 7), nil);
+    local why14, drop14 = D.nakedWorldWatch(0, 7, 1e9);
+    check('LS14c outlasting a zone releases it',         why14, 'world');
     check('LS14d ...and it is gone',                     D.lockedSetOn(), false);
     check('LS14e ...the caller is told what dropped',    drop14 and drop14.locked, 'Incursion T3');
     check('LS14f ...and that naked was not part of it',  drop14 and drop14.naked, false);
@@ -14036,7 +14074,8 @@ end)();
     -- both can drop in one pass, and the watch only ever CLEARS
     D.setLockedSet({ name = 'Incursion T3', mode = 'set', claim = { Head = 'Set Hat' }, n = 1 });
     D.nakedArmed = true;
-    local _, drop14c = D.nakedWorldWatch(0, 7);
+    D.nakedWorldWatch(0, 7);
+    local _, drop14c = D.nakedWorldWatch(0, 7, 1e9);
     check('LS14i both drop together',
         (drop14c and drop14c.naked == true and drop14c.locked == 'Incursion T3'), true);
     check('LS14j ...and neither is re-armed', D.nakedOn() == false and D.lockedSetOn() == false, true);
@@ -14056,7 +14095,8 @@ end)();
     check('LS14n ...all of them',                          next(D.locks), nil);
     check('LS14o ...counted for the chat line',            drop14d and drop14d.locks, 2);
     D.locks['head'] = true;
-    check('LS14p leaving the world releases them too',     D.worldWatch(0, 7), 'world');
+    D.worldWatch(0, 7);
+    check('LS14p outlasting a zone releases them too',     D.worldWatch(0, 7, 1e9), 'world');
     check('LS14q ...leaving nothing behind',               next(D.locks), nil);
     -- ...and with nothing held at all the watch stays silent, so the tick does
     -- not write the mirror on every frame of character select.
@@ -14259,8 +14299,11 @@ end)();
     check('DS13c ...and reports how many slots',         dzDrop and dzDrop.disabled, 1);
     check('DS13d ...leaving nothing behind',             D.disabledOn(), false);
     D.setDisabled('waist', true);
-    check('DS14 leaving the world releases it too',      (D.worldWatch(nil, 7)), 'world');
-    check('DS14b ...and it is gone',                     D.disabledOn(), false);
+    -- Zones survive (Henrik, 2026-07-27): absence HOLDS free equip too;
+    -- only outlasting a zone releases it -- the one lifetime rule, still.
+    check('DS14 a world-gone read holds free equip through a zone', (D.worldWatch(nil, 7)), nil);
+    check('DS14b outlasting a zone releases it',         (D.worldWatch(nil, 7, 1e9)), 'world');
+    check('DS14c ...and it is gone',                     D.disabledOn(), false);
 
     D.setLockedSet(nil);
     TEST_PLAYER = savedPlayer;
