@@ -274,7 +274,7 @@ function M.arbitrate(session) ... end
 | `sync-hold` + `sync-hold-ammo` | one hold constraint (weapon slots + Range-reserving ammo) |
 | `ctx.pinReserved`, naked-voids special case | gone — reservation is one constraint, Naked outranking Pins falls out of strength |
 | locks / naked / locked set / disabled arms | ordinary rows with sentinel ladders (ceiling keeps its seam filter too) |
-| `mpCeded`/`mpRespectLocks` weave | Phase 1: unchanged (see §6). End state: MaxMP ladder claims + an mp-hold constraint reading the `view` |
+| `mpCeded`/`mpRespectLocks` weave | interim: unchanged. End state RATIFIED (§10 item 3): MaxMP ladder claims + an mp-hold constraint reading the `view` — migrated last, §7 stage 6 |
 | `applyClaim` closures + reverse rank walk | gone — one plan application |
 | `arbResolve`/`arbExplain` under retrace | *the decider*; the structured trace replaces the parallel model |
 | `/dl why` rendered lines | a formatter over the trace — refusals finally get printed with reasons ("Body: Royal Cloak refused (reserves Head, owned by Movement@25) → fell to Gold Harness") |
@@ -315,7 +315,7 @@ directions are one rule at one altitude, with fallthrough on exactly one side.
 |---|---|---|
 | ADR 0006 "builder plans, engine decides" | **Keep, complete** | The flattener was a third actor deciding early. Retire its *pick*, keep its *filter/sort*. Addendum 2's "post-pass on the final names" doctrine retires with the post-passes: reservation declared as claims replaces "each later EquipSet must declare what it takes away." |
 | ADR 0012 claim = `{slot->name}` | **Revise** | Becomes `{slot -> ladder}` (+ optional function). The recipe comment at `dispatch.lua:3652-3667` ("exactly TWO things and NO new arm") finally becomes true — today it is 2 things plus 11 hunks of bookkeeping (the review measured 15 hunks for Chocobo). |
-| "MaxMP stays woven" (ADR 0012) | **Keep for now, fold only with evidence** | The weave is the hardest, most field-tuned logic (bands, sticky pairs, movement yield — a rulings ledger of its own). The arbitration must not *require* folding it: MaxMP keeps its claim row for precedence and its woven equip until stages 0–4 prove the constraint vocabulary. Fold-in is a stage 5+ candidate, not a dependency. |
+| "MaxMP stays woven" (ADR 0012) | **Revise — END STATE RATIFIED 2026-07-27: fold in** | Henrik's ruling (§10 item 3): the Arbiter is *the aware one* — decision logic does not live outside it. Batteries → ladder claims (band thresholds are gates); MP-hold → a named constraint the arbitration calls; movement yield + sticky pairs → view-reading gates on its own claims. The weave survives only as interim scaffolding: the arbitration never *requires* the fold before its migration stage (§7 stage 6 — last, after simpler constraints prove the vocabulary, behind parity tests + goldens + its own field campaign). |
 | ADR 0010 trinket contest "within-set only" | **Revise scope** | "Within-set" was the honest scope when only one table was visible at a time. With one plan, the natural scope is within-*plan* — same decision rules (higher level wins the trinket contest; Range is HANDS OFF), wider, and the worn-displace arm stays. |
 | The Triggers floor as a special phase | **Revise** | The floor becomes the bottom rank row with internal `(prio, ord)` strength. This is precisely what v135 lacked ("a priority number that never modelled it") — after unification, the clear at `:6041` and the "extend across rank later" caveat both retire. |
 | `marker\|fallback` strings | **Retire gradually** | A 2-rung ladder encoded for a state boundary that no longer exists. Authoring format can keep the strings (profiles on disk); the in-memory store expands them to ladder entries at install. |
@@ -376,6 +376,15 @@ Follow-ons unlocked, not scoped: `arbiter.preview(claim)` for GUI equip-now surf
 ("would this land, or be fought?"), immediate-equip paths routing through the
 arbitration, the ADR 0002 twin collapse.
 
+**Stage 6 — the MaxMP migration (the fold, ratified §10 item 3).** Last on purpose:
+the constraint vocabulary is proven on simpler constraints first, and MP regressions
+are the worst class to field-confirm (they show as mana quietly wasted over a session,
+not as a wrong slot). Batteries become ladder claims at MaxMP's row; MP-hold becomes a
+named constraint; movement yield and sticky pairs become view-reading gates;
+`ctx.mpCeded`/`ctx.mpRespectLocks` — the last ctx-thread — die with the weave. Gated
+behind band-behavior parity tests + goldens + a dedicated field campaign; the woven
+code is deleted only after its replacement is field-confirmed.
+
 ## 8. Performance & determinism
 
 - **Steady state gets cheaper, not dearer.** Today: N active layers × (16-slot chain +
@@ -395,8 +404,8 @@ arbitration, the ADR 0002 twin collapse.
 
 - **`/dl why` text changes at stage 3.** The goldens gate exists to catch exactly this;
   the diff is deliberate and reviewed, not incidental.
-- **The weave.** If MaxMP's fold-in is ever attempted, it is its own field campaign with
-  its own rulings ledger. The design deliberately does not depend on it.
+- **The weave.** MaxMP's fold-in (ratified, stage 6) is its own field campaign with its
+  own rulings ledger. The design deliberately does not depend on it before that stage.
 - **The fixed point.** Reservation chains (Body takes Legs takes nothing…) are bounded
   and ordered today; the claim-with-emptiness formulation must keep the "an ineligible
   piece reserves nothing" invariant (`:2680-2684`) or a piece could suppress on its way
@@ -434,8 +443,15 @@ arbitration, the ADR 0002 twin collapse.
      slot; the drag list is the dominance authority ("according to you" = the rank
      list the player ordered). The pair law (ADR 0010) stays its own constraint —
      item 2 governs RSlot reservation only.
-3. **MaxMP's end state** — fold in eventually, or woven permanently as the one blessed
-   exception? (Recommendation: decide after stage 4, with the constraint vocabulary
-   proven and the trace showing where the weave actually bites.)
+3. **MaxMP's end state — RATIFIED 2026-07-27: fold in.** Henrik, verbatim: *"Can we
+   migrate this into our arbiter instead? Instead of purely being a ranker per slot and
+   item, maybe we can call functions in arbiter to make this the aware one? Instead of
+   having the logic outside of the arbiter?"* Ruled: **the Arbiter is the aware one** —
+   comparative judgments (MP-hold, movement yield, sticky pairs) live *inside* the
+   arbitration as constraint functions and view-reading gates, never woven outside it.
+   The rank list stays the spine; constraints + the `view` are the awareness; purity
+   holds because liveness (current MP, moving) enters as session inputs sampled once
+   per dispatch — same session in, same plan out. Migration is the LAST stage
+   (§7 stage 6), gated as written there.
 4. **`/dl why` verbosity** — refusal reasons make the output richer; is the current
    one-screen budget a constraint, or may contested slots grow a line each?
