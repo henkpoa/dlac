@@ -253,10 +253,17 @@ that pair is settled and neither needs revisiting.
 **All three are answered now.** The target window was opened and approved — *"very
 satisfied with how it opens a new window and search for the fish, instead of having to do
 it solely WITHIN the fish automation menu"* — and its 760×520 default drew no complaint, so
-the column-width worry closes unchanged. That run surfaced one fault instead, and an older
-one than anything in this promotion: only the bait CELL was clickable in the spot list.
-Fixed on `dev` in **`2026.07.27f`**, which is NOT part of this merge. The record is the
-merge commit on `main`.)*
+the column-width worry closes unchanged.
+
+**Second promotion the same day (`2026.07.27f`)**, carrying what that field run surfaced —
+a fault older than anything above it: only the bait CELL was clickable in the spot list, a
+~6-character hit box at 55% across a row you read left-to-right, so the natural click on
+the place name did nothing. Present since the original fishing feature, through five field
+rounds, unreported. The whole row is the hit target now (a full-width Selectable first,
+columns drawn over it with an absolute SameLine — `automationsui.autoRow`'s shape), with
+the three per-cell tooltips merged into one row hover. `FS9b/FS9c` pin the SHAPE of the
+interaction rather than "does a click work", because the old test clicked the bait
+Selectable and passed. The record is the merge commits on `main`.)*
 
 *(Previous promotion: 2026-07-26 night — the **Teleports floating menu rework**
 (`2026.07.26v`; Nexus Cape + Shadow Lord Shirt into "Other Teleports", the
