@@ -227,7 +227,7 @@ end)();
                    'groupsmodel','jobgate','modeslibrary','ownedcache','profileexport','profilesets','setimport',
                    'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
     local FEATURE = { 'ammowatch','arbwatch','augments','check','chocowatch','craftwatch','debug','digcalc','digrank',
-                      'eboxammo','eboxclient','eboxtrace','fishcalc','fishwatch','gamemode','helmwatch','idleexcl','location','lockstyle','lookpreview',
+                      'eboxclient','eboxtrace','fishcalc','fishwatch','gamemode','helmwatch','idleexcl','location','lockstyle','lookpreview',
                       'macrobook','meritwatch','mpbands','pinwatch','restockwatch','synthrun','useitem','vanamoon' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
 
@@ -9689,15 +9689,13 @@ end)();
     aw.removeAmmo(1);
     check('AW15 removeAmmo', #aw.list == 1 and aw.list[1].name == 'Iron Bullet', true);
 
-    -- EB. eboxammo -- now a THIN ADAPTER over the one client (ADR 0016). The
-    -- wire itself is tested on the client (EBC*); these checks pin the ADAPTER:
-    -- delegation + the cat-15 mirror ui/ammoui reads. A fresh client is injected
-    -- (require fails headless) and driven THROUGH the adapter. pk/msgAt build the
-    -- synthetic packets (also used by EBC/RS below).
-    local eb  = dofile('feature/eboxammo.lua');
-    local ebc = dofile('feature/eboxclient.lua');
-    eb._setClient(ebc);
-    ebc._now = function() return 4000; end
+    -- EB. RETIRED 2026-07-27. These pinned feature/eboxammo, the thin adapter that
+    -- carried AutoAmmo's E-Box counts and fetch buttons; the module was deleted
+    -- whole when the panel's CW section went (auto-ammo.md Section 10.8, "we have
+    -- E-box restocker now which is better"). Nothing is uncovered: the wire, the
+    -- cat-15 cache and BOX_RANGE were always pinned on the client itself (EBC*),
+    -- which is what the adapter delegated to. pk/msgAt live on here -- EBC and RS
+    -- build their synthetic packets with them.
     local function pk(bytes)
         local t = {};
         for off = 0, 63 do t[off + 1] = string.char(bytes[off] or 0); end
@@ -9707,53 +9705,6 @@ end)();
         for k = 1, #s do t[off + k - 1] = string.byte(s, k); end
         return t;
     end
-    check('EB1 clamp: none in box -> 0', eb._clampQty(99, 0), 0);
-    check('EB1b clamp to what the box holds', eb._clampQty(99, 12), 12);
-    check('EB1c junk qty -> 0', eb._clampQty('x', 5), 0);
-    check('EB1d floors fractions', eb._clampQty(3.7, 5), 3);
-
-    check('EB2 ITEM outside our stream is not ours (party line)',
-        eb._onPacket(pk({ [0x04] = 1, [0x08] = 10 })), false);
-    eb._beginStream();   -- delegates to the client's cat-15 request
-    check('EB3 CLEAR consumed while pending', eb._onPacket(pk({ [0x04] = 0 })), true);
-    eb._onPacket(pk({ [0x04] = 1, [0x08] = 0x36, [0x09] = 0x53, [0x0C] = 200 }));   -- id 21302 x200
-    eb._onPacket(pk({ [0x04] = 1, [0x08] = 0x56, [0x09] = 0x53, [0x0C] = 1 }));     -- id 21334 x1
-    check('EB3b END_LIST from another source does not commit',
-        eb._onPacket(pk({ [0x04] = 2, [0x05] = 3 })), false);
-    check('EB3c END_LIST source 0 commits', eb._onPacket(pk({ [0x04] = 2, [0x05] = 0 })), true);
-    check('EB3d counts mirror the committed cat-15 stream',
-        eb.counts ~= nil and eb.counts[21302] == 200 and eb.counts[21334] == 1, true);
-    check('EB4 stream closed: a late ITEM is not ours',
-        eb._onPacket(pk({ [0x04] = 1, [0x08] = 10 })), false);
-
-    -- withdraw ACK: stage the batch on the client, drive it through the adapter
-    ebc._beginBatch(1);
-    check('EB5 ACK for someone else\'s action is not ours',
-        eb._onPacket(pk({ [0x04] = 3, [0x05] = 15, [0x06] = 1 })), false);
-    check('EB5b withdraw ACK success consumed + busy mirror clears',
-        eb._onPacket(pk({ [0x04] = 3, [0x05] = 2, [0x06] = 1 })) == true and eb.busy == false, true);
-    check('EB5c success status is not an error', eb.statusErr, false);
-    ebc._beginBatch(1);
-    eb._onPacket(pk(msgAt({ [0x04] = 3, [0x05] = 2, [0x06] = 0 }, 0x10, 'Inventory full.')));
-    check('EB5d refusal carries the server\'s words', eb.status, 'Inventory full.');
-    check('EB5e refusal is an error', eb.statusErr, true);
-    check('EB5f ACK with nothing in flight is not ours',
-        eb._onPacket(pk({ [0x04] = 3, [0x05] = 2, [0x06] = 1 })), false);
-
-    check('EB6 unsolicited LOCKED is not ours (must not shut the panel)',
-        eb._onPacket(pk({ [0x04] = 4, [0x05] = 1 })), false);
-    eb._beginStream();
-    eb._onPacket(pk({ [0x04] = 4, [0x05] = 1 }));
-    check('EB6b LOCKED reason 1 while pending = not a Crystal Warrior', eb.lockedReason, 'cw');
-    ebc.lockedReason = nil; eb._sync();
-    eb._beginStream();
-    eb._onPacket(pk(msgAt({ [0x04] = 4, [0x05] = 2 }, 0x10, 'Locked.')));
-    check('EB6c LOCKED reason 2 = box not unlocked', eb.lockedReason == 'locked' and eb.lockedMsg == 'Locked.', true);
-    ebc.lockedReason = nil; eb._sync();
-
-    check('EB7 refresh refuses headless (not CW -- the affirmative-only gate)', eb.refresh(), false);
-    check('EB7b withdraw refuses headless too', eb.withdraw(21334, 1), false);
-
     -- EW. lib/entwatch -- the CENTRAL entity watcher (field round 6; built
     -- from this feature's scan lessons, eboxammo is consumer #1). Injected
     -- probe + clock; the padded/cased names, index 0 and the 0x802 dynamic
@@ -9811,10 +9762,8 @@ end)();
     ew.unwatch('t_poll');
     check('EW10 empty registry reports empty', #ew.debugState(), 0);
 
-    check('EB9 box range is FIELD-PINNED at 5 yalms (Henrik 2026-07-20)', eb.BOX_RANGE, 5);
-    check('EB10 boxDistance is headless-safe through the watcher', eb.boxDistance(), nil);
-
-    -- EBC. eboxclient -- THE one 0x1A4 client (ADR 0016). Same wire as eboxammo,
+    -- EBC. eboxclient -- THE one 0x1A4 client (ADR 0016). Same wire the retired
+    -- eboxammo adapter spoke,
     -- reimplemented with a MULTI-category shared counts cache + batch withdraw +
     -- search + throttle; every future E-Box feature consumes this, never a second
     -- speaker. Injected clock; the pk/msgAt helpers above build synthetic packets.
@@ -13985,7 +13934,7 @@ end)();
 (function()
     local SHIPPED = { 'dlac.lua','utils.lua','dispatch.lua','profiles.lua','chatfmt.lua','gear.lua',
         'feature/augments.lua','feature/check.lua','feature/chocowatch.lua','feature/craftwatch.lua',
-        'feature/debug.lua','feature/eboxammo.lua','feature/eboxclient.lua','feature/engine.lua',
+        'feature/debug.lua','feature/eboxclient.lua','feature/eboxtrace.lua','feature/engine.lua',
         'feature/equipengine.lua','feature/fishwatch.lua','feature/helmwatch.lua','feature/lockstyle.lua',
         'feature/lockstyleapply.lua','feature/location.lua','feature/macrobook.lua','feature/meritwatch.lua',
         'feature/mpbands.lua','feature/nativedata.lua','feature/synthrun.lua','feature/useitem.lua',

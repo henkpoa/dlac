@@ -150,6 +150,12 @@ Layout, top to bottom:
 
 ### 2b. E-Box counts + fetch — CRYSTAL WARRIORS ONLY (field round 1)
 
+> **REMOVED 2026-07-27 — see §10.8.** The whole section below is history: the
+> panel's E-Box surface and `feature/eboxammo.lua` are gone, superseded by
+> **E-Box Restock**, and the panel no longer consults `gamemode` at all. Kept
+> because the wire facts and the entity-scan lessons outlived the feature (they
+> live on in `feature/eboxclient.lua` and `/dl debug ebox scan`).
+
 Henrik: "This should not be seen at all if you are not Crystal Warrior mode,
 only crystal warriors may view this." The gate is `gamemode.get() == 'CW'`
 **affirmative only** (Wings/ACE/nil-unknown all see nothing — the
@@ -295,7 +301,7 @@ the live Range/Ammo picks — lands AutoAmmo entirely on the state-file side.
 | File | Role |
 |---|---|
 | `feature/ammowatch.lua` | config state + load/save (persisted enabled), pure list helpers; test seams `_saveState`, `_setDeps` |
-| `feature/eboxammo.lua` | E-Box 0x1A4 client (CW-only): GET_CATEGORY(15) counts, WITHDRAW + ACK, LOCKED gates, Ephemeral-Box proximity scan; seams `_onPacket`/`_beginStream`/`_scanBox`/`_clampQty` |
+| ~~`feature/eboxammo.lua`~~ | **DELETED 2026-07-27 (§10.8).** Was the E-Box 0x1A4 client (CW-only), a thin adapter over `feature/eboxclient.lua` from ADR 0016 onward. Its `/dl ebox` entity probe moved to `feature/eboxtrace.lua` as `/dl debug ebox scan` |
 | `ui/ammoui.lua` | Automations detail view (helmui contract); owned-ammo enumeration via catalogindex.flat() ∩ ownedcache.counts(); CW-gated E-Box rows |
 | `ui/automationsui.lua` | +1 row (`ammo`) + detail-view dispatch arm (pcall-require pattern) |
 | `dispatch.lua` | ensureAmmoState, bag counter, WS id sets, resolveAmmoPlan (pure), ammoOverlayFor, M.dispatch wiring; **M.VERSION 73** |

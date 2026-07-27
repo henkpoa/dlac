@@ -855,8 +855,8 @@ research already recorded. In rough priority order:
   panel. Field-confirmed working (panel, planner, Fetch all, E-Box detection, nudge).
   **↳ REUSE THE E-BOX CLIENT:** ALL E-Box traffic goes through the ONE client
   **`feature/eboxclient.lua`** (**ADR 0016**; it's in architecture.md's Central-services table
-  with the full API) — every E-Box feature is a thin CONSUMER (AutoAmmo's `eboxammo` = a
-  category-15 adapter; `ui/restockui` = Restock). **NEVER open a second 0x1A4 client** — it's a
+  with the full API) — every E-Box feature is a thin CONSUMER (`ui/restockui` = Restock, the
+  only one since AutoAmmo's section was removed 2026-07-27). **NEVER open a second 0x1A4 client** — it's a
   party line; two clients race and double the traffic. The client owns the protocol, a shared
   multi-category counts cache, entwatch proximity (`BOX_RANGE = 5`), and the server-load
   throttle (one-in-flight, global min-gap, near-box gate, per-category coalesced). Full spec:
@@ -977,10 +977,13 @@ research already recorded. In rough priority order:
   core `M.resolveAmmoPlan` (tests AM*), ammowatch serializer (AW*), smoke
   S135-138. **Read docs/design/auto-ammo.md before touching it** — the decision
   table (§3) and the field-test checklist (§6, unrun) live there.
-  - **E-Box counts + fetch (same day, field round 1) — CRYSTAL WARRIORS
-    ONLY**, the FIRST consumer of `gamemode.get()` (affirmative `'CW'` shows,
-    Wings/ACE/nil see NOTHING; the server's 0x1A4 `LOCKED` reply is the second
-    gate). `feature/eboxammo.lua` = trove's ebox wire format reimplemented
+  - **E-Box counts + fetch — REMOVED 2026-07-27** (auto-ammo.md Section 10.8;
+    Henrik: "we have E-box restocker now which is better" — Restock reaches
+    category 15 with targets and top-up). `feature/eboxammo.lua` is DELETED and
+    the panel has no gamemode awareness left at all. Kept below because the
+    lessons outlived the feature. It was the FIRST consumer of `gamemode.get()`
+    (affirmative `'CW'` shows, Wings/ACE/nil see NOTHING; the server's 0x1A4
+    `LOCKED` reply is the second gate), and trove's ebox wire format reimplemented
     (GET_CATEGORY ahCat 15 streams every boxed ammo's count in one request;
     WITHDRAW + ACK with the server's refusal words; pending discipline on the
     shared 0x1A4 party line; `string.byte` parsing, headless EB*). Per-row
@@ -993,9 +996,9 @@ research already recorded. In rough priority order:
     central entity watcher** (watch(who, name[, cb]) subscriptions, one shared
     0x000-0x8FF sweep, fast tracked-distance refresh with slot-reuse eviction
     that notifies, demand-windowed when callback-less; every entity-array
-    idiom lives THERE, tests EW*). eboxammo is consumer #1; use entwatch for
-    any future "is there an X near me?" — never a local scan. Hidden
-    diagnostic: `/dl ebox`.
+    idiom lives THERE, tests EW*) — use entwatch for any future "is there an X
+    near me?", never a local scan. The hidden diagnostic SURVIVED the removal:
+    it is `/dl debug ebox scan` now, in `feature/eboxtrace.lua`.
 - **GEAR-SET BONUSES ARE LIVE — display + optimizer (07-18, ADR 0011).**
   `gear\geareffects.lua` is THE evaluator (`comboStats` = whole-composition truth;
   `setsOf`/`setTier` the optimizer seam; counting per SLOT — duplicates twice,

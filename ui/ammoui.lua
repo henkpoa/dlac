@@ -26,16 +26,12 @@ local _iok, imgui = pcall(require, 'imgui');
 local _awok, aw = pcall(require, 'dlac\\feature\\ammowatch');
 _awok = _awok and type(aw) == 'table';
 
--- E-Box counts + withdraw (Crystal Warriors ONLY -- Henrik: "only crystal
--- warriors may view this"; eboxammo.isCW gates on an affirmative
--- gamemode.get() == 'CW', so Wings/ACE/unknown see nothing at all).
-local _ebok, eb = pcall(require, 'dlac\\feature\\eboxammo');
-_ebok = _ebok and type(eb) == 'table';
-local EB_QTY = {};   -- per-item withdraw-qty input state, keyed by item id
+-- NO E-Box surface here (removed 2026-07-27, auto-ammo.md Section 10.8). This panel
+-- carried CW-only box counts and per-row Fetch / Fetch up to buttons until E-Box
+-- Restock could carry category 15 with targets and top-up -- Henrik: "we have E-box
+-- restocker now which is better". The panel has NO gamemode awareness at all now:
+-- every player sees exactly the same AutoAmmo.
 local CAT_SEL = nil; -- the category view selection (session-only)
-
-local BTN_RED_OFF  = { 0.45, 0.14, 0.14, 1.0 };   -- out of box range
-local BTN_GREY_OFF = { 0.28, 0.28, 0.28, 1.0 };   -- nothing to fetch / busy
 
 local COL_HEADER = { 0.60, 0.75, 1.00, 1.00 };
 local COL_DIM    = { 0.55, 0.55, 0.55, 1.00 };
@@ -166,11 +162,6 @@ function M.render(deps, availW)
             return (type(r) == 'table') and r.Pair or nil;
         end);
     end);
-    -- Crystal Warriors ONLY (affirmative gamemode 'CW' -- unknown shows
-    -- nothing); a server LOCKED reason 'cw' shuts it again from the other end.
-    local cwBox = _ebok and eb.isCW() and eb.lockedReason ~= 'cw';
-    if cwBox then eb.refreshIfStale(15); end
-
     imgui.TextColored(COL_HEADER, 'AutoAmmo');
     imgui.SameLine(0, 10);
     imgui.TextColored(COL_TEXT, 'decides what sits in the Ammo slot, per shot and per weapon skill.');
@@ -314,43 +305,6 @@ function M.render(deps, availW)
     if #aw.list == 0 then
         imgui.TextColored(COL_DIM, 'nothing configured yet -- add ammo from the owned list below.');
     end
-    -- Proximity (CW only): fetching needs a nearby Ephemeral Box -- checked
-    -- without targeting anything (the gearmove scan idiom over the WHOLE
-    -- entity array; boxes are dynamic entities). Range 5 is FIELD-PINNED.
-    -- Always-on status line (positive feedback beats silence when debugging
-    -- in the field) + a manual rescan. ebInRange also greys/reds the fetch
-    -- buttons below.
-    local ebDist, ebInRange = nil, false;
-    if cwBox and eb.lockedReason == nil then
-        ebDist = eb.boxDistance();
-        ebInRange = (ebDist ~= nil and ebDist <= eb.BOX_RANGE);
-        if ebDist == nil then
-            imgui.TextColored(COL_DIM, string.format(
-                'No %s in sight -- stand near one to fetch.', eb.BOX_NAME));
-        elseif not ebInRange then
-            imgui.TextColored(COL_ERR, string.format(
-                'Too far from the %s (%.1f yalms -- get within %d).', eb.BOX_NAME, ebDist, eb.BOX_RANGE));
-        else
-            imgui.TextColored(COL_GREEN, string.format(
-                '%s in range (%.1f yalms).', eb.BOX_NAME, ebDist));
-        end
-        imgui.SameLine(0, 10);
-        if imgui.SmallButton('rescan##ebscan') then eb.rescan(); end
-        if imgui.IsItemHovered() then
-            imgui.SetTooltip('Force a fresh box scan + count refresh right now\n(both also refresh themselves every couple of seconds).');
-        end
-    end
-    -- A SmallButton that visibly refuses: dim red (out of range) or grey
-    -- (nothing to fetch / busy), click swallowed.
-    local function offableButton(label, canClick, offCol)
-        if canClick then return imgui.SmallButton(label); end
-        imgui.PushStyleColor(ImGuiCol_Button, offCol);
-        imgui.PushStyleColor(ImGuiCol_ButtonHovered, offCol);
-        imgui.PushStyleColor(ImGuiCol_ButtonActive, offCol);
-        imgui.SmallButton(label);
-        imgui.PopStyleColor(3);
-        return false;
-    end
     -- The category-visible subsequence: move buttons swap VISIBLE neighbours
     -- (which need not be adjacent in the underlying all-types list).
     local vis = {};
@@ -430,74 +384,9 @@ function M.render(deps, availW)
                 imgui.SetTooltip('Worn for the three magical ranged weapon skills that consume NO ammo\non this server: Leaden Salute, Wildfire, Trueflight.');
             end
         end
-        -- E-Box line: CRYSTAL WARRIORS ONLY -- invisible to everyone else
-        -- (affirmative gamemode 'CW'; the server's own LOCKED reply is the
-        -- belt-and-braces second gate).
-        if cwBox and (tonumber(e.id) or 0) > 0 then
-            imgui.Dummy({ 0, 0 }); imgui.SameLine(NAME_X);
-            if eb.lockedReason == 'locked' then
-                imgui.TextColored(COL_DIM, 'E-Box: '
-                    .. ((eb.lockedMsg ~= nil and eb.lockedMsg ~= '') and esc(eb.lockedMsg) or 'not unlocked yet'));
-            else
-                local have = (eb.counts ~= nil) and (eb.counts[e.id] or 0) or nil;
-                imgui.TextColored(COL_GOLD, 'E-Box:');
-                imgui.SameLine(0, 6);
-                imgui.TextColored((have ~= nil and have > 0) and COL_TEXT or COL_DIM,
-                    (have ~= nil) and ('x' .. tostring(have)) or '...');
-                if imgui.IsItemHovered() then
-                    imgui.SetTooltip('How many are stored in your E-Box (refreshes itself while this panel\nis open, and after every fetch).');
-                end
-                imgui.SameLine(QTY_X);
-                local qb = EB_QTY[e.id];
-                if qb == nil then qb = { 99 }; EB_QTY[e.id] = qb; end
-                imgui.PushItemWidth(120);   -- room for triple digits beside the +/- steppers
-                imgui.InputInt('##ebq' .. tostring(e.id), qb);
-                imgui.PopItemWidth();
-                if qb[1] < 1 then qb[1] = 1; end
-                if imgui.IsItemHovered() then
-                    imgui.SetTooltip('The quantity both buttons work from (always clamped to what the box holds).');
-                end
-                local busy = eb.isBusy();
-                local boxed = (have ~= nil and have > 0);
-                local offCol = (not ebInRange) and BTN_RED_OFF or BTN_GREY_OFF;
-                local offWhy = (not ebInRange)
-                        and ((ebDist == nil) and 'No Ephemeral Box in sight.' or 'Too far from the Ephemeral Box.')
-                        or (busy and 'A fetch is already in flight.' or 'The box holds none of these.');
-                imgui.SameLine(0, 8);
-                local canF = boxed and not busy and ebInRange;
-                if offableButton((busy and 'Fetching...' or 'Fetch') .. '##ebf' .. tostring(e.id), canF, offCol) then
-                    eb.withdraw(e.id, qb[1]);
-                end
-                if imgui.IsItemHovered() then
-                    imgui.SetTooltip(canF and 'Withdraw exactly this many (clamped to what the box holds).' or offWhy);
-                end
-                imgui.SameLine(0, 6);
-                local bags = countOf(deps, e.id);
-                local need = (qb[1] or 0) - bags;
-                local canU = canF and need >= 1;
-                if offableButton('Fetch up to##ebu' .. tostring(e.id), canU, offCol) then
-                    eb.withdraw(e.id, need);
-                end
-                if imgui.IsItemHovered() then
-                    if canU then
-                        imgui.SetTooltip(string.format(
-                            'Top up: you carry x%d -- fetches %d more so you end at %d\n(clamped to what the box holds).', bags, need, qb[1]));
-                    elseif canF and need < 1 then
-                        imgui.SetTooltip(string.format('You already carry x%d -- nothing to top up.', bags));
-                    else
-                        imgui.SetTooltip(offWhy);
-                    end
-                end
-            end
-        end
         imgui.PopID();
     end
     if removeAt ~= nil then aw.removeAmmo(removeAt); end
-    -- The last fetch's verdict (the server's own words on refusal), briefly.
-    if cwBox and eb.status ~= nil and (os.clock() - (eb.statusAt or 0)) < 8 then
-        imgui.Dummy({ 0, 0 }); imgui.SameLine(NAME_X);
-        imgui.TextColored(eb.statusErr and COL_ERR or COL_GREEN, 'E-Box: ' .. esc(eb.status));
-    end
 
     imgui.Separator();
 

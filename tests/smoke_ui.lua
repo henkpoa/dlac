@@ -609,10 +609,13 @@ end)();
         ok4 and select(1, ammoui.status(nil)), 0);
     local ok5, amw = pcall(require, 'dlac\\feature\\ammowatch');
     check('S138 ammowatch loads under the ui tree', ok5 and type(amw) == 'table', true);
-    local ok6, ebx = pcall(require, 'dlac\\feature\\eboxammo');
-    check('S139 eboxammo loads headless', ok6 and type(ebx) == 'table', true);
-    check('S139b headless is never a Crystal Warrior (affirmative-only gate)',
-        ok6 and ebx.isCW(), false);
+    -- feature/eboxammo was deleted 2026-07-27 with AutoAmmo's E-Box section, and
+    -- its /dl ebox entity probe moved into eboxtrace as `/dl debug ebox scan`
+    -- (auto-ammo.md Section 10.8). Pin the module that inherited it.
+    local ok6, ebt = pcall(require, 'dlac\\feature\\eboxtrace');
+    check('S139 eboxtrace loads headless', ok6 and type(ebt) == 'table', true);
+    check('S139b the moved entity probe is reachable as "scan"',
+        ok6 and ebt._word('ebox scan') == 'scan' and type(ebt.scan) == 'function', true);
     local ok7, entw = pcall(require, 'dlac\\lib\\entwatch');
     check('S139c entwatch loads headless', ok7 and type(entw) == 'table', true);
     check('S139d entwatch starts with an empty registry', ok7 and #entw.debugState(), 0);

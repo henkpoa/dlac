@@ -5,6 +5,13 @@
 version — the whole thing is addon-state, no `dispatch.lua` involvement (contrast
 ADR 0013's twin problem, below).
 
+> **Later note (2026-07-27):** the decision stands unchanged — one client, every
+> feature a consumer — but one of its two consumers is gone. AutoAmmo's E-Box
+> counts-and-fetch section was removed and `feature/eboxammo.lua`, the thin
+> adapter this ADR created, was **deleted whole**; E-Box Restock reaches
+> category 15 by itself with targets and top-up. `feature/eboxclient.lua` is
+> now the one client with one consumer. See `docs/design/auto-ammo.md` §10.8.
+
 ## Context
 
 CatsEyeXI's Ephemeral Box — the Crystal-Warrior-only store (CONTEXT.md) — is
