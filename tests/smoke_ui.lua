@@ -2716,8 +2716,26 @@ end)();
     local depth = { col = 0, id = 0, width = 0 };
     local function nop() end
     local IM = {};
-    for _, n in ipairs({ 'Separator', 'Text', 'TextColored', 'SameLine', 'Dummy',
+    for _, n in ipairs({ 'Separator', 'Text', 'SameLine', 'Dummy',
         'SetTooltip', 'Spacing', 'Image', 'InvisibleButton' }) do IM[n] = nop; end
+    -- RECORDED, not a no-op (v134): the level column and the live row say what
+    -- they say in COLOUR, so a harness that throws the colour away cannot see
+    -- either of them.
+    local painted = {};   -- { { c = <colour>, t = <text> }, ... }
+    IM.TextColored = function(c, t) painted[#painted + 1] = { c = c, t = tostring(t) }; end
+    -- Which colour did this exact string come out in? ammoui's palette, by hue.
+    local function hueOf(txt)
+        for _, e in ipairs(painted) do
+            if e.t == txt and type(e.c) == 'table' then
+                local r, g = e.c[1] or 0, e.c[2] or 0;
+                if r > 0.9 and g < 0.6 then return 'red'; end
+                if g > 0.85 and r < 0.6 then return 'green'; end
+                if r > 0.5 and r < 0.6 and g > 0.5 and g < 0.6 then return 'dim'; end
+                return 'other';
+            end
+        end
+        return nil;
+    end
     IM.PushStyleColor  = function() depth.col = depth.col + 1; end
     IM.PopStyleColor   = function(n) depth.col = depth.col - (tonumber(n) or 1); end
     IM.PushID          = function() depth.id = depth.id + 1; end
@@ -2743,9 +2761,14 @@ end)();
     for _, k in ipairs(NAMES) do saved[k] = package.loaded[k]; end
 
     -- The worn ranged weapon is the ONE input the tab strip's green depends on.
-    local worn = nil;   -- nil = empty Range slot
+    local worn = nil;      -- nil = empty Range slot
+    local wornAmmo = nil;  -- nil = empty Ammo slot (slot 3, the green row's input)
     package.loaded['dlac\\gear\\gearoracle'] = {
-        wornItem = function(slot) return (slot == 2) and worn or nil; end,
+        wornItem = function(slot)
+            if slot == 2 then return worn; end
+            if slot == 3 then return wornAmmo; end
+            return nil;
+        end,
     };
     package.loaded['imgui'] = IM;
     package.loaded['dlac\\ui\\ammoui'] = nil;
@@ -2808,6 +2831,46 @@ end)();
         worn = { id = 1, rec = { Name = 'Hexagun', Pair = '26:1' } };
         pcall(aui.render, deps, 700);
         check('AU8 swapping weapons does NOT yank the selection', aui._catSel(), 'Arrows');
+
+        -- AU11+. The level column and the live row (v134). Henrik's own list --
+        -- Acid 15 / Blind 10 / Crossbow 1 -- read at an OVERRIDDEN level of 10,
+        -- which is exactly how he found the bug. The panel must agree with the
+        -- engine about which rungs are reachable, or it lies about the pick.
+        amw.jobsData = { DRK = { enabled = true, at = 0, ammo = {
+            { name = 'Acid Bolt',     id = 18148, type = 'Marksmanship', pair = '26:0', level = 15, ranged = true, ws = true, special = false },
+            { name = 'Blind Bolt',    id = 18150, type = 'Marksmanship', pair = '26:0', level = 10, ranged = true, ws = true, special = false },
+            { name = 'Crossbow Bolt', id = 17336, type = 'Marksmanship', pair = '26:0', level =  1, ranged = true, ws = true, special = false },
+        } } };
+        amw.selectJob('DRK');
+        local ddeps = { playerJob = function() return 'DRK'; end,
+                        ownedCounts = function() return { [18148] = 99, [18150] = 99, [17336] = 99 }; end,
+                        renderIcon = nop, itemTooltip = nop,
+                        lookupByName = function() return nil; end };
+        worn     = { id = 1, rec = { Name = 'Light Crossbow +1', Pair = '26:0' } };
+        wornAmmo = { id = 18150, rec = { Name = 'Blind Bolt' } };
+        local savedOvr = rawget(_G, 'staticMainLevel');
+        rawset(_G, 'staticMainLevel', 10);
+        aui._resetCatSel();
+        painted = {};
+        check('AU11 render survives the level column', pcall(aui.render, ddeps, 700), true);
+        check('AU12 colour stack still balanced', depth.col, 0);
+        check('AU13 a rung above your level is RED', hueOf('Lv 15'), 'red');
+        check('AU13b one you can wear is not', hueOf('Lv 10'), 'dim');
+        check('AU13c and neither is the bottom rung', hueOf('Lv 1'), 'dim');
+        check('AU14 the ammo actually in your slot is GREEN', hueOf('Blind Bolt'), 'green');
+        check('AU14b a row you are not wearing is not', hueOf('Acid Bolt'), 'other');
+        -- The override is the whole point: drop it and Acid Bolt is reachable again.
+        rawset(_G, 'staticMainLevel', 0);
+        painted = {};
+        pcall(aui.render, ddeps, 700);
+        check('AU15 with no override the same rung reads normal', hueOf('Lv 15'), 'dim');
+        -- An entry whose level nobody can answer for must not read as blocked.
+        amw.jobsData.DRK.ammo[1].level = nil;
+        rawset(_G, 'staticMainLevel', 10);
+        painted = {};
+        pcall(aui.render, ddeps, 700);
+        check('AU16 an unknown level shows as unknown, never as too high', hueOf('Lv ?'), 'dim');
+        rawset(_G, 'staticMainLevel', savedOvr);
 
         amw.jobsData = {};
         amw.selectJob('COR');

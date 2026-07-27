@@ -61,15 +61,47 @@ local function liveRangeCategory()
     return cat, nm;
 end
 
+-- What is worn in the Ammo slot (equip slot 3), same door as the Range read
+-- above. The row wearing it renders GREEN -- one law with the type tabs: green
+-- is always a LIVE fact, blue is always your selection.
+local function liveAmmoName()
+    local nm = nil;
+    pcall(function()
+        local go = require('dlac\\gear\\gearoracle');
+        local w = go.wornItem(3);
+        if w ~= nil and type(w.rec) == 'table' then nm = w.rec.Name; end
+    end);
+    return (type(nm) == 'string') and string.lower(nm) or nil;
+end
+
+-- The level the ENGINE will gear at -- the /dl set level main override first,
+-- exactly as dispatch's playerLevel and utils.determineLevels resolve it. The
+-- panel must not disagree with the engine about which rungs are reachable.
+-- nil = unknown, and unknown gates nothing (the engine's rule too).
+local function gearLevel()
+    local ovr = rawget(_G, 'staticMainLevel');
+    if type(ovr) == 'number' and ovr > 0 then return ovr; end
+    local lv = nil;
+    pcall(function() lv = gData.GetPlayer().MainJobSync; end);
+    lv = tonumber(lv);
+    if lv ~= nil and lv > 0 then return lv; end
+    return nil;
+end
+
 local function esc(s) return (tostring(s):gsub('%%', '%%%%')); end
 
 -- Fixed column offsets, shared by BOTH lists so they read as one table
 -- (Henrik's field ask). The automationsui row-offset pattern; the themed font
 -- runs ~9.5px/char, so text columns need real room or they collide.
+-- Name and qty are the SHARED pair (Henrik's "make the table look nice"); the
+-- tails diverge by design -- flag ticks on a priority row, skill/Lv/+ Add on an
+-- owned one. The priority row's own Lv column (v134) sits between qty and the
+-- ticks: the level is a gate now, so it belongs beside the other gate (stock).
 local NAME_X  = 64;    -- icon + name (the priority arrows live left of it)
 local QTY_X   = 330;   -- stack count
-local FLAGS_X = 392;   -- priority rows: the Ranged/WS/Special ticks
-local DEL_X   = 660;   -- priority rows: remove
+local LVP_X   = 392;   -- priority rows: the level gate
+local FLAGS_X = 452;   -- priority rows: the Ranged/WS/Special ticks
+local DEL_X   = 700;   -- priority rows: remove
 local SKILL_X = 392;   -- owned rows: AmmoType
 local LV_X    = 516;   -- owned rows: Lv xx
 local ADD_X   = 578;   -- owned rows: + Add (space RESERVED to its right -- more
@@ -304,6 +336,10 @@ function M.render(deps, availW)
     end
     if #aw.list == 0 then
         imgui.TextColored(COL_DIM, 'nothing configured yet -- add ammo from the owned list below.');
+    else
+        -- A colour key, not prose: hovering the right row cannot teach you what
+        -- a colour MEANS, so this is the one thing a tooltip can't carry.
+        imgui.TextColored(COL_DIM, 'green = worn right now   |   red = skipped (above your level, or none in your bags)');
     end
     -- The category-visible subsequence: move buttons swap VISIBLE neighbours
     -- (which need not be adjacent in the underlying all-types list).
@@ -317,6 +353,8 @@ function M.render(deps, availW)
             string.lower(CAT_SEL), tostring(job or '?')));
     end
     local removeAt = nil;
+    local wornL   = liveAmmoName();
+    local myLevel = gearLevel();
     for vk, i in ipairs(vis) do
         local e = aw.list[i];
         imgui.PushID('ammorow_' .. i);
@@ -329,7 +367,9 @@ function M.render(deps, availW)
             deps.renderIcon((rec and rec.Id) or e.id, 18);
         end
         local n = countOf(deps, e.id);
-        imgui.TextColored((n >= 1) and COL_TEXT or COL_ERR, esc(e.name));
+        -- GREEN = this is what is in your Ammo slot right now (the §9.6 law).
+        local isLiveRow = (wornL ~= nil and string.lower(tostring(e.name)) == wornL);
+        imgui.TextColored(isLiveRow and COL_GREEN or ((n >= 1) and COL_TEXT or COL_ERR), esc(e.name));
         if imgui.IsItemHovered() and rec ~= nil and deps ~= nil and type(deps.itemTooltip) == 'function' then
             pcall(deps.itemTooltip, rec);
         end
@@ -337,6 +377,28 @@ function M.render(deps, availW)
         imgui.TextColored((n >= 1) and COL_DIM or COL_ERR, 'x' .. tostring(n));
         if n < 1 and imgui.IsItemHovered() then
             imgui.SetTooltip('None in your equippable bags -- the engine skips this entry\n(and never plans ammo you do not stock).');
+        end
+        -- The level gate (v134), the exact twin of the stock column beside it:
+        -- red when this rung is out of reach, and the tooltip says the same
+        -- thing in the same words -- "the engine skips this entry".
+        imgui.SameLine(LVP_X);
+        local lv = tonumber(rec and rec.Level) or tonumber(e.level);
+        if lv == nil then
+            imgui.TextColored(COL_DIM, 'Lv ?');
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('This item\'s level is unknown here -- an unknown never disqualifies\nan entry, so the engine still considers it.');
+            end
+        else
+            local tooHigh = (myLevel ~= nil and myLevel < lv);
+            imgui.TextColored(tooHigh and COL_ERR or COL_DIM, 'Lv ' .. tostring(lv));
+            if imgui.IsItemHovered() then
+                if tooHigh then
+                    imgui.SetTooltip(string.format(
+                        'Needs Lv %d, you are %d -- the engine skips this entry\nand loads the best one you CAN wear, further down.', lv, myLevel));
+                else
+                    imgui.SetTooltip('You can wear this one.');
+                end
+            end
         end
         imgui.SameLine(FLAGS_X);
         local sp = (type(e.special) == 'table');
