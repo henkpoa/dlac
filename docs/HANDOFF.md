@@ -317,6 +317,19 @@ field validated."* Waits only on the go-ahead.
   `ctx.pinReserved` stays as a redundant belt this slice. Deferred, named: claim-side
   ladders, sentinel rows (lock/ceiling bulldozing), pinReserved + naked-voids retirement.
 
+**On dev, NOT yet field-looked (shipped autonomously 2026-07-27 evening, Henrik away —
+they join the queue on his confirmation, not before):**
+
+- `a02f295` (v142, `27zd`) — **sentinel defense rows** (stage 4 slice 2): '(locked)' /
+  '(free equip)' placeholders stand at their rank rows in the verdict, so a reserving
+  piece can no longer bulldoze a locked or free-equip slot; punch-through preserved
+  (ARK8–ARK10b). Field check: lock Head (`/dl lock head`), wear nothing there, arm a
+  Body-reserver set — the reserver must fall/die instead of emptying the locked slot.
+- `740fc3a` (v143, `27ze`) — **`/dl why <slot>`** (ADR 0027 item 4): the contest
+  drill-down — claimants in rank order, the verdict's word with its reason, the source
+  ladder's rungs. Field check: after any dispatch, `/dl why body` should print the
+  contest; bare `/dl why` unchanged.
+
 ### Ladders on demand + the fall — ADR 0027 stages 1–2 — `b26a1da` + `ad7ab30` (2026-07-27)
 
 Engine v137 → **v139**, addon `27z` → **`27za`**. Suites **3997 + 693**, Windows and WSL
