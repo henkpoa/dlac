@@ -13991,6 +13991,12 @@ end)();
     os.remove('tests' .. SEP .. 'arbstate.lua');
 end)();
 
+-- The warm-note artifact the dispatch-driving sections leave behind (dataDir
+-- stubbed 'tests\'): on Windows a real tests\debug\mpwarm.txt (gitignored via
+-- debug/), under WSL ONE backslash-bearing filename that drvfs PUA-mangles on
+-- NTFS -- which .gitignore cannot match. Same string removes it on both.
+pcall(os.remove, 'tests' .. string.char(92) .. 'debug' .. string.char(92) .. 'mpwarm.txt');
+
 -- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
