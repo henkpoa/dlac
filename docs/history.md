@@ -5922,3 +5922,64 @@ allowlist test BEFORE declaring a sweep done; it found what three grep passes mi
 **Awaiting:** Henrik's field beat on `27l` (equips, a commit, `/dl check`, `/dl engine`,
 and the three-way import round), then promotion. Suites at 3815 + 584, green on both
 interpreters, at every phase boundary.
+
+
+## Session "the level decides which rung" (2026-07-27, on `dev` — addon 2026.07.27l → o, engine v133 → v134)
+
+**Theme:** Henrik, on his DRK: *"even though I made a list of bolts on autoammo and
+enabled it is not equipping automatically... When I went from level 50+ to 8 it didn't
+equip any bolt, then I leveled up to 10 it did not equip blind bolt."* AutoAmmo's
+ladder knew what the WEAPON could fire (v128) and nothing about what the PLAYER could
+wear. Grilled to a design, built in three commits (`41432db`, `401a6bb`, `4d6bb12`),
+field-confirmed the same day.
+
+**Diagnosed from artifacts, not theory.** His live `ammostate.lua` held Acid Bolt 15 /
+Blind Bolt 10 / Crossbow Bolt 1, best-first — exactly what the panel's own *Sort by
+level* button produces — and his DRK sets carried a real Range ladder, so a crossbow
+WAS worn and v128's no-weapon gate never fired. Three of the four inputs were right;
+the fourth was never asked for.
+
+**THE LAW THIS PAID FOR, and it is not AutoAmmo-specific:** *an overlay collapses a
+ladder to ONE name before the equip layer ever sees it.* A set hands `equipcore` a slot
+with candidates and its level walk picks a rung; an overlay hands over
+`{ Ammo = "Acid Bolt" }` and there is no rung 2. So any gate an overlay does not apply
+ITSELF becomes a total, silent failure downstream — no fallback, no message, no trace.
+
+**The trap that nearly shipped a dead fix.** The first design said read `MainJobSync`.
+Henrik tests with the **level override** (`/dl set level main N`), which is honoured by
+the set flatten, the virtual-slot resolver, gearoptim and gearui — but NOT by
+`equipengine`, whose `snap.level` reads live memory. Reading `MainJobSync` would have
+"fixed" the bug while still ignoring the override, i.e. the report, unfixed. He caught
+it with one sentence: *"When I use my level override feature, it doesn't automatically
+equip blind bolt."* The authority already existed: `dispatch.playerLevel(ctx)`.
+**The division worth keeping — `playerLevel` is what dlac gears you AT (choice);
+`equipcore`'s level is a legality gate against the real game (permission). A chooser
+reads the chooser's level.** Its corollary explains why the failure looked different
+under an override than under a cap: with a real level of 50+ nothing downstream refuses,
+so the WRONG bolt equips happily; under a cap the same wrong pick dies one step later
+and quieter. Same bug, two exits.
+
+**Landed:** a fourth gate mirroring `equipcore.checkUsable` (level + Jobs mask) read off
+the live client resource for an item already counted in the bags, unknown never
+disqualifying (the `pairsWith` three-valued law) and a level `<= 0` treated as the v49
+not-ready read; the Default arm re-judging what is WORN — empty slot, over-level, or
+ours-and-no-longer-best — while anything worn that is not on the list stays untouchable
+(the guard that keeps a Midshot set's trinket alive; owning the slot outright is ADR
+0010's flap through a third door); `syncHold` parking the pick at Default only, because
+protection must never be suspended on an action event, and an override deliberately
+never arming it; four return values from `resolveAmmoPlan` so **stock talks and level
+does not**, edge-triggered on a change of cause rather than a timer. Then the CW E-Box
+side removed whole (Henrik: *"we have E-box restocker now which is better"*) —
+`feature/eboxammo.lua` deleted, the panel left with no gamemode awareness at all, and
+the `/dl ebox` entity probe moved to `eboxtrace` as **`/dl debug ebox scan`** rather than
+dying with it. Finally the panel: a red `Lv` column when a rung is out of reach, and the
+row actually in your Ammo slot rendering green — the v128 tab law, green = live fact.
+
+**Worth carrying:** `helmwatch.playerLevel` had the level-aware ladder right from the
+start — AutoAmmo was the one gear picker that never got it, so *check the siblings before
+assuming a gap is universal*. And the AU harness had to start RECORDING `TextColored`
+instead of no-op'ing it: **a stub that throws away colour cannot see a feature that
+speaks in colour**, the craftbar trap in a new costume.
+
+**Status:** field-confirmed by Henrik the same day — *"it works now"* — and queued for
+promotion. Suites 3821 + 593, green on both interpreters.

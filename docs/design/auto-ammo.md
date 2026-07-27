@@ -651,7 +651,8 @@ once per weapon branch with stack-balance assertions (the S50 crash class).
 
 ## 10. The level decides which rung (v134, 2026-07-27)
 
-**Status: BUILT on dev 2026-07-27, NOT field-tested.** `41432db` (engine, v134,
+**Status: BUILT on dev + FIELD-CONFIRMED 2026-07-27** (Henrik: *"it works now"*) —
+queued for promotion in HANDOFF's **Ready to merge**. `41432db` (engine, v134,
 `2026.07.27m`), `401a6bb` (the CW removal, `27n`), `4d6bb12` (the panel, `27o`).
 Henrik's report: *"on my Mindie DRK, even though I made a list of bolts on AutoAmmo and
 enabled it, it is not equipping automatically even though I have them set to

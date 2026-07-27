@@ -235,8 +235,9 @@ see hard rule 14, which this section exists to serve.
 ### AutoAmmo: the level ladder + the CW removal — `41432db`..`4d6bb12` (2026-07-27)
 
 Three commits, addon `2026.07.27l` → **`27o`**, engine v133 → **v134**. Green on both
-suites (3821 + 593), Windows and WSL lua5.4. **NOT field-confirmed yet** — Henrik has the
-reproduction (his DRK, the level override) and the fastest loop is §10.10 test 1.
+suites (3821 + 593), Windows and WSL lua5.4. **FIELD-CONFIRMED 2026-07-27** on the
+reported setup (his DRK, under the level override) — Henrik: *"it works now"*. Waits
+only on the go-ahead.
 
 - **`41432db` — the ladder learns the level (v134).** Field report: a DRK list of Acid
   Bolt 15 / Blind Bolt 10 / Crossbow Bolt 1, sorted best-first by the panel's own button,
