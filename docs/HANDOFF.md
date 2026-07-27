@@ -293,17 +293,32 @@ without costing movement gear between points. The record is the merge commit on 
 Nothing below is half-built — these are deliberate stopping points, each with its
 research already recorded. In rough priority order:
 
-0. **THE LUASHITACAST PURGE** (Henrik's 07-27 ruling; plan + execution log at
-   `docs/design/lac-purge-plan.md`). Five phases, each a whole-or-not-at-all dev batch.
-   **Phase 1 DONE on dev 2026-07-27** (`2026.07.27j`, engine v131): the 5s legacy seeder,
-   the shim writer + `PROFILE_TEMPLATE.lua`, Setup's job-file writes (both modes), the
-   LAC-alive polite ask, and the whole engine self-swap died; `M.migrate` now leaves
-   originals in place (inert, still importable). Nothing in dlac writes under
-   `config\addons\luashitacast\` anymore. NEXT: Phase 2 (legacy MODE dies — the dispatch
-   diet), then 3 native-aware surfaces (#131 closes), 4 keep-list hardening (the
-   group/table + static set importers SURVIVE, per Henrik), 5 docs. Henrik's answers to
-   the three open questions are recorded in the plan: migrate carriers stay, `/dl engine`
-   becomes status-only, the flag retires in place.
+0. **THE LUASHITACAST PURGE — the pinned roadmap for the coming days** (Henrik's 07-27
+   ruling; plan + execution log at `docs/design/lac-purge-plan.md`; the day's full story
+   in `docs/history.md`, "the Xvs field day"). Five phases, each a whole-or-not-at-all
+   dev batch:
+   - **Phase 1 — DONE on dev 2026-07-27** (`e478817`, `2026.07.27j`, engine v131;
+     **Henrik field-running it since the same evening, no issues so far** — promotion on
+     his verdict). The 5s legacy seeder, the shim writer + `PROFILE_TEMPLATE.lua`,
+     Setup's job-file writes (both modes), the LAC-alive polite ask, and the whole
+     engine self-swap died; `M.migrate` leaves originals in place (inert, importable).
+     Nothing in dlac writes under `config\addons\luashitacast\` anymore.
+   - **Phase 2 — NEXT, wants its own quiet day**: legacy MODE dies. The dispatch diet
+     (16 `inLac` sites, 44 `gProfile`/`gFunc` refs, the LAC-hosted engine path,
+     `readJobSets`), `nativeMode()` hardcoded true, `/dl engine` becomes a status-only
+     readout (`native off` refuses loudly), the flag file retires in place, dataDir
+     loses its legacy branch and the ADR-0025 hold with it.
+   - **Phase 3**: native-aware surfaces — check/debug read the native home (#131's
+     false alarms become impossible), every "Reload LAC" string (41 across the UI, incl.
+     the Triggers-tab banner) becomes `/dl reload` or dies, gear preload drops the
+     legacy-home candidates, `addon.desc` loses "(for LuaAshitacast)".
+   - **Phase 4**: keep-list hardening — the job-file importers (group/table + static
+     set, `profilesets`/`setimport`/`setmanager`, per Henrik) get their contract header
+     and an allowlist grep test; field round imports all three ways.
+   - **Phase 5**: the words — architecture.md's two-state model, CONTEXT.md, this file's
+     mental model, the remaining ×1 comment mentions.
+   Henrik's standing answers, recorded in the plan: migrate carriers STAY, `/dl engine`
+   status-only, flag retires in place (never deleted from disk).
 1. **FIELD TEST the 07-25 release.** Henrik approved the Menu/Settings **visuals**, but
    the **Mode library has not been driven in-game at all**. Everything in it is
    headless-tested only; the suites stub imgui by design, so popup behaviour, the
