@@ -6458,6 +6458,6 @@ constant rescans (login, job change, any inventory change) re-home within a beat
 
 **Status:** on `dev`, addon `2026.07.28a` → **`2026.07.28b`**, engine untouched (the
 manifest builder + one dispatch accessor). Tests `FS*` pin the seam. Suites **4078 +
-693**, green on Windows lua and WSL lua5.4. Field-pending: Henrik re-plans with the
-rung restored to the set — the point of the fix is that documenting leveling gear must
-cost nothing.
+693**, green on Windows lua and WSL lua5.4. **FIELD-CONFIRMED the same day** — Henrik
+restored the rung and re-planned: *"Now it works!"* Documenting leveling gear costs
+nothing again, which was the point. In the merge queue (hard rule 14).

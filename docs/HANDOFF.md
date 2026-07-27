@@ -246,7 +246,22 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-*(Empty -- last emptied by the 2026-07-28 promotion of the ADR 0027 completion train,
+### MaxMP pair homes anchor the idle set's CHOSEN picks only — `1b8aad2` (2026-07-28)
+
+Addon `2026.07.28a` → **`2026.07.28b`** (engine untouched — the manifest builder + one
+dispatch accessor). Suites **4078 + 693**, Windows and WSL lua5.4. Henrik's own field
+diagnosis of the stage 6 earring oddity, confirmed in code line for line: the fmt 13
+pair-home harvest homed **every authored rung** of the idle set's ear/ring ladders, so
+an unchosen leveling rung (Outlaws Lv50 under Loquacious Lv75 in Ear2) was exiled from
+ear1's battery ladder while its own slot's band read diff 0 — it could never equip
+anywhere. The harvest now reads the **flattened** set (new `dispatch.flattenedSet` —
+the same world the potency-point map always read): only chosen picks anchor, unchosen
+rungs float. Chosen pieces still never plan across the pair. Tests FS*; the story is
+history.md "the earring that could never equip" + the re-ruled section in
+`docs/design/maxmp-mode.md`. **FIELD-CONFIRMED 2026-07-28** by Henrik with Outlaws
+restored to the set's Ear2 ladder — *"Now it works!"* Waits only on the go-ahead.
+
+*(Last emptied by the 2026-07-28 promotion of the ADR 0027 completion train,
 v147-v151 + stage 5 (`acc26c9` .. `4ad0360`): claim-side ladders, the belts come off,
 the pair law home, one-plan-one-send, THE MAXMP FOLD, the collapse retirement -- every
 stage field-confirmed. ADR 0027 + docs/design/two-way-arbiter.md are the record.)*
@@ -295,8 +310,9 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
-- **2026-07-28: MaxMP pair homes anchor CHOSEN picks only — ON `dev`, awaiting field
-  test** (`2026.07.28b`). Henrik's own diagnosis of the stage 6 field oddity (Outlaws
+- **2026-07-28: MaxMP pair homes anchor CHOSEN picks only — ON `dev`, FIELD-CONFIRMED,
+  IN THE MERGE QUEUE** (`2026.07.28b`; the queue entry above is the status authority).
+  Henrik's own diagnosis of the stage 6 field oddity (Outlaws
   Earring never equipped), confirmed exactly: the fmt 13 pair-home harvest homed **every
   authored rung** of the idle set's ear/ring ladders, so an unchosen leveling rung
   (Outlaws Lv50 under Loquacious Lv75 in Ear2) was exiled from ear1's ladder while its
@@ -305,8 +321,8 @@ research already recorded. In rough priority order:
   potency-point map always read): only the set's chosen picks anchor pair positions,
   unchosen rungs float and balance like undocumented gear. Chosen pieces still never
   plan across the pair. Tests FS*; full story in `docs/history.md` ("the earring that
-  could never equip") + the re-ruled section in `docs/design/maxmp-mode.md`. Field
-  check: restore Outlaws to the set's Ear2 ladder, `/dl plan` — it must band for ear1.
+  could never equip") + the re-ruled section in `docs/design/maxmp-mode.md`. The field
+  check passed 2026-07-28: Outlaws restored to Ear2, and it equips — *"Now it works!"*
 - **2026-07-27: an import can land verbatim — ON `dev`, awaiting field test**
   (`2026.07.27w`). The first feature dlac has taken from **a second player's field
   report** — a friend of Henrik's, who round-trips his own profiles to compare them:
