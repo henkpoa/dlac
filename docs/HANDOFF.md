@@ -293,6 +293,13 @@ without costing movement gear between points. The record is the merge commit on 
 Nothing below is half-built — these are deliberate stopping points, each with its
 research already recorded. In rough priority order:
 
+0. **THE LUASHITACAST PURGE** (Henrik's 07-27 ruling; plan drafted at
+   `docs/design/lac-purge-plan.md`). Five phases, each a whole-or-not-at-all dev batch:
+   1 writers (seeder/shims/self-swap), 2 legacy MODE dies (the dispatch diet), 3
+   native-aware surfaces (#131 closes), 4 keep-list hardening (job-file imports — the
+   group/table + static set importers SURVIVE, per Henrik), 5 docs. Three open
+   questions for Henrik sit at the bottom of the plan (migrate carriers, `/dl engine`
+   surface, flag-file retirement).
 1. **FIELD TEST the 07-25 release.** Henrik approved the Menu/Settings **visuals**, but
    the **Mode library has not been driven in-game at all**. Everything in it is
    headless-tested only; the suites stub imgui by design, so popup behaviour, the
