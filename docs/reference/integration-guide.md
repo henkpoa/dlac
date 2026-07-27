@@ -141,12 +141,24 @@ and never assume the set of keys is closed.
 
 ### 2.3 The envelope
 
-**v1 scope, per your 2026-07-28 note:** `worn` + `ctx` + the metadata fields. **`by` and
-`totals` are deferred** — they are shown below so you know the shape they will land in, but
-do not expect them at launch. Both are additive keys in this same envelope, so nothing you
-write now needs revisiting when they appear. If you later want the stat sanity-check layer,
-the **`stats` query** (§3) already answers it without any stream change: hand it a
-composition, get folded totals back.
+**v1 scope:** `worn` + `ctx` + **`totals`** + the metadata fields. Only **`by` is deferred**.
+(You asked to skip `totals` too; dlac's maintainer overrode that — *"give him everything that
+is being worn and total stats at any given time anything has changed"* — because the fold
+already happens every frame for dlac's own panel, so you may as well have it and never come
+back for it. Ignore the key if you don't want it.) `by` is an additive key in this same
+envelope, so nothing you write now needs revisiting when it appears.
+
+**Read this before you design your schema: a set name is not a composition, and the stream
+never reports one as the answer.** dlac is not just picking a set per action. `WS_Default`
+resolves differently depending on your **active modes** (they change which rules match at
+all), your **level** (sets flatten per level, and a level sync re-flattens), **ladder
+outcomes** (an unowned or ineligible piece falls to the next candidate), and **every other
+feature contesting the same slots** — ammo automation, an MP-band manager, craft/fishing/HELM
+gear, pins, slot locks, free equip. Two identical `WS_Default` weaponskills an hour apart can
+be different sixteen items. So the envelope always hands you **resolved items per slot plus
+the folded totals**; set and rule names appear only inside `by`, as provenance *about* an
+answer that is already concrete. `ctx.modes` is there so you can group by mode in analysis,
+not because you need it to interpret the items.
 
 Every event, of every kind, has this shape:
 
@@ -180,8 +192,8 @@ return {
     -- … one entry per dressed slot
   },
 
-  -- ↓↓ NOT IN v1 (deferred at your request, 2026-07-28). Documented so you know the shape
-  --    it will arrive in; both are purely additive, so ignoring them now costs you nothing.
+  -- ↓↓ NOT IN v1. Documented so you know the shape it will arrive in; it is an additive
+  --    key, so ignoring it now costs you nothing later.
   by = {                        -- WHY each slot looks like that — see §2.7
     Main = { set = 'WS_Default', rule = { priority = 50, tier = 50,
                                           when = { name = "Rudra's Storm" } },
@@ -193,6 +205,7 @@ return {
              setBonus = { ['Adaman Set'] = { count = 3, tier = 2, stats = { Accuracy = 10 } } } },
 
   ctx = { hp = 1230, hpp = 100, mp = 0, tp = 1000, status = 'Engaged', moving = false,
+          modes = { DT = false, Weapon = 'Melee' },   -- the player's manual switches
           buffs = { 'Sneak', 'Haste' }, day = 'Fire', weather = 'Fire',
           dayWeatherNet = { Fire = 2 }, zone = 234, inTown = false,
           target = { name = 'Greater Colibri', id = 0x… },
@@ -278,9 +291,16 @@ end
 ### 2.5 Absence, gaps, and re-syncing
 
 - **No event means nothing changed.** dlac emits `worn` only when the composition genuinely
-  moved (it keys on the engine's own change signature). If your WS set resolves identically
-  to what you are already wearing, **no `worn` event fires** — correctly. The previous
-  envelope still describes reality; that is the fallback in the snippet above.
+  moved. If your WS set resolves identically to what you are already wearing, **no `worn`
+  event fires** — correctly. The previous envelope still describes reality; that is the
+  fallback in the snippet above.
+- **Two things can move the composition, and both emit.** `source = 'plan'` means dlac
+  decided (an action fired, a mode flipped, an automation claimed) and carries provenance.
+  `source = 'worn'` means **your equipment changed without dlac deciding it** — you
+  hand-equipped something in a slot dlac was told to keep its hands off ("free equip"), an
+  item broke, or the server stripped a piece. Those change your totals with no dispatch at
+  all, so they are emitted too, with no provenance to give. If you only handled `'plan'`
+  events you would compute confidently wrong stats for the rest of the fight.
 - **That is why `dispatch` exists.** `kind = 'dispatch'` fires when an action fired a
   handler *whether or not gear moved*, and carries the matched rules. If you need to know
   that an action happened at all, listen to `dispatch`, not `worn`.

@@ -71,8 +71,9 @@ Both of the hard inputs are by-products of the ADR 0027 program (2026-07-27/28):
   claimant in rank order, the winner, the verdict's word, the source ladder), not just
   rendered lines. That is the provenance payload, already computed.
 
-Plus the change trigger: the retrace **signature** (`dispatch.lua`, `_trace` keyed
-`event → { time, action, sig, lines }`) already answers *"did the decision change?"*
+The change trigger is the plan's own content (§5.4). The retrace **signature** (`_trace` keyed
+`event → { time, action, sig, lines, contest }`) is the nearby-but-different question — *"did
+the reasoning change"* — and is useful only as a pre-filter.
 
 **Consequence: no engine change and no `M.VERSION` bump.** The surface is an
 **addon-side observer** over values the engine already publishes. ADR 0014 holds
@@ -207,15 +208,40 @@ day/weather/element and moon phase) plus the envelope metadata. You can skip eff
 and `totals` for now — not needed at launch. May come back to ask about `totals` later if we
 build a stat sanity-check layer, but don't build for that yet."*
 
-So **v1 ships `worn` + `ctx` + metadata**, and `by`/`totals` are deferred. Three notes:
+**[RULING] Henrik overrode the `totals` half the same day:** *"Give him everything that is
+being worn and total stats at any given time anything has changed."* So **v1 ships `worn` +
+`ctx` + `totals` + metadata**, and only **`by` is deferred**. The fold is already performed
+every frame the Equipped panel is open, so the cost is a string build; shipping it means the
+consumer never has to come back for it, and an unwanted key is free to ignore.
 
-- Both are **purely additive** — a new key in the same envelope. Deferring costs nothing
-  later, which is the whole point of "complete records, never curated fields."
-- `totals` was the *original* stated need (*"what stat+ you get from the gear"*), so build the
-  envelope so it is one flag away, not one refactor away.
-- The later stat-sanity-check need is already served **without a stream change** by the
-  `stats` query (§7): hand it a composition, get folded totals. Do not grow the stream for
-  it speculatively.
+- `by` deferred is **purely additive** — a new key in the same envelope, which is the whole
+  point of "complete records, never curated fields."
+- The `stats` query (§7) still exists for *hypothetical* compositions. `totals` on the stream
+  answers "what did he actually have on"; the query answers "what would this other set give".
+
+### 5.3 A set name is not a composition — this is why the stream ships items **[RULING]**
+
+Henrik, 2026-07-28: *"We are simply not just building sets here. You can have one set trying
+to claim some slots at a trigger level, then other sets from other automations trying to do
+the same thing… On my WAR, I have different modes and everything that affects what my sets
+do, so sets doesn't always do the same. What my friend needs is simply not just 'hey, I
+trigger switched to this set now when I WS'd' — might not be enough."*
+
+He is right, and it is the single most important shape constraint on this surface. `WS_Default`
+does not name a composition: what it resolves to depends on **active modes** (which change
+which rules match at all), the character's **level** (dynamic sets flatten per level, and a
+level sync re-flattens), **ladder outcomes** (an unowned or ineligible rung falls to the
+next), and **every claimant above the floor** (AutoAmmo, MaxMP, craft/HELM/fishing/chocobo
+gear, pins, locks, free equip). Two identical `WS_Default` casts an hour apart can be
+different sixteen items.
+
+**Therefore the envelope never reports a set name as the answer.** It reports the **resolved
+items, per slot** — and the totals folded from those items. Set and rule names appear only
+inside `by`, as provenance *about* an answer that is already concrete.
+
+The corollary for the `modes` field: modes must be in `ctx`, because a consumer analysing a
+session wants to group by them (*"my numbers in Melee mode versus Caster mode"*) even though
+the composition already accounts for them. `dispatch.activeModes()` is the reader.
 
 `by` deferred is a genuine loss of the surface's most distinctive data (it is the only place
 "which rule at which priority won this slot" exists), so keep building it into the
@@ -226,7 +252,7 @@ observer's *internals* even while it stays off the wire — it costs nothing and
 
 | kind | Fires when | Carries |
 |---|---|---|
-| `worn` | the retrace signature moves — i.e. the composition genuinely changed | the whole envelope above |
+| `worn` | the composition genuinely changed — **two triggers, see 5.4** | the whole envelope above |
 | `dispatch` | dlac saw an action fire a handler, **whether or not gear moved** | event, action, matched rules + priorities + cases |
 | `invalidate` | job change, Commit, inventory moved, profile switch | which `rev`s advanced |
 | `confirm` | a few hundred ms after a `worn` — see below | the actual worn read vs the plan |
@@ -234,6 +260,30 @@ observer's *internals* even while it stays off the wire — it costs nothing and
 `dispatch` exists because of the second contract in section 6: if a weaponskill's set
 resolves identically to what is already on, **no `worn` event fires** — correctly — and a
 consumer listening only to `worn` is blind to the fact that the weaponskill happened at all.
+
+### 5.4 What triggers a push — corrected 2026-07-28
+
+Henrik's *"at any given time anything has changed"* is a stricter requirement than my first
+answer (the retrace signature), and the difference matters:
+
+| Trigger | Answers | Emit |
+|---|---|---|
+| **the final plan's content changed** (`ctx.planOut`, v150) | *did the outcome change* | `worn`, `source = 'plan'`, with provenance |
+| **the worn equipment changed and dlac did not cause it** | *did reality change* | `worn`, `source = 'worn'`, no provenance |
+
+The retrace **signature** answers *"did the reasoning change"* — close, but not the same
+question, and it exists only per event. Since v150 the plan exists as a value, so hashing
+`ctx.planOut` answers the outcome question directly: it catches a ladder fall that produces a
+different item under identical claims, and stays quiet when the reasoning churns without
+changing what is worn. Keep the signature as a cheap pre-filter if profiling ever asks for
+one; the plan's content is the authority.
+
+The second row is what makes the promise literal. A player hand-equipping a ring in a
+**free-equip** slot, an item breaking, or the server stripping a piece changes the totals with
+no dispatch at all — and a consumer that missed it computes confidently wrong stats. Detection
+is a 16-id compare hung off the signal dlac already watches (`ui\gearui.lua` `packet_in`
+0x020/0x01D → `sf.invDirty`), sharing the `confirm` compare. `source` then tells the consumer
+which kind of truth it is holding.
 
 ### `confirm`, and why it is not optional decoration
 
@@ -519,10 +569,14 @@ Where it does **not** hold, and this is real data loss today:
    Keep `by` **inside the record** from day one even though the parser deferred it off the
    wire (§5.2) — the internal renderers need it.
 
-   **Product call for Henrik, recommended:** deepen the Trigger Monitor into a **Dispatch
-   Monitor** reading that record — per-slot winner plus claimant, not just fired rules.
-   *"Why is my Body slot wrong"* is the question players actually ask, `/dl why` already
-   computes the answer, and the monitor is currently showing the other half.
+   **[RULING] 2026-07-28: the Trigger Monitor stays exactly as it is** — *"trigger monitor
+   can still be trigger monitor, because you still wanna know specifically what happens at a
+   trigger level"* — and the arbitration view is a **NEW Dispatch Monitor**, a separate
+   window populated from the same record. Better than deepening the old one in both
+   directions: the trigger-level view keeps its narrow, useful honesty (this is what the
+   floor proposed), and the new window can be shaped around the question it actually answers
+   (*which claimant won each slot, and why*) instead of inheriting a fired-rule log's layout.
+   Two renderers of two different altitudes, one record underneath.
 
 3b. **Free cleanup while in there** (not the stream's job, but it is the same code):
    the monitor works today via its **disk fallback**, not its live feed. The engine's
