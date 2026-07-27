@@ -19,6 +19,10 @@ _Avoid_: level-scaling set, scaling set
 **Flattened Set**:
 The plain slot→item table produced from a Dynamic Set by `rebuildSets` — what LuaAshitacast actually equips.
 
+**Ammo ladder**:
+AutoAmmo's per-job ordered list of ammo *plus the rule that reads it*: walk top-down and take the first entry that clears all four gates — the context flag (ranged / WS / a special's window), pairing with the ranged weapon actually worn, stock in the equippable bags, and what the current level and job can wear. The player's order is the priority; every gate only ever *removes* candidates, never reorders them. Kin to a **Dynamic Set**'s per-slot candidate list — the same "ordered candidates, best eligible for the current level" idea, applied to the one slot a set cannot safely own — and it is named for that kinship because the two looked alike while behaving differently until the level gate landed (2026-07-27).
+_Avoid_: priority list (that is the order alone; the gates are what make it a ladder), fallback list
+
 **Handler**:
 One of LuaAshitacast's profile event functions (`HandleDefault`, `HandlePrecast`, `HandleMidcast`, `HandleAbility`, `HandleItem`, `HandleWeaponskill`, ...). dlac's dispatch shim runs at the end of each. Under the Native engine the same handler names are dispatch points fired by dlac's own action pipeline — the vocabulary is engine-independent.
 
@@ -126,11 +130,11 @@ Two distinct facts about an item. *Owned* = present in any of the 17 containers 
 _Avoid_: "has it" without saying which of the two you mean
 
 **E-Box (Ephemeral Box)**:
-CatsEyeXI's custom Crystal-Warrior-only item store, reached only while in **Crystal Warrior** play mode and standing near an in-world "Ephemeral Box". It is NOT one of the 17 ownership containers: an item sitting in the E-Box is neither *Owned* nor *Available* until it is withdrawn into the bags. Every dlac feature that reads or withdraws from it (AutoAmmo's counts, **E-Box Restock**) speaks through the one shared **E-Box client**.
+CatsEyeXI's custom Crystal-Warrior-only item store, reached only while in **Crystal Warrior** play mode and standing near an in-world "Ephemeral Box". It is NOT one of the 17 ownership containers: an item sitting in the E-Box is neither *Owned* nor *Available* until it is withdrawn into the bags. Every dlac feature that reads or withdraws from it (today: **E-Box Restock** alone) speaks through the one shared **E-Box client**.
 _Avoid_: bank, storage (dlac has several — say which), moogle/porter storage (a different game system)
 
 **E-Box client**:
-The one dlac module (`feature/eboxclient.lua`) that speaks CatsEyeXI's custom **E-Box** wire protocol — list a category, search by name, withdraw — reimplemented inside dlac so it never depends on the **trove** addon being installed. Exactly one exists: every E-Box feature (AutoAmmo's counts, **E-Box Restock**) is a thin consumer over its shared, throttled counts, so overlapping requests coalesce (the ammo category is fetched once and read by both) and outgoing traffic stays rate-capped — the party-line courtesy server operators care about.
+The one dlac module (`feature/eboxclient.lua`) that speaks CatsEyeXI's custom **E-Box** wire protocol — list a category, search by name, withdraw — reimplemented inside dlac so it never depends on the **trove** addon being installed. Exactly one exists: every E-Box feature is a thin consumer over its shared, throttled counts, so overlapping requests coalesce and outgoing traffic stays rate-capped — the party-line courtesy server operators care about. **E-Box Restock** is the only consumer (AutoAmmo had a counts-and-fetch section until 2026-07-27; it was removed as redundant once Restock could carry category 15).
 _Avoid_: trove wrapper (a clean reimplementation, no trove dependency); a per-feature client (only one exists — features consume it, they never each open the box)
 
 **E-Box Restock**:

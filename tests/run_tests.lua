@@ -9382,6 +9382,115 @@ end)();
         rap(SPEC, FM({ event = 'Ability', abilityType = 'Quick Draw' })), 'Animikii Bullet');
     check('AM50d a bow opens NEITHER special -> hold',
         rap(SPEC, FM({ rangeWorn = 'Longbow', rangePair = '25:4', unlimited = true })), nil);
+
+    -- -----------------------------------------------------------------------
+    -- AM51+. THE LEVEL DECIDES WHICH RUNG (v134; Henrik 2026-07-27). §9's twin,
+    -- one door along: the ladder knew what the WEAPON could fire and nothing at
+    -- all about what the PLAYER could wear, so the top entry won at every level.
+    -- The field list, verbatim from his ammostate.lua and sorted best-first by
+    -- the panel's own button -- "when I make the slot empty, it still tries to
+    -- auto equip acid bolts", at an overridden level of 10.
+    -- -----------------------------------------------------------------------
+    local DRK = { enabled = true, ammo = {
+        { name = 'Acid Bolt',     id = 18148, type = 'Marksmanship', pair = '26:0', level = 15, ranged = true, ws = true, special = false },
+        { name = 'Blind Bolt',    id = 18150, type = 'Marksmanship', pair = '26:0', level = 10, ranged = true, ws = true, special = false },
+        { name = 'Crossbow Bolt', id = 17336, type = 'Marksmanship', pair = '26:0', level =  1, ranged = true, ws = true, special = false },
+    } };
+    local BOLT_LV = { [18148] = 15, [18150] = 10, [17336] = 1 };
+    -- A crossbow is worn throughout (§9's gate) and the gate seam answers with
+    -- the resource's level, jobs mask left unknown unless a case sets one.
+    local function FD(over, stock)
+        local f = { event = 'Default', job = 'DRK',
+                    rangeWorn = 'Light Crossbow +1', rangePair = '26:0',
+                    gate = function(e) return BOLT_LV[e.id], nil; end,
+                    count = function(e)
+                        return (stock or { [18148] = 99, [18150] = 99, [17336] = 99 })[e.id] or 0;
+                    end };
+        for k, v in pairs(over or {}) do f[k] = (v ~= NONE) and v or nil; end
+        return f;
+    end
+
+    -- The report itself, one line per rung.
+    check('AM51 level 10, empty slot -> Blind Bolt, NOT the Acid Bolt on top',
+        rap(DRK, FD({ level = 10 })), 'Blind Bolt');
+    check('AM52 level 8 -> the only bolt that fits, Crossbow Bolt',
+        rap(DRK, FD({ level = 8 })), 'Crossbow Bolt');
+    check('AM53 level 15 -> the top entry wins again',
+        rap(DRK, FD({ level = 15 })), 'Acid Bolt');
+    check('AM54 no level known -> no level gating at all (the override-off case)',
+        rap(DRK, FD()), 'Acid Bolt');
+    check('AM55 level 0 is not a level -- the v49 not-ready read must not gate the list empty',
+        rap(DRK, FD({ level = 0 })), 'Acid Bolt');
+
+    -- The gate FILTERS, it never REORDERS: the player's order stays the authority,
+    -- which is the whole reason "Sort by level" keeps meaning something.
+    local DRKlow = { enabled = true, ammo = {
+        { name = 'Crossbow Bolt', id = 17336, type = 'Marksmanship', pair = '26:0', level =  1, ranged = true, ws = true, special = false },
+        { name = 'Acid Bolt',     id = 18148, type = 'Marksmanship', pair = '26:0', level = 15, ranged = true, ws = true, special = false },
+    } };
+    check('AM56 a worse rung listed FIRST still wins at full level',
+        rap(DRKlow, FD({ level = 75 })), 'Crossbow Bolt');
+
+    -- Every context arm inherits the gate, because they all walk the same picker.
+    check('AM57 Preshot is gated too', rap(DRK, FD({ event = 'Preshot', level = 10 })), 'Blind Bolt');
+    check('AM58 a consuming WS is gated too',
+        rap(DRK, FD({ event = 'Weaponskill', wsId = 221, level = 10 })), 'Blind Bolt');
+
+    -- Unknown never disqualifies (the pairsWith three-valued law).
+    check('AM59 an entry the gate cannot answer for is still a candidate',
+        rap(DRK, FD({ level = 10, gate = function() return nil, nil; end })), 'Acid Bolt');
+
+    -- The job bitmask, the same read and the same rule (equipcore.checkUsable).
+    local JM = { [18148] = 0, [18150] = 2 ^ 8, [17336] = 2 ^ 8 };   -- Acid Bolt: no jobs at all
+    check('AM60 an entry this job cannot use is skipped, not stalled on',
+        rap(DRK, FD({ level = 75, jobId = 8,
+                      gate = function(e) return BOLT_LV[e.id], JM[e.id]; end })), 'Blind Bolt');
+    check('AM61 jobId unknown -> no job gating',
+        rap(DRK, FD({ level = 75, gate = function(e) return BOLT_LV[e.id], JM[e.id]; end })), 'Acid Bolt');
+
+    -- The other half of the report: what is ALREADY WORN gets re-judged.
+    -- "When I was my normal level, and set it lower, I had acid bolts on me
+    --  already but didn't change."
+    check('AM62 worn ammo that is over-level is replaced, not respected',
+        rap(DRK, FD({ level = 10, worn = 'Acid Bolt', wornLevel = 15 })), 'Blind Bolt');
+    check('AM63 an over-level ammo that is NOT on the list is replaced too',
+        rap(DRK, FD({ level = 10, worn = 'Holy Bolt', wornLevel = 30 })), 'Blind Bolt');
+    check('AM64 worn ammo of OURS that is no longer the best rung swaps up',
+        rap(DRK, FD({ level = 15, worn = 'Crossbow Bolt', wornLevel = 1 })), 'Acid Bolt');
+    -- The plan is STATELESS: it names the winner even when you already wear it,
+    -- and ammoOverlayFor's "already wearing the plan" check is what stops the
+    -- churn (same layering as AM15's Unlimited Shot keep).
+    check('AM65 worn ammo of ours that IS the best rung re-plans the same name',
+        rap(DRK, FD({ level = 10, worn = 'Blind Bolt', wornLevel = 10 })), 'Blind Bolt');
+    check('AM66 a LEGAL ammo that is not on the list is untouchable (the Midshot trinket)',
+        rap(DRK, FD({ level = 75, worn = 'Cinderstone', wornLevel = 1 })), nil);
+    check('AM66b ...and the sets still win outright when they planned one',
+        rap(DRK, FD({ level = 75, worn = 'Cinderstone', wornLevel = 1, plannedAmmo = true })), nil);
+
+    -- A level reading that just jumped is not trusted yet (v56, now that the
+    -- level is an input). Default only -- protection must never be suspended.
+    check('AM67 syncHold parks the Default pass',
+        rap(DRK, FD({ level = 10, syncHold = true })), nil);
+    check('AM67b ...and never the shooting events',
+        rap(DRK, FD({ event = 'Preshot', level = 10, syncHold = true })), 'Blind Bolt');
+
+    -- Reason codes: stock talks, level does not (Henrik).
+    local _, wLv, cLv, chLv = rap(DRK, FD({ level = 10 }));
+    check('AM68 a level-driven rung change is code "level"', cLv, 'level');
+    check('AM68b ...and says nothing in chat', chLv, nil);
+    check('AM68c ...but /dl why names what it skipped',
+        (wLv or ''):find('Acid Bolt', 1, true) ~= nil, true);
+    local pSo, _, cSo, chSo = rap(DRK, FD({ level = 75 }, { [18150] = 99, [17336] = 99 }));
+    check('AM69 a stack that ran dry is code "stockout"', cSo, 'stockout');
+    check('AM69b ...names what ran out and what replaced it',
+        chSo, 'Acid Bolt is out -- loading Blind Bolt.');
+    check('AM69c ...and still loads the fallback', pSo, 'Blind Bolt');
+    local pDe, _, cDe, chDe = rap(DRK, FD({ event = 'Preshot', level = 75 }, {}));
+    check('AM70 nothing left in the bags -> the dead-end line', chDe, 'no enabled ammo left in your bags.');
+    check('AM70b ...still code "stockout"', cDe, 'stockout');
+    check('AM70c ...and nothing is planned (the server refuses the empty shot)', pDe, nil);
+    local _, _, cOk = rap(DRK, FD({ level = 75 }));
+    check('AM71 a routine pick is code "pick" and prints nothing', cOk, 'pick');
 end)();
 
 -- ---------------------------------------------------------------------------

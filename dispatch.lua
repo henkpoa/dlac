@@ -47,7 +47,7 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 133;  -- 133: the purge, Phase 3-4 -- native-aware surfaces + the allowlist. /dl check reads the NATIVE home (stamp, sets file) and the seeded-copies/shim lines died (#131 CLOSED); debug.lua's handoff reads follow (handoffDir = profiles.dataDir) and requestEngine is a no-op; charDir has NO legacy fallback; '/dl profile migrate go' no longer reloads anything; every 'Reload LAC' user string became /dl reload or died; gearui equip-now uses the game's native /equip; legacy job files are READ-ONLY (the delete-static writer refuses); the module-local legacy path fallbacks (gearimport x2, gearexport, augments, debug) are gone. Tests PRG1-2 pin the allowlist: a uashitacast string literal may exist only in the keep-list readers. 132: the purge, Phase 2 -- LEGACY MODE DIES WHOLE. inLac(), the gProfile/gFunc world, the LAC-hosted engine path, readJobSets + the legacy sets fallback, warnShadowedStatics, the HandleEquipEvent wrap, the LAC tick half, the request-file bridge and both lockstyle engine halves are DELETED; nativeMode() is constant true, the engine flag is retired in place, /dl engine is status-only. One state, one engine, one sets store. 131: the LuaShitacast purge, Phase 1 (docs/design/lac-purge-plan.md). The engine SELF-SWAP died whole -- M.swapWanted, trySelfSwap, the __dlacEngineRoot handshake, tests SW* -- because the LAC seeder that fed it died in dlac.lua the same day: with seeds frozen forever, the watch could only ever DOWNGRADE a running engine to stale bytes. profiles.migrate step 4 (rewrite the job file as a clean shim) died too: originals now stay in place, inert and importable (the keep-list promise), and the shim WRITER (shimFileText/SHIM_BODY/BOOT_LINE) went with it -- only the recognizers (SHIM_MARKER, isCleanShim) remain for files already on disk. Setup writes NO job files anymore (MIGRATE_BOOT/STARTER_PROFILE deleted; storage + base sets + starter triggers ARE the setup). The LAC-alive polite ask (lacAlive/shouldAskUnloadLac) is gone; the coexistence tripwire remains the backstop. Nothing in dlac writes under config\addons\luashitacast\ anymore -- that tree is read-only import/migration territory. 130: the native flatten no longer waits for the GUI (Xvs field case 2026-07-27). Every utils lookup assumed "loaded first in the LAC state" -- the job shim's first require -- but the NATIVE state has no shim and NOTHING loaded utils at boot: package.loaded read nil, installSets skipped the flatten, and every install refused "flatten produced no sets (world not settled)" every 0.4s until a GUI picker's own lazy pcall(require, 'dlac\\utils') happened to run (gearui's isDualWieldAvailable / subCandidateOk -- the accidental medic; that's why it read as per-JOB in the field: the healed session's job "worked", a reload broke it). utilsModule() now requires lazily at call time -- cycle-safe, see its comment. Tests RQU0-RQU2. 129: /dl disable -- free equip, the native-era answer to /lac disable (Henrik 2026-07-26: "make it claim the slot / slots, then don't do anything at all with it, so people can free equip all they want without DLAC intervention"). Not a lock (a lock is a veto INSIDE the rank walk -- four rows punch through it) and not a claim to dress (every other row wins a slot in order to put something there; this one wins it to write nothing). It is the CEILING: pinned first in ARB_ORDER_DEFAULT, undraggable like the Triggers floor, and enforced at engineEquipSet -- the one write seam -- rather than in equipResolved's per-slot chain, because the whole-table post-passes that run after that chain write slots the set never named (mp-stage's battery, trinket-vs-ranged's worn-Ammo displace) and would put a slot straight back. Registered as a claim ONLY for attribution, so /dl why and the Priority panel can name it and woven MaxMP cedes it for free. Shares M.worldWatch with naked / locked set / slot locks (v124's one lifetime rule): drops on a main job change and on leaving the world, never written to disk. The Equipped tab's "Free equip" switch now drives THIS instead of /lac disable, which under the native engine talked to a LuaAshitacast that no longer does the equipping and therefore did nothing at all. ADR 0024; tests DS1-DS30.
+M.VERSION = 134;  -- 134: AutoAmmo's ladder learns the LEVEL (field report 2026-07-27, Henrik's DRK: a list of Acid Bolt 15 / Blind Bolt 10 / Crossbow Bolt 1, sorted best-first by the panel's own button, loaded nothing at level 8 and nothing at 10 -- "when I make the slot empty, it still tries to auto equip acid bolts"). resolveAmmoPlan asked three questions per entry (flag, pair since v128, stock) and never asked the fourth, so the top entry won whatever the player's level was, and the overlay COLLAPSES A LADDER TO ONE NAME before the equip layer sees it -- there is no rung 2 to fall to, unlike a set slot, which is why the failure was total and silent. Now a fourth gate (M.resolveAmmoPlan's `wearable`, mirroring gear\equipcore checkUsable: level < Level, Jobs & 2^job) reads f.gate -> itemGate(id), the live client resource for an item already counted in the bags, with the entry's stored level as fallback; UNKNOWN NEVER DISQUALIFIES (the pairsWith three-valued law). The level is playerLevel(ctx) -- so `/dl set level main N` wins, exactly as it does in the set flatten and the virtual slot entries; reading MainJobSync straight would have left AutoAmmo the last picker in dlac that ignores the override. The Default arm now RE-JUDGES what is worn (empty slot, or the worn ammo is over-level, or it is one of OURS and no longer the best rung) instead of only reloading an empty slot -- the other half of the report, "I had acid bolts on me already but didn't change" -- while anything worn that is NOT on the list stays untouchable (a Midshot set's trinket must survive every idle tick; owning the slot outright is ADR 0010's flap through a third door). Default also holds while ctx.syncHold is up, since the level is now an input; an OVERRIDE never arms that hold and must not. resolveAmmoPlan returns four values (plan, why, code, chat): stock-outs print edge-triggered on a change of cause, level-driven rung changes print nothing at all (Henrik). docs/design/auto-ammo.md Section 10; tests AM51-AM68. 133: the purge, Phase 3-4 -- native-aware surfaces + the allowlist. /dl check reads the NATIVE home (stamp, sets file) and the seeded-copies/shim lines died (#131 CLOSED); debug.lua's handoff reads follow (handoffDir = profiles.dataDir) and requestEngine is a no-op; charDir has NO legacy fallback; '/dl profile migrate go' no longer reloads anything; every 'Reload LAC' user string became /dl reload or died; gearui equip-now uses the game's native /equip; legacy job files are READ-ONLY (the delete-static writer refuses); the module-local legacy path fallbacks (gearimport x2, gearexport, augments, debug) are gone. Tests PRG1-2 pin the allowlist: a uashitacast string literal may exist only in the keep-list readers. 132: the purge, Phase 2 -- LEGACY MODE DIES WHOLE. inLac(), the gProfile/gFunc world, the LAC-hosted engine path, readJobSets + the legacy sets fallback, warnShadowedStatics, the HandleEquipEvent wrap, the LAC tick half, the request-file bridge and both lockstyle engine halves are DELETED; nativeMode() is constant true, the engine flag is retired in place, /dl engine is status-only. One state, one engine, one sets store. 131: the LuaShitacast purge, Phase 1 (docs/design/lac-purge-plan.md). The engine SELF-SWAP died whole -- M.swapWanted, trySelfSwap, the __dlacEngineRoot handshake, tests SW* -- because the LAC seeder that fed it died in dlac.lua the same day: with seeds frozen forever, the watch could only ever DOWNGRADE a running engine to stale bytes. profiles.migrate step 4 (rewrite the job file as a clean shim) died too: originals now stay in place, inert and importable (the keep-list promise), and the shim WRITER (shimFileText/SHIM_BODY/BOOT_LINE) went with it -- only the recognizers (SHIM_MARKER, isCleanShim) remain for files already on disk. Setup writes NO job files anymore (MIGRATE_BOOT/STARTER_PROFILE deleted; storage + base sets + starter triggers ARE the setup). The LAC-alive polite ask (lacAlive/shouldAskUnloadLac) is gone; the coexistence tripwire remains the backstop. Nothing in dlac writes under config\addons\luashitacast\ anymore -- that tree is read-only import/migration territory. 130: the native flatten no longer waits for the GUI (Xvs field case 2026-07-27). Every utils lookup assumed "loaded first in the LAC state" -- the job shim's first require -- but the NATIVE state has no shim and NOTHING loaded utils at boot: package.loaded read nil, installSets skipped the flatten, and every install refused "flatten produced no sets (world not settled)" every 0.4s until a GUI picker's own lazy pcall(require, 'dlac\\utils') happened to run (gearui's isDualWieldAvailable / subCandidateOk -- the accidental medic; that's why it read as per-JOB in the field: the healed session's job "worked", a reload broke it). utilsModule() now requires lazily at call time -- cycle-safe, see its comment. Tests RQU0-RQU2. 129: /dl disable -- free equip, the native-era answer to /lac disable (Henrik 2026-07-26: "make it claim the slot / slots, then don't do anything at all with it, so people can free equip all they want without DLAC intervention"). Not a lock (a lock is a veto INSIDE the rank walk -- four rows punch through it) and not a claim to dress (every other row wins a slot in order to put something there; this one wins it to write nothing). It is the CEILING: pinned first in ARB_ORDER_DEFAULT, undraggable like the Triggers floor, and enforced at engineEquipSet -- the one write seam -- rather than in equipResolved's per-slot chain, because the whole-table post-passes that run after that chain write slots the set never named (mp-stage's battery, trinket-vs-ranged's worn-Ammo displace) and would put a slot straight back. Registered as a claim ONLY for attribution, so /dl why and the Priority panel can name it and woven MaxMP cedes it for free. Shares M.worldWatch with naked / locked set / slot locks (v124's one lifetime rule): drops on a main job change and on leaving the world, never written to disk. The Equipped tab's "Free equip" switch now drives THIS instead of /lac disable, which under the native engine talked to a LuaAshitacast that no longer does the equipping and therefore did nothing at all. ADR 0024; tests DS1-DS30.
                   -- 128: 128: AutoAmmo asks what is in RANGE before it picks (field, Henrik 2026-07-26: "AutoAmmo does NOT dictate if it's bolt, arrows or what not that gets equipped. That is 100% decided on what gets put in ranged"). resolveAmmoPlan was type-BLIND -- it took the first `ranged`-flagged entry with stock, so a bolt above your arrows won with a bow equipped -- and the panel's Bullets/Bolts/Arrows selector never constrained it (categoryOf is a VIEW, stored nowhere). The cost was not a wasted swap: charutils.cpp EquipItem STRIPS THE OTHER SLOT on an incompatible Range/Ammo pair, so the bolt took the bow off, the trigger re-equipped it, and the two flapped forever -- ADR 0010's failure through the skill/subskill door instead of the rslot one. New pure M.pairsWith over a "<skill>:<subskill>" key (26:1 gun/bullet, 26:0 crossbow/bolt, 26:2 culverin/shell, 27:0 boomerang/pebble, 27:3 shuriken, 0:10 Animator/oil), three-valued so an unknown pair degrades to today's behaviour instead of switching AutoAmmo off; ARCHERY is exempt from the subskill half exactly as the server writes it (Shortbow 25:0 and Longbow 25:4 share arrows). Range is never written -- AutoAmmo only ever READS it. Two rulings, both Henrik's: no ranged weapon worn = do nothing at all (safe -- with Range empty the server refuses the shot, so nothing can be consumed), and a weapon worn with nothing in the list able to pair = hold, never force a mismatch in. THROWING with an empty Range (a NIN's shuriken, CanUseRangedAttack's `|| PAmmo->isThrowing()`) is the ONE known exception and stays parked behind the §8 NIN field tests. The key rides the manifest like RSlot (gearimport stamps Pair from the catalog's new field); worn Range falls back to the client resource's Skill when the manifest predates it, so the update alone separates bow/gun/throwing for everyone and a manifest refresh upgrades it to gun-vs-crossbow. Tests PW1-PW14, AM40-AM58.
                   -- 127: trigger CASES, the schema backbone (issue #126, slice 2/5; ADR 0023) -- rules gain an optional `cases` list (a second `&`/`|` tier: op + the same two legs a body has), evaluated by matches()/matchedCase() over a factored legMatches so both tiers share one code path; normalize validates + drops empty cases + strips the always-true `hasCases` version guard; auto-priority + ruleLabel span every leg of every case (case-LESS rules match/label/serialize byte-for-byte as before -- pinned). serializeTriggers is oldest-form-first (a `| case` of only `&` rows -> a whenAny multi-entry; only `&` cases and `| cases` with internal OR use the new list) and stamps the guard so OLDER engines drop the rule with the standard warn instead of misreading it. Seeded-file bump: normalize + matches run engine-side (hard rule 4). Tests CX1-CX35, MC19-23. (PR #132 shipped as v126/2026.07.26c off a pre-97f1edc dev; renumbered at merge.)
                   -- 126: the /dl why trace can no longer outlive the sets store it described (field, Mindie 2026-07-26 01:31): the retrace sig now carries the store REVISION (M.modesRev -- bumped by every install and re-flatten, 5668/5714), so lines built against the empty boot-window store ("[NOT FOUND in profile Sets]", true for ~2s of designed install refusals) die the moment the install lands, instead of printing with a fresh timestamp for the rest of the session while equips worked fine. The v118 law applied to the trace: THE INSTALL INVALIDATES THE BELIEF. Display only, no equip change. Tests TRC0-TRC3 (the trace-vs-store contract, driven through the real command handler + dispatch like CMD).
@@ -1937,8 +1937,11 @@ function M.decodeEquipIndex(index)
     return math.floor(index / 256) % 256, index % 256;
 end
 
-local function wornItemName(slotKey)
-    local nm = nil;
+-- The client resource for whatever is worn in a slot, or nil. ONE memory walk
+-- that every worn-item reader shares (name, level); wornPair does the same walk
+-- for the pair key. Never throws.
+local function wornResOf(slotKey)
+    local res = nil;
     pcall(function()
         local id = SLOT_EQUIP_ID[string.lower(tostring(slotKey))];
         if id == nil then return; end
@@ -1947,10 +1950,17 @@ local function wornItemName(slotKey)
         if eitem == nil or eitem.Index == 0 then return; end
         local item = inv:GetContainerItem(M.decodeEquipIndex(eitem.Index));
         if item == nil or item.Id == nil or item.Id == 0 then return; end
-        local res = AshitaCore:GetResourceManager():GetItemById(item.Id);
-        if res ~= nil and res.Name ~= nil then nm = res.Name[1]; end
+        res = AshitaCore:GetResourceManager():GetItemById(item.Id);
     end);
-    return nm;
+    return res;
+end
+
+-- Exactly ONE return value, deliberately: `return planned[ls], wornItemName(ls)`
+-- (v94, :3890) would splat a second one into its caller's result list.
+local function wornItemName(slotKey)
+    local res = wornResOf(slotKey);
+    if res ~= nil and res.Name ~= nil then return res.Name[1]; end
+    return nil;
 end
 
 local function playerMP()
@@ -4582,6 +4592,43 @@ local function bagCounts(fresh)
     return _bagCache.byId, _bagCache.byName;
 end
 
+-- The WEARABILITY half of the same resource, by item id (v134). equipcore gates
+-- an equip on `level < item.Level` and `Jobs & 2^job` (gear\equipcore checkUsable);
+-- the ammo ladder has to ask that same question ONE STEP EARLIER, while a rejected
+-- entry can still fall through to the next rung instead of collapsing the whole
+-- ladder to a name nothing will accept. Memoized per id exactly like the name
+-- table above (resources are immutable) -- and since a candidate only reaches this
+-- gate after it has been COUNTED in the bags, the resource is always there to read.
+-- A read that answers nothing is not cached, so a not-ready resource manager
+-- retries instead of poisoning the id forever.
+local _itemGateMemo = {};
+local function itemGate(id)
+    id = tonumber(id);
+    if id == nil or id <= 0 then return nil, nil; end
+    local g = _itemGateMemo[id];
+    if g == nil then
+        g = {};
+        pcall(function()
+            local res = AshitaCore:GetResourceManager():GetItemById(id);
+            if res ~= nil then g.lv, g.jobs = tonumber(res.Level), tonumber(res.Jobs); end
+        end);
+        if g.lv ~= nil or g.jobs ~= nil then _itemGateMemo[id] = g; end
+    end
+    return g.lv, g.jobs;
+end
+M._itemGate = itemGate;   -- test seam
+
+-- The NUMERIC main job, for the Jobs bitmask (the abbreviation the rest of the
+-- engine passes around cannot index a mask). nil when not ready -- and nil means
+-- "do not job-gate", never "nothing fits", per the ADR 0007 not-ready rule.
+local function mainJobId()
+    local j = nil;
+    pcall(function() j = AshitaCore:GetMemoryManager():GetPlayer():GetMainJob(); end);
+    j = tonumber(j);
+    if j == nil or j <= 0 then return nil; end
+    return j;
+end
+
 -- ---------------------------------------------------------------------------
 -- LOCKED SET, the live half (ADR 0022): the three impure seams
 -- M.buildLockedClaim takes. This runs ONCE, when you type the command -- never
@@ -4657,18 +4704,35 @@ end
 
 -- The PURE decision (tests AM*): everything read from `cfg` (the state file
 -- table) and `f` (the facts the impure wrapper gathered). Returns
--- name | 'remove' | nil(hold), why. STRICTNESS RULES, in the scope guard's
--- words: special ammo is never planned where a shot could consume it; a
--- window opens only on an AFFIRMATIVE fact (f.unlimited == nil is "unknown"
--- and opens nothing); with a special worn and nothing enabled in stock, the
--- answer is 'remove', because an empty slot refuses the shot server-side.
+-- FOUR values: plan, why, code, chat.
+--   plan -- name | 'remove' | nil (hold)
+--   why  -- prose for /dl why's note channel
+--   code -- machine-readable cause: 'pick' | 'level' | 'stockout' | 'protect' | 'hold'
+--   chat -- the ready-to-print line, or nil for "say nothing" (v134)
+-- The code exists because the two causes are announced differently: running out
+-- of ammo prints, changing rung because your level moved does not. Keeping that
+-- as DATA rather than string-matching the prose is what lets the rim print
+-- edge-triggered on a change of cause.
+--
+-- STRICTNESS RULES, in the scope guard's words: special ammo is never planned
+-- where a shot could consume it; a window opens only on an AFFIRMATIVE fact
+-- (f.unlimited == nil is "unknown" and opens nothing); with a special worn and
+-- nothing enabled in stock, the answer is 'remove', because an empty slot
+-- refuses the shot server-side.
 --
 --   f = { event, job, wsId, abilityType, abilityName, unlimited,
 --         worn (name|nil), count = function(entry) -> n,
 --         rangeWorn (name|nil: what is in the Range slot right now),
 --         rangePair (string|nil: its "<skill>:<subskill>" key -- see M.pairsWith),
 --         plannedAmmo (bool: this dispatch's rules planned an ammo they own),
---         fishing (bool) }
+--         fishing (bool),
+--         -- v134, the level half:
+--         level (number|nil: the level to GEAR AT -- playerLevel, so the
+--                /dl set level main override wins; nil = do not level-gate),
+--         jobId (number|nil: main job id for the Jobs bitmask; nil = no job gate),
+--         gate  (function(entry) -> level, jobsMask -- the resource seam),
+--         wornLevel (number|nil: the level of what is worn in Ammo right now),
+--         syncHold (bool: a level reading just jumped and has not settled) }
 --
 -- THE RANGE SLOT DECIDES THE AMMO TYPE (Henrik, 2026-07-26). AutoAmmo never writes
 -- Range -- that slot belongs to your sets and triggers, full stop -- it only ever asks
@@ -4730,69 +4794,134 @@ function M.resolveAmmoPlan(cfg, f)
         if f.rangePair == nil then return true; end
         return M.pairsWith(f.rangePair, entryPair(e)) ~= false;
     end
+    -- CAN the character wear this AT ALL right now (v134)? The fourth gate, and the
+    -- one the ladder spent its first six weeks without: the level and the job. Both
+    -- come off f.gate (the live client resource for an item already counted in the
+    -- bags, falling back to the entry's stored level) and both mirror
+    -- equipcore.checkUsable exactly -- `level < item.Level`, `Jobs & 2^job`.
+    -- UNKNOWN NEVER DISQUALIFIES, the same three-valued discipline pairsWith uses:
+    -- a missing data field must not read as "AutoAmmo stopped working".
+    -- A level of 0 (or below) is NOT a level -- it is the v49 not-ready reading,
+    -- and gating on it would skip the entire list. Gate on what you accept.
+    local myLevel = tonumber(f.level);
+    if myLevel ~= nil and myLevel <= 0 then myLevel = nil; end
+    local function wearable(e)
+        if type(f.gate) ~= 'function' then return true; end
+        local ok, lv, jm = pcall(f.gate, e);
+        if not ok then return true; end
+        if myLevel ~= nil and lv ~= nil and myLevel < lv then return false; end
+        if f.jobId ~= nil and jm ~= nil
+           and math.floor(jm / (2 ^ f.jobId)) % 2 ~= 1 then return false; end
+        return true;
+    end
     -- The protection sweep answers ONE question: could the next shot eat this? A
     -- special the equipped weapon cannot even fire is in no danger -- the server has
     -- already stripped one of the two -- so emptying the slot for it would be pure
     -- churn AND would break the "nothing in the list pairs, so ignore it" ruling.
     -- An UNKNOWN pair still protects: never weaken a safeguard on missing data.
     local wornSpecial = (wornE ~= nil and type(wornE.special) == 'table' and fits(wornE));
-    local function firstRanged()
+    -- ONE walk down the player's order, THREE reports (v134):
+    --   win -- the first entry through all four gates: flag, pair, level/job, stock
+    --   dry -- the topmost entry that was right in every way EXCEPT stock (this is
+    --          what the stock-out chat line names: "X is out -- loading Y")
+    --   low -- entries skipped for level/job (/dl why names them; never printed)
+    -- The order is always the PLAYER'S. Every gate only ever removes candidates --
+    -- none of them reorders, which is why "Sort by level" stays meaningful.
+    local function pick(want)
+        local win, dry, low = nil, nil, nil;
         for _, e in ipairs(list) do
-            if type(e) == 'table' and e.ranged == true and type(e.special) ~= 'table'
-               and fits(e) and stocked(e) then return e; end
+            if type(e) == 'table' and want(e) and fits(e) then
+                if not wearable(e) then
+                    low = low or {};
+                    low[#low + 1] = tostring(e.name);
+                elseif not stocked(e) then
+                    if dry == nil then dry = tostring(e.name); end
+                else
+                    win = e;
+                    break;
+                end
+            end
         end
-        return nil;
+        return win, dry, low;
+    end
+    local function plain(e) return type(e.special) ~= 'table'; end
+    local function firstRanged()
+        return pick(function(e) return e.ranged == true and plain(e); end);
     end
     local function firstWs()
-        for _, e in ipairs(list) do
-            if type(e) == 'table' and e.ws == true and type(e.special) ~= 'table'
-               and fits(e) and stocked(e) then return e; end
-        end
-        return nil;
+        return pick(function(e) return e.ws == true and plain(e); end);
     end
     local function firstSpecial(beh, needType)
-        for _, e in ipairs(list) do
-            if type(e) == 'table' and type(e.special) == 'table' and e.special[beh] == true
-               and (needType == nil or e.type == needType) and fits(e) and stocked(e) then return e; end
+        return pick(function(e)
+            return type(e.special) == 'table' and e.special[beh] == true
+                   and (needType == nil or e.type == needType);
+        end);
+    end
+    -- The prose for /dl why, the machine-readable cause, and the chat line (nil =
+    -- say nothing). Henrik's split, verbatim: "If you run out of ammo, do a print
+    -- to notify the player [...] but no prints should be necessary for ammo change
+    -- due to level change." So STOCK talks and LEVEL does not, and that distinction
+    -- has to survive as data -- the rim prints on the code, not on the prose.
+    local function note(base, dry, low, winner)
+        local why, code, chat = base, 'pick', nil;
+        if dry ~= nil then
+            code = 'stockout';
+            if winner ~= nil then
+                why  = string.format('%s: %s is out -- loading %s', base, dry, winner);
+                chat = string.format('%s is out -- loading %s.', dry, winner);
+            else
+                why  = string.format('%s: %s is out, nothing else stocked', base, dry);
+                chat = 'no enabled ammo left in your bags.';
+            end
         end
-        return nil;
+        if low ~= nil and #low > 0 then
+            why = why .. string.format(' (%s need a higher level)', table.concat(low, ', '));
+            if code == 'pick' then code = 'level'; end
+        end
+        return why, code, chat;
     end
     local ev = tostring(f.event or '');
 
     if ev == 'Preshot' or ev == 'Midshot' then
         if f.unlimited == true then
             local sp = firstSpecial('unlimited');
-            if sp ~= nil then return sp.name, 'Unlimited Shot window'; end
+            if sp ~= nil then return sp.name, 'Unlimited Shot window', 'pick'; end
         end
-        local r = firstRanged();
-        if r ~= nil then return r.name, 'ranged pick'; end
+        local r, dry, low = firstRanged();
+        local why, code, chat = note('ranged pick', dry, low, (r ~= nil) and r.name or nil);
+        if r ~= nil then return r.name, why, code, chat; end
         if wornSpecial then
-            return 'remove', 'no enabled ammo in bags -- protecting ' .. wornE.name;
+            return 'remove', 'no enabled ammo in bags -- protecting ' .. wornE.name, 'protect', chat;
         end
-        return nil;   -- nothing to load, nothing to protect: the server refuses the empty shot
+        -- nothing to load, nothing to protect: the server refuses the empty shot.
+        -- The chat still rides out -- an empty ladder at the moment you shoot is
+        -- exactly when silence costs a field round.
+        return nil, why, code, chat;
     end
 
     if ev == 'Weaponskill' then
         local id = tonumber(f.wsId);
         if id ~= nil and AMMO_WS_FREE[id] then
-            -- No consumption possible: wear the best thing for the WS.
+            -- No consumption possible: wear the best thing for the WS. Nothing can
+            -- run out here, so there is nothing to announce.
             local sp = firstSpecial('freews');
-            if sp ~= nil then return sp.name, 'free-WS window'; end
+            if sp ~= nil then return sp.name, 'free-WS window', 'pick'; end
             local w = firstWs();
-            if w ~= nil then return w.name, 'WS pick (free WS)'; end
+            if w ~= nil then return w.name, 'WS pick (free WS)', 'pick'; end
             local r = firstRanged();
-            if r ~= nil then return r.name, 'ranged pick (free WS)'; end
+            if r ~= nil then return r.name, 'ranged pick (free WS)', 'pick'; end
             return nil;
         end
         if id ~= nil and AMMO_WS_CONSUME[id] then
-            local w = firstWs();
-            if w ~= nil then return w.name, 'WS pick'; end
+            local w, dry, low = firstWs();
+            local why, code, chat = note('WS pick', dry, low, (w ~= nil) and w.name or nil);
+            if w ~= nil then return w.name, why, code, chat; end
             if wornSpecial then
                 local r = firstRanged();
-                if r ~= nil then return r.name, 'no WS ammo -- protecting ' .. wornE.name; end
-                return 'remove', 'no enabled ammo in bags -- protecting ' .. wornE.name;
+                if r ~= nil then return r.name, 'no WS ammo -- protecting ' .. wornE.name, 'protect', chat; end
+                return 'remove', 'no enabled ammo in bags -- protecting ' .. wornE.name, 'protect', chat;
             end
-            return nil;
+            return nil, why, code, chat;
         end
         return nil;   -- melee (or unknown) WS: attack.slot = MAIN, ammo untouched
     end
@@ -4804,33 +4933,59 @@ function M.resolveAmmoPlan(cfg, f)
         if isQD then
             -- QD requires a Marksmanship ammo worn -- never offer it an arrow.
             local sp = firstSpecial('quickdraw', 'Marksmanship');
-            if sp ~= nil then return sp.name, 'Quick Draw window'; end
+            if sp ~= nil then return sp.name, 'Quick Draw window', 'pick'; end
         end
         return nil;
     end
 
     if ev == 'Default' then
+        -- A level reading that JUST changed is not trusted yet (v56). The weapon
+        -- slots have held on this since the Incursion TP bug; Ammo joins them the
+        -- moment the LEVEL becomes an input to its pick. Default only: the action
+        -- events must never suspend the special-ammo protection, and churn from a
+        -- half-settled reading can only happen on this ~0.4s tick anyway.
+        -- A level OVERRIDE never arms this -- syncSettleStep tracks MainJobSync,
+        -- which /dl set level main does not move. That is deliberate: typing a
+        -- level has nothing in flight to settle (auto-ammo.md Section 10.5).
+        if f.syncHold == true then return nil, 'level reading is settling', 'hold'; end
         if f.fishing == true then return nil; end   -- the fish overlay owns Ammo (bait) at Default
         if f.unlimited == true then
             -- Pre-load (and keep) the Unlimited Shot special while the buff is
             -- up -- an active plan, so a TP set's generic bullet can't strip
             -- the bullet you popped the ability FOR.
             local sp = firstSpecial('unlimited');
-            if sp ~= nil then return sp.name, 'Unlimited Shot window'; end
+            if sp ~= nil then return sp.name, 'Unlimited Shot window', 'pick'; end
         end
         if wornSpecial then
             -- Window closed: sweep it off. This deliberately beats a set that
             -- plans the special itself -- the contract is that special ammo is
             -- never LEFT equipped where the next shot could eat it.
             local r = firstRanged();
-            if r ~= nil then return r.name, 'sweep -- protecting ' .. wornE.name; end
-            return 'remove', 'sweep -- no enabled ammo, protecting ' .. wornE.name;
+            if r ~= nil then return r.name, 'sweep -- protecting ' .. wornE.name, 'protect'; end
+            return 'remove', 'sweep -- no enabled ammo, protecting ' .. wornE.name, 'protect';
         end
         if f.plannedAmmo == true then return nil; end  -- sets planned an ammo they own: theirs
-        if wornL == nil then
-            local r = firstRanged();
-            if r ~= nil then return r.name, 'reload (slot ran empty)'; end
+        -- v134: RE-JUDGE WHAT IS WORN, not just an empty slot. Three ways in --
+        --   * the slot is empty                         (the original reload)
+        --   * the worn ammo is over-level               (nobody could have chosen
+        --     it at this level, so it is not a choice to respect)
+        --   * the worn ammo is OURS and no longer best  (the ladder moved: a level
+        --     went up, a stack ran dry, a weapon changed)
+        -- Anything else worn is a set's or the player's own and is UNTOUCHABLE.
+        -- That guard is the whole safety story: a Midshot set's Cinderstone must
+        -- survive every idle tick, and owning the slot outright would be ADR 0010's
+        -- keep-both-flaps-forever arriving through a third door.
+        local r, dry, low = firstRanged();
+        local why, code, chat = note('ranged pick', dry, low, (r ~= nil) and r.name or nil);
+        if r == nil then return nil, why, code, chat; end
+        if wornL == nil then return r.name, why .. ' (slot ran empty)', code, chat; end
+        local wl = tonumber(f.wornLevel);
+        if myLevel ~= nil and wl ~= nil and myLevel < wl then
+            return r.name,
+                   string.format('%s (%s cannot be worn at level %d)', why, tostring(f.worn), myLevel),
+                   (code == 'pick') and 'level' or code, chat;
         end
+        if wornE ~= nil then return r.name, why .. ' (better rung available)', code, chat; end
         return nil;
     end
 
@@ -4895,14 +5050,36 @@ local function ammoOverlayFor(as, ctx, event, hits, fishOn)
     -- dispatch: the whole point is that swapping your bow for a gun re-aims AutoAmmo
     -- on the next pass with nobody touching a setting.
     local rangePair, rangeWorn = wornPair('Range');
+    -- One walk for the worn Ammo: its name AND its level (v134 needs both, and the
+    -- level is how "what you are wearing is over your level now" gets noticed).
+    local ammoRes  = wornResOf('Ammo');
+    local wornName = (ammoRes ~= nil and ammoRes.Name ~= nil) and ammoRes.Name[1] or nil;
     local f = {
         event   = event,
         job     = job,
-        worn    = wornItemName('Ammo'),
+        worn    = wornName,
+        wornLevel = (ammoRes ~= nil) and tonumber(ammoRes.Level) or nil,
         rangeWorn = rangeWorn,
         rangePair = rangePair,
         fishing = (fishOn == true),
         unlimited = buffActive(ctx, 115),   -- EFFECT_UNLIMITED_SHOT
+        -- THE LEVEL WE GEAR AT, not the one the server would permit (v134). This is
+        -- playerLevel, so `/dl set level main N` wins here exactly as it wins in the
+        -- set flatten (utils.determineLevels) and the virtual slot entries -- reading
+        -- MainJobSync straight would have left AutoAmmo the last picker in dlac that
+        -- ignores the override, which IS the reported bug. equipcore's own level is a
+        -- legality gate against the real game; this one is the CHOICE.
+        level   = playerLevel(ctx),
+        jobId   = mainJobId(),
+        gate    = function(e)
+            if type(e) ~= 'table' then return nil, nil; end
+            local lv, jm = itemGate(e.id);
+            -- Stored level as the fallback: an entry whose id the resource manager
+            -- cannot answer for still gets judged (auto-ammo.md Section 10.3 ladder).
+            if lv == nil then lv = tonumber(e.level); end
+            return lv, jm;
+        end,
+        syncHold = (type(ctx) == 'table' and ctx.syncHold == true),
         count   = function(e)
             if type(e) ~= 'table' then return 0; end
             local n = (byId ~= nil and tonumber(e.id) ~= nil) and byId[tonumber(e.id)] or nil;
@@ -4920,7 +5097,20 @@ local function ammoOverlayFor(as, ctx, event, hits, fishOn)
     elseif event == 'Default' then
         f.plannedAmmo = ammoPlannedByHits(hits);
     end
-    local plan, why = M.resolveAmmoPlan(cfg, f);
+    local plan, why, code, chat = M.resolveAmmoPlan(cfg, f);
+    -- STOCK talks, LEVEL does not (Henrik, v134). Edge-triggered on a change of
+    -- cause, NOT on a timer: the engine re-plans every ~0.4s, so a remembered
+    -- last-cause is the only thing between one empty stack and a scrolling chat
+    -- log. Runs BEFORE the no-plan/no-churn returns below, because the loudest
+    -- case of all -- the ladder ran dry and there is nothing to plan -- exits there.
+    if code == 'stockout' and type(chat) == 'string' then
+        if M._ammoLastCause ~= chat then
+            M._ammoLastCause = chat;
+            pcall(function() print('[dlac] AutoAmmo: ' .. chat); end);
+        end
+    elseif code ~= 'hold' then
+        M._ammoLastCause = nil;   -- the condition cleared: the next one speaks again
+    end
     if plan == nil then return nil; end
     -- Already wearing the plan: hold (no churn, no trace noise). 'remove' with
     -- an empty slot is the same no-op.
