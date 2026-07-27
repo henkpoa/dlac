@@ -1,31 +1,24 @@
 --[[
-    dlac.lua — Ashita v4 addon entry point for "dynamic LuaAshitacast".
+    dlac.lua — Ashita v4 addon entry point. dlac IS the equip engine: it reads
+    player + inventory through AshitaCore and equips via its own authentic
+    0x050/0x051 packets (feature\equipengine + dispatch.lua). The name is
+    history — "dynamic LuaAshitacast" absorbed its host (ADR 0015) and the
+    LuaShitacast purge (docs/design/lac-purge-plan.md) removed the last of it:
+    one Lua state, one engine, one storage home (config\addons\dlac\<char>\).
+    Old luashitacast\ trees are read-only IMPORT territory (Sets tab static /
+    group imports; login auto-migration copies data in, never touches it).
 
-    dlac runs as a normal Ashita addon (so it can live under /addons and be server-
-    approved). It reads player + inventory through AshitaCore and drives gear via
-    LuaAshitacast's /lac commands, so it works *alongside* LAC without having to live
-    inside a profile.
-
-    The library modules still use the profile-style "dlac\\X" require prefix, so we add
-    <install>/addons/?.lua to package.path -- that makes require("dlac\\X") resolve to
-    addons/dlac/X.lua here in the addon's Lua state. X carries the folder, so
-    require("dlac\\ui\\gearui") lands on addons/dlac/ui/gearui.lua.
-
-    LAYOUT (docs/architecture.md "Repository layout"): the addon root is what LAC sees --
-    this entry point plus the five seeded engine files (utils, dispatch, chatfmt, profiles,
-    gear) that the seeder below copies into <char>\dlac\ and LAC loads in its own state.
-    Those five must stay flat: require("dlac\\utils") is published API in every user
-    profile. Everything only the addon loads lives in ui\ / data\ / gear\ / feature\ / lib\.
-
-    WIP: the GUI still reads a little data from LuaAshitacast globals (gData = player
-    job/level, gProfile.Sets = the Sets tab). Those are being decoupled to AshitaCore +
-    <JOB>.lua file reads so the addon is fully standalone. Until that lands, some tabs
-    are only fully populated when a LAC profile is also loaded.
+    The library modules use the "dlac\\X" require prefix: <install>/addons/?.lua
+    is appended to package.path, so require("dlac\\X") resolves to
+    addons/dlac/X.lua. X carries the folder — require("dlac\\ui\\gearui") lands
+    on addons/dlac/ui/gearui.lua. The five root files (utils, dispatch, chatfmt,
+    profiles, gear) stay flat: require("dlac\\utils") is published API. GUI in
+    ui\, data in data\, gear machinery in gear\, features in feature\, lib\.
 ]]--
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.07.27k';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.07.27l';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 

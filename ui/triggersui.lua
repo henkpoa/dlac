@@ -1230,7 +1230,7 @@ local function renderModePopup()
                     'Cycle "%s" saved; dead value gate(s) %s swept: %d rule(s) removed, %d trimmed; sets rewritten: %s%s',
                     nm, table.concat(removed, ', '), rem, trm,
                     (#touched > 0) and table.concat(touched, ', ') or '(none)',
-                    (#touched > 0) and '  -- Reload LAC to apply the set changes.' or ''), false);
+                    (#touched > 0) and '  -- /dl reload to apply the set changes.' or ''), false);
             else
                 trigSetStatus(string.format('Cycle mode "%s": wire values with the rule condition  mode = %s:<value>,  then Commit.', nm, nm), false);
             end
@@ -1316,11 +1316,11 @@ local function renderModeDeleteWindow()
             trigSetStatus(string.format('Deleted "%s": %d rule(s) removed, %d trimmed; sets rewritten: %s%s',
                 d.name, rr.removedRules, rr.editedRules,
                 (#touched > 0) and table.concat(touched, ', ') or '(none)',
-                (#touched > 0) and '  -- Reload LAC to apply the set changes.' or ''), false);
+                (#touched > 0) and '  -- /dl reload to apply the set changes.' or ''), false);
             modeUI.del = nil;
         end
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('Rules gated only on this mode are removed; a mode-list rule just loses the name.\nSet entries gated only on it are deleted; list gates keep their other modes.\nTrigger changes are live immediately; set changes need Reload LAC.');
+            imgui.SetTooltip('Rules gated only on this mode are removed; a mode-list rule just loses the name.\nSet entries gated only on it are deleted; list gates keep their other modes.\nTrigger changes are live immediately; set changes need /dl reload.');
         end
         imgui.SameLine(0, 8);
         if imgui.Button('Delete mode only##modedelonly', { 0, 22 }) then
@@ -3324,7 +3324,7 @@ local function bpStamp(entry)
         bpSetStatus(string.format('Stamped "%s" onto %s %s -- an identical rule already existed there (added anyway).',
             entry.name, abbr, entry.handler), true);
     else
-        bpSetStatus(string.format('Stamped "%s" onto %s %s -- live now (hot-reloaded, no Reload LAC).',
+        bpSetStatus(string.format('Stamped "%s" onto %s %s -- live now (hot-reloaded).',
             entry.name, abbr, entry.handler), false);
     end
 end
@@ -3556,7 +3556,7 @@ local function renderBlueprintBox(i, e, ruleText, boxH)
     imgui.SameLine(0, 14);
     if imgui.SmallButton('Stamp onto this job##bpstamp' .. id) then bpStamp(e); end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Insert this rule into the current job\'s ' .. e.handler .. ' handler\nand commit -- live immediately (no Reload LAC). The stamped Trigger\nis ordinary afterwards; editing this Blueprint will not change it.');
+        imgui.SetTooltip('Insert this rule into the current job\'s ' .. e.handler .. ' handler\nand commit -- live immediately. The stamped Trigger\nis ordinary afterwards; editing this Blueprint will not change it.');
     end
     imgui.SameLine(0, 6);
     if imgui.SmallButton('Edit##bpedit' .. id) then bpEdit(i); end
@@ -3755,7 +3755,7 @@ local function mlStampNow(entry, how)
             #dead, rulesRemoved, rulesEdited);
     end
     if #touched > 0 then
-        bits[#bits + 1] = 'sets rewritten: ' .. table.concat(touched, ', ') .. ' -- Reload LAC to apply those';
+        bits[#bits + 1] = 'sets rewritten: ' .. table.concat(touched, ', ') .. ' -- /dl reload to apply those';
     end
     mlSetStatus(table.concat(bits, '; ') .. '.', false);
     mlUI.stamp = nil;
@@ -3814,7 +3814,7 @@ local function renderModeStampWindow()
             mlStampNow(s.entry, 'overwrite');
         end
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('Rules gated only on a dropped value are removed; a mode-list rule just loses it.\nSet entries gated only on it are deleted; list gates keep their other modes.\nTrigger changes are live immediately; set changes need Reload LAC.');
+            imgui.SetTooltip('Rules gated only on a dropped value are removed; a mode-list rule just loses it.\nSet entries gated only on it are deleted; list gates keep their other modes.\nTrigger changes are live immediately; set changes need /dl reload.');
         end
         imgui.SameLine(0, 8);
         if imgui.Button('Append instead (keep everything)##mlstampapp', { 0, 22 }) then
@@ -4168,11 +4168,11 @@ function M.render(job, level)
         local mv = trigModeState()['__version'];
         if type(mv) == 'number' and mv < dsp.VERSION then
             imgui.TextColored(COL_ERR, string.format(
-                '[!] LuaAshitacast is running an OUTDATED dlac engine (v%d; the addon has v%d) -- click "Reload LAC" (top-right).',
+                '[!] the running engine is OUTDATED (stamped v%d; this file is v%d) -- /dl reload.',
                 mv, dsp.VERSION));
         elseif mv == nil and trig._modeStateExists == true then
             imgui.TextColored(COL_ERR,
-                '[!] LuaAshitacast is running an OUTDATED dlac engine -- click "Reload LAC" (top-right).');
+                '[!] the running engine looks OUTDATED (no version stamp) -- /dl reload.');
         end
     end
 

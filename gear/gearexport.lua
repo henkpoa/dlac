@@ -212,9 +212,7 @@ local function charDirAndName()
         local prof = require('dlac\\profiles');
         d = prof.dataDir();
     end);
-    if d ~= nil then return d, name; end
-    return string.format('%sconfig\\addons\\luashitacast\\%s_%u\\dlac\\',
-        AshitaCore:GetInstallPath(), name, id), name;
+    return d, name;   -- native home or nil (purge Phase 4: no legacy fallback)
 end
 
 function M.export()

@@ -10809,35 +10809,30 @@ end)();
 (function()
     local ck = dofile('feature/check.lua');
     check('CHK0 check loads headless', type(ck), 'table');
-    check('CHK1 seeded copies current', ck._seededState({
-        { name = 'utils.lua', addon = 'x', seeded = 'x' },
-        { name = 'dispatch.lua', addon = 'y', seeded = 'y' } }), 'current');
-    check('CHK2 stale + missing seeded copies are NAMED', ck._seededState({
-        { name = 'utils.lua', addon = 'x', seeded = 'y' },
-        { name = 'chatfmt.lua', addon = 'z', seeded = 'z' },
-        { name = 'dispatch.lua', addon = 'w', seeded = nil } }), 'STALE: utils.lua, dispatch.lua');
-    check('CHK3 unreadable tree copy counts stale', ck._seededState({
-        { name = 'utils.lua', addon = nil, seeded = 'x' } }), 'STALE: utils.lua');
-    check('CHK4 clean shim word', ck._shimWord('ok'), 'clean dlac shim');
-    check('CHK5 wired sends to Setup', ck._shimWord('wired'):find('Setup', 1, true) ~= nil, true);
-    check('CHK6 ffxilac sends to Setup', ck._shimWord('ffxilac'):find('Setup', 1, true) ~= nil, true);
-    check('CHK7 nofile sends to Setup', ck._shimWord('nofile'):find('Setup', 1, true) ~= nil, true);
-    local HEALTHY = { addonVer = '2026.07.23c', fileV = 104, seeded = 'current', shim = 'ok', stampV = 104,
+    -- (CHK1-CHK7 -- the seeded-copies compare and the shim words -- died in
+    -- the purge, Phase 3, with #131: no seeds, no shim-centric job file.)
+    check('CHK1 the seeded compare is deleted with the seeds', ck._seededState, nil);
+    check('CHK4 ...and the shim words with the shim model', ck._shimWord, nil);
+    local HEALTHY = { addonVer = '2026.07.23c', fileV = 104, stampV = 104,
+                      setsWord = 'I:\\game\\config\\addons\\dlac\\T_1\\profiles\\Default\\sets\\WHM.lua (present)',
                       modules = { total = 17, failed = {} }, catalogTried = true, catalogN = 14874,
                       gearN = 312, profName = 'Default' };
     local L = ck._lines(HEALTHY);
     check('CHK8 six addon lines', #L, 6);
     check('CHK9 versions on line 1', L[1]:find('2026.07.23c', 1, true) ~= nil and L[1]:find('v104', 1, true) ~= nil, true);
+    check('CHK9b line 2 is the sets file', L[2]:find('sets file', 1, true) ~= nil
+          and L[2]:find('(present)', 1, true) ~= nil, true);
     check('CHK10 the engine line is named verbatim', L[5]:find('[dlac] check (engine): alive', 1, true) ~= nil, true);
-    check('CHK11 absence = diagnosis is said', L[5]:find('not running the dlac engine', 1, true) ~= nil, true);
+    check('CHK11 absence = diagnosis is said (native words)', L[5]:find('not armed in this state', 1, true) ~= nil
+          and L[5]:find('/dl reload', 1, true) ~= nil, true);
     check('CHK12 stamp rides the engine line', L[5]:find('last stamped v104', 1, true) ~= nil, true);
     check('CHK13 modules line counts', L[3]:find('17/17 loaded', 1, true) ~= nil, true);
     check('CHK14 data line carries catalog/gear/profile', L[4]:find('14874 items', 1, true) ~= nil
           and L[4]:find('312 entries', 1, true) ~= nil and L[4]:find('"Default"', 1, true) ~= nil, true);
     check('CHK15 healthy = NO ISSUES verdict', L[6]:find('NO ISSUES', 1, true) ~= nil, true);
-    local L2 = ck._lines({ addonVer = 'x', fileV = nil, seeded = nil, shim = 'nojob', stampV = nil });
+    local L2 = ck._lines({ addonVer = 'x', fileV = nil, stampV = nil });
     check('CHK16 never-stamped is said', L2[5]:find('NEVER stamped', 1, true) ~= nil, true);
-    check('CHK17 pre-login degrades honestly, not as issues', L2[1]:find('not logged in', 1, true) ~= nil
+    check('CHK17 pre-login degrades honestly, not as issues', L2[2]:find('not logged in', 1, true) ~= nil
           and L2[6]:find('NO ISSUES', 1, true) ~= nil, true);
     -- the issue hunt (CHKI): each provable problem is NAMED in the verdict.
     -- override helper: `false` means "unset" (a literal nil never survives
@@ -10848,10 +10843,8 @@ end)();
         return ck._issues(base);
     end
     check('CHKI1 healthy hunts nothing', #ck._issues(HEALTHY), 0);
-    check('CHKI2 stale seeded is an issue', issuesOf({ seeded = 'STALE: dispatch.lua' })[1]
-          :find('STALE', 1, true) ~= nil, true);
-    check('CHKI3 stamp behind file -> Reload LAC', issuesOf({ stampV = 98 })[1]
-          :find('Reload LAC', 1, true) ~= nil, true);
+    check('CHKI3 stamp behind file -> /dl reload', issuesOf({ stampV = 98 })[1]
+          :find('/dl reload', 1, true) ~= nil, true);
     check('CHKI4 stamp ahead of file -> stale tree', issuesOf({ fileV = 98 })[1]
           :find('tree is stale', 1, true) ~= nil, true);
     check('CHKI5 module failures named', issuesOf({ modules = { total = 17,
@@ -10861,12 +10854,10 @@ end)();
           :find('UNREADABLE', 1, true) ~= nil, true);
     check('CHKI7 truncated catalog is an issue', issuesOf({ catalogN = 4200 })[1]
           :find('truncated', 1, true) ~= nil, true);
-    check('CHKI8 non-shim job file is an issue', issuesOf({ shim = 'wired' })[1]
-          :find('Setup', 1, true) ~= nil, true);
-    check('CHKI9 nojob is NOT an issue', #issuesOf({ shim = 'nojob' }), 0);
+    -- (CHKI8/9 -- shim-state issues -- died with the shim model, Phase 3.)
     check('CHKI10 verdict counts multiple issues', ck._lines({ addonVer = 'x', fileV = 104,
-          seeded = 'STALE: utils.lua', shim = 'wired', stampV = 98,
-          modules = { total = 17, failed = {} }, catalogTried = true, catalogN = 14874 })[6]
+          stampV = 98, modules = { total = 17, failed = { { mod = 'x', err = 'boom' } } },
+          catalogTried = true, catalogN = 4200 })[6]
           :find('3 ISSUES', 1, true) ~= nil, true);
 end)();
 
@@ -13872,6 +13863,56 @@ end)();
     os.remove(setsPath);
     os.remove('tests' .. SEP .. 'modestate.lua');
     os.remove('tests' .. SEP .. 'arbstate.lua');
+end)();
+
+-- ---------------------------------------------------------------------------
+-- PRG. THE PURGE ALLOWLIST (Phase 4, Henrik's keep-list). A luashitacast PATH
+-- LITERAL in shipped code -- the two-backslash string form `\\luashitacast` --
+-- may exist ONLY in the sanctioned importer/migration READERS. Comments write
+-- the single-backslash form and never trip this. The roster below IS the
+-- coverage cap: a brand-new shipped file must be added here to be guarded
+-- (a named limitation, not a silent one).
+-- ---------------------------------------------------------------------------
+(function()
+    local SHIPPED = { 'dlac.lua','utils.lua','dispatch.lua','profiles.lua','chatfmt.lua','gear.lua',
+        'feature/augments.lua','feature/check.lua','feature/chocowatch.lua','feature/craftwatch.lua',
+        'feature/debug.lua','feature/eboxammo.lua','feature/eboxclient.lua','feature/engine.lua',
+        'feature/equipengine.lua','feature/fishwatch.lua','feature/helmwatch.lua','feature/lockstyle.lua',
+        'feature/lockstyleapply.lua','feature/location.lua','feature/macrobook.lua','feature/meritwatch.lua',
+        'feature/mpbands.lua','feature/nativedata.lua','feature/synthrun.lua','feature/useitem.lua',
+        'gear/catalogindex.lua','gear/equipcore.lua','gear/gearcheck.lua','gear/gearexport.lua',
+        'gear/gearfmt.lua','gear/gearimport.lua','gear/gearoptim.lua','gear/gearoracle.lua',
+        'gear/gearrecord.lua','gear/jobgate.lua','gear/ownedcache.lua','gear/profilesets.lua',
+        'gear/setimport.lua','gear/setmanager.lua','gear/weaponfilter.lua',
+        'lib/cmdqueue.lua','lib/safewrite.lua','lib/statefile.lua','lib/entwatch.lua',
+        'ui/automationsui.lua','ui/chocoui.lua','ui/craftbar.lua','ui/equippedui.lua','ui/fishbar.lua',
+        'ui/fishui.lua','ui/gearui.lua','ui/helmbar.lua','ui/menuui.lua','ui/priorityui.lua',
+        'ui/profilesmenu.lua','ui/restockui.lua','ui/setupui.lua','ui/triggersui.lua','ui/uihost.lua',
+        'ui/uistyle.lua','ui/itemicons.lua' };
+    local ALLOW = {   -- Henrik's keep-list: read-only doors into the old tree
+        ['profiles.lua'] = true,          -- charBase/lacRoot/legacyDataPresent/legacyExportsDir
+        ['gear/setmanager.lua'] = true,   -- the job-file scanner (whole-block import)
+        ['feature/lockstyle.lua'] = true, -- legacy boxes read-fallback tier
+        ['feature/macrobook.lua'] = true, -- legacy books read-fallback tier
+        ['gear/gearoptim.lua'] = true,    -- legacy weights read tier
+    };
+    local offenders = {};
+    for _, f in ipairs(SHIPPED) do
+        local fh = io.open(f, 'rb');
+        if fh ~= nil then
+            local raw = fh:read('*a'); fh:close();
+            if raw:find('\\\\luashitacast', 1, true) ~= nil and not ALLOW[f] then
+                offenders[#offenders + 1] = f;
+            end
+        end
+    end
+    check('PRG1 no legacy path literal outside the allowlist', table.concat(offenders, ','), '');
+    check('PRG2 the importer door itself still exists', (function()
+        local fh = io.open('profiles.lua', 'rb');
+        if fh == nil then return false; end
+        local raw = fh:read('*a'); fh:close();
+        return raw:find('\\\\luashitacast', 1, true) ~= nil;
+    end)(), true);
 end)();
 
 -- The warm-note artifact the dispatch-driving sections leave behind (dataDir

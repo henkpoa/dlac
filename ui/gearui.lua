@@ -720,8 +720,10 @@ local function equipToSlot(slotLabel, itemName, lock, freeEquip, alreadyLocked)
             cmdq.enqueue(26, string.format('/equip %s "%s"', slot, nm));         -- then equip after it settles
         end
     else
+        -- The game's native /equip (purge Phase 3: '/lac equip' talked to an
+        -- engine that is gone; the lock branch above already used /equip).
         pcall(function()
-            AshitaCore:GetChatManager():QueueCommand(1, string.format('/lac equip %s "%s"', slot, nm));
+            AshitaCore:GetChatManager():QueueCommand(1, string.format('/equip %s "%s"', slot, nm));
         end);
     end
 end
@@ -750,13 +752,7 @@ local function refreshGear()
             local d = prof.dataDir();
             if d ~= nil then path = d .. 'gear.lua'; end
         end);
-        if path == nil then
-            local party = AshitaCore:GetMemoryManager():GetParty();
-            local name, id = party:GetMemberName(0), party:GetMemberServerId(0);
-            if name == nil or name == '' or id == nil then return; end
-            path = string.format('%sconfig\\addons\\luashitacast\\%s_%u\\dlac\\gear.lua',
-                AshitaCore:GetInstallPath(), name, id);
-        end
+        if path == nil then return; end   -- purge Phase 4: native home only
         local chunk = loadfile(path);
         if chunk == nil then return; end
         local ok, g = pcall(chunk);
@@ -1094,19 +1090,14 @@ end
 local function readFileText(p) local f=io.open(p,'r'); if f==nil then return nil; end local t=f:read('*a'); f:close(); return t; end
 local function writeFileText(p,t) local f=io.open(p,'w'); if f==nil then return false; end f:write(t); f:close(); return true; end
 
--- <install>\config\addons\luashitacast\<Char>_<id>\  (or nil if not logged in).
--- This is the LAC char base: <JOB>.lua shims and seeded engine copies live
--- here in EVERY mode (they are LuaAshitacast concepts). dlac's own data goes
--- through dataDir() below, which follows the native-engine storage move.
+-- The LEGACY char base -- old <JOB>.lua files live here; the importers' door.
+-- Delegates to profiles.charBase, the ONE sanctioned composer of that path
+-- (purge Phase 4: the allowlist test pins it there and nowhere else).
 local function charBase()
     local base = nil;
     pcall(function()
-        local party = AshitaCore:GetMemoryManager():GetParty();
-        local name  = party:GetMemberName(0);
-        local id    = party:GetMemberServerId(0);
-        if name ~= nil and name ~= '' and id ~= nil then
-            base = string.format('%sconfig\\addons\\luashitacast\\%s_%u\\', AshitaCore:GetInstallPath(), name, id);
-        end
+        local prof = require('dlac\\profiles');
+        base = prof.charBase();
     end);
     return base;
 end
@@ -2895,7 +2886,7 @@ local function commitCurrentSet(job, quiet)
             -- Hot-swap the running engine's copy: gProfile.Sets is a live table in the
             -- LAC state, so no LAC reload -- the engine confirms (or refuses) in chat.
             pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl sets reload'); end);
-            setStatus(string.format('%s "%s" for %s -- live now (hot-swapped; Reload LAC only if chat says the swap failed).  backup: %s%s',
+            setStatus(string.format('%s "%s" for %s -- live now (hot-swapped).  backup: %s%s',
                 tostring(action), tostring(M.workingSetName), tostring(job), tostring(backup), emptyNote), false);
         end
         return true;
@@ -3773,7 +3764,7 @@ local function renderSetsTab(job, level)
     if _cdirty then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
     if imgui.Button('Commit##setcommit', { 62, 22 }) then commitCurrentSet(job); end
     if _cdirty then imgui.PopStyleColor(1); end
-    if imgui.IsItemHovered() then imgui.SetTooltip('Saves your current set into sets.Dynamic in your job file (writes <JOB>.lua). Reload LAC afterward.'); end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Saves your working set into the active profile (sets\\<JOB>.lua) -- live on the next dispatch.'); end
     imgui.SameLine();
     if imgui.Button((ui.showWeights and 'Weights v' or 'Weights >') .. '##setwtoggle', { 84, 22 }) then ui.showWeights = not ui.showWeights; end
     if imgui.IsItemHovered() then imgui.SetTooltip('Toggle the Stat Weights editor -- opens in its own resizable, movable window.'); end
@@ -4078,7 +4069,7 @@ local function renderSetsTab(job, level)
     if ui._delStaticOpen then imgui.OpenPopup('##dlac_delstaticpop'); ui._delStaticOpen = false; end
     if imgui.BeginPopup('##dlac_delstaticpop') then
         imgui.TextColored(COL.HEADER, 'Delete a static set');
-        fmt.textWrapped(COL.DIM, 'Legacy sets at the root of <JOB>.lua (backed up first; the live LAC table keeps the set until the next Reload LAC). Trigger rules still pointing at it will show [missing].');
+        fmt.textWrapped(COL.DIM, 'Legacy sets at the root of <JOB>.lua. READ-ONLY since the purge: old job files stay untouched and importable -- copy what you need instead of deleting.');
         imgui.Separator();
         imgui.BeginChild('##dstatlist', { 260, 200 }, true);
         local statics = profsets.staticSetNames();
@@ -4091,15 +4082,9 @@ local function renderSetsTab(job, level)
             local red = (ImGuiCol_Button ~= nil);
             if red then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
             if imgui.Button('DELETE ' .. fmt.esc(ui._delStatic) .. '##dstatgo', { 0, 24 }) then
-                local ok, action, backup = nil, nil, nil;
-                pcall(function() ok, action, backup = setmgr.deleteStaticSet(job, ui._delStatic); end);
-                if ok == true then
-                    profsets.invalidate();
-                    setStatus(string.format('deleted static "%s" -- Reload LAC to apply.  backup: %s',
-                        tostring(ui._delStatic), tostring(backup)), false);
-                else
-                    setStatus('delete static failed: ' .. tostring(action), true);
-                end
+                -- Purge law: nothing writes under luashitacast\ -- old job
+                -- files are read-only import territory now.
+                setStatus('legacy job files are READ-ONLY since the purge -- nothing was deleted (statics stay importable via "Copy from static").', true);
                 ui._delStatic = nil;
                 imgui.CloseCurrentPopup();
             end

@@ -780,11 +780,7 @@ local function dataDir()
         local prof = require('dlac\\profiles');
         d = prof.dataDir();
     end);
-    if d ~= nil then return d; end
-    local name, id = pNameId();
-    if name == nil or id == nil then return nil; end
-    return string.format('%sconfig\\addons\\luashitacast\\%s_%u\\dlac\\',
-        AshitaCore:GetInstallPath(), name, id);
+    return d;   -- native home or nil (purge Phase 4: no legacy fallback composition)
 end
 
 -- Absolute path to the staging file, in the dlac data home next to gear.lua.
@@ -1019,9 +1015,7 @@ local function charBackupDir()
         local prof = require('dlac\\profiles');
         r = prof.charRoot();
     end);
-    if r ~= nil then return r .. 'backups\\'; end
-    local _pn, _pi = pNameId();
-    return string.format('%sconfig\\addons\\luashitacast\\%s_%u\\backups\\', AshitaCore:GetInstallPath(), _pn, _pi);
+    return (r ~= nil) and (r .. 'backups\\') or nil;   -- purge Phase 4: no legacy fallback
 end
 
 -- safewrite validator for gear.lua: RUN the candidate file in a sandbox (env

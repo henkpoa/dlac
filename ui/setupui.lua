@@ -204,13 +204,9 @@ setup.migrateToCleanProfiles = function()
         return;
     end
     if (done or 0) > 0 then
-        local msg = string.format('Moved %d job file(s) to the clean dlac standard -- originals in backups\\pre-profiles\\ (details in chat). Old sets: Sets tab "Copy from". Old group tables: Triggers tab, Groups, "Scan my Lua". Reloading LuaAshitacast...', done);
+        local msg = string.format('Migrated %d job file(s) of data into the profile store -- originals untouched, backups in backups\\pre-profiles\\ (details in chat). Old sets: Sets tab "Copy from". Old group tables: Triggers tab, Groups, "Scan my Lua".', done);
         D.status(msg);
         pcall(function() print('[dlac] ' .. msg); end);
-        -- (Used to arm the red "Reload LAC" header button; that button was deleted
-        -- 2026-07-24 -- legacy LAC is not a design consideration. The reload is
-        -- queued right here anyway, so nothing is lost.)
-        pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/addon reload luashitacast'); end);
     else
         D.status('Setup: nothing to migrate -- every job file is already the clean shim.');
     end

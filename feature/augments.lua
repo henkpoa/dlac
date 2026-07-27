@@ -322,17 +322,7 @@ local function dumpPath()
         local d = prof.dataDir();
         if d ~= nil then p = d .. 'augdump.txt'; end
     end);
-    if p ~= nil then return p; end
-    pcall(function()
-        local party = AshitaCore:GetMemoryManager():GetParty();
-        local name  = party:GetMemberName(0);
-        local id    = party:GetMemberServerId(0);
-        if name ~= nil and name ~= '' and id ~= nil then
-            p = string.format('%sconfig\\addons\\luashitacast\\%s_%u\\dlac\\augdump.txt',
-                AshitaCore:GetInstallPath(), name, id);
-        end
-    end);
-    return p;
+    return p;   -- native home or nil (purge Phase 4: no legacy fallback)
 end
 
 -- Write a shareable augment report (every augmented item: name, id, decoded augments,
