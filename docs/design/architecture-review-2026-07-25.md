@@ -7,6 +7,12 @@
 >
 > **The one open question for Henrik: which candidate do we grill first?**
 > My recommendation is **#2 (Statefile write half)**; the biggest long-term prize is **#1**.
+>
+> **2026-07-27 update — #1 has grown.** Henrik has asked for a two-way Claim Arbiter and an end to
+> the single gear-build point, and parked the decision for a dedicated session: *"this is too
+> central and too big of a decision to just be made on a whim."* The upgraded scope, the
+> early-binding diagnosis behind it and a staging sketch are recorded **inside candidate #1** —
+> read that block before grilling #1, and treat the old #1 text as the floor, not the goal.
 
 Base: `main` @ 2332088, addon v2026.07.25b. Line anchors are as of that commit — treat them as
 anchors, not gospel (the repo moves fast; `docs/architecture.md` carries the same warning).
@@ -410,7 +416,9 @@ Independent of which candidate is picked:
 ## Resume instructions
 
 1. Open `docs/design/architecture-review-2026-07-25.html` in a browser (or re-read this file).
-2. **Ask Henrik which candidate to explore.** Recommendation: **#2**, then **#1**.
+2. **Ask Henrik which candidate to explore.** Recommendation: **#2**, then **#1** — but note the
+   2026-07-27 block inside #1: Henrik has already named #1's territory as the thing he wants thought
+   through properly, so it may now outrank #2 on his own priorities. Ask; do not assume.
 3. Run `/grilling` on the chosen candidate — constraints, dependencies, the shape of the deepened
    module, what sits behind the seam, which tests survive.
 4. Side effects inline as decisions crystallize (`/domain-modeling`):
