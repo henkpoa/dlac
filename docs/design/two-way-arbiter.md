@@ -427,9 +427,10 @@ machine.
 > runs the single-set + worn fallback, and direct callers keep the old judgement
 > (ARK7/7b). A dominant claim reserver suppresses floor slots by the general rule
 > (ARK4); a beaten claim piece is killed v135-style, ladder-less this slice (ARK5).
-> Suites 4026 + 693, both runtimes. **Awaiting field confirmation — the craft bench:
-> Midras's Helm +1 lands over the worn Royal Cloak; with Idle re-claiming Body, the
-> cloak falls to Scorpion Harness +1.** Remaining stage-4 slices: claim-side ladders
+> Suites 4026 + 693, both runtimes. **FIELD-CONFIRMED 2026-07-27 on the craft bench —
+> "now it equips Scorpion Harness +1 in body and midrass helm +1 in head. So test case
+> 100 % works, field validated" — and queued (hard rule 14).** Remaining stage-4
+> slices: claim-side ladders
 > (AutoAmmo rungs, hobby manifest chains), sentinel rows in the verdict (a reserver
 > can no longer bulldoze a locked/free slot), `ctx.pinReserved` + naked-voids
 > retirement.

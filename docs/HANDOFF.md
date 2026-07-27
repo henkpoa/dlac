@@ -298,9 +298,24 @@ like before."* Waits only on the go-ahead.
   rawequal-pinned delegation (ARM2*, `LOCK_HELD` identity preserved);
   `arbitrate(session)` owns the apply order and `M.dispatch` executes the plan.
   dispatch.lua shed 547 net lines.
-- (Stage 4 slice 1 — `af37d01`, v141, `27zc`, dominance across rank — is on dev but
-  **NOT yet field-looked**; its acceptance is the craft bench. It joins the queue on
-  Henrik's confirmation, not before.)
+### Dominance across rank — ADR 0027 stage 4, slice 1 — `af37d01` (2026-07-27)
+
+Engine v140 → **v141**, addon `27zb` → **`27zc`**. Suites **4026 + 693**, Windows and WSL
+lua5.4. **FIELD-CONFIRMED 2026-07-27** by Henrik on the craft-bench acceptance — *"now it
+equips Scorpion Harness +1 in body and midrass helm +1 in head. So test case 100 % works,
+field validated."* Waits only on the go-ahead.
+
+- The ratified cross-rank law (ADR 0027 item 2) live: verdict entries carry their Arbiter
+  row; strength = rank outright across rows, trigger priority within the floor, ties
+  favor the reserver, `ord` excluded (ARK1–ARK3 pin each clause).
+- **Worn pieces are not claims** (the Mindie ruling generalized): `ctx.reserveGlobal`
+  makes the dispatch verdict the one reservation authority — no floor or claim pass runs
+  the single-set + worn fallback; direct callers keep the old judgement (ARK7/7b). The
+  field-hit craft-bench case (worn Royal Cloak silently dropping the Craft claim's
+  Midras's Helm +1) is closed by exactly this.
+- A dominant claim-row reserver suppresses floor slots by the general rule (ARK4);
+  `ctx.pinReserved` stays as a redundant belt this slice. Deferred, named: claim-side
+  ladders, sentinel rows (lock/ceiling bulldozing), pinReserved + naked-voids retirement.
 
 ### Ladders on demand + the fall — ADR 0027 stages 1–2 — `b26a1da` + `ad7ab30` (2026-07-27)
 
