@@ -200,8 +200,29 @@ end
 -- THE dlac data home: profiles\, profile.lua pointer, gear.lua, modestate,
 -- watcher state files, debug handoffs... -- everything dlac reads and writes
 -- about a character lives under this one directory.
+-- First-run latch (firstRunInit below owns it; declared here because dataDir
+-- reads it, and a Lua upvalue binds only to a local declared above).
+local _firstRun = { done = false, action = nil, warned = false };
 function M.dataDir()
     if M.nativeMode() then return M.nativeCharBase(); end
+    -- NATIVE-FIRST HOLD (field 2026-07-27, Xvs's clean reinstall: BOTH config
+    -- trees deleted, and "migrate to native" still appeared). While the engine
+    -- flag is absent and the first-run decision has not latched, NO caller may
+    -- compose the LEGACY home: the 07-23 fix held maintainStorage's own
+    -- writers, but the login gear scan rode THIS door during the undecided
+    -- window, wrote gear.lua under luashitacast\, and the next beat read
+    -- dlac's own file back as "existing legacy user" (manufactured evidence).
+    -- nil reads as "not logged in yet" everywhere, so every writer holds until
+    -- firstRunInit resolves -- seconds, at boot, once per install. (ADR 0025
+    -- made absence decide native outright, so this now guards only the window
+    -- before the first storage beat, or a failed flag write.) The hold
+    -- applies only where the decision CAN resolve: the addon state runs
+    -- firstRunInit on the storage watch; the LuaAshitacast state never does,
+    -- and its very presence (gFunc, dispatch's own inLac signal) already IS
+    -- the legacy verdict -- holding there would starve a flag-less legacy
+    -- user's engine of its data home forever.
+    if not _firstRun.done and rawget(_G, 'gFunc') == nil
+       and M.engineFlagState() == 'absent' then return nil; end
     local b = charBase();
     return b and (b .. 'dlac\\') or nil;
 end
@@ -541,6 +562,8 @@ end
 -- (the first matching char folder -- the loud boot line names it). scanned is
 -- false only when the listing APIs genuinely failed -- the caller must NOT treat
 -- "couldn't tell" as "fresh" (an existing legacy user would be wrongly flipped).
+-- NO BOOT CALLER since ADR 0025 (absence of the flag decides native outright);
+-- kept for migrate-era surfaces until the LuaShitacast purge decides its fate.
 -- FIELD 2026-07-23 (Henrik's fresh-install sim): in-game, ashita.fs.get_dir
 -- returns nil for a MISSING directory -- the same shape as an API failure --
 -- while the headless popen fallback returns {} (the tests masked the field
@@ -579,45 +602,40 @@ function M._legacyProbe(dd)
 end
 
 -- PURE first-run decision (headless-tested). flagState in {'native','legacy',
--- 'absent'}; legacyPresent boolean. Returns the boot action:
+-- 'absent'}. legacyPresent is ACCEPTED BUT NO LONGER DECIDES (ADR 0025 --
+-- Henrik, 2026-07-27: "make it so users start in native mode by default,
+-- regardless if there are dlac files under luashitacast conf". Everyone has
+-- migrated, and the old rule let leftovers -- twice, files dlac itself wrote
+-- -- sentence a fresh install to legacy). Returns the boot action:
 --   'respect'      -> a flag is already on disk: honor it, never rewrite
---   'legacy'       -> no flag but legacy data present: stay legacy, write nothing
---   'write-native' -> no flag, no legacy data: fresh install -> born native
+--                     (/dl engine native off stays the explicit escape hatch)
+--   'write-native' -> no flag: BORN NATIVE, always. Legacy data is a
+--                     MIGRATION SOURCE now (engineAutoMigrate copies it in on
+--                     the first native login), never a verdict.
 function M.firstRunAction(flagState, legacyPresent)
     if flagState ~= 'absent' then return 'respect'; end
-    if legacyPresent then return 'legacy'; end
     return 'write-native';
 end
 
--- Boot seam: run the decision once and, for a FRESH install ONLY, arm the Engine
+-- Boot seam: run the decision once and, when no flag exists, arm the Engine
 -- flag native. Idempotent -- a written flag makes engineFlagState() ~= 'absent'
--- forever after, so re-runs return 'respect'. Returns the action, or nil when it
--- could not decide yet (listing not available / flag write failed) so the caller
--- retries on the next beat rather than latching a half-answer -- and HOLDS ALL
--- STORAGE WRITERS meanwhile (dlac.lua maintainStorage): an undecided beat must
--- stay INERT, or dlac seeds the legacy home and then reads its own files as
--- "existing legacy user" (Henrik's 2026-07-23 fresh-install sim -- the
--- self-manufactured-evidence bug). A RESOLVED decision is silent (the player
--- is not told about first runs or engines); the two FAILURE modes warn once --
--- silence has no author, and a broken boot should name its own domino.
-local _firstRun = { done = false, action = nil, warned = false };
+-- forever after, so re-runs return 'respect'. Returns the action, or nil when
+-- the flag WRITE failed, so the caller retries on the next beat rather than
+-- latching a half-answer -- and HOLDS ALL STORAGE WRITERS meanwhile (dlac.lua
+-- maintainStorage + dataDir's own hold). Since ADR 0025 that write failure is
+-- the ONLY undecided cause left: the boot no longer scans for legacy data at
+-- all, so the "listing unavailable" limbo (Henrik's 2026-07-23 fresh-install
+-- sim; Xvs's 2026-07-27 clean reinstall -- both times dlac read files it
+-- wrote itself as "existing legacy user") is unreachable by construction.
+-- A RESOLVED decision is silent (the player is not told about first runs or
+-- engines); the write-failure warns once -- silence has no author, and a
+-- broken boot should name its own domino.
+-- (_firstRun itself is declared up with the path authorities: dataDir's
+-- undecided hold reads it, and an upvalue must be declared above its reader.)
 function M.firstRunInit()
     if _firstRun.done then return _firstRun.action; end
     local flagState = M.engineFlagState();
-    local present = true;
-    if flagState == 'absent' then
-        local ok;
-        present, ok = M.legacyDataPresent();
-        if not ok then
-            if not _firstRun.warned then
-                _firstRun.warned = true;
-                pcall(function() print('[dlac] first-run: cannot scan for legacy data yet (listing unavailable)'
-                    .. ' -- deciding nothing, WRITING nothing, retrying each beat.'); end);
-            end
-            return nil;   -- not latched -- retry next beat, all writers held
-        end
-    end
-    local action = M.firstRunAction(flagState, present);
+    local action = M.firstRunAction(flagState, false);
     if action == 'write-native' then
         local okw, whyw = M.setNativeMode(true);
         if okw ~= true then

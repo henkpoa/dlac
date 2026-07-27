@@ -25,7 +25,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.07.27f';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.07.27i';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
 addon.desc    = 'Build gear sets and view live stats with level scaling (for LuaAshitacast).';
 
@@ -179,7 +179,9 @@ local function maintainStorage()
     -- "existing legacy user": dlac manufactured its own legacy evidence and
     -- offered Migrate to a fresh install. Undecided now holds EVERY writer,
     -- native or legacy, until the decision resolves (it retries on this same
-    -- watch; a held beat writes nothing and costs nothing).
+    -- watch; a held beat writes nothing and costs nothing). Since ADR 0025
+    -- (no flag -> born native, no legacy scan) the only undecided cause left
+    -- is a failed flag write.
     local action = nil;
     pcall(function()
         local prof = require('dlac\\profiles');

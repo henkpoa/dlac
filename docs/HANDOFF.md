@@ -230,7 +230,20 @@ that performs the promotion **empties this section in the same commit as the mer
 entry left standing here after a merge is how "is this on main?" becomes unanswerable —
 see hard rule 14, which this section exists to serve.
 
-*(Empty. Last promotion: 2026-07-27 — **the hobby-bar day**, `96b49be`..`3446978`, addon
+*(Empty. Last promotion: 2026-07-27 evening — **the Xvs engine-era batch**,
+`0f1ae6e`..`c074da9`, addon `2026.07.27f` → **`2026.07.27i`**, engine **v130**, ADR 0025 —
+on Henrik's go-ahead: *"Everything is working perfectly now. … Regardless, push to main."*
+Field-confirmed on Xvs's live installs, the boxes the bugs owned: **the native flatten no
+longer waits for the GUI** (`utilsModule()` lazy require at all five bare
+`package.loaded['dlac\\utils']` sites — the per-session "won't equip whatsoever" killer),
+**dataDir holds while the first run is undecided** (the manufactured-legacy-evidence
+race), and **born native, always** (ADR 0025: flag absent → native, the boot never scans
+luashitacast\, an explicit flag stays the only road to legacy). Even the WS-menu-closing
+weirdness stopped with it — the sick engine's full re-equip volleys were colliding with
+open native menus via the server's 0x0AC rebuild. The record is the merge commit on
+`main`.)*
+
+*(Previous promotion: 2026-07-27 — **the hobby-bar day**, `96b49be`..`3446978`, addon
 `2026.07.27a` → **`2026.07.27e`**, on Henrik's go-ahead: *"merge dev into main and push
 both."* Two halves, promoted as one. **The searches came to the bar**: Fishing's
 `TARGET FISH` section became a Floating window (`fishui.renderSearch` →
@@ -306,6 +319,46 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
+- **2026-07-27: the Xvs field day — THREE engine-era fixes, ON MAIN, FIELD-CONFIRMED**
+  (`0f1ae6e` v130/`2026.07.27g`, `67edec8` `2026.07.27h`, `c074da9` `2026.07.27i`/ADR
+  0025; promoted the same evening on Henrik's go-ahead after Xvs confirmed:
+  *"Everything is working perfectly now"* — equips, commits, reinstall, and even the
+  WS-menu weirdness gone).
+  1) **The native flatten never ran without the GUI.** Every dispatch utils lookup read
+  `package.loaded['dlac\\utils']` bare — "loaded first in the LAC state", the job shim's
+  own first require — but the NATIVE state has no shim and nothing loads utils at boot,
+  so every install refused `flatten produced no sets (world not settled)` every 0.4s
+  (Xvs: 20 COR sets, forever; the GUI showed sets fine because it reads FILES, while the
+  refusal nil'd the ENGINE store — `/dl lock set Idle` found nothing and nothing
+  equipped) until a gearui picker's own lazy `pcall(require)` healed the session. Hence
+  "DRK works, BLU/COR don't": per-SESSION, not per-job — a reload broke DRK too.
+  Mindie's own mpwarm.txt opens with the same wall EVERY boot, healed in ~1.6s by GUI
+  habit — the "~2s of designed refusals" lore was this bug all along. `utilsModule()`
+  now requires lazily at all five sites (cycle-safe in both states); tests RQU0-2.
+  2) **Manufactured legacy evidence, round two.** Xvs's CLEAN reinstall (both config
+  trees deleted) still got "migrate to native": the 07-23 fix held maintainStorage's OWN
+  writers during the undecided first-run window, but `profiles.dataDir` kept composing
+  the LEGACY home (flag absent → nativeMode false), so the login gear scan planted
+  gear.lua under `luashitacast\` and the next beat read dlac's own file back as legacy
+  evidence. dataDir now answers nil until firstRunInit latches — addon state only (the
+  LAC state's presence IS the legacy verdict; holding there would starve a flag-less
+  legacy engine); tests NO50/b, and NE9-14's legacy checks now run under a DECIDED
+  legacy world. Pre-promotion field workaround: `/dl engine native on` once on a fresh
+  install skips the race outright.
+- **2026-07-27, third fix: BORN NATIVE, ALWAYS (ADR 0025, `2026.07.27i`)** — Henrik:
+  *"Make it so users start in native mode by default, regardless if there are dlac files
+  under luashitacast conf."* `firstRunAction('absent', *)` = `'write-native'`
+  unconditionally; the boot no longer scans for legacy data at all (the can't-tell limbo
+  is unreachable); an explicit flag on disk is still honored (`/dl engine native off` =
+  the only road to legacy); flag-less legacy data becomes a MIGRATION SOURCE
+  (`engineAutoMigrate` carries it in on first native login). Tests NO5/NO47/NO49/NO50b
+  re-pinned to the new law.
+- **Henrik's 07-27 ruling — the LuaShitacast PURGE**: *"remove anything that points to
+  luashitacast now. Everyone have migrated"* (stated exception: reading legacy job luas
+  for static imports/tables stays). Not started — wants its own staged plan: the 5s
+  legacy seeder, `inLac()` branches, check.lua's LAC-tree reads (#131's false alarms),
+  "Reload LAC" strings + the Triggers-tab banner, legacy fallback readers. The two fixes
+  above are compatible first steps, not the purge itself.
 - **The hobby-bar day — DONE, ON MAIN** (promoted 2026-07-27, `96b49be`..`3446978`,
   `2026.07.27a`→`e`; the **Ready to merge** section above stays the authority on status —
   this bullet is the detail, not the queue). Two halves, promoted as one: the searches, then the tab art

@@ -49,7 +49,7 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 129;  -- 129: /dl disable -- free equip, the native-era answer to /lac disable (Henrik 2026-07-26: "make it claim the slot / slots, then don't do anything at all with it, so people can free equip all they want without DLAC intervention"). Not a lock (a lock is a veto INSIDE the rank walk -- four rows punch through it) and not a claim to dress (every other row wins a slot in order to put something there; this one wins it to write nothing). It is the CEILING: pinned first in ARB_ORDER_DEFAULT, undraggable like the Triggers floor, and enforced at engineEquipSet -- the one write seam -- rather than in equipResolved's per-slot chain, because the whole-table post-passes that run after that chain write slots the set never named (mp-stage's battery, trinket-vs-ranged's worn-Ammo displace) and would put a slot straight back. Registered as a claim ONLY for attribution, so /dl why and the Priority panel can name it and woven MaxMP cedes it for free. Shares M.worldWatch with naked / locked set / slot locks (v124's one lifetime rule): drops on a main job change and on leaving the world, never written to disk. The Equipped tab's "Free equip" switch now drives THIS instead of /lac disable, which under the native engine talked to a LuaAshitacast that no longer does the equipping and therefore did nothing at all. ADR 0024; tests DS1-DS30.
+M.VERSION = 130;  -- 130: the native flatten no longer waits for the GUI (Xvs field case 2026-07-27). Every utils lookup assumed "loaded first in the LAC state" -- the job shim's first require -- but the NATIVE state has no shim and NOTHING loaded utils at boot: package.loaded read nil, installSets skipped the flatten, and every install refused "flatten produced no sets (world not settled)" every 0.4s until a GUI picker's own lazy pcall(require, 'dlac\\utils') happened to run (gearui's isDualWieldAvailable / subCandidateOk -- the accidental medic; that's why it read as per-JOB in the field: the healed session's job "worked", a reload broke it). utilsModule() now requires lazily at call time -- cycle-safe, see its comment. Tests RQU0-RQU2. 129: /dl disable -- free equip, the native-era answer to /lac disable (Henrik 2026-07-26: "make it claim the slot / slots, then don't do anything at all with it, so people can free equip all they want without DLAC intervention"). Not a lock (a lock is a veto INSIDE the rank walk -- four rows punch through it) and not a claim to dress (every other row wins a slot in order to put something there; this one wins it to write nothing). It is the CEILING: pinned first in ARB_ORDER_DEFAULT, undraggable like the Triggers floor, and enforced at engineEquipSet -- the one write seam -- rather than in equipResolved's per-slot chain, because the whole-table post-passes that run after that chain write slots the set never named (mp-stage's battery, trinket-vs-ranged's worn-Ammo displace) and would put a slot straight back. Registered as a claim ONLY for attribution, so /dl why and the Priority panel can name it and woven MaxMP cedes it for free. Shares M.worldWatch with naked / locked set / slot locks (v124's one lifetime rule): drops on a main job change and on leaving the world, never written to disk. The Equipped tab's "Free equip" switch now drives THIS instead of /lac disable, which under the native engine talked to a LuaAshitacast that no longer does the equipping and therefore did nothing at all. ADR 0024; tests DS1-DS30.
                   -- 128: 128: AutoAmmo asks what is in RANGE before it picks (field, Henrik 2026-07-26: "AutoAmmo does NOT dictate if it's bolt, arrows or what not that gets equipped. That is 100% decided on what gets put in ranged"). resolveAmmoPlan was type-BLIND -- it took the first `ranged`-flagged entry with stock, so a bolt above your arrows won with a bow equipped -- and the panel's Bullets/Bolts/Arrows selector never constrained it (categoryOf is a VIEW, stored nowhere). The cost was not a wasted swap: charutils.cpp EquipItem STRIPS THE OTHER SLOT on an incompatible Range/Ammo pair, so the bolt took the bow off, the trigger re-equipped it, and the two flapped forever -- ADR 0010's failure through the skill/subskill door instead of the rslot one. New pure M.pairsWith over a "<skill>:<subskill>" key (26:1 gun/bullet, 26:0 crossbow/bolt, 26:2 culverin/shell, 27:0 boomerang/pebble, 27:3 shuriken, 0:10 Animator/oil), three-valued so an unknown pair degrades to today's behaviour instead of switching AutoAmmo off; ARCHERY is exempt from the subskill half exactly as the server writes it (Shortbow 25:0 and Longbow 25:4 share arrows). Range is never written -- AutoAmmo only ever READS it. Two rulings, both Henrik's: no ranged weapon worn = do nothing at all (safe -- with Range empty the server refuses the shot, so nothing can be consumed), and a weapon worn with nothing in the list able to pair = hold, never force a mismatch in. THROWING with an empty Range (a NIN's shuriken, CanUseRangedAttack's `|| PAmmo->isThrowing()`) is the ONE known exception and stays parked behind the §8 NIN field tests. The key rides the manifest like RSlot (gearimport stamps Pair from the catalog's new field); worn Range falls back to the client resource's Skill when the manifest predates it, so the update alone separates bow/gun/throwing for everyone and a manifest refresh upgrades it to gun-vs-crossbow. Tests PW1-PW14, AM40-AM58.
                   -- 127: trigger CASES, the schema backbone (issue #126, slice 2/5; ADR 0023) -- rules gain an optional `cases` list (a second `&`/`|` tier: op + the same two legs a body has), evaluated by matches()/matchedCase() over a factored legMatches so both tiers share one code path; normalize validates + drops empty cases + strips the always-true `hasCases` version guard; auto-priority + ruleLabel span every leg of every case (case-LESS rules match/label/serialize byte-for-byte as before -- pinned). serializeTriggers is oldest-form-first (a `| case` of only `&` rows -> a whenAny multi-entry; only `&` cases and `| cases` with internal OR use the new list) and stamps the guard so OLDER engines drop the rule with the standard warn instead of misreading it. Seeded-file bump: normalize + matches run engine-side (hard rule 4). Tests CX1-CX35, MC19-23. (PR #132 shipped as v126/2026.07.26c off a pre-97f1edc dev; renumbered at merge.)
                   -- 126: the /dl why trace can no longer outlive the sets store it described (field, Mindie 2026-07-26 01:31): the retrace sig now carries the store REVISION (M.modesRev -- bumped by every install and re-flatten, 5668/5714), so lines built against the empty boot-window store ("[NOT FOUND in profile Sets]", true for ~2s of designed install refusals) die the moment the install lands, instead of printing with a fresh timestamp for the rest of the session while equips worked fine. The v118 law applied to the trace: THE INSTALL INVALIDATES THE BELIEF. Display only, no equip change. Tests TRC0-TRC3 (the trace-vs-store contract, driven through the real command handler + dispatch like CMD).
@@ -5108,6 +5108,24 @@ local function pinReservedSlots(pEquip)
 end
 M._pinReservedSlots = pinReservedSlots;   -- test seam
 
+-- utils, lazily. Every lookup below used to read package.loaded bare -- "loaded
+-- first in the LAC state" (the job shim's own first line is require dlac\utils).
+-- The NATIVE state has no shim: nothing loads utils at boot, the lookups read
+-- nil, the flatten silently never ran, and every install refused as "world not
+-- settled" -- until a GUI picker's own lazy pcall(require) happened to run
+-- (Xvs field case, 2026-07-27: sessions healed by opening the right tab, so it
+-- read as per-JOB breakage in the field). Require-at-call is cycle-safe in both
+-- states: in LAC utils is loaded long before any dispatch runs; natively utils'
+-- own require('dlac\\dispatch') hits package.loaded and binds THIS instance,
+-- so modesRev stays visible to rebuildSets.
+local function utilsModule()
+    local u = package.loaded['dlac\\utils'];
+    if u ~= nil then return u; end
+    local ok, req = pcall(require, 'dlac\\utils');
+    if ok and type(req) == 'table' then return req; end
+    return nil;
+end
+
 -- Craft Sub-vs-Main guard (Henrik, field case: the overlay's Kupo Shield vs a
 -- scythe in the Default set). When the overlay owns SUB but brings no MAIN, a
 -- set Main that cannot PAIR with that Sub (2H/H2H vs a shield -- utils'
@@ -5124,7 +5142,7 @@ local function craftMainGuard(cEquip)
     if cEquip == nil or cEquip.Sub == nil or cEquip.Main ~= nil then return nil; end
     local g = nil;
     pcall(function()
-        local u = package.loaded['dlac\\utils'];   -- loaded first in the LAC state; no require (circular)
+        local u = utilsModule();
         if type(u) ~= 'table' or u.resolveGearName == nil or u.subSlotAllowed == nil then return; end
         local subRec = u.resolveGearName(cEquip.Sub);
         if type(subRec) ~= 'table' then return; end
@@ -5328,7 +5346,7 @@ function M.dispatch(event)
             -- nothing changed -- checkRebuildNeeded's own latch).
             if not inLac() and type(M._nativeSets) == 'table' then
                 pcall(function()
-                    local u = package.loaded['dlac\\utils'];
+                    local u = utilsModule();
                     if u ~= nil and type(u.rebuildSets) == 'function' then
                         M._nativeSets = u.rebuildSets(M._nativeSets) or M._nativeSets;
                     end
@@ -6362,7 +6380,7 @@ local function installSets(fresh)
             store.Dynamic = fresh.Dynamic;
             M.modesRev = (M.modesRev or 0) + 1;
             pcall(function()
-                local u = package.loaded['dlac\\utils'];
+                local u = utilsModule();
                 if u ~= nil and type(u.rebuildSets) == 'function' then store = u.rebuildSets(store) or store; end
             end);
             -- A HOLLOW INSTALL IS NOT AN INSTALL (v118, warm-trace line 16:
@@ -6408,7 +6426,7 @@ local function installSets(fresh)
     prof.Sets.Dynamic = fresh.Dynamic;
     M.modesRev = (M.modesRev or 0) + 1;   -- the rebuild signal utils watches
     pcall(function()
-        local u = package.loaded['dlac\\utils'];
+        local u = utilsModule();
         if u ~= nil and type(u.rebuildSets) == 'function' then u.rebuildSets(prof.Sets); end
     end);
     _mpLow.at, _mpLow.sig, _mpLow.sigAt = 0, nil, nil;   -- install invalidates the belief (v118)
@@ -7636,7 +7654,7 @@ if engineActive() then
                 -- re-flatten the Dynamic sets (mode-gated entries pick differently)
                 -- and re-run the Default dispatch so the equip follows the mode.
                 pcall(function()
-                    local u = package.loaded['dlac\\utils'];
+                    local u = utilsModule();
                     if u == nil or type(u.rebuildSets) ~= 'function' then return; end
                     local prof = rawget(_G, 'gProfile');
                     if prof ~= nil and type(prof.Sets) == 'table' then
