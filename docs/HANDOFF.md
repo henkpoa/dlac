@@ -247,7 +247,7 @@ lua5.4. **FIELD-CONFIRMED 2026-07-27** by Henrik — *"what I tried seem to work
 only on the go-ahead. The pair-law family lives in `gear/arbiter.lua`; every dispatch
 sends ONE merged plan (OS1 pins exactly-one-send; the map is identical by construction).
 
-### Stage 5: the collapse retirement — 2026-07-28, NOT YET FIELD-CONFIRMED
+### Stage 5: the collapse retirement — `58a7664` (2026-07-28)
 
 Addon `27zm` → **`2026.07.28a`** (engine untouched — `M.VERSION` stays 151). Suites
 **4075 + 693**, Windows and WSL lua5.4. The LAST stage of ADR 0027 — the staging is now
@@ -265,10 +265,13 @@ code-complete. What moved (full deviations log in the §7 stage-5 status block o
 - The store-as-cache + `BuildDynamicSets` shrink were already done by stage 1 (recorded);
   marker-expansion-at-install deferred with the follow-ons ("retire gradually", §5).
 
-**Henrik's glance:** Sets tab — the yellow current-pick and slot tiles should read as
-before (the Sub tile may now honestly show what pairs with the planned Main); trigger
-gear warnings (`/dl gearcheck`) should read the same or truer. Field parity everywhere
-else is expected — the engine did not change.
+**FIELD-CONFIRMED 2026-07-28** by Henrik — drove the exact case the migration exists
+for: deleted `dlac:AutoOneiros` from his WHM Weapon set's Sub, added a one-hander under
+a staff Main, and it correctly did not equip — *"We want the sub to show all items,
+including one-handers, since we trust this system to know what works with what. So it
+seems to work as intended."* (The sub-slot hard rule and the pairing law, both halves
+seen working.) Waits only on the go-ahead. **The whole queue above and below is now
+field-confirmed — dev → main carries v147 → stage 5 whole-or-not, on Henrik's go.**
 
 ### Stage 6: the MaxMP fold — `88f0d14` (2026-07-27)
 

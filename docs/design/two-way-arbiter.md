@@ -451,8 +451,10 @@ Follow-ons unlocked, not scoped: `arbiter.preview(claim)` for GUI equip-now surf
 ("would this land, or be fought?"), immediate-equip paths routing through the
 arbitration, the ADR 0002 twin collapse.
 
-> **Stage 5 status: SHIPPED on dev 2026-07-28 (addon `2026.07.28a`; engine untouched, so
-> `M.VERSION` stays 151) — awaiting Henrik's GUI glance.** Where the sketch met the code:
+> **Stage 5 status: SHIPPED on dev 2026-07-28, commit `58a7664` (addon `2026.07.28a`;
+> engine untouched, so `M.VERSION` stays 151); FIELD-CONFIRMED same day — Henrik drove
+> the one-hander-under-a-staff case and got the veto he wanted: "we trust this system
+> to know what works with what... it seems to work as intended."** Where the sketch met the code:
 >
 > - **The store-as-derived-cache and the `BuildDynamicSets` shrink were already DONE by
 >   stage 1's deeper-than-sketched rebuild** — the flatten IS `slotLadder` (filter+sort)
