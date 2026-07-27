@@ -343,268 +343,307 @@ local function warnMissingGear(name)
     print('[dlac] set entry "' .. tostring(name) .. '" is not in the gear table -- typo, or not yet indexed (/dl sync).');
 end
 
+-- ---------------------------------------------------------------------------
+-- THE SLOT LADDER (ADR 0027, stage 1 -- docs/design/two-way-arbiter.md). ONE
+-- evaluator produces each slot's ORDERED candidate list, and BuildDynamicSets
+-- below derives its pick from the ladder's head -- so the flatten and the
+-- ladder cannot drift: the rung order IS the field-proven pick comparator,
+-- kept as a sort instead of a truncation. Nothing consumes the tail yet;
+-- stage 2 (an ineligible piece falls to its next rung) is the first consumer.
+--
+-- The comparator, verbatim from the old two-pass walk (tests LD*):
+--   * an ACTIVE mode-gated entry outranks every unconditional one (specific
+--     beats generic -- the old pass-1/pass-2 split, now a tier); an INACTIVE
+--     one is excluded outright;
+--   * an entry with an explicit level RANGE that is live right now OUTRANKS
+--     every unbounded entry (a range is an instruction, not a hint -- the
+--     Garrison Tunica field case);
+--   * within the same tier the highest item level wins; on an exact tie the
+--     EARLIER list entry keeps its place.
+--
+-- cctx = { mjLevel, isDW } -- the flatten's own context, stamped per rebuild
+-- as M._lastFlattenCtx so on-demand ladders (dispatch.candidatesFor) answer
+-- AS OF the flatten they accompany. modeActive/virtualMinLevel stay LIVE
+-- reads of M.dispatchModule, exactly as the old walk read them.
+--
+-- Returns { items = {rung...}, accs = {rung...}, virt = marker|nil }:
+--   item rung -- { name, level, rank, modeTier, ord, gear = <resolved obj> }
+--   acc rung  -- { name, prio, acc, level, rank, modeTier, ord }  (the
+--                AutoAcc pool competes only among itself -- pool split law)
+--   virt      -- the winning marker STRING (composition is flattenHead's job)
+function M.slotLadder(slotTable, slotName, currentMain, cctx)
+    local out = { items = {}, accs = {} };
+    if type(slotTable) ~= 'table' or type(cctx) ~= 'table' then return out; end
+    local mjLv = tonumber(cctx.mjLevel) or 0;
+    local dwCtx = { dw = (cctx.isDW == true) };
+    local lastVirt, lastBareVirt = nil, nil;
+    local ord = 0;
+    -- pairs(), not ipairs(), on purpose: the old walk iterated pairs() and the
+    -- tie law ("earlier entry keeps the slot") rode that order. Authored slot
+    -- lists are arrays, where the walk is numeric in practice; changing the
+    -- iterator here would be a silent behavior change, not a cleanup.
+    for _, gearVar in pairs(slotTable) do
+        ord = ord + 1;
+        repeat
+            -- Virtual slot entry ('dlac:AutoStaff' / 'dlac:AutoObi'), bare OR
+            -- wrapped -- the Sets tab commits a GATED virtual in wrapper form
+            -- ({ gear = 'dlac:AutoIridescence', mode = 'Weapon:Caster' }). The
+            -- dispatch engine resolves it at equip time (ADR 0004). A wrapped
+            -- virtual honours its mode gate like any entry (field case: only
+            -- bare strings were recognised, so WHM's Caster-gated marker
+            -- flattened to NOTHING). Remember it, but KEEP walking the slot's
+            -- real items -- the best-by-level pick becomes the FALLBACK when
+            -- the virtual can't resolve.
+            local virt, vmode = nil, nil;
+            if type(gearVar) == "string" then
+                virt = gearVar;
+            elseif type(gearVar) == "table" and type(gearVar.gear) == "string" then
+                virt, vmode = gearVar.gear, gearVar.mode;
+            end
+            if virt ~= nil and string.lower(string.sub(virt, 1, 5)) == "dlac:" then
+                if vmode ~= nil then
+                    local dsp = M.dispatchModule;
+                    if dsp == nil or type(dsp.modeActive) ~= 'function'
+                       or dsp.modeActive(vmode) ~= true then break; end
+                end
+                -- A marker is a ladder RUNG at the level of the lowest item
+                -- it can resolve to (dispatch.virtualMinLevel), not a Lv0
+                -- wildcard: below that level it is SKIPPED, so the slot's
+                -- real best-by-level pick owns the flattened set outright
+                -- (Henrik's field case: a leveling WHM's set showed
+                -- dlac:AutoIridescence while actually wearing Pilgrim's
+                -- Wand -- the marker is a Lv51 rung, his Chatoyant Staff).
+                -- nil (no manifest / legacy shapes) keeps always-adopt.
+                local dsp = M.dispatchModule;
+                if dsp ~= nil and type(dsp.virtualMinLevel) == 'function' then
+                    local vok, vlv = pcall(dsp.virtualMinLevel, virt);
+                    if vok and type(vlv) == 'number' and vlv > mjLv then break; end
+                end
+                -- A Sub-slot GRIP marker (dlac:AutoOneiros) obeys the shared
+                -- pairing rule at flatten time exactly like a real grip:
+                -- 2H main -> legal, 1H or no main -> the slot's real items
+                -- win the slot (the engine would only resolve the marker to
+                -- a grip the server then refuses to equip).
+                if slotName == 'Sub'
+                   and string.sub(string.lower(virt), 1, 16) == 'dlac:autooneiros'
+                   and not M.subSlotAllowed({ Name = virt, Type = 'Grip', OneHanded = false, Level = 0 },
+                                            currentMain, dwCtx) then
+                    break;
+                end
+                lastVirt = virt;
+                if vmode == nil then lastBareVirt = virt; end
+                break;
+            end
+
+            local maxLevel = 75; -- If you have passed the max level for the slot, set high so it won't be limiting if it's not specified.
+            local minLevel = 0;
+            local gearVarObject = gearVar;
+
+            -- Wrapper form { gear = <ref>, minLevel/maxLevel/mode, ... }: build a
+            -- COPY of the gear object with the wrapper's fields applied on top --
+            -- individualize augments, override attributes, gate on level or mode.
+            -- (The old in-place merge mutated the SHARED gear.lua record, so one
+            -- item wrapped differently in two sets leaked fields between them.)
+            if type(gearVarObject) == "table" and gearVarObject.gear ~= nil and gearVarObject.Name == nil then
+                local ref = gearVarObject.gear;
+                if type(ref) == "string" then ref = resolveGearName(ref); end
+                local merged = {};
+                if type(ref) == "table" then
+                    for k, v in pairs(ref) do merged[k] = v; end
+                end
+                for k, v in pairs(gearVarObject) do
+                    if k ~= "gear" then merged[k] = v; end
+                end
+                gearVarObject = merged;
+            end
+
+            local gearObject;
+            if type(gearVarObject) == "string" then
+                gearObject = resolveGearName(gearVarObject);
+                if gearObject == nil then
+                    warnMissingGear(gearVarObject);
+                    break;
+                end
+            else
+                gearObject = gearVarObject;
+            end
+
+            -- The AutoAcc pool split (pool law): typed entries compete only
+            -- among themselves; everything else is the normal pick.
+            local isAuto = type(gearObject.autoType) == "string"
+                       and string.lower(gearObject.autoType) == "autoacc";
+
+            -- The mode tier: an ACTIVE mode-gated entry outranks every
+            -- unconditional one; an INACTIVE one is excluded outright (the
+            -- old pass-1/pass-2 split as a comparator tier).
+            local modeTier = 0;
+            if gearObject.mode ~= nil then
+                local dsp = M.dispatchModule;
+                if dsp == nil or type(dsp.modeActive) ~= 'function'
+                   or dsp.modeActive(gearObject.mode) ~= true then break; end
+                modeTier = 1;
+            end
+
+            if gearObject.maxLevel ~= nil then
+                maxLevel = gearObject.maxLevel;
+            end
+            if gearObject.minLevel ~= nil then
+                minLevel = gearObject.minLevel;
+            end
+
+            -- Seems like when loading in, it can't parse items properly at times, so this check will avoid errors.
+            if gearObject.Level == nil then break; end
+            -- if gear level is over Main job level, ignore.
+            if gearObject.Level > mjLv then break; end
+            -- if Main Job level is outside the entry's declared window, ignore.
+            if mjLv > maxLevel then break; end
+            if mjLv < minLevel then break; end
+
+            -- Sub-slot pairing (shared rule, applied per CANDIDATE): DW
+            -- decides whether a 1H off-hand is legal; the list's shield/grip
+            -- is the fallback. H2H mains pair with NOTHING (ADR 0006).
+            if slotName == "Sub"
+               and not M.subSlotAllowed(gearObject, currentMain, dwCtx) then
+                break;
+            end
+
+            -- RANKING (see the comparator note above): a live explicit range
+            -- is tier 1, unbounded is tier 0.
+            local rank = (gearObject.minLevel ~= nil or gearObject.maxLevel ~= nil) and 1 or 0;
+            if isAuto then
+                out.accs[#out.accs + 1] = {
+                    name = gearObject.Name,
+                    prio = math.floor(tonumber(gearObject.removePrio) or 1),
+                    acc  = math.floor(tonumber(gearObject.acc) or 0),
+                    level = gearObject.Level, rank = rank,
+                    modeTier = modeTier, ord = ord,
+                };
+            else
+                out.items[#out.items + 1] = {
+                    name = gearObject.Name, level = gearObject.Level,
+                    rank = rank, modeTier = modeTier, ord = ord,
+                    gear = gearObject,
+                };
+            end
+        until true;
+    end
+    local function better(a, b)
+        if a.modeTier ~= b.modeTier then return a.modeTier > b.modeTier; end
+        if a.rank ~= b.rank then return a.rank > b.rank; end
+        if a.level ~= b.level then return a.level > b.level; end
+        return a.ord < b.ord;
+    end
+    table.sort(out.items, better);
+    table.sort(out.accs, better);
+    -- The virtual winner. Almost always "the last eligible virtual in file
+    -- order" -- but the old pass structure carried a QUIRK, preserved here
+    -- and pinned by LD8 so it can only ever change on purpose: pass 2 (which
+    -- ran only when NO mode item was eligible) re-adopted BARE virtuals in
+    -- file order, so with no eligible mode item and any bare virtual present,
+    -- the last BARE virtual beat a later mode-gated one.
+    local anyModeItem = (out.items[1] ~= nil and out.items[1].modeTier == 1);
+    if not anyModeItem and lastBareVirt ~= nil then
+        out.virt = lastBareVirt;
+    else
+        out.virt = lastVirt;
+    end
+    return out;
+end
+
+-- The flatten's pick, derived from a ladder (stage 1: the ONE composition
+-- site -- the 'marker|fallback' and 'dlac:AutoAcc:prio:acc:Name|fallback'
+-- encodings live here and nowhere else). Returns (head, mainObj):
+--   head    -- the string BuildDynamicSets stores for the slot, or nil
+--   mainObj -- the gear object Sub-pairing judges against when this slot is
+--              Main: the winning item's object, OVERRIDDEN by the synthetic
+--              2H-staff table when a Main STAFF MARKER composes (a staff
+--              marker always resolves to a two-handed staff, so the Sub
+--              pairing must treat it as one -- otherwise 'no main -> no sub'
+--              vetoes the grip that belongs with it; field case: a
+--              Weapon:Caster grip sat unequipped under dlac:AutoIridescence).
+function M.flattenHead(ladder, slotName)
+    if type(ladder) ~= 'table' then return nil, nil; end
+    local itemHead = (type(ladder.items) == 'table') and ladder.items[1] or nil;
+    local head = nil;
+    local mainObj = (itemHead ~= nil) and itemHead.gear or nil;
+    if ladder.virt ~= nil then
+        -- Compose the virtual with its fallback: 'dlac:AutoStaff|<bestName>'.
+        -- The engine tries the virtual first and equips the fallback when it
+        -- can't resolve; with no fallback the slot is left untouched at
+        -- resolve time.
+        if itemHead ~= nil then
+            head = ladder.virt .. '|' .. itemHead.name;
+        else
+            head = ladder.virt;
+        end
+        if slotName == 'Main' then
+            local lv = string.lower(ladder.virt);
+            if string.sub(lv, 1, 14) == 'dlac:autostaff'
+               or string.sub(lv, 1, 21) == 'dlac:autoiridescence' then
+                mainObj = { Name = ladder.virt, Type = 'Staff', OneHanded = false, Level = 0 };
+            end
+        end
+    elseif type(ladder.accs) == 'table' and ladder.accs[1] ~= nil then
+        -- Type automation (AutoAcc): compose the marker the engine budgets
+        -- with at equip time. Name goes LAST in the marker half so the
+        -- parser survives any item name; prio/acc are baked here because
+        -- the equip-time resolver has no catalog to look them up in.
+        -- 'dlac:AutoAcc:<removePrio>:<acc>:<Name>|<fallback>'
+        local a = ladder.accs[1];
+        local mk = string.format('dlac:AutoAcc:%d:%d:%s', a.prio, a.acc, a.name);
+        if itemHead ~= nil then
+            head = mk .. '|' .. itemHead.name;
+        else
+            head = mk;
+        end
+    elseif itemHead ~= nil then
+        head = itemHead.name;
+    end
+    return head, mainObj;
+end
+
 function M.BuildDynamicSets(sets)
     local player = gData.GetPlayer();
-    
+
     -- Safety check for player data
     if not player then return sets end
 
+    -- (bare assignment on purpose: the pre-stage-1 code leaked these two as
+    -- globals; kept assigned so any external reader keeps its answer)
     mjLevel, sjLevel = M.determineLevels();
 
     local mj = player.MainJob;
     local sj = player.SubJob;
-    
+
     local isDW = M.isDualWieldAvailable(mj, mjLevel, sj, sjLevel);
-    
-    -- Iterate over each dynamic set
+
+    -- The ladder epoch (ADR 0027 stage 1): bumped per rebuild; on-demand
+    -- ladders (dispatch.candidatesFor) memoize against it and answer with
+    -- THIS flatten's context, so a ladder and the flatten it accompanies can
+    -- never disagree about level or Dual Wield.
+    M._laddersRev = (M._laddersRev or 0) + 1;
+    local cctx = { mjLevel = mjLevel, isDW = isDW };
+    M._lastFlattenCtx = cctx;
+
+    -- Each dynamic set: every slot's pick IS its ladder's head (stage 1 --
+    -- one evaluator, two consumers; parity pinned by LD9).
     for setName, setTable in pairs(sets.Dynamic) do
         local currentSet = {};
         local currentMain = nil; -- Nil for proper checks
-        
-        -- Iterate over each gear slot within the set. Main MUST resolve before Sub
-        -- (the pairing rule reads currentMain), and pairs() order is undefined -- so
-        -- walk Main first, then the rest.
+
+        -- Main MUST resolve before Sub (the pairing rule reads currentMain),
+        -- and pairs() order is undefined -- so walk Main first, then the rest.
         local slotNames = {};
         if setTable.Main ~= nil then slotNames[#slotNames + 1] = 'Main'; end
         for slotName in pairs(setTable) do
             if slotName ~= 'Main' then slotNames[#slotNames + 1] = slotName; end
         end
         for _, slotName in ipairs(slotNames) do
-            local slotTable = setTable[slotName];
-            local slotRank, slotLevel = -1, -1;   -- winning entry's tier + item level
-            local slotVirtual = nil;
-            local slotAcc = nil;                  -- winning AutoAcc candidate { name, prio, acc }
-            local slotAccRank, slotAccLevel = -1, -1;
-
-            -- Evaluate one list entry; maybe promote it to the slot's pick. wantMode
-            -- selects the pass: true = only entries whose `mode` condition is ACTIVE
-            -- right now; false = only unconditional entries. An active mode-gated
-            -- entry therefore OUTRANKS every unconditional one (specific beats
-            -- generic, same philosophy as trigger specificity); an INACTIVE one is
-            -- excluded outright.
-            -- wantAuto splits the POOL: entries typed as a Type automation
-            -- (autoType = 'AutoAcc') compete only among themselves for the slot's
-            -- AutoAcc pick; everything else is the normal pick -- which becomes
-            -- the AutoAcc marker's fallback (worn while the piece is released).
-            local function evalEntry(gearVar, wantMode, wantAuto)
-                -- Virtual slot entry ('dlac:AutoStaff' / 'dlac:AutoObi'), bare OR
-                -- wrapped -- the Sets tab commits a GATED virtual in wrapper form
-                -- ({ gear = 'dlac:AutoIridescence', mode = 'Weapon:Caster' }). The
-                -- dispatch engine resolves it at equip time (ADR 0004). A wrapped
-                -- virtual honours its mode gate like any entry (field case: only
-                -- bare strings were recognised, so WHM's Caster-gated marker
-                -- flattened to NOTHING). Remember it, but KEEP evaluating the
-                -- slot's real items -- the normal best-by-level pick becomes the
-                -- FALLBACK when the virtual can't resolve (e.g. every iridescence
-                -- weapon / obi is above your current level).
-                local virt, vmode = nil, nil;
-                if type(gearVar) == "string" then
-                    virt = gearVar;
-                elseif type(gearVar) == "table" and type(gearVar.gear) == "string" then
-                    virt, vmode = gearVar.gear, gearVar.mode;
-                end
-                if virt ~= nil and string.lower(string.sub(virt, 1, 5)) == "dlac:" then
-                    if vmode ~= nil then
-                        if not wantMode then return; end   -- gated: the mode pass only
-                        local dsp = M.dispatchModule;
-                        if dsp == nil or type(dsp.modeActive) ~= 'function'
-                           or dsp.modeActive(vmode) ~= true then return; end
-                    end
-                    -- A marker is a ladder RUNG at the level of the lowest item
-                    -- it can resolve to (dispatch.virtualMinLevel), not a Lv0
-                    -- wildcard: below that level it is SKIPPED, so the slot's
-                    -- real best-by-level pick owns the flattened set outright
-                    -- (Henrik's field case: a leveling WHM's set showed
-                    -- dlac:AutoIridescence while actually wearing Pilgrim's
-                    -- Wand -- the marker is a Lv51 rung, his Chatoyant Staff).
-                    -- nil (no manifest / legacy shapes) keeps always-adopt.
-                    local dsp = M.dispatchModule;
-                    if dsp ~= nil and type(dsp.virtualMinLevel) == 'function' then
-                        local vok, vlv = pcall(dsp.virtualMinLevel, virt);
-                        if vok and type(vlv) == 'number' and vlv > mjLevel then return; end
-                    end
-                    -- A Sub-slot GRIP marker (dlac:AutoOneiros) obeys the shared
-                    -- pairing rule at flatten time exactly like a real grip:
-                    -- 2H main -> legal, 1H or no main -> the slot's real items
-                    -- win the slot (the engine would only resolve the marker to
-                    -- a grip the server then refuses to equip).
-                    if slotName == 'Sub'
-                       and string.sub(string.lower(virt), 1, 16) == 'dlac:autooneiros'
-                       and not M.subSlotAllowed({ Name = virt, Type = 'Grip', OneHanded = false, Level = 0 },
-                                                currentMain, { dw = isDW }) then
-                        return;
-                    end
-                    slotVirtual = virt;
-                    return;
-                end
-
-                local maxLevel = 75; -- If you have passed the max level for the slot, set high so it won't be limiting if it's not specified.
-                local minLevel = 0;
-                local gearVarObject = gearVar;
-
-                -- Wrapper form { gear = <ref>, minLevel/maxLevel/mode, ... }: build a
-                -- COPY of the gear object with the wrapper's fields applied on top --
-                -- individualize augments, override attributes, gate on level or mode.
-                -- e.g. {gear = gear.Main.Sword.Excalibur, maxLevel = 50}
-                -- (The old in-place merge mutated the SHARED gear.lua record, so one
-                -- item wrapped differently in two sets leaked fields between them.)
-                if type(gearVarObject) == "table" and gearVarObject.gear ~= nil and gearVarObject.Name == nil then
-                    local ref = gearVarObject.gear;
-                    if type(ref) == "string" then ref = resolveGearName(ref); end
-                    local merged = {};
-                    if type(ref) == "table" then
-                        for k, v in pairs(ref) do merged[k] = v; end
-                    end
-                    for k, v in pairs(gearVarObject) do
-                        if k ~= "gear" then merged[k] = v; end
-                    end
-                    gearVarObject = merged;
-                end
-
-                local gearObject;
-                if type(gearVarObject) == "string" then
-                    gearObject = resolveGearName(gearVarObject);
-                    if gearObject == nil then
-                        warnMissingGear(gearVarObject);
-                        return;
-                    end
-                else
-                    gearObject = gearVarObject;
-                end
-
-                -- Typed entries belong to the auto pass only, untyped to the
-                -- normal pass only (see evalEntry doc above).
-                local isAuto = type(gearObject.autoType) == "string"
-                           and string.lower(gearObject.autoType) == "autoacc";
-                if isAuto ~= (wantAuto == true) then return; end
-
-                -- Mode-gated entry vs the current pass (see evalEntry doc above).
-                if gearObject.mode ~= nil then
-                    if not wantMode then return; end
-                    local dsp = M.dispatchModule;
-                    if dsp == nil or type(dsp.modeActive) ~= 'function'
-                       or dsp.modeActive(gearObject.mode) ~= true then return; end
-                elseif wantMode then
-                    return;
-                end
-
-                if gearObject.maxLevel ~= nil then
-                    maxLevel = gearObject.maxLevel;
-                end
-
-                if gearObject.minLevel ~= nil then
-                    minLevel = gearObject.minLevel;
-                end
-
-                -- Seems like when loading in, it can't parse items properly at times, so this check will avoid errors.
-                if gearObject.Level == nil then
-                    return;
-                end
-
-                -- if gear level is over Main job level, ignore.
-                if gearObject.Level > mjLevel then
-                    return;
-                end
-
-                -- if Main Job level is over the slot's defined max level, ignore.
-                if mjLevel > maxLevel then
-                    return;
-                end
-
-                -- if Main Job level is under the slot's defined min level, ignore.
-                if mjLevel < minLevel then
-                    return;
-                end
-
-                -- RANKING. An entry with an explicit level RANGE that is live right
-                -- now OUTRANKS every unbounded entry: a range is an instruction
-                -- ("wear THIS from 20 to 51"), not a hint -- the old item-level
-                -- comparison let any higher-level unbounded piece steal the window
-                -- (field case: Garrison Tunica +1 ranged 20-51 lost to Druid's Robe
-                -- at 50). Within the same tier the highest item level wins; on an
-                -- exact tie the EARLIER list entry keeps the slot.
-                local rank = (gearObject.minLevel ~= nil or gearObject.maxLevel ~= nil) and 1 or 0;
-                if wantAuto then
-                    -- AutoAcc candidates rank among themselves with the same tier
-                    -- rules; between two eligible candidates the HIGHER-LEVELED
-                    -- item wins the slot (Henrik's rule, 2026-07-14).
-                    if rank < slotAccRank then return; end
-                    if rank == slotAccRank and gearObject.Level <= slotAccLevel then return; end
-                    if slotName == "Sub"
-                       and not M.subSlotAllowed(gearObject, currentMain, { dw = isDW }) then
-                        return;
-                    end
-                    slotAccRank, slotAccLevel = rank, gearObject.Level;
-                    slotAcc = { name = gearObject.Name,
-                                prio = math.floor(tonumber(gearObject.removePrio) or 1),
-                                acc  = math.floor(tonumber(gearObject.acc) or 0) };
-                    return;
-                end
-                if rank < slotRank then return; end
-                if rank == slotRank and gearObject.Level <= slotLevel then return; end
-
-                if slotName == "Sub" then
-                    -- Sub-slot pairing (shared rule, equip-time): DW decides whether a
-                    -- 1H off-hand is legal; the list's shield/grip is the fallback.
-                    if not M.subSlotAllowed(gearObject, currentMain, { dw = isDW }) then
-                        return;
-                    end
-                end
-                slotRank, slotLevel = rank, gearObject.Level;
-                currentSet[slotName] = gearObject.Name;
-                -- Store reference to the main hand item for sub slot logic
-                if slotName == "Main" then
-                    currentMain = gearObject;
-                end
-            end
-
-            -- Pass 1: mode-gated entries whose mode is active. Pass 2 (only when
-            -- pass 1 picked nothing): the unconditional entries -- the fallback rank.
-            for _, gearVar in pairs(slotTable) do evalEntry(gearVar, true, false); end
-            if currentSet[slotName] == nil then
-                for _, gearVar in pairs(slotTable) do evalEntry(gearVar, false, false); end
-            end
-            -- Same two passes for the AutoAcc pool: typed entries pick their own
-            -- winner; the normal pick above stays intact as the fallback.
-            for _, gearVar in pairs(slotTable) do evalEntry(gearVar, true, true); end
-            if slotAcc == nil then
-                for _, gearVar in pairs(slotTable) do evalEntry(gearVar, false, true); end
-            end
-
-            -- Compose the virtual with its fallback: 'dlac:AutoStaff|<bestName>'. The
-            -- engine tries the virtual first and equips the fallback when it can't
-            -- resolve; with no fallback the slot is left untouched at resolve time.
-            if slotVirtual ~= nil then
-                if currentSet[slotName] ~= nil then
-                    currentSet[slotName] = slotVirtual .. '|' .. currentSet[slotName];
-                else
-                    currentSet[slotName] = slotVirtual;
-                end
-                -- A Main STAFF MARKER always resolves to a two-handed staff, so the
-                -- Sub pairing must treat it as one -- otherwise currentMain stays
-                -- nil and 'no main -> no sub' vetoes the grip that belongs with it
-                -- (field case: a Weapon:Caster grip sat unequipped under
-                -- dlac:AutoIridescence).
-                if slotName == 'Main' then
-                    local lv = string.lower(slotVirtual);
-                    if string.sub(lv, 1, 14) == 'dlac:autostaff'
-                       or string.sub(lv, 1, 21) == 'dlac:autoiridescence' then
-                        currentMain = { Name = slotVirtual, Type = 'Staff', OneHanded = false, Level = 0 };
-                    end
-                end
-            elseif slotAcc ~= nil then
-                -- Type automation (AutoAcc): compose the marker the engine budgets
-                -- with at equip time. Name goes LAST in the marker half so the
-                -- parser survives any item name; prio/acc are baked here because
-                -- the seeded engine state has no catalog to look them up in.
-                -- 'dlac:AutoAcc:<removePrio>:<acc>:<Name>|<fallback>'
-                local mk = string.format('dlac:AutoAcc:%d:%d:%s', slotAcc.prio, slotAcc.acc, slotAcc.name);
-                if currentSet[slotName] ~= nil then
-                    currentSet[slotName] = mk .. '|' .. currentSet[slotName];
-                else
-                    currentSet[slotName] = mk;
-                end
-            end
+            local lad = M.slotLadder(setTable[slotName], slotName, currentMain, cctx);
+            local head, mainObj = M.flattenHead(lad, slotName);
+            if head ~= nil then currentSet[slotName] = head; end
+            -- Store reference to the main hand item for sub slot logic
+            if slotName == 'Main' then currentMain = mainObj; end
         end
 
         -- (Reserved slots -- a Body that takes Head away, like the Ryl.Ftm. Tunic --

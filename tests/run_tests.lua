@@ -6996,6 +6996,131 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- LD. THE SLOT LADDER (ADR 0027, stage 1 -- utils.slotLadder/flattenHead +
+--     dispatch.candidatesFor). BuildDynamicSets now DERIVES its pick from the
+--     ladder's head, so parity holds by construction; these pin the pieces:
+--     the comparator as data, the composition encodings, the pass-2 virtual
+--     quirk (preserved on purpose), and the on-demand door with its memo.
+-- ---------------------------------------------------------------------------
+(function()
+    local cctx = { mjLevel = 50, isDW = false };
+    local L = utils.slotLadder;
+    local H = utils.flattenHead;
+
+    -- The comparator: a live range beats an unbounded level (the Garrison
+    -- Tunica field case), level within tier, earlier entry on ties.
+    local lad = L({ { Name = 'Druid Robe', Level = 50 },
+                    { Name = 'Garrison Tunica', Level = 20, minLevel = 20, maxLevel = 51 } },
+                  'Body', nil, cctx);
+    check('LD1 a live range outranks a higher unbounded level', lad.items[1].name, 'Garrison Tunica');
+    check('LD1b the unbounded piece is rung 2, not discarded', lad.items[2].name, 'Druid Robe');
+    check('LD1c the head is the flatten pick', (H(lad, 'Body')), 'Garrison Tunica');
+    lad = L({ { Name = 'First', Level = 40 }, { Name = 'Second', Level = 40 } }, 'Body', nil, cctx);
+    check('LD2 an exact tie keeps the earlier entry', lad.items[1].name, 'First');
+    lad = L({ { Name = 'Too Big', Level = 60 }, { Name = 'Fits', Level = 10 } }, 'Body', nil, cctx);
+    check('LD3 an over-level entry is not a rung at all', #lad.items, 1);
+    check('LD3b the declared window gates too',
+        #L({ { Name = 'Old Cap', Level = 5, maxLevel = 30 } }, 'Body', nil, cctx).items, 0);
+
+    -- The mode tier (save/restore the real dispatch binding).
+    local savedDM = utils.dispatchModule;
+    utils.dispatchModule = { modeActive = function(v) return v == 'DT' end };
+    lad = L({ { Name = 'Plain Body', Level = 40 }, { Name = 'DT Body', Level = 10, mode = 'DT' } },
+            'Body', nil, cctx);
+    check('LD4 an ACTIVE mode entry outranks every unconditional one', lad.items[1].name, 'DT Body');
+    check('LD4b the unconditional piece is its fallback rung', lad.items[2].name, 'Plain Body');
+    lad = L({ { Name = 'Plain Body', Level = 40 }, { Name = 'PDT Body', Level = 10, mode = 'PDT' } },
+            'Body', nil, cctx);
+    check('LD4c an INACTIVE mode entry is excluded outright', #lad.items, 1);
+
+    -- Virtuals: marker|fallback composition + the minLevel rung law.
+    utils.dispatchModule = { virtualMinLevel = function() return 3 end };
+    lad = L({ 'dlac:AutoStaff', { Name = 'Maple Wand', Level = 5 } }, 'Main', nil, cctx);
+    check('LD5 the virtual tops the slot with the item as fallback',
+        (H(lad, 'Main')), 'dlac:AutoStaff|Maple Wand');
+    local _, moLD = H(lad, 'Main');
+    check('LD5b a Main staff marker synthesizes the 2H pairing object', moLD.Type, 'Staff');
+    utils.dispatchModule = { virtualMinLevel = function() return 60 end };
+    lad = L({ 'dlac:AutoStaff', { Name = 'Maple Wand', Level = 5 } }, 'Main', nil, cctx);
+    check('LD5c below the marker level the real pick owns the slot',
+        (H(lad, 'Main')), 'Maple Wand');
+    utils.dispatchModule = savedDM;
+
+    -- Sub pairing per CANDIDATE: a 2H main takes grips, never shields.
+    local twoH = { Name = 'Heavy Great Axe', Type = 'Great Axe', OneHanded = false, Level = 1 };
+    lad = L({ { Name = 'Kite Shield', Type = 'Shield', Level = 1 },
+              { Name = 'Dark Grip', Type = 'Sub', Level = 1 } }, 'Sub', twoH, cctx);
+    check('LD6 a 2H main gates the Sub ladder to grips', #lad.items, 1);
+    check('LD6b and the grip is the rung', lad.items[1].name, 'Dark Grip');
+
+    -- The AutoAcc pool: its own winner, composed only under no virtual.
+    lad = L({ { Name = 'Plain Ring', Level = 40 },
+              { Name = 'Acc Ring', Level = 30, autoType = 'AutoAcc', removePrio = 2, acc = 15 } },
+            'Ring1', nil, cctx);
+    check('LD7 the acc pool never contests the normal pick', lad.items[1].name, 'Plain Ring');
+    check('LD7b it composes the AutoAcc marker over the fallback',
+        (H(lad, 'Ring1')), 'dlac:AutoAcc:2:15:Acc Ring|Plain Ring');
+
+    -- The pass-2 virtual re-adoption QUIRK, preserved on purpose (see the
+    -- slotLadder comment): with no eligible mode item, the last BARE virtual
+    -- beats a later mode-gated one; with one, file order stands.
+    utils.dispatchModule = { modeActive = function(v) return v == 'DT' end };
+    local quirk = { 'dlac:AutoObi', { gear = 'dlac:AutoStaff', mode = 'DT' } };
+    check('LD8 no mode item -> the bare virtual re-adopts last',
+        L(quirk, 'Waist', nil, cctx).virt, 'dlac:AutoObi');
+    local quirk2 = { 'dlac:AutoObi', { gear = 'dlac:AutoStaff', mode = 'DT' },
+                     { Name = 'DT Belt', Level = 10, mode = 'DT' } };
+    check('LD8b a mode item present -> file order stands',
+        L(quirk2, 'Waist', nil, cctx).virt, 'dlac:AutoStaff');
+    utils.dispatchModule = savedDM;
+
+    -- LD9. PARITY BY CONSTRUCTION, verified anyway: a full BuildDynamicSets
+    -- run equals flattenHead over each slot's own ladder.
+    local savedPlayerLD = TEST_PLAYER;
+    TEST_PLAYER = { MainJob = 'WHM', MainJobLevel = 50, SubJob = 'BLM', SubJobLevel = 25,
+                    MainJobSync = 50, SubJobSync = 25, Status = 'Idle', IsMoving = false };
+    local dynLD = {
+        Main = { 'dlac:AutoStaff', { Name = 'Pilgrim Wand', Type = 'Staff', OneHanded = false, Level = 1 } },
+        Sub  = { { Name = 'Dark Grip', Type = 'Sub', Level = 1 },
+                 { Name = 'Kite Shield', Type = 'Shield', Level = 1 } },
+        Body = { { Name = 'Druid Robe', Level = 50 },
+                 { Name = 'Garrison Tunica', Level = 20, minLevel = 20, maxLevel = 51 } },
+    };
+    local setsP = { Dynamic = { LadP = dynLD } };
+    utils.BuildDynamicSets(setsP);
+    local cctxP = utils._lastFlattenCtx;
+    check('LD9 the flatten stamps its context', type(cctxP), 'table');
+    local mladP = utils.slotLadder(dynLD.Main, 'Main', nil, cctxP);
+    local headM, moP = utils.flattenHead(mladP, 'Main');
+    check('LD9b Main parity', headM, setsP.LadP.Main);
+    check('LD9c Sub parity (judged against the derived Main)',
+        (utils.flattenHead(utils.slotLadder(dynLD.Sub, 'Sub', moP, cctxP), 'Sub')), setsP.LadP.Sub);
+    check('LD9d Body parity',
+        (utils.flattenHead(utils.slotLadder(dynLD.Body, 'Body', nil, cctxP), 'Body')), setsP.LadP.Body);
+    TEST_PLAYER = savedPlayerLD;
+
+    -- LD10. The on-demand door + its memo epoch (dispatch.candidatesFor).
+    -- dispatch reaches utils through utilsModule() -> require('dlac\\utils');
+    -- seed package.loaded with THE harness's own utils instance so the door
+    -- and the epoch bump below talk about the same module (the RQU idiom).
+    local savedPkgU = package.loaded['dlac\\utils'];
+    package.loaded['dlac\\utils'] = utils;
+    local savedNS = dispatchM._nativeSets;
+    dispatchM._nativeSets = { Dynamic = { CF = { Body = { { Name = 'X Robe', Level = 10 } } } } };
+    local l1 = dispatchM.candidatesFor('CF', 'Body');
+    check('LD10 candidatesFor reads the authored store',
+        type(l1) == 'table' and l1.items[1] ~= nil and l1.items[1].name or '?', 'X Robe');
+    check('LD10b the memo returns the same ladder within an epoch',
+        rawequal(dispatchM.candidatesFor('CF', 'Body'), l1), true);
+    utils._laddersRev = (utils._laddersRev or 0) + 1;   -- a rebuild bumps the epoch
+    check('LD10c a new epoch recomputes',
+        rawequal(dispatchM.candidatesFor('CF', 'Body'), l1), false);
+    check('LD10d an unknown set is nil', dispatchM.candidatesFor('Nope', 'Body'), nil);
+    dispatchM._nativeSets = savedNS;
+    package.loaded['dlac\\utils'] = savedPkgU;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- AB. arbwatch -- the ADDON-SIDE writer of the arbstate rank Statefile (ADR
 --     0012, step 2 / issue #49). The engine's read side is AR* above; these pin
 --     the WRITER's pure seams: the default/sanitize reuse the engine's one
