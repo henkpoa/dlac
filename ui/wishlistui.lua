@@ -464,15 +464,22 @@ local function linkLabel(l)
 end
 M._linkLabel = linkLabel;   -- test seam
 
--- The label column for ONE entry's link rows: the widest label it will draw,
--- floored so short lists still line up with the rest of the editor.
+-- The label column for ONE entry's link rows. DOUBLE the widest label it will
+-- draw, on a doubled floor -- Henrik's call after field round 2: measuring the
+-- label exactly is correct and still reads cramped, because the column has to
+-- hold set names it has never seen. Set names are player-chosen and long ones
+-- are normal ("Midcast_STR-VIT", "Tp_Default_Acc"), so the room has to be there
+-- BEFORE the name is, or the column moves under him every time he picks a
+-- different entry. Capped so a pathological name cannot push the status and its
+-- buttons off the right edge.
+local LINK_COL_MIN, LINK_COL_MAX = 180, 360;
 local function linkColW(facts)
-    local w = 90;
+    local w = LINK_COL_MIN;
     for _, f in ipairs(facts or {}) do
-        local tw = textW(linkLabel(f)) + 18;
+        local tw = textW(linkLabel(f)) * 2;
         if tw > w then w = tw; end
     end
-    return w;
+    return math.min(w, LINK_COL_MAX);
 end
 M._linkColW = linkColW;   -- test seam
 
@@ -636,7 +643,7 @@ function M.render()
     -- `or 4` (the real ImGuiCond_FirstUseEver), not `or 0`: floatgear's law --
     -- a zero fallback silently turns the flag into "always", which here would
     -- re-force the size every frame and quietly break resizing.
-    imgui.SetNextWindowSize({ 560, 460 }, ImGuiCond_FirstUseEver or 4);
+    imgui.SetNextWindowSize({ 700, 460 }, ImGuiCond_FirstUseEver or 4);
     if not imgui.Begin('dlac -- Wishlist##dlac_wishlist', vis, ImGuiWindowFlags_None or 0) then
         imgui.End();
         if not vis[1] then M.visible = false; end

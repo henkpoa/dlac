@@ -374,7 +374,7 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
-- **2026-07-27: the Wishlist — ON `dev`, PARTLY FIELD-CONFIRMED** (`2026.07.27r`, ADR 0026).
+- **2026-07-27: the Wishlist — ON `dev`, PARTLY FIELD-CONFIRMED** (`2026.07.27s`, ADR 0026).
   Henrik: *"add 'Show gear I don't own' like with lockstyle in all equipment… right click
   and add pieces to wish list… also have this when building sets, so you can add stuff you
   don't have (it won't try to use em, but if you get it, it's preemptively there, right?)"*

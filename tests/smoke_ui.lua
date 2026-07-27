@@ -298,9 +298,14 @@ local wideW  = wlMod._linkColW({ { job = 'SAM', set = 'Tp_Default' } });
 local shortW = wlMod._linkColW({ { job = 'WHM' } });
 check('S92i a long label widens the column past the old fixed 140', wideW > 140, true);
 check('S92j ...and past a short one',      wideW > shortW, true);
-check('S92k short labels keep the floor',  shortW, 90);
-check('S92l the column clears its own label',
-    wideW > (#'SAM / Tp_Default' * 10), true);
+check('S92k short labels keep the floor',  shortW, 180);
+-- Field round 2 (Henrik): "twice the space... so we can handle longer set names".
+-- The column must leave room for a name it has NOT been shown yet, so it clears
+-- its own label by a wide margin rather than merely fitting it.
+check('S92l the column DOUBLES its own label',
+    wideW >= (#'SAM / Tp_Default' * 10) * 2, true);
+check('S92m ...and is capped so buttons stay on screen',
+    wlMod._linkColW({ { job = 'SAM', set = string.rep('x', 90) } }), 360);
 
 -- Display order: owned first (the piece that just landed is what you came for),
 -- then equipment-model slot order, then name.
