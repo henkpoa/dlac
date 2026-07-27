@@ -13869,6 +13869,145 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- RQU. THE ENGINE MUST NOT WAIT FOR THE GUI TO LOAD ITS FLATTENER (field,
+-- 2026-07-27, Xvs).
+--
+-- Every utils lookup in dispatch read package.loaded['dlac\\utils'] bare --
+-- "loaded first in the LAC state" (the job shim's own first require). The
+-- NATIVE state has no shim and nothing else loads utils at boot: the install
+-- latch flattened NOTHING, refused every 0.4s as "world not settled", a
+-- commit-time refusal nuked the store (nothing equips, /dl lock set finds no
+-- set), and a session healed only when a GUI picker's lazy pcall(require)
+-- happened to run -- which is why it read as per-JOB in the field (the healed
+-- session's job "worked"; a game reload broke that job too). dispatch's
+-- utilsModule() now requires lazily at call time. These drive the REAL
+-- '/dl sets reload' handler through the exact boot shape: utils ABSENT from
+-- package.loaded (package.preload stands in for the addon path, so the heal
+-- needs no filesystem require headless).
+-- ---------------------------------------------------------------------------
+(function()
+    local SEP  = string.char(92);
+    local prof = package.loaded['dlac\\profiles'];
+    local eng  = package.loaded['dlac\\feature\\equipengine'];
+    if type(prof) ~= 'table' or type(eng) ~= 'table' then return; end
+
+    local saved = {
+        nativeMode = prof.nativeMode,        dataDir = prof.dataDir,
+        dispatch   = package.loaded['dlac\\dispatch'],
+        chatfmt    = package.loaded['dlac\\chatfmt'],
+        utils      = package.loaded['dlac\\utils'],
+        preload    = package.preload['dlac\\utils'],
+        gFunc      = rawget(_G, 'gFunc'),    gState  = rawget(_G, 'gState'),
+        gProfile   = rawget(_G, 'gProfile'),
+        reg        = ashita.events.register, unreg   = ashita.events.unregister,
+        player     = TEST_PLAYER,
+        onEvent    = eng.onEvent,            tripped = eng.state.tripped,
+    };
+    local savedDM = saved.utils and saved.utils.dispatchModule or nil;
+
+    local said = {};
+    local function capture(...)
+        local parts = {};
+        for i = 1, select('#', ...) do parts[#parts + 1] = tostring((select(i, ...))); end
+        said[#said + 1] = table.concat(parts, ' ');
+    end
+    package.loaded['dlac\\chatfmt'] = { print = capture, warn = capture, err = capture };
+
+    -- The world: WHM idle, native armed, no LAC state, no stray gProfile.
+    prof.nativeMode = function() return true; end
+    prof.dataDir    = function() return 'tests' .. SEP; end
+    _G.gFunc, _G.gState, _G.gProfile = nil, nil, nil;
+    eng.state.tripped = false;
+    -- Level 63: no earlier section leaves utils' rebuild cache there, so the
+    -- level delta alone forces a re-flatten even before the modesRev wire below.
+    TEST_PLAYER = { MainJob = 'WHM', MainJobLevel = 63, SubJob = 'BLM', SubJobLevel = 31,
+                    MainJobSync = 63, SubJobSync = 31, Status = 'Idle', IsMoving = false };
+
+    -- The active profile's sets file, where readSetsSource looks. Inline
+    -- records (Name+Level), so the harness's empty NameToObject never matters.
+    local setsDir  = 'tests' .. SEP .. 'profiles' .. SEP .. 'Default' .. SEP .. 'sets';
+    local setsPath = setsDir .. SEP .. 'WHM.lua';
+    if package.config:sub(1, 1) == '\\' then
+        pcall(function() os.execute('mkdir "' .. setsDir .. '" >nul 2>&1'); end);
+    end
+    local sf = io.open(setsPath, 'w');
+    if sf ~= nil then
+        sf:write("return { Dynamic = { Idle = { Body = { { Name = 'Test Robe', Level = 1 } } } } };\n");
+        sf:close();
+    end
+
+    local handlers = {};
+    ashita.events.register   = function(ev, nm, fn) handlers[ev] = fn; end
+    ashita.events.unregister = function() end
+    local okLoad, D = pcall(dofile, 'dispatch.lua');
+    ashita.events.register, ashita.events.unregister = saved.reg, saved.unreg;
+
+    check('RQU0 dispatch loads native-armed', okLoad, true);
+    if okLoad and type(handlers['command']) == 'function' then
+        -- In the game the lazy require executes utils.lua fresh, whose own
+        -- require('dlac\\dispatch') binds the LIVE engine instance. The harness
+        -- preload hands back the long-loaded utils instead, so wire its
+        -- dispatchModule to THIS dispatch copy to mirror that binding.
+        if saved.utils ~= nil then saved.utils.dispatchModule = D; end
+
+        local function run(line)
+            said = {};
+            local e = { command = line, blocked = false };
+            local ok, err = pcall(handlers['command'], e);
+            if not ok then said[#said + 1] = 'ERROR: ' .. tostring(err); end
+            return e, ok;
+        end
+        local function saidHas(frag)
+            for _, l in ipairs(said) do
+                if string.find(l, frag, 1, true) ~= nil then return true; end
+            end
+            return false;
+        end
+
+        -- The native boot shape: NOTHING has loaded utils in this state yet.
+        package.loaded['dlac\\utils'] = nil;
+        package.preload['dlac\\utils'] = function() return saved.utils; end
+        run('/dl sets reload');
+        check('RQU1 utils absent: the reload flattens and lands', saidHas('sets hot-swapped'), true);
+        check('RQU1b ...never the world-not-settled refusal', saidHas('flatten produced no sets'), false);
+        check('RQU1c ...and the lazy require left utils loaded',
+              package.loaded['dlac\\utils'], saved.utils);
+
+        -- utils truly unresolvable: the refusal stays a refusal (safe, no
+        -- crash) -- the pre-fix behavior is the fallback, never an error.
+        -- package.path is emptied for the run: earlier sections leave paths
+        -- that CAN resolve dlac\utils (exactly as the game's addons\?.lua
+        -- does), and this case is specifically about the require FAILING.
+        -- The store is cleared first -- that is the boot shape, and a store
+        -- RQU1 already flattened would satisfy the count with no flatten.
+        D._nativeSets = nil;
+        package.loaded['dlac\\utils'] = nil;
+        package.preload['dlac\\utils'] = nil;
+        local savedPath = package.path;
+        package.path = '';
+        run('/dl sets reload');
+        package.path = savedPath;
+        check('RQU2 utils unresolvable: still the honest refusal, no crash',
+              saidHas('flatten produced no sets'), true);
+    end
+
+    -- put every shared thing back exactly as it was
+    package.loaded['dlac\\utils']  = saved.utils;
+    package.preload['dlac\\utils'] = saved.preload;
+    if saved.utils ~= nil then saved.utils.dispatchModule = savedDM; end
+    prof.nativeMode, prof.dataDir    = saved.nativeMode, saved.dataDir;
+    package.loaded['dlac\\dispatch'] = saved.dispatch;
+    package.loaded['dlac\\chatfmt']  = saved.chatfmt;
+    _G.gFunc, _G.gState              = saved.gFunc, saved.gState;
+    _G.gProfile                      = saved.gProfile;
+    eng.onEvent, eng.state.tripped   = saved.onEvent, saved.tripped;
+    TEST_PLAYER                      = saved.player;
+    os.remove(setsPath);
+    os.remove('tests' .. SEP .. 'modestate.lua');
+    os.remove('tests' .. SEP .. 'arbstate.lua');
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures == 0 then
