@@ -348,9 +348,11 @@ shipping.
 > rows driven directly through the real `equipResolved` + write seam), and NK26 drives
 > the rewired `M.dispatch` end to end. Suite green at 3934 checks on Windows Lua AND
 > WSL lua5.4 (CI parity). `/dl prio` now reads the rows — its hand-kept twin of the
-> dispatch reads is gone. **Awaiting field confirmation** (a normal session where
-> nothing moved; `/dl prio` + `/dl why` reading as before); stage 1 starts on Henrik's
-> go after that.
+> dispatch reads is gone. **FIELD-CONFIRMED 2026-07-27** — *"Stage 0 is confirmed"*:
+> the SCH Royal-Cloak-vs-Head case still resolves (v135 intact), craft + HELM work;
+> queued in HANDOFF per hard rule 14. Follow-up `cad6b1f` (v137) made the AutoAmmo
+> `/dl prio` line job-aware (the one quirk the field pass flagged; pre-existing, not a
+> stage-0 regression). **Stage 1 starts on Henrik's go.**
 
 **Stage 1 — ladders on demand.** `candidatesFor(setName, slot)` — the `evalEntry` walk
 emitting the *ordered list* instead of its head, memoized on the existing rebuild latch

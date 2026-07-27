@@ -264,6 +264,28 @@ merge in the future."* **The next promotion carries this; do not re-ask.**
 - **Docs:** history.md carries the law and the diagnosis, including the `/dl metrics` read
   (`active` vs `visible` + the vertex delta) that named *active, rendered, drawing nothing*.
 
+### The claimant registry — ADR 0027 stage 0 — `05f7be8` + `bda43fd` (2026-07-27)
+
+Engine v135 → **v136**, addon letter unchanged (the `27w` letter raced to the parallel
+autobuildimport commit — shared checkout; the engine handshake is stage 0's marker). Suites
+**3934 + 693** at commit time, Windows and WSL lua5.4. **FIELD-CONFIRMED 2026-07-27** by
+Henrik — *"Stage 0 is confirmed"*; the SCH Royal-Cloak-vs-Head case still resolves (v135
+intact), craft and HELM work. Waits only on the go-ahead.
+
+- One `CLAIMANTS` table — one row per rank row minus the Triggers floor — that the ensure
+  pass, BOTH bail guards, the claims map, the retrace-signature legs, the rank-walk applies
+  and `/dl prio` all iterate. A new claimant = one row + one `ARB_ORDER_DEFAULT` entry; the
+  silent-bail class (a missed bail term, a missed signature leg) is structurally gone. Zero
+  behavior change by construction; `CLAIMANT_SIG_ORDER` kept the legs' byte order, so live
+  sessions did not even retrace on the upgrade.
+- CR0–CR9c pin the registry's shape as data; NK26 drives the rewired `M.dispatch` end to end.
+- **Follow-up on dev, NOT yet field-looked:** `cad6b1f` (v137, `27x`) makes the AutoAmmo
+  `/dl prio` line **job-aware** — the field-flagged "ON when it really isn't" read the FILE
+  (any job's enabled section); it now answers for the current job and an off line names who
+  has it set up ("off (this job -- set up on DRK)"). CR10a–i; suites **3943 + 693**. (The
+  MaxMP Cassandra's-over-Outlaw's earring pick is OLD weave behavior, untouched by both
+  commits — one `/dl plan` while it is happening will name the rung and thresholds.)
+
 ### Reserved slots: visible, then correct — `05da34a` + `aa3c60d` (2026-07-27)
 
 Addon `27o` → **`27t`**, engine v134 → **v135**. Suites 3901 + 692, Windows and WSL lua5.4.
