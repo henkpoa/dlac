@@ -232,7 +232,16 @@ that performs the promotion **empties this section in the same commit as the mer
 entry left standing here after a merge is how "is this on main?" becomes unanswerable —
 see hard rule 14, which this section exists to serve.
 
-*(Empty. Last promotion: 2026-07-27 evening — **the Xvs engine-era batch**,
+- **THE LUASHITACAST PURGE, all five phases** (`e478817`..`bd1eb83`, addon
+  `2026.07.27j` → **`27l`**, engine v131 → **v133**; docs/design/lac-purge-plan.md is
+  the per-phase log). Field-confirmed by Henrik on Mindie 2026-07-27 11:48: the first
+  ever clean `/dl check` on a native install — stamp v133 matching file v133 from the
+  NATIVE home (#131 closed), no seeded/shim lines, "NO ISSUES" verdict, engine ARMED,
+  new `/dl engine` wording — plus normal play on `27j`→`27l` all morning. Still nice
+  to have before or after promotion: the three-way import round (static / group /
+  Copy-from-static). Waits only on Henrik's go-ahead.
+
+*(Last promotion: 2026-07-27 evening — **the Xvs engine-era batch**,
 `0f1ae6e`..`c074da9`, addon `2026.07.27f` → **`2026.07.27i`**, engine **v130**, ADR 0025 —
 on Henrik's go-ahead: *"Everything is working perfectly now. … Regardless, push to main."*
 Field-confirmed on Xvs's live installs, the boxes the bugs owned: **the native flatten no
