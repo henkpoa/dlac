@@ -50,15 +50,16 @@ holds working-preference notes; the repo docs are the durable record.
 
 ## The one-paragraph mental model
 
-Two Lua states share files. The **dlac addon** (this repo, loaded via `/addon load
-dlac`) is the GUI + writer: it scans bags, writes `gear.lua`, splices sets into
-`<JOB>.lua`, writes trigger files, and seeds a 4-file runtime
-(`utils/dispatch/chatfmt/gear`) into `<char>\dlac\`. **LuaAshitacast** requires that
-seeded runtime into *its* state; at every handler event the profile's one-line shim
-calls `utils.dispatch('<Handler>')`, and the engine overlays every matching trigger's
-flattened set, resolving virtual entries (auto staff/obi) per cast. Coordination
-between the states is by files only (`modestate.lua` mirror + `dispatch.M.VERSION`
-handshake).
+**One Lua state, one engine** (since the LuaShitacast purge, 2026-07-27). The dlac
+addon is GUI, writer AND engine: it scans bags, writes `gear.lua`, keeps sets and
+triggers in the profile store (`config\addons\dlac\<char>\profiles\<active>\`), and
+`feature\equipengine` + `dispatch.lua` equip via dlac's own authentic 0x050/0x051
+packets — at every handler event the engine overlays every matching trigger's
+flattened set, resolving virtual entries (auto staff/obi) per cast. Old
+`config\addons\luashitacast\` trees are read-only IMPORT territory: the Sets tab's
+static/group imports and the login auto-migration read them, nothing ever writes
+them. *(The pre-purge model — two Lua states sharing seeded files, LuaAshitacast
+hosting the engine — is history; see `docs/design/lac-purge-plan.md` and history.md.)*
 
 ## Environment & workflow
 
@@ -140,8 +141,9 @@ agent; the per-repo setup lives in `docs/agents/`.
    shipped two corruption bugs (`"dlac\triggersui"` → `\t` tab; a literal newline in a
    string). Keep code Lua-5.1/LuaJIT-compatible (tests run on 5.4 — write to the
    intersection).
-4. **Two Lua states.** Disk reseed ≠ hot swap; LAC picks up seeded files only on ITS
-   reload. Bump `dispatch.M.VERSION` whenever seeded-file behavior changes so the red
+4. **~~Two Lua states~~ ONE Lua state** (the purge, 2026-07-27 — seeding and the
+   self-swap are gone; `/dl reload` / `/addon reload dlac` is the one update hop).
+   Still bump `dispatch.M.VERSION` whenever engine behavior changes so the
    staleness banner fires (it watches dispatch.lua only — utils.lua changes still need
    a manual "Reload LAC" reminder).
 5. **Text-parsing Lua profiles must be comment-aware on BOTH find and walk** — a finder
@@ -293,32 +295,19 @@ without costing movement gear between points. The record is the merge commit on 
 Nothing below is half-built — these are deliberate stopping points, each with its
 research already recorded. In rough priority order:
 
-0. **THE LUASHITACAST PURGE — the pinned roadmap for the coming days** (Henrik's 07-27
-   ruling; plan + execution log at `docs/design/lac-purge-plan.md`; the day's full story
-   in `docs/history.md`, "the Xvs field day"). Five phases, each a whole-or-not-at-all
-   dev batch:
-   - **Phase 1 — DONE on dev 2026-07-27** (`e478817`, `2026.07.27j`, engine v131;
-     **Henrik field-running it since the same evening, no issues so far** — promotion on
-     his verdict). The 5s legacy seeder, the shim writer + `PROFILE_TEMPLATE.lua`,
-     Setup's job-file writes (both modes), the LAC-alive polite ask, and the whole
-     engine self-swap died; `M.migrate` leaves originals in place (inert, importable).
-     Nothing in dlac writes under `config\addons\luashitacast\` anymore.
-   - **Phase 2 — NEXT, wants its own quiet day**: legacy MODE dies. The dispatch diet
-     (16 `inLac` sites, 44 `gProfile`/`gFunc` refs, the LAC-hosted engine path,
-     `readJobSets`), `nativeMode()` hardcoded true, `/dl engine` becomes a status-only
-     readout (`native off` refuses loudly), the flag file retires in place, dataDir
-     loses its legacy branch and the ADR-0025 hold with it.
-   - **Phase 3**: native-aware surfaces — check/debug read the native home (#131's
-     false alarms become impossible), every "Reload LAC" string (41 across the UI, incl.
-     the Triggers-tab banner) becomes `/dl reload` or dies, gear preload drops the
-     legacy-home candidates, `addon.desc` loses "(for LuaAshitacast)".
-   - **Phase 4**: keep-list hardening — the job-file importers (group/table + static
-     set, `profilesets`/`setimport`/`setmanager`, per Henrik) get their contract header
-     and an allowlist grep test; field round imports all three ways.
-   - **Phase 5**: the words — architecture.md's two-state model, CONTEXT.md, this file's
-     mental model, the remaining ×1 comment mentions.
-   Henrik's standing answers, recorded in the plan: migrate carriers STAY, `/dl engine`
-   status-only, flag retires in place (never deleted from disk).
+0. **THE LUASHITACAST PURGE — EXECUTED, ALL FIVE PHASES, 2026-07-27** on `dev`
+   (Henrik: *"Can't you just go all the way to phase 5, I really just want this to
+   die"*). Plan + per-phase execution log: `docs/design/lac-purge-plan.md`; the day:
+   `docs/history.md`. The batch, on top of the field-running `27j`:
+   `e478817` P1 (`27j`/v131, writers+self-swap), `8b5e8fd` P2 (`27k`/v132, legacy MODE
+   dies whole, −1063 lines), `58c75e0` P3+4 (`27l`/v133, native-aware check/debug —
+   **#131 closed** — every "Reload LAC" string gone, legacy job files READ-ONLY, all
+   module-local legacy fallbacks dead, PRG1/2 allowlist guard), P5 docs. One state,
+   one engine, one home; luashitacast\ is read-only import territory (the keep-list:
+   static/group/whole-block imports + the migrate carriers, all intact).
+   **AWAITING: Henrik's field beat on `27l`** (boot, equips, a commit, `/dl check`,
+   `/dl engine`, and the Phase-4 field round: import a static set, a marked group,
+   and "Copy from static" from a pre-profiles backup) — then promotion, his call.
 1. **FIELD TEST the 07-25 release.** Henrik approved the Menu/Settings **visuals**, but
    the **Mode library has not been driven in-game at all**. Everything in it is
    headless-tested only; the suites stub imgui by design, so popup behaviour, the

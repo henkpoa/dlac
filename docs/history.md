@@ -5891,3 +5891,34 @@ its legacy branch) on its own quiet day; Phase 3 native-aware surfaces (#131 die
 "Reload LAC" string dies); Phase 4 keep-list hardening (allowlist grep test + a field
 round importing all three ways); Phase 5 docs sweep. The full roadmap with per-phase
 detail lives in `docs/design/lac-purge-plan.md` and HANDOFF "What's left" item 0.
+
+## Session "the purge, all the way down" (2026-07-27 late, on `dev` — addon 2026.07.27j → l, engine v131 → v133)
+
+**Theme:** Henrik: *"Can't you just go all the way to phase 5, I really just want this
+to die."* All five purge phases executed in one sitting, suite-gated, phase-sized
+commits (`e478817`, `8b5e8fd`, `58c75e0` + docs).
+
+**Landed:** Phase 1 — the seeder, shim writer, Setup's job-file writes, the LAC-alive
+ask and the ENTIRE engine self-swap (with the `__dlacEngineRoot` handshake and the
+"`M.x = {}` wiped by self-swap" hazard class). Phase 2 — legacy MODE whole:
+`nativeMode()` constant true, flag retired in place, first-run machinery deleted,
+`inLac()` + the gProfile/gFunc world out of dispatch (−1063 lines), `/dl engine`
+status-only, end-to-end rigs re-pointed at the native equip door. Phase 3 — `/dl check`
+and debug.lua read the NATIVE home (**#131 closed**: the reader finally reads where the
+writer writes), every "Reload LAC" string became `/dl reload` or died, the last LAC
+resurrection (`/dl profile migrate go` queueing `/addon reload luashitacast`) died,
+legacy job files are READ-ONLY. Phase 4 — every module-local legacy path fallback died
+(gearimport ×2, gearexport, augments, statefile, gearui ×2, debug); the PRG1/2
+allowlist guard pins that a `\luashitacast` string literal exists ONLY in the
+keep-list readers (profiles, setmanager, lockstyle, macrobook, gearoptim) — it caught
+three stragglers on its first run. Phase 5 — dlac.lua's header, HANDOFF's mental model
+and hard rule 4, architecture.md's purge banner.
+
+**Worth carrying:** the literal-form discriminator — in source bytes a PATH STRING
+carries `\` while a comment carries `\`, so a guard scanning for `\luashitacast`
+polices code without tripping on history. And the guard-first payoff: write the
+allowlist test BEFORE declaring a sweep done; it found what three grep passes missed.
+
+**Awaiting:** Henrik's field beat on `27l` (equips, a commit, `/dl check`, `/dl engine`,
+and the three-way import round), then promotion. Suites at 3815 + 584, green on both
+interpreters, at every phase boundary.

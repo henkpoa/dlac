@@ -80,7 +80,16 @@ territory (imports + migration reads only).
   carry a git pull into LuaAshitacast's running state; with seeding gone it watches nothing.
   Verify the native state never rides it (survey says it doesn't), then delete, tests SW* with it.
 
-### Phase 2 — kill legacy MODE (the engine diet)
+### Phase 2 — kill legacy MODE (the engine diet) — **EXECUTED 2026-07-27** (`2026.07.27k`, v132, -1063 lines)
+
+As planned: `nativeMode()` constant true, the flag retired in place (readers/writer/
+first-run machinery deleted), path authorities native-only, `inLac()` + the whole
+gProfile/gFunc world out of dispatch (LAC engine path, gProfile installSets twin,
+`readJobSets` + legacy sets fallback, `warnShadowedStatics`, the HandleEquipEvent wrap,
+the LAC tick half, the request-file bridge, both lockstyle engine halves —
+`lockstyleapply` owns native apply with its own byte-for-byte core). `/dl engine` is
+status-only per Henrik's answers. End-to-end test rigs re-pointed at the NATIVE equip
+door (equipengine stub, not `gFunc.EquipSet`).
 
 The big one: there is one engine and it is native.
 
@@ -101,7 +110,7 @@ The big one: there is one engine and it is native.
   LAC-parity EQUIP SEMANTICS pins (equipcore EQC section) STAY — they define what the native
   engine equips, the name is history.
 
-### Phase 3 — native-aware surfaces (#131 dies here)
+### Phase 3 — native-aware surfaces (#131 dies here) — **EXECUTED 2026-07-27** (`2026.07.27l`, v133, with Phase 4)
 
 - `feature\check.lua` + `feature\debug.lua`: the addon half reads the NATIVE home (stamp, job
   state, request bridge); the "seeded copies" line is deleted with the seeds; the false alarms
@@ -114,7 +123,16 @@ The big one: there is one engine and it is native.
 - `dlac.lua`: gear preload drops the legacy-home candidates (native home only — the importers,
   not the boot, read old trees); `addon.desc` loses "(for LuaAshitacast)".
 
-### Phase 4 — keep-list hardening
+### Phase 4 — keep-list hardening — **EXECUTED 2026-07-27** (same commit as Phase 3)
+
+The allowlist guard (tests PRG1/PRG2) scans shipped files for the `\\luashitacast`
+STRING-LITERAL form (comments use one backslash and never trip it); allowlist =
+profiles.lua, gear/setmanager.lua, feature/lockstyle.lua, feature/macrobook.lua,
+gear/gearoptim.lua. It caught three stragglers on its first run (statefile + gearui
+fallbacks, a profilesmenu label). Every module-local legacy path FALLBACK died;
+gearui's charBase delegates to profiles.charBase, the one sanctioned composer.
+STILL OWED FROM THIS PHASE: the in-game field round importing all three ways
+(static set, marked group, "Copy from static" from a pre-profiles backup).
 
 - The importers get their own header block naming the contract: luashitacast paths appear ONLY in
   `profilesets.sandboxSets` sources, `setimport`, `setmanager`'s import half, `charBase`, and (if
@@ -123,7 +141,13 @@ The big one: there is one engine and it is native.
 - Field round: import a static set, import a marked group, "Copy from static" from a
   pre-profiles backup — all three land on a purged build.
 
-### Phase 5 — the words
+### Phase 5 — the words — **EXECUTED 2026-07-27 (first pass)**
+
+dlac.lua's header says what dlac IS; HANDOFF's mental model + hard rule 4 rewritten;
+architecture.md carries a purge banner marking its LAC-era sections as history (full
+rewrite deliberately deferred — the banner is honest and cheap, the rewrite is not);
+history.md carries the day. Historical changelog comments (dispatch's version notes,
+ADRs) are KEPT verbatim by design: history is not a pointer.
 
 - `docs/architecture.md` (two-state model → one-state), HANDOFF's mental model + hard rules that
   assume seeding/LAC, CONTEXT.md terms, history.md gets the purge entry. ADRs stay as history.

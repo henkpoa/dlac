@@ -4,8 +4,18 @@
 > Line references are as of 2026-07-10 (main @ 591a207); the code moves fast — treat them
 > as anchors, not gospel. Start with [HANDOFF.md](HANDOFF.md) if you're brand new.
 
-dlac ("dynamic LuaAshitacast") is an Ashita v4 addon for CatsEyeXI that GUI-drives
-LuaAshitacast (LAC) equipment sets so players never hand-edit profile Lua. It runs as a
+> **THE PURGE (2026-07-27, `docs/design/lac-purge-plan.md`):** everything below that
+> describes TWO Lua states, seeded engine copies, the self-swap, the engine flag /
+> legacy mode, LAC-hosted dispatch, or writes under `config\addons\luashitacast\` is
+> **HISTORY**. There is one Lua state, one engine (dlac's own, always), one storage
+> home (`config\addons\dlac\<char>\`); old luashitacast trees are read-only import
+> territory (Sets tab static/group imports + login auto-migration — Henrik's
+> keep-list). HANDOFF's mental model is current; this file's LAC-era sections await
+> a full rewrite.
+
+dlac ("dynamic LuaAshitacast" — the name is history; it absorbed its host) is an
+Ashita v4 addon for CatsEyeXI whose GUI builds equipment sets and whose OWN engine
+equips them, so players never hand-edit profile Lua. It runs as a
 normal `/addon`, reads player/inventory through `AshitaCore`, and drives gear through
 LAC's `gFunc.EquipSet` from library modules that are *seeded into each character's LAC
 profile folder*. The design rests on a deliberate two-Lua-state split (ADR 0002): the
