@@ -340,6 +340,15 @@ is no claim at all, v145). Waits only on the go-ahead. The four commits:
   evict a reserver on its way to not landing; punch-through rows keep theirs. Field
   check: locked EMPTY Head + worn cloak + start moving → the cloak STAYS in Body and
   Head stays empty (Movement's Kabuto is dead at the lock and no longer evicts it).
+- `84a7088` (v146, `27zh`) — **zones survive + the frozen-reserver fix**, both Henrik's
+  pre-promotion rulings, NOT yet field-looked. (1) `/dl locks`, `/dl naked`, a locked
+  set and free equip all persist through ZONES: the watch drops only on outlasting a
+  zone (60s) or a job change (the relog-to-another-job case stays caught via the
+  tick's live-only latch). (2) Locking a slot with a piece WORN enters that piece in
+  the verdict at the Locks row — his locked-cloak case: Body no longer empties; Idle's
+  Head piece stays suppressed by the frozen cloak's reservation. Field checks: zone
+  with locks/naked armed → they hold; lock Body with the cloak worn → cloak stays,
+  Head stays empty; relog to another job → everything drops as before.
 - `740fc3a` (v143, `27ze`) — **`/dl why <slot>`** (ADR 0027 item 4): the contest
   drill-down — claimants in rank order, the verdict's word with its reason, the source
   ladder's rungs. Field check: after any dispatch, `/dl why body` should print the
