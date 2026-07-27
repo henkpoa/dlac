@@ -7193,6 +7193,21 @@ end)();
     check('LD10c a new epoch recomputes',
         rawequal(dispatchM.candidatesFor('CF', 'Body'), l1), false);
     check('LD10d an unknown set is nil', dispatchM.candidatesFor('Nope', 'Body'), nil);
+
+    -- FS. flattenedSet: the TOP-LEVEL (flattened) store read the manifest's
+    -- pair-home harvest uses -- the set's chosen picks, never the authored
+    -- rungs (field 2026-07-28: an authored-only leveling rung must FLOAT).
+    dispatchM._nativeSets = {
+        Dynamic = { Idle = { Ear2 = { { Name = 'Outlaws Earring', Level = 50 },
+                                      { Name = 'Loquac. Earring', Level = 75 } } } },
+        Idle = { Ear2 = 'Loquac. Earring', Head = { Name = 'Zenith Crown' } },
+    };
+    local fsIdle = dispatchM.flattenedSet('Idle');
+    check('FS1 flattenedSet answers the FLATTENED entry, not Dynamic',
+        type(fsIdle) == 'table' and fsIdle.Ear2, 'Loquac. Earring');
+    check('FS2 an unknown set is nil', dispatchM.flattenedSet('Nope'), nil);
+    dispatchM._nativeSets = nil;
+    check('FS3 no store is nil', dispatchM.flattenedSet('Idle'), nil);
     dispatchM._nativeSets = savedNS;
     package.loaded['dlac\\utils'] = savedPkgU;
 end)();

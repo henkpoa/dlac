@@ -954,8 +954,14 @@ feedback loop.
   funnel, hand-typed `/dl ls apply`) routes to it directly. Only the
   `/dl debug ls` engine dry-run stays legacy-only (bridge diagnostics).
 - **Trigger Monitor stream**: the `/dlacmonev` command-bus hop is inert
-  natively (self-queued commands are never heard — the Ashita law); the
-  monitor repopulates when the ring gains a direct native feed.
+  natively (self-queued commands are never heard — the Ashita law), but the
+  **monitor itself works** (field-confirmed 2026-07-28) — its `firedstate.lua`
+  fallback carries it on a 1 s throttle, which is invisible for a 5-line log.
+  Two follow-ups, both in `docs/design/integration-surface.md` §11: in ONE
+  state the ring can be read directly (deleting the dead command path *and*
+  the file round-trip), and the ring is **trigger-scoped** — it shows what the
+  floor proposed, while `_trace[event].contest` (v143) holds the arbitration
+  that actually decided each slot.
 - **`/dl check` / `/dl debug`**: diagnose the two-state bridge, which
   native mode dissolves; they still print their addon halves. A
   native-aware readout wants its own field round.

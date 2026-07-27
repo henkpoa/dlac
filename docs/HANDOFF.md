@@ -43,6 +43,15 @@ maintainer IMO, I am just the one with the creative vision."*
    the gearmove branch), [design/picker-database.md](design/picker-database.md),
    [design/sync-settle-hold.md](design/sync-settle-hold.md) (the level-sync TP fix,
    v56/v57 — and the WRAP_GEN rule for anything that must survive an engine hot-swap).
+9. **How other addons read dlac** (designed 2026-07-28, NOT built):
+   [design/integration-surface.md](design/integration-surface.md) — the push/pull
+   `plugin_event` surface, its two timing contracts, and the **parked plugin-folder**
+   design with its rulings (section 10), so neither gets re-derived.
+   [reference/integration-guide.md](reference/integration-guide.md) is the consumer-facing
+   spec written to be handed to a third-party addon author verbatim.
+   **Resuming this work: read §13 of the design doc first** — it holds the state, the
+   decision ledger, tomorrow's first move (the **Dispatch Monitor**, which Henrik is
+   managing), and the four things not to re-derive.
 
 There is also a cross-session memory dir (Claude-specific) at
 `~\.claude\projects\C--catseyexi-catseyexi-client-Ashita-addons-dlac\memory\` — it
@@ -240,10 +249,12 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-*(Empty -- last emptied by the 2026-07-28 promotion of the ADR 0027 completion train,
-v147-v151 + stage 5 (`acc26c9` .. `4ad0360`): claim-side ladders, the belts come off,
-the pair law home, one-plan-one-send, THE MAXMP FOLD, the collapse retirement -- every
-stage field-confirmed. ADR 0027 + docs/design/two-way-arbiter.md are the record.)*
+*(Empty -- last emptied by the 2026-07-28 promotion of the MaxMP pair-home fix
+`1b8aad2` (`2026.07.28b`): pair homes anchor the idle set's CHOSEN picks only, unchosen
+ladder rungs float -- Henrik's own diagnosis, field-confirmed same day ("Now it
+works!"). The promotion also carried the integration-surface design docs (designed,
+not built). history.md "the earring that could never equip" +
+docs/design/maxmp-mode.md are the record.)*
 
 ## What's left (open work, as of 2026-07-25)
 
@@ -289,6 +300,19 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
+- **2026-07-28: MaxMP pair homes anchor CHOSEN picks only — ON MAIN, FIELD-CONFIRMED**
+  (`2026.07.28b`, promoted 2026-07-28 on Henrik's "push to main").
+  Henrik's own diagnosis of the stage 6 field oddity (Outlaws
+  Earring never equipped), confirmed exactly: the fmt 13 pair-home harvest homed **every
+  authored rung** of the idle set's ear/ring ladders, so an unchosen leveling rung
+  (Outlaws Lv50 under Loquacious Lv75 in Ear2) was exiled from ear1's ladder while its
+  own slot's band read diff 0 — no band could ever build for it. The harvest now reads
+  the **flattened** set (new `dispatch.flattenedSet` accessor — the same world the
+  potency-point map always read): only the set's chosen picks anchor pair positions,
+  unchosen rungs float and balance like undocumented gear. Chosen pieces still never
+  plan across the pair. Tests FS*; full story in `docs/history.md` ("the earring that
+  could never equip") + the re-ruled section in `docs/design/maxmp-mode.md`. The field
+  check passed 2026-07-28: Outlaws restored to Ear2, and it equips — *"Now it works!"*
 - **2026-07-27: an import can land verbatim — ON `dev`, awaiting field test**
   (`2026.07.27w`). The first feature dlac has taken from **a second player's field
   report** — a friend of Henrik's, who round-trips his own profiles to compare them:
