@@ -7413,6 +7413,25 @@ end)();
     check('ARK11b the ceiling defense is not',
         dsrc:find("free[CANON_OF[ls] or ls] = '(free equip)'", 1, true) ~= nil, true);
 
+    -- ARK12: A LOCK-VETOED CLAIM IS NO CLAIM AT ALL (Henrik's locked-empty-
+    -- Head field case): floor entries and respect-locks claim rows must strip
+    -- locked slots before the verdict, so a claim the lock will veto cannot
+    -- evict a reserver on its way to not landing. Build-site law -> source
+    -- pins (the worn/lock reads are engine state, unreachable headless), plus
+    -- the pure consequence: with the dead claim absent, the reserver is
+    -- dominant and holds its ground.
+    check('ARK12 floor entries strip locked slots',
+        dsrc:find('set = minusLocked(st), src = sn', 1, true) ~= nil, true);
+    check('ARK12b respect-locks claim rows strip too',
+        dsrc:find('if layerRespectsLocks(cn) then ctbl = minusLocked(ctbl); end', 1, true) ~= nil, true);
+    sup, inel, rep = dispatchM.reserveResolve({
+        { prio = 20, row = 11, set = { Body = 'Royal Cloak' }, src = 'IdleSet' },
+        -- (the Movement Head claim is ABSENT -- stripped at the build site)
+    }, cloakLook, idleLad);
+    check('ARK12c with the dead claim gone, the reserver is dominant', inel, nil);
+    check('ARK12d nothing contests, so nothing is even suppressed (the slot is not in the floor)', sup, nil);
+    check('ARK12e and nothing falls -- the reserver is simply undisturbed', rep, nil);
+
     -- WY1: the contest stash (/dl why <slot>, ADR 0027 item 4). NK26's real
     -- dispatch above ran the stash path; its Default trace must carry the
     -- structured contest the drill-down renders -- the same object that
