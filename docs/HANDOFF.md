@@ -240,71 +240,10 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-### Stage 3 complete: pair law home + HELM ladder + one plan, one send — `e864d8e` + `33d3e63` (2026-07-27)
-
-Engine v148 → **v150**, addon `27zj` → **`27zl`**. Suites **4050 + 693**, Windows and WSL
-lua5.4. **FIELD-CONFIRMED 2026-07-27** by Henrik — *"what I tried seem to work"*. Waits
-only on the go-ahead. The pair-law family lives in `gear/arbiter.lua`; every dispatch
-sends ONE merged plan (OS1 pins exactly-one-send; the map is identical by construction).
-
-### Stage 5: the collapse retirement — `58a7664` (2026-07-28)
-
-Addon `27zm` → **`2026.07.28a`** (engine untouched — `M.VERSION` stays 151). Suites
-**4075 + 693**, Windows and WSL lua5.4. The LAST stage of ADR 0027 — the staging is now
-code-complete. What moved (full deviations log in the §7 stage-5 status block of
-`docs/design/two-way-arbiter.md`):
-
-- **gearcheck audits through the engine's ladder door** (`deps.candidatesFor`, wired by
-  triggersui): each slot's HEAD rung — what the set will actually ask for — wrapper
-  entries now covered, level-ineligible singles no longer false-flagged, list-valued
-  slots no longer silently skipped. Degraded raw walk kept for pre-login.
-- **The Sets-tab preview asks THE evaluator** (`utils.workingPick` → `slotLadder` with
-  `cctx.modeOk`): gearui's hand-mirrored comparator deleted; the preview now obeys the
-  same virtual-adoption law (LD8 quirk included) and pairs Sub against the set's
-  planned Main, like the flatten.
-- The store-as-cache + `BuildDynamicSets` shrink were already done by stage 1 (recorded);
-  marker-expansion-at-install deferred with the follow-ons ("retire gradually", §5).
-
-**FIELD-CONFIRMED 2026-07-28** by Henrik — drove the exact case the migration exists
-for: deleted `dlac:AutoOneiros` from his WHM Weapon set's Sub, added a one-hander under
-a staff Main, and it correctly did not equip — *"We want the sub to show all items,
-including one-handers, since we trust this system to know what works with what. So it
-seems to work as intended."* (The sub-slot hard rule and the pairing law, both halves
-seen working.) Waits only on the go-ahead. **The whole queue above and below is now
-field-confirmed — dev → main carries v147 → stage 5 whole-or-not, on Henrik's go.**
-
-### Stage 6: the MaxMP fold — `88f0d14` (2026-07-27)
-
-Engine v150 → **v151**, addon `27zl` → **`27zm`**. Suites **4059 + 693**, Windows and
-WSL lua5.4. **Executed on Henrik's order** (*"Go for the MaxMP fold"* + the standing
-order's *"see if there's anything to fix while you integrate it into the arbiter"*).
-The woven per-slot MP branch + mp-stage pass are DELETED; MaxMP claims and applies
-through its registry row (band targets → claim; remove-respect / movement-yield /
-sticky-pairs / RSlot-eligibility gates against the same-dispatch view — `ctx.planOut`
-plus unapplied above-rank claims); ceding is apply order; lock-respect is the ordinary
-`respect('MaxMP')`; the `mp-hold` constraint heads `POST_ORDER` (rank-guarded via
-`who`/`ctx.rankOf`); `mpBands` memoizes per dispatch. Bands + resolvers untouched.
-**FIELD-CONFIRMED 2026-07-27** by Henrik — *"MaxMP mode seem to work just like before
-(for both good and bad :) )"*. The ratified gate passed: parity confirmed. Waits only
-on the go-ahead. ("Both good and bad": the pre-fold Cassandra's-over-Outlaw's earring
-oddity persists exactly as before — it predates the fold, its inputs are manifest data
-/ band ordering, and it is deferred to its own diagnosis session with a `/dl plan`
-capture.) Execution log: `docs/design/maxmp-fold-plan.md`.
-
-### Claim-side ladders + the belts come off — `acc26c9` + `60ef4fa` (2026-07-27)
-
-Engine v146 → **v148**, addon `27zh` → **`27zj`**. Suites **4047 + 693**, Windows and WSL
-lua5.4. **FIELD-CONFIRMED 2026-07-27** by Henrik — *"everything seems to be like before"*,
-plus the rank contest verified both ways: Naked above Pins → naked wins; Pins dragged
-above Naked → pins win. Waits only on the go-ahead.
-
-- `acc26c9` (v147) — claim-side ladders: a beaten CLAIM piece falls down its own resolver
-  chain (craft/fish/choco rows carry `rladder`; the chain walk gained a collect mode, one
-  code path). Field-inert by design until a reserving hobby item exists.
-- `60ef4fa` (v148) — `ctx.pinReserved`, `pinReservedSlots` and `nakedVoidsPinReserve`
-  DELETED whole (mechanisms #3 + #9 of the ADR 0027 inventory, closed): the cross-rank
-  verdict's one general rule carries the v43 flap guard and pins-vs-naked (ARK4);
-  AL34–41 + NK15–17 retired with their mechanisms. Net −104/+38 lines.
+*(Empty -- last emptied by the 2026-07-28 promotion of the ADR 0027 completion train,
+v147-v151 + stage 5 (`acc26c9` .. `4ad0360`): claim-side ladders, the belts come off,
+the pair law home, one-plan-one-send, THE MAXMP FOLD, the collapse retirement -- every
+stage field-confirmed. ADR 0027 + docs/design/two-way-arbiter.md are the record.)*
 
 ## What's left (open work, as of 2026-07-25)
 
