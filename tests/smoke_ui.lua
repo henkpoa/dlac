@@ -2848,7 +2848,10 @@ end)();
     IM.CalcTextSize      = function(s) return #tostring(s) * 8; end
     IM.GetContentRegionAvail = function() return 720, 400; end
     IM.CollapsingHeader  = function() return true; end
-    IM.Selectable        = function() return true; end     -- pick a match / a spot each frame
+    -- Every Selectable label this frame is recorded, so FS9b can prove the spot
+    -- rows offer a FULL-ROW hit target rather than a bait-sized one.
+    local sels = {};
+    IM.Selectable = function(l) sels[#sels + 1] = tostring(l); return true; end   -- pick a match / a spot each frame
     IM.IsItemHovered     = function() return true; end     -- exercise every tooltip
     IM.Button            = function() return false; end
     local smalls, clickLabel = {}, nil;
@@ -2919,6 +2922,18 @@ end)();
         fwTarget = 4434;   -- Moat Carp
         local sok2 = pcall(fui.renderSearch, deps);
         check('FS9 renderSearch runs with an active target', sok2, true);
+        -- 2026-07-27, Henrik: "I cannot target the end result without clicking on
+        -- the bait, I would like to be able to click on the whole row." The row's
+        -- hit target is now a full-width Selectable with a bare id, drawn BEFORE
+        -- the columns; a bait-labelled one would mean the hit box shrank back to
+        -- ~6 characters on a row you read left to right.
+        local sawRow, sawBaitHit = false, false;
+        for _, l in ipairs(sels) do
+            if l == '##isorow' then sawRow = true; end
+            if l:find('##bait', 1, true) then sawBaitHit = true; end
+        end
+        check('FS9b spot rows are clickable across the WHOLE row', sawRow, true);
+        check('FS9c the bait cell is no longer the only hit target', sawBaitHit, false);
         check('FS10 stacks still balanced with a target', depth.win + depth.id + depth.item, 0);
 
         -- The PANEL keeps "what I own" and must no longer draw the picker.

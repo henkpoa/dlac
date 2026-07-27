@@ -407,7 +407,7 @@ function M.renderTargetBody(deps, availW)
         -- where + bait (the flagship: ISOLATION first). A breath of air first
         -- (Henrik: separate the fish info from the spot list).
         imgui.Spacing();
-        imgui.TextColored(COL_DIM, 'spots + baits -- best isolation first, click one to fish it:');
+        imgui.TextColored(COL_DIM, 'spots + baits -- best isolation first, click a ROW to fish it:');
         local iso = fcalc.isolationFor(fid);
         if #iso == 0 then
             imgui.TextColored(COL_DIM, 'no known catch spot (quest/contest-gated?).');
@@ -416,36 +416,54 @@ function M.renderTargetBody(deps, availW)
             for i = 1, nShow do
                 local row = iso[i];
                 imgui.PushID('iso' .. i);
+                -- THE WHOLE ROW IS THE CLICK TARGET (Henrik 2026-07-27: "I cannot
+                -- target the end result without clicking on the bait, I would like
+                -- to be able to click on the whole row"). Shipped since the feature
+                -- began with only the bait cell live -- a ~6-character hit box on a
+                -- row you read left-to-right, so the natural click (on the PLACE)
+                -- did nothing at all.
+                --
+                -- Same shape as automationsui.autoRow: a full-width Selectable
+                -- FIRST, then every column drawn over it with an ABSOLUTE SameLine.
+                -- (SameLine(0) would mean "after the previous item" -- i.e. past the
+                -- full-width Selectable, off the right edge -- so the first column
+                -- takes a nonzero x like the automations rows do.)
+                local rowClick = imgui.Selectable('##isorow', false,
+                    (ImGuiSelectableFlags_None or 0), { 0, 18 });
+                -- One hover for the row, since there is now one item to hover. It
+                -- carries what the three separate cell tooltips used to: the bait
+                -- and its affinity, who else bites here, and the monster warning.
+                if imgui.IsItemHovered() then
+                    local tip = { string.format('bait: %s (affinity %d/3)%s',
+                        row.baitName, row.power or 0,
+                        owned(oc, row.bait) and '  -- OWNED' or '  -- not in your bags') };
+                    if not row.clean then
+                        local names = {};
+                        for j = 1, math.min(#row.others, 8) do
+                            names[#names + 1] = (db.fish[row.others[j]] or {}).n or ('#' .. row.others[j]);
+                        end
+                        tip[#tip + 1] = 'also bites here: ' .. table.concat(names, ', ');
+                    end
+                    if row.mob ~= nil then
+                        tip[#tip + 1] = string.format('a MONSTER can take this bait here: %s%s',
+                            row.mob.n or '?', (row.mob.nm or 0) ~= 0 and ' (NM)' or '');
+                    end
+                    tip[#tip + 1] = string.format('click: make %s the target with THIS bait', f.n);
+                    imgui.SetTooltip(table.concat(tip, '\n'));
+                end
+                if rowClick and _fwok then fw.setTarget(fid, row.bait); end
+                imgui.SameLine(2);
                 if row.clean then imgui.TextColored(COL_GOLD, '[ISOLATED]');
                 else imgui.TextColored(COL_DIM, string.format('(%d rivals)', #row.others)); end
-                if not row.clean and imgui.IsItemHovered() then
-                    local names = {};
-                    for j = 1, math.min(#row.others, 8) do
-                        names[#names + 1] = (db.fish[row.others[j]] or {}).n or ('#' .. row.others[j]);
-                    end
-                    imgui.SetTooltip('also bites here: ' .. table.concat(names, ', '));
-                end
                 imgui.SameLine(128);   -- themed font ~9.5px/char: '[ISOLATED]' needs the room
                 local place = row.zoneName .. (row.areaName ~= nil and (' -- ' .. row.areaName) or '');
                 imgui.TextColored(COL_TEXT, esc(place));
                 imgui.SameLine(math.floor(availW * 0.55));
-                local powerDots = string.rep('*', row.power or 1);
-                if imgui.Selectable(string.format('%s %s##bait%d', row.baitName, powerDots, i)) then
-                    if _fwok then fw.setTarget(fid, row.bait); end
-                end
-                if imgui.IsItemHovered() then
-                    imgui.SetTooltip(string.format('bait: %s (affinity %d/3)%s\nclick: make %s the target with THIS bait',
-                        row.baitName, row.power or 0,
-                        owned(oc, row.bait) and '  -- OWNED' or '  -- not in your bags',
-                        f.n));
-                end
+                imgui.TextColored(COL_TEXT, esc(string.format('%s %s',
+                    row.baitName, string.rep('*', row.power or 1))));
                 if row.mob ~= nil then
                     imgui.SameLine(0, 8);
                     imgui.TextColored(COL_WARN, '[!]');
-                    if imgui.IsItemHovered() then
-                        imgui.SetTooltip(string.format('a MONSTER can take this bait here: %s%s',
-                            row.mob.n or '?', (row.mob.nm or 0) ~= 0 and ' (NM)' or ''));
-                    end
                 end
                 imgui.PopID();
             end

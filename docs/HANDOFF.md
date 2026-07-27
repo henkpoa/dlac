@@ -335,13 +335,16 @@ research already recorded. In rough priority order:
   - **Field verdicts (2026-07-27, after the promotion).** Three pills — bar, window, panel
     — are right: *"Perfection"*. The armed green frame reads at a glance: *"Looks great"*.
     Both settled; don't reopen them.
-  - **STILL UNSEEN: the target window itself.** Whether 760×520 gives the spot list enough
-    room is unanswered — asked once and answered about the icons instead. Nobody has opened
-    the window in game yet, so *nothing* about it is field-verified: not the layout, not
-    the search, not `Make target`, not the spot rows. It cannot dress you wrong (it only
-    picks a target, and the engine's own equip path is unchanged), which is why it was
-    allowed to promote — but the first person to fish should look. Ten seconds: hobby bar →
-    Fishing tab → click the target name → search a fish with a long zone name.
+  - **The target window is FIELD-CONFIRMED** (2026-07-27, after the promotion): *"I was
+    very satisfied with how it opens a new window and search for the fish, instead of
+    having to do it solely WITHIN the fish automation menu."* The 760×520 default drew no
+    complaint, so the column-width worry is closed. What the field run DID surface was
+    older than this work: **only the bait cell was clickable** in the spot list — a
+    ~6-character hit box on a row you read left-to-right, so the natural click (on the
+    place) did nothing. Present since the feature began, never reported until now. Fixed in
+    `2026.07.27f`: the whole row is the hit target (automationsui.autoRow's shape — a
+    full-width Selectable first, columns drawn over it), and the three per-cell tooltips
+    merged into one row hover. `FS9b/FS9c` pin it, mutation-verified.
 
 - **AutoAmmo is Range-aware — DONE, field-confirmed, ON MAIN** (promoted 2026-07-26 in
   `03d25e1`; this bullet said "QUEUED for main" until the 07-26 night promotion, pointing
