@@ -46,7 +46,23 @@ Each phase is one whole-or-not-at-all `dev` batch: both suites green, one field 
 then the Ready-to-merge queue (hard rule 14). Order matters — writers first, then the mode, then
 the surfaces, then the words.
 
-### Phase 1 — stop feeding LAC (the writers)
+### Phase 1 — stop feeding LAC (the writers) — **EXECUTED 2026-07-27** (`2026.07.27j`, engine v131)
+
+Landed as planned, with three judgment calls worth naming:
+- **Setup writes NO job files in EITHER mode** (stronger than drafted): the Phase-1 law is
+  "nothing writes under luashitacast\", and a flag-off user's Setup writing starters would
+  break it. Storage + base sets + starter triggers are the whole setup now (NO19 re-pinned).
+- **`M.migrate` leaves originals in place** (step 4, the shim rewrite, deleted): the old
+  job file is inert data under the native engine, and leaving it untouched makes the
+  keep-list promise stronger. The shim writer (`shimFileText`/`SHIM_BODY`/`BOOT_LINE`,
+  `MIGRATE_BOOT`/`STARTER_PROFILE`) died; the recognizers (`SHIM_MARKER`, `isCleanShim`)
+  stay for files already on disk.
+- **check.lua got a comment-only touch**: the seeded-copies comparison still prints (frozen
+  seeds = expected STALE noise, already known as #131) and dies wholesale in Phase 3.
+
+Also extinct with the self-swap: the whole "`M.x = {}` at file scope is wiped by every
+self-swap" hazard class — a plain require owns the module table now (X0 pins that a set
+`__dlacEngineRoot` is ignored). Suites: 3857 + 584, both interpreters.
 
 Nothing may CREATE or refresh LAC-era artifacts anymore. The luashitacast tree becomes read-only
 territory (imports + migration reads only).

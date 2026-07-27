@@ -658,18 +658,8 @@ function M.firstRunInit()
 end
 function M._resetFirstRun() _firstRun.done = false; _firstRun.action = nil; _firstRun.warned = false; end   -- headless test seam
 
--- The LAC-alive polite ask, gated to ONCE per session (ADR 0015 ruling 4). PURE
--- gate: fed the live "is LuaAshitacast alive?" reading, it returns true the FIRST
--- time that is true and latches, so the ask fires exactly once. The coexistence
--- tripwire stays the hard backstop; this is the gentle first word.
-local _asked = false;
-function M.shouldAskUnloadLac(lacAlive)
-    if _asked then return false; end
-    if lacAlive ~= true then return false; end
-    _asked = true;
-    return true;
-end
-function M._resetAskGate() _asked = false; end   -- headless test seam
+-- (The LAC-alive polite ask lived here until the purge, Phase 1 -- the
+-- coexistence tripwire in equipengine is the one remaining backstop.)
 
 function M.profileDirAt(charFolder, name)
     local d = M.charDataDirAt(charFolder);
@@ -1410,62 +1400,11 @@ end
 -- the clean job-file shim
 -- ---------------------------------------------------------------------------
 
--- Marker line: migration and Setup recognize a shim by it and never touch the
--- file again. Keep the prefix stable forever; bump the (vN) on shape changes.
+-- Marker line: migration and Setup RECOGNIZE a shim by it. The shim WRITER
+-- died in the purge (Phase 1 -- nothing writes under luashitacast\ anymore;
+-- migrated users' existing shims stay on disk untouched), so only the
+-- recognizers remain: keep the prefix stable forever, old files carry it.
 M.SHIM_MARKER = '-- dlac profile shim';
-
-M.BOOT_LINE = [[package.path = package.path .. ';' .. AshitaCore:GetInstallPath() .. 'addons\\?.lua';  -- dlac: use the dlac addon library]];
-
--- The shim body. Mirrors gearui's STARTER_PROFILE (OnLoad/Packer kept so
--- /lac addset still works) minus any set data: the engine installs the active
--- profile's sets over the empty scaffold at load / job change / profile switch.
-local SHIM_BODY = [[
--- dlac profile shim (v1) -- managed by dlac. Do not keep data here:
---   sets     live in  <char>\dlac\profiles\<active>\sets\<JOB>.lua      (Sets tab)
---   triggers live in  <char>\dlac\profiles\<active>\triggers\<JOB>.lua  (Triggers tab)
--- Your original file (if you migrated) is in <char>\backups\pre-profiles\.
-local profile = {};
-local utils = require("dlac\\utils");   -- everything comes through this one require
-local gear  = utils.gear;               -- the shared gear inventory
-local sets = {
-    Dynamic = {},                       -- filled by the engine from the active dlac profile
-};
-profile.Sets = sets;
-
-profile.Packer = {
-};
-
-profile.OnLoad = function()
-    gSettings.AllowAddSet = true;
-end
-
-profile.OnUnload = function()
-end
-
-profile.HandleCommand = function(args)
-end
-
--- All equip logic is data: utils.dispatch reads the active profile's trigger file
--- (hot-reloaded -- edit triggers in the dlac GUI or the file; no /lac reload needed).
-profile.HandleDefault = function()
-    sets = utils.rebuildSets(sets);
-    utils.dispatch('Default');
-end
-
-profile.HandleAbility     = function() utils.dispatch('Ability');     end
-profile.HandleItem        = function() utils.dispatch('Item');        end
-profile.HandlePrecast     = function() utils.dispatch('Precast');     end
-profile.HandleMidcast     = function() utils.dispatch('Midcast');     end
-profile.HandlePreshot     = function() utils.dispatch('Preshot');     end
-profile.HandleMidshot     = function() utils.dispatch('Midshot');     end
-profile.HandleWeaponskill = function() utils.dispatch('Weaponskill'); end
-
-return profile;
-]];
-
-function M.shimFileText()
-    return M.BOOT_LINE .. '\n' .. SHIM_BODY;
-end
 
 function M.isCleanShim(text)
     return type(text) == 'string' and text:find(M.SHIM_MARKER, 1, true) ~= nil;
@@ -1749,17 +1688,14 @@ function M.migrate(execute, say)
                     say(string.format('[dlac] %s: trigger move failed -- legacy trigger file left in place (still read as fallback).', e.job));
                 end
             end
-            -- 4) the job file becomes the clean shim. LAST, so any failure above
-            --    leaves the original fully in charge.
+            -- 4) the job file is left EXACTLY as it was (purge Phase 1: the
+            --    shim rewrite died with the shim writer -- LuaAshitacast is
+            --    not the engine, so the original is inert data now, and it
+            --    stays importable in place, which is the keep-list promise).
             if okAll then
-                if writeFile(M.jobFilePath(e.job), M.shimFileText()) then
-                    done = done + 1;
-                    say(string.format('[dlac] %s: MIGRATED -- original: backups\\pre-profiles\\%s.lua; sets: dlac\\profiles\\%s\\sets\\%s.lua; %s.lua is now a clean shim.',
-                        e.job, e.job, name, e.job, e.job));
-                else
-                    failed = failed + 1;
-                    say(string.format('[dlac] %s: FAILED -- could not rewrite %s.lua (backup + profile files are in place).', e.job, e.job));
-                end
+                done = done + 1;
+                say(string.format('[dlac] %s: MIGRATED -- original: backups\\pre-profiles\\%s.lua; sets: dlac\\profiles\\%s\\sets\\%s.lua; %s.lua left in place (inert, still importable).',
+                    e.job, e.job, name, e.job, e.job));
             else
                 failed = failed + 1;
             end

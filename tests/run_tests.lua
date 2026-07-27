@@ -2118,58 +2118,21 @@ check('W7 binding margin', bMg, 5);
 check('W8 no skills -> nil', (craftwatch.bindingCraft(nil, fakeSkill)), nil);
 
 -- ---------------------------------------------------------------------------
--- X. engine self-swap handshake (dispatch.lua hot-reload, v32). Re-executing
---    dispatch.lua with _G.__dlacEngineRoot set must populate THAT table --
---    identity preserved, so utils' captured reference and the profiles' shims
---    run the new code with no re-require -- and the swapper's version-parse
---    must find the real assignment (a reformat of the M.VERSION line would
---    kill the swap SILENTLY otherwise).
+-- X. (The engine self-swap handshake -- __dlacEngineRoot, v32-v130 -- died in
+--    the purge, Phase 1, with the seeder and trySelfSwap: every load is a
+--    plain require now, no handed-over module table, no file-scope state
+--    surviving a re-execution, no version-parse contract. X1-X6 went with it;
+--    X0 pins the NEW contract, X7 the fresh-state cleanliness that outlives
+--    the swap era.)
 -- ---------------------------------------------------------------------------
-local root = { VERSION = -1, dispatch = 'stale sentinel', leftover = 'kept' };
-_G.__dlacEngineRoot = root;
-local swapped = dofile('dispatch.lua');
-_G.__dlacEngineRoot = nil;
-check('X1 swap populates the handed-over root table', rawequal(swapped, root), true);
-check('X2 stale fields are overwritten with live code', type(root.dispatch), 'function');
-check('X3 version claimed on the root', root.VERSION, dispatchM.VERSION);
-local fresh = dofile('dispatch.lua');
-check('X4 normal load (no handshake) stays a fresh table', rawequal(fresh, root), false);
-local fh = io.open('dispatch.lua', 'r');
-local rawSrc = fh:read('*a'); fh:close();
-check('X5 swapper version-parse finds the assignment',
-    tonumber(string.match(rawSrc, 'M%.VERSION%s*=%s*(%d+)')), dispatchM.VERSION);
-
--- X6. WHAT SURVIVES A SELF-SWAP. The swap re-executes the file against the SAME
--- module table (rawset __dlacEngineRoot -> run chunk), so every `M.x = {}` at file
--- scope is a silent reset of live session state every time a `git pull` lands.
--- M.locks used to be exactly that: all sixteen slots quietly unlocked mid-session,
--- announced only by a parenthetical in the swap line. ADR 0021 named the leak while
--- rejecting a lock-based naked; ADR 0022 then put a LOCKED SET on the same row, so
--- half the row surviving a reseed while the other half evaporated was the last
--- reason to leave it. Modelled here exactly as trySelfSwap does it.
-(function()
-    local live = { VERSION = -1 };
-    _G.__dlacEngineRoot = live;
-    dofile('dispatch.lua');                       -- first load: fills the table
-    live.locks['head'] = true;                    -- the player locks a slot...
-    live.modes['testmode'] = true;                -- ...and sets a mode
-    live.lockedSet = { name = 'Incursion T3', mode = 'set', claim = { Head = 'X' }, n = 1 };
-    dofile('dispatch.lua');                       -- ...then a git pull lands
-    _G.__dlacEngineRoot = nil;
-    check('X6 a self-swap KEEPS the player\'s slot locks', live.locks['head'], true);
-    check('X6b ...and a locked set (ADR 0022)',            live.lockedSet ~= nil, true);
-    -- Modes are still reset by the same re-execution, and that is correct: they
-    -- have a disk mirror the engine reads BACK on load (loadModeState), so they
-    -- heal. Locks never could -- __locks is display-only and deliberately never
-    -- restored, because a lock is a "right now" decision -- which is exactly why
-    -- the fix for them had to live on the table instead of in the mirror.
-    check('X6c modes still reset -- they heal from the modestate mirror, locks cannot',
-        live.modes['testmode'], nil);
-    check('X6d ...the swap line no longer promises otherwise',
-        rawSrc:find('slot locks reset', 1, true), nil);
-end)();
--- A FRESH Lua state still starts clean: no handshake table, so M is new and every
--- `or {}` above takes its empty branch. This is the LAC-reload path.
+check('X0 a set __dlacEngineRoot is IGNORED: loads always build a fresh table',
+    (function()
+        local root = { VERSION = -1 };
+        _G.__dlacEngineRoot = root;
+        local swapped = dofile('dispatch.lua');
+        _G.__dlacEngineRoot = nil;
+        return rawequal(swapped, root);
+    end)(), false);
 check('X7 a fresh load starts with no locks',    next(dofile('dispatch.lua').locks), nil);
 check('X7b ...and nothing locked',               dofile('dispatch.lua').lockedSet, nil);
 
@@ -2267,9 +2230,12 @@ local dok, dsets = pcall(dchunk);
 check('Y22 delete removed only the target set', dok and dsets.Dynamic.Idle == nil
     and dsets.Dynamic.Tp_Default ~= nil and dsets.Dynamic.Resting ~= nil, true);
 
--- the clean shim
-check('Y23 shim parses', (loadstring or load)(profilesM.shimFileText()) ~= nil, true);
-check('Y24 shim recognized', profilesM.isCleanShim(profilesM.shimFileText()), true);
+-- the clean shim: the WRITER (shimFileText) died in the purge, Phase 1 -- the
+-- recognizer stays for migrated files already on disk. A literal fixture
+-- stands in for them (SHIM_MARKER-bearing, parseable).
+SHIMTEXT = '-- dlac profile shim (v1) -- managed by dlac.\nreturn {};\n';
+check('Y23 the shim writer is deleted with its machinery', profilesM.shimFileText, nil);
+check('Y24 shim recognized', profilesM.isCleanShim(SHIMTEXT), true);
 check('Y25 a real profile is NOT a shim', profilesM.isCleanShim(JOBFILE), false);
 
 -- the starter sets scaffold (fresh Setup + a migration that found no Dynamic
@@ -2292,11 +2258,11 @@ end
 -- by an import, and a first backup is never overwritten (reshim = stamped copy).
 local plan = profilesM.planMigration({
     { job = 'WAR', text = JOBFILE, hasBackup = false, hasProfileSets = false, hasLegacyTrig = true,  hasProfileTrig = false },
-    { job = 'WHM', text = profilesM.shimFileText(), hasBackup = false, hasProfileSets = false, hasLegacyTrig = false, hasProfileTrig = false },
+    { job = 'WHM', text = SHIMTEXT, hasBackup = false, hasProfileSets = false, hasLegacyTrig = false, hasProfileTrig = false },
     { job = 'BLM', text = JOBFILE, hasBackup = true,  hasProfileSets = false, hasLegacyTrig = false, hasProfileTrig = false },
     { job = 'RDM', text = 'local x = 1; return x;', hasBackup = false, hasProfileSets = false, hasLegacyTrig = false, hasProfileTrig = false },
     { job = 'THF', text = JOBFILE, hasBackup = false, hasProfileSets = true,  hasLegacyTrig = false, hasProfileTrig = false },
-    { job = 'PLD', text = profilesM.shimFileText(), hasBackup = true, hasProfileSets = true, hasLegacyTrig = false, hasProfileTrig = false },
+    { job = 'PLD', text = SHIMTEXT, hasBackup = true, hasProfileSets = true, hasLegacyTrig = false, hasProfileTrig = false },
 });
 check('Y26 plan: real profile migrates', plan[1].action, 'migrate');
 check('Y27 plan: Dynamic block travels verbatim', plan[1].dynText, dynText);
@@ -2311,7 +2277,7 @@ check('Y31b plan: a shim with a backup is left alone (nothing to do)', plan[6].a
 -- for a clean shim is equally load-bearing: migration must be idempotent.)
 do
     local inputs = {};
-    local texts = { JOBFILE, 'return {};', profilesM.shimFileText() };
+    local texts = { JOBFILE, 'return {};', SHIMTEXT };
     for t = 1, #texts do for a = 0, 1 do for b = 0, 1 do for c = 0, 1 do for d = 0, 1 do
         inputs[#inputs + 1] = { job = 'J' .. #inputs, text = texts[t],
             hasBackup = a == 1, hasProfileSets = b == 1, hasLegacyTrig = c == 1, hasProfileTrig = d == 1 };
@@ -5507,28 +5473,10 @@ end)();
     gearTB.NameToObject['Rouser'] = nil;
 end)();
 
--- ---------------------------------------------------------------------------
--- SW. Engine self-swap decision (v102): CONTENT is the key -- version-keying
---     alone went blind to same-version engine edits (field friction 2026-07-22:
---     mid-round fixes never swapped; a manual Reload LAC each time). The
---     version compare stays as a secondary trigger that heals a stale baseline.
--- ---------------------------------------------------------------------------
-(function()
-    local W = dispatchM.swapWanted;
-    check('SW0 exported',                        type(W), 'function');
-    check('SW1 unreadable file -> skip',         W(nil, 'old', nil, nil, 101), 'skip');
-    check('SW2 failed build remembered -> skip', W('bad', 'old', 'bad', 102, 101), 'skip');
-    check('SW3 no parseable version -> skip',    W('garbage', 'old', nil, nil, 101), 'skip');
-    check('SW4 version difference -> swap even on a stale baseline',
-                                                 W('new', 'new', nil, 102, 101), 'swap');
-    check('SW5 nil baseline -> init',            W('same', nil, nil, 101, 101), 'init');
-    check('SW6 same bytes -> skip',              W('same', 'same', nil, 101, 101), 'skip');
-    check('SW7 same-version content edit -> swap (the field case)',
-                                                 W('edited', 'orig', nil, 101, 101), 'swap');
-    check('SW8 an edited failed build gets its retry',
-                                                 W('bad2', 'old', 'bad', 101, 101), 'swap');
-    check('SW9 failed build blocks init too',    W('bad', nil, 'bad', 101, 101), 'skip');
-end)();
+-- (The SW section -- the engine self-swap decision, v102 -- died in the purge,
+-- Phase 1, with M.swapWanted itself: the seeder that fed the swap is gone and
+-- nothing writes under luashitacast\ anymore.)
+check('SW-gone the self-swap seam is deleted with its machinery', dispatchM.swapWanted, nil);
 
 -- ---------------------------------------------------------------------------
 -- REC. gearrecord -- the Owned-gear record rules, ONE home (Type canon + legacy
@@ -11211,15 +11159,10 @@ end)();
     check('NO5 absent + legacy data -> STILL write-native (ADR 0025)', prof.firstRunAction('absent', true), 'write-native');
     check('NO6 absent + no data -> write-native',  prof.firstRunAction('absent', false), 'write-native');
 
-    -- The once-per-session ask gate: fires the FIRST time LAC is alive, then latches.
-    prof._resetAskGate();
-    check('NO7 ask gate: no LAC -> silent',    prof.shouldAskUnloadLac(false), false);
-    check('NO8 ask gate: LAC alive -> ask',    prof.shouldAskUnloadLac(true), true);
-    check('NO9 ask gate: latched after asking', prof.shouldAskUnloadLac(true), false);
-    check('NO10 ask gate: stays latched',       prof.shouldAskUnloadLac(true), false);
-    prof._resetAskGate();
-    check('NO11 ask gate: reset re-arms',       prof.shouldAskUnloadLac(true), true);
-    prof._resetAskGate();
+    -- (NO7-NO11 -- the once-per-session LAC-alive ask gate -- died in the
+    -- purge, Phase 1, with shouldAskUnloadLac/lacAlive; the coexistence
+    -- tripwire is the one remaining backstop.)
+    check('NO7 the ask gate is deleted with its machinery', prof.shouldAskUnloadLac, nil);
 
     -- The native Setup path. Stub the install + identity, force native mode, and
     -- capture every write: the ACCEPTANCE guarantee is zero <JOB>.lua / shim /
@@ -11275,15 +11218,17 @@ end)();
     check('NO16 native setup: no backup written', has('backups'), false);
     check('NO17 native setup lands under the dlac root', has('config\\addons\\dlac\\'), true);
 
-    -- LEGACY (contrast): the flag-off path still writes the <JOB>.lua shim.
+    -- LEGACY (purge Phase 1): even the flag-off path writes NO job file --
+    -- nothing in dlac writes under luashitacast\ anymore, whatever the mode.
+    -- Storage/base-set/trigger seeding above is the whole setup.
     prof.nativeMode = function() return false; end
     writes = {};
     setup.configure(mkDeps());
     check('NO18 setup reports legacy mode', setup.isNative(), false);
-    setup.migrateCurrentJob();   -- state 'nofile' (readFileText nil) -> write the shim
+    setup.migrateCurrentJob();   -- state 'nofile' (readFileText nil)
     local wroteShim = false;
     for _, p in ipairs(writes) do if p == jf then wroteShim = true; end end
-    check('NO19 legacy setup still writes the shim', wroteShim, true);
+    check('NO19 legacy setup writes NO job file either (purge Phase 1)', wroteShim, false);
 
     prof.nativeMode, prof.ensureStorage, prof.storageExists = savedNative, savedEnsure, savedExists;
     os.execute, AshitaCore = savedExec, savedAC;

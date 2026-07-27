@@ -29,12 +29,10 @@
     manager can never take down a cast or profile loading (it just no-ops + reports).
 ]]--
 
--- HOT-SWAP HANDSHAKE: when the engine self-swap (see the LAC tick near the end
--- of this file) re-executes this file, it hands over the CANONICAL module table
--- -- the one require() gave utils and the profiles -- through _G.__dlacEngineRoot.
--- Populating that same table means every held reference runs the new code with
--- no re-require. On a normal require the global is absent: ordinary fresh table.
-local M = rawget(_G, '__dlacEngineRoot') or {};
+-- (The __dlacEngineRoot hot-swap handshake lived here until the purge, Phase 1
+-- -- it let the LAC-state self-swap re-execute this file into the same module
+-- table. The self-swap died with the seeder; a plain require owns the table.)
+local M = {};
 
 -- LAC-LOAD generation stamp: `or` keeps it across engine SELF-swaps (same module
 -- table, same Lua state) but a Reload LAC builds a fresh state -> fresh stamp.
@@ -49,7 +47,7 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 130;  -- 130: the native flatten no longer waits for the GUI (Xvs field case 2026-07-27). Every utils lookup assumed "loaded first in the LAC state" -- the job shim's first require -- but the NATIVE state has no shim and NOTHING loaded utils at boot: package.loaded read nil, installSets skipped the flatten, and every install refused "flatten produced no sets (world not settled)" every 0.4s until a GUI picker's own lazy pcall(require, 'dlac\\utils') happened to run (gearui's isDualWieldAvailable / subCandidateOk -- the accidental medic; that's why it read as per-JOB in the field: the healed session's job "worked", a reload broke it). utilsModule() now requires lazily at call time -- cycle-safe, see its comment. Tests RQU0-RQU2. 129: /dl disable -- free equip, the native-era answer to /lac disable (Henrik 2026-07-26: "make it claim the slot / slots, then don't do anything at all with it, so people can free equip all they want without DLAC intervention"). Not a lock (a lock is a veto INSIDE the rank walk -- four rows punch through it) and not a claim to dress (every other row wins a slot in order to put something there; this one wins it to write nothing). It is the CEILING: pinned first in ARB_ORDER_DEFAULT, undraggable like the Triggers floor, and enforced at engineEquipSet -- the one write seam -- rather than in equipResolved's per-slot chain, because the whole-table post-passes that run after that chain write slots the set never named (mp-stage's battery, trinket-vs-ranged's worn-Ammo displace) and would put a slot straight back. Registered as a claim ONLY for attribution, so /dl why and the Priority panel can name it and woven MaxMP cedes it for free. Shares M.worldWatch with naked / locked set / slot locks (v124's one lifetime rule): drops on a main job change and on leaving the world, never written to disk. The Equipped tab's "Free equip" switch now drives THIS instead of /lac disable, which under the native engine talked to a LuaAshitacast that no longer does the equipping and therefore did nothing at all. ADR 0024; tests DS1-DS30.
+M.VERSION = 131;  -- 131: the LuaShitacast purge, Phase 1 (docs/design/lac-purge-plan.md). The engine SELF-SWAP died whole -- M.swapWanted, trySelfSwap, the __dlacEngineRoot handshake, tests SW* -- because the LAC seeder that fed it died in dlac.lua the same day: with seeds frozen forever, the watch could only ever DOWNGRADE a running engine to stale bytes. profiles.migrate step 4 (rewrite the job file as a clean shim) died too: originals now stay in place, inert and importable (the keep-list promise), and the shim WRITER (shimFileText/SHIM_BODY/BOOT_LINE) went with it -- only the recognizers (SHIM_MARKER, isCleanShim) remain for files already on disk. Setup writes NO job files anymore (MIGRATE_BOOT/STARTER_PROFILE deleted; storage + base sets + starter triggers ARE the setup). The LAC-alive polite ask (lacAlive/shouldAskUnloadLac) is gone; the coexistence tripwire remains the backstop. Nothing in dlac writes under config\addons\luashitacast\ anymore -- that tree is read-only import/migration territory. 130: the native flatten no longer waits for the GUI (Xvs field case 2026-07-27). Every utils lookup assumed "loaded first in the LAC state" -- the job shim's first require -- but the NATIVE state has no shim and NOTHING loaded utils at boot: package.loaded read nil, installSets skipped the flatten, and every install refused "flatten produced no sets (world not settled)" every 0.4s until a GUI picker's own lazy pcall(require, 'dlac\\utils') happened to run (gearui's isDualWieldAvailable / subCandidateOk -- the accidental medic; that's why it read as per-JOB in the field: the healed session's job "worked", a reload broke it). utilsModule() now requires lazily at call time -- cycle-safe, see its comment. Tests RQU0-RQU2. 129: /dl disable -- free equip, the native-era answer to /lac disable (Henrik 2026-07-26: "make it claim the slot / slots, then don't do anything at all with it, so people can free equip all they want without DLAC intervention"). Not a lock (a lock is a veto INSIDE the rank walk -- four rows punch through it) and not a claim to dress (every other row wins a slot in order to put something there; this one wins it to write nothing). It is the CEILING: pinned first in ARB_ORDER_DEFAULT, undraggable like the Triggers floor, and enforced at engineEquipSet -- the one write seam -- rather than in equipResolved's per-slot chain, because the whole-table post-passes that run after that chain write slots the set never named (mp-stage's battery, trinket-vs-ranged's worn-Ammo displace) and would put a slot straight back. Registered as a claim ONLY for attribution, so /dl why and the Priority panel can name it and woven MaxMP cedes it for free. Shares M.worldWatch with naked / locked set / slot locks (v124's one lifetime rule): drops on a main job change and on leaving the world, never written to disk. The Equipped tab's "Free equip" switch now drives THIS instead of /lac disable, which under the native engine talked to a LuaAshitacast that no longer does the equipping and therefore did nothing at all. ADR 0024; tests DS1-DS30.
                   -- 128: 128: AutoAmmo asks what is in RANGE before it picks (field, Henrik 2026-07-26: "AutoAmmo does NOT dictate if it's bolt, arrows or what not that gets equipped. That is 100% decided on what gets put in ranged"). resolveAmmoPlan was type-BLIND -- it took the first `ranged`-flagged entry with stock, so a bolt above your arrows won with a bow equipped -- and the panel's Bullets/Bolts/Arrows selector never constrained it (categoryOf is a VIEW, stored nowhere). The cost was not a wasted swap: charutils.cpp EquipItem STRIPS THE OTHER SLOT on an incompatible Range/Ammo pair, so the bolt took the bow off, the trigger re-equipped it, and the two flapped forever -- ADR 0010's failure through the skill/subskill door instead of the rslot one. New pure M.pairsWith over a "<skill>:<subskill>" key (26:1 gun/bullet, 26:0 crossbow/bolt, 26:2 culverin/shell, 27:0 boomerang/pebble, 27:3 shuriken, 0:10 Animator/oil), three-valued so an unknown pair degrades to today's behaviour instead of switching AutoAmmo off; ARCHERY is exempt from the subskill half exactly as the server writes it (Shortbow 25:0 and Longbow 25:4 share arrows). Range is never written -- AutoAmmo only ever READS it. Two rulings, both Henrik's: no ranged weapon worn = do nothing at all (safe -- with Range empty the server refuses the shot, so nothing can be consumed), and a weapon worn with nothing in the list able to pair = hold, never force a mismatch in. THROWING with an empty Range (a NIN's shuriken, CanUseRangedAttack's `|| PAmmo->isThrowing()`) is the ONE known exception and stays parked behind the §8 NIN field tests. The key rides the manifest like RSlot (gearimport stamps Pair from the catalog's new field); worn Range falls back to the client resource's Skill when the manifest predates it, so the update alone separates bow/gun/throwing for everyone and a manifest refresh upgrades it to gun-vs-crossbow. Tests PW1-PW14, AM40-AM58.
                   -- 127: trigger CASES, the schema backbone (issue #126, slice 2/5; ADR 0023) -- rules gain an optional `cases` list (a second `&`/`|` tier: op + the same two legs a body has), evaluated by matches()/matchedCase() over a factored legMatches so both tiers share one code path; normalize validates + drops empty cases + strips the always-true `hasCases` version guard; auto-priority + ruleLabel span every leg of every case (case-LESS rules match/label/serialize byte-for-byte as before -- pinned). serializeTriggers is oldest-form-first (a `| case` of only `&` rows -> a whenAny multi-entry; only `&` cases and `| cases` with internal OR use the new list) and stamps the guard so OLDER engines drop the rule with the standard warn instead of misreading it. Seeded-file bump: normalize + matches run engine-side (hard rule 4). Tests CX1-CX35, MC19-23. (PR #132 shipped as v126/2026.07.26c off a pre-97f1edc dev; renumbered at merge.)
                   -- 126: the /dl why trace can no longer outlive the sets store it described (field, Mindie 2026-07-26 01:31): the retrace sig now carries the store REVISION (M.modesRev -- bumped by every install and re-flatten, 5668/5714), so lines built against the empty boot-window store ("[NOT FOUND in profile Sets]", true for ~2s of designed install refusals) die the moment the install lands, instead of printing with a fresh timestamp for the rest of the session while equips worked fine. The v118 law applied to the trace: THE INSTALL INVALIDATES THE BELIEF. Display only, no equip change. Tests TRC0-TRC3 (the trace-vs-store contract, driven through the real command handler + dispatch like CMD).
@@ -6463,26 +6461,10 @@ local function argStart(raw)
     return nil;
 end
 
--- The self-swap DECISION, pure (tests SW*): should the tick act on the seeded
--- file's bytes? Content is the key -- the version number alone went BLIND to
--- same-version engine edits (Henrik's field friction, 2026-07-22: mid-round
--- fixes under one vNN never swapped; only a manual Reload LAC picked them up).
---   raw       -- the seeded file's bytes (nil = unreadable).
---   sourceRaw -- the bytes the RUNNING engine was loaded from (nil = not yet known).
---   failedRaw -- the last build that failed to swap (retried only when edited).
---   fileV/runV -- parsed M.VERSION of the file / the running engine. A version
---                DIFFERENCE swaps even when sourceRaw is stale (the baseline
---                self-heals); an unparseable fileV is a torn or foreign file --
---                never execute one.
--- Returns 'swap' | 'init' (capture raw as the baseline) | 'skip'.
-function M.swapWanted(raw, sourceRaw, failedRaw, fileV, runV)
-    if raw == nil or raw == failedRaw then return 'skip'; end
-    if fileV == nil then return 'skip'; end
-    if runV ~= nil and fileV ~= runV then return 'swap'; end
-    if sourceRaw == nil then return 'init'; end
-    if raw ~= sourceRaw then return 'swap'; end
-    return 'skip';
-end
+-- (M.swapWanted -- the content-keyed self-swap decision, tests SW* -- died in
+-- the purge, Phase 1, together with trySelfSwap below: with the LAC seeder
+-- gone there is no seeded file to watch, and a leftover swap could only ever
+-- DOWNGRADE a running engine to frozen seed bytes.)
 
 -- The engine machinery block: LAC state always; the ADDON state too when the
 -- native engine is armed (feature/native-engine, v111) -- mode state, the
@@ -6539,77 +6521,11 @@ if engineActive() then
         end
     end);
 
-    -- ENGINE SELF-SWAP: hot-reload this file the way the trigger data reloads.
-    -- The addon's seeder refreshes <char>\dlac\dispatch.lua whenever the addon
-    -- copy changes (load-time + the 5s watch in dlac.lua), but LAC's require
-    -- cache keeps running the OLD code until a full Reload LAC -- the one
-    -- reload the version banner still asks for. Instead: every ~2s the tick
-    -- compares the seeded file's BYTES against the bytes this engine was
-    -- loaded from (M._swapSourceRaw; version-keying alone went blind to
-    -- same-version edits -- see M.swapWanted, the pure decision). On a
-    -- difference the file is re-executed INTO THIS SAME MODULE TABLE (the
-    -- __dlacEngineRoot handshake at the top of the file), so utils' captured
-    -- reference and the profiles' shims run the new code with no re-require.
-    -- The re-run re-registers both event handlers (unregister-first makes the
-    -- replace deterministic), skips the Default-gate wrap re-install when the
-    -- shell shape is unchanged (_dlacWrapGen guard -- the gate LOGIC lives on
-    -- M.defaultGateHold and swaps live regardless), and re-runs loadModeState
-    -- + saveModeState -- a swap inherits Reload-LAC semantics exactly: modes
-    -- survive via the modestate mirror (whose re-stamp also clears the GUI
-    -- banner); modes, slot locks and any locked set are KEPT (they live on the module
-    -- table the swap hands over, so a git pull cannot quietly undo them).
-    -- The BASELINE initializes from the first readable tick (the engine and
-    -- the seeded file are the same bytes at load in every ordinary sequence)
-    -- and self-heals through the version compare if a reseed ever lands in
-    -- the sub-second between require and the first tick.
-    -- Failure degrades to today's behavior: a syntax error is caught by
-    -- loadstring BEFORE anything executes; a runtime error mid-execution rolls
-    -- the version stamp back to the old one (the mixed state IS old-with-holes;
-    -- the banner must stay up) and the broken CONTENT is remembered on the
-    -- SHARED table (M._swapFailedRaw -- a half-swapped generation may already
-    -- be running the new tick), so a broken build is tried once per edit, not
-    -- every 2 seconds, and a fixed build -- same version or not -- always
-    -- differs from the remembered bytes and gets its retry.
-    local _swapAt = 0;
-    local function trySelfSwap()
-        if os.clock() < _swapAt then return; end
-        _swapAt = os.clock() + 2.0;
-        local dir = charDir();
-        if dir == nil then return; end
-        local path = dir .. 'dispatch.lua';
-        local raw = readFile(path);
-        local v = (raw ~= nil) and tonumber(string.match(raw, 'M%.VERSION%s*=%s*(%d+)')) or nil;
-        local want = M.swapWanted(raw, M._swapSourceRaw, M._swapFailedRaw, v, M.VERSION);
-        if want == 'init' then M._swapSourceRaw = raw; return; end
-        if want ~= 'swap' then return; end
-        local chunk, cerr = (loadstring or load)(raw, '@' .. path);
-        if chunk == nil then
-            M._swapFailedRaw = raw;
-            printerr(string.format('engine hot-swap: v%d does not parse (%s) -- staying on v%d.',
-                v, tostring(cerr), M.VERSION));
-            return;
-        end
-        local old = M.VERSION;
-        rawset(_G, '__dlacEngineRoot', M);
-        local ok, err = pcall(chunk);
-        rawset(_G, '__dlacEngineRoot', nil);
-        if not ok then
-            M._swapFailedRaw = raw;
-            M.VERSION = old;        -- the partial run may have claimed v already
-            pcall(saveModeState);   -- ...and stamped it: re-stamp old, keep the banner honest
-            printerr(string.format('engine hot-swap v%d -> v%d FAILED mid-load (%s) -- click Reload LAC.',
-                old, v, tostring(err)));
-            return;
-        end
-        M._swapFailedRaw = nil;
-        M._swapSourceRaw = raw;
-        if v == old then
-            print(string.format('[dlac] engine hot-swapped v%d (same-version content change) -- no Reload LAC needed (modes, locks and any locked set kept).', v));
-        else
-            print(string.format('[dlac] engine hot-swapped v%d -> v%d -- no Reload LAC needed (modes, locks and any locked set kept).',
-                old, v));
-        end
-    end
+    -- (The ENGINE SELF-SWAP -- trySelfSwap, the ~2s content watch that carried
+    -- a git pull through the seeded copy into LuaAshitacast's running state --
+    -- died in the purge, Phase 1, with the seeder that fed it. The addon state
+    -- requires this file from the addon folder; /dl reload or /addon reload
+    -- dlac is the one update hop left, and it is a real reload.)
 
     -- A self-swap re-runs these registrations; unregister-first makes the
     -- replace deterministic whatever Ashita's same-alias behavior is (pcall:
@@ -6805,7 +6721,6 @@ if engineActive() then
             end
             if os.clock() < _tickAt then return; end
             _tickAt = os.clock() + 0.4;
-            if inLac() then trySelfSwap(); end   -- engine hot-reload: LAC-state machinery
                                                  -- (the addon state reloads whole via /addon reload)
             -- '/dl debug ls' window flush (v106): the capture ended -> write
             -- the handoff (snapshot + timeline); the addon's merger reads it

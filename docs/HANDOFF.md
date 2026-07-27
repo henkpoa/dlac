@@ -293,13 +293,17 @@ without costing movement gear between points. The record is the merge commit on 
 Nothing below is half-built — these are deliberate stopping points, each with its
 research already recorded. In rough priority order:
 
-0. **THE LUASHITACAST PURGE** (Henrik's 07-27 ruling; plan drafted at
-   `docs/design/lac-purge-plan.md`). Five phases, each a whole-or-not-at-all dev batch:
-   1 writers (seeder/shims/self-swap), 2 legacy MODE dies (the dispatch diet), 3
-   native-aware surfaces (#131 closes), 4 keep-list hardening (job-file imports — the
-   group/table + static set importers SURVIVE, per Henrik), 5 docs. Three open
-   questions for Henrik sit at the bottom of the plan (migrate carriers, `/dl engine`
-   surface, flag-file retirement).
+0. **THE LUASHITACAST PURGE** (Henrik's 07-27 ruling; plan + execution log at
+   `docs/design/lac-purge-plan.md`). Five phases, each a whole-or-not-at-all dev batch.
+   **Phase 1 DONE on dev 2026-07-27** (`2026.07.27j`, engine v131): the 5s legacy seeder,
+   the shim writer + `PROFILE_TEMPLATE.lua`, Setup's job-file writes (both modes), the
+   LAC-alive polite ask, and the whole engine self-swap died; `M.migrate` now leaves
+   originals in place (inert, still importable). Nothing in dlac writes under
+   `config\addons\luashitacast\` anymore. NEXT: Phase 2 (legacy MODE dies — the dispatch
+   diet), then 3 native-aware surfaces (#131 closes), 4 keep-list hardening (the
+   group/table + static set importers SURVIVE, per Henrik), 5 docs. Henrik's answers to
+   the three open questions are recorded in the plan: migrate carriers stay, `/dl engine`
+   becomes status-only, the flag retires in place.
 1. **FIELD TEST the 07-25 release.** Henrik approved the Menu/Settings **visuals**, but
    the **Mode library has not been driven in-game at all**. Everything in it is
    headless-tested only; the suites stub imgui by design, so popup behaviour, the

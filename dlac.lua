@@ -25,7 +25,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.07.27i';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.07.27j';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
 addon.desc    = 'Build gear sets and view live stats with level scaling (for LuaAshitacast).';
 
@@ -85,92 +85,19 @@ pcall(function()
     end
 end);
 
--- Make the dlac library resolvable from your LuaAshitacast <JOB>.lua profiles WITHOUT a
--- fragile per-profile bootstrap line. LAC adds the profile folder to its own package.path,
--- so a copy of utils.lua (+ gear.lua) in <char>\dlac\ makes require("dlac\\utils") resolve
--- there -- the exact first path LAC searches. Library files are written only when their
--- BYTES differ from the seeded copy (the 5s watch below re-runs this, so unconditional
--- writes would grind the disk for nothing); gear.lua is seeded only when absent, so your
--- scanned inventory is never overwritten.
--- Returns true once the character is known (so the pre-login watch below can tell).
-local function seedCharFolder()
-    local seeded = false;
-    pcall(function()
-        local party = AshitaCore:GetMemoryManager():GetParty();
-        local name  = party:GetMemberName(0);
-        local id    = party:GetMemberServerId(0);
-        if name == nil or name == '' or id == nil then return; end
-        local addonDir = AshitaCore:GetInstallPath() .. 'addons\\dlac\\';
-        local dstDir   = string.format('%sconfig\\addons\\luashitacast\\%s_%u\\dlac\\', AshitaCore:GetInstallPath(), name, id);
-        if ashita and ashita.fs and ashita.fs.create_directory then ashita.fs.create_directory(dstDir); end
-        local function slurp(p) local f = io.open(p, 'rb'); if f == nil then return nil; end local d = f:read('*a'); f:close(); return d; end
-        local function spit(p, d) local f = io.open(p, 'wb'); if f == nil then return; end f:write(d); f:close(); end
-        for _, f in ipairs({ 'utils.lua', 'dispatch.lua', 'chatfmt.lua', 'profiles.lua' }) do   -- library: track the addon copy
-            local d = slurp(addonDir .. f);
-            if d ~= nil and d ~= slurp(dstDir .. f) then spit(dstDir .. f, d); end
-        end
-        if slurp(dstDir .. 'gear.lua') == nil then           -- your data: seed the empty template only if absent
-            local g = slurp(addonDir .. 'gear.lua');
-            if g ~= nil then spit(dstDir .. 'gear.lua', g); end
-        end
-        -- routine seeding: no chat line (see the banner)
-        seeded = true;
-    end);
-    return seeded;
-end
+-- (The LEGACY SEEDER lived here until the LuaShitacast purge, Phase 1 -- it
+-- copied utils/dispatch/chatfmt/profiles.lua + a gear template into
+-- config\addons\luashitacast\<char>\dlac\ every 5s so LAC's state could
+-- require them. Nothing writes under luashitacast\ anymore: that tree is
+-- read-only import/migration territory. See docs/design/lac-purge-plan.md.)
 
--- The addon normally loads at Ashita boot -- BEFORE login -- so neither the gear preload
--- above nor this seeding can find a character; both silently no-op. The seeding runs again
--- every ~5s FOREVER (not just until the character is known): the addon directory is a git
--- checkout, and a `git pull` while the game runs used to strand the seeded copies until a
--- manual /addon reload -- the one missing hop in the update chain. With the watch, a pull
--- propagates addon -> seeded copy on its own, and the engine's content-keyed self-swap
--- (dispatch.lua v102) carries it the last hop into LAC's running state -- no manual step.
--- Compare-before-write above keeps the steady state read-only. (The in-memory gear preload
--- is deliberately NOT retried here: by then the modules below have already captured the
--- shared gear table, so swapping package.loaded would split them apart -- gearui re-reads
--- the real gear.lua IN PLACE on its own first-login hook, before the first auto-sync.)
---
--- NATIVE MODE (feature/native-engine): seeding serves the LAC state, which the
--- native engine replaces -- so the watch flips to storage auto-migration
--- instead: the first login after the flag turns on copies this character's
--- legacy data into config\addons\dlac\<char>\ (profiles.engineAutoMigrate --
--- copy only, legacy files stay put; settles to two file probes per beat).
--- Best-effort "is LuaAshitacast alive and equipping alongside us?" for the
--- native-boot polite ask (ADR 0015 ruling 4). Positive evidence, in order of
--- certainty: (1) equipengine's coexistence tripwire fired this session -- a
--- foreign engine re-injected one of our fingerprinted action packets, i.e. LAC
--- is definitely loaded and equipping; (2) a modestate mirror in the LEGACY LAC
--- home was written recently -- a dlac engine hosted INSIDE LuaAshitacast stamped
--- it (native mode never writes there; our own engine writes the native home).
--- Best-effort by design: the tripwire remains the hard backstop either way, so a
--- miss here only means the loud DISARMED line arrives instead of the polite one.
-local function lacAlive()
-    local alive = false;
-    pcall(function()
-        local eng = require('dlac\\feature\\equipengine');
-        if type(eng) == 'table' and type(eng.state) == 'table' and eng.state.tripped == true then
-            alive = true;
-        end
-    end);
-    if alive then return true; end
-    pcall(function()
-        local party = AshitaCore:GetMemoryManager():GetParty();
-        local name  = party:GetMemberName(0);
-        local id    = party:GetMemberServerId(0);
-        if name == nil or name == '' or id == nil then return; end
-        local p = string.format('%sconfig\\addons\\luashitacast\\%s_%u\\dlac\\modestate.lua',
-            AshitaCore:GetInstallPath(), name, id);
-        local chunk = loadfile(p);
-        if chunk == nil then return; end
-        local ok, t = pcall(chunk);
-        if ok and type(t) == 'table' and type(t.__at) == 'number' and (os.time() - t.__at) <= 15 then
-            alive = true;
-        end
-    end);
-    return alive;
-end
-
+-- The storage watch: the addon loads at Ashita boot -- BEFORE login -- so the
+-- gear preload above finds no character; the ~5s watch below retries FOREVER.
+-- Its whole job now is the native home: the first-run decision, the one-time
+-- auto-migration of legacy data INTO config\addons\dlac\<char>\ (copy only,
+-- legacy files stay put), and the fresh-job auto-setup. (The LAC seeding half
+-- and the LAC-alive polite ask died in the purge, Phase 1; the coexistence
+-- tripwire in equipengine remains the hard backstop against a foreign engine.)
 local function maintainStorage()
     -- THE FIRST-RUN DECISION GATES EVERYTHING BELOW (field bug 2026-07-23,
     -- Henrik's fresh-install sim): an undecided beat used to fall through to
@@ -187,12 +114,10 @@ local function maintainStorage()
         local prof = require('dlac\\profiles');
         action = prof.firstRunInit();   -- native-first onboarding (ADR 0015 ruling 4)
     end);
-    if action == nil then return; end   -- undecided -> INERT: no native branch, no legacy seeding
-    local isNative = false;
+    if action == nil then return; end   -- undecided -> INERT: nothing below may write
     pcall(function()
         local prof = require('dlac\\profiles');
         if prof.nativeMode() then
-            isNative = true;
             prof.engineAutoMigrate(print);
             -- FRESH-INSTALL AUTO-SETUP (issue #91): silently create this
             -- character+job's baseline when it is missing -- storage, gear
@@ -204,20 +129,10 @@ local function maintainStorage()
                 local setup = require('dlac\\ui\\setupui');
                 if type(setup.autoSetupNative) == 'function' then setup.autoSetupNative(); end
             end);
-            -- The LAC-alive polite ask, once per session (the tripwire is the
-            -- hard backstop). Ask BEFORE the coexistence hazard bites.
-            if prof.shouldAskUnloadLac(lacAlive()) then
-                local msg = 'dlac now equips your gear itself (native engine). LuaAshitacast is still '
-                    .. 'loaded -- please turn it off so the two do not fight over your gear:  '
-                    .. '/addon unload luashitacast';
-                pcall(function()
-                    local c = require('dlac\\chatfmt');
-                    if type(c) == 'table' and type(c.warn) == 'function' then c.warn(msg); else print('[dlac] ' .. msg); end
-                end);
-            end
         end
     end);
-    if not isNative then seedCharFolder(); end
+    -- (Legacy mode gets NO seeding anymore -- purge Phase 1: the LAC tree is
+    -- read-only. A flag-off user's LAC state keeps whatever copies it has.)
 end
 maintainStorage();
 local _seedAt = 0;

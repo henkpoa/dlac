@@ -42,8 +42,11 @@ local function try(name)
     return (ok and type(m) == 'table') and m or nil;
 end
 
--- The four library files the seeder tracks (dlac.lua seedCharFolder): compare
--- addon-tree bytes against the seeded copy. gear.lua is user data, not listed.
+-- The four library files the LAC-era seeder used to track (the seeder died in
+-- the purge, Phase 1): compare addon-tree bytes against the seeded copy. On a
+-- migrated install the copies are frozen forever, so STALE here is expected
+-- noise -- the whole comparison dies with the Phase 3 native-aware rework
+-- (#131). gear.lua is user data, not listed.
 local SEEDED = { 'utils.lua', 'dispatch.lua', 'chatfmt.lua', 'profiles.lua' };
 
 -- A healthy catalog carries ~14.9k items; far fewer means the file lost its
