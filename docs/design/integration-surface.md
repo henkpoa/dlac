@@ -493,11 +493,44 @@ Where it does **not** hold, and this is real data loss today:
    into a consumer that already shipped against their absence.
 2b. **The `worn` query**, immediately after — it is the consumer's only bootstrap and their
    only re-sync (§6.5), so the stream is not usable without it.
-3. **The Trigger Monitor as consumer #1.** Its v55 feed streamed fired-rule lines to the
-   other Lua state as a blocked `/dlacmonev` command; the purge made that hop inert
-   (*self-queued commands are never heard*), and the architecture notes say the monitor
-   *"repopulates when the ring gains a direct native feed"*. **This is that feed** — an
-   in-house consumer that proves the stream before any external addon connects.
+3. **ONE DECISION RECORD, THREE RENDERERS — build this before the wire.** (Corrected
+   2026-07-28 after Henrik's *"the trigger monitor still works"* + *"in the end it's the
+   arbiter who knows what's going to happen per slot first and why, right?"* — both right,
+   and the second one changes the plan.)
+
+   Two records are built in the same breath today, and only one of them is authoritative:
+
+   | | Built at | Holds | Rendered by |
+   |---|---|---|---|
+   | `_fired` (5-line ring) | retrace, from `hits` | `rule.label -> set name` — what the **trigger layer proposed** | the Trigger Monitor |
+   | `_trace[event].contest` | retrace (v143) | `{ explain = arbExplain(claims, order, floor), … }` — the **whole arbitration**, per slot, structured | `/dl why` + `/dl why <slot>` |
+
+   Since ADR 0012 the trigger overlay is only the **floor**: every claimant above it can
+   overwrite any slot. So the monitor shows *proposals, not outcomes* — it can print
+   `Idle -> IdleSet` while Body actually went to the Craft claim's apron. That is a real
+   limitation of the monitor, not of the stream, and it is the reason the stream's subject
+   must be the **arbitration result**, never fired rules.
+
+   The record `/dl why` already stashes *is* the stream's payload. So publish it once and
+   have all three read it — chat, window, wire — which is this codebase's own law applied
+   (mpBands: *"ONE context serves the engine AND `/dl plan` — the plan IS the behavior,
+   never render a rival"*). If the record is right, the wire is trivial; if the wire gets
+   its own builder, there are two answers to "what happened this dispatch" within a month.
+   Keep `by` **inside the record** from day one even though the parser deferred it off the
+   wire (§5.2) — the internal renderers need it.
+
+   **Product call for Henrik, recommended:** deepen the Trigger Monitor into a **Dispatch
+   Monitor** reading that record — per-slot winner plus claimant, not just fired rules.
+   *"Why is my Body slot wrong"* is the question players actually ask, `/dl why` already
+   computes the answer, and the monitor is currently showing the other half.
+
+3b. **Free cleanup while in there** (not the stream's job, but it is the same code):
+   the monitor works today via its **disk fallback**, not its live feed. The engine's
+   `/dlacmonev` push (`dispatch.lua:6640`) cannot be heard in one Lua state — a state never
+   hears its own `QueueCommand` — so `trig._firedLive` never latches and `trigFiredState()`
+   re-reads `firedstate.lua` on a 1-second throttle (`ui\triggersui.lua:828-832`). Invisible
+   for a 5-line log, which is why nobody noticed. In one state the ring can be read
+   **directly**, deleting both the dead command path and the file round-trip.
 4. `dispatch` + `invalidate` kinds; then `confirm`.
 5. The five queries, `rev`s last.
 
