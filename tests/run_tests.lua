@@ -3765,36 +3765,13 @@ end)();
         check('AL24 a pinned reserver still drops the reserved slot', alTbl.Head, nil);
         check('AL25 the pinned reserver itself equips', alTbl.Body, 'Ryl.Ftm. Tunic');
 
-        -- THE FLAP, through the overlay. reservedDrops judges ONE table at a
-        -- time, and the pin lands in its OWN equipResolved -- so the SET's pass
-        -- never learns the pinned Tunic is about to reserve the Head it is
-        -- equipping, and the pin's pass cannot drop a Head its table never
-        -- names. Without the hold: set equips Head, pin equips Tunic, server
-        -- strips Head, forever ("it just flashes back and forth infinitely").
-        -- (Nested do: this file's main chunk has its own 200-local ceiling.)
+        -- (AL34-AL41 RETIRED, step-1 cleanup 2026-07-27: the pin-reserved
+        --  hold is the cross-rank verdict's one general rule now -- a
+        --  dominant pin reserver suppresses the floor slot, ARK4 -- and
+        --  pinReservedSlots/nakedVoidsPinReserve are gone whole.)
         do
-            local res = dispatchM._pinReservedSlots({ Body = 'Ryl.Ftm. Tunic' });
-            check('AL34 a pinned reserver reports its reserved slot',
-                (res or {}).head, 'Ryl.Ftm. Tunic');
-            check('AL35 it does not report slots it never reserves', (res or {}).legs, nil);
-            -- the hold applied to the SET's pass: Head must not be equipped at all
-            local nt, st = dispatchM._equipResolved(
-                { Head = 'Silver Hairpin', Body = 'Cotton Doublet' },
-                { pinReserved = res });
-            check('AL36 the set never equips a slot a PIN reserves', st.Head, nil);
-            check('AL37 the set keeps every other slot', st.Body, 'Cotton Doublet');
-            check('AL38 the hold is traced for /dl why',
-                string.find(nt or '', 'RESERVED by pinned', 1, true) ~= nil, true);
-        end
-        do
-            -- no pins -> no hold -> the slot dispatches normally (stateless:
-            -- unpin and Head comes straight back on the next pass)
-            check('AL39 no pins -> nothing reserved', dispatchM._pinReservedSlots(nil), nil);
             local _, fr = dispatchM._equipResolved({ Head = 'Silver Hairpin' }, {});
-            check('AL40 unpinned, the same Head equips again', fr.Head, 'Silver Hairpin');
-            -- a pin never reserves ANOTHER pin's slot: you asked for both, both land
-            local r2 = dispatchM._pinReservedSlots({ Body = 'Ryl.Ftm. Tunic', Head = 'Silver Hairpin' });
-            check('AL41 a pin does not reserve a slot another pin owns', (r2 or {}).head, nil);
+            check('AL40 a direct pass equips Head normally', fr.Head, 'Silver Hairpin');
         end
     end
 end)();
@@ -6614,16 +6591,8 @@ end)();
     check('NK14 MaxMP cedes all 16 slots to Naked (lowercase keys)', nCede, 16);
     check('NK14b including the Ammo slot it would otherwise battery', ceded['ammo'], 'Naked');
 
-    -- The pinReserved void. A hold placed on behalf of a claimant Naked outranks
-    -- is void; one placed on behalf of a claimant that outranks Naked stands.
-    check('NK15 Naked above Pins voids the pin reservation',
-        dispatchM.nakedVoidsPinReserve({ Naked = 1, Pins = 2 }), true);
-    check('NK16 Pins above Naked keeps it',
-        dispatchM.nakedVoidsPinReserve({ Naked = 3, Pins = 1 }), false);
-    check('NK17 no Naked row -> nothing is voided',
-        dispatchM.nakedVoidsPinReserve({ Pins = 1 }), false);
-    check('NK17b a bad rank table never throws',
-        dispatchM.nakedVoidsPinReserve(nil), false);
+    -- (NK15-NK17 RETIRED with nakedVoidsPinReserve, step-1 cleanup
+    --  2026-07-27: pins-vs-naked is the verdict's strength contest now.)
 
     -- THE LIVE EQUIP LAYER. The claim has to survive equipResolved's five post
     -- passes intact -- an all-'remove' table is an input none of them were
