@@ -6291,3 +6291,7 @@ Mutation-verified: re-add the line and HB21 fails.
 - **The metrics window is the artifact.** `active` vs `visible` counts plus the vertex
   delta said *active, rendered, drawing nothing* — which no amount of reading the addon's
   own Lua could have said.
+
+**Status:** on `dev` (`ad476ea`, addon `27u`), **FIELD-CONFIRMED** by Henrik the same day
+— *"it works now :)"* — and queued for promotion. Suites 3901 + 693, green on Windows lua
+and WSL lua5.4.

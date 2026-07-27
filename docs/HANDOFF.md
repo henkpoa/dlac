@@ -232,6 +232,28 @@ that performs the promotion **empties this section in the same commit as the mer
 entry left standing here after a merge is how "is this on main?" becomes unanswerable —
 see hard rule 14, which this section exists to serve.
 
+### Minimizing the hobby bar ate the other windows — `ad476ea` (2026-07-27)
+
+Addon `27t` → **`27u`**, engine unchanged. Suites **3901 + 693**, Windows and WSL lua5.4.
+**FIELD-CONFIRMED 2026-07-27** by Henrik — *"it works now :)"*. Waits only on the go-ahead.
+
+- **One deleted line in `ui/hobbybar.lua`.** It opened with
+  `imgui.SetNextWindowSize({0,0}, ImGuiCond_Always)` in front of an `AlwaysAutoResize`
+  `Begin`. A zero component is not "auto-size", it is **"keep measuring"**: ImGui's
+  `SetWindowSize` sets `AutoFitFramesX/Y = 2`, and `Cond_Always` re-armed them every frame,
+  so they never reached zero. ImGui's rule is
+  `skip = (Collapsed or not Active or Hidden) and AutoFitFrames <= 0` — so a **collapsed**
+  hobby bar kept returning `true` from `Begin()` and kept drawing its whole body into a
+  title-bar-sized window. Every other dlac window collapses normally; this was the only
+  trigger, and **closing** the bar was always safe. Focus picked the victim: `FocusWindow`
+  moves a window's draw list to the display front, i.e. *behind* this one in emission order,
+  so clicking the Teleports float — or opening `/dl ui` — put it there and it went invisible.
+  `AlwaysAutoResize` had been doing the sizing since the bar shipped (`92e1fb2`, 07-24);
+  the call was redundant the whole time.
+- **`HB21`** records every size the bar requests and asserts none is zero. Mutation-verified.
+- **Docs:** history.md carries the law and the diagnosis, including the `/dl metrics` read
+  (`active` vs `visible` + the vertex delta) that named *active, rendered, drawing nothing*.
+
 ### Reserved slots: visible, then correct — `05da34a` + `aa3c60d` (2026-07-27)
 
 Addon `27o` → **`27t`**, engine v134 → **v135**. Suites 3901 + 692, Windows and WSL lua5.4.
