@@ -45,11 +45,17 @@ local imgui = try('imgui');
 local M = {};
 
 -- Tab order = idleexcl.MEMBERS order.
+--
+-- `n` is what the PLAYER is told this tab is -- the hover word, and the label if
+-- the tab has no art (Henrik 2026-07-27: "just show simple terms"). `img` is the
+-- asset basename, kept separate because it names a FILE: the art is a digging
+-- chocobo, so `Chocobo.png` is the right file name while "Digging" is the right
+-- word. Renaming one must never silently rename the other.
 local TABS = {
-    { k = 'craft', n = 'Craft'   },
-    { k = 'helm',  n = 'HELM'    },
-    { k = 'fish',  n = 'Fishing' },
-    { k = 'choco', n = 'Chocobo' },
+    { k = 'craft', n = 'Crafting', img = 'Craft'   },
+    { k = 'helm',  n = 'HELM',     img = 'HELM'    },
+    { k = 'fish',  n = 'Fishing',  img = 'Fishing' },
+    { k = 'choco', n = 'Digging',  img = 'Chocobo' },
 };
 local VALIDSEL = { craft = true, helm = true, fish = true, choco = true };
 
@@ -93,7 +99,7 @@ end
 -- the icon is that you recognise it. So: brightness carries selection -- the
 -- craft-glyph idiom -- and ARMED gets a literal green frame around the icon.
 local function iconTab(t, isSel, isActive)
-    local h = iconHandle(t.n);
+    local h = iconHandle(t.img or t.n);
     if h == nil then return false, false; end
     local x, y = imgui.GetCursorScreenPos();
     local tint = isSel and { 1, 1, 1, 1 } or { 1, 1, 1, 0.45 };
@@ -262,16 +268,13 @@ function M.render()
                 if imgui.Button(label, { 0, 0 }) then M.open(t.k); end
                 if pushed > 0 then imgui.PopStyleColor(pushed); end
             end
-            if imgui.IsItemHovered() then
-                if isActive then
-                    imgui.SetTooltip(t.n .. ' is active now.');
-                elseif activeKey ~= nil then
-                    imgui.SetTooltip(string.format('Show %s.  (%s is active -- turn it off before arming %s.)',
-                        t.n, tostring(active.name), t.n));
-                else
-                    imgui.SetTooltip('Show ' .. t.n .. '.');
-                end
-            end
+            -- ONE WORD (Henrik 2026-07-27: "just show simple terms"). The three
+            -- branches this replaced said which hobby was armed and which one to
+            -- turn off first -- but the green frame already says the former, and
+            -- the latter is spoken by the pill that actually refuses
+            -- (idleexcl.guardActivate), in chat, at the moment you try it. A
+            -- hover on a picture only has to answer "what is this?".
+            if imgui.IsItemHovered() then imgui.SetTooltip(t.n); end
             -- 6px, not the old 4: at 64px the icons crowd each other, and the
             -- armed frame is drawn 2px OUTSIDE the icon, so a 4px gap would put
             -- a frame edge almost touching its neighbour's art.

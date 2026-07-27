@@ -1702,10 +1702,11 @@ end)();
         -- ART TABS (2026-07-27). Headless there is no d3d, so filetex.handle is
         -- always nil and every tab takes the TEXT path -- meaning the icon branch
         -- would ship with zero coverage. Stub the loader so exactly ONE tab has
-        -- art: the MIXED row is the thing most likely to break, and it stays the
-        -- shipping state until all four have art (Chocobo + Craft so far). Which
-        -- tab the stub hands art to is deliberately independent of what is on
-        -- disk -- this asserts the branch, not the asset list.
+        -- art. All four tabs SHIP art now, but the mixed row must keep working:
+        -- it is what a missing or failed-to-load PNG produces, and it is how a
+        -- fifth hobby would arrive. Which tab the stub hands art to is
+        -- deliberately independent of what is on disk -- this asserts the
+        -- BRANCH, not the asset list.
         do
             package.loaded['dlac\\ui\\filetex'] = {
                 handle = function(n) return (n == 'hobby\\Chocobo') and 4242 or nil; end,
@@ -1732,6 +1733,19 @@ end)();
             check('HB18b armed art tab draws its green frame', frames, 1);
             check('HB19 stacks still balanced through the icon path',
                 depth.win + depth.col, 0);
+            -- The hover is now the ONLY thing naming an icon tab, and Henrik
+            -- asked for one plain word each ("just show simple terms"). Pin the
+            -- exact four: this is the kind of string that grows a sentence back.
+            local tips = {};
+            IM.SetTooltip = function(t) tips[#tips + 1] = tostring(t); end
+            IM.IsItemHovered = function() return true; end
+            activeStub = nil;
+            pcall(hb.render);
+            IM.IsItemHovered = function() return false; end
+            IM.SetTooltip = nop;
+            check('HB20 tab hovers are the four plain terms',
+                table.concat({ tips[1], tips[2], tips[3], tips[4] }, '/'),
+                'Crafting/HELM/Fishing/Digging');
             package.loaded['dlac\\ui\\filetex'] = nil;
             activeStub = { key = 'helm', name = 'HELM' };
             ui._hobbySel = 'craft';

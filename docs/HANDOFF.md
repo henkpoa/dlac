@@ -241,13 +241,15 @@ see hard rule 14, which this section exists to serve.
   - The invariant it rests on is in architecture.md; CONTEXT.md gained
     **Floating window / Panel / Hobby bar**.
   - **Riding with it** (dev promotes whole-or-not-at-all): **hobby-bar tab ART**,
-    `2026.07.27d`. A tab with `assets\hobby\<Name>.png` draws as a 64px icon; one
-    without keeps its text button. `Chocobo.png` and `Craft.png` exist — Henrik is
-    making the art and feeding it in one piece at a time. **Deliberately partial and
-    safe to promote**: the text fallback is the design, not a gap, so text tabs beside
-    icon tabs is a valid shipping state, not a half-built one. Outstanding: HELM and
-    Fishing art, and his verdict on the armed marker becoming a green *frame* (colour
-    cannot be the state channel once a tab is art — a tint recolours the art).
+    `2026.07.27e`. **All four tabs are art now** — Henrik's chocobo set (smith, miner,
+    angler, digger), drawn at 64px — and the hover is one plain word each: *Crafting /
+    HELM / Fishing / Digging*. The text button stays as the fallback for a tab whose
+    PNG is missing or fails to load, which is also how a fifth hobby would arrive.
+    `TABS[].n` is the player-facing WORD, `TABS[].img` the asset basename: the art is a
+    digging chocobo, so `Chocobo.png` is the right file while "Digging" is the right
+    word — renaming one must not silently rename the other. Outstanding: his verdict on
+    the armed marker being a green *frame* (colour cannot be the state channel once a
+    tab is art — a tint recolours the art).
   - **Queued on approval of the work, not on a reported field run** — the Auto HELM
     4s→5s precedent below. Two questions ride to main with it: whether the window's
     default 760×520 gives the spot list enough room (its bait column sits at

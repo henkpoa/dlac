@@ -5741,3 +5741,32 @@ pixels catches a halo objectively — the chocobo reads 22.6, the smith 88.3, an
 difference is genuine light-grey metal (hammer, chainmail, anvil) rather than a fringe, which
 the zoomed composite on a dark background confirmed. Do both: the number tells you where to
 look, the composite tells you whether it matters.
+
+**The full set, and what a flattened preview costs (`2026.07.27e`).** The remaining three
+arrived twice: first as screenshots of a transparency preview — **checkerboard baked into
+the pixels**, alpha 255 everywhere — and then, after I said so, on white pages. Both were
+processed and compared at 128px on the bar's dark background, best-of-each kept.
+
+White won for **Fishing** and **Digging**: crisper line, hook and float, cleaner dirt
+specks. The checkerboard version won for **HELM**, and the reason is worth keeping. The
+miner's lamp beam was *semi-transparent* in the original, so on the checkerboard it carried
+the checker pattern straight through it — visibly mottled at zoom. But that same modulation
+is a **signal**: build the checker grid (period measured at 22px, tones 211/241), compare
+the two parities in a local window, and any pixel where they still differ is either
+background or something translucent over it. Opaque art modulates by ~0 whatever its colour,
+so the pickaxe, the eye whites and the fishing float were never at risk. Flood that from the
+borders and the beam comes off cleanly. On the white page the same beam is just an opaque
+cream blob no colour threshold could separate from the art — tried at four saturation
+windows, it survived all of them.
+
+So: **a flattened checkerboard preview is harder to key than a white page, but it encodes
+which pixels were translucent — and sometimes that is exactly what you need.**
+
+**Hover text.** Henrik: *"Just show simple terms. Crafting / HELM / Fishing / Digging."*
+The three-branch tooltip (which hobby is armed, which to turn off first) is gone: the green
+frame says the former, and the pill that actually refuses says the latter in chat at the
+moment you try it. A hover on a picture only has to answer "what is this?". `TABS` now
+separates `n` (the player-facing word) from `img` (the asset basename) — the art is a
+digging chocobo, so `Chocobo.png` is the right file name while "Digging" is the right word.
+`HB20` pins the exact four strings, because that is the kind of text that grows a sentence
+back.
