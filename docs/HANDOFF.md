@@ -245,13 +245,19 @@ text button kept as the fallback for a missing or failed PNG.
 
 The ART was field-approved (*"This was sooo good"*, *"Looks great"*). The SEARCH windows
 went out **WITHOUT a field run of their own**, on the promote-the-queue call and the
-whole-or-not-at-all rule — the Auto HELM 4s→5s precedent. Three questions ride to main
-with it, none of them blockers and each a one-line change once the field answers: whether
-the target window's 760×520 default gives the spot list enough room (its bait column sits
-at `availW * 0.55`, ~50px tighter than the panel gave it); whether three pills — bar,
-window, panel — read as convenient or as clutter; and whether the armed green *frame*
-reads at a glance, now that colour cannot carry state on an art tab. The record is the
-merge commit on `main`.)*
+whole-or-not-at-all rule — the Auto HELM 4s→5s precedent. Of the three questions that rode
+to main, Henrik answered two later the same day: **three pills — bar, window, panel — is
+right** (*"Perfection"*), and the **armed green frame reads fine** (*"Looks great"*), so
+that pair is settled and neither needs revisiting.
+
+**Still open, and still unseen:** whether the target window's 760×520 default gives the
+spot list enough room — its bait column sits at `availW * 0.55`, ~50px tighter than the
+panel used to give it, so long zone names (*"Western Altepa Desert -- Hidden Oasis"*) are
+where it would show. Asked once and answered about the ICONS instead (*"if you're talking
+about the icons, looks great"*), which is the honest state of it: the window itself has
+still not been opened in game. The check is ten seconds — hobby bar → Fishing tab → click
+the target name → search a fish with a long zone name. A one-line fix either way (a wider
+default, or a fixed floor for that column). The record is the merge commit on `main`.)*
 
 *(Previous promotion: 2026-07-26 night — the **Teleports floating menu rework**
 (`2026.07.26v`; Nexus Cape + Shadow Lord Shirt into "Other Teleports", the
@@ -326,11 +332,16 @@ research already recorded. In rough priority order:
     had never been executed by any test — the craftbar lesson of 7d), plus `HB14` and
     `S139kk-mm` for the openers. `HB3.choco` caught the first version of this work: the
     7c stub had no `SmallButton`.
-  - **What field-testing needs to answer** — these RIDE TO MAIN with it, they do not block
-    it: does the target window's default 760×520 give the spot list enough room (it places
-    its bait column at `availW * 0.55`, ~50px tighter than the panel gave it), and does
-    three pills — bar, window, panel — read as redundant or as convenient? Both are
-    one-line changes; neither can dress you wrong, since the window only picks a target.
+  - **Field verdicts (2026-07-27, after the promotion).** Three pills — bar, window, panel
+    — are right: *"Perfection"*. The armed green frame reads at a glance: *"Looks great"*.
+    Both settled; don't reopen them.
+  - **STILL UNSEEN: the target window itself.** Whether 760×520 gives the spot list enough
+    room is unanswered — asked once and answered about the icons instead. Nobody has opened
+    the window in game yet, so *nothing* about it is field-verified: not the layout, not
+    the search, not `Make target`, not the spot rows. It cannot dress you wrong (it only
+    picks a target, and the engine's own equip path is unchanged), which is why it was
+    allowed to promote — but the first person to fish should look. Ten seconds: hobby bar →
+    Fishing tab → click the target name → search a fish with a long zone name.
 
 - **AutoAmmo is Range-aware — DONE, field-confirmed, ON MAIN** (promoted 2026-07-26 in
   `03d25e1`; this bullet said "QUEUED for main" until the 07-26 night promotion, pointing
