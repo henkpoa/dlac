@@ -396,6 +396,19 @@ v135; small diff; immediately field-testable by the two 07-27 cases.
 > acceptance test is Henrik's exact setup: Kabuto on Head, Scorpion Harness +1 on
 > Body.** Stage 3 (extract `gear/arbiter.lua`) on his go after.
 
+> **Stage 3 status: FIRST SLICE SHIPPED on dev 2026-07-27, commit `86b3447` (engine
+> v140, addon `27zb`, zero behavior change) — Henrik's go, same session.**
+> `gear/arbiter.lua` exists and is PURE (ARM1 loads it with no stubs): the slot + rank
+> vocabulary, the reservation family (v135 verdict + stage-2 fall) and the
+> resolve/explain family moved verbatim; every old dispatch seam is a rawequal-pinned
+> delegation (ARM2* — never a twin; `LOCK_HELD` keeps identity); `arbitrate(session)`
+> owns the APPLY ORDER and `M.dispatch` executes the plan. dispatch.lua shed 547 net
+> lines. Suites 4011 + 693, both runtimes. **Remaining stage-3 slices, in order:** (a)
+> per-slot contests + the structured trace (`/dl why` rendered from the object that
+> decided — the deliberate goldens-gated text change), (b) one plan → one
+> `engineEquipSet` send, (c) the pair law + the guards migrate in as constraints. Each
+> slice ships and field-confirms like everything else; MaxMP's weave waits for stage 6.
+
 **Stage 3 — extract `gear/arbiter.lua` and make it the decider.** Pure module; migrate
 constraints one at a time in POST_ORDER's own order, each pinned by the tests that
 already exist (AK*, AKD*, TR*, TB*, AM*, PL*, LS*, AR*, LV*): reservation first (it is
