@@ -7453,6 +7453,32 @@ end)();
     check('ARK14e the claim src route is the control-char prefix (source pin)',
         dsrc:find("('\\031' .. cn)", 1, true) ~= nil, true);
 
+    -- OS1: ONE PLAN, ONE SEND (stage 3's last slice). A full dispatch -- the
+    -- NK26 recipe with naked armed -- must reach the equip door EXACTLY once,
+    -- with the same 16-remove map the N sends used to accumulate.
+    local savedPlayerOS, savedStateOS = TEST_PLAYER, rawget(_G, 'gState');
+    TEST_PLAYER = { MainJob = 'WHM', MainJobLevel = 75, SubJob = 'BLM', SubJobLevel = 37,
+                    MainJobSync = 75, SubJobSync = 37, Status = 'Idle', IsMoving = false };
+    _G.gState = { CurrentCall = 'N/A', Disabled = {} };
+    local savedEngOS = package.loaded['dlac\\feature\\equipengine'];
+    local sends, wroteOS = 0, {};
+    package.loaded['dlac\\feature\\equipengine'] = {
+        nativeOn = function() return true; end,
+        equipSet = function(t) sends = sends + 1; for k, v in pairs(t or {}) do wroteOS[k] = v; end end,
+        state = { tripped = false },
+    };
+    dispatchM.nakedArmed = true;
+    local okOS = pcall(dispatchM.dispatch, 'Default');
+    check('OS1 the dispatch does not throw', okOS, true);
+    check('OS1b the equip door is reached EXACTLY once', sends, 1);
+    local nOS = 0;
+    for _, v in pairs(wroteOS) do nOS = nOS + 1; if v ~= 'remove' then nOS = -99; end end
+    check('OS1c and carries the whole 16-remove plan', nOS, 16);
+    dispatchM.nakedArmed = false;
+    package.loaded['dlac\\feature\\equipengine'] = savedEngOS;
+    TEST_PLAYER = savedPlayerOS;
+    _G.gState = savedStateOS;
+
     -- WY1: the contest stash (/dl why <slot>, ADR 0027 item 4). NK26's real
     -- dispatch above ran the stash path; its Default trace must carry the
     -- structured contest the drill-down renders -- the same object that
