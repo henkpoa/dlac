@@ -6843,6 +6843,133 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- CR. THE CLAIMANT REGISTRY (ADR 0027, stage 0 -- engine v136). CLAIMANTS is
+--     the one table M.dispatch's ensure pass, both bail guards, the claims
+--     map, the signature legs, the rank-walk applies and /dl prio all
+--     iterate; these pin its SHAPE as data, so the silent-bail class (a
+--     missed bail term, a missed signature leg) cannot come back as drift.
+--     NK26 above drives the rewired dispatch body end to end; these drive
+--     the rows directly.
+-- ---------------------------------------------------------------------------
+(function()
+    local reg = dispatchM._claimants;
+    check('CR0 the registry is exported', type(reg), 'table');
+
+    -- One row per rank row except the Triggers floor -- both directions.
+    local names = {};
+    for _, row in ipairs(reg) do names[row.name] = true; end
+    local missing, extra, inOrder = {}, {}, {};
+    for _, n in ipairs(dispatchM._arbDefaultOrder) do
+        if n ~= 'Triggers' then
+            inOrder[n] = true;
+            if not names[n] then missing[#missing + 1] = n; end
+        end
+    end
+    for n in pairs(names) do
+        if not inOrder[n] then extra[#extra + 1] = n; end
+    end
+    check('CR1 every rank row except Triggers has a registry row', table.concat(missing, ','), '');
+    check('CR1b and no registry row lacks a rank row', table.concat(extra, ','), '');
+    check('CR1c the row count is exact', #reg, #dispatchM._arbDefaultOrder - 1);
+
+    -- The signature-leg order is the pre-registry byte order -- craft | pins |
+    -- HELM | fishing | chocobo | ammo | mp | naked | disabled. Reordering
+    -- retraces every live session once: do it on purpose or not at all.
+    check('CR2 the signature legs keep the pre-registry byte order',
+        table.concat(dispatchM._claimantSigOrder, '|'),
+        'Craft|Pins|HELM|Fishing|Chocobo|AutoAmmo|MaxMP|Naked|Disabled');
+
+    -- The documented exceptions are EXACTLY the documented exceptions. MaxMP:
+    -- no claim builder (inline-built, order-coupled to mpRespectLocks/mpCeded)
+    -- and no apply (its equip stays WOVEN until ADR 0027 stage 6). Locks: no
+    -- signature leg (pre-registry parity -- it never had one).
+    local noClaim, noApply, noSig = {}, {}, {};
+    for _, row in ipairs(reg) do
+        if row.claim == nil then noClaim[#noClaim + 1] = row.name; end
+        if row.apply == nil then noApply[#noApply + 1] = row.name; end
+        if row.sig == nil then noSig[#noSig + 1] = row.name; end
+    end
+    check('CR3 MaxMP is the only row without a claim builder', table.concat(noClaim, ','), 'MaxMP');
+    check('CR3b MaxMP is the only row without an apply (woven)', table.concat(noApply, ','), 'MaxMP');
+    check('CR3c Locks is the only row without a signature leg', table.concat(noSig, ','), 'Locks');
+
+    -- The bail sets: Disabled and MaxMP sit out BOTH bails by design (free
+    -- equip or a bare mode is not a reason to dispatch); the other eight
+    -- participate in both.
+    local b1, b2 = {}, {};
+    for _, row in ipairs(reg) do
+        if row.bail1 == true then b1[#b1 + 1] = row.name; end
+        if row.bail2 == true then b2[#b2 + 1] = row.name; end
+    end
+    table.sort(b1); table.sort(b2);
+    check('CR4 the bail #1 set is exactly the eight dispatch reasons',
+        table.concat(b1, ','), 'AutoAmmo,Chocobo,Craft,Fishing,HELM,Locks,Naked,Pins');
+    check('CR4b the bail #2 set is the same eight', table.concat(b2, ','), table.concat(b1, ','));
+    check('CR4c every row carries a prioStatus (the /dl prio twin is dead)',
+        (function()
+            for _, row in ipairs(reg) do if type(row.prioStatus) ~= 'function' then return row.name; end end
+            return true;
+        end)(), true);
+
+    -- The rows themselves, driven directly -- the same tables the dispatch
+    -- loops hand them.
+    local by = {};
+    for _, row in ipairs(reg) do by[row.name] = row; end
+
+    -- Pins: active on a non-empty state; the claim builds even when inactive
+    -- (scoped pins decide inside pinOverlayFor, against the dispatch's hits).
+    check('CR5 pins are active on a non-empty state', by['Pins'].active({ Head = { item = 'X' } }), true);
+    check('CR5b and inactive on an empty one', by['Pins'].active({}), false);
+    local pinsBuilt = by['Pins'].claim({ Head = { item = 'Pinned Crown', scope = 'All' } }, false,
+        { hits = {}, event = 'Default' });
+    check('CR5c the pin claim builds regardless of active', type(pinsBuilt), 'table');
+    check('CR5d and carries the pinned item', pinsBuilt.Head, 'Pinned Crown');
+
+    -- Craft: the active predicate is the enabled-plus-name check, verbatim.
+    check('CR6 craft is active when enabled with a craft name',
+        by['Craft'].active({ enabled = true, craft = 'Alchemy' }), true);
+    check('CR6b not without the name', by['Craft'].active({ enabled = true }), false);
+    check('CR6c not when disabled', by['Craft'].active({ enabled = false, craft = 'Alchemy' }), false);
+
+    -- The signature legs: generic = sorted slot=item, '' on nil; the specials
+    -- keep their exact pre-registry spellings.
+    check('CR7 the generic leg is sorted slot=item',
+        by['Craft'].sig({ Body = 'Weaver Apron', Head = 'Chef Hat' }), 'Body=Weaver Apron,Head=Chef Hat');
+    check('CR7b a nil claim is a quiet leg', by['Craft'].sig(nil), '');
+    check('CR7c AutoAmmo names only the Ammo decision',
+        by['AutoAmmo'].sig({ Ammo = 'Iron Arrow' }), 'Ammo=Iron Arrow');
+    check('CR7d naked is the flag, not a table walk', by['Naked'].sig(nil, true), 'NAKED');
+    check('CR7e released naked is quiet', by['Naked'].sig(nil, false), '');
+
+    -- An apply through the REAL equipResolved and the REAL write seam: the
+    -- row's overlay lands on the (stubbed) engine and traces its line.
+    dispatchM.setLock('all', false);   -- a stray lock from an earlier section must not hold the slot
+    local savedEngCR = package.loaded['dlac\\feature\\equipengine'];
+    local wroteCR = {};
+    package.loaded['dlac\\feature\\equipengine'] = {
+        nativeOn = function() return true; end,
+        equipSet = function(t) for k, v in pairs(t or {}) do wroteCR[k] = v; end end,
+        state = { tripped = false },
+    };
+    local linesCR = {};
+    by['Craft'].apply({ built = { Craft = { Body = 'Weaver Apron' } }, bx = {},
+                        ctx = {}, retrace = true, lines = linesCR,
+                        respect = function() return true; end, rankOf = {} });
+    check('CR8 a row apply reaches the equip door', wroteCR.Body, 'Weaver Apron');
+    check('CR8b and traces the overlay slot list', linesCR[1], 'craft gear (overlay)  ->  Body');
+    package.loaded['dlac\\feature\\equipengine'] = savedEngCR;
+
+    -- /dl prio's status strings come from the rows now. Naked is provably off
+    -- (NK's cleanup above); Locks/Disabled are pattern-checked so a stray
+    -- state from an earlier section cannot flake the wording pin.
+    check('CR9 prio: naked reads off', by['Naked'].prioStatus(), 'off');
+    check('CR9b prio: the Locks row reports the VETO, not the locked set',
+        by['Locks'].prioStatus():find('veto', 1, true) ~= nil, true);
+    check('CR9c prio: the ceiling names itself',
+        by['Disabled'].prioStatus():find('ceiling', 1, true) ~= nil, true);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- AB. arbwatch -- the ADDON-SIDE writer of the arbstate rank Statefile (ADR
 --     0012, step 2 / issue #49). The engine's read side is AR* above; these pin
 --     the WRITER's pure seams: the default/sanitize reuse the engine's one

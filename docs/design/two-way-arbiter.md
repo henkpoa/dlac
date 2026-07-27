@@ -333,12 +333,24 @@ dev commit train (branch law), version-bumped when behavior changes, promoted
 whole-or-not.
 
 **Stage 0 — the registry rows (candidate #1 as originally written).** One `CLAIMANTS`
-table — `{ name, ensure, active, overlayFor, slots, sig }` — that the ensure block, the
-bails, the claims map, the signature and the applyClaim walk all iterate. Zero behavior
-change, pinned by AR*/LV* + goldens. ⚠ *Moved from the sketch's stage 4 to first:* it
-pays for itself standalone (15 hunks → 1 row, the silent-bail class dies), it shrinks
-`M.dispatch` before surgery, and the arbitration then lands against rows instead of eight
-locals. If everything after this stalls, stage 0 was still worth shipping.
+table — `{ name, ensure, active, claim, sig, apply, prioStatus }` — that the ensure
+block, both bails, the claims map, the signature and the rank-walk applies all iterate.
+Zero behavior change, pinned by AR*/LV* + goldens. ⚠ *Moved from the sketch's stage 4
+to first:* it pays for itself standalone (15 hunks → 1 row, the silent-bail class
+dies), it shrinks `M.dispatch` before surgery, and the arbitration then lands against
+rows instead of eight locals. If everything after this stalls, stage 0 was still worth
+shipping.
+
+> **Status: SHIPPED on dev 2026-07-27 — Henrik's go, same session as the ratification.**
+> Commit `05f7be8` (engine v136) + the CR test commit: CR0–CR9c pin the registry shape
+> as data (row set = rank rows minus Triggers; the sig-leg byte order; MaxMP as the
+> only claim-less/apply-less row; Locks as the only leg-less row; the two bail sets;
+> rows driven directly through the real `equipResolved` + write seam), and NK26 drives
+> the rewired `M.dispatch` end to end. Suite green at 3934 checks on Windows Lua AND
+> WSL lua5.4 (CI parity). `/dl prio` now reads the rows — its hand-kept twin of the
+> dispatch reads is gone. **Awaiting field confirmation** (a normal session where
+> nothing moved; `/dl prio` + `/dl why` reading as before); stage 1 starts on Henrik's
+> go after that.
 
 **Stage 1 — ladders on demand.** `candidatesFor(setName, slot)` — the `evalEntry` walk
 emitting the *ordered list* instead of its head, memoized on the existing rebuild latch
