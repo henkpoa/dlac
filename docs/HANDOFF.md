@@ -230,42 +230,30 @@ that performs the promotion **empties this section in the same commit as the mer
 entry left standing here after a merge is how "is this on main?" becomes unanswerable —
 see hard rule 14, which this section exists to serve.
 
-- **The hobby-bar day (2026-07-27)** — six commits, `96b49be`..`764480a`, addon
-  `2026.07.27a` → **`2026.07.27e`**. Green on both suites, Windows and WSL, at every
-  step. ONE queue item on Henrik's instruction (*"document as ready to merge and merge
-  this with the rest"*): the two halves land together or not at all, which is also the
-  dev rule. Detail in [history.md](history.md) ("the hobby bar reaches the searches" and
-  its two addenda) and in the Current state bullet below.
+*(Empty. Last promotion: 2026-07-27 — **the hobby-bar day**, `96b49be`..`3446978`, addon
+`2026.07.27a` → **`2026.07.27e`**, on Henrik's go-ahead: *"merge dev into main and push
+both."* Two halves, promoted as one. **The searches came to the bar**: Fishing's
+`TARGET FISH` section became a Floating window (`fishui.renderSearch` →
+`renderTargetBody`) that the bar's target NAME opens, Chocobo's tab got the panel's own
+Area/Item buttons via new `chocoui` openers, both tabs gained a `Panel` button, plus
+`/dl fish find [name]` and `/dl choco dig [item]`; the invariant it rests on — any
+surface may OPEN a floating window, exactly one place may DRAW it — went into
+architecture.md, and CONTEXT.md gained **Floating window / Panel / Hobby bar**. **The
+tabs became art**: all four draw Henrik's chocobo set (smith, miner, angler, digger) at
+64px, hovers cut to one plain word each — Crafting / HELM / Fishing / Digging — with the
+text button kept as the fallback for a missing or failed PNG.
 
-  **1. The searches came to the bar** (`96b49be`, `2026.07.27a`). Fishing's `TARGET FISH`
-  section became a **Floating window** (`fishui.renderSearch` → `renderTargetBody`); on
-  the bar the target NAME opens it. Chocobo's tab got the panel's own Area/Item buttons
-  through new `chocoui` openers. Both tabs gained a `Panel` button. New commands
-  `/dl fish find [name]` and `/dl choco dig [item]`. The invariant it rests on — *any
-  surface may OPEN a floating window; exactly one place may DRAW it* — is in
-  architecture.md, and CONTEXT.md gained **Floating window / Panel / Hobby bar**.
-  Henrik: *"I love it."*
+The ART was field-approved (*"This was sooo good"*, *"Looks great"*). The SEARCH windows
+went out **WITHOUT a field run of their own**, on the promote-the-queue call and the
+whole-or-not-at-all rule — the Auto HELM 4s→5s precedent. Three questions ride to main
+with it, none of them blockers and each a one-line change once the field answers: whether
+the target window's 760×520 default gives the spot list enough room (its bait column sits
+at `availW * 0.55`, ~50px tighter than the panel gave it); whether three pills — bar,
+window, panel — read as convenient or as clutter; and whether the armed green *frame*
+reads at a glance, now that colour cannot carry state on an art tab. The record is the
+merge commit on `main`.)*
 
-  **2. The tabs became art** (`2eaf13f`, `581cae1`, `501348b`, `764480a`, → `2026.07.27e`).
-  All four hobby tabs draw Henrik's chocobo set (smith, miner, angler, digger) at 64px,
-  and each hover is one plain word: *Crafting / HELM / Fishing / Digging*. A tab whose
-  PNG is missing or fails to load falls back to its text button — that is also how a
-  fifth hobby would arrive. `TABS[].n` is the player-facing WORD and `TABS[].img` the
-  asset basename: the art is a digging chocobo, so `Chocobo.png` is the right FILE while
-  "Digging" is the right WORD, and renaming one must not silently rename the other.
-  Henrik, on seeing it in-game: *"This was sooo good"*, *"Looks great."*
-
-  **Field status, stated honestly.** The ART he has looked at and approved. The SEARCH
-  windows have had no reported field run — queued on approval of the work, the Auto HELM
-  4s→5s precedent below. Three questions ride to main rather than blocking it, each a
-  one-line change once the field answers: whether the target window's 760×520 default
-  gives the spot list enough room (its bait column sits at `availW * 0.55`, ~50px
-  tighter than the panel gave it); whether three pills — bar, window, panel — read as
-  convenient or as clutter; and whether the armed marker reads clearly as a green
-  *frame* (colour cannot be the state channel once a tab is art — a tint recolours the
-  art).
-
-*(Last promotion: 2026-07-26 night — the **Teleports floating menu rework**
+*(Previous promotion: 2026-07-26 night — the **Teleports floating menu rework**
 (`2026.07.26v`; Nexus Cape + Shadow Lord Shirt into "Other Teleports", the
 Automations/HELM/Fishing cascades deleted, Hobby bar + Lockstyle rows added —
 field-confirmed by Henrik: *"Looks good and works great"*), the **Sets-tab selection
@@ -306,9 +294,9 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
-- **The hobby-bar day — QUEUED for main** (`96b49be`..`764480a`, `2026.07.27a`→`e`; see
-  the **Ready to merge** section above, which is the authority on its status — this bullet
-  is the detail, not the queue). Two halves, queued as one: the searches, then the tab art
+- **The hobby-bar day — DONE, ON MAIN** (promoted 2026-07-27, `96b49be`..`3446978`,
+  `2026.07.27a`→`e`; the **Ready to merge** section above stays the authority on status —
+  this bullet is the detail, not the queue). Two halves, promoted as one: the searches, then the tab art
   (all four tabs are Henrik's chocobo icons at 64px, hovers reduced to one plain word
   each). Henrik: *"most things are available just fine in the hobby bar, except
   for fishing, but we don't want to overdo it."* Two hobby tabs could only point at the
