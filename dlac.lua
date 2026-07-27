@@ -25,9 +25,9 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.07.27j';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.07.27k';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
-addon.desc    = 'Build gear sets and view live stats with level scaling (for LuaAshitacast).';
+addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
 -- the very top of load, before anything else can fail. Its absence after an
@@ -65,14 +65,12 @@ pcall(function()
     local candidates = {};
     pcall(function()
         local prof = require('dlac\\profiles');
-        if prof.nativeMode() then
-            local d = prof.dataDir();
-            if d ~= nil then candidates[#candidates + 1] = d .. 'gear.lua'; end
-        end
+        local d = prof.dataDir();
+        if d ~= nil then candidates[#candidates + 1] = d .. 'gear.lua'; end
     end);
-    local base = string.format('%sconfig\\addons\\luashitacast\\%s_%u\\', AshitaCore:GetInstallPath(), name, id);
-    candidates[#candidates + 1] = base .. 'dlac\\gear.lua';       -- legacy home
-    candidates[#candidates + 1] = base .. 'ffxi-lac\\gear.lua';   -- a pre-migration profile
+    -- (The legacy-home candidates died in the purge: the boot reads only the
+    -- native home; old trees are the IMPORTERS' territory, and auto-migration
+    -- carries a straggler's gear.lua in before this matters.)
     for _, p in ipairs(candidates) do
         local chunk = loadfile(p);
         if chunk ~= nil then
@@ -99,40 +97,25 @@ end);
 -- and the LAC-alive polite ask died in the purge, Phase 1; the coexistence
 -- tripwire in equipengine remains the hard backstop against a foreign engine.)
 local function maintainStorage()
-    -- THE FIRST-RUN DECISION GATES EVERYTHING BELOW (field bug 2026-07-23,
-    -- Henrik's fresh-install sim): an undecided beat used to fall through to
-    -- seedCharFolder() -- the LEGACY seeder -- and the login gear scan then
-    -- wrote gear.lua into the legacy home, which the NEXT beat's scan read as
-    -- "existing legacy user": dlac manufactured its own legacy evidence and
-    -- offered Migrate to a fresh install. Undecided now holds EVERY writer,
-    -- native or legacy, until the decision resolves (it retries on this same
-    -- watch; a held beat writes nothing and costs nothing). Since ADR 0025
-    -- (no flag -> born native, no legacy scan) the only undecided cause left
-    -- is a failed flag write.
-    local action = nil;
+    -- Native, always (purge Phase 2): no first-run decision, no flag, no
+    -- undecided state -- the manufactured-evidence bug family (07-23, 07-27)
+    -- is structurally gone. The beat carries legacy data INTO the native home
+    -- (engineAutoMigrate -- copy-only, Henrik's keep) and auto-creates a
+    -- fresh job's baseline.
     pcall(function()
         local prof = require('dlac\\profiles');
-        action = prof.firstRunInit();   -- native-first onboarding (ADR 0015 ruling 4)
+        prof.engineAutoMigrate(print);
+        -- FRESH-INSTALL AUTO-SETUP (issue #91): silently create this
+        -- character+job's baseline when it is missing -- storage, gear
+        -- inventory, base sets, starter triggers -- so a new player never
+        -- touches Setup. No-ops until gearui has configured setupui and for
+        -- a not-ready job; a disk failure names itself and retries. See
+        -- setupui.autoSetupNative for the full gate list.
+        pcall(function()
+            local setup = require('dlac\\ui\\setupui');
+            if type(setup.autoSetupNative) == 'function' then setup.autoSetupNative(); end
+        end);
     end);
-    if action == nil then return; end   -- undecided -> INERT: nothing below may write
-    pcall(function()
-        local prof = require('dlac\\profiles');
-        if prof.nativeMode() then
-            prof.engineAutoMigrate(print);
-            -- FRESH-INSTALL AUTO-SETUP (issue #91): silently create this
-            -- character+job's baseline when it is missing -- storage, gear
-            -- inventory, base sets, starter triggers -- so a new player never
-            -- touches Setup. No-ops until gearui has configured setupui, in legacy
-            -- mode, and for a not-ready job; a disk failure names itself and
-            -- retries. See setupui.autoSetupNative for the full gate list.
-            pcall(function()
-                local setup = require('dlac\\ui\\setupui');
-                if type(setup.autoSetupNative) == 'function' then setup.autoSetupNative(); end
-            end);
-        end
-    end);
-    -- (Legacy mode gets NO seeding anymore -- purge Phase 1: the LAC tree is
-    -- read-only. A flag-off user's LAC state keeps whatever copies it has.)
 end
 maintainStorage();
 local _seedAt = 0;

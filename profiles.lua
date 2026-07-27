@@ -116,73 +116,14 @@ function M.nativeRoot()
     return ok and p or nil;
 end
 
-function M.engineFlagPath()
-    local r = M.nativeRoot(); return r and (r .. 'engine.lua') or nil;
-end
-
--- Pure flag-text parse (offline-tested): the file must load, return a table,
--- and carry native == true exactly. Anything else -- absent, damaged, partial,
--- truthy-but-not-true -- reads as OFF: the failure mode of a broken flag file
--- is the battle-tested LAC path, never a half-native limbo.
-function M.parseEngineFlag(text)
-    if type(text) ~= 'string' then return false; end
-    local chunk = (loadstring or load)(text);
-    if chunk == nil then return false; end
-    if setfenv ~= nil then setfenv(chunk, {}); end   -- data file: runs against nothing
-    local ok, t = pcall(chunk);
-    return ok == true and type(t) == 'table' and t.native == true;
-end
-
--- Throttled flag read (the activeName pattern: the other state -- or the user's
--- editor -- may rewrite it at any time, so a plain cache would go stale).
--- (Self-contained reader: this block sits above the module's shared readFile
--- local on purpose -- path authorities first, helpers after.)
-local _nat = { at = -1, on = false };
-function M.nativeMode()
-    local now = os.time();
-    if _nat.at == now then return _nat.on; end
-    _nat.at = now;
-    local on = false;
-    pcall(function()
-        local p = M.engineFlagPath();
-        if p == nil then return; end
-        local f = io.open(p, 'r');
-        if f == nil then return; end
-        local text = f:read('*a'); f:close();
-        on = M.parseEngineFlag(text);
-    end);
-    _nat.on = on;
-    return on;
-end
-function M.invalidateNative() _nat.at = -1; end
-
--- Write the flag file. true | nil, why. (The caller owns the user guidance --
--- flipping modes only takes effect for code that composes paths AFTER the
--- throttle window, and the engine command tells the user to reload.)
-function M.setNativeMode(on)
-    local p = M.engineFlagPath();
-    if p == nil then return nil, 'not available'; end
-    pcall(function()
-        if ashita and ashita.fs and ashita.fs.create_directory then ashita.fs.create_directory(M.nativeRoot()); end
-    end);
-    local text = '-- dlac engine flag -- written by /dl engine native on|off (hand edits are fine).\n'
-        .. '-- native = true: dlac equips gear itself and stores data under config\\addons\\dlac\\.\n'
-        .. '-- native = false (or file absent): LuaAshitacast equips; storage stays under its tree.\n'
-        .. string.format('return { native = %s };\n', on == true and 'true' or 'false');
-    local f = io.open(p, 'w');
-    if f == nil then
-        -- io.open never creates directories, and a FRESH install has no
-        -- config\addons\dlac\ yet (field 2026-07-23, Henrik's sim -- the
-        -- ashita.fs attempt above is not enough everywhere). Shell mkdir is
-        -- the belt (the seedGearFile pattern), then one retry.
-        pcall(function() os.execute('mkdir "' .. (M.nativeRoot():gsub('\\+$', '')) .. '" 2>nul'); end);
-        f = io.open(p, 'w');
-    end
-    if f == nil then return nil, 'could not write ' .. p; end
-    f:write(text); f:close();
-    M.invalidateNative();
-    return true;
-end
+-- NATIVE, ALWAYS (the purge, Phase 2 -- Henrik: "I really just want this to
+-- die"). The engine flag is RETIRED IN PLACE: any engine.lua left on disk is
+-- ignored, never read, never written, never deleted. ADR 0025 had already
+-- made absence decide native; this removes the decision itself. The function
+-- stays because thirteen call sites and the tests treat it as the one mode
+-- authority -- it just has only one answer now.
+function M.nativeMode() return true; end
+function M.invalidateNative() end   -- kept for callers; nothing to invalidate
 
 -- This character's home under the native root.
 function M.nativeCharBase()
@@ -193,38 +134,16 @@ end
 
 -- The per-char home dlac-owned NON-dlac\ paths (backups\) compose off.
 function M.charRoot()
-    if M.nativeMode() then return M.nativeCharBase(); end
-    return charBase();
+    return M.nativeCharBase();
 end
 
 -- THE dlac data home: profiles\, profile.lua pointer, gear.lua, modestate,
 -- watcher state files, debug handoffs... -- everything dlac reads and writes
--- about a character lives under this one directory.
--- First-run latch (firstRunInit below owns it; declared here because dataDir
--- reads it, and a Lua upvalue binds only to a local declared above).
-local _firstRun = { done = false, action = nil, warned = false };
+-- about a character lives under this one directory. Native home, always
+-- (purge Phase 2); the luashitacast tree is reachable only through charBase,
+-- the importers' read-only door.
 function M.dataDir()
-    if M.nativeMode() then return M.nativeCharBase(); end
-    -- NATIVE-FIRST HOLD (field 2026-07-27, Xvs's clean reinstall: BOTH config
-    -- trees deleted, and "migrate to native" still appeared). While the engine
-    -- flag is absent and the first-run decision has not latched, NO caller may
-    -- compose the LEGACY home: the 07-23 fix held maintainStorage's own
-    -- writers, but the login gear scan rode THIS door during the undecided
-    -- window, wrote gear.lua under luashitacast\, and the next beat read
-    -- dlac's own file back as "existing legacy user" (manufactured evidence).
-    -- nil reads as "not logged in yet" everywhere, so every writer holds until
-    -- firstRunInit resolves -- seconds, at boot, once per install. (ADR 0025
-    -- made absence decide native outright, so this now guards only the window
-    -- before the first storage beat, or a failed flag write.) The hold
-    -- applies only where the decision CAN resolve: the addon state runs
-    -- firstRunInit on the storage watch; the LuaAshitacast state never does,
-    -- and its very presence (gFunc, dispatch's own inLac signal) already IS
-    -- the legacy verdict -- holding there would starve a flag-less legacy
-    -- user's engine of its data home forever.
-    if not _firstRun.done and rawget(_G, 'gFunc') == nil
-       and M.engineFlagState() == 'absent' then return nil; end
-    local b = charBase();
-    return b and (b .. 'dlac\\') or nil;
+    return M.nativeCharBase();
 end
 
 function M.pointerPath()
@@ -330,7 +249,7 @@ end
 function M.ensureStorage(name)
     name = name or M.activeName();
     local d = M.dataDir(); if d == nil then return false; end
-    if M.nativeMode() then ensureDir(M.nativeRoot()); end   -- parent of the char home
+    ensureDir(M.nativeRoot());   -- parent of the char home
     ensureDir(d);
     ensureDir(d .. 'profiles\\');
     ensureDir(d .. 'profiles\\' .. name .. '\\');
@@ -495,22 +414,19 @@ function M.lacRoot()
     return ok and p or nil;
 end
 
--- The root character folders live under in the ACTIVE storage home. Native
--- mode browses config\addons\dlac\; legacy mode browses LuaAshitacast's tree.
--- (Cross-char browse/import works within the active home -- each character's
--- data arrives there via the auto-migration, so post-flip everything is here.)
+-- The root character folders live under the storage home: config\addons\dlac\
+-- (native, the only home -- purge Phase 2). Cross-char browse/import works
+-- within it; each character's data arrived via the auto-migration.
 function M.storageRoot()
-    if M.nativeMode() then return M.nativeRoot(); end
-    return M.lacRoot();
+    return M.nativeRoot();
 end
 
--- A character's dlac DATA home under the active root. The native layout has no
--- extra dlac\ level (the whole tree is dlac's); the legacy layout nests one.
+-- A character's dlac DATA home under the root. The native layout has no
+-- extra dlac\ level -- the whole tree is dlac's.
 function M.charDataDirAt(charFolder)
     local root = M.storageRoot();
     if root == nil or charFolder == nil then return nil; end
-    if M.nativeMode() then return root .. charFolder .. '\\'; end
-    return root .. charFolder .. '\\dlac\\';
+    return root .. charFolder .. '\\';
 end
 
 -- Character folders (<Name>_<Id>), current one first, rest alphabetical.
@@ -533,29 +449,17 @@ function M.currentCharFolder()
 end
 
 -- ---------------------------------------------------------------------------
--- Native-first onboarding (ADR 0015 ruling 4)
+-- Onboarding (ADR 0015 ruling 4 -> ADR 0025 -> the purge, Phase 2)
 --
--- A FRESH install (no Engine flag AND no legacy dlac data on the whole install)
--- is born native: the flag is written native=true on first run, storage lives
--- in dlac's own root, and no LuaAshitacast tree is ever created. An existing
--- user is NEVER auto-flipped -- legacy data present, or a flag already on disk,
--- means current behavior EXACTLY (a flag is honored, never rewritten by boot).
--- The decision is a pure seam (firstRunAction, headless-tested); firstRunInit
--- runs it once, writes the flag only for the fresh case, and is idempotent.
+-- There is nothing to decide anymore: every install is native, storage lives
+-- in dlac's own root, and no LuaAshitacast tree is ever created or consulted
+-- at boot. What remains here is the MIGRATION reader family -- Henrik's
+-- keep-list: legacyDataPresent/_legacyProbe feed the migrate-era surfaces
+-- that carry old data INTO the native home, read-only on the legacy side.
 -- ---------------------------------------------------------------------------
 
--- The flag file as one of three states -- 'native' | 'legacy' | 'absent'. A
--- present-but-broken file reads as 'legacy' (present): a fresh-install write
--- must never clobber a file the user already has, so anything on disk is
--- honored (parseEngineFlag decides its VALUE; existence alone decides 'absent').
-function M.engineFlagState()
-    local p = M.engineFlagPath();
-    if p == nil then return 'absent'; end
-    local f = io.open(p, 'r');
-    if f == nil then return 'absent'; end
-    local text = f:read('*a'); f:close();
-    return M.parseEngineFlag(text) and 'native' or 'legacy';
-end
+-- (engineFlagState died with the flag itself -- purge Phase 2: the engine is
+-- native, always; a leftover engine.lua on disk is ignored, retired in place.)
 
 -- Any character on this install with LEGACY dlac data under LuaAshitacast's tree
 -- (config\addons\luashitacast\<char>\dlac\)? Returns present, scanned, evidence
@@ -601,62 +505,13 @@ function M._legacyProbe(dd)
     return readFile(dd .. 'profile.lua') ~= nil or readFile(dd .. 'gear.lua') ~= nil;
 end
 
--- PURE first-run decision (headless-tested). flagState in {'native','legacy',
--- 'absent'}. legacyPresent is ACCEPTED BUT NO LONGER DECIDES (ADR 0025 --
--- Henrik, 2026-07-27: "make it so users start in native mode by default,
--- regardless if there are dlac files under luashitacast conf". Everyone has
--- migrated, and the old rule let leftovers -- twice, files dlac itself wrote
--- -- sentence a fresh install to legacy). Returns the boot action:
---   'respect'      -> a flag is already on disk: honor it, never rewrite
---                     (/dl engine native off stays the explicit escape hatch)
---   'write-native' -> no flag: BORN NATIVE, always. Legacy data is a
---                     MIGRATION SOURCE now (engineAutoMigrate copies it in on
---                     the first native login), never a verdict.
-function M.firstRunAction(flagState, legacyPresent)
-    if flagState ~= 'absent' then return 'respect'; end
-    return 'write-native';
-end
+-- (firstRunAction died in the purge, Phase 2. ADR 0025 had already reduced
+-- the decision to "no flag -> native"; with the flag retired there is no
+-- decision left to make -- every boot is native, nothing is written.)
 
--- Boot seam: run the decision once and, when no flag exists, arm the Engine
--- flag native. Idempotent -- a written flag makes engineFlagState() ~= 'absent'
--- forever after, so re-runs return 'respect'. Returns the action, or nil when
--- the flag WRITE failed, so the caller retries on the next beat rather than
--- latching a half-answer -- and HOLDS ALL STORAGE WRITERS meanwhile (dlac.lua
--- maintainStorage + dataDir's own hold). Since ADR 0025 that write failure is
--- the ONLY undecided cause left: the boot no longer scans for legacy data at
--- all, so the "listing unavailable" limbo (Henrik's 2026-07-23 fresh-install
--- sim; Xvs's 2026-07-27 clean reinstall -- both times dlac read files it
--- wrote itself as "existing legacy user") is unreachable by construction.
--- A RESOLVED decision is silent (the player is not told about first runs or
--- engines); the write-failure warns once -- silence has no author, and a
--- broken boot should name its own domino.
--- (_firstRun itself is declared up with the path authorities: dataDir's
--- undecided hold reads it, and an upvalue must be declared above its reader.)
-function M.firstRunInit()
-    if _firstRun.done then return _firstRun.action; end
-    local flagState = M.engineFlagState();
-    local action = M.firstRunAction(flagState, false);
-    if action == 'write-native' then
-        local okw, whyw = M.setNativeMode(true);
-        if okw ~= true then
-            if not _firstRun.warned then
-                _firstRun.warned = true;
-                pcall(function() print('[dlac] first-run: FRESH install detected but the engine flag could not be'
-                    .. ' written (' .. tostring(whyw) .. ') -- staying inert, retrying each beat.'); end);
-            end
-            return nil;   -- not latched -- retry next beat, all writers held
-        end
-    end
-    _firstRun.done = true; _firstRun.action = action;
-    -- A RESOLVED decision is SILENT (Henrik, 07-23, after the field confirm:
-    -- the general player must not be told it is a first run or which engine
-    -- runs -- things just work). The legacy nudge lives in the GUI (banner +
-    -- Migrate button), not chat. Only the two FAILURE warns above speak, and
-    -- only when something is genuinely broken -- those stay: silence has no
-    -- author, and they are invisible to a healthy install by construction.
-    return action;
-end
-function M._resetFirstRun() _firstRun.done = false; _firstRun.action = nil; _firstRun.warned = false; end   -- headless test seam
+-- (firstRunInit died in the purge, Phase 2: no flag, no decision, no
+-- undecided state, no held writers. Boots are native and silent. The
+-- 07-23/07-27 manufactured-evidence family of bugs is structurally gone.)
 
 -- (The LAC-alive polite ask lived here until the purge, Phase 1 -- the
 -- coexistence tripwire in equipengine is the one remaining backstop.)
@@ -769,7 +624,7 @@ end
 local function ensureStorageAt(charFolder, name)
     local d = M.charDataDirAt(charFolder);
     if d == nil or name == nil then return false; end
-    if M.nativeMode() then ensureDir(M.nativeRoot()); end
+    ensureDir(M.nativeRoot());
     ensureDir(d);
     ensureDir(d .. 'profiles\\');
     ensureDir(d .. 'profiles\\' .. name .. '\\');
@@ -1012,11 +867,9 @@ function M.exportsDir()
     return root and (root .. 'dlac-exports\\') or nil;
 end
 
--- The OTHER home's exports dir (nil when it equals the active one): native
--- mode keeps seeing files friends dropped in the old LuaAshitacast location,
--- so a mode flip never hides a shared export.
+-- The OLD home's exports dir: files friends dropped in the LuaAshitacast-era
+-- location stay visible (a READER -- import territory, like charBase).
 function M.legacyExportsDir()
-    if not M.nativeMode() then return nil; end
     local root = M.lacRoot();
     return root and (root .. 'dlac-exports\\') or nil;
 end
@@ -1569,7 +1422,6 @@ end
 -- it logs in after the flip, and characters created later are simply born
 -- native. Cheap when settled (two file probes). Returns true when it ran.
 function M.engineAutoMigrate(say)
-    if not M.nativeMode() then return false; end
     local b = charBase();
     local nb = M.nativeCharBase();
     if b == nil or nb == nil then return false; end

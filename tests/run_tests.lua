@@ -6434,7 +6434,14 @@ end)();
     TEST_PLAYER = { MainJob = 'WHM', MainJobLevel = 75, SubJob = 'BLM', SubJobLevel = 37,
                     MainJobSync = 75, SubJobSync = 37, Status = 'Idle', IsMoving = false };
     local wrote = {};
-    _G.gFunc  = { EquipSet = function(t) for k, v in pairs(t or {}) do wrote[k] = v; end end };
+    -- The NATIVE equip door (purge Phase 2: gFunc.EquipSet is gone) -- stub
+    -- equipengine so engineEquipSet routes the resolved set into `wrote`.
+    local savedEngNK = package.loaded['dlac\\feature\\equipengine'];
+    package.loaded['dlac\\feature\\equipengine'] = {
+        nativeOn = function() return true; end,
+        equipSet = function(t) for k, v in pairs(t or {}) do wrote[k] = v; end end,
+        state = { tripped = false },
+    };
     _G.gState = { CurrentCall = 'N/A', Disabled = {} };
     dispatchM.nakedArmed = true;
     local okDisp, dispErr = pcall(dispatchM.dispatch, 'Default');
@@ -6547,6 +6554,7 @@ end)();
 
     TEST_PLAYER = savedPlayer;
     _G.gFunc, _G.gState = savedFunc, savedState;
+    package.loaded['dlac\\feature\\equipengine'] = savedEngNK;
     dispatchM.nakedArmed = false;
 end)();
 
@@ -6803,34 +6811,10 @@ end)();
     check('LS29 gate: job change releases',       dispatchM.defaultGateHold(), false);
     _G.gState = nil;
 
-    -- The wrap SHELL, driven for real: a fresh engine load with gFunc + a stub
-    -- gState installs the thin shell (WRAP_GEN); HandleDefault is gated while
-    -- the fresh module's tracker is armed, Precast always flows. Also pins the
-    -- generational re-install: a v55-shaped pre-wrap (_dlacPetHold=true, no
-    -- _dlacWrapGen) must be wrapped OVER, not skipped -- the hot-swap gap.
-    local reached = nil;
-    local stStub = {
-        HandleEquipEvent = function(ev, style) reached = ev; end,
-        _dlacPetHold = true,                          -- the v55 boolean is already set
-    };
-    _G.gFunc, _G.gState = {}, stStub;
-    TEST_PLAYER = { MainJob = 'WAR', SubJob = 'NIN', MainJobSync = 75, SubJobSync = 37 };
-    local freshM = dofile('dispatch.lua');
-    check('LS30 shell installed OVER a v55-shaped wrap', stStub.HandleEquipEvent ~= nil
-        and type(stStub._dlacWrapGen) == 'number', true);
-    stStub.HandleEquipEvent('HandleDefault');         -- first pass adopts the level
-    check('LS31 stable level: Default flows',     reached, 'HandleDefault');
-    reached = nil;
-    TEST_PLAYER.MainJobSync = 60;                     -- a sync lands
-    stStub.HandleEquipEvent('HandleDefault');
-    check('LS32 settling: Default gated',         reached, nil);
-    stStub.HandleEquipEvent('HandlePrecast');
-    check('LS33 settling: action events flow',    reached, 'HandlePrecast');
-    freshM.SYNC_SETTLE_S = 0;                         -- release without sleeping
-    reached = nil;
-    TEST_PLAYER.MainJobSync = 50;                     -- re-arm under a 0s window
-    stStub.HandleEquipEvent('HandleDefault');
-    check('LS34 window over: Default flows again', reached, 'HandleDefault');
+    -- (LS30-LS34 -- the HandleEquipEvent wrap SHELL -- died in the purge,
+    -- Phase 2 with the wrap itself: there is no LAC entry point left to
+    -- gate. The gate LOGIC survives as M.defaultGateHold, pinned by LS26-29
+    -- above; the native engine consults the holds inside its own dispatch.)
     _G.gFunc, _G.gState = nil, nil;
     TEST_PLAYER = nil;
 end)();
@@ -10984,32 +10968,12 @@ end)();
           'apply would refuse: lockstyle box 2 has no items');
     check('DBG6 no file refuses like apply', dispatchM._lsDebugReport(nil, nil, resolveId, equippedId, nil)[1],
           'apply would refuse: no lockstyle sets saved yet');
-    -- the capture-window flush (v106): snapshot + timeline -> handoff lines.
-    local F = dispatchM._lsDbgFlushLines({ 'alive v106' }, { 't+  1.0s  apply received' }, 45);
-    check('DBG7 flush = snapshot then timeline', F[1] == 'alive v106'
-          and F[2]:find('captured events, engine side (45s window)', 1, true) ~= nil
-          and F[3]:find('apply received', 1, true) ~= nil, true);
-    check('DBG8 empty window says so', dispatchM._lsDbgFlushLines({}, {}, 30)[2],
-          '(no lockstyle events reached this engine during the window)');
-
-    -- DBR. the engine's request watch (v108): twin of the addon's
-    --      _watchFire -- fires only on a NEW fresh stamp while the engine's
-    --      own command handlers sit idle (the friend's starvation direction).
-    local rnow = 1753300000;
-    check('DBR1 no stamp = keep', dispatchM._reqFire(nil, nil, rnow, true), 'keep');
-    check('DBR2 same stamp = keep', dispatchM._reqFire(rnow - 2, rnow - 2, rnow, true), 'keep');
-    check('DBR3 fresh + idle FIRES', dispatchM._reqFire(rnow - 2, nil, rnow, true), 'adopt-fire');
-    check('DBR4 fresh + commands alive stays quiet', dispatchM._reqFire(rnow - 2, nil, rnow, false), 'adopt-quiet');
-    check('DBR5 stale adopts quietly', dispatchM._reqFire(rnow - 300, nil, rnow, true), 'adopt-quiet');
-    -- the spec line parser (v109: apply joins check/ls on the request file)
-    check('DBR6 check spec', dispatchM._reqSpec('check'), 'check');
-    local k7, n7 = dispatchM._reqSpec('ls 60');
-    check('DBR7 ls spec carries dur', k7 == 'ls' and n7 == 60, true);
-    local k8, n8 = dispatchM._reqSpec('apply 3');
-    check('DBR8 apply spec carries box', k8 == 'apply' and n8 == 3, true);
-    local k9, n9 = dispatchM._reqSpec('apply');
-    check('DBR9 bare apply = marked box', k9 == 'apply' and n9 == nil, true);
-    check('DBR10 garbage spec is nil', dispatchM._reqSpec('frobnicate'), nil);
+    -- (DBG7-8 and DBR1-10 -- the capture-window flush and the engine's
+    -- request-file watch -- died in the purge, Phase 2, with the two-state
+    -- command bridge itself.)
+    check('DBG7 the flush seam is deleted with the bridge', dispatchM._lsDbgFlushLines, nil);
+    check('DBR1 the request watch seam too', dispatchM._reqFire, nil);
+    check('DBR2 ...and the spec parser', dispatchM._reqSpec, nil);
 end)();
 
 -- LGD. lockstyle.M.debugLines -- the '/dl debug ls' addon half exists and
@@ -11056,18 +11020,15 @@ end)();
 (function()
     local prof = package.loaded['dlac\\profiles'];
 
-    -- the flag parse: only a well-formed `return { native = true }` reads ON
-    check('NE1 flag: native=true is ON',         prof.parseEngineFlag('return { native = true };'), true);
-    check('NE2 flag: native=false is OFF',       prof.parseEngineFlag('return { native = false };'), false);
-    check('NE3 flag: absent text is OFF',        prof.parseEngineFlag(nil), false);
-    check('NE4 flag: damaged text is OFF',       prof.parseEngineFlag('return { native = '), false);
-    check('NE5 flag: non-table is OFF',          prof.parseEngineFlag('return 42;'), false);
-    check('NE6 flag: truthy-but-not-true is OFF', prof.parseEngineFlag('return { native = 1 };'), false);
-    check('NE7 flag: comments + writer shape parse', prof.parseEngineFlag(
-        '-- dlac engine flag -- written by /dl engine native on|off.\nreturn { native = true };\n'), true);
+    -- (NE1-NE7 pinned the engine-flag parse; NE8-NE14 pinned the legacy path
+    -- family. Both died in the purge, Phase 2: the flag is retired in place
+    -- and the native home is the ONLY home. charBase stays as the importers'
+    -- read-only door into the old tree.)
+    check('NE1 the flag parse is deleted with the flag', prof.parseEngineFlag, nil);
+    check('NE2 nativeMode has one answer now', prof.nativeMode(), true);
+    check('NE3 the flag state reader is gone too', prof.engineFlagState, nil);
+    check('NE4 ...and the flag writer', prof.setNativeMode, nil);
 
-    -- path authorities under both modes: stub the install + identity, flip
-    -- nativeMode by override (restored after -- the module is shared state).
     local savedAC, savedNative = AshitaCore, prof.nativeMode;
     AshitaCore = {
         GetInstallPath = function() return 'I:\\game\\'; end,
@@ -11079,26 +11040,9 @@ end)();
         }; end,
     };
 
-    prof.nativeMode = function() return false; end
-    -- A DECIDED legacy world (flag on disk, value off): dataDir's native-first
-    -- hold (NO50) applies only to the undecided flag-ABSENT boot window.
-    local savedFlagStateNE = prof.engineFlagState;
-    prof.engineFlagState = function() return 'legacy'; end
     check('NE8 charFolder is <Name>_<Id>',    prof.charFolder(), 'Mindie_12345');
-    check('NE9 legacy dataDir rides LAC tree', prof.dataDir(),
-          'I:\\game\\config\\addons\\luashitacast\\Mindie_12345\\dlac\\');
-    check('NE10 legacy charRoot is the LAC char base', prof.charRoot(),
+    check('NE9 charBase stays the importers\' read-only door', prof.charBase(),
           'I:\\game\\config\\addons\\luashitacast\\Mindie_12345\\');
-    check('NE11 legacy storageRoot is the LAC root', prof.storageRoot(),
-          'I:\\game\\config\\addons\\luashitacast\\');
-    check('NE12 legacy pointer under dataDir', prof.pointerPath(),
-          'I:\\game\\config\\addons\\luashitacast\\Mindie_12345\\dlac\\profile.lua');
-    check('NE13 legacy cross-char data dir nests dlac\\', prof.charDataDirAt('Frieda_777'),
-          'I:\\game\\config\\addons\\luashitacast\\Frieda_777\\dlac\\');
-    check('NE14 legacy has no second exports home', prof.legacyExportsDir(), nil);
-    prof.engineFlagState = savedFlagStateNE;
-
-    prof.nativeMode = function() return true; end
     check('NE15 native dataDir is dlac\'s own root, no dlac\\ level', prof.dataDir(),
           'I:\\game\\config\\addons\\dlac\\Mindie_12345\\');
     check('NE16 native charRoot equals the char home', prof.charRoot(),
@@ -11115,8 +11059,7 @@ end)();
           'I:\\game\\config\\addons\\luashitacast\\dlac-exports\\');
     check('NE22 native exports live under the dlac root', prof.exportsDir(),
           'I:\\game\\config\\addons\\dlac\\dlac-exports\\');
-    check('NE23 flag file sits at the native root', prof.engineFlagPath(),
-          'I:\\game\\config\\addons\\dlac\\engine.lua');
+    check('NE23 the flag path authority is gone', prof.engineFlagPath, nil);
     check('NE24 backups follow the native char home', prof.backupPath('WHM'),
           'I:\\game\\config\\addons\\dlac\\Mindie_12345\\backups\\pre-profiles\\WHM.lua');
     check('NE25 legacy trigger tier rides the data home too', prof.legacyTriggersPath('WHM'),
@@ -11148,16 +11091,9 @@ end)();
 (function()
     local prof = package.loaded['dlac\\profiles'];
 
-    -- The pure first-run decision. A flag on disk (either value) is ALWAYS
-    -- respected -- boot never rewrites it, never auto-flips an existing user.
-    check('NO1 flag native -> respect',        prof.firstRunAction('native', false), 'respect');
-    check('NO2 flag native + legacy -> respect', prof.firstRunAction('native', true), 'respect');
-    check('NO3 flag legacy -> respect',        prof.firstRunAction('legacy', false), 'respect');
-    check('NO4 flag legacy + data -> respect', prof.firstRunAction('legacy', true), 'respect');
-    -- No flag: legacy data present = existing user (stay legacy, write nothing);
-    -- no legacy data = fresh install (born native).
-    check('NO5 absent + legacy data -> STILL write-native (ADR 0025)', prof.firstRunAction('absent', true), 'write-native');
-    check('NO6 absent + no data -> write-native',  prof.firstRunAction('absent', false), 'write-native');
+    -- (NO1-NO6 -- the pure first-run decision matrix -- died in the purge,
+    -- Phase 2: no flag, no decision. ADR 0025's law is structural now.)
+    check('NO1 the first-run decision is deleted with the flag', prof.firstRunAction, nil);
 
     -- (NO7-NO11 -- the once-per-session LAC-alive ask gate -- died in the
     -- purge, Phase 1, with shouldAskUnloadLac/lacAlive; the coexistence
@@ -11338,20 +11274,18 @@ end)();
         setup.configure(deps);
     end
 
-    -- --- the migration Commit: engineMigrateStorage -> setNativeMode(true) -> checklist ---
+    -- (NO39-NO42 -- the migration Commit's copy-then-flip sequence -- died in
+    -- the purge, Phase 2: there is no flag to flip. The stub only informs.)
     local seq = {};
     prof.engineMigrateStorage = function() seq[#seq + 1] = 'migrate'; return 7, 2, 0; end
-    prof.setNativeMode = function(on) seq[#seq + 1] = 'flag:' .. tostring(on); return true; end
-    prof.nativeMode = function() return false; end   -- legacy at Commit time
     local msg = nil; deps.status = function(s) msg = s; end
     setup.configure(deps);
     writes = {};
     setup.migrateToNative();
-    check('NO39 Commit copies THEN flips the flag',    table.concat(seq, ','), 'migrate,flag:true');
-    check('NO40 Commit is copy-only (no JOB.lua/backup write)', has('luashitacast') or has('backups'), false);
-    check('NO41 Commit prints the unload checklist',   type(msg) == 'string' and msg:find('unload luashitacast', 1, true) ~= nil, true);
-    check('NO42 Commit refuses under native',
-          (function() prof.nativeMode = function() return true; end; seq = {}; setup.migrateToNative(); prof.nativeMode = function() return false; end; return #seq; end)(), 0);
+    check('NO39 the Commit stub migrates nothing itself', #seq, 0);
+    check('NO40 ...writes nothing anywhere', #writes, 0);
+    check('NO41 ...and says migration is automatic now',
+          type(msg) == 'string' and msg:find('automatic', 1, true) ~= nil, true);
 
     prof.engineMigrateStorage, prof.setNativeMode = savedMig, savedSet;
     prof.nativeMode, prof.ensureStorage, prof.storageExists = savedNative, savedEnsure, savedExists;
@@ -11413,79 +11347,21 @@ end)();
     check('NO46 legacy data found', pr2 and sc2, true);
     check('NO46b ...with the char named as evidence', ev, 'Testy_123');
 
-    -- The scan is GONE from boot (ADR 0025): an unlistable world -- the old
-    -- "can't tell" limbo that stranded Xvs's clean reinstall -- resolves
-    -- write-native instantly, and silently.
-    local lines = {};
-    local savedPrint = print;
-    print = function(s) lines[#lines + 1] = tostring(s); end
-    prof.engineFlagState = function() return 'absent'; end
-    prof._listDirs = function() return nil; end   -- the old can't-tell shape
-    prof.setNativeMode = function() return true; end
-    prof._resetFirstRun();
-    check('NO47 absent + unlistable world -> write-native, no scan', prof.firstRunInit(), 'write-native');
-    check('NO47b ...silently', #lines, 0);
-    check('NO47c ...and latched', prof.firstRunInit(), 'write-native');
-
-    -- Fresh + flag write FAILS: nil + its own one-time warn; then the write
-    -- starts succeeding -> 'write-native' + the loud fresh line.
-    lines = {}; prof._resetFirstRun();
-    prof._listDirs = function(p)
-        if p:find('luashitacast', 1, true) then return nil; end
-        return { 'dlac' };   -- parent without luashitacast -> definite fresh
-    end
-    prof.setNativeMode = function() return nil, 'no dir'; end
-    check('NO48 write-fail returns nil', prof.firstRunInit(), nil);
-    check('NO48b ...named once', #lines == 1 and lines[1]:find('could not be', 1, true) ~= nil, true);
-    prof.setNativeMode = function() return true; end
-    check('NO48c write succeeding resolves write-native', prof.firstRunInit(), 'write-native');
-    -- A RESOLVED decision is SILENT (Henrik, post-field-confirm: no first-run /
-    -- engine narration for the player) -- only the fail warn above ever spoke.
-    check('NO48d resolution is silent', #lines, 1);
-
-    -- Legacy now comes ONLY from an explicit flag on disk (ADR 0025): data
-    -- under luashitacast\ no longer decides anything -- even with evidence
-    -- present and probing positive, an absent flag is born native.
-    lines = {}; prof._resetFirstRun();
-    prof._listDirs = function(p)
-        if p:find('luashitacast', 1, true) then return { 'Testy_123' }; end
-        return { 'luashitacast' };
-    end
-    prof._legacyProbe = function() return true; end
-    check('NO49 legacy data alone no longer decides', prof.firstRunInit(), 'write-native');
-    lines = {}; prof._resetFirstRun();
-    prof.engineFlagState = function() return 'legacy'; end
-    check('NO49b an explicit legacy flag is respected', prof.firstRunInit(), 'respect');
-    check('NO49c ...silently', #lines, 0);
-
-    -- NO50. THE PATH AUTHORITY HOLDS WHILE UNDECIDED (field 2026-07-27, Xvs's
-    -- clean reinstall: config\addons\luashitacast AND config\addons\dlac both
-    -- deleted, and "migrate to native" still appeared). The 07-23 fix held
-    -- maintainStorage's OWN writers, but dataDir kept composing the LEGACY
-    -- home during the undecided window (flag absent -> nativeMode false), so
-    -- any login-time writer riding it -- the gear scan's commit above all --
-    -- could still plant gear.lua under luashitacast\, and the NEXT beat read
-    -- dlac's own file back as legacy evidence. dataDir now answers nil until
-    -- the decision latches: "not logged in yet", every writer holds.
+    -- (NO47-NO50 -- firstRunInit's undecided contract, the flag-write retry
+    -- and dataDir's native-first hold -- died in the purge, Phase 2, with the
+    -- flag and the decision themselves. dataDir answers the native home,
+    -- unconditionally: the manufactured-evidence family is undecidable-by-
+    -- design now, not merely guarded.)
+    check('NO47 firstRunInit is deleted with the decision', prof.firstRunInit, nil);
     local savedCharFolder = prof.charFolder;
     prof.charFolder = function() return 'Testy_123'; end   -- charBase resolves
-    prof.invalidateNative();
-    prof._resetFirstRun();
-    prof.engineFlagState = function() return 'absent'; end
-    prof._listDirs = function() return nil; end             -- undecided world
-    check('NO50 dataDir holds while the first run is undecided', prof.dataDir(), nil);
-    -- A latched LEGACY verdict -- an explicit flag, the only legacy route
-    -- left (ADR 0025) -- reopens the legacy home exactly as before.
-    prof.engineFlagState = function() return 'legacy'; end
-    prof._resetFirstRun();
-    check('NO50b a latched legacy flag reopens it',
-          prof.firstRunInit() == 'respect' and type(prof.dataDir()) == 'string', true);
+    check('NO48 dataDir is the native home, nothing else',
+          prof.dataDir(), 'I:\\game\\config\\addons\\dlac\\Testy_123\\');
+    check('NO49 charRoot rides the same home', prof.charRoot(),
+          'I:\\game\\config\\addons\\dlac\\Testy_123\\');
     prof.charFolder = savedCharFolder;
 
-    print = savedPrint;
     prof._listDirs, prof._legacyProbe = savedList, savedProbe;
-    prof.engineFlagState, prof.setNativeMode = savedFlagState, savedSetNative;
-    prof._resetFirstRun();
     AshitaCore = savedAC;
 end)();
 
@@ -13246,7 +13122,13 @@ end)();
     TEST_PLAYER = { MainJob = 'WHM', MainJobLevel = 75, SubJob = 'BLM', SubJobLevel = 37,
                     MainJobSync = 75, SubJobSync = 37, Status = 'Idle', IsMoving = false };
     local wrote = {};
-    _G.gFunc  = { EquipSet = function(t) for k, v in pairs(t or {}) do wrote[k] = v; end end };
+    -- The NATIVE equip door (purge Phase 2: gFunc.EquipSet is gone).
+    local savedEngLS = package.loaded['dlac\\feature\\equipengine'];
+    package.loaded['dlac\\feature\\equipengine'] = {
+        nativeOn = function() return true; end,
+        equipSet = function(t) for k, v in pairs(t or {}) do wrote[k] = v; end end,
+        state = { tripped = false },
+    };
     _G.gState = { CurrentCall = 'N/A', Disabled = {} };
 
     local strictClaim = B({ Main = 'Set Sword', Head = 'Set Hat' }, 'remove', resolve, locate, wornOf);
@@ -13408,6 +13290,7 @@ end)();
     D.setLockedSet(nil);
     TEST_PLAYER = savedPlayer;
     _G.gFunc, _G.gState = savedFunc, savedState;
+    package.loaded['dlac\\feature\\equipengine'] = savedEngLS;
     D.nakedArmed = savedNaked;
     D.lockedSet  = savedLocked;
 end)();

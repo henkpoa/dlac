@@ -279,12 +279,11 @@ end
 -- missing -- storage, gear inventory, the four base sets, starter triggers (the
 -- setupNative content, per job, idempotent, never clobbering) -- so a new player
 -- never touches Setup. Called on the login/job beat (dlac.lua maintainStorage).
--- HARD GATES: never in legacy mode; never for a not-ready job (D.jobFile()
--- returns nil until GetMainJob settles -- hard rule 11, so id-0 'NON' never
--- seeds); never before the caller has resolved firstRunInit (native mode being
--- ON is itself that resolution -- a fresh install writes the flag first, an
--- existing user is honored). A persistent disk failure NAMES itself once and is
--- retried next beat -- it is never ceremonialized into the Setup box.
+-- HARD GATES: never for a not-ready job (D.jobFile() returns nil until
+-- GetMainJob settles -- hard rule 11, so id-0 'NON' never seeds). A persistent
+-- disk failure NAMES itself once and is retried next beat -- it is never
+-- ceremonialized into the Setup box. (The legacy-mode and firstRunInit gates
+-- died in the purge, Phase 2: every boot is native and decided.)
 -- Returns 'seeded' | 'complete' | 'failed' | 'idle' (for the caller + tests).
 setup._autoWarned = {};   -- per-job failure-notice throttle (cleared on success)
 setup.autoSetupNative = function()
@@ -344,34 +343,13 @@ setup.hasDlacData = function()
     return false;
 end
 
--- THE MIGRATION COMMIT (issue #91): the GUI twin of `/dl engine native on`.
--- Copy-only storage migration (engineMigrateStorage -- nothing under
--- luashitacast\ is moved, changed, or deleted; existing native files win) then
--- write the Engine flag native = true, then print the unload/reload checklist.
--- Refuses under native (there is nothing to migrate). A flag-write failure after
--- a successful copy is reported without leaving the player mid-migration --
--- their legacy tree is byte-for-byte untouched, so they lost nothing.
+-- (THE MIGRATION COMMIT died in the purge, Phase 2: there is no engine flip
+-- left to commit. Storage migration is AUTOMATIC on login (engineAutoMigrate,
+-- copy-only) and `/dl engine migrate` re-runs the copy by hand -- both kept,
+-- Henrik's call. This stub answers any surface still wired to the old button.)
 setup.migrateToNative = function()
     if D == nil then return; end
-    if setup.isNative() then D.status('Migrate: the native engine is already on -- nothing to migrate.'); return; end
-    local prof = try('dlac\\profiles');
-    if prof == nil then D.status('Migrate: profiles module unavailable.'); return; end
-    local done, skipped, failed = prof.engineMigrateStorage();
-    if done == nil then D.status('Migrate: ' .. tostring(skipped)); return; end   -- second return = why (e.g. not logged in)
-    local ok, err = prof.setNativeMode(true);
-    if ok ~= true then
-        D.status('Migrate: copied your data but could NOT write the engine flag (' .. tostring(err)
-            .. ') -- nothing under luashitacast\\ was changed, so you are unharmed. Try again.');
-        return;
-    end
-    _setupState = nil;
-    local msg = string.format('Migrated to the native engine: %d file(s) copied to config\\addons\\dlac\\ '
-        .. '(%d already there, %d failed). Nothing under luashitacast\\ was touched -- flip back any time with '
-        .. '/dl engine native off. NOW:  1) /addon unload luashitacast  2) remove LuaAshitacast from your '
-        .. 'autoload  3) /addon reload dlac.  It is either LAC or DLAC -- never both at once.',
-        done, skipped, failed);
-    D.status(msg);
-    pcall(function() print('[dlac] ' .. msg); end);
+    D.status('Migration is automatic now: legacy data is copied to config\\addons\\dlac\\ at login (nothing under luashitacast\\ is ever changed). /dl engine migrate re-runs the copy by hand.');
 end
 
 -- Does this character still need the Migrate button (issue #91 -- needsSetup v2;

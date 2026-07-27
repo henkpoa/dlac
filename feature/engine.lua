@@ -1,22 +1,16 @@
 --[[
     dlac/feature/engine.lua -- the '/dl engine' command surface.
-    feature/native-engine: dlac absorbing LuaAshitacast.
 
-    The user-facing door for the engine flip:
-        /dl engine                    the status readout (mode, storage home,
-                                      migration state, tripwire)
-        /dl engine native on          migrate storage (copy, legacy stays) +
-                                      write the flag + print the checklist
-        /dl engine native off         write the flag off + print the way back
-        /dl engine migrate            re-run the storage copy by hand
-                                      (idempotent -- existing files win)
-
-    The flag itself lives in config\addons\dlac\engine.lua (profiles.lua is
-    the authority); a flip only fully applies after /addon reload dlac -- and
-    NATIVE ON requires LuaAshitacast unloaded (two engines both blocking
-    action packets is the coexistence hazard equipengine's tripwire disarms
-    on). This module prints those steps rather than automating them: the
-    user should see the two-command flip, not feel a magic reload.
+    STATUS-ONLY since the purge, Phase 2 (Henrik's ruling): dlac is the
+    engine, always -- there is no flip left to perform.
+        /dl engine                    the status readout (storage home,
+                                      migration state, tripwire, armed)
+        /dl engine migrate            re-run the legacy storage copy by hand
+                                      (idempotent -- existing files win; the
+                                      kept migrate carrier)
+    '/dl engine native on|off' answers with the truth instead of flipping:
+    on = already and always native; off = refused loudly (the legacy engine
+    is gone -- an old engine.lua flag on disk is retired in place, ignored).
 ]]--
 
 local M = {};
@@ -41,10 +35,7 @@ end
 local function status()
     local p = prof();
     if p == nil then warn('engine: profiles module unavailable.'); return; end
-    local on = false;
-    pcall(function() on = p.nativeMode(); end);
-    say('engine: ' .. (on and 'NATIVE (dlac equips gear itself)' or 'LAC (LuaAshitacast equips; dlac drives it)'));
-    pcall(function() say('engine: flag file ' .. tostring(p.engineFlagPath())); end);
+    say('engine: NATIVE (dlac equips gear itself -- the only engine since the purge).');
     pcall(function()
         local d = p.dataDir();
         say('engine: storage home ' .. tostring(d or '(pre-login)'));
@@ -53,21 +44,18 @@ local function status()
         local nb = p.nativeCharBase();
         if nb == nil then return; end
         local f = io.open(nb .. 'profile.lua', 'r');
-        if f ~= nil then f:close(); say('engine: native storage MIGRATED (pointer present).');
-        else say('engine: native storage not migrated yet' .. (on and ' -- auto-migration runs on login' or '') .. '.'); end
+        if f ~= nil then f:close(); say('engine: storage MIGRATED (pointer present).');
+        else say('engine: storage not migrated yet -- auto-migration runs on login.'); end
     end);
     local e = engine();
     if e ~= nil then
         if e.state.tripped then
-            warn('engine: TRIPWIRE FIRED this session -- another equip engine re-injected an action packet (LuaAshitacast still loaded?). Interception is disarmed; unload luashitacast and /addon reload dlac.');
-        elseif on then
+            warn('engine: TRIPWIRE FIRED this session -- another equip engine re-injected an action packet. Interception is disarmed; unload the other engine and /addon reload dlac.');
+        else
             local armed = false;
             pcall(function() armed = e.nativeOn(); end);
             say('engine: interception ' .. (armed and 'ARMED (this state)' or 'not armed in this state'));
         end
-    end
-    if on then
-        say('engine: native mode needs LuaAshitacast UNLOADED (/addon unload luashitacast).');
     end
 end
 
@@ -84,24 +72,10 @@ local function migrate()
 end
 
 local function setNative(on)
-    local p = prof();
-    if p == nil then warn('engine: profiles module unavailable.'); return; end
     if on then
-        -- migrate FIRST (idempotent; never overwrites), then flip
-        migrate();
-        local ok, err = p.setNativeMode(true);
-        if ok ~= true then warn('engine: could not write the flag: ' .. tostring(err)); return; end
-        say('engine: NATIVE mode flagged ON. To board it:');
-        say('engine:   1.  /addon unload luashitacast');
-        say('engine:   2.  /addon reload dlac');
-        say('engine: flip back any time with /dl engine native off (legacy files never moved).');
+        say('engine: already native -- dlac has been the only engine since the purge; there is nothing to turn on.');
     else
-        local ok, err = p.setNativeMode(false);
-        if ok ~= true then warn('engine: could not write the flag: ' .. tostring(err)); return; end
-        say('engine: native mode flagged OFF. To board LAC mode:');
-        say('engine:   1.  /addon load luashitacast');
-        say('engine:   2.  /addon reload dlac');
-        say('engine: note -- edits made IN native mode live in config\\addons\\dlac\\ and are not copied back.');
+        warn('engine: refused -- the legacy (LuaAshitacast-hosted) engine no longer exists, so there is nothing to switch to. dlac equips natively, always.');
     end
 end
 
