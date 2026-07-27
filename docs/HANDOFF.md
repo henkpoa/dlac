@@ -1224,6 +1224,31 @@ research already recorded. In rough priority order:
   that stamp from every player's gear.lua. Note `rslotlook` is appearance-only and is
   deliberately NOT mirrored: a Kupo Suit *looks* like it covers hands/legs/feet
   (`rslotlook=448`) but only **Legs** is actually blocked (`rslot=128`).
+- **Multi-slot DOMINANCE — dispatch v135 (`2026.07.27t`), Henrik's ruling.** `RSlot` data
+  was right and `reservedDrops` was right, but it was being **handed the wrong input**:
+  the overlay applies each matching rule's set through its *own* `equipResolved`, so that
+  pass never sees more than one rule at a time and **priority never gets a vote**. Two
+  field cases the same afternoon, the one gap pulling opposite ways — Hunklor SAM
+  (Movement(25) `Body=Kupo Suit` over Idle(20) `Legs=Amir Dirs`: Idle wrote the legs,
+  Movement wrote the suit, the server stripped the legs, ~0.4s forever with `moving=true`
+  throughout) and Mindie SCH (Idle(20) `Body=Royal Cloak` under Movement(25) `Head=…`,
+  where the `worn` arm let the cloak already on his back reserve Head away from the rule
+  that **outranked** it — *"This is the wrong logic"*). The rule now: a reserving piece is
+  a **candidate only while its claim is dominant over every slot it takes**. Dominant → it
+  wins its slot **and claims the reserved ones**, left empty (the server clears them
+  itself). Beaten → **ineligible**, its own slot unwritten. `M.reserveFloor` merges every
+  matching rule's set in apply order (last-writer-wins, each slot tagged with the priority
+  that won it); `M.reserveVerdict` judges it in `RSLOT_ORDER`, resolving dominance **before**
+  suppressing anything (a piece must never reserve on its way out) and refusing to let a
+  claimed slot claim further (Body takes Legs, so the Legs piece cannot take Feet). Built
+  before the first write, **retired right after the trigger loop** — Claim layers keep the
+  single-set + worn judgement they were field-tested with, because this floor is the
+  *trigger* contest and a rank contest is not a priority number. **NOT YET:** *"go for the
+  next available piece"* — `utils.BuildDynamicSets` collapses each slot's list to one name
+  before the engine sees it (the AutoAmmo rung-2 trap again), so an ineligible piece leaves
+  its slot **unwritten** rather than falling to its next rung. Carrying per-slot alternates
+  is the follow-up. Tests AKD1–26 (both real cases, both directions, plus the consumption
+  seam pinned so a verdict nothing reads fails loudly).
 - **`/dl view_ids` + lockstyle "Show gear I don't own" — new this session (07-15).**
   `/dl view_ids [on|off]` appends **item id + model id** to `renderItemTooltip`, which is
   the ONE hover card every equipment surface shares (Equipped / All Equipment / Sets /

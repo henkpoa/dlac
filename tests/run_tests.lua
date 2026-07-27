@@ -3514,7 +3514,130 @@ do
     check('AK31 zero -> nil',               dispatchM.rslotText(0), nil);
     check('AK32 nil -> nil',                dispatchM.rslotText(nil), nil);
     check('AK33 garbage -> nil',            dispatchM.rslotText('x'), nil);
+
 end
+
+-- ---------------------------------------------------------------------------
+-- AKD. MULTI-SLOT DOMINANCE (v135) -- Henrik's ruling, 2026-07-27: "he needs to
+--      check, am I dominant in both pieces according to you? If not, this piece
+--      is not a candidate." A reserving piece is a candidate only while its claim
+--      is dominant over every slot it takes. Dominant -> it claims those slots
+--      and they are left EMPTY; beaten -> the piece is INELIGIBLE and its own
+--      slot goes unwritten too.
+--
+--      Driven off the two REAL field cases, which are the same rule pulling in
+--      OPPOSITE directions -- which is exactly why both belong here. Neither is
+--      reachable by judging one set at a time, the pass reservedDrops does.
+--
+--      Own function scope, not `do`: the 200-local cap (see the AL note).
+-- ---------------------------------------------------------------------------
+(function()
+    local RS = {};
+    local function look(n) return RS[n]; end
+    local function verdict(entries)
+        return dispatchM.reserveVerdict(dispatchM.reserveFloor(entries), look);
+    end
+
+    -- Hunklor SAM. Movement(25) Body = Kupo Suit (reserves Legs) over Idle(20)
+    -- Legs = Amir Dirs. Movement is dominant -> the suit claims Legs, Idle never
+    -- writes them, and the ~0.4s flap has nothing left to flap with.
+    RS['Kupo Suit'] = 0x0080;
+    local kSup, kInel = verdict({
+        { prio = 20, set = { Body = 'Haubergeon', Legs = 'Amir Dirs', Head = 'Walahra Turban' } },
+        { prio = 25, set = { Body = 'Kupo Suit' } },
+    });
+    check('AKD1 SAM: the suit claims Legs',           kSup and kSup.Legs, 'Kupo Suit');
+    check('AKD2 SAM: the suit itself stays eligible', kInel and kInel.Body, nil);
+    check('AKD3 SAM: an unrelated slot is untouched', kSup and kSup.Head, nil);
+
+    -- Mindie SCH. Idle(20) Body = Royal Cloak (reserves Head) UNDER Movement(25)
+    -- Head = a headpiece. The cloak is beaten on Head, so it is not a candidate:
+    -- Body goes unwritten and the higher-priority headpiece finally lands. Before
+    -- v135 the WORN cloak reserved Head away from the rule that outranked it --
+    -- Henrik: "it is still not overriding Royal cloak... This is the wrong logic."
+    RS['Royal Cloak'] = 0x0010;
+    local rSup, rInel = verdict({
+        { prio = 20, set = { Body = 'Royal Cloak', Head = 'Idle Hat' } },
+        { prio = 25, set = { Head = 'Move Hat' } },
+    });
+    check('AKD4 SCH: the cloak is INELIGIBLE',        rInel and rInel.Body, 'Head');
+    check('AKD5 SCH: Head is NOT claimed away',       rSup and rSup.Head, nil);
+    -- a piece that lost must not reserve on its way out: it is not being worn
+    check('AKD6 SCH: an ineligible piece suppresses nothing', rSup, nil);
+
+    -- One rule naming both is that rule describing itself. EQUAL priority is
+    -- dominant, so this keeps pre-v135 behaviour exactly (AK1's law via the floor).
+    local sSup, sInel = verdict({ { prio = 20, set = { Body = 'Royal Cloak', Head = 'Idle Hat' } } });
+    check('AKD7 one set: the cloak claims Head',      sSup and sSup.Head, 'Royal Cloak');
+    check('AKD8 one set: the cloak stays eligible',   sInel, nil);
+
+    -- No cascade: Body takes Legs, so the claimed Legs piece never goes on and
+    -- cannot take Feet with it.
+    RS['Marine Boxers'] = 0x0100;
+    local cSup = verdict({ { prio = 20, set = {
+        Body = 'Kupo Suit', Legs = 'Marine Boxers', Feet = 'Amir Boots' } } });
+    check('AKD9 chain: Legs claimed by the suit',     cSup and cSup.Legs, 'Kupo Suit');
+    check('AKD10 chain: a claimed piece cannot claim Feet', cSup and cSup.Feet, nil);
+
+    -- ONE contested slot disqualifies the WHOLE piece -- a suit taking
+    -- Hands+Legs+Feet loses if any single one of them is outranked.
+    RS['Moogle Suit'] = 0x01C0;
+    local mSup, mInel = verdict({
+        { prio = 20, set = { Body = 'Moogle Suit', Hands = 'A', Legs = 'B' } },
+        { prio = 30, set = { Feet = 'Fast Boots' } },
+    });
+    check('AKD11 one contested slot beats the whole piece', mInel and mInel.Body, 'Feet');
+    check('AKD12 ... so it claims neither Hands nor Legs',
+        (mSup == nil) or (mSup.Hands == nil and mSup.Legs == nil), true);
+
+    -- Floor merge order == apply order: later entries overwrite, and the priority
+    -- recorded is the one that actually WON the slot (not the first to name it).
+    local fl = dispatchM.reserveFloor({
+        { prio = 20, set = { Body = 'Haubergeon' } },
+        { prio = 25, set = { Body = 'Kupo Suit' } },
+    });
+    check('AKD13 last writer wins the floor',   fl.Body.name, 'Kupo Suit');
+    check('AKD14 ... and carries ITS priority', fl.Body.prio, 25);
+    check('AKD15 metadata keys are not slots',
+        dispatchM.reserveFloor({ { prio = 1, set = { __alt = 'x', Body = 'y' } } }).__alt, nil);
+
+    -- Degenerate inputs never throw and never invent a verdict.
+    check('AKD16 no entries -> no verdict', (verdict({})), nil);
+    check('AKD17 no lookup -> no verdict',
+        (dispatchM.reserveVerdict({ Body = { name = 'x', prio = 1 } }, nil)), nil);
+    check('AKD18 no floor -> no verdict', (dispatchM.reserveVerdict(nil, look)), nil);
+    -- A piece nothing knows about reserves nothing (an old manifest, an uncrawled
+    -- custom): unknown must read as "no reservation", never as a guess.
+    check('AKD19 unknown piece -> no verdict',
+        (verdict({ { prio = 20, set = { Body = 'Mystery Robe', Head = 'H' } } })), nil);
+
+    -- The CONSUMPTION seam. The rules above are pure; these drive the real
+    -- post-pass chain, because a verdict nothing reads is worth nothing. The
+    -- manifest is stamped so the PRE-v135 path would actively do the wrong
+    -- thing -- that is what makes AKD22 a regression guard and not a tautology.
+    local gAK = package.loaded['dlac\\gear'];
+    gAK.NameToObject['Royal Cloak'] = { Name = 'Royal Cloak', RSlot = 0x0010 };
+
+    local _, t1 = dispatchM._equipResolved({ Body = 'Haubergeon', Legs = 'Amir Dirs' },
+        { reserveSuppressed = { Legs = 'Kupo Suit' } });
+    check('AKD20 a claimed slot is not written',        t1.Legs, nil);
+    check('AKD21 ... the rest of the set still is',     t1.Body, 'Haubergeon');
+
+    local nte, t2 = dispatchM._equipResolved({ Body = 'Royal Cloak', Head = 'Move Hat' },
+        { reserveIneligible = { Body = 'Head' } });
+    check('AKD22 an ineligible cloak is not written',   t2.Body, nil);
+    -- THE SCH BUG, pinned: the same input WITHOUT a verdict drops Head (AKD24).
+    check('AKD23 ... and the higher-priority hat SURVIVES', t2.Head, 'Move Hat');
+    check('AKD24 the drop is traced for /dl why',
+        string.find(tostring(nte), 'INELIGIBLE', 1, true) ~= nil, true);
+
+    -- No verdict (a Claim layer's own overlay, or any direct caller) -> the
+    -- single-set + worn judgement, byte-identical to pre-v135.
+    local _, t3 = dispatchM._equipResolved({ Body = 'Royal Cloak', Head = 'Idle Hat' }, {});
+    check('AKD25 with NO verdict the old path still drops Head', t3.Head, nil);
+    check('AKD26 ... and the cloak still equips',                t3.Body, 'Royal Cloak');
+    gAK.NameToObject['Royal Cloak'] = nil;
+end)();
 
 -- ---------------------------------------------------------------------------
 -- AL. PINNED slots (dispatch v44) -- "equip item, lock slot so nothing removes

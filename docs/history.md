@@ -6145,3 +6145,64 @@ flat drill-down fallback exists, but this one wants eyes in-game.
 **Status:** on `dev`, **not** in the merge queue — Henrik has not field-tested it yet.
 Suites 3875 + 679 (WL1–WL34, U4–U7, S60–S95, S150–S163 added), green on Windows lua and
 WSL lua5.4.
+
+## Session "am I dominant in both pieces?" (2026-07-27, on `dev` — addon 2026.07.27t, engine v134 → v135)
+
+**Theme:** the reserved-slot feature was correct and still visibly broken, twice, in
+opposite directions — and the fix was not in the reserve rule at all.
+
+**The two field cases.** Hunklor SAM: Movement(25) `Body = Kupo Suit` (reserves Legs)
+over Idle(20) `Legs = Amir Dirs`. It flapped Kupo Suit ↔ Amir Dirs continuously while
+running. Mindie SCH: Idle(20) `Body = Royal Cloak` (reserves Head) under Movement(25)
+`Head = <piece>` — the headpiece could never land, however high its priority. Henrik:
+*"So to me it looks like it's locking the head piece as long as royal cloak stays on.
+This is the wrong logic."*
+
+**Two wrong diagnoses first, both killed by evidence — worth recording.** (1) A repro
+against Hunklor's real `gear.lua` showed `Legs=RESERVED by Kupo Suit (kept as worn)` and
+the Legs dropped: the manifest, the mask and the pass were all fine. So the flap "had to
+be" `moving` flickering — the detector has a thin 0.1s margin over the dispatch tick.
+Henrik's `/dl why` screenshot printed `moving=true`, and that was that. (2) The same
+screenshot showed `Legs<-Idle` surviving into the slot list with no RESERVED note, which
+read as "the drop never fires live" — but that block is the **Arbiter's claim
+attribution**, which runs separately from the post-passes. Nearly a second confident
+wrong answer off a truncated screenshot. *Read what a trace is actually printing before
+concluding from what it does not print.*
+
+**The real root cause.** `dispatch.lua`'s overlay loop applies each matching rule's set
+through its **own** `equipResolved` (`equipSetByName` resolves *and* equips, per rule).
+So `reservedDrops` only ever sees one rule's set. Idle resolved alone → nothing reserves
+→ Amir Dirs equipped. Movement resolved alone → `{Body}` only, no Legs to drop → suit
+equipped, server stripped the legs. Both every dispatch. The merged view existed a few
+lines away as `floorTbl` — but only `if retrace`, i.e. purely to draw `/dl why`. The
+equip path never had it. Henrik named it before the code did: *"I think the problem lies
+in the overlying eye."*
+
+**Henrik's ruling, built as stated.** A piece that reserves other slots is a **candidate
+only while the claim wanting it is dominant over every slot it takes** — *"am I dominant
+in both pieces according to you? If not, this piece is not a candidate."* Dominant → it
+wins its slot and **claims** the reserved ones, left empty (the server clears them
+natively). Beaten → **ineligible**, its own slot unwritten. `M.reserveFloor` +
+`M.reserveVerdict` are pure; the engine builds the floor before the first write and
+retires it right after the trigger loop.
+
+**Worth carrying:**
+- **A correct rule fed the wrong input looks exactly like a wrong rule.** Three separate
+  investigations (data, mask, pass) all came back clean while the feature was plainly
+  broken, because none of them asked *what is this function being handed*. The repro that
+  "proved" the engine right had constructed the merged plan by hand — the one thing the
+  engine never does.
+- **Both directions or it isn't the rule.** The SAM case alone is fixable by suppressing
+  the reserved slot; the SCH case alone by ignoring the worn reserver. Only dominance
+  produces both, which is why AKD1–12 test them side by side.
+- **Order inside the verdict is load-bearing**: dominance must resolve *before* anything
+  is suppressed (a piece judged ineligible is not worn, so it reserves nothing), and a
+  claimed slot must not claim further.
+- **The AutoAmmo rung-2 trap is general.** *"Go for the next available piece"* is not
+  buildable today because `BuildDynamicSets` collapses each slot's list to one name before
+  the engine sees it — the same collapse that made the AutoAmmo ladder fail silently. An
+  ineligible piece leaves its slot unwritten instead. Carrying alternates is the follow-up.
+
+**Status:** on `dev`, awaiting Henrik's field test; **not** in the merge queue. Suites
+3901 + 692, green on Windows lua and WSL lua5.4. Both real cases also driven end-to-end
+against the actual `gear.lua` files of both characters.
