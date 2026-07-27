@@ -651,8 +651,9 @@ once per weapon branch with stack-balance assertions (the S50 crash class).
 
 ## 10. The level decides which rung (v134, 2026-07-27)
 
-**Status: DESIGNED, grill 2026-07-27 — not built when this was written.** Henrik's
-report: *"on my Mindie DRK, even though I made a list of bolts on AutoAmmo and
+**Status: BUILT on dev 2026-07-27, NOT field-tested.** `41432db` (engine, v134,
+`2026.07.27m`), `401a6bb` (the CW removal, `27n`), `4d6bb12` (the panel, `27o`).
+Henrik's report: *"on my Mindie DRK, even though I made a list of bolts on AutoAmmo and
 enabled it, it is not equipping automatically even though I have them set to
 ranged and ws. When I went from level 50+ to 8 it didn't equip any bolt (crossbow
 bolt), then I levelled up to 10 (or rather, level cap did), it did not equip blind

@@ -232,7 +232,35 @@ that performs the promotion **empties this section in the same commit as the mer
 entry left standing here after a merge is how "is this on main?" becomes unanswerable —
 see hard rule 14, which this section exists to serve.
 
-*(Empty. Last promotion: 2026-07-27 — **THE LUASHITACAST PURGE, all five phases**,
+### AutoAmmo: the level ladder + the CW removal — `41432db`..`4d6bb12` (2026-07-27)
+
+Three commits, addon `2026.07.27l` → **`27o`**, engine v133 → **v134**. Green on both
+suites (3821 + 593), Windows and WSL lua5.4. **NOT field-confirmed yet** — Henrik has the
+reproduction (his DRK, the level override) and the fastest loop is §10.10 test 1.
+
+- **`41432db` — the ladder learns the level (v134).** Field report: a DRK list of Acid
+  Bolt 15 / Blind Bolt 10 / Crossbow Bolt 1, sorted best-first by the panel's own button,
+  loaded nothing at an overridden level of 8 and nothing at 10. `resolveAmmoPlan` asked
+  the flag, the pair (v128) and the bag count, never the level — and the overlay collapses
+  a ladder to ONE name before the equip layer sees it, so there is no rung 2 to fall to.
+  Now a fourth gate mirroring `equipcore.checkUsable` (level + Jobs mask), read off the
+  live client resource for an item already counted in the bags; unknown never
+  disqualifies. The level is **`playerLevel(ctx)`, so `/dl set level main N` wins** —
+  reading `MainJobSync` straight would have shipped a "fix" that still ignored the
+  override, which IS the report. The Default arm re-judges what is WORN (empty slot /
+  over-level / ours-but-not-best) instead of only reloading an empty one, while anything
+  worn that is not on the list stays untouchable. Stock-outs print, level changes do not.
+- **`401a6bb` — the CW E-Box side is removed.** Henrik: *"we have E-box restocker now
+  which is better."* `feature/eboxammo.lua` deleted whole; the panel has no gamemode
+  awareness left. The `/dl ebox` entity probe survives as **`/dl debug ebox scan`** in
+  `eboxtrace`.
+- **`4d6bb12` — the panel shows the gate.** A red `Lv` column when a rung is out of
+  reach, and the row actually in your Ammo slot renders green (the v128 tab law).
+
+Docs: `docs/design/auto-ammo.md` §10 (rulings, rejected alternatives, 8 field tests);
+CONTEXT.md gains **Ammo ladder**; ADR 0016 gains a later-note (one consumer now, not two).
+
+*(Last promotion: 2026-07-27 — **THE LUASHITACAST PURGE, all five phases**,
 `e478817`..`489e677`, addon `2026.07.27j` → **`27l`**, engine v131 → **v133**, on
 Henrik's go-ahead: *"go ahead."* Field-confirmed on Mindie 11:48 — the first ever
 clean `/dl check` on a native install: stamp v133 matching file v133 from the NATIVE
