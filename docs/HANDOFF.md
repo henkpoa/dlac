@@ -331,6 +331,14 @@ research already recorded. In rough priority order:
   legacy engine); tests NO50/b, and NE9-14's legacy checks now run under a DECIDED
   legacy world. Pre-promotion field workaround: `/dl engine native on` once on a fresh
   install skips the race outright.
+- **2026-07-27, third fix: BORN NATIVE, ALWAYS (ADR 0025, `2026.07.27i`)** — Henrik:
+  *"Make it so users start in native mode by default, regardless if there are dlac files
+  under luashitacast conf."* `firstRunAction('absent', *)` = `'write-native'`
+  unconditionally; the boot no longer scans for legacy data at all (the can't-tell limbo
+  is unreachable); an explicit flag on disk is still honored (`/dl engine native off` =
+  the only road to legacy); flag-less legacy data becomes a MIGRATION SOURCE
+  (`engineAutoMigrate` carries it in on first native login). Tests NO5/NO47/NO49/NO50b
+  re-pinned to the new law.
 - **Henrik's 07-27 ruling — the LuaShitacast PURGE**: *"remove anything that points to
   luashitacast now. Everyone have migrated"* (stated exception: reading legacy job luas
   for static imports/tables stays). Not started — wants its own staged plan: the 5s

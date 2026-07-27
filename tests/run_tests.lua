@@ -11208,7 +11208,7 @@ end)();
     check('NO4 flag legacy + data -> respect', prof.firstRunAction('legacy', true), 'respect');
     -- No flag: legacy data present = existing user (stay legacy, write nothing);
     -- no legacy data = fresh install (born native).
-    check('NO5 absent + legacy data -> legacy',   prof.firstRunAction('absent', true), 'legacy');
+    check('NO5 absent + legacy data -> STILL write-native (ADR 0025)', prof.firstRunAction('absent', true), 'write-native');
     check('NO6 absent + no data -> write-native',  prof.firstRunAction('absent', false), 'write-native');
 
     -- The once-per-session ask gate: fires the FIRST time LAC is alive, then latches.
@@ -11423,6 +11423,10 @@ end)();
 -- disambiguation (missing root = DEFINITE fresh, not can't-tell), the
 -- undecided contract (nil + warn ONCE + never latch), the loud decision lines
 -- with their evidence, and the flag-write-failure retry.
+-- Since ADR 0025 the boot no longer scans at all -- absence of the flag IS the
+-- native verdict -- so NO43-46 pin the scanner itself (migrate-era surfaces,
+-- purge-slated), and NO47+ pin the born-native boot: instant, silent, with the
+-- flag-write-failure retry as the ONLY undecided state left.
 -- ---------------------------------------------------------------------------
 (function()
     local prof = package.loaded['dlac\\profiles'];
@@ -11464,17 +11468,19 @@ end)();
     check('NO46 legacy data found', pr2 and sc2, true);
     check('NO46b ...with the char named as evidence', ev, 'Testy_123');
 
-    -- firstRunInit undecided: nil, warns ONCE, never latches.
+    -- The scan is GONE from boot (ADR 0025): an unlistable world -- the old
+    -- "can't tell" limbo that stranded Xvs's clean reinstall -- resolves
+    -- write-native instantly, and silently.
     local lines = {};
     local savedPrint = print;
     print = function(s) lines[#lines + 1] = tostring(s); end
     prof.engineFlagState = function() return 'absent'; end
-    prof._listDirs = function() return nil; end   -- can't tell
+    prof._listDirs = function() return nil; end   -- the old can't-tell shape
+    prof.setNativeMode = function() return true; end
     prof._resetFirstRun();
-    check('NO47 undecided returns nil', prof.firstRunInit(), nil);
-    check('NO47b ...warns once', #lines, 1);
-    check('NO47c ...the warn says it writes nothing', lines[1]:find('WRITING nothing', 1, true) ~= nil, true);
-    check('NO47d second beat stays nil silently', prof.firstRunInit() == nil and #lines, 1);
+    check('NO47 absent + unlistable world -> write-native, no scan', prof.firstRunInit(), 'write-native');
+    check('NO47b ...silently', #lines, 0);
+    check('NO47c ...and latched', prof.firstRunInit(), 'write-native');
 
     -- Fresh + flag write FAILS: nil + its own one-time warn; then the write
     -- starts succeeding -> 'write-native' + the loud fresh line.
@@ -11492,16 +11498,20 @@ end)();
     -- engine narration for the player) -- only the fail warn above ever spoke.
     check('NO48d resolution is silent', #lines, 1);
 
-    -- Legacy verdict: silent too -- the GUI banner + Migrate button carry the
-    -- nudge, chat says nothing.
+    -- Legacy now comes ONLY from an explicit flag on disk (ADR 0025): data
+    -- under luashitacast\ no longer decides anything -- even with evidence
+    -- present and probing positive, an absent flag is born native.
     lines = {}; prof._resetFirstRun();
     prof._listDirs = function(p)
         if p:find('luashitacast', 1, true) then return { 'Testy_123' }; end
         return { 'luashitacast' };
     end
     prof._legacyProbe = function() return true; end
-    check('NO49 legacy resolves', prof.firstRunInit(), 'legacy');
-    check('NO49b legacy resolution is silent', #lines, 0);
+    check('NO49 legacy data alone no longer decides', prof.firstRunInit(), 'write-native');
+    lines = {}; prof._resetFirstRun();
+    prof.engineFlagState = function() return 'legacy'; end
+    check('NO49b an explicit legacy flag is respected', prof.firstRunInit(), 'respect');
+    check('NO49c ...silently', #lines, 0);
 
     -- NO50. THE PATH AUTHORITY HOLDS WHILE UNDECIDED (field 2026-07-27, Xvs's
     -- clean reinstall: config\addons\luashitacast AND config\addons\dlac both
@@ -11519,14 +11529,12 @@ end)();
     prof.engineFlagState = function() return 'absent'; end
     prof._listDirs = function() return nil; end             -- undecided world
     check('NO50 dataDir holds while the first run is undecided', prof.dataDir(), nil);
-    -- A latched LEGACY verdict reopens the legacy home exactly as before.
-    prof._listDirs = function(p)
-        if p:find('luashitacast', 1, true) then return { 'Testy_123' }; end
-        return { 'luashitacast' };
-    end
-    prof._legacyProbe = function() return true; end
-    check('NO50b a latched legacy verdict reopens it',
-          prof.firstRunInit() == 'legacy' and type(prof.dataDir()) == 'string', true);
+    -- A latched LEGACY verdict -- an explicit flag, the only legacy route
+    -- left (ADR 0025) -- reopens the legacy home exactly as before.
+    prof.engineFlagState = function() return 'legacy'; end
+    prof._resetFirstRun();
+    check('NO50b a latched legacy flag reopens it',
+          prof.firstRunInit() == 'respect' and type(prof.dataDir()) == 'string', true);
     prof.charFolder = savedCharFolder;
 
     print = savedPrint;
