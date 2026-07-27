@@ -418,6 +418,22 @@ apply → one send. `/dl why` renders the trace (deliberate, reviewed text diff 
 goldens gate moves with it). This is the stage where decide-and-explain become one
 machine.
 
+> **Stage 4 status: FIRST SLICE SHIPPED on dev 2026-07-27, commit `af37d01` (engine
+> v141, addon `27zc`) — Henrik's go; his craft bench is the acceptance.** The
+> cross-rank law is live: verdict entries carry their Arbiter row, strength = rank
+> outright across rows / priority within the floor / ties favor the reserver / ord
+> excluded (ARK1–ARK3 pin each clause); worn pieces are not claims — with the
+> dispatch verdict as the one authority (`ctx.reserveGlobal`) no floor or claim pass
+> runs the single-set + worn fallback, and direct callers keep the old judgement
+> (ARK7/7b). A dominant claim reserver suppresses floor slots by the general rule
+> (ARK4); a beaten claim piece is killed v135-style, ladder-less this slice (ARK5).
+> Suites 4026 + 693, both runtimes. **Awaiting field confirmation — the craft bench:
+> Midras's Helm +1 lands over the worn Royal Cloak; with Idle re-claiming Body, the
+> cloak falls to Scorpion Harness +1.** Remaining stage-4 slices: claim-side ladders
+> (AutoAmmo rungs, hobby manifest chains), sentinel rows in the verdict (a reserver
+> can no longer bulldoze a locked/free slot), `ctx.pinReserved` + naked-voids
+> retirement.
+
 **Stage 4 — claimants submit ladders; dominance across rank.** Registry rows gain
 `claims()`; AutoAmmo submits its level ladder (the v134 gap class ends), craft/HELM/
 fish/choco pass their manifest chains through instead of pre-resolving; pins/locks/
