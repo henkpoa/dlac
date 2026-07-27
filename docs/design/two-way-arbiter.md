@@ -354,6 +354,18 @@ shipping.
 > `/dl prio` line job-aware (the one quirk the field pass flagged; pre-existing, not a
 > stage-0 regression). **Stage 1 starts on Henrik's go.**
 
+> **Stage 1 status: SHIPPED on dev 2026-07-27, commit `b26a1da` (engine v138, addon `27z`)
+> — Henrik's go, same session.** Deeper than sketched, deliberately: rather than a second
+> walk emitting lists (a twin that would drift), `BuildDynamicSets` itself was rebuilt on
+> ONE evaluator — `utils.slotLadder` (the comparator as a sort) + `utils.flattenHead` (the
+> one `marker|fallback`/AutoAcc composition site) — so the flatten IS the ladder's head and
+> parity holds by construction (LD9 verifies anyway). `dispatch.candidatesFor(setName,
+> slot)` is the on-demand door, answering with the last flatten's own context, memoized per
+> `utils._laddersRev`. The old walk's virtual re-adoption quirk is preserved and pinned
+> (LD8). Tests LD1–LD10d; suites 3973 + 693 on Windows Lua and WSL lua5.4. **Awaiting
+> field confirmation** (zero behavior change: sets flatten identically); stage 2 on
+> Henrik's go after that.
+
 **Stage 1 — ladders on demand.** `candidatesFor(setName, slot)` — the `evalEntry` walk
 emitting the *ordered list* instead of its head, memoized on the existing rebuild latch
 (+ `modesRev`). ⚠ *The sketch said "carry the ladder additively" in the store; not
